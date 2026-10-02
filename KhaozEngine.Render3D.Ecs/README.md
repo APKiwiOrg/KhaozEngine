@@ -1,6 +1,6 @@
 # KhaozEngine.Render3D.Ecs
 
-The ECS arm of `KhaozEngine.Render3D`. Three types, kept in their own package (it depends on
+The ECS arm of `KhaozEngine.Render3D`. Three public types, kept in their own package (it depends on
 `KhaozEngine.Ecs`, which pulls `Simulation` and `Serialization`) so a consumer that only draws with
 `Scene3D`, or only bakes from a kit manifest, never drags in the ECS. The `Game3D` umbrella carries it.
 
@@ -19,6 +19,11 @@ The ECS arm of `KhaozEngine.Render3D`. Three types, kept in their own package (i
   headless-testable with a recording delegate. `Submit(world, Action<RigidInstanceDraw>)` is the keyed one, and
   the other two carry no key. Two worlds drawn into one scene share entity ids and so share keys. Re-key one
   through the keyed core, as docs/USING-KHAOZENGINE.md shows.
+
+The scene overload reuses a callback attached to each scene through a weak key and uses the world's pooled
+query. With the scene callback, query buffers and draw queues warmed, a stable submission allocates no bytes.
+The cache retains no world and does not keep an otherwise unused scene alive. Scene lifetime and disposal
+remain caller-owned. The delegate overloads retain their existing query and caller-supplied callback behavior.
 
 ```csharp
 var e = world.Spawn();

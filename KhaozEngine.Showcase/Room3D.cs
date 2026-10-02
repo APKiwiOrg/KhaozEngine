@@ -246,20 +246,8 @@ namespace KhaozEngine.Showcase
 
             var terrainMaterial = _scene.LoadTerrainMaterial(TerrainMaterialPresets.Procedural());
 
-            _camera = new FollowCamera3D { Target = _character.Position, Yaw = MathF.PI, HeightOffset = 1.2f, GroundHeight = _terrain.GroundHeight };
-            _camera.Distance = 9f;
-            _camera.Occlusion = _physics;   // spring-arm: pull the eye in through a wall/roof rather than clip it
-            // Demo-only: smooth the camera's follow target over the small per-riser fore-aft stutter the physics XZ
-            // still carries on a stair climb (see the matching note in RoomDungeon). Off by engine default; enabled
-            // in the two showcase rooms that have climbable stairs only, leaving other consumers' cameras untouched.
-            _camera.EnableTargetDamping = true;
-            // WoW-style gestures: a left or a right drag orbits the camera and captures the cursor. This room never
-            // reads TurnBodyActive, so a right drag turns no body, and it uses neither button's tap yet.
-            _camController = new FollowCameraController(_camera)
-            {
-                OrbitGesture = new PointerGesture(MouseButton.Left),
-                LookGesture = new PointerGesture(MouseButton.Right),
-            };
+            _camController = Room3DCameraRig.Create(_character.Position, CapsuleHalfHeight, _terrain.GroundHeight, _physics);
+            _camera = _camController.Camera;
             _scene.CameraOverride = _camera;
 
             // Outline post-process starts OFF here by the engine default (press O to toggle it on). OnExit resets it

@@ -30,6 +30,7 @@ namespace KhaozEngine.Automation
 
         Vector2? _pointer;
         Vector2 _lastComposedPosition;
+        Vector2 _lastComposedPositionPoints;
 
         /// <summary>The live injected pointer position in window pixels, or null while the real cursor owns the frame.</summary>
         public Vector2? Pointer => _pointer;
@@ -121,9 +122,13 @@ namespace KhaozEngine.Automation
         {
             Vector2 position = _pointer ?? real.MousePosition;
             Vector2 delta = _pointer is null ? real.MouseDelta : position - _lastComposedPosition;
+            Vector2 points = position / real.FramebufferScale;
+            Vector2 pointsDelta = _pointer is null ? real.MouseDeltaPoints : points - _lastComposedPositionPoints;
             _lastComposedPosition = position;
+            _lastComposedPositionPoints = points;
 
             return new InputState(
+                pointsDelta, real.FramebufferScale,
                 Union(real.KeysDown, _keysDown),
                 Union(real.KeysPressed, _keysPressed),
                 Union(real.KeysReleased, _keysReleased),

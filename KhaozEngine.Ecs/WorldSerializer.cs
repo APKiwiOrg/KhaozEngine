@@ -13,10 +13,12 @@ using KhaozEngine.Serialization;
 namespace KhaozEngine.Ecs;
 
 /// <summary>
-/// Saves and loads a <see cref="World"/> (entities + components + id-allocator state) as JSON.
+/// Saves and loads a <see cref="World"/> (entities, components, id allocator and archetype history) as JSON.
 /// Construct it with the component types your game uses (or scan an assembly). Entities are restored
 /// at their exact id and version so <see cref="Entity"/>-typed component fields survive the round-trip.
 /// Resources and systems are not serialized.
+/// Format 2 preserves signature creation order, including empty archetypes. Format 1 remains readable with
+/// legacy reconstruction order because it did not record that history.
 ///
 /// <para><b>NativeAOT.</b> Register the component set through the generic seam - <see cref="Create"/> then
 /// <see cref="Builder.Add{T}"/> - so the load path can rebuild each component column without reflection, and pass
@@ -55,7 +57,7 @@ public sealed class WorldSerializer
     }
 
     /// <summary>The save <c>FormatVersion</c> this build writes and is the newest it can read.</summary>
-    public const int CurrentFormatVersion = 1;
+    public const int CurrentFormatVersion = 2;
 
     // Document-level upgrade hooks, keyed by the version they upgrade FROM (ascending). A migration
     // registered at N takes a document at version N and returns it at version N+1. Load applies every
@@ -65,7 +67,8 @@ public sealed class WorldSerializer
     /// <summary>
     /// Registers a document-level upgrade from <paramref name="fromVersion"/> to <paramref name="fromVersion"/>+1.
     /// On <see cref="Load(string)"/> of an older save, registered migrations run in ascending order to bring the
-    /// document up to <see cref="CurrentFormatVersion"/> before it is deserialized. The hook receives and returns
+    /// document up to <see cref="CurrentFormatVersion"/> before it is deserialized. A registered version 1 hook
+    /// takes precedence over the built-in compatibility upgrade. The hook receives and returns
     /// the raw <see cref="JsonObject"/> save document.
     /// </summary>
     public static void RegisterMigration(int fromVersion, Func<JsonObject, JsonObject> upgrade)
@@ -140,6 +143,7 @@ public sealed class WorldSerializer
         {
             NextId = world.SaveNextId,
             FreeIds = world.SaveFreeSlots.Select(s => new FreeSlot { Id = s.id, Version = s.version }).ToList(),
+            Archetypes = WorldArchetypeHistory.Capture(world, KeyFor),
         };
         ComponentRegistry reg = world.Registry;
         foreach (Archetype arch in world.SaveArchetypes)
@@ -161,9 +165,8 @@ public sealed class WorldSerializer
                 doc.Entities.Add(ed);
             }
         }
-        // The envelope (entities + allocator state) is serialized by the engine's source-generated context, so it
-        // needs no reflection. Component values are already embedded as raw JsonElement, so this is byte-identical to
-        // serializing the whole document in one reflection pass.
+        // The envelope, including historical signatures, uses the engine's source-generated context. Component
+        // values are embedded as raw JsonElement, so no reflection is needed for the envelope.
         return JsonSerializer.Serialize(doc, WorldSaveJsonContext.Default.SaveDoc);
     }
 
@@ -178,7 +181,7 @@ public sealed class WorldSerializer
         // lowest known version.
         int found = root.TryGetPropertyValue("FormatVersion", out JsonNode? fv) && fv is not null
             ? fv.GetValue<int>()
-            : CurrentFormatVersion;
+            : 1;
 
         if (found > CurrentFormatVersion)
             throw new UnsupportedSaveVersionException(found, CurrentFormatVersion);
@@ -186,12 +189,18 @@ public sealed class WorldSerializer
         // Older save: bring it up to the current version with any registered migrations (ascending).
         for (int v = found; v < CurrentFormatVersion; v++)
         {
-            if (!_migrations.TryGetValue(v, out Func<JsonObject, JsonObject>? upgrade))
+            if (_migrations.TryGetValue(v, out Func<JsonObject, JsonObject>? upgrade))
+                root = upgrade(root);
+            else if (v != 1)
                 throw new InvalidOperationException(
                     $"No migration registered to upgrade save FormatVersion {v} to {v + 1}.");
-            root = upgrade(root);
+            // Format 1 has no signature history to recover. Its built-in step keeps legacy reconstruction.
             root["FormatVersion"] = v + 1;
         }
+
+        bool hasHistory = root.ContainsKey("Archetypes");
+        if (!hasHistory && found >= 2)
+            throw new InvalidOperationException("Save FormatVersion 2 requires archetype history.");
 
         // Envelope deserialized by the engine's source-generated context (reflection-free); component values below use
         // the JsonTypeInfo overload against _options so a source-generated resolver keeps them NativeAOT-safe too.
@@ -210,6 +219,8 @@ public sealed class WorldSerializer
                 world.SetByType(e, t, value);
             }
         }
+        if (hasHistory)
+            WorldArchetypeHistory.Restore(world, doc.Archetypes, _byName);
         world.RestoreAllocator(doc.NextId, doc.FreeIds.Select(f => (f.Id, f.Version)));
         world.RebuildHierarchyIndex();
         return world;
@@ -237,6 +248,7 @@ public sealed class WorldSerializer
         public int NextId { get; set; }
         public List<FreeSlot> FreeIds { get; set; } = new();
         public List<EntityDoc> Entities { get; set; } = new();
+        public List<List<string>>? Archetypes { get; set; }
     }
 
     internal sealed class FreeSlot { public int Id { get; set; } public uint Version { get; set; } }

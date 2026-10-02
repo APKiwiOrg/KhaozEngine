@@ -20,7 +20,7 @@ namespace KhaozEngine.Render3D
         /// <summary>Draw all renderable entities of <paramref name="world"/> into <paramref name="scene"/>,
         /// carrying each <see cref="MeshInstance.Material"/> through and keying each draw with
         /// <see cref="MotionKeyOf"/>.</summary>
-        public static void Submit(World world, Scene3D scene) => Submit(world, draw => scene.Draw(in draw));
+        public static void Submit(World world, Scene3D scene) => Scene3DBinderSink.Submit(world, scene);
 
         /// <summary>
         /// The keyed pure core: for each entity with <see cref="Transform3D"/> + <see cref="MeshInstance"/>, invoke
@@ -74,8 +74,7 @@ namespace KhaozEngine.Render3D
         {
             Transform3D t = world.Get<Transform3D>(e);
             MeshInstance m = world.Get<MeshInstance>(e);
-            Color tint = m.Tint == Color.Transparent ? Color.White : m.Tint;
-            return new RigidInstanceDraw(m.Mesh, t.ToMatrix()) { Tint = tint, Material = m.Material, Motion = MotionKeyOf(e) };
+            return Scene3DBinderSink.Describe(e, in t, in m);
         }
 
         /// <summary>

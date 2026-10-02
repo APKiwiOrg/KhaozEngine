@@ -22,11 +22,11 @@ namespace KhaozEngine.Windowing
     /// <remarks>
     /// Pure and headless: it reads its own button, the cursor position and the mouse delta from the frame's
     /// <see cref="InputState"/> and owns no camera and no input source.
-    /// <para>Travel is path length accumulated across the whole press, not this frame's step, so three slow pixels
+    /// <para>Travel is path length accumulated across the whole press, not this frame's step, so three slow points
     /// a frame still becomes a drag rather than never deciding, and a wiggle that returns to its start is a drag
     /// rather than a tap.</para>
     /// <para>Crossing the threshold REPLAYS the travel accumulated while undecided rather than starting clean. The
-    /// alternative is a dead zone: the first few pixels of every drag would be swallowed and whatever the drag
+    /// alternative is a dead zone: the first few points of every drag would be swallowed and whatever the drag
     /// drives would start from behind the cursor for the rest of the press. Replaying costs one frame of catch-up
     /// worth at most the threshold and keeps the property that the same mouse path ends in the same place
     /// whatever the threshold is.</para>
@@ -38,12 +38,10 @@ namespace KhaozEngine.Windowing
     /// <para><see cref="Advance"/> allocates nothing.</para>
     /// </remarks>
     /// <param name="button">The button this gesture watches. Every other button is ignored.</param>
-    /// <param name="thresholdPixels">Accumulated <see cref="InputState.MouseDelta"/> travel that turns a press into
-    /// a drag. The threshold and the crossing replay are in delta units: framebuffer pixels until capture starts,
-    /// window points after it (see <see cref="InputState.PointerCaptured"/>). On a 2x display an uncaptured press
-    /// crosses at half the hand movement it would at 1x. A scale-aware threshold is engine issue #1228. Four is
-    /// about the width of the hand tremor in a click. Zero or less means a press drags from its first frame and
-    /// never taps.</param>
+    /// <param name="thresholdPixels">Accumulated <see cref="InputState.MouseDeltaPoints"/> travel that turns a
+    /// press into a drag, in window points before and during capture. The parameter name is retained for
+    /// compatibility. Four is about the width of the hand tremor in a click. Zero or less means a press drags
+    /// from its first frame and never taps.</param>
     public sealed class PointerGesture(MouseButton button, float thresholdPixels = 4f)
     {
         Vector2 _pressPosition;     // where the live press began, promoted to TapPosition if it ends as a tap
@@ -55,16 +53,15 @@ namespace KhaozEngine.Windowing
         /// <summary>The button this gesture watches.</summary>
         public MouseButton Button { get; } = button;
 
-        /// <summary>The threshold this instance was built on, in <see cref="InputState.MouseDelta"/> units
-        /// (framebuffer pixels until capture starts, window points after). Zero or less means drag from the first
-        /// frame and never tap.</summary>
+        /// <summary>The threshold this instance was built on, in window points. The property name is retained for
+        /// compatibility. Zero or less means drag from the first frame and never tap.</summary>
         public float ThresholdPixels { get; } = thresholdPixels;
 
         /// <summary>What the button is doing after the most recent <see cref="Advance"/>.</summary>
         public PointerGesturePhase Phase { get; private set; }
 
         /// <summary>The delta a drag should apply for the frame of the most recent <see cref="Advance"/>: zero
-        /// unless dragging, that frame's own <see cref="InputState.MouseDelta"/> while dragging, and the whole
+        /// unless dragging, that frame's own <see cref="InputState.MouseDeltaPoints"/> while dragging, and the whole
         /// accumulated travel on the frame the threshold is crossed (the catch-up).</summary>
         public Vector2 DragDelta { get; private set; }
 
@@ -82,7 +79,7 @@ namespace KhaozEngine.Windowing
 
         /// <summary>Advance one frame.</summary>
         /// <param name="input">This frame's snapshot. The gesture reads its own button's down state,
-        /// <see cref="InputState.MousePosition"/> as the press origin, <see cref="InputState.MouseDelta"/> as the
+        /// <see cref="InputState.MousePosition"/> as the press origin, <see cref="InputState.MouseDeltaPoints"/> as the
         /// travel, and <see cref="InputState.WindowFocused"/>, whose loss counts as blocked because the input
         /// accumulator releases every held button on unfocus and that would otherwise look like a tap.</param>
         /// <param name="uiBlocked">Whether the UI owns the pointer this frame. A press that begins while blocked is
@@ -98,7 +95,7 @@ namespace KhaozEngine.Windowing
                 // No undecided phase means no tap can ever fire and the drag starts on the first frame of the
                 // press, including resuming mid-hold once a block lifts.
                 Phase = down && !blocked ? PointerGesturePhase.Dragging : PointerGesturePhase.Idle;
-                DragDelta = Phase == PointerGesturePhase.Dragging ? input.MouseDelta : Vector2.Zero;
+                DragDelta = Phase == PointerGesturePhase.Dragging ? input.MouseDeltaPoints : Vector2.Zero;
                 _wasDown = down;
                 return;
             }
@@ -139,7 +136,7 @@ namespace KhaozEngine.Windowing
                 _pendingTravel = 0f;
             }
 
-            Vector2 mouseDelta = input.MouseDelta;
+            Vector2 mouseDelta = input.MouseDeltaPoints;
             if (Phase == PointerGesturePhase.Dragging)
             {
                 DragDelta = mouseDelta;     // decided: every frame passes straight through until the button comes up

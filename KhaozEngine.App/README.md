@@ -20,6 +20,37 @@ string version = BuildMetadata.Read(
 First assembly with a matching, non-whitespace `AssemblyMetadata` value wins; null assemblies are
 skipped; otherwise the fallback is returned.
 
+## EnvFile
+
+`EnvFile.Parse(TextReader)` returns an ordered `IReadOnlyList<KeyValuePair<string, string>>` and leaves the reader
+open. Duplicate entries and key casing are preserved, including empty assignments. Callers choose file search order
+and apply their own per-entry environment precedence.
+
+Lines, keys and values are trimmed. Blank lines, whole-line `#` comments, lines without an equals sign and empty keys
+are ignored. Only the first equals sign separates the key from its value. A matching outer pair of single or double
+quotes is removed, preserving whitespace inside the quotes. Quoted and unquoted empty values are valid. Unmatched
+or one-character quotes stay literal, as do embedded equals signs and inline `#` text. There is no interpolation,
+escaping, `export` prefix processing or multiline syntax.
+
+```csharp
+using System.IO;
+using KhaozEngine.App;
+
+using var reader = new StringReader("MODE=demo\nMODE=local");
+var entries = EnvFile.Parse(reader);
+
+if (EnvFile.TryRead("settings.env", out var optionalEntries))
+{
+    // Apply caller policy to each entry in order.
+}
+```
+
+`TryRead(path, out entries)` reads and closes one optional file with BCL BOM detection. Missing, inaccessible or
+invalid paths return false with an empty result. Entries are published only after the complete read and close, so
+file-access failures expose no partial result. A readable file with no valid assignments returns true with empty
+entries. Null readers and null or empty paths throw argument exceptions. Reader errors from `Parse` propagate.
+The helper does not read or write the environment, scan directories or log setting values.
+
 ## AppDataPaths
 
 `AppDataPaths` resolves and lazily creates the platform-correct application-data directory for a publisher and

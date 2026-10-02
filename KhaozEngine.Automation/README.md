@@ -144,6 +144,10 @@ Two exceptions are deliberate:
 - `InputState.WindowFocused` is forced true, without which `GuiSurface` drops every injected press the moment the
   agent's terminal takes focus.
 
+`Compose` preserves the real snapshot's `MouseDeltaPoints` and `FramebufferScale` when the real cursor owns the
+frame. Injected pointer coordinates remain framebuffer pixels, while their points delta uses the snapshot scale
+and a logical-position baseline, including across scale changes. Legacy `MouseDelta` behavior stays unchanged.
+
 A press and a release of the same button applied in ONE pump is a click, and the frame carries both edges: pressed
 and released, with the button not down. That is the shape `Pointer` already completes as a same-frame tap, so
 sending press and release in one batch works and does not need a `step` between them. `holdFrames` is still the

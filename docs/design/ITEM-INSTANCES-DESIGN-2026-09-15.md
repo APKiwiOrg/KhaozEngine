@@ -141,7 +141,8 @@ oversized game message.
 | `ItemSlot` | `readonly record struct (ItemStack Stack, ReadOnlyMemory<byte> Payload, bool Quarantined)` | 4.3 |
 | `ItemContainerPage` | one page's slots plus its content version stamp and dirty flag | 5.3 |
 | `PagedItemContainer` | page geometry, capacity gate, page lookup, dirty set | 5.6 |
-| `ItemContainerPageCodec` | `Encode`, `TryDecode`, `Validate`, `Version` | 4.4, 5.3 |
+| `ItemContainerPageCodec` | version 2 writer/reader, `Encode`, `TryDecode`, `Validate`, `Version`, sole `ContainerPageSlots` owner | 4.4, 5.2, 5.3 |
+| `ItemContainerPageReason` | seven transient page-level diagnostic tokens, no durable ordinals | 4.4 |
 | `InstanceIdAllocator` | node-prefixed, durable high-water mark, `Rotate` | 3.6 |
 | `InstanceValidator` | `Validate(page, snapshot)` returning findings | 12.2 |
 | `InstanceValidationReport`, `InstanceValidationFinding` | accumulating, side-effect free | 12.2 |
@@ -190,7 +191,8 @@ This document uses the seam and declares none of it.
 | `ItemStack` | gains a third component, `long InstanceId`, defaulting to 0 | 4.2 |
 | `ItemContainer.SetSlotAt` | the payload-carrying codec door | 4.7 |
 | `ItemContainer.TakeSlotAt` | the payload-carrying take | 4.7 |
-| `ItemContainerCodec.Version` | becomes a `public const ushort` at 2, with the version 1 reader kept | 4.4 |
+| `ItemContainerCodec.Version` | codec family's current `public const ushort` at 2, while this type still reads and writes version 1 | 4.4, 4.5 |
+| `ItemContainerCodec.Version1` | legacy `public const byte` at 1, used by its reader and writer | 4.5 |
 
 `KhaozEngine.TileWorld.Netcode`, modified:
 
@@ -792,6 +794,9 @@ and break every stored v1 bank in the fleet.
 page, which is twenty bytes on a ten page bank, and it catches a page written into the wrong section,
 which is section 13's row 10 and is otherwise silent.
 
+An entry's relative `Slot` must be less than that page's own `SlotCount`. A value at or past the bound
+refuses the page with `page-entry-malformed`, even when it would fit the caller's larger page geometry.
+
 **`EntryCount` is explicit, unlike version 1.** Version 1 derived the entry count from the blob length
 because every entry was exactly ten bytes (`ItemContainerCodec.cs:57`). Version 2's entries are variable
 length, so the count is declared and the decoder refuses a blob that runs out of bytes before the count
@@ -817,6 +822,19 @@ bytes VERBATIM plus eleven bytes of its own header (12.4), so an entry that quar
 - A QUARANTINED entry's payload is the wrapper, and its bound is the page's own: the journal's 2 MiB
   projection section cap less the rest of the page (`JournalLimits.cs:16`). 5.4 carries the arithmetic.
 
+That quarantine bound is only exceeded when the whole page exceeds 2 MiB: a payload cannot be larger
+than the page carrying it. The operative encoder limit is the entire encoded page, enforced by
+`ItemContainerPageCodec.MaxPageBytes`. It is a separate Foundation-layer declaration mirroring
+`KhaozEngine.WorldStore.Journal.JournalLimits.EngineMaximumProjectionSectionBytes` in the Server layer.
+Both currently equal `2 * 1024 * 1024` and must stay aligned when the ceiling changes. This preserves
+the existing layering without moving either constant or adding a project reference.
+
+`ItemContainerPageReason` names seven page-level diagnostics: `page-version`, `page-truncated`,
+`page-slot-origin`, `page-slot-order`, `page-entry-count`, `page-entry-malformed` and
+`page-trailing-bytes`. They are not durable ordinals. A failed page quarantines as a unit at load (5.5),
+while the `KECQ.ReasonCode` byte belongs to the payload/entry quarantine set in 12.4. Malformed varints
+retain their own `ContentVarint` token, and legacy-reader failures retain that reader's message.
+
 The case this exists for is a cap RAISE, which contracts 9.6 makes backward compatible and open question 4
 expects. Engine 20.x raises the cap to 1,024, a six socket item reaches 700 bytes, and a shard still on
 19.x loads the page: check 5 fires, the entry quarantines, the wrapper is about 711 bytes, and it has to
@@ -833,13 +851,16 @@ against `:61-63`, flagged at `a-engine.md:83-101`). `BitConverter` is forbidden.
 **A version 2 reader reads a version 1 blob unchanged, and a version 2 writer never produces one.**
 Concretely:
 
-- `ItemContainerCodec.TryDecode` dispatches on byte 0. Value 1 runs the existing version 1 path verbatim
-  (`ItemContainerCodec.cs:49-68`) and seats every slot with instance id 0, an empty payload and the
-  quarantined flag clear.
-- The version 1 path's `Validate` rules are kept exactly as they are, all eleven of them
-  (`ItemContainerCodec.cs:74-104`), including the refusal of a blob whose declared slot count is not the
-  caller's. That refusal is load bearing for Grimhollow, whose `WidenBag` and `NarrowBag` helpers exist
-  precisely because of it (`b-grimhollow.md:88-102`).
+- `ItemContainerCodec.Encode` remains the version 1 writer and writes the byte `Version1 = 1`.
+  `ItemContainerCodec.Version` is the codec family's current ushort value 2, not the format this legacy
+  writer emits. `ItemContainerPageCodec.Encode` is the version 2 writer in `KhaozEngine.ItemInstances`.
+- `ItemContainerPageCodec.TryDecode` dispatches on byte 0. Value 1 delegates to the legacy
+  `ItemContainerCodec.Validate` and `TryDecode` path and seats every slot with instance id 0, an empty
+  payload and the quarantined flag clear. Other values use the ushort version field.
+- Standalone `ItemContainerCodec.Validate` keeps its strict declared-slot-count check. The page bridge
+  accepts a positive legacy geometry no wider than the requested page, validates against that declared
+  geometry, and exposes page zero at the requested geometry with unused tail slots empty. It does not
+  pre-widen or rewrite the stored bytes. A legacy container wider than the page is refused.
 - A version 1 blob carries no content version stamp. The decoded page takes stamp 0, which is older than
   every published version, so the FULL remap rule set applies to it on the first load (contracts 8.3).
   That is the correct answer and it is free: rule application is a scan that is a no-op on a page holding
@@ -930,7 +951,9 @@ containers and coalesced commits in scope in the same sentence (#882 comment 3).
 
 ### 5.2 Page geometry and section naming
 
-**A page is 100 slots.** `ContainerPageSlots = 100`, a `public const int`.
+**A page is 100 slots.** `ItemContainerPageCodec.ContainerPageSlots = 100` is the sole `public const int`
+declaration. `ItemContainerPage` and `PagedItemContainer` reference it for their geometry rather than
+declaring another copy.
 
 One hundred rather than 128, deliberately. The power of two buys a shift instead of a divide, which a
 compiler turns into a multiply either way, and it costs legibility everywhere a human reads a page
@@ -1802,6 +1825,12 @@ data lives, and the validator refuses to let the two drift.
 | `item_level_min` | int | | `Client` | yes |
 | `item_level_max` | int | | `Client` | yes |
 
+Check 8's tier lookup depends on the exact type key `mod_tier` and field names `mod_id` and `ordinal`.
+The validator fixes them as `ContentReferences.ModTierTypeKey`, `ModTierModIdField` and
+`ModTierOrdinalField`. The public schema names are `InstanceContentTypeIds.ModTierTypeKey`,
+`ModTierContentType.ModIdField` and `ModTierContentType.OrdinalField`. Registration must preserve these
+names so the stored `(mod id, tier ordinal)` pair resolves through the same schema.
+
 `ordinal` is 1 to 255, unique within the mod, and IMMUTABLE once published. `item_level_min` and
 `item_level_max` are inclusive, 1 to 65535, with `item_level_max = 65535` meaning no ceiling.
 
@@ -2091,7 +2120,7 @@ release.
 **That is more rows than the earlier draft's blob and it is not more authoring.** The same facts were
 always there. What changed is that each one is now a row a generic editor renders, a publish diff reports
 field by field, and an audit records a before and an after for, rather than a hex box whose whole content
-reads as one changed value (contracts 4.7, and `catalog_audit.before_value` is capped at 512 characters
+reads as one changed value (contracts 4.7, and `catalog_audit.before_value` is capped at 4096 characters
 anyway).
 
 What each reference game authors, which is the concrete form of the claim that these are shapes rather
@@ -2967,19 +2996,19 @@ touch a counter and does not mutate the page. The caller does all three.
 
 | # | Check | Class | Failure | Outcome |
 |---|---|---|---|---|
-| 1 | the payload is canonical: ascending kinds, no duplicate, minimal varints | structural | `field-order`, `field-duplicate`, `varint-nonminimal` | quarantine |
+| 1 | the payload is canonical: ascending kinds, no duplicate, bounded minimal varints | structural | `field-order`, `field-duplicate`, `varint-nonminimal`, `varint-overflow` | quarantine |
 | 2 | every declared length lies inside the payload | structural | `truncated` | quarantine |
 | 3 | a registered kind's bytes decode through its codec | structural | `field-malformed` | quarantine |
 | 4 | kind 132's nested payloads carry no kind 132 | structural | `socket-nesting` | quarantine |
 | 5 | the payload is at most `MaxInstancePayloadBytes` | structural | `payload-too-long` | quarantine |
-| 6 | the entry's definition id, and every socket's `ContainedDefinitionId` at every depth, resolves in the active version | drift | `unknown-definition` | quarantine |
-| 7 | every content id the registry's reference targets name resolves, at every depth (3.3) | drift | `unknown-content-reference` | quarantine |
+| 6 | the entry's definition id and every contained item target in a payload-nesting field resolve in the active version, at every depth | drift | `unknown-definition` | quarantine |
+| 7 | all other registry-declared content reference targets resolve, at every depth (3.3) | drift | `unknown-content-reference` | quarantine |
 | 8 | a `(mod id, tier ordinal)` pair names a live tier | drift | `unknown-content-reference` | quarantine |
 | 9 | a non-empty payload has a non-zero instance id | structural | `instance-id-missing` | quarantine |
-| 10 | the instance id is unique within the page | structural | `instance-id-duplicate` | quarantine |
+| 10 | every non-zero instance id is unique within the page | structural | `instance-id-duplicate` | quarantine every sharing entry |
 | 11 | an entry carrying kind 5 or 132 has count 1 | structural | `stack-not-instanceable` | quarantine |
-| 12 | the entry's count is at most the definition's cap, OR the over-cap shrink rule applies | policy | `over-cap` | tolerated |
-| 13 | the entry's definition id, and every socket's `ContainedDefinitionId`, is not RETIRED in the active version | policy | `definition-retired` | retired |
+| 12 | the entry's count is at most the definition's cap, or a matching `StackCapLowered` rule declares it legal | policy | `over-cap` only without a naming rule | tolerated finding |
+| 13 | the entry's definition id and every contained item target in a payload-nesting field are not RETIRED in the active version | policy | `definition-retired` | retired |
 
 **Checks 6 and 7 are DERIVED from the registry rather than from a list in this section.** They walk the
 same `InstanceReferenceTarget` descriptors the remap pass walks (3.3), in the same recursive order, over
@@ -2989,6 +3018,19 @@ resolves", a closed enumeration that already omitted kind 7's material ids and a
 `ContainedDefinitionId`, and that would have omitted every game kind at or above 1,024 forever. Check 8
 stays hand-written because a tier ordinal is not a content id: it is a key INTO the row check 7 already
 resolved, so it is the one relationship the descriptors cannot express.
+
+The nesting shape distinguishes the two reference checks: an `item` target in a field carrying a nested
+payload is a contained definition and belongs to check 6. Every other target belongs to check 7, including
+kind 7's material ids, which are `item` references in a non-nesting field. This derives containment for
+registered game kinds too, rather than naming only the socket kind.
+
+For check 7, a target content type absent from the active registry does not resolve. It fails closed with
+`unknown-content-reference` rather than skipping the declared target. An unregistered property kind is a
+different case and remains opaque under the retention rule in 3.3.
+
+Check 10 quarantines EVERY entry sharing a duplicated non-zero id, the first included. The stored bytes
+cannot establish which copy is the original. An entry already quarantined keeps its earlier finding and
+is not counted twice. Zero is a plain stack's absent identity and does not collide.
 
 ### 12.3 What each failure does
 
@@ -3034,9 +3076,14 @@ policy rather than a fourth outcome. It increments no counter and adds no log ca
 rides in the validation report the caller already reads, and Scope A's publish diff is where a retire is
 visible in the first place.
 
+Check 13 uses the same containment distinction as check 6. A retired crafting material referenced by
+kind 7 is historical data, not a contained item, so it does not retire the item carrying that reference.
+The material row still resolves through check 7.
+
 **Check 12 is the one tolerated failure and it is tolerated BY CONTRACT.** Contracts 8.2 kind 4's over-cap
-stack rule is legal, may only shrink and is self-healing, so an over-cap count is a state the contract
-declares valid rather than a drift the validator caught. It is counted and it changes nothing.
+stack rule is legal, may only shrink and is self-healing. A matching `StackCapLowered` rule naming the
+definition produces NO finding. Without that rule, an over-cap count produces the tolerated `over-cap`
+finding and changes no count or state. Neither branch quarantines the entry or emits quarantine telemetry.
 
 **Three placeholder presentations are player facing, so all three are `StringId`s and none is a
 literal**, which is AGENTS.md's founding rule and contracts 12.1's derivation applied to the one part of
@@ -3093,7 +3140,7 @@ ordinal cannot drift apart.
 | 3 | `kind-out-of-order` | 1 | 12.2 spells it `field-order` |
 | 4 | `kind-duplicate` | 1 | 12.2 spells it `field-duplicate` |
 | 5 | `varint-not-minimal` | 1 | 12.2 spells it `varint-nonminimal` |
-| 6 | `varint-overflow` | 1, 3 | Raised by the varint reader under either check |
+| 6 | `varint-overflow` | 1 | The varint reader can detect it in either structural path, but the finding reports the canonical-form check |
 | 7 | `socket-nesting` | 4 | |
 | 8 | `field-malformed` | 3 | |
 | 9 | `unknown-definition` | 6 | |
@@ -3164,6 +3211,10 @@ Contracts 10.2 names both and forbids inventing others. Counter
 category `ContentValidation` at Warning, naming the reason code, the stamped version, the active version
 and the owning stream key, and NEVER the payload bytes or a raw account id
 (`DURABLE-PLAYER-JOURNAL-DESIGN-2026-09-06.md:657-660`).
+
+`InstanceValidationTelemetry.Report(report, streamKey, logger, counter)` receives the owning stream key
+from the caller. Neither a page nor its validation report carries that identity, so it cannot be inferred
+from the validated bytes. The argument names the owning projection stream, never a raw account id.
 
 **One line per PAGE, not per entry.** A page that fails wholesale would otherwise emit a hundred identical
 lines, which is how an operator learns to filter the category out. The line names the page, the reason

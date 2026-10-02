@@ -247,6 +247,7 @@ case "$mode" in
 
     printf '%s\n' "$files" | while IFS= read -r f; do
       [ -n "$f" ] || continue
+      if [ "$mode" = "--tree" ] && [ ! -f "$f" ]; then continue; fi
       if is_exempt "$f"; then continue; fi
       lines=$(measure "$f")
       [ -n "$lines" ] || continue

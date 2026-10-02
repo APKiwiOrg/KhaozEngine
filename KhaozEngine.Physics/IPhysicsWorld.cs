@@ -82,6 +82,12 @@ public interface IPhysicsWorld : IDisposable
     /// translation (direction * depth) that separates it; returns false when clear.</summary>
     bool ComputePenetration(CapsuleShape capsule, Pose pose, out Vector3 mtv);
 
+    /// <summary>Create a non-owning query view excluding the given live static handles. The view snapshots
+    /// the selection, retains this exact logical source and denies mutations. Backends without this capability
+    /// throw <see cref="NotSupportedException"/>, including for an empty selection.</summary>
+    public IPhysicsWorldQueryView CreateQueryViewExcludingStatics(ReadOnlySpan<StaticHandle> excludedStatics)
+        => throw new NotSupportedException("This IPhysicsWorld backend does not support static query views.");
+
     /// <summary>The world-space point this world's coordinates are expressed against. EVERY pose passed to
     /// <see cref="AddStatic"/>/<see cref="AddDynamic"/>, every query coordinate, and every pose read back out of
     /// <see cref="GetDynamicPose"/> is relative to it. <see cref="Vector3.Zero"/> (the default) means the world

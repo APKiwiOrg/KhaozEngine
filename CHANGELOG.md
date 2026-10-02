@@ -53,6 +53,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   repeated inside-solid raycasts at large local heights. It returns collected surfaces if a finite lower origin
   or reduced remaining range cannot be represented, preserving real surfaces and underside headroom
   ([#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)).
+- Analytic TileWorld terrain movement now composes point-height seating with a non-owning read-only query view over
+  the same complete physics world. The additive `IPhysicsWorldQueryView`, static exclusion factory,
+  `TileColliderRegistration.GroundHandles` and `CreateMovementQueryView`, and selected `GroundMoveContext`
+  constructor keep ground statics available to simulation and navigation capture while excluding them from movement
+  queries ([#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233)).
 - `MoveTuning.JumpSpeedForApex` chooses a validated launch speed for a requested fixed-step apex. Default jump
   speed remains unchanged, with continuous and sampled peaks distinguished in the API guidance
   ([#1235](https://github.com/APKiwiOrg/KhaozEngine/issues/1235)).

@@ -199,6 +199,7 @@ public class CharacterOnTileWorldTests
     {
         readonly BepuPhysicsWorld _world = new();
         readonly TileColliderRegistration _registration;
+        readonly IPhysicsWorldQueryView _movementQueries;
         readonly Func<float, float, float> _height;
         readonly Func<float, float, Vector3> _normal;
         readonly Func<float, float, float, MovementMedium> _medium;
@@ -208,6 +209,16 @@ public class CharacterOnTileWorldTests
             Colliders = TileWorldColliders.Build(document, Catalogs());
             if (origin != Vector3.Zero) _world.Rebase(origin);
             _registration = Colliders.AddTo(_world);
+            try
+            {
+                _movementQueries = _registration.CreateMovementQueryView();
+            }
+            catch
+            {
+                _registration.Dispose();
+                _world.Dispose();
+                throw;
+            }
 
             TileGroundSampler ground = Colliders.Ground;
             TileMediumSampler water = Colliders.Medium;
@@ -249,7 +260,7 @@ public class CharacterOnTileWorldTests
         {
             var command = new MoveCommand(new Vector2(0f, move), run: false, cameraYaw: yaw);
             for (int i = 0; i < ticks; i++)
-                body = CharacterMovement.Step(body, command, Dt, _height, Character, _normal, _world, null, _medium);
+                body = CharacterMovement.Step(body, command, Dt, _height, Character, _normal, _movementQueries, null, _medium);
             return body;
         }
 
@@ -258,6 +269,7 @@ public class CharacterOnTileWorldTests
 
         public void Dispose()
         {
+            _movementQueries.Dispose();
             _registration.Dispose();
             _world.Dispose();
         }

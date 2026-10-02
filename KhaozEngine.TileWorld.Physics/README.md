@@ -13,18 +13,39 @@ The package is opt-in and in no umbrella. Add it explicitly.
 
 ```csharp
 TileWorldColliders colliders = TileWorldColliders.Build(document, catalogs);   // options default when omitted
-using var world = new BepuPhysicsWorld();
-using TileColliderRegistration registration = colliders.AddTo(world);
+using var fullWorld = new BepuPhysicsWorld();
+using TileColliderRegistration registration = colliders.AddTo(fullWorld);
+using IPhysicsWorldQueryView movementView = registration.CreateMovementQueryView();
 
 body = CharacterMovement.Step(body, command, dt, colliders.Ground.HeightDelegate, MoveTuning.Default,
-                              colliders.Ground.NormalDelegate, world, medium: colliders.Medium.MediumDelegate);
+                              colliders.Ground.NormalDelegate, movementView,
+                              medium: colliders.Medium.MediumDelegate);
+GroundMoveContext context = new(
+    colliders.Ground.HeightDelegate,
+    colliders.Ground.NormalDelegate,
+    physics: fullWorld,
+    clampXz: null,
+    medium: colliders.Medium.MediumDelegate,
+    movementQueries: movementView);
 ```
 
 `TileWorldColliders.Build(document, catalogs, options)` describes the loaded regions as data and registers
-nothing. `AddTo(world)` adds every collider as a static and returns a `TileColliderRegistration`, whose `Remove()`
-or `Dispose()` takes them out again. `Ground` and `Medium` are the samplers, and their `HeightDelegate`,
-`NormalDelegate` and `MediumDelegate` are the ground-height, ground-normal and medium arguments of
-`CharacterMovement.Step`, each created once.
+nothing. `AddTo(fullWorld)` adds every collider as a static and returns a `TileColliderRegistration`, whose
+`Remove()` or `Dispose()` takes them out again. The complete world retains its ground meshes for simulation,
+general queries and navigation capture. `CreateMovementQueryView()` is lazy and creates a non-owning view that
+excludes only this registration's analytic ground, so walls, blocked tiles, objects, walk surfaces and later
+non-ground additions remain visible to movement. Use that view for `CharacterMovement.Step` and as
+`movementQueries` in the explicit six-argument `GroundMoveContext`, with `physics: fullWorld` for capture.
+`Ground` and `Medium` are the samplers, and their `HeightDelegate`, `NormalDelegate` and `MediumDelegate` are
+the ground-height, ground-normal and medium arguments of the movement APIs, each created once.
+
+`GroundHandles` is the cached read-only ground subset in canonical registration order. It retains its metadata
+after `Remove`, just like `Handles`, but removed handles cannot be used to create a new view. If a backend does
+not support the optional query factory, `AddTo` still registers successfully and the view request throws
+`NotSupportedException`. For multiple registrations on one source, combine their live `GroundHandles` and call
+the generic factory once with that union. When replacing a registration, dispose its view first, remove the old
+registration, add the new registration and create a new view. The source world must outlive the view, and
+The query selection never mutates or removes ground from the complete capture world.
 
 After an edit, remove the old registration, build again and add the new colliders. The ground sampler reads the
 document live, but its bounds were captured at build, and the medium sampler snapshots the water. Both answer for
@@ -87,26 +108,27 @@ it off the heights they answer:
 ```csharp
 Func<float, float, float> height = (x, z) =>
 {
-    Vector3 o = world.Origin;
+    Vector3 o = fullWorld.Origin;
     return colliders.Ground.HeightAt(x + o.X, z + o.Z) - o.Y;
 };
 Func<float, float, Vector3> normal = (x, z) =>
 {
-    Vector3 o = world.Origin;
+    Vector3 o = fullWorld.Origin;
     return colliders.Ground.NormalAt(x + o.X, z + o.Z);
 };
 Func<float, float, float, MovementMedium> medium = (x, z, feetY) =>
 {
-    Vector3 o = world.Origin;
+    Vector3 o = fullWorld.Origin;
     return colliders.Medium.MediumAt(x + o.X, z + o.Z, feetY + o.Y) is { InWater: true } m
         ? new MovementMedium(m.WaterSurfaceY - o.Y, inWater: true, m.WadeSpeedScale)
         : MovementMedium.Dry;
 };
 
-body = CharacterMovement.Step(body, command, dt, height, MoveTuning.Default, normal, world, medium: medium);
+body = CharacterMovement.Step(body, command, dt, height, MoveTuning.Default, normal, movementView, medium: medium);
 ```
 
-Each delegate reads `world.Origin` when it is called, so the wrapped delegates stay right across later rebases.
+Each delegate reads `fullWorld.Origin` when it is called, so the wrapped delegates stay right across later rebases.
+Movement keeps using the selected view while the complete source is rebased between steps.
 
 ## Samplers
 

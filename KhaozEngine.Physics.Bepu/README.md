@@ -45,6 +45,13 @@ either value shifts the bit-exact result legitimately.
   pressure. Throws on a stale handle or a motorless joint.
 - **`Step(dt)`**, **`Raycast`**, **`SweepCapsule`**, **`ComputePenetration`** - the last is one
   CollisionBatcher manifold query over every shape type, deepest contact wins.
+- **Static query views** - `BepuPhysicsWorld` supports
+  `IPhysicsWorld.CreateQueryViewExcludingStatics(ReadOnlySpan<StaticHandle>)`. It validates every live seam
+  handle at creation, copies the selection, and resolves the stable seam handle back to the current static
+  before applying the exclusion. Removing an excluded static and allowing Bepu to recycle its internal id
+  therefore cannot hide the replacement. An empty selection still returns a restricted non-owning view with
+  unfiltered query results. The view preserves the source world's mobility gates and dynamic observations,
+  while simulation contacts remain unchanged.
 - **`Origin`/`CanRebase`/`Rebase(newOrigin)`** (floating origin) - `CanRebase` is true here. A rebase is a bulk of
   direct pose writes plus broadphase refits, NOT a remove-and-re-add: `BodyReference.Pose` and
   `StaticReference.Pose` are ref-returning in Bepu 2.4 and `UpdateBounds` refits the broadphase for the new pose

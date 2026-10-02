@@ -34,6 +34,7 @@ namespace KhaozEngine.Windowing
         readonly HashSet<MouseButton> _mousePressed = new();
         readonly HashSet<MouseButton> _mouseReleased = new();
         Vector2 _lastMouse;
+        Vector2 _lastMousePoints;
         // False until the first snapshot that actually sampled a cursor. Frame 1's delta is reported as zero
         // rather than as (cursor - origin), which would otherwise hand a mouse-look camera a full-screen snap on
         // its very first frame. This is a bool and not a "_lastMouse == position" test on purpose: a cursor
@@ -149,9 +150,10 @@ namespace KhaozEngine.Windowing
         /// position holds at the framebuffer position of the capture-start frame while the delta keeps following
         /// the virtual cursor. The frame capture ends reports the live position again. The frame this value
         /// changes, in either direction, reports a zero delta.</param>
-        /// <param name="framebufferScale">Framebuffer pixels per window point on each axis. The default, and any
-        /// component that is not positive or is NaN, means 1. Only the captured delta uses it. The position stays in
-        /// framebuffer pixels.</param>
+        /// <param name="framebufferScale">Framebuffer pixels per window point on each axis. For the new scale
+        /// metadata and points delta, each nonfinite or nonpositive component means 1. The legacy captured
+        /// delta keeps its existing rule: a nonpositive or NaN component means 1. Positions stay in framebuffer
+        /// pixels, and the uncaptured legacy delta is unchanged.</param>
         public InputState Snapshot(
             Vector2 cursorPosition, bool hasMouse, int width, int height,
             IReadOnlyList<GamepadState>? gamepads = null,
@@ -162,10 +164,15 @@ namespace KhaozEngine.Windowing
             Vector2 delta = _cursorSampled ? live - _lastMouse : Vector2.Zero;
             if (pointerCaptured != _lastCaptured) delta = Vector2.Zero;
             else if (pointerCaptured) delta /= PointsScale(framebufferScale);
+            Vector2 scale = PointerMotionScale.Normalize(framebufferScale);
+            Vector2 points = hasMouse ? live / scale : _lastMousePoints;
+            Vector2 pointsDelta = hasMouse && _cursorSampled && pointerCaptured == _lastCaptured
+                ? points - _lastMousePoints : Vector2.Zero;
             if (pointerCaptured && !_lastCaptured) _captureAnchor = live;
             Vector2 position = pointerCaptured ? _captureAnchor : live;
 
             var input = new InputState(
+                pointsDelta, scale,
                 new HashSet<Key>(_keysDown), new HashSet<Key>(_pressed), new HashSet<Key>(_released),
                 new HashSet<MouseButton>(_mouseDown), new HashSet<MouseButton>(_mousePressed),
                 position, delta, _wheelAccum, width, height,
@@ -182,6 +189,7 @@ namespace KhaozEngine.Windowing
             _mouseReleased.Clear();
             _textInput.Clear();
             _lastMouse = live;     // the live position, so captured deltas keep following the virtual cursor
+            _lastMousePoints = points;
             _lastCaptured = pointerCaptured;
             // Only a frame that actually read a cursor primes the delta. A window that opens with no mouse
             // attached must still report a zero delta on the first frame one shows up.

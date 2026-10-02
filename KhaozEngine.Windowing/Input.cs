@@ -28,7 +28,7 @@ namespace KhaozEngine.Windowing
     /// Immutable per-frame input snapshot: which keys/buttons are held, which went down this frame,
     /// the mouse position/delta, and the scroll delta. Pure engine types.
     /// </summary>
-    public sealed class InputState
+    public sealed partial class InputState
     {
         public IReadOnlySet<Key> KeysDown { get; }
         public IReadOnlySet<Key> KeysPressed { get; }
@@ -113,6 +113,8 @@ namespace KhaozEngine.Windowing
             MouseDown = mouseDown; MousePressed = mousePressed;
             MouseReleased = mouseReleased ?? EmptyMouseButtons;
             MousePosition = mousePosition; MouseDelta = mouseDelta; ScrollDelta = scrollDelta;
+            MouseDeltaPoints = mouseDelta;
+            FramebufferScale = Vector2.One;
             Width = width; Height = height;
             Gamepads = gamepads ?? System.Array.Empty<GamepadState>();
             Touches = touches ?? System.Array.Empty<TouchPoint>();
@@ -129,6 +131,7 @@ namespace KhaozEngine.Windowing
         public InputState WithoutScroll() => ScrollDelta == 0f
             ? this
             : new InputState(
+                MouseDeltaPoints, FramebufferScale,
                 KeysDown, KeysPressed, KeysReleased, MouseDown, MousePressed,
                 MousePosition, MouseDelta, 0f, Width, Height, Gamepads, Touches,
                 WindowFocused, KeysRepeated, MouseReleased, TextInput, TextInputAvailable, PointerCaptured);

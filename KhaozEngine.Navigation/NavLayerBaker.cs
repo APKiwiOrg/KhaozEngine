@@ -11,7 +11,7 @@ namespace KhaozEngine.Navigation;
 /// coexist at one XZ all become navigable. <see cref="NavGridBaker"/>'s single-layer bakes are
 /// untouched. This is the additive multi-layer entry point.
 /// </summary>
-public static class NavLayerBaker
+public static partial class NavLayerBaker
 {
     /// <summary>
     /// Bakes a multi-layer <see cref="NavSpace"/> over the rectangular XZ region
@@ -63,6 +63,25 @@ public static class NavLayerBaker
 
         int width = (int)MathF.Ceiling((maxX - minX) / cellSize);
         int height = (int)MathF.Ceiling((maxZ - minZ) / cellSize);
+        NavGrid[] grids = BakeLayers(
+            columns, width, height, cellSize, minX, minZ, stepHeight, agentHeight,
+            maxSurfacesPerColumn, extraBlocked, out bool empty);
+        if (empty) return NavSpace.Single(grids[0]);
+
+        var links = new List<NavLink>();
+        for (int l = 0; l < grids.Length; l++)
+            links.AddRange(NavHopLinks.Generate(grids[l], stepHeight, jumpHeight, maxHopCells, layer: l));
+        if (grids.Length > 1)
+            links.AddRange(NavLayerLinks.Generate(grids, stepHeight, jumpHeight));
+
+        return new NavSpace(grids, links);
+    }
+
+    static NavGrid[] BakeLayers(
+        INavColumnProvider columns, int width, int height, float cellSize, float minX, float minZ,
+        float stepHeight, float agentHeight, int maxSurfacesPerColumn,
+        Func<float, float, bool>? extraBlocked, out bool empty, int maxLayerCells = int.MaxValue)
+    {
         int cellCount = width * height;
 
         // Flatten the provider's columns once: prefix offsets per cell into ascending surface arrays,
@@ -107,15 +126,16 @@ public static class NavLayerBaker
         columnStart[cellCount] = heightsList.Count;
 
         List<NavLayerExtractor.Layer> extracted = NavLayerExtractor.Extract(
-            width, height, columnStart, heightsList.ToArray(), headroomsList.ToArray(), stepHeight);
+            width, height, columnStart, heightsList.ToArray(), headroomsList.ToArray(), stepHeight, maxLayerCells);
+        empty = extracted.Count == 0;
 
-        if (extracted.Count == 0)
+        if (empty)
         {
-            NavGrid empty = NavGrid.FromSurfaces(
+            NavGrid emptyGrid = NavGrid.FromSurfaces(
                 width, height, cellSize, minX, minZ,
                 (_, _) => new NavSurfaceSample(false, 0f, 0f),
                 stepHeight, agentHeight);
-            return NavSpace.Single(empty);
+            return new[] { emptyGrid };
         }
 
         var grids = new NavGrid[extracted.Count];
@@ -132,12 +152,6 @@ public static class NavLayerBaker
                 stepHeight, agentHeight, layer.YMin, layer.YMax);
         }
 
-        var links = new List<NavLink>();
-        for (int l = 0; l < grids.Length; l++)
-            links.AddRange(NavHopLinks.Generate(grids[l], stepHeight, jumpHeight, maxHopCells, layer: l));
-        if (grids.Length > 1)
-            links.AddRange(NavLayerLinks.Generate(grids, stepHeight, jumpHeight));
-
-        return new NavSpace(grids, links);
+        return grids;
     }
 }

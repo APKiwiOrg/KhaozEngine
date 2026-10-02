@@ -45,6 +45,30 @@ public static class NavLayerLinks
         if (jumpHeight <= stepHeight)
             throw new ArgumentOutOfRangeException(nameof(jumpHeight), jumpHeight, "Jump height must be greater than step height.");
 
+        return GenerateCore(layers, stepHeight, jumpHeight);
+    }
+
+    /// <summary>
+    /// Generates only walked stair pairs within <paramref name="stepHeight"/>, using the same
+    /// co-registration requirements and deterministic scan order as <see cref="Generate"/>.
+    /// Same-column surfaces and rises above the step budget are never linked.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="layers"/> is null.</exception>
+    /// <exception cref="ArgumentException">The layer list is empty, a grid lacks surface heights,
+    /// or the grids do not share dimensions, cell size, origin and yaw.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="stepHeight"/> is negative or non-finite.</exception>
+    public static IReadOnlyList<NavLink> GenerateGrounded(IReadOnlyList<NavGrid> layers, float stepHeight)
+    {
+        if (layers is null) throw new ArgumentNullException(nameof(layers));
+        if (layers.Count == 0) throw new ArgumentException("At least one layer is required.", nameof(layers));
+        if (!float.IsFinite(stepHeight) || stepHeight < 0f)
+            throw new ArgumentOutOfRangeException(nameof(stepHeight), stepHeight, "Step height must be finite and non-negative.");
+
+        return GenerateCore(layers, stepHeight, jumpHeight: null);
+    }
+
+    static IReadOnlyList<NavLink> GenerateCore(IReadOnlyList<NavGrid> layers, float stepHeight, float? jumpHeight)
+    {
         NavGrid first = layers[0] ?? throw new ArgumentException("Layer 0 is null.", nameof(layers));
         for (int i = 0; i < layers.Count; i++)
         {
@@ -86,7 +110,7 @@ public static class NavLayerLinks
                                 links.Add(new NavLink(a, cx, cz, b, nx, nz));
                                 links.Add(new NavLink(b, nx, nz, a, cx, cz));
                             }
-                            else if (rise <= jumpHeight)
+                            else if (jumpHeight is not null && rise <= jumpHeight.Value)
                             {
                                 links.Add(new NavLink(a, cx, cz, b, nx, nz) { Kind = NavLinkKind.Hop });
                                 links.Add(new NavLink(b, nx, nz, a, cx, cz) { Kind = NavLinkKind.Hop });

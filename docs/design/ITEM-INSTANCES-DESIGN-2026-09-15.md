@@ -955,6 +955,12 @@ containers and coalesced commits in scope in the same sentence (#882 comment 3).
 declaration. `ItemContainerPage` and `PagedItemContainer` reference it for their geometry rather than
 declaring another copy.
 
+Every canonical version 2 page declares the full 100 slots, including a container's last page.
+`ContainerLoad` requires that width after the codec and section checks, refusing other widths as a whole
+page with `page-slot-origin` before seating. The general codec retains its one-sided upper bound and
+can decode shorter wire pages. Its version 1 bridge reports full geometry, so smaller legacy containers
+still load without moving their slots.
+
 One hundred rather than 128, deliberately. The power of two buys a shift instead of a divide, which a
 compiler turns into a multiply either way, and it costs legibility everywhere a human reads a page
 number: under 100, slot 743 is page 7 slot 43 and an operator reading a log line or a section name can
@@ -962,8 +968,8 @@ do the arithmetic in their head. Contracts 4.5's power-of-two rule binds CONTENT
 nothing about container pages, so 100 is free. It is open question 2.
 
 **Section names are `<container>/p<NN>`**, zero padded to two digits, with three or more digits used
-unpadded above page 99. `bank/p00` through `bank/p09` for a 1,000 slot bank, `bag/p00` for a 30 slot
-bag, `worn/p00` for an 11 slot worn set. `JournalProjectionWrite.sectionName` is an identifier capped at
+unpadded above page 99. `bank/p00` through `bank/p09` for a 1,000 slot bank, `bag/p00` for a bag with capacity
+30, `worn/p00` for a worn set with capacity 11. Both use one full page. `JournalProjectionWrite.sectionName` is an identifier capped at
 128 characters over `[A-Za-z0-9._:/-]` (`JournalProjectionWrite.cs:13`, `JournalLimits.cs:86-98`), and
 the slash is in that set, so nothing needs escaping. `ContainerSectionNames.Parse` is the one place the
 name is taken apart, and it is what section 13 row 10 uses to check a page against the section it
@@ -1099,7 +1105,8 @@ trimmed and only refused new slots (`BagCapacityRules.cs:13-29`).
 `PagedItemContainer` splits the two concepts that `ItemContainer` conflates:
 
 - **Slot space** is the page geometry, fixed at construction, `PageCount * ContainerPageSlots`. It is
-  the address space, and it never shrinks.
+  the address space, and it never shrinks. Every page declares 100 slots, so a 30-capacity bag has one
+  full page rather than a short page.
 - **Capacity** is a separate mutable integer, the number of OCCUPIED slots a grant may leave behind. It
   is a gate consulted by `Add` and by nothing else.
 

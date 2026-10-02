@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Unexecuted plan. Owner authorization to free the build slot is required before execution. This session authors plans only.
+- The owner approved the design, freed the build slot, chose subagents and authorized execution through the whole program. A, B and C are complete. D executes with explicit root clearance before every build or test command.
 - Execution worktree `/Users/antonio/KhaozEngine/.worktrees/round2-movement-drivers`, branch `feature/round2-movement-drivers`, from reconciled engine main containing A, B and C.
 - Ride A's selected 20.x version, nominally 20.18.0. Extend its entry. Do not bump or tag independently.
 - Movement keeps exactly its three references. Only Server.Tests adds NetWorld acceptance wiring. No entity, brain, archetype, action queue or game dependency enters Movement.

@@ -1,7 +1,8 @@
 # Grimhollow delta reliability proposal
 
-Status: **PROPOSAL awaiting root and owner review.** No specification, implementation plan, release, or
-consumer switch is approved by this document.
+Status: **APPROVED SPECIFICATION.** Technical review passed. The owner approved option A and its proposed
+bounded recovery and disconnect policies on 2026-10-03. Implementation planning is authorized. Engine
+release tags and the consumer switch remain separate owner actions.
 
 Program: [KhaozEngine #34](https://github.com/APKiwiOrg/KhaozEngine/issues/34) and the component defect
 [KhaozEngine #1229](https://github.com/APKiwiOrg/KhaozEngine/issues/1229). Consumer gate:
@@ -527,19 +528,19 @@ coding the assertions. Missing samples and skipped cases fail evidence collectio
 pass supplies gameplay animation selectors and pace data. The engine proposal cannot approve their
 appearance or the owner's final P8 playtest.
 
-## Decisions still required
+## Approved owner decisions
 
-| Owner decision | Recommendation and consequence |
+| Owner decision | Approved policy and consequence |
 |---|---|
-| Delivery model | Select A, retaining last-sent reliable and named-baseline unreliable contracts. Selecting B requires an explicit legacy migration and wire-generation decision. |
-| Legacy standalone contract | Approve `WriteFor` as a reliable send commitment, additive per-slot `Forget` on `ServerReplicator`, and the global exhaustion lifecycle/API: end every affected connection, create fresh receivers, then reset the global counter and all writer state. Consumers that intentionally discard built deltas must adopt the reset/commit contract. |
-| Protocol extension | Approve negotiated format 2 with capability-gated new kinds and current builtin generation retained. Recheck free discriminator values before implementation. |
-| Budgets | Approve or replace the concrete cache, metadata, keyframe, packet, ack-window, and chunk-rate values above after one bounded consumer size characterization. No silent limit increase. |
-| Ack and recovery policy | Approve coalesced repeated unreliable routine acks, reliable barrier acks, no mandatory periodic keyframe, and one active repair per viewer. |
-| Recovery/capacity failure | Approve typed failure plus disconnect at the proposed deadline and impossible projection size, or specify a bounded reliable fallback. Existing game reconnect policy alone does not choose this. |
-| Visibility revocation | Accept current presentation-gate semantics during a frozen keyframe, or require cancellation and a revised bounded barrier policy. Previously sent bytes cannot be recalled. |
-| Adoption and release | Root reviews the proposal, owner approves a written spec, then a separate implementation plan can be prepared. Engine release and Grimhollow P8 adoption remain their owners' actions. |
+| Delivery model | A retains last-sent reliable and named-baseline unreliable contracts. |
+| Legacy standalone contract | `WriteFor` is a reliable send commitment, with additive per-slot `Forget` on `ServerReplicator` and the global exhaustion lifecycle/API. End every affected connection, create fresh receivers, then reset the global counter and all writer state. Consumers that intentionally discard built deltas must adopt the reset/commit contract. |
+| Protocol extension | Negotiated format 2 uses capability-gated new kinds and retains the current builtin generation. Recheck free discriminator values before implementation. |
+| Budgets | The concrete cache, metadata, keyframe, packet, ack-window and chunk-rate values above are approved. One bounded consumer size characterization remains required. No silent limit increase. |
+| Ack and recovery policy | Coalesced repeated unreliable routine acks, reliable barrier acks, no mandatory periodic keyframe and one active repair per viewer. |
+| Recovery/capacity failure | Typed failure plus disconnect at the proposed deadline and impossible projection size. Existing game reconnect policy alone does not choose this. |
+| Visibility revocation | Current presentation-gate semantics apply during a frozen keyframe. Previously sent bytes cannot be recalled. |
+| Adoption and release | Technical review and owner written-spec approval are complete, so the implementation plan can be prepared. Engine release tags and Grimhollow P8 adoption remain separate owner actions. |
 
 No release version is reserved, no issue is closed, and no production freshness or memory measurement
-is claimed. The selected contracts, limits, and acceptance schedule need written review before this
-proposal can become an approved specification.
+is claimed. The implementation plan, bounded acceptance evidence, engine release and consumer adoption
+remain to be completed.

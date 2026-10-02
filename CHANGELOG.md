@@ -79,6 +79,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Search order and environment precedence stay caller-owned, and file-access failures return an empty result
   ([#1239](https://github.com/APKiwiOrg/KhaozEngine/issues/1239)).
 
+- `PointerGesture` keeps tap tolerance and drag replay in window points before and during capture.
+  `InputState.MouseDeltaPoints` and `FramebufferScale` carry the motion through follow-camera gestures and
+  automation, preserving the original constructor and legacy `MouseDelta` behavior
+  ([#1228](https://github.com/APKiwiOrg/KhaozEngine/issues/1228)).
+
 ## 20.17.0
 
 - Continuous host round 1 opens on this version, and plans B, C and D of the round ride it

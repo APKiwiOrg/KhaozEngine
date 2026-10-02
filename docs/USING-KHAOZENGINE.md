@@ -785,7 +785,7 @@ engine-native, `System.Numerics`:
 ```csharp
 public sealed class InputState   // immutable per-frame snapshot; InputState.Empty is a blank one
 {
-    // read-only properties; the constructor takes them in this order:
+    // read-only properties; the original constructor takes these values in this order:
     IReadOnlySet<Key> KeysDown, KeysPressed, KeysReleased;
     IReadOnlySet<MouseButton> MouseDown, MousePressed;
     Vector2 MousePosition, MouseDelta;  float ScrollDelta;  int Width, Height;
@@ -795,6 +795,7 @@ public sealed class InputState   // immutable per-frame snapshot; InputState.Emp
     IReadOnlySet<MouseButton> MouseReleased;        // optional trailing ctor arg, default empty
     string TextInput;  bool TextInputAvailable;     // optional trailing ctor args, default "" and false
     bool PointerCaptured;                           // optional trailing ctor arg, default false
+    Vector2 MouseDeltaPoints, FramebufferScale;     // required first args of the explicit-motion overload
 }
 
 bool IsDown(Key) / WasPressed(Key) / WasReleased(Key);
@@ -847,9 +848,24 @@ when capture starts, so the start zero is only a safety net for untested platfor
 movement. `WithoutScroll()` and `AutomationInputInjector.Compose` keep the value. It is unrelated to
 `GuiSurface.PointerCaptured`, the UI click-through gate.
 
-A custom snapshot producer passes the same facts to `InputAccumulator.Snapshot(..., pointerCaptured,
-framebufferScale)`. `framebufferScale` is framebuffer pixels per window point on each axis, the ratio `AppWindow`
-also applies to the cursor position. The default, and any component that is not positive or is NaN, means 1.
+`MouseDeltaPoints` carries window-point movement before and during capture. `FramebufferScale` records framebuffer
+pixels per window point on each axis, with every nonfinite or nonpositive component read as 1. Native snapshots
+retain a logical cursor baseline across scale changes, and report zero points movement on the first cursor sample,
+a missing-mouse frame and either capture transition. `MousePosition` and gesture tap origins remain framebuffer
+coordinates. The existing `MouseDelta` contract remains framebuffer pixels while uncaptured and window points
+while captured.
+
+The original 18-parameter `InputState` constructor and all its defaults remain available. It assumes a 1x producer:
+`MouseDeltaPoints = MouseDelta` and `FramebufferScale = Vector2.One`. A scaled producer uses the overload with
+required `Vector2 mouseDeltaPoints` and `Vector2 framebufferScale` first, followed by the original arguments in
+the same order. The supplied points and legacy deltas stay independent, and scale normalization changes neither.
+
+A custom snapshot producer can pass its framebuffer cursor and scale to
+`InputAccumulator.Snapshot(..., pointerCaptured, framebufferScale)`. This is the ratio `AppWindow` already uses,
+with no new raw input path. The points delta and scale metadata use the finite-positive rule above, while legacy
+captured `MouseDelta` keeps its existing nonpositive-or-NaN fallback to 1. Snapshot copies and input filters must
+preserve both added facts. `WithoutScroll()` does so, and `AutomationInputInjector.Compose` preserves real motion
+or computes injected points motion from framebuffer coordinates and its own logical baseline.
 
 ### InputManager + Pointer - the higher-level read
 
@@ -1069,20 +1085,21 @@ itself. The Showcase does this for its 3D room: `IShowcaseRoom.WantsPointerCaptu
 ### Tap or drag (`PointerGesture`)
 
 `PointerGesture(button, thresholdPixels = 4)` (since 20.17.0) splits one mouse button into a tap and a drag. It is
-pure and headless. It reads its own button, `MousePosition`, `MouseDelta` and `WindowFocused` from the snapshot and
+pure and headless. It reads its own button, `MousePosition`, `MouseDeltaPoints` and `WindowFocused` from the snapshot and
 owns no camera. Call `Advance(input, uiBlocked)` once a frame, then read:
 
 - `Phase`: `Idle`, `Pending` (pressed and still undecided) or `Dragging` (past the threshold, and a drag until the
   button comes up or a block arrives).
-- `DragDelta`: zero unless dragging, the frame's `MouseDelta` while dragging, and the whole pending travel on the
-  frame the press crosses the threshold.
-- `TapThisFrame` and `TapPosition`: a release while still pending is a tap, at the position the press began.
+- `DragDelta`: zero unless dragging, the frame's `MouseDeltaPoints` while dragging, and the whole pending movement
+  replay on the frame the press crosses the threshold. All are window points.
+- `TapThisFrame` and `TapPosition`: a release while still pending is a tap, at the framebuffer position the press began.
 
 The rules:
 
 - Travel is path length over the whole press, so slow movement still becomes a drag, and a wiggle that returns to
   its start is a drag rather than a tap.
-- Crossing the threshold replays the pending travel in one `DragDelta`, so a drag has no dead zone at its start.
+- Travel must strictly exceed the threshold. Crossing replays the pending movement in one `DragDelta`, so a drag
+  has no dead zone at its start.
 - Above a zero threshold, a press that begins while `uiBlocked` is true or while the window is unfocused is inert
   for its whole life. A focus loss or a block that arrives mid-press ends any drag and makes the rest of the press
   inert, so that press never ends in a tap.
@@ -1090,10 +1107,9 @@ The rules:
   stops the drag, and a button still held drags again on the first unblocked frame.
 - `TapThisFrame` describes only the most recent `Advance`. Read it after advancing with the snapshot you act on.
 - `Advance` allocates nothing.
-- The threshold and the crossing replay are measured in `MouseDelta` units, which are framebuffer pixels until
-  capture starts and window points after it. On a 2x display a press that has not yet captured crosses at half the
-  hand movement it would at 1x. A scale-aware threshold is tracked in
-  [#1228](https://github.com/APKiwiOrg/KhaozEngine/issues/1228).
+- The retained `thresholdPixels` parameter and `ThresholdPixels` property names now measure window points,
+  before and during capture. Threshold, crossing replay and continuing drag use `MouseDeltaPoints`, so the same
+  logical path has the same tap tolerance and motion at 1x, 2x or anisotropic display scale.
 
 It is lifted from Ruinborne's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
 them (see "Tap-or-drag gestures" in the follow camera chapter).
@@ -6748,8 +6764,9 @@ that begins while it is true never taps, and above a zero threshold never orbits
 gesture once. The camera orbits only while a gesture drags, and by one delta a frame, so each mouse movement turns it
 once however many buttons are held. A gesture that crosses its threshold with no orbit since its press began applies
 its `DragDelta`, the replay of its pending travel, with `LookGesture` first when both cross together. Otherwise the
-frame's `MouseDelta` applies. Speed, invert and sign are as for the orbit button, and scroll zoom, target damping and
-boom recovery run unchanged. With neither gesture set, `Update` runs the orbit button path exactly as before.
+frame's `MouseDeltaPoints` applies. Gesture replay and continuing motion are in window points before and during
+capture. Speed, invert and sign are as for the orbit button, and scroll zoom, target damping and boom recovery run
+unchanged. With neither gesture set, `Update` keeps the original orbit button path and its legacy `MouseDelta` units.
 
 The controller reports three things:
 

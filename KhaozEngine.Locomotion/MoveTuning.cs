@@ -11,14 +11,14 @@ namespace KhaozEngine.Locomotion;
 /// turn rate infinite so the heading snaps) plus the steep-terrain feel (3 deg traction hysteresis, 8 deg slide
 /// friction ramp).
 /// </summary>
-public readonly record struct MoveTuning(
+public readonly partial record struct MoveTuning(
     float WalkSpeed,
     float RunSpeed,
     float CapsuleHalfHeight,
     float MaxSlopeRadians,
     float CapsuleRadius = 0.4f,
     float Gravity = 25f,
-    float JumpSpeed = 9.79796f, // = 8 * sqrt(1.5), +50% apex vs the old 8f, matches Ruinborne's deliberate value
+    float JumpSpeed = 9.79796f, // = 8 * sqrt(1.5), +50% continuous apex vs the old 8f
     float MaxFallSpeed = 50f,
     float CoyoteTime = 0.1f,
     float JumpBuffer = 0.1f,
@@ -47,13 +47,13 @@ public readonly record struct MoveTuning(
     /// (steep enough for normal hills, low enough that a RimFeature mountain wall is too steep to stand on, so the
     /// rim stays un-climbable when a <c>groundNormal</c> delegate is supplied), capsule footprint radius
     /// 0.4 m used by static-world collision, plus vertical physics: gravity 25 m/s^2, jump launch 9.79796 m/s
-    /// (= 8 * sqrt(1.5), +50% apex vs the old 8f: apex ~1.92 m, matching Ruinborne's deliberate jump-height
-    /// value), terminal fall 50 m/s, 0.1 s coyote-time + jump-buffer, full (1.0) air control, and a 0.3 m
+    /// (= 8 * sqrt(1.5), continuous apex ~1.92 m, sampled apex ~1.76 m at 30 Hz), terminal fall 50 m/s,
+    /// 0.1 s coyote-time + jump-buffer, full (1.0) air control, and a 0.3 m
     /// grounded skin so a downhill run does not jitter between grounded and airborne, and airborne momentum OFF
     /// (<see cref="AirMomentum"/> false, <see cref="AirBrakeAccel"/> 0), so a jump arc behaves exactly as it did
     /// before momentum existed, and an infinite <see cref="FacingTurnSpeed"/>, so the heading snaps to its target
     /// exactly as a pre-facing consumer's commanded-facing presentation did. This matches
-    /// CharacterController3D's own field defaults exactly (same literal + comment in both places), so a caller
+    /// CharacterController3D's own field defaults exactly (same literals in both places), so a caller
     /// building either way gets identical feel.
     /// <para>The steep-terrain pair comes with it and is default-ON: a 3 degree
     /// <see cref="TractionHysteresisRadians"/> band, so a walk across a bank that straddles the gate holds one
@@ -77,7 +77,9 @@ public readonly record struct MoveTuning(
     /// <summary>Gravity acceleration magnitude (m/s^2), applied downward each tick.</summary>
     public float Gravity { get; init; } = Gravity;
 
-    /// <summary>Upward launch velocity (m/s) imparted by a jump.</summary>
+    /// <summary>Upward launch velocity (m/s) imparted by a jump. The continuous apex is
+    /// <c>JumpSpeed^2 / (2 * Gravity)</c>. Gravity-first fixed steps reach a lower sampled apex.
+    /// Use <see cref="JumpSpeedForApex"/> to choose a launch for a requested height at a fixed step.</summary>
     public float JumpSpeed { get; init; } = JumpSpeed;
 
     /// <summary>Terminal fall speed (m/s); vertical velocity is clamped to <c>-MaxFallSpeed</c>.</summary>

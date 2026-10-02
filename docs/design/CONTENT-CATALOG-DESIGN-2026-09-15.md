@@ -194,7 +194,7 @@ COMPILES against it, which is why milestone 1.1 gates every `ItemInstances` pack
 
 | Type | One line |
 |---|---|
-| `IContentAuthoringStore` | The provider seam: draft edits, publish, version listing, audit, id allocation, bulk import and export. |
+| `IContentAuthoringStore` | The provider seam: draft edits, publish, version listing, audit, id allocation, family reads through `Task<IReadOnlyList<ContentFamily>> ListFamiliesAsync(ContentTypeId type, CancellationToken cancellationToken = default)` (type id 0 means all types), bulk import and export. |
 | `ContentAuthoringSchemaMode` | `AutoCreate` or `ValidateOnly`, the journal's shape (`SqliteJournalSchema.cs:9-13`). |
 | `ContentDraft` | The one open draft: its base version, its edit list and its opened-by and opened-at stamps. |
 | `ContentEdit` | One edit: type, id or key, operation (`Add`, `Update`, `Retire`, `Fork`), and the field values it sets. |
@@ -1104,6 +1104,12 @@ ORDER, which is what contracts 4.6 requires and what a column of joined text wou
 `blob_value` is a guard rail, not a budget: a 128-byte asset reference and a 60-tag list are both far under
 it.
 
+`CreateFamilyAsync` acts immediately but stamps `catalog_family.created_in_version` and its initial
+block's `reserved_in_version` with `active_version + 1`, the next publish number. Before the first
+publish, `active_version` is 0 and both stamps are 1, satisfying the existing `>= 1` checks. Later block
+reservations also use the active version plus one at reservation time, without changing the family's
+original creation stamp.
+
 ```sql
 CREATE TABLE IF NOT EXISTS catalog_family (
     family_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -1386,8 +1392,9 @@ per type against an owner figure of 50,000 definitions and a stress figure of 1,
 
 **Family allocation is the same rule on a narrower range.** `AllocateInFamilyAsync(familyId)` takes the
 family's blocks in ordinal order, finds the first whose `next_free_id < base_id + block_size`, issues that id
-and advances `next_free_id`. When every block is full it reserves a NEW block: it takes the type's
-`reserved_through`, rounds UP to the family's declared `block_size` alignment, reserves through the top of the
+and advances `next_free_id`. When every block is full it reserves a NEW block: it takes the type's floor
+`max(reserved_through, issued_through + 1)`, computed in 64-bit arithmetic, rounds UP to the family's
+declared `block_size` alignment, reserves through the top of the
 new block by the step-2 rule above, **advances `issued_through` to that same block top**, inserts the
 `catalog_family_block` row, and only then issues. The rounding up is what wastes ids and what makes
 `(id & ~(size - 1)) == base` a legal membership test (contracts 5.2), and the waste is bounded by the block

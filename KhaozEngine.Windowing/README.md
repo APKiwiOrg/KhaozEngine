@@ -189,6 +189,12 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `MouseDelta` is in window points, so the same hand movement reads alike on a 1x and a 2x display, and
   `MousePosition` stays in framebuffer pixels, held where capture started until the frame capture ends. The frames
   capture starts and ends report a zero delta.
+  `MouseDeltaPoints` reports window-point motion both before and during capture, with the same first-sample,
+  missing-mouse and capture-transition zeros. `FramebufferScale` records framebuffer pixels per point on each axis,
+  with nonfinite or nonpositive components read as 1. The original constructor assumes 1x and copies `MouseDelta`
+  into `MouseDeltaPoints`. The new overload takes required `mouseDeltaPoints` and `framebufferScale` before the
+  original arguments. `WithoutScroll()` preserves both facts. Legacy `MouseDelta` units and framebuffer positions
+  remain unchanged.
 - `InputManager.SuppressPointerInput()` gives an owning surface a frame-level pointer arbitration boundary after
   `Update`. It clears mouse buttons and wheel input for that frame, quarantines held buttons until their physical
   release, and keeps keyboard, gamepad, pointer position, and hover available.
@@ -199,7 +205,9 @@ Windowing + input foundation for the custom MonoGame-free stack.
   unchanged: `AppWindow` is still the only class touching the Silk input statics. Games do not construct this
   directly, they read `Frame.Input`. It exists so focus-loss release semantics and first-frame cursor priming can
   be tested without a window. `Snapshot(..., pointerCaptured, framebufferScale)` (since 20.17.0) takes the capture
-  state and the framebuffer pixels per window point. A scale component that is not positive or is NaN means 1.
+  state and the framebuffer pixels per window point. The points baseline remains stable across scale changes.
+  New scale metadata treats nonfinite or nonpositive components as 1. Legacy captured `MouseDelta` keeps its
+  existing normalization, where nonpositive or NaN components mean 1.
 - `AppWindow.SetIcon(params WindowIcon[])` sets the runtime window/taskbar icon. `WindowIcon` is one already-decoded,
   tightly-packed RGBA8 image (top-left origin); pass several sizes (16/32/48...) and GLFW picks per DPI. On Windows
   it sets the title bar + Alt-Tab (`WM_SETICON`) **and** the taskbar button: GLFW only sets `WM_SETICON`, which does
@@ -289,8 +297,10 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `Advance(input, uiBlocked)` once a frame, then read `Phase` (`Idle`, `Pending`, `Dragging`), `DragDelta`,
   `TapThisFrame` and `TapPosition`. Travel is path length, crossing replays the pending travel, and above a zero
   threshold a press begun under UI or while unfocused is inert. A threshold of 0 or less drags at once, never taps,
-  and drags a held button again on the first unblocked frame. The threshold is in framebuffer pixels until capture
-  starts and window points after (#1228). `Advance` allocates nothing. Lifted from Ruinborne's
+  and drags a held button again on the first unblocked frame. Threshold, replay and continuing `DragDelta` use
+  `MouseDeltaPoints`, so they stay in window points before and during capture. The `thresholdPixels` parameter and
+  `ThresholdPixels` property names remain for compatibility. `TapPosition` stays in framebuffer pixels.
+  `Advance` allocates nothing. Lifted from Ruinborne's
   `RightMouseGesture`. See docs/USING-KHAOZENGINE.md.
 - `GameClock` (pause/timescale, plus `RealWallGapSeconds`/`LastRealTimestamp` - a UTC wall-clock gap per frame
   that survives OS sleep/suspend, which the frame `dt` does not, so a game can detect a resume), `DesignViewport`

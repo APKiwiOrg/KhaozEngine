@@ -94,7 +94,7 @@ namespace KhaozEngine.Render3D
         /// drags, by one delta a frame, so each mouse movement turns it once however many buttons are held. A gesture
         /// that crosses its threshold with no orbit since its press began applies its
         /// <see cref="PointerGesture.DragDelta"/>, the replay of its pending travel (<see cref="LookGesture"/> first
-        /// if both cross together). Otherwise the frame's <see cref="InputState.MouseDelta"/> applies. Speed, invert
+        /// if both cross together). Otherwise the frame's <see cref="InputState.MouseDeltaPoints"/> applies. Speed, invert
         /// and sign are as above. Read <see cref="OrbitTap"/> and <see cref="LookTap"/> after this call, in the
         /// same frame. A tap counts only if the camera did not turn during that press.</para>
         /// </summary>
@@ -136,7 +136,7 @@ namespace KhaozEngine.Render3D
             else if (orbitCrossed && !_orbitedSinceOrbitPress)
                 Orbit(OrbitGesture!.DragDelta);
             else
-                Orbit(input.MouseDelta);
+                Orbit(input.MouseDeltaPoints);
             _orbitedSinceOrbitPress = true;
             _orbitedSinceLookPress = true;
         }

@@ -12,8 +12,8 @@
 
 ## Global Constraints
 
-- Owner-authorized execution is complete through the C code, bridge acceptance and living documentation. The
-  branch remains pending final whole-branch review, current-main reconciliation, integration and packaging.
+- Owner-authorized execution, full verification and whole-branch review are complete. The integration owner
+  merges and pushes the verified branch and refreshes the canonical local feed. Tagging remains owner-owned.
 - Execution worktree `/Users/antonio/KhaozEngine/.worktrees/round2-reach-physics-nav`, branch `feature/round2-reach-physics-nav`, based on reconciled engine main containing A and B.
 - Ride A's selected 20.x version, nominally 20.18.0. No independent version bump. Extend that entry. No tag.
 - Movement references exactly Locomotion, Navigation and Physics, in no umbrella. No Bepu, TileWorld, NetWorld, ECS, render or input reference. The three tests homes below are deliberate.
@@ -164,7 +164,7 @@
   Measure one normal fixture bake's elapsed time and stored node/edge counts for Outcome, without a repeat loop or stress workload. Full Hollowmere startup cost is a P4 adoption proof, not an engine test requiring private game assets.
 - [x] **Step 2: Run** `dotnet test KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj -c Release --filter 'FullyQualifiedName~TileWorldMovementNavigationTests'`. Expected nonzero and no failures before treating bridge use as supported. Correct only kernel/bridge fit necessary for this task and report unrelated findings as issues.
 - [x] **Step 3: Write and sweep API docs.** Include lifetime, origin, profile dimensions, caps, area filter semantics, no Hop links, guarded cell corridors and explicit package installation. No claim that the column ray alone proves wall clearance.
-- [ ] **Step 4: Fetch and merge current main, then full verification once after slot authorization.**
+- [x] **Step 4: Fetch and merge current main, then full verification once after slot authorization.**
   ```bash
   mkdir -p local-feed
   dotnet build KhaozEngine.slnx -c Release
@@ -270,5 +270,7 @@ Rulings and costs:
 Root's full Release evidence against the exact committed post-timing-removal source is build exit 0 with zero
 warnings and errors in 49.43 seconds, followed by test exit 0 across 29 assemblies with 23,454 passed, 0 failed,
 1,275 skipped and 24,729 total cases. Historical timing-removal diff evidence is unavailable, so this exact-source
-full suite supersedes the earlier bridge GREEN for committed behavior. Final whole-branch guards, review,
-current-main reconciliation, integration, push and packaging remain pending with the root owner.
+full suite supersedes the earlier bridge GREEN for committed behavior. All five whole-tree guards exited 0.
+The fresh whole-branch reviewer approved all 35 changed files with no findings. A final fetch and merge found
+main unchanged at `4431781f6`, so the verified runtime source remains current. Root integrates and pushes this
+verified branch, then refreshes the canonical local feed as the normal finishing step. No tag is authorized.

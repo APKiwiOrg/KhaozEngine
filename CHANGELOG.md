@@ -89,6 +89,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   automation, preserving the original constructor and legacy `MouseDelta` behavior
   ([#1228](https://github.com/APKiwiOrg/KhaozEngine/issues/1228)).
 
+- `ContainerLoad` refuses zero and short version 2 page widths before seating, preserving stored bytes and
+  valid siblings. Journal pages use 100 slots including the last page, while general codec short-page
+  decoding and legacy version 1 padding stay supported
+  ([#916](https://github.com/APKiwiOrg/KhaozEngine/issues/916)).
+
 ## 20.17.0
 
 - Continuous host round 1 opens on this version, and plans B, C and D of the round ride it

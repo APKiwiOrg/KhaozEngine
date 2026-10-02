@@ -7,7 +7,8 @@ namespace KhaozEngine.ItemInstances;
 /// <param name="FirstSlot">The container slot this page's slot 0 is. Redundant against
 /// <paramref name="PageIndex"/> ON PURPOSE, which is what catches a page written into the wrong
 /// section.</param>
-/// <param name="SlotCount">Slots in THIS page, which is fewer than a full page on a container's last one.</param>
+/// <param name="SlotCount">Decoded width. A general version 2 decode can be shorter than the caller's geometry.
+/// Journal loading requires full pages, and the version 1 bridge reports the caller's full geometry.</param>
 /// <param name="ContentVersion">The page stamp: the content version NUMBER this page was last brought up
 /// to date with (contracts 7.2). A version 1 blob takes 0, which is older than every published version.</param>
 /// <param name="EntryCount">Occupied entries, declared rather than derived, because version 2's entries

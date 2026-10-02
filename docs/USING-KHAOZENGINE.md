@@ -9698,10 +9698,11 @@ window to exactly what fresh arrays hold before every search, so a scratch-fed p
 allocating one.
 
 **Picking and prefabs.** `TileRaycast.Pick(doc, plane, origin, direction)` is the GPU-free ray against the
-lattice, cutting each tile with `TileTriangulation.Triangulate`, the same shape triangulation the ground mesher
-uses over the same `TileLatticePoint` lattice and `SplitSwNe` diagonal choice, so a click lands on the triangle that is
-drawn. Every triangle comes back wound the same way, so a pass that culls a face direction keeps or drops all of
-them together. `TilePrefabs.Extract`/`Rotate`/`Place` lift a rect of tiles (layers,
+lattice. It consumes `TileGroundTriangles` for the canonical cut, authored diagonal split and `TileLatticePoint`
+placement shared with the ground mesher. Document picking includes authored `NoDraw` ground when it has a
+nonzero underlay, so an editor can inspect hidden terrain. Drawable descriptions and `TileWorldView` visible-ground
+picking continue to exclude that ground. Every triangle comes back wound the same way, so a pass that culls a face
+direction keeps or drops all of them together. `TilePrefabs.Extract`/`Rotate`/`Place` lift a rect of tiles (layers,
 relative heights, objects, markers) and stamp it elsewhere at any rotation, with `TilePrefabFile` as the JSON
 form. Pass `includeDerivedHeights: false` to `TilePrefabs.Extract` when an unauthored upper plane should keep
 deriving its height from the destination ground. Explicit height layers remain authored, even when their
@@ -9712,7 +9713,7 @@ A stamp is additive per layer, so clear the rect first if you want a replace. Fu
 **The drawn ground and its water, without a renderer.** `TileGroundTriangles` and `TileWaterBodies` are the two
 rules the render package draws from, so a server, a physics bake or a test reads the surface a player sees with no
 GPU in the process. `TileGroundTriangles.IsDrawable(doc, x, z, plane)` is the one drawability test (an underlay, and
-no `TileSettings.NoDraw`). `TryDescribe` hands back a tile's `TileGroundCell` and writes its triangles,
+no `TileSettings.NoDraw`). Public `TryDescribe` keeps that exclusion, hands back a tile's `TileGroundCell` and writes its triangles,
 `LatticePosition` places one lattice point, and `Build(doc, region, plane)` returns a `TileGroundMesh` of every
 full-detail triangle in a region-plane, three region-local positions per triangle with indices 0, 1, 2 and on.
 None of them takes catalogs: an overlay id that is not 0 cuts its tile whether or not the catalogs define it.

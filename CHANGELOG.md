@@ -65,6 +65,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `Scene3DBinder.Submit(world, scene)` reuses a cached per-scene callback and pooled ECS queries, removing warmed
   per-call allocation while preserving draw descriptors and routing. Cold setup and pool exhaustion can allocate
   ([#1214](https://github.com/APKiwiOrg/KhaozEngine/issues/1214)).
+- `TileRaycast` shares `TileGroundTriangles` cut, split and lattice placement. Document picking retains authored
+  `NoDraw` ground with an underlay, while drawability and visible-ground picking keep their exclusion
+  ([#1225](https://github.com/APKiwiOrg/KhaozEngine/issues/1225)).
 
 ## 20.17.0
 

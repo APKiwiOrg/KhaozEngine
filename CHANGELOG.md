@@ -68,6 +68,13 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `TileRaycast` shares `TileGroundTriangles` cut, split and lattice placement. Document picking retains authored
   `NoDraw` ground with an underlay, while drawability and visible-ground picking keep their exclusion
   ([#1225](https://github.com/APKiwiOrg/KhaozEngine/issues/1225)).
+- `AppWindow.Scaled` adds a required first focus argument so custom factories can forward launch-focus policy.
+  The original signature and defaults remain available, and `KE_WINDOW_FOCUS` still overrides the request
+  ([#1240](https://github.com/APKiwiOrg/KhaozEngine/issues/1240)).
+- `WorldSerializer` writes format 2 with ordered archetype signatures, including empty history, preserving raw
+  query order after continuation. Format 1 stays readable with its legacy reconstruction order, and caller
+  migrations take precedence over the built-in compatibility step
+  ([#1242](https://github.com/APKiwiOrg/KhaozEngine/issues/1242)).
 
 ## 20.17.0
 

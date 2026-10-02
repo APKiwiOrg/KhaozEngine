@@ -441,7 +441,20 @@ opts.InitialMonitor = InitialMonitor.Rightmost;    // Saved (default) / Primary 
 and `FOCUS_ON_SHOW` hints to false before the native window is created, which is what a second monitor build, a
 tooling run, or an automated pass wants: the window appears without stealing the keyboard from the editor.
 Applied at window creation, so a custom `WindowFactory` forwards it itself (it is the last argument of the
-`AppWindow` constructor).
+`AppWindow` constructor). For a display-fitted window, use the required-bool-first `Scaled` overload:
+
+```csharp
+opts.WindowFactory = o => AppWindow.Scaled(
+    focusOnLaunch: o.FocusOnLaunch ?? true, title: o.Title,
+    designWidth: o.Width, designHeight: o.Height,
+    presentMode: o.PresentMode, frameCapHz: o.FrameCapHz,
+    backendPreference: o.GraphicsBackendPreference);
+```
+
+The original `Scaled(title, designWidth, designHeight, ...)` signature keeps focus on and its existing defaults.
+Both retain the integer cap contract. Positive `frameCapHz` requests that Hz and non-positive values are uncapped.
+Forward the separate `GameAppOptions.FrameCap` intent through the constructor's `FrameCap` overload when needed.
+The `KE_WINDOW_FOCUS` run override applies to either factory.
 
 **What macOS allows.** The keyboard part works: GLFW only calls `[NSApp activateIgnoringOtherApps]` and
 `makeKeyAndOrderFront` from the focus path that both false hints skip, leaving a plain `orderFront`, so the
@@ -14009,7 +14022,9 @@ see "Parallel `ForEach` + access declarations" below), parent/child hierarchy
 (`AddSystem(ISystem, group)`, `SetGroupOrder`, `Update(float dt)`). `CachedQuery` reuses a query across ticks to
 avoid per-tick allocation. `DeterministicRng` (a xorshift128+-derived recurrence over splitmix64 seeding,
 `CreateDerived(name)` for per-stream sub-RNGs) gives platform-stable RNG for lockstep sims. `WorldSerializer`
-round-trips a world as JSON (uses `KhaozEngine.Serialization.JsonDefaults.IncludeFields`).
+round-trips a world as JSON (uses `KhaozEngine.Serialization.JsonDefaults.IncludeFields`), including entities,
+components, id-allocator state and ordered archetype signatures. Format 2 records empty historical signatures,
+so repopulating one after restore preserves raw query order. Resources and systems remain outside the snapshot.
 (`DeterministicRng` lives in `KhaozEngine.Primitives`, and the ECS uses it for lockstep RNG.)
 
 **Structural changes during iteration are forbidden, and since 17.37.0 they are refused (#118).** Iteration walks
@@ -14091,6 +14106,12 @@ The `FullName` default means renaming or moving a component struct silently brea
 `[ComponentId]` pins a stable key so the type can be renamed/moved freely. The dup-key guard rejects two
 types resolving to the same key, and `WorldSerializer.RegisterMigration(fromVersion, upgrade)` rewrites older
 save documents up to `CurrentFormatVersion` before deserialize.
+
+The engine writes format 2. Format 1 and snapshots without `FormatVersion` remain readable through a built-in
+compatibility step, with legacy reconstruction order because they never stored empty-archetype history.
+A registered version 1 migration takes precedence, and earlier caller migrations still chain into that step.
+An original format 2 document must contain complete valid archetype history. Absent or malformed metadata fails
+closed. Historical signatures use the same component keys as live entities, so stable-key policy applies to both.
 
 Rules:
 
@@ -23232,7 +23253,9 @@ program as a native binary. It covers three subsystems:
 - **ECS world JSON save/load.** `WorldSerializer.Save`/`Load` register the component set through the generic seam
   (`WorldSerializer.Create().Add<T>()`), which records a reflection-free column factory keyed by `Type` (replacing the
   old `Type.MakeGenericType` + `Activator.CreateInstance`), and serialize through a source-generated envelope context
-  plus `JsonTypeInfo`-based component codecs. Pass JSON options backed by a source-generated
+  plus `JsonTypeInfo`-based component codecs. Ordered signature history is in that envelope, and the native probe
+  checks continuation after repopulating an empty archetype plus legacy migration precedence.
+  Pass JSON options backed by a source-generated
   `JsonSerializerContext` for the component structs. The non-generic `Type[]` constructor and `FromAssemblyOf<T>` stay
   reflection-based (JIT-only): they throw an actionable error under NativeAOT instead of silently pulling reflection.
 - **NetWorld persistence DTOs.** `PlayerRecord`, `WorldMetaRecord`, and `WorldStoreBanStore.BanDto` round-trip through a

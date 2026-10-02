@@ -3,12 +3,11 @@ using KhaozEngine.Gpu;
 using KhaozEngine.Primitives;
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
-using Silk.NET.Windowing.Glfw;
 
 namespace KhaozEngine.Windowing
 {
     /// <summary>
-    /// Window-SIZING policy on <see cref="AppWindow"/>: the display-fitted <see cref="AppWindow.Scaled"/> factory
+    /// Window-SIZING policy on <see cref="AppWindow"/>: the display-fitted <c>Scaled</c> factory
     /// and the two helpers behind it. They are here rather than in <c>AppWindow.cs</c> because that file is at its
     /// size ceiling, and because sizing is a distinct concern from the frame loop: nothing here pumps input,
     /// renders, or presents, and <see cref="AppWindow.FitToScreen"/> is pure enough to unit-test with no window.
@@ -30,13 +29,8 @@ namespace KhaozEngine.Windowing
             float screenFraction = 0.9f, float maxScale = 2f,
             PresentMode presentMode = PresentMode.Vsync, int frameCapHz = 0,
             GpuBackendKind? backendPreference = null)
-        {
-            GlfwWindowing.RegisterPlatform();
-            var (sw, sh) = PrimaryScreenSize();
-            var (w, h) = FitToScreen(designWidth, designHeight, sw, sh, screenFraction, maxScale);
-            return new AppWindow(title, w, h, presentMode,
-                frameCapHz > 0 ? FrameCap.Hz(frameCapHz) : FrameCap.Uncapped, backendPreference);
-        }
+            => Scaled(true, title, designWidth, designHeight, screenFraction, maxScale,
+                presentMode, frameCapHz, backendPreference);
 
         /// <summary>
         /// Pure window-sizing policy (no monitor / GPU access, so it is unit-testable): the largest size with the
@@ -61,7 +55,7 @@ namespace KhaozEngine.Windowing
 
         /// <summary>
         /// The primary monitor's size in window coordinates, or (0, 0) if it cannot be determined. Requires the
-        /// Silk GLFW platform to be registered (the constructors / <see cref="Scaled"/> do this).
+        /// Silk GLFW platform to be registered (the constructors / <c>Scaled</c> do this).
         /// </summary>
         public static (int Width, int Height) PrimaryScreenSize()
         {

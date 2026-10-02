@@ -117,6 +117,23 @@ Windowing + input foundation for the custom MonoGame-free stack.
     keyboard or the foreground. On macOS the keyboard part holds (GLFW's `[NSApp activateIgnoringOtherApps]` is
     on the focus path both hints skip), but the process can still become the active application on the first
     window of a run, which no GLFW 3.4 hint controls. See `AppWindow.Launch.cs` for the full per-platform note.
+  - `AppWindow.Scaled(title, designWidth, designHeight, ...)` keeps its existing signature and requests focus.
+    To choose launch focus, use the overload with a required first argument:
+    `AppWindow.Scaled(focusOnLaunch, title, designWidth, designHeight, ...)`. Both use `screenFraction = 0.9f`,
+    `maxScale = 2f`, `PresentMode.Vsync`, `frameCapHz = 0` (explicitly uncapped), and no backend preference by
+    default. Positive caps request that Hz, and non-positive caps stay uncapped. `KE_WINDOW_FOCUS` still wins.
+    A custom `GameAppOptions.WindowFactory` forwards the nullable option as `o.FocusOnLaunch ?? true`:
+
+    ```csharp
+    opts.WindowFactory = o => AppWindow.Scaled(
+        focusOnLaunch: o.FocusOnLaunch ?? true, title: o.Title,
+        designWidth: o.Width, designHeight: o.Height,
+        presentMode: o.PresentMode, frameCapHz: o.FrameCapHz,
+        backendPreference: o.GraphicsBackendPreference);
+    ```
+
+    This factory keeps `Scaled`'s integer frame-cap contract. It does not forward the separate
+    `GameAppOptions.FrameCap` intent, which requires the constructor's `FrameCap` overload.
   - `AppWindow.InitialMonitor` (an `InitialMonitor`: `Saved` by default, else `Primary` / `Rightmost` /
     `Leftmost` / `At(index)`) is applied once by `Run`, after the host's load callback, so an explicit choice
     wins over a position the game restored at boot. `Saved` moves nothing. `ApplyLaunchPlacement()` is the

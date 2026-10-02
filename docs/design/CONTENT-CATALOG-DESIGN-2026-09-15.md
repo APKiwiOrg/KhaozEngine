@@ -1726,18 +1726,28 @@ changes until step 10 and step 10 is a single transaction.
 
 ### 6.2 Step 1, freeze the draft
 
-The draft is marked frozen in memory for the duration of the publish and the store takes a row lock on
-`catalog_draft`. A draft edit arriving while a publish is in flight is refused with HTTP 409 and
-`publish-in-progress`. On SQL Server the lock is the `Serializable` transaction's own. On SQLite it is the
-`SqliteStoreConnection` gate, which already serializes every command in the process
-(`SqliteStoreConnection.cs:66-73`), plus a `BEGIN IMMEDIATE` so a second process cannot start one.
+The store reads a `ContentPublishBaseline` before preparing the plan. `expectedBaseVersion` must match
+that baseline, and the publisher reads the draft and freezes it for that base. The SQL providers persist
+`catalog_draft.frozen_for_base_version` in a separate write transaction, while the in-memory store records
+the marker under its gate. Draft edits or discards while frozen are refused with HTTP 409 and
+`publish-in-progress`.
 
-Two consoles publishing concurrently is section 11 row 4 and it resolves here: the second one either blocks
-and then finds the draft empty, or aborts with a serialization failure. Neither produces a torn version.
+The marker is not a row lock held across the pipeline. SQLite leases its connection per call, and SQL
+Server's `Serializable` commit transaction covers step 10, not plan construction or step 9's pack writes.
+The publish orchestration calls `ClearDraftFreezeAsync` on every exit path. A later baseline read also
+clears a marker whose base version is no longer active.
 
-The new version number is `MAX(version_number) + 1` read INSIDE the transaction at step 10, not here. Reading
-it at freeze time and using it at commit time is exactly the race the lock is meant to close, so the number is
-taken where the write happens.
+The candidate version is `baseline.VersionNumber + 1`, or 1 from an empty baseline at 0. It is chosen
+BEFORE candidate construction, the temporal rows at step 5 and both manifest hashes at step 8. Those rows
+and hashes already contain that number when the plan reaches the commit, so step 10 confirms the number
+rather than choosing a different one.
+
+Inside step 10's atomic gate or transaction, the provider re-reads the highest published version and
+requires the plan's version to be exactly that number plus one. A moved baseline refuses the plan with
+`base-version-moved` before writing the new version. Re-read the baseline and prepare again, because
+renumbering an old plan would leave its temporal rows and manifest hashes inconsistent. Two concurrent
+plans may target the same number, but a commit that already landed makes the other stale. A SQL Server
+serialization failure can also refuse a competing commit. Neither produces a torn version.
 
 ### 6.3 Step 3, allocate ids
 
@@ -1992,7 +2002,9 @@ Nothing else points at any of these files until step 10, so a crash here leaves 
 
 ONE transaction (section 4.8). In order inside it:
 
-1. `newVersion = MAX(version_number) + 1` from `catalog_version`, or 1 when empty.
+1. Re-read `MAX(version_number)` from `catalog_version`, or 0 when empty, inside the transaction. Require
+   the prepared `newVersion` to equal that number plus one, or refuse with `base-version-moved`. Keep the
+   plan's existing number, temporal rows and manifest hashes unchanged.
 2. Insert the `catalog_version` row with both manifest hashes, both minimum builds, the format generation, the
    base version, the publisher, the note and the timestamp.
 3. Apply every temporal row change computed at step 5.
@@ -3546,7 +3558,7 @@ deciding which copy is right and only a republish can know that.
 | 1 | A chunk file on the server's disk is corrupt | Hash mismatch at boot step 6, or `catalog-verify` (10.11) on demand | Boot fails closed, exit 3, the hash and reason on stderr (9.6). A running server is unaffected, its bytes are already decoded and in memory. | Delete the file and refetch from the remote store, or republish the version. The chunk is content addressed, so any copy that hashes correctly is the right one. |
 | 2 | A chunk is missing on the client | `missing` is non-empty after the fetch loop (8.7) | The client stays at the connect door showing a fetch-progress notice. It never joins with a partial catalog. | Retry with backoff. If the remote genuinely lacks it, the pack store is broken and an operator runs `catalog-verify` server side. |
 | 3 | The manifest hash does not match | The `CachingPackStore` verify on read (8.4) | The manifest is discarded, refetched once, and a second mismatch leaves the client at the door with `manifest-hash-mismatch`. | Operator side. Either a store wrote bytes under the wrong name, which `PutAsync`'s verify (8.1) makes impossible for the engine's own providers, or a cache or proxy is serving stale bytes for a content address, which is a deployment defect. |
-| 4 | Two consoles publish concurrently | `expectedBaseVersion` optimistic concurrency (10.6), plus the draft row lock (6.2) | The second publish gets 409 naming both version numbers. On SQL Server a `Serializable` transaction may instead abort with a serialization failure, reported as the same 409. | The second operator refreshes, sees the first publish's diff, and decides. No torn version is possible, because the whole commit is one transaction (4.8). |
+| 4 | Two consoles publish concurrently | `expectedBaseVersion` optimistic concurrency and the draft freeze marker (6.2), plus commit-time version confirmation (6.10) | The second publish gets 409 naming both version numbers. On SQL Server a `Serializable` transaction may instead abort with a serialization failure, reported as the same 409. | The second operator refreshes, sees the first publish's diff, and decides. No torn version is possible, because the whole commit is one transaction (4.8). |
 | 5 | The authoring database is unreachable at boot | The provider throws on connect at boot step 2 | Boot fails closed, exit 3. | The database is only needed to READ the active version number when the server is configured to take it from the store. A server configured with a pinned version and a pack store needs no database at boot at all, which is the deployment this design recommends for a game server: the authoring database is a TOOLING dependency, not a runtime one. |
 | 6 | A client download is interrupted part way | The next `missing` recomputation (8.7) | Nothing. The chunks that arrived are cached and verified. | Resume by recomputing `missing`. There is no resume state beyond the cache, because a chunk is atomic. |
 | 7 | Client cache poisoning: a local file is replaced with attacker bytes | Hash verify on every read from the cache (8.4) | The entry is discarded and refetched. | Automatic. This is the reason the cache verifies on READ and not only on write. Section 13.5 spends what a local attacker can and cannot achieve. |

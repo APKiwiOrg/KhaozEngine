@@ -105,6 +105,14 @@ public static partial class ContainerLoad
             return;
         }
 
+        // The general codec accepts short v2 pages. Journal-bound pages require the full geometry.
+        if (header.SlotCount != ItemContainerPageCodec.ContainerPageSlots)
+        {
+            load.PageFailed(
+                section, pageIndex, ItemContainerPageReason.SlotOrigin, ContainerLoadFinding.NoSlot, header.ContentVersion);
+            return;
+        }
+
         ItemContainerPage page = Seat(load, section, pageIndex, header, count, bytes);
 
         // Steps 2 and 3. Every rule whose IntroducedIn is strictly greater than the page stamp, in sequence

@@ -789,7 +789,8 @@ public sealed class InputState   // immutable per-frame snapshot; InputState.Emp
     IReadOnlySet<Key> KeysDown, KeysPressed, KeysReleased;
     IReadOnlySet<MouseButton> MouseDown, MousePressed;
     Vector2 MousePosition, MouseDelta;  float ScrollDelta;  int Width, Height;
-    IReadOnlyList<GamepadState> Gamepads, Touches;  // ctor args optional, default empty
+    IReadOnlyList<GamepadState> Gamepads;          // ctor arg optional, default empty
+    IReadOnlyList<TouchPoint> Touches;             // ctor arg optional, default empty
     bool WindowFocused;                             // optional trailing ctor arg, default true (Empty = false)
     IReadOnlySet<Key> KeysRepeated;                 // optional trailing ctor arg, default empty
     IReadOnlySet<MouseButton> MouseReleased;        // optional trailing ctor arg, default empty
@@ -18523,9 +18524,10 @@ shape, the thirteen generation steps, the fourteen primitives with the three sta
 `ItemContainer` conflates two numbers, and `PagedItemContainer` splits them. SLOT SPACE is the page geometry,
 fixed at construction at `PageCount * ContainerPageSlots`, an ADDRESS space that never shrinks. CAPACITY is a
 separate mutable integer, the occupied-slot gate a grant may not push past, consulted by `Add` and by nothing
-else. Every page declares the FULL geometry, so a 30 slot bag is ONE page whose capacity is 30, slot 743 is
-page 7 slot 43 for every container in the fleet, and growing that bag to 40 slots is a capacity edit rather
-than a re-paging of stored bytes.
+else. Every canonical version 2 page declares the FULL 100 slots, including the last page. A 30 slot bag
+or an 11 slot worn set is ONE full page whose capacity is 30 or 11. Slot 743 is page 7 slot 43 for every
+container in the fleet, and growing that bag to 40 slots is a capacity edit rather than a re-paging of
+stored bytes.
 
 The page is what a journal commit rewrites one of. `ItemContainerPage` holds its decoded slots, its content
 version stamp and its dirty flag. An operation, a remap or a successful rescue dirties it when a slot's
@@ -18542,6 +18544,13 @@ write and take operation.
 because composing a `JournalCommit` needs `KhaozEngine.WorldStore`, so a client build keeps the record and
 none of this.
 
+The general `ItemContainerPageCodec.TryDecode` accepts short version 2 wire pages within the supplied
+geometry and checks each entry against its declared width. `ContainerLoad` adds the full-page binding:
+after successful decode and the header/section check, before seating, it requires `SlotCount` to equal
+`ContainerPageSlots`. A zero or short width yields a whole-page `ItemContainerPageReason.SlotOrigin`
+(`page-slot-origin`) finding with `ContainerLoadFinding.NoSlot`. Stored bytes remain unchanged, and valid
+sibling pages still load.
+
 A plain stack whose definition no longer resolves carries a verified quarantine wrapper over its empty
 original and keeps instance id zero. The page's quarantine flag and codec entries carry that verdict.
 Loading also wraps a non-empty payload without instance identity at entry level, preserving its bytes and
@@ -18550,10 +18559,11 @@ When a plain stack's definition resolves again, the load clears its wrapper and 
 identity, and dirties the page for the next commit. A non-empty original with no instance id stays quarantined.
 
 The load path passes the 100 slot page geometry to the version 1 bridge. A page 0 section whose legacy blob
-declares 1 through 100 slots loads directly as a full 100 slot page, with its slot indexes unchanged and no
-consumer pre-widening. A declared width above 100 is refused and the section is quarantined as a unit. This
-one-sided bridge does not change `ItemContainerCodec.TryDecode`, which still requires exact stored geometry
-when called directly.
+declares 1 through 100 slots returns a `PageHeader` with the full requested geometry and loads as a full
+100 slot page, with its slot indexes unchanged and no consumer pre-widening. This legacy padding stays
+supported. A declared width above 100 is refused and the section is quarantined as a unit. This one-sided
+bridge does not change `ItemContainerCodec.TryDecode`, which still requires exact stored geometry when
+called directly.
 
 ```csharp
 using KhaozEngine.ItemInstances;

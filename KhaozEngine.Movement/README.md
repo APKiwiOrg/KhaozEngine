@@ -58,9 +58,25 @@ public GroundMoveContext(
     Func<float, float, float, MovementMedium>? medium = null);
 ```
 
-The read-only `GroundHeight`, `GroundNormal`, `Physics`, `ClampXz` and `Medium` properties retain those
-providers. Ground height, normal, clamp bounds and medium coordinates are absolute. Physics poses and queries
-are local to `IPhysicsWorld.Origin`. A step changes only `MoveState.Position` into that local frame and back.
+The original five-parameter constructor and its optional defaults remain available. The selected movement
+overload takes explicit arguments:
+
+```csharp
+public GroundMoveContext(
+    Func<float, float, float> groundHeight,
+    Func<float, float, Vector3>? groundNormal,
+    IPhysicsWorld? physics,
+    Func<float, float, Vector2>? clampXz,
+    Func<float, float, float, MovementMedium>? medium,
+    IPhysicsWorldQueryView? movementQueries);
+```
+
+The read-only `GroundHeight`, `GroundNormal`, `Physics`, `ClampXz`, `Medium` and `MovementQueries` properties
+retain those providers. `Physics` remains the complete caller-owned world. When `MovementQueries` is present,
+only movement uses that selected view. Its `SourceWorld` must be the exact same reference as `Physics`, so a
+missing or different source is rejected even when two worlds have equal origins. Ground height, normal, clamp
+bounds and medium coordinates are absolute. Physics poses and queries are local to `IPhysicsWorld.Origin`. A
+step changes only `MoveState.Position` into that local frame and back.
 Velocity, facing, effect scale, commitment and timers keep their carried values. A water surface returned by
 `Medium` is converted from absolute Y to the local frame for the core.
 
@@ -71,6 +87,10 @@ are cached once when the context is constructed. The internal adapter validates 
 controls, including a positive finite radius, a half-height of at least `max(0.1, radius + 0.005)`, a finite
 capsule length, a slope below `pi / 2`, ordered medium thresholds and finite nonnegative controls. The permitted
 default `FacingTurnSpeed = float.PositiveInfinity` remains valid.
+
+Dry traversal contexts retain `MovementQueries` while omitting the medium provider, so navigation edge proofs
+use the same selected movement queries. A view reads the source `Origin` live between steps, but a full or selected
+origin change or a source identity change during a step is rejected at the existing provider boundaries.
 
 The context does not expose a public `Step` method. Its internal adapter is the shared frame seam used while a
 profile is being built.
@@ -110,11 +130,13 @@ public sealed partial class PhysicsNavBake : IDisposable
 ```
 
 Capture requires a populated `GroundMoveContext.Physics` world and samples static physics through
-`PhysicsColumnProbe`. It freezes the physics origin, queries local coordinates, converts hit heights back to
-absolute Y, and samples in canonical Z then X order. Every captured surface stores its absolute height,
-headroom and area tags. The probe uses a `MaxSurfacesPerColumn + 1` buffer so an over-cap column is refused.
-Missing columns, padded centers, and exact outer-edge misses remain empty and therefore blocked. Capture never
-fills a miss from the analytic ground provider. The classifier is not retained by the captured data.
+`PhysicsColumnProbe`. It always uses the complete `Physics` world, not `MovementQueries`, so authored ground
+columns remain available for navigation capture. It freezes the physics origin, queries local coordinates,
+converts hit heights back to absolute Y, and samples in canonical Z then X order. Every captured surface stores
+its absolute height, headroom and area tags. The probe uses a `MaxSurfacesPerColumn + 1` buffer so an over-cap
+column is refused. Missing columns, padded centers, and exact outer-edge misses remain empty and therefore
+blocked. Capture never fills a miss from the analytic ground provider. The classifier is not retained by the
+captured data.
 
 Keep statics and the origin unchanged while constructing profiles. `Dispose` releases the retained context
 reference only. It never disposes statics, providers or the physics world. A built profile owns immutable

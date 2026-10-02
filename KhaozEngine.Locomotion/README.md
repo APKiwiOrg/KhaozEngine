@@ -50,6 +50,16 @@ movement core, and the old default remains unchanged.
   via `ComputePenetration` is retained as a residual settle pass. Pass `world: null` for terrain-only
   (byte-identical to pre-8.4.0).
 
+### Analytic terrain query ownership
+
+For analytic TileWorld terrain, the point-height seating and physical terrain must not both own character
+grounding. Keep the existing `groundHeight`, `groundNormal` and `medium` semantics, and pass the non-owning
+`IPhysicsWorldQueryView` that excludes the registration's analytic ground to `Step` or `StepTowards` as the
+optional physics world. That view retains props, walls, decks, blocked shapes and other non-ground statics.
+Keep the complete owner for simulation contacts, general queries and navigation capture. This composition does
+not change collision math, geometry, layers or slope classification. A physical-only unified terrain remains a
+separate valid composition through `PhysicsGroundProbe`.
+
 - **`StepTowards(in MoveState, Vector2 worldDir, bool run, float, groundHeight, in MoveTuning, groundNormal?, IPhysicsWorld?, clampXz?, medium?) -> MoveState`** (10.64.0)
   The world-space kinematic step for **server-authoritative, non-player agents (enemy NPCs)**. It drives the SAME
   collision resolution the player gets - swept collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`,

@@ -7602,16 +7602,34 @@ public GroundMoveContext(
     Func<float, float, float, MovementMedium>? medium = null);
 ```
 
-The `GroundHeight`, `GroundNormal`, `Physics`, `ClampXz` and `Medium` properties speak absolute coordinates.
+The original five-parameter constructor and its optional defaults remain available. The selected movement
+overload takes explicit arguments:
+
+```csharp
+public GroundMoveContext(
+    Func<float, float, float> groundHeight,
+    Func<float, float, Vector3>? groundNormal,
+    IPhysicsWorld? physics,
+    Func<float, float, Vector2>? clampXz,
+    Func<float, float, float, MovementMedium>? medium,
+    IPhysicsWorldQueryView? movementQueries);
+```
+
+The `GroundHeight`, `GroundNormal`, `Physics`, `ClampXz`, `Medium` and `MovementQueries` properties speak
+absolute coordinates where appropriate. `Physics` remains the complete caller-owned world. When
+`MovementQueries` is present, only movement uses that selected view, and its `SourceWorld` must be the exact
+same reference as `Physics`. A missing or different source is rejected even when two worlds have equal origins.
 The physics world speaks coordinates local to `IPhysicsWorld.Origin`. During its internal sequential step only
 `MoveState.Position` changes frame and then returns to absolute coordinates. Velocity, facing, effect scale,
 commitment and timers retain their carried values. Medium water surface Y is converted to the local frame.
 
-The context freezes the current origin for one step and checks it at each provider boundary. Rebase only
-between steps. Recursive or overlapping steps are refused. The caller owns and steps the physics world and the
-context never disposes, steps or rebases it. The adapter's `Step` and `ValidateTuning` methods are internal, so
-this package does not claim a public movement driver API. Tuning validation keeps the actual capsule dimensions,
-finite nonnegative ground and medium controls, ordered medium thresholds and a slope below `pi / 2`.
+The context freezes the current origin from the complete source for one step and checks the full and selected
+origins at each provider boundary. Rebase only between steps. Recursive or overlapping steps are refused. The
+caller owns and steps the physics world and the context never disposes, steps or rebases it. A dry traversal
+context carries `MovementQueries` while omitting `Medium`, so navigation edge proofs retain the selected path.
+The adapter's `Step` and `ValidateTuning` methods are internal, so this package does not claim a public movement
+driver API. Tuning validation keeps the actual capsule dimensions, finite nonnegative ground and medium controls,
+ordered medium thresholds and a slope below `pi / 2`.
 `FacingTurnSpeed = float.PositiveInfinity` remains a valid default.
 
 ### Static physics columns and profile construction
@@ -7645,11 +7663,12 @@ public sealed partial class PhysicsNavBake : IDisposable
 }
 ```
 
-`Capture` freezes the physics origin, queries local coordinates through `PhysicsColumnProbe`, converts surface
-heights back to absolute Y and visits columns in Z then X order. It stores each surface's absolute height,
-headroom and area tags. A `MaxSurfacesPerColumn + 1` probe detects overflow. Checked cell, sample and layer
-budgets are validated before dense arrays. Missing, padded and exact outer-edge samples remain blocked. Capture
-does not fall back to `GroundMoveContext.GroundHeight`, and it does not retain the classifier in its snapshot.
+`Capture` always uses the complete `GroundMoveContext.Physics` world, not `MovementQueries`. It freezes the
+physics origin, queries local coordinates through `PhysicsColumnProbe`, converts surface heights back to absolute
+Y and visits columns in Z then X order. It stores each surface's absolute height, headroom and area tags. A
+`MaxSurfacesPerColumn + 1` probe detects overflow. Checked cell, sample and layer budgets are validated before
+dense arrays. Missing, padded and exact outer-edge samples remain blocked. Capture does not fall back to
+`GroundMoveContext.GroundHeight`, and it does not retain the classifier in its snapshot.
 Keep statics and the origin unchanged through profile construction. `Dispose` releases builder references only.
 The returned profile owns pure data and stays usable after the builder, providers and physics world are disposed.
 
@@ -9789,6 +9808,35 @@ them. `Ground` is the floor sampler, read from the drawn ground only, so a deck 
 static and never becomes the floor. `Medium` puts feet in water only below a water body's surface. Their delegates
 are the ground-height, ground-normal and medium arguments of `CharacterMovement.Step`. `Hash` is a stable digest of
 the whole collider set.
+
+For analytic TileWorld ground, keep one complete physics owner and select movement queries from it:
+
+```csharp
+TileWorldColliders colliders = TileWorldColliders.Build(document, catalogs);
+using var fullWorld = new BepuPhysicsWorld();
+using TileColliderRegistration registration = colliders.AddTo(fullWorld);
+using IPhysicsWorldQueryView movementView = registration.CreateMovementQueryView();
+
+body = CharacterMovement.Step(body, command, dt, colliders.Ground.HeightDelegate, tuning,
+    colliders.Ground.NormalDelegate, movementView, clampXz, colliders.Medium.MediumDelegate);
+GroundMoveContext context = new(
+    colliders.Ground.HeightDelegate,
+    colliders.Ground.NormalDelegate,
+    physics: fullWorld,
+    clampXz: clampXz,
+    medium: colliders.Medium.MediumDelegate,
+    movementQueries: movementView);
+using PhysicsNavBake capture = PhysicsNavBake.Capture(context, options, classifyAreas);
+```
+
+The view is non-owning and excludes only this registration's analytic ground. Props, walls, decks, blocked
+shapes and later non-ground statics remain visible. The complete `fullWorld` retains every ground mesh for
+simulation contacts, general queries and navigation capture. Dispose the view before the registration and its
+source. `GroundHandles` is the cached read-only ground subset in registration order and remains metadata after
+removal. Multiple registrations combine their public `GroundHandles` and pass that union to the generic factory.
+Adding statics remains supported on a backend without the optional factory until a view is requested, at which
+point `NotSupportedException` is expected. Rebuild the selection when replacing a registration. Handles are
+source-local, and a logical decorator must expose itself as the view's exact `SourceWorld`.
 
 The contract a consumer has to keep:
 

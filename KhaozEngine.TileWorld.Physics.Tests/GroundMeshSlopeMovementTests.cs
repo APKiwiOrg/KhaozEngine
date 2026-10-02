@@ -64,12 +64,48 @@ public class GroundMeshSlopeMovementTests(ITestOutputHelper output)
             $"ground mesh rose only {present[^1].State.Position.Y - start.Position.Y:F5} m");
     }
 
-    static TileWorldDocument SteepDryRamp()
+    [Theory]
+    [InlineData(75, false, 30)]
+    [InlineData(95, true, 30)]
+    [InlineData(55, false, 30)]
+    [InlineData(95, false, 60)]
+    public void SelectedRegisteredSlopeMatchesGroundOmittedControl(int riseCmPerTile, bool run, int hz)
+    {
+        // Catches duplicate terrain correction at the bounded grades, speeds and tick rates.
+        TileWorldColliders colliders = TileWorldColliders.Build(SteepDryRamp(riseCmPerTile), Catalogs());
+        using var mesh = new Scene(colliders, includeGround: true, output);
+        using var control = new Scene(colliders, includeGround: false, output);
+        float height = 10.25f * riseCmPerTile * 0.01f;
+        Assert.True(mesh.World.Raycast(new Vector3(10.25f, height + 3f, StartZ), -Vector3.UnitY, 4f, out RayHit ground));
+        Assert.Equal("Ground", mesh.World.KindOf(ground.Body));
+        Assert.Equal(height, ground.Point.Y, 0.001f);
+        Assert.Equal(mesh.OtherStatics, control.OtherStatics);
+        Assert.True(mesh.OtherStatics > 0);
+        var start = new MoveState
+        {
+            Position = new Vector3(StartX, colliders.Ground.HeightAt(StartX, StartZ) + Character.CapsuleHalfHeight, StartZ),
+            Grounded = true
+        };
+        var command = new MoveCommand(new Vector2(0f, 1f), run, -MathF.PI / 2f);
+        float dt = 1f / hz, speed = run ? 5f : 2f;
+        TickSample[] present = Walk(mesh, start, command, dt);
+        TickSample[] omitted = Walk(control, start, command, dt);
+        AssertStates(mesh, present, 0.02f, speed * dt);
+        AssertStates(control, omitted, 0.02f, speed * dt);
+        Assert.Equal(speed * Ticks / hz, omitted[^1].State.Position.X - StartX, 0.02f);
+        Assert.Equal(speed * FinalWindow / hz,
+            omitted[^1].State.Position.X - omitted[Ticks - FinalWindow - 1].State.Position.X, 0.02f);
+        for (int tick = 0; tick < Ticks; tick++)
+            GroundMeshQueryOwnershipTests.AssertEquivalentStates(omitted[tick].State, present[tick].State);
+        WriteSummary($"selected {riseCmPerTile} cm, run={run}, {hz} Hz", start, present);
+    }
+
+    static TileWorldDocument SteepDryRamp(int riseCmPerTile = 95)
     {
         TileWorldDocument document = FlatWorld();
         for (int z = 0; z < TileRegion.Size; z++)
             for (int x = 0; x < TileRegion.Size; x++)
-                document.SetCornerHeightCm(x, z, 0, (short)(x * 95));
+                document.SetCornerHeightCm(x, z, 0, (short)(x * riseCmPerTile));
         // Away from the walking corridor, so omitting ground must still preserve a real prop static.
         document.AddObject("bench", 45, 5, 0, 0);
         return document;
@@ -92,7 +128,9 @@ public class GroundMeshSlopeMovementTests(ITestOutputHelper output)
         Assert.False(scene.Colliders.Medium.MediumAt(x, z, height).InWater, "the fixture is wet");
     }
 
-    static TickSample[] Walk(Scene scene, MoveState state)
+    static TickSample[] Walk(Scene scene, MoveState state) => Walk(scene, state, Uphill, Dt);
+
+    static TickSample[] Walk(Scene scene, MoveState state, MoveCommand command, float dt)
     {
         var samples = new TickSample[Ticks];
         for (int tick = 0; tick < Ticks; tick++)
@@ -102,8 +140,8 @@ public class GroundMeshSlopeMovementTests(ITestOutputHelper output)
             float floor = scene.Colliders.Ground.HeightAt(state.Position.X, state.Position.Z);
             if (scene.World.Recording)
                 scene.World.Raycast(new Vector3(state.Position.X, floor + 3f, state.Position.Z), -Vector3.UnitY, 4f, out _);
-            state = CharacterMovement.Step(state, Uphill, Dt, scene.Colliders.Ground.HeightDelegate, Character,
-                scene.Colliders.Ground.NormalDelegate, scene.World, null, scene.Colliders.Medium.MediumDelegate);
+            state = CharacterMovement.Step(state, command, dt, scene.Colliders.Ground.HeightDelegate, Character,
+                scene.Colliders.Ground.NormalDelegate, scene.MovementQueries, null, scene.Colliders.Medium.MediumDelegate);
             samples[tick] = new TickSample(previous.Position, state);
             scene.World.EndTick(tick, previous, state, scene.Colliders.Ground);
         }
@@ -118,7 +156,7 @@ public class GroundMeshSlopeMovementTests(ITestOutputHelper output)
             $"rise={end.Y - start.Position.Y:F5} final-window-advance={finalAdvance:F5}");
     }
 
-    static void AssertStates(Scene scene, TickSample[] samples, float maxClearance)
+    static void AssertStates(Scene scene, TickSample[] samples, float maxClearance, float commandedTravel = 2f / 30f)
     {
         for (int tick = 0; tick < samples.Length; tick++)
         {
@@ -140,7 +178,7 @@ public class GroundMeshSlopeMovementTests(ITestOutputHelper output)
                 $"tick {tick}: ground-relative feet clearance {clearance:F5} outside [-0.02, {maxClearance:F5}]");
             Assert.Equal(StartZ, at.Z, 0.05f);
             float forward = at.X - samples[tick].Start.X;
-            Assert.True(forward <= 2f / 30f + 0.06f, $"tick {tick}: forward teleport of {forward:F5} m");
+            Assert.True(forward <= commandedTravel + 0.06f, $"tick {tick}: forward teleport of {forward:F5} m");
         }
     }
 
@@ -169,28 +207,44 @@ public class GroundMeshSlopeMovementTests(ITestOutputHelper output)
                 }
                 else OtherStatics++;
             }
+            try
+            {
+                MovementQueries = includeGround ? _registration.CreateMovementQueryView() : World;
+                if (MovementQueries is IPhysicsWorldQueryView selected) Assert.Same(World, selected.SourceWorld);
+            }
+            catch
+            {
+                _registration.Dispose();
+                World.Dispose();
+                throw;
+            }
         }
 
         public TileWorldColliders Colliders { get; }
         public DiagnosticWorld World { get; }
+        public IPhysicsWorld MovementQueries { get; }
         public int OtherStatics { get; }
 
         public void Dispose()
         {
+            if (MovementQueries is IPhysicsWorldQueryView selected) selected.Dispose();
             _registration.Dispose();
             World.Dispose();
         }
     }
 
-    // Delegates every movement query unchanged. The extra ground-only queries attribute the seam's unlabelled MTV.
-    sealed class DiagnosticWorld(IPhysicsWorld inner, BepuPhysicsWorld? groundOnly, ITestOutputHelper output) : IPhysicsWorld
+    // Records complete and selected queries. Ground-only queries attribute the seam's unlabelled MTV.
+    class DiagnosticWorld(IPhysicsWorld inner, BepuPhysicsWorld? groundOnly, ITestOutputHelper output,
+        DiagnosticWorld? recorder = null) : IPhysicsWorld
     {
         const int WindowTicks = 8, QueriesPerTick = 64;
         readonly List<string> _queries = new();
         bool _windowStarted, _complete, _zeroNormal;
         int _remaining, _omitted;
-        public Dictionary<StaticHandle, TileColliderKind> Kinds { get; } = new();
-        public bool Recording => groundOnly is not null && !_complete;
+        readonly Dictionary<StaticHandle, TileColliderKind> _kinds = new();
+        DiagnosticWorld Recorder => recorder ?? this;
+        public Dictionary<StaticHandle, TileColliderKind> Kinds => Recorder._kinds;
+        public bool Recording => groundOnly is not null && !Recorder._complete;
 
         public string KindOf(StaticHandle? handle) => handle is { } h && Kinds.TryGetValue(h, out TileColliderKind kind)
             ? kind.ToString() : "unknown";
@@ -228,21 +282,21 @@ public class GroundMeshSlopeMovementTests(ITestOutputHelper output)
         void Record(string query)
         {
             if (!Recording) return;
-            if (_queries.Count < QueriesPerTick) _queries.Add(query);
-            else _omitted++;
+            if (Recorder._queries.Count < QueriesPerTick) Recorder._queries.Add(query);
+            else Recorder._omitted++;
         }
 
         public bool ComputePenetration(CapsuleShape capsule, Pose pose, out Vector3 mtv)
         {
             bool found = inner.ComputePenetration(capsule, pose, out mtv);
-            if (Recording && _queries.Count < QueriesPerTick)
+            if (Recording && Recorder._queries.Count < QueriesPerTick)
             {
                 bool groundFound = groundOnly!.ComputePenetration(capsule, pose, out Vector3 groundMtv);
                 string probe = capsule.Radius > Character.CapsuleRadius + 0.005f ? "inflated" : "body";
                 Record($"  penetration {probe}: pose={pose.Position} radius={capsule.Radius:F5} length={capsule.Length:F5} " +
                     $"found={found} mtv={mtv} ground-only-found={groundFound} ground-only-mtv={groundMtv}");
             }
-            else if (Recording) _omitted++;
+            else if (Recording) Recorder._omitted++;
             return found;
         }
 
@@ -252,7 +306,7 @@ public class GroundMeshSlopeMovementTests(ITestOutputHelper output)
             bool found = inner.SweepCapsule(capsule, pose, direction, maxDistance, out hit, filter);
             if (Recording)
             {
-                _zeroNormal |= found && hit.Normal.LengthSquared() <= 1e-12f;
+                Recorder._zeroNormal |= found && hit.Normal.LengthSquared() <= 1e-12f;
                 string probe = direction.Y < -0.999f ? "downward" :
                     MathF.Abs(maxDistance - 0.9f) < 1e-4f ? "recovery-range" : "move-or-step";
                 Record($"  sweep {probe}: pose={pose.Position} radius={capsule.Radius:F5} length={capsule.Length:F5} " +
@@ -273,6 +327,8 @@ public class GroundMeshSlopeMovementTests(ITestOutputHelper output)
 
         public StaticHandle AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) =>
             inner.AddStatic(shape, pose, material);
+        public IPhysicsWorldQueryView CreateQueryViewExcludingStatics(ReadOnlySpan<StaticHandle> excludedStatics) =>
+            new DiagnosticQueryView(inner.CreateQueryViewExcludingStatics(excludedStatics), this, groundOnly, output);
         public void RemoveStatic(StaticHandle handle) => inner.RemoveStatic(handle);
         public DynamicBodyHandle AddDynamic(PhysicsShape shape, Pose pose, DynamicBodyDescription body,
             PhysicsMaterial? material = null) => inner.AddDynamic(shape, pose, body, material);
@@ -292,8 +348,19 @@ public class GroundMeshSlopeMovementTests(ITestOutputHelper output)
         public void Rebase(Vector3 newOrigin) => inner.Rebase(newOrigin);
         public void Dispose()
         {
-            groundOnly?.Dispose();
+            if (recorder is null) groundOnly?.Dispose();
             inner.Dispose();
         }
+    }
+
+    sealed class DiagnosticQueryView : DiagnosticWorld, IPhysicsWorldQueryView
+    {
+        public DiagnosticQueryView(IPhysicsWorldQueryView inner, DiagnosticWorld source,
+            BepuPhysicsWorld? groundOnly, ITestOutputHelper output) : base(inner, groundOnly, output, source)
+        {
+            SourceWorld = source;
+        }
+
+        public IPhysicsWorld SourceWorld { get; }
     }
 }

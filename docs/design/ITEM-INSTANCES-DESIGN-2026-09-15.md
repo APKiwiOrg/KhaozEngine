@@ -1953,11 +1953,11 @@ contracts 4.7 allows because visibility is per field, and needs no child type be
 | `sort` | int | | the socket's index in kind 132, authored order |
 | `socket_type_id` | key reference | `socket_type` | 0 means no restriction |
 
-**A unique is a template plus rolls, not a separate item kind.** The generated item carries kind 129
-naming the template, kind 131 carrying the rolled positions for the template's lines, and kind 130
-carrying the unique rarity rule. Nothing in the payload format is special. That is what lets a craft
-reroll a unique's values without any primitive knowing what a unique is: `reroll values` (10.2) rewrites
-positions and never touches kind 129.
+**A unique is a template with ordinary affix positions, not a separate item kind.** The generated item
+carries kind 129 naming the template and kind 131 carrying its lines at roll position 0, the bottom of
+each range. A forced unique consumes zero draws, including no rare-name draw. Kind 130 carries the
+caller's `ForcedRarityId` when non-zero. Nothing in the payload format is special. The `reroll values`
+craft primitive (10.2) rolls new positions without knowing what a unique is and never touches kind 129.
 
 **A unique's lines are NOT a second line shape: each one NAMES a mod row**, which is the one asymmetry in
 the format and it is worth naming. Kind 131's entries are `(mod id, tier, position, flags)`, so a unique's
@@ -2269,7 +2269,8 @@ public readonly record struct GenerationContext(
     int BaseId, int ItemLevel, int ForcedRarityId, int ForcedUniqueTemplateId, int Quality);
 
 public readonly record struct GenerationResult(
-    int BaseId, long InstanceId, ReadOnlyMemory<byte> Payload, int RarityId, int ContentVersion);
+    int BaseId, long InstanceId, ReadOnlyMemory<byte> Payload, int RarityId, int ContentVersion,
+    int AffixCount, int RequestedAffixCount);
 
 public sealed class ItemGenerator
 {
@@ -2279,6 +2280,8 @@ public sealed class ItemGenerator
 ```
 
 Every step is numbered because the ORDER of the draws is the reproducibility contract.
+`AffixCount` reports the affixes placed and `RequestedAffixCount` reports the count the rarity asked for.
+A smaller `AffixCount` records a pool that ran dry. For a forced unique both counts are its placed lines.
 
 1. **Resolve the band and open the pool.** The band is a binary search over the band boundaries from
    `context.ItemLevel`. Opening the pool is reading, for each mod kind and each of the base's two to four
@@ -2288,8 +2291,10 @@ Every step is numbered because the ORDER of the draws is the reproducibility con
    `bucket total - suppressed weight`. Eight scalars in, nothing merged, nothing copied, nothing
    allocated. No draw.
 2. **Resolve the unique**, if `ForcedUniqueTemplateId` is non-zero. Skip to step 9 with the template's
-   `unique_line` rows as the affix list and its `unique_socket` rows as the socket list. No draw. A unique is FORCED by the
-   caller rather than rolled here, because deciding that a unique drops is the loot table's job (9.1).
+   `unique_line` rows as the affix list, each at roll position 0, and its `unique_socket` rows as the
+   socket list. The entire forced-unique path consumes zero draws and skips step 10's rare name. A unique
+   is FORCED by the caller rather than rolled here because deciding that a unique drops is the loot
+   table's job (9.1).
 3. **Roll the rarity**, unless `ForcedRarityId` is non-zero. One `NextInt(0, total)` over the
    `rarity_weight` rows against the base's tags, using 8.3's first-tag-wins rule and the bounded helper
    from 9.3. A total of 0 or 1 calls `Skip`, with 0 producing no rarity.
@@ -2341,11 +2346,13 @@ Every step is numbered because the ORDER of the draws is the reproducibility con
     declaration, in authored order, every socket empty. No draw in v1: a rolled socket COUNT is a craft
     primitive (`add socket`, 10.2) rather than a generation step, so nothing here consumes a draw the
     owner has not asked for.
-12. **Assemble the payload.** Kind 2 item level, kind 3 quality when non-zero, kind 129 when a unique,
+12. **Assemble the payload.** Kind 2 item level, kind 128 identification with state 0 and revealed mask 0
+    on every generated item, kind 3 quality when non-zero, kind 129 when a unique,
     kind 130 rarity, kind 131 affixes, kind 132 sockets when non-empty, kind 134 rare name when rolled,
     plus kind 5 durability at full when the base declares it. Encode canonically (3.2).
 13. **Allocate the instance id** when the payload is non-empty, from `InstanceIdAllocator` (3.6). An
-    empty payload takes id 0 and the item is a plain stack.
+    empty payload takes id 0 and the item is a plain stack. This is a guard rather than a generated
+    outcome: kinds 2 and 128 make every generated payload non-empty, so every generated item takes an id.
 
 **Cost, per rare, and what it is NOT a function of.** Six requested affix picks reserve six kind slots, six mod slots,
 six position slots and up to two name slots, so twenty slots plus the count and any unforced rarity slot.
@@ -3168,6 +3175,10 @@ kinds 129, 131, 133 and 134. Bits 4 to 31 are unassigned in that registry, and `
 Custom registrations may assign bit 4 or beyond without moving those four assignments. The registered
 bit is the only shape that survives an engine release: the mask is durable and the registration set is
 not, so a derived index is a number stored under one meaning and read under another.
+
+`ItemGenerator` writes kind 128 on every new item with state 0 and revealed mask 0 (9.4 step 12). The
+caller can read the initial identification state from the payload instead of guessing from an absent
+field. This also makes a generated payload non-empty even when its affix pool yields nothing.
 
 The mechanic: an unidentified item replicates and tooltips WITHOUT its gated kinds, to everyone including
 its owner, and what a viewer sees in their place is `khaoz.item.unidentified` through

@@ -1788,11 +1788,24 @@ an export and re-import reproducible (section 10.9) and what fixes Ruinborne's i
 Ids that are CARRIED are kept exactly, which is what makes Grimhollow's import preserve ids 1 to 35 and leave
 every stored container decoding unchanged (section 16.4). Ordering does not preserve an id, carrying it does.
 
-**A `Fork` never carries an id or names a family override.** Its copy inherits the SOURCE row's family.
-With a family it allocates through branch 2 and belongs to any block of that family. When all blocks are full,
-the allocator reserves another aligned block the ordinary way (3.8), so the copy need not share the source
-row's block. Without a family it allocates through branch 3. The source keeps its id, and the live legacy copy
-receives the new id named by exactly one `MovedToLegacy` rule.
+**A `Fork` never carries an id or names a family override.** A fork is only ever authored against a live
+database, and the carry path exists for the empty-database import alone. Its copy inherits the SOURCE row's
+family. With a family it allocates through branch 2 and belongs to any block of that family. When all blocks
+are full, the allocator reserves another aligned block the ordinary way (3.8), so the copy need not share the
+source row's block. Without a family it allocates through branch 3. The source keeps its id, and the live
+legacy copy receives the new id named by exactly one `MovedToLegacy` rule.
+
+**Copies forked before 20.18.0 stay as they were stored.** Releases 19.0.0 through 20.17.0 gave a family fork a
+plain id while copying the source row's `FamilyId`, so the copy names a family whose blocks do not contain its id
+([#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908)). The engine does not renumber such a copy, rewrite
+a released pack or relax an import check for it. Packs carry no family data, so the column never reached pack
+bytes, and a live store keeps publishing, rolling back, upgrading and exporting the row as stored. A lossless
+re-import of its export is refused before any write by the carried-id precheck, which reports `KEC0037` for a
+named family that holds no block containing the id, while `KEC0010` remains the validator's quiet runtime hook.
+The supported remedy is an explicit operator edit of the exported bundle that removes the copy's `familyKey`. The
+copy keeps its id, key and `MovedToLegacy` rule, the source keeps its family, and the import then succeeds with
+every other value unchanged. The engine has no verb that changes a stored row's family, and none is added for
+this shape, because no consumer catalog declares a family.
 
 ### 6.4 Step 4, validate
 

@@ -89,6 +89,12 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   decoding and legacy version 1 padding stay supported
   ([#916](https://github.com/APKiwiOrg/KhaozEngine/issues/916)).
 
+- A `Fork` of a family row now allocates its legacy copy inside that family's blocks, reserving another aligned
+  block when they are full, so the copy is a member by id as well as by column and its bundle re-imports. A
+  non-family fork still takes a plain id. Copies forked by 19.0.0 through 20.17.0 keep their plain ids and family
+  column, and re-importing them stays refused with `KEC0037`. Removing the copy's `familyKey` from the exported
+  bundle is the documented remedy ([#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908)).
+
 ## 20.17.0
 
 - Continuous host round 1 opens on this version, and plans B, C and D of the round ride it

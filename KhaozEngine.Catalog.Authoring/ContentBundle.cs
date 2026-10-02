@@ -34,7 +34,8 @@ public sealed record ContentBundleType(
 /// <param name="Id">The definition id, or null to let the allocator issue one.</param>
 /// <param name="Key">The row's key, which is never optional.</param>
 /// <param name="IsRetired">Whether the row is retired. A retired row keeps its id and its bytes forever.</param>
-/// <param name="FamilyKey">The family the row belongs to, or null when it is allocated from the plain counter.</param>
+/// <param name="FamilyKey">The family the row names, or null for a plain row. A legacy fork copy from 19.0.0 through
+/// 20.17.0 can name a family whose blocks do not hold its id, and import refuses that row with KEC0037.</param>
 /// <param name="Fields">The row's fields, by name.</param>
 public sealed record ContentBundleRow(
     ContentTypeId Type,

@@ -132,8 +132,8 @@ Windowing + input foundation for the custom MonoGame-free stack.
         backendPreference: o.GraphicsBackendPreference);
     ```
 
-    This factory keeps `Scaled`'s integer frame-cap contract. It does not forward the separate
-    `GameAppOptions.FrameCap` intent, which requires the constructor's `FrameCap` overload.
+    `Scaled` uses its integer cap at construction. After a custom factory returns, `GameApp` applies the
+    full resolved `FrameCap` intent from `GameAppOptions`, with positive `FrameCapHz` taking precedence.
   - `AppWindow.InitialMonitor` (an `InitialMonitor`: `Saved` by default, else `Primary` / `Rightmost` /
     `Leftmost` / `At(index)`) is applied once by `Run`, after the host's load callback, so an explicit choice
     wins over a position the game restored at boot. `Saved` moves nothing. `ApplyLaunchPlacement()` is the

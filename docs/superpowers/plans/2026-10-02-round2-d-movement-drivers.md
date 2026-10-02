@@ -159,7 +159,7 @@
   bash scripts/check-doc-versions.sh
   ```
   Expected zero warnings, no failures, nonzero counts and passing guards. Obtain whole-branch review. Record actual API, remaining issues, costs and each departure in Outcome. No local test loops.
-- [x] **Step 3: Commit.** Subject `docs(movement): document client and NPC drivers and round D outcome`. The worker documentation commits are `ca8104dd5` and `41fdf85f2`, with reconciliation merge `26372dc8`. Integration owner main merge, push, canonical feed pack and feed verification remain pending. Workers stop at their verified commit.
+- [x] **Step 3: Commit.** Subject `docs(movement): document client and NPC drivers and round D outcome`. The worker documentation commits are `ca8104dd5` and `41fdf85f2`, with reconciliation merge `26372dc8`. Root merged and pushed engine main at `ae6ca386d`. Hosted CI passed. Canonical packing refreshed 200 files, and feed verification exited 0 with one staged version and zero unsafe versions. Workers stop at their verified commit.
 - [ ] **Step 4: Hand off the released-pin boundary.** Only the owner starts the engine tag using scripts/tag-release.sh. Until then do not close engine #1223 as a released consumer capability. After verification report on Grimhollow epic #399 starting `P4 engine round 2:` with the actual version, interfaces and adoption prerequisites. Grimhollow P4 adopts the tagged pin on feature/continuous-movement and performs its normal vendored-feed and verification workflow. P5 owns shapes, areas, brains, interactions and walk-up. P6 owns combat. This plan edits no Grimhollow files.
 
 ## Outcome

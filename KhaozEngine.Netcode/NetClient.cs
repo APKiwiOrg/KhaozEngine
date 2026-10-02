@@ -105,11 +105,39 @@ public sealed class NetClient
     }
 
     /// <summary>Sends game data to the server, on the connection id the transport reported for it. No-op before the
-    /// transport has surfaced a Connected event (there is no server connection to name yet) and after it has surfaced
-    /// the Disconnected that ended the session.</summary>
-    public void Send(ReadOnlySpan<byte> payload, NetChannelReliability reliability)
+    /// transport has surfaced a Connected event (there is no server connection to name yet), after it has surfaced
+    /// the Disconnected that ended the session, and after <see cref="Disconnect"/>. Forwards to
+    /// <see cref="TrySend"/> and ignores its answer.</summary>
+    public void Send(ReadOnlySpan<byte> payload, NetChannelReliability reliability) => TrySend(payload, reliability);
+
+    /// <summary>Sends game data to the server and reports whether it was HANDED TO THE TRANSPORT, never whether it
+    /// was delivered. False only when there is no server connection (the cases <see cref="Send"/> no-ops on), and
+    /// then nothing reached the transport. Otherwise calls <see cref="INetTransport.Send"/> exactly once and answers
+    /// true when it returns. A transport may still drop the frame after that, as both shipped bindings do for a peer
+    /// they no longer know. Nothing is caught: an exception from the transport propagates unchanged and is never a
+    /// send.</summary>
+    public bool TrySend(ReadOnlySpan<byte> payload, NetChannelReliability reliability)
+    {
+        if (!serverConnection.IsValid) return false;
+        transport.Send(serverConnection, SessionFrame.Write(SessionOpcode.Data, payload), reliability);
+        return true;
+    }
+
+    /// <summary>The transport's unfragmented payload limit toward the server on <paramref name="reliability"/>, as
+    /// <see cref="INetTransport.MaxUnfragmentedPayloadBytes"/> answers it for the connection the transport reported.
+    /// The limit counts the session frame byte. Zero means unknown, and is also the answer while there is no server
+    /// connection, in which case the transport is not asked.</summary>
+    public int MaxUnfragmentedPayloadBytes(NetChannelReliability reliability) =>
+        serverConnection.IsValid ? transport.MaxUnfragmentedPayloadBytes(serverConnection, reliability) : 0;
+
+    /// <summary>Ends the session from this side: asks the transport to disconnect the server connection, then
+    /// forgets that connection at once, so a later <see cref="TrySend"/> answers false and nothing more is aimed at
+    /// it. No-op without a server connection. The transport's own Disconnected event still surfaces through
+    /// <see cref="TryDequeueEvent"/> on a later <see cref="Poll"/>, exactly as for a drop.</summary>
+    public void Disconnect()
     {
         if (!serverConnection.IsValid) return;
-        transport.Send(serverConnection, SessionFrame.Write(SessionOpcode.Data, payload), reliability);
+        transport.Disconnect(serverConnection);
+        serverConnection = NetConnectionId.None;
     }
 }

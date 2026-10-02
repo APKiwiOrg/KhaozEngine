@@ -45,4 +45,15 @@ public interface INetTransport : IDisposable
     /// (forwarded as it stands).
     /// </summary>
     NetTransportStats Stats => NetTransportStats.Unavailable;
+
+    /// <summary>
+    /// The largest payload one <see cref="Send"/> to <paramref name="connection"/> on <paramref name="reliability"/>
+    /// carries without the transport fragmenting it, counting every byte the caller hands over, session framing
+    /// included. Zero means UNKNOWN, never a size: a caller that needs a bound treats zero as having none and falls
+    /// back, rather than guessing an MTU.
+    /// <para>Optional: the default answers zero, so an external transport written before this query compiles and
+    /// behaves unchanged, and the in-memory transports stay unknown. The LiteNetLib UDP binding answers from the
+    /// connected peer. An implementation answers zero for a connection it does not know.</para>
+    /// </summary>
+    int MaxUnfragmentedPayloadBytes(NetConnectionId connection, NetChannelReliability reliability) => 0;
 }

@@ -65,16 +65,17 @@ presentation correctness with independent prediction and server phases. `Loopbac
 
 ## Options and recommendation
 
-Scores are design judgments, not measurements. Five is best. Weighted total is out of 100.
+Scores are design judgments, not measurements, on a 1-10 scale with ten best. Weighted total is
+`sum(weight * score / 10)`, out of 100.
 
 | Criterion | Weight | A: last-sent reliable plus acknowledged rebuild | B: versioned reconstruction for both modes | C: independent full projections |
 |---|---:|---:|---:|---:|
-| Exact state under the declared delivery contract | 25 | 5 | 5 | 5 |
-| Reliable default and standalone compatibility | 25 | 5 | 2 | 4 |
-| Bounded packet and cache policy | 15 | 4 | 4 | 3 |
-| Steady-state bandwidth | 15 | 5 | 5 | 1 |
-| Implementation and test simplicity | 15 | 3 | 4 | 5 |
-| Existing package seams | 5 | 5 | 5 | 5 |
+| Exact state under the declared delivery contract | 25 | 10 | 10 | 10 |
+| Reliable default and standalone compatibility | 25 | 10 | 4 | 8 |
+| Bounded packet and cache policy | 15 | 8 | 8 | 6 |
+| Steady-state bandwidth | 15 | 10 | 10 | 2 |
+| Implementation and test simplicity | 15 | 6 | 8 | 10 |
+| Existing package seams | 5 | 10 | 10 | 10 |
 | Weighted total | 100 | **91** | **79** | **77** |
 
 **Recommend A.** Reliable order already makes the last sent projection the receiver's predecessor.
@@ -127,10 +128,32 @@ component omitted from that entity. NetWorld's reconnect path already creates a 
 Future API docs must make this obligation explicit. The legacy API never advertised an unreliable
 transport contract.
 
-Legacy signed sequences must not silently wrap into negative values or the -1 sentinel. Recommend a
-controlled session restart before exhaustion, clearing per-slot sender state, rather than inventing
-in-band epoch semantics for old readers. At 30 serves per second this is a long-lived-session boundary,
-not a test excuse. Tests seed the counter near exhaustion. The owner must approve the restart policy.
+Legacy signed sequences must not silently wrap into negative values or the -1 sentinel. The counter
+belongs to the writer instance, shared by every slot, rather than to one session. Recommend the
+following global exhaustion boundary, with `int.MaxValue` the last permitted captured/sent sequence:
+
+1. `LegacySequenceExhausted` becomes true at that value. A further `BeginTick` or `Capture` cannot
+   increment the counter. The owning host stops admission and serving for that writer at the next
+   boundary before attempting another capture.
+2. The lifecycle owner disconnects every affected session served by that writer, including v2 sessions
+   whose per-slot state the reset clears. No old receiver remains attached. Reconnect-capable NetWorld
+   clients create fresh replicated worlds/views through their existing reconnect path. Standalone
+   owners must create fresh receivers and connections themselves.
+3. Only after those connections have ended does the owner call
+   `ResetAfterLegacySequenceExhaustion()` on the writer. It requires exhaustion and clears the global
+   signed writer/capture counter to zero, global history and its insertion order, shared capture caches,
+   and every per-slot last-sent, acknowledged, pending, presence, candidate, and rebuild state. The first
+   subsequent capture is sequence 1. The first legacy serve is full state with baseline -1.
+4. Resume admission with fresh receivers. Fresh v2 sessions negotiate fresh epochs. The host's
+   server-lifetime epoch allocator stays monotonic and is not reset with the writer.
+
+`WorldServer` and `ShardedWorldServer` own this lifecycle sequence for their replicators. A standalone
+caller owns it for `ServerReplicator` or `AoiDeltaReplicator`. Replication cannot disconnect transports
+it does not own. `Forget(slot)` only clears that slot and never resets the global counter or shared
+history. An ordinary disconnect, an empty slot table, or a repair barrier alone cannot trigger the
+global reset API. It rejects calls before exhaustion, and its lifecycle precondition is that all
+affected connections have ended. The owner must approve this restart policy. Bounded tests seed the
+counter near exhaustion and verify the boundary, rather than running through the signed range.
 
 ## Opt-in v2 stream and wire compatibility
 
@@ -146,8 +169,11 @@ still rejects peers through `WireGenerationAuthenticator`, and the game protocol
 Implementation must re-read the then-current generation and unused discriminators. If the chosen work
 changes an existing body or built-in codec, it needs an explicit new generation and owner review.
 
-Proposed assignments below are free at the evidence base. All multibyte new fields use explicit
-little-endian encoding. Extension component payloads retain their existing 7-bit framing.
+The current source still uses control kinds 1 and 2, ack sub-marker 0xA0, game-message sub-marker 0xB0,
+and server frame kinds 0 through 3. Proposed assignments below are free at the evidence base. Existing
+client control and replication ack lengths are 2 and 6. Movement is exactly 18 bytes, and the existing
+game-message decoder explicitly excludes length 18. All multibyte new fields use explicit little-endian
+encoding. Extension component payloads retain their existing 7-bit framing.
 
 | New message | Proposed body and route |
 |---|---|
@@ -157,14 +183,27 @@ little-endian encoding. Extension component payloads retain their existing 7-bit
 | Rebuild delta | `ServerFrameKind.RebuildDelta = 4`, existing `[localNetId long][movementAck int]`, then v2 body. Unreliable-sequenced. |
 | V2 body | `[format byte 2][flags byte][epoch ulong][snapshotSeq uint][baselineSeq uint]`, followed by the existing removal/changed entity sections. Flag bit 0 means keyframe, with baseline field zero and zero removed count. Otherwise the baseline id is `(epoch, baselineSeq)`. Other flags are invalid. |
 | Replication ack | `[0xC5][0xA2][epoch ulong][snapshotSeq uint]`, exactly 14 bytes. Routine acks are unreliable-sequenced and repeated. A keyframe ack is reliable. |
-| Repair request | `[0xC5][0xA3][epoch ulong][lastAcceptedSeq uint][missingBaselineSeq uint]`, exactly 18 bytes, reliable and coalesced. |
+| Repair request | `[0xC5][0xA3][format byte 2][epoch ulong][lastAcceptedSeq uint][missingBaselineSeq uint]`, exactly 19 bytes, reliable and coalesced. The format byte keeps it outside the movement length. |
 | Keyframe chunk | `ServerFrameKind.RebuildKeyframeChunk = 5`, then epoch `ulong`, snapshot sequence `uint`, total logical bytes `uint`, and a `MessageFragmenter` chunk. Reliable. The assembled object is `[localNetId long][movementAck int][v2 keyframe body]`. |
 
-Demux new control sub-markers before movement decoding. A malformed frame with a recognized sub-marker
-is rejected there and never falls through to an 18-byte move. Old ack marker 0xA0 and old frame kinds
-remain distinct. The v2 reader rejects unknown format revisions. Unknown framed component ids remain
-skippable for publication and retainable as opaque baseline bytes. Unknown unframed built-ins remain
-terminal incompatibility.
+Preserve length-first demux. **Every 18-byte frame belongs to the movement decode/validation path.**
+Every new control decoder, including its recognized-marker malformed rejection path, must first
+exclude length 18 without reading or claiming a marker. Valid move sequences `0x0000A1C5`,
+`0x0000A2C5`, and `0x0000A3C5` legitimately begin with `[0xC5][0xA1]`, `[0xC5][0xA2]`, and
+`[0xC5][0xA3]` in the current encoder. They must reach `commands.Store` after normal move validation.
+Rate limiting, finite-axis/yaw validation, and ordinary command queue bounds/replay checks still apply.
+
+For a non-18-byte frame, a recognized new sub-marker claims that control family before any movement
+fallback. Validate its exact length, revision where present, and remaining fields there. An invalid
+recognized control is rejected and cannot fall through, including a 19-byte request with a bad version
+or an overlong recognized ack. Old ack marker 0xA0 and old frame kinds remain distinct.
+
+The sender's intent is unavailable on the wire. A sender-intended malformed control that happens to be
+18 bytes is treated as movement, and may be accepted if its bytes pass ordinary movement validation.
+Marker inspection cannot distinguish it from a legitimate marker-prefixed move. No acceptance claim
+can promise otherwise. The v2 reader rejects unknown format revisions. Unknown framed component ids
+remain skippable for publication and retainable as opaque baseline bytes. Unknown unframed built-ins
+remain terminal incompatibility.
 
 The server stops issuing legacy state when it sends an unreliable mode offer. Previously queued legacy state
 precedes that offer on the reliable channel. The client accepts the offer and waits for its keyframe.
@@ -397,6 +436,10 @@ public void RecordRebuildSent(int slot, ReplicationPacketId id);
 public void AcknowledgeRebuild(int slot, ReplicationPacketId id);
 // ServerReplicator's overload uses its captured world, without world/interest arguments.
 public void Forget(int slot); // already exists on AoiDeltaReplicator
+public bool LegacySequenceExhausted { get; }
+// Exhaustion only. Lifecycle owner must first end every affected connection.
+// Clears global counter/history/capture caches and all per-slot state.
+public void ResetAfterLegacySequenceExhaustion();
 
 // New reconstruction owner composes the existing presentation view.
 public sealed class ClientDeltaRebuild
@@ -419,8 +462,14 @@ int MaxUnfragmentedPayloadBytes(NetConnectionId connection,
 `BuildRebuildFor` retains at most one unsent candidate per slot. `RecordRebuildSent` commits it to sent
 history only after a successful routine send or after all keyframe chunks were handed to reliable
 transport. Nothing may acknowledge an unsent candidate. A repair candidate is pinned while being sent.
-Capture identity must be independent of legacy signed sequence exhaustion, retaining the existing
-shared-once-per-world-per-tick capture property. Projection retention occurs after viewer filtering.
+V2 packet ordering is independent of the legacy signed counter, retaining the existing
+shared-once-per-world-per-tick capture property. The exhaustion lifecycle still resets the writer's
+global legacy capture counter and all its state after affected sessions disconnect. A reset cannot
+reuse an old v2 epoch. NetWorld's lifecycle owner checks `LegacySequenceExhausted` before capture,
+ends those connections through the host's disconnect/leave path, verifies the affected session set is
+empty, calls `ResetAfterLegacySequenceExhaustion()`, and then allows fresh admission. Standalone owners
+perform the same sequence around their own transport/receiver lifetimes. Projection retention occurs
+after viewer filtering.
 
 Replication owns byte-state reconstruction, capture/diff, and publication. NetWorld owns negotiation,
 local-net-id/movement-ack envelopes, repair scheduling, connection lifecycle, and reliability choice.
@@ -465,7 +514,10 @@ position equality alone does not prove visible movement, heading, gait, or recon
 | Remote presentation phase | Drive a real remote walker and turner while dropping one state packet, delaying the next, and repairing. Assert the accepted ids and reconstructed positions, then the fixed-delay rendered samples, hold flags, heading, and movement state. Pin expected hold frames from the exact schedule. Do not promise an interpolation bracket while loss starves it. |
 | Packet boundary and repair | Inject a tiny transport packet limit, test lengths at the cap and one byte over, and cross the projection/count limits. Assert every unreliable send fits, oversized state starts one frozen reliable keyframe, chunks fit, partial state stays unpublished, and no delta resumes before its exact keyframe ack. Change visibility during the barrier. |
 | Reliable messages during faults | Send ordered game events and notices during a lossy delta/repair schedule. Assert their existing reliability choice, once-only ordered delivery, and intact payloads. Replication recovery cannot dispatch a chunk as a game message. |
-| Mixed capability and malformed input | Exercise default/default, opt-in/default, default/opt-in, and opt-in/opt-in peers at the current builtin generation. Require reliable fallback for a peer without the new capability, explicit mode refusal on incompatible budgets, and existing rejection on builtin-generation skew. Truncated/duplicate/oversized control and component frames never become movement commands or publish partial state. |
+| Marker-prefixed movement | In three separate fresh joined sessions, send one `MoveProtocol.EncodeMove` using sequence `0x0000A1C5`, `0x0000A2C5`, or `0x0000A3C5`, with finite nonzero movement and yaw. Run one scheduled receive/simulation step on each NetWorld server. Assert all new control decoders return unclaimed for length 18, the command reaches `commands.Store`, and its movement ack/position prove it was consumed. These are explicit initial sequence values, with no 41,000-tick setup. |
+| Control-length alias boundary | Send an 18-byte marker-prefixed buffer whose move fields are valid, even when assembled as a sender-intended truncated control. Assert ordinary movement acceptance. Repeat with NaN/Inf move fields and require ordinary malformed-move rejection. For each new control family, send a recognized malformed non-18 length, including 19-byte bad-version repair and overlong ack. Assert rejection without `commands.Store`, mode transition, ack promotion, or repair creation. Valid 11-byte acceptance, 14-byte ack, and 19-byte repair dispatch only to their intended handlers. |
+| Global legacy exhaustion | Seed each writer's counter at `int.MaxValue - 1` through an internal test seam with two populated slots and retained history. Serve `int.MaxValue`, verify exhaustion and no further increment, then verify `Forget` alone does not reset it and reset before exhaustion is rejected in a separate fresh fixture. End every affected connection, invoke the exact global reset API, and assert zero counter plus empty shared/history/per-slot state. Fresh receivers get capture sequence 1/full baseline -1, and fresh v2 sessions use a new epoch. Use a finite handful of capture steps. |
+| Mixed capability and malformed input | Exercise default/default, opt-in/default, default/opt-in, and opt-in/opt-in peers at the current builtin generation. Require reliable fallback for a peer without the new capability, explicit mode refusal on incompatible budgets, and existing rejection on builtin-generation skew. Recognized malformed controls with lengths other than 18 do not fall through to movement. All 18-byte frames receive ordinary movement validation, irrespective of sender intent. Malformed component frames cannot publish partial state. |
 
 Each integration case records requested/selected mode, epochs, baseline ids, accepted ids, movement ack,
 client and server phases, pending command count, raw authoritative position, rendered position, hold
@@ -480,7 +532,7 @@ appearance or the owner's final P8 playtest.
 | Owner decision | Recommendation and consequence |
 |---|---|
 | Delivery model | Select A, retaining last-sent reliable and named-baseline unreliable contracts. Selecting B requires an explicit legacy migration and wire-generation decision. |
-| Legacy standalone contract | Approve `WriteFor` as a reliable send commitment, additive reset on `ServerReplicator`, and controlled session restart at signed exhaustion. Consumers that intentionally discard built deltas must adopt the reset/commit contract. |
+| Legacy standalone contract | Approve `WriteFor` as a reliable send commitment, additive per-slot `Forget` on `ServerReplicator`, and the global exhaustion lifecycle/API: end every affected connection, create fresh receivers, then reset the global counter and all writer state. Consumers that intentionally discard built deltas must adopt the reset/commit contract. |
 | Protocol extension | Approve negotiated format 2 with capability-gated new kinds and current builtin generation retained. Recheck free discriminator values before implementation. |
 | Budgets | Approve or replace the concrete cache, metadata, keyframe, packet, ack-window, and chunk-rate values above after one bounded consumer size characterization. No silent limit increase. |
 | Ack and recovery policy | Approve coalesced repeated unreliable routine acks, reliable barrier acks, no mandatory periodic keyframe, and one active repair per viewer. |

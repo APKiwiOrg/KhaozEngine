@@ -117,11 +117,13 @@
 
 **Files:**
 - Modify `KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj`, explicit Movement reference.
+- Modify `KhaozEngine.NetWorld/WorldClient.Frame.cs`, additive read-only `LocalPredictedState` in absolute coordinates, per execution preflight ruling D0.3.
 - Create `KhaozEngine.Server.Tests/NetWorld/PlayerRangeMovementAcceptanceTests.cs` and `PlayerRangeMovementTestRig.cs`.
 
 **Interfaces:**
 - Test rig owns a populated static physics scene, GroundMoveContext, captured profile, InMemoryTransportHub, normal WorldServer and WorldClient, with 30 Hz configuration and a join handshake. Give the client/server equivalent physics/providers in their normal composition.
 - `Submit(in MoveCommand command)` calls the real client SendInput, which predicts, encodes and queues it. `Frame()` polls/ticks/polls normally. `Stop()` submits idle. Read final positions from public client/server state. Model the existing WorldClientLocalMovementTests wiring, extending it only for this fixture.
+- Client steering reads `WorldClient.LocalPredictedState.Move`, never the interpolated and correction-offset `LocalRenderState`. The new property returns the existing private predictor's current simulation state as a value copy. Prove the distinction under phase-offset presentation and real reconciliation. This adds no position setter or dependency edge.
 
 - [ ] **Step 1: Write bounded headless acceptance.** Client reads its predicted current capsule state, calls MoveToRange.Tick and PlayerPathMovement.Command, and submits exactly once per simulation tick. Route around a real wall to a solid target shape, then chase a moving capsule. Exercise tiny final fraction, target height, target death/cancellation supplied by the test game, manual override followed by Reset, and idle after arrival. Include one authoritative correction while fractional input is unacknowledged. Phase-offset serving from prediction as in the existing reconcile tests.
   ```csharp
@@ -142,6 +144,7 @@
 
 **Files:**
 - Modify Movement README, docs/USING-KHAOZENGINE.md, root README's package summary and staged CHANGELOG.
+- Modify NetWorld README for the simulation-state versus presentation-state contract from D0.3.
 - Update the round design's shipped status only after verification, docs/INDEX.md and this plan's Outcome. Read the other three Outcomes and correct a prerequisite record only when the final acceptance found an actual contract change.
 
 - [ ] **Step 1: Document complete NPC and client examples.** Show explicit package reference, shared world providers, capture/profile disposal, own feet, target shape, per-tick command submission, reset/cancellation and server reach/tolerance ownership. Sweep every Markdown mention of movement kernel, MoveToRange, player path following and PathFollower arrival. No claim that the engine owns brains or combat rules.

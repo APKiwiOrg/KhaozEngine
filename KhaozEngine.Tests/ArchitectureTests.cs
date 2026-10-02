@@ -49,6 +49,8 @@ public partial class ArchitectureTests
         "Accounts", "Accounts.Sqlite", "Accounts.SqlServer",
         // Tile world colliders are for a game that wants physics under a tile world, which no umbrella implies.
         "TileWorld.Physics",
+        // Body reach composes the movement seams only when a consumer explicitly requests it.
+        "Movement",
         // THE THREE NATIVE GPU BACKENDS ARE NOT ON THIS LIST ANY MORE, and their absence is asserted rather than
         // assumed: NativeGpuBackends_AreCarriedByEveryUmbrellaThatCarriesGpu below requires the opposite of what
         // this list would have meant. They were opt-in from decisions P1 / V-P1 / M-P1, on pay-for-what-you-use

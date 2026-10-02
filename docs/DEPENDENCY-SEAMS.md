@@ -632,6 +632,29 @@ optional panel when the game supplies a `DungeonKitMap`. Dungeon never reference
 the edge adds no cycle. MapEditor stays outside every umbrella, so consumers that do not install the
 editor do not gain this dependency.
 
+## Movement composition edges
+
+`KhaozEngine.Movement` is opt-in and outside every umbrella. Its project references are exactly:
+
+```
+KhaozEngine.Movement -> KhaozEngine.Locomotion
+KhaozEngine.Movement -> KhaozEngine.Navigation
+KhaozEngine.Movement -> KhaozEngine.Physics
+```
+
+These forward edges compose the existing seams without adding a reverse edge to Navigation or Physics.
+Movement has no direct Primitives reference and carries no backend, input, rendering, ECS, NetWorld or
+TileWorld dependency. The caller chooses any physics backend. The nonpackable Movement test project
+references only Movement and Physics.Bepu.
+
+`MovementBody`, `ReachTarget` and `ReachGeometry` provide pure numeric 3D capsule, yawed-box and point
+reach. Capsule half-height includes its radius. Box yaw follows a physics pose about +Y. Distance and
+threshold arithmetic use double intermediates, with explicit finite-float result and threshold refusals.
+See the [package README](../KhaozEngine.Movement/README.md) for the exact public contract.
+
+`ArchitectureTests.Movement.cs` pins both project-reference sets, the absence of third-party packages,
+and Movement's absence from every umbrella closure. Movement also joins the shared `OptInBackends` guard.
+
 ## Tile world package edges
 
 `KhaozEngine.TileWorld` adds four edges, all acyclic and all onto packages that already sit below it:

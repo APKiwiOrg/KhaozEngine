@@ -15,5 +15,6 @@
     <ProjectReference Include="../KhaozEngine.TileWorld.Physics/KhaozEngine.TileWorld.Physics.csproj" />
     <!-- The shipped backend, so the colliders are proven against a real IPhysicsWorld rather than a test double. -->
     <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
+    <ProjectReference Include="../KhaozEngine.Movement/KhaozEngine.Movement.csproj" />
   </ItemGroup>
 </Project>

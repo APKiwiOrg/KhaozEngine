@@ -34,15 +34,16 @@ public readonly record struct NavLink(int FromLayer, int FromX, int FromZ, int T
 /// </summary>
 public sealed class NavSpace
 {
-    /// <summary>The layers making up this space, in the order passed to the constructor. At least one.</summary>
+    /// <summary>Owned read-only container of the supplied immutable grids, in constructor order. At least one.</summary>
     public IReadOnlyList<NavGrid> Layers { get; }
 
-    /// <summary>The directed stair connections between layers. Empty when none were supplied.</summary>
+    /// <summary>Owned read-only container of directed links, in constructor order. Empty when none were supplied.</summary>
     public IReadOnlyList<NavLink> Links { get; }
 
     /// <summary>
     /// Builds a space from <paramref name="layers"/> and, optionally, <paramref name="links"/> between
-    /// them. Requires at least one layer, and every link endpoint (both its layer index and its cell
+    /// them. Copies both containers and exposes read-only views while sharing the immutable grids.
+    /// Requires at least one layer, and every link endpoint (both its layer index and its cell
     /// coordinates within that layer) must be in bounds, else throws <see cref="ArgumentException"/>.
     /// </summary>
     public NavSpace(IReadOnlyList<NavGrid> layers, IReadOnlyList<NavLink>? links = null)
@@ -50,16 +51,21 @@ public sealed class NavSpace
         if (layers is null) throw new ArgumentNullException(nameof(layers));
         if (layers.Count == 0) throw new ArgumentException("NavSpace requires at least one layer.", nameof(layers));
 
-        links ??= Array.Empty<NavLink>();
-        for (int i = 0; i < links.Count; i++)
+        Layers = Array.AsReadOnly(CopyToArray(layers));
+        Links = Array.AsReadOnly(CopyToArray(links ?? Array.Empty<NavLink>()));
+        for (int i = 0; i < Links.Count; i++)
         {
-            NavLink link = links[i];
-            ValidateEndpoint(layers, link.FromLayer, link.FromX, link.FromZ, i, isFrom: true, nameof(links));
-            ValidateEndpoint(layers, link.ToLayer, link.ToX, link.ToZ, i, isFrom: false, nameof(links));
+            NavLink link = Links[i];
+            ValidateEndpoint(Layers, link.FromLayer, link.FromX, link.FromZ, i, isFrom: true, nameof(links));
+            ValidateEndpoint(Layers, link.ToLayer, link.ToX, link.ToZ, i, isFrom: false, nameof(links));
         }
+    }
 
-        Layers = layers;
-        Links = links;
+    static T[] CopyToArray<T>(IReadOnlyList<T> values)
+    {
+        var copy = new T[values.Count];
+        for (int i = 0; i < copy.Length; i++) copy[i] = values[i];
+        return copy;
     }
 
     static void ValidateEndpoint(IReadOnlyList<NavGrid> layers, int layer, int x, int z, int linkIndex, bool isFrom, string paramName)

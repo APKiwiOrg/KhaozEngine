@@ -75,7 +75,9 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   top face, never a stack: the sweep recognises the inside-solid self-hits BepuPhysics reports as the ray
   descends through the body's interior and skips them (each such body's underside bounds the headroom of the
   first real surface beneath it). On overflow the lowest surfaces are kept and the highest dropped,
-  deterministically, matching the ground-least-affordable-to-lose convention. STATICS-ONLY by default
+  deterministically, matching the ground-least-affordable-to-lose convention. When the usual 0.01-unit
+  descent rounds away, the sweep uses the next representable lower Y. It returns the surfaces collected
+  so far if a finite lower cast origin or reduced remaining range cannot be represented. STATICS-ONLY by default
   (`GroundMobility`), the same stance as `PhysicsGroundProbe`. This is the physics half of KhaozEngine.Navigation's layered overworld
   bake: a game glues `Sample` to `INavColumnProvider` with a one-line delegate, since Physics and
   Navigation deliberately never reference each other (see `docs/DEPENDENCY-SEAMS.md`'s surface-source

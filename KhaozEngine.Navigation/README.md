@@ -33,6 +33,9 @@ A `NavSpace` stacks one or more `NavGrid` layers, each covering its own vertical
 `NavLink` stair connections (`FromLayer`/`FromX`/`FromZ` -> `ToLayer`/`ToX`/`ToZ`). A two-way stair is
 modeled as two links, one per direction. `NavSpace.Single(grid)` wraps a single layer with no links.
 Every link endpoint is bounds-checked against its layer at construction, else `ArgumentException`.
+The constructor copies the layer and link containers and exposes `Layers` and `Links` through read-only
+views. Later changes to the supplied arrays or lists cannot change the validated space. The immutable
+`NavGrid` instances are shared without copying their baked grids.
 
 Each link carries a `NavLink.Kind` discriminator (`NavLinkKind`, `init`, default `Stair`). A `Stair`
 link is crossed by ordinary ground steering, the follower needs no special state. A `Hop` link is a

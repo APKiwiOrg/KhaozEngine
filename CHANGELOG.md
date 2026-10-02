@@ -25,6 +25,14 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Persisted built-in payloads keep their generation-12 layout. The explicit generation-13 movement payload remains
   56 bytes, the owner timer frame remains 8 bytes, and restoring a generation-12 body updates the header without
   changing body bytes, commitments or opaque extension frames.
+- Round 2 B adds `NavLayerBaker.BakeGroundedLayered` with finite checked dimensions and a pre-allocation
+  `maxLayerCells` budget, plus Stair-only `NavLayerLinks.GenerateGrounded`. `NavTraversalGraph` and its guarded
+  planner constructor own copied directed masks and an accepted link subset, use raw radius-zero checks, require
+  the exact profile radius, and return cell-centre routes without smoothing. `NavGoalRegion` and
+  `IRegionPathPlanner` search actual surface-feet members with safe or zero priority and finite-safe partial
+  progress. The additive region follower tick uses actual membership, retains final Complete waypoints, and
+  returns `WaitingForPath` with zero motion while an exhausted Partial corridor waits for its cooldown. Legacy
+  point clearance, smoothing, hop baking, and unlimited layered extraction remain unchanged.
 
 ## 20.17.0
 

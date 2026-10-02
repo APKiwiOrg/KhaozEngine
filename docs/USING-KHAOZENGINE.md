@@ -7286,11 +7286,44 @@ back the way the single-layer bakes do (their own v1 conservatism above).
 See the `KhaozEngine.Navigation` package README for `INavColumnProvider`'s full contract, the region/layer
 assignment rules, and `NavLayerLinks`.
 
+### Bake a grounded layered route
+
+Use `NavLayerBaker.BakeGroundedLayered(INavColumnProvider columns, float minX, float minZ, float maxX,
+float maxZ, float cellSize, float stepHeight, float agentHeight, int maxSurfacesPerColumn = 4,
+Func<float, float, bool>? extraBlocked = null, int maxLayerCells = int.MaxValue)` when the layered bake
+must produce walked seams only. It shares column capture, headroom filtering, and layer extraction with
+`BakeOverworldLayered`, then calls `NavLayerLinks.GenerateGrounded(layers, stepHeight)` and emits only
+`NavLinkKind.Stair` links. It has no jump-height or hop-cost parameter. Bounds and sizes are finite, grid
+dimensions are checked, and the total layer-cell budget is enforced before dense fields or grids are
+allocated. An empty world returns one blocked layer that counts against `maxLayerCells`.
+
+The existing `BakeOverworldLayered` keeps its hop generation. The old `BakeOverworld`,
+`BakeOverworldSteps`, `BakeOverworldHops`, and unlimited legacy extraction path remain unchanged.
+
+### Guard a traversal graph
+
+`NavTraversalLayer(int width, int height, ReadOnlySpan<bool> acceptedNodes, ReadOnlySpan<byte> exits)` copies
+row-major masks. Exit bits 0 through 7 are directed and match `(1,0)`, `(-1,0)`, `(0,1)`, `(0,-1)`,
+`(1,1)`, `(1,-1)`, `(-1,1)`, and `(-1,-1)`. `NavTraversalGraph(NavSpace space, float agentRadius,
+float agentHeight, IReadOnlyList<NavTraversalLayer> layers, IReadOnlyList<NavLink> links)` copies masks,
+source topology, and the accepted read-only link subset, then validates matching dimensions, exits,
+accepted endpoints, and source links. Its `Space`, `Layers`, and `Links` getters expose those owned
+snapshots, while `AgentRadius`, `AgentHeight`, `IsNodePassable`, and `CanTraverse` expose the profile
+contract. Both query methods return false outside bounds.
+
+Pass the graph to `GridPathPlanner(NavSpace space, NavTraversalGraph traversal, float hopCostCells = 4f)`.
+The supplied space must match the graph's source topology exactly, and each query radius must equal
+`traversal.AgentRadius`. Guarded queries use raw grid passability at radius zero plus the graph's directed
+edges and accepted links. A positive `SnapRadius` cannot replace a rejected own cell. Guarded routes use
+cell-centre goals and preserve every accepted edge and link endpoint. They do not use line-of-sight
+shortcuts or string pulling. Legacy point queries keep radius-aware clearance, endpoint ring snapping,
+smoothing, and their existing arithmetic.
+
 ### Plan a route
 
-`GridPathPlanner` is the shipped `IPathPlanner`: a same-layer line-of-sight fast path, otherwise an
-8-connected A* search with corner-cut prevention and string-pulled waypoints, crossing layers over
-`NavSpace.Links` where present:
+`GridPathPlanner` is the shipped `IPathPlanner`: the legacy point query uses a same-layer line-of-sight
+fast path, otherwise an 8-connected A* search with corner-cut prevention and string-pulled waypoints,
+crossing layers over `NavSpace.Links` where present:
 
 ```csharp
 var planner = new GridPathPlanner(space);
@@ -7298,6 +7331,20 @@ NavPath path = planner.FindPath(start, goal, agentRadius: 0.4f);   // PathQueryB
 // path.Status: Complete (reached the goal), Partial (ran out of budget, waypoints reach as far as it got),
 // or Unreachable (no route, or an endpoint failed to snap onto a passable cell within SnapRadius)
 ```
+
+For a bounded goal region, construct `NavGoalRegion(Vector3 anchor, float horizontalExtent,
+Func<Vector3, bool> contains)` and call the additive `IRegionPathPlanner.FindPath(Vector3 start,
+NavGoalRegion goal, float agentRadius, PathQueryBudget budget)`. The predicate is pure for the query and
+receives actual cell-centre feet positions. The anchor and extent are a conservative XZ AABB for member
+discovery. There is no anchor substitution or target-Y guess, and heightless grids fail. A Complete route
+ends in `Contains`, while region routes retain every validated cell edge and link endpoint without
+shortcuts or string pulling.
+
+Region discovery scans the full admitted topology before expansion. Search priority is a safe spatial lower
+bound or zero when a cross-layer link or a cheap same-layer link makes that bound uncertain. Separate
+finite-safe progress compares actual admitted members. Work is `O(N + E*M)` and storage is `O(N + M)`.
+The AABB reduces exact predicate calls, not `M` for valid predicates. `MaxExpandedNodes` bounds expanded
+nodes only, so it does not bound topology discovery or all query work.
 
 ### Follow it every tick
 
@@ -7310,6 +7357,14 @@ Hand it the `NavSpace` too on a multi-layer world. That third argument is what l
 compare the layer a waypoint carries against the agent's own (`NavSpace.LayerAt`). Without it the advance is
 XZ-only, and a stair link's upper waypoint sits about one cell from its lower partner in XZ, inside
 `AcceptRadius`, so the follower consumes it while the agent is still a floor below and skips the climb.
+
+The additive region overload is `Tick(Vector3 feetPosition, NavGoalRegion goal, float agentRadius, float dt)`.
+It requires an `IRegionPathPlanner` and throws `NotSupportedException` for a point-only planner. Region
+arrival uses `goal.Contains(feetPosition)` on the body's actual feet position. The final Complete waypoint
+stays active until membership, regardless of `AcceptRadius`. Intermediate waypoints keep the configured
+radius and layer checks. Call `Reset` when the predicate, region shape, traversal profile, or target
+identity changes, or after a teleport or caller cancellation. Switching between point and region overloads
+clears the old route and cooldown.
 
 ```csharp
 var follower = new PathFollower(planner, config: null, space: space);   // one per agent, PathFollowConfig.Default
@@ -7335,9 +7390,9 @@ else if (output.State == PathFollowState.Hopping)
     float toY = layer.SurfaceHeightAt(tx, tz) ?? terrain.GroundHeight(to.X, to.Y);
     agent = PlayLunge(agent, from, fromY, to, toY, dt);   // game-owned jump motion + animation
 }
-// Arrived: agent.Position is within AcceptRadius of the goal in XZ and within VerticalAcceptTolerance
+// Point Arrived: agent.Position is within AcceptRadius of the goal in XZ and within VerticalAcceptTolerance
 // of it in Y, output.WorldDir is zero.
-// Unreachable: the planner found no route. The follower keeps retrying on the cooldown in case the world changes.
+// Region Arrived: goal.Contains(agent.Position) is true. Unreachable: the planner found no usable route.
 ```
 
 The follower owns no hop timer: it re-emits `Hopping` every tick until the agent actually reaches the
@@ -7346,6 +7401,15 @@ landing (within `AcceptRadius`), then resumes `Following` (or `Arrived` when the
 `output.WorldDir` is the raw follow direction only. A dynamic-avoidance pass (steering around other agents
 or a late-appearing obstacle) is expected to run after the follower and before `StepTowards`, adjusting
 `WorldDir` without touching the follower's own path state.
+
+Point following keeps its existing `NavPathStatus.Partial` behavior and one-tick raw-goal steer. A region
+Partial corridor that is exhausted while the cooldown is positive returns `PathFollowState.WaitingForPath`
+with zero direction. A fresh exhausted Partial with zero cooldown returns `Unreachable` with zero direction
+and retries on the next tick. Existing region corridors advance before query eligibility, so an eligible
+partial refresh can happen on the same tick that the cooldown reaches zero. A reached Complete endpoint
+outside membership makes replanning due even when anchor drift is within tolerance. Each tick issues at
+most one query. `WaitingForPath` is appended after existing enum members, and point following never returns
+it. Shared configuration, cooldown, drift, layer, and Hop behavior remain in force.
 
 ### Read the committed corridor (debug overlays, logging)
 
@@ -7370,11 +7434,11 @@ that cannot be downcast to mutable storage (guaranteed by the `NavPath` construc
 read-only view with no path back into follower state. `ActiveWaypointIndex` (`int`) is the waypoint the
 follower is currently steering toward. Both are allocation-free getters over existing state, so `Tick` is
 untouched and there is zero cost when unused. `ActivePath` is `null` when the follower is following no
-corridor: before the first `Tick`, after `Reset`, once `Arrived`, while `Unreachable`, and for the single
-gap tick after a fully consumed `NavPathStatus.Partial` path, where the follower clears the exhausted path
-and steers straight at the raw goal (still `Following`) until the next replan picks up a fresh route. While
-a replan is due but still gated by `ReplanCooldownSeconds`, it stays the previously committed path, so you
-always read the route the agent is steering on, never a mid-cooldown re-plan. When non-null it always
+corridor: before the first `Tick`, after `Reset`, once `Arrived`, while `Unreachable`, and while an
+exhausted region `NavPathStatus.Partial` is waiting for its cooldown or has just returned zero
+`Unreachable`. Its `ActiveWaypointIndex` is zero in those states. The point overload keeps its one-tick
+raw-goal steer after partial exhaustion. While a replan is due but still gated by `ReplanCooldownSeconds`,
+an existing path stays committed, so you always read the route the agent is steering on. When non-null it
 carries at least one waypoint and `ActiveWaypointIndex` is a valid index into its `Waypoints`.
 
 ### Budget knobs

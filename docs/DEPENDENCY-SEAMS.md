@@ -603,13 +603,20 @@ KhaozEngine.Dungeon -> KhaozEngine.Navigation       (DungeonNav.Bake turns a Dun
 KhaozEngine.Foundation -> KhaozEngine.Navigation    (umbrella ProjectReference, like every other Foundation package)
 ```
 
+The Navigation project references remain exactly `KhaozEngine.Primitives`, `KhaozEngine.Collision`, and
+`KhaozEngine.Terrain`. The grounded layered bake, immutable traversal graph, goal-region planner, and
+region follower add no project reference. Navigation has no edge to `KhaozEngine.Physics` or
+`KhaozEngine.Locomotion`: games provide surface and column probes through `INavSurfaceProvider` or
+`INavColumnProvider`, and consume raw follower output from their movement layer.
+
 `IPathPlanner` (`FindPath(start, goal, agentRadius, budget) -> NavPath`) is the seam callers code against.
 `GridPathPlanner` is the one shipped implementation, grid A* over a `NavSpace`. Unlike the seams in the table
 above, there is no third-party library on the other side of this one: the point of the interface is not
 containment but swappability of the *algorithm* itself, so a future planner (a navmesh, a flow field, a
 hierarchical search) can replace or sit alongside `GridPathPlanner` without touching `PathFollower` or any
-other call site. `PathFollower` and `PathPlannerExtensions.FindPath` (the default-budget convenience
-overload) depend on the interface only, never on `GridPathPlanner` directly.
+other call site. `IRegionPathPlanner` extends the seam with the pure `NavGoalRegion` feet contract.
+`PathFollower` and `PathPlannerExtensions.FindPath` (the default-budget convenience overload) depend on
+the planner interfaces only, never on `GridPathPlanner` directly.
 
 `Dungeon -> Navigation` is a forward edge onto a package that itself sits earlier in the dependency graph:
 `Navigation` depends only on `Primitives`/`Collision`/`Terrain`, all of which `Dungeon` already reached

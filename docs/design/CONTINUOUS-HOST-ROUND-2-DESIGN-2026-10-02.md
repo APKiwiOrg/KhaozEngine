@@ -1,7 +1,8 @@
 # Continuous host, round 2: movement, reach and physics navigation
 
 Status: approved by the owner on 2026-10-02. Plan A is complete and verified at staged 20.18.0 with wire generation 13.
-The owner released the P3 build slot and authorized Plan A execution. Plans B, C and D have not started.
+Plan B code is implemented and task-reviewed at staged 20.18.0. Its full branch verification remains pending.
+The owner authorized the whole round program. Plans C and D remain pending.
 Engine tagging and consumer adoption remain pending.
 
 Consumer: Grimhollow continuous movement phase P4, before P5 NPCs and interactions and P6 combat.
@@ -527,9 +528,17 @@ rules and server tolerance in the game. Report those integration inputs on epic 
 ## Review state
 
 - The design is approved and four implementation plans are written. Plan A is complete and verified at staged
-  20.18.0 with wire generation 13. Plans B, C and D are not started. Engine tagging and consumer adoption remain pending.
+  20.18.0 with wire generation 13. Plan B code is complete and its scoped task reviews are approved, with
+  full branch verification pending. Plans C and D are pending. The owner authorized the whole round program.
+  Engine tagging and consumer adoption remain pending.
 - D2 and the technical decisions are settled by written-design approval.
 - Plan A focused evidence is 28, 99, and 6 focused plus 10 adjacent passing cases, with 76 game and 52 server cases
   for the final helper fix. Final full Release verification built with zero warnings and ran 28 test assemblies with
   23,042 passed, 0 failed and 1,269 skipped. Final whole-branch review and scoped fix review are approved.
 - The owner released Grimhollow P3's build slot and authorized Plan A execution. One building worker runs at a time.
+- Plan B focused evidence is 107 grounded-bake cases, 120 traversal and legacy planner cases, 69 region and
+  planner cases, and 63 region and legacy follower cases. The Task 4 RED briefly overlapped an unrelated
+  Grimhollow build before the result was inspected. No external process was touched. The controller then
+  cleared the focused GREEN separately, with 63 passed and zero failures. Branch full Release verification
+  later built with zero warnings and ran 28 assemblies with 23,208 passed, 0 failed, 1,275 skipped, and
+  24,483 total cases. Whole-branch review, final guards, integration, and packaging remain pending.

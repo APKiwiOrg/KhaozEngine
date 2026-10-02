@@ -62,6 +62,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `FollowCamera3DPresets.CreateMouseLook` adds opt-in below-horizon pitch, a raised pivot and ground-aware boom
   settings. Room3D uses the preset with a capsule-centre pivot correction, while constructor defaults stay unchanged
   ([#1230](https://github.com/APKiwiOrg/KhaozEngine/issues/1230)).
+- `Scene3DBinder.Submit(world, scene)` reuses a cached per-scene callback and pooled ECS queries, removing warmed
+  per-call allocation while preserving draw descriptors and routing. Cold setup and pool exhaustion can allocate
+  ([#1214](https://github.com/APKiwiOrg/KhaozEngine/issues/1214)).
 
 ## 20.17.0
 

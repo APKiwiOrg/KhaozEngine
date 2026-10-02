@@ -3837,6 +3837,13 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
 `Rotation` as identity, and a zero `MeshInstance.Tint` as white. The delegate overloads
 `Submit(world, draw)` are the pure cores for a headless test with a recording delegate.
 
+The scene overload caches its callback under a weak scene key and uses the world's existing pooled query.
+Once that callback, query buffers and draw queues are warmed, ordinary stable `Submit(world, scene)` calls
+allocate no bytes while a query is available from the pool. Cold setup, capacity growth and nesting that exhausts
+the query pool can allocate. The allocation guarantee covers this warmed Submit call. Whole-frame and native
+backend costs are outside it. The cache retains no world and does not extend an otherwise unused scene's lifetime. Scene ownership
+and disposal remain caller-owned. Delegate overloads retain their existing query and callback behavior.
+
 `Submit(world, scene)` keys each draw with `Scene3DBinder.MotionKeyOf(entity)`, derived from the entity's id and
 version. The key holds for the entity's life, and a recycled id carries a new version, so it becomes a new key with
 no previous state. `Submit(world, Action<RigidInstanceDraw>)` is the keyed pure core. Each descriptor it hands over

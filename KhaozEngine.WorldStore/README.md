@@ -38,6 +38,16 @@ periodic dirty snapshots, per-key ordering, guest policy, validation quarantine,
   after authentication and before spawn. The core then uses that immutable key for load, save, prewarm, hints,
   quarantine, and in-flight ordering while retaining the authenticated account ID for stale-session checks.
 
+Optional `PersistenceCoreConfig.LoadFallback` is a `PersistenceFallbackLoad` returning `Task<byte[]?>` in the
+primary record format. It runs only after a successful primary read returns null, never for corrupt or invalid
+primary records or read failures. Null preserves spawn-on-miss behavior. `PersistenceLoadRequest` captures the
+original `Slot`, `AuthenticatedAccountId`, bound `PersistenceKey` and full primary `StoreKey` on the host thread.
+The hook may continue off that thread and must use captured identities rather than live slot state. Converted
+bytes follow normal decoding, session and seat guards, validation, quarantine, host-thread application and hints.
+An accepted fallback stays dirty until its first successful primary save, including an unchanged leave or periodic
+pass. Exceptions surface through `OnStoreError` and retain the load guard. Guests and boot hint prewarming never
+invoke the hook. Legacy data is neither deleted nor retired by this seam.
+
 `PrewarmHintsAsync(max = 0, ct)` fills the bounded rejoin hints at boot when the store implements
 `IEnumerableWorldStore`. It decodes and validates each record before using its position, skips guests and quarantine
 copies, and returns the number of seeded accounts. Call it on the server thread before polling starts because

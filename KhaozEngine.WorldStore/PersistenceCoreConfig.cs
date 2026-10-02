@@ -16,6 +16,11 @@ public sealed record PersistenceCoreConfig
     /// <summary>Optional authenticated-session durable-key resolver. Null keeps the verified account id as the key.</summary>
     public PersistenceKeyResolver? PersistenceKeyResolver { get; init; }
 
+    /// <summary>Optional legacy load for a missing primary record. Null preserves the spawn-on-miss behavior.
+    /// Only a successful primary read returning null invokes it. Accepted fallback bytes stay dirty for the first
+    /// primary save. Guests and boot hint prewarming never invoke it.</summary>
+    public PersistenceFallbackLoad? LoadFallback { get; init; }
+
     /// <summary>How often the periodic snapshot saves dirty players, seconds. A crash loses at most this much.</summary>
     public float SaveIntervalSeconds { get; init; } = 30f;
 

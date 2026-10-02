@@ -17,12 +17,14 @@ namespace KhaozEngine.Locomotion;
 public static partial class CharacterMovement
 {
     /// <summary>Resolve a camera-relative <see cref="MoveCommand"/> into the unit world-space move direction (XZ) and
-    /// a speed fraction the shared core consumes. The player always moves at full speed (the axis is normalized), so
+    /// a speed fraction the shared core consumes. Legacy commands move at full speed (the axis is normalized), so
     /// the fraction is exactly 1 when there is input and 0 when idle - preserving the pre-refactor behaviour
     /// bit-for-bit (the same <see cref="Vector3.Normalize(Vector3)"/> over the same camera basis, gated by the same
-    /// 1e-6 length-squared threshold).</summary>
+    /// 1e-6 length-squared threshold). <see cref="MoveCommand.ScaleSpeedByAxis"/> opts into precise input.</summary>
     private static (Vector2 dir, float fraction) ResolveCameraRelative(in MoveCommand cmd)
     {
+        if (cmd.ScaleSpeedByAxis) return ResolvePreciseCameraRelative(cmd);
+
         float sY = MathF.Sin(cmd.CameraYaw), cY = MathF.Cos(cmd.CameraYaw);
         Vector3 forward = new(-sY, 0f, -cY);
         Vector3 right = new(cY, 0f, -sY);
@@ -38,10 +40,12 @@ public static partial class CharacterMovement
     /// <summary>Resolve a world-space steering direction into the unit move direction (XZ) and a speed fraction: the
     /// vector's length scales speed in [0,1] (unit = full speed, shorter = slower, longer clamped to 1), and a
     /// length below the same 1e-6 length-squared dead-zone the player path uses is treated as idle. This is the only
-    /// difference between the AI and player entry points - once resolved, both drive the identical
-    /// <c>StepCore</c>.</summary>
-    private static (Vector2 dir, float fraction) ResolveWorldDir(Vector2 worldDir)
+    /// difference between the legacy AI and player entry points. Precise input preserves smaller magnitudes.
+    /// Once resolved, both drive the identical <c>StepCore</c>.</summary>
+    private static (Vector2 dir, float fraction) ResolveWorldDir(Vector2 worldDir, bool preserveSmallMagnitude)
     {
+        if (preserveSmallMagnitude) return ResolvePreciseDirection(worldDir);
+
         float lenSq = worldDir.LengthSquared();
         if (lenSq > 1e-6f)
         {

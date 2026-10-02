@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.Navigation;
 /// <summary>
 /// The feature-level acceptance bar: the "wolf behind the rock" scenario, end to end. A
 /// <see cref="PathFollower"/> planning over a real <see cref="NavGrid"/> feeds its per-tick
-/// <see cref="PathFollowOutput.WorldDir"/> into the REAL <see cref="CharacterMovement.StepTowards"/>,
+/// <see cref="PathFollowOutput.WorldDir"/> into the REAL <see cref="CharacterMovement.StepTowards(in MoveState, Vector2, bool, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/>,
 /// resolved against a REAL <see cref="BepuPhysicsWorld"/> holding a rock cylinder between the agent and
 /// its goal. Straight-line steering pins the agent on the rock (the control below), so the whole
 /// navigation stack (grid bake, clearance, A*, follower) has to earn the detour that gets it around.

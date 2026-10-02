@@ -10,7 +10,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Locomotion;
 
 /// <summary>
-/// The kinematic AI movement seam: <see cref="CharacterMovement.StepTowards"/> drives a server-authoritative NPC
+/// The kinematic AI movement seam: <see cref="CharacterMovement.StepTowards(in MoveState, Vector2, bool, float, Func{float, float, float}, in MoveTuning, Func{float, float, Vector3}?, IPhysicsWorld?, Func{float, float, Vector2}?, Func{float, float, float, MovementMedium}?)"/> drives a server-authoritative NPC
 /// through the SAME collision resolution as the player (swept collide-and-slide against an
 /// <see cref="IPhysicsWorld"/>, the terrain support floor, the groundNormal wall slide, and the clampXz bounds),
 /// but from a WORLD-SPACE steering direction rather than a camera-relative <see cref="MoveCommand"/>. The parity

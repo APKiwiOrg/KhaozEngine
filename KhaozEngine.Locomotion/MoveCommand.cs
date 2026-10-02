@@ -14,12 +14,19 @@ namespace KhaozEngine.Locomotion;
 public readonly struct MoveCommand
 {
     public MoveCommand(Vector2 move, bool run, float cameraYaw, bool jump = false, bool faceCamera = false)
+        : this(move, run, cameraYaw, jump, faceCamera, scaleSpeedByAxis: false)
+    {
+    }
+
+    /// <summary>Create movement intent with an explicit choice to preserve the input axis's speed fraction.</summary>
+    public MoveCommand(Vector2 move, bool run, float cameraYaw, bool jump, bool faceCamera, bool scaleSpeedByAxis)
     {
         Move = move;
         Run = run;
         CameraYaw = cameraYaw;
         Jump = jump;
         FaceCamera = faceCamera;
+        ScaleSpeedByAxis = scaleSpeedByAxis;
     }
 
     /// <summary>Camera-relative input axis: X = right/strafe, Y = forward (each nominally in [-1,1]).</summary>
@@ -50,6 +57,10 @@ public readonly struct MoveCommand
     /// behaviour exactly: the character faces the direction it is commanded to travel, and holds its heading when
     /// idle. It rides bit 1 of the move frame's flags byte, which was the bare run bool through wire generation 9.</para></summary>
     public bool FaceCamera { get; }
+
+    /// <summary>True to scale speed by the axis length clamped to 1, preserving nonzero input below the legacy
+    /// dead zone. False preserves full-speed normalized input. Zero or non-finite precise input stays idle.</summary>
+    public bool ScaleSpeedByAxis { get; }
 
     /// <summary>A no-input command (zero move).</summary>
     public static MoveCommand Idle => default;

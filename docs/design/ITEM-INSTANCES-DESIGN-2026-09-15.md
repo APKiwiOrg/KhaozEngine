@@ -3431,11 +3431,11 @@ what 9.2's revised table shape did to it.
 | 2 | Bytes per rare item, slot entry | at most 96 | the same, through 4.4 | **69 bytes, MEETS** |
 | 3 | Page commit size, 100 rares | at most 8 KB | encode a full page, count bytes | **6,908 bytes, MEETS** |
 | 4 | Write volume, 20 crafts in one held action | at most 20 KB and 1 commit | `--items` bench, sum `JournalCommit.OwnedByteCount` | **9,519 bytes in 1 commit, MEETS** |
-| 5 | Rare generation time | under 20 microseconds per item | `--items` bench, 1M generations, report p50 and p99 | **p50 1.9, p99 5.8 microseconds, MEETS** |
+| 5 | Rare generation time | under 20 microseconds per item | `--items` bench, 1M generations, report p50 and p99 | **p50 2.667, p99 7.416 microseconds, MEETS** |
 | 6 | Stat evaluation per attack | under 2 microseconds, 0 bytes allocated | evaluate one stat over 11 worn items with 6 affixes each | **444 ns, 0 bytes, MEETS** |
 | 7 | Container page sync size, cold open | at most 8 KB and 8 frames per page | encode and fragment a full page (7.5) | **6,943 bytes in 7 frames, MEETS** |
 | 8 | Steady-state sync after one craft | 1 frame, at most 96 bytes | the delta of 7.5 | **73 bytes in 1 frame, MEETS** |
-| 9 | Generator table build at 2,000 mods | under 500 ms, under 40 MB resident | build the 9.2 tables from a synthetic pack | **266 ms, 24.1 MB, MEETS** |
+| 9 | Generator table build at 2,000 mods | under 500 ms, under 40 MB resident | build the 9.2 tables from a synthetic pack | **395.8 ms, 14.0 MiB resident, MEETS** |
 | 10 | Container load, 10 pages with a full remap pass | under 5 ms, under 200 KB allocated | `Load` over 10 pages and 200 rules | **0.27 ms, 0 bytes, MEETS** |
 | 11 | Ground instance bytes per viewer per second | at most 8 KB per second per viewer at 28 ground instances in interest | public view bytes times instances in interest divided by `TickSeconds` (7.4) | **6,720 bytes per second, MEETS** |
 | 12 | Resident page bytes at 1,000 logged-in players | under 250 MB | sum the decoded page bytes plus the admitted layer's two dictionaries, at a 1,000 stack bank each | **103.0 MB, MEETS** |
@@ -3452,18 +3452,20 @@ Where each number comes from, because a target with no derivation is a guess in 
   a craft that consumes a currency from a second page writes both, at `13.8 + 2.5 = 16.3` KB. An earlier
   draft targeted 16 KB off an 8.6 KB derivation that used the `item-generated` event size, which would
   have made the two-page case a failing budget for the wrong reason.
-- **5** is twenty draws and, since the 9.2 revision, no pass over the candidate array at all: opening the
-  pool is eight scalar reads and a pick is a walk of at most four tag positions, a walk of the dead
-  entries behind the draw and a binary search. The 20 microseconds was set when the answer was expected
-  to be about allocation and a memo. It is now about neither, because there is no memo and the only
-  allocation is the payload.
+- **5** follows 9.3's logical draw schedule and 9.4's pool work: opening the pool is eight scalar reads,
+  and a pick walks tag positions and dead entries behind the draw before a binary search, with no pass
+  over the whole candidate array. The committed full-mode seed 915 baseline in
+  `KhaozEngine.Benchmarks/Baselines/items-sqlite-v1-seed915.json` records 857.7 allocated bytes per
+  generation, including per-field payload-builder allocation. It predates the reusable builder, whose
+  warmed generation allocates only the final payload array. The saved baseline has not been remeasured.
 - **6** is the one that must be checked hardest. Eleven worn items times up to thirteen lines each is about
   140 lines, folded through 11.6's eight steps. Two microseconds is generous, and zero allocation is the
   binding half: an evaluation that allocates per attack is an evaluation that runs per attack.
-- **9** is 9.2's two build passes: 1.5 million table entries at 8 bytes is 11.8 MB, the overlap pass adds
-  5.2 MB and is one merge per (signature, kind, band) over 20.4 million source entries, and the budget
-  adds the build's transient arrays on top. The overlap pass is where budget 5's old per roll merge
-  went, which is why this budget grew by an order of magnitude and budget 5 fell by a factor of 25.
+- **9** is the shipped `ModCandidateTables` build over 1,431,518 tag-kind-band entries and 300 distinct
+  tag signatures in the same committed baseline. A (tier, tag) pair is one `mod_tier_weight` row,
+  whereas the spike's flat array could count a repeated pair twice. The build records 395.8 ms and
+  14,658,536 resident bytes, or 14.0 MiB, against the unchanged 500 ms and 40 MB targets. Resident bytes
+  are the measured resident-memory delta, distinct from the table's self-reported array bytes.
 - **10** is 5.5's one pass over 10 pages with 200 rules, each rule a no-op on a page holding no reference.
 - **11** is the one the design introduces rather than inherits, and it is the cost of the tile serve being
   full state (7.4). A rare's PUBLIC view is its 58 byte payload less the four bytes of `OwnerOnly`

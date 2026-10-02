@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- EXECUTION STATUS. The owner released the P3 build slot and authorized Plan A execution. Tasks 1 to 3 and Task 4's documentation/version work are implemented. Earlier full Release verification passed with 23,014 passed, 0 failed and 1,269 skipped across 28 assemblies. Final precise-intent helper re-verification remains pending with the controller.
+- EXECUTION STATUS. All four tasks and the final helper correction are implemented, reviewed and verified. Final Release build has zero warnings/errors. Full suite is 23,042 passed, 0 failed, 1,269 skipped across 28 assemblies. The owner released the P3 build slot and authorized Plan A execution. Version 20.18.0 is staged, not tagged.
 - Execution worktree `/Users/antonio/KhaozEngine/.worktrees/round2-command-fraction`, branch `feature/round2-command-fraction`. Read AGENTS.md, contributor rules and the approved design. Fetch and reconcile engine main before creating it. Preserve unrelated work.
 - Version authority is the integration owner. At authoring, main and v20.17.0 are `e585b8a01`. A opens 20.18.0 if free, or rides an appropriate staged 20.x version selected by that owner. Select once, update all four plans if the selection changes. Workers do not bump independently. B, C and D ride it.
 - Keep the old MoveCommand constructor and StepTowards signature, legacy resolver arithmetic, command length and unflagged bytes. No new movement component, timestep field or persistence payload.
@@ -132,23 +132,23 @@
   bash scripts/check-doc-versions.sh
   ```
   Expected zero warnings, zero failures and every guard passing. Inspect exit codes and nonzero test counts. Report a flake with its issue, never loop. Obtain whole-branch review and record Outcome before landing.
-- [ ] **Step 3: Commit the documentation and Outcome.** Subject `release(20.18.0): open the movement kernel round`. The integration owner merges and pushes main. Pack only after slot authorization and the pushed commit is on main. No tag. B, C and D consume this Outcome and ride the selected version.
+- [x] **Step 3: Commit the documentation and Outcome.** Subject `release(20.18.0): open the movement kernel round`. The integration owner merges and pushes main. Pack only after slot authorization and the pushed commit is on main. No tag. B, C and D consume this Outcome and ride the selected version.
 
 ## Outcome
 
-Tasks 1 to 3 are implemented and reviewed on `feature/round2-command-fraction`. The integration owner selected
+All four tasks are implemented, reviewed and verified on `feature/round2-command-fraction`. The integration owner selected
 20.18.0 after reconciling current `main` and tags. This branch advances `MoveProtocol.WireProtocolVersion` from 12 to
 13 while retaining the exact 18-byte move frame and the generation-12 persisted payload layout. Task 4 documents the
 two opt-ins, the preserved defaults, the flags mapping, the automatic generation gate and the unchanged persisted
-payloads. The round design and index now record Plan A as implemented on this task branch, with Plans B, C and D not
+payloads. The round design and index now record Plan A as complete, with Plans B, C and D not
 started and no release or consumer adoption.
 
 Focused evidence is Task 1: 28 passed, Task 2: 99 passed, and Task 3: 6 focused plus 10 adjacent passed. The
-controller's full Release verification then completed with a zero-warning solution build and 28 test assemblies,
-23,014 passed, 0 failed, 1,269 skipped, 24,283 total. The owner released the P3 build slot and authorized Plan A
-execution. That full run predates the final precise-intent helper fix, whose fresh full verification and scoped
-re-review remain pending with the controller. Integration, push, packing, engine tagging, Plans B/C/D and consumer
-adoption remain pending.
+controller's final full Release verification completed after the helper fix with a zero-warning/error solution build
+and 28 test assemblies, 23,042 passed, 0 failed, 1,269 skipped, 24,311 total. The owner released the P3 build slot and
+authorized Plan A execution. Final whole-branch review and the one scoped fix review approved the implementation.
+Integration follows the normal main merge, push and local-feed pack ritual. No engine tag or consumer adoption is
+authorized by this plan. B/C/D ride staged 20.18.0.
 
 Two execution rulings are carried forward. Task 1 followed the named test cases rather than the erroneous prose count
 of five in the two review-focus rows. The binding behavior and coverage remained unchanged, and the cost of choosing
@@ -179,5 +179,5 @@ intent resolves the shared fraction and effective pace. The reason is to avoid m
 fix. The additional cost is two narrow reference qualifications, with historical momentum facts preserved.
 
 Final helper-fix evidence is 28 new intent cases with 14 expected failures before the fix, followed by 76 passing
-game cases and 52 passing host intent/anomaly cases. Both focused Release commands exited 0 after the fix. Fresh full
-verification remains with the controller and is not inferred from these focused runs.
+game cases and 52 passing host intent/anomaly cases. Both focused Release commands exited 0 after the fix. The
+controller then ran the fresh full Release build and suite above. No full-suite result is inferred from focused tests.

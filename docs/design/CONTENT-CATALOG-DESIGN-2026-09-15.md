@@ -1723,6 +1723,19 @@ Every `Add` edit in the frozen change set needs an id, and so does every `Fork`,
 copy. Allocation runs before validation deliberately, because several checks (`KEC0006` reference resolution,
 `KEC0010` family membership) need the ids the new rows will carry.
 
+**A bundle import seeds the high-water marks BEFORE publish allocates any unnamed row.** After restoring
+the families, raise each type's `reserved_through` and `issued_through` to the greater of its current value,
+the largest carried id of that type and the highest inclusive id of its restored family blocks
+(`TopExclusive - 1`). Examine the whole bundle before starting the allocating branches, regardless of row
+order. This keeps the plain counter above both carried ids and reserved blocks. Family allocation still
+uses the restored family's own blocks through branch 2.
+
+Without this preparation, a bundle carrying id 1 and an unnamed row of the same type can allocate id 1 to
+both, and `KEC0036` refuses the import. Seeding first makes the unnamed plain row take id 2 or higher.
+Seeding the block tops also prevents a plain row from landing inside a restored family block and failing
+`KEC0037`. An import with neither carried ids nor restored blocks raises nothing here. The ordinary publish
+can reapply the carried-id seed after allocation, but that does not replace this preparation.
+
 For each `Add`, in edit ordinal order:
 
 1. If the edit already CARRIES an id, meaning its `definition_id` is non-zero, keep it and allocate nothing.
@@ -1734,12 +1747,6 @@ Both allocating branches go through the reserve-before-issue rule, so the reserv
 before the id appears anywhere. **An allocation that fails aborts the publish with nothing written**, because
 no durable row carries the id yet. A reservation that COMMITTED and then aborted leaves a gap of
 reserved-but-unissued ids, which is the safe direction and costs nothing (section 4.7).
-
-**After every `Add` has an id, the high-water marks are SEEDED from the ids that were carried.** For each type
-with at least one carried id, `reserved_through` and `issued_through` move to the greater of their current
-value and the largest carried id of that type. Without it the first ordinary `Add` after an import allocates
-id 1 straight onto an imported row. The step is a no-op for an ordinary publish, because nothing carries an id
-there.
 
 **So there is ONE path with two id sources, and which one runs is a property of the EDIT rather than of the
 caller.** An `Add` with `definition_id = 0` is allocated one, an `Add` with a non-zero `definition_id` keeps

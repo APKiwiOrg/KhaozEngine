@@ -111,6 +111,29 @@ public class TransportPayloadLimitTests
         Assert.Empty(clientTransport.Queries);
     }
 
+    [Fact]
+    public void NegativeTransportLimitIsReportedAsUnknown()
+    {
+        var transport = new LimitTransport { Fixed = -5 };
+        var server = new NetServer(transport, maxPlayers: 4, new AllowAllAuthenticator());
+        var peer = new NetConnectionId(5);
+        transport.StageHello(peer);
+        server.Poll();
+
+        var clientTransport = new LimitTransport { Fixed = -5 };
+        var client = new NetClient(clientTransport);
+        clientTransport.Deliver(NetEvent.Connected(peer));
+        client.Poll();
+
+        foreach (NetChannelReliability reliability in Reliabilities)
+        {
+            Assert.Equal(0, server.MaxUnfragmentedPayloadBytes(0, reliability));
+            Assert.Equal(0, client.MaxUnfragmentedPayloadBytes(reliability));
+        }
+        Assert.Equal(2, transport.Queries.Count);         // the transport was asked, and its answer was clamped
+        Assert.Equal(2, clientTransport.Queries.Count);
+    }
+
     static readonly NetChannelReliability[] Reliabilities =
         { NetChannelReliability.UnreliableSequenced, NetChannelReliability.ReliableOrdered };
 
@@ -139,6 +162,9 @@ public class TransportPayloadLimitTests
 
         public List<(NetConnectionId Connection, NetChannelReliability Reliability)> Queries { get; } = new();
 
+        // When set, every query answers this instead of the per-connection limit.
+        public int? Fixed { get; set; }
+
         public static int Limit(NetConnectionId connection, NetChannelReliability reliability) =>
             1000 + connection.Value * 10 + (int)reliability;
 
@@ -154,7 +180,7 @@ public class TransportPayloadLimitTests
         public int MaxUnfragmentedPayloadBytes(NetConnectionId connection, NetChannelReliability reliability)
         {
             Queries.Add((connection, reliability));
-            return Limit(connection, reliability);
+            return Fixed ?? Limit(connection, reliability);
         }
 
         public void Poll() { }

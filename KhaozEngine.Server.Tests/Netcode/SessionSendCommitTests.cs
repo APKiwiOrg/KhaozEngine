@@ -139,6 +139,36 @@ public class SessionSendCommitTests
         Assert.Equal(-1, client.Slot);
     }
 
+    [Fact]
+    public void DisconnectEndsTheSessionLocallyWithoutATransportEvent()
+    {
+        // LoopbackTransport stages the Disconnected for the peer only, so the caller never polls one. The session
+        // must end locally on the call itself.
+        (LoopbackTransport serverEnd, LoopbackTransport clientEnd) = LoopbackTransport.CreatePair();
+        using (serverEnd)
+        using (clientEnd)
+        {
+            var server = new NetServer(serverEnd, maxPlayers: 4, new AllowAllAuthenticator());
+            var client = new NetClient(clientEnd);
+            client.Poll();   // Connected, Hello out
+            server.Poll();   // Hello in, Welcome out
+            client.Poll();   // Welcome in
+            Assert.Equal(0, client.Slot);
+            Assert.True(client.TryDequeueEvent(out ClientSessionEvent joined));
+            Assert.Equal(ClientSessionEventKind.Joined, joined.Kind);
+
+            client.Disconnect();
+
+            Assert.Equal(-1, client.Slot);
+            Assert.False(client.TrySend(Payload, NetChannelReliability.ReliableOrdered));
+            Assert.Equal(0, client.MaxUnfragmentedPayloadBytes(NetChannelReliability.ReliableOrdered));
+
+            client.Poll();
+            Assert.Equal(-1, client.Slot);
+            Assert.False(client.TrySend(Payload, NetChannelReliability.ReliableOrdered));
+        }
+    }
+
     // Records completed sends, counts every call and throws a staged fault from inside Send.
     sealed class CommitTransport : INetTransport
     {

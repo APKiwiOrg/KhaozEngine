@@ -125,19 +125,23 @@ public sealed class NetClient
 
     /// <summary>The transport's unfragmented payload limit toward the server on <paramref name="reliability"/>, as
     /// <see cref="INetTransport.MaxUnfragmentedPayloadBytes"/> answers it for the connection the transport reported.
-    /// The limit counts the session frame byte. Zero means unknown, and is also the answer while there is no server
-    /// connection, in which case the transport is not asked.</summary>
+    /// The limit counts the session frame byte. Zero means unknown. Zero or less from a transport means unknown, and
+    /// this reports 0 for it. Also 0 while there is no server connection, in which case the transport is not
+    /// asked.</summary>
     public int MaxUnfragmentedPayloadBytes(NetChannelReliability reliability) =>
-        serverConnection.IsValid ? transport.MaxUnfragmentedPayloadBytes(serverConnection, reliability) : 0;
+        serverConnection.IsValid ? Math.Max(0, transport.MaxUnfragmentedPayloadBytes(serverConnection, reliability)) : 0;
 
-    /// <summary>Ends the session from this side: asks the transport to disconnect the server connection, then
-    /// forgets that connection at once, so a later <see cref="TrySend"/> answers false and nothing more is aimed at
-    /// it. No-op without a server connection. The transport's own Disconnected event still surfaces through
-    /// <see cref="TryDequeueEvent"/> on a later <see cref="Poll"/>, exactly as for a drop.</summary>
+    /// <summary>Ends the session from this side, LOCALLY and at once: asks the transport to disconnect the server
+    /// connection, forgets that connection so a later <see cref="TrySend"/> answers false and nothing more is aimed
+    /// at it, and resets <see cref="Slot"/> to -1. No-op without a server connection. Whether a Disconnected event
+    /// later surfaces through <see cref="TryDequeueEvent"/> depends on the transport. <see cref="InMemoryTransportHub"/>
+    /// raises one for the caller, <see cref="LoopbackTransport"/> stages it for the peer only, so a caller must not
+    /// wait for one to learn the session ended.</summary>
     public void Disconnect()
     {
         if (!serverConnection.IsValid) return;
         transport.Disconnect(serverConnection);
         serverConnection = NetConnectionId.None;
+        Slot = -1;
     }
 }

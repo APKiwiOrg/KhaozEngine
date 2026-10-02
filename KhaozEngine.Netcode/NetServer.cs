@@ -257,11 +257,12 @@ public sealed class NetServer
 
     /// <summary>The transport's unfragmented payload limit toward <paramref name="slot"/> on
     /// <paramref name="reliability"/>, as <see cref="INetTransport.MaxUnfragmentedPayloadBytes"/> answers it for the
-    /// connection the transport assigned that slot. The limit counts the session frame byte. Zero means unknown, and
-    /// is also the answer for a slot that holds no connection, in which case the transport is not asked.</summary>
+    /// connection the transport assigned that slot. The limit counts the session frame byte. Zero means unknown. Zero
+    /// or less from a transport means unknown, and this reports 0 for it. Also 0 for a slot that holds no connection,
+    /// in which case the transport is not asked.</summary>
     public int MaxUnfragmentedPayloadBytes(int slot, NetChannelReliability reliability) =>
         connectionBySlot.TryGetValue(slot, out NetConnectionId conn)
-            ? transport.MaxUnfragmentedPayloadBytes(conn, reliability)
+            ? Math.Max(0, transport.MaxUnfragmentedPayloadBytes(conn, reliability))
             : 0;
 
     /// <summary>Disconnects one slot's connection (a kick). The transport surfaces the resulting Disconnected event

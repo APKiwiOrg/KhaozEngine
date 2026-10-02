@@ -165,8 +165,9 @@
 ## Outcome
 
 Status: Plan D implementation, scoped reviews, consumer documentation and full Release verification are complete
-on the reconciled 20.18.0 branch. Whole-branch final review, integration to current engine main, push, canonical
-package-feed packing and release remain with the integration owner. No tag or released-pin game adoption is claimed.
+on the reconciled 20.18.0 branch. Whole-branch review approved after one scoped comment and status fix wave.
+Root integrates, pushes and refreshes canonical packages as the normal finish. Only the owner starts a release.
+No tag or released-pin game adoption is claimed.
 
 ### Public API and consumer contract
 
@@ -305,6 +306,8 @@ test command was separately process-gated by root and the worker, with no runtim
 
 Issue 1233 remains an adoption prerequisite for steep meshes and filtered ground. Small local physics coordinates
 or rebasing remain required for physics precision. No full Hollowmere startup guarantee is claimed. Issue 1238 is
-resolved by the concurrent reconciled `PhysicsColumnProbe` progress fix. Whole-branch final review, merge and push
-to main, canonical package-feed packing, engine tagging and released-pin Grimhollow adoption remain pending owner
-action. This plan changed no Grimhollow files.
+resolved by the concurrent reconciled `PhysicsColumnProbe` progress fix. Whole-branch review approved through
+`9f4cb6da0`, and the final main reconciliation added only unrelated item-design documentation through
+`4ba0ee9e9`. Root verified that all runtime text is unchanged from the full verified source. Root merges and
+pushes this verified branch and refreshes canonical packages. Engine tagging and released-pin Grimhollow adoption
+remain owner-owned. This plan changed no Grimhollow files.

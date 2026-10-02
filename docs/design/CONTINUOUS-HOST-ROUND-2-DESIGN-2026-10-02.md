@@ -7,7 +7,8 @@ Plan C code, bridge acceptance and living documentation are complete on `feature
 Plan D implementation, acceptance and living documentation are complete on the reconciled
 `feature/round2-movement-drivers` branch. Its full Release verification passed against staged 20.18.0 with
 23,580 passed, 0 failed, 1,275 skipped and 24,855 total cases across 29 assemblies, with zero build warnings and
-errors. Whole-branch review, main push, canonical packing, engine tagging and consumer adoption remain pending.
+errors. Whole-branch review approved after two comment and status corrections. Root merges and pushes this
+verified branch and refreshes canonical packages. Engine tagging and consumer adoption remain owner-owned.
 The owner authorized the whole round program.
 Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238) is resolved by the concurrent reconciled
 `PhysicsColumnProbe` representable-progress fix outside Plan D. Issue [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233)
@@ -544,8 +545,8 @@ rules and server tolerance in the game. Report those integration inputs on epic 
   20.18.0 with wire generation 13. Plan B code and docs are complete, its task and whole-branch reviews are
   approved, and full branch verification passed. Plan C code, bridge acceptance and docs are complete, with
   full Release verification, all five guards and whole-branch approval. Plan D implementation, scoped reviews and
-  full Release verification are complete. Whole-branch final review, delivery, tagging and consumer adoption remain
-  pending.
+  full Release verification are complete. Whole-branch review approved after its scoped comment and status fix.
+  Root finishes delivery. Tagging and consumer adoption remain pending.
   The owner authorized the whole round program.
   Engine tagging and consumer adoption remain pending.
 - D2 and the technical decisions are settled by written-design approval.
@@ -579,5 +580,7 @@ rules and server tolerance in the game. Report those integration inputs on epic 
   is resolved outside Plan D. Issue [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233) remains an
   adoption prerequisite for steep meshes and filtered ground. Small local physics coordinates or rebasing remain
   required for physics precision, and no full Hollowmere startup guarantee is claimed.
-- Plan D has no release tag, released-pin game adoption, main push or canonical package-feed update yet. Those
-  gates remain with the integration owner.
+- Plan D whole-branch review approved through `9f4cb6da0` after one scoped fix wave. A final main reconciliation
+  included only unrelated item-design documentation through `4ba0ee9e9`. Runtime source remains identical to the
+  full verified source. Root merges, pushes and refreshes the canonical feed as the normal finish. Only the owner
+  starts an engine tag, followed by released-pin game adoption.

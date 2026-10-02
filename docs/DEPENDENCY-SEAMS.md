@@ -652,6 +652,23 @@ reach. Capsule half-height includes its radius. Box yaw follows a physics pose a
 threshold arithmetic use double intermediates, with explicit finite-float result and threshold refusals.
 See the [package README](../KhaozEngine.Movement/README.md) for the exact public contract.
 
+The rest of Movement is the composition seam for absolute ground movement and physics-backed navigation.
+`GroundMoveContext` adapts absolute ground, normal, bounds and medium providers to a caller-owned local-origin
+`IPhysicsWorld`, and changes only the state position's frame during a sequential step. It does not step,
+dispose or rebase that world. `PhysicsNavBake.Capture` samples static columns through
+`PhysicsColumnProbe`, freezes absolute surface heights, headroom and caller-defined `uint` area tags, and keeps
+the classifier and world out of the resulting immutable column store. `PhysicsNavBakeOptions` supplies checked
+half-open bounds, probe settings and cell, layer, surface and edge budgets. Missing columns and outer-edge misses
+stay blocked, with no analytic ground fallback.
+
+`PhysicsNavBake.BuildProfile(in MoveTuning, NavAreaFilter)` composes the captured columns with
+`NavLayerBaker.BakeGroundedLayered` and physical hold and directed-edge proofs. `GroundNavigation` exposes
+`Space`, `Planner`, `AgentRadius`, `AgentHeight` and `AllowsSegment`. The profile matches capsule radius,
+half-height, slope and step exactly, uses raw radius-zero grid checks after physical footprint admission,
+retains only accepted Stair links for guarded queries, and does not generate Hop links. The returned profile
+owns pure data and outlives the builder and its caller-owned physics world. This edge keeps Navigation and
+Physics free of a reverse Movement reference.
+
 `ArchitectureTests.Movement.cs` pins both project-reference sets, the absence of third-party packages,
 and Movement's absence from every umbrella closure. Movement also joins the shared `OptInBackends` guard.
 

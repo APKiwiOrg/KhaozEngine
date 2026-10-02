@@ -248,6 +248,12 @@ NavSpace space = NavLayerBaker.BakeOverworldLayered(
 var planner = new GridPathPlanner(space);
 ```
 
+`KhaozEngine.Movement` composes this grounded, Stair-only bake with its own static physics capture and
+capsule proof. `PhysicsNavBake.BuildProfile` supplies `INavColumnProvider` data to
+`NavLayerBaker.BakeGroundedLayered`, then hands the resulting `NavSpace` and its guarded traversal graph to
+`GroundNavigation`. Navigation stays physics-free. A caller that only needs navigation can continue to use the
+existing provider and bake seams directly.
+
 ## Cross-layer links (`NavLayerLinks`)
 
 `NavLayerLinks.Generate(layers, stepHeight, jumpHeight)` joins the co-registered layers a layered bake

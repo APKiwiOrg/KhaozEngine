@@ -2,8 +2,9 @@
 
 Status: approved by the owner on 2026-10-02. Plan A is complete and verified at staged 20.18.0 with wire generation 13.
 Plan B is implemented, reviewed and fully verified at staged 20.18.0, ready for engine integration.
-The owner authorized the whole round program. Plans C and D remain pending.
-Engine tagging and consumer adoption remain pending.
+Plan C code, bridge acceptance and living documentation are complete on `feature/round2-reach-physics-nav` at
+`f7a1ec497`, with final whole-branch review and integration pending. The owner authorized the whole round program.
+Plan D remains pending. Engine tagging and consumer adoption remain pending.
 
 Consumer: Grimhollow continuous movement phase P4, before P5 NPCs and interactions and P6 combat.
 Engine issue: [#1223](https://github.com/APKiwiOrg/KhaozEngine/issues/1223).
@@ -529,7 +530,8 @@ rules and server tolerance in the game. Report those integration inputs on epic 
 
 - The design is approved and four implementation plans are written. Plan A is complete and verified at staged
   20.18.0 with wire generation 13. Plan B code and docs are complete, its task and whole-branch reviews are
-  approved, and full branch verification passed. Plans C and D are pending. The owner authorized the whole round program.
+  approved, and full branch verification passed. Plan C code, bridge acceptance and docs are complete, with final
+  whole-branch review and integration pending. Plan D remains pending. The owner authorized the whole round program.
   Engine tagging and consumer adoption remain pending.
 - D2 and the technical decisions are settled by written-design approval.
 - Plan A focused evidence is 28, 99, and 6 focused plus 10 adjacent passing cases, with 76 game and 52 server cases
@@ -543,3 +545,10 @@ rules and server tolerance in the game. Report those integration inputs on epic 
   later built with zero warnings and ran 28 assemblies with 23,208 passed, 0 failed, 1,275 skipped, and
   24,483 total cases. Whole-branch review approved with no findings and all five guards passed. The branch
   is ready for integration and canonical packaging, with tagging still owned by the owner.
+- Plan C focused evidence is 73 reach cases, 31 architecture cases, 60 context cases, 54 capture cases, 45
+  profile cases and 11 bridge cases. The normal bridge fixture recorded one 33.806 ms `BuildProfile` observation
+  with 16 accepted nodes, 84 directed exits and zero accepted or candidate links. Root's full Release evidence
+  against the exact committed source built with zero warnings and errors and ran 29 assemblies with 23,454 passed,
+  0 failed, 1,275 skipped and 24,729 total cases. Final guards, whole-branch review, reconciliation and
+  integration remain pending. Existing issues 1233 and 1238 remain outside scope, and no NPC or player driver
+  API is claimed by Plan C.

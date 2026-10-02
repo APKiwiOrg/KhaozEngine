@@ -43,6 +43,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Prop scatter + asset pipeline (`AssetManifest` / `PropScatter` / `Scene3D.DrawProps`)](#prop-scatter-asset-pipeline-assetmanifest-propscatter-scene3ddrawprops)
 - [Procedural dungeons (`KhaozEngine.Dungeon`)](#procedural-dungeons-khaozenginedungeon)
 - [NPC navigation (`KhaozEngine.Navigation`)](#npc-navigation-khaozenginenavigation)
+- [Body reach and physics-ground profiles (`KhaozEngine.Movement`)](#body-reach-and-physics-ground-profiles-khaozenginemovement)
 - [Bounded zones (`RimFeature` + `WorldBounds` + steep terrain)](#bounded-zones-rimfeature-worldbounds-steep-terrain)
 - [3D physics (`KhaozEngine.Physics` / `KhaozEngine.Physics.Bepu`)](#3d-physics-khaozenginephysics-khaozenginephysicsbepu)
 - [Baking prop collision (`ke-propbake`)](#baking-prop-collision-ke-propbake)
@@ -7454,6 +7455,175 @@ as arrived, so a goal on the floor above routes through the planner instead of a
 due), and `ReplanCooldownSeconds` (default 0.5, minimum time between replans). See the
 `KhaozEngine.Navigation` package README for the clearance convention, the planner's documented heuristic
 limitations, and the full config surface.
+
+---
+
+## Body reach and physics-ground profiles (`KhaozEngine.Movement`)
+
+Add the explicit package when a client or server needs body-aware reach, absolute-coordinate ground movement or
+a static-physics navigation profile. It is outside every umbrella and carries no physics backend, input or
+rendering dependency:
+
+```xml
+<PackageReference Include="KhaozEngine.Movement" Version="20.18.0" />
+```
+
+The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
+add a reverse edge to either Navigation or Physics. Public navigation positions are capsule feet in absolute
+world metres. `MoveState.Position` remains the capsule centre, so a caller uses its own `CapsuleHalfHeight`
+when converting between the two.
+
+### Exact 3D reach
+
+`MovementBody(Vector3 centre, float radius, float halfHeight)` is an upright capsule. `Centre` is the capsule
+centre, `Radius` is finite and positive, and `HalfHeight` includes the rounded ends and is at least the radius.
+`ReachTarget` has exactly these factories:
+
+```csharp
+ReachTarget.Capsule(in MovementBody body);
+ReachTarget.Box(Vector3 centre, Vector3 halfExtents, float yawRadians = 0f);
+ReachTarget.Point(Vector3 position);
+```
+
+The point at `Vector3.Zero` is valid. Default bodies and targets are invalid operation inputs. Box X and Z
+half-extents are positive, its Y half-extent may be zero, and positive yaw rotates local +X toward world -Z as
+`Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawRadians)` does.
+
+```csharp
+var actor = new MovementBody(new Vector3(0f, 0.75f, 0f), 0.25f, 0.75f);
+var targetBody = new MovementBody(new Vector3(1.5f, 0.75f, 0f), 0.25f, 0.75f);
+ReachTarget target = ReachTarget.Capsule(in targetBody);
+ReachTarget point = ReachTarget.Point(new Vector3(2f, 0.75f, 0f));
+float distance = ReachGeometry.Distance(in actor, in target);
+bool inRange = ReachGeometry.Within(in actor, in point, range: 0.75f, tolerance: 0.25f);
+```
+
+`ReachGeometry.Distance` returns the shortest 3D edge distance, with overlap clamped to zero. It retains
+relative components and signed squared residuals through the comparison and refuses a result above
+`float.MaxValue` with `ArgumentOutOfRangeException`. `Within` compares the wider metric directly, validates
+finite nonnegative range and tolerance, refuses a sum that exceeds finite float headroom, and adds no gameplay
+epsilon. Use `Within` for reach decisions instead of comparing a rounded `Distance` result.
+
+### One absolute ground context
+
+`GroundMoveContext` is the cached adapter for the shared locomotion core. Its exact public constructor is:
+
+```csharp
+public GroundMoveContext(
+    Func<float, float, float> groundHeight,
+    Func<float, float, Vector3>? groundNormal = null,
+    IPhysicsWorld? physics = null,
+    Func<float, float, Vector2>? clampXz = null,
+    Func<float, float, float, MovementMedium>? medium = null);
+```
+
+The `GroundHeight`, `GroundNormal`, `Physics`, `ClampXz` and `Medium` properties speak absolute coordinates.
+The physics world speaks coordinates local to `IPhysicsWorld.Origin`. During its internal sequential step only
+`MoveState.Position` changes frame and then returns to absolute coordinates. Velocity, facing, effect scale,
+commitment and timers retain their carried values. Medium water surface Y is converted to the local frame.
+
+The context freezes the current origin for one step and checks it at each provider boundary. Rebase only
+between steps. Recursive or overlapping steps are refused. The caller owns and steps the physics world and the
+context never disposes, steps or rebases it. The adapter's `Step` and `ValidateTuning` methods are internal, so
+this package does not claim a public movement driver API. Tuning validation keeps the actual capsule dimensions,
+finite nonnegative ground and medium controls, ordered medium thresholds and a slope below `pi / 2`.
+`FacingTurnSpeed = float.PositiveInfinity` remains a valid default.
+
+### Static physics columns and profile construction
+
+`PhysicsNavBakeOptions` is immutable and uses absolute half-open bounds:
+
+```csharp
+public sealed record PhysicsNavBakeOptions(
+    float MinX, float MinZ, float MaxX, float MaxZ, float CellSize,
+    float ProbeHeight, float ProbeRange, float MaxSlopeRadians,
+    int MaxCells, int MaxLayerCells, int MaxSurfacesPerColumn = 4,
+    float EdgeProbeSeconds = 1f / 30f, int MaxEdgeProbeSteps = 64);
+```
+
+`NavAreaFilter(uint Required, uint Excluded)` requires every required bit and excludes every excluded bit.
+Overlapping masks are refused. `NavAreaClassifier(Vector3 absoluteFeetPosition)` assigns caller-owned `uint`
+tags at absolute surface feet positions.
+
+Capture is static-only and requires a populated `GroundMoveContext.Physics` world:
+
+```csharp
+public sealed partial class PhysicsNavBake : IDisposable
+{
+    public static PhysicsNavBake Capture(
+        GroundMoveContext context,
+        PhysicsNavBakeOptions options,
+        NavAreaClassifier classify);
+
+    public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas);
+    public void Dispose();
+}
+```
+
+`Capture` freezes the physics origin, queries local coordinates through `PhysicsColumnProbe`, converts surface
+heights back to absolute Y and visits columns in Z then X order. It stores each surface's absolute height,
+headroom and area tags. A `MaxSurfacesPerColumn + 1` probe detects overflow. Checked cell, sample and layer
+budgets are validated before dense arrays. Missing, padded and exact outer-edge samples remain blocked. Capture
+does not fall back to `GroundMoveContext.GroundHeight`, and it does not retain the classifier in its snapshot.
+Keep statics and the origin unchanged through profile construction. `Dispose` releases builder references only.
+The returned profile owns pure data and stays usable after the builder, providers and physics world are disposed.
+
+### GroundNavigation contract
+
+`BuildProfile` makes an immutable capsule and area checked graph. Its public surface is:
+
+```csharp
+public sealed class GroundNavigation
+{
+    public NavSpace Space { get; }
+    public IRegionPathPlanner Planner { get; }
+    public float AgentRadius { get; }
+    public float AgentHeight { get; }
+    public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
+}
+```
+
+Radius, full height, slope class and step class must match the capture profile's
+`CapsuleRadius`, `CapsuleHalfHeight`, `MaxSlopeRadians` and `StepHeight` exactly. Walk and run pace, climb pace
+and effect scale may differ. Physical holds and independently directed edges use unit pace, dry medium, no
+momentum, no commitment and no jump. The initial hold counts as slice one. Defaults are `1 / 30` seconds and
+64 total core calls, with a 1 mm arrival proof tolerance that is not a gameplay epsilon.
+
+The profile checks the whole circular footprint and each surface's area tags. It uses raw radius-zero grid
+checks after the physical capsule proof, so the radius is not eroded twice. Grounded extraction respects
+`MaxLayerCells` before dense arrays, emits only `NavLinkKind.Stair` links and never creates `Hop` links.
+`Space.Links` contains candidate Stair topology. Accepted links are a separate guarded graph used by
+`Planner` and `AllowsSegment`. The planner requires the exact profile radius and returns unsmoothed cell-centre
+waypoints.
+
+`AllowsSegment` is a pure endpoint and segment guard. It refuses unknown, padded, off-grid and incompatible
+height endpoints, checks every footprint cell and directed crossed edge, and admits a cross-layer segment only
+through an accepted Stair link. The segment guard applies the full Y interval conservatively, so a direct sloped
+shortcut can be refused even when a sequence of graph edges is eligible. Live collision, support and dynamic
+state remain resolved by the shared movement core.
+
+```csharp
+using KhaozEngine.Movement;
+
+var options = new PhysicsNavBakeOptions(
+    MinX: 0f, MinZ: -4f, MaxX: 4f, MaxZ: 0f, CellSize: 1f,
+    ProbeHeight: 5f, ProbeRange: 10f, MaxSlopeRadians: 0.8f,
+    MaxCells: 128, MaxLayerCells: 512);
+using var bake = PhysicsNavBake.Capture(context, options, feet => 0u);
+GroundNavigation profile = bake.BuildProfile(tuning, new NavAreaFilter(Required: 0u, Excluded: 0u));
+NavPath path = profile.Planner.FindPath(startFeet, goalFeet, profile.AgentRadius, PathQueryBudget.Default);
+bool corridorAllows = profile.AllowsSegment(startFeet, goalFeet);
+```
+
+The normal bridge fixture measured one `BuildProfile` observation at 33.806 ms for a 4 by 4 grid with 16
+accepted nodes, 84 directed exits, zero accepted links and zero candidate links. Its options were
+`X=[0,4)`, `Z=[-4,0)`, cell size 1 m, probe height 5 m, range 10 m, slope 0.8, `MaxCells=128`,
+`MaxLayerCells=512`, four surfaces per column, `1 / 30` edge slices and 64 edge steps. The profile tuning was
+radius 0.2 m, half-height 0.75 m, step 0.4 m and slope 0.8. This is one normal fixture observation, not a
+startup or wall-clock guarantee. Existing issues [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233)
+and [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238) remain outside scope. Small local physics
+coordinates or rebasing are required for large absolute requests. There is no ground-sampler fallback and no
+full Hollowmere or steep-bank guarantee. NPC and player driver APIs are outside this package update.
 
 ---
 

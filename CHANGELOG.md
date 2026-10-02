@@ -33,6 +33,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   progress. The additive region follower tick uses actual membership, retains final Complete waypoints, and
   returns `WaitingForPath` with zero motion while an exhausted Partial corridor waits for its cooldown. Legacy
   point clearance, smoothing, hop baking, and unlimited layered extraction remain unchanged.
+- Round 2 C adds opt-in `KhaozEngine.Movement` composition for exact 3D `MovementBody` reach, cached absolute
+  `GroundMoveContext` providers, bounded static `PhysicsNavBake` columns with required-all and excluded-none
+  `NavAreaFilter` tags, and immutable capsule-checked `GroundNavigation` profiles. Profiles prove physical holds,
+  directed edges and Stair links through the shared movement core, retain accepted guarded graph data after the
+  caller disposes the builder and physics world, and never generate Hop links or apply a hidden gameplay epsilon.
 
 ## 20.17.0
 

@@ -82,7 +82,8 @@ failures honestly and never call the whole integration branch ready before the f
 **Create:** `KhaozEngine.Catalog.Authoring/IContentTextAuthoringStore.cs`, `ContentTextTarget.cs`, `ContentTextEdit.cs`,
 `ContentAuthoringChanges.cs`, `ContentDraftTextState.cs`, `ContentTextLanguageDeclaration.cs`, `ContentTextLanguage.cs`,
 `ContentTextRevision.cs`, `ContentVersionTextSnapshot.cs`, `Publish/ContentTextPublishSnapshot.cs`,
-`Publish/ContentTextPublishPlan.cs`, `ContentTextLanguageTag.cs`, `ContentTextCompatibility.cs`,
+`Publish/ContentTextPublishPlan.cs`, `Publish/ContentTextCandidate.cs`, `Publish/ContentTextChunkRecord.cs`,
+`ContentTextLanguageTag.cs`, `ContentTextCompatibility.cs`,
 `ContentBundleTextState.cs`, `ContentTextAuditRendering.cs`, `InMemoryContentAuthoringStore.Text.cs`,
 `InMemoryContentAuthoringStore.TextPublish.cs`.
 **Modify:** `ContentDraft.cs`, `ContentAuditEntry.cs`, `ContentBundle.cs`, `Publish/ContentPublishPlan.cs` and memory
@@ -122,9 +123,10 @@ dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Releas
 ### Task 2: Deterministic publication and exact-version recovery
 
 **Create:** `KhaozEngine.Catalog.Authoring/Publish/ContentTextCandidateBuilder.cs`, `ContentTextChunkBuilder.cs`,
-`ContentTextCandidate.cs`, `ContentTextChunkRecord.cs`, `ContentTextPublisher.cs`, `ContentTextPackWriter.cs`
+`ContentTextPublisher.cs`, `ContentTextPackWriter.cs`
 and Catalog.Tests `Publish/TextPublishTests.cs`,
 `TextRebuildTests.cs`, `TextCrashSafetyTests.cs`.
+Consume the `ContentTextCandidate` and `ContentTextChunkRecord` DTO contracts frozen by task 1.
 **Modify:** existing `ContentPublisher.cs`, `ContentPublishCommit.cs`, `ContentPackRebuild.cs`,
 `ContentRebuildSnapshot.cs`, `ContentRebuildVerification.cs` and manifest-based sweep integration.
 

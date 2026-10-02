@@ -2048,32 +2048,35 @@ catalog's pass 6 walks the band in ascending type-id order and therefore reaches
 Attaching the same validator to all eighteen registrations would run the whole band eighteen times and
 repeat every finding.
 
-1. Every child row's parent reference resolves, and a `currency_guard` naming a `currency_step` names one
-   belonging to the SAME currency.
-2. A `mod_tier`'s `item_level_min <= item_level_max`, and its `ordinal` is 1 to 255 and unique within its
-   mod.
-3. PUBLISH-ONLY: a mod's tier ordinals are unchanged since the previous published version. A REORDER is
-   refused, because the ordinal is in every stored payload (3.4).
-4. A `stat_line`'s `stat_id` resolves, its `combine` is 1, 2 or 3, and `min <= max`.
-5. A `mod_group`'s `max_per_item` is at least 1.
-6. A `rarity_rule`'s `min_affixes <= max_affixes`, `max_prefixes + max_suffixes >= max_affixes`, and its
-   `upgrade_from` chain has no cycle.
-7. A `unique_line`'s `mod_id` resolves, its `tier_ordinal` names a tier of that mod, and that mod carries
-   no `mod_tier_weight` row on any tier, which is the check that keeps a unique line off an ordinary rare.
-8. A `socket_type`'s accept and reject tag sets are disjoint.
-9. A `rare_name_word`'s `position` is at least 1, and for every rarity rule with `name_word_positions = N`
-   and every base tag reachable at that rarity, every position 1 to N has at least one word with a
-   non-zero weight. That last one is the check that stops a publish producing an item whose name cannot
-   be rolled, and it is the expensive one: it is a cross product over rarities, positions and tags, run
-   once per publish, which is the right place for it.
-10. A `crafting_currency` carries at most `max_steps` steps and `max_steps` is at most 16 (10.4), and
-    every step's `sort` is unique within the currency.
-11. PUBLISH-ONLY: a `rarity_rule`'s `id` is unchanged since the previous published version, because kind
-    130 stores it.
-12. PUBLISH-ONLY: no `mod` that any stored payload could name has lost its tier for that ordinal without
-    a remap rule covering it. The validator cannot see stored payloads, so what it actually checks is the
-    weaker and still useful form: every tier ordinal removed since `previous` is named by a rule in the
-    set it was handed.
+The eighteen issued finding codes are stable tokens from `InstanceContentFindings`, never renumbered or reissued. Check 2
+splits because an inverted item-level range and an invalid ordinal need different fixes. Checks 3 and 12
+share `KEC0103` because both refuse a stored ordinal whose meaning changed.
+
+| Check | Code | Validation |
+|---|---|---|
+| 1 | `KEC0100` | Every child row's parent reference resolves, and a `currency_guard` naming a `currency_step` names one belonging to the SAME currency. |
+| 2a | `KEC0101` | A `mod_tier`'s `item_level_min <= item_level_max`. |
+| 2b | `KEC0102` | A `mod_tier`'s `ordinal` is 1 to 255, at most the candidate table's packed ceiling `ModCandidateTables.MaxTierOrdinal` (15), and unique within its mod. |
+| 3 | `KEC0103` | PUBLISH-ONLY: a mod's tier ordinals are unchanged since the previous published version. A REORDER is refused because the ordinal is in every stored payload (3.4). |
+| 4 | `KEC0104` | A `stat_line`'s `stat_id` resolves, its `combine` is 1, 2 or 3, and `min <= max`. |
+| 5 | `KEC0105` | A `mod_group`'s `max_per_item` is at least 1. |
+| 6 | `KEC0106` | A `rarity_rule`'s `min_affixes <= max_affixes`, `max_prefixes + max_suffixes >= max_affixes`, and its `upgrade_from` chain has no cycle. A present `display_rgb` is exactly three RGB bytes. |
+| 7 | `KEC0107` | A `unique_line`'s `mod_id` resolves, its `tier_ordinal` names a tier of that mod, and that mod carries no `mod_tier_weight` row on any tier, which keeps a unique line off an ordinary rare. |
+| 8 | `KEC0108` | A `socket_type`'s accept and reject tag sets are disjoint. |
+| 9 | `KEC0109` | A `rare_name_word`'s `position` is 1 to 255. For every rarity rule with `name_word_positions = N` and every base tag reachable at that rarity, every position 1 to N has at least one word with a non-zero weight. |
+| 10 | `KEC0110` | A `crafting_currency` carries at most `max_steps` steps and `max_steps` is at most 16 (10.4), and every step's `sort` is unique within the currency. |
+| 11 | `KEC0111` | PUBLISH-ONLY: a `rarity_rule`'s `id` is unchanged since the previous published version because kind 130 stores it. |
+| 12 | `KEC0103`, shared with 3 | PUBLISH-ONLY: every tier ordinal removed since `previous` is named by a remap rule in the set handed to the validator. It cannot see stored payloads, so this is the weaker check for a mod losing a tier that a stored payload could name. |
+| 13 | `KEC0112` | No `mod_tier_weight`, `rarity_weight` or `rare_name_word_weight` row has a weight below zero. |
+| 14 | `KEC0113` | Each weight type's bucket of rows sharing one tag sums its positive weights to at most `int.MaxValue`. Negative weights count as zero here and are refused separately by check 13. |
+| 15 | `KEC0114` | An `item` base's authored tag count is at most `ModCandidateTables.MaxGenerationTagPositions` (8). |
+| 16 | `KEC0115` | Every `unique_socket`'s `sort` is unique within its template. |
+| 17 | `KEC0116` | Each `rarity_kind_limit` claims a mod kind only once within its rarity. |
+| 18 | `KEC0117` | No two positive-weight rows of one weight type share the same (parent, tag) pair. A repeated row's weight would be suppressed rather than summed into the first. |
+
+Check 9's coverage half stops a publish producing an item whose name cannot be rolled. Its cross product
+over rarities, positions and tags runs once per publish. Checks 13 and 14 are the Scope B weight bounds
+from [#944](https://github.com/APKiwiOrg/KhaozEngine/issues/944).
 
 ### 8.10 The authoring checklist, and the four reference games on these eighteen types
 

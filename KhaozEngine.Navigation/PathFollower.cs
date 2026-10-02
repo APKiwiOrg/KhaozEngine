@@ -20,7 +20,7 @@ public enum PathFollowState
     /// <see cref="NavPathStatus.Complete"/> path to its end. The stored path was cleared.</summary>
     Arrived,
 
-    /// <summary>The planner could not find a route to the goal. The follower keeps retrying, gated by
+    /// <summary>The planner could not provide a usable route toward the goal. The follower keeps retrying, gated by
     /// <see cref="PathFollowConfig.ReplanCooldownSeconds"/>, in case the world changes.</summary>
     Unreachable,
 

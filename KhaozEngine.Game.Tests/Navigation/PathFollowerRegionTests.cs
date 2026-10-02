@@ -358,4 +358,92 @@ public class PathFollowerRegionTests
         Assert.Equal(2, planner.Calls);
         Assert.Equal(PathFollowState.Following, retry.State);
     }
+
+    [Theory]
+    [InlineData(1f, 0f)]
+    [InlineData(0f, 0.5f)]
+    public void TerminalCompleteOutsideMovedRegionReplansAfterSubToleranceDrift(float xDrift, float yDrift)
+    {
+        var planner = new ScriptedPlanner();
+        planner.Enqueue(Complete(Walk(10.5f, 0.5f)));
+        NavPath freshPath = Complete(Walk(10.5f + xDrift, 0.5f));
+        planner.Enqueue(freshPath);
+        var follower = new PathFollower(planner);
+        var oldEndpoint = new Vector3(10.5f, 0f, 0.5f);
+        follower.Tick(new Vector3(0.5f, 0f, 0.5f), SmallRegion(oldEndpoint), AgentRadius, 0.016f);
+        var movedEndpoint = new Vector3(10.5f + xDrift, yDrift, 0.5f);
+        NavGoalRegion moved = SmallRegion(movedEndpoint);
+
+        PathFollowOutput cooling = follower.Tick(oldEndpoint, moved, AgentRadius, 0.1f);
+
+        Assert.False(moved.Contains(oldEndpoint));
+        Assert.Equal(1, planner.Calls);
+        Assert.Equal(PathFollowState.Following, cooling.State);
+        Assert.Equal(Vector2.Zero, cooling.WorldDir);
+
+        PathFollowOutput replanned = follower.Tick(oldEndpoint, moved, AgentRadius, 0.4f);
+
+        Assert.Equal(2, planner.Calls);
+        Assert.Equal(PathFollowState.Following, replanned.State);
+        Assert.Same(freshPath, follower.ActivePath);
+        Assert.Same(moved, planner.LastRegion);
+        Assert.Equal(new Vector2(10.5f + xDrift, 0.5f), replanned.ActiveWaypoint);
+        Assert.Equal(xDrift == 0f ? Vector2.Zero : Vector2.UnitX, replanned.WorldDir);
+
+        PathFollowOutput member = follower.Tick(movedEndpoint, moved, AgentRadius, 0.016f);
+        Assert.True(moved.Contains(movedEndpoint));
+        Assert.Equal(PathFollowState.Arrived, member.State);
+        Assert.Null(follower.ActivePath);
+    }
+
+    [Theory]
+    [InlineData(0.5f, 0.5f)]
+    [InlineData(0f, 0f)]
+    public void PartialEndpointReplansOnTheSameTickWhenCooldownIsZero(float cooldown, float dtAtEnd)
+    {
+        var planner = new ScriptedPlanner();
+        planner.Enqueue(new NavPath(NavPathStatus.Partial, new[] { Walk(2f, 0f) }));
+        NavPath freshPath = Complete(Walk(10f, 0f));
+        planner.Enqueue(freshPath);
+        var follower = new PathFollower(planner, new PathFollowConfig { ReplanCooldownSeconds = cooldown });
+        NavGoalRegion region = SmallRegion(new Vector3(10f, 0f, 0f));
+        follower.Tick(Vector3.Zero, region, AgentRadius, 0.016f);
+        var endpoint = new Vector3(2f, 0f, 0f);
+
+        PathFollowOutput output = follower.Tick(endpoint, region, AgentRadius, dtAtEnd);
+
+        Assert.False(region.Contains(endpoint));
+        Assert.Equal(2, planner.Calls);
+        Assert.Equal(PathFollowState.Following, output.State);
+        Assert.Equal(Vector2.UnitX, output.WorldDir);
+        Assert.Equal(new Vector2(10f, 0f), output.ActiveWaypoint);
+        Assert.Same(freshPath, follower.ActivePath);
+        Assert.Equal(0, follower.ActiveWaypointIndex);
+    }
+
+    [Fact]
+    public void AlreadyExhaustedPartialRefreshWithoutCooldownStopsAndQueriesOnlyOncePerTick()
+    {
+        var planner = new ScriptedPlanner();
+        var partial = new NavPath(NavPathStatus.Partial, new[] { Walk(2f, 0f) });
+        planner.Enqueue(partial);
+        planner.Enqueue(partial);
+        planner.Enqueue(Complete(Walk(10f, 0f)));
+        var follower = new PathFollower(planner, new PathFollowConfig { ReplanCooldownSeconds = 0f });
+        NavGoalRegion region = SmallRegion(new Vector3(10f, 0f, 0f));
+        follower.Tick(Vector3.Zero, region, AgentRadius, 0.016f);
+        var endpoint = new Vector3(2f, 0f, 0f);
+
+        PathFollowOutput exhausted = follower.Tick(endpoint, region, AgentRadius, 0f);
+
+        Assert.Equal(2, planner.Calls);
+        Assert.Equal(PathFollowState.Unreachable, exhausted.State);
+        Assert.Equal(Vector2.Zero, exhausted.WorldDir);
+        Assert.Null(follower.ActivePath);
+
+        PathFollowOutput nextTick = follower.Tick(endpoint, region, AgentRadius, 0f);
+        Assert.Equal(3, planner.Calls);
+        Assert.Equal(PathFollowState.Following, nextTick.State);
+        Assert.Equal(new Vector2(10f, 0f), nextTick.ActiveWaypoint);
+    }
 }

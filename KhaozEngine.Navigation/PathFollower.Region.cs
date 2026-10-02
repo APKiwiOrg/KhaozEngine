@@ -12,7 +12,11 @@ public sealed partial class PathFollower
     /// Follows a route to <paramref name="goal"/> using actual feet membership for arrival. The last
     /// Complete waypoint remains active until membership, regardless of AcceptRadius. Intermediate
     /// waypoints retain the configured radius and layer checks. An exhausted Partial route holds at
-    /// zero motion until the shared replan cooldown permits another query.
+    /// zero motion until the shared replan cooldown permits another query. Reaching the retained
+    /// Complete endpoint outside the region also makes a replan due, even for anchor drift within
+    /// tolerance. Existing region waypoints advance before this decision so an eligible exhausted
+    /// Partial replans in the same tick. Each tick queries at most once. A freshly exhausted Partial
+    /// with no cooldown returns Unreachable at zero motion and retries on the next tick.
     /// Switching between point and region calls clears the previous route and cooldown. Call
     /// <see cref="Reset"/> when target identity, shape, range or traversal profile changes.
     /// </summary>
@@ -54,13 +58,18 @@ public sealed partial class PathFollower
             return new PathFollowOutput { WorldDir = Vector2.Zero, State = PathFollowState.Arrived, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
         }
 
+        // Region consumption must inform this tick's query eligibility. Point consumption stays after
+        // the query decision, preserving the legacy Partial raw-goal tick and planner call ordering.
+        bool regionAtTerminal = followingRegion && AdvanceReachedWaypoints(position, posXz, followingRegion: true);
         bool needsPlan = _path is null
             || _index >= _path.Waypoints.Count
             || Vector2.Distance(goalXz, _plannedGoalXz) > _config.GoalRetargetTolerance
             || MathF.Abs(goal.Y - _plannedGoalY) > _config.GoalRetargetVerticalTolerance
+            || regionAtTerminal
             || DistanceToActiveCorridor(posXz) > _config.CorridorTolerance;
 
-        if (needsPlan && _cooldown == 0f)
+        bool replanned = needsPlan && _cooldown == 0f;
+        if (replanned)
         {
             _path = region is not null
                 ? ((IRegionPathPlanner)_planner).FindPath(position, region, agentRadius, _config.Budget)
@@ -77,25 +86,17 @@ public sealed partial class PathFollower
             return new PathFollowOutput { WorldDir = Vector2.Zero, State = PathFollowState.Unreachable, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
         }
 
-        // Layer membership witnesses climbing. A Complete region endpoint additionally requires the
-        // body's actual region membership, so the radius check cannot consume that final waypoint.
+        if (!followingRegion || replanned)
+            AdvanceReachedWaypoints(position, posXz, followingRegion);
         IReadOnlyList<NavWaypoint> waypoints = _path.Waypoints;
-        int? agentLayer = _space?.LayerAt(position);
-        while (_index < waypoints.Count
-            && (!followingRegion || _path.Status != NavPathStatus.Complete || _index < waypoints.Count - 1)
-            && Vector2.Distance(posXz, waypoints[_index].Position) <= _config.AcceptRadius
-            && (agentLayer is null || waypoints[_index].Layer == agentLayer.Value))
-        {
-            _index++;
-        }
-
         if (_index >= waypoints.Count)
         {
             if (followingRegion)
             {
                 // Keep the exhausted Partial and its index internally so later cooldown ticks can
                 // distinguish waiting from an unreachable query. ActivePath hides consumed routes.
-                return new PathFollowOutput { WorldDir = Vector2.Zero, State = PathFollowState.WaitingForPath, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
+                PathFollowState state = _cooldown > 0f ? PathFollowState.WaitingForPath : PathFollowState.Unreachable;
+                return new PathFollowOutput { WorldDir = Vector2.Zero, State = state, ActiveWaypoint = Vector2.Zero, HopStart = Vector2.Zero };
             }
 
             NavPathStatus status = _path.Status;
@@ -121,5 +122,26 @@ public sealed partial class PathFollower
         Vector2 offset = active.Position - posXz;
         Vector2 dir = followingRegion && offset == Vector2.Zero ? Vector2.Zero : Vector2.Normalize(offset);
         return new PathFollowOutput { WorldDir = dir, State = PathFollowState.Following, ActiveWaypoint = active.Position, HopStart = Vector2.Zero };
+    }
+
+    // Returns true at a reached Complete region endpoint without consuming it. Membership already
+    // failed this tick, so the old endpoint alone cannot witness arrival and a replan is due instead.
+    bool AdvanceReachedWaypoints(Vector3 position, Vector2 posXz, bool followingRegion)
+    {
+        if (_path is null || _path.Status == NavPathStatus.Unreachable)
+            return false;
+
+        IReadOnlyList<NavWaypoint> waypoints = _path.Waypoints;
+        int? agentLayer = _space?.LayerAt(position);
+        while (_index < waypoints.Count
+            && Vector2.Distance(posXz, waypoints[_index].Position) <= _config.AcceptRadius
+            && (agentLayer is null || waypoints[_index].Layer == agentLayer.Value))
+        {
+            if (followingRegion && _path.Status == NavPathStatus.Complete && _index == waypoints.Count - 1)
+                return true;
+            _index++;
+        }
+
+        return false;
     }
 }

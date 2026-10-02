@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Locomotion;
+using KhaozEngine.Movement;
+using KhaozEngine.Navigation;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using KhaozEngine.TileWorld;
@@ -113,6 +115,84 @@ public class GroundMeshQueryOwnershipTests
         Assert.False(withoutBoth.Raycast(above, -Vector3.UnitY, 6f, out _));
         Assert.True(fullWorld.Raycast(above, -Vector3.UnitY, 6f, out RayHit complete));
         Assert.Equal(upperHit.Body, complete.Body);
+    }
+
+    [Fact]
+    public void CompleteCaptureAndDryProofRetainSelectedMovement()
+    {
+        // Catches filtered capture, analytic fallback and dry proofs losing selected terrain ownership.
+        TileWorldDocument document = Ramp(95);
+        for (int z = 0; z < TileRegion.Size; z++)
+            for (int x = 0; x < TileRegion.Size; x++)
+                if (x is < 10 or >= 12 || z is < 30 or >= 32)
+                    document.SetSettings(x, z, 0, TileSettings.NoDraw);
+        TileWorldColliders colliders = TileWorldColliders.Build(document, Catalogs());
+        using var fullWorld = new BepuPhysicsWorld();
+        using TileColliderRegistration registration = colliders.AddTo(fullWorld);
+        using IPhysicsWorldQueryView selected = registration.CreateMovementQueryView();
+        Assert.Same(fullWorld, selected.SourceWorld);
+        Vector3 above = new(10.5f, 15f, -30.5f);
+        Assert.True(fullWorld.Raycast(above, -Vector3.UnitY, 10f, out RayHit ground));
+        Assert.Equal(9.975f, ground.Point.Y, 0.001f);
+        Assert.Contains(ground.Body!.Value, registration.GroundHandles);
+        Assert.False(selected.Raycast(above, -Vector3.UnitY, 10f, out _));
+        bool capturing = true;
+        int heightCalls = 0, mediumCalls = 0;
+        var context = new GroundMoveContext((x, z) =>
+        {
+            if (capturing) throw new InvalidOperationException("Capture must query complete physics ground.");
+            heightCalls++;
+            return colliders.Ground.HeightAt(x, z);
+        }, colliders.Ground.NormalDelegate, physics: fullWorld, clampXz: null,
+            medium: (_, _, _) =>
+            {
+                mediumCalls++;
+                return new MovementMedium(20f, inWater: true, wadeSpeedScale: 0.1f);
+            }, movementQueries: selected);
+        var options = new PhysicsNavBakeOptions(10f, -32f, 12f, -30f, 0.25f,
+            15f, 10f, Character.MaxSlopeRadians, 128, 512);
+        using PhysicsNavBake bake = PhysicsNavBake.Capture(context, options, _ => 1u);
+        Assert.Same(fullWorld, context.Physics);
+        Assert.Same(selected, context.MovementQueries);
+        Assert.Equal(0, heightCalls);
+        Assert.Equal(0, mediumCalls);
+        Assert.Equal(64, bake.Columns.SurfaceCount);
+        ReadOnlySpan<float> heights = [9.61875f, 9.85625f, 10.09375f, 10.33125f,
+            10.56875f, 10.80625f, 11.04375f, 11.28125f];
+        for (int z = 0; z < 8; z++)
+            for (int x = 0; x < 8; x++)
+            {
+                ReadOnlySpan<PhysicsNavSurface> column = bake.Columns.GetColumn(x, z);
+                Assert.Equal(1, column.Length);
+                Assert.Equal(heights[x], column[0].Height, 0.001f);
+                Assert.Equal(1u, column[0].Areas);
+            }
+        capturing = false;
+        GroundNavigation nav = bake.BuildProfile(Character, default);
+        Vector3 from = new(10.625f, 10.09375f, -31.125f), to = new(11.375f, 10.80625f, -31.125f);
+        Assert.True(nav.Graph.CanTraverse(0, 2, 3, 0, 3, 3));
+        Assert.True(nav.Graph.CanTraverse(0, 3, 3, 0, 2, 3));
+        foreach ((Vector3 start, Vector3 goal) in new[] { (from, to), (to, from) })
+        {
+            NavPath path = nav.Planner.FindPath(start, goal, nav.AgentRadius, PathQueryBudget.Default);
+            Assert.Equal(NavPathStatus.Complete, path.Status);
+            Assert.NotEmpty(path.Waypoints);
+            Vector3 previous = start;
+            foreach (NavWaypoint waypoint in path.Waypoints)
+            {
+                Assert.Equal(NavWaypointKind.Walk, waypoint.Kind);
+                NavGrid grid = nav.Space.Layers[waypoint.Layer];
+                (int x, int z) = grid.CellOf(waypoint.Position.X, waypoint.Position.Y);
+                Vector3 next = new(waypoint.Position.X, grid.SurfaceHeightAt(x, z)!.Value, waypoint.Position.Y);
+                Assert.True(nav.AllowsSegment(previous, next));
+                previous = next;
+            }
+            Assert.True(nav.AllowsSegment(previous, goal));
+        }
+        Assert.True(heightCalls > 0);
+        Assert.Equal(0, mediumCalls);
+        Assert.True(fullWorld.Raycast(above, -Vector3.UnitY, 10f, out RayHit retained));
+        Assert.Equal(ground.Body, retained.Body);
     }
 
     [Theory]

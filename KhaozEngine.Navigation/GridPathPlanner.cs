@@ -26,7 +26,7 @@ namespace KhaozEngine.Navigation;
 /// one flat index space. Deterministic: fixed neighbor order and a monotone insertion counter break
 /// every tie the same way.
 /// </summary>
-public sealed class GridPathPlanner : IPathPlanner
+public sealed partial class GridPathPlanner : IPathPlanner
 {
     /// <summary>Diagonal step-cost multiplier over the orthogonal step (in cell units).</summary>
     static readonly float Sqrt2 = MathF.Sqrt(2f);
@@ -73,8 +73,14 @@ public sealed class GridPathPlanner : IPathPlanner
     /// optimal. Below it the search stays correct but may return a valid non-optimal route, the same caveat
     /// the far-jumping-link heuristic already documents.</summary>
     public GridPathPlanner(NavSpace space, float hopCostCells = 4f)
+        : this(space, hopCostCells, null)
+    {
+    }
+
+    GridPathPlanner(NavSpace space, float hopCostCells, NavTraversalGraph? traversal)
     {
         _space = space ?? throw new ArgumentNullException(nameof(space));
+        _traversal = traversal;
         if (hopCostCells <= 0f)
             throw new ArgumentOutOfRangeException(nameof(hopCostCells), hopCostCells, "Hop cost cells must be positive.");
         _hopCostCells = hopCostCells;
@@ -91,7 +97,7 @@ public sealed class GridPathPlanner : IPathPlanner
 
         _linkEdges = new Dictionary<int, List<(int ToId, float CostMeters)>>();
         _hopEdges = new HashSet<(int FromId, int ToId)>();
-        foreach (NavLink link in _space.Links)
+        foreach (NavLink link in traversal?.Links ?? _space.Links)
         {
             int fromId = _layerOffset[link.FromLayer] + link.FromZ * layers[link.FromLayer].Width + link.FromX;
             int toId = _layerOffset[link.ToLayer] + link.ToZ * layers[link.ToLayer].Width + link.ToX;
@@ -124,6 +130,7 @@ public sealed class GridPathPlanner : IPathPlanner
     /// </summary>
     public NavPath FindPath(Vector3 start, Vector3 goal, float agentRadius, PathQueryBudget budget)
     {
+        ValidateTraversalRadius(agentRadius);
         int startLayer = _space.LayerAt(start);
         int goalLayer = _space.LayerAt(goal);
 
@@ -133,13 +140,13 @@ public sealed class GridPathPlanner : IPathPlanner
         var startXz = new Vector2(start.X, start.Z);
         var goalXz = new Vector2(goal.X, goal.Z);
 
-        Vector2? startPoint = SnapToPassable(startGrid, startXz, agentRadius, budget.SnapRadius, out _);
+        Vector2? startPoint = SnapToPassable(startLayer, startGrid, startXz, agentRadius, budget.SnapRadius, out _);
         if (startPoint is null)
         {
             return NavPath.Unreachable;
         }
 
-        Vector2? goalSnap = SnapToPassable(goalGrid, goalXz, agentRadius, budget.SnapRadius, out bool goalSnappedOwnCell);
+        Vector2? goalSnap = SnapToPassable(goalLayer, goalGrid, goalXz, agentRadius, budget.SnapRadius, out bool goalSnappedOwnCell);
         if (goalSnap is null)
         {
             return NavPath.Unreachable;
@@ -147,11 +154,11 @@ public sealed class GridPathPlanner : IPathPlanner
 
         // The goal keeps its exact query position only when that position's own cell was passable and
         // won the snap outright. Otherwise the nearest passable cell center stands in for it.
-        Vector2 goalPoint = goalSnappedOwnCell ? goalXz : goalSnap.Value;
+        Vector2 goalPoint = goalSnappedOwnCell && _traversal is null ? goalXz : goalSnap.Value;
 
         // Same layer with a clear straight shot is the trivial one-waypoint case. Everything else runs
         // the A* search, which also carries cross-layer routing over the link edges.
-        if (startLayer == goalLayer && HasLineOfSight(startGrid, startPoint.Value, goalPoint, agentRadius))
+        if (_traversal is null && startLayer == goalLayer && HasLineOfSight(startGrid, startPoint.Value, goalPoint, agentRadius))
         {
             return new NavPath(NavPathStatus.Complete, new[] { new NavWaypoint(goalPoint, goalLayer) });
         }
@@ -257,14 +264,15 @@ public sealed class GridPathPlanner : IPathPlanner
             {
                 int nx = cx + NeighborDx[i];
                 int nz = cz + NeighborDz[i];
-                if (!grid.InBounds(nx, nz) || Blocks(grid, agentRadius, nx, nz))
+                if (!grid.InBounds(nx, nz) || Blocks(layer, agentRadius, nx, nz) ||
+                    !CanTraverse(layer, cx, cz, layer, nx, nz))
                 {
                     continue;
                 }
 
                 bool diagonal = i >= 4;
                 if (diagonal &&
-                    (Blocks(grid, agentRadius, nx, cz) || Blocks(grid, agentRadius, cx, nz)))
+                    (Blocks(layer, agentRadius, nx, cz) || Blocks(layer, agentRadius, cx, nz)))
                 {
                     continue; // Corner-cut prevention: both orthogonal companions must be passable.
                 }
@@ -299,8 +307,7 @@ public sealed class GridPathPlanner : IPathPlanner
                     }
 
                     (int tLayer, int tx, int tz) = Decode(targetId);
-                    NavGrid targetGrid = _space.Layers[tLayer];
-                    if (Blocks(targetGrid, agentRadius, tx, tz))
+                    if (Blocks(tLayer, agentRadius, tx, tz) || !CanTraverse(layer, cx, cz, tLayer, tx, tz))
                     {
                         continue;
                     }
@@ -351,6 +358,7 @@ public sealed class GridPathPlanner : IPathPlanner
             chain.Add(node);
         }
         chain.Reverse();
+        if (_traversal is not null) return ReconstructTraversal(chain, reachedGoal);
 
         int count = chain.Count;
         var cells = new (int Layer, int Cx, int Cz)[count];
@@ -501,9 +509,10 @@ public sealed class GridPathPlanner : IPathPlanner
     /// in range. <paramref name="snappedToOwnCell"/> reports whether the winning cell is the one
     /// <paramref name="worldXz"/> itself falls in.
     /// </summary>
-    static Vector2? SnapToPassable(NavGrid grid, Vector2 worldXz, float agentRadius, float snapRadius, out bool snappedToOwnCell)
+    Vector2? SnapToPassable(int layer, NavGrid grid, Vector2 worldXz, float agentRadius, float snapRadius, out bool snappedToOwnCell)
     {
         (int queryX, int queryZ) = grid.CellOf(worldXz.X, worldXz.Y);
+        if (_traversal is not null) return SnapTraversal(layer, queryX, queryZ, out snappedToOwnCell);
         int maxRing = (int)MathF.Ceiling(snapRadius / grid.CellSize);
 
         for (int ring = 0; ring <= maxRing; ring++)
@@ -522,7 +531,7 @@ public sealed class GridPathPlanner : IPathPlanner
                         continue;
                     }
 
-                    if (!grid.InBounds(x, z) || Blocks(grid, agentRadius, x, z))
+                    if (!grid.InBounds(x, z) || Blocks(layer, agentRadius, x, z))
                     {
                         continue;
                     }
@@ -553,7 +562,7 @@ public sealed class GridPathPlanner : IPathPlanner
 
     /// <summary>
     /// True when a straight line from <paramref name="fromWorldXz"/> to <paramref name="toWorldXz"/>
-    /// crosses no cell that <see cref="Blocks"/> for <paramref name="agentRadius"/>, via
+    /// crosses no cell that <see cref="Blocks(NavGrid, float, int, int)"/> for <paramref name="agentRadius"/>, via
     /// <see cref="GridRay.IsClear"/>.
     /// </summary>
     /// <remarks>

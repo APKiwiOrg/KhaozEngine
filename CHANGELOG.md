@@ -38,6 +38,16 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `NavAreaFilter` tags, and immutable capsule-checked `GroundNavigation` profiles. Profiles prove physical holds,
   directed edges and Stair links through the shared movement core, retain accepted guarded graph data after the
   caller disposes the builder and physics world, and never generate Hop links or apply a hidden gameplay epsilon.
+- `NavSpace` copies its layer and link containers before validation and exposes read-only views, so later caller
+  mutation cannot invalidate the topology. Immutable `NavGrid` instances remain shared
+  ([#1232](https://github.com/APKiwiOrg/KhaozEngine/issues/1232)).
+- `ShardedWorldServer.TryGetSlot(netId, out slot)` resolves joined player ids through a reverse index maintained
+  on join and leave, including leave callback failures, and forgets departed ids before slot reuse
+  ([#1236](https://github.com/APKiwiOrg/KhaozEngine/issues/1236)).
+- `PhysicsColumnProbe.Sample` uses the next representable lower Y when its downward nudge rounds away, preventing
+  repeated inside-solid raycasts at large local heights. It returns collected surfaces if a finite lower origin
+  or reduced remaining range cannot be represented, preserving real surfaces and underside headroom
+  ([#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)).
 
 ## 20.17.0
 

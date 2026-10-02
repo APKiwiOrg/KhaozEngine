@@ -62,10 +62,14 @@ public sealed partial class WorldClient
     /// local entity's <c>KhaozEngine.Game.CharacterSample</c> exact-movement fields (so a replicated-animator bridge
     /// reads true air state instead of finite-differencing position). Defaults (grounded false, zero velocity) until
     /// the first snapshot seeds prediction.
-    /// <para>This and the local entry of <see cref="Snapshot"/> are the two places the frame is converted away, and
-    /// they must agree: fixing only one of them is the natural half-fix, and its symptom is the camera target
+    /// <para>The public local state properties and the local entry of <see cref="Snapshot"/> convert the frame away
+    /// and must agree: fixing only one of them is the natural half-fix, and its symptom is the camera target
     /// detaching from the terrain rather than anything that looks like a coordinate bug.</para></summary>
     public PlayerMoveState LocalRenderState => prediction.RenderedState.Absolute;
+
+    /// <summary>The local player's current predicted simulation state in absolute world metres.
+    /// Use for command generation and exact range checks. Excludes presentation interpolation and correction offsets.</summary>
+    public PlayerMoveState LocalPredictedState => prediction.PredictedState.Absolute;
 
     /// <summary>The local player's predicted grounded flag (shorthand for <see cref="LocalRenderState"/>.Grounded).
     /// Frame-invariant.</summary>

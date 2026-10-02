@@ -961,6 +961,41 @@ demultiplexer remains aligned. The automatic generation-13 handshake rejects an 
 because that peer would ignore the flag and run precise input at full speed. No persisted schema or game
 `ProtocolVersion` change is made by this engine wire-generation bump.
 
+## Client simulation state versus presentation state
+
+`WorldClient.LocalPredictedState` is the local player's current predicted simulation state, returned as an
+absolute-world copy. Use its `Move` value for exact geometry, range checks and generating the next ordinary
+`MoveCommand`. It excludes presentation interpolation and correction offsets. The client prediction path remains
+the only local movement authority, and `SendInput(in MoveCommand)` still queues the command through prediction,
+codec and the authoritative server.
+
+`WorldClient.LocalRenderState` is the presentation copy. It includes the render correction and is the right source
+for the avatar, camera and other visual consumers. Do not use its position to decide whether a target is in range or
+to feed `MoveToRange`, because a presentation offset can differ from the current simulation state during
+reconciliation.
+
+```csharp
+using KhaozEngine.Locomotion;
+using KhaozEngine.Movement;
+
+PlayerMoveState predicted = client.LocalPredictedState;
+MoveState body = predicted.Move;
+RangeSteering steering = rangeFollower.Tick(
+    in body, in playerTuning, in targetSnapshot, nominalRange,
+    run, tickSeconds, playerGroundContext);
+MoveCommand command = PlayerPathMovement.Command(
+    in steering, run, cameraYaw);
+client.SendInput(in command); // once per simulation tick
+
+PlayerMoveState presentation = client.LocalRenderState;
+avatar.DrawAt(presentation.Move.Position);
+```
+
+The game owns the target snapshot, nominal range, target validity, cancellation and any authoritative tolerance.
+Player automation emits ordinary client commands, and the authority simulates those commands. There is no
+server-side player following or action queue. A manual command or cancellation resets the game's `MoveToRange`
+instance before the next automated tick, and the game may send an idle command through the same normal client path.
+
 ## Island frames and the frame-relative wire (the floating-origin MAJOR)
 
 Simulating at 100 km from the world origin costs precision: float32's quantum out there is 7.8 mm, and the

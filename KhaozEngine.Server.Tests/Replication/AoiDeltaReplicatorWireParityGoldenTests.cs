@@ -11,8 +11,10 @@ namespace KhaozEngine.Tests.Replication;
 /// clients, a plain replicated component and an owner-scoped one, entities entering and leaving AoI, an ack skip,
 /// and a despawn) is encoded once and every per-client per-tick frame is asserted against a recorded golden. The
 /// goldens were captured from the pre-share per-client implementation, so this test pins the exact wire the shared
-/// per-tick capture must reproduce byte-for-byte: it is committed green against the old code and stays green through
-/// the refactor.
+/// per-tick capture must reproduce byte-for-byte. The legacy last-sent contract changed only the tick 3 slot A frames,
+/// whose acknowledged and last sent baselines differ. Those two were re-derived by hand from the documented field
+/// layout (baseline seq2, snapshot seq3, entity 3 removed, entity 1 carrying only its moved Pos), not copied from the
+/// writer's output.
 /// </summary>
 public class AoiDeltaReplicatorWireParityGoldenTests
 {
@@ -76,7 +78,7 @@ public class AoiDeltaReplicatorWireParityGoldenTests
         repl.Acknowledge(slotB, seq1);
 
         // Tick 2: entity 1 moves, entity 4 spawns. A sees {1,2,3,4} (4 enters). B sees {2,3,4} (1 leaves B's AoI,
-        // 4 enters). B acks seq2. A does NOT ack (ack skip), so A keeps diffing from seq1.
+        // 4 enters). B acks seq2. A does NOT ack (ack skip), which must not change A's diff basis.
         world.Set(h[1], new Pos { X = 1f, Y = 2f });
         Spawn(world, h, 4, 20f, 0f, secret: null);
         int seq2 = repl.BeginTick();
@@ -84,8 +86,8 @@ public class AoiDeltaReplicatorWireParityGoldenTests
         frames.Add(repl.WriteFor(slotB, world, Aoi(2, 3, 4), ownerB));
         repl.Acknowledge(slotB, seq2);
 
-        // Tick 3: entity 1 moves again, entity 3 despawns. A sees {1,2,4} (3 gone), diffing from seq1 (its seq2 ack
-        // was lost). B sees {2,4}, diffing from seq2.
+        // Tick 3: entity 1 moves again, entity 3 despawns. A sees {1,2,4} (3 gone), diffing from seq2, the last
+        // projection sent to it, although its seq2 ack was lost. B sees {2,4}, diffing from seq2.
         world.Set(h[1], new Pos { X = 3f, Y = 4f });
         world.Despawn(h[3]);
         repl.BeginTick();
@@ -106,8 +108,9 @@ public class AoiDeltaReplicatorWireParityGoldenTests
         "AQAAAAIAAAAAAAAAAgAAAAQAAAAAAAAAAQAAAAABAAAAoEEAAAAAAAABAAAAAAAAAAAAAAAAAQAAAIA/AAAAQAAA",
         // tick 2, slot B (owner 2): entity 1 leaves AoI (removed), entity 4 enters. diff from seq1
         "AQAAAAIAAAABAAAAAQAAAAAAAAABAAAABAAAAAAAAAABAAAAAAEAAACgQQAAAAAAAA==",
-        // tick 3, slot A (owner 1): diff from seq1 (seq2 ack lost). entity 3 removed, 1 and 4 carried
-        "AQAAAAMAAAABAAAAAwAAAAAAAAACAAAABAAAAAAAAAABAAAAAAEAAACgQQAAAAAAAAEAAAAAAAAAAAAAAAABAAAAQEAAAIBAAAA=",
+        // tick 3, slot A (owner 1): diff from seq2, the last sent projection (seq2 ack lost). entity 3 removed, only
+        // entity 1 carried (Pos moved, its Secret unchanged). Hand-derived from the field layout.
+        "AgAAAAMAAAABAAAAAwAAAAAAAAABAAAAAQAAAAAAAAAAAAAAAAEAAABAQAAAgEAAAA==",
         // tick 3, slot B (owner 2): diff from seq2. entity 3 removed, nothing changed
         "AgAAAAMAAAABAAAAAwAAAAAAAAAAAAAA",
     };
@@ -216,7 +219,7 @@ public class AoiDeltaReplicatorWireParityGoldenTests
         repl.Acknowledge(slotB, seq1);
 
         // Tick 2: entity 1 moves, entity 4 spawns. A sees {1,2,3,4} (4 enters). B sees {2,3,4} (1 leaves B's AoI,
-        // 4 enters). B acks seq2. A does NOT ack (ack skip), so A keeps diffing from seq1.
+        // 4 enters). B acks seq2. A does NOT ack (ack skip), which must not change A's diff basis.
         world.Set(h[1], new Pos { X = 1f, Y = 2f });
         SpawnPlain(world, h, 4, 20f, 0f);
         int seq2 = repl.BeginTick();
@@ -224,8 +227,8 @@ public class AoiDeltaReplicatorWireParityGoldenTests
         frames.Add(repl.WriteFor(slotB, world, Aoi(2, 3, 4), ownerB));
         repl.Acknowledge(slotB, seq2);
 
-        // Tick 3: entity 1 moves again, entity 3 despawns. A sees {1,2,4} (3 gone), diffing from seq1 (its seq2 ack
-        // was lost). B sees {2,4}, diffing from seq2.
+        // Tick 3: entity 1 moves again, entity 3 despawns. A sees {1,2,4} (3 gone), diffing from seq2, the last
+        // projection sent to it, although its seq2 ack was lost. B sees {2,4}, diffing from seq2.
         world.Set(h[1], new Pos { X = 3f, Y = 4f });
         world.Despawn(h[3]);
         repl.BeginTick();
@@ -246,8 +249,9 @@ public class AoiDeltaReplicatorWireParityGoldenTests
         "AQAAAAIAAAAAAAAAAgAAAAEAAAAAAAAAAAAAAAABAAAAgD8AAABAAAAEAAAAAAAAAAEAAAAAAQAAAKBBAAAAAAAA",
         // tick 2, slot B: entity 1 leaves AoI (removed), entity 4 enters. diff from seq1
         "AQAAAAIAAAABAAAAAQAAAAAAAAABAAAABAAAAAAAAAABAAAAAAEAAACgQQAAAAAAAA==",
-        // tick 3, slot A: diff from seq1 (seq2 ack lost). entity 3 removed, 1 and 4 carried
-        "AQAAAAMAAAABAAAAAwAAAAAAAAACAAAAAQAAAAAAAAAAAAAAAAEAAABAQAAAgEAAAAQAAAAAAAAAAQAAAAABAAAAoEEAAAAAAAA=",
+        // tick 3, slot A: diff from seq2, the last sent projection (seq2 ack lost). entity 3 removed, only entity 1
+        // carried. Hand-derived from the field layout.
+        "AgAAAAMAAAABAAAAAwAAAAAAAAABAAAAAQAAAAAAAAAAAAAAAAEAAABAQAAAgEAAAA==",
         // tick 3, slot B: diff from seq2. entity 3 removed, nothing changed
         "AgAAAAMAAAABAAAAAwAAAAAAAAAAAAAA",
     };

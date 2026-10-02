@@ -453,7 +453,8 @@ opts.WindowFactory = o => AppWindow.Scaled(
 
 The original `Scaled(title, designWidth, designHeight, ...)` signature keeps focus on and its existing defaults.
 Both retain the integer cap contract. Positive `frameCapHz` requests that Hz and non-positive values are uncapped.
-Forward the separate `GameAppOptions.FrameCap` intent through the constructor's `FrameCap` overload when needed.
+After a custom factory returns, `GameApp` applies its resolved cap, including the separate `GameAppOptions.FrameCap`
+intent when `FrameCapHz` is non-positive. A standalone `Scaled` call keeps its integer cap policy.
 The `KE_WINDOW_FOCUS` run override applies to either factory.
 
 **What macOS allows.** The keyboard part works: GLFW only calls `[NSApp activateIgnoringOtherApps]` and

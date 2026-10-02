@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title">
+<title id="title">Khaoz Engine icon</title>
+<rect x="32" y="32" width="960" height="960" rx="180" fill="#101318"/>
+<polygon points="512,179.24 788.12,455.36 611.12,455.36 512,356.24 342.08,526.16 497.84,526.16 342.08,674.84 179.24,512" fill="#F2F0E7"/>
+<polygon points="512,844.76 235.88,568.64 412.88,568.64 512,667.76 681.92,497.84 526.16,497.84 681.92,349.16 844.76,512" fill="#FF6838"/>
+</svg>

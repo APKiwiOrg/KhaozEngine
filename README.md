@@ -1,5 +1,10 @@
 # KhaozEngine
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="art-assets/brand/KhaozEngine-logo-dark.svg">
+  <img src="art-assets/brand/KhaozEngine-logo-light.svg" alt="Khaoz Engine" width="708">
+</picture>
+
 A shared, game-agnostic, **MonoGame-free** 2D/3D engine: windowing + input, a GPU abstraction, 2D and 3D
 renderers, an immediate-mode + screen-stack GUI, audio, particles, an ECS, netcode, and the usual foundation
 (content, persistence, localization, diagnostics). One implementation, used by five games (Hardpoint,

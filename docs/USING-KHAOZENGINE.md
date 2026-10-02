@@ -441,7 +441,21 @@ opts.InitialMonitor = InitialMonitor.Rightmost;    // Saved (default) / Primary 
 and `FOCUS_ON_SHOW` hints to false before the native window is created, which is what a second monitor build, a
 tooling run, or an automated pass wants: the window appears without stealing the keyboard from the editor.
 Applied at window creation, so a custom `WindowFactory` forwards it itself (it is the last argument of the
-`AppWindow` constructor).
+`AppWindow` constructor). For a display-fitted window, use the required-bool-first `Scaled` overload:
+
+```csharp
+opts.WindowFactory = o => AppWindow.Scaled(
+    focusOnLaunch: o.FocusOnLaunch ?? true, title: o.Title,
+    designWidth: o.Width, designHeight: o.Height,
+    presentMode: o.PresentMode, frameCapHz: o.FrameCapHz,
+    backendPreference: o.GraphicsBackendPreference);
+```
+
+The original `Scaled(title, designWidth, designHeight, ...)` signature keeps focus on and its existing defaults.
+Both retain the integer cap contract. Positive `frameCapHz` requests that Hz and non-positive values are uncapped.
+After a custom factory returns, `GameApp` applies its resolved cap, including the separate `GameAppOptions.FrameCap`
+intent when `FrameCapHz` is non-positive. A standalone `Scaled` call keeps its integer cap policy.
+The `KE_WINDOW_FOCUS` run override applies to either factory.
 
 **What macOS allows.** The keyboard part works: GLFW only calls `[NSApp activateIgnoringOtherApps]` and
 `makeKeyAndOrderFront` from the focus path that both false hints skip, leaving a plain `orderFront`, so the
@@ -771,16 +785,18 @@ engine-native, `System.Numerics`:
 ```csharp
 public sealed class InputState   // immutable per-frame snapshot; InputState.Empty is a blank one
 {
-    // read-only properties; the constructor takes them in this order:
+    // read-only properties; the original constructor takes these values in this order:
     IReadOnlySet<Key> KeysDown, KeysPressed, KeysReleased;
     IReadOnlySet<MouseButton> MouseDown, MousePressed;
     Vector2 MousePosition, MouseDelta;  float ScrollDelta;  int Width, Height;
-    IReadOnlyList<GamepadState> Gamepads, Touches;  // ctor args optional, default empty
+    IReadOnlyList<GamepadState> Gamepads;          // ctor arg optional, default empty
+    IReadOnlyList<TouchPoint> Touches;             // ctor arg optional, default empty
     bool WindowFocused;                             // optional trailing ctor arg, default true (Empty = false)
     IReadOnlySet<Key> KeysRepeated;                 // optional trailing ctor arg, default empty
     IReadOnlySet<MouseButton> MouseReleased;        // optional trailing ctor arg, default empty
     string TextInput;  bool TextInputAvailable;     // optional trailing ctor args, default "" and false
     bool PointerCaptured;                           // optional trailing ctor arg, default false
+    Vector2 MouseDeltaPoints, FramebufferScale;     // required first args of the explicit-motion overload
 }
 
 bool IsDown(Key) / WasPressed(Key) / WasReleased(Key);
@@ -833,9 +849,24 @@ when capture starts, so the start zero is only a safety net for untested platfor
 movement. `WithoutScroll()` and `AutomationInputInjector.Compose` keep the value. It is unrelated to
 `GuiSurface.PointerCaptured`, the UI click-through gate.
 
-A custom snapshot producer passes the same facts to `InputAccumulator.Snapshot(..., pointerCaptured,
-framebufferScale)`. `framebufferScale` is framebuffer pixels per window point on each axis, the ratio `AppWindow`
-also applies to the cursor position. The default, and any component that is not positive or is NaN, means 1.
+`MouseDeltaPoints` carries window-point movement before and during capture. `FramebufferScale` records framebuffer
+pixels per window point on each axis, with every nonfinite or nonpositive component read as 1. Native snapshots
+retain a logical cursor baseline across scale changes, and report zero points movement on the first cursor sample,
+a missing-mouse frame and either capture transition. `MousePosition` and gesture tap origins remain framebuffer
+coordinates. The existing `MouseDelta` contract remains framebuffer pixels while uncaptured and window points
+while captured.
+
+The original 18-parameter `InputState` constructor and all its defaults remain available. It assumes a 1x producer:
+`MouseDeltaPoints = MouseDelta` and `FramebufferScale = Vector2.One`. A scaled producer uses the overload with
+required `Vector2 mouseDeltaPoints` and `Vector2 framebufferScale` first, followed by the original arguments in
+the same order. The supplied points and legacy deltas stay independent, and scale normalization changes neither.
+
+A custom snapshot producer can pass its framebuffer cursor and scale to
+`InputAccumulator.Snapshot(..., pointerCaptured, framebufferScale)`. This is the ratio `AppWindow` already uses,
+with no new raw input path. The points delta and scale metadata use the finite-positive rule above, while legacy
+captured `MouseDelta` keeps its existing nonpositive-or-NaN fallback to 1. Snapshot copies and input filters must
+preserve both added facts. `WithoutScroll()` does so, and `AutomationInputInjector.Compose` preserves real motion
+or computes injected points motion from framebuffer coordinates and its own logical baseline.
 
 ### InputManager + Pointer - the higher-level read
 
@@ -1055,20 +1086,21 @@ itself. The Showcase does this for its 3D room: `IShowcaseRoom.WantsPointerCaptu
 ### Tap or drag (`PointerGesture`)
 
 `PointerGesture(button, thresholdPixels = 4)` (since 20.17.0) splits one mouse button into a tap and a drag. It is
-pure and headless. It reads its own button, `MousePosition`, `MouseDelta` and `WindowFocused` from the snapshot and
+pure and headless. It reads its own button, `MousePosition`, `MouseDeltaPoints` and `WindowFocused` from the snapshot and
 owns no camera. Call `Advance(input, uiBlocked)` once a frame, then read:
 
 - `Phase`: `Idle`, `Pending` (pressed and still undecided) or `Dragging` (past the threshold, and a drag until the
   button comes up or a block arrives).
-- `DragDelta`: zero unless dragging, the frame's `MouseDelta` while dragging, and the whole pending travel on the
-  frame the press crosses the threshold.
-- `TapThisFrame` and `TapPosition`: a release while still pending is a tap, at the position the press began.
+- `DragDelta`: zero unless dragging, the frame's `MouseDeltaPoints` while dragging, and the whole pending movement
+  replay on the frame the press crosses the threshold. All are window points.
+- `TapThisFrame` and `TapPosition`: a release while still pending is a tap, at the framebuffer position the press began.
 
 The rules:
 
 - Travel is path length over the whole press, so slow movement still becomes a drag, and a wiggle that returns to
   its start is a drag rather than a tap.
-- Crossing the threshold replays the pending travel in one `DragDelta`, so a drag has no dead zone at its start.
+- Travel must strictly exceed the threshold. Crossing replays the pending movement in one `DragDelta`, so a drag
+  has no dead zone at its start.
 - Above a zero threshold, a press that begins while `uiBlocked` is true or while the window is unfocused is inert
   for its whole life. A focus loss or a block that arrives mid-press ends any drag and makes the rest of the press
   inert, so that press never ends in a tap.
@@ -1076,10 +1108,9 @@ The rules:
   stops the drag, and a button still held drags again on the first unblocked frame.
 - `TapThisFrame` describes only the most recent `Advance`. Read it after advancing with the snapshot you act on.
 - `Advance` allocates nothing.
-- The threshold and the crossing replay are measured in `MouseDelta` units, which are framebuffer pixels until
-  capture starts and window points after it. On a 2x display a press that has not yet captured crosses at half the
-  hand movement it would at 1x. A scale-aware threshold is tracked in
-  [#1228](https://github.com/APKiwiOrg/KhaozEngine/issues/1228).
+- The retained `thresholdPixels` parameter and `ThresholdPixels` property names now measure window points,
+  before and during capture. Threshold, crossing replay and continuing drag use `MouseDeltaPoints`, so the same
+  logical path has the same tap tolerance and motion at 1x, 2x or anisotropic display scale.
 
 It is lifted from Ruinborne's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
 them (see "Tap-or-drag gestures" in the follow camera chapter).
@@ -6734,8 +6765,9 @@ that begins while it is true never taps, and above a zero threshold never orbits
 gesture once. The camera orbits only while a gesture drags, and by one delta a frame, so each mouse movement turns it
 once however many buttons are held. A gesture that crosses its threshold with no orbit since its press began applies
 its `DragDelta`, the replay of its pending travel, with `LookGesture` first when both cross together. Otherwise the
-frame's `MouseDelta` applies. Speed, invert and sign are as for the orbit button, and scroll zoom, target damping and
-boom recovery run unchanged. With neither gesture set, `Update` runs the orbit button path exactly as before.
+frame's `MouseDeltaPoints` applies. Gesture replay and continuing motion are in window points before and during
+capture. Speed, invert and sign are as for the orbit button, and scroll zoom, target damping and boom recovery run
+unchanged. With neither gesture set, `Update` keeps the original orbit button path and its legacy `MouseDelta` units.
 
 The controller reports three things:
 
@@ -9698,10 +9730,11 @@ window to exactly what fresh arrays hold before every search, so a scratch-fed p
 allocating one.
 
 **Picking and prefabs.** `TileRaycast.Pick(doc, plane, origin, direction)` is the GPU-free ray against the
-lattice, cutting each tile with `TileTriangulation.Triangulate`, the same shape triangulation the ground mesher
-uses over the same `TileLatticePoint` lattice and `SplitSwNe` diagonal choice, so a click lands on the triangle that is
-drawn. Every triangle comes back wound the same way, so a pass that culls a face direction keeps or drops all of
-them together. `TilePrefabs.Extract`/`Rotate`/`Place` lift a rect of tiles (layers,
+lattice. It consumes `TileGroundTriangles` for the canonical cut, authored diagonal split and `TileLatticePoint`
+placement shared with the ground mesher. Document picking includes authored `NoDraw` ground when it has a
+nonzero underlay, so an editor can inspect hidden terrain. Drawable descriptions and `TileWorldView` visible-ground
+picking continue to exclude that ground. Every triangle comes back wound the same way, so a pass that culls a face
+direction keeps or drops all of them together. `TilePrefabs.Extract`/`Rotate`/`Place` lift a rect of tiles (layers,
 relative heights, objects, markers) and stamp it elsewhere at any rotation, with `TilePrefabFile` as the JSON
 form. Pass `includeDerivedHeights: false` to `TilePrefabs.Extract` when an unauthored upper plane should keep
 deriving its height from the destination ground. Explicit height layers remain authored, even when their
@@ -9712,7 +9745,7 @@ A stamp is additive per layer, so clear the rect first if you want a replace. Fu
 **The drawn ground and its water, without a renderer.** `TileGroundTriangles` and `TileWaterBodies` are the two
 rules the render package draws from, so a server, a physics bake or a test reads the surface a player sees with no
 GPU in the process. `TileGroundTriangles.IsDrawable(doc, x, z, plane)` is the one drawability test (an underlay, and
-no `TileSettings.NoDraw`). `TryDescribe` hands back a tile's `TileGroundCell` and writes its triangles,
+no `TileSettings.NoDraw`). Public `TryDescribe` keeps that exclusion, hands back a tile's `TileGroundCell` and writes its triangles,
 `LatticePosition` places one lattice point, and `Build(doc, region, plane)` returns a `TileGroundMesh` of every
 full-detail triangle in a region-plane, three region-local positions per triangle with indices 0, 1, 2 and on.
 None of them takes catalogs: an overlay id that is not 0 cuts its tile whether or not the catalogs define it.
@@ -14008,7 +14041,9 @@ see "Parallel `ForEach` + access declarations" below), parent/child hierarchy
 (`AddSystem(ISystem, group)`, `SetGroupOrder`, `Update(float dt)`). `CachedQuery` reuses a query across ticks to
 avoid per-tick allocation. `DeterministicRng` (a xorshift128+-derived recurrence over splitmix64 seeding,
 `CreateDerived(name)` for per-stream sub-RNGs) gives platform-stable RNG for lockstep sims. `WorldSerializer`
-round-trips a world as JSON (uses `KhaozEngine.Serialization.JsonDefaults.IncludeFields`).
+round-trips a world as JSON (uses `KhaozEngine.Serialization.JsonDefaults.IncludeFields`), including entities,
+components, id-allocator state and ordered archetype signatures. Format 2 records empty historical signatures,
+so repopulating one after restore preserves raw query order. Resources and systems remain outside the snapshot.
 (`DeterministicRng` lives in `KhaozEngine.Primitives`, and the ECS uses it for lockstep RNG.)
 
 **Structural changes during iteration are forbidden, and since 17.37.0 they are refused (#118).** Iteration walks
@@ -14090,6 +14125,12 @@ The `FullName` default means renaming or moving a component struct silently brea
 `[ComponentId]` pins a stable key so the type can be renamed/moved freely. The dup-key guard rejects two
 types resolving to the same key, and `WorldSerializer.RegisterMigration(fromVersion, upgrade)` rewrites older
 save documents up to `CurrentFormatVersion` before deserialize.
+
+The engine writes format 2. Format 1 and snapshots without `FormatVersion` remain readable through a built-in
+compatibility step, with legacy reconstruction order because they never stored empty-archetype history.
+A registered version 1 migration takes precedence, and earlier caller migrations still chain into that step.
+An original format 2 document must contain complete valid archetype history. Absent or malformed metadata fails
+closed. Historical signatures use the same component keys as live entities, so stable-key policy applies to both.
 
 Rules:
 
@@ -16727,7 +16768,7 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   `DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`. The bottom of the dependency graph.
 - **`KhaozEngine.App`**: app identity / data paths: `AppDataPaths` (publisher-rooted: `<base>/APKiwiOrg/<game>/`),
   `BuildMetadata`, `ServiceLocator`, and `AppInstallStamp` (local first-ran/updated stamp; see "Install / update
-  stamp" below).
+  stamp" below), plus `EnvFile` for ordered optional-file assignments with caller-owned precedence.
 - **`KhaozEngine.Persistence`**: crash-safe saves: `AtomicJsonWriter`, `PersistenceQueue` (coalesced async
   writes, optional numbered backup-generation rotation), `SettingsManager<T>` + `FileSettingsStorage`,
   `SaveEncoder` (Base64 + HMAC, a versioned envelope carrying tamper-protected `SaveMetadata`), the
@@ -16814,6 +16855,28 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   per-player state, and nothing re-announces either, so an evicted one leaks that state permanently. Terminal
   events are rare and self-limiting (at most one per peer, no payload buffer), so `Count` can exceed `Capacity`
   by however many are buffered. Use it for your own terminal events if you queue through this type.
+
+**Optional env files (`KhaozEngine.App.EnvFile`).** `Parse(TextReader)` returns ordered
+`IReadOnlyList<KeyValuePair<string, string>>` entries and leaves the reader open. Duplicate entries, key casing and
+empty values are preserved. Lines, keys and values are trimmed, the first equals sign separates the assignment,
+and a matching outer pair of single or double quotes is removed. Blank lines, whole-line `#` comments and malformed
+separator/key lines are ignored. Embedded equals signs, inline `#` text and unmatched quotes stay literal.
+
+```csharp
+using KhaozEngine.App;
+
+if (EnvFile.TryRead("settings.env", out var entries))
+    foreach (var (key, value) in entries)
+        if (Environment.GetEnvironmentVariable(key) is null)
+            Environment.SetEnvironmentVariable(key, value);
+```
+
+This example applies precedence per entry. The helper itself reads and writes no environment variables, chooses no
+search path and logs no values. `TryRead(string, out entries)` uses BCL BOM detection and publishes entries after
+the complete read and close. Expected path/access failures return false with empty entries, while a readable file
+with no assignments returns true. Null readers and null or empty paths are argument errors, and `Parse` reader
+failures propagate. There is no interpolation, escaping, `export` prefix processing or multiline syntax.
+See the [package API guidance](../KhaozEngine.App/README.md#envfile).
 
 ---
 
@@ -23231,7 +23294,9 @@ program as a native binary. It covers three subsystems:
 - **ECS world JSON save/load.** `WorldSerializer.Save`/`Load` register the component set through the generic seam
   (`WorldSerializer.Create().Add<T>()`), which records a reflection-free column factory keyed by `Type` (replacing the
   old `Type.MakeGenericType` + `Activator.CreateInstance`), and serialize through a source-generated envelope context
-  plus `JsonTypeInfo`-based component codecs. Pass JSON options backed by a source-generated
+  plus `JsonTypeInfo`-based component codecs. Ordered signature history is in that envelope, and the native probe
+  checks continuation after repopulating an empty archetype plus legacy migration precedence.
+  Pass JSON options backed by a source-generated
   `JsonSerializerContext` for the component structs. The non-generic `Type[]` constructor and `FromAssemblyOf<T>` stay
   reflection-based (JIT-only): they throw an actionable error under NativeAOT instead of silently pulling reflection.
 - **NetWorld persistence DTOs.** `PlayerRecord`, `WorldMetaRecord`, and `WorldStoreBanStore.BanDto` round-trip through a

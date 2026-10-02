@@ -194,7 +194,7 @@ COMPILES against it, which is why milestone 1.1 gates every `ItemInstances` pack
 
 | Type | One line |
 |---|---|
-| `IContentAuthoringStore` | The provider seam: draft edits, publish, version listing, audit, id allocation, bulk import and export. |
+| `IContentAuthoringStore` | The provider seam: draft edits, publish, version listing, audit, id allocation, family reads through `Task<IReadOnlyList<ContentFamily>> ListFamiliesAsync(ContentTypeId type, CancellationToken cancellationToken = default)` (type id 0 means all types), bulk import and export. |
 | `ContentAuthoringSchemaMode` | `AutoCreate` or `ValidateOnly`, the journal's shape (`SqliteJournalSchema.cs:9-13`). |
 | `ContentDraft` | The one open draft: its base version, its edit list and its opened-by and opened-at stamps. |
 | `ContentEdit` | One edit: type, id or key, operation (`Add`, `Update`, `Retire`, `Fork`), and the field values it sets. |
@@ -1104,6 +1104,12 @@ ORDER, which is what contracts 4.6 requires and what a column of joined text wou
 `blob_value` is a guard rail, not a budget: a 128-byte asset reference and a 60-tag list are both far under
 it.
 
+`CreateFamilyAsync` acts immediately but stamps `catalog_family.created_in_version` and its initial
+block's `reserved_in_version` with `active_version + 1`, the next publish number. Before the first
+publish, `active_version` is 0 and both stamps are 1, satisfying the existing `>= 1` checks. Later block
+reservations also use the active version plus one at reservation time, without changing the family's
+original creation stamp.
+
 ```sql
 CREATE TABLE IF NOT EXISTS catalog_family (
     family_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -1275,12 +1281,14 @@ single-hash row makes the client manifest unreconstructable the moment any type 
 
 An EMBEDDED RESOURCE, `KhaozEngine.Catalog.SqlServer/CatalogSchemaV1.sql`, following
 `KhaozEngine.WorldStore.SqlServer/JournalSchemaV1.sql`. The shape is the SQLite text with the type and
-constraint idioms swapped, and the differences are mechanical rather than semantic:
+constraint idioms swapped:
 
 | SQLite | SQL Server |
 |---|---|
-| `TEXT COLLATE BINARY` | `nvarchar(N) COLLATE Latin1_General_100_BIN2` |
-| `INTEGER` | `int`, or `bigint` for the audit id and the timestamps |
+| `TEXT COLLATE BINARY`, cap `1 <= N <= 4000` | `nvarchar(N) COLLATE Latin1_General_100_BIN2` |
+| `TEXT COLLATE BINARY`, cap above 4000 | `nvarchar(max) COLLATE Latin1_General_100_BIN2`, with a named length `CHECK` |
+| `INTEGER` for 32-bit seam values | `int` |
+| `INTEGER` for identities, matching foreign keys or `ContentFieldValue.Number` (`long`) | `bigint` |
 | `INTEGER PRIMARY KEY AUTOINCREMENT` | `bigint IDENTITY(1,1)` |
 | `BLOB` | `varbinary(max)`, with `CHECK (DATALENGTH(x) <= N)` |
 | `CAST(strftime(...))` epoch ms | `datetimeoffset(7)` |
@@ -1288,11 +1296,24 @@ constraint idioms swapped, and the differences are mechanical rather than semant
 | `CHECK (length(x) <= N)` | `CHECK (LEN(x) <= N)` for `nvarchar`, `DATALENGTH` for `varbinary` |
 | inline `CHECK` | `CONSTRAINT ck_<table>_<what> CHECK` |
 
+The timestamp row applies to the epoch-ms columns, which become `datetimeoffset(7)`, not `bigint`.
+The `bigint` identities are `catalog_audit.audit_id`, `catalog_family.family_id` and
+`catalog_draft_edit.edit_ordinal`, and columns referencing those identities use the same type.
+`catalog_row_field.int_value` and `catalog_draft_edit_field.int_value` also use `bigint`: the seam's
+`ContentFieldValue.Number` is a `long`, and both providers read it with `GetInt64`.
+
+SQL Server's explicit `nvarchar(N)` limit is 4000 byte-pairs. The audit's `before_value` and `after_value`
+therefore use `nvarchar(max) COLLATE Latin1_General_100_BIN2` with the existing named checks
+`ck_catalog_audit_before` and `ck_catalog_audit_after`, each checking
+`x IS NULL OR LEN(x) <= 4096`. `ContentAuditEntry.MaxValueLength` stays 4096, and provider rendering
+applies that cap through `.NET string.Length`. The SQL check retains `LEN` semantics, which exclude
+trailing spaces. SQL and seam length semantics remain provider-specific.
+
 `JournalSchemaV1.sql:10` is the precedent for the collation and `:33` for the `DATALENGTH` cap. Every
 constraint is NAMED on SQL Server, because an unnamed constraint gets a generated name and the schema
 validator compares names.
 
-The one genuine behavioural difference is the transaction. SQLite serializes IN PROCESS behind the
+The transaction also differs. SQLite serializes IN PROCESS behind the
 `SqliteStoreConnection` gate plus an explicit transaction (`SqliteWalletStore.cs:69-70`). SQL Server takes no
 in-process semaphore and uses `IsolationLevel.Serializable` (`SqlServerWalletStore.cs:11-13`), which is what
 makes two consoles publishing concurrently a deadlock-or-abort rather than a race (section 11, row 4). The
@@ -1371,8 +1392,9 @@ per type against an owner figure of 50,000 definitions and a stress figure of 1,
 
 **Family allocation is the same rule on a narrower range.** `AllocateInFamilyAsync(familyId)` takes the
 family's blocks in ordinal order, finds the first whose `next_free_id < base_id + block_size`, issues that id
-and advances `next_free_id`. When every block is full it reserves a NEW block: it takes the type's
-`reserved_through`, rounds UP to the family's declared `block_size` alignment, reserves through the top of the
+and advances `next_free_id`. When every block is full it reserves a NEW block: it takes the type's floor
+`max(reserved_through, issued_through + 1)`, computed in 64-bit arithmetic, rounds UP to the family's
+declared `block_size` alignment, reserves through the top of the
 new block by the step-2 rule above, **advances `issued_through` to that same block top**, inserts the
 `catalog_family_block` row, and only then issues. The rounding up is what wastes ids and what makes
 `(id & ~(size - 1)) == base` a legal membership test (contracts 5.2), and the waste is bounded by the block
@@ -1704,24 +1726,47 @@ changes until step 10 and step 10 is a single transaction.
 
 ### 6.2 Step 1, freeze the draft
 
-The draft is marked frozen in memory for the duration of the publish and the store takes a row lock on
-`catalog_draft`. A draft edit arriving while a publish is in flight is refused with HTTP 409 and
-`publish-in-progress`. On SQL Server the lock is the `Serializable` transaction's own. On SQLite it is the
-`SqliteStoreConnection` gate, which already serializes every command in the process
-(`SqliteStoreConnection.cs:66-73`), plus a `BEGIN IMMEDIATE` so a second process cannot start one.
+The store reads a `ContentPublishBaseline` before preparing the plan. `expectedBaseVersion` must match
+that baseline, and the publisher reads the draft and freezes it for that base. The SQL providers persist
+`catalog_draft.frozen_for_base_version` in a separate write transaction, while the in-memory store records
+the marker under its gate. Draft edits or discards while frozen are refused with HTTP 409 and
+`publish-in-progress`.
 
-Two consoles publishing concurrently is section 11 row 4 and it resolves here: the second one either blocks
-and then finds the draft empty, or aborts with a serialization failure. Neither produces a torn version.
+The marker is not a row lock held across the pipeline. SQLite leases its connection per call, and SQL
+Server's `Serializable` commit transaction covers step 10, not plan construction or step 9's pack writes.
+The publish orchestration calls `ClearDraftFreezeAsync` on every exit path. A later baseline read also
+clears a marker whose base version is no longer active.
 
-The new version number is `MAX(version_number) + 1` read INSIDE the transaction at step 10, not here. Reading
-it at freeze time and using it at commit time is exactly the race the lock is meant to close, so the number is
-taken where the write happens.
+The candidate version is `baseline.VersionNumber + 1`, or 1 from an empty baseline at 0. It is chosen
+BEFORE candidate construction, the temporal rows at step 5 and both manifest hashes at step 8. Those rows
+and hashes already contain that number when the plan reaches the commit, so step 10 confirms the number
+rather than choosing a different one.
+
+Inside step 10's atomic gate or transaction, the provider re-reads the highest published version and
+requires the plan's version to be exactly that number plus one. A moved baseline refuses the plan with
+`base-version-moved` before writing the new version. Re-read the baseline and prepare again, because
+renumbering an old plan would leave its temporal rows and manifest hashes inconsistent. Two concurrent
+plans may target the same number, but a commit that already landed makes the other stale. A SQL Server
+serialization failure can also refuse a competing commit. Neither produces a torn version.
 
 ### 6.3 Step 3, allocate ids
 
 Every `Add` edit in the frozen change set needs an id, and so does every `Fork`, which allocates one for its
 copy. Allocation runs before validation deliberately, because several checks (`KEC0006` reference resolution,
 `KEC0010` family membership) need the ids the new rows will carry.
+
+**A bundle import seeds the high-water marks BEFORE publish allocates any unnamed row.** After restoring
+the families, raise each type's `reserved_through` and `issued_through` to the greater of its current value,
+the largest carried id of that type and the highest inclusive id of its restored family blocks
+(`TopExclusive - 1`). Examine the whole bundle before starting the allocating branches, regardless of row
+order. This keeps the plain counter above both carried ids and reserved blocks. Family allocation still
+uses the restored family's own blocks through branch 2.
+
+Without this preparation, a bundle carrying id 1 and an unnamed row of the same type can allocate id 1 to
+both, and `KEC0036` refuses the import. Seeding first makes the unnamed plain row take id 2 or higher.
+Seeding the block tops also prevents a plain row from landing inside a restored family block and failing
+`KEC0037`. An import with neither carried ids nor restored blocks raises nothing here. The ordinary publish
+can reapply the carried-id seed after allocation, but that does not replace this preparation.
 
 For each `Add`, in edit ordinal order:
 
@@ -1734,12 +1779,6 @@ Both allocating branches go through the reserve-before-issue rule, so the reserv
 before the id appears anywhere. **An allocation that fails aborts the publish with nothing written**, because
 no durable row carries the id yet. A reservation that COMMITTED and then aborted leaves a gap of
 reserved-but-unissued ids, which is the safe direction and costs nothing (section 4.7).
-
-**After every `Add` has an id, the high-water marks are SEEDED from the ids that were carried.** For each type
-with at least one carried id, `reserved_through` and `issued_through` move to the greater of their current
-value and the largest carried id of that type. Without it the first ordinary `Add` after an import allocates
-id 1 straight onto an imported row. The step is a no-op for an ordinary publish, because nothing carries an id
-there.
 
 **So there is ONE path with two id sources, and which one runs is a property of the EDIT rather than of the
 caller.** An `Add` with `definition_id = 0` is allocated one, an `Add` with a non-zero `definition_id` keeps
@@ -1963,7 +2002,9 @@ Nothing else points at any of these files until step 10, so a crash here leaves 
 
 ONE transaction (section 4.8). In order inside it:
 
-1. `newVersion = MAX(version_number) + 1` from `catalog_version`, or 1 when empty.
+1. Re-read `MAX(version_number)` from `catalog_version`, or 0 when empty, inside the transaction. Require
+   the prepared `newVersion` to equal that number plus one, or refuse with `base-version-moved`. Keep the
+   plan's existing number, temporal rows and manifest hashes unchanged.
 2. Insert the `catalog_version` row with both manifest hashes, both minimum builds, the format generation, the
    base version, the publisher, the note and the timestamp.
 3. Apply every temporal row change computed at step 5.
@@ -3517,7 +3558,7 @@ deciding which copy is right and only a republish can know that.
 | 1 | A chunk file on the server's disk is corrupt | Hash mismatch at boot step 6, or `catalog-verify` (10.11) on demand | Boot fails closed, exit 3, the hash and reason on stderr (9.6). A running server is unaffected, its bytes are already decoded and in memory. | Delete the file and refetch from the remote store, or republish the version. The chunk is content addressed, so any copy that hashes correctly is the right one. |
 | 2 | A chunk is missing on the client | `missing` is non-empty after the fetch loop (8.7) | The client stays at the connect door showing a fetch-progress notice. It never joins with a partial catalog. | Retry with backoff. If the remote genuinely lacks it, the pack store is broken and an operator runs `catalog-verify` server side. |
 | 3 | The manifest hash does not match | The `CachingPackStore` verify on read (8.4) | The manifest is discarded, refetched once, and a second mismatch leaves the client at the door with `manifest-hash-mismatch`. | Operator side. Either a store wrote bytes under the wrong name, which `PutAsync`'s verify (8.1) makes impossible for the engine's own providers, or a cache or proxy is serving stale bytes for a content address, which is a deployment defect. |
-| 4 | Two consoles publish concurrently | `expectedBaseVersion` optimistic concurrency (10.6), plus the draft row lock (6.2) | The second publish gets 409 naming both version numbers. On SQL Server a `Serializable` transaction may instead abort with a serialization failure, reported as the same 409. | The second operator refreshes, sees the first publish's diff, and decides. No torn version is possible, because the whole commit is one transaction (4.8). |
+| 4 | Two consoles publish concurrently | `expectedBaseVersion` optimistic concurrency and the draft freeze marker (6.2), plus commit-time version confirmation (6.10) | The second publish gets 409 naming both version numbers. On SQL Server a `Serializable` transaction may instead abort with a serialization failure, reported as the same 409. | The second operator refreshes, sees the first publish's diff, and decides. No torn version is possible, because the whole commit is one transaction (4.8). |
 | 5 | The authoring database is unreachable at boot | The provider throws on connect at boot step 2 | Boot fails closed, exit 3. | The database is only needed to READ the active version number when the server is configured to take it from the store. A server configured with a pinned version and a pack store needs no database at boot at all, which is the deployment this design recommends for a game server: the authoring database is a TOOLING dependency, not a runtime one. |
 | 6 | A client download is interrupted part way | The next `missing` recomputation (8.7) | Nothing. The chunks that arrived are cached and verified. | Resume by recomputing `missing`. There is no resume state beyond the cache, because a chunk is atomic. |
 | 7 | Client cache poisoning: a local file is replaced with attacker bytes | Hash verify on every read from the cache (8.4) | The entry is discarded and refetched. | Automatic. This is the reason the cache verifies on READ and not only on write. Section 13.5 spends what a local attacker can and cannot achieve. |

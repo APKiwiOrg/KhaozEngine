@@ -268,6 +268,9 @@ first `TileHit(X, Z, Plane, Point, Distance)`, or null. The direction need not b
 the document throws as soon as the walk touches a tile, and world units are tiles times `TileWorldDocument.TileSize`
 with z running the OTHER WAY from tile z, so the conversion goes through `TileWorldSpace` rather than a bare
 divide. `HeightAt` reads its world position the same way.
+The picker uses `TileGroundTriangles` for its cut, split and lattice positions. Document picking includes
+underlay-bearing `NoDraw` tiles for editor inspection, while drawable ground descriptions and visible-surface
+picking continue to exclude them.
 
 `TileObjectPlacement` is the ONE object transform, shared by the prop renderer, the model pick and the walk-surface
 queries. `AnchorPosition(doc, archetype, o)` is the centre of the rotated footprint at the document's ground height

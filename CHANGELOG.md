@@ -65,6 +65,24 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `Scene3DBinder.Submit(world, scene)` reuses a cached per-scene callback and pooled ECS queries, removing warmed
   per-call allocation while preserving draw descriptors and routing. Cold setup and pool exhaustion can allocate
   ([#1214](https://github.com/APKiwiOrg/KhaozEngine/issues/1214)).
+- `TileRaycast` shares `TileGroundTriangles` cut, split and lattice placement. Document picking retains authored
+  `NoDraw` ground with an underlay, while drawability and visible-ground picking keep their exclusion
+  ([#1225](https://github.com/APKiwiOrg/KhaozEngine/issues/1225)).
+- `AppWindow.Scaled` adds a required first focus argument so custom factories can forward launch-focus policy.
+  The original signature and defaults remain available, and `KE_WINDOW_FOCUS` still overrides the request
+  ([#1240](https://github.com/APKiwiOrg/KhaozEngine/issues/1240)).
+- `WorldSerializer` writes format 2 with ordered archetype signatures, including empty history, preserving raw
+  query order after continuation. Format 1 stays readable with its legacy reconstruction order, and caller
+  migrations take precedence over the built-in compatibility step
+  ([#1242](https://github.com/APKiwiOrg/KhaozEngine/issues/1242)).
+- `EnvFile.Parse` and `TryRead` provide shared optional-file parsing with ordered duplicates and literal values.
+  Search order and environment precedence stay caller-owned, and file-access failures return an empty result
+  ([#1239](https://github.com/APKiwiOrg/KhaozEngine/issues/1239)).
+
+- `PointerGesture` keeps tap tolerance and drag replay in window points before and during capture.
+  `InputState.MouseDeltaPoints` and `FramebufferScale` carry the motion through follow-camera gestures and
+  automation, preserving the original constructor and legacy `MouseDelta` behavior
+  ([#1228](https://github.com/APKiwiOrg/KhaozEngine/issues/1228)).
 
 ## 20.17.0
 

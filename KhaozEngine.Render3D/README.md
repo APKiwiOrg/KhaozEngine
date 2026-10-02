@@ -22,7 +22,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   frame, and a press begun while the game's `UiBlocked` is set never taps, and above a zero threshold never orbits.
   `TurnBodyActive` is true while `LookGesture` drags, for `MoveCommand.FaceCamera`, and `WantsPointerCapture` while
   either drags, for `SetPointerCaptured`. `OrbitTap` and `LookTap` report taps after `Update`, and a tap counts only
-  if the camera did not turn during that press. Gate `UiBlocked` on `GuiSurface.HoverCaptured`. Scroll zoom, damping
+  if the camera did not turn during that press. Gesture replay and continuing motion use `MouseDeltaPoints`, so
+  sensitivity stays in window points before and during capture. Tap origins keep framebuffer coordinates.
+  Gate `UiBlocked` on `GuiSurface.HoverCaptured`. Scroll zoom, damping
   and boom recovery are unchanged, and with neither gesture set the controller behaves exactly as before. See
   docs/USING-KHAOZENGINE.md.
 - `FollowCamera3DPresets.CreateMouseLook()` returns a fresh mutable camera with pitch stops at -80 degrees and

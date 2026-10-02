@@ -64,58 +64,26 @@ public static class TileRaycast
     static bool TestTile(TileWorldDocument doc, int plane, int tx, int tz, Vector3 origin, Vector3 dir, float maxDistance, out TileHit hit)
     {
         hit = default;
-        if (doc.GetUnderlay(tx, tz, plane) == 0) return false;
-        float ts = doc.TileSize;
-        short h00 = doc.CornerHeightCm(tx, tz, plane), h10 = doc.CornerHeightCm(tx + 1, tz, plane);
-        short h01 = doc.CornerHeightCm(tx, tz + 1, plane), h11 = doc.CornerHeightCm(tx + 1, tz + 1, plane);
-        Vector3 sw = TileWorldSpace.ToWorld(tx, h00 * 0.01f, tz, ts);
-        Vector3 se = TileWorldSpace.ToWorld(tx + 1, h10 * 0.01f, tz, ts);
-        Vector3 nw = TileWorldSpace.ToWorld(tx, h01 * 0.01f, tz + 1, ts);
-        Vector3 ne = TileWorldSpace.ToWorld(tx + 1, h11 * 0.01f, tz + 1, ts);
-        TileOverlayShape authored = doc.GetOverlayShape(tx, tz, plane);
-        int rotation = doc.GetOverlayRotation(tx, tz, plane);
-        bool swne = TileTriangulation.SplitSwNe(h00, h10, h01, h11, authored, rotation);
-
-        // The shape only cuts the tile when there is an overlay material to paint into the cut, which is exactly
-        // what the mesher draws. Going through the shared triangulation is what keeps a click on the triangle
-        // that is drawn: a corner cut is a four triangle fan, and testing the plain pair instead would report the
-        // wrong height in the middle of a tile whose corners are not coplanar.
-        TileOverlayShape shape = doc.GetOverlay(tx, tz, plane) != 0 ? authored : TileOverlayShape.Full;
         Span<TileLatticeTriangle> triangles = stackalloc TileLatticeTriangle[TileTriangulation.MaxTriangles];
-        int count = TileTriangulation.Triangulate(shape, rotation, swne, triangles);
+        if (!TileGroundTriangles.TryDescribeIncludingNoDraw(doc, tx, tz, plane, out TileGroundCell cell, triangles))
+            return false;
 
-        // TileTriangulation normalises the winding in TILE space, and the corners above are already in WORLD space
+        // The shared rule normalises winding in TILE space, and lattice positions are already in WORLD space
         // where z is negated, so the pair arrives wound the other way and its geometric normal points UP. Neither
         // direction reaches this loop: Intersect is two sided, and the mesher does not read the winding either, it
         // computes its normals from the height lattice.
         float best = float.PositiveInfinity;
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < cell.TriangleCount; i++)
         {
-            Vector3 a = PointAt(triangles[i].A, sw, se, nw, ne);
-            Vector3 b = PointAt(triangles[i].B, sw, se, nw, ne);
-            Vector3 c = PointAt(triangles[i].C, sw, se, nw, ne);
+            Vector3 a = TileGroundTriangles.LatticePosition(doc, tx, tz, plane, triangles[i].A, 0, 0);
+            Vector3 b = TileGroundTriangles.LatticePosition(doc, tx, tz, plane, triangles[i].B, 0, 0);
+            Vector3 c = TileGroundTriangles.LatticePosition(doc, tx, tz, plane, triangles[i].C, 0, 0);
             if (Intersect(origin, dir, a, b, c, out float t) && t < best) best = t;
         }
         if (float.IsPositiveInfinity(best) || best > maxDistance) return false;
         hit = new TileHit(tx, tz, plane, origin + dir * best, best);
         return true;
     }
-
-    // Where a lattice point sits on this tile: a corner as it stands, a mid-edge point midway between the two
-    // corners it lies between, which is the same averaging the mesher's vertices use.
-    static Vector3 PointAt(TileLatticePoint point, in Vector3 sw, in Vector3 se, in Vector3 nw, in Vector3 ne)
-    {
-        TileTriangulation.Ends(point, out TileLatticePoint first, out TileLatticePoint second);
-        return (CornerAt(first, sw, se, nw, ne) + CornerAt(second, sw, se, nw, ne)) * 0.5f;
-    }
-
-    static Vector3 CornerAt(TileLatticePoint corner, in Vector3 sw, in Vector3 se, in Vector3 nw, in Vector3 ne) => corner switch
-    {
-        TileLatticePoint.Se => se,
-        TileLatticePoint.Nw => nw,
-        TileLatticePoint.Ne => ne,
-        _ => sw,
-    };
 
     /// <summary>Möller-Trumbore, both faces, t >= 0.</summary>
     static bool Intersect(Vector3 o, Vector3 d, Vector3 a, Vector3 b, Vector3 c, out float t)

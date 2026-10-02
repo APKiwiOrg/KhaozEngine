@@ -25,6 +25,13 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   if the camera did not turn during that press. Gate `UiBlocked` on `GuiSurface.HoverCaptured`. Scroll zoom, damping
   and boom recovery are unchanged, and with neither gesture set the controller behaves exactly as before. See
   docs/USING-KHAOZENGINE.md.
+- `FollowCamera3DPresets.CreateMouseLook()` returns a fresh mutable camera with pitch stops at -80 degrees and
+  1.36 radians (about 78 degrees), distance stops at 1.5 and 22 metres, and initial pitch/distance of 0.75 radians
+  and 12 metres. It orbits a pivot 1.5 metres above `Target`, with zero eye-only `HeightOffset`, 0.3 metre ground
+  clearance and boom recovery rate 4 per second. Bind the target, ground sampler and `Occlusion` or `BoomProbe`
+  to the game. For a capsule-centre target, subtract its half-height from `PivotHeight` to keep the same aim above
+  the feet. Gesture policy, target damping and frame-clock binding remain caller-owned. `new FollowCamera3D()`
+  retains its legacy defaults.
 - `FollowCamera3D.Warp(target)` / `SnapToTarget()` (since 10.65.0) - hard-cut the third-person follow camera onto a
   point with no ease (the 3D counterpart of `Render2D.CameraFollow.Warp`), for a teleport/respawn so the smoothed
   camera does not "fly" across the jump.

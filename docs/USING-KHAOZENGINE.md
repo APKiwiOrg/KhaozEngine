@@ -3837,6 +3837,13 @@ TemporalDiagnostics diagnostics = scene.LastTemporalDiagnostics;
 `Rotation` as identity, and a zero `MeshInstance.Tint` as white. The delegate overloads
 `Submit(world, draw)` are the pure cores for a headless test with a recording delegate.
 
+The scene overload caches its callback under a weak scene key and uses the world's existing pooled query.
+Once that callback, query buffers and draw queues are warmed, ordinary stable `Submit(world, scene)` calls
+allocate no bytes while a query is available from the pool. Cold setup, capacity growth and nesting that exhausts
+the query pool can allocate. The allocation guarantee covers this warmed Submit call. Whole-frame and native
+backend costs are outside it. The cache retains no world and does not extend an otherwise unused scene's lifetime. Scene ownership
+and disposal remain caller-owned. Delegate overloads retain their existing query and callback behavior.
+
 `Submit(world, scene)` keys each draw with `Scene3DBinder.MotionKeyOf(entity)`, derived from the entity's id and
 version. The key holds for the entity's life, and a recycled id carries a new version, so it becomes a new key with
 no previous state. `Submit(world, Action<RigidInstanceDraw>)` is the keyed pure core. Each descriptor it hands over
@@ -6624,6 +6631,21 @@ camera.Target = character.Position;
 camera.AspectRatio = (float)frameWidth / frameHeight;
 camController.Update(input, dt);
 ```
+
+**Opt-in mouse-look preset.** `KhaozEngine.Render3D.FollowCamera3DPresets.CreateMouseLook()` returns a fresh
+mutable `FollowCamera3D`. Pitch stops are -80 degrees and 1.36 radians (about 78 degrees), distance stops are
+1.5 and 22 metres, and initial pitch/distance are 0.75 radians and 12 metres. It sets `PivotHeight` to 1.5 metres,
+`HeightOffset` to zero so the eye rides the boom, `GroundClearance` to 0.3 metres and `BoomRecoveryRate` to 4 per
+second. `new FollowCamera3D()` retains its existing constructor settings.
+
+The pivot lift is relative to the follow target. For a feet-anchored `Target`, keep the 1.5 metre lift. When
+targeting `character.Position`, the capsule centre, set `camera.PivotHeight = 1.5f - character.CapsuleHalfHeight`
+to keep the same aim above the feet. Bind `Target`, `GroundHeight` and `Occlusion` or `BoomProbe` to the game.
+Gesture policy, target damping and frame-clock binding remain caller-owned.
+
+Room3D uses this preset around its capsule-centre target, subtracting its 0.9 metre half-height from the pivot
+lift. It starts at 9 metres distance and keeps terrain/physics bindings, target damping, left-button orbit and
+right-button look gestures.
 
 `CharacterController3D` is terrain-agnostic: it takes ground height (and optionally ground normal) as delegates,
 so any height source works. Pair it with `TerrainCollision.GroundHeight` for analytic terrain. WASD is

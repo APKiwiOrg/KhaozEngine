@@ -162,6 +162,27 @@ own. They are not the same pages, and `Seat` never dirties one, so a page a load
 become a projection write by itself. That is the spec's shape rather than a gap: the load is pure, and the
 rewrite is lazy and rides the next ordinary commit.
 
+**Supported byte-for-byte projection verification after load.** Run the gate immediately after
+`ContainerLoad.Load`, before host mutations. Capture the page identities in `ContainerLoadResult.Dirty`,
+or read the returned `ItemContainerPage.IsDirty` flags at that point. Process `Reports`, `Findings` and
+`HasQuarantine` under the usual validation and recovery policy. For pages eligible for a same-format
+comparison, compare clean loaded pages with their stored sections. Handle the load-reported dirty pages
+separately: a changed remap or successful rescue can legitimately
+leave accepted, normalized state different from the stored bytes. Skip that old-versus-rewritten byte
+comparison for those pages until the normal journal-owned commit persists the accepted rewrite.
+Use fresh committed projection bytes for a later comparison.
+
+The exception is only for the dirty pages reported by that load. Keep checks for other clean pages and
+other projection sections. A later host operation or manually set dirty flag does not justify skipping a
+comparison, and skipping one page does not prove integrity of the page or the whole stream.
+`IsDirty == false` is not a validity or same-format guarantee: quarantine can wrap the loaded view without
+dirtying it, and decoding version-1 bytes does not make them byte-identical to a version-2 re-encode. Keep
+those cases in the existing quarantine and format handling, without using dirtiness to waive either.
+
+Preserve the load's dirty state through one of the routes below. Do not repair relational projection rows
+directly or bypass journal authority. The next ordinary accepted commit owns the rewrite, and only after
+it lands does `MarkCommitted` clear the owning container's dirty state.
+
 Two routes take it there and a host picks one.
 
 1. **Run the pass over the container's own pages.** The host holds the `PagedItemContainer`, seats the loaded

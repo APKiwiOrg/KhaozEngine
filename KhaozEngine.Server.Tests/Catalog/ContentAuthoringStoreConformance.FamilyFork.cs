@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Catalog;
 
 /// <summary>
 /// A family fork across every provider (issue 908): the copy is allocated inside the family's blocks and a
-/// lossless export of it imports unchanged. A copy forked before 20.18.0, which holds a plain id while naming
+/// lossless export of it imports unchanged. A copy forked before 20.18.1, which holds a plain id while naming
 /// the family, is refused on import with nothing left behind.
 /// </summary>
 public abstract partial class ContentAuthoringStoreConformance
@@ -91,7 +91,7 @@ public abstract partial class ContentAuthoringStoreConformance
     }
 
     /// <summary>
-    /// The shape 19.0.0 through 20.17.0 exported: the copy holds plain id 32 outside the family's block
+    /// The shape 19.0.0 through 20.18.0 exported: the copy holds plain id 32 outside the family's block
     /// [16,32) and still names the family. Import refuses it with KEC0037 and leaves the store empty.
     /// </summary>
     [Fact]

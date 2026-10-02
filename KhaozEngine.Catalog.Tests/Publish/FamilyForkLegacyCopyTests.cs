@@ -11,7 +11,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Catalog.Publish;
 
 /// <summary>
-/// Issue 908 after the fix: a copy forked by 19.0.0 through 20.17.0 holds a plain id while naming the source
+/// Issue 908 after the fix: a copy forked by 19.0.0 through 20.18.0 holds a plain id while naming the source
 /// row's family. Lossless re-import refuses that shape with KEC0037, and removing the copy's family key from
 /// the bundle is the documented remedy. A family fork whose next block would cross the ceiling is refused
 /// where the old plain counter would have issued an id.
@@ -136,7 +136,7 @@ public sealed class FamilyForkLegacyCopyTests
     }
 
     /// <summary>
-    /// The shape 20.17.0 exported: family block [16,32), source 16 in it, and the copy at 32, the plain id the
+    /// The shape 20.18.0 exported: family block [16,32), source 16 in it, and the copy at 32, the plain id the
     /// counter issued once the block reservation had advanced issued_through to 31.
     /// </summary>
     static ContentBundle LegacyBundle(string? copyFamilyKey)

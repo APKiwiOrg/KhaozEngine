@@ -108,7 +108,7 @@ id belongs to one of that family's blocks. A full family can reserve another blo
 the source row's block. A non-family fork uses the plain counter. The source keeps its id and new values, and
 exactly one `MovedToLegacy` rule targets the live flagged copy.
 
-This policy applies to newly allocated copies. A copy forked by 19.0.0 through 20.17.0 has a plain id and
+This policy applies to newly allocated copies. A copy forked by 19.0.0 through 20.18.0 has a plain id and
 still names the source row's family. It is never renumbered or repaired automatically, and a live store keeps
 using it as stored. Re-importing its export is refused with `KEC0037` before any write. To move such a store,
 remove the copy's `familyKey` from the exported bundle, then import. The copy keeps its id, key and

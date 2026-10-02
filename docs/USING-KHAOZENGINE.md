@@ -6625,6 +6625,21 @@ camera.AspectRatio = (float)frameWidth / frameHeight;
 camController.Update(input, dt);
 ```
 
+**Opt-in mouse-look preset.** `KhaozEngine.Render3D.FollowCamera3DPresets.CreateMouseLook()` returns a fresh
+mutable `FollowCamera3D`. Pitch stops are -80 degrees and 1.36 radians (about 78 degrees), distance stops are
+1.5 and 22 metres, and initial pitch/distance are 0.75 radians and 12 metres. It sets `PivotHeight` to 1.5 metres,
+`HeightOffset` to zero so the eye rides the boom, `GroundClearance` to 0.3 metres and `BoomRecoveryRate` to 4 per
+second. `new FollowCamera3D()` retains its existing constructor settings.
+
+The pivot lift is relative to the follow target. For a feet-anchored `Target`, keep the 1.5 metre lift. When
+targeting `character.Position`, the capsule centre, set `camera.PivotHeight = 1.5f - character.CapsuleHalfHeight`
+to keep the same aim above the feet. Bind `Target`, `GroundHeight` and `Occlusion` or `BoomProbe` to the game.
+Gesture policy, target damping and frame-clock binding remain caller-owned.
+
+Room3D uses this preset around its capsule-centre target, subtracting its 0.9 metre half-height from the pivot
+lift. It starts at 9 metres distance and keeps terrain/physics bindings, target damping, left-button orbit and
+right-button look gestures.
+
 `CharacterController3D` is terrain-agnostic: it takes ground height (and optionally ground normal) as delegates,
 so any height source works. Pair it with `TerrainCollision.GroundHeight` for analytic terrain. WASD is
 camera-relative on XZ (normalized diagonals, left/right shift to run); `Position` is the capsule centre.

@@ -59,6 +59,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Optional `WorldPersistenceConfig.LoadFallback` converts legacy records only after a primary miss, using captured
   session identities and normal validation. Accepted records stay dirty until their first primary save
   ([#1237](https://github.com/APKiwiOrg/KhaozEngine/issues/1237)).
+- `FollowCamera3DPresets.CreateMouseLook` adds opt-in below-horizon pitch, a raised pivot and ground-aware boom
+  settings. Room3D uses the preset with a capsule-centre pivot correction, while constructor defaults stay unchanged
+  ([#1230](https://github.com/APKiwiOrg/KhaozEngine/issues/1230)).
 
 ## 20.17.0
 

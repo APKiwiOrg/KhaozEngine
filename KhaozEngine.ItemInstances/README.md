@@ -786,8 +786,12 @@ nothing anywhere invents a literal in their place.
 | `StringId` | Shown for |
 |---|---|
 | `khaoz.item.quarantined` | an item whose payload could not be read and is held verbatim |
-| `khaoz.item.retired` | an item whose definition or a row it references has been retired |
+| `khaoz.item.retired` | an item whose own definition or a contained item's definition is retired |
 | `khaoz.item.unidentified` | a gated field the revealed mask does not yet reveal |
+
+For check 13, containment means an `item` reference in a registered field shape that carries a nested payload.
+The same rule applies in the permitted recursive walk. A retired crafting-material reference in kind 7's
+non-nesting field is historical data and does not turn the owning item into this placeholder.
 
 `InstanceValidationStrings` is where they live, `All` is the three of them, and that is the whole of what this
 package contributes to a text catalog. They are prefixed `khaoz.` deliberately, because they are ENGINE

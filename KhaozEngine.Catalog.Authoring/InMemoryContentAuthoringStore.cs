@@ -191,9 +191,17 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
     {
         lock (_gate)
         {
-            return Task.FromResult(_draft);
+            return Task.FromResult(_draft is null ? null : Protected(_draft));
         }
     }
+
+    /// <summary>
+    /// A protected copy of a held draft, change set and byte payloads owned, which is all this store ever hands
+    /// out. A caller applying an edit to the returned change set cannot reach the held draft, and the complete
+    /// comparison every proof turns on is by value, so the copy is still a valid expected draft.
+    /// </summary>
+    static ContentDraft Protected(ContentDraft draft)
+        => Reframe(draft, draft.BaseVersion, draft.Changes, draft.FrozenForBaseVersion);
 
     /// <inheritdoc />
     public Task<ContentDraft> ApplyEditsAsync(
@@ -251,7 +259,7 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
                 working);
             _audit.Commit(audited);
 
-            return Task.FromResult(_draft);
+            return Task.FromResult(Protected(_draft));
         }
     }
 

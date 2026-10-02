@@ -221,6 +221,99 @@ public sealed class TextAuthoringContractTests
         Assert.Null(ContentTextAuditRendering.Render(null));
     }
 
+    [Fact]
+    public void A_fresh_chunk_carries_bytes_and_a_format_one_bundle_carries_no_text()
+    {
+        Assert.Throws<ArgumentException>(() => new ContentTextChunkRecord("en", "ab12", ReadOnlyMemory<byte>.Empty, false));
+        Assert.True(new ContentTextChunkRecord("en", "ab12", default, true).StoredFile.IsEmpty);
+
+        var section = new ContentBundleTextState(
+            new[] { new ContentTextLanguageDeclaration("en", "en") }, Array.Empty<ContentBundleTextValue>());
+        Assert.Throws<ArgumentException>(() => new ContentBundle(1, "epoch", 0, Array.Empty<ContentBundleType>(),
+            Array.Empty<ContentBundleRow>(), Array.Empty<ContentFamily>(), Array.Empty<RemapRule>(), section));
+        Assert.Same(section, new ContentBundle(2, "epoch", 0, Array.Empty<ContentBundleType>(),
+            Array.Empty<ContentBundleRow>(), Array.Empty<ContentFamily>(), Array.Empty<RemapRule>(), section).TextState);
+    }
+
+    [Fact]
+    public async Task A_text_plan_refuses_a_candidate_that_drops_or_changes_a_frozen_set()
+    {
+        var store = TextStore();
+        IContentTextAuthoringStore text = store;
+        await ApplyAsync(text, new[] { Add() }, ContentTextEdit.Set(Name, "Sword"));
+        ContentTextChunkRecord chunk = Chunk("en-us", "Sword");
+        (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
+            store, new[] { new ManifestLanguageEntry("en-us", chunk.Hash) });
+        var declared = new[] { new ContentTextLanguageDeclaration("en-us", "en-us") };
+        var none = Array.Empty<ContentTextRevision>();
+
+        Assert.Throws<ArgumentException>(() => new ContentTextPublishPlan(
+            rowPlan, snapshot, new ContentTextCandidate(none, declared, none, none), new[] { chunk }));
+        var wrong = new ContentTextRevision(Item, IdOf(rowPlan, "sword"), NameField, "en-us", "Blade", 1, null);
+        Assert.Throws<ArgumentException>(() => new ContentTextPublishPlan(
+            rowPlan, snapshot, new ContentTextCandidate(new[] { wrong }, declared, none, new[] { wrong }), new[] { chunk }));
+
+        Assert.Empty(await store.ListVersionsAsync());
+        Assert.Equal("Sword", (await store.GetOpenDraftAsync())!.TextState!.Edits.Single().Value);
+    }
+
+    [Fact]
+    public async Task A_text_plan_refuses_a_candidate_that_leaves_a_frozen_remove_live()
+    {
+        var store = TextStore();
+        IContentTextAuthoringStore text = store;
+        await PublishNamedRowAsync(store, "sword", "Sword");
+        ContentTextRevision sword = (await text.ReadTextSnapshotAsync(1)).Revisions.Single();
+        await ApplyAsync(text, new[] { ContentEdit.Update(Item, sword.DefinitionId, Sword, new[] { Value(5) }) },
+            ContentTextEdit.Remove(Target(NameField, "en")));
+        var declared = new[] { new ContentTextLanguageDeclaration("en", "en") };
+        var none = Array.Empty<ContentTextRevision>();
+
+        ContentTextChunkRecord kept = Chunk("en", "Sword");
+        (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
+            store, new[] { new ManifestLanguageEntry("en", kept.Hash) });
+        Assert.Throws<ArgumentException>(() => new ContentTextPublishPlan(
+            rowPlan, snapshot, new ContentTextCandidate(new[] { sword }, declared, none, none), new[] { kept }));
+
+        ContentTextChunkRecord empty = Chunk("en", string.Empty);
+        (snapshot, rowPlan) = await FreezeAndPlanAsync(store, new[] { new ManifestLanguageEntry("en", empty.Hash) });
+        var closed = new ContentTextPublishPlan(
+            rowPlan, snapshot, new ContentTextCandidate(none, declared, new[] { sword }, none), new[] { empty });
+        await text.CommitTextPublishAsync(closed, Request(1), null);
+        Assert.Empty((await text.ReadTextSnapshotAsync(2)).Revisions);
+    }
+
+    [Fact]
+    public async Task A_text_plan_binds_frozen_targets_through_the_row_plan_fork_copy_included()
+    {
+        var store = TextStore();
+        IContentTextAuthoringStore text = store;
+        await PublishNamedRowAsync(store, "sword", "Sword");
+        ContentTextRevision sword = (await text.ReadTextSnapshotAsync(1)).Revisions.Single();
+        ContentEdit fork = ContentEdit.Fork(
+            Item, sword.DefinitionId, Sword, new ContentKey("old_sword"), LegacyField, Array.Empty<ContentFieldEdit>());
+        await ApplyAsync(text, new[] { fork }, ContentTextEdit.Set(Target(NameField, "en"), "Blade"));
+        ContentTextChunkRecord chunk = Chunk("en", "Blade and Sword");
+        (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
+            store, new[] { new ManifestLanguageEntry("en", chunk.Hash) });
+        int copy = IdOf(rowPlan, "old_sword");
+        var declared = new[] { new ContentTextLanguageDeclaration("en", "en") };
+
+        // The explicit Set lands on the copy and the original keeps the baseline value: swapped.
+        var swapped = new ContentTextRevision(Item, copy, NameField, "en", "Blade", 2, null);
+        Assert.Throws<ArgumentException>(() => new ContentTextPublishPlan(rowPlan, snapshot, new ContentTextCandidate(
+            new[] { sword, swapped }, declared, Array.Empty<ContentTextRevision>(), new[] { swapped }), new[] { chunk }));
+
+        var renamed = new ContentTextRevision(Item, sword.DefinitionId, NameField, "en", "Blade", 2, null);
+        var copied = new ContentTextRevision(Item, copy, NameField, "en", "Sword", 2, null);
+        var plan = new ContentTextPublishPlan(rowPlan, snapshot, new ContentTextCandidate(
+            new[] { renamed, copied }, declared, new[] { sword }, new[] { renamed, copied }), new[] { chunk });
+        await text.CommitTextPublishAsync(plan, Request(1), null);
+        var published = (await text.ReadTextSnapshotAsync(2)).Revisions.ToDictionary(r => r.DefinitionId, r => r.Value);
+        Assert.Equal("Blade", published[sword.DefinitionId]);
+        Assert.Equal("Sword", published[copy]);
+    }
+
     static void AssertSignature(Type contract, string name, Type returns, params Type[] parameters)
     {
         MethodInfo? method = contract.GetMethod(name, parameters);

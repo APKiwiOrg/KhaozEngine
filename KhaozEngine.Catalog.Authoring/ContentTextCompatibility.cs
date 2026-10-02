@@ -16,7 +16,7 @@ namespace KhaozEngine.Catalog.Authoring;
 internal static class ContentTextCompatibility
 {
     /// <summary>The bundle format a row-only route reads, which is text free by contract.</summary>
-    const int RowOnlyBundleFormat = 1;
+    public const int RowOnlyBundleFormat = 1;
 
     /// <summary>Whether a draft's text state holds any intent or introduction.</summary>
     public static bool HoldsText(ContentDraft? draft) => draft?.TextState is { IsEmpty: false };

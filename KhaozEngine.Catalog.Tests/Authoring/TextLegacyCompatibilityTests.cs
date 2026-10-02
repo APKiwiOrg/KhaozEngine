@@ -240,6 +240,57 @@ public sealed class TextLegacyCompatibilityTests
     }
 
     [Fact]
+    public async Task Legacy_rollback_refuses_versions_holding_text_and_changes_nothing()
+    {
+        var store = TextStore();
+        IContentTextAuthoringStore text = store;
+        await PublishNamedRowAsync(store, "sword", "Sword");
+        ContentTextRevision sword = (await text.ReadTextSnapshotAsync(1)).Revisions.Single();
+        await ApplyAsync(text, new[] { ContentEdit.Update(Item, sword.DefinitionId, Sword, new[] { Value(5) }) },
+            ContentTextEdit.Set(Target(NameField, "en"), "Blade"));
+        ContentTextChunkRecord chunk = Chunk("en", "Blade");
+        (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
+            store, new[] { new ManifestLanguageEntry("en", chunk.Hash) });
+        var blade = new ContentTextRevision(Item, sword.DefinitionId, NameField, "en", "Blade", 2, null);
+        await text.CommitTextPublishAsync(new ContentTextPublishPlan(rowPlan, snapshot, new ContentTextCandidate(
+            new[] { blade }, new[] { new ContentTextLanguageDeclaration("en", "en") }, new[] { sword }, new[] { blade }),
+            new[] { chunk }), Request(1), null);
+
+        int versions = (await store.ListVersionsAsync()).Count;
+        int audits = await AuditCountAsync(store);
+        Assert.Equal(2, await store.GetActiveVersionAsync());
+        Assert.Null(await store.GetOpenDraftAsync());
+
+        var refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => store.RollbackToAsync(1, Actor, Operator, "rollback"));
+        Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, refused.Reason);
+        Assert.Equal(versions, (await store.ListVersionsAsync()).Count);
+        Assert.Equal(2, await store.GetActiveVersionAsync());
+        Assert.Null(await store.GetOpenDraftAsync());
+        Assert.Equal(audits, await AuditCountAsync(store));
+        Assert.Equal("Blade", (await text.ReadTextSnapshotAsync(2)).Revisions.Single().Value);
+    }
+
+    [Fact]
+    public async Task Legacy_rollback_still_runs_on_a_store_holding_no_text()
+    {
+        using var files = new TemporaryCatalogDatabase();
+        var store = TextStore(files.Pack());
+        await store.ApplyEditsAsync(new[] { Add() }, Actor, Operator, "add");
+        await store.PublishAsync(Request(0));
+        int id = (await store.ListRowsAsync(Item, 0, null, true, 0, 10)).Rows.Single().Id;
+        await store.ApplyEditsAsync(
+            new[] { ContentEdit.Update(Item, id, Sword, new[] { Value(5) }) }, Actor, Operator, "update");
+        await store.PublishAsync(Request(1));
+
+        ContentDraft draft = await store.RollbackToAsync(1, Actor, Operator, "rollback");
+        Assert.Equal(1, draft.EditCount);
+        Assert.Contains(await store.ListAuditAsync(default, 0, 0, 500), e => e.Action == ContentAuditActions.Rollback);
+        await store.PublishAsync(Request(2));
+        Assert.Equal(3, await store.GetActiveVersionAsync());
+    }
+
+    [Fact]
     public void Row_only_upgrade_proofs_refuse_drafts_holding_text()
     {
         var set = new ContentChangeSet();

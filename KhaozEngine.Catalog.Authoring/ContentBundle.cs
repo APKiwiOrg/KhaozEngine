@@ -120,6 +120,7 @@ public sealed class ContentBundle
     /// <param name="text">The declared languages and complete values.</param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="formatVersion"/> is below 1, or <paramref name="sourceVersion"/> is negative.</exception>
+    /// <exception cref="ArgumentException"><paramref name="formatVersion"/> is 1, which is text free by contract.</exception>
     public ContentBundle(
         int formatVersion,
         string storeEpoch,
@@ -132,6 +133,12 @@ public sealed class ContentBundle
         : this(formatVersion, storeEpoch, sourceVersion, types, rows, families, rules)
     {
         ArgumentNullException.ThrowIfNull(text);
+        if (formatVersion == ContentTextCompatibility.RowOnlyBundleFormat)
+        {
+            throw new ArgumentException(
+                "Bundle format 1 is text free by contract, so it cannot carry a text section.", nameof(formatVersion));
+        }
+
         TextState = text;
     }
 

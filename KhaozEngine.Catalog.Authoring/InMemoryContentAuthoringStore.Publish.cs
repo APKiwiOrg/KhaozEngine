@@ -285,6 +285,11 @@ public sealed partial class InMemoryContentAuthoringStore
     /// It BUILDS A DRAFT and publishes nothing, so an operator reviews the diff first. A row live at the
     /// target and retired since is a flat refusal, because a retire is irreversible for pages already
     /// migrated past it.
+    /// <para>
+    /// It is ROW-ONLY, so it refuses before any audit or draft write when either version holds text or a
+    /// declared language, or has no complete text record. Its draft restores rows alone, and the publish
+    /// would carry the current text onto the target's rows.
+    /// </para>
     /// </remarks>
     public async Task<ContentDraft> RollbackToAsync(
         int targetVersion,
@@ -307,6 +312,7 @@ public sealed partial class InMemoryContentAuthoringStore
             }
 
             from = _activeVersion;
+            RequireRowOnlyRollback(from, targetVersion);
             plan = ContentRollback.Prepare(
                 targetVersion, LiveAt(targetVersion), from, LiveAt(from), _rules, _registry);
         }

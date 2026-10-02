@@ -112,10 +112,13 @@ internal static class TextAuthoringFixtures
         return (snapshot, plan);
     }
 
-    /// <summary>One language's placeholder chunk, hashed through the real text subdomain.</summary>
+    /// <summary>
+    /// One language's placeholder chunk, hashed through the real text subdomain. Like an encoded chunk it is
+    /// never zero bytes, even for an empty language.
+    /// </summary>
     public static ContentTextChunkRecord Chunk(string wireTag, string body)
     {
-        byte[] bytes = Encoding.UTF8.GetBytes(body);
+        byte[] bytes = Encoding.UTF8.GetBytes("text:" + body);
         return new ContentTextChunkRecord(wireTag, ContentHash.OfTextChunk(bytes), bytes, false);
     }
 

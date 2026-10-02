@@ -16,10 +16,10 @@ public sealed class ContentTextChunkRecord
     /// <summary>Builds one chunk record.</summary>
     /// <param name="wireTag">The exact spelling both manifests name this chunk by.</param>
     /// <param name="hash">The content address, lower hex.</param>
-    /// <param name="storedFile">The file as it goes to the pack store, copied, and empty on a reused chunk.</param>
+    /// <param name="storedFile">The file as it goes to the pack store, copied, never empty on an encoded chunk and empty on a reused one.</param>
     /// <param name="isReused">Whether this chunk was carried forward rather than encoded.</param>
     /// <exception cref="ArgumentNullException">A string is null.</exception>
-    /// <exception cref="ArgumentException">The tag is illegal, the hash is not lower hex, or a reused chunk carries bytes.</exception>
+    /// <exception cref="ArgumentException">The tag is illegal, the hash is not lower hex, a reused chunk carries bytes, or an encoded chunk carries none.</exception>
     public ContentTextChunkRecord(string wireTag, string hash, ReadOnlyMemory<byte> storedFile, bool isReused)
     {
         ArgumentNullException.ThrowIfNull(wireTag);
@@ -27,6 +27,11 @@ public sealed class ContentTextChunkRecord
         if (isReused && !storedFile.IsEmpty)
         {
             throw new ArgumentException("A reused text chunk carries no bytes, because an earlier version wrote its file.", nameof(storedFile));
+        }
+
+        if (!isReused && storedFile.IsEmpty)
+        {
+            throw new ArgumentException("An encoded text chunk carries its stored file, which is never empty, even for a language with no values.", nameof(storedFile));
         }
 
         WireTag = wireTag;

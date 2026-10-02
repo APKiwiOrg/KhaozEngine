@@ -347,6 +347,30 @@ public sealed class InMemoryTextAuthoringTests
     }
 
     [Fact]
+    public async Task Returned_drafts_are_protected_copies_that_still_prove_ownership()
+    {
+        var store = TextStore();
+        IContentTextAuthoringStore text = store;
+        ContentDraft applied = await ApplyAsync(text, new[] { Add() }, ContentTextEdit.Set(Name, "Sword"));
+        applied.Changes.Apply(Add("shield"));
+        Assert.Equal(1, (await store.GetOpenDraftAsync())!.EditCount);
+
+        ContentDraft edited = await store.ApplyEditsAsync(new[] { Add("axe") }, Actor, Operator, "row only");
+        edited.Changes.Apply(Add("shield"));
+        ContentDraft read = (await store.GetOpenDraftAsync())!;
+        Assert.Equal(2, read.EditCount);
+        read.Changes.Apply(Add("shield"));
+        Assert.Equal(2, (await store.GetOpenDraftAsync())!.EditCount);
+
+        int audits = await AuditCountAsync(store);
+        Assert.False(await text.TryDiscardChangesAsync(read, Actor, Operator));
+        Assert.Equal(audits, await AuditCountAsync(store));
+        ContentDraft proof = (await store.GetOpenDraftAsync())!;
+        Assert.True(await text.TryDiscardChangesAsync(proof, Actor, Operator));
+        Assert.Null(await store.GetOpenDraftAsync());
+    }
+
+    [Fact]
     public async Task Bundle_import_and_rollback_through_the_companion_stay_explicitly_unavailable()
     {
         var store = TextStore();

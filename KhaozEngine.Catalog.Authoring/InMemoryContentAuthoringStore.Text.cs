@@ -105,7 +105,7 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
                 working);
             _draft = next;
             _audit.Commit(staged);
-            return Task.FromResult(next);
+            return Task.FromResult(Protected(next));
         }
     }
 
@@ -259,6 +259,33 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
         {
             throw ContentTextCompatibility.Unrepresented(nameof(ExportBundleAsync), FormattableString.Invariant(
                 $"version {versionNumber} records {text.Languages.Count} language(s) and {text.Revisions.Count} value(s), which bundle format {ContentBundle.CurrentFormatVersion} cannot carry"));
+        }
+    }
+
+    /// <summary>
+    /// Refuses a row-only rollback when the current or the target version holds a text value or a declared
+    /// language, or has no complete text record. The caller already holds the gate.
+    /// </summary>
+    void RequireRowOnlyRollback(int from, int target)
+    {
+        RequireTextFree(from, nameof(RollbackToAsync));
+        RequireTextFree(target, nameof(RollbackToAsync));
+    }
+
+    /// <summary>Refuses a version a row-only route cannot prove text free. The caller already holds the gate.</summary>
+    void RequireTextFree(int versionNumber, string member)
+    {
+        if (versionNumber != NoActiveVersion && !_textLanguages.ContainsKey(versionNumber))
+        {
+            throw ContentTextCompatibility.Unrepresented(member, FormattableString.Invariant(
+                $"version {versionNumber} has no complete text record, so its text is unknown rather than empty"));
+        }
+
+        ContentVersionTextSnapshot text = TextSnapshotAt(versionNumber);
+        if (text.Languages.Count > 0 || text.Revisions.Count > 0)
+        {
+            throw ContentTextCompatibility.Unrepresented(member, FormattableString.Invariant(
+                $"version {versionNumber} records {text.Languages.Count} language(s) and {text.Revisions.Count} value(s)"));
         }
     }
 

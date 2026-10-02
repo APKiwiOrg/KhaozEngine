@@ -18,7 +18,7 @@ public sealed class ContentDraftTextState
     static readonly ContentTextLanguageDeclaration[] NoIntroductions = [];
 
     /// <summary>Builds one state from owned copies of both lists.</summary>
-    /// <param name="edits">The text intents in ordinal order, one per canonical target.</param>
+    /// <param name="edits">The text intents in the order they were first applied, one per canonical target.</param>
     /// <param name="introductions">The pending language introductions in order, one per identity.</param>
     /// <exception cref="ArgumentNullException">A list or an entry in one is null.</exception>
     /// <exception cref="ArgumentException">Two intents share a target, or two introductions share an identity or a spelling.</exception>

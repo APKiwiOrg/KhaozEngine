@@ -13,8 +13,9 @@ namespace KhaozEngine.Catalog.Authoring;
 /// exact rows. Every output language has exactly one chunk, in ordinal wire-tag order, and both manifests
 /// name exactly those chunks. Every baseline language survives with its historical spelling and every
 /// pending introduction appears with its canonical one. The candidate's values are the baseline's minus its
-/// closes plus its inserts. What it cannot prove is that the snapshot still matches the store, which is
-/// why the store confirms that inside its own commit.
+/// closes plus its inserts, and they apply every frozen intent: each Set's exact value is live at its row's
+/// final id and each Remove leaves nothing live there. What it cannot prove is that the snapshot still
+/// matches the store, which is why the store confirms that inside its own commit.
 /// </para>
 /// <para>
 /// <see cref="RowPlan"/> is a MARKED copy of the row plan handed in, carrying the frozen text state, so a
@@ -45,6 +46,7 @@ public sealed class ContentTextPublishPlan
         Languages = MapLanguages(rowPlan, candidate, chunks, out ContentTextChunkRecord[] owned);
         RequireDeclarations(snapshot, candidate);
         RequireTemporal(rowPlan, snapshot, candidate);
+        RequireFrozenIntents(rowPlan, snapshot.TextState, candidate);
 
         RowPlan = rowPlan.WithFrozenText(snapshot.TextState);
         Snapshot = snapshot;
@@ -228,6 +230,61 @@ public sealed class ContentTextPublishPlan
         {
             throw new ArgumentException(
                 "The candidate's values are not the baseline's minus its closes plus its inserts.", nameof(candidate));
+        }
+    }
+
+    /// <summary>
+    /// Proves the candidate applies every frozen text intent. Each target's key is bound to its final
+    /// definition id through the row plan's live rows, which name a pending add by the id the row plan
+    /// allocated and a fork copy by its legacy key, so no allocator branch is assumed. A fork copy's baseline
+    /// values sit on the copy's own id, so an explicit edit on the original key is checked on the original
+    /// alone. A Set must leave exactly its value live and a Remove must leave none.
+    /// </summary>
+    static void RequireFrozenIntents(
+        ContentPublishPlan rowPlan,
+        ContentDraftTextState frozen,
+        ContentTextCandidate candidate)
+    {
+        var ids = new Dictionary<(ushort Type, ContentKey Key), int>();
+        var ambiguous = new HashSet<(ushort Type, ContentKey Key)>();
+        foreach (ContentRowRevision live in rowPlan.LiveRows)
+        {
+            (ushort, ContentKey) row = (live.Row.Type.Value, live.Row.Key);
+            if (!ids.TryAdd(row, live.Row.Id) && ids[row] != live.Row.Id)
+            {
+                ambiguous.Add(row);
+            }
+        }
+
+        var values = new Dictionary<(ushort Type, int Id, string Field, string Language), string>();
+        foreach (ContentTextRevision value in candidate.Values)
+        {
+            values.Add((value.Type.Value, value.DefinitionId, value.FieldName, value.Language), value.Value);
+        }
+
+        foreach (ContentTextEdit edit in frozen.Edits)
+        {
+            ContentTextTarget target = edit.Target;
+            (ushort, ContentKey) row = (target.Type.Value, target.Key);
+            if (!ids.TryGetValue(row, out int id) || ambiguous.Contains(row))
+            {
+                throw new ArgumentException(
+                    FormattableString.Invariant(
+                        $"A frozen text intent names type {target.Type.Value} row '{target.Key}', which the row plan holds no single live row of."),
+                    nameof(rowPlan));
+            }
+
+            bool live = values.TryGetValue((target.Type.Value, id, target.FieldName, target.Language), out string? held);
+            bool applied = edit.Operation == ContentTextEditOperation.Set
+                ? live && string.Equals(held, edit.Value, StringComparison.Ordinal)
+                : !live;
+            if (!applied)
+            {
+                throw new ArgumentException(
+                    FormattableString.Invariant(
+                        $"The candidate does not apply the frozen {edit.Operation} of type {target.Type.Value} row {id} field '{target.FieldName}' language '{target.Language}'."),
+                    nameof(candidate));
+            }
         }
     }
 }

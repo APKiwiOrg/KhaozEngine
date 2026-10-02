@@ -2120,7 +2120,7 @@ release.
 **That is more rows than the earlier draft's blob and it is not more authoring.** The same facts were
 always there. What changed is that each one is now a row a generic editor renders, a publish diff reports
 field by field, and an audit records a before and an after for, rather than a hex box whose whole content
-reads as one changed value (contracts 4.7, and `catalog_audit.before_value` is capped at 512 characters
+reads as one changed value (contracts 4.7, and `catalog_audit.before_value` is capped at 4096 characters
 anyway).
 
 What each reference game authors, which is the concrete form of the claim that these are shapes rather

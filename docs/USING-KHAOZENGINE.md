@@ -16750,7 +16750,7 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   `DeterministicRng`, `XorRng`, `MathUtil`, `ViewportMath`, `Easing`. The bottom of the dependency graph.
 - **`KhaozEngine.App`**: app identity / data paths: `AppDataPaths` (publisher-rooted: `<base>/APKiwiOrg/<game>/`),
   `BuildMetadata`, `ServiceLocator`, and `AppInstallStamp` (local first-ran/updated stamp; see "Install / update
-  stamp" below).
+  stamp" below), plus `EnvFile` for ordered optional-file assignments with caller-owned precedence.
 - **`KhaozEngine.Persistence`**: crash-safe saves: `AtomicJsonWriter`, `PersistenceQueue` (coalesced async
   writes, optional numbered backup-generation rotation), `SettingsManager<T>` + `FileSettingsStorage`,
   `SaveEncoder` (Base64 + HMAC, a versioned envelope carrying tamper-protected `SaveMetadata`), the
@@ -16837,6 +16837,28 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   per-player state, and nothing re-announces either, so an evicted one leaks that state permanently. Terminal
   events are rare and self-limiting (at most one per peer, no payload buffer), so `Count` can exceed `Capacity`
   by however many are buffered. Use it for your own terminal events if you queue through this type.
+
+**Optional env files (`KhaozEngine.App.EnvFile`).** `Parse(TextReader)` returns ordered
+`IReadOnlyList<KeyValuePair<string, string>>` entries and leaves the reader open. Duplicate entries, key casing and
+empty values are preserved. Lines, keys and values are trimmed, the first equals sign separates the assignment,
+and a matching outer pair of single or double quotes is removed. Blank lines, whole-line `#` comments and malformed
+separator/key lines are ignored. Embedded equals signs, inline `#` text and unmatched quotes stay literal.
+
+```csharp
+using KhaozEngine.App;
+
+if (EnvFile.TryRead("settings.env", out var entries))
+    foreach (var (key, value) in entries)
+        if (Environment.GetEnvironmentVariable(key) is null)
+            Environment.SetEnvironmentVariable(key, value);
+```
+
+This example applies precedence per entry. The helper itself reads and writes no environment variables, chooses no
+search path and logs no values. `TryRead(string, out entries)` uses BCL BOM detection and publishes entries after
+the complete read and close. Expected path/access failures return false with empty entries, while a readable file
+with no assignments returns true. Null readers and null or empty paths are argument errors, and `Parse` reader
+failures propagate. There is no interpolation, escaping, `export` prefix processing or multiline syntax.
+See the [package API guidance](../KhaozEngine.App/README.md#envfile).
 
 ---
 

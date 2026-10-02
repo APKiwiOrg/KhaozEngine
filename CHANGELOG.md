@@ -75,6 +75,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   query order after continuation. Format 1 stays readable with its legacy reconstruction order, and caller
   migrations take precedence over the built-in compatibility step
   ([#1242](https://github.com/APKiwiOrg/KhaozEngine/issues/1242)).
+- `EnvFile.Parse` and `TryRead` provide shared optional-file parsing with ordered duplicates and literal values.
+  Search order and environment precedence stay caller-owned, and file-access failures return an empty result
+  ([#1239](https://github.com/APKiwiOrg/KhaozEngine/issues/1239)).
 
 ## 20.17.0
 

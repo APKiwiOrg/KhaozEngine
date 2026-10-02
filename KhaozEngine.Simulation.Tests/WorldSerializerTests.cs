@@ -81,23 +81,36 @@ public class WorldSerializerTests
     [Fact]
     public void SaveProducesStableEnvelopeShape()
     {
-        // Pins the save-format wire shape (envelope member order + component key + value). Changing this string is a
-        // save-format break and needs a FormatVersion bump + migration. The AOT refactor (source-generated envelope,
-        // JsonTypeInfo component codecs) must stay byte-for-byte identical to the historical reflection encoding.
+        // Pins format 2 member order, component values and complete historical signatures.
         var w = new World();
         w.Set(w.Spawn(), new SrHealth { Hp = 9 });
         string json = new WorldSerializer(typeof(SrHealth)).Save(w);
         Assert.Equal(
-            "{\"FormatVersion\":1,\"NextId\":1,\"FreeIds\":[],\"Entities\":[" +
-            "{\"Id\":0,\"Version\":1,\"Components\":{\"KhaozEngine.Tests.SrHealth\":{\"Hp\":9}}}]}",
+            "{\"FormatVersion\":2,\"NextId\":1,\"FreeIds\":[],\"Entities\":[" +
+            "{\"Id\":0,\"Version\":1,\"Components\":{\"KhaozEngine.Tests.SrHealth\":{\"Hp\":9}}}]," +
+            "\"Archetypes\":[[],[\"KhaozEngine.Tests.SrHealth\"]]}",
             json);
+    }
+
+    [Fact]
+    public void LoadsTheExactFormatOneEnvelopeGolden()
+    {
+        const string legacy =
+            "{\"FormatVersion\":1,\"NextId\":1,\"FreeIds\":[],\"Entities\":[" +
+            "{\"Id\":0,\"Version\":1,\"Components\":{\"KhaozEngine.Tests.SrHealth\":{\"Hp\":9}}}]}";
+
+        World loaded = new WorldSerializer(typeof(SrHealth)).Load(legacy);
+
+        Assert.True(loaded.IsAlive(new Entity(0, 1)));
+        Assert.Equal(9, loaded.Get<SrHealth>(new Entity(0, 1)).Hp);
+        Assert.Equal(new Entity(1, 1), loaded.Spawn());
     }
 
     [Fact]
     public void LoadsLegacySaveWithoutFormatVersion()
     {
         // A pre-existing save (written before the AOT refactor, and old enough to omit FormatVersion) must still load:
-        // a missing FormatVersion is treated as version 1, and the envelope + component shape is unchanged.
+        // a missing FormatVersion is treated as version 1 and takes the built-in compatibility upgrade.
         const string legacy =
             "{\"NextId\":1,\"FreeIds\":[],\"Entities\":[" +
             "{\"Id\":0,\"Version\":1,\"Components\":{\"KhaozEngine.Tests.SrHealth\":{\"Hp\":9}}}]}";

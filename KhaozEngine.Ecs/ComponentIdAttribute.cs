@@ -9,6 +9,7 @@ namespace KhaozEngine.Ecs;
 /// Note: if you add <c>[ComponentId]</c> to a type that previously serialized under its <c>Type.FullName</c>,
 /// existing saves stored under the old name will fail to load; register a document migration via
 /// <see cref="WorldSerializer.RegisterMigration"/> to rename the key in older save documents.
+/// Rename both entity component keys and entries in the ordered <c>Archetypes</c> history when present.
 /// </summary>
 [AttributeUsage(AttributeTargets.Struct | AttributeTargets.Class, Inherited = false)]
 public sealed class ComponentIdAttribute : Attribute

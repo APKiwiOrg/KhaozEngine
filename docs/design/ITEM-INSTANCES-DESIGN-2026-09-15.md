@@ -154,7 +154,7 @@ oversized game message.
 
 | Type | Shape | Section |
 |---|---|---|
-| `ItemGenerator` | `ctor(ModCandidateTables, IRandomSource)`, `Generate(in GenerationContext)` | 9.4 |
+| `ItemGenerator` | `ctor(GenerationTables, IRandomSource, InstanceIdAllocator)`, `Generate(in GenerationContext)` | 9.4 |
 | `GenerationContext`, `GenerationResult` | inputs and the resolved item | 9.4 |
 | `ModCandidateTables` | built at boot, queried per roll | 9.2 |
 | `CraftPrimitive` | enum of the fourteen v1 primitives | 10.2 |
@@ -2138,12 +2138,15 @@ half the contract cares about: a caller anywhere in the fleet could hand a `Seed
 production generator with nothing in any signature to notice.
 
 **A replay tool builds a SECOND generator.** That is the whole cost of taking the source in the
-constructor, and it is one line, because the expensive part of a generator is `ModCandidateTables` (9.2)
-and the two instances SHARE it: the tables are immutable after the boot that built them. So a replay
-harness constructs `new ItemGenerator(tables, new SeededRandomSource(seed))` beside the live
-`new ItemGenerator(tables, new CryptographicRandomSource())`, at the cost of one object and no table
-build. `ICraftOperation` follows the same rule (10.5). `IRandomSource` and both implementations live in
-`KhaozEngine.Primitives` (contracts 14.1), so taking one costs no package reference.
+constructor, and it is one line because both instances SHARE the immutable `GenerationTables` built at
+boot. Those hold the candidate tables (9.2), the content fold and the run ceiling. Here `tables` is the
+boot-built `ModCandidateTablesIndex`, and `allocator` is the host's durable `InstanceIdAllocator` (3.6).
+So a replay harness constructs
+`new ItemGenerator(tables.Generation, new SeededRandomSource(seed), allocator)` beside the live
+`new ItemGenerator(tables.Generation, new CryptographicRandomSource(), allocator)`, at the cost of one
+object and no table build. `ICraftOperation` follows the same random-source rule (10.5). `IRandomSource`
+and both implementations live in `KhaozEngine.Primitives` (contracts 14.1), so taking one costs no
+package reference.
 
 ### 9.2 The precomputed tables, and what they cost
 
@@ -2274,7 +2277,8 @@ public readonly record struct GenerationResult(
 
 public sealed class ItemGenerator
 {
-    public ItemGenerator(ModCandidateTables tables, IRandomSource random);
+    public ItemGenerator(
+        GenerationTables tables, IRandomSource random, InstanceIdAllocator allocator);
     public GenerationResult Generate(in GenerationContext context);
 }
 ```

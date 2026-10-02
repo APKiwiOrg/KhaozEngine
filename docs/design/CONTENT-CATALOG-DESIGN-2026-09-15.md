@@ -1275,12 +1275,14 @@ single-hash row makes the client manifest unreconstructable the moment any type 
 
 An EMBEDDED RESOURCE, `KhaozEngine.Catalog.SqlServer/CatalogSchemaV1.sql`, following
 `KhaozEngine.WorldStore.SqlServer/JournalSchemaV1.sql`. The shape is the SQLite text with the type and
-constraint idioms swapped, and the differences are mechanical rather than semantic:
+constraint idioms swapped:
 
 | SQLite | SQL Server |
 |---|---|
-| `TEXT COLLATE BINARY` | `nvarchar(N) COLLATE Latin1_General_100_BIN2` |
-| `INTEGER` | `int`, or `bigint` for the audit id and the timestamps |
+| `TEXT COLLATE BINARY`, cap `1 <= N <= 4000` | `nvarchar(N) COLLATE Latin1_General_100_BIN2` |
+| `TEXT COLLATE BINARY`, cap above 4000 | `nvarchar(max) COLLATE Latin1_General_100_BIN2`, with a named length `CHECK` |
+| `INTEGER` for 32-bit seam values | `int` |
+| `INTEGER` for identities, matching foreign keys or `ContentFieldValue.Number` (`long`) | `bigint` |
 | `INTEGER PRIMARY KEY AUTOINCREMENT` | `bigint IDENTITY(1,1)` |
 | `BLOB` | `varbinary(max)`, with `CHECK (DATALENGTH(x) <= N)` |
 | `CAST(strftime(...))` epoch ms | `datetimeoffset(7)` |
@@ -1288,11 +1290,24 @@ constraint idioms swapped, and the differences are mechanical rather than semant
 | `CHECK (length(x) <= N)` | `CHECK (LEN(x) <= N)` for `nvarchar`, `DATALENGTH` for `varbinary` |
 | inline `CHECK` | `CONSTRAINT ck_<table>_<what> CHECK` |
 
+The timestamp row applies to the epoch-ms columns, which become `datetimeoffset(7)`, not `bigint`.
+The `bigint` identities are `catalog_audit.audit_id`, `catalog_family.family_id` and
+`catalog_draft_edit.edit_ordinal`, and columns referencing those identities use the same type.
+`catalog_row_field.int_value` and `catalog_draft_edit_field.int_value` also use `bigint`: the seam's
+`ContentFieldValue.Number` is a `long`, and both providers read it with `GetInt64`.
+
+SQL Server's explicit `nvarchar(N)` limit is 4000 byte-pairs. The audit's `before_value` and `after_value`
+therefore use `nvarchar(max) COLLATE Latin1_General_100_BIN2` with the existing named checks
+`ck_catalog_audit_before` and `ck_catalog_audit_after`, each checking
+`x IS NULL OR LEN(x) <= 4096`. `ContentAuditEntry.MaxValueLength` stays 4096, and provider rendering
+applies that cap through `.NET string.Length`. The SQL check retains `LEN` semantics, which exclude
+trailing spaces. SQL and seam length semantics remain provider-specific.
+
 `JournalSchemaV1.sql:10` is the precedent for the collation and `:33` for the `DATALENGTH` cap. Every
 constraint is NAMED on SQL Server, because an unnamed constraint gets a generated name and the schema
 validator compares names.
 
-The one genuine behavioural difference is the transaction. SQLite serializes IN PROCESS behind the
+The transaction also differs. SQLite serializes IN PROCESS behind the
 `SqliteStoreConnection` gate plus an explicit transaction (`SqliteWalletStore.cs:69-70`). SQL Server takes no
 in-process semaphore and uses `IsolationLevel.Serializable` (`SqlServerWalletStore.cs:11-13`), which is what
 makes two consoles publishing concurrently a deadlock-or-abort rather than a race (section 11, row 4). The

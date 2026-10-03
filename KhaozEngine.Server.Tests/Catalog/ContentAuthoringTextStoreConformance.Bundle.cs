@@ -8,10 +8,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Catalog;
 
 /// <summary>
-/// The complete bundle, export and rollback facts of the text conformance suite. The reference store runs
-/// them positive. A durable provider whose companion import, text export and text rollback are not landed yet
-/// overrides each with the matching transitional assertion below, so its typed refusal stays pinned rather
-/// than silently passing, until its hooks land and the override is removed.
+/// The complete bundle, export and rollback facts of the text conformance suite, which every store runs
+/// positive: the companion import, the format-aware export of one exact version and the companion rollback.
 /// </summary>
 public abstract partial class ContentAuthoringTextStoreConformance
 {
@@ -96,56 +94,6 @@ public abstract partial class ContentAuthoringTextStoreConformance
         ContentBundleTextValue value = Assert.Single(named.TextState!.Values);
         Assert.Equal(("sword", NameField, "en", "Sword"), (value.Target.Key.ToString(), value.Target.FieldName, value.Target.Language, value.Value));
         Assert.Equal(named.TextState.Values, ContentBundleJson.Read(ContentBundleJson.Write(named)).TextState!.Values);
-    }
-
-    /// <summary>
-    /// The transitional pin for a provider whose companion import is not landed yet: a typed unavailable
-    /// refusal, a row-only import still refusing the format 2 bundle, and nothing written.
-    /// </summary>
-    protected async Task AssertTextImportStaysUnavailableAsync()
-    {
-        IContentTextAuthoringStore store = await OpenAsync();
-        ContentBundle bundle = CompleteBundle();
-
-        var import = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => store.ImportTextBundleAsync(bundle, Actor, Operator, "import"));
-        Assert.Equal(ContentAuthoringException.TextOperationUnavailableReason, import.Reason);
-        var rowOnly = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => store.ImportBundleAsync(bundle, Actor, Operator, "import"));
-        Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, rowOnly.Reason);
-        Assert.Empty(await store.ListVersionsAsync());
-        Assert.Null(await store.GetOpenDraftAsync());
-    }
-
-    /// <summary>The transitional pin for a provider whose text rollback is not landed yet.</summary>
-    protected async Task AssertTextRollbackStaysUnavailableAsync()
-    {
-        IContentTextAuthoringStore store = await OpenAsync();
-        await PublishTwoTextVersionsAsync(store);
-        int audits = (await AuditAsync(store)).Count;
-
-        var rollback = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => store.RollbackTextToAsync(1, Actor, Operator, "rollback"));
-        Assert.Equal(ContentAuthoringException.TextOperationUnavailableReason, rollback.Reason);
-        Assert.Null(await store.GetOpenDraftAsync());
-        Assert.Equal(audits, (await AuditAsync(store)).Count);
-    }
-
-    /// <summary>
-    /// The transitional pin for a provider whose text export is not landed yet: a text-free version still
-    /// exports format 1, and a version declaring a language is refused rather than exported row-only.
-    /// </summary>
-    protected async Task AssertTextExportStaysRefusedAsync()
-    {
-        IContentTextAuthoringStore store = await OpenAsync();
-        await store.ApplyEditsAsync(new[] { Add("sword") }, Actor, Operator, "rows");
-        await store.PublishAsync(Request(0));
-        await ApplyAsync(store, null, Set("sword", NameField, "en", "Sword"));
-        await store.PublishAsync(Request(1));
-
-        Assert.Equal(ContentBundle.CurrentFormatVersion, (await store.ExportBundleAsync(1)).FormatVersion);
-        var export = await Assert.ThrowsAsync<ContentAuthoringException>(() => store.ExportBundleAsync(2));
-        Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, export.Reason);
     }
 
     /// <summary>Version 1 names the sword in English, and version 2 renames it and adds French.</summary>

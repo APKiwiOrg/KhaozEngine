@@ -144,10 +144,9 @@ public sealed class SqlServerContentAuthoringTextConformanceTests : ContentAutho
         => base.Text12_ALegacyForkOfARowHoldingTextIsRefusedAndTheCompanionCopiesIt();
 
     /// <inheritdoc />
-    /// <remarks>Transitional until the SQL Server companion import lands, which restores the base body.</remarks>
     [CatalogSqlServerFact]
     public override Task Text13_CompanionImportLandsACompleteBundleAndRefusesBeforeStaging()
-        => AssertTextImportStaysUnavailableAsync();
+        => base.Text13_CompanionImportLandsACompleteBundleAndRefusesBeforeStaging();
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
@@ -155,14 +154,12 @@ public sealed class SqlServerContentAuthoringTextConformanceTests : ContentAutho
         => base.Text14_ATextPlanWhoseDraftChangedSinceItsFreezeIsRefusedAtCommit();
 
     /// <inheritdoc />
-    /// <remarks>Transitional until the SQL Server text rollback lands, which restores the base body.</remarks>
     [CatalogSqlServerFact]
     public override Task Text15_CompanionRollbackRestoresValuesAndKeepsEveryDeclaredLanguage()
-        => AssertTextRollbackStaysUnavailableAsync();
+        => base.Text15_CompanionRollbackRestoresValuesAndKeepsEveryDeclaredLanguage();
 
     /// <inheritdoc />
-    /// <remarks>Transitional until the SQL Server text export lands, which restores the base body.</remarks>
     [CatalogSqlServerFact]
     public override Task Text16_ExportWritesFormatTwoExactlyWhenTheVersionDeclaresALanguage()
-        => AssertTextExportStaysRefusedAsync();
+        => base.Text16_ExportWritesFormatTwoExactlyWhenTheVersionDeclaresALanguage();
 }

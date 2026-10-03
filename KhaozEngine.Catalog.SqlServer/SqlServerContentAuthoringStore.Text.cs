@@ -49,40 +49,53 @@ public sealed partial class SqlServerContentAuthoringStore : IContentTextAuthori
         }
 
         return WriteAsync(
-            async (scope, token) =>
-            {
-                await RequireNotFrozenAsync(scope, nameof(ApplyChangesAsync), token).ConfigureAwait(false);
-                await OpenDraftAsync(scope, actor, note, token).ConfigureAwait(false);
-                for (int i = 0; i < changes.RowEdits.Count; i++)
-                {
-                    ContentEdit edit = changes.RowEdits[i];
-                    await ApplyOneAsync(scope, edit, actor, token).ConfigureAwait(false);
-                    await AppendEditAuditAsync(scope, edit, actor, operatorId, note, token).ConfigureAwait(false);
-                }
-
-                if (changes.TextEdits.Count > 0)
-                {
-                    int active = await ReadActiveVersionAsync(scope, token).ConfigureAwait(false);
-                    var declared = new HashSet<string>(StringComparer.Ordinal);
-                    ContentVersionTextSnapshot baseline = await ReadTextSnapshotAtAsync(scope, active, token)
-                        .ConfigureAwait(false);
-                    foreach (ContentTextLanguage language in baseline.Languages)
-                    {
-                        declared.Add(language.Language);
-                    }
-
-                    HashSet<(ushort, ContentKey)> pending = PendingKeys(
-                        await ReadEditsAsync(scope, token).ConfigureAwait(false));
-                    var context = new TextApply(declared, pending, active, actor, operatorId, note);
-                    for (int i = 0; i < changes.TextEdits.Count; i++)
-                    {
-                        await ApplyTextAsync(scope, changes.TextEdits[i], context, token).ConfigureAwait(false);
-                    }
-                }
-
-                return await RequireDraftAsync(scope, token).ConfigureAwait(false);
-            },
+            (scope, token) => ApplyChangesInAsync(scope, changes, actor, operatorId, note, token),
             cancellationToken);
+    }
+
+    /// <summary>
+    /// The body of <see cref="ApplyChangesAsync"/> inside the caller's transaction, which is what lets the
+    /// companion rollback read both versions, plan and apply its changes in one step. The row edits are already
+    /// schema checked.
+    /// </summary>
+    async Task<ContentDraft> ApplyChangesInAsync(
+        SqlServerCatalogScope scope,
+        ContentAuthoringChanges changes,
+        string actor,
+        string operatorId,
+        string note,
+        CancellationToken cancellationToken)
+    {
+        await RequireNotFrozenAsync(scope, nameof(ApplyChangesAsync), cancellationToken).ConfigureAwait(false);
+        await OpenDraftAsync(scope, actor, note, cancellationToken).ConfigureAwait(false);
+        for (int i = 0; i < changes.RowEdits.Count; i++)
+        {
+            ContentEdit edit = changes.RowEdits[i];
+            await ApplyOneAsync(scope, edit, actor, cancellationToken).ConfigureAwait(false);
+            await AppendEditAuditAsync(scope, edit, actor, operatorId, note, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (changes.TextEdits.Count > 0)
+        {
+            int active = await ReadActiveVersionAsync(scope, cancellationToken).ConfigureAwait(false);
+            var declared = new HashSet<string>(StringComparer.Ordinal);
+            ContentVersionTextSnapshot baseline = await ReadTextSnapshotAtAsync(scope, active, cancellationToken)
+                .ConfigureAwait(false);
+            foreach (ContentTextLanguage language in baseline.Languages)
+            {
+                declared.Add(language.Language);
+            }
+
+            HashSet<(ushort, ContentKey)> pending = PendingKeys(
+                await ReadEditsAsync(scope, cancellationToken).ConfigureAwait(false));
+            var context = new TextApply(declared, pending, active, actor, operatorId, note);
+            for (int i = 0; i < changes.TextEdits.Count; i++)
+            {
+                await ApplyTextAsync(scope, changes.TextEdits[i], context, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return await RequireDraftAsync(scope, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -200,37 +213,6 @@ public sealed partial class SqlServerContentAuthoringStore : IContentTextAuthori
                 return true;
             },
             cancellationToken);
-    }
-
-    /// <inheritdoc />
-    /// <remarks>Not completed by this store yet, so it is refused whole rather than importing rows alone.</remarks>
-    public Task<ContentPublishResult> ImportTextBundleAsync(
-        ContentBundle bundle,
-        string actor,
-        string operatorId,
-        string note,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(bundle);
-        ArgumentNullException.ThrowIfNull(actor);
-        ArgumentNullException.ThrowIfNull(operatorId);
-        ArgumentNullException.ThrowIfNull(note);
-        throw Unavailable(nameof(ImportTextBundleAsync));
-    }
-
-    /// <inheritdoc />
-    /// <remarks>Not completed by this store yet, so it is refused whole rather than restoring rows alone.</remarks>
-    public Task<ContentDraft> RollbackTextToAsync(
-        int targetVersion,
-        string actor,
-        string operatorId,
-        string note,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(actor);
-        ArgumentNullException.ThrowIfNull(operatorId);
-        ArgumentNullException.ThrowIfNull(note);
-        throw Unavailable(nameof(RollbackTextToAsync));
     }
 
     /// <summary>
@@ -503,14 +485,6 @@ public sealed partial class SqlServerContentAuthoringStore : IContentTextAuthori
 
         return keys;
     }
-
-    static ContentAuthoringException Unavailable(string member)
-        => new(
-            FormattableString.Invariant(
-                $"{nameof(SqlServerContentAuthoringStore)}.{member} is not available in this build, so it is refused whole rather than run without its text."),
-            default,
-            0,
-            ContentAuthoringException.TextOperationUnavailableReason);
 
     /// <summary>What every text intent of one batch is checked against.</summary>
     /// <param name="Declared">The canonical languages the active version declares.</param>

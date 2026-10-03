@@ -220,6 +220,7 @@ public sealed partial class SqlServerTextSchemaMigrationTests
             () => store.ExportBundleAsync(1),
             () => ApplyAsync(text, null, ContentTextEdit.Set(Target(NameField, "en"), "Blade")),
             () => store.RollbackToAsync(1, Actor, Operator, "rollback"),
+            () => text.RollbackTextToAsync(1, Actor, Operator, "rollback"),
         })
         {
             var unknown = await Assert.ThrowsAsync<ContentAuthoringException>(read);

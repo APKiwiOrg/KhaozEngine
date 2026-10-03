@@ -232,24 +232,6 @@ public sealed partial class SqlServerContentAuthoringStore
     }
 
     /// <summary>
-    /// Refuses a row-only export of a version that holds text, or whose text is unknown with no proof. The
-    /// caller owns the scope.
-    /// </summary>
-    async Task RequireRowOnlyExportAsync(
-        SqlServerCatalogScope scope,
-        int versionNumber,
-        CancellationToken cancellationToken)
-    {
-        ContentVersionTextSnapshot text = await ReadTextSnapshotAtAsync(scope, versionNumber, cancellationToken)
-            .ConfigureAwait(false);
-        if (text.Languages.Count > 0 || text.Revisions.Count > 0)
-        {
-            throw ContentTextCompatibility.Unrepresented(nameof(ExportBundleAsync), FormattableString.Invariant(
-                $"version {versionNumber} records {text.Languages.Count} language(s) and {text.Revisions.Count} value(s), which bundle format {ContentBundle.CurrentFormatVersion} cannot carry"));
-        }
-    }
-
-    /// <summary>
     /// Refuses a row-only rollback unless the current and the target version are each complete and text free,
     /// or unknown and proved empty by <see cref="ContentTextProvenanceProof"/>. It reads only, so a proof
     /// records nothing, and it runs again inside the transaction that applies the rollback edits. The caller

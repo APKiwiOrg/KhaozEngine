@@ -23,6 +23,11 @@ namespace KhaozEngine.NetWorld;
 /// served nor routed. Only when none is pending is the writer reset and admission reopened. The epoch allocator is
 /// never reset, so fresh streams take epochs above the old high-water. Once the allocator has issued its last epoch
 /// the gate stays closed for the server lifetime.</para>
+/// <para>A host kick of a pending slot runs the host's leave at once, and that counts as the slot's leave: the session
+/// server was already told to end the connection, and the slot is neither served nor routed.</para>
+/// <para>The reset waits for the transport's own server-side Disconnected event. On a transport that raises none for a
+/// disconnect the server asked for, such as <see cref="LoopbackTransport"/>, a restart with an attached session never
+/// completes and admission stays closed.</para>
 /// </remarks>
 internal sealed class RebuildServerStreams
 {
@@ -170,13 +175,15 @@ internal sealed class RebuildServerStreams
     }
 
     /// <summary>Ends every session whose stream reported a typed failure. Runs after the serve pass, so no writer sees
-    /// a slot vanish mid-pass.</summary>
+    /// a slot vanish mid-pass. A slot already ended for a restart is skipped: it got its restart token, and its leave
+    /// waits for its own Left.</summary>
     internal void EndServe()
     {
         if (streams.Count == 0) return;
         failedSlots.Clear();
         foreach (KeyValuePair<int, RebuildServerStream> entry in streams)
-            if (entry.Value.Failure is ReplicationFailure failure) failedSlots.Add((entry.Key, failure.Token));
+            if (entry.Value.Failure is ReplicationFailure failure && !pendingRestart.Contains(entry.Key))
+                failedSlots.Add((entry.Key, failure.Token));
         foreach ((int slot, string token) in failedSlots) disconnect(slot, token);
     }
 

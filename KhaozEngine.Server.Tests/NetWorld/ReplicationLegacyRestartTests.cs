@@ -249,6 +249,85 @@ public class ReplicationLegacyRestartTests
         Assert.Equal(ulong.MaxValue, rig.Host.EpochHighWater);
     }
 
+    [Theory]
+    [MemberData(nameof(Hosts))]
+    public void LegacyOnlyHostRestartsAndServesFreshBaseline(RebuildHostKind kind)
+    {
+        RestartRig rig = RestartRig.Create(kind, allowUnreliable: false);
+        RawRebuildClient legacy = rig.ConnectLegacy(out NetConnectionId legacyConnection);
+        SnapshotOnlyClient snapshot = rig.ConnectSnapshot();
+        rig.Steps(4);
+        Assert.NotEmpty(LegacyDeltas(legacy));
+        Assert.Equal(2, rig.Host.PlayerCount);
+        rig.Transport.HoldLeaveOf(legacyConnection);
+
+        rig.Exhaust();
+        Assert.Equal(int.MaxValue, LegacyDeltas(legacy)[^1].Snapshot);
+        rig.Steps(2);
+
+        Assert.Equal(ReplicationFailure.RestartToken, legacy.RejectReason);
+        Assert.Null(snapshot.RejectReason);
+        Assert.Equal(1, rig.Host.RestartPending);
+        Assert.Equal(2, rig.Host.PlayerCount);
+        Assert.True(rig.Writer.LegacySequenceExhausted);
+        Assert.Equal(int.MaxValue, rig.Writer.CurrentSeq);
+
+        rig.Transport.ReleaseLeaves();
+        rig.Step();
+
+        Assert.Equal(0, rig.Host.RestartPending);
+        Assert.Equal(1, rig.Host.PlayerCount);
+        Assert.Equal(1, rig.Writer.CurrentSeq);
+
+        RawRebuildClient fresh = rig.ConnectLegacy(out _);
+        for (int i = 0; i < 8 && LegacyDeltas(fresh).Count == 0; i++) rig.Step();
+
+        Assert.True(fresh.Joined);
+        Assert.NotEmpty(LegacyDeltas(fresh));
+        LegacyDeltaHeader first = LegacyDeltas(fresh)[0];
+        Assert.Equal(-1, first.Baseline);
+        Assert.Equal(rig.Writer.CurrentSeq, first.Snapshot);
+        Assert.True(snapshot.Joined);
+        Assert.Null(snapshot.RejectReason);
+        Assert.Equal(0UL, rig.Host.EpochHighWater);
+    }
+
+    [Theory]
+    [MemberData(nameof(Hosts))]
+    public void PendingSlotWithStreamFailureIsEndedOnce(RebuildHostKind kind)
+    {
+        RestartRig rig = RestartRig.Create(kind);
+        RawRebuildClient legacy = rig.ConnectLegacy(out NetConnectionId legacyConnection);
+        rig.Steps(4);
+        rig.Transport.HoldLeaveOf(legacyConnection);
+        V2Client v2 = rig.ConnectV2(out NetConnectionId v2Connection);
+        rig.Step();
+        // The exhaustion tick admits the v2 client, whose capabilities reach the next Poll.
+        rig.Exhaust();
+        Assert.True(v2.Joined);
+        rig.Host.SeedEpochs(ulong.MaxValue);
+        rig.Transport.HoldLeaveOf(v2Connection);
+        int sendsBefore = rig.Transport.Sends.Count;
+
+        // The capability fails for want of an epoch in the same Poll the slot first receives legacy deltas, so the
+        // serve pass makes it pending while its stream also holds a failure.
+        rig.Step();
+
+        Assert.Equal(ReplicationFailure.RestartToken, v2.RejectReason);
+        Assert.Equal(2, rig.Host.RestartPending);
+        Assert.Equal(2, rig.Host.PlayerCount);
+        Assert.Single(rig.Transport.Sends.Skip(sendsBefore),
+            s => s.Target == v2Connection && s.Payload[0] == (byte)SessionOpcode.Reject);
+
+        rig.Transport.ReleaseLeaves();
+        rig.Step();
+
+        Assert.Equal(0, rig.Host.RestartPending);
+        Assert.Equal(0, rig.Host.PlayerCount);
+        Assert.Equal(1, rig.Writer.CurrentSeq);
+        Assert.Equal(ReplicationFailure.RestartToken, legacy.RejectReason);
+    }
+
     private static List<LegacyDeltaHeader> LegacyDeltas(RawRebuildClient client) => client.Frames
         .Where(f => f.Kind == MoveProtocol.ServerFrameKind.Delta)
         .Select(f =>
@@ -276,10 +355,10 @@ internal sealed class RestartRig
     public RebuildHost Host { get; }
     public AoiDeltaReplicator Writer => Host.Writer!;
 
-    public static RestartRig Create(RebuildHostKind kind)
+    public static RestartRig Create(RebuildHostKind kind, bool allowUnreliable = true)
     {
         var transport = new RestartTransport();
-        return new RestartRig(transport, RebuildHost.Create(kind, transport, allowUnreliable: true));
+        return new RestartRig(transport, RebuildHost.Create(kind, transport, allowUnreliable: allowUnreliable));
     }
 
     public RawRebuildClient ConnectLegacy(out NetConnectionId connection)

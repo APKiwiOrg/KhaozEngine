@@ -428,6 +428,58 @@ Outcomes:
 - All pass: repeat on a TileWorld bridge fixture with a 2.5 cm drawn deck. If that also passes, stop and report that
   the lead does not reproduce, so the orchestrator can relabel the issue.
 
+### Cause and rule (Task 4b, rulings M13 and M14)
+
+Task 3 classified a core fault. The fixture's ground height callback reads 0 under the deck as well as the bank.
+`PropSupportFloor` (`CharacterMovement.Collision.cs`) runs its downward prop sweep only when the body was airborne,
+stepped up, or started more than `OnPropSkin` (0.05 m) above that callback. A grounded body at the callback height
+therefore never takes a lower prop top as support. The swept move lets the capsule into the prop, because the
+bottom cap meets the lip with a walkable normal and passes through. The ground snap in `StepCore` then seats the
+body at the callback height inside the prop. A body set on the 2.5 cm deck drops to 0 in one tick. Task 3's variant
+table shows the same sinking for lips up to 0.05 m at 1 m/s and up to 0.1 m at 9 m/s. With the callback lowered
+under the deck, the unchanged core and probe pass every fact.
+
+Rule. When that gate is closed, the same downward sweep also runs, with its walkable and under-footprint guards. Its
+surface becomes support only when both of these hold:
+
+1. The surface normal is at least `LipLandingFlatNormalY` (0.9), the flat tread test the lip band step-up already
+   applies. A curb, deck or doorstep top passes. A steep convex flank does not.
+2. The resting centre lies above the support found so far and at most `LowPropRise` (0.1 m) above the centre the
+   body started the tick at. The band comes from the evidence, which covers lips of 0.1 m and below. It is not
+   "any prop top within StepHeight".
+
+Once the body stands more than `OnPropSkin` above the callback, the existing gate takes over and follows the prop as
+before.
+
+Measured guarantee (ruling M16). The rule does not draw a clean line at the 0.9 normal. Task 4b fix round 1 walked
+player and NPC capsules at spheres standing out of flat terrain and measured three bands:
+
+1. A flank steeper than the walking slope limit is never raised. The radius 2 test dome meets the terrain at a 0.5
+   normal and blocks the body at its base with its feet at the terrain.
+2. A near flat top, normal at least 0.9, within 0.1 m above the body's start is support. Lips, curbs, deck tops and
+   a gentle mound that meets the terrain at 0.925 are mounted without sinking.
+3. A walkable flank between those is entered as the swept move allows, because the cap passes through a walkable
+   contact. The body is then seated once its footprint reaches a near flat part, or it sinks into the flank as it
+   did before this change. A mound meeting the terrain at 0.85 is mounted at player walk pace after sinking about
+   3 cm. Flanks at 0.8 and 0.7 are still walked through sunk 0.14 to 0.29 m. That sinking is older than this rule
+   and is filed as https://github.com/APKiwiOrg/KhaozEngine/issues/1260.
+
+A code rule that refuses seating after a steeper flank would make the 0.9 line exact, but it would also make
+moderate mounds unwalkable, so this round does not add one (ruling M16).
+
+Facts pin the bands: `LowPropSupportTests.CapsuleIsNeverRaisedUpASteepDome` (band 1),
+`CapsuleWalksUpAGentleMound` (band 2) and `CapsuleWalksUpAModerateMoundAtWalkPace` (band 3, the 0.85 case). These
+existing tests in `KhaozEngine.Game.Tests/Physics`, outside the Locomotion filter, must stay green, so Task 4b also
+runs `FullyQualifiedName~KhaozEngine.Tests.Physics`: `ControllerOnPhysicsTests.Capsule_BlockedAtDomeBase_DoesNotPenetrate`,
+`Capsule_RestsOnDomeFlank_WithoutPenetrating`, `Capsule_MountsDomeFromSide_ByJumping`,
+`GroundedCapsule_WalksOffLedge_ReleasesAndFalls` and `PhysicsFeelTests.DomedRockTop_SettlesAndMoves`.
+
+Costs. A grounded tick at terrain height in a world with physics pays one more capsule sweep, the sweep an elevated
+body already pays. If the movement queries contain a ground mesh at the callback height, the sweep meets it at the
+current support and changes nothing. A mesh that sits up to 0.1 m above the callback now supports the body.
+TileWorld's movement query view already excludes its own ground mesh. The rule clears the 0.06 m stall at 1 m/s, and
+`LowLipTraversalTests.LiveBodyMountsLowLipsUpToATenthOfAMetre` pins it.
+
 After Task 4 or 4b merges, root reruns the focused filters of every lane that bakes through the movement core
 (ruling M9).
 

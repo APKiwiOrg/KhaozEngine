@@ -323,10 +323,12 @@ public static partial class CharacterMovement
         //    sunk; the sweep does not). The capsule never rests below this floor.
         //
         //    The prop sweep only CONTRIBUTES the floor when the capsule is airborne (landing/jumping onto a prop)
-        //    or already standing on a prop (its carried Y is above the terrain slope-stick band). A capsule
-        //    walking horizontally into a rising prop flank while grounded on terrain stays in the band, so the
-        //    prop sweep is skipped and the depenetrate settle pass alone blocks it at the base (the perfect
-        //    horizontal the prior version established is untouched, and a low dome cannot be walked up its side).
+        //    or already standing on a prop (its carried Y is above the terrain slope-stick band). For a capsule
+        //    grounded on terrain, LowPropSupport (CharacterMovement.LowProp.cs) is the one exception, and the
+        //    measured guarantee is: a flank steeper than the walking slope limit is never raised (the depenetrate
+        //    settle pass blocks it at the base), a near-flat top (normal at least 0.9) within 0.1 m above the tick's
+        //    start is support, and a walkable flank between those is entered as the swept move allows, then seated
+        //    once the footprint reaches a near-flat part, or sunk into as before (KhaozEngine #1260).
         float terrainGroundY = groundHeight(pos.X, pos.Z) + halfH;
         float groundY = terrainGroundY;
         if (steppedUp)

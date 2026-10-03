@@ -475,7 +475,7 @@ Expected: build exit 0 with zero warnings, test exit 0 with zero failures and no
 
 ## Outcome
 
-Not started.
+Results per task, recorded as each task lands.
 
 ### Task 3 (lane B)
 
@@ -503,3 +503,23 @@ context `GroundMoveContext((_, _) => 0f, physics: world)` as in the existing pro
   lips are walked through, 0.06 m stalls at the edge and 0.1 m mounts.
 - Departure: the live fact steers toward (1.125, 0.125) with the probe's bounded command rather than a constant +X,
   because the shared tuning walks at 9 m/s and a constant command leaves the 2 m deck within 60 ticks.
+
+### Task 4b (lane B, rulings M13 and M14)
+
+- Cause and rule written into design S5 before code. `PropSupportFloor` skipped its prop sweep for a grounded body
+  within `OnPropSkin` of the ground height callback, so a lower prop top was never support. New
+  `CharacterMovement.LowProp.cs` adds `LowPropSupport`, called when that gate is closed. It accepts a near flat top
+  (normal at least 0.9) whose resting centre is at most 0.1 m above the tick's start. `CharacterMovement.Collision.cs`
+  gains the one call line.
+- RED without the call: Movement `LowLipTraversalTests` 10 of 12 failed (both lip edges, route `Unreachable`, deck
+  hold, live at 9 and 2 m/s, lips 0.04, 0.05 and 0.06 m at 1 m/s and 0.1 m at 9 m/s). Locomotion
+  `LowPropSupportTests` 7 of 12 failed (walking onto 0.025, 0.05 and 0.1 m tops at walk and run, and the 0.025 m hold).
+- GREEN: `LowLipTraversalTests` 12 passed. `LowPropSupportTests` 12 passed.
+- The 0.06 m stall at 1 m/s is in scope. The rule clears it and `LiveBodyMountsLowLipsUpToATenthOfAMetre` pins it.
+- Guards: Game.Tests `KhaozEngine.Tests.Locomotion` 1008 passed, 1 skipped (a measurement fact that is always
+  skipped). Game.Tests `KhaozEngine.Tests.Physics`, home of the dome and flank tests, 203 passed. Movement.Tests in
+  full 507 passed. Server.Tests `NetWorld` 953 passed. TileWorld.Physics.Tests movement and bake filters 14 passed.
+  No existing expectation changed.
+- Departure: the subject is `fix(locomotion): support a low prop top above the terrain`, because the plan's subject
+  names the refuted contact skin cause. The Locomotion facts live in `LowPropSupportTests.cs`, not
+  `LowLipStepUpTests.cs`, for the same reason.

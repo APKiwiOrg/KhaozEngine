@@ -12,9 +12,9 @@ namespace KhaozEngine.Tests.Movement;
 /// <summary>KhaozEngine #1253: a 0.3 m capsule stepping from the ground onto a 2.5 cm deck lip whose west edge is x 0.</summary>
 public class LowLipTraversalTests
 {
-    // The analytic terrain under the deck reads the bank height, so the core never takes the deck as support. A
-    // grounded body walks through the lip with its feet at 0 and a body set on the deck drops back to 0 in one hold.
-    private const string CoreRed = "#1253 RED, fixed by Task 4b";
+    // The ground height callback reads 0 under the deck as well as the bank. Before the core's low prop support
+    // rule, a grounded body at that height never took the deck top as support. It walked through the lip with its
+    // feet at 0, and a body set on the deck dropped back to 0 in one tick.
     private const float DeckTop = 0.025f;
     private const float Row = 0.125f;
 
@@ -31,8 +31,8 @@ public class LowLipTraversalTests
     [Theory]
     [InlineData(-0.375f, -0.125f)]
     [InlineData(-0.125f, -0.375f)]
-    [InlineData(-0.125f, 0.125f, Skip = CoreRed)]
-    [InlineData(0.125f, -0.125f, Skip = CoreRed)]
+    [InlineData(-0.125f, 0.125f)]
+    [InlineData(0.125f, -0.125f)]
     public void BakeAcceptsEdgesBesideTheLip(float fromX, float toX)
     {
         using BepuPhysicsWorld world = LipWorld();
@@ -45,7 +45,7 @@ public class LowLipTraversalTests
         Assert.True(nav.AllowsSegment(from, to));
     }
 
-    [Fact(Skip = CoreRed)]
+    [Fact]
     public void RouteCrossesOntoTheDeck()
     {
         using BepuPhysicsWorld world = LipWorld();
@@ -57,11 +57,57 @@ public class LowLipTraversalTests
         Assert.Equal(NavPathStatus.Complete, route.Status);
     }
 
-    [Fact(Skip = CoreRed)]
-    public void LiveBodyMountsTheLipAtWalkPace()
+    [Fact]
+    public void BodySetOnTheDeckStaysOnIt()
     {
         using BepuPhysicsWorld world = LipWorld();
-        GroundMoveContext context = Context(world);
+        var body = new MoveState
+        {
+            Position = Feet(0.625f) + Vector3.UnitY * Tuning.CapsuleHalfHeight,
+            Grounded = true,
+            SpeedScale = 1f,
+        };
+
+        body = NpcGroundMovement.Hold(body, 1f / 30f, Tuning, Context(world));
+
+        Assert.True(body.Grounded);
+        Assert.InRange(body.Position.Y - Tuning.CapsuleHalfHeight, DeckTop - 0.001f, DeckTop + 0.001f);
+    }
+
+    [Theory]
+    [InlineData(9f)]
+    [InlineData(2f)]
+    public void LiveBodyMountsTheLipAtWalkPace(float walkSpeed)
+    {
+        using BepuPhysicsWorld world = LipWorld();
+
+        MoveState body = WalkOntoTheDeck(Context(world), walkSpeed, DeckTop);
+
+        Assert.InRange(body.Position.Y - Tuning.CapsuleHalfHeight, DeckTop - 0.001f, DeckTop + 0.001f);
+        Assert.True(body.Position.X > 0.2f, $"stopped at centre {body.Position}");
+    }
+
+    // Task 3's lip height sweep: lips that sank the body (0.04 and 0.05 m at 1 m/s, 0.1 m at 9 m/s) and the 0.06 m
+    // lip that stalled it at the edge at 1 m/s.
+    [Theory]
+    [InlineData(0.04f, 1f)]
+    [InlineData(0.05f, 1f)]
+    [InlineData(0.06f, 1f)]
+    [InlineData(0.1f, 9f)]
+    public void LiveBodyMountsLowLipsUpToATenthOfAMetre(float lip, float walkSpeed)
+    {
+        using BepuPhysicsWorld world = LipWorld(lip);
+
+        MoveState body = WalkOntoTheDeck(Context(world), walkSpeed, lip);
+
+        Assert.InRange(body.Position.Y - Tuning.CapsuleHalfHeight, lip - 0.001f, lip + 0.001f);
+        Assert.True(body.Position.X > 0.2f, $"stopped at centre {body.Position}");
+    }
+
+    // Steers from the bank toward (1.125, Row) at walk pace for 60 ticks, bounded at the target like the probe.
+    private static MoveState WalkOntoTheDeck(GroundMoveContext context, float walkSpeed, float lip)
+    {
+        MoveTuning tuning = Tuning with { WalkSpeed = walkSpeed };
         const float dt = 1f / 30f;
         var target = new Vector2(1.125f, Row);
         var body = new MoveState
@@ -76,21 +122,19 @@ public class LowLipTraversalTests
             Vector2 delta = target - new Vector2(body.Position.X, body.Position.Z);
             float distance = delta.Length();
             Vector2 direction = distance > 0f
-                ? delta / distance * MathF.Min(1f, distance / (Tuning.WalkSpeed * dt))
+                ? delta / distance * MathF.Min(1f, distance / (walkSpeed * dt))
                 : Vector2.Zero;
             body = NpcGroundMovement.Step(body, new RangeSteering(direction, RangeMoveStatus.Following),
-                false, dt, Tuning, context);
-            Assert.True(body.Grounded, $"airborne at tick {tick}, centre {body.Position}");
+                false, dt, tuning, context);
+            Assert.True(body.Grounded, $"airborne at tick {tick}, centre {body.Position}, lip {lip}");
         }
-
-        Assert.InRange(body.Position.Y - Tuning.CapsuleHalfHeight, DeckTop - 0.001f, DeckTop + 0.001f);
-        Assert.True(body.Position.X > 0.2f, $"stopped at centre {body.Position}");
+        return body;
     }
 
-    private static BepuPhysicsWorld LipWorld()
+    private static BepuPhysicsWorld LipWorld(float lip = DeckTop)
     {
         BepuPhysicsWorld world = GroundTraversalProbeTests.FlatWorld();
-        world.AddStatic(new BoxShape(new Vector3(1f, DeckTop / 2f, 2f)), Pose.At(new Vector3(1f, DeckTop / 2f, 0f)));
+        world.AddStatic(new BoxShape(new Vector3(1f, lip / 2f, 2f)), Pose.At(new Vector3(1f, lip / 2f, 0f)));
         return world;
     }
 

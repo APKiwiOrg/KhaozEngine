@@ -16,7 +16,7 @@ namespace KhaozEngine.Navigation;
 /// <see cref="FromWalkable"/> and read many times, so pathfinding never re-touches the walkable
 /// predicate. Render-free, deterministic.
 /// </summary>
-public sealed class NavGrid
+public sealed partial class NavGrid
 {
     readonly byte[] _clearance;
     readonly float[]? _heights;

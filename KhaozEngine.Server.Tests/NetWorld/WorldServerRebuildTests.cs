@@ -50,9 +50,14 @@ public abstract class RebuildHostCases
         Assert.True(host.TryGetReplicationSelection(client.Slot, out ReplicationSelection selection));
         Assert.Equal(new ReplicationSelection(ReplicationDeliveryMode.AcknowledgedUnreliable,
             ReplicationSelectionReason.Selected, epoch), selection);
-        Assert.Equal(sendsBefore, transport.Sends.Count);   // no legacy frame, no v2 delta, no chunk, no new offer
+        // No legacy frame, no routine v2 delta and no new offer: only the accepted epoch's keyframe, reliably. This
+        // client never acknowledges it, so the barrier holds.
+        var after = transport.Sends.Skip(sendsBefore).ToList();
+        var chunk = Assert.Single(after);
+        Assert.Equal((byte)MoveProtocol.ServerFrameKind.RebuildKeyframeChunk, chunk.Payload[1]);
+        Assert.Equal(NetChannelReliability.ReliableOrdered, chunk.Reliability);
         Assert.Equal(0, client.LegacyFramesAfterFirstOffer);
-        Assert.Equal(0, client.V2StateFrames);
+        Assert.Equal(0, client.Frames.Count(f => f.Kind == MoveProtocol.ServerFrameKind.RebuildDelta));
         Assert.Equal(0, host.CountSuspicious(client.Slot, SuspiciousReason.MalformedPacket));
     }
 

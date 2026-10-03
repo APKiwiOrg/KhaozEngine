@@ -19,7 +19,8 @@ public sealed class ReplicationStreamOptions
 
     /// <summary>The largest transport payload sent, in bytes, session frame and NetWorld envelope included. The
     /// selected cap is the smaller of this and the connection's actual unfragmented limit. It must leave room for
-    /// the keyframe budget in at most 255 chunks of <c>cap - 23</c> bytes. Default 512.</summary>
+    /// the keyframe budget in at most 255 chunks of <c>cap - 23</c> bytes, and at most 65558 so that width fits a
+    /// <see cref="ushort"/>. Default 512.</summary>
     public int MaxTransportPayloadBytes { get; init; } = 512;
 
     /// <summary>Reliable keyframe chunks sent per viewer per replication tick. Default 4.</summary>
@@ -39,6 +40,9 @@ public sealed class ReplicationStreamOptions
     /// header.</summary>
     internal const int KeyframeChunkOverheadBytes = 1 + RebuildProtocol.KeyframeChunkHeaderBytes
         + MessageFragmenter.HeaderBytes;
+
+    /// <summary>The largest transport cap whose keyframe chunk width still fits the generic fragment width range.</summary>
+    internal const int MaxPacketCap = ushort.MaxValue + KeyframeChunkOverheadBytes;
 
     /// <summary>The complete empty state datagram: session byte, kind byte, envelope, format 2 header and the two
     /// empty counts. A smaller cap can never carry state.</summary>
@@ -114,6 +118,9 @@ public sealed class ReplicationStreamOptions
             throw Invalid(nameof(RepairRequestIntervalTicks), RepairRequestIntervalTicks, "must be at least 1");
         if (RecoveryDeadlineTicks < 1)
             throw Invalid(nameof(RecoveryDeadlineTicks), RecoveryDeadlineTicks, "must be at least 1");
+        if (MaxTransportPayloadBytes > MaxPacketCap)
+            throw Invalid(nameof(MaxTransportPayloadBytes), MaxTransportPayloadBytes,
+                "must be at most 65558, so the keyframe chunk width (cap - 23) fits a ushort");
         if (!IsFeasiblePacketCap(MaxTransportPayloadBytes, Limits.MaxKeyframeBytes))
             throw Invalid(nameof(MaxTransportPayloadBytes), MaxTransportPayloadBytes,
                 "must be at least 40 and carry Limits.MaxKeyframeBytes in at most 255 chunks of (cap - 23) bytes");

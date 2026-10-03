@@ -26,6 +26,7 @@ internal sealed class RebuildServerStreams
     private readonly RemoteCommandQueue<MoveCommand> commands;
     private readonly Action<int> raiseMalformed;
     private readonly Action<int, string> disconnect;
+    private bool allowance;
 
     /// <param name="net">The host's session server.</param>
     /// <param name="writer">The host's shared delta writer, or null when delta replication is off.</param>
@@ -67,7 +68,8 @@ internal sealed class RebuildServerStreams
         return checkedOptions.ValidateConfig(deltaReplication, optIn, tickSeconds);
     }
 
-    /// <summary>The replication tick negotiation deadlines count in. Zero without format 2, where none runs.</summary>
+    /// <summary>The replication tick negotiation and repair deadlines count in. Zero without format 2, where none
+    /// runs.</summary>
     internal long Tick => cadence?.Tick ?? 0;
 
     /// <summary>The last epoch issued.</summary>
@@ -121,16 +123,20 @@ internal sealed class RebuildServerStreams
         stream.OnRebuildCapability(Tick);
     }
 
-    /// <summary>Advances the cadence from elapsed host time. Once per host tick.</summary>
-    internal void Advance(float dt) => cadence?.Advance(dt);
+    /// <summary>Advances the cadence from elapsed host time, once per host tick, before the serve pass. Keeps whether
+    /// this tick crossed a cadence boundary: format 2 routine sends and keyframe chunks spend allowance only then, even
+    /// on a short sharded frame that ran no simulation step.</summary>
+    internal void Advance(float dt) => allowance = cadence?.Advance(dt) ?? false;
 
-    /// <summary>The serve-pass hook for one slot. True when format 2 owns the slot's state this tick, so the legacy
-    /// writers must not serve it.</summary>
+    /// <summary>The serve-pass hook for one slot, after the host opened its one writer capture tick. True when format 2
+    /// owns the slot's state this tick, so the legacy writers must not serve it. A faulted stream is owned even before
+    /// its negotiation ended, so it reports its restart instead of being served legacy state.</summary>
     internal bool Serve(int slot, World served, IReadOnlySet<long> filteredInterest, long ownerNetId, int movementAck)
     {
         ServeObserved?.Invoke(slot, served, filteredInterest, ownerNetId);
-        if (!streams.TryGetValue(slot, out RebuildServerStream? stream) || stream.ServesLegacy) return false;
-        stream.Serve(served, filteredInterest, ownerNetId, movementAck, Tick);
+        if (!streams.TryGetValue(slot, out RebuildServerStream? stream)) return false;
+        if (stream.ServesLegacy && !stream.Faulted) return false;
+        stream.Serve(served, filteredInterest, ownerNetId, movementAck, Tick, allowance);
         return true;
     }
 
@@ -145,7 +151,8 @@ internal sealed class RebuildServerStreams
         foreach ((int slot, string token) in failedSlots) disconnect(slot, token);
     }
 
-    /// <summary>Drops a slot's stream on join and leave. The host forgets the writer slot itself.</summary>
+    /// <summary>Drops a slot's stream on join and leave. The host forgets the writer slot itself. A faulted stream is
+    /// dropped too: its connection is already ending, so no restart token is sent on top.</summary>
     internal void Forget(int slot)
     {
         if (streams.Remove(slot, out RebuildServerStream? stream)) stream.Forget();

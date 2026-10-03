@@ -185,7 +185,7 @@ public class ReplicationCapabilityMatrixTests
 
     [Theory]
     [MemberData(nameof(Hosts))]
-    public void AcceptingClientKeepsLegacyStoppedAndGetsNoV2State(RebuildHostKind kind)
+    public void AcceptingClientKeepsLegacyStoppedAndGetsOnlyItsKeyframe(RebuildHostKind kind)
     {
         var transport = LimitTransport.Known();
         RebuildHost host = RebuildHost.Create(kind, transport, allowUnreliable: true);
@@ -201,7 +201,10 @@ public class ReplicationCapabilityMatrixTests
         AssertSelection(host, client, new ReplicationSelection(ReplicationDeliveryMode.AcknowledgedUnreliable,
             ReplicationSelectionReason.Selected, epoch));
         Assert.Equal(0, client.LegacyFramesAfterFirstOffer);
-        Assert.Equal(0, client.V2StateFrames);
+        // The accepted epoch's keyframe goes out reliably. This client never acknowledges it, so no routine delta
+        // follows.
+        Assert.Equal(0, client.Frames.Count(f => f.Kind == MoveProtocol.ServerFrameKind.RebuildDelta));
+        Assert.Single(client.Frames, f => f.Kind == MoveProtocol.ServerFrameKind.RebuildKeyframeChunk);
         Assert.Single(client.Offers);
     }
 
@@ -452,7 +455,7 @@ internal sealed class RebuildHost
 
     public static RebuildHost Create(RebuildHostKind kind, INetTransport transport, bool allowUnreliable = false,
         bool deltaReplication = true, AntiCheatConfig? antiCheat = null, Func<int, long, bool>? visible = null,
-        ReplicationStreamOptions? stream = null)
+        ReplicationStreamOptions? stream = null, ReplicationRegistry? registry = null)
     {
         antiCheat ??= new AntiCheatConfig();
         stream ??= new ReplicationStreamOptions();
@@ -471,7 +474,7 @@ internal sealed class RebuildHost
                 AntiCheat = antiCheat,
                 EntityVisibleToSlot = visible,
             };
-            return new RebuildHost(new WorldServer(transport, config, Flat, MoveTuning.Default), null);
+            return new RebuildHost(new WorldServer(transport, config, Flat, MoveTuning.Default, registry: registry), null);
         }
         var shardedConfig = new ShardedWorldServerConfig
         {
@@ -484,7 +487,8 @@ internal sealed class RebuildHost
             AntiCheat = antiCheat,
             EntityVisibleToSlot = visible,
         };
-        return new RebuildHost(null, new ShardedWorldServer(transport, shardedConfig, Flat, MoveTuning.Default));
+        return new RebuildHost(null,
+            new ShardedWorldServer(transport, shardedConfig, Flat, MoveTuning.Default, registry: registry));
     }
 
     public int PlayerCount => flat?.PlayerCount ?? sharded!.PlayerCount;
@@ -506,10 +510,12 @@ internal sealed class RebuildHost
         else sharded!.Poll();
     }
 
-    public void Tick()
+    public void Tick() => Tick(Dt);
+
+    public void Tick(float dt)
     {
-        if (flat is not null) flat.Tick(Dt);
-        else sharded!.Tick(Dt);
+        if (flat is not null) flat.Tick(dt);
+        else sharded!.Tick(dt);
     }
 
     public void Pump(int ticks, params RawRebuildClient[] clients)
@@ -538,7 +544,12 @@ internal sealed class RebuildHost
         return state.Position;
     }
 
-    public long SpawnEntity(float x, float z) => flat?.SpawnEntity(x, z) ?? sharded!.SpawnEntity(x, z);
+    public long SpawnEntity(float x, float z, Action<World, Entity>? configure = null) =>
+        flat?.SpawnEntity(x, z, configure) ?? sharded!.SpawnEntity(x, z, configure);
+
+    public bool TryGetEntity(long netId, out World world, out Entity entity) => flat is not null
+        ? flat.TryGetEntity(netId, out world, out entity)
+        : sharded!.TryGetEntity(netId, out world, out entity);
 
     public int CountSuspicious(int slot, SuspiciousReason reason) =>
         Suspicious.Count(s => s.Slot == slot && s.Reason == reason);

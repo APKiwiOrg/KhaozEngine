@@ -33,6 +33,9 @@ public sealed class GroundNavigation
 
     internal NavTraversalGraph Graph { get; }
 
+    /// <summary>The area footprint over the captured columns, which a bake writes and shares across profiles.</summary>
+    internal NavAreaFootprint Footprint => _footprint;
+
     internal void ValidateTuning(in MoveTuning tuning)
     {
         if (tuning.CapsuleRadius != _tuning.Radius || tuning.CapsuleHalfHeight != _tuning.HalfHeight ||

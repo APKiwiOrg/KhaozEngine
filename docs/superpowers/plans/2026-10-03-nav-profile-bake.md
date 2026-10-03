@@ -516,6 +516,46 @@ Departures.
   stream equals `SHA256.HashData`, `Snapshot` copies digests, every retained tuning field round trips with distinct
   values, and each corrupt case asserts its own reason so it cannot pass on an unrelated failure.
 
+### Task 4: bake format, create, write and load
+
+Done in two commits. The first, `test(movement): harden bake identity guards`, applies ruling N6 to Task 3: the golden
+test spells all 13 option and all 30 tuning arguments as literals with the constant unchanged, every count, order and
+per-field guard names the format version bump, instance field counts of 30 and 13 back the constructor counts,
+profile errors name the `expected` parameter, the `FormatVersion` remarks cover the label set, `MaxNameLength` and
+`MaxProfiles`, and nine corrupt rows plus a sweep over every prefix of the corrupt base identity return `Corrupt`.
+`NavBakeIdentityTests` went from 41 to 51 cases.
+
+The second, `feat(movement): bake and load ground navigation profile sets`, adds `GroundNavigationBake`,
+`NavBakeLoadResult`, the writer and the reader. RED was a compile failure, CS0246 on `GroundNavigationBake` and
+`NavBakeLoadResult`. GREEN is 55 of 55 in the `GroundNavigationBake` filter, and the whole Movement.Tests project
+passed 491 of 491.
+
+Measurement, deck fixture (20 by 3 cells at 0.5 m, two layers, profiles `dry` and `wet`), one warmed load on the dev
+Mac: file 2,448 bytes with a 2,016-byte payload, `Load` 0.070 ms, 13,408 bytes allocated.
+
+Departures.
+
+- Ruling N5: `Load` validates the expectation as `Create` would before reading any byte. `PhysicsNavBakeOptions`
+  gained `ValidateWithoutOrigin`, the origin-free part of `Validate` with its order kept. A surface cap above 255 is
+  refused. `GroundMoveContext.ValidateTuning` now delegates to a static `CheckTuning`, which every expected profile
+  passes, along with the capture slope and finite height checks of `BuildProfile`. All of these throw
+  `ArgumentException` to the caller. Cost: one internal method each in `PhysicsNavBakeOptions.cs` and
+  `GroundMoveContext.cs`, files outside the brief's list.
+- Each profile section stores its regenerated candidate link count as an `int32` before the accepted-link bitset,
+  the recommended option in the dispatch. A load whose regenerated count differs is `Corrupt`, which catches a same
+  version reorder of link generation. The payload bound adds those 4 bytes per profile. Cost: 4 bytes per profile.
+- The payload bound saturates on overflow and is then capped at `Array.MaxLength`, as carried from review, instead of
+  throwing `OverflowException`.
+- An identity block over 1 MiB is refused with `ArgumentException` by `Create` and by `Load` on the expected side, so a
+  bake can never be written that its own reader would call corrupt.
+- `InvalidExpectationThrows` is a theory with six rows (empty sources, surface cap 256, zero cell size, slope
+  mismatch, negative gravity, half-height below the radius), each against a stream that throws on any access.
+- Tests beyond the brief: value invariants also cover the count sum, cell size, yaw, layer and capture dimensions,
+  stored candidate count and trailing payload bytes. Truncation runs through both a seekable and a one-byte stream.
+  `Create` accepts a surface cap of exactly 255.
+- The reader builds `PhysicsNavColumns` through its existing copying constructor, so the starts and surfaces arrays
+  exist twice during a load. Cost: transient memory equal to the capture section, kept to stay inside the file list.
+
 ### Task 6: route-free approach driver
 
 Done. Commits `refactor(movement): share range approach helpers` and

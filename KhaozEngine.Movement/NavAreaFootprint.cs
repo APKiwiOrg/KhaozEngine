@@ -28,6 +28,15 @@ internal sealed class NavAreaFootprint
         AcceptsPredicate = Accepts;
     }
 
+    /// <summary>The captured columns this footprint reads. Profiles of one capture share the instance.</summary>
+    internal PhysicsNavColumns Columns => _columns;
+
+    /// <summary>The capture options that place the columns.</summary>
+    internal PhysicsNavBakeOptions Options => _options;
+
+    /// <summary>The area filter applied to every touched surface.</summary>
+    internal NavAreaFilter Areas => _areas;
+
     /// <summary>One delegate over <see cref="Accepts"/>, built once so traversal proofs do not allocate it per call.</summary>
     internal Func<Vector3, bool> AcceptsPredicate { get; }
 

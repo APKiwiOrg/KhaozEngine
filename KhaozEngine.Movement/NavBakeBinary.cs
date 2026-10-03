@@ -56,6 +56,15 @@ internal ref struct NavBakeReader
         return true;
     }
 
+    public bool TryReadUInt64(out ulong value)
+    {
+        value = 0;
+        if (Remaining < 8) return false;
+        value = BinaryPrimitives.ReadUInt64LittleEndian(_data.Slice(Position, 8));
+        Position += 8;
+        return true;
+    }
+
     /// <summary>Reads a float from its IEEE 754 bit pattern.</summary>
     public bool TryReadSingle(out float value)
     {
@@ -130,6 +139,12 @@ internal sealed class NavBakeWriter
     {
         BinaryPrimitives.WriteInt32LittleEndian(_buffer.GetSpan(4), value);
         _buffer.Advance(4);
+    }
+
+    public void WriteUInt64(ulong value)
+    {
+        BinaryPrimitives.WriteUInt64LittleEndian(_buffer.GetSpan(8), value);
+        _buffer.Advance(8);
     }
 
     /// <summary>Writes a float as its IEEE 754 bit pattern.</summary>

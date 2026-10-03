@@ -91,7 +91,10 @@ public sealed partial class GroundMoveContext
         }
     }
 
-    internal void ValidateTuning(in MoveTuning tuning)
+    internal void ValidateTuning(in MoveTuning tuning) => CheckTuning(tuning);
+
+    /// <summary>The tuning rules of <see cref="ValidateTuning"/>, which read no context state.</summary>
+    internal static void CheckTuning(in MoveTuning tuning)
     {
         Nonnegative(tuning.WalkSpeed, nameof(tuning.WalkSpeed));
         Nonnegative(tuning.RunSpeed, nameof(tuning.RunSpeed));

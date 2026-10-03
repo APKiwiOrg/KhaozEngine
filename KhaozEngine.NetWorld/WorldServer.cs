@@ -218,7 +218,8 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         // movement built-ins; it MUST be the same registry the client is built with. Default = movement-only.
         this.registry = registry ?? MoveProtocol.CreateRegistry();
         deltaReplicator = this.config.DeltaReplication ? new AoiDeltaReplicator(this.registry) : null;
-        replicationCadence = CreateReplicationCadence(this.config);
+        DeltaRebuildOptions? replicationLimits = RebuildServerStreams.ValidateConfig(this.config.DeltaReplication,
+            this.config.AllowUnreliableDeltaReplication, this.config.ReplicationStream, this.config.TickSeconds);
         this.tuning = tuning;
         // Size the queue's distinct-slot cap to MaxPlayers (the SlotAllocator hands out slots in [0, MaxPlayers)).
         // Without this it used the RemoteCommandQueue default of 64, so on a server with MaxPlayers > 64 every move
@@ -243,6 +244,8 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator),
             maxQueuedEvents: config.MaxQueuedEvents,
             duplicateSessions: config.DuplicateSessions, maxPendingConnections: config.MaxPendingConnections);
+        replication = new RebuildServerStreams(net, deltaReplicator, this.config.ReplicationStream, replicationLimits,
+            this.config.TickSeconds, commands, slot => Raise(slot, SuspiciousReason.MalformedPacket), Disconnect);
         this.banStore = banStore;
         interest = new InterestGrid(MathF.Max(1f, config.InterestRadius));
     }
@@ -458,7 +461,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             return;
         }
         // Every 18-byte frame is a MOVE. Format 2 controls claim their own lengths before any legacy decode.
-        if (RouteClientFrame(slot, data, reliability)) return;
+        if (replication.Route(slot, data, reliability)) return;
         // Replication ack: advance this client's delta baseline (a dropped ack just self-heals on the next delta).
         if (MoveProtocol.TryDecodeReplicationAck(data, out int appliedSeq))
         {
@@ -470,7 +473,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         {
             if (control == MoveProtocol.ClientControlKind.SelfRescue) HandleSelfRescue(slot);
             else if (control == MoveProtocol.ClientControlKind.DeltaCapable && deltaReplicator is not null) deltaCapableSlots.Add(slot);
-            else if (control == MoveProtocol.ClientControlKind.RebuildDeltaCapable) OnRebuildCapability(slot);
+            else if (control == MoveProtocol.ClientControlKind.RebuildDeltaCapable) replication.OnCapability(slot);
             return;
         }
         // Game message: an opaque game-defined frame (attack, interaction, chat, …). Demuxed BEFORE the move (it can
@@ -573,7 +576,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         // Serve each client its area-of-interest, headered with its own net id + move ack. Delta-capable clients get
         // a per-client AoI delta (only what changed since their acknowledged baseline); everyone else a full snapshot.
         deltaReplicator?.BeginTick();
-        AdvanceReplicationCadence(dt);
+        replication.Advance(dt);
         // The fallback snapshot index is rebuilt lazily on the first non-delta client this tick (not unconditionally
         // here), so a tick with only delta-capable clients pays no extra world scan. Every client thereafter this
         // tick reuses it, sharing one O(worldPop) rebuild across the tick's fallback clients.
@@ -589,7 +592,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             interest.Query(p.X, p.Z, config.InterestRadius, interestScratch);
             InterestVisibility.Filter(interestScratch, slot, netId, config.EntityVisibleToSlot);
             HashSet<long> set = interestScratch;
-            if (ServeReplicationSlot(slot, world, set, netId)) continue;   // format 2 owns this slot's state
+            if (replication.Serve(slot, world, set, netId, lastAckBySlot[slot])) continue;   // format 2 owns it
             MoveProtocol.ServerFrameKind kind;
             byte[] body;
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
@@ -613,7 +616,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             byte[] envelope = MoveProtocol.EncodeServerFrame(kind, frame);
             net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
         }
-        EndReplicationServe();
+        replication.EndServe();
 
         // Clear the per-tick ECS change-tracking + event sets so they don't accumulate on a long-running server.
         // Neither serve path reads them - a full snapshot re-serializes present components and the delta path diffs

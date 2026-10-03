@@ -244,6 +244,36 @@ public class ReplicationCapabilityMatrixTests
         Assert.Equal(0UL, host.EpochHighWater);
     }
 
+    [Fact]
+    public void FailedOfferSendLeavesTheSelectionDefault()
+    {
+        // A slot with no connection: NetServer.TrySendTo answers false and hands nothing to the transport. The limit
+        // query reads the same connection table and answers 0 first, so the stream attempts the transport-limit
+        // fallback, not a mode 1 offer, and spends no epoch. A failed mode 1 send would spend one, because the epoch
+        // is allocated before the offer is sent, but NetServer cannot report a known limit for a slot it cannot send
+        // to, so that path is unreachable through it.
+        var transport = LimitTransport.Known();
+        var net = new NetServer(transport, 4, new AllowAllAuthenticator());
+        var epochs = new ReplicationEpochAllocator();
+        var options = new ReplicationStreamOptions();
+        var writer = new AoiDeltaReplicator(MoveProtocol.CreateRegistry());
+
+        var policy = new RebuildServerStream(net, 2, null, null, null, epochs);
+        policy.OnRebuildCapability(0);
+        var enabled = new RebuildServerStream(net, 2, writer, options, options.StreamLimits(), epochs);
+        enabled.OnRebuildCapability(0);
+
+        foreach (RebuildServerStream stream in new[] { policy, enabled })
+        {
+            Assert.Equal(default, stream.Selection);
+            Assert.True(stream.ServesLegacy);
+            Assert.False(stream.Accepted);
+            Assert.Null(stream.Failure);
+        }
+        Assert.Equal(0UL, epochs.HighWater);
+        Assert.Empty(transport.Sends);
+    }
+
     private static void AssertLegacyUnnegotiated(RebuildHost host, RawRebuildClient client)
     {
         Assert.True(client.Joined);

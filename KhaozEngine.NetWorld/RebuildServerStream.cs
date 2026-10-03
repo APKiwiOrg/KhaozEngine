@@ -38,11 +38,13 @@ internal sealed class RebuildServerStream
     /// null writer answers every capability with a mode 0 offer naming
     /// <see cref="ReplicationSelectionReason.DisabledServerPolicy"/>.</param>
     /// <param name="options">Validated stream options. Required with a writer, ignored without one.</param>
+    /// <param name="limits">The host's validated stream limits, from
+    /// <see cref="ReplicationStreamOptions.StreamLimits"/>. Required with a writer, ignored without one.</param>
     /// <param name="epochs">The host's server-lifetime epoch allocator.</param>
     /// <exception cref="ArgumentNullException"><paramref name="net"/> or <paramref name="epochs"/> is null, or a
-    /// writer was given without options.</exception>
+    /// writer was given without options or limits.</exception>
     internal RebuildServerStream(NetServer net, int slot, AoiDeltaReplicator? writer, ReplicationStreamOptions? options,
-        ReplicationEpochAllocator epochs)
+        DeltaRebuildOptions? limits, ReplicationEpochAllocator epochs)
     {
         this.net = net ?? throw new ArgumentNullException(nameof(net));
         this.epochs = epochs ?? throw new ArgumentNullException(nameof(epochs));
@@ -51,7 +53,7 @@ internal sealed class RebuildServerStream
         if (writer is not null)
         {
             this.options = options ?? throw new ArgumentNullException(nameof(options));
-            limits = StreamLimits(options);
+            this.limits = limits ?? throw new ArgumentNullException(nameof(limits));
         }
     }
 
@@ -80,14 +82,6 @@ internal sealed class RebuildServerStream
     /// <summary>A typed failure the host must end the session with, or null.</summary>
     internal ReplicationFailure? Failure { get; private set; }
 
-    /// <summary>The stream limits with the NetWorld envelope charged. The one place a stream derives them, so the
-    /// offer, the writer and any later check read the same values.</summary>
-    internal static DeltaRebuildOptions StreamLimits(ReplicationStreamOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        return options.Limits.WithEnvelopeBytes(RebuildProtocol.EnvelopeBytes);
-    }
-
     /// <summary>True when <paramref name="kind"/> arrived on the channel it is specified for. Acceptance and repair
     /// travel reliably. An acknowledgement may use either channel.</summary>
     internal static bool IsRequiredChannel(RebuildControlKind kind, NetChannelReliability reliability) =>
@@ -106,6 +100,7 @@ internal sealed class RebuildServerStream
             SendFallback(ReplicationSelectionReason.DisabledServerPolicy);
             return;
         }
+        // Past the null-writer return: the constructor required options and limits with a writer.
         int unreliableLimit = net.MaxUnfragmentedPayloadBytes(slot, NetChannelReliability.UnreliableSequenced);
         int reliableLimit = net.MaxUnfragmentedPayloadBytes(slot, NetChannelReliability.ReliableOrdered);
         if (!options!.TrySelectPacketCap(unreliableLimit, reliableLimit, out int packetCap))
@@ -113,6 +108,7 @@ internal sealed class RebuildServerStream
             SendFallback(ReplicationSelectionReason.UnavailableTransportLimit);
             return;
         }
+        // The epoch is spent before the send, so a refused send burns it. Epochs are never reused either way.
         if (!epochs.TryNext(out ulong epoch))
         {
             // No epoch is left for this server lifetime. The session restarts and admission stays closed.
@@ -141,6 +137,7 @@ internal sealed class RebuildServerStream
         if (!IsRequiredChannel(control.Kind, reliability)) return;
         switch (control.Kind)
         {
+            // Offered or later is reachable only through a mode 1 offer, which requires a writer, options and limits.
             case RebuildControlKind.Accept when phase == Phase.Offered && control.Epoch == Selection.Epoch:
                 writer!.StartRebuild(slot, control.Epoch, limits!);
                 phase = Phase.Accepted;
@@ -165,6 +162,7 @@ internal sealed class RebuildServerStream
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(interest);
         if (ServesLegacy || Failure is not null) return;
+        // Not serving legacy means a mode 1 offer went out, which requires a writer and options.
         if (replicationTick - offeredTick >= options!.RecoveryDeadlineTicks)
             Failure = new ReplicationFailure(DisconnectReason.ReplicationRecoveryFailed, "negotiation deadline");
     }

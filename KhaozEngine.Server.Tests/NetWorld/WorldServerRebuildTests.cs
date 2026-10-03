@@ -107,6 +107,27 @@ public abstract class RebuildHostCases
     }
 
     [Fact]
+    public void AcceptanceDoesNotRestartTheNegotiationDeadline()
+    {
+        (_, RebuildHost host, RawRebuildClient client, ulong epoch) = Offered();
+        int slot = client.Slot;
+        host.Pump(3, client);   // the offer is now 4 replication ticks old
+        client.Send(RebuildProtocol.EncodeAcceptance(epoch));
+        host.Pump(85, client);   // offer + 89, acceptance + 85
+
+        Assert.True(host.TryGetRebuildStream(slot, out RebuildServerStream stream));
+        Assert.True(stream.Accepted);
+        Assert.Equal(1, host.PlayerCount);
+        Assert.Null(client.RejectReason);
+
+        host.Pump(1, client);   // offer + 90
+
+        Assert.Equal(0, host.PlayerCount);
+        Assert.False(host.TryGetRebuildStream(slot, out _));
+        Assert.Equal(ReplicationFailure.RecoveryFailedToken, client.RejectReason);
+    }
+
+    [Fact]
     public void ReusedSlotStartsUnnegotiated()
     {
         (LimitTransport transport, RebuildHost host, RawRebuildClient first, _) = Offered();

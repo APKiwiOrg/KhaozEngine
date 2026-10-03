@@ -3335,6 +3335,20 @@ scene.Draw(crate, transform, Color.White, Material.None, dissolve: fadeTimer, ed
   identity-node or pre-baked asset is byte-identical to before. (`PropLoader.LoadProp` additionally renormalizes
   to the manifest height, so props were already placement-robust; this matters most for `GltfLoader.Load` used
   directly.)
+- Named nodes as attachment sockets: `GltfLoader.LoadNamedNodes(path)` returns an `IReadOnlyList<GltfNamedNode>`
+  holding every logical node with a non-empty name, empties included, in logical-node order. Each
+  `GltfNamedNode(string Name, Matrix4x4 WorldTransform)` carries the node's world matrix exactly as `Load` bakes
+  geometry, so a module, muzzle or exhaust drawn at an authored empty lines up with the loaded hull. Compose the
+  socket with the hull's own draw transform in row-vector order. Unnamed nodes are skipped but still place their
+  named descendants, duplicate names are all returned in order, and an asset with only empties loads.
+
+```csharp
+MeshHandle hull = scene.LoadMesh(GltfLoader.Load("ship_hull.glb"));
+MeshHandle gun = scene.LoadMesh(GltfLoader.Load("module_gun.glb"));
+var sockets = GltfLoader.LoadNamedNodes("ship_hull.glb").ToDictionary(n => n.Name, n => n.WorldTransform);
+scene.Draw(hull, shipWorld, Color.White);
+scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
+```
 - PBR-lite materials: the rigid lit model pass takes an optional tangent-space NORMAL map and a
   ROUGHNESS map alongside the albedo. Load each map with `LoadTexture`, then bind them with `Scene3D.SurfaceMaps`:
   `scene.LoadMesh(mesh, new Scene3D.SurfaceMaps(albedo, normal, roughness))` - any handle may be `default` to fall

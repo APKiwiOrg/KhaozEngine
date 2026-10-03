@@ -76,6 +76,9 @@ internal sealed class RebuildDeltaWriter
         var packet = new ReplicationDeltaPacket(id, baseline?.Item1, baseline is null,
             new ReadOnlySpan<byte>(bodyStream.GetBuffer(), 0, (int)bodyStream.Length));
 
+        // Defensive: the writer cannot reach RetentionPressure. The candidate sits beside at most two pins (acknowledged
+        // baseline, pending keyframe), each projection is smaller than its complete keyframe, and Validate requires
+        // room for four keyframes. The typed throw stays in case a future pin breaks that bound.
         if (!state.Retention.TryRetain(id, projection, state.PinsWith(id), state.Candidate,
                 out DeltaRebuildFailure failure))
             throw new DeltaRebuildException(failure,
@@ -94,6 +97,8 @@ internal sealed class RebuildDeltaWriter
         if (slots.TryGetValue(slot, out RebuildDeltaSlot? state)) state.Acknowledge(id);
     }
 
+    // The byte branch is a defensive guard the writer cannot trigger, for the same bound as the retention throw in
+    // Build. Only the no-ack window fires under validated options.
     public bool NeedsRepair(int slot)
     {
         if (!slots.TryGetValue(slot, out RebuildDeltaSlot? state)) return false;

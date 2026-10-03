@@ -314,9 +314,10 @@ public class RebuildSentHistoryTests
         Assert.Equal(default(RebuildUsage), w.Usage(0));
     }
 
-    // Ruling D2.9: options require a byte budget of three complete keyframes, and every retained writer projection is
-    // smaller than its keyframe. The acknowledged baseline, a pending keyframe and a new candidate therefore always fit
-    // together, so payload growth can never force a repair or a pressure failure. It reaches the capacity failure first.
+    // Ruling D2.9 as amended: options require a byte budget of four complete keyframes, and every retained writer
+    // projection is smaller than its keyframe. The writer's acknowledged baseline, pending keyframe and new candidate
+    // therefore always fit together, so payload growth can never force a repair or a pressure failure. It reaches the
+    // capacity failure first.
     [Theory]
     [MemberData(nameof(Kinds))]
     public void PayloadPressureRequestsRepairBeforeCapacity(string kind)
@@ -329,8 +330,8 @@ public class RebuildSentHistoryTests
         // One entity with a 100 byte framed blob: 26 header and count bytes, 15 entity bytes, 2 + 1 + 100 frame bytes.
         const int keyframeBytes = 144;
         Assert.Throws<ArgumentOutOfRangeException>(() => w.Start(0, 1,
-            new DeltaRebuildOptions { MaxKeyframeBytes = keyframeBytes, MaxRetainedPayloadBytes = 2 * keyframeBytes }));
-        var options = new DeltaRebuildOptions { MaxKeyframeBytes = keyframeBytes, MaxRetainedPayloadBytes = 3 * keyframeBytes };
+            new DeltaRebuildOptions { MaxKeyframeBytes = keyframeBytes, MaxRetainedPayloadBytes = 3 * keyframeBytes }));
+        var options = new DeltaRebuildOptions { MaxKeyframeBytes = keyframeBytes, MaxRetainedPayloadBytes = 4 * keyframeBytes };
         w.Start(0, 2, options);
 
         w.World.Set(blob, new RebuildBlob { Size = 30 });

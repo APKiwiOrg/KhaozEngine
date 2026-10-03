@@ -358,9 +358,10 @@ public sealed class AoiDeltaReplicator
     /// <summary>
     /// True when <paramref name="slot"/> should start keyframe repair before its next build: the effective no-ack
     /// window from the options passed to <see cref="StartRebuild"/> has been consumed by committed sends. A byte
-    /// pressure check (pinned projections plus one more the size of the newest) stays as a guard, but the three
-    /// keyframe budget that <see cref="DeltaRebuildOptions.Validate"/> requires keeps it false for writer projections,
-    /// each of which is smaller than its keyframe. False for a slot without a started stream.
+    /// pressure check (pinned projections plus one more the size of the newest) stays as a defensive guard that the
+    /// writer cannot trigger: every retained writer projection is smaller than its complete keyframe, a new candidate
+    /// sits beside at most two pins, and <see cref="DeltaRebuildOptions.Validate"/> requires room for four keyframes.
+    /// False for a slot without a started stream.
     /// </summary>
     public bool RebuildNeedsRepair(int slot) => rebuild.NeedsRepair(slot);
 

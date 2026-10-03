@@ -34,6 +34,7 @@ public class GroundNavigationBakeRoundTripTests
         Assert.True(baked.Bake.Fingerprint.SequenceEqual(loaded.Fingerprint));
         foreach (string name in baked.Bake.ProfileNames)
             BakeEquivalence.AssertEquivalent(baked.Bake.GetProfile(name), loaded.GetProfile(name));
+        Assert.Equal(baked.File, Write(loaded));
     }
 
     [Fact]

@@ -46,6 +46,9 @@ public sealed partial class GroundNavigationBake
                 $"supported. This engine reads version {NavBakeIdentity.FormatVersion} with flags 0.");
         if (identityLength > MaxIdentityLength)
             return Refuse(NavBakeLoadStatus.Corrupt, $"Identity block length {identityLength} exceeds 1 MiB.");
+        if (source.CanSeek && identityLength > source.Length - source.Position)
+            return Refuse(NavBakeLoadStatus.Corrupt,
+                $"Identity block length {identityLength} exceeds the {source.Length - source.Position} remaining stream bytes.");
 
         byte[] identity = new byte[identityLength];
         read = source.ReadAtLeast(identity, identity.Length, throwOnEndOfStream: false);
@@ -247,9 +250,12 @@ public sealed partial class GroundNavigationBake
             traversal[layer] = new NavTraversalLayer(width, height, accepted, exits);
         }
 
+        // Bound the stored count by the bytes left before link generation can allocate a candidate list.
+        if (!reader.TryReadInt32(out int storedCandidates)) return $"Profile '{name}' is truncated before its links.";
+        if (storedCandidates < 0 || BitsetLength(storedCandidates) > reader.Remaining)
+            return $"Profile '{name}' candidate link count {storedCandidates} is impossible for the remaining bytes.";
         MoveTuning tuning = profile.Tuning;
         IReadOnlyList<NavLink> candidates = NavLayerLinks.GenerateGrounded(grids, tuning.StepHeight);
-        if (!reader.TryReadInt32(out int storedCandidates)) return $"Profile '{name}' is truncated before its links.";
         if (storedCandidates != candidates.Count)
             return $"Profile '{name}' stores {storedCandidates} candidate links but its grids regenerate {candidates.Count}.";
         if (!reader.TryReadBytes(BitsetLength(candidates.Count), out ReadOnlySpan<byte> linkBits))

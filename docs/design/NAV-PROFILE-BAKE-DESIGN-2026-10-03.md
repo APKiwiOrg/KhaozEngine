@@ -293,6 +293,9 @@ Then one section per profile, in identity order:
   `YMax` as float bits. A blocked bitset of `ceil(n / 8)` bytes, bit `i` for cell `i`, least significant bit first,
   unused high bits zero. Open-cell heights as float bits in row-major order, one per clear bit. One exit byte per
   open cell in row-major order.
+- Candidate count `K` as `int32`, the length of the candidate list regenerated from the grids at bake time. The
+  reader bounds `ceil(K / 8)` by the bytes remaining before it regenerates the list, then requires the regenerated
+  count to equal `K`, which catches a same-version change in link generation order or count.
 - Accepted links: a bitset over the regenerated candidate list in its order, `ceil(K / 8)` bytes for `K` candidates,
   unused high bits zero.
 
@@ -311,19 +314,19 @@ set, a digest of the wrong length, and an overlapping area filter, which is chec
 any `NavAreaFilter` is constructed.
 
 Before allocating the payload, the reader bounds `P`. With `C = width * height`, `M = MaxSurfacesPerColumn`, profile
-count `N` and `Lmax = floor(MaxLayerCells / C)`, all in checked 64-bit arithmetic:
+count `N` and `Lmax = floor(MaxLayerCells / C)`, in unsigned 64-bit arithmetic that saturates on overflow:
 
 ```text
 capture  = 24 + C + 12 * C * M
 layer    = 32 + ceil(C / 8) + 5 * C
 links    = Lmax * (Lmax - 1) * C            ceil(Kmax / 8) for Kmax = 8 * Lmax * (Lmax - 1) * C
-profile  = 4 + Lmax * layer + links
+profile  = 4 + Lmax * layer + 4 + links       the second 4 is the stored candidate count
 Pmax     = capture + N * profile
 ```
 
 `Kmax` counts two directed links for each of eight neighbours of every cell, for each layer pair. `P` above
 `min(Pmax, Array.MaxLength)` is `Corrupt`. When the stream can seek, `P` must equal `Length - Position`, checked before
-the buffer exists. The payload buffer is a plain array, since a process loads a bake once.
+the buffer exists. Likewise an identity length `L` above `Length - Position` is `Corrupt` before its buffer exists. The payload buffer is a plain array, since a process loads a bake once.
 
 Every count is then checked against the bytes remaining before anything sized by it is allocated. The decoder
 enforces the invariants a fresh build guarantees, mirroring `PhysicsNavBake.Capture`:

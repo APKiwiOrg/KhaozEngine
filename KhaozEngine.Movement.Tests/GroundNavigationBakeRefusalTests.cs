@@ -198,6 +198,8 @@ public class GroundNavigationBakeRefusalTests
     [InlineData("layer-width", "dimensions")]
     [InlineData("capture-width", "dimensions")]
     [InlineData("candidate-count", "candidate")]
+    [InlineData("candidate-count-hostile", "candidate link count 2147483647 is impossible")]
+    [InlineData("candidate-count-negative", "candidate link count -1 is impossible")]
     [InlineData("trailing-payload", "trailing")]
     public void ValueInvariantsAreEnforced(string fault, string detailFragment)
     {
@@ -225,6 +227,10 @@ public class GroundNavigationBakeRefusalTests
             case "layer-width": BinaryPrimitives.WriteInt32LittleEndian(file.AsSpan(layer.Start), 19); break;
             case "capture-width": BinaryPrimitives.WriteInt32LittleEndian(file.AsSpan(map.Payload), 19); break;
             case "candidate-count": BinaryPrimitives.WriteInt32LittleEndian(file.AsSpan(map.Profiles[0].CandidateCount), 1); break;
+            case "candidate-count-hostile":
+                BinaryPrimitives.WriteInt32LittleEndian(file.AsSpan(map.Profiles[0].CandidateCount), int.MaxValue);
+                break;
+            case "candidate-count-negative": BinaryPrimitives.WriteInt32LittleEndian(file.AsSpan(map.Profiles[0].CandidateCount), -1); break;
             case "trailing-payload": file = [.. file, 0]; BinaryPrimitives.WriteUInt64LittleEndian(file.AsSpan(12), Header(file).PayloadLength + 1); break;
             default: throw new ArgumentOutOfRangeException(nameof(fault));
         }
@@ -253,20 +259,49 @@ public class GroundNavigationBakeRefusalTests
         AssertRefused(GroundNavigationBake.Load(new MemoryStream(links), stair.Expected), NavBakeLoadStatus.Corrupt, "unused");
     }
 
-    [Fact]
-    public void ExitToABlockedCellIsCorrupt()
+    [Theory]
+    [InlineData("outside")]
+    [InlineData("blocked-neighbour")]
+    public void ExitToABlockedCellIsCorrupt(string target)
     {
         Baked deck = Deck.Value;
         byte[] file = Clone(deck.File);
-        LayerMap layer = Map(file, 2).Profiles[0].Layers[0];
-        int width = BinaryPrimitives.ReadInt32LittleEndian(file.AsSpan(layer.Start));
-        // The first open cell of the row-major order sits on the bottom row, so its -Z exit leaves the layer.
-        int first = Enumerable.Range(0, layer.Cells).First(i => (file[layer.Blocked + (i >> 3)] & (1 << (i & 7))) == 0);
-        Assert.True(first < width);
-        file[layer.Exits] |= 1 << 3;
+        PayloadMap map = Map(file, 2);
+        (int X, int Z)[] directions = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)];
+        int width = BinaryPrimitives.ReadInt32LittleEndian(file.AsSpan(map.Payload));
+        int height = map.Cells / width;
+        // First open cell and direction whose target leaves the layer, or lands on a blocked cell inside it.
+        var found = map.Profiles.SelectMany(p => p.Layers).SelectMany(layer =>
+            Enumerable.Range(0, layer.Cells).Where(i => Open(file, layer, i)).SelectMany(i =>
+                Enumerable.Range(0, 8).Select(d => (Layer: layer, Cell: i, Direction: d,
+                    X: i % width + directions[d].X, Z: i / width + directions[d].Z))))
+            .First(c =>
+            {
+                bool inside = c.X >= 0 && c.Z >= 0 && c.X < width && c.Z < height;
+                return target == "outside" ? !inside : inside && !Open(file, c.Layer, c.Z * width + c.X);
+            });
+        int ordinal = Enumerable.Range(0, found.Cell).Count(i => Open(file, found.Layer, i));
+        file[found.Layer.Exits + ordinal] |= (byte)(1 << found.Direction);
         Reseal(file);
 
-        AssertRefused(Load(file), NavBakeLoadStatus.Corrupt, "exit");
+        AssertRefused(Load(file), NavBakeLoadStatus.Corrupt, $"cell {found.Cell} has an exit");
+    }
+
+    [Fact]
+    public void SeekableIdentityLengthBeyondTheStreamIsCorruptBeforeAllocation()
+    {
+        byte[] file = Clone(Deck.Value.File);
+        BinaryPrimitives.WriteUInt32LittleEndian(file.AsSpan(8), 1 << 20);
+        AssertRefused(Load(file), NavBakeLoadStatus.Corrupt, "remaining");
+
+        var stream = new MemoryStream(file);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        NavBakeLoadResult result = GroundNavigationBake.Load(stream, Deck.Value.Expected);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        AssertRefused(result, NavBakeLoadStatus.Corrupt, "remaining");
+        Assert.True(allocated < 64 * 1024, $"A refused identity length allocated {allocated} bytes.");
+        AssertRefused(LoadOneByte(file), NavBakeLoadStatus.Corrupt, "identity block is truncated");
     }
 
     [Fact]
@@ -311,6 +346,8 @@ public class GroundNavigationBakeRefusalTests
     }
 
     private static byte[] Clone(byte[] file) => (byte[])file.Clone();
+
+    private static bool Open(byte[] file, LayerMap layer, int cell) => (file[layer.Blocked + (cell >> 3)] & (1 << (cell & 7))) == 0;
 
     private static void Single(byte[] file, int offset, float value) =>
         BinaryPrimitives.WriteSingleLittleEndian(file.AsSpan(offset), value);

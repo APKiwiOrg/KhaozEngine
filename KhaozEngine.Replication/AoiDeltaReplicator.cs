@@ -325,6 +325,8 @@ public sealed class AoiDeltaReplicator
     /// <param name="interestSet">The net ids this slot may see.</param>
     /// <param name="ownerNetId">This slot's own player net id, which must stay the same for the whole epoch.</param>
     /// <param name="keyframe">True to build from empty state.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="world"/> or <paramref name="interestSet"/> is
+    /// null.</exception>
     /// <exception cref="InvalidOperationException"><see cref="BeginTick"/> was never called, the slot has no started
     /// stream, or the owner differs from the epoch's owner.</exception>
     /// <exception cref="DeltaRebuildException">The projection can never fit

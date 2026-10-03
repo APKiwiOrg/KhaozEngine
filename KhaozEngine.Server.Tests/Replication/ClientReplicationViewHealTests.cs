@@ -134,7 +134,7 @@ public class ClientReplicationViewHealTests
         var client = new World();
         var view = new ClientReplicationView(registry);   // LastAppliedSeq = -1
 
-        // A delta whose baseline is ahead of anything the client applied is a genuine gap, not a self-heal.
+        // A delta whose baseline is ahead of anything the client applied is a genuine gap and throws.
         byte[] ahead = EmptyDelta(baselineSeq: 5, snapshotSeq: 6);
         Assert.Throws<InvalidOperationException>(() => view.ApplyDelta(client, ahead));
     }

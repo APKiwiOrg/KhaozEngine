@@ -643,8 +643,8 @@ public sealed partial class WorldClient : IDisposable
             return;
         }
         IngestServerState(localNetId, ackSeq);
-        // Ack the applied replication seq so the server advances this client's delta baseline. Reliable-ordered, so a
-        // dropped ack just self-heals: the server keeps diffing from the last acked baseline until a newer ack lands.
+        // Ack the applied replication seq. The legacy server records it as diagnostics only: it diffs from the
+        // projection it last sent, which reliable-ordered delivery guarantees this client already holds.
         SendToServer(MoveProtocol.EncodeReplicationAck(view.LastAppliedSeq), NetChannelReliability.ReliableOrdered);
     }
 

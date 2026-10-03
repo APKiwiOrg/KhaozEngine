@@ -120,8 +120,9 @@ public class AoiDeltaReplicatorWireParityGoldenTests
     {
         List<byte[]> frames = RunScenario();
 
-        // DUMP: to regenerate, base64-encode each frame (frames.ConvertAll(Convert.ToBase64String)) and re-bake the
-        // Golden constants above. The scenario is fully deterministic, so the goldens are stable.
+        // DUMP: never regenerate these from the writer's output, which is the code under test. A frame that must change
+        // is re-derived from the reference model (ReferenceAoiDelta) or by hand from the documented field layout, then
+        // base64-encoded into the Golden constants above. The scenario is fully deterministic, so the goldens are stable.
 
         Assert.Equal(Golden.Length, frames.Count);
         for (int i = 0; i < frames.Count; i++)
@@ -261,8 +262,9 @@ public class AoiDeltaReplicatorWireParityGoldenTests
     {
         List<byte[]> frames = RunPlainScenario();
 
-        // DUMP: to regenerate, base64-encode each frame (frames.ConvertAll(Convert.ToBase64String)) and re-bake the
-        // PlainRegistryGolden constants above. The scenario is fully deterministic, so the goldens are stable.
+        // DUMP: never regenerate these from the writer's output, which is the code under test. A frame that must change
+        // is re-derived from the reference model (ReferenceAoiDelta) or by hand from the documented field layout, then
+        // base64-encoded into the PlainRegistryGolden constants above. The scenario is deterministic, so they are stable.
 
         Assert.Equal(PlainRegistryGolden.Length, frames.Count);
         for (int i = 0; i < frames.Count; i++)

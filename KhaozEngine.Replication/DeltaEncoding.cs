@@ -7,8 +7,8 @@ namespace KhaozEngine.Replication;
 /// Shared per-entity delta wire encoding used by both the whole-world <see cref="ServerReplicator"/> and the
 /// per-client area-of-interest <see cref="AoiDeltaReplicator"/>, so a single writer owns the exact byte layout
 /// <see cref="ClientReplicationView.ApplyDelta"/> reads. A "captured" entity is its component data keyed by type id
-/// (see <see cref="CapturedComponents"/>), the immutable per-seq snapshot both replicators diff against a client's
-/// acknowledged baseline. Diffing is span-based over the capture buffer and the write path slices payloads straight to
+/// (see <see cref="CapturedComponents"/>), the immutable per-seq snapshot both replicators diff against the projection
+/// last sent to a slot. Diffing is span-based over the capture buffer and the write path slices payloads straight to
 /// the outgoing writer, so a delta allocates no per-component array.
 /// </summary>
 internal static class DeltaEncoding

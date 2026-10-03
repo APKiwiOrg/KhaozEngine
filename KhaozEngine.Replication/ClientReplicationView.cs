@@ -194,12 +194,13 @@ public sealed partial class ClientReplicationView
     /// <summary>
     /// Applies a baseline+delta produced by <see cref="ServerReplicator.WriteFor"/> or
     /// <see cref="AoiDeltaReplicator.WriteFor"/>: despawns removed entities, spawns/updates changed ones (removing
-    /// listed components), and maintains interpolation buffers so <see cref="Interpolate"/> keeps working. A delta
-    /// whose baseline is at or before <see cref="LastAppliedSeq"/> is a valid rebuild: the server builds from the
-    /// client's last ACKED baseline, which lags what the client has applied whenever an ack is in flight or was lost,
-    /// so re-applying the diff from that older baseline is idempotent and self-heals (a dropped delta / ack needs no
-    /// full resync). Only a baseline AHEAD of <see cref="LastAppliedSeq"/> is a genuine gap and throws (the caller
-    /// should then await a full snapshot, baseline -1). A <c>baseline -1</c> delta is a full snapshot: entities the
+    /// listed components), and maintains interpolation buffers so <see cref="Interpolate"/> keeps working. Legacy
+    /// reliable contract: the writers diff against the projection last sent to this receiver and the caller ships every
+    /// delta exactly once, in order, over a reliable-ordered channel, so each delta names the state this view already
+    /// holds and the overlay is exact. A delta whose baseline is at or before <see cref="LastAppliedSeq"/> is still
+    /// accepted, but that overlay is not a reconstruction and cannot restore what a newer applied delta changed, so it
+    /// is not loss recovery. Unreliable delivery uses <see cref="ClientDeltaRebuild"/>. A baseline AHEAD of
+    /// <see cref="LastAppliedSeq"/> is a gap and throws. A <c>baseline -1</c> delta is a full snapshot: entities the
     /// client still tracks but the delta omits are despawned (the same full-state semantics as <see cref="Apply"/>).
     /// </summary>
     public void ApplyDelta(World world, byte[] delta)

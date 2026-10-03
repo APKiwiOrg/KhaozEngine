@@ -51,8 +51,8 @@ public sealed partial class ShardedWorldServerConfig
     /// player under minutes-old input on rejoin. Default 8 (~0.27s at 30Hz); 0 disables (pre-8.8.0 one-per-tick).</summary>
     public int MaxInputBacklog { get; init; } = 8;
 
-    /// <summary>Serve each client per-tick home-cell area-of-interest DELTAS (only what changed since that client's
-    /// acknowledged baseline) instead of a full snapshot every tick. Default true. Mirrors
+    /// <summary>Serve each client per-tick home-cell area-of-interest DELTAS (only what changed since the projection
+    /// last sent to that client, over reliable-ordered delivery) instead of a full snapshot every tick. Default true. Mirrors
     /// <see cref="WorldServerConfig.DeltaReplication"/>: a client opts in with the
     /// <see cref="MoveProtocol.ClientControlKind.DeltaCapable"/> hello; older clients keep getting full snapshots, so
     /// client and server upgrade independently. The delta baseline is keyed by <see cref="NetId"/>, so a boundary

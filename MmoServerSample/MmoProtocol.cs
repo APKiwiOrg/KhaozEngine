@@ -146,8 +146,8 @@ public static class MmoProtocol
     }
 
     // Replication-ack frame: [marker:0xA0][appliedSeq:int] = 5 bytes, distinct in length from the 12-byte move so the
-    // receive path demuxes them without aliasing. The client sends it after applying each delta; the server feeds the
-    // seq to AoiDeltaReplicator.Acknowledge to advance that client's delta baseline (a dropped ack self-heals).
+    // receive path demuxes them without aliasing. The client sends it after applying each delta, and the server feeds
+    // the seq to AoiDeltaReplicator.Acknowledge as diagnostics. The diff basis is always the projection last sent.
     private const byte AckMarker = 0xA0;
     private const int AckSize = 5;
 

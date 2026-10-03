@@ -74,7 +74,7 @@ public sealed class WorldClientConfig
     public string? ContentIdentity { get; init; }
 
     /// <summary>Advertise delta replication on join so a delta-aware server serves this client per-tick area-of-interest
-    /// deltas (only what changed since the client's acknowledged baseline) instead of a full snapshot every tick.
+    /// deltas (only what changed since the projection last sent to it) instead of a full snapshot every tick.
     /// Default true. The client still decodes full snapshots, so against a server that predates the feature (or one
     /// with <see cref="WorldServerConfig.DeltaReplication"/> off) it transparently keeps receiving full snapshots and
     /// sends no acks - client and server upgrade independently, no disconnect. Set false to force full snapshots (the

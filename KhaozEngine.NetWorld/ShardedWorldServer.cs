@@ -406,7 +406,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         }
         // Every 18-byte frame is a MOVE. Format 2 controls claim their own lengths before any legacy decode.
         if (replication.Route(slot, data, reliability)) return;
-        // Replication ack: advance this client's delta baseline (a dropped ack just self-heals on the next delta).
+        // Legacy replication ack: sequence diagnostics only, never the diff basis (that is the last sent projection).
         if (MoveProtocol.TryDecodeReplicationAck(data, out int appliedSeq))
         {
             deltaReplicator?.Acknowledge(slot, appliedSeq);

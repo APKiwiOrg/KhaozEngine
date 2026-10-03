@@ -400,7 +400,8 @@ public static class MoveProtocol
 
     /// <summary>Encodes the client-to-server replication ack carrying the snapshot seq the client last applied
     /// (<see cref="ClientReplicationView.LastAppliedSeq"/>). The server feeds it to
-    /// <see cref="AoiDeltaReplicator.Acknowledge"/> to advance that client's delta baseline.</summary>
+    /// <see cref="AoiDeltaReplicator.Acknowledge"/> as sequence diagnostics. It never moves the legacy diff basis, which
+    /// is the projection last sent. Format 2 uses its own exact acknowledgement instead.</summary>
     public static byte[] EncodeReplicationAck(int appliedSeq)
     {
         var b = new byte[ReplicationAckSize];

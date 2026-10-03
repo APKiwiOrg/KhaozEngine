@@ -38,8 +38,8 @@ internal sealed class CaptureBuffer
 /// <summary>
 /// One entity's captured <see cref="ReplicationChannels.Replicate"/>-channel components for a single tick, stored as
 /// <c>typeId -&gt; (offset, length)</c> <see cref="Segment"/>s over the capture's shared <see cref="CaptureBuffer"/>
-/// instead of a <c>byte[]</c> per component. The immutable per-seq snapshot both replicators diff against a client's
-/// acknowledged baseline: diffing reads payloads as <see cref="ReadOnlySpan{T}"/> over the buffer
+/// instead of a <c>byte[]</c> per component. The immutable per-seq snapshot both replicators diff against the
+/// projection last sent to a slot: diffing reads payloads as <see cref="ReadOnlySpan{T}"/> over the buffer
 /// (<see cref="TryGetSpan"/>) and the write path slices them straight to the outgoing wire, so no per-component array
 /// is allocated on capture, diff, or write. Immutable once the capture scan finishes. A replicator instance builds and
 /// reads these single-threaded on its own server-tick thread, so there is no locking.

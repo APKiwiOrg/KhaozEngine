@@ -54,13 +54,13 @@ public sealed class WorldServerConfig
     /// (strict one-move-per-tick drain, the pre-8.8.0 behaviour).</summary>
     public int MaxInputBacklog { get; init; } = 8;
 
-    /// <summary>Serve each client per-tick area-of-interest DELTAS (only components changed since that client's
-    /// acknowledged baseline; entered entities in full, left entities as despawns) instead of a full snapshot every
+    /// <summary>Serve each client per-tick area-of-interest DELTAS (only components changed since the projection last
+    /// sent to that client, entered entities in full, left entities as despawns) instead of a full snapshot every
     /// tick. Default true. A client opts in on join (<see cref="WorldClientConfig.RequestDeltaReplication"/>) via the
-    /// <see cref="MoveProtocol.ClientControlKind.DeltaCapable"/> hello; a client that does not advertise it (an older
+    /// <see cref="MoveProtocol.ClientControlKind.DeltaCapable"/> hello. A client that does not advertise it (an older
     /// build) keeps receiving full snapshots, so client and server upgrade independently with no disconnect. Set false
-    /// to force full snapshots for every client (the pre-9.17.0 behaviour). The delta is built from the client's last
-    /// <see cref="MoveProtocol.EncodeReplicationAck"/>, so a dropped delta on the reliable-ordered channel self-heals.</summary>
+    /// to force full snapshots for every client (the pre-9.17.0 behaviour). Deltas go reliable-ordered, so the client
+    /// always holds the baseline each one names. Its acks are sequence diagnostics and never move the basis.</summary>
     public bool DeltaReplication { get; init; } = true;
 
     /// <summary>Offer negotiated unreliable delta replication (format 2) to a client that requests it. Default false.
@@ -464,7 +464,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         }
         // Every 18-byte frame is a MOVE. Format 2 controls claim their own lengths before any legacy decode.
         if (replication.Route(slot, data, reliability)) return;
-        // Replication ack: advance this client's delta baseline (a dropped ack just self-heals on the next delta).
+        // Legacy replication ack: sequence diagnostics only, never the diff basis (that is the last sent projection).
         if (MoveProtocol.TryDecodeReplicationAck(data, out int appliedSeq))
         {
             deltaReplicator?.Acknowledge(slot, appliedSeq);
@@ -576,7 +576,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         PublishMovementCommitmentEvents();
 
         // Serve each client its area-of-interest, headered with its own net id + move ack. Delta-capable clients get
-        // a per-client AoI delta (only what changed since their acknowledged baseline); everyone else a full snapshot.
+        // a per-client AoI delta from the projection last sent to them, everyone else a full snapshot.
         replication.OpenCaptureTick(deltaCapableSlots);   // or waits out a writer restart, opening no capture
         replication.Advance(dt);
         // The fallback snapshot index is rebuilt lazily on the first non-delta client this tick (not unconditionally

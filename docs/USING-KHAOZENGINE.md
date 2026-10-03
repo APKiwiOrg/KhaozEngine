@@ -8051,11 +8051,11 @@ public sealed class DirectMoveToRange
 The options have no defaults. Windows are 1 to 65,535 ticks and distances are finite and positive. A window of N
 ticks spans N intervals and is first eligible on the (N + 1)th counted tick. When net horizontal travel across the
 stall window falls below `stallTravelMetres`, or reach distance across the approach window gains less than
-`approachGainMetres` for a static target, the driver latches `RangeMoveStatus.Blocked` until `InRange` or `Reset`.
-A step that would leave the ground or start swimming is refused and counts as no progress. Airborne, committed and
-zero-travel ticks count toward neither window. Pass `targetMoves` true for body targets, which disables the approach
-window. Call `Tick` exactly once per simulation tick. Keep range and target shape constant for a walk, and call
-Reset to start a new one.
+`approachGainMetres` for a static target, the driver latches `RangeMoveStatus.Blocked` until `InRange`, `Reset`, or
+a change of target shape, range or capsule geometry. A step that would leave the ground or start swimming is
+refused and counts as no progress. Airborne, committed and zero-travel ticks count toward neither window. Pass
+`targetMoves` true for body targets, which disables the approach window. Call `Tick` exactly once per simulation
+tick. Keep range and target shape constant for a walk, and call Reset to start a new one.
 
 ```csharp
 var approach = new DirectMoveToRange(new DirectApproachOptions(

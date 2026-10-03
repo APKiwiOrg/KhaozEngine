@@ -266,9 +266,10 @@ engine, options, sources and profiles order. `Detail` names the first difference
 the option field, the missing, extra or changed source label, or the profile and its first differing field.
 `Detail` is developer text and is never shown to players. `Loaded` carries the bake and an empty detail. Every
 other status carries a null bake. Truncated, trailing, non-canonical or damaged bytes return `Corrupt` and never
-throw. Stream errors such as `IOException` propagate. Short reads from decompressing or network streams are
-handled. The payload checksum detects accidental damage. It is not tamper protection, so ship the bake with the
-same trust as the client binary.
+throw. Stream errors such as `IOException` propagate. Short reads from decompressing streams are handled. `Load`
+reads the stream to its end, so pass a stream that ends after the bake. A file, a memory stream, or a network stream
+wrapped to the payload length all work. The payload checksum detects accidental damage. It is not tamper
+protection, so ship the bake with the same trust as the client binary.
 
 Bake from the game's own content pipeline with the same physics composition as runtime movement, including the
 movement query view:
@@ -620,7 +621,8 @@ Differences from a typical game-side walk-up rule:
   walk. Airborne and committed ticks return `Suspended` and also count toward neither window.
 - `InRange` clears both windows, so a followed body that moves away starts fresh windows.
 - Stall travel is net displacement across the window, not accumulated path length, so pacing in place is blocked.
-- `Blocked` stays latched until `InRange` or `Reset`. End the walk on the first `Blocked`.
+- `Blocked` stays latched until `InRange`, `Reset`, or a change of target shape, range or capsule geometry. End the
+  walk on the first `Blocked`.
 - A change of target kind, shape, yaw, range or capsule geometry resets the windows. A change of `targetMoves` clears
   only the approach window. The driver holds no target identity, so replacing the target with another of the same
   shape needs `Reset`.

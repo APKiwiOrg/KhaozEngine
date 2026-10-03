@@ -6,8 +6,9 @@ using static KhaozEngine.Movement.RangeApproachCore;
 namespace KhaozEngine.Movement;
 
 /// <summary>Per-body ground approach to observed exact shape range without a planner. Call Tick exactly once per
-/// simulation tick, since the progress windows count ticks. Blocked stays latched until InRange or Reset. Call Reset
-/// for target replacement, teleport or manual cancellation.</summary>
+/// simulation tick, since the progress windows count ticks. Blocked stays latched until InRange, Reset, or a change
+/// of target shape, range or capsule geometry. Call Reset for target replacement, teleport or manual
+/// cancellation.</summary>
 public sealed partial class DirectMoveToRange
 {
     private static readonly StepAdmission Admits = AllowsStep;

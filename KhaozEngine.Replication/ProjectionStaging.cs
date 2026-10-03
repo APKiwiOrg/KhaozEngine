@@ -115,6 +115,76 @@ internal sealed class ProjectionStaging
         return true;
     }
 
+    /// <summary>
+    /// Reads one unframed built-in frame whose length the wire does not state. The registered reader sees the
+    /// <paramref name="available"/> bytes from <paramref name="offset"/> onward, the rest of the received body, and the
+    /// bytes it consumes become the frame's boundary. Received built-in replacements use this exactly once. Frames
+    /// carried over from a baseline already have a boundary and use <see cref="Decode"/>.
+    /// </summary>
+    /// <returns>The bytes the reader consumed.</returns>
+    /// <exception cref="DeltaRebuildException"><see cref="DeltaRebuildFailure.MalformedPacket"/> for an extension or
+    /// unregistered built-in id, a registered id that never replicates, or a reader that fails or runs past the
+    /// body.</exception>
+    internal int DecodeUnframed(long netId, ushort typeId, byte[] source, int offset, int available)
+    {
+        StagedFor = null;
+        if (ReplicationRegistry.IsExtension(typeId))
+            throw new DeltaRebuildException(DeltaRebuildFailure.MalformedPacket,
+                $"Type id {typeId} is an extension, which is always framed.");
+        if (!registry.TryGet(typeId, out ComponentCodec codec))
+            throw new DeltaRebuildException(DeltaRebuildFailure.MalformedPacket,
+                $"Body references unregistered built-in type id {typeId}.");
+        // Defensive: registration keeps every built-in on the Replicate channel, so this cannot fire today.
+        if ((codec.Channels & ReplicationChannels.Replicate) == 0)
+            throw new DeltaRebuildException(DeltaRebuildFailure.MalformedPacket,
+                $"Body carries type id {typeId}, which is registered but never replicates.");
+        Entity entity = GetOrSpawn(netId);
+        window.Retarget(source, offset, available);
+        try
+        {
+            codec.Deserialize(world, entity, reader);
+            return (int)window.Position;
+        }
+        catch (Exception ex)
+        {
+            throw new DeltaRebuildException(DeltaRebuildFailure.MalformedPacket,
+                $"Built-in type id {typeId} did not decode from the remaining body: {ex.Message}");
+        }
+        finally
+        {
+            window.Release();
+        }
+    }
+
+    /// <summary>
+    /// True when staging holds an entity for every net id of <paramref name="projection"/> and a value for every
+    /// frame whose type id is a registered Replicate codec, so publication cannot fail on a missing staged value.
+    /// Unknown extension frames are opaque and need no staged value. Reads no payload.
+    /// </summary>
+    internal bool HoldsEveryKnownFrame(ReplicationProjection projection, out string? missing)
+    {
+        ArgumentNullException.ThrowIfNull(projection);
+        foreach (KeyValuePair<long, ProjectedEntity> kv in projection.Entities)
+        {
+            if (!entityByNetId.TryGetValue(kv.Key, out Entity staged))
+            {
+                missing = $"Staging holds no entity for net id {kv.Key}.";
+                return false;
+            }
+            for (int i = 0; i < kv.Value.Count; i++)
+            {
+                ushort typeId = kv.Value[i].TypeId;
+                if (!registry.TryGet(typeId, out ComponentCodec codec)
+                    || (codec.Channels & ReplicationChannels.Replicate) == 0) continue;
+                if (codec.HasComponent(world, staged)) continue;
+                missing = $"Staging holds no value for net id {kv.Key} type id {typeId}.";
+                return false;
+            }
+        }
+        missing = null;
+        return true;
+    }
+
     /// <summary>Resets, stages every entity of <paramref name="projection"/>, decodes each known frame once, then
     /// records the projection as <see cref="StagedFor"/>. A decode failure leaves <see cref="StagedFor"/> null.</summary>
     internal void StageAll(ReplicationProjection projection)

@@ -78,7 +78,8 @@ internal sealed class ProjectionRetention
     /// failure nothing changes, the superseded entry included.
     /// </summary>
     /// <exception cref="ArgumentException">As the four-argument retain, or <paramref name="supersedes"/> is
-    /// <paramref name="id"/>, is not retained, or is pinned now or by <paramref name="prospectivePins"/>.</exception>
+    /// <paramref name="id"/>, is not retained, or is in <paramref name="prospectivePins"/>. An id only the current pin
+    /// set holds may be superseded, because this call replaces the pins.</exception>
     internal bool TryRetain(ReplicationPacketId id, ReplicationProjection projection,
         IReadOnlySet<ReplicationPacketId> prospectivePins, ReplicationPacketId? supersedes,
         out DeltaRebuildFailure failure)
@@ -96,8 +97,11 @@ internal sealed class ProjectionRetention
             if (dead == id || IndexOf(dead) < 0)
                 throw new ArgumentException($"Superseded projection {dead} is not a retained older entry.",
                     nameof(supersedes));
-            if (pins.Contains(dead) || prospectivePins.Contains(dead))
-                throw new ArgumentException($"Superseded projection {dead} is pinned.", nameof(supersedes));
+            // Only the incoming pin set matters. This call replaces the pins, so an id the old set pinned and the new
+            // set drops, such as a candidate that pinned itself, is released here anyway.
+            if (prospectivePins.Contains(dead))
+                throw new ArgumentException($"Superseded projection {dead} is pinned by the new pin set.",
+                    nameof(supersedes));
         }
 
         if (projection.EntityCount > options.MaxEntities || projection.ComponentCount > options.MaxComponents

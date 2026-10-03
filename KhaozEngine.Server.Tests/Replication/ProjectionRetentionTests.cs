@@ -306,6 +306,18 @@ public class ProjectionRetentionTests
         Assert.Equal(3, retention.Count);
         Assert.Equal(3, retention.Components);
         AssertRetainedBytesExact(retention, ack, sent2, candidate2);
+
+        // A candidate pinned itself when it was retained. The next candidate supersedes it while dropping that pin,
+        // which this call releases anyway. Remove still refuses it while it is pinned.
+        Assert.False(retention.Remove(Id(5)));
+        ReplicationProjection candidate3 = Sized(1);
+        Assert.True(retention.TryRetain(Id(6), candidate3, Pins(1, 6), Id(5), out failure));
+        Assert.Equal(DeltaRebuildFailure.None, failure);
+        Assert.False(retention.TryGet(Id(5), out _));
+        Assert.True(retention.TryGet(Id(3), out _));
+        Assert.True(retention.Pins.SetEquals(Pins(1, 6)));
+        Assert.Equal(3, retention.Count);
+        AssertRetainedBytesExact(retention, ack, sent2, candidate3);
     }
 
     [Fact]

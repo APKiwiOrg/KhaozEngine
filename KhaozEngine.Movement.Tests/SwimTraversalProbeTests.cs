@@ -133,6 +133,30 @@ public class SwimTraversalProbeTests
     }
 
     [Fact]
+    public void ShoreEdgeWithPhysicsClearsItsSwimmingSlices()
+    {
+        // Wading at bed -0.3, floating over bed -0.38. Swimming starts on the terrace at -0.34 from x 4.
+        Vector3 wade = new(3.625f, RampBed(3.625f), 0f), afloat = new(4.625f, FloatY, 0f);
+        using (BepuPhysicsWorld world = RampWorld())
+        {
+            GroundMoveContext context = RampContext(world);
+            Assert.True(Probe(context, Duck, wade, false, afloat, true));
+            Assert.True(Probe(context, Duck, afloat, true, wade, false));
+        }
+
+        // A beam over the swimming stretch only: its underside is below a floating capsule's top, and the walking
+        // stretch stays more than a radius away from it. The core does not collide a swimmer, so only the clearance
+        // check can refuse these edges.
+        using BepuPhysicsWorld beamed = RampWorld();
+        beamed.AddStatic(new BoxShape(new Vector3(0.02f, 0.075f, 2f)), Pose.At(new Vector3(4.25f, 0.225f, 0f)));
+        GroundMoveContext blocked = RampContext(beamed);
+        Assert.True(Probe(blocked, Duck, wade, false, wade, false));
+        Assert.True(Probe(blocked, Duck, afloat, true, afloat, true));
+        Assert.False(Probe(blocked, Duck, wade, false, afloat, true));
+        Assert.False(Probe(blocked, Duck, afloat, true, wade, false));
+    }
+
+    [Fact]
     public void BedGrazeNearTheShoreIsClear()
     {
         using var world = new BepuPhysicsWorld();
@@ -143,6 +167,30 @@ public class SwimTraversalProbeTests
         Assert.True(context.SwimClear(Floating(new Vector3(0f, -0.05f, 0f)), Duck));
         Assert.False(context.SwimClear(Floating(new Vector3(0f, -0.3f, 0f)), Duck));
         Assert.True(new GroundMoveContext((_, _) => 0f).SwimClear(Floating(new Vector3(0f, -0.3f, 0f)), Duck));
+    }
+
+    /// <summary>A terraced bank: land at 0 below x 0, then 0.25 m terraces each 0.02 m lower, down to -0.6 from x 7.5.
+    /// Cell centres of a 0.25 m grid from x 0 sit mid-terrace.</summary>
+    /// <remarks>Terraces rather than a smooth physics slope: dry ground proofs on a smooth physics slope of this
+    /// grade refuse uphill and lateral edges, which predates aquatic profiles.</remarks>
+    internal static float RampBed(float x) => x < 0f ? 0f : x >= 7.5f ? -0.6f : -0.02f * (MathF.Floor(x / 0.25f) + 1f);
+
+    /// <summary>The analytic ground matches <see cref="RampWorld"/>, with water at 0 over the whole world.</summary>
+    internal static GroundMoveContext RampContext(IPhysicsWorld world, float zoneScale = 1f) =>
+        new((x, _) => RampBed(x), physics: world, medium: (_, _, feetY) => new MovementMedium(0f, feetY < 0f, zoneScale));
+
+    /// <summary>The physics of <see cref="RampBed"/>: a land box, 30 terrace boxes and a bed box beyond.</summary>
+    internal static BepuPhysicsWorld RampWorld()
+    {
+        var world = new BepuPhysicsWorld();
+        world.AddStatic(new BoxShape(new Vector3(4f, 0.1f, 8f)), Pose.At(new Vector3(-4f, -0.1f, 0f)));
+        for (int k = 0; k < 30; k++)
+        {
+            float top = -0.02f * (k + 1);
+            world.AddStatic(new BoxShape(new Vector3(0.125f, 0.1f, 8f)), Pose.At(new Vector3(0.25f * k + 0.125f, top - 0.1f, 0f)));
+        }
+        world.AddStatic(new BoxShape(new Vector3(4f, 0.1f, 8f)), Pose.At(new Vector3(11.5f, -0.7f, 0f)));
+        return world;
     }
 
     internal static bool InPit(float x, float z) => MathF.Abs(x) < PitHalf && MathF.Abs(z) < PitHalf;

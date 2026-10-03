@@ -21,7 +21,14 @@ public sealed partial class PhysicsNavBake
     /// <see cref="GroundProfileOptions.Aquatic"/> the profile reads the aquatic column view, where each swim-deep
     /// column holds one float surface at the body's resting swim height. Float holds and every edge or Stair link with
     /// a float endpoint are proved by swim steps through the live context and its medium, at unit walk pace, with each
-    /// slice capped at the capsule radius and cleared against statics. Other proofs stay dry.</summary>
+    /// slice capped at the capsule radius and cleared against statics. Other proofs stay dry.
+    /// <para>Every proof shares the capture's <see cref="PhysicsNavBakeOptions.MaxEdgeProbeSteps"/> budget, and an edge
+    /// that runs past it is refused. A bank edge between a wading node and a float node walks at unit pace slowed by
+    /// the wade ramp and the medium's zone scale, so it needs about
+    /// <c>length / (EdgeProbeSeconds x 1 m/s x WadeMinSpeedScale x zone scale)</c> steps plus a short tail. At the
+    /// default 64 steps of 1/30 s and a zone scale of 1 that covers banks between 0.25 m cells. Larger cells or slower
+    /// zones must raise <see cref="PhysicsNavBakeOptions.MaxEdgeProbeSteps"/>, or the float layer is cut off from
+    /// the land.</para></summary>
     /// <exception cref="ArgumentException">An aquatic profile's capture did not sample water, or its swim fractions
     /// are not ordered <c>Exit &lt;= Submersion &lt;= Enter</c>.</exception>
     public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions options)

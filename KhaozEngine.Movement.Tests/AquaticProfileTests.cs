@@ -166,6 +166,92 @@ public class AquaticProfileTests
     }
 
     [Fact]
+    public void BankConnectsLandToTheFloatLayer()
+    {
+        using BepuPhysicsWorld world = SwimTraversalProbeTests.RampWorld();
+        using PhysicsNavBake capture = PhysicsNavBake.Capture(SwimTraversalProbeTests.RampContext(world), Bank, _ => 0u);
+        GroundNavigation aquatic = capture.BuildProfile(Duck, default, AquaticOptions);
+
+        NavPath outward = aquatic.Planner.FindPath(Land, Water, Duck.CapsuleRadius, PathQueryBudget.Default);
+        NavPath inward = aquatic.Planner.FindPath(Water, Land, Duck.CapsuleRadius, PathQueryBudget.Default);
+
+        Assert.Equal(NavPathStatus.Complete, outward.Status);
+        Assert.Equal(NavPathStatus.Complete, inward.Status);
+        (int intoWater, int ontoBank) = MixedExits(aquatic);
+        Assert.True(intoWater > 0, "No exit leads from a bank node onto the float layer.");
+        Assert.True(ontoBank > 0, "No exit leads from the float layer onto a bank node.");
+    }
+
+    [Fact]
+    public void BankEdgePastTheBudgetIsRefusedCleanly()
+    {
+        // A slow zone: wading and swimming at a fifth of their pace. Dry edges need about 12 steps and float edges
+        // along an axis, like the shoreward swim onto a bank node, about 16. Wading out to the float layer needs
+        // several times that, so at 20 steps only the wading direction runs past the budget.
+        using BepuPhysicsWorld world = SwimTraversalProbeTests.RampWorld();
+        GroundMoveContext context = SwimTraversalProbeTests.RampContext(world, zoneScale: 0.2f);
+        using PhysicsNavBake tight = PhysicsNavBake.Capture(context, Bank with { MaxEdgeProbeSteps = 20 }, _ => 0u);
+        using PhysicsNavBake ample = PhysicsNavBake.Capture(context, Bank with { MaxEdgeProbeSteps = 400 }, _ => 0u);
+        GroundNavigation cut = tight.BuildProfile(Duck, default, AquaticOptions);
+        GroundNavigation joined = ample.BuildProfile(Duck, default, AquaticOptions);
+
+        (int cutInto, int cutOnto) = MixedExits(cut);
+        Assert.Equal(0, cutInto);
+        Assert.True(cutOnto > 0, "The shoreward swim within the budget was refused too.");
+        Assert.NotEqual(NavPathStatus.Complete, cut.Planner.FindPath(Land, Water, Duck.CapsuleRadius, PathQueryBudget.Default).Status);
+        Assert.Equal(NavPathStatus.Complete, cut.Planner.FindPath(Water, Land, Duck.CapsuleRadius, PathQueryBudget.Default).Status);
+        Assert.Equal(NavPathStatus.Complete, cut.Planner.FindPath(Land, Land with { Z = -0.375f }, Duck.CapsuleRadius,
+            PathQueryBudget.Default).Status);
+        Assert.Equal(NavPathStatus.Complete, cut.Planner.FindPath(Water, Water with { Z = -0.375f }, Duck.CapsuleRadius,
+            PathQueryBudget.Default).Status);
+        Assert.True(MixedExits(joined).IntoWater > 0, "The ample budget joins no bank edge into the water.");
+        Assert.Equal(NavPathStatus.Complete, joined.Planner.FindPath(Land, Water, Duck.CapsuleRadius, PathQueryBudget.Default).Status);
+        Assert.Equal(NavPathStatus.Complete, joined.Planner.FindPath(Water, Land, Duck.CapsuleRadius, PathQueryBudget.Default).Status);
+    }
+
+    [Fact]
+    public void DryNodeAtTheWaterLineKeepsItsGroundEdges()
+    {
+        // Submersion and exit 0 put the float height on the water surface, here exactly the deck top.
+        MoveTuning tuning = Duck with { SwimSurfaceSubmersionFraction = 0f, SwimExitDepthFraction = 0f };
+        using BepuPhysicsWorld world = SwimTraversalProbeTests.PoolWorld();
+        world.AddStatic(new BoxShape(new Vector3(1f, 0.1f, 1f)), Pose.At(new Vector3(0f, -1f, 0f)));
+        var probe = new PhysicsColumnProbe(world)
+        {
+            ProbeHeight = Wet.ProbeHeight,
+            ProbeRange = Wet.ProbeRange,
+            MaxSlopeRadians = Wet.MaxSlopeRadians,
+            GroundMobility = QueryMobility.Statics,
+        };
+        var context = new GroundMoveContext((x, z) => SwimTraversalProbeTests.InPit(x, z) ? -2f : 0f, physics: world,
+            medium: (x, z, feetY) =>
+            {
+                Span<ColumnSurface> found = stackalloc ColumnSurface[8];
+                int count = probe.Sample(x, z, found);
+                float top = count > 0 ? found[count - 1].Height : float.NegativeInfinity;
+                return new MovementMedium(top, feetY < top);
+            });
+        using PhysicsNavBake capture = PhysicsNavBake.Capture(context, Wet, _ => 0u);
+        const int X = 8, Z = 4;
+        PhysicsNavSurface[] captured = capture.Columns.GetColumn(X, Z).ToArray();
+        Assert.Equal(2, captured.Length);
+        Assert.Contains(capture.Columns.Water.ToArray(), w => w.Cell == Z * capture.Columns.Width + X &&
+            Bits(w.SurfaceY) == Bits(captured[1].Height));
+
+        PhysicsNavColumns derived = AquaticColumns.Derive(capture.Columns, tuning);
+        GroundNavigation ground = capture.BuildProfile(tuning, default);
+        GroundNavigation aquatic = capture.BuildProfile(tuning, default, AquaticOptions);
+
+        Assert.Equal(2, derived.GetColumn(X, Z).Length);
+        Assert.False(derived.IsFloat(X, Z, 0));
+        Assert.False(derived.IsFloat(X, Z, 1));
+        int deck = DeckLayer(ground, X, Z, captured[1].Height);
+        byte exits = ground.Graph.Layers[deck].ExitMask(X, Z);
+        Assert.NotEqual(0, exits);
+        Assert.Equal(exits, aquatic.Graph.Layers[DeckLayer(aquatic, X, Z, captured[1].Height)].ExitMask(X, Z));
+    }
+
+    [Fact]
     public void SwimPaceUsesSwimSpeedWhileSwimming()
     {
         var context = new GroundMoveContext((x, z) => SwimTraversalProbeTests.InPit(x, z) ? -2f : 0f,
@@ -187,6 +273,59 @@ public class AquaticProfileTests
 
         var hostile = new GroundMoveContext((_, _) => -2f, medium: (_, _, feetY) => new MovementMedium(0f, feetY < 0f, float.NaN));
         Assert.Throws<ArgumentOutOfRangeException>(() => SwimPace.Bound(swimming, Duck, false, Dt, hostile));
+    }
+
+    // 28 by 8 cells of 0.25 m over the bank of SwimTraversalProbeTests.RampWorld, at the default edge budget. Columns
+    // from x 4.125 on are swim-deep for the duck.
+    private static readonly PhysicsNavBakeOptions Bank = new(-1f, -1f, 6f, 1f, 0.25f, 2f, 5f, 0.8f, 256, 2048)
+    {
+        SampleWater = true,
+    };
+
+    private static readonly Vector3 Land = new(-0.625f, 0f, 0.125f);
+    private static readonly Vector3 Water = new(5.375f, FloatY, 0.125f);
+
+    // Exits from a non-float node to a float node, and from a float node to a non-float node. A node floats when the
+    // surface of its derived column at its height is flagged as a float.
+    private static (int IntoWater, int OntoBank) MixedExits(GroundNavigation navigation)
+    {
+        PhysicsNavColumns columns = navigation.Footprint.Columns;
+        (int X, int Z)[] directions = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)];
+        int into = 0, onto = 0;
+        for (int layer = 0; layer < navigation.Space.Layers.Count; layer++)
+        {
+            NavGrid grid = navigation.Space.Layers[layer];
+            for (int z = 0; z < grid.Height; z++)
+                for (int x = 0; x < grid.Width; x++)
+                {
+                    byte exits = navigation.Graph.Layers[layer].ExitMask(x, z);
+                    for (int d = 0; d < directions.Length; d++)
+                    {
+                        if ((exits & (1 << d)) == 0) continue;
+                        int nx = x + directions[d].X, nz = z + directions[d].Z;
+                        bool from = Floats(columns, grid, x, z), to = Floats(columns, grid, nx, nz);
+                        if (!from && to) into++;
+                        if (from && !to) onto++;
+                    }
+                }
+        }
+        return (into, onto);
+    }
+
+    private static bool Floats(PhysicsNavColumns columns, NavGrid grid, int x, int z)
+    {
+        uint height = Bits(grid.SurfaceHeightAt(x, z)!.Value);
+        ReadOnlySpan<PhysicsNavSurface> column = columns.GetColumn(x, z);
+        for (int i = 0; i < column.Length; i++)
+            if (Bits(column[i].Height) == height) return columns.IsFloat(x, z, i);
+        return false;
+    }
+
+    private static int DeckLayer(GroundNavigation navigation, int x, int z, float height)
+    {
+        for (int layer = 0; layer < navigation.Space.Layers.Count; layer++)
+            if (navigation.Space.Layers[layer].SurfaceHeightAt(x, z) is float y && Bits(y) == Bits(height)) return layer;
+        throw new InvalidOperationException("No layer holds the deck node.");
     }
 
     private static float ChannelGround(float x, float z) => MathF.Abs(x) < 0.5f ? -2f : -0.5f;

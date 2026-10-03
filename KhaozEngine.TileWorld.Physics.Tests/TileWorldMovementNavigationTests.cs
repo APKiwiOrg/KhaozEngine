@@ -15,8 +15,8 @@ namespace KhaozEngine.Tests.Movement;
 
 public class TileWorldMovementNavigationTests(ITestOutputHelper output)
 {
-    private const uint Dry = 1u, Wet = 2u;
-    private static readonly MoveTuning Tuning = MoveTuning.Default with
+    internal const uint Dry = 1u, Wet = 2u;
+    internal static readonly MoveTuning Tuning = MoveTuning.Default with
     {
         CapsuleRadius = 0.2f, CapsuleHalfHeight = 0.75f, MaxSlopeRadians = 0.8f,
         StepHeight = 0.4f, WalkSpeed = 9f, RunSpeed = 18f,
@@ -252,10 +252,10 @@ public class TileWorldMovementNavigationTests(ITestOutputHelper output)
         return bake.BuildProfile(Tuning, default);
     }
 
-    private static PhysicsNavBakeOptions Bounds(int x, int z, int width, int height)
+    internal static PhysicsNavBakeOptions Bounds(int x, int z, int width, int height)
         => new(x, -z - height, x + width, -z, 1f, 5f, 10f, Tuning.MaxSlopeRadians, 128, 512);
 
-    private static TileWorldDocument Drawn(int x0, int z0, int width, int height)
+    internal static TileWorldDocument Drawn(int x0, int z0, int width, int height)
     {
         var doc = new TileWorldDocument { Id = "movement-bridge-test" };
         RegionCoord first = RegionCoord.Of(x0, z0), last = RegionCoord.Of(x0 + width - 1, z0 + height - 1);
@@ -276,7 +276,7 @@ public class TileWorldMovementNavigationTests(ITestOutputHelper output)
         return doc;
     }
 
-    private sealed class Scene : IDisposable
+    internal sealed class Scene : IDisposable
     {
         private static readonly TileWorldCatalogs Catalogs = TileWorldCatalogs.LoadJson(
             """

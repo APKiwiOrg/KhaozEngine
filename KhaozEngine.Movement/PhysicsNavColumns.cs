@@ -14,13 +14,24 @@ internal sealed class PhysicsNavColumns : INavColumnProvider
 
     internal PhysicsNavColumns(PhysicsNavBakeOptions options, int width, int height,
         ReadOnlySpan<int> starts, ReadOnlySpan<PhysicsNavSurface> surfaces)
+        : this(options, width, height, starts.ToArray(), surfaces.ToArray())
+    {
+    }
+
+    private PhysicsNavColumns(PhysicsNavBakeOptions options, int width, int height,
+        int[] starts, PhysicsNavSurface[] surfaces)
     {
         _options = options;
         Width = width;
         Height = height;
-        _starts = starts.ToArray();
-        _surfaces = surfaces.ToArray();
+        _starts = starts;
+        _surfaces = surfaces;
     }
+
+    /// <summary>Stores both arrays without copying. The caller hands over ownership and must never write to or expose
+    /// them afterwards.</summary>
+    internal static PhysicsNavColumns Own(PhysicsNavBakeOptions options, int width, int height,
+        int[] starts, PhysicsNavSurface[] surfaces) => new(options, width, height, starts, surfaces);
 
     internal int Width { get; }
     internal int Height { get; }

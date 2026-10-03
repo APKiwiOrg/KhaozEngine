@@ -25,9 +25,7 @@ internal static class GroundTraversalProbe
 
         MoveTuning probe = tuning with { WalkSpeed = 1f, RunSpeed = 1f, AirMomentum = false };
         // Reuse the absolute adapter with dry medium, preserving ground, normals, bounds, physics and query selection.
-        GroundMoveContext dry = context.Medium is null ? context : new GroundMoveContext(
-            context.GroundHeight, context.GroundNormal, context.Physics, context.ClampXz,
-            medium: null, movementQueries: context.MovementQueries);
+        GroundMoveContext dry = context.DryContext;
         var body = new MoveState
         {
             Position = fromFeet + Vector3.UnitY * probe.CapsuleHalfHeight,

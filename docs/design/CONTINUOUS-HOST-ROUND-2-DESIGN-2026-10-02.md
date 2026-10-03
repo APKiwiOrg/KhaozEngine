@@ -535,7 +535,9 @@ rules and server tolerance in the game. Report those integration inputs on epic 
 - Grimhollow P3, P5 or P6 implementation and any Grimhollow file change.
 - Ruinborne brain, FrostChill, lunge, archetype or nav adoption changes.
 - Dynamic avoidance, body-to-body collision, crowds and automatic hopping or jumping.
-- Nav streaming, incremental edit-time rebakes, navigation persistence and large-world stress work.
+- Nav streaming, incremental edit-time rebakes, navigation persistence and large-world stress work. Persistence of
+  physics-checked ground profiles was later lifted by
+  [NAV-PROFILE-BAKE-DESIGN-2026-10-03.md](NAV-PROFILE-BAKE-DESIGN-2026-10-03.md).
 - Unreliable deltas, replication baseline redesign, facing or line-of-sight combat rules.
 - Release tags, a game version bump and any player changelog entry for this docs session.
 

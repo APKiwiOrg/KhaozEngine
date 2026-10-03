@@ -5,6 +5,30 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.20.0
+
+- `GroundNavigationBake` persists physics-checked `GroundNavigation` profile sets. `Create` builds named profiles from
+  one `PhysicsNavBake` capture, `WriteTo` writes a little-endian `KENB` file, and `Load` returns them without physics,
+  a ground provider or any proof. A loaded profile equals the fresh build as bits. A canonical identity covers the
+  engine version, capture options, area filters, every `MoveTuning` field except unit pace and air momentum, and
+  caller-labelled SHA-256 source digests from `NavBakeSources`, with no architecture-dependent data. A stale or
+  damaged bake returns a typed `NavBakeLoadStatus` with the first difference named in `Detail`, never a silent
+  fallback. A stale bake is refused from its header and identity block alone. A 36,864-column flat world wrote
+  664,683 bytes and loaded in about 20 ms on the dev Mac. This lifts round 2's navigation persistence non-goal for
+  physics-checked ground profiles.
+- `NavGrid.FromBlockedSurfaces` rebuilds a surface grid from a stored blocked mask and open-cell heights, with every
+  `ClearanceAt` and `SurfaceHeightAt` equal to the source grid.
+- `BuildProfile` no longer allocates per proof. Penetration queries reuse their overlap scratch, the footprint
+  predicate and the dry probe context are built once, and `CharacterMovement` reuses its step and slide capsules
+  through per-thread caches keyed by exact radius and length. A warmed penetration query drops from 72 bytes to zero,
+  a warmed edge proof from 6,848 bytes to zero, and a 4,096-column flat profile from 58,774 to 80 bytes per column.
+  Live movement steps no longer allocate a capsule either. `CapsuleFor` still returns a new instance.
+- `DirectMoveToRange` approaches a reach target without a planner, with `MoveToRange`'s exact reach, stop ring and
+  suspension rules. `DirectApproachOptions` takes required stall and approach windows in ticks with no defaults, and
+  a window that shows too little progress latches the new `RangeMoveStatus.Blocked`, which both movement adapters
+  treat as idle. Steps that would leave the ground or start swimming are refused and count as no progress, and steady
+  ticks allocate nothing.
+
 ## 20.19.0
 
 - `GltfLoader.LoadNamedNodes(path)` returns every glTF node with a non-empty name, empties included, as

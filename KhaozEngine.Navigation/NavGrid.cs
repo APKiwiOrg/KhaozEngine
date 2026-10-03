@@ -16,7 +16,7 @@ namespace KhaozEngine.Navigation;
 /// <see cref="FromWalkable"/> and read many times, so pathfinding never re-touches the walkable
 /// predicate. Render-free, deterministic.
 /// </summary>
-public sealed class NavGrid
+public sealed partial class NavGrid
 {
     readonly byte[] _clearance;
     readonly float[]? _heights;
@@ -151,7 +151,8 @@ public sealed class NavGrid
     public byte ClearanceAt(int cx, int cz) => InBounds(cx, cz) ? _clearance[cz * Width + cx] : (byte)0;
 
     /// <summary>True when this grid was baked with a per-cell surface height field
-    /// (via <see cref="FromSurfaces"/>). False for grids from <see cref="FromWalkable"/>.</summary>
+    /// (via <see cref="FromSurfaces"/>) or rebuilt from a stored blocked mask and open-cell heights (via
+    /// <see cref="FromBlockedSurfaces"/>). False for grids from <see cref="FromWalkable"/>.</summary>
     public bool HasSurfaceHeights => _heights is not null;
 
     /// <summary>

@@ -16,6 +16,10 @@ namespace KhaozEngine.Physics.Bepu;
 /// <summary>Shared query implementations for the complete world and its restricted views.</summary>
 public sealed partial class BepuPhysicsWorld
 {
+    // Broad-phase candidates for one penetration query. Cleared per call and kept for its capacity. Query views
+    // reach the same core, so they share it. The world is single-threaded, so one list serves every caller.
+    private readonly List<CollidableReference> _overlapScratch = new();
+
     public bool Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default)
         => RaycastCore(origin, direction, maxDistance, out hit, filter, exclusions: null);
 
@@ -83,7 +87,8 @@ public sealed partial class BepuPhysicsWorld
         var bepuCapsule = new Capsule(capsule.Radius, capsule.Length);
         bepuCapsule.ComputeBounds(pose.Orientation, out var bMin, out var bMax);
 
-        var collector = new OverlapCollector();
+        _overlapScratch.Clear();
+        var collector = new OverlapCollector(_overlapScratch);
         _sim.BroadPhase.GetOverlaps(pose.Position + bMin, pose.Position + bMax, ref collector);
         if (collector.Found.Count == 0) { mtv = default; return false; }
 
@@ -143,11 +148,11 @@ public sealed partial class BepuPhysicsWorld
     }
 }
 
-// Broad-phase overlap enumerator - collects CollidableReferences from the static tree.
+// Broad-phase overlap enumerator - collects CollidableReferences from the static tree into a caller-owned list.
 internal struct OverlapCollector : IBreakableForEach<CollidableReference>
 {
-    public readonly List<CollidableReference> Found = new();
-    public OverlapCollector() { }
+    public readonly List<CollidableReference> Found;
+    public OverlapCollector(List<CollidableReference> found) { Found = found; }
     public bool LoopBody(CollidableReference item) { Found.Add(item); return true; }
 }
 

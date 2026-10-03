@@ -9,7 +9,7 @@ public sealed partial class MoveToRange
 {
     private readonly Func<Vector3, bool> _contains;
     private NavGoalRegion? _goal;
-    private GoalShape _goalShape;
+    private RangeShapeKey _goalShape;
     private ReachTarget _target;
     private float _range;
     private float _radius;
@@ -17,9 +17,7 @@ public sealed partial class MoveToRange
 
     private NavGoalRegion Goal(in MoveTuning tuning, in ReachTarget target, float range)
     {
-        var key = new GoalShape(target.Kind, target.Body.Radius, target.Body.HalfHeight,
-            target.HalfExtents, target.YawRadians, range, tuning.CapsuleRadius,
-            tuning.CapsuleHalfHeight, tuning.MaxSlopeRadians, tuning.StepHeight);
+        var key = RangeShapeKey.From(tuning, target, range);
         if (_goal is not null && key != _goalShape) Reset();
         _goalShape = key;
         _target = target;
@@ -50,7 +48,4 @@ public sealed partial class MoveToRange
     private bool Contains(Vector3 feet)
         => ReachGeometry.Within(new MovementBody(feet + new Vector3(0f, _halfHeight, 0f),
             _radius, _halfHeight), _target, _range);
-
-    private readonly record struct GoalShape(ReachTargetKind Kind, float TargetRadius, float TargetHalfHeight,
-        Vector3 HalfExtents, float Yaw, float Range, float Radius, float HalfHeight, float Slope, float Step);
 }

@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Navigation;
+using static KhaozEngine.Movement.RangeApproachCore;
 
 namespace KhaozEngine.Movement;
 
@@ -12,6 +13,7 @@ public sealed partial class MoveToRange
     private readonly GroundNavigation? _navigation;
     private readonly PathFollower _follower;
     private readonly Func<Vector3, Vector3, bool> _allowsSegment;
+    private readonly StepAdmission _admits;
 
     public MoveToRange(GroundNavigation navigation, PathFollowConfig? follow = null)
         : this((navigation ?? throw new ArgumentNullException(nameof(navigation))).Planner,
@@ -27,6 +29,7 @@ public sealed partial class MoveToRange
         _allowsSegment = allowsSegment ?? throw new ArgumentNullException(nameof(allowsSegment));
         _follower = new PathFollower(planner, StrictConfig(follow ?? PathFollowConfig.Default), space);
         _contains = Contains;
+        _admits = AllowsStep;
     }
 
     /// <summary>Returns bounded requested input without writing the supplied state or stepping the world.
@@ -65,7 +68,7 @@ public sealed partial class MoveToRange
         if (command == Vector2.Zero) return Hold(RangeMoveStatus.Following);
         MoveState predicted = context.Step(body, command, run, dt, tuning);
         if (!AllowsStep(body, predicted, tuning)) return Hold(RangeMoveStatus.Following);
-        command = StopAtRange(body, tuning, target, range, run, dt, context, command, predicted);
+        command = StopAtRange(body, tuning, target, range, run, dt, context, command, predicted, _admits);
         return new RangeSteering(command, RangeMoveStatus.Following);
     }
 
@@ -77,20 +80,6 @@ public sealed partial class MoveToRange
     }
 
     private static RangeSteering Hold(RangeMoveStatus status) => new(Vector2.Zero, status);
-    private static MovementBody Body(in MoveState body, in MoveTuning tuning)
-        => new(body.Position, tuning.CapsuleRadius, tuning.CapsuleHalfHeight);
-    private static Vector3 Feet(in MoveState body, in MoveTuning tuning)
-        => body.Position - new Vector3(0f, tuning.CapsuleHalfHeight, 0f);
-
-    private static void ValidateBody(in MoveState body)
-    {
-        if (!MovementBody.IsFinite(body.Position) || !float.IsFinite(body.SpeedScale) ||
-            !float.IsFinite(body.VerticalVelocity) || !float.IsFinite(body.TimeSinceGrounded) ||
-            !float.IsFinite(body.JumpBufferRemaining) || !float.IsFinite(body.FacingYaw) ||
-            !float.IsFinite(body.HorizontalVelocity.X) || !float.IsFinite(body.HorizontalVelocity.Y) ||
-            !float.IsFinite(body.ClimbRateEwma))
-            throw new ArgumentOutOfRangeException(nameof(body), "Movement state must be finite.");
-    }
 
     private static PathFollowConfig StrictConfig(PathFollowConfig follow)
     {

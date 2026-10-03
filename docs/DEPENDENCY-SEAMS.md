@@ -669,10 +669,14 @@ retains only accepted Stair links for guarded queries, and does not generate Hop
 owns pure data and outlives the builder and its caller-owned physics world. This edge keeps Navigation and
 Physics free of a reverse Movement reference.
 
-The same package owns `MoveToRange`, `RangeSteering`, `RangeMoveStatus`, `NpcGroundMovement` and
-`PlayerPathMovement`. These adapters compose the three existing references only. `MoveToRange` consumes guarded
-region planning and exact shape reach, `NpcGroundMovement` resolves one shared ground step, and
-`PlayerPathMovement` emits an ordinary `MoveCommand` with no input, rendering, NetWorld, ECS or game-action edge.
+`GroundNavigationBake` writes one capture's columns and named profiles as a versioned `KENB` file and loads them
+without physics, rebuilding layer grids through `NavGrid.FromBlockedSurfaces`. Hashing uses the base library's
+`IncrementalHash` and encoding uses `BinaryPrimitives`, so the bake adds no reference or package.
+
+The same package owns `MoveToRange`, `DirectMoveToRange`, `RangeSteering`, `RangeMoveStatus`,
+`NpcGroundMovement` and `PlayerPathMovement`. These adapters compose the three existing references only.
+`MoveToRange` consumes guarded region planning and exact shape reach, `DirectMoveToRange` uses the same reach
+without a planner, `NpcGroundMovement` resolves one shared ground step, and `PlayerPathMovement` emits an ordinary `MoveCommand` with no input, rendering, NetWorld, ECS or game-action edge.
 The game owns NPC brains, target validity, nominal ranges, cancellation and combat. Player automation emits
 ordinary client commands and the authority simulates those commands. The engine provides no server-side player
 following or action queue.

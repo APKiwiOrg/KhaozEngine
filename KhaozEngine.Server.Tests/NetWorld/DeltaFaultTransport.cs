@@ -12,8 +12,10 @@ namespace KhaozEngine.Tests.NetWorld;
 /// <param name="Reliability">The channel it was sent on.</param>
 /// <param name="Payload">A copy of the transport payload, session frame byte included.</param>
 /// <param name="Fault">The fault applied, if any.</param>
+/// <param name="Limit">The limit this decorator reported for the connection when the frame was sent, 0 when it
+/// forwarded the query.</param>
 internal readonly record struct FaultSend(int Subtick, NetConnectionId Connection, byte Kind, int Ordinal,
-    NetChannelReliability Reliability, byte[] Payload, DeltaFault? Fault);
+    NetChannelReliability Reliability, byte[] Payload, DeltaFault? Fault, int Limit);
 
 /// <summary>One frame a fault transport handed to the transport it wraps.</summary>
 /// <param name="Subtick">The subtick it was handed on.</param>
@@ -153,7 +155,7 @@ internal sealed class DeltaFaultTransport : INetTransport
             ordinals[(target.Value, kind)] = ++ordinal;
         }
         DeltaFault? fault = faults.TryGetValue((kind, ordinal), out DeltaFault found) ? found : null;
-        Sends.Add(new FaultSend(Subtick, target, kind, ordinal, reliability, copy, fault));
+        Sends.Add(new FaultSend(Subtick, target, kind, ordinal, reliability, copy, fault, MaxPayloadBytes));
         if (fault is not DeltaFault f)
         {
             SendInOrder(target, copy, reliability, kind, ordinal);

@@ -10,7 +10,9 @@ using Xunit;
 namespace KhaozEngine.Tests.NetWorld;
 
 /// <summary>One client presentation event: everything the acceptance cases read, recorded after the frame's
-/// <c>AdvancePresentation</c>.</summary>
+/// <c>AdvancePresentation</c>. <c>SnapshotArrived</c> is the presentation trace's ingest mark for the frame, and
+/// <c>PresentationChangedByPoll</c> is true when the poll changed any current, previous or interpolation sample buffer
+/// of the client's view.</summary>
 internal readonly record struct DeltaFrameRow(
     int Client,
     int Frame,
@@ -44,7 +46,9 @@ internal readonly record struct DeltaFrameRow(
     int ServerRetainedBytes,
     int MaxServerPayload,
     int MaxClientPayload,
-    int DeliveredThisPoll);
+    int DeliveredThisPoll,
+    bool SnapshotArrived,
+    bool PresentationChangedByPoll);
 
 /// <summary>One remote entity as a client rendered it in one presentation event.</summary>
 internal readonly record struct DeltaRemoteRow(int Client, int Frame, long NetId, Vector3 Position, float Heading,

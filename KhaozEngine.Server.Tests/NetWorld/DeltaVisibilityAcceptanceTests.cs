@@ -130,6 +130,14 @@ public sealed class DeltaVisibilityAcceptanceTests
         Assert.Equal(0, replay.IngestsThisPoll);
         Assert.Equal(ReplicationDeliveryMode.AcknowledgedUnreliable, replay.Selection.Mode);
         Assert.True(replay.Selection.Epoch > observerEpoch);
+        // The replayed retired ack starts no repair: one offer, one keyframe at tick 43, then datagrams only.
+        Assert.Single(fresh.Downstream.Sends, s => s.Kind == FaultFrameKind.ReplicationMode);
+        List<FaultSend> freshChunks = fresh.Downstream.Sends.Where(s => s.Kind == FaultFrameKind.KeyframeChunk).ToList();
+        Assert.NotEmpty(freshChunks);
+        Assert.Single(freshChunks.Select(DeltaReliabilityAcceptanceTests.IdOf).Distinct());
+        Assert.All(freshChunks, s => Assert.Equal(DeltaFaultSchedule.Subtick(43), s.Subtick));
+        Assert.All(fresh.Downstream.Sends.Where(s => s.Kind == FaultFrameKind.RebuildDelta),
+            s => Assert.Equal(replay.Selection.Epoch, DeltaReliabilityAcceptanceTests.IdOf(s).Epoch));
         RebuildUsage usage = rig.Writer.RebuildUsageForTest(fresh.Slot);
         Assert.Equal(replay.Selection.Epoch, usage.AcknowledgedId!.Value.Epoch);
         Assert.True(fresh.Client.TryGetComponent(fresh.Client.LocalNetId, out SentinelOwner own));

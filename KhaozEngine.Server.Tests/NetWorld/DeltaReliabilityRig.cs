@@ -226,10 +226,15 @@ internal sealed class DeltaReliabilityRig
             Assert.Equal(0, c.Upstream?.HeldCount ?? 0);
             Trace.AssertComplete(c.Index, events.Count(e => e.Kind == RigEventKind.Frame && e.Client == c.Index));
             ReplicationStreamOptions stream = Options.ClientStream ?? Options.Stream;
-            int cap = Options.ServerLimit > 0
-                ? Math.Min(Options.ServerLimit, Options.Stream.MaxTransportPayloadBytes)
-                : Options.Stream.MaxTransportPayloadBytes;
-            Trace.AssertMaxima(c.Index, stream.Limits, cap);
+            Trace.AssertMaxima(c.Index, stream.Limits, Options.Stream.MaxTransportPayloadBytes);
+            foreach (FaultSend s in c.Downstream.Sends.Where(s => s.Kind is FaultFrameKind.RebuildDelta
+                or FaultFrameKind.KeyframeChunk or FaultFrameKind.ReplicationMode))
+            {
+                int cap = s.Limit > 0 ? Math.Min(s.Limit, Options.Stream.MaxTransportPayloadBytes)
+                    : Options.Stream.MaxTransportPayloadBytes;
+                Assert.True(s.Payload.Length <= cap,
+                    $"{c.Role} sent {s.Payload.Length} bytes at subtick {s.Subtick} over the {cap}-byte limit in force");
+            }
         }
     }
 
@@ -482,7 +487,10 @@ internal sealed class DeltaReliabilityRig
         WorldClientRebuildDiagnostics before = client.RebuildDiagnosticsForTest;
         bool live = client.RebuildStreamForTest?.OwnsLiveness ?? false;
         var survivors = new Dictionary<long, Entity>(client.ViewForTest.Entities);
+        byte[][] buffers = client.ViewForTest.PresentationArraysForTest().ToArray();
         client.Poll(DeltaFaultSchedule.FrameSeconds);
+        bool presentationChanged = !buffers.SequenceEqual(client.ViewForTest.PresentationArraysForTest(),
+            ReferenceEqualityComparer.Instance);
         foreach (KeyValuePair<long, Entity> kv in client.ViewForTest.Entities)
             if (survivors.TryGetValue(kv.Key, out Entity was))
                 Check(was == kv.Value && client.WorldForTest.IsAlive(kv.Value),
@@ -522,7 +530,7 @@ internal sealed class DeltaReliabilityRig
         double clockBefore = c.Clock;
         client.AdvancePresentation(DeltaFaultSchedule.FrameSeconds);
         c.Clock += DeltaFaultSchedule.FrameSeconds;
-        Record(c, subtick, clockBefore, before, after, ingests.Count, delivered);
+        Record(c, subtick, clockBefore, before, after, ingests.Count, delivered, presentationChanged);
         c.Frames++;
     }
 
@@ -564,14 +572,16 @@ internal sealed class DeltaReliabilityRig
     }
 
     private void Record(RigClient c, int subtick, double clockBefore, WorldClientRebuildDiagnostics before,
-        WorldClientRebuildDiagnostics after, int ingests, int delivered)
+        WorldClientRebuildDiagnostics after, int ingests, int delivered, bool presentationChanged)
     {
         WorldClient client = c.Client;
         IReadOnlyList<PresentationTrace.Row> rows = client.PresentationTrace!.Rows;
         var held = new HashSet<long>();
         float reconcileError = float.NaN;
+        bool arrived = false;
         for (int i = c.TraceCursor; i < rows.Count; i++)
         {
+            arrived |= rows[i].SnapshotArrived;
             if (rows[i].IsLocal) reconcileError = rows[i].ReconcileError;
             else if (rows[i].Held) held.Add(rows[i].EntityId);
         }
@@ -603,7 +613,7 @@ internal sealed class DeltaReliabilityRig
             client.LocalNetId >= 0 ? client.LocalPredictedState : null, rendered, heading, grounded, swimming,
             client.LocalTeleportEpoch, reconcileError, rebuild?.RetainedCountForTest ?? 0,
             rebuild?.RetainedBytesForTest ?? 0, usage.RetainedCount, usage.RetainedBytes, c.MaxStatePayload,
-            after.MaxTransportPayloadBytes, delivered));
+            after.MaxTransportPayloadBytes, delivered, arrived, presentationChanged));
     }
 }
 

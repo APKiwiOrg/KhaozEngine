@@ -251,15 +251,19 @@ public sealed class DeltaReliabilityAcceptanceTests
     [MemberData(nameof(HeadsByCase))]
     public void Ordinal4After5AndDuplicate5NeverReingests(bool sharded, bool wrap)
     {
+        // Ordinal 5 and its duplicate arrive together in the poll after tick 8. Ordinal 4 is released at subtick 34,
+        // between that poll and tick 9, so it arrives alone in the poll at subtick 35 (D2.21). The mover walks through
+        // the schedule, so a stale apply would move its prediction back.
         DeltaFault[] faults =
         {
-            DeltaFaultSchedule.DelayState(4, DeltaFaultSchedule.Subtick(7) + DeltaFaultSchedule.MaxOrdinaryDelaySubticks),
-            DeltaFaultSchedule.DuplicateState(5, DeltaFaultSchedule.Subtick(8) + 2),
+            DeltaFaultSchedule.DelayState(4, DeltaFaultSchedule.Subtick(8) + 2),
+            DeltaFaultSchedule.DuplicateState(5, DeltaFaultSchedule.Subtick(8)),
         };
         var rig = new DeltaReliabilityRig(sharded, Phase, MoveTuning.Default, faults, new DeltaRigOptions
         {
             InputStartTick = 2,
             MoverKeyframeSequence = wrap ? uint.MaxValue - 4u : null,
+            MoverScript = tick => tick < 20 ? new MoveCommand(Vector2.UnitY, run: false, cameraYaw: 0f) : MoveCommand.Idle,
         });
         RigClient mover = rig[RigRole.Mover];
         ulong firstEpoch = 0;
@@ -287,6 +291,20 @@ public sealed class DeltaReliabilityAcceptanceTests
         FaultSend d4 = StateSentAt(mover, 7), d5 = StateSentAt(mover, 8);
         Assert.Equal(4, d4.Ordinal);
         Assert.Equal(5, d5.Ordinal);
+        List<DeltaFrameRow> rows = rig.Trace.FramesOf(mover.Index).ToList();
+
+        // Stale 4 alone in its poll: no rollback, no reconcile, no interpolation sample and no ingest.
+        int staleAt = DeltaFaultSchedule.Subtick(8) + 3;
+        Assert.Equal(DeltaFaultSchedule.Subtick(8) + 2,
+            mover.Downstream.Forwards.Single(f => f.Faulted && f.Ordinal == 4).Subtick);
+        DeltaFrameRow stale = RowAt(rows, staleAt), beforeStale = PreviousRow(rows, staleAt);
+        Assert.Equal(1, stale.DeliveredThisPoll);
+        Assert.Equal(beforeStale.Predicted!.Value.Position, stale.Predicted!.Value.Position);
+        Assert.Equal(beforeStale.Predicted!.Value.Move.FacingYaw, stale.Predicted!.Value.Move.FacingYaw);
+        Assert.Equal(beforeStale.ReconcileError, stale.ReconcileError);
+        Assert.False(stale.SnapshotArrived);
+        Assert.False(stale.PresentationChangedByPoll);
+        AssertNothingIngested(stale, beforeStale);
         if (wrap)
         {
             Assert.Equal(uint.MaxValue, IdOf(d4).Sequence);
@@ -296,17 +314,15 @@ public sealed class DeltaReliabilityAcceptanceTests
         Assert.DoesNotContain(IdOf(d4), mover.Accepted);
         Assert.Contains(IdOf(d5), mover.Accepted);
 
-        List<DeltaFrameRow> rows = rig.Trace.FramesOf(mover.Index).ToList();
+        // Ordinal 5 and its duplicate in one poll ingest once.
         DeltaFrameRow accept5 = RowAt(rows, DeltaFaultSchedule.Subtick(8) + 1);
+        Assert.Equal(2, accept5.DeliveredThisPoll);
         Assert.Equal(1, accept5.IngestsThisPoll);
         Assert.Equal(IdOf(d5), accept5.AcceptedId);
-        // The duplicate of 5 arrives alone. Ordinal 4 arrives with ordinal 6 and only 6 is ingested.
-        AssertNothingIngested(RowAt(rows, DeltaFaultSchedule.Subtick(8) + 3), PreviousRow(rows, DeltaFaultSchedule.Subtick(8) + 3));
-        DeltaFrameRow release4 = RowAt(rows, DeltaFaultSchedule.Subtick(9) + 1);
-        Assert.Equal(2, release4.DeliveredThisPoll);
-        Assert.Equal(1, release4.IngestsThisPoll);
-        Assert.Equal(IdOf(StateSentAt(mover, 9)), release4.AcceptedId);
-        Assert.Equal(Envelope(StateSentAt(mover, 9)).MovementAck, release4.MovementAck);
+        Assert.Equal(Envelope(d5).MovementAck, accept5.MovementAck);
+        DeltaFrameRow next6 = RowAt(rows, DeltaFaultSchedule.Subtick(9) + 1);
+        Assert.Equal(1, next6.DeliveredThisPoll);
+        Assert.Equal(IdOf(StateSentAt(mover, 9)), next6.AcceptedId);
 
         // The limit change retired the first epoch. Both hand-built datagrams are ignored without ingest.
         Assert.True(rows[^1].Selection.Epoch > firstEpoch);
@@ -326,11 +342,13 @@ public sealed class DeltaReliabilityAcceptanceTests
     public void LostAndReorderedAcksRemainBounded(bool sharded)
     {
         // Ack ordinal n advertises the datagram before it and reaches the server at tick n + 3. Ordinals 1 to 3 are
-        // lost, 4 is released behind 5, then 7 to 37 are lost: the server's baseline stays on datagram 5 while the
-        // datagrams sent at ticks 9 to 39 make exactly 31 new committed sends.
+        // lost, then 4 (sent at subtick 27) is released at subtick 32, after 5 (sent at 31) and before 6 (sent at 35),
+        // so it is the last ack the server reads at tick 8 and nothing newer follows it there (D2.21). Then 7 to 37
+        // are lost: the server's baseline stays on datagram 5 while the datagrams sent at ticks 9 to 39 make exactly
+        // 31 new committed sends.
         var faults = new List<DeltaFault>(DeltaFaultSchedule.DropRoutineAcks(1, 3))
         {
-            DeltaFaultSchedule.DelayRoutineAck(4, (4 * 4) + 11 + DeltaFaultSchedule.MaxOrdinaryDelaySubticks),
+            DeltaFaultSchedule.DelayRoutineAck(4, DeltaFaultSchedule.Subtick(8)),
         };
         faults.AddRange(DeltaFaultSchedule.DropRoutineAcks(7, 37));
         var rig = new DeltaReliabilityRig(sharded, Phase, MoveTuning.Default, faults);
@@ -349,12 +367,26 @@ public sealed class DeltaReliabilityAcceptanceTests
                 Assert.True(usage.RetainedBytes <= 2 * 1024 * 1024);
             });
         }
+        // Inside tick 8, after its poll read ack 5 then stale ack 4 and before anything is served: the baseline is the
+        // datagram ack 5 named and did not move back to the one stale ack 4 named.
+        bool checkedStaleAck = false;
+        rig.Host.BeforeTick += _ =>
+        {
+            if (rig.ServerTick != 8) return;
+            Assert.Equal(IdOf(StateSentAt(mover, 7)), rig.Writer.RebuildUsageForTest(mover.Slot).AcknowledgedId);
+            checkedStaleAck = true;
+        };
         rig.Run();
 
         ReplicationPacketId keyframe = mover.Downstream.Sends
             .Where(s => s.Kind == FaultFrameKind.KeyframeChunk).Select(s => ChunkId(s)).First();
         Assert.Equal((4 * 4) + 11, mover.Upstream!.Sends.Single(s => s.Ordinal == 4
             && s.Kind == FaultFrameKind.RoutineAck).Subtick);
+        Assert.Equal(new[] { 5, 4 }, mover.Upstream.Forwards.Where(f => f.Kind == FaultFrameKind.RoutineAck
+            && f.Subtick is > (4 * 7) and <= (4 * 8)).Select(f => f.Ordinal));
+        Assert.Equal(IdOf(StateSentAt(mover, 6)), AckedId(mover.Upstream.Sends.Single(s => s.Ordinal == 4
+            && s.Kind == FaultFrameKind.RoutineAck)));
+        Assert.True(checkedStaleAck);
         for (int tick = 4; tick <= 7; tick++) Assert.Equal(keyframe, acknowledged[tick]);
         Assert.Equal(IdOf(StateSentAt(mover, 7)), acknowledged[8]);
         Assert.Equal(IdOf(StateSentAt(mover, 8)), acknowledged[9]);

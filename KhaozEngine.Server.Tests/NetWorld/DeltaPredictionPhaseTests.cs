@@ -145,7 +145,9 @@ public sealed class DeltaPredictionPhaseTests
             Assert.True(Vector3.Distance(before, after) >= 0.9f * speed * DeltaFaultSchedule.TickSeconds,
                 $"frame {s.Frame}: no predicted motion");
             Assert.True(Vector3.Distance(rows[s.Frame - 1].Rendered!.Value, rows[s.Frame].Rendered!.Value) > 0f);
-            if (phase != 0) Assert.True(ConsumedTick(s.Subtick) * DeltaFaultSchedule.SubticksPerServerTick > s.Subtick);
+            // On a nonzero phase that motion is prediction alone: no state acknowledging the command has arrived yet.
+            if (phase != 0)
+                Assert.True(rows[s.Frame].MovementAck < s.Seq, $"frame {s.Frame}: command {s.Seq} already acknowledged");
         }
 
         // The stale datagram carries an older movement ack and changes nothing at its delivery.

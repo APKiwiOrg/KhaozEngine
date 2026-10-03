@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog.Authoring;
-using KhaozEngine.Sqlite;
 using Microsoft.Data.Sqlite;
 
 namespace KhaozEngine.Catalog.Sqlite;
@@ -49,7 +48,7 @@ public sealed partial class SqliteContentAuthoringStore
     /// <summary>
     /// The import's draft in ONE transaction: the row edits through the ordinary apply body, then, on the
     /// companion route, the bundle's text. A failure rolls the whole draft back, and the caller's reset takes
-    /// back the staging.
+    /// back the staging. The caller holds the lease it checked pending work and staged under.
     /// </summary>
     /// <param name="edits">One import edit per bundle row.</param>
     /// <param name="text">The bundle's complete text, or null on the row-only route.</param>
@@ -70,7 +69,6 @@ public sealed partial class SqliteContentAuthoringStore
             CheckAgainstSchema(edits[i]);
         }
 
-        using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteTransaction transaction = _connection.BeginTransaction();
         await ApplyEditsInAsync(edits, actor, operatorId, note, transaction, cancellationToken).ConfigureAwait(false);
         if (text is not null)

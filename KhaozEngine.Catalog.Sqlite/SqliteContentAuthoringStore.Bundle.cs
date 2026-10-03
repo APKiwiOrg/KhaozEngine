@@ -88,7 +88,8 @@ public sealed partial class SqliteContentAuthoringStore
         bool staged = false;
         try
         {
-            IReadOnlyList<ContentEdit> edits;
+            // The check, the staging and the draft run under ONE lease, so no rival intent can join or open
+            // the draft between the pending-work check and the import's own draft.
             using (SqliteStoreLease staging = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false))
             {
                 int active = (int)await ReadLongAsync(
@@ -127,10 +128,10 @@ public sealed partial class SqliteContentAuthoringStore
                 stage.Commit();
 
                 _importRules = Restamp(bundle);
-                edits = await EditsAsync(bundle, cancellationToken).ConfigureAwait(false);
+                IReadOnlyList<ContentEdit> edits = await EditsAsync(bundle, cancellationToken).ConfigureAwait(false);
+                await ApplyImportDraftAsync(edits, text, actor, operatorId, note, cancellationToken).ConfigureAwait(false);
             }
 
-            await ApplyImportDraftAsync(edits, text, actor, operatorId, note, cancellationToken).ConfigureAwait(false);
             ContentPublishResult published = await PublishAsync(
                 new ContentPublishRequest(actor, operatorId, note, 0), cancellationToken).ConfigureAwait(false);
 

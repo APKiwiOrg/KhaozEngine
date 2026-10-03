@@ -95,7 +95,9 @@ public sealed partial class SqlServerContentAuthoringStore
         bool staged = false;
         try
         {
-            IReadOnlyList<ContentEdit> edits = await WriteAsync(
+            // The check, the staging and the draft run in ONE Serializable scope, so no rival intent can join
+            // or open the draft between the pending-work check and the import's own draft.
+            await WriteAsync(
                 async (scope, token) =>
                 {
                     int active = await ReadActiveVersionAsync(scope, token).ConfigureAwait(false);
@@ -130,11 +132,11 @@ public sealed partial class SqlServerContentAuthoringStore
                     await SeedMarksAsync(scope, bundle, at, token).ConfigureAwait(false);
 
                     _importRules = Restamp(bundle);
-                    return await EditsAsync(scope, bundle, token).ConfigureAwait(false);
+                    IReadOnlyList<ContentEdit> edits = await EditsAsync(scope, bundle, token).ConfigureAwait(false);
+                    await ApplyImportDraftAsync(scope, edits, text, actor, operatorId, note, token).ConfigureAwait(false);
                 },
                 cancellationToken).ConfigureAwait(false);
 
-            await ApplyImportDraftAsync(edits, text, actor, operatorId, note, cancellationToken).ConfigureAwait(false);
             ContentPublishResult published = await PublishAsync(
                 new ContentPublishRequest(actor, operatorId, note, 0), cancellationToken).ConfigureAwait(false);
 

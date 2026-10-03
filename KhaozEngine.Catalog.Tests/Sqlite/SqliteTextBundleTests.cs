@@ -71,9 +71,10 @@ public sealed partial class SqliteTextBundleTests
         }
         """;
 
-    static async Task<SqliteContentAuthoringStore> OpenAsync(TemporaryCatalogDatabase database)
+    static async Task<SqliteContentAuthoringStore> OpenAsync(
+        TemporaryCatalogDatabase database, Func<DateTimeOffset>? clock = null)
     {
-        var store = new SqliteContentAuthoringStore(database.ConnectionString, TextRegistry(), database.Pack());
+        var store = new SqliteContentAuthoringStore(database.ConnectionString, TextRegistry(), database.Pack(), clock);
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
         return store;
     }
@@ -233,6 +234,46 @@ public sealed partial class SqliteTextBundleTests
         Assert.Empty(await store.ListFamiliesAsync(Item));
         Assert.Equal(0, (await store.ReadHighWaterAsync(Item)).ReservedThrough);
         Assert.Equal(audits, await AuditCountAsync(store));
+    }
+
+    [Fact]
+    public async Task A_rival_arriving_during_the_staging_queues_behind_the_import_draft_and_is_kept()
+    {
+        using var database = new TemporaryCatalogDatabase();
+        Func<Task<ContentDraft>>? duringStaging = null;
+        Task<ContentDraft>? rival = null;
+        using SqliteContentAuthoringStore store = await OpenAsync(database, () =>
+        {
+            // The staging reads the clock while the import holds its lease. The rival is called HERE, so it is
+            // already queued on that lease, ahead of every later entry, before the import lets go of it.
+            if (duringStaging is Func<Task<ContentDraft>> start)
+            {
+                duringStaging = null;
+                rival = start();
+            }
+
+            return DateTimeOffset.UnixEpoch;
+        });
+
+        // The rival introduces the same language the bundle declares. Landing between the pending-work check
+        // and the import's draft, it would make the import's own introduction collide and the reset delete it.
+        duringStaging = () => ApplyAsync(
+            store, new[] { Add("axe") }, ContentTextEdit.Set(Target(NameField, "en", "axe"), "Axe"));
+        ContentPublishResult imported = await store.ImportTextBundleAsync(FamilySeed(), Actor, Operator, "seed");
+
+        Assert.Equal(1, imported.VersionNumber);
+        Assert.NotNull(rival);
+        Assert.Equal(0, (await rival!).BaseVersion);
+
+        // It queued behind the import's whole draft and joined it as any second editor does, so the publish
+        // queued after it carries both and nothing acknowledged was lost.
+        Assert.Null(await store.GetOpenDraftAsync());
+        ContentVersionTextSnapshot text = await store.ReadTextSnapshotAsync(1);
+        Assert.Equal(new[] { "en", "fr" }, text.Languages.Select(language => language.WireTag));
+        Assert.Equal(
+            new[] { "Axe", "Blade", "Sword" },
+            text.Revisions.Select(revision => revision.Value).Order(StringComparer.Ordinal));
+        Assert.Single((await store.ListRowsAsync(Item, 1, "axe", false, 0, 1)).Rows);
     }
 
     [Fact]

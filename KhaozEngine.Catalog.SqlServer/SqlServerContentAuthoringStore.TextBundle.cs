@@ -47,17 +47,19 @@ public sealed partial class SqlServerContentAuthoringStore
     }
 
     /// <summary>
-    /// The import's draft in ONE transaction: the row edits through the ordinary apply body, then, on the
-    /// companion route, the bundle's text. A failure rolls the whole draft back, and the caller's reset takes
-    /// back the staging.
+    /// The import's draft inside the caller's scope, the one it checked pending work and staged in: the row
+    /// edits through the ordinary apply body, then, on the companion route, the bundle's text. A failure rolls
+    /// the whole scope back, and the caller's reset takes back the cached rules.
     /// </summary>
+    /// <param name="scope">The caller's connection and Serializable transaction.</param>
     /// <param name="edits">One import edit per bundle row.</param>
     /// <param name="text">The bundle's complete text, or null on the row-only route.</param>
     /// <param name="actor">What the engine authenticated.</param>
     /// <param name="operatorId">The identity the console forwarded.</param>
     /// <param name="note">The operator's note.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
-    Task ApplyImportDraftAsync(
+    async Task ApplyImportDraftAsync(
+        SqlServerCatalogScope scope,
         IReadOnlyList<ContentEdit> edits,
         ContentBundleTextState? text,
         string actor,
@@ -70,16 +72,11 @@ public sealed partial class SqlServerContentAuthoringStore
             CheckAgainstSchema(edits[i]);
         }
 
-        return WriteAsync(
-            async (scope, token) =>
-            {
-                await ApplyEditsInAsync(scope, edits, actor, operatorId, note, token).ConfigureAwait(false);
-                if (text is not null)
-                {
-                    await ApplyImportedTextAsync(scope, text, actor, operatorId, note, token).ConfigureAwait(false);
-                }
-            },
-            cancellationToken);
+        await ApplyEditsInAsync(scope, edits, actor, operatorId, note, cancellationToken).ConfigureAwait(false);
+        if (text is not null)
+        {
+            await ApplyImportedTextAsync(scope, text, actor, operatorId, note, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>

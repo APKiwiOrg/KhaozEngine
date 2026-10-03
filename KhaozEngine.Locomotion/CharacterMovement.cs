@@ -326,9 +326,10 @@ public static partial class CharacterMovement
         //    or already standing on a prop (its carried Y is above the terrain slope-stick band). For a capsule
         //    grounded on terrain, LowPropSupport (CharacterMovement.LowProp.cs) is the one exception, and the
         //    measured guarantee is: a flank steeper than the walking slope limit is never raised (the depenetrate
-        //    settle pass blocks it at the base), a near-flat top (normal at least 0.9) within 0.1 m above the tick's
-        //    start is support, and a walkable flank between those is entered as the swept move allows, then seated
-        //    once the footprint reaches a near-flat part, or sunk into as before (KhaozEngine #1260).
+        //    settle pass blocks it at the base), a near-flat top (normal at least 0.9 and no steeper than the slope
+        //    limit) within 0.1 m above the tick's start is support, and a walkable flank between those is entered as
+        //    the swept move allows, then seated once the footprint reaches a near-flat part, or sunk into as before
+        //    (KhaozEngine #1260).
         float terrainGroundY = groundHeight(pos.X, pos.Z) + halfH;
         float groundY = terrainGroundY;
         if (steppedUp)

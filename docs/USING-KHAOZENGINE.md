@@ -7773,10 +7773,11 @@ open adoption prerequisite for steep meshes and filtered ground. Issue [#1238](h
 is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix. Small local physics coordinates or
 rebasing are required for large absolute requests. There is no ground-sampler fallback and no full Hollowmere or
 steep-bank guarantee. On smooth sloped physics ground, uphill and sideways edges can drop out of the graph and the
-follower can stall short of waypoints at runtime ([#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265), open). Two causes were
-measured: a grounded capsule rests above the captured centre height, and a body under command creeps 1.25 to 3.77 mm
-down the slope because the core's push-out shoves it downhill. Allowing for the height alone did not cure it. The NPC
-and player driver APIs are documented below.
+follower can stall short of waypoints at runtime
+([#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265), open). Two causes were measured: a grounded capsule
+rests above the captured centre height, and a body under command creeps 1.25 to 3.77 mm down the slope because the
+core's push-out shoves it downhill. Allowing for the height alone did not cure it. The NPC and player driver APIs are
+documented below.
 
 Profile building allocates no garbage per proof. A warmed penetration query and a warmed edge proof allocate
 zero bytes, and a 4,096-column flat `BuildProfile` allocates 80 bytes per column, down from 58,774. Engine tests

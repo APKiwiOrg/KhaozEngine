@@ -235,8 +235,8 @@ measured. A grounded capsule on a physics slope rests above the captured centre 
 A body under command also creeps down the slope by 1.25 to 3.77 mm, because the core's push-out shoves it downhill
 each tick, and allowing for the height alone did not cure the miss. So uphill and sideways edges can fail the 1 mm
 arrival tolerance and drop out of the graph, and at runtime `MoveToRange` can stall short of a waypoint on a smooth
-slope. This is open as [#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265) and is not fixed in this release. Check routes over
-sloped physics ground in the game's own world.
+slope. This is open as [#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265)
+and is not fixed in this release. Check routes over sloped physics ground in the game's own world.
 
 ### Aquatic profiles
 
@@ -324,8 +324,9 @@ public sealed class GroundNavigationBake
 
 `Create` builds every profile through `capture.BuildProfile` with its `Aquatic` flag while the capture is live, so each
 profile is exactly the fresh build. An aquatic profile from a capture without `SampleWater` is refused there.
-`WriteTo` writes a little-endian `KENB` file, format version 1, and two writes of one bake are byte-identical. A loaded profile is a `GroundNavigation` like any other, and its `Space`, graph, columns,
-`AllowsSegment` and `Planner` answers equal the fresh build as bits. `GetProfile` throws `KeyNotFoundException` for
+`WriteTo` writes a little-endian `KENB` file, format version 1, and two writes of one bake are byte-identical. A
+loaded profile is a `GroundNavigation` like any other, and its `Space`, graph, columns, `AllowsSegment` and `Planner`
+answers equal the fresh build as bits. `GetProfile` throws `KeyNotFoundException` for
 an unknown name. `Fingerprint` is the SHA-256 of the identity block, for logs and build manifests.
 
 Profile names and source labels are 1 to 64 characters from `a` to `z`, `0` to `9`, `.`, `_`, `-` and `/`, and are

@@ -473,8 +473,8 @@ player and NPC capsules at spheres standing out of flat terrain and measured thr
 
 1. A flank steeper than the walking slope limit is never raised. The radius 2 test dome meets the terrain at a 0.5
    normal and blocks the body at its base with its feet at the terrain.
-2. A near flat top, normal at least 0.9, within 0.1 m above the body's start is support. Lips, curbs, deck tops and
-   a gentle mound that meets the terrain at 0.925 are mounted without sinking.
+2. A near flat top, normal at least 0.9 and no steeper than the slope limit, within 0.1 m above the body's start is
+   support. Lips, curbs, deck tops and a gentle mound that meets the terrain at 0.925 are mounted without sinking.
 3. A walkable flank between those is entered as the swept move allows, because the cap passes through a walkable
    contact. The body is then seated once its footprint reaches a near flat part, or it sinks into the flank as it
    did before this change. A mound meeting the terrain at 0.85 is mounted at player walk pace after sinking about

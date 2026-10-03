@@ -253,8 +253,8 @@ public sealed partial class PathFollower
     /// With <see cref="PathFollowConfig.ConsumePassedCollinearWaypoints"/> it also advances past a collinear
     /// pass-through waypoint the agent has already passed. If that consumes the whole path: a
     /// <see cref="NavPathStatus.Complete"/> path means the goal is reached (<see cref="PathFollowState.Arrived"/>).
-    /// A <see cref="NavPathStatus.Partial"/> path clears itself and steers straight at the raw goal for this one tick, until the next tick's replan (once
-    /// the cooldown allows) picks up a fresh route.</item>
+    /// A <see cref="NavPathStatus.Partial"/> path clears itself and steers straight at the raw goal for this one
+    /// tick, until the next tick's replan (once the cooldown allows) picks up a fresh route.</item>
     /// <item>Otherwise steers at the new active waypoint. If that waypoint is a
     /// <see cref="NavWaypointKind.Hop"/> landing, ground steering is suspended instead: the tick returns
     /// <see cref="PathFollowState.Hopping"/> with <see cref="PathFollowOutput.WorldDir"/> zero and both hop

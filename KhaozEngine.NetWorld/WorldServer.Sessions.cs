@@ -80,7 +80,7 @@ public sealed partial class WorldServer
             selfRescueReadyAt.Remove(slot);
             deltaReplicator?.Forget(slot);
             deltaCapableSlots.Remove(slot);
-            replication.Forget(slot);
+            replication.Left(slot);   // no longer pending a writer restart, stream dropped
             commands.Forget(slot);
         }
     }

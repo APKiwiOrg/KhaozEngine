@@ -553,4 +553,12 @@ internal sealed class RebuildHost
 
     public int CountSuspicious(int slot, SuspiciousReason reason) =>
         Suspicious.Count(s => s.Slot == slot && s.Reason == reason);
+
+    public void SeedEpochs(ulong lastIssued)
+    {
+        if (flat is not null) flat.SeedReplicationEpochForTest(lastIssued);
+        else sharded!.SeedReplicationEpochForTest(lastIssued);
+    }
+
+    public int RestartPending => flat?.ReplicationRestartPendingForTest ?? sharded!.ReplicationRestartPendingForTest;
 }

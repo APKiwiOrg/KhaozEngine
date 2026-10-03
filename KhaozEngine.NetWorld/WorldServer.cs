@@ -241,11 +241,12 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             this.config.SamplerSpace);
         // Always enforce the engine wire generation at connect (independent of any consumer version gate), so a
         // wire-skewed or version-less client is rejected cleanly instead of admitted and left to misparse the wire.
-        net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator),
-            maxQueuedEvents: config.MaxQueuedEvents,
+        var admission = new ReplicationAdmissionGate(WireGenerationAuthenticator.Install(authenticator));
+        net = new NetServer(transport, config.MaxPlayers, admission, maxQueuedEvents: config.MaxQueuedEvents,
             duplicateSessions: config.DuplicateSessions, maxPendingConnections: config.MaxPendingConnections);
-        replication = new RebuildServerStreams(net, deltaReplicator, this.config.ReplicationStream, replicationLimits,
-            this.config.TickSeconds, commands, slot => Raise(slot, SuspiciousReason.MalformedPacket), Disconnect);
+        replication = new RebuildServerStreams(net, admission, deltaReplicator, this.config.ReplicationStream,
+            replicationLimits, this.config.TickSeconds, commands, slot => Raise(slot, SuspiciousReason.MalformedPacket),
+            Disconnect);
         this.banStore = banStore;
         interest = new InterestGrid(MathF.Max(1f, config.InterestRadius));
     }
@@ -432,6 +433,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     /// <summary>Ingests session events (join/leave) and client input. Call once before <see cref="Tick"/>.</summary>
     public void Poll()
     {
+        replication.CheckRestart(deltaCapableSlots);   // an exhausted writer closes admission before any join
         net.Poll();
         while (net.TryDequeueEvent(out ServerSessionEvent ev))
         {
@@ -575,7 +577,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
 
         // Serve each client its area-of-interest, headered with its own net id + move ack. Delta-capable clients get
         // a per-client AoI delta (only what changed since their acknowledged baseline); everyone else a full snapshot.
-        deltaReplicator?.BeginTick();
+        replication.OpenCaptureTick(deltaCapableSlots);   // or waits out a writer restart, opening no capture
         replication.Advance(dt);
         // The fallback snapshot index is rebuilt lazily on the first non-delta client this tick (not unconditionally
         // here), so a tick with only delta-capable clients pays no extra world scan. Every client thereafter this

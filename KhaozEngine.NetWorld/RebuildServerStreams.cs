@@ -10,12 +10,24 @@ namespace KhaozEngine.NetWorld;
 /// <summary>
 /// One server's format 2 state, owned by <see cref="WorldServer"/> and <see cref="ShardedWorldServer"/> alike: the
 /// validated stream limits, the replication cadence, the epoch allocator, one <see cref="RebuildServerStream"/> per
-/// slot whose client asked for format 2, client frame routing and the serve-pass hooks. Hosts keep movement,
-/// visibility and the session lifecycle, and reach back only through the command queue and two callbacks.
+/// slot whose client asked for format 2, client frame routing, the serve-pass hooks and the restart of the shared
+/// delta writer after its legacy sequence is exhausted. Hosts keep movement, visibility and the session lifecycle, and
+/// reach back only through the command queue and two callbacks.
 /// </summary>
+/// <remarks>
+/// <para>Restart lifecycle. At every host boundary, the top of <c>Poll</c> before any join is admitted and the serve
+/// pass before its capture tick opens, an exhausted writer closes the admission gate and ends every session it serves:
+/// each legacy delta slot and each slot whose format 2 stream owns its state. Each one is disconnected with
+/// <see cref="ReplicationFailure.RestartToken"/>, so its client takes the reconnect backoff path with a fresh world and
+/// view, and stays pending until its ordinary <c>Left</c> runs the host's slot cleanup. Pending slots are neither
+/// served nor routed. Only when none is pending is the writer reset and admission reopened. The epoch allocator is
+/// never reset, so fresh streams take epochs above the old high-water. Once the allocator has issued its last epoch
+/// the gate stays closed for the server lifetime.</para>
+/// </remarks>
 internal sealed class RebuildServerStreams
 {
     private readonly NetServer net;
+    private readonly ReplicationAdmissionGate gate;
     private readonly AoiDeltaReplicator? writer;
     private readonly ReplicationStreamOptions? options;
     private readonly DeltaRebuildOptions? limits;
@@ -23,13 +35,18 @@ internal sealed class RebuildServerStreams
     private readonly ReplicationEpochAllocator epochs = new();
     private readonly Dictionary<int, RebuildServerStream> streams = new();
     private readonly List<(int Slot, string Token)> failedSlots = new();
+    // Sessions ended for a writer restart whose Left has not run yet. The reset waits for this to empty.
+    private readonly HashSet<int> pendingRestart = new();
     private readonly RemoteCommandQueue<MoveCommand> commands;
     private readonly Action<int> raiseMalformed;
     private readonly Action<int, string> disconnect;
     private bool allowance;
 
     /// <param name="net">The host's session server.</param>
-    /// <param name="writer">The host's shared delta writer, or null when delta replication is off.</param>
+    /// <param name="gate">The outermost authenticator <paramref name="net"/> was built with. Closed while the writer
+    /// restarts and after epoch exhaustion.</param>
+    /// <param name="writer">The host's shared delta writer, or null when delta replication is off. Restarted after
+    /// legacy sequence exhaustion with or without format 2.</param>
     /// <param name="options">The host's stream options. Read only with <paramref name="limits"/>.</param>
     /// <param name="limits">The value <see cref="ValidateConfig"/> returned. Null keeps format 2 off: no cadence runs
     /// and every capability gets the server policy fallback.</param>
@@ -39,16 +56,18 @@ internal sealed class RebuildServerStreams
     /// <param name="disconnect">Ends a slot's session with a reason token through the host's leave path.</param>
     /// <exception cref="ArgumentNullException">A required argument is null, or limits were given without a writer or
     /// options.</exception>
-    internal RebuildServerStreams(NetServer net, AoiDeltaReplicator? writer, ReplicationStreamOptions? options,
-        DeltaRebuildOptions? limits, float tickSeconds, RemoteCommandQueue<MoveCommand> commands,
-        Action<int> raiseMalformed, Action<int, string> disconnect)
+    internal RebuildServerStreams(NetServer net, ReplicationAdmissionGate gate, AoiDeltaReplicator? writer,
+        ReplicationStreamOptions? options, DeltaRebuildOptions? limits, float tickSeconds,
+        RemoteCommandQueue<MoveCommand> commands, Action<int> raiseMalformed, Action<int, string> disconnect)
     {
         this.net = net ?? throw new ArgumentNullException(nameof(net));
+        this.gate = gate ?? throw new ArgumentNullException(nameof(gate));
+        this.writer = writer;
         this.commands = commands ?? throw new ArgumentNullException(nameof(commands));
         this.raiseMalformed = raiseMalformed ?? throw new ArgumentNullException(nameof(raiseMalformed));
         this.disconnect = disconnect ?? throw new ArgumentNullException(nameof(disconnect));
         if (limits is null) return;
-        this.writer = writer ?? throw new ArgumentNullException(nameof(writer));
+        if (writer is null) throw new ArgumentNullException(nameof(writer));
         this.options = options ?? throw new ArgumentNullException(nameof(options));
         this.limits = limits;
         cadence = new ReplicationCadence(tickSeconds);
@@ -75,6 +94,13 @@ internal sealed class RebuildServerStreams
     /// <summary>The last epoch issued.</summary>
     internal ulong EpochHighWater => epochs.HighWater;
 
+    /// <summary>Test seam: records <paramref name="lastIssued"/> as the last epoch issued.</summary>
+    internal void SeedEpochsForTest(ulong lastIssued) => epochs.SeedForTest(lastIssued);
+
+    /// <summary>Friend-test diagnostic: sessions ended for a writer restart whose <c>Left</c> has not run
+    /// yet.</summary>
+    internal int PendingRestartCount => pendingRestart.Count;
+
     /// <summary>Test seam: invoked once per served slot after the visibility filter and before either writer.</summary>
     internal Action<int, World, IReadOnlySet<long>, long>? ServeObserved { get; set; }
 
@@ -91,6 +117,8 @@ internal sealed class RebuildServerStreams
     /// False leaves the payload to the legacy ack, control and game-message decodes.</summary>
     internal bool Route(int slot, byte[] data, NetChannelReliability reliability)
     {
+        // A session ended for a restart is only waiting for its Left. Nothing it still sends may touch writer state.
+        if (pendingRestart.Contains(slot)) return true;
         if (data.Length == RebuildServerStream.MoveFrameBytes)
         {
             if (MoveProtocol.TryDecodeMove(data, out int seq, out MoveCommand cmd)) commands.Store(slot, seq, cmd);
@@ -133,6 +161,7 @@ internal sealed class RebuildServerStreams
     /// its negotiation ended, so it reports its restart instead of being served legacy state.</summary>
     internal bool Serve(int slot, World served, IReadOnlySet<long> filteredInterest, long ownerNetId, int movementAck)
     {
+        if (pendingRestart.Contains(slot)) return true;   // ended for a restart: neither writer serves it
         ServeObserved?.Invoke(slot, served, filteredInterest, ownerNetId);
         if (!streams.TryGetValue(slot, out RebuildServerStream? stream)) return false;
         if (stream.ServesLegacy && !stream.Faulted) return false;
@@ -151,8 +180,54 @@ internal sealed class RebuildServerStreams
         foreach ((int slot, string token) in failedSlots) disconnect(slot, token);
     }
 
-    /// <summary>Drops a slot's stream on join and leave. The host forgets the writer slot itself. A faulted stream is
-    /// dropped too: its connection is already ending, so no restart token is sent on top.</summary>
+    /// <summary>Runs the writer restart lifecycle at a host boundary: the top of <c>Poll</c> before any join is
+    /// admitted, and the serve pass through <see cref="OpenCaptureTick"/>. See the remarks on this type.</summary>
+    /// <param name="legacyDeltaSlots">The host's joined slots that receive legacy deltas.</param>
+    internal void CheckRestart(IReadOnlyCollection<int> legacyDeltaSlots)
+    {
+        // No epoch is left for this server lifetime, so no fresh stream could negotiate.
+        if (EpochsExhausted) gate.Close();
+        if (writer is null || !writer.LegacySequenceExhausted) return;
+        gate.Close();
+        // Every session the writer serves, read afresh at each boundary: a slot that started receiving legacy deltas or
+        // took a format 2 stream since the last check is ended too.
+        foreach (int slot in legacyDeltaSlots) EndForRestart(slot);
+        foreach (KeyValuePair<int, RebuildServerStream> entry in streams)
+            if (!entry.Value.ServesLegacy) EndForRestart(entry.Key);
+        if (pendingRestart.Count > 0) return;
+        writer.ResetAfterLegacySequenceExhaustion();
+        if (!EpochsExhausted) gate.Open();
+    }
+
+    /// <summary>Opens the writer's one capture tick for the host serve pass, after the restart check. While the writer
+    /// is exhausted and waits for ended sessions no capture is attempted, and only snapshot slots are served.</summary>
+    /// <param name="legacyDeltaSlots">The host's joined slots that receive legacy deltas.</param>
+    internal void OpenCaptureTick(IReadOnlyCollection<int> legacyDeltaSlots)
+    {
+        CheckRestart(legacyDeltaSlots);
+        if (writer is not null && !writer.LegacySequenceExhausted) writer.BeginTick();
+    }
+
+    private bool EpochsExhausted => epochs.HighWater == ulong.MaxValue;
+
+    // Ends one session for the restart through the session server only, so its client takes the backoff reconnect path.
+    // The host's leave runs off the transport's own Disconnected event, never early.
+    private void EndForRestart(int slot)
+    {
+        if (pendingRestart.Add(slot)) net.Disconnect(slot, ReplicationFailure.RestartToken);
+    }
+
+    /// <summary>A slot's cleanup when its session left: it is no longer pending a restart and its stream is
+    /// dropped.</summary>
+    internal void Left(int slot)
+    {
+        pendingRestart.Remove(slot);
+        Forget(slot);
+    }
+
+    /// <summary>Drops a slot's stream on join, and through <see cref="Left"/> on leave. The host forgets the writer
+    /// slot itself. A faulted stream is dropped too: its connection is already ending, so no restart token is sent on
+    /// top.</summary>
     internal void Forget(int slot)
     {
         if (streams.Remove(slot, out RebuildServerStream? stream)) stream.Forget();

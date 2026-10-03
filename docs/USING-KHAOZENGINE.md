@@ -3335,6 +3335,20 @@ scene.Draw(crate, transform, Color.White, Material.None, dissolve: fadeTimer, ed
   identity-node or pre-baked asset is byte-identical to before. (`PropLoader.LoadProp` additionally renormalizes
   to the manifest height, so props were already placement-robust; this matters most for `GltfLoader.Load` used
   directly.)
+- Named nodes as attachment sockets: `GltfLoader.LoadNamedNodes(path)` returns an `IReadOnlyList<GltfNamedNode>`
+  holding every logical node with a non-empty name, empties included, in logical-node order. Each
+  `GltfNamedNode(string Name, Matrix4x4 WorldTransform)` carries the node's world matrix exactly as `Load` bakes
+  geometry, so a module, muzzle or exhaust drawn at an authored empty lines up with the loaded hull. Compose the
+  socket with the hull's own draw transform in row-vector order. Unnamed nodes are skipped but still place their
+  named descendants, duplicate names are all returned in order, and an asset with only empties loads.
+
+```csharp
+MeshHandle hull = scene.LoadMesh(GltfLoader.Load("ship_hull.glb"));
+MeshHandle gun = scene.LoadMesh(GltfLoader.Load("module_gun.glb"));
+var sockets = GltfLoader.LoadNamedNodes("ship_hull.glb").ToDictionary(n => n.Name, n => n.WorldTransform);
+scene.Draw(hull, shipWorld, Color.White);
+scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
+```
 - PBR-lite materials: the rigid lit model pass takes an optional tangent-space NORMAL map and a
   ROUGHNESS map alongside the albedo. Load each map with `LoadTexture`, then bind them with `Scene3D.SurfaceMaps`:
   `scene.LoadMesh(mesh, new Scene3D.SurfaceMaps(albedo, normal, roughness))` - any handle may be `default` to fall
@@ -7550,7 +7564,7 @@ a static-physics navigation profile. It is outside every umbrella and carries no
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.18.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.19.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -7735,7 +7749,7 @@ steep-bank guarantee. The NPC and player driver APIs are documented below.
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.18.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.19.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8298,7 +8312,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.18.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.19.0" />
 ```
 
 ```csharp
@@ -15151,7 +15165,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.18.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.19.0" />
 ```
 
 ```csharp
@@ -15187,7 +15201,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.18.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.19.0" />
 ```
 
 ```csharp
@@ -15429,7 +15443,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.18.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.19.0" />
 ```
 
 ```csharp
@@ -19685,7 +19699,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.18.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.19.0" />
 </ItemGroup>
 ```
 

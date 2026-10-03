@@ -1795,7 +1795,7 @@ are full, the allocator reserves another aligned block the ordinary way (3.8), s
 source row's block. Without a family it allocates through branch 3. The source keeps its id, and the live
 legacy copy receives the new id named by exactly one `MovedToLegacy` rule.
 
-**Copies forked before 20.18.1 stay as they were stored.** Releases 19.0.0 through 20.18.0 gave a family fork a
+**Copies forked before 20.19.0 stay as they were stored.** Releases 19.0.0 through 20.18.0 gave a family fork a
 plain id while copying the source row's `FamilyId`, so the copy names a family whose blocks do not contain its id
 ([#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908)). The engine does not renumber such a copy, rewrite
 a released pack or relax an import check for it. Packs carry no family data, so the column never reached pack

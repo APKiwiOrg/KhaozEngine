@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Physics;
 
@@ -22,7 +23,8 @@ public static partial class CharacterMovement
         in Vector3 startPos, float halfH, float terrainGroundY, float groundY)
     {
         float probeStart = pos.Y + 2f * halfH;
-        float maxProbe = (probeStart - terrainGroundY) + 2f * halfH;
+        // Only a top above the terrain can qualify, so the sweep stops a skin below the terrain rest height.
+        float maxProbe = MathF.Max(SkinWidth, probeStart - terrainGroundY + SkinWidth);
         if (!world.SweepCapsule(capsule, Pose.At(new Vector3(pos.X, probeStart, pos.Z)), -Vector3.UnitY, maxProbe,
                 out SweepHit hit) ||
             hit.Normal.Y < LipLandingFlatNormalY || !UnderFootprint(hit.Point, pos, capsule.Radius))

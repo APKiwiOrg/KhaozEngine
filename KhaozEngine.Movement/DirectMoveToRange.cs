@@ -10,9 +10,9 @@ namespace KhaozEngine.Movement;
 /// of target shape, range or capsule geometry. Call Reset for target replacement, teleport or manual
 /// cancellation.
 /// <para>A step whose preflight leaves the ground is refused unless <see cref="DirectApproachOptions.MaxDropMetres"/>
-/// is positive and the predicted fall, settled with zero input, lands grounded and dry within that allowance below the
-/// current feet. An admitted drop is then airborne, so it stays Suspended and counts toward neither window until it
-/// lands. Stop ring bisection still takes only grounded fractions, and keeps the whole admitted step when none
+/// is positive and the predicted fall, settled with zero input, lands grounded and not swimming within that allowance
+/// below the current feet, on a floor the next step would not swim from. The step-off tick is Following with the
+/// admitted command. The airborne ticks after it are Suspended and count toward neither window until it lands. Stop ring bisection still takes only grounded fractions, and keeps the whole admitted step when none
 /// reaches range.</para>
 /// <para>It never steers a swimmer. A swimming body is not grounded, so it stays Suspended. The driver has no graph
 /// guard and the core does not collide a swimmer, so a direct swim approach could pass through props at the

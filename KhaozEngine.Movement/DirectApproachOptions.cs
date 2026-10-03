@@ -35,8 +35,9 @@ public sealed record DirectApproachOptions
     public float ApproachGainMetres { get; }
 
     /// <summary>How far below the current feet a step that leaves the ground may land and still be taken. Zero, the
-    /// default, refuses every step that leaves the ground. A positive allowance admits a step that settles grounded and
-    /// dry, under zero input, no lower than this below the current feet.</summary>
+    /// default, refuses every step that leaves the ground. A positive allowance admits a step that settles, under zero
+    /// input, grounded and not swimming no lower than this below the current feet. A landing the next step would swim
+    /// from is refused. A wade-depth landing is admitted.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is not finite or is negative.</exception>
     public float MaxDropMetres
     {

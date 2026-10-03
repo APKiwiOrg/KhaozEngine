@@ -8130,9 +8130,10 @@ stall window falls below `stallTravelMetres`, or reach distance across the appro
 a change of target shape, range or capsule geometry. A step that would leave the ground or start swimming is
 refused and counts as no progress. The opt-in `MaxDropMetres`, finite and not negative with a zero default, admits a
 step that leaves the ground when its predicted fall, settled with zero input through the live context, lands
-grounded and dry no more than that depth below the current feet. A deeper drop, a landing in swim-depth water or a
-fall that has not landed within 256 settle steps is still refused. The drop itself is `Suspended`, and the approach
-resumes on landing. Airborne, committed and zero-travel ticks count toward neither window. Pass
+grounded and not swimming no more than that depth below the current feet. A deeper drop, a landing on a floor at
+swim depth, a fall that starts swimming or one that has not landed within 256 settle steps is still refused. The
+step-off tick is `Following` with the admitted command. The airborne ticks after it are `Suspended`, and the
+approach resumes on landing. Airborne, committed and zero-travel ticks count toward neither window. Pass
 `targetMoves` true for body targets, which disables the approach window. Call `Tick` exactly once per simulation
 tick. Keep range and target shape constant for a walk, and call Reset to start a new one.
 

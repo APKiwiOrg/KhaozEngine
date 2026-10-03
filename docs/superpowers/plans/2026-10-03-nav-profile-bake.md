@@ -515,3 +515,84 @@ Departures.
 - Tests beyond the brief: a 64-character and full-alphabet label and name are accepted, `AddHashOf` over a span and a
   stream equals `SHA256.HashData`, `Snapshot` copies digests, every retained tuning field round trips with distinct
   values, and each corrupt case asserts its own reason so it cannot pass on an unrelated failure.
+
+### Task 6: route-free approach driver
+
+Done. Commits `refactor(movement): share range approach helpers` and
+`feat(movement): approach reach targets without a planner` on `feature/grimhollow-nav-driver` from `a4ba1bba7`.
+
+Step 1 base count. The Step 1 filter passed 97 of 97 on unchanged source and 97 of 97 after the extraction. After the
+driver it passes 121 of 121, which is the same 97 plus the 24 `DirectMoveToRangeTests` cases that
+`FullyQualifiedName~MoveToRange` also matches.
+
+RED evidence. Both Step 4 commands failed to compile with CS0246 for `DirectMoveToRange` and `DirectApproachOptions`.
+The compiler stopped at those types before binding `RangeMoveStatus.Blocked`.
+
+GREEN. `DirectMoveToRangeTests` 24 passed of 24. `PlayerDirectApproachAcceptanceTests` 2 passed of 2. Server.Tests
+`FullyQualifiedName~PlayerRangeMovement` 7 passed of 7. Zero build warnings. File size and dash guards exit 0.
+
+`RangeMoveStatus` consumers. Only `PlayerPathMovement.Command` and `NpcGroundMovement.Step` read the status, and both
+test for `Following` alone. `BlockedRequestsIdleFromBothAdapters` proves `Blocked` is idle through each. No switch over
+the enum exists in engine source.
+
+Departures.
+
+- The reset key is compared on every validated tick, before the suspension check. `MoveToRange` compares it only on
+  route ticks. Reason: a latched block must not survive a range or shape change made while the body is airborne or
+  already blocked. Cost: none.
+- Ruling N4 moved the reset key into one internal `RangeShapeKey` with `From(tuning, target, range)` in
+  `RangeApproachCore.cs`. Both drivers use it, so a new field cannot drift between them. `MoveToRange.Goal.cs` changed
+  only to call it, and the Step 1 filter proves `MoveToRange` behavior is unchanged.
+- The direct admission delegate is one static field, since it reads no instance state. `MoveToRange` caches its own in
+  its constructor as specified.
+- The ledge fact walks the body to the brink with the driver, then calls `Reset` and asserts the 16 counted ticks
+  from there. Reason: the exact refusal point depends on how the core rests a capsule on an edge. The body rests on
+  the corner about 0.056 m below its standing height. The fact asserts it stays grounded and no lower than 2.75 m
+  minus the capsule radius, since corner sag cannot exceed the radius.
+- `ShapeRangeAndGeometryChangesReset` also asserts that translating the target keeps the latch, since the driver
+  holds no target identity.
+- `dotnet format --verify-no-changes` reports whitespace on lines 19, 20 and 58 of `PlayerRangeMovementTestRig.cs`.
+  Those lines predate this task and engine CI does not run the format check, so they were left alone.
+
+Ruling N3 follow-up, commit `fix(movement): bound direct approach windows`. `DirectApproachOptions` refuses a window
+above 65,535 ticks, so the ring capacity cannot overflow. `WindowsUpToTheBoundBuildADriver` and three new refusal rows
+cover the bound. `WarmedSteadyTicksAllocateNothing` measures recorded orbit ticks, a stop ring bisection and `Reset` with
+`AllocAssert`, and the test class joined the `AllocSensitive` collection. `DirectMoveToRangeTests` 29 passed of 29, Step 1
+filter 126 passed of 126. The allocation fact passed on first run, as acceptance evidence for an existing property.
+
+Ruling N4 follow-up, commit `refactor(movement): share range shape keys`. The shared `RangeShapeKey` is described in the
+departures above. Tests add capsule half height and a capsule target's radius and half height to the shape reset
+cases, a committed grounded body to the suspension theory, `LatchedBlockSurvivesSuspendedTicks`, and `ParamName` checks
+in the options theory. `DirectMoveToRangeTests` 31 passed of 31, Step 1 filter 128 passed of 128.
+
+Movement README draft for Task 7, a "Route-free approach" section after "Range steering and movement drivers":
+
+```markdown
+## Route-free approach
+
+`DirectMoveToRange` steers a body toward exact shape range without a planner. It shares `MoveToRange`'s exact reach,
+travel bound, closest point and stop ring code, and returns the same `RangeSteering` for `PlayerPathMovement` and
+`NpcGroundMovement`. `DirectApproachOptions` takes a stall window in ticks with a travel distance and an approach
+window in ticks with a reach gain. There are no defaults. A window of N ticks spans N intervals between N + 1 counted
+samples and is first eligible on the (N + 1)th counted tick. When either window shows too little progress the driver
+latches `RangeMoveStatus.Blocked`, which both adapters treat as idle.
+
+Differences from a typical game-side walk-up rule:
+
+- Direction uses the closest horizontal point of a box rather than its centre. For capsules and points they are the
+  same. A box approach reaches its near face sooner.
+- The final fraction comes from live bisection against exact reach, not from a minimum fraction, so a short last step
+  cannot stall or overshoot.
+- A step that would leave the ground or start swimming is refused and counts toward the stall window, so a walk off a
+  ledge or into deep water ends `Blocked` instead of falling or swimming.
+- A zero travel bound, such as a rooted body, counts toward neither window, so a rooted body holds without ending its
+  walk. Airborne and committed ticks return `Suspended` and also count toward neither window.
+- `InRange` clears both windows, so a followed body that moves away starts fresh windows.
+- Stall travel is net displacement across the window, not accumulated path length, so pacing in place is blocked.
+- `Blocked` stays latched until `InRange` or `Reset`. End the walk on the first `Blocked`.
+- A change of target kind, shape, yaw, range or capsule geometry resets the windows. A change of `targetMoves` clears
+  only the approach window. The driver holds no target identity, so replacing the target with another of the same
+  shape needs `Reset`.
+- Pass `targetMoves` true for any body target, such as a creature or player, and false for static objects and points.
+- Call `Tick` exactly once per simulation tick, since the windows count ticks.
+```

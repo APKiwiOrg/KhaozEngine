@@ -486,3 +486,32 @@ thread-static fields. No issue was filed, by dispatch instruction.
 
 Verification. Movement.Tests 354 passed of 354. Game.Tests `KhaozEngine.Tests.Physics` 203 passed of 203.
 Game.Tests `KhaozEngine.Tests.Locomotion` 996 passed, 1 skipped of 997. Zero build warnings. File size guard exit 0.
+
+### Task 3: canonical bake identity
+
+Done. RED was a compile failure on the missing types (CS0246 and CS0103, 12 errors). GREEN is 41 of 41 in
+`NavBakeIdentityTests` with zero warnings.
+
+Golden fingerprint, the SHA-256 of the identity block, is
+`a0a927cec3bf88a763041c829767efc6be1415e4e75070cc378948cfd43666e3` over 228 bytes. Inputs: engine version
+`0.0.0-golden`, options `MinX -8`, `MinZ -8`, `MaxX 8`, `MaxZ 8`, `CellSize 0.25`, `ProbeHeight 10`, `ProbeRange 20`,
+`MaxSlopeRadians 0.8`, `MaxCells 4096`, `MaxLayerCells 8192` with the other three at their declared defaults, one
+source `world` with 32 bytes of `0x11`, and one profile `player` with default areas and
+`new MoveTuning(WalkSpeed: 2f, RunSpeed: 5f, CapsuleHalfHeight: 0.75f, MaxSlopeRadians: 0.8f, CapsuleRadius: 0.3f)`.
+The same digest was computed independently from the design S4 layout with Python `struct`, so the encoder matches the
+written layout and holds no architecture-dependent data.
+
+Departures.
+
+- `ReadTuning` is `bool ReadTuning(ref NavBakeReader reader, out MoveTuning tuning)` rather than returning the tuning,
+  because every reader call reports running out of bytes, and a bool byte other than 0 or 1 is also non-canonical.
+- `NavBakeIdentity.TryDecode` is the non-throwing decode path for Task 4. It returns the decoded engine version, raw
+  option bits, sources and profiles with raw area bits, and a developer reason on failure.
+- `NavBakeIdentity.FormatVersion` (value 1) lives with the identity, since adding a `MoveTuning` or
+  `PhysicsNavBakeOptions` field changes the identity layout and requires that bump. The golden test asserts it. Task 4's
+  container reads it.
+- `Encode` validates the engine version, names, labels, digests, counts and duplicates. It does not validate the
+  capture options, which stay the concern of `Create` and the Task 4 reader.
+- Tests beyond the brief: a 64-character and full-alphabet label and name are accepted, `AddHashOf` over a span and a
+  stream equals `SHA256.HashData`, `Snapshot` copies digests, every retained tuning field round trips with distinct
+  values, and each corrupt case asserts its own reason so it cannot pass on an unrelated failure.

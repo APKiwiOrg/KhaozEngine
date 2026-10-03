@@ -109,6 +109,31 @@ public class LowPropSupportTests
         Assert.True(body.Position.X < -1.5f, $"passed the dome base, centre {body.Position}");
     }
 
+    // A low top tilted to a 0.92 normal, flatter than the low prop test, passes 0.05 m above the terrain under a body
+    // at rest. With the default 45 degree slope limit it is walkable and the body is seated on it. With a 20 degree
+    // limit (cos 0.94) it is steeper than the walking slope limit, so it is never support, whatever the low prop test.
+    [Theory]
+    [InlineData(45f, true)]
+    [InlineData(20f, false)]
+    public void LowTopSteeperThanTheSlopeLimitIsNeverSupport(float slopeDegrees, bool seated)
+    {
+        MoveTuning tuning = Tuning with { MaxSlopeRadians = slopeDegrees * MathF.PI / 180f };
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        float tilt = MathF.Acos(0.92f);
+        var normal = new Vector3(-MathF.Sin(tilt), MathF.Cos(tilt), 0f);
+        const float HalfThickness = 0.05f;
+        world.AddStatic(new BoxShape(new Vector3(1f, HalfThickness, 2f)), new Pose(
+            new Vector3(0f, 0.05f, 0f) - normal * HalfThickness, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, tilt)));
+        world.Step(Dt);
+        var body = new MoveState { Position = new Vector3(0f, tuning.CapsuleHalfHeight, 0f), Grounded = true };
+
+        body = CharacterMovement.StepTowards(body, Vector2.Zero, false, Dt, Flat, tuning, world: world);
+
+        float feet = body.Position.Y - tuning.CapsuleHalfHeight;
+        if (seated) Assert.True(feet > 0.055f, $"not seated on the walkable top, feet {feet:F4}");
+        else Assert.True(feet < 0.05f, $"seated on a top steeper than the slope limit, feet {feet:F4}");
+    }
+
     // Steers from x -2.5 toward the crown of a sphere standing `height` out of the terrain for 120 ticks, checking
     // the body stays grounded. Returns the final state, the deepest penetration (negative) and the highest feet.
     static (MoveState Body, float Deepest, float Highest) WalkToTheCrown(float radius, float height, bool run)

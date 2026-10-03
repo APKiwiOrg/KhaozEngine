@@ -729,7 +729,9 @@ public static partial class CharacterMovement
                 if (propCentreY > groundY && propCentreY <= pos.Y + t.StepHeight) groundY = propCentreY;
             }
         }
-        else groundY = LowPropSupport(world, capsule, pos, startPos, halfH, terrainGroundY, groundY);
+        else
+            groundY = LowPropSupport(world, capsule, pos, startPos, halfH, terrainGroundY, groundY,
+                MathF.Cos(t.MaxSlopeRadians));
 
         // 4-tread-find. The downward capsule sweep above MISSES the tread at a staircase BASE when the footprint
         // STRADDLES a tread shallower than the capsule diameter: the sweep grazes the vertical riser front face, returns

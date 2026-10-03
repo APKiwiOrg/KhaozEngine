@@ -20,16 +20,19 @@ public static partial class CharacterMovement
     private const float LowPropRise = 0.1f;
 
     /// <summary>The support floor raised onto a low near-flat prop top under the footprint, for a grounded body the
-    /// ordinary prop sweep skips. Returns <paramref name="groundY"/> unchanged when no such top qualifies.</summary>
+    /// ordinary prop sweep skips. The top must pass both the flat tread test and the walkable slope test
+    /// (<paramref name="cosMaxSlope"/>), so a surface steeper than the walking slope limit is never support. Returns
+    /// <paramref name="groundY"/> unchanged when no such top qualifies.</summary>
     private static float LowPropSupport(IPhysicsWorld world, in CapsuleShape capsule, in Vector3 pos,
-        in Vector3 startPos, float halfH, float terrainGroundY, float groundY)
+        in Vector3 startPos, float halfH, float terrainGroundY, float groundY, float cosMaxSlope)
     {
         float probeStart = pos.Y + 2f * halfH;
         // Only a top above the terrain can qualify, so the sweep stops a skin below the terrain rest height.
         float maxProbe = MathF.Max(SkinWidth, probeStart - terrainGroundY + SkinWidth);
         if (!world.SweepCapsule(capsule, Pose.At(new Vector3(pos.X, probeStart, pos.Z)), -Vector3.UnitY, maxProbe,
                 out SweepHit hit) ||
-            hit.Normal.Y < LipLandingFlatNormalY || !UnderFootprint(hit.Point, pos, capsule.Radius))
+            hit.Normal.Y < MathF.Max(LipLandingFlatNormalY, cosMaxSlope) ||
+            !UnderFootprint(hit.Point, pos, capsule.Radius))
             return groundY;
         float centreY = probeStart - hit.Distance;
         return centreY > groundY && centreY <= startPos.Y + LowPropRise ? centreY : groundY;

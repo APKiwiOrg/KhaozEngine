@@ -13,14 +13,16 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// <para>
 /// <b>Step 10 is one Serializable transaction and it is the only commit point.</b> Inside it, in order:
 /// confirm the version number, insert the version row, close and insert every temporal row, append every
-/// remap rule, insert every chunk row one per side, insert every audit row, delete the draft, and move the
-/// active pointer LAST. A reader that sees the new active version is guaranteed to see everything of it.
+/// remap rule, insert every chunk row one per side, close and insert every text revision, record every
+/// language, insert every audit row, delete the draft, and move the active pointer LAST. A reader that sees
+/// the new active version is guaranteed to see everything of it. The row-only and the text route share that
+/// core and differ only in the text they stage, so every version is recorded text complete.
 /// </para>
 /// <para>
-/// <b>Every row, field row, close, rule, chunk and draft rebase this commit writes carries the version's own
-/// publish time</b>, the value <c>catalog_version.published_at_utc</c> holds, which is also what the version 3
-/// migration fills a legacy row of those tables with. The active pointer and the audit rows read the clock as
-/// they always have.
+/// <b>Every row, field row, close, rule, chunk, text revision, language record and draft rebase this commit
+/// writes carries the version's own publish time</b>, the value <c>catalog_version.published_at_utc</c> holds,
+/// which is also what the version 3 migration fills a legacy row of those tables with. The active pointer and
+/// the audit rows read the clock as they always have.
 /// </para>
 /// <para>
 /// <b>The number is CONFIRMED rather than trusted, and on this backend the confirmation is load bearing.</b>
@@ -56,8 +58,8 @@ public sealed partial class SqlServerContentAuthoringStore
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(request);
 
-        // This provider stores no text yet, so the row half of a text plan is refused before any transaction
-        // rather than committed without its text.
+        // The row half of a text plan is refused before any transaction rather than committed without its
+        // text.
         ContentTextCompatibility.RequireRowOnlyPlan(plan, nameof(CommitPublishAsync));
 
         if (!plan.IsValid)
@@ -74,104 +76,141 @@ public sealed partial class SqlServerContentAuthoringStore
         return WriteAsync(
             async (scope, token) =>
             {
-                // 1. CONFIRM the number. The highest published version is re-read HERE, inside the
-                // transaction, so a publish that landed while this plan was being prepared is caught rather
-                // than overwritten.
-                int highest = await ReadIntAsync(
-                    scope, "SELECT COALESCE(MAX(version_number), 0) FROM dbo.catalog_version;", token)
+                IReadOnlyList<RemapRule> held = await ConfirmNumberAsync(scope, plan, token).ConfigureAwait(false);
+
+                // The row-only route carries the base version's text forward untouched, and refuses when the
+                // draft or the frozen rows need text it cannot carry, or the base's text is unknown.
+                ContentTextCommit text = await StageRowOnlyTextAsync(scope, plan, nameof(CommitPublishAsync), token)
                     .ConfigureAwait(false);
-                if (plan.VersionNumber != highest + 1)
-                {
-                    throw Moved(FormattableString.Invariant(
-                        $"The plan publishes version {plan.VersionNumber} and the highest published version is {highest}, so the next number is {highest + 1}. Another publish landed under this plan and its manifest hashes already carry the wrong number."));
-                }
-
-                IReadOnlyList<RemapRule> held = await ReadRulesAsync(scope, token).ConfigureAwait(false);
-                ContentRulePrefix.Require(held, plan);
-
-                ContentPublishBaseline before = await ReadBaselineAsync(scope, token).ConfigureAwait(false);
-
-                // 2. The version row, which every other insert below has a foreign key to.
-                var record = new ContentVersionRecord(
-                    plan.VersionNumber,
-                    plan.ServerManifestHash,
-                    plan.ClientManifestHash,
-                    plan.MinimumServerBuild,
-                    plan.MinimumClientBuild,
-                    plan.FormatGeneration,
-                    plan.BaseVersion,
-                    request.Actor,
-                    request.Note,
-                    _clock());
-                await InsertVersionAsync(scope, record, token).ConfigureAwait(false);
-                DateTimeOffset at = record.PublishedAtUtc;
-
-                // 3. Every temporal row change: the closes first, so no insert is mistaken for the revision
-                // it replaces while the walk is half done.
-                for (int i = 0; i < plan.Closes.Count; i++)
-                {
-                    await CloseRowAsync(scope, plan.Closes[i], at, token).ConfigureAwait(false);
-                }
-
-                for (int i = 0; i < plan.Inserts.Count; i++)
-                {
-                    await InsertRowAsync(scope, plan.Inserts[i], at, token).ConfigureAwait(false);
-                }
-
-                // 4. Every remap rule, appended at the sequence above the highest. Append only: there is no
-                // update and no delete of a rule anywhere.
-                for (int i = held.Count; i < plan.Rules.Count; i++)
-                {
-                    await InsertRuleAsync(scope, plan.Rules[i], at, token).ConfigureAwait(false);
-                }
-
-                // 5. Every chunk row, ONE PER SIDE, the carried-forward ones included.
-                for (int i = 0; i < plan.Chunks.Count; i++)
-                {
-                    await InsertChunkAsync(scope, plan.VersionNumber, plan.Chunks[i], at, token)
-                        .ConfigureAwait(false);
-                }
-
-                // 6. Every audit row, field level, against the version the rows are leaving.
-                await AppendPublishAuditAsync(scope, before, plan, request, token).ConfigureAwait(false);
-
-                // 6b. The applied ledger row, when this publish carries an upgrade. It is INSIDE this
-                // transaction, so the version and the history entry naming the upgrade that produced it land
-                // together, and an id the ledger already holds refuses the whole commit.
-                await InsertAppliedUpgradeAsync(scope, request, plan.VersionNumber, token).ConfigureAwait(false);
-
-                // 7. The draft, scoped to the edits this plan FROZE. The freeze is what makes that the whole
-                // draft, so anything else here survives rather than being deleted unpublished.
-                await DeleteFrozenEditsAsync(scope, plan, at, token).ConfigureAwait(false);
-
-                // 8. The active pointer, LAST. It moves for the NEXT boot: a running server keeps serving the
-                // version it loaded.
-                await using (SqlCommand pointer = Command(
-                    scope,
-                    """
-                    UPDATE dbo.catalog_metadata SET active_version = @version, updated_at_utc = @now
-                    WHERE metadata_key = 1;
-                    """))
-                {
-                    BindInt(pointer, "@version", plan.VersionNumber);
-                    BindTime(pointer, "@now", _clock());
-                    await pointer.ExecuteNonQueryAsync(token).ConfigureAwait(false);
-                }
-
-                // 9. The pack's version pointer, after every statement above and before the commit. The
-                // update just above holds the metadata row exclusively, so a rival publishing the same number
-                // is blocked or chosen as the deadlock victim before it gets here, and only the winner writes
-                // the pointer. A failure here rolls the whole version back.
-                if (pointers is not null)
-                {
-                    await pointers.PutVersionPointerAsync(
-                        plan.VersionNumber, plan.ServerManifestHash, plan.ClientManifestHash, token)
-                        .ConfigureAwait(false);
-                }
-
-                return record;
+                return await CommitCoreAsync(scope, plan, request, pointers, text, held, token).ConfigureAwait(false);
             },
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Step 1 of a commit: CONFIRM the number rather than trusting it, and the rule list the plan extends. The
+    /// highest published version is re-read HERE, inside the transaction, so a publish that landed while this
+    /// plan was being prepared is caught rather than overwritten.
+    /// </summary>
+    /// <returns>The rules the store holds, which the commit appends above.</returns>
+    static async Task<IReadOnlyList<RemapRule>> ConfirmNumberAsync(
+        SqlServerCatalogScope scope,
+        ContentPublishPlan plan,
+        CancellationToken cancellationToken)
+    {
+        int highest = await ReadIntAsync(
+            scope, "SELECT COALESCE(MAX(version_number), 0) FROM dbo.catalog_version;", cancellationToken)
+            .ConfigureAwait(false);
+        if (plan.VersionNumber != highest + 1)
+        {
+            throw Moved(FormattableString.Invariant(
+                $"The plan publishes version {plan.VersionNumber} and the highest published version is {highest}, so the next number is {highest + 1}. Another publish landed under this plan and its manifest hashes already carry the wrong number."));
+        }
+
+        IReadOnlyList<RemapRule> held = await ReadRulesAsync(scope, cancellationToken).ConfigureAwait(false);
+        ContentRulePrefix.Require(held, plan);
+        return held;
+    }
+
+    /// <summary>
+    /// Steps 2 to 9 of a confirmed commit, shared by the row-only and the text route, which differ only in the
+    /// text they stage. The caller owns the transaction, which commits when the caller's body returns.
+    /// </summary>
+    async Task<ContentVersionRecord> CommitCoreAsync(
+        SqlServerCatalogScope scope,
+        ContentPublishPlan plan,
+        ContentPublishRequest request,
+        IPackVersionPointerStore? pointers,
+        ContentTextCommit text,
+        IReadOnlyList<RemapRule> held,
+        CancellationToken cancellationToken)
+    {
+        ContentPublishBaseline before = await ReadBaselineAsync(scope, cancellationToken).ConfigureAwait(false);
+
+        // 2. The version row, which every other insert below has a foreign key to. It is recorded text
+        // complete, a version publishing no language included.
+        var record = new ContentVersionRecord(
+            plan.VersionNumber,
+            plan.ServerManifestHash,
+            plan.ClientManifestHash,
+            plan.MinimumServerBuild,
+            plan.MinimumClientBuild,
+            plan.FormatGeneration,
+            plan.BaseVersion,
+            request.Actor,
+            request.Note,
+            _clock());
+        await InsertVersionAsync(scope, record, cancellationToken).ConfigureAwait(false);
+        DateTimeOffset at = record.PublishedAtUtc;
+
+        // 3. Every temporal row change: the closes first, so no insert is mistaken for the revision it
+        // replaces while the walk is half done.
+        for (int i = 0; i < plan.Closes.Count; i++)
+        {
+            await CloseRowAsync(scope, plan.Closes[i], at, cancellationToken).ConfigureAwait(false);
+        }
+
+        for (int i = 0; i < plan.Inserts.Count; i++)
+        {
+            await InsertRowAsync(scope, plan.Inserts[i], at, cancellationToken).ConfigureAwait(false);
+        }
+
+        // 4. Every remap rule, appended at the sequence above the highest. Append only: there is no update and
+        // no delete of a rule anywhere.
+        for (int i = held.Count; i < plan.Rules.Count; i++)
+        {
+            await InsertRuleAsync(scope, plan.Rules[i], at, cancellationToken).ConfigureAwait(false);
+        }
+
+        // 5. Every chunk row, ONE PER SIDE, the carried-forward ones included.
+        for (int i = 0; i < plan.Chunks.Count; i++)
+        {
+            await InsertChunkAsync(scope, plan.VersionNumber, plan.Chunks[i], at, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        // 5b. Every text revision closed and inserted, and the version's complete language record.
+        await WriteTextAsync(scope, plan.VersionNumber, text, at, cancellationToken).ConfigureAwait(false);
+
+        // 6. Every audit row, field level, rows then text, against the version the rows are leaving.
+        await AppendPublishAuditAsync(scope, before, plan, request, cancellationToken).ConfigureAwait(false);
+        await AppendTextPublishAuditAsync(scope, text, plan, request, cancellationToken).ConfigureAwait(false);
+
+        // 6b. The applied ledger row, when this publish carries an upgrade. It is INSIDE this transaction, so
+        // the version and the history entry naming the upgrade that produced it land together, and an id the
+        // ledger already holds refuses the whole commit.
+        await InsertAppliedUpgradeAsync(scope, request, plan.VersionNumber, cancellationToken).ConfigureAwait(false);
+
+        // 7. The draft, scoped to the rows and text this plan FROZE. The freeze is what makes that the whole
+        // draft, so anything else here survives rather than being deleted unpublished.
+        await DeleteFrozenEditsAsync(scope, plan, text.PublishedText, at, cancellationToken).ConfigureAwait(false);
+
+        // 8. The active pointer, LAST. It moves for the NEXT boot: a running server keeps serving the version
+        // it loaded.
+        await using (SqlCommand pointer = Command(
+            scope,
+            """
+            UPDATE dbo.catalog_metadata SET active_version = @version, updated_at_utc = @now
+            WHERE metadata_key = 1;
+            """))
+        {
+            BindInt(pointer, "@version", plan.VersionNumber);
+            BindTime(pointer, "@now", _clock());
+            await pointer.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        // 9. The pack's version pointer, after every statement above and before the commit. The update just
+        // above holds the metadata row exclusively, so a rival publishing the same number is blocked or chosen
+        // as the deadlock victim before it gets here, and only the winner writes the pointer. A failure here
+        // rolls the whole version back.
+        if (pointers is not null)
+        {
+            await pointers.PutVersionPointerAsync(
+                plan.VersionNumber, plan.ServerManifestHash, plan.ClientManifestHash, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return record;
     }
 
     /// <inheritdoc />
@@ -241,6 +280,7 @@ public sealed partial class SqlServerContentAuthoringStore
                 }
 
                 int active = await ReadActiveVersionAsync(scope, token).ConfigureAwait(false);
+                await RequireRowOnlyRollbackAsync(scope, active, targetVersion, token).ConfigureAwait(false);
                 ContentRollbackPlan prepared = ContentRollback.Prepare(
                     targetVersion,
                     await ReadRevisionsAsync(scope, default, null, targetVersion, token).ConfigureAwait(false),
@@ -257,26 +297,44 @@ public sealed partial class SqlServerContentAuthoringStore
             throw ContentRollback.Refusal(plan);
         }
 
-        ContentDraft draft = await ApplyEditsAsync(plan.Edits, actor, operatorId, note, cancellationToken)
-            .ConfigureAwait(false);
+        // ONE transaction for the re-check, the edits and the audit. The plan was computed under the read
+        // above, and a publish landing in between could have moved the active version or given it text, so
+        // both are confirmed again here, where the rollback edits are applied, rather than trusted.
+        for (int i = 0; i < plan.Edits.Count; i++)
+        {
+            CheckAgainstSchema(plan.Edits[i]);
+        }
 
-        await WriteAsync(
-            (scope, token) => AppendAuditAsync(
-                scope,
-                ContentAuditActions.Rollback,
-                actor,
-                operatorId,
-                default,
-                0,
-                default,
-                string.Empty,
-                Render(from),
-                Render(targetVersion),
-                0,
-                note,
-                token),
+        return await WriteAsync(
+            async (scope, token) =>
+            {
+                int active = await ReadActiveVersionAsync(scope, token).ConfigureAwait(false);
+                if (active != from)
+                {
+                    throw Moved(FormattableString.Invariant(
+                        $"The rollback to version {targetVersion} was planned against version {from} and the store now stands at {active}. Nothing was written, and the rollback is planned again from the current version."));
+                }
+
+                await RequireRowOnlyRollbackAsync(scope, from, targetVersion, token).ConfigureAwait(false);
+                ContentDraft draft = await ApplyEditsInAsync(scope, plan.Edits, actor, operatorId, note, token)
+                    .ConfigureAwait(false);
+                await AppendAuditAsync(
+                    scope,
+                    ContentAuditActions.Rollback,
+                    actor,
+                    operatorId,
+                    default,
+                    0,
+                    default,
+                    string.Empty,
+                    Render(from),
+                    Render(targetVersion),
+                    0,
+                    note,
+                    token).ConfigureAwait(false);
+                return draft;
+            },
             cancellationToken).ConfigureAwait(false);
-        return draft;
     }
 
     /// <summary>The baseline as it stands. The caller owns the scope.</summary>
@@ -294,11 +352,8 @@ public sealed partial class SqlServerContentAuthoringStore
             _importRules ?? await ReadRulesAsync(scope, cancellationToken).ConfigureAwait(false),
             await ReadChunksAsync(scope, active, cancellationToken).ConfigureAwait(false),
 
-            // No table in spec 4.4 holds a version's text chunk list, and nothing in phase 1 produces one, so
-            // the carry forward has nothing to carry. When text chunks land, either the schema gains a table
-            // or the base version's manifest becomes the source
-            // (https://github.com/APKiwiOrg/KhaozEngine/issues/919, item 3).
-            [],
+            // The base version's recorded text chunks, in manifest order, which a row-only publish carries.
+            await ReadManifestLanguagesAsync(scope, active, cancellationToken).ConfigureAwait(false),
             record.Count == 0 ? 0 : record[0].MinimumServerBuild,
             record.Count == 0 ? 0 : record[0].MinimumClientBuild);
     }
@@ -378,8 +433,9 @@ public sealed partial class SqlServerContentAuthoringStore
             """
             INSERT INTO dbo.catalog_version(
                 version_number, server_manifest_hash, client_manifest_hash, minimum_server_build,
-                minimum_client_build, format_generation, base_version, published_by, note, published_at_utc)
-            VALUES (@version, @server, @client, @minServer, @minClient, @generation, @base, @by, @note, @at);
+                minimum_client_build, format_generation, base_version, published_by, note, published_at_utc,
+                text_snapshot_complete)
+            VALUES (@version, @server, @client, @minServer, @minClient, @generation, @base, @by, @note, @at, 1);
             """);
         BindInt(command, "@version", record.VersionNumber);
         BindText(command, "@server", record.ServerManifestHash);

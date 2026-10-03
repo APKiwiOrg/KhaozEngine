@@ -32,10 +32,10 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// migration, since an operator can act on those two facts and cannot act on "schema is wrong".
 /// </para>
 /// <para>
-/// <b>A version 1 or version 2 database is MIGRATED under AutoCreate and refused under either validation mode</b>.
-/// This follows the journal's split per provider and per mode. Version 1 chains through version 2 to version 3 in one
-/// open. Each migration runs behind the same application lock the create takes and re-reads the version inside
-/// it, so two hosts starting at once are one migration and one host that finds the work already done.
+/// <b>A version 1, 2 or 3 database is MIGRATED under AutoCreate and refused under either validation mode</b>.
+/// This follows the journal's split per provider and per mode. Version 1 chains through versions 2 and 3 to version
+/// 4 in one open. Each migration runs behind the same application lock the create takes and re-reads the version
+/// inside it, so two hosts starting at once are one migration and one host that finds the work already done.
 /// </para>
 /// </summary>
 internal static class SqlServerCatalogSchemaValidation
@@ -113,6 +113,26 @@ internal static class SqlServerCatalogSchemaValidation
                 .ConfigureAwait(false);
         }
 
+        if (version == 3)
+        {
+            // Validated against version 3's own name sets BEFORE the migration, read here for the same reason
+            // as version 2. A host that migrated in between leaves version 4 objects, which is answered by the
+            // version it moved to rather than refused.
+            version = await ValidateVersionThreeAsync(connection, cancellationToken).ConfigureAwait(false);
+            if (version == 3)
+            {
+                if (mode != ContentAuthoringSchemaMode.AutoCreate)
+                {
+                    throw Mismatch("at unsupported version '3'");
+                }
+
+                await MigrateAsync(connection, 3, SqlServerCatalogSchema.VersionThreeMigrationSql, cancellationToken)
+                    .ConfigureAwait(false);
+                version = await ReadAsync(() => ReadSchemaVersionAsync(connection, cancellationToken))
+                    .ConfigureAwait(false);
+            }
+        }
+
         if (version != SqlServerCatalogSchema.CurrentVersion)
         {
             throw Mismatch(FormattableString.Invariant($"at unsupported version '{version}'"));
@@ -120,6 +140,30 @@ internal static class SqlServerCatalogSchemaValidation
 
         await ValidateObjectsAsync(connection, SqlServerCatalogSchema.CurrentVersion, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Validates a version 3 catalog against version 3's exact name sets and answers the version it stands at.
+    /// When the objects do not match and the version has moved to 4 since it was read, another host migrated in
+    /// between, which is answered with 4. Otherwise the mismatch is refused.
+    /// </summary>
+    static async Task<int> ValidateVersionThreeAsync(SqlConnection connection, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ValidateObjectsAsync(connection, 3, cancellationToken).ConfigureAwait(false);
+            return 3;
+        }
+        catch (ContentAuthoringException)
+        {
+            int now = await ReadAsync(() => ReadSchemaVersionAsync(connection, cancellationToken)).ConfigureAwait(false);
+            if (now == SqlServerCatalogSchema.CurrentVersion)
+            {
+                return now;
+            }
+
+            throw;
+        }
     }
 
     /// <summary>
@@ -253,8 +297,8 @@ internal static class SqlServerCatalogSchemaValidation
 
     /// <summary>
     /// One migration, behind the SAME exclusive application lock the create takes and inside one transaction,
-    /// each statement its own batch: version 1 to 2 adds the ledger table, and version 2 to 3 adds the row time
-    /// columns and backfills them. Two hosts starting at once against one database is the ordinary deployment
+    /// each statement its own batch: version 1 to 2 adds the ledger table, version 2 to 3 adds the row time
+    /// columns and backfills them, and version 3 to 4 adds the text tables and the two nullable columns. Two hosts starting at once against one database is the ordinary deployment
     /// here, so the second one waits and then finds the version already moved, which is why the version is
     /// re-read INSIDE the lock. A second run would also overwrite times a version 3 writer has stamped since.
     /// </summary>
@@ -316,7 +360,6 @@ internal static class SqlServerCatalogSchemaValidation
         int expectedVersion,
         CancellationToken cancellationToken)
     {
-        bool versionOne = expectedVersion == 1;
         IReadOnlySet<string> tables = await ReadAsync(() => ReadNamesAsync(
                 connection,
                 """
@@ -328,7 +371,7 @@ internal static class SqlServerCatalogSchemaValidation
         Compare(
             "table",
             tables,
-            versionOne ? SqlServerCatalogSchemaExpectations.TablesV1 : SqlServerCatalogSchemaExpectations.Tables,
+            SqlServerCatalogSchemaExpectations.TablesFor(expectedVersion),
             expectedVersion);
 
         IReadOnlySet<string> indexes = await ReadAsync(() => ReadNamesAsync(
@@ -344,7 +387,7 @@ internal static class SqlServerCatalogSchemaValidation
         Compare(
             "index",
             indexes,
-            versionOne ? SqlServerCatalogSchemaExpectations.IndexesV1 : SqlServerCatalogSchemaExpectations.Indexes,
+            SqlServerCatalogSchemaExpectations.IndexesFor(expectedVersion),
             expectedVersion);
 
         IReadOnlySet<string> checks = await ReadAsync(() => ReadNamesAsync(
@@ -360,7 +403,7 @@ internal static class SqlServerCatalogSchemaValidation
         Compare(
             "check constraint",
             checks,
-            versionOne ? SqlServerCatalogSchemaExpectations.ChecksV1 : SqlServerCatalogSchemaExpectations.Checks,
+            SqlServerCatalogSchemaExpectations.ChecksFor(expectedVersion),
             expectedVersion);
 
         // The foreign keys and the defaults, which the journal's own validator has always compared and this
@@ -380,7 +423,7 @@ internal static class SqlServerCatalogSchemaValidation
         Compare(
             "foreign key",
             foreignKeys,
-            versionOne ? SqlServerCatalogSchemaExpectations.ForeignKeysV1 : SqlServerCatalogSchemaExpectations.ForeignKeys,
+            SqlServerCatalogSchemaExpectations.ForeignKeysFor(expectedVersion),
             expectedVersion);
 
         IReadOnlySet<string> defaults = await ReadAsync(() => ReadNamesAsync(
@@ -396,7 +439,7 @@ internal static class SqlServerCatalogSchemaValidation
         Compare(
             "default constraint",
             defaults,
-            versionOne ? SqlServerCatalogSchemaExpectations.DefaultsV1 : SqlServerCatalogSchemaExpectations.Defaults,
+            SqlServerCatalogSchemaExpectations.DefaultsFor(expectedVersion),
             expectedVersion);
 
         // Version 3 is columns and nothing else, so a database that says version 3 without them, or version 2

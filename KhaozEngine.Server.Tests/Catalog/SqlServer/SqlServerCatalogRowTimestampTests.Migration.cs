@@ -39,7 +39,7 @@ public sealed partial class SqlServerCatalogRowTimestampTests
     /// table, a family and its block, a remap rule, the id marks, an open draft and an audit row. Every statement
     /// is valid against both the version 1 and the version 2 script.
     /// </summary>
-    const string PopulateLegacy = """
+    internal const string PopulateLegacy = """
         INSERT INTO dbo.catalog_type(
             type_id, type_key, chunk_slots, default_visibility, max_definition_id, first_seen_version)
         VALUES (1024, N'thing', 256, 0, NULL, 0);
@@ -117,7 +117,7 @@ public sealed partial class SqlServerCatalogRowTimestampTests
         """;
 
     /// <summary>The version 2 half of the legacy content: one ledger row.</summary>
-    const string PopulateLedger = """
+    internal const string PopulateLedger = """
         INSERT INTO dbo.catalog_content_upgrade(
             upgrade_id, upgrade_order, disposition, version_number, actor, [operator], recorded_at_utc)
         VALUES (N'harvest-profiles', 1, N'baseline', 2, N'seed', N'', '2026-01-02T12:00:00+00:00');
@@ -135,7 +135,7 @@ public sealed partial class SqlServerCatalogRowTimestampTests
             database.ConnectionString, Registry(), database.Pack(), clock.Read);
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(SqlServerCatalogSchema.CurrentVersion, await store.GetSchemaVersionAsync());
         AssertLegacyBackfill(database);
         Assert.Equal(LedgerRecorded, Value(database, "SELECT recorded_at_utc FROM dbo.catalog_content_upgrade;"));
 
@@ -149,7 +149,7 @@ public sealed partial class SqlServerCatalogRowTimestampTests
     }
 
     [CatalogSqlServerFact]
-    public async Task Version_1_catalog_chains_to_version_3()
+    public async Task Version_1_catalog_chains_to_the_current_version()
     {
         using var database = new SqlServerCatalogDatabase();
         database.Execute(SqlServerCatalogSchema.VersionOneSchemaSql);
@@ -159,7 +159,7 @@ public sealed partial class SqlServerCatalogRowTimestampTests
             database.ConnectionString, Registry(), database.Pack(), new ManualClock(T0).Read);
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(SqlServerCatalogSchema.CurrentVersion, await store.GetSchemaVersionAsync());
         Assert.Empty(await store.ListUpgradesAsync());
         Assert.Equal(NewColumns.Length, NewColumnCount(database));
         AssertLegacyBackfill(database);
@@ -175,7 +175,7 @@ public sealed partial class SqlServerCatalogRowTimestampTests
     public Task Half_migrated_catalog_with_every_column_added_finishes_on_reopen() => HalfMigratedFinishesOnReopenAsync(16);
 
     [CatalogSqlServerFact]
-    public async Task ValidateOnly_refuses_version_2_naming_catalog_v3_row_timestamps()
+    public async Task ValidateOnly_refuses_version_2_naming_the_current_migration()
     {
         using var database = new SqlServerCatalogDatabase();
         WriteVersionTwo(database);
@@ -268,7 +268,7 @@ public sealed partial class SqlServerCatalogRowTimestampTests
         await Task.WhenAll(first, second);
 
         Assert.True(bothWaited, "The two opens never both queued on the schema lock the test held.");
-        Assert.Equal(3, Count(database, "SELECT schema_version FROM dbo.catalog_metadata;"));
+        Assert.Equal(SqlServerCatalogSchema.CurrentVersion, Count(database, "SELECT schema_version FROM dbo.catalog_metadata;"));
         Assert.Equal(NewColumns.Length, NewColumnCount(database));
         AssertLegacyBackfill(database);
         Assert.Equal(1, probe.Updates);
@@ -290,7 +290,7 @@ public sealed partial class SqlServerCatalogRowTimestampTests
             database.ConnectionString, Registry(), database.Pack(), new ManualClock(T0).Read);
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(SqlServerCatalogSchema.CurrentVersion, await store.GetSchemaVersionAsync());
         Assert.Equal(NewColumns.Length, NewColumnCount(database));
         AssertLegacyBackfill(database);
     }
@@ -381,7 +381,7 @@ public sealed partial class SqlServerCatalogRowTimestampTests
     static string Fingerprint(SqlServerCatalogDatabase database)
     {
         var text = new StringBuilder();
-        foreach (string table in SqlServerCatalogSchemaExpectations.Tables.OrderBy(static name => name, StringComparer.Ordinal))
+        foreach (string table in SqlServerCatalogSchemaExpectations.TablesFor(2).OrderBy(static name => name, StringComparer.Ordinal))
         {
             text.Append(table)
                 .Append(':')

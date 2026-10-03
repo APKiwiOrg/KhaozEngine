@@ -25,6 +25,8 @@ public sealed partial class SqlServerCatalogRowTimestampScriptTests
         ["catalog_draft"] = ("opened_at_utc", "updated_at_utc"),
         ["catalog_draft_edit"] = ("created_at_utc", "edited_at_utc"),
         ["catalog_draft_edit_field"] = ("created_at_utc", null),
+        ["catalog_draft_text_edit"] = ("created_at_utc", "updated_at_utc"),
+        ["catalog_draft_text_language"] = ("created_at_utc", null),
         ["catalog_family"] = ("created_at_utc", null),
         ["catalog_family_block"] = ("created_at_utc", "updated_at_utc"),
         ["catalog_id_high_water"] = ("created_at_utc", "updated_at_utc"),
@@ -32,6 +34,8 @@ public sealed partial class SqlServerCatalogRowTimestampScriptTests
         ["catalog_remap_rule"] = ("created_at_utc", null),
         ["catalog_row"] = ("created_at_utc", "updated_at_utc"),
         ["catalog_row_field"] = ("created_at_utc", null),
+        ["catalog_text"] = ("created_at_utc", "updated_at_utc"),
+        ["catalog_text_chunk"] = ("created_at_utc", null),
         ["catalog_type"] = ("created_at_utc", "updated_at_utc"),
         ["catalog_version"] = ("published_at_utc", null),
     };

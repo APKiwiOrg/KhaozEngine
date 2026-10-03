@@ -64,29 +64,46 @@ public sealed partial class SqlServerContentAuthoringStore
         }
 
         return WriteAsync(
-            async (scope, token) =>
-            {
-                // Spec 6.2's refusal, inside this call's OWN Serializable transaction, so the marker cannot
-                // be written between reading it and writing the edits it guards.
-                await RequireNotFrozenAsync(scope, nameof(ApplyEditsAsync), token).ConfigureAwait(false);
-
-                await OpenDraftAsync(scope, actor, note, token).ConfigureAwait(false);
-                for (int i = 0; i < edits.Count; i++)
-                {
-                    ContentEdit edit = edits[i];
-                    await ApplyOneAsync(scope, edit, actor, token).ConfigureAwait(false);
-                    await AppendEditAuditAsync(scope, edit, actor, operatorId, note, token).ConfigureAwait(false);
-                }
-
-                return await ReadDraftAsync(scope, token).ConfigureAwait(false)
-                    ?? throw new ContentAuthoringException(
-                        "The draft row went missing inside the transaction that opened it.",
-                        default,
-                        0,
-                        ContentAuthoringException.NoOpenDraftReason);
-            },
+            (scope, token) => ApplyEditsInAsync(scope, edits, actor, operatorId, note, token),
             cancellationToken);
     }
+
+    /// <summary>
+    /// The body of <see cref="ApplyEditsAsync"/> inside the caller's transaction, which is what lets a rollback
+    /// re-check its versions and apply its edits in one step. The held text and introductions are untouched: a
+    /// row-only batch never rebuilds a draft from its row intents alone. The edits are already schema checked.
+    /// </summary>
+    async Task<ContentDraft> ApplyEditsInAsync(
+        SqlServerCatalogScope scope,
+        IReadOnlyList<ContentEdit> edits,
+        string actor,
+        string operatorId,
+        string note,
+        CancellationToken cancellationToken)
+    {
+        // Spec 6.2's refusal, inside this call's OWN Serializable transaction, so the marker cannot be written
+        // between reading it and writing the edits it guards.
+        await RequireNotFrozenAsync(scope, nameof(ApplyEditsAsync), cancellationToken).ConfigureAwait(false);
+
+        await OpenDraftAsync(scope, actor, note, cancellationToken).ConfigureAwait(false);
+        for (int i = 0; i < edits.Count; i++)
+        {
+            ContentEdit edit = edits[i];
+            await ApplyOneAsync(scope, edit, actor, cancellationToken).ConfigureAwait(false);
+            await AppendEditAuditAsync(scope, edit, actor, operatorId, note, cancellationToken).ConfigureAwait(false);
+        }
+
+        return await RequireDraftAsync(scope, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The open draft inside the transaction that just opened or wrote it.</summary>
+    static async Task<ContentDraft> RequireDraftAsync(SqlServerCatalogScope scope, CancellationToken cancellationToken)
+        => await ReadDraftAsync(scope, cancellationToken).ConfigureAwait(false)
+            ?? throw new ContentAuthoringException(
+                "The draft row went missing inside the transaction that opened it.",
+                default,
+                0,
+                ContentAuthoringException.NoOpenDraftReason);
 
     /// <inheritdoc />
     public Task DiscardDraftAsync(
@@ -101,6 +118,11 @@ public sealed partial class SqlServerContentAuthoringStore
             async (scope, token) =>
             {
                 await RequireNotFrozenAsync(scope, nameof(DiscardDraftAsync), token).ConfigureAwait(false);
+
+                // The row-only discard cannot prove what it would delete of the draft's text, so held text or
+                // a held introduction refuses it before anything is deleted or audited.
+                ContentTextCompatibility.RequireNoHeldText(
+                    await ReadDraftAsync(scope, token).ConfigureAwait(false), nameof(DiscardDraftAsync));
                 int discarded = await ReadIntAsync(
                     scope, "SELECT COUNT(*) FROM dbo.catalog_draft_edit;", token).ConfigureAwait(false);
                 await DeleteDraftAsync(scope, token).ConfigureAwait(false);
@@ -122,7 +144,11 @@ public sealed partial class SqlServerContentAuthoringStore
             cancellationToken);
     }
 
-    /// <summary>The open draft with its edits expanded, or null. The caller owns the scope.</summary>
+    /// <summary>
+    /// The open draft with its row edits, text intents and introductions expanded, or null. It is always a
+    /// COMPLETE draft, whose text state is the backend's own, empty when nothing is held. The caller owns the
+    /// scope.
+    /// </summary>
     static async Task<ContentDraft?> ReadDraftAsync(
         SqlServerCatalogScope scope,
         CancellationToken cancellationToken)
@@ -154,7 +180,8 @@ public sealed partial class SqlServerContentAuthoringStore
         }
 
         IReadOnlyList<ContentEdit> edits = await ReadEditsAsync(scope, cancellationToken).ConfigureAwait(false);
-        return new ContentDraft(baseVersion, openedBy, openedAt, note, new ContentChangeSet(edits), frozen);
+        ContentDraftTextState text = await ReadDraftTextAsync(scope, cancellationToken).ConfigureAwait(false);
+        return new ContentDraft(text, baseVersion, openedBy, openedAt, note, new ContentChangeSet(edits), frozen);
     }
 
     /// <summary>Every pending edit in EDIT ORDINAL order, which is the order ids are allocated in.</summary>
@@ -429,13 +456,17 @@ public sealed partial class SqlServerContentAuthoringStore
     }
 
     /// <summary>
-    /// The draft and its edits, gone. The edit fields go with the edits through the cascade the schema
-    /// declares. The caller owns the transaction.
+    /// The draft, its edits, its text intents and its introductions, gone. The edit fields go with the edits
+    /// through the cascade the schema declares. The caller owns the transaction.
     /// </summary>
     static async Task DeleteDraftAsync(SqlServerCatalogScope scope, CancellationToken cancellationToken)
     {
-        await using (SqlCommand edits = Command(scope, "DELETE FROM dbo.catalog_draft_edit;"))
+        foreach (string statement in (string[])[
+            "DELETE FROM dbo.catalog_draft_edit;",
+            "DELETE FROM dbo.catalog_draft_text_edit;",
+            "DELETE FROM dbo.catalog_draft_text_language;"])
         {
+            await using SqlCommand edits = Command(scope, statement);
             await edits.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 

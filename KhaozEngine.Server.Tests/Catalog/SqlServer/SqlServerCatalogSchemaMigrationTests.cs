@@ -11,7 +11,8 @@ namespace KhaozEngine.Tests.Catalog.SqlServer;
 /// <summary>
 /// The version 1 migration on SQL Server, driven against a POPULATED version 1 database: the embedded
 /// <c>CatalogSchemaV1.sql</c> created as it shipped, with two published versions, the temporal history they
-/// left, an open draft, a pin and audit rows already in it. One open chains it through version 2 to version 3.
+/// left, an open draft, a pin and audit rows already in it. One open chains it through versions 2 and 3 to
+/// version 4.
 /// <para>
 /// <b>The version 1 script is the EMBEDDED one rather than a copy</b>, which is the difference from the SQLite
 /// leg: this provider ships both scripts as resources, so the file a test builds from is the same file an
@@ -131,7 +132,7 @@ public class SqlServerCatalogSchemaMigrationTests
         var store = new SqlServerContentAuthoringStore(database.ConnectionString, Registry());
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(SqlServerCatalogSchema.CurrentVersion, await store.GetSchemaVersionAsync());
         Assert.Equal(Epoch, await store.GetStoreEpochAsync());
         Assert.Equal(2, await store.GetActiveVersionAsync());
         Assert.Equal(1, await store.GetPinnedVersionAsync());
@@ -163,9 +164,14 @@ public class SqlServerCatalogSchemaMigrationTests
         Assert.Empty(await store.ListUpgradesAsync());
     }
 
-    /// <summary>A migrated database publishes, and a stamped publish lands its applied row.</summary>
+    /// <summary>
+    /// A migrated database whose base version's text cannot be proven empty refuses a stamped publish whole.
+    /// This fixture's manifest hashes are fabricated, so neither a stored manifest nor one rebuilt from its
+    /// recorded chunks can prove the base named no language, and its text is unknown rather than empty. The
+    /// migrated text-free publish that does prove its base is <c>SqlServerTextSchemaMigrationTests</c>.
+    /// </summary>
     [CatalogSqlServerFact]
-    public async Task AMigratedDatabaseTakesAStampedPublish()
+    public async Task AMigratedDatabaseWhoseBaseTextIsUnprovenRefusesAStampedPublishWhole()
     {
         using var database = new SqlServerCatalogDatabase();
         WriteVersionOne(database);
@@ -174,17 +180,16 @@ public class SqlServerCatalogSchemaMigrationTests
             database.ConnectionString, Registry(), database.Pack());
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        ContentPublishResult published = await store.PublishAsync(
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => store.PublishAsync(
             new ContentPublishRequest(Actor, Operator, "the upgrade", 2)
             {
                 Upgrade = new ContentUpgradeStamp(UpgradeId, 1),
-            });
+            }));
 
-        Assert.Equal(3, published.VersionNumber);
-        ContentUpgradeRecord record = Assert.Single(await store.ListUpgradesAsync());
-        Assert.Equal(UpgradeId, record.Id);
-        Assert.Equal(ContentUpgradeDisposition.Applied, record.Disposition);
-        Assert.Equal(3, record.VersionNumber);
+        Assert.Equal(ContentAuthoringException.TextProvenanceUnknownReason, refused.Reason);
+        Assert.Equal(2, await store.GetActiveVersionAsync());
+        Assert.Empty(await store.ListUpgradesAsync());
+        Assert.False((await store.GetOpenDraftAsync())!.IsFrozen);
     }
 
     /// <summary>
@@ -202,7 +207,7 @@ public class SqlServerCatalogSchemaMigrationTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v3-row-timestamps", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
         Assert.Contains("version '1'", refused.Message, StringComparison.Ordinal);
 
         // Refused means REFUSED: the database is still version 1 and still carries no ledger table.
@@ -238,7 +243,7 @@ public class SqlServerCatalogSchemaMigrationTests
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
         await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(SqlServerCatalogSchema.CurrentVersion, await store.GetSchemaVersionAsync());
         Assert.Equal(epoch, await store.GetStoreEpochAsync());
         Assert.Single(await store.ListUpgradesAsync());
     }

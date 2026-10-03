@@ -35,7 +35,7 @@ public class SqlServerCatalogSchemaTests
 
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(4, await store.GetSchemaVersionAsync());
         Assert.Equal(0, await store.GetActiveVersionAsync());
         Assert.Null(await store.GetPinnedVersionAsync());
 
@@ -45,9 +45,9 @@ public class SqlServerCatalogSchemaTests
         Assert.Equal(32, epoch.Length);
 
         // AutoCreate validates what it created, so this run also pins the expectation lists against the DDL
-        // file they were transcribed from. Fifteen tables: the fourteen of spec 4.3 and the content upgrade
-        // ledger version 2 adds.
-        Assert.Equal(15, database.Scalar(
+        // file they were transcribed from. Nineteen tables: the fourteen of spec 4.3, the content upgrade
+        // ledger version 2 adds and the four text tables version 4 adds.
+        Assert.Equal(19, database.Scalar(
             """
             SELECT COUNT(*) FROM sys.tables
             WHERE schema_id = SCHEMA_ID(N'dbo') AND name LIKE N'catalog[_]%';
@@ -64,7 +64,7 @@ public class SqlServerCatalogSchemaTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v3-row-timestamps", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
         Assert.Contains("missing", refused.Message, StringComparison.Ordinal);
     }
 
@@ -78,7 +78,7 @@ public class SqlServerCatalogSchemaTests
         var store = new SqlServerContentAuthoringStore(database.ConnectionString, Registry());
         await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(4, await store.GetSchemaVersionAsync());
     }
 
     [CatalogSqlServerFact]
@@ -103,7 +103,7 @@ public class SqlServerCatalogSchemaTests
 
         Assert.Equal("schema-mismatch", refused.Reason);
         Assert.Contains("catalog_row.ck_catalog_row_retired", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("catalog-v3-row-timestamps", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
     }
 
     [CatalogSqlServerFact]

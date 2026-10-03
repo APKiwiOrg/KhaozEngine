@@ -59,17 +59,15 @@ public sealed partial class SqlServerCatalogRowTimestampScriptTests
     ];
 
     [Fact]
-    public void Version_three_names_its_migration()
+    public void Version_three_adds_exactly_its_sixteen_columns()
     {
-        Assert.Equal(3, SqlServerCatalogSchema.CurrentVersion);
-        Assert.Equal("catalog-v3-row-timestamps", SqlServerCatalogSchema.RequiredMigration);
         Assert.Equal(NewColumns, SqlServerCatalogSchema.VersionThreeColumns);
     }
 
     [Fact]
     public void Version_three_script_is_version_two_with_sixteen_nullable_time_columns()
     {
-        string versionThree = SqlServerCatalogSchema.SchemaSql.ReplaceLineEndings("\n");
+        string versionThree = SqlServerCatalogSchema.VersionThreeSchemaSql.ReplaceLineEndings("\n");
         string versionTwo = SqlServerCatalogSchema.VersionTwoSchemaSql.ReplaceLineEndings("\n");
 
         foreach ((string table, string column) in NewColumns)
@@ -94,8 +92,11 @@ public sealed partial class SqlServerCatalogRowTimestampScriptTests
     public void Each_embedded_script_declares_exactly_the_time_columns_its_version_validates()
     {
         Assert.Equal(
-            Ordered(SqlServerCatalogSchemaExpectations.TimeColumnsFor(3)),
+            Ordered(SqlServerCatalogSchemaExpectations.TimeColumnsFor(4)),
             Ordered(DeclaredTimeColumns(SqlServerCatalogSchema.SchemaSql)));
+        Assert.Equal(
+            Ordered(SqlServerCatalogSchemaExpectations.TimeColumnsFor(3)),
+            Ordered(DeclaredTimeColumns(SqlServerCatalogSchema.VersionThreeSchemaSql)));
         Assert.Equal(
             Ordered(SqlServerCatalogSchemaExpectations.TimeColumnsFor(2)),
             Ordered(DeclaredTimeColumns(SqlServerCatalogSchema.VersionTwoSchemaSql)));

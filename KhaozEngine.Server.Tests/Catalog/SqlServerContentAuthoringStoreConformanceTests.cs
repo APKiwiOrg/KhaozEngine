@@ -32,6 +32,13 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
     int _packs;
 
     /// <inheritdoc />
+    /// <remarks>SQL Server is at schema version 4 and names its text authoring migration.</remarks>
+    protected override string RequiredMigration => "catalog-v4-text-authoring";
+
+    /// <inheritdoc />
+    protected override int CurrentSchemaVersion => 4;
+
+    /// <inheritdoc />
     protected override IContentAuthoringStore NewStore()
     {
         SqlServerCatalogDatabase database = Database;

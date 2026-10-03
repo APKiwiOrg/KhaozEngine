@@ -166,6 +166,10 @@ public sealed partial class SqlServerContentAuthoringStore
                     throw UnknownVersion(versionNumber);
                 }
 
+                // Format 1 is text free by contract, so a version holding text, or one whose text cannot be
+                // proven empty, is not exported through it without its text half.
+                await RequireRowOnlyExportAsync(scope, versionNumber, token).ConfigureAwait(false);
+
                 IReadOnlyList<ContentBundleType> types = await ReadBundleTypesAsync(scope, token)
                     .ConfigureAwait(false);
 
@@ -452,12 +456,12 @@ public sealed partial class SqlServerContentAuthoringStore
     /// carrying half a bundle. The audit is KEPT: a refused import is a thing that happened and the trace of
     /// it is the point.
     /// <para>
-    /// <b>It deletes from five tables and no more, because the commit is atomic.</b> The version, row, row
-    /// field, chunk and rule tables are written only inside step 10's one transaction, which either commits
-    /// whole or not at all, and an import that reaches here was refused before that transaction opened or
-    /// inside it. Either way those five tables still hold what they held when the import started, which on
-    /// the empty store an import is licensed into is nothing, and the active and pinned pointers have not
-    /// moved either. The families, the id marks and the draft are the only things staged ahead of the
+    /// <b>It deletes from the draft, family and mark tables and no more, because the commit is atomic.</b> The
+    /// version, row, row field, chunk, rule and text tables are written only inside step 10's one transaction,
+    /// which either commits whole or not at all, and an import that reaches here was refused before that
+    /// transaction opened or inside it. Either way those tables still hold what they held when the import
+    /// started, which on the empty store an import is licensed into is nothing, and the active and pinned
+    /// pointers have not moved either. The families, the id marks and the draft are the only things staged ahead of the
     /// commit, so they are the only things there is anything to take back from. A <c>DELETE</c> against
     /// <c>catalog_remap_rule</c> would also be the one statement in this provider that mutates an
     /// append-only table.
@@ -472,6 +476,8 @@ public sealed partial class SqlServerContentAuthoringStore
                 string[] statements =
                 [
                     "DELETE FROM dbo.catalog_draft_edit;",
+                    "DELETE FROM dbo.catalog_draft_text_edit;",
+                    "DELETE FROM dbo.catalog_draft_text_language;",
                     "DELETE FROM dbo.catalog_draft;",
                     "DELETE FROM dbo.catalog_family_block;",
                     "DELETE FROM dbo.catalog_family;",

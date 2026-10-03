@@ -8,7 +8,8 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// Every schema object the current version declares, by NAME, as five sets: the tables, the named indexes (the primary
 /// keys among them, since a primary key IS an index in <c>sys.indexes</c>), the check constraints, the
 /// foreign keys and the default constraints. A sixth set holds the row time columns with their types, which is
-/// the whole of what version 3 changed.
+/// the whole of what version 3 changed. Version 4 adds the four text tables with their objects and two
+/// nullable columns, each with a named check.
 /// <para>
 /// <b>Names are the whole mechanism, which is why the DDL names every constraint.</b> SQL Server generates a
 /// name for an unnamed constraint, and a generated name differs per database, so a schema built from unnamed
@@ -16,12 +17,13 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// <c>table.object</c> here, so a correctly named object hanging off the wrong table is caught too.
 /// </para>
 /// <para>
-/// The <c>V1</c> sets at the bottom are the same lists minus the ledger table version 2 adds, which is what a
-/// version 1 database is validated against before it is migrated. Version 3 added no named object, so a version 2
-/// database is validated against the current name sets and only its row time columns differ.
+/// The <c>V3</c> sets at the bottom are the same lists minus every version 4 object, which is what a version 3
+/// database is validated against before it is migrated. Version 3 added no named object, so a version 2 database
+/// is validated against the version 3 name sets and only its row time columns differ. The <c>V1</c> sets are the
+/// <c>V3</c> sets minus the ledger table version 2 adds.
 /// </para>
 /// <para>
-/// These lists are TRANSCRIBED from <c>CatalogSchemaV3.sql</c>, and <c>SqlServerCatalogSchemaDriftTests</c>
+/// These lists are TRANSCRIBED from <c>CatalogSchemaV4.sql</c>, and <c>SqlServerCatalogSchemaDriftTests</c>
 /// parses that file and asserts set equality against every one of them without needing an instance. Drift is
 /// also what
 /// <c>SqlServerCatalogSchemaTests</c>'s AutoCreate case exists to catch: it creates the schema from the file
@@ -34,10 +36,17 @@ internal static class SqlServerCatalogSchemaExpectations
     /// <summary>The prefix every object version 2 adds is named with, which is how the version 1 sets are derived.</summary>
     const string UpgradeLedger = "catalog_content_upgrade";
 
-    /// <summary>The fourteen tables of spec 4.3, plus the content upgrade ledger version 2 adds.</summary>
+    /// <summary>
+    /// The fourteen tables of spec 4.3, plus the content upgrade ledger version 2 adds and the four text tables
+    /// version 4 adds.
+    /// </summary>
     internal static IReadOnlySet<string> Tables { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         UpgradeLedger,
+        "catalog_draft_text_edit",
+        "catalog_draft_text_language",
+        "catalog_text",
+        "catalog_text_chunk",
         "catalog_metadata",
         "catalog_type",
         "catalog_version",
@@ -62,8 +71,8 @@ internal static class SqlServerCatalogSchemaExpectations
     /// tables in the catalog's database, and a table it named <c>catalog_overrides_by_host</c> matches every
     /// name rule an engine could write while belonging to nobody here. Naming the inventory means a drop
     /// destroys exactly the tables above and cannot reach anything else, and the set is pinned against
-    /// <c>CatalogSchemaV3.sql</c> by <c>SqlServerCatalogSchemaDriftTests</c> without an instance. Version 1's
-    /// tables are a subset of it, so a version 1 catalog is dropped by the same list.
+    /// <c>CatalogSchemaV4.sql</c> by <c>SqlServerCatalogSchemaDriftTests</c> without an instance. Every older
+    /// version's tables are a subset of it, so an older catalog is dropped by the same list.
     /// </para>
     /// </summary>
     internal static string TableNameList { get; } = BuildTableNameList();
@@ -100,6 +109,11 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_draft_edit.pk_catalog_draft_edit",
         "catalog_draft_edit.ux_catalog_draft_edit_target",
         "catalog_draft_edit_field.pk_catalog_draft_edit_field",
+        "catalog_draft_text_edit.pk_catalog_draft_text_edit",
+        "catalog_draft_text_edit.ux_catalog_draft_text_edit_target",
+        "catalog_draft_text_language.pk_catalog_draft_text_language",
+        "catalog_draft_text_language.ux_catalog_draft_text_language_tag",
+        "catalog_draft_text_language.ux_catalog_draft_text_language_wire",
         "catalog_family.pk_catalog_family",
         "catalog_family.ux_catalog_family_key",
         "catalog_family_block.pk_catalog_family_block",
@@ -111,6 +125,12 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_row.ix_catalog_row_live",
         "catalog_row.pk_catalog_row",
         "catalog_row_field.pk_catalog_row_field",
+        "catalog_text.ix_catalog_text_version",
+        "catalog_text.pk_catalog_text",
+        "catalog_text.ux_catalog_text_live",
+        "catalog_text_chunk.ix_catalog_text_chunk_hash",
+        "catalog_text_chunk.pk_catalog_text_chunk",
+        "catalog_text_chunk.ux_catalog_text_chunk_wire",
         "catalog_type.pk_catalog_type",
         "catalog_type.ux_catalog_type_key",
         "catalog_version.pk_catalog_version",
@@ -127,6 +147,7 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_chunk.fk_catalog_chunk_version",
         "catalog_draft_edit.fk_catalog_draft_edit_type",
         "catalog_draft_edit_field.fk_catalog_draft_edit_field_edit",
+        "catalog_draft_text_edit.fk_catalog_draft_text_edit_type",
         "catalog_family.fk_catalog_family_type",
         "catalog_family_block.fk_catalog_family_block_family",
         "catalog_id_high_water.fk_catalog_id_high_water_type",
@@ -136,6 +157,9 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_row.fk_catalog_row_type",
         "catalog_row.fk_catalog_row_version",
         "catalog_row_field.fk_catalog_row_field_row",
+        "catalog_text.fk_catalog_text_type",
+        "catalog_text.fk_catalog_text_version",
+        "catalog_text_chunk.fk_catalog_text_chunk_version",
     };
 
     /// <summary>
@@ -174,6 +198,7 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_audit.ck_catalog_audit_before",
         "catalog_audit.ck_catalog_audit_field",
         "catalog_audit.ck_catalog_audit_key",
+        "catalog_audit.ck_catalog_audit_language",
         "catalog_audit.ck_catalog_audit_note",
         "catalog_audit.ck_catalog_audit_operator",
         "catalog_chunk.ck_catalog_chunk_hash",
@@ -206,6 +231,14 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_draft_edit_field.ck_catalog_draft_edit_field_kind",
         "catalog_draft_edit_field.ck_catalog_draft_edit_field_name",
         "catalog_draft_edit_field.ck_catalog_draft_edit_field_text",
+        "catalog_draft_text_edit.ck_catalog_draft_text_edit_edited_by",
+        "catalog_draft_text_edit.ck_catalog_draft_text_edit_field",
+        "catalog_draft_text_edit.ck_catalog_draft_text_edit_key",
+        "catalog_draft_text_edit.ck_catalog_draft_text_edit_language",
+        "catalog_draft_text_edit.ck_catalog_draft_text_edit_operation",
+        "catalog_draft_text_edit.ck_catalog_draft_text_edit_value",
+        "catalog_draft_text_language.ck_catalog_draft_text_language_tag",
+        "catalog_draft_text_language.ck_catalog_draft_text_language_wire",
         "catalog_family.ck_catalog_family_block_size",
         "catalog_family.ck_catalog_family_created",
         "catalog_family.ck_catalog_family_key",
@@ -240,6 +273,14 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_row_field.ck_catalog_row_field_kind",
         "catalog_row_field.ck_catalog_row_field_name",
         "catalog_row_field.ck_catalog_row_field_text",
+        "catalog_text.ck_catalog_text_definition",
+        "catalog_text.ck_catalog_text_field",
+        "catalog_text.ck_catalog_text_language",
+        "catalog_text.ck_catalog_text_replaced",
+        "catalog_text.ck_catalog_text_valid_from",
+        "catalog_text_chunk.ck_catalog_text_chunk_hash",
+        "catalog_text_chunk.ck_catalog_text_chunk_language",
+        "catalog_text_chunk.ck_catalog_text_chunk_wire",
         "catalog_type.ck_catalog_type_ceiling",
         "catalog_type.ck_catalog_type_first_seen",
         "catalog_type.ck_catalog_type_id",
@@ -255,22 +296,60 @@ internal static class SqlServerCatalogSchemaExpectations
         "catalog_version.ck_catalog_version_number",
         "catalog_version.ck_catalog_version_published_by",
         "catalog_version.ck_catalog_version_server_hash",
+        "catalog_version.ck_catalog_version_text_complete",
     };
 
-    /// <summary>The tables version 1 declared, which is version 2's set without the ledger.</summary>
-    internal static IReadOnlySet<string> TablesV1 { get; } = WithoutTheLedger(Tables);
+    /// <summary>The tables versions 2 and 3 declared: version 4's without the text tables.</summary>
+    internal static IReadOnlySet<string> TablesV3 { get; } = WithoutVersionFour(Tables);
+
+    /// <summary>The named indexes versions 2 and 3 declared.</summary>
+    internal static IReadOnlySet<string> IndexesV3 { get; } = WithoutVersionFour(Indexes);
+
+    /// <summary>The foreign keys versions 2 and 3 declared.</summary>
+    internal static IReadOnlySet<string> ForeignKeysV3 { get; } = WithoutVersionFour(ForeignKeys);
+
+    /// <summary>The default constraints versions 2 and 3 declared, which version 4 does not add to.</summary>
+    internal static IReadOnlySet<string> DefaultsV3 { get; } = WithoutVersionFour(Defaults);
+
+    /// <summary>The check constraints versions 2 and 3 declared: without the text tables' and the two column checks.</summary>
+    internal static IReadOnlySet<string> ChecksV3 { get; } = WithoutVersionFour(Checks);
+
+    /// <summary>The tables version 1 declared, which is version 3's set without the ledger.</summary>
+    internal static IReadOnlySet<string> TablesV1 { get; } = WithoutTheLedger(TablesV3);
 
     /// <summary>The named indexes version 1 declared.</summary>
-    internal static IReadOnlySet<string> IndexesV1 { get; } = WithoutTheLedger(Indexes);
+    internal static IReadOnlySet<string> IndexesV1 { get; } = WithoutTheLedger(IndexesV3);
 
     /// <summary>The foreign keys version 1 declared, which version 2 does not add to.</summary>
-    internal static IReadOnlySet<string> ForeignKeysV1 { get; } = WithoutTheLedger(ForeignKeys);
+    internal static IReadOnlySet<string> ForeignKeysV1 { get; } = WithoutTheLedger(ForeignKeysV3);
 
     /// <summary>The default constraints version 1 declared.</summary>
-    internal static IReadOnlySet<string> DefaultsV1 { get; } = WithoutTheLedger(Defaults);
+    internal static IReadOnlySet<string> DefaultsV1 { get; } = WithoutTheLedger(DefaultsV3);
 
     /// <summary>The check constraints version 1 declared.</summary>
-    internal static IReadOnlySet<string> ChecksV1 { get; } = WithoutTheLedger(Checks);
+    internal static IReadOnlySet<string> ChecksV1 { get; } = WithoutTheLedger(ChecksV3);
+
+    /// <summary>The tables the given schema version declares.</summary>
+    /// <param name="version">A schema version this build can validate.</param>
+    /// <exception cref="ArgumentOutOfRangeException">No catalog schema has this version.</exception>
+    internal static IReadOnlySet<string> TablesFor(int version) => For(version, TablesV1, TablesV3, Tables);
+
+    /// <summary>The named indexes the given schema version declares.</summary>
+    /// <param name="version">A schema version this build can validate.</param>
+    internal static IReadOnlySet<string> IndexesFor(int version) => For(version, IndexesV1, IndexesV3, Indexes);
+
+    /// <summary>The foreign keys the given schema version declares.</summary>
+    /// <param name="version">A schema version this build can validate.</param>
+    internal static IReadOnlySet<string> ForeignKeysFor(int version)
+        => For(version, ForeignKeysV1, ForeignKeysV3, ForeignKeys);
+
+    /// <summary>The default constraints the given schema version declares.</summary>
+    /// <param name="version">A schema version this build can validate.</param>
+    internal static IReadOnlySet<string> DefaultsFor(int version) => For(version, DefaultsV1, DefaultsV3, Defaults);
+
+    /// <summary>The check constraints the given schema version declares.</summary>
+    /// <param name="version">A schema version this build can validate.</param>
+    internal static IReadOnlySet<string> ChecksFor(int version) => For(version, ChecksV1, ChecksV3, Checks);
 
     /// <summary>
     /// Every row time column version 3 declares, as <c>table.column|type|scale|nullability</c>: each
@@ -282,7 +361,7 @@ internal static class SqlServerCatalogSchemaExpectations
     /// them is what refuses a database that claims version 3 without them.
     /// </para>
     /// </summary>
-    internal static IReadOnlySet<string> TimeColumns { get; } = new HashSet<string>(StringComparer.Ordinal)
+    internal static IReadOnlySet<string> TimeColumnsV3 { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         TimeColumn("catalog_metadata", "updated_at_utc", nullable: false),
         TimeColumn("catalog_metadata", "created_at_utc"),
@@ -303,11 +382,26 @@ internal static class SqlServerCatalogSchemaExpectations
         TimeColumn("catalog_chunk", "created_at_utc"),
     };
 
+    /// <summary>
+    /// Every row time column version 4 declares: version 3's and the text tables' own. The text tables start
+    /// empty on a migrated catalog and every row in them is written by this build, so their columns are
+    /// <c>NOT NULL</c>.
+    /// </summary>
+    internal static IReadOnlySet<string> TimeColumns { get; } = new HashSet<string>(TimeColumnsV3, StringComparer.Ordinal)
+    {
+        TimeColumn("catalog_draft_text_edit", "created_at_utc", nullable: false),
+        TimeColumn("catalog_draft_text_edit", "updated_at_utc", nullable: false),
+        TimeColumn("catalog_draft_text_language", "created_at_utc", nullable: false),
+        TimeColumn("catalog_text", "created_at_utc", nullable: false),
+        TimeColumn("catalog_text", "updated_at_utc", nullable: false),
+        TimeColumn("catalog_text_chunk", "created_at_utc", nullable: false),
+    };
+
     /// <summary>The columns the version 3 migration adds, each in the only shape version 3 accepts.</summary>
     static readonly HashSet<string> AddedTimeColumns = AddedByVersionThree();
 
     /// <summary>The row time columns version 2 declared: version 3's without the ones the migration adds.</summary>
-    internal static IReadOnlySet<string> TimeColumnsV2 { get; } = WithoutAdded(TimeColumns);
+    internal static IReadOnlySet<string> TimeColumnsV2 { get; } = WithoutAdded(TimeColumnsV3);
 
     /// <summary>The row time columns version 1 declared, which version 2 did not add to.</summary>
     internal static IReadOnlySet<string> TimeColumnsV1 { get; } = TimeColumnsV2;
@@ -320,7 +414,8 @@ internal static class SqlServerCatalogSchemaExpectations
         {
             1 => TimeColumnsV1,
             2 => TimeColumnsV2,
-            3 => TimeColumns,
+            3 => TimeColumnsV3,
+            4 => TimeColumns,
             _ => throw new ArgumentOutOfRangeException(nameof(version), version, "No catalog schema has this version."),
         };
 
@@ -369,12 +464,55 @@ internal static class SqlServerCatalogSchemaExpectations
         return kept;
     }
 
+    /// <summary>One version's name set: version 1's, versions 2 and 3's, or version 4's.</summary>
+    static IReadOnlySet<string> For(
+        int version,
+        IReadOnlySet<string> versionOne,
+        IReadOnlySet<string> versionThree,
+        IReadOnlySet<string> versionFour)
+        => version switch
+        {
+            1 => versionOne,
+            2 or 3 => versionThree,
+            4 => versionFour,
+            _ => throw new ArgumentOutOfRangeException(nameof(version), version, "No catalog schema has this version."),
+        };
+
+    /// <summary>
+    /// One set minus every object version 4 added: everything on a text table, and the checks on the two columns
+    /// it added to <c>catalog_version</c> and <c>catalog_audit</c>. Deriving the older sets keeps them from
+    /// drifting from a stale second copy, as <see cref="WithoutTheLedger"/> does for version 1.
+    /// </summary>
+    /// <param name="names">A version 4 name set, bare tables or <c>table.object</c>.</param>
+    static IReadOnlySet<string> WithoutVersionFour(IReadOnlySet<string> names)
+    {
+        var kept = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string name in names)
+        {
+            int dot = name.IndexOf('.', StringComparison.Ordinal);
+            string table = dot < 0 ? name : name[..dot];
+            bool textTable = false;
+            foreach (string added in SqlServerCatalogSchema.VersionFourTables)
+            {
+                textTable |= string.Equals(table, added, StringComparison.Ordinal);
+            }
+
+            if (!textTable
+                && name is not ("catalog_version.ck_catalog_version_text_complete" or "catalog_audit.ck_catalog_audit_language"))
+            {
+                kept.Add(name);
+            }
+        }
+
+        return kept;
+    }
+
     /// <summary>
     /// One set minus every object of the ledger table, which is the WHOLE of what version 2 added. Deriving
     /// the version 1 sets rather than transcribing them a second time is what keeps a database this build
     /// refuses to migrate from being one that merely drifted from a stale copy of the old list.
     /// </summary>
-    /// <param name="names">A version 2 name set.</param>
+    /// <param name="names">A version 3 name set.</param>
     static IReadOnlySet<string> WithoutTheLedger(IReadOnlySet<string> names)
     {
         var kept = new HashSet<string>(StringComparer.Ordinal);

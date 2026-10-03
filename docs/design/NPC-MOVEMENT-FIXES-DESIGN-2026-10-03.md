@@ -244,7 +244,9 @@ a water entry at height `W`, with body height `H = 2 x CapsuleHalfHeight`:
 1. Let `s` be the highest captured surface below `W`, if any, and `u` the lowest captured surface at or above `W`, if
    any.
 2. The column is swim-deep when there is no `s`, or `(W - s.Height) / H >= SwimEnterDepthFraction`, and the float
-   height `f = W - SwimSurfaceSubmersionFraction x H` lies above `s.Height`.
+   height `f = W - SwimSurfaceSubmersionFraction x H` lies above `s.Height` and below `W` (ruling M17). A zero
+   submersion fraction puts `f` at `W`, where it would share its height with a kept surface at `W` and claim that dry
+   node as a float, so no float is emitted.
 3. A swim-deep column replaces every captured surface below `W` with one float surface at `f`, flagged as a float.
    Its areas are the water entry's areas. Its headroom is `max(0, s.Headroom - (f - s.Height))` when `s` exists. A
    submerged overhang between `s` and `f` therefore yields zero, which the candidate filter refuses. When `s` does
@@ -299,6 +301,14 @@ Clearance check. The core does not sweep a swimmer, so each swimming slice asks
 overlap, or when the minimum translation points up within the walkable slope, `mtv.Y >= |mtv| x cos(MaxSlopeRadians)`,
 and `|mtv| <= StepHeight`. That admits a float capsule grazing the bed near the shore and refuses a deck above, a
 post beside and a steep bank wall. A context without physics passes.
+
+Edge budget (ruling M17). Every proof shares the capture's `MaxEdgeProbeSteps`, and an edge that runs past it is
+refused, never partly accepted. A bank edge between a wading node and a float node walks at unit pace slowed by the
+wade ramp and the medium's zone scale, so it needs about `length / (dt x walk speed x WadeMinSpeedScale x zone scale)`
+steps plus a short tail. At the default 64 steps of 1/30 s and a zone scale of 1 that covers banks between 0.25 m
+cells. Larger cells or slow zones must raise `MaxEdgeProbeSteps`, or the float layer is cut off from the land. The
+budget applies to each directed edge, so in a slow zone a shoreward swim can fit while the wade out does not, which
+leaves a one-way exit from the water rather than a route into it.
 
 Deepest-contact limit (ruling M5). The query reports the deepest contact only, so a shallow side contact under a
 deeper bed contact can pass a slice. Deep water has no bed contact, so the limit applies only within about one step

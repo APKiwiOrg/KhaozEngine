@@ -314,6 +314,9 @@ public class RebuildSentHistoryTests
         Assert.Equal(default(RebuildUsage), w.Usage(0));
     }
 
+    // Ruling D2.9: options require a byte budget of three complete keyframes, and every retained writer projection is
+    // smaller than its keyframe. The acknowledged baseline, a pending keyframe and a new candidate therefore always fit
+    // together, so payload growth can never force a repair or a pressure failure. It reaches the capacity failure first.
     [Theory]
     [MemberData(nameof(Kinds))]
     public void PayloadPressureRequestsRepairBeforeCapacity(string kind)
@@ -322,40 +325,45 @@ public class RebuildSentHistoryTests
         Entity blob = w.World.Spawn();
         w.World.Set(blob, new NetId(1));
         var interest = new HashSet<long> { 1 };
-        var options = new DeltaRebuildOptions { MaxRetainedPayloadBytes = 100 };
-        w.Start(0, 1, options);
+
+        // One entity with a 100 byte framed blob: 26 header and count bytes, 15 entity bytes, 2 + 1 + 100 frame bytes.
+        const int keyframeBytes = 144;
+        Assert.Throws<ArgumentOutOfRangeException>(() => w.Start(0, 1,
+            new DeltaRebuildOptions { MaxKeyframeBytes = keyframeBytes, MaxRetainedPayloadBytes = 2 * keyframeBytes }));
+        var options = new DeltaRebuildOptions { MaxKeyframeBytes = keyframeBytes, MaxRetainedPayloadBytes = 3 * keyframeBytes };
+        w.Start(0, 2, options);
 
         w.World.Set(blob, new RebuildBlob { Size = 30 });
-        ReplicationDeltaPacket keyframe = w.CaptureAndSend(0, interest);
-        w.Ack(0, keyframe.Id);
+        ReplicationDeltaPacket first = w.CaptureAndSend(0, interest);
+        w.Ack(0, first.Id);
         Assert.False(w.NeedsRepair(0));
 
-        // 60 bytes beside the pinned 30 byte baseline fit, and so would another 60 bytes.
-        w.World.Set(blob, new RebuildBlob { Size = 60 });
+        w.World.Set(blob, new RebuildBlob { Size = 100 });
         ReplicationDeltaPacket grown = w.CaptureAndSend(0, interest);
         Assert.False(w.NeedsRepair(0));
-
-        // Once the 60 byte projection is the pinned baseline, the next one cannot sit beside it. It still fits alone,
-        // so this is a repair signal, not a capacity failure.
         w.Ack(0, grown.Id);
-        Assert.True(w.NeedsRepair(0));
+        Assert.False(w.NeedsRepair(0));
+
+        // A largest-size pending keyframe beside the largest-size baseline, then a largest-size candidate beside both.
+        ReplicationDeltaPacket pending = w.CaptureAndSend(0, interest, keyframe: true);
+        Assert.Equal(keyframeBytes, pending.Bytes.Length);
+        Assert.False(w.NeedsRepair(0));
         w.Capture();
-        DeltaRebuildException pressure = Assert.Throws<DeltaRebuildException>(() => w.Build(0, interest));
-        Assert.Equal(DeltaRebuildFailure.RetentionPressure, pressure.Failure);
+        ReplicationDeltaPacket candidate = w.Build(0, interest);
+        Assert.Equal(grown.Id, candidate.Baseline);
+        Assert.False(w.NeedsRepair(0));
         RebuildUsage usage = w.Usage(0);
-        Assert.Null(usage.CandidateId);
-        Assert.Equal(grown.Id, usage.AcknowledgedId);
+        Assert.Equal(ProjectionDump.DistinctBackingBytes(w.RetainedOf(0, grown.Id, pending.Id, candidate.Id)),
+            usage.RetainedBytes);
+        Assert.Equal(300, usage.RetainedBytes);
 
-        // Keyframe repair releases the pins, so the same projection fits.
-        w.Start(0, 2, options);
-        Assert.True(w.Build(0, interest, keyframe: true).IsKeyframe);
-
-        // Only a projection that can never fit alone is a capacity failure.
+        // One more byte makes the projection's keyframe too large: capacity, never pressure, and the slot is unchanged.
         w.World.Set(blob, new RebuildBlob { Size = 101 });
         w.Capture();
-        w.Start(0, 3, options);
         DeltaRebuildException capacity = Assert.Throws<DeltaRebuildException>(() => w.Build(0, interest));
         Assert.Equal(DeltaRebuildFailure.CapacityExceeded, capacity.Failure);
+        Assert.Equal(candidate.Id, w.Usage(0).CandidateId);
+        Assert.Equal(grown.Id, w.Usage(0).AcknowledgedId);
     }
 
     [Theory]

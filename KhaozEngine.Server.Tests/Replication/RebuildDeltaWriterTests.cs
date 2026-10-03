@@ -48,6 +48,8 @@ public class RebuildDeltaWriterTests
         Assert.Throws<ArgumentNullException>(() => w.Start(1, 1, null!));
         Assert.Throws<ArgumentOutOfRangeException>(
             () => w.Start(1, 1, new DeltaRebuildOptions { MaxRetainedProjections = 3 }));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => w.Start(1, 1, new DeltaRebuildOptions { MaxKeyframeBytes = 1000, MaxRetainedPayloadBytes = 2000 }));
         Assert.Equal(default(RebuildUsage), w.Usage(1));
 
         ReplicationDeltaPacket first = w.Build(0, All, owner: 1);
@@ -191,7 +193,7 @@ public class RebuildDeltaWriterTests
         {
             new() { MaxEntities = 1 },
             new() { MaxComponents = 2 },
-            new() { MaxRetainedPayloadBytes = 7 },
+            new() { MaxRetainedPayloadBytes = 7, MaxKeyframeBytes = 2 },
         };
         ulong epoch = 1;
         foreach (DeltaRebuildOptions options in impossible)
@@ -202,7 +204,7 @@ public class RebuildDeltaWriterTests
             Assert.Equal(default(RebuildUsage), w.Usage(0));
         }
 
-        w.Start(0, epoch, new DeltaRebuildOptions { MaxEntities = 2, MaxComponents = 3, MaxRetainedPayloadBytes = 8 });
+        w.Start(0, epoch, new DeltaRebuildOptions { MaxEntities = 2, MaxComponents = 3 });
         Assert.True(w.Build(0, All).IsKeyframe);
     }
 

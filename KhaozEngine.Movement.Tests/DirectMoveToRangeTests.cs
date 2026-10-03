@@ -55,22 +55,34 @@ public class DirectMoveToRangeTests
             Assert.Equal(RangeMoveStatus.Following, Tick(moving, Orbit(tick), centre, targetMoves: true).Status);
     }
 
-    [Fact]
-    public void SuspendedTicksCountTowardNeitherWindow()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SuspendedTicksCountTowardNeitherWindow(bool committed)
     {
         var driver = new DirectMoveToRange(Options);
         for (int tick = 1; tick <= 15; tick++)
             Assert.Equal(RangeMoveStatus.Following, Tick(driver, MoveToRangeTests.Body(), Far).Status);
         for (int tick = 0; tick < 10; tick++)
         {
-            // Airborne samples far from the stalled spot would break the stall if they were recorded.
-            MoveState airborne = MoveToRangeTests.Body(1f + 0.5f * tick);
-            airborne.Grounded = false;
-            RangeSteering suspended = Tick(driver, airborne, Far);
+            // Suspended samples far from the stalled spot would break the stall if they were recorded.
+            RangeSteering suspended = Tick(driver, Suspended(1f + 0.5f * tick, committed), Far);
             Assert.Equal(RangeMoveStatus.Suspended, suspended.Status);
             Assert.Equal(Vector2.Zero, suspended.WorldDirection);
         }
         Assert.Equal(RangeMoveStatus.Blocked, Tick(driver, MoveToRangeTests.Body(), Far).Status);
+    }
+
+    [Fact]
+    public void LatchedBlockSurvivesSuspendedTicks()
+    {
+        var driver = new DirectMoveToRange(Options);
+        AssertStallLatchesAfter(driver, MoveToRangeTests.Body(), Far, 0.5f, Tuning, 16);
+        for (int tick = 0; tick < 5; tick++)
+            Assert.Equal(RangeMoveStatus.Suspended, Tick(driver, Suspended(1f + 0.5f * tick, false), Far).Status);
+        RangeSteering grounded = Tick(driver, MoveToRangeTests.Body(4f), Far);
+        Assert.Equal(RangeMoveStatus.Blocked, grounded.Status);
+        Assert.Equal(Vector2.Zero, grounded.WorldDirection);
     }
 
     [Fact]
@@ -128,22 +140,26 @@ public class DirectMoveToRangeTests
     {
         Vector3 centre = new(5f, 0.75f, 0f);
         ReachTarget box = ReachTarget.Box(centre, new(0.5f, 0.5f, 0.5f));
-        var changes = new (ReachTarget Target, float Range, MoveTuning Tuning)[]
+        ReachTarget capsule = ReachTarget.Capsule(new MovementBody(centre, 0.5f, 0.75f));
+        var changes = new (ReachTarget Base, ReachTarget Target, float Range, MoveTuning Tuning)[]
         {
-            (ReachTarget.Point(centre), 0.5f, Tuning),
-            (ReachTarget.Capsule(new MovementBody(centre, 0.5f, 0.75f)), 0.5f, Tuning),
-            (ReachTarget.Box(centre, new(0.6f, 0.5f, 0.5f)), 0.5f, Tuning),
-            (ReachTarget.Box(centre, new(0.5f, 0.5f, 0.5f), 0.1f), 0.5f, Tuning),
-            (box, 0.6f, Tuning),
-            (box, 0.5f, Tuning with { CapsuleRadius = 0.25f }),
-            (box, 0.5f, Tuning with { StepHeight = 0.3f }),
-            (box, 0.5f, Tuning with { MaxSlopeRadians = 0.7f }),
+            (box, ReachTarget.Point(centre), 0.5f, Tuning),
+            (box, capsule, 0.5f, Tuning),
+            (box, ReachTarget.Box(centre, new(0.6f, 0.5f, 0.5f)), 0.5f, Tuning),
+            (box, ReachTarget.Box(centre, new(0.5f, 0.5f, 0.5f), 0.1f), 0.5f, Tuning),
+            (box, box, 0.6f, Tuning),
+            (box, box, 0.5f, Tuning with { CapsuleRadius = 0.25f }),
+            (box, box, 0.5f, Tuning with { CapsuleHalfHeight = 0.8f }),
+            (box, box, 0.5f, Tuning with { StepHeight = 0.3f }),
+            (box, box, 0.5f, Tuning with { MaxSlopeRadians = 0.7f }),
+            (capsule, ReachTarget.Capsule(new MovementBody(centre, 0.6f, 0.75f)), 0.5f, Tuning),
+            (capsule, ReachTarget.Capsule(new MovementBody(centre, 0.5f, 0.9f)), 0.5f, Tuning),
         };
         foreach (var change in changes)
         {
             var driver = new DirectMoveToRange(Options);
-            AssertStallLatchesAfter(driver, MoveToRangeTests.Body(), box, 0.5f, Tuning, 16);
-            ReachTarget translated = ReachTarget.Box(centre + Vector3.UnitZ, new(0.5f, 0.5f, 0.5f));
+            AssertStallLatchesAfter(driver, MoveToRangeTests.Body(), change.Base, 0.5f, Tuning, 16);
+            ReachTarget translated = Translated(change.Base, Vector3.UnitZ);
             Assert.Equal(RangeMoveStatus.Blocked, Tick(driver, MoveToRangeTests.Body(), translated).Status);
             AssertStallLatchesAfter(driver, MoveToRangeTests.Body(), change.Target, change.Range, change.Tuning, 16);
         }
@@ -210,8 +226,8 @@ public class DirectMoveToRangeTests
             Assert.Equal(Vector2.Zero, steering.WorldDirection);
             body = NpcGroundMovement.Step(body, steering, false, Dt, Tuning, context);
             Assert.True(body.Grounded);
-            // Resting on the brink lowers the capsule slightly. A fall would drop it about 2 m.
-            Assert.InRange(body.Position.Y, 2.5f, 2.76f);
+            // Resting on the brink lowers the capsule, but corner sag cannot exceed the capsule radius. A fall drops 2 m.
+            Assert.InRange(body.Position.Y, 2.75f - Tuning.CapsuleRadius, 2.76f);
         }
     }
 
@@ -255,24 +271,27 @@ public class DirectMoveToRangeTests
     }
 
     [Theory]
-    [InlineData(0, 0.1f, 45, 0.1f)]
-    [InlineData(-1, 0.1f, 45, 0.1f)]
-    [InlineData(15, 0f, 45, 0.1f)]
-    [InlineData(15, -0.1f, 45, 0.1f)]
-    [InlineData(15, float.NaN, 45, 0.1f)]
-    [InlineData(15, float.PositiveInfinity, 45, 0.1f)]
-    [InlineData(15, 0.1f, 0, 0.1f)]
-    [InlineData(15, 0.1f, -45, 0.1f)]
-    [InlineData(15, 0.1f, 45, 0f)]
-    [InlineData(15, 0.1f, 45, -0.1f)]
-    [InlineData(15, 0.1f, 45, float.NaN)]
-    [InlineData(15, 0.1f, 45, float.NegativeInfinity)]
-    [InlineData(65536, 0.1f, 45, 0.1f)]
-    [InlineData(15, 0.1f, 65536, 0.1f)]
-    [InlineData(int.MaxValue, 0.1f, int.MaxValue, 0.1f)]
-    public void OptionsRequirePositiveFiniteThresholds(int stallTicks, float travel, int approachTicks, float gain)
+    [InlineData(0, 0.1f, 45, 0.1f, "stallWindowTicks")]
+    [InlineData(-1, 0.1f, 45, 0.1f, "stallWindowTicks")]
+    [InlineData(15, 0f, 45, 0.1f, "stallTravelMetres")]
+    [InlineData(15, -0.1f, 45, 0.1f, "stallTravelMetres")]
+    [InlineData(15, float.NaN, 45, 0.1f, "stallTravelMetres")]
+    [InlineData(15, float.PositiveInfinity, 45, 0.1f, "stallTravelMetres")]
+    [InlineData(15, 0.1f, 0, 0.1f, "approachWindowTicks")]
+    [InlineData(15, 0.1f, -45, 0.1f, "approachWindowTicks")]
+    [InlineData(15, 0.1f, 45, 0f, "approachGainMetres")]
+    [InlineData(15, 0.1f, 45, -0.1f, "approachGainMetres")]
+    [InlineData(15, 0.1f, 45, float.NaN, "approachGainMetres")]
+    [InlineData(15, 0.1f, 45, float.NegativeInfinity, "approachGainMetres")]
+    [InlineData(65536, 0.1f, 45, 0.1f, "stallWindowTicks")]
+    [InlineData(15, 0.1f, 65536, 0.1f, "approachWindowTicks")]
+    [InlineData(int.MaxValue, 0.1f, int.MaxValue, 0.1f, "stallWindowTicks")]
+    public void OptionsRequirePositiveFiniteThresholds(int stallTicks, float travel, int approachTicks, float gain,
+        string parameter)
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => new DirectApproachOptions(stallTicks, travel, approachTicks, gain));
+        var refused = Assert.Throws<ArgumentOutOfRangeException>(
+            () => new DirectApproachOptions(stallTicks, travel, approachTicks, gain));
+        Assert.Equal(parameter, refused.ParamName);
     }
 
     [Fact]
@@ -335,6 +354,22 @@ public class DirectMoveToRangeTests
         float angle = tick * (0.05f / 3f);
         return MoveToRangeTests.Body(3f * MathF.Cos(angle), 3f * MathF.Sin(angle));
     }
+
+    private static MoveState Suspended(float x, bool committed)
+    {
+        MoveState body = MoveToRangeTests.Body(x);
+        if (committed) body.Commitment = new MovementCommitment { Phase = MovementCommitmentPhase.Recovering };
+        else body.Grounded = false;
+        return body;
+    }
+
+    private static ReachTarget Translated(in ReachTarget target, Vector3 offset) => target.Kind switch
+    {
+        ReachTargetKind.Capsule => ReachTarget.Capsule(new MovementBody(target.Centre + offset,
+            target.Body.Radius, target.Body.HalfHeight)),
+        ReachTargetKind.Box => ReachTarget.Box(target.Centre + offset, target.HalfExtents, target.YawRadians),
+        _ => ReachTarget.Point(target.Centre + offset),
+    };
 
     private static void AssertStallLatchesAfter(DirectMoveToRange driver, MoveState body, ReachTarget target,
         float range, MoveTuning tuning, int ticks)

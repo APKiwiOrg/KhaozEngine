@@ -7,6 +7,16 @@ namespace KhaozEngine.Movement;
 /// <summary>Decides whether a resolved candidate step may be taken by a range approach driver.</summary>
 internal delegate bool StepAdmission(in MoveState from, in MoveState to, in MoveTuning tuning);
 
+/// <summary>The target shape, range and capsule geometry whose change resets a range approach driver.
+/// Target translation is not part of the key.</summary>
+internal readonly record struct RangeShapeKey(ReachTargetKind Kind, float TargetRadius, float TargetHalfHeight,
+    Vector3 HalfExtents, float Yaw, float Range, float Radius, float HalfHeight, float Slope, float Step)
+{
+    internal static RangeShapeKey From(in MoveTuning tuning, in ReachTarget target, float range)
+        => new(target.Kind, target.Body.Radius, target.Body.HalfHeight, target.HalfExtents, target.YawRadians, range,
+            tuning.CapsuleRadius, tuning.CapsuleHalfHeight, tuning.MaxSlopeRadians, tuning.StepHeight);
+}
+
 /// <summary>Reach, travel bound, closest point and stop ring rules shared by the range approach drivers.</summary>
 internal static class RangeApproachCore
 {

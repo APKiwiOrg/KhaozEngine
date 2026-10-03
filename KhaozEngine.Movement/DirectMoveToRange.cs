@@ -13,7 +13,7 @@ public sealed partial class DirectMoveToRange
     private static readonly StepAdmission Admits = AllowsStep;
     private readonly DirectApproachOptions _options;
     private readonly ProgressRing _progress;
-    private ShapeKey _shape;
+    private RangeShapeKey _shape;
     private bool _keyed;
     private bool _targetMoves;
     private bool _blocked;
@@ -77,9 +77,7 @@ public sealed partial class DirectMoveToRange
 
     private void Rekey(in MoveTuning tuning, in ReachTarget target, float range, bool targetMoves)
     {
-        var key = new ShapeKey(target.Kind, target.Body.Radius, target.Body.HalfHeight, target.HalfExtents,
-            target.YawRadians, range, tuning.CapsuleRadius, tuning.CapsuleHalfHeight, tuning.MaxSlopeRadians,
-            tuning.StepHeight);
+        var key = RangeShapeKey.From(tuning, target, range);
         if (_keyed && key != _shape) ClearProgress();
         else if (_keyed && targetMoves != _targetMoves) _progress.ClearApproach();
         _shape = key;
@@ -97,7 +95,4 @@ public sealed partial class DirectMoveToRange
 
     private static bool AllowsStep(in MoveState body, in MoveState predicted, in MoveTuning tuning)
         => predicted.Grounded && !predicted.Swimming && MovementBody.IsFinite(predicted.Position);
-
-    private readonly record struct ShapeKey(ReachTargetKind Kind, float TargetRadius, float TargetHalfHeight,
-        Vector3 HalfExtents, float Yaw, float Range, float Radius, float HalfHeight, float Slope, float Step);
 }

@@ -511,14 +511,15 @@ Departures.
 - The reset key is compared on every validated tick, before the suspension check. `MoveToRange` compares it only on
   route ticks. Reason: a latched block must not survive a range or shape change made while the body is airborne or
   already blocked. Cost: none.
-- `ShapeKey` repeats the ten `GoalShape` fields privately in `DirectMoveToRange.cs`, because `MoveToRange.Goal.cs` is
-  outside the task's file list. Cost: one duplicated record struct.
+- Ruling N4 moved the reset key into one internal `RangeShapeKey` with `From(tuning, target, range)` in
+  `RangeApproachCore.cs`. Both drivers use it, so a new field cannot drift between them. `MoveToRange.Goal.cs` changed
+  only to call it, and the Step 1 filter proves `MoveToRange` behavior is unchanged.
 - The direct admission delegate is one static field, since it reads no instance state. `MoveToRange` caches its own in
   its constructor as specified.
 - The ledge fact walks the body to the brink with the driver, then calls `Reset` and asserts the 16 counted ticks
   from there. Reason: the exact refusal point depends on how the core rests a capsule on an edge. The body rests on
-  the corner about 0.056 m below its standing height, so the fact asserts it stays grounded and above 2.5 m rather
-  than at 2.75 m.
+  the corner about 0.056 m below its standing height. The fact asserts it stays grounded and no lower than 2.75 m
+  minus the capsule radius, since corner sag cannot exceed the radius.
 - `ShapeRangeAndGeometryChangesReset` also asserts that translating the target keeps the latch, since the driver
   holds no target identity.
 - `dotnet format --verify-no-changes` reports whitespace on lines 19, 20 and 58 of `PlayerRangeMovementTestRig.cs`.
@@ -529,6 +530,11 @@ above 65,535 ticks, so the ring capacity cannot overflow. `WindowsUpToTheBoundBu
 cover the bound. `WarmedSteadyTicksAllocateNothing` measures recorded orbit ticks, a stop ring bisection and `Reset` with
 `AllocAssert`, and the test class joined the `AllocSensitive` collection. `DirectMoveToRangeTests` 29 passed of 29, Step 1
 filter 126 passed of 126. The allocation fact passed on first run, as acceptance evidence for an existing property.
+
+Ruling N4 follow-up, commit `refactor(movement): share range shape keys`. The shared `RangeShapeKey` is described in the
+departures above. Tests add capsule half height and a capsule target's radius and half height to the shape reset
+cases, a committed grounded body to the suspension theory, `LatchedBlockSurvivesSuspendedTicks`, and `ParamName` checks
+in the options theory. `DirectMoveToRangeTests` 31 passed of 31, Step 1 filter 128 passed of 128.
 
 Movement README draft for Task 7, a "Route-free approach" section after "Range steering and movement drivers":
 

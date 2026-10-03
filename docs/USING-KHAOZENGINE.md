@@ -21360,8 +21360,10 @@ What an opted-in consumer owes:
   `RetryOnReject` off.
 - **Capacity is a consumer constraint.** The limits are approved review defaults, not measured capacity. A projection
   that exceeds them is a typed failure, never a reason to raise a limit silently. The bounded characterization in
-  [DELTA-RELIABILITY-ACCEPTANCE.md](DELTA-RELIABILITY-ACCEPTANCE.md) shows a dense view turning most routine sends
-  into reliable keyframes, which removes the bandwidth benefit while staying correct.
+  [DELTA-RELIABILITY-ACCEPTANCE.md](DELTA-RELIABILITY-ACCEPTANCE.md) shows that five moving entities fill a
+  512-byte routine datagram and a sixth overflows it. A view with more movers turns most routine sends into reliable
+  keyframes, which stays correct but removes the bandwidth benefit, and remote state stops updating for the length of
+  each keyframe barrier. Dense views are tracked in [#1261](https://github.com/APKiwiOrg/KhaozEngine/issues/1261).
 - **Visibility cannot be recalled.** `EntityVisibleToSlot` applies before every projection is frozen. A hide during
   a keyframe barrier shows as a removal on the first resumed projection, and bytes already sent while visible stay
   sent.

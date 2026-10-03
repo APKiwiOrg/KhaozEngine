@@ -110,10 +110,12 @@ consumer's id range, and the same with one more tag on the first entity:
 
 - Every complete projection in the table fits the approved keyframe, entity, frame and byte caps. The largest
   keyframe, 256 visible, is 58 percent of 64 KiB and takes 20 replication ticks at four chunks per tick.
-- Only the owner-only row fits a routine datagram. At 32 visible and above, a tick in which every actor moves
-  produces a delta of 2 to 16 KB, which the stream never fragments, so each such tick becomes a reliable keyframe
-  repair. That is correct and bounded, but it removes the bandwidth benefit of the unreliable stream. With movement
-  state alone at 91 bytes per moving entity on the wire, about five moving entities fill a 512-byte datagram.
+- Only the owner-only row fits a routine datagram. A moving entity costs 91 bytes on the wire for position and
+  movement state alone, on top of the 40-byte empty datagram, so five moving entities fit 512 bytes and a sixth
+  overflows it. At 32 visible and above, a tick in which every actor moves produces a delta of 2 to 16 KB, which the
+  stream never fragments, so each such tick becomes a reliable keyframe repair. That is correct and bounded, but it
+  removes the bandwidth benefit of the unreliable stream, and remote state stops updating for the length of each
+  keyframe barrier (up to 20 replication ticks at 256 visible). Dense views are tracked in [#1261](https://github.com/APKiwiOrg/KhaozEngine/issues/1261).
 - Writer retention at the window stays under 1 MiB for 256 visible, within the 2 MiB budget, so no committed send is
   pruned for bytes before the window fires.
 - The frame cap is exact: 16,384 frames are served and one more is refused by both the writer and the stream.

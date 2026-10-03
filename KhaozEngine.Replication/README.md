@@ -272,10 +272,13 @@ void OnAck(ReplicationPacketId id) => writer.AcknowledgeRebuild(slot, id);
 // Receiver, one per connection, rebuilt with a fresh world and view on reconnect.
 var view = new ClientReplicationView(registry);
 var receiver = new ClientDeltaRebuild(registry, view, options);
+ulong authorizedEpoch = 0;
 
 void OnKeyframe(ulong epoch, ReadOnlyMemory<byte> body)
 {
-    receiver.ExpectEpoch(epoch);
+    // Until its first keyframe is acknowledged the writer keeps building keyframes in the same epoch, and
+    // ExpectEpoch throws for an established one. Authorize only a strictly greater epoch.
+    if (epoch > authorizedEpoch) { receiver.ExpectEpoch(epoch); authorizedEpoch = epoch; }
     OnPacket(body);
 }
 

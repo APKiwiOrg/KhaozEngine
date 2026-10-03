@@ -75,9 +75,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   unchanged. The header now names the last sent sequence, and during an ack delay a delta carries only changes since
   that send. `Acknowledge` is sequence diagnostics only. Every returned payload is a send commitment over a
   reliable-ordered channel, and a discarded or failed send needs `Forget(slot)`, now also on `ServerReplicator`, and
-  a fresh receiver. The signed sequence stops at `int.MaxValue`: `LegacySequenceExhausted` turns true, capture
-  throws, and `ResetAfterLegacySequenceExhaustion()` clears the writer once the owner has ended every connection it
-  serves. `AoiPresenceRecord` is gone.
+  a fresh receiver. The signed sequence stops at `int.MaxValue`: `LegacySequenceExhausted` turns true, `Capture` or
+  `BeginTick` throws, and `ResetAfterLegacySequenceExhaustion()` clears the writer once the owner has ended every
+  connection it serves. The `historyDepth` constructor argument of both writers is still validated as positive but no
+  longer has an effect, because each slot keeps only its last sent projection.
 - Opt-in format 2 acknowledged rebuild in `KhaozEngine.Replication`
   ([#34](https://github.com/APKiwiOrg/KhaozEngine/issues/34)). Both writers gain `StartRebuild`, `BuildRebuildFor`,
   `RecordRebuildSent`, `AcknowledgeRebuild` and `RebuildNeedsRepair`, retaining compact viewer-only projections
@@ -97,7 +98,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `Poll(dt)`, and only accepted state refreshes its liveness. Four new `DisconnectReason` members,
   `ReplicationPolicyRefused`, `ReplicationRecoveryFailed` and `ReplicationCapacityExceeded` (terminal) and
   `ReplicationRestart` (backoff reconnect), map to stable `ke:replication-*` tokens. Both servers restart the shared
-  writer after legacy sequence exhaustion behind an admission gate.
+  writer after legacy sequence exhaustion behind an admission gate. `WorldClient` now ignores a `Rejected` event once
+  it is `Disconnected`, so a late reject no longer overwrites the disconnect reason or schedules a reconnect.
 - `KhaozEngine.Netcode` send commitments and packet limits. `NetClient.TrySend` and `NetServer.TrySendTo` report
   whether a frame was handed to the transport, `NetClient.Disconnect()` ends a session locally, and the optional
   `INetTransport.MaxUnfragmentedPayloadBytes` default interface method, forwarded by both facades, answers zero for
@@ -106,8 +108,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   and the chunk wire are unchanged. The LiteNetLib transports answer the limit from the peer's
   `GetMaxSinglePacketSize`.
 - A bounded consumer size characterization for format 2 is recorded in `docs/DELTA-RELIABILITY-ACCEPTANCE.md`: with
-  the consumer's current extension widths every projection up to 256 visible entities fits the keyframe cap, and a
-  routine tick that moves 32 or more entities exceeds the 512-byte packet and becomes a reliable keyframe.
+  the consumer's current extension widths every projection up to 256 visible entities fits the keyframe cap, but a
+  routine tick that moves six or more entities exceeds the 512-byte packet and becomes a reliable keyframe barrier,
+  during which remote state stops updating. Dense views are tracked in [#1261](https://github.com/APKiwiOrg/KhaozEngine/issues/1261).
 
 ## 20.19.0
 

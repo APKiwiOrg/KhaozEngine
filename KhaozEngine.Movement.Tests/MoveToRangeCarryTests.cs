@@ -95,6 +95,15 @@ public class MoveToRangeCarryTests
     }
 
     [Fact]
+    public void CallerFollowConfigConsumesPassedWaypointsWithDefaultOptions()
+    {
+        // The follow half of StrictConfig: a caller's ConsumePassedCollinearWaypoints survives Default options.
+        var consume = new PathFollowConfig { ConsumePassedCollinearWaypoints = true };
+        Assert.Equal(new Vector2(-0.1f, 0f), Overshoot(RouteApproachOptions.Default, consume));
+        Assert.Equal(new Vector2(-0.3f, 0f), Overshoot(RouteApproachOptions.Default, new PathFollowConfig()));
+    }
+
+    [Fact]
     public void RefusedCarryFallsBackToTheWaypoint()
     {
         var planner = new ScriptPlanner((_, _) => Route(NavPathStatus.Complete,
@@ -221,11 +230,11 @@ public class MoveToRangeCarryTests
         => ((int)MathF.Floor((point.X - originX) / 0.25f), (int)MathF.Floor((point.Y - originZ) / 0.25f));
 
     // Returns the commanded horizontal travel in metres on the tick after the overshoot.
-    static Vector2 Overshoot(RouteApproachOptions options)
+    static Vector2 Overshoot(RouteApproachOptions options, PathFollowConfig? follow = null)
     {
         var planner = new ScriptPlanner((_, _) => Route(NavPathStatus.Complete, new(0.25f, 0f), new(0.5f, 0f),
             new(0.6f, 0f), new(0.7f, 0f), new(0.7f, 0.25f), new(0.7f, 2f)));
-        var mover = new MoveToRange(planner, Space, Open, null, options);
+        var mover = new MoveToRange(planner, Space, Open, follow, options);
         ReachTarget target = ReachTarget.Point(new(0.7f, 0.75f, 2f));
         const float dt = 0.2f;
         MoveState body = Body();

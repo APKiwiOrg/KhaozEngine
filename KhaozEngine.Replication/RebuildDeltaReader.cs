@@ -20,9 +20,6 @@ namespace KhaozEngine.Replication;
 /// </remarks>
 internal sealed class RebuildDeltaReader
 {
-    // netId, isNew flag, removed component count, entity terminator.
-    private const int MinEntryBytes = sizeof(long) + sizeof(byte) + sizeof(int) + sizeof(ushort);
-
     private readonly DeltaRebuildOptions options;
 
     // Per-packet scratch, bounded by the validated counts and cleared on every read.
@@ -121,7 +118,7 @@ internal sealed class RebuildDeltaReader
 
         int changedCount = ReadInt32(source, ref pos, end, "changed entity count");
         if (changedCount < 0) throw Malformed($"Changed entity count {changedCount} is negative.");
-        if ((long)changedCount * MinEntryBytes > end - pos)
+        if ((long)changedCount * RebuildDeltaEncoding.EntryBytes > end - pos)
             throw Malformed($"Changed entity count {changedCount} exceeds the {end - pos} remaining bytes.");
         if (changedCount > options.MaxEntities)
             throw Capacity($"Body changes {changedCount} entities, limit {options.MaxEntities}.");
@@ -204,14 +201,14 @@ internal sealed class RebuildDeltaReader
             throw Capacity($"Projection would have {plannedEntities.Count} entities, limit {options.MaxEntities}.");
         if (planned.Count > options.MaxComponents)
             throw Capacity($"Projection would have {planned.Count} component frames, limit {options.MaxComponents}.");
+        // The writer's RebuildDeltaEncoding.KeyframeBytes formula, summed over the planned map before allocating.
         long payloadBytes = 0;
-        long keyframeBytes = RebuildDeltaEncoding.HeaderBytes + sizeof(int) + sizeof(int)
-            + ((long)plannedEntities.Count * MinEntryBytes);
+        long keyframeBytes = RebuildDeltaEncoding.KeyframePrefixBytes
+            + ((long)plannedEntities.Count * RebuildDeltaEncoding.EntryBytes);
         foreach (Frame frame in planned)
         {
             payloadBytes += frame.Length;
-            keyframeBytes += sizeof(ushort) + frame.Length;
-            if (ReplicationRegistry.IsExtension(frame.TypeId)) keyframeBytes += SevenBitBytes(frame.Length);
+            keyframeBytes += RebuildDeltaEncoding.FrameBytes(frame.TypeId, frame.Length);
         }
         if (keyframeBytes + options.EnvelopeBytes > options.MaxKeyframeBytes)
             throw Capacity($"Projection's complete keyframe would be {keyframeBytes + options.EnvelopeBytes} bytes, " +
@@ -340,13 +337,6 @@ internal sealed class RebuildDeltaReader
             }
         }
         throw Malformed($"Net id {netId} type id {typeId} length is overlong.");
-    }
-
-    private static int SevenBitBytes(int value)
-    {
-        int bytes = 1;
-        for (uint v = (uint)value; v >= 0x80; v >>= 7) bytes++;
-        return bytes;
     }
 
     private static bool Fail(string message, out string? error)

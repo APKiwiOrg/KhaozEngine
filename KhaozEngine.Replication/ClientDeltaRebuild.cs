@@ -65,10 +65,12 @@ public sealed class ClientDeltaRebuild
     public ReplicationPacketId? AckTarget => latest;
 
     /// <summary>Why the last <see cref="TryApply"/> returned <see cref="DeltaRebuildResult.Invalid"/>:
-    /// <see cref="DeltaRebuildFailure.MalformedPacket"/> for malformed bytes or an unknown built-in,
-    /// <see cref="DeltaRebuildFailure.CapacityExceeded"/> for a projection that cannot be held within the limits, or
-    /// <see cref="DeltaRebuildFailure.SequenceAmbiguous"/> for a sequence or baseline half the range away. Any other
-    /// result sets <see cref="DeltaRebuildFailure.None"/>.</summary>
+    /// <see cref="DeltaRebuildFailure.MalformedPacket"/> for malformed bytes or an unknown built-in, which is terminal
+    /// decode incompatibility. <see cref="DeltaRebuildFailure.CapacityExceeded"/> for a projection that cannot be held
+    /// within the limits, which is a terminal capacity failure. <see cref="DeltaRebuildFailure.SequenceAmbiguous"/> for
+    /// a sequence or baseline exactly half the range away, whose order is undefined: the packet is not ingested, and
+    /// the caller ignores it like a stale packet, with no disconnect and no repair. Any result other than Invalid, and
+    /// <see cref="ExpectEpoch"/> or <see cref="Reset"/>, sets <see cref="DeltaRebuildFailure.None"/>.</summary>
     public DeltaRebuildFailure LastFailure { get; private set; }
 
     /// <summary>
@@ -87,13 +89,17 @@ public sealed class ClientDeltaRebuild
         if (this.epoch is ulong current)
         {
             if (epoch == current && !established) return;
-            if (epoch <= current)
+            if (epoch == current)
                 throw new ArgumentOutOfRangeException(nameof(epoch), epoch,
-                    $"Epoch {epoch} does not replace established epoch {current}. A replacement must be greater.");
+                    $"Epoch {epoch} is already established. A replacement must be greater.");
+            if (epoch < current)
+                throw new ArgumentOutOfRangeException(nameof(epoch), epoch,
+                    $"Epoch {epoch} is below authorized epoch {current}. A replacement must be greater.");
             retiredFloor = current;
         }
         this.epoch = epoch;
         established = false;
+        LastFailure = DeltaRebuildFailure.None;
         ClearStream();
     }
 
@@ -103,6 +109,10 @@ public sealed class ClientDeltaRebuild
     /// <see cref="DeltaRebuildResult.MissingBaseline"/>, <paramref name="missingBaseline"/> names the exact id that is
     /// not retained. Every result other than Accepted leaves the live world, presentation buffers, pins and accepted
     /// id unchanged. Malformed input never throws.
+    /// <para>Invalid has three meanings, told apart by <see cref="LastFailure"/>. MalformedPacket and CapacityExceeded
+    /// are terminal for the stream. SequenceAmbiguous, a sequence or baseline exactly half the range away, is ignored
+    /// like <see cref="DeltaRebuildResult.DuplicateOrStale"/>: nothing was decoded or changed, and the caller neither
+    /// ingests nor disconnects.</para>
     /// </summary>
     /// <param name="world">The live client world publication writes.</param>
     /// <param name="packet">The body only, starting at the format byte, without any transport envelope.</param>
@@ -165,11 +175,22 @@ public sealed class ClientDeltaRebuild
             return Fail(DeltaRebuildFailure.MalformedPacket, out error, $"Format 2 body did not decode: {ex.Message}");
         }
 
+        // Publication installs every known frame from staging. Verify that now, before retention changes, so a
+        // publication fault can never leave retention holding an id LatestAcceptedId does not name.
+        if (!staging.HoldsEveryKnownFrame(projection, out string? missing))
+        {
+            staging.Reset();
+            return Fail(DeltaRebuildFailure.MalformedPacket, out error, $"Projection {header.Id} is incomplete: {missing}");
+        }
+
         // Retain before publication and before anything can acknowledge the id.
         ReplicationPacketId? pinnedBaseline = NewerOf(confirmedBaseline, header.Baseline);
         prospectivePins.Clear();
         prospectivePins.Add(header.Id);
         if (pinnedBaseline is ReplicationPacketId pin) prospectivePins.Add(pin);
+        // Defensive and unreachable under D2.9: each retained projection owns one backing smaller than its complete
+        // keyframe, so the new projection and at most two distinct pins need at most three of the four keyframes the
+        // budget must hold, and three of the four projections the count must allow.
         if (!retention.TryRetain(header.Id, projection, prospectivePins, out DeltaRebuildFailure failure))
         {
             staging.Reset();

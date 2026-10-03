@@ -114,6 +114,8 @@ public class RebuildMalformedFrameTests
             () => new Body().I32(0).I32(1).I64(10).U8(0).I32(0).U16(ExtId).Len(100).I32(1).U16(0).ToArray(),
         ["framed underread"] =
             () => new Body().I32(0).I32(1).I64(10).U8(0).I32(0).U16(ExtId).Len(6).I32(1).Raw(0, 0).U16(0).ToArray(),
+        ["known extension reader past stated length"] =
+            () => new Body().I32(0).I32(1).I64(10).U8(0).I32(0).U16(ExtId).Len(2).Raw(1, 2).U16(0).ToArray(),
         ["opaque frame overread"] =
             () => new Body().I32(0).I32(1).I64(10).U8(0).I32(0).U16(UnknownExtId).Len(50).Raw(1, 2).U16(0).ToArray(),
         ["missing entity terminator"] = () => new Body().I32(0).I32(1).I64(10).U8(0).I32(0).U16(ValueId).I32(9).ToArray(),
@@ -206,6 +208,60 @@ public class RebuildMalformedFrameTests
             client.TryApply(live, new Body(snapshot: 3).I32(0).I32(1).ValueEntry(10, 4).ToArray(), out _, out _, out _));
         Assert.Equal(4, live.Get<RebuildValue>(ten).Number);
         Assert.Equal(DeltaRebuildFailure.None, client.LastFailure);
+    }
+
+    [Fact]
+    public void PersistOnlyRegisteredFrameIsMalformed()
+    {
+        // Registration keeps every built-in on the Replicate channel, so only an extension can be Persist-only.
+        const ushort persistId = ReplicationRegistry.FirstExtensionTypeId + 6;
+        Assert.Throws<ArgumentException>(() => new ReplicationRegistry().Register<RebuildValue>(7,
+            (v, bw) => bw.Write(v.Number), br => new RebuildValue { Number = br.ReadInt32() },
+            channels: ReplicationChannels.Persist));
+        ReplicationRegistry registry = NewRegistry();
+        registry.Register<RebuildOpaque>(persistId, (o, bw) => bw.Write(o.V), br => new RebuildOpaque { V = br.ReadInt32() },
+            channels: ReplicationChannels.Persist);
+        var view = new ClientReplicationView(registry);
+        var client = new ClientDeltaRebuild(registry, view, new DeltaRebuildOptions());
+        client.ExpectEpoch(Epoch);
+        var live = new World();
+        Assert.Equal(DeltaRebuildResult.Accepted, client.TryApply(live, InitialKeyframe(), out _, out _, out _));
+
+        byte[] delta = new Body().I32(0).I32(1).I64(10).U8(0).I32(0).U16(persistId).Len(4).I32(1).U16(0).ToArray();
+        Assert.Equal(DeltaRebuildResult.Invalid, client.TryApply(live, delta, out _, out _, out string? error));
+        Assert.Equal(DeltaRebuildFailure.MalformedPacket, client.LastFailure);
+        Assert.Contains("never replicates", error);
+        Assert.Equal(new ReplicationPacketId(Epoch, 1), client.LatestAcceptedId);
+    }
+
+    [Fact]
+    public void FullEntryForBaselineEntityDropsAndReadsNoCarriedFrames()
+    {
+        var codec = new CountingCodec();
+        var view = new ClientReplicationView(codec.Registry);
+        var client = new ClientDeltaRebuild(codec.Registry, view, new DeltaRebuildOptions());
+        client.ExpectEpoch(Epoch);
+        var live = new World();
+        byte[] keyframe = Body.Keyframe(1).I32(0).I32(2)
+            .I64(10).U8(1).I32(0).U16(CountingCodec.BuiltinId).I32(1).U16(CountingCodec.ExtensionId).Len(4).I32(2).U16(0)
+            .I64(11).U8(1).I32(0).U16(CountingCodec.BuiltinId).I32(3).U16(0)
+            .ToArray();
+        Assert.Equal(DeltaRebuildResult.Accepted, client.TryApply(live, keyframe, out _, out _, out _));
+        int builtinReads = codec.BuiltinReads, extensionReads = codec.ExtensionReads;
+
+        // A full entry for net id 10, which the baseline holds with two frames, carrying only the built-in.
+        byte[] full = new Body().I32(0).I32(1).I64(10).U8(1).I32(0).U16(CountingCodec.BuiltinId).I32(5).U16(0).ToArray();
+        Assert.Equal(DeltaRebuildResult.Accepted, client.TryApply(live, full, out _, out _, out _));
+
+        // One received built-in for 10, one carried built-in for 11, and nothing carried for 10.
+        Assert.Equal(builtinReads + 2, codec.BuiltinReads);
+        Assert.Equal(extensionReads, codec.ExtensionReads);
+        Assert.True(client.TryGetRetainedForTest(new ReplicationPacketId(Epoch, 2), out ReplicationProjection rebuilt));
+        Assert.Equal(new[] { (10L, CountingCodec.BuiltinId), (11L, CountingCodec.BuiltinId) },
+            ProjectionDump.Of(rebuilt).Select(e => (e.NetId, e.TypeId)));
+        view.TryGetEntity(10, out Entity ten);
+        Assert.Equal(5, live.Get<CountedBuiltin>(ten).N);
+        Assert.False(live.TryGet<CountedExtension>(ten, out _));
     }
 
     [Fact]

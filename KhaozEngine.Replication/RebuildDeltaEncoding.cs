@@ -57,19 +57,26 @@ internal static class RebuildDeltaEncoding
         }
     }
 
+    /// <summary>Keyframe body bytes before any entity: the header, the removed count and the changed count.</summary>
+    internal const int KeyframePrefixBytes = HeaderBytes + sizeof(int) + sizeof(int);
+
+    /// <summary>Bytes of one full entry before its frames: net id, entry flag, removed component count and the
+    /// entity terminator. Also the smallest possible changed entry.</summary>
+    internal const int EntryBytes = sizeof(long) + sizeof(byte) + sizeof(int) + sizeof(ushort);
+
+    /// <summary>Bytes one frame takes on the wire: type id, the 7-bit length for an extension id, then the payload.
+    /// The writer's capacity check and the receiver's reconstruction check both sum this, so they cannot drift.</summary>
+    internal static int FrameBytes(ushort typeId, int payloadLength) =>
+        sizeof(ushort) + payloadLength + (ReplicationRegistry.IsExtension(typeId) ? SevenBitLength(payloadLength) : 0);
+
     /// <summary>The exact byte length of a keyframe body for <paramref name="projection"/>, envelope excluded.</summary>
     public static long KeyframeBytes(ReplicationProjection projection)
     {
-        long bytes = HeaderBytes + sizeof(int) + sizeof(int);
+        long bytes = KeyframePrefixBytes;
         foreach (ProjectedEntity entity in projection.Entities.Values)
         {
-            bytes += sizeof(long) + sizeof(byte) + sizeof(int) + sizeof(ushort);
-            for (int i = 0; i < entity.Count; i++)
-            {
-                ProjectedComponent c = entity[i];
-                bytes += sizeof(ushort) + c.Length;
-                if (ReplicationRegistry.IsExtension(c.TypeId)) bytes += SevenBitLength(c.Length);
-            }
+            bytes += EntryBytes;
+            for (int i = 0; i < entity.Count; i++) bytes += FrameBytes(entity[i].TypeId, entity[i].Length);
         }
         return bytes;
     }

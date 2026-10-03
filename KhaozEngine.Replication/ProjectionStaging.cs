@@ -134,6 +134,7 @@ internal sealed class ProjectionStaging
         if (!registry.TryGet(typeId, out ComponentCodec codec))
             throw new DeltaRebuildException(DeltaRebuildFailure.MalformedPacket,
                 $"Body references unregistered built-in type id {typeId}.");
+        // Defensive: registration keeps every built-in on the Replicate channel, so this cannot fire today.
         if ((codec.Channels & ReplicationChannels.Replicate) == 0)
             throw new DeltaRebuildException(DeltaRebuildFailure.MalformedPacket,
                 $"Body carries type id {typeId}, which is registered but never replicates.");
@@ -153,6 +154,35 @@ internal sealed class ProjectionStaging
         {
             window.Release();
         }
+    }
+
+    /// <summary>
+    /// True when staging holds an entity for every net id of <paramref name="projection"/> and a value for every
+    /// frame whose type id is a registered Replicate codec, so publication cannot fail on a missing staged value.
+    /// Unknown extension frames are opaque and need no staged value. Reads no payload.
+    /// </summary>
+    internal bool HoldsEveryKnownFrame(ReplicationProjection projection, out string? missing)
+    {
+        ArgumentNullException.ThrowIfNull(projection);
+        foreach (KeyValuePair<long, ProjectedEntity> kv in projection.Entities)
+        {
+            if (!entityByNetId.TryGetValue(kv.Key, out Entity staged))
+            {
+                missing = $"Staging holds no entity for net id {kv.Key}.";
+                return false;
+            }
+            for (int i = 0; i < kv.Value.Count; i++)
+            {
+                ushort typeId = kv.Value[i].TypeId;
+                if (!registry.TryGet(typeId, out ComponentCodec codec)
+                    || (codec.Channels & ReplicationChannels.Replicate) == 0) continue;
+                if (codec.HasComponent(world, staged)) continue;
+                missing = $"Staging holds no value for net id {kv.Key} type id {typeId}.";
+                return false;
+            }
+        }
+        missing = null;
+        return true;
     }
 
     /// <summary>Resets, stages every entity of <paramref name="projection"/>, decodes each known frame once, then

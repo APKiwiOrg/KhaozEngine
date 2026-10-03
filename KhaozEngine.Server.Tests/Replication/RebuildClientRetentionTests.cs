@@ -210,6 +210,36 @@ public class RebuildClientRetentionTests
     }
 
     [Fact]
+    public void StagingVerifiesEveryKnownFrameBeforeRetention()
+    {
+        ReplicationRegistry registry = RebuildLink.NewRegistry(includeOpaque: false);
+        const ushort unknownId = ReplicationRegistry.FirstExtensionTypeId + 9;
+        var value = new ProjectedComponent(RebuildLink.ValueId, new byte[] { 4, 0, 0, 0 }, 0, 4);
+        var opaque = new ProjectedComponent(unknownId, new byte[] { 0xAA, 0xBB }, 0, 2);
+        var tag = new ProjectedComponent(RebuildLink.TagId, Array.Empty<byte>(), 0, 0);
+        ReplicationProjection projection = ReplicationProjection.Create(new[]
+        {
+            new KeyValuePair<long, ProjectedEntity>(1, new ProjectedEntity(new[] { value, opaque })),
+            new KeyValuePair<long, ProjectedEntity>(2, new ProjectedEntity(new[] { tag })),
+        }, new DeltaRebuildOptions());
+        var staging = new ProjectionStaging(registry);
+
+        staging.Reset();
+        staging.Decode(1, value);
+        Assert.False(staging.HoldsEveryKnownFrame(projection, out string? noEntity));   // net id 2 never staged
+        Assert.Contains("2", noEntity);
+
+        staging.FinishFor(projection);
+        Assert.False(staging.HoldsEveryKnownFrame(projection, out string? noTag));      // its tag was never decoded
+        Assert.Contains(RebuildLink.TagId.ToString(System.Globalization.CultureInfo.InvariantCulture), noTag);
+
+        staging.Decode(2, tag);
+        staging.FinishFor(projection);
+        Assert.True(staging.HoldsEveryKnownFrame(projection, out string? none));        // the opaque frame needs none
+        Assert.Null(none);
+    }
+
+    [Fact]
     public void PublicationSamplesNeverAliasClientRetention()
     {
         var link = new RebuildLink();
@@ -274,5 +304,11 @@ public class RebuildClientRetentionTests
         client.ExpectEpoch(3);
         client.ExpectEpoch(3);
         Assert.Throws<ArgumentOutOfRangeException>(() => client.ExpectEpoch(2));
+
+        // A replacement epoch clears the last failure, as Reset does.
+        Assert.Equal(DeltaRebuildResult.Invalid, client.TryApply(new World(), new byte[] { 9 }, out _, out _, out _));
+        Assert.Equal(DeltaRebuildFailure.MalformedPacket, client.LastFailure);
+        client.ExpectEpoch(4);
+        Assert.Equal(DeltaRebuildFailure.None, client.LastFailure);
     }
 }

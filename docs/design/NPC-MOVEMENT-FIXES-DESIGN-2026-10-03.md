@@ -1,7 +1,7 @@
 # NPC movement fixes: swimming routes, route pace and low lips
 
 Status: design and [implementation plan](../superpowers/plans/2026-10-03-npc-movement-fixes.md) written on
-`feature/grimhollow-npc-movement`, revised by fix round 1 with rulings M1 to M10 recorded below. Implementation
+`feature/grimhollow-npc-movement`, revised by fix rounds 1 and 2 with rulings M1 to M11 recorded below. Implementation
 pending. No release or tag is claimed.
 
 Consumer: Grimhollow P5 creature host on engine 20.18.0, branch `feature/p5-lane-n`.
@@ -396,9 +396,11 @@ pass-through. The command is `BoundedDirection(runEnd - position, bound)`. If th
 the driver falls back to today's command capped at the active waypoint and admits that as today. A corner is never a
 pass-through, so the body still stops on it. The near-field approach and the stop ring are unchanged.
 
-Expected pace on flat ground at 2 m/s and 30 Hz, from rest on a cell centre with one partial tick at waypoint 0: about
-1.98 m in the first second on a straight route and about 1.95 m on a diagonal route, against 1.875 m without carry.
-Every tick between waypoint 0 and the run end travels the full bound.
+Without carry, 1.875 m/s is the steady rate on a straight 0.25 m cell route, not the first second's travel. From
+rest the first tick plans synchronously and moves, and there is no ground acceleration, so 28 ticks cover seven cells
+(1.75 m) and two more ticks add 0.133 m, about 1.883 m in the first second. With carry, from rest on a cell centre
+with one partial tick at waypoint 0, the first second covers about 1.98 m on a straight route and about 1.95 m on a
+diagonal route. Every tick between waypoint 0 and the run end travels the full bound.
 
 ## 5. Low lip (#1253)
 
@@ -407,8 +409,7 @@ at x = 0 and its top at 0.025 m, and the issue's capsule: radius 0.3 m, half hei
 run from x = -1.5 to 1.5 and z = -1 to 1 at 0.25 m cells. The footprint refuses feet within one radius of the bounds
 (`NavAreaFootprint.cs:50`), so nodes exist from x = -1.125 to 1.125. Cell centres sit at -0.125 and 0.125 beside the
 edge. At x = -0.125 the capsule's bottom cap is `0.3 - sqrt(0.3^2 - 0.125^2) - 0.025`, about 2.28 mm, above the deck
-corner. Fix round 1 asked for 2.08 mm. The formula gives 2.28 mm, so the fixture states the formula and the
-implementer records the measured contact in the plan Outcome.
+corner (ruling M11). The implementer records the measured contact in the plan Outcome.
 
 The fixture asserts:
 
@@ -530,9 +531,9 @@ Recorded on 2026-10-03 by the orchestrator. They replace the first draft's open 
 - M9: after Task 4 or 4b merges, root reruns the focused filters of every lane that bakes through the movement core.
 - M10: names `RouteApproachOptions`, `CarryThroughStraightRuns`, `ConsumePassedCollinearWaypoints`, `Aquatic`, the
   `GroundProfileOptions` property for `BuildProfile`, and `PhysicsNavBakeOptions.SampleWater`.
+- M11: the lip clearance at the cell centre beside the deck edge is 2.28 mm, from the formula in section 5. Settled.
 
-No open question remains. One fact is flagged for the orchestrator: the lip clearance computes to 2.28 mm, not the
-2.08 mm fix round 1 stated. Section 5 keeps the formula.
+No open question remains.
 
 ## Out of scope
 

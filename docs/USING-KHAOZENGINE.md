@@ -17551,7 +17551,7 @@ await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSy
 ```
 
 For catalog preflight and deploy compatibility checks, read `InMemoryContentAuthoringStore.SchemaVersion`
-as the schema version this engine build targets, currently 3 for both providers. The opened store's
+as the schema version this engine build targets, currently 4 for both providers. The opened store's
 `GetSchemaVersionAsync()` reports the schema it holds. The in-memory store reports the same build target.
 
 Edits go into the ONE open draft, whole or not at all, and ids are allocated at publish rather than at edit:
@@ -17594,7 +17594,7 @@ precheck rather than parsing the JSON separately:
 
 ```csharp
 int declaredFormat = ContentBundleJson.ReadFormatVersion(json);
-if (declaredFormat != ContentBundle.CurrentFormatVersion)
+if (declaredFormat is not ContentBundle.CurrentFormatVersion and not ContentBundle.TextFormatVersion)
 {
     throw new InvalidOperationException($"Unsupported bundle format {declaredFormat}.");
 }
@@ -17605,7 +17605,63 @@ ContentBundle bundle = ContentBundleJson.Read(json);
 `ReadFormatVersion` and `Read` share the same JSONC parsing and format member rules. Both accept comments and
 trailing commas. Both refuse malformed JSON, a nonobject root, a missing version or a version that is not a
 32-bit integer with `ContentAuthoringException`. The precheck returns an unsupported integer for the caller to
-inspect, while `Read` refuses any version other than `ContentBundle.CurrentFormatVersion`.
+inspect, while `Read` refuses any version other than `ContentBundle.CurrentFormatVersion`, the row-only format 1,
+and `ContentBundle.TextFormatVersion`, format 2 with its `text` section.
+
+### Authoring catalog text
+
+`IContentTextAuthoringStore` is the opt-in text companion of `IContentAuthoringStore`, and all three stores
+implement it. It authors per-language display text for a `ContentFieldKind.LocalizedTextKey` marker field of a
+CLIENT-visible type. A string is named by its row's key, the marker field and a language, never by a raw
+localization key, so an add and its display name are one atomic apply:
+
+```csharp
+var text = (IContentTextAuthoringStore)store;
+var key = new ContentKey("iron_sword");
+
+ContentDraft draft = await text.ApplyChangesAsync(
+    new ContentAuthoringChanges(
+        [ContentEdit.Add(itemType, key, fields)],
+        [ContentTextEdit.Set(new ContentTextTarget(itemType, key, "name", "en"), "Iron Sword")]),
+    actor: "admin-endpoint",
+    operatorId: "oid:8f2c",
+    note: "autumn pass",
+    ct);
+
+await store.PublishAsync(
+    new ContentPublishRequest("admin-endpoint", "oid:8f2c", "autumn pass", expectedBaseVersion: draft.BaseVersion),
+    ct);
+```
+
+A Set introduces its language, which then stays declared, and `ContentTextEdit.Remove` makes a string absent so
+the reader falls back. A language tag is ASCII letters, digits and hyphens of 1 to 35 bytes and is lowered to
+its canonical identity, so a new `en-US` publishes as `en-us`. A value is at most 8,192 UTF-8 bytes and a
+derived key at most 192. On a companion store every publish goes through the text commit, which writes one
+`KECT` chunk per declared language, names every language in both manifests and commits rows and text in one
+transaction. `ReadTextSnapshotAsync` reads one exact version's text, `TryDiscardChangesAsync` discards only the
+draft the caller read, `RollbackTextToAsync` restores rows and strings together, and `ExportBundleAsync` writes
+format 2 once a version declares a language. `ImportTextBundleAsync` imports either format and refuses with
+`draft-open` while an open draft holds work. The row-only members refuse with `text-unrepresented` rather than
+drop held text. `KhaozEngine.Catalog.Authoring/README.md` documents the limits, the legacy refusals and every
+reason token.
+
+A client resolves the published text from the manifest it already reads. Each `ManifestLanguageEntry` names one
+language's `KECT` chunk, and the derived key is `ContentTextKey.Derive(typeKey, contentKey, fieldName)`:
+
+```csharp
+var languages = new List<ContentTextIndex>();
+foreach (ManifestLanguageEntry entry in manifest.Languages)
+{
+    ReadOnlyMemory<byte>? file = await pack.GetAsync(entry.TextHash, ct);
+    if (file is { } bytes && ContentTextIndex.TryDecode(bytes.Span, out ContentTextIndex? index, out _))
+    {
+        languages.Add(index!);
+    }
+}
+
+var strings = new ContentStringCatalog(languages, defaultLanguageTag: "en", shippedCatalog: resourceCatalog.TryGet);
+string name = strings.Get(ContentTextKey.Derive("item", "iron_sword", "name"));   // "Iron Sword"
+```
 
 ### Replacing a catalog from its bundle
 
@@ -17835,7 +17891,9 @@ against the two hashes the version row records, and a manifest digest covers eve
 comparison pins the whole closure. A second rebuild into the same store writes no object at all. Rows are
 rehydrated through the CALLER's registry, so a schema, `ChunkSlots` or visibility change since the publish
 refuses with `server-manifest-mismatch` or `client-manifest-mismatch` rather than filing a pack no version
-record describes.
+record describes. On a text companion store the rebuild also regenerates the version's own `KECT` chunks and
+compares each recorded hash before writing, refusing with `text-chunk-mismatch`, `text-values-invalid` or
+`text-provenance-unknown`.
 
 ### Upgrading an existing catalog (19.11.0)
 
@@ -17849,10 +17907,13 @@ Migration history is its own ledger, the `catalog_content_upgrade` table added b
 An engine package version does not say which upgrades ran, and neither does a published version number. An
 `applied` row commits inside the publish transaction, so a version and its history land together or not at
 all. Schema version 3 adds a row creation time to every catalog table and an update time to every table whose rows
-change, through migration `catalog-v3-row-timestamps` on both providers. A SQLite or SQL Server catalog at schema
-version 1 or 2 migrates in place, in one open, when opened under `AutoCreate`, and `ValidateOnly` refuses it by
-naming that migration, so a hosted `ValidateOnly` catalog runs its schema migration step before the server starts.
-An older engine refuses a version 3 catalog. Each provider README lists the columns and the exact-or-NULL
+change, through migration `catalog-v3-row-timestamps` on both providers. Schema version 4 adds the four text
+authoring tables, a nullable audit language and a nullable per-version text completeness, through migration
+`catalog-v4-text-authoring`. A SQLite or SQL Server catalog at schema version 1, 2 or 3 migrates in place, in one
+open, when opened under `AutoCreate`, and `ValidateOnly` refuses it by naming `catalog-v4-text-authoring`, so a
+hosted `ValidateOnly` catalog runs its schema migration step before the server starts. An older engine refuses a
+version 4 catalog. A legacy version's text completeness stays NULL and reads as text free only on a read-only
+proof that its manifests named no language. Each provider README lists the columns and the exact-or-NULL
 backfill.
 
 ```csharp

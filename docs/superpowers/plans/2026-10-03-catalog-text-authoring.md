@@ -12,8 +12,8 @@ The read codecs, dependency direction and row-only binary signatures stay intact
 **Tech Stack:** .NET 10, xUnit, existing KECT/Brotli/hash codecs, existing SQLite and SQL Server providers.
 
 **Spec:** [Catalog text authoring design](../../design/CATALOG-TEXT-AUTHORING-DESIGN-2026-10-03.md).
-**Status:** Planned for [#1000](https://github.com/APKiwiOrg/KhaozEngine/issues/1000), no API implementation claimed.
-All new names below are proposed. Freeze them through task 1 review before provider work proceeds.
+**Status:** Implemented in 20.20.0 for [#1000](https://github.com/APKiwiOrg/KhaozEngine/issues/1000). All seven
+tasks are complete. The names below were frozen at task 1 review, and the package READMEs document the shipped API.
 
 ## Global constraints
 

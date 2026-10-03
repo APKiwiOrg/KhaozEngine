@@ -30,11 +30,12 @@ the store holds no connection between calls.
 
 ## The schema, and its two modes
 
-Fifteen tables: `catalog_metadata`, `catalog_type`, `catalog_version`, `catalog_row`, `catalog_row_field`,
+Nineteen tables: `catalog_metadata`, `catalog_type`, `catalog_version`, `catalog_row`, `catalog_row_field`,
 `catalog_family`, `catalog_family_block`, `catalog_id_high_water`, `catalog_draft`, `catalog_draft_edit`,
-`catalog_draft_edit_field`, `catalog_audit`, `catalog_remap_rule`, `catalog_chunk` and
-`catalog_content_upgrade`, shipped as the embedded resource `CatalogSchemaV3.sql`. The first fourteen are
-version 1, the ledger is what version 2 adds, and version 3 adds the row time columns. Every key column is
+`catalog_draft_edit_field`, `catalog_audit`, `catalog_remap_rule`, `catalog_chunk`, `catalog_content_upgrade`,
+`catalog_draft_text_edit`, `catalog_draft_text_language`, `catalog_text` and `catalog_text_chunk`, shipped as the
+embedded resource `CatalogSchemaV4.sql`. The first fourteen are version 1, the ledger is what version 2 adds,
+version 3 adds the row time columns, and version 4 adds the four text tables. Every key column is
 `nvarchar(N) COLLATE Latin1_General_100_BIN2`, because
 content keys compare ordinally and never case insensitively, and a SQL Server database default usually is case
 insensitive. Every size cap is a `CHECK`, `LEN` for text and `DATALENGTH` for binary, and every foreign key is
@@ -57,7 +58,7 @@ validates it, under an exclusive application lock inside one transaction, so two
 race. `ContentAuthoringSchemaMode.ValidateOnly` refuses an empty or mismatched database rather than creating
 anything, which is what a production host sets so a typo in a connection string cannot silently create a second
 empty catalog and serve it. A mismatch throws `ContentAuthoringException` with reason `schema-mismatch`, naming
-the object and the migration `catalog-v3-row-timestamps`. Only SQL Server errors 207 and 208 from a
+the object and the migration `catalog-v4-text-authoring`. Only SQL Server errors 207 and 208 from a
 schema read become the unreadable mismatch. Lock timeouts, deadlocks, permission failures, cancellations and
 failed creates or migrations surface as their original provider or cancellation exception.
 
@@ -73,20 +74,35 @@ each time in the statement that writes the row. The rows a publish writes carry 
 type sync, an id mark or a draft write that changes no stored value moves no update time. Validation checks every
 time column's type and nullability as well as the object names.
 
-`CatalogSchemaV3.sql` is what a fresh create runs, so a new database is version 3 directly, and
-`CatalogSchemaV1.sql` and `CatalogSchemaV2.sql` ship beside it as the operator's record of the shapes the
-migrations move. An older database opened under `AutoCreate` is migrated behind the same application lock the
-create takes, version 1 through version 2 to version 3 in one open, each step one transaction. Version 1 to 2 adds
-the ledger table and changes nothing else. Migration `catalog-v3-row-timestamps` adds the time columns, each add
-guarded by `COL_LENGTH`, backfills, and moves the version last. A legacy row gets an exact time or NULL.
+Schema version 4 adds catalog text authoring. `catalog_draft_text_edit` holds the open draft's text intents, one
+per canonical target in first-applied order, and `catalog_draft_text_language` its language introductions.
+`catalog_text` holds temporal values like `catalog_row`, with one live revision per string, and
+`catalog_text_chunk` is each committed version's complete language record, canonical identity, wire spelling and
+chunk hash, empty languages included. `catalog_audit.language_tag` is a nullable language on a text audit row,
+and `catalog_version.text_snapshot_complete` is a nullable completeness flag every new commit sets. Values are
+`nvarchar(max)` under `Latin1_General_100_BIN2` with no length `CHECK`, because their bound is strict UTF-8 bytes,
+which neither `LEN` nor `DATALENGTH` measures, so the store enforces it before any statement. Every language
+column also checks that it holds only ASCII letters, digits and hyphens. The new tables' time columns are NOT
+NULL, because they start empty.
+
+`CatalogSchemaV4.sql` is what a fresh create runs, so a new database is version 4 directly, and
+`CatalogSchemaV1.sql`, `CatalogSchemaV2.sql` and `CatalogSchemaV3.sql` ship beside it as the operator's record of
+the shapes the migrations move. An older database opened under `AutoCreate` is migrated behind the same
+application lock the create takes, version 1 through versions 2 and 3 to version 4 in one open, each step one
+transaction. Version 1 to 2 adds the ledger table and changes nothing else. Migration
+`catalog-v3-row-timestamps` adds the time columns, each add guarded by `COL_LENGTH`, backfills, and moves the version last. A legacy row gets an exact time or NULL.
 `catalog_row`, `catalog_row_field`, `catalog_chunk` and `catalog_remap_rule` take the publish time of the version
 that wrote them, a closed row's update time is the publish time of the version that replaced it, and every other
 new column stays NULL, because nothing records when a family, a block, a mark, a draft or an edit was written. The
 backfill rewrites those four tables whole, and each migration statement runs under the schema's fixed 60-second
-command timeout. Under either validation mode a version 1 or 2 database is refused instead, naming the migration, so a
-hosted catalog runs its schema migration step, one `AutoCreate` open under the migration credential, before a
-`ValidateOnly` server on this version starts. An older engine refuses a version 3 database, so rolling back past
-this upgrade needs a restore.
+command timeout. Migration `catalog-v4-text-authoring` creates the four empty text tables and their indexes from
+the very statements `CatalogSchemaV4.sql` declares, adds the two nullable columns with their named checks and
+moves the version last. It writes no text, no language and no completeness, so a legacy version's completeness
+stays NULL, which means unknown: it reads as text free only on a read-only proof that its manifests named no
+language, and is refused with `text-provenance-unknown` otherwise. Under either validation mode a version 1, 2 or 3
+database is refused instead, naming the migration, so a hosted catalog runs its schema migration step, one
+`AutoCreate` open under the migration credential, before a `ValidateOnly` server on this version starts. An older
+engine refuses a version 4 database, so rolling back past this upgrade needs a restore.
 
 `InitializeAsync` under `AutoCreate` or `ValidateOnly` also synchronizes the registry into `catalog_type`
 in a Serializable transaction using `MERGE WITH (HOLDLOCK)`. It inserts new registrations and refreshes
@@ -136,7 +152,7 @@ a half-dropped catalog refuses the next open outright: the initializer creates o
 catalog tables and validates every object by name otherwise.
 
 **The drop names the schema's own INVENTORY, not a name pattern.** It is the same set
-`SqlServerCatalogSchemaDriftTests` pins against `CatalogSchemaV3.sql`, intersected with what `sys.tables`
+`SqlServerCatalogSchemaDriftTests` pins against `CatalogSchemaV4.sql`, intersected with what `sys.tables`
 holds, so a table added to the schema is dropped without anyone having to remember it here and a table this
 build does not declare is never touched. A pattern could not do that job: a host table named
 `catalog_overrides_by_host` matches every name rule an engine could write while belonging to nobody here. Keep
@@ -151,8 +167,8 @@ before it drops anything, because there a drop would fire the key's action. Keep
 catalog out of foreign keys.
 
 Drop and recreate rather than `DELETE`, because a delete leaves the `IDENTITY` marks on `catalog_family`,
-`catalog_draft_edit` and `catalog_audit` where they stood, and the next family created after a reimport would
-land above the bundle's ids.
+`catalog_draft_edit`, `catalog_audit`, `catalog_draft_text_edit` and `catalog_draft_text_language` where they
+stood, and the next family created after a reimport would land above the bundle's ids.
 
 It is a separate type taking its own connection string rather than a member on `IContentAuthoringStore`,
 because a reset is DDL and the everyday authoring path is DML. A production application login should not hold
@@ -178,7 +194,7 @@ row is gone, is the same case whatever stands, every table included: refused und
 this build writes is reset like any other and comes back at this build's version, because the recreate runs
 this build's script. A whole version 1 catalog, without the `catalog_content_upgrade` table version 2 added, is a
 whole catalog rather than a partial one and needs no `force`, and neither does a version 2 catalog, which lacks
-only the version 3 columns. A catalog at a NEWER schema version is refused with `schema-mismatch` before anything is dropped, force
+only the version 3 columns, or a version 3 catalog, which lacks only the version 4 tables and columns. A catalog at a NEWER schema version is refused with `schema-mismatch` before anything is dropped, force
 or no force, because recreating an older schema over it would move the database backwards. The refusal names the
 remedy, which is a reset from a build that writes that version. The result carries both numbers,
 `PriorSchemaVersion` and `SchemaVersion`, and `reset.Summary` says both.
@@ -230,6 +246,16 @@ field encodes two different runs of bytes for one id range.
 no delete-guard trigger standing in for one: that guard exists to permit a retention sweep and there is no
 retention sweep here.
 
+## Catalog text
+
+The store implements `IContentTextAuthoringStore`, so it applies row and text changes atomically, publishes one
+`KECT` chunk per declared language, reads an exact version's text, discards an expected draft atomically, imports
+and exports format 2 bundles, rolls rows and text back together and rebuilds a version's text chunks. A commit
+writes the text revisions, every language mapping and the version's completeness in the same Serializable
+transaction as its rows. Text keys compare ordinally under the binary collation. The row-only routes refuse with
+`text-unrepresented` rather than drop text the store holds. `KhaozEngine.Catalog.Authoring/README.md` documents
+the contract.
+
 ## Concurrency, and what a contended write looks like
 
 A fresh pooled `SqlConnection` per call, no in-process semaphore. The SQLite backend serializes in process
@@ -280,7 +306,7 @@ family membership survives the import.
 ## Permissions
 
 `AutoCreate` needs DDL rights plus `EXECUTE` on `sys.sp_getapplock`. `ValidateOnly` needs only `SELECT` on the
-`sys` catalog views plus the ordinary read and write rights on the fifteen tables, which is what a production
+`sys` catalog views plus the ordinary read and write rights on the nineteen tables, which is what a production
 application login should have.
 
 `ValidateOnlyWithoutTypeSync` initialization and upgrade preview need metadata visibility plus `SELECT`

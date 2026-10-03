@@ -27,10 +27,10 @@ The constructor opens the database and runs the bootstrap pragma. It does NOT to
 
 ## The schema, and its two modes
 
-Fifteen tables: `catalog_metadata`, `catalog_type`, `catalog_version`, `catalog_row`, `catalog_row_field`,
+Nineteen tables: `catalog_metadata`, `catalog_type`, `catalog_version`, `catalog_row`, `catalog_row_field`,
 `catalog_family`, `catalog_family_block`, `catalog_id_high_water`, `catalog_draft`, `catalog_draft_edit`,
-`catalog_draft_edit_field`, `catalog_audit`, `catalog_remap_rule`, `catalog_chunk` and
-`catalog_content_upgrade`. Every key column is
+`catalog_draft_edit_field`, `catalog_audit`, `catalog_remap_rule`, `catalog_chunk`, `catalog_content_upgrade`,
+`catalog_draft_text_edit`, `catalog_draft_text_language`, `catalog_text` and `catalog_text_chunk`. Every key column is
 `TEXT COLLATE BINARY`, because content keys compare ordinally and never case insensitively. Every size cap is
 a `CHECK`. Every foreign key is declared and the bootstrap turns foreign key enforcement on, so a row can
 never point at a version that does not exist.
@@ -39,7 +39,7 @@ never point at a version that does not exist.
 `ContentAuthoringSchemaMode.ValidateOnly` refuses an empty or mismatched database rather than creating
 anything, which is what a production host sets so a typo in a connection string cannot silently create a
 second empty catalog and serve it. A mismatch throws `ContentAuthoringException` with reason
-`schema-mismatch`, naming the object and the migration `catalog-v3-row-timestamps`.
+`schema-mismatch`, naming the object and the migration `catalog-v4-text-authoring`.
 
 Schema version 2 adds `catalog_content_upgrade`, the content upgrade ledger behind `IContentUpgradeLedger`. An
 applied ledger row is written inside the publish commit, so a duplicate upgrade id refuses the whole publish.
@@ -52,15 +52,28 @@ insert time serves as the creation time with no twin: `catalog_version.published
 each time in the statement that writes the row. The rows a publish writes carry the version's publish time, and a
 type sync, an id mark or a draft write that changes no stored value moves no update time.
 
-An older file opened under `AutoCreate` is MIGRATED in place, version 1 through version 2 to version 3 in one open,
-each step one transaction. Version 1 to 2 adds the ledger table and changes nothing else. Migration
+Schema version 4 adds catalog text authoring. `catalog_draft_text_edit` holds the open draft's text intents, one
+per canonical target in first-applied order, and `catalog_draft_text_language` its language introductions.
+`catalog_text` holds temporal values like `catalog_row`, with one live revision per string, and
+`catalog_text_chunk` is each committed version's complete language record, canonical identity, wire spelling and
+chunk hash, empty languages included. `catalog_audit.language_tag` is a nullable language on a text audit row,
+and `catalog_version.text_snapshot_complete` is a nullable completeness flag every new commit sets. Values are
+`TEXT` under binary comparison with no length `CHECK`, because their bound is strict UTF-8 bytes, which the store
+enforces before any statement. The new tables' time columns are NOT NULL, because they start empty.
+
+An older file opened under `AutoCreate` is MIGRATED in place, version 1 through versions 2 and 3 to version 4 in one
+open, each step one transaction. Version 1 to 2 adds the ledger table and changes nothing else. Migration
 `catalog-v3-row-timestamps` adds the time columns, backfills, and moves the version last. A legacy row gets an
 exact time or NULL. `catalog_row`, `catalog_row_field`, `catalog_chunk` and `catalog_remap_rule` take the publish
 time of the version that wrote them, a closed row's update time is the publish time of the version that replaced
 it, and every other new column stays NULL, because nothing records when a family, a block, a mark, a draft or an
-edit was written. The rows, the history, the audit, the open draft, the pin and the store epoch all survive both
-steps. Under either validation mode a version 1 or 2 file is refused instead, naming the migration. An older engine refuses
-a version 3 file, so rolling back past this upgrade needs a restore.
+edit was written. Migration `catalog-v4-text-authoring` adds the four empty text tables and the two nullable
+columns and moves the version last. It writes no text, no language and no completeness, so a legacy version's
+completeness stays NULL, which means unknown: it reads as text free only on a read-only proof that its manifests
+named no language, and is refused with `text-provenance-unknown` otherwise. The rows, the history, the audit, the
+open draft, the pin and the store epoch all survive every step. Under either validation mode a version 1, 2 or 3
+file is refused instead, naming the migration. An older engine refuses a version 4 file, so rolling back past
+this upgrade needs a restore.
 
 `InitializeAsync` under `AutoCreate` or `ValidateOnly` also synchronizes the registry into `catalog_type`.
 It inserts new registrations and refreshes changed chunk slots, default visibility and id ceilings.
@@ -130,7 +143,8 @@ references to the catalog out of foreign keys, or declare them `NO ACTION` and c
 before a reset.
 
 Drop and recreate rather than `DELETE`, because a delete leaves the `sqlite_sequence` marks behind the
-`AUTOINCREMENT` columns on `catalog_family`, `catalog_draft_edit` and `catalog_audit` where they stood, and
+`AUTOINCREMENT` columns on `catalog_family`, `catalog_draft_edit`, `catalog_audit`, `catalog_draft_text_edit` and
+`catalog_draft_text_language` where they stood, and
 the next family created after a reimport would land above the bundle's ids. Dropping a table takes its
 `sqlite_sequence` row with it.
 
@@ -162,7 +176,7 @@ row is gone, is the same case whatever stands, every table included: refused und
 this build writes is reset like any other and comes back at this build's version, because the recreate runs
 this build's script. A whole version 1 catalog, without the `catalog_content_upgrade` table version 2 added, is a
 whole catalog rather than a partial one and needs no `force`, and neither does a version 2 catalog, which lacks
-only the version 3 columns. A catalog at a NEWER schema version is refused with `schema-mismatch` before anything is dropped, force
+only the version 3 columns, or a version 3 catalog, which lacks only the version 4 tables and columns. A catalog at a NEWER schema version is refused with `schema-mismatch` before anything is dropped, force
 or no force, because recreating an older schema over it would move the database backwards. The refusal names the
 remedy, which is a reset from a build that writes that version. The result carries both numbers,
 `PriorSchemaVersion` and `SchemaVersion`, and `reset.Summary` says both.
@@ -217,6 +231,15 @@ persisted about it is the chunk hash in `catalog_chunk`, one row per side, becau
 field encodes two different runs of bytes for one id range.
 
 `catalog_remap_rule` is append only. There is no `UPDATE` and no `DELETE` for it anywhere in this package.
+
+## Catalog text
+
+The store implements `IContentTextAuthoringStore`, so it applies row and text changes atomically, publishes one
+`KECT` chunk per declared language, reads an exact version's text, discards an expected draft atomically, imports
+and exports format 2 bundles, rolls rows and text back together and rebuilds a version's text chunks. A commit
+writes the text revisions, every language mapping and the version's completeness in the same transaction as its
+rows. The row-only routes refuse with `text-unrepresented` rather than drop text the store holds.
+`KhaozEngine.Catalog.Authoring/README.md` documents the contract.
 
 ## Publishing
 

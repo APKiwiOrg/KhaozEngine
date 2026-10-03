@@ -1,8 +1,9 @@
 # Catalog text authoring
 
-Status: contracts settled for [#1000](https://github.com/APKiwiOrg/KhaozEngine/issues/1000), implementation pending.
-The [implementation plan](../superpowers/plans/2026-10-03-catalog-text-authoring.md) stages the complete change.
-All new names and signatures below are proposed until implemented and reviewed.
+Status: Implemented in 20.20.0 for [#1000](https://github.com/APKiwiOrg/KhaozEngine/issues/1000).
+The [implementation plan](../superpowers/plans/2026-10-03-catalog-text-authoring.md) staged the complete change.
+The names and signatures below are the shipped ones. `KhaozEngine.Catalog.Authoring/README.md` is the API
+reference, and this document keeps the rationale.
 
 ## 1. Problem and source boundary
 
@@ -56,11 +57,11 @@ in Server.Admin. No dependency, renderer, player-store or read-format change is 
 - KECT stays format 1, manifests stay at their existing format and pack generation stays 2. No sharding,
   invented shard tags, read-side tag grammar change or side-specific language format is included.
 
-## 3. Proposed domain and companion seam
+## 3. Domain and companion seam
 
 New types live in `KhaozEngine.Catalog.Authoring`, with one cohesive type per responsibility.
 
-| Proposed type | Complete data |
+| Type | Complete data |
 |---|---|
 | `ContentTextTarget` | Type id, immutable content key, declared field name and canonical language identity. Pending adds do not yet need a definition id. |
 | `ContentTextEdit` | Set or Remove plus target, with a non-null value only for Set. |
@@ -80,7 +81,7 @@ row byte payloads or mutable change sets. Preserve every old constructor and its
 text-aware overloads or composed types, rather than replacing constructors with extra optional parameters.
 An old DTO constructor means text is unrepresented, not that the provider has proved text absent.
 
-The proposed `IContentTextAuthoringStore : IContentAuthoringStore` has these core operations:
+`IContentTextAuthoringStore : IContentAuthoringStore` has these core operations:
 
 ```csharp
 Task<ContentDraft> ApplyChangesAsync(
@@ -199,9 +200,9 @@ existing read-side behavior remains unchanged. Exact historical recovery require
 
 ## 7. Provider schema and audit
 
-Both durable providers require schema 4, with a named migration such as `catalog-v4-text-authoring`.
+Both durable providers require schema 4, through the named migration `catalog-v4-text-authoring`.
 
-| Proposed table/change | Responsibility |
+| Table or change | Responsibility |
 |---|---|
 | `catalog_draft_text_edit` | Ordered canonical type/key/field/language intents, Set/Remove and complete pending value. |
 | `catalog_draft_text_language` | Independent pending introductions with canonical identity and wire spelling. |

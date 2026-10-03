@@ -57,6 +57,14 @@ public sealed partial class GroundNavigationBake
                     writer.WriteSingle(surface.Headroom);
                     writer.WriteUInt32(surface.Areas);
                 }
+        ReadOnlySpan<PhysicsNavWater> water = _columns.Water;
+        writer.WriteInt32(water.Length);
+        foreach (PhysicsNavWater entry in water)
+        {
+            writer.WriteInt32(entry.Cell);
+            writer.WriteSingle(entry.SurfaceY);
+            writer.WriteUInt32(entry.Areas);
+        }
         foreach (GroundNavigation profile in _profiles) WriteProfile(writer, profile);
         return writer.ToArray();
     }

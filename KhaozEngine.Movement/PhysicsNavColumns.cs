@@ -11,31 +11,38 @@ internal sealed class PhysicsNavColumns : INavColumnProvider
     private readonly PhysicsNavBakeOptions _options;
     private readonly int[] _starts;
     private readonly PhysicsNavSurface[] _surfaces;
+    private readonly PhysicsNavWater[] _water;
 
     internal PhysicsNavColumns(PhysicsNavBakeOptions options, int width, int height,
-        ReadOnlySpan<int> starts, ReadOnlySpan<PhysicsNavSurface> surfaces)
-        : this(options, width, height, starts.ToArray(), surfaces.ToArray())
+        ReadOnlySpan<int> starts, ReadOnlySpan<PhysicsNavSurface> surfaces, ReadOnlySpan<PhysicsNavWater> water)
+        : this(options, width, height, starts.ToArray(), surfaces.ToArray(), water.ToArray())
     {
     }
 
     private PhysicsNavColumns(PhysicsNavBakeOptions options, int width, int height,
-        int[] starts, PhysicsNavSurface[] surfaces)
+        int[] starts, PhysicsNavSurface[] surfaces, PhysicsNavWater[] water)
     {
         _options = options;
         Width = width;
         Height = height;
         _starts = starts;
         _surfaces = surfaces;
+        _water = water;
     }
 
-    /// <summary>Stores both arrays without copying. The caller hands over ownership and must never write to or expose
+    /// <summary>Stores every array without copying. The caller hands over ownership and must never write to or expose
     /// them afterwards.</summary>
     internal static PhysicsNavColumns Own(PhysicsNavBakeOptions options, int width, int height,
-        int[] starts, PhysicsNavSurface[] surfaces) => new(options, width, height, starts, surfaces);
+        int[] starts, PhysicsNavSurface[] surfaces, PhysicsNavWater[] water)
+        => new(options, width, height, starts, surfaces, water);
 
     internal int Width { get; }
     internal int Height { get; }
     internal int SurfaceCount => _surfaces.Length;
+
+    /// <summary>Sampled water surfaces, at most one per column, in ascending cell order. Empty unless the capture
+    /// sampled water.</summary>
+    internal ReadOnlySpan<PhysicsNavWater> Water => _water;
 
     internal ReadOnlySpan<PhysicsNavSurface> GetColumn(int x, int z)
     {

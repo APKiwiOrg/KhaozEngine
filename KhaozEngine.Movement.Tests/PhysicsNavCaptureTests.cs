@@ -211,7 +211,7 @@ public class PhysicsNavCaptureTests
     {
         int[] starts = [0, 1];
         PhysicsNavSurface[] data = [new(4f, float.PositiveInfinity, 0x01u)];
-        var columns = new PhysicsNavColumns(Options, 1, 1, starts, data);
+        var columns = new PhysicsNavColumns(Options, 1, 1, starts, data, []);
         starts[1] = 0;
         data[0] = new PhysicsNavSurface(9f, 0f, 0x02u);
         Span<NavSurfaceSample> buffer = stackalloc NavSurfaceSample[1];

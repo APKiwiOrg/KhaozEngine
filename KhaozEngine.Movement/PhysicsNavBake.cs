@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Movement;
@@ -35,7 +36,13 @@ public sealed partial class PhysicsNavBake : IDisposable
 
     /// <summary>Samples static physics at cell centers, assigning and freezing area bits per surface.
     /// Missing physics columns and padded centers beyond the half-open bounds remain empty.
-    /// Classification receives absolute feet positions. No analytic ground provider is sampled.</summary>
+    /// Classification receives absolute feet positions. No analytic ground provider is sampled.
+    /// With <see cref="PhysicsNavBakeOptions.SampleWater"/> the context's medium is sampled once per in-bounds column at
+    /// its lowest surface, or at <c>ProbeHeight - ProbeRange</c> when the column is empty. An in-water sample with a
+    /// finite surface above that height records one water entry, classified at the water surface point. Without the
+    /// option the medium is never called.</summary>
+    /// <exception cref="ArgumentException">The context has no physics, or the options sample water and the context has
+    /// no medium.</exception>
     public static PhysicsNavBake Capture(GroundMoveContext context, PhysicsNavBakeOptions options, NavAreaClassifier classify)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -46,8 +53,13 @@ public sealed partial class PhysicsNavBake : IDisposable
         if (!float.IsFinite(origin.X) || !float.IsFinite(origin.Y) || !float.IsFinite(origin.Z))
             throw new InvalidOperationException("The physics origin must be finite.");
         (int width, int height, int cells, int maxSamples) = options.Validate(origin);
+        Func<float, float, float, MovementMedium>? medium = !options.SampleWater ? null
+            : context.Medium ?? throw new ArgumentException("Water sampling requires a medium.", nameof(context));
         var starts = new int[cells + 1];
         var surfaces = new PhysicsNavSurface[maxSamples];
+        PhysicsNavWater[] water = medium is null ? [] : new PhysicsNavWater[cells];
+        float probeFloor = options.ProbeHeight - options.ProbeRange;
+        int wet = 0;
         var buffer = new ColumnSurface[options.MaxSurfacesPerColumn + 1];
         var probe = new PhysicsColumnProbe(world)
         {
@@ -86,11 +98,19 @@ public sealed partial class PhysicsNavBake : IDisposable
                     surfaces[stored++] = new PhysicsNavSurface(absoluteY, surface.Headroom, areas);
                     previous = absoluteY;
                 }
+                if (medium is null) continue;
+                float feetY = count > 0 ? surfaces[starts[cell]].Height : probeFloor;
+                MovementMedium sample = medium(absoluteX, absoluteZ, feetY);
+                EnsureOrigin(world, origin);
+                if (!sample.InWater || !float.IsFinite(sample.WaterSurfaceY) || sample.WaterSurfaceY <= feetY) continue;
+                uint waterAreas = classify(new Vector3(absoluteX, sample.WaterSurfaceY, absoluteZ));
+                EnsureOrigin(world, origin);
+                water[wet++] = new PhysicsNavWater(cell, sample.WaterSurfaceY, waterAreas);
             }
         }
         starts[cells] = stored;
         EnsureOrigin(world, origin);
-        var columns = new PhysicsNavColumns(options, width, height, starts, surfaces.AsSpan(0, stored));
+        var columns = new PhysicsNavColumns(options, width, height, starts, surfaces.AsSpan(0, stored), water.AsSpan(0, wet));
         return new PhysicsNavBake(context, options, origin, columns);
     }
 

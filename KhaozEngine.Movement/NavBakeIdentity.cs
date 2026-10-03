@@ -10,9 +10,10 @@ namespace KhaozEngine.Movement;
 
 /// <summary>Canonical identity block of a baked navigation set. Equal inputs encode to equal bytes in any
 /// insertion order, and the bytes hold no architecture-dependent data. Layout: engine version as a <c>uint16</c>
-/// byte count and UTF-8, the 13 <see cref="PhysicsNavBakeOptions"/> fields in declaration order, sources sorted by
-/// ordinal label, then profiles sorted by ordinal name, each with its area filter and the 27 retained
-/// <see cref="MoveTuning"/> fields.</summary>
+/// byte count and UTF-8, the 13 positional <see cref="PhysicsNavBakeOptions"/> fields in declaration order as 32-bit
+/// words, <see cref="PhysicsNavBakeOptions.SampleWater"/> as one byte, 0 or 1, sources sorted by ordinal label, then
+/// profiles sorted by ordinal name, each with its area filter and the 27 retained <see cref="MoveTuning"/> fields.
+/// </summary>
 /// <remarks>Adding a field to <see cref="MoveTuning"/> or <see cref="PhysicsNavBakeOptions"/> changes this layout.
 /// Encode the field here and bump <see cref="FormatVersion"/>, so a bake from an older layout reports an
 /// unsupported format rather than corrupt bytes. Changing the label character set, <see cref="MaxNameLength"/> or
@@ -26,7 +27,8 @@ internal static partial class NavBakeIdentity
     internal const int MaxNameLength = 64;
     internal const int MaxProfiles = 256;
     internal const int DigestLength = 32;
-    private const int OptionCount = 13;
+    private const int OptionCount = 14;
+    private const int WordOptionCount = 13;
 
     private const int SourceMinBytes = 1 + 1 + DigestLength;
     private const int ProfileMinBytes = 1 + 1 + 8 + TuningBytes;
@@ -43,7 +45,7 @@ internal static partial class NavBakeIdentity
         nameof(PhysicsNavBakeOptions.ProbeRange), nameof(PhysicsNavBakeOptions.MaxSlopeRadians),
         nameof(PhysicsNavBakeOptions.MaxCells), nameof(PhysicsNavBakeOptions.MaxLayerCells),
         nameof(PhysicsNavBakeOptions.MaxSurfacesPerColumn), nameof(PhysicsNavBakeOptions.EdgeProbeSeconds),
-        nameof(PhysicsNavBakeOptions.MaxEdgeProbeSteps),
+        nameof(PhysicsNavBakeOptions.MaxEdgeProbeSteps), nameof(PhysicsNavBakeOptions.SampleWater),
     ];
 
     /// <summary>The Movement assembly's informational version without build metadata.</summary>
@@ -140,8 +142,11 @@ internal static partial class NavBakeIdentity
         if (!reader.TryReadLongString(out ReadOnlySpan<byte> engine)) return Fail("is truncated in the engine version", out problem);
         if (engine.Length == 0 || !Utf8.IsValid(engine)) return Fail("has an invalid engine version", out problem);
         var options = new uint[OptionCount];
-        for (int i = 0; i < OptionCount; i++)
+        for (int i = 0; i < WordOptionCount; i++)
             if (!reader.TryReadUInt32(out options[i])) return Fail("is truncated in the options", out problem);
+        if (!reader.TryReadUInt8(out byte sampleWater)) return Fail("is truncated in the options", out problem);
+        if (sampleWater > 1) return Fail($"has a non-canonical SampleWater byte {sampleWater}", out problem);
+        options[WordOptionCount] = sampleWater;
 
         if (!reader.TryReadUInt16(out ushort sourceCount)) return Fail("is truncated before the sources", out problem);
         if (sourceCount == 0 || sourceCount > reader.Remaining / SourceMinBytes)
@@ -240,12 +245,17 @@ internal static partial class NavBakeIdentity
         writer.WriteInt32(options.MaxSurfacesPerColumn);
         writer.WriteSingle(options.EdgeProbeSeconds);
         writer.WriteInt32(options.MaxEdgeProbeSteps);
+        writer.WriteUInt8(options.SampleWater ? (byte)1 : (byte)0);
     }
 
-    // Indices of the int32 options, MaxCells, MaxLayerCells, MaxSurfacesPerColumn and MaxEdgeProbeSteps.
-    private static string FormatOption(int index, uint bits) => index is 8 or 9 or 10 or 12
-        ? ((int)bits).ToString(CultureInfo.InvariantCulture)
-        : FormatFloat(bits);
+    // Indices of the int32 options, MaxCells, MaxLayerCells, MaxSurfacesPerColumn and MaxEdgeProbeSteps, then the
+    // SampleWater byte.
+    private static string FormatOption(int index, uint bits) => index switch
+    {
+        8 or 9 or 10 or 12 => ((int)bits).ToString(CultureInfo.InvariantCulture),
+        WordOptionCount => bits == 1u ? "True" : "False",
+        _ => FormatFloat(bits),
+    };
 
     private static string FormatFloat(uint bits) =>
         $"{BitConverter.UInt32BitsToSingle(bits).ToString("R", CultureInfo.InvariantCulture)} (0x{bits:X8})";
@@ -304,7 +314,8 @@ internal static partial class NavBakeIdentity
         return NormalizeEngineVersion(informational);
     }
 
-    /// <summary>A decoded canonical identity. Option values are raw <c>uint32</c> bit patterns in identity order.</summary>
+    /// <summary>A decoded canonical identity. Option values are raw <c>uint32</c> bit patterns in identity order, with
+    /// the SampleWater byte widened.</summary>
     internal sealed record Decoded(string EngineVersion, uint[] OptionBits, (string Label, byte[] Digest)[] Sources,
         DecodedProfile[] Profiles);
 

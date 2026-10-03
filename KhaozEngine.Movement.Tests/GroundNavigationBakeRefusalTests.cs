@@ -17,6 +17,7 @@ public class GroundNavigationBakeRefusalTests
 {
     private static readonly Lazy<Baked> Deck = new(() => Bake("deck"));
     private static readonly Lazy<Baked> StairOpen = new(() => Bake("stair-open"));
+    private static readonly Lazy<Baked> WetPool = new(() => Bake("pool"));
 
     [Fact]
     public void NonBakeBytesAreNotABake()
@@ -239,6 +240,76 @@ public class GroundNavigationBakeRefusalTests
         AssertRefused(Load(file), NavBakeLoadStatus.Corrupt, detailFragment);
     }
 
+    [Theory]
+    [InlineData("count-above-cells", "Water entry count 9 is impossible")]
+    [InlineData("unsorted-cells", "strictly ascending")]
+    [InlineData("cell-beyond", "strictly ascending")]
+    [InlineData("nan-surface", "not finite")]
+    [InlineData("below-lowest", "not above")]
+    public void WaterInvariantsAreEnforced(string fault, string detailFragment)
+    {
+        Baked pool = WetPool.Value;
+        byte[] file = Clone(pool.File);
+        PayloadMap map = Map(file, 1);
+        Assert.Equal(8, map.Cells);
+        Assert.Equal(4, I32(file, map.Water));
+        int first = map.Water + 4, second = first + 12, last = first + 36;
+        switch (fault)
+        {
+            case "count-above-cells": BinaryPrimitives.WriteInt32LittleEndian(file.AsSpan(map.Water), map.Cells + 1); break;
+            case "unsorted-cells":
+                int cell = I32(file, first);
+                BinaryPrimitives.WriteInt32LittleEndian(file.AsSpan(first), I32(file, second));
+                BinaryPrimitives.WriteInt32LittleEndian(file.AsSpan(second), cell);
+                break;
+            case "cell-beyond": BinaryPrimitives.WriteInt32LittleEndian(file.AsSpan(last), map.Cells); break;
+            case "nan-surface": Single(file, first + 4, float.NaN); break;
+            case "below-lowest": Single(file, first + 4, -0.5f); break;
+            default: throw new ArgumentOutOfRangeException(nameof(fault));
+        }
+        Reseal(file);
+
+        AssertRefused(GroundNavigationBake.Load(new MemoryStream(file), pool.Expected), NavBakeLoadStatus.Corrupt, detailFragment);
+    }
+
+    [Fact]
+    public void WaterEntryWithoutSampleWaterIsCorrupt()
+    {
+        byte[] dry = Deck.Value.File;
+        PayloadMap map = Map(dry, 2);
+        Assert.Equal(0, I32(dry, map.Water));
+        byte[] entry = new byte[16];
+        BinaryPrimitives.WriteInt32LittleEndian(entry, 1);
+        BinaryPrimitives.WriteInt32LittleEndian(entry.AsSpan(4), 0);
+        BinaryPrimitives.WriteSingleLittleEndian(entry.AsSpan(8), 1.5f);
+        byte[] file = [.. dry.AsSpan(0, map.Water), .. entry, .. dry.AsSpan(map.Water + 4)];
+        BinaryPrimitives.WriteUInt64LittleEndian(file.AsSpan(12), Header(dry).PayloadLength + 12);
+        Reseal(file);
+
+        AssertRefused(Load(file), NavBakeLoadStatus.Corrupt, "SampleWater");
+    }
+
+    [Fact]
+    public void EveryTruncationOfAWetBakeIsCorruptOrNotABake()
+    {
+        Baked pool = WetPool.Value;
+        byte[] file = pool.File;
+
+        for (int length = 0; length < file.Length; length++)
+        {
+            foreach (NavBakeLoadResult result in new[]
+            {
+                GroundNavigationBake.Load(new MemoryStream(file[..length]), pool.Expected),
+                GroundNavigationBake.Load(new OneByteStream(file[..length]), pool.Expected),
+            })
+            {
+                Assert.True(result.Status is NavBakeLoadStatus.Corrupt or NavBakeLoadStatus.NotABake,
+                    $"Prefix of {length} bytes returned {result.Status}: {result.Detail}");
+                Assert.Null(result.Bake);
+            }
+        }
+    }
+
     [Fact]
     public void UnusedBitsetBitsAreCorrupt()
     {
@@ -363,7 +434,8 @@ public class GroundNavigationBakeRefusalTests
 
     private sealed record ProfileMap(int LayerCount, LayerMap[] Layers, int CandidateCount, int LinkBits, int Candidates);
 
-    private sealed record PayloadMap(int Payload, int SurfaceCount, int Counts, int Surfaces, int Cells, ProfileMap[] Profiles);
+    private sealed record PayloadMap(int Payload, int SurfaceCount, int Counts, int Surfaces, int Water, int Cells,
+        ProfileMap[] Profiles);
 
     // Walks the version 1 payload layout independently of the reader and checks that it ends at the file end.
     private static PayloadMap Map(byte[] file, int profileCount)
@@ -371,7 +443,8 @@ public class GroundNavigationBakeRefusalTests
         int payload = 52 + Header(file).IdentityLength;
         int cells = I32(file, payload) * I32(file, payload + 4);
         int counts = payload + 24, surfaces = counts + cells;
-        int at = surfaces + 12 * I32(file, payload + 20);
+        int water = surfaces + 12 * I32(file, payload + 20);
+        int at = water + 4 + 12 * I32(file, water);
         var profiles = new ProfileMap[profileCount];
         for (int p = 0; p < profileCount; p++)
         {
@@ -390,7 +463,7 @@ public class GroundNavigationBakeRefusalTests
             at += 4 + (candidates + 7) / 8;
         }
         Assert.Equal(file.Length, at);
-        return new PayloadMap(payload, payload + 20, counts, surfaces, cells, profiles);
+        return new PayloadMap(payload, payload + 20, counts, surfaces, water, cells, profiles);
     }
 
     private static int I32(byte[] file, int offset) => BinaryPrimitives.ReadInt32LittleEndian(file.AsSpan(offset));

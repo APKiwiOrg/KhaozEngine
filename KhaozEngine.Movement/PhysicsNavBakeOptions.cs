@@ -12,6 +12,11 @@ public sealed record PhysicsNavBakeOptions(
     int MaxCells, int MaxLayerCells, int MaxSurfacesPerColumn = 4,
     float EdgeProbeSeconds = 1f / 30f, int MaxEdgeProbeSteps = 64)
 {
+    /// <summary>Samples the context's medium once per in-bounds column and records one water surface where the
+    /// column's feet sample is in water. Off by default, so capture output is unchanged. Capture refuses it without a
+    /// medium. Part of the bake identity.</summary>
+    public bool SampleWater { get; init; }
+
     internal (int Width, int Height, int Cells, int Samples) Validate(Vector3 origin)
     {
         ValidateFields();

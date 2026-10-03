@@ -199,9 +199,16 @@ public sealed class ContentAuthoringException : Exception
 
     /// <summary>
     /// A committed version has no complete text record, so its values and language mappings are unknown. An
-    /// unknown version is never read as empty.
+    /// unknown version is never read as empty, except on a read-only proof that its manifests named no
+    /// language.
     /// </summary>
     public const string TextProvenanceUnknownReason = "text-provenance-unknown";
+
+    /// <summary>
+    /// A text plan names a chunk hash that the plan's own output values do not regenerate to, or reuses a
+    /// chunk the base version did not record. The commit verifies every chunk rather than trusting it.
+    /// </summary>
+    public const string TextChunkMismatchReason = "text-chunk-mismatch";
 
     /// <summary>Creates the exception with no message.</summary>
     public ContentAuthoringException()

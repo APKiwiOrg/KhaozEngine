@@ -3,11 +3,12 @@ using KhaozEngine.Catalog.Authoring;
 namespace KhaozEngine.Catalog.Sqlite;
 
 /// <summary>
-/// The content authoring schema as SQLite holds it (spec 4.4): the fifteen tables, their indexes and the
+/// The content authoring schema as SQLite holds it (spec 4.4): the nineteen tables, their indexes and the
 /// metadata seed, as one idempotent DDL script, plus the version and migration this build supports.
 /// <para>
 /// This file holds the DDL and the two constants and NOTHING else. The older versions this build migrates
-/// from, and the version 3 column adds and backfill, are <c>SqliteCatalogSchema.VersionThree.cs</c>.
+/// from, and the version 3 column adds and backfill, are <c>SqliteCatalogSchema.VersionThree.cs</c>, and
+/// the version 4 text tables and columns are <c>SqliteCatalogSchema.VersionFour.cs</c>.
 /// Validating a database against it is <see cref="SqliteCatalogSchemaValidation"/>, which is the journal's
 /// split between its schema and its validation helpers, and it is here from the first release because the
 /// DDL alone is most of a file.
@@ -36,10 +37,10 @@ namespace KhaozEngine.Catalog.Sqlite;
 internal static partial class SqliteCatalogSchema
 {
     /// <summary>The schema version this build writes and the only one it accepts.</summary>
-    internal const int CurrentVersion = 3;
+    internal const int CurrentVersion = 4;
 
     /// <summary>The migration an operator is told to apply when the database does not match.</summary>
-    internal const string RequiredMigration = "catalog-v3-row-timestamps";
+    internal const string RequiredMigration = "catalog-v4-text-authoring";
 
     /// <summary>
     /// The bootstrap the held connection runs on open. Foreign keys are OFF by default in SQLite, and every
@@ -67,11 +68,13 @@ internal static partial class SqliteCatalogSchema
     /// released this schema yet, so there is no deployed database for a migration to move.
     /// </para>
     /// <para>
-    /// <b>This constant is every table version 1 declared</b>, with the version 3 row times. The ledger table
-    /// version 2 adds is <see cref="UpgradeLedgerTable"/> and the metadata seed is <see cref="MetadataSeed"/>.
-    /// Keeping the three apart is what lets <see cref="VersionTwoTables"/> and <see cref="VersionOneTables"/>
-    /// be this script with the version 3 columns taken out, and without the ledger for version 1, rather than
-    /// second transcriptions of it, and lets the version 2 migration be that one table on its own.
+    /// <b>This constant is every table version 1 declared</b>, with the version 3 row times and the two version
+    /// 4 columns. The ledger table version 2 adds is <see cref="UpgradeLedgerTable"/>, the text tables version 4
+    /// adds are <see cref="VersionFourTables"/> and the metadata seed is <see cref="MetadataSeed"/>.
+    /// Keeping them apart is what lets <see cref="VersionThreeTables"/>, <see cref="VersionTwoTables"/> and
+    /// <see cref="VersionOneTables"/> be this script with the version 4 columns, then the version 3 columns,
+    /// taken out, without the text tables, and without the ledger for version 1, rather than second
+    /// transcriptions of it, and lets the version 2 migration be that one table on its own.
     /// </para>
     /// <para>
     /// <b>Every version 3 column is <c>INTEGER NULL</c> and stands last among its table's columns</b>, ahead of
@@ -112,7 +115,8 @@ internal static partial class SqliteCatalogSchema
             base_version INTEGER NOT NULL CHECK (base_version >= 0),
             published_by TEXT COLLATE BINARY NOT NULL CHECK (length(published_by) BETWEEN 1 AND 128),
             note TEXT COLLATE BINARY NOT NULL CHECK (length(note) <= 1024),
-            published_at_utc INTEGER NOT NULL);
+            published_at_utc INTEGER NOT NULL,
+            text_snapshot_complete INTEGER NULL CHECK (text_snapshot_complete IS NULL OR text_snapshot_complete = 1));
 
         CREATE TABLE IF NOT EXISTS catalog_row (
             type_id INTEGER NOT NULL,
@@ -234,7 +238,8 @@ internal static partial class SqliteCatalogSchema
             before_value TEXT COLLATE BINARY NULL CHECK (before_value IS NULL OR length(before_value) <= 4096),
             after_value TEXT COLLATE BINARY NULL CHECK (after_value IS NULL OR length(after_value) <= 4096),
             version_number INTEGER NOT NULL DEFAULT 0,
-            note TEXT COLLATE BINARY NOT NULL DEFAULT '' CHECK (length(note) <= 1024));
+            note TEXT COLLATE BINARY NOT NULL DEFAULT '' CHECK (length(note) <= 1024),
+            language_tag TEXT COLLATE BINARY NULL CHECK (language_tag IS NULL OR length(language_tag) BETWEEN 1 AND 35));
         CREATE INDEX IF NOT EXISTS ix_catalog_audit_time ON catalog_audit(occurred_at_utc, audit_id);
         CREATE INDEX IF NOT EXISTS ix_catalog_audit_target ON catalog_audit(type_id, definition_id, audit_id);
 
@@ -301,11 +306,11 @@ internal static partial class SqliteCatalogSchema
     /// </summary>
     internal const string MetadataSeed = """
         INSERT OR IGNORE INTO catalog_metadata(metadata_key, schema_version, store_epoch, active_version, pinned_version, updated_at_utc, created_at_utc)
-        VALUES (1, 3, lower(hex(randomblob(16))), 0, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+        VALUES (1, 4, lower(hex(randomblob(16))), 0, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
         """;
 
     /// <summary>The whole schema at the current version, which a fresh create runs as one script.</summary>
-    internal const string Tables = CoreTables + "\n" + UpgradeLedgerTable + "\n" + MetadataSeed;
+    internal const string Tables = CoreTables + "\n" + UpgradeLedgerTable + "\n" + VersionFourTables + "\n" + MetadataSeed;
 
     /// <summary>
     /// The migration from version 1 to version 2, which a held connection runs in ONE transaction: the one

@@ -152,7 +152,7 @@ public sealed class TextCrashSafetyTests
         var pack = new FileSystemPackStore(root.Path);
         InMemoryContentAuthoringStore store = TextAuthoringFixtures.TextStore(pack);
         await TextAuthoringFixtures.ApplyAsync(store, new[] { TextAuthoringFixtures.Add() }, Set("sword", "en-us", "Sword"));
-        ContentTextChunkRecord chunk = TextAuthoringFixtures.Chunk("en-us", "Sword");
+        ContentTextChunkRecord chunk = TextAuthoringFixtures.Chunk("en-us", ("sword", "Sword"));
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await TextAuthoringFixtures.FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en-us", chunk.Hash) });
         var revision = new ContentTextRevision(

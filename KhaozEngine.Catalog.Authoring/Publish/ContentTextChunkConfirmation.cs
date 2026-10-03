@@ -1,0 +1,71 @@
+using System;
+using System.Collections.Generic;
+
+namespace KhaozEngine.Catalog.Authoring;
+
+/// <summary>
+/// The chunk half of a text commit's backend confirmation, shared by every store: each output language's
+/// chunk hash is REGENERATED from the plan's own output values and live rows through the producer's encoder,
+/// and a reused chunk must also be the hash the base version recorded for that language. The plan's
+/// constructor proves its values are the right ones, and this proves its chunks are those values, so a
+/// manifest can never name a chunk the committed text does not produce.
+/// <para>
+/// It runs inside the store's gate or transaction, after the store confirmed the plan's baseline text is
+/// its own, and before anything is written.
+/// </para>
+/// </summary>
+internal static class ContentTextChunkConfirmation
+{
+    /// <summary>Refuses a plan whose chunks are not exactly its values.</summary>
+    /// <param name="registry">The store's registry, which keys are derived through.</param>
+    /// <param name="plan">The plan being committed.</param>
+    /// <exception cref="ContentAuthoringException">A chunk hash disagrees with the regenerated one or the base's recorded one, or a value cannot be regenerated.</exception>
+    public static void Require(ContentTypeRegistry registry, ContentTextPublishPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(plan);
+
+        var keys = new Dictionary<(ushort, int), ContentKey>(plan.RowPlan.LiveRows.Count);
+        foreach (ContentRowRevision live in plan.RowPlan.LiveRows)
+        {
+            keys[(live.Row.Type.Value, live.Row.Id)] = live.Row.Key;
+        }
+
+        var output = new ContentVersionTextSnapshot(
+            plan.StoreEpoch, plan.VersionNumber, plan.Candidate.Values, plan.Languages);
+        IReadOnlyList<ContentRegeneratedText> regenerated = ContentTextChunkBuilder.Regenerate(registry, output, keys);
+
+        var recorded = new Dictionary<string, ContentTextLanguage>(StringComparer.Ordinal);
+        foreach (ContentTextLanguage language in plan.Snapshot.BaselineText.Languages)
+        {
+            recorded[language.Language] = language;
+        }
+
+        for (int i = 0; i < regenerated.Count; i++)
+        {
+            ContentRegeneratedText chunk = regenerated[i];
+            if (!string.Equals(chunk.Hash, chunk.Recorded.Hash, StringComparison.Ordinal))
+            {
+                throw Mismatch(FormattableString.Invariant(
+                    $"the '{chunk.Recorded.WireTag}' chunk is named {chunk.Recorded.Hash} and the plan's values regenerate to {chunk.Hash}"));
+            }
+
+            if (plan.Chunks[i].IsReused
+                && (!recorded.TryGetValue(chunk.Recorded.Language, out ContentTextLanguage? held)
+                    || !string.Equals(held.WireTag, chunk.Recorded.WireTag, StringComparison.Ordinal)
+                    || !string.Equals(held.Hash, chunk.Hash, StringComparison.Ordinal)))
+            {
+                throw Mismatch(FormattableString.Invariant(
+                    $"the '{chunk.Recorded.WireTag}' chunk is reused and version {plan.BaseVersion} recorded no such chunk for it"));
+            }
+        }
+    }
+
+    static ContentAuthoringException Mismatch(string detail)
+        => new(
+            FormattableString.Invariant(
+                $"The text commit is refused because {detail}. Nothing was written, and the plan is rebuilt from a fresh freeze."),
+            default,
+            0,
+            ContentAuthoringException.TextChunkMismatchReason);
+}

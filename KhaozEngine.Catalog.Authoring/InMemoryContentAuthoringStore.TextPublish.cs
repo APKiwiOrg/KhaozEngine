@@ -40,7 +40,8 @@ public sealed partial class InMemoryContentAuthoringStore
     /// <summary>
     /// The backend confirmation of a text plan: this store's epoch, the version and rule prefix, the active
     /// base, the actual frozen draft compared COMPLETELY with the plan's, the baseline text and languages
-    /// compared with the store's own, and the eligibility of every insert. The caller already holds the gate.
+    /// compared with the store's own, every chunk regenerated from the plan's values, and the eligibility of
+    /// every insert. The caller already holds the gate.
     /// </summary>
     void ConfirmTextPlan(ContentTextPublishPlan plan)
     {
@@ -67,6 +68,9 @@ public sealed partial class InMemoryContentAuthoringStore
         {
             throw Mismatch("the base version's text or languages are not the ones the plan read");
         }
+
+        // Every chunk is regenerated from the plan's own values, never trusted.
+        ContentTextChunkConfirmation.Require(_registry, plan);
 
         foreach (ContentTextRevision insert in plan.TextInserts)
         {

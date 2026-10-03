@@ -241,7 +241,7 @@ public sealed class TextAuthoringContractTests
         var store = TextStore();
         IContentTextAuthoringStore text = store;
         await ApplyAsync(text, new[] { Add() }, ContentTextEdit.Set(Name, "Sword"));
-        ContentTextChunkRecord chunk = Chunk("en-us", "Sword");
+        ContentTextChunkRecord chunk = Chunk("en-us", ("sword", "Sword"));
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en-us", chunk.Hash) });
         var declared = new[] { new ContentTextLanguageDeclaration("en-us", "en-us") };
@@ -269,13 +269,13 @@ public sealed class TextAuthoringContractTests
         var declared = new[] { new ContentTextLanguageDeclaration("en", "en") };
         var none = Array.Empty<ContentTextRevision>();
 
-        ContentTextChunkRecord kept = Chunk("en", "Sword");
+        ContentTextChunkRecord kept = Chunk("en", ("sword", "Sword"));
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en", kept.Hash) });
         Assert.Throws<ArgumentException>(() => new ContentTextPublishPlan(
             rowPlan, snapshot, new ContentTextCandidate(new[] { sword }, declared, none, none), new[] { kept }));
 
-        ContentTextChunkRecord empty = Chunk("en", string.Empty);
+        ContentTextChunkRecord empty = Chunk("en");
         (snapshot, rowPlan) = await FreezeAndPlanAsync(store, new[] { new ManifestLanguageEntry("en", empty.Hash) });
         var closed = new ContentTextPublishPlan(
             rowPlan, snapshot, new ContentTextCandidate(none, declared, new[] { sword }, none), new[] { empty });
@@ -293,7 +293,7 @@ public sealed class TextAuthoringContractTests
         ContentEdit fork = ContentEdit.Fork(
             Item, sword.DefinitionId, Sword, new ContentKey("old_sword"), LegacyField, Array.Empty<ContentFieldEdit>());
         await ApplyAsync(text, new[] { fork }, ContentTextEdit.Set(Target(NameField, "en"), "Blade"));
-        ContentTextChunkRecord chunk = Chunk("en", "Blade and Sword");
+        ContentTextChunkRecord chunk = Chunk("en", ("old_sword", "Sword"), ("sword", "Blade"));
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en", chunk.Hash) });
         int copy = IdOf(rowPlan, "old_sword");

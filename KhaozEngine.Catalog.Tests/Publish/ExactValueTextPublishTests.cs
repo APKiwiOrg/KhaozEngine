@@ -26,7 +26,7 @@ public sealed class ExactValueTextPublishTests
         (InMemoryContentAuthoringStore store, ContentTextRevision sword, ContentTextRevision shield) = await TwoNamedRowsAsync();
         IContentTextAuthoringStore text = store;
         await ApplyAsync(text, new[] { Reprice(sword) }, ContentTextEdit.Set(Target(NameField, "en"), "Blade"));
-        ContentTextChunkRecord chunk = Chunk("en", "Blade");
+        ContentTextChunkRecord chunk = Chunk("en", ("shield", "Shield"), ("sword", "Blade"));
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en", chunk.Hash) });
         var blade = new ContentTextRevision(Item, sword.DefinitionId, NameField, "en", "Blade", 3, null);
@@ -46,7 +46,7 @@ public sealed class ExactValueTextPublishTests
         (InMemoryContentAuthoringStore store, ContentTextRevision sword, ContentTextRevision shield) = await TwoNamedRowsAsync();
         IContentTextAuthoringStore text = store;
         await ApplyAsync(text, new[] { Reprice(sword) }, ContentTextEdit.Set(Target(NameField, "en"), "Blade"));
-        ContentTextChunkRecord chunk = Chunk("en", "Blade");
+        ContentTextChunkRecord chunk = Chunk("en", ("shield", "Shield"), ("sword", "Blade"));
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en", chunk.Hash) });
         var blade = new ContentTextRevision(Item, sword.DefinitionId, NameField, "en", "Blade", 3, null);
@@ -68,7 +68,7 @@ public sealed class ExactValueTextPublishTests
         ContentEdit fork = ContentEdit.Fork(
             Item, sword.DefinitionId, Sword, new ContentKey("old_sword"), LegacyField, Array.Empty<ContentFieldEdit>());
         await store.ApplyEditsAsync(new[] { fork }, Actor, Operator, "fork");
-        ContentTextChunkRecord chunk = Chunk("en", "Sword twice");
+        ContentTextChunkRecord chunk = Chunk("en", ("old_sword", "Sword"), ("sword", "Sword"));
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en", chunk.Hash) });
 
@@ -91,7 +91,7 @@ public sealed class ExactValueTextPublishTests
         ContentTextRevision sword = (await text.ReadTextSnapshotAsync(1)).Revisions.Single();
         ContentDraft held = await ApplyAsync(text, new[] { Reprice(sword) }, ContentTextEdit.Set(Target(NameField, "en"), "Sword"));
         Assert.Equal(1, held.TextEditCount);
-        ContentTextChunkRecord chunk = Chunk("en", "Sword");
+        ContentTextChunkRecord chunk = Chunk("en", ("sword", "Sword"));
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en", chunk.Hash) });
 
@@ -114,7 +114,7 @@ public sealed class ExactValueTextPublishTests
         await ApplyAsync(text, new[] { Add("shield", 2) }, ContentTextEdit.Set(Target(NameField, "en", "shield"), "Shield"));
         ContentDraft held = await ApplyAsync(text, null, ContentTextEdit.Remove(Target(NameField, "en", "shield")));
         Assert.Equal(ContentTextEditOperation.Remove, held.TextState!.Edits.Single().Operation);
-        ContentTextChunkRecord chunk = Chunk("en", "Sword");
+        ContentTextChunkRecord chunk = Chunk("en", ("sword", "Sword"));
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en", chunk.Hash) });
 
@@ -124,6 +124,45 @@ public sealed class ExactValueTextPublishTests
 
         Assert.Equal(sword, Assert.Single((await text.ReadTextSnapshotAsync(2)).Revisions));
         Assert.Equal(2, (await store.ListRowsAsync(Item, 0, null, true, 0, 10)).Total);
+    }
+
+    [Fact]
+    public async Task A_chunk_that_is_not_the_plans_own_values_is_refused_at_commit_with_nothing_written()
+    {
+        var store = TextStore();
+        IContentTextAuthoringStore text = store;
+        await PublishNamedRowAsync(store, "sword", "Sword");
+        ContentTextRevision sword = (await text.ReadTextSnapshotAsync(1)).Revisions.Single();
+        await ApplyAsync(text, new[] { Reprice(sword) }, ContentTextEdit.Set(Target(NameField, "en"), "Blade"));
+        var blade = new ContentTextRevision(Item, sword.DefinitionId, NameField, "en", "Blade", 2, null);
+        var candidate = new ContentTextCandidate(new[] { blade }, English, new[] { sword }, new[] { blade });
+
+        // A well-formed chunk of OTHER values: the manifests would name text the version does not hold.
+        ContentTextChunkRecord other = Chunk("en", ("sword", "Sword"));
+        (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
+            store, new[] { new ManifestLanguageEntry("en", other.Hash) });
+        int audits = await AuditCountAsync(store);
+        var stale = new ContentTextPublishPlan(rowPlan, snapshot, candidate, new[] { other });
+        var refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => text.CommitTextPublishAsync(stale, Request(1), null));
+        Assert.Equal(ContentAuthoringException.TextChunkMismatchReason, refused.Reason);
+
+        // The right hash claimed as REUSED, which the base never recorded for these values.
+        ContentTextChunkRecord real = Chunk("en", ("sword", "Blade"));
+        await store.ClearDraftFreezeAsync();
+        (snapshot, rowPlan) = await FreezeAndPlanAsync(store, new[] { new ManifestLanguageEntry("en", real.Hash) });
+        var reused = new ContentTextPublishPlan(rowPlan, snapshot, candidate, new[] { real.AsReused() });
+        refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => text.CommitTextPublishAsync(reused, Request(1), null));
+        Assert.Equal(ContentAuthoringException.TextChunkMismatchReason, refused.Reason);
+
+        Assert.Null(await store.GetVersionAsync(2));
+        Assert.Equal(audits, await AuditCountAsync(store));
+        Assert.Equal("Blade", (await store.GetOpenDraftAsync())!.TextState!.Edits.Single().Value);
+
+        var plan = new ContentTextPublishPlan(rowPlan, snapshot, candidate, new[] { real });
+        await text.CommitTextPublishAsync(plan, Request(1), null);
+        Assert.Equal("Blade", Assert.Single((await text.ReadTextSnapshotAsync(2)).Revisions).Value);
     }
 
     static ContentEdit Reprice(ContentTextRevision row)

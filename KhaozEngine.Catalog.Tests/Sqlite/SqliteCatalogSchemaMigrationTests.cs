@@ -14,7 +14,8 @@ namespace KhaozEngine.Tests.Catalog.Sqlite;
 /// The version 1 to version 2 migration, driven against a POPULATED version 1 database this build never
 /// created: the fourteen tables as version 1 really declared them, with two published versions, the temporal
 /// history they left, an open draft, a pin and audit rows already in it. An AutoCreate open carries on through
-/// the version 2 to version 3 migration in the same open, so a migrated database here stands at version 3.
+/// the version 2 to version 3 and version 3 to version 4 migrations in the same open, so a migrated database
+/// here stands at version 4.
 /// <para>
 /// <b>The DDL below is a FROZEN COPY and that is the whole point.</b> A test that built its version 1
 /// database from the provider's own constants would move with them, so the day the shipped schema drifts is
@@ -224,7 +225,7 @@ public class SqliteCatalogSchemaMigrationTests
     /// closed by the second version), the chunk rows of both versions, an open draft holding one edit, an
     /// operator pin on version 1, and three audit rows.
     /// </summary>
-    const string PopulateVersionOne = """
+    internal const string PopulateVersionOne = """
         INSERT INTO catalog_type(
             type_id, type_key, chunk_slots, default_visibility, max_definition_id, first_seen_version)
         VALUES (1024, 'thing', 256, 0, NULL, 0);
@@ -302,7 +303,7 @@ public class SqliteCatalogSchemaMigrationTests
             database.ConnectionString, Registry(), database.Pack());
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(SqliteCatalogSchema.CurrentVersion, await store.GetSchemaVersionAsync());
         Assert.Equal(Epoch, await store.GetStoreEpochAsync());
         Assert.Equal(2, await store.GetActiveVersionAsync());
         Assert.Equal(1, await store.GetPinnedVersionAsync());
@@ -335,9 +336,14 @@ public class SqliteCatalogSchemaMigrationTests
         Assert.Empty(await store.ListUpgradesAsync());
     }
 
-    /// <summary>A migrated database publishes, and a stamped publish lands its applied row.</summary>
+    /// <summary>
+    /// A migrated database whose base version's text cannot be proven empty refuses a stamped publish whole.
+    /// This fixture's manifest hashes are fabricated, so neither a stored manifest nor one rebuilt from its
+    /// recorded chunks can prove the base named no language, and its text is unknown rather than empty. The
+    /// migrated text-free publish that does prove its base is <c>SqliteTextSchemaMigrationTests</c>.
+    /// </summary>
     [Fact]
-    public async Task AMigratedDatabaseTakesAStampedPublish()
+    public async Task AMigratedDatabaseWhoseBaseTextIsUnprovenRefusesAStampedPublishWhole()
     {
         using var database = new TemporaryCatalogDatabase();
         WriteVersionOne(database);
@@ -346,17 +352,16 @@ public class SqliteCatalogSchemaMigrationTests
             database.ConnectionString, Registry(), database.Pack());
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        ContentPublishResult published = await store.PublishAsync(
+        ContentAuthoringException refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => store.PublishAsync(
             new ContentPublishRequest(Actor, Operator, "the upgrade", 2)
             {
                 Upgrade = new ContentUpgradeStamp(UpgradeId, 1),
-            });
+            }));
 
-        Assert.Equal(3, published.VersionNumber);
-        ContentUpgradeRecord record = Assert.Single(await store.ListUpgradesAsync());
-        Assert.Equal(UpgradeId, record.Id);
-        Assert.Equal(ContentUpgradeDisposition.Applied, record.Disposition);
-        Assert.Equal(3, record.VersionNumber);
+        Assert.Equal(ContentAuthoringException.TextProvenanceUnknownReason, refused.Reason);
+        Assert.Equal(2, await store.GetActiveVersionAsync());
+        Assert.Empty(await store.ListUpgradesAsync());
+        Assert.False((await store.GetOpenDraftAsync())!.IsFrozen);
     }
 
     /// <summary>
@@ -375,7 +380,7 @@ public class SqliteCatalogSchemaMigrationTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v3-row-timestamps", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
         Assert.Contains("version '1'", refused.Message, StringComparison.Ordinal);
 
         // Refused means REFUSED: the file is still version 1 and still carries no ledger table.
@@ -412,7 +417,7 @@ public class SqliteCatalogSchemaMigrationTests
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
         await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(SqliteCatalogSchema.CurrentVersion, await store.GetSchemaVersionAsync());
         Assert.Equal(epoch, await store.GetStoreEpochAsync());
         Assert.Single(await store.ListUpgradesAsync());
     }
@@ -447,7 +452,7 @@ public class SqliteCatalogSchemaMigrationTests
                 {
                     using var store = new SqliteContentAuthoringStore(database.ConnectionString, Registry());
                     await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
-                    Assert.Equal(3, await store.GetSchemaVersionAsync());
+                    Assert.Equal(SqliteCatalogSchema.CurrentVersion, await store.GetSchemaVersionAsync());
                 });
             }
 

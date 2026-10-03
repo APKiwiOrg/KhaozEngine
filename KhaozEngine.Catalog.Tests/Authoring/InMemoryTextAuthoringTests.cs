@@ -230,7 +230,7 @@ public sealed class InMemoryTextAuthoringTests
         Assert.Equal(1, revision.ValidFromVersion);
         ContentTextLanguage language = Assert.Single(snapshot.Languages);
         Assert.Equal("en", language.WireTag);
-        Assert.Equal(Chunk("en", "Sword").Hash, language.Hash);
+        Assert.Equal(Chunk("en", ("sword", "Sword")).Hash, language.Hash);
         Assert.Equal("en", Assert.Single((await store.ReadPublishBaselineAsync()).Languages).Tag);
 
         ContentAuditEntry published = (await store.ListAuditAsync(default, 0, 0, 500))
@@ -247,7 +247,7 @@ public sealed class InMemoryTextAuthoringTests
         IContentTextAuthoringStore text = store;
         await ApplyAsync(text, new[] { Add() }, ContentTextEdit.Set(Name, "Sword"));
         await ApplyAsync(text, null, ContentTextEdit.Remove(Name));
-        ContentTextChunkRecord chunk = Chunk("en-us", string.Empty);
+        ContentTextChunkRecord chunk = Chunk("en-us");
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en-us", chunk.Hash) });
         var candidate = new ContentTextCandidate(
@@ -271,7 +271,7 @@ public sealed class InMemoryTextAuthoringTests
         var store = TextStore();
         IContentTextAuthoringStore text = store;
         await ApplyAsync(text, new[] { Add() }, ContentTextEdit.Set(Name, "Sword"));
-        ContentTextChunkRecord chunk = Chunk("en-us", "Sword");
+        ContentTextChunkRecord chunk = Chunk("en-us", ("sword", "Sword"));
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en-us", chunk.Hash) });
         var revision = new ContentTextRevision(Item, IdOf(rowPlan, "sword"), NameField, "en-us", "Sword", 1, null);
@@ -305,7 +305,7 @@ public sealed class InMemoryTextAuthoringTests
         var store = TextStore(() => fail ? throw new InvalidOperationException("clock") : DateTimeOffset.UnixEpoch);
         IContentTextAuthoringStore text = store;
         await ApplyAsync(text, new[] { Add() }, ContentTextEdit.Set(Name, "Sword"));
-        ContentTextChunkRecord chunk = Chunk("en-us", "Sword");
+        ContentTextChunkRecord chunk = Chunk("en-us", ("sword", "Sword"));
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en-us", chunk.Hash) });
         var revision = new ContentTextRevision(Item, IdOf(rowPlan, "sword"), NameField, "en-us", "Sword", 1, null);

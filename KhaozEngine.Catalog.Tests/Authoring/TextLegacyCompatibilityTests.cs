@@ -148,7 +148,7 @@ public sealed class TextLegacyCompatibilityTests
         var store = TextStore();
         IContentTextAuthoringStore text = store;
         await ApplyAsync(text, new[] { Add() }, ContentTextEdit.Set(Name, "Sword"));
-        ContentTextChunkRecord chunk = Chunk("en-us", "Sword");
+        ContentTextChunkRecord chunk = Chunk("en-us", ("sword", "Sword"));
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en-us", chunk.Hash) });
         var revision = new ContentTextRevision(Item, IdOf(rowPlan, "sword"), NameField, "en-us", "Sword", 1, null);
@@ -249,7 +249,7 @@ public sealed class TextLegacyCompatibilityTests
         ContentTextRevision sword = (await text.ReadTextSnapshotAsync(1)).Revisions.Single();
         await ApplyAsync(text, new[] { ContentEdit.Update(Item, sword.DefinitionId, Sword, new[] { Value(5) }) },
             ContentTextEdit.Set(Target(NameField, "en"), "Blade"));
-        ContentTextChunkRecord chunk = Chunk("en", "Blade");
+        ContentTextChunkRecord chunk = Chunk("en", ("sword", "Blade"));
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en", chunk.Hash) });
         var blade = new ContentTextRevision(Item, sword.DefinitionId, NameField, "en", "Blade", 2, null);

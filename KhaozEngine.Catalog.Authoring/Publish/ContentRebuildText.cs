@@ -102,7 +102,8 @@ internal static class ContentRebuildText
     /// <summary>
     /// Whether verified stored manifests prove both of version N's language lists empty: the manifests at the
     /// RECORDED hashes, read from the rebuild target or the store's own pack, decode, digest to those hashes
-    /// and name no language. Read only.
+    /// and name no language. Read only. Each pack is checked through <see cref="ContentTextProvenanceProof"/>,
+    /// the one proof the stores' own snapshot reads run.
     /// </summary>
     /// <param name="record">The version record.</param>
     /// <param name="target">The rebuild target.</param>
@@ -114,14 +115,16 @@ internal static class ContentRebuildText
         IPackStore? source,
         CancellationToken cancellationToken)
     {
-        if (await ProveEmptyAsync(record, target, cancellationToken).ConfigureAwait(false))
+        if (await ContentTextProvenanceProof.StoredManifestsNameNoLanguageAsync(record, target, cancellationToken)
+            .ConfigureAwait(false))
         {
             return true;
         }
 
         return source is not null
             && !ReferenceEquals(source, target)
-            && await ProveEmptyAsync(record, source, cancellationToken).ConfigureAwait(false);
+            && await ContentTextProvenanceProof.StoredManifestsNameNoLanguageAsync(record, source, cancellationToken)
+                .ConfigureAwait(false);
     }
 
     /// <summary>The provenance refusal.</summary>
@@ -131,20 +134,6 @@ internal static class ContentRebuildText
             ContentPackRebuild.RefusedTextProvenance,
             FormattableString.Invariant(
                 $"Version {versionNumber} has no complete text record, its no-language manifests do not digest to the recorded hashes and no verified stored manifest proves its language lists empty. Its text is unknown rather than empty, so nothing was written."));
-
-    static async Task<bool> ProveEmptyAsync(ContentVersionRecord record, IPackStore pack, CancellationToken cancellationToken)
-    {
-        ContentManifestRead server = await ContentPackReader.ReadManifestAsync(
-            pack, record.ServerManifestHash, ContentManifestSide.Server, null, cancellationToken).ConfigureAwait(false);
-        if (!server.Success || server.Manifest is null || server.Manifest.Languages.Count != 0)
-        {
-            return false;
-        }
-
-        ContentManifestRead client = await ContentPackReader.ReadManifestAsync(
-            pack, record.ClientManifestHash, ContentManifestSide.Client, null, cancellationToken).ConfigureAwait(false);
-        return client.Success && client.Manifest is not null && client.Manifest.Languages.Count == 0;
-    }
 
     static ContentRebuildTextResult Refused(string reason, string detail)
         => new(new ContentRebuildRefusal(reason, detail), [], [], false);

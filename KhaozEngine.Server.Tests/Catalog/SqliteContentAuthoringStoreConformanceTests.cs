@@ -30,6 +30,13 @@ public sealed class SqliteContentAuthoringStoreConformanceTests : ContentAuthori
     int _databases;
 
     /// <inheritdoc />
+    /// <remarks>SQLite is at schema version 4 and names its text authoring migration. SQL Server follows in its own stage.</remarks>
+    protected override string RequiredMigration => "catalog-v4-text-authoring";
+
+    /// <inheritdoc />
+    protected override int CurrentSchemaVersion => 4;
+
+    /// <inheritdoc />
     protected override IContentAuthoringStore NewStore()
     {
         _databases++;

@@ -22,8 +22,9 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// in the same file.
 /// </para>
 /// <para>
-/// <b>Version 1's and version 2's sets are derived the same way</b>, from
-/// <see cref="SqliteCatalogSchema.VersionOneTables"/> and <see cref="SqliteCatalogSchema.VersionTwoTables"/>,
+/// <b>The older versions' sets are derived the same way</b>, from
+/// <see cref="SqliteCatalogSchema.VersionOneTables"/>, <see cref="SqliteCatalogSchema.VersionTwoTables"/> and
+/// <see cref="SqliteCatalogSchema.VersionThreeTables"/>,
 /// because an older catalog is a WHOLE catalog the reset replaces rather than a partial one it refuses. Each is
 /// a subset of the current set, so the current set is still the one the drop intersects with.
 /// </para>
@@ -50,10 +51,15 @@ internal static class SqliteCatalogSchemaInventory
     internal static IReadOnlySet<string> VersionOneTables { get; } = Derive(SqliteCatalogSchema.VersionOneTables);
 
     /// <summary>
-    /// Every table schema version 2 declared, read back from version 2's script the same way. Version 3 added
-    /// columns and no table, so it is the current set by construction rather than by assumption.
+    /// Every table schema version 2 declared, read back from version 2's script the same way.
     /// </summary>
     internal static IReadOnlySet<string> VersionTwoTables { get; } = Derive(SqliteCatalogSchema.VersionTwoTables);
+
+    /// <summary>
+    /// Every table schema version 3 declared, read back from version 3's script the same way. Version 3 added
+    /// columns and no table, so it is version 2's set, and version 4 adds the four text tables to it.
+    /// </summary>
+    internal static IReadOnlySet<string> VersionThreeTables { get; } = Derive(SqliteCatalogSchema.VersionThreeTables);
 
     /// <summary>
     /// The whole table set the given schema version declares, or null for a version this build holds no
@@ -64,6 +70,7 @@ internal static class SqliteCatalogSchemaInventory
     {
         1 => VersionOneTables,
         2 => VersionTwoTables,
+        3 => VersionThreeTables,
         SqliteCatalogSchema.CurrentVersion => Tables,
         _ => null,
     };

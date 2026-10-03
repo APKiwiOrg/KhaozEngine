@@ -113,13 +113,18 @@ internal static class TextAuthoringFixtures
     }
 
     /// <summary>
-    /// One language's placeholder chunk, hashed through the real text subdomain. Like an encoded chunk it is
-    /// never zero bytes, even for an empty language.
+    /// One language's REAL chunk over the name values of the given rows, encoded through the shipped codec
+    /// from literal derived keys, which is what a store regenerates and compares at commit. An empty list is
+    /// the language's empty chunk, which is never zero bytes.
     /// </summary>
-    public static ContentTextChunkRecord Chunk(string wireTag, string body)
+    public static ContentTextChunkRecord Chunk(string wireTag, params (string Key, string Value)[] names)
     {
-        byte[] bytes = Encoding.UTF8.GetBytes("text:" + body);
-        return new ContentTextChunkRecord(wireTag, ContentHash.OfTextChunk(bytes), bytes, false);
+        KeyValuePair<string, string>[] entries = names
+            .Select(name => new KeyValuePair<string, string>(ContentTextKey.Derive("item", name.Key, NameField), name.Value))
+            .OrderBy(entry => entry.Key, StringComparer.Ordinal)
+            .ToArray();
+        return new ContentTextChunkRecord(
+            wireTag, ContentTextChunkCodec.Hash(wireTag, entries), ContentTextChunkCodec.Encode(wireTag, entries), false);
     }
 
     /// <summary>The definition id the row plan allocated to <paramref name="key"/>.</summary>
@@ -134,8 +139,19 @@ internal static class TextAuthoringFixtures
         InMemoryContentAuthoringStore store, string key, string name)
     {
         IContentTextAuthoringStore text = store;
+        var names = new List<(string Key, string Value)> { (key, name) };
+        int active = await store.GetActiveVersionAsync();
+        if (active > 0)
+        {
+            ContentRowPage rows = await store.ListRowsAsync(Item, active, null, true, 0, 500);
+            foreach (ContentTextRevision held in (await text.ReadTextSnapshotAsync(active)).Revisions)
+            {
+                names.Add((rows.Rows.Single(row => row.Id == held.DefinitionId).Key.ToString(), held.Value));
+            }
+        }
+
         await ApplyAsync(text, new[] { Add(key) }, ContentTextEdit.Set(Target(NameField, "en", key), name));
-        ContentTextChunkRecord chunk = Chunk("en", name);
+        ContentTextChunkRecord chunk = Chunk("en", names.ToArray());
         (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
             store, new[] { new ManifestLanguageEntry("en", chunk.Hash) });
         int version = rowPlan.VersionNumber;

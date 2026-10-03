@@ -50,6 +50,13 @@ public interface IContentTextAuthoringStore : IContentAuthoringStore
     /// Freezes the complete open draft for the publish standing on <paramref name="expectedBaseVersion"/> and
     /// reads, in the same step, the row baseline, the complete baseline text and the frozen draft. A draft
     /// whose total work is 0 is refused, so a truly empty publish stays refused.
+    /// <para>
+    /// A base version with no complete text record is read as empty only on a read-only proof that its
+    /// manifests named no language, the verified stored manifests at its recorded hashes or no-language
+    /// manifests rebuilt from its recorded chunks. Nothing records that proof, and the commit that follows
+    /// writes its own version complete. Without a proof the freeze is refused with
+    /// <see cref="ContentAuthoringException.TextProvenanceUnknownReason"/> before any marker is written.
+    /// </para>
     /// </summary>
     /// <param name="expectedBaseVersion">The active version the caller expects to publish onto.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
@@ -61,6 +68,11 @@ public interface IContentTextAuthoringStore : IContentAuthoringStore
     /// <summary>
     /// The complete text of one exact, positive, committed version. Version 0 is not a shortcut for the active
     /// version and is refused, like a version the store does not hold.
+    /// <para>
+    /// A version with no complete text record yields an empty snapshot only on the same read-only proof the
+    /// freeze runs, and the read writes nothing. Otherwise it is refused with
+    /// <see cref="ContentAuthoringException.TextProvenanceUnknownReason"/>.
+    /// </para>
     /// </summary>
     /// <param name="versionNumber">The committed version.</param>
     /// <param name="cancellationToken">Cancels the call.</param>

@@ -150,4 +150,83 @@ public class LegacySequenceExhaustionTests
         Assert.Equal(4, fixture.ClientWorld.Get<Value>(client1).Number);
         Assert.Equal(20, fixture.ClientWorld.Get<Value>(client2).Number);
     }
+
+    // Format 2 state lives beside the legacy slots. The global reset clears every slot's candidate, acknowledged
+    // baseline, pins and committed history, but remembers no epoch: the stream owner's server-lifetime allocator must
+    // supply a greater one, so Replication accepts any nonzero epoch for a slot it no longer holds.
+    [Theory]
+    [MemberData(nameof(Writers))]
+    public void GlobalResetClearsFormat2SlotState(string kind)
+    {
+        RebuildWriterAdapter writer = RebuildWriterAdapter.Create(kind, RebuildWriterAdapter.NewRegistry());
+        Entity mover = writer.World.Spawn();
+        writer.World.Set(mover, new NetId(1));
+        writer.World.Set(mover, new RebuildValue { Number = 1 });
+        writer.Start(0, 7);
+        writer.Start(1, 8);
+
+        ReplicationDeltaPacket acknowledged = writer.CaptureAndSend(0, Interest);
+        writer.Ack(0, acknowledged.Id);
+        writer.World.Set(mover, new RebuildValue { Number = 2 });
+        writer.Capture();
+        writer.WriteLegacy(2, Interest);
+        ReplicationDeltaPacket committed = writer.Build(0, Interest);
+        writer.Sent(0, committed.Id);
+        ReplicationDeltaPacket unsent = writer.Build(1, Interest);
+        Assert.Equal(2, writer.Usage(0).RetainedCount);
+
+        writer.SeedLegacySequence(int.MaxValue - 1);
+        Assert.Equal(int.MaxValue, writer.Capture());
+        Assert.True(writer.Exhausted);
+        writer.ResetAfterExhaustion();
+
+        foreach (int slot in new[] { 0, 1 })
+        {
+            Assert.Equal(default(RebuildUsage), writer.Usage(slot));
+            Assert.False(writer.NeedsRepair(slot));
+        }
+        Assert.False(writer.TryGetRetained(0, acknowledged.Id, out _));
+        Assert.False(writer.TryGetRetained(0, committed.Id, out _));
+        Assert.Equal(1, writer.Capture());
+        Assert.Throws<InvalidOperationException>(() => writer.Build(0, Interest));
+        Assert.Throws<InvalidOperationException>(() => writer.Sent(1, unsent.Id));
+        writer.Ack(0, committed.Id);
+
+        writer.Start(0, 7);
+        ReplicationDeltaPacket fresh = writer.Build(0, Interest);
+        Assert.True(fresh.IsKeyframe);
+        Assert.Equal(new ReplicationPacketId(7, 1), fresh.Id);
+        Assert.Equal(1, writer.CurrentSeq);
+    }
+
+    [Theory]
+    [MemberData(nameof(Writers))]
+    public void ForgetClearsFormat2StateButNeverTheCounter(string kind)
+    {
+        RebuildWriterAdapter writer = RebuildWriterAdapter.Create(kind, RebuildWriterAdapter.NewRegistry());
+        Entity mover = writer.World.Spawn();
+        writer.World.Set(mover, new NetId(1));
+        writer.World.Set(mover, new RebuildValue { Number = 1 });
+        writer.Start(0, 3);
+        writer.Start(1, 4);
+        ReplicationDeltaPacket keyframe = writer.CaptureAndSend(0, Interest);
+        writer.Ack(0, keyframe.Id);
+        writer.World.Set(mover, new RebuildValue { Number = 2 });
+        ReplicationDeltaPacket delta = writer.CaptureAndSend(0, Interest);
+        ReplicationDeltaPacket other = writer.CaptureAndSend(1, Interest);
+        int sequence = writer.CurrentSeq;
+
+        writer.Forget(0);
+
+        Assert.Equal(default(RebuildUsage), writer.Usage(0));
+        Assert.False(writer.NeedsRepair(0));
+        writer.Ack(0, delta.Id);
+        Assert.Throws<InvalidOperationException>(() => writer.Build(0, Interest));
+        Assert.Equal(sequence, writer.CurrentSeq);
+        Assert.True(writer.TryGetRetained(1, other.Id, out _));
+        Assert.Equal(1, writer.Usage(1).NewSentCount);
+
+        writer.Start(0, 3);
+        Assert.Equal(new ReplicationPacketId(3, 1), writer.Build(0, Interest).Id);
+    }
 }

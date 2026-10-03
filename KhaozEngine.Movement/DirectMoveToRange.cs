@@ -9,6 +9,11 @@ namespace KhaozEngine.Movement;
 /// simulation tick, since the progress windows count ticks. Blocked stays latched until InRange, Reset, or a change
 /// of target shape, range or capsule geometry. Call Reset for target replacement, teleport or manual
 /// cancellation.
+/// <para>A step whose preflight leaves the ground is refused unless <see cref="DirectApproachOptions.MaxDropMetres"/>
+/// is positive and the predicted fall, settled with zero input, lands grounded and dry within that allowance below the
+/// current feet. An admitted drop is then airborne, so it stays Suspended and counts toward neither window until it
+/// lands. Stop ring bisection still takes only grounded fractions, and keeps the whole admitted step when none
+/// reaches range.</para>
 /// <para>It never steers a swimmer. A swimming body is not grounded, so it stays Suspended. The driver has no graph
 /// guard and the core does not collide a swimmer, so a direct swim approach could pass through props at the
 /// waterline. Steer swimmers with <see cref="MoveToRange"/> and <see cref="RouteApproachOptions.SteerWhileSwimming"/>
@@ -31,8 +36,9 @@ public sealed partial class DirectMoveToRange
 
     /// <summary>Returns bounded requested input without writing the supplied state or stepping the world.
     /// Suspended takes precedence over InRange, and neither suspension nor a zero travel bound counts toward a
-    /// window. A refused ground preflight requests zero input and still counts. Pass targetMoves true for body
-    /// targets, which disables the approach window. Range uses no tolerance.</summary>
+    /// window. A refused ground preflight requests zero input and still counts. A drop within the options' allowance
+    /// is admitted rather than refused. Pass targetMoves true for body targets, which disables the approach window.
+    /// Range uses no tolerance.</summary>
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target, float range,
         bool run, bool targetMoves, float dt, GroundMoveContext context)
     {
@@ -58,7 +64,7 @@ public sealed partial class DirectMoveToRange
         if (command != Vector2.Zero)
         {
             MoveState predicted = context.Step(body, command, run, dt, tuning);
-            command = AllowsStep(body, predicted, tuning)
+            command = AllowsStep(body, predicted, tuning) || AllowsDrop(body, predicted, tuning, dt, context)
                 ? StopAtRange(body, tuning, target, range, run, dt, context, command, predicted, Admits)
                 : Vector2.Zero;
         }

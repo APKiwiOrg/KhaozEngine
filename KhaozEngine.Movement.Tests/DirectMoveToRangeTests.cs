@@ -312,6 +312,10 @@ public class DirectMoveToRangeTests
         MoveState near = MoveToRangeTests.Body(0.25f);
         var orbit = new DirectMoveToRange(Options);
         var final = new DirectMoveToRange(Options);
+        // A 1 m terrain drop one step ahead, admitted by settling the predicted fall through the live context.
+        var ledge = new GroundMoveContext((x, _) => x < 1f ? 0f : -1f);
+        var drop = new DirectMoveToRange(Options with { MaxDropMetres = 1.5f });
+        MoveState brink = MoveToRangeTests.Body(0.95f);
         int tick = 0, following = 0;
         void Steady(int count)
         {
@@ -322,12 +326,15 @@ public class DirectMoveToRangeTests
                 RangeSteering shrunk = Tick(final, near, ring);
                 if (shrunk.Status == RangeMoveStatus.Following && shrunk.WorldDirection.Length() < 1f) following++;
                 final.Reset();
+                RangeSteering dropped = drop.Tick(brink, Tuning, Far, 0.5f, false, false, Dt, ledge);
+                if (dropped.Status == RangeMoveStatus.Following && dropped.WorldDirection.X > 0f) following++;
+                drop.Reset();
             }
         }
         Steady(60);
 
         AllocAssert.NoPerCallAllocation("steady DirectMoveToRange.Tick", () => Steady(60));
-        Assert.Equal(2 * tick, following);
+        Assert.Equal(3 * tick, following);
     }
 
     [Fact]

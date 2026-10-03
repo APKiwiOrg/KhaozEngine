@@ -5,6 +5,16 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.21.0
+
+- `DirectApproachOptions.MaxDropMetres` is an opt-in drop allowance for `DirectMoveToRange`, finite and not negative,
+  default zero. With the default every step that leaves the ground is refused as before. A positive allowance admits
+  such a step when its predicted fall, settled with zero input through the live context, lands grounded and dry no
+  more than the allowance below the current feet, so a walk-up drops off a ledge, prop top or deck edge, stays
+  `Suspended` while airborne and resumes on landing. A deeper drop, a landing in swim-depth water or a fall that has
+  not landed within 256 settle steps is refused and counts toward the stall window. Steady ticks still allocate
+  nothing.
+
 ## 20.20.0
 
 - `GroundNavigationBake` persists physics-checked `GroundNavigation` profile sets. `Create` builds named profiles from

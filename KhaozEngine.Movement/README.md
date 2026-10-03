@@ -706,6 +706,7 @@ public sealed record DirectApproachOptions
     public float StallTravelMetres { get; }
     public int ApproachWindowTicks { get; }
     public float ApproachGainMetres { get; }
+    public float MaxDropMetres { get; init; }
 }
 
 public sealed class DirectMoveToRange
@@ -724,6 +725,14 @@ samples and is first eligible on the (N + 1)th counted tick. When either window 
 latches `RangeMoveStatus.Blocked`, which both adapters treat as idle. The sample ring is allocated in the
 constructor, so steady ticks allocate nothing.
 
+`MaxDropMetres` is an opt-in drop allowance, finite and not negative, default zero. Zero keeps the strict rule: a
+step whose preflight leaves the ground is refused. A positive allowance admits such a step when the predicted fall,
+settled on a copy through the live context with zero input as the following `Suspended` ticks will, lands grounded
+and dry with its feet no more than the allowance below the current feet. Props, slopes and water answer through the
+same core as the walk. A fall that starts swimming, sinks past the allowance, or has not landed within 256 settle
+steps is refused as before. Once airborne the body is `Suspended` and counts toward neither window. After landing
+the approach resumes, and the drop's travel counts as progress from the first grounded tick.
+
 Each tick validates like `MoveToRange`, then returns `Suspended` for an airborne or committed body, `InRange` when
 the current body already passes `ReachGeometry.Within`, and `Blocked` while a block is latched. Otherwise it requests
 bounded travel toward the closest horizontal point of the target, preflights the step on a copy through the live
@@ -733,7 +742,10 @@ Reset to start a new one.
 ```csharp
 var approach = new DirectMoveToRange(new DirectApproachOptions(
     stallWindowTicks: gameApproach.StallTicks, stallTravelMetres: gameApproach.StallMetres,
-    approachWindowTicks: gameApproach.ApproachTicks, approachGainMetres: gameApproach.ApproachMetres));
+    approachWindowTicks: gameApproach.ApproachTicks, approachGainMetres: gameApproach.ApproachMetres)
+{
+    MaxDropMetres = gameApproach.DropMetres, // opt-in, zero refuses every drop
+});
 
 // Once per simulation tick while the walk is active.
 RangeSteering steering = approach.Tick(
@@ -751,7 +763,8 @@ Differences from a typical game-side walk-up rule:
 - The final fraction comes from live bisection against exact reach, not from a minimum fraction, so a short last step
   cannot stall or overshoot.
 - A step that would leave the ground or start swimming is refused and counts toward the stall window, so a walk off a
-  ledge or into deep water ends `Blocked` instead of falling or swimming.
+  ledge or into deep water ends `Blocked` instead of falling or swimming. Set `MaxDropMetres` to drop off a ledge,
+  prop top or deck edge within that depth and land on dry ground instead.
 - A zero travel bound, such as a rooted body, counts toward neither window, so a rooted body holds without ending its
   walk. Airborne and committed ticks return `Suspended` and also count toward neither window.
 - `InRange` clears both windows, so a followed body that moves away starts fresh windows.

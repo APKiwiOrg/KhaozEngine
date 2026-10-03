@@ -140,6 +140,7 @@ public sealed partial class WorldClient : IDisposable
         interpolateRemotes = config.InterpolateRemotes;
         requestDeltaReplication = config.RequestDeltaReplication;
         tickSeconds = config.TickSeconds;
+        rebuild = StartRebuildStream(config);   // validates the format 2 opt-in, null without it
         interpolationDelaySeconds = MathF.Max(0f, config.InterpolationDelayTicks) * config.TickSeconds;
         presentationTrace = config.PresentationTraceEnabled ? new PresentationTrace() : null;
         disconnectTimeout = config.DisconnectTimeoutSeconds;
@@ -297,15 +298,17 @@ public sealed partial class WorldClient : IDisposable
                     // every (re)join since a reconnect lands on a fresh server slot. Harmless to an older server (it
                     // reads an unknown control and ignores it), so the client keeps getting full snapshots there.
                     if (requestDeltaReplication)
-                        net.Send(MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.DeltaCapable),
+                        SendToServer(MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.DeltaCapable),
                             NetChannelReliability.ReliableOrdered);
+                    OnRebuildJoined();
                     SetState(WorldConnectionState.Connected);
                     break;
                 case ClientSessionEventKind.Data:
-                    gotFrame = true;
-                    OnServerFrame(ev.Data);
+                    gotFrame |= !RebuildOwnsLiveness;   // a live format 2 stream counts accepted state only
+                    OnServerFrame(ev.Data, ev.Reliability);
                     break;
                 case ClientSessionEventKind.Rejected:
+                    if (state == WorldConnectionState.Disconnected) break;   // a terminal end already holds its reason
                     // ConnectRefusal owns what each refusal token means and whether the attempt is retried.
                     refusal = ConnectRefusal.Read(ev.RejectReason);
                     disconnectReason = refusal.Reason;
@@ -328,12 +331,13 @@ public sealed partial class WorldClient : IDisposable
                     break;
             }
         }
+        PumpRebuildStream(dt);
         if (gotFrame) secondsSinceServerFrame = 0f;
         if (dt <= 0f) return;
 
         if (state == WorldConnectionState.Connected)
         {
-            secondsSinceServerFrame += dt;
+            if (!RebuildRecoveryActive) secondsSinceServerFrame += dt;   // the typed recovery deadline runs instead
             if (secondsSinceServerFrame >= disconnectTimeout)
             {
                 disconnectReason = DisconnectReason.Timeout;
@@ -382,6 +386,7 @@ public sealed partial class WorldClient : IDisposable
         net = new NetClient(transport, token);
         world = new World();
         view = new ClientReplicationView(registry);
+        rebuild = NewRebuildStream();        // the stream binds one connection and view: a fresh receiver per attempt
         lastTeleportEpochByEntity.Clear();   // the fresh view has no entities/samples; start remote-teleport tracking clean
         LocalNetId = -1;
         secondsSinceServerFrame = 0f;
@@ -418,7 +423,7 @@ public sealed partial class WorldClient : IDisposable
     {
         if (state != WorldConnectionState.Connected) return -1;
         int seq = prediction.Predict(cmd);
-        net.Send(MoveProtocol.EncodeMove(seq, cmd), NetChannelReliability.ReliableOrdered);
+        SendToServer(MoveProtocol.EncodeMove(seq, cmd), NetChannelReliability.ReliableOrdered);
         return seq;
     }
 
@@ -435,7 +440,7 @@ public sealed partial class WorldClient : IDisposable
     public bool SendGameMessage(ushort kind, ReadOnlySpan<byte> payload, NetChannelReliability reliability)
     {
         if (state != WorldConnectionState.Connected) return false;
-        net.Send(MoveProtocol.EncodeGameMessage(kind, payload), reliability);
+        SendToServer(MoveProtocol.EncodeGameMessage(kind, payload), reliability);
         return true;
     }
 
@@ -449,7 +454,7 @@ public sealed partial class WorldClient : IDisposable
     public bool RequestSelfRescue()
     {
         if (state != WorldConnectionState.Connected) return false;
-        net.Send(MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.SelfRescue), NetChannelReliability.ReliableOrdered);
+        SendToServer(MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.SelfRescue), NetChannelReliability.ReliableOrdered);
         return true;
     }
 
@@ -585,9 +590,10 @@ public sealed partial class WorldClient : IDisposable
         return false;
     }
 
-    private void OnServerFrame(byte[] data)
+    private void OnServerFrame(byte[] data, NetChannelReliability reliability)
     {
         if (!MoveProtocol.TryDecodeServerFrame(data, out MoveProtocol.ServerFrameKind kind, out byte[] payload)) return;
+        if (RouteRebuildFrame(kind, payload, reliability)) return;
         switch (kind)
         {
             case MoveProtocol.ServerFrameKind.Snapshot:
@@ -639,7 +645,7 @@ public sealed partial class WorldClient : IDisposable
         IngestServerState(localNetId, ackSeq);
         // Ack the applied replication seq so the server advances this client's delta baseline. Reliable-ordered, so a
         // dropped ack just self-heals: the server keeps diffing from the last acked baseline until a newer ack lands.
-        net.Send(MoveProtocol.EncodeReplicationAck(view.LastAppliedSeq), NetChannelReliability.ReliableOrdered);
+        SendToServer(MoveProtocol.EncodeReplicationAck(view.LastAppliedSeq), NetChannelReliability.ReliableOrdered);
     }
 
     // Shared post-apply for a full snapshot or a delta: NetStats ingest count, remote-interpolation interval, and the
@@ -647,6 +653,7 @@ public sealed partial class WorldClient : IDisposable
     private void IngestServerState(long localNetId, int ackSeq)
     {
         RecordSnapshotIngest();                                  // NetStats: AoI snapshot/delta ingest rate
+        RecordRebuildIngest(ackSeq);                             // friend-test ingest diagnostics
         bool first = LocalNetId < 0;
         LocalNetId = localNetId;
 

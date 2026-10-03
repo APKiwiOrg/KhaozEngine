@@ -79,6 +79,10 @@ internal sealed class PlayerRangeMovementTestRig : IDisposable
     public RangeSteering Steer(in ReachTarget target, float range, bool run = false) =>
         Mover.Tick(Client.LocalPredictedState.Move, Tuning, target, range, run, TickSeconds, Context);
 
+    public RangeSteering SteerDirect(DirectMoveToRange driver, in ReachTarget target, float range, bool targetMoves,
+        bool run = false) =>
+        driver.Tick(Client.LocalPredictedState.Move, Tuning, target, range, run, targetMoves, TickSeconds, Context);
+
     public MoveCommand Approach(in ReachTarget target, float range, bool run = false, float cameraYaw = 0f) =>
         PlayerPathMovement.Command(Steer(target, range, run), run, cameraYaw);
 

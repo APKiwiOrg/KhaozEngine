@@ -11,8 +11,9 @@ internal static class AquaticColumns
     /// <c>W</c>, <c>s</c> is the highest surface below <c>W</c> and <c>u</c> the lowest at or above it. The column is
     /// swim-deep when there is no <c>s</c>, or its depth reaches the enter fraction, and the float height
     /// <c>f = W - Submersion x H</c> lies above <c>s</c> and below <c>W</c>. A float at <c>W</c>, from a zero
-    /// submersion fraction, would share its height with a kept surface at <c>W</c>, so it is never emitted. A swim-deep column replaces every surface below <c>W</c> with
-    /// one float surface at <c>f</c> carrying the water's areas. Its headroom is <c>s</c>'s headroom less the rise to
+    /// submersion fraction, would share its height with a kept surface at <c>W</c>, so it is never emitted. A
+    /// swim-deep column replaces every surface below <c>W</c> with one float surface at <c>f</c> carrying the water's
+    /// areas. Its headroom is <c>s</c>'s headroom less the rise to
     /// <c>f</c>, clamped at zero, or, without <c>s</c>, the gap up to <c>u</c> or infinity. Surfaces at or above
     /// <c>W</c> are kept. Single precision in this order, so every build derives the same bits. The result carries the
     /// captured water entries.</summary>

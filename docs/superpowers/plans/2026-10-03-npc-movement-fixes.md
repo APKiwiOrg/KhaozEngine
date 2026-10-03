@@ -727,3 +727,11 @@ The solution-wide `dotnet format --verify-no-changes` reports findings that pred
 repository. Of the files this round touched, `PhysicsNavCaptureTests.cs` was reformatted (whitespace only) and
 `CharacterMovement.Collision.cs` keeps its existing column-aligned constants, which the round did not change. Every
 other round file verifies clean.
+
+Final fix wave, after the whole-branch review: `LowPropSupport` now also requires the walkable slope test, so with a
+slope limit below about 25.8 degrees a top with a normal between 0.9 and that limit is not support
+(`LowPropSupportTests.LowTopSteeperThanTheSlopeLimitIsNeverSupport`, RED at 20 degrees with feet seated at 0.0583 m,
+the 45 degree control seated). Guards: the low prop facts 19 of 19, Game.Tests Locomotion and Physics 1,218 passed and
+1 skipped, Movement.Tests 583 passed and 3 skipped, NetWorld `LowPropPredictionTests` 2 of 2, with no existing
+expectation changed. The #1265 docs now name both measured causes and the runtime stall, the player-visible support
+change is in `docs/USING-KHAOZENGINE.md`, and the design's Rulings list runs through M21.

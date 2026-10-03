@@ -196,13 +196,14 @@ broad tolerance D1.1 removed.
 | Option | Blast radius | Fidelity to runtime | Total |
 | --- | ---: | ---: | ---: |
 | A. Movement's `GroundTraversalProbe` arrival judgment, when the live core mounts the lip | 9 | 9 | 18 |
-| B. Locomotion's step-up rules, when the live core cannot mount the lip | 4 | 9 | 13 |
+| B. Locomotion's support rules, when the live core cannot mount the lip | 4 | 9 | 13 |
 
 The fixture decides. If the live core mounts the lip and the bake refuses it, A applies. If the live core cannot
-mount it, the bake is telling the truth and the fault is in Locomotion. Ruling M4 authorizes a targeted step-up fix in
-this round for that case, because the same core moves players and a lip that stops a capsule is a player-facing
+mount it, the bake is telling the truth and the fault is in Locomotion. Ruling M4 authorizes a targeted Locomotion fix
+in this round for that case, because the same core moves players and a lip that stops a capsule is a player-facing
 kernel defect. B is guarded by the red fixture, the whole Locomotion suite, the whole Movement suite and the Server
-NetWorld suite.
+NetWorld suite. B applied. It landed as a support-floor fix for low prop tops, not a step-up change, because Task 3
+traced the fault to the prop support gate (section 5, rulings M13 to M16).
 
 ### D6. Swim steering in `DirectMoveToRange` (ruling M3)
 
@@ -215,7 +216,7 @@ docs state this limit and its reason.
 No project reference changes. Movement keeps exactly Locomotion, Navigation and Physics. The swim clearance check
 uses `IPhysicsWorld.ComputePenetration`, already in Physics. Navigation gains a route geometry query and a follower
 option with no new reference. No wire, `NetWorld` or persisted payload change outside the unreleased KENB file.
-A Locomotion change happens only through D5 B.
+A Locomotion change happens only through D5 B, which landed as the low prop support-floor fix of section 5.
 
 ## 2. Surface water layer (#1256)
 
@@ -438,7 +439,7 @@ Outcomes:
 - Assertion 3 passes and 1 or 2 fails: the probe is wrong. Plan Task 4 changes only the shared ground arrival rule in
   `GroundTraversalProbe`. The rule is written into this section before GREEN and must keep
   `ThinWallBetweenPassableEndpointsCannotBeCrossed` and every existing probe and profile test green.
-- Assertion 3 fails: the core cannot mount the lip. Plan Task 4b makes a targeted Locomotion step-up fix (ruling M4),
+- Assertion 3 fails: the core cannot mount the lip. Plan Task 4b makes a targeted Locomotion fix (ruling M4),
   with assertion 3 as its failing test, then reruns assertions 1 and 2.
 - All pass: repeat on a TileWorld bridge fixture with a 2.5 cm drawn deck. If that also passes, stop and report that
   the lead does not reproduce, so the orchestrator can relabel the issue.
@@ -458,7 +459,8 @@ Rule. When that gate is closed, the same downward sweep also runs, with its walk
 surface becomes support only when both of these hold:
 
 1. The surface normal is at least `LipLandingFlatNormalY` (0.9), the flat tread test the lip band step-up already
-   applies. A curb, deck or doorstep top passes. A steep convex flank does not.
+   applies, and at least `cos(MaxSlopeRadians)`, the walkable test, so with a slope limit below about 25.8 degrees
+   the walkable test is the stricter one. A curb, deck or doorstep top passes. A steep convex flank does not.
 2. The resting centre lies above the support found so far and at most `LowPropRise` (0.1 m) above the centre the
    body started the tick at. The band comes from the evidence, which covers lips of 0.1 m and below. It is not
    "any prop top within StepHeight".
@@ -591,7 +593,8 @@ Recorded on 2026-10-03 by the orchestrator. They replace the first draft's open 
 - M1 (Q1): the `20.20.0` tag waits for this round's KENB change.
 - M2 (Q2): water sampling is an explicit capture opt-in, default off. Section 2 Capture and D3.
 - M3 (Q3): `DirectMoveToRange` stays out of swim steering and its docs state why. D6.
-- M4 (Q4): a targeted Locomotion step-up fix is authorized if the live core cannot mount the lip. D5 and section 5.
+- M4 (Q4): a targeted Locomotion fix is authorized if the live core cannot mount the lip. D5 and section 5. It
+  landed as the low prop support-floor fix.
 - M5 (Q5): the deepest-contact limit is accepted, documented and followed by a sweep issue. Section 2 Proofs.
 - M6: land-only bakes change KENB v1 bytes and the golden fingerprint. Section 2 format.
 - M7: `SampleWater` joins the bake identity, 13 options become 14.
@@ -600,6 +603,19 @@ Recorded on 2026-10-03 by the orchestrator. They replace the first draft's open 
 - M10: names `RouteApproachOptions`, `CarryThroughStraightRuns`, `ConsumePassedCollinearWaypoints`, `Aquatic`, the
   `GroundProfileOptions` property for `BuildProfile`, and `PhysicsNavBakeOptions.SampleWater`.
 - M11: the lip clearance at the cell centre beside the deck edge is 2.28 mm, from the formula in section 5. Settled.
+- M12: lane worktrees, pushed lane branches and root merges of reviewed work, with one shared build slot.
+- M13: Task 4 runs its first step only, and Task 4b is retargeted to the evidenced cause, the `OnPropSkin` gate.
+- M14: Task 4b takes its support band from the evidence, lips of 0.1 m and below, and names the flank guards.
+- M15: a gentle convex prop within the band stays walkable, and the design and comments are corrected.
+- M16: replaces M15's wording with the measured guarantee of section 5, with no new code rule. #1260 is filed.
+- M17: the edge budget stays the consumer's `MaxEdgeProbeSteps`, the bank bound is documented, and no float is
+  emitted at `f >= W`.
+- M18: a vertical slope-rest allowance in the ground arrival rule for #1265. Tried and reverted.
+- M19: a core change resolving walkable contacts vertically while moving. Tried, it broke stair tests, not committed.
+- M20: #1265 is deferred out of this round, with its repro committed skipped.
+- M21: a runtime fact proves a duck wades out to deep water and back along a baked aquatic route.
+
+The plan's Outcome records each ruling's reason and cost.
 
 No open question remains.
 
@@ -608,5 +624,5 @@ No open question remains.
 - Grimhollow files, engine tags and consumer pin moves.
 - Swimmer collision in the core, diving and multi-level water.
 - Swim steering in `DirectMoveToRange`.
-- Locomotion changes other than the targeted step-up fix of D5 B.
+- Locomotion changes other than the low prop support-floor fix of D5 B.
 - Issues found during execution, which become ledger issues.

@@ -43,15 +43,18 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   corner ([#1257](https://github.com/APKiwiOrg/KhaozEngine/issues/1257)). A 30-tick straight walk at 2 m/s covers
   1.983 m instead of 1.883 m. `PathFollowConfig.ConsumePassedCollinearWaypoints` and `NavPath.IsCollinearPassThrough`
   back it.
-- Low prop support ([#1253](https://github.com/APKiwiOrg/KhaozEngine/issues/1253)). A grounded body at terrain height
-  now stands on a near-flat prop top (normal at least 0.9) up to 0.1 m above its start instead of sinking into it, so
-  bake proofs and live movement both cross a 2.5 cm deck edge for a 0.3 m capsule. A flank steeper than the walking
-  slope limit is never raised. Wider capsules and steep uphill ticks
+- Low prop support ([#1253](https://github.com/APKiwiOrg/KhaozEngine/issues/1253)), for players and NPCs alike with
+  no opt-in. A grounded body at terrain height now stands on a near-flat prop top (normal at least 0.9 and within the
+  tuning's walkable slope limit) up to 0.1 m above its start instead of sinking into it, so bake proofs and live
+  movement both cross a 2.5 cm deck edge for a 0.3 m capsule. This includes ground meshes the movement queries see.
+  A flank steeper than the walking slope limit is never raised. Wider capsules and steep uphill ticks
   ([#1259](https://github.com/APKiwiOrg/KhaozEngine/issues/1259)) and sinking into walkable convex flanks
   ([#1260](https://github.com/APKiwiOrg/KhaozEngine/issues/1260)) remain open.
-- Known limit: on smooth sloped physics ground the ground bake still drops uphill and sideways edges, because a
-  grounded capsule rests above the captured centre height
-  ([#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265)). Check routes over sloped physics ground.
+- Known limit ([#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265)): on smooth sloped physics ground the
+  ground bake still drops uphill and sideways edges, and at runtime the follower can stall short of waypoints. Two
+  causes were measured. A grounded capsule rests above the captured centre height, by `r (1 / cos slope - 1)`, and a
+  body under command creeps down the slope by 1.25 to 3.77 mm, because the core's push-out shoves it downhill each
+  tick. Allowing for the height alone did not cure it. Check routes over sloped physics ground.
 - Catalog text authoring ([#1000](https://github.com/APKiwiOrg/KhaozEngine/issues/1000)). The opt-in
   `IContentTextAuthoringStore` companion of `IContentAuthoringStore`, implemented by the in-memory, SQLite and SQL
   Server stores, authors per-language display text for `LocalizedTextKey` marker fields of CLIENT-visible types.

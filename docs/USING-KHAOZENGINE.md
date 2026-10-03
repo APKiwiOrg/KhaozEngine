@@ -6517,6 +6517,16 @@ SamplerSpace.Frame`, not the default: `probe` reads the island's own rebased `IP
 space, and the default `SamplerSpace.World` silently misses every ray and flattens the ground (see the
 `FrameAnchoring` section above).
 
+**Low prop tops are support (20.20.0, players and NPCs, no opt-in).** A grounded body standing at the analytic
+terrain height now stands on a near-flat physics surface up to 0.1 m above it, instead of sinking into it and being
+seated at the terrain inside the prop. The surface must lie under the capsule footprint, with a normal of at least 0.9
+and within the tuning's walkable slope limit. It applies to every static the movement physics queries see: props,
+decks, curbs and doorsteps, and ground meshes too, so a ground mesh a few centimetres above the analytic height now
+carries the body on the mesh. A movement query view that excludes registered ground handles keeps them out. A flank
+steeper than the walking slope limit is never raised. A walkable convex flank is still entered and can sink
+([#1260](https://github.com/APKiwiOrg/KhaozEngine/issues/1260)), and wider capsules on steep uphill ticks are open as
+[#1259](https://github.com/APKiwiOrg/KhaozEngine/issues/1259). The Locomotion README states the rule.
+
 **Server-authoritative AI agents move with the player's collision (`CharacterMovement.StepTowards`, 10.64.0).**
 A non-player, server-simulated agent (an enemy NPC) needs the SAME collision the player gets - swept
 collide-and-slide + `StepHeight` step-up against the `IPhysicsWorld`, the terrain support floor, the wall slide,
@@ -7762,10 +7772,11 @@ startup or wall-clock guarantee. Issue [#1233](https://github.com/APKiwiOrg/Khao
 open adoption prerequisite for steep meshes and filtered ground. Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)
 is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix. Small local physics coordinates or
 rebasing are required for large absolute requests. There is no ground-sampler fallback and no full Hollowmere or
-steep-bank guarantee. On smooth sloped physics ground, uphill and sideways edges can drop out of the graph because a
-grounded capsule rests above the captured centre height
-([#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265), open). The NPC and player driver APIs are documented
-below.
+steep-bank guarantee. On smooth sloped physics ground, uphill and sideways edges can drop out of the graph and the
+follower can stall short of waypoints at runtime ([#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265), open). Two causes were
+measured: a grounded capsule rests above the captured centre height, and a body under command creeps 1.25 to 3.77 mm
+down the slope because the core's push-out shoves it downhill. Allowing for the height alone did not cure it. The NPC
+and player driver APIs are documented below.
 
 Profile building allocates no garbage per proof. A warmed penetration query and a warmed edge proof allocate
 zero bytes, and a 4,096-column flat `BuildProfile` allocates 80 bytes per column, down from 58,774. Engine tests
@@ -8737,6 +8748,10 @@ into the `IPhysicsWorld` - see "3D physics" above. The swept capsule-vs-mesh res
 and standable: vertical support comes from a downward sweep probe onto prop tops, so you walk and jump onto a
 prop's real top contour directly off its collision mesh (a domed rock is mountable up its flank and standable
 across its top). Out of scope: overhangs / interiors / caves, dynamic/moving props, player-vs-player.
+
+From 20.20.0 a grounded body at the terrain height also stands on a near-flat prop top up to 0.1 m above it, such as
+a low deck edge or a curb, instead of sinking into it, for players and NPCs alike with no opt-in. The rule and its
+limits are under "Low prop tops are support" in the terrain section above.
 
 `ke-propbake` also writes a `.surf` top-down height map per walkable solid, read only by the legacy
 `WorldSurfaces` path below. The `IPhysicsWorld` path does not use it.

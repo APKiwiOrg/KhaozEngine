@@ -8,11 +8,11 @@ namespace KhaozEngine.Locomotion;
 // prop sweep is gated on the body standing more than OnPropSkin above the terrain, so a deck lip, curb or doorstep
 // lower than that was never support: the cap passed through its walkable lip and the ground snap seated the body at
 // the terrain inside the prop. This is the one exception to that gate. Only a near-flat surface (normal at least
-// LipLandingFlatNormalY) within LowPropRise above the tick's start counts. The measured guarantee: a flank steeper
-// than the walking slope limit is never raised. A walkable flank flatter than that is entered as the swept move
-// allows, and the body is seated once its footprint reaches a near-flat part (a gentle mound is walked up) or sinks
-// into it as before this rule (KhaozEngine #1260). Once the body stands above OnPropSkin, the ordinary prop sweep
-// follows the surface as before.
+// LipLandingFlatNormalY and walkable under the tuning's slope limit) within LowPropRise above the tick's start
+// counts. The measured guarantee: a flank steeper than the walking slope limit is never raised. A walkable flank
+// flatter than that is entered as the swept move allows, and the body is seated once its footprint reaches a
+// near-flat part (a gentle mound is walked up) or sinks into it as before this rule (KhaozEngine #1260). Once the
+// body stands above OnPropSkin, the ordinary prop sweep follows the surface as before.
 public static partial class CharacterMovement
 {
     // The highest low prop top this rule seats a terrain-height body on in one tick, measured from its start height.

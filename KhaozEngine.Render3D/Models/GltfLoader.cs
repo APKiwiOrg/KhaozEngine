@@ -168,6 +168,12 @@ namespace KhaozEngine.Render3D
             return groups;
         }
 
+        /// <summary>Every logical node with a non-empty name, empties included, in logical-node order, each with
+        /// its world transform exactly as <see cref="Load"/> bakes geometry. Unnamed nodes are skipped but still
+        /// place their named descendants. Duplicate names are all returned. Needs no geometry.</summary>
+        public static IReadOnlyList<GltfNamedNode> LoadNamedNodes(string path)
+            => GltfNamedNodeReader.Read(LoadModel(path));
+
         /// <summary>Opt-in convenience: load a rigid glb/glTF AND auto-read its first textured material's baseColor,
         /// normal, and metallicRoughness textures, decoded to raw RGBA8 (no GPU - the returned
         /// <see cref="GltfMaterialMaps"/> holds CPU pixels). The <see cref="GltfMesh"/> is byte-identical to

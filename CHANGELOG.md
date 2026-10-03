@@ -5,8 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.18.1
+## 20.19.0
 
+- `GltfLoader.LoadNamedNodes(path)` returns every glTF node with a non-empty name, empties included, as
+  `GltfNamedNode(Name, WorldTransform)` in logical-node order. The world transform is the matrix `Load` bakes into a
+  mesh node's geometry, so an authored empty such as `socket_nose` places a module, muzzle or exhaust point in the
+  loaded mesh's space. Unnamed nodes are skipped but still place their named descendants, and an asset with no
+  geometry loads.
 - A `Fork` of a family row now allocates its legacy copy inside that family's blocks, reserving another aligned
   block when they are full, so the copy is a member by id as well as by column and its bundle re-imports. A
   non-family fork still takes a plain id. Copies forked by 19.0.0 through 20.18.0 keep their plain ids and family

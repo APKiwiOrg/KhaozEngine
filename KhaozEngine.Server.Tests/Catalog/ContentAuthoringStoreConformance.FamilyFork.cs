@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Catalog;
 
 /// <summary>
 /// A family fork across every provider (issue 908): the copy is allocated inside the family's blocks and a
-/// lossless export of it imports unchanged. A copy forked before 20.18.1, which holds a plain id while naming
+/// lossless export of it imports unchanged. A copy forked before 20.19.0, which holds a plain id while naming
 /// the family, is refused on import with nothing left behind.
 /// </summary>
 public abstract partial class ContentAuthoringStoreConformance

@@ -955,6 +955,11 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   Scene3D.PropHandle`, draw as a unit with `Scene3D.Draw(PropHandle, world[, tint])` (each part is a normal
   instanced mesh sharing the transform, so drawing a prop at several transforms batches as instances), and free
   with `Scene3D.UnloadProp`.
+- Named nodes and sockets: `GltfLoader.LoadNamedNodes(path) -> IReadOnlyList<GltfNamedNode>` returns every logical
+  node with a non-empty name, empties included, in logical-node order. Each `GltfNamedNode(Name, WorldTransform)`
+  carries the node's world matrix exactly as `Load` bakes a mesh node's vertices, so an empty named `socket_nose`
+  in a hull glb gives the attachment transform in the hull mesh's space. Unnamed nodes are skipped but still
+  place their named descendants, duplicate names are all returned, and the asset needs no geometry.
 - Per-vertex colour: `GltfLoader` reads the glTF `COLOR_0` attribute (rigid and skinned paths alike, normalized
   ubyte/ushort or float, vec3 or vec4) and MULTIPLIES it into the vertex's material base colour, which is what
   the spec says it is. So a kit piece painted from a palette in Blender keeps its authored colours with no

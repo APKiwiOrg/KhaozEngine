@@ -13,6 +13,8 @@ public sealed partial class GroundNavigationBake
 {
     private const int CaptureHeaderBytes = 24;
     private const int SurfaceBytes = 12;
+    private const int WaterCountBytes = 4;
+    private const int WaterBytes = 12;
     private const int LayerHeaderBytes = 32;
     private const int LinkCountBytes = 4;
 
@@ -114,7 +116,8 @@ public sealed partial class GroundNavigationBake
     {
         ulong c = (ulong)plan.Cells, m = (ulong)plan.Options.MaxSurfacesPerColumn;
         ulong layers = (ulong)plan.MaxLayers, n = (ulong)plan.Profiles.Length;
-        ulong capture = Add(Add(CaptureHeaderBytes, c), Mul(Mul(SurfaceBytes, c), m));
+        ulong surfaces = Add(Add(CaptureHeaderBytes, c), Mul(Mul(SurfaceBytes, c), m));
+        ulong capture = Add(Add(surfaces, WaterCountBytes), Mul(WaterBytes, c));
         ulong layer = Add(Add(LayerHeaderBytes, (c + 7) / 8), Mul(5, c));
         ulong links = Mul(Mul(layers, layers == 0 ? 0 : layers - 1), c);
         ulong profile = Add(Add(Add(4, Mul(layers, layer)), LinkCountBytes), links);
@@ -189,7 +192,43 @@ public sealed partial class GroundNavigationBake
                 previous = surfaceHeight;
             }
         }
-        columns = PhysicsNavColumns.Own(plan.Options, width, height, starts, surfaces);
+        if (DecodeWater(ref reader, plan, starts, surfaces, out PhysicsNavWater[]? water) is { } failed) return failed;
+        columns = PhysicsNavColumns.Own(plan.Options, width, height, starts, surfaces, water!);
+        return null;
+    }
+
+    // One entry per wet column in strictly ascending cell order, each above its column's lowest surface or the probe
+    // floor, exactly as capture records them.
+    private static string? DecodeWater(ref NavBakeReader reader, LoadPlan plan, int[] starts, PhysicsNavSurface[] surfaces,
+        out PhysicsNavWater[]? water)
+    {
+        water = null;
+        if (!reader.TryReadInt32(out int count)) return "The payload is truncated before the water entries.";
+        if (count < 0 || count > plan.Cells || (long)count * WaterBytes > reader.Remaining)
+            return $"Water entry count {count} is impossible for {plan.Cells} cells and the remaining bytes.";
+        PhysicsNavBakeOptions options = plan.Options;
+        if (count != 0 && !options.SampleWater) return $"The payload stores {count} water entries but SampleWater is false.";
+        var entries = new PhysicsNavWater[count];
+        float probeFloor = options.ProbeHeight - options.ProbeRange;
+        int previous = -1;
+        for (int i = 0; i < count; i++)
+        {
+            if (!reader.TryReadInt32(out int cell) || !reader.TryReadSingle(out float surfaceY) || !reader.TryReadUInt32(out uint areas))
+                return "The payload is truncated in the water entries.";
+            if (cell <= previous || cell >= plan.Cells)
+                return $"Water entry {i} cell {cell} is not strictly ascending below {plan.Cells}.";
+            float centreX = options.MinX + (cell % plan.Width + 0.5f) * options.CellSize;
+            float centreZ = options.MinZ + (cell / plan.Width + 0.5f) * options.CellSize;
+            if (centreX >= options.MaxX || centreZ >= options.MaxZ)
+                return $"Water entry {i} cell {cell} centre lies outside the bounds.";
+            if (!float.IsFinite(surfaceY)) return $"Water entry {i} surface at cell {cell} is not finite.";
+            float floor = starts[cell + 1] > starts[cell] ? surfaces[starts[cell]].Height : probeFloor;
+            if (surfaceY <= floor)
+                return $"Water entry {i} surface {surfaceY} at cell {cell} is not above the column's lowest surface {floor}.";
+            entries[i] = new PhysicsNavWater(cell, surfaceY, areas);
+            previous = cell;
+        }
+        water = entries;
         return null;
     }
 

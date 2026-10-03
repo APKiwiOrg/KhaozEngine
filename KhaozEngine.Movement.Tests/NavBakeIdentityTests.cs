@@ -15,7 +15,7 @@ namespace KhaozEngine.Tests.Movement;
 public class NavBakeIdentityTests
 {
     private const string GoldenEngine = "0.0.0-golden";
-    private const string GoldenFingerprint = "a0a927cec3bf88a763041c829767efc6be1415e4e75070cc378948cfd43666e3";
+    private const string GoldenFingerprint = "0eecbc661ae8d1ca53f17b722445a8d7286cbfa7f0b8705ae48e2bcb0fb97894";
 
     private static readonly string[] ExcludedTuningFields = ["WalkSpeed", "RunSpeed", "AirMomentum"];
 
@@ -92,8 +92,9 @@ public class NavBakeIdentityTests
         List<ParameterInfo> fields = [.. constructor.GetParameters()];
         int stored = typeof(PhysicsNavBakeOptions).GetFields(InstanceFields).Length;
         Assert.True(fields.Count == 13, $"PhysicsNavBakeOptions has {fields.Count} constructor fields. {OptionsGrow}");
-        Assert.True(stored == 13, $"PhysicsNavBakeOptions stores {stored} instance fields. {OptionsGrow}");
-        Assert.True(fields.Select(p => p.Name!).SequenceEqual(NavBakeIdentity.OptionFieldNames),
+        Assert.True(stored == 14, $"PhysicsNavBakeOptions stores {stored} instance fields. {OptionsGrow}");
+        Assert.True(fields.Select(p => p.Name!).Append(nameof(PhysicsNavBakeOptions.SampleWater))
+            .SequenceEqual(NavBakeIdentity.OptionFieldNames),
             $"PhysicsNavBakeOptions field order differs from the encoder table. {OptionsGrow}");
 
         PhysicsNavBakeOptions options = GoldenOptions;
@@ -107,6 +108,25 @@ public class NavBakeIdentityTests
             byte[] changed = Encode(Golden() with { Options = (PhysicsNavBakeOptions)constructor.Invoke(args) });
             Assert.False(reference.AsSpan().SequenceEqual(changed), $"Option {field.Name} does not change the identity. {OptionsGrow}");
         }
+        byte[] wet = Encode(Golden() with { Options = options with { SampleWater = true } });
+        Assert.False(reference.AsSpan().SequenceEqual(wet), $"Option SampleWater does not change the identity. {OptionsGrow}");
+    }
+
+    [Theory]
+    [InlineData((byte)2)]
+    [InlineData((byte)0xFF)]
+    public void SampleWaterByteOtherThanZeroOrOneIsCorrupt(byte value)
+    {
+        byte[] expected = Encode(CorruptBase());
+        byte[] stored = (byte[])expected.Clone();
+        int sampleWater = 2 + GoldenEngine.Length + 13 * 4;
+        Assert.Equal(0, stored[sampleWater]);
+        stored[sampleWater] = value;
+
+        (NavBakeLoadStatus status, string detail) = NavBakeIdentity.Compare(stored, expected);
+
+        Assert.Equal(NavBakeLoadStatus.Corrupt, status);
+        Assert.Contains("SampleWater", detail, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -208,7 +228,10 @@ public class NavBakeIdentityTests
         // Every argument is a literal, so a changed declared default cannot move the golden without a layout change.
         var options = new PhysicsNavBakeOptions(MinX: -8f, MinZ: -8f, MaxX: 8f, MaxZ: 8f, CellSize: 0.25f,
             ProbeHeight: 10f, ProbeRange: 20f, MaxSlopeRadians: 0.8f, MaxCells: 4096, MaxLayerCells: 8192,
-            MaxSurfacesPerColumn: 4, EdgeProbeSeconds: 1f / 30f, MaxEdgeProbeSteps: 64);
+            MaxSurfacesPerColumn: 4, EdgeProbeSeconds: 1f / 30f, MaxEdgeProbeSteps: 64)
+        {
+            SampleWater = false,
+        };
         var tuning = new MoveTuning(WalkSpeed: 2f, RunSpeed: 5f, CapsuleHalfHeight: 0.75f, MaxSlopeRadians: 0.8f,
             CapsuleRadius: 0.3f, Gravity: 25f, JumpSpeed: 9.79796f, MaxFallSpeed: 50f, CoyoteTime: 0.1f,
             JumpBuffer: 0.1f, AirControl: 1f, GroundedEpsilon: 0.3f, StepHeight: 0.4f,
@@ -289,6 +312,7 @@ public class NavBakeIdentityTests
     [InlineData("areas", NavBakeLoadStatus.ProfilesChanged, "Excluded")]
     [InlineData("engine-and-options", NavBakeLoadStatus.EngineChanged, GoldenEngine)]
     [InlineData("options-and-profiles", NavBakeLoadStatus.OptionsChanged, "ProbeRange")]
+    [InlineData("sample-water", NavBakeLoadStatus.OptionsChanged, "Option SampleWater: bake False, expected True")]
     public void CompareNamesTheFirstDifference(string change, NavBakeLoadStatus status, string detailFragment)
     {
         NavBakeExpectation golden = Golden();
@@ -305,6 +329,7 @@ public class NavBakeIdentityTests
             "missing-profile" => stored,
             "gravity" => Encode(golden with { Profiles = [new NavBakeProfile("player", GoldenTuning with { Gravity = 24f }, default)] }),
             "areas" => Encode(golden with { Profiles = [new NavBakeProfile("player", GoldenTuning, new NavAreaFilter(0u, 4u))] }),
+            "sample-water" => Encode(golden with { Options = GoldenOptions with { SampleWater = true } }),
             "engine-and-options" => Encode(golden with { Options = GoldenOptions with { CellSize = 0.5f } }, "0.0.1"),
             "options-and-profiles" => Encode(golden with
             {
@@ -372,7 +397,7 @@ public class NavBakeIdentityTests
 
     private static byte[] Fault(byte[] bytes, string fault)
     {
-        const int Options = 13 * 4;
+        const int Options = 13 * 4 + 1;
         const int Tuning = 26 * 4 + 1;
         int engine = 2 + GoldenEngine.Length;
         int sources = engine + Options + 2;

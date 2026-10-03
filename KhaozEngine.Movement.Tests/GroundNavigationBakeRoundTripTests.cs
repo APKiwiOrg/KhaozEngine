@@ -21,7 +21,7 @@ public class GroundNavigationBakeRoundTripTests
         1f, 5f, 6f, 0.8f, 128, 512);
     private static readonly MoveTuning Tiny = Tuning with { CapsuleRadius = 0.04f, CapsuleHalfHeight = 0.1f, MaxStepClimbSpeed = 0f };
 
-    public static TheoryData<string> Fixtures => new() { "thin-wall", "door", "step", "deck", "rebased", "stair-open", "stair-fence" };
+    public static TheoryData<string> Fixtures => new() { "thin-wall", "door", "step", "deck", "rebased", "stair-open", "stair-fence", "pool" };
 
     [Theory, MemberData(nameof(Fixtures))]
     public void LoadedProfilesMatchTheFreshBuild(string fixture)
@@ -63,7 +63,7 @@ public class GroundNavigationBakeRoundTripTests
     [Fact]
     public void RewritingALoadedBakeReproducesItsBytes()
     {
-        foreach (string fixture in new[] { "deck", "stair-open", "door" })
+        foreach (string fixture in new[] { "deck", "stair-open", "door", "pool" })
         {
             Baked baked = Bake(fixture);
             Assert.Equal(baked.File, Write(LoadOk(baked.File, baked.Expected)));
@@ -171,7 +171,7 @@ public class GroundNavigationBakeRoundTripTests
     }
 
     internal sealed record BakeFixture(Func<BepuPhysicsWorld> World, PhysicsNavBakeOptions Options,
-        NavAreaClassifier Classify, NavBakeProfile[] Profiles);
+        NavAreaClassifier Classify, NavBakeProfile[] Profiles, Func<float, float, float, MovementMedium>? Medium = null);
 
     internal sealed record Baked(GroundNavigationBake Bake, NavBakeExpectation Expected, byte[] File);
 
@@ -201,6 +201,9 @@ public class GroundNavigationBakeRoundTripTests
             [new("tiny", Tiny, default)]),
         "stair-fence" => new(() => StairWorld(fence: true), Options with { MinX = -1f, MaxX = 1f }, _ => 0u,
             [new("tiny", Tiny, default)]),
+        "pool" => new(GroundTraversalProbeTests.FlatWorld,
+            Options with { MinX = -2f, MaxX = 2f, MinZ = -1f, MaxZ = 1f, SampleWater = true },
+            feet => feet.Y > 1f ? 0x04u : 0x01u, [new("player", Tuning, default)], WaterCaptureTests.Pool),
         _ => throw new ArgumentOutOfRangeException(nameof(name)),
     };
 
@@ -208,8 +211,8 @@ public class GroundNavigationBakeRoundTripTests
     {
         BakeFixture fixture = Fixture(name);
         using BepuPhysicsWorld world = fixture.World();
-        using PhysicsNavBake capture = PhysicsNavBake.Capture(new GroundMoveContext((_, _) => 0f, physics: world),
-            fixture.Options, fixture.Classify);
+        using PhysicsNavBake capture = PhysicsNavBake.Capture(
+            new GroundMoveContext((_, _) => 0f, physics: world, medium: fixture.Medium), fixture.Options, fixture.Classify);
         GroundNavigationBake bake = GroundNavigationBake.Create(capture, Sources(), fixture.Profiles);
         return new Baked(bake, new NavBakeExpectation(fixture.Options, Sources(), fixture.Profiles), Write(bake));
     }

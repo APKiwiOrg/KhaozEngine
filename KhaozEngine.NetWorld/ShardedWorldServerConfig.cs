@@ -59,6 +59,17 @@ public sealed partial class ShardedWorldServerConfig
     /// crossing (home-cell change) stays a component delta, never a despawn+respawn. Set false to force full snapshots.</summary>
     public bool DeltaReplication { get; init; } = true;
 
+    /// <summary>Offer negotiated unreliable delta replication (format 2) to a client that requests it. Default false.
+    /// Requires <see cref="DeltaReplication"/>: setting this with it off is a configuration error. With this off, a
+    /// requesting client receives a mode 0 offer naming <see cref="ReplicationSelectionReason.DisabledServerPolicy"/>
+    /// and stays on reliable deltas. Limits and cadence come from <see cref="ReplicationStream"/>, which is validated
+    /// only when this is on.</summary>
+    public bool AllowUnreliableDeltaReplication { get; init; }
+
+    /// <summary>Format 2 limits and cadence, read only when <see cref="AllowUnreliableDeltaReplication"/> and
+    /// <see cref="DeltaReplication"/> are both on.</summary>
+    public ReplicationStreamOptions ReplicationStream { get; init; } = new();
+
     /// <summary>Maximum payload size (bytes) accepted on a client-to-server game message
     /// (<see cref="WorldClient.SendGameMessage"/>); mirrors <see cref="WorldServerConfig.MaxGameMessageBytes"/>. A
     /// larger payload is DROPPED (never dispatched to <see cref="ShardedWorldServer.OnGameMessage"/>) and flagged

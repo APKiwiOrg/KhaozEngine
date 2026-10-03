@@ -66,6 +66,7 @@ sealed class InMemoryContentAuditLog(Func<DateTimeOffset> clock)
     /// <param name="after">The new value rendered, or null for absent.</param>
     /// <param name="versionNumber">0 for a draft edit, the published number for a publish.</param>
     /// <param name="note">The operator's note, empty when none.</param>
+    /// <param name="languageTag">The canonical language of a text entry, or null for every other entry.</param>
     public void Stage(
         List<ContentAuditEntry> staged,
         string action,
@@ -78,7 +79,8 @@ sealed class InMemoryContentAuditLog(Func<DateTimeOffset> clock)
         string? before,
         string? after,
         int versionNumber,
-        string note)
+        string note,
+        string? languageTag = null)
     {
         ArgumentNullException.ThrowIfNull(staged);
         staged.Add(new ContentAuditEntry(
@@ -94,7 +96,10 @@ sealed class InMemoryContentAuditLog(Func<DateTimeOffset> clock)
             before,
             after,
             versionNumber,
-            note));
+            note)
+        {
+            LanguageTag = languageTag,
+        });
     }
 
     /// <summary>

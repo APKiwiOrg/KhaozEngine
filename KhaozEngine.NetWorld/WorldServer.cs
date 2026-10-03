@@ -54,14 +54,25 @@ public sealed class WorldServerConfig
     /// (strict one-move-per-tick drain, the pre-8.8.0 behaviour).</summary>
     public int MaxInputBacklog { get; init; } = 8;
 
-    /// <summary>Serve each client per-tick area-of-interest DELTAS (only components changed since that client's
-    /// acknowledged baseline; entered entities in full, left entities as despawns) instead of a full snapshot every
+    /// <summary>Serve each client per-tick area-of-interest DELTAS (only components changed since the projection last
+    /// sent to that client, entered entities in full, left entities as despawns) instead of a full snapshot every
     /// tick. Default true. A client opts in on join (<see cref="WorldClientConfig.RequestDeltaReplication"/>) via the
-    /// <see cref="MoveProtocol.ClientControlKind.DeltaCapable"/> hello; a client that does not advertise it (an older
+    /// <see cref="MoveProtocol.ClientControlKind.DeltaCapable"/> hello. A client that does not advertise it (an older
     /// build) keeps receiving full snapshots, so client and server upgrade independently with no disconnect. Set false
-    /// to force full snapshots for every client (the pre-9.17.0 behaviour). The delta is built from the client's last
-    /// <see cref="MoveProtocol.EncodeReplicationAck"/>, so a dropped delta on the reliable-ordered channel self-heals.</summary>
+    /// to force full snapshots for every client (the pre-9.17.0 behaviour). Deltas go reliable-ordered, so the client
+    /// always holds the baseline each one names. Its acks are sequence diagnostics and never move the basis.</summary>
     public bool DeltaReplication { get; init; } = true;
+
+    /// <summary>Offer negotiated unreliable delta replication (format 2) to a client that requests it. Default false.
+    /// Requires <see cref="DeltaReplication"/>: setting this with it off is a configuration error. With this off, a
+    /// requesting client receives a mode 0 offer naming <see cref="ReplicationSelectionReason.DisabledServerPolicy"/>
+    /// and stays on reliable deltas. Limits and cadence come from <see cref="ReplicationStream"/>, which is validated
+    /// only when this is on.</summary>
+    public bool AllowUnreliableDeltaReplication { get; init; }
+
+    /// <summary>Format 2 limits and cadence, read only when <see cref="AllowUnreliableDeltaReplication"/> and
+    /// <see cref="DeltaReplication"/> are both on.</summary>
+    public ReplicationStreamOptions ReplicationStream { get; init; } = new();
 
     /// <summary>Run the simulation in an ISLAND FRAME that follows the anchored player, so the movement step's
     /// carried state stays small however far the world extends. <b>ON by default</b> since the wire carries the
@@ -207,6 +218,8 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         // movement built-ins; it MUST be the same registry the client is built with. Default = movement-only.
         this.registry = registry ?? MoveProtocol.CreateRegistry();
         deltaReplicator = this.config.DeltaReplication ? new AoiDeltaReplicator(this.registry) : null;
+        DeltaRebuildOptions? replicationLimits = RebuildServerStreams.ValidateConfig(this.config.DeltaReplication,
+            this.config.AllowUnreliableDeltaReplication, this.config.ReplicationStream, this.config.TickSeconds);
         this.tuning = tuning;
         // Size the queue's distinct-slot cap to MaxPlayers (the SlotAllocator hands out slots in [0, MaxPlayers)).
         // Without this it used the RemoteCommandQueue default of 64, so on a server with MaxPlayers > 64 every move
@@ -228,9 +241,12 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             this.config.SamplerSpace);
         // Always enforce the engine wire generation at connect (independent of any consumer version gate), so a
         // wire-skewed or version-less client is rejected cleanly instead of admitted and left to misparse the wire.
-        net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator),
-            maxQueuedEvents: config.MaxQueuedEvents,
+        var admission = new ReplicationAdmissionGate(WireGenerationAuthenticator.Install(authenticator));
+        net = new NetServer(transport, config.MaxPlayers, admission, maxQueuedEvents: config.MaxQueuedEvents,
             duplicateSessions: config.DuplicateSessions, maxPendingConnections: config.MaxPendingConnections);
+        replication = new RebuildServerStreams(net, admission, deltaReplicator, this.config.ReplicationStream,
+            replicationLimits, this.config.TickSeconds, commands, slot => Raise(slot, SuspiciousReason.MalformedPacket),
+            Disconnect);
         this.banStore = banStore;
         interest = new InterestGrid(MathF.Max(1f, config.InterestRadius));
     }
@@ -417,6 +433,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     /// <summary>Ingests session events (join/leave) and client input. Call once before <see cref="Tick"/>.</summary>
     public void Poll()
     {
+        replication.CheckRestart(deltaCapableSlots);   // an exhausted writer closes admission before any join
         net.Poll();
         while (net.TryDequeueEvent(out ServerSessionEvent ev))
         {
@@ -429,13 +446,13 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                     OnLeave(ev.Slot);
                     break;
                 case ServerSessionEventKind.Data:
-                    HandleData(ev.Slot, ev.Data);
+                    HandleData(ev.Slot, ev.Data, ev.Reliability);
                     break;
             }
         }
     }
 
-    private void HandleData(int slot, byte[] data)
+    private void HandleData(int slot, byte[] data, NetChannelReliability reliability)
     {
         if (!netIdBySlot.ContainsKey(slot)) return;
         // Flood protection: an over-budget message is dropped and flagged (and optionally the connection is kicked).
@@ -445,7 +462,9 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             if (config.AntiCheat.DisconnectOnRateLimit) net.Disconnect(slot);
             return;
         }
-        // Replication ack: advance this client's delta baseline (a dropped ack just self-heals on the next delta).
+        // Every 18-byte frame is a MOVE. Format 2 controls claim their own lengths before any legacy decode.
+        if (replication.Route(slot, data, reliability)) return;
+        // Legacy replication ack: sequence diagnostics only, never the diff basis (that is the last sent projection).
         if (MoveProtocol.TryDecodeReplicationAck(data, out int appliedSeq))
         {
             deltaReplicator?.Acknowledge(slot, appliedSeq);
@@ -456,6 +475,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         {
             if (control == MoveProtocol.ClientControlKind.SelfRescue) HandleSelfRescue(slot);
             else if (control == MoveProtocol.ClientControlKind.DeltaCapable && deltaReplicator is not null) deltaCapableSlots.Add(slot);
+            else if (control == MoveProtocol.ClientControlKind.RebuildDeltaCapable) replication.OnCapability(slot);
             return;
         }
         // Game message: an opaque game-defined frame (attack, interaction, chat, …). Demuxed BEFORE the move (it can
@@ -556,8 +576,9 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         PublishMovementCommitmentEvents();
 
         // Serve each client its area-of-interest, headered with its own net id + move ack. Delta-capable clients get
-        // a per-client AoI delta (only what changed since their acknowledged baseline); everyone else a full snapshot.
-        deltaReplicator?.BeginTick();
+        // a per-client AoI delta from the projection last sent to them, everyone else a full snapshot.
+        replication.OpenCaptureTick(deltaCapableSlots);   // or waits out a writer restart, opening no capture
+        replication.Advance(dt);
         // The fallback snapshot index is rebuilt lazily on the first non-delta client this tick (not unconditionally
         // here), so a tick with only delta-capable clients pays no extra world scan. Every client thereafter this
         // tick reuses it, sharing one O(worldPop) rebuild across the tick's fallback clients.
@@ -573,6 +594,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             interest.Query(p.X, p.Z, config.InterestRadius, interestScratch);
             InterestVisibility.Filter(interestScratch, slot, netId, config.EntityVisibleToSlot);
             HashSet<long> set = interestScratch;
+            if (replication.Serve(slot, world, set, netId, lastAckBySlot[slot])) continue;   // format 2 owns it
             MoveProtocol.ServerFrameKind kind;
             byte[] body;
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
@@ -596,6 +618,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             byte[] envelope = MoveProtocol.EncodeServerFrame(kind, frame);
             net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
         }
+        replication.EndServe();
 
         // Clear the per-tick ECS change-tracking + event sets so they don't accumulate on a long-running server.
         // Neither serve path reads them - a full snapshot re-serializes present components and the delta path diffs

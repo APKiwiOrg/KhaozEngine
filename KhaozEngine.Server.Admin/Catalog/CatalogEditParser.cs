@@ -56,18 +56,29 @@ internal static class CatalogEditParser
     /// <param name="store">The store keys and ids are resolved against.</param>
     /// <param name="registry">The registry the type keys and the schemas come from.</param>
     /// <param name="body">The request body.</param>
+    /// <param name="rowsOptional">
+    /// True when the request carries text intents, so an absent or empty <c>edits</c> is a text-only batch
+    /// rather than an empty save.
+    /// </param>
     /// <param name="cancellationToken">Cancels the call.</param>
     /// <returns>The parsed edits, or the findings that refuse them.</returns>
     public static async Task<CatalogEditParse> ParseAsync(
         IContentAuthoringStore store,
         ContentTypeRegistry registry,
         JsonElement body,
+        bool rowsOptional,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(registry);
 
-        if (!body.TryGetProperty("edits", out JsonElement array) || array.ValueKind != JsonValueKind.Array)
+        bool present = body.TryGetProperty("edits", out JsonElement array) && array.ValueKind != JsonValueKind.Null;
+        if (rowsOptional && (!present || (array.ValueKind == JsonValueKind.Array && array.GetArrayLength() == 0)))
+        {
+            return CatalogEditParse.Parsed([]);
+        }
+
+        if (!present || array.ValueKind != JsonValueKind.Array)
         {
             return CatalogEditParse.Malformed(
                 "'edits' is an ARRAY of edits, and this request carries none. Every edit in one request lands in one transaction or none of them does, so a save from a grid is atomic.");

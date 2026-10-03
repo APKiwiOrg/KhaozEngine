@@ -397,7 +397,7 @@ public class ReplicationChannelsTests
     {
         // The baseline-projection teeth: after the observer holds a baseline, a change to ANOTHER player's
         // OwnerOnly component must not surface in the observer's delta at all (not even as a spurious removal).
-        // That only holds if WriteFor projects the acked baseline with the same owner scope as the current snapshot.
+        // That only holds if the stored last-sent projection has the same owner scope as the current snapshot.
         ReplicationRegistry r = Full();
         var w = new World();
         Spawn(w, 100, (world, e) => { world.Set(e, new Pub { V = 1 }); world.Set(e, new OwnerPriv { V = 10 }); });
@@ -414,13 +414,10 @@ public class ReplicationChannelsTests
 
         // Decode the delta header ([baselineSeq][snapshotSeq][removedCount][removed...][changedCount]): observer 100
         // can see nothing changed, so both counts are zero.
-        using var br = new System.IO.BinaryReader(new System.IO.MemoryStream(delta));
-        br.ReadInt32(); br.ReadInt32();             // baselineSeq, snapshotSeq
-        int removed = br.ReadInt32();
-        for (int i = 0; i < removed; i++) br.ReadInt32();
-        int changed = br.ReadInt32();
-        Assert.Equal(0, removed);
-        Assert.Equal(0, changed);                   // 200 is NOT reported changed -> baseline projected consistently
+        LegacyDeltaHeader header = LegacyDeltaWire.ReadHeader(delta);
+        Assert.Equal(seq1, header.Baseline);
+        Assert.Empty(header.RemovedNetIds);
+        Assert.Equal(0, header.ChangedCount);       // 200 is NOT reported changed -> baseline projected consistently
     }
 
     [Fact]

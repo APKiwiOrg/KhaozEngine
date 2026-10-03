@@ -69,6 +69,30 @@ public sealed class CatalogBundleActionTests : IDisposable
     }
 
     /// <summary>
+    /// An import into an empty database whose open draft holds work is a 409 under <c>draft-open</c> naming
+    /// the way out, because the import would merge that unreviewed work into the seed. The draft stays exactly
+    /// as it was and nothing is published.
+    /// </summary>
+    [Fact]
+    public async Task Import_IntoAnEmptyStoreWhoseOpenDraftHoldsWork_IsA409AndKeepsTheDraft()
+    {
+        await _harness.PublishThingsAsync("stone_sword");
+        string bundle = (await _harness.OkAsync("catalog-export", null)).GetProperty("bundle").GetRawText();
+        using var fresh = new CatalogActionHarness();
+        await fresh.OkAsync("catalog-edit", """
+        { "edits": [ { "op": "add", "typeKey": "thing", "key": "oak_shield", "fields": { "value": 100, "stackable": false } } ] }
+        """);
+        string before = (await fresh.OkAsync("catalog-draft", null)).GetRawText();
+
+        JsonElement body = await fresh.ConflictAsync("catalog-import", $$"""{ "bundle": {{bundle}} }""");
+
+        Assert.Equal(ContentAuthoringException.DraftOpenReason, body.GetProperty("reason").GetString());
+        Assert.Contains("catalog-discard", body.GetProperty("remedy").GetString(), StringComparison.Ordinal);
+        Assert.Equal(before, (await fresh.OkAsync("catalog-draft", null)).GetRawText());
+        Assert.Equal(0, await fresh.Store.GetActiveVersionAsync());
+    }
+
+    /// <summary>
     /// An import into a database that already holds a published version is a 409 carrying the active
     /// version, with NO partial write. A deployed database's values change through an edit and a publish and
     /// through nothing else, ever.

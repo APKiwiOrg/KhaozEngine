@@ -74,12 +74,25 @@ public sealed class WorldClientConfig
     public string? ContentIdentity { get; init; }
 
     /// <summary>Advertise delta replication on join so a delta-aware server serves this client per-tick area-of-interest
-    /// deltas (only what changed since the client's acknowledged baseline) instead of a full snapshot every tick.
+    /// deltas (only what changed since the projection last sent to it) instead of a full snapshot every tick.
     /// Default true. The client still decodes full snapshots, so against a server that predates the feature (or one
     /// with <see cref="WorldServerConfig.DeltaReplication"/> off) it transparently keeps receiving full snapshots and
     /// sends no acks - client and server upgrade independently, no disconnect. Set false to force full snapshots (the
     /// pre-9.17.0 wire).</summary>
     public bool RequestDeltaReplication { get; init; } = true;
+
+    /// <summary>Request negotiated unreliable delta replication (format 2) on join. Default false. Requires
+    /// <see cref="RequestDeltaReplication"/>: setting this with it off is a configuration error. The server's mode
+    /// offer decides the mode, and <see cref="WorldClient"/> reports it. An older server ignores the request and the
+    /// session stays on reliable deltas. Limits and cadence come from <see cref="ReplicationStream"/>, which is
+    /// validated only when this is on, and an opted-in consumer passes elapsed time to
+    /// <see cref="WorldClient.Poll"/>.</summary>
+    public bool RequestUnreliableDeltaReplication { get; init; }
+
+    /// <summary>Format 2 limits and cadence, read only when <see cref="RequestUnreliableDeltaReplication"/> and
+    /// <see cref="RequestDeltaReplication"/> are both on. An offer beyond these limits is refused with
+    /// <see cref="DisconnectReason.ReplicationPolicyRefused"/>.</summary>
+    public ReplicationStreamOptions ReplicationStream { get; init; } = new();
 
     /// <summary>Enable the debug-only per-frame <see cref="PresentationTrace"/> (default false = off, zero overhead).
     /// When set, <see cref="WorldClient.PresentationTrace"/> is non-null and records the presentation-layer internal

@@ -27,6 +27,7 @@ public class BundleJsonFormatVersionTests
 
         Assert.Equal(1, formatVersion);
         Assert.Equal(formatVersion, bundle.FormatVersion);
+        Assert.Null(bundle.TextState);
     }
 
     [Theory]
@@ -51,15 +52,40 @@ public class BundleJsonFormatVersionTests
     {
         const string json = """
             {
-              "formatVersion": 2
+              "formatVersion": 3
             }
             """;
 
-        Assert.Equal(2, ContentBundleJson.ReadFormatVersion(json));
+        Assert.Equal(3, ContentBundleJson.ReadFormatVersion(json));
 
         ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(
             () => ContentBundleJson.Read(json));
         Assert.Equal(ContentAuthoringException.BundleFormatReason, refused.Reason);
-        Assert.Contains("format version 2", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("format version 3", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FormatTwoReadsItsTextSectionAndFormatOneStaysTextFree()
+    {
+        const string json = """
+            {
+              "formatVersion": 2,
+              "storeEpoch": "test",
+              "sourceVersion": 0,
+              "types": [],
+              "families": [],
+              "rows": [],
+              "rules": [],
+              "text": { "languages": [ { "language": "fr", "wireTag": "fr" } ], "values": [] },
+            }
+            """;
+
+        Assert.Equal(ContentBundle.TextFormatVersion, ContentBundleJson.ReadFormatVersion(json));
+        ContentBundle bundle = ContentBundleJson.Read(json);
+
+        Assert.Equal(ContentBundle.TextFormatVersion, bundle.FormatVersion);
+        Assert.Equal("fr", Assert.Single(bundle.TextState!.Languages).WireTag);
+        Assert.Empty(bundle.TextState.Values);
+        Assert.Equal(1, ContentBundle.CurrentFormatVersion);
     }
 }

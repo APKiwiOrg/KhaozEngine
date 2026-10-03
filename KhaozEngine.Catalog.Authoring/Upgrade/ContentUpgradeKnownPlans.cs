@@ -20,30 +20,36 @@ namespace KhaozEngine.Catalog.Authoring;
 sealed class ContentUpgradeKnownPlans
 {
     readonly List<ContentEdit> _edits = [];
+    readonly List<ContentTextEdit> _text = [];
 
-    /// <summary>One change set this run computed, which an empty or refused plan is not.</summary>
-    /// <param name="edits">The plan's edits, or null when the planner produced no change set.</param>
-    internal void Remember(IReadOnlyList<ContentEdit>? edits)
+    /// <summary>One change set this run computed, rows and text, which an empty or refused plan is not.</summary>
+    /// <param name="plan">The plan, or null when the planner produced no change set.</param>
+    internal void Remember(ContentUpgradePlan? plan)
     {
-        if (edits is null)
+        if (plan is null || plan.Kind != ContentUpgradePlanKind.Changes)
         {
             return;
         }
 
-        for (int i = 0; i < edits.Count; i++)
-        {
-            _edits.Add(edits[i]);
-        }
+        _edits.AddRange(plan.Edits);
+        _text.AddRange(plan.TextEdits);
     }
 
-    /// <summary>Whether every edit the draft holds came from a plan this run computed.</summary>
-    /// <param name="draft">The open draft as the store handed it back.</param>
-    internal bool Holds(ContentDraft draft) => ContentUpgradeDraftMatch.IsKnownWork(draft, _edits);
-
     /// <summary>
-    /// Whether ANY edit the draft holds came from a plan this run computed, which is what tells a draft this
-    /// run's own write merged into apart from one that is another writer's whole.
+    /// Whether every edit, text intent and introduction the draft holds came from a plan this run computed. A
+    /// complete draft is proved over its text too, and a draft a row-only route built is proved by the row-only
+    /// overload, which never claims one holding text or holding nothing.
     /// </summary>
     /// <param name="draft">The open draft as the store handed it back.</param>
-    internal bool HoldsSome(ContentDraft draft) => ContentUpgradeDraftMatch.HoldsKnownWork(draft, _edits);
+    internal bool Holds(ContentDraft draft)
+        => draft.TextState is null
+            ? ContentUpgradeDraftMatch.IsKnownWork(draft, _edits)
+            : ContentUpgradeDraftMatch.IsKnownWork(draft, _edits, _text);
+
+    /// <summary>
+    /// Whether ANY edit or text intent the draft holds came from a plan this run computed, which is what tells
+    /// a draft this run's own write merged into apart from one that is another writer's whole.
+    /// </summary>
+    /// <param name="draft">The open draft as the store handed it back.</param>
+    internal bool HoldsSome(ContentDraft draft) => ContentUpgradeDraftMatch.HoldsKnownWork(draft, _edits, _text);
 }

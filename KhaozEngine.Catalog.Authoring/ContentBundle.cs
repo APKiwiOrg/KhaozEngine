@@ -50,6 +50,11 @@ public sealed record ContentBundleRow(
 /// schemas, every live row with its id, key and fields, every family with its blocks, and the full remap
 /// rule list. It is the SEEDING format and the LOSSLESS EXPORT format and there is only one of them.
 /// <para>
+/// <b>Format 2 adds the text section</b> (<see cref="TextState"/>): every declared language with its wire
+/// spelling and every complete value. A format 1 document is text free by contract and imports as empty
+/// text. A format 2 document that lost its section is refused, never read as text free.
+/// </para>
+/// <para>
 /// Export at version N then import into an empty database reproduces the same rows, the same keys and the
 /// SAME IDS, because the export carries them and the import keeps them. That is what makes it lossless
 /// rather than an approximation.
@@ -72,8 +77,18 @@ public sealed record ContentBundleRow(
 /// </summary>
 public sealed class ContentBundle
 {
-    /// <summary>The bundle document's own format version, which a reader refuses a mismatch of.</summary>
+    /// <summary>
+    /// The ROW-ONLY format version, which is text free by contract. An export of a version that declares no
+    /// language writes it, so a text-free catalog keeps byte-identical exports, and every row-only route
+    /// reads it.
+    /// </summary>
     public const int CurrentFormatVersion = 1;
+
+    /// <summary>
+    /// The TEXT-BEARING format version: the row content plus a protected text section of declared languages
+    /// and complete values. An export of a version that declares any language writes it, even with no value.
+    /// </summary>
+    public const int TextFormatVersion = 2;
 
     /// <summary>Builds a bundle. Every list is COPIED, so the bundle is immutable once it exists.</summary>
     /// <param name="formatVersion">The bundle document's format version.</param>
@@ -107,6 +122,42 @@ public sealed class ContentBundle
         Rules = Copy(rules, nameof(rules));
     }
 
+    /// <summary>
+    /// Builds a TEXT-BEARING bundle, carrying its protected text section beside the rows. No row-only import
+    /// or export accepts one, because only its row half would land.
+    /// </summary>
+    /// <param name="formatVersion">The bundle document's format version.</param>
+    /// <param name="storeEpoch">The identity of the database this was exported from.</param>
+    /// <param name="sourceVersion">The content version exported, or 0 for a hand-authored seed.</param>
+    /// <param name="types">The registered type list with their schemas.</param>
+    /// <param name="rows">Every live row.</param>
+    /// <param name="families">Every family with its blocks.</param>
+    /// <param name="rules">The full ordered remap rule list.</param>
+    /// <param name="text">The declared languages and complete values.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="formatVersion"/> is below 1, or <paramref name="sourceVersion"/> is negative.</exception>
+    /// <exception cref="ArgumentException"><paramref name="formatVersion"/> is 1, which is text free by contract.</exception>
+    public ContentBundle(
+        int formatVersion,
+        string storeEpoch,
+        int sourceVersion,
+        IReadOnlyList<ContentBundleType> types,
+        IReadOnlyList<ContentBundleRow> rows,
+        IReadOnlyList<ContentFamily> families,
+        IReadOnlyList<RemapRule> rules,
+        ContentBundleTextState text)
+        : this(formatVersion, storeEpoch, sourceVersion, types, rows, families, rules)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        if (formatVersion == ContentTextCompatibility.RowOnlyBundleFormat)
+        {
+            throw new ArgumentException(
+                "Bundle format 1 is text free by contract, so it cannot carry a text section.", nameof(formatVersion));
+        }
+
+        TextState = text;
+    }
+
     /// <summary>The bundle document's format version.</summary>
     public int FormatVersion { get; }
 
@@ -127,6 +178,12 @@ public sealed class ContentBundle
 
     /// <summary>The full ordered remap rule list, which an import republishes as the new line's rules.</summary>
     public IReadOnlyList<RemapRule> Rules { get; }
+
+    /// <summary>
+    /// The text section, or NULL on a bundle built by a row-only route. Null on format 1 means the document is
+    /// text free by contract. Null on a later format means the section was lost, and the bundle is refused.
+    /// </summary>
+    public ContentBundleTextState? TextState { get; }
 
     static T[] Copy<T>(IReadOnlyList<T> source, string parameterName)
         where T : class

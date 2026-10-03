@@ -9,48 +9,43 @@ namespace KhaozEngine.Replication;
 
 /// <summary>
 /// Per-client, area-of-interest-scoped, <see cref="NetId"/>-keyed baseline+delta encoder: the fusion of
-/// <see cref="ServerReplicator"/>'s acked-baseline delta compression with per-client AoI filtering. Each server tick
-/// the game calls <see cref="BeginTick"/> once, then <see cref="WriteFor"/> per client with that client's current
-/// interest set (the net ids within its AoI). Against the client's last acknowledged baseline it emits: an entity
-/// that <b>entered</b> the interest set as a full spawn, one that <b>stayed and changed</b> as only its changed
+/// <see cref="ServerReplicator"/>'s delta compression with per-client AoI filtering. Each server tick the game calls
+/// <see cref="BeginTick"/> once, then <see cref="WriteFor"/> per client with that client's current interest set (the
+/// net ids within its AoI). Against the projection last sent to the client's slot it emits: an entity that
+/// <b>entered</b> the interest set as a full spawn, one that <b>stayed and changed</b> as only its changed
 /// components, one that <b>left</b> (or was despawned) as a removal, and an unchanged in-AoI entity as nothing.
 /// The wire is byte-identical to <see cref="ServerReplicator.WriteFor"/> (a full snapshot is the <c>baseline -1</c>
 /// delta), so <see cref="ClientReplicationView.ApplyDelta"/> decodes both unchanged.
 /// </summary>
 /// <remarks>
-/// The baseline is keyed by <see cref="NetId"/>, not by any owning cell, so an entity that stays in a client's AoI
+/// <para>The baseline is keyed by <see cref="NetId"/>, not by any owning cell, so an entity that stays in a client's AoI
 /// while changing owning cell (a seamless handoff in the sharding layer) reads as a component delta, never a
-/// despawn+respawn. Reliability is phase 1: the delta is built from the client's last <see cref="Acknowledge"/>d
-/// baseline, so a dropped delta on a reliable-ordered channel self-heals on the next tick (the server keeps diffing
-/// from the acked baseline until a newer ack advances it). Per-client memory is bounded by
-/// <c>historyDepth × players</c>: up to <c>historyDepth</c> pending per-seq projections per slot, dropped
-/// on <see cref="Acknowledge"/> / <see cref="Forget"/>.
-/// <para>Presence follows what was last sent, not what was last acked. An entity removed from a client's delta and
-/// back in its interest before that removal is acknowledged is written whole (a full spawn), not diffed against the
-/// acked baseline that still holds it. An entity sent whole and gone before that entry is acknowledged is written as
-/// a removal, although the acked baseline never held it. A removal repeats until it is acknowledged.</para>
+/// despawn+respawn.</para>
+/// <para>Legacy reliable contract: every returned <see cref="WriteFor"/> payload is a send commitment. Ship each one
+/// exactly once, in order, over a reliable-ordered channel, so the receiver always holds the projection the next
+/// payload names as its baseline. Presence, values and owner scope all follow what was last sent. An entity removed
+/// and back in interest returns whole, and one sent and gone again is removed once, whatever the ack state.
+/// <see cref="Acknowledge"/> is sequence-only diagnostics and never selects a diff basis. A caller that discards a
+/// returned payload, sends it unreliably, changes session or replaces the receiver must <see cref="Forget"/> the slot
+/// and serve a fresh receiver world and view. Per-client memory is one last sent projection per slot.</para>
+/// <para>Format 2 acknowledged rebuild streams (<see cref="StartRebuild"/>, <see cref="BuildRebuildFor"/>,
+/// <see cref="RecordRebuildSent"/>, <see cref="AcknowledgeRebuild"/>) share the same per-world tick capture as legacy
+/// viewers but keep separate per-slot state: an unsigned per-slot sequence inside a nonzero epoch, one unsent
+/// candidate, an acknowledged baseline and a bounded history of committed sends, all as compact viewer-only copies
+/// filtered before retention. A delta diffs from the acknowledged baseline, never from presence records.</para>
+/// <para>Sequences are one signed counter shared by every slot. <see cref="int.MaxValue"/> is the last tick sequence:
+/// after it <see cref="LegacySequenceExhausted"/> is true and <see cref="BeginTick"/> throws until the owner has ended
+/// every connection this writer serves and called <see cref="ResetAfterLegacySequenceExhaustion"/>.</para>
 /// </remarks>
 public sealed class AoiDeltaReplicator
 {
     private readonly ReplicationRegistry registry;
-    private readonly int historyDepth;
     private readonly bool hasOwnerScopedCodec;
     private int currentSeq;
 
-    // Per slot: the AoI-scoped state the client has acknowledged (netId -> components) and its seq. This is "what
-    // THIS client knows inside its interest set, and at which seq": the per-client, AoI-aware baseline.
-    private readonly Dictionary<int, AoiBaseline> ackedBaselineBySlot = new();
-    private readonly Dictionary<int, int> ackedSeqBySlot = new();
-    // Per slot: projections not yet acked, keyed by the snapshot seq that would promote them to the baseline. Bounded
-    // to historyDepth in ascending-seq insertion order.
-    private readonly Dictionary<int, Dictionary<int, AoiBaseline>> pendingBySlot = new();
-    private readonly Dictionary<int, Queue<int>> pendingOrderBySlot = new();
-    // Per slot: the latest seq at which each net id was written as a removal and as a whole entry (see
-    // AoiPresenceRecord). The diff runs from the ACKED baseline, but the client holds what was last SENT. An id removed
-    // at seq R and back before R is acked still sits in the baseline, so it is written whole while R is newer than
-    // the baseline seq. An id sent whole at seq W and gone before W is acked is missing from the baseline, so it is
-    // removed when the client still holds it. Pruned on Acknowledge, cleared on Forget, reused per slot.
-    private readonly Dictionary<int, AoiPresenceRecord> presenceBySlot = new();
+    // Per slot: the sequence and exact AoI-scoped, owner-scoped projection of the last payload returned for it, which
+    // is what a reliable-ordered client holds. The next payload diffs from it.
+    private readonly Dictionary<int, LegacyDeltaSlot> slots = new();
 
     // Shared per-tick capture: the whole-world Replicate-channel snapshot (netId -> components), captured ONCE per
     // distinct world per seq and projected per client in WriteFor. Keyed by World because the sharded server serves
@@ -74,24 +69,28 @@ public sealed class AoiDeltaReplicator
     private readonly List<(int order, long netId, Comps comps)> projectScratch = new();
     private static readonly Comparison<(int order, long netId, Comps comps)> ByCaptureOrder =
         static (a, b) => a.order.CompareTo(b.order);
+    private readonly RebuildDeltaWriter rebuild;
 
     // Test seam: how many world scans the shared capture has actually run (one per distinct world per tick). A tick
     // that serves C clients from one world scans once, not C times - what this whole change buys.
     internal long WorldScanCount { get; private set; }
 
-    // Test seams: how many removal and whole-entry records the slot holds, to prove Acknowledge prunes them and Forget
-    // clears them.
-    internal int RemovalRecordCount(int slot) =>
-        presenceBySlot.TryGetValue(slot, out AoiPresenceRecord? r) ? r.Removed.Count : 0;
-    internal int WholeRecordCount(int slot) =>
-        presenceBySlot.TryGetValue(slot, out AoiPresenceRecord? r) ? r.Whole.Count : 0;
+    // Test seams: slots holding last sent state, and the shared captures retained for the current seq (one per
+    // distinct world served this seq, until the next seq's first WriteFor drops them).
+    internal int LegacySlotCount => slots.Count;
 
+    internal int LegacyHistoryCount => captureByWorld.Count;
+
+    /// <summary>Creates an area-of-interest legacy delta writer.</summary>
+    /// <param name="registry">The replicated component registry.</param>
+    /// <param name="historyDepth">Kept for source compatibility and still validated as positive. The legacy diff
+    /// retains one last sent projection per slot, so it no longer bounds a pending history.</param>
     public AoiDeltaReplicator(ReplicationRegistry registry, int historyDepth = 32)
     {
         this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
         if (historyDepth <= 0) throw new ArgumentOutOfRangeException(nameof(historyDepth), historyDepth, "must be positive");
-        this.historyDepth = historyDepth;
         wireWriter = new BinaryWriter(wireStream);
+        rebuild = new RebuildDeltaWriter(registry);
         // Whether any registered component is owner-scoped. If none is, every client projects to the exact same
         // Replicate-channel state, so WriteFor can reference the shared capture's component dictionaries directly
         // (they are immutable once captured) instead of building a filtered per-client copy - byte-identical, fewer
@@ -103,20 +102,64 @@ public sealed class AoiDeltaReplicator
     /// <summary>The latest snapshot sequence (0 before the first <see cref="BeginTick"/>).</summary>
     public int CurrentSeq => currentSeq;
 
+    /// <summary>
+    /// True once <see cref="CurrentSeq"/> has reached <see cref="int.MaxValue"/>, the last legacy sequence. A further
+    /// <see cref="BeginTick"/> throws without incrementing. Serving the final tick is still allowed.
+    /// </summary>
+    public bool LegacySequenceExhausted => currentSeq == int.MaxValue;
+
+    /// <summary>
+    /// Restarts the writer after <see cref="LegacySequenceExhausted"/>: clears the shared sequence counter to zero, the
+    /// shared per-tick captures and every slot's last sent state, format 2 state included. The next
+    /// <see cref="BeginTick"/> is sequence 1 and every slot's next serve is full state with baseline -1. Precondition:
+    /// the owner has already ended every connection this writer served and will serve only fresh receivers.
+    /// Replication cannot verify or end transports itself. The reset remembers no format 2 epoch, so the owner must
+    /// start each new stream with an epoch greater than any it issued before.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The sequence is not exhausted.</exception>
+    public void ResetAfterLegacySequenceExhaustion()
+    {
+        if (!LegacySequenceExhausted)
+            throw new InvalidOperationException("The legacy sequence is not exhausted, so the writer cannot be reset.");
+        currentSeq = 0;
+        captureByWorld.Clear();
+        captureSeq = 0;
+        slots.Clear();
+        rebuild.Clear();
+    }
+
+    // Test seam: moves the shared counter forward so a test can reach the exhaustion boundary without walking the
+    // signed range. It never moves backwards, so it cannot revive a sequence a receiver already holds.
+    internal void SeedLegacySequenceForTest(int sequence)
+    {
+        if (sequence < currentSeq) throw new ArgumentOutOfRangeException(nameof(sequence), sequence, "must not move backwards");
+        currentSeq = sequence;
+    }
+
     /// <summary>Opens a new snapshot sequence for this server tick. Call once per tick, before the per-client
     /// <see cref="WriteFor"/> pass. Returns the new seq (the value a client acks after applying this tick's delta).
     /// The shared per-tick capture is invalidated lazily on the first <see cref="WriteFor"/> of the new seq, so this
     /// stays a cheap sequence bump.</summary>
-    public int BeginTick() => ++currentSeq;
+    /// <exception cref="InvalidOperationException">The legacy sequence is exhausted (see
+    /// <see cref="LegacySequenceExhausted"/>). The counter does not move.</exception>
+    public int BeginTick()
+    {
+        if (LegacySequenceExhausted)
+            throw new InvalidOperationException(
+                "The legacy sequence is exhausted. End every connection, then call ResetAfterLegacySequenceExhaustion.");
+        return ++currentSeq;
+    }
 
     /// <summary>
-    /// Builds the AoI delta for <paramref name="slot"/> from its acknowledged baseline to the entities of
-    /// <paramref name="world"/> whose <see cref="NetId"/> is in <paramref name="interestSet"/>. Full snapshot
-    /// (baseline -1) until the client acks. Must be called after <see cref="BeginTick"/>. This is the client-serving
+    /// Builds the AoI delta for <paramref name="slot"/> from the projection last sent to it to the entities of
+    /// <paramref name="world"/> whose <see cref="NetId"/> is in <paramref name="interestSet"/>, then stores this
+    /// payload's projection as the slot's new last sent state. Full snapshot (baseline -1) on the slot's first serve.
+    /// Must be called after <see cref="BeginTick"/>. This is the client-serving
     /// (<see cref="ReplicationChannels.Replicate"/>) path, so only replicated components are captured, and an
     /// <see cref="ReplicationChannels.OwnerOnly"/> component is served only to the entity whose net id equals
-    /// <paramref name="ownerNetId"/> (this slot's own player). Because the per-slot baseline stores exactly what was
-    /// projected for THIS slot, owner-only visibility falls out of the delta diff automatically.
+    /// <paramref name="ownerNetId"/> (this slot's own player). Because the per-slot state stores exactly what was
+    /// projected for THIS slot, owner-only visibility falls out of the delta diff automatically. The returned payload
+    /// is a send commitment (see the type remarks).
     /// </summary>
     /// <remarks>
     /// The world is scanned and captured ONCE per <paramref name="world"/> per tick (the first <see cref="WriteFor"/>
@@ -134,80 +177,49 @@ public sealed class AoiDeltaReplicator
 
         // Project the shared whole-world capture down to what THIS client is entitled to: the in-AoI entities, with
         // each entity's components filtered to the Replicate channel owner-scoped to this slot. An OwnerOnly component
-        // on another player's entity is stripped here (never sent), so this slot's baseline holds only what it was
+        // on another player's entity is stripped here (never sent), so this slot's state holds only what it was
         // actually sent and owner-only visibility falls out of the diff.
         AoiBaseline capture = CaptureFor(world);
         AoiBaseline projected = Project(capture, interestSet, ownerNetId);
 
-        AoiBaseline? baseline = ackedBaselineBySlot.GetValueOrDefault(slot);
-        int baselineSeq = baseline is null ? -1 : ackedSeqBySlot[slot];
+        LegacyDeltaSlot? previous = slots.GetValueOrDefault(slot);
+        AoiBaseline? baseline = previous?.Projection;
+        int baselineSeq = previous?.Sequence ?? -1;
 
         wireStream.SetLength(0); // reset the reused wire scratch, keep its capacity
         BinaryWriter bw = wireWriter;
         bw.Write(baselineSeq);
         bw.Write(currentSeq);
 
-        // Removed: gone from the interest set (left AoI or despawned) while the client may hold it, because the
-        // baseline holds it or it was sent whole since the baseline. Like every other part of the diff, a removal is
-        // repeated each tick until a baseline that lacks the id is acked. Reused scratch list, cleared per call.
-        AoiPresenceRecord? presence = presenceBySlot.GetValueOrDefault(slot);
+        // Removed: in the last sent projection, gone from the interest set (left AoI or despawned). A full snapshot
+        // (no baseline) removes implicitly, so it lists nothing. Reused scratch list, cleared per call.
         scratchRemoved.Clear();
         if (baseline is not null)
             foreach (long netId in baseline.Keys)
                 if (!projected.ContainsKey(netId)) scratchRemoved.Add(netId);
-        if (presence is not null)
-            foreach (KeyValuePair<long, int> kv in presence.Whole)
-                if (kv.Value > baselineSeq && !projected.ContainsKey(kv.Key)
-                    && (baseline is null || !baseline.ContainsKey(kv.Key))) // baseline ids were listed above
-                    scratchRemoved.Add(kv.Key);
-        // A full snapshot (no baseline) removes implicitly, so it writes no list, but the records still learn it.
-        bw.Write(baseline is null ? 0 : scratchRemoved.Count);
-        if (baseline is not null)
-            foreach (long netId in scratchRemoved) bw.Write(netId);
-        if (scratchRemoved.Count > 0)
-        {
-            presence ??= PresenceFor(slot);
-            foreach (long netId in scratchRemoved) presence.Removed[netId] = currentSeq;
-        }
+        bw.Write(scratchRemoved.Count);
+        foreach (long netId in scratchRemoved) bw.Write(netId);
 
-        // New (entered, or re-entered after an unacked removal) or changed (stayed + component delta).
+        // New (absent from the last sent projection, so written whole) or changed (stayed + component delta).
         scratchChanged.Clear();
         foreach (long netId in projected.Keys)
         {
-            if (IsWholeEntry(baseline, baselineSeq, presence, netId)) { scratchChanged.Add(netId); continue; }
-            if (DeltaEncoding.EntityChanged(baseline![netId], projected[netId])) scratchChanged.Add(netId);
+            if (baseline is null || !baseline.ContainsKey(netId)) { scratchChanged.Add(netId); continue; }
+            if (DeltaEncoding.EntityChanged(baseline[netId], projected[netId])) scratchChanged.Add(netId);
         }
         bw.Write(scratchChanged.Count);
         foreach (long netId in scratchChanged)
         {
-            bool isNew = IsWholeEntry(baseline, baselineSeq, presence, netId);
+            bool isNew = baseline is null || !baseline.ContainsKey(netId);
             DeltaEncoding.WriteChangedEntity(bw, registry, netId, isNew, isNew ? null : baseline![netId], projected[netId]);
-            if (isNew) (presence ??= PresenceFor(slot)).Whole[netId] = currentSeq;
         }
 
         bw.Flush();
-        RecordPending(slot, currentSeq, projected);
-        return wireStream.ToArray(); // fresh exact-size array, the caller owns it
-    }
-
-    /// <summary>
-    /// True when <paramref name="netId"/> must be written as a whole entity: the baseline lacks it, or it was written as
-    /// a removal at a seq newer than <paramref name="baselineSeq"/>. In the second case the client may already have
-    /// despawned it, so a diff against the baseline would leave it missing or partial.
-    /// </summary>
-    private static bool IsWholeEntry(AoiBaseline? baseline, int baselineSeq, AoiPresenceRecord? presence, long netId) =>
-        baseline is null || !baseline.ContainsKey(netId)
-        || AoiPresenceRecord.RemovedSince(presence, baselineSeq, netId);
-
-    /// <summary>The slot's presence record, created on its first use and reused for the seat's lifetime.</summary>
-    private AoiPresenceRecord PresenceFor(int slot)
-    {
-        if (!presenceBySlot.TryGetValue(slot, out AoiPresenceRecord? record))
-        {
-            record = new AoiPresenceRecord();
-            presenceBySlot[slot] = record;
-        }
-        return record;
+        byte[] payload = wireStream.ToArray(); // fresh exact-size array, the caller owns it
+        // Only a completely built payload becomes the slot's last sent state.
+        if (previous is null) slots[slot] = new LegacyDeltaSlot(currentSeq, projected);
+        else previous.Sent(currentSeq, projected);
+        return payload;
     }
 
     /// <summary>
@@ -227,9 +239,9 @@ public sealed class AoiDeltaReplicator
         if (captureByWorld.TryGetValue(world, out AoiBaseline? cached)) return cached;
 
         // One shared buffer per world capture, only Replicate-channel components (owner-only included, scoped per
-        // client in Project) are captured. The capture is referenced by per-client baselines for up to historyDepth
-        // ticks - each capture's payload buffer is a fresh array, so it is never reused while a baseline still
-        // references it.
+        // client in Project) are captured. A slot's last sent projection references it until that slot is served
+        // again or forgotten - each capture's payload buffer is a fresh array, so it is never reused while a slot
+        // still references it.
         AoiBaseline state = captureScratch.CaptureReplicate(world, registry);
         captureByWorld[world] = state;
         WorldScanCount++;
@@ -269,44 +281,97 @@ public sealed class AoiDeltaReplicator
         return projected;
     }
 
-    /// <summary>Records that <paramref name="slot"/> applied up to <paramref name="seq"/>, advancing its AoI baseline
-    /// (if still retained). Deltas built afterwards diff from this new baseline.</summary>
+    /// <summary>
+    /// Records that <paramref name="slot"/> applied up to <paramref name="seq"/>. Sequence-only diagnostics: an
+    /// acknowledgement never selects the diff basis, which is always the slot's last sent projection.
+    /// </summary>
     public void Acknowledge(int slot, int seq)
     {
-        if (ackedSeqBySlot.TryGetValue(slot, out int cur) && seq <= cur) return; // ignore stale / duplicate ack
-        if (!pendingBySlot.TryGetValue(slot, out Dictionary<int, AoiBaseline>? map)
-            || !map.TryGetValue(seq, out AoiBaseline? projected)) return;         // seq pruned or never sent
-        ackedBaselineBySlot[slot] = projected;
-        ackedSeqBySlot[slot] = seq;
-        // Everything at or before the acked seq is superseded (reliable-ordered acks advance monotonically).
-        Queue<int> order = pendingOrderBySlot[slot];
-        while (order.Count > 0 && order.Peek() <= seq) map.Remove(order.Dequeue());
-        // A removal or whole entry at or before the acked seq is now in the baseline, so it no longer decides
-        // presence.
-        if (presenceBySlot.TryGetValue(slot, out AoiPresenceRecord? presence)) presence.Prune(seq);
+        if (slots.TryGetValue(slot, out LegacyDeltaSlot? state)) state.Acknowledge(seq);
     }
 
-    /// <summary>Drops all per-client state for <paramref name="slot"/> (call on disconnect / slot recycle).</summary>
+    /// <summary>
+    /// Drops all per-client state for <paramref name="slot"/> (call on disconnect, slot recycle, or any payload that
+    /// was not delivered), format 2 state included. Its next serve is full state with baseline -1, valid only for a
+    /// fresh receiver world and view. Never resets the shared sequence counter.
+    /// </summary>
     public void Forget(int slot)
     {
-        ackedBaselineBySlot.Remove(slot);
-        ackedSeqBySlot.Remove(slot);
-        pendingBySlot.Remove(slot);
-        pendingOrderBySlot.Remove(slot);
-        if (presenceBySlot.TryGetValue(slot, out AoiPresenceRecord? presence)) presence.Clear(); // kept for reuse
+        slots.Remove(slot);
+        rebuild.Forget(slot);
     }
 
-    private void RecordPending(int slot, int seq, AoiBaseline projected)
+    /// <summary>
+    /// Starts or replaces <paramref name="slot"/>'s format 2 stream with <paramref name="epoch"/> and
+    /// <paramref name="options"/>, clearing its candidate, acknowledged baseline, pins and committed history. A slot
+    /// that already holds format 2 state accepts only a greater epoch. Never touches the legacy sequence counter.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The epoch is zero or not greater than the slot's current one, or
+    /// <paramref name="options"/> is invalid.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    public void StartRebuild(int slot, ulong epoch, DeltaRebuildOptions options) =>
+        rebuild.Start(slot, epoch, options);
+
+    /// <summary>
+    /// Builds <paramref name="slot"/>'s next format 2 packet from this tick's shared capture of
+    /// <paramref name="world"/>, filtered to <paramref name="interestSet"/> and owner-scoped exactly like
+    /// <see cref="WriteFor"/>, and retains it as the slot's one unsent candidate, replacing any older unsent candidate.
+    /// The packet is a delta from the acknowledged baseline, or a keyframe from empty state when
+    /// <paramref name="keyframe"/> is set or nothing is acknowledged yet. Check <see cref="RebuildNeedsRepair"/> before
+    /// every build. A failed build leaves the slot unchanged.
+    /// </summary>
+    /// <param name="slot">The started slot.</param>
+    /// <param name="world">The world this slot is served from this tick.</param>
+    /// <param name="interestSet">The net ids this slot may see.</param>
+    /// <param name="ownerNetId">This slot's own player net id, which must stay the same for the whole epoch.</param>
+    /// <param name="keyframe">True to build from empty state.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="world"/> or <paramref name="interestSet"/> is
+    /// null.</exception>
+    /// <exception cref="InvalidOperationException"><see cref="BeginTick"/> was never called, the slot has no started
+    /// stream, or the owner differs from the epoch's owner.</exception>
+    /// <exception cref="DeltaRebuildException">The projection can never fit
+    /// (<see cref="DeltaRebuildFailure.CapacityExceeded"/>), pins leave no room for it
+    /// (<see cref="DeltaRebuildFailure.RetentionPressure"/>), or the next sequence is not ordered after the baseline
+    /// (<see cref="DeltaRebuildFailure.SequenceAmbiguous"/>).</exception>
+    public ReplicationDeltaPacket BuildRebuildFor(int slot, World world, IReadOnlySet<long> interestSet,
+        long? ownerNetId = null, bool keyframe = false)
     {
-        if (!pendingBySlot.TryGetValue(slot, out Dictionary<int, AoiBaseline>? map))
-        {
-            map = new Dictionary<int, AoiBaseline>();
-            pendingBySlot[slot] = map;
-            pendingOrderBySlot[slot] = new Queue<int>();
-        }
-        if (!map.ContainsKey(seq)) pendingOrderBySlot[slot].Enqueue(seq);
-        map[seq] = projected;
-        Queue<int> order = pendingOrderBySlot[slot];
-        while (order.Count > historyDepth) map.Remove(order.Dequeue());
+        if (world is null) throw new ArgumentNullException(nameof(world));
+        if (interestSet is null) throw new ArgumentNullException(nameof(interestSet));
+        if (currentSeq == 0) throw new InvalidOperationException("Call BeginTick before BuildRebuildFor.");
+        rebuild.RequireBuildable(slot, ownerNetId);
+        return rebuild.Build(slot, Project(CaptureFor(world), interestSet, ownerNetId), ownerNetId, keyframe);
     }
+
+    /// <summary>
+    /// Commits <paramref name="slot"/>'s unsent candidate after its packet was handed to transport, or after every
+    /// keyframe chunk was. A committed keyframe stays pinned until its exact acknowledgement.
+    /// </summary>
+    /// <exception cref="InvalidOperationException"><paramref name="id"/> is not the slot's unsent candidate.</exception>
+    public void RecordRebuildSent(int slot, ReplicationPacketId id) => rebuild.RecordSent(slot, id);
+
+    /// <summary>
+    /// Promotes <paramref name="id"/> to <paramref name="slot"/>'s acknowledged baseline when it is a committed send of
+    /// the slot's current epoch, still retained and strictly newer than the current baseline. Stale, duplicate,
+    /// future, pruned, unsent, other-slot and retired-epoch ids are ignored.
+    /// </summary>
+    public void AcknowledgeRebuild(int slot, ReplicationPacketId id) => rebuild.Acknowledge(slot, id);
+
+    /// <summary>
+    /// True when <paramref name="slot"/> should start keyframe repair before its next build: the effective no-ack
+    /// window from the options passed to <see cref="StartRebuild"/> has been consumed by committed sends. A byte
+    /// pressure check (pinned projections plus one more the size of the newest) stays as a defensive guard that the
+    /// writer cannot trigger: every retained writer projection is smaller than its complete keyframe, a new candidate
+    /// sits beside at most two pins, and <see cref="DeltaRebuildOptions.Validate"/> requires room for four keyframes.
+    /// False for a slot without a started stream.
+    /// </summary>
+    public bool RebuildNeedsRepair(int slot) => rebuild.NeedsRepair(slot);
+
+    // Test seams over the slot's format 2 state.
+    internal RebuildUsage RebuildUsageForTest(int slot) => rebuild.Usage(slot);
+
+    internal bool TryGetRetainedProjectionForTest(int slot, ReplicationPacketId id, out ReplicationProjection projection) =>
+        rebuild.TryGetRetained(slot, id, out projection);
+
+    internal void SeedRebuildSequenceForTest(int slot, uint sequence) => rebuild.SeedSequence(slot, sequence);
 }

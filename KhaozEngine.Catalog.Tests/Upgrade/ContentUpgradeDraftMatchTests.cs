@@ -189,16 +189,20 @@ public sealed class ContentUpgradeDraftMatchTests
     }
 
     /// <summary>
-    /// An EMPTY draft is known work, because nothing held is nothing to lose. A run that refused to clear one
-    /// would stand off against a draft that cannot move until an operator resolves it by hand. It holds no
-    /// known work either, which is the other question and a different one.
+    /// An EMPTY complete draft is known work, because nothing held is nothing to lose. A run that refused to
+    /// clear one would stand off against a draft that cannot move until an operator resolves it by hand. It
+    /// holds no known work either, which is the other question and a different one. An empty draft a row-only
+    /// route rebuilt is NOT known empty, because the backend may hold text behind it.
     /// </summary>
     [Fact]
     public void AnEmptyDraftIsKnownWorkAndHoldsNone()
     {
-        Assert.True(ContentUpgradeDraftMatch.IsKnownWork(Draft([]), Planned));
-        Assert.True(ContentUpgradeDraftMatch.IsKnownWork(Draft([]), []));
-        Assert.False(ContentUpgradeDraftMatch.HoldsKnownWork(Draft([]), Planned));
+        ContentDraft empty = Complete([]);
+        Assert.True(ContentUpgradeDraftMatch.IsKnownWork(empty, Planned));
+        Assert.True(ContentUpgradeDraftMatch.IsKnownWork(empty, []));
+        Assert.False(ContentUpgradeDraftMatch.HoldsKnownWork(empty, Planned));
+        Assert.False(ContentUpgradeDraftMatch.IsKnownWork(Draft([]), Planned));
+        Assert.False(ContentUpgradeDraftMatch.IsKnownWork(Draft([]), []));
     }
 
     /// <summary>An empty known set accounts for nothing, so any draft holding anything fails.</summary>
@@ -259,7 +263,17 @@ public sealed class ContentUpgradeDraftMatchTests
             () => ContentUpgradeDraftMatch.HoldsKnownWork(Draft(Planned), null!));
     }
 
-    /// <summary>One draft carrying the given edits, which is the shape a store hands back.</summary>
+    /// <summary>One complete draft carrying the given edits and no text, which a text-aware store hands back.</summary>
+    static ContentDraft Complete(IReadOnlyList<ContentEdit> edits)
+        => new(
+            ContentDraftTextState.Empty,
+            1,
+            UpgradeFixtures.Actor,
+            System.DateTimeOffset.UnixEpoch,
+            ContentUpgradeRunner.NoteFor(UpgradeHarness.FirstId),
+            new ContentChangeSet(edits));
+
+    /// <summary>One draft carrying the given edits, which is the shape a row-only route hands back.</summary>
     static ContentDraft Draft(IReadOnlyList<ContentEdit> edits)
         => new(
             1,

@@ -8,9 +8,11 @@ using Xunit;
 namespace KhaozEngine.Tests.Replication;
 
 /// <summary>
-/// The acked-baseline self-heal contract on <see cref="ClientReplicationView.ApplyDelta"/>: a delta built from a
-/// baseline at or before the client's last applied seq is a valid rebuild (idempotent), only a baseline AHEAD of it
-/// is a gap that throws, and a <c>baseline -1</c> delta is a full snapshot (despawns tracked entities absent from it).
+/// Legacy reader compatibility on <see cref="ClientReplicationView.ApplyDelta"/>: a delta whose baseline is at or
+/// before the client's last applied seq is accepted and overlaid, only a baseline AHEAD of it is a gap that throws,
+/// and a <c>baseline -1</c> delta is a full snapshot (despawns tracked entities absent from it). The legacy writers now
+/// name their last sent projection, so an older baseline reaches this reader only from a hand-built or older-writer
+/// delta. Accepting one is reader compatibility, not proof that overlaying it is safe after loss.
 /// </summary>
 public class ClientReplicationViewHealTests
 {
@@ -49,11 +51,29 @@ public class ClientReplicationViewHealTests
         return ms.ToArray();
     }
 
-    [Fact]
-    public void Delta_from_an_older_baseline_self_heals_and_converges()
+    // [baselineSeq][snapshotSeq][removedCount=0][changedCount=1] then one existing entity carrying only Pos.
+    private static byte[] PosDelta(int baselineSeq, int snapshotSeq, long netId, float x, float y)
     {
-        // The full loss-tolerance path: an ack is dropped, so the next delta is built from an OLDER acked baseline
-        // than what the client already applied. It must apply (not throw) and converge to the latest state.
+        using var ms = new MemoryStream();
+        using var bw = new BinaryWriter(ms);
+        bw.Write(baselineSeq);
+        bw.Write(snapshotSeq);
+        bw.Write(0);              // removed entities
+        bw.Write(1);              // changed entities
+        bw.Write(netId);
+        bw.Write((byte)0);        // isNew
+        bw.Write(0);              // removed components
+        bw.Write((ushort)1);      // Pos, a built-in, so unframed
+        bw.Write(x);
+        bw.Write(y);
+        bw.Write((ushort)0);      // end of entity
+        bw.Flush();
+        return ms.ToArray();
+    }
+
+    [Fact]
+    public void Hand_built_delta_from_an_older_baseline_is_accepted_and_overlaid()
+    {
         var registry = NewRegistry();
         var world = new World();
         Entity e1 = Spawn(world, 1, 1, 1);
@@ -65,22 +85,19 @@ public class ClientReplicationViewHealTests
 
         int seq1 = repl.BeginTick();
         view.ApplyDelta(client, repl.WriteFor(0, world, Aoi(1, 2)));
-        repl.Acknowledge(0, seq1);
-
-        // seq2 applied by the client, but its ACK is lost (never Acknowledged on the server).
         world.Set(e1, new Pos { X = 5, Y = 5 });
-        repl.BeginTick();
+        int seq2 = repl.BeginTick();
         view.ApplyDelta(client, repl.WriteFor(0, world, Aoi(1, 2)));
+        Assert.Equal(seq2, view.LastAppliedSeq);
 
-        // seq3 is therefore built from the seq1 baseline (< the client's last applied seq2). Must self-heal.
-        world.Set(e1, new Pos { X = 9, Y = 9 });
-        repl.BeginTick();
-        byte[] d3 = repl.WriteFor(0, world, Aoi(1, 2));
-
-        view.TryApplyDelta(client, d3, out string? error);
-        Assert.Null(error);                                          // no throw
-        Assert.Equal(9f, client.Get<Pos>(view.Entities[1]).X);      // converged to latest
-        Assert.Equal(2f, client.Get<Pos>(view.Entities[2]).X);      // untouched
+        // A legacy delta naming seq1, older than the applied seq2, is not rejected. Its listed changes overlay the
+        // current state, and entities it does not mention keep their applied values.
+        byte[] older = PosDelta(baselineSeq: seq1, snapshotSeq: seq2 + 1, netId: 1, x: 9, y: 9);
+        Assert.True(view.TryApplyDelta(client, older, out string? error));
+        Assert.Null(error);
+        Assert.Equal(seq2 + 1, view.LastAppliedSeq);
+        Assert.Equal(9f, client.Get<Pos>(view.Entities[1]).X);
+        Assert.Equal(2f, client.Get<Pos>(view.Entities[2]).X);
     }
 
     [Fact]
@@ -103,8 +120,7 @@ public class ClientReplicationViewHealTests
         // A fresh slot (no baseline) with only entity 1 in interest -> another base -1 delta omitting entity 2.
         repl.BeginTick();
         byte[] onlyOne = repl.WriteFor(99, world, Aoi(1));
-        (int baseSeq, _, _, _) = ReadHeader(onlyOne);
-        Assert.Equal(-1, baseSeq);
+        Assert.Equal(-1, LegacyDeltaWire.ReadHeader(onlyOne).Baseline);
 
         view.ApplyDelta(client, onlyOne);
         Assert.True(view.TryGetEntity(1, out _));
@@ -118,19 +134,8 @@ public class ClientReplicationViewHealTests
         var client = new World();
         var view = new ClientReplicationView(registry);   // LastAppliedSeq = -1
 
-        // A delta whose baseline is ahead of anything the client applied is a genuine gap, not a self-heal.
+        // A delta whose baseline is ahead of anything the client applied is a genuine gap and throws.
         byte[] ahead = EmptyDelta(baselineSeq: 5, snapshotSeq: 6);
         Assert.Throws<InvalidOperationException>(() => view.ApplyDelta(client, ahead));
-    }
-
-    private static (int baseSeq, int snapSeq, int removed, int changed) ReadHeader(byte[] d)
-    {
-        using var br = new BinaryReader(new MemoryStream(d));
-        int b = br.ReadInt32();
-        int s = br.ReadInt32();
-        int removed = br.ReadInt32();
-        for (int i = 0; i < removed; i++) br.ReadInt32();
-        int changed = br.ReadInt32();
-        return (b, s, removed, changed);
     }
 }

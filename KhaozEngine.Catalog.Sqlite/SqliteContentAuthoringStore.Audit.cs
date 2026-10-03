@@ -39,7 +39,7 @@ public sealed partial class SqliteContentAuthoringStore
         using SqliteCommand command = Command(
             """
             SELECT audit_id, occurred_at_utc, actor, operator, action, type_id, definition_id, content_key,
-                   field_name, before_value, after_value, version_number, note
+                   field_name, before_value, after_value, version_number, note, language_tag
             FROM catalog_audit
             WHERE ($type = 0 OR type_id = $type)
               AND ($id = 0 OR definition_id = $id)
@@ -68,7 +68,10 @@ public sealed partial class SqliteContentAuthoringStore
                 reader.IsDBNull(9) ? null : reader.GetString(9),
                 reader.IsDBNull(10) ? null : reader.GetString(10),
                 (int)reader.GetInt64(11),
-                reader.GetString(12)));
+                reader.GetString(12))
+            {
+                LanguageTag = reader.IsDBNull(13) ? null : reader.GetString(13),
+            });
         }
 
         return entries;
@@ -99,7 +102,7 @@ public sealed partial class SqliteContentAuthoringStore
     }
 
     /// <summary>One audit row, stamped from this store's own clock. The caller owns the transaction.</summary>
-    async Task AppendAuditAsync(
+    Task AppendAuditAsync(
         SqliteTransaction transaction,
         string action,
         string actor,
@@ -113,15 +116,40 @@ public sealed partial class SqliteContentAuthoringStore
         int versionNumber,
         string note,
         CancellationToken cancellationToken)
+        => AppendAuditAsync(
+            transaction, action, actor, operatorId, type, definitionId, key, fieldName, before, after,
+            versionNumber, note, null, cancellationToken);
+
+    /// <summary>
+    /// One audit row carrying the canonical language a text entry is about, or null for a row or store-level
+    /// entry, stamped from this store's own clock. The caller owns the transaction.
+    /// </summary>
+    async Task AppendAuditAsync(
+        SqliteTransaction transaction,
+        string action,
+        string actor,
+        string operatorId,
+        ContentTypeId type,
+        int definitionId,
+        ContentKey key,
+        string fieldName,
+        string? before,
+        string? after,
+        int versionNumber,
+        string note,
+        string? languageTag,
+        CancellationToken cancellationToken)
     {
         using SqliteCommand command = Command(
             """
             INSERT INTO catalog_audit(
                 occurred_at_utc, actor, operator, action, type_id, definition_id, content_key, field_name,
-                before_value, after_value, version_number, note)
-            VALUES ($at, $actor, $operator, $action, $type, $id, $key, $field, $before, $after, $version, $note);
+                before_value, after_value, version_number, note, language_tag)
+            VALUES ($at, $actor, $operator, $action, $type, $id, $key, $field, $before, $after, $version, $note,
+                    $language);
             """,
             transaction);
+        Bind(command, "$language", languageTag);
         Bind(command, "$at", Millis(_clock()));
         Bind(command, "$actor", actor);
         Bind(command, "$operator", operatorId);

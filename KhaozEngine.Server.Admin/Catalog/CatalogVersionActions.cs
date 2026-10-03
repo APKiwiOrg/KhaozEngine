@@ -109,7 +109,8 @@ internal sealed class CatalogVersionActions(
     }
 
     /// <summary>
-    /// Builds a draft that would restore an earlier version's field values. A row live at the target and
+    /// Builds a draft that would restore an earlier version's field values and, on a store with the text
+    /// companion, its strings, keeping every currently declared language. A row live at the target and
     /// RETIRED since blocks it, and the refusal names every blocking row, its matching rule and the way out.
     /// </summary>
     async Task<AdminActionResult> RollbackAsync(JsonElement? payload, CancellationToken cancellationToken)
@@ -135,11 +136,21 @@ internal sealed class CatalogVersionActions(
 
         try
         {
-            ContentDraft draft = await store
-                .RollbackToAsync(target, CatalogAdminActions.Actor, operatorId, note, cancellationToken)
-                .ConfigureAwait(false);
+            // A store with the text companion rolls rows AND text back in one step. The row-only route refuses
+            // any version holding text, so it is only ever reached on a store that cannot hold any.
+            ContentDraft draft = store is IContentTextAuthoringStore text
+                ? await text
+                    .RollbackTextToAsync(target, CatalogAdminActions.Actor, operatorId, note, cancellationToken)
+                    .ConfigureAwait(false)
+                : await store
+                    .RollbackToAsync(target, CatalogAdminActions.Actor, operatorId, note, cancellationToken)
+                    .ConfigureAwait(false);
 
-            return AdminActionResult.Ok(new CatalogRollbackPayload(true, draft.EditCount, []));
+            return AdminActionResult.Ok(new CatalogRollbackPayload(true, draft.EditCount, [])
+            {
+                TextEditCount = draft.TextEditCount,
+                LanguageIntroductionCount = draft.LanguageIntroductionCount,
+            });
         }
         catch (ContentAuthoringException failure)
             when (failure.Reason == ContentAuthoringException.RetireIrreversibleReason)

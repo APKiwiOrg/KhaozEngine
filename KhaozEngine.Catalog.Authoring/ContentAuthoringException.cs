@@ -110,7 +110,9 @@ public sealed class ContentAuthoringException : Exception
     /// A provider's catalog RESET was refused because the store carries an open draft. A reset drops every
     /// catalog object, so it would take the draft with it, and an operator who did not know the draft was
     /// there would lose unpublished authoring with nothing to read afterwards that says what it held. The
-    /// remedy is to publish or discard the draft, and the escape hatch is the reset's own force flag.
+    /// remedy is to publish or discard the draft, and the escape hatch is the reset's own force flag. A
+    /// companion text bundle import is refused with it too, before anything is staged, while an open draft holds
+    /// any row, text or language work the import's own draft would otherwise merge with.
     /// </summary>
     public const string DraftOpenReason = "draft-open";
 
@@ -165,6 +167,55 @@ public sealed class ContentAuthoringException : Exception
     /// exactly as they were, and the caller re-reads the ledger rather than assuming which run won.
     /// </summary>
     public const string UpgradeAlreadyRecordedReason = "upgrade-already-recorded";
+
+    /// <summary>
+    /// A text target names a type or a field that is not CLIENT visible, or a field that is not a localized
+    /// text marker. Text needs both levels visible, because a shared manifest carries every language chunk.
+    /// </summary>
+    public const string TextTargetIneligibleReason = "text-target-ineligible";
+
+    /// <summary>
+    /// A text Remove named a language that is neither declared by the base version nor introduced by the open
+    /// draft. Removing an absent value in a declared language is idempotent, and a Set is what declares one.
+    /// </summary>
+    public const string TextLanguageUndeclaredReason = "text-language-undeclared";
+
+    /// <summary>A derived text key, a value or a language tag exceeds its strict UTF-8 byte bound.</summary>
+    public const string TextBoundsReason = "text-bounds";
+
+    /// <summary>
+    /// A row-only route was refused because the text state it would need to carry cannot be represented on
+    /// it: a draft or base holding text, a plan or bundle carrying a text section, or a format that implies
+    /// one. The route fails closed rather than publishing, discarding or exporting the row half alone.
+    /// </summary>
+    public const string TextUnrepresentedReason = "text-unrepresented";
+
+    /// <summary>
+    /// A text commit or discard found the store's actual state different from the state its plan or proof
+    /// names: another epoch, another base, other frozen rows, other text or other declarations.
+    /// </summary>
+    public const string TextStateMismatchReason = "text-state-mismatch";
+
+    /// <summary>
+    /// Text input reached a store that implements only <see cref="IContentAuthoringStore"/> and no
+    /// <see cref="IContentTextAuthoringStore"/> companion. The caller refuses it before anything is applied or
+    /// staged rather than running the row half alone. A store with the companion implements every member of it
+    /// and never refuses with this token.
+    /// </summary>
+    public const string TextOperationUnavailableReason = "text-operation-unavailable";
+
+    /// <summary>
+    /// A committed version has no complete text record, so its values and language mappings are unknown. An
+    /// unknown version is never read as empty, except on a read-only proof that its manifests named no
+    /// language.
+    /// </summary>
+    public const string TextProvenanceUnknownReason = "text-provenance-unknown";
+
+    /// <summary>
+    /// A text plan names a chunk hash that the plan's own output values do not regenerate to, or reuses a
+    /// chunk the base version did not record. The commit verifies every chunk rather than trusting it.
+    /// </summary>
+    public const string TextChunkMismatchReason = "text-chunk-mismatch";
 
     /// <summary>Creates the exception with no message.</summary>
     public ContentAuthoringException()

@@ -146,8 +146,8 @@ public class ReplicationTickBenchmarkTests
     public void AckPromotion_SecondTickDeltaIsSmallerThanFirstTickFullSnapshot_ForAnUnchangedFiller()
     {
         // componentsPerEntity=4: every entity always carries the never-mutated fillers, so a full first-tick
-        // snapshot (position + 3 fillers per entity) must be strictly larger than the acked steady-state delta
-        // (position only - the fillers never differ from the acked baseline, so they drop out of the delta).
+        // snapshot (position + 3 fillers per entity) must be strictly larger than the steady-state delta (position
+        // only - the fillers never differ from the projection last sent, so they drop out of the delta).
         // A tiny MoveStep keeps every client's interest-set membership identical between the two ticks, so the
         // size drop is attributable to the delta encoding, not entities entering/leaving AoI.
         ReplicationBenchmarkConfig config = SmallConfig(clients: 1, entities: 150, componentsPerEntity: 4,
@@ -166,7 +166,7 @@ public class ReplicationTickBenchmarkTests
         // Simulated 1-tick RTT: the client acks tick 1's seq before tick 2 is built.
         pop.Replicator.Acknowledge(client.Slot, seq1);
 
-        // Tick 2: move (position changes, fillers don't), rebuild the grid, write the delta from the acked baseline.
+        // Tick 2: move (position changes, fillers don't), rebuild the grid, write the delta from the last sent projection.
         for (int i = 0; i < pop.Entities.Length; i++)
         {
             ref ReplPosition pos = ref pop.World.Get<ReplPosition>(pop.Entities[i]);

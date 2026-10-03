@@ -51,6 +51,7 @@ sealed partial class ContentUpgradeRun
         CancellationToken cancellationToken)
     {
         Store = store;
+        Route = new ContentUpgradeTextRoute(store);
         Ledger = ledger;
         Registry = registry;
         Options = options;
@@ -60,6 +61,9 @@ sealed partial class ContentUpgradeRun
     }
 
     internal IContentAuthoringStore Store { get; }
+
+    /// <summary>The store calls that differ once text exists, which every plan and draft operation goes through.</summary>
+    internal ContentUpgradeTextRoute Route { get; }
 
     internal IContentUpgradeLedger Ledger { get; }
 
@@ -203,7 +207,7 @@ sealed partial class ContentUpgradeRun
         // operator to find that out by running the apply.
         _steps.Add(plan.Kind == ContentUpgradePlanKind.AlreadySatisfied
             ? ContentUpgradeStepResult.WouldAdopt(first, plan.Reason)
-            : ContentUpgradeStepResult.WouldPublish(first, plan.ChangeLines));
+            : ContentUpgradeStepResult.WouldPublish(first, ContentUpgradeTextLines.For(plan)));
         AddPending(pending, 1, PreviewPendingReason);
         Add(
             ContentUpgradeCodes.PreviewOnly,
@@ -290,7 +294,7 @@ sealed partial class ContentUpgradeRun
     {
         OperationId = definition.Id;
         Operation = "export the baseline bundle";
-        ContentBundle baseline = await Store.ExportBundleAsync(Active, CancellationToken).ConfigureAwait(false);
+        ContentBundle baseline = await Route.ExportBaselineAsync(Active, CancellationToken).ConfigureAwait(false);
         var context = new ContentUpgradeContext(Active, baseline, Registry);
 
         try
@@ -299,10 +303,17 @@ sealed partial class ContentUpgradeRun
                 ?? ContentUpgradePlan.Refused("the planner returned no plan at all.");
             if (plan.Kind == ContentUpgradePlanKind.Changes)
             {
-                // Remembered here rather than where it is used, because this is the only place a change set
-                // this run itself computed comes into being, and the discard proof may not accept anything
-                // else as known work.
-                _known.Remember(plan.Edits);
+                if (plan.CarriesText && !Route.CanAuthorText)
+                {
+                    return ContentUpgradePlan.Refused(ContentUpgradeTextRoute.NoCompanionReason);
+                }
+
+                // Bound to the baseline text it was computed against, which decides the languages its Sets
+                // introduce, and remembered here rather than where it is used, because this is the only place
+                // a change set this run itself computed comes into being, and the discard proof may not accept
+                // anything else as known work.
+                plan = plan.Against(context.BaselineText);
+                _known.Remember(plan);
             }
 
             return plan;

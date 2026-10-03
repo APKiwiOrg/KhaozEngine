@@ -106,4 +106,11 @@ public sealed record ContentAuditEntry(
 
     /// <summary>The cap an actor or an operator identity is written under.</summary>
     public const int MaxIdentityLength = 128;
+
+    /// <summary>
+    /// The canonical language a TEXT entry is about, or null for a row or store-level entry. It is separate
+    /// from <see cref="FieldName"/>, which keeps naming the marker field, and it is additive: the positional
+    /// constructor and deconstruction are unchanged, so an old row audit carries null here.
+    /// </summary>
+    public string? LanguageTag { get; init; }
 }

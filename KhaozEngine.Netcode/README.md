@@ -274,6 +274,34 @@ loopback stages a copy, and the LiteNetLib binding passes the span to `NetPeer.S
 packet before returning (it used to call `payload.ToArray()` first, so a broadcast to N players made N copies of
 identical bytes on top of the frame). A third-party transport must honour the same rule and never stash the span.
 
+## Send commitments and the packet-size query
+
+`NetClient.Send` and `NetServer.SendTo` stay void and still skip a missing connection silently. Beside them,
+**`NetClient.TrySend(payload, reliability)`** and **`NetServer.TrySendTo(slot, payload, reliability)`** report whether
+the frame was HANDED TO THE TRANSPORT, never whether it was delivered. False means there was no connection and
+nothing reached the transport. True means `INetTransport.Send` was called exactly once and returned, and a transport
+may still drop the frame afterwards, as both shipped bindings do for a peer they no longer know. Nothing is caught: a
+transport exception propagates unchanged and is never a send. A caller that commits state only after a send (the
+format 2 writers' `RecordRebuildSent` in `KhaozEngine.Replication`) commits on true, treats false as a failed send,
+and lets a throw end the session.
+
+**`INetTransport.MaxUnfragmentedPayloadBytes(connection, reliability)`** is an optional **default interface method**
+answering the largest payload one `Send` carries without the transport fragmenting it, every byte the caller hands
+over included, session framing too. **Zero means unknown**, never a size, and the default answers zero, so an
+external transport written before it compiles and behaves unchanged and the in-memory transports stay unknown. A
+caller needing a bound treats zero as having none and falls back rather than guessing an MTU. An implementation
+answers zero for a connection it does not know. The facades forward it without exposing their transports:
+**`NetClient.MaxUnfragmentedPayloadBytes(reliability)`** toward the server and
+**`NetServer.MaxUnfragmentedPayloadBytes(slot, reliability)`** toward a slot. Both clamp a negative answer to 0 and
+answer 0 without asking the transport when there is no connection.
+
+**`NetClient.Disconnect()`** ends the session from the client side, locally and at once: it asks the transport to
+disconnect, forgets the server connection so a later `TrySend` answers false, and resets `Slot` to -1. Whether a
+`Disconnected` event surfaces afterwards depends on the transport. `InMemoryTransportHub` raises one for the caller,
+`LoopbackTransport` stages it for the peer only, so a caller must not wait for one to learn the session ended.
+Ownership stays with the caller: a host that ends a session for a typed reason resets its own per-connection state
+and builds fresh receivers for the next connection, because Netcode holds none of it.
+
 ## Reject delivery: the reason rides the disconnect
 
 `NetServer` refuses a pending peer by sending a reliable `Reject` frame AND carrying the same framed reject on
@@ -624,35 +652,48 @@ else if (reason != null)
 
 **One reassembler per connection slot.** `MessageReassembler(slot, chunkPayloadBytes)` holds the partial
 assemblies of ONE peer at ONE width and no connection table of its own, so a server keeps an array or a map of
-them beside its session table. `Slot` and `ChunkPayloadBytes` are fixed at construction.
+them beside its session table. `Slot` and `ChunkPayloadBytes` are fixed at construction. The four-argument
+**bounded constructor** `MessageReassembler(slot, chunkPayloadBytes, maxAssembledBytes, maxPartialAssemblies)` also
+fixes `MaxAssembledBytes` (1 to `MaxPayloadBytes(width)`) and `PartialAssemblyLimit` (1 to 256, one per stream id).
+The two-argument constructor is unchanged: it uses the format's own `MaxPayloadBytes(width)` and the default four
+assemblies, so it never refuses on the byte limit. The chunk wire is identical for both, so the two ends still agree
+only on the width.
 
 `TryComplete` has two overloads. `TryComplete(chunk, out streamId, out assembled, out reason)` hands back the
 `StreamId` the chunk headers carried, so several streams on one message kind are told apart by the header rather
 than by a copy inside the payload that could disagree. `TryComplete(chunk, out assembled, out reason)` answers
 identically and delegates to it. A true answer means the chunk completed a transmission and `assembled` holds the
 whole payload, which the caller owns. A false answer with a null `reason` means the chunk was accepted and more are
-expected. A false answer with a non-null `reason` means the chunk was refused, with one of two tokens:
+expected. A false answer with a non-null `reason` means the chunk was refused, with one of three tokens:
 
 - `MessageReassembler.MalformedChunk`, `ke:fragment-malformed`: a chunk this format never produces at this width.
 - `MessageReassembler.OutOfSequenceChunk`, `ke:fragment-out-of-sequence`: a well formed chunk that is not the one
   expected next, which also discards the assembly it contradicts.
+- `MessageReassembler.PayloadLimitExceeded`, `ke:fragment-payload-limit`: a well formed chunk whose transmission
+  cannot fit `MaxAssembledBytes`. A first chunk whose declared count needs more even with a one-byte final chunk, a
+  single-chunk transmission longer than the limit, and a chunk that would carry an assembly past it are refused
+  before anything is copied, and the assembly for that stream is discarded.
 
 Four rules, and none of them is a timer, because a timer on a reliable ordered channel measures nothing:
 
 1. A chunk whose `Sequence` differs from the assembly in progress for its stream discards that assembly and starts
    a new one. That is a sender restarting a transmission. It is not an error and not an eviction.
-2. At most `MaxPartialAssemblies` partial assemblies are held at once, which is four. Another one evicts the
-   assembly fed longest ago and increments `EvictedAssemblies`. The bound has no constructor knob, so a host with
-   more concurrently fragmented streams per peer evicts silently and `EvictedAssemblies` is the only reading that
-   reports it. `PartialAssemblyCount` is how many are open right now.
+2. At most `PartialAssemblyLimit` partial assemblies are held at once. That is `MaxPartialAssemblies`, the
+   default of four, unless the bounded constructor set it. Another one evicts the assembly fed longest ago and
+   increments `EvictedAssemblies`. A host with more concurrently fragmented streams per peer than the limit evicts
+   silently, and `EvictedAssemblies` is the only reading that reports it. `PartialAssemblyCount` is how many are
+   open right now.
 3. The last chunk hands the assembled bytes back. Nothing here decodes them. A final chunk cut in its body reaches
    the caller's decoder, because the header declares no total length.
 4. `DropConnection(slot)` discards every partial assembly, called from the server's own disconnect path. It
    refuses a slot that is not `Slot`, so a mis-wired forward cannot wipe another peer's state.
 
 It does not reorder. A chunk that is not the next one expected is refused rather than buffered. Memory grows with
-the bytes that actually arrive rather than with the count a header claims, so the ceiling is
-`MaxPartialAssemblies * MaxPayloadBytes(width)` only for a peer that really sent that much.
+the bytes that actually arrive rather than with the count a header claims, and no backing buffer grows past
+`MaxAssembledBytes`, spare capacity included. The ceiling is `PartialAssemblyLimit * MaxAssembledBytes`, which is
+`4 * MaxPayloadBytes(width)` for the two-argument constructor, and is reached only by a peer that really sent that
+much. NetWorld's format 2 keyframe repair uses one bounded reassembler per connection with one assembly, sized to
+the negotiated keyframe budget.
 
 `KhaozEngine.TileWorld.Netcode`'s `TileFragmentedMessage` and `TileFragmentReassembler` are this pair at the tile
 protocol's 1015-byte width.

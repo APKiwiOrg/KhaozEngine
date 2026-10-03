@@ -18,7 +18,7 @@ namespace KhaozEngine.Tests.Catalog.Sqlite;
 /// </summary>
 public sealed partial class SqliteCatalogRowTimestampTests
 {
-    const string MigrationName = "catalog-v3-row-timestamps";
+    const string MigrationName = "catalog-v4-text-authoring";
     const string Actor = "sqlite-row-timestamps";
     const string Operator = "oid:tests";
 
@@ -54,6 +54,8 @@ public sealed partial class SqliteCatalogRowTimestampTests
         ("catalog_draft", "opened_at_utc"),
         ("catalog_draft_edit", "created_at_utc"),
         ("catalog_draft_edit_field", "created_at_utc"),
+        ("catalog_draft_text_edit", "created_at_utc"),
+        ("catalog_draft_text_language", "created_at_utc"),
         ("catalog_family", "created_at_utc"),
         ("catalog_family_block", "created_at_utc"),
         ("catalog_id_high_water", "created_at_utc"),
@@ -61,6 +63,8 @@ public sealed partial class SqliteCatalogRowTimestampTests
         ("catalog_remap_rule", "created_at_utc"),
         ("catalog_row", "created_at_utc"),
         ("catalog_row_field", "created_at_utc"),
+        ("catalog_text", "created_at_utc"),
+        ("catalog_text_chunk", "created_at_utc"),
         ("catalog_type", "created_at_utc"),
         ("catalog_version", "published_at_utc"),
     ];
@@ -70,12 +74,21 @@ public sealed partial class SqliteCatalogRowTimestampTests
     [
         ("catalog_draft", "updated_at_utc"),
         ("catalog_draft_edit", "edited_at_utc"),
+        ("catalog_draft_text_edit", "updated_at_utc"),
         ("catalog_family_block", "updated_at_utc"),
         ("catalog_id_high_water", "updated_at_utc"),
         ("catalog_metadata", "updated_at_utc"),
         ("catalog_row", "updated_at_utc"),
+        ("catalog_text", "updated_at_utc"),
         ("catalog_type", "updated_at_utc"),
     ];
+
+    /// <summary>
+    /// The version 4 text tables, which the row-only write paths here leave empty. Every column of them is
+    /// NOT NULL, and <c>SqliteTextSchemaMigrationTests</c> proves the times every text write path stamps.
+    /// </summary>
+    static readonly string[] TextTables =
+        ["catalog_draft_text_edit", "catalog_draft_text_language", "catalog_text", "catalog_text_chunk"];
 
     static ContentTypeId Thing => new(PublishFixtures.ThingTypeId);
 
@@ -85,13 +98,13 @@ public sealed partial class SqliteCatalogRowTimestampTests
         => new(Actor, Operator, "row timestamps", expectedBaseVersion);
 
     [Fact]
-    public async Task Fresh_catalog_is_version_3_with_nullable_timestamp_columns()
+    public async Task Fresh_catalog_carries_every_version_3_nullable_timestamp_column()
     {
         using var database = new TemporaryCatalogDatabase();
         using (var store = new SqliteContentAuthoringStore(database.ConnectionString, Registry()))
         {
             await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
-            Assert.Equal(3, await store.GetSchemaVersionAsync());
+            Assert.Equal(SqliteCatalogSchema.CurrentVersion, await store.GetSchemaVersionAsync());
         }
 
         foreach ((string table, string column) in NewColumns)
@@ -383,8 +396,8 @@ public sealed partial class SqliteCatalogRowTimestampTests
     }
 
     /// <summary>
-    /// Every catalog table holds rows, every row carries its creation time, and every row of a table that
-    /// changes after insert carries its update time.
+    /// Every catalog table but the text tables holds rows, every row carries its creation time, and every row of
+    /// a table that changes after insert carries its update time.
     /// </summary>
     static void AssertEveryRowCarriesItsTimes(TemporaryCatalogDatabase database)
     {
@@ -393,6 +406,11 @@ public sealed partial class SqliteCatalogRowTimestampTests
             SqliteCatalogResetHarness.Tables(database).OrderBy(value => value, StringComparer.Ordinal));
         foreach ((string table, string column) in CreationTimes.Concat(UpdateTimes))
         {
+            if (TextTables.Contains(table))
+            {
+                continue;
+            }
+
             Assert.True(database.Scalar($"SELECT COUNT(*) FROM {table};") > 0, $"{table} has no row to prove");
             Assert.True(
                 database.Scalar($"SELECT COUNT(*) FROM {table} WHERE {column} IS NULL;") == 0,

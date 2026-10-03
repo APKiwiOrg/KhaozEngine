@@ -42,7 +42,8 @@ public sealed partial class SqlServerContentAuthoringStore
                     scope,
                     """
                     SELECT audit_id, occurred_at_utc, actor, [operator], action, type_id, definition_id,
-                           content_key, field_name, before_value, after_value, version_number, note
+                           content_key, field_name, before_value, after_value, version_number, note,
+                           language_tag
                     FROM dbo.catalog_audit
                     WHERE (@type = 0 OR type_id = @type)
                       AND (@id = 0 OR definition_id = @id)
@@ -71,7 +72,10 @@ public sealed partial class SqlServerContentAuthoringStore
                         reader.IsDBNull(9) ? null : reader.GetString(9),
                         reader.IsDBNull(10) ? null : reader.GetString(10),
                         reader.GetInt32(11),
-                        reader.GetString(12)));
+                        reader.GetString(12))
+                    {
+                        LanguageTag = reader.IsDBNull(13) ? null : reader.GetString(13),
+                    });
                 }
 
                 return (IReadOnlyList<ContentAuditEntry>)entries;
@@ -102,7 +106,7 @@ public sealed partial class SqlServerContentAuthoringStore
     }
 
     /// <summary>One audit row, stamped from this store's own clock. The caller owns the transaction.</summary>
-    async Task AppendAuditAsync(
+    Task AppendAuditAsync(
         SqlServerCatalogScope scope,
         string action,
         string actor,
@@ -116,15 +120,42 @@ public sealed partial class SqlServerContentAuthoringStore
         int versionNumber,
         string note,
         CancellationToken cancellationToken)
+        => AppendAuditAsync(
+            scope, action, actor, operatorId, type, definitionId, key, fieldName, before, after, versionNumber,
+            note, null, cancellationToken);
+
+    /// <summary>
+    /// One audit row carrying the canonical language a text entry is about, or null for a row or store-level
+    /// entry, stamped from this store's own clock. The language is a TYPED parameter, so a null is an
+    /// <c>nvarchar</c> NULL because the column is one, not because SqlClient guessed. The caller owns the
+    /// transaction.
+    /// </summary>
+    async Task AppendAuditAsync(
+        SqlServerCatalogScope scope,
+        string action,
+        string actor,
+        string operatorId,
+        ContentTypeId type,
+        int definitionId,
+        ContentKey key,
+        string fieldName,
+        string? before,
+        string? after,
+        int versionNumber,
+        string note,
+        string? languageTag,
+        CancellationToken cancellationToken)
     {
         await using SqlCommand command = Command(
             scope,
             """
             INSERT INTO dbo.catalog_audit(
                 occurred_at_utc, actor, [operator], action, type_id, definition_id, content_key, field_name,
-                before_value, after_value, version_number, note)
-            VALUES (@at, @actor, @operator, @action, @type, @id, @key, @field, @before, @after, @version, @note);
+                before_value, after_value, version_number, note, language_tag)
+            VALUES (@at, @actor, @operator, @action, @type, @id, @key, @field, @before, @after, @version, @note,
+                    @language);
             """);
+        BindText(command, "@language", languageTag);
         BindTime(command, "@at", _clock());
         BindText(command, "@actor", actor);
         BindText(command, "@operator", operatorId);

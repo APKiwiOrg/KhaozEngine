@@ -51,13 +51,24 @@ public sealed partial class ShardedWorldServerConfig
     /// player under minutes-old input on rejoin. Default 8 (~0.27s at 30Hz); 0 disables (pre-8.8.0 one-per-tick).</summary>
     public int MaxInputBacklog { get; init; } = 8;
 
-    /// <summary>Serve each client per-tick home-cell area-of-interest DELTAS (only what changed since that client's
-    /// acknowledged baseline) instead of a full snapshot every tick. Default true. Mirrors
+    /// <summary>Serve each client per-tick home-cell area-of-interest DELTAS (only what changed since the projection
+    /// last sent to that client, over reliable-ordered delivery) instead of a full snapshot every tick. Default true. Mirrors
     /// <see cref="WorldServerConfig.DeltaReplication"/>: a client opts in with the
     /// <see cref="MoveProtocol.ClientControlKind.DeltaCapable"/> hello; older clients keep getting full snapshots, so
     /// client and server upgrade independently. The delta baseline is keyed by <see cref="NetId"/>, so a boundary
     /// crossing (home-cell change) stays a component delta, never a despawn+respawn. Set false to force full snapshots.</summary>
     public bool DeltaReplication { get; init; } = true;
+
+    /// <summary>Offer negotiated unreliable delta replication (format 2) to a client that requests it. Default false.
+    /// Requires <see cref="DeltaReplication"/>: setting this with it off is a configuration error. With this off, a
+    /// requesting client receives a mode 0 offer naming <see cref="ReplicationSelectionReason.DisabledServerPolicy"/>
+    /// and stays on reliable deltas. Limits and cadence come from <see cref="ReplicationStream"/>, which is validated
+    /// only when this is on.</summary>
+    public bool AllowUnreliableDeltaReplication { get; init; }
+
+    /// <summary>Format 2 limits and cadence, read only when <see cref="AllowUnreliableDeltaReplication"/> and
+    /// <see cref="DeltaReplication"/> are both on.</summary>
+    public ReplicationStreamOptions ReplicationStream { get; init; } = new();
 
     /// <summary>Maximum payload size (bytes) accepted on a client-to-server game message
     /// (<see cref="WorldClient.SendGameMessage"/>); mirrors <see cref="WorldServerConfig.MaxGameMessageBytes"/>. A

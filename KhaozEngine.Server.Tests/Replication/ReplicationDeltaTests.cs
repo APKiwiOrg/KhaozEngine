@@ -1,4 +1,3 @@
-using System.IO;
 using KhaozEngine.Ecs;
 using KhaozEngine.Replication;
 using Xunit;
@@ -23,13 +22,8 @@ public class ReplicationDeltaTests
     // Reads the delta header (baselineSeq, snapshotSeq, removedCount, changedCount).
     private static (int baseSeq, int snapSeq, int removed, int changed) Header(byte[] d)
     {
-        using var br = new BinaryReader(new MemoryStream(d));
-        int b = br.ReadInt32();
-        int s = br.ReadInt32();
-        int removed = br.ReadInt32();
-        for (int i = 0; i < removed; i++) br.ReadInt32();
-        int changed = br.ReadInt32();
-        return (b, s, removed, changed);
+        LegacyDeltaHeader h = LegacyDeltaWire.ReadHeader(d);
+        return (h.Baseline, h.Snapshot, h.RemovedNetIds.Length, h.ChangedCount);
     }
 
     [Fact]
@@ -100,14 +94,20 @@ public class ReplicationDeltaTests
         Entity e1 = server.Spawn(); server.Set(e1, new NetId(1)); server.Set(e1, new Pos { X = 1, Y = 1 });
 
         var repl = new ServerReplicator(registry);
+        var client = new World();
+        var view = new ClientReplicationView(registry);
         int seq1 = repl.Capture(server);
+        view.ApplyDelta(client, repl.WriteFor(0));   // the first delta is sent and applied before its ack
         repl.Acknowledge(0, seq1);
         repl.Capture(server); // identical state
 
         byte[] d = repl.WriteFor(0);
-        (_, _, int removed, int changed) = Header(d);
+        (int baseSeq, _, int removed, int changed) = Header(d);
+        Assert.Equal(seq1, baseSeq);
         Assert.Equal(0, removed);
         Assert.Equal(0, changed);
+        view.ApplyDelta(client, d);
+        Assert.Equal(1f, client.Get<Pos>(view.Entities[1]).X);
     }
 
     [Fact]

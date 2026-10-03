@@ -28,6 +28,89 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   a window that shows too little progress latches the new `RangeMoveStatus.Blocked`, which both movement adapters
   treat as idle. Steps that would leave the ground or start swimming are refused and count as no progress, and steady
   ticks allocate nothing.
+- Catalog text authoring ([#1000](https://github.com/APKiwiOrg/KhaozEngine/issues/1000)). The opt-in
+  `IContentTextAuthoringStore` companion of `IContentAuthoringStore`, implemented by the in-memory, SQLite and SQL
+  Server stores, authors per-language display text for `LocalizedTextKey` marker fields of CLIENT-visible types.
+  `ApplyChangesAsync` lands a `ContentAuthoringChanges` batch of row edits and `ContentTextEdit.Set` or `Remove`
+  intents with its audit in one transaction, so an add and its name are one apply. `FreezeChangesAsync` freezes the
+  complete draft with its baseline text, `ReadTextSnapshotAsync` returns one exact committed version's
+  `ContentVersionTextSnapshot` and refuses version 0, and `TryDiscardChangesAsync` deletes the open draft only
+  when it still equals the caller's complete `ContentDraft`. `ContentDraft` gains `TextState`, `TextEditCount`,
+  `LanguageIntroductionCount` and `TotalWorkCount`, and `ContentAuditEntry` gains `LanguageTag`. A value is at
+  most 8,192 strict UTF-8 bytes and a derived key at most 192.
+- `ContentTextLanguageTag` is the one tag grammar: ASCII letters, digits and hyphens of 1 to 35 bytes, no empty
+  segment and a leading letter, lowered to its canonical identity with no BCP-47 registry or installed culture
+  lookup. A Set introduces its language and the introduction survives a later Remove, so the language still
+  publishes empty. A Remove in an undeclared language is refused with `text-language-undeclared`. A published
+  language keeps its historical wire spelling and new ones use the canonical spelling.
+- `ContentPublishCommit.PublishAsync` routes every publish on a companion store through the text commit, which
+  writes one `KECT` chunk per declared language, empty languages included, before the manifests and names every
+  language in both manifests. An unchanged language reuses its recorded hash. `ContentPackRebuild.RunAsync`
+  regenerates an exact version's text chunks in their recorded spelling and compares each hash before writing,
+  refusing with `text-chunk-mismatch`, `text-values-invalid` or `text-provenance-unknown`. A store without the
+  companion still refuses a version naming languages with `text-chunks-unsupported`.
+- Catalog schema version 4 on SQLite and SQL Server, through migration `catalog-v4-text-authoring`, adds
+  `catalog_draft_text_edit`, `catalog_draft_text_language`, `catalog_text` and `catalog_text_chunk`, a nullable
+  `catalog_audit.language_tag` and a nullable `catalog_version.text_snapshot_complete`, nineteen tables in all.
+  `AutoCreate` migrates a version 1, 2 or 3 catalog in one open and both validation modes refuse it naming the
+  migration. Every new commit records its version complete. A legacy NULL is read as empty only on a read-only
+  proof that the version's manifests named no language, and is refused with `text-provenance-unknown` otherwise.
+  `InMemoryContentAuthoringStore.SchemaVersion` is 4.
+- Bundle format 2 (`ContentBundle.TextFormatVersion`) carries a `text` section of declared languages and values
+  as `ContentBundle.TextState`. `ImportTextBundleAsync` imports rows and text as one complete version 1, reads
+  format 1 as empty text and refuses later formats and a format 2 bundle that lost its section with
+  `bundle-format`. It also refuses with `draft-open` while the open draft holds any row, text or language work.
+  `ExportBundleAsync` writes format 2 for a version that declares a language and byte-identical format 1
+  otherwise. `RollbackTextToAsync` builds one draft restoring rows and strings. `ContentUpgradePlan.Changes`
+  takes a `ContentAuthoringChanges` and `ContentUpgradeContext.BaselineText` carries the baseline's text, so an
+  upgrade can author text. Row-only routes on a companion store refuse with `text-unrepresented` rather than drop
+  held text.
+- `KhaozEngine.Server.Admin`'s `catalog-edit` takes `textEdits` beside `edits`, and the draft, get, diff, discard,
+  rollback, import and export actions report complete text state with `textKnown` false wherever text cannot be
+  proven. A store without the companion refuses text input with `text-operation-unavailable`.
+- Legacy reliable deltas no longer revert wrong ([#1229](https://github.com/APKiwiOrg/KhaozEngine/issues/1229)).
+  `ServerReplicator.WriteFor` and `AoiDeltaReplicator.WriteFor` diff against the exact viewer projection last sent
+  to the slot, not the last acknowledged one, so a value going `1 -> 2 -> 1` while an ack is in flight reaches the
+  receiver as 1, and component re-adds and AoI presence edges follow too. The wire body and `ApplyDelta` are
+  unchanged. The header now names the last sent sequence, and during an ack delay a delta carries only changes since
+  that send. `Acknowledge` is sequence diagnostics only. Every returned payload is a send commitment over a
+  reliable-ordered channel, and a discarded or failed send needs `Forget(slot)`, now also on `ServerReplicator`, and
+  a fresh receiver. The signed sequence stops at `int.MaxValue`: `LegacySequenceExhausted` turns true, `Capture` or
+  `BeginTick` throws, and `ResetAfterLegacySequenceExhaustion()` clears the writer once the owner has ended every
+  connection it serves. The `historyDepth` constructor argument of both writers is still validated as positive but no
+  longer has an effect, because each slot keeps only its last sent projection.
+- Opt-in format 2 acknowledged rebuild in `KhaozEngine.Replication`
+  ([#34](https://github.com/APKiwiOrg/KhaozEngine/issues/34)). Both writers gain `StartRebuild`, `BuildRebuildFor`,
+  `RecordRebuildSent`, `AcknowledgeRebuild` and `RebuildNeedsRepair`, retaining compact viewer-only projections
+  named by `ReplicationPacketId(ulong Epoch, uint Sequence)` with wrap-safe order. `ClientDeltaRebuild` reconstructs
+  each packet from its exact retained baseline, validates it, retains it and only then publishes it, replacing each
+  entity's whole replicated component set, and reports `DeltaRebuildResult` with a typed `DeltaRebuildFailure`.
+  `DeltaRebuildOptions` holds the approved limits (32 projections, 2 MiB retained bytes, 64 KiB keyframes, 1,024
+  entities, 16,384 frames, a 31-send no-ack window) and `Validate` requires room for four keyframes.
+  `DeltaRebuildException` carries the failure from a writer.
+- Opt-in negotiated unreliable delta replication in `KhaozEngine.NetWorld`.
+  `WorldServerConfig.AllowUnreliableDeltaReplication`, `ShardedWorldServerConfig.AllowUnreliableDeltaReplication`
+  and `WorldClientConfig.RequestUnreliableDeltaReplication`, all off by default and each requiring its existing delta
+  switch, select it under `ReplicationStream` (`ReplicationStreamOptions`). Wire generation stays 13: a capability
+  control, a reliable mode offer and acceptance, unreliable routine deltas, exact acknowledgements, coalesced repair
+  requests and one frozen reliable keyframe at four chunks per tick. `WorldClient.ReplicationSelection` and
+  `TryGetReplicationSelection` on both servers report the mode and why. An opted-in client passes elapsed time to
+  `Poll(dt)`, and only accepted state refreshes its liveness. Four new `DisconnectReason` members,
+  `ReplicationPolicyRefused`, `ReplicationRecoveryFailed` and `ReplicationCapacityExceeded` (terminal) and
+  `ReplicationRestart` (backoff reconnect), map to stable `ke:replication-*` tokens. Both servers restart the shared
+  writer after legacy sequence exhaustion behind an admission gate. `WorldClient` now ignores a `Rejected` event once
+  it is `Disconnected`, so a late reject no longer overwrites the disconnect reason or schedules a reconnect.
+- `KhaozEngine.Netcode` send commitments and packet limits. `NetClient.TrySend` and `NetServer.TrySendTo` report
+  whether a frame was handed to the transport, `NetClient.Disconnect()` ends a session locally, and the optional
+  `INetTransport.MaxUnfragmentedPayloadBytes` default interface method, forwarded by both facades, answers zero for
+  unknown, so external transports compile unchanged. `MessageReassembler` gains a bounded constructor with
+  `MaxAssembledBytes`, `PartialAssemblyLimit` and the `ke:fragment-payload-limit` refusal. The two-argument constructor
+  and the chunk wire are unchanged. The LiteNetLib transports answer the limit from the peer's
+  `GetMaxSinglePacketSize`.
+- A bounded consumer size characterization for format 2 is recorded in `docs/DELTA-RELIABILITY-ACCEPTANCE.md`: with
+  the consumer's current extension widths every projection up to 256 visible entities fits the keyframe cap, but a
+  routine tick that moves six or more entities exceeds the 512-byte packet and becomes a reliable keyframe barrier,
+  during which remote state stops updating. Dense views are tracked in [#1261](https://github.com/APKiwiOrg/KhaozEngine/issues/1261).
 
 ## 20.19.0
 

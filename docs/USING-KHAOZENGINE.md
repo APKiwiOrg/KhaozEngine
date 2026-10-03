@@ -17551,7 +17551,7 @@ await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSy
 ```
 
 For catalog preflight and deploy compatibility checks, read `InMemoryContentAuthoringStore.SchemaVersion`
-as the schema version this engine build targets, currently 3 for both providers. The opened store's
+as the schema version this engine build targets, currently 4 for both providers. The opened store's
 `GetSchemaVersionAsync()` reports the schema it holds. The in-memory store reports the same build target.
 
 Edits go into the ONE open draft, whole or not at all, and ids are allocated at publish rather than at edit:
@@ -17594,7 +17594,7 @@ precheck rather than parsing the JSON separately:
 
 ```csharp
 int declaredFormat = ContentBundleJson.ReadFormatVersion(json);
-if (declaredFormat != ContentBundle.CurrentFormatVersion)
+if (declaredFormat is not ContentBundle.CurrentFormatVersion and not ContentBundle.TextFormatVersion)
 {
     throw new InvalidOperationException($"Unsupported bundle format {declaredFormat}.");
 }
@@ -17605,7 +17605,63 @@ ContentBundle bundle = ContentBundleJson.Read(json);
 `ReadFormatVersion` and `Read` share the same JSONC parsing and format member rules. Both accept comments and
 trailing commas. Both refuse malformed JSON, a nonobject root, a missing version or a version that is not a
 32-bit integer with `ContentAuthoringException`. The precheck returns an unsupported integer for the caller to
-inspect, while `Read` refuses any version other than `ContentBundle.CurrentFormatVersion`.
+inspect, while `Read` refuses any version other than `ContentBundle.CurrentFormatVersion`, the row-only format 1,
+and `ContentBundle.TextFormatVersion`, format 2 with its `text` section.
+
+### Authoring catalog text
+
+`IContentTextAuthoringStore` is the opt-in text companion of `IContentAuthoringStore`, and all three stores
+implement it. It authors per-language display text for a `ContentFieldKind.LocalizedTextKey` marker field of a
+CLIENT-visible type. A string is named by its row's key, the marker field and a language, never by a raw
+localization key, so an add and its display name are one atomic apply:
+
+```csharp
+var text = (IContentTextAuthoringStore)store;
+var key = new ContentKey("iron_sword");
+
+ContentDraft draft = await text.ApplyChangesAsync(
+    new ContentAuthoringChanges(
+        [ContentEdit.Add(itemType, key, fields)],
+        [ContentTextEdit.Set(new ContentTextTarget(itemType, key, "name", "en"), "Iron Sword")]),
+    actor: "admin-endpoint",
+    operatorId: "oid:8f2c",
+    note: "autumn pass",
+    ct);
+
+await store.PublishAsync(
+    new ContentPublishRequest("admin-endpoint", "oid:8f2c", "autumn pass", expectedBaseVersion: draft.BaseVersion),
+    ct);
+```
+
+A Set introduces its language, which then stays declared, and `ContentTextEdit.Remove` makes a string absent so
+the reader falls back. A language tag is ASCII letters, digits and hyphens of 1 to 35 bytes and is lowered to
+its canonical identity, so a new `en-US` publishes as `en-us`. A value is at most 8,192 UTF-8 bytes and a
+derived key at most 192. On a companion store every publish goes through the text commit, which writes one
+`KECT` chunk per declared language, names every language in both manifests and commits rows and text in one
+transaction. `ReadTextSnapshotAsync` reads one exact version's text, `TryDiscardChangesAsync` discards only the
+draft the caller read, `RollbackTextToAsync` restores rows and strings together, and `ExportBundleAsync` writes
+format 2 once a version declares a language. `ImportTextBundleAsync` imports either format and refuses with
+`draft-open` while an open draft holds work. The row-only members refuse with `text-unrepresented` rather than
+drop held text. `KhaozEngine.Catalog.Authoring/README.md` documents the limits, the legacy refusals and every
+reason token.
+
+A client resolves the published text from the manifest it already reads. Each `ManifestLanguageEntry` names one
+language's `KECT` chunk, and the derived key is `ContentTextKey.Derive(typeKey, contentKey, fieldName)`:
+
+```csharp
+var languages = new List<ContentTextIndex>();
+foreach (ManifestLanguageEntry entry in manifest.Languages)
+{
+    ReadOnlyMemory<byte>? file = await pack.GetAsync(entry.TextHash, ct);
+    if (file is { } bytes && ContentTextIndex.TryDecode(bytes.Span, out ContentTextIndex? index, out _))
+    {
+        languages.Add(index!);
+    }
+}
+
+var strings = new ContentStringCatalog(languages, defaultLanguageTag: "en", shippedCatalog: resourceCatalog.TryGet);
+string name = strings.Get(ContentTextKey.Derive("item", "iron_sword", "name"));   // "Iron Sword"
+```
 
 ### Replacing a catalog from its bundle
 
@@ -17835,7 +17891,9 @@ against the two hashes the version row records, and a manifest digest covers eve
 comparison pins the whole closure. A second rebuild into the same store writes no object at all. Rows are
 rehydrated through the CALLER's registry, so a schema, `ChunkSlots` or visibility change since the publish
 refuses with `server-manifest-mismatch` or `client-manifest-mismatch` rather than filing a pack no version
-record describes.
+record describes. On a text companion store the rebuild also regenerates the version's own `KECT` chunks and
+compares each recorded hash before writing, refusing with `text-chunk-mismatch`, `text-values-invalid` or
+`text-provenance-unknown`.
 
 ### Upgrading an existing catalog (19.11.0)
 
@@ -17849,10 +17907,13 @@ Migration history is its own ledger, the `catalog_content_upgrade` table added b
 An engine package version does not say which upgrades ran, and neither does a published version number. An
 `applied` row commits inside the publish transaction, so a version and its history land together or not at
 all. Schema version 3 adds a row creation time to every catalog table and an update time to every table whose rows
-change, through migration `catalog-v3-row-timestamps` on both providers. A SQLite or SQL Server catalog at schema
-version 1 or 2 migrates in place, in one open, when opened under `AutoCreate`, and `ValidateOnly` refuses it by
-naming that migration, so a hosted `ValidateOnly` catalog runs its schema migration step before the server starts.
-An older engine refuses a version 3 catalog. Each provider README lists the columns and the exact-or-NULL
+change, through migration `catalog-v3-row-timestamps` on both providers. Schema version 4 adds the four text
+authoring tables, a nullable audit language and a nullable per-version text completeness, through migration
+`catalog-v4-text-authoring`. A SQLite or SQL Server catalog at schema version 1, 2 or 3 migrates in place, in one
+open, when opened under `AutoCreate`, and `ValidateOnly` refuses it by naming `catalog-v4-text-authoring`, so a
+hosted `ValidateOnly` catalog runs its schema migration step before the server starts. An older engine refuses a
+version 4 catalog. A legacy version's text completeness stays NULL and reads as text free only on a read-only
+proof that its manifests named no language. Each provider README lists the columns and the exact-or-NULL
 backfill.
 
 ```csharp
@@ -20858,11 +20919,14 @@ entry point, the reassembler constructor and `TryReadChunk` included, because th
 comes from the wire. Reading never throws on a chunk.
 
 `TryComplete` answers true with the whole payload when a chunk completes a transmission. A false answer with a null
-`reason` means accepted and waiting for more, and a non-null `reason` is one of the two refusal tokens,
-`MessageReassembler.MalformedChunk` or `MessageReassembler.OutOfSequenceChunk`. The overload without `streamId`
-answers identically. A new `Sequence` on a stream discards the assembly in progress, which is a restart and not an
-error. At most `MaxPartialAssemblies` (four) partial assemblies are held, and another evicts the one fed longest
-ago and counts it in `EvictedAssemblies`. Nothing holds a timer, and nothing reorders: the channel is reliable
+`reason` means accepted and waiting for more, and a non-null `reason` is one of the three refusal tokens,
+`MessageReassembler.MalformedChunk`, `MessageReassembler.OutOfSequenceChunk` or
+`MessageReassembler.PayloadLimitExceeded`. The last comes only from the bounded constructor
+`MessageReassembler(slot, width, maxAssembledBytes, maxPartialAssemblies)`, which refuses a transmission that cannot
+fit `maxAssembledBytes` before copying it. The two-argument constructor is unchanged. The overload without
+`streamId` answers identically. A new `Sequence` on a stream discards the assembly in progress, which is a restart
+and not an error. At most `PartialAssemblyLimit` partial assemblies are held (`MaxPartialAssemblies`, four, unless
+the bounded constructor set it), and another evicts the one fed longest ago and counts it in `EvictedAssemblies`. Nothing holds a timer, and nothing reorders: the channel is reliable
 ordered, so a chunk that is not the next one expected is refused. `DropConnection(slot)` frees what a departed peer
 left open and refuses a slot that is not its own.
 
@@ -21100,6 +21164,25 @@ transport.Send(connection, scratch.AsSpan(0, length), NetChannelReliability.Unre
 `SessionFrame.Write(opcode, body, destination)` throws `ArgumentException` when the destination is shorter than
 `FrameLength(body.Length)`, so a too-small buffer is a hard error rather than a truncated frame on the wire.
 
+**Send commitments and packet limits.** `SendTo` and `NetClient.Send` stay void and skip a missing connection
+silently. When state is committed only after a send, use `server.TrySendTo(slot, payload, reliability)` or
+`client.TrySend(payload, reliability)`: true means handed to the transport (never delivered), false means there was
+no connection, and a transport exception propagates unchanged. `server.MaxUnfragmentedPayloadBytes(slot, reliability)`
+and `client.MaxUnfragmentedPayloadBytes(reliability)` forward the optional `INetTransport.MaxUnfragmentedPayloadBytes`
+query, session byte included. Zero means unknown, which is what the in-memory transports and any external transport
+that does not implement it answer, so treat zero as no bound and fall back rather than guess an MTU. The LiteNetLib
+binding answers from the connected peer. `client.Disconnect()` ends the session locally at once and resets `Slot` to
+-1, and a caller must not wait for a `Disconnected` event to learn that, because whether one surfaces depends on the
+transport.
+
+```csharp
+if (!server.TrySendTo(slot, frame, NetChannelReliability.UnreliableSequenced))
+    EndSession(slot);                                  // nothing reached the transport, so nothing is committed
+else
+    Commit(slot, frameId);                             // handed over, not necessarily delivered
+int limit = server.MaxUnfragmentedPayloadBytes(slot, NetChannelReliability.UnreliableSequenced);   // 0 = unknown
+```
+
 ### Entity replication (`KhaozEngine.Replication`)
 
 Replicate the authoritative ECS `World` to clients. Register each replicated component once (server and client
@@ -21121,21 +21204,32 @@ view.Apply(clientWorld, full);                        // spawn new, despawn gone
 view.Interpolate(clientWorld, renderAlpha);           // smooth interpolatable components between snapshots
 ```
 
-For bandwidth, use the delta path: `ServerReplicator` keeps per-client acked whole-world baselines and sends only
-what changed; the client applies deltas and acks the seq it received. `ClientReplicationView.ApplyDelta` is
-self-healing - a delta whose baseline is at or before `LastAppliedSeq` is a valid idempotent rebuild (the server
-builds from the last ACKED baseline, which lags under ack latency/loss), so a dropped delta/ack needs no full
-resync. Like every client-serving path it honours `ReplicationChannels` (see below): `Capture` snapshots only
-`Replicate` components, and `WriteFor(slot, ownerNetId)` scopes an `OwnerOnly` component to the client whose player
-net id is `ownerNetId` (pass the receiving client's own player net id, or omit it for an unowned serve):
+For bandwidth, use the delta path: `ServerReplicator` diffs each slot against the projection it last sent to that
+slot and sends only what changed, and the client applies each delta with `ClientReplicationView.ApplyDelta`. This
+is the **legacy reliable contract**: every returned payload is a send commitment, shipped exactly once and in order
+over a reliable-ordered channel, so the receiver always holds the baseline the next delta names. Acknowledgements
+are sequence diagnostics and never choose the basis, which is what keeps a `1 -> 2 -> 1` reversion exact. A caller
+that discards a payload, sends it unreliably, sees a send throw, or replaces the receiver calls `Forget(slot)` and
+serves a fresh client world and view, or disconnects. `ApplyDelta` still accepts an older baseline at or before
+`LastAppliedSeq`, but that overlay is not loss recovery: it cannot restore what a newer delta changed. For lossy
+delivery use format 2 below. The writer's signed sequence is shared by every slot. After capture `int.MaxValue`,
+`LegacySequenceExhausted` is true and the owner ends every connection the writer serves before calling
+`ResetAfterLegacySequenceExhaustion()`. Like every client-serving path it honours `ReplicationChannels` (see below):
+`Capture` snapshots only `Replicate` components, and `WriteFor(slot, ownerNetId)` scopes an `OwnerOnly` component to
+the client whose player net id is `ownerNetId` (pass the receiving client's own player net id, or omit it for an
+unowned serve):
 
 ```csharp
 var replicator = new ServerReplicator(registry);
 int seq = replicator.Capture(serverWorld);            // once per tick (captures the Replicate channel)
-byte[] delta = replicator.WriteFor(slot, ownerNetId); // only changes since this client's baseline; OwnerOnly scoped to it
-// ...client: view.ApplyDelta(clientWorld, delta); then send view.LastAppliedSeq back ->
-replicator.Acknowledge(slot, ackedSeq);
+byte[] delta = replicator.WriteFor(slot, ownerNetId); // changes since the projection last sent to this slot
+reliable.Send(slot, delta);                           // exactly once, in order, or Forget(slot) and a fresh receiver
+// ...client: view.ApplyDelta(clientWorld, delta)
+replicator.Forget(slot);                              // on disconnect, slot reuse or a failed send
 ```
+
+The full obligations, the exhaustion lifecycle and a standalone format 2 example (writer plus
+`ClientDeltaRebuild`) are in the [Replication README](../KhaozEngine.Replication/README.md).
 
 `ServerReplicator` is the whole-world variant (every client sees every entity). Add per-client area-of-interest
 scoping with `AoiDeltaReplicator` below when the world is too big to send whole.
@@ -21154,23 +21248,22 @@ byte[] snap = SnapshotWriter.WriteFiltered(serverWorld, registry, interest);
 ```
 
 For the bandwidth win, fuse the two with **`AoiDeltaReplicator`** - a per-client, `NetId`-keyed, AoI-scoped
-baseline+delta encoder (entered->full, stayed+changed->component delta, left->despawn, unchanged->nothing). It is
-what `WorldServer` / `ShardedWorldServer` / `MmoServer` serve on the live path by default (via the `DeltaCapable`
-handshake); to drive it directly:
+delta encoder (entered->full, stayed+changed->component delta, left->despawn, unchanged->nothing) under the same
+legacy reliable contract. It is what `WorldServer` / `ShardedWorldServer` / `MmoServer` serve on the live path by
+default (via the `DeltaCapable` handshake). To drive it directly:
 
 ```csharp
 var aoi = new AoiDeltaReplicator(registry);
 aoi.BeginTick();                                      // once per tick, before the per-client pass
-byte[] delta = aoi.WriteFor(slot, serverWorld, interest);   // only in-AoI changes since this client's baseline
-// ...client: view.ApplyDelta(clientWorld, delta); then send view.LastAppliedSeq back ->
-aoi.Acknowledge(slot, ackedSeq);                      // aoi.Forget(slot) on disconnect
+byte[] delta = aoi.WriteFor(slot, serverWorld, interest);   // in-AoI changes since the projection last sent here
+reliable.Send(slot, delta);                           // the same send commitment as ServerReplicator
+aoi.Forget(slot);                                     // on disconnect, slot reuse or a failed send
 ```
 
 The wire is byte-identical to `ServerReplicator.WriteFor` (a full snapshot is the `baseline -1` delta), and the
 baseline is keyed by `NetId`, so a seamless cell handoff reads as a component delta, never a despawn+respawn.
-Presence follows what was last sent, not what was last acked. An entity that left a client's interest and is back
-before the client acknowledged the removal is sent as a full spawn. One sent whole and gone before that entry was
-acknowledged is sent as a removal. Like the rest of the diff, both repeat until the client acknowledges them.
+Presence is part of the last-sent projection: an entity that left and came back is a full spawn, and one that left
+is a removal, each relative to what this client was last sent.
 
 **Shared per-tick capture (perf).** `WriteFor` builds its whole-world Replicate-channel capture once per `world`
 per tick, the first time any client's `WriteFor` runs after `BeginTick`, then every later `WriteFor` on the same
@@ -21229,6 +21322,56 @@ var cfg = new ShardedWorldServerConfig
   player to join can take the same slot. Keep durable ownership against the account, as the tile twin does.
 
 The tile server's ground-item twin is `TileWorldServerConfig.GroundItemVisibleToSlot`.
+
+### Unreliable delta replication (format 2, opt-in)
+
+`WorldServerConfig.AllowUnreliableDeltaReplication`, `ShardedWorldServerConfig.AllowUnreliableDeltaReplication` and
+`WorldClientConfig.RequestUnreliableDeltaReplication` opt a session into negotiated format 2: routine state goes
+unreliable-sequenced, each accepted projection is reconstructed from one the client acknowledged, and one reliable
+keyframe covers negotiation and repair. All three default false and each requires its existing delta switch, so an
+opt-in with `DeltaReplication` or `RequestDeltaReplication` off throws at construction. Limits and cadence come from
+`ReplicationStream` (`ReplicationStreamOptions`), validated only when the opt-in is on. Wire generation stays 13, so
+mixed peers keep working: a peer without the opt-in, an older server, an unknown transport limit or a server
+without the opt-in all leave the session on reliable deltas, and `ReplicationSelection` says why.
+
+```csharp
+var server = new ShardedWorldServer(transport, new ShardedWorldServerConfig
+{
+    AllowUnreliableDeltaReplication = true,
+    ReplicationStream = new ReplicationStreamOptions(),     // approved defaults: 512-byte packets, 64 KiB keyframes
+} /* , the usual ground, tuning and registry arguments */);
+var client = new WorldClient(connect, groundHeight, tuning, new WorldClientConfig
+{
+    RequestUnreliableDeltaReplication = true,
+}, token);
+
+client.Poll(frameSeconds);                                  // REQUIRED: elapsed time drives acks and deadlines
+ReplicationSelection mode = client.ReplicationSelection;    // Mode, Reason, Epoch
+```
+
+What an opted-in consumer owes:
+
+- **Elapsed `Poll(dt)`.** Acknowledgements, repair requests and the recovery deadline run on the elapsed time passed
+  to `WorldClient.Poll`. Zero-time drain calls between scheduled ones are fine.
+- **Typed failures.** `DisconnectReason.ReplicationPolicyRefused` (the offer exceeded this client's limits),
+  `ReplicationRecoveryFailed` (negotiation or a repair missed its 90-tick deadline) and `ReplicationCapacityExceeded`
+  (a projection can never fit the limits) are terminal. The game decides how to present them and whether to sign in
+  again. `ReplicationRestart` reconnects on the `Reconnect` backoff with a fresh world and view, even with
+  `RetryOnReject` off.
+- **Capacity is a consumer constraint.** The limits are approved review defaults, not measured capacity. A projection
+  that exceeds them is a typed failure, never a reason to raise a limit silently. The bounded characterization in
+  [DELTA-RELIABILITY-ACCEPTANCE.md](DELTA-RELIABILITY-ACCEPTANCE.md) shows that five moving entities fill a
+  512-byte routine datagram and a sixth overflows it. A view with more movers turns most routine sends into reliable
+  keyframes, which stays correct but removes the bandwidth benefit, and remote state stops updating for the length of
+  each keyframe barrier. Dense views are tracked in [#1261](https://github.com/APKiwiOrg/KhaozEngine/issues/1261).
+- **Visibility cannot be recalled.** `EntityVisibleToSlot` applies before every projection is frozen. A hide during
+  a keyframe barrier shows as a removal on the first resumed projection, and bytes already sent while visible stay
+  sent.
+- **Only accepted state is liveness.** Once format 2 is selected, only an accepted projection refreshes
+  `DisconnectTimeoutSeconds`.
+
+The full contract (frames, epochs, retention, the keyframe barrier, chunk budget and the legacy writer restart) is
+in the [NetWorld README](../KhaozEngine.NetWorld/README.md).
 
 ### Server-owned NPCs / consumer components (`ShardedWorldServer.SpawnEntity`, `WorldClient.TryGetComponent`)
 

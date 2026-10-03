@@ -104,17 +104,17 @@ public class ReplicationCaptureAllocationTests
         long perTick = (after - before) / measured;
 
         // Budget breakdown (per tick), everything the segment scheme legitimately still allocates:
-        //  - one shared world capture rebuilt each tick (history retains it for up to historyDepth ticks): one
-        //    consolidated payload buffer, one outer netId->components dictionary, and per entity one CapturedComponents
-        //    plus one small typeId->segment dictionary. No byte[] per component.
-        //  - per client (fast path, no owner-scoped component here): one projected baseline dictionary retained for the
-        //    ack (it references the shared capture, so no payload copy) plus the outgoing wire byte[] WriteFor returns
-        //    (the caller owns it, so it is unavoidable).
+        //  - one shared world capture rebuilt each tick (retained while a slot's last sent projection references it):
+        //    one consolidated payload buffer, one outer netId->components dictionary, and per entity one
+        //    CapturedComponents plus one small typeId->segment dictionary. No byte[] per component.
+        //  - per client (fast path, no owner-scoped component here): one projected dictionary retained as the slot's
+        //    last sent projection (it references the shared capture, so no payload copy) plus the outgoing wire byte[]
+        //    WriteFor returns (the caller owns it, so it is unavoidable).
         // What it must NOT allocate is a byte[] per present component per entity: the prior representation did exactly
         // that, Entities*Comps arrays every tick. Their object headers alone are Entities*Comps*24 = ~49 KB/tick, more
         // than double the slack between the measured steady state and this threshold, so reverting to the byte[]-per-
         // component representation pushes per-tick allocation over the bar and fails this test.
-        // Measured steady state is ~180 KB/tick (segment dicts + projected baselines + wire, none of them a
+        // Measured steady state is ~180 KB/tick (segment dicts + last sent projections + wire, none of them a
         // per-component array). The bar sits ~11% above that for runtime noise and ~29 KB below the old scheme's total.
         const long threshold = 200_000;
         long oldPerComponentHeaderFloor = (long)Entities * Comps * 24; // headers only, before any payload

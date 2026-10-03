@@ -46,7 +46,7 @@ sealed partial class ContentUpgradeRun
         ContentDraft? standing = await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false);
         bool standingIsOwn = standing is not null
             && standing.BaseVersion == Active
-            && IsOwn(standing, note, plan.Edits);
+            && IsOwn(standing, note, plan);
         if (standing is not null && !standingIsOwn)
         {
             // Resolution comes BEFORE any judgement about whose draft it is: a draft this run can itself
@@ -91,15 +91,15 @@ sealed partial class ContentUpgradeRun
             if (!standingIsOwn)
             {
                 Operation = "write its edits into the draft";
-                ContentDraft written = await Store
-                    .ApplyEditsAsync(plan.Edits, Options.Actor, Options.Operator, note, CancellationToken)
+                ContentDraft written = await Route
+                    .WriteAsync(plan, Options.Actor, Options.Operator, note, CancellationToken)
                     .ConfigureAwait(false);
 
                 // What came BACK decides, not what went in. The store appends into whatever draft is open,
                 // so a draft that opened inside the window between the read above and this write carries
                 // both change sets, and a draft that opened on a different baseline carries this plan
                 // against content it was not computed from. Neither is this plan and neither is published.
-                if (!ContentUpgradeDraftMatch.IsPlan(written, plan.Edits) || written.BaseVersion != Active)
+                if (!ContentUpgradeTextMatch.IsPlan(written, plan) || written.BaseVersion != Active)
                 {
                     return await ResolveObstructionAsync(
                         definition,
@@ -126,8 +126,8 @@ sealed partial class ContentUpgradeRun
             // and the draft it stands over can be neither edited nor discarded by anyone.
             try
             {
-                ContentDraft frozen = await FreezeForPublishAsync().ConfigureAwait(false);
-                if (!ContentUpgradeDraftMatch.IsPlan(frozen, plan.Edits) || frozen.BaseVersion != Active)
+                ContentDraft frozen = await FreezeForPublishAsync(plan).ConfigureAwait(false);
+                if (!ContentUpgradeTextMatch.IsPlan(frozen, plan) || frozen.BaseVersion != Active)
                 {
                     // Released HERE rather than left to the finally, because the obstruction path DISCARDS
                     // and the store refuses a discard while any marker stands. The release is idempotent, so
@@ -173,7 +173,7 @@ sealed partial class ContentUpgradeRun
                 _frozenForPublish = false;
                 RecordPublished(published.VersionNumber);
                 _steps.Add(
-                    ContentUpgradeStepResult.Applied(definition, published.VersionNumber, plan.ChangeLines));
+                    ContentUpgradeStepResult.Applied(definition, published.VersionNumber, ContentUpgradeTextLines.For(plan)));
                 return true;
             }
             finally
@@ -205,7 +205,7 @@ sealed partial class ContentUpgradeRun
     /// which is contention. It is raised as such and resolved through the ledger like any other.
     /// </para>
     /// </summary>
-    async Task<ContentDraft> FreezeForPublishAsync()
+    async Task<ContentDraft> FreezeForPublishAsync(ContentUpgradePlan plan)
     {
         Operation = "freeze the draft for its own publish";
 
@@ -214,10 +214,10 @@ sealed partial class ContentUpgradeRun
         // failed, and a flag set afterwards would leave nobody owing it a release. Setting it early costs one
         // release nothing needed on the freeze that really did fail, and that release is a no-op.
         _frozenForPublish = true;
-        await Store.FreezeDraftAsync(Active, CancellationToken).ConfigureAwait(false);
 
-        Operation = "read the frozen draft back";
-        return await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false)
+        // A plan carrying text freezes through the companion, which reads the complete frozen draft back in
+        // the same step. The row-only freeze refuses a draft holding text, which is exactly this one.
+        return await Route.FreezeAsync(plan, Active, CancellationToken).ConfigureAwait(false)
             ?? throw new ContentAuthoringException(
                 "the draft this run froze for its own publish is no longer open.",
                 default,
@@ -268,7 +268,7 @@ sealed partial class ContentUpgradeRun
     {
         Operation = "read the open draft";
         ContentDraft? over = await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false);
-        if (over is not null && !IsOwn(over, note, plan.Edits))
+        if (over is not null && !IsOwn(over, note, plan))
         {
             return await ResolveObstructionAsync(definition, plan, note, standOff, failure.Message, over)
                 .ConfigureAwait(false);
@@ -276,7 +276,7 @@ sealed partial class ContentUpgradeRun
 
         Operation = "discard its own draft";
         bool rivalIsLive = over is not null
-            && await DiscardOwnDraftAsync(over, note, plan.Edits).ConfigureAwait(false);
+            && await DiscardOwnDraftAsync(over, note, plan).ConfigureAwait(false);
 
         Operation = "read the upgrade ledger";
         ContentUpgradeRecord? landed = await FindRecordAsync(definition.Id).ConfigureAwait(false);
@@ -359,7 +359,7 @@ sealed partial class ContentUpgradeRun
         progress.Append(draft is null
             ? "|no-draft"
             : FormattableString.Invariant(
-                $"|{draft.OpenedBy}@{draft.OpenedAtUtc.UtcTicks}:{draft.EditCount}:{draft.FrozenForBaseVersion}:{draft.Note}"));
+                $"|{draft.OpenedBy}@{draft.OpenedAtUtc.UtcTicks}:{draft.EditCount}:{draft.TextEditCount}:{draft.LanguageIntroductionCount}:{draft.FrozenForBaseVersion}:{draft.Note}"));
         return progress.ToString();
     }
 

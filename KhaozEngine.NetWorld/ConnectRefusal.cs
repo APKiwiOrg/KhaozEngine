@@ -80,6 +80,18 @@ internal readonly record struct ConnectRefusal(
         if (reason == SessionRejectReason.AlreadySignedIn)
             return new(DisconnectReason.AlreadySignedIn, string.Empty, RetryRule.Backoff);
 
+        // Format 2 replication. Policy refusal, recovery failure and capacity failure are terminal: the same
+        // configuration and the same world keep failing. A restart is the server ending this stream on purpose, so it
+        // takes the AlreadySignedIn backoff even with RetryOnReject off and reconnects with a fresh world and view.
+        if (reason == ReplicationFailure.PolicyRefusedToken)
+            return new(DisconnectReason.ReplicationPolicyRefused, string.Empty, RetryRule.Never);
+        if (reason == ReplicationFailure.RecoveryFailedToken)
+            return new(DisconnectReason.ReplicationRecoveryFailed, string.Empty, RetryRule.Never);
+        if (reason == ReplicationFailure.CapacityExceededToken)
+            return new(DisconnectReason.ReplicationCapacityExceeded, string.Empty, RetryRule.Never);
+        if (reason == ReplicationFailure.RestartToken)
+            return new(DisconnectReason.ReplicationRestart, string.Empty, RetryRule.Backoff);
+
         return new(DisconnectReason.RejectedToken, reason ?? string.Empty, RetryRule.WhenRetryOnReject);
     }
 }

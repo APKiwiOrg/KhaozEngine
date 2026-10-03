@@ -84,6 +84,33 @@ public sealed class ContentPublisher
         // refuses every draft write until it is cleared, so the change set read here is the one the commit
         // will delete. The commit half clears the marker on every exit path.
         ContentDraft draft = await FreezeAsync(request, baseline, cancellationToken).ConfigureAwait(false);
+        ContentPublishRowPhase rows = await PrepareRowsAsync(request, baseline, draft, cancellationToken)
+            .ConfigureAwait(false);
+
+        // STEP 8, with the base version's languages, which a row-only publish carries forward unchanged.
+        return rows.Complete(baseline.Languages);
+    }
+
+    /// <summary>The registry this publisher builds candidates and manifests through.</summary>
+    internal ContentTypeRegistry Registry => _registry;
+
+    /// <summary>
+    /// Steps 2 to 7 over a draft that is ALREADY frozen, which is phase one of every preparation: ids are
+    /// allocated exactly once here, the candidate is validated and the row and rule chunks are encoded. Step 8
+    /// is left to <see cref="ContentPublishRowPhase.Complete"/>, so a text publish can build its chunks on
+    /// these ids and encode both manifests once with its complete language list.
+    /// </summary>
+    /// <param name="request">The publish request.</param>
+    /// <param name="baseline">The base version, read with the frozen draft.</param>
+    /// <param name="draft">The frozen draft, whose row edits this phase applies.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <exception cref="ContentAuthoringException">An edit names something the registry or the base version does not carry.</exception>
+    internal async Task<ContentPublishRowPhase> PrepareRowsAsync(
+        ContentPublishRequest request,
+        ContentPublishBaseline baseline,
+        ContentDraft draft,
+        CancellationToken cancellationToken)
+    {
         IReadOnlyList<ContentEdit> frozen = draft.Changes.Edits;
         int version = baseline.VersionNumber + 1;
 
@@ -94,8 +121,8 @@ public sealed class ContentPublisher
             ContentForkChecks.Check(baseline, draft.Changes, _registry);
         if (forkFindings.Count > 0)
         {
-            return Refused(
-                version, baseline, Empty(version), new ContentValidationReport(false, forkFindings), frozen);
+            return ContentPublishRowPhase.Refused(Refused(
+                version, baseline, Empty(version), new ContentValidationReport(false, forkFindings), frozen));
         }
 
         // The carried-id preconditions, also BEFORE the candidate is built. They have to run ahead of step 3
@@ -110,12 +137,12 @@ public sealed class ContentPublisher
                 ContentCarriedIdChecks.Check(baseline, draft.Changes, _registry, families);
             if (carriedFindings.Count > 0)
             {
-                return Refused(
+                return ContentPublishRowPhase.Refused(Refused(
                     version,
                     baseline,
                     Empty(version),
                     new ContentValidationReport(false, carriedFindings),
-                    frozen);
+                    frozen));
             }
         }
 
@@ -149,9 +176,9 @@ public sealed class ContentPublisher
 
         if (!swept.IsValid)
         {
-            return Refused(
+            return ContentPublishRowPhase.Refused(Refused(
                 version, baseline, candidate, swept, allocation, closes, inserts, live, appended, rules,
-                [], ruleHash, minimumServerBuild, minimumClientBuild, frozen);
+                [], ruleHash, minimumServerBuild, minimumClientBuild, frozen));
         }
 
         // STEPS 6 AND 7. Select the affected chunks, then encode, compress and hash each one at every side
@@ -167,45 +194,30 @@ public sealed class ContentPublisher
         {
             // KEC0014: the client bytes still carry a ServerOnly field, which is the encoder failing to
             // honour the schema. The chunks are kept on the plan, because what they hold is the evidence.
-            return Refused(
+            return ContentPublishRowPhase.Refused(Refused(
                 version, baseline, candidate, Report(findings), allocation, closes, inserts, live, appended,
-                rules, chunks, ruleHash, minimumServerBuild, minimumClientBuild, frozen);
+                rules, chunks, ruleHash, minimumServerBuild, minimumClientBuild, frozen));
         }
 
-        // STEP 8. Both manifests, each under its own hash sub-domain, so a head gating on one can never
-        // accidentally agree with a head gating on the other.
-        Step(ContentPublishStep.BeforeManifestWrite);
-        ContentManifest server = ContentManifestBuilder.Build(
-            ContentManifestSide.Server, _registry, chunks, baseline.Languages, version,
-            minimumServerBuild, minimumClientBuild, ruleHash);
-        ContentManifest client = ContentManifestBuilder.Build(
-            ContentManifestSide.Client, _registry, chunks, baseline.Languages, version,
-            minimumServerBuild, minimumClientBuild, ruleHash);
-        string serverHash = ContentManifestText.Hash(server);
-        string clientHash = ContentManifestText.Hash(client);
-        Step(ContentPublishStep.AfterManifestWrite);
-
-        return new ContentPublishPlan(
-            version,
-            baseline.VersionNumber,
-            candidate,
-            swept,
-            allocation,
-            closes,
-            inserts,
-            live,
-            appended,
-            rules,
-            chunks,
-            baseline.Languages,
-            ruleHash,
-            server,
-            client,
-            serverHash,
-            clientHash,
-            minimumServerBuild,
-            minimumClientBuild,
-            frozen);
+        return ContentPublishRowPhase.Ready(
+            _registry,
+            OnStep,
+            new ContentPublishRowPhase.Parts(
+                version,
+                baseline.VersionNumber,
+                candidate,
+                swept,
+                allocation,
+                closes,
+                inserts,
+                live,
+                appended,
+                rules,
+                chunks,
+                ruleHash,
+                minimumServerBuild,
+                minimumClientBuild,
+                frozen));
     }
 
     /// <summary>

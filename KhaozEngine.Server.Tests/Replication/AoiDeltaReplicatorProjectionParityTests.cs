@@ -14,7 +14,8 @@ namespace KhaozEngine.Tests.Replication;
 /// from the documented AoI-delta wire format, with no shared code with the replicator - computes the expected wire
 /// for every client every tick, and the real replicator's output is asserted equal byte-for-byte. Driven across
 /// randomized multi-tick worlds (entities entering / leaving interest, component add / remove, spawns, despawns),
-/// interest sets spanning empty / sparse / dense / full, owner-only scoping, and an ack skip. The reference emits
+/// interest sets spanning empty / sparse / dense / full, owner-only scoping, and an ack skip that must not change
+/// the last-sent diff basis. The reference emits
 /// changed entities in world <c>ForEach</c> order and removed entities in the baseline's order, which is exactly what
 /// the pre-index full-capture walk produced, so matching it pins the wire against the old behaviour.
 /// </summary>
@@ -78,51 +79,31 @@ public class AoiDeltaReplicatorProjectionParityTests
     // ---- Independent reference encoder ----------------------------------------------------------------------------
 
     // One client's projected, owner-scoped view for a tick: net ids in world ForEach order, each mapped to its present
-    // components' payloads (owner-only ones dropped for a non-owner). This is what the client's baseline holds.
+    // components' payloads (owner-only ones dropped for a non-owner). This is what the client holds after applying it.
     private sealed class RefProjection
     {
         public readonly List<long> Order = new();
         public readonly Dictionary<long, Dictionary<ushort, byte[]>> Comps = new();
     }
 
-    // The reference replicator: same public shape (BeginTick / WriteFor / Acknowledge) and the same baseline+ack
-    // semantics as AoiDeltaReplicator, but built straight from the wire format with no shared code.
+    // The reference replicator: the same BeginTick / WriteFor shape and the same legacy reliable
+    // contract as AoiDeltaReplicator, but built straight from the wire format with no shared code. A reliable-ordered
+    // client applies every returned payload in order, so each payload diffs from the projection last sent to that slot
+    // and names its seq. Acknowledgements never choose the basis, so the reference takes none.
     private sealed class ReferenceAoiDelta
     {
         private int seq;
-        private readonly Dictionary<int, Dictionary<int, RefProjection>> pending = new();
-        private readonly Dictionary<int, RefProjection> ackedBaseline = new();
-        private readonly Dictionary<int, int> ackedSeq = new();
+        private readonly Dictionary<int, (int Seq, RefProjection Projection)> lastSent = new();
 
         public int BeginTick() => ++seq;
 
         public byte[] WriteFor(int slot, World world, IReadOnlySet<long> interest, long? ownerNetId)
         {
             RefProjection current = Capture(world, interest, ownerNetId);
-            RefProjection? baseline = ackedBaseline.GetValueOrDefault(slot);
-            int baselineSeq = baseline is null ? -1 : ackedSeq[slot];
-            byte[] wire = Encode(baselineSeq, seq, baseline, current);
-            RecordPending(slot, seq, current);
+            bool hasPrevious = lastSent.TryGetValue(slot, out (int Seq, RefProjection Projection) previous);
+            byte[] wire = Encode(hasPrevious ? previous.Seq : -1, seq, hasPrevious ? previous.Projection : null, current);
+            lastSent[slot] = (seq, current);
             return wire;
-        }
-
-        public void Acknowledge(int slot, int ackSeq)
-        {
-            if (ackedSeq.TryGetValue(slot, out int cur) && ackSeq <= cur) return;
-            if (!pending.TryGetValue(slot, out Dictionary<int, RefProjection>? map)
-                || !map.TryGetValue(ackSeq, out RefProjection? proj)) return;
-            ackedBaseline[slot] = proj;
-            ackedSeq[slot] = ackSeq;
-        }
-
-        private void RecordPending(int slot, int atSeq, RefProjection proj)
-        {
-            if (!pending.TryGetValue(slot, out Dictionary<int, RefProjection>? map))
-            {
-                map = new Dictionary<int, RefProjection>();
-                pending[slot] = map;
-            }
-            map[atSeq] = proj;
         }
 
         private static RefProjection Capture(World world, IReadOnlySet<long> interest, long? ownerNetId)
@@ -338,13 +319,12 @@ public class AoiDeltaReplicatorProjectionParityTests
                 Assert.Equal(expected, actual);
             }
 
-            // Ack the tick just sent for every slot except slot 2 on tick 3 (a deliberate ack skip that keeps its
-            // baseline two ticks back and exercises a longer diff span identically in both encoders).
+            // Ack the tick just sent for every slot except slot 2 on tick 3. The skip must not move slot 2's diff basis
+            // off its last sent projection, so the ack-free reference still matches it byte for byte.
             foreach (Slot slot in slots)
             {
                 if (slot.Id == 2 && tick == 3) continue;
                 real.Acknowledge(slot.Id, realSeq);
-                reference.Acknowledge(slot.Id, refSeq);
             }
         }
     }

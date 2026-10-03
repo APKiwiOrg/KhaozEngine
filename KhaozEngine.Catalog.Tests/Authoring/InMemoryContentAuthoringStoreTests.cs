@@ -43,7 +43,7 @@ public class InMemoryContentAuthoringStoreTests
         IContentAuthoringStore store = NewStore();
         await store.InitializeAsync(mode);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(4, await store.GetSchemaVersionAsync());
     }
 
     [Fact]
@@ -90,7 +90,12 @@ public class InMemoryContentAuthoringStoreTests
         Assert.Equal(
             ["iron_sword", "oak_shield"],
             new[] { draft.Changes.Edits[0].Key.ToString(), draft.Changes.Edits[1].Key.ToString() });
-        Assert.Same(draft, await store.GetOpenDraftAsync());
+        ContentDraft held = (await store.GetOpenDraftAsync())!;
+        Assert.NotSame(draft, held);
+        Assert.Equal(draft.Note, held.Note);
+        Assert.Equal(
+            ["iron_sword", "oak_shield"],
+            new[] { held.Changes.Edits[0].Key.ToString(), held.Changes.Edits[1].Key.ToString() });
     }
 
     [Fact]

@@ -27,13 +27,8 @@ public class AoiDeltaReplicatorTests
 
     private static (int baseSeq, int snapSeq, int removed, int changed) Header(byte[] d)
     {
-        using var br = new BinaryReader(new MemoryStream(d));
-        int b = br.ReadInt32();
-        int s = br.ReadInt32();
-        int removed = br.ReadInt32();
-        for (int i = 0; i < removed; i++) br.ReadInt32();
-        int changed = br.ReadInt32();
-        return (b, s, removed, changed);
+        LegacyDeltaHeader h = LegacyDeltaWire.ReadHeader(d);
+        return (h.Baseline, h.Snapshot, h.RemovedNetIds.Length, h.ChangedCount);
     }
 
     private static Entity Spawn(World w, int netId, float x, float y)
@@ -235,7 +230,7 @@ public class AoiDeltaReplicatorTests
     }
 
     [Fact]
-    public void Skipped_ack_keeps_diffing_from_the_last_acked_baseline()
+    public void Skipped_ack_still_diffs_from_the_last_sent_projection()
     {
         var registry = NewRegistry();
         var world = new World();
@@ -243,24 +238,29 @@ public class AoiDeltaReplicatorTests
         Spawn(world, 2, 2, 2);
 
         var repl = new AoiDeltaReplicator(registry);
+        var client = new World();
+        var view = new ClientReplicationView(registry);
         int seq1 = repl.BeginTick();
-        repl.WriteFor(0, world, Aoi(1, 2));
+        view.ApplyDelta(client, repl.WriteFor(0, world, Aoi(1, 2)));
         repl.Acknowledge(0, seq1);
 
         world.Set(e1, new Pos { X = 5, Y = 5 });
-        repl.BeginTick();
-        repl.WriteFor(0, world, Aoi(1, 2));   // seq2 delta: its ack is dropped (never Acknowledged)
+        int seq2 = repl.BeginTick();
+        view.ApplyDelta(client, repl.WriteFor(0, world, Aoi(1, 2)));   // seq2: applied, its ack never arrives
 
-        world.Set(e1, new Pos { X = 9, Y = 9 });
         int seq3 = repl.BeginTick();
         byte[] d3 = repl.WriteFor(0, world, Aoi(1, 2));
 
-        // With seq2's ack lost, the server still diffs from seq1 (the last acked baseline), re-sending entity 1.
+        // The reliable receiver already holds seq2, so seq3 names seq2 and carries nothing, whatever the ack state.
         (int baseSeq, int snapSeq, int removed, int changed) = Header(d3);
-        Assert.Equal(seq1, baseSeq);
+        Assert.Equal(seq2, baseSeq);
         Assert.Equal(seq3, snapSeq);
         Assert.Equal(0, removed);
-        Assert.Equal(1, changed);   // entity 1 still carried (its change since seq1 is unacked)
+        Assert.Equal(0, changed);
+
+        view.ApplyDelta(client, d3);
+        Assert.Equal(5f, client.Get<Pos>(view.Entities[1]).X);
+        Assert.Equal(2f, client.Get<Pos>(view.Entities[2]).X);
     }
 
     private struct Hp : IComponent { public int Value; }
@@ -327,13 +327,13 @@ public class AoiDeltaReplicatorTests
         view.ApplyDelta(client, repl.WriteFor(0, world, Aoi(1, 2)));
         repl.Acknowledge(0, seq1);
 
-        // T: X leaves the interest set. The client applies the removal, but its ack has not reached the server.
+        // T: X leaves the interest set. The removal is sent, and its ack has not reached the server.
         repl.BeginTick();
         byte[] dT = repl.WriteFor(0, world, Aoi(1));
         Assert.Equal(new List<long> { 2 }, Entries(dT).removed);
         if (moveWhileOut) world.Set(x, new Pos { X = 7, Y = 7 });
 
-        // T+1: X is back. The baseline is still seq1, which holds X, yet the client despawned it at T.
+        // T+1: X is back. The last sent projection (T) lacks X, so it is written whole, whatever the ack state.
         int seqT1 = repl.BeginTick();
         byte[] dT1 = repl.WriteFor(0, world, Aoi(1, 2));
         Assert.Equal(new List<(long, bool)> { (2, true) }, Entries(dT1).changed);
@@ -349,7 +349,7 @@ public class AoiDeltaReplicatorTests
         Assert.True(client.TryGet(cx, out Hp hp));
         Assert.Equal(20, hp.Value);
 
-        // Acked: the next idle tick is empty again.
+        // The next idle tick is empty: the last sent projection holds X.
         repl.BeginTick();
         (List<long> removed, List<(long, bool)> changed) = Entries(repl.WriteFor(0, world, Aoi(1, 2)));
         Assert.Empty(removed);
@@ -357,40 +357,53 @@ public class AoiDeltaReplicatorTests
     }
 
     [Fact]
-    public void A_readd_after_the_removal_is_acked_diffs_normally_and_the_record_is_pruned()
+    public void A_readd_after_a_delivered_removal_arrives_whole_then_diffs_normally()
     {
         ReplicationRegistry registry = NewTwoComponentRegistry();
         var world = new World();
         Entity x = SpawnWithHp(world, 2, 2, 20);
 
         var repl = new AoiDeltaReplicator(registry);
+        var client = new World();
+        var view = new ClientReplicationView(registry);
         int seq1 = repl.BeginTick();
-        repl.WriteFor(0, world, Aoi(2));
+        view.ApplyDelta(client, repl.WriteFor(0, world, Aoi(2)));
         repl.Acknowledge(0, seq1);
 
         int seq2 = repl.BeginTick();
-        repl.WriteFor(0, world, Aoi());              // X removed at seq2
-        Assert.Equal(1, repl.RemovalRecordCount(0));
+        byte[] removal = repl.WriteFor(0, world, Aoi());   // X removed at seq2
+        Assert.Equal(new List<long> { 2 }, Entries(removal).removed);
+        view.ApplyDelta(client, removal);
+        Assert.False(view.TryGetEntity(2, out _));
 
-        int seq3 = repl.BeginTick();
-        Assert.Equal(new List<(long, bool)> { (2, true) }, Entries(repl.WriteFor(0, world, Aoi(2))).changed);
-        repl.Acknowledge(0, seq2);
-        Assert.Equal(0, repl.RemovalRecordCount(0)); // pruned: seq2 is at the acked seq
+        // seq3: the delivered predecessor (seq2) lacks X, so it returns whole.
+        repl.BeginTick();
+        byte[] readd = repl.WriteFor(0, world, Aoi(2));
+        Assert.Equal(new List<(long, bool)> { (2, true) }, Entries(readd).changed);
+        view.ApplyDelta(client, readd);
+        repl.Acknowledge(0, seq2);                          // a late ack changes nothing
+        Assert.True(view.TryGetEntity(2, out Entity cx));
+        Assert.Equal(20, client.Get<Hp>(cx).Value);
 
-        // The baseline (seq2) lacks X, so seq4 is still a whole entry, but only because the baseline lacks it.
-        int seq4 = repl.BeginTick();
-        Assert.Equal(new List<(long, bool)> { (2, true) }, Entries(repl.WriteFor(0, world, Aoi(2))).changed);
-        repl.Acknowledge(0, seq4);
-        Assert.True(seq4 > seq3);
+        // seq4: the predecessor (seq3) holds X unchanged, so nothing is sent.
+        repl.BeginTick();
+        byte[] idle = repl.WriteFor(0, world, Aoi(2));
+        Assert.Empty(Entries(idle).removed);
+        Assert.Empty(Entries(idle).changed);
+        view.ApplyDelta(client, idle);
 
-        // Baseline seq4 holds X and no record remains: a change is a component delta, not a whole entity.
+        // A change is a component delta, not a whole entity.
         world.Set(x, new Pos { X = 9, Y = 9 });
         repl.BeginTick();
-        Assert.Equal(new List<(long, bool)> { (2, false) }, Entries(repl.WriteFor(0, world, Aoi(2))).changed);
+        byte[] moved = repl.WriteFor(0, world, Aoi(2));
+        Assert.Equal(new List<(long, bool)> { (2, false) }, Entries(moved).changed);
+        view.ApplyDelta(client, moved);
+        Assert.Equal(9f, client.Get<Pos>(cx).X);
+        Assert.Equal(20, client.Get<Hp>(cx).Value);
     }
 
     [Fact]
-    public void Forget_clears_the_removal_and_whole_entry_records()
+    public void Forget_clears_the_slot_and_the_next_serve_is_full()
     {
         ReplicationRegistry registry = NewTwoComponentRegistry();
         var world = new World();
@@ -401,23 +414,26 @@ public class AoiDeltaReplicatorTests
         repl.WriteFor(0, world, Aoi(2));
         repl.Acknowledge(0, seq1);
         repl.BeginTick();
-        repl.WriteFor(0, world, Aoi());              // removal record
-        repl.BeginTick();
-        repl.WriteFor(0, world, Aoi(2));             // whole-entry record
-        Assert.Equal(1, repl.RemovalRecordCount(0));
-        Assert.Equal(1, repl.WholeRecordCount(0));
+        repl.WriteFor(0, world, Aoi());
+        repl.WriteFor(1, world, Aoi(2));
+        Assert.Equal(2, repl.LegacySlotCount);
 
         repl.Forget(0);
-        Assert.Equal(0, repl.RemovalRecordCount(0));
-        Assert.Equal(0, repl.WholeRecordCount(0));
+        Assert.Equal(1, repl.LegacySlotCount);
 
-        // A recycled slot starts from a full snapshot.
-        repl.BeginTick();
+        // A recycled slot starts from a full snapshot, applied by a fresh receiver.
+        int seq3 = repl.BeginTick();
         byte[] d = repl.WriteFor(0, world, Aoi(2));
         Assert.Equal(-1, Header(d).baseSeq);
+        Assert.Equal(seq3, Header(d).snapSeq);
+        var client = new World();
+        var view = new ClientReplicationView(registry);
+        view.ApplyDelta(client, d);
+        Assert.True(view.TryGetEntity(2, out Entity cx));
+        Assert.Equal(20, client.Get<Hp>(cx).Value);
     }
 
-    // seq1: only entity 1, acked, so the baseline never holds X (net id 2).
+    // seq1: only entity 1, sent, applied and acked, so the receiver never holds X (net id 2).
     private static (AoiDeltaReplicator repl, World world, Entity x, World client, ClientReplicationView view)
         NewBrushRig()
     {
@@ -435,7 +451,7 @@ public class AoiDeltaReplicatorTests
     }
 
     [Fact]
-    public void An_entity_that_arrives_and_leaves_inside_the_ack_window_is_removed_until_acked()
+    public void An_entity_that_arrives_and_leaves_inside_the_ack_window_is_removed_once()
     {
         (AoiDeltaReplicator repl, World world, _, World client, ClientReplicationView view) = NewBrushRig();
 
@@ -445,25 +461,23 @@ public class AoiDeltaReplicatorTests
         repl.BeginTick();
         byte[] dT1 = repl.WriteFor(0, world, Aoi(1));            // T+1: X leaves, T unacked
         Assert.Equal(new List<long> { 2 }, Entries(dT1).removed);
-        // T+2, still unacked: the removal repeats, like the rest of the diff, until a baseline without X is acked.
-        int seqT2 = repl.BeginTick();
+        // T+2, still unacked: the delivered predecessor (T+1) already lacks X, so nothing repeats.
+        repl.BeginTick();
         byte[] dT2 = repl.WriteFor(0, world, Aoi(1));
-        Assert.Equal(new List<long> { 2 }, Entries(dT2).removed);
+        Assert.Empty(Entries(dT2).removed);
+        Assert.Empty(Entries(dT2).changed);
 
         view.ApplyDelta(client, dT);
         Assert.True(view.TryGetEntity(2, out _));
         view.ApplyDelta(client, dT1);
-        view.ApplyDelta(client, dT2);
-        repl.Acknowledge(0, seqT2);
         Assert.False(view.TryGetEntity(2, out _));
-        Assert.Equal(0, repl.RemovalRecordCount(0));
-        Assert.Equal(0, repl.WholeRecordCount(0));
-        repl.BeginTick();
-        Assert.Empty(Entries(repl.WriteFor(0, world, Aoi(1))).removed);   // acked: no more removals
+        view.ApplyDelta(client, dT2);
+        Assert.False(view.TryGetEntity(2, out _));
+        Assert.True(view.TryGetEntity(1, out _));
     }
 
     [Fact]
-    public void An_entity_that_arrives_leaves_and_returns_inside_the_ack_window_is_held_whole()
+    public void An_entity_that_arrives_leaves_and_returns_inside_the_ack_window_returns_whole()
     {
         (AoiDeltaReplicator repl, World world, Entity x, World client, ClientReplicationView view) = NewBrushRig();
 
@@ -472,7 +486,7 @@ public class AoiDeltaReplicatorTests
         repl.BeginTick();
         byte[] dT1 = repl.WriteFor(0, world, Aoi(1));            // T+1: leaves
         world.Set(x, new Pos { X = 7, Y = 7 });
-        int seqT2 = repl.BeginTick();
+        repl.BeginTick();
         byte[] dT2 = repl.WriteFor(0, world, Aoi(1, 2));         // T+2: back, still unacked
         Assert.Equal(new List<(long, bool)> { (2, true) }, Entries(dT2).changed);
 
@@ -480,7 +494,6 @@ public class AoiDeltaReplicatorTests
         view.ApplyDelta(client, dT1);
         Assert.False(view.TryGetEntity(2, out _));
         view.ApplyDelta(client, dT2);
-        repl.Acknowledge(0, seqT2);
 
         Assert.True(view.TryGetEntity(2, out Entity cx));
         Assert.Equal(7f, client.Get<Pos>(cx).X);
@@ -492,30 +505,25 @@ public class AoiDeltaReplicatorTests
     }
 
     [Fact]
-    public void A_leave_after_the_arrival_is_acked_diffs_normally()
+    public void A_leave_after_the_arrival_is_acked_is_removed_once()
     {
         (AoiDeltaReplicator repl, World world, _, World client, ClientReplicationView view) = NewBrushRig();
 
         int seqT = repl.BeginTick();
         view.ApplyDelta(client, repl.WriteFor(0, world, Aoi(1, 2)));
-        Assert.Equal(1, repl.WholeRecordCount(0));
         repl.Acknowledge(0, seqT);
-        Assert.Equal(0, repl.WholeRecordCount(0));   // pruned: the baseline holds X now
 
         repl.BeginTick();
         byte[] leave = repl.WriteFor(0, world, Aoi(1));
         Assert.Equal(new List<long> { 2 }, Entries(leave).removed);
-        // Still unacked: the baseline holds X, so the removal repeats exactly as it did before the presence records.
-        int seqAfter = repl.BeginTick();
+        // Unacked: the delivered predecessor already lacks X, so the removal is not repeated.
+        repl.BeginTick();
         byte[] after = repl.WriteFor(0, world, Aoi(1));
-        Assert.Equal(new List<long> { 2 }, Entries(after).removed);
+        Assert.Empty(Entries(after).removed);
 
         view.ApplyDelta(client, leave);
         view.ApplyDelta(client, after);
-        repl.Acknowledge(0, seqAfter);
         Assert.False(view.TryGetEntity(2, out _));
-        Assert.Equal(0, repl.RemovalRecordCount(0));
-        repl.BeginTick();
-        Assert.Empty(Entries(repl.WriteFor(0, world, Aoi(1))).removed);
+        Assert.True(view.TryGetEntity(1, out _));
     }
 }

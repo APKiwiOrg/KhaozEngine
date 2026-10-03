@@ -45,9 +45,21 @@ public static class ContentBundleJson
     /// </summary>
     /// <param name="bundle">The bundle to write.</param>
     /// <exception cref="ArgumentNullException"><paramref name="bundle"/> is null.</exception>
+    /// <exception cref="ContentAuthoringException">The bundle declares a format this build does not write, or is format 2 and lost its text section, which no document may claim to be text free.</exception>
     public static string Write(ContentBundle bundle)
     {
         ArgumentNullException.ThrowIfNull(bundle);
+        if (bundle.FormatVersion is not ContentBundle.CurrentFormatVersion and not ContentBundle.TextFormatVersion)
+        {
+            // A later format is refused whole, text section or not, exactly as a read refuses it.
+            throw ContentBundleTextCompatibility.UnsupportedFormat(bundle.FormatVersion);
+        }
+
+        if (bundle.FormatVersion != ContentBundle.CurrentFormatVersion && bundle.TextState is null)
+        {
+            throw Refuse(FormattableString.Invariant(
+                $"The bundle is format {bundle.FormatVersion} and carries no text section, so writing it would claim a text section it lost."));
+        }
 
         using var buffer = new MemoryStream();
         using (var writer = new Utf8JsonWriter(buffer, WriterOptions))
@@ -60,6 +72,12 @@ public static class ContentBundleJson
             WriteFamilies(writer, bundle.Families);
             WriteRows(writer, bundle.Rows);
             WriteRules(writer, bundle.Rules);
+            if (bundle.TextState is ContentBundleTextState text)
+            {
+                // AFTER every row member, so a format 1 document is the same bytes it always was.
+                ContentBundleTextJson.Write(writer, text);
+            }
+
             writer.WriteEndObject();
         }
 
@@ -90,6 +108,11 @@ public static class ContentBundleJson
     /// </summary>
     /// <param name="json">The document.</param>
     /// <exception cref="ArgumentNullException"><paramref name="json"/> is null.</exception>
+    /// <remarks>
+    /// Format 1 reads as before, with no text section, and a format 1 document carrying one is refused. Format
+    /// 2 reads its text section too, and refuses a missing section, two declarations or values whose
+    /// languages share a canonical identity, a malformed target and an invalid value.
+    /// </remarks>
     /// <exception cref="ContentAuthoringException">The document is not JSON, carries a format version this build does not know, is missing a member, or carries a member whose value is not the shape that member takes (a number that is not the integer it wants, hex that is not hex).</exception>
     public static ContentBundle Read(string json)
     {
@@ -100,20 +123,31 @@ public static class ContentBundleJson
         {
             JsonElement root = document.RootElement;
             int formatVersion = FormatVersion(root);
-            if (formatVersion != ContentBundle.CurrentFormatVersion)
+            if (formatVersion != ContentBundle.CurrentFormatVersion && formatVersion != ContentBundle.TextFormatVersion)
             {
-                throw Refuse(FormattableString.Invariant(
-                    $"The bundle declares format version {formatVersion} and this build reads {ContentBundle.CurrentFormatVersion}. A format version is a refusal of the whole document rather than a best-effort partial read."));
+                throw ContentBundleTextCompatibility.UnsupportedFormat(formatVersion);
+            }
+
+            string storeEpoch = Text(root, "storeEpoch");
+            int sourceVersion = Int(root, "sourceVersion");
+            IReadOnlyList<ContentBundleType> types = ReadTypes(root);
+            IReadOnlyList<ContentBundleRow> rows = ReadRows(root);
+            IReadOnlyList<ContentFamily> families = ReadFamilies(root);
+            IReadOnlyList<RemapRule> rules = ReadRules(root);
+            if (formatVersion == ContentBundle.CurrentFormatVersion)
+            {
+                // Format 1 is text free by contract, so a text section in one would be silently dropped.
+                if (root.TryGetProperty(ContentBundleTextJson.SectionName, out _))
+                {
+                    throw Refuse(FormattableString.Invariant(
+                        $"A format {ContentBundle.CurrentFormatVersion} bundle is text free by contract, and this one carries a '{ContentBundleTextJson.SectionName}' section. Declare format {ContentBundle.TextFormatVersion} for a text-bearing bundle."));
+                }
+
+                return new ContentBundle(formatVersion, storeEpoch, sourceVersion, types, rows, families, rules);
             }
 
             return new ContentBundle(
-                formatVersion,
-                Text(root, "storeEpoch"),
-                Int(root, "sourceVersion"),
-                ReadTypes(root),
-                ReadRows(root),
-                ReadFamilies(root),
-                ReadRules(root));
+                formatVersion, storeEpoch, sourceVersion, types, rows, families, rules, ContentBundleTextJson.Read(root));
         }
     }
 
@@ -449,7 +483,7 @@ public static class ContentBundleJson
         }
     }
 
-    static JsonElement.ArrayEnumerator Array(JsonElement parent, string name)
+    internal static JsonElement.ArrayEnumerator Array(JsonElement parent, string name)
     {
         if (!parent.TryGetProperty(name, out JsonElement element) || element.ValueKind != JsonValueKind.Array)
         {
@@ -482,7 +516,7 @@ public static class ContentBundleJson
                 $"A bundle member '{name}' is a 32-bit integer, and this one is not."));
     }
 
-    static ContentTypeId TypeId(JsonElement parent, string name)
+    internal static ContentTypeId TypeId(JsonElement parent, string name)
     {
         int value = Int(parent, name);
         return value is >= 1 and <= ushort.MaxValue
@@ -568,6 +602,6 @@ public static class ContentBundleJson
         }
     }
 
-    static ContentAuthoringException Refuse(string message)
+    internal static ContentAuthoringException Refuse(string message)
         => new(message, default, 0, ContentAuthoringException.BundleFormatReason);
 }

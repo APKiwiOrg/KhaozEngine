@@ -94,8 +94,8 @@ public sealed class EntityVisibilityTests
         RawDeltaClient viewer = rig.DeltaViewer;
         Assert.True(rig.Sees(viewer, id));
 
-        // Hidden for one tick and shown on the next, with the viewer's ack for the hiding tick still unread, so the
-        // server's acked baseline still holds the entity the viewer already despawned. Nothing on it changes.
+        // Hidden for one tick and shown on the next, with the viewer's ack for the hiding tick still unread. The
+        // server diffs from the projection it last sent, which lacks the entity, so the show is a full spawn.
         rig.AllowOthers = false;
         rig.TickWithoutReadingAcks();
         Assert.False(rig.Sees(viewer, id));
@@ -109,8 +109,8 @@ public sealed class EntityVisibilityTests
         Assert.True(viewer.World.TryGet(seen, out PlayerIdentity identity));
         Assert.Equal("kept", identity.DisplayName);
 
-        // The mirror: hidden long enough for the acked baseline to lack it, then shown for one tick and hidden on the
-        // next with the show ack unread. The viewer must not keep it.
+        // The mirror: hidden long enough for every ack to land, then shown for one tick and hidden on the next with the
+        // show ack unread. The last sent projection holds it, so the hide is a removal and the viewer must not keep it.
         rig.AllowOthers = false;
         rig.Pump(6);
         Assert.False(rig.Sees(viewer, id));

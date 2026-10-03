@@ -61,7 +61,26 @@ public sealed partial class SqliteContentAuthoringStore
 
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteTransaction transaction = _connection.BeginTransaction();
+        ContentDraft draft = await ApplyEditsInAsync(edits, actor, operatorId, note, transaction, cancellationToken)
+            .ConfigureAwait(false);
+        transaction.Commit();
+        return draft;
+    }
 
+    /// <summary>
+    /// The body of <see cref="ApplyEditsAsync"/> inside the caller's transaction, which is what lets a rollback
+    /// re-check its versions and apply its edits in one step. The held text and introductions are untouched:
+    /// a row-only batch never rebuilds a draft from its row intents alone. The edits are already schema
+    /// checked.
+    /// </summary>
+    async Task<ContentDraft> ApplyEditsInAsync(
+        IReadOnlyList<ContentEdit> edits,
+        string actor,
+        string operatorId,
+        string note,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
+    {
         // Spec 6.2's refusal, inside this call's OWN transaction, so the marker cannot be written between
         // reading it and writing the edits it guards.
         await RequireNotFrozenAsync(nameof(ApplyEditsAsync), transaction, cancellationToken)
@@ -76,16 +95,17 @@ public sealed partial class SqliteContentAuthoringStore
                 .ConfigureAwait(false);
         }
 
-        ContentDraft draft = await ReadDraftAsync(transaction, cancellationToken).ConfigureAwait(false)
+        return await RequireDraftAsync(transaction, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The open draft inside the transaction that just opened or wrote it.</summary>
+    async Task<ContentDraft> RequireDraftAsync(SqliteTransaction transaction, CancellationToken cancellationToken)
+        => await ReadDraftAsync(transaction, cancellationToken).ConfigureAwait(false)
             ?? throw new ContentAuthoringException(
                 "The draft row went missing inside the transaction that opened it.",
                 default,
                 0,
                 ContentAuthoringException.NoOpenDraftReason);
-
-        transaction.Commit();
-        return draft;
-    }
 
     /// <inheritdoc />
     public async Task DiscardDraftAsync(
@@ -100,6 +120,11 @@ public sealed partial class SqliteContentAuthoringStore
         using SqliteTransaction transaction = _connection.BeginTransaction();
         await RequireNotFrozenAsync(nameof(DiscardDraftAsync), transaction, cancellationToken)
             .ConfigureAwait(false);
+
+        // The row-only discard cannot prove what it would delete of the draft's text, so held text or a held
+        // introduction refuses it before anything is deleted or audited.
+        ContentTextCompatibility.RequireNoHeldText(
+            await ReadDraftAsync(transaction, cancellationToken).ConfigureAwait(false), nameof(DiscardDraftAsync));
         int discarded = await CountEditsAsync(transaction, cancellationToken).ConfigureAwait(false);
         await DeleteDraftAsync(transaction, cancellationToken).ConfigureAwait(false);
         await AppendAuditAsync(
@@ -119,7 +144,11 @@ public sealed partial class SqliteContentAuthoringStore
         transaction.Commit();
     }
 
-    /// <summary>The open draft with its edits expanded, or null. The caller already holds the lease.</summary>
+    /// <summary>
+    /// The open draft with its row edits, text intents and introductions expanded, or null. It is always a
+    /// COMPLETE draft, whose text state is the backend's own, empty when nothing is held. The caller already
+    /// holds the lease.
+    /// </summary>
     async Task<ContentDraft?> ReadDraftAsync(SqliteTransaction? transaction, CancellationToken cancellationToken)
     {
         int baseVersion;
@@ -149,7 +178,8 @@ public sealed partial class SqliteContentAuthoringStore
 
         IReadOnlyList<ContentEdit> edits = await ReadEditsAsync(transaction, cancellationToken)
             .ConfigureAwait(false);
-        return new ContentDraft(baseVersion, openedBy, openedAt, note, new ContentChangeSet(edits), frozen);
+        ContentDraftTextState text = await ReadDraftTextAsync(transaction, cancellationToken).ConfigureAwait(false);
+        return new ContentDraft(text, baseVersion, openedBy, openedAt, note, new ContentChangeSet(edits), frozen);
     }
 
     /// <summary>Every pending edit in EDIT ORDINAL order, which is the order ids are allocated in.</summary>
@@ -417,13 +447,14 @@ public sealed partial class SqliteContentAuthoringStore
             .ConfigureAwait(false);
 
     /// <summary>
-    /// The draft and its edits, gone. The edit fields go with the edits through the cascade the schema
-    /// declares, which is why the bootstrap turns foreign keys on.
+    /// The draft, its edits, its text intents and its introductions, gone. The edit fields go with the edits
+    /// through the cascade the schema declares, which is why the bootstrap turns foreign keys on.
     /// </summary>
     async Task DeleteDraftAsync(SqliteTransaction transaction, CancellationToken cancellationToken)
     {
-        using (SqliteCommand edits = Command("DELETE FROM catalog_draft_edit;", transaction))
+        foreach (string table in (string[])["catalog_draft_edit", "catalog_draft_text_edit", "catalog_draft_text_language"])
         {
+            using SqliteCommand edits = Command("DELETE FROM " + table + ";", transaction);
             await edits.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 

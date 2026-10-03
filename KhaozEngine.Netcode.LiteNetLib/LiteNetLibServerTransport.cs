@@ -101,5 +101,12 @@ public sealed class LiteNetLibServerTransport : INetTransport
         else peer.Disconnect(reason.ToArray());
     }
 
+    /// <summary>The connected peer's own unfragmented packet size for the channel's delivery method, as LiteNetLib's
+    /// <c>GetMaxSinglePacketSize</c> reports it. Zero for a connection this transport does not know.</summary>
+    public int MaxUnfragmentedPayloadBytes(NetConnectionId connection, NetChannelReliability reliability) =>
+        peersById.TryGetValue(connection.Value - 1, out NetPeer? peer)
+            ? peer.GetMaxSinglePacketSize(ChannelSplitter.ToDeliveryMethod(reliability))
+            : 0;
+
     public void Dispose() => manager.Stop();
 }

@@ -9,15 +9,27 @@ namespace KhaozEngine.Movement;
 public sealed class GroundNavigation
 {
     private readonly ProfileTuning _tuning;
+    private readonly SwimFractions _swim;
     private readonly NavAreaFootprint _footprint;
 
     internal GroundNavigation(NavTraversalGraph graph, in MoveTuning tuning, NavAreaFootprint footprint)
+        : this(graph, tuning, footprint, aquatic: false)
+    {
+    }
+
+    internal GroundNavigation(NavTraversalGraph graph, in MoveTuning tuning, NavAreaFootprint footprint, bool aquatic)
     {
         Graph = graph;
         _tuning = new ProfileTuning(tuning.CapsuleRadius, tuning.CapsuleHalfHeight, tuning.MaxSlopeRadians, tuning.StepHeight);
+        _swim = new SwimFractions(tuning.SwimEnterDepthFraction, tuning.SwimExitDepthFraction,
+            tuning.SwimSurfaceSubmersionFraction);
         _footprint = footprint;
+        Aquatic = aquatic;
         Planner = new ProfilePlanner(this, new GridPathPlanner(graph.Space, graph));
     }
+
+    /// <summary>True when the profile was baked aquatic, with float nodes where its body rests while swimming.</summary>
+    public bool Aquatic { get; }
 
     /// <summary>The graph-owned source topology. Candidate Stair links are filtered by the planner's graph.</summary>
     public NavSpace Space => Graph.Space;
@@ -41,6 +53,10 @@ public sealed class GroundNavigation
         if (tuning.CapsuleRadius != _tuning.Radius || tuning.CapsuleHalfHeight != _tuning.HalfHeight ||
             tuning.MaxSlopeRadians != _tuning.Slope || tuning.StepHeight != _tuning.Step)
             throw new ArgumentException("Movement geometry must equal the baked profile geometry.", nameof(tuning));
+        // The swim fractions place an aquatic profile's float nodes.
+        if (Aquatic && (tuning.SwimEnterDepthFraction != _swim.Enter || tuning.SwimExitDepthFraction != _swim.Exit ||
+            tuning.SwimSurfaceSubmersionFraction != _swim.Submersion))
+            throw new ArgumentException("Swim fractions must equal the baked aquatic profile's.", nameof(tuning));
     }
 
     /// <summary>Checks captured footprint areas and every directed crossed graph edge.
@@ -100,6 +116,7 @@ public sealed class GroundNavigation
             (origin + (cell + (direction > 0 ? 1d : 0d)) * size - start) / delta;
 
     private readonly record struct ProfileTuning(float Radius, float HalfHeight, float Slope, float Step);
+    private readonly record struct SwimFractions(float Enter, float Exit, float Submersion);
     private readonly record struct Node(int Layer, int X, int Z);
 
     private sealed class ProfilePlanner(GroundNavigation navigation, GridPathPlanner planner) : IRegionPathPlanner

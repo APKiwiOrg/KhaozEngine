@@ -13,11 +13,13 @@ internal static class BakeEquivalence
 {
     private const int MaxPairs = 400;
 
-    public static void AssertEquivalent(GroundNavigation fresh, GroundNavigation loaded)
+    // ignoreSampleWater compares capture options without SampleWater, for two captures of one world that differ only
+    // in water sampling.
+    public static void AssertEquivalent(GroundNavigation fresh, GroundNavigation loaded, bool ignoreSampleWater = false)
     {
         AssertSpace(fresh.Space, loaded.Space);
         AssertGraph(fresh, loaded);
-        AssertColumns(fresh, loaded);
+        AssertColumns(fresh, loaded, ignoreSampleWater);
         AssertBehavior(fresh, loaded);
     }
 
@@ -66,10 +68,13 @@ internal static class BakeEquivalence
         Assert.Equal(a.Links, b.Links);
     }
 
-    private static void AssertColumns(GroundNavigation fresh, GroundNavigation loaded)
+    private static void AssertColumns(GroundNavigation fresh, GroundNavigation loaded, bool ignoreSampleWater)
     {
         PhysicsNavColumns a = fresh.Footprint.Columns, b = loaded.Footprint.Columns;
-        Assert.Equal(fresh.Footprint.Options, loaded.Footprint.Options);
+        if (ignoreSampleWater)
+            Assert.Equal(fresh.Footprint.Options with { SampleWater = false }, loaded.Footprint.Options with { SampleWater = false });
+        else
+            Assert.Equal(fresh.Footprint.Options, loaded.Footprint.Options);
         Assert.Equal(fresh.Footprint.Areas, loaded.Footprint.Areas);
         Assert.Equal(a.Width, b.Width);
         Assert.Equal(a.Height, b.Height);

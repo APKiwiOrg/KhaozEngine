@@ -9,9 +9,9 @@ namespace KhaozEngine.Movement;
 
 /// <summary>One capture's columns and one or more named <see cref="GroundNavigation"/> profiles, written as a
 /// versioned <c>KENB</c> file and loaded without physics, a ground provider or any proof. A loaded profile is
-/// equivalent to a fresh <see cref="PhysicsNavBake.BuildProfile"/> from the same inputs. Loading refuses a bake whose
-/// engine version, capture options, source digests or profiles differ from the expectation, and never substitutes a
-/// fresh build.</summary>
+/// equivalent to a fresh <see cref="PhysicsNavBake.BuildProfile(in KhaozEngine.Locomotion.MoveTuning, NavAreaFilter)"/>
+/// from the same inputs. Loading refuses a bake whose engine version, capture options, source digests or profiles
+/// differ from the expectation, and never substitutes a fresh build.</summary>
 public sealed partial class GroundNavigationBake
 {
     /// <summary>Per-cell surface counts are stored as bytes, so a bake holds at most 255 surfaces per column.</summary>

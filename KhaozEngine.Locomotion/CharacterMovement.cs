@@ -162,7 +162,7 @@ public static partial class CharacterMovement
         bool commitmentControlledTick = PrepareCommitmentTick(ref s, ref t, ref moveDir, ref speedFraction,
             ref run, ref jump, ref faceYaw, dt, out bool committedFlight, out bool launchedThisTick);
 
-        CapsuleShape capsule = CapsuleFor(t);
+        CapsuleShape capsule = CachedCapsuleFor(t);
         float halfH = t.CapsuleHalfHeight;
 
         // Signed step-climb signal (E1/E4): the vertical rate the presentation smoother reads instead of estimating
@@ -584,5 +584,23 @@ public static partial class CharacterMovement
 
     /// <summary>The upright capsule for a tuning: radius + cylindrical length so total height = 2*halfHeight.</summary>
     public static CapsuleShape CapsuleFor(in MoveTuning tuning)
-        => new(tuning.CapsuleRadius, MathF.Max(0.01f, 2f * tuning.CapsuleHalfHeight - 2f * tuning.CapsuleRadius));
+        => new(tuning.CapsuleRadius, CapsuleLength(tuning));
+
+    private static float CapsuleLength(in MoveTuning tuning)
+        => MathF.Max(0.01f, 2f * tuning.CapsuleHalfHeight - 2f * tuning.CapsuleRadius);
+
+    // The last step capsule on this thread. CapsuleShape is immutable and no query keeps or compares the instance,
+    // so reusing one with the same radius and length bits is indistinguishable from a fresh one. A steady mover or
+    // ground proof reuses one step capsule instead of building one per step.
+    [ThreadStatic] private static CapsuleShape? lastStepCapsule;
+
+    private static CapsuleShape CachedCapsuleFor(in MoveTuning tuning)
+    {
+        float radius = tuning.CapsuleRadius, length = CapsuleLength(tuning);
+        CapsuleShape? last = lastStepCapsule;
+        if (last is not null && BitConverter.SingleToInt32Bits(last.Radius) == BitConverter.SingleToInt32Bits(radius) &&
+            BitConverter.SingleToInt32Bits(last.Length) == BitConverter.SingleToInt32Bits(length))
+            return last;
+        return lastStepCapsule = new CapsuleShape(radius, length);
+    }
 }

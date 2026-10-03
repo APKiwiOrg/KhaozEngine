@@ -152,7 +152,7 @@ public static partial class CharacterMovement
             // at t>0 with a real normal (slides / blocks). Terrain is analytic (not in the world), so flat ground
             // never triggers this; only props/walls do. Iterated to clear an inner corner (two simultaneous
             // contacts). One-sided meshes only contact from the front, so the MTV always pushes OUT - never through.
-            CapsuleShape probe = new(capsule.Radius + SkinWidth, capsule.Length);
+            CapsuleShape probe = SlideProbeCapsule(capsule.Radius + SkinWidth, capsule.Length);
             for (int d = 0; d < DepenIterations; d++)
             {
                 if (!world.ComputePenetration(probe, Pose.At(pos), out Vector3 push) || push.LengthSquared() <= 1e-12f) break;
@@ -764,5 +764,18 @@ public static partial class CharacterMovement
         }
 
         return groundY;
+    }
+
+    // The last skin-inflated slide probe on this thread, kept apart from the step capsule cache so the two never evict
+    // each other. CapsuleShape is immutable, so a reuse with the same radius and length bits equals a fresh capsule.
+    [ThreadStatic] private static CapsuleShape? lastSlideProbe;
+
+    private static CapsuleShape SlideProbeCapsule(float radius, float length)
+    {
+        CapsuleShape? last = lastSlideProbe;
+        if (last is not null && BitConverter.SingleToInt32Bits(last.Radius) == BitConverter.SingleToInt32Bits(radius) &&
+            BitConverter.SingleToInt32Bits(last.Length) == BitConverter.SingleToInt32Bits(length))
+            return last;
+        return lastSlideProbe = new CapsuleShape(radius, length);
     }
 }

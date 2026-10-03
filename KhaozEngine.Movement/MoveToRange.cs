@@ -14,20 +14,37 @@ public sealed partial class MoveToRange
     private readonly PathFollower _follower;
     private readonly Func<Vector3, Vector3, bool> _allowsSegment;
     private readonly StepAdmission _admits;
+    private readonly RouteApproachOptions _options;
 
     public MoveToRange(GroundNavigation navigation, PathFollowConfig? follow = null)
+        : this(navigation, follow, RouteApproachOptions.Default)
+    {
+    }
+
+    /// <summary>Route following with opt-in <paramref name="options"/>.</summary>
+    public MoveToRange(GroundNavigation navigation, PathFollowConfig? follow, RouteApproachOptions options)
         : this((navigation ?? throw new ArgumentNullException(nameof(navigation))).Planner,
-            navigation.Space, navigation.AllowsSegment, follow)
+            navigation.Space, navigation.AllowsSegment, follow, options)
         => _navigation = navigation;
 
     /// <summary>The caller supplies equivalent guarded region planning and segment admission.</summary>
     public MoveToRange(IRegionPathPlanner planner, NavSpace space,
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow = null)
+        : this(planner, space, allowsSegment, follow, RouteApproachOptions.Default)
+    {
+    }
+
+    /// <summary>The caller supplies equivalent guarded region planning and segment admission, with opt-in
+    /// <paramref name="options"/>.</summary>
+    public MoveToRange(IRegionPathPlanner planner, NavSpace space,
+        Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow, RouteApproachOptions options)
     {
         ArgumentNullException.ThrowIfNull(planner);
         ArgumentNullException.ThrowIfNull(space);
         _allowsSegment = allowsSegment ?? throw new ArgumentNullException(nameof(allowsSegment));
-        _follower = new PathFollower(planner, StrictConfig(follow ?? PathFollowConfig.Default), space);
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _follower = new PathFollower(planner,
+            StrictConfig(follow ?? PathFollowConfig.Default, options.CarryThroughStraightRuns), space);
         _contains = Contains;
         _admits = AllowsStep;
     }
@@ -63,9 +80,12 @@ public sealed partial class MoveToRange
             TryApproach(body, tuning, target, range, run, dt, context, bound, out Vector2 approach))
             return new RangeSteering(approach, RangeMoveStatus.Following);
 
-        Vector2 offset = route.ActiveWaypoint - new Vector2(body.Position.X, body.Position.Z);
-        Vector2 command = BoundedDirection(offset, bound);
-        if (command == Vector2.Zero) return Hold(RangeMoveStatus.Following);
+        if (!TryCarry(body, tuning, run, dt, context, route.ActiveWaypoint, bound, out Vector2 command))
+        {
+            Vector2 offset = route.ActiveWaypoint - new Vector2(body.Position.X, body.Position.Z);
+            command = BoundedDirection(offset, bound);
+            if (command == Vector2.Zero) return Hold(RangeMoveStatus.Following);
+        }
         MoveState predicted = context.Step(body, command, run, dt, tuning);
         if (!AllowsStep(body, predicted, tuning)) return Hold(RangeMoveStatus.Following);
         command = StopAtRange(body, tuning, target, range, run, dt, context, command, predicted, _admits);
@@ -81,7 +101,7 @@ public sealed partial class MoveToRange
 
     private static RangeSteering Hold(RangeMoveStatus status) => new(Vector2.Zero, status);
 
-    private static PathFollowConfig StrictConfig(PathFollowConfig follow)
+    private static PathFollowConfig StrictConfig(PathFollowConfig follow, bool carry)
     {
         static void Nonnegative(float value)
         {
@@ -98,6 +118,7 @@ public sealed partial class MoveToRange
         {
             // Physical cell edges must survive the general follower's broad point tolerance.
             AcceptRadius = MathF.Min(follow.AcceptRadius, 0.00001f),
+            ConsumePassedCollinearWaypoints = carry || follow.ConsumePassedCollinearWaypoints,
             VerticalAcceptTolerance = follow.VerticalAcceptTolerance,
             GoalRetargetTolerance = follow.GoalRetargetTolerance,
             GoalRetargetVerticalTolerance = follow.GoalRetargetVerticalTolerance,

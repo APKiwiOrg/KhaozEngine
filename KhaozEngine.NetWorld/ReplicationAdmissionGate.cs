@@ -4,9 +4,10 @@ using KhaozEngine.Netcode;
 namespace KhaozEngine.NetWorld;
 
 /// <summary>
-/// The outermost connect gate of a server that runs format 2 streams. It wraps the result of
-/// <see cref="WireGenerationAuthenticator.Install"/>. While open it forwards every call unchanged, verified claims
-/// included. While closed, during a writer restart or after epoch exhaustion, it rejects every join with
+/// The outermost connect gate of every <see cref="WorldServer"/> and <see cref="ShardedWorldServer"/>, with or without
+/// format 2. It wraps the result of <see cref="WireGenerationAuthenticator.Install"/>. While open it forwards every
+/// call unchanged, verified claims included. While closed, during a legacy writer restart or after epoch exhaustion,
+/// it rejects every join with
 /// <see cref="ReplicationFailure.RestartToken"/> without calling the inner authenticator, so a client takes its
 /// reconnect backoff path.
 /// </summary>

@@ -28,6 +28,13 @@ public sealed partial class WorldServer
     /// <summary>Test seam: the last format 2 epoch this server issued.</summary>
     internal ulong ReplicationEpochHighWaterForTest => replication.EpochHighWater;
 
+    /// <summary>Test seam: records <paramref name="lastIssued"/> as the last format 2 epoch this server
+    /// issued.</summary>
+    internal void SeedReplicationEpochForTest(ulong lastIssued) => replication.SeedEpochsForTest(lastIssued);
+
+    /// <summary>Test seam: sessions ended for a writer restart whose leave has not run yet.</summary>
+    internal int ReplicationRestartPendingForTest => replication.PendingRestartCount;
+
     /// <summary>Test seam: invoked once per served slot after the visibility filter and before either writer, with
     /// the slot, the served world, the filtered interest and the owner net id. Copy the set, never keep it.</summary>
     internal Action<int, World, IReadOnlySet<long>, long>? ServeObservedForTest

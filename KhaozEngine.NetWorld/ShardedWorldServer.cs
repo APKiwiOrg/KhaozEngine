@@ -127,11 +127,12 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         host.CellRemoved += cell => cellRuntime.Remove(cell.Coord);
         // Always enforce the engine wire generation at connect (see WorldServer): a wire-skewed / version-less client
         // is rejected cleanly rather than admitted and left to misparse the wire.
-        net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator),
-            maxQueuedEvents: config.MaxQueuedEvents,
+        var admission = new ReplicationAdmissionGate(WireGenerationAuthenticator.Install(authenticator));
+        net = new NetServer(transport, config.MaxPlayers, admission, maxQueuedEvents: config.MaxQueuedEvents,
             duplicateSessions: config.DuplicateSessions, maxPendingConnections: config.MaxPendingConnections);
-        replication = new RebuildServerStreams(net, deltaReplicator, this.config.ReplicationStream, replicationLimits,
-            this.config.TickSeconds, commands, slot => Raise(slot, SuspiciousReason.MalformedPacket), Disconnect);
+        replication = new RebuildServerStreams(net, admission, deltaReplicator, this.config.ReplicationStream,
+            replicationLimits, this.config.TickSeconds, commands, slot => Raise(slot, SuspiciousReason.MalformedPacket),
+            Disconnect);
         this.banStore = banStore;
     }
 
@@ -374,6 +375,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     /// <summary>Ingests session events (join/leave) and client input. Call once before <see cref="Tick"/>.</summary>
     public void Poll()
     {
+        replication.CheckRestart(deltaCapableSlots);   // an exhausted writer closes admission before any join
         net.Poll();
         while (net.TryDequeueEvent(out ServerSessionEvent ev))
         {
@@ -562,7 +564,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
 
         // 5. Serve each client its home-cell area-of-interest, framed for the WorldClient. Delta-capable clients get a
         //    per-client AoI delta (NetId-keyed, so a boundary crossing is a component delta); others a full snapshot.
-        deltaReplicator?.BeginTick();
+        replication.OpenCaptureTick(deltaCapableSlots);   // or waits out a writer restart, opening no capture
         replication.Advance(dt);   // elapsed time, independent of whether a movement sub-tick ran
         long serveEpoch = ++interestServeEpoch;   // fresh each tick: each served home cell rebuilds its grid once
         foreach (int slot in slots)

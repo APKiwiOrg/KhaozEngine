@@ -46,7 +46,8 @@ public sealed record CatalogTextValuePayload(
 /// the empty string, which is a present value.
 /// </summary>
 /// <param name="Type">The content type's key.</param>
-/// <param name="Id">The definition id, 0 for a row the draft adds, because publish allocates.</param>
+/// <param name="Id">The definition id. PROVISIONAL on a row the draft adds or forks into, the id the candidate
+/// carries and the row diff shows, because publish allocates.</param>
 /// <param name="Key">The row's content key.</param>
 /// <param name="Field">The localized text marker field.</param>
 /// <param name="Language">The canonical language identity.</param>

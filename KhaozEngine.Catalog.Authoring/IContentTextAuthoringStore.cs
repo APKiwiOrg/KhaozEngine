@@ -130,7 +130,7 @@ public interface IContentTextAuthoringStore : IContentAuthoringStore
     /// <param name="operatorId">The identity the console forwarded.</param>
     /// <param name="note">The operator's note.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
-    /// <exception cref="ContentAuthoringException">The import is refused, including with <see cref="ContentAuthoringException.TextOperationUnavailableReason"/> by a store that does not complete it yet.</exception>
+    /// <exception cref="ContentAuthoringException">The import is refused. A store implementing this companion implements the import whole, so <see cref="ContentAuthoringException.TextOperationUnavailableReason"/> is not among its refusals. That token is the capability boundary a caller reports for a store that implements only <see cref="IContentAuthoringStore"/>, which cannot reach this member.</exception>
     Task<ContentPublishResult> ImportTextBundleAsync(
         ContentBundle bundle,
         string actor,
@@ -154,7 +154,7 @@ public interface IContentTextAuthoringStore : IContentAuthoringStore
     /// <param name="operatorId">The identity the console forwarded.</param>
     /// <param name="note">The operator's note.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
-    /// <exception cref="ContentAuthoringException">The rollback is refused, including with <see cref="ContentAuthoringException.TextOperationUnavailableReason"/> by a store that does not complete it yet.</exception>
+    /// <exception cref="ContentAuthoringException">The rollback is refused. A store implementing this companion implements the rollback whole, so <see cref="ContentAuthoringException.TextOperationUnavailableReason"/> is not among its refusals. That token is the capability boundary a caller reports for a store that implements only <see cref="IContentAuthoringStore"/>, which cannot reach this member.</exception>
     Task<ContentDraft> RollbackTextToAsync(
         int targetVersion,
         string actor,

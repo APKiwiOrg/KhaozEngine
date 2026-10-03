@@ -196,7 +196,12 @@ public sealed class ContentAuthoringException : Exception
     /// </summary>
     public const string TextStateMismatchReason = "text-state-mismatch";
 
-    /// <summary>A text operation this build does not yet complete, refused rather than run partially.</summary>
+    /// <summary>
+    /// Text input reached a store that implements only <see cref="IContentAuthoringStore"/> and no
+    /// <see cref="IContentTextAuthoringStore"/> companion. The caller refuses it before anything is applied or
+    /// staged rather than running the row half alone. A store with the companion implements every member of it
+    /// and never refuses with this token.
+    /// </summary>
     public const string TextOperationUnavailableReason = "text-operation-unavailable";
 
     /// <summary>

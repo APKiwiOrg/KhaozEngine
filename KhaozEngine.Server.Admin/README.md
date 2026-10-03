@@ -255,8 +255,8 @@ until all of them pass. Text findings use these codes:
 
 | Code | Meaning |
 |---|---|
-| `KEC0004` | The entry is not an object, a member has the wrong shape, the type or field is unknown, the op is not `set` or `remove`, or the value is missing on a set or present on a remove |
-| `KEC0006` | No row holds the key at the active version, retired rows included, and neither this request nor the open draft adds it |
+| `KEC0004` | The entry is not an object, a member has the wrong shape, a member naming the target carries an unpaired surrogate, the type or field is unknown, the op is not `set` or `remove`, or the value is missing on a set or present on a remove |
+| `KEC0006` | No row holds the key at the active version, retired rows included, and neither this request nor the open draft adds it or forks a copy under it |
 | `text-target-ineligible` | The type or the field is not CLIENT visible, or the field is not a localized text marker |
 | `text-language-invalid` | The language is not ASCII letters, digits and hyphens of 1 to 35 bytes with no empty segment and a leading letter |
 | `text-bounds` | The value exceeds 8,192 strict UTF-8 bytes or carries an unpaired surrogate, or the derived key exceeds 192 bytes |
@@ -285,7 +285,9 @@ The other actions read and move text completely:
   the discard read it is a 409 under `text-state-mismatch` that deletes nothing.
 - `catalog-rollback` builds its draft through `RollbackTextToAsync`, restoring rows and strings together.
 - `catalog-import` runs `ImportTextBundleAsync`, which reads format 1 as empty text, and `catalog-export`
-  reports the bundle's `formatVersion` with its language and value counts.
+  reports the bundle's `formatVersion` with its language and value counts. An import while the open draft
+  holds any row, text or language work is a 409 under `draft-open` whose `remedy` says to publish or discard
+  that draft first. Nothing is staged and the draft is unchanged.
 
 A store that implements only `IContentAuthoringStore` keeps every row-only behavior. Text input to it,
 `textEdits` or a format 2 bundle, is refused under `text-operation-unavailable` before anything is applied or

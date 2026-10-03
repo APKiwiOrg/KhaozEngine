@@ -33,6 +33,9 @@ internal static class CatalogTextEditParser
     /// <summary>Two entries naming one canonical target in one request.</summary>
     public const string DuplicateCode = "text-target-duplicate";
 
+    /// <summary>The member a set carries its complete value in.</summary>
+    const string ValueMember = "value";
+
     /// <summary>
     /// Reads every entry of <paramref name="array"/>, appending one finding per refused entry to
     /// <paramref name="findings"/>, and answers the intents that parsed, in request order.
@@ -93,14 +96,14 @@ internal static class CatalogTextEditParser
             return Refuse(findings, CatalogEditParser.UnknownFieldCode, string.Empty, 0, ordinal, "is not a JSON object.");
         }
 
-        if (!CatalogRequest.TryOptionalString(entry, "op", out string? op, out string? refusal)
-            || !CatalogRequest.TryOptionalString(entry, "typeKey", out string? typeKey, out refusal)
-            || !CatalogRequest.TryOptionalString(entry, "key", out string? key, out refusal)
-            || !CatalogRequest.TryOptionalString(entry, "field", out string? field, out refusal)
-            || !CatalogRequest.TryOptionalString(entry, "language", out string? language, out refusal)
-            || !CatalogRequest.TryOptionalString(entry, "value", out string? value, out refusal))
+        if (!TryString(entry, "op", out string? op, out string? refusal, out string code)
+            || !TryString(entry, "typeKey", out string? typeKey, out refusal, out code)
+            || !TryString(entry, "key", out string? key, out refusal, out code)
+            || !TryString(entry, "field", out string? field, out refusal, out code)
+            || !TryString(entry, "language", out string? language, out refusal, out code)
+            || !TryString(entry, ValueMember, out string? value, out refusal, out code))
         {
-            return Refuse(findings, CatalogEditParser.UnknownFieldCode, string.Empty, 0, ordinal, refusal!);
+            return Refuse(findings, code, string.Empty, 0, ordinal, refusal!);
         }
 
         if (typeKey is null || !CatalogRequest.TryType(registry, typeKey, out ContentTypeRegistration? type, out refusal))
@@ -226,11 +229,11 @@ internal static class CatalogTextEditParser
         foreach (JsonElement entry in array.EnumerateArray())
         {
             if (entry.ValueKind == JsonValueKind.Object
-                && CatalogRequest.TryOptionalString(entry, "op", out string? op, out _)
-                && CatalogRequest.TryOptionalString(entry, "typeKey", out string? typeKey, out _)
+                && TryString(entry, "op", out string? op, out _, out _)
+                && TryString(entry, "typeKey", out string? typeKey, out _, out _)
                 && typeKey is not null
                 && CatalogRequest.TryType(registry, typeKey, out ContentTypeRegistration? type, out _)
-                && CatalogRequest.TryOptionalString(entry, op == "fork" ? "forkKey" : "key", out string? key, out _)
+                && TryString(entry, op == "fork" ? "forkKey" : "key", out string? key, out _, out _)
                 && op is ("add" or "fork")
                 && !string.IsNullOrEmpty(key))
             {
@@ -270,6 +273,33 @@ internal static class CatalogTextEditParser
         }
 
         return declared;
+    }
+
+    /// <summary>
+    /// One optional string member, or a refusal and the code it is filed under. JSON escapes can spell an
+    /// unpaired surrogate, which no .NET string decodes from, so that member is refused here rather than
+    /// thrown past the action as a server fault: under <c>text-bounds</c> for the value, like any other value
+    /// outside the strict UTF-8 bounds, and under <c>KEC0004</c> for a member that names the target.
+    /// </summary>
+    static bool TryString(JsonElement entry, string name, out string? value, out string? refusal, out string code)
+    {
+        code = CatalogEditParser.UnknownFieldCode;
+        try
+        {
+            return CatalogRequest.TryOptionalString(entry, name, out value, out refusal);
+        }
+        catch (InvalidOperationException)
+        {
+            value = null;
+            refusal = FormattableString.Invariant(
+                $"carries an unpaired surrogate in '{name}', which is not a well-formed string.");
+            if (string.Equals(name, ValueMember, StringComparison.Ordinal))
+            {
+                code = ContentAuthoringException.TextBoundsReason;
+            }
+
+            return false;
+        }
     }
 
     static ContentTextEdit? Refuse(

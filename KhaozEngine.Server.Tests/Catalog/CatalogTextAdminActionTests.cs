@@ -247,6 +247,97 @@ public sealed class CatalogTextAdminActionTests : IDisposable
     }
 
     /// <summary>
+    /// A JSON escape spelling an unpaired surrogate is valid JSON that decodes to no string. It is a finding
+    /// filed with the rest, <c>text-bounds</c> in the value and <c>KEC0004</c> in a member naming the target,
+    /// and never a server fault. Nothing is applied.
+    /// </summary>
+    [Theory]
+    [InlineData("value", ContentAuthoringException.TextBoundsReason)]
+    [InlineData("op", "KEC0004")]
+    [InlineData("typeKey", "KEC0004")]
+    [InlineData("key", "KEC0004")]
+    [InlineData("field", "KEC0004")]
+    [InlineData("language", "KEC0004")]
+    public async Task Edit_WithAnUnpairedSurrogateInAMember_IsAFindingAndAppliesNothing(string member, string code)
+    {
+        await _harness.PublishThingsAsync("stone_sword");
+        var entry = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["op"] = "set",
+            ["typeKey"] = "thing",
+            ["key"] = "stone_sword",
+            ["field"] = "name",
+            ["language"] = "en",
+            ["value"] = "Stone Sword",
+        };
+        entry[member] = @"half \ud800 pair";
+        string members = string.Join(", ", entry.Select(static pair => $"\"{pair.Key}\": \"{pair.Value}\""));
+
+        JsonElement body = await _harness.RefusedAsync("catalog-edit", $$"""{ "textEdits": [ { {{members}} } ] }""");
+
+        Assert.Equal(CatalogEditParser.Reason, body.GetProperty("reason").GetString());
+        Assert.Equal(new[] { code }, CatalogActionHarness.Codes(body));
+        string messages = CatalogActionHarness.Messages(body);
+        Assert.Contains("unpaired surrogate", messages, StringComparison.Ordinal);
+        Assert.Contains("'" + member + "'", messages, StringComparison.Ordinal);
+        Assert.Null(await _harness.Store.GetOpenDraftAsync());
+    }
+
+    /// <summary>
+    /// The derived <c>type.key.field</c> key is bounded at 192 UTF-8 BYTES. A key deriving exactly 192 passes
+    /// the bound and is refused only for naming no row, while a key of fewer characters but more bytes is
+    /// <c>text-bounds</c>.
+    /// </summary>
+    [Fact]
+    public async Task Edit_WhoseDerivedKeyExceeds192Utf8Bytes_IsTextBounds()
+    {
+        string atBound = new('a', ContentTextKey.MaxKeyLength - "thing..name".Length);
+        string overInBytes = new('é', (atBound.Length + 2) / 2);
+
+        JsonElement body = await _harness.RefusedAsync("catalog-edit", $$"""
+        {
+          "textEdits": [
+            { "op": "set", "typeKey": "thing", "key": "{{atBound}}", "field": "name", "language": "en", "value": "x" },
+            { "op": "set", "typeKey": "thing", "key": "{{overInBytes}}", "field": "name", "language": "en", "value": "x" }
+          ]
+        }
+        """);
+
+        Assert.Equal(new[] { "KEC0006", ContentAuthoringException.TextBoundsReason }, CatalogActionHarness.Codes(body));
+        Assert.Contains("Text edit 1 derives a key of 193 UTF-8 bytes", CatalogActionHarness.Messages(body), StringComparison.Ordinal);
+        Assert.Null(await _harness.Store.GetOpenDraftAsync());
+    }
+
+    /// <summary>
+    /// Text may name the copy key of a fork the open draft already holds, before publish gives the copy a row,
+    /// just as it may name a pending add.
+    /// </summary>
+    [Fact]
+    public async Task Edit_TextNamingAForkKeyPendingInTheOpenDraft_IsAccepted()
+    {
+        await _harness.PublishThingsAsync("fire_mod");
+        int mod = await _harness.IdOfAsync("fire_mod");
+        await _harness.OkAsync("catalog-edit", $$"""
+        {
+          "edits": [
+            { "op": "fork", "typeKey": "thing", "id": {{mod}},
+              "forkKey": "fire_mod_legacy", "flagField": "legacy", "fields": { "value": 6000 } }
+          ]
+        }
+        """);
+
+        JsonElement body = await _harness.OkAsync("catalog-edit", """
+        { "textEdits": [ { "op": "set", "typeKey": "thing", "key": "fire_mod_legacy", "field": "name", "language": "en", "value": "Old Fire Mod" } ] }
+        """);
+
+        Assert.Equal(1, body.GetProperty("textApplied").GetInt32());
+        Assert.Equal(1, body.GetProperty("draft").GetProperty("editCount").GetInt32());
+        JsonElement text = Assert.Single((await _harness.OkAsync("catalog-draft", null)).GetProperty("textEdits").EnumerateArray());
+        Assert.Equal("fire_mod_legacy", text.GetProperty("key").GetString());
+        Assert.Equal("thing.fire_mod_legacy.name", text.GetProperty("derivedKey").GetString());
+    }
+
+    /// <summary>
     /// A request whose SECOND target fails, in the store or at the boundary, leaves the rows, the draft's
     /// row, text and introduction categories, and the audit exactly as they were.
     /// </summary>

@@ -328,16 +328,16 @@ public class AquaticProfileTests
         throw new InvalidOperationException("No layer holds the deck node.");
     }
 
-    private static float ChannelGround(float x, float z) => MathF.Abs(x) < 0.5f ? -2f : -0.5f;
+    internal static float ChannelGround(float x, float z) => MathF.Abs(x) < 0.5f ? -2f : -0.5f;
 
-    private static MovementMedium ChannelMedium(float x, float z, float feetY) => new(0f, feetY < 0f);
+    internal static MovementMedium ChannelMedium(float x, float z, float feetY) => new(0f, feetY < 0f);
 
     private static GroundMoveContext ChannelContext(IPhysicsWorld world) =>
         new(ChannelGround, physics: world, medium: ChannelMedium);
 
     /// <summary>Water at 0 over shelves at -0.5 and a 1 m wide channel along Z whose vertical walls drop to a bed at
     /// -2. Every column is swim-deep for the duck.</summary>
-    private static BepuPhysicsWorld ChannelWorld()
+    internal static BepuPhysicsWorld ChannelWorld()
     {
         var world = new BepuPhysicsWorld();
         world.AddStatic(new BoxShape(new Vector3(3.75f, 0.1f, 8f)), Pose.At(new Vector3(-4.25f, -0.6f, 0f)));

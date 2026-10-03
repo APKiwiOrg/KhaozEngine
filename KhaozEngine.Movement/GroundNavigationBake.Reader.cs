@@ -107,6 +107,13 @@ public sealed partial class GroundNavigationBake
                 throw new ArgumentException($"Profile '{profile.Name}' slope must equal the capture slope.", nameof(expected));
             if (!float.IsFinite(2f * profile.Tuning.CapsuleHalfHeight))
                 throw new ArgumentOutOfRangeException(nameof(expected), $"Profile '{profile.Name}' height must be finite.");
+            if (profile.Aquatic && !options.SampleWater)
+                throw new ArgumentException($"Aquatic profile '{profile.Name}' needs a capture that sampled water.", nameof(expected));
+            MoveTuning swim = profile.Tuning;
+            if (profile.Aquatic && !(swim.SwimExitDepthFraction <= swim.SwimSurfaceSubmersionFraction &&
+                swim.SwimSurfaceSubmersionFraction <= swim.SwimEnterDepthFraction))
+                throw new ArgumentException(
+                    $"Aquatic profile '{profile.Name}' needs swim fractions ordered exit, submersion, enter.", nameof(expected));
         }
         return new LoadPlan(options, width, height, cells, options.MaxLayerCells / cells, sorted);
     }
@@ -306,7 +313,10 @@ public sealed partial class GroundNavigationBake
 
         var graph = new NavTraversalGraph(new NavSpace(grids, candidates), tuning.CapsuleRadius,
             2f * tuning.CapsuleHalfHeight, traversal, links);
-        navigation = new GroundNavigation(graph, tuning, new NavAreaFootprint(columns, options, tuning, profile.Areas));
+        // An aquatic profile rebuilds its own derived view, as BuildProfile does. Ground profiles share the captured one.
+        PhysicsNavColumns footprintColumns = profile.Aquatic ? AquaticColumns.Derive(columns, tuning) : columns;
+        navigation = new GroundNavigation(graph, tuning, new NavAreaFootprint(footprintColumns, options, tuning, profile.Areas),
+            profile.Aquatic);
         return null;
     }
 

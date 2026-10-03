@@ -12,13 +12,14 @@ namespace KhaozEngine.Movement;
 /// insertion order, and the bytes hold no architecture-dependent data. Layout: engine version as a <c>uint16</c>
 /// byte count and UTF-8, the 13 positional <see cref="PhysicsNavBakeOptions"/> fields in declaration order as 32-bit
 /// words, <see cref="PhysicsNavBakeOptions.SampleWater"/> as one byte, 0 or 1, sources sorted by ordinal label, then
-/// profiles sorted by ordinal name, each with its area filter and the 27 retained <see cref="MoveTuning"/> fields.
-/// </summary>
-/// <remarks>Adding a field to <see cref="MoveTuning"/> or <see cref="PhysicsNavBakeOptions"/> changes this layout.
-/// Encode the field here and bump <see cref="FormatVersion"/>, so a bake from an older layout reports an
-/// unsupported format rather than corrupt bytes. Changing the label character set, <see cref="MaxNameLength"/> or
-/// <see cref="MaxProfiles"/> changes which stored identities decode as canonical, so it needs the same bump. The
-/// golden fingerprint test changes only with that bump.</remarks>
+/// profiles sorted by ordinal name, each with its area filter, its <see cref="NavBakeProfile.Aquatic"/> flag as one
+/// byte, 0 or 1, and the 27 retained <see cref="MoveTuning"/> fields.</summary>
+/// <remarks>Adding a field to <see cref="MoveTuning"/>, <see cref="PhysicsNavBakeOptions"/> or
+/// <see cref="NavBakeProfile"/> changes this layout, so encode the field here. Once a format version has shipped, the
+/// layout change also needs a <see cref="FormatVersion"/> bump, so a bake from an older layout reports an unsupported
+/// format rather than corrupt bytes. Unreleased KENB v1 changes in place. Changing the label character set,
+/// <see cref="MaxNameLength"/> or <see cref="MaxProfiles"/> changes which stored identities decode as canonical, so it
+/// follows the same rule. The golden fingerprint test changes with every layout change.</remarks>
 internal static partial class NavBakeIdentity
 {
     /// <summary>Bake container format version. Bump it whenever the identity or payload layout changes.</summary>
@@ -31,7 +32,7 @@ internal static partial class NavBakeIdentity
     private const int WordOptionCount = 13;
 
     private const int SourceMinBytes = 1 + 1 + DigestLength;
-    private const int ProfileMinBytes = 1 + 1 + 8 + TuningBytes;
+    private const int ProfileMinBytes = 1 + 1 + 8 + 1 + TuningBytes;
 
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
     private static string? s_engineVersion;
@@ -102,6 +103,7 @@ internal static partial class NavBakeIdentity
             writer.WriteShortString(Encoding.ASCII.GetBytes(profile.Name));
             writer.WriteUInt32(profile.Areas.Required);
             writer.WriteUInt32(profile.Areas.Excluded);
+            writer.WriteUInt8(profile.Aquatic ? (byte)1 : (byte)0);
             WriteTuning(writer, profile.Tuning);
         }
         return writer.ToArray();
@@ -178,9 +180,11 @@ internal static partial class NavBakeIdentity
                 return Fail("has profile names out of order or repeated", out problem);
             string text = Encoding.ASCII.GetString(name);
             if ((required & excluded) != 0u) return Fail($"has overlapping area bits in profile '{text}'", out problem);
+            if (!reader.TryReadUInt8(out byte aquatic)) return Fail("is truncated in the profiles", out problem);
+            if (aquatic > 1) return Fail($"has a non-canonical Aquatic flag {aquatic} in profile '{text}'", out problem);
             if (!ReadTuning(ref reader, out MoveTuning tuning))
                 return Fail($"has a truncated or non-canonical tuning in profile '{text}'", out problem);
-            profiles[i] = new DecodedProfile(text, required, excluded, tuning);
+            profiles[i] = new DecodedProfile(text, required, excluded, aquatic == 1, tuning);
             previous = name;
         }
         if (reader.Remaining != 0) return Fail($"has {reader.Remaining} trailing bytes", out problem);
@@ -296,6 +300,8 @@ internal static partial class NavBakeIdentity
             return $"field Required: bake 0x{bake.Required:X8}, expected 0x{want.Required:X8}";
         if (bake.Excluded != want.Excluded)
             return $"field Excluded: bake 0x{bake.Excluded:X8}, expected 0x{want.Excluded:X8}";
+        if (bake.Aquatic != want.Aquatic)
+            return $"field Aquatic: bake {(bake.Aquatic ? "True" : "False")}, expected {(want.Aquatic ? "True" : "False")}";
         return FirstTuningDifference(bake.Tuning, want.Tuning);
     }
 
@@ -320,5 +326,5 @@ internal static partial class NavBakeIdentity
         DecodedProfile[] Profiles);
 
     /// <summary>A decoded profile. Its area bits are proved disjoint before any <see cref="NavAreaFilter"/> exists.</summary>
-    internal readonly record struct DecodedProfile(string Name, uint Required, uint Excluded, MoveTuning Tuning);
+    internal readonly record struct DecodedProfile(string Name, uint Required, uint Excluded, bool Aquatic, MoveTuning Tuning);
 }

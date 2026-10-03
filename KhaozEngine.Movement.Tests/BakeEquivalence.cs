@@ -7,16 +7,18 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Movement;
 
-/// <summary>Asserts every equivalence item of the bake design between a fresh and a loaded profile: space, graph,
-/// columns, and segment and planner behavior over a deterministic query set. Floats compare as bits.</summary>
+/// <summary>Asserts every equivalence item of the bake design between a fresh and a loaded profile: the aquatic flag,
+/// space, graph, columns with their float flags and water entries, and segment and planner behavior over a
+/// deterministic query set. Floats compare as bits.</summary>
 internal static class BakeEquivalence
 {
     private const int MaxPairs = 400;
 
-    // ignoreSampleWater compares capture options without SampleWater, for two captures of one world that differ only
-    // in water sampling.
+    // ignoreSampleWater compares capture options without SampleWater and skips the water entries, for two captures of
+    // one world that differ only in water sampling.
     public static void AssertEquivalent(GroundNavigation fresh, GroundNavigation loaded, bool ignoreSampleWater = false)
     {
+        Assert.Equal(fresh.Aquatic, loaded.Aquatic);
         AssertSpace(fresh.Space, loaded.Space);
         AssertGraph(fresh, loaded);
         AssertColumns(fresh, loaded, ignoreSampleWater);
@@ -89,8 +91,18 @@ internal static class BakeEquivalence
                     Bits(ca[i].Height, cb[i].Height, $"column ({x}, {z}) height {i}");
                     Bits(ca[i].Headroom, cb[i].Headroom, $"column ({x}, {z}) headroom {i}");
                     Assert.Equal(ca[i].Areas, cb[i].Areas);
+                    Assert.Equal(a.IsFloat(x, z, i), b.IsFloat(x, z, i));
                 }
             }
+        if (ignoreSampleWater) return;
+        ReadOnlySpan<PhysicsNavWater> wa = a.Water, wb = b.Water;
+        Assert.Equal(wa.Length, wb.Length);
+        for (int i = 0; i < wa.Length; i++)
+        {
+            Assert.Equal(wa[i].Cell, wb[i].Cell);
+            Bits(wa[i].SurfaceY, wb[i].SurfaceY, $"water entry {i} surface");
+            Assert.Equal(wa[i].Areas, wb[i].Areas);
+        }
     }
 
     private static void AssertBehavior(GroundNavigation fresh, GroundNavigation loaded)

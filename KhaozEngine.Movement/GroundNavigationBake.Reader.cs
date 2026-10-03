@@ -132,9 +132,12 @@ public sealed partial class GroundNavigationBake
         var reader = new NavBakeReader(payload);
         if (DecodeColumns(ref reader, plan, out origin, out columns) is { } problem) return problem;
         var built = new GroundNavigation[plan.Profiles.Length];
+        // One scratch set for every layer of every profile. Grids and traversal layers copy their inputs.
+        var scratch = new LayerScratch(new bool[plan.Cells], new bool[plan.Cells], new float[plan.Cells], new byte[plan.Cells]);
         for (int i = 0; i < built.Length; i++)
         {
-            if (DecodeProfile(ref reader, plan, plan.Profiles[i], columns!, out GroundNavigation? profile) is { } failed) return failed;
+            if (DecodeProfile(ref reader, plan, plan.Profiles[i], columns!, scratch, out GroundNavigation? profile) is { } failed)
+                return failed;
             built[i] = profile!;
         }
         if (reader.Remaining != 0) return $"The payload has {reader.Remaining} trailing bytes.";
@@ -186,12 +189,12 @@ public sealed partial class GroundNavigationBake
                 previous = surfaceHeight;
             }
         }
-        columns = new PhysicsNavColumns(plan.Options, width, height, starts, surfaces);
+        columns = PhysicsNavColumns.Own(plan.Options, width, height, starts, surfaces);
         return null;
     }
 
     private static string? DecodeProfile(ref NavBakeReader reader, LoadPlan plan, NavBakeProfile profile,
-        PhysicsNavColumns columns, out GroundNavigation? navigation)
+        PhysicsNavColumns columns, LayerScratch scratch, out GroundNavigation? navigation)
     {
         navigation = null;
         string name = profile.Name;
@@ -202,10 +205,7 @@ public sealed partial class GroundNavigationBake
 
         var grids = new NavGrid[layerCount];
         var traversal = new NavTraversalLayer[layerCount];
-        var blocked = new bool[cells];
-        var accepted = new bool[cells];
-        var heights = new float[cells];
-        var exits = new byte[cells];
+        (bool[] blocked, bool[] accepted, float[] heights, byte[] exits) = scratch;
         PhysicsNavBakeOptions options = plan.Options;
         for (int layer = 0; layer < layerCount; layer++)
         {
@@ -298,4 +298,6 @@ public sealed partial class GroundNavigationBake
 
     private sealed record LoadPlan(PhysicsNavBakeOptions Options, int Width, int Height, int Cells, int MaxLayers,
         NavBakeProfile[] Profiles);
+
+    private readonly record struct LayerScratch(bool[] Blocked, bool[] Accepted, float[] Heights, byte[] Exits);
 }

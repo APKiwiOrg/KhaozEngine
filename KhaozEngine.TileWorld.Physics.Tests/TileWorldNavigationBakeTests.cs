@@ -99,20 +99,21 @@ public class TileWorldNavigationBakeTests
     }
 
     [Fact]
-    public void ExactOuterEdgeMissStaysEmptyAfterLoad()
+    public void ExactOuterEdgeLoadsAsCaptured()
     {
-        // The seam fact's half-cell-offset bounds put the outermost column centres exactly on the drawn outer edge.
-        PhysicsNavBakeOptions options = new(61.5f, -5.5f, 66.5f, -1.5f, 1f, 5f, 10f, Tuning.MaxSlopeRadians, 128, 512);
+        // The seam fact's half-cell-offset bounds, widened one cell west. Column centres sit on tile edges, the drawn
+        // outer edge at X 62 among them, and the column centred at X 61 lies on no-draw tiles, so it always misses.
+        PhysicsNavBakeOptions options = new(60.5f, -5.5f, 66.5f, -1.5f, 1f, 5f, 10f, Tuning.MaxSlopeRadians, 128, 512);
         NavBakeProfile[] profiles = [new("player", Tuning with { CapsuleRadius = 0.3f }, default)];
-        Vector3 outerEdge = new(62f, 0f, -4f), seam = new(64f, 0f, -4f);
+        Vector3 miss = new(61f, 0f, -4f), outerEdge = new(62f, 0f, -4f), seam = new(64f, 0f, -4f);
         Vector3 west = new(63f, 0f, -4f), east = new(65f, 0f, -4f);
-        bool edgeHit;
         GroundNavigationBake fresh;
         byte[] file;
         NavBakeExpectation expected;
         using (var scene = new Scene(Drawn(62, 2, 4, 4)))
         {
-            edgeHit = scene.World.Raycast(outerEdge + Vector3.UnitY * 5f, -Vector3.UnitY, 10f, out _);
+            Assert.Equal(0f, scene.Colliders.Ground.HeightAt(miss.X, miss.Z));
+            Assert.False(scene.World.Raycast(miss + Vector3.UnitY * 5f, -Vector3.UnitY, 10f, out _));
             expected = new NavBakeExpectation(options, Sources(scene), profiles);
             using PhysicsNavBake capture = scene.Capture(options);
             fresh = GroundNavigationBake.Create(capture, Sources(scene), profiles);
@@ -123,13 +124,10 @@ public class TileWorldNavigationBakeTests
 
         Assert.Equal(NavBakeLoadStatus.Loaded, result.Status);
         GroundNavigation loaded = Assert.IsType<GroundNavigationBake>(result.Bake).GetProfile("player");
-        AssertSameAnswers(fresh.GetProfile("player"), loaded, [outerEdge, seam, west, east]);
-        // A miss stays a missing column after load. It never gains analytic support.
-        if (!edgeHit)
-        {
-            AssertNoSurface(loaded, outerEdge);
-            Assert.False(loaded.AllowsSegment(outerEdge, outerEdge));
-        }
+        AssertSameAnswers(fresh.GetProfile("player"), loaded, [miss, outerEdge, seam, west, east]);
+        // A missed column stays missing after load. It never gains analytic support.
+        AssertNoSurface(loaded, miss);
+        Assert.False(loaded.AllowsSegment(miss, miss));
         Assert.True(loaded.AllowsSegment(seam, seam));
         Assert.Equal(NavPathStatus.Complete, Route(loaded, west, east).Status);
         Assert.Equal(NavPathStatus.Complete, Route(loaded, east, west).Status);
@@ -174,8 +172,9 @@ public class TileWorldNavigationBakeTests
         }
     }
 
-    // Public surface only: space, graph, then AllowsSegment and planner answers over the named bridge points plus a
-    // stride sample of every cell centre pair. Floats compare as bits.
+    // Space, graph, then AllowsSegment and planner answers over the named bridge points plus a stride sample of every
+    // cell centre pair. Floats compare as bits. The consumer path above is public. The graph is compared through this
+    // assembly's internal access, since GroundNavigation.Graph is internal.
     private static void AssertSameAnswers(GroundNavigation fresh, GroundNavigation loaded, Vector3[] queries)
     {
         Bits(fresh.AgentRadius, loaded.AgentRadius, "AgentRadius");

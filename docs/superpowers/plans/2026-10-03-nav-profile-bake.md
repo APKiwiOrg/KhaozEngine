@@ -581,7 +581,7 @@ world. Sources are `new NavBakeSources().Add("colliders", colliders.Hash)`. The 
 
 The proof makes no claim about stair links. It compares whatever link lists the bridge produces.
 
-Observation, run once on the dev Mac: a 48 m by 48 m drawn flat world at 0.25 m (192 by 192, 36,864 columns), profile
+Observation on the dev Mac, recorded from the third of three runs: a 48 m by 48 m drawn flat world at 0.25 m (192 by 192, 36,864 columns), profile
 `player` with default areas, from a temporary test deleted before commit.
 
 | Step | Elapsed | Allocated | Retained |
@@ -604,18 +604,27 @@ nodes and exits. Retained deltas inside one test method are only approximate, be
 Against design S8, `Load` allocated about 2.7 to 3 times what it retains. The payload buffer, the copied column arrays
 noted in Task 4 and the grid input copies account for the excess. S8 estimated at most twice retained.
 
+Ruling N8 follow-up, commit `perf(movement): load baked columns without copying`. The reader hands its freshly decoded
+starts and surfaces arrays to a new internal `PhysicsNavColumns.Own`, which stores them without copying. The capture
+path keeps the copying constructor, because its surfaces buffer is oversized and sliced. The four per-layer scratch
+arrays are allocated once in `Decode` and shared by every profile. One temporary re-measurement of the same world and
+file: `Load` 23.4 ms, 1,958,264 B allocated (from 2,548,144 B, less the 589,880 B column copy), 849,136 B survived,
+960,912 B by total memory. Load now allocates about 2 to 2.3 times what it retains. The single-profile world cannot show
+the shared scratch saving.
+
 A4 target, Hollowmere player `BuildProfile` at most 0.6 GiB allocated, is not measured here. The consumer records it
 once from its own bake run. This flat world's 98.6 B per column is within A3's 1 KiB per column.
 
 Departures.
 
-- A third fact, `ExactOuterEdgeMissStaysEmptyAfterLoad`, bakes the existing seam fixture with half-cell-offset bounds
-  so outer column centres sit exactly on the drawn edge. Fresh and loaded answers match, and when the edge ray misses,
-  the loaded profile has no surface there and refuses it. Reason: dispatch required the exact-edge miss to stay empty
-  without analytic fill. Cost: one fact. As in the existing seam fact, the miss branch runs only when the ray misses.
+- A third fact, `ExactOuterEdgeLoadsAsCaptured`, bakes the existing seam fixture with half-cell-offset bounds widened
+  one cell west, so column centres sit on tile edges, the drawn outer edge at X 62 among them. Fresh and loaded answers
+  match. The column centred at X 61 lies on no-draw tiles and always misses, and after load it has no surface and is
+  refused. Reason: dispatch required the exact-edge miss to stay empty without analytic fill. Cost: one fact.
 - "`BuildDisposed`'s inputs" was read as the `Tuning`, `Dry` and `Wet` members it reads. Those, `Bounds`, `Drawn` and
   the nested `Scene` are now internal. `BuildDisposed`, `Route` and `AssertRoute` stay private, and the new file has
-  its own small route and comparison helpers over the public surface.
+  its own small route and comparison helpers. The consumer path is public. The graph comparison uses the test
+  assembly's internal access, since `GroundNavigation.Graph` is internal.
 
 ### Task 6: route-free approach driver
 

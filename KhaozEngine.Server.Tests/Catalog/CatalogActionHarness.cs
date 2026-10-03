@@ -75,9 +75,13 @@ internal sealed class CatalogActionHarness : IDisposable
 
     /// <summary>Builds the harness, registering the sixteen actions once.</summary>
     /// <param name="options">The server-side options the pin action reads, or null for a host that pins nothing.</param>
-    public CatalogActionHarness(CatalogAdminActionOptions? options = null)
+    /// <param name="extraTypes">Registers further types beside the fixture's two, or null for none.</param>
+    public CatalogActionHarness(
+        CatalogAdminActionOptions? options = null,
+        Action<ContentTypeRegistry>? extraTypes = null)
     {
         Registry = BuildRegistry();
+        extraTypes?.Invoke(Registry);
         Pack = new FileSystemPackStore(_root);
         Store = new InMemoryContentAuthoringStore(Registry, Pack);
         Admin = new ServerAdmin(new NullAdminControllable());

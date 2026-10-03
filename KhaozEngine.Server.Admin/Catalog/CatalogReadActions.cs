@@ -188,18 +188,31 @@ internal sealed class CatalogReadActions(IContentAuthoringStore store, ContentTy
             ? await AuditAsync(type, id, cancellationToken).ConfigureAwait(false)
             : null;
 
+        // The row's COMPLETE text at the active version, or a false known flag where the store cannot say.
+        int active = await store.GetActiveVersionAsync(cancellationToken).ConfigureAwait(false);
+        ContentVersionTextSnapshot? text = await CatalogTextReads
+            .SnapshotAsync(store, active, cancellationToken).ConfigureAwait(false);
+
         return AdminActionResult.Ok(new CatalogGetPayload(
             type.TypeKey,
             id,
             live.Row.Key.ToString(),
             Row(type, live.Row),
             history,
-            audit));
+            audit)
+        {
+            TextKnown = text is not null,
+            Text = text is null ? [] : CatalogTextReads.RowValues(text, type, id, live.Row.Key),
+        });
     }
 
     /// <summary>
     /// The open draft with its edits EXPANDED, so a console can show a pending-changes panel. A store with no
     /// draft open answers a null draft rather than a 404, because "nothing pending" is an answer.
+    /// <para>
+    /// The pending text intents and language introductions are listed beside the row edits, and the header's
+    /// text-represented flag says whether the store read them completely.
+    /// </para>
     /// </summary>
     async Task<AdminActionResult> DraftAsync(JsonElement? payload, CancellationToken cancellationToken)
     {
@@ -226,7 +239,11 @@ internal sealed class CatalogReadActions(IContentAuthoringStore store, ContentTy
                 edit.FamilyId));
         }
 
-        return AdminActionResult.Ok(new CatalogDraftPayload(CatalogDraftHeader.Of(draft), edits));
+        return AdminActionResult.Ok(new CatalogDraftPayload(CatalogDraftHeader.Of(draft), edits)
+        {
+            TextEdits = CatalogTextReads.Edits(draft, registry),
+            LanguageIntroductions = CatalogTextReads.Introductions(draft),
+        });
     }
 
     /// <summary>The active version, the operator's hold and every version record, newest first.</summary>
@@ -283,7 +300,10 @@ internal sealed class CatalogReadActions(IContentAuthoringStore store, ContentTy
                 entry.BeforeValue,
                 entry.AfterValue,
                 entry.VersionNumber,
-                entry.Note));
+                entry.Note)
+            {
+                Language = entry.LanguageTag,
+            });
         }
 
         return audit;

@@ -23,6 +23,12 @@ namespace KhaozEngine.Server.Admin.Catalog;
 /// row's id is OPTIONAL and a bundle may MIX the two, because the id is per row and there is one import
 /// path.
 /// </para>
+/// <para>
+/// <b>Text travels with the rows or not at all.</b> A store with the text companion imports through
+/// <see cref="IContentTextAuthoringStore.ImportTextBundleAsync"/> and exports the exact version's text, so a
+/// version declaring a language exports as format 2. A store without the companion imports format 1 only and
+/// refuses a text-bearing bundle by type before anything is staged.
+/// </para>
 /// </summary>
 /// <param name="store">The authoring store the bundle is imported into and exported from.</param>
 /// <param name="registry">The registry both sides' types are declared in.</param>
@@ -80,11 +86,24 @@ internal sealed class CatalogBundleActions(IContentAuthoringStore store, Content
             return CatalogRefusal.Malformed("The bundle could not be read: " + failure.Message);
         }
 
+        IContentTextAuthoringStore? text = store as IContentTextAuthoringStore;
+        if (text is null && (bundle.TextState is not null || bundle.FormatVersion != ContentBundle.CurrentFormatVersion))
+        {
+            return CatalogRefusal.TextUnsupported(FormattableString.Invariant(
+                $"{CatalogAdminActions.ImportAction} of a format {bundle.FormatVersion} bundle"));
+        }
+
         try
         {
-            ContentPublishResult result = await store
-                .ImportBundleAsync(bundle, CatalogAdminActions.Actor, operatorId, note, cancellationToken)
-                .ConfigureAwait(false);
+            // The companion import lands rows and text together, a format 1 bundle as empty text. A store
+            // without it takes only the format 1 bundle refused above otherwise.
+            ContentPublishResult result = text is not null
+                ? await text
+                    .ImportTextBundleAsync(bundle, CatalogAdminActions.Actor, operatorId, note, cancellationToken)
+                    .ConfigureAwait(false)
+                : await store
+                    .ImportBundleAsync(bundle, CatalogAdminActions.Actor, operatorId, note, cancellationToken)
+                    .ConfigureAwait(false);
 
             return AdminActionResult.Ok(new CatalogImportPayload(
                 result.VersionNumber,
@@ -93,7 +112,11 @@ internal sealed class CatalogBundleActions(IContentAuthoringStore store, Content
                 result.ClientManifestHash,
                 result.ChunksWritten,
                 result.BytesWritten,
-                result.ElapsedMilliseconds));
+                result.ElapsedMilliseconds)
+            {
+                LanguagesImported = bundle.TextState?.Languages.Count ?? 0,
+                TextValuesImported = bundle.TextState?.Values.Count ?? 0,
+            });
         }
         catch (ContentAuthoringException failure)
             when (failure.Reason == ContentAuthoringException.CatalogNotEmptyReason)
@@ -143,7 +166,12 @@ internal sealed class CatalogBundleActions(IContentAuthoringStore store, Content
 
             using JsonDocument document = JsonDocument.Parse(ContentBundleJson.Write(bundle));
             return AdminActionResult.Ok(new CatalogExportPayload(
-                version, bundle.Rows.Count, document.RootElement.Clone()));
+                version, bundle.Rows.Count, document.RootElement.Clone())
+            {
+                FormatVersion = bundle.FormatVersion,
+                LanguageCount = bundle.TextState?.Languages.Count ?? 0,
+                TextValueCount = bundle.TextState?.Values.Count ?? 0,
+            });
         }
         catch (ContentAuthoringException failure)
         {

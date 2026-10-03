@@ -26,9 +26,12 @@ public class ProjectionPublicationTests
 
     private struct Local : IComponent { public int Note; }    // game-local, never registered
 
+    private struct Saved : IComponent { public int N; }       // registered, persisted, never replicated
+
     private const ushort PosId = 1, ValueId = 2, TagId = 3;
     private const ushort ExtId = ReplicationRegistry.FirstExtensionTypeId;
     private const ushort OpaqueId = ReplicationRegistry.FirstExtensionTypeId + 9;
+    private const ushort SavedId = ReplicationRegistry.FirstExtensionTypeId + 1;
 
     private static ReplicationRegistry NewRegistry()
     {
@@ -38,6 +41,8 @@ public class ProjectionPublicationTests
         r.Register<Value>(ValueId, (v, bw) => bw.Write(v.Number), br => new Value { Number = br.ReadInt32() });
         r.Register<Tag>(TagId, (_, _) => { }, _ => default);
         r.Register<Ext>(ExtId, (x, bw) => bw.Write(x.V), br => new Ext { V = br.ReadInt32() });
+        r.Register<Saved>(SavedId, (x, bw) => bw.Write(x.N), br => new Saved { N = br.ReadInt32() },
+            channels: ReplicationChannels.Persist);
         return r;
     }
 
@@ -228,6 +233,81 @@ public class ProjectionPublicationTests
         rig.View.InterpolateAt(rig.World, 0.05);
         Assert.False(rig.View.TryGetEntity(2, out _));
         Assert.Equal(3.5f, rig.World.Get<Pos>(survivor).X, 3);
+    }
+
+    [Fact]
+    public void PersistOnlyRegisteredComponentSurvivesPublication()
+    {
+        var rig = new Rig();
+        rig.Publish(Proj((7, new[] { V(1), T })));
+        Entity e = rig.Live(7);
+        rig.World.Set(e, new Saved { N = 5 });
+
+        rig.Publish(Proj((7, new[] { V(2) })));
+        Assert.Equal(e, rig.Live(7));
+        Assert.Equal(2, rig.World.Get<Value>(e).Number);
+        Assert.False(rig.World.Has<Tag>(e));
+        Assert.Equal(5, rig.World.Get<Saved>(e).N);
+    }
+
+    [Fact]
+    public void StagingRefusesRegisteredFrameThatNeverReplicates()
+    {
+        var rig = new Rig();
+        var frame = new ProjectedComponent(SavedId, I(5), 0, 4);
+        Assert.Equal(DeltaRebuildFailure.MalformedPacket,
+            Assert.Throws<DeltaRebuildException>(() => rig.Staging.Decode(7, frame)).Failure);
+        Assert.Equal(DeltaRebuildFailure.MalformedPacket, Assert.Throws<DeltaRebuildException>(
+            () => rig.Staging.StageAll(Proj((7, new[] { V(1), (SavedId, I(5)) })))).Failure);
+        Assert.Null(rig.Staging.StagedFor);
+    }
+
+    [Fact]
+    public void PublicationRequiresStagingFinishedForThatProjection()
+    {
+        var rig = new Rig();
+        rig.Publish(Proj((7, new[] { P(1f), V(1) }), (8, new[] { V(2) })));
+        rig.View.RecordInterpolationSample(0.0);
+        Entity seven = rig.Live(7), eight = rig.Live(8);
+        var presentationBefore = rig.View.PresentationArraysForTest().ToList();
+
+        void AssertUnchanged()
+        {
+            Assert.Equal(new long[] { 7, 8 }, rig.View.Entities.Keys.Order());
+            Assert.Equal(seven, rig.Live(7));
+            Assert.Equal(eight, rig.Live(8));
+            Assert.Equal(1f, rig.World.Get<Pos>(seven).X);
+            Assert.Equal(1, rig.World.Get<Value>(seven).Number);
+            Assert.Equal(2, rig.World.Get<Value>(eight).Number);
+            var after = rig.View.PresentationArraysForTest().ToList();
+            Assert.Equal(presentationBefore.Count, after.Count);
+            for (int i = 0; i < after.Count; i++) Assert.Same(presentationBefore[i], after[i]);
+        }
+
+        // Staging finished for another projection, even one with the same net ids, is refused before any change.
+        ReplicationProjection stagedFor = Proj((7, new[] { V(3) }));
+        ReplicationProjection published = Proj((7, new[] { P(5f), V(3) }));
+        rig.Staging.StageAll(stagedFor);
+        Assert.Same(stagedFor, rig.Staging.StagedFor);
+        Assert.Throws<InvalidOperationException>(() => rig.View.PublishProjection(rig.World, published, rig.Staging));
+        AssertUnchanged();
+
+        // Decoding after the finishing step invalidates it.
+        rig.Staging.StageAll(published);
+        rig.Staging.Decode(7, new ProjectedComponent(ValueId, I(4), 0, 4));
+        Assert.Null(rig.Staging.StagedFor);
+        Assert.Throws<InvalidOperationException>(() => rig.View.PublishProjection(rig.World, published, rig.Staging));
+        AssertUnchanged();
+
+        // The explicit finishing step, as reconstruction will use it, authorizes exactly that projection.
+        rig.Staging.Reset();
+        rig.Staging.Decode(7, new ProjectedComponent(PosId, (byte[])P(5f).Item2.Clone(), 0, 4));
+        rig.Staging.Decode(7, new ProjectedComponent(ValueId, I(3), 0, 4));
+        rig.Staging.FinishFor(published);
+        rig.View.PublishProjection(rig.World, published, rig.Staging);
+        Assert.Equal(new long[] { 7 }, rig.View.Entities.Keys.Order());
+        Assert.Equal(5f, rig.World.Get<Pos>(seven).X);
+        Assert.Equal(3, rig.World.Get<Value>(seven).Number);
     }
 
     [Fact]

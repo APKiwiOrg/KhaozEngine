@@ -253,6 +253,62 @@ public class ProjectionRetentionTests
     }
 
     [Fact]
+    public void SupersededCandidateIsDroppedBeforeCommittedSends()
+    {
+        var retention = new ProjectionRetention(new DeltaRebuildOptions
+        {
+            MaxRetainedProjections = 4, MaxRetainedPayloadBytes = 10,
+        });
+        ReplicationProjection ack = Sized(1), sent1 = Sized(1), sent2 = Sized(1), candidate1 = Sized(1);
+        Assert.True(retention.TryRetain(Id(1), ack, Pins(1), out _));
+        Assert.True(retention.TryRetain(Id(2), sent1, Pins(1), out _));
+        Assert.True(retention.TryRetain(Id(3), sent2, Pins(1), out _));
+        Assert.True(retention.TryRetain(Id(4), candidate1, Pins(1), out _));
+        Assert.Equal(4, retention.Count);
+
+        void AssertUnchanged()
+        {
+            Assert.Equal(4, retention.Count);
+            foreach (uint s in new uint[] { 1, 2, 3, 4 }) Assert.True(retention.TryGet(Id(s), out _));
+            Assert.False(retention.TryGet(Id(5), out _));
+            Assert.True(retention.Pins.SetEquals(Pins(1)));
+            AssertRetainedBytesExact(retention, ack, sent1, sent2, candidate1);
+        }
+
+        // A pinned id, now or prospectively, cannot be superseded. Neither can an id that is not retained or the new id.
+        Assert.Throws<ArgumentException>(() => retention.TryRetain(Id(5), Sized(1), Pins(1, 5), Id(1), out _));
+        Assert.Throws<ArgumentException>(() => retention.TryRetain(Id(5), Sized(1), Pins(4, 5), Id(4), out _));
+        Assert.Throws<ArgumentException>(() => retention.TryRetain(Id(5), Sized(1), Pins(1, 5), Id(9), out _));
+        Assert.Throws<ArgumentException>(() => retention.TryRetain(Id(5), Sized(1), Pins(1, 5), Id(5), out _));
+        AssertUnchanged();
+
+        // A supersede whose replacement cannot fit beside the pins fails and keeps the old candidate.
+        Assert.False(retention.TryRetain(Id(5), Sized(10), Pins(1, 5), Id(4), out DeltaRebuildFailure failure));
+        Assert.Equal(DeltaRebuildFailure.RetentionPressure, failure);
+        AssertUnchanged();
+
+        // With the count full, superseding the unsent candidate drops it, not the oldest committed send.
+        ReplicationProjection candidate2 = Sized(1);
+        Assert.True(retention.TryRetain(Id(5), candidate2, Pins(1, 5), Id(4), out failure));
+        Assert.Equal(DeltaRebuildFailure.None, failure);
+        Assert.False(retention.TryGet(Id(4), out _));
+        Assert.True(retention.TryGet(Id(2), out _));
+        Assert.True(retention.TryGet(Id(3), out _));
+        Assert.Equal(4, retention.Count);
+        AssertRetainedBytesExact(retention, ack, sent1, sent2, candidate2);
+
+        // Remove refuses a pinned id and reports an absent one, changing nothing in either case.
+        Assert.False(retention.Remove(Id(1)));
+        Assert.False(retention.Remove(Id(4)));
+        Assert.Equal(4, retention.Count);
+        Assert.True(retention.Remove(Id(2)));
+        Assert.False(retention.TryGet(Id(2), out _));
+        Assert.Equal(3, retention.Count);
+        Assert.Equal(3, retention.Components);
+        AssertRetainedBytesExact(retention, ack, sent2, candidate2);
+    }
+
+    [Fact]
     public void OldestUnpinnedInsertionIsPruned()
     {
         var retention = new ProjectionRetention(new DeltaRebuildOptions { MaxRetainedProjections = 4 });

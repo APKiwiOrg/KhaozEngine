@@ -40,13 +40,15 @@ internal sealed class ProjectionRetention
     /// <summary>Distinct reachable backing bytes, at most <see cref="DeltaRebuildOptions.MaxRetainedPayloadBytes"/>.</summary>
     internal int PayloadBytes => (int)payloadBytes;
 
-    /// <summary>Entities summed over retained projections, an entity shared by two projections counted twice.</summary>
+    /// <summary>Entities summed over retained projections: an upper bound, since an entity shared by two projections
+    /// counts twice.</summary>
     internal int Entities { get; private set; }
 
-    /// <summary>Component frames summed over retained projections, zero-byte and opaque frames included.</summary>
+    /// <summary>Component frames summed over retained projections, zero-byte and opaque frames included: an upper
+    /// bound, since frames shared by two projections count twice.</summary>
     internal int Components { get; private set; }
 
-    /// <summary>The ids the last successful <see cref="TryRetain"/> pinned.</summary>
+    /// <summary>The ids the last successful <c>TryRetain</c> pinned.</summary>
     internal IReadOnlySet<ReplicationPacketId> Pins => pins;
 
     public bool TryGet(ReplicationPacketId id, out ReplicationProjection projection)
@@ -66,7 +68,20 @@ internal sealed class ProjectionRetention
     /// <exception cref="ArgumentException">The id is already retained, more than three pins were named, or a pin
     /// names an id that is neither retained nor <paramref name="id"/>.</exception>
     public bool TryRetain(ReplicationPacketId id, ReplicationProjection projection,
-        IReadOnlySet<ReplicationPacketId> prospectivePins, out DeltaRebuildFailure failure)
+        IReadOnlySet<ReplicationPacketId> prospectivePins, out DeltaRebuildFailure failure) =>
+        TryRetain(id, projection, prospectivePins, supersedes: null, out failure);
+
+    /// <summary>
+    /// Like the four-argument retain, but first removes <paramref name="supersedes"/>, a dead entry such as an unsent
+    /// candidate replaced by a newer one, in the same atomic step. Without it, a full table would prune its oldest
+    /// unpinned entry, which can be a committed send the receiver may still acknowledge, and keep the dead one. On
+    /// failure nothing changes, the superseded entry included.
+    /// </summary>
+    /// <exception cref="ArgumentException">As the four-argument retain, or <paramref name="supersedes"/> is
+    /// <paramref name="id"/>, is not retained, or is pinned now or by <paramref name="prospectivePins"/>.</exception>
+    internal bool TryRetain(ReplicationPacketId id, ReplicationProjection projection,
+        IReadOnlySet<ReplicationPacketId> prospectivePins, ReplicationPacketId? supersedes,
+        out DeltaRebuildFailure failure)
     {
         ArgumentNullException.ThrowIfNull(projection);
         ArgumentNullException.ThrowIfNull(prospectivePins);
@@ -76,6 +91,14 @@ internal sealed class ProjectionRetention
         foreach (ReplicationPacketId pin in prospectivePins)
             if (pin != id && IndexOf(pin) < 0)
                 throw new ArgumentException($"Pinned projection {pin} is not retained.", nameof(prospectivePins));
+        if (supersedes is ReplicationPacketId dead)
+        {
+            if (dead == id || IndexOf(dead) < 0)
+                throw new ArgumentException($"Superseded projection {dead} is not a retained older entry.",
+                    nameof(supersedes));
+            if (pins.Contains(dead) || prospectivePins.Contains(dead))
+                throw new ArgumentException($"Superseded projection {dead} is pinned.", nameof(supersedes));
+        }
 
         if (projection.EntityCount > options.MaxEntities || projection.ComponentCount > options.MaxComponents
             || projection.BackingBytes > options.MaxRetainedPayloadBytes)
@@ -84,7 +107,8 @@ internal sealed class ProjectionRetention
             return false;
         }
 
-        // Everything that must stay after this call: the new projection and every pinned one.
+        // Everything that must stay after this call: the new projection and every pinned one. The superseded entry
+        // is never pinned, so it is never part of this set.
         int keptCount = 1;
         scratchBackings.Clear();
         long keptBytes = Charge(projection);
@@ -102,6 +126,7 @@ internal sealed class ProjectionRetention
         }
 
         // Commit. The kept set fits, so pruning every other entry would fit, and pruning stops as soon as it does.
+        if (supersedes is ReplicationPacketId superseded) RemoveAt(IndexOf(superseded));
         entries.Add(new Entry(id, projection));
         AddRefs(projection);
         pins.Clear();
@@ -110,11 +135,20 @@ internal sealed class ProjectionRetention
         {
             Entry entry = entries[i];
             if (entry.Id == id || pins.Contains(entry.Id)) { i++; continue; }
-            entries.RemoveAt(i);
-            ReleaseRefs(entry.Projection);
+            RemoveAt(i);
         }
         Debug.Assert(!OverLimit(), "A kept set within limits must leave retention within limits.");
         failure = DeltaRebuildFailure.None;
+        return true;
+    }
+
+    /// <summary>Drops one unpinned entry. Returns false, changing nothing, when <paramref name="id"/> is not
+    /// retained or is pinned.</summary>
+    internal bool Remove(ReplicationPacketId id)
+    {
+        int index = IndexOf(id);
+        if (index < 0 || pins.Contains(id)) return false;
+        RemoveAt(index);
         return true;
     }
 
@@ -131,6 +165,13 @@ internal sealed class ProjectionRetention
 
     /// <summary>The distinct backing arrays every retained projection reaches.</summary>
     internal IEnumerable<byte[]> BackingArraysForTest() => backingRefs.Keys;
+
+    private void RemoveAt(int index)
+    {
+        ReplicationProjection projection = entries[index].Projection;
+        entries.RemoveAt(index);
+        ReleaseRefs(projection);
+    }
 
     private bool OverLimit() =>
         entries.Count > options.MaxRetainedProjections || payloadBytes > options.MaxRetainedPayloadBytes;

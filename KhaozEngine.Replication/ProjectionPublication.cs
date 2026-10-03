@@ -26,7 +26,8 @@ internal sealed class ProjectionPublication
     private ProjectionPublication() { }
 
     /// <exception cref="ArgumentException">Staging uses a different registry than the view.</exception>
-    /// <exception cref="InvalidOperationException">Staging lacks an entity of the projection.</exception>
+    /// <exception cref="InvalidOperationException">Staging was not finished for exactly this projection instance, or
+    /// lacks one of its entities. Nothing changes.</exception>
     internal static void Publish(World target, ClientReplicationView view, ReplicationProjection projection,
         ProjectionStaging staged)
     {
@@ -39,6 +40,8 @@ internal sealed class ProjectionPublication
             throw new ArgumentException("Staging must decode with the view's registry.", nameof(staged));
 
         // Validate before the first mutation, so a mismatched staging leaves the live world untouched.
+        if (!ReferenceEquals(staged.StagedFor, projection))
+            throw new InvalidOperationException("Staging was not finished for this projection.");
         foreach (long netId in projection.Entities.Keys)
             if (!staged.TryGetEntity(netId, out _))
                 throw new InvalidOperationException($"Staging holds no entity for net id {netId}.");

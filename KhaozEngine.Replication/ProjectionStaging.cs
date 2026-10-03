@@ -35,18 +35,40 @@ internal sealed class ProjectionStaging
 
     internal int EntityCount => entityByNetId.Count;
 
+    /// <summary>
+    /// The projection this staging was last finished for, by <see cref="StageAll"/> or <see cref="FinishFor"/>. Any
+    /// later <see cref="Reset"/>, <see cref="GetOrSpawn"/> or <see cref="Decode"/> clears it. Publication requires
+    /// this exact instance before its first change, so a staging decoded for another projection can never leave the
+    /// live world half published.
+    /// </summary>
+    internal ReplicationProjection? StagedFor { get; private set; }
+
+    /// <summary>
+    /// The finishing step after a caller decoded the known frames of <paramref name="projection"/> itself: spawns a
+    /// staged entity for every net id that has none, then records the projection as <see cref="StagedFor"/>. The
+    /// caller guarantees every known frame was decoded.
+    /// </summary>
+    internal void FinishFor(ReplicationProjection projection)
+    {
+        ArgumentNullException.ThrowIfNull(projection);
+        foreach (long netId in projection.Entities.Keys) GetOrSpawn(netId);
+        StagedFor = projection;
+    }
+
     /// <summary>Despawns every staged entity, so staging holds nothing from an earlier packet.</summary>
     internal void Reset()
     {
         foreach (Entity e in entityByNetId.Values)
             if (world.IsAlive(e)) world.Despawn(e);
         entityByNetId.Clear();
+        StagedFor = null;
     }
 
     internal bool TryGetEntity(long netId, out Entity entity) => entityByNetId.TryGetValue(netId, out entity);
 
     internal Entity GetOrSpawn(long netId)
     {
+        StagedFor = null;
         if (entityByNetId.TryGetValue(netId, out Entity e)) return e;
         e = world.Spawn();
         entityByNetId.Add(netId, e);
@@ -58,15 +80,20 @@ internal sealed class ProjectionStaging
     /// false, staging nothing, for an unregistered extension id, whose payload stays opaque.
     /// </summary>
     /// <exception cref="DeltaRebuildException"><see cref="DeltaRebuildFailure.MalformedPacket"/> for an unregistered
-    /// built-in id, a reader failure, or a reader that does not consume exactly the payload.</exception>
+    /// built-in id, a registered id that never replicates, a reader failure, or a reader that does not consume
+    /// exactly the payload.</exception>
     internal bool Decode(long netId, in ProjectedComponent component)
     {
+        StagedFor = null;
         if (!registry.TryGet(component.TypeId, out ComponentCodec codec))
         {
             if (ReplicationRegistry.IsExtension(component.TypeId)) return false;
             throw new DeltaRebuildException(DeltaRebuildFailure.MalformedPacket,
                 $"Projection references unregistered built-in type id {component.TypeId}.");
         }
+        if ((codec.Channels & ReplicationChannels.Replicate) == 0)
+            throw new DeltaRebuildException(DeltaRebuildFailure.MalformedPacket,
+                $"Projection carries type id {component.TypeId}, which is registered but never replicates.");
         Entity entity = GetOrSpawn(netId);
         window.Retarget(component.Backing, component.Offset, component.Length);
         try
@@ -88,7 +115,8 @@ internal sealed class ProjectionStaging
         return true;
     }
 
-    /// <summary>Resets, then stages every entity of <paramref name="projection"/> and decodes each known frame once.</summary>
+    /// <summary>Resets, stages every entity of <paramref name="projection"/>, decodes each known frame once, then
+    /// records the projection as <see cref="StagedFor"/>. A decode failure leaves <see cref="StagedFor"/> null.</summary>
     internal void StageAll(ReplicationProjection projection)
     {
         ArgumentNullException.ThrowIfNull(projection);
@@ -98,5 +126,6 @@ internal sealed class ProjectionStaging
             GetOrSpawn(kv.Key);
             for (int i = 0; i < kv.Value.Count; i++) Decode(kv.Key, kv.Value[i]);
         }
+        StagedFor = projection;
     }
 }

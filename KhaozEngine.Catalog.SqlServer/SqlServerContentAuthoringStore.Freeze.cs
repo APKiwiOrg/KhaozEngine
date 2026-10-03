@@ -29,9 +29,9 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// are both no change.
 /// </para>
 /// <para>
-/// <b>Unexercised.</b> No SQL Server is reachable from the build this landed in, so every statement here is
-/// written to mirror the SQLite provider's, which the conformance suite does run. The SQL Server conformance
-/// class overrides the same facts under its gated attribute, so they run the moment an instance is there.
+/// <b>Exercised against a real instance.</b> Every statement here mirrors the SQLite provider's. The SQL
+/// Server conformance class overrides the shared freeze facts under its gated attribute, and they run whenever
+/// <c>KE_CATALOG_SQLSERVER</c> names an instance, which the catalog SQL Server CI job sets.
 /// </para>
 /// </summary>
 public sealed partial class SqlServerContentAuthoringStore

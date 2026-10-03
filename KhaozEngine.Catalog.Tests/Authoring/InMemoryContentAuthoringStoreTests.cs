@@ -43,7 +43,7 @@ public class InMemoryContentAuthoringStoreTests
         IContentAuthoringStore store = NewStore();
         await store.InitializeAsync(mode);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(4, await store.GetSchemaVersionAsync());
     }
 
     [Fact]

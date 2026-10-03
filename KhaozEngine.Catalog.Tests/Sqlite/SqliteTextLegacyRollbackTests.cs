@@ -1,5 +1,8 @@
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
@@ -66,6 +69,37 @@ public sealed class SqliteTextLegacyRollbackTests
     }
 
     [Fact]
+    public async Task A_publish_landing_between_the_legacy_rollback_plan_and_its_apply_refuses_with_nothing_written()
+    {
+        using var database = new TemporaryCatalogDatabase();
+        await SqliteTextSchemaMigrationTests.WriteMigratedTextFreeAsync(database);
+        using var rival = new SqliteContentAuthoringStore(database.ConnectionString, TextRegistry(), database.Pack());
+        await rival.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+
+        // The plan proves the legacy current version empty through the pack after it read the active version.
+        // The rival publishes from its own connection inside that first pack read, so it lands after the plan
+        // fixed its starting version and before the transaction that would apply the rollback edits.
+        int audits = -1;
+        var pack = new LandingPackStore(database.Pack(), async () =>
+        {
+            await RepriceAndPublishAsync(rival);
+            audits = await AuditCountAsync(rival);
+        });
+        using var store = new SqliteContentAuthoringStore(database.ConnectionString, TextRegistry(), pack);
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+
+        var refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => store.RollbackToAsync(1, Actor, Operator, "rollback"));
+        Assert.True(pack.Landed);
+        Assert.Equal(ContentAuthoringException.BaseVersionMovedReason, refused.Reason);
+        Assert.Equal(3, await store.GetActiveVersionAsync());
+        Assert.Null(await store.GetOpenDraftAsync());
+        Assert.Equal(audits, await AuditCountAsync(store));
+        Assert.Equal(1L, database.Scalar("SELECT text_snapshot_complete FROM catalog_version WHERE version_number = 3;"));
+        Assert.Equal(2L, database.Scalar(UnknownVersions));
+    }
+
+    [Fact]
     public async Task A_complete_target_holding_text_still_refuses_rollback_with_nothing_written()
     {
         using var database = new TemporaryCatalogDatabase();
@@ -116,5 +150,39 @@ public sealed class SqliteTextLegacyRollbackTests
         await store.ApplyEditsAsync(
             new[] { ContentEdit.Update(Item, sword, Sword, new[] { Value(7) }) }, Actor, Operator, "reprice");
         await store.PublishAsync(Request(active));
+    }
+
+    /// <summary>A pack whose first object read runs one callback to completion before it answers.</summary>
+    sealed class LandingPackStore(IPackStore inner, Func<Task> land) : IPackStore
+    {
+        Func<Task>? _land = land;
+
+        /// <summary>Whether the callback ran.</summary>
+        public bool Landed { get; private set; }
+
+        /// <inheritdoc />
+        public Task<bool> ExistsAsync(string hash, CancellationToken cancellationToken = default)
+            => inner.ExistsAsync(hash, cancellationToken);
+
+        /// <inheritdoc />
+        public async Task<ReadOnlyMemory<byte>?> GetAsync(string hash, CancellationToken cancellationToken = default)
+        {
+            if (_land is Func<Task> once)
+            {
+                _land = null;
+                await once();
+                Landed = true;
+            }
+
+            return await inner.GetAsync(hash, cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public Task PutAsync(string hash, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken = default)
+            => inner.PutAsync(hash, bytes, cancellationToken);
+
+        /// <inheritdoc />
+        public IAsyncEnumerable<string> ListAsync(int versionNumber, CancellationToken cancellationToken = default)
+            => inner.ListAsync(versionNumber, cancellationToken);
     }
 }

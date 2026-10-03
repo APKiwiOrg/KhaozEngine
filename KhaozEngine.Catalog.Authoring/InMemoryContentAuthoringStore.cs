@@ -32,7 +32,7 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
     /// use this constant for catalog preflight and deploy compatibility checks. This store reports the same
     /// version.
     /// </summary>
-    public const int SchemaVersion = 3;
+    public const int SchemaVersion = 4;
 
     /// <summary>The cap a page read is clamped to, which the seam leaves to the implementation.</summary>
     public const int MaxPageSize = 500;

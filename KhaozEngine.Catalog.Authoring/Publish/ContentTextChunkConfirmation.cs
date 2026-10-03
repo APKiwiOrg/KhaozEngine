@@ -8,11 +8,17 @@ namespace KhaozEngine.Catalog.Authoring;
 /// chunk hash is REGENERATED from the plan's own output values and live rows through the producer's encoder,
 /// an encoded chunk's stored bytes must be the regenerated stored file, and a reused chunk must also be the
 /// hash the base version recorded for that language. The plan's constructor proves its values are the right
-/// ones, and this proves its chunks are those values, so a manifest can never name a chunk the committed text
-/// does not produce, and the pack can never hold other bytes under a chunk's hash.
+/// ones, and this proves its chunks are those values, so a commit can never record a manifest naming a chunk
+/// the committed text does not produce.
+/// <para>
+/// It guards what a commit records, not what the pack holds. The chunk files are put before the commit and a
+/// refused commit leaves them behind as orphans, so readers re-verify every chunk's digest rather than trust
+/// the pack. The writer that puts them, <see cref="ContentTextPackWriter"/>, is internal, so no caller outside
+/// the catalog assemblies can put bytes under a chunk hash through it.
+/// </para>
 /// <para>
 /// It runs inside the store's gate or transaction, after the store confirmed the plan's baseline text is
-/// its own, and before anything is written.
+/// its own, and before the commit writes any row.
 /// </para>
 /// </summary>
 internal static class ContentTextChunkConfirmation

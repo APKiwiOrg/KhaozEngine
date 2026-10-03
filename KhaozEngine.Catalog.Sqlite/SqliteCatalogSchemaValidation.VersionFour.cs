@@ -17,7 +17,8 @@ internal static partial class SqliteCatalogSchemaValidation
     /// </summary>
     /// <param name="connection">The held connection.</param>
     /// <returns>3 when the database is still a valid version 3, or 4 when another host migrated it.</returns>
-    static long ValidateVersionThreeObjects(SqliteConnection connection)
+    /// <remarks>Internal rather than private so a test can drive the migrated-in-between branch directly.</remarks>
+    internal static long ValidateVersionThreeObjects(SqliteConnection connection)
     {
         try
         {

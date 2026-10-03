@@ -121,7 +121,15 @@ public sealed partial class SqlServerTextSchemaMigrationTests
 
         int sword = (await store.ListRowsAsync(Item, 0, null, true, 0, 10)).Rows.Single().Id;
         await store.ApplyEditsAsync(new[] { ContentEdit.Update(Item, sword, Sword, new[] { Value(7) }) }, Actor, Operator, "row only");
-        Assert.Equal(3, (await store.PublishAsync(Request(2))).VersionNumber);
+        Assert.Empty(await store.ListUpgradesAsync());
+
+        // A stamped publish on the migrated store commits and writes its applied ledger row in that commit.
+        ContentPublishRequest stamped = Request(2) with { Upgrade = new ContentUpgradeStamp("harvest-profiles", 1) };
+        Assert.Equal(3, (await store.PublishAsync(stamped)).VersionNumber);
+        ContentUpgradeRecord applied = Assert.Single(await store.ListUpgradesAsync());
+        Assert.Equal(
+            ("harvest-profiles", 1, ContentUpgradeDisposition.Applied, 3),
+            (applied.Id, applied.Order, applied.Disposition, applied.VersionNumber));
 
         // A complete zero-language commit: recorded complete, and no language row fabricated for it.
         Assert.Equal(1, database.Scalar("SELECT text_snapshot_complete FROM dbo.catalog_version WHERE version_number = 3;"));

@@ -131,6 +131,43 @@ public sealed class SqliteTextSchemaMigrationTests
         Assert.Equal(0L, database.Scalar("SELECT COUNT(*) FROM sqlite_master WHERE name = 'catalog_text';"));
     }
 
+    /// <summary>
+    /// The version 3 check an open runs after it read version 3. Version 4 objects under a version that has
+    /// since moved to 4 are another host's migration and answer 4. The same objects under a version still at 3
+    /// are a mismatch, and a genuine version 3 answers 3.
+    /// </summary>
+    [Fact]
+    public async Task The_version_3_check_accepts_a_mismatch_only_when_another_host_already_moved_the_version_to_4()
+    {
+        using var database = new TemporaryCatalogDatabase();
+        using (var store = new SqliteContentAuthoringStore(database.ConnectionString, ThingRegistry()))
+        {
+            await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        }
+
+        using (var migrated = new SqliteConnection(database.ConnectionString + ";Pooling=False"))
+        {
+            migrated.Open();
+            Assert.Equal(4L, SqliteCatalogSchemaValidation.ValidateVersionThreeObjects(migrated));
+        }
+
+        database.Execute("UPDATE catalog_metadata SET schema_version = 3 WHERE metadata_key = 1;");
+        using (var unmoved = new SqliteConnection(database.ConnectionString + ";Pooling=False"))
+        {
+            unmoved.Open();
+            ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(
+                () => SqliteCatalogSchemaValidation.ValidateVersionThreeObjects(unmoved));
+            Assert.Equal(ContentAuthoringException.SchemaMismatchReason, refused.Reason);
+            Assert.Contains(MigrationName, refused.Message, StringComparison.Ordinal);
+        }
+
+        using var legacy = new TemporaryCatalogDatabase();
+        WriteLegacy(legacy, 3);
+        using var genuine = new SqliteConnection(legacy.ConnectionString + ";Pooling=False");
+        genuine.Open();
+        Assert.Equal(3L, SqliteCatalogSchemaValidation.ValidateVersionThreeObjects(genuine));
+    }
+
     [Fact]
     public async Task A_migrated_text_free_catalog_publishes_row_only_then_text_and_each_new_version_is_complete()
     {
@@ -152,9 +189,17 @@ public sealed class SqliteTextSchemaMigrationTests
         int sword = (await store.ListRowsAsync(Item, 0, null, true, 0, 10)).Rows.Single().Id;
         await store.ApplyEditsAsync(
             new[] { ContentEdit.Update(Item, sword, Sword, new[] { Value(7) }) }, Actor, Operator, "row only");
-        Assert.Equal(3, (await store.PublishAsync(Request(2))).VersionNumber);
+        Assert.Empty(await store.ListUpgradesAsync());
+
+        // A stamped publish on the migrated store commits and writes its applied ledger row in that commit.
+        ContentPublishRequest stamped = Request(2) with { Upgrade = new ContentUpgradeStamp("harvest-profiles", 1) };
+        Assert.Equal(3, (await store.PublishAsync(stamped)).VersionNumber);
         Assert.Equal(1L, database.Scalar("SELECT text_snapshot_complete FROM catalog_version WHERE version_number = 3;"));
         Assert.Equal(0L, database.Scalar("SELECT COUNT(*) FROM catalog_text_chunk;"));
+        ContentUpgradeRecord applied = Assert.Single(await store.ListUpgradesAsync());
+        Assert.Equal(
+            ("harvest-profiles", 1, ContentUpgradeDisposition.Applied, 3),
+            (applied.Id, applied.Order, applied.Disposition, applied.VersionNumber));
 
         await ApplyAsync(text, null, ContentTextEdit.Set(Target(NameField, "en"), "Sword"));
         Assert.Equal(4, (await store.PublishAsync(Request(3))).VersionNumber);

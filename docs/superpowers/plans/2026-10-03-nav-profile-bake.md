@@ -524,6 +524,12 @@ Departures.
 - `dotnet format --verify-no-changes` reports whitespace on lines 19, 20 and 58 of `PlayerRangeMovementTestRig.cs`.
   Those lines predate this task and engine CI does not run the format check, so they were left alone.
 
+Ruling N3 follow-up, commit `fix(movement): bound direct approach windows`. `DirectApproachOptions` refuses a window
+above 65,535 ticks, so the ring capacity cannot overflow. `WindowsUpToTheBoundBuildADriver` and three new refusal rows
+cover the bound. `WarmedSteadyTicksAllocateNothing` measures recorded orbit ticks, a stop ring bisection and `Reset` with
+`AllocAssert`, and the test class joined the `AllocSensitive` collection. `DirectMoveToRangeTests` 29 passed of 29, Step 1
+filter 126 passed of 126. The allocation fact passed on first run, as acceptance evidence for an existing property.
+
 Movement README draft for Task 7, a "Route-free approach" section after "Range steering and movement drivers":
 
 ```markdown

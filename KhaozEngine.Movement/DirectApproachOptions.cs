@@ -3,10 +3,14 @@ using System;
 namespace KhaozEngine.Movement;
 
 /// <summary>Progress windows for <see cref="DirectMoveToRange"/>. A window of N ticks spans N intervals between
-/// N + 1 counted samples and is first eligible on the (N + 1)th counted tick. There are no engine defaults.</summary>
+/// N + 1 counted samples and is first eligible on the (N + 1)th counted tick. A window holds at most 65,535 ticks.
+/// There are no engine defaults.</summary>
 public sealed record DirectApproachOptions
 {
-    /// <exception cref="ArgumentOutOfRangeException">A window is not positive, or a distance is not finite and positive.</exception>
+    private const int MaxWindowTicks = ushort.MaxValue;
+
+    /// <exception cref="ArgumentOutOfRangeException">A window is not from 1 to 65,535 ticks, or a distance is not
+    /// finite and positive.</exception>
     public DirectApproachOptions(int stallWindowTicks, float stallTravelMetres,
         int approachWindowTicks, float approachGainMetres)
     {
@@ -29,7 +33,8 @@ public sealed record DirectApproachOptions
     public float ApproachGainMetres { get; }
 
     private static int Ticks(int value, string name)
-        => value > 0 ? value : throw new ArgumentOutOfRangeException(name, "Window ticks must be positive.");
+        => value is > 0 and <= MaxWindowTicks
+            ? value : throw new ArgumentOutOfRangeException(name, "Window ticks must be from 1 to 65,535.");
 
     private static float Metres(float value, string name)
         => float.IsFinite(value) && value > 0f

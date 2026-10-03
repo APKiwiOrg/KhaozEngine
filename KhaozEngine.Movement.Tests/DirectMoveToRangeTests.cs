@@ -8,6 +8,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Movement;
 
+[Collection("AllocSensitive")]
 public class DirectMoveToRangeTests
 {
     private const float Dt = 1f / 30f;
@@ -266,9 +267,48 @@ public class DirectMoveToRangeTests
     [InlineData(15, 0.1f, 45, -0.1f)]
     [InlineData(15, 0.1f, 45, float.NaN)]
     [InlineData(15, 0.1f, 45, float.NegativeInfinity)]
+    [InlineData(65536, 0.1f, 45, 0.1f)]
+    [InlineData(15, 0.1f, 65536, 0.1f)]
+    [InlineData(int.MaxValue, 0.1f, int.MaxValue, 0.1f)]
     public void OptionsRequirePositiveFiniteThresholds(int stallTicks, float travel, int approachTicks, float gain)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new DirectApproachOptions(stallTicks, travel, approachTicks, gain));
+    }
+
+    [Fact]
+    public void WindowsUpToTheBoundBuildADriver()
+    {
+        var options = new DirectApproachOptions(65535, 0.1f, 65535, 0.1f);
+        Assert.Equal(65535, options.StallWindowTicks);
+        Assert.Equal(65535, options.ApproachWindowTicks);
+        var driver = new DirectMoveToRange(options);
+        Assert.Equal(RangeMoveStatus.Following, Tick(driver, MoveToRangeTests.Body(), Far).Status);
+    }
+
+    [Fact]
+    public void WarmedSteadyTicksAllocateNothing()
+    {
+        ReachTarget centre = ReachTarget.Point(new(0f, 0.75f, 0f));
+        ReachTarget ring = ReachTarget.Point(new(1f, 0.75f, 0f));
+        MoveState near = MoveToRangeTests.Body(0.25f);
+        var orbit = new DirectMoveToRange(Options);
+        var final = new DirectMoveToRange(Options);
+        int tick = 0, following = 0;
+        void Steady(int count)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                // Recorded Following ticks on an orbit, plus a stop ring bisection and Reset.
+                if (Tick(orbit, Orbit(++tick), centre, targetMoves: true).Status == RangeMoveStatus.Following) following++;
+                RangeSteering shrunk = Tick(final, near, ring);
+                if (shrunk.Status == RangeMoveStatus.Following && shrunk.WorldDirection.Length() < 1f) following++;
+                final.Reset();
+            }
+        }
+        Steady(60);
+
+        AllocAssert.NoPerCallAllocation("steady DirectMoveToRange.Tick", () => Steady(60));
+        Assert.Equal(2 * tick, following);
     }
 
     [Fact]

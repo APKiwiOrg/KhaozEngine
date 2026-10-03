@@ -760,6 +760,7 @@ Differences from a typical game-side walk-up rule:
 | 4 | `1d3167380` test(movement): harden bake identity guards, `01a1c565b` feat(movement): bake and load ground navigation profile sets, `bdc612441` fix(movement): bound bake load before generating links |
 | 5 | `70c8030c6` test(movement): prove baked tile world navigation, `d5c7d46c3` perf(movement): load baked columns without copying |
 | 6 | `7077bffd9` refactor(movement): share range approach helpers, `d7a8092da` feat(movement): approach reach targets without a planner, `6344fba8a` fix(movement): bound direct approach windows, `2378ce212` refactor(movement): share range shape keys, merged by `6cfa8cd7a` |
+| 7 | `5d4cf4e66` merge of origin/main `0fddd1db4`, `0c080a923` release(20.20.0), `3654e24b7` docs(movement): document baked navigation and direct approach, `e69db8485` final review fix wave |
 
 ### Task 7: living documentation, release note and full verification
 

@@ -101,8 +101,8 @@ the threading contract holds by construction. The read actions:
 |---|---|---|---|
 | `catalog-schema` | GET | none | `{ generation, types[] }`, each type with its id, key, visibility, chunk slots and its whole field list |
 | `catalog-list` | POST | `{ typeKey, version, keyPrefix, includeRetired, skip, take }` | `{ version, total, skip, take, rows[] }` |
-| `catalog-get` | POST | `{ typeKey, id }` or `{ typeKey, key }`, plus `includeAudit` | `{ typeKey, id, key, row, history[], audit }` |
-| `catalog-draft` | GET | none | `{ draft, edits[] }`, and a null `draft` when none is open |
+| `catalog-get` | POST | `{ typeKey, id }` or `{ typeKey, key }`, plus `includeAudit` | `{ typeKey, id, key, row, history[], audit, textKnown, text[] }` |
+| `catalog-draft` | GET | none | `{ draft, edits[], textEdits[], languageIntroductions[] }`, and a null `draft` when none is open |
 | `catalog-versions` | GET | none | `{ activeVersion, pinnedVersion, versions[] }` |
 
 `version` 0 means the current live set and the response says which version it read at, so a console never has
@@ -126,13 +126,13 @@ The seven mutating actions:
 
 | Action | Verb | Request | Response |
 |---|---|---|---|
-| `catalog-edit` | POST | `{ operator, note, edits[] }` | `{ draft, applied }` |
-| `catalog-discard` | POST | `{ operator }` | `{ discarded, editCount }` |
+| `catalog-edit` | POST | `{ operator, note, edits[], textEdits[] }` | `{ draft, applied, textApplied }` |
+| `catalog-discard` | POST | `{ operator }` | `{ discarded, editCount, textEditCount, languageIntroductionCount }` |
 | `catalog-validate` | POST | none | `{ valid, findingCount, findings[], baseVersion, candidateVersion }` |
-| `catalog-diff` | POST | `{ from, to }`, where `to` 0 is the draft-applied candidate | `{ from, to, provisionalIds, changes[], chunkSummary[] }` |
+| `catalog-diff` | POST | `{ from, to }`, where `to` 0 is the draft-applied candidate | `{ from, to, provisionalIds, changes[], chunkSummary[], textKnown, textChanges[], languagesIntroduced[] }` |
 | `catalog-publish` | POST | `{ operator, note, expectedBaseVersion, minimumServerBuild, minimumClientBuild }` | `{ version, serverManifestHash, clientManifestHash, chunksWritten, chunksReused, bytesWritten, rulesAppended, elapsedMs }` |
 | `catalog-pin` | POST | `{ operator, version }`, or an explicit null version to clear the hold | `{ pinnedVersion, configPinnedVersion, warnings[] }` |
-| `catalog-rollback` | POST | `{ operator, toVersion, note }` | `{ draftCreated, editCount, blockedByRules[] }` |
+| `catalog-rollback` | POST | `{ operator, toVersion, note }` | `{ draftCreated, editCount, blockedByRules[], textEditCount, languageIntroductionCount }` |
 
 **The `edits` array is capped at 1,000 entries per request** and an array over it is a 400 that reads no entry.
 Every entry other than an add costs a store round trip to resolve its target, so an uncapped array is an
@@ -196,8 +196,8 @@ The bundle pair and the operational pair:
 
 | Action | Verb | Request | Response |
 |---|---|---|---|
-| `catalog-import` | POST | `{ operator, note, bundle }` | `{ version, rowsImported, serverManifestHash, clientManifestHash, chunksWritten, bytesWritten, elapsedMs }` |
-| `catalog-export` | POST | `{ version }`, or none for the active version | `{ version, rowCount, bundle }` |
+| `catalog-import` | POST | `{ operator, note, bundle }` | `{ version, rowsImported, serverManifestHash, clientManifestHash, chunksWritten, bytesWritten, elapsedMs, languagesImported, textValuesImported }` |
+| `catalog-export` | POST | `{ version }`, or none for the active version | `{ version, rowCount, bundle, formatVersion, languageCount, textValueCount }` |
 | `catalog-sweep` | POST | `{ operator }` | `{ ran, kept, deleted, skipReason }` |
 | `catalog-verify` | POST | `{ version }`, or none for the active version | `{ version, healthy, objectsChecked, mismatches[] }` |
 
@@ -233,6 +233,63 @@ the committed versions, and a publish writes every chunk and both manifests to t
 a sweep inside that window would see the bytes the publish just wrote as orphans and delete them, leaving the
 publish to commit a version whose pack is already missing. The frozen draft is the signal the store carries
 for exactly that window, and `catalog-edit` and `catalog-discard` refuse on the same marker.
+
+### Catalog text
+
+`catalog-edit` takes `textEdits` beside `edits`, so an add and its display name are one request and a
+translation pass needs no row edit at all. Each entry names one string by its row and the marker field,
+never by a raw localization key, because that key is derived from the type key, the row key and the field:
+
+```json
+{ "op": "set", "typeKey": "thing", "key": "stone_sword", "field": "name", "language": "en", "value": "Stone Sword" }
+{ "op": "remove", "typeKey": "thing", "key": "stone_sword", "field": "name", "language": "fr" }
+```
+
+A `set` carries a complete value and `""` is a present empty value. A `remove` carries no value and makes the
+string absent, so a reader falls back. Values are stored exactly as sent. The `language` is normalized to its
+lowercase canonical identity, so `EN-us` and `en-US` name one string. The array has the same 1,000 entry cap as
+`edits`, and an empty or non-array `textEdits` is a malformed request.
+
+Every finding across both arrays comes back in one `content-edit-refused` refusal, and nothing is applied
+until all of them pass. Text findings use these codes:
+
+| Code | Meaning |
+|---|---|
+| `KEC0004` | The entry is not an object, a member has the wrong shape, the type or field is unknown, the op is not `set` or `remove`, or the value is missing on a set or present on a remove |
+| `KEC0006` | No row holds the key at the active version, retired rows included, and neither this request nor the open draft adds it |
+| `text-target-ineligible` | The type or the field is not CLIENT visible, or the field is not a localized text marker |
+| `text-language-invalid` | The language is not ASCII letters, digits and hyphens of 1 to 35 bytes with no empty segment and a leading letter |
+| `text-bounds` | The value exceeds 8,192 strict UTF-8 bytes or carries an unpaired surrogate, or the derived key exceeds 192 bytes |
+| `text-target-duplicate` | Two entries in one request name one canonical string |
+| `text-language-undeclared` | A remove names a language neither the active version nor the draft declares |
+
+A `set` introduces its language, and the introduction survives a later `remove` of the same string, so the
+language still publishes as an empty layer. Removing an absent value in a declared language is a no-op.
+
+The batch then lands through ONE `IContentTextAuthoringStore.ApplyChangesAsync` call with the captured actor
+and the forwarded operator. A refusal from the store, such as a row intent colliding with the draft or a
+publish holding it frozen, leaves the rows, the draft's text and introductions and the audit unchanged, and
+keeps its own reason and status.
+
+The other actions read and move text completely:
+
+- `catalog-draft` lists `textEdits[]` with each derived key and `languageIntroductions[]`. The draft header
+  adds `textEditCount`, `languageIntroductionCount` and `textRepresented`, which is false on a draft a
+  row-only route built.
+- `catalog-get` adds the row's `text[]` at the active version, and each audit entry carries its `language`.
+- `catalog-diff` adds `textChanges[]`, each with `before` and `after` where null means absent, and
+  `languagesIntroduced[]`.
+- `textKnown` is false wherever the store has no text companion or cannot prove a version's text. Unknown is
+  never rendered as empty.
+- `catalog-discard` deletes a text-bearing draft through `TryDiscardChangesAsync`. A draft that changed after
+  the discard read it is a 409 under `text-state-mismatch` that deletes nothing.
+- `catalog-rollback` builds its draft through `RollbackTextToAsync`, restoring rows and strings together.
+- `catalog-import` runs `ImportTextBundleAsync`, which reads format 1 as empty text, and `catalog-export`
+  reports the bundle's `formatVersion` with its language and value counts.
+
+A store that implements only `IContentAuthoringStore` keeps every row-only behavior. Text input to it,
+`textEdits` or a format 2 bundle, is refused under `text-operation-unavailable` before anything is applied or
+staged, never run as a row-only request that drops the text.
 
 ## Operator identity
 
@@ -294,7 +351,8 @@ Every refusal from the ELEVEN mutating catalog actions carries an OBJECT body ra
 one console parser reads all of them. A 400 is `{ error, reason, findingCount, findings[] }`, with `findings`
 empty when the refusal is about the REQUEST rather than about the content. A 409 carries `error`, `reason` and
 whatever the race needs: a stale publish adds `expectedBaseVersion` and `actualBaseVersion`, a draft a publish
-is holding adds a `remedy`, and a blocked rollback adds `code`, `blockedByRules[]` and a `remedy`.
+is holding adds a `remedy`, text state that changed under a discard or a commit adds a `remedy` under
+`text-state-mismatch`, and a blocked rollback adds `code`, `blockedByRules[]` and a `remedy`.
 
 Each rollback blocker names its row through `type` and `fromId`. Its `kind` carries the matching rule's
 actual name, normally `Retired`. If the provider's baseline has no matching rule, `kind` is JSON null and

@@ -73,7 +73,9 @@ internal sealed class CatalogPublishActions(IContentAuthoringStore store, Conten
 
     /// <summary>
     /// The FIELD LEVEL diff, computed over the rows rather than over chunk hashes, plus the chunk summary
-    /// that says what publishing it would cost a client to download.
+    /// that says what publishing it would cost a client to download, and the TEXT half: every string whose
+    /// value differs and every language the destination introduces, or a false known flag where the store
+    /// cannot prove a side's text.
     /// </summary>
     async Task<AdminActionResult> DiffAsync(JsonElement? payload, CancellationToken cancellationToken)
     {
@@ -117,19 +119,41 @@ internal sealed class CatalogPublishActions(IContentAuthoringStore store, Conten
 
             ContentDiff diff;
             bool provisional = to == 0;
+            ContentVersionTextSnapshot? before = await CatalogTextReads
+                .SnapshotAsync(store, from, cancellationToken).ConfigureAwait(false);
+            (IReadOnlyList<CatalogTextChangePayload> Changes, IReadOnlyList<CatalogTextLanguagePayload> Introduced)? text = null;
             if (provisional)
             {
                 ContentDraftCandidate candidate = await CandidateAsync(cancellationToken).ConfigureAwait(false);
                 diff = ContentDiff.Between(from, source, null, candidate.Rows, registry);
+                ContentVersionTextSnapshot? standing = from == active
+                    ? before
+                    : await CatalogTextReads.SnapshotAsync(store, active, cancellationToken).ConfigureAwait(false);
+                ContentDraft? draft = await store.GetOpenDraftAsync(cancellationToken).ConfigureAwait(false);
+                if (before is not null && standing is not null && draft is not { TextState: null })
+                {
+                    text = CatalogTextReads.Pending(before, source, standing, candidate.Rows, draft, registry);
+                }
             }
             else
             {
                 IReadOnlyList<ContentRowRevision> destination = await CatalogRequest
                     .LiveRowsAsync(store, registry, to, cancellationToken).ConfigureAwait(false);
                 diff = ContentDiff.Between(from, source, to, destination, registry);
+                ContentVersionTextSnapshot? after = await CatalogTextReads
+                    .SnapshotAsync(store, to, cancellationToken).ConfigureAwait(false);
+                if (before is not null && after is not null)
+                {
+                    text = CatalogTextReads.Between(before, source, after, destination, registry);
+                }
             }
 
-            return AdminActionResult.Ok(Render(diff, provisional));
+            return AdminActionResult.Ok(Render(diff, provisional) with
+            {
+                TextKnown = text is not null,
+                TextChanges = text?.Changes ?? [],
+                LanguagesIntroduced = text?.Introduced ?? [],
+            });
         }
         catch (ContentAuthoringException failure)
         {

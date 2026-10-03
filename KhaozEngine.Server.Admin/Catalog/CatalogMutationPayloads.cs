@@ -10,7 +10,11 @@ namespace KhaozEngine.Server.Admin.Catalog;
 /// </summary>
 /// <param name="Draft">The open draft's header.</param>
 /// <param name="Applied">How many edits this request applied.</param>
-public sealed record CatalogEditPayload(CatalogDraftHeader Draft, int Applied);
+public sealed record CatalogEditPayload(CatalogDraftHeader Draft, int Applied)
+{
+    /// <summary>How many TEXT intents this request applied, counted apart from <see cref="Applied"/>'s row edits.</summary>
+    public int TextApplied { get; init; }
+}
 
 /// <summary>
 /// What <c>catalog-discard</c> answers with. A discard against a store with no draft open is a 200 that
@@ -18,7 +22,14 @@ public sealed record CatalogEditPayload(CatalogDraftHeader Draft, int Applied);
 /// </summary>
 /// <param name="Discarded">Whether a draft was there to discard.</param>
 /// <param name="EditCount">How many edits went with it, which is what the audit row carries.</param>
-public sealed record CatalogDiscardPayload(bool Discarded, int EditCount);
+public sealed record CatalogDiscardPayload(bool Discarded, int EditCount)
+{
+    /// <summary>How many text intents went with it.</summary>
+    public int TextEditCount { get; init; }
+
+    /// <summary>How many unpublished language introductions went with it.</summary>
+    public int LanguageIntroductionCount { get; init; }
+}
 
 /// <summary>
 /// What <c>catalog-validate</c> answers with: the full sweep over the draft-applied candidate, run WITHOUT
@@ -83,7 +94,20 @@ public sealed record CatalogDiffPayload(
     int? To,
     bool ProvisionalIds,
     IReadOnlyList<CatalogDiffChangePayload> Changes,
-    IReadOnlyList<CatalogChunkSummaryPayload> ChunkSummary);
+    IReadOnlyList<CatalogChunkSummaryPayload> ChunkSummary)
+{
+    /// <summary>
+    /// True when <see cref="TextChanges"/> compares COMPLETE text on both sides. False when the store has no
+    /// text companion or cannot prove a side's text, which is unknown rather than unchanged.
+    /// </summary>
+    public bool TextKnown { get; init; }
+
+    /// <summary>Every string whose value differs, ordered by type, id or key, field and language.</summary>
+    public IReadOnlyList<CatalogTextChangePayload> TextChanges { get; init; } = [];
+
+    /// <summary>The languages the destination declares and the source does not.</summary>
+    public IReadOnlyList<CatalogTextLanguagePayload> LanguagesIntroduced { get; init; } = [];
+}
 
 /// <summary>
 /// What <c>catalog-publish</c> answers with: the new version's identity on both sides, and the work it
@@ -151,7 +175,14 @@ public sealed record CatalogBlockingRulePayload(
 public sealed record CatalogRollbackPayload(
     bool DraftCreated,
     int EditCount,
-    IReadOnlyList<CatalogBlockingRulePayload> BlockedByRules);
+    IReadOnlyList<CatalogBlockingRulePayload> BlockedByRules)
+{
+    /// <summary>How many text intents the draft now holds, which restore the target version's strings.</summary>
+    public int TextEditCount { get; init; }
+
+    /// <summary>How many languages the draft introduces.</summary>
+    public int LanguageIntroductionCount { get; init; }
+}
 
 /// <summary>
 /// The 409 of a rollback blocked by an irreversible retire, which names the way OUT rather than leaving an
@@ -188,7 +219,14 @@ public sealed record CatalogImportPayload(
     string ClientManifestHash,
     int ChunksWritten,
     long BytesWritten,
-    long ElapsedMs);
+    long ElapsedMs)
+{
+    /// <summary>How many languages the bundle declared, empty ones included.</summary>
+    public int LanguagesImported { get; init; }
+
+    /// <summary>How many text values the bundle carried.</summary>
+    public int TextValuesImported { get; init; }
+}
 
 /// <summary>
 /// What <c>catalog-export</c> answers with: the whole catalog as ONE document, ids included, which is what
@@ -202,7 +240,17 @@ public sealed record CatalogImportPayload(
 /// <param name="Version">The version exported.</param>
 /// <param name="RowCount">How many rows the bundle carries, so a console shows a size without walking it.</param>
 /// <param name="Bundle">The bundle document, exactly as the bundle writer produced it.</param>
-public sealed record CatalogExportPayload(int Version, int RowCount, JsonElement Bundle);
+public sealed record CatalogExportPayload(int Version, int RowCount, JsonElement Bundle)
+{
+    /// <summary>The bundle format: 1 for a version declaring no language, 2 for one carrying a text section.</summary>
+    public int FormatVersion { get; init; }
+
+    /// <summary>How many languages the bundle declares, empty ones included.</summary>
+    public int LanguageCount { get; init; }
+
+    /// <summary>How many text values the bundle carries.</summary>
+    public int TextValueCount { get; init; }
+}
 
 /// <summary>
 /// What <c>catalog-sweep</c> answers with. A sweep that SKIPPED is not a failure and is not silent either:

@@ -70,9 +70,9 @@ public sealed record CatalogNotEmptyPayload(string Error, string Reason, int Act
 /// How a refusal becomes a result, in ONE place: which statuses the authoring store's reason tokens map to,
 /// and what the body carries.
 /// <para>
-/// <b>Three tokens are a 409 and every other refusal is a 400.</b> A base version that moved, a publish in
-/// flight and a draft target held under another operation are all races between two consoles rather than bad
-/// requests, and a caller resolves each by re-reading and retrying. An unknown type, an unknown field, an
+/// <b>Four tokens are a 409 and every other refusal is a 400.</b> A base version that moved, a publish in
+/// flight, a draft target held under another operation and text state that changed under a discard or a commit
+/// are all races between two consoles rather than bad requests, and a caller resolves each by re-reading and retrying. An unknown type, an unknown field, an
 /// unknown row and a malformed body are the caller's own payload, and no retry fixes them.
 /// </para>
 /// </summary>
@@ -86,6 +86,10 @@ internal static class CatalogRefusal
     public const string EditCollisionRemedy =
         "publish or discard the pending edit for that row first. A draft holds ONE pending intent per row, so an update and a retire of the same row are two publishes.";
 
+    /// <summary>What an operator does about a draft whose text changed under a discard or a commit.</summary>
+    public const string TextStateMismatchRemedy =
+        "read the draft again with catalog-draft. Another operator changed its rows, text or languages after this request read it, and nothing was deleted or written. Repeat the action only if the draft you now read is the one you intend to act on.";
+
     /// <summary>A refusal about the REQUEST rather than about the content, carrying no finding.</summary>
     /// <param name="error">The human-readable refusal.</param>
     public static AdminActionResult Malformed(string error)
@@ -97,6 +101,18 @@ internal static class CatalogRefusal
     /// <param name="reason">The stable reason token.</param>
     public static AdminActionResult BadRequest(string error, string reason)
         => AdminActionResult.BadRequest(new CatalogErrorPayload(error, reason, 0, []));
+
+    /// <summary>
+    /// The typed refusal of TEXT input a store cannot carry because it implements no text authoring companion.
+    /// Nothing is applied, imported or staged, and the row half is never run alone.
+    /// </summary>
+    /// <param name="what">What the request asked for, which the message names.</param>
+    public static AdminActionResult TextUnsupported(string what)
+        => AdminActionResult.BadRequest(new CatalogErrorPayload(
+            what + " needs the text authoring companion, IContentTextAuthoringStore, and this authoring store does not implement it. Nothing was applied, because running the row half alone would drop the text.",
+            ContentAuthoringException.TextOperationUnavailableReason,
+            0,
+            []));
 
     /// <summary>
     /// A refusal carrying EVERY finding rather than the first, which is what lets an operator fix three
@@ -115,7 +131,7 @@ internal static class CatalogRefusal
     }
 
     /// <summary>
-    /// The store's own refusal as a result. The three race tokens become a 409 and everything else a 400,
+    /// The store's own refusal as a result. The race tokens become a 409 and everything else a 400,
     /// and a refusal the validator produced carries its findings through unchanged.
     /// </summary>
     /// <param name="failure">The store's refusal.</param>
@@ -136,6 +152,10 @@ internal static class CatalogRefusal
             case ContentAuthoringException.EditTargetCollisionReason:
                 return AdminActionResult.Conflict(new CatalogConflictPayload(
                     failure.Message, reason, EditCollisionRemedy));
+
+            case ContentAuthoringException.TextStateMismatchReason:
+                return AdminActionResult.Conflict(new CatalogConflictPayload(
+                    failure.Message, reason, TextStateMismatchRemedy));
 
             // The empty-database refusal is NOT here, deliberately: its body carries the version the store
             // stands at, and only the import action has read that number. Fabricating a 0 for it would tell

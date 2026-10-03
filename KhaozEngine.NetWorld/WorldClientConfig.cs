@@ -82,10 +82,11 @@ public sealed class WorldClientConfig
     public bool RequestDeltaReplication { get; init; } = true;
 
     /// <summary>Request negotiated unreliable delta replication (format 2) on join. Default false. Requires
-    /// <see cref="RequestDeltaReplication"/>: with it off this switch does nothing. The server's mode offer decides the
-    /// mode, and <see cref="WorldClient"/> reports it. An older server ignores the request and the session stays on
-    /// reliable deltas. Limits and cadence come from <see cref="ReplicationStream"/>, which is validated only when this
-    /// is on, and an opted-in consumer passes elapsed time to <see cref="WorldClient.Poll"/>.</summary>
+    /// <see cref="RequestDeltaReplication"/>: setting this with it off is a configuration error. The server's mode
+    /// offer decides the mode, and <see cref="WorldClient"/> reports it. An older server ignores the request and the
+    /// session stays on reliable deltas. Limits and cadence come from <see cref="ReplicationStream"/>, which is
+    /// validated only when this is on, and an opted-in consumer passes elapsed time to
+    /// <see cref="WorldClient.Poll"/>.</summary>
     public bool RequestUnreliableDeltaReplication { get; init; }
 
     /// <summary>Format 2 limits and cadence, read only when <see cref="RequestUnreliableDeltaReplication"/> and

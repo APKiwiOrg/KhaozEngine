@@ -78,10 +78,20 @@ public sealed class ReplicationStreamOptions
         return true;
     }
 
-    /// <summary>Validates a host or client config. Returns null and checks nothing when format 2 is off, so a
-    /// reliable-only caller keeps its current behavior. Otherwise returns <see cref="ValidateForUnreliable"/>.</summary>
-    internal DeltaRebuildOptions? ValidateConfig(bool deltaReplication, bool optIn, float tickSeconds) =>
-        IsEnabled(deltaReplication, optIn) ? ValidateForUnreliable(tickSeconds) : null;
+    /// <summary>Validates a host or client config. Returns null and checks nothing when the opt-in is off, so a
+    /// reliable-only caller keeps its current behavior. An opt-in without the existing delta switch is a
+    /// configuration error. Otherwise returns <see cref="ValidateForUnreliable"/>.</summary>
+    /// <exception cref="ArgumentException">The opt-in is on and the delta switch is off. <c>ParamName</c> is
+    /// <c>optIn</c>. Raised before any budget is read.</exception>
+    internal DeltaRebuildOptions? ValidateConfig(bool deltaReplication, bool optIn, float tickSeconds)
+    {
+        if (!optIn) return null;
+        if (!deltaReplication)
+            throw new ArgumentException(
+                "Unreliable delta replication needs delta replication. Turn on DeltaReplication (servers) or " +
+                "RequestDeltaReplication (client), or turn the unreliable opt-in off.", nameof(optIn));
+        return ValidateForUnreliable(tickSeconds);
+    }
 
     /// <summary>Validates every limit for a format 2 stream and returns <see cref="Limits"/> with the 12-byte
     /// envelope charge. Nothing is raised or replaced silently.</summary>

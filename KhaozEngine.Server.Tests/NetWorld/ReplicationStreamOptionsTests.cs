@@ -64,8 +64,28 @@ public class ReplicationStreamOptionsTests
         };
 
         Assert.Null(broken.ValidateConfig(deltaReplication: true, optIn: false, float.NaN));
-        Assert.Null(broken.ValidateConfig(deltaReplication: false, optIn: true, float.NaN));
+        Assert.Null(broken.ValidateConfig(deltaReplication: false, optIn: false, float.NaN));
         Assert.Throws<ArgumentOutOfRangeException>(() => broken.ValidateConfig(true, true, Tick));
+    }
+
+    // Ruling D2.8: a server or client opt-in without the existing delta switch is a configuration error, refused
+    // before any budget is read, with its own exception type rather than a limit's ArgumentOutOfRangeException.
+    [Fact]
+    public void OptInWithoutDeltaReplicationIsRefused()
+    {
+        var valid = new ReplicationStreamOptions();
+        var broken = new ReplicationStreamOptions
+        {
+            Limits = new DeltaRebuildOptions { MaxRetainedProjections = 1 },
+            MaxTransportPayloadBytes = 10,
+        };
+
+        var error = Assert.Throws<ArgumentException>(
+            () => valid.ValidateConfig(deltaReplication: false, optIn: true, Tick));
+        Assert.Equal("optIn", error.ParamName);
+        Assert.Contains("DeltaReplication", error.Message, StringComparison.Ordinal);
+        Assert.Equal("optIn", Assert.Throws<ArgumentException>(
+            () => broken.ValidateConfig(deltaReplication: false, optIn: true, float.NaN)).ParamName);
     }
 
     [Fact]

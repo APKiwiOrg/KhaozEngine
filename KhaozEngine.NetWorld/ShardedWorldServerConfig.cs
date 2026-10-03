@@ -60,9 +60,10 @@ public sealed partial class ShardedWorldServerConfig
     public bool DeltaReplication { get; init; } = true;
 
     /// <summary>Offer negotiated unreliable delta replication (format 2) to a client that requests it. Default false.
-    /// Requires <see cref="DeltaReplication"/>: with it off this switch does nothing. A requesting client otherwise
-    /// receives a mode 0 offer naming <see cref="ReplicationSelectionReason.DisabledServerPolicy"/> and stays on reliable
-    /// deltas. Limits and cadence come from <see cref="ReplicationStream"/>, which is validated only when this is on.</summary>
+    /// Requires <see cref="DeltaReplication"/>: setting this with it off is a configuration error. With this off, a
+    /// requesting client receives a mode 0 offer naming <see cref="ReplicationSelectionReason.DisabledServerPolicy"/>
+    /// and stays on reliable deltas. Limits and cadence come from <see cref="ReplicationStream"/>, which is validated
+    /// only when this is on.</summary>
     public bool AllowUnreliableDeltaReplication { get; init; }
 
     /// <summary>Format 2 limits and cadence, read only when <see cref="AllowUnreliableDeltaReplication"/> and

@@ -125,6 +125,13 @@ public sealed partial class SqlServerContentAuthoringStore
                             await ReadDraftAsync(scope, token).ConfigureAwait(false), member);
                         ContentBundleTextCompatibility.RequireTargets(bundle, text, _registry);
                     }
+                    else
+                    {
+                        // The row-only route can neither carry a held text intent into version 1 nor survive
+                        // the reset of a later refusal, so held text refuses it before anything is staged.
+                        ContentTextCompatibility.RequireNoHeldText(
+                            await ReadDraftAsync(scope, token).ConfigureAwait(false), member);
+                    }
 
                     staged = true;
                     DateTimeOffset at = _clock();

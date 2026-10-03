@@ -1110,7 +1110,8 @@ holds:
 - `DiscardDraftAsync` refuses a draft holding text intents or introductions.
 - `RollbackToAsync` refuses when the current or the target version holds a value or a language, or has no
   complete text record.
-- `ImportBundleAsync` refuses a bundle carrying a text section or any format other than 1.
+- `ImportBundleAsync` refuses a bundle carrying a text section or any format other than 1. It also refuses
+  before anything is staged when the open draft holds text intents or introductions.
 - `ContentPublishCommit.WriteAsync` refuses the row half of a text plan and a plan naming a text chunk the pack
   store does not already hold.
 

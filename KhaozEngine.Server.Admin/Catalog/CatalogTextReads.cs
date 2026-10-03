@@ -45,6 +45,7 @@ internal static class CatalogTextReads
         {
             return await text.ReadTextSnapshotAsync(versionNumber, cancellationToken).ConfigureAwait(false);
         }
+        // Defensive: no in-tree store throws the unavailable reason, so it guards a third-party store breaking the contract.
         catch (ContentAuthoringException failure) when (failure.Reason
             is ContentAuthoringException.TextProvenanceUnknownReason
             or ContentAuthoringException.TextOperationUnavailableReason)

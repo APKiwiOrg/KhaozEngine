@@ -97,27 +97,27 @@ exist. Do not bump the bundle writer before task 5 provides compatibility.
 nullable text state to old DTOs through overloads, with null meaning unrepresented. Keep old row counts and add
 complete row/text/declaration counts. Actual backend gates confirm full lists, base version and epoch.
 
-- [ ] Write tests for ASCII normalization (`EN-us` -> `en-us`), invalid segments/Unicode/underscores, duplicate
+- [x] Write tests for ASCII normalization (`EN-us` -> `en-us`), invalid segments/Unicode/underscores, duplicate
   canonical targets in one batch, cross-call Set/Remove replacement and protected list/byte-payload copies.
   Pin Set then Remove -> one pending declaration, Remove of declared absent -> success and no duplicate intent,
   Remove of never-declared -> typed refusal. Verify old constructor/default/deconstruction metadata explicitly.
-- [ ] Add memory tests for atomic mixed apply/commit, independent declaration freeze, clock/audit rollback,
+- [x] Add memory tests for atomic mixed apply/commit, independent declaration freeze, clock/audit rollback,
   retired-row Set/Remove, full 8192-byte value storage and audit length <=4096 ending `[cut]` without invalid UTF-16.
   Test an old wrapper stripping text through commit/import/discard and an actual held text-only draft. No success
   may erase text. A rival declaration makes TryDiscardChangesAsync return false without delete/audit. Pin the
   authoritative complete/unknown version distinction and no caller-supplied empty proof.
-- [ ] Request RED, run the exact command below and retain the actual missing-seam or behavioral failure. Add a
+- [x] Request RED, run the exact command below and retain the actual missing-seam or behavioral failure. Add a
   direct behavioral RED against the partially available route if the first run only fails compilation.
 
 ```sh
 dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release --filter 'FullyQualifiedName~TextAuthoringContractTests|FullyQualifiedName~InMemoryTextAuthoringTests|FullyQualifiedName~TextLegacyCompatibilityTests' --nologo -v minimal
 ```
 
-- [ ] Implement the companion's apply/freeze/read/commit/atomic-discard reference behavior and fail-closed legacy
+- [x] Implement the companion's apply/freeze/read/commit/atomic-discard reference behavior and fail-closed legacy
   gates. Complete snapshot read uses a positive committed version. Bundle/rollback handlers not yet complete stay
   explicitly unavailable. Do not advertise successful text production on main. Add LanguageTag as an additive audit
   property, leaving `MaxValueLength` at 4096 and old row renderers unchanged.
-- [ ] Request GREEN for the same filter, require zero failures/skips, run relevant guards and commit explicit paths.
+- [x] Request GREEN for the same filter, require zero failures/skips, run relevant guards and commit explicit paths.
   Independent review freezes the complete mutation, commit, snapshot and declaration contracts before tasks 2-4.
 
 ### Task 2: Deterministic publication and exact-version recovery
@@ -156,14 +156,14 @@ invariant that the row plan's languages equal the output chunks holds by constru
 Text-only work prepares with zero row edits. Held text targets are rechecked against the final row plan, because
 row-only edits never recheck them, and an inherited value whose marker is no longer eligible refuses.
 
-- [ ] Write real publish tests for text-only changes, unchanged row/rule bytes, changed-language-only reuse,
+- [x] Write real publish tests for text-only changes, unchanged row/rule bytes, changed-language-only reuse,
   deterministic hashes despite text input order and both manifest language lists. Compare against literal keys and
   existing codec bytes, not the new builder as both expectation and result. Set empty resolves empty, Remove of
   the last value retains a decoded empty index and a constructible caller default. Pending introductions survive.
-- [ ] Add Fork baseline-copy tests using the final approved row-plan ids, retired translation/removal tests and CLIENT eligibility at type and field
+- [x] Add Fork baseline-copy tests using the final approved row-plan ids, retired translation/removal tests and CLIENT eligibility at type and field
   levels. Test strict surrogate rejection, multibyte byte bounds and checked 16 MiB preflight without huge load
   loops. A retained value with unrepresentable visibility/provenance refuses rather than leaks or disappears.
-- [ ] Add version N rebuild after later edits/removal, historical `en-US` spelling, mismatch/missing provenance,
+- [x] Add version N rebuild after later edits/removal, historical `en-US` spelling, mismatch/missing provenance,
   complete empty-language mapping and failure before pointer. Pin reachable text sweep retention and existing
   orphan-pointer semantics. Legacy NULL is accepted as empty only when both regenerated no-language manifest
   hashes match or both verified stored manifests prove empty. Hash mismatch/nonempty/missing proof refuses, and
@@ -173,12 +173,12 @@ row-only edits never recheck them, and an inherited value whose marker is no lon
 dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release --filter 'FullyQualifiedName~TextPublishTests|FullyQualifiedName~TextRebuildTests|FullyQualifiedName~TextCrashSafetyTests|FullyQualifiedName~PackRebuildTextTests' --nologo -v minimal
 ```
 
-- [ ] Implement strict producer preflight, ordinal derived-key sorting and actual wire-tag manifest ordering.
+- [x] Implement strict producer preflight, ordinal derived-key sorting and actual wire-tag manifest ordering.
   Copy Fork text before original edits, encode one chunk per declared language through the existing codec and put
   text before manifests. Rebuild compares recorded text and both manifest hashes before any pointer.
   Bind fork copies to the final row-plan ids. [#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908) is
   settled on main, family copies allocate inside their family's blocks, and text never compensates for allocation.
-- [ ] Request GREEN with the same filter, review failure atomicity/legacy dispatch and commit explicit owned paths.
+- [x] Request GREEN with the same filter, review failure atomicity/legacy dispatch and commit explicit owned paths.
   Existing unsupported-text recovery tests must become meaningful supported-version or missing-capability cases,
   without weakening their before-write refusal assertions.
 
@@ -195,10 +195,10 @@ Coordinator owns common schema-version conformance assertions.
 **Interfaces:** Implement the frozen task 1 companion using the existing connection lease and transactions.
 Persist four text tables and nullable audit language. Bundle/Audit hook ownership remains here through task 5.
 
-- [ ] Write reopen tests for full values, historical wire tags/hash mappings, empty declared languages, pending
+- [x] Write reopen tests for full values, historical wire tags/hash mappings, empty declared languages, pending
   introduction replacement, mixed-batch/audit failure rollback and frozen writes. Old DTO reconstruction must
   fail at backend confirmation. Test the complete expected-draft discard race with controlled callbacks, no timing.
-- [ ] Add verified v1/v2/v3-to-v4 migration tests preserving old rows, timestamps, marks, versions, pins, epoch,
+- [x] Add verified v1/v2/v3-to-v4 migration tests preserving old rows, timestamps, marks, versions, pins, epoch,
   rules and draft state. New tables stay empty. ValidateOnly names the migration and performs no mutation.
   Legacy version completeness remains NULL and every new commit writes complete in its transaction, including
   zero-language versions. New creation/change timestamps use one injected operation clock. Request RED:
@@ -208,10 +208,10 @@ dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Releas
 dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~SqliteContentAuthoringTextConformanceTests' --nologo -v minimal
 ```
 
-- [ ] Implement schema 4, verified migration/inventory and full companion transactions. Enforce UTF-8 limits in
+- [x] Implement schema 4, verified migration/inventory and full companion transactions. Enforce UTF-8 limits in
   application code, not an asserted equivalence with SQLite/SQL character length. Stage all row/text/audit/ledger
   changes under one commit and confirm the complete frozen draft before deleting any category.
-- [ ] Request sequential GREEN under one lease, require zero failures/skips for SQLite, review and commit. Leave
+- [x] Request sequential GREEN under one lease, require zero failures/skips for SQLite, review and commit. Leave
   unfinished text bundle/upgrade paths guarded until task 5's owner-coordinated follow-up completes them.
 
 ### Task 4: SQL Server persistence and migration
@@ -225,23 +225,23 @@ dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release 
 **Interfaces:** Implement the same frozen companion, exact snapshot and four tables under existing Serializable
 scopes. This owner may work independently of task 3 after tasks 1-2 freeze contracts. It retains Bundle/Audit hooks.
 
-- [ ] Port the shared conformance facts with explicit environment-gated overrides and the existing serialized SQL
+- [x] Port the shared conformance facts with explicit environment-gated overrides and the existing serialized SQL
   Server collection. Write fresh/migrated schema parity tests for columns, indexes, collations and named checks.
   Pin full 8192-byte values, 4096 abbreviated audits, historical spellings and atomic mixed/clock/audit failures.
-- [ ] Pin legacy NULL completeness, no fabricated empty snapshot and complete new zero-language commits. Snapshot
+- [x] Pin legacy NULL completeness, no fabricated empty snapshot and complete new zero-language commits. Snapshot
   validation gates all mutations/recovery/export without treating missing mapping rows as proof.
-- [ ] Test migrations from verified older shapes and validation-only refusal without type/schema writes. Do not
+- [x] Test migrations from verified older shapes and validation-only refusal without type/schema writes. Do not
   assert UTF-16 DATALENGTH or LEN equals UTF-8 value bytes. Request RED on an authorized isolated database:
 
 ```sh
 dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~SqlServerTextAuthoringTests|FullyQualifiedName~SqlServerTextSchemaMigrationTests|FullyQualifiedName~SqlServerContentAuthoringTextConformanceTests' --nologo -v minimal
 ```
 
-- [ ] Implement persistent companion dispatch, parameters/readers, schema 4 migration and complete-state guards.
+- [x] Implement persistent companion dispatch, parameters/readers, schema 4 migration and complete-state guards.
   Preserve connection/scope ownership, cancellation, pointer order, existing audit cap and null old audit language.
-- [ ] Request GREEN with the same command. Report actual gate availability and skipped counts. Skipped SQL facts
+- [x] Request GREEN with the same command. Report actual gate availability and skipped counts. Skipped SQL facts
   are not a provider pass or proof borrowed from SQLite. Coordinate real provider proof before the final gate.
-- [ ] Independently review and commit explicit paths. Task 5's common owner requests follow-up provider hooks from
+- [x] Independently review and commit explicit paths. Task 5's common owner requests follow-up provider hooks from
   this owner, rather than editing its Bundle/Audit files concurrently.
 
 ### Task 5: Complete bundle, rollback and upgrade safety
@@ -259,25 +259,25 @@ explicitly to empty text, retaining its old fixture. Add
 `ContentUpgradePlan.Changes(ContentAuthoringChanges changes, IReadOnlyList<string> changeLines)` and matching
 complete-state overloads while preserving old signatures. Use TryDiscardChangesAsync for text-aware disposal.
 
-- [ ] Write bundle 2 round-trip/import tests with retired rows, historical wire spelling and empty languages.
+- [x] Write bundle 2 round-trip/import tests with retired rows, historical wire spelling and empty languages.
   Reject colliding aliases, missing sections, invalid text and future versions before reset. Reconstruct the old
   constructor from a text-bearing bundle and prove refusal, not a successful row-only import.
-- [ ] Add text-only upgrade preview/apply, later planners seeing earlier text, sticky declaration matching,
+- [x] Add text-only upgrade preview/apply, later planners seeing earlier text, sticky declaration matching,
   backend-held rival text invisible to an old wrapper and atomic discard-race tests. Rollback retains all currently
   declared languages and old row-retirement blockers. Unknown snapshot status refuses export/rollback/upgrade,
   including through reconstructed DTOs. No generic empty republish or unretire is introduced.
-- [ ] Request sequential RED:
+- [x] Request sequential RED:
 
 ```sh
 dotnet test KhaozEngine.Catalog.Tests/KhaozEngine.Catalog.Tests.csproj -c Release --filter 'FullyQualifiedName~TextBundleTests|FullyQualifiedName~TextUpgradeTests|FullyQualifiedName~BundleJsonFormatVersionTests' --nologo -v minimal
 dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~InMemoryContentAuthoringTextConformanceTests|FullyQualifiedName~SqliteContentAuthoringTextConformanceTests' --nologo -v minimal
 ```
 
-- [ ] Complete explicit companion import/rollback and exact export through coordinated provider follow-ups.
+- [x] Complete explicit companion import/rollback and exact export through coordinated provider follow-ups.
   Provider confirmation covers rows, text and declarations before draft consumption/reset. Keep caller actor/operator
   and upgrade ledger atomic. Preserve empty-destination bundle import, do not invent a live historical repair verb.
   Legacy proof overloads cannot claim incomplete or text-bearing drafts are known-empty.
-- [ ] Request GREEN, plus the task 4 SQL conformance filter after its bundle hooks land. Independently review all
+- [x] Request GREEN, plus the task 4 SQL conformance filter after its bundle hooks land. Independently review all
   three provider follow-ups before lifting transitional refusals. Commit each owner's explicit paths.
 
 ### Task 6: Real admin-to-reader behavior
@@ -291,31 +291,31 @@ payloads. Preserve old action names, row-field marker refusal and captured actor
 Use the complete ApplyChangesAsync once. Supported import/commit/discard/rollback dispatch is explicit, and legacy
 wrappers cannot return false success. Use the existing CatalogActionHarness for real registered action execution.
 
-- [ ] Add malformed/multiple-finding tests, canonical duplicate/undeclared-language refusal, CLIENT eligibility
+- [x] Add malformed/multiple-finding tests, canonical duplicate/undeclared-language refusal, CLIENT eligibility
   and mixed add plus text atomicity. A failed second target leaves rows, draft categories and audit unchanged.
-- [ ] Add real admin add/name -> publish -> actual manifest/KECT/index -> ContentStringCatalog resolution, then a
+- [x] Add real admin add/name -> publish -> actual manifest/KECT/index -> ContentStringCatalog resolution, then a
   text-only update with the same reader/client code. Pin literal derived key/value, fallback unchanged, empty Set
   resolving empty and Remove of the last value leaving a constructible empty default-language layer.
-- [ ] Request RED:
+- [x] Request RED:
 
 ```sh
 dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Release --filter 'FullyQualifiedName~CatalogTextAdminActionTests|FullyQualifiedName~CatalogTextEndToEndTests|FullyQualifiedName~CatalogEditActionTests|FullyQualifiedName~CatalogBundleActionTests' --nologo -v minimal
 ```
 
-- [ ] Implement cohesive parsing and complete-state read/diff/draft/history/discard paths. Gather all findings
+- [x] Implement cohesive parsing and complete-state read/diff/draft/history/discard paths. Gather all findings
   before one atomic apply. Typed unsupported capability and frozen/stale conflicts remain distinct from malformed
   JSON. Do not read raw input, launch a game or add authentication/transport.
-- [ ] Request GREEN, review and commit explicit paths. Update the owning package READMEs now that APIs exist.
+- [x] Request GREEN, review and commit explicit paths. Update the owning package READMEs now that APIs exist.
 
 ### Task 7: Coordinator completion gate
 
-- [ ] Review the whole integration branch for old wrapper/DTO data loss, full provider commit dispatch,
+- [x] Review the whole integration branch for old wrapper/DTO data loss, full provider commit dispatch,
   exact-version provenance, sticky/default languages, safe audit abbreviation and no server-only leakage.
   Every proposed companion operation must now be implemented and validated, not left guarded as unfinished.
-- [ ] Re-read current main/version/tags. Reconcile conflicts and one valid package-bearing stage on the integration
+- [x] Re-read current main/version/tags. Reconcile conflicts and one valid package-bearing stage on the integration
   branch. Complete the full Markdown sweep and update shared USING/changelog/version declarations. Keep the parent
   issue open until all required behavior is achieved, and do not automatically release or tag.
-- [ ] Run each whole-tree guard and retain separate actual logs/exit codes:
+- [x] Run each whole-tree guard and retain separate actual logs/exit codes:
 
 ```sh
 sh scripts/check-dashes.sh --tree
@@ -326,7 +326,7 @@ bash scripts/check-doc-versions.sh
 git diff --check
 ```
 
-- [ ] Under the exclusive lease, create the gitignored feed then complete the final Release verification once:
+- [x] Under the exclusive lease, create the gitignored feed then complete the final Release verification once:
 
 ```sh
 mkdir -p local-feed
@@ -334,7 +334,7 @@ dotnet build KhaozEngine.slnx -c Release
 dotnet test KhaozEngine.slnx -c Release --no-build --filter 'Category!=LiveSocket'
 ```
 
-- [ ] Record failures, skips and actual SQL provider evidence. Fix/review any newly discovered gap before repeating
+- [x] Record failures, skips and actual SQL provider evidence. Fix/review any newly discovered gap before repeating
   only justified checks. The coordinator integrates/pushes the complete validated result and owns guarded packing
   from current pushed main. Consumer adoption remains a separate handoff. No release/tag or stress permission is
   implied by this plan.

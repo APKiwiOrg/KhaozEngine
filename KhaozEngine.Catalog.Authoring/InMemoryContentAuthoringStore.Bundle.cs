@@ -103,6 +103,12 @@ public sealed partial class InMemoryContentAuthoringStore
                     ContentBundleTextCompatibility.RequireNoPendingWork(_draft, member);
                     ContentBundleTextCompatibility.RequireTargets(bundle, text, _registry);
                 }
+                else
+                {
+                    // The row-only route can neither carry a held text intent into version 1 nor survive the
+                    // reset of a later refusal, so held text refuses it before anything is staged.
+                    ContentTextCompatibility.RequireNoHeldText(_draft, member);
+                }
 
                 staged = true;
                 RestoreFamilies(bundle);

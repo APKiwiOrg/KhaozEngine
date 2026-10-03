@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
@@ -94,6 +95,65 @@ public abstract partial class ContentAuthoringTextStoreConformance
         ContentBundleTextValue value = Assert.Single(named.TextState!.Values);
         Assert.Equal(("sword", NameField, "en", "Sword"), (value.Target.Key.ToString(), value.Target.FieldName, value.Target.Language, value.Value));
         Assert.Equal(named.TextState.Values, ContentBundleJson.Read(ContentBundleJson.Write(named)).TextState!.Values);
+    }
+
+    [Fact]
+    public virtual async Task Text17_ARowOnlyImportOverADraftHoldingTextIsRefusedBeforeStaging()
+    {
+        IContentTextAuthoringStore store = await OpenAsync();
+        await ApplyAsync(store, new[] { Add("stone_sword") }, Set("stone_sword", NameField, "en", "Stone Sword"));
+        ContentDraft held = (await store.GetOpenDraftAsync())!;
+        ContentIdHighWater mark = await ((IContentIdPersistence)store).ReadHighWaterAsync(Item);
+        int audits = (await AuditAsync(store)).Count;
+
+        var refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => store.ImportBundleAsync(RowSeed(), Actor, Operator, "import"));
+
+        Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, refused.Reason);
+        Assert.Empty(await store.ListVersionsAsync());
+        Assert.Empty(await store.ListFamiliesAsync(default));
+        Assert.Equal(mark, await ((IContentIdPersistence)store).ReadHighWaterAsync(Item));
+        Assert.Empty(await PackObjectsAsync(store));
+        Assert.Equal(audits, (await AuditAsync(store)).Count);
+        ContentDraft after = (await store.GetOpenDraftAsync())!;
+        Assert.True(held.TextState!.IsSameAs(after.TextState));
+        Assert.Equal((held.BaseVersion, held.OpenedBy, held.OpenedAtUtc, held.Note), (after.BaseVersion, after.OpenedBy, after.OpenedAtUtc, after.Note));
+        Assert.Equal("stone_sword", Assert.Single(after.Changes.Edits).Key.ToString());
+        Assert.Equal("Stone Sword", Assert.Single(after.TextState!.Edits).Value);
+        Assert.Equal("en", Assert.Single(after.TextState.Introductions).Language);
+    }
+
+    [Fact]
+    public virtual async Task Text18_ARowOnlyImportOverADraftHoldingOnlyRowsIsNotATextRefusal()
+    {
+        IContentTextAuthoringStore store = await OpenAsync();
+        await store.ApplyEditsAsync(new[] { Add("axe") }, Actor, Operator, "rows");
+
+        // Only the text refusal is pinned here. What the import does with the draft's pending rows is #1251.
+        ContentPublishResult imported = await store.ImportBundleAsync(RowSeed(), Actor, Operator, "import");
+
+        Assert.Equal(1, imported.VersionNumber);
+        Assert.Equal(3, (await store.ListRowsAsync(Item, 1, "sword", true, 0, 1)).Rows.Single().Id);
+    }
+
+    /// <summary>Every object the store's pack target actually holds.</summary>
+    async Task<List<string>> PackObjectsAsync(IContentTextAuthoringStore store)
+    {
+        var held = new List<string>();
+        await foreach (string hash in ((IPackStorePruning)PackOf(store)).EnumerateAsync())
+        {
+            held.Add(hash);
+        }
+
+        return held;
+    }
+
+    /// <summary>A valid format 1 seed: the complete bundle's live sword row with its carried id and no text.</summary>
+    static ContentBundle RowSeed()
+    {
+        ContentBundle complete = CompleteBundle();
+        return new ContentBundle(
+            ContentBundle.CurrentFormatVersion, "seed", 0, complete.Types, complete.Rows.Take(1).ToArray(), complete.Families, complete.Rules);
     }
 
     /// <summary>Version 1 names the sword in English, and version 2 renames it and adds French.</summary>

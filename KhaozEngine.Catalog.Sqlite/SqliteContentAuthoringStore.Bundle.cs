@@ -119,6 +119,13 @@ public sealed partial class SqliteContentAuthoringStore
                         await ReadDraftAsync(null, cancellationToken).ConfigureAwait(false), member);
                     ContentBundleTextCompatibility.RequireTargets(bundle, text, _registry);
                 }
+                else
+                {
+                    // The row-only route can neither carry a held text intent into version 1 nor survive the
+                    // reset of a later refusal, so held text refuses it before anything is staged.
+                    ContentTextCompatibility.RequireNoHeldText(
+                        await ReadDraftAsync(null, cancellationToken).ConfigureAwait(false), member);
+                }
 
                 staged = true;
                 long at = Millis(_clock());

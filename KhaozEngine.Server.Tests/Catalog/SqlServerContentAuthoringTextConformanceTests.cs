@@ -162,4 +162,14 @@ public sealed class SqlServerContentAuthoringTextConformanceTests : ContentAutho
     [CatalogSqlServerFact]
     public override Task Text16_ExportWritesFormatTwoExactlyWhenTheVersionDeclaresALanguage()
         => base.Text16_ExportWritesFormatTwoExactlyWhenTheVersionDeclaresALanguage();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task Text17_ARowOnlyImportOverADraftHoldingTextIsRefusedBeforeStaging()
+        => base.Text17_ARowOnlyImportOverADraftHoldingTextIsRefusedBeforeStaging();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task Text18_ARowOnlyImportOverADraftHoldingOnlyRowsIsNotATextRefusal()
+        => base.Text18_ARowOnlyImportOverADraftHoldingOnlyRowsIsNotATextRefusal();
 }

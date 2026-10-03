@@ -15,7 +15,9 @@ namespace KhaozEngine.Movement;
 /// <see cref="MoveTuning"/> fields.</summary>
 /// <remarks>Adding a field to <see cref="MoveTuning"/> or <see cref="PhysicsNavBakeOptions"/> changes this layout.
 /// Encode the field here and bump <see cref="FormatVersion"/>, so a bake from an older layout reports an
-/// unsupported format rather than corrupt bytes. The golden fingerprint test changes only with that bump.</remarks>
+/// unsupported format rather than corrupt bytes. Changing the label character set, <see cref="MaxNameLength"/> or
+/// <see cref="MaxProfiles"/> changes which stored identities decode as canonical, so it needs the same bump. The
+/// golden fingerprint test changes only with that bump.</remarks>
 internal static partial class NavBakeIdentity
 {
     /// <summary>Bake container format version. Bump it whenever the identity or payload layout changes.</summary>
@@ -71,7 +73,7 @@ internal static partial class NavBakeIdentity
             ?? throw new ArgumentException("Expectation options are required.", nameof(expected));
         IReadOnlyList<(string Label, byte[] Digest)> sources = (expected.Sources
             ?? throw new ArgumentException("Expectation sources are required.", nameof(expected))).Snapshot();
-        NavBakeProfile[] profiles = SortedProfiles(expected.Profiles);
+        NavBakeProfile[] profiles = SortedProfiles(expected.Profiles, nameof(expected));
         if (sources.Count == 0)
             throw new ArgumentException("A bake needs at least one source.", nameof(expected));
         if (sources.Count > ushort.MaxValue)
@@ -204,22 +206,22 @@ internal static partial class NavBakeIdentity
 
     private static bool IsNameChar(char c) => c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '.' or '_' or '-' or '/';
 
-    private static NavBakeProfile[] SortedProfiles(IReadOnlyList<NavBakeProfile>? profiles)
+    private static NavBakeProfile[] SortedProfiles(IReadOnlyList<NavBakeProfile>? profiles, string parameter)
     {
-        if (profiles is null) throw new ArgumentException("Expectation profiles are required.", nameof(profiles));
+        if (profiles is null) throw new ArgumentException("Expectation profiles are required.", parameter);
         if (profiles.Count is 0 or > MaxProfiles)
-            throw new ArgumentException($"A bake holds 1 to {MaxProfiles} profiles.", nameof(profiles));
+            throw new ArgumentException($"A bake holds 1 to {MaxProfiles} profiles.", parameter);
         var sorted = new NavBakeProfile[profiles.Count];
         for (int i = 0; i < sorted.Length; i++)
         {
-            NavBakeProfile profile = profiles[i] ?? throw new ArgumentException("A profile is null.", nameof(profiles));
-            CheckName(profile.Name, nameof(profiles), "Profile name");
+            NavBakeProfile profile = profiles[i] ?? throw new ArgumentException("A profile is null.", parameter);
+            CheckName(profile.Name, parameter, "Profile name");
             sorted[i] = profile;
         }
         Array.Sort(sorted, static (a, b) => string.CompareOrdinal(a.Name, b.Name));
         for (int i = 1; i < sorted.Length; i++)
             if (string.Equals(sorted[i - 1].Name, sorted[i].Name, StringComparison.Ordinal))
-                throw new ArgumentException($"Profile name '{sorted[i].Name}' repeats.", nameof(profiles));
+                throw new ArgumentException($"Profile name '{sorted[i].Name}' repeats.", parameter);
         return sorted;
     }
 

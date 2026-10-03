@@ -246,6 +246,7 @@ public class GroundNavigationBakeRefusalTests
     [InlineData("cell-beyond", "strictly ascending")]
     [InlineData("nan-surface", "not finite")]
     [InlineData("below-lowest", "not above")]
+    [InlineData("equal-to-lowest", "not above")]
     public void WaterInvariantsAreEnforced(string fault, string detailFragment)
     {
         Baked pool = WetPool.Value;
@@ -265,11 +266,61 @@ public class GroundNavigationBakeRefusalTests
             case "cell-beyond": BinaryPrimitives.WriteInt32LittleEndian(file.AsSpan(last), map.Cells); break;
             case "nan-surface": Single(file, first + 4, float.NaN); break;
             case "below-lowest": Single(file, first + 4, -0.5f); break;
+            case "equal-to-lowest":
+                // Every pool column holds one surface, so cell 2's lowest surface is the third stored surface.
+                Assert.All(Enumerable.Range(0, map.Cells), i => Assert.Equal(1, file[map.Counts + i]));
+                Assert.Equal(2, I32(file, first));
+                file.AsSpan(map.Surfaces + 12 * 2, 4).CopyTo(file.AsSpan(first + 4, 4));
+                break;
             default: throw new ArgumentOutOfRangeException(nameof(fault));
         }
         Reseal(file);
 
         AssertRefused(GroundNavigationBake.Load(new MemoryStream(file), pool.Expected), NavBakeLoadStatus.Corrupt, detailFragment);
+    }
+
+    [Fact]
+    public void WaterEntryWithItsCentreOutsideTheBoundsIsCorrupt()
+    {
+        Baked padded = Bake("pool-padded");
+        byte[] file = Clone(padded.File);
+        PayloadMap map = Map(file, 1);
+        int width = BinaryPrimitives.ReadInt32LittleEndian(file.AsSpan(map.Payload));
+        Assert.Equal(4, width);
+        Assert.Equal(0, file[map.Counts + 3]);
+        Assert.Equal(2, I32(file, map.Water));
+        Assert.Equal(2, I32(file, map.Water + 4));
+        Assert.Equal(6, I32(file, map.Water + 16));
+        // Cell 3 is the padded column of row 0, still ascending before cell 6.
+        BinaryPrimitives.WriteInt32LittleEndian(file.AsSpan(map.Water + 4), 3);
+        Reseal(file);
+
+        AssertRefused(GroundNavigationBake.Load(new MemoryStream(file), padded.Expected), NavBakeLoadStatus.Corrupt,
+            "cell 3 centre lies outside the bounds");
+    }
+
+    [Fact]
+    public void AquaticFlagInTheStoredIdentityIsChecked()
+    {
+        Baked channel = Bake("channel");
+        NavBakeProfile swim = channel.Expected.Profiles.Single(p => p.Name == "duck-swim");
+        NavBakeExpectation asGround = channel.Expected with
+        {
+            Profiles = [.. channel.Expected.Profiles.Select(p => p.Name == "duck-swim" ? p with { Aquatic = false } : p)],
+        };
+        int flag = AquaticFlagOffset(channel.File, "duck-swim");
+        Assert.True(swim.Aquatic);
+        Assert.Equal(1, channel.File[flag]);
+
+        AssertRefused(GroundNavigationBake.Load(new MemoryStream(channel.File), asGround), NavBakeLoadStatus.ProfilesChanged,
+            "Profile 'duck-swim' field Aquatic: bake True, expected False");
+        byte[] cleared = Clone(channel.File);
+        cleared[flag] = 0;
+        AssertRefused(GroundNavigationBake.Load(new MemoryStream(cleared), channel.Expected), NavBakeLoadStatus.ProfilesChanged,
+            "Profile 'duck-swim' field Aquatic: bake False, expected True");
+        byte[] hostile = Clone(channel.File);
+        hostile[flag] = 2;
+        AssertRefused(GroundNavigationBake.Load(new MemoryStream(hostile), channel.Expected), NavBakeLoadStatus.Corrupt, "Aquatic");
     }
 
     [Fact]
@@ -464,6 +515,17 @@ public class GroundNavigationBakeRefusalTests
         }
         Assert.Equal(file.Length, at);
         return new PayloadMap(payload, payload + 20, counts, surfaces, water, cells, profiles);
+    }
+
+    // The profile entry is the short name, the required and excluded area words, then the aquatic flag.
+    private static int AquaticFlagOffset(byte[] file, string name)
+    {
+        byte[] entry = [(byte)name.Length, .. System.Text.Encoding.ASCII.GetBytes(name)];
+        int identity = Header(file).IdentityLength;
+        int at = file.AsSpan(52, identity).IndexOf(entry);
+        Assert.True(at >= 0, $"Profile '{name}' is not in the identity block.");
+        Assert.Equal(-1, file.AsSpan(52 + at + 1, identity - at - 1).IndexOf(entry));
+        return 52 + at + entry.Length + 8;
     }
 
     private static int I32(byte[] file, int offset) => BinaryPrimitives.ReadInt32LittleEndian(file.AsSpan(offset));

@@ -21,7 +21,10 @@ public class GroundNavigationBakeRoundTripTests
         1f, 5f, 6f, 0.8f, 128, 512);
     private static readonly MoveTuning Tiny = Tuning with { CapsuleRadius = 0.04f, CapsuleHalfHeight = 0.1f, MaxStepClimbSpeed = 0f };
 
-    public static TheoryData<string> Fixtures => new() { "thin-wall", "door", "step", "deck", "rebased", "stair-open", "stair-fence", "pool" };
+    public static TheoryData<string> Fixtures => new()
+    {
+        "thin-wall", "door", "step", "deck", "rebased", "stair-open", "stair-fence", "pool", "pool-padded", "channel",
+    };
 
     [Theory, MemberData(nameof(Fixtures))]
     public void LoadedProfilesMatchTheFreshBuild(string fixture)
@@ -63,7 +66,7 @@ public class GroundNavigationBakeRoundTripTests
     [Fact]
     public void RewritingALoadedBakeReproducesItsBytes()
     {
-        foreach (string fixture in new[] { "deck", "stair-open", "door", "pool" })
+        foreach (string fixture in new[] { "deck", "stair-open", "door", "pool", "channel" })
         {
             Baked baked = Bake(fixture);
             Assert.Equal(baked.File, Write(LoadOk(baked.File, baked.Expected)));
@@ -159,6 +162,71 @@ public class GroundNavigationBakeRoundTripTests
     }
 
     [Fact]
+    public void LoadedAquaticProfileMatchesTheFreshBuild()
+    {
+        Baked baked = Bake("channel");
+
+        GroundNavigationBake loaded = LoadOk(baked.File, baked.Expected);
+
+        Assert.True(baked.Bake.GetProfile("duck-swim").Aquatic);
+        Assert.True(loaded.GetProfile("duck-swim").Aquatic);
+        Assert.False(loaded.GetProfile("duck").Aquatic);
+        Assert.False(loaded.GetProfile("wide").Aquatic);
+        foreach (string name in new[] { "duck", "duck-swim", "wide" })
+            BakeEquivalence.AssertEquivalent(baked.Bake.GetProfile(name), loaded.GetProfile(name));
+    }
+
+    [Fact]
+    public void RewritingALoadedAquaticBakeReproducesItsBytes()
+    {
+        Baked baked = Bake("channel");
+
+        byte[] rewritten = Write(LoadOk(baked.File, baked.Expected));
+
+        Assert.Equal(baked.File, rewritten);
+        Assert.Equal(baked.File, Write(LoadOk(rewritten, baked.Expected)));
+    }
+
+    [Fact]
+    public void GroundProfilesStillShareOneColumnSnapshot()
+    {
+        Baked baked = Bake("channel");
+        GroundNavigationBake loaded = LoadOk(baked.File, baked.Expected);
+
+        foreach (GroundNavigationBake bake in new[] { baked.Bake, loaded })
+        {
+            PhysicsNavColumns duck = bake.GetProfile("duck").Footprint.Columns;
+            PhysicsNavColumns swim = bake.GetProfile("duck-swim").Footprint.Columns;
+            Assert.Same(duck, bake.GetProfile("wide").Footprint.Columns);
+            Assert.NotSame(duck, swim);
+            Assert.False(duck.IsFloat(8, 4, 0));
+            Assert.True(swim.IsFloat(8, 4, 0));
+        }
+        Assert.NotSame(baked.Bake.GetProfile("duck-swim").Footprint.Columns, loaded.GetProfile("duck-swim").Footprint.Columns);
+    }
+
+    [Fact]
+    public void AquaticProfileWithoutSampledWaterIsRefusedAtCreate()
+    {
+        BakeFixture fixture = Fixture("channel");
+        PhysicsNavBakeOptions dry = fixture.Options with { SampleWater = false };
+        using BepuPhysicsWorld world = fixture.World();
+        using PhysicsNavBake capture = PhysicsNavBake.Capture(
+            new GroundMoveContext(fixture.Ground!, physics: world, medium: fixture.Medium), dry, fixture.Classify);
+
+        Assert.Equal("options", Assert.Throws<ArgumentException>(() =>
+            GroundNavigationBake.Create(capture, Sources(), fixture.Profiles)).ParamName);
+        Assert.Throws<ArgumentException>(() => GroundNavigationBake.Load(new MemoryStream(Bake("channel").File),
+            new NavBakeExpectation(dry, Sources(), fixture.Profiles)));
+        NavBakeProfile[] disordered = [fixture.Profiles[1] with
+        {
+            Tuning = fixture.Profiles[1].Tuning with { SwimSurfaceSubmersionFraction = 0.5f },
+        }];
+        Assert.Throws<ArgumentException>(() => GroundNavigationBake.Load(new MemoryStream(Bake("channel").File),
+            new NavBakeExpectation(fixture.Options, Sources(), disordered)));
+    }
+
+    [Fact]
     public void GetProfileRejectsUnknownNames()
     {
         Baked baked = Bake("door");
@@ -171,7 +239,8 @@ public class GroundNavigationBakeRoundTripTests
     }
 
     internal sealed record BakeFixture(Func<BepuPhysicsWorld> World, PhysicsNavBakeOptions Options,
-        NavAreaClassifier Classify, NavBakeProfile[] Profiles, Func<float, float, float, MovementMedium>? Medium = null);
+        NavAreaClassifier Classify, NavBakeProfile[] Profiles, Func<float, float, float, MovementMedium>? Medium = null,
+        Func<float, float, float>? Ground = null);
 
     internal sealed record Baked(GroundNavigationBake Bake, NavBakeExpectation Expected, byte[] File);
 
@@ -204,6 +273,32 @@ public class GroundNavigationBakeRoundTripTests
         "pool" => new(GroundTraversalProbeTests.FlatWorld,
             Options with { MinX = -2f, MaxX = 2f, MinZ = -1f, MaxZ = 1f, SampleWater = true },
             feet => feet.Y > 1f ? 0x04u : 0x01u, [new("player", Tuning, default)], WaterCaptureTests.Pool),
+        // Centres x -1.5 to 1.5 against MaxX 1.4, so the last column is padding.
+        "pool-padded" => new(GroundTraversalProbeTests.FlatWorld,
+            Options with { MinX = -2f, MaxX = 1.4f, MinZ = -1f, MaxZ = 1f, SampleWater = true },
+            _ => 0x01u, [new("player", Tuning, default)], WaterCaptureTests.Pool),
+        // Two ground profiles and one aquatic profile over AquaticProfileTests' steep channel.
+        "channel" => new(AquaticProfileTests.ChannelWorld,
+            Options with
+            {
+                MinX = -2f,
+                MaxX = 2f,
+                MinZ = -1f,
+                MaxZ = 1f,
+                CellSize = 0.25f,
+                ProbeHeight = 2f,
+                ProbeRange = 5f,
+                MaxCells = 256,
+                MaxLayerCells = 1024,
+                SampleWater = true,
+            },
+            _ => 0u,
+            [
+                new("duck", SwimTraversalProbeTests.Duck, default),
+                new("duck-swim", SwimTraversalProbeTests.Duck, default) { Aquatic = true },
+                new("wide", SwimTraversalProbeTests.Duck with { CapsuleRadius = 0.24f }, default),
+            ],
+            AquaticProfileTests.ChannelMedium, AquaticProfileTests.ChannelGround),
         _ => throw new ArgumentOutOfRangeException(nameof(name)),
     };
 
@@ -212,7 +307,8 @@ public class GroundNavigationBakeRoundTripTests
         BakeFixture fixture = Fixture(name);
         using BepuPhysicsWorld world = fixture.World();
         using PhysicsNavBake capture = PhysicsNavBake.Capture(
-            new GroundMoveContext((_, _) => 0f, physics: world, medium: fixture.Medium), fixture.Options, fixture.Classify);
+            new GroundMoveContext(fixture.Ground ?? ((_, _) => 0f), physics: world, medium: fixture.Medium),
+            fixture.Options, fixture.Classify);
         GroundNavigationBake bake = GroundNavigationBake.Create(capture, Sources(), fixture.Profiles);
         return new Baked(bake, new NavBakeExpectation(fixture.Options, Sources(), fixture.Profiles), Write(bake));
     }

@@ -15,13 +15,14 @@ namespace KhaozEngine.Tests.Movement;
 public class NavBakeIdentityTests
 {
     private const string GoldenEngine = "0.0.0-golden";
-    private const string GoldenFingerprint = "0eecbc661ae8d1ca53f17b722445a8d7286cbfa7f0b8705ae48e2bcb0fb97894";
+    private const string GoldenFingerprint = "b8d049d40ad365789f251269953c4ee1074440c24b80982f69b874f7cb9f08e3";
 
     private static readonly string[] ExcludedTuningFields = ["WalkSpeed", "RunSpeed", "AirMomentum"];
 
-    private const string TuningGrows = "A new MoveTuning field needs encoding in NavBakeIdentity and a format version bump.";
-    private const string OptionsGrow =
-        "A new PhysicsNavBakeOptions field needs encoding in NavBakeIdentity and a format version bump.";
+    private const string TuningGrows = "A new MoveTuning field needs encoding in NavBakeIdentity. Once a format " +
+        "version has shipped, the layout change also needs a FormatVersion bump. Unreleased KENB v1 changes in place.";
+    private const string OptionsGrow = "A new PhysicsNavBakeOptions field needs encoding in NavBakeIdentity. Once a " +
+        "format version has shipped, the layout change also needs a FormatVersion bump. Unreleased KENB v1 changes in place.";
     private const BindingFlags InstanceFields = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
     private static PhysicsNavBakeOptions GoldenOptions => new(
@@ -242,12 +243,54 @@ public class NavBakeIdentityTests
             TractionHysteresisRadians: MathF.PI * 3f / 180f, SlideFrictionRampRadians: MathF.PI * 8f / 180f,
             StrafeSpeedScale: 1f, BackpedalSpeedScale: 1f, BackpedalAllowsRun: true);
         var golden = new NavBakeExpectation(options, new NavBakeSources().Add("world", Digest(0x11)),
-            [new NavBakeProfile("player", tuning, new NavAreaFilter(0u, 0u))]);
+            [new NavBakeProfile("player", tuning, new NavAreaFilter(0u, 0u)) { Aquatic = false }]);
 
         byte[] identity = Encode(golden);
 
         Assert.Equal((ushort)1, NavBakeIdentity.FormatVersion);
         Assert.Equal(GoldenFingerprint, Convert.ToHexStringLower(SHA256.HashData(identity)));
+    }
+
+    [Fact]
+    public void AquaticFlagChangesTheIdentity()
+    {
+        NavBakeExpectation golden = Golden();
+        byte[] ground = Encode(golden);
+        byte[] aquatic = Encode(golden with { Profiles = [golden.Profiles[0] with { Aquatic = true }] });
+
+        Assert.False(new NavBakeProfile("player", GoldenTuning, default).Aquatic);
+        Assert.False(ground.AsSpan().SequenceEqual(aquatic));
+        Assert.Equal(ground.Length, aquatic.Length);
+    }
+
+    [Theory]
+    [InlineData("aquatic-2")]
+    [InlineData("aquatic-255")]
+    public void AquaticFlagByteOtherThanZeroOrOneIsCorrupt(string fault)
+    {
+        byte[] expected = Encode(CorruptBase());
+        byte[] stored = Fault((byte[])expected.Clone(), fault);
+
+        (NavBakeLoadStatus status, string detail) = NavBakeIdentity.Compare(stored, expected);
+
+        Assert.Equal(NavBakeLoadStatus.Corrupt, status);
+        Assert.Contains("Aquatic", detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StaleAquaticFlagIsRefusedNamingIt()
+    {
+        NavBakeExpectation golden = Golden();
+        byte[] ground = Encode(golden);
+        byte[] aquatic = Encode(golden with { Profiles = [golden.Profiles[0] with { Aquatic = true }] });
+
+        (NavBakeLoadStatus status, string detail) = NavBakeIdentity.Compare(aquatic, ground);
+        (NavBakeLoadStatus reverse, string reverseDetail) = NavBakeIdentity.Compare(ground, aquatic);
+
+        Assert.Equal(NavBakeLoadStatus.ProfilesChanged, status);
+        Assert.Equal("Profile 'player' field Aquatic: bake True, expected False.", detail);
+        Assert.Equal(NavBakeLoadStatus.ProfilesChanged, reverse);
+        Assert.Contains("field Aquatic: bake False, expected True", reverseDetail, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -404,7 +447,7 @@ public class NavBakeIdentityTests
         int catalog = sources, catalogLength = 1 + 7 + 32;
         int world = catalog + catalogLength, worldLength = 1 + 5 + 32;
         int profiles = world + worldLength + 2;
-        int profileLength = 1 + 5 + 8 + Tuning;
+        int profileLength = 1 + 5 + 8 + 1 + Tuning;
         int alpha = profiles, bravo = profiles + profileLength;
         switch (fault)
         {
@@ -429,7 +472,7 @@ public class NavBakeIdentityTests
             case "empty":
                 return [];
             case "bool-byte":
-                bytes[alpha + 14 + Tuning - 1] = 2;
+                bytes[alpha + 15 + Tuning - 1] = 2;
                 return bytes;
             case "engine-utf8":
                 bytes[2] = 0xFF;
@@ -445,6 +488,10 @@ public class NavBakeIdentityTests
                 return bytes;
             case "profile-count-0" or "profile-count-257" or "profile-count-65535":
                 BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(profiles - 2), ushort.Parse(fault[14..], CultureInfo.InvariantCulture));
+                return bytes;
+            case "aquatic-2" or "aquatic-255":
+                Assert.Equal(0, bytes[alpha + 14]);
+                bytes[alpha + 14] = byte.Parse(fault[8..], CultureInfo.InvariantCulture);
                 return bytes;
             case "label-length-65":
                 bytes[world] = 65;

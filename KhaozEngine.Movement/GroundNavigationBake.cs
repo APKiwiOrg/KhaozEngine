@@ -55,7 +55,8 @@ public sealed partial class GroundNavigationBake
     /// <exception cref="ArgumentOutOfRangeException">The capture allows more than 255 surfaces per column, or a
     /// profile tuning is invalid.</exception>
     /// <exception cref="ArgumentException">A source, profile name, count or tuning is invalid, a profile slope differs
-    /// from the capture slope, or the identity block exceeds 1 MiB.</exception>
+    /// from the capture slope, an aquatic profile's capture did not sample water or its swim fractions are out of
+    /// order, or the identity block exceeds 1 MiB.</exception>
     /// <exception cref="InvalidOperationException">The physics origin changed, or a fresh profile's candidate links
     /// differ from the list regenerated from its grids, which is an engine defect.</exception>
     public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
@@ -80,7 +81,8 @@ public sealed partial class GroundNavigationBake
         for (int i = 0; i < sorted.Length; i++)
         {
             NavBakeProfile profile = sorted[i];
-            GroundNavigation navigation = capture.BuildProfile(profile.Tuning, profile.Areas);
+            GroundNavigation navigation = capture.BuildProfile(profile.Tuning, profile.Areas,
+                new GroundProfileOptions { Aquatic = profile.Aquatic });
             IReadOnlyList<NavLink> regenerated = NavLayerLinks.GenerateGrounded(navigation.Space.Layers, profile.Tuning.StepHeight);
             if (!SameLinks(regenerated, navigation.Space.Links))
                 throw new InvalidOperationException(

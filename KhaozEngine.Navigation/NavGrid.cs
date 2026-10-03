@@ -151,7 +151,8 @@ public sealed partial class NavGrid
     public byte ClearanceAt(int cx, int cz) => InBounds(cx, cz) ? _clearance[cz * Width + cx] : (byte)0;
 
     /// <summary>True when this grid was baked with a per-cell surface height field
-    /// (via <see cref="FromSurfaces"/>). False for grids from <see cref="FromWalkable"/>.</summary>
+    /// (via <see cref="FromSurfaces"/>) or rebuilt from a stored blocked mask and open-cell heights (via
+    /// <see cref="FromBlockedSurfaces"/>). False for grids from <see cref="FromWalkable"/>.</summary>
     public bool HasSurfaceHeights => _heights is not null;
 
     /// <summary>

@@ -450,7 +450,8 @@ Expected: build exit 0 with zero warnings, test exit 0 with zero failures and no
 
 ## Outcome
 
-Pending execution. Record per task: commit, focused counts, RED evidence, the Task 1 baseline and final byte counts, the Task 3 golden constant, the Task 4 and Task 5 observations, every departure with reason and cost, and the final verification.
+Executed. Every task below records its commits, focused counts, RED evidence, measurements and departures. Rulings
+N1 to N9 and the final verification follow Task 6.
 
 ### Task 1: allocation fix
 
@@ -486,6 +487,18 @@ thread-static fields. No issue was filed, by dispatch instruction.
 
 Verification. Movement.Tests 354 passed of 354. Game.Tests `KhaozEngine.Tests.Physics` 203 passed of 203.
 Game.Tests `KhaozEngine.Tests.Locomotion` 996 passed, 1 skipped of 997. Zero build warnings. File size guard exit 0.
+
+### Task 2: surface grid from a stored blocked mask
+
+Done. Commit `feat(navigation): rebuild surface grids from a stored blocked mask`. `NavGrid` became partial and the new
+`NavGrid.BlockedSurfaces.cs` holds `FromBlockedSurfaces`. RED was a compile failure, four CS0117 errors on the missing
+factory. GREEN is 16 of 16 in `NavGridBlockedSurfacesTests`, and `KhaozEngine.Tests.Navigation` passed 419 of 419 with
+zero warnings. `RebuildsEveryCellOfASurfaceGrid` compares every `ClearanceAt` and `SurfaceHeightAt` as bits against a
+`FromSurfaces` grid with a step-blocked, a low-headroom and a non-standable cell.
+
+Departures. Validation follows `FromSurfaces` exactly, so a NaN cell size passes and `yMin` and `yMax` are not checked
+there. The Task 4 reader rejects a mismatched or non-finite cell size and NaN bands before calling the factory. The
+`HasSurfaceHeights` doc comment was left for Task 7 to keep `NavGrid.cs` to the one-line change.
 
 ### Task 3: canonical bake identity
 
@@ -706,3 +719,81 @@ Differences from a typical game-side walk-up rule:
 - Pass `targetMoves` true for any body target, such as a creature or player, and false for static objects and points.
 - Call `Tick` exactly once per simulation tick, since the windows count ticks.
 ```
+
+### Rulings
+
+- N1: execution follows the delta round's slot runner and lane protocol. Reason: one shared build slot across the
+  orchestration. Cost: none.
+- N2 and its extension: one bounded per-thread capsule cache each in `CharacterMovement.cs` (step) and
+  `CharacterMovement.Collision.cs` (slide probe), public signatures unchanged. Reason: inside the authorized
+  allocation fix, behavior-neutral, and it also removes live per-step garbage. Cost: two thread-static fields in hot
+  core files, covered by the Locomotion and Movement suites.
+- N3: `DirectApproachOptions` bounds each window to 65,535 ticks and a test proves warmed steady ticks allocate
+  nothing. Reason: player hot path, and an unbounded option was a construction-time overflow. Cost: one bound and one
+  test.
+- N4: one shared `RangeShapeKey` for both drivers plus the missing shape, suspension and ledge rows. Reason: a
+  duplicated key would drift silently between drivers. Cost: a small `MoveToRange` refactor proven by the Step 1
+  filter.
+- N5: `Load` validates the expectation as `Create` would before reading any byte, through
+  `PhysicsNavBakeOptions.ValidateWithoutOrigin`, a surface cap of 255 and the static `GroundMoveContext.CheckTuning`.
+  Reason: design S4 says an invalid expectation throws as `Create` does. Cost: one internal method each in two files
+  outside the Task 4 list.
+- N6: Task 3's review minors land as the first Task 4 commit. Reason: cheap, same files, protects the golden. Cost:
+  one commit.
+- N7: the stored candidate count is bounded before `GenerateGrounded`, a seekable identity length check, an in-layer
+  exit row, a rewrite check for every fixture, and design S4 amended. Reason: review follow-up on hostile counts.
+  Cost: one commit.
+- N8: an owning internal `PhysicsNavColumns.Own` for the reader plus per-layer scratch shared by every profile, a
+  deterministic exact-edge fact and two wording fixes. Reason: about 7 MiB less transient allocation at Hollowmere
+  client startup. Cost: one internal factory.
+- N9 (amends O2.26): engine main released `v20.19.0` before integration, so Task 7 stages `20.20.0` with the release
+  note, or rides a minor already staged above `20.19.0`, re-read at landing.
+
+### Commits
+
+| Task | Commits |
+| --- | --- |
+| Design and plan | `f3f28ad18`, `d6def74f1`, `d95017293` |
+| 1 | `a29a191e5` perf(locomotion): reuse immutable capsules per thread, `a4ba1bba7` perf(movement): remove per-proof allocation |
+| 2 | `31fc37b87` feat(navigation): rebuild surface grids from a stored blocked mask |
+| 3 | `ed2e2d5ab` feat(movement): canonical identity for baked navigation sets |
+| 4 | `1d3167380` test(movement): harden bake identity guards, `01a1c565b` feat(movement): bake and load ground navigation profile sets, `bdc612441` fix(movement): bound bake load before generating links |
+| 5 | `70c8030c6` test(movement): prove baked tile world navigation, `d5c7d46c3` perf(movement): load baked columns without copying |
+| 6 | `7077bffd9` refactor(movement): share range approach helpers, `d7a8092da` feat(movement): approach reach targets without a planner, `6344fba8a` fix(movement): bound direct approach windows, `2378ce212` refactor(movement): share range shape keys, merged by `6cfa8cd7a` |
+
+### Task 7: living documentation, release note and full verification
+
+Done. `git fetch origin` then `git merge origin/main` brought in released `v20.19.0` (`0fddd1db4`) without conflicts.
+`Directory.Build.props` then read the released `20.19.0`, so per ruling N9 the branch stages `20.20.0` with a new
+`CHANGELOG.md` entry in the same commit as the bump, and every guarded `PackageReference` example moves with it. The
+entry carries the bake format and load API, `NavGrid.FromBlockedSurfaces`, `DirectMoveToRange` and
+`RangeMoveStatus.Blocked`, the allocation numbers and the capsule caches.
+
+Living documentation: the Movement README gains the allocation table, a "Baked profile sets" section with consumer
+guidance (source digest inputs including the ground height and normal providers and clamp bounds, LF normalisation,
+rebake triggers, refused-bake handling), the bake bridge facts, `Blocked` in the status list and a "Route-free
+approach" section. The Navigation README and the `HasSurfaceHeights` doc comment name `FromBlockedSurfaces`.
+`docs/USING-KHAOZENGINE.md` gains the bake and route-free sections and `Blocked` in the driver surface. The root README
+Movement row, `docs/DEPENDENCY-SEAMS.md`, the round 2 design's persistence non-goal, design S8 and S11, the design
+status line and `docs/INDEX.md` follow. Design S8 now states the measured transient load allocation: payload buffer,
+final arrays, per-profile scratch of 7 B per cell shared across profiles and per-layer clearance scratch of 5 B per
+cell, about 2 to 2.3 times retained (fixture 1,958,264 B allocated against about 0.85 to 0.96 MB retained).
+
+Departures. The plan's Step 1 targeted a folded `20.19.0`. Ruling N9 replaced it with `20.20.0`. The release note
+draft gained the capsule caches and allocation numbers the dispatch required. The design's out-of-scope line on
+`CharacterMovement` now records ruling N2.
+
+Final verification, once each through the slot runner, from the worktree root after the merge and bump:
+
+| Command | Exit | Result | Elapsed |
+| --- | ---: | --- | ---: |
+| `dotnet build KhaozEngine.slnx -c Release` | 0 | 0 warnings, 0 errors | 38.1 s |
+| `dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"` | 0 | 29 assemblies, each nonzero, 0 failed, 24,037 passed, 1,277 skipped, 25,314 total | 75.4 s |
+| `sh scripts/check-dashes.sh --tree` | 0 | clean | |
+| `sh scripts/check-prose.sh --tree` | 0 | clean, preexisting ratchet-down notices on four files | |
+| `sh scripts/check-file-size.sh --tree` | 0 | clean | |
+| `sh scripts/check-agent-instructions.sh --tree` | 0 | 7,653 of 16,384 bytes | |
+| `bash scripts/check-doc-versions.sh` | 0 | every declaration at `20.20.0` | |
+
+Movement.Tests 495 of 495, Game.Tests 2,185 passed and 1 skipped, TileWorld.Physics.Tests 89 of 89, Server.Tests 2,966
+passed and 268 skipped. Root merges, pushes main, packs and selects the release. No tag.

@@ -7559,8 +7559,9 @@ limitations, and the full config surface.
 
 ## Body reach and physics-ground profiles (`KhaozEngine.Movement`)
 
-Add the explicit package when a client or server needs body-aware reach, absolute-coordinate ground movement or
-a static-physics navigation profile. It is outside every umbrella and carries no physics backend, input or
+Add the explicit package when a client or server needs body-aware reach, absolute-coordinate ground movement,
+a static-physics navigation profile, a baked profile set loaded without physics, or a route-free approach. It is
+outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
@@ -7744,6 +7745,89 @@ is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix. S
 rebasing are required for large absolute requests. There is no ground-sampler fallback and no full Hollowmere or
 steep-bank guarantee. The NPC and player driver APIs are documented below.
 
+Profile building allocates no garbage per proof. A warmed penetration query and a warmed edge proof allocate
+zero bytes, and a 4,096-column flat `BuildProfile` allocates 80 bytes per column, down from 58,774. Engine tests
+gate at most 1 KiB per column. Elapsed time is not gated, because the physics query count is unchanged.
+
+### Baked profile sets (`GroundNavigationBake`)
+
+A large world's profiles are too slow to build at client startup. Bake them once in the game's content pipeline,
+ship the file, and load it at startup without a physics world, a ground provider or any proof:
+
+```csharp
+public sealed class GroundNavigationBake
+{
+    public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
+        IReadOnlyList<NavBakeProfile> profiles);
+    public static NavBakeLoadResult Load(Stream source, NavBakeExpectation expected);
+    public void WriteTo(Stream destination);
+    public ReadOnlySpan<byte> Fingerprint { get; }
+    public IReadOnlyList<string> ProfileNames { get; }
+    public GroundNavigation GetProfile(string name);
+}
+
+public sealed record NavBakeProfile(string Name, MoveTuning Tuning, NavAreaFilter Areas);
+public sealed record NavBakeExpectation(PhysicsNavBakeOptions Options, NavBakeSources Sources,
+    IReadOnlyList<NavBakeProfile> Profiles);
+public sealed record NavBakeLoadResult(NavBakeLoadStatus Status, string Detail, GroundNavigationBake? Bake);
+
+public enum NavBakeLoadStatus
+{
+    Loaded, NotABake, UnsupportedFormat, Corrupt,
+    EngineChanged, OptionsChanged, SourcesChanged, ProfilesChanged,
+}
+```
+
+`NavBakeSources` collects labelled SHA-256 digests with `Add(label, digest)`, `AddHashOf(label, bytes)` and
+`AddHashOf(label, stream)`. Labels and profile names are 1 to 64 characters from `a` to `z`, `0` to `9`, `.`, `_`,
+`-` and `/`. A bake needs at least one source, 1 to 256 profiles and `MaxSurfacesPerColumn` at most 255.
+
+Bake in the content pipeline with the same physics composition as runtime movement, including the movement query
+view:
+
+```csharp
+using var capture = PhysicsNavBake.Capture(context, options, classify);
+NavBakeSources sources = new NavBakeSources()
+    .AddHashOf("world", canonicalWorldBytesWithLfEndings)
+    .AddHashOf("colliders", colliderOptionBytes)
+    .AddHashOf("ground", groundProviderInputBytes)
+    .AddHashOf("classifier", classifierPolicyBytes);
+NavBakeProfile[] profiles = [new("player", playerTuning, playerAreas)];
+GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles);
+using (FileStream file = File.Create(outputPath))
+    bake.WriteTo(file);
+```
+
+Load at startup from the same options, tuning and digests, and branch on the status:
+
+```csharp
+NavBakeLoadResult result;
+using (FileStream file = File.OpenRead(bakePath))
+    result = GroundNavigationBake.Load(file, new NavBakeExpectation(options, sources, profiles));
+GroundNavigation? playerProfile = result.Status == NavBakeLoadStatus.Loaded
+    ? result.Bake!.GetProfile("player")
+    : null; // game policy, such as disabling routed walk-up and logging result.Detail for developers
+```
+
+`Create` builds each profile through the live capture, so it is exactly the fresh build, and `WriteTo` is
+byte-deterministic. The identity covers the engine version, every capture option, the labelled digests, and each
+profile's name, area filter and every `MoveTuning` field except `WalkSpeed`, `RunSpeed` and `AirMomentum`. It holds
+no architecture-dependent data. `Load` throws `ArgumentException` for an expectation `Create` would refuse, refuses a
+stale bake after the header and identity block without reading the payload, and returns `Corrupt` for truncated,
+trailing, non-canonical or damaged bytes. Stream errors propagate. `Detail` names the first difference and is
+developer text, never shown to players. A loaded profile equals the fresh build as bits and is used like any other
+`GroundNavigation`. The engine never falls back to a fresh build or an analytic route.
+
+The digests must cover every input a proof reads, not only the colliders: the world documents in canonical order,
+collider options, catalog rows that drive colliders, heights and medium, the ground height and normal providers,
+the clamp bounds and the classifier policy. Normalise text to LF before digesting so a CRLF checkout matches.
+Prefer authored inputs to `TileWorldColliders.Hash` for walk surfaces yawed off a quarter turn, since that hash is
+not promised equal across x64 and ARM64. Rebake when any input, option, probed tuning field or the engine pin
+changes, and keep a game test that loads the shipped bake and expects `Loaded`.
+
+On the dev Mac a 36,864-column flat world wrote 664,683 bytes and loaded in about 20 to 23 ms, allocating
+1,958,264 bytes against about 0.85 to 0.96 MB retained. These are single observations, not startup guarantees.
+
 ### Range steering, NPC stepping and client path commands
 
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
@@ -7759,11 +7843,17 @@ half-height, and a capsule target uses its own half-height. The tick validates a
 `Suspended` takes precedence over `InRange` for an airborne or committed body. `Following` is the only status
 that can carry a nonzero `WorldDirection`.
 `WaitingForPath`, `Unreachable` and `UnsupportedTransition` hold with zero input. A `Hop` waypoint is an
-unsupported transition for this ground driver.
+unsupported transition for this ground driver. `MoveToRange` never returns `Blocked`, which belongs to the
+route-free `DirectMoveToRange` below. Both adapters treat every status other than `Following` as idle.
 
 The exact driver surface is:
 
 ```csharp
+public enum RangeMoveStatus
+{
+    Following, InRange, WaitingForPath, Unreachable, UnsupportedTransition, Suspended, Blocked,
+}
+
 public readonly record struct RangeSteering(Vector2 WorldDirection, RangeMoveStatus Status);
 
 public sealed class MoveToRange
@@ -7935,6 +8025,52 @@ and nonfinite requests become finite idle commands. A nonfinite yaw is encoded a
 direction is clamped to unit length. Player automation emits ordinary client commands, and the authority
 simulates those commands. There is no server-side player following. The game still owns manual cancellation,
 target death, action dispatch and any final authoritative tolerance check.
+
+### Route-free approach (`DirectMoveToRange`)
+
+When a walk-up needs no route, `DirectMoveToRange` approaches exact shape range without a planner. It shares
+`MoveToRange`'s exact reach, travel bound, closest point, stop ring and suspension rules, and returns the same
+`RangeSteering` for `PlayerPathMovement` and `NpcGroundMovement`:
+
+```csharp
+public sealed record DirectApproachOptions
+{
+    public DirectApproachOptions(int stallWindowTicks, float stallTravelMetres,
+        int approachWindowTicks, float approachGainMetres);
+}
+
+public sealed class DirectMoveToRange
+{
+    public DirectMoveToRange(DirectApproachOptions options);
+    public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target, float range,
+        bool run, bool targetMoves, float dt, GroundMoveContext context);
+    public void Reset();
+}
+```
+
+The options have no defaults. Windows are 1 to 65,535 ticks and distances are finite and positive. A window of N
+ticks spans N intervals and is first eligible on the (N + 1)th counted tick. When net horizontal travel across the
+stall window falls below `stallTravelMetres`, or reach distance across the approach window gains less than
+`approachGainMetres` for a static target, the driver latches `RangeMoveStatus.Blocked` until `InRange` or `Reset`.
+A step that would leave the ground or start swimming is refused and counts as no progress. Airborne, committed and
+zero-travel ticks count toward neither window. Pass `targetMoves` true for body targets, which disables the approach
+window. Call `Tick` exactly once per simulation tick. Keep range and target shape constant for a walk, and call
+Reset to start a new one.
+
+```csharp
+var approach = new DirectMoveToRange(new DirectApproachOptions(
+    gameApproach.StallTicks, gameApproach.StallMetres, gameApproach.ApproachTicks, gameApproach.ApproachMetres));
+
+// Once per simulation tick while the walk is active.
+RangeSteering steering = approach.Tick(in body, in playerTuning, in target, gameTarget.NominalRange,
+    gameTarget.Run, targetMoves: gameTarget.IsBody, dt, gamePlayerGroundContext);
+if (steering.Status == RangeMoveStatus.Blocked)
+    gameTarget.EndWalk(); // game policy
+command = PlayerPathMovement.Command(in steering, gameTarget.Run, gameCamera.Yaw);
+```
+
+The driver has no wall following or local avoidance. The Movement package README lists its differences from a
+typical game-side walk-up rule.
 
 ---
 

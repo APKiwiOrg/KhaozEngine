@@ -1,8 +1,9 @@
 # Baked ground navigation profiles and route-free approach
 
-Status: design and [implementation plan](../superpowers/plans/2026-10-03-nav-profile-bake.md) written on 2026-10-03.
-Independent review round 1 findings are resolved, with rulings O2.21 to O2.26 recorded. No implementation, build,
-test or release is claimed.
+Status: implemented and verified on `feature/grimhollow-nav-bake` through the
+[implementation plan](../superpowers/plans/2026-10-03-nav-profile-bake.md), with rulings O2.21 to O2.26 and N1 to N9
+recorded. The full Release build and test run passed at the Task 7 finish and the release note is staged for
+`20.20.0`. No release or tag is claimed.
 
 Consumer: Grimhollow continuous movement pivot, player walk-up pathing after P5.
 Owner decision, binding on 2026-10-03: player walk-up pathing uses an engine offline bake. The engine adds navigation
@@ -472,7 +473,7 @@ Expectations for the Hollowmere player profile, estimated from the 19.9 MiB reta
 | --- | --- |
 | File size | about 10 to 14 MiB, dominated by about 7 MiB of surfaces and one dense layer's open heights |
 | Retained after load | equal to a fresh build, about 20 MiB |
-| Transient load allocation | the payload buffer plus the final arrays, at most twice retained |
+| Transient load allocation | the payload buffer, the final arrays, per-profile scratch of 7 B per cell shared across profiles, and per-layer clearance scratch of 5 B per cell, about 2 to 2.3 times retained. The engine fixture measured 1,958,264 B allocated against about 0.85 to 0.96 MB retained |
 | Load time on the dev Mac | under 150 ms, mainly reading, the payload SHA-256 and one clearance transform per layer |
 | Stale refusal time | under 1 ms, header and identity block only |
 
@@ -575,7 +576,8 @@ Additive public API and a new enum member are a minor change under the engine's 
 patch `20.18.1` from another session. Ruling O2.26: because this work adds public API, the staged version becomes
 `20.19.0` at integration, with the `20.18.1` entry folded into it. The delta reliability work rides the same `20.19.0`.
 Root performs the selection after rereading main, the version and tags. Only the owner starts a tag. Grimhollow adopts
-a released pin.
+a released pin. Ruling N9 amends O2.26: main released `v20.19.0` before integration, so this work stages `20.20.0`, or
+rides a minor already staged above `20.19.0`, re-read at landing.
 
 ## Rulings for Grimhollow
 
@@ -593,5 +595,6 @@ These were owner questions in the first draft and are now recorded rulings. The 
 - Grimhollow files, engine tags and consumer pin moves.
 - `ke-tileedit` changes and any new dotnet tool.
 - Parallel baking, compression, streaming and partial rebakes.
-- `CharacterMovement` allocation work beyond recording it.
+- `CharacterMovement` allocation work beyond recording it. Ruling N2 and its extension later admitted two
+  per-thread capsule caches, one per step and one per slide probe, with public signatures unchanged.
 - Issues outside this scope found during execution, which become ledger issues.

@@ -140,6 +140,7 @@ public sealed partial class WorldClient : IDisposable
         interpolateRemotes = config.InterpolateRemotes;
         requestDeltaReplication = config.RequestDeltaReplication;
         tickSeconds = config.TickSeconds;
+        rebuild = StartRebuildStream(config);   // validates the format 2 opt-in, null without it
         interpolationDelaySeconds = MathF.Max(0f, config.InterpolationDelayTicks) * config.TickSeconds;
         presentationTrace = config.PresentationTraceEnabled ? new PresentationTrace() : null;
         disconnectTimeout = config.DisconnectTimeoutSeconds;
@@ -299,13 +300,15 @@ public sealed partial class WorldClient : IDisposable
                     if (requestDeltaReplication)
                         net.Send(MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.DeltaCapable),
                             NetChannelReliability.ReliableOrdered);
+                    OnRebuildJoined();
                     SetState(WorldConnectionState.Connected);
                     break;
                 case ClientSessionEventKind.Data:
-                    gotFrame = true;
-                    OnServerFrame(ev.Data);
+                    gotFrame |= !RebuildOwnsLiveness;   // a live format 2 stream counts accepted state only
+                    OnServerFrame(ev.Data, ev.Reliability);
                     break;
                 case ClientSessionEventKind.Rejected:
+                    if (RebuildEnded) break;   // already ended locally on a typed format 2 failure
                     // ConnectRefusal owns what each refusal token means and whether the attempt is retried.
                     refusal = ConnectRefusal.Read(ev.RejectReason);
                     disconnectReason = refusal.Reason;
@@ -328,12 +331,13 @@ public sealed partial class WorldClient : IDisposable
                     break;
             }
         }
+        PumpRebuildStream(dt);
         if (gotFrame) secondsSinceServerFrame = 0f;
         if (dt <= 0f) return;
 
         if (state == WorldConnectionState.Connected)
         {
-            secondsSinceServerFrame += dt;
+            if (!RebuildRecoveryActive) secondsSinceServerFrame += dt;   // the typed recovery deadline runs instead
             if (secondsSinceServerFrame >= disconnectTimeout)
             {
                 disconnectReason = DisconnectReason.Timeout;
@@ -382,6 +386,7 @@ public sealed partial class WorldClient : IDisposable
         net = new NetClient(transport, token);
         world = new World();
         view = new ClientReplicationView(registry);
+        rebuild = NewRebuildStream();        // the stream binds one connection and view: a fresh receiver per attempt
         lastTeleportEpochByEntity.Clear();   // the fresh view has no entities/samples; start remote-teleport tracking clean
         LocalNetId = -1;
         secondsSinceServerFrame = 0f;
@@ -585,9 +590,10 @@ public sealed partial class WorldClient : IDisposable
         return false;
     }
 
-    private void OnServerFrame(byte[] data)
+    private void OnServerFrame(byte[] data, NetChannelReliability reliability)
     {
         if (!MoveProtocol.TryDecodeServerFrame(data, out MoveProtocol.ServerFrameKind kind, out byte[] payload)) return;
+        if (RouteRebuildFrame(kind, payload, reliability)) return;
         switch (kind)
         {
             case MoveProtocol.ServerFrameKind.Snapshot:
@@ -647,6 +653,7 @@ public sealed partial class WorldClient : IDisposable
     private void IngestServerState(long localNetId, int ackSeq)
     {
         RecordSnapshotIngest();                                  // NetStats: AoI snapshot/delta ingest rate
+        RecordRebuildIngest(ackSeq);                             // friend-test ingest diagnostics
         bool first = LocalNetId < 0;
         LocalNetId = localNetId;
 

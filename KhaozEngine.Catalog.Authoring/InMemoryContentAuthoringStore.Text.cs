@@ -40,73 +40,82 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
 
         lock (_gate)
         {
-            RequireNotFrozen(nameof(ApplyChangesAsync));
-            for (int i = 0; i < changes.RowEdits.Count; i++)
-            {
-                CheckAgainstSchema(changes.RowEdits[i]);
-            }
-
-            ContentDraft? open = _draft;
-            var working = new ContentChangeSet(open?.Changes.Edits ?? Array.Empty<ContentEdit>());
-            for (int i = 0; i < changes.RowEdits.Count; i++)
-            {
-                working.Apply(changes.RowEdits[i]);
-            }
-
-            ContentDraftTextState held = open?.TextState ?? ContentDraftTextState.Empty;
-            var edits = new List<ContentTextEdit>(held.Edits);
-            var introductions = new List<ContentTextLanguageDeclaration>(held.Introductions);
-            var applied = new List<(ContentTextEdit Edit, int DefinitionId)>(changes.TextEdits.Count);
-            HashSet<string> declared = DeclaredAt(_activeVersion);
-            HashSet<(ushort, ContentKey)> pending = PendingKeys(working);
-            for (int i = 0; i < changes.TextEdits.Count; i++)
-            {
-                ContentTextEdit edit = changes.TextEdits[i];
-                if (ApplyText(edit, declared, pending, edits, introductions) is int id)
-                {
-                    applied.Add((edit, id));
-                }
-            }
-
-            var text = new ContentDraftTextState(edits, introductions);
-            ContentDraft current = open
-                ?? new ContentDraft(ContentDraftTextState.Empty, _activeVersion, actor, _clock(), note, new ContentChangeSet());
-
-            var staged = new List<ContentAuditEntry>(changes.RowEdits.Count + applied.Count);
-            for (int i = 0; i < changes.RowEdits.Count; i++)
-            {
-                _audit.StageEdit(staged, changes.RowEdits[i], actor, operatorId, note);
-            }
-
-            foreach ((ContentTextEdit edit, int id) in applied)
-            {
-                _audit.Stage(
-                    staged,
-                    ContentAuditActions.DraftEdit,
-                    actor,
-                    operatorId,
-                    edit.Target.Type,
-                    id,
-                    edit.Target.Key,
-                    edit.Target.FieldName,
-                    null,
-                    ContentTextAuditRendering.Render(edit.Value),
-                    0,
-                    note,
-                    edit.Target.Language);
-            }
-
-            var next = new ContentDraft(
-                text,
-                current.BaseVersion,
-                current.OpenedBy,
-                current.OpenedAtUtc,
-                note.Length == 0 ? current.Note : note,
-                working);
-            _draft = next;
-            _audit.Commit(staged);
-            return Task.FromResult(Protected(next));
+            return Task.FromResult(ApplyChangesLocked(changes, actor, operatorId, note));
         }
+    }
+
+    /// <summary>
+    /// The body of <see cref="ApplyChangesAsync"/>, for a caller that already holds the gate, which is what lets
+    /// a text rollback check its versions and apply its changes in one step.
+    /// </summary>
+    ContentDraft ApplyChangesLocked(ContentAuthoringChanges changes, string actor, string operatorId, string note)
+    {
+        RequireNotFrozen(nameof(ApplyChangesAsync));
+        for (int i = 0; i < changes.RowEdits.Count; i++)
+        {
+            CheckAgainstSchema(changes.RowEdits[i]);
+        }
+
+        ContentDraft? open = _draft;
+        var working = new ContentChangeSet(open?.Changes.Edits ?? Array.Empty<ContentEdit>());
+        for (int i = 0; i < changes.RowEdits.Count; i++)
+        {
+            working.Apply(changes.RowEdits[i]);
+        }
+
+        ContentDraftTextState held = open?.TextState ?? ContentDraftTextState.Empty;
+        var edits = new List<ContentTextEdit>(held.Edits);
+        var introductions = new List<ContentTextLanguageDeclaration>(held.Introductions);
+        var applied = new List<(ContentTextEdit Edit, int DefinitionId)>(changes.TextEdits.Count);
+        HashSet<string> declared = DeclaredAt(_activeVersion);
+        HashSet<(ushort, ContentKey)> pending = PendingKeys(working);
+        for (int i = 0; i < changes.TextEdits.Count; i++)
+        {
+            ContentTextEdit edit = changes.TextEdits[i];
+            if (ApplyText(edit, declared, pending, edits, introductions) is int id)
+            {
+                applied.Add((edit, id));
+            }
+        }
+
+        var text = new ContentDraftTextState(edits, introductions);
+        ContentDraft current = open
+            ?? new ContentDraft(ContentDraftTextState.Empty, _activeVersion, actor, _clock(), note, new ContentChangeSet());
+
+        var staged = new List<ContentAuditEntry>(changes.RowEdits.Count + applied.Count);
+        for (int i = 0; i < changes.RowEdits.Count; i++)
+        {
+            _audit.StageEdit(staged, changes.RowEdits[i], actor, operatorId, note);
+        }
+
+        foreach ((ContentTextEdit edit, int id) in applied)
+        {
+            _audit.Stage(
+                staged,
+                ContentAuditActions.DraftEdit,
+                actor,
+                operatorId,
+                edit.Target.Type,
+                id,
+                edit.Target.Key,
+                edit.Target.FieldName,
+                null,
+                ContentTextAuditRendering.Render(edit.Value),
+                0,
+                note,
+                edit.Target.Language);
+        }
+
+        var next = new ContentDraft(
+            text,
+            current.BaseVersion,
+            current.OpenedBy,
+            current.OpenedAtUtc,
+            note.Length == 0 ? current.Note : note,
+            working);
+        _draft = next;
+        _audit.Commit(staged);
+        return Protected(next);
     }
 
     /// <inheritdoc />
@@ -193,37 +202,6 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
         }
     }
 
-    /// <inheritdoc />
-    /// <remarks>Not completed by this store yet, so it is refused whole rather than importing rows alone.</remarks>
-    public Task<ContentPublishResult> ImportTextBundleAsync(
-        ContentBundle bundle,
-        string actor,
-        string operatorId,
-        string note,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(bundle);
-        ArgumentNullException.ThrowIfNull(actor);
-        ArgumentNullException.ThrowIfNull(operatorId);
-        ArgumentNullException.ThrowIfNull(note);
-        throw Unavailable(nameof(ImportTextBundleAsync));
-    }
-
-    /// <inheritdoc />
-    /// <remarks>Not completed by this store yet, so it is refused whole rather than restoring rows alone.</remarks>
-    public Task<ContentDraft> RollbackTextToAsync(
-        int targetVersion,
-        string actor,
-        string operatorId,
-        string note,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(actor);
-        ArgumentNullException.ThrowIfNull(operatorId);
-        ArgumentNullException.ThrowIfNull(note);
-        throw Unavailable(nameof(RollbackTextToAsync));
-    }
-
     /// <summary>
     /// The refusal a row-only publish step runs: no held text, and no fork of a row whose text the row-only
     /// route cannot copy. The caller already holds the gate.
@@ -248,17 +226,6 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
                 throw ContentTextCompatibility.Unrepresented(member, FormattableString.Invariant(
                     $"the fork of type {edit.Type.Value} row {edit.DefinitionId} owes its copy text this route cannot write"));
             }
-        }
-    }
-
-    /// <summary>Refuses a row-only export of a version that holds text. The caller already holds the gate.</summary>
-    void RequireRowOnlyExport(int versionNumber)
-    {
-        ContentVersionTextSnapshot text = TextSnapshotAt(versionNumber);
-        if (text.Languages.Count > 0 || text.Revisions.Count > 0)
-        {
-            throw ContentTextCompatibility.Unrepresented(nameof(ExportBundleAsync), FormattableString.Invariant(
-                $"version {versionNumber} records {text.Languages.Count} language(s) and {text.Revisions.Count} value(s), which bundle format {ContentBundle.CurrentFormatVersion} cannot carry"));
         }
     }
 
@@ -446,12 +413,4 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
             null,
             0,
             string.Empty);
-
-    static ContentAuthoringException Unavailable(string member)
-        => new(
-            FormattableString.Invariant(
-                $"{nameof(InMemoryContentAuthoringStore)}.{member} is not available in this build, so it is refused whole rather than run without its text."),
-            default,
-            0,
-            ContentAuthoringException.TextOperationUnavailableReason);
 }

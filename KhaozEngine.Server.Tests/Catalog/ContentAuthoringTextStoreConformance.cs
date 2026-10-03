@@ -19,7 +19,7 @@ namespace KhaozEngine.Tests.Catalog;
 /// <c>KE_CATALOG_SQLSERVER</c> without a fact that silently passes when the server is absent.
 /// </para>
 /// </summary>
-public abstract class ContentAuthoringTextStoreConformance
+public abstract partial class ContentAuthoringTextStoreConformance
 {
     /// <summary>The actor every fixture call carries.</summary>
     protected const string Actor = "text-conformance";
@@ -300,7 +300,7 @@ public abstract class ContentAuthoringTextStoreConformance
     }
 
     [Fact]
-    public virtual async Task Text11_LegacyRollbackAndExportRefuseTextVersionsAndRunOnTextFreeOnes()
+    public virtual async Task Text11_LegacyRollbackRefusesTextVersionsAndRunsOnTextFreeOnes()
     {
         IContentTextAuthoringStore store = await OpenAsync();
         await store.ApplyEditsAsync(new[] { Add("shield") }, Actor, Operator, "add");
@@ -319,8 +319,6 @@ public abstract class ContentAuthoringTextStoreConformance
         var rollback = await Assert.ThrowsAsync<ContentAuthoringException>(
             () => store.RollbackToAsync(1, Actor, Operator, "rollback"));
         Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, rollback.Reason);
-        var export = await Assert.ThrowsAsync<ContentAuthoringException>(() => store.ExportBundleAsync(4));
-        Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, export.Reason);
         Assert.Null(await store.GetOpenDraftAsync());
         Assert.Equal(audits, (await AuditAsync(store)).Count);
     }
@@ -346,22 +344,6 @@ public abstract class ContentAuthoringTextStoreConformance
             .ToDictionary(revision => revision.DefinitionId == sword ? "sword" : "copy", revision => revision.Value);
         Assert.Equal("Sword", names["sword"]);
         Assert.Equal("Sword", names["copy"]);
-    }
-
-    [Fact]
-    public virtual async Task Text13_CompanionImportAndRollbackStayExplicitlyUnavailable()
-    {
-        IContentTextAuthoringStore store = await OpenAsync();
-        var bundle = new ContentBundle(1, "epoch", 0, Array.Empty<ContentBundleType>(), Array.Empty<ContentBundleRow>(),
-            Array.Empty<ContentFamily>(), Array.Empty<RemapRule>());
-        var import = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => store.ImportTextBundleAsync(bundle, Actor, Operator, string.Empty));
-        Assert.Equal(ContentAuthoringException.TextOperationUnavailableReason, import.Reason);
-        var rollback = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => store.RollbackTextToAsync(1, Actor, Operator, string.Empty));
-        Assert.Equal(ContentAuthoringException.TextOperationUnavailableReason, rollback.Reason);
-        Assert.Empty(await store.ListVersionsAsync());
-        Assert.Null(await store.GetOpenDraftAsync());
     }
 
     [Fact]

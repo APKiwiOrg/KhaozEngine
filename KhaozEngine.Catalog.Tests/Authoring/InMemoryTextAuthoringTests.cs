@@ -389,18 +389,19 @@ public sealed class InMemoryTextAuthoringTests
     }
 
     [Fact]
-    public async Task Bundle_import_and_rollback_through_the_companion_stay_explicitly_unavailable()
+    public async Task Companion_import_and_rollback_refuse_an_empty_store_without_writing()
     {
         var store = TextStore();
         IContentTextAuthoringStore text = store;
         var bundle = new ContentBundle(1, "epoch", 0, Array.Empty<ContentBundleType>(), Array.Empty<ContentBundleRow>(),
             Array.Empty<ContentFamily>(), Array.Empty<RemapRule>());
         var import = await Assert.ThrowsAsync<ContentAuthoringException>(() => text.ImportTextBundleAsync(bundle, Actor, Operator, ""));
-        Assert.Equal(ContentAuthoringException.TextOperationUnavailableReason, import.Reason);
+        Assert.Equal(ContentAuthoringException.NoPackStoreReason, import.Reason);
         var rollback = await Assert.ThrowsAsync<ContentAuthoringException>(() => text.RollbackTextToAsync(1, Actor, Operator, ""));
-        Assert.Equal(ContentAuthoringException.TextOperationUnavailableReason, rollback.Reason);
+        Assert.Equal(ContentAuthoringException.UnknownVersionReason, rollback.Reason);
         Assert.Empty(await store.ListVersionsAsync());
         Assert.Null(await store.GetOpenDraftAsync());
+        Assert.Equal(0, await AuditCountAsync(store));
     }
 
     sealed class LongCodec(ContentFieldSchema schema) : ContentRowCodecBase(Item, schema);

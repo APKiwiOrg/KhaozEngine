@@ -178,7 +178,7 @@ public sealed class TextLegacyCompatibilityTests
     }
 
     [Fact]
-    public async Task Text_bearing_bundles_are_refused_by_every_row_only_import_and_export()
+    public async Task Text_bearing_bundles_are_refused_by_every_row_only_import()
     {
         var textual = new ContentBundle(2, "epoch", 1, Array.Empty<ContentBundleType>(), Array.Empty<ContentBundleRow>(),
             Array.Empty<ContentFamily>(), Array.Empty<RemapRule>(), new ContentBundleTextState(
@@ -210,10 +210,15 @@ public sealed class TextLegacyCompatibilityTests
 
         Assert.Empty(await sqlite.ListVersionsAsync());
 
+        // The reference export writes the text half too, as format 2, so the row-only import still refuses it.
         var published = TextStore(files.Pack());
         await PublishNamedRowAsync(published, "sword", "Sword");
-        var export = await Assert.ThrowsAsync<ContentAuthoringException>(() => published.ExportBundleAsync(1));
-        Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, export.Reason);
+        ContentBundle exported = await published.ExportBundleAsync(1);
+        Assert.Equal(ContentBundle.TextFormatVersion, exported.FormatVersion);
+        Assert.Equal("Sword", exported.TextState!.Values.Single().Value);
+        var reimport = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => TextStore(files.Pack()).ImportBundleAsync(exported, Actor, Operator, "import"));
+        Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, reimport.Reason);
     }
 
     [Fact]

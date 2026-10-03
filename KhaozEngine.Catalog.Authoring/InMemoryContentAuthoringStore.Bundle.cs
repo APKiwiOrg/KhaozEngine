@@ -6,8 +6,9 @@ using System.Threading.Tasks;
 namespace KhaozEngine.Catalog.Authoring;
 
 /// <summary>
-/// The BUNDLE half of the in-memory store: the lossless export of one version, and the import that seeds an
-/// empty store from one.
+/// The BUNDLE half of the in-memory store: the lossless export of one version, and the row-only import that
+/// seeds an empty store from a format 1 bundle. The text-bearing import is the companion's, in
+/// <c>InMemoryContentAuthoringStore.TextBundle.cs</c>, and shares the staging and reset here.
 /// <para>
 /// <b>An import runs through the ordinary publish and there is no second mechanism.</b> It turns the bundle
 /// into a draft of <c>Add</c> edits, some carrying their own id and some not, and publishes it as version 1.
@@ -46,7 +47,32 @@ public sealed partial class InMemoryContentAuthoringStore
         // A bundle carrying text, or a later format that lost its text section, cannot land through the
         // row-only import. Refused before anything is read or staged.
         ContentTextCompatibility.RequireRowOnlyBundle(bundle, nameof(ImportBundleAsync));
+        return await ImportAsync(bundle, null, actor, operatorId, note, nameof(ImportBundleAsync), cancellationToken)
+            .ConfigureAwait(false);
+    }
 
+    /// <summary>
+    /// The ONE import both routes share: the empty-store and pack-target refusals, the type agreement, the
+    /// staging of families, marks and rules, the draft and the publish, and the reset on any refusal after
+    /// staging began. A row-only import passes no text. A companion import passes the bundle's complete text,
+    /// whose targets are checked BEFORE anything is staged, and lands it in the same draft as the rows.
+    /// </summary>
+    /// <param name="bundle">The bundle.</param>
+    /// <param name="text">The bundle's complete text, or null on the row-only route.</param>
+    /// <param name="actor">What the engine authenticated.</param>
+    /// <param name="operatorId">The identity the console forwarded.</param>
+    /// <param name="note">The operator's note.</param>
+    /// <param name="member">The public member importing, which a refusal names.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    async Task<ContentPublishResult> ImportAsync(
+        ContentBundle bundle,
+        ContentBundleTextState? text,
+        string actor,
+        string operatorId,
+        string note,
+        string member,
+        CancellationToken cancellationToken)
+    {
         // The reset below is destructive by design, so it may not run until this import has actually written
         // something. The two refusals above the staging (a store that already published, a store with no pack
         // target) read and write nothing, and a reset for one of THOSE would empty the live catalog the
@@ -69,10 +95,14 @@ public sealed partial class InMemoryContentAuthoringStore
 
                 if (PackStore is null)
                 {
-                    throw NoPackStore(nameof(ImportBundleAsync));
+                    throw NoPackStore(member);
                 }
 
                 RequireTypesAgree(bundle);
+                if (text is not null)
+                {
+                    ContentBundleTextCompatibility.RequireTargets(bundle, text, _registry);
+                }
 
                 staged = true;
                 RestoreFamilies(bundle);
@@ -88,7 +118,16 @@ public sealed partial class InMemoryContentAuthoringStore
                 Restamp(bundle);
             }
 
-            await ApplyEditsAsync(edits, actor, operatorId, note, cancellationToken).ConfigureAwait(false);
+            lock (_gate)
+            {
+                // Rows and text land in ONE draft, so the publish below commits them as one complete version.
+                ApplyEditsLocked(edits, actor, operatorId, note);
+                if (text is not null)
+                {
+                    ApplyImportedTextLocked(text, actor, operatorId, note);
+                }
+            }
+
             ContentPublishResult published = await PublishAsync(
                 new ContentPublishRequest(actor, operatorId, note, 0), cancellationToken).ConfigureAwait(false);
 
@@ -134,9 +173,9 @@ public sealed partial class InMemoryContentAuthoringStore
                 throw UnknownVersion(versionNumber);
             }
 
-            // Format 1 is text free by contract, so a version holding text cannot be exported through it
-            // without dropping the text half.
-            RequireRowOnlyExport(versionNumber);
+            // The EXACT version's complete text decides the format: none declared writes format 1, so a
+            // text-free catalog keeps byte-identical exports, and any declared language writes format 2.
+            ContentVersionTextSnapshot text = TextSnapshotAt(versionNumber);
 
             var types = new List<ContentBundleType>();
             IReadOnlyList<ContentTypeRegistration> registrations = _registry.ByTypeId;
@@ -183,8 +222,8 @@ public sealed partial class InMemoryContentAuthoringStore
                 }
             }
 
-            return Task.FromResult(new ContentBundle(
-                ContentBundle.CurrentFormatVersion, _storeEpoch, versionNumber, types, rows, families, rules));
+            return Task.FromResult(ContentBundleTextCompatibility.Export(
+                _storeEpoch, versionNumber, types, rows, families, rules, text));
         }
     }
 

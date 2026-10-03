@@ -50,6 +50,11 @@ public sealed record ContentBundleRow(
 /// schemas, every live row with its id, key and fields, every family with its blocks, and the full remap
 /// rule list. It is the SEEDING format and the LOSSLESS EXPORT format and there is only one of them.
 /// <para>
+/// <b>Format 2 adds the text section</b> (<see cref="TextState"/>): every declared language with its wire
+/// spelling and every complete value. A format 1 document is text free by contract and imports as empty
+/// text. A format 2 document that lost its section is refused, never read as text free.
+/// </para>
+/// <para>
 /// Export at version N then import into an empty database reproduces the same rows, the same keys and the
 /// SAME IDS, because the export carries them and the import keeps them. That is what makes it lossless
 /// rather than an approximation.
@@ -72,8 +77,18 @@ public sealed record ContentBundleRow(
 /// </summary>
 public sealed class ContentBundle
 {
-    /// <summary>The bundle document's own format version, which a reader refuses a mismatch of.</summary>
+    /// <summary>
+    /// The ROW-ONLY format version, which is text free by contract. An export of a version that declares no
+    /// language writes it, so a text-free catalog keeps byte-identical exports, and every row-only route
+    /// reads it.
+    /// </summary>
     public const int CurrentFormatVersion = 1;
+
+    /// <summary>
+    /// The TEXT-BEARING format version: the row content plus a protected text section of declared languages
+    /// and complete values. An export of a version that declares any language writes it, even with no value.
+    /// </summary>
+    public const int TextFormatVersion = 2;
 
     /// <summary>Builds a bundle. Every list is COPIED, so the bundle is immutable once it exists.</summary>
     /// <param name="formatVersion">The bundle document's format version.</param>

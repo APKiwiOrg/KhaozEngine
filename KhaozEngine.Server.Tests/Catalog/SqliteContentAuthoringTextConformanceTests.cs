@@ -7,6 +7,7 @@ using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.Sqlite;
 using Microsoft.Data.Sqlite;
+using Xunit;
 
 namespace KhaozEngine.Tests.Catalog;
 
@@ -94,4 +95,22 @@ public sealed class SqliteContentAuthoringTextConformanceTests : ContentAuthorin
     {
         public void Dispose() => owner.Execute(store, "DROP TRIGGER IF EXISTS catalog_audit_text_fault;");
     }
+
+    /// <inheritdoc />
+    /// <remarks>Transitional until the SQLite companion import lands, which removes this override.</remarks>
+    [Fact]
+    public override Task Text13_CompanionImportLandsACompleteBundleAndRefusesBeforeStaging()
+        => AssertTextImportStaysUnavailableAsync();
+
+    /// <inheritdoc />
+    /// <remarks>Transitional until the SQLite text rollback lands, which removes this override.</remarks>
+    [Fact]
+    public override Task Text15_CompanionRollbackRestoresValuesAndKeepsEveryDeclaredLanguage()
+        => AssertTextRollbackStaysUnavailableAsync();
+
+    /// <inheritdoc />
+    /// <remarks>Transitional until the SQLite text export lands, which removes this override.</remarks>
+    [Fact]
+    public override Task Text16_ExportWritesFormatTwoExactlyWhenTheVersionDeclaresALanguage()
+        => AssertTextExportStaysRefusedAsync();
 }

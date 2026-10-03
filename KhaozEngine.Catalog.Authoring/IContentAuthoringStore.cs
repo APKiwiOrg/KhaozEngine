@@ -460,6 +460,11 @@ public interface IContentAuthoringStore : IContentVersionDirectory, IContentVers
     /// <summary>
     /// Imports a whole bundle into an EMPTY database, publishing it as version 1. Empty means the version
     /// table holds no rows, and a non-empty database is refused with nothing written.
+    /// <para>
+    /// This route is ROW-ONLY, so it imports format 1 bundles only. A text-bearing bundle, or a later format
+    /// that lost its text section, is refused before anything is staged, and imports through
+    /// <see cref="IContentTextAuthoringStore.ImportTextBundleAsync"/>.
+    /// </para>
     /// </summary>
     /// <param name="bundle">The bundle to import.</param>
     /// <param name="actor">What the engine authenticated.</param>
@@ -477,6 +482,11 @@ public interface IContentAuthoringStore : IContentVersionDirectory, IContentVers
     /// <summary>
     /// Exports one version as a bundle, ids included, so an import into an empty database reproduces the
     /// same rows, keys and IDS.
+    /// <para>
+    /// A store that holds text writes format 1 when the exact version declares no language, so a text-free
+    /// catalog's export is unchanged, and format 2 with every declared language and value otherwise. A store
+    /// that cannot yet export the text of a version that holds some refuses rather than writing its row half.
+    /// </para>
     /// </summary>
     /// <param name="versionNumber">The version to export.</param>
     /// <param name="cancellationToken">Cancels the call.</param>

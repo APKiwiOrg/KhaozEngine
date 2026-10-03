@@ -135,8 +135,8 @@ public sealed class SqlServerContentAuthoringTextConformanceTests : ContentAutho
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
-    public override Task Text11_LegacyRollbackAndExportRefuseTextVersionsAndRunOnTextFreeOnes()
-        => base.Text11_LegacyRollbackAndExportRefuseTextVersionsAndRunOnTextFreeOnes();
+    public override Task Text11_LegacyRollbackRefusesTextVersionsAndRunsOnTextFreeOnes()
+        => base.Text11_LegacyRollbackRefusesTextVersionsAndRunsOnTextFreeOnes();
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
@@ -144,12 +144,25 @@ public sealed class SqlServerContentAuthoringTextConformanceTests : ContentAutho
         => base.Text12_ALegacyForkOfARowHoldingTextIsRefusedAndTheCompanionCopiesIt();
 
     /// <inheritdoc />
+    /// <remarks>Transitional until the SQL Server companion import lands, which restores the base body.</remarks>
     [CatalogSqlServerFact]
-    public override Task Text13_CompanionImportAndRollbackStayExplicitlyUnavailable()
-        => base.Text13_CompanionImportAndRollbackStayExplicitlyUnavailable();
+    public override Task Text13_CompanionImportLandsACompleteBundleAndRefusesBeforeStaging()
+        => AssertTextImportStaysUnavailableAsync();
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
     public override Task Text14_ATextPlanWhoseDraftChangedSinceItsFreezeIsRefusedAtCommit()
         => base.Text14_ATextPlanWhoseDraftChangedSinceItsFreezeIsRefusedAtCommit();
+
+    /// <inheritdoc />
+    /// <remarks>Transitional until the SQL Server text rollback lands, which restores the base body.</remarks>
+    [CatalogSqlServerFact]
+    public override Task Text15_CompanionRollbackRestoresValuesAndKeepsEveryDeclaredLanguage()
+        => AssertTextRollbackStaysUnavailableAsync();
+
+    /// <inheritdoc />
+    /// <remarks>Transitional until the SQL Server text export lands, which restores the base body.</remarks>
+    [CatalogSqlServerFact]
+    public override Task Text16_ExportWritesFormatTwoExactlyWhenTheVersionDeclaresALanguage()
+        => AssertTextExportStaysRefusedAsync();
 }

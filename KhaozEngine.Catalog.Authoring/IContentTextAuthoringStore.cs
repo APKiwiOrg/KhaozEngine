@@ -117,7 +117,11 @@ public interface IContentTextAuthoringStore : IContentAuthoringStore
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Imports a text-bearing bundle into an empty store, rows, declarations and values together.
+    /// Imports a complete bundle into an EMPTY store, rows, ids, families, rules, declarations and values
+    /// together, as one complete version 1. A format 1 bundle imports as empty text. A format 2 bundle that
+    /// lost its section, a later format, a value naming a row the bundle does not carry and an ineligible
+    /// target are refused before anything is reset or staged, and any later refusal restores the empty store.
+    /// Every declared language keeps its wire spelling, empty languages included.
     /// </summary>
     /// <param name="bundle">The bundle to import.</param>
     /// <param name="actor">What the engine authenticated.</param>
@@ -135,6 +139,13 @@ public interface IContentTextAuthoringStore : IContentAuthoringStore
     /// <summary>
     /// Builds a draft restoring the rows and text of an earlier version, retaining every currently declared
     /// language.
+    /// <para>
+    /// The text half stages complete value changes: every string of a row live at the target reads as it did
+    /// there, retired rows included, and a language the target never had stays declared with its last value
+    /// removed. A row retired since the target still blocks the rollback, and no text intent unretires a row
+    /// or changes an old version. Both versions need complete or proved text, and an unknown one is refused
+    /// with <see cref="ContentAuthoringException.TextProvenanceUnknownReason"/> before anything is written.
+    /// </para>
     /// </summary>
     /// <param name="targetVersion">The version to restore.</param>
     /// <param name="actor">What the engine authenticated.</param>

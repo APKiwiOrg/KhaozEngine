@@ -1,8 +1,9 @@
 # NPC movement fixes: swimming routes, route pace and low lips
 
-Status: design and [implementation plan](../superpowers/plans/2026-10-03-npc-movement-fixes.md) written on
-`feature/grimhollow-npc-movement`, revised by fix rounds 1 and 2 with rulings M1 to M11 recorded below. Implementation
-pending. No release or tag is claimed.
+Status: implemented and verified through the [implementation plan](../superpowers/plans/2026-10-03-npc-movement-fixes.md)
+on `feature/grimhollow-npc-movement`, with rulings M1 to M21 recorded in the plan's Outcome. Swimming routes (#1256),
+route carry (#1257) and low prop support (#1253) are staged for 20.20.0. Smooth-slope bake edges (#1265) are deferred
+by ruling M20. No release or tag is claimed.
 
 Consumer: Grimhollow P5 creature host on engine 20.18.0, branch `feature/p5-lane-n`.
 Engine issues: [#1256](https://github.com/APKiwiOrg/KhaozEngine/issues/1256) (swimming body cannot be steered),
@@ -304,11 +305,15 @@ post beside and a steep bank wall. A context without physics passes.
 
 Edge budget (ruling M17). Every proof shares the capture's `MaxEdgeProbeSteps`, and an edge that runs past it is
 refused, never partly accepted. A bank edge between a wading node and a float node walks at unit pace slowed by the
-wade ramp and the medium's zone scale, so it needs about `length / (dt x walk speed x WadeMinSpeedScale x zone scale)`
-steps plus a short tail. At the default 64 steps of 1/30 s and a zone scale of 1 that covers banks between 0.25 m
-cells. Larger cells or slow zones must raise `MaxEdgeProbeSteps`, or the float layer is cut off from the land. The
-budget applies to each directed edge, so in a slow zone a shoreward swim can fit while the wade out does not, which
-leaves a one-way exit from the water rather than a route into it.
+wade ramp and the medium's zone scale, then swims. It needs about
+`wading length / (dt x walk speed x WadeMinSpeedScale x zone scale)` steps while it wades, plus
+`swimming length / min(CapsuleRadius, dt x SwimSpeed x zone scale)` steps once it swims, plus a few steps of final
+approach. The swim term needs `SwimSpeed x zone scale` above zero, and a zero swim pace refuses every float edge. At
+the default 64 steps of 1/30 s and a zone scale of 1 that covers banks between 0.25 m cells. Larger cells or slow
+zones must raise `MaxEdgeProbeSteps`, or the float layer is cut off from the land. The budget applies to each directed
+edge, so in a slow zone a shoreward swim can fit while the wade out does not, which leaves a one-way exit from the
+water rather than a route into it. Dry bank edges on a smooth sloped physics shoreline are also subject to
+https://github.com/APKiwiOrg/KhaozEngine/issues/1265, deferred by ruling M20, so the facts use 2 cm terraces.
 
 Deepest-contact limit (ruling M5). The query reports the deepest contact only, so a shallow side contact under a
 deeper bed contact can pass a slice. Deep water has no bed contact, so the limit applies only within about one step
@@ -471,8 +476,9 @@ player and NPC capsules at spheres standing out of flat terrain and measured thr
 3. A walkable flank between those is entered as the swept move allows, because the cap passes through a walkable
    contact. The body is then seated once its footprint reaches a near flat part, or it sinks into the flank as it
    did before this change. A mound meeting the terrain at 0.85 is mounted at player walk pace after sinking about
-   3 cm. Flanks at 0.8 and 0.7 are still walked through sunk 0.14 to 0.29 m. That sinking is older than this rule
-   and is filed as https://github.com/APKiwiOrg/KhaozEngine/issues/1260.
+   3 cm. Flanks at 0.8 and 0.7 are still entered and sunk into by about 0.1 to 0.29 m, depending on capsule and pace,
+   and an NPC at walk pace is not raised onto them at all. That sinking is older than this rule and is filed as
+   https://github.com/APKiwiOrg/KhaozEngine/issues/1260.
 
 A code rule that refuses seating after a steeper flank would make the 0.9 line exact, but it would also make
 moderate mounds unwalkable, so this round does not add one (ruling M16).

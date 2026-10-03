@@ -8,7 +8,11 @@ namespace KhaozEngine.Movement;
 /// <summary>Per-body ground approach to observed exact shape range without a planner. Call Tick exactly once per
 /// simulation tick, since the progress windows count ticks. Blocked stays latched until InRange, Reset, or a change
 /// of target shape, range or capsule geometry. Call Reset for target replacement, teleport or manual
-/// cancellation.</summary>
+/// cancellation.
+/// <para>It never steers a swimmer. A swimming body is not grounded, so it stays Suspended. The driver has no graph
+/// guard and the core does not collide a swimmer, so a direct swim approach could pass through props at the
+/// waterline. Steer swimmers with <see cref="MoveToRange"/> and <see cref="RouteApproachOptions.SteerWhileSwimming"/>
+/// on an aquatic profile.</para></summary>
 public sealed partial class DirectMoveToRange
 {
     private static readonly StepAdmission Admits = AllowsStep;

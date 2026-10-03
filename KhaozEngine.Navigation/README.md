@@ -425,6 +425,18 @@ resets the old route and cooldown.
   replan is due.
 - **`ReplanCooldownSeconds`** (default 0.5) - minimum time between replans.
 - **`Budget`** (default `PathQueryBudget.Default`) - handed to `IPathPlanner.FindPath` on every replan.
+- **`ConsumePassedCollinearWaypoints`** (default false) - also advance past an active waypoint the agent has passed
+  rather than landed on, when it is a collinear pass-through on the agent's layer and the feet sit at or beyond it on
+  the line to its successor, within `AcceptRadius` plus four float steps of that line. Corners, reversals, layer
+  changes, hops, waypoint 0 and a route's final waypoint still need `AcceptRadius` proximity or region membership.
+  A driver that travels a full tick past cell centres on a straight run turns it on, as `MoveToRange` does with
+  `RouteApproachOptions.CarryThroughStraightRuns`.
+
+`NavPath.IsCollinearPassThrough(int index)` reports whether a waypoint lies on a straight run, so a body may pass it
+without a turn. It is true when the waypoint has a predecessor and a successor, it and its successor are `Walk`
+waypoints, all three share one layer, and in double precision the incoming and outgoing XZ directions are nonzero,
+point the same way and bend by a sine of at most 1e-4. The first and last waypoints are never pass-through, and an
+index outside `Waypoints` throws `ArgumentOutOfRangeException`.
 
 `Tick` returns a `PathFollowOutput` (`WorldDir`, `State`, `ActiveWaypoint`, `HopStart`). Point following
 keeps its existing arrival and partial-path behavior. A region `NavPathStatus.Partial` corridor that is

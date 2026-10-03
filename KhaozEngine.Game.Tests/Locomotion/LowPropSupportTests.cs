@@ -85,7 +85,8 @@ public class LowPropSupportTests
 
     // Band 3: a radius 2 sphere standing 0.3 m out meets the terrain at a 0.85 normal, walkable but steeper than the
     // low prop test. At walk pace the swept move lets the body into the flank, and it is seated once its footprint
-    // reaches the near-flat part, so it ends on the crown. How far it sinks first is #1260's, not pinned here.
+    // reaches the near-flat part, so it ends on the crown. This holds for the player capsule at walk pace only. Other
+    // capsules and paces can stay sunk in the flank (#1260). How far it sinks first is #1260's, not pinned here.
     [Fact]
     public void CapsuleWalksUpAModerateMoundAtWalkPace()
     {

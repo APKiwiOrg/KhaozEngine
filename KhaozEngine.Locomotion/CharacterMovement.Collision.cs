@@ -22,8 +22,10 @@ public static partial class CharacterMovement
     private const float SkinWidth       = 0.01f;
     // A small "standing on a prop" skin (NOT the larger GroundedEpsilon mount band): a capsule whose carried Y is
     // above terrain by more than this is genuinely on a prop, so the support sweep keeps following the prop surface
-    // (e.g. down the far side of a dome it mounted), while one at terrain level walking into a flank is below it and
-    // the sweep stays off (depenetration blocks the base). Too large a skin would snap the capsule off the prop
+    // (e.g. down the far side of a dome it mounted), while one at terrain level is below it. A flank steeper than the
+    // walking slope limit blocks such a body at its base. A walkable flank is entered as the swept move allows, and
+    // the body is seated once its footprint reaches a near-flat top (LowPropSupport) or sinks into the flank as
+    // before (KhaozEngine #1260). Too large a skin would snap the capsule off the prop
     // surface onto terrain mid-descent and clip it into the prop. Read by PropSupportFloor and by StepCore's
     // stair-climb ground-stick and paced-climb blocks, which all mean the same "genuinely up on a step" by it.
     private const float OnPropSkin      = 0.05f;

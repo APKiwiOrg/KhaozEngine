@@ -14,7 +14,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   caller-labelled SHA-256 source digests from `NavBakeSources`, with no architecture-dependent data. A stale or
   damaged bake returns a typed `NavBakeLoadStatus` with the first difference named in `Detail`, never a silent
   fallback. A stale bake is refused from its header and identity block alone. A 36,864-column flat world wrote
-  664,683 bytes and loaded in about 20 ms on the dev Mac. This lifts round 2's navigation persistence non-goal for
+  664,689 bytes and loaded in about 20 ms on the dev Mac. This lifts round 2's navigation persistence non-goal for
   physics-checked ground profiles.
 - `NavGrid.FromBlockedSurfaces` rebuilds a surface grid from a stored blocked mask and open-cell heights, with every
   `ClearanceAt` and `SurfaceHeightAt` equal to the source grid.
@@ -28,6 +28,30 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   a window that shows too little progress latches the new `RangeMoveStatus.Blocked`, which both movement adapters
   treat as idle. Steps that would leave the ground or start swimming are refused and count as no progress, and steady
   ticks allocate nothing.
+- Aquatic navigation ([#1256](https://github.com/APKiwiOrg/KhaozEngine/issues/1256)). `PhysicsNavBakeOptions.SampleWater`,
+  default off, makes `PhysicsNavBake.Capture` record one medium water surface per column. Without it the medium is
+  never called and capture output is unchanged. `BuildProfile(tuning, areas, new GroundProfileOptions { Aquatic = true })`
+  and `NavBakeProfile.Aquatic` bake float surfaces at the height a swimming body rests, proven by swim steps through
+  the live medium, capped at the capsule radius per slice, with a static clearance check. `GroundNavigation.Aquatic`
+  reports the flag. `RouteApproachOptions.SteerWhileSwimming` steers a swimming body on such a profile at swim pace.
+  Airborne, committed and still-settling bodies stay `Suspended`, and `DirectMoveToRange` never steers swimmers. Baked
+  sets gain `SampleWater` and each profile's `Aquatic` flag in the identity and a water section in the payload, so
+  every 20.20.0 bake written before this change must be rebaked. The clearance check sees only the deepest contact
+  ([#1266](https://github.com/APKiwiOrg/KhaozEngine/issues/1266)), and bank edges need a larger `MaxEdgeProbeSteps`
+  for cells above 0.25 m or slow water zones.
+- `RouteApproachOptions.CarryThroughStraightRuns` keeps full pace along straight route runs and still stops on every
+  corner ([#1257](https://github.com/APKiwiOrg/KhaozEngine/issues/1257)). A 30-tick straight walk at 2 m/s covers
+  1.983 m instead of 1.883 m. `PathFollowConfig.ConsumePassedCollinearWaypoints` and `NavPath.IsCollinearPassThrough`
+  back it.
+- Low prop support ([#1253](https://github.com/APKiwiOrg/KhaozEngine/issues/1253)). A grounded body at terrain height
+  now stands on a near-flat prop top (normal at least 0.9) up to 0.1 m above its start instead of sinking into it, so
+  bake proofs and live movement both cross a 2.5 cm deck edge for a 0.3 m capsule. A flank steeper than the walking
+  slope limit is never raised. Wider capsules and steep uphill ticks
+  ([#1259](https://github.com/APKiwiOrg/KhaozEngine/issues/1259)) and sinking into walkable convex flanks
+  ([#1260](https://github.com/APKiwiOrg/KhaozEngine/issues/1260)) remain open.
+- Known limit: on smooth sloped physics ground the ground bake still drops uphill and sideways edges, because a
+  grounded capsule rests above the captured centre height
+  ([#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265)). Check routes over sloped physics ground.
 - Catalog text authoring ([#1000](https://github.com/APKiwiOrg/KhaozEngine/issues/1000)). The opt-in
   `IContentTextAuthoringStore` companion of `IContentAuthoringStore`, implemented by the in-memory, SQLite and SQL
   Server stores, authors per-language display text for `LocalizedTextKey` marker fields of CLIENT-visible types.

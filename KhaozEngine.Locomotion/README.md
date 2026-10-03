@@ -49,6 +49,15 @@ movement core, and the old default remains unchanged.
   still mounts in one tick, and `MaxStepClimbSpeed <= 0` restores the instant snap. Depenetration
   via `ComputePenetration` is retained as a residual settle pass. Pass `world: null` for terrain-only
   (byte-identical to pre-8.4.0).
+  **Low prop support (20.20.0).** A grounded body at terrain height now stands on a low prop top that the
+  ground height callback does not report, such as a 2.5 cm deck edge, a curb or a doorstep, instead of sinking
+  into it and seating at the terrain inside the prop. A surface counts only when its normal is at least 0.9 and
+  its resting centre is at most 0.1 m above the tick's start. The measured guarantee: a flank steeper than the
+  walking slope limit is never raised, and a near-flat top within 0.1 m is support. A walkable flank between those
+  is entered as the swept move allows and seated once the footprint reaches a near-flat part, or sunk into as
+  before ([#1260](https://github.com/APKiwiOrg/KhaozEngine/issues/1260)). Wider capsules and steep uphill ticks
+  are open as [#1259](https://github.com/APKiwiOrg/KhaozEngine/issues/1259). Once the body stands more than
+  0.05 m above the terrain, the ordinary prop sweep follows the surface as before.
 
 ### Analytic terrain query ownership
 

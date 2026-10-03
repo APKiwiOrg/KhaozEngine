@@ -662,8 +662,11 @@ half-open bounds, probe settings and cell, layer, surface and edge budgets. Miss
 stay blocked, with no analytic ground fallback.
 
 `PhysicsNavBake.BuildProfile(in MoveTuning, NavAreaFilter)` composes the captured columns with
-`NavLayerBaker.BakeGroundedLayered` and physical hold and directed-edge proofs. `GroundNavigation` exposes
-`Space`, `Planner`, `AgentRadius`, `AgentHeight` and `AllowsSegment`. The profile matches capsule radius,
+`NavLayerBaker.BakeGroundedLayered` and physical hold and directed-edge proofs. The overload with
+`GroundProfileOptions { Aquatic = true }` composes a derived float view over the water `SampleWater` captured, and
+proves float edges with swim steps through the same context and its existing physics penetration query, so it adds
+no reference. `GroundNavigation` exposes `Space`, `Planner`, `AgentRadius`, `AgentHeight`, `Aquatic` and
+`AllowsSegment`. The profile matches capsule radius,
 half-height, slope and step exactly, uses raw radius-zero grid checks after physical footprint admission,
 retains only accepted Stair links for guarded queries, and does not generate Hop links. The returned profile
 owns pure data and outlives the builder and its caller-owned physics world. This edge keeps Navigation and

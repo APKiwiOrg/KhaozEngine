@@ -7656,7 +7656,10 @@ public sealed record PhysicsNavBakeOptions(
     float MinX, float MinZ, float MaxX, float MaxZ, float CellSize,
     float ProbeHeight, float ProbeRange, float MaxSlopeRadians,
     int MaxCells, int MaxLayerCells, int MaxSurfacesPerColumn = 4,
-    float EdgeProbeSeconds = 1f / 30f, int MaxEdgeProbeSteps = 64);
+    float EdgeProbeSeconds = 1f / 30f, int MaxEdgeProbeSteps = 64)
+{
+    public bool SampleWater { get; init; } // default false, records medium water for aquatic profiles
+}
 ```
 
 `NavAreaFilter(uint Required, uint Excluded)` requires every required bit and excludes every excluded bit.
@@ -7674,6 +7677,7 @@ public sealed partial class PhysicsNavBake : IDisposable
         NavAreaClassifier classify);
 
     public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas);
+    public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions options);
     public void Dispose();
 }
 ```
@@ -7698,9 +7702,24 @@ public sealed class GroundNavigation
     public IRegionPathPlanner Planner { get; }
     public float AgentRadius { get; }
     public float AgentHeight { get; }
+    public bool Aquatic { get; }
     public bool AllowsSegment(Vector3 fromFeet, Vector3 toFeet);
 }
 ```
+
+`BuildProfile(tuning, areas)` builds a ground profile. `BuildProfile(tuning, areas, new GroundProfileOptions { Aquatic =
+true })` builds an aquatic profile over a capture whose `PhysicsNavBakeOptions` set `SampleWater = true`. With that
+opt-in, off by default, capture samples the context's medium once per column at its lowest surface and records one
+water surface where the feet are in water. Without it the medium is never called and capture output is unchanged.
+An aquatic profile replaces each swim-deep column's surfaces below the water with one float surface at the height a
+swimming body rests, `WaterSurfaceY - SwimSurfaceSubmersionFraction x 2 x CapsuleHalfHeight`, proven by swim steps
+through the live medium with a static clearance check. It needs swim fractions ordered exit, submersion, enter, a
+context medium identical to the runtime one, and a ground height at or below the captured bed in water columns. The
+clearance check sees only the deepest contact, so a route may clip a bank within about one step of the bed
+([#1266](https://github.com/APKiwiOrg/KhaozEngine/issues/1266)). A bank edge needs about
+`wading length / (EdgeProbeSeconds x 1 m/s x WadeMinSpeedScale x zone scale)` steps while it wades plus the swimming
+steps, so larger cells than 0.25 m or slow zones must raise `MaxEdgeProbeSteps`. The Movement README states the full
+rules.
 
 Radius, full height, slope class and step class must match the capture profile's
 `CapsuleRadius`, `CapsuleHalfHeight`, `MaxSlopeRadians` and `StepHeight` exactly. Walk and run pace, climb pace
@@ -7743,7 +7762,10 @@ startup or wall-clock guarantee. Issue [#1233](https://github.com/APKiwiOrg/Khao
 open adoption prerequisite for steep meshes and filtered ground. Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)
 is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix. Small local physics coordinates or
 rebasing are required for large absolute requests. There is no ground-sampler fallback and no full Hollowmere or
-steep-bank guarantee. The NPC and player driver APIs are documented below.
+steep-bank guarantee. On smooth sloped physics ground, uphill and sideways edges can drop out of the graph because a
+grounded capsule rests above the captured centre height
+([#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265), open). The NPC and player driver APIs are documented
+below.
 
 Profile building allocates no garbage per proof. A warmed penetration query and a warmed edge proof allocate
 zero bytes, and a 4,096-column flat `BuildProfile` allocates 80 bytes per column, down from 58,774. Engine tests
@@ -7766,7 +7788,10 @@ public sealed class GroundNavigationBake
     public GroundNavigation GetProfile(string name);
 }
 
-public sealed record NavBakeProfile(string Name, MoveTuning Tuning, NavAreaFilter Areas);
+public sealed record NavBakeProfile(string Name, MoveTuning Tuning, NavAreaFilter Areas)
+{
+    public bool Aquatic { get; init; } // default false
+}
 public sealed record NavBakeExpectation(PhysicsNavBakeOptions Options, NavBakeSources Sources,
     IReadOnlyList<NavBakeProfile> Profiles);
 public sealed record NavBakeLoadResult(NavBakeLoadStatus Status, string Detail, GroundNavigationBake? Bake);
@@ -7810,9 +7835,10 @@ GroundNavigation? playerProfile = result.Status == NavBakeLoadStatus.Loaded
 ```
 
 `Create` builds each profile through the live capture, so it is exactly the fresh build, and `WriteTo` is
-byte-deterministic. The identity covers the engine version, every capture option, the labelled digests, and each
-profile's name, area filter and every `MoveTuning` field except `WalkSpeed`, `RunSpeed` and `AirMomentum`. It holds
-no architecture-dependent data. `Load` throws `ArgumentException` for an expectation `Create` would refuse, refuses a
+byte-deterministic. The identity covers the engine version, every capture option including `SampleWater`, the
+labelled digests, and each profile's name, area filter, `Aquatic` flag and every `MoveTuning` field except
+`WalkSpeed`, `RunSpeed` and `AirMomentum`. It holds no architecture-dependent data. The payload stores the captured
+water entries, and an aquatic profile rebuilds its float view on load, so it never loads as a ground profile. `Load` throws `ArgumentException` for an expectation `Create` would refuse, refuses a
 stale bake after the header and identity block without reading the payload, and returns `Corrupt` for truncated,
 trailing, non-canonical or damaged bytes. Stream errors propagate. `Detail` names the first difference and is
 developer text, never shown to players. A loaded profile equals the fresh build as bits and is used like any other
@@ -7825,7 +7851,7 @@ Prefer authored inputs to `TileWorldColliders.Hash` for walk surfaces yawed off 
 not promised equal across x64 and ARM64. Rebake when any input, option, probed tuning field or the engine pin
 changes, and keep a game test that loads the shipped bake and expects `Loaded`.
 
-On the dev Mac a 36,864-column flat world wrote 664,683 bytes and loaded in about 20 to 23 ms, allocating
+On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in about 20 to 23 ms, allocating
 1,958,264 bytes against about 0.85 to 0.96 MB retained. These are single observations, not startup guarantees.
 
 ### Range steering, NPC stepping and client path commands
@@ -7840,8 +7866,9 @@ Round 2 D adds the driver layer in the same opt-in package. Keep the package ref
 It observes the mover's current capsule against the target's exact capsule, box or point shape with zero client
 tolerance. `MoveState.Position` is the mover's capsule centre. Navigation receives feet, using the mover's own
 half-height, and a capsule target uses its own half-height. The tick validates and evaluates current reach, then
-`Suspended` takes precedence over `InRange` for an airborne or committed body. `Following` is the only status
-that can carry a nonzero `WorldDirection`.
+`Suspended` takes precedence over `InRange` for an airborne or committed body. A swimming body is not grounded, so
+it is suspended too unless the driver opts into swim steering. `Following` is the only status that can carry a
+nonzero `WorldDirection`.
 `WaitingForPath`, `Unreachable` and `UnsupportedTransition` hold with zero input. A `Hop` waypoint is an
 unsupported transition for this ground driver. `MoveToRange` never returns `Blocked`, which belongs to the
 route-free `DirectMoveToRange` below. Both adapters treat every status other than `Following` as idle.
@@ -7859,11 +7886,21 @@ public readonly record struct RangeSteering(Vector2 WorldDirection, RangeMoveSta
 public sealed class MoveToRange
 {
     public MoveToRange(GroundNavigation navigation, PathFollowConfig? follow = null);
+    public MoveToRange(GroundNavigation navigation, PathFollowConfig? follow, RouteApproachOptions options);
     public MoveToRange(IRegionPathPlanner planner, NavSpace space,
         Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow = null);
+    public MoveToRange(IRegionPathPlanner planner, NavSpace space,
+        Func<Vector3, Vector3, bool> allowsSegment, PathFollowConfig? follow, RouteApproachOptions options);
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context);
     public void Reset();
+}
+
+public sealed record RouteApproachOptions
+{
+    public static RouteApproachOptions Default { get; }
+    public bool CarryThroughStraightRuns { get; init; } // default false
+    public bool SteerWhileSwimming { get; init; }       // default false
 }
 
 public static class NpcGroundMovement
@@ -7878,6 +7915,31 @@ public static class PlayerPathMovement
 {
     public static MoveCommand Command(in RangeSteering steering, bool run, float cameraYaw);
 }
+```
+
+Both options are opt-in, and the constructors without options keep today's behaviour. `CarryThroughStraightRuns`
+keeps full pace along a straight route run. It aims past a collinear pass-through waypoint closer than one tick of
+travel and has the follower consume the waypoints it passed (`PathFollowConfig.ConsumePassedCollinearWaypoints`), while
+every corner, reversal, layer change, hop, waypoint 0 and final waypoint is still landed on. `SteerWhileSwimming`
+steers a swimming body on an aquatic profile, and the `GroundNavigation` constructor refuses it with
+`ArgumentException` naming `options` for a profile that is not aquatic. Airborne and committed bodies stay
+`Suspended`. A swimmer is also `Suspended` while it settles, until the medium at its feet is water and its feet lie
+within `max(StepHeight, 1 mm)` of its float line. A settled swimmer travels at `SwimSpeed x max(0, zone scale) x
+SpeedScale x dt` on a swim tick, so it lands on waypoints, and a step whose prediction is airborne and not swimming
+is refused.
+
+To steer an aquatic NPC, bake with `SampleWater` and an aquatic profile, and opt the driver in:
+
+```csharp
+var options = gameNavigation.ProfileOptions with { SampleWater = true };
+GroundNavigation duckProfile;
+using (PhysicsNavBake capture = PhysicsNavBake.Capture(context, options, feet => classifyAreas(feet)))
+    duckProfile = capture.BuildProfile(duckTuning, duckAreas, new GroundProfileOptions { Aquatic = true });
+var duckFollower = new MoveToRange(duckProfile, null, new RouteApproachOptions
+{
+    SteerWhileSwimming = true,
+    CarryThroughStraightRuns = true,
+});
 ```
 
 `MoveToRange` copies its follower controls and caps `AcceptRadius` to `0.00001f`, including a supplied zero.
@@ -8056,6 +8118,10 @@ a change of target shape, range or capsule geometry. A step that would leave the
 refused and counts as no progress. Airborne, committed and zero-travel ticks count toward neither window. Pass
 `targetMoves` true for body targets, which disables the approach window. Call `Tick` exactly once per simulation
 tick. Keep range and target shape constant for a walk, and call Reset to start a new one.
+
+`DirectMoveToRange` never steers a swimmer. A swimming body is not grounded, so it stays `Suspended`. The driver has
+no graph guard and the core does not collide a swimmer, so a direct swim approach could pass through props at the
+waterline. Use `MoveToRange` with `RouteApproachOptions.SteerWhileSwimming` on an aquatic profile instead.
 
 ```csharp
 var approach = new DirectMoveToRange(new DirectApproachOptions(

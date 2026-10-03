@@ -22,7 +22,8 @@ namespace KhaozEngine.Movement;
 /// follows the same rule. The golden fingerprint test changes with every layout change.</remarks>
 internal static partial class NavBakeIdentity
 {
-    /// <summary>Bake container format version. Bump it whenever the identity or payload layout changes.</summary>
+    /// <summary>Bake container format version. Once a version has shipped, bump it whenever the identity or payload
+    /// layout changes. Unreleased KENB v1 changes in place.</summary>
     internal const ushort FormatVersion = 1;
 
     internal const int MaxNameLength = 64;

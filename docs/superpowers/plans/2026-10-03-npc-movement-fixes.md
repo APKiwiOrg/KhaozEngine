@@ -475,7 +475,104 @@ Expected: build exit 0 with zero warnings, test exit 0 with zero failures and no
 
 ## Outcome
 
-Results per task, recorded as each task lands.
+Results per task, recorded as each task lands. Lanes A, B and C worked in their own worktrees and root merged each
+reviewed task into `feature/grimhollow-npc-movement` (M12).
+
+### Rulings
+
+Each ruling with its reason and its cost.
+
+- M1. Hold the `20.20.0` tag until the KENB format change for the surface water layer lands. Reason: the round
+  consolidates nav bake, delta and NPC movement in one release, and the format is free to change only before the tag.
+  Cost if wrong: the tag waits a few hours.
+- M2. Water sampling in capture is an explicit opt-in on the capture options, default off. Reason: every new behaviour
+  is opt-in with today's defaults unchanged, and a land-only game pays nothing and keeps byte identical capture output.
+  Cost: one option.
+- M3. `DirectMoveToRange` stays out of swim steering, and its docs state that limit. Reason: it has no graph guard
+  and a swimmer has no prop collision, so it could swim through props. Cost: an aquatic route-free approach waits for
+  a consumer.
+- M4. If Task 3 proves the live core cannot mount a 2.5 cm lip, a targeted Locomotion fix is authorized, guarded by
+  the red fixture and the full Locomotion and Movement test projects. Reason: the same core moves players, so a lip
+  that stops a capsule is a player-facing defect in the kernel the engine owns. Cost if wrong: a riskier round,
+  mitigated by the guard suites.
+- M5. Accept the deepest-contact limit of the swim clearance check, document it, and file a follow-up for a per-slice
+  capsule sweep. Reason: creature bakes run at server startup (about 6.4 s today) and a sweep per slice multiplies
+  that, while a shallow side contact near the bed is a small visual risk. Cost if wrong: a duck route may clip a bank
+  near the bed. Filed as #1266.
+- M6. Land-only bakes change KENB v1 bytes and the golden fingerprint. Reason: no consumer holds a 20.20.0 bake yet,
+  and a conditional layout adds branches for no reader. Cost if wrong: none before the tag.
+- M7. `SampleWater` joins the bake identity, 13 options become 14. Reason: an option that changes bake output must be
+  in the identity so a stale bake is refused. Cost: Task 5 owns the golden change.
+- M8. Task 4 owns one shared ground arrival helper, and Task 6 consumes it after Task 4 merges. Reason: the swim
+  probe's grounded arrival must use the rule Task 4 lands. Cost: lane C waited for Task 4.
+- M9. After Task 4 or 4b merges, root reruns the focused filters of every lane that bakes through the core. Reason:
+  those lanes depend on the core's step behaviour. Cost: one focused run per lane.
+- M10. Names `RouteApproachOptions`, `CarryThroughStraightRuns`, `PathFollowConfig.ConsumePassedCollinearWaypoints`,
+  `Aquatic` on `GroundNavigation` and `NavBakeProfile`, the `GroundProfileOptions` property for `BuildProfile`, and
+  `PhysicsNavBakeOptions.SampleWater { get; init; }`. Reason: clearer, consistent with `DirectApproachOptions` and
+  `MoveState.Swimming`, and no breaking positional parameter. Cost: none.
+- M11. The lip clearance at the cell centre beside the deck edge is 2.28 mm, by formula. Reason: the reviewer's
+  2.08 mm was an arithmetic slip. Cost: none. Task 3 measured 2.282 mm.
+- M12. Execution follows the lane model: lane worktrees, pushed lane branches, root merges reviewed work, one shared
+  build slot. Reason: the proven model of the delta and P5 rounds. Cost: merge work.
+- M13. Task 4 runs Step 1 only, and Task 4b is retargeted from the contact skin assumption to the evidenced cause,
+  the `OnPropSkin` gate in `PropSupportFloor`. Reason: the fixture rules out the probe and players share the core, so
+  a sunk-through low prop is a kernel defect M4 already authorized fixing. Cost if wrong: a core support change with
+  player-visible effect on low props, guarded by the full suites.
+- M14. Task 4b picks its support band from the evidence (lips 0.1 m and below) and names the dome and flank guards.
+  Reason: the flank rule is deliberate and the evidence covers low lips only. Cost: mid-height lips may need a
+  follow-up.
+- M15. Keep the behaviour that a gentle convex prop within the band is walkable, and correct the design and comments.
+  Reason: the M14 premise was wrong, and the behaviour is the better one. Cost: one design correction and three
+  tests.
+- M16. Replaces M15's wording: state the measured guarantee (a flank steeper than the walking slope limit is never
+  raised, a near-flat top within 0.1 m is support, a walkable flank between is entered and seated or sunk into as
+  before) with no new code rule. Reason: a code rule would make moderate mounds unwalkable for a guarantee nothing
+  needs. Cost: the design states an emergent property rather than a clean threshold. The sinking is filed as #1260.
+- M17. Keep the edge budget as the consumer's `MaxEdgeProbeSteps`, document the bank bound, prove a bank connection at
+  0.25 m cells and a clean refusal past the budget, refuse a float at `f >= W`, and add a physics shore fact. Reason:
+  the budget is already a bake option, and a derived budget would change bake cost for every consumer. Cost:
+  consumers with large cells must size the option, now documented.
+- M18. Fix #1265 in this round as Task 4c with a vertical slope-rest allowance in `GroundArrived`. Reason: the same
+  arrival-check family as #1253, small and bounded. Cost if wrong: a looser vertical arrival bounded by about 0.12 m.
+  Tried and reverted, because the miss also has a horizontal part from the core's push-out.
+- M19. Extends M18: fix the cause in the core, resolving walkable depenetration contacts vertically while moving.
+  Reason: the push-out also stalls the runtime follower on slopes. Cost if wrong: a core change with player-visible
+  effect on slopes, with deferral as the fallback. Tried: it passed all 15 slope cases but broke 7 Locomotion stair
+  tests, so nothing was committed to production.
+- M20. #1265 is deferred out of this round, with the 15-case repro committed skipped as `SlopeArrivalTests.cs`.
+  Reason: a core change that breaks stair climbing is not shippable, and the round should not hold the tag for a
+  research problem. Cost: on smooth sloped physics ground the bake keeps dropping uphill and sideways edges and the
+  follower can stall short of waypoints, as on 20.18.0. Grimhollow's adoption must check Hollowmere's routes, and the
+  2 cm terrace fixtures stay.
+- M21. A runtime land-to-water fact lands in Task 9 before the tag: a duck wades from a shallow shelf into deep water
+  and back out along a baked aquatic route with `SteerWhileSwimming`, with no stall at the shore. Reason: shore
+  crossings are where full-bound runtime steps and radius-capped bake slices can drift, and a refused shore step is
+  the silent stall #1256 reported. Cost: one more fact.
+
+### Follow-ups filed
+
+- [#1259](https://github.com/APKiwiOrg/KhaozEngine/issues/1259) Low prop support band for wider capsules and steep
+  uphill ticks.
+- [#1260](https://github.com/APKiwiOrg/KhaozEngine/issues/1260) Bodies sink into walkable convex flanks instead of
+  climbing them.
+- [#1265](https://github.com/APKiwiOrg/KhaozEngine/issues/1265) Ground navigation bake drops uphill edges on smooth
+  physics slopes (deferred by M20).
+- [#1266](https://github.com/APKiwiOrg/KhaozEngine/issues/1266) Swim clearance sees only the deepest contact per slice
+  (M5).
+
+### Task 1 (lane A)
+
+Commit `dc1745226` `feat(navigation): consume passed collinear waypoints on request`. RED on the missing names
+(CS1061, CS0117). GREEN 17 of 17 on the Task 1 filter, Navigation 436 of 436, Game.Tests build 0 warnings, format
+clean. Review clean.
+
+### Task 2 (lane A)
+
+Commit `2c655d716` `feat(movement): carry route travel through straight runs`. RED CS0246 on `RouteApproachOptions`,
+then 4 of 8 assertions. GREEN 8 of 8, Step 1 filter 119 of 119, build 0 warnings, format clean. Review clean.
+Measured 30-tick travel at 2 m/s: straight 1.983334 m with carry against 1.883333 m with Default options, and diagonal
+1.953348 m against 1.767767 m. The plan's "fail near 1.875 m" reads about 1.883 m.
 
 ### Task 3 (lane B)
 
@@ -523,3 +620,110 @@ context `GroundMoveContext((_, _) => 0f, physics: world)` as in the existing pro
 - Departure: the subject is `fix(locomotion): support a low prop top above the terrain`, because the plan's subject
   names the refuted contact skin cause. The Locomotion facts live in `LowPropSupportTests.cs`, not
   `LowLipStepUpTests.cs`, for the same reason.
+
+### Task 4 (lane B, Step 1 only, M13)
+
+Commit `adc78b629` `refactor(movement): share the ground arrival rule`. `GroundArrived` is shared at both arrival
+points with the tolerance unchanged. The Movement filter gave 106 passed and 4 skipped before and after. Build 0
+warnings, format clean. Root inspected the pure extraction.
+
+### Task 4b review rounds
+
+Fix rounds 1 and 1b: `e31e86cd5` (the sweep stops at the terrain), `4e50b4337` (gentle mound fact and
+`LowPropPredictionTests`), `a9b2e5ec3` (measured guarantee in S5 and both comments) and `19a297e16` (steep dome never
+raised, 0.85 mound mounted at player walk). Low prop 17 passed, Physics 203, Locomotion 1010 passed and 1 skipped,
+Movement 507, NetWorld 955. Re-review all addressed.
+
+### Task 4c (lane B, deferred by M20)
+
+Commit `b03c66a03` adds `SlopeArrivalTests.cs`, 15 cases skipped citing #1265 and the M19 attempt.
+
+### Task 5 (lane C)
+
+Commit `fd96732ca` `feat(movement): opt-in water capture for baked navigation`. RED CS0246 on `PhysicsNavWater`. GREEN
+128 of 128 on the Task 5 filter, Movement.Tests 513 of 513, build 0 warnings, format clean. Review clean.
+
+Golden fingerprint re-recorded because the unreleased v1 identity gained `SampleWater` as one byte after
+`MaxEdgeProbeSteps` (M6, M7). `FormatVersion` stays 1.
+
+- Old: `a0a927cec3bf88a763041c829767efc6be1415e4e75070cc378948cfd43666e3` (228 identity bytes).
+- New: `0eecbc661ae8d1ca53f17b722445a8d7286cbfa7f0b8705ae48e2bcb0fb97894` (229 identity bytes).
+- Inputs: engine `0.0.0-golden`. Options `-8, -8, 8, 8, 0.25, 10, 20, 0.8, 4096, 8192, 4, 1f/30f, 64` with
+  `SampleWater` false. Source `world` with 32 bytes of `0x11`. Profile `player`, filter `(0, 0)`, the test's literal
+  tuning.
+- Method: an independent encoder written from the documented layout, which reproduces the old golden exactly. The
+  reviewer reproduced both values with its own encoder.
+
+### Task 6 (lane C)
+
+Commit `f6aee6c0a` `feat(movement): bake float layers for aquatic profiles`. RED CS0246 on `GroundProfileOptions`.
+GREEN 18 of 18 on the Task 6 filter, the guard filter (`PhysicsNavProfileTests`, `GroundTraversalProbeTests`,
+`ProfileAllocationTests`) 48 of 48 with `BuildProfileStaysWithinOneKibPerColumn` green, build 0 warnings, format
+clean. Fix round 1 (M17) commit `e41437a37`: RED 1 of 22 on the water-line fact, GREEN 22 of 22, Movement.Tests 555 of
+555. Review clean after one fix round.
+
+### Task 7 (lane C)
+
+Commit `ff3d65d91` `feat(movement): store aquatic profiles in baked navigation sets`. RED CS0117 and CS1061 on
+`NavBakeProfile.Aquatic`. GREEN 134 of 134 on the Task 7 filter, Movement.Tests 568 of 568,
+`TileWorldNavigationBakeTests` 3 of 3, build 0 warnings, format clean. Review clean.
+
+Golden fingerprint re-recorded because the unreleased v1 identity gained each profile's `Aquatic` byte after
+`Excluded` (design S2, M6). `FormatVersion` stays 1.
+
+- Old: `0eecbc661ae8d1ca53f17b722445a8d7286cbfa7f0b8705ae48e2bcb0fb97894` (229 identity bytes).
+- New: `b8d049d40ad365789f251269953c4ee1074440c24b80982f69b874f7cb9f08e3` (230 identity bytes).
+- Inputs: the Task 5 inputs, with profile `player` set to `Aquatic` false as a literal.
+- Method: the same independent encoder, which first reproduced the Task 5 golden. The reviewer reproduced both values.
+
+### Task 8 (lanes A and C)
+
+Commit `821910143` `feat(movement): steer swimming bodies on aquatic routes`. RED compile failure on
+`SteerWhileSwimming`. GREEN 11 of 11 on the Task 8 filter. Step 1 filter 129 of 129 from the base 119 (9
+`MoveToRangeSwimTests` cases and 1 carry fact). `DirectMoveToRangeTests` 31 of 31 unchanged. Movement.Tests 580
+passed and 3 skipped (the M20 slope repro). Build 0 warnings, format clean. Review clean.
+
+### Task 9 (lane C)
+
+Merges: the round branch at `73207fb14` (fast-forward), then engine main `719a35378` as `12b6075ef`, with the
+`docs/INDEX.md` conflict resolved by keeping both rows.
+
+Facts added: `NpcSwimNavigationAcceptanceTests.WadingDuckSwimsOutAndWadesBackWithoutStallingAtTheShore` (M21). A duck
+wades from the terrace at -0.26 m, swims out to deep water over a baked aquatic route and wades back to the terrace at
+-0.2 m, which only a standing body reaches in range, with at most 4 held ticks and under 300 ticks for the round
+trip. Without `SteerWhileSwimming` the same drive stalls `Suspended` once the duck swims. Also
+`MoveToRangeSwimTests.SwimmerWithoutWaterAtItsFeetIsSettling` (the no-medium and dry-feet settle branches),
+`MoveToRangeSwimTests.SwimmerCarriesThroughStraightRunsAtSwimPace` (12 full swim bounds with both options, against
+0.8 m without carry), and `ParamName` "expected" on the two aquatic `Load` refusals. The Task 1 minors (factor 4
+allowance, point-mode consume) were not added.
+
+Wording carries: `FormatVersion` and the identity remark per M6, the bank budget formula with its swim term and zero
+swim pace in `BuildProfile`, the design and the README, design S5's flank sentence, the `LowPropSupportTests` band 3
+comment, the `CharacterMovement.Collision.cs` `OnPropSkin` comment (M16), and `DirectMoveToRange`'s own docs (M3).
+Living docs: Movement, Navigation and Locomotion READMEs, `docs/USING-KHAOZENGINE.md`, `docs/DEPENDENCY-SEAMS.md`, the
+root README package row, and the `20.20.0` CHANGELOG entry. The measured bake sizes moved with the layout: the deck
+fixture writes 2,455 bytes (measured) and the 36,864-column world 664,689 bytes (the layout adds 6 bytes).
+
+Full verification, once, after both merges, on the dev Mac through the shared build slot:
+
+| Command | Exit | Result | Elapsed |
+| --- | ---: | --- | ---: |
+| `dotnet build KhaozEngine.slnx -c Release` | 0 | 0 warnings, 0 errors | 46 s |
+| `dotnet test` per project, `--no-build --filter "Category!=LiveSocket"`, 29 projects | 0 each | 25,045 passed, 1,328 skipped, 0 failed, 26,373 total | 1 to 142 s each |
+| `sh scripts/check-dashes.sh --tree` | 0 | | |
+| `sh scripts/check-prose.sh --tree` | 0 | | |
+| `sh scripts/check-file-size.sh --tree` | 0 | | |
+| `sh scripts/check-agent-instructions.sh --tree` | 0 | 7,653 of 16,384 bytes | |
+| `bash scripts/check-doc-versions.sh` | 0 | every declaration matches 20.20.0 | |
+
+Per project, passed and skipped: Accounts 286 and 46, Audio 206 and 3, Automation 106, Catalog.AzureBlob 25 and 7,
+Catalog 1,509, CodeHealth.Analyzers 51, Foundation 1,380, Game 2,219 and 1, Gui 1,276, Identity.Exchange 177,
+ItemInstances 888, Localization.Analyzers 46, MapEditor 1,080 and 9, Movement 583 and 3 (the M20 slope repro),
+Netcode.Abstractions.Decoupling 4, Netcode.Decoupling 4, Particles 106, Physics.HeadlessLoader 5, Render 8,843 and
+936, Server 3,694 and 316 (142 s), Showcase 83, Simulation 302, KhaozEngine.Tests 54, TileEdit 97 and 7,
+TileWorld.Netcode 1,382, TileWorld.Physics 89, TileWorld 514, KeDungeon 13, PixelLabSheetAssembler 23.
+
+The solution-wide `dotnet format --verify-no-changes` reports findings that predate this round in 299 files across the
+repository. Of the files this round touched, `PhysicsNavCaptureTests.cs` was reformatted (whitespace only) and
+`CharacterMovement.Collision.cs` keeps its existing column-aligned constants, which the round did not change. Every
+other round file verifies clean.

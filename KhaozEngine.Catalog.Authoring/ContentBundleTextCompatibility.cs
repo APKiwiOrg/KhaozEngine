@@ -53,6 +53,27 @@ internal static class ContentBundleTextCompatibility
     }
 
     /// <summary>
+    /// Refuses a companion import while an open draft holds any work, rows, text intents or language
+    /// introductions, because the import's own draft would merge with it and publish or drop work the operator
+    /// never reviewed as part of the seed. It runs before an import resets or stages anything.
+    /// </summary>
+    /// <param name="draft">The store's open draft, or null.</param>
+    /// <param name="member">The member importing, which a refusal names.</param>
+    /// <exception cref="ContentAuthoringException">The draft holds work, with <see cref="ContentAuthoringException.DraftOpenReason"/>.</exception>
+    public static void RequireNoPendingWork(ContentDraft? draft, string member)
+    {
+        if (draft is not null && draft.TotalWorkCount > 0)
+        {
+            throw new ContentAuthoringException(
+                FormattableString.Invariant(
+                    $"{member} is refused because the open draft holds {draft.EditCount} row edit(s), {draft.TextEditCount} text edit(s) and {draft.LanguageIntroductionCount} language introduction(s). Publish or discard that work first. Nothing was staged."),
+                default,
+                0,
+                ContentAuthoringException.DraftOpenReason);
+        }
+    }
+
+    /// <summary>
     /// Refuses a value whose target names no row the bundle carries, or a type and field no text may target.
     /// It runs before an import stages anything.
     /// </summary>

@@ -110,7 +110,9 @@ public sealed class ContentAuthoringException : Exception
     /// A provider's catalog RESET was refused because the store carries an open draft. A reset drops every
     /// catalog object, so it would take the draft with it, and an operator who did not know the draft was
     /// there would lose unpublished authoring with nothing to read afterwards that says what it held. The
-    /// remedy is to publish or discard the draft, and the escape hatch is the reset's own force flag.
+    /// remedy is to publish or discard the draft, and the escape hatch is the reset's own force flag. A
+    /// companion text bundle import is refused with it too, before anything is staged, while an open draft holds
+    /// any row, text or language work the import's own draft would otherwise merge with.
     /// </summary>
     public const string DraftOpenReason = "draft-open";
 

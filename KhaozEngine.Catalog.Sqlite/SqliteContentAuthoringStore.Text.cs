@@ -46,6 +46,25 @@ public sealed partial class SqliteContentAuthoringStore : IContentTextAuthoringS
 
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteTransaction transaction = _connection.BeginTransaction();
+        ContentDraft draft = await ApplyChangesInAsync(changes, actor, operatorId, note, transaction, cancellationToken)
+            .ConfigureAwait(false);
+        transaction.Commit();
+        return draft;
+    }
+
+    /// <summary>
+    /// The body of <see cref="ApplyChangesAsync"/> inside the caller's transaction, which is what lets the
+    /// companion rollback read both versions, plan and apply its changes in one step. The row edits are already
+    /// schema checked.
+    /// </summary>
+    async Task<ContentDraft> ApplyChangesInAsync(
+        ContentAuthoringChanges changes,
+        string actor,
+        string operatorId,
+        string note,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
+    {
         await RequireNotFrozenAsync(nameof(ApplyChangesAsync), transaction, cancellationToken).ConfigureAwait(false);
         await OpenDraftAsync(actor, note, transaction, cancellationToken).ConfigureAwait(false);
         for (int i = 0; i < changes.RowEdits.Count; i++)
@@ -77,9 +96,7 @@ public sealed partial class SqliteContentAuthoringStore : IContentTextAuthoringS
             }
         }
 
-        ContentDraft draft = await RequireDraftAsync(transaction, cancellationToken).ConfigureAwait(false);
-        transaction.Commit();
-        return draft;
+        return await RequireDraftAsync(transaction, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -189,37 +206,6 @@ public sealed partial class SqliteContentAuthoringStore : IContentTextAuthoringS
 
         transaction.Commit();
         return true;
-    }
-
-    /// <inheritdoc />
-    /// <remarks>Not completed by this store yet, so it is refused whole rather than importing rows alone.</remarks>
-    public Task<ContentPublishResult> ImportTextBundleAsync(
-        ContentBundle bundle,
-        string actor,
-        string operatorId,
-        string note,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(bundle);
-        ArgumentNullException.ThrowIfNull(actor);
-        ArgumentNullException.ThrowIfNull(operatorId);
-        ArgumentNullException.ThrowIfNull(note);
-        throw Unavailable(nameof(ImportTextBundleAsync));
-    }
-
-    /// <inheritdoc />
-    /// <remarks>Not completed by this store yet, so it is refused whole rather than restoring rows alone.</remarks>
-    public Task<ContentDraft> RollbackTextToAsync(
-        int targetVersion,
-        string actor,
-        string operatorId,
-        string note,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(actor);
-        ArgumentNullException.ThrowIfNull(operatorId);
-        ArgumentNullException.ThrowIfNull(note);
-        throw Unavailable(nameof(RollbackTextToAsync));
     }
 
     /// <summary>
@@ -491,14 +477,6 @@ public sealed partial class SqliteContentAuthoringStore : IContentTextAuthoringS
 
         return keys;
     }
-
-    static ContentAuthoringException Unavailable(string member)
-        => new(
-            FormattableString.Invariant(
-                $"{nameof(SqliteContentAuthoringStore)}.{member} is not available in this build, so it is refused whole rather than run without its text."),
-            default,
-            0,
-            ContentAuthoringException.TextOperationUnavailableReason);
 
     /// <summary>What every text intent of one batch is checked against.</summary>
     /// <param name="Declared">The canonical languages the active version declares.</param>

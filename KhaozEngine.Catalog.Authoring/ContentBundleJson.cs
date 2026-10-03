@@ -45,10 +45,16 @@ public static class ContentBundleJson
     /// </summary>
     /// <param name="bundle">The bundle to write.</param>
     /// <exception cref="ArgumentNullException"><paramref name="bundle"/> is null.</exception>
-    /// <exception cref="ContentAuthoringException">The bundle is a later format that lost its text section, which no document may claim to be text free.</exception>
+    /// <exception cref="ContentAuthoringException">The bundle declares a format this build does not write, or is format 2 and lost its text section, which no document may claim to be text free.</exception>
     public static string Write(ContentBundle bundle)
     {
         ArgumentNullException.ThrowIfNull(bundle);
+        if (bundle.FormatVersion is not ContentBundle.CurrentFormatVersion and not ContentBundle.TextFormatVersion)
+        {
+            // A later format is refused whole, text section or not, exactly as a read refuses it.
+            throw ContentBundleTextCompatibility.UnsupportedFormat(bundle.FormatVersion);
+        }
+
         if (bundle.FormatVersion != ContentBundle.CurrentFormatVersion && bundle.TextState is null)
         {
             throw Refuse(FormattableString.Invariant(

@@ -132,6 +132,11 @@ sealed class ContentUpgradeTextRoute(IContentAuthoringStore store)
         => _text ?? throw new InvalidOperationException(
             "A plan carrying text is refused at planning for a store without the companion.");
 
+    /// <summary>
+    /// Whether the baseline bundle carries the languages and the value count the version records. The values
+    /// themselves are trusted rather than compared one by one, because the baseline comes from the same store's
+    /// exact-version export of that version. This catches a wrapper that dropped or rebuilt the text section.
+    /// </summary>
     static bool Agrees(ContentVersionTextSnapshot recorded, ContentBundleTextState carried)
     {
         if (recorded.Languages.Count != carried.Languages.Count || recorded.Revisions.Count != carried.Values.Count)

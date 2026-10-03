@@ -80,7 +80,6 @@ public sealed partial class InMemoryContentAuthoringStore
         bool staged = false;
         try
         {
-            IReadOnlyList<ContentEdit> edits;
             lock (_gate)
             {
                 if (_versions.Count > 0)
@@ -101,6 +100,7 @@ public sealed partial class InMemoryContentAuthoringStore
                 RequireTypesAgree(bundle);
                 if (text is not null)
                 {
+                    ContentBundleTextCompatibility.RequireNoPendingWork(_draft, member);
                     ContentBundleTextCompatibility.RequireTargets(bundle, text, _registry);
                 }
 
@@ -114,13 +114,11 @@ public sealed partial class InMemoryContentAuthoringStore
                 // list either way, so this ordering is not what makes the refusal clean, it is what keeps
                 // the append off the refusal path at all: a store whose rules doubled per refused attempt is
                 // what the defect looked like from outside.
-                edits = Edits(bundle);
+                IReadOnlyList<ContentEdit> edits = Edits(bundle);
                 Restamp(bundle);
-            }
 
-            lock (_gate)
-            {
                 // Rows and text land in ONE draft, so the publish below commits them as one complete version.
+                // Under the same gate as the pending-work check, so no rival intent can join the draft between.
                 ApplyEditsLocked(edits, actor, operatorId, note);
                 if (text is not null)
                 {

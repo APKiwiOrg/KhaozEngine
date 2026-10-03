@@ -56,6 +56,30 @@ public sealed partial class TextBundleTests
     }
 
     [Fact]
+    public async Task A_row_added_after_the_target_keeps_its_text_through_a_text_rollback()
+    {
+        using var files = new TemporaryCatalogDatabase();
+        var store = TextStore(files.Pack());
+        IContentTextAuthoringStore text = store;
+        await ApplyAsync(text, new[] { Add() }, ContentTextEdit.Set(Target(NameField, "en"), "Sword"));
+        await store.PublishAsync(Request(0));
+        await ApplyAsync(
+            text,
+            new[] { Add("shield", 2) },
+            ContentTextEdit.Set(Target(NameField, "en", "shield"), "Shield"),
+            ContentTextEdit.Set(Target(NameField, "en"), "Blade"));
+        await store.PublishAsync(Request(1));
+
+        ContentDraft draft = await text.RollbackTextToAsync(1, Actor, Operator, "roll back");
+
+        Assert.Equal(0, draft.EditCount);
+        Assert.Equal(
+            new[] { (ContentTextEditOperation.Set, "sword", (string?)"Sword") },
+            draft.TextState!.Edits.Select(edit => (edit.Operation, edit.Target.Key.ToString(), edit.Value)));
+        Assert.DoesNotContain(draft.TextState.Edits, edit => edit.Target.Key.Equals(new ContentKey("shield")));
+    }
+
+    [Fact]
     public async Task A_retired_row_rolls_back_its_text_and_stays_retired()
     {
         using var files = new TemporaryCatalogDatabase();

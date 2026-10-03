@@ -266,6 +266,7 @@ public sealed class SqliteTextSchemaMigrationTests
             () => text.ReadTextSnapshotAsync(1),
             () => store.ExportBundleAsync(1),
             () => ApplyAsync(text, null, ContentTextEdit.Set(Target(NameField, "en"), "Blade")),
+            () => text.RollbackTextToAsync(1, Actor, Operator, "rollback"),
         })
         {
             var unknown = await Assert.ThrowsAsync<ContentAuthoringException>(read);

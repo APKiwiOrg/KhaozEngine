@@ -23,9 +23,9 @@ public sealed partial class InMemoryContentAuthoringStore
 {
     /// <inheritdoc />
     /// <remarks>
-    /// A format 1 bundle imports as empty text. A format 2 bundle that lost its section, a later format, a
-    /// value naming a row the bundle does not carry and an ineligible target are refused before anything is
-    /// staged. Any refusal after staging began resets this store to empty, exactly as the row import does.
+    /// A format 1 bundle imports as empty text. A format 2 bundle that lost its section, a later format, an
+    /// open draft holding any work, a value naming a row the bundle does not carry and an ineligible target are
+    /// refused before anything is staged. Any refusal after staging began resets this store to empty, exactly as the row import does.
     /// </remarks>
     public Task<ContentPublishResult> ImportTextBundleAsync(
         ContentBundle bundle,

@@ -48,6 +48,7 @@ internal sealed class RebuildServerStream
     private readonly ReplicationEpochAllocator epochs;
     private Phase phase;
     private long? recoveryStartTick;
+    // Only selects the recovery failure detail: the initial negotiation or a later repair.
     private bool negotiating;
     private bool repairRequested;
     private long? boundOwner;
@@ -234,7 +235,8 @@ internal sealed class RebuildServerStream
 
     private void ServeBarrier(World world, IReadOnlySet<long> interest, long ownerNetId, int movementAck, long tick)
     {
-        // An owner change needs a fresh epoch, even for an authorized keyframe already in flight.
+        // An owner change needs a fresh epoch, even for an authorized keyframe already in flight. Defensive: both
+        // hosts bind one owner per session, and the steady branch below is the one a stream-level test drives.
         if (keyframeChunks is not null && ownerNetId != boundOwner) repairRequested = true;
         if (repairRequested && !BeginRepair(tick)) return;
         if (keyframeChunks is null && !Freeze(world, interest, ownerNetId, movementAck)) return;
@@ -243,6 +245,9 @@ internal sealed class RebuildServerStream
 
     private void ServeSteady(World world, IReadOnlySet<long> interest, long ownerNetId, int movementAck, long tick)
     {
+        // The limit rule first, so a repair and a feasible limit drop on one tick spend one epoch: the replacement
+        // offer's keyframe serves both. Nothing below changes the limit before the routine send.
+        if (!LimitHolds(tick)) return;
         if (ownerNetId != boundOwner || repairRequested || writer!.RebuildNeedsRepair(slot))
         {
             Repair(world, interest, ownerNetId, movementAck, tick);
@@ -265,7 +270,6 @@ internal sealed class RebuildServerStream
             return;
         }
         byte[] frame = RebuildProtocol.EncodeDelta(ownerNetId, movementAck, packet);
-        if (!LimitHolds(tick)) return;
         if (SessionFrameBytes + frame.Length > PacketCap)
         {
             // Never fragment, truncate or trim an unreliable delta. The candidate is never recorded as sent.

@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Replication;
+using KhaozEngine.Tests.Replication;
 using Xunit;
 
 namespace KhaozEngine.Tests.NetWorld;
@@ -32,6 +34,7 @@ public class ReplicationLimitChangeTests
         int mark = rig.Transport.Sends.Count;
         List<RigSend> grown = rig.Steps(2);
         Assert.Equal(2, grown.Count(s => s.IsDelta));
+        Assert.All(grown.Where(s => s.IsDelta), d => Assert.Equal(epoch, RebuildWire.ReadHeader(d.DeltaBody).Epoch));
         rig.SetPad(pad, 700, 0x12);   // a delta between the old cap and the grown limit
         rig.Steps(4);
 
@@ -91,6 +94,54 @@ public class ReplicationLimitChangeTests
         Assert.True(resumed.Payload.Length <= 400);
         Assert.Equal(epoch + 1, rig.Host.EpochHighWater);
         Assert.Equal(2, client.Offers.Count);
+    }
+
+    [Theory]
+    [MemberData(nameof(Hosts))]
+    public void RepairRequestAndLimitDropOnOneTickSpendOneEpoch(RebuildHostKind kind)
+    {
+        V2Rig rig = V2Rig.Create(kind);
+        V2Client client = rig.JoinSteady();
+        client.AutoAccept = false;
+        RigDelta last = client.Deltas[^1];
+        ulong epoch = last.Id.Epoch;
+
+        client.RequestRepair(epoch, last.Id.Sequence, 0);
+        rig.Transport.Limit = 400;
+        List<RigSend> sends = rig.Step();
+
+        Assert.Single(sends, s => s.IsOffer);
+        Assert.DoesNotContain(sends, s => s.IsChunk || s.IsDelta);
+        Assert.Equal(epoch + 1, client.Offers[^1].Offer.Epoch);
+        Assert.Equal(400u, client.Offers[^1].Offer.PacketCap);
+        Assert.Equal(epoch + 1, rig.Host.EpochHighWater);
+
+        // The new offer's keyframe also serves the repair request.
+        client.Accept(epoch + 1);
+        List<RigSend> keyframe = rig.Step();
+        Assert.Equal(new ReplicationPacketId(epoch + 1, 1), Assert.Single(keyframe, s => s.IsChunk).ChunkId);
+        Assert.Equal(epoch + 1, rig.Host.EpochHighWater);
+    }
+
+    [Fact]
+    public void TransportCapAboveTheChunkWidthRangeIsRefused()
+    {
+        int largest = ushort.MaxValue + ReplicationStreamOptions.KeyframeChunkOverheadBytes;
+        Assert.Equal(65558, largest);
+        Assert.Equal(ushort.MaxValue, ReplicationStreamOptions.ChunkWidth(largest));
+        Assert.NotNull(new ReplicationStreamOptions { MaxTransportPayloadBytes = largest }
+            .ValidateForUnreliable(RebuildHost.Dt));
+
+        var oversized = new ReplicationStreamOptions { MaxTransportPayloadBytes = largest + 1 };
+        ArgumentOutOfRangeException refused = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            oversized.ValidateForUnreliable(RebuildHost.Dt));
+        Assert.Equal(nameof(ReplicationStreamOptions.MaxTransportPayloadBytes), refused.ParamName);
+        foreach (RebuildHostKind kind in new[] { RebuildHostKind.World, RebuildHostKind.Sharded })
+        {
+            ArgumentOutOfRangeException atHost = Assert.Throws<ArgumentOutOfRangeException>(() =>
+                RebuildHost.Create(kind, new RigTransport(1400), allowUnreliable: true, stream: oversized));
+            Assert.Equal(nameof(ReplicationStreamOptions.MaxTransportPayloadBytes), atHost.ParamName);
+        }
     }
 
     [Theory]

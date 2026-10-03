@@ -1,7 +1,8 @@
 # Baked ground navigation profiles and route-free approach
 
-Status: design and [implementation plan](../superpowers/plans/2026-10-03-nav-profile-bake.md) written on 2026-10-03 for
-root review. No implementation, build, test or release is claimed.
+Status: design and [implementation plan](../superpowers/plans/2026-10-03-nav-profile-bake.md) written on 2026-10-03.
+Independent review round 1 findings are resolved, with rulings O2.21 to O2.26 recorded. No implementation, build,
+test or release is claimed.
 
 Consumer: Grimhollow continuous movement pivot, player walk-up pathing after P5.
 Owner decision, binding on 2026-10-03: player walk-up pathing uses an engine offline bake. The engine adds navigation
@@ -24,7 +25,7 @@ under concurrent builds measured:
 | `PhysicsNavBake.Capture` | 1.39 s | 39 MiB | not measured |
 | Player `BuildProfile` | 69.7 s | 18.8 GiB | 19.9 MiB |
 
-A client cannot spend a minute at startup. The work is also almost all transient garbage, about 33 KB per column.
+A client cannot spend a minute at startup. The work is also almost all transient garbage, about 33.4 KiB per column.
 
 Investigation at v20.18.0 attributes the cost to the proof volume and to per-call allocations inside each proof:
 
@@ -36,7 +37,7 @@ Investigation at v20.18.0 attributes the cost to the proof volume and to per-cal
   (`BepuPhysicsWorld.Queries.cs:86` and `:149`). A step can issue several penetration queries.
 - `footprint.Accepts` passed as a method group allocates a delegate on every proof (`Profiles.cs:80`).
 - With a medium provider, every `TryEdge` builds a new dry `GroundMoveContext` (`GroundTraversalProbe.cs:28-30`),
-  which allocates the context and its four cached local delegates.
+  which allocates the context and up to three cached local delegates, since a dry context has no medium delegate.
 
 Further facts that shape the format:
 
@@ -136,7 +137,8 @@ version with any `+metadata` suffix removed.
 
 Select A. The probe runs `tuning with { WalkSpeed = 1f, RunSpeed = 1f, AirMomentum = false }`, so those three never
 change a decision and are excluded. Gravity, grounded skin, climb speed, traction and slide fields all can. A
-reflection test fails when `MoveTuning` gains a field the encoder does not cover.
+reflection test fails when `MoveTuning` gains a field the encoder does not cover. Adding that field to the identity
+changes the layout, so it also bumps the format version.
 
 ### D6. Bake entry point
 
@@ -213,12 +215,12 @@ Targets. The first three are deterministic test gates in the AllocSensitive coll
 | --- | --- | --- | --- |
 | A1 | Warmed `ComputePenetration` with at least one overlapping static, world and query view | one collector list per call | 0 bytes per call |
 | A2 | Warmed `TryEdge` on a medium-bearing context with a footprint predicate, flat Bepu fixture | context, delegates and lists per call | 0 bytes per call |
-| A3 | `BuildProfile` on a 16 m by 16 m flat fixture at 0.25 m, 4,096 columns | about 34 KB per column measured in P4 | at most 1 KiB per column, 4 MiB total |
+| A3 | `BuildProfile` on a 16 m by 16 m flat fixture at 0.25 m, 4,096 columns | about 33.4 KiB per column, from the Hollowmere run | at most 1 KiB per column, 4 MiB total |
 | A4 | Hollowmere player `BuildProfile`, one consumer observation | 18.8 GiB | at most 0.6 GiB, also about 1 KiB per column |
 
 A1 to A3 run in engine CI. A4 is recorded once by the consumer's bake run, never as an engine test. Elapsed time is
 recorded but not gated. Removing allocation removes garbage collection work, while the physics query count stays the
-same, so no elapsed target is promised. If A3 still fails after the three changes, the implementer records the
+same, so no elapsed target is promised. If A1, A2 or A3 still fails after the three changes, the implementer records the
 remaining allocation sites from an allocation trace in the plan Outcome and files an issue. The plan does not widen
 into `CharacterMovement` without root approval.
 
@@ -226,7 +228,9 @@ into `CharacterMovement` without root approval.
 
 One capture's columns, the capture options and origin, the caller's source digests, and one or more named profiles.
 Each profile stores its name, area filter, normalized probe tuning, every layer grid's blocked mask, open-cell
-heights and metadata, its candidate links, its accepted traversal layers and its accepted link subset. Agent radius
+heights and metadata, the exits of its accepted nodes and its accepted link subset. Accepted nodes are exactly the
+open cells, because `BuildProfile` accepts `IsPassable(x, z, 0f)`, which is clearance above zero. Candidate links are
+regenerated at load with `NavLayerLinks.GenerateGrounded(grids, StepHeight)`, which reads only `SurfaceHeightAt`. Agent radius
 and height derive from the stored tuning, so they cannot disagree with it.
 
 All profiles in a set share one capture, matching `PhysicsNavBake`'s existing one-capture, many-profiles model. A
@@ -284,25 +288,58 @@ Capture section:
 
 Then one section per profile, in identity order:
 
-- Layer count, between 1 and `MaxLayerCells / (width * height)`.
+- Layer count `L`, with `L * width * height` at most `MaxLayerCells`.
 - Per layer: width and height, which equal the capture's. `CellSize`, `OriginX`, `OriginZ`, `YawRadians`, `YMin` and
   `YMax` as float bits. A blocked bitset of `ceil(n / 8)` bytes, bit `i` for cell `i`, least significant bit first,
-  unused high bits zero. Open-cell heights as float bits in row-major order, one per clear bit. An accepted-node
-  bitset in the same layout. One exit byte per accepted node in row-major order.
-- Candidate links: count, then six `int32` endpoints and one kind byte each. The kind must be `Stair`.
-- Accepted links: count, then strictly ascending `int32` indices into the candidate list.
+  unused high bits zero. Open-cell heights as float bits in row-major order, one per clear bit. One exit byte per
+  open cell in row-major order.
+- Accepted links: a bitset over the regenerated candidate list in its order, `ceil(K / 8)` bytes for `K` candidates,
+  unused high bits zero.
 
 Blocked is `ClearanceAt == 0`, which holds for every grid because `ClearanceTransform` writes zero exactly for blocked
 cells. Heights of blocked cells are not stored, because `SurfaceHeightAt` returns null for them and no other member
-reads them. A loaded grid holds zero there.
+reads them, including link generation. A loaded grid holds zero there. At bake time the writer checks that the fresh
+`Space.Links` equal the regenerated list and throws `InvalidOperationException` otherwise, since a mismatch is an
+engine defect, not caller input.
 
 ### Reader validation
 
-Every count is checked against the bytes remaining before anything is allocated, and the payload length is checked
-against the maximum the expected options and profile count allow. Dimensions, origins, cell size and zero yaw must
-match the options. Layer cell totals respect `MaxLayerCells`. The `NavSpace`, `NavTraversalGraph` and
-`NavTraversalLayer` constructors then perform their own validation of endpoints, exits and accepted links. Any failure
-is `Corrupt` with a raw developer detail.
+`Load` encodes the caller's expectation first, so an invalid expectation throws `ArgumentException` to the caller as
+`Create` does. Decoding the stored identity never throws. Bytes that are truncated, carry trailing data, or are not
+canonical return `Corrupt`. Not canonical covers unsorted or duplicate labels and names, characters outside the label
+set, a digest of the wrong length, and an overlapping area filter, which is checked on the raw `uint32` values before
+any `NavAreaFilter` is constructed.
+
+Before allocating the payload, the reader bounds `P`. With `C = width * height`, `M = MaxSurfacesPerColumn`, profile
+count `N` and `Lmax = floor(MaxLayerCells / C)`, all in checked 64-bit arithmetic:
+
+```text
+capture  = 24 + C + 12 * C * M
+layer    = 32 + ceil(C / 8) + 5 * C
+links    = Lmax * (Lmax - 1) * C            ceil(Kmax / 8) for Kmax = 8 * Lmax * (Lmax - 1) * C
+profile  = 4 + Lmax * layer + links
+Pmax     = capture + N * profile
+```
+
+`Kmax` counts two directed links for each of eight neighbours of every cell, for each layer pair. `P` above
+`min(Pmax, Array.MaxLength)` is `Corrupt`. When the stream can seek, `P` must equal `Length - Position`, checked before
+the buffer exists. The payload buffer is a plain array, since a process loads a bake once.
+
+Every count is then checked against the bytes remaining before anything sized by it is allocated. The decoder
+enforces the invariants a fresh build guarantees, mirroring `PhysicsNavBake.Capture`:
+
+- Each per-cell count is at most `MaxSurfacesPerColumn`, and the counts sum to `S`.
+- Column heights are finite and strictly ascending. Headroom is not NaN and is at least zero.
+- Layer open heights are finite. `YMin` and `YMax` are not NaN.
+- Layer dimensions, origin and cell size match the options, and yaw is zero.
+- Unused bitset bits are zero. Exits target open cells within the layer.
+
+Only payload decoding sits inside a catch of `ArgumentException`, so the `NavSpace`, `NavTraversalGraph` and
+`NavTraversalLayer` constructors' own validation of endpoints, exits and accepted links also returns `Corrupt` with a
+raw developer detail.
+
+The payload checksum detects accidental damage. It is not tamper protection. A resealed edit inside valid ranges, such
+as accepting a rejected link, loads. The bake is a build artifact with the same trust as the client binary.
 
 ## 5. Public API
 
@@ -349,7 +386,9 @@ public sealed class GroundNavigationBake
 the fresh build. `WriteTo` writes the canonical bytes, and two writes of one set are byte-identical.
 
 `Load` reads the container header and identity block, compares them with the identity encoded from `expected` and,
-only when they match, reads and checks the payload. Status precedence is the order of the enum. A content mismatch
+only when they match, reads and checks the payload. Checks run in container, identity and payload order, and the first
+failing check decides the status. The identity comparison reports the first difference in the order engine, options,
+sources, profiles. A content mismatch
 names the first differing item in `Detail`: the engine versions, the option field, the source label that is missing,
 extra or changed, or the profile name and its first differing field. `Loaded` carries the bake and an empty detail.
 Every other status carries a null bake. `Detail` is developer text and is never shown to players.
@@ -383,7 +422,8 @@ must agree on:
 - Bytes: writing a loaded bake reproduces the file byte for byte.
 
 Fixtures cover a thin wall, a one metre door with small and wide capsules, a step, a deck over water with area tags,
-a rebased world and the real TileWorld bridge with its stair links.
+a rebased world, a two-level Stair seam with and without a fence so accepted and rejected Stair links both round
+trip, and the real TileWorld bridge.
 
 ## 7. Bake entry point and outputs
 
@@ -406,6 +446,15 @@ Source digests are the game's inputs, labelled for diagnosis. Recommended for a 
 in a canonical order, collider options, the catalog rows that drive colliders, heights and medium, and a value naming
 the classifier policy and its tables. Use authored inputs rather than `TileWorldColliders.Hash` when the world holds
 walk surfaces yawed off a quarter turn, because that hash is not promised equal across x64 and ARM64.
+
+The digests must cover every input a proof reads, not only the colliders: the ground height and normal providers,
+the clamp bounds, the medium and the classifier. Normalise line endings to LF before digesting text, so a Windows
+checkout with CRLF files digests equal to the machine that baked.
+
+The payload carries the baking machine's float arithmetic. A client on another architecture uses those decisions even
+where its own build would differ in the last bits. Those differences sit inside the bounded proof tolerance.
+`AllowsSegment` accepts endpoints within the profile's step class, and the live movement core still resolves every
+actual step, so a ULP difference cannot admit motion the core refuses.
 
 ## 8. Startup validation, refusal and expectations
 
@@ -454,9 +503,13 @@ public sealed class DirectMoveToRange
 // RangeMoveStatus gains Blocked, appended after Suspended.
 ```
 
-Windows are positive tick counts and distances are finite and positive. There are no defaults. The reference values
-from Grimhollow R13 at its 30 Hz simulation are 15 ticks and 0.1 m, then 45 ticks and 0.1 m. They appear in tests,
-not in the engine.
+Window sizes are positive tick counts and distances are finite and positive. There are no defaults.
+
+A window of `N` ticks spans `N` intervals between `N + 1` counted samples. It first becomes eligible on the
+`(N + 1)`th counted tick, comparing that tick's sample with the sample `N` counted ticks earlier. Grimhollow R13 at its
+30 Hz simulation is a stall window of 15 intervals with 0.1 m and an approach window of 45 intervals with 0.1 m. Those
+values appear in tests, not in the engine. The ring buffer holds `max(StallWindowTicks, ApproachWindowTicks) + 1`
+samples, allocated in the constructor, so steady ticks allocate nothing.
 
 Tick order, matching `MoveToRange` where the rules overlap:
 
@@ -464,20 +517,21 @@ Tick order, matching `MoveToRange` where the rules overlap:
 2. An airborne or committed body returns `Suspended`. The tick counts toward neither window and clears neither.
 3. A body in range returns `InRange` and clears both windows and any latched block.
 4. A latched block returns `Blocked`.
-5. Otherwise the driver requests travel toward the closest horizontal point of the target shape, the existing
+5. A zero travel bound, such as a rooted body with `MoveState.SpeedScale` 0, returns `Following` with zero input and
+   counts toward neither window, as `MoveToRange.cs:58` holds. A rooted body is not blocked (ruling O2.25).
+6. Otherwise the driver requests travel toward the closest horizontal point of the target shape, the existing
    `MoveToRange` helper, capped by the same travel bound. It preflights the step on a copy through the live context,
    accepting it only when the result is grounded, not swimming and finite. It then shrinks the command with the
    same stop-ring bisection. A refused preflight requests zero for this tick.
-6. The tick records a sample of current feet XZ and reach distance, because it asked for movement even when the
-   preflight refused. When the stall window holds `StallWindowTicks` counted ticks and the horizontal displacement
-   from the window's oldest sample to now is below `StallTravelMetres`, the driver latches and returns `Blocked`.
-   When `targetMoves` is false and the approach window holds `ApproachWindowTicks` counted ticks and the reach
-   distance has fallen by less than `ApproachGainMetres`, it latches and returns `Blocked`.
-7. Otherwise it returns `Following` with the command.
+7. The tick records a sample of current feet XZ and reach distance, because it asked for movement even when the
+   preflight refused. When the stall window is eligible and the net horizontal displacement from its oldest sample to
+   now is below `StallTravelMetres`, the driver latches and returns `Blocked`. When `targetMoves` is false, the
+   approach window is eligible and the reach distance has fallen by less than `ApproachGainMetres` across it, the
+   driver latches and returns `Blocked`.
+8. Otherwise it returns `Following` with the command.
 
 A change of target kind, shape, yaw, range or capsule geometry resets internally, as in `MoveToRange`. A change of
-`targetMoves` clears the approach window. Caller `Reset` clears everything. Sample storage is a ring buffer sized
-from the options at construction, so steady ticks allocate nothing. `PlayerPathMovement.Command` and
+`targetMoves` clears the approach window. Caller `Reset` clears everything. `PlayerPathMovement.Command` and
 `NpcGroundMovement.Step` already treat every non-`Following` status as idle, so `Blocked` needs no adapter change.
 
 Departures from the reference, recorded so the game can delete its class knowingly:
@@ -488,6 +542,14 @@ Departures from the reference, recorded so the game can delete its class knowing
   last step cannot stall or overshoot.
 - A step that would leave the ground or start swimming is refused and counts toward the stall window, so a walk off a
   ledge or into deep water ends `Blocked` instead of falling or swimming.
+- A zero travel bound counts toward neither window, so a rooted body holds without ending its walk.
+- `InRange` clears both windows, so a followed body that moves away starts fresh windows.
+- Stall travel is net displacement across the window, not accumulated path length, so pacing in place is blocked.
+- `Blocked` stays latched until `InRange` or `Reset`. The game ends the walk on the first `Blocked`.
+- The driver holds no target identity. Replacing the target with another one of the same shape needs `Reset`.
+- The caller passes `targetMoves` true for any body target, such as a creature or player, and false for static
+  objects and points.
+- Call `Tick` exactly once per simulation tick, since the windows count ticks.
 
 ## 10. Test strategy
 
@@ -496,9 +558,9 @@ Departures from the reference, recorded so the game can delete its class knowing
 | Allocation | A1 world and view, A2 medium and dry contexts, A3 per-column budget, unchanged penetration results | Game.Tests Physics, Movement.Tests |
 | Grid factory | Equal clearance and heights from a surface grid, span validation, input copies | Game.Tests Navigation |
 | Identity | Canonical ordering, every option and retained tuning field, the three excluded fields, labels and digests, engine version | Movement.Tests |
-| Round trip | Section 6 on every fixture, byte determinism of two creates and of rewrite | Movement.Tests, TileWorld.Physics.Tests |
-| Refusal | Each status, first differing item in `Detail`, truncation, trailing bytes, flipped payload byte, hostile counts, Hop link kind, stale refusal without reading the payload | Movement.Tests |
-| Direct driver | Open approach, stop ring, wall stall, wall slide, moving target, suspension, latch and reset, invalid options, Blocked command is idle | Movement.Tests |
+| Round trip | Section 6 on every fixture including the open and fenced Stair seam, byte determinism of two creates and of rewrite | Movement.Tests, TileWorld.Physics.Tests |
+| Refusal | Each status, first differing item in `Detail`, non-canonical identity, truncation, trailing bytes, flipped payload byte, hostile counts, seekable length mismatch, value invariants, unused bitset bits, invalid expectation throws, stale refusal without reading the payload | Movement.Tests |
+| Direct driver | Window rules on scripted states over flat ground (stall, approach, suspension, rooted body, in range, `targetMoves`, latch and reset), one physics wall fact, one ledge fact, open approach, stop ring, invalid options, Blocked command is idle | Movement.Tests |
 | Real command path | Direct approach through prediction, codec and authority into range, Blocked sends idle | Server.Tests |
 
 No test needs Grimhollow assets. Focused runs per task and one full Release verification at the finish. No local
@@ -506,22 +568,22 @@ repetition or stress runs.
 
 ## 11. Version and release
 
-Additive public API and a new enum member are a minor change under the engine's SemVer rule. The work rides the
-next staged engine version, and root selects it at integration after rereading main, the version and tags. Main
-currently stages `20.18.1` untagged. Only the owner starts a tag. Grimhollow adopts a released pin.
+Additive public API and a new enum member are a minor change under the engine's SemVer rule. Engine main stages the
+patch `20.18.1` from another session. Ruling O2.26: because this work adds public API, the staged version becomes
+`20.19.0` at integration, with the `20.18.1` entry folded into it. The delta reliability work rides the same `20.19.0`.
+Root performs the selection after rereading main, the version and tags. Only the owner starts a tag. Grimhollow adopts
+a released pin.
 
-## Owner questions
+## Rulings for Grimhollow
 
-These are product or scope choices for Grimhollow. The engine design does not depend on the answers.
+These were owner questions in the first draft and are now recorded rulings. The engine design does not depend on them.
 
-1. Where does Grimhollow keep the baked file? Recommendation: generate it with a game script and commit it beside the
-   world document, gated by a load test in CI. A CI-only bake keeps about 12 MiB of churn per world edit out of git,
-   but local playtests would then need a bake step before they can walk up to anything.
-2. What does a Grimhollow client do when `Load` refuses? Recommendation: the CI load test makes refusal unreachable
-   in a release. At runtime the client keeps running, logs the status and detail, and uses `DirectMoveToRange` for
-   walk-up, which honestly reports `Blocked` at obstacles.
-3. Should P5's server-side creature windows, about 1.5 to 2.6 s at server startup, also move to the offline bake?
-   Recommendation: no change during P5. The format supports it, so revisit after adoption.
+1. O2.22: a Grimhollow script generates the baked file and it is committed beside the world document, gated by a CI
+   test that loads it with the shipped inputs.
+2. O2.23: the CI load test makes refusal unreachable in a release. At runtime a refused client keeps running, logs the
+   status and detail, and uses `DirectMoveToRange` for walk-up.
+3. O2.24: P5's server-side creature windows keep their startup bake during P5. The offline bake is revisited for them
+   after adoption.
 
 ## Out of scope
 

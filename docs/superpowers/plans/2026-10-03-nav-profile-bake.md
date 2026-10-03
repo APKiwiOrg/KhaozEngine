@@ -20,7 +20,7 @@
 - Identity excludes exactly `WalkSpeed`, `RunSpeed` and `AirMomentum` from `MoveTuning`, and retains the other 27 fields.
 - No analytic fallback and no fresh-build fallback inside `Load`. Content problems return a status, stream I/O errors propagate.
 - Direct driver thresholds are required options with no engine defaults. Grimhollow R13 values (15 ticks and 0.1 m, 45 ticks and 0.1 m) appear only in tests.
-- Additive minor change. Ride the version root selects at integration. No independent bump, no tag, no pack, no push of main by a worker.
+- Additive minor change. Ruling O2.26: the staged patch `20.18.1` becomes `20.19.0` at integration with its entry folded in, and the delta reliability work rides the same `20.19.0`. Root performs it. No worker bump, tag, pack or push of main.
 - One building worker at a time. Focused tests per task, one full Release verification at the finish. No local repetition, stress runs or client launches.
 - Zero warnings. No `.filesize-baseline` growth. Put each new concern in its own file. Test namespaces under `KhaozEngine.Tests.*`. Allocation tests join the assembly's `AllocSensitive` collection.
 - No em dashes, en dashes or prose semicolons in Markdown or comments. Record every departure, its reason and its cost in this plan's Outcome.
@@ -38,14 +38,14 @@ mkdir -p /Users/antonio/KhaozEngine/.worktrees/grimhollow-nav-bake/local-feed
 | Bepu query scratch | `KhaozEngine.Physics.Bepu/BepuPhysicsWorld.Queries.cs` | 1 |
 | Proof allocation | `KhaozEngine.Movement/NavAreaFootprint.cs`, `PhysicsNavBake.Profiles.cs`, `GroundMoveContext.cs`, `GroundTraversalProbe.cs` | 1 |
 | Grid factory | `KhaozEngine.Navigation/NavGrid.cs` (made partial), new `NavGrid.BlockedSurfaces.cs` | 2 |
-| Bake identity | new `KhaozEngine.Movement/NavBakeSources.cs`, `NavBakeProfile.cs`, `NavBakeExpectation.cs`, `NavBakeLoadStatus.cs`, `NavBakeIdentity.cs`, `NavBakeIdentity.Tuning.cs` | 3 |
-| Bake format | `KhaozEngine.Movement/NavBakeBinary.cs` (created in Task 3), new `GroundNavigationBake.cs`, `GroundNavigationBake.Writer.cs`, `GroundNavigationBake.Reader.cs`, internal accessors in `GroundNavigation.cs` and `NavAreaFootprint.cs` | 4 |
+| Bake identity | new `KhaozEngine.Movement/NavBakeSources.cs`, `NavBakeProfile.cs`, `NavBakeExpectation.cs`, `NavBakeLoadStatus.cs` (enum only), `NavBakeIdentity.cs`, `NavBakeIdentity.Tuning.cs`, `NavBakeBinary.cs` | 3 |
+| Bake format | `KhaozEngine.Movement/NavBakeBinary.cs` (created in Task 3), new `NavBakeLoadResult.cs`, `GroundNavigationBake.cs`, `GroundNavigationBake.Writer.cs`, `GroundNavigationBake.Reader.cs`, internal accessors in `GroundNavigation.cs` and `NavAreaFootprint.cs` | 4 |
 | Bridge proof | new `KhaozEngine.TileWorld.Physics.Tests/TileWorldNavigationBakeTests.cs`, helper visibility in `TileWorldMovementNavigationTests.cs` | 5 |
 | Direct driver | new `KhaozEngine.Movement/RangeApproachCore.cs`, `DirectApproachOptions.cs`, `DirectMoveToRange.cs`, `DirectMoveToRange.Progress.cs`, modified `MoveToRange.cs`, `MoveToRange.Approach.cs`, `RangeMoveStatus.cs` | 6 |
 | Server acceptance | `KhaozEngine.Server.Tests/NetWorld/PlayerRangeMovementTestRig.cs`, new `PlayerDirectApproachAcceptanceTests.cs` | 6 |
 | Living docs and release | `KhaozEngine.Movement/README.md`, `KhaozEngine.Navigation/README.md`, `docs/USING-KHAOZENGINE.md`, root `README.md` Movement summary, `CHANGELOG.md`, `docs/INDEX.md`, the design status line | 7 |
 
-Tasks 1, 2 and 6 are independent. Task 4 needs 2 and 3. Task 5 needs 4. Task 7 runs last. Root owns integration, version selection, push, pack and tag.
+Tasks 1, 2 and 6 are independent. Task 4 needs 1, 2 and 3, and follows Task 1 because both edit `NavAreaFootprint.cs`. Task 5 needs 4. Task 7 runs last. Root owns integration, version selection, push, pack and tag.
 
 ## Review Focus
 
@@ -116,7 +116,7 @@ Expected: compile FAIL with CS1061 for `DryContext`. Comment out that one fact, 
 
 Run: `dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter "FullyQualifiedName~KhaozEngine.Tests.Physics"`
 Run: `dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release`
-Expected: all pass with nonzero counts. If `BuildProfileStaysWithinOneKibPerColumn` still fails, record the measured bytes and the top allocation sites from one `dotnet-trace` or `dotnet-counters` capture in Outcome, file an issue with `scripts/ledger.sh`, and stop for root. Do not edit `CharacterMovement`.
+Expected: all pass with nonzero counts. If `BuildProfileStaysWithinOneKibPerColumn` still fails, record the measured bytes and the top allocation sites from one `dotnet-trace` or `dotnet-counters` capture in Outcome, file an issue with `scripts/ledger.sh`, and stop for root. The same applies when either zero-allocation fact still fails. Do not edit `CharacterMovement`.
 
 - [ ] **Step 5: Commit.** `perf(movement): stop allocating per ground traversal proof`
 
@@ -159,19 +159,19 @@ Expected: all pass with nonzero counts. If `BuildProfileStaysWithinOneKibPerColu
 ### Task 3: Canonical bake identity
 
 **Files:**
-- Create: `KhaozEngine.Movement/NavBakeSources.cs`, `NavBakeProfile.cs`, `NavBakeExpectation.cs`, `NavBakeLoadStatus.cs`, `NavBakeIdentity.cs`, `NavBakeIdentity.Tuning.cs`
+- Create: `KhaozEngine.Movement/NavBakeSources.cs`, `NavBakeProfile.cs`, `NavBakeExpectation.cs`, `NavBakeLoadStatus.cs` (the enum only), `NavBakeIdentity.cs`, `NavBakeIdentity.Tuning.cs`, `NavBakeBinary.cs`
 - Test: `KhaozEngine.Movement.Tests/NavBakeIdentityTests.cs`
 
 **Interfaces:**
-- Produces, public, exactly as S5: `NavBakeSources` (`Add`, both `AddHashOf`, `Labels`), `NavBakeProfile`, `NavBakeExpectation`, `NavBakeLoadStatus`, `NavBakeLoadResult`.
+- Produces, public, exactly as design S5: `NavBakeSources` (`Add`, both `AddHashOf`, `Labels`), `NavBakeProfile`, `NavBakeExpectation`, `NavBakeLoadStatus`. `NavBakeLoadResult` references `GroundNavigationBake`, so it belongs to Task 4.
 - Produces, internal:
   - `static string NavBakeIdentity.CurrentEngineVersion { get; }`, from the Movement assembly's `AssemblyInformationalVersionAttribute` through `NormalizeEngineVersion`.
   - `static string NavBakeIdentity.NormalizeEngineVersion(string informational)`, which removes any `+` suffix.
-  - `static byte[] NavBakeIdentity.Encode(NavBakeExpectation expected, string engineVersion)`, the S4 identity block. It validates names, labels, counts and duplicates with `ArgumentException`.
-  - `static (NavBakeLoadStatus Status, string Detail) NavBakeIdentity.Compare(ReadOnlySpan<byte> stored, ReadOnlySpan<byte> expected)`. Equal bytes return `Loaded` and an empty detail. Otherwise it decodes both and names the first difference in enum order. Undecodable stored bytes return `Corrupt`.
+  - `static byte[] NavBakeIdentity.Encode(NavBakeExpectation expected, string engineVersion)`, the S4 identity block. Invalid names, labels, digests, counts or duplicates throw `ArgumentException`.
+  - `static (NavBakeLoadStatus Status, string Detail) NavBakeIdentity.Compare(ReadOnlySpan<byte> stored, ReadOnlySpan<byte> expected)`. Equal bytes return `Loaded` with an empty detail. Otherwise it decodes both and names the first difference in the order engine, options, sources, profiles. It never throws. Stored bytes that are truncated, trailing, unsorted, duplicated, outside the label set, or that carry an overlapping filter return `Corrupt`. Filters are checked on raw `uint32` values before a `NavAreaFilter` is constructed.
   - `static MoveTuning NavBakeIdentity.ReadTuning(ref NavBakeReader reader)` and the matching writer. Reading restores `WalkSpeed = 1f`, `RunSpeed = 1f` and `AirMomentum = false`.
-  - `NavBakeSources` keeps entries as `(string Label, byte[] Digest)`, and `internal IReadOnlyList<(string Label, byte[] Digest)> Snapshot()` returns an ordinal-sorted copy.
-- Consumes: `NavBakeReader` and `NavBakeWriter` from Task 4's `NavBakeBinary.cs`. Create that file in this task with only the primitives identity needs: `int32`, `uint32`, `uint16`, `uint8`, float bits, byte spans, and short ASCII strings. Every read returns `false` when bytes run out.
+  - `NavBakeSources` keeps `(string Label, byte[] Digest)` entries, and `internal IReadOnlyList<(string Label, byte[] Digest)> Snapshot()` returns an ordinal-sorted copy.
+  - `NavBakeBinary.cs`: `ref struct NavBakeReader` and `sealed class NavBakeWriter` over `ArrayBufferWriter<byte>`, with `int32`, `uint32`, `uint16`, `uint8`, float bits, byte spans and short ASCII strings. Every read returns `false` when bytes run out.
 
 - [ ] **Step 1: Write the tests.**
 
@@ -182,9 +182,14 @@ Expected: all pass with nonzero counts. If `BuildProfileStaysWithinOneKibPerColu
 [Fact] public void EveryRetainedTuningFieldChangesTheIdentity()
 // Reflect MoveTuning's primary constructor parameters. Floats change by MathF.BitIncrement, bools flip.
 // The 27 retained fields each change the bytes. WalkSpeed, RunSpeed and AirMomentum leave them equal.
+// Failure text: a new MoveTuning field needs encoding and a format version bump.
+Assert.Equal(30, all.Count);
 Assert.Equal(27, retained.Count);
 
-[Fact] public void EveryOptionFieldChangesTheIdentity()        // all 13 PhysicsNavBakeOptions fields
+[Fact] public void EveryOptionFieldChangesTheIdentity()
+// Reflect PhysicsNavBakeOptions' primary constructor parameters.
+Assert.Equal(13, fields.Count);   // each field changed alone changes the bytes
+
 [Fact] public void EngineVersionStripsBuildMetadata()
 Assert.Equal("20.19.0", NavBakeIdentity.NormalizeEngineVersion("20.19.0+8dfe93941"));
 // Encode with "20.19.0" and "20.19.1" differ.
@@ -194,14 +199,19 @@ Assert.Equal("20.19.0", NavBakeIdentity.NormalizeEngineVersion("20.19.0+8dfe9394
 [Fact] public void SetBoundsAreValidated()                     // zero sources, zero or 257 profiles: ArgumentException
 
 [Fact] public void IdentityBytesMatchTheGoldenFingerprint()
-// Fixed options, sources ("world", 32 bytes of 0x11) and one profile ("player", GroundTraversalProbeTests.Tuning, default),
-// engine version "0.0.0-golden". SHA-256 hex of Encode equals a constant recorded at first GREEN.
-// The constant changes only with a format version bump.
+// Fixed options, sources ("world", 32 bytes of 0x11), engine version "0.0.0-golden" and one profile "player"
+// with a literal tuning written out in the test: new MoveTuning(WalkSpeed: 2f, RunSpeed: 5f, CapsuleHalfHeight: 0.75f,
+// MaxSlopeRadians: 0.8f, CapsuleRadius: 0.3f) with every other argument at its declared default, and default areas.
+// SHA-256 hex of Encode equals a constant recorded at first GREEN. The constant changes only with a format version bump.
 
 [Theory] public void CompareNamesTheFirstDifference(string change, NavBakeLoadStatus status, string detailFragment)
 // engine -> EngineChanged "0.0.0-golden"; CellSize -> OptionsChanged "CellSize"; digest of "world" -> SourcesChanged "world";
 // extra label "catalog" -> SourcesChanged "catalog"; missing profile -> ProfilesChanged "player";
 // Gravity -> ProfilesChanged containing "player" and "Gravity".
+
+[Theory] public void NonCanonicalStoredIdentityIsCorruptAndNeverThrows(string fault)
+// Hand-edited golden bytes: unsorted labels, duplicate profile name, label byte 'A', overlapping filter bits,
+// one trailing byte, cut one byte short. Compare returns Corrupt for each.
 ```
 
 - [ ] **Step 2: Run RED.** `dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter "FullyQualifiedName~NavBakeIdentityTests"`. Expected: compile FAIL on the missing types.
@@ -214,18 +224,25 @@ Assert.Equal("20.19.0", NavBakeIdentity.NormalizeEngineVersion("20.19.0+8dfe9394
 ### Task 4: Bake format, create, write and load
 
 **Files:**
-- Create: `KhaozEngine.Movement/GroundNavigationBake.cs`, `GroundNavigationBake.Writer.cs`, `GroundNavigationBake.Reader.cs`
+- Create: `KhaozEngine.Movement/NavBakeLoadResult.cs`, `GroundNavigationBake.cs`, `GroundNavigationBake.Writer.cs`, `GroundNavigationBake.Reader.cs`
 - Modify: `KhaozEngine.Movement/NavBakeBinary.cs` (adds what the payload needs)
-- Modify: `KhaozEngine.Movement/GroundNavigation.cs` (internal `NavAreaFootprint Footprint { get; }`), `KhaozEngine.Movement/NavAreaFootprint.cs` (internal `Columns`, `Options`, `Areas`)
+- Modify: `KhaozEngine.Movement/GroundNavigation.cs` (internal `NavAreaFootprint Footprint { get; }`), `KhaozEngine.Movement/NavAreaFootprint.cs` (internal `Columns`, `Options`, `Areas`, on top of Task 1's change)
 - Test: `KhaozEngine.Movement.Tests/GroundNavigationBakeRoundTripTests.cs`, `GroundNavigationBakeRefusalTests.cs`, `BakeEquivalence.cs` (assertion helper)
 
 **Interfaces:**
-- Consumes: Task 2 `NavGrid.FromBlockedSurfaces`. Task 3 identity types. The existing internal constructors `PhysicsNavColumns(options, width, height, starts, surfaces)`, `NavAreaFootprint(columns, options, tuning, areas)` and `GroundNavigation(graph, tuning, footprint)`, and `PhysicsNavBake.Columns`, `Options` and `Origin`.
-- Produces, public, exactly as S5: `GroundNavigationBake.Create`, `Load(Stream, NavBakeExpectation)`, `WriteTo`, `Fingerprint`, `ProfileNames` (identity order), `GetProfile`.
+- Consumes: Task 1 `NavAreaFootprint`. Task 2 `NavGrid.FromBlockedSurfaces`. Task 3 identity types and `NavBakeBinary`. The existing internal constructors `PhysicsNavColumns(options, width, height, starts, surfaces)`, `NavAreaFootprint(columns, options, tuning, areas)` and `GroundNavigation(graph, tuning, footprint)`, `PhysicsNavBake.Columns`, `Options` and `Origin`, and public `NavLayerLinks.GenerateGrounded(grids, stepHeight)`.
+- Produces, public, exactly as design S5: `NavBakeLoadResult`, `GroundNavigationBake.Create`, `Load(Stream, NavBakeExpectation)`, `WriteTo`, `Fingerprint`, `ProfileNames` (identity order), `GetProfile`.
 - Produces, internal: `static NavBakeLoadResult GroundNavigationBake.Load(Stream source, NavBakeExpectation expected, string engineVersion)`, used by the public overload and by tests.
-- Load order: read the 52-byte header, refusing a wrong magic as `NotABake`, a version other than 1 or nonzero flags as `UnsupportedFormat`, and `L` over 1 MiB as `Corrupt`. Read `L` bytes and `Compare` them with `Encode(expected, engineVersion)`, returning that status unless it is `Loaded`. Check `P` against the maximum payload the expected options and profile count allow. Read the payload with a loop that tolerates short reads, require end of stream, verify SHA-256, then decode per S4. Catch `ArgumentException` from the `NavSpace`, `NavTraversalGraph` and `NavTraversalLayer` constructors and report `Corrupt`.
+- Format: design S4 payload. Accepted nodes are the open cells, so there is no accepted-node bitset. Candidate links are regenerated with `GenerateGrounded`, and `Create` throws `InvalidOperationException` if the fresh `Space.Links` differ from the regenerated list. Accepted links are a bitset over the regenerated candidates.
+- Load order:
+  1. `Encode(expected, engineVersion)` first. Its `ArgumentException` reaches the caller.
+  2. Read the 52-byte header. A wrong magic is `NotABake`. A version other than 1 or nonzero flags is `UnsupportedFormat`. `L` over 1 MiB is `Corrupt`.
+  3. Read `L` bytes and `Compare`, returning its status unless it is `Loaded`.
+  4. Bound `P` by the design S4 formula and `Array.MaxLength`. When `source.CanSeek`, require `P == Length - Position`. Only then allocate a plain `byte[P]`.
+  5. Read with a loop that tolerates short reads, require end of stream, verify SHA-256.
+  6. Decode inside one `try` that catches `ArgumentException` and returns `Corrupt`. Enforce the design S4 value invariants before constructing grids, layers and graphs.
 
-- [ ] **Step 1: Write the round-trip tests.** Fixtures reuse `GroundTraversalProbeTests.FlatWorld`, `StepWorld` and the `PhysicsNavProfileTests` geometry: thin wall, one metre door with profiles "small" (radius 0.2) and "wide" (radius 0.6), step, deck over water with tags (`feet.Y < 1f ? 0x02u : 0x01u`) and filters "dry" `(0, 0x02)` and "wet" `(0x02, 0)`, and a world rebased by (100, 5, -40) before capture.
+- [ ] **Step 1: Write the round-trip tests.** Fixtures reuse `GroundTraversalProbeTests.FlatWorld`, `StepWorld` and the `PhysicsNavProfileTests` geometry: thin wall, one metre door with profiles "small" (radius 0.2) and "wide" (radius 0.6), step, deck over water with tags (`feet.Y < 1f ? 0x02u : 0x01u`) and filters "dry" `(0, 0x02)` and "wet" `(0x02, 0)`, a world rebased by (100, 5, -40) before capture, and "stair-open" and "stair-fence". The two stair fixtures copy the inline geometry of `PhysicsNavProfileTests.CandidateStairLinksRequireTheSamePhysicalProof` (`PhysicsNavProfileTests.cs:211-221`): its two decks, the optional 0.1 m fence, bounds `MinX = -1f, MaxX = 1f` and the `tiny` tuning.
 
 ```csharp
 [Theory, MemberData(nameof(Fixtures))] public void LoadedProfilesMatchTheFreshBuild(string fixture)
@@ -233,6 +250,8 @@ Assert.Equal("20.19.0", NavBakeIdentity.NormalizeEngineVersion("20.19.0+8dfe9394
 // which checks every S6 item and runs AllowsSegment plus both FindPath overloads over all cell-centre pairs of the
 // fixture, or a fixed stride sample when there are over 400 pairs.
 
+[Fact] public void StairSeamAcceptanceRoundTrips()
+// stair-open: the seam link is in the loaded graph's Links. stair-fence: it is in Space.Links and not in graph Links.
 [Fact] public void TwoCreatesWriteIdenticalBytes()
 [Fact] public void RewritingALoadedBakeReproducesItsBytes()
 [Fact] public void ProfilesShareOneColumnSnapshotAfterLoad()   // Assert.Same on Footprint.Columns of "dry" and "wet"
@@ -243,27 +262,32 @@ Assert.Equal("20.19.0", NavBakeIdentity.NormalizeEngineVersion("20.19.0+8dfe9394
 [Fact] public void GetProfileRejectsUnknownNames()             // KeyNotFoundException
 ```
 
-- [ ] **Step 2: Write the refusal tests.** A test helper `Reseal(byte[] file)` recomputes the payload SHA-256 after a deliberate payload edit so the decoder, not the checksum, is exercised.
+- [ ] **Step 2: Write the refusal tests.** A helper `Reseal(byte[] file)` recomputes the payload SHA-256 after a deliberate payload edit so the decoder, not the checksum, is exercised.
 
 ```csharp
 [Fact] public void NonBakeBytesAreNotABake()                   // empty, "KENC" plus header, 64 random bytes
 [Theory] public void UnknownVersionOrFlagsAreUnsupported(ushort version, ushort flags)   // (2, 0) and (1, 1)
 [Theory] public void StaleInputsAreRefusedWithTheFirstDifference(string change, NavBakeLoadStatus status, string detailFragment)
 // Uses the internal engineVersion overload for EngineChanged. Bake is null for every refusal.
+[Fact] public void InvalidExpectationThrows()                  // empty sources: ArgumentException from Load, before any read
 [Fact] public void StaleRefusalDoesNotReadThePayload()        // counting stream: bytes read <= 52 + L
 [Fact] public void EveryTruncationIsCorruptOrNotABake()        // prefixes 0 to 60, then every 97th length to the end
 [Fact] public void TrailingBytesAreCorrupt()
+[Fact] public void SeekableLengthMismatchIsCorruptBeforeAllocation()   // P edited one larger, MemoryStream: Corrupt, under 64 KiB allocated
 [Fact] public void FlippedPayloadByteIsCorrupt()               // without Reseal
 [Fact] public void HostileCountsAreCorruptWithoutLargeAllocation()
 // Resealed surface count int.MaxValue and layer count int.MaxValue: Corrupt, and Load allocates under 1 MiB beyond the file.
-[Fact] public void HopLinkKindIsCorrupt()                      // resealed
-[Fact] public void ExitToARejectedNodeIsCorrupt()              // resealed
+[Theory] public void ValueInvariantsAreEnforced(string fault)
+// Resealed: a per-cell count above MaxSurfacesPerColumn, descending column heights, NaN column height, NaN headroom,
+// headroom -1, NaN open layer height, NaN YMin. Each returns Corrupt.
+[Fact] public void UnusedBitsetBitsAreCorrupt()                // resealed high bit in a blocked bitset and in the stair-open accepted-link bitset
+[Fact] public void ExitToABlockedCellIsCorrupt()               // resealed
 [Fact] public void LoadHandlesOneByteReads()                   // stream wrapper returning at most one byte per Read
 [Fact] public void SubsetExpectationIsRefusedNamingTheMissingProfile()   // expect only "small" against a small plus wide bake
 ```
 
 - [ ] **Step 3: Run RED.** `dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter "FullyQualifiedName~GroundNavigationBake"`. Expected: compile FAIL, `GroundNavigationBake` missing.
-- [ ] **Step 4: Implement** the writer and reader per S4. The writer encodes into an `ArrayBufferWriter<byte>`, hashes the payload, then writes header, identity and payload. The reader rents its payload buffer from `ArrayPool<byte>.Shared` and returns it in `finally`.
+- [ ] **Step 4: Implement** the writer and reader. The writer encodes into an `ArrayBufferWriter<byte>`, hashes the payload, then writes header, identity and payload.
 - [ ] **Step 5: Measure once.** On the deck fixture, record file size, `Load` elapsed and `Load` allocated bytes in Outcome from a temporary `ITestOutputHelper` line. Remove the line before commit.
 - [ ] **Step 6: Run GREEN** with the Step 3 filter, then the whole Movement.Tests project. Expected: all pass with nonzero counts.
 - [ ] **Step 7: Commit.** `feat(movement): bake and load ground navigation profile sets`
@@ -306,35 +330,47 @@ Assert.Equal("20.19.0", NavBakeIdentity.NormalizeEngineVersion("20.19.0+8dfe9394
 - Test: `KhaozEngine.Movement.Tests/DirectMoveToRangeTests.cs`, `KhaozEngine.Server.Tests/NetWorld/PlayerDirectApproachAcceptanceTests.cs`
 
 **Interfaces:**
-- Produces, public, exactly as S9: `DirectApproachOptions`, `DirectMoveToRange`, `RangeMoveStatus.Blocked`.
-- Produces, internal `static class RangeApproachCore`: `TravelBound`, `BoundedDirection`, `ClosestHorizontal`, `Body`, `Feet` and `ValidateBody`, moved unchanged from `MoveToRange`, plus `StopAtRange(in MoveState body, in MoveTuning tuning, in ReachTarget target, float range, bool run, float dt, GroundMoveContext context, Vector2 command, in MoveState predicted, StepAdmission admits)` and `internal delegate bool StepAdmission(in MoveState from, in MoveState to)`. `MoveToRange` caches its admission delegate once in its constructor.
-- Produces, internal in `DirectMoveToRange.Progress.cs`: a ring buffer of `(Vector2 FeetXz, float Distance)` with capacity `max(StallWindowTicks, ApproachWindowTicks) + 1`, allocated in the constructor. Methods `Record`, `ClearAll`, `ClearApproach`, `StallBreached(float travelMetres, int windowTicks)` and `ApproachBreached(float gainMetres, int windowTicks)`. The approach window tracks its own start index so clearing it leaves the stall history intact.
+- Produces, public, exactly as design S9: `DirectApproachOptions`, `DirectMoveToRange`, `RangeMoveStatus.Blocked`.
+- Produces, internal `static class RangeApproachCore`: `TravelBound`, `BoundedDirection`, `ClosestHorizontal`, `Body`, `Feet` and `ValidateBody`, moved unchanged from `MoveToRange`, plus `StopAtRange(in MoveState body, in MoveTuning tuning, in ReachTarget target, float range, bool run, float dt, GroundMoveContext context, Vector2 command, in MoveState predicted, StepAdmission admits)` and `internal delegate bool StepAdmission(in MoveState from, in MoveState to, in MoveTuning tuning)`. The tuning parameter carries `CapsuleHalfHeight`, which `MoveToRange.AllowsStep` needs for feet (`MoveToRange.Approach.cs:43-45`). `MoveToRange` caches its admission delegate once in its constructor.
+- Produces, internal in `DirectMoveToRange.Progress.cs`: a ring buffer of `(Vector2 FeetXz, float Distance)` holding `max(StallWindowTicks, ApproachWindowTicks) + 1` samples, allocated in the constructor. Methods `Record`, `ClearAll`, `ClearApproach`, `StallBreached(float travelMetres, int windowTicks)` and `ApproachBreached(float gainMetres, int windowTicks)`. A window of `N` ticks is `N` intervals between `N + 1` samples and is first eligible on the `(N + 1)`th counted tick. The approach window keeps its own start so clearing it leaves the stall history intact.
 - Server rig: `public RangeSteering SteerDirect(DirectMoveToRange driver, in ReachTarget target, float range, bool targetMoves, bool run = false)` using `Client.LocalPredictedState.Move`, `Tuning`, `TickSeconds` and `Context`.
-- Tick order is S9 steps 1 to 7. The direct driver's step admission is grounded, not swimming and finite position, with no segment guard. The internal reset key is the same `GoalShape` fields `MoveToRange` uses.
+- Tick order is design S9 steps 1 to 8, including the zero travel bound guard of ruling O2.25. The direct driver's step admission is grounded, not swimming and finite position, with no segment guard. The internal reset key is the same `GoalShape` fields `MoveToRange` uses.
 
-- [ ] **Step 1: Extract `RangeApproachCore`** and point `MoveToRange` at it, with no behavior change and no new test file yet.
-Run: `dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter "FullyQualifiedName~MoveToRange|FullyQualifiedName~NpcGroundMovement|FullyQualifiedName~PlayerPathMovement|FullyQualifiedName~NpcRangeNavigation"`
-Expected: all pass with the same counts as base. Commit `refactor(movement): share range approach helpers`.
+- [ ] **Step 1: Record base counts, then extract `RangeApproachCore`.**
+Run on unchanged source: `dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter "FullyQualifiedName~MoveToRange|FullyQualifiedName~NpcGroundMovement|FullyQualifiedName~PlayerPathMovement|FullyQualifiedName~NpcRangeNavigation"` and record the passed count in Outcome. Extract the helpers and point `MoveToRange` at them, with no new test file yet. Rerun the same filter. Expected: all pass with the recorded count. Commit `refactor(movement): share range approach helpers`.
 
-- [ ] **Step 2: Write the Movement tests.** Options `new DirectApproachOptions(15, 0.1f, 45, 0.1f)`, `dt = 1f / 30f`, tuning `MoveToRangeTests.Tuning`, Bepu flat world with walls as each fact states.
+- [ ] **Step 2: Write the Movement tests.** Options `new DirectApproachOptions(15, 0.1f, 45, 0.1f)`, `dt = 1f / 30f`, tuning `MoveToRangeTests.Tuning`. Window facts feed scripted `MoveState` sequences to `Tick` over flat analytic ground, `new GroundMoveContext((_, _) => 0f)`, without stepping the world between ticks, as Grimhollow's `DirectWalkUpTests` do. Exactly one physics wall fact and one ledge fact use Bepu.
 
 ```csharp
-[Fact] public void OpenGroundReachesRangeWithoutAPlanner()
-// Box target 6 m away, range 1.5. Loop Tick then NpcGroundMovement.Step for at most 300 ticks until InRange.
-// Final ReachGeometry.Within holds and Distance >= range - TravelBound for one tick.
-[Fact] public void FinalStepShrinksToTheRing()          // body 0.05 m outside range: magnitude < 1, Within after the step
-[Fact] public void WallStallLatchesBlockedAfterTheStallWindow()
-// Wall across the line to the target. The first Blocked arrives on the first tick whose sample is under 0.1 m from
-// the sample 15 counted ticks earlier. Its direction is zero and later ticks stay Blocked until Reset.
-[Fact] public void SlidingAlongAWallLatchesOnTheApproachWindow()
-// Wall yawed 30 degrees across the approach. Stall never trips. Blocked after 45 counted ticks without 0.1 m of reach gain.
-// The same run with targetMoves true is not Blocked within 120 ticks.
+// Scripted window facts on flat ground
+[Fact] public void StallLatchesOnTheSixteenthCountedTick()
+// Positions advance 0.005 m per tick toward a far point target. Ticks 1 to 15 are Following, tick 16 is Blocked with zero
+// direction, and later ticks stay Blocked until Reset.
+[Fact] public void ApproachLatchesOnTheFortySixthCountedTick()
+// Positions move 0.05 m per tick on a circle around a static target (stall never trips, distance constant).
+// Ticks 1 to 45 are Following, tick 46 is Blocked. The same script with targetMoves true is never Blocked within 120 ticks.
 [Fact] public void SuspendedTicksCountTowardNeitherWindow()
-// 14 counted stalled ticks, 10 airborne ticks (Suspended), then one counted tick: Blocked only on that tick.
+// 15 counted stalled ticks, 10 airborne ticks (Suspended), then counted tick 16: Blocked only on that tick.
+[Fact] public void RootedBodyHoldsFollowingAndIsNeverBlocked()
+// SpeedScale 0 at a fixed position for 60 ticks: Following with zero direction every tick. Then SpeedScale 1 at the same
+// position: Blocked first appears on the sixteenth counted tick after release, proving the rooted ticks were not counted.
 [Fact] public void InRangeClearsWindowsAndLatch()
-[Fact] public void ShapeRangeAndGeometryChangesResetAndTargetMovesClearsTheApproachWindow()
-[Fact] public void RefusedPreflightCountsAsRequestedTravel()
-// Ledge drop of 2 m ahead: Following with zero direction, then Blocked after 15 counted ticks, body never airborne.
+// Latch Blocked, script one in-range state (InRange), then 15 stalled ticks are Following and tick 16 is Blocked.
+[Fact] public void TargetMovesToggleClearsOnlyTheApproachWindow()
+[Fact] public void ShapeRangeAndGeometryChangesReset()
+
+// Physics integration
+[Fact] public void WallStallLatchesBlockedThroughThePhysicsCore()
+// Bepu wall across the line to the target, Tick then NpcGroundMovement.Step. The first Blocked arrives on the first tick
+// whose sample is under 0.1 m from the sample 15 counted ticks earlier.
+[Fact] public void LedgePreflightRefusalCountsAsRequestedTravel()
+// 2 m drop ahead: Following with zero direction, Blocked on the sixteenth counted tick, body never airborne.
+
+// Approach behavior and contract
+[Fact] public void OpenGroundReachesRangeWithoutAPlanner()
+// Box target 6 m away, range 1.5, flat analytic ground. Loop Tick then NpcGroundMovement.Step for at most 300 ticks until
+// InRange. Final ReachGeometry.Within holds and Distance >= range - TravelBound for one tick.
+[Fact] public void FinalStepShrinksToTheRing()          // body 0.05 m outside range: magnitude < 1, Within after the step
 [Theory] public void OptionsRequirePositiveFiniteThresholds(int stallTicks, float travel, int approachTicks, float gain)
 // zero or negative ticks, zero, negative, NaN or infinite metres: ArgumentOutOfRangeException.
 [Fact] public void BlockedRequestsIdleFromBothAdapters()
@@ -358,8 +394,9 @@ Run: `dotnet test KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj -c Re
 Expected: compile FAIL, `DirectMoveToRange` and `RangeMoveStatus.Blocked` missing.
 
 - [ ] **Step 5: Implement** `DirectApproachOptions`, the progress ring and `DirectMoveToRange`.
-- [ ] **Step 6: Run GREEN** with both Step 4 commands, then `--filter "FullyQualifiedName~PlayerRangeMovement"` on Server.Tests. Expected: all pass with nonzero counts.
-- [ ] **Step 7: Commit.** `feat(movement): approach reach targets without a planner`
+- [ ] **Step 6: Run GREEN** with both Step 4 commands, the Step 1 filter, and `--filter "FullyQualifiedName~PlayerRangeMovement"` on Server.Tests. Expected: all pass with nonzero counts, and the Step 1 filter keeps its recorded count.
+- [ ] **Step 7: Record the reference divergences** listed in design S9 in the Movement README draft for Task 7 and in Outcome.
+- [ ] **Step 8: Commit.** `feat(movement): approach reach targets without a planner`
 
 ---
 
@@ -373,16 +410,16 @@ Expected: compile FAIL, `DirectMoveToRange` and `RangeMoveStatus.Blocked` missin
 - Modify: `CHANGELOG.md` (extend the entry for the version root names)
 - Modify: `docs/INDEX.md` row status and the design's status line, after verification
 
-- [ ] **Step 1: Ask root for the version** before editing `CHANGELOG.md`. Extend that entry with the release note below. If root's selection bumps the version, update every declaration `scripts/check-doc-versions.sh` guards in the same commit.
+- [ ] **Step 1: Confirm the version with root** before editing `CHANGELOG.md`. Per ruling O2.26 root turns the staged `20.18.1` into `20.19.0` with its entry folded in, and the delta reliability work rides it. Add the release note below to that entry. When the bump lands on this branch, update every declaration `scripts/check-doc-versions.sh` guards in the same commit.
 
 Release note draft:
 
 ```markdown
 - `GroundNavigationBake` persists physics-checked `GroundNavigation` profile sets. `Create` builds named profiles from one
   `PhysicsNavBake` capture, `WriteTo` writes a little-endian `KENB` file, and `Load` returns them without physics in
-  milliseconds. A canonical identity covers the engine version, capture options, every proof-relevant `MoveTuning` field,
-  area filters and caller-labelled SHA-256 source digests. A stale or damaged bake returns a typed `NavBakeLoadStatus` with
-  the first difference named, never a silent fallback. Lifts round 2's navigation persistence non-goal for this scope.
+  milliseconds. A canonical identity covers the engine version, capture options, area filters, every `MoveTuning`
+  field except unit pace and air momentum, and caller-labelled SHA-256 source digests. A stale or damaged bake returns
+  a typed `NavBakeLoadStatus` with the first difference named, never a silent fallback. Lifts round 2's navigation persistence non-goal for this scope.
 - `NavGrid.FromBlockedSurfaces` rebuilds a surface grid from a stored blocked mask and open-cell heights.
 - `BuildProfile` no longer allocates per proof. Penetration queries reuse their overlap scratch, the footprint predicate and
   the dry probe context are built once, and a warmed penetration query and edge proof allocate nothing.

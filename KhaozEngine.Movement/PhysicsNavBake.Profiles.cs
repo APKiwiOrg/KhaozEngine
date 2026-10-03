@@ -77,7 +77,7 @@ public sealed partial class PhysicsNavBake
     private bool Prove(GroundMoveContext context, in MoveTuning tuning, Vector3 from, Vector3 to, NavAreaFootprint footprint)
     {
         _ = Context;
-        bool accepted = GroundTraversalProbe.TryEdge(context, tuning, from, to, footprint.Accepts,
+        bool accepted = GroundTraversalProbe.TryEdge(context, tuning, from, to, footprint.AcceptsPredicate,
             Options.EdgeProbeSeconds, Options.MaxEdgeProbeSteps);
         _ = Context;
         return accepted;

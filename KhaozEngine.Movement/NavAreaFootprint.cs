@@ -25,7 +25,11 @@ internal sealed class NavAreaFootprint
         // A footprint can straddle a step or slope while the core seats or paces the body.
         _surfaceReach = tuning.StepHeight + (double)tuning.GroundedEpsilon +
             _radius * Math.Tan(tuning.MaxSlopeRadians);
+        AcceptsPredicate = Accepts;
     }
+
+    /// <summary>One delegate over <see cref="Accepts"/>, built once so traversal proofs do not allocate it per call.</summary>
+    internal Func<Vector3, bool> AcceptsPredicate { get; }
 
     internal bool Accepts(Vector3 feet) => AcceptsSegment(feet, feet);
 

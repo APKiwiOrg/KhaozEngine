@@ -451,3 +451,38 @@ Expected: build exit 0 with zero warnings, test exit 0 with zero failures and no
 ## Outcome
 
 Pending execution. Record per task: commit, focused counts, RED evidence, the Task 1 baseline and final byte counts, the Task 3 golden constant, the Task 4 and Task 5 observations, every departure with reason and cost, and the final verification.
+
+### Task 1: allocation fix
+
+Done. A1, A2 and A3 pass. The three planned changes left a `CharacterMovement` residual, so the task stopped twice at the
+escape hatch. Root rulings N2 and its extension authorized one capsule cache each in `CharacterMovement.cs` and
+`CharacterMovement.Collision.cs`.
+
+| Target | Baseline | Three planned changes | Plus step capsule cache | Plus slide probe cache | Target |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| A1 warmed `ComputePenetration`, world and view | 72 B per call | 0 B | 0 B | 0 B | 0 B |
+| A2 warmed medium `TryEdge` | 6,848 B per call | 624 B per call | 312 B per call | 0 B | 0 B |
+| A3 `BuildProfile`, 4,096 columns | 240,738,584 B, 58,774 B per column | 22,098,368 B, 5,395 B per column | 11,213,504 B, 2,738 B per column | 328,640 B, 80 B per column | 4,194,304 B, 1,024 B per column |
+
+The final A3 value was the same on three consecutive warmed calls.
+
+RED evidence. `PenetrationAllocationTests` failed both allocation facts at 7,200 bytes on both passes and passed
+`ConsecutiveQueriesDoNotLeakCandidates`. `ProfileAllocationTests` failed to compile with CS1061 for `DryContext` only.
+With that fact disabled the baselines above were measured, then the fact was restored.
+
+Residual sites. In-process `GCAllocationTick` captures attributed about 99 percent of the remaining probe and profile
+bytes to `KhaozEngine.Physics.CapsuleShape`, a sealed immutable 24-byte class. `CharacterMovement.StepCore` built one
+per step through `CapsuleFor(t)`, and `SlideSubstep` built a skin-inflated probe per substep
+(`CharacterMovement.Collision.cs:155`). Each site now reuses a `[ThreadStatic]` single-entry cache keyed by exact radius
+and length bits, kept separate so the two never evict each other. Public `CapsuleFor` still returns a new instance.
+No consumer stores a capsule or compares one by reference, so reuse is bit-identical. The remaining A3 bytes are the
+result grids (`Single[]`, `Int32[]`, `Byte[]`).
+
+Departures. The A3 budget reads `GC.GetAllocatedBytesForCurrentThread` around one call with one retry, mirroring
+`AllocAssert`, because `AllocAssert` only asserts zero. The `DryContext` fact also asserts that ground, normal, physics
+and clamp are carried. The `_dryContext` field lives in `GroundMoveContext.cs`, not the coordinates partial, to stay
+inside the brief's file list. `CharacterMovement` edits came from rulings N2 and its extension, at a cost of two
+thread-static fields. No issue was filed, by dispatch instruction.
+
+Verification. Movement.Tests 354 passed of 354. Game.Tests `KhaozEngine.Tests.Physics` 203 passed of 203.
+Game.Tests `KhaozEngine.Tests.Locomotion` 996 passed, 1 skipped of 997. Zero build warnings. File size guard exit 0.

@@ -147,7 +147,7 @@ public class ProjectionRetentionTests
             Projection(two, (1, TagFrames(0)), (2, TagFrames(0)), (3, TagFrames(0)))).Failure);
 
         // Opaque extension bytes count toward the byte bound.
-        var sixteen = new DeltaRebuildOptions { MaxRetainedPayloadBytes = 16 };
+        var sixteen = new DeltaRebuildOptions { MaxRetainedPayloadBytes = 16, MaxKeyframeBytes = 4 };
         Assert.Equal(DeltaRebuildFailure.CapacityExceeded, Assert.Throws<DeltaRebuildException>(() =>
             Projection(sixteen, (1, new[] { Frame(OpaqueId, new byte[10]), Frame(OpaqueId + 1, new byte[7]) }))).Failure);
 
@@ -156,7 +156,10 @@ public class ProjectionRetentionTests
         ReplicationProjection fourTags = Projection(loose, (1, TagFrames(4)));
         ReplicationProjection opaque = Projection(loose,
             (1, new[] { Frame(OpaqueId, new byte[10]), Frame(OpaqueId + 1, new byte[10]) }));
-        var retention = new ProjectionRetention(new DeltaRebuildOptions { MaxComponents = 3, MaxRetainedPayloadBytes = 16 });
+        var retention = new ProjectionRetention(new DeltaRebuildOptions
+        {
+            MaxComponents = 3, MaxRetainedPayloadBytes = 16, MaxKeyframeBytes = 4,
+        });
         Assert.False(retention.TryRetain(Id(1), fourTags, Pins(1), out DeltaRebuildFailure failure));
         Assert.Equal(DeltaRebuildFailure.CapacityExceeded, failure);
         Assert.False(retention.TryRetain(Id(2), opaque, Pins(2), out failure));
@@ -178,7 +181,7 @@ public class ProjectionRetentionTests
     {
         var retention = new ProjectionRetention(new DeltaRebuildOptions
         {
-            MaxRetainedProjections = 4, MaxRetainedPayloadBytes = 100,
+            MaxRetainedProjections = 4, MaxRetainedPayloadBytes = 100, MaxKeyframeBytes = 25,
         });
         ReplicationProjection a = Sized(30), b = Sized(30), c = Sized(30), d = Sized(30);
         Assert.True(retention.TryRetain(Id(1), a, Pins(1), out _));
@@ -257,7 +260,7 @@ public class ProjectionRetentionTests
     {
         var retention = new ProjectionRetention(new DeltaRebuildOptions
         {
-            MaxRetainedProjections = 4, MaxRetainedPayloadBytes = 10,
+            MaxRetainedProjections = 4, MaxRetainedPayloadBytes = 10, MaxKeyframeBytes = 2,
         });
         ReplicationProjection ack = Sized(1), sent1 = Sized(1), sent2 = Sized(1), candidate1 = Sized(1);
         Assert.True(retention.TryRetain(Id(1), ack, Pins(1), out _));
@@ -341,7 +344,7 @@ public class ProjectionRetentionTests
         Assert.Equal(4, retention.Count);
 
         // Byte pressure prunes oldest unpinned first until the budget fits.
-        var bytes = new ProjectionRetention(new DeltaRebuildOptions { MaxRetainedPayloadBytes = 25 });
+        var bytes = new ProjectionRetention(new DeltaRebuildOptions { MaxRetainedPayloadBytes = 25, MaxKeyframeBytes = 6 });
         Assert.True(bytes.TryRetain(Id(10), Sized(10), NoPins, out _));
         Assert.True(bytes.TryRetain(Id(11), Sized(10), Pins(10), out _));
         Assert.True(bytes.TryRetain(Id(12), Sized(5), Pins(10), out _));

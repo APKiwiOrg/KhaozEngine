@@ -84,6 +84,35 @@ public class DeltaRebuildContractTests
         Assert.Equal(7ul, ReplicationSequence.RequireEpoch(7, "epoch"));
     }
 
+    // Ruling D2.9 as amended: the byte budget holds four complete keyframes. The client holds a new projection beside
+    // up to three pins (latest publication, ack target, newest confirmed baseline), so neither end of a stream can be
+    // configured into a repair loop.
+    [Fact]
+    public void RetainedBudgetMustHoldFourKeyframes()
+    {
+        var defaults = new DeltaRebuildOptions();
+        defaults.Validate();
+        Assert.True(defaults.MaxRetainedPayloadBytes >= 4 * defaults.MaxKeyframeBytes);
+
+        AssertInvalid(nameof(DeltaRebuildOptions.MaxRetainedPayloadBytes),
+            new() { MaxKeyframeBytes = 1000, MaxRetainedPayloadBytes = 3000 });
+        AssertInvalid(nameof(DeltaRebuildOptions.MaxRetainedPayloadBytes),
+            new() { MaxKeyframeBytes = 1000, MaxRetainedPayloadBytes = 3999 });
+        new DeltaRebuildOptions { MaxKeyframeBytes = 1000, MaxRetainedPayloadBytes = 4000 }.Validate();
+
+        // Four keyframes near int.MaxValue overflow an int product, which must not wrap into acceptance.
+        AssertInvalid(nameof(DeltaRebuildOptions.MaxRetainedPayloadBytes),
+            new() { MaxKeyframeBytes = int.MaxValue / 3, MaxRetainedPayloadBytes = int.MaxValue });
+
+        Assert.Equal(nameof(DeltaRebuildOptions.MaxRetainedPayloadBytes),
+            Assert.Throws<ArgumentOutOfRangeException>(() => new DeltaRebuildOptions
+            {
+                MaxKeyframeBytes = 1000, MaxRetainedPayloadBytes = 3000,
+            }.WithEnvelopeBytes(12)).ParamName);
+        Assert.Equal(12, new DeltaRebuildOptions { MaxKeyframeBytes = 1000, MaxRetainedPayloadBytes = 4000 }
+            .WithEnvelopeBytes(12).EnvelopeBytes);
+    }
+
     [Fact]
     public void SequenceWrapIsNewerButHalfRangeIsInvalid()
     {

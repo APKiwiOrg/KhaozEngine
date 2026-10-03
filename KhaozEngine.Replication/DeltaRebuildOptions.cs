@@ -15,8 +15,11 @@ public sealed class DeltaRebuildOptions
     public int MaxRetainedProjections { get; init; } = 32;
 
     /// <summary>Retained backing bytes per viewer: the full <c>Length</c> of every distinct backing array reachable
-    /// from any retained projection, counted once by reference identity. Client presentation buffers hold independent
-    /// copies and are outside this budget.</summary>
+    /// from any retained projection, counted once by reference identity. Must hold four complete keyframes, at least
+    /// <c>4 * MaxKeyframeBytes</c>. A receiver retains a new projection beside up to three pins (latest publication,
+    /// ack target, newest confirmed baseline), and a writer beside at most two (acknowledged baseline, pending
+    /// keyframe), so byte pressure can never force a repair loop at either end. Client presentation buffers hold
+    /// independent copies and are outside this budget.</summary>
     public int MaxRetainedPayloadBytes { get; init; } = 2 * 1024 * 1024;
 
     /// <summary>Complete keyframe object bytes, <see cref="EnvelopeBytes"/> included.</summary>
@@ -43,7 +46,9 @@ public sealed class DeltaRebuildOptions
 
     /// <summary>
     /// Throws for the first invalid property in declaration order: a retained count below 4, a nonpositive byte or
-    /// count limit, a negative envelope charge or one at or above the keyframe cap, or a no-ack window below 1.
+    /// count limit, a retained byte budget below four keyframes, a negative envelope charge or one at or above the
+    /// keyframe cap, or a no-ack window below 1. The four keyframe rule is checked once both byte limits are known to
+    /// be positive and names <see cref="MaxRetainedPayloadBytes"/>.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">A limit is invalid. <c>ParamName</c> names the property.</exception>
     public void Validate()
@@ -54,6 +59,9 @@ public sealed class DeltaRebuildOptions
             throw Invalid(nameof(MaxRetainedPayloadBytes), MaxRetainedPayloadBytes, "must be positive");
         if (MaxKeyframeBytes <= 0)
             throw Invalid(nameof(MaxKeyframeBytes), MaxKeyframeBytes, "must be positive");
+        if (MaxRetainedPayloadBytes < 4L * MaxKeyframeBytes)
+            throw Invalid(nameof(MaxRetainedPayloadBytes), MaxRetainedPayloadBytes,
+                "must be at least four times MaxKeyframeBytes");
         if (MaxEntities <= 0)
             throw Invalid(nameof(MaxEntities), MaxEntities, "must be positive");
         if (MaxComponents <= 0)

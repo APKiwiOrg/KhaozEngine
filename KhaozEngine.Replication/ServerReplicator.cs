@@ -43,6 +43,13 @@ namespace KhaozEngine.Replication;
 /// connection this writer serves and called <see cref="ResetAfterLegacySequenceExhaustion"/>.
 /// </para>
 /// <para>
+/// Format 2 acknowledged rebuild streams (<see cref="StartRebuild"/>, <see cref="BuildRebuildFor"/>,
+/// <see cref="RecordRebuildSent"/>, <see cref="AcknowledgeRebuild"/>) share the same capture but keep separate per-slot
+/// state: an unsigned per-slot sequence inside a nonzero epoch, one unsent candidate, an acknowledged baseline and a
+/// bounded history of committed sends, all as compact viewer-only copies. A delta diffs from the acknowledged baseline,
+/// so a lost packet or ack never desynchronizes a receiver that reconstructs from retained projections.
+/// </para>
+/// <para>
 /// Wire (per delta): <c>[baselineSeq][snapshotSeq][removedCount][removedNetId...][changedCount]</c> then per
 /// changed/new entity <c>[netId][isNew][removedCompCount][removedTypeId...][(typeId,[len],data)...][0]</c>, the
 /// 7-bit <c>len</c> present only for consumer extension components (see
@@ -68,6 +75,7 @@ public sealed class ServerReplicator
     private readonly BinaryWriter wireWriter;
     private readonly List<long> scratchRemoved = new();
     private readonly List<long> scratchChanged = new();
+    private readonly RebuildDeltaWriter rebuild;
 
     /// <summary>Creates a whole-world legacy delta writer.</summary>
     /// <param name="registry">The replicated component registry.</param>
@@ -78,6 +86,7 @@ public sealed class ServerReplicator
         this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
         if (historyDepth <= 0) throw new ArgumentOutOfRangeException(nameof(historyDepth), historyDepth, "must be positive");
         wireWriter = new BinaryWriter(wireStream);
+        rebuild = new RebuildDeltaWriter(registry);
         // Whether any registered component is owner-scoped. If none is, the shared capture is already the same for
         // every client, so WriteFor can skip per-client projection entirely and stay allocation-free + byte-identical.
         foreach (ComponentCodec codec in registry.Ordered)
@@ -95,9 +104,11 @@ public sealed class ServerReplicator
 
     /// <summary>
     /// Restarts the writer after <see cref="LegacySequenceExhausted"/>: clears the shared sequence counter to zero, the
-    /// retained capture and every slot's last sent state. The next <see cref="Capture"/> is sequence 1 and every
-    /// slot's next serve is full state with baseline -1. Precondition: the owner has already ended every connection
-    /// this writer served and will serve only fresh receivers. Replication cannot verify or end transports itself.
+    /// retained capture and every slot's last sent state, format 2 state included. The next <see cref="Capture"/> is
+    /// sequence 1 and every slot's next serve is full state with baseline -1. Precondition: the owner has already ended
+    /// every connection this writer served and will serve only fresh receivers. Replication cannot verify or end
+    /// transports itself. The reset remembers no format 2 epoch, so the owner must start each new stream with an epoch
+    /// greater than any it issued before.
     /// </summary>
     /// <exception cref="InvalidOperationException">The sequence is not exhausted.</exception>
     public void ResetAfterLegacySequenceExhaustion()
@@ -107,14 +118,19 @@ public sealed class ServerReplicator
         currentSeq = 0;
         current = null;
         slots.Clear();
+        rebuild.Clear();
     }
 
     /// <summary>
     /// Drops <paramref name="slot"/>'s last sent state (call on disconnect, slot recycle, or any payload that was not
     /// delivered). Its next serve is full state with baseline -1, valid only for a fresh receiver world and view.
-    /// Never resets the shared sequence counter.
+    /// Also drops the slot's format 2 state. Never resets the shared sequence counter.
     /// </summary>
-    public void Forget(int slot) => slots.Remove(slot);
+    public void Forget(int slot)
+    {
+        slots.Remove(slot);
+        rebuild.Forget(slot);
+    }
 
     // Test seam: moves the shared counter forward so a test can reach the exhaustion boundary without walking the
     // signed range. It never moves backwards, so it cannot revive a sequence a receiver already holds.
@@ -216,6 +232,71 @@ public sealed class ServerReplicator
         else previous.Sent(currentSeq, projected);
         return payload;
     }
+
+    /// <summary>
+    /// Starts or replaces <paramref name="slot"/>'s format 2 stream with <paramref name="epoch"/> and
+    /// <paramref name="options"/>, clearing its candidate, acknowledged baseline, pins and committed history. A slot
+    /// that already holds format 2 state accepts only a greater epoch. Never touches the legacy sequence counter.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The epoch is zero or not greater than the slot's current one, or
+    /// <paramref name="options"/> is invalid.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is null.</exception>
+    public void StartRebuild(int slot, ulong epoch, DeltaRebuildOptions options) =>
+        rebuild.Start(slot, epoch, options);
+
+    /// <summary>
+    /// Builds <paramref name="slot"/>'s next format 2 packet from the current capture and retains it as the slot's one
+    /// unsent candidate, replacing any older unsent candidate. The packet is a delta from the acknowledged baseline,
+    /// or a keyframe from empty state when <paramref name="keyframe"/> is set or nothing is acknowledged yet. Check
+    /// <see cref="RebuildNeedsRepair"/> before every build. A failed build leaves the slot unchanged.
+    /// </summary>
+    /// <param name="slot">The started slot.</param>
+    /// <param name="ownerNetId">This slot's own player net id, which must stay the same for the whole epoch.</param>
+    /// <param name="keyframe">True to build from empty state.</param>
+    /// <exception cref="InvalidOperationException">Nothing was captured, the slot has no started stream, or the owner
+    /// differs from the epoch's owner.</exception>
+    /// <exception cref="DeltaRebuildException">The projection can never fit
+    /// (<see cref="DeltaRebuildFailure.CapacityExceeded"/>), pins leave no room for it
+    /// (<see cref="DeltaRebuildFailure.RetentionPressure"/>), or the next sequence is not ordered after the baseline
+    /// (<see cref="DeltaRebuildFailure.SequenceAmbiguous"/>).</exception>
+    public ReplicationDeltaPacket BuildRebuildFor(int slot, long? ownerNetId = null, bool keyframe = false)
+    {
+        if (current is null) throw new InvalidOperationException("Capture at least once before BuildRebuildFor.");
+        rebuild.RequireBuildable(slot, ownerNetId);
+        return rebuild.Build(slot, Project(current, ownerNetId), ownerNetId, keyframe);
+    }
+
+    /// <summary>
+    /// Commits <paramref name="slot"/>'s unsent candidate after its packet was handed to transport, or after every
+    /// keyframe chunk was. A committed keyframe stays pinned until its exact acknowledgement.
+    /// </summary>
+    /// <exception cref="InvalidOperationException"><paramref name="id"/> is not the slot's unsent candidate.</exception>
+    public void RecordRebuildSent(int slot, ReplicationPacketId id) => rebuild.RecordSent(slot, id);
+
+    /// <summary>
+    /// Promotes <paramref name="id"/> to <paramref name="slot"/>'s acknowledged baseline when it is a committed send of
+    /// the slot's current epoch, still retained and strictly newer than the current baseline. Stale, duplicate,
+    /// future, pruned, unsent, other-slot and retired-epoch ids are ignored.
+    /// </summary>
+    public void AcknowledgeRebuild(int slot, ReplicationPacketId id) => rebuild.Acknowledge(slot, id);
+
+    /// <summary>
+    /// True when <paramref name="slot"/> should start keyframe repair before its next build: the effective no-ack
+    /// window from the options passed to <see cref="StartRebuild"/> has been consumed by committed sends. A byte
+    /// pressure check (pinned projections plus one more the size of the newest) stays as a defensive guard that the
+    /// writer cannot trigger: every retained writer projection is smaller than its complete keyframe, a new candidate
+    /// sits beside at most two pins, and <see cref="DeltaRebuildOptions.Validate"/> requires room for four keyframes.
+    /// False for a slot without a started stream.
+    /// </summary>
+    public bool RebuildNeedsRepair(int slot) => rebuild.NeedsRepair(slot);
+
+    // Test seams over the slot's format 2 state.
+    internal RebuildUsage RebuildUsageForTest(int slot) => rebuild.Usage(slot);
+
+    internal bool TryGetRetainedProjectionForTest(int slot, ReplicationPacketId id, out ReplicationProjection projection) =>
+        rebuild.TryGetRetained(slot, id, out projection);
+
+    internal void SeedRebuildSequenceForTest(int slot, uint sequence) => rebuild.SeedSequence(slot, sequence);
 
     /// <summary>
     /// Owner-scopes a shared capture for one client: drops each <see cref="ReplicationChannels.OwnerOnly"/> component

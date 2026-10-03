@@ -76,3 +76,11 @@ and reuse the buffer across a fan-out.
 (`NetTransportStats`: `Connected`, `RttMs`, `PacketLoss`, cumulative `BytesReceivedTotal`/`BytesSentTotal`)
 for the server peer, read by `NetClient.TransportStats` and, in turn, `KhaozEngine.NetWorld`'s
 `WorldClient.NetStats` for a connection-health overlay.
+
+Both transports answer `MaxUnfragmentedPayloadBytes(connection, reliability)` from the connected peer's own
+`GetMaxSinglePacketSize` for the delivery method `ChannelSplitter.ToDeliveryMethod` maps that reliability to, and
+zero for a connection the transport does not know. `NetServer` and `NetClient` forward it unchanged, so a host
+asking for its unfragmented limit sees the real UDP figure here and zero (unknown) on the in-memory transports. The
+answer is per connection and is not cached here. NetWorld's format 2 server rereads it before every state send, so
+a changed answer takes its limit-change path. The UDP answer is proven by a `LiveSocket` category test that binds
+real sockets.

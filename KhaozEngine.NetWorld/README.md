@@ -24,8 +24,8 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
 - **`WorldServer`** is a single-`World` authoritative movement server: a `NetServer` session layer spawns
   one player entity per connection, drains that client's queued `MoveCommand` each tick, runs the ground-
   clamped sim, and serves each client its area of interest prefixed with that client's net id + last-acked move
-  seq. By default (since 9.18.0) it serves per-client AoI **deltas** (only what changed since each client's
-  acknowledged baseline; see the delta section below) and falls back to a full `SnapshotWriter.WriteFiltered`
+  seq. By default (since 9.18.0) it serves per-client AoI **deltas** (only what changed since the projection last
+  sent to that client, see the delta sections below) and falls back to a full `SnapshotWriter.WriteFiltered`
   snapshot for a client that hasn't opted in.
 - **`ShardedWorldServer`** (+ `ShardedWorldServerConfig`) runs that same movement stack across a
   [`KhaozEngine.Sharding`](../KhaozEngine.Sharding) `ShardHost` grid of cells, so the world scales past a single
@@ -1315,13 +1315,14 @@ same version-skew bar as 9.16.0.
 
 - **Config.** **`WorldServerConfig.DeltaReplication`** / **`ShardedWorldServerConfig.DeltaReplication`** (default
   **true**; set false to force full snapshots for every client) and **`WorldClientConfig.RequestDeltaReplication`**
-  (default **true**). Reliability is phase 1: reliable-ordered, deltas built from each client's last acknowledged
-  baseline, so a dropped delta/ack self-heals on the next tick.
+  (default **true**). Delivery is reliable-ordered and each delta is built from the projection last sent to that
+  client, so reliable order guarantees the client holds the baseline every delta names. Acknowledgements never move
+  the diff basis. The legacy contract, and what a custom host owes it, is in the Replication README.
 - **Handshake.** On join a delta-capable `WorldClient` sends a **`MoveProtocol.ClientControlKind.DeltaCapable`**
   hello (a 2-byte control an older server decodes as an unknown control and harmlessly ignores). The server upgrades
   that slot to **`ServerFrameKind.Delta`** frames; the client applies them with `ClientReplicationView.ApplyDelta`,
   reconciles exactly as for a snapshot, and acks each applied seq (**`MoveProtocol.EncodeReplicationAck`**, a 6-byte
-  frame distinct in length from a move or a control) so the server advances its baseline.
+  frame distinct in length from a move or a control), which the server records as sequence diagnostics only.
 - **Compatibility (both directions, no disconnect).** A full snapshot is the `baseline -1` delta, so the wire is a
   strict superset. An older client never advertises `DeltaCapable`, so a new server keeps serving it full snapshots;
   a new client against an older server never receives a `Delta` frame, so it keeps applying full snapshots and sends
@@ -1344,3 +1345,150 @@ same version-skew bar as 9.16.0.
     player to join can take the same slot. Keep durable ownership against the account, as the tile twin does.
   - It is a presentation gate only. The game still authorizes every interaction. The tile server's ground-item
     twin is `TileWorldServerConfig.GroundItemVisibleToSlot`.
+
+## Format 2: negotiated unreliable delta replication (opt-in)
+
+Format 2 sends routine state unreliably and reconstructs every accepted projection from one the client
+acknowledged, with one reliable keyframe for negotiation and repair. A lost, reordered or duplicated state packet or
+acknowledgement never strands a value, resurrects a removed component or leaves a ghost entity. It is off by default
+and changes nothing for a host or client that does not opt in.
+
+- **Opt-ins.** **`WorldServerConfig.AllowUnreliableDeltaReplication`**, **`ShardedWorldServerConfig.AllowUnreliableDeltaReplication`**
+  and **`WorldClientConfig.RequestUnreliableDeltaReplication`**, all default false. Each requires its existing delta
+  switch (`DeltaReplication` on servers, `RequestDeltaReplication` on the client), and an opt-in with the switch off
+  throws `ArgumentException` at construction. Limits and cadence come from each config's **`ReplicationStream`**
+  (`ReplicationStreamOptions`), validated only when the opt-in is on. Movement, notices, game messages,
+  authentication and journal traffic keep their channels.
+- **Capability gate at wire generation 13.** `MoveProtocol.WireProtocolVersion` stays 13, because no existing body or
+  built-in codec changed. A requesting client sends `ClientControlKind.RebuildDeltaCapable` (3) reliably beside
+  `DeltaCapable`. An older server ignores the unknown control and keeps serving reliable deltas. A current server
+  answers with one reliable `ServerFrameKind.ReplicationMode` (6) offer and sends kinds 4 and 5 only after the client
+  accepted a mode 1 offer.
+- **Mode selection.** `WorldClient.ReplicationSelection` and `WorldServer.TryGetReplicationSelection(slot, out ...)`
+  (same on `ShardedWorldServer`) report a `ReplicationSelection(Mode, Reason, Epoch)`. `Mode` is
+  `ReplicationDeliveryMode.LegacyReliable` or `AcknowledgedUnreliable`. `Reason` is one of:
+
+  | Peers | Selection |
+  | --- | --- |
+  | Client did not request, any server | Legacy reliable, `Unnegotiated`. No offer is sent. |
+  | Requesting client, older server | Legacy reliable, `Unnegotiated`. The server's silence never stops a healthy session. |
+  | Requesting client, server without the opt-in | Mode 0 offer, legacy reliable, `DisabledServerPolicy`. |
+  | Requesting client, opted-in server, unknown or infeasible transport limit | Mode 0 offer, legacy reliable, `UnavailableTransportLimit`. |
+  | Both opted in, feasible limit | Mode 1 offer with an epoch, `AcknowledgedUnreliable`, `Selected`. |
+
+  The client accepts a mode 1 offer only when every offered limit is within its own `ReplicationStream`, and refuses
+  it otherwise with `DisconnectReason.ReplicationPolicyRefused` rather than silently changing the requested contract.
+  Legacy state queued before a mode 1 offer precedes it on the reliable channel, and legacy serving never resumes on
+  that connection. The client never uses the last legacy world as the new epoch's baseline.
+- **Options and defaults.** `ReplicationStreamOptions.Limits` is a `DeltaRebuildOptions` (32 retained projections,
+  2 MiB retained backing bytes, 64 KiB complete keyframe objects, 1,024 entities, 16,384 component frames, a 31-send
+  no-ack window). `MaxTransportPayloadBytes` 512, `MaxChunksPerTick` 4, `RepairRequestIntervalTicks` 30 and
+  `RecoveryDeadlineTicks` 90. These are the approved review defaults, not measured capacity, and validation never
+  raises one silently. Leave `Limits.EnvelopeBytes` at 0 or 12: NetWorld charges its own 12-byte envelope (local net
+  id and movement ack) against every keyframe and refuses any other value. Validation names the first invalid
+  property and also requires a positive finite `TickSeconds`, a packet cap of at most 65,558 and one that carries the
+  keyframe budget in at most 255 chunks of `cap - 23` bytes. The retained-budget guidance in the Replication README
+  applies unchanged.
+- **Complete payload accounting.** Every cap counts the whole transport payload: the session byte, the frame kind and
+  the envelope. A routine datagram is 1 + 1 + 12 + an 18-byte format 2 header + the removal and changed sections, 40
+  bytes when empty. A keyframe chunk spends 23 bytes on session, kind, epoch, sequence, total length and the 5-byte
+  fragment header. At the default cap the chunk width is 489, so a 64 KiB keyframe takes at most 135 chunks and 34
+  replication ticks. A cap of 281 is the smallest that fits 64 KiB in 255 chunks, and 280 falls back.
+- **Backend packet limit.** The server asks `NetServer.MaxUnfragmentedPayloadBytes(slot, reliability)` for both
+  channels and selects the smallest of that and `MaxTransportPayloadBytes`, never raising it. Zero means unknown and
+  selects reliable fallback with `UnavailableTransportLimit`, never a guessed MTU. The in-memory transports answer
+  unknown, the LiteNetLib binding answers from the connected peer. The client also refuses an offered cap above its
+  own transport's known limit.
+- **Envelopes and frames.** All new fields are little-endian.
+
+  | Frame | Bytes and route |
+  | --- | --- |
+  | Mode offer, kind 6 | 36 with its kind byte: format, mode, reason, retained count, retained bytes, keyframe bytes, entity and frame limits, packet cap, chunks per tick, epoch. Reliable. |
+  | Acceptance `[C5][A1]` | 11: format and epoch. Reliable. |
+  | Acknowledgement `[C5][A2]` | 14: epoch and sequence. Routine acks unreliable and repeated, keyframe acks reliable. |
+  | Repair request `[C5][A3]` | 19: format, epoch, last accepted and missing sequence. Reliable and coalesced. |
+  | Routine delta, kind 4 | Envelope then the format 2 body. Unreliable sequenced, never fragmented. |
+  | Keyframe chunk, kind 5 | Epoch, sequence, total length, then one generic fragment chunk. Reliable. |
+
+  Every 18-byte client frame is a MOVE and takes ordinary move validation, including legitimate sequences such as
+  `0x0000A1C5` whose first bytes look like a control. No new control claims length 18. A recognized control of any
+  other wrong length or version is rejected and flagged `SuspiciousReason.MalformedPacket`, never decoded as a move.
+  A valid control on the wrong channel (an acceptance or repair that arrived unreliably) is flagged the same way,
+  while a valid control from a slot that never asked for format 2 is dropped silently.
+- **Epochs and sequences.** Each stream and each repair takes a fresh nonzero epoch from a server-lifetime allocator
+  that never resets, not even with the writer. Only a reliable offer or the first reliable chunk of a numerically
+  newer epoch authorizes it on the client, never a datagram. Sequences are `uint` and wrap through `uint.MaxValue` to
+  0 by the Replication README's ordering rule. A half-range sequence and a well-formed keyframe-flagged datagram are
+  ignored like stale traffic. A retired epoch cannot revive a stream.
+- **Acknowledgement.** An acknowledgement names an exact immutable projection the client reconstructed, validated
+  and retained, never merely a packet that arrived. The client sends one unreliable routine ack per replication tick
+  after its receive drain, repeating the newest id even when nothing new was accepted, and acknowledges each accepted
+  keyframe reliably at once. The server promotes only an exact committed, retained, newer id of the current epoch.
+- **Finite retention and baseline miss.** A delta naming a baseline the client no longer retains changes nothing. The
+  last accepted projection stays visible, prediction continues, and the client sends one coalesced repair request
+  every `RepairRequestIntervalTicks`. It is a recoverable miss, never permission to overlay the live world and never
+  an incompatible-version disconnect.
+- **One reliable frozen barrier.** Negotiation, a repair request, an oversize delta, retention pressure, the no-ack
+  window and an owner change each start one keyframe repair: a fresh epoch and one complete currently authorized
+  projection frozen with its movement ack, sent reliably at `MaxChunksPerTick` chunks per replication tick at a
+  width fixed for the epoch. Routine deltas resume only after the exact keyframe id is acknowledged reliably. State
+  changes during the barrier collapse into the next projection. There is no periodic keyframe and at most one repair
+  per viewer. A repair with unchanged limits establishes its epoch through its chunks. A transport limit that drops
+  but stays feasible sends a replacement offer with a new width, and the client keeps its published world until the
+  new keyframe publishes. A limit that drops below the feasible minimum or to unknown ends the session with the
+  restart token, because a format 2 receiver is never downgraded to legacy in place. A growing limit keeps the epoch.
+- **Visibility.** Interest and `EntityVisibleToSlot` are applied before every projection is frozen, recovery
+  included. A hide during a barrier appears as a removal on the first resumed projection. Bytes already sent while
+  the entity was visible cannot be recalled. The gate is a presentation policy, not retroactive secrecy.
+- **Cadence and `Poll(dt)`.** Servers run a fixed replication cadence from configured `TickSeconds` and elapsed host
+  time, independent of render frames, extra `Tick` calls and whether a sharded sub-tick ran: one routine send per
+  viewer per cadence tick, keeping only the newest unsent projection. An opted-in client must pass elapsed seconds to
+  `WorldClient.Poll(dt)`. Its ack and repair scheduling and its recovery deadline run on that time. Zero-time drain
+  calls between scheduled ones are allowed and consume nothing.
+- **Valid-state liveness.** Once a mode 1 offer was accepted, only an accepted projection counts as a server frame for
+  `DisconnectTimeoutSeconds`. Stale, ignored and missing-baseline traffic never refreshes it. While negotiation or a
+  repair runs, the typed recovery deadline replaces that timeout.
+- **Typed disconnects.** Each ends the session with a `DisconnectReason` and a stable token that `ConnectRefusal`
+  maps back on the client:
+
+  | Reason | Token | When | Retry |
+  | --- | --- | --- | --- |
+  | `ReplicationPolicyRefused` | `ke:replication-policy-refused` | The client refused an offer outside its limits. | Terminal. |
+  | `ReplicationRecoveryFailed` | `ke:replication-recovery-failed` | Negotiation, initial keyframe acknowledgement included, or a repair did not finish within `RecoveryDeadlineTicks`. | Terminal for the engine. The game decides whether to sign in again. |
+  | `ReplicationCapacityExceeded` | `ke:replication-capacity-exceeded` | A complete projection cannot fit an entity, frame, keyframe or byte limit, so repair cannot fix it. | Terminal. |
+  | `ReplicationRestart` | `ke:replication-restart` | A send was refused, the transport limit became infeasible or unknown, the epoch allocator ran out, or the legacy writer restarts. | `WorldClientConfig.Reconnect` backoff with a fresh world and view, even with `RetryOnReject` off. |
+
+  A thrown transport send is not caught: it propagates out of the host's `Tick`, and the next serve ends the session
+  with the restart token. If the session leaves first, its stream is dropped without a token, because the connection
+  is already gone. Malformed format 2 bytes or an unknown built-in end the client with the existing
+  `IncompatibleVersion` decode failure, distinct from a baseline miss.
+- **Legacy writer exhaustion.** Both hosts own the Replication README's exhaustion lifecycle for their shared writer.
+  At the top of `Poll` and before the serve pass, an exhausted writer closes admission (joins are rejected with the
+  restart token) and ends every session it serves, legacy and format 2 alike, with the restart token. Once every
+  ended session's leave has run, the writer is reset and admission reopens. Format 2 epochs continue above the old
+  high-water. A host kick of a pending slot counts as its leave. The reset waits for the transport's own server-side
+  `Disconnected` event, so on a transport that raises none for a server-requested disconnect, such as
+  `LoopbackTransport`, a restart with an attached session never completes and admission stays closed.
+
+```csharp
+// Server and client both opt in. The defaults are the approved limits.
+var server = new WorldServer(transport, new WorldServerConfig
+{
+    AllowUnreliableDeltaReplication = true,          // DeltaReplication stays on (the default)
+}, groundHeight, tuning);
+var client = new WorldClient(connect, groundHeight, tuning, new WorldClientConfig
+{
+    RequestUnreliableDeltaReplication = true,        // RequestDeltaReplication stays on (the default)
+}, token);
+
+// Client frame loop: pass elapsed time. Zero-time drains between frames are allowed.
+client.Poll(frameSeconds);
+if (client.ReplicationSelection.Reason == ReplicationSelectionReason.UnavailableTransportLimit)
+    log.Info("Running reliable deltas: the transport reported no usable packet limit.");
+if (client.ConnectionState == WorldConnectionState.Disconnected
+    && client.DisconnectReason is DisconnectReason.ReplicationPolicyRefused or DisconnectReason.ReplicationCapacityExceeded)
+    ShowConnectionSettingsError();                   // terminal, the engine does not retry
+```
+
+Bounded acceptance evidence, including a consumer size characterization at 1, 32, 128 and 256 visible entities, is
+recorded in [`docs/DELTA-RELIABILITY-ACCEPTANCE.md`](../docs/DELTA-RELIABILITY-ACCEPTANCE.md).

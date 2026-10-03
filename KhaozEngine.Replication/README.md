@@ -1,7 +1,7 @@
 # KhaozEngine.Replication
 
-ECS entity replication for the authoritative-multiplayer stack: full-state snapshots and per-client
-area-of-interest deltas.
+ECS entity replication for the authoritative-multiplayer stack: full-state snapshots, per-client
+area-of-interest deltas over a reliable channel, and opt-in format 2 acknowledged rebuild for unreliable delivery.
 
 - **`NetId`** - an `IComponent` identifying an entity across the wire. 64-bit since 10.0.0 (was a 32-bit `int`), under
   a node-prefix scheme: the high 16 bits are a node/allocator id (0 for a single-process server), the low 48 bits a
@@ -63,19 +63,19 @@ area-of-interest deltas.
   through a reusable **`SnapshotScratch`** stream so only the returned wire array is allocated. `WriteSingle` is the
   one-entity fast path for a caller that already holds the entity handle (an authority handoff capturing one crossing).
   All three are byte-identical to the full-scan `WriteFiltered` (entities stay in world `ForEach` order). **`ServerReplicator`** is the
-  per-slot acked whole-world baseline/delta variant (no AoI scoping): `Capture(world)` once per tick, then
-  `WriteFor(slot, ownerNetId)` per client. It is channel-aware like the others - only `Replicate` components are
-  captured, and an `OwnerOnly` component reaches only the client whose player net id is `ownerNetId`. Both
-  length-prefix extension components.
-- **`AoiDeltaReplicator`** (since 9.18.0) - the per-client, `NetId`-keyed, **area-of-interest-scoped** baseline+delta
-  encoder: it fuses `ServerReplicator`'s acked-baseline delta compression with per-client interest filtering. Call
-  `BeginTick()` once per server tick, then `WriteFor(slot, world, interestSet)` per client; against that client's
-  acknowledged baseline it emits an entity that **entered** its interest set as a full spawn, one that **stayed and
-  changed** as only its changed components, one that **left** (or despawned) as a removal, and an unchanged in-AoI
-  entity as nothing. `Acknowledge(slot, seq)` advances the baseline; `Forget(slot)` drops a disconnected client.
-  Presence follows what was last sent, not what was last acked: an entity that left and is back before the client
-  acknowledged its removal is sent as a full spawn, and one sent whole and gone before that entry was acknowledged
-  is sent as a removal. Like the rest of the diff, both repeat until the client acknowledges them.
+  whole-world delta variant (no AoI scoping): `Capture(world)` once per tick, then `WriteFor(slot, ownerNetId)` per
+  client, each diffed against the projection last sent to that slot under the legacy reliable contract below. It is
+  channel-aware like the others - only `Replicate` components are captured, and an `OwnerOnly` component reaches only
+  the client whose player net id is `ownerNetId`. The slot stores the exact owner-scoped projection it sent, so an
+  owner change removes the old owner's private components explicitly. Both length-prefix extension components.
+- **`AoiDeltaReplicator`** (since 9.18.0) - the per-client, `NetId`-keyed, **area-of-interest-scoped** delta
+  encoder: `ServerReplicator`'s delta compression with per-client interest filtering. Call `BeginTick()` once per
+  server tick, then `WriteFor(slot, world, interestSet)` per client. Against the projection last sent to that slot it
+  emits an entity that **entered** its interest set as a full spawn, one that **stayed and changed** as only its
+  changed components, one that **left** (or despawned) as a removal, and an unchanged in-AoI entity as nothing.
+  Presence is part of that last-sent projection, so an AoI edge needs no separate record. `Acknowledge(slot, seq)`
+  is sequence-only diagnostics and never moves the diff basis. `Forget(slot)` drops a slot, as the legacy reliable
+  contract below requires.
   The wire is byte-identical to `ServerReplicator.WriteFor` (a full snapshot is the `baseline -1` delta), so
   `ClientReplicationView.ApplyDelta` decodes both. Keyed by `NetId` (not by owning cell), so a seamless cell handoff
   reads as a component delta, never a despawn+respawn. This is what `WorldServer`/`ShardedWorldServer`/`MmoServer`
@@ -103,10 +103,12 @@ area-of-interest deltas.
   netcode layer calls it when an entity teleports (keyed off its replicated teleport epoch) so a remote teleport does
   not streak across the world. An unregistered
   **extension** id (>= the floor) is skipped, so an older client tolerates a newer server's added component.
-  `Apply` is full-state. **`ApplyDelta`** applies a `ServerReplicator`/`AoiDeltaReplicator` delta and is
-  **self-healing**: a delta whose baseline is at or before `LastAppliedSeq` is a valid idempotent rebuild (the
-  server builds from the client's last ACKED baseline, which lags whenever an ack is in flight or lost), so a
-  dropped delta/ack needs no full resync; only a baseline AHEAD of `LastAppliedSeq` is a gap that throws. A
+  `Apply` is full-state. **`ApplyDelta`** overlays a `ServerReplicator`/`AoiDeltaReplicator` delta on the live world.
+  Under the legacy reliable contract each delta names the projection the receiver already holds, so the overlay is
+  exact. The reader is unchanged: it still accepts a baseline at or before `LastAppliedSeq` and throws only for one
+  ahead of it. That older-baseline overlay is not a reconstruction. It cannot restore a value, a component or an
+  entity a newer delivered delta changed, so it is not loss recovery, and the legacy writers never produce it while
+  the send commitment holds. Unreliable delivery uses format 2 and `ClientDeltaRebuild` below. A
   `baseline -1` delta is a full snapshot (despawns tracked entities it omits). `Apply`/`ApplyDelta` throw on an
   otherwise-malformed or version-incompatible snapshot (an unregistered BUILT-IN type id from a newer core protocol,
   or a corrupt extension length); `TryApply`/`TryApplyDelta` (since 8.5.0) are the non-throwing variants - they
@@ -129,8 +131,177 @@ area-of-interest deltas.
   and still re-emits byte for byte. **`RetainedComponent`** is the opaque frame type shared by `TryApplyRetainingUnknown`
   (capture) and the `SnapshotWriter.WriteFiltered` retained-frames overload (re-emit).
 
+## Legacy reliable delta contract
+
+Both `WriteFor` methods diff against the exact viewer projection last sent to the slot. The header names that
+projection's sequence, and the first serve after `Forget` is full state with baseline -1. Acknowledgements never
+choose the basis, so a value that goes `1 -> 2 -> 1` while an ack is in flight still reaches the receiver as 1. The
+wire body and the `ApplyDelta` reader are unchanged. What a caller can observe is the header: the baseline is now the
+last sent sequence, and during an ack delay a delta carries only the changes since that send rather than repeating
+every change since the last acknowledgement. That is a header and bandwidth difference, not a body format migration.
+
+The obligations a standalone owner takes on:
+
+- **Send commitment.** Every returned `WriteFor` payload is shipped exactly once, in order, over a reliable-ordered
+  channel to the receiver it was built for.
+- **Discarded or failed send.** A caller that discards a payload, sends it unreliably, changes session, replaces the
+  receiver, or sees the send throw calls `Forget(slot)` and serves a fresh receiver world and
+  `ClientReplicationView`, or disconnects. `Forget` alone cannot repair an old receiver: the legacy reader ignores
+  `isNew`, and a full entity does not remove a component the receiver already holds.
+- **Per-slot reset.** `Forget(slot)` (now also on `ServerReplicator`) clears that slot's last-sent state and its format
+  2 state. It never touches the writer's shared sequence counter.
+- **Global exhaustion.** The signed sequence is one counter per writer, shared by every slot. `int.MaxValue` is the
+  last capture, after which `LegacySequenceExhausted` is true and `Capture` or `BeginTick` throws without scanning or
+  incrementing. The owner then ends every connection the writer serves, including format 2 sessions on the same
+  writer, and only after they have ended calls `ResetAfterLegacySequenceExhaustion()`. It throws before exhaustion,
+  and clears the counter, the capture and every slot's legacy and format 2 state. The next capture is sequence 1 and
+  every next serve is full state for a fresh receiver. Replication cannot end transports, so it cannot verify the
+  precondition. The reset remembers no format 2 epoch, so the owner's epoch source must stay monotonic across it.
+
+```csharp
+// Standalone legacy owner: one writer, one reliable-ordered connection per slot.
+var writer = new AoiDeltaReplicator(registry);
+
+void ServeTick()
+{
+    if (writer.LegacySequenceExhausted)
+    {
+        foreach (int slot in connectedSlots) DisconnectAndForget(slot);   // fresh receivers only from here on
+        writer.ResetAfterLegacySequenceExhaustion();
+        return;
+    }
+    writer.BeginTick();
+    foreach (int slot in connectedSlots)
+    {
+        byte[] delta = writer.WriteFor(slot, world, InterestOf(slot), PlayerNetIdOf(slot));
+        try { connection[slot].SendReliableOrdered(delta); }        // a send commitment: exactly once, in order
+        catch { DisconnectAndForget(slot); throw; }                  // the receiver can no longer be trusted
+    }
+}
+
+void DisconnectAndForget(int slot)
+{
+    connection[slot].Disconnect();
+    writer.Forget(slot);   // a later serve to a reused slot is full state for a fresh world and view
+}
+```
+
+## Format 2 acknowledged rebuild
+
+Format 2 is the opt-in unreliable contract. A writer slot diffs against a projection the receiver acknowledged, and
+the receiver reconstructs the complete next projection privately before it publishes anything. A lost or reordered
+packet or acknowledgement never strands a value, a component or an entity.
+
+- **Identity and order.** `ReplicationPacketId(ulong Epoch, uint Sequence)`. An epoch is a nonzero stream identity the
+  owner issues, strictly increasing and never reused for the owner's lifetime. A slot or receiver accepts only a
+  greater replacement epoch. Within an epoch, `a` is newer than `b` exactly when the unsigned difference `a - b` is in
+  1 to `0x7fffffff`, so the sequence wraps through `uint.MaxValue` to 0. Equality is a duplicate and a difference of
+  exactly half the range is ambiguous (`DeltaRebuildFailure.SequenceAmbiguous`). The sequence is a send identity,
+  never a simulation tick or a movement command id.
+- **Writers.** `ServerReplicator` and `AoiDeltaReplicator` both expose `StartRebuild(slot, epoch, options)`,
+  `BuildRebuildFor(...)`, `RecordRebuildSent(slot, id)`, `AcknowledgeRebuild(slot, id)` and
+  `RebuildNeedsRepair(slot)`. They share the legacy capture (one capture per world per tick across legacy and format 2
+  viewers) but never the legacy sequence. `BuildRebuildFor` retains one unsent candidate, a delta from the
+  acknowledged baseline or a keyframe from empty state when `keyframe` is set or nothing is acknowledged. Retained
+  projections are compact viewer-only copies taken after interest filtering and owner scoping, so a retained slot
+  never holds a hidden owner's bytes. A failed build leaves the slot unchanged.
+- **Send commitment.** `RecordRebuildSent` is called only after the packet was handed to transport, or after every
+  chunk of a keyframe was. Nothing acknowledges an unsent candidate. A committed keyframe stays pinned until its
+  exact acknowledgement.
+- **Exact acknowledgement.** `AcknowledgeRebuild` promotes an id only when it is a committed send of the slot's current
+  epoch, still retained and strictly newer than the current baseline. Stale, duplicate, future, pruned, never-sent,
+  other-slot and retired-epoch ids are ignored. A dropped acknowledgement leaves the old baseline, from which later
+  deltas still reconstruct.
+- **Repair signal.** Check `RebuildNeedsRepair(slot)` before every build. It turns true once `NoAckSendWindow`
+  committed sends (31 by default) went without a newer acknowledgement. The owner then starts a new epoch and sends one
+  keyframe. A `DeltaRebuildException` names its `Failure`: `CapacityExceeded` means the projection can never fit and
+  repair cannot help, while `RetentionPressure` and `SequenceAmbiguous` are fixed by a new epoch. Owner mismatch and
+  `RecordRebuildSent` misuse are plain `InvalidOperationException` caller bugs, never repair triggers.
+- **Receiver.** `ClientDeltaRebuild(registry, view, options)` composes the existing `ClientReplicationView`.
+  `ExpectEpoch(epoch)` authorizes an epoch learned from a reliable source (a mode offer or a keyframe header), and an
+  unreliable datagram can never establish one. `TryApply(world, body, ...)` classifies the fixed header, then the
+  epoch, then the sequence, then the named baseline, and only then decodes the body, so a stale packet is never
+  decoded. `DeltaRebuildResult.Accepted` means the projection was reconstructed from its exact retained baseline (or
+  from empty state for a keyframe), validated, retained and published. `DuplicateOrStale` and `MissingBaseline` change
+  nothing, and `MissingBaseline` names the missing id for a repair request. `Invalid` is told apart by `LastFailure`:
+  `MalformedPacket` (malformed bytes or an unknown built-in) and `CapacityExceeded` are terminal, while
+  `SequenceAmbiguous` is ignored like a stale packet. `LatestAcceptedId` and `AckTarget` name the newest accepted id.
+  `Reset()` retires the current epoch, so a later `ExpectEpoch` must name a greater one.
+- **What an acknowledgement means.** The exact immutable projection was reconstructed, validated and retained, not
+  merely that a packet arrived. The live world is never a baseline, because presentation may have changed it.
+- **Publication.** An accepted projection replaces each entity's whole replicated component set: absent net ids
+  despawn, surviving ids keep their ECS entity, components the projection no longer holds are removed, and every
+  known component is installed even when its bytes match the previous publication. Only components whose codec is on
+  the `Replicate` channel are touched, so game-local and Persist- or Migrate-only components stay. Unknown extension
+  frames are retained as opaque baseline bytes and skipped for publication. Publication shifts the presentation
+  buffers once and records no interpolation sample. The caller stamps one with `RecordInterpolationSample` after
+  `Accepted` on its own ingest path.
+- **Limits.** `DeltaRebuildOptions` holds the approved defaults, which are review defaults rather than measured
+  capacity: 32 retained projections (at least 4), 2 MiB of retained backing bytes, 64 KiB complete keyframe objects,
+  1,024 entities and 16,384 component frames per projection (zero-byte tags and opaque extensions included), and a
+  31-send no-ack window. The effective window is `min(NoAckSendWindow, MaxRetainedProjections - 1)`. Retained bytes
+  are the full length of every distinct backing array reachable from a retained projection, pins and the candidate
+  included. Client presentation buffers hold independent copies outside that budget. `EnvelopeBytes` is an
+  uninterpreted per-keyframe charge, 0 for standalone use. `Validate()` names the first invalid property and requires
+  `MaxRetainedPayloadBytes >= 4 * MaxKeyframeBytes`, enough for a new projection beside the receiver's three pins.
+  That floor protects pins only. To keep every unacknowledged committed send available for promotion, budget at least
+  `(effective window + 1)` projections of the largest size you expect, which is the most a writer slot holds at once.
+  Below that, a round trip spanning several sends is pruned before its acknowledgement arrives and the window forces a
+  repair every 31 sends. The defaults hold 32 projections of up to 64 KiB each.
+
+```csharp
+// Standalone format 2 owner: routine deltas on an unreliable channel, keyframes reliable, exact acks back.
+var options = new DeltaRebuildOptions();            // validated defaults
+var writer = new ServerReplicator(registry);
+ulong nextEpoch = 1;                                // monotonic for the owner's lifetime, never reset
+writer.StartRebuild(slot, nextEpoch++, options);
+
+void ServeTick()
+{
+    writer.Capture(world);
+    if (writer.RebuildNeedsRepair(slot)) writer.StartRebuild(slot, nextEpoch++, options);   // fresh epoch, keyframe next
+    ReplicationDeltaPacket packet = writer.BuildRebuildFor(slot, ownerNetId);
+    bool handed = packet.IsKeyframe
+        ? connection.SendReliable(packet.Id.Epoch, packet.Bytes)     // the receiver calls ExpectEpoch from this
+        : connection.TrySendUnreliable(packet.Bytes);
+    if (handed) writer.RecordRebuildSent(slot, packet.Id);
+}
+
+void OnAck(ReplicationPacketId id) => writer.AcknowledgeRebuild(slot, id);
+
+// Receiver, one per connection, rebuilt with a fresh world and view on reconnect.
+var view = new ClientReplicationView(registry);
+var receiver = new ClientDeltaRebuild(registry, view, options);
+
+void OnKeyframe(ulong epoch, ReadOnlyMemory<byte> body)
+{
+    receiver.ExpectEpoch(epoch);
+    OnPacket(body);
+}
+
+void OnPacket(ReadOnlyMemory<byte> body)
+{
+    switch (receiver.TryApply(world, body, out ReplicationPacketId id, out ReplicationPacketId? missing, out string? error))
+    {
+        case DeltaRebuildResult.Accepted:
+            view.RecordInterpolationSample(now);
+            connection.SendAck(id);
+            break;
+        case DeltaRebuildResult.MissingBaseline:
+            connection.RequestKeyframe(missing!.Value);              // the last accepted projection stays visible
+            break;
+        case DeltaRebuildResult.Invalid when receiver.LastFailure != DeltaRebuildFailure.SequenceAmbiguous:
+            connection.Disconnect(error);                            // malformed or over capacity: terminal
+            break;
+    }
+}
+```
+
+`KhaozEngine.NetWorld` composes all of this behind config switches, with negotiation, envelopes, cadence, keyframe
+chunking and typed disconnects. Use these types directly only for a custom host.
+
 Transport-free: snapshots/deltas are plain `byte[]`, shipped via your `KhaozEngine.Netcode` session layer
 (`NetServer.Broadcast` / `NetClient` data events). Depends on `KhaozEngine.Ecs` only.
 
-Full-state (`SnapshotWriter`), whole-world delta (`ServerReplicator`), and per-client AoI delta
-(`AoiDeltaReplicator`) all ship.
+Full-state (`SnapshotWriter`), whole-world delta (`ServerReplicator`), per-client AoI delta
+(`AoiDeltaReplicator`) and format 2 acknowledged rebuild (`ClientDeltaRebuild` with either writer) all ship.

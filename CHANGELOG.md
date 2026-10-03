@@ -68,6 +68,46 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `KhaozEngine.Server.Admin`'s `catalog-edit` takes `textEdits` beside `edits`, and the draft, get, diff, discard,
   rollback, import and export actions report complete text state with `textKnown` false wherever text cannot be
   proven. A store without the companion refuses text input with `text-operation-unavailable`.
+- Legacy reliable deltas no longer revert wrong ([#1229](https://github.com/APKiwiOrg/KhaozEngine/issues/1229)).
+  `ServerReplicator.WriteFor` and `AoiDeltaReplicator.WriteFor` diff against the exact viewer projection last sent
+  to the slot, not the last acknowledged one, so a value going `1 -> 2 -> 1` while an ack is in flight reaches the
+  receiver as 1, and component re-adds and AoI presence edges follow too. The wire body and `ApplyDelta` are
+  unchanged. The header now names the last sent sequence, and during an ack delay a delta carries only changes since
+  that send. `Acknowledge` is sequence diagnostics only. Every returned payload is a send commitment over a
+  reliable-ordered channel, and a discarded or failed send needs `Forget(slot)`, now also on `ServerReplicator`, and
+  a fresh receiver. The signed sequence stops at `int.MaxValue`: `LegacySequenceExhausted` turns true, capture
+  throws, and `ResetAfterLegacySequenceExhaustion()` clears the writer once the owner has ended every connection it
+  serves. `AoiPresenceRecord` is gone.
+- Opt-in format 2 acknowledged rebuild in `KhaozEngine.Replication`
+  ([#34](https://github.com/APKiwiOrg/KhaozEngine/issues/34)). Both writers gain `StartRebuild`, `BuildRebuildFor`,
+  `RecordRebuildSent`, `AcknowledgeRebuild` and `RebuildNeedsRepair`, retaining compact viewer-only projections
+  named by `ReplicationPacketId(ulong Epoch, uint Sequence)` with wrap-safe order. `ClientDeltaRebuild` reconstructs
+  each packet from its exact retained baseline, validates it, retains it and only then publishes it, replacing each
+  entity's whole replicated component set, and reports `DeltaRebuildResult` with a typed `DeltaRebuildFailure`.
+  `DeltaRebuildOptions` holds the approved limits (32 projections, 2 MiB retained bytes, 64 KiB keyframes, 1,024
+  entities, 16,384 frames, a 31-send no-ack window) and `Validate` requires room for four keyframes.
+  `DeltaRebuildException` carries the failure from a writer.
+- Opt-in negotiated unreliable delta replication in `KhaozEngine.NetWorld`.
+  `WorldServerConfig.AllowUnreliableDeltaReplication`, `ShardedWorldServerConfig.AllowUnreliableDeltaReplication`
+  and `WorldClientConfig.RequestUnreliableDeltaReplication`, all off by default and each requiring its existing delta
+  switch, select it under `ReplicationStream` (`ReplicationStreamOptions`). Wire generation stays 13: a capability
+  control, a reliable mode offer and acceptance, unreliable routine deltas, exact acknowledgements, coalesced repair
+  requests and one frozen reliable keyframe at four chunks per tick. `WorldClient.ReplicationSelection` and
+  `TryGetReplicationSelection` on both servers report the mode and why. An opted-in client passes elapsed time to
+  `Poll(dt)`, and only accepted state refreshes its liveness. Four new `DisconnectReason` members,
+  `ReplicationPolicyRefused`, `ReplicationRecoveryFailed` and `ReplicationCapacityExceeded` (terminal) and
+  `ReplicationRestart` (backoff reconnect), map to stable `ke:replication-*` tokens. Both servers restart the shared
+  writer after legacy sequence exhaustion behind an admission gate.
+- `KhaozEngine.Netcode` send commitments and packet limits. `NetClient.TrySend` and `NetServer.TrySendTo` report
+  whether a frame was handed to the transport, `NetClient.Disconnect()` ends a session locally, and the optional
+  `INetTransport.MaxUnfragmentedPayloadBytes` default interface method, forwarded by both facades, answers zero for
+  unknown, so external transports compile unchanged. `MessageReassembler` gains a bounded constructor with
+  `MaxAssembledBytes`, `PartialAssemblyLimit` and the `ke:fragment-payload-limit` refusal. The two-argument constructor
+  and the chunk wire are unchanged. The LiteNetLib transports answer the limit from the peer's
+  `GetMaxSinglePacketSize`.
+- A bounded consumer size characterization for format 2 is recorded in `docs/DELTA-RELIABILITY-ACCEPTANCE.md`: with
+  the consumer's current extension widths every projection up to 256 visible entities fits the keyframe cap, and a
+  routine tick that moves 32 or more entities exceeds the 512-byte packet and becomes a reliable keyframe.
 
 ## 20.19.0
 

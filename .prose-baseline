@@ -35,24 +35,24 @@
 # This file is per-repo and is NOT part of the verbatim template layer.
 
 832 CHANGELOG.md
-280 docs/USING-KHAOZENGINE.md
-28 KhaozEngine.NetWorld/README.md
+278 docs/USING-KHAOZENGINE.md
+27 KhaozEngine.NetWorld/README.md
 21 docs/SECURITY-BASELINE.md
-21 README.md
 21 KhaozEngine.Updates/README.md
 21 KhaozEngine.Render3D/README.md
 21 KhaozEngine.Render3D/README.md
+20 README.md
 20 KhaozEngine.Windowing/README.md
 19 KhaozEngine.Gui/README.md
 14 KhaozEngine.Game.Render3D/README.md
 13 docs/UPDATER.md
 13 KhaozEngine.Physics.Bepu/README.md
-10 KhaozEngine.Replication/README.md
 10 KhaozEngine.Netcode/README.md
 9 docs/DEPENDENCY-SEAMS.md
 9 KhaozEngine.Benchmarks/README.md
 8 KhaozEngine.Gui.Tests/Gui/Fixtures/RuinbornePlayChangelog.md
 8 KhaozEngine.App/README.md
+7 KhaozEngine.Replication/README.md
 6 tools/proxy-authoring/README.md
 6 docs/design/WATER-CLIPMAP-DESIGN-2026-07-27.md
 6 docs/design/NAV-LAYERED-SURFACES-DESIGN.md

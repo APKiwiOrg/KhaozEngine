@@ -9,4 +9,5 @@ public enum RangeMoveStatus
     Unreachable,
     UnsupportedTransition,
     Suspended,
+    Blocked,
 }

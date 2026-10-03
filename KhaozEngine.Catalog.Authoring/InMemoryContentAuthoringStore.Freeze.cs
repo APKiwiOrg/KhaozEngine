@@ -37,6 +37,10 @@ public sealed partial class InMemoryContentAuthoringStore
                     0,
                     ContentAuthoringException.NoOpenDraftReason);
 
+            // The row-only freeze is the first step of a row-only publish, so a draft holding text, or rows
+            // whose text the row-only route cannot carry, is refused before any marker is written.
+            RequireRowOnlyRepresentable(open, nameof(FreezeDraftAsync));
+
             // It OVERWRITES rather than refusing an already frozen draft. A marker a dead publish left behind
             // must not block the retry, and the retry is exactly what an operator does to recover.
             _draft = Reframe(open, open.BaseVersion, open.Changes, baseVersion);
@@ -93,18 +97,29 @@ public sealed partial class InMemoryContentAuthoringStore
         }
     }
 
-    /// <summary>The same draft with a different change set, base version and freeze marker.</summary>
-    /// <param name="draft">The draft whose opener, stamp and note are kept.</param>
+    /// <summary>
+    /// The same draft with a different change set, base version and freeze marker. Its text state is KEPT
+    /// unless a replacement is named, so no reframe can drop held text or introductions.
+    /// </summary>
+    /// <param name="draft">The draft whose opener, stamp, note and text are kept.</param>
     /// <param name="baseVersion">The base version the rebuilt draft names.</param>
     /// <param name="changes">The change set the rebuilt draft carries.</param>
     /// <param name="frozenForBaseVersion">The freeze marker, or null for a released draft.</param>
+    /// <param name="textState">The text state the rebuilt draft carries, or null to keep the draft's own.</param>
     static ContentDraft Reframe(
         ContentDraft draft,
         int baseVersion,
         ContentChangeSet changes,
-        int? frozenForBaseVersion)
+        int? frozenForBaseVersion,
+        ContentDraftTextState? textState = null)
         => new(
-            baseVersion, draft.OpenedBy, draft.OpenedAtUtc, draft.Note, changes, frozenForBaseVersion);
+            textState ?? draft.TextState ?? ContentDraftTextState.Empty,
+            baseVersion,
+            draft.OpenedBy,
+            draft.OpenedAtUtc,
+            draft.Note,
+            changes,
+            frozenForBaseVersion);
 
     /// <summary>
     /// The draft as it stands AFTER step 10, with the edits the plan froze taken out of it, or null when
@@ -119,7 +134,8 @@ public sealed partial class InMemoryContentAuthoringStore
     /// </para>
     /// </summary>
     /// <param name="plan">The plan committing, whose frozen edits leave the draft.</param>
-    ContentDraft? DraftAfterCommit(ContentPublishPlan plan)
+    /// <param name="publishedText">The frozen text state the commit publishes, or null on a row-only commit.</param>
+    ContentDraft? DraftAfterCommit(ContentPublishPlan plan, ContentDraftTextState? publishedText)
     {
         if (_draft is not ContentDraft open)
         {
@@ -142,8 +158,57 @@ public sealed partial class InMemoryContentAuthoringStore
             }
         }
 
-        return survivors.Count == 0
+        ContentDraftTextState text = SurvivingText(open.TextState ?? ContentDraftTextState.Empty, publishedText);
+        return survivors.Count == 0 && text.IsEmpty
             ? null
-            : Reframe(open, plan.VersionNumber, new ContentChangeSet(survivors), null);
+            : Reframe(open, plan.VersionNumber, new ContentChangeSet(survivors), null, text);
+    }
+
+    /// <summary>
+    /// The text intents and introductions a commit did NOT publish, kept for the next draft by the same rule
+    /// the rows follow: an intent survives unless the commit froze that exact intent.
+    /// </summary>
+    static ContentDraftTextState SurvivingText(ContentDraftTextState held, ContentDraftTextState? published)
+    {
+        if (published is null || held.IsEmpty)
+        {
+            return held;
+        }
+
+        var edits = new List<ContentTextEdit>();
+        foreach (ContentTextEdit edit in held.Edits)
+        {
+            if (!Contains(published.Edits, edit))
+            {
+                edits.Add(edit);
+            }
+        }
+
+        var introductions = new List<ContentTextLanguageDeclaration>();
+        foreach (ContentTextLanguageDeclaration introduction in held.Introductions)
+        {
+            if (!Contains(published.Introductions, introduction))
+            {
+                introductions.Add(introduction);
+            }
+        }
+
+        return edits.Count == 0 && introductions.Count == 0
+            ? ContentDraftTextState.Empty
+            : new ContentDraftTextState(edits, introductions);
+    }
+
+    static bool Contains<T>(IReadOnlyList<T> list, T item)
+        where T : class
+    {
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (list[i].Equals(item))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -76,7 +76,8 @@ public sealed record CatalogRowPayload(
 /// </summary>
 /// <param name="ValidFrom">The version the row became valid in.</param>
 /// <param name="ReplacedIn">The version it was replaced in, or null while it is still live.</param>
-/// <param name="FamilyId">The family its id was allocated from, or null.</param>
+/// <param name="FamilyId">The family the row names, or null. Rows allocated since 20.19.0 hold an id inside one of
+/// its blocks. A legacy fork copy from 19.0.0 through 20.18.0 names its source's family with a plain id.</param>
 /// <param name="Retired">Whether the row was retired at this revision.</param>
 /// <param name="Fields">The values as they stood.</param>
 public sealed record CatalogRowRevisionPayload(
@@ -116,7 +117,11 @@ public sealed record CatalogAuditPayload(
     string? Before,
     string? After,
     int Version,
-    string Note);
+    string Note)
+{
+    /// <summary>The canonical language of an audited TEXT change, or null on a row field change.</summary>
+    public string? Language { get; init; }
+}
 
 /// <summary>
 /// One page of a type's rows (<c>catalog-list</c>). The TOTAL is carried beside the page because a console
@@ -150,7 +155,17 @@ public sealed record CatalogGetPayload(
     string Key,
     CatalogRowPayload Row,
     IReadOnlyList<CatalogRowRevisionPayload> History,
-    IReadOnlyList<CatalogAuditPayload>? Audit);
+    IReadOnlyList<CatalogAuditPayload>? Audit)
+{
+    /// <summary>
+    /// True when <see cref="Text"/> is the row's COMPLETE published text. False when the store has no text
+    /// companion or cannot prove the active version's text, which is unknown rather than empty.
+    /// </summary>
+    public bool TextKnown { get; init; }
+
+    /// <summary>Every string the row holds at the active version, retired rows included.</summary>
+    public IReadOnlyList<CatalogTextValuePayload> Text { get; init; } = [];
+}
 
 /// <summary>The open draft's header, which is what a pending-changes panel shows above its edit list.</summary>
 /// <param name="BaseVersion">The published version the edits are against, 0 on a database that has published none.</param>
@@ -182,8 +197,25 @@ public sealed record CatalogDraftHeader(
             draft.OpenedAtUtc,
             draft.Note,
             draft.IsFrozen,
-            draft.FrozenForBaseVersion);
+            draft.FrozenForBaseVersion)
+        {
+            TextEditCount = draft.TextEditCount,
+            LanguageIntroductionCount = draft.LanguageIntroductionCount,
+            TextRepresented = draft.TextState is not null,
+        };
     }
+
+    /// <summary>How many TEXT intents are pending, counted apart from <see cref="EditCount"/>'s row edits.</summary>
+    public int TextEditCount { get; init; }
+
+    /// <summary>How many languages the draft introduces, which publish even when no value survives.</summary>
+    public int LanguageIntroductionCount { get; init; }
+
+    /// <summary>
+    /// True when the store read the draft's COMPLETE text state. False on a draft a row-only route built,
+    /// whose zero text counts are unknown rather than proof that nothing is pending.
+    /// </summary>
+    public bool TextRepresented { get; init; }
 }
 
 /// <summary>
@@ -215,7 +247,14 @@ public sealed record CatalogDraftEditPayload(
 /// <summary>The open draft with its edits expanded (<c>catalog-draft</c>), or a null draft when none is open.</summary>
 /// <param name="Draft">The draft header, or null when no draft is open.</param>
 /// <param name="Edits">The pending edits, empty when no draft is open.</param>
-public sealed record CatalogDraftPayload(CatalogDraftHeader? Draft, IReadOnlyList<CatalogDraftEditPayload> Edits);
+public sealed record CatalogDraftPayload(CatalogDraftHeader? Draft, IReadOnlyList<CatalogDraftEditPayload> Edits)
+{
+    /// <summary>The pending text intents, in the order they were first applied.</summary>
+    public IReadOnlyList<CatalogDraftTextEditPayload> TextEdits { get; init; } = [];
+
+    /// <summary>The languages the draft introduces, which survive a Set later replaced by a Remove.</summary>
+    public IReadOnlyList<CatalogTextLanguagePayload> LanguageIntroductions { get; init; } = [];
+}
 
 /// <summary>One published version's record, carrying both manifest hashes because a pack has two sides.</summary>
 /// <param name="Version">The version number.</param>

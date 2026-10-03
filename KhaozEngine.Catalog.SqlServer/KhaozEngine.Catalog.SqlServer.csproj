@@ -10,16 +10,17 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.SqlClient" />
     <ProjectReference Include="../KhaozEngine.Catalog.Authoring/KhaozEngine.Catalog.Authoring.csproj" />
-    <!-- Every version ships: V3 is what a fresh create runs, and V1 and V2 are the operator's record of the
+    <!-- Every version ships: V4 is what a fresh create runs, and V1 to V3 are the operator's record of the
          shapes the migrations move and what the migration tests build older databases from. Same set
          KhaozEngine.WorldStore.SqlServer ships for the journal. -->
     <EmbeddedResource Include="CatalogSchemaV1.sql" />
     <EmbeddedResource Include="CatalogSchemaV2.sql" />
     <EmbeddedResource Include="CatalogSchemaV3.sql" />
-    <!-- SqlServerCatalogSchemaDriftTests reads the embedded version 3 DDL and the transcribed expectation
-         sets and asserts they name the same 159 objects (15 tables, 25 indexes, 13 foreign keys, 19 defaults
-         and 87 checks), and SqlServerCatalogRowTimestampScriptTests pins the row time columns of all three
-         scripts the same way, which are the SQL Server schema checks that need no instance (issue 922). Same
+    <EmbeddedResource Include="CatalogSchemaV4.sql" />
+    <!-- SqlServerCatalogSchemaDriftTests reads the embedded version 4 DDL and the transcribed expectation
+         sets and asserts they name the same objects, and SqlServerCatalogRowTimestampScriptTests and
+         SqlServerTextSchemaMigrationTests pin the row time columns and the version 4 additions of every
+         script the same way, which are the SQL Server schema checks that need no instance (issue 922). Same
          grant KhaozEngine.WorldStore.SqlServer already makes. -->
     <InternalsVisibleTo Include="KhaozEngine.Server.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />

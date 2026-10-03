@@ -400,6 +400,13 @@ public sealed class ContentPublishPlan
     /// </summary>
     public IReadOnlyList<ContentEdit> FrozenEdits { get; }
 
+    /// <summary>
+    /// The frozen text state when this plan is the row half of a <see cref="ContentTextPublishPlan"/>, and
+    /// null on an ordinary row-only plan. A plan carrying one is refused by every row-only commit, because
+    /// committing its rows alone would drop the text and the copies its version owes.
+    /// </summary>
+    public ContentDraftTextState? FrozenTextState { get; private init; }
+
     /// <summary>The complete candidate, at <see cref="VersionNumber"/>, which step 4 swept.</summary>
     public ContentSnapshot Candidate { get; }
 
@@ -465,6 +472,34 @@ public sealed class ContentPublishPlan
 
     /// <summary>Stored bytes across every chunk this publish encoded.</summary>
     public long BytesWritten { get; }
+
+    /// <summary>The same plan marked as the row half of a text plan carrying <paramref name="frozenText"/>.</summary>
+    /// <param name="frozenText">The frozen text state the text plan carries.</param>
+    internal ContentPublishPlan WithFrozenText(ContentDraftTextState frozenText)
+        => new(
+            VersionNumber,
+            BaseVersion,
+            Candidate,
+            Validation,
+            Allocation,
+            Closes,
+            Inserts,
+            LiveRows,
+            AppendedRules,
+            Rules,
+            Chunks,
+            Languages,
+            RemapRuleChunkHash,
+            ServerManifest,
+            ClientManifest,
+            ServerManifestHash,
+            ClientManifestHash,
+            MinimumServerBuild,
+            MinimumClientBuild,
+            FrozenEdits)
+        {
+            FrozenTextState = frozenText,
+        };
 
     /// <summary>One chunk row by its full address.</summary>
     /// <param name="type">The content type.</param>

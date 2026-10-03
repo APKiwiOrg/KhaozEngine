@@ -4,16 +4,29 @@ using System.Collections.Generic;
 namespace KhaozEngine.Catalog.Authoring;
 
 /// <summary>
-/// The two proofs an upgrade run has about an open draft: <see cref="IsPlan"/>, which is EXACTLY one
-/// definition's change set and is what a run needs before it PUBLISHES a draft it did not write in this
-/// attempt, and <see cref="IsKnownWork"/>, which is every held edit belonging to some plan the run computed
-/// and is what it needs before it DISCARDS one. They are public because they are the comparisons every
-/// data-loss path turns on.
+/// The two proofs an upgrade run has about an open draft:
+/// <see cref="IsPlan(ContentDraft, IReadOnlyList{ContentEdit})"/>, which is EXACTLY one definition's change
+/// set and is what a run needs before it PUBLISHES a draft it did not write in this attempt, and
+/// <see cref="IsKnownWork(ContentDraft, IReadOnlyList{ContentEdit})"/>, which is every held edit belonging to
+/// some plan the run computed and is what it needs before it DISCARDS one. They are public because they are
+/// the comparisons every data-loss path turns on.
 /// <para>
 /// <b>An actor and a note are not proof.</b> Both stores KEEP the standing note when a writer passes an
 /// empty one, and no store rewrites the identity that opened a draft, so an operator who adds edits to an
 /// interrupted run's draft without a note leaves it carrying the runner's actor and the runner's note. A
 /// run that trusted those two would discard work nobody published.
+/// </para>
+/// <para>
+/// <b>The row-list overloads are ROW-ONLY, so a draft holding text or a language introduction never passes
+/// either.</b> A row comparison cannot establish who owns a translation, and passing it would let a run
+/// publish or discard another writer's text. A draft whose text state is null came from a row-only route,
+/// and the store's own legacy gates refuse to publish or discard text it actually holds. Such a draft is
+/// never known EMPTY either, because its empty row list says nothing about the text behind it.
+/// </para>
+/// <para>
+/// <b>The complete overloads</b> take a plan's text intents too. They pass only a complete draft, and they
+/// compare its text intents and language introductions as well as its rows, so a plan that authors text
+/// is proved over everything it would publish or discard.
 /// </para>
 /// <para>
 /// <b>The comparison is order independent.</b> A draft is rebuilt from a stored edit table, and while both
@@ -35,8 +48,78 @@ public static class ContentUpgradeDraftMatch
         ArgumentNullException.ThrowIfNull(draft);
         ArgumentNullException.ThrowIfNull(planned);
 
-        IReadOnlyList<ContentEdit> held = draft.Changes.Edits;
-        if (held.Count != planned.Count || planned.Count == 0)
+        return planned.Count > 0 && !ContentTextCompatibility.HoldsText(draft) && RowsArePlan(draft.Changes.Edits, planned);
+    }
+
+    /// <summary>
+    /// The COMPLETE exact match: the draft is a complete, backend-read draft whose rows are exactly the planned
+    /// rows, whose text intents are exactly the planned text intents, and whose language introductions are
+    /// exactly the languages the planned Sets introduce against the baseline's declarations. A text-only plan
+    /// is real work, so an empty row list is allowed here when text is planned.
+    /// <para>
+    /// A draft built by a row-only route never matches, because it says nothing about the text it may hold.
+    /// An introduction the plan did not cause, such as a rival's Set later replaced by a Remove, is a change
+    /// set nobody planned, so the draft is not the plan.
+    /// </para>
+    /// </summary>
+    /// <param name="draft">The open draft as the store handed it back.</param>
+    /// <param name="planned">The row edits and text intents a fresh plan produced against the current baseline.</param>
+    /// <param name="baselineText">The text the baseline bundle carried, whose declared languages a Set does not introduce.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    public static bool IsPlan(ContentDraft draft, ContentAuthoringChanges planned, ContentBundleTextState baselineText)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        ArgumentNullException.ThrowIfNull(planned);
+        ArgumentNullException.ThrowIfNull(baselineText);
+        return ContentUpgradeTextMatch.IsPlan(draft, planned.RowEdits, planned.TextEdits, baselineText);
+    }
+
+    /// <summary>
+    /// The COMPLETE known-work proof: the draft is complete, every row edit it holds is known, every text intent
+    /// it holds is one of the known text intents, and every language it introduces is the canonical language of
+    /// a known Set. Another operator's translation or introduction fails it, so it is never discarded.
+    /// </summary>
+    /// <param name="draft">The open draft as the store handed it back.</param>
+    /// <param name="knownRows">Every row edit of every plan the run computed.</param>
+    /// <param name="knownText">Every text intent of every plan the run computed.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    public static bool IsKnownWork(
+        ContentDraft draft,
+        IReadOnlyList<ContentEdit> knownRows,
+        IReadOnlyList<ContentTextEdit> knownText)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        ArgumentNullException.ThrowIfNull(knownRows);
+        ArgumentNullException.ThrowIfNull(knownText);
+        return ContentUpgradeTextMatch.IsKnownWork(draft, knownRows, knownText);
+    }
+
+    /// <summary>
+    /// Whether ANY row edit or text intent the draft holds came from the known sets. Like the row-only overload
+    /// it proves nothing on its own and only decides who is asked to resolve a draft.
+    /// </summary>
+    /// <param name="draft">The open draft as the store handed it back.</param>
+    /// <param name="knownRows">Every row edit of every plan the run computed.</param>
+    /// <param name="knownText">Every text intent of every plan the run computed.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    public static bool HoldsKnownWork(
+        ContentDraft draft,
+        IReadOnlyList<ContentEdit> knownRows,
+        IReadOnlyList<ContentTextEdit> knownText)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        ArgumentNullException.ThrowIfNull(knownRows);
+        ArgumentNullException.ThrowIfNull(knownText);
+        return HoldsKnownWork(draft, knownRows) || ContentUpgradeTextMatch.HoldsKnownText(draft, knownText);
+    }
+
+    /// <summary>
+    /// Whether one row edit list is EXACTLY another, order independent, one held edit per planned target with
+    /// the same payload. Text is not looked at, which is the caller's half of the proof.
+    /// </summary>
+    internal static bool RowsArePlan(IReadOnlyList<ContentEdit> held, IReadOnlyList<ContentEdit> planned)
+    {
+        if (held.Count != planned.Count)
         {
             return false;
         }
@@ -74,11 +157,12 @@ public static class ContentUpgradeDraftMatch
     /// <b>This is a discard proof and never a publish one.</b> A draft that is a subset of known work holds
     /// nothing nobody planned, so losing it costs a replan and no content. It says nothing about the draft
     /// being a complete change set, so nothing may be published out of it: that still takes
-    /// <see cref="IsPlan"/>.
+    /// <see cref="IsPlan(ContentDraft, IReadOnlyList{ContentEdit})"/>.
     /// </para>
     /// <para>
-    /// <b>An EMPTY draft passes.</b> Nothing held is nothing to lose, and a run that refused to clear one
-    /// would stand off against a draft that cannot move until an operator resolves it by hand.
+    /// <b>An EMPTY complete draft passes.</b> Nothing held is nothing to lose, and a run that refused to clear
+    /// one would stand off against a draft that cannot move until an operator resolves it by hand. An empty
+    /// draft a row-only route built does not pass, because the backend may hold text behind it.
     /// </para>
     /// <para>
     /// <b>Duplicates are handled from both sides.</b> One target twice in the DRAFT fails, because no plan
@@ -95,7 +179,19 @@ public static class ContentUpgradeDraftMatch
         ArgumentNullException.ThrowIfNull(draft);
         ArgumentNullException.ThrowIfNull(known);
 
-        IReadOnlyList<ContentEdit> held = draft.Changes.Edits;
+        // A draft a row-only route built says nothing about the text a backend may hold, so it may not be
+        // claimed known EMPTY, and a draft holding text is never a row proof's to claim at all.
+        if (ContentTextCompatibility.HoldsText(draft) || (draft.TextState is null && draft.Changes.Count == 0))
+        {
+            return false;
+        }
+
+        return RowsAreKnown(draft.Changes.Edits, known);
+    }
+
+    /// <summary>Whether every held row edit is a known one, each target once. An empty list passes.</summary>
+    internal static bool RowsAreKnown(IReadOnlyList<ContentEdit> held, IReadOnlyList<ContentEdit> known)
+    {
         if (held.Count == 0)
         {
             return true;
@@ -116,9 +212,9 @@ public static class ContentUpgradeDraftMatch
 
     /// <summary>
     /// Whether ANY edit the draft holds came from the known set. It is the other side of
-    /// <see cref="IsKnownWork"/> and it proves nothing on its own: it tells a draft a run's own write merged
-    /// into apart from one that is another writer's whole, which decides who is asked to resolve it, and it
-    /// never decides whether anything may be destroyed.
+    /// <see cref="IsKnownWork(ContentDraft, IReadOnlyList{ContentEdit})"/> and it proves nothing on its own: it
+    /// tells a draft a run's own write merged into apart from one that is another writer's whole, which decides
+    /// who is asked to resolve it, and it never decides whether anything may be destroyed.
     /// </summary>
     /// <param name="draft">The open draft as the store handed it back.</param>
     /// <param name="known">Every edit of every plan the run computed, in any order and with repeats allowed.</param>

@@ -39,6 +39,14 @@ public sealed partial class SqliteContentAuthoringStore
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteTransaction transaction = _connection.BeginTransaction();
 
+        // The row-only freeze is the first step of a row-only publish, so a draft holding text, or a fork of a
+        // row whose text the row-only route cannot copy, is refused before any marker is written.
+        if (await ReadDraftAsync(transaction, cancellationToken).ConfigureAwait(false) is ContentDraft open)
+        {
+            await RequireRowOnlyRepresentableAsync(open, nameof(FreezeDraftAsync), transaction, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         // It OVERWRITES rather than refusing an already frozen draft. A marker a dead publish left behind
         // must not block the retry, and the retry is exactly what an operator does to recover. The row count
         // is the open-draft check, so the update time is decided inside the SET rather than in the WHERE.
@@ -146,7 +154,8 @@ public sealed partial class SqliteContentAuthoringStore
     }
 
     /// <summary>
-    /// Step 10's draft delete, scoped to the edits the plan FROZE. The caller owns the transaction.
+    /// Step 10's draft delete, scoped to the row edits, text intents and introductions the plan FROZE. The
+    /// caller owns the transaction.
     /// <para>
     /// The freeze is what makes that set the whole draft, so an edit surviving here means the marker did not
     /// hold. It is kept rather than deleted: an edit published without review is a defect and an edit deleted
@@ -160,15 +169,22 @@ public sealed partial class SqliteContentAuthoringStore
     /// </para>
     /// </summary>
     /// <param name="plan">The plan committing, whose frozen edits leave the draft.</param>
+    /// <param name="publishedText">The frozen text state the commit publishes, or null on a row-only commit.</param>
     /// <param name="at">The version's publish time, which a rebase stamps as the draft's update time.</param>
     /// <param name="transaction">The commit's one transaction.</param>
     /// <param name="cancellationToken">Cancels the statements.</param>
     async Task DeleteFrozenEditsAsync(
         ContentPublishPlan plan,
+        ContentDraftTextState? publishedText,
         long at,
         SqliteTransaction transaction,
         CancellationToken cancellationToken)
     {
+        if (publishedText is not null)
+        {
+            await DeletePublishedTextAsync(publishedText, transaction, cancellationToken).ConfigureAwait(false);
+        }
+
         IReadOnlyList<ContentEdit> frozen = plan.FrozenEdits;
         for (int i = 0; i < frozen.Count; i++)
         {
@@ -186,7 +202,13 @@ public sealed partial class SqliteContentAuthoringStore
         }
 
         long survivors = await ReadLongAsync(
-            "SELECT COUNT(*) FROM catalog_draft_edit;", transaction, cancellationToken).ConfigureAwait(false);
+            """
+            SELECT (SELECT COUNT(*) FROM catalog_draft_edit)
+                 + (SELECT COUNT(*) FROM catalog_draft_text_edit)
+                 + (SELECT COUNT(*) FROM catalog_draft_text_language);
+            """,
+            transaction,
+            cancellationToken).ConfigureAwait(false);
         if (survivors == 0)
         {
             using SqliteCommand draft = Command("DELETE FROM catalog_draft;", transaction);

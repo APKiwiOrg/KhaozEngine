@@ -9,7 +9,8 @@ namespace KhaozEngine.Catalog.SqlServer;
 
 /// <summary>
 /// The bundle half: the lossless export of one version, and the import that seeds an EMPTY database from
-/// one.
+/// one. The text-bearing import is the companion's, in <c>SqlServerContentAuthoringStore.TextBundle.cs</c>,
+/// and shares the staging, the draft and the reset here.
 /// <para>
 /// <b>An import runs through the ordinary publish and there is no second mechanism.</b> It turns the bundle
 /// into a draft of <c>Add</c> edits, some carrying their own id and some not, and publishes it as version 1.
@@ -57,6 +58,36 @@ public sealed partial class SqlServerContentAuthoringStore
         ArgumentNullException.ThrowIfNull(operatorId);
         ArgumentNullException.ThrowIfNull(note);
 
+        // A bundle carrying text, or a later format that lost its text section, cannot land through the
+        // row-only import. Refused before anything is read or staged.
+        ContentTextCompatibility.RequireRowOnlyBundle(bundle, nameof(ImportBundleAsync));
+        return await ImportAsync(bundle, null, actor, operatorId, note, nameof(ImportBundleAsync), cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The ONE import both routes share: the empty-store and pack-target refusals, the type agreement, the
+    /// staging of families, marks and rules, the draft and the publish, and the reset on any refusal after
+    /// staging began. A row-only import passes no text. A companion import passes the bundle's complete text,
+    /// whose targets are checked BEFORE anything is staged, and lands it in the same draft transaction as the
+    /// rows, so the ordinary text publish commits rows and text as one complete version 1.
+    /// </summary>
+    /// <param name="bundle">The bundle.</param>
+    /// <param name="text">The bundle's complete text, or null on the row-only route.</param>
+    /// <param name="actor">What the engine authenticated.</param>
+    /// <param name="operatorId">The identity the console forwarded.</param>
+    /// <param name="note">The operator's note.</param>
+    /// <param name="member">The public member importing, which a refusal names.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    async Task<ContentPublishResult> ImportAsync(
+        ContentBundle bundle,
+        ContentBundleTextState? text,
+        string actor,
+        string operatorId,
+        string note,
+        string member,
+        CancellationToken cancellationToken)
+    {
         // The reset below is destructive by design, so it may not run until this import has actually written
         // something. The two refusals above the staging (a database that already published, a store with no
         // pack target) read and write nothing, and a reset for one of THOSE would empty the live catalog the
@@ -64,7 +95,9 @@ public sealed partial class SqlServerContentAuthoringStore
         bool staged = false;
         try
         {
-            IReadOnlyList<ContentEdit> edits = await WriteAsync(
+            // The check, the staging and the draft run in ONE Serializable scope, so no rival intent can join
+            // or open the draft between the pending-work check and the import's own draft.
+            await WriteAsync(
                 async (scope, token) =>
                 {
                     int active = await ReadActiveVersionAsync(scope, token).ConfigureAwait(false);
@@ -82,10 +115,23 @@ public sealed partial class SqlServerContentAuthoringStore
 
                     if (PackStore is null)
                     {
-                        throw NoPackStore(nameof(ImportBundleAsync));
+                        throw NoPackStore(member);
                     }
 
                     RequireTypesAgree(bundle);
+                    if (text is not null)
+                    {
+                        ContentBundleTextCompatibility.RequireNoPendingWork(
+                            await ReadDraftAsync(scope, token).ConfigureAwait(false), member);
+                        ContentBundleTextCompatibility.RequireTargets(bundle, text, _registry);
+                    }
+                    else
+                    {
+                        // The row-only route can neither carry a held text intent into version 1 nor survive
+                        // the reset of a later refusal, so held text refuses it before anything is staged.
+                        ContentTextCompatibility.RequireNoHeldText(
+                            await ReadDraftAsync(scope, token).ConfigureAwait(false), member);
+                    }
 
                     staged = true;
                     DateTimeOffset at = _clock();
@@ -93,11 +139,11 @@ public sealed partial class SqlServerContentAuthoringStore
                     await SeedMarksAsync(scope, bundle, at, token).ConfigureAwait(false);
 
                     _importRules = Restamp(bundle);
-                    return await EditsAsync(scope, bundle, token).ConfigureAwait(false);
+                    IReadOnlyList<ContentEdit> edits = await EditsAsync(scope, bundle, token).ConfigureAwait(false);
+                    await ApplyImportDraftAsync(scope, edits, text, actor, operatorId, note, token).ConfigureAwait(false);
                 },
                 cancellationToken).ConfigureAwait(false);
 
-            await ApplyEditsAsync(edits, actor, operatorId, note, cancellationToken).ConfigureAwait(false);
             ContentPublishResult published = await PublishAsync(
                 new ContentPublishRequest(actor, operatorId, note, 0), cancellationToken).ConfigureAwait(false);
 
@@ -162,6 +208,12 @@ public sealed partial class SqlServerContentAuthoringStore
                     throw UnknownVersion(versionNumber);
                 }
 
+                // The EXACT version's complete text decides the format: none declared writes format 1, so a
+                // text-free catalog keeps byte-identical exports, and any declared language writes format 2.
+                // An unknown version with no read-only proof refuses here, before anything else is read.
+                ContentVersionTextSnapshot text = await ReadTextSnapshotAtAsync(scope, versionNumber, token)
+                    .ConfigureAwait(false);
+
                 IReadOnlyList<ContentBundleType> types = await ReadBundleTypesAsync(scope, token)
                     .ConfigureAwait(false);
 
@@ -199,8 +251,7 @@ public sealed partial class SqlServerContentAuthoringStore
                         ?? throw NoMetadata();
                 }
 
-                return new ContentBundle(
-                    ContentBundle.CurrentFormatVersion, epoch, versionNumber, types, rows, families, rules);
+                return ContentBundleTextCompatibility.Export(epoch, versionNumber, types, rows, families, rules, text);
             },
             cancellationToken);
 
@@ -443,20 +494,20 @@ public sealed partial class SqlServerContentAuthoringStore
     }
 
     /// <summary>
-    /// The empty state the import was required to start from, narrowed to the tables the import writes
-    /// BEFORE the commit. A refused import leaves a store a caller may import into again rather than one
-    /// carrying half a bundle. The audit is KEPT: a refused import is a thing that happened and the trace of
-    /// it is the point.
+    /// The empty state the import was required to start from. A refused import leaves a store a caller may
+    /// import into again rather than one carrying half a bundle. The audit is KEPT: a refused import is a thing
+    /// that happened and the trace of it is the point.
     /// <para>
-    /// <b>It deletes from five tables and no more, because the commit is atomic.</b> The version, row, row
-    /// field, chunk and rule tables are written only inside step 10's one transaction, which either commits
-    /// whole or not at all, and an import that reaches here was refused before that transaction opened or
-    /// inside it. Either way those five tables still hold what they held when the import started, which on
-    /// the empty store an import is licensed into is nothing, and the active and pinned pointers have not
-    /// moved either. The families, the id marks and the draft are the only things staged ahead of the
-    /// commit, so they are the only things there is anything to take back from. A <c>DELETE</c> against
-    /// <c>catalog_remap_rule</c> would also be the one statement in this provider that mutates an
-    /// append-only table.
+    /// <b>It takes back the draft, its text intents and introductions, the families and the marks</b>, which are
+    /// the only things staged ahead of the commit. The version, row, row field, chunk and rule tables are written
+    /// only inside step 10's one transaction, which either commits whole or not at all, and the active and
+    /// pinned pointers have not moved either. A <c>DELETE</c> against <c>catalog_remap_rule</c> would also be the
+    /// one statement in this provider that mutates an append-only table.
+    /// </para>
+    /// <para>
+    /// <b>The text and language record tables are cleared only while no version exists.</b> They belong to a
+    /// committed version, so on the empty database an import is licensed into they hold nothing, and the guard
+    /// keeps a reset reached after a commit from stripping the text of the version that landed.
     /// </para>
     /// </summary>
     Task ResetToEmptyAsync(CancellationToken cancellationToken)
@@ -468,7 +519,11 @@ public sealed partial class SqlServerContentAuthoringStore
                 string[] statements =
                 [
                     "DELETE FROM dbo.catalog_draft_edit;",
+                    "DELETE FROM dbo.catalog_draft_text_edit;",
+                    "DELETE FROM dbo.catalog_draft_text_language;",
                     "DELETE FROM dbo.catalog_draft;",
+                    "DELETE FROM dbo.catalog_text_chunk WHERE NOT EXISTS (SELECT 1 FROM dbo.catalog_version);",
+                    "DELETE FROM dbo.catalog_text WHERE NOT EXISTS (SELECT 1 FROM dbo.catalog_version);",
                     "DELETE FROM dbo.catalog_family_block;",
                     "DELETE FROM dbo.catalog_family;",
                     "DELETE FROM dbo.catalog_id_high_water;",

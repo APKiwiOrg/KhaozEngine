@@ -152,11 +152,11 @@ sealed partial class ContentUpgradeRun
     /// </summary>
     /// <param name="draft">The standing draft, as the caller's own read just saw it.</param>
     /// <param name="note">The note this definition's draft carries.</param>
-    /// <param name="planned">The edits this definition's plan produced.</param>
+    /// <param name="planned">This definition's bound plan.</param>
     async Task<bool> DiscardOwnDraftAsync(
         ContentDraft draft,
         string note,
-        IReadOnlyList<ContentEdit> planned)
+        ContentUpgradePlan planned)
         => await DisposeProvenDraftAsync(draft, note, planned).ConfigureAwait(false)
             == ContentUpgradeDraftDisposal.RivalHoldsIt;
 
@@ -192,8 +192,8 @@ sealed partial class ContentUpgradeRun
     /// </summary>
     async Task<bool> HoldsPlanOfAsync(ContentDraft draft, ContentUpgradeDefinition definition)
     {
-        IReadOnlyList<ContentEdit>? planned = await ReplanAsync(definition).ConfigureAwait(false);
-        return planned is not null && ContentUpgradeDraftMatch.IsPlan(draft, planned);
+        ContentUpgradePlan? planned = await ReplanAsync(definition).ConfigureAwait(false);
+        return planned is not null && ContentUpgradeTextMatch.IsPlan(draft, planned);
     }
 
     /// <summary>
@@ -201,11 +201,11 @@ sealed partial class ContentUpgradeRun
     /// recorded and no refusal stops the run, because this is a question about a draft rather than an
     /// attempt at the upgrade.
     /// </summary>
-    async Task<IReadOnlyList<ContentEdit>?> ReplanAsync(ContentUpgradeDefinition definition)
+    async Task<ContentUpgradePlan?> ReplanAsync(ContentUpgradeDefinition definition)
     {
         OperationId = definition.Id;
         Operation = "export the baseline bundle";
-        ContentBundle baseline = await Store.ExportBundleAsync(Active, CancellationToken).ConfigureAwait(false);
+        ContentBundle baseline = await Route.ExportBaselineAsync(Active, CancellationToken).ConfigureAwait(false);
         var context = new ContentUpgradeContext(Active, baseline, Registry);
 
         ContentUpgradePlan? plan;
@@ -220,13 +220,16 @@ sealed partial class ContentUpgradeRun
             return null;
         }
 
-        if (plan is null || plan.Kind != ContentUpgradePlanKind.Changes)
+        if (plan is null
+            || plan.Kind != ContentUpgradePlanKind.Changes
+            || (plan.CarriesText && !Route.CanAuthorText))
         {
             return null;
         }
 
-        _known.Remember(plan.Edits);
-        return plan.Edits;
+        ContentUpgradePlan bound = plan.Against(context.BaselineText);
+        _known.Remember(bound);
+        return bound;
     }
 
     /// <summary>
@@ -254,9 +257,9 @@ sealed partial class ContentUpgradeRun
         return true;
     }
 
-    /// <summary>The whole proof for one definition: the actor, the note and the edits.</summary>
-    bool IsOwn(ContentDraft draft, string note, IReadOnlyList<ContentEdit> planned)
+    /// <summary>The whole proof for one definition: the actor, the note and the complete change set.</summary>
+    bool IsOwn(ContentDraft draft, string note, ContentUpgradePlan planned)
         => string.Equals(draft.OpenedBy, Options.Actor, StringComparison.Ordinal)
             && string.Equals(draft.Note, note, StringComparison.Ordinal)
-            && ContentUpgradeDraftMatch.IsPlan(draft, planned);
+            && ContentUpgradeTextMatch.IsPlan(draft, planned);
 }

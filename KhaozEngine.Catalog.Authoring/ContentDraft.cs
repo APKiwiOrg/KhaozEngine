@@ -335,6 +335,47 @@ public sealed class ContentEdit
             null);
     }
 
+    /// <summary>
+    /// The same edit over OWNED field payloads, so a caller reusing a byte array after submitting cannot
+    /// change a protected copy. Numbers and keys are values already, so an edit carrying no byte payload is
+    /// immutable as it stands and is returned unchanged.
+    /// </summary>
+    internal ContentEdit Owned()
+    {
+        bool carriesBytes = false;
+        for (int i = 0; i < Fields.Count && !carriesBytes; i++)
+        {
+            carriesBytes = !Fields[i].Value.Bytes.IsEmpty;
+        }
+
+        if (!carriesBytes)
+        {
+            return this;
+        }
+
+        var fields = new ContentFieldEdit[Fields.Count];
+        for (int i = 0; i < fields.Length; i++)
+        {
+            ContentFieldEdit field = Fields[i];
+            fields[i] = field.Value.Bytes.IsEmpty
+                ? field
+                : field with { Value = ContentFieldValue.OfBytes(field.Value.Kind, field.Value.Bytes.ToArray()) };
+        }
+
+        return new ContentEdit(
+            Type,
+            DefinitionId,
+            Key,
+            Operation,
+            fields,
+            RetirePolicy,
+            ReplacementId,
+            ForkKey,
+            ForkFlagField,
+            FamilyId,
+            ImportedAsRetired);
+    }
+
     static void RequireKey(ContentKey key, string parameterName)
     {
         if (key.IsEmpty)
@@ -412,6 +453,33 @@ public sealed class ContentDraft
         FrozenForBaseVersion = frozenForBaseVersion;
     }
 
+    /// <summary>
+    /// Builds a COMPLETE draft, which a backend that represents text returns. Its change set is an owned copy,
+    /// byte payloads included, so neither the submitted set nor its arrays alias the draft.
+    /// </summary>
+    /// <param name="textState">The draft's complete text state, <see cref="ContentDraftTextState.Empty"/> when it holds none.</param>
+    /// <param name="baseVersion">The published version the edits are against, or 0 on an empty database.</param>
+    /// <param name="openedBy">The identity that opened it, at most 128 characters.</param>
+    /// <param name="openedAtUtc">When it was opened.</param>
+    /// <param name="note">The operator's note, at most 1,024 characters, empty when none.</param>
+    /// <param name="changes">The ordered, deduplicated row edit list, copied.</param>
+    /// <param name="frozenForBaseVersion">The base version a publish in flight froze this draft for, or null when it is not frozen.</param>
+    /// <exception cref="ArgumentNullException">An argument is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="baseVersion"/> is negative.</exception>
+    public ContentDraft(
+        ContentDraftTextState textState,
+        int baseVersion,
+        string openedBy,
+        DateTimeOffset openedAtUtc,
+        string note,
+        ContentChangeSet changes,
+        int? frozenForBaseVersion = null)
+        : this(baseVersion, openedBy, openedAtUtc, note, OwnedCopy(changes), frozenForBaseVersion)
+    {
+        ArgumentNullException.ThrowIfNull(textState);
+        TextState = textState;
+    }
+
     /// <summary>The published version these edits are against. 0 means the database has published none.</summary>
     public int BaseVersion { get; }
 
@@ -439,4 +507,34 @@ public sealed class ContentDraft
 
     /// <summary>True while a publish holds this draft, which is when every write to it is refused.</summary>
     public bool IsFrozen => FrozenForBaseVersion is not null;
+
+    /// <summary>
+    /// The draft's complete text state, or NULL when a row-only route built this draft. Null means the text
+    /// is unrepresented here, never that the backend holds none.
+    /// </summary>
+    public ContentDraftTextState? TextState { get; }
+
+    /// <summary>How many text intents are pending, separate from the row count <see cref="EditCount"/> keeps.</summary>
+    public int TextEditCount => TextState?.Edits.Count ?? 0;
+
+    /// <summary>How many languages the draft introduces.</summary>
+    public int LanguageIntroductionCount => TextState?.Introductions.Count ?? 0;
+
+    /// <summary>
+    /// Row intents, text intents and language introductions together, which is the draft's total work. A
+    /// draft whose total is 0 has nothing to publish.
+    /// </summary>
+    public int TotalWorkCount => EditCount + TextEditCount + LanguageIntroductionCount;
+
+    static ContentChangeSet OwnedCopy(ContentChangeSet changes)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+        var owned = new ContentEdit[changes.Count];
+        for (int i = 0; i < owned.Length; i++)
+        {
+            owned[i] = changes.Edits[i].Owned();
+        }
+
+        return new ContentChangeSet(owned);
+    }
 }

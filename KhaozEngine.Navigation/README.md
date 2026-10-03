@@ -135,6 +135,15 @@ does not go through an `INavSurfaceProvider`. A grid baked this way records its 
 readable via `NavGrid.SurfaceHeightAt(cx, cz)` (null when the grid has no height field, the cell is out of
 bounds, or the cell is blocked) and `NavGrid.HasSurfaceHeights` (false for grids from `FromWalkable`).
 
+`NavGrid.FromBlockedSurfaces(width, height, cellSize, originX, originZ, blocked, heights, yMin, yMax,
+yawRadians)` restores such a grid without its sampler. `blocked` and `heights` are row-major spans of exactly
+`width * height` entries, where a blocked cell is one whose `ClearanceAt` was 0. Open cells need finite heights.
+Heights on blocked cells are copied but never observable. Clearance is recomputed from the mask with the same
+transform a fresh build uses, so every `ClearanceAt` and `SurfaceHeightAt` matches the source grid and
+`HasSurfaceHeights` is true. Both spans are copied, and the other arguments validate as in `FromSurfaces`. A
+mismatched span length throws `ArgumentException` and a non-finite open height throws
+`ArgumentOutOfRangeException`. `KhaozEngine.Movement`'s `GroundNavigationBake` loads its layers through it.
+
 ```csharp
 using KhaozEngine.Navigation;
 
@@ -254,7 +263,8 @@ var planner = new GridPathPlanner(space);
 `KhaozEngine.Movement` composes this grounded, Stair-only bake with its own static physics capture and
 capsule proof. `PhysicsNavBake.BuildProfile` supplies `INavColumnProvider` data to
 `NavLayerBaker.BakeGroundedLayered`, then hands the resulting `NavSpace` and its guarded traversal graph to
-`GroundNavigation`. Navigation stays physics-free. A caller that only needs navigation can continue to use the
+`GroundNavigation`. Its `GroundNavigationBake` restores those layers from a file through
+`NavGrid.FromBlockedSurfaces`. Navigation stays physics-free. A caller that only needs navigation can continue to use the
 existing provider and bake seams directly.
 
 ## Cross-layer links (`NavLayerLinks`)

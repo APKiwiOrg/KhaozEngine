@@ -22,6 +22,10 @@ intact. Stored types outside the provider registry are omitted before their fiel
 Version 0 reads the active published version and ignores the open draft and operator pin. Consumers of the existing
 `IContentAuthoringStore` contract can still use `ListRowsAsync` pages without implementing this capability.
 
+`IContentTextAuthoringStore` is the optional text authoring companion, implemented by the same three stores.
+It adds per-language display text to drafts, publishes, bundles, rollback and recovery. [Catalog text](#catalog-text)
+documents it.
+
 `IContentAuthoringStore` also INHERITS `KhaozEngine.Catalog`'s `IContentVersionDirectory`, which declares its two version reads, so
 a host that boots off its authoring database assigns the store itself to `ContentBootOptions.Directory` and
 writes no adapter.
@@ -102,6 +106,18 @@ detect afterwards: the pages are already migrated and the original values are go
 The flag field is the CALLER's and the engine does not name it. The engine checks only that the field exists
 on the type's schema and is `Bool`, which keeps `Fork` a generic operation over the row model rather than a
 feature of whichever package motivated it.
+
+The copy inherits the source row's `FamilyId`. A family fork allocates through `AllocateInFamilyAsync`, so its
+id belongs to one of that family's blocks. A full family can reserve another block, and the copy need not occupy
+the source row's block. A non-family fork uses the plain counter. The source keeps its id and new values, and
+exactly one `MovedToLegacy` rule targets the live flagged copy.
+
+This policy applies to newly allocated copies. A copy forked by 19.0.0 through 20.18.0 has a plain id and
+still names the source row's family. It is never renumbered or repaired automatically, and a live store keeps
+using it as stored. Re-importing its export is refused with `KEC0037` before any write. To move such a store,
+remove the copy's `familyKey` from the exported bundle, then import. The copy keeps its id, key and
+`MovedToLegacy` rule. Design section 6.3 and [#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908) hold
+the reasoning.
 
 ### The key shape rule
 
@@ -285,7 +301,8 @@ declared ceiling, and one that disagrees with the type's family blocks, under `K
 Allocation runs BEFORE validation, because `KEC0006` resolves references and `KEC0010` asks about family
 membership, and neither can be asked of a row whose id does not exist yet.
 
-A `Fork` allocates through the plain counter and its copy inherits the SOURCE row's family. The copy is
+A `Fork` inherits the SOURCE row's family. A family copy allocates within that family's blocks, reserving
+another when needed, while a non-family copy uses the plain counter. The copy is
 written first, so the `MovedToLegacy` rule appended last names a destination that is already live.
 
 ### Chunk selection and reuse
@@ -477,20 +494,24 @@ by design: the alternative is filing a pack at addresses no version record descr
 and every later sweep would then have to reason about. Recovering such a version means rebuilding with the
 registry that version was published from.
 
-**A version whose manifests would name TEXT is refused outright, with `text-chunks-unsupported`.** The write
-puts chunks, the rule chunk, both manifests and the pointer, and never a text chunk, so a manifest naming a
-language would name a KECT text chunk hash the rebuilt root does not hold. The digest comparison cannot catch
-that on its own, because both rebuilt manifests are built from the same language list the recorded ones were
-and name the same hashes either way, so the check is a separate one on the SNAPSHOT, ahead of the build and
-ahead of any write. Rebuilding the text instead is not available: no store keeps a VERSION's text, so there is
-nothing to encode a text chunk from, and that belongs with publishing text at all
-(https://github.com/APKiwiOrg/KhaozEngine/issues/1000). Every provider publishes an empty language list today,
-which the shared conformance suite pins, so no version any of them holds can reach this refusal.
+**Text is version N's own.** Through `IContentTextAuthoringStore` the rebuild reads
+`ReadTextSnapshotAsync(n)`, regenerates every `KECT` chunk in the wire spelling version N recorded, and compares
+each hash and the language list with the recorded mapping before the digest check and before any write. The
+text chunks are written after the row chunks and before the rule chunk and the manifests. A store without the
+companion cannot read a version's text, so it rebuilds only a version whose baseline names no language and
+refuses any other outright.
 
-The four refusal reasons, all reported as `RefusalReason` on the result rather than thrown, are therefore
+A legacy version with no complete text record is treated as text free only on a read-only proof: the rebuilt
+no-language manifests digest to the recorded hashes, or verified stored manifests at the recorded hashes, in
+the target or the store's own pack, name no language. Nothing records that proof.
+
+The seven refusal reasons, all reported as `RefusalReason` on the result rather than thrown, are therefore
 `server-manifest-mismatch`, `client-manifest-mismatch`, `rebuild-candidate-invalid` (the builders refused a
-row, which is a caller's own side encoder leaving a `ServerOnly` field in the client bytes) and
-`text-chunks-unsupported`.
+row, which is a caller's own side encoder leaving a `ServerOnly` field in the client bytes),
+`text-chunk-mismatch` (a regenerated text chunk or the language list disagrees with the recorded mapping),
+`text-values-invalid` (an ineligible marker, a missing row or a bound stops the regeneration),
+`text-provenance-unknown` (no complete text record and no read-only proof) and `text-chunks-unsupported` (a
+store without the companion whose baseline names a language).
 
 ## Rollback
 
@@ -513,6 +534,10 @@ edits, the blockers with any matching rule, and one `KEC0039` finding per blocke
 `ContentRollbackBlocker.RuleKind` carries that rule's actual kind, or null when no rule matches. In that
 case `RuleSequence` and `IntroducedIn` are 0. The original five-argument constructor and deconstruction
 remain available.
+
+`RollbackToAsync` is row-only. On a store with the text companion it refuses with `text-unrepresented` when the
+current or the target version holds text or has no complete text record, and `RollbackTextToAsync` restores
+rows and strings together, as [Catalog text](#catalog-text) describes.
 
 ## The diff
 
@@ -541,9 +566,9 @@ package rather than in a test project because the draft, allocator, publish and 
 one and they sit in different assemblies.
 
 `InMemoryContentAuthoringStore.SchemaVersion` is the public catalog schema version this engine build
-targets, currently 3, matching both providers. Consumers use that constant for catalog preflight and deploy
+targets, currently 4, matching both providers. Consumers use that constant for catalog preflight and deploy
 compatibility checks. `IContentAuthoringStore.GetSchemaVersionAsync()` reports the schema held by the opened
-store, which the in-memory store also reports as 3.
+store, which the in-memory store also reports as 4.
 
 It carries the constraints its provider siblings get from a `CHECK`, so a defect surfaces there rather than
 at the first SQL run: a high-water mark never moves backwards, an issued mark never passes a reserved one,
@@ -912,6 +937,13 @@ accept comments and trailing commas and both refuse malformed JSON, a nonobject 
 version that is not a 32-bit integer. The precheck returns an unsupported integer so the caller can compare or
 report it. `Read` remains the operation that refuses a format version this build does not support.
 
+This build reads and writes two formats. `ContentBundle.CurrentFormatVersion`, 1, is ROW-ONLY and text free by
+contract, and a format 1 document carrying a `text` member is refused. `ContentBundle.TextFormatVersion`, 2,
+adds the protected `text` section, `ContentBundle.TextState`, of declared languages and complete values, and a
+format 2 document without it is refused. Any other format is refused whole with `bundle-format`.
+`ImportBundleAsync` is the row-only route and imports format 1 only. [Catalog text](#catalog-text) covers the
+text import and the export format rule.
+
 An import runs through the ORDINARY publish and there is no second mechanism. It restores the families and
 their blocks verbatim, including each family's `IsRetired` flag through family reads and later exports in
 every store. It restamps the bundle's rules as the new line's, turns every row into an `Add` edit and publishes
@@ -922,6 +954,181 @@ the empty state it was required to start from, so nothing is left half seeded, a
 itself: a row naming a family the bundle does not declare is refused while the edits are being built, with the
 families and the id marks already written. A refusal BEFORE the staging (a store that already published, a
 store with no pack target) resets nothing, because it wrote nothing and the store it is protecting is live.
+
+## Catalog text
+
+`IContentTextAuthoringStore : IContentAuthoringStore` is the opt-in companion that authors per-language display
+text and publishes it as `KECT` chunks a client reads through `ContentStringCatalog`. The in-memory, SQLite and
+SQL Server stores implement it. A store that implements only `IContentAuthoringStore` keeps every row-only
+behavior, and a caller holding text input for it refuses with `text-operation-unavailable` before anything is
+applied. The backend is authoritative throughout: a caller's empty list or rebuilt DTO is never proof that text
+is absent, and every member that consumes or destroys state compares it with what the store holds inside its
+own gate or transaction.
+
+### Targets, values and languages
+
+A `ContentTextTarget(type, key, fieldName, language)` names one string by the row's content key, a declared
+marker field and a language. The localization key is derived, `ContentTextKey.Derive(typeKey, contentKey,
+fieldName)`, and there is no key override. The type must be registered and CLIENT visible, and the field a
+CLIENT-visible `ContentFieldKind.LocalizedTextKey` marker, or the store refuses with `text-target-ineligible`.
+The row must be live at the active version, retired rows included, or added or forked by the draft, this batch
+included, or the store refuses with `unknown-row`.
+
+`ContentTextEdit.Set(target, value)` carries a complete value, and `Set("")` is a PRESENT empty value.
+`ContentTextEdit.Remove(target)` makes the string absent, so a reader falls back. Values are stored exactly as
+submitted, with no trim, case fold or Unicode normalization, and are measured as strict UTF-8.
+
+`ContentTextLanguageTag` is the one tag grammar: ASCII letters, digits and hyphens of 1 to 35 bytes, no empty
+segment, and a first segment that starts with a letter. Letters are lowered invariantly, so `EN-us` and `en-US`
+are the one identity `en-us`. It is not BCP-47 registry validation and consults no installed culture, so a
+private tag such as `qz-123` is legal and an underscore is refused rather than converted.
+
+Declarations are sticky. A Set introduces its language when neither the base version nor the draft declares
+it, and the introduction survives a later Remove of the same string, so the language still publishes as an
+empty chunk. A Remove in a declared language is idempotent, and a Remove in an undeclared one is refused with
+`text-language-undeclared`. There is no language command. A published language keeps its historical wire
+spelling in every later version through `ContentTextLanguageDeclaration`, and a new one uses the canonical
+spelling.
+
+| Limit | Bound | Where it is refused |
+|---|---|---|
+| Value | 8,192 strict UTF-8 bytes, no unpaired surrogate | `ContentTextEdit.Set` throws `ArgumentException`, and publication refuses with `text-bounds` |
+| Derived key | 192 strict UTF-8 bytes | The store refuses at apply and publication refuses with `text-bounds` |
+| Field name | 64 characters | The store refuses at apply with `text-bounds` |
+| Language tag | 35 ASCII bytes under the grammar above | `ContentTextTarget` throws `ArgumentException`, and publication checks each wire tag with `text-bounds` |
+| Language body | 16 MiB uncompressed, entry counts and length varints included | Publication refuses with `text-bounds` before any buffer is allocated |
+
+### Applying
+
+`ApplyChangesAsync` applies one `ContentAuthoringChanges` batch of row edits and text intents to the open draft,
+opening one against the active version when none is open. Every intent lands in one transaction with its
+audit, or none does, so an add and its display name are one call:
+
+```csharp
+var text = (IContentTextAuthoringStore)store;
+var key = new ContentKey("iron_sword");
+
+ContentDraft draft = await text.ApplyChangesAsync(
+    new ContentAuthoringChanges(
+        [ContentEdit.Add(itemType, key, fields)],
+        [
+            ContentTextEdit.Set(new ContentTextTarget(itemType, key, "name", "en"), "Iron Sword"),
+            ContentTextEdit.Set(new ContentTextTarget(itemType, key, "name", "fr"), "Epee de fer"),
+        ]),
+    actor: "admin-endpoint",
+    operatorId: "oid:8f2c",
+    note: "autumn pass");
+```
+
+`ContentAuthoringChanges` owns copies of both lists, and two text intents naming one canonical target in one
+batch are an `ArgumentException`. Across batches the last intent for a target wins and keeps its first
+ordinal. A frozen draft refuses with `publish-in-progress`, as `ApplyEditsAsync` does.
+
+`ContentDraft.TextState` is the draft's `ContentDraftTextState`, its ordered intents and its language
+introductions. `TextEditCount`, `LanguageIntroductionCount` and `TotalWorkCount` count them beside `EditCount`.
+A null `TextState` means a row-only route built the draft, which says nothing about text. A row-only
+`ApplyEditsAsync` keeps the held text and introductions untouched.
+
+### Publishing
+
+`ContentPublishCommit.PublishAsync`, and each store's own `PublishAsync`, publish through the companion on a
+store that implements it, row-only work included, so every version such a store commits is text complete.
+`FreezeChangesAsync` freezes the complete draft and reads the baseline rows and text in one step, and a draft
+whose `TotalWorkCount` is 0 is refused. The plan is prepared once with final row ids, a text-only draft
+prepares with zero row edits, and every held value is rechecked against the final rows and registry. A Fork's
+copy carries the source row's strings.
+
+Each declared language becomes one `KECT` chunk through the existing codec, empty languages included, with
+entries sorted ordinally by their UTF-8 key and a repeated derived key refused. A language whose values did not
+change reuses its recorded hash and writes nothing. Both manifests name every output language in ordinal wire
+tag order. The text chunks are written before the row chunks, the rule chunk and the manifests, and
+`CommitTextPublishAsync` then commits rows, rules, chunks, text revisions, every language mapping, the audit,
+the version and the draft consumption in ONE transaction, after confirming the epoch, the base, the frozen rows,
+the text and the declarations against the store's actual state. A disagreement is `text-state-mismatch`, and a
+plan whose chunk hash its values do not regenerate is `text-chunk-mismatch`.
+
+Text is temporal like rows. `ContentTextRevision` carries a value with its valid-from and replaced-in versions,
+so a translation-only publish never rewrites the row it names. Each changed string writes one audit entry
+carrying `ContentAuditEntry.LanguageTag`, with values rendered through `ContentTextAuditRendering`, which
+abbreviates a long value on a whole character and marks it `[cut]`. The full value stays in text history.
+
+### Reading a version's text
+
+`ReadTextSnapshotAsync(n)` returns one exact committed version's `ContentVersionTextSnapshot`: the store epoch,
+every revision visible at that version, retired rows included, and every recorded `ContentTextLanguage` with
+its wire spelling and chunk hash, empty languages included. Version 0 is not a shortcut for the active version
+and is refused, like a version the store does not hold.
+
+Schema 4 records every new version as text complete. A version from before the migration has no record and is
+read as empty only on a read-only proof that its manifests named no language: the verified stored manifests at
+its recorded hashes, or no-language manifests rebuilt from its recorded chunks that digest to those hashes.
+Nothing records the proof. Without it the read, the freeze, a rollback and an upgrade baseline refuse with
+`text-provenance-unknown`, because unknown text is never empty.
+
+### Discarding
+
+`TryDiscardChangesAsync(expected, actor, operatorId)` deletes the open draft only when it is EXACTLY `expected`:
+the same base, freeze state, rows, text intents and introductions. The comparison and the delete share one gate
+or transaction, so a rival translation, introduction or freeze returns false with nothing deleted and no
+discard audited. A draft a row-only route built is never a proof and always returns false.
+
+### Import, export and rollback
+
+`ImportTextBundleAsync` imports a complete bundle into an EMPTY store, rows, ids, families, rules, declarations
+and values together, as one complete version 1. Format 1 imports as empty text. A format 2 bundle that lost its
+section and any later format are refused with `bundle-format`, a value naming a row the bundle does not carry
+with `unknown-row`, and an ineligible target with `text-target-ineligible`, all before anything is reset or
+staged. An open draft holding any row, text or language work refuses the import with `draft-open` and stays as
+it was. A later refusal restores the empty store. Every declared language keeps its wire spelling, empty ones
+included.
+
+`ExportBundleAsync(n)` writes format 1 when version N declares no language, so a text-free catalog's export
+stays byte-identical, and format 2 with every declared language and value otherwise, even with no value. The
+version's text must be complete or proved, or the export refuses.
+
+`RollbackTextToAsync(target, actor, operatorId, note)` builds one draft restoring the rows and strings of an
+earlier version. Every string of a row live at the target reads as it did there, retired rows included, by a
+Set where it differs and a Remove where the target held none. Every currently declared language stays declared,
+so a language the target never had publishes empty. A row retired since the target still blocks with
+`KEC0039`, no text intent unretires a row, and both versions need complete or proved text.
+
+A content upgrade can author text. `ContentUpgradePlan.Changes(ContentAuthoringChanges, changeLines)` carries row
+edits and text intents as one change set, text-only included, and `ContentUpgradePlan.TextEdits` exposes them.
+`ContentUpgradeContext.BaselineText` is the baseline's complete text, format 1 reading as empty. On a companion
+store the runner reads the exact baseline text, applies and freezes a text plan through the companion and
+discards a draft only through `TryDiscardChangesAsync`. A store without the companion refuses a text plan before
+anything is written.
+
+### Row-only routes on a companion store
+
+The row-only members keep their signatures and refuse with `text-unrepresented` rather than drop text the store
+holds:
+
+- `FreezeDraftAsync` and `CommitPublishAsync` refuse while the draft holds text intents or introductions, a plan
+  that is the row half of a text plan, a Fork of a row that holds text, and a plan whose languages are not the
+  ones the active version recorded.
+- `DiscardDraftAsync` refuses a draft holding text intents or introductions.
+- `RollbackToAsync` refuses when the current or the target version holds a value or a language, or has no
+  complete text record.
+- `ImportBundleAsync` refuses a bundle carrying a text section or any format other than 1. It also refuses
+  before anything is staged when the open draft holds text intents or introductions.
+- `ContentPublishCommit.WriteAsync` refuses the row half of a text plan and a plan naming a text chunk the pack
+  store does not already hold.
+
+### Reason tokens
+
+| Reason | Meaning |
+|---|---|
+| `text-target-ineligible` | The type or field is not CLIENT visible, or the field is not a localized text marker |
+| `text-language-undeclared` | A Remove names a language neither the base version nor the draft declares |
+| `text-bounds` | A derived key, a value, a field name, a language tag or a language body exceeds its bound |
+| `text-unrepresented` | A row-only route would have to carry text it cannot represent |
+| `text-state-mismatch` | A text commit or discard found state other than its plan or proof names |
+| `text-operation-unavailable` | Text input reached a store that implements only `IContentAuthoringStore` |
+| `text-provenance-unknown` | A version has no complete text record and no read-only proof that it held none |
+| `text-chunk-mismatch` | A plan's or a rebuild's chunk hash does not regenerate from its values |
+| `draft-open` | A text import found an open draft holding work |
+| `bundle-format` | A bundle declares an unread format, or format 2 lost its text section |
 
 ## Rules this package will not bend
 

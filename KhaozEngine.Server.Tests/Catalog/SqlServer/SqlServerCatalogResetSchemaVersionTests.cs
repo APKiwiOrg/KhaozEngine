@@ -193,15 +193,19 @@ public class SqlServerCatalogResetSchemaVersionTests
         return store;
     }
 
-    /// <summary>Version 3 undone: the columns it added gone and the metadata row back at 2.</summary>
+    /// <summary>
+    /// Versions 4 and 3 undone: the text tables and columns, then the row time columns, gone and the metadata
+    /// row back at 2.
+    /// </summary>
     static void TakeBackToVersionTwo(SqlServerCatalogDatabase database)
     {
+        database.Execute(SqlServerTextSchemaMigrationTests.UndoVersionFour);
         database.Execute(string.Concat(SqlServerCatalogSchema.VersionThreeColumns.Select(
             static added => $"ALTER TABLE dbo.{added.Table} DROP COLUMN {added.Column};\n")));
         database.Execute("UPDATE dbo.catalog_metadata SET schema_version = 2 WHERE metadata_key = 1;");
     }
 
-    /// <summary>Versions 3 and 2 undone: the columns and the one table they added gone and the metadata row back at 1.</summary>
+    /// <summary>Versions 4, 3 and 2 undone: the text, row time and ledger additions gone and the metadata row back at 1.</summary>
     static void TakeBackToVersionOne(SqlServerCatalogDatabase database)
     {
         TakeBackToVersionTwo(database);

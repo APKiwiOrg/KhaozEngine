@@ -25,9 +25,9 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// "schema is wrong".
 /// </para>
 /// <para>
-/// <b>A version 1 or version 2 database is MIGRATED in place under AutoCreate and refused under
+/// <b>A version 1, 2 or 3 database is MIGRATED in place under AutoCreate and refused under
 /// either validation mode</b>, which is the journal's split per provider and per mode. Version 1 chains
-/// through version 2 to version 3 in one open. Each migration is one transaction, so an operator host that opens read-only
+/// through versions 2 and 3 to version 4 in one open. Each migration is one transaction, so an operator host that opens read-only
 /// still gets a refusal naming <see cref="SqliteCatalogSchema.RequiredMigration"/> rather than a file quietly
 /// rewritten underneath it.
 /// </para>
@@ -90,6 +90,23 @@ internal static partial class SqliteCatalogSchemaValidation
 
             MigrateVersionTwo(connection);
             version = Read(() => ReadSchemaVersion(connection));
+        }
+
+        if (version == 3)
+        {
+            // Validated against version 3's own shape BEFORE the migration, read here for the same reason as
+            // version 2. A host that migrated in between leaves version 4 objects, which is not a refusal.
+            version = ValidateVersionThreeObjects(connection);
+            if (version == 3)
+            {
+                if (mode != ContentAuthoringSchemaMode.AutoCreate)
+                {
+                    throw Mismatch("at unsupported version '3'");
+                }
+
+                MigrateVersionThree(connection);
+                version = Read(() => ReadSchemaVersion(connection));
+            }
         }
 
         if (version != SqliteCatalogSchema.CurrentVersion)

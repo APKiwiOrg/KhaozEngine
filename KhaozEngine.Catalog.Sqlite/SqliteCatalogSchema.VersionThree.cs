@@ -4,15 +4,17 @@ using System.Collections.Generic;
 namespace KhaozEngine.Catalog.Sqlite;
 
 /// <summary>
-/// Version 3 and the two versions this build migrates from. Version 3 gives every catalog row a creation time
-/// and every row that changes after insert an update time, as nullable <c>INTEGER</c> Unix milliseconds. An
+/// Version 3 and the two versions before it, which this build migrates from. Version 3 gives every catalog
+/// row a creation time and every row that changes after insert an update time, as nullable <c>INTEGER</c>
+/// Unix milliseconds. An
 /// existing column that already is the insert time needs no twin: <c>catalog_version.published_at_utc</c>,
 /// <c>catalog_audit.occurred_at_utc</c>, <c>catalog_content_upgrade.recorded_at_utc</c> and
 /// <c>catalog_draft.opened_at_utc</c>. <c>catalog_draft_edit.edited_at_utc</c> is rewritten by every re-edit,
 /// so it is that table's update time.
 /// <para>
-/// <b>The older shapes are DERIVED from the current one</b>, version 2 by taking the version 3 columns back
-/// out and version 1 by also leaving out the ledger table, so the three can never drift apart.
+/// <b>The older shapes are DERIVED from the current one</b>, version 3 by taking the version 4 columns back out
+/// and leaving out the text tables, version 2 by also taking the version 3 columns out, and version 1 by also
+/// leaving out the ledger table, so the four can never drift apart.
 /// </para>
 /// <para>
 /// Every static initializer this class has lives in this file, in dependency order, because the order of
@@ -53,8 +55,19 @@ internal static partial class SqliteCatalogSchema
         VALUES (1, 2, lower(hex(randomblob(16))), 0, NULL, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
         """;
 
+    /// <summary>Every table version 1 declared, as version 3 declared it: the two version 4 columns taken out.</summary>
+    static readonly string VersionThreeCoreTables = WithoutVersionFourColumns(CoreTables);
+
     /// <summary>Every table version 1 declared, as version 2 still declared it: the version 3 columns taken out.</summary>
-    static readonly string VersionTwoCoreTables = WithoutVersionThreeColumns(CoreTables);
+    static readonly string VersionTwoCoreTables = WithoutVersionThreeColumns(VersionThreeCoreTables);
+
+    /// <summary>
+    /// The schema exactly as version 3 declared it, which is what a version 3 database is validated against
+    /// BEFORE it is migrated: no text table, no version 4 column, and the metadata seed at 3.
+    /// </summary>
+    internal static string VersionThreeTables { get; } =
+        VersionThreeCoreTables + "\n" + UpgradeLedgerTable + "\n"
+        + MetadataSeed.Replace("VALUES (1, 4,", "VALUES (1, 3,", StringComparison.Ordinal);
 
     /// <summary>
     /// The schema exactly as version 2 declared it, which is what a version 2 database is validated against
@@ -104,6 +117,22 @@ internal static partial class SqliteCatalogSchema
             updated_at_utc = CAST(strftime('%s', 'now') AS INTEGER) * 1000
         WHERE metadata_key = 1 AND schema_version = 2;
         """;
+
+    /// <summary>
+    /// The script with the two version 4 column definitions taken out. Each closes its table, so its line goes
+    /// and hands the closing parenthesis back to the line before it.
+    /// </summary>
+    static string WithoutVersionFourColumns(string tables)
+    {
+        bool usesCrLf = tables.Contains("\r\n", StringComparison.Ordinal);
+        string stripped = tables.ReplaceLineEndings("\n");
+        foreach (string column in (string[])[TextCompleteColumn, AuditLanguageColumn])
+        {
+            stripped = stripped.Replace(",\n    " + column + ");", ");", StringComparison.Ordinal);
+        }
+
+        return usesCrLf ? stripped.ReplaceLineEndings("\r\n") : stripped;
+    }
 
     static (string Table, string Column, string AddColumn) Add(string table, string column)
         => (table, column, "ALTER TABLE " + table + " ADD COLUMN " + column + " INTEGER NULL;");

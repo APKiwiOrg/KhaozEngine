@@ -29,9 +29,9 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// are both no change.
 /// </para>
 /// <para>
-/// <b>Unexercised.</b> No SQL Server is reachable from the build this landed in, so every statement here is
-/// written to mirror the SQLite provider's, which the conformance suite does run. The SQL Server conformance
-/// class overrides the same facts under its gated attribute, so they run the moment an instance is there.
+/// <b>Exercised against a real instance.</b> Every statement here mirrors the SQLite provider's. The SQL
+/// Server conformance class overrides the shared freeze facts under its gated attribute, and they run whenever
+/// <c>KE_CATALOG_SQLSERVER</c> names an instance, which the catalog SQL Server CI job sets.
 /// </para>
 /// </summary>
 public sealed partial class SqlServerContentAuthoringStore
@@ -44,6 +44,15 @@ public sealed partial class SqlServerContentAuthoringStore
         return WriteAsync(
             async (scope, token) =>
             {
+                // The row-only freeze is the first step of a row-only publish, so a draft holding text, or a
+                // fork of a row whose text the row-only route cannot copy, is refused before any marker is
+                // written.
+                if (await ReadDraftAsync(scope, token).ConfigureAwait(false) is ContentDraft open)
+                {
+                    await RequireRowOnlyRepresentableAsync(scope, open, nameof(FreezeDraftAsync), token)
+                        .ConfigureAwait(false);
+                }
+
                 // It OVERWRITES rather than refusing an already frozen draft. A marker a dead publish left
                 // behind must not block the retry, and the retry is what an operator does to recover. The row
                 // count is the open-draft check, so the update time is decided inside the SET rather than in
@@ -147,7 +156,8 @@ public sealed partial class SqlServerContentAuthoringStore
     }
 
     /// <summary>
-    /// Step 10's draft delete, scoped to the edits the plan FROZE. The caller owns the scope.
+    /// Step 10's draft delete, scoped to the row edits, text intents and introductions the plan FROZE. The
+    /// caller owns the scope.
     /// <para>
     /// The freeze is what makes that set the whole draft, so an edit surviving here means the marker did not
     /// hold. It is kept rather than deleted: an edit published without review is a defect and an edit deleted
@@ -161,14 +171,21 @@ public sealed partial class SqlServerContentAuthoringStore
     /// </summary>
     /// <param name="scope">The commit's connection and transaction.</param>
     /// <param name="plan">The plan committing, whose frozen edits leave the draft.</param>
+    /// <param name="publishedText">The frozen text state the commit publishes, or null on a row-only commit.</param>
     /// <param name="at">The version's publish time, which a rebase stamps as the draft's update time.</param>
     /// <param name="cancellationToken">Cancels the statements.</param>
     static async Task DeleteFrozenEditsAsync(
         SqlServerCatalogScope scope,
         ContentPublishPlan plan,
+        ContentDraftTextState? publishedText,
         DateTimeOffset at,
         CancellationToken cancellationToken)
     {
+        if (publishedText is not null)
+        {
+            await DeletePublishedTextAsync(scope, publishedText, cancellationToken).ConfigureAwait(false);
+        }
+
         IReadOnlyList<ContentEdit> frozen = plan.FrozenEdits;
         for (int i = 0; i < frozen.Count; i++)
         {
@@ -186,7 +203,13 @@ public sealed partial class SqlServerContentAuthoringStore
         }
 
         int survivors = await ReadIntAsync(
-            scope, "SELECT COUNT(*) FROM dbo.catalog_draft_edit;", cancellationToken).ConfigureAwait(false);
+            scope,
+            """
+            SELECT (SELECT COUNT(*) FROM dbo.catalog_draft_edit)
+                 + (SELECT COUNT(*) FROM dbo.catalog_draft_text_edit)
+                 + (SELECT COUNT(*) FROM dbo.catalog_draft_text_language);
+            """,
+            cancellationToken).ConfigureAwait(false);
         if (survivors == 0)
         {
             await using SqlCommand draft = Command(scope, "DELETE FROM dbo.catalog_draft;");

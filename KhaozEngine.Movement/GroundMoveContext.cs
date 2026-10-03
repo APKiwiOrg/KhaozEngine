@@ -10,6 +10,8 @@ namespace KhaozEngine.Movement;
 /// or recursively step the context. Rebase only between steps.</summary>
 public sealed partial class GroundMoveContext
 {
+    private GroundMoveContext? _dryContext;
+
     public GroundMoveContext(Func<float, float, float> groundHeight,
         Func<float, float, Vector3>? groundNormal = null, IPhysicsWorld? physics = null,
         Func<float, float, Vector2>? clampXz = null,
@@ -56,6 +58,13 @@ public sealed partial class GroundMoveContext
     /// <summary>Medium at absolute XZ and feet Y, including an absolute water surface Y.</summary>
     public Func<float, float, float, MovementMedium>? Medium { get; }
 
+    /// <summary>This context with dry medium. It is this context when <see cref="Medium"/> is null. Otherwise one
+    /// context with the same ground, normal, physics, clamp and query selection, created on first use and kept.
+    /// It has its own step guard and origin, as a per-call dry context had.</summary>
+    internal GroundMoveContext DryContext
+        => Medium is null ? this : _dryContext ??= new GroundMoveContext(
+            GroundHeight, GroundNormal, Physics, ClampXz, medium: null, movementQueries: MovementQueries);
+
     internal MoveState Step(in MoveState body, Vector2 worldDirection, bool run, float dt, in MoveTuning tuning)
     {
         ValidateTuning(tuning);
@@ -82,7 +91,10 @@ public sealed partial class GroundMoveContext
         }
     }
 
-    internal void ValidateTuning(in MoveTuning tuning)
+    internal void ValidateTuning(in MoveTuning tuning) => CheckTuning(tuning);
+
+    /// <summary>The tuning rules of <see cref="ValidateTuning"/>, which read no context state.</summary>
+    internal static void CheckTuning(in MoveTuning tuning)
     {
         Nonnegative(tuning.WalkSpeed, nameof(tuning.WalkSpeed));
         Nonnegative(tuning.RunSpeed, nameof(tuning.RunSpeed));

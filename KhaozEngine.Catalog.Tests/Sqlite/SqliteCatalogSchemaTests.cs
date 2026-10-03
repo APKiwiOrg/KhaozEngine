@@ -24,14 +24,14 @@ public class SqliteCatalogSchemaTests
     static ContentTypeRegistry Registry() => PublishFixtures.Registry(PublishFixtures.Thing);
 
     [Fact]
-    public async Task AutoCreateOnAnEmptyDatabaseCreatesTheSchemaAndReportsVersionThree()
+    public async Task AutoCreateOnAnEmptyDatabaseCreatesTheSchemaAndReportsVersionFour()
     {
         using var database = new TemporaryCatalogDatabase();
         using var store = new SqliteContentAuthoringStore(database.ConnectionString, Registry());
 
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(4, await store.GetSchemaVersionAsync());
         Assert.Equal(0, await store.GetActiveVersionAsync());
         Assert.Null(await store.GetPinnedVersionAsync());
 
@@ -51,7 +51,7 @@ public class SqliteCatalogSchemaTests
             () => store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly));
 
         Assert.Equal("schema-mismatch", refused.Reason);
-        Assert.Contains("catalog-v3-row-timestamps", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
         Assert.Contains("missing", refused.Message, StringComparison.Ordinal);
     }
 
@@ -67,7 +67,7 @@ public class SqliteCatalogSchemaTests
         using var store = new SqliteContentAuthoringStore(database.ConnectionString, Registry());
         await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnly);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(4, await store.GetSchemaVersionAsync());
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class SqliteCatalogSchemaTests
 
         Assert.Equal("schema-mismatch", refused.Reason);
         Assert.Contains("index:ix_catalog_row_live", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("catalog-v3-row-timestamps", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -185,6 +185,6 @@ public class SqliteCatalogSchemaTests
 
         Assert.Equal("schema-mismatch", refused.Reason);
         Assert.Contains("unreadable", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("catalog-v3-row-timestamps", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("catalog-v4-text-authoring", refused.Message, StringComparison.Ordinal);
     }
 }

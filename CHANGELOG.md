@@ -5,6 +5,83 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.20.0
+
+- `GroundNavigationBake` persists physics-checked `GroundNavigation` profile sets. `Create` builds named profiles from
+  one `PhysicsNavBake` capture, `WriteTo` writes a little-endian `KENB` file, and `Load` returns them without physics,
+  a ground provider or any proof. A loaded profile equals the fresh build as bits. A canonical identity covers the
+  engine version, capture options, area filters, every `MoveTuning` field except unit pace and air momentum, and
+  caller-labelled SHA-256 source digests from `NavBakeSources`, with no architecture-dependent data. A stale or
+  damaged bake returns a typed `NavBakeLoadStatus` with the first difference named in `Detail`, never a silent
+  fallback. A stale bake is refused from its header and identity block alone. A 36,864-column flat world wrote
+  664,683 bytes and loaded in about 20 ms on the dev Mac. This lifts round 2's navigation persistence non-goal for
+  physics-checked ground profiles.
+- `NavGrid.FromBlockedSurfaces` rebuilds a surface grid from a stored blocked mask and open-cell heights, with every
+  `ClearanceAt` and `SurfaceHeightAt` equal to the source grid.
+- `BuildProfile` no longer allocates per proof. Penetration queries reuse their overlap scratch, the footprint
+  predicate and the dry probe context are built once, and `CharacterMovement` reuses its step and slide capsules
+  through per-thread caches keyed by exact radius and length. A warmed penetration query drops from 72 bytes to zero,
+  a warmed edge proof from 6,848 bytes to zero, and a 4,096-column flat profile from 58,774 to 80 bytes per column.
+  Live movement steps no longer allocate a capsule either. `CapsuleFor` still returns a new instance.
+- `DirectMoveToRange` approaches a reach target without a planner, with `MoveToRange`'s exact reach, stop ring and
+  suspension rules. `DirectApproachOptions` takes required stall and approach windows in ticks with no defaults, and
+  a window that shows too little progress latches the new `RangeMoveStatus.Blocked`, which both movement adapters
+  treat as idle. Steps that would leave the ground or start swimming are refused and count as no progress, and steady
+  ticks allocate nothing.
+- Catalog text authoring ([#1000](https://github.com/APKiwiOrg/KhaozEngine/issues/1000)). The opt-in
+  `IContentTextAuthoringStore` companion of `IContentAuthoringStore`, implemented by the in-memory, SQLite and SQL
+  Server stores, authors per-language display text for `LocalizedTextKey` marker fields of CLIENT-visible types.
+  `ApplyChangesAsync` lands a `ContentAuthoringChanges` batch of row edits and `ContentTextEdit.Set` or `Remove`
+  intents with its audit in one transaction, so an add and its name are one apply. `FreezeChangesAsync` freezes the
+  complete draft with its baseline text, `ReadTextSnapshotAsync` returns one exact committed version's
+  `ContentVersionTextSnapshot` and refuses version 0, and `TryDiscardChangesAsync` deletes the open draft only
+  when it still equals the caller's complete `ContentDraft`. `ContentDraft` gains `TextState`, `TextEditCount`,
+  `LanguageIntroductionCount` and `TotalWorkCount`, and `ContentAuditEntry` gains `LanguageTag`. A value is at
+  most 8,192 strict UTF-8 bytes and a derived key at most 192.
+- `ContentTextLanguageTag` is the one tag grammar: ASCII letters, digits and hyphens of 1 to 35 bytes, no empty
+  segment and a leading letter, lowered to its canonical identity with no BCP-47 registry or installed culture
+  lookup. A Set introduces its language and the introduction survives a later Remove, so the language still
+  publishes empty. A Remove in an undeclared language is refused with `text-language-undeclared`. A published
+  language keeps its historical wire spelling and new ones use the canonical spelling.
+- `ContentPublishCommit.PublishAsync` routes every publish on a companion store through the text commit, which
+  writes one `KECT` chunk per declared language, empty languages included, before the manifests and names every
+  language in both manifests. An unchanged language reuses its recorded hash. `ContentPackRebuild.RunAsync`
+  regenerates an exact version's text chunks in their recorded spelling and compares each hash before writing,
+  refusing with `text-chunk-mismatch`, `text-values-invalid` or `text-provenance-unknown`. A store without the
+  companion still refuses a version naming languages with `text-chunks-unsupported`.
+- Catalog schema version 4 on SQLite and SQL Server, through migration `catalog-v4-text-authoring`, adds
+  `catalog_draft_text_edit`, `catalog_draft_text_language`, `catalog_text` and `catalog_text_chunk`, a nullable
+  `catalog_audit.language_tag` and a nullable `catalog_version.text_snapshot_complete`, nineteen tables in all.
+  `AutoCreate` migrates a version 1, 2 or 3 catalog in one open and both validation modes refuse it naming the
+  migration. Every new commit records its version complete. A legacy NULL is read as empty only on a read-only
+  proof that the version's manifests named no language, and is refused with `text-provenance-unknown` otherwise.
+  `InMemoryContentAuthoringStore.SchemaVersion` is 4.
+- Bundle format 2 (`ContentBundle.TextFormatVersion`) carries a `text` section of declared languages and values
+  as `ContentBundle.TextState`. `ImportTextBundleAsync` imports rows and text as one complete version 1, reads
+  format 1 as empty text and refuses later formats and a format 2 bundle that lost its section with
+  `bundle-format`. It also refuses with `draft-open` while the open draft holds any row, text or language work.
+  `ExportBundleAsync` writes format 2 for a version that declares a language and byte-identical format 1
+  otherwise. `RollbackTextToAsync` builds one draft restoring rows and strings. `ContentUpgradePlan.Changes`
+  takes a `ContentAuthoringChanges` and `ContentUpgradeContext.BaselineText` carries the baseline's text, so an
+  upgrade can author text. Row-only routes on a companion store refuse with `text-unrepresented` rather than drop
+  held text.
+- `KhaozEngine.Server.Admin`'s `catalog-edit` takes `textEdits` beside `edits`, and the draft, get, diff, discard,
+  rollback, import and export actions report complete text state with `textKnown` false wherever text cannot be
+  proven. A store without the companion refuses text input with `text-operation-unavailable`.
+
+## 20.19.0
+
+- `GltfLoader.LoadNamedNodes(path)` returns every glTF node with a non-empty name, empties included, as
+  `GltfNamedNode(Name, WorldTransform)` in logical-node order. The world transform is the matrix `Load` bakes into a
+  mesh node's geometry, so an authored empty such as `socket_nose` places a module, muzzle or exhaust point in the
+  loaded mesh's space. Unnamed nodes are skipped but still place their named descendants, and an asset with no
+  geometry loads.
+- A `Fork` of a family row now allocates its legacy copy inside that family's blocks, reserving another aligned
+  block when they are full, so the copy is a member by id as well as by column and its bundle re-imports. A
+  non-family fork still takes a plain id. Copies forked by 19.0.0 through 20.18.0 keep their plain ids and family
+  column, and re-importing them stays refused with `KEC0037`. Removing the copy's `familyKey` from the exported
+  bundle is the documented remedy ([#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908)).
+
 ## 20.18.0
 
 - `Render3DSnapshot.CaptureSequence` streams indexed RGBA8 frames and their backend from one headless device,

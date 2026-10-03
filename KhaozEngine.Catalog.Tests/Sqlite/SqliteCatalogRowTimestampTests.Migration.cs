@@ -137,7 +137,7 @@ public sealed partial class SqliteCatalogRowTimestampTests
             database.ConnectionString, Registry(), database.Pack(), clock.Read);
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(SqliteCatalogSchema.CurrentVersion, await store.GetSchemaVersionAsync());
         AssertLegacyBackfill(database);
         Assert.Equal(1700000001500, Value(database, "SELECT recorded_at_utc FROM catalog_content_upgrade;"));
 
@@ -151,7 +151,7 @@ public sealed partial class SqliteCatalogRowTimestampTests
     }
 
     [Fact]
-    public async Task Version_1_catalog_chains_to_version_3()
+    public async Task Version_1_catalog_chains_to_the_current_version()
     {
         using var database = new TemporaryCatalogDatabase();
         database.Execute(SqliteCatalogSchemaMigrationTests.VersionOneDdl);
@@ -161,7 +161,7 @@ public sealed partial class SqliteCatalogRowTimestampTests
             database.ConnectionString, Registry(), database.Pack(), new ManualClock(T0).Read);
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(SqliteCatalogSchema.CurrentVersion, await store.GetSchemaVersionAsync());
         Assert.Empty(await store.ListUpgradesAsync());
         Assert.Equal(NewColumns.Length, (int)NewColumnCount(database));
         AssertLegacyBackfill(database);
@@ -217,7 +217,7 @@ public sealed partial class SqliteCatalogRowTimestampTests
             }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)).ToArray();
             await Task.WhenAll(opens);
 
-            Assert.Equal(3L, database.Scalar("SELECT schema_version FROM catalog_metadata;"));
+            Assert.Equal((long)SqliteCatalogSchema.CurrentVersion, database.Scalar("SELECT schema_version FROM catalog_metadata;"));
             Assert.Equal(NewColumns.Length, (int)NewColumnCount(database));
             AssertLegacyBackfill(database);
             Assert.Equal(1L, database.Scalar("SELECT COUNT(*) FROM test_backfill_probe;"));
@@ -248,13 +248,13 @@ public sealed partial class SqliteCatalogRowTimestampTests
             database.ConnectionString, Registry(), database.Pack(), new ManualClock(T0).Read);
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(SqliteCatalogSchema.CurrentVersion, await store.GetSchemaVersionAsync());
         Assert.Equal(NewColumns.Length, (int)NewColumnCount(database));
         AssertLegacyBackfill(database);
     }
 
     [Fact]
-    public async Task ValidateOnly_refuses_version_2_naming_catalog_v3_row_timestamps()
+    public async Task ValidateOnly_refuses_version_2_naming_the_current_migration()
     {
         using var database = new TemporaryCatalogDatabase();
         WriteVersionTwo(database);

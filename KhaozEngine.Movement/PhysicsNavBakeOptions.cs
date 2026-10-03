@@ -14,6 +14,28 @@ public sealed record PhysicsNavBakeOptions(
 {
     internal (int Width, int Height, int Cells, int Samples) Validate(Vector3 origin)
     {
+        ValidateFields();
+        Finite(MinX - origin.X, nameof(MinX));
+        Finite(MaxX - origin.X, nameof(MaxX));
+        Finite(MinZ - origin.Z, nameof(MinZ));
+        Finite(MaxZ - origin.Z, nameof(MaxZ));
+        Finite(ProbeHeight - origin.Y, nameof(ProbeHeight));
+        Finite(ProbeHeight - ProbeRange, nameof(ProbeRange));
+        Finite(ProbeHeight - origin.Y - ProbeRange, nameof(ProbeRange));
+        return Layout();
+    }
+
+    /// <summary>The checks of <see cref="Validate"/> that do not depend on a physics origin, for a loader that
+    /// has no physics world. Throws <see cref="ArgumentOutOfRangeException"/> as <see cref="Validate"/> does.</summary>
+    internal (int Width, int Height, int Cells, int Samples) ValidateWithoutOrigin()
+    {
+        ValidateFields();
+        Finite(ProbeHeight - ProbeRange, nameof(ProbeRange));
+        return Layout();
+    }
+
+    private void ValidateFields()
+    {
         Finite(MinX, nameof(MinX));
         Finite(MinZ, nameof(MinZ));
         Finite(MaxX, nameof(MaxX));
@@ -31,15 +53,10 @@ public sealed record PhysicsNavBakeOptions(
         Positive(EdgeProbeSeconds, nameof(EdgeProbeSeconds));
         if (MaxEdgeProbeSteps < 1 || !float.IsFinite(EdgeProbeSeconds * MaxEdgeProbeSteps))
             throw new ArgumentOutOfRangeException(nameof(MaxEdgeProbeSteps));
+    }
 
-        Finite(MinX - origin.X, nameof(MinX));
-        Finite(MaxX - origin.X, nameof(MaxX));
-        Finite(MinZ - origin.Z, nameof(MinZ));
-        Finite(MaxZ - origin.Z, nameof(MaxZ));
-        Finite(ProbeHeight - origin.Y, nameof(ProbeHeight));
-        Finite(ProbeHeight - ProbeRange, nameof(ProbeRange));
-        Finite(ProbeHeight - origin.Y - ProbeRange, nameof(ProbeRange));
-
+    private (int Width, int Height, int Cells, int Samples) Layout()
+    {
         int width, height, cells, samples;
         try
         {

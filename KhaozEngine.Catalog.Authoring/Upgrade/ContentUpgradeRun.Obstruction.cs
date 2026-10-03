@@ -103,7 +103,7 @@ sealed partial class ContentUpgradeRun
         // The caller's view is the one that is proved. Reading again would not make the discard atomic, and
         // it would cost a round trip on every pre-flight that finds anything at all.
         ContentDraft? standing = draft;
-        ContentUpgradeDraftDisposal disposal = await DisposeProvenDraftAsync(draft, note, plan.Edits)
+        ContentUpgradeDraftDisposal disposal = await DisposeProvenDraftAsync(draft, note, plan)
             .ConfigureAwait(false);
         if (disposal == ContentUpgradeDraftDisposal.Discarded)
         {
@@ -154,14 +154,20 @@ sealed partial class ContentUpgradeRun
     /// console publishing stopped, and a local automatic boot has no operator at all, which is the whole of
     /// why the residue is accepted.
     /// </para>
+    /// <para>
+    /// <b>A store with the text companion closes that residue.</b> The proved complete draft is handed to
+    /// <see cref="IContentTextAuthoringStore.TryDiscardChangesAsync"/>, which compares and deletes in one step,
+    /// so an edit, translation or introduction landing after the proof leaves the draft standing and is read
+    /// again, never lost. The row-only discard, which refuses a draft holding text, is never used for one.
+    /// </para>
     /// </summary>
     /// <param name="draft">The standing draft.</param>
     /// <param name="note">The note this definition's draft carries.</param>
-    /// <param name="planned">The edits this definition's plan produced.</param>
+    /// <param name="planned">This definition's bound plan.</param>
     async Task<ContentUpgradeDraftDisposal> DisposeProvenDraftAsync(
         ContentDraft draft,
         string note,
-        IReadOnlyList<ContentEdit> planned)
+        ContentUpgradePlan planned)
     {
         if (!string.Equals(draft.OpenedBy, Options.Actor, StringComparison.Ordinal))
         {
@@ -218,6 +224,13 @@ sealed partial class ContentUpgradeRun
         }
 
         Operation = "discard a draft this run proved holds only its own work";
+        bool? atomic = await Route.TryDiscardAsync(latest, Options.Actor, Options.Operator, CancellationToken)
+            .ConfigureAwait(false);
+        if (atomic is bool discarded)
+        {
+            return discarded ? ContentUpgradeDraftDisposal.Discarded : await ChangedUnderDiscardAsync().ConfigureAwait(false);
+        }
+
         try
         {
             await Store.DiscardDraftAsync(Options.Actor, Options.Operator, CancellationToken)
@@ -230,6 +243,30 @@ sealed partial class ContentUpgradeRun
         }
 
         return ContentUpgradeDraftDisposal.Discarded;
+    }
+
+    /// <summary>
+    /// What became of a complete draft the atomic discard left standing because it changed or froze after the
+    /// proof: gone is a clear way, frozen is a live publisher, and anything else is read the way a changed
+    /// draft always is, by whether any of it is this run's own work.
+    /// </summary>
+    async Task<ContentUpgradeDraftDisposal> ChangedUnderDiscardAsync()
+    {
+        Operation = "re-read the draft its discard left standing";
+        ContentDraft? now = await Store.GetOpenDraftAsync(CancellationToken).ConfigureAwait(false);
+        if (now is null)
+        {
+            return ContentUpgradeDraftDisposal.Discarded;
+        }
+
+        if (now.IsFrozen)
+        {
+            return ContentUpgradeDraftDisposal.RivalHoldsIt;
+        }
+
+        return _known.HoldsSome(now)
+            ? ContentUpgradeDraftDisposal.OperatorWorkMerged
+            : ContentUpgradeDraftDisposal.NotThisRuns;
     }
 
     /// <summary>
@@ -273,8 +310,8 @@ sealed partial class ContentUpgradeRun
                 continue;
             }
 
-            IReadOnlyList<ContentEdit>? fresh = await ReplanAsync(definition).ConfigureAwait(false);
-            if (fresh is not null && ContentUpgradeDraftMatch.IsPlan(draft, fresh))
+            ContentUpgradePlan? fresh = await ReplanAsync(definition).ConfigureAwait(false);
+            if (fresh is not null && ContentUpgradeTextMatch.IsPlan(draft, fresh))
             {
                 OperationId = working;
                 return ContentUpgradeDraftReading.LivePlan;
@@ -310,7 +347,7 @@ sealed partial class ContentUpgradeRun
         // a version that says nothing about this upgrade.
         string token = ContentUpgradeDispositions.Token(landed.Disposition);
         _steps.Add(landed.Disposition == ContentUpgradeDisposition.Applied
-            ? ContentUpgradeStepResult.Applied(definition, landed.VersionNumber, plan.ChangeLines)
+            ? ContentUpgradeStepResult.Applied(definition, landed.VersionNumber, ContentUpgradeTextLines.For(plan))
             : ContentUpgradeStepResult.Adopted(
                 definition,
                 FormattableString.Invariant(

@@ -24,7 +24,7 @@ namespace KhaozEngine.Tests.Catalog.SqlServer;
 [Collection(SqlServerCatalogCollection.Name)]
 public sealed partial class SqlServerCatalogRowTimestampTests
 {
-    const string MigrationName = "catalog-v3-row-timestamps";
+    const string MigrationName = "catalog-v4-text-authoring";
     const string Actor = "sqlserver-row-timestamps";
     const string Operator = "oid:tests";
 
@@ -60,6 +60,8 @@ public sealed partial class SqlServerCatalogRowTimestampTests
         ("catalog_draft", "opened_at_utc"),
         ("catalog_draft_edit", "created_at_utc"),
         ("catalog_draft_edit_field", "created_at_utc"),
+        ("catalog_draft_text_edit", "created_at_utc"),
+        ("catalog_draft_text_language", "created_at_utc"),
         ("catalog_family", "created_at_utc"),
         ("catalog_family_block", "created_at_utc"),
         ("catalog_id_high_water", "created_at_utc"),
@@ -67,6 +69,8 @@ public sealed partial class SqlServerCatalogRowTimestampTests
         ("catalog_remap_rule", "created_at_utc"),
         ("catalog_row", "created_at_utc"),
         ("catalog_row_field", "created_at_utc"),
+        ("catalog_text", "created_at_utc"),
+        ("catalog_text_chunk", "created_at_utc"),
         ("catalog_type", "created_at_utc"),
         ("catalog_version", "published_at_utc"),
     ];
@@ -76,12 +80,21 @@ public sealed partial class SqlServerCatalogRowTimestampTests
     [
         ("catalog_draft", "updated_at_utc"),
         ("catalog_draft_edit", "edited_at_utc"),
+        ("catalog_draft_text_edit", "updated_at_utc"),
         ("catalog_family_block", "updated_at_utc"),
         ("catalog_id_high_water", "updated_at_utc"),
         ("catalog_metadata", "updated_at_utc"),
         ("catalog_row", "updated_at_utc"),
+        ("catalog_text", "updated_at_utc"),
         ("catalog_type", "updated_at_utc"),
     ];
+
+    /// <summary>
+    /// The version 4 text tables, which the row-only write paths here leave empty. Every time column of them is
+    /// NOT NULL, and <c>SqlServerTextSchemaMigrationTests</c> proves the times every text write path stamps.
+    /// </summary>
+    static readonly string[] TextTables =
+        ["catalog_draft_text_edit", "catalog_draft_text_language", "catalog_text", "catalog_text_chunk"];
 
     static ContentTypeId Thing => CatalogFixtures.Thing;
 
@@ -91,13 +104,13 @@ public sealed partial class SqlServerCatalogRowTimestampTests
         => new(Actor, Operator, "row timestamps", expectedBaseVersion);
 
     [CatalogSqlServerFact]
-    public async Task Fresh_catalog_is_version_3_with_nullable_timestamp_columns()
+    public async Task Fresh_catalog_carries_every_version_3_nullable_timestamp_column()
     {
         using var database = new SqlServerCatalogDatabase();
         var store = new SqlServerContentAuthoringStore(database.ConnectionString, Registry());
         await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
 
-        Assert.Equal(3, await store.GetSchemaVersionAsync());
+        Assert.Equal(SqlServerCatalogSchema.CurrentVersion, await store.GetSchemaVersionAsync());
         foreach ((string table, string column) in NewColumns)
         {
             Assert.Equal("datetimeoffset(7) NULL", Text(database, $"""
@@ -391,8 +404,8 @@ public sealed partial class SqlServerCatalogRowTimestampTests
     }
 
     /// <summary>
-    /// Every catalog table holds rows, every row carries its creation time, and every row of a table that changes
-    /// after insert carries its update time.
+    /// Every catalog table but the text tables holds rows, every row carries its creation time, and every row of a
+    /// table that changes after insert carries its update time.
     /// </summary>
     static void AssertEveryRowCarriesItsTimes(SqlServerCatalogDatabase database)
     {
@@ -401,6 +414,11 @@ public sealed partial class SqlServerCatalogRowTimestampTests
             SqlServerCatalogResetHarness.Tables(database).OrderBy(static value => value, StringComparer.Ordinal));
         foreach ((string table, string column) in CreationTimes.Concat(UpdateTimes))
         {
+            if (TextTables.Contains(table))
+            {
+                continue;
+            }
+
             Assert.True(Count(database, $"SELECT COUNT(*) FROM dbo.{table};") > 0, $"{table} has no row to prove");
             Assert.True(
                 Count(database, $"SELECT COUNT(*) FROM dbo.{table} WHERE {column} IS NULL;") == 0,

@@ -1,9 +1,9 @@
 # KhaozEngine.Movement
 
 Opt-in composition of Locomotion, Navigation and Physics. Add this package explicitly to a client or
-server that needs body-aware movement geometry, absolute-coordinate ground movement, or a physics-backed
-ground navigation profile. It stays outside every umbrella and carries no backend, input or rendering
-dependency.
+server that needs body-aware movement geometry, absolute-coordinate ground movement, a physics-backed
+ground navigation profile, a baked profile set loaded without physics, or a route-free approach. It stays
+outside every umbrella and carries no backend, input or rendering dependency.
 
 ## Exact 3D reach
 
@@ -189,6 +189,145 @@ Stair link. It checks a complete segment Y interval conservatively, so a direct 
 even when a sequence of baked edges is eligible. Live collision, support and the final movement result still
 come from the shared movement core.
 
+Profile building allocates no garbage per proof. Penetration queries reuse one overlap scratch list per physics
+world, the footprint predicate and the dry probe context are built once per profile, and the movement core reuses
+its step and slide capsules per thread. Engine tests in the allocation-sensitive collections gate these targets:
+
+| Measured unit | Before | Measured | Target |
+| --- | ---: | ---: | ---: |
+| Warmed `ComputePenetration`, world and query view | 72 B per call | 0 B | 0 B |
+| Warmed medium-bearing `TryEdge` with a footprint predicate | 6,848 B per call | 0 B | 0 B |
+| `BuildProfile`, 16 m by 16 m flat world at 0.25 m, 4,096 columns | 58,774 B per column | 80 B per column | at most 1 KiB per column |
+
+The remaining profile bytes are the result grids. A 48 m by 48 m flat world at 0.25 m (36,864 columns) allocated
+98.6 B per column in one dev Mac observation. Elapsed time is not gated, because the physics query count is
+unchanged.
+
+## Baked profile sets
+
+`GroundNavigationBake` persists one capture's columns and one or more named profiles in a versioned binary file,
+so a client loads physics-checked profiles at startup without a physics world, a ground provider or any proof:
+
+```csharp
+public sealed class NavBakeSources
+{
+    public NavBakeSources Add(string label, ReadOnlySpan<byte> sha256);
+    public NavBakeSources AddHashOf(string label, ReadOnlySpan<byte> content);
+    public NavBakeSources AddHashOf(string label, Stream content);
+    public IReadOnlyList<string> Labels { get; }
+}
+
+public sealed record NavBakeProfile(string Name, MoveTuning Tuning, NavAreaFilter Areas);
+
+public sealed record NavBakeExpectation(PhysicsNavBakeOptions Options, NavBakeSources Sources,
+    IReadOnlyList<NavBakeProfile> Profiles);
+
+public enum NavBakeLoadStatus
+{
+    Loaded, NotABake, UnsupportedFormat, Corrupt,
+    EngineChanged, OptionsChanged, SourcesChanged, ProfilesChanged,
+}
+
+public sealed record NavBakeLoadResult(NavBakeLoadStatus Status, string Detail, GroundNavigationBake? Bake);
+
+public sealed class GroundNavigationBake
+{
+    public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
+        IReadOnlyList<NavBakeProfile> profiles);
+    public static NavBakeLoadResult Load(Stream source, NavBakeExpectation expected);
+    public void WriteTo(Stream destination);
+    public ReadOnlySpan<byte> Fingerprint { get; }
+    public IReadOnlyList<string> ProfileNames { get; }
+    public GroundNavigation GetProfile(string name);
+}
+```
+
+`Create` builds every profile through `capture.BuildProfile` while the capture is live, so each profile is exactly
+the fresh build. `WriteTo` writes a little-endian `KENB` file, format version 1, and two writes of one bake are
+byte-identical. A loaded profile is a `GroundNavigation` like any other, and its `Space`, graph, columns,
+`AllowsSegment` and `Planner` answers equal the fresh build as bits. `GetProfile` throws `KeyNotFoundException` for
+an unknown name. `Fingerprint` is the SHA-256 of the identity block, for logs and build manifests.
+
+Profile names and source labels are 1 to 64 characters from `a` to `z`, `0` to `9`, `.`, `_`, `-` and `/`, and are
+unique. A bake needs at least one source and 1 to 256 profiles, and `MaxSurfacesPerColumn` at most 255.
+`NavBakeSources` is a mutable builder. `Create` and `Load` snapshot it, so later edits never change a stored identity.
+`Add` takes an exact 32-byte digest, and `AddHashOf` digests content with SHA-256.
+
+The identity covers the engine version, every capture option, the caller's labelled source digests, and each
+profile's name, area filter and every `MoveTuning` field except `WalkSpeed`, `RunSpeed` and `AirMomentum`, which the
+probe overwrites. The identity is canonical, so equal inputs give equal bytes in any insertion order and on any
+architecture. A bake is valid only for the engine version that wrote it.
+
+`Load` validates the expectation as `Create` would and throws `ArgumentException` for an invalid one. It then
+reads the header and identity block and compares them with the identity encoded from the expectation. A stale bake
+is refused there, before any payload byte is read. Only a match reads and checks the payload. The first failing
+check decides the status, in container, identity and payload order, and identity differences are reported in
+engine, options, sources and profiles order. `Detail` names the first difference, such as the engine versions,
+the option field, the missing, extra or changed source label, or the profile and its first differing field.
+`Detail` is developer text and is never shown to players. `Loaded` carries the bake and an empty detail. Every
+other status carries a null bake. Truncated, trailing, non-canonical or damaged bytes return `Corrupt` and never
+throw. Stream errors such as `IOException` propagate. Short reads from decompressing streams are handled. `Load`
+reads the stream to its end, so pass a stream that ends after the bake. A file, a memory stream, or a network stream
+wrapped to the payload length all work. The payload checksum detects accidental damage. It is not tamper
+protection, so ship the bake with the same trust as the client binary.
+
+Bake from the game's own content pipeline with the same physics composition as runtime movement, including the
+movement query view:
+
+```csharp
+using var capture = PhysicsNavBake.Capture(context, options, classify);
+NavBakeSources sources = gameNavigation.BakeSources(); // the game's labelled input digests
+NavBakeProfile[] profiles =
+[
+    new("player", gameTuning.Player, gameAreas.PlayerFilter),
+    new("npc-wide", gameTuning.WideNpc, gameAreas.NpcFilter),
+];
+GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles);
+using (FileStream file = File.Create(outputPath))
+    bake.WriteTo(file);
+```
+
+Load once at startup from the same options, tuning and digests the game would bake with, and branch on the status:
+
+```csharp
+var expected = new NavBakeExpectation(options, gameNavigation.BakeSources(), profiles);
+NavBakeLoadResult result;
+using (FileStream file = File.OpenRead(bakePath))
+    result = GroundNavigationBake.Load(file, expected);
+if (result.Status == NavBakeLoadStatus.Loaded)
+    playerProfile = result.Bake!.GetProfile("player");
+else
+    gameDiagnostics.Developer($"navigation bake refused: {result.Status} {result.Detail}");
+```
+
+Consumer guidance:
+
+- The engine names no paths, profiles, area bits or extension. Write the file as a generated artifact beside the
+  world it was baked from, with an extension such as `.kenav`.
+- Source digests must cover every input a proof reads, not only the colliders: the world documents in a canonical
+  order, collider options, the catalog rows that drive colliders, heights and medium, the ground height and normal
+  providers, the clamp bounds, and a value naming the classifier policy and its tables.
+- Normalise text line endings to LF before digesting, so a Windows checkout with CRLF files digests equal to the
+  machine that baked.
+- Prefer authored inputs to `TileWorldColliders.Hash` when the world holds walk surfaces yawed off a quarter turn,
+  because that hash is not promised equal across x64 and ARM64.
+- Rebake whenever a source input, the capture options, a probed tuning field or the engine pin changes. Keep a game
+  test that loads the shipped bake with the shipped inputs and expects `Loaded`, so CI catches a stale artifact.
+- Any status other than `Loaded` means the bake does not describe this build. The engine never substitutes a fresh
+  build or an analytic route. Disabling routed walk-up and reporting the reason in developer diagnostics is game
+  policy.
+
+The payload carries the baking machine's float decisions. A client on another architecture uses them even where its
+own build would differ in the last bits. Those differences sit inside the bounded proof tolerance, and the live
+movement core still resolves every actual step. A loaded set shares one immutable column instance across its
+profiles, as a fresh build does.
+
+Measured on the dev Mac: a two-layer 20 by 3 cell deck fixture wrote 2,448 bytes and loaded in 0.070 ms. A 48 m by
+48 m flat world at 0.25 m (36,864 columns, one profile) wrote 664,683 bytes and loaded in about 20 to 23 ms,
+allocating 1,958,264 bytes against about 0.85 to 0.96 MB retained. Load allocates the payload buffer, the final
+arrays, per-profile scratch of 7 bytes per cell shared by every profile, and per-layer clearance scratch of 5 bytes
+per cell, about 2 to 2.3 times what it retains. These are single observations, not startup guarantees.
+
 ## Bridge evidence and limits
 
 The real TileWorld bridge covered 11 focused cases through static colliders, `PhysicsNavBake` and the public
@@ -205,7 +344,12 @@ Stored: one layer, 16 node slots, 16 accepted nodes, 84 directed exits,
 ```
 
 The timing covers `BuildProfile` only and is one observation, not a startup or wall-clock guarantee. The
-bridge uses small authored surfaces. Issue [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233) remains
+bridge uses small authored surfaces.
+
+Three bake facts run the same bridge. A rebased world with a deck over water, a one metre door and a no-draw hole
+loads `player` and `wide` profiles equal to a fresh build. A 30 cm collider edit returns `SourcesChanged` naming
+`colliders`. A column centred on a drawn outer tile edge loads exactly as captured, and a miss stays empty after load.
+The bake proof makes no claim about Stair links beyond comparing whatever lists the bridge produces. Issue [#1233](https://github.com/APKiwiOrg/KhaozEngine/issues/1233) remains
 an open adoption prerequisite for steep meshes and filtered ground. Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)
 is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix. A filtered P3 world without
 populated ground statics cannot supply capture ground, and small local physics coordinates or rebasing are
@@ -227,7 +371,7 @@ The public driver surface is:
 ```csharp
 public enum RangeMoveStatus
 {
-    Following, InRange, WaitingForPath, Unreachable, UnsupportedTransition, Suspended,
+    Following, InRange, WaitingForPath, Unreachable, UnsupportedTransition, Suspended, Blocked,
 }
 
 public readonly record struct RangeSteering(Vector2 WorldDirection, RangeMoveStatus Status);
@@ -255,6 +399,9 @@ public static class PlayerPathMovement
     public static MoveCommand Command(in RangeSteering steering, bool run, float cameraYaw);
 }
 ```
+
+`MoveToRange` never returns `Blocked`. That status belongs to the route-free `DirectMoveToRange` described
+below. Both adapters treat every status other than `Following` as idle.
 
 `MoveToRange` copies the supplied `PathFollowConfig` and clamps `AcceptRadius` to at most `0.00001f`,
 including when the supplied value is zero. Its near-ring preflight resolves copies of `MoveState` through the
@@ -408,3 +555,79 @@ misses stay blocked. Issue [#1233](https://github.com/APKiwiOrg/KhaozEngine/issu
 prerequisite for steep meshes and filtered ground. Issue [#1238](https://github.com/APKiwiOrg/KhaozEngine/issues/1238)
 is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix. This package has no full Hollowmere
 proof or fix and makes no consumer adoption or release-tag claim.
+
+## Route-free approach
+
+`DirectMoveToRange` steers a body toward exact shape range without a planner. It shares `MoveToRange`'s exact reach,
+travel bound, closest point and stop ring code, and returns the same `RangeSteering` for `PlayerPathMovement` and
+`NpcGroundMovement`:
+
+```csharp
+public sealed record DirectApproachOptions
+{
+    public DirectApproachOptions(int stallWindowTicks, float stallTravelMetres,
+        int approachWindowTicks, float approachGainMetres);
+    public int StallWindowTicks { get; }
+    public float StallTravelMetres { get; }
+    public int ApproachWindowTicks { get; }
+    public float ApproachGainMetres { get; }
+}
+
+public sealed class DirectMoveToRange
+{
+    public DirectMoveToRange(DirectApproachOptions options);
+    public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target, float range,
+        bool run, bool targetMoves, float dt, GroundMoveContext context);
+    public void Reset();
+}
+```
+
+`DirectApproachOptions` takes a stall window in ticks with a travel distance and an approach window in ticks with a
+reach gain. There are no defaults. Windows are 1 to 65,535 ticks and distances are finite and positive, otherwise
+the constructor throws `ArgumentOutOfRangeException`. A window of N ticks spans N intervals between N + 1 counted
+samples and is first eligible on the (N + 1)th counted tick. When either window shows too little progress the driver
+latches `RangeMoveStatus.Blocked`, which both adapters treat as idle. The sample ring is allocated in the
+constructor, so steady ticks allocate nothing.
+
+Each tick validates like `MoveToRange`, then returns `Suspended` for an airborne or committed body, `InRange` when
+the current body already passes `ReachGeometry.Within`, and `Blocked` while a block is latched. Otherwise it requests
+bounded travel toward the closest horizontal point of the target, preflights the step on a copy through the live
+context, and shrinks it with the same stop ring bisection. Keep range and target shape constant for a walk, and call
+Reset to start a new one.
+
+```csharp
+var approach = new DirectMoveToRange(new DirectApproachOptions(
+    stallWindowTicks: gameApproach.StallTicks, stallTravelMetres: gameApproach.StallMetres,
+    approachWindowTicks: gameApproach.ApproachTicks, approachGainMetres: gameApproach.ApproachMetres));
+
+// Once per simulation tick while the walk is active.
+RangeSteering steering = approach.Tick(
+    in body, in playerTuning, in target, gameTarget.NominalRange,
+    gameTarget.Run, targetMoves: gameTarget.IsBody, dt, gamePlayerGroundContext);
+if (steering.Status == RangeMoveStatus.Blocked)
+    gameTarget.EndWalk(); // game policy, the latch holds until InRange or Reset
+command = PlayerPathMovement.Command(in steering, gameTarget.Run, gameCamera.Yaw);
+```
+
+Differences from a typical game-side walk-up rule:
+
+- Direction uses the closest horizontal point of a box rather than its centre. For capsules and points they are the
+  same. A box approach reaches its near face sooner.
+- The final fraction comes from live bisection against exact reach, not from a minimum fraction, so a short last step
+  cannot stall or overshoot.
+- A step that would leave the ground or start swimming is refused and counts toward the stall window, so a walk off a
+  ledge or into deep water ends `Blocked` instead of falling or swimming.
+- A zero travel bound, such as a rooted body, counts toward neither window, so a rooted body holds without ending its
+  walk. Airborne and committed ticks return `Suspended` and also count toward neither window.
+- `InRange` clears both windows, so a followed body that moves away starts fresh windows.
+- Stall travel is net displacement across the window, not accumulated path length, so pacing in place is blocked.
+- `Blocked` stays latched until `InRange`, `Reset`, or a change of target shape, range or capsule geometry. End the
+  walk on the first `Blocked`.
+- A change of target kind, shape, yaw, range or capsule geometry resets the windows. A change of `targetMoves` clears
+  only the approach window. The driver holds no target identity, so replacing the target with another of the same
+  shape needs `Reset`.
+- Pass `targetMoves` true for any body target, such as a creature or player, and false for static objects and points.
+  A moving target disables the approach window.
+- Call `Tick` exactly once per simulation tick, since the windows count ticks.
+
+The driver has no wall following or local avoidance. It walks straight and reports a stall.

@@ -190,9 +190,13 @@ public class SqliteCatalogResetSchemaVersionTests
         return store;
     }
 
-    /// <summary>Version 3 undone: every row time column it added dropped and the metadata row back at 2.</summary>
+    /// <summary>
+    /// Versions 4 and 3 undone: the text tables and columns, then every row time column, dropped and the
+    /// metadata row back at 2.
+    /// </summary>
     static void TakeBackToVersionTwo(TemporaryCatalogDatabase database)
     {
+        database.Execute(SqliteTextSchemaMigrationTests.UndoVersionFour);
         var undo = new StringBuilder();
         foreach ((string table, string column, _) in SqliteCatalogSchema.VersionThreeColumns)
         {
@@ -203,7 +207,7 @@ public class SqliteCatalogResetSchemaVersionTests
         database.Execute(undo.ToString());
     }
 
-    /// <summary>Versions 3 and 2 undone: the row time columns and the ledger table gone, the metadata row at 1.</summary>
+    /// <summary>Versions 4, 3 and 2 undone: the text, row time and ledger additions gone, the metadata row at 1.</summary>
     static void TakeBackToVersionOne(TemporaryCatalogDatabase database)
     {
         TakeBackToVersionTwo(database);

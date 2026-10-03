@@ -1408,8 +1408,11 @@ will carry. There is ONE path with two id sources and which runs is a property o
 marks are SEEDED from the largest carried id per type, so the first ordinary `Add` after an import does not
 allocate id 1 onto an imported row. Assert the seeding is a no-op for an ordinary publish.
 
-A `Fork` allocates through the plain branch, never carries an id, and never names a family: its copy
-inherits the SOURCE row's family so `KEC0037` stays quiet.
+A `Fork` never carries an id and never names a family. Its copy inherits the SOURCE row's family.
+Correction ([#908](https://github.com/APKiwiOrg/KhaozEngine/issues/908)): this step first shipped the copy on
+the plain branch, which cannot place an id inside the family's blocks. A family copy now allocates within any
+block of that family, and a non-family copy stays on the plain branch. Design section 6.3 holds the policy for
+copies forked before the correction.
 
 Assert that two publishes of the same id-free bundle into two empty databases produce the SAME ids, because
 allocation follows edit ordinal order.

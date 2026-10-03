@@ -3335,6 +3335,20 @@ scene.Draw(crate, transform, Color.White, Material.None, dissolve: fadeTimer, ed
   identity-node or pre-baked asset is byte-identical to before. (`PropLoader.LoadProp` additionally renormalizes
   to the manifest height, so props were already placement-robust; this matters most for `GltfLoader.Load` used
   directly.)
+- Named nodes as attachment sockets: `GltfLoader.LoadNamedNodes(path)` returns an `IReadOnlyList<GltfNamedNode>`
+  holding every logical node with a non-empty name, empties included, in logical-node order. Each
+  `GltfNamedNode(string Name, Matrix4x4 WorldTransform)` carries the node's world matrix exactly as `Load` bakes
+  geometry, so a module, muzzle or exhaust drawn at an authored empty lines up with the loaded hull. Compose the
+  socket with the hull's own draw transform in row-vector order. Unnamed nodes are skipped but still place their
+  named descendants, duplicate names are all returned in order, and an asset with only empties loads.
+
+```csharp
+MeshHandle hull = scene.LoadMesh(GltfLoader.Load("ship_hull.glb"));
+MeshHandle gun = scene.LoadMesh(GltfLoader.Load("module_gun.glb"));
+var sockets = GltfLoader.LoadNamedNodes("ship_hull.glb").ToDictionary(n => n.Name, n => n.WorldTransform);
+scene.Draw(hull, shipWorld, Color.White);
+scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
+```
 - PBR-lite materials: the rigid lit model pass takes an optional tangent-space NORMAL map and a
   ROUGHNESS map alongside the albedo. Load each map with `LoadTexture`, then bind them with `Scene3D.SurfaceMaps`:
   `scene.LoadMesh(mesh, new Scene3D.SurfaceMaps(albedo, normal, roughness))` - any handle may be `default` to fall
@@ -7545,12 +7559,13 @@ limitations, and the full config surface.
 
 ## Body reach and physics-ground profiles (`KhaozEngine.Movement`)
 
-Add the explicit package when a client or server needs body-aware reach, absolute-coordinate ground movement or
-a static-physics navigation profile. It is outside every umbrella and carries no physics backend, input or
+Add the explicit package when a client or server needs body-aware reach, absolute-coordinate ground movement,
+a static-physics navigation profile, a baked profile set loaded without physics, or a route-free approach. It is
+outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.18.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.20.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -7730,12 +7745,95 @@ is resolved by the reconciled `PhysicsColumnProbe` representable-progress fix. S
 rebasing are required for large absolute requests. There is no ground-sampler fallback and no full Hollowmere or
 steep-bank guarantee. The NPC and player driver APIs are documented below.
 
+Profile building allocates no garbage per proof. A warmed penetration query and a warmed edge proof allocate
+zero bytes, and a 4,096-column flat `BuildProfile` allocates 80 bytes per column, down from 58,774. Engine tests
+gate at most 1 KiB per column. Elapsed time is not gated, because the physics query count is unchanged.
+
+### Baked profile sets (`GroundNavigationBake`)
+
+A large world's profiles are too slow to build at client startup. Bake them once in the game's content pipeline,
+ship the file, and load it at startup without a physics world, a ground provider or any proof:
+
+```csharp
+public sealed class GroundNavigationBake
+{
+    public static GroundNavigationBake Create(PhysicsNavBake capture, NavBakeSources sources,
+        IReadOnlyList<NavBakeProfile> profiles);
+    public static NavBakeLoadResult Load(Stream source, NavBakeExpectation expected);
+    public void WriteTo(Stream destination);
+    public ReadOnlySpan<byte> Fingerprint { get; }
+    public IReadOnlyList<string> ProfileNames { get; }
+    public GroundNavigation GetProfile(string name);
+}
+
+public sealed record NavBakeProfile(string Name, MoveTuning Tuning, NavAreaFilter Areas);
+public sealed record NavBakeExpectation(PhysicsNavBakeOptions Options, NavBakeSources Sources,
+    IReadOnlyList<NavBakeProfile> Profiles);
+public sealed record NavBakeLoadResult(NavBakeLoadStatus Status, string Detail, GroundNavigationBake? Bake);
+
+public enum NavBakeLoadStatus
+{
+    Loaded, NotABake, UnsupportedFormat, Corrupt,
+    EngineChanged, OptionsChanged, SourcesChanged, ProfilesChanged,
+}
+```
+
+`NavBakeSources` collects labelled SHA-256 digests with `Add(label, digest)`, `AddHashOf(label, bytes)` and
+`AddHashOf(label, stream)`. Labels and profile names are 1 to 64 characters from `a` to `z`, `0` to `9`, `.`, `_`,
+`-` and `/`. A bake needs at least one source, 1 to 256 profiles and `MaxSurfacesPerColumn` at most 255.
+
+Bake in the content pipeline with the same physics composition as runtime movement, including the movement query
+view:
+
+```csharp
+using var capture = PhysicsNavBake.Capture(context, options, classify);
+NavBakeSources sources = new NavBakeSources()
+    .AddHashOf("world", canonicalWorldBytesWithLfEndings)
+    .AddHashOf("colliders", colliderOptionBytes)
+    .AddHashOf("ground", groundProviderInputBytes)
+    .AddHashOf("classifier", classifierPolicyBytes);
+NavBakeProfile[] profiles = [new("player", playerTuning, playerAreas)];
+GroundNavigationBake bake = GroundNavigationBake.Create(capture, sources, profiles);
+using (FileStream file = File.Create(outputPath))
+    bake.WriteTo(file);
+```
+
+Load at startup from the same options, tuning and digests, and branch on the status:
+
+```csharp
+NavBakeLoadResult result;
+using (FileStream file = File.OpenRead(bakePath))
+    result = GroundNavigationBake.Load(file, new NavBakeExpectation(options, sources, profiles));
+GroundNavigation? playerProfile = result.Status == NavBakeLoadStatus.Loaded
+    ? result.Bake!.GetProfile("player")
+    : null; // game policy, such as disabling routed walk-up and logging result.Detail for developers
+```
+
+`Create` builds each profile through the live capture, so it is exactly the fresh build, and `WriteTo` is
+byte-deterministic. The identity covers the engine version, every capture option, the labelled digests, and each
+profile's name, area filter and every `MoveTuning` field except `WalkSpeed`, `RunSpeed` and `AirMomentum`. It holds
+no architecture-dependent data. `Load` throws `ArgumentException` for an expectation `Create` would refuse, refuses a
+stale bake after the header and identity block without reading the payload, and returns `Corrupt` for truncated,
+trailing, non-canonical or damaged bytes. Stream errors propagate. `Detail` names the first difference and is
+developer text, never shown to players. A loaded profile equals the fresh build as bits and is used like any other
+`GroundNavigation`. The engine never falls back to a fresh build or an analytic route.
+
+The digests must cover every input a proof reads, not only the colliders: the world documents in canonical order,
+collider options, catalog rows that drive colliders, heights and medium, the ground height and normal providers,
+the clamp bounds and the classifier policy. Normalise text to LF before digesting so a CRLF checkout matches.
+Prefer authored inputs to `TileWorldColliders.Hash` for walk surfaces yawed off a quarter turn, since that hash is
+not promised equal across x64 and ARM64. Rebake when any input, option, probed tuning field or the engine pin
+changes, and keep a game test that loads the shipped bake and expects `Loaded`.
+
+On the dev Mac a 36,864-column flat world wrote 664,683 bytes and loaded in about 20 to 23 ms, allocating
+1,958,264 bytes against about 0.85 to 0.96 MB retained. These are single observations, not startup guarantees.
+
 ### Range steering, NPC stepping and client path commands
 
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.18.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.20.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -7745,11 +7843,17 @@ half-height, and a capsule target uses its own half-height. The tick validates a
 `Suspended` takes precedence over `InRange` for an airborne or committed body. `Following` is the only status
 that can carry a nonzero `WorldDirection`.
 `WaitingForPath`, `Unreachable` and `UnsupportedTransition` hold with zero input. A `Hop` waypoint is an
-unsupported transition for this ground driver.
+unsupported transition for this ground driver. `MoveToRange` never returns `Blocked`, which belongs to the
+route-free `DirectMoveToRange` below. Both adapters treat every status other than `Following` as idle.
 
 The exact driver surface is:
 
 ```csharp
+public enum RangeMoveStatus
+{
+    Following, InRange, WaitingForPath, Unreachable, UnsupportedTransition, Suspended, Blocked,
+}
+
 public readonly record struct RangeSteering(Vector2 WorldDirection, RangeMoveStatus Status);
 
 public sealed class MoveToRange
@@ -7921,6 +8025,52 @@ and nonfinite requests become finite idle commands. A nonfinite yaw is encoded a
 direction is clamped to unit length. Player automation emits ordinary client commands, and the authority
 simulates those commands. There is no server-side player following. The game still owns manual cancellation,
 target death, action dispatch and any final authoritative tolerance check.
+
+### Route-free approach (`DirectMoveToRange`)
+
+When a walk-up needs no route, `DirectMoveToRange` approaches exact shape range without a planner. It shares
+`MoveToRange`'s exact reach, travel bound, closest point, stop ring and suspension rules, and returns the same
+`RangeSteering` for `PlayerPathMovement` and `NpcGroundMovement`:
+
+```csharp
+public sealed record DirectApproachOptions
+{
+    public DirectApproachOptions(int stallWindowTicks, float stallTravelMetres,
+        int approachWindowTicks, float approachGainMetres);
+}
+
+public sealed class DirectMoveToRange
+{
+    public DirectMoveToRange(DirectApproachOptions options);
+    public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target, float range,
+        bool run, bool targetMoves, float dt, GroundMoveContext context);
+    public void Reset();
+}
+```
+
+The options have no defaults. Windows are 1 to 65,535 ticks and distances are finite and positive. A window of N
+ticks spans N intervals and is first eligible on the (N + 1)th counted tick. When net horizontal travel across the
+stall window falls below `stallTravelMetres`, or reach distance across the approach window gains less than
+`approachGainMetres` for a static target, the driver latches `RangeMoveStatus.Blocked` until `InRange`, `Reset`, or
+a change of target shape, range or capsule geometry. A step that would leave the ground or start swimming is
+refused and counts as no progress. Airborne, committed and zero-travel ticks count toward neither window. Pass
+`targetMoves` true for body targets, which disables the approach window. Call `Tick` exactly once per simulation
+tick. Keep range and target shape constant for a walk, and call Reset to start a new one.
+
+```csharp
+var approach = new DirectMoveToRange(new DirectApproachOptions(
+    gameApproach.StallTicks, gameApproach.StallMetres, gameApproach.ApproachTicks, gameApproach.ApproachMetres));
+
+// Once per simulation tick while the walk is active.
+RangeSteering steering = approach.Tick(in body, in playerTuning, in target, gameTarget.NominalRange,
+    gameTarget.Run, targetMoves: gameTarget.IsBody, dt, gamePlayerGroundContext);
+if (steering.Status == RangeMoveStatus.Blocked)
+    gameTarget.EndWalk(); // game policy
+command = PlayerPathMovement.Command(in steering, gameTarget.Run, gameCamera.Yaw);
+```
+
+The driver has no wall following or local avoidance. The Movement package README lists its differences from a
+typical game-side walk-up rule.
 
 ---
 
@@ -8298,7 +8448,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.18.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.20.0" />
 ```
 
 ```csharp
@@ -15151,7 +15301,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.18.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.20.0" />
 ```
 
 ```csharp
@@ -15187,7 +15337,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.18.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.20.0" />
 ```
 
 ```csharp
@@ -15429,7 +15579,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.18.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.20.0" />
 ```
 
 ```csharp
@@ -17401,7 +17551,7 @@ await store.InitializeAsync(ContentAuthoringSchemaMode.ValidateOnlyWithoutTypeSy
 ```
 
 For catalog preflight and deploy compatibility checks, read `InMemoryContentAuthoringStore.SchemaVersion`
-as the schema version this engine build targets, currently 3 for both providers. The opened store's
+as the schema version this engine build targets, currently 4 for both providers. The opened store's
 `GetSchemaVersionAsync()` reports the schema it holds. The in-memory store reports the same build target.
 
 Edits go into the ONE open draft, whole or not at all, and ids are allocated at publish rather than at edit:
@@ -17444,7 +17594,7 @@ precheck rather than parsing the JSON separately:
 
 ```csharp
 int declaredFormat = ContentBundleJson.ReadFormatVersion(json);
-if (declaredFormat != ContentBundle.CurrentFormatVersion)
+if (declaredFormat is not ContentBundle.CurrentFormatVersion and not ContentBundle.TextFormatVersion)
 {
     throw new InvalidOperationException($"Unsupported bundle format {declaredFormat}.");
 }
@@ -17455,7 +17605,63 @@ ContentBundle bundle = ContentBundleJson.Read(json);
 `ReadFormatVersion` and `Read` share the same JSONC parsing and format member rules. Both accept comments and
 trailing commas. Both refuse malformed JSON, a nonobject root, a missing version or a version that is not a
 32-bit integer with `ContentAuthoringException`. The precheck returns an unsupported integer for the caller to
-inspect, while `Read` refuses any version other than `ContentBundle.CurrentFormatVersion`.
+inspect, while `Read` refuses any version other than `ContentBundle.CurrentFormatVersion`, the row-only format 1,
+and `ContentBundle.TextFormatVersion`, format 2 with its `text` section.
+
+### Authoring catalog text
+
+`IContentTextAuthoringStore` is the opt-in text companion of `IContentAuthoringStore`, and all three stores
+implement it. It authors per-language display text for a `ContentFieldKind.LocalizedTextKey` marker field of a
+CLIENT-visible type. A string is named by its row's key, the marker field and a language, never by a raw
+localization key, so an add and its display name are one atomic apply:
+
+```csharp
+var text = (IContentTextAuthoringStore)store;
+var key = new ContentKey("iron_sword");
+
+ContentDraft draft = await text.ApplyChangesAsync(
+    new ContentAuthoringChanges(
+        [ContentEdit.Add(itemType, key, fields)],
+        [ContentTextEdit.Set(new ContentTextTarget(itemType, key, "name", "en"), "Iron Sword")]),
+    actor: "admin-endpoint",
+    operatorId: "oid:8f2c",
+    note: "autumn pass",
+    ct);
+
+await store.PublishAsync(
+    new ContentPublishRequest("admin-endpoint", "oid:8f2c", "autumn pass", expectedBaseVersion: draft.BaseVersion),
+    ct);
+```
+
+A Set introduces its language, which then stays declared, and `ContentTextEdit.Remove` makes a string absent so
+the reader falls back. A language tag is ASCII letters, digits and hyphens of 1 to 35 bytes and is lowered to
+its canonical identity, so a new `en-US` publishes as `en-us`. A value is at most 8,192 UTF-8 bytes and a
+derived key at most 192. On a companion store every publish goes through the text commit, which writes one
+`KECT` chunk per declared language, names every language in both manifests and commits rows and text in one
+transaction. `ReadTextSnapshotAsync` reads one exact version's text, `TryDiscardChangesAsync` discards only the
+draft the caller read, `RollbackTextToAsync` restores rows and strings together, and `ExportBundleAsync` writes
+format 2 once a version declares a language. `ImportTextBundleAsync` imports either format and refuses with
+`draft-open` while an open draft holds work. The row-only members refuse with `text-unrepresented` rather than
+drop held text. `KhaozEngine.Catalog.Authoring/README.md` documents the limits, the legacy refusals and every
+reason token.
+
+A client resolves the published text from the manifest it already reads. Each `ManifestLanguageEntry` names one
+language's `KECT` chunk, and the derived key is `ContentTextKey.Derive(typeKey, contentKey, fieldName)`:
+
+```csharp
+var languages = new List<ContentTextIndex>();
+foreach (ManifestLanguageEntry entry in manifest.Languages)
+{
+    ReadOnlyMemory<byte>? file = await pack.GetAsync(entry.TextHash, ct);
+    if (file is { } bytes && ContentTextIndex.TryDecode(bytes.Span, out ContentTextIndex? index, out _))
+    {
+        languages.Add(index!);
+    }
+}
+
+var strings = new ContentStringCatalog(languages, defaultLanguageTag: "en", shippedCatalog: resourceCatalog.TryGet);
+string name = strings.Get(ContentTextKey.Derive("item", "iron_sword", "name"));   // "Iron Sword"
+```
 
 ### Replacing a catalog from its bundle
 
@@ -17685,7 +17891,9 @@ against the two hashes the version row records, and a manifest digest covers eve
 comparison pins the whole closure. A second rebuild into the same store writes no object at all. Rows are
 rehydrated through the CALLER's registry, so a schema, `ChunkSlots` or visibility change since the publish
 refuses with `server-manifest-mismatch` or `client-manifest-mismatch` rather than filing a pack no version
-record describes.
+record describes. On a text companion store the rebuild also regenerates the version's own `KECT` chunks and
+compares each recorded hash before writing, refusing with `text-chunk-mismatch`, `text-values-invalid` or
+`text-provenance-unknown`.
 
 ### Upgrading an existing catalog (19.11.0)
 
@@ -17699,10 +17907,13 @@ Migration history is its own ledger, the `catalog_content_upgrade` table added b
 An engine package version does not say which upgrades ran, and neither does a published version number. An
 `applied` row commits inside the publish transaction, so a version and its history land together or not at
 all. Schema version 3 adds a row creation time to every catalog table and an update time to every table whose rows
-change, through migration `catalog-v3-row-timestamps` on both providers. A SQLite or SQL Server catalog at schema
-version 1 or 2 migrates in place, in one open, when opened under `AutoCreate`, and `ValidateOnly` refuses it by
-naming that migration, so a hosted `ValidateOnly` catalog runs its schema migration step before the server starts.
-An older engine refuses a version 3 catalog. Each provider README lists the columns and the exact-or-NULL
+change, through migration `catalog-v3-row-timestamps` on both providers. Schema version 4 adds the four text
+authoring tables, a nullable audit language and a nullable per-version text completeness, through migration
+`catalog-v4-text-authoring`. A SQLite or SQL Server catalog at schema version 1, 2 or 3 migrates in place, in one
+open, when opened under `AutoCreate`, and `ValidateOnly` refuses it by naming `catalog-v4-text-authoring`, so a
+hosted `ValidateOnly` catalog runs its schema migration step before the server starts. An older engine refuses a
+version 4 catalog. A legacy version's text completeness stays NULL and reads as text free only on a read-only
+proof that its manifests named no language. Each provider README lists the columns and the exact-or-NULL
 backfill.
 
 ```csharp
@@ -19685,7 +19896,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.18.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.20.0" />
 </ItemGroup>
 ```
 

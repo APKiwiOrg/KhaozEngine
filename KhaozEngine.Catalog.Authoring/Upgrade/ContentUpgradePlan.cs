@@ -30,24 +30,54 @@ public sealed class ContentUpgradePlan
 {
     static readonly string[] NoLines = [];
     static readonly ContentEdit[] NoEdits = [];
+    static readonly ContentTextEdit[] NoTextEdits = [];
 
     ContentUpgradePlan(
         ContentUpgradePlanKind kind,
         IReadOnlyList<ContentEdit> edits,
         IReadOnlyList<string> changeLines,
         string reason)
+        : this(kind, edits, NoTextEdits, changeLines, reason, null)
+    {
+    }
+
+    ContentUpgradePlan(
+        ContentUpgradePlanKind kind,
+        IReadOnlyList<ContentEdit> edits,
+        IReadOnlyList<ContentTextEdit> textEdits,
+        IReadOnlyList<string> changeLines,
+        string reason,
+        ContentBundleTextState? baselineText)
     {
         Kind = kind;
         Edits = edits;
+        TextEdits = textEdits;
         ChangeLines = changeLines;
         Reason = reason;
+        BaselineText = baselineText;
     }
 
     /// <summary>Which shape this is.</summary>
     public ContentUpgradePlanKind Kind { get; }
 
-    /// <summary>The edits to publish, and empty for the other two shapes.</summary>
+    /// <summary>The row edits to publish, and empty for the other two shapes and for a text-only change set.</summary>
     public IReadOnlyList<ContentEdit> Edits { get; }
+
+    /// <summary>
+    /// The text intents to publish, one per canonical target, and empty for a row-only change set and the other
+    /// two shapes. A plan carrying any is applied through the text authoring companion, and its proofs compare
+    /// the draft's text intents and language introductions as well as its rows.
+    /// </summary>
+    public IReadOnlyList<ContentTextEdit> TextEdits { get; }
+
+    /// <summary>Whether this change set carries text, which only a store with the text companion can apply.</summary>
+    internal bool CarriesText => TextEdits.Count > 0;
+
+    /// <summary>
+    /// The text the baseline bundle carried when the run planned this change set, which decides the languages
+    /// its Sets introduce. Null until the run binds the plan to the baseline it was computed against.
+    /// </summary>
+    internal ContentBundleTextState? BaselineText { get; }
 
     /// <summary>One line per change, which is what a preview prints and what the report carries.</summary>
     public IReadOnlyList<string> ChangeLines { get; }
@@ -82,6 +112,48 @@ public sealed class ContentUpgradePlan
             Copy(changeLines, nameof(changeLines)),
             string.Empty);
     }
+
+    /// <summary>
+    /// A COMPLETE change set to publish: row edits and text intents together, applied in one batch and published
+    /// as one version. A text-only change set is real authored work and publishes like any other. A change set
+    /// with neither rows nor text is an ArgumentException, for the same reason an empty row list is.
+    /// <para>
+    /// The planner submits intents only. A Set introduces its language when the baseline does not declare it,
+    /// and there is no language-only command, so a change set cannot declare a language without a value.
+    /// </para>
+    /// </summary>
+    /// <param name="changes">The row edits and text intents, in the order they are applied to the draft.</param>
+    /// <param name="changeLines">One readable line per change, which an operator reviews before an apply.</param>
+    /// <exception cref="ArgumentNullException">An argument is null, or an entry in one is.</exception>
+    /// <exception cref="ArgumentException"><paramref name="changes"/> carries neither a row edit nor a text intent.</exception>
+    public static ContentUpgradePlan Changes(
+        ContentAuthoringChanges changes,
+        IReadOnlyList<string> changeLines)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+        if (changes.RowEdits.Count == 0 && changes.TextEdits.Count == 0)
+        {
+            throw new ArgumentException(
+                "A plan that changes nothing is AlreadySatisfied or Refused, never an empty change set.",
+                nameof(changes));
+        }
+
+        return new ContentUpgradePlan(
+            ContentUpgradePlanKind.Changes,
+            Copy(changes.RowEdits, nameof(changes)),
+            Copy(changes.TextEdits, nameof(changes)),
+            Copy(changeLines, nameof(changeLines)),
+            string.Empty,
+            null);
+    }
+
+    /// <summary>The same change set bound to the text its baseline carried, which its proofs compare against.</summary>
+    /// <param name="baselineText">The baseline bundle's complete text.</param>
+    internal ContentUpgradePlan Against(ContentBundleTextState baselineText)
+        => new(Kind, Edits, TextEdits, ChangeLines, Reason, baselineText);
+
+    /// <summary>The change set as the companion applies it.</summary>
+    internal ContentAuthoringChanges ToChanges() => new(Edits, TextEdits);
 
     /// <summary>
     /// The catalog already carries the content. The runner records the id as

@@ -14,13 +14,15 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// <para>
 /// <b>Step 10 is one explicit transaction and it is the only commit point.</b> Inside it, in order: confirm
 /// the version number, insert the version row, close and insert every temporal row, append every remap rule,
-/// insert every chunk row one per side, insert every audit row, delete the draft, and move the active
-/// pointer LAST. A reader that sees the new active version is guaranteed to see everything of it.
+/// insert every chunk row one per side, close and insert every text revision, record every language, insert
+/// every audit row, delete the draft, and move the active pointer LAST. A reader that sees the new active
+/// version is guaranteed to see everything of it. The row-only and the text route share that core and
+/// differ only in the text they stage, so every version is recorded text complete.
 /// </para>
 /// <para>
-/// <b>Every row, field row, close, rule, chunk and draft rebase this commit writes carries the version's own
-/// publish time</b>, the value <c>catalog_version.published_at_utc</c> holds, because each is part of the one
-/// change that version is. It is also what the version 3 migration fills a legacy row, field, chunk or rule
+/// <b>Every row, field row, close, rule, chunk, text revision, language record and draft rebase this commit
+/// writes carries the version's own publish time</b>, the value <c>catalog_version.published_at_utc</c>
+/// holds, because each is part of the one change that version is. It is also what the version 3 migration fills a legacy row, field, chunk or rule
 /// with. The active pointer, the audit rows and the applied upgrade row read the clock as they always have.
 /// </para>
 /// <para>
@@ -63,6 +65,10 @@ public sealed partial class SqliteContentAuthoringStore
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(request);
 
+        // The row half of a text plan is refused before any transaction rather than committed without its
+        // text.
+        ContentTextCompatibility.RequireRowOnlyPlan(plan, nameof(CommitPublishAsync));
+
         if (!plan.IsValid)
         {
             throw new ContentAuthoringException(
@@ -76,9 +82,30 @@ public sealed partial class SqliteContentAuthoringStore
 
         using SqliteStoreLease lease = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteTransaction transaction = _connection.BeginTransaction();
+        IReadOnlyList<RemapRule> held = await ConfirmNumberAsync(plan, transaction, cancellationToken)
+            .ConfigureAwait(false);
 
-        // 1. CONFIRM the number. The highest published version is re-read HERE, inside the transaction, so a
-        // publish that landed while this plan was being prepared is caught rather than overwritten.
+        // The row-only route carries the base version's text forward untouched, and refuses when the draft or
+        // the frozen rows need text it cannot carry, or the base's text is unknown.
+        ContentTextCommit text = await StageRowOnlyTextAsync(
+            plan, nameof(CommitPublishAsync), transaction, cancellationToken).ConfigureAwait(false);
+        ContentVersionRecord record = await CommitCoreAsync(
+            plan, request, pointers, text, held, transaction, cancellationToken).ConfigureAwait(false);
+        transaction.Commit();
+        return record;
+    }
+
+    /// <summary>
+    /// Step 1 of a commit: CONFIRM the number rather than trusting it, and the rule list the plan extends. The
+    /// highest published version is re-read HERE, inside the transaction, so a publish that landed while this
+    /// plan was being prepared is caught rather than overwritten.
+    /// </summary>
+    /// <returns>The rules the store holds, which the commit appends above.</returns>
+    async Task<IReadOnlyList<RemapRule>> ConfirmNumberAsync(
+        ContentPublishPlan plan,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
+    {
         int highest = (int)await ReadLongAsync(
             "SELECT COALESCE(MAX(version_number), 0) FROM catalog_version;", transaction, cancellationToken)
             .ConfigureAwait(false);
@@ -90,11 +117,27 @@ public sealed partial class SqliteContentAuthoringStore
 
         IReadOnlyList<RemapRule> held = await ReadRulesAsync(transaction, cancellationToken).ConfigureAwait(false);
         ContentRulePrefix.Require(held, plan);
+        return held;
+    }
 
+    /// <summary>
+    /// Steps 2 to 9 of a confirmed commit, shared by the row-only and the text route, which differ only in the
+    /// text they stage. The caller owns the transaction and commits it.
+    /// </summary>
+    async Task<ContentVersionRecord> CommitCoreAsync(
+        ContentPublishPlan plan,
+        ContentPublishRequest request,
+        IPackVersionPointerStore? pointers,
+        ContentTextCommit text,
+        IReadOnlyList<RemapRule> held,
+        SqliteTransaction transaction,
+        CancellationToken cancellationToken)
+    {
         ContentPublishBaseline before = await ReadBaselineAsync(transaction, cancellationToken)
             .ConfigureAwait(false);
 
-        // 2. The version row, which every other insert below has a foreign key to.
+        // 2. The version row, which every other insert below has a foreign key to. It is recorded text
+        // complete, a version publishing no language included.
         var record = new ContentVersionRecord(
             plan.VersionNumber,
             plan.ServerManifestHash,
@@ -135,8 +178,12 @@ public sealed partial class SqliteContentAuthoringStore
                 .ConfigureAwait(false);
         }
 
-        // 6. Every audit row, field level, against the version the rows are leaving.
+        // 5b. Every text revision closed and inserted, and the version's complete language record.
+        await WriteTextAsync(plan.VersionNumber, text, at, transaction, cancellationToken).ConfigureAwait(false);
+
+        // 6. Every audit row, field level, rows then text, against the version the rows are leaving.
         await AppendPublishAuditAsync(before, plan, request, transaction, cancellationToken).ConfigureAwait(false);
+        await AppendTextPublishAuditAsync(text, plan, request, transaction, cancellationToken).ConfigureAwait(false);
 
         // 6b. The applied ledger row, when this publish carries an upgrade. It is INSIDE this transaction, so
         // the version and the history entry naming the upgrade that produced it land together, and an id the
@@ -144,9 +191,10 @@ public sealed partial class SqliteContentAuthoringStore
         await InsertAppliedUpgradeAsync(transaction, request, plan.VersionNumber, cancellationToken)
             .ConfigureAwait(false);
 
-        // 7. The draft, scoped to the edits this plan FROZE. The freeze is what makes that the whole draft,
-        // so anything else here survives rather than being deleted unpublished.
-        await DeleteFrozenEditsAsync(plan, at, transaction, cancellationToken).ConfigureAwait(false);
+        // 7. The draft, scoped to the rows and text this plan FROZE. The freeze is what makes that the whole
+        // draft, so anything else here survives rather than being deleted unpublished.
+        await DeleteFrozenEditsAsync(plan, text.PublishedText, at, transaction, cancellationToken)
+            .ConfigureAwait(false);
 
         // 8. The active pointer, LAST. It moves for the NEXT boot: a running server keeps serving the version
         // it loaded.
@@ -172,7 +220,6 @@ public sealed partial class SqliteContentAuthoringStore
                 .ConfigureAwait(false);
         }
 
-        transaction.Commit();
         return record;
     }
 
@@ -246,6 +293,7 @@ public sealed partial class SqliteContentAuthoringStore
             from = (int)await ReadLongAsync(
                 "SELECT active_version FROM catalog_metadata WHERE metadata_key = 1;", null, cancellationToken)
                 .ConfigureAwait(false);
+            await RequireRowOnlyRollbackAsync(from, targetVersion, null, cancellationToken).ConfigureAwait(false);
             plan = ContentRollback.Prepare(
                 targetVersion,
                 await ReadRevisionsAsync(default, null, targetVersion, null, cancellationToken).ConfigureAwait(false),
@@ -260,11 +308,28 @@ public sealed partial class SqliteContentAuthoringStore
             throw ContentRollback.Refusal(plan);
         }
 
-        ContentDraft draft = await ApplyEditsAsync(plan.Edits, actor, operatorId, note, cancellationToken)
-            .ConfigureAwait(false);
+        // ONE transaction for the re-check, the edits and the audit. The plan was computed under the first
+        // lease, and a publish landing in between could have moved the active version or given it text, so
+        // both are confirmed again here, where the rollback edits are applied, rather than trusted.
+        for (int i = 0; i < plan.Edits.Count; i++)
+        {
+            CheckAgainstSchema(plan.Edits[i]);
+        }
 
         using SqliteStoreLease after = await _connection.EnterAsync(cancellationToken).ConfigureAwait(false);
         using SqliteTransaction transaction = _connection.BeginTransaction();
+        int active = (int)await ReadLongAsync(
+            "SELECT active_version FROM catalog_metadata WHERE metadata_key = 1;", transaction, cancellationToken)
+            .ConfigureAwait(false);
+        if (active != from)
+        {
+            throw Moved(FormattableString.Invariant(
+                $"The rollback to version {targetVersion} was planned against version {from} and the store now stands at {active}. Nothing was written, and the rollback is planned again from the current version."));
+        }
+
+        await RequireRowOnlyRollbackAsync(from, targetVersion, transaction, cancellationToken).ConfigureAwait(false);
+        ContentDraft draft = await ApplyEditsInAsync(plan.Edits, actor, operatorId, note, transaction, cancellationToken)
+            .ConfigureAwait(false);
         await AppendAuditAsync(
             transaction,
             ContentAuditActions.Rollback,
@@ -300,10 +365,8 @@ public sealed partial class SqliteContentAuthoringStore
             _importRules ?? await ReadRulesAsync(transaction, cancellationToken).ConfigureAwait(false),
             await ReadChunksAsync(active, transaction, cancellationToken).ConfigureAwait(false),
 
-            // No table in spec 4.4 holds a version's text chunk list, and nothing in phase 1 produces one, so
-            // the carry forward has nothing to carry. When text chunks land, either the schema gains a table
-            // or the base version's manifest becomes the source.
-            [],
+            // The base version's recorded text chunks, in manifest order, which a row-only publish carries.
+            await ReadManifestLanguagesAsync(active, transaction, cancellationToken).ConfigureAwait(false),
             record.Count == 0 ? 0 : record[0].MinimumServerBuild,
             record.Count == 0 ? 0 : record[0].MinimumClientBuild);
     }
@@ -382,8 +445,9 @@ public sealed partial class SqliteContentAuthoringStore
             """
             INSERT INTO catalog_version(
                 version_number, server_manifest_hash, client_manifest_hash, minimum_server_build,
-                minimum_client_build, format_generation, base_version, published_by, note, published_at_utc)
-            VALUES ($version, $server, $client, $minServer, $minClient, $generation, $base, $by, $note, $at);
+                minimum_client_build, format_generation, base_version, published_by, note, published_at_utc,
+                text_snapshot_complete)
+            VALUES ($version, $server, $client, $minServer, $minClient, $generation, $base, $by, $note, $at, 1);
             """,
             transaction);
         Bind(command, "$version", (long)record.VersionNumber);

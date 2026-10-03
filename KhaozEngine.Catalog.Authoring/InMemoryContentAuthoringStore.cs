@@ -218,49 +218,58 @@ public sealed partial class InMemoryContentAuthoringStore : IContentAuthoringSto
 
         lock (_gate)
         {
-            // Spec 6.2's refusal, FIRST: a draft a publish is holding takes no edit at all, so the schema
-            // sweep below never runs against a change set the caller is not allowed to touch.
-            RequireNotFrozen(nameof(ApplyEditsAsync));
-
-            // Every edit is checked against the schema BEFORE any of them is applied, and the change set is
-            // built on a COPY, so one refusal leaves the open draft exactly as it was. A batch save from a
-            // grid lands whole or not at all.
-            for (int i = 0; i < edits.Count; i++)
-            {
-                CheckAgainstSchema(edits[i]);
-            }
-
-            ContentDraft open = _draft
-                ?? new ContentDraft(ContentDraftTextState.Empty, _activeVersion, actor, _clock(), note, new ContentChangeSet());
-            var working = new ContentChangeSet(open.Changes.Edits);
-            for (int i = 0; i < edits.Count; i++)
-            {
-                working.Apply(edits[i]);
-            }
-
-            // The audit entries are RENDERED before the draft moves and APPENDED after it, which is the whole
-            // of the audit rule on a store with no transaction to lean on: the append is in the edit's
-            // transaction rather than best effort, so an audit write that fails takes the edit down with it.
-            // A content edit with no audit row is indistinguishable from no edit.
-            var audited = new List<ContentAuditEntry>(edits.Count);
-            for (int i = 0; i < edits.Count; i++)
-            {
-                _audit.StageEdit(audited, edits[i], actor, operatorId, note);
-            }
-
-            // The held text and introductions travel with the draft untouched: a row-only batch never
-            // rebuilds a draft from its row intents alone.
-            _draft = new ContentDraft(
-                open.TextState ?? ContentDraftTextState.Empty,
-                open.BaseVersion,
-                open.OpenedBy,
-                open.OpenedAtUtc,
-                note.Length == 0 ? open.Note : note,
-                working);
-            _audit.Commit(audited);
-
-            return Task.FromResult(Protected(_draft));
+            return Task.FromResult(ApplyEditsLocked(edits, actor, operatorId, note));
         }
+    }
+
+    /// <summary>
+    /// The body of <see cref="ApplyEditsAsync"/>, for a caller that already holds the gate, which is what lets
+    /// a rollback re-check its versions and apply its edits in one step.
+    /// </summary>
+    ContentDraft ApplyEditsLocked(IReadOnlyList<ContentEdit> edits, string actor, string operatorId, string note)
+    {
+        // Spec 6.2's refusal, FIRST: a draft a publish is holding takes no edit at all, so the schema
+        // sweep below never runs against a change set the caller is not allowed to touch.
+        RequireNotFrozen(nameof(ApplyEditsAsync));
+
+        // Every edit is checked against the schema BEFORE any of them is applied, and the change set is
+        // built on a COPY, so one refusal leaves the open draft exactly as it was. A batch save from a
+        // grid lands whole or not at all.
+        for (int i = 0; i < edits.Count; i++)
+        {
+            CheckAgainstSchema(edits[i]);
+        }
+
+        ContentDraft open = _draft
+            ?? new ContentDraft(ContentDraftTextState.Empty, _activeVersion, actor, _clock(), note, new ContentChangeSet());
+        var working = new ContentChangeSet(open.Changes.Edits);
+        for (int i = 0; i < edits.Count; i++)
+        {
+            working.Apply(edits[i]);
+        }
+
+        // The audit entries are RENDERED before the draft moves and APPENDED after it, which is the whole
+        // of the audit rule on a store with no transaction to lean on: the append is in the edit's
+        // transaction rather than best effort, so an audit write that fails takes the edit down with it.
+        // A content edit with no audit row is indistinguishable from no edit.
+        var audited = new List<ContentAuditEntry>(edits.Count);
+        for (int i = 0; i < edits.Count; i++)
+        {
+            _audit.StageEdit(audited, edits[i], actor, operatorId, note);
+        }
+
+        // The held text and introductions travel with the draft untouched: a row-only batch never
+        // rebuilds a draft from its row intents alone.
+        _draft = new ContentDraft(
+            open.TextState ?? ContentDraftTextState.Empty,
+            open.BaseVersion,
+            open.OpenedBy,
+            open.OpenedAtUtc,
+            note.Length == 0 ? open.Note : note,
+            working);
+        _audit.Commit(audited);
+
+        return Protected(_draft);
     }
 
     /// <inheritdoc />

@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.Sqlite;
+using KhaozEngine.Tests.Catalog.Publish;
 using KhaozEngine.Tests.Catalog.Sqlite;
 using Xunit;
 using static KhaozEngine.Tests.Catalog.Authoring.TextAuthoringFixtures;
@@ -97,7 +98,7 @@ public sealed class TextLegacyCompatibilityTests
 
         var freeze = await Assert.ThrowsAsync<ContentAuthoringException>(() => store.FreezeDraftAsync(0));
         Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, freeze.Reason);
-        var publish = await Assert.ThrowsAsync<ContentAuthoringException>(() => store.PublishAsync(Request(0)));
+        var publish = await Assert.ThrowsAsync<ContentAuthoringException>(() => LegacyPublishAsync(store, files.Pack(), Request(0)));
         Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, publish.Reason);
         Assert.Equal("Sword", (await store.GetOpenDraftAsync())!.TextState!.Edits.Single().Value);
         Assert.False((await store.GetOpenDraftAsync())!.IsFrozen);
@@ -133,7 +134,7 @@ public sealed class TextLegacyCompatibilityTests
         Assert.False(await text.TryDiscardChangesAsync(old, Actor, Operator));
         await Assert.ThrowsAsync<ContentAuthoringException>(() => store.DiscardDraftAsync(Actor, Operator));
         await Assert.ThrowsAsync<ContentAuthoringException>(() => store.FreezeDraftAsync(1));
-        await Assert.ThrowsAsync<ContentAuthoringException>(() => store.PublishAsync(Request(1)));
+        await Assert.ThrowsAsync<ContentAuthoringException>(() => LegacyPublishAsync(store, files.Pack(), Request(1)));
         Assert.False(ContentUpgradeDraftMatch.IsKnownWork(held, Array.Empty<ContentEdit>()));
 
         ContentDraft standing = (await store.GetOpenDraftAsync())!;
@@ -226,7 +227,7 @@ public sealed class TextLegacyCompatibilityTests
             Item, id, Sword, new ContentKey("old_sword"), LegacyField, Array.Empty<ContentFieldEdit>());
         await store.ApplyEditsAsync(new[] { fork }, Actor, Operator, "fork");
 
-        var refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => store.PublishAsync(Request(1)));
+        var refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => LegacyPublishAsync(store, files.Pack(), Request(1)));
         Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, refused.Reason);
         Assert.Equal(1, await store.GetActiveVersionAsync());
 
@@ -288,6 +289,18 @@ public sealed class TextLegacyCompatibilityTests
         Assert.Contains(await store.ListAuditAsync(default, 0, 0, 500), e => e.Action == ContentAuditActions.Rollback);
         await store.PublishAsync(Request(2));
         Assert.Equal(3, await store.GetActiveVersionAsync());
+    }
+
+    /// <summary>
+    /// A publish through the ROW-ONLY seam: the legacy pipeline over a view of the store that exposes no text
+    /// companion, which is the route an old wrapper takes. The store's own publish dispatches through the
+    /// companion and is covered by the text publish suites.
+    /// </summary>
+    static Task<ContentPublishResult> LegacyPublishAsync(
+        InMemoryContentAuthoringStore store, IPackStore pack, ContentPublishRequest request)
+    {
+        var view = new RowOnlyStoreView(store);
+        return new ContentPublishCommit(view, pack, new ContentPublisher(view, store, TextRegistry())).PublishAsync(request);
     }
 
     [Fact]

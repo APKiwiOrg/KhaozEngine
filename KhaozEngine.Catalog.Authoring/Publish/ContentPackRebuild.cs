@@ -53,7 +53,7 @@ public sealed record ContentPackRebuildResult(
 /// </para>
 /// <para>
 /// <b>It calls no publishing or editing member of the authoring store.</b> It reads rows, the publish
-/// baseline and one version row, so a rebuild is safe to run against a live store with a draft open. It is
+/// baseline, one version row and that version's text, so a rebuild is safe to run against a live store with a draft open. It is
 /// not strictly write free: the one side effect it can have is the baseline read clearing a STALE freeze
 /// marker left by a publish that died, which is the recovery that read always performs.
 /// </para>
@@ -77,29 +77,28 @@ public static class ContentPackRebuild
     public const string RefusedCandidateInvalid = "rebuild-candidate-invalid";
 
     /// <summary>
-    /// The version's manifests would name text chunks, which a rebuild cannot reproduce, because no store
-    /// keeps a VERSION's text. It refuses BEFORE any write rather than leaving a pack whose manifest names an
-    /// object the root does not hold.
-    /// <para>
-    /// The two manifest digests cannot stand in for this one. Both rebuilt manifests are built from the same
-    /// language list the recorded ones were, so they name the same text chunk hashes either way and match, and
-    /// the rebuild would report success and write the pointer over a pack a boot then fails to fetch a text
-    /// chunk out of.
-    /// </para>
-    /// <para>
-    /// Every provider publishes an empty language list today, so no rebuild of a version any of them holds can
-    /// reach this. Publishing text at all is
-    /// https://github.com/APKiwiOrg/KhaozEngine/issues/1000, and rebuilding it belongs with that work: a
-    /// version scoped text read has to exist on the seam before there is anything to encode a text chunk from.
-    /// </para>
+    /// The store implements no <see cref="IContentTextAuthoringStore"/>, so it cannot read version N's text,
+    /// and its baseline names languages, so the version's manifests may name text chunks a rebuild cannot
+    /// reproduce. It refuses BEFORE any write rather than leaving a pack whose manifest names an object the
+    /// root does not hold. A store without the companion whose baseline names no language rebuilds as before,
+    /// and the two manifest digests then prove the version named no text.
     /// </summary>
     public const string RefusedTextChunks = "text-chunks-unsupported";
+
+    /// <summary>A regenerated text chunk or the language list disagrees with the version's recorded mapping.</summary>
+    public const string RefusedTextMismatch = "text-chunk-mismatch";
+
+    /// <summary>The version's text provenance is unknown and no read-only proof shows it held no text.</summary>
+    public const string RefusedTextProvenance = "text-provenance-unknown";
+
+    /// <summary>The version's values cannot be regenerated: an ineligible marker, a missing row or a bound.</summary>
+    public const string RefusedTextValues = "text-values-invalid";
 
     /// <summary>
     /// Reads the version, builds its pack, verifies both digests, and writes.
     /// <para>
-    /// The write order is step 9's, deliberately: every chunk, then the rule chunk, then the server manifest,
-    /// then the client manifest, then the version POINTER last. A crash part way through therefore leaves
+    /// The write order is step 9's, deliberately: every chunk, then every text chunk, then the rule chunk, then
+    /// the server manifest, then the client manifest, then the version POINTER last. A crash part way through therefore leaves
     /// inert content-addressed files and no pointer, which reads as a listing failure and SKIPS the next
     /// sweep rather than authorising it to delete on a partial view.
     /// </para>
@@ -109,11 +108,14 @@ public static class ContentPackRebuild
     /// read always performs.
     /// </para>
     /// <para>
-    /// <b>A version whose manifests would name TEXT chunks is refused before the build and before any write</b>,
-    /// with <see cref="RefusedTextChunks"/>. The write below puts chunks, the rule chunk, both manifests and
-    /// the pointer, and never a text chunk, so a rebuild that proceeded would file a manifest naming an object
-    /// the root does not hold. The languages come from the ACTIVE version's baseline, because no store member
-    /// returns version N's, and that is the same empty list at every version today.
+    /// <b>Text is version N's own.</b> Through the companion the rebuild reads
+    /// <see cref="IContentTextAuthoringStore.ReadTextSnapshotAsync"/> for the exact version, regenerates every
+    /// text chunk in its recorded wire spelling, compares each hash and the language list with the recorded
+    /// mapping, then verifies both manifest hashes, all before writing anything. A disagreement is
+    /// <see cref="RefusedTextMismatch"/>, values that cannot be regenerated are <see cref="RefusedTextValues"/>,
+    /// and unknown legacy provenance without a read-only empty proof is <see cref="RefusedTextProvenance"/>. A
+    /// store without the companion is refused with <see cref="RefusedTextChunks"/> when its baseline names any
+    /// language.
     /// </para>
     /// </summary>
     /// <param name="store">The authoring store the version is read from, through read members only.</param>
@@ -159,17 +161,19 @@ public static class ContentPackRebuild
         ContentRebuildSnapshot snapshot = await ContentRebuildSnapshot
             .ReadAsync(store, registry, versionNumber, cancellationToken).ConfigureAwait(false);
 
-        // Ahead of the build, because a rebuild that cannot reproduce the version's text cannot reproduce the
-        // version, and the digest comparison below would pass a pack with a text chunk missing out of it.
-        if (ContentRebuildVerification.CheckText(versionNumber, snapshot.Languages) is ContentRebuildRefusal text)
+        // Ahead of the build: version N's own text, every chunk regenerated in its recorded spelling and
+        // compared with the recorded mapping, or the capability refusal of a store that cannot read it.
+        ContentRebuildTextResult text = await ContentRebuildText
+            .ReadAsync(store, registry, versionNumber, snapshot, cancellationToken).ConfigureAwait(false);
+        if (text.Refusal is ContentRebuildRefusal textRefusal)
         {
-            return new ContentPackRebuildResult(false, versionNumber, 0, 0, 0, text.Reason, text.Detail);
+            return new ContentPackRebuildResult(false, versionNumber, 0, 0, 0, textRefusal.Reason, textRefusal.Detail);
         }
 
         ContentRebuiltPack pack;
         try
         {
-            pack = Build(registry, record, snapshot, rowEncoder ?? ContentSideRowEncoder.Default);
+            pack = Build(registry, record, snapshot, text.Languages, rowEncoder ?? ContentSideRowEncoder.Default);
         }
         catch (ContentAuthoringException refused)
         {
@@ -180,14 +184,29 @@ public static class ContentPackRebuild
                 false, versionNumber, 0, 0, 0, RefusedCandidateInvalid, refused.Message);
         }
 
-        if (ContentRebuildVerification.Check(record, pack.Server, pack.Client) is ContentRebuildRefusal refusal)
+        ContentRebuildRefusal? refusal = ContentRebuildVerification.Check(record, pack.Server, pack.Client);
+
+        // Unknown legacy provenance is empty only on a read-only proof: the no-language manifests just built
+        // digest to the recorded hashes, or verified stored manifests name no language. A stored proof whose
+        // rows still disagree falls through to the manifest refusal below.
+        if (text.ProvenanceUnknown
+            && refusal is not null
+            && !await ContentRebuildText.StoredManifestsProveEmptyAsync(record, target, store.PackStore, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            ContentRebuildRefusal unknown = ContentRebuildText.Unknown(versionNumber);
+            return new ContentPackRebuildResult(
+                false, versionNumber, pack.Chunks.Count, 0, 0, unknown.Reason, unknown.Detail);
+        }
+
+        if (refusal is ContentRebuildRefusal mismatch)
         {
             return new ContentPackRebuildResult(
-                false, versionNumber, pack.Chunks.Count, 0, 0, refusal.Reason, refusal.Detail);
+                false, versionNumber, pack.Chunks.Count, 0, 0, mismatch.Reason, mismatch.Detail);
         }
 
         (int objects, long bytes) = await WriteAsync(
-            target, pointerStore, record, pack, snapshot.Rules, cancellationToken).ConfigureAwait(false);
+            target, pointerStore, record, pack, snapshot.Rules, text.Chunks, cancellationToken).ConfigureAwait(false);
 
         return new ContentPackRebuildResult(
             true, versionNumber, pack.Chunks.Count, objects, bytes, null, null);
@@ -202,6 +221,7 @@ public static class ContentPackRebuild
         ContentTypeRegistry registry,
         ContentVersionRecord record,
         ContentRebuildSnapshot snapshot,
+        IReadOnlyList<ManifestLanguageEntry> languages,
         IContentRowSideEncoder rowEncoder)
     {
         var findings = new List<ContentFinding>();
@@ -225,10 +245,10 @@ public static class ContentPackRebuild
 
         string ruleHash = ContentRuleChunkCodec.Hash(snapshot.Rules);
         ContentManifest server = ContentManifestBuilder.Build(
-            ContentManifestSide.Server, registry, chunks, snapshot.Languages, record.VersionNumber,
+            ContentManifestSide.Server, registry, chunks, languages, record.VersionNumber,
             record.MinimumServerBuild, record.MinimumClientBuild, ruleHash);
         ContentManifest client = ContentManifestBuilder.Build(
-            ContentManifestSide.Client, registry, chunks, snapshot.Languages, record.VersionNumber,
+            ContentManifestSide.Client, registry, chunks, languages, record.VersionNumber,
             record.MinimumServerBuild, record.MinimumClientBuild, ruleHash);
 
         return new ContentRebuiltPack(chunks, ruleHash, server, client);
@@ -239,11 +259,9 @@ public static class ContentPackRebuild
     /// RECORD's hashes rather than the rebuilt ones, which the verification has just proved are the same
     /// strings, so the address a boot will ask for is the address the bytes land at by construction.
     /// <para>
-    /// <b>These four kinds of object are the WHOLE pack only for a version whose manifests name no text.</b> A
-    /// manifest that names a language names a text chunk hash this method does not write, and the digest check
-    /// cannot catch it, because both manifests are rebuilt from the same language list the recorded ones were
-    /// and name the same hashes either way. That is WHY the guard exists: <see cref="RefusedTextChunks"/>
-    /// refuses such a version before the build, so nothing that reaches this method can need a text chunk.
+    /// <b>Every text chunk the manifests name is written here, before either manifest.</b> Each was regenerated
+    /// from version N's own values and matched the recorded hash before this method was reached, so the five
+    /// kinds of object are the whole pack.
     /// </para>
     /// </summary>
     static async Task<(int Objects, long Bytes)> WriteAsync(
@@ -252,6 +270,7 @@ public static class ContentPackRebuild
         ContentVersionRecord record,
         ContentRebuiltPack pack,
         IReadOnlyList<RemapRule> rules,
+        IReadOnlyList<ContentRegeneratedText> text,
         CancellationToken cancellationToken)
     {
         int objects = 0;
@@ -262,6 +281,15 @@ public static class ContentPackRebuild
             ContentChunkRecord chunk = pack.Chunks[i];
             (int wrote, long put) = await ContentPublishCommit
                 .PutIfAbsentAsync(target, chunk.Hash, chunk.StoredFile, cancellationToken).ConfigureAwait(false);
+            objects += wrote;
+            bytes += put;
+        }
+
+        // Every text chunk the manifests name, before either manifest.
+        for (int i = 0; i < text.Count; i++)
+        {
+            (int wrote, long put) = await ContentPublishCommit
+                .PutIfAbsentAsync(target, text[i].Hash, text[i].StoredFile, cancellationToken).ConfigureAwait(false);
             objects += wrote;
             bytes += put;
         }

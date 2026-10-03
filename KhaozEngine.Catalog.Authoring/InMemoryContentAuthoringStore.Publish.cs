@@ -291,7 +291,7 @@ public sealed partial class InMemoryContentAuthoringStore
     /// would carry the current text onto the target's rows.
     /// </para>
     /// </remarks>
-    public async Task<ContentDraft> RollbackToAsync(
+    public Task<ContentDraft> RollbackToAsync(
         int targetVersion,
         string actor,
         string operatorId,
@@ -322,12 +322,24 @@ public sealed partial class InMemoryContentAuthoringStore
             throw ContentRollback.Refusal(plan);
         }
 
-        // STAGED before the edits land, so a rollback whose own audit row cannot be rendered leaves no draft
-        // behind. The edits carry their own staged entries through ApplyEditsAsync, and this one is committed
-        // after them so the ledger reads in the order the actions happened.
-        var staged = new List<ContentAuditEntry>(1);
+        // ONE gate for the re-check, the audit and the edits. The plan was computed under the first gate, and
+        // a publish landing in between could have moved the active version or given it text, so both are
+        // confirmed again here, where the rollback edits are applied, rather than trusted.
+        ContentDraft draft;
         lock (_gate)
         {
+            if (_activeVersion != from)
+            {
+                throw Moved(FormattableString.Invariant(
+                    $"The rollback to version {targetVersion} was planned against version {from} and the store now stands at {_activeVersion}. Nothing was written, and the rollback is planned again from the current version."));
+            }
+
+            RequireRowOnlyRollback(from, targetVersion);
+
+            // STAGED before the edits land, so a rollback whose own audit row cannot be rendered leaves no
+            // draft behind. The edits carry their own entries, and this one is committed after them so the
+            // ledger reads in the order the actions happened.
+            var staged = new List<ContentAuditEntry>(1);
             _audit.Stage(
                 staged,
                 ContentAuditActions.Rollback,
@@ -341,17 +353,12 @@ public sealed partial class InMemoryContentAuthoringStore
                 InMemoryContentAuditLog.Render(targetVersion),
                 0,
                 note);
-        }
 
-        ContentDraft draft = await ApplyEditsAsync(plan.Edits, actor, operatorId, note, cancellationToken)
-            .ConfigureAwait(false);
-
-        lock (_gate)
-        {
+            draft = ApplyEditsLocked(plan.Edits, actor, operatorId, note);
             _audit.Commit(staged);
         }
 
-        return draft;
+        return Task.FromResult(draft);
     }
 
     /// <summary>The baseline as it stands. The caller already holds the gate.</summary>

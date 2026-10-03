@@ -14,7 +14,9 @@ namespace KhaozEngine.Catalog.Authoring;
 /// name exactly those chunks. Every baseline language survives with its historical spelling and every
 /// pending introduction appears with its canonical one. The candidate's values are the baseline's minus its
 /// closes plus its inserts, and they apply every frozen intent: each Set's exact value is live at its row's
-/// final id and each Remove leaves nothing live there. What it cannot prove is that the snapshot still
+/// final id and each Remove leaves nothing live there. The live values are EXACTLY the expected set of
+/// <see cref="ContentTextExpectedValues"/>, so a candidate that also drops, omits or changes a string no
+/// intent names, a fork copy's carried value included, is refused. What it cannot prove is that the snapshot still
 /// matches the store, which is why the store confirms that inside its own commit.
 /// </para>
 /// <para>
@@ -47,6 +49,7 @@ public sealed class ContentTextPublishPlan
         RequireDeclarations(snapshot, candidate);
         RequireTemporal(rowPlan, snapshot, candidate);
         RequireFrozenIntents(rowPlan, snapshot.TextState, candidate);
+        RequireExactValues(rowPlan, snapshot, candidate);
 
         RowPlan = rowPlan.WithFrozenText(snapshot.TextState);
         Snapshot = snapshot;
@@ -230,6 +233,45 @@ public sealed class ContentTextPublishPlan
         {
             throw new ArgumentException(
                 "The candidate's values are not the baseline's minus its closes plus its inserts.", nameof(candidate));
+        }
+    }
+
+    /// <summary>
+    /// Proves the candidate's live values are EXACTLY the expected set: the baseline's, each fork copy of its
+    /// source's baseline values at the copy's final id, then every frozen Set and Remove. Applying every
+    /// intent is not enough on its own, because a candidate could also close an unnamed string, omit a copy
+    /// or change a value nothing asked for, and the commit would publish that loss as complete.
+    /// </summary>
+    static void RequireExactValues(
+        ContentPublishPlan rowPlan,
+        ContentTextPublishSnapshot snapshot,
+        ContentTextCandidate candidate)
+    {
+        Dictionary<ContentTextSlot, string> expected;
+        try
+        {
+            expected = ContentTextExpectedValues.Compute(
+                snapshot.BaselineText.Revisions, rowPlan.FrozenEdits, snapshot.TextState, rowPlan.LiveRows);
+        }
+        catch (ContentAuthoringException unbound)
+        {
+            throw new ArgumentException(unbound.Message, nameof(rowPlan), unbound);
+        }
+
+        bool agrees = expected.Count == candidate.Values.Count;
+        foreach (ContentTextRevision value in candidate.Values)
+        {
+            agrees = agrees
+                && expected.TryGetValue(ContentTextSlot.Of(value), out string? wanted)
+                && string.Equals(wanted, value.Value, StringComparison.Ordinal);
+        }
+
+        if (!agrees)
+        {
+            throw new ArgumentException(
+                FormattableString.Invariant(
+                    $"The candidate's {candidate.Values.Count} live value(s) are not exactly the {expected.Count} the baseline, its fork copies and the frozen intents produce. A string no intent names was dropped, omitted or changed."),
+                nameof(candidate));
         }
     }
 

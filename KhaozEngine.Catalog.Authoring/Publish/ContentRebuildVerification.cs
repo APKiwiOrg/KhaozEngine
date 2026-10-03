@@ -31,25 +31,20 @@ readonly record struct ContentRebuildRefusal(string Reason, string Detail);
 /// files would report a difference where the format says there is none.
 /// </para>
 /// <para>
-/// <b>The TEXT check is the one thing a digest comparison cannot stand in for</b>, which is why it is here
-/// beside the comparison rather than folded into it. A manifest that names a language names a text chunk
-/// hash, the rebuild writes no text chunk, and both rebuilt manifests are built from the SAME language list
-/// the recorded ones were, so they name the same hashes and match. See <see cref="CheckText"/>.
+/// <b>The CAPABILITY check is the one thing a digest comparison cannot stand in for</b>, which is why it is
+/// here beside the comparison rather than folded into it. A store without the text companion cannot supply
+/// the values a named language's chunk was encoded from. See <see cref="CheckText"/>.
 /// </para>
 /// </summary>
 static class ContentRebuildVerification
 {
     /// <summary>
-    /// The refusal when the version's manifests would name text chunks, or null when they would name none.
-    /// <para>
-    /// It runs on the SNAPSHOT, ahead of the build and far ahead of the digest comparison, because a rebuild
-    /// cannot reproduce a text chunk at all: no store keeps a version's text, so there is nothing to encode
-    /// one from. Refusing is the only answer that does not leave a pack whose manifest names an object the
-    /// root does not hold, which the digest comparison below would pass as sound.
-    /// </para>
+    /// The capability refusal of a store WITHOUT the text companion, or null when its baseline names no
+    /// language. Such a store cannot read version N's values, so a named language is a text chunk the rebuild
+    /// cannot reproduce. A companion store never reaches this: its rebuild regenerates version N's own text.
     /// </summary>
     /// <param name="versionNumber">The version being rebuilt, which the detail names.</param>
-    /// <param name="languages">The languages the manifests would name, empty on every provider today.</param>
+    /// <param name="languages">The active languages the store without the companion shows.</param>
     /// <exception cref="ArgumentNullException"><paramref name="languages"/> is null.</exception>
     public static ContentRebuildRefusal? CheckText(
         int versionNumber,
@@ -112,10 +107,10 @@ static class ContentRebuildVerification
             $"The rebuilt {side} manifest digests to {rebuilt} and version {versionNumber} records {recorded}. The rows, the rules or the registry the rebuild read are not the ones the version was published from, so nothing was written.");
 
     /// <summary>
-    /// The text refusal's text. It names the version and HOW MANY languages, because that count is the number
-    /// of text chunks the manifests would name and the rebuild would not have written.
+    /// The capability refusal's text. It names the version and HOW MANY languages, because that count is the
+    /// number of text chunks the manifests may name and the rebuild cannot regenerate.
     /// </summary>
     static string TextDetail(int versionNumber, int languages)
         => FormattableString.Invariant(
-            $"The manifests of version {versionNumber} name {languages} {(languages == 1 ? "language" : "languages")}, so they name {languages} KECT text chunk {(languages == 1 ? "hash" : "hashes")}, and no store keeps a version's text for a rebuild to encode those chunks from. Nothing was written, because a pack whose manifest names an object the root does not hold is one a boot follows into a hole, and the two manifest digests cannot catch it: both rebuilt manifests name the recorded hashes either way. Publishing text chunks is https://github.com/APKiwiOrg/KhaozEngine/issues/1000, and rebuilding them belongs with that work.");
+            $"The store names {languages} {(languages == 1 ? "language" : "languages")} and implements no text authoring companion, so it cannot read the text of version {versionNumber} that those KECT chunks were encoded from. Nothing was written, because a pack whose manifest names an object the root does not hold is one a boot follows into a hole. Rebuild through a store that implements IContentTextAuthoringStore.");
 }

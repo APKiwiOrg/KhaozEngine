@@ -54,7 +54,7 @@ public readonly record struct NavWaypoint(Vector2 Position, int Layer)
 /// Result of a path query: a <see cref="NavPathStatus"/> plus the waypoints leading toward the goal, in
 /// travel order. Immutable.
 /// </summary>
-public sealed class NavPath
+public sealed partial class NavPath
 {
     static readonly NavPath _unreachable = new(NavPathStatus.Unreachable, Array.Empty<NavWaypoint>());
 

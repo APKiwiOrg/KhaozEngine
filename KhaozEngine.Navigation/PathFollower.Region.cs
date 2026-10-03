@@ -134,8 +134,9 @@ public sealed partial class PathFollower
         IReadOnlyList<NavWaypoint> waypoints = _path.Waypoints;
         int? agentLayer = _space?.LayerAt(position);
         while (_index < waypoints.Count
-            && Vector2.Distance(posXz, waypoints[_index].Position) <= _config.AcceptRadius
-            && (agentLayer is null || waypoints[_index].Layer == agentLayer.Value))
+            && ((Vector2.Distance(posXz, waypoints[_index].Position) <= _config.AcceptRadius
+                    && (agentLayer is null || waypoints[_index].Layer == agentLayer.Value))
+                || (_config.ConsumePassedCollinearWaypoints && PassedActive(posXz, agentLayer))))
         {
             if (followingRegion && _path.Status == NavPathStatus.Complete && _index == waypoints.Count - 1)
                 return true;

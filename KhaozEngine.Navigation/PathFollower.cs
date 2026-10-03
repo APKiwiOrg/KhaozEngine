@@ -78,6 +78,14 @@ public sealed class PathFollowConfig
     /// and final Complete waypoints require actual membership instead.</summary>
     public float AcceptRadius { get; init; } = 0.6f;
 
+    /// <summary>When true, the waypoint advance also consumes an active waypoint the agent has passed rather
+    /// than landed on, provided it is a <see cref="NavPath.IsCollinearPassThrough"/> waypoint on the agent's
+    /// layer and the feet sit at or beyond it on the line to its successor, within
+    /// <see cref="AcceptRadius"/> plus four float steps of that line. Corners, reversals, layer changes, hops,
+    /// waypoint 0 and a route's final waypoint still need <see cref="AcceptRadius"/> proximity or region
+    /// membership. Default false, which keeps proximity as the only advance.</summary>
+    public bool ConsumePassedCollinearWaypoints { get; init; }
+
     /// <summary>
     /// Vertical distance (world units) the agent may sit above or below a point goal and still count as
     /// arrived. Paired with <see cref="AcceptRadius"/>: the arrival shortcut in
@@ -242,8 +250,9 @@ public sealed partial class PathFollower
     /// the follower was given a <see cref="NavSpace"/>, on the same layer as the agent
     /// (<see cref="NavSpace.LayerAt"/>). A waypoint on another layer is one the agent has to climb to, which
     /// XZ proximity cannot witness, so the follower keeps steering at it until the agent actually gets there.
-    /// If that consumes the whole path: a <see cref="NavPathStatus.Complete"/> path means the goal is
-    /// reached (<see cref="PathFollowState.Arrived"/>). A <see cref="NavPathStatus.Partial"/> path clears
+    /// With <see cref="PathFollowConfig.ConsumePassedCollinearWaypoints"/> it also advances past a collinear
+    /// pass-through waypoint the agent has already passed. If that consumes the whole path: a
+    /// <see cref="NavPathStatus.Complete"/> path means the goal is reached (<see cref="PathFollowState.Arrived"/>). A <see cref="NavPathStatus.Partial"/> path clears
     /// itself and steers straight at the raw goal for this one tick, until the next tick's replan (once
     /// the cooldown allows) picks up a fresh route.</item>
     /// <item>Otherwise steers at the new active waypoint. If that waypoint is a

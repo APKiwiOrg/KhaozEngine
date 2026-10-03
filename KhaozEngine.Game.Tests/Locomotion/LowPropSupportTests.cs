@@ -68,6 +68,39 @@ public class LowPropSupportTests
         }
     }
 
+    // A gentle mound: a radius 4 sphere standing 0.3 m out of the terrain meets it at a 0.925 normal, flatter than
+    // the low prop test, so the body is seated on its base and walks up to its crown without sinking into it.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CapsuleWalksUpAGentleMound(bool run)
+    {
+        const float radius = 4f, height = 0.3f;
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        var centre = new Vector3(0f, height - radius, 0f);
+        world.AddStatic(new SphereShape(radius), Pose.At(centre));
+        world.Step(Dt);
+        var body = Standing(-2.5f, 0f);
+        float segment = Tuning.CapsuleHalfHeight - Tuning.CapsuleRadius;
+
+        float deepest = 0f;
+        float speed = run ? Tuning.RunSpeed : Tuning.WalkSpeed;
+        for (int tick = 0; tick < 120; tick++)
+        {
+            float fraction = Math.Clamp(-body.Position.X / (speed * Dt), -1f, 1f);
+            body = CharacterMovement.StepTowards(body, new Vector2(fraction, 0f), run, Dt, Flat, Tuning, world: world);
+            Assert.True(body.Grounded, $"airborne at tick {tick}, centre {body.Position}");
+            float closestY = Math.Clamp(centre.Y, body.Position.Y - segment, body.Position.Y + segment);
+            float gap = Vector3.Distance(centre, new Vector3(body.Position.X, closestY, body.Position.Z))
+                        - radius - Tuning.CapsuleRadius;
+            deepest = MathF.Min(deepest, gap);
+        }
+
+        Assert.InRange(body.Position.X, -0.001f, 0.001f);
+        Assert.InRange(Feet(body), height - 0.002f, height + 0.002f);
+        Assert.True(deepest > -0.01f, $"the capsule sank {-deepest:F3} m into the mound");
+    }
+
     // Steers along X toward the target at the tuning's pace, then holds, checking support every tick.
     static MoveState WalkTo(IPhysicsWorld world, MoveState body, float targetX, bool run)
     {

@@ -28,6 +28,7 @@ public sealed partial class ShardedWorldServer
         commands.Forget(slot);
         deltaReplicator?.Forget(slot);
         deltaCapableSlots.Remove(slot);
+        replication.Forget(slot);
         Vector3 spawn = JoinSpawn(slot, persistenceKey);
         PlayerMoveState state = RuntimeFor(host.CellFor(spawn.X, spawn.Z))
             .SpawnClamp(new PlayerMoveState { Position = spawn }, config.TickSeconds);
@@ -89,6 +90,7 @@ public sealed partial class ShardedWorldServer
             selfRescueReadyAt.Remove(slot);
             deltaReplicator?.Forget(slot);
             deltaCapableSlots.Remove(slot);
+            replication.Forget(slot);
             commands.Forget(slot);
         }
     }

@@ -96,6 +96,8 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         // cell's replication + handoff + ghosting; default = movement-only. Assigned before the host so cells use it.
         this.registry = registry ?? MoveProtocol.CreateRegistry();
         deltaReplicator = this.config.DeltaReplication ? new AoiDeltaReplicator(this.registry) : null;
+        DeltaRebuildOptions? replicationLimits = RebuildServerStreams.ValidateConfig(this.config.DeltaReplication,
+            this.config.AllowUnreliableDeltaReplication, this.config.ReplicationStream, this.config.TickSeconds);
         this.tuning = tuning;
         // Size the queue's distinct-slot cap to MaxPlayers (the SlotAllocator hands out slots in [0, MaxPlayers)).
         // Without this it used the RemoteCommandQueue default of 64, so on a server with MaxPlayers > 64 every move
@@ -128,6 +130,8 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         net = new NetServer(transport, config.MaxPlayers, WireGenerationAuthenticator.Install(authenticator),
             maxQueuedEvents: config.MaxQueuedEvents,
             duplicateSessions: config.DuplicateSessions, maxPendingConnections: config.MaxPendingConnections);
+        replication = new RebuildServerStreams(net, deltaReplicator, this.config.ReplicationStream, replicationLimits,
+            this.config.TickSeconds, commands, slot => Raise(slot, SuspiciousReason.MalformedPacket), Disconnect);
         this.banStore = banStore;
     }
 
@@ -382,13 +386,13 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                     OnLeave(ev.Slot);
                     break;
                 case ServerSessionEventKind.Data:
-                    HandleData(ev.Slot, ev.Data);
+                    HandleData(ev.Slot, ev.Data, ev.Reliability);
                     break;
             }
         }
     }
 
-    private void HandleData(int slot, byte[] data)
+    private void HandleData(int slot, byte[] data, NetChannelReliability reliability)
     {
         if (!netIdBySlot.ContainsKey(slot)) return;
         // Flood protection: an over-budget message is dropped and flagged (and optionally the connection is kicked).
@@ -398,6 +402,8 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             if (config.AntiCheat.DisconnectOnRateLimit) net.Disconnect(slot);
             return;
         }
+        // Every 18-byte frame is a MOVE. Format 2 controls claim their own lengths before any legacy decode.
+        if (replication.Route(slot, data, reliability)) return;
         // Replication ack: advance this client's delta baseline (a dropped ack just self-heals on the next delta).
         if (MoveProtocol.TryDecodeReplicationAck(data, out int appliedSeq))
         {
@@ -409,6 +415,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         {
             if (control == MoveProtocol.ClientControlKind.SelfRescue) HandleSelfRescue(slot);
             else if (control == MoveProtocol.ClientControlKind.DeltaCapable && deltaReplicator is not null) deltaCapableSlots.Add(slot);
+            else if (control == MoveProtocol.ClientControlKind.RebuildDeltaCapable) replication.OnCapability(slot);
             return;
         }
         // Game message: an opaque game-defined frame (attack, interaction, chat, …). Demuxed BEFORE the move (it can
@@ -556,6 +563,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         // 5. Serve each client its home-cell area-of-interest, framed for the WorldClient. Delta-capable clients get a
         //    per-client AoI delta (NetId-keyed, so a boundary crossing is a component delta); others a full snapshot.
         deltaReplicator?.BeginTick();
+        replication.Advance(dt);   // elapsed time, independent of whether a movement sub-tick ran
         long serveEpoch = ++interestServeEpoch;   // fresh each tick: each served home cell rebuilds its grid once
         foreach (int slot in slots)
         {
@@ -568,6 +576,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             interestScratch.Clear();
             World world = host.HomeInterest(slot, config.InterestRadius, interestScratch, serveEpoch);
             InterestVisibility.Filter(interestScratch, slot, netId, config.EntityVisibleToSlot);
+            if (replication.Serve(slot, world, interestScratch, netId, lastAckBySlot[slot])) continue;   // format 2 owns it
             if (deltaReplicator is not null && deltaCapableSlots.Contains(slot))
             {
                 // Owner-scope the Replicate channel to this client's own player (netId is stable across handoff), so an
@@ -584,6 +593,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             byte[] envelope = MoveProtocol.EncodeServerFrame(kind, frame);
             net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
         }
+        replication.EndServe();
 
         // 6. Clear each cell's per-tick ECS change-tracking + event sets so they don't accumulate on a long-running
         //    server. One fixed sub-tick ran per cell this frame (maxTicksPerFrame: 1), so one advance per cell here

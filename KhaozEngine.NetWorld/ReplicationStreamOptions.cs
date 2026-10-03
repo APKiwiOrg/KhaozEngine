@@ -117,8 +117,12 @@ public sealed class ReplicationStreamOptions
         if (!IsFeasiblePacketCap(MaxTransportPayloadBytes, Limits.MaxKeyframeBytes))
             throw Invalid(nameof(MaxTransportPayloadBytes), MaxTransportPayloadBytes,
                 "must be at least 40 and carry Limits.MaxKeyframeBytes in at most 255 chunks of (cap - 23) bytes");
-        return Limits.WithEnvelopeBytes(RebuildProtocol.EnvelopeBytes);
+        return StreamLimits();
     }
+
+    /// <summary>The stream limits with NetWorld's 12-byte envelope charged. The only place they are derived, so the
+    /// validated value, the mode offer and the writer always agree.</summary>
+    internal DeltaRebuildOptions StreamLimits() => Limits.WithEnvelopeBytes(RebuildProtocol.EnvelopeBytes);
 
     private static ArgumentOutOfRangeException Invalid(string property, int value, string rule) =>
         new(property, value, $"ReplicationStreamOptions.{property} {rule}.");

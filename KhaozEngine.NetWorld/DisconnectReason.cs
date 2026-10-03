@@ -68,4 +68,22 @@ public enum DisconnectReason
     /// retried, not even with <see cref="WorldClientConfig.RetryOnReject"/>: only an update clears it. Show "client out
     /// of date, please update".</summary>
     ContentClientTooOld,
+    /// <summary>The client refused a format 2 mode offer outside its configured
+    /// <see cref="WorldClientConfig.ReplicationStream"/> limits, or the server refused with
+    /// <c>ke:replication-policy-refused</c>. Terminal: the same configuration keeps getting the same offer. Show
+    /// "connection settings incompatible" and fix the limits.</summary>
+    ReplicationPolicyRefused,
+    /// <summary>Format 2 negotiation or keyframe repair did not complete within
+    /// <see cref="ReplicationStreamOptions.RecoveryDeadlineTicks"/>, detected locally or refused with
+    /// <c>ke:replication-recovery-failed</c>. Terminal for the engine. The game decides whether and when to sign in
+    /// again.</summary>
+    ReplicationRecoveryFailed,
+    /// <summary>A complete projection cannot fit the negotiated format 2 limits, so repair cannot fix it. Detected
+    /// locally or refused with <c>ke:replication-capacity-exceeded</c>. Terminal.</summary>
+    ReplicationCapacityExceeded,
+    /// <summary>The server ended this format 2 stream with <c>ke:replication-restart</c>: a send failed, the transport
+    /// limit dropped below what the stream needs, or the delta writer is restarting. Retried on the
+    /// <see cref="WorldClientConfig.Reconnect"/> backoff with a fresh world and view, even with
+    /// <see cref="WorldClientConfig.RetryOnReject"/> off. The engine adds no retry loop of its own.</summary>
+    ReplicationRestart,
 }

@@ -218,6 +218,7 @@ public class CatalogRefusalMappingTests
         Assert.Equal(9, (int)DisconnectReason.ContentMismatch);
         Assert.Equal(10, (int)DisconnectReason.ContentVersionMismatch);
         Assert.Equal(11, (int)DisconnectReason.ContentClientTooOld);
-        Assert.Equal(12, Enum.GetValues<DisconnectReason>().Length);
+        // The four format 2 replication reasons follow at 12 to 15 (ReplicationFailureTests pins them).
+        Assert.Equal(16, Enum.GetValues<DisconnectReason>().Length);
     }
 }

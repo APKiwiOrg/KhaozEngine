@@ -63,6 +63,16 @@ public sealed class WorldServerConfig
     /// <see cref="MoveProtocol.EncodeReplicationAck"/>, so a dropped delta on the reliable-ordered channel self-heals.</summary>
     public bool DeltaReplication { get; init; } = true;
 
+    /// <summary>Offer negotiated unreliable delta replication (format 2) to a client that requests it. Default false.
+    /// Requires <see cref="DeltaReplication"/>: with it off this switch does nothing. A requesting client otherwise
+    /// receives a mode 0 offer naming <see cref="ReplicationSelectionReason.DisabledServerPolicy"/> and stays on reliable
+    /// deltas. Limits and cadence come from <see cref="ReplicationStream"/>, which is validated only when this is on.</summary>
+    public bool AllowUnreliableDeltaReplication { get; init; }
+
+    /// <summary>Format 2 limits and cadence, read only when <see cref="AllowUnreliableDeltaReplication"/> and
+    /// <see cref="DeltaReplication"/> are both on.</summary>
+    public ReplicationStreamOptions ReplicationStream { get; init; } = new();
+
     /// <summary>Run the simulation in an ISLAND FRAME that follows the anchored player, so the movement step's
     /// carried state stays small however far the world extends. <b>ON by default</b> since the wire carries the
     /// frame stamp: a framed server and its client now step in the SAME space, so framing is a straight precision

@@ -359,6 +359,12 @@ public static class MoveProtocol
         /// (its switch only acts on <see cref="SelfRescue"/>), so the hello is harmless across version skew and the
         /// client keeps receiving full snapshots.</summary>
         DeltaCapable = 2,
+
+        /// <summary>Ask for negotiated unreliable delta replication (format 2). Sent reliably after
+        /// <see cref="DeltaCapable"/>, only by a client with <see cref="WorldClientConfig.RequestUnreliableDeltaReplication"/>
+        /// on. A format 2 server answers with a <see cref="ServerFrameKind.ReplicationMode"/> offer. An older server
+        /// ignores the unknown kind and the session stays on reliable deltas.</summary>
+        RebuildDeltaCapable = 3,
     }
 
     // Control frame: [marker:byte][kind:byte] = 2 bytes. The marker is a fixed sentinel so a random 2-byte packet is
@@ -623,8 +629,14 @@ public static class MoveProtocol
     /// <see cref="ClientControlKind.DeltaCapable"/>, so an older client only ever receives <see cref="Snapshot"/>. A
     /// <see cref="GameMessage"/> frame carries a game-defined <c>[kind:ushort][payload]</c> body (see
     /// <see cref="EncodeGameMessageBody"/>) an older client's demux simply ignores as an unknown kind (its
-    /// <c>OnServerFrame</c> switch has no case for it), so it is version-skew-safe downstream.</summary>
-    public enum ServerFrameKind : byte { Snapshot = 0, Notice = 1, Delta = 2, GameMessage = 3 }
+    /// <c>OnServerFrame</c> switch has no case for it), so it is version-skew-safe downstream. <see cref="RebuildDelta"/>,
+    /// <see cref="RebuildKeyframeChunk"/> and <see cref="ReplicationMode"/> are format 2 frames, sent only after
+    /// <see cref="ClientControlKind.RebuildDeltaCapable"/> (see <c>RebuildProtocol</c>).</summary>
+    public enum ServerFrameKind : byte
+    {
+        Snapshot = 0, Notice = 1, Delta = 2, GameMessage = 3,
+        RebuildDelta = 4, RebuildKeyframeChunk = 5, ReplicationMode = 6,
+    }
 
     /// <summary>Wraps a server-to-client payload with its 1-byte kind tag so snapshots and
     /// notices share the Data channel. The receiver demuxes via <see cref="TryDecodeServerFrame"/>.</summary>

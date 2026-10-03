@@ -12,7 +12,7 @@ namespace KhaozEngine.Replication;
 /// and (the preferred path) keeps a timestamped sample history so <see cref="InterpolateAt"/> can render on a
 /// fixed delay by lerping the two bracketing snapshots by their true timestamps.
 /// </summary>
-public sealed class ClientReplicationView
+public sealed partial class ClientReplicationView
 {
     private readonly ReplicationRegistry registry;
     private readonly Dictionary<long, Entity> entityByNetId = new();

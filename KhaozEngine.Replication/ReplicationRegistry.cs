@@ -114,6 +114,14 @@ public sealed class ReplicationRegistry
 
         void RemoveComponent(World w, Entity e) => w.Remove<T>(e);
 
+        // Typed copy for projection publication: installs a staged value without a second wire read.
+        void CopyComponent(World source, Entity sourceEntity, World destination, Entity destinationEntity)
+        {
+            if (!source.TryGet<T>(sourceEntity, out T value))
+                throw new InvalidOperationException($"Staged entity has no component for type id {typeId}.");
+            destination.Set(destinationEntity, value);
+        }
+
         Action<World, Entity, byte[], byte[], float>? lerpFromBytes = null;
         if (lerp is not null)
         {
@@ -132,7 +140,7 @@ public sealed class ReplicationRegistry
         if (discreteSample)
             setFromBytes = (w, e, bytes) => w.Set(e, read(new BinaryReader(new MemoryStream(bytes))));
 
-        var codec = new ComponentCodec(typeId, typeof(T), lengthPrefixed, channels, TrySerialize, Deserialize, lerpFromBytes, setFromBytes, CaptureInto, RemoveComponent);
+        var codec = new ComponentCodec(typeId, typeof(T), lengthPrefixed, channels, TrySerialize, Deserialize, lerpFromBytes, setFromBytes, CaptureInto, RemoveComponent, CopyComponent);
         ordered.Add(codec);
         byId[typeId] = codec;
     }
@@ -182,7 +190,8 @@ internal sealed class ComponentCodec
         Func<World, Entity, BinaryWriter, bool> trySerialize,
         Action<World, Entity, BinaryReader> deserialize, Action<World, Entity, byte[], byte[], float>? lerpFromBytes,
         Action<World, Entity, byte[]>? setFromBytes,
-        Func<World, Entity, BinaryWriter, bool> captureInto, Action<World, Entity> removeComponent)
+        Func<World, Entity, BinaryWriter, bool> captureInto, Action<World, Entity> removeComponent,
+        Action<World, Entity, World, Entity> copyComponent)
     {
         TypeId = typeId;
         ComponentType = componentType;
@@ -194,6 +203,7 @@ internal sealed class ComponentCodec
         SetFromBytes = setFromBytes;
         CaptureInto = captureInto;
         RemoveComponent = removeComponent;
+        CopyComponent = copyComponent;
     }
 
     public ushort TypeId { get; }
@@ -241,6 +251,12 @@ internal sealed class ComponentCodec
 
     /// <summary>Removes the component from the entity (for delta-applied component removals).</summary>
     public Action<World, Entity> RemoveComponent { get; }
+
+    /// <summary>Copies this component from a source entity to a destination entity, typed by the registered
+    /// component, without a wire read. Arguments are source world, source entity, destination world and destination
+    /// entity. Throws when the source entity lacks the component. Projection publication installs staged values
+    /// through it.</summary>
+    public Action<World, Entity, World, Entity> CopyComponent { get; }
 
     /// <summary>Reads two raw component byte slices, lerps, and sets the result. Null if not interpolatable.</summary>
     public Action<World, Entity, byte[], byte[], float>? LerpFromBytes { get; }

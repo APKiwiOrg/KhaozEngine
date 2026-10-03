@@ -8,7 +8,7 @@
 
 **Tech Stack:** C# on .NET 10, xUnit, BepuPhysics in tests.
 
-**Spec:** `docs/design/NPC-MOVEMENT-FIXES-DESIGN-2026-10-03.md`. Read it whole before Task 1. Sections are cited as S1 to S8, decisions as D1 to D6 and rulings as M1 to M10.
+**Spec:** `docs/design/NPC-MOVEMENT-FIXES-DESIGN-2026-10-03.md`. Read it whole before Task 1. Sections are cited as S1 to S8, decisions as D1 to D6 and rulings as M1 to M11.
 
 ## Global Constraints
 
@@ -39,7 +39,7 @@ mkdir -p /Users/antonio/KhaozEngine/.worktrees/grimhollow-npc-movement/local-fee
 | Driver options and carry | new `KhaozEngine.Movement/RouteApproachOptions.cs`, `MoveToRange.cs`, new `MoveToRange.Carry.cs` | 2 | A |
 | Lip fixture | new `KhaozEngine.Movement.Tests/LowLipTraversalTests.cs` | 3 | B |
 | Shared ground arrival and probe fix | `KhaozEngine.Movement/GroundTraversalProbe.cs`, `GroundTraversalProbeTests.cs`, design S5 | 4 | B |
-| Core step-up fix (gated) | `KhaozEngine.Locomotion/CharacterMovement*.cs`, a new Locomotion test file in `KhaozEngine.Game.Tests/Locomotion` | 4b | B |
+| Core step-up fix (gated) | `KhaozEngine.Locomotion/CharacterMovement*.cs`, a new Locomotion test file in `KhaozEngine.Game.Tests/Locomotion`, design S5 | 4b | B |
 | Water capture | `KhaozEngine.Movement/PhysicsNavBakeOptions.cs`, `NavBakeIdentity.cs` (options), `PhysicsNavBake.cs`, `PhysicsNavColumns.cs`, new `PhysicsNavWater.cs`, `GroundNavigationBake.Writer.cs` and `.Reader.cs` capture section | 5 | C |
 | Aquatic profile | new `GroundProfileOptions.cs`, `AquaticColumns.cs`, `SwimTraversalProbe.cs`, `SwimPace.cs`, `GroundMoveContext.Swim.cs`, modified `PhysicsNavBake.Profiles.cs`, `PhysicsNavColumns.cs` (float flag), `GroundNavigation.cs` | 6 | C |
 | Aquatic bake | `NavBakeProfile.cs`, `NavBakeIdentity.cs` (profiles), `GroundNavigationBake.cs`, `.Writer.cs`, `.Reader.cs` profile section, `BakeEquivalence.cs` | 7 | C |
@@ -139,7 +139,7 @@ Lanes A, B and C touch disjoint files. Task 5 and Task 7 both edit `NavBakeIdent
 - Produces: private `bool TryCarry(in MoveState body, in MoveTuning tuning, bool run, float dt, GroundMoveContext context, Vector2 waypoint, float bound, out Vector2 command)` in `MoveToRange.Carry.cs`. Returns false unless `CarryThroughStraightRuns`, the remaining distance to `waypoint` is below `bound`, and `ActivePath.IsCollinearPassThrough(ActiveWaypointIndex)`. Aims at the run end per design S4, predicts, and returns true only when `AllowsStep` admits the prediction. The route tick uses it before today's capped command, then runs `StopAtRange` on whichever command it keeps.
 
 - [ ] **Step 1: Record the base count.** On unchanged source run `dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter "FullyQualifiedName~MoveToRange|FullyQualifiedName~NpcRangeNavigation|FullyQualifiedName~PlayerPathMovement"` and record the passed count in Outcome.
-- [ ] **Step 2: Write the tests.** Flat analytic context `MoveToRangeTests.Flat`, tuning `MoveToRangeTests.Tuning` (walk 2 m/s), `dt = 1f / 30f`, space `MoveToRangeTests.Space` (0.25 m cells) with a `GridPathPlanner` and an always-true guard. The body starts on a cell centre. Loop `Tick` then `NpcGroundMovement.Step`.
+- [ ] **Step 2: Write the tests.** Flat analytic context `MoveToRangeTests.Flat`, tuning `MoveToRangeTests.Tuning` (walk 2 m/s), `dt = 1f / 30f`, an always-true guard. Region planning needs surface heights (`GridPathPlanner.Region.cs:20`), and `MoveToRangeTests.Space` is a `FromWalkable` grid without them, so these facts build their own heights-bearing space: `NavSpace.Single(NavGrid.FromSurfaces(32, 32, 0.25f, ox, oz, (_, _) => new NavSurfaceSample(true, 0f, float.PositiveInfinity), stepHeight: 0.4f, agentHeight: 1.5f))` with a `GridPathPlanner` over it. The straight fixture uses origin (-4, -4). The offset diagonal fixture uses origin (146, 146). The body starts on a cell centre. Loop `Tick` then `NpcGroundMovement.Step`.
 
 ```csharp
 [Fact] public void StraightRunTravelsTheFullBoundEveryTick()
@@ -147,7 +147,8 @@ Lanes A, B and C touch disjoint files. Task 5 and Task 7 both edit `NavBakeIdent
 // the tick before the run end, every tick's horizontal travel equals the travel bound within 1e-5 m.
 [Fact] public void StraightCellRouteHoldsFullWalkSpeed()
 // Same route. After 30 ticks the body has travelled at least 1.97 m with the option (about 1.98 m expected, design
-// S4). The same run with Default options travels at most 1.88 m (the 1.875 m/s RED evidence).
+// S4). The same run with Default options travels at most 1.89 m: on main the first tick plans and moves, 28 ticks
+// cover seven cells and two more add 0.133 m, about 1.883 m (design S4, 1.875 m/s is the steady rate).
 [Fact] public void DiagonalRunAtLargeCoordinatesHoldsPace()
 // Space and route offset by (150, 150), diagonal target 4 m away. After 30 ticks the body has travelled at least
 // 1.94 m with the option (about 1.95 m expected), and every tick between waypoint 0 and the run end travels the full
@@ -182,11 +183,11 @@ Lanes A, B and C touch disjoint files. Task 5 and Task 7 both edit `NavBakeIdent
 
 ```csharp
 [Theory] public void BakeAcceptsEdgesBesideTheLip(float fromX, float toX)
-// (-0.375,-0.125), (-0.125,-0.375), (-0.125,0.125), (0.125,-0.125), z 0: the probe at deck or ground heights returns
+// (-0.375,-0.125), (-0.125,-0.375), (-0.125,0.125), (0.125,-0.125), z 0.125 (a cell centre row): the probe at deck or ground heights returns
 // true, and nav.AllowsSegment returns true for the same feet.
-[Fact] public void RouteCrossesOntoTheDeck()                         // -1.125 to 1.125 at z 0: Complete
+[Fact] public void RouteCrossesOntoTheDeck()                         // -1.125 to 1.125 at z 0.125: Complete
 [Fact] public void LiveBodyMountsTheLipAtWalkPace()
-// Body standing at x -1.125, direction +X at walk, 60 ticks through the Bepu context: grounded every tick, final feet
+// Body standing at (-1.125, z 0.125), direction +X at walk, 60 ticks through the Bepu context: grounded every tick, final feet
 // Y within 0.001 of 0.025 and X above 0.2.
 ```
 
@@ -209,7 +210,7 @@ Step 1 always runs, because Task 6 consumes the helper (M8). Steps 2 to 6 run on
 
 - [ ] **Step 1: Extract the helper** with behaviour unchanged. Run `dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release --filter "FullyQualifiedName~GroundTraversalProbeTests|FullyQualifiedName~PhysicsNavProfileTests|FullyQualifiedName~GroundNavigationBake"` before and after and record equal counts. Commit `refactor(movement): share the ground arrival rule`. Stop here unless Task 3 classified a probe fault.
 - [ ] **Step 2: Write the rule** into design S5 from Task 3's evidence, before code. It must say which slices may arrive under it and why a body stopped by a wall cannot.
-- [ ] **Step 3: Add the guard fact** `StopShortAgainstAWallIsNeverArrival` in `GroundTraversalProbeTests`: `FlatWorld()` plus a wall box whose face sits 0.295 m from the target cell centre along the edge, 5 mm inside the surface of the 0.3 m capsule standing there. `Probe` from 0.25 m back to the target returns false. Unskip the Task 3 facts.
+- [ ] **Step 3: Add the guard fact** `StopShortAgainstAWallIsNeverArrival` in `GroundTraversalProbeTests` with tuning `GroundTraversalProbeTests.Tuning with { CapsuleRadius = 0.3f, CapsuleHalfHeight = 0.75f, StepHeight = 0.4f }`, since the shared tuning's radius is 0.2 (`GroundTraversalProbeTests.cs:15`): `FlatWorld()` plus a wall box whose face sits 0.295 m from the target cell centre along the edge, 5 mm inside the surface of the 0.3 m capsule standing there. `Probe` from 0.25 m back to the target returns false. Unskip the Task 3 facts.
 - [ ] **Step 4: Run RED.** `--filter "FullyQualifiedName~LowLipTraversalTests|FullyQualifiedName~StopShortAgainstAWallIsNeverArrival"`. Expected: the lip bake facts fail, the wall fact and the live fact pass.
 - [ ] **Step 5: Implement** the written rule inside `GroundArrived`.
 - [ ] **Step 6: Run GREEN.** The Step 4 filter, then the Step 1 filter on Movement.Tests and `--filter "FullyQualifiedName~TileWorldMovementNavigationTests|FullyQualifiedName~TileWorldNavigationBakeTests"` on TileWorld.Physics.Tests. Expected: all pass. Record counts.
@@ -312,9 +313,12 @@ Expected: all pass with nonzero counts, including every Task 3 fact. Record coun
 [Fact] public void FloatEdgeAcrossDeepWaterIsAccepted()
 [Fact] public void FloatHoldIsRefusedWhenGroundHeightLiesAboveTheFloatLine()   // ground provider returns 0 in the pit
 [Fact] public void NarrowDeckBetweenCellCentresIsRefusedByClearance()
-// Deck 0.1 m wide in X, centred between two float cell centres 0.25 m apart, its underside 0.2 m above the float feet.
-// Neither column captures it as a surface, so the headroom filter cannot refuse it. The float edge between the two
-// cells is refused, and the capsule pose that overlaps the deck makes SwimClear false.
+// Deck 0.1 m wide in X, centred between two float cell centres 0.25 m apart, so its edges sit 0.075 m from each
+// centre. Its underside is 0.49 m above the float feet. The duck capsule (radius 0.2, top 0.5 m above the feet) on
+// either centre clears it: the top hemisphere centre at 0.3 m is sqrt(0.075^2 + 0.19^2), about 0.204 m, from the deck
+// corner. Neither column captures the deck as a surface, so the headroom filter cannot refuse it. Assert both float
+// holds pass, the float edge between the two cells is refused, and SwimClear is false at the edge midpoint, where the
+// capsule top reaches 1 cm into the deck.
 [Fact] public void PostBesideTheLineRefusesFloatEdges()
 [Fact] public void ZeroSwimSpeedRefusesFloatEdges()
 [Fact] public void SliceTravelNeverExceedsTheRadius()                 // SwimSpeed 30: every slice's horizontal travel <= 0.2 m
@@ -398,7 +402,8 @@ Expected: all pass with nonzero counts, including every Task 3 fact. Record coun
 [Fact] public void AirborneBodyStaysSuspendedWithSwimPermission()    // Grounded false, Swimming false: Suspended, also when in range
 [Fact] public void CommittedBodyStaysSuspendedWithSwimPermission()   // active commitment, grounded or swimming: Suspended before InRange
 [Fact] public void SettlingSwimmerIsSuspendedUntilItReachesTheFloatBand()
-// Swimming body 0.3 m below its float line with downward settle velocity: Suspended with zero input, also in range.
+// Duck tuning: radius 0.2, half height 0.25, step 0.2, so the band is 0.2 m. MoveToRangeTests.Tuning's step of 0.4
+// would put the body inside the band. Swimming body 0.3 m below its float line with downward settle velocity: Suspended with zero input, also in range.
 // After holds bring the feet within max(StepHeight, 0.001) of the float line, Following.
 [Fact] public void PermittedSwimRefusesAnAirborneExitStep()          // prediction airborne and not swimming: zero command
 [Fact] public void SwimTravelBoundCapsTheWaypointAtSwimSpeedAboveWalk()

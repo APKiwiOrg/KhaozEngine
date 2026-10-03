@@ -177,6 +177,25 @@ public class WorldClientRebuildAckTests
     }
 
     [Fact]
+    public void DiagnosticsRecordTheLargestPayloadOfEveryClientSend()
+    {
+        var s = new ScriptedRebuildServer();
+        var source = new RebuildSource();
+        source.Spawn(2, 16, 1);
+        s.Establish(source, 5);
+        Assert.Equal(1 + RebuildProtocol.AckBytes, s.Client.RebuildDiagnosticsForTest.MaxTransportPayloadBytes);
+
+        Assert.NotEqual(-1, s.Client.SendInput(Forward));
+        Assert.Equal(1 + 18, s.Client.RebuildDiagnosticsForTest.MaxTransportPayloadBytes);
+        byte[] message = new byte[200];
+        Assert.True(s.Client.SendGameMessage(7, message, ClientTap.Reliable));
+
+        int expected = 1 + MoveProtocol.EncodeGameMessage(7, message).Length;
+        Assert.Equal(expected, s.Client.RebuildDiagnosticsForTest.MaxTransportPayloadBytes);
+        Assert.Equal(expected - 1, s.Tap.Sent.Max(p => p.Payload.Length));
+    }
+
+    [Fact]
     public void SeededWrapAndRetiredEpochNeverReingest()
     {
         var s = new ScriptedRebuildServer();

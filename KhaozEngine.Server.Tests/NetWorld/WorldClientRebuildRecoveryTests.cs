@@ -186,6 +186,35 @@ public class WorldClientRebuildRecoveryTests
     }
 
     [Theory]
+    [InlineData(ReplicationFailure.RecoveryFailedToken)]
+    [InlineData(ReplicationFailure.RestartToken)]
+    public void IncompatibleDecodeStaysTerminalThroughALaterReject(string token)
+    {
+        var s = new ScriptedRebuildServer(reconnecting: true);
+        var source = new RebuildSource();
+        source.Spawn(2, 2000, 7);
+        s.Offer(5);
+        s.Pump(0f);
+        source.Start(5);
+        byte[] malformed = source.ChunkFrames(source.Build(keyframe: true))[0];
+        malformed[ChunkFrame.StreamAt] = 1;
+
+        s.Send(malformed);
+        s.Pump(0f);
+
+        Assert.Equal(DisconnectReason.IncompatibleVersion, s.Client.DisconnectReason);
+        Assert.Equal(WorldConnectionState.Disconnected, s.Client.ConnectionState);
+        s.Tap.InjectReject(token);
+        s.Pumps(10);
+
+        Assert.Equal(DisconnectReason.IncompatibleVersion, s.Client.DisconnectReason);
+        Assert.Equal(WorldConnectionState.Disconnected, s.Client.ConnectionState);
+        Assert.Equal(0, s.Client.ReconnectAttempt);
+        Assert.Equal(1, s.ConnectCount);
+        Assert.Equal(1, s.LeftCount);
+    }
+
+    [Theory]
     [MemberData(nameof(Hosts))]
     public void RestartRejectReconnectsWithFreshView(RebuildHostKind kind)
     {
@@ -350,6 +379,9 @@ public class WorldClientRebuildRecoveryTests
     public static TheoryData<string, ClientAction> ClientRows => new()
     {
         { "malformed body", ClientAction.IncompatibleDisconnect },
+        { "unknown flag beside the keyframe bit", ClientAction.IncompatibleDisconnect },
+        { "wrong format with the keyframe bit", ClientAction.IncompatibleDisconnect },
+        { "keyframe-flagged datagram", ClientAction.Ignore },
         { "cannot retain within limits", ClientAction.CapacityDisconnect },
         { "replacement outside limits", ClientAction.PolicyDisconnect },
         { "replacement with infeasible width", ClientAction.PolicyDisconnect },
@@ -384,6 +416,11 @@ public class WorldClientRebuildRecoveryTests
         switch (row)
         {
             case "malformed body": s.Deliver(DeltaFrame.With(frame!, snapshot: latest + 1, flags: 0x02)); break;
+            case "unknown flag beside the keyframe bit": s.Deliver(DeltaFrame.With(frame!, snapshot: latest + 1, flags: 0x03)); break;
+            case "wrong format with the keyframe bit":
+                s.Deliver(DeltaFrame.With(frame!, snapshot: latest + 1, flags: 0x01, format: 3));
+                break;
+            case "keyframe-flagged datagram": s.Deliver(DeltaFrame.With(frame!, snapshot: latest + 1, flags: 0x01)); break;
             case "cannot retain within limits":
                 s.Offer(5);
                 s.Pump(0f);

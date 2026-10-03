@@ -325,9 +325,11 @@ internal static class ChunkFrame
 /// [epoch u64][snapshot u32][baseline u32][sections].</summary>
 internal static class DeltaFrame
 {
-    public static byte[] With(byte[] frame, uint? snapshot = null, uint? baseline = null, byte? flags = null)
+    public static byte[] With(byte[] frame, uint? snapshot = null, uint? baseline = null, byte? flags = null,
+        byte? format = null)
     {
         byte[] copy = (byte[])frame.Clone();
+        if (format is byte v) copy[13] = v;
         if (flags is byte f) copy[14] = f;
         if (snapshot is uint s) BinaryPrimitives.WriteUInt32LittleEndian(copy.AsSpan(23), s);
         if (baseline is uint b) BinaryPrimitives.WriteUInt32LittleEndian(copy.AsSpan(27), b);
@@ -379,6 +381,9 @@ internal sealed class ClientTap : INetTransport
 
     public void Inject(byte[] serverFrame, NetChannelReliability reliability) =>
         ready.Enqueue(new NetEvent(NetEventType.Data, server, SessionFrame.Write(SessionOpcode.Data, serverFrame), reliability));
+
+    public void InjectReject(string token) => ready.Enqueue(new NetEvent(NetEventType.Data, server,
+        SessionFrame.Write(SessionOpcode.Reject, Encoding.UTF8.GetBytes(token)), Reliable));
 
     public void Poll()
     {
@@ -490,25 +495,31 @@ internal sealed class ClientRebuildRig
 /// <summary>
 /// A real <see cref="WorldClient"/> opted into format 2 against a plain session server the test drives by hand, so
 /// every server frame is scripted: offers, chunks and deltas built by a <see cref="RebuildSource"/>, plus crafted
-/// faults. Joined after construction.
+/// faults. Joined after construction. A reconnecting client builds later transports through a counted factory.
 /// </summary>
 internal sealed class ScriptedRebuildServer
 {
     public const float Dt = 1f / 30f;
     private static readonly Func<float, float, float> Flat = (x, z) => 0f;
 
-    public ScriptedRebuildServer(ReplicationStreamOptions? stream = null, float disconnectTimeout = 3f)
+    public ScriptedRebuildServer(ReplicationStreamOptions? stream = null, float disconnectTimeout = 3f,
+        bool reconnecting = false)
     {
         Server = new NetServer(Hub.Server, 4, new AllowAllAuthenticator());
         Tap = new ClientTap(Hub.CreateClient());
         Stream = stream ?? new ReplicationStreamOptions();
-        Client = new WorldClient(Tap, Flat, MoveTuning.Default, new WorldClientConfig
+        var config = new WorldClientConfig
         {
             TickSeconds = Dt,
             RequestUnreliableDeltaReplication = true,
             ReplicationStream = Stream,
             DisconnectTimeoutSeconds = disconnectTimeout,
-        }, registry: Pad.Registry());
+            Reconnect = new ReconnectBackoff { InitialSeconds = Dt, Multiplier = 1f, MaxSeconds = Dt },
+        };
+        INetTransport Connect() => ++ConnectCount == 1 ? Tap : new ClientTap(Hub.CreateClient());
+        Client = reconnecting
+            ? new WorldClient(Connect, Flat, MoveTuning.Default, config, registry: Pad.Registry())
+            : new WorldClient(Tap, Flat, MoveTuning.Default, config, registry: Pad.Registry());
         Pump(0f);
         Pump(0f);
         Pump(0f);
@@ -522,6 +533,7 @@ internal sealed class ScriptedRebuildServer
     public ReplicationStreamOptions Stream { get; }
     public int Slot { get; private set; } = -1;
     public int LeftCount { get; private set; }
+    public int ConnectCount { get; private set; }
 
     public void Pump(float dt = Dt)
     {

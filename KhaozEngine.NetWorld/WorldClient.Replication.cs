@@ -10,7 +10,8 @@ namespace KhaozEngine.NetWorld;
 /// <param name="IngestCount">Authoritative ingests on every path, legacy included.</param>
 /// <param name="AcceptedCount">Accepted format 2 projections on the current connection.</param>
 /// <param name="LastMovementAck">The movement ack of the last ingest.</param>
-/// <param name="MaxTransportPayloadBytes">The largest format 2 control payload sent on the current connection.</param>
+/// <param name="MaxTransportPayloadBytes">The largest transport payload this client handed over on the current
+/// connection, session byte included: movement, controls, acks and game messages alike.</param>
 internal readonly record struct WorldClientRebuildDiagnostics(
     int PendingPredictionCommands,
     int IngestCount,
@@ -23,10 +24,12 @@ internal readonly record struct WorldClientRebuildDiagnostics(
 // ending the session locally. Only an accepted projection reaches IngestServerState, the sole reconcile path.
 public sealed partial class WorldClient
 {
+    private const int SessionFrameBytes = 1;
     private ReplicationStreamOptions? rebuildOptions;
     private RebuildClientStream? rebuild;
     private int rebuildIngestCount;
     private int rebuildLastMovementAck;
+    private int maxSentPayloadBytes;
 
     /// <summary>The replication mode this connection runs and why. Legacy reliable and unnegotiated unless
     /// <see cref="WorldClientConfig.RequestUnreliableDeltaReplication"/> is on and the server answered: a mode 0 offer
@@ -37,7 +40,8 @@ public sealed partial class WorldClient
     internal int PendingPredictionCommands => prediction.PendingCommandCount;
 
     internal WorldClientRebuildDiagnostics RebuildDiagnosticsForTest => new(PendingPredictionCommands,
-        rebuildIngestCount, rebuild?.AcceptedCount ?? 0, rebuildLastMovementAck, rebuild?.MaxTransportPayloadBytesSent ?? 0);
+        rebuildIngestCount, rebuild?.AcceptedCount ?? 0, rebuildLastMovementAck,
+        Math.Max(maxSentPayloadBytes, rebuild?.MaxTransportPayloadBytesSent ?? 0));
 
     internal ClientDeltaRebuild? DeltaRebuildForTest => rebuild?.Rebuild;
 
@@ -50,8 +54,6 @@ public sealed partial class WorldClient
     private bool RebuildOwnsLiveness => rebuild?.OwnsLiveness ?? false;
 
     private bool RebuildRecoveryActive => rebuild?.RecoveryActive ?? false;
-
-    private bool RebuildEnded => rebuild?.Failure is not null;
 
     // Constructor step: validates the format 2 config (D2.8 refusal, D2.9 retention rule, D2.15 payload cap) and builds
     // the first connection's stream. Null when the client did not opt in.
@@ -67,15 +69,19 @@ public sealed partial class WorldClient
         return NewRebuildStream();
     }
 
-    private RebuildClientStream? NewRebuildStream() =>
-        rebuildOptions is null ? null : new RebuildClientStream(net, registry, view, rebuildOptions, tickSeconds);
+    // Called wherever a connection and view are built, so the send diagnostic also starts over per connection.
+    private RebuildClientStream? NewRebuildStream()
+    {
+        maxSentPayloadBytes = 0;
+        return rebuildOptions is null ? null : new RebuildClientStream(net, registry, view, rebuildOptions, tickSeconds);
+    }
 
     // A Joined edge: the stream starts clean, then capability 3 follows capability 2 reliably.
     private void OnRebuildJoined()
     {
         if (rebuild is null) return;
         rebuild.Reset();
-        net.Send(MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.RebuildDeltaCapable),
+        SendToServer(MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.RebuildDeltaCapable),
             NetChannelReliability.ReliableOrdered);
     }
 
@@ -122,10 +128,18 @@ public sealed partial class WorldClient
         }
     }
 
+    // An incompatible decode is terminal, so it ends the connection locally like a typed failure. Without that the
+    // server would keep the session until its own deadline or a restart reject, neither of which may rewrite the reason.
     private void EndRebuild(string? error)
     {
-        if (rebuild!.Failure is ReplicationFailure failure) EndOnReplicationFailure(failure);
-        else OnSnapshotDecodeFailed(error ?? "format 2 replication decode failed");
+        if (rebuild!.Failure is ReplicationFailure failure)
+        {
+            EndOnReplicationFailure(failure);
+            return;
+        }
+        if (state == WorldConnectionState.Disconnected) return;
+        net.Disconnect();
+        OnSnapshotDecodeFailed(error ?? "format 2 replication decode failed");
     }
 
     // Scheduled control work from elapsed Poll time, after the receive drain. Zero dt drains spend no allowance.
@@ -137,9 +151,9 @@ public sealed partial class WorldClient
         if (rebuild.Failure is ReplicationFailure failure) EndOnReplicationFailure(failure);
     }
 
-    // A typed failure ends the session locally at once. The client never waits for a Disconnected event, and the guard
-    // on that event keeps a later one from reading as a drop that schedules a reconnect. A client-detected failure is
-    // always one of the three terminal reasons.
+    // A typed failure ends the session locally at once. The client never waits for a Disconnected event, and the state
+    // guards on the Disconnected and Rejected events keep a later one from rewriting the reason or scheduling a
+    // reconnect. A client-detected failure is always one of the three terminal reasons.
     private void EndOnReplicationFailure(ReplicationFailure failure)
     {
         if (state == WorldConnectionState.Disconnected) return;
@@ -147,6 +161,14 @@ public sealed partial class WorldClient
         disconnectReasonDetail = failure.Detail;
         net.Disconnect();
         FailAttempt(allowReconnect: !failure.IsTerminal);
+    }
+
+    // Every client send goes through here, so the diagnostic sees the largest transport payload of any kind. Same
+    // absent-connection no-op as NetClient.Send.
+    private void SendToServer(ReadOnlySpan<byte> payload, NetChannelReliability reliability)
+    {
+        if (net.TrySend(payload, reliability))
+            maxSentPayloadBytes = Math.Max(maxSentPayloadBytes, SessionFrameBytes + payload.Length);
     }
 
     private void RecordRebuildIngest(int movementAck)

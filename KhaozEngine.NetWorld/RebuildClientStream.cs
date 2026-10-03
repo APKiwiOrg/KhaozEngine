@@ -14,9 +14,10 @@ namespace KhaozEngine.NetWorld;
 /// </summary>
 /// <remarks>
 /// <para>Only a reliable mode offer or the first reliable chunk of a numerically newer epoch authorizes an epoch. A
-/// datagram never does, and a datagram flagged as a keyframe is ignored, because keyframe-ness comes from the delivery
-/// path. A replacement offer on a live stream adopts its new epoch and chunk width, retires older traffic and keeps the
-/// published world until the new keyframe publishes.</para>
+/// datagram never does. A well-formed datagram flagged as a keyframe is ignored, because keyframe-ness comes from the
+/// delivery path, while a wrong format byte or an unknown flag bit is malformed. A replacement offer on a live stream
+/// adopts its new epoch and chunk width, retires older traffic and keeps the published world until the new keyframe
+/// publishes.</para>
 /// <para>Acknowledgements advertise <see cref="ClientDeltaRebuild.AckTarget"/>: one unreliable routine ack per cadence
 /// tick, sent after the receive drain and repeated while idle, and one reliable ack for each accepted keyframe. While
 /// the target is null, after a new epoch and before its keyframe, no routine ack or repair request is sent.</para>
@@ -136,8 +137,9 @@ internal sealed class RebuildClientStream
     }
 
     /// <summary>Offers one kind 4 frame, the frame after its kind byte. Ignored until a mode 1 offer was accepted.
-    /// A keyframe-flagged datagram and a half-range ambiguous sequence are ignored like stale traffic. A missing
-    /// baseline schedules one coalesced repair request when an ack target exists.</summary>
+    /// A wrong format byte or an unknown flag bit is malformed. A well-formed keyframe-flagged datagram and a half-range
+    /// ambiguous sequence are ignored like stale traffic. A missing baseline schedules one coalesced repair request
+    /// when an ack target exists.</summary>
     /// <returns>The reconstruction result. Only <see cref="DeltaRebuildResult.Accepted"/> sets the envelope outs.
     /// <see cref="DeltaRebuildResult.Invalid"/> ends the session: <see cref="Failure"/> names a capacity failure,
     /// otherwise <paramref name="error"/> names an incompatible decode.</returns>
@@ -150,7 +152,15 @@ internal sealed class RebuildClientStream
         if (Failure is not null || !OwnsLiveness) return DeltaRebuildResult.DuplicateOrStale;
         if (frame.Length < RebuildProtocol.EnvelopeBytes) return Malformed("A format 2 delta is shorter than its envelope.", out error);
         ReadOnlyMemory<byte> body = frame[RebuildProtocol.EnvelopeBytes..];
-        if (body.Length > 1 && (body.Span[1] & KeyframeFlag) != 0) return DeltaRebuildResult.DuplicateOrStale;
+        if (body.Length > 1)
+        {
+            ReadOnlySpan<byte> head = body.Span;
+            if (head[0] != RebuildProtocol.Format)
+                return Malformed($"Unknown replication body format {head[0]}.", out error);
+            if ((head[1] & ~KeyframeFlag) != 0)
+                return Malformed($"Format 2 flags 0x{head[1]:X2} carry an unknown bit.", out error);
+            if (head[1] == KeyframeFlag) return DeltaRebuildResult.DuplicateOrStale;   // keyframes arrive only as chunks
+        }
         DeltaRebuildResult result = Classify(Rebuild.TryApply(world, body, out _, out ReplicationPacketId? missing,
             out error), error);
         if (result == DeltaRebuildResult.Accepted)

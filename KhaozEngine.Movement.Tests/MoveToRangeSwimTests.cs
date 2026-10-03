@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
@@ -93,6 +94,33 @@ public class MoveToRangeSwimTests
     }
 
     [Fact]
+    public void SwimmerWithoutWaterAtItsFeetIsSettling()
+    {
+        MoveState body = Floating(0f, 0f);
+        ReachTarget far = ReachTarget.Point(new Vector3(2f, FloatY, 0f));
+        var noMedium = new GroundMoveContext((_, _) => -2f);
+        var dryFeet = new GroundMoveContext((_, _) => -2f, medium: (_, _, _) => MovementMedium.Dry);
+
+        Assert.Equal(new RangeSteering(Vector2.Zero, RangeMoveStatus.Suspended), Mover(Swim).Tick(body, Duck, far, 0f, false, Dt, noMedium));
+        Assert.Equal(new RangeSteering(Vector2.Zero, RangeMoveStatus.Suspended), Mover(Swim).Tick(body, Duck, far, 0f, false, Dt, dryFeet));
+        Assert.Equal(RangeMoveStatus.Following, Mover(Swim).Tick(body, Duck, far, 0f, false, Dt, Deep).Status);
+    }
+
+    [Fact]
+    public void SwimmerCarriesThroughStraightRunsAtSwimPace()
+    {
+        // Waypoints every 0.2 m on a straight line from the start: without carry the swimmer lands on each one, short
+        // of a full bound. Waypoint 0 is the start, because carry never passes waypoint 0.
+        Vector2[] points = [.. Enumerable.Range(0, 16).Select(i => new Vector2(0.2f * i, 0f))];
+        float bound = Duck.SwimSpeed * Dt;
+        float carried = SwimTravel(new RouteApproachOptions { SteerWhileSwimming = true, CarryThroughStraightRuns = true }, points);
+        float plain = SwimTravel(Swim, points);
+
+        Assert.InRange(carried, 12f * bound - 1e-4f, 12f * bound + 1e-4f);
+        Assert.True(plain < carried - 0.05f, $"Plain swim travelled {plain:F4} m against {carried:F4} m carried.");
+    }
+
+    [Fact]
     public void PermittedSwimRefusesAnAirborneExitStep()
     {
         // Inside the band but 0.15 m above the float line, too shallow to keep swimming: the core takes the land path
@@ -153,6 +181,22 @@ public class MoveToRangeSwimTests
         Assert.Equal(new RangeSteering(Vector2.Zero, RangeMoveStatus.Suspended),
             new MoveToRange(aquatic, null, RouteApproachOptions.Default).Tick(body, Duck, far, 0f, false, Dt, context));
         Assert.Equal(RangeMoveStatus.Following, new MoveToRange(aquatic, null, Swim).Tick(body, Duck, far, 0f, false, Dt, context).Status);
+    }
+
+    // Horizontal travel of a swimmer after 12 ticks along a scripted straight route.
+    private static float SwimTravel(RouteApproachOptions options, Vector2[] points)
+    {
+        var mover = new MoveToRange(new ScriptPlanner((_, _) => Route(NavPathStatus.Complete, points)), Space, Open, null, options);
+        ReachTarget end = ReachTarget.Point(new Vector3(points[^1].X, FloatY, points[^1].Y));
+        MoveState body = Floating(0f, 0f);
+        for (int tick = 0; tick < 12; tick++)
+        {
+            RangeSteering steering = mover.Tick(body, Duck, end, 0f, false, Dt, Deep);
+            Assert.Equal(RangeMoveStatus.Following, steering.Status);
+            body = NpcGroundMovement.Step(body, steering, false, Dt, Duck, Deep);
+            Assert.True(body.Swimming);
+        }
+        return new Vector2(body.Position.X, body.Position.Z).Length();
     }
 
     internal static MoveState Floating(float x, float z, float? feetY = null) => new()

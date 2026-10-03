@@ -216,14 +216,14 @@ public class GroundNavigationBakeRoundTripTests
 
         Assert.Equal("options", Assert.Throws<ArgumentException>(() =>
             GroundNavigationBake.Create(capture, Sources(), fixture.Profiles)).ParamName);
-        Assert.Throws<ArgumentException>(() => GroundNavigationBake.Load(new MemoryStream(Bake("channel").File),
-            new NavBakeExpectation(dry, Sources(), fixture.Profiles)));
+        Assert.Equal("expected", Assert.Throws<ArgumentException>(() => GroundNavigationBake.Load(
+            new MemoryStream(Bake("channel").File), new NavBakeExpectation(dry, Sources(), fixture.Profiles))).ParamName);
         NavBakeProfile[] disordered = [fixture.Profiles[1] with
         {
             Tuning = fixture.Profiles[1].Tuning with { SwimSurfaceSubmersionFraction = 0.5f },
         }];
-        Assert.Throws<ArgumentException>(() => GroundNavigationBake.Load(new MemoryStream(Bake("channel").File),
-            new NavBakeExpectation(fixture.Options, Sources(), disordered)));
+        Assert.Equal("expected", Assert.Throws<ArgumentException>(() => GroundNavigationBake.Load(
+            new MemoryStream(Bake("channel").File), new NavBakeExpectation(fixture.Options, Sources(), disordered))).ParamName);
     }
 
     [Fact]

@@ -277,7 +277,7 @@ public class AquaticProfileTests
 
     // 28 by 8 cells of 0.25 m over the bank of SwimTraversalProbeTests.RampWorld, at the default edge budget. Columns
     // from x 4.125 on are swim-deep for the duck.
-    private static readonly PhysicsNavBakeOptions Bank = new(-1f, -1f, 6f, 1f, 0.25f, 2f, 5f, 0.8f, 256, 2048)
+    internal static readonly PhysicsNavBakeOptions Bank = new(-1f, -1f, 6f, 1f, 0.25f, 2f, 5f, 0.8f, 256, 2048)
     {
         SampleWater = true,
     };

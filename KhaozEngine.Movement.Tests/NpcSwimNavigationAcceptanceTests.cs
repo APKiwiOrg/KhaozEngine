@@ -53,6 +53,61 @@ public class NpcSwimNavigationAcceptanceTests
         Assert.True(widest > 0.375f + Duck.CapsuleRadius, $"The duck reached z {widest:F3} only, so it never went around the deck.");
     }
 
+    [Fact]
+    public void WadingDuckSwimsOutAndWadesBackWithoutStallingAtTheShore()
+    {
+        // The terraced bank of SwimTraversalProbeTests.RampWorld: wading on the terrace at -0.26 (x 3.125), swimming
+        // from the terrace at -0.34 (x 4) out to deep water over -0.44 (x 5.375), then back to the terrace at -0.2
+        // (x 2.375), whose range is met only by a body standing in the shallows.
+        using BepuPhysicsWorld world = SwimTraversalProbeTests.RampWorld();
+        GroundMoveContext context = SwimTraversalProbeTests.RampContext(world);
+        using PhysicsNavBake capture = PhysicsNavBake.Capture(context, AquaticProfileTests.Bank, _ => 0u);
+        GroundNavigation aquatic = capture.BuildProfile(Duck, default, new GroundProfileOptions { Aquatic = true });
+        var shelf = new Vector3(3.125f, SwimTraversalProbeTests.RampBed(3.125f), 0.125f);
+        ReachTarget deep = ReachTarget.Point(new Vector3(5.375f, FloatY + Duck.CapsuleHalfHeight, 0.125f));
+        var inland = new Vector3(2.375f, SwimTraversalProbeTests.RampBed(2.375f), 0.125f);
+        ReachTarget back = ReachTarget.Point(inland + Vector3.UnitY * Duck.CapsuleHalfHeight);
+        var wading = new MoveState { Position = shelf + Vector3.UnitY * Duck.CapsuleHalfHeight, Grounded = true, SpeedScale = 1f };
+
+        var mover = new MoveToRange(aquatic, null, Swim);
+        (RangeMoveStatus outward, MoveState afloat, int outTicks, int outHeld) = Drive(mover, wading, deep, context);
+        Assert.Equal(RangeMoveStatus.InRange, outward);
+        Assert.True(afloat.Swimming, "The duck reached deep water without swimming.");
+        mover.Reset();
+        (RangeMoveStatus inward, MoveState ashore, int inTicks, int inHeld) = Drive(mover, afloat, back, context);
+        Assert.Equal(RangeMoveStatus.InRange, inward);
+        Assert.True(ashore.Grounded && !ashore.Swimming, "The duck came back without standing on the shelf.");
+        // A tick may hold while the core lands the body between swimming and wading. A stall would hold far longer.
+        Assert.True(outHeld + inHeld <= 4, $"Held {outHeld} ticks out and {inHeld} ticks back.");
+        Assert.True(outTicks + inTicks < 300, $"The round trip took {outTicks} and {inTicks} ticks.");
+
+        // Without SteerWhileSwimming the duck stalls once it starts swimming at the shore.
+        (RangeMoveStatus stalled, MoveState stuck, _, int stalledHeld) = Drive(new MoveToRange(aquatic), wading, deep, context);
+        Assert.Equal(RangeMoveStatus.Suspended, stalled);
+        Assert.True(stuck.Swimming);
+        Assert.True(stalledHeld > 100, $"Only {stalledHeld} ticks held without the option.");
+    }
+
+    // Steps the body towards the target for up to 600 ticks. Returns the last status, the body, the ticks taken and
+    // how many ticks were held Suspended.
+    private static (RangeMoveStatus Status, MoveState Body, int Ticks, int Held) Drive(MoveToRange mover, MoveState body,
+        ReachTarget target, GroundMoveContext context)
+    {
+        RangeMoveStatus status = RangeMoveStatus.Following;
+        int held = 0, tick = 0;
+        for (; tick < 600; tick++)
+        {
+            RangeSteering steering = mover.Tick(body, Duck, target, Range, false, Dt, context);
+            status = steering.Status;
+            if (status == RangeMoveStatus.InRange) break;
+            Assert.True(status is RangeMoveStatus.Following or RangeMoveStatus.Suspended, $"Tick {tick} returned {status}.");
+            if (status == RangeMoveStatus.Suspended) held++;
+            body = NpcGroundMovement.Step(body, steering, false, Dt, Duck, context);
+            if (body.Swimming) Assert.True(context.SwimClear(body, Duck), $"Tick {tick} put the duck into a static at {body.Position}.");
+        }
+        return (status, body, tick, held);
+    }
+
     // Drives the duck from Start towards FarBank for up to 600 ticks. Every swimming pose must pass the clearance check.
     private static (RangeMoveStatus Status, MoveState Body, float WidestZ) Cross(BepuPhysicsWorld world)
     {

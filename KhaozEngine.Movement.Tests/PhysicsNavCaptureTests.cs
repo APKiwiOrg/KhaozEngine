@@ -55,7 +55,12 @@ public class PhysicsNavCaptureTests
         world.AddStatic(new BoxShape(new Vector3(0.4f, 0.1f, 0.4f)), Pose.At(new Vector3(-1f, -0.1f, 0f)));
         PhysicsNavBakeOptions options = Options with
         {
-            MinX = -1.5f, MinZ = -0.5f, MaxX = 1.5f, MaxZ = 0.5f, ProbeHeight = 2f, ProbeRange = 3f,
+            MinX = -1.5f,
+            MinZ = -0.5f,
+            MaxX = 1.5f,
+            MaxZ = 0.5f,
+            ProbeHeight = 2f,
+            ProbeRange = 3f,
         };
         using var bake = PhysicsNavBake.Capture(PhysicsOnly(world), options, _ => 0x01u);
 
@@ -75,7 +80,12 @@ public class PhysicsNavCaptureTests
             [new(0f, 0f, 0f), new(0f, 0f, 1f), new(1f, 0f, 0f)], [0, 1, 2]), Pose.At(Vector3.Zero));
         PhysicsNavBakeOptions options = Options with
         {
-            MinX = 0.5f, MinZ = -0.5f, MaxX = 1.5f, MaxZ = 0.5f, ProbeHeight = 2f, ProbeRange = 3f,
+            MinX = 0.5f,
+            MinZ = -0.5f,
+            MaxX = 1.5f,
+            MaxZ = 0.5f,
+            ProbeHeight = 2f,
+            ProbeRange = 3f,
         };
         var probe = new PhysicsColumnProbe(world) { ProbeHeight = 2f, ProbeRange = 3f, MaxSlopeRadians = 0.8f };
         Span<ColumnSurface> raw = stackalloc ColumnSurface[5];
@@ -94,7 +104,12 @@ public class PhysicsNavCaptureTests
         var samples = new List<Vector3>();
         PhysicsNavBakeOptions options = Options with
         {
-            MinX = -2f, MinZ = -3f, MaxX = 0.2f, MaxZ = -0.8f, ProbeHeight = 2f, ProbeRange = 3f,
+            MinX = -2f,
+            MinZ = -3f,
+            MaxX = 0.2f,
+            MaxZ = -0.8f,
+            ProbeHeight = 2f,
+            ProbeRange = 3f,
         };
         using var bake = PhysicsNavBake.Capture(PhysicsOnly(world), options, feet =>
         {
@@ -123,8 +138,15 @@ public class PhysicsNavCaptureTests
         using var world = FlatWorld();
         PhysicsNavBakeOptions options = Options with
         {
-            MinX = 0f, MinZ = 0f, MaxX = 0.3f, MaxZ = 0.3f, CellSize = 0.1f,
-            ProbeHeight = 2f, ProbeRange = 3f, MaxCells = 9, MaxLayerCells = 9,
+            MinX = 0f,
+            MinZ = 0f,
+            MaxX = 0.3f,
+            MaxZ = 0.3f,
+            CellSize = 0.1f,
+            ProbeHeight = 2f,
+            ProbeRange = 3f,
+            MaxCells = 9,
+            MaxLayerCells = 9,
         };
         using var bake = PhysicsNavBake.Capture(PhysicsOnly(world), options, _ => 0x01u);
 
@@ -253,7 +275,9 @@ public class PhysicsNavCaptureTests
         world.Rebase(new Vector3(-float.MaxValue, 0f, 0f));
         PhysicsNavBakeOptions options = Options with
         {
-            MinX = float.MaxValue / 2f, MaxX = float.MaxValue, CellSize = float.MaxValue / 2f,
+            MinX = float.MaxValue / 2f,
+            MaxX = float.MaxValue,
+            CellSize = float.MaxValue / 2f,
         };
 
         Assert.Throws<ArgumentOutOfRangeException>(() => PhysicsNavBake.Capture(PhysicsOnly(world), options, _ => 0u));

@@ -82,6 +82,29 @@ public sealed partial class SqlServerTextSchemaMigrationTests
         Assert.Equal(0, database.Scalar("SELECT COUNT(*) FROM sys.tables WHERE name = N'catalog_text';"));
     }
 
+    /// <summary>
+    /// The version 2 check an open runs after it read version 2. A genuine version 2 answers 2. Version 4
+    /// objects under a version a rival host has since moved past 2 answer the version it moved to. The same
+    /// objects under a version still at 2 are a mismatch.
+    /// </summary>
+    [CatalogSqlServerFact]
+    public async Task The_version_2_check_accepts_a_mismatch_only_when_another_host_already_moved_the_version_past_2()
+    {
+        using var database = new SqlServerCatalogDatabase();
+        database.Execute(SqlServerCatalogSchema.VersionTwoSchemaSql);
+        Assert.Equal(2, await ValidateVersionTwoAsync(database));
+
+        database.DropSchema();
+        await new SqlServerContentAuthoringStore(database.ConnectionString, ThingRegistry())
+            .InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        Assert.Equal(4, await ValidateVersionTwoAsync(database));
+
+        database.Execute("UPDATE dbo.catalog_metadata SET schema_version = 2 WHERE metadata_key = 1;");
+        var refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => ValidateVersionTwoAsync(database));
+        Assert.Equal(ContentAuthoringException.SchemaMismatchReason, refused.Reason);
+        Assert.Contains(MigrationName, refused.Message, StringComparison.Ordinal);
+    }
+
     [CatalogSqlServerFact]
     public async Task A_fresh_and_a_migrated_catalog_carry_the_same_columns_collations_indexes_and_checks()
     {
@@ -340,6 +363,14 @@ public sealed partial class SqlServerTextSchemaMigrationTests
         SqlServerContentAuthoringStore migrated = await OpenAsync(database);
         Assert.Equal(4, await migrated.GetSchemaVersionAsync());
         AssertNewTablesEmptyAndLegacyUnknown(database);
+    }
+
+    /// <summary>The version 2 check on a connection of its own, as an open that read version 2 runs it.</summary>
+    static async Task<int> ValidateVersionTwoAsync(SqlServerCatalogDatabase database)
+    {
+        await using var connection = new SqlConnection(database.ConnectionString);
+        await connection.OpenAsync();
+        return await SqlServerCatalogSchemaValidation.ValidateVersionTwoAsync(connection, default);
     }
 
     /// <summary>One older version's embedded script and the legacy content written into it.</summary>

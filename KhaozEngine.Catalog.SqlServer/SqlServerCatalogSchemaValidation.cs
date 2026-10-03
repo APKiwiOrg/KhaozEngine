@@ -100,17 +100,21 @@ internal static class SqlServerCatalogSchemaValidation
             // Read after the version, like every validation here, so a version 1 database this open just
             // migrated, or a version 2 one another host is migrating, is judged on what it holds now. The
             // version 2 check accepts a version 3 column in its exact shape, which is what a half-finished
-            // migration or a host that migrated in between leaves.
-            await ValidateObjectsAsync(connection, 2, cancellationToken).ConfigureAwait(false);
-            if (mode != ContentAuthoringSchemaMode.AutoCreate)
+            // migration or a host that migrated in between leaves. A host that went further, to version 3 or
+            // on to 4, leaves objects version 2 does not declare, which is answered by the version it moved to.
+            version = await ValidateVersionTwoAsync(connection, cancellationToken).ConfigureAwait(false);
+            if (version == 2)
             {
-                throw Mismatch("at unsupported version '2'");
-            }
+                if (mode != ContentAuthoringSchemaMode.AutoCreate)
+                {
+                    throw Mismatch("at unsupported version '2'");
+                }
 
-            await MigrateAsync(connection, 2, SqlServerCatalogSchema.VersionTwoMigrationSql, cancellationToken)
-                .ConfigureAwait(false);
-            version = await ReadAsync(() => ReadSchemaVersionAsync(connection, cancellationToken))
-                .ConfigureAwait(false);
+                await MigrateAsync(connection, 2, SqlServerCatalogSchema.VersionTwoMigrationSql, cancellationToken)
+                    .ConfigureAwait(false);
+                version = await ReadAsync(() => ReadSchemaVersionAsync(connection, cancellationToken))
+                    .ConfigureAwait(false);
+            }
         }
 
         if (version == 3)
@@ -140,6 +144,31 @@ internal static class SqlServerCatalogSchemaValidation
 
         await ValidateObjectsAsync(connection, SqlServerCatalogSchema.CurrentVersion, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Validates a version 2 catalog against version 2's name sets and answers the version it stands at. When
+    /// the objects do not match and the version has moved past 2 since it was read, another host migrated in
+    /// between, which is answered with the version it moved to. Otherwise the mismatch is refused.
+    /// </summary>
+    /// <remarks>Internal rather than private so a test can drive the migrated-in-between branch directly.</remarks>
+    internal static async Task<int> ValidateVersionTwoAsync(SqlConnection connection, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ValidateObjectsAsync(connection, 2, cancellationToken).ConfigureAwait(false);
+            return 2;
+        }
+        catch (ContentAuthoringException)
+        {
+            int now = await ReadAsync(() => ReadSchemaVersionAsync(connection, cancellationToken)).ConfigureAwait(false);
+            if (now > 2)
+            {
+                return now;
+            }
+
+            throw;
+        }
     }
 
     /// <summary>

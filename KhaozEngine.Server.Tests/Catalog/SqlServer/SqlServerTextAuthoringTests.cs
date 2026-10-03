@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Catalog.SqlServer;
+using Microsoft.Data.SqlClient;
 using Xunit;
 using static KhaozEngine.Tests.Catalog.SqlServer.SqlServerTextFixtures;
 
@@ -328,6 +329,76 @@ public sealed class SqlServerTextAuthoringTests
         Assert.Equal("Sword ", Assert.Single((await text.ReadTextSnapshotAsync(2)).Revisions).Value);
         Assert.Equal(1, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_text WHERE replaced_in_version = 2;"));
         Assert.Null(await store.GetOpenDraftAsync());
+    }
+
+    /// <summary>
+    /// The length guards on their own. The commit's exact draft and baseline confirmations always run first,
+    /// so these statements are driven directly with a value that differs from the stored one only in its
+    /// trailing blank, which only <c>DATALENGTH</c> tells apart.
+    /// </summary>
+    [CatalogSqlServerFact]
+    public async Task The_value_length_guards_alone_keep_a_trailing_blank_value_from_matching_its_neighbour()
+    {
+        using var database = new SqlServerCatalogDatabase();
+        SqlServerContentAuthoringStore store = await OpenAsync(database);
+        IContentTextAuthoringStore text = store;
+        await ApplyAsync(text, new[] { Add() }, ContentTextEdit.Set(Target(NameField, "en"), "Sword "));
+        await store.PublishAsync(Request(0));
+        await ApplyAsync(text, null, ContentTextEdit.Set(Target(NameField, "en"), "Blade "));
+        int sword = (await store.ListRowsAsync(Item, 0, null, true, 0, 10)).Rows.Single().Id;
+
+        await using var connection = new SqlConnection(database.ConnectionString);
+        await connection.OpenAsync();
+        var scope = new SqlServerCatalogScope(connection, null);
+
+        var close = new ContentTextRevision(Item, sword, NameField, "en", "Sword", 1, null);
+        var refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => SqlServerContentAuthoringStore.WriteTextAsync(
+            scope, 2, new SqlServerContentAuthoringStore.ContentTextCommit([], [close], [], null), DateTimeOffset.UnixEpoch, default));
+        Assert.Equal(ContentAuthoringException.TextStateMismatchReason, refused.Reason);
+        Assert.Equal(0, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_text WHERE replaced_in_version IS NOT NULL;"));
+
+        await SqlServerContentAuthoringStore.DeletePublishedTextAsync(
+            scope, new ContentDraftTextState([ContentTextEdit.Set(Target(NameField, "en"), "Blade")], []), default);
+        Assert.Equal("Blade ", Assert.Single((await store.GetOpenDraftAsync())!.TextState!.Edits).Value);
+
+        await SqlServerContentAuthoringStore.DeletePublishedTextAsync(
+            scope, new ContentDraftTextState([ContentTextEdit.Set(Target(NameField, "en"), "Blade ")], []), default);
+        Assert.Equal(0, database.Scalar("SELECT COUNT(*) FROM dbo.catalog_draft_text_edit;"));
+    }
+
+    /// <summary>
+    /// A key differing from a live row's only in a trailing blank names no row, as in memory and SQLite, so it
+    /// can neither overwrite that row's standing intent nor leave an intent a later exact key would land in.
+    /// </summary>
+    [CatalogSqlServerFact]
+    public async Task A_key_with_a_trailing_blank_names_no_row_and_cannot_capture_the_intent_of_the_row_without_it()
+    {
+        using var database = new SqlServerCatalogDatabase();
+        SqlServerContentAuthoringStore store = await OpenAsync(database);
+        IContentTextAuthoringStore text = store;
+        await store.ApplyEditsAsync(new[] { Add() }, Actor, Operator, "row only");
+        await store.PublishAsync(Request(0));
+        int audits = await AuditCountAsync(store);
+
+        // Nothing standing yet: the blank-suffixed key refuses and leaves nothing a later exact key could find.
+        var unknown = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => ApplyAsync(text, null, ContentTextEdit.Set(Target(NameField, "en", "sword "), "Blade")));
+        Assert.Equal(ContentAuthoringException.UnknownRowReason, unknown.Reason);
+        Assert.Null(await store.GetOpenDraftAsync());
+        Assert.Equal(audits, await AuditCountAsync(store));
+
+        await ApplyAsync(text, null, ContentTextEdit.Set(Target(NameField, "en"), "Sword"));
+        audits = await AuditCountAsync(store);
+
+        // A standing intent for the exact key: the blank-suffixed key still refuses and the intent is unchanged.
+        var refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => ApplyAsync(text, null, ContentTextEdit.Set(Target(NameField, "en", "sword "), "Blade")));
+        Assert.Equal(ContentAuthoringException.UnknownRowReason, refused.Reason);
+        ContentTextEdit held = Assert.Single((await store.GetOpenDraftAsync())!.TextState!.Edits);
+        Assert.Equal(("sword", "Sword"), (held.Target.Key.ToString(), held.Value));
+        Assert.Equal(audits, await AuditCountAsync(store));
+        Assert.Equal(1, database.Scalar(
+            "SELECT COUNT(*) FROM dbo.catalog_draft_text_edit WHERE DATALENGTH(content_key) = DATALENGTH(N'sword');"));
     }
 
     /// <summary>Every row of the draft, intent, introduction and audit tables, which a refused batch leaves at zero.</summary>

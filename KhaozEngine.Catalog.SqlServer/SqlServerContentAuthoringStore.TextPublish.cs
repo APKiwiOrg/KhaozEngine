@@ -23,10 +23,12 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// with the store's own state first, inside the commit's transaction.
 /// </para>
 /// <para>
-/// <b>A value compares by its length too.</b> SQL Server pads the shorter string before an <c>=</c> compares,
-/// so two values differing only in trailing blanks would read as equal. Every statement that matches a value
-/// also matches its <c>DATALENGTH</c>, which makes the match exact. That is an equality of two stored
-/// strings, not a measure of a value's UTF-8 bound, which the domain enforces before any statement.
+/// <b>A value or a content key compares by its length too.</b> SQL Server pads the shorter string before an
+/// <c>=</c> compares, even under a binary collation, so two strings differing only in trailing blanks would
+/// read as equal. Every text statement that matches a value or a content key also matches its
+/// <c>DATALENGTH</c>, which makes the match exact. That is an equality of two stored strings, not a measure of
+/// a value's UTF-8 bound, which the domain enforces before any statement. Field names and language tags are
+/// validated by the domain first and cannot carry a trailing blank.
 /// </para>
 /// </summary>
 public sealed partial class SqlServerContentAuthoringStore
@@ -126,7 +128,11 @@ public sealed partial class SqlServerContentAuthoringStore
     /// A commit's text: every close at the new version, every insert, and the new version's complete language
     /// record, each at the version's publish time. The caller owns the transaction.
     /// </summary>
-    static async Task WriteTextAsync(
+    /// <remarks>
+    /// Internal so a test can drive its length guards directly. The commit's exact draft and baseline
+    /// confirmations run first and always leave the stored strings equal to the ones matched here.
+    /// </remarks>
+    internal static async Task WriteTextAsync(
         SqlServerCatalogScope scope,
         int versionNumber,
         ContentTextCommit text,
@@ -244,7 +250,11 @@ public sealed partial class SqlServerContentAuthoringStore
     /// The text intents and introductions a commit published, deleted by exact match, so an intent the commit
     /// did not freeze survives by the same rule the rows follow. The caller owns the transaction.
     /// </summary>
-    static async Task DeletePublishedTextAsync(
+    /// <remarks>
+    /// Internal so a test can drive its length guards directly. The commit's exact draft and baseline
+    /// confirmations run first and always leave the stored strings equal to the ones matched here.
+    /// </remarks>
+    internal static async Task DeletePublishedTextAsync(
         SqlServerCatalogScope scope,
         ContentDraftTextState published,
         CancellationToken cancellationToken)
@@ -255,8 +265,8 @@ public sealed partial class SqlServerContentAuthoringStore
                 scope,
                 """
                 DELETE FROM dbo.catalog_draft_text_edit
-                WHERE type_id = @type AND content_key = @key AND field_name = @field AND language_tag = @language
-                  AND operation = @operation
+                WHERE type_id = @type AND content_key = @key AND DATALENGTH(content_key) = DATALENGTH(@key)
+                  AND field_name = @field AND language_tag = @language AND operation = @operation
                   AND ((string_value IS NULL AND @textValue IS NULL)
                        OR (string_value = @textValue AND DATALENGTH(string_value) = DATALENGTH(@textValue)));
                 """);
@@ -345,7 +355,7 @@ public sealed partial class SqlServerContentAuthoringStore
     /// <param name="Closes">The baseline revisions the version replaces.</param>
     /// <param name="Inserts">The revisions the version adds.</param>
     /// <param name="PublishedText">The frozen text state the commit consumes from the draft, or null on a row-only commit.</param>
-    sealed record ContentTextCommit(
+    internal sealed record ContentTextCommit(
         IReadOnlyList<ContentTextLanguage> Languages,
         IReadOnlyList<ContentTextRevision> Closes,
         IReadOnlyList<ContentTextRevision> Inserts,

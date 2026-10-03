@@ -391,7 +391,8 @@ public sealed partial class SqlServerContentAuthoringStore : IContentTextAuthori
             scope,
             """
             SELECT edit_ordinal FROM dbo.catalog_draft_text_edit
-            WHERE type_id = @type AND content_key = @key AND field_name = @field AND language_tag = @language;
+            WHERE type_id = @type AND content_key = @key AND DATALENGTH(content_key) = DATALENGTH(@key)
+              AND field_name = @field AND language_tag = @language;
             """);
         BindTarget(command, target);
         return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is long ordinal
@@ -422,7 +423,8 @@ public sealed partial class SqlServerContentAuthoringStore : IContentTextAuthori
             scope,
             """
             SELECT TOP (1) definition_id FROM dbo.catalog_row
-            WHERE type_id = @type AND content_key = @key AND valid_from_version <= @live
+            WHERE type_id = @type AND content_key = @key AND DATALENGTH(content_key) = DATALENGTH(@key)
+              AND valid_from_version <= @live
               AND (replaced_in_version IS NULL OR replaced_in_version > @live);
             """);
         BindInt(command, "@type", (int)type.Value);

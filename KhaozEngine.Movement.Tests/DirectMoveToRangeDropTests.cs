@@ -22,14 +22,14 @@ public class DirectMoveToRangeDropTests
     {
         using var world = LedgeWorld();
         var context = new GroundMoveContext((_, _) => 0f, physics: world);
-        // Windows shorter than the fall. One airborne sample in either window would latch Blocked mid air or on landing.
+        // Windows shorter than the fall. One airborne sample in either window would latch Blocked mid air or on
+        // landing.
         var shortWindows = new DirectApproachOptions(ShortWindow, 0.1f, ShortWindow, 0.1f) { MaxDropMetres = 2.5f };
         Walk walk = Approach(shortWindows, context, OnLedge(), Beyond);
 
         Assert.Equal(RangeMoveStatus.InRange, walk.Last);
         Assert.Equal(1, walk.SuspendedStretches);
         Assert.True(walk.SuspendedTicks > ShortWindow);
-        Assert.True(walk.AirborneOnlyWhileSuspended);
         Assert.Equal(0, walk.Blocked);
         Assert.InRange(walk.Body.Position.Y, 0.74f, 0.76f);
         Assert.True(ReachGeometry.Within(MoveToRangeTests.Shape(walk.Body, Tuning), Beyond, 0.5f));
@@ -147,7 +147,7 @@ public class DirectMoveToRangeDropTests
         in ReachTarget target)
     {
         var driver = new DirectMoveToRange(options);
-        var walk = new Walk { AlwaysGrounded = true, AirborneOnlyWhileSuspended = true };
+        var walk = new Walk { AlwaysGrounded = true };
         bool wasSuspended = false;
         for (int tick = 0; tick < 300; tick++)
         {
@@ -157,7 +157,6 @@ public class DirectMoveToRangeDropTests
             if (suspended && !wasSuspended) walk.SuspendedStretches++;
             if (suspended) walk.SuspendedTicks++;
             wasSuspended = suspended;
-            walk.AirborneOnlyWhileSuspended &= body.Grounded || suspended;
             if (steering.Status == RangeMoveStatus.Blocked) walk.Blocked++;
             if (steering.Status is RangeMoveStatus.InRange or RangeMoveStatus.Blocked) break;
             body = NpcGroundMovement.Step(body, steering, false, Dt, Tuning, context);
@@ -173,7 +172,6 @@ public class DirectMoveToRangeDropTests
         public RangeMoveStatus Last;
         public int SuspendedStretches;
         public int SuspendedTicks;
-        public bool AirborneOnlyWhileSuspended;
         public int Blocked;
         public bool AlwaysGrounded;
     }

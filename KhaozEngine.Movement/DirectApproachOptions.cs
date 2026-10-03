@@ -44,7 +44,8 @@ public sealed record DirectApproachOptions
         get => _maxDropMetres;
         init => _maxDropMetres = float.IsFinite(value) && value >= 0f
             ? value
-            : throw new ArgumentOutOfRangeException(nameof(MaxDropMetres), "Drop allowance must be finite and not negative.");
+            : throw new ArgumentOutOfRangeException(nameof(MaxDropMetres),
+                "Drop allowance must be finite and not negative.");
     }
 
     private static int Ticks(int value, string name)

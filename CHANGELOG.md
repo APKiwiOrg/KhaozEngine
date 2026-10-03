@@ -13,8 +13,7 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   swimming no more than the allowance below the current feet, so a walk-up steps off a ledge, prop top or deck edge,
   stays `Suspended` while airborne and resumes on landing. A deeper drop, a landing on a floor at swim depth, a fall
   that starts swimming or one that has not landed within 256 settle steps is refused and counts toward the stall
-  window. Steady ticks still allocate
-  nothing.
+  window. Steady ticks still allocate nothing.
 
 ## 20.20.0
 

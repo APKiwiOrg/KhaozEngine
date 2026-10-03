@@ -74,7 +74,7 @@ public sealed partial class InMemoryContentAuthoringStore
 
         foreach (ContentTextRevision insert in plan.TextInserts)
         {
-            _ = RequireTextTarget(new ContentTextTarget(
+            _ = ContentTextTargetEligibility.Require(_registry, new ContentTextTarget(
                 insert.Type, KeyOf(plan.RowPlan, insert), insert.FieldName, insert.Language));
         }
     }

@@ -244,9 +244,10 @@ public sealed partial class SqliteContentAuthoringStore
     }
 
     /// <summary>
-    /// Refuses a row-only rollback when the current or the target version holds a text value or a declared
-    /// language, or has no complete text record, exactly as the in-memory reference does. The caller holds the
-    /// lease.
+    /// Refuses a row-only rollback unless the current and the target version are each complete and text free,
+    /// or unknown and proved empty by <see cref="ContentTextProvenanceProof"/>. It reads only, so a proof
+    /// records nothing, and it runs again inside the transaction that applies the rollback edits. The caller
+    /// holds the lease.
     /// </summary>
     async Task RequireRowOnlyRollbackAsync(
         int from,
@@ -259,35 +260,18 @@ public sealed partial class SqliteContentAuthoringStore
     }
 
     /// <summary>
-    /// Refuses a version a row-only rollback cannot prove text free: a NULL completeness, any language mapping
-    /// row or any text revision live at it. The caller holds the lease.
+    /// Refuses a version a row-only rollback cannot show text free: an unknown version no proof shows empty
+    /// refuses with <see cref="ContentAuthoringException.TextProvenanceUnknownReason"/>, and a version holding
+    /// any language mapping or live text revision refuses as unrepresented. The caller holds the lease.
     /// </summary>
     async Task RequireTextFreeAsync(int versionNumber, SqliteTransaction? transaction, CancellationToken cancellationToken)
     {
-        if (versionNumber == NoActiveVersion)
-        {
-            return;
-        }
-
-        using (SqliteCommand command = Command(
-            "SELECT text_snapshot_complete FROM catalog_version WHERE version_number = $version;", transaction))
-        {
-            Bind(command, "$version", (long)versionNumber);
-            if (await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not 1L)
-            {
-                throw ContentTextCompatibility.Unrepresented(nameof(RollbackToAsync), FormattableString.Invariant(
-                    $"version {versionNumber} has no complete text record, so its text is unknown rather than empty"));
-            }
-        }
-
-        IReadOnlyList<ContentTextLanguage> languages = await ReadTextLanguagesAsync(
-            versionNumber, transaction, cancellationToken).ConfigureAwait(false);
-        IReadOnlyList<ContentTextRevision> revisions = await ReadTextRevisionsAsync(
-            versionNumber, transaction, cancellationToken).ConfigureAwait(false);
-        if (languages.Count > 0 || revisions.Count > 0)
+        ContentVersionTextSnapshot text = await ReadTextSnapshotAtAsync(versionNumber, transaction, cancellationToken)
+            .ConfigureAwait(false);
+        if (text.Languages.Count > 0 || text.Revisions.Count > 0)
         {
             throw ContentTextCompatibility.Unrepresented(nameof(RollbackToAsync), FormattableString.Invariant(
-                $"version {versionNumber} records {languages.Count} language(s) and {revisions.Count} value(s)"));
+                $"version {versionNumber} records {text.Languages.Count} language(s) and {text.Revisions.Count} value(s)"));
         }
     }
 }

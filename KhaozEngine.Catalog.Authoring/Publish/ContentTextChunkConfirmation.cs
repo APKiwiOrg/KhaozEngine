@@ -6,9 +6,10 @@ namespace KhaozEngine.Catalog.Authoring;
 /// <summary>
 /// The chunk half of a text commit's backend confirmation, shared by every store: each output language's
 /// chunk hash is REGENERATED from the plan's own output values and live rows through the producer's encoder,
-/// and a reused chunk must also be the hash the base version recorded for that language. The plan's
-/// constructor proves its values are the right ones, and this proves its chunks are those values, so a
-/// manifest can never name a chunk the committed text does not produce.
+/// an encoded chunk's stored bytes must be the regenerated stored file, and a reused chunk must also be the
+/// hash the base version recorded for that language. The plan's constructor proves its values are the right
+/// ones, and this proves its chunks are those values, so a manifest can never name a chunk the committed text
+/// does not produce, and the pack can never hold other bytes under a chunk's hash.
 /// <para>
 /// It runs inside the store's gate or transaction, after the store confirmed the plan's baseline text is
 /// its own, and before anything is written.
@@ -19,7 +20,7 @@ internal static class ContentTextChunkConfirmation
     /// <summary>Refuses a plan whose chunks are not exactly its values.</summary>
     /// <param name="registry">The store's registry, which keys are derived through.</param>
     /// <param name="plan">The plan being committed.</param>
-    /// <exception cref="ContentAuthoringException">A chunk hash disagrees with the regenerated one or the base's recorded one, or a value cannot be regenerated.</exception>
+    /// <exception cref="ContentAuthoringException">A chunk hash or an encoded chunk's stored bytes disagree with the regenerated ones, a reused hash is not the base's recorded one, or a value cannot be regenerated.</exception>
     public static void Require(ContentTypeRegistry registry, ContentTextPublishPlan plan)
     {
         ArgumentNullException.ThrowIfNull(registry);
@@ -48,6 +49,14 @@ internal static class ContentTextChunkConfirmation
             {
                 throw Mismatch(FormattableString.Invariant(
                     $"the '{chunk.Recorded.WireTag}' chunk is named {chunk.Recorded.Hash} and the plan's values regenerate to {chunk.Hash}"));
+            }
+
+            // An encoded chunk's bytes are what the pack writer puts under its hash, so they must be the
+            // regenerated stored file itself. The encoder is deterministic, one fixed Brotli quality and window.
+            if (!plan.Chunks[i].IsReused && !plan.Chunks[i].StoredFile.Span.SequenceEqual(chunk.StoredFile))
+            {
+                throw Mismatch(FormattableString.Invariant(
+                    $"the '{chunk.Recorded.WireTag}' chunk is named {chunk.Hash} and its stored bytes are not the file the plan's values encode to"));
             }
 
             if (plan.Chunks[i].IsReused

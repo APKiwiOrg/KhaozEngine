@@ -156,13 +156,6 @@ public sealed class SqliteTextSchemaMigrationTests
         Assert.Equal(1L, database.Scalar("SELECT text_snapshot_complete FROM catalog_version WHERE version_number = 3;"));
         Assert.Equal(0L, database.Scalar("SELECT COUNT(*) FROM catalog_text_chunk;"));
 
-        // The row-only rollback cannot prove a legacy target text free, so it is refused rather than guessed,
-        // even from a complete text-free version.
-        var rollback = await Assert.ThrowsAsync<ContentAuthoringException>(
-            () => store.RollbackToAsync(1, Actor, Operator, "rollback"));
-        Assert.Equal(ContentAuthoringException.TextUnrepresentedReason, rollback.Reason);
-        Assert.Null(await store.GetOpenDraftAsync());
-
         await ApplyAsync(text, null, ContentTextEdit.Set(Target(NameField, "en"), "Sword"));
         Assert.Equal(4, (await store.PublishAsync(Request(3))).VersionNumber);
         Assert.Equal(1L, database.Scalar("SELECT text_snapshot_complete FROM catalog_version WHERE version_number = 4;"));
@@ -280,7 +273,7 @@ public sealed class SqliteTextSchemaMigrationTests
     /// A catalog this build published two row-only versions into, taken back to version 3 and left for the
     /// next AutoCreate open to migrate: exactly the shape of a deployed text-free catalog.
     /// </summary>
-    static async Task WriteMigratedTextFreeAsync(TemporaryCatalogDatabase database)
+    internal static async Task WriteMigratedTextFreeAsync(TemporaryCatalogDatabase database)
     {
         using (var store = new SqliteContentAuthoringStore(database.ConnectionString, TextRegistry(), database.Pack()))
         {

@@ -165,6 +165,38 @@ public sealed class ExactValueTextPublishTests
         Assert.Equal("Blade", Assert.Single((await text.ReadTextSnapshotAsync(2)).Revisions).Value);
     }
 
+    [Fact]
+    public async Task A_chunk_with_the_right_hash_and_other_bytes_is_refused_at_commit_with_nothing_written()
+    {
+        var store = TextStore();
+        IContentTextAuthoringStore text = store;
+        await PublishNamedRowAsync(store, "sword", "Sword");
+        ContentTextRevision sword = (await text.ReadTextSnapshotAsync(1)).Revisions.Single();
+        await ApplyAsync(text, new[] { Reprice(sword) }, ContentTextEdit.Set(Target(NameField, "en"), "Blade"));
+        var blade = new ContentTextRevision(Item, sword.DefinitionId, NameField, "en", "Blade", 2, null);
+        var candidate = new ContentTextCandidate(new[] { blade }, English, new[] { sword }, new[] { blade });
+
+        // The hash the plan's values regenerate to, over the stored bytes of OTHER values.
+        ContentTextChunkRecord real = Chunk("en", ("sword", "Blade"));
+        ContentTextChunkRecord other = Chunk("en", ("sword", "Sabre"));
+        var forged = new ContentTextChunkRecord(real.WireTag, real.Hash, other.StoredFile, false);
+        (ContentTextPublishSnapshot snapshot, ContentPublishPlan rowPlan) = await FreezeAndPlanAsync(
+            store, new[] { new ManifestLanguageEntry("en", real.Hash) });
+        int audits = await AuditCountAsync(store);
+
+        var refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => text.CommitTextPublishAsync(
+            new ContentTextPublishPlan(rowPlan, snapshot, candidate, new[] { forged }), Request(1), null));
+        Assert.Equal(ContentAuthoringException.TextChunkMismatchReason, refused.Reason);
+        Assert.Null(await store.GetVersionAsync(2));
+        Assert.Equal(audits, await AuditCountAsync(store));
+        Assert.Equal("Sword", Assert.Single((await text.ReadTextSnapshotAsync(1)).Revisions).Value);
+        Assert.Equal("Blade", (await store.GetOpenDraftAsync())!.TextState!.Edits.Single().Value);
+
+        await text.CommitTextPublishAsync(
+            new ContentTextPublishPlan(rowPlan, snapshot, candidate, new[] { real }), Request(1), null);
+        Assert.Equal(real.Hash, Assert.Single((await text.ReadTextSnapshotAsync(2)).Languages).Hash);
+    }
+
     static ContentEdit Reprice(ContentTextRevision row)
         => ContentEdit.Update(Item, row.DefinitionId, Sword, new[] { Value(9) });
 

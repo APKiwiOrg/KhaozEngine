@@ -160,6 +160,24 @@ public sealed class InMemoryTextAuthoringTests
     }
 
     [Fact]
+    public async Task A_marker_name_over_the_provider_field_bound_is_a_typed_refusal_before_any_write()
+    {
+        string longest = new('n', 64);
+        string over = new('n', 65);
+        var store = new InMemoryContentAuthoringStore(MarkerRegistry(longest, over));
+        IContentTextAuthoringStore text = store;
+
+        var refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => ApplyAsync(
+            text, new[] { Add() }, ContentTextEdit.Set(Target(over, "en"), "Sword")));
+        Assert.Equal(ContentAuthoringException.TextBoundsReason, refused.Reason);
+        Assert.Null(await store.GetOpenDraftAsync());
+        Assert.Equal(0, await AuditCountAsync(store));
+
+        ContentDraft held = await ApplyAsync(text, new[] { Add() }, ContentTextEdit.Set(Target(longest, "en"), "Sword"));
+        Assert.Equal(longest, Assert.Single(held.TextState!.Edits).Target.FieldName);
+    }
+
+    [Fact]
     public async Task A_retired_row_takes_set_and_remove_without_changing_retirement()
     {
         using var files = new TemporaryCatalogDatabase();

@@ -71,7 +71,7 @@ public sealed partial class SqliteContentAuthoringStore
         ContentTextChunkConfirmation.Require(_registry, plan);
         foreach (ContentTextRevision insert in plan.TextInserts)
         {
-            _ = RequireTextTarget(new ContentTextTarget(
+            _ = ContentTextTargetEligibility.Require(_registry, new ContentTextTarget(
                 insert.Type, KeyOf(plan.RowPlan, insert), insert.FieldName, insert.Language));
         }
 

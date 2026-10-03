@@ -267,9 +267,11 @@ public sealed class TextPublishTests
         Assert.Throws<ArgumentException>(() => ContentTextEdit.Set(
             TextAuthoringFixtures.Target(TextAuthoringFixtures.NameField, "en"), widest + "c"));
 
-        string field = new string('n', ContentTextKey.MaxKeyLength - "item.".Length - 64 - 1);
+        // The field name and content key at their 64 character bounds, and the type key filling the rest.
+        string field = new string('n', 64);
         string key = new string('k', 64);
-        ContentTypeRegistry registry = WideRegistry(field);
+        string typeKey = new string('t', ContentTextKey.MaxKeyLength - field.Length - key.Length - 2);
+        ContentTypeRegistry registry = WideRegistry(typeKey, field);
         using var root = new TemporaryRoot();
         var pack = new FileSystemPackStore(root.Path);
         var store = new InMemoryContentAuthoringStore(registry, pack);
@@ -281,7 +283,7 @@ public sealed class TextPublishTests
             Actor, Operator, "wide");
         ContentVersionRecord first = await PublishAsync(store);
 
-        string derived = "item." + key + "." + field;
+        string derived = typeKey + "." + key + "." + field;
         Assert.Equal(ContentTextKey.MaxKeyLength, Encoding.UTF8.GetByteCount(derived));
         ManifestLanguageEntry english = Assert.Single(await LanguagesAsync(pack, first));
         Assert.Equal(Hash("en", (derived, widest)), english.TextHash);
@@ -297,7 +299,7 @@ public sealed class TextPublishTests
     static string[] ChunkHashes(ContentManifest manifest)
         => manifest.Types.SelectMany(type => type.Chunks.Select(chunk => chunk.Hash)).ToArray();
 
-    static ContentTypeRegistry WideRegistry(string field)
+    static ContentTypeRegistry WideRegistry(string typeKey, string field)
     {
         var schema = new ContentFieldSchema(new ContentFieldEntry[]
         {
@@ -306,7 +308,7 @@ public sealed class TextPublishTests
         });
         var registry = new ContentTypeRegistry();
         registry.RegisterContentType(
-            ContentRegistrationBand.Game, TextAuthoringFixtures.Item.Value, "item", new WideCodec(schema), null, schema,
+            ContentRegistrationBand.Game, TextAuthoringFixtures.Item.Value, typeKey, new WideCodec(schema), null, schema,
             ContentVisibility.Client, 256);
         return registry;
     }

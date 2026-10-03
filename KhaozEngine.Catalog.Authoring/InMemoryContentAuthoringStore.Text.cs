@@ -327,7 +327,7 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
         List<ContentTextLanguageDeclaration> introductions)
     {
         ContentTextTarget target = edit.Target;
-        ContentFieldEntry field = RequireTextTarget(target);
+        ContentFieldEntry field = ContentTextTargetEligibility.Require(_registry, target);
         int id = LiveRowId(target.Type, target.Key);
         if (id == 0 && !pending.Contains((target.Type.Value, target.Key)))
         {
@@ -373,53 +373,6 @@ public sealed partial class InMemoryContentAuthoringStore : IContentTextAuthorin
         }
 
         return id;
-    }
-
-    /// <summary>
-    /// The marker field a text target names, after checking a registered CLIENT type, a CLIENT localized text
-    /// marker and the strict UTF-8 bound of the derived key.
-    /// </summary>
-    ContentFieldEntry RequireTextTarget(ContentTextTarget target)
-    {
-        ContentTypeRegistration registration = RequireType(target.Type);
-        if (!registration.Schema.TryGet(target.FieldName, out ContentFieldEntry? field))
-        {
-            throw new ContentAuthoringException(
-                FormattableString.Invariant(
-                    $"Content type {target.Type.Value} '{registration.TypeKey}' declares no field named '{target.FieldName}'."),
-                target.Type,
-                0,
-                ContentAuthoringException.UnknownFieldReason);
-        }
-
-        if (registration.DefaultVisibility != ContentVisibility.Client
-            || !field.IsDerivedMarker
-            || field.Visibility != ContentVisibility.Client)
-        {
-            throw new ContentAuthoringException(
-                FormattableString.Invariant(
-                    $"Text needs a CLIENT-visible type and a CLIENT-visible localized text marker, and type {target.Type.Value} '{registration.TypeKey}' field '{target.FieldName}' is not both."),
-                target.Type,
-                0,
-                ContentAuthoringException.TextTargetIneligibleReason);
-        }
-
-        int keyBytes = checked(
-            ContentTextEdit.MeasureUtf8(registration.TypeKey, nameof(target))
-            + 2
-            + target.Key.Utf8.Length
-            + ContentTextEdit.MeasureUtf8(target.FieldName, nameof(target)));
-        if (keyBytes > ContentTextKey.MaxKeyLength)
-        {
-            throw new ContentAuthoringException(
-                FormattableString.Invariant(
-                    $"The derived text key of type {target.Type.Value} row '{target.Key}' field '{target.FieldName}' is {keyBytes} UTF-8 bytes, over the {ContentTextKey.MaxKeyLength} byte bound."),
-                target.Type,
-                0,
-                ContentAuthoringException.TextBoundsReason);
-        }
-
-        return field;
     }
 
     /// <summary>The canonical languages a committed version declares. The caller already holds the gate.</summary>

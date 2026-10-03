@@ -236,6 +236,54 @@ public sealed class SqliteTextAuthoringTests
     }
 
     [Fact]
+    public async Task A_marker_name_over_the_field_name_column_is_a_typed_refusal_not_a_constraint_error()
+    {
+        using var database = new TemporaryCatalogDatabase();
+        string longest = new('n', 64);
+        string over = new('n', 65);
+        using var store = new SqliteContentAuthoringStore(
+            database.ConnectionString, MarkerRegistry(longest, over), database.Pack());
+        await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        IContentTextAuthoringStore text = store;
+
+        var refused = await Assert.ThrowsAsync<ContentAuthoringException>(() => ApplyAsync(
+            text, new[] { Add() }, ContentTextEdit.Set(Target(over, "en"), "Sword")));
+        Assert.Equal(ContentAuthoringException.TextBoundsReason, refused.Reason);
+        Assert.Null(await store.GetOpenDraftAsync());
+        Assert.Equal(0, await AuditCountAsync(store));
+
+        ContentDraft held = await ApplyAsync(text, new[] { Add() }, ContentTextEdit.Set(Target(longest, "en"), "Sword"));
+        Assert.Equal(longest, Assert.Single(held.TextState!.Edits).Target.FieldName);
+        Assert.Equal(1L, database.Scalar("SELECT COUNT(*) FROM catalog_draft_text_edit;"));
+    }
+
+    [Fact]
+    public async Task A_chunk_with_the_right_hash_and_other_bytes_is_refused_at_commit_with_nothing_written()
+    {
+        using var database = new TemporaryCatalogDatabase();
+        using SqliteContentAuthoringStore store = await OpenAsync(database);
+        IContentTextAuthoringStore text = store;
+        await ApplyAsync(text, new[] { Add() }, ContentTextEdit.Set(Name, "Sword"));
+        ContentTextChunkRecord real = Chunk("en-us", ("sword", "Sword"));
+        ContentTextChunkRecord other = Chunk("en-us", ("sword", "Blade"));
+        var forged = new ContentTextChunkRecord(real.WireTag, real.Hash, other.StoredFile, false);
+        ContentTextPublishPlan lying = await PlanAsync(store, forged);
+        int audits = await AuditCountAsync(store);
+
+        var refused = await Assert.ThrowsAsync<ContentAuthoringException>(
+            () => text.CommitTextPublishAsync(lying, Request(0), null));
+        Assert.Equal(ContentAuthoringException.TextChunkMismatchReason, refused.Reason);
+        Assert.Empty(await store.ListVersionsAsync());
+        Assert.Equal(audits, await AuditCountAsync(store));
+        Assert.Equal(0L, database.Scalar(
+            "SELECT (SELECT COUNT(*) FROM catalog_text) + (SELECT COUNT(*) FROM catalog_text_chunk);"));
+        Assert.Equal("Sword", Assert.Single((await store.GetOpenDraftAsync())!.TextState!.Edits).Value);
+
+        await text.CommitTextPublishAsync(await PlanAsync(store, real), Request(0), null);
+        Assert.Equal(real.Hash, Assert.Single((await text.ReadTextSnapshotAsync(1)).Languages).Hash);
+    }
+
+    [Fact]
     public async Task The_expected_draft_discard_keeps_a_rival_landed_first_and_serializes_one_arriving_during_it()
     {
         using var database = new TemporaryCatalogDatabase();

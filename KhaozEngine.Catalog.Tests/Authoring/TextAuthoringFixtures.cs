@@ -48,6 +48,22 @@ internal static class TextAuthoringFixtures
         return registry;
     }
 
+    /// <summary>The fixture item type with a required value and one CLIENT localized text marker per given name.</summary>
+    public static ContentTypeRegistry MarkerRegistry(params string[] markerNames)
+    {
+        var fields = new List<ContentFieldEntry> { new("value", ContentFieldKind.Int, null, ContentVisibility.Client, true) };
+        foreach (string marker in markerNames)
+        {
+            fields.Add(new ContentFieldEntry(marker, ContentFieldKind.LocalizedTextKey, null, ContentVisibility.Client, false));
+        }
+
+        var schema = new ContentFieldSchema(fields);
+        var registry = new ContentTypeRegistry();
+        registry.RegisterContentType(
+            ContentRegistrationBand.Game, Item.Value, "item", new Codec(Item, schema), null, schema, ContentVisibility.Client, 256);
+        return registry;
+    }
+
     public static InMemoryContentAuthoringStore TextStore(Func<DateTimeOffset>? clock = null)
         => new(TextRegistry(), clock: clock);
 

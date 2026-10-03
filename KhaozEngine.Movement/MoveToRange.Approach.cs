@@ -21,7 +21,8 @@ public sealed partial class MoveToRange
         return AllowsStep(body, accepted, tuning);
     }
 
+    // A swimming prediction is admitted only under SteerWhileSwimming. An airborne prediction never is.
     private bool AllowsStep(in MoveState body, in MoveState predicted, in MoveTuning tuning)
-        => predicted.Grounded && !predicted.Swimming && MovementBody.IsFinite(predicted.Position) &&
-            _allowsSegment(Feet(body, tuning), Feet(predicted, tuning));
+        => ((predicted.Grounded && !predicted.Swimming) || (_options.SteerWhileSwimming && predicted.Swimming)) &&
+            MovementBody.IsFinite(predicted.Position) && _allowsSegment(Feet(body, tuning), Feet(predicted, tuning));
 }

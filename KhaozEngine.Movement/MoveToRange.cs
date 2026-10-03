@@ -22,10 +22,16 @@ public sealed partial class MoveToRange
     }
 
     /// <summary>Route following with opt-in <paramref name="options"/>.</summary>
+    /// <exception cref="ArgumentException"><see cref="RouteApproachOptions.SteerWhileSwimming"/> is set and the
+    /// profile is not <see cref="GroundNavigation.Aquatic"/>.</exception>
     public MoveToRange(GroundNavigation navigation, PathFollowConfig? follow, RouteApproachOptions options)
         : this((navigation ?? throw new ArgumentNullException(nameof(navigation))).Planner,
             navigation.Space, navigation.AllowsSegment, follow, options)
-        => _navigation = navigation;
+    {
+        if (options.SteerWhileSwimming && !navigation.Aquatic)
+            throw new ArgumentException("Steering swimmers needs an aquatic profile.", nameof(options));
+        _navigation = navigation;
+    }
 
     /// <summary>The caller supplies equivalent guarded region planning and segment admission.</summary>
     public MoveToRange(IRegionPathPlanner planner, NavSpace space,
@@ -51,8 +57,9 @@ public sealed partial class MoveToRange
 
     /// <summary>Returns bounded requested input without writing the supplied state or stepping the world.
     /// Input validation and current reach evaluation run before status selection. Suspended takes precedence over
-    /// InRange for airborne or committed bodies. InRange witnesses the current supplied capsule, never a waypoint
-    /// or a predicted destination. Range uses no tolerance.</summary>
+    /// InRange for airborne or committed bodies, and for a settling swimmer under
+    /// <see cref="RouteApproachOptions.SteerWhileSwimming"/>. InRange witnesses the current supplied capsule, never a
+    /// waypoint or a predicted destination. Range uses no tolerance.</summary>
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context)
     {
@@ -63,7 +70,9 @@ public sealed partial class MoveToRange
         if (!float.IsFinite(dt) || dt <= 0f) throw new ArgumentOutOfRangeException(nameof(dt));
         MovementBody shape = Body(body, tuning);
         bool within = ReachGeometry.Within(shape, target, range);
-        if (!body.Grounded || body.Commitment.IsActive) return Hold(RangeMoveStatus.Suspended);
+        bool swims = _options.SteerWhileSwimming && body.Swimming;
+        if ((!body.Grounded && !swims) || body.Commitment.IsActive) return Hold(RangeMoveStatus.Suspended);
+        if (swims && Settling(body, tuning, context)) return Hold(RangeMoveStatus.Suspended);
         if (within) return Hold(RangeMoveStatus.InRange);
 
         NavGoalRegion goal = Goal(tuning, target, range);
@@ -74,7 +83,9 @@ public sealed partial class MoveToRange
         if (route.State == PathFollowState.Unreachable) return Hold(RangeMoveStatus.Unreachable);
         if (route.State != PathFollowState.Following) return Hold(RangeMoveStatus.Following);
 
-        float bound = TravelBound(body, tuning, run, dt, context);
+        float bound = _options.SteerWhileSwimming
+            ? SwimPace.Bound(body, tuning, run, dt, context)
+            : TravelBound(body, tuning, run, dt, context);
         if (bound == 0f) return Hold(RangeMoveStatus.Following);
         if (_follower.ActivePath?.Status == NavPathStatus.Complete &&
             TryApproach(body, tuning, target, range, run, dt, context, bound, out Vector2 approach))
@@ -100,6 +111,19 @@ public sealed partial class MoveToRange
     }
 
     private static RangeSteering Hold(RangeMoveStatus status) => new(Vector2.Zero, status);
+
+    // A swimmer settles until the medium at its feet is water and its feet lie in the band Resolve accepts around its
+    // float line, as an airborne body lands before it is steered.
+    private static bool Settling(in MoveState body, in MoveTuning tuning, GroundMoveContext context)
+    {
+        if (context.Medium is not { } medium) return true;
+        float feetY = body.Position.Y - tuning.CapsuleHalfHeight;
+        MovementMedium sample = medium(body.Position.X, body.Position.Z, feetY);
+        if (!sample.InWater) return true;
+        float floatLine = sample.WaterSurfaceY - tuning.SwimSurfaceSubmersionFraction * (2f * tuning.CapsuleHalfHeight);
+        double band = Math.Max(tuning.StepHeight, GroundTraversalProbe.ArrivalTolerance);
+        return !(Math.Abs((double)feetY - floatLine) <= band);
+    }
 
     private static PathFollowConfig StrictConfig(PathFollowConfig follow, bool carry)
     {

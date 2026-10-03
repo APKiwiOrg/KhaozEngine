@@ -19,7 +19,7 @@ public class AquaticProfileTests
     private static readonly float FloatY = 0f - Duck.SwimSurfaceSubmersionFraction * (2f * Duck.CapsuleHalfHeight);
 
     // 16 by 8 cells of 0.25 m. Column x index 8 is centred at x 0.125.
-    private static readonly PhysicsNavBakeOptions Wet = new(-2f, -1f, 2f, 1f, 0.25f, 2f, 5f, 0.8f, 256, 1024)
+    internal static readonly PhysicsNavBakeOptions Wet = new(-2f, -1f, 2f, 1f, 0.25f, 2f, 5f, 0.8f, 256, 1024)
     {
         SampleWater = true,
     };

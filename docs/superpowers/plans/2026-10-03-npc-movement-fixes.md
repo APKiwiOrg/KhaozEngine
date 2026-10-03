@@ -476,3 +476,30 @@ Expected: build exit 0 with zero warnings, test exit 0 with zero failures and no
 ## Outcome
 
 Not started.
+
+### Task 3 (lane B)
+
+Fixture `KhaozEngine.Movement.Tests/LowLipTraversalTests.cs` with the brief's geometry, tuning and bounds, z 0.125 row,
+context `GroundMoveContext((_, _) => 0f, physics: world)` as in the existing probe tests.
+
+- Bake edges, unskipped run: -0.375 to -0.125 pass, -0.125 to -0.375 pass, -0.125 to 0.125 fail (probe false),
+  0.125 to -0.125 fail (probe false). Captured column heights on the row: 0 at x -0.375 and -0.125, 0.025 at 0.125 and
+  0.375, so the capture sees the deck.
+- Probe replay. -0.125 to 0.125: 64 slices, final feet (0.125, 0, 0.125), 25 mm below the deck target. 0.125 to
+  -0.125: the hold slice drops the feet from 0.025 to 0, so the start check refuses it, final feet (-0.12402, 0,
+  0.125) after 11 slices. The ground edges arrive within 0.72 mm in 13 slices.
+- Route -1.125 to 1.125: `Unreachable`.
+- Live body: fails. Grounded every tick, but the feet never leave 0. Final centre (1.125, 0.75, 0.125), feet Y 0, so
+  the capsule walks through the deck embedded 25 mm. A body set on the deck at feet 0.025 drops to 0 in one hold tick.
+- Cap clearance over the deck corner at x -0.125, measured by capsule sweeps against the deck alone: 2.282 mm
+  vertical, matching M11, and 2.076 mm along the contact normal, the reviewer's figure. Both are inside `SkinWidth`.
+- Classification: core fault. The probe reports the core faithfully. Task 4 runs Step 1 only, then Task 4b.
+- Root-cause lead for Task 4b. The prop support sweep in `PropSupportFloor` runs only when the body was airborne,
+  stepped up, or starts more than `OnPropSkin` (0.05 m) above the analytic terrain. Here the terrain provider reads 0
+  under the deck, so a grounded body at the bank level never takes the deck as support and the ground snap holds it
+  at 0. With the terrain provider at -1 everywhere, or -1 under the deck only, all three facts pass, the bake accepts
+  both lip edges and the route is `Complete`, with today's 1 mm arrival tolerance. Lip sweep with terrain 0 at walk
+  9 m/s: 0.025, 0.04, 0.05, 0.06 and 0.1 m lips are all walked through at feet 0. At walk 1 m/s the 0.025 to 0.05 m
+  lips are walked through, 0.06 m stalls at the edge and 0.1 m mounts.
+- Departure: the live fact steers toward (1.125, 0.125) with the probe's bounded command rather than a constant +X,
+  because the shared tuning walks at 9 m/s and a constant command leaves the 2 m deck within 60 ticks.

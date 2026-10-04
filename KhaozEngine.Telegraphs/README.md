@@ -112,9 +112,10 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
   out over two spacings. Colour resolves from `reveal`, the impact flash is scaled by `1 - fade` so
   the dots cool as they wash out, and `FillFraction` is unused. `FillMode` picks filled dots, ring
   dots or both. `spacing` must be finite and positive (`ArgumentOutOfRangeException`), and a
-  non-positive or non-finite `length` draws nothing. The per-dot alpha is the pure
-  `TelegraphResolve.DotLaneDotAlpha(position, reveal, fade, ramp)`, which returns 0 for any
-  non-finite argument.
+  non-positive or non-finite `length` draws nothing. One lane draws at most
+  `TelegraphRenderer2D.MaxDotLaneDots` dots, the ones nearest the origin. The per-dot alpha is
+  the pure `TelegraphResolve.DotLaneDotAlpha(position, reveal, fade, ramp)`, which returns 0 for
+  any non-finite argument.
 - `ZoneSense.Safe` is reserved for a future version (v1 renders it exactly like `Danger`).
 
 ```csharp

@@ -5943,7 +5943,8 @@ over two spacings. Colour, opacity and the other flat animations resolve from `r
 flash is scaled by `1 - fade` so the dots pop at the strike and cool as they wash out, and
 `FillFraction` is unused. `FillMode` picks filled dots in the fill colour, rings at `EdgeThickness`
 in the outline colour, or both. A non-finite or non-positive `spacing` throws
-`ArgumentOutOfRangeException`, and a non-positive or non-finite `length` draws nothing. The per-dot
+`ArgumentOutOfRangeException`, and a non-positive or non-finite `length` draws nothing. One lane
+draws at most `TelegraphRenderer2D.MaxDotLaneDots` dots, the ones nearest the origin. The per-dot
 alpha is the pure `TelegraphResolve.DotLaneDotAlpha(position, reveal, fade, ramp)`, 0 for any
 non-finite argument.
 

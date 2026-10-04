@@ -13,8 +13,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   the impact flash is scaled by `1 - fade`, so the dots pop at the strike and cool as they wash out. `FillMode` picks
   filled dots, ring dots or both, and `FillFraction` is unused. A non-finite or non-positive `spacing` throws
   `ArgumentOutOfRangeException`, a non-positive or non-finite `length` draws nothing, and drawing before `Begin`
-  throws. The per-dot alpha is the pure `TelegraphResolve.DotLaneDotAlpha(position, reveal, fade, ramp)`, which
-  returns 0 for any non-finite argument.
+  throws. One lane draws at most `TelegraphRenderer2D.MaxDotLaneDots` dots, the ones nearest the origin. The per-dot
+  alpha is the pure `TelegraphResolve.DotLaneDotAlpha(position, reveal, fade, ramp)`, which returns 0 for any
+  non-finite argument.
 
 ## 20.21.0
 

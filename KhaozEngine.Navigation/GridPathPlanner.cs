@@ -27,9 +27,10 @@ namespace KhaozEngine.Navigation;
 /// <para>
 /// The planner keeps one set of search scratch, allocated on its first query and reused by every later
 /// one: generation-stamped per-node g-scores, parents and closed marks (twelve bytes a node across all
-/// layers) plus the open set and reconstruction lists. A query touches only the nodes it visits and
-/// clears nothing, and a warmed query allocates only the path it returns. Queries may run concurrently
-/// from several threads: a query that finds the scratch already taken uses a fresh one of its own.
+/// layers) plus region flags, the open set and reconstruction lists, each kept at the largest query seen.
+/// A query touches only the nodes it visits and clears nothing, and a warmed query allocates only the path
+/// it returns. Queries may run concurrently from several threads: a query that finds the scratch already
+/// taken uses a fresh one of its own.
 /// </para>
 /// </summary>
 public sealed partial class GridPathPlanner : IRegionPathPlanner

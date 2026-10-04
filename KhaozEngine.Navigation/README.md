@@ -303,9 +303,10 @@ diagonally-clear runs to a few turn waypoints. Both endpoints of every link cros
 monotone insertion counter break every A* tie the same way.
 
 A planner allocates its search scratch on its first query and reuses it for every later one: generation
-stamped per-node g-scores, parents and closed marks (twelve bytes a node across all layers) plus the open set
-and reconstruction lists. A query touches only the nodes it visits, a region query scans only each layer's
-cell box around the region's extent, and a warmed query allocates only the path it returns. Keep one planner
+stamped per-node g-scores, parents and closed marks (twelve bytes a node across all layers) plus region flags,
+the open set and reconstruction lists, each kept at the largest query seen. A query touches only the nodes it
+visits, a region query scans only each layer's cell box around the region's extent, and a warmed query
+allocates only the path it returns. Keep one planner
 per `NavSpace` and reuse it rather than building one per query. Queries may overlap from several threads, and
 an overlapping query uses a fresh scratch of its own.
 

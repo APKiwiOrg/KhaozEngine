@@ -11,7 +11,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   whole-grid arrays on every query (#1288). The g-score, parent and closed marks are generation stamped, so a
   query touches only the nodes it visits and clears nothing, and a region query finds its goal cells inside
   each layer's bounding cell box of the region's extent instead of scanning every node. The scratch is
-  allocated on the planner's first query (twelve bytes a node across all layers) and kept. A warmed point or
+  allocated on the planner's first query (about twelve bytes a node across all layers, plus region flags and
+  the open set sized to the largest query seen) and kept. A warmed point or
   region query now allocates only the path it returns. Queries may still overlap on one planner from several
   threads, or from a region predicate that calls back into it: an overlapping query uses a fresh scratch of
   its own. Routes, statuses and expansion counts are unchanged, pinned by an equality corpus against a frozen

@@ -19,8 +19,9 @@ public sealed partial class GridPathPlanner
 
     void ReturnScratch(SearchScratch scratch) => Volatile.Write(ref _idleScratch, scratch);
 
-    /// <summary>Test seam: moves the idle scratch's generation counter, so a fact can drive the stamp
-    /// wraparound without running two billion queries.</summary>
+    /// <summary>Test seam: moves the idle scratch's generation counter forward only, so a fact can drive the
+    /// stamp wraparound without running two billion queries. A lower value would read live stamps as
+    /// visited.</summary>
     internal void SeedScratchGeneration(int generation)
     {
         SearchScratch scratch = RentScratch();

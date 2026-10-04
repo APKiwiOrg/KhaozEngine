@@ -34,19 +34,27 @@ public class MoveToRangeStraightenTests
         var statedPlanner = new RecordingPlanner(new GridPathPlanner(space));
         var legacy = new MoveToRange(legacyPlanner, space, Open);
         var stated = new MoveToRange(statedPlanner, space, Open, null, new RouteApproachOptions { StraightenRoutes = false });
+        // The control: the same comparison sees a straightening mover on this fixture, so the equality above can fail.
+        var straight = new MoveToRange(new GridPathPlanner(space), space, Open, null, Straighten);
         ReachTarget target = Point(StairEnd);
         MoveState body = Body(StairStart.X, StairStart.Y);
+        MoveState straightBody = body;
+        int differing = 0;
         for (int tick = 0; tick < 120; tick++)
         {
             RangeSteering a = legacy.Tick(body, Tuning, target, 0f, false, Dt, Flat);
             RangeSteering b = stated.Tick(body, Tuning, target, 0f, false, Dt, Flat);
+            RangeSteering c = straight.Tick(straightBody, Tuning, target, 0f, false, Dt, Flat);
             Assert.Equal(a.Status, b.Status);
             Assert.Equal(BitConverter.SingleToInt32Bits(a.WorldDirection.X), BitConverter.SingleToInt32Bits(b.WorldDirection.X));
             Assert.Equal(BitConverter.SingleToInt32Bits(a.WorldDirection.Y), BitConverter.SingleToInt32Bits(b.WorldDirection.Y));
+            if (!SameBits(a.WorldDirection, c.WorldDirection)) differing++;
             body = NpcGroundMovement.Step(body, a, false, Dt, Tuning, Flat);
+            straightBody = NpcGroundMovement.Step(straightBody, c, false, Dt, Tuning, Flat);
         }
         Assert.Equal(legacyPlanner.Plans.Count, statedPlanner.Plans.Count);
         Assert.Null(stated.Straightener);
+        Assert.True(differing > 0, "a straightening mover steered the same as the default on every tick");
     }
 
     [Fact]
@@ -223,6 +231,10 @@ public class MoveToRangeStraightenTests
         }
         return turns;
     }
+
+    static bool SameBits(Vector2 a, Vector2 b)
+        => BitConverter.SingleToInt32Bits(a.X) == BitConverter.SingleToInt32Bits(b.X)
+            && BitConverter.SingleToInt32Bits(a.Y) == BitConverter.SingleToInt32Bits(b.Y);
 
     static double Turn(Vector2 a, Vector2 b)
         => Math.Abs(Math.Atan2((double)a.X * b.Y - (double)a.Y * b.X, (double)a.X * b.X + (double)a.Y * b.Y));

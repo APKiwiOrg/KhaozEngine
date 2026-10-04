@@ -179,9 +179,31 @@ namespace KhaozEngine.Tests.Render3D
                 ctl.Update(Frame(mouseDelta: new Vector2(0.875f, 0f), down: MouseButton.Left), ToleranceDt);
                 if (frame < 8)
                     Assert.Equal(0f, cam.Yaw);
-                else    // the crossing frame replays the whole press, then each frame adds its own step
-                    Assert.Equal(-0.875f * (frame + 1) * ctl.OrbitYawSpeed, cam.Yaw, 5);
+                else    // the crossing replays every step after the press frame, then each frame adds its own
+                    Assert.Equal(-0.875f * frame * ctl.OrbitYawSpeed, cam.Yaw, 5);
             }
+            Assert.Equal(0.5f, cam.Pitch);
+        }
+
+        [Fact]
+        public void Tolerance_gesture_press_frame_motion_is_still_a_tap()
+        {
+            // The playtester's click: the hand is still settling on the press frame, then holds still past the grace.
+            var cam = new FollowCamera3D { Yaw = 0f };
+            cam.Pitch = 0.5f;
+            var ctl = new FollowCameraController(cam) { OrbitGesture = ToleranceGesture() };
+            ctl.Update(Frame(mouseDelta: new Vector2(5f, 0f), down: MouseButton.Left), ToleranceDt);
+            Assert.Equal(0f, cam.Yaw);
+            Assert.Equal(0.5f, cam.Pitch);
+            for (int frame = 1; frame <= 12; frame++)
+            {
+                ctl.Update(Frame(down: MouseButton.Left), ToleranceDt);
+                Assert.Equal(0f, cam.Yaw);
+                Assert.Equal(0.5f, cam.Pitch);
+            }
+            ctl.Update(Frame(), ToleranceDt);
+            Assert.True(ctl.OrbitTap);
+            Assert.Equal(0f, cam.Yaw);
             Assert.Equal(0.5f, cam.Pitch);
         }
     }

@@ -50,7 +50,7 @@ namespace KhaozEngine.Windowing
     {
         Vector2 _pressPosition;     // where the live press began, promoted to TapPosition if it ends as a tap
         Vector2 _pendingDelta;      // net displacement accumulated while undecided, replayed on the crossing frame
-        float _pendingTravel;       // PATH LENGTH accumulated while undecided, which is what the threshold tests
+        float _pendingTravel;       // PATH LENGTH accumulated while undecided, which the default threshold tests
         float _heldSeconds;         // time since the press frame, which picks the tolerance limit
         bool _pastGrace;            // a held frame of this press has already been judged at or past the grace
         bool _wasDown;              // last frame's button state, so the press and release edges need no edge sets
@@ -178,7 +178,8 @@ namespace KhaozEngine.Windowing
                 return;
             }
 
-            if (!_wasDown)
+            bool pressFrame = !_wasDown;
+            if (pressFrame)
             {
                 _wasDown = true;
                 Phase = PointerGesturePhase.Pending;
@@ -200,24 +201,34 @@ namespace KhaozEngine.Windowing
                 return;
             }
 
-            _pendingDelta += mouseDelta;
-            _pendingTravel += mouseDelta.Length();
             bool graceDecided = false;
             if (TapTolerance is { } tolerance)
             {
+                // InputState holds the cursor where the frame ended, so the press point is where the press frame
+                // left it and that frame's delta is motion from before the press. Distance starts from the press point.
+                if (!pressFrame) _pendingDelta += mouseDelta;
+                float distance = _pendingDelta.Length();
                 bool pastGrace = _heldSeconds >= tolerance.GraceSeconds;
-                graceDecided = pastGrace && !_pastGrace;
+                bool firstPastGrace = pastGrace && !_pastGrace;
                 _pastGrace = pastGrace;
-                if (_pendingDelta.Length() <= tolerance.LimitAt(_heldSeconds))
+                if (distance <= tolerance.LimitAt(_heldSeconds))
                 {
                     DragDelta = Vector2.Zero;
                     return;
                 }
+
+                // The grace decided the press only if the distance alone would not have crossed the grace limit.
+                graceDecided = firstPastGrace && distance <= tolerance.GraceDistancePoints;
             }
-            else if (_pendingTravel <= ThresholdPixels)
+            else
             {
-                DragDelta = Vector2.Zero;   // still a candidate tap, so nothing may move yet
-                return;
+                _pendingDelta += mouseDelta;
+                _pendingTravel += mouseDelta.Length();
+                if (_pendingTravel <= ThresholdPixels)
+                {
+                    DragDelta = Vector2.Zero;   // still a candidate tap, so nothing may move yet
+                    return;
+                }
             }
 
             Phase = PointerGesturePhase.Dragging;

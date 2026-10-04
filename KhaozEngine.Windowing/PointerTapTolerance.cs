@@ -9,9 +9,10 @@ namespace KhaozEngine.Windowing
     /// </summary>
     /// <remarks>
     /// The press frame starts a clock at zero and each later held frame adds its elapsed time before it is judged.
-    /// While the clock is below <see cref="GraceSeconds"/> the press stays undecided up to
-    /// <see cref="GraceDistancePoints"/>, and from then on up to <see cref="DistancePoints"/>. The press becomes a drag
-    /// on the first frame its distance exceeds the limit in force.
+    /// Distance is measured from <see cref="PointerGesture.TapPosition"/>, the cursor at the end of the press frame, so
+    /// the press frame's own mouse delta never counts. While the clock is below <see cref="GraceSeconds"/> the press
+    /// stays undecided up to <see cref="GraceDistancePoints"/>, and from then on up to <see cref="DistancePoints"/>.
+    /// The press becomes a drag on the first frame its distance exceeds the limit in force.
     /// </remarks>
     /// <param name="DistancePoints">The distance from the press point, in window points, beyond which a press is a drag
     /// once the grace has ended. Finite and positive. It is also the gesture's <see cref="PointerGesture.ThresholdPixels"/>.
@@ -23,9 +24,10 @@ namespace KhaozEngine.Windowing
     public sealed record PointerTapTolerance(float DistancePoints, float GraceSeconds, float GraceDistancePoints)
     {
         /// <summary>The longest catch-up step, in window points, on a crossing the grace decided: the first held frame at
-        /// or past <see cref="GraceSeconds"/>. A press that sat still through the grace and then drifted would otherwise
-        /// jump by everything it gathered. Zero drops that catch-up. Not negative and not NaN. Unlimited by default.
-        /// </summary>
+        /// or past <see cref="GraceSeconds"/>, with the distance still within <see cref="GraceDistancePoints"/>. A
+        /// press that crept through the grace would otherwise jump by everything it gathered. A crossing the distance
+        /// alone would have made keeps its full catch-up. Zero drops the capped catch-up. Not negative and not NaN.
+        /// Unlimited by default.</summary>
         public float CatchUpLimitPoints { get; init; } = float.PositiveInfinity;
 
         internal void Validate(string paramName)

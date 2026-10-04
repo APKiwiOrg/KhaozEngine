@@ -1124,6 +1124,8 @@ gesture.Advance(input, uiBlocked, dt);   // the two-argument Advance throws on a
 
 - Distance is the straight line from the press point to the cursor, not the path length, so a wobble that comes
   back stays a tap. `ThresholdPixels` is `DistancePoints`.
+- The press point is `TapPosition`, where the cursor ended the press frame. That frame's `MouseDeltaPoints` moved
+  the cursor before the press, so it never counts, and a click while the hand is still settling stays a tap.
 - The press frame starts a clock at 0, and each later held frame adds its `elapsedSeconds` before it is judged.
   While the clock is below `GraceSeconds` the limit is `GraceDistancePoints`, after it `DistancePoints`. The press
   drags on the first frame its distance strictly exceeds the limit in force. With the numbers above, a 6 point move
@@ -1132,8 +1134,10 @@ gesture.Advance(input, uiBlocked, dt);   // the two-argument Advance throws on a
 - A release is judged on the state before its own frame, so a hitch on the release frame never turns a tap into a
   drag. Blocking, suppression and the release edge are unchanged.
 - The crossing frame's `DragDelta` is the net displacement from the press. When the grace ending decided the press
-  (the first held frame at or past `GraceSeconds`), it is capped to `CatchUpLimitPoints`, unlimited by default. Zero
-  drops that catch-up, so a press that drifted slowly through the grace starts its drag from rest.
+  (the first held frame at or past `GraceSeconds`, with the distance still within `GraceDistancePoints`), it is
+  capped to `CatchUpLimitPoints`, unlimited by default. Zero drops that catch-up, so a press that drifted slowly
+  through the grace starts its drag from rest. A crossing the distance alone would have made, such as a hitch
+  frame carrying a long move, keeps its full catch-up.
 - `DistancePoints` must be finite and positive, `GraceSeconds` finite and not negative, `GraceDistancePoints` finite
   and at least `DistancePoints`, and `CatchUpLimitPoints` not negative and not NaN. The constructor throws
   `ArgumentException` otherwise. With a tolerance, `elapsedSeconds` must be finite and not negative, else

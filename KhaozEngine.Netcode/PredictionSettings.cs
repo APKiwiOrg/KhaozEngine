@@ -41,7 +41,9 @@ public readonly record struct PredictionSettings(
     /// tick to the current one, the short way round, beside position and height. False (the default) renders the
     /// last tick's heading, which steps once per tick. A hard snap, a teleport epoch advance, <c>Reset</c> and
     /// <c>Reseed</c> cut the heading with the position. A non-snap reconcile keeps the inter-tick phase and moves only
-    /// the target.</summary>
+    /// the target. Turn it on only for a state that implements <see cref="IPredictedState{TSelf}.HasYaw"/>,
+    /// <see cref="IPredictedState{TSelf}.Yaw"/> and the three-argument <c>WithRenderState</c>, because a state keeping
+    /// the defaults gains nothing and is read through a box.</summary>
     public bool InterpolateYaw { get; init; }
 }
 

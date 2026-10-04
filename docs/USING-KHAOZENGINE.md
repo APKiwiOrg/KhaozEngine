@@ -5742,7 +5742,9 @@ var clipSamples = new ClipSample[gaits.ClipCount];
 
 // Every frame, airborne included, so the gait phase carries into the landing.
 // Feed the replicated or simulated body velocity, not one differentiated from rendered positions (which spikes on a
-// teleport or hard snap), and pass zero on a teleport frame.
+// teleport or hard snap), and pass zero on a teleport frame. facingYaw is the yaw the model is drawn with. With
+// InterpolateYaw on that is the eased local EntityRenderState.FacingYaw, so the body-frame split matches the
+// rendered pose.
 Vector2 body = DirectionalLocomotionBlend.BodyFrame(worldVelocity, facingYaw);
 int n = blend.Advance(body, dt, gaitSamples);
 for (int i = 0; i < n; i++)

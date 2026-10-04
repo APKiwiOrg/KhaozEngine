@@ -26,29 +26,32 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   to one tick of heading latency, the same latency position has. `Reset`, `Reseed`, a hard snap and a teleport cut it
   with the position, and a heading correction is not smoothed by an offset. `PlayerMoveState` opts in, so with
   `WorldClientConfig.Prediction` set this way `LocalRenderState.Move.FacingYaw` and the local
-  `EntityRenderState.FacingYaw` ease. `RenderedState` still allocates nothing. Remote headings still arrive one per
-  snapshot, and per-field remote interpolation is [#1280](https://github.com/APKiwiOrg/KhaozEngine/issues/1280).
+  `EntityRenderState.FacingYaw` ease. Heading interpolation adds no allocation to `RenderedState`. `PlayerMoveState`
+  still boxes through its default `PredictionTarget`, an older cost tracked as
+  [#1279](https://github.com/APKiwiOrg/KhaozEngine/issues/1279). Remote headings still arrive one per snapshot, and
+  per-field remote interpolation is [#1280](https://github.com/APKiwiOrg/KhaozEngine/issues/1280).
 - Directional gait blend, used only when a consumer builds one. `DirectionalLocomotionBlend(gaits, blendSeconds =
   0.15f, movingSpeed = 0.05f)` over a `DirectionalGaitSet` of `GaitClip` values turns a body-frame velocity into
   weighted `GaitSample` values from four direction families, so a diagonal plays half forward walk and half strafe
   instead of one clip skating sideways. The angle splits linearly between adjacent cardinals and the speed between
   the two family members that bracket it. Each weight eases over `blendSeconds`, so a reversal crossfades, and one
   shared phase advances by distance over the weighted stride, so every blended foot plant stays together. Below
-  `movingSpeed` the phase holds and `TravelWeight` eases to zero. `BodyFrame(worldVelocity, facingYaw)` converts a
-  world velocity, which should be the replicated or simulated one. `AnimationSampler.SampleBlendInto(skel, samples,
-  into, scratch)` samples a weighted set of `ClipSample(Clip, Time, Weight)` values into one local pose by a running
-  normalised lerp, and one positive-weight sample is bit-identical to `SampleInto`. `Advance` and `SampleBlendInto`
-  allocate nothing.
+  `movingSpeed` the targets hold and `TravelWeight` eases to zero, and zero travel holds the phase.
+  `BodyFrame(worldVelocity, facingYaw)` converts a world velocity, which should be the replicated or simulated one.
+  `AnimationSampler.SampleBlendInto(skel, samples, into, scratch)` samples a weighted set of `ClipSample(Clip, Time,
+  Weight)` values into one local pose by a running normalised lerp, and one positive-weight sample is bit-identical
+  to `SampleInto`. `Advance` and `SampleBlendInto` allocate nothing.
 - `PointerTapTolerance(DistancePoints, GraceSeconds, GraceDistancePoints)` with `CatchUpLimitPoints` is an opt-in tap
   rule for `PointerGesture(button, tapTolerance)`, default none. It judges straight-line distance from the press
   point instead of path length, with the wider `GraceDistancePoints` limit until `GraceSeconds` after the press, so a
-  click that wobbles and comes back is still a tap. A gesture built on one advances with `Advance(input, uiBlocked,
-  elapsedSeconds)`, and its two-argument `Advance` throws. Without a tolerance every phase, tap and drag delta is
-  unchanged. `FollowCameraController.Update` now times its gestures with its `dt`, so an orbit or look gesture can
-  carry a tolerance. The new `FollowCameraController.UpdateInput(in InputState, float elapsedSeconds)` advances
-  gestures, taps and zoom without the `AdvanceTarget` and `AdvanceBoom` clocks, for a game that reads camera input
-  early in its frame and advances those clocks after the subject moves. `Update` is `UpdateInput` followed by the
-  clocks. Pass the real frame time to either, since a zero freezes the grace.
+  click that wobbles and comes back is still a tap. `CatchUpLimitPoints`, unlimited by default, caps the catch-up
+  step of a press the grace decided, and zero drops it. A gesture built on one advances with `Advance(input,
+  uiBlocked, elapsedSeconds)`, and its two-argument `Advance` throws. Without a tolerance every phase, tap and drag
+  delta is unchanged. `FollowCameraController.Update` now times its gestures with its `dt`, so an orbit or look
+  gesture can carry a tolerance. The new `FollowCameraController.UpdateInput(in InputState, float elapsedSeconds)`
+  advances gestures, taps and zoom without the `AdvanceTarget` and `AdvanceBoom` clocks, for a game that reads camera
+  input early in its frame and advances those clocks after the subject moves. `Update` is `UpdateInput` followed by
+  the clocks. Pass the real frame time to either, since a zero freezes the grace.
 - Fixed: `DirectMoveToRange` admitted a grounded step whose landed feet were past the swim-enter line, because a step
   decides swimming from its starting feet, so a direct walk down a sloped shore into deep water ended `Suspended` in
   the water ([#1269](https://github.com/APKiwiOrg/KhaozEngine/issues/1269)). That step is now refused and counts

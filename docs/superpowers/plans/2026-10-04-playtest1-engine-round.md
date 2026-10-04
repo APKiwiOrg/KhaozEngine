@@ -532,6 +532,10 @@ continuation raised no completion notice (cost a context rebuild per round).
   `FollowCameraControllerTests.cs`, two lines from `b238e43ad` and one from `1083d1cfc` that predates the round,
   fixed whitespace-only in `2944fc877` (the full suite ran before it, and a whitespace change cannot alter the
   build).
+- **Final fix dispatch.** `409363d08` adds the open-water fact for `StraightenRoutes` with `SteerWhileSwimming`
+  (passes on unchanged source), then a docs commit corrects the 20.23.0 changelog, the `InterpolateYaw` docs and the
+  blend's `facingYaw` note. MoveToRange's near-field approach and the #1269 swim-line shape are lead
+  [#1281](https://github.com/APKiwiOrg/KhaozEngine/issues/1281).
 
 ### Verification
 

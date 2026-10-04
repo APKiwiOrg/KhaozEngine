@@ -81,6 +81,8 @@ of the tick. `Reset`, `Reseed`, a hard snap and a teleport epoch advance collaps
 current one. A non-snap `Reconcile` keeps the previous heading and moves only the target. Unlike position, whose
 ordinary reconcile translates both ends and folds the jump into a decaying render offset, a heading correction is not
 smoothed by an offset, so the current fraction of it shows at once. Existing states compile and render unchanged.
+Turn `InterpolateYaw` on only for a state that implements `HasYaw`, `Yaw` and the three-argument `WithRenderState`,
+because a state keeping the defaults gains nothing and is read through a box.
 
 `AdvancePresentation` refuses a frame time that is not a finite positive number of seconds (negative, zero,
 infinite, or not a number): it is treated as zero and advances nothing. The inter-tick clock accumulates, so one

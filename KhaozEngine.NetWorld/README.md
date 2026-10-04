@@ -61,6 +61,10 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   `WorldClient.PresentationTrace` - a per-frame CSV-dumpable trace of the presentation internals (render time,
   interpolation delay, seconds-since-snapshot, per-remote starvation-hold flag, snapshot arrivals, local
   reconcile-error) for characterising a movement-smoothness bug; off by default, zero overhead.
+  **`WorldClientConfig.ReceiveServerTick`** (default false) sends the `ServerTickCapable` hello on join, and then
+  **`WorldClient.LatestServerTick`** (`long`) is the newest ticked frame's server tick and
+  **`WorldClient.RemoteRenderTick`** (`double`) is the fractional server tick the remotes are drawn at, both `-1`
+  while unknown (see "Client simulation state versus presentation state").
   Optional `WorldBounds`/`IPhysicsWorld?` ctor params (mirroring `WorldServer`, since 8.0.0) make the client predict
   against the same play-area bound + static physics bodies the server is authoritative over, so a
   solid-prop world predicts straight instead of rubber-banding (null = terrain only). The physics world must be able
@@ -998,6 +1002,21 @@ Player automation emits ordinary client commands, and the authority simulates th
 server-side player following or action queue. A manual command or cancellation resets the game's `MoveToRange`
 instance before the next automated tick, and the game may send an idle command through the same normal client path.
 
+The server tick splits the same way. With `WorldClientConfig.ReceiveServerTick` set, `WorldClient.LatestServerTick`
+is the simulation side: the `ServerTick` of the newest ticked frame `Poll` applied. `WorldClient.RemoteRenderTick` is
+the presentation side: the fractional server tick the remotes are drawn at, evaluated by `AdvancePresentation` at the
+remote render time with the rule the remote samples follow. It is the oldest ingested tick before the oldest ingest,
+the newest at or past the newest (a starved stream holds it), else the lerp by the true ingest times, and ingests
+collapsed into one `Poll` keep the newest tick. Lerping a server-side record of a moving remote at `RemoteRenderTick`
+gives where that remote is drawn. A frame that polls once per tick and then presents one tick of time reads
+`LatestServerTick - InterpolationDelayTicks + 1`, because the render clock has advanced one tick past the ingest it
+just stamped. With `InterpolateRemotes` off the remotes draw the newest sample and `RemoteRenderTick` equals
+`LatestServerTick`. Both read `-1` before the first ticked frame, against a server that predates them, and from the
+start of each reconnect attempt until its first ticked frame. Format 2 frames carry no tick, so the constructor
+refuses `ReceiveServerTick` with `RequestUnreliableDeltaReplication`. Compare game ticks derived from the server's
+`ServerTick` against `RemoteRenderTick` for anything drawn with the remotes, and against `LatestServerTick` for the
+newest server state.
+
 ## Island frames and the frame-relative wire (the floating-origin MAJOR)
 
 Simulating at 100 km from the world origin costs precision: float32's quantum out there is 7.8 mm, and the
@@ -1338,7 +1357,8 @@ same version-skew bar as 9.16.0.
   `[serverTick:long][localNetId:long][ackSeq:int]` (**`MoveProtocol.EncodeTickedSnapshotFrame`** /
   **`TryDecodeTickedSnapshotFrame`**), where the tick is the serving call's `ServerTick`. An older server ignores
   the unknown control and keeps serving plain frames, and an older client never asks. A slot forgets the hello when
-  its player leaves, and a format 2 session's frames stay unticked.
+  its player leaves, and a format 2 session's frames stay unticked. `WorldClientConfig.ReceiveServerTick` is the
+  client's opt-in, read through `WorldClient.LatestServerTick` and `WorldClient.RemoteRenderTick`.
 - **Per-viewer visibility.** **`WorldServerConfig.EntityVisibleToSlot`** /
   **`ShardedWorldServerConfig.EntityVisibleToSlot`** (`Func<int, long, bool>?`, default null) hides an in-interest
   entity from chosen viewers. It takes the viewer's session slot and the candidate's net id and runs between the

@@ -120,7 +120,7 @@ public sealed partial class WorldClient
         if (result == DeltaRebuildResult.Accepted)
         {
             secondsSinceServerFrame = 0f;
-            IngestServerState(localNetId, movementAck);
+            IngestServerState(localNetId, movementAck, serverTick: -1);   // format 2 frames carry no tick
         }
         else if (result == DeltaRebuildResult.Invalid)
         {

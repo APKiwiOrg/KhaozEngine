@@ -89,6 +89,16 @@ public sealed class WorldClientConfig
     /// <see cref="WorldClient.Poll"/>.</summary>
     public bool RequestUnreliableDeltaReplication { get; init; }
 
+    /// <summary>Ask the server for its tick on every frame. Default false. On join the client sends
+    /// <see cref="MoveProtocol.ClientControlKind.ServerTickCapable"/>, a server that knows it answers with
+    /// <see cref="MoveProtocol.ServerFrameKind.TickedSnapshot"/> and <see cref="MoveProtocol.ServerFrameKind.TickedDelta"/>
+    /// frames, and <see cref="WorldClient.LatestServerTick"/> and <see cref="WorldClient.RemoteRenderTick"/> read them.
+    /// An older server ignores the hello, its frames stay plain and both read <c>-1</c>. Off, nothing on the wire
+    /// changes. Format 2 frames carry no tick, so setting this with <see cref="RequestUnreliableDeltaReplication"/> is a
+    /// configuration error and the <see cref="WorldClient"/> constructor throws
+    /// <see cref="System.ArgumentException"/>.</summary>
+    public bool ReceiveServerTick { get; init; }
+
     /// <summary>Format 2 limits and cadence, read only when <see cref="RequestUnreliableDeltaReplication"/> and
     /// <see cref="RequestDeltaReplication"/> are both on. An offer beyond these limits is refused with
     /// <see cref="DisconnectReason.ReplicationPolicyRefused"/>.</summary>

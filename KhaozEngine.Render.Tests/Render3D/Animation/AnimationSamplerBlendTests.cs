@@ -29,7 +29,8 @@ namespace KhaozEngine.Tests.Render3D.Animation
             },
         });
 
-        // Turns node 0 (logical 100) half a revolution about Y over one second.
+        // Turns node 0 (logical 100) 0.9 of a half revolution about Y over one second, short of pi so the slerp has one
+        // direction.
         public static AnimationClip Turn() => new("turn", 1f, new List<JointTrack>
         {
             new(targetNode: 100)
@@ -133,7 +134,8 @@ namespace KhaozEngine.Tests.Render3D.Animation
             var scratch = new JointPose[skel.NodeCount];
 
             AnimationSampler.SampleBlendInto(skel,
-                new[] { new ClipSample(turn, 0.5f, 0f), new ClipSample(lift, 0.4f, 1f), new ClipSample(turn, 0.8f, 0f) },
+                new[] { new ClipSample(turn, 0.5f, 0f), new ClipSample(lift, 0.4f, 1f), new ClipSample(turn, 0.8f, 0f),
+                    new ClipSample(null!, 0f, 0f) },
                 into, scratch);
 
             AssertBitIdentical(Sampled(lift, skel, 0.4f), into);

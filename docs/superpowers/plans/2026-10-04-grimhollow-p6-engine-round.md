@@ -439,4 +439,51 @@ Expected: zero warnings, zero failures, nonzero counts and every guard exit 0. A
 
 ## Outcome
 
-Not started.
+Implemented on `feature/grimhollow-p6-engine-round`, base `356bf8928`, staged for 20.24.0 with no release. Four chains
+ran in parallel (ruling P6E-1) and merged into this branch at Task 9. `origin/main` had not moved past `356bf8928`, so
+its merge was already contained.
+
+| Task | Commits | Focused GREEN |
+| --- | --- | --- |
+| 1. Route stall options and the shared ring | `8c80a2e03` | 50/50, the 41 `DirectMoveToRange` facts unchanged |
+| 2. `Stall` in `MoveToRange` | `ef841a8fa` | 11 stall facts, 188/188 movement |
+| 3. `ServerTick` and the ticked frames | `0ffe483c7` | 14/14 and 285/285 |
+| 4. The client tick | `1c1f77ab2` (Task 3 minors), `47b28174c` | 17/17 and 147/147 |
+| 5. `NetServer` slot hold | `19670c6ae`, fix round `6754f52e1` | 10/10 and 46/46 |
+| 6. The linger | `f09cc89f5`, fix round `40493f8e3` | 10/10 and 108/108 |
+| 7. Reclaim inside the linger | `cde13864f`, fix round `40493f8e3` | 7/7 and 212/212, then 110/110 after the fix round |
+| 8. Foot-locked diagonal shares | `de8208bc2` | 32/32, 1091 passed 1 skipped on the sampler and locomotion filter |
+| 9. Merges | `6e7c95c8b` (chain B), `347bb9b7d` (chain C), `a295f8af9` (chain D) | merge build 0 warnings, no conflicts |
+| 9. Carried review minors | `e0dfcba1d` | 11, 18 and 31 on the touched classes |
+| 9. Docs and the 20.24.0 entry | `21af2d001` | guards 0 |
+
+Full run at `21af2d001`: `dotnet build KhaozEngine.slnx -c Release` 0 warnings, 0 errors, 145 projects, 43.25 s.
+`dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"` exit 0 over 29 test assemblies:
+25,283 passed, 0 failed, 1,328 skipped, 26,611 total, about 138 s. `dotnet format whitespace --verify-no-changes` over
+the 35 changed `.cs` files exit 0 with no exclusion. `check-dashes`, `check-prose`, `check-file-size`,
+`check-agent-instructions` and `check-doc-versions` exit 0.
+
+Rulings and departures (the full log is the round's progress file):
+
+- P6E-1. Four parallel chains in their own worktrees. Cost: one merge per chain, none conflicted.
+- P6E-2. Root merges `origin/main` at Task 9 instead of before Task 1, since workers never merge. Cost: nothing.
+- P6E-3 and P6E-8. Task 9 fixed the pre-existing whitespace findings in the admin command switches of `WorldServer.cs`
+  and `ShardedWorldServer.cs`, so the scoped format check covers every changed file. Cost: a whitespace-only hunk.
+- P6E-4. `NetServer` teardown is exception-safe, and `NetServer` records every connection it closes and never asks the
+  hold for one. Task 6 needed no closing marks, and the design's D5 bullet now says so.
+- P6E-5. Chain C carried Task 3 before Task 6. Cost: nothing.
+- P6E-6. The stall latches on the 16th counted tick for a window of 15 (D8), against a miscounted brief.
+- P6E-7. A frame that polls then presents draws remotes at `LatestServerTick - InterpolationDelayTicks + 1`. The
+  design's D4 consumer contract now says to read `RemoteRenderTick`.
+- P6E-9. A reconnect ends any linger on its slot, pinned by
+  `ARecycledSlotWhoseNewcomerDropsInOnePollLeavesTheOldBodyOnce`.
+- Task 3's "hello ignored by an older server" fact is not buildable here and was argued against the code instead.
+- Task 6's allocation fact uses its brief's fallback, because `ShardedWorldServer.Tick` already allocates with a live
+  cell ([#1282](https://github.com/APKiwiOrg/KhaozEngine/issues/1282)).
+
+Follow-ups (root files them): the server tick in the format 2 header (Q2), issue to be filled. The `Stall` comment on
+[#1278](https://github.com/APKiwiOrg/KhaozEngine/issues/1278) (Q4), to be filled.
+
+Handoff: root reviews the whole branch, merges and pushes main, then runs `scripts/pack-local-feed.sh` from main. The
+tag is the owner's. Grimhollow adopts the released pin on its P6 and routed walk-up branches per the design's consumer
+contract.

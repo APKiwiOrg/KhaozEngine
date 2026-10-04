@@ -5,6 +5,20 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.24.1
+
+- `GridPathPlanner` reuses one set of search scratch across queries instead of allocating and filling
+  whole-grid arrays on every query (#1288). The g-score, parent and closed marks are generation stamped, so a
+  query touches only the nodes it visits and clears nothing, and a region query finds its goal cells inside
+  each layer's bounding cell box of the region's extent instead of scanning every node. The scratch is
+  allocated on the planner's first query (twelve bytes a node across all layers) and kept. A warmed point or
+  region query now allocates only the path it returns. Queries may still overlap on one planner from several
+  threads, or from a region predicate that calls back into it: an overlapping query uses a fresh scratch of
+  its own. Routes, statuses and expansion counts are unchanged, pinned by an equality corpus against a frozen
+  copy of the 20.24.0 search. On a 768 by 768 grid (589,824 nodes), a warmed region plan to a goal 1 m away
+  went from 8.26 ms and 5,903,399 bytes to 0.083 ms and 224 bytes, and a point query over the same route from
+  0.51 ms and 5,313,100 bytes to 0.051 ms and 128 bytes.
+
 ## 20.24.0
 
 - `PersistenceQueue.EnqueueTracked(path, json)` and `GameStorage.SaveTracked<T>(fileName, value, options)`

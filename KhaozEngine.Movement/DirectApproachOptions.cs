@@ -48,11 +48,11 @@ public sealed record DirectApproachOptions
                 "Drop allowance must be finite and not negative.");
     }
 
-    private static int Ticks(int value, string name)
+    internal static int Ticks(int value, string name)
         => value is > 0 and <= MaxWindowTicks
             ? value : throw new ArgumentOutOfRangeException(name, "Window ticks must be from 1 to 65,535.");
 
-    private static float Metres(float value, string name)
+    internal static float Metres(float value, string name)
         => float.IsFinite(value) && value > 0f
             ? value : throw new ArgumentOutOfRangeException(name, "Window distance must be finite and positive.");
 }

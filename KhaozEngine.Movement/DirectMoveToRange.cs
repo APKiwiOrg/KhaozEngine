@@ -24,7 +24,7 @@ public sealed partial class DirectMoveToRange
 {
     private readonly StepAdmission _admits;
     private readonly DirectApproachOptions _options;
-    private readonly ProgressRing _progress;
+    private readonly RangeProgressRing _progress;
     private GroundMoveContext? _stepContext;
     private RangeShapeKey _shape;
     private bool _keyed;
@@ -34,7 +34,7 @@ public sealed partial class DirectMoveToRange
     public DirectMoveToRange(DirectApproachOptions options)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        _progress = new ProgressRing(Math.Max(options.StallWindowTicks, options.ApproachWindowTicks) + 1);
+        _progress = new RangeProgressRing(Math.Max(options.StallWindowTicks, options.ApproachWindowTicks) + 1);
         _admits = AllowsStep;
     }
 

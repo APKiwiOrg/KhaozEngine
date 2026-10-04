@@ -82,6 +82,8 @@ Names below identify proposed API responsibilities, not existing public types. C
 
 Imported IDs are copied exactly. New allocation reserves above the maximum imported/reserved value, increments monotonically, fails on exhaustion and never reuses deletion tombstones. Prefab child-to-world-ID bindings are serialized, not hashed from names. Generic games may omit numeric IDs. Asset kind, placement ID and game numeric ID are distinct fields in every resolved record, with ordered instance tags retained [E3, E6, E21, E22, G12].
 
+Undoing an accepted allocation removes its placement but does not lower the persisted high-water mark. Redo restores the originally allocated ID. A different edit after undo allocates above that mark. A rejected transaction publishes neither a placement nor an allocation and restores its pre-transaction state. This distinction prevents undo history from reusing durable identities while keeping rejected edits atomic.
+
 Formats advance at the rounds below: 5 native terrain, 6 water, 7 prefabs/interiors, 8 markers, 9 foliage. Every N to N+1 migration is pure and tested. Numbers describe this baseline-relative schema sequence, not reserved engine releases. If concurrent MapDoc work takes a number, rebase the sequence onto the next free format, preserving these semantic transitions. Future-format input refuses rather than dropping unknown fields. All newly structured payloads use closed schemas and explicit payload versions [E2, E26, E43].
 
 The authored-world identity hashes the normalized MapDoc, complete native prefab/material/asset/collider/light/LOD closure and builder algorithm/options versions. Monolithic and storage-chunk forms with identical TileSize resolve equally. Re-tiling can change storage identity as today without changing coordinates. Game catalog and nav/profile hashes are additional game gate inputs, not rules encoded in engine assets [E7, E26, G11].
@@ -131,6 +133,8 @@ The consumer registers a complete static world for capture and a movement query 
 **Data.** Format 6 adds stable-ID water bodies with disjoint bounded rect/polygon domains, explicit SurfaceY, medium key/parameters and render material reference. Import copies all seven region-clipped bodies, 113 rectangles and their exact heights as independent records. It may associate equal-height records for editing but cannot merge away source identity in the ledger. Terrain height edits no longer silently change a body's level. Analytic maps may retain their old global-water mode, while an authored map selects bounded mode and cannot accidentally render both [E1, E11, E17, E18, S1].
 
 **Runtime.** The shared builder supplies clipped water draw polygons and feet-aware medium samples. Overlap of two bodies with different surfaces/media is invalid unless explicitly split into disjoint domains. Foot height at or above the surface is dry, preserving decks over water. Body edges use one documented half-open domain rule for rendering/query/capture. Neither camera position nor an old region rim recomputes the surface [E11, E17, E18].
+
+Native rectangles include minimum X/Z and exclude maximum X/Z in world coordinates, including negative Z. Simple polygon rings normalize to counter-clockwise XZ winding. An edge owns a boundary point when its direction has negative Z, or has zero Z and positive X. At a vertex, every incident edge must own that point. Shared-edge tessellation uses the same rule. Positive-area domain overlaps are rejected even at equal levels and media, while touching edges are allowed. The importer explicitly normalizes legacy negative-Z domains and records exact-boundary sampling differences in its differential report rather than claiming legacy boundary ownership is unchanged.
 
 **Editor/tool.** Body create/read/list/set/remove, boundary brush and level/medium inspector share undoable commands. Preview water alongside terrain, bridges and medium query readouts. Validate finite levels, nonempty/non-self-intersecting domains, overlaps and valid media/material IDs [E4, E11, E16 to E18].
 
@@ -290,6 +294,8 @@ Each round below is one separately reviewed implementation plan and one independ
 
 Engine exit tests run synchronously in the owning plan's area projects. Rendering follows repository backend CI/golden policy. Build/verification is serialized through the shared slot, no stress loops or parallel local builds. This documents-only revision runs document guards, not production builds or full suites [E29, E31, G15].
 
+R1 to R4 execution plans are [native document and identity](../superpowers/plans/2026-10-05-world-authoring-r1-native-document-identity-assets.md), [authored terrain and paint](../superpowers/plans/2026-10-05-world-authoring-r2-authored-terrain-paint.md), [shared shapes and headless builders](../superpowers/plans/2026-10-05-world-authoring-r3-shared-shapes-headless-builders.md) and [bounded water and medium](../superpowers/plans/2026-10-05-world-authoring-r4-bounded-water-medium.md). These plans and the allocation/boundary clarifications are technical judgements awaiting owner review, not production implementation approval.
+
 ## Risks, mitigations and estimate
 
 | Risk and evidence | Mitigation and gate |
@@ -365,8 +371,9 @@ Reproduce once into a fresh directory while scratch exists:
 /tmp/grand-world/slot-retry.sh authoring-design-probe /tmp/grand-world/world-authoring-spike/reproduce.log -- dotnet run --project /private/tmp/grand-world/world-authoring-spike/THROWAWAY.csproj -c Release -- /Users/antonio/Grimhollow/.worktrees/gw-authoring-design/assets/worlds/hollowmere /private/tmp/grand-world/world-authoring-spike/reproduce-output
 ~~~
 
-Source SHA-256: 2e0de8010dccea0f9039051b4665e31294d18e360f59063aac21c492c85a7be1.
-Result SHA-256: 77fb3aec74b6e000e88a02a4d6e40965623e74792978732c421c803a7d5586d4.
+Spike Program.cs SHA-256: 2e0de8010dccea0f9039051b4665e31294d18e360f59063aac21c492c85a7be1.
+Measured-results.json SHA-256: 77fb3aec74b6e000e88a02a4d6e40965623e74792978732c421c803a7d5586d4.
+These identify the probe code and result report, not the world. Frozen world fixtures use game evidence commit 74f57ee22652bd18234b4479faba4f1898a17047 and their own recorded input digests.
 This measured table is the durable evidence. Scratch files may later disappear [S1, S2].
 
 ## Evidence register

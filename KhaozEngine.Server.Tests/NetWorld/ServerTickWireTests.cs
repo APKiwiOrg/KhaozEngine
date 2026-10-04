@@ -90,12 +90,43 @@ public class ServerTickWireTests
         for (int i = 0; i < 6; i++) { server.Poll(); server.Tick(Dt); client.Poll(); }
 
         MoveProtocol.ServerFrameKind expected = deltas ? MoveProtocol.ServerFrameKind.Delta : MoveProtocol.ServerFrameKind.Snapshot;
-        Assert.Equal(6, client.Frames.Count);
+        AssertPlainFrames(client, server, expected, 6);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnUnknownControlKindIsIgnored(bool sharded)
+    {
+        using var hub = new InMemoryTransportHub();
+        ServerUnderTest server = ServerUnderTest.Create(sharded, hub);
+        var suspicious = new List<SuspiciousActivity>();
+        server.OnSuspiciousActivity(suspicious.Add);
+        var client = new RawTickClient(hub.CreateClient(), "player", deltaHello: false, tickHello: false);
+        client.Join(server);
+        server.Poll();   // takes the hellos
+        client.SendControl((MoveProtocol.ClientControlKind)0x7F);
+        server.Poll();   // takes the unknown control
+
+        for (int i = 0; i < 6; i++) { server.Poll(); server.Tick(Dt); client.Poll(); }
+
+        AssertPlainFrames(client, server, MoveProtocol.ServerFrameKind.Snapshot, 6);
+        Assert.Empty(suspicious);
+        Assert.True(server.TryGetPlayerNetId(client.Slot, out _));
+    }
+
+    // Every frame is plain and its header names the receiver with no move acknowledged (the client sent none).
+    private static void AssertPlainFrames(RawTickClient client, ServerUnderTest server,
+        MoveProtocol.ServerFrameKind expected, int count)
+    {
+        long ownNetId = client.NetIdOn(server);
+        Assert.Equal(count, client.Frames.Count);
         foreach (ServedFrame frame in client.Frames)
         {
             Assert.Equal(expected, frame.Kind);
-            Assert.True(MoveProtocol.TryDecodeSnapshotFrame(frame.Payload, out long netId, out int ack, out byte[] body));
-            Assert.Equal(frame.Payload, MoveProtocol.EncodeSnapshotFrame(netId, ack, body));
+            Assert.True(MoveProtocol.TryDecodeSnapshotFrame(frame.Payload, out long netId, out int ack, out _));
+            Assert.Equal(ownNetId, netId);
+            Assert.Equal(-1, ack);
         }
     }
 
@@ -207,6 +238,12 @@ public class ServerTickWireTests
             else sharded!.OnAfterTick += _ => action();
         }
 
+        public void OnSuspiciousActivity(Action<SuspiciousActivity> action)
+        {
+            if (flat is not null) flat.OnSuspiciousActivity += action;
+            else sharded!.OnSuspiciousActivity += action;
+        }
+
         public bool TryGetPlayerNetId(int slot, out long netId) => flat is not null
             ? flat.TryGetPlayerNetId(slot, out netId)
             : sharded!.TryGetPlayerNetId(slot, out netId);
@@ -265,7 +302,7 @@ public class ServerTickWireTests
             }
         }
 
-        private void SendControl(MoveProtocol.ClientControlKind kind) =>
+        public void SendControl(MoveProtocol.ClientControlKind kind) =>
             net.Send(MoveProtocol.EncodeClientControl(kind), NetChannelReliability.ReliableOrdered);
     }
 }

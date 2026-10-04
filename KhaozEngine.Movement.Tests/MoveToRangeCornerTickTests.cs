@@ -23,7 +23,7 @@ public class MoveToRangeCornerTickTests
         NavSpace space = Surfaces(146f, 146f);
         var mover = new MoveToRange(new GridPathPlanner(space), space, (_, _) => true, null, RouteApproachOptions.Default);
         ReachTarget target = ReachTarget.Point(new(152.625f, 0.75f, 149.625f));
-        MoveState body = Body(148.125f, 148.125f);
+        MoveState body = Body(146.625f, 146.625f);
         float bound = Tuning.WalkSpeed * Dt;
         var travelBeforeTheInRangeTick = new List<double>();
         RangeMoveStatus last = RangeMoveStatus.Following;
@@ -40,6 +40,7 @@ public class MoveToRangeCornerTickTests
         }
         Assert.All(travelBeforeTheInRangeTick, t => Assert.True(t >= 0.019, $"tick moved {t} m"));
         Assert.Contains(travelBeforeTheInRangeTick, t => t < bound - 1e-3);
+        Assert.Contains(travelBeforeTheInRangeTick, t => t < 0.025);
         Assert.Equal(RangeMoveStatus.InRange, last);
     }
 }

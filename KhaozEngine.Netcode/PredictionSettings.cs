@@ -36,6 +36,13 @@ public readonly record struct PredictionSettings(
         HardSnapDistance: 100f,
         CorrectionRate: 8f,
         CorrectionDeadZone: 0.03f);
+
+    /// <summary>Eases a heading-carrying state's yaw (<see cref="IPredictedState{TSelf}.HasYaw"/>) from the previous
+    /// tick to the current one, the short way round, beside position and height. False (the default) renders the
+    /// last tick's heading, which steps once per tick. A hard snap, a teleport epoch advance, <c>Reset</c> and
+    /// <c>Reseed</c> cut the heading with the position. A non-snap reconcile keeps the inter-tick phase and moves only
+    /// the target.</summary>
+    public bool InterpolateYaw { get; init; }
 }
 
 /// <summary>Outcome of a <see cref="ClientPrediction{TState,TCommand}.Reconcile"/> call.</summary>

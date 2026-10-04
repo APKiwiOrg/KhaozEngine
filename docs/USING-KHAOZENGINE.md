@@ -11623,6 +11623,11 @@ lifecycle for animation timing, while the live vertical velocity remains on the 
   inter-tick interpolation, in the state's position units, excluding the reconciliation offset. It reaches
   zero at the interpolation endpoint. An ordinary reconciliation translates both endpoints and preserves
   this commanded segment. Reset, reseed and hard snap discard it.
+  The local heading steps once per tick by default, so a keyboard turn reads as a 30 Hz stutter on a fast display.
+  Set `InterpolateYaw = true` on the `PredictionSettings` passed as `WorldClientConfig.Prediction` (default false)
+  and `LocalRenderState.Move.FacingYaw`, and with it the local `EntityRenderState.FacingYaw`, eases from the
+  previous tick's heading to the current one the short way round, at the cost of up to one tick of heading latency,
+  the same latency position already has. A reset, reseed, hard snap or teleport cuts it with the position.
 
 ```csharp
 var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default, new WorldClientConfig { TickSeconds = 1f/30f });

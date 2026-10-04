@@ -91,6 +91,24 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
         return new PlayerMoveState { Move = m, TeleportEpoch = TeleportEpoch, FrameAnchor = FrameAnchor };
     }
 
+    /// <summary>A player always carries a heading (<see cref="MoveState.FacingYaw"/>), so prediction may ease it
+    /// between ticks when <see cref="PredictionSettings.InterpolateYaw"/> is set.</summary>
+    readonly bool IPredictedState<PlayerMoveState>.HasYaw => true;
+
+    /// <summary>The predicted heading, <see cref="MoveState.FacingYaw"/>, already in <c>[-pi, pi)</c>.</summary>
+    readonly float IPredictedState<PlayerMoveState>.Yaw => Move.FacingYaw;
+
+    /// <summary>As the two-argument render wither, with the eased <paramref name="yaw"/> written to
+    /// <see cref="MoveState.FacingYaw"/>. Everything else is preserved.</summary>
+    readonly PlayerMoveState IPredictedState<PlayerMoveState>.WithRenderState(Vector2 position, float vertical,
+        float yaw)
+    {
+        MoveState m = Move;
+        m.Position = new Vector3(position.X, vertical, position.Y);
+        m.FacingYaw = yaw;
+        return new PlayerMoveState { Move = m, TeleportEpoch = TeleportEpoch, FrameAnchor = FrameAnchor };
+    }
+
     /// <summary>Returns a copy re-stamped with <paramref name="anchor"/> and <paramref name="position"/>, where the
     /// caller has ALREADY converted the planar position into that anchor's space. This is
     /// <see cref="IPredictedState{TSelf}.WithFrameAnchor"/>, called by reconciliation when the predicted state and

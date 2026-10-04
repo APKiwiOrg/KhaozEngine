@@ -5724,10 +5724,13 @@ interpolate; `InterpolationMode` is LINEAR or STEP (CUBICSPLINE is read as its v
 
 **Directional locomotion blend (eight-way, feet in step)** (`DirectionalLocomotionBlend`, `KhaozEngine.Game`). A
 four-family clip pick plays the forward walk while a forward-left body moves half sideways, and the feet skate. The
-blend weights the two adjacent direction families by angle (45 degrees is half and half), splits each family by
-speed between the two members that bracket it, eases every weight over `blendSeconds`, and advances one shared gait
-phase by distance over the weighted stride. Each clip samples at `Phase + SyncPhase`, its authored right-foot contact,
-so the blended feet plant together. A steady target has at most four clips.
+blend picks a family from the sign of each body-frame component and weights it by its travel component over its
+stride, `|c| / s`, normalised, so the blended planted foot travels with the body on both axes (a 45 degree diagonal
+leans toward the shorter stride). It splits each family by speed between the two members that bracket it, which also
+sets the family's stride, eases every weight over `blendSeconds`, and advances one shared gait phase by
+`(|x| + |y|) x dt` over the weighted stride, which settles at `sum(|c| / s)` loops per second. Each clip samples at
+`Phase + SyncPhase`, its authored right-foot contact, so the blended feet plant together. A cardinal is one family,
+and a steady target has at most four clips.
 
 ```csharp
 // Once per model. Ids are yours, and a family's members ascend by FullWeightSpeed.

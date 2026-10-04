@@ -29,6 +29,7 @@ public sealed partial class WorldServer
         commands.Forget(slot);
         deltaReplicator?.Forget(slot);
         deltaCapableSlots.Remove(slot);
+        tickedSlots.Remove(slot);
         replication.Forget(slot);
         Vector3 spawn = JoinSpawn(slot, persistenceKey);
         PlayerMoveState state = simulator.Step(ToIsland(new PlayerMoveState { Position = spawn }),
@@ -80,6 +81,7 @@ public sealed partial class WorldServer
             selfRescueReadyAt.Remove(slot);
             deltaReplicator?.Forget(slot);
             deltaCapableSlots.Remove(slot);
+            tickedSlots.Remove(slot);
             replication.Left(slot);   // no longer pending a writer restart, stream dropped
             commands.Forget(slot);
         }

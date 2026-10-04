@@ -140,6 +140,7 @@ public sealed partial class WorldClient : IDisposable
         interpolateRemotes = config.InterpolateRemotes;
         requestDeltaReplication = config.RequestDeltaReplication;
         tickSeconds = config.TickSeconds;
+        serverTicks = StartServerTickTimeline(config);   // refuses the format 2 combination, null without the opt-in
         rebuild = StartRebuildStream(config);   // validates the format 2 opt-in, null without it
         interpolationDelaySeconds = MathF.Max(0f, config.InterpolationDelayTicks) * config.TickSeconds;
         presentationTrace = config.PresentationTraceEnabled ? new PresentationTrace() : null;
@@ -300,6 +301,7 @@ public sealed partial class WorldClient : IDisposable
                     if (requestDeltaReplication)
                         SendToServer(MoveProtocol.EncodeClientControl(MoveProtocol.ClientControlKind.DeltaCapable),
                             NetChannelReliability.ReliableOrdered);
+                    SendServerTickHello();
                     OnRebuildJoined();
                     SetState(WorldConnectionState.Connected);
                     break;
@@ -389,6 +391,7 @@ public sealed partial class WorldClient : IDisposable
         rebuild = NewRebuildStream();        // the stream binds one connection and view: a fresh receiver per attempt
         lastTeleportEpochByEntity.Clear();   // the fresh view has no entities/samples; start remote-teleport tracking clean
         LocalNetId = -1;
+        ForgetServerTick();
         secondsSinceServerFrame = 0f;
         attemptDeadlineRemaining = disconnectTimeout;
         // Reset remote-interpolation bookkeeping so the new stream starts clean. The fresh ClientReplicationView above
@@ -486,6 +489,7 @@ public sealed partial class WorldClient : IDisposable
             // avatar (LocalNetId) is excluded: it renders from prediction, and its client-world ReplicatedPosition must
             // stay the last-received authoritative value (the reconcile basis), not a fixed-delay interpolated one.
             view.InterpolateAt(world, presentationClock - interpolationDelaySeconds, LocalNetId);
+        PresentServerTick();
         if (presentationTrace is not null) RecordTraceFrame(step);
     }
 
@@ -597,10 +601,12 @@ public sealed partial class WorldClient : IDisposable
         switch (kind)
         {
             case MoveProtocol.ServerFrameKind.Snapshot:
-                OnSnapshot(payload);
+            case MoveProtocol.ServerFrameKind.TickedSnapshot:
+                OnSnapshot(kind, payload);
                 break;
             case MoveProtocol.ServerFrameKind.Delta:
-                OnDelta(payload);
+            case MoveProtocol.ServerFrameKind.TickedDelta:
+                OnDelta(kind, payload);
                 break;
             case MoveProtocol.ServerFrameKind.Notice:
                 ServerNotice notice = MoveProtocol.DecodeNotice(payload);
@@ -613,14 +619,14 @@ public sealed partial class WorldClient : IDisposable
                 if (MoveProtocol.TryDecodeGameMessageBody(payload, out ushort gameKind, out ReadOnlySpan<byte> gamePayload))
                     GameMessageReceived?.Invoke(gameKind, gamePayload);
                 break;
-            // An unknown ServerFrameKind (e.g. a newer server frame this build predates) falls through and is ignored -
-            // this is what makes a new server-to-client frame version-skew-safe downstream (see MoveProtocol).
+                // An unknown ServerFrameKind (e.g. a newer server frame this build predates) falls through and is ignored -
+                // this is what makes a new server-to-client frame version-skew-safe downstream (see MoveProtocol).
         }
     }
 
-    private void OnSnapshot(byte[] data)
+    private void OnSnapshot(MoveProtocol.ServerFrameKind kind, byte[] data)
     {
-        if (!MoveProtocol.TryDecodeSnapshotFrame(data, out long localNetId, out int ackSeq, out byte[] snapshot)) return;
+        if (!TryDecodeServedFrame(kind, data, out long serverTick, out long localNetId, out int ackSeq, out byte[] snapshot)) return;
         // Last-resort backstop: a snapshot we can't decode (e.g. an unregistered component type id from a newer
         // server protocol) must become a clean disconnect, never an unhandled exception in the consumer's frame
         // loop. Surfaced as IncompatibleVersion so the consumer shows "client out of date, please update".
@@ -629,28 +635,29 @@ public sealed partial class WorldClient : IDisposable
             OnSnapshotDecodeFailed(decodeError);
             return;
         }
-        IngestServerState(localNetId, ackSeq);
+        IngestServerState(localNetId, ackSeq, serverTick);
     }
 
-    private void OnDelta(byte[] data)
+    private void OnDelta(MoveProtocol.ServerFrameKind kind, byte[] data)
     {
-        if (!MoveProtocol.TryDecodeSnapshotFrame(data, out long localNetId, out int ackSeq, out byte[] delta)) return;
-        // A delta rides the same [localNetId][ackSeq] header as a snapshot; its body is an AoiDeltaReplicator delta.
+        if (!TryDecodeServedFrame(kind, data, out long serverTick, out long localNetId, out int ackSeq, out byte[] delta)) return;
+        // A delta rides the same header as a snapshot (ticked or plain); its body is an AoiDeltaReplicator delta.
         // A decode / baseline failure is terminal, the same clean disconnect as an undecodable snapshot.
         if (!view.TryApplyDelta(world, delta, out string? decodeError))
         {
             OnSnapshotDecodeFailed(decodeError);
             return;
         }
-        IngestServerState(localNetId, ackSeq);
+        IngestServerState(localNetId, ackSeq, serverTick);
         // Ack the applied replication seq. The legacy server records it as diagnostics only: it diffs from the
         // projection it last sent, which reliable-ordered delivery guarantees this client already holds.
         SendToServer(MoveProtocol.EncodeReplicationAck(view.LastAppliedSeq), NetChannelReliability.ReliableOrdered);
     }
 
-    // Shared post-apply for a full snapshot or a delta: NetStats ingest count, remote-interpolation interval, and the
-    // local prediction reconcile against the freshly applied authoritative basis. Identical for both frame kinds.
-    private void IngestServerState(long localNetId, int ackSeq)
+    // Shared post-apply for a full snapshot or a delta: NetStats ingest count, the server tick (-1 for a plain frame),
+    // remote-interpolation interval, and the local prediction reconcile against the freshly applied authoritative basis.
+    // Identical for both frame kinds.
+    private void IngestServerState(long localNetId, int ackSeq, long serverTick)
     {
         RecordSnapshotIngest();                                  // NetStats: AoI snapshot/delta ingest rate
         RecordRebuildIngest(ackSeq);                             // friend-test ingest diagnostics
@@ -663,6 +670,7 @@ public sealed partial class WorldClient : IDisposable
             snapshotArrivedSinceFrame = true;                   // mark the arrival on the next traced frame
         }
 
+        RecordServerTick(serverTick);                            // stamped beside the samples recorded just below
         if (interpolateRemotes)
         {
             // Buffer this snapshot's interpolatable state stamped at the current render-clock time. InterpolateAt then

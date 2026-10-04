@@ -476,6 +476,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             if (control == MoveProtocol.ClientControlKind.SelfRescue) HandleSelfRescue(slot);
             else if (control == MoveProtocol.ClientControlKind.DeltaCapable && deltaReplicator is not null) deltaCapableSlots.Add(slot);
             else if (control == MoveProtocol.ClientControlKind.RebuildDeltaCapable) replication.OnCapability(slot);
+            else if (control == MoveProtocol.ClientControlKind.ServerTickCapable) tickedSlots.Add(slot);
             return;
         }
         // Game message: an opaque game-defined frame (attack, interaction, chat, …). Demuxed BEFORE the move (it can
@@ -539,6 +540,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     /// <summary>Steps one authoritative frame: apply each client's queued input, then serve every client its AoI.</summary>
     public void Tick(float dt)
     {
+        ServerTick++;
         double elapsedSteps = float.IsFinite(dt) && dt > 0f ? dt / config.TickSeconds : 0.0;
         foreach (RateLimiter limiter in rateBySlot.Values) limiter.Refill(elapsedSteps);
         OnBeforeTick?.Invoke(dt);   // consumer NPC/enemy brains run before movement + serving
@@ -614,7 +616,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                 body = SnapshotWriter.WriteFiltered(snapshotIndex, snapshotScratch, world, registry, set, ReplicationChannels.Replicate, netId);
                 kind = MoveProtocol.ServerFrameKind.Snapshot;
             }
-            byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], body);
+            (kind, byte[] frame) = ServedFrame(slot, kind, netId, lastAckBySlot[slot], body);
             byte[] envelope = MoveProtocol.EncodeServerFrame(kind, frame);
             net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
         }

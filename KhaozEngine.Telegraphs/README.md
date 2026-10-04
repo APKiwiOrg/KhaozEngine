@@ -100,12 +100,21 @@ zones painted flat on the ground in a 3D scene, add `KhaozEngine.Telegraphs.Rend
   constructor.
 - `TelegraphRenderer2D` - immediate-mode 2D renderer over a caller-owned `SpriteBatch` +
   `PrimitiveRenderer`: `Begin(batch, primitives)`, then `Circle` / `Ring` / `Beam` / `Cone` /
-  `Arc`, then `End()`. Draws the flat fill/outline/pulse/flash only, picking primitives by
-  `FillMode` directly. **It reads none of the modern style knobs above** (FeatherWidth,
-  Pattern/PatternSpeed/PatternScale/PatternParam, AccentColor, EdgeErosion, EdgeEnergy,
-  InteriorDim, BaseFill, RimGlow, SweepGlow, EdgeSparkle, OutlineRunner, EdgeWidthWorld,
-  FeatherWidthWorld, VoidFallback, VoidDim) - those are a `KhaozEngine.Telegraphs.Render3D`
+  `Arc` / `DotLane`, then `End()`. Draws the flat fill/outline/pulse/flash only, picking
+  primitives by `FillMode` directly. **It reads none of the modern style knobs above**
+  (FeatherWidth, Pattern/PatternSpeed/PatternScale/PatternParam, AccentColor, EdgeErosion,
+  EdgeEnergy, InteriorDim, BaseFill, RimGlow, SweepGlow, EdgeSparkle, OutlineRunner,
+  EdgeWidthWorld, FeatherWidthWorld, VoidFallback, VoidDim) - those are a `KhaozEngine.Telegraphs.Render3D`
   ground-decal feature.
+- `DotLane(origin, direction, length, spacing, dotRadius, reveal, fade, style)` (2D only) - a row
+  of dots every `spacing` along the lane. `reveal` and `fade` are 0..1 fronts: dots appear outward
+  as `reveal` rises and disappear outward, origin end first, as `fade` rises. Each dot eases in and
+  out over two spacings. Colour resolves from `reveal`, the impact flash is scaled by `1 - fade` so
+  the dots cool as they wash out, and `FillFraction` is unused. `FillMode` picks filled dots, ring
+  dots or both. `spacing` must be finite and positive (`ArgumentOutOfRangeException`), and a
+  non-positive or non-finite `length` draws nothing. The per-dot alpha is the pure
+  `TelegraphResolve.DotLaneDotAlpha(position, reveal, fade, ramp)`, which returns 0 for any
+  non-finite argument.
 - `ZoneSense.Safe` is reserved for a future version (v1 renders it exactly like `Danger`).
 
 ```csharp
@@ -116,6 +125,7 @@ telegraphs.Begin(batch, primitives);
 float progress = attack.Elapsed / attack.Windup; // 0..1 from the sim
 telegraphs.Circle(bossPos, radius: 80f, progress, TelegraphStyle.Fire);
 telegraphs.Cone(bossPos, aimDir, halfAngleRad: 0.5f, range: 220f, progress, TelegraphStyle.Generic);
+telegraphs.DotLane(bossPos, laneDir, length: 300f, spacing: 20f, dotRadius: 4f, reveal, fade, TelegraphStyle.Fire);
 telegraphs.End();
 ```
 

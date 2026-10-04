@@ -5,6 +5,17 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.22.0
+
+- `TelegraphRenderer2D.DotLane(origin, direction, length, spacing, dotRadius, reveal, fade, style)` draws a row of
+  dots every `spacing` along a lane. Dots appear outward behind the 0..1 `reveal` front and disappear outward, origin
+  end first, behind the 0..1 `fade` front, each easing in and out over two spacings. Colour resolves from `reveal` and
+  the impact flash is scaled by `1 - fade`, so the dots pop at the strike and cool as they wash out. `FillMode` picks
+  filled dots, ring dots or both, and `FillFraction` is unused. A non-finite or non-positive `spacing` throws
+  `ArgumentOutOfRangeException`, a non-positive or non-finite `length` draws nothing, and drawing before `Begin`
+  throws. The per-dot alpha is the pure `TelegraphResolve.DotLaneDotAlpha(position, reveal, fade, ramp)`, which
+  returns 0 for any non-finite argument.
+
 ## 20.21.0
 
 - `DirectApproachOptions.MaxDropMetres` is an opt-in drop allowance for `DirectMoveToRange`, finite and not negative,

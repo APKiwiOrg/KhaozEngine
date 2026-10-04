@@ -5927,13 +5927,25 @@ determinism hash).
 
     tg.Begin(spriteBatch, primitiveRenderer);
     tg.Circle(center, radius, progress, TelegraphStyle.Generic);
+    tg.DotLane(origin, direction, length, spacing, dotRadius, reveal, fade, TelegraphStyle.Generic);
     tg.End();
 
-Shapes: Circle, Ring, Beam, Cone, Arc. Styles: seven presets (below), or a TelegraphStyle
-(fill/outline color, edge thickness, opacity, FillMode, TelegraphAnim flags, blend, plus the
-modern style knobs below). The 3D path paints onto the ground/terrain via the depth buffer and is
-occluded by meshes. (EdgeThickness is authored in 2D pixels: the 3D ground path derives its own
-world-space edge from the decal size.)
+Shapes: Circle, Ring, Beam, Cone, Arc, plus the 2D-only DotLane. Styles: seven presets (below),
+or a TelegraphStyle (fill/outline color, edge thickness, opacity, FillMode, TelegraphAnim flags,
+blend, plus the modern style knobs below). The 3D path paints onto the ground/terrain via the depth
+buffer and is occluded by meshes. (EdgeThickness is authored in 2D pixels: the 3D ground path
+derives its own world-space edge from the decal size.)
+
+`DotLane` draws a dot every `spacing` from `origin` along `direction` (normalized, `UnitX` when
+zero) out to `length`. It takes two 0..1 fronts instead of one progress: dots appear outward as
+`reveal` rises and disappear outward, origin end first, as `fade` rises. Each dot eases in and out
+over two spacings. Colour, opacity and the other flat animations resolve from `reveal`, the impact
+flash is scaled by `1 - fade` so the dots pop at the strike and cool as they wash out, and
+`FillFraction` is unused. `FillMode` picks filled dots in the fill colour, rings at `EdgeThickness`
+in the outline colour, or both. A non-finite or non-positive `spacing` throws
+`ArgumentOutOfRangeException`, and a non-positive or non-finite `length` draws nothing. The per-dot
+alpha is the pure `TelegraphResolve.DotLaneDotAlpha(position, reveal, fade, ramp)`, 0 for any
+non-finite argument.
 
 `FillMode` (`Outline` / `Fill` / `OutlineAndFill`) is honored by both renderers: `TelegraphResolve`
 zeroes the unwanted alpha before either path draws, so `Fill` also silences the outline-band
@@ -7575,7 +7587,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.21.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.22.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -7871,7 +7883,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.21.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.22.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8532,7 +8544,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.21.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.22.0" />
 ```
 
 ```csharp
@@ -15389,7 +15401,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.21.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.22.0" />
 ```
 
 ```csharp
@@ -15425,7 +15437,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.21.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.22.0" />
 ```
 
 ```csharp
@@ -15667,7 +15679,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.21.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.22.0" />
 ```
 
 ```csharp
@@ -19984,7 +19996,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.21.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.22.0" />
 </ItemGroup>
 ```
 

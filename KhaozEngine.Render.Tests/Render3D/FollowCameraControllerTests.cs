@@ -134,7 +134,11 @@ namespace KhaozEngine.Tests.Render3D
             var probe = new FixedReachProbe { ReachAt = 4f };
             var cam = new FollowCamera3D
             {
-                Target = Vector3.Zero, Yaw = 0f, HeightOffset = 0f, MinPitch = 0f, BoomProbe = probe,
+                Target = Vector3.Zero,
+                Yaw = 0f,
+                HeightOffset = 0f,
+                MinPitch = 0f,
+                BoomProbe = probe,
                 BoomRecoveryRate = 4f,
             };
             cam.Pitch = 0f;
@@ -155,8 +159,14 @@ namespace KhaozEngine.Tests.Render3D
             var probe = new FixedReachProbe { ReachAt = 4f };
             var cam = new FollowCamera3D
             {
-                Target = Vector3.Zero, Yaw = 0f, HeightOffset = 0f, MinPitch = 0f, BoomProbe = probe,
-                BoomRecoveryRate = 4f, EnableTargetDamping = true, TargetDampingRate = 10f,
+                Target = Vector3.Zero,
+                Yaw = 0f,
+                HeightOffset = 0f,
+                MinPitch = 0f,
+                BoomProbe = probe,
+                BoomRecoveryRate = 4f,
+                EnableTargetDamping = true,
+                TargetDampingRate = 10f,
             };
             cam.Pitch = 0f;
             cam.Distance = 10f;

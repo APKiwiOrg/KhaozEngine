@@ -312,7 +312,7 @@ public class AquaticProfileTests
         return (into, onto);
     }
 
-    private static bool Floats(PhysicsNavColumns columns, NavGrid grid, int x, int z)
+    internal static bool Floats(PhysicsNavColumns columns, NavGrid grid, int x, int z)
     {
         uint height = Bits(grid.SurfaceHeightAt(x, z)!.Value);
         ReadOnlySpan<PhysicsNavSurface> column = columns.GetColumn(x, z);

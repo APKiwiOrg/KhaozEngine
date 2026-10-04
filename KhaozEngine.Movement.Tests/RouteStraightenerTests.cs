@@ -111,10 +111,11 @@ public class RouteStraightenerTests
         var guard = new Sampled(standable, -4f, -4f);
         var straightener = new RouteStraightener(planner, space, guard.Allows);
         var openStraightener = new RouteStraightener(planner, space, new Sampled(Everywhere, -4f, -4f).Allows);
+        NavPath raw = planner.FindPath(start, GoalAt(goal), Tuning.CapsuleRadius, PathQueryBudget.Default);
 
         NavPath path = straightener.FindPath(start, GoalAt(goal), Tuning.CapsuleRadius, PathQueryBudget.Default);
 
-        Assert.True(new Sampled(standable, -4f, -4f).Allows(start, goal), "the centre line alone is clear");
+        AssertCentreLinesClear(start, raw.Waypoints.Select(w => CellIndex(-4f, w.Position)), standable);
         Assert.Single(openStraightener.FindPath(start, GoalAt(goal), Tuning.CapsuleRadius, PathQueryBudget.Default).Waypoints);
         Assert.True(path.Waypoints.Count > 1, $"kept {path.Waypoints.Count}");
     }
@@ -137,9 +138,11 @@ public class RouteStraightenerTests
         var centre = PointsAlong(a, b).Select(p => CellIndex(-4f, p)).ToHashSet();
         (Vector2 sideA, Vector2 sideB) = MinusSide(a, b);
         (int X, int Z) wall = PointsAlong(sideA, sideB).Select(p => CellIndex(-4f, p)).First(c => !centre.Contains(c));
+        var mirroredCells = cells.Select(c => (c.X, 31 - c.Z)).ToArray();
+        AssertCentreLinesClear(start, cells, (x, z) => (x, z) != wall);
+        AssertCentreLinesClear(Centre(-4f, 2, 29), mirroredCells, (x, z) => (x, 31 - z) != wall);
         int oblique = KeptCount(start, cells, (x, z) => (x, z) != wall);
-        int mirrored = KeptCount(Centre(-4f, 2, 29), cells.Select(c => (c.X, 31 - c.Z)).ToArray(),
-            (x, z) => (x, 31 - z) != wall);
+        int mirrored = KeptCount(Centre(-4f, 2, 29), mirroredCells, (x, z) => (x, 31 - z) != wall);
         Assert.True(oblique > 1, $"kept {oblique}");
         Assert.Equal(oblique, mirrored);
     }
@@ -280,6 +283,15 @@ public class RouteStraightenerTests
             Surfaces(-4f, -4f), new Sampled(standable, -4f, -4f).Allows);
         return straightener.FindPath(start, GoalAt(Vector3.Zero), Tuning.CapsuleRadius, PathQueryBudget.Default)
             .Waypoints.Count;
+    }
+
+    // Every centre line from the start passes, so the first scan can only stop on a side line, and a route that
+    // keeps more than its final waypoint proves a side line refused.
+    static void AssertCentreLinesClear(Vector3 start, IEnumerable<(int X, int Z)> cells, Func<int, int, bool> standable)
+    {
+        var guard = new Sampled(standable, -4f, -4f);
+        foreach ((int x, int z) in cells)
+            Assert.True(guard.Allows(start, Centre(-4f, x, z)), $"the centre line to ({x}, {z}) is refused");
     }
 
     static Vector3 Centre(float origin, int x, int z)

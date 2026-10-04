@@ -51,6 +51,7 @@ internal sealed class RouteStraightener : IRegionPathPlanner
 
         IReadOnlyList<NavWaypoint> wp = inner.Waypoints;
         int n = wp.Count;
+        if (n < 2) return inner;
         int startLayer = _space.LayerAt(start);
         var kept = new List<NavWaypoint>(n);
         Vector3 anchorFeet = start;
@@ -73,7 +74,7 @@ internal sealed class RouteStraightener : IRegionPathPlanner
             anchorLayer = wp[best].Layer;
         }
         if (kept.Count == n) return inner;
-        var straightened = new NavPath(inner.Status, kept.ToArray());
+        var straightened = new NavPath(inner.Status, kept);
         LastStraightened = straightened;
         return straightened;
     }

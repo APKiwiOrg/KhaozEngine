@@ -146,8 +146,9 @@ namespace KhaozEngine.Telegraphs
         /// <see cref="TelegraphResolve.DotLaneDotAlpha"/>. Colour resolves from <paramref name="reveal"/> like the
         /// progress of the other shapes, and the impact flash is scaled by <c>1 - fade</c> so the dots pop at the
         /// strike and cool as they wash out. <see cref="ResolvedTelegraph.FillFraction"/> is not used because the
-        /// reveal front replaces the sweep. Fill draws filled dots in the fill colour, Outline draws rings at the
-        /// edge thickness in the outline colour, and Both draws both.
+        /// reveal front replaces the sweep. <see cref="FillMode.Fill"/> draws filled dots in the fill colour,
+        /// <see cref="FillMode.Outline"/> draws rings at the edge thickness in the outline colour, and
+        /// <see cref="FillMode.OutlineAndFill"/> draws both. A dot whose alpha is zero is not drawn.
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">
         /// <paramref name="spacing"/> is not finite and positive.

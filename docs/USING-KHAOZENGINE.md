@@ -12182,8 +12182,8 @@ served to every other client whose interest holds it, and leaves at the start of
 Input the client sent before the drop is discarded. The slot stays joined throughout (the server holds it through
 `NetServer.HoldSlotOnDisconnect`), so the body stays on `JoinedSlots` and `ListOnline`, stays attackable by net id,
 counts against `MaxPlayers`, and a kick by account ends it at once. `IsLingering(slot)` answers for the game and admin
-tools. `Disconnect`, kicks, bans, replication restarts and the rate limit kick never linger, and nothing lingers after
-`BeginDrain`. Null, the default, changes nothing.
+tools on the host thread, like `TryGetPlayerState`. `Disconnect`, kicks, bans, replication restarts and the rate limit
+kick never linger, and nothing lingers after `BeginDrain`. Null, the default, changes nothing.
 
 A reconnect by the same account inside the linger reclaims its held slot, ahead of the duplicate session check and
 the capacity check, so neither `RefuseNewer` nor a full server turns it away. The lingering body leaves first through

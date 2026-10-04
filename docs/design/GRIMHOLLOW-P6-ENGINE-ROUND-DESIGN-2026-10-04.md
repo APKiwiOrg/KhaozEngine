@@ -343,10 +343,12 @@ instead of half and half. Cardinals, speed brackets, easing, `TravelWeight` and 
   returning one (D6).
 - **Kick by account.** `Kick(PlayerRef)` resolves the lingering slot through `accountIdBySlot`, and `Disconnect(slot)`
   on it is a no-op on the transport followed by the immediate leave. A banned account's body therefore leaves at once.
-- **Diagonal cadence.** Locking the foot raises the loop rate off the cardinals. With equal strides a 45 degree
-  diagonal steps `sqrt(2)` times as often as a cardinal at the same speed (1.47 against 1.0 loops per second on the
-  test set at 1 m/s, where 20.23.0 ran 1.0). That is what two axis-bound clips need to cover a diagonal without
-  sliding. The owner's playtest judges the look, and a cadence complaint is clip work (a diagonal clip), not a share
+- **Diagonal cadence.** Locking the foot raises the loop rate off the cardinals. A diagonal steps faster than its
+  longer-stride cardinal at the same speed, since `sum(|c| / s)` is at least `(|x| + |y|) / s_max`, but not always
+  faster than its shorter-stride one. With equal strides a 45 degree diagonal steps `sqrt(2)` times as often as a
+  cardinal. On the test set at 1 m/s (forward stride 1.2, strafe stride 0.8) the 45 degree walk loops 1.47 times a
+  second, where 20.23.0 ran 1.0, which is 1.77 times the forward walk and 1.18 times the strafe. That is what two
+  axis-bound clips need to cover a diagonal without sliding. The owner's playtest judges the look, and a cadence complaint is clip work (a diagonal clip), not a share
   change.
 - **Short strafe strides take most of the share.** A family with a short stride needs more weight to cover its
   component, so Grimhollow's 0.8 m strafe walk outweighs its 1.4 m forward walk on a 45 degree walk. This is the

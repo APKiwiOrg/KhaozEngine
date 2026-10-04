@@ -141,6 +141,9 @@ public sealed partial class ShardedWorldServerConfig
     /// <para>A <see cref="ShardedWorldServer.PlayerLeaving"/> handler that throws at expiry propagates out of
     /// <see cref="ShardedWorldServer.Tick"/> after <see cref="ShardedWorldServer.ServerTick"/> has advanced and before
     /// <see cref="ShardedWorldServer.OnBeforeTick"/>. Its own body still leaves. The remaining expired slots leave at
-    /// the start of the next tick.</para></summary>
+    /// the start of the next tick. A <c>PlayerLeaving</c> handler that throws when a reconnect by the same account ends
+    /// the linger propagates out of <see cref="ShardedWorldServer.Poll"/>. The lingering body still leaves, but that
+    /// reconnect's join is lost, so the returning client holds its seated slot with no body until its frame
+    /// timeout.</para></summary>
     public Func<int, long, int>? DisconnectLingerTicks { get; init; }
 }

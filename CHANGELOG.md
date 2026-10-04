@@ -18,12 +18,13 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   making ground. Every tick that returns `Following` or `WaitingForPath` counts, except the hold for a zero travel
   bound, so a refused step, a refused straightened step and a partial route waiting on cooldown all count.
   `Suspended`, `InRange`, `Unreachable` and `UnsupportedTransition` count toward nothing. A window of `N` ticks
-  spans `N` intervals between `N + 1` counted samples, so when the net horizontal feet displacement across the last
-  window is under `TravelMetres`, the `(N + 1)`th counted tick returns `Blocked` with zero input (the 16th for 15).
-  The latch holds until `InRange`, `Reset` or a change of target shape, range or capsule. A replan, a straightening
-  fallback or target translation does not clear it, and a raw leg the step guard refuses (#1278) now ends in
-  `Blocked`. With `Stall` null nothing changes and `MoveToRange` never returns `Blocked`. `DirectMoveToRange` keeps
-  its progress window unchanged on the shared ring.
+  spans `N` intervals between `N + 1` counted samples, so the latch is first eligible on the `(N + 1)`th counted
+  tick (the 16th for 15). From then on, a counted tick whose net horizontal feet displacement across the last
+  window is under `TravelMetres` returns `Blocked` with zero input, so a body that walks and then stops latches
+  later than that. The latch holds until `InRange`, `Reset` or a change of target shape, range or capsule. A
+  replan, a straightening fallback or target translation does not clear it, and a raw leg the step guard refuses
+  (#1278) now ends in `Blocked`. With `Stall` null nothing changes and `MoveToRange` never returns `Blocked`.
+  `DirectMoveToRange` keeps its progress window unchanged on the shared ring.
 - `WorldServer.ServerTick` and `ShardedWorldServer.ServerTick` (`long`) count `Tick` calls, advancing as the first
   statement of `Tick` before `OnBeforeTick`, and are always on. A client with `WorldClientConfig.ReceiveServerTick`
   set sends the `ServerTickCapable` hello (control kind 4) on every join after `DeltaCapable`. A server that knows
@@ -47,15 +48,16 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   reconnecting reclaims its held slot ahead of the duplicate session check, even under `RefuseNewer` or on a full
   server: the lingering body leaves and saves first, then a fresh body joins on that slot from the save. A
   tokenless guest cannot reclaim, so its linger runs out. `ShardedWorldServer.IsLingering(slot)` answers for game
-  and admin code. `NetServer` never asks the hold about a connection it closed itself, and a throwing hold still
-  frees the slot and enqueues `Left`.
+  and admin code on the host thread, like `TryGetPlayerState`. `NetServer` never asks the hold about a connection
+  it closed itself, and a throwing hold still frees the slot and enqueues `Left`.
 - Behaviour change: `DirectionalLocomotionBlend` now keeps a planted foot locked on diagonals. Each direction
   family's share is its body-frame travel component over its stride, normalised, and the shared phase advances by
   `(|x| + |y|)` over the weighted stride, so each family's blended foot travels exactly its component. A 45 degree
   walk with forward stride 1.2 m and strafe stride 0.8 m now weights forward 0.4 and strafe 0.6 instead of half and
-  half. Diagonals step faster than either cardinal: the phase rate is `sum(|c| / s)`, the unique foot-locked
-  solution with one shared phase, so that walk loops 1.77 times as fast as the forward walk and 1.18 times as fast
-  as the strafe at the same speed. Cardinals, speed brackets, easing, `TravelWeight` and the API are unchanged.
+  half. A diagonal steps faster than its longer-stride cardinal at the same speed: the phase rate is
+  `sum(|c| / s)`, the unique foot-locked solution with one shared phase, so that 45 degree walk loops 1.77 times as
+  fast as the forward walk and 1.18 times as fast as the strafe. Cardinals, speed brackets, easing, `TravelWeight`
+  and the API are unchanged.
 
 ## 20.23.0
 

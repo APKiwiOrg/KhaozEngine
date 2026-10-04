@@ -11,7 +11,8 @@ public sealed partial class ShardedWorldServer
     private readonly List<int> lingerScratch = new();
 
     /// <summary>True while the slot's body lingers after its link dropped (see
-    /// <see cref="ShardedWorldServerConfig.DisconnectLingerTicks"/>). The slot stays joined meanwhile.</summary>
+    /// <see cref="ShardedWorldServerConfig.DisconnectLingerTicks"/>). The slot stays joined meanwhile. Read it on the
+    /// host thread, like <see cref="TryGetPlayerState"/>.</summary>
     public bool IsLingering(int slot) => lingerUntilBySlot.ContainsKey(slot);
 
     // NetServer.HoldSlotOnDisconnect, set only when the hook is. NetServer never asks for a connection it closed

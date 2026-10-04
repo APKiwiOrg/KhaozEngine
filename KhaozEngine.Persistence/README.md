@@ -180,6 +180,28 @@ at a time and in failure order, never concurrently. A handler may therefore safe
 drained and does not block until the `WriteFailed` handlers have run (the failure is still logged
 synchronously before `Flush()` returns).
 
+`EnqueueTracked(path, json)` returns a `Task<PersistenceWriteResult>` for that exact submitted payload.
+`Outcome` is `Saved` after its atomic write, `Superseded` if a newer pending payload replaces it before
+writing, or `Failed` after retries are exhausted. `Path` is the submitted target and `Error` is the final
+exception only for `Failed`. An older in-flight write can report `Saved` while a newer payload for the
+same path remains pending. A replacement through either `Enqueue` or `EnqueueTracked` supersedes the
+pending tracked request. Completion continuations run asynchronously outside queue locks, so they may
+enqueue, flush or dispose the queue. `Flush` and disposal drain tracked writes and resolve their tasks,
+without waiting for continuations or failure handlers.
+
+`GameStorage.SaveTracked<T>(fileName, value, SaveWriteOptions? options = null)` returns the same result
+for the serialized save, with the same encoding posture, overrides and metadata as `Save`. Serialization,
+path validation, invalid encoding options and submission to a disposed queue still throw synchronously.
+The existing void APIs and `WriteFailed` notifications remain available.
+
+```csharp
+PersistenceWriteResult result = await storage.SaveTracked("save.json", saveData);
+if (result.Outcome == PersistenceWriteOutcome.Saved)
+{
+    // This submitted payload completed its atomic write.
+}
+```
+
 The optional `backupGenerations` constructor argument (default 2) keeps that many numbered backups
 per target path, rotated once per committed payload before the write attempt - see "Backup generations"
 above for the copy-not-move rotation semantics. `GameStorage` wires this from

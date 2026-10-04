@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Threading.Tasks;
 using KhaozEngine.App;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Serialization;
@@ -106,6 +107,24 @@ public sealed class GameStorage : IDisposable
     /// <exception cref="InvalidOperationException">Encoding is requested explicitly under <see cref="SaveEncoding.Plaintext"/>.</exception>
     public void Save<T>(string fileName, T value, SaveWriteOptions? writeOptions)
     {
+        string json = SerializeSave(value, writeOptions);
+        WriteQueue.Enqueue(Paths.GetFilePath(fileName), json);
+    }
+
+    /// <summary>
+    /// Serializes and optionally encodes <paramref name="value"/> with the same posture and metadata as
+    /// <see cref="Save{T}(string, T, SaveWriteOptions)"/>, then tracks that exact payload through the queue.
+    /// Saved follows the atomic write, Superseded means replacement before writing, and Failed carries
+    /// the final write error. Serialization, path validation, and invalid encoding options still throw synchronously.
+    /// </summary>
+    public Task<PersistenceWriteResult> SaveTracked<T>(string fileName, T value, SaveWriteOptions? options = null)
+    {
+        string json = SerializeSave(value, options);
+        return WriteQueue.EnqueueTracked(Paths.GetFilePath(fileName), json);
+    }
+
+    private string SerializeSave<T>(T value, SaveWriteOptions? writeOptions)
+    {
         SaveEncoder? encoder = SaveEncoding.Encoder;
         bool encode = writeOptions?.Encode ?? encoder is not null;
         string json = JsonSerializer.Serialize(value, JsonDefaults.IndentedWrite);
@@ -119,7 +138,7 @@ public sealed class GameStorage : IDisposable
             SaveMetadata metadata = new() { SavedAtUtc = DateTime.UtcNow, GameVersion = gameVersion, Summary = writeOptions?.Summary };
             json = encoder.Encode(json, metadata);
         }
-        WriteQueue.Enqueue(Paths.GetFilePath(fileName), json);
+        return json;
     }
 
     /// <summary>Serializes <paramref name="value"/> to indented JSON, optionally encodes it, and queues a write to <paramref name="fileName"/> in the app-data dir.

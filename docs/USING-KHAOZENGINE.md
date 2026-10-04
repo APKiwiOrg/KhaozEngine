@@ -7588,7 +7588,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.22.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.23.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -7884,7 +7884,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.22.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.23.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8545,7 +8545,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.22.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.23.0" />
 ```
 
 ```csharp
@@ -15402,7 +15402,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.22.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.23.0" />
 ```
 
 ```csharp
@@ -15438,7 +15438,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.22.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.23.0" />
 ```
 
 ```csharp
@@ -15680,7 +15680,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.22.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.23.0" />
 ```
 
 ```csharp
@@ -19803,6 +19803,29 @@ storage.Save("debug-dump.json", value, new SaveWriteOptions { Encode = false });
 storage.Save("save.json", value, new SaveWriteOptions { Summary = "Chapter 3, Level 42" });   // Encode = null follows the default
 ```
 
+**Tracked write outcomes.** `SaveTracked<T>(fileName, value, SaveWriteOptions? options = null)` follows
+the same serialization, encoding and metadata rules as `Save`, and returns a
+`Task<PersistenceWriteResult>` for that exact submitted payload. Direct queue users have
+`PersistenceQueue.EnqueueTracked(path, json)`. The result carries `Outcome`, `Path` and `Error`:
+
+- `Saved` follows that payload's atomic write.
+- `Superseded` means a newer pending payload replaced it before writing, through either void or tracked submission.
+- `Failed` follows exhausted retries and carries the final write exception. The other outcomes have a null error.
+
+An older in-flight payload can finish while a newer payload for the same path is still pending, so its
+`Saved` result only covers its own bytes. Continuations run asynchronously outside queue locks and may
+enqueue, flush or dispose. `Flush` and disposal drain writes and resolve tracked tasks without waiting
+for their continuations. Existing void methods and `WriteFailed` behavior remain available. Serialization,
+path validation, invalid encoding options and submission to a disposed queue still throw synchronously.
+
+```csharp
+PersistenceWriteResult write = await storage.SaveTracked("save.json", campaign);
+if (write.Outcome == PersistenceWriteOutcome.Failed)
+{
+    logger.Error("Save write failed", write.Error);
+}
+```
+
 This is still a deterrent, not real security - the HMAC key ships in the game binary. It stops a casual
 save editor and detects corruption. It does not stop a player willing to read the source.
 
@@ -19997,7 +20020,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.22.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.23.0" />
 </ItemGroup>
 ```
 

@@ -1,10 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using KhaozEngine.App;
 using KhaozEngine.Diagnostics;
 using KhaozEngine.Serialization;
+
+[assembly: InternalsVisibleTo("KhaozEngine.Foundation.Tests")]
 
 namespace KhaozEngine.Persistence;
 
@@ -19,7 +23,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
 {
 
     private readonly object sync = new();
-    private readonly Dictionary<string, string> pending = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, PendingWrite> pending = new(StringComparer.Ordinal);
     // Failure notifications awaiting delivery, guarded by sync. Drain workers append here and the
     // single active notifier (see notifying) delivers FIFO, so WriteFailed handlers never run
     // concurrently and failures arrive in the order they happened.
@@ -28,6 +32,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
     private readonly int maxAttempts;
     private readonly TimeSpan retryDelay;
     private readonly int backupGenerations;
+    private readonly Action<string, string> writeText;
     private bool workerScheduled;
     private bool notifying;
     private bool disposed;
@@ -37,7 +42,14 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
 
     /// <summary>Creates a queue. <paramref name="maxAttempts"/> total write attempts per payload (>= 1). <paramref name="retryDelay"/> backoff between attempts (default 50 ms). <paramref name="logger"/> defaults to the ambient <c>Log</c> facade (category <c>PersistenceQueue</c>). <paramref name="backupGenerations"/> is the number of numbered backups to keep per target path via <see cref="SaveBackups"/>, rotated once per committed payload before the write attempt. It defaults to 2, matching the read side (<see cref="FileSettingsStorage.BackupGenerations"/> and <see cref="GameStorageOptions.BackupGenerations"/> both default to 2), so a queue built with defaults writes the generations the recovery ladder goes looking for. It used to default to 0, which left a consumer that constructs the queue directly with a ladder that had nothing to recover from. Pass 0 to turn rotation off.</summary>
     public PersistenceQueue(ILogger? logger = null, int maxAttempts = 3, TimeSpan? retryDelay = null, int backupGenerations = 2)
+        : this(AtomicJsonWriter.WriteText, logger, maxAttempts, retryDelay, backupGenerations)
     {
+    }
+
+    internal PersistenceQueue(Action<string, string> writeText, ILogger? logger = null, int maxAttempts = 3, TimeSpan? retryDelay = null, int backupGenerations = 2)
+    {
+        ArgumentNullException.ThrowIfNull(writeText);
+        this.writeText = writeText;
         if (maxAttempts < 1)
         {
             throw new ArgumentOutOfRangeException(nameof(maxAttempts), "At least one attempt is required.");
@@ -54,23 +66,45 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
 
     /// <inheritdoc/>
     public void Enqueue(string path, string json)
+        => Enqueue(path, new PendingWrite(json, null));
+
+    /// <summary>
+    /// Enqueues <paramref name="json"/> and tracks that exact payload. Saved follows its atomic write,
+    /// Superseded means it was replaced while pending, and Failed carries the final error after retries.
+    /// Completion continuations run asynchronously outside queue locks. An in-flight payload can finish
+    /// while a newer payload for the same path is still pending.
+    /// </summary>
+    public Task<PersistenceWriteResult> EnqueueTracked(string path, string json)
+    {
+        var completion = new TaskCompletionSource<PersistenceWriteResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Enqueue(path, new PendingWrite(json, completion));
+        return completion.Task;
+    }
+
+    private void Enqueue(string path, PendingWrite request)
     {
         ArgumentNullException.ThrowIfNull(path);
-        ArgumentNullException.ThrowIfNull(json);
+        ArgumentNullException.ThrowIfNull(request.Json, "json");
 
+        PendingWrite? replaced;
+        bool schedule = false;
         lock (sync)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            pending[path] = json;
-            if (workerScheduled)
+            pending.TryGetValue(path, out replaced);
+            pending[path] = request;
+            if (!workerScheduled)
             {
-                return;
+                workerScheduled = true;
+                schedule = true;
             }
-
-            workerScheduled = true;
         }
 
-        ThreadPool.UnsafeQueueUserWorkItem(static state => ((PersistenceQueue)state!).DrainPending(), this);
+        replaced?.Completion?.TrySetResult(new PersistenceWriteResult(PersistenceWriteOutcome.Superseded, path, null));
+        if (schedule)
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(static state => ((PersistenceQueue)state!).DrainPending(), this);
+        }
     }
 
     /// <summary>Serializes <paramref name="value"/> (indented by default) and enqueues it for <paramref name="path"/>.</summary>
@@ -121,7 +155,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
             while (true)
             {
                 string path;
-                string json;
+                PendingWrite request;
 
                 lock (sync)
                 {
@@ -131,18 +165,21 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
                     }
 
                     path = string.Empty;
-                    json = string.Empty;
-                    foreach (KeyValuePair<string, string> entry in pending)
+                    request = null!;
+                    foreach (KeyValuePair<string, PendingWrite> entry in pending)
                     {
                         path = entry.Key;
-                        json = entry.Value;
+                        request = entry.Value;
                         break;
                     }
 
                     pending.Remove(path);
                 }
 
-                PersistenceWriteFailedEventArgs? failure = WriteWithRetry(path, json);
+                PersistenceWriteFailedEventArgs? failure = WriteWithRetry(path, request.Json);
+                request.Completion?.TrySetResult(new PersistenceWriteResult(
+                    failure is null ? PersistenceWriteOutcome.Saved : PersistenceWriteOutcome.Failed,
+                    path, failure?.Exception));
                 if (failure is not null)
                 {
                     // Collect the notification, do not raise it yet. Raising it here would run the
@@ -247,7 +284,7 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
         {
             try
             {
-                AtomicJsonWriter.WriteText(path, json);
+                writeText(path, json);
                 return null;
             }
             catch (Exception ex) when (attempt < maxAttempts)
@@ -285,4 +322,6 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
             logger.Error("a WriteFailed subscriber threw", ex);
         }
     }
+
+    private sealed record PendingWrite(string Json, TaskCompletionSource<PersistenceWriteResult>? Completion);
 }

@@ -15,7 +15,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - `ShardHost` takes the origin as `cellOrigin` and keys on a new `CellGrid` value (`ShardHost.Grid`, plus
   `CellOrigin`), the one owner of the conversion: `CoordFor`, `BoundsOf` and `CenterOf`. Cell keying, handoff,
   border ghosting and each cell's island frame (nearest the shifted centre) all read it.
-  `CellCoord.FromWorld(x, y, cellSize)` is unchanged.
+  `CellCoord.FromWorld(x, y, cellSize)` is unchanged. A physics factory that builds statics around a cell reads its
+  centre from `Grid.CenterOf(coord)`, which follows the origin. `CellGrid` also refuses a NaN or infinite cell
+  size, which `ShardHost` used to accept.
 
 ## 20.24.1
 

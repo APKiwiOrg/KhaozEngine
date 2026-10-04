@@ -28,7 +28,8 @@ space, so a cell owns both or neither. Built with `frameAnchoring: true`, `Shard
 nearest its CENTRE (`FrameFor(coord)`, pure, so a physics factory can call it), fixed for the cell's life - which
 is why a shard host performs no runtime rebase at all. Built with a `physicsFactory`, it calls that factory once
 per cell at creation, before the cell can tick or receive an entity, and disposes the returned world with the cell.
-The factory's world must hold every static within `cellSize / 2 + overlapMargin` of the cell centre, expressed
+The factory's world must hold every static within `cellSize / 2 + overlapMargin` of the cell centre
+(`Grid.CenterOf(coord)`, which follows the cell origin), expressed
 against an `Origin` of `FrameFor(coord).Anchor`, and must belong to that one cell.
 
 - **`IslandFrame`** is the singleton component carrying a world's frame, on a reserved entity with no `NetId` (so

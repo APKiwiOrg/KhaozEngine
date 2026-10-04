@@ -82,7 +82,7 @@ public sealed partial class ShardHost : IDisposable
     // crossing keeps an entry (which is the entity still being in flight, not a leak).
     private readonly Dictionary<long, TransientScope> transientCrossings = new();
 
-    /// <param name="cellSize">World-grid cell edge length in world units. Must be &gt; 0.</param>
+    /// <param name="cellSize">World-grid cell edge length in world units. Must be finite and &gt; 0.</param>
     /// <param name="tickSeconds">Fixed timestep shared by every cell, seconds per tick. Must be &gt; 0.</param>
     /// <param name="registry">Shared replication registry handed to each cell's <see cref="ServerReplicator"/> and used to (de)serialize ghost snapshots.</param>
     /// <param name="interestCellSize">Cell edge length for each cell's AoI <see cref="InterestGrid"/>. Must be &gt; 0.</param>
@@ -92,8 +92,9 @@ public sealed partial class ShardHost : IDisposable
     /// <param name="scheduler">Worker pool that <see cref="Tick"/> fans the independent per-cell sim steps across. Defaults to an inline <see cref="SingleThreadedJobScheduler"/> (single-threaded, byte-unchanged behaviour); pass a <see cref="ThreadPoolJobScheduler"/> to tick cells across cores. Also settable later via <see cref="Scheduler"/>.</param>
     /// <param name="physicsFactory">Builds each cell's OWN physics world, called once per cell at creation with that
     /// cell's coordinate, before the cell can tick or receive an entity. The returned world must already hold every
-    /// static within <c>cellSize / 2 + overlapMargin</c> of the cell centre (an entity this cell owns or ghosts can
-    /// query that far), expressed against an <c>Origin</c> of <see cref="FrameFor"/>'s anchor, and must belong to
+    /// static within <c>cellSize / 2 + overlapMargin</c> of the cell centre, read from <see cref="CellGrid.CenterOf"/>
+    /// on <see cref="Grid"/> because it follows the cell origin (an entity this cell owns or ghosts can query that
+    /// far), expressed against an <c>Origin</c> of <see cref="FrameFor"/>'s anchor, and must belong to
     /// this cell alone - it is disposed with the cell. Null (the default) leaves every cell without physics.</param>
     /// <param name="frameAnchoring">Give each cell an island frame at <see cref="FrameFor"/> instead of the world
     /// origin, so the positions it simulates stay small however far the world extends. Default false, which is

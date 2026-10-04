@@ -98,10 +98,13 @@ public sealed partial class ShardHost : IDisposable
     /// <param name="frameAnchoring">Give each cell an island frame at <see cref="FrameFor"/> instead of the world
     /// origin, so the positions it simulates stay small however far the world extends. Default false, which is
     /// byte-identical to the pre-frame host.</param>
+    /// <param name="cellOrigin">The world point where cell (0, 0) begins, so a position belongs to cell
+    /// <c>floor((p - cellOrigin) / cellSize)</c>. Both components must be finite. The default, the world origin, keeps
+    /// the grid <see cref="CellCoord.FromWorld"/> gives. See <see cref="Grid"/>.</param>
     public ShardHost(float cellSize, float tickSeconds, ReplicationRegistry registry, float interestCellSize,
         float overlapMargin, CellPositionAccessor? positionAccessor = null, ICellLink? cellLink = null,
         IJobScheduler? scheduler = null, Func<CellCoord, IPhysicsWorld>? physicsFactory = null,
-        bool frameAnchoring = false)
+        bool frameAnchoring = false, Vector2 cellOrigin = default)
     {
         if (cellSize <= 0f)
             throw new ArgumentOutOfRangeException(nameof(cellSize), cellSize, "Cell size must be positive.");
@@ -111,7 +114,7 @@ public sealed partial class ShardHost : IDisposable
             throw new ArgumentOutOfRangeException(nameof(interestCellSize), interestCellSize, "Interest cell size must be positive.");
         if (overlapMargin < 0f)
             throw new ArgumentOutOfRangeException(nameof(overlapMargin), overlapMargin, "Overlap margin must be >= 0.");
-        CellSize = cellSize;
+        Grid = new CellGrid(cellSize, cellOrigin);
         this.tickSeconds = tickSeconds;
         this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
         this.interestCellSize = interestCellSize;
@@ -131,8 +134,15 @@ public sealed partial class ShardHost : IDisposable
     public ShardHost(float cellSize, float tickSeconds, ReplicationRegistry registry)
         : this(cellSize, tickSeconds, registry, cellSize, overlapMargin: 0f) { }
 
+    /// <summary>The world grid this host partitions space into, and the one place a world position becomes a
+    /// <see cref="CellCoord"/> or a cell becomes world bounds. Every conversion the host makes goes through it.</summary>
+    public CellGrid Grid { get; }
+
     /// <summary>World-grid cell edge length in world units.</summary>
-    public float CellSize { get; }
+    public float CellSize => Grid.CellSize;
+
+    /// <summary>The world point where cell (0, 0) begins.</summary>
+    public Vector2 CellOrigin => Grid.Origin;
 
     /// <summary>Border overlap distance for ghosting (0 = ghosting disabled).</summary>
     public float OverlapMargin { get; }
@@ -191,7 +201,7 @@ public sealed partial class ShardHost : IDisposable
     public event Action<CellSim>? CellCreated;
 
     /// <summary>The cell coordinate containing a world position. Pure - does not instantiate a cell.</summary>
-    public CellCoord CoordFor(float worldX, float worldY) => CellCoord.FromWorld(worldX, worldY, CellSize);
+    public CellCoord CoordFor(float worldX, float worldY) => Grid.CoordFor(worldX, worldY);
 
     /// <summary>
     /// The island frame a cell at <paramref name="coord"/> has (or would have): the frame nearest that cell's CENTRE
@@ -199,9 +209,12 @@ public sealed partial class ShardHost : IDisposable
     /// instantiate a cell - so a physics factory can call it to learn the <c>Origin</c> the world it is building must
     /// be expressed against, without having to re-derive the engine's own arithmetic.
     /// </summary>
-    public WorldFrame FrameFor(CellCoord coord) => frameAnchoring
-        ? WorldFrame.Nearest((coord.X + 0.5f) * CellSize, (coord.Y + 0.5f) * CellSize)
-        : WorldFrame.Origin;
+    public WorldFrame FrameFor(CellCoord coord)
+    {
+        if (!frameAnchoring) return WorldFrame.Origin;
+        Vector2 centre = Grid.CenterOf(coord);
+        return WorldFrame.Nearest(centre.X, centre.Y);
+    }
 
     /// <summary>The <see cref="CellSim"/> containing a world position, creating it if it does not exist yet.</summary>
     public CellSim CellFor(float worldX, float worldY) => GetOrCreateCell(CoordFor(worldX, worldY));
@@ -657,9 +670,10 @@ public sealed partial class ShardHost : IDisposable
     private Dictionary<CellCoord, HashSet<long>>? CollectBorders(CellSim owner)
     {
         Dictionary<CellCoord, HashSet<long>>? byTarget = null;
-        float s = CellSize, m = OverlapMargin;
+        float m = OverlapMargin;
         CellCoord c = owner.Coord;
-        float minX = c.X * s, maxX = minX + s, minY = c.Y * s, maxY = minY + s;
+        (Vector2 min, Vector2 max) = Grid.BoundsOf(c);
+        float minX = min.X, maxX = max.X, minY = min.Y, maxY = max.Y;
         World world = owner.World;
 
         world.ForEach<NetId>((Entity e, ref NetId id) =>

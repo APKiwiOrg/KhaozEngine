@@ -37,6 +37,11 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   default (keyed by `NetId`, so a boundary crossing stays a component delta, never a despawn+respawn), or a full
   snapshot for a non-opted-in client. The `WorldClient` and `MoveProtocol` are unchanged - a client cannot tell it
   is talking to a sharded server.
+  **`ShardedWorldServerConfig.CellOrigin`** (`Vector2`, XZ, default the world origin) is the world point where
+  cell (0, 0) begins, so a position belongs to cell `floor((p - CellOrigin) / CellSize)`. With the default, a world
+  that straddles 0 on an axis is always split there whatever `CellSize` it picks. Set it to the world's lower corner
+  to choose where cells fall instead. Cell keying, `TryGetCellCoord`, handoff, border ghosting and each cell's
+  island frame (nearest the shifted centre) all read it. A non-finite value is refused at construction.
   **`TryGetSlot(long netId, out int slot)`** resolves a joined player's net id to its connection slot with a
   dictionary lookup, complementing `TryGetPlayerNetId`. Read it on the host thread with `Poll` and `Tick`.
   The index is ready before `PlayerJoined` runs and removed when the player leaves, including when a

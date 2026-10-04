@@ -12137,6 +12137,7 @@ var terrain = new TerrainCollision(field);
 var config = new ShardedWorldServerConfig
 {
     CellSize = 60f,          // align to the terrain / streaming chunk grid (one chunk per cell here)
+    CellOrigin = Vector2.Zero, // where cell (0, 0) begins (XZ). Move it to the world's lower corner if it extends below 0
     OverlapMargin = 25f,     // border ghost band, at least InterestRadius + (N - 1) * sqrt(2) for your largest body N
     InterestRadius = 24f,
 };
@@ -23780,7 +23781,12 @@ foreach (CellSim c in host.Cells)
     c.Replicator.Capture(c.World);
 ```
 
-`CellCoord.FromWorld(x, y, cellSize)` floors a position into its cell (same math as `InterestGrid`).
+`CellCoord.FromWorld(x, y, cellSize)` floors a position into its cell (same math as `InterestGrid`). The host
+keys on its `CellGrid` (`host.Grid`), which adds an origin: pass `cellOrigin: new Vector2(x0, y0)` and cell (0, 0)
+begins at that point, so a position belongs to `floor((p - origin) / cellSize)`. `Grid.BoundsOf(coord)` and
+`Grid.CenterOf(coord)` give a cell's world extent. The default origin is the world origin, the grid
+`FromWorld` gives. A world that extends below an axis origin sets it to choose where cells fall, since with the
+default it is always split at 0.
 `TryGetOwner` / `CellSim.TryGetOwned` resolve ownership off a maintained netId -> (cell, entity) index (O(1),
 since 9.31.0). Spawn through `SpawnOwned` (or call `cell.RegisterOwned(netId, e)` after assigning a `NetId` on a
 raw `SpawnAt`) so the entity is eagerly indexed.

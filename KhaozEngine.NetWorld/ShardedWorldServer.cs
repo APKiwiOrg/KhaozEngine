@@ -90,6 +90,8 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             throw new ArgumentException(
                 $"InterestRadius {config.InterestRadius} must be <= OverlapMargin {config.OverlapMargin} so the home cell can hold the full AoI as ghosts.",
                 nameof(config));
+        if (!float.IsFinite(config.CellOrigin.X) || !float.IsFinite(config.CellOrigin.Y))
+            throw new ArgumentException($"CellOrigin {config.CellOrigin} must be finite on both axes.", nameof(config));
         ValidateCellSizeAgainstFrameGrid(config);
 
         // Consumer-injectable registry (shared with the client) so NPCs/enemies carry game components across every
@@ -120,7 +122,8 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             overlapMargin: config.OverlapMargin,
             positionAccessor: PositionAccessor,
             physicsFactory: config.PhysicsWorldFactory,
-            frameAnchoring: config.FrameAnchoring);
+            frameAnchoring: config.FrameAnchoring,
+            cellOrigin: config.CellOrigin);
         host.CellCreated += cell => { cell.FrameAdapter = ReplicatedPositionFrameAdapter.Instance; CellCreated?.Invoke(cell.Coord); };
         // An unloaded coordinate comes back as a genuinely fresh cell with an empty world, so the record of having
         // wired its movement system has to go with it or the recreated cell would never simulate.

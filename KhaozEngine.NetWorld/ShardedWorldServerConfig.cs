@@ -14,6 +14,13 @@ public sealed partial class ShardedWorldServerConfig
     public float TickSeconds { get; init; } = 1f / 30f;
     /// <summary>World-grid cell edge length (world units). Align to the terrain/streaming chunk grid.</summary>
     public float CellSize { get; init; } = 60f;
+    /// <summary>The world point (XZ, like <see cref="SpawnPosition"/>) where cell (0, 0) begins, so a position belongs
+    /// to cell <c>floor((p - CellOrigin) / CellSize)</c> on each axis. The default, the world origin, keeps every
+    /// existing grid. Move it when the authored world extends below an axis origin: with the default, a world that
+    /// straddles 0 on an axis is always split there, whatever <see cref="CellSize"/> it picks. Both components must
+    /// be finite. <see cref="ShardedWorldServer.TryGetCellCoord"/>, cell keying, handoff, border ghosting and each
+    /// cell's island frame all read this grid.</summary>
+    public Vector2 CellOrigin { get; init; }
     /// <summary>Border-overlap distance for ghosting. Must be &gt;= <see cref="InterestRadius"/>.</summary>
     public float OverlapMargin { get; init; } = 24f;
     /// <summary>Per-client area-of-interest radius (world units).</summary>

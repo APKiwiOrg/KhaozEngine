@@ -6,6 +6,12 @@ process.
 - **`CellCoord`** - an integer cell coordinate. `CellCoord.FromWorld(x, y, cellSize)` floors a world position
   into a cell (mirrors `KhaozEngine.Replication.InterestGrid`'s cell math). Value type, usable as a dictionary
   key.
+- **`CellGrid`** - the host's grid: `CellSize` plus `Origin`, the world point where cell (0, 0) begins.
+  `CoordFor(x, y)` is `floor((p - Origin) / CellSize)`, `BoundsOf(coord)` and `CenterOf(coord)` go the other way.
+  It is the one owner of both conversions, so cell keying, handoff, border ghosting and the island frame agree.
+  The default origin is the world origin, which matches `CellCoord.FromWorld` exactly. Pass
+  `ShardHost(..., cellOrigin:)` when a world extends below an axis origin and must not be split at 0. The host
+  exposes it as `Grid` and `CellOrigin`.
 - **`CellSim`** - one authoritative cell, and one SIMULATION ISLAND: its own ECS `World`, its own optional
   `IPhysicsWorld` (`Physics`), its own island `Frame`, a `FixedTickHost`, a `ServerReplicator`, and an
   `InterestGrid`. `Tick(elapsedSeconds)` advances the fixed-tick accumulator and steps the cell's ECS systems

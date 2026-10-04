@@ -208,7 +208,7 @@ by the physical hold and directed core proof, so the radius is not eroded twice.
 within `MaxLayerCells`, produces only `Stair` links, and never generates `Hop` links. Candidate links in
 `Space.Links` are separate from the accepted links retained by the guarded planner. `Planner` and
 `AllowsSegment` use the accepted graph and exact profile radius, and routes keep unsmoothed cell-centre
-waypoints.
+waypoints. `MoveToRange` straightens them under `RouteApproachOptions.StraightenRoutes`.
 
 `AllowsSegment` is a pure endpoint and segment guard. It rejects unknown, padded, off-grid and incompatible
 height endpoints, checks every footprint cell and directed crossed edge, and only admits an accepted cross-layer
@@ -485,6 +485,7 @@ public sealed record RouteApproachOptions
     public static RouteApproachOptions Default { get; }
     public bool CarryThroughStraightRuns { get; init; } // default false
     public bool SteerWhileSwimming { get; init; }       // default false
+    public bool StraightenRoutes { get; init; }         // default false
 }
 
 public static class NpcGroundMovement
@@ -542,6 +543,27 @@ With the option:
 - A step is admitted when its prediction stands grounded and not swimming, or swims, and the segment guard allows it.
   A prediction that is airborne and not swimming, such as a shallow exit that would fall, is refused with zero input.
 - The option combines with `CarryThroughStraightRuns`, so a swimmer also holds full swim pace on straight runs.
+
+`StraightenRoutes` walks a body straight across open ground instead of along the grid's 45 and 90 degree staircase.
+Both constructors wrap the planner, so each `Complete` or `Partial` route is straightened once when it is planned, and
+an `Unreachable` route passes through unchanged:
+
+- From the body's feet, the scan keeps the farthest `Walk` waypoint on the anchor's layer whose centre line and both
+  side lines pass the segment guard, drops the waypoints before it, and repeats from the kept waypoint. The side lines
+  sit just under half a cell either side of the centre line, so the cells beside a shortcut are proven too.
+- Waypoints are only dropped, never created or moved. Every kept bend is a cell centre the body still lands on
+  exactly, and the route keeps its status.
+- The final waypoint, both ends of a hop and both ends of a layer change are always kept.
+- Feet heights come from the space's surface heights, so straightening needs a space with surface heights. A route
+  over heightless cells, as on a `NavGrid.FromWalkable` grid, stays raw.
+- The side lines cost shortcuts beside walls and fences, where the staircase remains.
+- One plan costs at most one three-line guard check per raw and kept waypoint, each walking the cells it crosses.
+- When the guard refuses a step on a straightened segment, the body holds `Following` with zero input for that tick
+  and the route is replanned once on the raw cell route. The plan after it straightens again. A refused step on a raw
+  route holds as without the option.
+
+The option combines with `CarryThroughStraightRuns` and `SteerWhileSwimming`. Player routed walk-up gets it through the
+same driver and `PlayerPathMovement`.
 
 A body crossing between wading and swimming can hold `Suspended` for a tick while the core lands it. The aquatic
 profile's own limits, including the deepest-contact clearance limit and the bank edge budget, are described under

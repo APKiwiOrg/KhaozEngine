@@ -12,6 +12,7 @@ public sealed partial class MoveToRange
 {
     private readonly GroundNavigation? _navigation;
     private readonly PathFollower _follower;
+    private readonly RouteStraightener? _straightener;
     private readonly Func<Vector3, Vector3, bool> _allowsSegment;
     private readonly StepAdmission _admits;
     private readonly RouteApproachOptions _options;
@@ -49,7 +50,8 @@ public sealed partial class MoveToRange
         ArgumentNullException.ThrowIfNull(space);
         _allowsSegment = allowsSegment ?? throw new ArgumentNullException(nameof(allowsSegment));
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        _follower = new PathFollower(planner,
+        if (options.StraightenRoutes) _straightener = new RouteStraightener(planner, space, allowsSegment);
+        _follower = new PathFollower(_straightener ?? planner,
             StrictConfig(follow ?? PathFollowConfig.Default, options.CarryThroughStraightRuns), space);
         _contains = Contains;
         _admits = AllowsStep;
@@ -98,7 +100,11 @@ public sealed partial class MoveToRange
             if (command == Vector2.Zero) return Hold(RangeMoveStatus.Following);
         }
         MoveState predicted = context.Step(body, command, run, dt, tuning);
-        if (!AllowsStep(body, predicted, tuning)) return Hold(RangeMoveStatus.Following);
+        if (!AllowsStep(body, predicted, tuning))
+        {
+            FallBackToRawRoute();
+            return Hold(RangeMoveStatus.Following);
+        }
         command = StopAtRange(body, tuning, target, range, run, dt, context, command, predicted, _admits);
         return new RangeSteering(command, RangeMoveStatus.Following);
     }

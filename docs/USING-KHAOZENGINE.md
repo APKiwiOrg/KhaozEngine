@@ -7755,7 +7755,7 @@ checks after the physical capsule proof, so the radius is not eroded twice. Grou
 `MaxLayerCells` before dense arrays, emits only `NavLinkKind.Stair` links and never creates `Hop` links.
 `Space.Links` contains candidate Stair topology. Accepted links are a separate guarded graph used by
 `Planner` and `AllowsSegment`. The planner requires the exact profile radius and returns unsmoothed cell-centre
-waypoints.
+waypoints. `MoveToRange` straightens them under `RouteApproachOptions.StraightenRoutes`.
 
 `AllowsSegment` is a pure endpoint and segment guard. It refuses unknown, padded, off-grid and incompatible
 height endpoints, checks every footprint cell and directed crossed edge, and admits a cross-layer segment only
@@ -7926,6 +7926,7 @@ public sealed record RouteApproachOptions
     public static RouteApproachOptions Default { get; }
     public bool CarryThroughStraightRuns { get; init; } // default false
     public bool SteerWhileSwimming { get; init; }       // default false
+    public bool StraightenRoutes { get; init; }         // default false
 }
 
 public static class NpcGroundMovement
@@ -7942,7 +7943,7 @@ public static class PlayerPathMovement
 }
 ```
 
-Both options are opt-in, and the constructors without options keep today's behaviour. `CarryThroughStraightRuns`
+Every option is opt-in, and the constructors without options keep today's behaviour. `CarryThroughStraightRuns`
 keeps full pace along a straight route run. It aims past a collinear pass-through waypoint closer than one tick of
 travel and has the follower consume the waypoints it passed (`PathFollowConfig.ConsumePassedCollinearWaypoints`), while
 every corner, reversal, layer change, hop, waypoint 0 and final waypoint is still landed on. `SteerWhileSwimming`
@@ -7952,6 +7953,15 @@ steers a swimming body on an aquatic profile, and the `GroundNavigation` constru
 within `max(StepHeight, 1 mm)` of its float line. A settled swimmer travels at `SwimSpeed x max(0, zone scale) x
 SpeedScale x dt` on a swim tick, so it lands on waypoints, and a step whose prediction is airborne and not swimming
 is refused.
+
+`StraightenRoutes` walks a body straight instead of along the grid's 45 and 90 degree staircase. Each planned route
+keeps, from the body's feet, the farthest `Walk` waypoint on the same layer whose centre line and both side lines (just
+under half a cell either side) pass the segment guard, then repeats from there. Waypoints are only dropped, so every
+kept bend is a cell centre the body lands on, and the final waypoint and both ends of every hop and layer change are
+kept. It needs a space with surface heights, and a route over heightless cells (a `NavGrid.FromWalkable` grid) stays
+raw. Beside walls and fences the side lines keep the staircase. When the guard refuses a step on a straightened
+segment, the body holds `Following` for that tick and the next plan is the raw cell route, then straightening resumes.
+Player routed walk-up gets it through the same driver.
 
 To steer an aquatic NPC, bake with `SampleWater` and an aquatic profile, and opt the driver in:
 

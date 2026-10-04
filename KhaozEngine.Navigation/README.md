@@ -346,7 +346,10 @@ region members. Work is `O(N + E*M)` and storage is `O(N + M)`, where `N` is top
 expanded node count, and `M` is the member count. The conservative anchor and horizontal extent AABB
 reduces exact predicate calls, not `M` for a valid predicate. `MaxExpandedNodes` bounds search expansions,
 not topology discovery or all query work. Region paths retain every validated cell edge and link endpoint
-and never use line-of-sight shortcuts or string pulling.
+and never use line-of-sight shortcuts or string pulling. Navigation does not know a body's footprint or area guard,
+so it cannot prove a shortcut. Straightening a region route lives in Movement, behind
+`RouteApproachOptions.StraightenRoutes`, which drops waypoints only where the full segment guard accepts the
+shortcut.
 
 `GridPathPlanner(space, hopCostCells = 4f)` exposes the one hop-cost knob: the cost of crossing a `Hop`
 link, in multiples of the source layer's `NavGrid.CellSize`. It must be positive, and existing

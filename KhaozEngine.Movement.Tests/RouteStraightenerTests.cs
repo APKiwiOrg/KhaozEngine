@@ -319,7 +319,7 @@ public class RouteStraightenerTests
             new((float)(b.X + dz * offset), (float)(b.Y - dx * offset)));
     }
 
-    static IEnumerable<(double X, double Z)> PointsAlong(Vector2 a, Vector2 b)
+    internal static IEnumerable<(double X, double Z)> PointsAlong(Vector2 a, Vector2 b)
     {
         double dx = (double)b.X - a.X, dz = (double)b.Y - a.Y;
         int steps = Math.Max(1, (int)Math.Ceiling(Math.Sqrt(dx * dx + dz * dz) / 0.001));
@@ -352,7 +352,7 @@ public class RouteStraightenerTests
         => (Math.Sign(MathF.Round((to.X - from.X) / CellSize)), Math.Sign(MathF.Round((to.Y - from.Y) / CellSize)));
 
     /// <summary>Refuses a segment when any point at 1 mm spacing lies in an unstandable or off-grid cell.</summary>
-    sealed class Sampled(Func<int, int, bool> standable, float originX, float originZ)
+    internal sealed class Sampled(Func<int, int, bool> standable, float originX, float originZ)
     {
         public int Calls { get; private set; }
 

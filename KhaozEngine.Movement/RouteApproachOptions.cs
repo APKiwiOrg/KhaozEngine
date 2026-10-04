@@ -21,4 +21,18 @@ public sealed record RouteApproachOptions
     /// suspended as before. The <see cref="GroundNavigation"/> constructor refuses it for a profile that is not
     /// <see cref="GroundNavigation.Aquatic"/>. <see cref="DirectMoveToRange"/> never steers swimmers. Default false.</summary>
     public bool SteerWhileSwimming { get; init; }
+
+    /// <summary>Straightens each planned route, so a body walks straight across open ground instead of along the
+    /// grid's 45 and 90 degree staircase. From the body's feet, the farthest walk waypoint on the same layer whose
+    /// centre line and both side lines, offset just under half a cell, pass the segment guard is kept, the waypoints
+    /// before it are dropped, and the scan repeats from the kept waypoint. Waypoints are only dropped, never moved, so
+    /// every kept bend is a cell centre the body still lands on exactly. The final waypoint, both ends of a hop and
+    /// both ends of a layer change are always kept, and the route's status is unchanged. The side lines cost
+    /// shortcuts beside walls and fences, where the staircase remains. Straightening reads feet heights from the
+    /// space, so it needs a space with surface heights, and a route over heightless cells (a
+    /// <c>NavGrid.FromWalkable</c> grid) stays raw. It runs once per plan, at most one guard check of three lines per
+    /// raw and kept waypoint. When the guard refuses a step on a straightened segment, the body holds
+    /// <see cref="RangeMoveStatus.Following"/> for that tick and the route is replanned once without straightening.
+    /// The plan after it straightens again. Default false.</summary>
+    public bool StraightenRoutes { get; init; }
 }

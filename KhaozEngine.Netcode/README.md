@@ -78,8 +78,9 @@ three-argument `WithRenderState(position, vertical, yaw)`, which defaults to the
 `RenderedState` eases from the previous tick's heading toward the current one along the shorter arc, wrapped into
 `[-pi, pi)` so a turn across the seam goes the short way round, and lands on the current heading exactly at the end
 of the tick. `Reset`, `Reseed`, a hard snap and a teleport epoch advance collapse the previous heading onto the
-current one. A non-snap `Reconcile` keeps the inter-tick phase and moves only the target, as it does for position.
-Existing states compile and render unchanged.
+current one. A non-snap `Reconcile` keeps the previous heading and moves only the target. Unlike position, whose
+ordinary reconcile translates both ends and folds the jump into a decaying render offset, a heading correction is not
+smoothed by an offset, so the current fraction of it shows at once. Existing states compile and render unchanged.
 
 `AdvancePresentation` refuses a frame time that is not a finite positive number of seconds (negative, zero,
 infinite, or not a number): it is treated as zero and advances nothing. The inter-tick clock accumulates, so one

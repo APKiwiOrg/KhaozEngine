@@ -302,6 +302,14 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `ThresholdPixels` property names remain for compatibility. `TapPosition` stays in framebuffer pixels.
   `Advance` allocates nothing. Lifted from Ruinborne's
   `RightMouseGesture`. See docs/USING-KHAOZENGINE.md.
+- `PointerTapTolerance(DistancePoints, GraceSeconds, GraceDistancePoints)` with `CatchUpLimitPoints` - the opt-in tap
+  rule for `PointerGesture(button, tapTolerance)`. It judges straight-line distance from the press point (the
+  cursor where the press frame ended, so that frame's own delta never counts) instead of path length, with the wider
+  `GraceDistancePoints` limit until `GraceSeconds` after the press, so a click that wobbles and comes back is still a
+  tap. A gesture built on one advances with `Advance(input, uiBlocked, elapsedSeconds)`, and its two-argument
+  `Advance` throws. `CatchUpLimitPoints` caps the catch-up step when the grace ending decided the press (the distance
+  was still within `GraceDistancePoints`), and zero drops it. The strict path rule stays the default. See
+  docs/USING-KHAOZENGINE.md.
 - `GameClock` (pause/timescale, plus `RealWallGapSeconds`/`LastRealTimestamp` - a UTC wall-clock gap per frame
   that survives OS sleep/suspend, which the frame `dt` does not, so a game can detect a resume), `DesignViewport`
   / `AdaptiveViewport` (letterbox/fill/stretch + responsive). All expose `WindowBounds` (10.38.0) - the whole

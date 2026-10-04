@@ -34,7 +34,9 @@ public sealed class GroundNavigation
     /// <summary>The graph-owned source topology. Candidate Stair links are filtered by the planner's graph.</summary>
     public NavSpace Space => Graph.Space;
 
-    /// <summary>Guarded region and point search with exact radius matching and unsmoothed cell-center routes.</summary>
+    /// <summary>Guarded region and point search with exact radius matching and unsmoothed cell-center routes.
+    /// <see cref="RouteApproachOptions.StraightenRoutes"/> opts a <see cref="MoveToRange"/> into straightened
+    /// routes.</summary>
     public IRegionPathPlanner Planner { get; }
 
     /// <summary>The baked capsule radius in metres.</summary>

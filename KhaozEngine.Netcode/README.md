@@ -72,6 +72,18 @@ client's input late. `MaxCorrectionSpeed` (default 0, off) caps how fast the pla
 above zero a correction WALKS off at that constant speed instead of the damped near-instant decay, so on a lattice a
 step disagreement reads as one more walked step rather than a snap. A hard snap and a teleport still cut.
 
+`InterpolateYaw` (default false) eases a heading between ticks beside position and height. A state opts in through
+three default members on `IPredictedState<TSelf>`: `HasYaw` (default false), `Yaw` in `[-pi, pi)`, and the
+three-argument `WithRenderState(position, vertical, yaw)`, which defaults to the two-argument one. With both set,
+`RenderedState` eases from the previous tick's heading toward the current one along the shorter arc, wrapped into
+`[-pi, pi)` so a turn across the seam goes the short way round, and lands on the current heading exactly at the end
+of the tick. `Reset`, `Reseed`, a hard snap and a teleport epoch advance collapse the previous heading onto the
+current one. A non-snap `Reconcile` keeps the previous heading and moves only the target. Unlike position, whose
+ordinary reconcile translates both ends and folds the jump into a decaying render offset, a heading correction is not
+smoothed by an offset, so the current fraction of it shows at once. Existing states compile and render unchanged.
+Turn `InterpolateYaw` on only for a state that implements `HasYaw`, `Yaw` and the three-argument `WithRenderState`,
+because a state keeping the defaults gains nothing and is read through a box.
+
 `AdvancePresentation` refuses a frame time that is not a finite positive number of seconds (negative, zero,
 infinite, or not a number): it is treated as zero and advances nothing. The inter-tick clock accumulates, so one
 bad frame would otherwise make every `RenderedState` after it NaN for the rest of the session.

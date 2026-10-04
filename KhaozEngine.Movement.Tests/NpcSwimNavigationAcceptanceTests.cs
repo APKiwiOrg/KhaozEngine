@@ -1,6 +1,7 @@
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
+using KhaozEngine.Navigation;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -51,6 +52,50 @@ public class NpcSwimNavigationAcceptanceTests
         Assert.Equal(RangeMoveStatus.InRange, status);
         Assert.True(ReachGeometry.Within(new MovementBody(body.Position, Duck.CapsuleRadius, Duck.CapsuleHalfHeight), FarBank, Range));
         Assert.True(widest > 0.375f + Duck.CapsuleRadius, $"The duck reached z {widest:F3} only, so it never went around the deck.");
+    }
+
+    [Fact]
+    public void StraightenedSwimRouteKeepsFewerFloatWaypointsAndArrives()
+    {
+        using BepuPhysicsWorld world = AquaticProfileTests.ChannelWorld();
+        GroundMoveContext context = MoveToRangeSwimTests.Channel(world);
+        using PhysicsNavBake capture = PhysicsNavBake.Capture(context, Options, _ => 0u);
+        GroundNavigation aquatic = capture.BuildProfile(Duck, default, new GroundProfileOptions { Aquatic = true });
+        var both = new RouteApproachOptions { StraightenRoutes = true, SteerWhileSwimming = true };
+        _ = new MoveToRange(aquatic, null, both);
+        // The same forwarding the profile constructor does, with the raw plans recorded. Diagonal across open water
+        // from the near shelf over the channel to the far shelf, so the raw route is a staircase.
+        var recorder = new MoveToRangeCarryTests.RecordingPlanner(aquatic.Planner);
+        var mover = new MoveToRange(recorder, aquatic.Space, aquatic.AllowsSegment, null, both);
+        MoveState body = MoveToRangeSwimTests.Floating(-1.375f, -0.375f);
+        ReachTarget target = ReachTarget.Point(new Vector3(1.375f, FloatY + Duck.CapsuleHalfHeight, 1.125f));
+
+        NavPath? straightened = null;
+        RangeMoveStatus status = RangeMoveStatus.Following;
+        for (int tick = 0; tick < 600; tick++)
+        {
+            RangeSteering steering = mover.Tick(body, Duck, target, Range, false, Dt, context);
+            straightened ??= mover.Straightener!.LastStraightened;
+            status = steering.Status;
+            if (status == RangeMoveStatus.InRange) break;
+            Assert.True(status is RangeMoveStatus.Following, $"Tick {tick} returned {status}.");
+            body = NpcGroundMovement.Step(body, steering, false, Dt, Duck, context);
+            Assert.True(body.Swimming, $"The duck stopped swimming at tick {tick}.");
+            Assert.True(context.SwimClear(body, Duck), $"Tick {tick} put the duck into a static at {body.Position}.");
+        }
+
+        Assert.Equal(RangeMoveStatus.InRange, status);
+        Assert.NotNull(straightened);
+        NavPath raw = recorder.Plans[0];
+        Assert.True(straightened.Waypoints.Count < raw.Waypoints.Count,
+            $"Kept {straightened.Waypoints.Count} of {raw.Waypoints.Count} raw waypoints.");
+        foreach (NavWaypoint waypoint in straightened.Waypoints)
+        {
+            NavGrid grid = aquatic.Space.Layers[waypoint.Layer];
+            (int x, int z) = grid.CellOf(waypoint.Position.X, waypoint.Position.Y);
+            Assert.True(AquaticProfileTests.Floats(aquatic.Footprint.Columns, grid, x, z),
+                $"Kept waypoint {waypoint.Position} on layer {waypoint.Layer} is not a float node.");
+        }
     }
 
     [Fact]

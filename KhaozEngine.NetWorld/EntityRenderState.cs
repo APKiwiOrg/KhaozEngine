@@ -127,7 +127,8 @@ public readonly struct EntityRenderState
 
     /// <summary>The entity's AUTHORITATIVE heading this frame (radians, in <c>MoveCommand.CameraYaw</c>'s convention:
     /// 0 faces world -Z, positive swings toward -X). Local: the PREDICTED <c>MoveState.FacingYaw</c>, un-quantized, so
-    /// a turn appears on the frame the input was sent rather than a round trip later. Remote: the decoded replicated
+    /// a turn appears on the frame the input was sent rather than a round trip later, and eased between ticks when
+    /// <c>PredictionSettings.InterpolateYaw</c> is set. Remote: the decoded replicated
     /// <c>MovementState.FacingYawQ</c>, discrete-sampled to the same delayed render time as the interpolated position
     /// (as <see cref="Grounded"/> and <see cref="VerticalVelocity"/> are), so a remote's flags, heading and feet never
     /// skew apart. Feed it into a model's yaw instead of deriving facing from a position delta: that derivation cannot

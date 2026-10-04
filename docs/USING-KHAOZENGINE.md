@@ -1112,6 +1112,38 @@ The rules:
   before and during capture. Threshold, crossing replay and continuing drag use `MouseDeltaPoints`, so the same
   logical path has the same tap tolerance and motion at 1x, 2x or anisotropic display scale.
 
+The path rule is the default and stays strict. A click whose hand wobbles 3 points out and back several times sums
+past 4 points of path and drags, even though it ends where it began. Opt into a tolerance to judge distance from the
+press instead:
+
+```csharp
+var gesture = new PointerGesture(MouseButton.Left, new PointerTapTolerance(
+    DistancePoints: 4f, GraceSeconds: 0.25f, GraceDistancePoints: 8f) { CatchUpLimitPoints = 2f });
+gesture.Advance(input, uiBlocked, dt);   // the two-argument Advance throws on a gesture with a tolerance
+```
+
+- Distance is the straight line from the press point to the cursor, not the path length, so a wobble that comes
+  back stays a tap. `ThresholdPixels` is `DistancePoints`.
+- The press point is `TapPosition`, where the cursor ended the press frame. That frame's `MouseDeltaPoints` moved
+  the cursor before the press, so it never counts, and a click while the hand is still settling stays a tap.
+- The press frame starts a clock at 0, and each later held frame adds its `elapsedSeconds` before it is judged.
+  While the clock is below `GraceSeconds` the limit is `GraceDistancePoints`, after it `DistancePoints`. The press
+  drags on the first frame its distance strictly exceeds the limit in force. With the numbers above, a 6 point move
+  released within 150 ms is a tap, a fast 9 point move drags inside the grace, and a slow drag crosses on the first
+  frame at 0.25 s.
+- A release is judged on the state before its own frame, so a hitch on the release frame never turns a tap into a
+  drag. Blocking, suppression and the release edge are unchanged.
+- The crossing frame's `DragDelta` is the net displacement from the press. When the grace ending decided the press
+  (the first held frame at or past `GraceSeconds`, with the distance still within `GraceDistancePoints`), it is
+  capped to `CatchUpLimitPoints`, unlimited by default. Zero drops that catch-up, so a press that drifted slowly
+  through the grace starts its drag from rest. A crossing the distance alone would have made, such as a hitch
+  frame carrying a long move, keeps its full catch-up.
+- `DistancePoints` must be finite and positive, `GraceSeconds` finite and not negative, `GraceDistancePoints` finite
+  and at least `DistancePoints`, and `CatchUpLimitPoints` not negative and not NaN. The constructor throws
+  `ArgumentException` otherwise. With a tolerance, `elapsedSeconds` must be finite and not negative, else
+  `Advance` throws `ArgumentOutOfRangeException`. `TapTolerance` is null on a gesture built with a threshold, and its
+  three-argument `Advance` neither uses nor checks the time, so it matches the two-argument one for any value.
+
 It is lifted from Ruinborne's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
 them (see "Tap-or-drag gestures" in the follow camera chapter).
 
@@ -5678,7 +5710,8 @@ clamp `[0.25, 3.0]`, tunable via `LocomotionSpeedSync.Enable`'s `minMultiplier`/
 `MinLocomotionRate`/`MaxLocomotionRate`), so a near-stationary or teleporting entity never freezes or
 fast-forwards the cycle. A reference speed left at 0 plays that state at 1x. **Crossfades are unaffected**: a
 blend still takes its authored `crossfade` seconds (the crossfade timer runs at wall-clock `dt`); only the clip
-playheads scale, so the feet track speed even mid-blend.
+playheads scale, so the feet track speed even mid-blend. A character that strafes and backpedals with its own clips
+wants the directional locomotion blend below instead, which syncs every clip to distance travelled.
 
 **Lower-level pieces** (if you are not using `AnimatedCharacter`): `AnimationSampler.SampleToBonePalette(clip,
 skeleton, time)` is a one-shot pose; `AnimationPlayer` holds a playhead, loops, and crossfades
@@ -5688,6 +5721,46 @@ wall-clock `dt`. The 1-arg `Update(dt)` is exactly `Update(dt, 1f)`. A NEGATIVE 
 backwards: a looping clip wraps onto its tail, and a one-shot (`PlayOnce`) holds at frame 0 the way the forward
 direction holds the final frame. `JointPose` is the TRS unit clips
 interpolate; `InterpolationMode` is LINEAR or STEP (CUBICSPLINE is read as its value keys).
+
+**Directional locomotion blend (eight-way, feet in step)** (`DirectionalLocomotionBlend`, `KhaozEngine.Game`). A
+four-family clip pick plays the forward walk while a forward-left body moves half sideways, and the feet skate. The
+blend weights the two adjacent direction families by angle (45 degrees is half and half), splits each family by
+speed between the two members that bracket it, eases every weight over `blendSeconds`, and advances one shared gait
+phase by distance over the weighted stride. Each clip samples at `Phase + SyncPhase`, its authored right-foot contact,
+so the blended feet plant together. A steady target has at most four clips.
+
+```csharp
+// Once per model. Ids are yours, and a family's members ascend by FullWeightSpeed.
+var gaits = new DirectionalGaitSet(
+    forward:  new[] { new GaitClip(WalkF, 1.4f, 1.2f, 0.25f), new GaitClip(RunF, 4.0f, 2.4f, 0.25f) },
+    backward: new[] { new GaitClip(WalkB, 1.0f, 0.9f, 0.5f) },
+    left:     new[] { new GaitClip(StrafeL, 1.2f, 0.8f, 0.6f) },
+    right:    new[] { new GaitClip(StrafeR, 1.2f, 0.8f, 0.1f) });
+var blend = new DirectionalLocomotionBlend(gaits);
+var gaitSamples = new GaitSample[gaits.ClipCount];
+var clipSamples = new ClipSample[gaits.ClipCount];
+
+// Every frame, airborne included, so the gait phase carries into the landing.
+// Feed the replicated or simulated body velocity, not one differentiated from rendered positions (which spikes on a
+// teleport or hard snap), and pass zero on a teleport frame. facingYaw is the yaw the model is drawn with. With
+// InterpolateYaw on that is the eased local EntityRenderState.FacingYaw, so the body-frame split matches the
+// rendered pose.
+Vector2 body = DirectionalLocomotionBlend.BodyFrame(worldVelocity, facingYaw);
+int n = blend.Advance(body, dt, gaitSamples);
+for (int i = 0; i < n; i++)
+{
+    AnimationClip clip = clipsById[gaitSamples[i].ClipId];
+    clipSamples[i] = new ClipSample(clip, gaitSamples[i].Phase * clip.Duration, gaitSamples[i].Weight);
+}
+AnimationSampler.SampleBlendInto(skeleton, clipSamples.AsSpan(0, n), locomotionPose, scratch);
+// Lay locomotionPose over idle at blend.TravelWeight, then add turn-in-place, jump and action layers.
+```
+
+`TravelWeight` eases to 1 while moving and to 0 below `movingSpeed`, where the targets hold, so a stop fades out of
+the last gait rather than snapping to idle. Use it as the locomotion layer weight, and play turn-in-place when it is
+low and the body yaws. `BodyFrame` uses the `MoveCommand.CameraYaw` convention (0 faces -Z, positive turns toward -X),
+with X right and Y forward. `Advance` refuses a sample span shorter than `ClipCount`, a negative or nonfinite `dt` and
+a nonfinite velocity. `n` is 0 only until a movement has eased a weight in after construction or `Reset`.
 
 `GltfLoader.LoadSkinned` retains the glTF name of every skeleton node in `Skeleton.NodeNames`, using an empty
 string for an unnamed node. `Skeleton.IndexOf(name)` resolves a required name and lists the known names if it is
@@ -6797,26 +6870,30 @@ character off this controller's movement state (see "Animated characters" above)
 
 **Tap-or-drag gestures (since 20.17.0, off by default).** Set `FollowCameraController.OrbitGesture` and `LookGesture`
 to a `PointerGesture` each (see "Tap or drag" in the input chapter) and every button splits into a tap and a drag.
-With either set, `OrbitButton` is ignored. `UiBlocked` is a field the game sets before each `Update`, and a press
-that begins while it is true never taps, and above a zero threshold never orbits either. `Update` advances each set
-gesture once. The camera orbits only while a gesture drags, and by one delta a frame, so each mouse movement turns it
-once however many buttons are held. A gesture that crosses its threshold with no orbit since its press began applies
-its `DragDelta`, the replay of its pending travel, with `LookGesture` first when both cross together. Otherwise the
-frame's `MouseDeltaPoints` applies. Gesture replay and continuing motion are in window points before and during
-capture. Speed, invert and sign are as for the orbit button, and scroll zoom, target damping and boom recovery run
-unchanged. With neither gesture set, `Update` keeps the original orbit button path and its legacy `MouseDelta` units.
+With either set, `OrbitButton` is ignored. `UiBlocked` is a field the game sets before each `Update` or
+`UpdateInput`, and a press that begins while it is true never taps, and above a zero threshold never orbits either.
+`Update` advances each set gesture once with its `dt`, which times a gesture built on a `PointerTapTolerance`, so
+pass the real frame time. `UpdateInput(input, elapsedSeconds)` is `Update` without `AdvanceTarget` and `AdvanceBoom`,
+for a game that reads camera input early in its frame and advances those camera clocks itself after the subject
+moves. Pass it the real frame time too, since a zero freezes the tolerance's grace. The camera orbits only while a
+gesture drags, and by one delta a frame, so each mouse movement turns it once however many buttons are held. A
+gesture that crosses its threshold with no orbit since its press began applies its `DragDelta`, the replay of its
+pending travel, with `LookGesture` first when both cross together. Otherwise the frame's `MouseDeltaPoints` applies.
+Gesture replay and continuing motion are in window points before and during capture. Speed, invert and sign are as
+for the orbit button, and scroll zoom, target damping and boom recovery run unchanged. With neither gesture set,
+`Update` keeps the original orbit button path and its legacy `MouseDelta` units.
 
 The controller reports three things:
 
 - `TurnBodyActive` is true while `LookGesture` drags.
 - `WantsPointerCapture` is true while either gesture drags. Forward it to `SetPointerCaptured` so the cursor hides
   and holds for the drag (see "Pointer capture" in the input chapter).
-- `OrbitTap` and `LookTap` report each gesture's tap after `Update`, in the same frame, with the press origin in
-  that gesture's `TapPosition`. A tap counts only if the camera did not turn during that press, its release frame
-  included. The camera turns on every frame a gesture drags, even with no mouse movement. A tapping gesture never
-  dragged, so any turn came from the other one, and a both-buttons release is never a select whichever button went
-  down first. Read taps there rather than from `PointerGesture.TapThisFrame`, which knows nothing of the other
-  gesture.
+- `OrbitTap` and `LookTap` report each gesture's tap after `Update` or `UpdateInput`, in the same frame, with the
+  press origin in that gesture's `TapPosition`. A tap counts only if the camera did not turn during that press,
+  its release frame included. The camera turns on every frame a gesture drags, even with no mouse movement. A
+  tapping gesture never dragged, so any turn came from the other one, and a both-buttons release is never a select
+  whichever button went down first. Read taps there rather than from `PointerGesture.TapThisFrame`, which knows
+  nothing of the other gesture.
 
 The WoW wiring puts orbit on the left button and look on the right. The game reads `TurnBodyActive` and hands it to
 `CharacterMovement` as `MoveCommand.FaceCamera`, with `Camera.Yaw` as `CameraYaw`. A local
@@ -7588,7 +7665,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.23.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.24.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -7755,7 +7832,7 @@ checks after the physical capsule proof, so the radius is not eroded twice. Grou
 `MaxLayerCells` before dense arrays, emits only `NavLinkKind.Stair` links and never creates `Hop` links.
 `Space.Links` contains candidate Stair topology. Accepted links are a separate guarded graph used by
 `Planner` and `AllowsSegment`. The planner requires the exact profile radius and returns unsmoothed cell-centre
-waypoints.
+waypoints. `MoveToRange` straightens them under `RouteApproachOptions.StraightenRoutes`.
 
 `AllowsSegment` is a pure endpoint and segment guard. It refuses unknown, padded, off-grid and incompatible
 height endpoints, checks every footprint cell and directed crossed edge, and admits a cross-layer segment only
@@ -7884,7 +7961,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.23.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.24.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -7926,6 +8003,7 @@ public sealed record RouteApproachOptions
     public static RouteApproachOptions Default { get; }
     public bool CarryThroughStraightRuns { get; init; } // default false
     public bool SteerWhileSwimming { get; init; }       // default false
+    public bool StraightenRoutes { get; init; }         // default false
 }
 
 public static class NpcGroundMovement
@@ -7942,7 +8020,7 @@ public static class PlayerPathMovement
 }
 ```
 
-Both options are opt-in, and the constructors without options keep today's behaviour. `CarryThroughStraightRuns`
+Every option is opt-in, and the constructors without options keep today's behaviour. `CarryThroughStraightRuns`
 keeps full pace along a straight route run. It aims past a collinear pass-through waypoint closer than one tick of
 travel and has the follower consume the waypoints it passed (`PathFollowConfig.ConsumePassedCollinearWaypoints`), while
 every corner, reversal, layer change, hop, waypoint 0 and final waypoint is still landed on. `SteerWhileSwimming`
@@ -7952,6 +8030,15 @@ steers a swimming body on an aquatic profile, and the `GroundNavigation` constru
 within `max(StepHeight, 1 mm)` of its float line. A settled swimmer travels at `SwimSpeed x max(0, zone scale) x
 SpeedScale x dt` on a swim tick, so it lands on waypoints, and a step whose prediction is airborne and not swimming
 is refused.
+
+`StraightenRoutes` walks a body straight instead of along the grid's 45 and 90 degree staircase. Each planned route
+keeps, from the body's feet, the farthest `Walk` waypoint on the same layer whose centre line and both side lines (just
+under half a cell either side) pass the segment guard, then repeats from there. Waypoints are only dropped, so every
+kept bend is a cell centre the body lands on, and the final waypoint and both ends of every hop and layer change are
+kept. It needs a space with surface heights, and a route over heightless cells (a `NavGrid.FromWalkable` grid) stays
+raw. Beside walls and fences the side lines keep the staircase. When the guard refuses a step on a straightened
+segment, the body holds `Following` for that tick and the next plan is the raw cell route, then straightening resumes.
+Player routed walk-up gets it through the same driver.
 
 To steer an aquatic NPC, bake with `SampleWater` and an aquatic profile, and opt the driver in:
 
@@ -8139,16 +8226,18 @@ public sealed class DirectMoveToRange
 The options have no defaults. Windows are 1 to 65,535 ticks and distances are finite and positive. A window of N
 ticks spans N intervals and is first eligible on the (N + 1)th counted tick. When net horizontal travel across the
 stall window falls below `stallTravelMetres`, or reach distance across the approach window gains less than
-`approachGainMetres` for a static target, the driver latches `RangeMoveStatus.Blocked` until `InRange`, `Reset`, or
-a change of target shape, range or capsule geometry. A step that would leave the ground or start swimming is
-refused and counts as no progress. The opt-in `MaxDropMetres`, finite and not negative with a zero default, admits a
-step that leaves the ground when its predicted fall, settled with zero input through the live context, lands
-grounded and not swimming no more than that depth below the current feet. A deeper drop, a landing on a floor at
-swim depth, a fall that starts swimming or one that has not landed within 256 settle steps is still refused. The
-step-off tick is `Following` with the admitted command. The airborne ticks after it are `Suspended`, and the
-approach resumes on landing. Airborne, committed and zero-travel ticks count toward neither window. Pass
-`targetMoves` true for body targets, which disables the approach window. Call `Tick` exactly once per simulation
-tick. Keep range and target shape constant for a walk, and call Reset to start a new one.
+`approachGainMetres` for a static target, the driver latches `RangeMoveStatus.Blocked` until `InRange`, `Reset`, or a
+change of target shape, range or capsule geometry. A step that would leave the ground or start swimming is refused
+and counts as no progress. A step decides swimming from its starting feet, so a grounded step whose landed feet are
+past the swim-enter line is refused too, and a walk down a sloped shore into deep water ends `Blocked`. The opt-in
+`MaxDropMetres`, finite and not negative with a zero default, admits a step that leaves the ground when its predicted
+fall, settled with zero input through the live context, lands grounded and not swimming no more than that depth below
+the current feet. A deeper drop, a landing on a floor at swim depth, a fall that starts swimming or one that has not
+landed within 256 settle steps is still refused. The step-off tick is `Following` with the admitted command. The
+airborne ticks after it are `Suspended`, and the approach resumes on landing. Airborne, committed and zero-travel
+ticks count toward neither window. Pass `targetMoves` true for body targets, which disables the approach window. Call
+`Tick` exactly once per simulation tick. Keep range and target shape constant for a walk, and call Reset to start a
+new one.
 
 `DirectMoveToRange` never steers a swimmer. A swimming body is not grounded, so it stays `Suspended`. The driver has
 no graph guard and the core does not collide a swimmer, so a direct swim approach could pass through props at the
@@ -8545,7 +8634,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.23.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.24.0" />
 ```
 
 ```csharp
@@ -11613,6 +11702,11 @@ lifecycle for animation timing, while the live vertical velocity remains on the 
   inter-tick interpolation, in the state's position units, excluding the reconciliation offset. It reaches
   zero at the interpolation endpoint. An ordinary reconciliation translates both endpoints and preserves
   this commanded segment. Reset, reseed and hard snap discard it.
+  The local heading steps once per tick by default, so a keyboard turn reads as a 30 Hz stutter on a fast display.
+  Set `InterpolateYaw = true` on the `PredictionSettings` passed as `WorldClientConfig.Prediction` (default false)
+  and `LocalRenderState.Move.FacingYaw`, and with it the local `EntityRenderState.FacingYaw`, eases from the
+  previous tick's heading to the current one the short way round, at the cost of up to one tick of heading latency,
+  the same latency position already has. A reset, reseed, hard snap or teleport cuts it with the position.
 
 ```csharp
 var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default, new WorldClientConfig { TickSeconds = 1f/30f });
@@ -15402,7 +15496,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.23.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.24.0" />
 ```
 
 ```csharp
@@ -15438,7 +15532,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.23.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.24.0" />
 ```
 
 ```csharp
@@ -15680,7 +15774,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.23.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.24.0" />
 ```
 
 ```csharp
@@ -20020,7 +20114,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.23.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.24.0" />
 </ItemGroup>
 ```
 

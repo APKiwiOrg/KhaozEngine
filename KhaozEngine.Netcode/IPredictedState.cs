@@ -90,4 +90,19 @@ public interface IPredictedState<TSelf>
     /// vertical is ignored) so a purely planar state needs no extra implementation.
     /// </summary>
     TSelf WithRenderState(Vector2 position, float vertical) => WithPosition(position);
+
+    /// <summary>Whether this state carries a heading that <see cref="ClientPrediction{TState,TCommand}"/> may ease
+    /// between ticks when <see cref="PredictionSettings.InterpolateYaw"/> is set. Defaults to false, so a state with
+    /// no heading renders exactly as it always did.</summary>
+    bool HasYaw => false;
+
+    /// <summary>The heading in radians, in <c>[-pi, pi)</c>. Read only when <see cref="HasYaw"/> is true.</summary>
+    float Yaw => 0f;
+
+    /// <summary>
+    /// Returns a copy with the smoothed planar <paramref name="position"/>, the <paramref name="vertical"/> axis and
+    /// the eased <paramref name="yaw"/> applied, used to build the rendered state when heading interpolation is on.
+    /// Defaults to the two-argument <see cref="WithRenderState(Vector2, float)"/>, which ignores the yaw.
+    /// </summary>
+    TSelf WithRenderState(Vector2 position, float vertical, float yaw) => WithRenderState(position, vertical);
 }

@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.23.0
+## 20.24.0
 
 - `PersistenceQueue.EnqueueTracked(path, json)` and `GameStorage.SaveTracked<T>(fileName, value, options)`
   return a task for the exact submitted payload. `PersistenceWriteResult` reports `Saved` after its atomic
@@ -13,6 +13,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Older in-flight completion does not complete a newer pending request. Continuations run asynchronously
   outside queue locks. Flush and disposal wait for outstanding supersession completions too. Void save APIs,
   backup rotation, retry ordering and `WriteFailed` remain available.
+
+## 20.23.0
+
 - `RouteApproachOptions.StraightenRoutes`, default off, walks a `MoveToRange` body straight across open ground
   instead of along the grid's 45 and 90 degree staircase. Each `Complete` or `Partial` route is straightened once
   when it is planned. From the feet, the farthest `Walk` waypoint whose centre line and both side lines, just under

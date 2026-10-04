@@ -78,7 +78,9 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   it from the migrated `ClimbRateQ` before its next stair step, so the signal does not dip at a mid-climb cell crossing.
   Since 17.26.0 the same list carries **`FacingYaw`** (the authoritative heading, decoded from
   `MovementState.FacingYawQ` for a remote and predicted un-quantized for the local player), which the position
-  delta could not supply at all for a stationary entity. **`LandingImpactSpeed`** rides alongside it but is
+  delta could not supply at all for a stationary entity. With `InterpolateYaw` set on
+  `WorldClientConfig.Prediction` (default false) the local `FacingYaw` eases between ticks like the
+  position instead of stepping once per tick. **`LandingImpactSpeed`** rides alongside it but is
   LOCAL-ONLY (always 0 for remotes, whose landing effects come from the replicated `Grounded` transition), and is
   the local player's PREDICTED landing so presentation can react on the predicted tick. Read-only local-avatar shorthands: `LocalRenderState` (whose `.Swimming` mirrors the flag) / `LocalGrounded`
   / `LocalVerticalVelocity`, plus

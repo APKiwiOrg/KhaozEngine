@@ -239,6 +239,32 @@ A downed pose is not the only death/despawn treatment: the same `Scene3D.DrawSki
 timer instead of `CharDissolve.Cover` - an opaque per-fragment discard, so it raises no transparency-ordering
 concern between overlapping dying/despawning characters. See docs/USING-KHAOZENGINE.md.
 
+## DirectionalLocomotionBlend - eight-way gait weights with feet in step
+
+`DirectionalLocomotionBlend` turns a body-frame velocity into weighted clips from four direction families, so a
+diagonal plays half forward walk and half strafe instead of one clip skating sideways. It is keyed by the consumer's
+own clip ids, GPU-free and allocation-free per call.
+
+- **`GaitClip(ClipId, FullWeightSpeed, StrideMetres, SyncPhase)`** - one clip. `FullWeightSpeed` is the m/s at which
+  it carries its family, `StrideMetres` the distance one loop covers, `SyncPhase` its right-foot contact time in
+  `[0, 1)`.
+- **`DirectionalGaitSet(forward, backward, left, right)`** - each family has at least one member, ordered by strictly
+  increasing `FullWeightSpeed`. `ClipCount` is the sample span length `Advance` needs.
+- **`DirectionalLocomotionBlend(gaits, blendSeconds = 0.15f, movingSpeed = 0.05f)`** - `Advance(bodyVelocity, dt,
+  samples)` writes one `GaitSample(ClipId, Phase, Weight)` per weighted clip and returns the count. Weights sum to one.
+
+The angle clockwise from forward splits linearly between the two adjacent cardinals, so 45 degrees is exactly half and
+half. Within a family the speed splits between the two members that bracket it, clamped to the slowest and fastest,
+so a steady target has at most four clips. Each weight eases toward its target over `blendSeconds`, so a forward to
+backward reversal crossfades through both. One shared `Phase` advances by distance over the weighted stride, and each
+clip samples at `Phase + SyncPhase`, which keeps every blended foot plant together. Below `movingSpeed` the targets
+hold, the phase holds with zero travel, and `TravelWeight` eases to zero, so a stop fades out of the last gait.
+`BodyFrame(worldVelocity, facingYaw)` converts a world velocity with the `MoveCommand.CameraYaw` convention.
+
+The consumer keeps idle, turn-in-place, jump and action layers. It samples the clips through
+`AnimationSampler.SampleBlendInto` and uses `TravelWeight` as the locomotion layer weight. The loop is in
+docs/USING-KHAOZENGINE.md under "Animated characters".
+
 ## One-shot and held actions over locomotion
 
 `AnimatedCharacter.PlayAction(clip, mask, fadeIn, fadeOut, speed, mode, hold)` -> `ActionHandle` plays a masked

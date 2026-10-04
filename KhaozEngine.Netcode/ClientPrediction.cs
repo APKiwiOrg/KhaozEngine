@@ -51,6 +51,9 @@ public sealed class ClientPrediction<TState, TCommand>
     // one across the tick duration. Frame-rate independent (time-based fraction). Carries the vertical axis beside it.
     private Vector2 previousPredictedPosition;
     private float previousPredictedVertical;
+    // The previous tick's heading, eased toward the current one when PredictionSettings.InterpolateYaw is set. It
+    // collapses with the position at every cut, and a non-snap reconcile leaves it alone so only the target moves.
+    private float previousPredictedYaw;
     private float secondsSinceLastPredict;
     // The local player's predicted horizontal (planar) speed, recomputed each Predict from the per-tick position
     // delta. Computed ONLY in Predict (the commanded path), never in Reconcile, so a reconciliation rebase/snap is
@@ -134,6 +137,8 @@ public sealed class ClientPrediction<TState, TCommand>
     /// The state to draw: the predicted presentation target (planar AND vertical) eased from the previous tick
     /// toward the current one over the tick duration (so it stays smooth above the tick rate), plus the decaying
     /// reconciliation offset on both axes. The planar target defaults to <see cref="IPredictedState{TSelf}.Position"/>.
+    /// With <see cref="PredictionSettings.InterpolateYaw"/> set, a state whose <see cref="IPredictedState{TSelf}.HasYaw"/>
+    /// is true also eases its heading from the previous tick's, the short way round, landing on the current one exactly.
     /// </summary>
     public TState RenderedState
     {
@@ -142,7 +147,16 @@ public sealed class ClientPrediction<TState, TCommand>
             float frac = InterTickFraction;
             Vector2 planar = Vector2.Lerp(previousPredictedPosition, predictedState.PredictionTarget, frac) + renderOffset;
             float vertical = Lerp(previousPredictedVertical, predictedState.Vertical, frac) + verticalRenderOffset;
-            return predictedState.WithRenderState(planar, vertical);
+            if (!settings.InterpolateYaw || !predictedState.HasYaw)
+            {
+                return predictedState.WithRenderState(planar, vertical);
+            }
+
+            float current = predictedState.Yaw;
+            float yaw = frac >= 1f
+                ? current
+                : WrapPi(previousPredictedYaw + WrapPi(current - previousPredictedYaw) * frac);
+            return predictedState.WithRenderState(planar, vertical, yaw);
         }
     }
 
@@ -161,6 +175,7 @@ public sealed class ClientPrediction<TState, TCommand>
         predictedState = initialState;
         previousPredictedPosition = initialState.PredictionTarget;
         previousPredictedVertical = initialState.Vertical;
+        previousPredictedYaw = InterpolatedYaw(initialState);
         secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
         pendingCommands.Clear();
         renderOffset = Vector2.Zero;
@@ -225,6 +240,7 @@ public sealed class ClientPrediction<TState, TCommand>
         predictedState = basis;
         previousPredictedPosition = basis.PredictionTarget;
         previousPredictedVertical = basis.Vertical;
+        previousPredictedYaw = InterpolatedYaw(basis);
         secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
         if (seedReportsTeleport)
         {
@@ -276,6 +292,7 @@ public sealed class ClientPrediction<TState, TCommand>
         Vector2 previousSimulationPosition = predictedState.Position;
         previousPredictedPosition = predictedState.PredictionTarget;
         previousPredictedVertical = predictedState.Vertical;
+        previousPredictedYaw = InterpolatedYaw(predictedState);
         secondsSinceLastPredict = 0f;
         predictedState = simulator.Step(predictedState, command, settings.TickSeconds);
         // Fold this tick's discrete-step impulse into the step-smoothing accumulator, EXACTLY ONCE per real forward tick.
@@ -376,6 +393,7 @@ public sealed class ClientPrediction<TState, TCommand>
             // frac = 1) and drop the offset so rendered == predicted immediately.
             previousPredictedPosition = predictedState.PredictionTarget;
             previousPredictedVertical = predictedState.Vertical;
+            previousPredictedYaw = InterpolatedYaw(predictedState);
             secondsSinceLastPredict = settings.TickSeconds;
             renderOffset = Vector2.Zero;
             renderOffsetVelocity = Vector2.Zero;
@@ -463,6 +481,21 @@ public sealed class ClientPrediction<TState, TCommand>
     }
 
     private static float Lerp(float a, float b, float t) => a + (b - a) * t;
+
+    // The heading to ease from, read only when it will be eased. A state that keeps the default Yaw member would box
+    // on every read through the constraint, so a heading nobody interpolates is never read at all.
+    private float InterpolatedYaw(in TState state) => settings.InterpolateYaw && state.HasYaw ? state.Yaw : 0f;
+
+    // An angle in [-pi, pi), the range MoveState.FacingYaw is kept in. Netcode cannot reference Locomotion, so this
+    // mirrors CharacterMovement.WrapYaw, closing both edges explicitly against one float rounding.
+    private static float WrapPi(float radians)
+    {
+        if (radians >= -MathF.PI && radians < MathF.PI) return radians;
+        float wrapped = radians - MathF.Tau * MathF.Round(radians * (1f / MathF.Tau));
+        if (wrapped >= MathF.PI) wrapped -= MathF.Tau;
+        if (wrapped < -MathF.PI) wrapped += MathF.Tau;
+        return wrapped;
+    }
 
     // The planar correction offset's decay for one frame. Without a speed cap it is the ordinary critically-damped
     // ease, which resolves any offset in about 1/CorrectionRate seconds and so lurches a whole-step correction onto

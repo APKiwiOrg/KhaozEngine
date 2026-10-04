@@ -33,7 +33,7 @@ namespace KhaozEngine.Render3D
         public bool InvertY = false;
 
         /// <summary>Optional orbit gesture: its drag orbits the camera only, and its quick click is a tap read from
-        /// <see cref="OrbitTap"/> after <see cref="Update"/>, with the press origin in
+        /// <see cref="OrbitTap"/> after <see cref="UpdateInput"/>, with the press origin in
         /// <see cref="PointerGesture.TapPosition"/>. Null by default. Setting this or <see cref="LookGesture"/>
         /// replaces <see cref="OrbitButton"/>, which is then ignored.</summary>
         public PointerGesture? OrbitGesture;
@@ -41,7 +41,7 @@ namespace KhaozEngine.Render3D
         /// game turns the body to face the camera. Its quick click is a tap read from <see cref="LookTap"/>, with
         /// the press origin in <see cref="PointerGesture.TapPosition"/>. Null by default.</summary>
         public PointerGesture? LookGesture;
-        /// <summary>Whether the UI owns the pointer this frame. The game sets it before each <see cref="Update"/>.
+        /// <summary>Whether the UI owns the pointer this frame. The game sets it before each <see cref="UpdateInput"/>.
         /// A press that begins while blocked never taps, and never orbits while the gesture's threshold is above zero.
         /// At a zero or negative threshold a held button orbits again on the first unblocked frame. Read only while a
         /// gesture is set.</summary>
@@ -51,7 +51,7 @@ namespace KhaozEngine.Render3D
         /// </summary>
         public bool TurnBodyActive => LookGesture?.Phase == PointerGesturePhase.Dragging;
 
-        /// <summary>True on the frame of the last <see cref="Update"/> when <see cref="OrbitGesture"/> tapped and the
+        /// <summary>True on the frame of the last <see cref="UpdateInput"/> when <see cref="OrbitGesture"/> tapped and the
         /// camera did not turn at any point during that press, its release frame included. A tapping gesture never
         /// dragged, so a turn during its press came from <see cref="LookGesture"/>, and a both-buttons release is
         /// never a select whichever button went first. Read taps here rather than from
@@ -79,26 +79,42 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Apply this frame's drag-orbit and scroll-zoom. While <see cref="OrbitButton"/> is held, the mouse delta
-        /// swings <see cref="FollowCamera3D.Yaw"/> (horizontal) and tilts <see cref="FollowCamera3D.Pitch"/>
-        /// (vertical), and the wheel scales <see cref="FollowCamera3D.Distance"/>. The default mapping turns the view
-        /// the way the hand pulls (drag right turns left, drag down looks up). Flip either axis with
-        /// <see cref="InvertX"/> / <see cref="InvertY"/>. Pitch and distance are clamped by the camera. The orbit/zoom
-        /// gestures are delta-based, but <paramref name="dt"/> drives the camera's optional target damping
+        /// Apply this frame's drag-orbit and scroll-zoom, then advance the camera clocks. This is
+        /// <see cref="UpdateInput"/> with <paramref name="dt"/>, followed by the camera's optional target damping
         /// (<see cref="FollowCamera3D.AdvanceTarget"/>) and eased boom recovery
-        /// (<see cref="FollowCamera3D.AdvanceBoom"/>), so pass the real frame time. Each is a no-op unless
+        /// (<see cref="FollowCamera3D.AdvanceBoom"/>), so pass the real frame time. Each clock is a no-op unless
         /// <see cref="FollowCamera3D.EnableTargetDamping"/> or <see cref="FollowCamera3D.BoomRecoveryRate"/> turns
-        /// it on.
-        /// <para>With <see cref="OrbitGesture"/> or <see cref="LookGesture"/> set, each set gesture advances once with
-        /// <see cref="UiBlocked"/> and <see cref="OrbitButton"/> is ignored. The camera orbits only while a gesture
-        /// drags, by one delta a frame, so each mouse movement turns it once however many buttons are held. A gesture
-        /// that crosses its threshold with no orbit since its press began applies its
-        /// <see cref="PointerGesture.DragDelta"/>, the replay of its pending travel (<see cref="LookGesture"/> first
-        /// if both cross together). Otherwise the frame's <see cref="InputState.MouseDeltaPoints"/> applies. Speed, invert
-        /// and sign are as above. Read <see cref="OrbitTap"/> and <see cref="LookTap"/> after this call, in the
-        /// same frame. A tap counts only if the camera did not turn during that press.</para>
+        /// it on. The orbit, zoom, gesture and tap rules are on <see cref="UpdateInput"/>.
         /// </summary>
         public void Update(in InputState input, float dt)
+        {
+            UpdateInput(input, dt);
+            Camera.AdvanceTarget(dt);   // drives the opt-in target damping (no-op while disabled)
+            Camera.AdvanceBoom(dt);     // eases the boom back out after an obstruction clears (no-op at rate 0)
+        }
+
+        /// <summary>
+        /// Apply this frame's drag-orbit and scroll-zoom without advancing the camera clocks. For a consumer that
+        /// reads input early in its frame and calls <see cref="FollowCamera3D.AdvanceTarget"/> and
+        /// <see cref="FollowCamera3D.AdvanceBoom"/> itself later, after the subject moves. Every other caller wants
+        /// <see cref="Update"/>. While <see cref="OrbitButton"/> is held, the mouse delta swings
+        /// <see cref="FollowCamera3D.Yaw"/> (horizontal) and tilts <see cref="FollowCamera3D.Pitch"/> (vertical), and
+        /// the wheel scales <see cref="FollowCamera3D.Distance"/>. The default mapping turns the view the way the hand
+        /// pulls (drag right turns left, drag down looks up). Flip either axis with <see cref="InvertX"/> /
+        /// <see cref="InvertY"/>. Pitch and distance are clamped by the camera.
+        /// <para>With <see cref="OrbitGesture"/> or <see cref="LookGesture"/> set, each set gesture advances once with
+        /// <see cref="UiBlocked"/> and <paramref name="elapsedSeconds"/>, and <see cref="OrbitButton"/> is ignored. A
+        /// gesture with a <see cref="PointerGesture.TapTolerance"/> is timed by <paramref name="elapsedSeconds"/>, so
+        /// pass the real frame time here even when the camera clocks advance later. A zero freezes the grace.
+        /// The camera orbits only while a gesture drags, by one delta a frame, so each mouse movement turns it once
+        /// however many buttons are held. A gesture that crosses its threshold with no orbit since its press began
+        /// applies its <see cref="PointerGesture.DragDelta"/>, the replay of its pending travel
+        /// (<see cref="LookGesture"/> first if both cross together). Otherwise the frame's
+        /// <see cref="InputState.MouseDeltaPoints"/> applies. Speed, invert and sign are as above. Read
+        /// <see cref="OrbitTap"/> and <see cref="LookTap"/> after this call, in the same frame. A tap counts only if
+        /// the camera did not turn during that press.</para>
+        /// </summary>
+        public void UpdateInput(in InputState input, float elapsedSeconds)
         {
             if (OrbitGesture is null && LookGesture is null)
             {
@@ -108,7 +124,7 @@ namespace KhaozEngine.Render3D
             }
             else
             {
-                AdvanceGestures(input);
+                AdvanceGestures(input, elapsedSeconds);
                 // After this frame's orbit, so a turn on the release frame also voids the tap.
                 OrbitTap = OrbitGesture?.TapThisFrame == true && !_orbitedSinceOrbitPress;
                 LookTap = LookGesture?.TapThisFrame == true && !_orbitedSinceLookPress;
@@ -117,17 +133,14 @@ namespace KhaozEngine.Render3D
             float scroll = input.ScrollDelta;
             if (scroll != 0f)
                 Camera.Distance *= MathF.Pow(ZoomStep, -scroll);   // setter clamps, and +scroll -> closer
-
-            Camera.AdvanceTarget(dt);   // drives the opt-in target damping (no-op while disabled)
-            Camera.AdvanceBoom(dt);     // eases the boom back out after an obstruction clears (no-op at rate 0)
         }
 
         // Advances each set gesture once, then orbits by at most one delta: a crossing gesture's replay when nothing
         // has orbited since its press began, else this frame's mouse delta while any gesture drags.
-        void AdvanceGestures(in InputState input)
+        void AdvanceGestures(in InputState input, float dt)
         {
-            bool orbitCrossed = Step(OrbitGesture, input, ref _orbitedSinceOrbitPress);
-            bool lookCrossed = Step(LookGesture, input, ref _orbitedSinceLookPress);
+            bool orbitCrossed = Step(OrbitGesture, input, dt, ref _orbitedSinceOrbitPress);
+            bool lookCrossed = Step(LookGesture, input, dt, ref _orbitedSinceLookPress);
             if (!(IsDragging(OrbitGesture) || IsDragging(LookGesture)))
                 return;
 
@@ -143,12 +156,12 @@ namespace KhaozEngine.Render3D
 
         // Advances one gesture. A press that began this frame clears its orbited-since flag, before this frame's
         // orbit can set it. Returns whether the gesture crossed into a drag this frame.
-        bool Step(PointerGesture? gesture, in InputState input, ref bool orbitedSincePress)
+        bool Step(PointerGesture? gesture, in InputState input, float dt, ref bool orbitedSincePress)
         {
             if (gesture is null)
                 return false;
             PointerGesturePhase before = gesture.Phase;
-            gesture.Advance(input, UiBlocked);
+            gesture.Advance(input, UiBlocked, dt);
             if (before == PointerGesturePhase.Idle && gesture.Phase != PointerGesturePhase.Idle)
                 orbitedSincePress = false;
             return before != PointerGesturePhase.Dragging && gesture.Phase == PointerGesturePhase.Dragging;

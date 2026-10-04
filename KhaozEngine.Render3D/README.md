@@ -19,13 +19,15 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   statics touched (the snapshot is handed in), allocation-free per frame.
 - `FollowCameraController` gestures (since 20.17.0, off by default). Set `OrbitGesture` and `LookGesture` to a
   `PointerGesture` each and `OrbitButton` is ignored. The camera orbits only while a gesture drags, by one delta a
-  frame, and a press begun while the game's `UiBlocked` is set never taps, and above a zero threshold never orbits.
-  `TurnBodyActive` is true while `LookGesture` drags, for `MoveCommand.FaceCamera`, and `WantsPointerCapture` while
-  either drags, for `SetPointerCaptured`. `OrbitTap` and `LookTap` report taps after `Update`, and a tap counts only
-  if the camera did not turn during that press. Gesture replay and continuing motion use `MouseDeltaPoints`, so
-  sensitivity stays in window points before and during capture. Tap origins keep framebuffer coordinates.
-  Gate `UiBlocked` on `GuiSurface.HoverCaptured`. Scroll zoom, damping
-  and boom recovery are unchanged, and with neither gesture set the controller behaves exactly as before. See
+  frame, and a press begun while the game's `UiBlocked` is set never taps, and above a zero threshold never
+  orbits. `TurnBodyActive` is true while `LookGesture` drags, for `MoveCommand.FaceCamera`, and
+  `WantsPointerCapture` while either drags, for `SetPointerCaptured`. `OrbitTap` and `LookTap` report taps after
+  `Update` or `UpdateInput`, and a tap counts only if the camera did not turn during that press. `UpdateInput` is
+  `Update` without the target and boom clocks, for a game that advances those itself later in the frame, and it
+  still needs the real frame time for a tap tolerance. Gesture replay and continuing motion use
+  `MouseDeltaPoints`, so sensitivity stays in window points before and during capture. Tap origins keep
+  framebuffer coordinates. Gate `UiBlocked` on `GuiSurface.HoverCaptured`. Scroll zoom, damping and boom recovery
+  are unchanged, and with neither gesture set the controller behaves exactly as before. See
   docs/USING-KHAOZENGINE.md.
 - `FollowCamera3DPresets.CreateMouseLook()` returns a fresh mutable camera with pitch stops at -80 degrees and
   1.36 radians (about 78 degrees), distance stops at 1.5 and 22 metres, and initial pitch/distance of 0.75 radians
@@ -1081,6 +1083,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     is the allocation-free sample into a reused per-node pose buffer; `AnimationPlayer.GetLocalPoses(buffer)` writes
     the composited LOCAL poses (the crossfade result before hierarchy composition) so a `LayeredAnimator` can take
     the locomotion crossfade as its base layer.
+  - `AnimationSampler.SampleBlendInto(skel, samples, into, scratch)` samples a weighted set of `ClipSample(Clip, Time,
+    Weight)` values, with `Time` in clip seconds, into one per-node local pose. It is a running normalised lerp
+    through `JointPose.Lerp`, so the weights need not sum to one, and one positive-weight sample is bit-identical to
+    `SampleInto`. Zero-weight samples are skipped, and when every weight is zero `into` keeps what it held. `into`
+    and `scratch` are distinct buffers of `Skeleton.NodeCount` entries. A negative or nonfinite weight, or a missing
+    clip on a positive weight, throws before anything is written. The call allocates nothing.
   - `Animation.Inspection.PoseProbe` samples a clip without a GPU and exposes each skeleton node's model-space
     matrix or position by node index or retained name. `SampleClip` takes a closed normalised phase, with phase `1`
     preserving the authored end key. `SampleClipAtSeconds` clamps to the authored time range. `SetLocals` inspects

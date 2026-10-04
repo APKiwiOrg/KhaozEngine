@@ -165,7 +165,7 @@ public class MoveToRangeCarryTests
 
     sealed record Drive(List<MoveState> Bodies, List<RangeSteering> Steering, NavPath Route);
 
-    static NavSpace Surfaces(float originX, float originZ, Func<int, int, bool>? standable = null)
+    internal static NavSpace Surfaces(float originX, float originZ, Func<int, int, bool>? standable = null)
         => NavSpace.Single(NavGrid.FromSurfaces(32, 32, 0.25f, originX, originZ,
             (x, z) => new NavSurfaceSample(standable?.Invoke(x, z) ?? true, 0f, float.PositiveInfinity),
             stepHeight: 0.4f, agentHeight: 1.5f));
@@ -251,11 +251,18 @@ public class MoveToRangeCarryTests
         return new Vector2(MathF.Round(travel.X, 5), MathF.Round(travel.Y, 5));
     }
 
-    sealed class RecordingPlanner(IRegionPathPlanner inner) : IRegionPathPlanner
+    internal sealed class RecordingPlanner(IRegionPathPlanner inner) : IRegionPathPlanner
     {
-        public NavPath? Last { get; private set; }
+        public List<Vector3> Starts { get; } = new();
+        public List<NavPath> Plans { get; } = new();
+        public NavPath? Last => Plans.Count == 0 ? null : Plans[^1];
         public NavPath FindPath(Vector3 start, NavGoalRegion goal, float agentRadius, PathQueryBudget budget)
-            => Last = inner.FindPath(start, goal, agentRadius, budget);
+        {
+            NavPath path = inner.FindPath(start, goal, agentRadius, budget);
+            Starts.Add(start);
+            Plans.Add(path);
+            return path;
+        }
         public NavPath FindPath(Vector3 start, Vector3 goal, float agentRadius, PathQueryBudget budget)
             => throw new InvalidOperationException("Range steering must use region queries.");
     }

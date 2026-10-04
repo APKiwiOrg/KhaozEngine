@@ -15,7 +15,7 @@ namespace KhaozEngine.Netcode;
 /// the two sessions share one record and the last one to write wins). A tokenless connection has no subject and is
 /// never deduped.</para>
 /// </summary>
-public sealed class NetServer
+public sealed partial class NetServer
 {
     private readonly INetTransport transport;
     private readonly IConnectionAuthenticator authenticator;
@@ -116,7 +116,7 @@ public sealed class NetServer
                     pending.Remove(ev.Connection);
                     if (slotByConnection.TryGetValue(ev.Connection, out int leftSlot))
                     {
-                        RemovePeer(ev.Connection, leftSlot);
+                        DetachDisconnected(ev.Connection, leftSlot);
                         // Terminal: the host frees its own per-player state (save-on-leave, despawn) off this and
                         // off nothing else, so an overflow that dropped it would strand that state the way a
                         // dropped transport Disconnected used to strand the slot itself.
@@ -162,19 +162,24 @@ public sealed class NetServer
         // empty string is: the out parameter is non-nullable, but a third-party authenticator compiled without
         // nullable reference types can hand back null on an ACCEPT, and dereferencing it here would take the server
         // down on a connection it used to admit.
-        if (!string.IsNullOrEmpty(subject) && slotBySubject.TryGetValue(subject, out int heldSlot))
+        // A subject returning to a slot HoldSlotOnDisconnect kept is seated on it ahead of the duplicate check and
+        // the capacity check: the subject holds no live session to be a duplicate of, and the seat is already its own.
+        if (!TryReclaimHeldSlot(subject, out int newSlot))
         {
-            if (duplicateSessions == DuplicateSessionPolicy.RefuseNewer)
+            if (!string.IsNullOrEmpty(subject) && slotBySubject.TryGetValue(subject, out int heldSlot))
             {
-                RejectAndDisconnect(ev.Connection, SessionRejectReason.AlreadySignedIn);
+                if (duplicateSessions == DuplicateSessionPolicy.RefuseNewer)
+                {
+                    RejectAndDisconnect(ev.Connection, SessionRejectReason.AlreadySignedIn);
+                    return;
+                }
+                EndOlderSession(heldSlot);
+            }
+            if (!slots.TryAllocate(out newSlot))
+            {
+                RejectAndDisconnect(ev.Connection, "server full");
                 return;
             }
-            EndOlderSession(heldSlot);
-        }
-        if (!slots.TryAllocate(out int newSlot))
-        {
-            RejectAndDisconnect(ev.Connection, "server full");
-            return;
         }
         connectionBySlot[newSlot] = ev.Connection;
         slotByConnection[ev.Connection] = newSlot;
@@ -205,7 +210,7 @@ public sealed class NetServer
     {
         if (!connectionBySlot.TryGetValue(heldSlot, out NetConnectionId held)) return;
         RejectAndDisconnect(held, SessionRejectReason.SignedInElsewhere);
-        RemovePeer(held, heldSlot);
+        RemovePeer(held, heldSlot, holdSlot: false);
         inbox.EnqueueTerminal(ServerSessionEvent.Left(heldSlot));
     }
 
@@ -226,13 +231,15 @@ public sealed class NetServer
         transport.Disconnect(connection, frame);
     }
 
-    private void RemovePeer(NetConnectionId conn, int slot)
+    // Detaches a peer from its slot. holdSlot keeps the allocator bit, so no other join takes the slot until
+    // ReleaseHeldSlot frees it.
+    private void RemovePeer(NetConnectionId conn, int slot, bool holdSlot)
     {
         pending.Remove(conn);
         slotByConnection.Remove(conn);
         connectionBySlot.Remove(slot);
         if (subjectBySlot.Remove(slot, out string? subject)) slotBySubject.Remove(subject);
-        slots.Release(slot);
+        if (!holdSlot) slots.Release(slot);
     }
 
     /// <summary>Drains one session event. False when none remain this poll.</summary>
@@ -266,7 +273,8 @@ public sealed class NetServer
             : 0;
 
     /// <summary>Disconnects one slot's connection (a kick). The transport surfaces the resulting Disconnected event
-    /// on a later poll, which frees the slot (and a recycling join may reuse it). No-op for an unknown slot.</summary>
+    /// on a later poll, which frees the slot (and a recycling join may reuse it) unless
+    /// <see cref="HoldSlotOnDisconnect"/> holds it. No-op for an unknown slot.</summary>
     public void Disconnect(int slot)
     {
         if (connectionBySlot.TryGetValue(slot, out NetConnectionId conn))

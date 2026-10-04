@@ -401,6 +401,19 @@ off, and show your own line while the state is `Reconnecting`.
 A TOKENLESS connection authenticates to an EMPTY subject and is never deduped under either policy. It is anonymous
 rather than an account, and two guests are two people.
 
+### Held slots
+
+`NetServer.HoldSlotOnDisconnect` (`Func<int, bool>?`, default null) lets a host keep a slot after its client drops,
+for example to leave the player's body in the world for a while. It is asked once, inside `Poll`, when the transport
+reports an established slot disconnected, so it must be cheap and must not throw. It is never asked for a session the
+server ends itself (the `KickOlder` path), a refused `Hello` or a connection that never joined. A kick through
+`Disconnect(slot)` does arrive as a transport disconnect, so a host answers false for a slot it kicked. On true the
+connection is gone and `Left` is still enqueued, but the slot keeps its allocator bit and its subject is remembered.
+No other join takes the slot, and the same non-empty subject's next `Hello` is seated back on it, ahead of the
+duplicate session check and the capacity check, so neither policy applies and a full server cannot refuse the account
+its own seat. A tokenless guest has no subject and cannot reclaim anything. `ReleaseHeldSlot(slot)` frees a held slot
+and forgets its subject without another `Left`, and is a no-op for a slot that is not held.
+
 **The gate is only as strong as the authenticator under it.** `KickOlder` ends a live session on the say-so of
 whoever presents its subject, and the dev-default `AllowAllAuthenticator` takes the client's raw token bytes AS the
 subject, so on a server running that gate any client can evict any other by sending someone else's account id. This

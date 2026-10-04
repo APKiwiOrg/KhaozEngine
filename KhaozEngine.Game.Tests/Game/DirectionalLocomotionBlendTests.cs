@@ -271,6 +271,18 @@ namespace KhaozEngine.Tests.Game
             Assert.Equal(1f, samples[0].Weight, 6);
         }
 
+        [Fact]
+        public void StandingStillIsNotMovingEvenWithAZeroMovingSpeed()
+        {
+            var blend = new DirectionalLocomotionBlend(Set(), movingSpeed: 0f);
+            var samples = new GaitSample[6];
+            blend.Reset();
+
+            int n = blend.Advance(Vector2.Zero, Coarse, samples);
+            Assert.Equal(0f, blend.TravelWeight);
+            Assert.Equal(0, n);
+        }
+
         [Theory]
         [InlineData(0f, 0f, 0f, -1f, 0f, 1f)]
         [InlineData(0f, 1f, 0f, 0f, 1f, 0f)]
@@ -291,7 +303,9 @@ namespace KhaozEngine.Tests.Game
             Assert.ThrowsAny<ArgumentException>(() => new DirectionalGaitSet(
                 new[] { new GaitClip(0, 2f, 1f, 0f), new GaitClip(1, 1f, 1f, 0f) }, walk, walk, walk));
             Assert.ThrowsAny<ArgumentException>(() => new DirectionalGaitSet(walk, new[] { new GaitClip(0, 1f, 1f, 1f) }, walk, walk));
-            Assert.ThrowsAny<ArgumentException>(() => new DirectionalGaitSet(walk, walk, new[] { new GaitClip(0, 1f, 0f, 0f) }, walk));
+            ArgumentException left = Assert.Throws<ArgumentException>(
+                () => new DirectionalGaitSet(walk, walk, new[] { new GaitClip(0, 1f, 0f, 0f) }, walk));
+            Assert.Equal("left", left.ParamName);
 
             var set = new DirectionalGaitSet(walk, walk, walk, walk);
             Assert.ThrowsAny<ArgumentException>(() => new DirectionalLocomotionBlend(set, blendSeconds: 0f));

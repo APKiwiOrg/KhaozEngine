@@ -5709,6 +5709,8 @@ var gaitSamples = new GaitSample[gaits.ClipCount];
 var clipSamples = new ClipSample[gaits.ClipCount];
 
 // Every frame, airborne included, so the gait phase carries into the landing.
+// Feed the replicated or simulated body velocity, not one differentiated from rendered positions (which spikes on a
+// teleport or hard snap), and pass zero on a teleport frame.
 Vector2 body = DirectionalLocomotionBlend.BodyFrame(worldVelocity, facingYaw);
 int n = blend.Advance(body, dt, gaitSamples);
 for (int i = 0; i < n; i++)

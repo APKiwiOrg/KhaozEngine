@@ -22,7 +22,8 @@ namespace KhaozEngine.Game
     public sealed class DirectionalLocomotionBlend
     {
         // Snaps an eased weight onto its target when float accumulation leaves it short by a rounding error, so N
-        // calls of blendSeconds / N land on the target at the Nth call rather than leaving a residue for one more.
+        // calls of blendSeconds / N land on the target at the Nth call for the call counts a blend sees in practice,
+        // rather than leaving a residue for one more. The residue grows with the call count.
         const float SnapEpsilon = 1e-5f;
 
         // Families in clockwise sector order from forward: F(0) R(90) B(180) L(270).
@@ -100,7 +101,7 @@ namespace KhaozEngine.Game
             }
 
             float speed = bodyVelocity.Length();
-            bool moving = speed >= _movingSpeed;
+            bool moving = speed > 0f && speed >= _movingSpeed;
             if (moving) SetTargets(bodyVelocity, speed);
 
             float step = dt / _blendSeconds;

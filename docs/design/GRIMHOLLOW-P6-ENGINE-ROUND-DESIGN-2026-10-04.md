@@ -1,34 +1,37 @@
-# Grimhollow P6 engine round: a server tick on the client, a disconnect linger and a route stall rule
+# Grimhollow P6 engine round: a server tick on the client, a disconnect linger, a route stall rule and foot-locked diagonals
 
-Status: approved scope, design by orchestrator ruling. The owner approved the three items on 2026-10-04, engine-first.
-The API shapes below are technical calls that root rules on through the questions that follow. Implemented through
-the [plan](../superpowers/plans/2026-10-04-grimhollow-p6-engine-round.md). The round rides the staged 20.24.0.
+Status: approved scope, design by orchestrator ruling. The owner approved the first three items on 2026-10-04,
+engine-first, and later the same day added the fourth: the owner chose engine-first for the locomotion blend and asked
+for the diagonal glide to be fixed. The API shapes below are technical calls, and root answered the open ones on
+2026-10-04 (below). Implemented through the [plan](../superpowers/plans/2026-10-04-grimhollow-p6-engine-round.md).
+The round rides the staged 20.24.0.
 
 Consumers: Grimhollow P6 (`feature/p6-plan`, plan `2026-10-04-continuous-combat-p6.md`, questions Q3 and Q4, Tasks 9,
-10 and 13) and the routed walk-up (`feature/routed-walkup-plan`, plan `2026-10-04-routed-walkup.md`, Q1 and Task 5).
+10 and 13), the routed walk-up (`feature/routed-walkup-plan`, plan `2026-10-04-routed-walkup.md`, Q1 and Task 5) and
+Grimhollow's eight-way locomotion blend (`feature/engine-20-23-blend`, lane B3).
 Base: engine `origin/main` at `356bf8928`, newest tag `v20.23.0`, `<KhaozEngineVersion>` 20.24.0 staged by the
 tracked save outcomes. Line citations are at `356bf8928` unless marked Grimhollow.
 
-## Questions for root
+## Root's answers (2026-10-04)
 
-Each has a recommendation. The plan is written for the recommended answers.
+Root took every recommendation. The plan is written for these answers.
 
-- **Q1. A reconnect inside the linger.** Recommended: the same account's reconnect reclaims its held slot, the
-  lingering body leaves through the ordinary path (one `PlayerLeaving`, one save, despawn) and a fresh body is seated
-  on that slot from the saved record (D6). Alternative: reattach the new connection to the live body, which needs a new
-  session event that persistence and every game handle. Cost of the recommendation: the body gets a new net id, so
-  creatures and players targeting the old one lose it. P6 Task 13's `ARejoinInsideTheLingerTakesTheLingeringBody`
-  becomes "a rejoin inside the linger ends it and seats the player where the body stood".
-- **Q2. Format 2 and the server tick.** Recommended: `WorldClientConfig.ReceiveServerTick` with
-  `RequestUnreliableDeltaReplication` is a configuration error this round, and a follow-up issue carries the tick in
-  the format 2 header. Grimhollow uses reliable deltas. Cost: a format 2 consumer waits for that issue.
-- **Q3. Ticks with a zero travel bound under `Stall`.** Recommended: they count toward nothing, as in
-  `DirectMoveToRange` (`DirectMoveToRange.cs:65-66`). The routed plan's text counts every `Following` tick. Reason: a
-  rooted body (O2.25) is the game's rule, and Grimhollow already ends it with its own 45 tick window (P6 C10). Cost:
-  a body rooted for good while routed never latches `Blocked` from the engine.
-- **Q4. #1278.** Recommended: no fix this round. With `Stall` set, the refused raw leg #1278 describes now ends in
-  `Blocked` within the window instead of holding `Following`, and the issue stays open as a lead with that note. Cost:
-  a creature without `Stall` keeps the hold until #1278 is reproduced and fixed.
+- **Q1. A reconnect inside the linger.** Option A. The same account's reconnect reclaims its held slot, the lingering
+  body leaves through the ordinary path (one `PlayerLeaving`, one save, despawn) and a fresh body is seated on that
+  slot from the saved record where the old one stood (D6). Reattaching the connection to the live body is not built.
+  The cost stands: the new body has a new net id, so creatures and players targeting the old one lose it. P6 Task 13's
+  `ARejoinInsideTheLingerTakesTheLingeringBody` becomes "a rejoin inside the linger ends it and seats the player where
+  the body stood".
+- **Q2. Format 2 and the server tick.** `WorldClientConfig.ReceiveServerTick` with
+  `RequestUnreliableDeltaReplication` is a configuration error this round. Root files the follow-up issue that carries
+  the tick in the format 2 header after the round. Grimhollow uses reliable deltas.
+- **Q3. Ticks with a zero travel bound under `Stall`.** A zero travel bound (a rooted body) counts toward nothing, as
+  in `DirectMoveToRange` (`DirectMoveToRange.cs:65-66`). Refused steps do count. A rooted body (O2.25) stays the game's
+  rule, which Grimhollow ends with its own 45 tick window (P6 C10). The cost stands: a body rooted for good while
+  routed never latches `Blocked` from the engine.
+- **Q4. #1278.** No fix this round. With `Stall` set, the refused raw leg #1278 describes ends in `Blocked` within the
+  window instead of holding `Following`, and the issue stays open as a lead with that note. A creature without
+  `Stall` keeps the hold until #1278 is reproduced and fixed.
 
 ## Problem and measured facts
 
@@ -83,6 +86,29 @@ replans raw (`MoveToRange.Straighten.cs:9-15`), and lead
 then hold until the target moves. `DirectMoveToRange` already owns the stall rule Grimhollow needs
 (`DirectMoveToRange.cs:77-83`, ring in `DirectMoveToRange.Progress.cs`).
 
+### Diagonals still slide on the 20.23.0 blend
+
+Grimhollow lane B3 (`feature/engine-20-23-blend` at Grimhollow `8f959e6d`) adopted `DirectionalLocomotionBlend` and
+measured planted-foot slide through its drawn skinned body (`LocomotionFootSlipTests.PlantedFeetHoldTheGround`: 240 Hz,
+3 s after 1 s settling, the furthest horizontal travel of an ankle inside a contact window, worst foot, centimetres).
+Cardinals barely move from the old single-clip path, and diagonals improve but still slide.
+
+| Case | Old sector pick | 20.23.0 blend |
+| --- | ---: | ---: |
+| strafe walk left or right, 2 m/s | 3.4 | 3.4 |
+| backpedal, 2 m/s | 9.9 | 9.8 |
+| walk forward-left / forward-right, 2 m/s | 48.5 / 48.5 | 23.7 / 21.3 |
+| walk back-left / back-right, 2 m/s | 61.6 / 61.6 | 16.0 / 17.7 |
+| run forward-left / forward-right, 5 m/s | 34.2 / 34.2 | 15.7 / 24.6 |
+
+The diagonal residue of 16 to 25 cm per contact window is the share rule, not Grimhollow's inputs. At 45 degrees the
+playtest 1 design's D7 gives each family half, and its D8 phase advances by `speed / sum(weight x stride)` on one
+shared phase. A clip moves its planted foot along its own axis only, so the blended foot travels `weight x stride x
+rate` per axis. With Grimhollow's walk strides that carries the planted foot about (0.64, 0.36) of the body's
+(0.71, 0.71) travel along forward and strafe, about 0.69 m/s of sideways slip at 2 m/s, roughly 20 cm per contact,
+which matches the measurement. The forward walk (16 cm) and strafe run (22.1 cm) also slide on cardinals, on both paths:
+that is each clip's own stride against its contact timing, art and stride work outside this round.
+
 ## Goals
 
 1. An opt-in server tick on `WorldClient`: the newest applied frame's server tick, and the fractional server tick
@@ -92,13 +118,16 @@ then hold until the target moves. `DirectMoveToRange` already owns the stall rul
 3. An opt-in stall window on `MoveToRange` that latches `Blocked` with `DirectMoveToRange`'s rule and wording.
 4. Default off is identical: wire bytes, frames, events, despawn timing, routes, commands and statuses are unchanged
    when no option is set.
+5. `DirectionalLocomotionBlend` keeps a planted foot locked to the ground on a steady diagonal, as it already does on a
+   cardinal, with no API change (D9).
 
 ## Non-goals
 
 A server tick in format 2 frames (Q2). Time sync, playback rate adjustment or extrapolation of the remote timeline. A
 linger on `WorldServer` or `TileWorldServer` (the tile host has its own). Reattaching a connection to a live body (Q1).
 A logout message (a client logout is a disconnect). Fixing #1278, #1265 or #1281. An approach window on
-`MoveToRange` (a detour may raise reach distance). Grimhollow files, pin moves and tags.
+`MoveToRange` (a detour may raise reach distance). Foot lock during a direction or pace crossfade, and the cardinal
+slide of Grimhollow's forward walk and strafe run clips. Grimhollow files, pin moves and tags.
 
 ## Decisions
 
@@ -229,6 +258,57 @@ positive metres). `RouteApproachOptions.Stall` is `RouteStallOptions?`, default 
 - With `StraightenRoutes`, a refused straightened step is one counted zero-travel tick and the raw replan moves, so the
   fallback alone never latches. A raw leg the guard refuses (#1278) now latches `Blocked` within the window (Q4).
 
+### D9. Foot-locked diagonal shares
+
+Notation: the body-frame velocity is `(x, y)`, X right and Y forward. A family's travel component `c_f` is `|y|` for
+forward or backward (whichever the sign of `y` picks) and `|x|` for left or right. A family's stride `s_f` at the
+current speed is its members' bracket mix, `(1 - t) x s_lower + t x s_upper` with today's bracket `t` on the total
+speed, so a clamped family is its one member's `StrideMetres`.
+
+Derivation. A clip carries its planted foot along its own axis only, by its stride per loop. With one shared phase
+advancing at rate `r` loops per second and family `f` weighted `w_f`, the linearly blended planted foot moves
+`w_f x s_f x r` along that family's axis. Locking it to the ground needs `w_f x s_f x r = c_f` for each family, with the
+shares summing to one. The unique solution is
+
+- `w_f = (c_f / s_f) / sum_g (c_g / s_g)`, and
+- `r = sum_g (c_g / s_g)`.
+
+The phase is written as one rule for steady and easing states: it advances by `(|x| + |y|) x dt / sum_i(weight_i x
+StrideMetres_i)` over the eased, normalised slot weights. In steady state `sum_i(weight_i x StrideMetres_i) = sum_f(w_f
+x s_f) = (|x| + |y|) / r`, so the rate is exactly `r`. On a cardinal one component is zero, `|x| + |y|` is the speed,
+and both the share and the rate reduce to 20.23.0's single family rule. During a crossfade the same formula carries
+on from the eased weights, as D8 of the playtest 1 design does today, so the feet lock once the weights settle.
+
+Worked example on the engine test set's walk strides at 1.2 m/s and 45 degrees forward-right (forward walk stride 1.2,
+right walk stride 0.8): `c = 0.8485` per axis, `c / s` is 0.7071 and 1.0607, so forward gets 0.4, right gets 0.6 and
+the phase runs at 1.7678 loops per second. The planted foot moves `0.4 x 1.2 x 1.7678 = 0.8485` forward and
+`0.6 x 0.8 x 1.7678 = 0.8485` right, the body's travel. 20.23.0 gives 0.5 and 0.5 at 1.2 loops per second, which moves
+the foot 0.72 forward and 0.48 right, short by 0.13 and 0.37 m/s.
+
+Unchanged: members within a family keep today's speed bracket and clamp, `SyncPhase` sampling, `blendSeconds` easing
+and normalisation, `TravelWeight`, the moving threshold on the Euclidean speed, `Reset`, `BodyFrame`, the public API
+and the allocation contract. The phase still holds at zero travel.
+
+Replace or opt in:
+
+| Option | Default locks feet | Consumer cost | API surface | Change honesty | Total |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| A. Replace the playtest 1 D7 share and D8 rate outright | 10 | 8 | 10 | 7 | 35 |
+| B. An opt-in flag, default the 20.23.0 rule | 2 | 9 | 5 | 10 | 26 |
+
+Select A, root's lean. The playtest 1 design states feet in step and foot-locked travel as the goal of D7 and D8
+("the feet skate" is the problem it fixes), and the 20.23.0 arithmetic misses it on every diagonal. The blend shipped
+in 20.23.0 with one consumer, Grimhollow, adopting it now on an unmerged lane, so B keeps a known-wrong default and a
+mode flag forever to protect nobody. Cost: a visible behaviour change inside a minor, recorded as a behaviour change
+in the 20.24.0 entry, and Grimhollow's B3 facts that pin half and half shares or the 20.23.0 phase rate update when it
+adopts 20.24.0.
+
+Changelog line (20.24.0): "Behaviour change: `DirectionalLocomotionBlend` now keeps a planted foot locked on
+diagonals. Each direction family's share is its body-frame travel component over its stride, normalised, and the
+shared phase advances by `(|x| + |y|)` over the weighted stride, so each family's blended foot travels exactly its
+component. A 45 degree walk with forward stride 1.2 m and strafe stride 0.8 m now weights forward 0.4 and strafe 0.6
+instead of half and half. Cardinals, speed brackets, easing, `TravelWeight` and the API are unchanged."
+
 ## Consumer contract
 
 - **P6 Task 9.** Set `ReceiveServerTick` on the continuous client config. Read `Server.ServerTick` on the host instead
@@ -242,6 +322,12 @@ positive metres). `RouteApproachOptions.Stall` is `RouteStallOptions?`, default 
   expiry through `PlayerLeaving`. Rename the rejoin test per Q1.
 - **Routed walk-up Task 5.** `HollowmereNavigation.RouteOptions(navigation) with { Stall = new(15, 0.1f) }`. The
   mapping `Blocked` to `Blocked` already exists in the plan. A rooted routed body stays the game's 45 tick rule.
+- **Grimhollow locomotion blend (lane B3).** No call changes. On adopting 20.24.0, the facts that pin the 20.23.0
+  arithmetic take D9's values: `AnExactDiagonalIsHalfItsTravelGaitAndHalfItsStrafe`,
+  `AnAngleWithinASectorSharesByItsFraction`, `ASettledForwardRightWalkAlignsTheContactsOfBothClips` (its 0.5 and 0.5)
+  and `ADiagonalPhaseAdvancesTheFullDistanceOverTheWeightedStride`. `PlantedFeetHoldTheGround` re-measures, and its
+  30 cm limit can tighten to what the cardinals already hold. Grimhollow's 1e-3 residue snap (B3-b) still applies
+  before the call.
 
 ## Risks
 
@@ -254,6 +340,14 @@ positive metres). `RouteApproachOptions.Stall` is `RouteStallOptions?`, default 
   returning one (D6).
 - **Kick by account.** `Kick(PlayerRef)` resolves the lingering slot through `accountIdBySlot`, and `Disconnect(slot)`
   on it is a no-op on the transport followed by the immediate leave. A banned account's body therefore leaves at once.
+- **Diagonal cadence.** Locking the foot raises the loop rate off the cardinals. With equal strides a 45 degree
+  diagonal steps `sqrt(2)` times as often as a cardinal at the same speed (1.47 against 1.0 loops per second on the
+  test set at 1 m/s, where 20.23.0 ran 1.0). That is what two axis-bound clips need to cover a diagonal without
+  sliding. The owner's playtest judges the look, and a cadence complaint is clip work (a diagonal clip), not a share
+  change.
+- **Short strafe strides take most of the share.** A family with a short stride needs more weight to cover its
+  component, so Grimhollow's 0.8 m strafe walk outweighs its 1.4 m forward walk on a 45 degree walk. This is the
+  intended result and is pinned by the 45 degree facts.
 - **Allocation.** `MoveToRange.Tick` with `Stall`, `WorldClient.Poll` and `AdvancePresentation` with ticks, and
   `ShardedWorldServer.Tick` with lingering bodies allocate nothing in steady state. Expiry uses a reused scratch list.
 
@@ -269,10 +363,12 @@ positive metres). `RouteApproachOptions.Stall` is `RouteStallOptions?`, default 
 | Slot hold | Held slot not reallocated, subject reclaims it before the duplicate check, release frees it, no delegate is today's path | Server.Tests Netcode |
 | Linger | Default off identical, steps exactly `n` ticks then one `PlayerLeaving` and save, attackable and served to others, idle, kicks, rate limit and drain do not linger, kick by account ends it, roster and shutdown save include it, allocation-free | Server.Tests NetWorld |
 | Rejoin | Same slot reclaimed with one body, save before load, seated where it stood, guest expires, `RefuseNewer` does not refuse it, full server still admits it | Server.Tests NetWorld |
+| Foot-locked shares | 45 degree shares from `c / s` on four diagonals, phase rate `sum(c / s)`, planted foot travel equal to each component (the 20.23.0 rule fails it), bracketed families at 2.7 m/s, cardinals, continuity at the new bound, reversal, stop and allocation unchanged | Game.Tests |
 
 No test needs Grimhollow. Focused runs per task and one full Release run at the finish. No local repetition.
 
 ## Version
 
-Additive public API and a new opt-in wire capability, riding the staged 20.24.0 (newest tag `v20.23.0`). No bump. The
-round appends to the 20.24.0 `CHANGELOG.md` entry. Grimhollow adopts a released pin.
+Additive public API, a new opt-in wire capability and one presentation behaviour change (D9), riding the staged
+20.24.0 (newest tag `v20.23.0`). No bump. The round appends to the 20.24.0 `CHANGELOG.md` entry, with D9's line marked
+as a behaviour change. Grimhollow adopts a released pin.

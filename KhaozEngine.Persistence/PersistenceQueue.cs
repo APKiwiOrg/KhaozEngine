@@ -33,6 +33,10 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
     private readonly TimeSpan retryDelay;
     private readonly int backupGenerations;
     private readonly Action<string, string> writeText;
+    private readonly Action? beforeSupersessionCompletion;
+    private readonly Action<bool>? observeDrainDecision;
+    // Producer-owned completions remain outstanding after their payload leaves pending.
+    private int supersessionsCompleting;
     private bool workerScheduled;
     private bool notifying;
     private bool disposed;
@@ -46,10 +50,13 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
     {
     }
 
-    internal PersistenceQueue(Action<string, string> writeText, ILogger? logger = null, int maxAttempts = 3, TimeSpan? retryDelay = null, int backupGenerations = 2)
+    internal PersistenceQueue(Action<string, string> writeText, ILogger? logger = null, int maxAttempts = 3, TimeSpan? retryDelay = null, int backupGenerations = 2,
+        Action? beforeSupersessionCompletion = null, Action<bool>? observeDrainDecision = null)
     {
         ArgumentNullException.ThrowIfNull(writeText);
         this.writeText = writeText;
+        this.beforeSupersessionCompletion = beforeSupersessionCompletion;
+        this.observeDrainDecision = observeDrainDecision;
         if (maxAttempts < 1)
         {
             throw new ArgumentOutOfRangeException(nameof(maxAttempts), "At least one attempt is required.");
@@ -93,6 +100,10 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
             ObjectDisposedException.ThrowIf(disposed, this);
             pending.TryGetValue(path, out replaced);
             pending[path] = request;
+            if (replaced?.Completion is not null)
+            {
+                supersessionsCompleting++;
+            }
             if (!workerScheduled)
             {
                 workerScheduled = true;
@@ -100,7 +111,22 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
             }
         }
 
-        replaced?.Completion?.TrySetResult(new PersistenceWriteResult(PersistenceWriteOutcome.Superseded, path, null));
+        if (replaced?.Completion is not null)
+        {
+            try
+            {
+                beforeSupersessionCompletion?.Invoke();
+                replaced.Completion.TrySetResult(new PersistenceWriteResult(PersistenceWriteOutcome.Superseded, path, null));
+            }
+            finally
+            {
+                lock (sync)
+                {
+                    supersessionsCompleting--;
+                    Monitor.PulseAll(sync);
+                }
+            }
+        }
         if (schedule)
         {
             ThreadPool.UnsafeQueueUserWorkItem(static state => ((PersistenceQueue)state!).DrainPending(), this);
@@ -128,14 +154,27 @@ public sealed class PersistenceQueue : IPersistenceQueue, IDisposable
     /// <inheritdoc/>
     public void Flush()
     {
+        if (observeDrainDecision is not null)
+        {
+            bool waiting;
+            lock (sync)
+            {
+                waiting = HasOutstandingWritesLocked;
+            }
+            observeDrainDecision(waiting);
+        }
+
         lock (sync)
         {
-            while (pending.Count > 0 || workerScheduled)
+            // Recheck under the lock after observation so a completion pulse cannot be lost.
+            while (HasOutstandingWritesLocked)
             {
                 Monitor.Wait(sync);
             }
         }
     }
+
+    private bool HasOutstandingWritesLocked => pending.Count > 0 || workerScheduled || supersessionsCompleting > 0;
 
     /// <summary>Flushes all pending writes, then disposes. Enqueuing after dispose throws.</summary>
     public void Dispose()

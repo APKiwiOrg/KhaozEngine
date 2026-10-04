@@ -11,7 +11,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   return a task for the exact submitted payload. `PersistenceWriteResult` reports `Saved` after its atomic
   write, `Superseded` when replaced while pending, or `Failed` with the final error after exhausted retries.
   Older in-flight completion does not complete a newer pending request. Continuations run asynchronously
-  outside queue locks. Void save APIs, backup rotation, retry ordering and `WriteFailed` remain available.
+  outside queue locks. Flush and disposal wait for outstanding supersession completions too. Void save APIs,
+  backup rotation, retry ordering and `WriteFailed` remain available.
 - `RouteApproachOptions.StraightenRoutes`, default off, walks a `MoveToRange` body straight across open ground
   instead of along the grid's 45 and 90 degree staircase. Each `Complete` or `Partial` route is straightened once
   when it is planned. From the feet, the farthest `Walk` waypoint whose centre line and both side lines, just under

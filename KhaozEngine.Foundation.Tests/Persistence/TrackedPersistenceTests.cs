@@ -192,6 +192,91 @@ public sealed class TrackedPersistenceTests
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Drain_resolves_supersession_even_when_the_replacing_producer_is_paused(bool dispose, bool trackedReplacement)
+    {
+        using var files = new TestFiles();
+        using var writer = new WriteGate("hold");
+        using var supersession = new WriteGate("supersession");
+        using var continueDrain = new ManualResetEventSlim(false);
+        var writesDrained = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var drainDecision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var queue = new PersistenceQueue((path, json) =>
+        {
+            writer.BeforeWrite(json);
+            AtomicJsonWriter.WriteText(path, json);
+        }, maxAttempts: 1, retryDelay: TimeSpan.Zero,
+            beforeSupersessionCompletion: () => supersession.BeforeWrite("supersession"),
+            observeDrainDecision: waiting =>
+            {
+                drainDecision.TrySetResult(waiting);
+                if (!continueDrain.Wait(Timeout)) throw new TimeoutException("The drain decision was not released.");
+            });
+        Task? producer = null;
+        Task? drain = null;
+        Task<PersistenceWriteResult>? latestTask = null;
+        try
+        {
+            queue.Enqueue(files.OtherPath, "hold");
+            await writer.Entered.Task.WaitAsync(Timeout);
+            Task<PersistenceWriteResult> firstTask = queue.EnqueueTracked(files.Path, "first");
+            // The real failed write delivers WriteFailed only after the drain latch is clear.
+            queue.WriteFailed += (_, _) => writesDrained.TrySetResult(true);
+            queue.Enqueue(System.IO.Path.Combine(files.OtherPath, "fail.json"), "failure");
+            producer = Task.Run(() =>
+            {
+                if (trackedReplacement) latestTask = queue.EnqueueTracked(files.Path, "latest");
+                else queue.Enqueue(files.Path, "latest");
+            });
+            await supersession.Entered.Task.WaitAsync(Timeout);
+            writer.Release.Set();
+            await writesDrained.Task.WaitAsync(Timeout);
+            Assert.Equal("latest", File.ReadAllText(files.Path));
+            Assert.False(firstTask.IsCompleted);
+
+            drain = Task.Run(() =>
+            {
+                if (dispose) queue.Dispose();
+                else queue.Flush();
+                Assert.True(firstTask.IsCompletedSuccessfully, "Drain returned with an unresolved superseded request.");
+            });
+            // Observe the actual drain predicate outside the lock. A wait decision releases the
+            // producer before Flush rechecks, proving a completion pulse cannot be lost. A return
+            // decision keeps the producer paused so the real terminal-task assertion catches it.
+            if (await drainDecision.Task.WaitAsync(Timeout))
+            {
+                supersession.Release.Set();
+                await producer.WaitAsync(Timeout);
+                Assert.True(firstTask.IsCompletedSuccessfully);
+            }
+            continueDrain.Set();
+            await drain.WaitAsync(Timeout);
+            await producer.WaitAsync(Timeout);
+
+            Assert.Equal(PersistenceWriteOutcome.Superseded, (await firstTask).Outcome);
+            if (latestTask is not null)
+            {
+                Assert.Equal(PersistenceWriteOutcome.Saved, (await latestTask).Outcome);
+            }
+        }
+        finally
+        {
+            writer.Release.Set();
+            supersession.Release.Set();
+            continueDrain.Set();
+            try
+            {
+                if (producer is not null) await producer.WaitAsync(Timeout);
+                if (drain is not null) await drain.WaitAsync(Timeout);
+            }
+            finally { await Task.Run(queue.Dispose).WaitAsync(Timeout); }
+        }
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task SaveTracked_uses_the_save_posture_and_write_options(bool plaintext)

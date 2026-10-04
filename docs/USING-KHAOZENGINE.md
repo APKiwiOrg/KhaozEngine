@@ -22387,11 +22387,11 @@ single event drain race, and on any store whose write costs more than its read (
 wins: the newcomer was restored onto the record from BEFORE the leave, and the next periodic save wrote that
 rollback down as the truth. A kick is exactly that shape every time, and so is a reconnect inside a
 `ShardedWorldServer` disconnect linger, whose lingering body leaves in the same drain the returning session joins in.
-So every write this layer issues is published under its key and a join whose key carries one awaits it before reading. A write that FAILS still releases the join,
-which then reads whatever the store still holds (the same outage semantics a failed save already had), so a dead
-store can never strand a join. That buys per-key ordering between this layer's own writes and its own reads. It is
-not a distributed lock: a store also written by something else, or by a second process running this layer, still
-needs that store's own ordering. Use a stable account id. Subscribe to
+So every write this layer issues is published under its key and a join whose key carries one awaits it before
+reading. A write that FAILS still releases the join, which then reads whatever the store still holds (the same outage
+semantics a failed save already had), so a dead store can never strand a join. That buys per-key ordering between
+this layer's own writes and its own reads. It is not a distributed lock: a store also written by something else, or
+by a second process running this layer, still needs that store's own ordering. Use a stable account id. Subscribe to
 **`WorldPersistence.OnStoreError`** to log/alert when a background load or save faults (a store outage). The failed
 save's state stays dirty and retries on the next pass.
 

@@ -7,8 +7,6 @@ public sealed partial class ShardedWorldServer
     // Slots whose body lingers after a transport drop, each with the last ServerTick the body is stepped in. Entered
     // by the hold during NetServer.Poll, left only through OnLeave, which also releases the held slot.
     private readonly Dictionary<int, long> lingerUntilBySlot = new();
-    // Set by BeginDrain and never cleared, so nothing lingers once a drain has begun, even after it completes.
-    private bool draining;
     // Expired slots collected before any leaves, because OnLeave edits lingerUntilBySlot. Reused across ticks.
     private readonly List<int> lingerScratch = new();
 
@@ -17,10 +15,11 @@ public sealed partial class ShardedWorldServer
     public bool IsLingering(int slot) => lingerUntilBySlot.ContainsKey(slot);
 
     // NetServer.HoldSlotOnDisconnect, set only when the hook is. NetServer never asks for a connection it closed
-    // itself, so kicks, bans, replication restarts and the rate limit kick never reach here.
+    // itself, so kicks, bans, replication restarts and the rate limit kick never reach here. HasBegun stays true after
+    // the drain completes, so nothing lingers once a drain has begun.
     private bool HoldOnDisconnect(int slot)
     {
-        if (draining || !netIdBySlot.TryGetValue(slot, out long netId)) return false;
+        if (drain.HasBegun || !netIdBySlot.TryGetValue(slot, out long netId)) return false;
         int ticks = config.DisconnectLingerTicks!(slot, netId);
         if (ticks <= 0) return false;
         lingerUntilBySlot[slot] = ServerTick + ticks;

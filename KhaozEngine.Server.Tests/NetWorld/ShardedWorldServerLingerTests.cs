@@ -251,6 +251,14 @@ public class ShardedWorldServerLingerTests
             rig.Server.BeginDrain(new ServerNotice(ServerNoticeKind.Custom, "restart"), 60f);
             rig.Hub.DisconnectClient(transport);
         });
+        AssertServerCloseLeavesAtOnce(null, (rig, _, _, transport) =>
+        {
+            rig.Server.BeginDrain(new ServerNotice(ServerNoticeKind.Custom, "restart"), 0.1f);
+            for (int i = 0; i < 30 && !rig.Server.IsDrainComplete; i++) rig.Server.Tick(Dt);
+            Assert.True(rig.Server.IsDrainComplete);
+            Assert.False(rig.Server.IsDraining);   // a completed drain still never lingers
+            rig.Hub.DisconnectClient(transport);
+        });
     }
 
     private static void AssertServerCloseLeavesAtOnce(AntiCheatConfig? antiCheat,
@@ -318,9 +326,9 @@ public sealed class ShardedWorldServerLingerAllocationTests
 {
     // ShardedWorldServer.Tick already allocates with no players at all once a cell is live, and more per entity the
     // cell holds (the cell step, handoffs, ghost sync and cell enumeration, near 2 KB a tick with one entity here), so
-    // a strict zero cannot hold. The linger's own cost is pinned instead: the same 50 ticks with the body lingering allocate exactly what
-    // they allocate on the same server and cell once the body has left, no player is joined and one non-player
-    // entity stands where the body stood.
+    // a strict zero cannot hold. The linger's own cost is pinned instead: the same 50 ticks with the body lingering
+    // allocate exactly what they allocate on the same server and cell once the body has left, no player is joined
+    // and one non-player entity stands where the body stood.
     [Fact]
     public void TickWithOnlyALingeringBodyAllocatesNothing()
     {
@@ -342,10 +350,15 @@ public sealed class ShardedWorldServerLingerAllocationTests
         rig.Server.SpawnEntity(body.Position.X, body.Position.Z);
         for (int i = 0; i < 10; i++) rig.Server.Tick(dt);
         long baseline = Measure(() => { for (int i = 0; i < 50; i++) rig.Server.Tick(dt); });
+        long retryBaseline = Measure(() => { for (int i = 0; i < 50; i++) rig.Server.Tick(dt); });
 
-        // One retry, as AllocAssert allows, for a foreign gen-0 collection landing in a window.
-        Assert.True(lingering == baseline || retryLingering == baseline,
-            $"50 ticks with a lingering body allocated {lingering} then {retryLingering} bytes, against {baseline} with no player and one entity");
+        // Each side is measured twice and any equal pair passes, because one-time lazy work (a first use of a code
+        // path or a collection growing to its working size) can still land in either side's first window.
+        Assert.True(
+            lingering == baseline || lingering == retryBaseline
+                || retryLingering == baseline || retryLingering == retryBaseline,
+            $"50 ticks with a lingering body allocated {lingering} then {retryLingering} bytes, against {baseline} "
+                + $"then {retryBaseline} with no player and one entity");
     }
 
     private static long Measure(Action loop)

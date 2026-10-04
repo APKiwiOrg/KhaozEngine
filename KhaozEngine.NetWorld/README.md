@@ -51,10 +51,14 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   slot stays joined meanwhile, so it stays on `JoinedSlots` and the roster, counts against `MaxPlayers`, and a kick by
   account ends it at once. `IsLingering(slot)` answers for the game. `Disconnect`, kicks, bans, replication restarts
   and the rate limit kick never linger, nothing lingers after `BeginDrain`, and an answer of zero or less leaves at
-  once. The hook runs inside `Poll`, so keep it cheap and non-throwing. Null changes nothing. A reconnect by the same
-  account inside the linger reclaims the held slot (even under `RefuseNewer` or on a full server): the lingering body
-  leaves through the ordinary leave first, then a fresh body with a new net id is seated on the slot from that save,
-  where the old one stood. A tokenless guest cannot reclaim, so its linger runs out.
+  once. The hook runs inside `Poll`, so keep it cheap and non-throwing. Null changes nothing. A session that drops
+  in the `Poll` it joined never lingers: the hook can still be asked then, with the net id of the slot's previous
+  body, and its answer is discarded. A `PlayerLeaving` handler that throws at expiry propagates out of `Tick` after
+  `ServerTick` advances and before `OnBeforeTick`. Its own body still leaves, and the remaining expired slots leave
+  at the start of the next tick. A reconnect by the same account inside the linger reclaims the held slot (even
+  under `RefuseNewer` or on a full server): the lingering body leaves through the ordinary leave first, then a fresh
+  body with a new net id is seated on the slot from that save, where the old one stood. A tokenless guest cannot
+  reclaim, so its linger runs out.
 - **`WorldClient`** wraps `NetClient` + `ClientReplicationView` + `ClientPrediction` and exposes
   `EntityRenderState[]` (local player predicted + reconciled, remotes from replicated positions - smoothly
   interpolated between snapshots by default, so a remote glides instead of teleporting one ~tick-rate snapshot-step

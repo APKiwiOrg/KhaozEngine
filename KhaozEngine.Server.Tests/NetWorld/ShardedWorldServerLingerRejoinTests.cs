@@ -237,6 +237,32 @@ public class ShardedWorldServerLingerRejoinTests
     }
 
     [Fact]
+    public void ARecycledSlotWhoseNewcomerDropsInOnePollLeavesTheOldBodyOnce()
+    {
+        using var rig = new Rig();
+        int slot = rig.Join("a", out _);
+        Assert.Equal(0, slot);
+        for (int i = 0; i < 5; i++) rig.Step();
+        Assert.True(rig.Server.TryGetPlayerNetId(slot, out long oldNetId));
+        rig.Log.Clear();
+
+        // KickOlder recycles slot 0 for the newcomer, which drops in the same Poll. The hold is asked from the host's
+        // view, one drain behind, so it answers for the old body. Its kick still has to leave it exactly once.
+        rig.Connect("a", out INetTransport t2);
+        rig.Hub.DisconnectClient(t2);
+        rig.Server.Poll();
+
+        Assert.Equal(new[] { "leaving:0:a", "save:player:a", "joined:0:a", "leaving:0:a" }, rig.Log);
+        Assert.False(rig.BodyAlive(oldNetId));
+        Assert.False(rig.Server.IsLingering(slot));
+        Assert.Equal(0, rig.Server.PlayerCount);
+        Assert.Equal(0, rig.SlotsFor("a"));
+
+        // Nothing holds the slot any more.
+        Assert.Equal(0, rig.Join("b", out _));
+    }
+
+    [Fact]
     public void RefuseNewerDoesNotRefuseTheReturningAccount()
     {
         using var rig = new Rig(duplicates: DuplicateSessionPolicy.RefuseNewer);

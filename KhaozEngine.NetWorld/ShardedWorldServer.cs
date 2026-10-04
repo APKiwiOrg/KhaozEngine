@@ -290,7 +290,6 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     /// <see cref="WorldServer.BeginDrain"/>.</summary>
     public void BeginDrain(in ServerNotice notice, float graceSeconds)
     {
-        draining = true;   // no linger from here on
         BroadcastNotice(notice);
         drain.Begin(graceSeconds);
     }

@@ -135,6 +135,12 @@ public sealed partial class ShardedWorldServerConfig
     /// against <see cref="MaxPlayers"/>.</para>
     /// <para>Runs inside <see cref="ShardedWorldServer.Poll"/>, during the transport drain, before the host sees that
     /// poll's events. Keep it cheap and non-throwing. A throw propagates out of <c>Poll</c> and the slot is freed as if
-    /// the answer were zero, its leave arriving on the next <c>Poll</c>.</para></summary>
+    /// the answer were zero, its leave arriving on the next <c>Poll</c>. A session that drops in the <c>Poll</c> it
+    /// joined never lingers. The hook can still be asked then, with the net id of the slot's previous body, and its
+    /// answer is discarded.</para>
+    /// <para>A <see cref="ShardedWorldServer.PlayerLeaving"/> handler that throws at expiry propagates out of
+    /// <see cref="ShardedWorldServer.Tick"/> after <see cref="ShardedWorldServer.ServerTick"/> has advanced and before
+    /// <see cref="ShardedWorldServer.OnBeforeTick"/>. Its own body still leaves. The remaining expired slots leave at
+    /// the start of the next tick.</para></summary>
     public Func<int, long, int>? DisconnectLingerTicks { get; init; }
 }

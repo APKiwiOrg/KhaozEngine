@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using KhaozEngine.Netcode;
 using Xunit;
@@ -55,7 +56,9 @@ public class ClientPredictionHeadinglessAllocationTests
         }
 
         // A basis equal to the prediction that acknowledges every predicted command takes the steady non-snap branch.
+        Assert.True(p.PendingCommandCount > 0, "the warm-up leaves commands for the first Reconcile to acknowledge");
         bool snapped = false;
+        int maxPending = 0;
         float x = 0f;
         AllocAssert.NoPerCallAllocation("Predict, Reconcile, AdvancePresentation and RenderedState without InterpolateYaw", () =>
         {
@@ -64,11 +67,14 @@ public class ClientPredictionHeadinglessAllocationTests
                 int seq = p.Predict(command);
                 p.AdvancePresentation(Tick / 2f);
                 snapped |= p.Reconcile(++tick, p.PredictedState, seq).HardSnapApplied;
+                maxPending = Math.Max(maxPending, p.PendingCommandCount);
                 x = p.RenderedState.Position.X;
             }
         });
 
+        // Every Reconcile was applied and acknowledged its command, so none was ignored as stale.
         Assert.False(snapped);
+        Assert.Equal(0, maxPending);
         Assert.True(x > 0f);
     }
 }

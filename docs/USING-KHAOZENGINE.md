@@ -6870,9 +6870,11 @@ character off this controller's movement state (see "Animated characters" above)
 to a `PointerGesture` each (see "Tap or drag" in the input chapter) and every button splits into a tap and a drag.
 With either set, `OrbitButton` is ignored. `UiBlocked` is a field the game sets before each `Update`, and a press
 that begins while it is true never taps, and above a zero threshold never orbits either. `Update` advances each set
-gesture once with its `dt`, which times a gesture built on a `PointerTapTolerance`, so pass the real frame time. The
-camera orbits only while a gesture drags, and by one delta a frame, so each mouse movement turns it once however many
-buttons are held. A gesture that crosses its threshold with no orbit since its press began applies its `DragDelta`,
+gesture once with its `dt`, which times a gesture built on a `PointerTapTolerance`, so pass the real frame time.
+`UpdateInput(input, elapsedSeconds)` is `Update` without `AdvanceTarget` and `AdvanceBoom`, for a game that reads
+camera input early in its frame and advances those camera clocks itself after the subject moves. Pass it the real
+frame time too, since a zero freezes the tolerance's grace. The camera orbits only while a gesture drags, and by
+one delta a frame, so each mouse movement turns it once however many buttons are held. A gesture that crosses its threshold with no orbit since its press began applies its `DragDelta`,
 the replay of its pending travel, with `LookGesture` first when both cross together. Otherwise the frame's
 `MouseDeltaPoints` applies. Gesture replay and continuing motion are in window points before and during capture.
 Speed, invert and sign are as for the orbit button, and scroll zoom, target damping and boom recovery run unchanged.

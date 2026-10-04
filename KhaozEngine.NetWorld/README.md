@@ -1329,6 +1329,16 @@ same version-skew bar as 9.16.0.
   strict superset. An older client never advertises `DeltaCapable`, so a new server keeps serving it full snapshots;
   a new client against an older server never receives a `Delta` frame, so it keeps applying full snapshots and sends
   no acks. The 9.16.0 skip-unknown-extension + malformed-length guards are unchanged on the delta wire.
+- **Server tick.** **`WorldServer.ServerTick`** / **`ShardedWorldServer.ServerTick`** (`long`) counts `Tick` calls.
+  It is 0 before the first call and increments as the first statement of `Tick`, before `OnBeforeTick`, whether or
+  not a cell stepped, so a host reads it in its tick hooks instead of keeping its own frame count. It is always
+  counted and changes nothing on the wire by itself. A client that sends the
+  **`MoveProtocol.ClientControlKind.ServerTickCapable`** (4) hello after `DeltaCapable` is served
+  **`ServerFrameKind.TickedSnapshot`** (7) or **`TickedDelta`** (8) instead: the same body behind
+  `[serverTick:long][localNetId:long][ackSeq:int]` (**`MoveProtocol.EncodeTickedSnapshotFrame`** /
+  **`TryDecodeTickedSnapshotFrame`**), where the tick is the serving call's `ServerTick`. An older server ignores
+  the unknown control and keeps serving plain frames, and an older client never asks. A slot forgets the hello when
+  its player leaves, and a format 2 session's frames stay unticked.
 - **Per-viewer visibility.** **`WorldServerConfig.EntityVisibleToSlot`** /
   **`ShardedWorldServerConfig.EntityVisibleToSlot`** (`Func<int, long, bool>?`, default null) hides an in-interest
   entity from chosen viewers. It takes the viewer's session slot and the candidate's net id and runs between the

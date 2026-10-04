@@ -418,6 +418,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             if (control == MoveProtocol.ClientControlKind.SelfRescue) HandleSelfRescue(slot);
             else if (control == MoveProtocol.ClientControlKind.DeltaCapable && deltaReplicator is not null) deltaCapableSlots.Add(slot);
             else if (control == MoveProtocol.ClientControlKind.RebuildDeltaCapable) replication.OnCapability(slot);
+            else if (control == MoveProtocol.ClientControlKind.ServerTickCapable) tickedSlots.Add(slot);
             return;
         }
         // Game message: an opaque game-defined frame (attack, interaction, chat, …). Demuxed BEFORE the move (it can
@@ -482,6 +483,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     /// <summary>Steps one authoritative server frame across every cell, then serves each client its home-cell AoI.</summary>
     public void Tick(float dt)
     {
+        ServerTick++;
         OnBeforeTick?.Invoke(dt);   // consumer NPC/enemy brains run before movement + serving
         admin.Drain(ApplyAdminCommand);
         // A reused buffer, but still a COPY of the keys: the loops below can mutate netIdBySlot (a kick or a
@@ -591,7 +593,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                 body = host.SnapshotForClient(slot, world, interestScratch, serveEpoch);
                 kind = MoveProtocol.ServerFrameKind.Snapshot;
             }
-            byte[] frame = MoveProtocol.EncodeSnapshotFrame(netId, lastAckBySlot[slot], body);
+            (kind, byte[] frame) = ServedFrame(slot, kind, netId, lastAckBySlot[slot], body);
             byte[] envelope = MoveProtocol.EncodeServerFrame(kind, frame);
             net.SendTo(slot, envelope, NetChannelReliability.ReliableOrdered);
         }

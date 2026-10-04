@@ -8,7 +8,7 @@ using KhaozEngine.Replication;
 namespace KhaozEngine.NetWorld;
 
 /// <summary>Shared wire encodings so a <see cref="WorldServer"/> and its <see cref="WorldClient"/> agree.</summary>
-public static class MoveProtocol
+public static partial class MoveProtocol
 {
     /// <summary>
     /// The engine wire-format generation. Bumped when a wire layout or command interpretation changes incompatibly.
@@ -365,6 +365,13 @@ public static class MoveProtocol
         /// on. A format 2 server answers with a <see cref="ServerFrameKind.ReplicationMode"/> offer. An older server
         /// ignores the unknown kind and the session stays on reliable deltas.</summary>
         RebuildDeltaCapable = 3,
+
+        /// <summary>Ask for the server tick on every frame (<see cref="ServerFrameKind.TickedSnapshot"/> and
+        /// <see cref="ServerFrameKind.TickedDelta"/>). Sent once on join after <see cref="DeltaCapable"/>. A server that
+        /// predates the feature decodes it as a control with an unknown kind and ignores it, so the hello is harmless
+        /// across version skew and the client keeps receiving plain frames. A format 2 session's frames stay
+        /// unticked.</summary>
+        ServerTickCapable = 4,
     }
 
     // Control frame: [marker:byte][kind:byte] = 2 bytes. The marker is a fixed sentinel so a random 2-byte packet is
@@ -632,11 +639,15 @@ public static class MoveProtocol
     /// <see cref="EncodeGameMessageBody"/>) an older client's demux simply ignores as an unknown kind (its
     /// <c>OnServerFrame</c> switch has no case for it), so it is version-skew-safe downstream. <see cref="RebuildDelta"/>,
     /// <see cref="RebuildKeyframeChunk"/> and <see cref="ReplicationMode"/> are format 2 frames, sent only after
-    /// <see cref="ClientControlKind.RebuildDeltaCapable"/> (see <c>RebuildProtocol</c>).</summary>
+    /// <see cref="ClientControlKind.RebuildDeltaCapable"/> (see <c>RebuildProtocol</c>). <see cref="TickedSnapshot"/> and
+    /// <see cref="TickedDelta"/> carry the same bodies as <see cref="Snapshot"/> and <see cref="Delta"/> behind the
+    /// widened header of <see cref="EncodeTickedSnapshotFrame"/>, sent only after
+    /// <see cref="ClientControlKind.ServerTickCapable"/>.</summary>
     public enum ServerFrameKind : byte
     {
         Snapshot = 0, Notice = 1, Delta = 2, GameMessage = 3,
         RebuildDelta = 4, RebuildKeyframeChunk = 5, ReplicationMode = 6,
+        TickedSnapshot = 7, TickedDelta = 8,
     }
 
     /// <summary>Wraps a server-to-client payload with its 1-byte kind tag so snapshots and

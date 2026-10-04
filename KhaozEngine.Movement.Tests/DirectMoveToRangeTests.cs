@@ -316,6 +316,17 @@ public class DirectMoveToRangeTests
         var ledge = new GroundMoveContext((x, _) => x < 1f ? 0f : -1f);
         var drop = new DirectMoveToRange(Options with { MaxDropMetres = 1.5f });
         MoveState brink = MoveToRangeTests.Body(0.95f);
+        // Water far below a flat floor, so the landed-feet swim check in AllowsStep runs every tick and admits.
+        // The step samples at its starting feet (x 0), so a sample ahead of them can only come from that check.
+        int landedSamples = 0;
+        Func<float, float, float, MovementMedium> deep = (x, _, feetY) =>
+        {
+            if (x > 0f) landedSamples++;
+            return new MovementMedium(-10f, feetY < -10f);
+        };
+        var wet = new GroundMoveContext((_, _) => 0f, medium: deep);
+        var shore = new DirectMoveToRange(Options);
+        MoveState dryStart = MoveToRangeTests.Body();
         int tick = 0, following = 0;
         void Steady(int count)
         {
@@ -329,12 +340,17 @@ public class DirectMoveToRangeTests
                 RangeSteering dropped = drop.Tick(brink, Tuning, Far, 0.5f, false, false, Dt, ledge);
                 if (dropped.Status == RangeMoveStatus.Following && dropped.WorldDirection.X > 0f) following++;
                 drop.Reset();
+                RangeSteering waded = shore.Tick(dryStart, Tuning, Far, 0.5f, false, false, Dt, wet);
+                if (waded.Status == RangeMoveStatus.Following && waded.WorldDirection.X > 0f) following++;
+                shore.Reset();
             }
         }
         Steady(60);
 
+        int warmedSamples = landedSamples;
         AllocAssert.NoPerCallAllocation("steady DirectMoveToRange.Tick", () => Steady(60));
-        Assert.Equal(3 * tick, following);
+        Assert.Equal(4 * tick, following);
+        Assert.True(landedSamples > warmedSamples);
     }
 
     [Fact]

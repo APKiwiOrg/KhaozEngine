@@ -132,6 +132,7 @@ public class DirectMoveToRangeDropTests
         Assert.Equal(RangeMoveStatus.Blocked, walk.Last);
         Assert.Equal(0, walk.SuspendedTicks);
         Assert.False(walk.Body.Swimming);
+        Assert.True(walk.Body.Position.X > 2f);
         Assert.True(0.5f - (walk.Body.Position.Y - 0.75f) < 0.975f);
     }
 

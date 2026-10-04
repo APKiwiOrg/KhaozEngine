@@ -3,8 +3,8 @@
 Status: approved scope, design by orchestrator ruling. The owner approved the first three items on 2026-10-04,
 engine-first, and later the same day added the fourth: the owner chose engine-first for the locomotion blend and asked
 for the diagonal glide to be fixed. The API shapes below are technical calls, and root answered the open ones on
-2026-10-04 (below). Implemented through the [plan](../superpowers/plans/2026-10-04-grimhollow-p6-engine-round.md).
-The round rides the staged 20.24.0.
+2026-10-04 (below). Implemented through the [plan](../superpowers/plans/2026-10-04-grimhollow-p6-engine-round.md),
+staged for 20.24.0 with no release. The plan's Outcome records every ruling.
 
 Consumers: Grimhollow P6 (`feature/p6-plan`, plan `2026-10-04-continuous-combat-p6.md`, questions Q3 and Q4, Tasks 9,
 10 and 13), the routed walk-up (`feature/routed-walkup-plan`, plan `2026-10-04-routed-walkup.md`, Q1 and Task 5) and

@@ -13,6 +13,49 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Older in-flight completion does not complete a newer pending request. Continuations run asynchronously
   outside queue locks. Flush and disposal wait for outstanding supersession completions too. Void save APIs,
   backup rotation, retry ordering and `WriteFailed` remain available.
+- `RouteApproachOptions.Stall` (`RouteStallOptions(windowTicks, travelMetres)`, 1 to 65,535 ticks and finite
+  positive metres, default null with no engine default) lets `MoveToRange` give up on a routed body that stops
+  making ground. Every tick that returns `Following` or `WaitingForPath` counts, except the hold for a zero travel
+  bound, so a refused step, a refused straightened step and a partial route waiting on cooldown all count.
+  `Suspended`, `InRange`, `Unreachable` and `UnsupportedTransition` count toward nothing. A window of `N` ticks
+  spans `N` intervals between `N + 1` counted samples, so when the net horizontal feet displacement across the last
+  window is under `TravelMetres`, the `(N + 1)`th counted tick returns `Blocked` with zero input (the 16th for 15).
+  The latch holds until `InRange`, `Reset` or a change of target shape, range or capsule. A replan, a straightening
+  fallback or target translation does not clear it, and a raw leg the step guard refuses (#1278) now ends in
+  `Blocked`. With `Stall` null nothing changes and `MoveToRange` never returns `Blocked`. `DirectMoveToRange` keeps
+  its progress window unchanged on the shared ring.
+- `WorldServer.ServerTick` and `ShardedWorldServer.ServerTick` (`long`) count `Tick` calls, advancing as the first
+  statement of `Tick` before `OnBeforeTick`, and are always on. A client with `WorldClientConfig.ReceiveServerTick`
+  set sends the `ServerTickCapable` hello (control kind 4) on every join after `DeltaCapable`. A server that knows
+  it serves that slot `TickedSnapshot` (frame kind 7) and `TickedDelta` (8), the plain frames with the serving tick
+  ahead of the header, 8 bytes more per frame. An older server ignores the hello and an older client never asks, so
+  the default wire is unchanged. `WorldClient.LatestServerTick` is the newest applied frame's tick, and
+  `WorldClient.RemoteRenderTick` is the fractional server tick the remotes are drawn at, bracketed at the remote
+  render time exactly as the remote samples are. Both read `-1` before the first ticked frame, against an older
+  server and from the start of each reconnect attempt. Read `RemoteRenderTick` for anything drawn with the remotes
+  instead of deriving it from `LatestServerTick`. Format 2 frames carry no tick, so `ReceiveServerTick` with
+  `RequestUnreliableDeltaReplication` throws `ArgumentException` at construction.
+- `ShardedWorldServerConfig.DisconnectLingerTicks` (`Func<int, long, int>?`, slot and net id to server ticks,
+  default null) keeps a dropped player's body in the world for the ticks the game grants, so a player cannot pull
+  the plug to escape a fight. It is asked only when the transport drops a joined slot. `Disconnect`, kicks, bans,
+  replication restarts, the rate limit kick and anything after `BeginDrain` never linger, a session that drops in
+  the `Poll` it joined never lingers, and an answer of zero or less leaves at once. The new
+  `NetServer.HoldSlotOnDisconnect` and `NetServer.ReleaseHeldSlot` keep the slot allocated: it stays joined in
+  every server table and counts against `MaxPlayers`, and the body steps on the neutral command and is served to
+  everyone whose interest holds it. At expiry it leaves through the ordinary leave (one `PlayerLeaving`, the save,
+  the despawn, then the slot is released) at the start of a tick, before `OnBeforeTick`. The same account
+  reconnecting reclaims its held slot ahead of the duplicate session check, even under `RefuseNewer` or on a full
+  server: the lingering body leaves and saves first, then a fresh body joins on that slot from the save. A
+  tokenless guest cannot reclaim, so its linger runs out. `ShardedWorldServer.IsLingering(slot)` answers for game
+  and admin code. `NetServer` never asks the hold about a connection it closed itself, and a throwing hold still
+  frees the slot and enqueues `Left`.
+- Behaviour change: `DirectionalLocomotionBlend` now keeps a planted foot locked on diagonals. Each direction
+  family's share is its body-frame travel component over its stride, normalised, and the shared phase advances by
+  `(|x| + |y|)` over the weighted stride, so each family's blended foot travels exactly its component. A 45 degree
+  walk with forward stride 1.2 m and strafe stride 0.8 m now weights forward 0.4 and strafe 0.6 instead of half and
+  half. Diagonals step faster than either cardinal: the phase rate is `sum(|c| / s)`, the unique foot-locked
+  solution with one shared phase, so that walk loops 1.77 times as fast as the forward walk and 1.18 times as fast
+  as the strafe at the same speed. Cardinals, speed brackets, easing, `TravelWeight` and the API are unchanged.
 
 ## 20.23.0
 

@@ -137,6 +137,9 @@ Angular linear weights between the two adjacent cardinals: at angle `a` into a 9
 gets `a / 90`, so a 45 degree diagonal is exactly half and half with no tie rule. Cartesian weights bend the midrange.
 Gradient-band blending serves arbitrary sample sets, which four cardinals do not need.
 
+Superseded in 20.24.0: D9 of the [P6 engine round design](GRIMHOLLOW-P6-ENGINE-ROUND-DESIGN-2026-10-04.md) replaces
+this share and the D8 phase rate with foot-locked shares, so a blended diagonal is no longer half and half.
+
 ### D8. Phase synchronisation
 
 One shared gait phase per blend, advanced by `speed x dt / sum(weight x stride)`, and each clip sampled at

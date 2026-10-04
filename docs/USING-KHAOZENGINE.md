@@ -518,8 +518,9 @@ Set `WorldClientConfig.ReceiveServerTick` to read the server's tick on the clien
 the newest applied frame's `ServerTick`, and `WorldClient.RemoteRenderTick` is the fractional server tick the remotes
 are drawn at, bracketed at the remote render time exactly as the remote samples are. Both read `-1` while unknown,
 including against an older server and from the start of a reconnect attempt. Polling once per tick and then
-presenting one tick of time reads `LatestServerTick - InterpolationDelayTicks + 1`. Format 2 replication carries no
-tick, so `ReceiveServerTick` with `RequestUnreliableDeltaReplication` throws at construction.
+presenting one tick of time reads `LatestServerTick - InterpolationDelayTicks + 1` for a remote with continuous history
+after the first `InterpolationDelayTicks` of a session, so read `RemoteRenderTick` rather than computing it. Format 2
+replication carries no tick, so `ReceiveServerTick` with `RequestUnreliableDeltaReplication` throws at construction.
 
 **Runtime window/taskbar icon.** Set `WindowIconPath` to a PNG (the simple case) or `WindowIcons` to an explicit
 list of decoded `ImageRgba` (16/32/48 px so GLFW picks per DPI; `WindowIcons` wins over `WindowIconPath`). `GameApp`

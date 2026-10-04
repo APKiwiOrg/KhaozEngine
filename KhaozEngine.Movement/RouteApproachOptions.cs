@@ -35,4 +35,19 @@ public sealed record RouteApproachOptions
     /// <see cref="RangeMoveStatus.Following"/> for that tick and the route is replanned once without straightening.
     /// The plan after it straightens again. Default false.</summary>
     public bool StraightenRoutes { get; init; }
+
+    /// <summary>Latches <see cref="RangeMoveStatus.Blocked"/> when a routed body stops making ground. Every tick that
+    /// returns <see cref="RangeMoveStatus.Following"/> or <see cref="RangeMoveStatus.WaitingForPath"/> is counted,
+    /// except the hold for a zero travel bound, so a refused step, a refused straightened step, a zero offset waypoint
+    /// and an exhausted partial route waiting on its cooldown all count. Suspended, InRange, Unreachable and
+    /// UnsupportedTransition ticks count toward nothing. When net horizontal feet displacement across the last
+    /// <see cref="RouteStallOptions.WindowTicks"/> counted intervals is under <see cref="RouteStallOptions.TravelMetres"/>,
+    /// that tick returns Blocked with zero input, and so does every tick after it until InRange,
+    /// <see cref="MoveToRange.Reset"/> or a change of target shape, range or capsule. InRange clears the window. A
+    /// replan, a straightening fallback or a target translation does not. A body rooted for good never latches, so
+    /// ending that hold stays the caller's rule. A body whose travel bound per tick is under <c>TravelMetres /
+    /// WindowTicks</c> latches while it walks. With <see cref="StraightenRoutes"/>, a refused straightened step is one
+    /// counted tick of zero travel and the raw replan moves, so the fallback alone never latches, while a raw step the
+    /// guard keeps refusing latches within the window. Default null, which never returns Blocked.</summary>
+    public RouteStallOptions? Stall { get; init; }
 }

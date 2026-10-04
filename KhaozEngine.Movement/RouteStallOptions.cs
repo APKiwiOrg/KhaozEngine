@@ -1,6 +1,6 @@
 namespace KhaozEngine.Movement;
 
-/// <summary>Stall window for <see cref="MoveToRange"/>, opted in by <see cref="RouteApproachOptions"/>. A window of N
+/// <summary>Stall window for <see cref="MoveToRange"/>, opted in by <see cref="RouteApproachOptions.Stall"/>. A window of N
 /// ticks spans N intervals between N + 1 counted samples and is first eligible on the (N + 1)th counted tick. A window
 /// holds at most 65,535 ticks. There is no engine default.</summary>
 public sealed record RouteStallOptions

@@ -23,8 +23,8 @@ public class MoveToRangeStraightenTests
     static float Bound => Tuning.WalkSpeed * Dt;
 
     // The staircase fixture of MoveToRangeCornerTickTests: cell (2, 2) to cell (26, 14) at 146 m coordinates.
-    static readonly Vector2 StairStart = new(146.625f, 146.625f);
-    static readonly Vector2 StairEnd = new(152.625f, 149.625f);
+    internal static readonly Vector2 StairStart = new(146.625f, 146.625f);
+    internal static readonly Vector2 StairEnd = new(152.625f, 149.625f);
 
     [Fact]
     public void DefaultOptionsLeaveCommandsUnchanged()
@@ -175,8 +175,9 @@ public class MoveToRangeStraightenTests
 
     // Walks the staircase fixture to arrival under a guard that, once armed after the first plan, refuses a segment
     // with any sampled point in a cell no raw plan's polyline crosses. The straight line soon leaves the first raw
-    // route.
-    static Driver FallBackDrive(out SeenCells seen)
+    // route. A caller in another class passes its own context, since contexts refuse overlapping steps.
+    internal static Driver FallBackDrive(out SeenCells seen, RouteApproachOptions? options = null,
+        GroundMoveContext? context = null)
     {
         NavSpace space = Surfaces(146f, 146f);
         var cells = new SeenCells(146f);
@@ -187,7 +188,7 @@ public class MoveToRangeStraightenTests
             bool allowed = guard.Allows(from, to);
             if (!allowed) cells.Refusals++;
             return allowed;
-        }, Straighten, StairStart);
+        }, options ?? Straighten, StairStart, context);
         cells.Recorder = drive.Recorder;
         drive.Tick(StairEnd);
         Assert.NotNull(drive.Mover.Straightener!.LastStraightened);
@@ -247,10 +248,14 @@ public class MoveToRangeStraightenTests
 
     /// <summary>Drives one body through Tick and NpcGroundMovement.Step. Bodies[i] is the body a tick i saw, and
     /// PlanCounts[i] the raw plans recorded after it.</summary>
-    sealed class Driver
+    internal sealed class Driver
     {
-        public Driver(NavSpace space, Func<Vector3, Vector3, bool> guard, RouteApproachOptions options, Vector2 start)
+        private readonly GroundMoveContext _context;
+
+        public Driver(NavSpace space, Func<Vector3, Vector3, bool> guard, RouteApproachOptions options, Vector2 start,
+            GroundMoveContext? context = null)
         {
+            _context = context ?? Flat;
             Recorder = new RecordingPlanner(new GridPathPlanner(space));
             Mover = new MoveToRange(Recorder, space, guard, null, options);
             Body = MoveToRangeTests.Body(start.X, start.Y);
@@ -266,11 +271,11 @@ public class MoveToRangeStraightenTests
 
         public RangeSteering Tick(Vector2 end)
         {
-            RangeSteering steering = Mover.Tick(Body, Tuning, Point(end), 0f, false, Dt, Flat);
+            RangeSteering steering = Mover.Tick(Body, Tuning, Point(end), 0f, false, Dt, _context);
             Steering.Add(steering);
             PlanCounts.Add(Recorder.Plans.Count);
             if (steering.Status == RangeMoveStatus.InRange) return steering;
-            Body = NpcGroundMovement.Step(Body, steering, false, Dt, Tuning, Flat);
+            Body = NpcGroundMovement.Step(Body, steering, false, Dt, Tuning, _context);
             Bodies.Add(Body);
             return steering;
         }
@@ -296,7 +301,7 @@ public class MoveToRangeStraightenTests
 
     /// <summary>Cells crossed by the polyline of every recorded raw plan, from its query start through each
     /// waypoint.</summary>
-    sealed class SeenCells(float origin)
+    internal sealed class SeenCells(float origin)
     {
         private readonly HashSet<(int, int)> _cells = new();
         private int _synced;

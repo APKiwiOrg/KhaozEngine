@@ -486,6 +486,14 @@ public sealed record RouteApproachOptions
     public bool CarryThroughStraightRuns { get; init; } // default false
     public bool SteerWhileSwimming { get; init; }       // default false
     public bool StraightenRoutes { get; init; }         // default false
+    public RouteStallOptions? Stall { get; init; }      // default null
+}
+
+public sealed record RouteStallOptions
+{
+    public RouteStallOptions(int windowTicks, float travelMetres);
+    public int WindowTicks { get; }
+    public float TravelMetres { get; }
 }
 
 public static class NpcGroundMovement
@@ -502,8 +510,9 @@ public static class PlayerPathMovement
 }
 ```
 
-`MoveToRange` never returns `Blocked`. That status belongs to the route-free `DirectMoveToRange` described
-below. Both adapters treat every status other than `Following` as idle.
+`MoveToRange` returns `Blocked` only under `RouteApproachOptions.Stall`, described below. The route-free
+`DirectMoveToRange` described below always runs its own stall window. Both adapters treat every status other than
+`Following` as idle.
 
 `MoveToRange` copies the supplied `PathFollowConfig` and clamps `AcceptRadius` to at most `0.00001f`,
 including when the supplied value is zero. Its near-ring preflight resolves copies of `MoveState` through the
@@ -564,6 +573,31 @@ an `Unreachable` route passes through unchanged:
 
 The option combines with `CarryThroughStraightRuns` and `SteerWhileSwimming`. Player routed walk-up gets it through the
 same driver and `PlayerPathMovement`.
+
+`Stall` latches `Blocked` when a routed body stops making ground. `RouteStallOptions(windowTicks, travelMetres)` takes
+a window of 1 to 65,535 ticks and a finite positive travel, validated with the same messages as
+`DirectApproachOptions`, and has no engine default. With the option:
+
+- Every tick that returns `Following` or `WaitingForPath` is counted, except the hold for a zero travel bound. A
+  refused step, a refused straightened step, a zero offset waypoint and an exhausted partial route waiting on its
+  cooldown all count. `Suspended`, `InRange`, `Unreachable` and `UnsupportedTransition` count toward nothing, and the
+  last two return as without the option.
+- A window of `N` ticks spans `N` intervals between `N + 1` counted samples. When net horizontal feet displacement
+  across the last window is under `TravelMetres`, that tick returns `Blocked` with zero input, so a window of 15
+  latches on the 16th counted tick.
+- A latched `Blocked` holds until `InRange`, `Reset` or a change of target shape, range or capsule, which unlatches on
+  the tick it happens. `InRange` also clears the window. A replan, a straightening fallback or a target translation
+  does not.
+- A body rooted for good, with a zero travel bound, never latches, so ending that hold stays the game's rule, as with
+  `DirectMoveToRange`.
+- A body whose travel bound per tick is under `TravelMetres / WindowTicks` latches while it walks, so pick the travel
+  against the slowest pace the body walks at.
+- With `StraightenRoutes`, a refused straightened step is one counted tick of zero travel and the raw replan moves, so
+  the fallback alone never latches. A raw step the guard keeps refusing latches within the window instead of holding
+  `Following`.
+- The ring holds `WindowTicks + 1` samples, allocated once by the constructor, and a warmed tick allocates nothing.
+
+Both adapters treat `Blocked` as idle, so a caller maps it to its own give-up rule.
 
 A body crossing between wading and swimming can hold `Suspended` for a tick while the core lands it. The aquatic
 profile's own limits, including the deepest-contact clearance limit and the bank edge budget, are described under

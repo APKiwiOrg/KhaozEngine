@@ -51,6 +51,7 @@ public sealed partial class MoveToRange
         _allowsSegment = allowsSegment ?? throw new ArgumentNullException(nameof(allowsSegment));
         _options = options ?? throw new ArgumentNullException(nameof(options));
         if (options.StraightenRoutes) _straightener = new RouteStraightener(planner, space, allowsSegment);
+        if (options.Stall is { } stall) _stallRing = new RangeProgressRing(stall.WindowTicks + 1);
         _follower = new PathFollower(_straightener ?? planner,
             StrictConfig(follow ?? PathFollowConfig.Default, options.CarryThroughStraightRuns), space);
         _contains = Contains;
@@ -61,7 +62,8 @@ public sealed partial class MoveToRange
     /// Input validation and current reach evaluation run before status selection. Suspended takes precedence over
     /// InRange for airborne or committed bodies, and for a settling swimmer under
     /// <see cref="RouteApproachOptions.SteerWhileSwimming"/>. InRange witnesses the current supplied capsule, never a
-    /// waypoint or a predicted destination. Range uses no tolerance.</summary>
+    /// waypoint or a predicted destination. Range uses no tolerance. Blocked comes only from
+    /// <see cref="RouteApproachOptions.Stall"/>.</summary>
     public RangeSteering Tick(in MoveState body, in MoveTuning tuning, in ReachTarget target,
         float range, bool run, float dt, GroundMoveContext context)
     {
@@ -75,15 +77,20 @@ public sealed partial class MoveToRange
         bool swims = _options.SteerWhileSwimming && body.Swimming;
         if ((!body.Grounded && !swims) || body.Commitment.IsActive) return Hold(RangeMoveStatus.Suspended);
         if (swims && Settling(body, tuning, context)) return Hold(RangeMoveStatus.Suspended);
-        if (within) return Hold(RangeMoveStatus.InRange);
+        if (within)
+        {
+            ClearStall();
+            return Hold(RangeMoveStatus.InRange);
+        }
 
         NavGoalRegion goal = Goal(tuning, target, range);
+        if (_stalled) return Hold(RangeMoveStatus.Blocked);
         Vector3 feet = Feet(body, tuning);
         PathFollowOutput route = _follower.Tick(feet, goal, tuning.CapsuleRadius, dt);
         if (route.State == PathFollowState.Hopping) return Hold(RangeMoveStatus.UnsupportedTransition);
-        if (route.State == PathFollowState.WaitingForPath) return Hold(RangeMoveStatus.WaitingForPath);
+        if (route.State == PathFollowState.WaitingForPath) return Counted(body, Hold(RangeMoveStatus.WaitingForPath));
         if (route.State == PathFollowState.Unreachable) return Hold(RangeMoveStatus.Unreachable);
-        if (route.State != PathFollowState.Following) return Hold(RangeMoveStatus.Following);
+        if (route.State != PathFollowState.Following) return Counted(body, Hold(RangeMoveStatus.Following));
 
         float bound = _options.SteerWhileSwimming
             ? SwimPace.Bound(body, tuning, run, dt, context)
@@ -91,29 +98,30 @@ public sealed partial class MoveToRange
         if (bound == 0f) return Hold(RangeMoveStatus.Following);
         if (_follower.ActivePath?.Status == NavPathStatus.Complete &&
             TryApproach(body, tuning, target, range, run, dt, context, bound, out Vector2 approach))
-            return new RangeSteering(approach, RangeMoveStatus.Following);
+            return Counted(body, new RangeSteering(approach, RangeMoveStatus.Following));
 
         if (!TryCarry(body, tuning, run, dt, context, route.ActiveWaypoint, bound, out Vector2 command))
         {
             Vector2 offset = route.ActiveWaypoint - new Vector2(body.Position.X, body.Position.Z);
             command = BoundedDirection(offset, bound);
-            if (command == Vector2.Zero) return Hold(RangeMoveStatus.Following);
+            if (command == Vector2.Zero) return Counted(body, Hold(RangeMoveStatus.Following));
         }
         MoveState predicted = context.Step(body, command, run, dt, tuning);
         if (!AllowsStep(body, predicted, tuning))
         {
             FallBackToRawRoute();
-            return Hold(RangeMoveStatus.Following);
+            return Counted(body, Hold(RangeMoveStatus.Following));
         }
         command = StopAtRange(body, tuning, target, range, run, dt, context, command, predicted, _admits);
-        return new RangeSteering(command, RangeMoveStatus.Following);
+        return Counted(body, new RangeSteering(command, RangeMoveStatus.Following));
     }
 
-    /// <summary>Clears the route, shape snapshot and replan cooldown.</summary>
+    /// <summary>Clears the route, shape snapshot, replan cooldown, stall window and latched block.</summary>
     public void Reset()
     {
         _follower.Reset();
         _goal = null;
+        ClearStall();
     }
 
     private static RangeSteering Hold(RangeMoveStatus status) => new(Vector2.Zero, status);

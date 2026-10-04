@@ -7972,8 +7972,9 @@ half-height, and a capsule target uses its own half-height. The tick validates a
 it is suspended too unless the driver opts into swim steering. `Following` is the only status that can carry a
 nonzero `WorldDirection`.
 `WaitingForPath`, `Unreachable` and `UnsupportedTransition` hold with zero input. A `Hop` waypoint is an
-unsupported transition for this ground driver. `MoveToRange` never returns `Blocked`, which belongs to the
-route-free `DirectMoveToRange` below. Both adapters treat every status other than `Following` as idle.
+unsupported transition for this ground driver. `MoveToRange` returns `Blocked` only under the opt-in
+`RouteApproachOptions.Stall` below, and the route-free `DirectMoveToRange` below always runs its own stall window.
+Both adapters treat every status other than `Following` as idle.
 
 The exact driver surface is:
 
@@ -8004,6 +8005,14 @@ public sealed record RouteApproachOptions
     public bool CarryThroughStraightRuns { get; init; } // default false
     public bool SteerWhileSwimming { get; init; }       // default false
     public bool StraightenRoutes { get; init; }         // default false
+    public RouteStallOptions? Stall { get; init; }      // default null
+}
+
+public sealed record RouteStallOptions
+{
+    public RouteStallOptions(int windowTicks, float travelMetres);
+    public int WindowTicks { get; }
+    public float TravelMetres { get; }
 }
 
 public static class NpcGroundMovement
@@ -8039,6 +8048,17 @@ kept. It needs a space with surface heights, and a route over heightless cells (
 raw. Beside walls and fences the side lines keep the staircase. When the guard refuses a step on a straightened
 segment, the body holds `Following` for that tick and the next plan is the raw cell route, then straightening resumes.
 Player routed walk-up gets it through the same driver.
+
+`Stall` latches `Blocked` when a routed body stops making ground. `RouteStallOptions(windowTicks, travelMetres)` takes
+1 to 65,535 ticks and a finite positive travel, validated as `DirectApproachOptions` is, with no engine default. Every
+tick that returns `Following` or `WaitingForPath` is counted except the hold for a zero travel bound, so refused steps,
+zero offset waypoints and a partial route waiting on its cooldown count, while `Suspended`, `InRange`, `Unreachable` and
+`UnsupportedTransition` do not. When net horizontal feet displacement across the last `WindowTicks` counted intervals
+is under `TravelMetres`, that tick returns `Blocked` with zero input (the 16th counted tick for 15). The latch holds
+until `InRange`, `Reset` or a change of target shape, range or capsule. `InRange` also clears the window, and a replan,
+a straightening fallback or a target translation does not. A body rooted for good never latches, and a body whose
+bound per tick is under `TravelMetres / WindowTicks` latches while it walks. Under `StraightenRoutes` the fallback alone
+never latches, while a raw step the guard keeps refusing latches within the window. A warmed tick allocates nothing.
 
 To steer an aquatic NPC, bake with `SampleWater` and an aquatic profile, and opt the driver in:
 

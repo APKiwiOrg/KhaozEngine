@@ -5,6 +5,59 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.23.0
+
+- `RouteApproachOptions.StraightenRoutes`, default off, walks a `MoveToRange` body straight across open ground
+  instead of along the grid's 45 and 90 degree staircase. Each `Complete` or `Partial` route is straightened once
+  when it is planned. From the feet, the farthest `Walk` waypoint whose centre line and both side lines, just under
+  half a cell either side, pass `AllowsSegment` is kept and the waypoints before it are dropped. Waypoints are only
+  dropped, never moved, so every kept bend is a cell centre the body still lands on, and the final waypoint and both
+  ends of every hop and layer change stay. A route over heightless cells stays raw, and the side lines keep the
+  staircase beside walls and fences. When the guard refuses a step on a straightened segment, the body holds
+  `Following` with zero input for that tick and the route is replanned once on the raw cell route. A plan allocates
+  one waypoint list and steady ticks allocate nothing. The option combines with `CarryThroughStraightRuns` and
+  `SteerWhileSwimming`, and player routed walk-up gets it through `PlayerPathMovement`. With the default, routes,
+  commands and captures are unchanged.
+- `PredictionSettings.InterpolateYaw`, default false, eases the locally predicted heading between ticks beside
+  position and height, so a keyboard turn no longer steps at the tick rate on a fast display. A state opts in through
+  three default members on `IPredictedState<TSelf>`: `HasYaw` (default false), `Yaw` in `[-pi, pi)` and the
+  three-argument `WithRenderState(position, vertical, yaw)`. `RenderedState` eases from the previous tick's heading
+  the short way round, stays in `[-pi, pi)` and lands on the predicted heading exactly at the end of the tick, at up
+  to one tick of heading latency, the same latency position has. `Reset`, `Reseed`, a hard snap and a teleport cut it
+  with the position, and a heading correction is not smoothed by an offset. `PlayerMoveState` opts in, so with
+  `WorldClientConfig.Prediction` set this way `LocalRenderState.Move.FacingYaw` and the local
+  `EntityRenderState.FacingYaw` ease. `RenderedState` still allocates nothing. Remote headings still arrive one per
+  snapshot, and per-field remote interpolation is [#1280](https://github.com/APKiwiOrg/KhaozEngine/issues/1280).
+- Directional gait blend, used only when a consumer builds one. `DirectionalLocomotionBlend(gaits, blendSeconds =
+  0.15f, movingSpeed = 0.05f)` over a `DirectionalGaitSet` of `GaitClip` values turns a body-frame velocity into
+  weighted `GaitSample` values from four direction families, so a diagonal plays half forward walk and half strafe
+  instead of one clip skating sideways. The angle splits linearly between adjacent cardinals and the speed between
+  the two family members that bracket it. Each weight eases over `blendSeconds`, so a reversal crossfades, and one
+  shared phase advances by distance over the weighted stride, so every blended foot plant stays together. Below
+  `movingSpeed` the phase holds and `TravelWeight` eases to zero. `BodyFrame(worldVelocity, facingYaw)` converts a
+  world velocity, which should be the replicated or simulated one. `AnimationSampler.SampleBlendInto(skel, samples,
+  into, scratch)` samples a weighted set of `ClipSample(Clip, Time, Weight)` values into one local pose by a running
+  normalised lerp, and one positive-weight sample is bit-identical to `SampleInto`. `Advance` and `SampleBlendInto`
+  allocate nothing.
+- `PointerTapTolerance(DistancePoints, GraceSeconds, GraceDistancePoints)` with `CatchUpLimitPoints` is an opt-in tap
+  rule for `PointerGesture(button, tapTolerance)`, default none. It judges straight-line distance from the press
+  point instead of path length, with the wider `GraceDistancePoints` limit until `GraceSeconds` after the press, so a
+  click that wobbles and comes back is still a tap. A gesture built on one advances with `Advance(input, uiBlocked,
+  elapsedSeconds)`, and its two-argument `Advance` throws. Without a tolerance every phase, tap and drag delta is
+  unchanged. `FollowCameraController.Update` now times its gestures with its `dt`, so an orbit or look gesture can
+  carry a tolerance. The new `FollowCameraController.UpdateInput(in InputState, float elapsedSeconds)` advances
+  gestures, taps and zoom without the `AdvanceTarget` and `AdvanceBoom` clocks, for a game that reads camera input
+  early in its frame and advances those clocks after the subject moves. `Update` is `UpdateInput` followed by the
+  clocks. Pass the real frame time to either, since a zero freezes the grace.
+- Fixed: `DirectMoveToRange` admitted a grounded step whose landed feet were past the swim-enter line, because a step
+  decides swimming from its starting feet, so a direct walk down a sloped shore into deep water ended `Suspended` in
+  the water ([#1269](https://github.com/APKiwiOrg/KhaozEngine/issues/1269)). That step is now refused and counts
+  toward the stall window, so the walk ends `Blocked` at the shore.
+- Fixed: a click on a `PointerGesture` that wobbled a few points became a drag, because the tap rule measured path
+  length ([#1272](https://github.com/APKiwiOrg/KhaozEngine/issues/1272)). With a `PointerTapTolerance` the tolerance
+  is measured from the press point, the cursor where the press frame ended, so the press frame's own motion never
+  counts toward it.
+
 ## 20.22.0
 
 - `TelegraphRenderer2D.DotLane(origin, direction, length, spacing, dotRadius, reveal, fade, style)` draws a row of

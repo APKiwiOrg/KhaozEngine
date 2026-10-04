@@ -507,6 +507,18 @@ namespace KhaozEngine.Tests.Telegraphs
             Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.6f, 0.5f, 0f, 0f));
             Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.4f, 1f, 0.5f, 0f));
             Assert.Equal(1f, TelegraphResolve.DotLaneDotAlpha(0.6f, 1f, 0.5f, 0f));
+            // reveal = 0 hides the origin dot and fade = 1 hides the end dot, even on the step.
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0f, 0f, 0f, 0f));
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(1f, 1f, 1f, 0f));
+        }
+
+        [Fact]
+        public void DotLane_negative_ramp_is_the_hard_step()
+        {
+            Assert.Equal(1f, TelegraphResolve.DotLaneDotAlpha(0.4f, 0.5f, 0f, -0.1f));
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.6f, 0.5f, 0f, -0.1f));
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.4f, 1f, 0.5f, -0.1f));
+            Assert.Equal(1f, TelegraphResolve.DotLaneDotAlpha(0.6f, 1f, 0.5f, -0.1f));
         }
 
         [Fact]
@@ -515,6 +527,16 @@ namespace KhaozEngine.Tests.Telegraphs
             Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.5f, float.NaN, 0f, 0.1f));
             Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.5f, 1f, float.NaN, 0.1f));
             Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.5f, float.PositiveInfinity, 0f, 0.1f));
+        }
+
+        [Fact]
+        public void DotLane_non_finite_ramp_or_position_hides_the_dot()
+        {
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.5f, 1f, 0f, float.NaN));
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.5f, 1f, 0f, float.PositiveInfinity));
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.5f, 1f, 0f, float.NegativeInfinity));
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(float.NaN, 1f, 0f, 0.1f));
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(float.NaN, 1f, 0f, 0f));
         }
     }
 }

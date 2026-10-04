@@ -261,8 +261,8 @@ and fastest, and that split also divides the family's share, so a steady target 
 one family. Each weight eases toward its target over `blendSeconds`, so a forward to backward reversal crossfades
 through both. One shared `Phase` advances by `(|x| + |y|) x dt` over the weighted stride, which settles at
 `sum(|c| / s)` loops per second, and each clip samples at `Phase + SyncPhase`, which keeps every blended foot plant
-together. Below `movingSpeed` the targets
-hold, the phase holds with zero travel, and `TravelWeight` eases to zero, so a stop fades out of the last gait.
+together. Below `movingSpeed` the targets hold, the phase holds with zero travel, and `TravelWeight` eases to zero, so
+a stop fades out of the last gait.
 `BodyFrame(worldVelocity, facingYaw)` converts a world velocity with the `MoveCommand.CameraYaw` convention.
 
 The consumer keeps idle, turn-in-place, jump and action layers. It samples the clips through

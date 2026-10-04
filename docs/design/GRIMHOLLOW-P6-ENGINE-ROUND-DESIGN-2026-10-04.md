@@ -201,8 +201,9 @@ Shape:
   the slot allocated and remembers its subject. `ShardedWorldServer` sets the delegate only when the hook is set.
 - The hook is asked only for a transport disconnect (the client closed or timed out) of a joined slot the server is
   not closing. `Disconnect(slot)`, kicks, bans, replication restarts and the rate limit kick never linger, and nothing
-  lingers after `BeginDrain`. The rate limit path marks its slot before `net.Disconnect`, because its leave arrives
-  later through the transport (`ShardedWorldServer.cs:404`).
+  lingers after `BeginDrain`. `NetServer` records every connection it closes itself (both `Disconnect` overloads and
+  any server-initiated close) and never asks the hold for it, so the rate limit kick, whose leave arrives later through
+  the transport, needs no mark from the host (ruling P6E-4).
 - On `Left` for a held slot the server forgets the slot's command queue and replication streams and keeps the body.
   The body steps on the neutral command, is served to everyone whose interest holds it and is not served itself.
 - Expiry: a body granted `n` ticks during the poll after tick `k` is stepped in ticks `k + 1` to `k + n`, and leaves
@@ -313,9 +314,11 @@ instead of half and half. Cardinals, speed brackets, easing, `TravelWeight` and 
 
 - **P6 Task 9.** Set `ReceiveServerTick` on the continuous client config. Read `Server.ServerTick` on the host instead
   of counting frames, so the server's gameplay tick is `ServerTick / GameplayTickEvery` on both sides.
-  `ContinuousCombatClock.CombatTick` is `RemoteRenderTick / GameplayTickEvery`, and its
-  `CombatTickTrailsTheLatestServerTickByTheInterpolationDelay` holds exactly in steady state: on a frame that ingests
-  every tick, `RemoteRenderTick` equals `LatestServerTick - InterpolationDelayTicks`.
+  `ContinuousCombatClock.CombatTick` is `RemoteRenderTick / GameplayTickEvery`. Read `RemoteRenderTick` directly and
+  never compute the drawn tick from `LatestServerTick`. The general relation is `LatestServerTick -
+  InterpolationDelayTicks + (clock - newest ingest stamp) / TickSeconds`, which is `+ 1` on a frame that polls then
+  presents one tick (ruling P6E-7), for a remote with continuous history after the first `InterpolationDelayTicks` of
+  a session.
 - **P6 Task 13.** Set `DisconnectLingerTicks` to `CombatLogoutTicks x GameplayTickEvery` (300) when the slot's body is
   in combat at the moment the link drops, else 0. A lingering slot stays joined, so the combat service keeps every
   target by net id and the seat code needs no change. A death while lingering is the game's rule. The body leaves at

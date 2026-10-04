@@ -684,29 +684,29 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             // share the case rather than being written twice.
             case AdminCommandKind.Teleport:
             case AdminCommandKind.SetPosition:
-            {
-                int slot = ResolveSlot(cmd.Target);
-                if (slot >= 0 && stateBySlot.TryGetValue(slot, out PlayerMoveState st))
                 {
-                    st.Position = cmd.Position;
-                    st.VerticalVelocity = 0f;
-                    SetPlayerState(slot, st, teleport: cmd.Kind == AdminCommandKind.Teleport);
+                    int slot = ResolveSlot(cmd.Target);
+                    if (slot >= 0 && stateBySlot.TryGetValue(slot, out PlayerMoveState st))
+                    {
+                        st.Position = cmd.Position;
+                        st.VerticalVelocity = 0f;
+                        SetPlayerState(slot, st, teleport: cmd.Kind == AdminCommandKind.Teleport);
+                    }
+                    break;
                 }
-                break;
-            }
             case AdminCommandKind.SpeedScale:
-            {
-                // Store the DECODED quantized value, not the caller's raw float: this head steps from the per-slot
-                // PlayerMoveState while the client replays from the wire byte, so rounding here is what makes the two
-                // bit-identical instead of leaving a permanent sub-percent drift for the whole duration of the buff.
-                int slot = ResolveSlot(cmd.Target);
-                if (slot >= 0 && stateBySlot.TryGetValue(slot, out PlayerMoveState st))
                 {
-                    st.Move.SpeedScale = MovementState.DecodeSpeedScale(MovementState.QuantizeSpeedScale(cmd.Scale));
-                    SetPlayerState(slot, st);
+                    // Store the DECODED quantized value, not the caller's raw float: this head steps from the per-slot
+                    // PlayerMoveState while the client replays from the wire byte, so rounding here is what makes the two
+                    // bit-identical instead of leaving a permanent sub-percent drift for the whole duration of the buff.
+                    int slot = ResolveSlot(cmd.Target);
+                    if (slot >= 0 && stateBySlot.TryGetValue(slot, out PlayerMoveState st))
+                    {
+                        st.Move.SpeedScale = MovementState.DecodeSpeedScale(MovementState.QuantizeSpeedScale(cmd.Scale));
+                        SetPlayerState(slot, st);
+                    }
+                    break;
                 }
-                break;
-            }
             case AdminCommandKind.BeginMovementCommitment:
                 ApplyBeginMovementCommitment(cmd);
                 break;
@@ -714,20 +714,20 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                 ApplyAbortMovementCommitment(cmd.Target, cmd.Sequence, MovementCommitmentEndReason.Aborted);
                 break;
             case AdminCommandKind.Kick:
-            {
-                int slot = ResolveSlot(cmd.Target);
-                if (slot >= 0)
                 {
-                    bool banned = banStore is not null
-                        && accountIdBySlot.TryGetValue(slot, out string? accountId)
-                        && banStore.IsBanned(accountId);
-                    SendNoticeTo(slot, banned
-                        ? new ServerNotice(ServerNoticeKind.Banned, string.Empty)
-                        : new ServerNotice(ServerNoticeKind.Custom, cmd.Text));
-                    Disconnect(slot);
+                    int slot = ResolveSlot(cmd.Target);
+                    if (slot >= 0)
+                    {
+                        bool banned = banStore is not null
+                            && accountIdBySlot.TryGetValue(slot, out string? accountId)
+                            && banStore.IsBanned(accountId);
+                        SendNoticeTo(slot, banned
+                            ? new ServerNotice(ServerNoticeKind.Banned, string.Empty)
+                            : new ServerNotice(ServerNoticeKind.Custom, cmd.Text));
+                        Disconnect(slot);
+                    }
+                    break;
                 }
-                break;
-            }
             case AdminCommandKind.Broadcast:
                 BroadcastNotice(new ServerNotice(ServerNoticeKind.Custom, cmd.Text));
                 break;

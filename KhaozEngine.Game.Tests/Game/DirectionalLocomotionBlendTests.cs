@@ -50,6 +50,8 @@ namespace KhaozEngine.Tests.Game
             return new Vector2((float)Math.Sin(r), (float)Math.Cos(r)) * speed;
         }
 
+        static float Ratio(float a, float b) => MathF.Max(a / b, b / a);
+
         // Phases live on a circle, so 0.9999 and 0.0001 are 0.0002 apart.
         internal static float Circular(float a, float b)
         {
@@ -114,9 +116,14 @@ namespace KhaozEngine.Tests.Game
         [Fact]
         public void WeightsAreContinuousAroundTheCircle()
         {
-            // The largest adjacent stride ratio at 1.2 m/s (1.2 over 0.8) times the 0.5 degree step in radians. The
-            // share's slope peaks at a cardinal at that ratio.
-            const float limit = 1.5f * MathF.PI / 360f + 1e-6f;
+            // The share's slope peaks at a cardinal, at the larger stride over the smaller of the two families that
+            // meet there. At 1.2 m/s every family plays its slowest member, so the bound is the largest adjacent walk
+            // stride ratio times the 0.5 degree step in radians.
+            float forward = Strides[ForwardWalk], back = Strides[BackWalk];
+            float left = Strides[LeftWalk], right = Strides[RightWalk];
+            float ratio = MathF.Max(MathF.Max(Ratio(forward, left), Ratio(forward, right)),
+                MathF.Max(Ratio(back, left), Ratio(back, right)));
+            float limit = ratio * (0.5f * MathF.PI / 180f) + 1e-6f;
             float[] first = SettledWeights(AtDegrees(0d, 1.2f));
             float[] previous = first;
             bool sawBelow180 = false, sawAbove180 = false;

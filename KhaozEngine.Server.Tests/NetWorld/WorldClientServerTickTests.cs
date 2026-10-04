@@ -180,15 +180,23 @@ public class WorldClientServerTickTests
         using var a = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,
             new WorldClientConfig { TickSeconds = Dt, ReceiveServerTick = true });
         int slot = -1;
-        for (int i = 0; i < 20 && slot < 0; i++)
+        bool hello = false;
+        for (int i = 0; i < 20 && !hello; i++)
         {
             server.Poll();
             while (server.TryDequeueEvent(out ServerSessionEvent ev))
+            {
                 if (ev.Kind == ServerSessionEventKind.Joined) slot = ev.Slot;
+                else if (ev.Kind == ServerSessionEventKind.Data
+                    && MoveProtocol.TryDecodeClientControl(ev.Data, out MoveProtocol.ClientControlKind control))
+                    hello |= control == MoveProtocol.ClientControlKind.ServerTickCapable;
+            }
             a.Poll();
         }
         Assert.True(slot >= 0);
         Assert.True(a.Joined);
+        // The premise: the client asked for ticked frames, and this server drained the hello without answering it.
+        Assert.True(hello);
 
         byte[] emptySnapshot = new byte[4];   // entity count 0
         for (int i = 0; i < 10; i++)

@@ -687,23 +687,23 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             // share the case rather than being written twice.
             case AdminCommandKind.Teleport:
             case AdminCommandKind.SetPosition:
-            {
-                int slot = ResolveSlot(cmd.Target);
-                if (slot >= 0 && TryGetPlayerState(slot, out PlayerMoveState st))
                 {
-                    st.Position = cmd.Position;
-                    st.VerticalVelocity = 0f;
-                    SetPlayerState(slot, st, teleport: cmd.Kind == AdminCommandKind.Teleport);
+                    int slot = ResolveSlot(cmd.Target);
+                    if (slot >= 0 && TryGetPlayerState(slot, out PlayerMoveState st))
+                    {
+                        st.Position = cmd.Position;
+                        st.VerticalVelocity = 0f;
+                        SetPlayerState(slot, st, teleport: cmd.Kind == AdminCommandKind.Teleport);
+                    }
+                    break;
                 }
-                break;
-            }
             case AdminCommandKind.SpeedScale:
-            {
-                int slot = ResolveSlot(cmd.Target);
-                if (slot >= 0 && netIdBySlot.TryGetValue(slot, out long netId))
-                    SetDesiredSpeedScale(netId, cmd.Scale);
-                break;
-            }
+                {
+                    int slot = ResolveSlot(cmd.Target);
+                    if (slot >= 0 && netIdBySlot.TryGetValue(slot, out long netId))
+                        SetDesiredSpeedScale(netId, cmd.Scale);
+                    break;
+                }
             case AdminCommandKind.BeginMovementCommitment:
                 ApplyBeginMovementCommitment(cmd);
                 break;
@@ -711,20 +711,20 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                 ApplyAbortMovementCommitment(cmd.Target, cmd.Sequence, MovementCommitmentEndReason.Aborted);
                 break;
             case AdminCommandKind.Kick:
-            {
-                int slot = ResolveSlot(cmd.Target);
-                if (slot >= 0)
                 {
-                    bool banned = banStore is not null
-                        && accountIdBySlot.TryGetValue(slot, out string? accountId)
-                        && banStore.IsBanned(accountId);
-                    SendNoticeTo(slot, banned
-                        ? new ServerNotice(ServerNoticeKind.Banned, string.Empty)
-                        : new ServerNotice(ServerNoticeKind.Custom, cmd.Text));
-                    Disconnect(slot);
+                    int slot = ResolveSlot(cmd.Target);
+                    if (slot >= 0)
+                    {
+                        bool banned = banStore is not null
+                            && accountIdBySlot.TryGetValue(slot, out string? accountId)
+                            && banStore.IsBanned(accountId);
+                        SendNoticeTo(slot, banned
+                            ? new ServerNotice(ServerNoticeKind.Banned, string.Empty)
+                            : new ServerNotice(ServerNoticeKind.Custom, cmd.Text));
+                        Disconnect(slot);
+                    }
+                    break;
                 }
-                break;
-            }
             case AdminCommandKind.Broadcast:
                 BroadcastNotice(new ServerNotice(ServerNoticeKind.Custom, cmd.Text));
                 break;

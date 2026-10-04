@@ -69,7 +69,8 @@ public class ShardedWorldServerLingerRejoinTests
             Server.PlayerLeaving += (slot, account, _) => { Leaves++; Log.Add($"leaving:{slot}:{account}"); };
             Server.PlayerJoined += (slot, account) => Log.Add($"joined:{slot}:{account}");
             Store = new LoggingStore(Log);
-            Persistence = new WorldPersistence(Server, Store, new WorldPersistenceConfig { SaveIntervalSeconds = 999f });
+            Persistence = new WorldPersistence(Server, Store,
+                new WorldPersistenceConfig { SaveIntervalSeconds = 999f });
         }
 
         public NetClient Connect(string? account, out INetTransport transport)
@@ -254,6 +255,7 @@ public class ShardedWorldServerLingerRejoinTests
 
         Assert.Equal(new[] { "leaving:0:a", "save:player:a", "joined:0:a", "leaving:0:a" }, rig.Log);
         Assert.False(rig.BodyAlive(oldNetId));
+        Assert.False(rig.Server.TryGetSlot(oldNetId, out _));
         Assert.False(rig.Server.IsLingering(slot));
         Assert.Equal(0, rig.Server.PlayerCount);
         Assert.Equal(0, rig.SlotsFor("a"));

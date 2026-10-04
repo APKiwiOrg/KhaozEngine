@@ -1029,7 +1029,8 @@ the newest at or past the newest (a starved stream holds it), else the lerp by t
 collapsed into one `Poll` keep the newest tick. Lerping a server-side record of a moving remote at `RemoteRenderTick`
 gives where that remote is drawn. A frame that polls once per tick and then presents one tick of time reads
 `LatestServerTick - InterpolationDelayTicks + 1`, because the render clock has advanced one tick past the ingest it
-just stamped. With `InterpolateRemotes` off the remotes draw the newest sample and `RemoteRenderTick` equals
+just stamped. That relation holds for a remote with continuous history once the first `InterpolationDelayTicks` of a
+session have passed. With `InterpolateRemotes` off the remotes draw the newest sample and `RemoteRenderTick` equals
 `LatestServerTick`. Both read `-1` before the first ticked frame, against a server that predates them, and from the
 start of each reconnect attempt until its first ticked frame. Format 2 frames carry no tick, so the constructor
 refuses `ReceiveServerTick` with `RequestUnreliableDeltaReplication`. Compare game ticks derived from the server's

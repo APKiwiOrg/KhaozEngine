@@ -223,6 +223,26 @@ public class MoveToRangeStallTests
         AllocAssert.NoPerCallAllocation("warmed MoveToRange.Tick with Stall", () => Held(mover, body));
         Assert.True(following > 0, "no counted tick was measured");
         Assert.True(blocked > 0, "no latched tick was measured");
+
+        // Counted only: a walked mover clears the travel bar in every window, so no measured tick latches.
+        (MoveToRange walker, MoveState walkerBody) = Walked();
+        MoveState Walk(MoveToRange driver, MoveState at)
+        {
+            for (int tick = 0; tick < 25; tick++)
+            {
+                RangeSteering steering = Tick(driver, at, Far);
+                if (steering.Status == RangeMoveStatus.Following) following++;
+                else blocked++;
+                at = NpcGroundMovement.Step(at, steering, false, Dt, Tuning, Flat);
+            }
+            return at;
+        }
+        following = blocked = 0;
+
+        AllocAssert.NoPerCallAllocation("warmed counted MoveToRange.Tick with Stall",
+            () => walkerBody = Walk(walker, walkerBody));
+        Assert.True(following >= 25, "no counted tick was measured");
+        Assert.Equal(0, blocked);
     }
 
     static (MoveToRange Mover, MoveState Body) Walked()

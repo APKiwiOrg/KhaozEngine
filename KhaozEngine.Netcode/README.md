@@ -406,12 +406,13 @@ rather than an account, and two guests are two people.
 `NetServer.HoldSlotOnDisconnect` (`Func<int, bool>?`, default null) lets a host keep a slot after its client drops,
 for example to leave the player's body in the world for a while. It is asked once, inside `Poll`, when the transport
 reports an established slot disconnected, so it must be cheap and must not throw. It is never asked for a session the
-server ends itself (the `KickOlder` path), a refused `Hello` or a connection that never joined. A kick through
-`Disconnect(slot)` does arrive as a transport disconnect, so a host answers false for a slot it kicked. On true the
-connection is gone and `Left` is still enqueued, but the slot keeps its allocator bit and its subject is remembered.
-No other join takes the slot, and the same non-empty subject's next `Hello` is seated back on it, ahead of the
-duplicate session check and the capacity check, so neither policy applies and a full server cannot refuse the account
-its own seat. A tokenless guest has no subject and cannot reclaim anything. `ReleaseHeldSlot(slot)` frees a held slot
+server ends itself (a kick through either `Disconnect` overload or the `KickOlder` path), a refused `Hello` or a
+connection that never joined. A server-initiated disconnect is never held, so a host does not answer false for its own
+kicks. If the delegate throws, the slot is freed as if it answered false, `Left` is still enqueued, and the exception
+propagates out of `Poll`. On true the connection is gone and `Left` is still enqueued, but the slot keeps its
+allocator bit and its subject is remembered. No other join takes the slot, and the same non-empty subject's next
+`Hello` is seated back on it, ahead of the duplicate session check and the capacity check, so neither policy applies
+and a full server cannot refuse the account its own seat. A tokenless guest has no subject and cannot reclaim anything. `ReleaseHeldSlot(slot)` frees a held slot
 and forgets its subject without another `Left`, and is a no-op for a slot that is not held.
 
 **The gate is only as strong as the authenticator under it.** `KickOlder` ends a live session on the say-so of

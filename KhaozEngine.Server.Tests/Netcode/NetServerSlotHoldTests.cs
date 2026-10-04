@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
@@ -236,5 +237,56 @@ public class NetServerSlotHoldTests
         rig.Pump();
 
         Assert.Empty(rig.HoldAsks);
+    }
+
+    [Fact]
+    public void AThrowingHoldFreesTheSlotAndStillLeaves()
+    {
+        var rig = new Rig();
+        Peer a = rig.Join("a");
+        rig.Server.HoldSlotOnDisconnect = _ => throw new InvalidOperationException("hold failed");
+        rig.Clear();
+
+        rig.Drop(a);
+        Assert.Throws<InvalidOperationException>(() => rig.Server.Poll());
+        Assert.True(rig.Server.TryDequeueEvent(out ServerSessionEvent left));
+        AssertLeft(left, 0);
+        Assert.False(rig.Server.TryDequeueEvent(out _));
+
+        // The throw kept nothing: the slot and the subject are both free, so a new subject takes slot 0.
+        Peer b = rig.Join("b");
+        Assert.Equal(0, b.JoinedSlot);
+        Peer again = rig.Join("a");
+        Assert.Equal(1, again.JoinedSlot);
+        Assert.Empty(again.Rejects);
+    }
+
+    [Fact]
+    public void AServerKickNeverAsksTheHold()
+    {
+        var rig = new Rig();
+        rig.Hold(true);
+        rig.Join("a");
+        Peer b = rig.Join("b");
+        rig.Clear();
+
+        rig.Server.Disconnect(0);
+        rig.Server.Disconnect(1, "kicked");
+        rig.Pump();
+
+        Assert.Empty(rig.HoldAsks);
+        Assert.Equal(new[] { "kicked" }, b.Rejects);
+        Assert.Collection(rig.Events,
+            ev => AssertLeft(ev, 0),
+            ev => AssertLeft(ev, 1));
+
+        // Both kicked slots are free, and a client's own drop on a reused slot is still asked.
+        Peer c = rig.Join("c");
+        Peer d = rig.Join("d");
+        Assert.Equal(0, c.JoinedSlot);
+        Assert.Equal(1, d.JoinedSlot);
+        rig.Drop(c);
+        rig.Pump();
+        Assert.Equal(new[] { 0 }, rig.HoldAsks);
     }
 }

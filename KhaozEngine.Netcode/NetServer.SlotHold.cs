@@ -11,16 +11,21 @@ public sealed partial class NetServer
     // heldSubjectBySlot entry is s.
     private readonly Dictionary<string, int> heldSlotBySubject = new(StringComparer.Ordinal);
     private readonly Dictionary<int, string> heldSubjectBySlot = new();
+    // Established connections this server closed itself through Disconnect(slot), whose transport Disconnected has not
+    // arrived yet. Their disconnect is never held. RemovePeer clears the entry when the slot is detached.
+    private readonly HashSet<NetConnectionId> closedByServer = new();
 
     /// <summary>Asked once with the slot when the transport reports an established slot disconnected (the client
     /// closed or timed out). True keeps the slot allocated for the subject that held it: <c>Left</c> is still enqueued
     /// as a terminal event and the connection is gone, but no other join takes the slot, and a later Hello from the
     /// same non-empty subject is seated back on it ahead of the duplicate session check and the capacity check. Free it
     /// with <see cref="ReleaseHeldSlot"/>. Null, the default, or false frees the slot as before.
-    /// <para>Never asked for a session this server ends itself (a duplicate session kick), a refused Hello or a
-    /// connection that never joined. A kick through <see cref="Disconnect(int)"/> does surface as a transport
-    /// disconnect, so a host that must not hold a kicked slot answers false for it.</para>
-    /// <para>Runs inside <see cref="Poll"/>. It must be cheap and must not throw.</para></summary>
+    /// <para>Never asked for a session this server ends itself (a kick through either <c>Disconnect</c> overload or
+    /// a duplicate session kick), a refused Hello or a connection that never joined. A server-initiated disconnect is
+    /// never held, so a host does not answer false for its own kicks.</para>
+    /// <para>Runs inside <see cref="Poll"/>. It must be cheap and must not throw. If it does throw, the exception
+    /// propagates out of <see cref="Poll"/> after the slot is freed as if it had answered false, and <c>Left</c> is
+    /// still enqueued.</para></summary>
     public Func<int, bool>? HoldSlotOnDisconnect { get; set; }
 
     /// <summary>Frees a slot <see cref="HoldSlotOnDisconnect"/> held and forgets its subject, so the subject's next
@@ -33,20 +38,31 @@ public sealed partial class NetServer
         slots.Release(slot);
     }
 
-    // A transport disconnect of an established slot. Detaches the connection and either frees the slot or, when the
-    // host holds it, keeps the allocator bit and moves the subject to the held table.
+    // A transport disconnect of an established slot. Detaches the connection, either frees the slot or, when the
+    // host holds it, keeps the allocator bit and moves the subject to the held table, and enqueues the terminal Left.
+    // The teardown sits in a finally: the event is already off the transport queue, so a throwing delegate that skipped
+    // it would strand the slot and its connection mapping and drop the Left for good. hold stays false on a throw.
     private void DetachDisconnected(NetConnectionId conn, int slot)
     {
-        bool hold = HoldSlotOnDisconnect?.Invoke(slot) ?? false;
-        if (!hold)
+        bool hold = false;
+        try
         {
-            RemovePeer(conn, slot, holdSlot: false);
-            return;
+            hold = !closedByServer.Contains(conn) && (HoldSlotOnDisconnect?.Invoke(slot) ?? false);
         }
-        string subject = subjectBySlot.TryGetValue(slot, out string? s) ? s : string.Empty;
-        RemovePeer(conn, slot, holdSlot: true);
-        heldSubjectBySlot[slot] = subject;
-        if (subject.Length > 0) heldSlotBySubject[subject] = slot;
+        finally
+        {
+            string subject = subjectBySlot.TryGetValue(slot, out string? s) ? s : string.Empty;
+            RemovePeer(conn, slot, holdSlot: hold);
+            if (hold)
+            {
+                heldSubjectBySlot[slot] = subject;
+                if (subject.Length > 0) heldSlotBySubject[subject] = slot;
+            }
+            // Terminal: the host frees its own per-player state (save-on-leave, despawn) off this and off nothing
+            // else, so an overflow that dropped it would strand that state the way a dropped transport Disconnected
+            // used to strand the slot itself.
+            inbox.EnqueueTerminal(ServerSessionEvent.Left(slot));
+        }
     }
 
     // Takes a held slot back for its returning subject. The allocator bit was never released, so the slot is seated

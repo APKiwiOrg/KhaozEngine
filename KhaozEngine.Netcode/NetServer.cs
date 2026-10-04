@@ -115,13 +115,7 @@ public sealed partial class NetServer
                 case NetEventType.Disconnected:
                     pending.Remove(ev.Connection);
                     if (slotByConnection.TryGetValue(ev.Connection, out int leftSlot))
-                    {
                         DetachDisconnected(ev.Connection, leftSlot);
-                        // Terminal: the host frees its own per-player state (save-on-leave, despawn) off this and
-                        // off nothing else, so an overflow that dropped it would strand that state the way a
-                        // dropped transport Disconnected used to strand the slot itself.
-                        inbox.EnqueueTerminal(ServerSessionEvent.Left(leftSlot));
-                    }
                     break;
                 case NetEventType.Data:
                     HandleData(ev);
@@ -238,6 +232,7 @@ public sealed partial class NetServer
         pending.Remove(conn);
         slotByConnection.Remove(conn);
         connectionBySlot.Remove(slot);
+        closedByServer.Remove(conn);
         if (subjectBySlot.Remove(slot, out string? subject)) slotBySubject.Remove(subject);
         if (!holdSlot) slots.Release(slot);
     }
@@ -273,12 +268,13 @@ public sealed partial class NetServer
             : 0;
 
     /// <summary>Disconnects one slot's connection (a kick). The transport surfaces the resulting Disconnected event
-    /// on a later poll, which frees the slot (and a recycling join may reuse it) unless
-    /// <see cref="HoldSlotOnDisconnect"/> holds it. No-op for an unknown slot.</summary>
+    /// on a later poll, which frees the slot (and a recycling join may reuse it). A kick is never held:
+    /// <see cref="HoldSlotOnDisconnect"/> is not asked about it. No-op for an unknown slot.</summary>
     public void Disconnect(int slot)
     {
-        if (connectionBySlot.TryGetValue(slot, out NetConnectionId conn))
-            transport.Disconnect(conn);
+        if (!connectionBySlot.TryGetValue(slot, out NetConnectionId conn)) return;
+        closedByServer.Add(conn);
+        transport.Disconnect(conn);
     }
 
     /// <summary>Disconnects one slot's connection (a kick) CARRYING <paramref name="reason"/>, so the kicked client
@@ -288,11 +284,12 @@ public sealed partial class NetServer
     /// <c>DisconnectReasonDetail</c>.
     /// <para>A STABLE TOKEN, not display text: a headless server owns no string catalog, so send something the
     /// client matches and renders from its own localization (the shape <see cref="SessionRejectReason"/> uses).</para>
-    /// No-op for an unknown slot.</summary>
+    /// Never held, like <see cref="Disconnect(int)"/>. No-op for an unknown slot.</summary>
     public void Disconnect(int slot, string reason)
     {
-        if (connectionBySlot.TryGetValue(slot, out NetConnectionId conn))
-            RejectAndDisconnect(conn, reason ?? string.Empty);
+        if (!connectionBySlot.TryGetValue(slot, out NetConnectionId conn)) return;
+        closedByServer.Add(conn);
+        RejectAndDisconnect(conn, reason ?? string.Empty);
     }
 
     /// <summary>Sends game data to every joined slot. The frame is built once and the same bytes go to every peer.</summary>

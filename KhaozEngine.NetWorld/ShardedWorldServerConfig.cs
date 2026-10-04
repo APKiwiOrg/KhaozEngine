@@ -117,4 +117,24 @@ public sealed partial class ShardedWorldServerConfig
     /// presentation gate only: the game still authorizes every interaction. The tile server's ground-item twin is
     /// <c>TileWorldServerConfig.GroundItemVisibleToSlot</c>.</summary>
     public Func<int, long, bool>? EntityVisibleToSlot { get; init; }
+
+    /// <summary>Optional disconnect linger: how many server ticks a player's body stays in the world after its link
+    /// drops. The arguments are the session slot and the player's net id, the result is a tick count, and a result of
+    /// zero or less leaves at once as today. Null, the default, never asks and changes nothing.
+    /// <para>Asked once, only when the transport reports a joined slot disconnected (the client closed or timed out).
+    /// A server-initiated close never lingers: <see cref="ShardedWorldServer.Disconnect(int)"/>, a kick, a ban, a
+    /// replication restart and the rate limit kick leave exactly as they do without the hook, and nothing lingers after
+    /// <see cref="ShardedWorldServer.BeginDrain"/>.</para>
+    /// <para>A body granted <c>n</c> ticks during the <see cref="ShardedWorldServer.Poll"/> after tick <c>k</c> is
+    /// stepped on the neutral command in ticks <c>k + 1</c> to <c>k + n</c>, is served to every other client whose
+    /// interest holds it, and leaves at the start of tick <c>k + n + 1</c>, before
+    /// <see cref="ShardedWorldServer.OnBeforeTick"/>, through the ordinary leave: one <c>PlayerLeaving</c>, the save
+    /// and the despawn. Input the client sent before the drop is discarded. The slot stays joined and allocated
+    /// meanwhile, so the body stays on <see cref="ShardedWorldServer.JoinedSlots"/> and the online roster, a kick by
+    /// account ends it at once, and <see cref="ShardedWorldServer.IsLingering"/> answers true. A lingering body counts
+    /// against <see cref="MaxPlayers"/>.</para>
+    /// <para>Runs inside <see cref="ShardedWorldServer.Poll"/>, during the transport drain, before the host sees that
+    /// poll's events. Keep it cheap and non-throwing. A throw propagates out of <c>Poll</c> and the slot is freed as if
+    /// the answer were zero, its leave arriving on the next <c>Poll</c>.</para></summary>
+    public Func<int, long, int>? DisconnectLingerTicks { get; init; }
 }

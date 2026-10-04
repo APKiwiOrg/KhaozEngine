@@ -12133,6 +12133,28 @@ count; both share `WorldPersistence` via `IWorldPersistenceHost`. `MmoServerSamp
 dedicated server built directly on the multi-cell `ShardHost` (see "Reference dedicated server" below), not
 on `ShardedWorldServer`.
 
+**Disconnect linger.** By default a dropped player's body leaves on the `Poll` that sees the drop. Set
+`ShardedWorldServerConfig.DisconnectLingerTicks` to keep it in the world for a while instead, so a player cannot pull
+the plug to escape a fight:
+
+```csharp
+var config = new ShardedWorldServerConfig
+{
+    // slot, net id -> server ticks. Zero or less leaves at once. Runs inside Poll: cheap, pure, non-throwing.
+    DisconnectLingerTicks = (slot, netId) => combat.IsEngaged(netId) ? 300 : 0,
+};
+```
+
+The hook is asked once, only when the transport reports a joined slot dropped (the client closed or timed out). A
+body granted `n` ticks during the `Poll` after tick `k` steps on the neutral command in ticks `k + 1` to `k + n`, is
+served to every other client whose interest holds it, and leaves at the start of tick `k + n + 1`, before
+`OnBeforeTick`, through the ordinary leave: one `PlayerLeaving`, the save, the despawn, then the slot is released.
+Input the client sent before the drop is discarded. The slot stays joined throughout (the server holds it through
+`NetServer.HoldSlotOnDisconnect`), so the body stays on `JoinedSlots` and `ListOnline`, stays attackable by net id,
+counts against `MaxPlayers`, and a kick by account ends it at once. `IsLingering(slot)` answers for the game and admin
+tools. `Disconnect`, kicks, bans, replication restarts and the rate limit kick never linger, and nothing lingers after
+`BeginDrain`. Null, the default, changes nothing.
+
 ### Server-side anti-cheat / input-hardening
 
 The authoritative movement model already prevents teleport, speedhack, noclip, wall-climb, token forgery, and
@@ -22722,6 +22744,11 @@ EntityRenderState[] snapshot = client.Snapshot();
 ```
 
 `ConnectionState` (a `WorldConnectionState`) is one of: `Connecting` (initial handshake), `Connected` (in-session), `Reconnecting` (between drop and re-join), `Disconnected` (terminal - bad token or explicit give-up). `DisconnectReason` values: `None`, `RejectedToken`, `Unreachable`, `ServerShutdown`, `Timeout`, `IncompatibleVersion` (the client is out of date - see "Version skew resilience" below), `SignedInElsewhere` and `AlreadySignedIn` (the duplicate-session gate, below), `Banned` (the `ke:banned` connect refusal or the drop after a `ServerNoticeKind.Banned` notice, see "Bans" below), `ContentMismatch` (the client was built against different content than the server, see "Content identity" under "Version skew resilience" below), and the catalog content door's two refusals, `ContentVersionMismatch` and `ContentClientTooOld` (see "The connect door, and the client's catch-up", which parses `DisconnectReasonDetail` with `ContentRefusal`). The last two were appended after every shipped value, so no numeric value moved. The single-transport ctor `WorldClient(INetTransport, ...)` is unchanged (no reconnect, `IDisposable` is a no-op).
+
+A drop does not always remove the player's body at once. A `ShardedWorldServer` with
+`ShardedWorldServerConfig.DisconnectLingerTicks` set can keep the body in the world for the ticks the game grants,
+stepping on the neutral command and visible to everyone else, while the client is `Reconnecting` (see "Disconnect
+linger" under "Sharded authoritative server"). A kick or a ban never lingers, and nothing lingers once a drain begins.
 
 **One account, one live session (17.38.0).** The join gate keys a live session by the SUBJECT the authenticator verified, so two clients presenting one account's connect token cannot become two live sessions. Above the session layer that shape is unrepresentable: `WorldPersistence` keys one record per account, so the two shared it and the later join left the earlier session unrestored, then let its default-spawn state overwrite the record once the winner left (#662). Set the policy on either head:
 

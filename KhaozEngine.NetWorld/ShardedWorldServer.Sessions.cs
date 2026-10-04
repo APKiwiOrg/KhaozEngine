@@ -94,6 +94,7 @@ public sealed partial class ShardedWorldServer
             tickedSlots.Remove(slot);
             replication.Left(slot);   // no longer pending a writer restart, stream dropped
             commands.Forget(slot);
+            if (lingerUntilBySlot.Remove(slot)) net.ReleaseHeldSlot(slot);   // last, after the despawn
         }
     }
 

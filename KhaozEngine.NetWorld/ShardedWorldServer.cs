@@ -133,6 +133,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         replication = new RebuildServerStreams(net, admission, deltaReplicator, this.config.ReplicationStream,
             replicationLimits, this.config.TickSeconds, commands, slot => Raise(slot, SuspiciousReason.MalformedPacket),
             Disconnect);
+        if (config.DisconnectLingerTicks is not null) net.HoldSlotOnDisconnect = HoldOnDisconnect;
         this.banStore = banStore;
     }
 
@@ -289,6 +290,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     /// <see cref="WorldServer.BeginDrain"/>.</summary>
     public void BeginDrain(in ServerNotice notice, float graceSeconds)
     {
+        draining = true;   // no linger from here on
         BroadcastNotice(notice);
         drain.Begin(graceSeconds);
     }
@@ -385,7 +387,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
                     OnJoin(ev.Slot, ev.Subject, ev.DisplayName, ev.PersistenceKey);
                     break;
                 case ServerSessionEventKind.Left:
-                    OnLeave(ev.Slot);
+                    if (IsLingering(ev.Slot)) BeginLinger(ev.Slot); else OnLeave(ev.Slot);
                     break;
                 case ServerSessionEventKind.Data:
                     HandleData(ev.Slot, ev.Data, ev.Reliability);
@@ -484,6 +486,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     public void Tick(float dt)
     {
         ServerTick++;
+        ExpireLingers();            // an expired linger leaves before anything sees this tick
         OnBeforeTick?.Invoke(dt);   // consumer NPC/enemy brains run before movement + serving
         admin.Drain(ApplyAdminCommand);
         // A reused buffer, but still a COPY of the keys: the loops below can mutate netIdBySlot (a kick or a
@@ -571,7 +574,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         long serveEpoch = ++interestServeEpoch;   // fresh each tick: each served home cell rebuilds its grid once
         foreach (int slot in slots)
         {
-            if (!netIdBySlot.TryGetValue(slot, out long netId)) continue;
+            if (!netIdBySlot.TryGetValue(slot, out long netId) || IsLingering(slot)) continue;   // nobody to serve
             MoveProtocol.ServerFrameKind kind;
             byte[] body;
             // One reused interest set for the whole client loop, cleared per client. Both writers are done with it

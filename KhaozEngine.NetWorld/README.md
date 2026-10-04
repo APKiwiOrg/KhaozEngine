@@ -42,6 +42,16 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   The index is ready before `PlayerJoined` runs and removed when the player leaves, including when a
   `PlayerLeaving` handler throws. Unknown ids, departed players and non-player entities return false with slot
   0. Check the boolean result because 0 is also a valid joined slot. A recycled slot resolves only its new net id.
+  **`ShardedWorldServerConfig.DisconnectLingerTicks`** (`Func<int, long, int>?`, slot and net id to server ticks,
+  default null) is an opt-in disconnect linger. When the transport reports a joined slot dropped, a positive answer
+  `n` keeps the body in the world on its held slot (`NetServer.HoldSlotOnDisconnect`): granted during the `Poll`
+  after tick `k`, it steps on the neutral command in ticks `k + 1` to `k + n`, is served to everyone whose interest
+  holds it, and leaves at the start of tick `k + n + 1`, before `OnBeforeTick`, through the ordinary leave (one
+  `PlayerLeaving`, the save, the despawn, then the slot is released). Input sent before the drop is discarded. The
+  slot stays joined meanwhile, so it stays on `JoinedSlots` and the roster, counts against `MaxPlayers`, and a kick by
+  account ends it at once. `IsLingering(slot)` answers for the game. `Disconnect`, kicks, bans, replication restarts
+  and the rate limit kick never linger, nothing lingers after `BeginDrain`, and an answer of zero or less leaves at
+  once. The hook runs inside `Poll`, so keep it cheap and non-throwing. Null changes nothing.
 - **`WorldClient`** wraps `NetClient` + `ClientReplicationView` + `ClientPrediction` and exposes
   `EntityRenderState[]` (local player predicted + reconciled, remotes from replicated positions - smoothly
   interpolated between snapshots by default, so a remote glides instead of teleporting one ~tick-rate snapshot-step

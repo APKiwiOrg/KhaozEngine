@@ -19,14 +19,15 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
   statics touched (the snapshot is handed in), allocation-free per frame.
 - `FollowCameraController` gestures (since 20.17.0, off by default). Set `OrbitGesture` and `LookGesture` to a
   `PointerGesture` each and `OrbitButton` is ignored. The camera orbits only while a gesture drags, by one delta a
-  frame, and a press begun while the game's `UiBlocked` is set never taps, and above a zero threshold never orbits.
-  `TurnBodyActive` is true while `LookGesture` drags, for `MoveCommand.FaceCamera`, and `WantsPointerCapture` while
-  either drags, for `SetPointerCaptured`. `OrbitTap` and `LookTap` report taps after `Update`, and a tap counts only
-  if the camera did not turn during that press. `UpdateInput` is `Update` without the target and boom clocks, for a
-  game that advances those itself later in the frame, and it still needs the real frame time for a tap tolerance.
-  Gesture replay and continuing motion use `MouseDeltaPoints`, so sensitivity stays in window points before and during capture. Tap origins keep framebuffer coordinates.
-  Gate `UiBlocked` on `GuiSurface.HoverCaptured`. Scroll zoom, damping
-  and boom recovery are unchanged, and with neither gesture set the controller behaves exactly as before. See
+  frame, and a press begun while the game's `UiBlocked` is set never taps, and above a zero threshold never
+  orbits. `TurnBodyActive` is true while `LookGesture` drags, for `MoveCommand.FaceCamera`, and
+  `WantsPointerCapture` while either drags, for `SetPointerCaptured`. `OrbitTap` and `LookTap` report taps after
+  `Update` or `UpdateInput`, and a tap counts only if the camera did not turn during that press. `UpdateInput` is
+  `Update` without the target and boom clocks, for a game that advances those itself later in the frame, and it
+  still needs the real frame time for a tap tolerance. Gesture replay and continuing motion use
+  `MouseDeltaPoints`, so sensitivity stays in window points before and during capture. Tap origins keep
+  framebuffer coordinates. Gate `UiBlocked` on `GuiSurface.HoverCaptured`. Scroll zoom, damping and boom recovery
+  are unchanged, and with neither gesture set the controller behaves exactly as before. See
   docs/USING-KHAOZENGINE.md.
 - `FollowCamera3DPresets.CreateMouseLook()` returns a fresh mutable camera with pitch stops at -80 degrees and
   1.36 radians (about 78 degrees), distance stops at 1.5 and 22 metres, and initial pitch/distance of 0.75 radians

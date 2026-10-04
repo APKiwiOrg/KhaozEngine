@@ -6868,29 +6868,30 @@ character off this controller's movement state (see "Animated characters" above)
 
 **Tap-or-drag gestures (since 20.17.0, off by default).** Set `FollowCameraController.OrbitGesture` and `LookGesture`
 to a `PointerGesture` each (see "Tap or drag" in the input chapter) and every button splits into a tap and a drag.
-With either set, `OrbitButton` is ignored. `UiBlocked` is a field the game sets before each `Update`, and a press
-that begins while it is true never taps, and above a zero threshold never orbits either. `Update` advances each set
-gesture once with its `dt`, which times a gesture built on a `PointerTapTolerance`, so pass the real frame time.
-`UpdateInput(input, elapsedSeconds)` is `Update` without `AdvanceTarget` and `AdvanceBoom`, for a game that reads
-camera input early in its frame and advances those camera clocks itself after the subject moves. Pass it the real
-frame time too, since a zero freezes the tolerance's grace. The camera orbits only while a gesture drags, and by
-one delta a frame, so each mouse movement turns it once however many buttons are held. A gesture that crosses its threshold with no orbit since its press began applies its `DragDelta`,
-the replay of its pending travel, with `LookGesture` first when both cross together. Otherwise the frame's
-`MouseDeltaPoints` applies. Gesture replay and continuing motion are in window points before and during capture.
-Speed, invert and sign are as for the orbit button, and scroll zoom, target damping and boom recovery run unchanged.
-With neither gesture set, `Update` keeps the original orbit button path and its legacy `MouseDelta` units.
+With either set, `OrbitButton` is ignored. `UiBlocked` is a field the game sets before each `Update` or
+`UpdateInput`, and a press that begins while it is true never taps, and above a zero threshold never orbits either.
+`Update` advances each set gesture once with its `dt`, which times a gesture built on a `PointerTapTolerance`, so
+pass the real frame time. `UpdateInput(input, elapsedSeconds)` is `Update` without `AdvanceTarget` and `AdvanceBoom`,
+for a game that reads camera input early in its frame and advances those camera clocks itself after the subject
+moves. Pass it the real frame time too, since a zero freezes the tolerance's grace. The camera orbits only while a
+gesture drags, and by one delta a frame, so each mouse movement turns it once however many buttons are held. A
+gesture that crosses its threshold with no orbit since its press began applies its `DragDelta`, the replay of its
+pending travel, with `LookGesture` first when both cross together. Otherwise the frame's `MouseDeltaPoints` applies.
+Gesture replay and continuing motion are in window points before and during capture. Speed, invert and sign are as
+for the orbit button, and scroll zoom, target damping and boom recovery run unchanged. With neither gesture set,
+`Update` keeps the original orbit button path and its legacy `MouseDelta` units.
 
 The controller reports three things:
 
 - `TurnBodyActive` is true while `LookGesture` drags.
 - `WantsPointerCapture` is true while either gesture drags. Forward it to `SetPointerCaptured` so the cursor hides
   and holds for the drag (see "Pointer capture" in the input chapter).
-- `OrbitTap` and `LookTap` report each gesture's tap after `Update`, in the same frame, with the press origin in
-  that gesture's `TapPosition`. A tap counts only if the camera did not turn during that press, its release frame
-  included. The camera turns on every frame a gesture drags, even with no mouse movement. A tapping gesture never
-  dragged, so any turn came from the other one, and a both-buttons release is never a select whichever button went
-  down first. Read taps there rather than from `PointerGesture.TapThisFrame`, which knows nothing of the other
-  gesture.
+- `OrbitTap` and `LookTap` report each gesture's tap after `Update` or `UpdateInput`, in the same frame, with the
+  press origin in that gesture's `TapPosition`. A tap counts only if the camera did not turn during that press,
+  its release frame included. The camera turns on every frame a gesture drags, even with no mouse movement. A
+  tapping gesture never dragged, so any turn came from the other one, and a both-buttons release is never a select
+  whichever button went down first. Read taps there rather than from `PointerGesture.TapThisFrame`, which knows
+  nothing of the other gesture.
 
 The WoW wiring puts orbit on the left button and look on the right. The game reads `TurnBodyActive` and hands it to
 `CharacterMovement` as `MoveCommand.FaceCamera`, with `Camera.Yaw` as `CameraYaw`. A local
@@ -8223,16 +8224,18 @@ public sealed class DirectMoveToRange
 The options have no defaults. Windows are 1 to 65,535 ticks and distances are finite and positive. A window of N
 ticks spans N intervals and is first eligible on the (N + 1)th counted tick. When net horizontal travel across the
 stall window falls below `stallTravelMetres`, or reach distance across the approach window gains less than
-`approachGainMetres` for a static target, the driver latches `RangeMoveStatus.Blocked` until `InRange`, `Reset`, or
-a change of target shape, range or capsule geometry. A step that would leave the ground or start swimming is
-refused and counts as no progress. The opt-in `MaxDropMetres`, finite and not negative with a zero default, admits a
-step that leaves the ground when its predicted fall, settled with zero input through the live context, lands
-grounded and not swimming no more than that depth below the current feet. A deeper drop, a landing on a floor at
-swim depth, a fall that starts swimming or one that has not landed within 256 settle steps is still refused. The
-step-off tick is `Following` with the admitted command. The airborne ticks after it are `Suspended`, and the
-approach resumes on landing. Airborne, committed and zero-travel ticks count toward neither window. Pass
-`targetMoves` true for body targets, which disables the approach window. Call `Tick` exactly once per simulation
-tick. Keep range and target shape constant for a walk, and call Reset to start a new one.
+`approachGainMetres` for a static target, the driver latches `RangeMoveStatus.Blocked` until `InRange`, `Reset`, or a
+change of target shape, range or capsule geometry. A step that would leave the ground or start swimming is refused
+and counts as no progress. A step decides swimming from its starting feet, so a grounded step whose landed feet are
+past the swim-enter line is refused too, and a walk down a sloped shore into deep water ends `Blocked`. The opt-in
+`MaxDropMetres`, finite and not negative with a zero default, admits a step that leaves the ground when its predicted
+fall, settled with zero input through the live context, lands grounded and not swimming no more than that depth below
+the current feet. A deeper drop, a landing on a floor at swim depth, a fall that starts swimming or one that has not
+landed within 256 settle steps is still refused. The step-off tick is `Following` with the admitted command. The
+airborne ticks after it are `Suspended`, and the approach resumes on landing. Airborne, committed and zero-travel
+ticks count toward neither window. Pass `targetMoves` true for body targets, which disables the approach window. Call
+`Tick` exactly once per simulation tick. Keep range and target shape constant for a walk, and call Reset to start a
+new one.
 
 `DirectMoveToRange` never steers a swimmer. A swimming body is not grounded, so it stays `Suspended`. The driver has
 no graph guard and the core does not collide a swimmer, so a direct swim approach could pass through props at the

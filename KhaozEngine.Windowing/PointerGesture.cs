@@ -118,14 +118,16 @@ namespace KhaozEngine.Windowing
         }
 
         /// <summary>Advance one frame that lasted <paramref name="elapsedSeconds"/>, which the
-        /// <see cref="TapTolerance"/> grace counts. Without a tolerance the time is ignored and this is exactly
-        /// <see cref="Advance(in InputState, bool)"/>.</summary>
+        /// <see cref="TapTolerance"/> grace counts. Without a tolerance the time is neither used nor checked and this
+        /// is exactly <see cref="Advance(in InputState, bool)"/>, whatever the value.</summary>
         /// <param name="input">This frame's snapshot, read as in <see cref="Advance(in InputState, bool)"/>.</param>
         /// <param name="uiBlocked">Whether the UI owns the pointer this frame.</param>
-        /// <param name="elapsedSeconds">This frame's duration. Finite and not negative.</param>
+        /// <param name="elapsedSeconds">This frame's duration. With a tolerance, finite and not negative.</param>
+        /// <exception cref="ArgumentOutOfRangeException">The gesture has a <see cref="TapTolerance"/> and
+        /// <paramref name="elapsedSeconds"/> is NaN, infinite or negative.</exception>
         public void Advance(in InputState input, bool uiBlocked, float elapsedSeconds)
         {
-            if (!float.IsFinite(elapsedSeconds) || elapsedSeconds < 0f)
+            if (TapTolerance is not null && (!float.IsFinite(elapsedSeconds) || elapsedSeconds < 0f))
             {
                 throw new ArgumentOutOfRangeException(nameof(elapsedSeconds), elapsedSeconds, "Must be finite and not negative.");
             }

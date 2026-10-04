@@ -148,5 +148,41 @@ namespace KhaozEngine.Tests.Render3D
 
             Assert.True(length > 3.95f && length < 10f, $"controller should be easing the boom out, got {length}");
         }
+
+        // Frames of 1/32 s are exact in binary, so the 0.25 s grace ends on frame 8 (the press frame is frame 0).
+        const float ToleranceDt = 1f / 32f;
+
+        static PointerGesture ToleranceGesture() => new(MouseButton.Left, new PointerTapTolerance(4f, 0.25f, 8f));
+
+        [Fact]
+        public void Tolerance_gesture_short_move_released_inside_the_grace_is_a_tap()
+        {
+            var cam = new FollowCamera3D { Yaw = 0f };
+            cam.Pitch = 0.5f;
+            var ctl = new FollowCameraController(cam) { OrbitGesture = ToleranceGesture() };
+            for (int i = 0; i < 3; i++)
+                ctl.Update(Frame(mouseDelta: new Vector2(2f, 0f), down: MouseButton.Left), ToleranceDt);
+            ctl.Update(Frame(), ToleranceDt);
+            Assert.True(ctl.OrbitTap);
+            Assert.Equal(0f, cam.Yaw);
+            Assert.Equal(0.5f, cam.Pitch);
+        }
+
+        [Fact]
+        public void Tolerance_gesture_slow_drag_orbits_from_the_frame_the_grace_ends()
+        {
+            var cam = new FollowCamera3D { Yaw = 0f };
+            cam.Pitch = 0.5f;
+            var ctl = new FollowCameraController(cam) { OrbitGesture = ToleranceGesture() };
+            for (int frame = 0; frame < 12; frame++)
+            {
+                ctl.Update(Frame(mouseDelta: new Vector2(0.875f, 0f), down: MouseButton.Left), ToleranceDt);
+                if (frame < 8)
+                    Assert.Equal(0f, cam.Yaw);
+                else    // the crossing frame replays the whole press, then each frame adds its own step
+                    Assert.Equal(-0.875f * (frame + 1) * ctl.OrbitYawSpeed, cam.Yaw, 5);
+            }
+            Assert.Equal(0.5f, cam.Pitch);
+        }
     }
 }

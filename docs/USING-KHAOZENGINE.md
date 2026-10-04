@@ -1136,8 +1136,9 @@ gesture.Advance(input, uiBlocked, dt);   // the two-argument Advance throws on a
   drops that catch-up, so a press that drifted slowly through the grace starts its drag from rest.
 - `DistancePoints` must be finite and positive, `GraceSeconds` finite and not negative, `GraceDistancePoints` finite
   and at least `DistancePoints`, and `CatchUpLimitPoints` not negative and not NaN. The constructor throws
-  `ArgumentException` otherwise. `elapsedSeconds` must be finite and not negative. `TapTolerance` is null on a
-  gesture built with a threshold, and its three-argument `Advance` ignores the time.
+  `ArgumentException` otherwise. With a tolerance, `elapsedSeconds` must be finite and not negative, else
+  `Advance` throws `ArgumentOutOfRangeException`. `TapTolerance` is null on a gesture built with a threshold, and its
+  three-argument `Advance` neither uses nor checks the time, so it matches the two-argument one for any value.
 
 It is lifted from Ruinborne's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
 them (see "Tap-or-drag gestures" in the follow camera chapter).
@@ -6865,12 +6866,13 @@ character off this controller's movement state (see "Animated characters" above)
 to a `PointerGesture` each (see "Tap or drag" in the input chapter) and every button splits into a tap and a drag.
 With either set, `OrbitButton` is ignored. `UiBlocked` is a field the game sets before each `Update`, and a press
 that begins while it is true never taps, and above a zero threshold never orbits either. `Update` advances each set
-gesture once. The camera orbits only while a gesture drags, and by one delta a frame, so each mouse movement turns it
-once however many buttons are held. A gesture that crosses its threshold with no orbit since its press began applies
-its `DragDelta`, the replay of its pending travel, with `LookGesture` first when both cross together. Otherwise the
-frame's `MouseDeltaPoints` applies. Gesture replay and continuing motion are in window points before and during
-capture. Speed, invert and sign are as for the orbit button, and scroll zoom, target damping and boom recovery run
-unchanged. With neither gesture set, `Update` keeps the original orbit button path and its legacy `MouseDelta` units.
+gesture once with its `dt`, which times a gesture built on a `PointerTapTolerance`, so pass the real frame time. The
+camera orbits only while a gesture drags, and by one delta a frame, so each mouse movement turns it once however many
+buttons are held. A gesture that crosses its threshold with no orbit since its press began applies its `DragDelta`,
+the replay of its pending travel, with `LookGesture` first when both cross together. Otherwise the frame's
+`MouseDeltaPoints` applies. Gesture replay and continuing motion are in window points before and during capture.
+Speed, invert and sign are as for the orbit button, and scroll zoom, target damping and boom recovery run unchanged.
+With neither gesture set, `Update` keeps the original orbit button path and its legacy `MouseDelta` units.
 
 The controller reports three things:
 

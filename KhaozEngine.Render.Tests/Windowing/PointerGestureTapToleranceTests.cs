@@ -192,11 +192,25 @@ namespace KhaozEngine.Tests.Windowing
         [InlineData(float.NaN)]
         [InlineData(float.PositiveInfinity)]
         [InlineData(-0.01f)]
-        public void ElapsedSecondsMustBeFiniteAndNotNegative(float elapsed)
+        public void ElapsedSecondsMustBeFiniteAndNotNegativeWithATolerance(float elapsed)
         {
             InputState input = Frame(MouseButton.Right, new Input(true, Vector2.Zero), Start);
-            Assert.ThrowsAny<ArgumentException>(() => New().Advance(input, false, elapsed));
-            Assert.ThrowsAny<ArgumentException>(() => new PointerGesture(MouseButton.Right).Advance(input, false, elapsed));
+            Assert.Throws<ArgumentOutOfRangeException>(() => New().Advance(input, false, elapsed));
+            new PointerGesture(MouseButton.Right).Advance(input, false, elapsed);   // a default gesture never checks it
+        }
+
+        [Fact]
+        public void DefaultGestureIgnoresANaNElapsedTime()
+        {
+            Input[] script =
+            {
+                new Input(true, Vector2.Zero), new Input(true, new Vector2(3f, 0f)),
+                new Input(true, new Vector2(2f, 0f)), Release,
+            };
+            var nan = Array.ConvertAll(script, f => f with { Elapsed = float.NaN });
+            Assert.Equal(
+                Run(new PointerGesture(MouseButton.Right), script, timed: false),
+                Run(new PointerGesture(MouseButton.Right), nan));
         }
 
         [Theory]

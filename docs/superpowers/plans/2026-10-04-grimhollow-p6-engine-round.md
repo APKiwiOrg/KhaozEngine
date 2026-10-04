@@ -481,8 +481,10 @@ Rulings and departures (the full log is the round's progress file):
 - Task 6's allocation fact uses its brief's fallback, because `ShardedWorldServer.Tick` already allocates with a live
   cell ([#1282](https://github.com/APKiwiOrg/KhaozEngine/issues/1282)).
 
-Follow-ups (root files them): the server tick in the format 2 header (Q2), issue to be filled. The `Stall` comment on
-[#1278](https://github.com/APKiwiOrg/KhaozEngine/issues/1278) (Q4), to be filled.
+Follow-ups (root filed them): the server tick in the format 2 header (Q2) is
+[#1284](https://github.com/APKiwiOrg/KhaozEngine/issues/1284). The `Stall` comment on
+[#1278](https://github.com/APKiwiOrg/KhaozEngine/issues/1278) (Q4) is posted. The whole-world bake allocation lead from
+Grimhollow's routed walk-up is [#1283](https://github.com/APKiwiOrg/KhaozEngine/issues/1283).
 
 Handoff: root reviews the whole branch, merges and pushes main, then runs `scripts/pack-local-feed.sh` from main. The
 tag is the owner's. Grimhollow adopts the released pin on its P6 and routed walk-up branches per the design's consumer

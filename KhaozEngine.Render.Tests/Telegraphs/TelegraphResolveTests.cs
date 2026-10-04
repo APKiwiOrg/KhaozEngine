@@ -433,5 +433,88 @@ namespace KhaozEngine.Tests.Telegraphs
             Assert.Equal(0f, r.Runner);            // OutlineRunner is off
             Assert.Equal(0f, r.SweepGlow);         // SweepGlow needs FillSweep too
         }
+
+        [Fact]
+        public void DotLane_reveal_zero_hides_every_dot()
+        {
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0f, 0f, 0f, 0.1f), 5);
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.5f, 0f, 0f, 0.1f), 5);
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(1f, 0f, 0f, 0.1f), 5);
+        }
+
+        [Fact]
+        public void DotLane_full_reveal_no_fade_shows_every_dot()
+        {
+            Assert.Equal(1f, TelegraphResolve.DotLaneDotAlpha(0f, 1f, 0f, 0.1f), 5);
+            Assert.Equal(1f, TelegraphResolve.DotLaneDotAlpha(0.5f, 1f, 0f, 0.1f), 5);
+            Assert.Equal(1f, TelegraphResolve.DotLaneDotAlpha(1f, 1f, 0f, 0.1f), 5);
+        }
+
+        [Fact]
+        public void DotLane_full_fade_hides_every_dot()
+        {
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0f, 1f, 1f, 0.1f), 5);
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.5f, 1f, 1f, 0.1f), 5);
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(1f, 1f, 1f, 0.1f), 5);
+        }
+
+        [Fact]
+        public void DotLane_dot_ahead_of_reveal_front_is_hidden()
+        {
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.8f, 0.5f, 0f, 0.1f), 5);
+        }
+
+        [Fact]
+        public void DotLane_dot_behind_reveal_front_is_visible()
+        {
+            Assert.Equal(1f, TelegraphResolve.DotLaneDotAlpha(0.2f, 0.5f, 0f, 0.1f), 5);
+        }
+
+        [Fact]
+        public void DotLane_fade_hides_origin_end_first()
+        {
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.2f, 1f, 0.5f, 0.1f), 5);
+            Assert.Equal(1f, TelegraphResolve.DotLaneDotAlpha(0.8f, 1f, 0.5f, 0.1f), 5);
+        }
+
+        [Fact]
+        public void DotLane_monotonic_in_reveal_and_fade()
+        {
+            float prev = TelegraphResolve.DotLaneDotAlpha(0.5f, 0f, 0f, 0.1f);
+            Assert.InRange(prev, 0f, 1f);
+            for (int i = 1; i <= 100; i++)
+            {
+                float a = TelegraphResolve.DotLaneDotAlpha(0.5f, i / 100f, 0f, 0.1f);
+                Assert.InRange(a, 0f, 1f);
+                Assert.True(a >= prev, $"reveal {i / 100f}: {a} < {prev}");
+                prev = a;
+            }
+
+            prev = TelegraphResolve.DotLaneDotAlpha(0.5f, 1f, 0f, 0.1f);
+            for (int i = 1; i <= 100; i++)
+            {
+                float a = TelegraphResolve.DotLaneDotAlpha(0.5f, 1f, i / 100f, 0.1f);
+                Assert.InRange(a, 0f, 1f);
+                Assert.True(a <= prev, $"fade {i / 100f}: {a} > {prev}");
+                prev = a;
+            }
+        }
+
+        [Fact]
+        public void DotLane_zero_ramp_is_a_hard_step()
+        {
+            Assert.Equal(1f, TelegraphResolve.DotLaneDotAlpha(0.4f, 0.5f, 0f, 0f));
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.6f, 0.5f, 0f, 0f));
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.4f, 1f, 0.5f, 0f));
+            Assert.Equal(1f, TelegraphResolve.DotLaneDotAlpha(0.6f, 1f, 0.5f, 0f));
+        }
+
+        [Fact]
+        public void DotLane_non_finite_fronts_hide_the_dot()
+        {
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.5f, float.NaN, 0f, 0.1f));
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.5f, 1f, float.NaN, 0.1f));
+            Assert.Equal(0f, TelegraphResolve.DotLaneDotAlpha(0.5f, float.PositiveInfinity, 0f, 0.1f));
+        }
     }
 }

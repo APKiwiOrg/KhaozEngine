@@ -175,7 +175,7 @@ public sealed class ClientPrediction<TState, TCommand>
         predictedState = initialState;
         previousPredictedPosition = initialState.PredictionTarget;
         previousPredictedVertical = initialState.Vertical;
-        previousPredictedYaw = initialState.Yaw;
+        previousPredictedYaw = InterpolatedYaw(initialState);
         secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
         pendingCommands.Clear();
         renderOffset = Vector2.Zero;
@@ -240,7 +240,7 @@ public sealed class ClientPrediction<TState, TCommand>
         predictedState = basis;
         previousPredictedPosition = basis.PredictionTarget;
         previousPredictedVertical = basis.Vertical;
-        previousPredictedYaw = basis.Yaw;
+        previousPredictedYaw = InterpolatedYaw(basis);
         secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
         if (seedReportsTeleport)
         {
@@ -292,7 +292,7 @@ public sealed class ClientPrediction<TState, TCommand>
         Vector2 previousSimulationPosition = predictedState.Position;
         previousPredictedPosition = predictedState.PredictionTarget;
         previousPredictedVertical = predictedState.Vertical;
-        previousPredictedYaw = predictedState.Yaw;
+        previousPredictedYaw = InterpolatedYaw(predictedState);
         secondsSinceLastPredict = 0f;
         predictedState = simulator.Step(predictedState, command, settings.TickSeconds);
         // Fold this tick's discrete-step impulse into the step-smoothing accumulator, EXACTLY ONCE per real forward tick.
@@ -393,7 +393,7 @@ public sealed class ClientPrediction<TState, TCommand>
             // frac = 1) and drop the offset so rendered == predicted immediately.
             previousPredictedPosition = predictedState.PredictionTarget;
             previousPredictedVertical = predictedState.Vertical;
-            previousPredictedYaw = predictedState.Yaw;
+            previousPredictedYaw = InterpolatedYaw(predictedState);
             secondsSinceLastPredict = settings.TickSeconds;
             renderOffset = Vector2.Zero;
             renderOffsetVelocity = Vector2.Zero;
@@ -481,6 +481,10 @@ public sealed class ClientPrediction<TState, TCommand>
     }
 
     private static float Lerp(float a, float b, float t) => a + (b - a) * t;
+
+    // The heading to ease from, read only when it will be eased. A state that keeps the default Yaw member would box
+    // on every read through the constraint, so a heading nobody interpolates is never read at all.
+    private float InterpolatedYaw(in TState state) => settings.InterpolateYaw && state.HasYaw ? state.Yaw : 0f;
 
     // An angle in [-pi, pi), the range MoveState.FacingYaw is kept in. Netcode cannot reference Locomotion, so this
     // mirrors CharacterMovement.WrapYaw, closing both edges explicitly against one float rounding.

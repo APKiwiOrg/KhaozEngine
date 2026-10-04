@@ -165,7 +165,7 @@ public class MoveToRangeCarryTests
 
     sealed record Drive(List<MoveState> Bodies, List<RangeSteering> Steering, NavPath Route);
 
-    static NavSpace Surfaces(float originX, float originZ, Func<int, int, bool>? standable = null)
+    internal static NavSpace Surfaces(float originX, float originZ, Func<int, int, bool>? standable = null)
         => NavSpace.Single(NavGrid.FromSurfaces(32, 32, 0.25f, originX, originZ,
             (x, z) => new NavSurfaceSample(standable?.Invoke(x, z) ?? true, 0f, float.PositiveInfinity),
             stepHeight: 0.4f, agentHeight: 1.5f));

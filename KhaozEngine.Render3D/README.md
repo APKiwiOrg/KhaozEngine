@@ -1081,6 +1081,12 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     is the allocation-free sample into a reused per-node pose buffer; `AnimationPlayer.GetLocalPoses(buffer)` writes
     the composited LOCAL poses (the crossfade result before hierarchy composition) so a `LayeredAnimator` can take
     the locomotion crossfade as its base layer.
+  - `AnimationSampler.SampleBlendInto(skel, samples, into, scratch)` samples a weighted set of `ClipSample(Clip, Time,
+    Weight)` values, with `Time` in clip seconds, into one per-node local pose. It is a running normalised lerp
+    through `JointPose.Lerp`, so the weights need not sum to one, and one positive-weight sample is bit-identical to
+    `SampleInto`. Zero-weight samples are skipped, and when every weight is zero `into` keeps what it held. `into`
+    and `scratch` are distinct buffers of `Skeleton.NodeCount` entries. A negative or nonfinite weight, or a missing
+    clip on a positive weight, throws before anything is written. The call allocates nothing.
   - `Animation.Inspection.PoseProbe` samples a clip without a GPU and exposes each skeleton node's model-space
     matrix or position by node index or retained name. `SampleClip` takes a closed normalised phase, with phase `1`
     preserving the authored end key. `SampleClipAtSeconds` clamps to the authored time range. `SetLocals` inspects

@@ -43,6 +43,49 @@ namespace KhaozEngine.Render3D
             }
         }
 
+        /// <summary>Samples a weighted set of clips into one per-node local pose, a running normalised lerp through
+        /// <see cref="JointPose.Lerp"/>: each further sample is lerped in by its weight over the weight so far, so the
+        /// result does not depend on the weights summing to one. A single positive-weight sample is bit-identical to
+        /// <see cref="SampleInto"/>. Zero-weight samples are skipped, and when no sample has weight
+        /// <paramref name="into"/> is left untouched. <paramref name="into"/> and <paramref name="scratch"/> are
+        /// distinct buffers of <see cref="Skeleton.NodeCount"/> entries. Every sample is validated before anything is
+        /// written, so a refused call leaves <paramref name="into"/> as it was. Allocation-free.</summary>
+        public static void SampleBlendInto(Skeleton skel, ReadOnlySpan<ClipSample> samples, JointPose[] into, JointPose[] scratch)
+        {
+            if (skel is null) throw new ArgumentNullException(nameof(skel));
+            if (into is null) throw new ArgumentNullException(nameof(into));
+            if (scratch is null) throw new ArgumentNullException(nameof(scratch));
+            if (into.Length != skel.NodeCount)
+                throw new ArgumentException($"into length {into.Length} must equal node count {skel.NodeCount}.", nameof(into));
+            if (scratch.Length != skel.NodeCount)
+                throw new ArgumentException($"scratch length {scratch.Length} must equal node count {skel.NodeCount}.", nameof(scratch));
+            if (ReferenceEquals(into, scratch))
+                throw new ArgumentException("into and scratch must be distinct buffers.", nameof(scratch));
+            for (int i = 0; i < samples.Length; i++)
+            {
+                float weight = samples[i].Weight;
+                if (!float.IsFinite(weight) || weight < 0f)
+                    throw new ArgumentOutOfRangeException(nameof(samples), weight, $"sample {i} weight must be finite and not negative.");
+                if (weight > 0f && samples[i].Clip is null)
+                    throw new ArgumentException($"sample {i} has a positive weight and no clip.", nameof(samples));
+            }
+
+            float total = 0f;
+            foreach (ClipSample s in samples)
+            {
+                if (s.Weight == 0f) continue;
+                if (total == 0f)
+                {
+                    SampleInto(s.Clip, skel, s.Time, into);
+                    total = s.Weight;
+                    continue;
+                }
+                SampleInto(s.Clip, skel, s.Time, scratch);
+                total += s.Weight;
+                for (int n = 0; n < into.Length; n++) into[n] = JointPose.Lerp(into[n], scratch[n], s.Weight / total);
+            }
+        }
+
         /// <summary>Compose per-node local poses up the skeleton hierarchy into the per-bone joint-WORLD palette.</summary>
         public static void Compose(Skeleton skel, ReadOnlySpan<JointPose> localByNode, Matrix4x4[] bonePaletteOut)
         {

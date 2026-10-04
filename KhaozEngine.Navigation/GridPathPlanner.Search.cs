@@ -9,8 +9,8 @@ public sealed partial class GridPathPlanner
     /// <summary>
     /// Runs 8-connected A* from the snapped start cell to the goal cell, both resolved from world XZ via
     /// <see cref="NavGrid.CellOf"/> on their own layers. Node ids span every layer of the space
-    /// (<c>layerOffset[layer] + z * layer.Width + x</c>), so the <c>gScore</c>/<c>cameFrom</c> arrays,
-    /// the closed set, and the link adjacency all index one flat space. Grid step costs are in meters:
+    /// (<c>layerOffset[layer] + z * layer.Width + x</c>), so the scratch's g-score, parent and closed
+    /// stamps and the link adjacency all index one flat space. Grid step costs are in meters:
     /// an orthogonal step is <see cref="NavGrid.CellSize"/>, a diagonal <see cref="NavGrid.CellSize"/> *
     /// sqrt(2). A diagonal step is taken only when both orthogonal companions are passable, blocking
     /// corner cuts. After the eight grid neighbors, each link out of the current node is expanded at its
@@ -28,48 +28,60 @@ public sealed partial class GridPathPlanner
     /// heuristic among popped nodes, earliest on ties) as a <see cref="NavPathStatus.Partial"/> path, or
     /// <see cref="NavPath.Unreachable"/> when that closest node is still the start.
     /// </summary>
-    NavPath RunAStar(
+    NavPath RunAStar(SearchScratch scratch,
         int startLayer, Vector2 startPoint, int goalLayer, Vector2 goalPoint,
         float agentRadius, PathQueryBudget budget)
     {
         NavGrid goalGrid = _space.Layers[goalLayer];
         (int goalX, int goalZ) = goalGrid.CellOf(goalPoint.X, goalPoint.Y);
-        float PointHeuristic(int layer, int x, int z)
-            => Heuristic(layer, x, z, goalLayer, goalX, goalZ, goalGrid.CellSize);
-        double PointProgress(int layer, int x, int z) => PointHeuristic(layer, x, z);
-        return RunSearch(startLayer, startPoint,
-            (layer, x, z) => layer == goalLayer && x == goalX && z == goalZ,
-            PointHeuristic, PointProgress, goalPoint, agentRadius, budget);
+        return RunSearch(scratch, startLayer, startPoint,
+            new PointGoal(goalLayer, goalX, goalZ, goalGrid.CellSize), goalPoint, agentRadius, budget);
+    }
+
+    /// <summary>What one search is looking for. A struct implementation keeps the per-node calls free of
+    /// delegates and their closure allocations.</summary>
+    interface ISearchGoal
+    {
+        bool IsGoal(int layer, int x, int z);
+
+        /// <summary>Added to the g-score for the open-set order. Must bound the remaining route cost.</summary>
+        float Priority(int layer, int x, int z);
+
+        /// <summary>Lower is closer. Only chooses a partial endpoint.</summary>
+        double Progress(int layer, int x, int z);
+    }
+
+    /// <summary>A point query's goal cell, ordered by <see cref="Heuristic"/>.</summary>
+    readonly struct PointGoal(int goalLayer, int goalX, int goalZ, float goalCellSize) : ISearchGoal
+    {
+        public bool IsGoal(int layer, int x, int z) => layer == goalLayer && x == goalX && z == goalZ;
+
+        public float Priority(int layer, int x, int z)
+            => Heuristic(layer, x, z, goalLayer, goalX, goalZ, goalCellSize);
+
+        public double Progress(int layer, int x, int z) => Priority(layer, x, z);
     }
 
     // Priority must bound remaining route cost. Progress only chooses a partial endpoint, so region
     // queries can measure useful approach independently when a safe priority has to be zero.
-    NavPath RunSearch(int startLayer, Vector2 startPoint,
-        Func<int, int, int, bool> isGoal, Func<int, int, int, float> priority,
-        Func<int, int, int, double> progress, Vector2? goalPoint, float agentRadius, PathQueryBudget budget)
+    NavPath RunSearch<TGoal>(SearchScratch scratch, int startLayer, Vector2 startPoint, TGoal goal,
+        Vector2? goalPoint, float agentRadius, PathQueryBudget budget)
+        where TGoal : struct, ISearchGoal
     {
         NavGrid startGrid = _space.Layers[startLayer];
         (int startX, int startZ) = startGrid.CellOf(startPoint.X, startPoint.Y);
         int startId = _layerOffset[startLayer] + startZ * startGrid.Width + startX;
 
-        var gScore = new float[_totalNodes];
-        var cameFrom = new int[_totalNodes];
-        var closed = new bool[_totalNodes];
-        for (int i = 0; i < _totalNodes; i++)
-        {
-            gScore[i] = float.PositiveInfinity;
-            cameFrom[i] = -1;
-        }
-
-        var open = new PriorityQueue<int, (float F, int Seq)>();
+        scratch.BeginSearch();
+        PriorityQueue<int, (float F, int Seq)> open = scratch.Open;
         int seq = 0;
 
-        gScore[startId] = 0f;
-        float startHeuristic = priority(startLayer, startX, startZ);
+        scratch.Relax(startId, 0f, -1);
+        float startHeuristic = goal.Priority(startLayer, startX, startZ);
         open.Enqueue(startId, (startHeuristic, seq++));
 
         int closestNode = startId;
-        double closestHeuristic = progress(startLayer, startX, startZ);
+        double closestHeuristic = goal.Progress(startLayer, startX, startZ);
         int expanded = 0;
         bool reachedGoal = false;
 
@@ -81,12 +93,12 @@ public sealed partial class GridPathPlanner
             }
 
             int current = open.Dequeue();
-            if (closed[current])
+            if (scratch.IsClosed(current))
             {
                 continue; // A stale duplicate left behind by an earlier relaxation.
             }
 
-            closed[current] = true;
+            scratch.Close(current);
             expanded++;
 
             (int layer, int cx, int cz) = Decode(current);
@@ -94,14 +106,14 @@ public sealed partial class GridPathPlanner
             int width = grid.Width;
             int baseOffset = _layerOffset[layer];
 
-            double heuristic = progress(layer, cx, cz);
+            double heuristic = goal.Progress(layer, cx, cz);
             if (heuristic < closestHeuristic)
             {
                 closestHeuristic = heuristic;
                 closestNode = current;
             }
 
-            if (isGoal(layer, cx, cz))
+            if (goal.IsGoal(layer, cx, cz))
             {
                 // Pin a popped success even when it ties the start's partial-progress score.
                 reachedGoal = true;
@@ -109,7 +121,7 @@ public sealed partial class GridPathPlanner
                 break;
             }
 
-            float gCurrent = gScore[current];
+            float gCurrent = scratch.GScore(current);
             for (int i = 0; i < NeighborDx.Length; i++)
             {
                 int nx = cx + NeighborDx[i];
@@ -128,17 +140,16 @@ public sealed partial class GridPathPlanner
                 }
 
                 int neighborId = baseOffset + nz * width + nx;
-                if (closed[neighborId])
+                if (scratch.IsClosed(neighborId))
                 {
                     continue;
                 }
 
                 float tentative = gCurrent + (diagonal ? grid.CellSize * Sqrt2 : grid.CellSize);
-                if (tentative < gScore[neighborId])
+                if (tentative < scratch.GScore(neighborId))
                 {
-                    gScore[neighborId] = tentative;
-                    cameFrom[neighborId] = current;
-                    float f = tentative + priority(layer, nx, nz);
+                    scratch.Relax(neighborId, tentative, current);
+                    float f = tentative + goal.Priority(layer, nx, nz);
                     open.Enqueue(neighborId, (f, seq++));
                 }
             }
@@ -151,7 +162,7 @@ public sealed partial class GridPathPlanner
             {
                 foreach ((int targetId, float costMeters) in links)
                 {
-                    if (closed[targetId])
+                    if (scratch.IsClosed(targetId))
                     {
                         continue;
                     }
@@ -163,11 +174,10 @@ public sealed partial class GridPathPlanner
                     }
 
                     float tentative = gCurrent + costMeters;
-                    if (tentative < gScore[targetId])
+                    if (tentative < scratch.GScore(targetId))
                     {
-                        gScore[targetId] = tentative;
-                        cameFrom[targetId] = current;
-                        float f = tentative + priority(tLayer, tx, tz);
+                        scratch.Relax(targetId, tentative, current);
+                        float f = tentative + goal.Priority(tLayer, tx, tz);
                         open.Enqueue(targetId, (f, seq++));
                     }
                 }
@@ -180,16 +190,16 @@ public sealed partial class GridPathPlanner
             return NavPath.Unreachable;
         }
 
-        return Reconstruct(cameFrom, closestNode, reachedGoal, goalPoint, agentRadius);
+        return Reconstruct(scratch, closestNode, reachedGoal, goalPoint, agentRadius);
     }
 
     /// <summary>
-    /// Walks <paramref name="cameFrom"/> back from <paramref name="target"/> to the start, then
+    /// Walks the scratch's parents back from <paramref name="target"/> to the start, then
     /// emits its validated cell edges for guarded and region queries. Legacy point queries
     /// string-pull the chain into world-space waypoints. The chain is split into same-layer runs at
     /// every link crossing (any edge that is not an in-layer 8-neighbor step). Within a run the pull is
     /// greedy: the anchor starts at the run's first cell, and each step keeps the farthest later cell
-    /// still in clear <see cref="HasLineOfSight"/> from the anchor, emits it, and re-anchors there. A
+    /// still in clear <see cref="SearchScratch.HasLineOfSight"/> from the anchor, emits it, and re-anchors there. A
     /// run's first cell is never emitted by the pull itself, so the start cell is dropped (matching the
     /// line-of-sight fast path). Both link endpoints are always emitted: a run's last cell falls out of
     /// the pull, and the next run's first cell (the link's far endpoint) is emitted explicitly before
@@ -201,24 +211,26 @@ public sealed partial class GridPathPlanner
     /// single-cell chain that reached the goal returns exactly that one exact-goal waypoint rather than
     /// indexing an empty list.
     /// </summary>
-    NavPath Reconstruct(int[] cameFrom, int target, bool reachedGoal, Vector2? goalPoint, float agentRadius)
+    NavPath Reconstruct(SearchScratch scratch, int target, bool reachedGoal, Vector2? goalPoint, float agentRadius)
     {
-        var chain = new List<int>();
-        for (int node = target; node != -1; node = cameFrom[node])
+        List<int> chain = scratch.Chain;
+        chain.Clear();
+        for (int node = target; node != -1; node = scratch.CameFrom(node))
         {
             chain.Add(node);
         }
         chain.Reverse();
-        if (_traversal is not null || goalPoint is null) return ReconstructTraversal(chain, reachedGoal);
+        if (_traversal is not null || goalPoint is null) return ReconstructTraversal(scratch, reachedGoal);
 
         int count = chain.Count;
-        var cells = new (int Layer, int Cx, int Cz)[count];
+        (int Layer, int Cx, int Cz)[] cells = scratch.CellsFor(count);
         for (int i = 0; i < count; i++)
         {
             cells[i] = Decode(chain[i]);
         }
 
-        var waypoints = new List<NavWaypoint>();
+        List<NavWaypoint> waypoints = scratch.Waypoints;
+        waypoints.Clear();
         bool firstRun = true;
         int runStart = 0;
         while (runStart < count)
@@ -258,7 +270,7 @@ public sealed partial class GridPathPlanner
                 for (int candidate = runEnd; candidate > anchor; candidate--)
                 {
                     Vector2 candidateCenter = grid.CellCenter(cells[candidate].Cx, cells[candidate].Cz);
-                    if (HasLineOfSight(grid, anchorCenter, candidateCenter, agentRadius))
+                    if (scratch.HasLineOfSight(grid, anchorCenter, candidateCenter, agentRadius))
                     {
                         best = candidate;
                         break;
@@ -286,11 +298,11 @@ public sealed partial class GridPathPlanner
                 // Single-cell chain (start cell == goal cell): the pull emitted nothing, so the exact
                 // goal is the whole path. Reachable only defensively today, the same-layer fast path
                 // already returns a one-waypoint result for a zero-length query.
-                waypoints.Add(new NavWaypoint(goalPoint.Value, cells[^1].Layer));
+                waypoints.Add(new NavWaypoint(goalPoint.Value, cells[count - 1].Layer));
             }
         }
 
-        return new NavPath(reachedGoal ? NavPathStatus.Complete : NavPathStatus.Partial, waypoints);
+        return new NavPath(reachedGoal ? NavPathStatus.Complete : NavPathStatus.Partial, waypoints.ToArray());
     }
 
     /// <summary>True when the step from <paramref name="a"/> to <paramref name="b"/> is an in-layer

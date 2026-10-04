@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using KhaozEngine.Collision;
 
 namespace KhaozEngine.Navigation;
 
@@ -25,6 +24,13 @@ namespace KhaozEngine.Navigation;
 /// (<c>layerOffset[layer] + z * width + x</c>), so the search, the closed set, and the link map share
 /// one flat index space. Deterministic: fixed neighbor order and a monotone insertion counter break
 /// every tie the same way.
+/// <para>
+/// The planner keeps one set of search scratch, allocated on its first query and reused by every later
+/// one: generation-stamped per-node g-scores, parents and closed marks (twelve bytes a node across all
+/// layers) plus the open set and reconstruction lists. A query touches only the nodes it visits and
+/// clears nothing, and a warmed query allocates only the path it returns. Queries may run concurrently
+/// from several threads: a query that finds the scratch already taken uses a fresh one of its own.
+/// </para>
 /// </summary>
 public sealed partial class GridPathPlanner : IRegionPathPlanner
 {
@@ -131,6 +137,19 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
     public NavPath FindPath(Vector3 start, Vector3 goal, float agentRadius, PathQueryBudget budget)
     {
         ValidateTraversalRadius(agentRadius);
+        SearchScratch scratch = RentScratch();
+        try
+        {
+            return FindPath(scratch, start, goal, agentRadius, budget);
+        }
+        finally
+        {
+            ReturnScratch(scratch);
+        }
+    }
+
+    NavPath FindPath(SearchScratch scratch, Vector3 start, Vector3 goal, float agentRadius, PathQueryBudget budget)
+    {
         int startLayer = _space.LayerAt(start);
         int goalLayer = _space.LayerAt(goal);
 
@@ -158,12 +177,13 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
 
         // Same layer with a clear straight shot is the trivial one-waypoint case. Everything else runs
         // the A* search, which also carries cross-layer routing over the link edges.
-        if (_traversal is null && startLayer == goalLayer && HasLineOfSight(startGrid, startPoint.Value, goalPoint, agentRadius))
+        if (_traversal is null && startLayer == goalLayer &&
+            scratch.HasLineOfSight(startGrid, startPoint.Value, goalPoint, agentRadius))
         {
             return new NavPath(NavPathStatus.Complete, new[] { new NavWaypoint(goalPoint, goalLayer) });
         }
 
-        return RunAStar(startLayer, startPoint.Value, goalLayer, goalPoint, agentRadius, budget);
+        return RunAStar(scratch, startLayer, startPoint.Value, goalLayer, goalPoint, agentRadius, budget);
     }
 
     /// <summary>
@@ -226,26 +246,6 @@ public sealed partial class GridPathPlanner : IRegionPathPlanner
 
         snappedToOwnCell = false;
         return null;
-    }
-
-    /// <summary>
-    /// True when a straight line from <paramref name="fromWorldXz"/> to <paramref name="toWorldXz"/>
-    /// crosses no cell that <see cref="Blocks(NavGrid, float, int, int)"/> for <paramref name="agentRadius"/>, via
-    /// <see cref="GridRay.IsClear"/>.
-    /// </summary>
-    /// <remarks>
-    /// GridRay walks axis-aligned local cells. Both endpoints are inverse-transformed through the
-    /// grid's translation and yaw before tracing, so path smoothing tests the same cells as A*.
-    /// </remarks>
-    static bool HasLineOfSight(NavGrid grid, Vector2 fromWorldXz, Vector2 toWorldXz, float agentRadius)
-    {
-        Vector2 localFrom = grid.WorldToLocal(fromWorldXz);
-        Vector2 localTo = grid.WorldToLocal(toWorldXz);
-
-        return GridRay.IsClear(
-            localFrom, localTo, grid.CellSize,
-            (x, z) => Blocks(grid, agentRadius, x, z),
-            includeEndpointCells: false);
     }
 
     /// <summary>True when an agent of <paramref name="agentRadius"/> does not fit at

@@ -57,9 +57,11 @@ public sealed partial class GridPathPlanner
         return snappedToOwnCell ? _space.Layers[layer].CellCenter(x, z) : null;
     }
 
-    NavPath ReconstructTraversal(List<int> chain, bool reachedGoal)
+    NavPath ReconstructTraversal(SearchScratch scratch, bool reachedGoal)
     {
-        var waypoints = new List<NavWaypoint>();
+        List<int> chain = scratch.Chain;
+        List<NavWaypoint> waypoints = scratch.Waypoints;
+        waypoints.Clear();
         int first = chain.Count > 1 && IsGridStep(Decode(chain[0]), Decode(chain[1])) &&
             !_hopEdges.Contains((chain[0], chain[1])) ? 1 : 0;
         for (int i = first; i < chain.Count; i++)
@@ -71,6 +73,6 @@ public sealed partial class GridPathPlanner
                 Kind = hop ? NavWaypointKind.Hop : NavWaypointKind.Walk,
             });
         }
-        return new NavPath(reachedGoal ? NavPathStatus.Complete : NavPathStatus.Partial, waypoints);
+        return new NavPath(reachedGoal ? NavPathStatus.Complete : NavPathStatus.Partial, waypoints.ToArray());
     }
 }

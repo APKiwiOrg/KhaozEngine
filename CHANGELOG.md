@@ -5,6 +5,18 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.25.0
+
+- Sharded servers take a cell grid origin (`ShardedWorldServerConfig.CellOrigin`), so a world that extends below
+  an axis origin can choose where cells fall. A position belongs to cell `floor((p - CellOrigin) / CellSize)`.
+  Before this the grid always began at the world origin, so a world straddling 0 on an axis was split there
+  whatever `CellSize` it picked, with ghosting, handoff and a second cell world at the seam. The default origin
+  keeps every existing grid unchanged. A non-finite origin is refused at construction.
+- `ShardHost` takes the origin as `cellOrigin` and keys on a new `CellGrid` value (`ShardHost.Grid`, plus
+  `CellOrigin`), the one owner of the conversion: `CoordFor`, `BoundsOf` and `CenterOf`. Cell keying, handoff,
+  border ghosting and each cell's island frame (nearest the shifted centre) all read it.
+  `CellCoord.FromWorld(x, y, cellSize)` is unchanged.
+
 ## 20.24.1
 
 - `GridPathPlanner` reuses one set of search scratch across queries instead of allocating and filling

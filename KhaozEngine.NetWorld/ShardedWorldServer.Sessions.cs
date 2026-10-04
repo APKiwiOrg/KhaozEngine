@@ -11,6 +11,10 @@ public sealed partial class ShardedWorldServer
 {
     private void OnJoin(int slot, string subject, string displayName, string verifiedPersistenceKey)
     {
+        // NetServer seats a returning account on the slot its lingering body holds. That body leaves first through
+        // the ordinary path, so its save is published before this join's load and the resume hint seats the new body
+        // where it stood. OnLeave's ReleaseHeldSlot is a no-op here: the slot is reseated, no longer held.
+        if (IsLingering(slot)) OnLeave(slot);
         if (ReservedSubjectGuard.IsReserved(subject, slot)) { net.Disconnect(slot); return; }
         string accountId = string.IsNullOrEmpty(subject) ? $"{ResumePositionCache.GuestAccountPrefix}{slot}" : subject;
         if (banStore is not null && banStore.IsBanned(accountId))

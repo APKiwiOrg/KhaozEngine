@@ -5678,7 +5678,8 @@ clamp `[0.25, 3.0]`, tunable via `LocomotionSpeedSync.Enable`'s `minMultiplier`/
 `MinLocomotionRate`/`MaxLocomotionRate`), so a near-stationary or teleporting entity never freezes or
 fast-forwards the cycle. A reference speed left at 0 plays that state at 1x. **Crossfades are unaffected**: a
 blend still takes its authored `crossfade` seconds (the crossfade timer runs at wall-clock `dt`); only the clip
-playheads scale, so the feet track speed even mid-blend.
+playheads scale, so the feet track speed even mid-blend. A character that strafes and backpedals with its own clips
+wants the directional locomotion blend below instead, which syncs every clip to distance travelled.
 
 **Lower-level pieces** (if you are not using `AnimatedCharacter`): `AnimationSampler.SampleToBonePalette(clip,
 skeleton, time)` is a one-shot pose; `AnimationPlayer` holds a playhead, loops, and crossfades
@@ -5688,6 +5689,42 @@ wall-clock `dt`. The 1-arg `Update(dt)` is exactly `Update(dt, 1f)`. A NEGATIVE 
 backwards: a looping clip wraps onto its tail, and a one-shot (`PlayOnce`) holds at frame 0 the way the forward
 direction holds the final frame. `JointPose` is the TRS unit clips
 interpolate; `InterpolationMode` is LINEAR or STEP (CUBICSPLINE is read as its value keys).
+
+**Directional locomotion blend (eight-way, feet in step)** (`DirectionalLocomotionBlend`, `KhaozEngine.Game`). A
+four-family clip pick plays the forward walk while a forward-left body moves half sideways, and the feet skate. The
+blend weights the two adjacent direction families by angle (45 degrees is half and half), splits each family by
+speed between the two members that bracket it, eases every weight over `blendSeconds`, and advances one shared gait
+phase by distance over the weighted stride. Each clip samples at `Phase + SyncPhase`, its authored right-foot contact,
+so the blended feet plant together. A steady target has at most four clips.
+
+```csharp
+// Once per model. Ids are yours, and a family's members ascend by FullWeightSpeed.
+var gaits = new DirectionalGaitSet(
+    forward:  new[] { new GaitClip(WalkF, 1.4f, 1.2f, 0.25f), new GaitClip(RunF, 4.0f, 2.4f, 0.25f) },
+    backward: new[] { new GaitClip(WalkB, 1.0f, 0.9f, 0.5f) },
+    left:     new[] { new GaitClip(StrafeL, 1.2f, 0.8f, 0.6f) },
+    right:    new[] { new GaitClip(StrafeR, 1.2f, 0.8f, 0.1f) });
+var blend = new DirectionalLocomotionBlend(gaits);
+var gaitSamples = new GaitSample[gaits.ClipCount];
+var clipSamples = new ClipSample[gaits.ClipCount];
+
+// Every frame, airborne included, so the gait phase carries into the landing.
+Vector2 body = DirectionalLocomotionBlend.BodyFrame(worldVelocity, facingYaw);
+int n = blend.Advance(body, dt, gaitSamples);
+for (int i = 0; i < n; i++)
+{
+    AnimationClip clip = clipsById[gaitSamples[i].ClipId];
+    clipSamples[i] = new ClipSample(clip, gaitSamples[i].Phase * clip.Duration, gaitSamples[i].Weight);
+}
+AnimationSampler.SampleBlendInto(skeleton, clipSamples.AsSpan(0, n), locomotionPose, scratch);
+// Lay locomotionPose over idle at blend.TravelWeight, then add turn-in-place, jump and action layers.
+```
+
+`TravelWeight` eases to 1 while moving and to 0 below `movingSpeed`, where the targets hold, so a stop fades out of
+the last gait rather than snapping to idle. Use it as the locomotion layer weight, and play turn-in-place when it is
+low and the body yaws. `BodyFrame` uses the `MoveCommand.CameraYaw` convention (0 faces -Z, positive turns toward -X),
+with X right and Y forward. `Advance` refuses a sample span shorter than `ClipCount`, a negative or nonfinite `dt` and
+a nonfinite velocity. `n` is 0 only until a movement has eased a weight in after construction or `Reset`.
 
 `GltfLoader.LoadSkinned` retains the glTF name of every skeleton node in `Skeleton.NodeNames`, using an empty
 string for an unnamed node. `Skeleton.IndexOf(name)` resolves a required name and lists the known names if it is

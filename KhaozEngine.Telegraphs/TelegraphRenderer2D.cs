@@ -13,6 +13,10 @@ namespace KhaozEngine.Telegraphs
     /// </summary>
     public sealed class TelegraphRenderer2D
     {
+        /// <summary>Most dots one <see cref="DotLane"/> call draws. A lane that needs more draws its first
+        /// <see cref="MaxDotLaneDots"/> from the origin and stops.</summary>
+        public const int MaxDotLaneDots = 4096;
+
         SpriteBatch? _batch;
         PrimitiveRenderer? _prim;
 
@@ -137,5 +141,60 @@ namespace KhaozEngine.Telegraphs
                 }
             }
         }
+
+        /// <summary>
+        /// A row of dots every <paramref name="spacing"/> from <paramref name="origin"/> along
+        /// <paramref name="direction"/> out to <paramref name="length"/>. Dots appear outward as the
+        /// <paramref name="reveal"/> front moves from 0 to 1 and disappear outward, origin end first, as the
+        /// <paramref name="fade"/> front does. Each dot eases in and out over two spacings, per
+        /// <see cref="TelegraphResolve.DotLaneDotAlpha"/>. Colour resolves from <paramref name="reveal"/> like the
+        /// progress of the other shapes, and the impact flash is scaled by <c>1 - fade</c> so the dots pop at the
+        /// strike and cool as they wash out. <see cref="ResolvedTelegraph.FillFraction"/> is not used because the
+        /// reveal front replaces the sweep. <see cref="FillMode.Fill"/> draws filled dots in the fill colour,
+        /// <see cref="FillMode.Outline"/> draws rings at the edge thickness in the outline colour, and
+        /// <see cref="FillMode.OutlineAndFill"/> draws both. A dot whose alpha is zero is not drawn. At most
+        /// <see cref="MaxDotLaneDots"/> dots are drawn, the ones nearest the origin.
+        /// </summary>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="spacing"/> is not finite and positive.
+        /// </exception>
+        /// <exception cref="InvalidOperationException">Called before <see cref="Begin"/>.</exception>
+        /// <remarks>A non-positive or non-finite <paramref name="length"/> draws nothing.</remarks>
+        public void DotLane(Vector2 origin, Vector2 direction, float length, float spacing, float dotRadius,
+            float reveal, float fade, in TelegraphStyle style)
+        {
+            if (!float.IsFinite(spacing) || spacing <= 0f)
+                throw new ArgumentOutOfRangeException(nameof(spacing), spacing, "Spacing must be finite and positive.");
+            var (b, p) = Active();
+            if (!float.IsFinite(length) || length <= 0f) return;
+
+            var r = TelegraphResolve.Resolve(reveal, style);
+            b.BlendMode = ToBlend(r.Blend);
+            Vector2 dir = direction.LengthSquared() > 1e-6f ? Vector2.Normalize(direction) : Vector2.UnitX;
+            float flash = r.FlashAdd * (1f - MathUtil.Clamp01(fade));
+            Color fill = WithFlash(r.FillColor, flash);
+            float ramp = MathF.Min(1f, 2f * spacing / length);
+
+            int last = DotLaneLastIndex(length, spacing);
+            for (int i = 0; i <= last; i++)
+            {
+                float along = i * spacing;
+                float alpha = TelegraphResolve.DotLaneDotAlpha(along / length, reveal, fade, ramp);
+                if (alpha <= 0f) continue;
+                Vector2 center = origin + dir * along;
+                if (r.FillMode != FillMode.Outline)
+                    p.DrawFilledCircle(b, center, dotRadius, fill.WithAlpha(fill.A * alpha));
+                if (r.FillMode != FillMode.Fill)
+                {
+                    Color ring = r.OutlineColor.WithAlpha(r.OutlineColor.A * alpha);
+                    p.DrawRing(b, center, dotRadius, r.EdgeThickness, ring);
+                }
+            }
+        }
+
+        // Index of the last dot, clamped in float before the int conversion. A float to int conversion
+        // saturates, so an unclamped ratio of 2^31 or more would give int.MaxValue and the loop would never end.
+        internal static int DotLaneLastIndex(float length, float spacing) =>
+            (int)MathF.Min(MathF.Floor(length / spacing), MaxDotLaneDots - 1);
     }
 }

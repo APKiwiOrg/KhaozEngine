@@ -113,6 +113,33 @@ namespace KhaozEngine.Telegraphs
             };
         }
 
+        /// <summary>
+        /// Alpha of one dot in a dot lane whose dots appear outward behind a <paramref name="reveal"/> front and
+        /// disappear outward behind a <paramref name="fade"/> front. <c>reveal = 0</c> hides every dot,
+        /// <c>reveal = 1, fade = 0</c> shows every dot fully, and <c>fade = 1</c> hides every dot. With a positive
+        /// <paramref name="ramp"/> the reveal front's leading edge sits at <c>reveal * (1 + ramp)</c>, and a dot
+        /// ahead of that edge stays hidden. The fade front's leading edge sits at <c>fade * (1 + ramp)</c>.
+        /// </summary>
+        /// <param name="position">The dot's normalized distance along the lane, 0 at the origin and 1 at its end.</param>
+        /// <param name="reveal">0..1 front behind which dots are shown.</param>
+        /// <param name="fade">0..1 front behind which dots are hidden again.</param>
+        /// <param name="ramp">Normalized width over which a dot eases in or out. Zero or less is a hard step.</param>
+        /// <returns>The dot alpha in 0..1. Any non-finite argument gives 0.</returns>
+        public static float DotLaneDotAlpha(float position, float reveal, float fade, float ramp)
+        {
+            if (!float.IsFinite(position) || !float.IsFinite(reveal) || !float.IsFinite(fade) || !float.IsFinite(ramp))
+                return 0f;
+
+            if (ramp <= 0f)
+                return reveal > 0f && fade < 1f && position <= reveal && position >= fade ? 1f : 0f;
+
+            // Each front is stretched by (1 + ramp) so a dot at position 1 is fully in (or out) at front 1, and a
+            // dot at position 0 is not yet in (or out) at front 0.
+            float fadeIn = Easing.SmoothStep((reveal * (1f + ramp) - position) / ramp);
+            float fadeOut = Easing.SmoothStep((fade * (1f + ramp) - position) / ramp);
+            return fadeIn * (1f - fadeOut);
+        }
+
         // 0 below ~0.6, rising steeply to 1 at p=1. Quartic for a snappy late spike.
         static float FlashCurve(float p)
         {

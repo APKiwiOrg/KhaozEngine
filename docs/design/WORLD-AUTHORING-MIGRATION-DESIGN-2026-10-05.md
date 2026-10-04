@@ -1,34 +1,51 @@
-# World authoring migration for Grimhollow
+# Native MapDoc world authoring, option A
 
-Status: **Proposal for owner review. No production implementation approved.**
+Status: **Direction approved by owner 2026-10-05 (OA1 to OA3), spec awaiting owner review**
 
-Engine baseline d4dd8d918b6c6639ea63291ad818aa829c02074a, branch feature/world-authoring-design.
-Game baseline 74f57ee22652bd18234b4479faba4f1898a17047, branch feature/gw-authoring-design, forked from grand-world.
-Ruinborne was inspected read-only as a consumer example.
+This is the engine-wide specification for one native world authoring stack. It replaces the proposal's recommendation with option A. Direction approval permits this document, not production implementation. Each engine round needs an approved implementation plan after spec approval. This lane changes documents only, pushes its two task branches and performs no merge, tag or issue filing.
 
-## Recommendation and intent
+Evidence baseline is engine d4dd8d918b6c6639ea63291ad818aa829c02074a. The proposal commit is 1a90f445a239bfb5c3069ee1d02173ebc5ed6e6a on feature/world-authoring-design. Game evidence baseline is 74f57ee22652bd18234b4479faba4f1898a17047, with proposal commit 743029b0c9ddc96a354861f170389e971cdfa269 on feature/gw-authoring-design. Counts below describe that frozen fixture, not the still-changing grand-world lane [G1, G2, S1].
 
-Choose **B, a MapDoc-led hybrid, 44/60**. Make MapEditor and ke-mapedit the primary composition tools. Retain exact grid terrain and building/interior content as referenced components behind an engine-owned adapter. Move loose scenery to native free placements. Add transformed Solid placements only after collider, picking and reach parity. Native free transforms already exist. The compatibility layer does not [E1, E2, E4, E5, E12, E13].
+Bracketed evidence keys resolve to file:line anchors in the register. Existing behavior and measurements are evidence claims. Contracts, round sizes and estimates below are proposed requirements and engineering judgments. OA and T sources are the supplied 2026-10-05 dispatch, transcribed here as the review record, not claims inferred from source code.
 
-This is a selective format migration. TileWorld remains a component format. If the owner's requirement is complete removal of every TileWorld file and API, choose A instead. C is the cheapest route to visual variation, but keeps ke-tileedit. These are recommendations, not new owner rulings [E3, E4, G1].
+## Owner rulings, binding direction
 
-The dispatch requests the tool swap because cliffs and trees repeat on whole-tile placements. Current TileObject coordinates are integers, rotation is quarter turns and LocalToWorld uses scale 1. Archetype yaw offsets affect every instance, not individual variation [E3].
+The owner answered the proposal summary on 2026-10-05: "For the engine - I want one tool to author both yes, I want props and buildings placeable agnostic of tiles in general, but I want specifically grimhollow to move off tile world too."
 
-The task is investigation, these documents and a throwaway probe. No source world, game rule, engine pin or production API changes. The movement pivot's O3 retained TileWorld. O11 stages its integration as 0.11.0. This proposal must be separately approved, not silently amend that program [G1].
+| Ruling | Direction approved by owner |
+| --- | --- |
+| OA1 | One tool, MapEditor GUI plus ke-mapedit MCP, authors terrain, props and buildings. No two-format hybrid |
+| OA2 | Props and buildings accept free position, yaw and positive uniform scale as an engine-wide capability |
+| OA3 | Grimhollow leaves TileWorld completely through the full native MapDoc swap, option A |
 
-The probe preserved all **5,566 placement records** and the ground corner lattice. It did **not** preserve a playable world. The imported field differs from the current movement floor by up to **1.676952 m**. Matching parse counts and document heights cannot replace physics, rendering and interaction parity [S1, E9, E10].
+B, the MapDoc-led hybrid, was considered and declined by this ruling because it retained TileWorld components. C, TileWorld free transforms with ke-tileedit, was considered and declined because it kept the format and tool. The chosen direction is A [E1 to E5, E9 to E13, E19, E21].
 
-## Evidence and current content
+## Orchestrator technical rulings, subject to owner review
 
-Evidence keys resolve to exact file and line references in the register below. Supported means a current API directly represents the capability. Partial means reusable primitives exist but Hollowmere parity needs integration or new semantics. Missing means the current closed document/editor model has no corresponding contract. Proposed contracts, scores and estimates are explicitly design judgments.
+Every T entry is an orchestrator ruling, not an owner ruling. The owner may overrule it during spec review.
 
-The source world has 25 regions, each 64x64 one-metre tiles, covering 320x320 m. It has four planes with 4.5 m plane height, 14 ground materials, 121 archetypes, 113 used kinds and 5,566 objects. Seven reusable prefab definitions and nine actual building interiors exist [G2, G3, S1].
+| Ruling | Contract to design against |
+| --- | --- |
+| T1 Terrain | Native MapDoc layers carry the exact authored 1 m corner-height lattice and per-cell material IDs, overlay shapes, rotations, feathering, blocked and indoor flags. GUI brushes and MCP verbs edit them. Movement floor, render surface and nav capture use one terrain definition. The measured 1.677 m disagreement becomes zero by construction. No procedural regeneration [E9, E10, E12, E15, S1] |
+| T2 Water | Native bounded bodies carry their own surface height and medium. The importer materializes the existing bodies exactly. The rim rule is not a native runtime dependency [E11, E18] |
+| T3 Buildings | A prefab asset groups free local placements, walls, doors, windows, roofs, furniture, lights, interior floor paint and interior volumes. MapEditor prefab mode offers optional local snapping. Instances have free transforms and overrides. Volumes replace plane-based roof hiding and indoor state [E3, E13, E21] |
+| T4 Collision and reach | Each solid placement, including walls, resolves one oriented compound-box or baked collision shape from its asset. Both heads use that shape for reach, picking and walk-up stance. Mesh AABB and catalog footprint are not competing narrow-phase targets [E7, E8, E12, E23, G7] |
+| T5 Identity | Stable placement IDs. Preserve every Grimhollow numeric object ID at the game boundary. Allocate new IDs without collisions [E1, E6, E22, G12] |
+| T6 Headless builders | A GPU-free engine package builds terrain and placement statics, water medium, nav capture input and residency from the same MapDoc for server, client and tests [E8, E18, E25, E27] |
+| T7 Tools | ke-mapedit reaches every current ke-tileedit world-editing capability, with the explicit mapping below, plus native paint, water, prefabs, free buildings, markers, foliage density and measured collision heights. GUI covers the same command surface [E4, E5, E16, E33 to E42] |
+| T8 Migration | One offline validating lossless importer converts the accepted grand-world Hollowmere with an exhaustive ledger. Grimhollow then deletes its TileWorld code. The engine keeps TileWorld for other consumers until a separate deprecation decision [E3, E21, G1 to G3, S1] |
+| T9 Timing | Engine rounds start only after spec and plan approval, on engine task branches. Each release takes the next available engine minor after the concurrent pivot program's releases. Only the owner tags. Game adoption starts after 0.11.0 and accepted grand-world land, on a fresh branch from main [E30, E31, G1, G14, G15] |
 
-Measured placements comprise 4,305 None, 842 Solid, 381 Wall and 38 WallCorner objects. There are 578 interactive objects and ten roofs on nonzero planes. The world has 38 markers, one 161x161 foliage density layer, 836 Indoors cells, 8,872 Blocked cells, 2,130 overlay cells, ten shaped overlays and 660 FeatherOverlay cells [S1].
+## Frozen content and measured constraint
 
-Seven region-clipped water bodies share surface Y -0.37 m and contain 113 rectangles. Clipping is part of the existing rim-based flat-surface rule. The river_bridge archetype supplies its walk surface. The nine Bridge flags alone do not implement its deck collision [S1, E11, E12, G4].
+The proposal fixture has 25 regions of 64x64 one-metre cells, four planes at 4.5 m separation, 14 ground materials, 121 archetypes (113 used), seven reusable prefab definitions and nine actual interiors. It contains 5,566 objects, 4,305 None, 842 Solid, 381 Wall and 38 WallCorner, including 578 interactive objects and ten higher-plane roofs [G2, G3, S1].
 
-## Capability matrix
+It has 38 markers, 103,041 distinct ground corners, 102,400 underlays, 2,130 overlays, ten shaped cuts, 660 feather flags, 8,872 blocked, 836 indoor and nine reserved Bridge flags, one 161x161 density raster, and seven clipped water bodies made of 113 rectangles at Y -0.37 m. The bridge deck comes from the asset's walk surface, not its Bridge flag [E9 to E12, G4, S1].
+
+The spike preserved placement records and corner heights but lost operative paint, water, collision, roof, prefab and foliage semantics. Its field differed from the triangle movement floor by up to 1.676952362 m at (4.37,-64.61). This rules out promoting the spike as the importer [E9, E10, S1].
+
+## Baseline capability matrix
+
 
 This matrix describes the pinned baseline, not the proposed additions.
 
@@ -55,101 +72,260 @@ This matrix describes the pinned baseline, not the proposed additions.
 | Netcode and authoritative state [G11, G12] | MapDocumentHash, no MapDoc game host/state policy [E26] | Authoring has no networking authority [E16] | NetWorld/Locomotion independent of format. Game boot/gates use tile data and IDs today [G8, G11, G12] | Partial integration, keep netcode |
 | Snapshot tool and render goldens [G13] | Headless document load [E26] | RenderService uses ViewportWorld/Render3DSnapshot. Missing manifests render terrain only [E28] | Existing TileWorld/Terrain goldens, no Hollowmere cross-format proof [E29, G13] | Partial |
 
-## Options, costs and trade-offs
+## Native engine contracts
 
-Estimates are judgments for a serial implementation lane with one local build/test slot, released engine adoption and owner reviews. They are not measured throughput or delivery promises. The matrix, especially E2, E9, E12, E13, E19, E21 and G7 to G13, defines their scope.
+Names below identify proposed API responsibilities, not existing public types. Core MapDoc and its runtime packages acquire no TileWorld or Grimhollow dependency. An optional offline importer is the only new package allowed to read TileWorld. Existing analytic MapDoc consumers and TileWorld consumers retain their current behavior [E1, E2, E6, E26, E31].
 
-### A. Full native MapDoc swap
+### C1 Document, schema, identity and asset closure
 
-**Engine.** Add versioned authored ground paint/topology/holes, bounded water, interior/roof relationships, prefab references/overrides, resolved stable IDs, shared collision and interaction geometry, residency and matching GUI/MCP tools. Extend engine abstractions rather than encode game rules in magic tags [E1, E2, E9, E12, E13, E19, E21].
+**Data and versions.** The evidence baseline is MapDoc format 3. R1 introduces format 4 with separate playable bounds, digest-bearing native asset references, optional placement numeric IDs, a persisted numeric allocation high-water mark and resolver identity metadata. Absent playable bounds migrate from Bounds. Old placements retain their stable string IDs and Kind. An explicit format upgrade changes the format hash and needs matching peers, while legacy analytic execution remains unchanged. The ordinal list position is never identity. Numeric IDs are positive int64, encoded as decimal strings in JSON/MCP so clients cannot round them through a double [E1, E2, E6, E26, E43].
 
-**Game and tests.** Replace world load/view, physics/medium/nav inputs, spawn/habitat readers, picking, reach, node positions, hashes, asset publication and world snapshots. Broad content/fixture migration and new cross-format physics/render tests. Preserve doorway, river and coordinate assertions rather than weaken them because types changed [G3 to G13].
+Imported IDs are copied exactly. New allocation reserves above the maximum imported/reserved value, increments monotonically, fails on exhaustion and never reuses deletion tombstones. Prefab child-to-world-ID bindings are serialized, not hashed from names. Generic games may omit numeric IDs. Asset kind, placement ID and game numeric ID are distinct fields in every resolved record, with ordered instance tags retained [E3, E6, E21, E22, G12].
 
-**Content.** Offline validating importer accounts for every ID, cell, marker, prefab, roof and foliage sample. Exact initial geometry. Re-authoring requires a separate owner decision [S1, G2, G3].
+Formats advance at the rounds below: 5 native terrain, 6 water, 7 prefabs/interiors, 8 markers, 9 foliage. Every N to N+1 migration is pure and tested. Numbers describe this baseline-relative schema sequence, not reserved engine releases. If concurrent MapDoc work takes a number, rebase the sequence onto the next free format, preserving these semantic transitions. Future-format input refuses rather than dropping unknown fields. All newly structured payloads use closed schemas and explicit payload versions [E2, E26, E43].
 
-**Risk/payoff.** Best format consistency and unrestricted future authoring. Highest risk of floor, wall, roof, water and reach changes. The probe disproves an API-only conversion [S1].
+The authored-world identity hashes the normalized MapDoc, complete native prefab/material/asset/collider/light/LOD closure and builder algorithm/options versions. Monolithic and storage-chunk forms with identical TileSize resolve equally. Re-tiling can change storage identity as today without changing coordinates. Game catalog and nav/profile hashes are additional game gate inputs, not rules encoded in engine assets [E7, E26, G11].
 
-**Estimate.** 10 to 16 weeks. Engine 6 to 9, game/importer 2 to 4, integration/review 2 to 3. An unrestricted multi-storey building editor could exceed this scope.
+**Runtime.** A deterministic resolver returns immutable placement records, effective transforms, asset descriptors, semantic surface IDs and ordered tags. A render-free manifest DTO owns collision and surface data. Render3D adapts that DTO for mesh/material loading rather than forcing the headless resolver to reference Render3D. Missing references, duplicate IDs, stale hashes, cycles or unsupported payload versions fail before building any world [E6 to E8, E22, E26].
 
-### B. MapDoc-led hybrid, recommended
+**Editor/tool.** Load/save/validate/summary and the ID inspector use the resolver. For native game placements, rename changes a display label. Changing the stable placement ID is a separate explicit validated remap that updates every reference and cannot alter numeric state identity. Moves, rotations, scaling, duplication and undo/redo preserve existing IDs. Duplication allocates once and redo restores that allocation. Placement kind and asset variant remain separately inspectable [E4, E5, E16, E22, E35, E38].
 
-**Engine.** Typed component references, stable resolved identities and an optional bridge package depending on MapDoc and TileWorld. Core MapDoc does not acquire a TileWorld dependency. Compose exact grid terrain and editable grid prefab assets with native placements. Share bounds, picking, statics, medium and residency across game/editor, with component preview/edit extension points in MapEditor/ke-mapedit [E1, E2, E4, E6, E12, E21, E27].
+**Proof.** Schema migrations, old analytic v3 roundtrip, large int64 exact roundtrip, reordered placement arrays, imported/new-ID collisions, tombstones, redo, closure edits and missing/cyclic/stale references. Two independently built heads return identical resolved identity tables and closure hashes [E1, E6, E26, E43].
 
-**Game and tests.** One shared resolved-world facade. Keep game rules, localization and archetype IDs. Start with an exact copied grid component, then extract loose placements by stable ID with no duplicated ownership. Retain grid component tests and adapt fixtures/consumers at the facade. Add composition/transform/parity tests and targeted pictures [G3 to G13].
+### C2 Authored terrain and local floor surfaces
 
-**Content.** Preserve every terrain layer and all nine actual building interiors. Keep the seven editable prefab definitions. Do not replace actual buildings with their nominal stamps and lose differences. Root references hash the component closure [G2, G3, E21, E26].
+**Data.** Format 5 adds an explicit analytic/authored terrain source discriminator. Authored terrain is an absolute lattice, never analytic noise plus sculpt deltas. Each native surface has stable ID, origin, positive cell size, width/depth, corner heights, per-cell underlay/overlay uint16 IDs, four named overlay cuts, quarter-turn paint rotations and flags Blocked, Indoor, NoDraw, FeatherOverlay and preserved reserved metadata. World terrain uses 1 m cells for Hollowmere. Storage chunks are independent of that resolution [E9, E10, E12, E26, E44].
 
-**Risk/payoff.** Two component formats and a real composition seam. Double draws/statics, stale referenced hashes, dangling IDs and editor/runtime picking disagreement are the main risks. Initially constrain buildings to scale 1 and grid-compatible transforms. Free solids require shared physical/reach geometry [E3, E8, G7].
+Imported corner values use exact integer centimetres with an origin/height unit declaration, so copying the old short payload adds no rounding. General authored surfaces may declare a finer unit. Half/quarter-cell triangulation points follow the exact old cut and diagonal rule. Explicit native surface layers replace planes. The importer materializes all four planes' effective heights, including ground-plus-4.5 m derivations and authored overrides, and records how they were derived in its ledger. Void and NoDraw cells stay absent render/capture geometry. No unused upper plane becomes a new walkable floor [E9, E12, E21, E44].
 
-**Estimate.** 6 to 9 weeks. Engine schema/bridge/editor 3 to 5, game facade/importer 2 to 3, parity/review 1. A loose-scenery demonstration is about 1 to 2 weeks after approval, not a complete swap.
+Material entries preserve IDs, texture binding, repeat rate, physical material/medium classification and missing-material diagnostics. They do not squeeze 14 IDs into five splat channels. A local prefab floor uses the same surface DTO and transform pipeline. Moving it does not repaint world cells. Imported building paint can be a non-colliding surface decal constrained to the canonical floor triangles. Elevated floors are explicit support surfaces, with no second plane-derived sampler [E7, E9, E15, E21, G2, G3].
 
-### C. Extend TileWorld free transforms, keeping ke-tileedit
+**Runtime.** One GPU-free triangle compiler yields vertices, topology, surface IDs and geometric normals. Rendering, terrain statics, analytic triangle sampling and nav capture consume this output. Feather tessellation subdivides the same triangles without moving the surface. Interior floor paint is an explicit material-override patch, distinct from a rigid support floor. It decorates the canonical terrain triangles without adding a competing floor. A building can author either kind in local space, and the resolver keeps their support roles distinct. There is no bilinear movement fallback on drawn terrain. Void/outside fallback is explicitly tagged as non-capture support, preserves the existing bounded fallback behavior and cannot expand playable bounds [E9, E10, E12, S1].
 
-**Engine.** Backward-compatible per-instance yaw, uniform scale and sub-tile offset. Defaults preserve current transforms and hashes. Add validation, undo and tool verbs. Centralize effective transform across renderer, raycast, shadows, camera blockers, LOD, foliage exclusions and physics [E3, E12, E19].
+Indoors flags remain authored native data. Their connected footprint is compiled into the same volume-membership service as C5, with an explicit vertical span. Prefab floors bind to their own interior volume instead. No client separately tests a cell flag while the server tests a volume. Imported indoor mask coverage and authored volume footprints must agree. Blocked flags remain masks, with their medium-aware gameplay filtering supplied by the consumer [E12, E13, G8].
 
-**Stages.** None scenery first, still respecting Examine and roofs. Solid next, with oriented footprint-derived colliders and matching reach. Keep Wall, WallCorner, Diagonal, door topology and grid prefab stamping constrained until explicitly designed. Rotated solids must not become whole-tile raster blockers [E3, E12, G6, G7].
+**Editor/tool.** Height set/read/raise/flatten/smooth/import and underlay/overlay/cut/rotation/flag/feather brushes act on named native surfaces. Heights roundtrip without changing units. Brush edits invalidate terrain, physics, nav, material and residency caches as one transaction. Brush preview shows actual triangle floor height/normal, not only the document height [E4, E16, E33, E37].
 
-**Game, content and tests.** Released engine adoption, transformed bounds/reach/stance and scenery pass tools. Content does not move at defaults. Add transforms only to selected objects, preserving IDs/footprints. Concentrated schema/default/hash/physics/pick/reach tests, deliberate world hash and picture updates. Existing terrain, water and building proofs remain [G3 to G13].
+**Validation and proof.** Reject invalid dimensions, nonfinite heights, inconsistent shared corners, unknown materials/cuts/flags, unsupported units and accidental analytic/authored mixing. Compare every source corner and cell on every plane, canonical triangle topology/normals and frozen render captures. At the spike's failing point and across cuts/seams/slopes, all three consumers use the same triangle sample, giving zero semantic height discrepancy. Physics backend raycasts may use an explicit 0.00001 m numerical tolerance, never the 1.677 m alternate field. No procedural generator is part of the conversion [E9, E10, E29, E44, S1].
 
-**Risk/payoff.** Cheapest visual variation, but dual grid/physical geometry in a grid-oriented format. A visual-only transform on Solid is wrong. Primary editor remains ke-tileedit, only partly meeting the tool goal [E3, E12, G1].
+### C3 Placement assets, collision, picking, reach and headless build
 
-**Estimate.** 2 to 4 weeks. None support 0.5 to 1, Solid/reach 1.5 to 3. Free walls/buildings excluded.
+**Data.** Native asset descriptors have version 1 collision payloads: no-collision, compound boxes with local poses, or a referenced versioned baked collider with digest. Support/deck surfaces and optional selection shapes for non-solid scenery are explicit descriptors. Preserve authored mesh origin, unit scale, materials/parts, LOD and light offsets. Asset descriptors also store digest-verified local render bounds and LOD/light extents, so headless residency needs no GPU mesh. Imported kit loading uses an explicit preserve-source-scale mode, not an unintended HeightMeters renormalization [E7, E8, E12, G2].
 
-### D. Status quo
+A placement/prefab instance applies position XYZ, yaw radians and positive uniform scale exactly once. No quarter-turn or grid requirement exists. Null Y means an explicit terrain-support snap policy, not a second height algorithm. Import uses explicit Y from the canonical source transform, even where old placement anchoring was bilinear, to avoid moving art when the movement floor is unified [E1, E3, E5, E9].
 
-No migration. Keep content, tests and tools. Mesh variants and hand dressing can reduce repetition but cannot supply free per-instance transforms. Lowest immediate cost and risk, little progress on the requested workflow. Migration estimate 0 weeks, dressing work excluded [E3, G1, G2].
+Legacy Wall and WallCorner become thin oriented local boxes or compounds, preserving which edges block. Doorway colliders preserve apertures. A whole-building box is prohibited. Legacy Solid bottoms/top spans can depend on the terrain at that placement. Import materializes a digest-keyed asset collision variant for such spans and for deck components, then records the variant in the placement asset reference. It does not recalculate a footprint at game runtime. Variants share meshes and retain gameplay Kind. New free placements use their selected authored asset collider. Moving an imported variant moves its rigid shape, with editor diagnostics for poor ground seating [E3, E7, E8, E12, E45].
 
-### Scores
+**Runtime package.** Proposed KhaozEngine.MapDoc.Physics depends on MapDoc, the render-free asset descriptor seam, Terrain/Collision/Physics/Movement as needed, with an optional backend adapter. It has no GPU, Render3D, MapEditor or TileWorld dependency. One build produces immutable terrain triangles, resolved placement shapes/support surfaces, blocked masks, medium descriptors, spatial bounds, complete capture input and residency ownership. It exposes these descriptors without requiring a Bepu device just to validate a world [E8, E18, E25, E27].
 
-Higher is always better. Risk means safety, cost means affordability, test churn means stability. Equal weights, maximum 60. Scores are scope-based design judgments, not measured performance.
+The consumer registers a complete static world for capture and a movement query view excluding the ground handles, using the same triangle floor sampler. Filtering blocked-water masks is an explicit game option covered by the game identity. The server's complete statics do not depend on client camera/window residency. Client windows include oversized geometry crossing any storage chunk boundary [E12, E18, E25, E27, G8, G9].
 
-| Option | Goal fit | Risk safety | Cost affordability | Test stability | Engine reuse | Authoring ergonomics | Total |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| A. Full native swap | 10 | 3 | 2 | 2 | 9 | 9 | **35** |
-| B. MapDoc-led hybrid | 9 | 6 | 5 | 6 | 9 | 9 | **44** |
-| C. TileWorld transforms | 5 | 8 | 8 | 8 | 6 | 6 | **41** |
-| D. Status quo | 1 | 9 | 10 | 10 | 2 | 2 | **34** |
+**Shared geometry.** Physics, narrow-phase pick rays, point/shape distance, line-of-sight and walk-up candidates use the same effective oriented asset shape. Reach is a distance to that shape with game-authored tolerance. Compounds preserve openings rather than using a bounding box for final decisions. Broad-phase AABBs are only acceleration. Non-solid Examine props use their explicit selection shape through the same query service. Optional interaction bands, such as a tree's lower 2 m, restrict eligible hits without inventing a separate full-size target [E7, E8, E23, G6, G7].
 
-B changes the main workflow while preserving the grid features that dominate A's cost. If tool replacement is optional, C wins on affordability. If TileWorld retirement is mandatory, A wins on fit [E1 to E5, E9 to E13, E19, E21, G1].
+**Editor/tool.** Gizmos, bounds/collider visualization, object selection, collision queries, walkability and path previews use this build. Measurement reports raw mesh max Y and effective transformed collision bottom/top separately. Writing measured heights changes only the selected asset collision descriptor, with a dry-run diff and invalidation of affected statics, not an accidental mesh resize [E4, E5, E24, E36, E42].
 
-## Proposed hybrid contracts
+**Validation and proof.** Reject missing collider data for solids, unsupported shape types, zero/negative/nonfinite scale, invalid compounds and stale baked shapes. Headless tests exercise yaw 0.371, offset (0.23,0.17), scale 1.137, slope-seated walls, corner walls, narrow door apertures, decks, a large cross-chunk building, lower tree band and compound distance/stance. Check client/server pick/reach/collider identity and nav clearance against those shapes. Existing generic reach APIs may need oriented/compound support, which belongs in the engine [E8, E12, E23 to E25, E45, S1].
 
-These are proposed contracts, not existing APIs.
+### C4 Bounded water and medium
 
-1. **Composition root.** Versioned MapDoc contains native placements and typed content references. Grid component documents remain canonical assets, not generated duplicate authoring copies. References carry digests. Verify/save refuses missing, cyclic, stale or unsupported components. The optional bridge keeps core MapDoc independent [E2, E26].
-2. **Single ownership.** Begin with the exact current world as a grid component. Extract loose objects by stable ID, removing their grid copies in the same validated transaction. A ledger maps original region/plane/archetype/transform to the new placement. No double draws/colliders. Publish the complete reference closure [E3, E6, E26, G11].
-3. **Shared resolution.** Both heads consume stable identity, archetype, instance/catalog tags, transform, bounds, collision/reach geometry and roof/interior relationships. Preserve numeric authored IDs at game boundaries. Allocate new IDs collision-free. Do not hash strings to longs and assume uniqueness [E1, E6, E22, G7, G12].
-4. **Exact terrain first.** Preserve all grid layers, flags, four-plane height derivation, topology, water and foliage in the grid component. MapEditor previews it through the adapter. Its analytic field must not create a second visible/collidable floor. Ground edits route through the existing grid command layer until a separately approved lossless native surface format exists [E9 to E13, E19, E21, S1].
-5. **Physics and reach.** Reuse existing grid triangles, walls/corners, blocked flags and deck surfaces. Keep the game's wading filter. Native solids use a shared transformed footprint/height definition for both collider and reach. Never mesh-AABB reach on one head and catalog reach on the other [E8, E12, G7, G8].
-6. **Building instances.** Preserve the seven definitions and nine actual interiors. Keep initial local geometry, roof height and hiding. Lock imported buildings to scale 1 and grid-compatible translation/quarter turns. Free building transforms are additional scope [E3, E13, E21, G3].
-7. **Storage versus simulation.** Start with 64 m document tiles, using world-space negative Z. Residency accounts for geometry crossing tile boundaries, oversized props and referenced prefab bounds. Server complete physics cannot depend on client view distance. Keep storage padding distinct from playable bounds [E3, E25 to E27, G8, G9, S1].
+**Data.** Format 6 adds stable-ID water bodies with disjoint bounded rect/polygon domains, explicit SurfaceY, medium key/parameters and render material reference. Import copies all seven region-clipped bodies, 113 rectangles and their exact heights as independent records. It may associate equal-height records for editing but cannot merge away source identity in the ledger. Terrain height edits no longer silently change a body's level. Analytic maps may retain their old global-water mode, while an authored map selects bounded mode and cannot accidentally render both [E1, E11, E17, E18, S1].
 
-Ruinborne demonstrates a thin game-owned stock editor head with working-tree paths, manifests and game spawn choices. It does not demonstrate Hollowmere's painted floors, interiors, roof policy or game reach. Borrow its hosting pattern, not its gameplay/content [R1].
+**Runtime.** The shared builder supplies clipped water draw polygons and feet-aware medium samples. Overlap of two bodies with different surfaces/media is invalid unless explicitly split into disjoint domains. Foot height at or above the surface is dry, preserving decks over water. Body edges use one documented half-open domain rule for rendering/query/capture. Neither camera position nor an old region rim recomputes the surface [E11, E17, E18].
 
-## Phases, engine releases and the 0.11.0 barrier
+**Editor/tool.** Body create/read/list/set/remove, boundary brush and level/medium inspector share undoable commands. Preview water alongside terrain, bridges and medium query readouts. Validate finite levels, nonempty/non-self-intersecting domains, overlaps and valid media/material IDs [E4, E11, E16 to E18].
 
-The engine baseline stages 20.24.0. This frozen game lane pins 20.23.0 [E30, G14]. Do not reserve release numbers while the pivot runs. Each approved package batch takes the next available release after concurrent pivot work. Docs and this spike do not bump versions. Later releases/adoption follow repository rules [E31, G15].
+**Proof.** Exact body domain/height/media ledger, seams, negative Z edges, dry bridge feet, submerged river bed, multiple independent levels and no global ocean outside the bounded bodies. Compare render/capture/medium domain samples before and after import [E11, E18, E25, G4, S1].
 
-| Phase / release batch | Engine work and exit proof | Game work | Timing |
+### C5 Prefabs, buildings, interior volumes and roofs
+
+**Data.** Format 7 adds version 1 native prefab assets and free-transform instances. A prefab has stable local child keys, placements, native local floor surfaces/paint, lights, markers and interior volumes. Instance overrides address those keys for transforms, tags, asset variants, additions/removals, floor paint and volume/roof membership. A persisted child binding map gives resolved children stable world placement/numeric IDs. No nested prefab references in v1. A building needs no world tile footprint or plane [E1, E3, E13, E21].
+
+Interior volumes are local polygon prisms with explicit lower/upper Y and stable storey/volume keys. Roof child keys attach to the volumes they conceal. Hidden roofs still cast shadows. AlwaysVisible/AlwaysHidden remain view modes. Auto hides only linked roofs above the observer's occupied volume, not all roofs on a global plane. Roof-aware camera blockers and indoor lighting use that same membership result. An open pasture shelter has no indoor volume and stays visible in Auto [E13, G3].
+
+World transforms compose parent and local position/yaw/uniform scale once for child shapes, floors, lights, volumes and markers. A doorway hole remains open under free rotation/scale. Optional local snapping improves authoring but is not a runtime constraint. Uneven-site seating is a diagnostic, not an automatic procedural foundation. Arbitrary authored storeys fit as local surfaces and volumes, without adding stairs generation, CAD or structural simulation [E3, E7, E8, E21].
+
+**Import rule.** Keep all seven reusable definitions, then reconstruct each actual building using a checked membership manifest over original objects/cells/markers/roofs. A nominal old stamp does not recover actual instance differences. Use explicit overrides or a native variant asset for differences, with every original object represented exactly once. Parent containers are new identities, while original leaf numeric IDs survive. Uncertain grouping refuses and reports the unassigned evidence instead of guessing [E3, E21, G2, G3, S1].
+
+**Editor/tool.** Prefab mode opens one native asset, edits the same placement/floor/water/marker/volume commands in local space, optionally snaps, previews its collider/openings and saves a validated asset. World mode places/transforms an instance and inspects overrides. Extract/save/list/place/edit/override/unpack use one command layer. Asset edits invalidate every referring instance. Undo/redo restores the same child IDs [E4, E16, E21, E38].
+
+**Validation and proof.** Reject dangling overrides/roof links, duplicated child bindings, cycles, unsupported nesting, invalid volume geometry and double-owned floors. Prove seven definitions plus nine actual interiors, cottage/bank door routes, crafting-hall differences, unchanged higher roof transforms, shadow-only hiding, multi-storey observer separation, and free building placement at non-quarter yaw/non-grid position/scales 0.8 and 1.2. Reload must preserve each leaf ID and transform [E13, E21, G3, S1].
+
+### C6 Markers, spawn readers and habitat inputs
+
+**Data.** Format 8 adds the world general-marker registry with stable ID/name, free XYZ/yaw, role, enabled flag, ordered tags and optional prefab-local ownership. Numeric game placement IDs are not required for markers. Prefab-local marker records are part of prefab payload 1 in R5 and join this registry in R6. Player/NPC spawn lists migrate through lossless typed projections, retaining archetype/role and exact legacy computed Y. A general landmark is a point, not a tiny region disc [E1, E14, G5, S1].
+
+**Runtime/editor/tool.** Resolver supports role/name lookup, explicit height or canonical support snap and world/local transforms. GUI and marker set/remove/list plus spawn controls edit this model. Validate globally unique imported names, roles via the consumer registry and dangling prefab ownership. Engine returns generic tagged shapes/points. Cow pen, duck habitat and spawn selection stay game policies [E1, E14, E16, E34, G5, G9].
+
+**Proof.** Preserve all 38 markers, their roles/tags/enabled state/world points, including 32 NPC, one player and five general landmarks. Prove sub-metre/elevated markers, prefab move/scale and old spawn migration without snapping a saved explicit height [E1, E34, G5, S1].
+
+### C7 Foliage density and deterministic dressing
+
+**Data.** Format 9 adds versioned native density layers with ID, origin, row direction, cell spacing, dimensions, byte raster, seed, distribution settings, asset/material references and exclusion rules. Convert the existing 161x161 raster in its positive-world-Z row convention, not the negative-Z legacy tile convention. Do not regenerate the raster or reseed samples [E19, E20, E39, S1].
+
+**Runtime.** The generic CPU distributor reads the C2 canonical surface, material paint, C3 shapes, C5 indoor volumes and explicit doorway/edge exclusions. Imported distributions keep the existing predicate version and parameters so default sample identities, positions, orientations and scales match. Where legacy footprint/roof exclusions differ from physical shapes, the importer materializes explicit native exclusion masks and binds them to their owning placements/prefabs. These are authored distribution masks, not alternate collision/reach shapes. They transform with their owner. New layers can select geometry-derived exclusions. Changing an imported predicate version requires a sample differential rather than silently rerolling. Cache identity includes density, surface, collider/volume and distributor version. Scenery objects produced by worldtrees/worldflora remain explicit placements, not density-layer collision or gameplay targets [E19, E20, G2].
+
+**Editor/tool.** Layer set/get/remove, density set and circular paint share the raster command implementation. GUI paints and previews the same sample set. Validate raster shape/bytes, finite spacing/settings and valid references. Prove every one of the 25,921 source density bytes, all generated sample records and exclusion decisions, seed stability, doorway clearance, rotated-building exclusion and reload with no reroll [E19, E20, E39, S1].
+
+### C8 One native rendering, residency and capture path
+
+**Data/runtime.** No extra schema revision. Authored terrain draws the canonical geometry, with no coarser height-field LOD replacing its triangles. LOD may reduce grouping/material work while preserving that surface. A native resolved-world view composes C2 terrain/local floors, C3 placements/LOD/lights, C4 water, C5 interiors/roofs and C7 foliage. Bounds are derived from effective child shapes/meshes/surfaces, with a single owner and membership in every intersected storage chunk. Partial loads cannot claim whole-world validation without the closure. Server complete build remains independent of visual streaming [E7, E8, E26 to E28, G10].
+
+MapEditor, ke-mapedit RenderService and a game client use this native view. Snapshot APIs accept the same manifests/resolver/options and observer volume. Missing required assets fail capture, rather than silently producing terrain-only images. Hidden roofs enter a shadow-only pass. Camera collision/picking respects current roof visibility while physical world statics stay authoritative [E13, E17, E22, E28, G13].
+
+**Validation and proof.** Complete load versus chunked load, spanning building/tree residency, duplicate-free draw/statics and clean unload. Existing TileWorld and analytic-terrain goldens remain unchanged. Add native terrain paint cuts/feathers, river/bridge, roofs/indoor shadow, transformed props/buildings and foliage goldens through the normal backend CI route. Grimhollow captures use TAA Native. Tests prove scene/capture plumbing as well as isolated mesher output [E27 to E29, G13, G16].
+
+### C9 Editing parity, importer and no-loss gate
+
+**Commands.** GUI and MCP invoke one undoable native command layer. Each mutation reports affected surface/placement IDs, dirty bounds, identity and undo/redo labels. Validation failure writes nothing. Save validates the closure and writes atomically, retaining tiled-writer protection against unindexed overwrites. Deterministic batch transforms/placement operations return every allocated ID, and redo does not allocate again [E4, E5, E16, E32, E33 to E42].
+
+**Importer.** An optional offline TileWorld-to-MapDoc migration package reads a frozen source and its catalogs/prefabs, calculates the actual source runtime semantics, writes only a new destination and emits a versioned ledger. The optional package supplies one offline CLI/library implementation, with source, destination, membership manifest and ledger arguments. It is a one-time converter, not another ongoing world editor. Source and destination hashes, converter/builder versions and parameters are mandatory. All native output loads without TileWorld. Authored integers, bytes, IDs and ordered tags compare exactly. Derived transforms/vertices compare within 0.00001 m and normals within 0.000001 component error, with the tolerance fixed before conversion and every exceeded value reported. Native floor/render/capture agreement still comes from identical triangle descriptors, not separate approximations. The old fixture is an offline comparison input, never a referenced native world component. Re-running identical input produces identical output/digests. Existing unrelated output refuses overwrite [E3, E9 to E13, E19, E21, E26, E32, S1].
+
+The ledger has one record per source object, cell/layer/plane and corner, marker, prefab definition/actual instance membership, roof link, water body/rectangle and foliage density byte/generated sample. Each records source key/value digest, destination native key/owner, preserved effective transform/role/geometry digest, comparison result and an explicit approved semantic exception reference. Storage grouping and new prefab parents have separate counts from original leaf objects. Every source key is accounted once. Duplicate/dangling/unmapped records or unauthorized differences refuse publication. The companion game spec defines the exact Hollowmere gate [G2 to G13, S1].
+
+**Proof.** Exhaustive closure and inventory comparisons plus route/reach/pick/render behavior. Counts and a new MapDocumentHash alone are insufficient. T1 deliberately removes the probe's alternate floor. T4 changes the legacy picking/reach implementation, so the differential report must identify any changed hit target or distance for owner review. It must not call those differences lossless without explicit acceptance. Physics shape preservation and same-head agreement are independently proved [E9, E12, E23, E26, G7 to G13, S1].
+
+## Complete ke-tileedit verb parity map
+
+All 50 baseline MCP verbs are included. Names in the middle column are required native ke-mapedit surfaces, existing where E46 covers them and proposed otherwise. Parity means capability, not accepting a TileWorld input format. Surface cells/storage chunks are authoring addresses only. Native spatial arguments are world metres, yaw radians and explicit surface/volume IDs. Negative world Z and north-first legacy arrays are converted explicitly at import, while foliage retains its positive-Z row convention [E3, E33 to E42, E46].
+
+| Current ke-tileedit verb | Native ke-mapedit verb and contract | GUI equivalent / evidence |
+| --- | --- | --- |
+| world_open | map_open, native closure only | Open [E35] |
+| world_create | map_create, analytic or authored mode | New map [E35] |
+| world_save | map_save, validated atomic closure | Save [E35] |
+| world_summary | map_summary, layer/instance/leaf/ID counts | Summary [E35] |
+| world_validate | map_validate, schema/closure/runtime findings | Validate [E35] |
+| catalog_list | asset_list and material_list, all bindings | Palettes/inspector [E35] |
+| region_create | storage_chunk_create, no gameplay tile | Storage/terrain extent [E35] |
+| region_delete | storage_chunk_delete, refuse content loss unless explicitly selected | Storage delete [E35] |
+| region_list | storage_chunk_list, separate from tagged gameplay regions | Storage overview [E35] |
+| undo | undo, identical IDs restored | Undo [E35] |
+| redo | redo, no reallocation | Redo [E35] |
+| tile_get | surface_cell_get, paint/flags/corners/derived physics | Cell inspector [E33] |
+| tile_set | surface_cell_set, omitted layers untouched | Single-cell brush [E33] |
+| tiles_fill | surface_cells_fill, named surface rect/flags/paint | Fill brush [E33] |
+| tiles_get_rect | surface_cells_get_rect, lossless data plus ASCII view | Layer map [E33] |
+| object_place | placement_add, asset/XYZ/yaw/scale/tags/ID | Place [E38] |
+| object_move | placement_move, full XYZ or explicit support snap | Move gizmo [E38] |
+| object_rotate | placement_rotate, radians | Yaw gizmo [E38] |
+| object_remove | placement_remove, leaf reference checks | Delete [E38] |
+| object_set_tags | placement_set_tags, preserve order | Tags inspector [E38] |
+| object_get | placement_get, identity/transform/shape/roles | Placement inspector [E38] |
+| objects_in_rect | placements_in_rect, explicit anchor or overlap query mode | Rect select [E38] |
+| object_find | placement_find, asset/kind/tag/ID | Search [E38] |
+| objects_line | placements_line, metre spacing and free transforms | Line placement [E38] |
+| objects_scatter | placements_scatter, seed and shared collision/exclusion tests | Deterministic scatter [E38] |
+| marker_set | marker_set, general XYZ/yaw/role and typed spawn projections | Marker tool [E34] |
+| marker_remove | marker_remove, stable identity | Marker delete [E34] |
+| marker_list | marker_list, all roles including landmarks | Marker list [E34] |
+| height_set | surface_height_set, exact corner patch/unit/row declaration | Height brush [E37] |
+| height_raise | surface_height_raise, delta/falloff | Raise/lower brush [E37] |
+| height_flatten | surface_height_flatten, explicit or rounded mean | Flatten brush [E37] |
+| height_smooth | surface_height_smooth, bounded iteration count | Smooth brush [E37] |
+| height_get_rect | surface_height_get_rect, roundtrips set | Height inspector [E37] |
+| height_import | surface_height_import, explicit image range/orientation | Heightmap import [E37] |
+| prefab_save | prefab_save, extract selected children/surfaces/volumes with stable local keys | Prefab extract/save [E40] |
+| prefab_place | prefab_place, free world transform and child ID bindings | Prefab placement [E40] |
+| prefab_list | prefab_list, version/digest/closure | Prefab palette [E40] |
+| foliage_layer_set | foliage_layer_set, complete versioned native layer | Layer inspector [E39] |
+| foliage_get | foliage_get, layer/list plus raster metadata | Foliage list [E39] |
+| foliage_density_set | foliage_density_set, exact bytes | Density import [E39] |
+| foliage_paint | foliage_paint, shared metre brush/hardness | Density brush [E39] |
+| foliage_remove | foliage_remove | Layer delete [E39] |
+| collision_at | collision_at, world point/height and oriented shapes/masks | Collision inspector [E36] |
+| is_walkable | is_walkable, actual shape clearance and named nav profile, not slope alone | Clearance preview [E36] |
+| path | path, continuous route, explicit profile/window and reached status | Route preview [E36] |
+| walkable_rect | walkable_rect, sampled clearance with declared resolution/profile | Clearance heatmap [E36] |
+| render_topdown | render_topdown, named surfaces/observer volumes and overlays | Orthographic capture [E41] |
+| render_view | render_view, canonical world metres and roof observer | Perspective capture [E41] |
+| archetype_measure_heights | asset_measure_heights, raw mesh and transformed shape bounds separately | Measured height inspector [E42] |
+| archetype_set_collision_heights | asset_set_collision_heights, versioned descriptor/dry-run/closure update | Collision height edit [E42] |
+
+Additional required native verbs are placement_scale, placement_batch_transform, placements_remove, map_translate (moves terrain, placements, markers, water and foliage atomically), surface_layer_add/remove, material_set, water_body_add/set/get/list/remove, prefab_open/edit/override/unpack, interior_volume_add/set/remove, roof_link_set and collision_shape_set. The GUI has matching scale/group transform, layer/paint, water, prefab and volume tools. Existing mapedit procedural/scatter/spawn/region/storage verbs continue to work for old maps. Authored mode never turns analytic regeneration into an implicit edit [E4, E5, E16, E46].
+
+Automated command tests compare GUI command invocation with the MCP operation's resulting native document/hash and dirty bounds, including rejected edits and undo/redo. Route tools must report missing nav profile/capture instead of pretending the existing slope/global-water query proves prop clearance. Height measurement/catalog writing remain explicit asset operations, with their own atomic writes and refresh reporting [E24, E32, E36, E42].
+
+## Gap coverage and bounded engine rounds
+
+This table closes every row of the baseline matrix. A supported free transform still requires proof against every newly resolved shape and prefab child [E1 to E29].
+
+| Matrix concern | Contract and exit round |
+| --- | --- |
+| Catalog/archetypes/footprints | C1/C3, R1/R3 |
+| Free XZ/Y/yaw/scale | C1/C3/C5, R3/R5 |
+| Edge/corner walls | C3, R3 |
+| Doorways/openings | C3/C5, R3/R5 |
+| Roofs/planes/height | C2/C5, R2/R5 |
+| Indoor and hiding | C2/C5/C8, R5/R8 |
+| Underlay/overlay/cuts/feathers | C2/C8, R2/R8 |
+| Corner heights/upper derivation | C2, R2 |
+| Bounded water | C4, R4 |
+| Decks/rails/dry feet | C3/C4, R3/R4 |
+| Foliage density/exclusions | C7, R7 |
+| Player/NPC/general markers | C6, R6 |
+| Prefabs/instance differences | C5, R5 |
+| Interactive/Examine/stable ID | C1/C3, R1/R3 plus game policy |
+| Reach/walk-up | C3, R3 plus game policy |
+| Physics bridge | C2/C3/C4, R3/R4 |
+| Nav/habitat | C3/C6, R3/R6 plus game policy |
+| Residency/streaming | C1/C3/C8, R8 |
+| Netcode/authority | C1/C3, game adoption, no format-owned networking |
+| Snapshots/goldens | C8/C9, R8/R11 |
+
+Each round below is one separately reviewed implementation plan and one independently usable engine minor capability release. Contract skeletons may be additive, but no round may claim a later round's complete authoring workflow. All releases reconcile with the pivot's current main, take the next available minor and wait for the owner's tag. Engine rounds may run before game 0.11.0 without changing pivot pins. No numeric engine releases are reserved [E30, E31, G1, G14, G15].
+
+| Round | Scope and schema | Dependencies | Exit proof |
 | --- | --- | --- | --- |
-| 0. Morning decision | Approve format boundary/preservation, then write a separate implementation plan | Record revised authoring ruling | Proposal now, no production work here |
-| R1. Composition foundations, next available minor | Typed refs, schema migration/hash closure, stable resolved IDs, headless grid adapter. Tests for stale/missing/cyclic refs, collisions and exact/default roundtrips | Facade/asset mapping design, copied fixture import and no-loss ledger | After approval, may start before 0.11.0. Optional APIs, no pivot repin |
-| R2. Primary map authoring, following capability release | Component preview/select/save/extract, free None placements, shared picking/residency, exact ground/water/roof draw. Headless parity and captures | Thin Grimhollow.Editor host, copied-world scenery workflow, Examine/LOD/bounds proof | Independent tooling can start before 0.11.0. Shipped world and runtime held |
-| R3. Solid geometry and grid component tools, following capability release | Shared transformed Solid collider/reach, embedded grid/prefab editing, MCP parity, mixed snapshots and exact sampler/nav proofs | Released-pin adoption, shared boot/view/reach adapter replacement, actual accepted world import, ID state preservation, nav/cache/hash and SnapshotTool updates | Only after 0.11.0 lands and current main is reconciled into a new migration branch |
-| G1. Game adoption batch | Parity fixes released normally, then repin | Build/test/format, no-loss ledger, targeted graphics and owner playtest. Land after workflow/look acceptance | Separate post-0.11.0 batch, grand-world look approval also required |
+| R1 Native document and identity | C1, format 4 and render-free asset seam | Approved spec and R1 plan | Old analytic maps unchanged, immutable resolver, int64/redo/closure/hash tests |
+| R2 Exact authored terrain | C2, format 5, shared triangle compiler and surface commands | R1 | Every legacy cut/height/flag, all plane derivations, spike-point zero discrepancy and paint parity |
+| R3 Shared shape and headless world | C3, asset collision payload 1 and GPU-free MapDoc.Physics | R1/R2 | Identical two-head statics/pick/reach/stance, compound doorway, bridge and transformed-solid nav proof |
+| R4 Bounded water | C4, format 6 and medium/level tools | R2/R3 | Exact seven-body fixture, seam/deck/feet behavior and independent water levels |
+| R5 Free buildings and interiors | C5, format 7 and prefab payload 1 | R1 to R4 | Actual interiors preserved, free building transform and stable children, volume/roof/shadow/door proof |
+| R6 General markers | C6, format 8, typed spawn projections | R1/R2/R5 | 38 exact fixture markers, elevated/local/free markers and no fake region discs |
+| R7 Native foliage | C7, format 9 and deterministic density commands | R2/R3/R5/R6 | Every density byte and generated sample, rotated building/door exclusions and reload stability |
+| R8 Native view and captures | C8, shared Render3D adapter/residency/capture | R2 to R7 | Native scene across storage seams, shadow-only roofs, backend goldens and complete captures |
+| R9 Unified MapEditor workflow | Brushes, prefab mode, local snap, overrides and shape diagnostics | R2 to R8 | Real pointer/key authoring of terrain/prop/building/water/foliage, undo/redo and save/reload use shared commands |
+| R10 Complete ke-mapedit surface | All 50 mappings and additional native verbs, command parity | R1 to R9 | Registry inventory plus GUI/MCP equivalence, invalid-write refusal and shape-aware route queries |
+| R11 Offline importer and fidelity gate | C9, optional migration package and ledger payload 1 | R1 to R10 | Frozen fixture imports deterministically, exhaustive ledger and differential runtime/render report, native boot with no TileWorld dependency |
 
-R2 is an authoring preview milestone, not a production boot proof. New fields absent/default must keep other consumers working. Split R3 into releases if Solid and embedded grid editing cannot be proved together. Do not make this program a new 0.11.0 dependency [G1, E2, E31].
+Engine exit tests run synchronously in the owning plan's area projects. Rendering follows repository backend CI/golden policy. Build/verification is serialized through the shared slot, no stress loops or parallel local builds. This documents-only revision runs document guards, not production builds or full suites [E29, E31, G15].
 
-## Acceptance requirements
+## Risks, mitigations and estimate
 
-- Every original object ID appears once with the same archetype, initial transform, tags, state key, roof membership and interaction role. All 38 marker roles/world points survive. General landmarks need an actual marker adapter, not tiny probe discs [E1, E3, E6, G5 to G7, G12, S1].
-- No-edit import preserves ground layers/flags/topology, four-plane derivation, foliage density/settings, body-based water and bridge deck. Verify the grid payload before changing its storage [E9 to E13, E19, E21, S1].
-- Compare triangles/normals, movement sampler, complete statics and filtered movement view. Capture identical nav windows/profiles. Prove spawn-to-bank, adjacent wall refusal, cottage door, bridge deck, wading, hill, cow pen and duck habitat [E12, E18, E25, G8, G9].
-- Hash component closure and game catalogs. Changed referenced geometry/colliders/nav sources must refuse stale peers/caches. MapDocumentHash alone cannot cover omitted files or catalogs [E26, G11].
-- Keep existing engine tile/terrain goldens. Add mixed composition images through the renderer shared by game and snapshots, including interiors, water/bridge, feathers, ridge and trees at TAA Native. Omitted manifests producing no props is a failure [E28, E29, G13, G16].
-- New transforms agree across mesh, pick, shadow, camera block, collider, reach, action stance and spent form. None scenery still has Examine unless an explicit no-examine tag applies [E3, E8, E19, G6, G7, G12].
+| Risk and evidence | Mitigation and gate |
+| --- | --- |
+| Bilinear field differs from actual floor by 1.677 m [E9, E10, S1] | C2 shared triangle compiler, exact spike-point and terrain parity gates |
+| Legacy slope-dependent wall/solid shapes and reach differ [E12, E45, G7] | Import explicit asset variants, report query differences, require owner acceptance of T4 effects |
+| Nominal stamps lose placed interior differences [E3, E21, G3] | Membership manifest, stable child bindings and per-instance override ledger |
+| Local floors double draw or diverge under transform [E9, E21] | Surface ownership, paint-only decals on canonical floor, explicit support surfaces and triangle parity |
+| Water rim disappears or bridges become wet [E11, E18, G4] | Materialize exact domains/heights, no rim recomputation, feet-aware medium and deck proof |
+| Manifest normalization/parts/LOD/lights resize or flatten art [E7, G2] | Preserve-source-scale adapter, asset closure and transform/render tests |
+| Foliage rerolls or ignores rotated building masks [E19, E20] | Copy bytes/settings, version predicates and compare each generated sample |
+| Hash closure, prefab children or windowed residency lose content [E6, E22, E26, E27] | Deterministic resolution, complete closure validation, cross-chunk/ID/tombstone tests |
+| Parallel pivot releases or grand-world edits invalidate a frozen plan [E30, G1, G14] | Re-read baseline before each plan, next available releases, re-freeze accepted source before adoption |
+| Grimhollow ships a latent TileWorld adapter [G8, G10, G13] | Native-only dependency/source/tool audits and deleted legacy entry points as adoption exit |
 
-## THROWAWAY spike and measured fidelity
+**Updated estimate, 12 to 18 elapsed weeks** for one serial implementation lane with the shared build slot and timely owner reviews. Engine R1 to R11 is about 8 to 12 weeks, game importer specialization/adoption about 3 to 4, final parity and owner workflow/look review about 1 to 2. The earlier A estimate was 10 to 16 weeks. The added allowance makes free prefab floors/volumes, collision variants, full tool parity and TileWorld deletion explicit. These are scope-based judgments, not measured throughput or promises [E1 to E29, E33 to E46, G2 to G13, S1].
+
+R1/R2 and R3/R5 are the critical technical path. Independent read-only reviews or authored fixture preparation can overlap. Local builds cannot. Review queues, upstream rendering defects or a newly requested CAD/stair/foundation system extend elapsed time. Re-estimate after R2 floor proof and R5 free-building proof. Grimhollow adoption cannot start before both 0.11.0 and accepted grand-world are on main, regardless of engine progress [E31, G1, G15].
+
+## Owner review and decisions still open
+
+OA1 to OA3 are settled. There is no remaining A/B/C choice. The owner reviews T1 to T9 and the concrete contracts, especially the following effects, before implementation planning.
+
+1. **T4 behavior reconciliation.** Keep one oriented physical shape, but inspect its differential picking/reach report. Current reach enforces a minimum one-metre object height independently of actual collision height, and current client selection can follow visual bounds. Exact physical-shape picking can change targetability. Approve those intentional differences explicitly, or revise T4 to define a shared interaction envelope derived from that same shape. Do not secretly enlarge collision or weaken tests to match the old reach box [E12, E23, E45, G7].
+2. **Prefab ergonomics and funding.** Review the v1 boundary of rigid free-transform building groups, local floor/volume editing, instance overrides and optional snap. No general nested prefabs, generated stairs/foundations or architectural CAD is budgeted. Confirm the 12 to 18 week scope or revise that boundary [E3, E21].
+
+T1/T2 are recommended as written. T4 is the ruling most worth revisiting for owner-visible behavior, not for engine ownership or free placement. If the owner accepts the specs, the next step is one implementation plan per round. If changes are requested, revise these task-branch specs. No manual playtest is needed for these documentation commits [E31, G1, G15].
+
+## Spec self-review
+
+The option B contracts, locked building transforms, grid components, rim recomputation and API-only spike adoption have been removed from the target design. All matrix gaps map to contracts/rounds, all 50 verbs map to native commands, schema transitions and package boundaries are explicit, and migration has a native-only boot/deletion gate. Remaining decisions above are owner review items rather than placeholders. Coordinate/count evidence stays frozen until the accepted-world importer plan refreshes it [E1 to E46, G1 to G16, S1, S2].
+
+## Historical THROWAWAY spike and measured fidelity
+
+The following is retained evidence from the proposal, not a conversion contract or a new probe. Native C2 to C9 must replace the missing semantics.
+
 
 Scratch project/source: /tmp/grand-world/world-authoring-spike. No converter or generated map is committed to either repository. Uses assigned engine source APIs and the ke-mapedit library through MapEditSession, QueryService and MutationService. No GUI, pixels, body simulation, nav capture or suite was run [S1, S2, E16, E28].
 
@@ -193,18 +369,8 @@ Source SHA-256: 2e0de8010dccea0f9039051b4665e31294d18e360f59063aac21c492c85a7be1
 Result SHA-256: 77fb3aec74b6e000e88a02a4d6e40965623e74792978732c421c803a7d5586d4.
 This measured table is the durable evidence. Scratch files may later disappear [S1, S2].
 
-## Owner decisions
-
-1. Approve B's retained grid components, choose A for total TileWorld retirement, or C if transform variation is the whole goal.
-2. Accept exact grid terrain behind the main editor adapter, or include native terrain/paint replacement now.
-3. Keep editable grid prefab definitions and initially locked building transforms, or fund free buildings/interior topology.
-4. Approve None first, then shared Solid geometry. Interactive transforms wait for reach, stance and spent-form parity.
-5. Approve opt-in engine work before 0.11.0 with game adoption after pivot/grand-world acceptance.
-6. Accept exact initial fidelity as the default. Re-authoring, Examine removal, terrain feel and collision changes require explicit decisions.
-
-Silence is not approval. Review both proposals before approving a separate implementation plan.
-
 ## Evidence register
+
 
 Engine paths are relative to the pinned engine baseline, game paths to the pinned game baseline. Line numbers identify the contract and nearby implementation. Every bracketed claim above resolves here.
 
@@ -261,5 +427,19 @@ Engine paths are relative to the pinned engine baseline, game paths to the pinne
 | R1 | Ruinborne.Editor/Program.cs:145, Ruinborne.Editor/EditorPaths.cs:69 | Thin editor host and real paths/manifests |
 | S1 | /tmp/grand-world/world-authoring-spike/output-ground/measured-results.json:3 | Final report, SHA-256 above |
 | S2 | /tmp/grand-world/world-authoring-spike/Program.cs:1, :22, :53, :65, :80 | Throwaway conversion, samples and tool mutation |
+| E33 | KhaozEngine.TileEdit.Tool/Tools/TileTools.cs:19, :27, :42, :59 | All cell/layer verbs |
+| E34 | KhaozEngine.TileEdit.Tool/Tools/MarkerTools.cs:17, :27, :33 | Marker verbs and uniqueness |
+| E35 | KhaozEngine.TileEdit.Tool/Tools/WorldTools.cs:25, :31, :42, :47, :52, :57, :63, :70, :77, :82, :88 | Lifecycle, catalogs, storage and history |
+| E36 | KhaozEngine.TileEdit.Tool/Tools/CollisionTools.cs:18, :26, :35, :47 | Collision, walkability and route queries |
+| E37 | KhaozEngine.TileEdit.Tool/Tools/HeightTools.cs:19, :30, :42, :53, :64, :74 | Six height verbs and array conventions |
+| E38 | KhaozEngine.TileEdit.Tool/Tools/ObjectTools.cs:20, :31, :40, :47, :53, :60, :66, :76, :83, :96 | Ten object verbs |
+| E39 | KhaozEngine.TileEdit.Tool/Tools/FoliageTools.cs:11, :16, :21, :29, :39 | Five density verbs and positive-Z rows |
+| E40 | KhaozEngine.TileEdit.Tool/Tools/PrefabTools.cs:19, :34, :44 | Prefab extraction/place/list and redo allocation |
+| E41 | KhaozEngine.TileEdit.Tool/Tools/RenderTools.cs:28, :42 | Topdown/view captures |
+| E42 | KhaozEngine.TileEdit.Tool/Tools/ArchetypeHeightTools.cs:18, :24 | Measurement and catalog write/refresh behavior |
+| E43 | KhaozEngine.MapDoc/MapDocumentFile.cs:83, :172, :176 | Current format 3 and contiguous migrations |
+| E44 | KhaozEngine.TileWorld/TileLayers.cs:8, :25, :39 | Four cut enums, flags, cm height and plane derivation |
+| E45 | KhaozEngine.TileWorld.Physics/TileColliderBuilder.Objects.cs:22, :45, :73, :109, :137 | Edge/corner, solid span, deck and terrain-relative collision |
+| E46 | KhaozEngine.MapEdit.Tool/Tools/DocumentTools.cs:13, :34, :60, KhaozEngine.MapEdit.Tool/Tools/MutationTools.cs:23, :50, :147, :403, :437, KhaozEngine.MapEdit.Tool/Tools/QueryTools.cs:15, :21, KhaozEngine.MapEdit.Tool/Tools/RenderTools.cs:19 | Existing native command families |
 
-Companion game specification: APKiwiOrg/Grimhollow branch feature/gw-authoring-design, docs/superpowers/specs/2026-10-05-world-authoring-migration-design.md. Integration, releases and production implementation stay with the owning orchestrator after review.
+Companion game specification: [Grimhollow option A](https://github.com/APKiwiOrg/Grimhollow/blob/feature/gw-authoring-design/docs/superpowers/specs/2026-10-05-world-authoring-migration-design.md). Integration and production implementation stay with the owning orchestrator after written review.

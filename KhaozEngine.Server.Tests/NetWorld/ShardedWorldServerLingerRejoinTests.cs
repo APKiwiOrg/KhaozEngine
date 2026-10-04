@@ -213,6 +213,66 @@ public class ShardedWorldServerLingerRejoinTests
     }
 
     [Fact]
+    public void ATickedClientThatLingersAndReclaimsGetsTickedFramesAgain()
+    {
+        using var rig = new Rig();
+        INetTransport? live = null;
+        int attempts = 0;
+        var client = new WorldClient(
+            () => { INetTransport t = rig.Hub.CreateClient(); live = t; attempts++; return t; },
+            (_, _) => 0f, MoveTuning.Default,
+            new WorldClientConfig
+            {
+                TickSeconds = Dt,
+                ReceiveServerTick = true,
+                DisconnectTimeoutSeconds = 0.5f,
+                Reconnect = new ReconnectBackoff { InitialSeconds = 0.05f, Multiplier = 1f, MaxSeconds = 0.05f },
+            },
+            Encoding.UTF8.GetBytes("a"));
+        void Frame(float dt = Dt)
+        {
+            rig.Step();
+            client.Poll(dt);
+            client.AdvancePresentation(dt);
+        }
+        for (int i = 0; i < 40 && !client.Joined; i++) Frame();
+        Assert.True(client.Joined);
+        for (int i = 0; i < 10; i++) { client.SendInput(MoveCommand.Idle); Frame(); }
+        Assert.Equal(rig.Server.ServerTick, client.LatestServerTick);
+        int slot = Assert.Single(rig.Server.JoinedSlots);
+        long oldNetId = client.LocalNetId;
+
+        // The lingering slot is served nothing, and the reconnect attempt forgets the old session's tick.
+        rig.Drop(live!, slot);
+        long dropTick = rig.Server.ServerTick;
+        bool sawUnknown = false;
+        bool back = false;
+        for (int i = 0; i < 400 && !back; i++)
+        {
+            int before = attempts;
+            Frame(0.05f);
+            if (attempts > before && client.LatestServerTick == -1) sawUnknown = true;
+            back = client.Joined && client.LocalNetId > 0 && client.LocalNetId != oldNetId;
+        }
+        Assert.True(sawUnknown, "the client never started a new attempt");
+        Assert.True(back, "the client never rejoined");
+        Assert.False(rig.Server.IsLingering(slot));
+        Assert.Equal(1, rig.Leaves);
+
+        // The reclaimed slot is served ticked frames again, so the tick follows the server from here.
+        long previous = client.LatestServerTick;
+        for (int i = 0; i < 10; i++)
+        {
+            client.SendInput(MoveCommand.Idle);
+            Frame();
+            Assert.Equal(rig.Server.ServerTick, client.LatestServerTick);
+            Assert.True(client.LatestServerTick > previous, $"frame {i}");
+            previous = client.LatestServerTick;
+        }
+        Assert.True(previous > dropTick);
+    }
+
+    [Fact]
     public async Task LeaveAndRejoinInOnePollSavesOnceBeforeTheJoin()
     {
         using var rig = new Rig();

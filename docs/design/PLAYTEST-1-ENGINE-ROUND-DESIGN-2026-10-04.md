@@ -149,6 +149,13 @@ engine's `FootPlant` inspection.
   judge the predicted end state with `CharacterMovement.ResolveSwimming` at the landed feet before admitting it.
 - #1270 stays out. It is a lead whose cause is untraced, and #1253 needed a fixture, eight rulings and a deferral
   before its cause was known. It needs its own investigation round, ideally before Grimhollow P6.
+- [#1272](https://github.com/APKiwiOrg/KhaozEngine/issues/1272) joins (added after the owner's second playtest): an
+  opt-in tap tolerance on `PointerGesture` that measures straight-line distance from the press point with a short time
+  grace, instead of the summed path length, so a click with a small wobble stays a tap. The strict path rule stays the
+  default. An option caps or drops the catch-up step when the grace decides the press. Grimhollow raises its own
+  thresholds meanwhile (its ruling PT.10).
+- [#1273](https://github.com/APKiwiOrg/KhaozEngine/issues/1273) stays out until a live probe shows a capture warp jump
+  on macOS.
 
 ## 1. Route straightening
 
@@ -252,6 +259,7 @@ with members at its 65 percent pace, strafe walk and run per side, each with its
 | Blend weights | Each cardinal is one clip, both diagonal pairs split half and half, continuity across every cardinal and the 180 degree seam, speed brackets and clamps, sum one, at most four in steady state | Game.Tests |
 | Blend phase | Distance over blended stride, pure strafe reproduces its own stride, sync phases keep contacts aligned on a diagonal, zero travel holds, `dt` split invariance, ease timings, `BodyFrame` convention, validation, allocation-free `Advance` (`AllocSensitive`) | Game.Tests |
 | Pose helper | One sample bit-identical to `SampleInto`, two samples equal `JointPose.Lerp`, zero total weight leaves the base | Render.Tests |
+| Tap tolerance (#1272) | Default off identical, a 20 point wobble ending 2 points from the press is a tap, a 6 point move released within 150 ms is a tap, a slow 15 point drag crosses, nothing reaches the consumer before the crossing, the catch-up cap | the gesture tests |
 
 No test needs Grimhollow assets. Focused runs per task and one full Release run at the finish. No local repetition.
 
@@ -279,6 +287,7 @@ staged). One version bump with one `CHANGELOG.md` entry. Grimhollow adopts a rel
    tests.
 6. `ClipSample` and `AnimationSampler.SampleBlendInto` with tests.
 7. `GaitClip`, `DirectionalGaitSet`, `DirectionalLocomotionBlend` with weight and phase tests.
-8. Living docs (Movement, Navigation and `Game.Render3D` READMEs, `USING-KHAOZENGINE.md`, the
+8. #1272 tap tolerance on `PointerGesture` with its tests.
+9. Living docs (Movement, Navigation and `Game.Render3D` READMEs, `USING-KHAOZENGINE.md`, the
    `GroundNavigation.Planner` summary, design index row) and a follow-up issue for D5.
-9. Version 20.22.0 with its changelog entry, full Release run, guards, merge and pack through the orchestrator.
+10. Version 20.22.0 with its changelog entry, full Release run, guards, merge and pack through the orchestrator.

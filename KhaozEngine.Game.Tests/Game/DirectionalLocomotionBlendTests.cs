@@ -19,6 +19,7 @@ namespace KhaozEngine.Tests.Game
             new[] { new GaitClip(RightWalk, 1.2f, 0.8f, 0.1f), new GaitClip(RightRun, 3.0f, 1.8f, 0.1f) });
 
         static readonly float[] SyncPhases = { 0.25f, 0.25f, 0.5f, 0.6f, 0.1f, 0.1f };
+        static readonly float[] Strides = { 1.2f, 2.4f, 0.9f, 0.8f, 0.8f, 1.8f };
 
         internal static int Settle(DirectionalLocomotionBlend blend, Vector2 v, Span<GaitSample> samples)
         {
@@ -79,11 +80,11 @@ namespace KhaozEngine.Tests.Game
         }
 
         [Theory]
-        [InlineData(1f, 1f, ForwardWalk, RightWalk)]
-        [InlineData(-1f, 1f, ForwardWalk, LeftWalk)]
-        [InlineData(1f, -1f, BackWalk, RightWalk)]
-        [InlineData(-1f, -1f, BackWalk, LeftWalk)]
-        public void DiagonalsSplitHalfAndHalf(float x, float y, int a, int b)
+        [InlineData(1f, 1f, ForwardWalk, RightWalk, 0.4f, 0.6f)]
+        [InlineData(-1f, 1f, ForwardWalk, LeftWalk, 0.4f, 0.6f)]
+        [InlineData(1f, -1f, BackWalk, RightWalk, 0.4705882f, 0.5294118f)]
+        [InlineData(-1f, -1f, BackWalk, LeftWalk, 0.4705882f, 0.5294118f)]
+        public void DiagonalsShareByComponentOverStride(float x, float y, int a, int b, float wa, float wb)
         {
             var blend = new DirectionalLocomotionBlend(Set());
             var samples = new GaitSample[6];
@@ -91,14 +92,31 @@ namespace KhaozEngine.Tests.Game
 
             Assert.Equal(2, n);
             float[] w = Weights(samples.AsSpan(0, n));
-            Assert.InRange(w[a], 0.5f - 1e-6f, 0.5f + 1e-6f);
-            Assert.InRange(w[b], 0.5f - 1e-6f, 0.5f + 1e-6f);
+            Assert.InRange(w[a], wa - 1e-5f, wa + 1e-5f);
+            Assert.InRange(w[b], wb - 1e-5f, wb + 1e-5f);
+        }
+
+        [Fact]
+        public void ABracketedDiagonalSplitsEachFamilyShareBySpeed()
+        {
+            var blend = new DirectionalLocomotionBlend(Set());
+            var samples = new GaitSample[6];
+            int n = Settle(blend, AtDegrees(30d, 2.7f), samples);
+
+            Assert.Equal(4, n);
+            float[] w = Weights(samples.AsSpan(0, n));
+            Assert.InRange(w[ForwardWalk], 0.3055742f - 1e-5f, 0.3055742f + 1e-5f);
+            Assert.InRange(w[ForwardRun], 0.3055742f - 1e-5f, 0.3055742f + 1e-5f);
+            Assert.InRange(w[RightWalk], 0.0648086f - 1e-5f, 0.0648086f + 1e-5f);
+            Assert.InRange(w[RightRun], 0.3240429f - 1e-5f, 0.3240429f + 1e-5f);
         }
 
         [Fact]
         public void WeightsAreContinuousAroundTheCircle()
         {
-            const float limit = 0.5f / 90f + 1e-6f;
+            // The largest adjacent stride ratio at 1.2 m/s (1.2 over 0.8) times the 0.5 degree step in radians. The
+            // share's slope peaks at a cardinal at that ratio.
+            const float limit = 1.5f * MathF.PI / 360f + 1e-6f;
             float[] first = SettledWeights(AtDegrees(0d, 1.2f));
             float[] previous = first;
             bool sawBelow180 = false, sawAbove180 = false;
@@ -157,7 +175,7 @@ namespace KhaozEngine.Tests.Game
         }
 
         [Fact]
-        public void PhaseAdvancesByDistanceOverBlendedStride()
+        public void ADiagonalPhaseRateIsTheSumOfComponentOverStride()
         {
             var blend = new DirectionalLocomotionBlend(Set());
             var samples = new GaitSample[6];
@@ -167,7 +185,37 @@ namespace KhaozEngine.Tests.Game
 
             for (int i = 0; i < 15; i++) blend.Advance(v, Frame, samples);
 
-            Assert.True(Circular(blend.Phase, Frac(p0 + 0.25f)) <= 1e-5f, $"phase {blend.Phase} from {p0}");
+            Assert.True(Circular(blend.Phase, Frac(p0 + 0.25f * 1.473139f)) <= 1e-5f, $"phase {blend.Phase} from {p0}");
+        }
+
+        [Theory]
+        [InlineData(45d, 1.2f)]
+        [InlineData(135d, 1.2f)]
+        [InlineData(315d, 1.2f)]
+        [InlineData(30d, 2.7f)]
+        public void PlantedFootTravelMatchesTheBodyOnEachAxis(double degrees, float speed)
+        {
+            var blend = new DirectionalLocomotionBlend(Set());
+            var samples = new GaitSample[6];
+            Vector2 v = AtDegrees(degrees, speed);
+            Settle(blend, v, samples);
+            float p0 = blend.Phase;
+
+            int n = blend.Advance(v, Frame, samples);
+            float rate = Frac(blend.Phase - p0) / Frame;
+
+            float along = 0f, across = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                float travel = samples[i].Weight * Strides[samples[i].ClipId] * rate;
+                if (samples[i].ClipId is ForwardWalk or ForwardRun or BackWalk) along += travel;
+                else across += travel;
+            }
+
+            double r = degrees * Math.PI / 180d;
+            float wantAlong = speed * (float)Math.Abs(Math.Cos(r)), wantAcross = speed * (float)Math.Abs(Math.Sin(r));
+            Assert.True(MathF.Abs(along - wantAlong) <= 1e-3f, $"forward or backward foot {along} against {wantAlong}");
+            Assert.True(MathF.Abs(across - wantAcross) <= 1e-3f, $"left or right foot {across} against {wantAcross}");
         }
 
         [Fact]

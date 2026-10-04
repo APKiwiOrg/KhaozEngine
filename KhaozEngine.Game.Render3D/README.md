@@ -242,7 +242,7 @@ concern between overlapping dying/despawning characters. See docs/USING-KHAOZENG
 ## DirectionalLocomotionBlend - eight-way gait weights with feet in step
 
 `DirectionalLocomotionBlend` turns a body-frame velocity into weighted clips from four direction families, so a
-diagonal plays half forward walk and half strafe instead of one clip skating sideways. It is keyed by the consumer's
+diagonal plays forward walk and strafe together instead of one clip skating sideways. It is keyed by the consumer's
 own clip ids, GPU-free and allocation-free per call.
 
 - **`GaitClip(ClipId, FullWeightSpeed, StrideMetres, SyncPhase)`** - one clip. `FullWeightSpeed` is the m/s at which
@@ -253,11 +253,15 @@ own clip ids, GPU-free and allocation-free per call.
 - **`DirectionalLocomotionBlend(gaits, blendSeconds = 0.15f, movingSpeed = 0.05f)`** - `Advance(bodyVelocity, dt,
   samples)` writes one `GaitSample(ClipId, Phase, Weight)` per weighted clip and returns the count. Weights sum to one.
 
-The angle clockwise from forward splits linearly between the two adjacent cardinals, so 45 degrees is exactly half and
-half. Within a family the speed splits between the two members that bracket it, clamped to the slowest and fastest,
-so a steady target has at most four clips. Each weight eases toward its target over `blendSeconds`, so a forward to
-backward reversal crossfades through both. One shared `Phase` advances by distance over the weighted stride, and each
-clip samples at `Phase + SyncPhase`, which keeps every blended foot plant together. Below `movingSpeed` the targets
+The sign of each body-frame component picks a family (forward or backward, right or left), and each family's share is
+its travel component over its stride, `|c| / s`, normalised over the two. That locks the blended planted foot to the
+body on both axes, so a 45 degree diagonal leans toward the family with the shorter stride. A family's stride is its
+members' mix at the current speed: the speed splits between the two members that bracket it, clamped to the slowest
+and fastest, and that split also divides the family's share, so a steady target has at most four clips. A cardinal is
+one family. Each weight eases toward its target over `blendSeconds`, so a forward to backward reversal crossfades
+through both. One shared `Phase` advances by `(|x| + |y|) x dt` over the weighted stride, which settles at
+`sum(|c| / s)` loops per second, and each clip samples at `Phase + SyncPhase`, which keeps every blended foot plant
+together. Below `movingSpeed` the targets
 hold, the phase holds with zero travel, and `TravelWeight` eases to zero, so a stop fades out of the last gait.
 `BodyFrame(worldVelocity, facingYaw)` converts a world velocity with the `MoveCommand.CameraYaw` convention.
 

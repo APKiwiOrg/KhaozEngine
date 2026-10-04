@@ -119,6 +119,22 @@ public class DirectMoveToRangeDropTests
         Assert.True(refused.Body.Position.Y > 1f);
     }
 
+    [Fact]
+    public void GroundedStepPastTheSwimEnterLineEndsBlocked()
+    {
+        // A shore sloping down 0.2 m per metre under the 0.5 m surface. Its feet reach the 0.975 m swim entry of a
+        // 1.5 m body at x 2.375 while every step stays grounded, so only the landed feet show the swim.
+        static float Height(float x, float z) => -0.2f * x;
+        var wet = new GroundMoveContext(Height, medium: Water);
+        var start = new MoveState { Position = new Vector3(0f, 0.75f, 0f), Grounded = true };
+        Walk walk = Approach(Strict, wet, start, ReachTarget.Point(new(6f, -0.45f, 0f)));
+
+        Assert.Equal(RangeMoveStatus.Blocked, walk.Last);
+        Assert.Equal(0, walk.SuspendedTicks);
+        Assert.False(walk.Body.Swimming);
+        Assert.True(0.5f - (walk.Body.Position.Y - 0.75f) < 0.975f);
+    }
+
     [Theory]
     [InlineData(-0.001f)]
     [InlineData(float.NaN)]

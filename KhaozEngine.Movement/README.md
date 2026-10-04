@@ -787,8 +787,10 @@ Differences from a typical game-side walk-up rule:
 - The final fraction comes from live bisection against exact reach, not from a minimum fraction, so a short last step
   cannot stall or overshoot.
 - A step that would leave the ground or start swimming is refused and counts toward the stall window, so a walk off a
-  ledge or into deep water ends `Blocked` instead of falling or swimming. Set `MaxDropMetres` to drop off a ledge,
-  prop top or deck edge within that depth and land without swimming instead.
+  ledge or into deep water ends `Blocked` instead of falling or swimming. A step decides swimming from its starting
+  feet, so a grounded step is also refused when its landed feet are past the swim-enter line, and a walk down a
+  sloped shore into deep water ends `Blocked` too. Set `MaxDropMetres` to drop off a ledge, prop top or deck edge
+  within that depth and land without swimming instead.
 - A zero travel bound, such as a rooted body, counts toward neither window, so a rooted body holds without ending its
   walk. Airborne and committed ticks return `Suspended` and also count toward neither window.
 - `InRange` clears both windows, so a followed body that moves away starts fresh windows.

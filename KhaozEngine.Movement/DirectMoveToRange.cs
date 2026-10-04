@@ -11,7 +11,8 @@ namespace KhaozEngine.Movement;
 /// cancellation.
 /// <para>A step whose preflight leaves the ground is refused unless <see cref="DirectApproachOptions.MaxDropMetres"/>
 /// is positive and the predicted fall, settled with zero input, lands grounded and not swimming within that allowance
-/// below the current feet, on a floor the next step would not swim from. The step-off tick is Following with the
+/// below the current feet, on a floor the next step would not swim from. A grounded step is refused the same way
+/// when its landed feet would start swimming. The step-off tick is Following with the
 /// admitted command. The airborne ticks after it are Suspended and count toward neither window until it lands.
 /// Stop ring bisection still takes only grounded fractions, and keeps the whole admitted step when none reaches
 /// range.</para>
@@ -21,9 +22,10 @@ namespace KhaozEngine.Movement;
 /// on an aquatic profile.</para></summary>
 public sealed partial class DirectMoveToRange
 {
-    private static readonly StepAdmission Admits = AllowsStep;
+    private readonly StepAdmission _admits;
     private readonly DirectApproachOptions _options;
     private readonly ProgressRing _progress;
+    private GroundMoveContext? _stepContext;
     private RangeShapeKey _shape;
     private bool _keyed;
     private bool _targetMoves;
@@ -33,6 +35,7 @@ public sealed partial class DirectMoveToRange
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _progress = new ProgressRing(Math.Max(options.StallWindowTicks, options.ApproachWindowTicks) + 1);
+        _admits = AllowsStep;
     }
 
     /// <summary>Returns bounded requested input without writing the supplied state or stepping the world.
@@ -45,6 +48,7 @@ public sealed partial class DirectMoveToRange
     {
         ArgumentNullException.ThrowIfNull(context);
         context.ValidateTuning(tuning);
+        _stepContext = context;
         ValidateBody(body);
         if (!float.IsFinite(dt) || dt <= 0f) throw new ArgumentOutOfRangeException(nameof(dt));
         MovementBody shape = Body(body, tuning);
@@ -66,7 +70,7 @@ public sealed partial class DirectMoveToRange
         {
             MoveState predicted = context.Step(body, command, run, dt, tuning);
             command = AllowsStep(body, predicted, tuning) || AllowsDrop(body, predicted, tuning, dt, context)
-                ? StopAtRange(body, tuning, target, range, run, dt, context, command, predicted, Admits)
+                ? StopAtRange(body, tuning, target, range, run, dt, context, command, predicted, _admits)
                 : Vector2.Zero;
         }
 
@@ -105,6 +109,14 @@ public sealed partial class DirectMoveToRange
 
     private static RangeSteering Hold(RangeMoveStatus status) => new(Vector2.Zero, status);
 
-    private static bool AllowsStep(in MoveState body, in MoveState predicted, in MoveTuning tuning)
-        => predicted.Grounded && !predicted.Swimming && MovementBody.IsFinite(predicted.Position);
+    // A step decides swimming from its starting feet, so a grounded step down a sloped shore can land past the
+    // swim-enter line. The landed feet make the next step's swim decision, and a step it would swim from is refused.
+    private bool AllowsStep(in MoveState body, in MoveState predicted, in MoveTuning tuning)
+    {
+        if (!predicted.Grounded || predicted.Swimming || !MovementBody.IsFinite(predicted.Position)) return false;
+        Func<float, float, float, MovementMedium>? medium = _stepContext?.Medium;
+        if (medium is null) return true;
+        Vector3 feet = Feet(predicted, tuning);
+        return !CharacterMovement.ResolveSwimming(predicted.Swimming, medium(feet.X, feet.Z, feet.Y), feet.Y, tuning);
+    }
 }

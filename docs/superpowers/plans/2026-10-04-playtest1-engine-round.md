@@ -473,4 +473,100 @@ Expected: zero warnings, zero failures, nonzero counts and every guard exit 0. R
 
 ## Outcome
 
-Pending execution.
+Implemented and verified on `feature/playtest1-engine-round`, staged as 20.23.0 with no tag. Setup merged
+`origin/main` (v20.22.0, the dot lane telegraph) at `3f13725a5`. Task 9 fetched again and `origin/main` had not moved
+past the branch, so its merge was a no-op. Root reviewed each task and pushed the branch after every clean review.
+Fix rounds went out as fresh dispatches carrying the brief, the report and the findings, because a thread
+continuation raised no completion notice (cost a context rebuild per round).
+
+### Per task
+
+- **Task 1, corner partial tick fact.** `72f2fe917`, fix round 1 `6d4f3f5ac`. The fact passes on unchanged source as
+  planned, so the corner stall lead is ruled out. Measured minimum partial 0.0202413 m at tick 116 of 117 steps.
+  Departure: the review moved the start to cell (2, 2) and added a `Contains(t < 0.025)` check, one fix round.
+- **Task 2, `RouteStraightener`.** `caf031b6b`, 15/15, RED CS0246 and CS0103, a 0.5 offset mutant fails only
+  `SideLinesJudgeMirroredWallsAlike`. Departures, each costing nothing: `PointQueriesAreStraightenedToo` uses a flat
+  physics bake because the grid planner's point query already string-pulls. `UnchangedRouteIsReturnedByReference`
+  uses a walled diagonal because a straight walled row legitimately collapses. A waypoint with no surface height ends
+  the scan, so a heightless route stays raw and is documented as such (a heightless 2D consumer gets no shortcuts
+  until an anchor Y fallback exists).
+- **Task 3, `StraightenRoutes` and the D3 fallback.** `7d8e4f7cc` (Task 2 minors), `0e75ebbc3`. RED CS0117,
+  straighten 7/7, Movement 166/166. Departures, each costing nothing: the obstacle fact asserts one heading change at
+  each kept corner, two on the fixture, renamed `HeadingChangesOnceAtEachKeptCornerOfAConvexObstacle`, because the
+  plan miscounted the corners. The fallback fact's guard admits every cell along each raw segment, modelling a
+  walkable raw route. `MoveToRange.Straightener` is internal for tests.
+- **Task 4, #1269.** `664ae2035` (Task 3 minor, a `StraightenRoutes` mover that must differ, mutation checked),
+  `0a3515bc0`. RED `Suspended`, `DirectMoveToRange` 41/41, server `PlayerDirectApproach` 2/2. No departure.
+  `_stepContext` outliving `Tick` was judged not a defect.
+- **Task 5, `InterpolateYaw`.** `5b434d8ce` (Task 4 minors), `aea3a5cd7`. RED CS0539, Task 5 facts 12/12, Netcode and
+  NetWorld 1713/1713, Game.Tests parity, step offset and animators 71/71, `DirectMoveToRange` 41/41. Departures,
+  costing nothing: the version is 20.23.0, since v20.22.0 is the dot lane release. `CollapseSitesSnapThePreviousYaw`
+  pins the rendered heading only, because every collapse site also moves the tick fraction to 1.
+- **Task 6, `ClipSample` and `SampleBlendInto`.** `bdbf6d7f5` (Task 5 minors, the Netcode README heading sentence and
+  a `RenderedState` allocation fact), `130d50df5`. RED CS0246, `ClientPredictionYaw` 10/10, `AnimationSamplerBlend`
+  7/7 with one extra fact, Render3D.Animation 214/214. Finding: a default interface member boxes a struct, and Task 5
+  read `Yaw` unconditionally, so every headingless state boxed once per `Predict`. Ruled a regression in this round
+  and fixed in Task 7 before any release.
+- **Task 7, directional gait blend.** `e1fe39f0e` (yaw reads gated on `InterpolateYaw && HasYaw`, RED 2400 bytes per
+  pass then 0, ClientPrediction 43/43), `ddf988daa` (Task 6 minors, 7/7), `06b6466f5`. RED CS0246, blend 26/26,
+  Locomotion 1085 passed with 1 pre-existing skip. Departures: `Ease` snaps a weight to its target within step + 1e-5
+  because six float steps of 0.025 / 0.15 sum to 0.99999994 and land one call late (costs at most 1e-5 extra travel
+  on the last call). Phase equality in facts is circular distance on [0, 1) (costs nothing).
+- **Task 8, #1272 tap tolerance.** `d23a4d345` (Task 7 game minors, 27/27), `5a828054c` (Task 7 netcode minor,
+  43/43), `2384306ca` (`PointerTapTolerance`, RED CS0246, `PointerGesture` 42/42), fix round 1 `d56d62d35`, fix round
+  2 `816c03070` and `692ce3c9d`, fix round 3 `b238e43ad`. Final focused run `PointerGesture|FollowCamera` 163 passed
+  with 5 pre-existing skips, ClientPrediction 43/43. Departures, three fix rounds in all: `FollowCameraController`
+  called the two-argument `Advance`, which throws for a tolerance gesture, a plan gap fixed by timing its gestures
+  with `dt` (one fix round). Without a tolerance the timed `Advance` neither uses nor checks the time (costs
+  nothing). With a tolerance the press frame's own delta does not count, because it is motion before the press and
+  let a settle plus a still hold launch the camera (costs the brief's literal numbers, ShortMove nets 4 points, slow
+  drag catch-up 7.0, the fast move needs four frames). Grimhollow reads camera input with `Update(cameraInput, 0f)`
+  and advances the camera clocks later, so `UpdateInput(in InputState, float elapsedSeconds)` was added and `Update`
+  became `UpdateInput` plus the clocks (costs one public method).
+- **Task 9, docs, version and verification.** `a71344d27` docs sweep, `2944fc877` format fix, `7a093324b` release,
+  then this Outcome. The sweep added the #1269 shore rule to the guide, `UpdateInput` to the `UiBlocked` and tap
+  sentences, the round's types to the root README rows, and rewrapped two over-long lines. Departures: the
+  solution-wide `dotnet format` gate was replaced by `dotnet format whitespace KhaozEngine.slnx --verify-no-changes
+  --include` over the 34 `.cs` files the branch changed, because the engine's CI runs no format step and the solution
+  has pre-existing findings in 299 files (costs nothing). That check found object initializers on shared lines in
+  `FollowCameraControllerTests.cs`, two lines from `b238e43ad` and one from `1083d1cfc` that predates the round,
+  fixed whitespace-only in `2944fc877` (the full suite ran before it, and a whitespace change cannot alter the
+  build).
+
+### Verification
+
+One Release run on the release tree, through the shared lock. `dotnet build KhaozEngine.slnx -c Release`: 43 s, 149
+assemblies, 0 warnings, 0 errors. `dotnet test KhaozEngine.slnx -c Release --no-build --filter
+"Category!=LiveSocket"`: 29 test assemblies, 25,181 passed, 0 failed, 1,328 skipped, 26,509 total, 72 s.
+`check-dashes`, `check-prose`, `check-file-size` and `check-agent-instructions` with `--tree`, `check-doc-versions`
+and the scoped whitespace format check all exit 0.
+
+### Follow-ups and deferred minors
+
+- D5 follow-up, filed by root: [#1280](https://github.com/APKiwiOrg/KhaozEngine/issues/1280), per-field remote
+  interpolation of `MovementState.FacingYaw` in Replication (`kind/roadmap`, `confidence/authored`).
+- Lead [#1278](https://github.com/APKiwiOrg/KhaozEngine/issues/1278): a raw fallback from an off-lattice body may
+  start with a refused leg. Rare, since the plan-time guard must first admit a step the live guard refuses.
+- Lead [#1279](https://github.com/APKiwiOrg/KhaozEngine/issues/1279): `PlayerMoveState` boxes through the default
+  `PredictionTarget`, about 32 bytes per frame for a NetWorld local player. Older than this round.
+- Deferred minor, Task 1: a stricter form of the `t < 0.025` check that excludes the final arrival step.
+- Deferred minor, Task 4: `AllowsDrop` and `AllowsStep` answer the swim question two ways. Route both through one
+  `LandsSwimming` helper when the drop path is next touched.
+- [#1269](https://github.com/APKiwiOrg/KhaozEngine/issues/1269) and
+  [#1272](https://github.com/APKiwiOrg/KhaozEngine/issues/1272) are resolved by this round and close when it merges.
+
+### Grimhollow adoption
+
+Adopt the released pin on `feature/continuous-movement`. This plan edits no Grimhollow file.
+
+- Opt creatures into `RouteApproachOptions.StraightenRoutes`, and set `PredictionSettings.InterpolateYaw` on the
+  client's prediction settings.
+- Replace `ContinuousLocomotion`'s hard clip pick with `DirectionalLocomotionBlend`, fed from the replicated velocity
+  through `BodyFrame` and sampled with `AnimationSampler.SampleBlendInto`.
+- Build the orbit gesture with a `PointerTapTolerance`.
+- In `PlayerRig.PrepareInput`, call `Controller.UpdateInput(cameraInput, dt)` in place of `Update(cameraInput, 0f)`,
+  since a zero time freezes the grace.
+- Watch creature arrival on the shipped world for #1278.
+
+Root reviews the whole branch, merges and pushes main, then runs `scripts/pack-local-feed.sh` from main. Only the
+owner starts the tag.

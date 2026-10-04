@@ -2,26 +2,26 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give Grimhollow's P6 combat and routed walk-up three opt-ins on the staged 20.24.0: a server tick on `WorldClient`, a disconnect linger on `ShardedWorldServer`, and a stall window on `MoveToRange`.
+**Goal:** Give Grimhollow's P6 combat and routed walk-up three opt-ins on the staged 20.24.0 (a server tick on `WorldClient`, a disconnect linger on `ShardedWorldServer`, and a stall window on `MoveToRange`), and make `DirectionalLocomotionBlend` keep planted feet locked on diagonals.
 
-**Architecture:** `DirectMoveToRange`'s progress ring moves to an internal `RangeProgressRing` that `MoveToRange` also records into under `RouteApproachOptions.Stall`. Both servers count `Tick` calls as `ServerTick` and, for a client that sent a `ServerTickCapable` hello, serve ticked frame kinds that carry it. `WorldClient` keeps a `ServerTickTimeline` stamped and bracketed exactly like its remote samples. `NetServer` can hold a disconnected slot, so `ShardedWorldServer` keeps a lingering body joined on it until expiry or until the same account reclaims the slot.
+**Architecture:** `DirectMoveToRange`'s progress ring moves to an internal `RangeProgressRing` that `MoveToRange` also records into under `RouteApproachOptions.Stall`. Both servers count `Tick` calls as `ServerTick` and, for a client that sent a `ServerTickCapable` hello, serve ticked frame kinds that carry it. `WorldClient` keeps a `ServerTickTimeline` stamped and bracketed exactly like its remote samples. `NetServer` can hold a disconnected slot, so `ShardedWorldServer` keeps a lingering body joined on it until expiry or until the same account reclaims the slot. `DirectionalLocomotionBlend` gives each direction family its travel component over its stride as a share and advances the shared phase by the body-frame `|x| + |y|` over the weighted stride.
 
 **Tech Stack:** C# on .NET 10, xUnit, the in-memory transport hub.
 
-**Spec:** `docs/design/GRIMHOLLOW-P6-ENGINE-ROUND-DESIGN-2026-10-04.md`. Read it whole before Task 1. Decisions are D1 to D8 and root questions Q1 to Q4. The plan follows the recommended answers. A different ruling on Q1 or Q2 replaces Task 7 or narrows Task 4 before they start.
+**Spec:** `docs/design/GRIMHOLLOW-P6-ENGINE-ROUND-DESIGN-2026-10-04.md`. Read it whole before Task 1. Decisions are D1 to D9. Root answered Q1 to Q4 on 2026-10-04 with every recommendation (the design's "Root's answers"), and the plan follows them.
 
 ## Global Constraints
 
-- Worktree `/Users/antonio/KhaozEngine/.worktrees/grimhollow-p6-engine-round`, branch `feature/grimhollow-p6-engine-round`, base `356bf8928`. Merge current `origin/main` into the branch before Task 1 and again in Task 8 Step 3.
-- Version: ride the staged 20.24.0. No bump. Task 8 appends to the existing `## 20.24.0` entry in `CHANGELOG.md` after re-reading `<KhaozEngineVersion>` and `git tag --sort=-v:refname | head -3`. If 20.24.0 has been tagged by then, stop and report.
-- Default off is identical. With `RouteApproachOptions.Stall` null, `WorldClientConfig.ReceiveServerTick` false and `ShardedWorldServerConfig.DisconnectLingerTicks` null, routes, commands, statuses, wire bytes, frame kinds, session events and despawn timing are unchanged. `ServerTick` is always counted and changes nothing on the wire.
+- Worktree `/Users/antonio/KhaozEngine/.worktrees/grimhollow-p6-engine-round`, branch `feature/grimhollow-p6-engine-round`, base `356bf8928`. Merge current `origin/main` into the branch before Task 1 and again in Task 9 Step 3.
+- Version: ride the staged 20.24.0. No bump. Task 9 appends to the existing `## 20.24.0` entry in `CHANGELOG.md` after re-reading `<KhaozEngineVersion>` and `git tag --sort=-v:refname | head -3`. If 20.24.0 has been tagged by then, stop and report.
+- Default off is identical. With `RouteApproachOptions.Stall` null, `WorldClientConfig.ReceiveServerTick` false and `ShardedWorldServerConfig.DisconnectLingerTicks` null, routes, commands, statuses, wire bytes, frame kinds, session events and despawn timing are unchanged. `ServerTick` is always counted and changes nothing on the wire. The one deliberate exception is D9: `DirectionalLocomotionBlend` changes its diagonal shares and phase rate for every caller, with no option, and is identical on cardinals.
 - Additive public API only. No project reference change. Netcode keeps its single `KhaozEngine.Netcode.Abstractions` reference.
-- Names: `RouteStallOptions` (`WindowTicks`, `TravelMetres`), `RouteApproachOptions.Stall`, `RangeProgressRing` (internal), `WorldServer.ServerTick`, `ShardedWorldServer.ServerTick`, `MoveProtocol.ClientControlKind.ServerTickCapable = 4`, `MoveProtocol.ServerFrameKind.TickedSnapshot = 7`, `.TickedDelta = 8`, `MoveProtocol.EncodeTickedSnapshotFrame`, `MoveProtocol.TryDecodeTickedSnapshotFrame`, `WorldClientConfig.ReceiveServerTick`, `WorldClient.LatestServerTick`, `WorldClient.RemoteRenderTick`, `ServerTickTimeline` (internal), `NetServer.HoldSlotOnDisconnect`, `NetServer.ReleaseHeldSlot`, `ShardedWorldServerConfig.DisconnectLingerTicks`, `ShardedWorldServer.IsLingering`.
+- Names: `RouteStallOptions` (`WindowTicks`, `TravelMetres`), `RouteApproachOptions.Stall`, `RangeProgressRing` (internal), `WorldServer.ServerTick`, `ShardedWorldServer.ServerTick`, `MoveProtocol.ClientControlKind.ServerTickCapable = 4`, `MoveProtocol.ServerFrameKind.TickedSnapshot = 7`, `.TickedDelta = 8`, `MoveProtocol.EncodeTickedSnapshotFrame`, `MoveProtocol.TryDecodeTickedSnapshotFrame`, `WorldClientConfig.ReceiveServerTick`, `WorldClient.LatestServerTick`, `WorldClient.RemoteRenderTick`, `ServerTickTimeline` (internal), `NetServer.HoldSlotOnDisconnect`, `NetServer.ReleaseHeldSlot`, `ShardedWorldServerConfig.DisconnectLingerTicks`, `ShardedWorldServer.IsLingering`. `DirectionalLocomotionBlend`, `DirectionalGaitSet` and `GaitClip` keep their public API exactly.
 - Steady paths allocate nothing: `MoveToRange.Tick` with `Stall`, `ServerTickTimeline.Record` and `.At`, and `ShardedWorldServer.Tick` with only lingering bodies joined. Allocation facts join `[Collection("AllocSensitive")]` and use the project's `AllocAssert.NoPerCallAllocation`.
 - Zero warnings. KESIZE cap 800 lines: `ShardedWorldServer.cs` (749), `WorldServer.cs` (754) and `WorldClient.cs` (769) take only call sites, and new behaviour goes in the new partials named per task. No `.filesize-baseline` growth.
 - Test namespaces under `KhaozEngine.Tests.*`. No em dashes, en dashes or prose semicolons in Markdown or comments.
-- Every dotnet command runs from the worktree root through the shared lock: `/tmp/grimhollow-orch/slot-run.sh "<label>" /tmp/grimhollow-orch/<log> -- <command>`. Run `mkdir -p local-feed` once before the first restore. Labels are `p6e:t<task>-<step>` and logs `p6e-t<task>-<step>.log`. Below, `MOVE` is `KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj` and `SERVER` is `KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj`, each run as `dotnet test <project> -c Release --filter "<filter>"`.
-- Focused filters per task, one full Release run in Task 8. No local repetition, stress runs or client launches.
+- Every dotnet command runs from the worktree root through the shared lock: `/tmp/grimhollow-orch/slot-run.sh "<label>" /tmp/grimhollow-orch/<log> -- <command>`. Run `mkdir -p local-feed` once before the first restore. Labels are `p6e:t<task>-<step>` and logs `p6e-t<task>-<step>.log`. Below, `MOVE` is `KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj`, `SERVER` is `KhaozEngine.Server.Tests/KhaozEngine.Server.Tests.csproj` and `GAME` is `KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj`, each run as `dotnet test <project> -c Release --filter "<filter>"`.
+- Focused filters per task, one full Release run in Task 9. No local repetition, stress runs or client launches.
 - Guards: `sh scripts/check-dashes.sh --tree`, `sh scripts/check-prose.sh --tree`, `sh scripts/check-file-size.sh --tree`, `sh scripts/check-agent-instructions.sh --tree`, `bash scripts/check-doc-versions.sh`.
 - Each feature task sweeps every Markdown file for the names it adds and the behaviour it changes. On macOS use `git grep -w` or `git grep -P`, never `git grep -E` with `\b`.
 - Commit subjects `area(scope): summary`. Stage explicit paths. Workers do not merge, push, pack, tag or file issues unless the task says so.
@@ -342,7 +342,74 @@ Assert.Equal(parameter, Assert.Throws<ArgumentOutOfRangeException>(() => new Rou
 
 ---
 
-### Task 8: Round docs, the 20.24.0 entry and full verification
+### Task 8: Foot-locked diagonal shares in `DirectionalLocomotionBlend` (D9)
+
+**Files:**
+- Modify: `KhaozEngine.Game.Render3D/DirectionalLocomotionBlend.cs` (`SetTargets` at lines 142-152, the phase line in `Advance` at line 121, the class summary at lines 6-21, and the `SectorFamily` table at lines 29-33, removed if unused)
+- Modify: `KhaozEngine.Game.Tests/Game/DirectionalLocomotionBlendTests.cs`
+- Modify docs: `KhaozEngine.Game.Render3D/README.md` "DirectionalLocomotionBlend" (lines 242-262, the angle and phase paragraph) and `docs/USING-KHAOZENGINE.md` "Directional locomotion blend (eight-way, feet in step)" (line 5725, "by angle (45 degrees is half and half)" and "by distance over the weighted stride")
+
+**Interfaces:**
+- Consumes: nothing from Tasks 1 to 7. This task is independent of them and may run at any point before Task 9.
+- Produces: no public API change. The behaviour, from the design's D9, with body-frame velocity `(x, y)` and Euclidean `speed` as today:
+  - Families: `y > 0` picks forward with `c = |y|`, `y < 0` picks backward, `x > 0` picks right with `c = |x|`, `x < 0` picks left. A zero component adds no family.
+  - Family stride `s_f` at `speed`: the bracket mix of its members' `StrideMetres` with today's bracket and clamp (`AddFamily`'s rule), so one helper computes both the stride and the member split.
+  - Target share of family `f`: `(c_f / s_f) / sum_g (c_g / s_g)`, then split between its members by today's speed bracket.
+  - Phase: `Phase = Frac(Phase + (MathF.Abs(x) + MathF.Abs(y)) * dt / stride)`, where `stride` is today's `sum(weight / total x StrideMetres)` over the eased slot weights. Steady state gives the rate `sum(c / s)`. On a cardinal both rules equal 20.23.0's.
+  - Unchanged: easing, normalisation, `TravelWeight`, the moving test on `speed`, sampling at `Phase + SyncPhase`, `Reset`, `BodyFrame`, argument checks, zero allocation.
+
+Derived values on the test set (`Set()`: forward walk 1.4 m/s stride 1.2, forward run 4.0 stride 2.4, back walk 1.0 stride 0.9, left walk 1.2 stride 0.8, right walk 1.2 stride 0.8, right run 3.0 stride 1.8). `AtDegrees` is clockwise from forward.
+
+| Velocity | Families and `c / s` | Shares | Phase rate (loops/s) | 20.23.0 |
+| --- | --- | --- | ---: | --- |
+| 45 degrees, 1.2 m/s | forward 0.8485 / 1.2, right 0.8485 / 0.8 | ForwardWalk 0.4, RightWalk 0.6 | 1.767767 | 0.5, 0.5 at 1.2 |
+| 315 degrees, 1.2 m/s | forward, left as above | ForwardWalk 0.4, LeftWalk 0.6 | 1.767767 | 0.5, 0.5 |
+| 135 or 225 degrees, 1.2 m/s | back 0.8485 / 0.9, side 0.8485 / 0.8 | BackWalk 8/17 = 0.4705882, side walk 9/17 = 0.5294118 | 2.003469 | 0.5, 0.5 |
+| 45 degrees, 1.0 m/s | forward walk, right walk | 0.4, 0.6 | 1.473139 | 0.5, 0.5 at 1.0 |
+| 30 degrees, 2.7 m/s | forward 2.338269 / 1.8 (walk and run half each), right 1.35 / 1.633333 (walk 1/6, run 5/6) | ForwardWalk 0.3055742, ForwardRun 0.3055742, RightWalk 0.0648086, RightRun 0.3240429 | 2.125569 | 1/3 right by angle |
+
+- [ ] **Step 1: Write the tests.** In `DirectionalLocomotionBlendTests`, with `Strides = { 1.2f, 2.4f, 0.9f, 0.8f, 0.8f, 1.8f }` beside `SyncPhases`.
+
+```csharp
+// Replaces DiagonalsSplitHalfAndHalf. Speed 1.2, settled.
+[Theory]
+[InlineData(1f, 1f, ForwardWalk, RightWalk, 0.4f, 0.6f)]
+[InlineData(-1f, 1f, ForwardWalk, LeftWalk, 0.4f, 0.6f)]
+[InlineData(1f, -1f, BackWalk, RightWalk, 0.4705882f, 0.5294118f)]
+[InlineData(-1f, -1f, BackWalk, LeftWalk, 0.4705882f, 0.5294118f)]
+public void DiagonalsShareByComponentOverStride(float x, float y, int a, int b, float wa, float wb)
+// n == 2, w[a] and w[b] within 1e-5 of wa and wb.
+
+[Fact] public void ABracketedDiagonalSplitsEachFamilyShareBySpeed()
+// AtDegrees(30, 2.7): n == 4, ForwardWalk 0.3055742, ForwardRun 0.3055742, RightWalk 0.0648086, RightRun 0.3240429,
+// each within 1e-5.
+
+// Replaces PhaseAdvancesByDistanceOverBlendedStride. 45 degrees at 1.0 m/s, settled, 15 frames of 1/60 s.
+[Fact] public void ADiagonalPhaseRateIsTheSumOfComponentOverStride()
+// Circular(blend.Phase, Frac(p0 + 0.25f * 1.473139f)) <= 1e-5f. The 20.23.0 rule gives p0 + 0.25.
+
+[Theory]
+[InlineData(45d, 1.2f)]
+[InlineData(135d, 1.2f)]
+[InlineData(315d, 1.2f)]
+[InlineData(30d, 2.7f)]
+public void PlantedFootTravelMatchesTheBodyOnEachAxis(double degrees, float speed)
+// Settle at AtDegrees(degrees, speed), read p0, Advance one Frame, read the samples and p1.
+// rate = Frac(p1 - p0) / Frame. For the forward or backward slots, sum(weight x Strides[slot]) x rate equals
+// speed x |cos| within 1e-3 m/s, and for the left or right slots it equals speed x |sin| within 1e-3 m/s.
+// The 20.23.0 rule fails the first case: 0.72 forward and 0.48 right against 0.8485 each.
+```
+
+Change one existing fact's bound: `WeightsAreContinuousAroundTheCircle` uses `limit = 1.5f * MathF.PI / 360f + 1e-6f` (0.013091), the largest adjacent stride ratio at 1.2 m/s (1.2 over 0.8) times the 0.5 degree step in radians. The share's slope peaks at a cardinal at that ratio, and the measured worst step is 0.012921. Leave every other fact as it is: `EachCardinalIsOneClip`, `SpeedBracketsAndClamps`, `WeightsSumToOneAndSteadyStateHasAtMostFour` (still four clips), `PureStrafeReproducesItsOwnStride`, `SyncPhasesKeepContactsAligned`, `ZeroTravelHoldsThePhase`, `SplitDtIsInvariantWhenSettled`, `ReversalCrossfadesForBlendSeconds`, `StopFadesOutOfTheLastGait`, `StandingStillIsNotMovingEvenWithAZeroMovingSpeed`, `BodyFrameUsesTheCameraYawConvention`, `InvalidSetsAndArgumentsAreRefused`, `DuplicateClipIdsAreSeparateSlots` (equal strides, still two slots summing to one) and `DirectionalLocomotionBlendAllocationTests.AdvanceAllocatesNothing`.
+
+- [ ] **Step 2: Run RED.** `/tmp/grimhollow-orch/slot-run.sh "p6e:t8-red" /tmp/grimhollow-orch/p6e-t8-red.log -- dotnet test GAME -c Release --filter "FullyQualifiedName~DirectionalLocomotionBlend"`. Expected: it compiles, and `DiagonalsShareByComponentOverStride`, `ABracketedDiagonalSplitsEachFamilyShareBySpeed`, `ADiagonalPhaseRateIsTheSumOfComponentOverStride` and every `PlantedFootTravelMatchesTheBodyOnEachAxis` case FAIL (0.5 shares, phase p0 + 0.25). Every unchanged fact passes.
+- [ ] **Step 3: Implement** per Interfaces, then the docs under Files. Rewrite the class summary's direction and phase paragraphs to D9's rule, and sweep Markdown with `git grep -n "half and half"` and `git grep -n "DirectionalLocomotionBlend"` for any other claim that a diagonal splits by angle or that the phase advances by `speed`. Leave the 20.23.0 `CHANGELOG.md` entry and the playtest 1 design as the record of what shipped.
+- [ ] **Step 4: Run GREEN.** The Step 2 filter, then `FullyQualifiedName~AnimationSampler|FullyQualifiedName~Locomotion`. Expected: all pass, nonzero counts, the allocation fact included.
+- [ ] **Step 5: Commit.** `feat(render3d): foot-locked diagonal shares in the directional blend`
+
+---
+
+### Task 9: Round docs, the 20.24.0 entry and full verification
 
 **Files:**
 - Modify: `docs/INDEX.md` (a design row above the playtest 1 row at line 47), the design's status line, `CHANGELOG.md` (the `## 20.24.0` entry), this plan's Outcome
@@ -351,15 +418,15 @@ Assert.Equal(parameter, Assert.Throws<ArgumentOutOfRangeException>(() => new Rou
 **Interfaces:**
 - Consumes: every public name in Global Constraints.
 
-- [ ] **Step 1: Sweep.** `git grep -w` each new name and `MoveToRange`, `Blocked`, `PlayerLeaving`, `InterpolationDelayTicks` and `DuplicateSessions` across all Markdown, package READMEs and `AGENTS.md`. Correct any claim that `MoveToRange` never blocks, that the client has no server tick, or that a leave always despawns at once.
-- [ ] **Step 2: Follow-ups.** Root runs `scripts/ledger.sh search "server tick"` and `scripts/ledger.sh search "format 2"`, then files a `kind/backlog`, `confidence/authored` issue to carry the server tick in the format 2 header (Q2), and comments on [#1278](https://github.com/APKiwiOrg/KhaozEngine/issues/1278) that `Stall` now ends its hold in `Blocked` (Q4). If root rules Q1 as reattach later, that is a `kind/roadmap` issue. Record numbers in Outcome.
-- [ ] **Step 3: Changelog.** Fetch and merge current `origin/main`, re-read `<KhaozEngineVersion>`, the `CHANGELOG.md` head and the newest tags. If 20.24.0 is still staged and untagged, append three bullets to its entry: the stall window with its default and counting rule, the server tick with its hello, frame kinds, client properties and the format 2 limit, and the linger with its hook, slot hold, reclaim and what never lingers. Set the INDEX row and the design status to implemented and staged for 20.24.0, no release. Commit `docs(20.24.0): stall window, client server tick and disconnect linger`.
+- [ ] **Step 1: Sweep.** `git grep -w` each new name and `MoveToRange`, `Blocked`, `PlayerLeaving`, `InterpolationDelayTicks`, `DuplicateSessions` and `DirectionalLocomotionBlend` across all Markdown, package READMEs and `AGENTS.md`. Correct any claim that `MoveToRange` never blocks, that the client has no server tick, that a leave always despawns at once, or that a blended diagonal is half and half.
+- [ ] **Step 2: Follow-ups.** Root runs `scripts/ledger.sh search "server tick"` and `scripts/ledger.sh search "format 2"`, then files a `kind/backlog`, `confidence/authored` issue to carry the server tick in the format 2 header (Q2), and comments on [#1278](https://github.com/APKiwiOrg/KhaozEngine/issues/1278) that `Stall` now ends its hold in `Blocked` (Q4). Record numbers in Outcome.
+- [ ] **Step 3: Changelog.** Fetch and merge current `origin/main`, re-read `<KhaozEngineVersion>`, the `CHANGELOG.md` head and the newest tags. If 20.24.0 is still staged and untagged, append four bullets to its entry: the stall window with its default and counting rule, the server tick with its hello, frame kinds, client properties and the format 2 limit, the linger with its hook, slot hold, reclaim and what never lingers, and D9's "Behaviour change" line for `DirectionalLocomotionBlend` as the design words it. Set the INDEX row and the design status to implemented and staged for 20.24.0, no release. Commit `docs(20.24.0): stall window, client server tick, disconnect linger and foot-locked diagonals`.
 - [ ] **Step 4: Verify once.**
 
 ```sh
 mkdir -p local-feed
-/tmp/grimhollow-orch/slot-run.sh "p6e:t8-build" /tmp/grimhollow-orch/p6e-t8-build.log -- dotnet build KhaozEngine.slnx -c Release
-/tmp/grimhollow-orch/slot-run.sh "p6e:t8-test" /tmp/grimhollow-orch/p6e-t8-test.log -- dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
+/tmp/grimhollow-orch/slot-run.sh "p6e:t9-build" /tmp/grimhollow-orch/p6e-t9-build.log -- dotnet build KhaozEngine.slnx -c Release
+/tmp/grimhollow-orch/slot-run.sh "p6e:t9-test" /tmp/grimhollow-orch/p6e-t9-test.log -- dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
 sh scripts/check-dashes.sh --tree
 sh scripts/check-prose.sh --tree
 sh scripts/check-file-size.sh --tree

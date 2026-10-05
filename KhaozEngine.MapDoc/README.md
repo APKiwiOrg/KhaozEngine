@@ -16,6 +16,13 @@ need no synthetic builder options and never resolve relative resource paths impl
 closure passed in, for binding and resource lookup without a second load. This package loads no meshes and has
 no render dependency. `KhaozEngine.Terrain.Render3D` owns the one-way `MapAssetManifestAdapter`.
 
+Native identity and resolution use the default registry only. `MapAuthoredIdentity.Compute` and
+`MapResolver.Resolve` take no registry and validate with `MapDocRegistry.CreateDefault()`, and ke-mapedit's
+`NativeDocumentService` builds its support field from the default registry too. A native document that uses
+a terrain feature registered on a custom `MapDocRegistry` is therefore refused by them as an unregistered
+feature type, even where `Validate` or `ValidateLocal` accept it when given that registry. Custom terrain
+features are not supported in native documents yet.
+
 ## Storage ownership
 
 `MapDocumentStorage.ResourceRoot(storagePath, form)` is a monolithic file's directory or a tiled document's own
@@ -241,12 +248,14 @@ touched tiles are stored, and an absent or empty block leaves terrain byte-ident
 
 ## Format versioning
 
-`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes (currently 3,
-which added the root `tileSize`). Loading a document with an older `formatVersion` runs migrations
+`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes (currently 4,
+which added the native metadata, after version 3 added the root `tileSize`). Loading a document with an
+older `formatVersion` runs migrations
 (`MapDocumentLoadOptions.RegisterMigration`, each a pure `JsonObject -> JsonObject` step from N to N+1)
 until it reaches the current version. The engine's own steps are pre-registered by the
 `MapDocumentLoadOptions` constructor: v1 -> v2 loads a v1 document (which had no sculpt layer) with an
-empty layer and byte-identical terrain, and v2 -> v3 stamps `MapDocumentFile.DefaultTileSize` (512 m).
+empty layer and byte-identical terrain, v2 -> v3 stamps `MapDocumentFile.DefaultTileSize` (512 m), and
+v3 -> v4 (`MapNativeMigration.Upgrade`) adds `playableBounds` from `bounds` when it is absent.
 Any default is as arbitrary as any other for a document that had no tile concept, so the rule is
 "deterministic and documented" rather than "derived". A document newer than the engine, or an old one with
 no migration path, fails to load. Saving always writes the current version.
@@ -484,6 +493,13 @@ game boots against a bad document and fails loudly with a precise error rather t
 limping on, the opposite of the quarantine handling runtime cell blobs get. The tiled reads are the same:
 a directory with no `map.json` has no form and says so, and a tile that fails the per-tile subset names the
 directory, the tile coordinate and the file.
+
+Loading also enforces the schema's closed structures, in every format version. After migration,
+`MapDocumentFile.Load` and `LoadText`, the tiled manifest read (`LoadTiled`, `MapDocumentSource.OpenTiled` and
+`Refresh`) and every tile file read refuse a member that a closed structure does not declare, and the error
+names it. Member names match case-insensitively, as the serializer reads them. Earlier engines silently
+dropped such members, so a legacy file carrying one (a root `notes` field, say) now fails to load until the
+member is removed. `terrain.features` items stay open, so a registered feature type keeps its own fields.
 
 Depends on `KhaozEngine.Primitives`, `KhaozEngine.Serialization`, `KhaozEngine.Content`, and
 `KhaozEngine.Terrain`. GPU-free. In the `Foundation` umbrella. The GUI editor (`KhaozEngine.MapEditor`)

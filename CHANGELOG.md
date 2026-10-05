@@ -11,9 +11,18 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   Int64 identities. Numeric identities use exact decimal strings, with matching schema/runtime bounds and a
   persistent allocation high-water mark. Format 3 documents migrate to format 4. Hashes that include the
   document format version consequently change, while the legacy canonical hash scheme is preserved (#1291).
+  The schema also requires native asset digests to be exactly 64 lowercase hex characters, as closure
+  loading does.
+- Loading is stricter for every format version, legacy files included. After migration, `MapDocumentFile.Load`,
+  `LoadText`, tiled manifest reads and tile file reads refuse any member a closed document structure does not
+  declare, so a file with undeclared JSON members now fails with `MapDocumentException` instead of silently
+  dropping that data. Terrain feature items stay open, so registered feature types keep their own fields.
 - Render-free asset manifests verify resource bytes, kinds, versions and complete dependency graphs before
   publishing immutable closures. Native resolution snapshots placements and transforms, verifies exact root
   bindings and computes fresh authored identity from the complete document, closure and builder inputs.
+  `MapAuthoredIdentity.Compute`, `MapResolver.Resolve` and ke-mapedit's `NativeDocumentService` validate with
+  the default `MapDocRegistry`, so a native document using a custom registered terrain feature is refused
+  there.
 - Native placement editing preserves allocation through duplicate, undo, redo and deletion. Labels and explicit
   stable-ID remaps are separate. Rejected edits preserve document/history state and surface in the editor, and
   a rejected gesture ends its undo grouping. Existing analytic command behavior is retained.

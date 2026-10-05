@@ -333,6 +333,7 @@ public static class MapDocumentFile
             // and the JSON schema types $schema as string, so an emitted null would fail validation.
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         };
+        MapNativeJson.Configure(options);
         options.Converters.Add(new JsonStringEnumConverter());
         options.Converters.Add(new MapFeatureConverter(registry));
         return options;

@@ -1,0 +1,12 @@
+{
+  "version": "20.27.0",
+  "owner_approval": "OA12",
+  "tag_object": "2da36f154a6fca514b9a4595da52afe42019fd18",
+  "peeled_commit": "a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af",
+  "remote_tag_verified": true,
+  "local_package_files": 200,
+  "all_package_commits_match": true,
+  "workflow_run": 37369358693,
+  "workflow_status": "pending",
+  "r2_implementation_approved": false
+}

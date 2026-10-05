@@ -1752,3 +1752,22 @@ Earlier execution proof files referenced above live on engine main under docs/su
 R1 is integrated, reviewed, verified and packed. Owner authorization for v20.27.0 remains pending.
 Do not mark the release checkbox or start R2 implementation until the appropriate owner gates pass.
 The execution worktree remains for the release handoff. No game pin, world or bake changed.
+
+
+### R1 owner-authorized tag, 2026-10-06
+
+OA12 authorizes v20.27.0. The canonical tag script created and pushed annotated tag object
+2da36f154a6fca514b9a4595da52afe42019fd18, peeling to
+a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af. Both identities were verified on origin.
+All 200 local package files still match the tag commit. No repeat pack was needed at unchanged HEAD.
+Exact release identity is proofs/2026-10-06-r1-release.json beside this plan.
+
+The initial invocation was blocked before execution by a cross-repo hook looking at Grimhollow.
+An explicit leading cd /Users/antonio/KhaozEngine gave the hook the correct repository context.
+No hook bypass or game release operation occurred. Future cross-repo release invocations must make
+the engine directory explicit to the command parser, not only to the process workdir.
+
+Tag CI run 37369358693 is pending. Its GitHub package publication is not yet claimed successful.
+R2 begins with read-only cave-representation research only, with no implementation approval.
+Research dispatch metadata and brief live in .superpowers/sdd/2026-10-06-world-authoring-r2-owner-gate
+on this planning worktree. The owner gate follows evidence review.

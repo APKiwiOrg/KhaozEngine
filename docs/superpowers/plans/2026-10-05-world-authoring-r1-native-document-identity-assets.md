@@ -1264,3 +1264,24 @@ authorization are pending. No tag, full-suite pass or round completion is claime
 | `wa-r1-t6-architecture.log` | 0 | `59b612e209c54022fb77221d5e5bc4e83b5a1901fd5caf34595ca6f77581c25a` |
 | `wa-r1-t6-build-game3d.log` | 0 | `e8641a5a354558fdc94b608f557e0fb63f79d635a84719ea36e448bf05503caa` |
 | `wa-r1-t6-format.log` | 0 | `239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c` |
+
+
+### Task 6 review 1 disposition, 2026-10-05
+
+Review 1 approves spec compliance with a resource-storage finding classified Minor. Controller
+verified the Sweep path and upgrades M1 to blocking Important because an accepted tiled Save can
+delete a declared resource under tiles/. R1-T6-2 reserves the tiled writer's storage namespace,
+using shared owner constants and path policy, for every reference in a native closure before
+publication or writes. Target form matters during conversion. Same implementer owns the TDD fix.
+
+N1 missing-storage Retile fallback is also assigned to the fix. Native Save must preserve its known
+form, with no silent monolithic fallback for a missing tiled map. N2 atomic destination replacement
+semantics will be documented, not expanded into permission/symlink-preservation infrastructure.
+N3 positive relative conversion and failed-Open dirty/manifests proofs, and N4 moving the unchanged
+summary DTO to Results.cs, are in the bounded fix. No final-triage issue is widened into this task.
+
+The reviewer independently confirmed that relative resources can convert when preprovisioned.
+It also refuted the reported analytic SourceDirectory deviation: BASE already normalizes that
+directory in MapTiledFile.Load. Only failure-message path spelling changed, OpenResult.Path and
+DocumentPath still retain the caller's string. No analytic compatibility fix is required for that
+claim. Original review and exact fix brief are preserved in R1 SDD. Task 6 is not accepted.

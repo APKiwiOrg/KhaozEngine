@@ -7,9 +7,15 @@
   "local_package_files": 200,
   "all_package_commits_match": true,
   "workflow_run": 37369358693,
-  "workflow_status": "queued",
+  "workflow_status": "failure",
   "r2_implementation_approved": false,
   "workflow_attempt": 2,
   "prior_failure": "Hosted runner was not acquired, job steps empty",
-  "retry_scope": "Only failed build-test-pack job, one bounded retry"
+  "retry_scope": "Only failed build-test-pack job, one bounded retry",
+  "publication_blocker": 1309,
+  "failed_job": 111969385528,
+  "failed_test": "AConcurrentResize_RacingAPresent_AppliesWholeAndOnlyAtTheBoundary",
+  "attempt2_full_build": "success",
+  "attempt2_pack": "not run",
+  "failure_log_sha256": "8484094fdf3f8d504624f6483c1762c321eb29869acf73915513a4d8d9756c5e"
 }

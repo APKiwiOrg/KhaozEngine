@@ -1781,3 +1781,24 @@ test, pack or publish ran there. All three SQL jobs succeeded. One retry of the 
 accepted, exit 0, and attempt 2 is queued on the same tag commit. No code or workflow change, retag
 or test loop occurred. Publication remains pending. The release proof JSON records this state.
 If allocation fails again, the external blocker must be reported without an automatic retry loop.
+
+
+### Publication attempt 2 test failure, 2026-10-06
+
+Attempt 2 acquired a hosted runner and passed the full build, then failed the existing
+D3D11ThreadingContractTests.AConcurrentResize_RacingAPresent_AppliesWholeAndOnlyAtTheBoundary.
+The assertion reports zero applied queued resizes. The fixture signals worker start before producing
+a request, so scheduler timing can leave its 400-present window vacuous. The test file is unchanged
+from pre-R1 main de78df336. This is a real test-step failure, distinct from the first runner-acquisition
+failure, with no engine runtime regression claimed. All SQL jobs passed. Pack/publication did not run.
+
+Filed #1309 after prior-art searches. Separate fix/wa-r1-ci-resize worktree was created from main/tag
+a87038f5a, with pushed plan ce6ea0e8c6322366fa62b804b0b4ba6ba342f010 at
+docs/superpowers/plans/2026-10-06-r1-release-resize-test-repair.md. A bounded test-only worker replaces
+scheduling luck with controlled progress while preserving lock, size, coalescing and boundary-order
+assertions. No engine runtime/version edit, skip, stress loop or unchanged CI retry is assigned.
+
+Tag v20.27.0 and its matching local packages remain immutable. R1 publication is blocked until the
+repair and its release disposition are verified. Any new tag requires owner approval. PROGRAM.md
+holds the repair task ID and active state. Failure log is
+/tmp/grimhollow-orch/logs/wa-r1-combined-20261006/09-ci-attempt2-failed.log.

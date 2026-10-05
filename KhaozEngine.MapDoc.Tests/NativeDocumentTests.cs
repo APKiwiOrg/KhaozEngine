@@ -8,7 +8,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc;
 
-public sealed class NativeDocumentTests
+public sealed partial class NativeDocumentTests
 {
     [Fact]
     public void NativeV4_MigrationIsPure_AnalyticAndIdsSurvive()

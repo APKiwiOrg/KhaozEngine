@@ -1024,3 +1024,32 @@ Future round plans are being revised in the engine planning lane. R1 approval re
 cave representation or coordinate strategy selected. R1's final compatibility audit must identify
 accidental fixed depth/plane/cell limits and document its current finite-float contract, without
 claiming unlimited precision or implementing the later cave/water/navigation systems here.
+
+
+### Task 5 context ruling R1-T5-1, 2026-10-05
+
+Task 5 initial dispatch returned NEEDS_CONTEXT at `4a19d6db757d25ab2d095cba9d4214f67356732e`,
+without code changes or build/test commands. Controller verified that IEditorCommand.Apply/Revert
+receive only MapDocument, EditorDocument/EditorHistory carry no closure, and MapEditSession.Mutate
+passes only document and registry. Full native candidate validation cannot infer verified assets.
+
+R1-T5-1 authorizes an explicit immutable MapAssetClosure binding at editor/history and MCP mutation
+transaction boundaries. Existing analytic signatures/behavior remain compatible. Native transactions
+refuse a missing or mismatched binding. Low-level Apply/Revert perform atomic document-local checks,
+while bound transaction boundaries validate the complete candidate before publication. No command
+loads files, guesses source roots, infers assets from placements or invents builder options.
+
+Use one shared render-free native bound-document validator, extracted from MapAuthoredIdentity as
+needed, for root equality, asset membership and native validity. Keep builder/hash requirements with
+identity. Extend EditorDocument/EditorHistory with explicit binding and MapEditSession with a narrow
+BindNativeAssets seam. Validate bindings without dirty/history changes and clear session binding on
+open/create replacement. Task 6 owns real lifecycle loading. Native low-level command documentation
+must distinguish local validation from full bound transaction validation.
+
+Task 5 scope now includes MapEditSession.cs and a cohesive shared MapDoc validation helper plus
+MapAuthoredIdentity reuse. Preserve document object identity at publication and existing command
+semantics. Failed execute/undo/redo preserves command retry state, stacks, dirty/rebuild/events and
+allocator. Validate a manifest asset not already placed, missing/mismatched closures, unknown asset
+rejection followed by retry, and closure clearing across document replacement. Existing Task 5
+acceptance tests remain required. This is a dependency seam within the approved transaction contract,
+not a new owner capability or a Task 6 lifecycle implementation.

@@ -981,3 +981,29 @@ up named resources in the complete graph alone cannot detect a different/extra r
 add the cohesive root-reference snapshot/accessor to the existing closure type and tests. This fulfils
 the already approved matching-closure contract. If wrong, the cost is a small API/test adjustment.
 Task 4 also owns exact high-water/tombstone storage and native manifest/tile unknown-member refusal.
+
+
+### Task 4 implementation returned and review started, 2026-10-05
+
+Task BASE `611dcfd6bdba7496a93bc3155e9e5713c30e6967`, implementation
+`c4e0213927889206bceffb47407a24ff6a5e21c5`. Immutable world snapshots, normalized complete native
+identity, exact immutable roots and actual native storage validation are implemented. Legacy analytic
+hash remains separate. Derived schemas already inherited native metadata, so no redundant schema
+source edit was needed. R1-T4-1 is fulfilled by the immutable closure Roots accessor and match checks.
+
+The worker committed a held candidate while formatting waited, following R1-T3-V1. Final production
+and test format checks then passed without post-candidate edits. Controller verified actual RED exit1
+for a missing planned API, GREEN36focused and155prior regression tests with zero failures/skips/warnings,
+final formatting exits0, clean tree and the13changed paths. No full solution check was repeated.
+
+Fresh Sol xhigh review1 is pending, using review-611dcfd6b..c4e021392.diff and task-4-report.md in SDD.
+Output is task-4-review-1.md. Task4 is not accepted and Task5 has not started. Baseline1293 and minor1298
+remain final-round triage items.
+
+| Log under /tmp/grimhollow-orch/logs/wa-r1-t4-20261005 | Observed exit | SHA-256 |
+| --- | --- | --- |
+| `red.log` | 1 | `146de424889fca3fb41739290346f1b0754550d6f29c05c57f6c4e4d7917c4b1` |
+| `green.log` | 0 | `1d331675f02807657b277bb990ef79b21afc0290375db37f1b07845d05a8691d` |
+| `regression.log` | 0 | `8fab8eafc4475e8eaa812766d6c073fc30f468f80a0b4bef8ee70a6334ec6d2d` |
+| `format-production.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `format-tests-final.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |

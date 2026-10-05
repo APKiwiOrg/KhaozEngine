@@ -31,6 +31,7 @@ public sealed class MapDocumentLoadOptions
     {
         RegisterMigration(1, MigrateV1ToV2);
         RegisterMigration(2, MigrateV2ToV3);
+        RegisterMigration(3, MapNativeMigration.Upgrade);
     }
 
     /// <summary>Registers the transform from <paramref name="fromVersion"/> to fromVersion + 1. The step does
@@ -79,8 +80,8 @@ public static class MapDocumentFile
     /// <see cref="MapDocument.TerrainOverrides"/> sculpt/delta layer, and v3 added the root
     /// <see cref="MapDocument.TileSize"/>, which per-tile hashing needs even for a monolithic document or a
     /// monolithic and a tiled copy of the same world would hash differently. Version and layout are
-    /// independent axes: a v3 monolithic file is legal and is what <see cref="Save"/> writes.</summary>
-    public const int CurrentFormatVersion = 3;
+    /// independent axes. v4 adds native metadata and separate playable bounds.</summary>
+    public const int CurrentFormatVersion = 4;
 
     /// <summary>The document tile edge, in world meters, a document gets when it does not declare one (and
     /// what the v2 to v3 migration stamps). At a heavily authored density a fully authored 512 m tile is
@@ -144,6 +145,7 @@ public static class MapDocumentFile
         }
 
         root = Migrate(root, options, where);
+        MapDocumentMembers.Validate(root, where);
 
         MapDocument doc;
         try

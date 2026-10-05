@@ -22,6 +22,7 @@ public static class MapDocumentValidator
             errors.Add("id must be non-empty.");
         if (!(doc.Bounds.MaxX > doc.Bounds.MinX) || !(doc.Bounds.MaxZ > doc.Bounds.MinZ))
             errors.Add("bounds must satisfy MaxX > MinX and MaxZ > MinZ.");
+        MapNativeValidation.Validate(doc, errors);
         ValidateTileSize(doc, errors);
         if (doc.TerrainOverrides is { } overrides)
             ValidateOverrides(overrides, doc.Bounds, errors);

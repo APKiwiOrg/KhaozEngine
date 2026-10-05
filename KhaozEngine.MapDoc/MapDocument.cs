@@ -8,7 +8,7 @@ namespace KhaozEngine.MapDoc;
 /// file per zone, human-diffable, git-committed in the game repo. Both game heads load the same document through
 /// <see cref="MapDocumentFile"/> and build runtime objects with <see cref="MapRuntime"/>, so client and server
 /// agree by construction.</summary>
-public sealed class MapDocument
+public sealed partial class MapDocument
 {
     [JsonPropertyName("$schema")]
     public string? Schema { get; set; }
@@ -165,7 +165,7 @@ public sealed class MapScatterOverrideDoc
 }
 
 /// <summary>An authored prop/building placement. Null Y = ground-snap to the terrain field at load.</summary>
-public sealed class MapPlacement
+public sealed partial class MapPlacement
 {
     /// <summary>Stable editor identity, unique within the document.</summary>
     public string Id { get; set; } = "";

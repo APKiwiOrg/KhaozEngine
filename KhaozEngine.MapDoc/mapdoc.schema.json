@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
-    "formatVersion": { "type": "integer", "minimum": 1 },
+    "formatVersion": { "type": "integer", "const": 4 },
     "id": { "type": "string", "minLength": 1 },
     "displayName": { "type": "string" },
     "tileSize": { "type": "number", "exclusiveMinimum": 0 },
@@ -20,6 +20,28 @@
         "minZ": { "type": "number" },
         "maxX": { "type": "number" },
         "maxZ": { "type": "number" }
+      }
+    },
+    "playableBounds": {
+      "type": ["object", "null"],
+      "required": ["minX", "minZ", "maxX", "maxZ"],
+      "additionalProperties": false,
+      "properties": {
+        "minX": { "type": "number" },
+        "minZ": { "type": "number" },
+        "maxX": { "type": "number" },
+        "maxZ": { "type": "number" }
+      }
+    },
+    "nativeAssets": { "type": "array", "items": { "$ref": "#/$defs/nativeAsset" } },
+    "numericIdHighWaterMark": { "type": "integer", "minimum": 0 },
+    "resolverIdentity": {
+      "type": ["object", "null"],
+      "required": ["payloadVersion", "resolverVersion"],
+      "additionalProperties": false,
+      "properties": {
+        "payloadVersion": { "type": "integer", "minimum": 1 },
+        "resolverVersion": { "type": "integer", "minimum": 1 }
       }
     },
     "terrain": {
@@ -168,6 +190,17 @@
     }
   },
   "$defs": {
+    "nativeAsset": {
+      "type": "object",
+      "required": ["id", "path", "sha256", "payloadVersion"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "minLength": 1 },
+        "payloadVersion": { "type": "integer", "minimum": 1 }
+      }
+    },
     "placements": {
       "type": "array",
       "items": {
@@ -177,6 +210,9 @@
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "kind": { "type": "string", "minLength": 1 },
+          "numericId": { "type": ["integer", "null"], "minimum": 1 },
+          "assetId": { "type": ["string", "null"] },
+          "displayName": { "type": ["string", "null"] },
           "x": { "type": "number" },
           "z": { "type": "number" },
           "y": { "type": ["number", "null"] },

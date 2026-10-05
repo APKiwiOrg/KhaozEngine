@@ -8,7 +8,21 @@
 
 **Tech Stack:** C# on the repository's existing .NET target, System.Numerics, System.Text.Json, closed JSON Schema, xUnit, existing engine seams. No new third-party dependency.
 
-**Spec:** `docs/design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md`, approved direction at `49b045f75`, with inline clarifications on allocation undo and water boundary ownership. Read C4, T1 to T9 and the evidence register before implementation.
+**Spec:** `docs/design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md`, spec approved by the owner on 2026-10-05, under OA4, revised T4 under OA5, prefab v1/estimate under OA6 and C4 boundary policy under OA7. Round-plan approval remains pending. Read C4, T1 to T9 and the evidence register before implementation.
+
+## Approval and execution gate, reconciled 2026-10-05
+
+The exact owner answer supplied by the controller is "Approve". It approves both specs, T1 to T9 with revised T4, the rigid prefab v1 scope and 12 to 18 elapsed-week estimate, and C4 exact-boundary differential policy. It does not approve this round plan or any actual changed query result. Named import-time acceptance of changed targets, distances, occlusion, stances and water boundaries remains required. R1 to R4 are full plans. Reconcile released prerequisite signatures before their owner review. No production execution has started.
+
+Future verification uses HANDOFF's shared slot runner, restored only if absent. Set a unique log directory from the implementation worktree before Task 1, and retain different red/green log names. These are instructions, not commands run by this documents lane.
+
+```bash
+wa_r4_log_dir="/tmp/grimhollow-orch/logs/wa-r4-$(date +%Y%m%dT%H%M%S)-$$"
+mkdir -p local-feed "$wa_r4_log_dir"
+test -f /tmp/grimhollow-orch/slot-run.sh
+```
+
+The 1 m allowance is a minimum vertical target reach-envelope height, preserving `MinimumObjectReachHeight`. It is not a 1 m action distance. Action range remains existing game policy and physical colliders never expand. Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in the game DECISIONS record.
 
 ## Global Constraints
 
@@ -55,7 +69,7 @@ The approved execution method is subagent-driven-development. Execute serially a
 - Equal-medium/equal-level overlapping bodies must be rejected rather than silently double rendering (Task 1).
 - Feet exactly at water SurfaceY, including a bridge deck, must remain dry (Task 3).
 - An authored map with no bodies must not inherit the old global ocean, and independent levels must survive terrain edits (Tasks 3 and 4).
-- Seven clipped source identities and all 113 rectangles must survive grouping, save/reload and domain compilation (Task 5).
+- The historical seven-body/113-rectangle regression fixture must survive grouping, save/reload and domain compilation (Task 5).
 
 ---
 
@@ -78,7 +92,7 @@ The approved execution method is subagent-driven-development. Execute serially a
 
 R3 produces `MapBuiltWorld`, `MapWorldBuilder.Build`, `MapPhysicsRegistration.CreateMoveContext` and `MapWorldBuildOptions`. Extend those types, preserving their names and existing constructor parameters. Existing `MovementMedium(float waterSurfaceY, bool inWater, float wadeSpeedScale = 1f)` with properties WaterSurfaceY, InWater and WadeSpeedScale is the movement seam (`KhaozEngine.Locomotion/MovementMedium.cs:15-40`). `GroundMoveContext.Medium` is `Func<float,float,float,MovementMedium>?`, and `PhysicsNavBakeOptions.SampleWater` controls capture's medium read. R3's context medium is null before this round.
 
-The spec now pins rectangle ownership [MinX,MaxX) x [MinZ,MaxZ) in world coordinates. Normalize simple polygon rings to counter-clockwise XZ winding. For a point on an edge, include a negative-Z directed edge or a horizontal positive-X directed edge. A vertex belongs only if every incident edge owns it. This gives the rectangle predicate exactly and makes adjacent domains own a shared seam once. Positive-area overlap is invalid even with equal level/media. Exact legacy negative-Z boundary changes belong in R11's differential report, not an implicit lossless claim.
+The spec now pins rectangle ownership [MinX,MaxX) x [MinZ,MaxZ) in world coordinates. Normalize simple polygon rings to counter-clockwise XZ winding. For a point on an edge, include a negative-Z directed edge or a horizontal positive-X directed edge. A vertex belongs only if every incident edge owns it. This gives the rectangle predicate exactly and makes adjacent domains own a shared seam once. Positive-area overlap is invalid even with equal level/media. OA7 approves this rule. Every actual legacy negative-Z boundary change records source key/sample, old/new outcome and a separately named acceptance reference at R11/game import. PolicyId alone never accepts a differential.
 
 Store bodies independently. An editor grouping does not replace body IDs or merge ledger records. Bounded draw triangles retain body/material identity and level, with no camera-centred fallback. Actual Scene3D bounded drawing and backend goldens are R8. R4 provides preview/capture-ready polygons plus GUI/service commands, and R9 completes boundary brush UX.
 
@@ -120,7 +134,7 @@ public void NativeWater_RejectsPositiveAreaOverlapEvenAtSameLevel()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r4-t1 /tmp/grand-world/wa-r4-t1.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterDocumentTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-t1:red" "${wa_r4_log_dir}/wa-r4-t1-red.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterDocumentTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
@@ -129,7 +143,7 @@ Implement the produced DTOs, mode migration and validator in the named files. Ad
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r4-t1 /tmp/grand-world/wa-r4-t1.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterDocumentTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-t1:green" "${wa_r4_log_dir}/wa-r4-t1-green.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterDocumentTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -185,7 +199,7 @@ public void NativeWater_SharedEdgeHasExactlyOneOwner()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r4-t2 /tmp/grand-world/wa-r4-t2.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterDomainTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-t2:red" "${wa_r4_log_dir}/wa-r4-t2-red.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterDomainTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
@@ -194,7 +208,7 @@ Implement `Normalize(...)` and `Contains(...)` in `MapWaterDomain.cs` using the 
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r4-t2 /tmp/grand-world/wa-r4-t2.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterDomainTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-t2:green" "${wa_r4_log_dir}/wa-r4-t2-green.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterDomainTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -249,7 +263,7 @@ public void NativeWater_FeetAtSurfaceAndBridgeDeckAreDry()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r4-t3 /tmp/grand-world/wa-r4-t3.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterMediumTests|FullyQualifiedName~NativeWaterCaptureTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-t3:red" "${wa_r4_log_dir}/wa-r4-t3-red.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterMediumTests|FullyQualifiedName~NativeWaterCaptureTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
@@ -258,7 +272,7 @@ Implement Sample/MediumAt in `MapWaterSampler.cs` with immutable spatial indexin
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r4-t3 /tmp/grand-world/wa-r4-t3.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterMediumTests|FullyQualifiedName~NativeWaterCaptureTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-t3:green" "${wa_r4_log_dir}/wa-r4-t3-green.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterMediumTests|FullyQualifiedName~NativeWaterCaptureTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -310,7 +324,7 @@ public void NativeWaterCommands_TerrainEditCannotChangeSavedLevel()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r4-t4 /tmp/grand-world/wa-r4-t4.log -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterCommandTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-t4:red" "${wa_r4_log_dir}/wa-r4-t4-red.log" -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterCommandTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
@@ -319,7 +333,7 @@ Implement the produced signatures in the named files using prepare/validate/publ
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r4-t4 /tmp/grand-world/wa-r4-t4.log -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterCommandTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-t4:green" "${wa_r4_log_dir}/wa-r4-t4-green.log" -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterCommandTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -344,7 +358,7 @@ git commit -m "feat(mapedit): add transactional bounded water commands"
 **Interfaces:**
 - Consumes existing: `TileWaterBodies.Collect(TileWorldDocument document, TileWorldCatalogs catalogs, RegionCoord region, int plane)` as source semantics oracle. Exact return type is `IReadOnlyList<TileWaterBody>` and source bodies expose Rects/SurfaceY. These are test-only references.
 - Consumes Tasks 1 to 4 compiler/sampler/command contracts.
-- Produces test fixture: `FrozenWaterFixture.Load() -> FrozenWaterFixture`, NativeDocument, native assets/options, `SourceBodyIds`, `SourceRectangles`, `CompareSourceInteriorSamples() -> IReadOnlyList<string>`, `BoundaryDifferences() -> IReadOnlyList<string>` with explicit approved-rule reference for any legacy exact-edge difference.
+- Produces test fixture: `FrozenWaterFixture.Load() -> FrozenWaterFixture`, NativeDocument, native assets/options, `SourceBodyIds`, `SourceRectangles`, `CompareSourceInteriorSamples() -> IReadOnlyList<string>`, `BoundaryDifferences() -> IReadOnlyList<MapWaterBoundaryDifference>`, `ExpectedBoundaryDifferences` as checked complete fixture rows. Produce `MapWaterBoundaryDifference(string SourceKey, Vector3 SamplePoint, string OldResult, string NewResult, string PolicyId, string? NamedAcceptanceRef)` in FrozenWaterFixture.cs. PolicyId OA7 approves the boundary rule only. Actual case acceptance remains absent until separately recorded at R11/game import.
 - NativeDocument is a format-6 document with exactly seven stable bodies, 113 rectangles, every source level -0.37 and all medium/material references frozen.
 
 - [ ] **Step 1: Write the failing test**
@@ -361,13 +375,20 @@ public void BoundedWater_AllSevenBodiesAnd113RectanglesRoundtripExactly()
     Assert.Equal(f.SourceBodyIds,copy.WaterBodies.Select(b => b.Id).ToArray());
     Assert.Equal(f.SourceRectangles,copy.WaterBodies.SelectMany(b => b.Domains).ToArray());
     Assert.Empty(f.CompareSourceInteriorSamples());
-    Assert.All(f.BoundaryDifferences(),d => Assert.Contains("C4 half-open ownership",d));
+    Assert.Equal(f.ExpectedBoundaryDifferences,f.BoundaryDifferences());
+    Assert.All(f.BoundaryDifferences(),d =>
+    {
+        Assert.Equal("OA7",d.PolicyId);
+        Assert.NotEmpty(d.SourceKey);
+        Assert.NotEqual(d.OldResult,d.NewResult);
+        Assert.Null(d.NamedAcceptanceRef);
+    });
 }
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r4-t5 /tmp/grand-world/wa-r4-t5.log -- dotnet test KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj -c Release --filter "FullyQualifiedName~BoundedWaterParityTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-t5:red" "${wa_r4_log_dir}/wa-r4-t5-red.log" -- dotnet test KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj -c Release --filter "FullyQualifiedName~BoundedWaterParityTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
@@ -376,7 +397,7 @@ Implement the frozen fixture from the game evidence commit `74f57ee22652bd18234b
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r4-t5 /tmp/grand-world/wa-r4-t5.log -- dotnet test KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj -c Release --filter "FullyQualifiedName~BoundedWaterParityTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-t5:green" "${wa_r4_log_dir}/wa-r4-t5-green.log" -- dotnet test KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj -c Release --filter "FullyQualifiedName~BoundedWaterParityTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -384,7 +405,7 @@ Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspec
 Preserve unrelated edits and stage only these paths.
 
 ```bash
-git add -- KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj KhaozEngine.MapDoc.Compatibility.Tests/FrozenWaterFixture.cs KhaozEngine.MapDoc.Compatibility.Tests/BoundedWaterParityTests.cs Fixtures/HollowmereWater.json KhaozEngine.MapDoc.Physics/README.md KhaozEngine.MapDoc/README.md docs/USING-KHAOZENGINE.md
+git add -- KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj KhaozEngine.MapDoc.Compatibility.Tests/FrozenWaterFixture.cs KhaozEngine.MapDoc.Compatibility.Tests/BoundedWaterParityTests.cs KhaozEngine.MapDoc.Compatibility.Tests/Fixtures/HollowmereWater.json KhaozEngine.MapDoc.Physics/README.md KhaozEngine.MapDoc/README.md docs/USING-KHAOZENGINE.md
 git diff --cached --check
 git commit -m "test(mapdoc): prove bounded water fixture fidelity"
 ```
@@ -392,21 +413,21 @@ git commit -m "test(mapdoc): prove bounded water fixture fidelity"
 
 ## Round Verification and Handoff
 
-Run from the implementation worktree root, sequentially. Focused tests above are the task red/green cycle. The full solution suite runs once at round finish after the solution build, not once per task and never in a repeat loop. Re-run only when a subsequent code change or integration conflict requires it. The slot wrapper retries only lock contention, not failed tests.
+Run from the implementation worktree root, sequentially. Focused tests above are the task red/green cycle. The full solution suite runs once at round finish after the solution build, not once per task and never in a repeat loop. Re-run only when a subsequent code change or integration conflict requires it. The slot runner returns the target exit code. Exit 75 means no command ran because the slot was busy. Hand that result to the controller, never retry a failed test or loop verification.
 
 ```bash
-mkdir -p local-feed
-/tmp/grand-world/slot-retry.sh wa-r4-focused-KhaozEngine.MapDoc.Physics.Tests /tmp/grand-world/wa-r4-focused-KhaozEngine.MapDoc.Physics.Tests.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWater"
-/tmp/grand-world/slot-retry.sh wa-r4-focused-KhaozEngine.MapEditor.Tests /tmp/grand-world/wa-r4-focused-KhaozEngine.MapEditor.Tests.log -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterCommandTests"
-/tmp/grand-world/slot-retry.sh wa-r4-focused-KhaozEngine.MapDoc.Compatibility.Tests /tmp/grand-world/wa-r4-focused-KhaozEngine.MapDoc.Compatibility.Tests.log -- dotnet test KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj -c Release --filter "FullyQualifiedName~BoundedWaterParityTests"
-/tmp/grand-world/slot-retry.sh wa-r4-build /tmp/grand-world/wa-r4-build.log -- dotnet build KhaozEngine.slnx -c Release
-/tmp/grand-world/slot-retry.sh wa-r4-format /tmp/grand-world/wa-r4-format.log -- dotnet format KhaozEngine.slnx --verify-no-changes --no-restore
-/tmp/grand-world/slot-retry.sh wa-r4-suite /tmp/grand-world/wa-r4-suite.log -- dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
-/tmp/grand-world/slot-retry.sh wa-r4-check-dashes /tmp/grand-world/wa-r4-check-dashes.log -- sh scripts/check-dashes.sh --tree
-/tmp/grand-world/slot-retry.sh wa-r4-check-prose /tmp/grand-world/wa-r4-check-prose.log -- sh scripts/check-prose.sh --tree
-/tmp/grand-world/slot-retry.sh wa-r4-check-file-size /tmp/grand-world/wa-r4-check-file-size.log -- sh scripts/check-file-size.sh --tree
-/tmp/grand-world/slot-retry.sh wa-r4-check-agent-instructions /tmp/grand-world/wa-r4-check-agent-instructions.log -- sh scripts/check-agent-instructions.sh --tree
-/tmp/grand-world/slot-retry.sh wa-r4-check-doc-versions /tmp/grand-world/wa-r4-check-doc-versions.log -- bash scripts/check-doc-versions.sh
+mkdir -p local-feed "${wa_r4_log_dir}"
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-focused-KhaozEngine.MapDoc.Physics.Tests:finish" "${wa_r4_log_dir}/wa-r4-focused-KhaozEngine.MapDoc.Physics.Tests-finish.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWater"
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-focused-KhaozEngine.MapEditor.Tests:finish" "${wa_r4_log_dir}/wa-r4-focused-KhaozEngine.MapEditor.Tests-finish.log" -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWaterCommandTests"
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-focused-KhaozEngine.MapDoc.Compatibility.Tests:finish" "${wa_r4_log_dir}/wa-r4-focused-KhaozEngine.MapDoc.Compatibility.Tests-finish.log" -- dotnet test KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj -c Release --filter "FullyQualifiedName~BoundedWaterParityTests"
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-build:finish" "${wa_r4_log_dir}/wa-r4-build-finish.log" -- dotnet build KhaozEngine.slnx -c Release
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-format:finish" "${wa_r4_log_dir}/wa-r4-format-finish.log" -- dotnet format KhaozEngine.slnx --verify-no-changes --no-restore
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-suite:finish" "${wa_r4_log_dir}/wa-r4-suite-finish.log" -- dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-check-dashes:finish" "${wa_r4_log_dir}/wa-r4-check-dashes-finish.log" -- sh scripts/check-dashes.sh --tree
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-check-prose:finish" "${wa_r4_log_dir}/wa-r4-check-prose-finish.log" -- sh scripts/check-prose.sh --tree
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-check-file-size:finish" "${wa_r4_log_dir}/wa-r4-check-file-size-finish.log" -- sh scripts/check-file-size.sh --tree
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-check-agent-instructions:finish" "${wa_r4_log_dir}/wa-r4-check-agent-instructions-finish.log" -- sh scripts/check-agent-instructions.sh --tree
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r4-check-doc-versions:finish" "${wa_r4_log_dir}/wa-r4-check-doc-versions-finish.log" -- bash scripts/check-doc-versions.sh
 ```
 
 Require exit 0 from every command, zero warnings, nonempty focused selections, no format diff and no guard failures. These commands are future implementation verification, not authorization to run tests in the documents lane. GPU facts are skipped by ordinary `dotnet test`. Any visual golden additions use the relevant backend CI bake from `docs/CROSS-PLATFORM.md`, serialized and without booting a consumer. No local stress or repeated suite runs.
@@ -418,3 +439,26 @@ The last task also updates the package README, `docs/USING-KHAOZENGINE.md` and e
 Coverage: C4 schema/mode/validation Task 1, normalized clipped domain Task 2, feet-aware medium/render-input/capture agreement Task 3, level/boundary/lifecycle commands Task 4, exact seven-body fixture and differential reporting Task 5. No camera or old-rim dependency enters the native runtime. Every task has one test cycle and a reviewable deliverable. Existing interfaces were checked at the evidence SHA, new interfaces are explicitly produced before consumption, and the five Review Focus cases each have a named assertion in an owning task. The snippets pin behavior rather than implement algorithms. No later round's complete GUI, MCP, importer or rendering workflow is claimed here.
 
 ## Outcome
+
+### Documentation reconciliation, 2026-10-05
+
+- Approval stage: specs approved with revised T4. R4 plan approval and execution remain pending. No round capability release is claimed.
+- Dependency caveat: Reconcile the released prerequisite APIs and record their actual SHAs before owner plan review. R3 also needs explicit revised-T4 geometry/query refinement. Start implementation from current reconciled engine main after the released CellOrigin change, never by merging this historical planning branch.
+- Source inventory: old fixture counts are regression evidence only. R6/R11 refreeze the actual accepted shipped source, including negative x regions, before adoption acceptance.
+- Actual checks: source and planning review only, no builds/tests. Whole-tree documentation guard results for this revision are recorded below. No package, tag, execution SHA or self-recording commit is invented.
+
+- Reconciled requirements: OA7 boundary policy is approved. The historical boundary fixture reports keyed old/new cases and explicitly absent named acceptance, rather than accepting a policy label as a blanket waiver. Actual import acceptance remains open.
+- Approval record: OA4 to OA7 in game DECISIONS, controller-reported pushed game docs commit `3e46fac49c1d15adf84c948fdc17f4b6606827aa`. No engine implementation approval is inferred.
+
+Documentation checks from `/Users/antonio/KhaozEngine/.worktrees/world-authoring` on 2026-10-05, no builds/tests. The commands below are rerun serially against final text before committing.
+
+| Command | Exit |
+| --- | --- |
+| `sh scripts/check-dashes.sh --tree` | 0 |
+| `sh scripts/check-prose.sh --tree` | 0 |
+| `sh scripts/check-file-size.sh --tree` | 0 |
+| `sh scripts/check-agent-instructions.sh --tree` | 0 |
+| `bash scripts/check-doc-versions.sh` | 0 |
+| `git diff --check` | 0 |
+
+No pre-existing documentation guard blocker was observed. Doc-version validation checks this historical planning branch's 20.24.0 declarations. It does not claim this branch contains released 20.25.0 or its packages. Controller review/push and separate owner round approval remain the next gates.

@@ -2,13 +2,27 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build one GPU-free resolved static world whose exact authored shapes drive physics, selection, reach, stance and nav capture in both heads.
+**Goal:** Build one GPU-free resolved static world whose physical shapes drive collision/occlusion/capture and whose shared canonical interaction envelopes drive picking/reach/stance in both heads.
 
 **Architecture:** MapDoc owns versioned immutable asset data, while the new MapDoc.Physics package compiles shared shapes and complete static descriptors. Existing physics backends register those descriptors and expose a movement view excluding only terrain statics. Narrow-phase queries consume the same oriented compound or baked geometry, with AABBs used solely for acceleration.
 
 **Tech Stack:** C# on the repository's existing .NET target, System.Numerics, System.Text.Json, closed JSON Schema, xUnit, existing engine seams. No new third-party dependency.
 
-**Spec:** `docs/design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md`, approved direction at `49b045f75`, with inline clarifications on allocation undo and water boundary ownership. Read C3, T1 to T9 and the evidence register before implementation.
+**Spec:** `docs/design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md`, spec approved by the owner on 2026-10-05, under OA4, revised T4 under OA5, prefab v1/estimate under OA6 and C4 boundary policy under OA7. Round-plan approval remains pending. Read C3, T1 to T9 and the evidence register before implementation.
+
+## Approval and execution gate, reconciled 2026-10-05
+
+The exact owner answer supplied by the controller is "Approve". It approves both specs, T1 to T9 with revised T4, the rigid prefab v1 scope and 12 to 18 elapsed-week estimate, and C4 exact-boundary differential policy. It does not approve this round plan or any actual changed query result. Named import-time acceptance of changed targets, distances, occlusion, stances and water boundaries remains required. R1 to R4 are full plans. Reconcile released prerequisite signatures before their owner review. No production execution has started.
+
+Future verification uses HANDOFF's shared slot runner, restored only if absent. Set a unique log directory from the implementation worktree before Task 1, and retain different red/green log names. These are instructions, not commands run by this documents lane.
+
+```bash
+wa_r3_log_dir="/tmp/grimhollow-orch/logs/wa-r3-$(date +%Y%m%dT%H%M%S)-$$"
+mkdir -p local-feed "$wa_r3_log_dir"
+test -f /tmp/grimhollow-orch/slot-run.sh
+```
+
+The 1 m allowance is a minimum vertical target reach-envelope height, preserving `MinimumObjectReachHeight`. It is not a 1 m action distance. Action range remains existing game policy and physical colliders never expand. Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in the game DECISIONS record.
 
 ## Global Constraints
 
@@ -76,16 +90,32 @@ The approved execution method is subagent-driven-development. Execute serially a
 
 ## Source-Checked Contract and Judgement Calls
 
-Existing `ReachTarget.Box(Vector3 centre, Vector3 halfExtents, float yawRadians = 0f)` already supports oriented boxes, and `ReachGeometry.Distance(in MovementBody body, in ReachTarget target) -> float` / `Within(in MovementBody body, in ReachTarget target, float range, float tolerance = 0f) -> bool` have no hidden epsilon. Reuse them for box members. Do not rewrite working single-box support. General compound/baked queries belong to the shared native shape service.
+Existing `ReachTarget.Box(Vector3 centre, Vector3 halfExtents, float yawRadians = 0f)` already supports oriented boxes, and `ReachGeometry.Distance(in MovementBody body, in ReachTarget target) -> float` / `Within(in MovementBody body, in ReachTarget target, float range, float tolerance = 0f) -> bool` have no hidden epsilon. Reuse them for box members. Do not rewrite working single-box support. General compound/baked physical queries and derived interaction-envelope queries belong to the shared native service. Revised T4 no longer requires physical-only picking/reach.
 
 Existing `IPhysicsWorld.AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`, `RemoveStatic(StaticHandle handle)`, `CreateQueryViewExcludingStatics(ReadOnlySpan<StaticHandle> excludedStatics) -> IPhysicsWorldQueryView` and `Origin` are the backend seams (`IPhysicsWorld.cs:14-104`). `PropCollisionFormat.Read(Stream stream) -> PhysicsShape` and `Version=1` parse baked data render-free. `PhysicsNavBake.Capture(GroundMoveContext context, PhysicsNavBakeOptions options, NavAreaClassifier classify) -> PhysicsNavBake` needs complete physics, never only a slope query.
 
-Use `MapDoc.Physics` as a new optional package, not a render-side ChunkStatics export. Solid intent becomes explicit native asset metadata in this round, retaining Kind as a game-facing key. Collision variants are digest-bearing assets supplied by the offline importer in R11, not runtime footprint recalculation. R3 publishes complete scene descriptors and geometry queries, not the later camera/view stream or backend goldens. Runtime residency ownership is ready here, R8 composes streaming and unload. Interaction bands are caller-supplied absolute world Y ranges, so a game can request exactly the lower 2 m without changing the asset.
+Use `MapDoc.Physics` as a new optional package, not a render-side ChunkStatics export. Solid intent becomes explicit native asset metadata in this round, retaining Kind as a game-facing key. Collision variants are digest-bearing assets supplied by the offline importer in R11, not runtime footprint recalculation. R3 publishes complete scene descriptors and geometry queries, not the later camera/view stream or backend goldens. Runtime residency ownership is ready here, R8 composes streaming and unload. Interaction bands are caller-supplied absolute world Y ranges. Tree eligibility uses [resolved base Y, resolved base Y + 2 m], regardless of tree scale, without changing its physical collider. MinimumObjectReachHeight applies a minimum vertical target reach-envelope height of 1 m, not action range. Explicit shape-specific construction/selectability is a mandatory R3 refinement gate below.
+
+### Revised T4 refinement gate, OA5, 2026-10-05
+
+R3 remains a full task/step plan but is not execution-approved. Before its owner plan review, bind these proposed new APIs to the released R1/R2 closure and refine the precise envelope algorithm and assertions for each supported geometry. The original physical-only interaction instruction is superseded. This is a technical plan proposal under the approved policy, not an exact owner quotation.
+
+- Canonical input is the digest-verified interaction-source resource in the asset closure, with compound/baked topology and explicit non-solid selection geometry. No head independently substitutes a rendered mesh AABB or game catalog footprint. An asset with physical and interaction resources records both digests, their derivation and the envelope policy version.
+- Produce one immutable envelope per placement from that canonical input and the same source-units/XYZ/yaw/positive-scale transform as its physical geometry. Pin `MinimumObjectReachHeight` as a minimum 1 m world-space vertical reach-envelope height for low objects, independently of action range. Define selectable bounds and exact eligible ray/distance geometry consistently. Refinement must specify whether selectable geometry includes the vertical allowance and pin the result with tests, rather than leaving a silent pick-versus-reach divergence.
+- Preserve compound apertures and baked openings. Physical shapes/statics/occlusion never use the enlarged envelope. Tree lower-2-m eligibility applies to pick/reach/stance consistently. Physical clearance and LOS remain separate queries on exact physical shapes. Candidate generation uses the envelope, clearance uses complete physical geometry.
+- Refinement records exact box/baked-cylinder/hull/mesh/compound construction, source choice, vertical allowance/band clipping order, coordinate convention, closest-point/ray results and policy schema/version/hash. It must remove any remaining ambiguous branch before execution. A blanket AABB, physical-collider inflation or per-head geometry fork fails review.
+- Named tests must prove a 0.2 m-high object's target reach envelope has minimum vertical height 1 m while its physical bounds remain 0.2 m, unchanged game action range, consistent selectable hit behavior, an open rotated/scaled doorway, physical wall occlusion, a tree hit at base+1 m and refusal at base+3 m, and identical two-head envelope/policy/physical digests. Import-time acceptance still names actual changed targets/distances/occlusion/stances.
+
+### Late bridge and downstream capture requirements, 2026-10-05
+
+Task 2/6 fixtures preserve the `river_bridge_grand` support over local x [-9,9] for its 16x5 deck footprint, source bed -130 cm, `walkSurface` 2.825, parapet `collisionHeight` 3.825 and 32 separate one-edge 1x1 Wall pieces. These PROGRAM values require source refreeze at R11, not a claim that this old fixture has them. Assert support exists at both overhangs, deck feet are dry after R4, parapet edges block without a full-cell box, and complete capture/movement registration retains support. R11 validates source-driven variants and named differential outcomes.
+
+The game nav artifact budget is 8 MiB deterministic `gzip -9`, committed in plain git. R3 supplies full capture/options/profile/geometry identity hooks for the downstream G3 rebake. Do not turn that game artifact budget into a universal engine limit or claim a bake measured here.
 
 ### Task 1: Version-1 asset shapes and optional GPU-free package
 
 **Files:**
-- Create: `KhaozEngine.MapDoc/Assets/MapCollisionDoc.cs`, `KhaozEngine.MapDoc/Assets/MapSupportDoc.cs`
+- Create: `KhaozEngine.MapDoc/Assets/MapCollisionDoc.cs`, `KhaozEngine.MapDoc/Assets/MapSupportDoc.cs`, `KhaozEngine.MapDoc/Assets/MapInteractionPolicyDoc.cs`
 - Create: `KhaozEngine.MapDoc.Physics/MapShapePayload.cs`
 - Create: `KhaozEngine.MapDoc.Physics/KhaozEngine.MapDoc.Physics.csproj`, `KhaozEngine.MapDoc.Physics/README.md`
 - Create: `KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj`, `KhaozEngine.MapDoc.Physics.Tests/NativeShapeDocumentTests.cs`, `KhaozEngine.MapDoc.Physics.Tests/NativeShapeFixtures.cs`
@@ -98,7 +128,8 @@ Use `MapDoc.Physics` as a new optional package, not a render-side ChunkStatics e
 - Produces new: asset `bool IsSolid`, payload `MapCollisionDoc` with `int PayloadVersion=1`, `MapCollisionKind Kind`, `IReadOnlyList<MapLocalBox> Boxes` and `MapAssetRef? Baked` (exclusive union members by Kind). `MapCollisionKind { None, CompoundBoxes, Baked }`.
 - Produces new: `MapLocalBox(Vector3 Centre, Vector3 HalfExtents, float YawRadians)`, all finite, strictly positive half extents.
 - Produces new: `MapSupportDoc(int PayloadVersion, string SurfaceId, IReadOnlyList<MapSurfaceTriangle> Triangles)` from R2.
-- Produces new: `MapShapePayload.Read(MapAssetClosure closure, MapResolvedAsset asset, bool selection) -> MapCollisionDoc`, validating supported payload and baked format/digest.
+- Produces new: `MapShapePayload.Read(MapAssetClosure closure, MapResolvedAsset asset, bool interactionSource) -> MapCollisionDoc`, validating supported payload and baked format/digest.
+- Produces proposed new: `MapInteractionPolicyDoc(int PayloadVersion, int PolicyVersion, float MinimumVerticalReachHeightMetres)` with minimum height 1 m for the approved policy. Its closure reference and geometry derivation are explicit, with finite-value/version refusal. Selectability/band construction is finalized by the refinement gate, not silently chosen at implementation.
 - Test helper new: `NativeShapeFixtures.Valid() -> (MapAssetClosure Assets, string AssetId)`, `LoadMissingBaked() -> void`, `LoadFutureCollision() -> void`, `LoadSolidWithoutShape() -> void`, each attempting invalid closure/shape load inside the assertion. Additional builders `Doorway()`, `CornerWall()`, `Bridge()`, `Tree()`, `CrossChunkBuilding()` return `(MapDocument Document, MapAssetClosure Assets, MapWorldBuildOptions Options)` once Task 2 supplies that type.
 
 - [ ] **Step 1: Write the failing test**
@@ -119,16 +150,16 @@ public void NativeShape_SolidDataCannotBeMissingOrUnsupported()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r3-t1 /tmp/grand-world/wa-r3-t1.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeShapeDocumentTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-t1:red" "${wa_r3_log_dir}/wa-r3-t1-red.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeShapeDocumentTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
 
-Implement the payload DTOs in MapDoc and `MapShapePayload.Read(...)` in new `KhaozEngine.MapDoc.Physics/MapShapePayload.cs`. Default old descriptors IsSolid=false for compatibility, require collision data and a non-None shape for explicit solids. Selection may independently use the same schema on non-solids. Reject empty compounds, nonfinite or nonpositive dimensions, unsupported kinds/versions, bad indices/hulls and stale .coll payloads. The package references only MapDoc, Physics, Movement and Collision as needed, with no GPU/Render3D/MapEditor/TileWorld edge and no Bepu dependency. Tests reference MapDoc.Physics plus Physics.Bepu, IsPackable=false and `KhaozEngine.Tests.MapDocPhysics` namespaces. Add the package/test projects to the solution and authoritative package/dependency rows. No umbrella inclusion is implicit.
+Implement the payload DTOs in MapDoc and `MapShapePayload.Read(...)` in new `KhaozEngine.MapDoc.Physics/MapShapePayload.cs`. Default old descriptors IsSolid=false for compatibility, require collision data and a non-None shape for explicit solids. Canonical interaction-source geometry may use the same versioned schema on solids/non-solids, with a separate digest-bearing MapInteractionPolicyDoc. It is not physical collision. Refine the exact policy payload before owner plan approval. Reject empty compounds, nonfinite or nonpositive dimensions, unsupported kinds/versions, bad indices/hulls and stale .coll payloads. The package references only MapDoc, Physics, Movement and Collision as needed, with no GPU/Render3D/MapEditor/TileWorld edge and no Bepu dependency. Tests reference MapDoc.Physics plus Physics.Bepu, IsPackable=false and `KhaozEngine.Tests.MapDocPhysics` namespaces. Add the package/test projects to the solution and authoritative package/dependency rows. No umbrella inclusion is implicit.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r3-t1 /tmp/grand-world/wa-r3-t1.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeShapeDocumentTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-t1:green" "${wa_r3_log_dir}/wa-r3-t1-green.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeShapeDocumentTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -136,7 +167,7 @@ Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspec
 Preserve unrelated edits and stage only these paths.
 
 ```bash
-git add -- KhaozEngine.MapDoc/Assets/MapCollisionDoc.cs KhaozEngine.MapDoc/Assets/MapSupportDoc.cs KhaozEngine.MapDoc.Physics/MapShapePayload.cs KhaozEngine.MapDoc.Physics/KhaozEngine.MapDoc.Physics.csproj KhaozEngine.MapDoc.Physics/README.md KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj KhaozEngine.MapDoc.Physics.Tests/NativeShapeDocumentTests.cs KhaozEngine.MapDoc.Physics.Tests/NativeShapeFixtures.cs KhaozEngine.MapDoc/Assets/MapAssetManifest.cs KhaozEngine.MapDoc/Assets/MapAssetClosure.cs KhaozEngine.slnx README.md docs/DEPENDENCY-SEAMS.md
+git add -- KhaozEngine.MapDoc/Assets/MapCollisionDoc.cs KhaozEngine.MapDoc/Assets/MapSupportDoc.cs KhaozEngine.MapDoc/Assets/MapInteractionPolicyDoc.cs KhaozEngine.MapDoc.Physics/MapShapePayload.cs KhaozEngine.MapDoc.Physics/KhaozEngine.MapDoc.Physics.csproj KhaozEngine.MapDoc.Physics/README.md KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj KhaozEngine.MapDoc.Physics.Tests/NativeShapeDocumentTests.cs KhaozEngine.MapDoc.Physics.Tests/NativeShapeFixtures.cs KhaozEngine.MapDoc/Assets/MapAssetManifest.cs KhaozEngine.MapDoc/Assets/MapAssetClosure.cs KhaozEngine.slnx README.md docs/DEPENDENCY-SEAMS.md
 git diff --cached --check
 git commit -m "feat(mapdoc): define native asset collision payloads"
 ```
@@ -145,7 +176,7 @@ git commit -m "feat(mapdoc): define native asset collision payloads"
 ### Task 2: Complete immutable builder and transformed statics
 
 **Files:**
-- Create: `KhaozEngine.MapDoc.Physics/MapWorldBuildOptions.cs`, `KhaozEngine.MapDoc.Physics/MapBuiltWorld.cs`, `KhaozEngine.MapDoc.Physics/MapWorldBuilder.cs`, `KhaozEngine.MapDoc.Physics/MapPlacementShapes.cs`
+- Create: `KhaozEngine.MapDoc.Physics/MapWorldBuildOptions.cs`, `KhaozEngine.MapDoc.Physics/MapBuiltWorld.cs`, `KhaozEngine.MapDoc.Physics/MapWorldBuilder.cs`, `KhaozEngine.MapDoc.Physics/MapPlacementShapes.cs`, `KhaozEngine.MapDoc.Physics/MapInteractionEnvelopes.cs`
 - Test: `KhaozEngine.MapDoc.Physics.Tests/NativeWorldBuilderTests.cs`
 
 **Interfaces:**
@@ -153,8 +184,9 @@ git commit -m "feat(mapdoc): define native asset collision payloads"
 - Produces new: `MapWorldBuildOptions(string GroundSurfaceId, MapSurfaceFallback Fallback, string ConsumerPolicyIdentity, Func<MapBlockedMask,bool>? KeepBlockedMask = null, int BuilderVersion = 1)`.
 - Produces new: `MapWorldBuilder.Build(MapDocument document, MapAssetClosure assets, MapWorldBuildOptions options) -> MapBuiltWorld`.
 - Produces new: immutable `MapResolvedShape` with PlacementId, NumericId, Digest, Bounds, SelectionOnly and `CreatePhysicsShape() -> PhysicsShape`, `Pose WorldPose`. Internal geometry owns defensive copies.
+- Produces proposed new: immutable `MapResolvedInteractionEnvelope(string PlacementId, long? NumericId, MapResolvedShape Geometry, MapLocalBounds SelectableBounds, string PolicyDigest, string Digest)` and `MapInteractionEnvelopes.Resolve(MapResolvedDocument document, IReadOnlyList<MapResolvedShape> physicalShapes) -> IReadOnlyList<MapResolvedInteractionEnvelope>`. These names identify new outputs, not released APIs. Refine the exact bounds space and geometry derivation before approval.
 - Produces new: `MapPlacementShapes.Resolve(MapResolvedDocument document) -> IReadOnlyList<MapResolvedShape>`.
-- Produces new: `MapStaticDescriptor(string OwnerId, bool IsTerrain, MapResolvedShape Shape)` and immutable `MapBuiltWorld` properties Document, Surfaces, Shapes, SupportSurfaces, BlockedMasks, Volumes, Sampler, StaticDescriptors, AuthoredHash, Bounds. R4 adds water properties without replacing these names.
+- Produces new: `MapStaticDescriptor(string OwnerId, bool IsTerrain, MapResolvedShape Shape)` and immutable `MapBuiltWorld` properties Document, Surfaces, Shapes, InteractionEnvelopes, SupportSurfaces, BlockedMasks, Volumes, Sampler, StaticDescriptors, AuthoredHash, Bounds. R4 adds water properties without replacing these names.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -178,16 +210,16 @@ public void NativeWorld_TwoIndependentHeadsHaveIdenticalTransformedStatics()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r3-t2 /tmp/grand-world/wa-r3-t2.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWorldBuilderTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-t2:red" "${wa_r3_log_dir}/wa-r3-t2-red.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWorldBuilderTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
 
-Implement the produced signatures in their named files. Validate complete closure/doc before publishing any result. Resolve null-Y placements via the canonical sampler, retain imported explicit Y, and compose local shape pose, asset SourceUnitsToMetres and placement Scale exactly once. Keep support/deck triangles and selection geometry separate from solid static ownership while sharing transforms. Bounds union shapes, verified mesh bounds, support, lights and LOD extents. Compile terrain static descriptors from R2 canonical triangles, skip non-capture fallback and keep blocked masks explicit. Hash actual builder version/options and a stable consumer policy identity, rejecting empty identity when a callback is supplied. No backend/device allocation occurs. Add scale 0/-1/infinity, baked stale data, slope-seated wall variants, two-edge corner walls, support decks, unchanged Kind and defensive-shape-copy tests.
+Implement the produced signatures in their named files. Validate complete closure/doc before publishing any result. Resolve null-Y placements via the canonical sampler, retain imported explicit Y, and compose local shape pose, asset SourceUnitsToMetres and placement Scale exactly once. Build interaction envelopes from canonical source geometry using the reviewed revised-T4 policy. Keep envelopes and support/deck triangles separate from solid static ownership while sharing transforms and closure/policy identity. Bounds union shapes, verified mesh bounds, support, lights and LOD extents. Compile terrain static descriptors from R2 canonical triangles, skip non-capture fallback and keep blocked masks explicit. Hash actual builder version/options and a stable consumer policy identity, rejecting empty identity when a callback is supplied. No backend/device allocation occurs. Add scale 0/-1/infinity, baked stale data, slope-seated wall variants, two-edge corner walls, support decks, unchanged Kind and defensive-shape-copy tests.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r3-t2 /tmp/grand-world/wa-r3-t2.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWorldBuilderTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-t2:green" "${wa_r3_log_dir}/wa-r3-t2-green.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeWorldBuilderTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -195,29 +227,30 @@ Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspec
 Preserve unrelated edits and stage only these paths.
 
 ```bash
-git add -- KhaozEngine.MapDoc.Physics/MapWorldBuildOptions.cs KhaozEngine.MapDoc.Physics/MapBuiltWorld.cs KhaozEngine.MapDoc.Physics/MapWorldBuilder.cs KhaozEngine.MapDoc.Physics/MapPlacementShapes.cs KhaozEngine.MapDoc.Physics.Tests/NativeWorldBuilderTests.cs
+git add -- KhaozEngine.MapDoc.Physics/MapWorldBuildOptions.cs KhaozEngine.MapDoc.Physics/MapBuiltWorld.cs KhaozEngine.MapDoc.Physics/MapWorldBuilder.cs KhaozEngine.MapDoc.Physics/MapPlacementShapes.cs KhaozEngine.MapDoc.Physics/MapInteractionEnvelopes.cs KhaozEngine.MapDoc.Physics.Tests/NativeWorldBuilderTests.cs
 git diff --cached --check
 git commit -m "feat(mapdocphysics): build shared authored world descriptors"
 ```
 
 
-### Task 3: Shape-authoritative picking, reach, LOS and interaction bands
+### Task 3: Shared-envelope picking/reach and physical LOS
 
 **Files:**
-- Create: `KhaozEngine.MapDoc.Physics/MapShapeGeometry.cs`, `KhaozEngine.MapDoc.Physics/MapWorldQueries.cs`
+- Create: `KhaozEngine.MapDoc.Physics/MapShapeGeometry.cs`, `KhaozEngine.MapDoc.Physics/MapWorldQueries.cs`, `KhaozEngine.MapDoc.Physics/MapInteractionGeometry.cs`
 - Test: `KhaozEngine.MapDoc.Physics.Tests/NativeShapeQueryTests.cs`
 
 **Interfaces:**
-- Consumes existing: MovementBody(Vector3 centre,float radius,float halfHeight), ReachTarget.Box and ReachGeometry.Distance/Within. Consumes Task 2 shapes.
+- Consumes existing: MovementBody(Vector3 centre,float radius,float halfHeight), ReachTarget.Box and ReachGeometry.Distance/Within. Consumes Task 2 physical shapes and interaction envelopes.
 - Produces new: `MapPickRay(Vector3 Origin,Vector3 Direction,float MaxDistance)`, `MapInteractionBand(float MinY,float MaxY)`, `MapPickHit(string PlacementId,long? NumericId,float Distance,Vector3 Point,Vector3 Normal)`.
 - Produces new: `MapShapeGeometry.Distance(Vector3 point,MapResolvedShape shape) -> float`, `Distance(in MovementBody body,MapResolvedShape shape,MapInteractionBand? band = null) -> float`, `Raycast(MapPickRay ray,MapResolvedShape shape,MapInteractionBand? band,out MapPickHit hit) -> bool`.
-- Produces new: `MapWorldQueries(MapBuiltWorld world)`, `Pick(MapPickRay ray,MapInteractionBand? band = null) -> MapPickHit?`, `Distance(in MovementBody body,string placementId,MapInteractionBand? band = null) -> float`, `Within(in MovementBody body,string placementId,float range,float tolerance = 0,MapInteractionBand? band = null) -> bool`, `HasLineOfSight(Vector3 from,Vector3 to,string? ignoredPlacementId = null) -> bool`.
+- Produces proposed new: `MapInteractionGeometry.Distance(in MovementBody body, MapResolvedInteractionEnvelope envelope, MapInteractionBand? band = null) -> float`, `Raycast(MapPickRay ray, MapResolvedInteractionEnvelope envelope, MapInteractionBand? band, out MapPickHit hit) -> bool`. Exact geometry/band/selectable behavior is fixed at refinement. MapShapeGeometry retains physical-only distance/ray operations for clearance and occlusion.
+- Produces new: `MapWorldQueries(MapBuiltWorld world)`, `Pick(MapPickRay ray,MapInteractionBand? band = null) -> MapPickHit?`, `Distance(in MovementBody body,string placementId,MapInteractionBand? band = null) -> float`, `Within(in MovementBody body,string placementId,float range,float tolerance = 0,MapInteractionBand? band = null) -> bool`, `PhysicalDistance(in MovementBody body,string placementId) -> float`, `HasLineOfSight(Vector3 from,Vector3 to,string? ignoredPlacementId = null) -> bool`. Pick/Distance/Within consume envelopes. PhysicalDistance/LOS consume unchanged physical shapes.
 
 - [ ] **Step 1: Write the failing test**
 
 ```csharp
 [Fact]
-public void NativeDoorwayRayAndReachUseCompoundMembers_NotTheirAabb()
+public void NativeDoorwayInteractionPreservesOpenings_WithoutPhysicalInflation()
 {
     var f = NativeShapeFixtures.Doorway();
     f.Document.Placements[0].X=0.23f; f.Document.Placements[0].Z=0.17f;
@@ -239,16 +272,16 @@ public void NativeDoorwayRayAndReachUseCompoundMembers_NotTheirAabb()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r3-t3 /tmp/grand-world/wa-r3-t3.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeShapeQueryTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-t3:red" "${wa_r3_log_dir}/wa-r3-t3-red.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeShapeQueryTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
 
-Implement the produced geometry/query signatures in their new files. Box members use existing exact yawed-box reach. Compound distance is the minimum to actual members, never their bounding AABB. Baked hull/mesh members use point/segment-to-triangle distances and ray intersections on the same immutable geometry used by CreatePhysicsShape. Baked cylinder members use exact cylinder distance/ray-cap math, not a tessellated proxy. Recursively apply baked compound local poses and reject unsupported geometry before building. Capsule distance measures the capsule's medial segment then subtracts radius, returning zero on overlap. Validate rays, finite nonnegative ranges/tolerances and nonempty bands, clipping eligible geometry to [MinY,MaxY] for band queries while physical collision remains unchanged. LOS ignores selection-only shapes. Pick combines solid and explicit selection shapes, with nearest distance then ordinal PlacementId tie breaking. Add rotated doorway hole, baked concavity, non-solid Examine selection, self-ignored LOS, equal-distance pick ordering and epsilon-free reach boundary tests.
+Implement the refined geometry/query signatures in their new files. Pick/Distance/Within query the canonical interaction envelope. PhysicalDistance and LOS query unchanged physical shapes. The 1 m minimum is vertical target-envelope height only, not range. Box members use existing exact yawed-box reach. Compound distance is the minimum to actual members, never their bounding AABB. Baked hull/mesh members use point/segment-to-triangle distances and ray intersections on their respective immutable physical or canonical interaction geometry. Envelope geometry must never be supplied to CreatePhysicsShape for static registration. Baked cylinder members use exact cylinder distance/ray-cap math, not a tessellated proxy. Recursively apply baked compound local poses and reject unsupported geometry before building. Capsule distance measures the capsule's medial segment then subtracts radius, returning zero on overlap. Validate rays, finite nonnegative ranges/tolerances and nonempty bands, clipping eligible geometry to [MinY,MaxY] for band queries while physical collision remains unchanged. LOS ignores selection-only shapes. Pick uses the explicitly refined selectable envelope geometry for solid and non-solid placements, with nearest distance then ordinal PlacementId tie breaking. Add rotated doorway hole, baked concavity, non-solid Examine selection, self-ignored LOS, equal-distance pick ordering and epsilon-free reach boundary tests.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r3-t3 /tmp/grand-world/wa-r3-t3.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeShapeQueryTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-t3:green" "${wa_r3_log_dir}/wa-r3-t3-green.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeShapeQueryTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -256,7 +289,7 @@ Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspec
 Preserve unrelated edits and stage only these paths.
 
 ```bash
-git add -- KhaozEngine.MapDoc.Physics/MapShapeGeometry.cs KhaozEngine.MapDoc.Physics/MapWorldQueries.cs KhaozEngine.MapDoc.Physics.Tests/NativeShapeQueryTests.cs
+git add -- KhaozEngine.MapDoc.Physics/MapShapeGeometry.cs KhaozEngine.MapDoc.Physics/MapWorldQueries.cs KhaozEngine.MapDoc.Physics/MapInteractionGeometry.cs KhaozEngine.MapDoc.Physics.Tests/NativeShapeQueryTests.cs
 git diff --cached --check
 git commit -m "feat(mapdocphysics): query the shared placement geometry"
 ```
@@ -286,8 +319,8 @@ public void NativeStances_AreReachableAndClearBesideRotatedCompound()
     var q = new MapWorldQueries(world);
     var options = new MapStanceOptions(0.2f,0.8f,0.4f,0,0.25f,0.3f);
     var feet = new Vector3(0,0,-2);
-    var a = MapStanceCandidates.Find(world,"doorway",feet,options,b => q.Distance(b,"doorway") > 0);
-    var b = MapStanceCandidates.Find(world,"doorway",feet,options,b => q.Distance(b,"doorway") > 0);
+    var a = MapStanceCandidates.Find(world,"doorway",feet,options,b => q.PhysicalDistance(b,"doorway") > 0);
+    var b = MapStanceCandidates.Find(world,"doorway",feet,options,b => q.PhysicalDistance(b,"doorway") > 0);
     Assert.NotEmpty(a);
     Assert.Equal(a,b);
     Assert.All(a,p => Assert.True(q.Within(new MovementBody(p+Vector3.UnitY*0.8f,0.2f,0.8f),"doorway",0.4f)));
@@ -296,16 +329,16 @@ public void NativeStances_AreReachableAndClearBesideRotatedCompound()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r3-t4 /tmp/grand-world/wa-r3-t4.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeStanceTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-t4:red" "${wa_r3_log_dir}/wa-r3-t4-red.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeStanceTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
 
-Implement `Find(...)` in `MapStanceCandidates.cs`. Generate candidates from actual box/mesh boundary edges at explicit Spacing, include aperture-side edges, sample canonical terrain or placement supports, and reject points outside playable bounds, beyond MaxStepHeight, without supplied complete clearance, or outside exact shape reach. Do not introduce a circular proxy, global grid alignment or whole-building box. Stable geometric traversal and sorting make repeat calls/head results identical. Range and tolerance remain caller-owned. Add compound aperture usable stance, sloped ground, bridge support, zero-result case, invalid option, lower-band and narrow-door capsule-clearance assertions. This returns local candidates, not a game route or interaction policy.
+Implement `Find(...)` in `MapStanceCandidates.cs`. Generate candidates from the refined interaction-envelope box/mesh boundary edges at explicit Spacing, include aperture-side edges, sample canonical terrain or placement supports, and reject points outside playable bounds, beyond MaxStepHeight, without supplied complete clearance, or outside exact envelope reach. Complete physical clearance and LOS stay unchanged, not envelope blockers. Do not introduce a circular proxy, global grid alignment or whole-building box. Stable geometric traversal and sorting make repeat calls/head results identical. Range and tolerance remain caller-owned. Add compound aperture usable stance, sloped ground, bridge support, zero-result case, invalid option, lower-band and narrow-door capsule-clearance assertions. This returns local candidates, not a game route or interaction policy.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r3-t4 /tmp/grand-world/wa-r3-t4.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeStanceTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-t4:green" "${wa_r3_log_dir}/wa-r3-t4-green.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeStanceTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -352,7 +385,7 @@ public void NativeLargePlacement_IntersectsEveryChunkAndBuildsOnce()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r3-t5 /tmp/grand-world/wa-r3-t5.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeResidencyOwnershipTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-t5:red" "${wa_r3_log_dir}/wa-r3-t5-red.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeResidencyOwnershipTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
@@ -361,7 +394,7 @@ Implement `Build(...)` and `InWindow(...)` in `MapResidencyOwnership.cs`. A stab
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r3-t5 /tmp/grand-world/wa-r3-t5.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeResidencyOwnershipTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-t5:green" "${wa_r3_log_dir}/wa-r3-t5-green.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativeResidencyOwnershipTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -414,7 +447,7 @@ public void NativeRegistration_CompleteCaptureAndMovementUseOneWorld()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r3-t6 /tmp/grand-world/wa-r3-t6.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativePhysicsRegistrationTests|FullyQualifiedName~NativeNavigationCaptureTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-t6:red" "${wa_r3_log_dir}/wa-r3-t6-red.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativePhysicsRegistrationTests|FullyQualifiedName~NativeNavigationCaptureTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
@@ -423,7 +456,7 @@ Implement `Register(...)`, CreateMoveContext and Dispose in `MapPhysicsRegistrat
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r3-t6 /tmp/grand-world/wa-r3-t6.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativePhysicsRegistrationTests|FullyQualifiedName~NativeNavigationCaptureTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-t6:green" "${wa_r3_log_dir}/wa-r3-t6-green.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~NativePhysicsRegistrationTests|FullyQualifiedName~NativeNavigationCaptureTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -475,7 +508,7 @@ public void NativeCollisionHeightDryRun_NeverResizesMeshOrWritesAsset()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r3-t7 /tmp/grand-world/wa-r3-t7.log -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeCollisionMeasurementTests|FullyQualifiedName~NativeAssetScaleTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-t7:red" "${wa_r3_log_dir}/wa-r3-t7-red.log" -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeCollisionMeasurementTests|FullyQualifiedName~NativeAssetScaleTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
@@ -484,7 +517,7 @@ Implement the produced loader and service signatures in their named files. Nativ
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r3-t7 /tmp/grand-world/wa-r3-t7.log -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeCollisionMeasurementTests|FullyQualifiedName~NativeAssetScaleTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-t7:green" "${wa_r3_log_dir}/wa-r3-t7-green.log" -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeCollisionMeasurementTests|FullyQualifiedName~NativeAssetScaleTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -500,20 +533,20 @@ git commit -m "feat(mapedit): expose native collider measurements"
 
 ## Round Verification and Handoff
 
-Run from the implementation worktree root, sequentially. Focused tests above are the task red/green cycle. The full solution suite runs once at round finish after the solution build, not once per task and never in a repeat loop. Re-run only when a subsequent code change or integration conflict requires it. The slot wrapper retries only lock contention, not failed tests.
+Run from the implementation worktree root, sequentially. Focused tests above are the task red/green cycle. The full solution suite runs once at round finish after the solution build, not once per task and never in a repeat loop. Re-run only when a subsequent code change or integration conflict requires it. The slot runner returns the target exit code. Exit 75 means no command ran because the slot was busy. Hand that result to the controller, never retry a failed test or loop verification.
 
 ```bash
-mkdir -p local-feed
-/tmp/grand-world/slot-retry.sh wa-r3-focused-KhaozEngine.MapDoc.Physics.Tests /tmp/grand-world/wa-r3-focused-KhaozEngine.MapDoc.Physics.Tests.log -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~Native"
-/tmp/grand-world/slot-retry.sh wa-r3-focused-KhaozEngine.MapEditor.Tests /tmp/grand-world/wa-r3-focused-KhaozEngine.MapEditor.Tests.log -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeCollision|FullyQualifiedName~NativeAssetScale"
-/tmp/grand-world/slot-retry.sh wa-r3-build /tmp/grand-world/wa-r3-build.log -- dotnet build KhaozEngine.slnx -c Release
-/tmp/grand-world/slot-retry.sh wa-r3-format /tmp/grand-world/wa-r3-format.log -- dotnet format KhaozEngine.slnx --verify-no-changes --no-restore
-/tmp/grand-world/slot-retry.sh wa-r3-suite /tmp/grand-world/wa-r3-suite.log -- dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
-/tmp/grand-world/slot-retry.sh wa-r3-check-dashes /tmp/grand-world/wa-r3-check-dashes.log -- sh scripts/check-dashes.sh --tree
-/tmp/grand-world/slot-retry.sh wa-r3-check-prose /tmp/grand-world/wa-r3-check-prose.log -- sh scripts/check-prose.sh --tree
-/tmp/grand-world/slot-retry.sh wa-r3-check-file-size /tmp/grand-world/wa-r3-check-file-size.log -- sh scripts/check-file-size.sh --tree
-/tmp/grand-world/slot-retry.sh wa-r3-check-agent-instructions /tmp/grand-world/wa-r3-check-agent-instructions.log -- sh scripts/check-agent-instructions.sh --tree
-/tmp/grand-world/slot-retry.sh wa-r3-check-doc-versions /tmp/grand-world/wa-r3-check-doc-versions.log -- bash scripts/check-doc-versions.sh
+mkdir -p local-feed "${wa_r3_log_dir}"
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-focused-KhaozEngine.MapDoc.Physics.Tests:finish" "${wa_r3_log_dir}/wa-r3-focused-KhaozEngine.MapDoc.Physics.Tests-finish.log" -- dotnet test KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj -c Release --filter "FullyQualifiedName~Native"
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-focused-KhaozEngine.MapEditor.Tests:finish" "${wa_r3_log_dir}/wa-r3-focused-KhaozEngine.MapEditor.Tests-finish.log" -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeCollision|FullyQualifiedName~NativeAssetScale"
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-build:finish" "${wa_r3_log_dir}/wa-r3-build-finish.log" -- dotnet build KhaozEngine.slnx -c Release
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-format:finish" "${wa_r3_log_dir}/wa-r3-format-finish.log" -- dotnet format KhaozEngine.slnx --verify-no-changes --no-restore
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-suite:finish" "${wa_r3_log_dir}/wa-r3-suite-finish.log" -- dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-check-dashes:finish" "${wa_r3_log_dir}/wa-r3-check-dashes-finish.log" -- sh scripts/check-dashes.sh --tree
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-check-prose:finish" "${wa_r3_log_dir}/wa-r3-check-prose-finish.log" -- sh scripts/check-prose.sh --tree
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-check-file-size:finish" "${wa_r3_log_dir}/wa-r3-check-file-size-finish.log" -- sh scripts/check-file-size.sh --tree
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-check-agent-instructions:finish" "${wa_r3_log_dir}/wa-r3-check-agent-instructions-finish.log" -- sh scripts/check-agent-instructions.sh --tree
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r3-check-doc-versions:finish" "${wa_r3_log_dir}/wa-r3-check-doc-versions-finish.log" -- bash scripts/check-doc-versions.sh
 ```
 
 Require exit 0 from every command, zero warnings, nonempty focused selections, no format diff and no guard failures. These commands are future implementation verification, not authorization to run tests in the documents lane. GPU facts are skipped by ordinary `dotnet test`. Any visual golden additions use the relevant backend CI bake from `docs/CROSS-PLATFORM.md`, serialized and without booting a consumer. No local stress or repeated suite runs.
@@ -522,6 +555,29 @@ The last task also updates the package README, `docs/USING-KHAOZENGINE.md` and e
 
 ## Self-Review
 
-Coverage: C3 payload/package Task 1, transforms/complete descriptors Task 2, common pick/reach/LOS/bands Task 3, walk-up candidates Task 4, extent/residency ownership Task 5, physics/navigation split Task 6, preserved source scale and measured collision edits Task 7. R11 supplies legacy collision variants and R8 consumes the residency data. Every task has one test cycle and a reviewable deliverable. Existing interfaces were checked at the evidence SHA, new interfaces are explicitly produced before consumption, and the five Review Focus cases each have a named assertion in an owning task. The snippets pin behavior rather than implement algorithms. No later round's complete GUI, MCP, importer or rendering workflow is claimed here.
+Coverage: C3 payload/package Task 1, transforms/physical descriptors/interaction envelopes Task 2, envelope pick/reach and physical LOS/bands Task 3, walk-up candidates Task 4, extent/residency ownership Task 5, physics/navigation split Task 6, preserved source scale and measured collision edits Task 7. R11 supplies legacy collision variants and R8 consumes the residency data. Every task has one test cycle and a reviewable deliverable. Existing interfaces were checked at the evidence SHA, new interfaces are explicitly produced before consumption, and the five Review Focus cases each have a named assertion in an owning task. The snippets pin behavior rather than implement algorithms. No later round's complete GUI, MCP, importer or rendering workflow is claimed here.
 
 ## Outcome
+
+### Documentation reconciliation, 2026-10-05
+
+- Approval stage: specs approved with revised T4. R3 plan approval and execution remain pending. No round capability release is claimed.
+- Dependency caveat: Reconcile the released prerequisite APIs and record their actual SHAs before owner plan review. R3 also needs explicit revised-T4 geometry/query refinement. Start implementation from current reconciled engine main after the released CellOrigin change, never by merging this historical planning branch.
+- Source inventory: old fixture counts are regression evidence only. R6/R11 refreeze the actual accepted shipped source, including negative x regions, before adoption acceptance.
+- Actual checks: source and planning review only, no builds/tests. Whole-tree documentation guard results for this revision are recorded below. No package, tag, execution SHA or self-recording commit is invented.
+
+- Reconciled requirements: OA5 replaces physical-only interaction with canonical envelopes while physical collision/occlusion remain unchanged. Explicit geometry/query refinement is an open R3 approval gate. Late bridge support/edge-Wall and downstream game nav-budget requirements are recorded.
+- Approval record: OA4 to OA7 in game DECISIONS, controller-reported pushed game docs commit `3e46fac49c1d15adf84c948fdc17f4b6606827aa`. No engine implementation approval is inferred.
+
+Documentation checks from `/Users/antonio/KhaozEngine/.worktrees/world-authoring` on 2026-10-05, no builds/tests. The commands below are rerun serially against final text before committing.
+
+| Command | Exit |
+| --- | --- |
+| `sh scripts/check-dashes.sh --tree` | 0 |
+| `sh scripts/check-prose.sh --tree` | 0 |
+| `sh scripts/check-file-size.sh --tree` | 0 |
+| `sh scripts/check-agent-instructions.sh --tree` | 0 |
+| `bash scripts/check-doc-versions.sh` | 0 |
+| `git diff --check` | 0 |
+
+No pre-existing documentation guard blocker was observed. Doc-version validation checks this historical planning branch's 20.24.0 declarations. It does not claim this branch contains released 20.25.0 or its packages. Controller review/push and separate owner round approval remain the next gates.

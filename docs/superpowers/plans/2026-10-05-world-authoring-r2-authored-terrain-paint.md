@@ -8,7 +8,21 @@
 
 **Tech Stack:** C# on the repository's existing .NET target, System.Numerics, System.Text.Json, closed JSON Schema, xUnit, existing engine seams. No new third-party dependency.
 
-**Spec:** `docs/design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md`, approved direction at `49b045f75`, with inline clarifications on allocation undo and water boundary ownership. Read C2, T1 to T9 and the evidence register before implementation.
+**Spec:** `docs/design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md`, spec approved by the owner on 2026-10-05, under OA4, revised T4 under OA5, prefab v1/estimate under OA6 and C4 boundary policy under OA7. Round-plan approval remains pending. Read C2, T1 to T9 and the evidence register before implementation.
+
+## Approval and execution gate, reconciled 2026-10-05
+
+The exact owner answer supplied by the controller is "Approve". It approves both specs, T1 to T9 with revised T4, the rigid prefab v1 scope and 12 to 18 elapsed-week estimate, and C4 exact-boundary differential policy. It does not approve this round plan or any actual changed query result. Named import-time acceptance of changed targets, distances, occlusion, stances and water boundaries remains required. R1 to R4 are full plans. Reconcile released prerequisite signatures before their owner review. No production execution has started.
+
+Future verification uses HANDOFF's shared slot runner, restored only if absent. Set a unique log directory from the implementation worktree before Task 1, and retain different red/green log names. These are instructions, not commands run by this documents lane.
+
+```bash
+wa_r2_log_dir="/tmp/grimhollow-orch/logs/wa-r2-$(date +%Y%m%dT%H%M%S)-$$"
+mkdir -p local-feed "$wa_r2_log_dir"
+test -f /tmp/grimhollow-orch/slot-run.sh
+```
+
+The 1 m allowance is a minimum vertical target reach-envelope height, preserving `MinimumObjectReachHeight`. It is not a 1 m action distance. Action range remains existing game policy and physical colliders never expand. Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in the game DECISIONS record.
 
 ## Global Constraints
 
@@ -78,9 +92,15 @@ The approved execution method is subagent-driven-development. Execute serially a
 
 R1 produces `MapTransform`, asset closure, native resolver and authored identity. Reuse those exact names. `TileTriangulation.SplitSwNe(short h00, short h10, short h01, short h11, TileOverlayShape shape, int overlayRotation)` chooses `abs(h00-h11) <= abs(h10-h01)`, except DiagonalHalf forces even-rotation SW-NE and odd NW-SE (`TileTriangulation.cs:49-60`). `TileGroundTriangles.TryDescribe(TileWorldDocument document, int worldX, int worldZ, int plane, out TileGroundCell cell, Span<TileLatticeTriangle> triangles)` and `Build(TileWorldDocument document, RegionCoord region, int plane)` are the offline oracle only. The new compiler implements that rule without a TileWorld dependency.
 
-The exact spike cell at source (4,64) has corner centimetres `[1433,1331,1363,518]` in SW, SE, NW, NE order, material 14 and no overlay/cut/rotation/flags. These values were decoded read-only from accepted source `regions/r_0_1.json`. At world (4.37,-64.61), choose the NW-SE triangle. The expected height is computed from the same float corner conversion and barycentric weights, not a rounded hardcoded decimal. A source-short height is `height * 0.01f`, as `TileGroundTriangles.cs:162-165` does.
+The exact spike cell at source (4,64) has corner centimetres `[1433,1331,1363,518]` in SW, SE, NW, NE order, material 14 and no overlay/cut/rotation/flags. These values were decoded read-only from historical proposal source `regions/r_0_1.json`. At world (4.37,-64.61), choose the NW-SE triangle. The expected height is computed from the same float corner conversion and barycentric weights, not a rounded hardcoded decimal. A source-short height is `height * 0.01f`, as `TileGroundTriangles.cs:162-165` does.
 
 Native row direction is explicit. World surfaces normally use NegativeZ to preserve source indexing, while other native surfaces may use PositiveZ. Storage TileSize remains independent of CellSize. Integer HeightUnits allow centimetres or finer positive finite units, with no analytic deltas. Indoor span is explicit per mask surface, no guessed global plane height. Legacy void/NoDraw fallback is explicitly tagged non-capture support and may be bilinear only there, bounded/clamped as before. Drawn terrain never calls a bilinear fallback.
+
+### J2.1 shared smoothing ruling, 2026-10-05
+
+This technical consistency ruling supersedes the old R2 four-neighbour/1-to-16 proposal. Released main `b39fb1a3b` has `TileEditOps.Smooth(TileWorldDocument doc, TileRect cornerRect, int plane, int iterations)` in `KhaozEngine.TileWorld.Editing/TileEditOps.Heights.cs:69-109`. It accepts 1 to 64, reads a double-buffered 3x3 neighbourhood including the centre, reads outside-patch halo unchanged, and quantizes AwayFromZero after each pass. `KhaozEngine.TileEdit.Tool/Tools/HeightTools.cs:60` documents the same bound. R2 and R10 use one shared bounded operation and preserve those legacy semantics. The range is algorithm work within one call, never a test-execution loop.
+
+Task 5 adds explicit assertions: inputs 1, 16, 17 and 64 succeed, 0 and 65 throw before mutation, a one-corner patch with value 9 and zero-valued eight-corner halo becomes 1 after one pass, the next pass rounds 1/9 to 0, halo bytes stay zero, and direct GUI command/MCP service documents and dirty bounds match. At R10 refinement add equivalent wire-level assertions for 17/64 and invalid 0/65, rather than inventing a second cap. Shared surface boundaries supply the declared canonical halo, or refuse unavailable/ambiguous data before editing.
 
 ### Task 1: Format-5 absolute surfaces, materials and validation
 
@@ -122,7 +142,7 @@ public void NativeSurface_UnitsRowsAndSourceModeAreExplicit()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r2-t1 /tmp/grand-world/wa-r2-t1.log -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceDocumentTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-t1:red" "${wa_r2_log_dir}/wa-r2-t1-red.log" -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceDocumentTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
@@ -131,7 +151,7 @@ Implement the produced DTOs and validator signatures in the named files. Dimensi
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r2-t1 /tmp/grand-world/wa-r2-t1.log -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceDocumentTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-t1:green" "${wa_r2_log_dir}/wa-r2-t1-green.log" -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceDocumentTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -181,7 +201,7 @@ public void NativeDiagonalHalfWithoutOverlayStillForcesSplit(byte rotation, bool
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r2-t2 /tmp/grand-world/wa-r2-t2.log -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceTopologyTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-t2:red" "${wa_r2_log_dir}/wa-r2-t2-red.log" -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceTopologyTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
@@ -190,7 +210,7 @@ Implement the compiler signatures in `MapSurfaceCompiler.cs`, factoring topology
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r2-t2 /tmp/grand-world/wa-r2-t2.log -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceTopologyTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-t2:green" "${wa_r2_log_dir}/wa-r2-t2-green.log" -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceTopologyTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -262,7 +282,7 @@ public void NativeNoDrawFallbackIsNonCaptureAndLocalPaintNeverAddsSupport()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r2-t3 /tmp/grand-world/wa-r2-t3.log -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceSamplingTests|FullyQualifiedName~NativeLocalFloorTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-t3:red" "${wa_r2_log_dir}/wa-r2-t3-red.log" -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceSamplingTests|FullyQualifiedName~NativeLocalFloorTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
@@ -271,7 +291,7 @@ Implement the sampler and paint signatures in the new files. Inverse-transform q
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r2-t3 /tmp/grand-world/wa-r2-t3.log -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceSamplingTests|FullyQualifiedName~NativeLocalFloorTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-t3:green" "${wa_r2_log_dir}/wa-r2-t3-green.log" -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceSamplingTests|FullyQualifiedName~NativeLocalFloorTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -318,7 +338,7 @@ public void NativeIndoorMembership_UsesOneExplicitVerticalSpan()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r2-t4 /tmp/grand-world/wa-r2-t4.log -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceMaskTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-t4:red" "${wa_r2_log_dir}/wa-r2-t4-red.log" -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceMaskTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
@@ -327,7 +347,7 @@ Implement `Compile(...)` and `At(...)` in the named files. Trace connected mask 
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r2-t4 /tmp/grand-world/wa-r2-t4.log -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceMaskTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-t4:green" "${wa_r2_log_dir}/wa-r2-t4-green.log" -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceMaskTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -386,16 +406,16 @@ public void NativeSurfaceCommand_RejectedPatchDoesNotPublishAnyCorner()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r2-t5 /tmp/grand-world/wa-r2-t5.log -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceCommandTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-t5:red" "${wa_r2_log_dir}/wa-r2-t5-red.log" -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceCommandTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
 
-Implement the produced pure edit methods, command and service signatures in their named files. Edits deep-copy and prevalidate the full patch, units never change implicitly. Set/Raise require ValueUnits, Flatten may omit it, Smooth ignores it. Radius must be finite positive and Hardness in [0,1]. Flatten without an explicit value uses the selected-corner arithmetic mean rounded to integer units with MidpointRounding.AwayFromZero. Smooth is deterministic Jacobi, reads the prior iteration, uses a four-neighbor mean, 1 to 16 iterations and the same rounding. Pin circular falloff as weight `clamp((radius-distance)/(radius*(1-hardness)),0,1)`, hardness 1 as a hard disc, quantizing the final height once. Boundary corners shared by multiple surfaces update atomically or reject inconsistent ownership. Paint patches change only supplied cell fields. History restores exact arrays and effects. Add layer add/remove, exact read/set, explicit image orientation/range conversion helper `ImportHeights(IReadOnlyList<float> samples,float sourceMin,float sourceMax,int targetMinUnits,int targetMaxUnits) -> int[]`, and material/flag/cut/rotation/feather operations over this same replacement boundary. Add GUI-command versus service document/hash/dirty-bound equality, undo/redo, partial-cell preservation and all brush operation tests. MCP verb registration and full GUI brushes belong to R9/R10, not this round.
+Implement the produced pure edit methods, command and service signatures in their named files. Edits deep-copy and prevalidate the full patch, units never change implicitly. Set/Raise require ValueUnits, Flatten may omit it, Smooth ignores it. Radius must be finite positive and Hardness in [0,1]. Flatten without an explicit value uses the selected-corner arithmetic mean rounded to integer units with MidpointRounding.AwayFromZero. Smooth is deterministic Jacobi, reads the prior iteration, uses the legacy 3x3 prior-pass average, 1 to 64 iterations, unchanged outside-patch halo and AwayFromZero per-pass integer quantization. Pin circular falloff as weight `clamp((radius-distance)/(radius*(1-hardness)),0,1)`, hardness 1 as a hard disc, quantizing the final height once. Boundary corners shared by multiple surfaces update atomically or reject inconsistent ownership. Paint patches change only supplied cell fields. History restores exact arrays and effects. Add layer add/remove, exact read/set, explicit image orientation/range conversion helper `ImportHeights(IReadOnlyList<float> samples,float sourceMin,float sourceMax,int targetMinUnits,int targetMaxUnits) -> int[]`, and material/flag/cut/rotation/feather operations over this same replacement boundary. Add GUI-command versus service document/hash/dirty-bound equality, undo/redo, partial-cell preservation and all brush operation tests. MCP verb registration and full GUI brushes belong to R9/R10, not this round.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r2-t5 /tmp/grand-world/wa-r2-t5.log -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceCommandTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-t5:green" "${wa_r2_log_dir}/wa-r2-t5-green.log" -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceCommandTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -447,7 +467,7 @@ public void AuthoredTerrain_AllFrozenCornersCellsAndThreeConsumersAgree()
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r2-t6 /tmp/grand-world/wa-r2-t6.log -- dotnet test KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj -c Release --filter "FullyQualifiedName~AuthoredTerrainParityTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-t6:red" "${wa_r2_log_dir}/wa-r2-t6-red.log" -- dotnet test KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj -c Release --filter "FullyQualifiedName~AuthoredTerrainParityTests"`
 Expected: FAIL for the named new contract or assertion. A missing planned type may initially fail compilation. Do not count an unrelated restore or fixture error as the red proof.
 
 - [ ] **Step 3: Implement the contract**
@@ -456,7 +476,7 @@ Implement the fixture extraction in `FrozenTerrainFixture.cs` as test-only data 
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `/tmp/grand-world/slot-retry.sh wa-r2-t6 /tmp/grand-world/wa-r2-t6.log -- dotnet test KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj -c Release --filter "FullyQualifiedName~AuthoredTerrainParityTests"`
+Run: `bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-t6:green" "${wa_r2_log_dir}/wa-r2-t6-green.log" -- dotnet test KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj -c Release --filter "FullyQualifiedName~AuthoredTerrainParityTests"`
 Expected: PASS, exit 0, zero failed tests and at least one matching test. Inspect the test count so a misspelled filter cannot pass silently.
 
 - [ ] **Step 5: Commit**
@@ -472,21 +492,21 @@ git commit -m "test(mapdoc): prove exact authored terrain fidelity"
 
 ## Round Verification and Handoff
 
-Run from the implementation worktree root, sequentially. Focused tests above are the task red/green cycle. The full solution suite runs once at round finish after the solution build, not once per task and never in a repeat loop. Re-run only when a subsequent code change or integration conflict requires it. The slot wrapper retries only lock contention, not failed tests.
+Run from the implementation worktree root, sequentially. Focused tests above are the task red/green cycle. The full solution suite runs once at round finish after the solution build, not once per task and never in a repeat loop. Re-run only when a subsequent code change or integration conflict requires it. The slot runner returns the target exit code. Exit 75 means no command ran because the slot was busy. Hand that result to the controller, never retry a failed test or loop verification.
 
 ```bash
-mkdir -p local-feed
-/tmp/grand-world/slot-retry.sh wa-r2-focused-KhaozEngine.MapDoc.Tests /tmp/grand-world/wa-r2-focused-KhaozEngine.MapDoc.Tests.log -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurface|FullyQualifiedName~NativeLocalFloor"
-/tmp/grand-world/slot-retry.sh wa-r2-focused-KhaozEngine.MapEditor.Tests /tmp/grand-world/wa-r2-focused-KhaozEngine.MapEditor.Tests.log -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceCommandTests"
-/tmp/grand-world/slot-retry.sh wa-r2-focused-KhaozEngine.MapDoc.Compatibility.Tests /tmp/grand-world/wa-r2-focused-KhaozEngine.MapDoc.Compatibility.Tests.log -- dotnet test KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj -c Release --filter "FullyQualifiedName~AuthoredTerrainParityTests"
-/tmp/grand-world/slot-retry.sh wa-r2-build /tmp/grand-world/wa-r2-build.log -- dotnet build KhaozEngine.slnx -c Release
-/tmp/grand-world/slot-retry.sh wa-r2-format /tmp/grand-world/wa-r2-format.log -- dotnet format KhaozEngine.slnx --verify-no-changes --no-restore
-/tmp/grand-world/slot-retry.sh wa-r2-suite /tmp/grand-world/wa-r2-suite.log -- dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
-/tmp/grand-world/slot-retry.sh wa-r2-check-dashes /tmp/grand-world/wa-r2-check-dashes.log -- sh scripts/check-dashes.sh --tree
-/tmp/grand-world/slot-retry.sh wa-r2-check-prose /tmp/grand-world/wa-r2-check-prose.log -- sh scripts/check-prose.sh --tree
-/tmp/grand-world/slot-retry.sh wa-r2-check-file-size /tmp/grand-world/wa-r2-check-file-size.log -- sh scripts/check-file-size.sh --tree
-/tmp/grand-world/slot-retry.sh wa-r2-check-agent-instructions /tmp/grand-world/wa-r2-check-agent-instructions.log -- sh scripts/check-agent-instructions.sh --tree
-/tmp/grand-world/slot-retry.sh wa-r2-check-doc-versions /tmp/grand-world/wa-r2-check-doc-versions.log -- bash scripts/check-doc-versions.sh
+mkdir -p local-feed "${wa_r2_log_dir}"
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-focused-KhaozEngine.MapDoc.Tests:finish" "${wa_r2_log_dir}/wa-r2-focused-KhaozEngine.MapDoc.Tests-finish.log" -- dotnet test KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurface|FullyQualifiedName~NativeLocalFloor"
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-focused-KhaozEngine.MapEditor.Tests:finish" "${wa_r2_log_dir}/wa-r2-focused-KhaozEngine.MapEditor.Tests-finish.log" -- dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter "FullyQualifiedName~NativeSurfaceCommandTests"
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-focused-KhaozEngine.MapDoc.Compatibility.Tests:finish" "${wa_r2_log_dir}/wa-r2-focused-KhaozEngine.MapDoc.Compatibility.Tests-finish.log" -- dotnet test KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj -c Release --filter "FullyQualifiedName~AuthoredTerrainParityTests"
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-build:finish" "${wa_r2_log_dir}/wa-r2-build-finish.log" -- dotnet build KhaozEngine.slnx -c Release
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-format:finish" "${wa_r2_log_dir}/wa-r2-format-finish.log" -- dotnet format KhaozEngine.slnx --verify-no-changes --no-restore
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-suite:finish" "${wa_r2_log_dir}/wa-r2-suite-finish.log" -- dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-check-dashes:finish" "${wa_r2_log_dir}/wa-r2-check-dashes-finish.log" -- sh scripts/check-dashes.sh --tree
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-check-prose:finish" "${wa_r2_log_dir}/wa-r2-check-prose-finish.log" -- sh scripts/check-prose.sh --tree
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-check-file-size:finish" "${wa_r2_log_dir}/wa-r2-check-file-size-finish.log" -- sh scripts/check-file-size.sh --tree
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-check-agent-instructions:finish" "${wa_r2_log_dir}/wa-r2-check-agent-instructions-finish.log" -- sh scripts/check-agent-instructions.sh --tree
+bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-check-doc-versions:finish" "${wa_r2_log_dir}/wa-r2-check-doc-versions-finish.log" -- bash scripts/check-doc-versions.sh
 ```
 
 Require exit 0 from every command, zero warnings, nonempty focused selections, no format diff and no guard failures. These commands are future implementation verification, not authorization to run tests in the documents lane. GPU facts are skipped by ordinary `dotnet test`. Any visual golden additions use the relevant backend CI bake from `docs/CROSS-PLATFORM.md`, serialized and without booting a consumer. No local stress or repeated suite runs.
@@ -498,3 +518,26 @@ The last task also updates the package README, `docs/USING-KHAOZENGINE.md` and e
 Coverage: C2 absolute schema/materials/planes Task 1, canonical cuts/feathers Task 2, floor/support/paint ownership Task 3, masks/indoor membership Task 4, native edit commands Task 5, complete differential terrain data Task 6. Runtime rendering and full frontend UX are intentionally assigned to R8 to R10. Every task has one test cycle and a reviewable deliverable. Existing interfaces were checked at the evidence SHA, new interfaces are explicitly produced before consumption, and the five Review Focus cases each have a named assertion in an owning task. The snippets pin behavior rather than implement algorithms. No later round's complete GUI, MCP, importer or rendering workflow is claimed here.
 
 ## Outcome
+
+### Documentation reconciliation, 2026-10-05
+
+- Approval stage: specs approved with revised T4. R2 plan approval and execution remain pending. No round capability release is claimed.
+- Dependency caveat: Reconcile the released prerequisite APIs and record their actual SHAs before owner plan review. R3 also needs explicit revised-T4 geometry/query refinement. Start implementation from current reconciled engine main after the released CellOrigin change, never by merging this historical planning branch.
+- Source inventory: old fixture counts are regression evidence only. R6/R11 refreeze the actual accepted shipped source, including negative x regions, before adoption acceptance.
+- Actual checks: source and planning review only, no builds/tests. Whole-tree documentation guard results for this revision are recorded below. No package, tag, execution SHA or self-recording commit is invented.
+
+- Reconciled requirements: J2.1 supersedes the old 1-to-16/four-neighbour smoothing proposal with released legacy 1-to-64/3x3 semantics. R10 shares the contract. Old terrain counts are historical regression data.
+- Approval record: OA4 to OA7 in game DECISIONS, controller-reported pushed game docs commit `3e46fac49c1d15adf84c948fdc17f4b6606827aa`. No engine implementation approval is inferred.
+
+Documentation checks from `/Users/antonio/KhaozEngine/.worktrees/world-authoring` on 2026-10-05, no builds/tests. The commands below are rerun serially against final text before committing.
+
+| Command | Exit |
+| --- | --- |
+| `sh scripts/check-dashes.sh --tree` | 0 |
+| `sh scripts/check-prose.sh --tree` | 0 |
+| `sh scripts/check-file-size.sh --tree` | 0 |
+| `sh scripts/check-agent-instructions.sh --tree` | 0 |
+| `bash scripts/check-doc-versions.sh` | 0 |
+| `git diff --check` | 0 |
+
+No pre-existing documentation guard blocker was observed. Doc-version validation checks this historical planning branch's 20.24.0 declarations. It does not claim this branch contains released 20.25.0 or its packages. Controller review/push and separate owner round approval remain the next gates.

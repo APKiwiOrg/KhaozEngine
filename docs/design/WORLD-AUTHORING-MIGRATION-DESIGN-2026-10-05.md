@@ -1,12 +1,12 @@
 # Native MapDoc world authoring, option A
 
-Status: **Direction approved by owner 2026-10-05 (OA1 to OA3), spec awaiting owner review**
+Status: **Both specs approved by owner 2026-10-05, T1 to T9 with revised T4, prefab v1/estimate and C4 boundary policy approved. Round-plan approval pending**
 
-This is the engine-wide specification for one native world authoring stack. It replaces the proposal's recommendation with option A. Direction approval permits this document, not production implementation. Each engine round needs an approved implementation plan after spec approval. This lane changes documents only, pushes its two task branches and performs no merge, tag or issue filing.
+This is the engine-wide specification for one native world authoring stack. It replaces the proposal's recommendation with option A. Spec approval settles the contracts below. Each engine round still needs its approved implementation plan and released dependencies before execution. This worker changes engine documents only and stops at its verified commit. The controller reviews and pushes, with no worker merge, tag or pack.
 
-Evidence baseline is engine d4dd8d918b6c6639ea63291ad818aa829c02074a. The proposal commit is 1a90f445a239bfb5c3069ee1d02173ebc5ed6e6a on feature/world-authoring-design. Game evidence baseline is 74f57ee22652bd18234b4479faba4f1898a17047, with proposal commit 743029b0c9ddc96a354861f170389e971cdfa269 on feature/gw-authoring-design. Counts below describe that frozen fixture, not the still-changing grand-world lane [G1, G2, S1].
+Evidence baseline is engine d4dd8d918b6c6639ea63291ad818aa829c02074a. The proposal commit is 1a90f445a239bfb5c3069ee1d02173ebc5ed6e6a now carried on feature/world-authoring (the proposal branch is retired). Game evidence baseline is 74f57ee22652bd18234b4479faba4f1898a17047, with proposal commit 743029b0c9ddc96a354861f170389e971cdfa269 now carried on feature/world-authoring (the proposal branch is retired). Counts below describe that frozen fixture, not the still-changing grand-world lane [G1, G2, S1].
 
-Bracketed evidence keys resolve to file:line anchors in the register. Existing behavior and measurements are evidence claims. Contracts, round sizes and estimates below are proposed requirements and engineering judgments. OA and T sources are the supplied 2026-10-05 dispatch, transcribed here as the review record, not claims inferred from source code.
+Bracketed evidence keys resolve to file:line anchors in the register. Existing behavior and measurements are evidence claims. Approved contracts and scope are distinguished from task-level engineering proposals and estimates below. OA and T sources are the supplied 2026-10-05 dispatch, transcribed here as the review record, not claims inferred from source code.
 
 ## Owner rulings, binding direction
 
@@ -20,16 +20,16 @@ The owner answered the proposal summary on 2026-10-05: "For the engine - I want 
 
 B, the MapDoc-led hybrid, was considered and declined by this ruling because it retained TileWorld components. C, TileWorld free transforms with ke-tileedit, was considered and declined because it kept the format and tool. The chosen direction is A [E1 to E5, E9 to E13, E19, E21].
 
-## Orchestrator technical rulings, subject to owner review
+## Approved technical contracts, reconciled 2026-10-05
 
-Every T entry is an orchestrator ruling, not an owner ruling. The owner may overrule it during spec review.
+T1 to T9 began as orchestrator proposals. The controller supplied the owner's exact answer "Approve" on 2026-10-05 for both specs with revised T4, prefab v1 and the 12 to 18 elapsed-week estimate, and C4 exact-boundary policy. The following is the approved contract summary, not a purported verbatim owner statement. Geometry/query details proposed by implementers still require explicit R3 plan refinement and review.
 
 | Ruling | Contract to design against |
 | --- | --- |
 | T1 Terrain | Native MapDoc layers carry the exact authored 1 m corner-height lattice and per-cell material IDs, overlay shapes, rotations, feathering, blocked and indoor flags. GUI brushes and MCP verbs edit them. Movement floor, render surface and nav capture use one terrain definition. The measured 1.677 m disagreement becomes zero by construction. No procedural regeneration [E9, E10, E12, E15, S1] |
 | T2 Water | Native bounded bodies carry their own surface height and medium. The importer materializes the existing bodies exactly. The rim rule is not a native runtime dependency [E11, E18] |
 | T3 Buildings | A prefab asset groups free local placements, walls, doors, windows, roofs, furniture, lights, interior floor paint and interior volumes. MapEditor prefab mode offers optional local snapping. Instances have free transforms and overrides. Volumes replace plane-based roof hiding and indoor state [E3, E13, E21] |
-| T4 Collision and reach | Each solid placement, including walls, resolves one oriented compound-box or baked collision shape from its asset. Both heads use that shape for reach, picking and walk-up stance. Mesh AABB and catalog footprint are not competing narrow-phase targets [E7, E8, E12, E23, G7] |
+| T4 Collision and reach | One engine-defined interaction envelope derived from canonical asset geometry is shared by both heads for picking, reach and walk-up. Retain a minimum 1 m vertical target reach-envelope height (`MinimumObjectReachHeight`) for low objects and define selectable bounds consistently. Physical colliders remain unchanged and never expand to match reach. Share transforms and versioned policy/closure identity. Preserve doorway apertures, physical occlusion and lower-2-m tree eligibility. R3 refinement pins exact geometry/query rules, with no hidden mesh-AABB versus footprint fork. Actual changed targets, distances, occlusion and stances require named import acceptance [E7, E8, E12, E23, G7] |
 | T5 Identity | Stable placement IDs. Preserve every Grimhollow numeric object ID at the game boundary. Allocate new IDs without collisions [E1, E6, E22, G12] |
 | T6 Headless builders | A GPU-free engine package builds terrain and placement statics, water medium, nav capture input and residency from the same MapDoc for server, client and tests [E8, E18, E25, E27] |
 | T7 Tools | ke-mapedit reaches every current ke-tileedit world-editing capability, with the explicit mapping below, plus native paint, water, prefabs, free buildings, markers, foliage density and measured collision heights. GUI covers the same command surface [E4, E5, E16, E33 to E42] |
@@ -112,7 +112,7 @@ Indoors flags remain authored native data. Their connected footprint is compiled
 
 ### C3 Placement assets, collision, picking, reach and headless build
 
-**Data.** Native asset descriptors have version 1 collision payloads: no-collision, compound boxes with local poses, or a referenced versioned baked collider with digest. Support/deck surfaces and optional selection shapes for non-solid scenery are explicit descriptors. Preserve authored mesh origin, unit scale, materials/parts, LOD and light offsets. Asset descriptors also store digest-verified local render bounds and LOD/light extents, so headless residency needs no GPU mesh. Imported kit loading uses an explicit preserve-source-scale mode, not an unintended HeightMeters renormalization [E7, E8, E12, G2].
+**Data.** Native asset descriptors have version 1 collision payloads: no-collision, compound boxes with local poses, or a referenced versioned baked collider with digest. Support/deck surfaces and canonical interaction-source geometry, including non-solid scenery, are explicit descriptors. R3 defines the versioned envelope derived from that source, its minimum 1 m vertical target reach-envelope height, and selectable bounds. No head independently chooses a render AABB or catalog footprint. Preserve authored mesh origin, unit scale, materials/parts, LOD and light offsets. Asset descriptors also store digest-verified local render bounds and LOD/light extents, so headless residency needs no GPU mesh. Imported kit loading uses an explicit preserve-source-scale mode, not an unintended HeightMeters renormalization [E7, E8, E12, G2].
 
 A placement/prefab instance applies position XYZ, yaw radians and positive uniform scale exactly once. No quarter-turn or grid requirement exists. Null Y means an explicit terrain-support snap policy, not a second height algorithm. Import uses explicit Y from the canonical source transform, even where old placement anchoring was bilinear, to avoid moving art when the movement floor is unified [E1, E3, E5, E9].
 
@@ -122,7 +122,7 @@ Legacy Wall and WallCorner become thin oriented local boxes or compounds, preser
 
 The consumer registers a complete static world for capture and a movement query view excluding the ground handles, using the same triangle floor sampler. Filtering blocked-water masks is an explicit game option covered by the game identity. The server's complete statics do not depend on client camera/window residency. Client windows include oversized geometry crossing any storage chunk boundary [E12, E18, E25, E27, G8, G9].
 
-**Shared geometry.** Physics, narrow-phase pick rays, point/shape distance, line-of-sight and walk-up candidates use the same effective oriented asset shape. Reach is a distance to that shape with game-authored tolerance. Compounds preserve openings rather than using a bounding box for final decisions. Broad-phase AABBs are only acceleration. Non-solid Examine props use their explicit selection shape through the same query service. Optional interaction bands, such as a tree's lower 2 m, restrict eligible hits without inventing a separate full-size target [E7, E8, E23, G6, G7].
+**Shared geometry, revised T4.** Physics and occlusion consume the unchanged physical compound/baked collider. Picking, reach and walk-up consume one engine-defined interaction envelope derived from canonical asset geometry, including explicit geometry for non-solid Examine props. Both heads use the same effective transform, selectable bounds, minimum 1 m vertical target reach-envelope height (`MinimumObjectReachHeight`) for low objects, policy version and closure digest. An envelope must preserve doorway openings and must not become a collider or LOS blocker. Broad-phase AABBs are only acceleration, never an unrecorded choice of target. Tree eligibility clips to the lower 2 m. R3 plan refinement explicitly pins source geometry, envelope construction, selectable/ray/distance semantics, band coordinates and versioned identity for every supported shape. Named old/new query outcomes are still reviewed at import, even though this policy is approved [E7, E8, E23, G6, G7].
 
 **Editor/tool.** Gizmos, bounds/collider visualization, object selection, collision queries, walkability and path previews use this build. Measurement reports raw mesh max Y and effective transformed collision bottom/top separately. Writing measured heights changes only the selected asset collision descriptor, with a dry-run diff and invalidation of affected statics, not an accidental mesh resize [E4, E5, E24, E36, E42].
 
@@ -142,11 +142,11 @@ Native rectangles include minimum X/Z and exclude maximum X/Z in world coordinat
 
 ### C5 Prefabs, buildings, interior volumes and roofs
 
-**Data.** Format 7 adds version 1 native prefab assets and free-transform instances. A prefab has stable local child keys, placements, native local floor surfaces/paint, lights, markers and interior volumes. Instance overrides address those keys for transforms, tags, asset variants, additions/removals, floor paint and volume/roof membership. A persisted child binding map gives resolved children stable world placement/numeric IDs. No nested prefab references in v1. A building needs no world tile footprint or plane [E1, E3, E13, E21].
+**Data.** Format 7 adds version 1 native prefab assets and free-transform instances. A prefab has stable local child keys, placements, native local floor surfaces/paint, lights, markers, interior volumes and optional prefab-local C4 water bodies. The optional local water uses the existing bounded-domain/medium contract and one parent/local transform, resolving J5.1 without a new water algorithm. Instance overrides address those keys for transforms, tags, asset variants, additions/removals, floor paint and volume/roof membership. A persisted child binding map gives resolved children stable world placement/numeric IDs. The approved rigid prefab v1 boundary includes free transforms, stable children, overrides, local floors/volumes and optional snapping. No nested prefab references, generated stairs/foundations or architectural CAD in v1. A building needs no world tile footprint or plane [E1, E3, E13, E21].
 
 Interior volumes are local polygon prisms with explicit lower/upper Y and stable storey/volume keys. Roof child keys attach to the volumes they conceal. Hidden roofs still cast shadows. AlwaysVisible/AlwaysHidden remain view modes. Auto hides only linked roofs above the observer's occupied volume, not all roofs on a global plane. Roof-aware camera blockers and indoor lighting use that same membership result. An open pasture shelter has no indoor volume and stays visible in Auto [E13, G3].
 
-World transforms compose parent and local position/yaw/uniform scale once for child shapes, floors, lights, volumes and markers. A doorway hole remains open under free rotation/scale. Optional local snapping improves authoring but is not a runtime constraint. Uneven-site seating is a diagnostic, not an automatic procedural foundation. Arbitrary authored storeys fit as local surfaces and volumes, without adding stairs generation, CAD or structural simulation [E3, E7, E8, E21].
+World transforms compose parent and local position/yaw/uniform scale once for child shapes, interaction envelopes, floors, lights, volumes, markers and optional local water. A doorway hole remains open under free rotation/scale. Optional local snapping improves authoring but is not a runtime constraint. Uneven-site seating is a diagnostic, not an automatic procedural foundation. Arbitrary authored storeys fit as local surfaces and volumes, without adding stairs generation, CAD or structural simulation [E3, E7, E8, E21].
 
 **Import rule.** Keep all seven reusable definitions, then reconstruct each actual building using a checked membership manifest over original objects/cells/markers/roofs. A nominal old stamp does not recover actual instance differences. Use explicit overrides or a native variant asset for differences, with every original object represented exactly once. Parent containers are new identities, while original leaf numeric IDs survive. Uncertain grouping refuses and reports the unassigned evidence instead of guessing [E3, E21, G2, G3, S1].
 
@@ -225,7 +225,7 @@ All 50 baseline MCP verbs are included. Names in the middle column are required 
 | height_set | surface_height_set, exact corner patch/unit/row declaration | Height brush [E37] |
 | height_raise | surface_height_raise, delta/falloff | Raise/lower brush [E37] |
 | height_flatten | surface_height_flatten, explicit or rounded mean | Flatten brush [E37] |
-| height_smooth | surface_height_smooth, bounded iteration count | Smooth brush [E37] |
+| height_smooth | surface_height_smooth, 1 to 64 iterations with legacy 3x3 prior-pass blur | Smooth brush [E37] |
 | height_get_rect | surface_height_get_rect, roundtrips set | Height inspector [E37] |
 | height_import | surface_height_import, explicit image range/orientation | Heightmap import [E37] |
 | prefab_save | prefab_save, extract selected children/surfaces/volumes with stable local keys | Prefab extract/save [E40] |
@@ -280,7 +280,7 @@ Each round below is one separately reviewed implementation plan and one independ
 
 | Round | Scope and schema | Dependencies | Exit proof |
 | --- | --- | --- | --- |
-| R1 Native document and identity | C1, format 4 and render-free asset seam | Approved spec and R1 plan | Old analytic maps unchanged, immutable resolver, int64/redo/closure/hash tests |
+| R1 Native document and identity | C1, format 4 and render-free asset seam | Approved R1 plan and reconciled released CellOrigin main | Old analytic maps unchanged, immutable resolver, int64/redo/closure/hash tests |
 | R2 Exact authored terrain | C2, format 5, shared triangle compiler and surface commands | R1 | Every legacy cut/height/flag, all plane derivations, spike-point zero discrepancy and paint parity |
 | R3 Shared shape and headless world | C3, asset collision payload 1 and GPU-free MapDoc.Physics | R1/R2 | Identical two-head statics/pick/reach/stance, compound doorway, bridge and transformed-solid nav proof |
 | R4 Bounded water | C4, format 6 and medium/level tools | R2/R3 | Exact seven-body fixture, seam/deck/feet behavior and independent water levels |
@@ -294,7 +294,7 @@ Each round below is one separately reviewed implementation plan and one independ
 
 Engine exit tests run synchronously in the owning plan's area projects. Rendering follows repository backend CI/golden policy. Build/verification is serialized through the shared slot, no stress loops or parallel local builds. This documents-only revision runs document guards, not production builds or full suites [E29, E31, G15].
 
-R1 to R4 execution plans are [native document and identity](../superpowers/plans/2026-10-05-world-authoring-r1-native-document-identity-assets.md), [authored terrain and paint](../superpowers/plans/2026-10-05-world-authoring-r2-authored-terrain-paint.md), [shared shapes and headless builders](../superpowers/plans/2026-10-05-world-authoring-r3-shared-shapes-headless-builders.md) and [bounded water and medium](../superpowers/plans/2026-10-05-world-authoring-r4-bounded-water-medium.md). These plans and the allocation/boundary clarifications are technical judgements awaiting owner review, not production implementation approval.
+R1 to R4 execution plans are [native document and identity](../superpowers/plans/2026-10-05-world-authoring-r1-native-document-identity-assets.md), [authored terrain and paint](../superpowers/plans/2026-10-05-world-authoring-r2-authored-terrain-paint.md), [shared shapes and headless builders](../superpowers/plans/2026-10-05-world-authoring-r3-shared-shapes-headless-builders.md) and [bounded water and medium](../superpowers/plans/2026-10-05-world-authoring-r4-bounded-water-medium.md). R1 to R4 are full plans awaiting owner review. R5 to R11 remain drafts refined at their rounds. Specs and the C4 boundary policy are approved. Implementation/round-plan approval is still pending, and R3 geometry/query detail must be explicit at its refinement.
 
 ## Risks, mitigations and estimate
 
@@ -311,22 +311,39 @@ R1 to R4 execution plans are [native document and identity](../superpowers/plans
 | Parallel pivot releases or grand-world edits invalidate a frozen plan [E30, G1, G14] | Re-read baseline before each plan, next available releases, re-freeze accepted source before adoption |
 | Grimhollow ships a latent TileWorld adapter [G8, G10, G13] | Native-only dependency/source/tool audits and deleted legacy entry points as adoption exit |
 
-**Updated estimate, 12 to 18 elapsed weeks** for one serial implementation lane with the shared build slot and timely owner reviews. Engine R1 to R11 is about 8 to 12 weeks, game importer specialization/adoption about 3 to 4, final parity and owner workflow/look review about 1 to 2. The earlier A estimate was 10 to 16 weeks. The added allowance makes free prefab floors/volumes, collision variants, full tool parity and TileWorld deletion explicit. These are scope-based judgments, not measured throughput or promises [E1 to E29, E33 to E46, G2 to G13, S1].
+**Approved scope estimate, 12 to 18 elapsed weeks** for one serial implementation lane with the shared build slot and timely owner reviews. Engine R1 to R11 is about 8 to 12 weeks, game importer specialization/adoption about 3 to 4, final parity and owner workflow/look review about 1 to 2. The earlier A estimate was 10 to 16 weeks. The added allowance makes free prefab floors/volumes, collision variants, full tool parity and TileWorld deletion explicit. These are scope-based judgments, not measured throughput or promises [E1 to E29, E33 to E46, G2 to G13, S1].
 
 R1/R2 and R3/R5 are the critical technical path. Independent read-only reviews or authored fixture preparation can overlap. Local builds cannot. Review queues, upstream rendering defects or a newly requested CAD/stair/foundation system extend elapsed time. Re-estimate after R2 floor proof and R5 free-building proof. Grimhollow adoption cannot start before both 0.11.0 and accepted grand-world are on main, regardless of engine progress [E31, G1, G15].
 
-## Owner review and decisions still open
+## Approval record and remaining gates
 
-OA1 to OA3 are settled. There is no remaining A/B/C choice. The owner reviews T1 to T9 and the concrete contracts, especially the following effects, before implementation planning.
+The owner answer supplied by the controller on 2026-10-05 is exactly "Approve". It approves both specs, T1 to T9 with revised T4, the rigid prefab v1 boundary and 12 to 18 elapsed-week estimate, and the C4 min-bound-inclusive/max-exclusive rectangle and polygon-edge policy. This is approval of policy and scope, not a quotation of all the detailed wording above.
 
-1. **T4 behavior reconciliation.** Keep one oriented physical shape, but inspect its differential picking/reach report. Current reach enforces a minimum one-metre object height independently of actual collision height, and current client selection can follow visual bounds. Exact physical-shape picking can change targetability. Approve those intentional differences explicitly, or revise T4 to define a shared interaction envelope derived from that same shape. Do not secretly enlarge collision or weaken tests to match the old reach box [E12, E23, E45, G7].
-2. **Prefab ergonomics and funding.** Review the v1 boundary of rigid free-transform building groups, local floor/volume editing, instance overrides and optional snap. No general nested prefabs, generated stairs/foundations or architectural CAD is budgeted. Confirm the 12 to 18 week scope or revise that boundary [E3, E21].
+Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in game DECISIONS. The 1 m allowance preserves `MinimumObjectReachHeight`, a minimum vertical target reach-envelope height. It does not define a 1 m action distance. Action range remains existing game policy.
 
-T1/T2 are recommended as written. T4 is the ruling most worth revisiting for owner-visible behavior, not for engine ownership or free placement. If the owner accepts the specs, the next step is one implementation plan per round. If changes are requested, revise these task-branch specs. No manual playtest is needed for these documentation commits [E31, G1, G15].
+Implementation approval remains pending. R1 is the next owner-reviewed full plan. R2 to R4 reconcile their released prerequisites before review, with explicit R3 interaction geometry/query refinement. R5 to R11 are drafts refined at their rounds. No next engine version is reserved. Start R1 only from reconciled released CellOrigin main, not by merging the historical docs branch.
+
+Policy approval does not waive actual import differences. Each changed target, distance, occlusion, stance and exact water-boundary sample needs a named old/new case and acceptance reference at R11/game import. Physical collider parity is separate and cannot be traded for green reach tests. No manual playtest is needed for this documentation revision.
+
+## Append-only historical approval evidence
+
+Historical T4 proposal before the 2026-10-05 approval, superseded by revised T4 above. This is the old orchestrator proposal, not current policy or an exact owner quotation.
+
+> Each solid placement, including walls, resolves one oriented compound-box or baked collision shape from its asset. Both heads use that shape for reach, picking and walk-up stance. Mesh AABB and catalog footprint are not competing narrow-phase targets [E7, E8, E12, E23, G7]
+
+Reconciliation record 2026-10-05. The controller reports owner approval of the shared interaction envelope with minimum 1 m vertical target reach-envelope height (`MinimumObjectReachHeight`) for low objects, consistent selectable bounds and unchanged physical collision. This supersedes strict physical-only T4 in operative contracts and affected plans. Prefab v1/estimate and C4 boundary policy are approved. Actual query differentials and round plans remain gated. Earlier source measurements and their evidence keys stay historical, without being relabelled as accepted shipped source. No self-recording SHA, package or execution evidence is asserted.
+
+## Late PROGRAM requirements, reconciled 2026-10-05
+
+- The accepted source grows into negative x regions `r_-1_0` through `r_-1_4`, tile x -64 through -1. PROGRAM describes 6x5 regions, 384x320 m and cow pen x -33 through 7. These are late requirements, not a verified shipped inventory. R6/R11 refreeze actual source commits, paths/digests, coordinates, counts and complete markers after both game-main barriers. Old 25-region/5,566-object/103,041-corner counts remain baseline regression evidence only.
+- Independently inspected local engine `main`, `origin/main` and `v20.25.0^{commit}` at `b39fb1a3bde9073d9519357b546b138b2c79d957`. `Directory.Build.props` declares 20.25.0 and `ShardedWorldServerConfig` exposes `public Vector2 CellOrigin { get; init; }`. Independent `git ls-remote` also found annotated tag object `5f4c2dcd2a316b7108dacca8e64bf39fc53bd94f`, peeling to that main commit, and the ancestry check exited 0. The controller reports reviewed/released/packed 20.25.0, suite 25,320 passed/0 failed/1,328 skipped and 200 local package files. This lane did not run that suite or inspect packages. Its own evidence is refs/source only. R1 starts from current reconciled released CellOrigin main. Game adoption retains the one-cell grid with origin at world bounds minimum.
+- R3/R11 preserve `river_bridge_grand`'s local x -9 through 9 walk surface over its 16x5 deck footprint, river bed -130 cm, `walkSurface` 2.825 and parapet `collisionHeight` 3.825. Preserve all 32 one-edge 1x1 `river_bridge_parapet` Wall pieces. Never clip support to the footprint or replace an edge Wall by a full box. Confirm exact source semantics/digests at refreeze and report the T4 differential separately.
+- Downstream game nav bakes must fit 8 MiB after deterministic `gzip -9` and be committed in plain git. R3 provides complete capture and identity hooks. R11 records actual source/nav/profile hashes for G3 rebake. This game budget is not a universal engine limit or existing package proof.
+- Technical consistency ruling J2.1, 2026-10-05. Use one shared bounded smoothing contract of 1 to 64 passes, preserving existing legacy support. Released main's `Tools/HeightTools.cs:60` describes that range and `TileEditOps.Heights.cs:69-74` enforces it. Preserve its double-buffered 3x3 prior-pass average, unchanged outside-patch halo and AwayFromZero integer quantization. R2 and R10 use the same range and parity cases. The old R2 four-neighbour/1-to-16 proposal is superseded.
 
 ## Spec self-review
 
-The option B contracts, locked building transforms, grid components, rim recomputation and API-only spike adoption have been removed from the target design. All matrix gaps map to contracts/rounds, all 50 verbs map to native commands, schema transitions and package boundaries are explicit, and migration has a native-only boot/deletion gate. Remaining decisions above are owner review items rather than placeholders. Coordinate/count evidence stays frozen until the accepted-world importer plan refreshes it [E1 to E46, G1 to G16, S1, S2].
+The option B contracts, locked building transforms, grid components, rim recomputation and API-only spike adoption have been removed from the target design. All matrix gaps map to contracts/rounds, all 50 verbs map to native commands, schema transitions and package boundaries are explicit, and migration has a native-only boot/deletion gate. The revised spec approvals are recorded above. Remaining gates are round-plan approval, explicit R3 geometry refinement and named import differential acceptance. Coordinate/count evidence stays frozen until the accepted-world importer plan refreshes it [E1 to E46, G1 to G16, S1, S2].
 
 ## Historical THROWAWAY spike and measured fidelity
 
@@ -365,7 +382,7 @@ Prefab stamps are expanded tiles/objects. TileObject does not retain the source 
 
 All builds/runs used the serial wrapper. The first build hit macOS /tmp versus /private/tmp path resolution. Canonical-path build passed. A later measurement run intentionally refused an unindexed write over the existing tiled directory. The final measurement used fresh output-ground and exited 0. That refusal is a writer guard, not a fidelity failure [E32, S1, S2].
 
-Reproduce once into a fresh directory while scratch exists:
+Historical reproduction command at the proposal snapshot, retained as evidence only. Its scratch/source paths and old wrapper are not current execution instructions:
 
 ~~~bash
 /tmp/grand-world/slot-retry.sh authoring-design-probe /tmp/grand-world/world-authoring-spike/reproduce.log -- dotnet run --project /private/tmp/grand-world/world-authoring-spike/THROWAWAY.csproj -c Release -- /Users/antonio/Grimhollow/.worktrees/gw-authoring-design/assets/worlds/hollowmere /private/tmp/grand-world/world-authoring-spike/reproduce-output
@@ -449,4 +466,4 @@ Engine paths are relative to the pinned engine baseline, game paths to the pinne
 | E45 | KhaozEngine.TileWorld.Physics/TileColliderBuilder.Objects.cs:22, :45, :73, :109, :137 | Edge/corner, solid span, deck and terrain-relative collision |
 | E46 | KhaozEngine.MapEdit.Tool/Tools/DocumentTools.cs:13, :34, :60, KhaozEngine.MapEdit.Tool/Tools/MutationTools.cs:23, :50, :147, :403, :437, KhaozEngine.MapEdit.Tool/Tools/QueryTools.cs:15, :21, KhaozEngine.MapEdit.Tool/Tools/RenderTools.cs:19 | Existing native command families |
 
-Companion game specification: [Grimhollow option A](https://github.com/APKiwiOrg/Grimhollow/blob/feature/gw-authoring-design/docs/superpowers/specs/2026-10-05-world-authoring-migration-design.md). Integration and production implementation stay with the owning orchestrator after written review.
+Companion game specification: [Grimhollow option A](https://github.com/APKiwiOrg/Grimhollow/blob/feature/world-authoring/docs/superpowers/specs/2026-10-05-world-authoring-migration-design.md). Integration and production implementation stay with the owning orchestrator after written review.

@@ -8,9 +8,15 @@
 
 **Tech Stack:** C#/.NET, System.Numerics, versioned JSON and JSON Schema, xUnit, engine-owned rendering/physics seams, MapEditor and ke-mapedit MCP.
 
-**Spec:** [WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md), approved direction at commit `49b045f75`. Read the spec, its evidence register and the earlier rounds' Outcome sections before refinement. OA1 to OA3 are owner rulings. T1 to T9 remain subject to owner review.
+**Spec:** [WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md), spec approved by the owner on 2026-10-05, under OA4, revised T4 under OA5, prefab v1/estimate under OA6 and C4 boundary policy under OA7. Read the spec, its evidence register and the earlier rounds' Outcome sections before refinement. OA1 to OA3 and T1 to T9 with revised T4 are approved. This round plan remains pending owner review.
 
 Task-level plan. Refine to full step level against the landed R1 to R10 APIs before executing, and record the refinement in Outcome.
+
+## Approval stage, reconciled 2026-10-05
+
+The controller supplied the exact owner answer "Approve" for both specs, T1 to T9 with revised T4, rigid prefab v1 and the 12 to 18 elapsed-week estimate, and C4 boundary policy. This R11 document remains a draft for refinement at its round. It requires a full plan against owner-released dependencies and then owner plan approval before execution. Spec approval is not acceptance of actual changed targets, distances, occlusion, stances or exact water-boundary samples. R11 records named import acceptance.
+
+The 1 m allowance is a minimum vertical target reach-envelope height, preserving `MinimumObjectReachHeight`. It is not a 1 m action distance. Action range remains existing game policy and physical colliders never expand. Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in the game DECISIONS record.
 
 ## Global Constraints
 
@@ -22,11 +28,11 @@ Task-level plan. Refine to full step level against the landed R1 to R10 APIs bef
 - "All newly structured payloads use closed schemas and explicit payload versions." Schema transitions are baseline-relative, not reserved numbers. Rebase them onto the next free format if concurrent work takes one. Pure sequential migrations preserve old analytic execution. Refuse future versions.
 - Authored-world identity includes normalized MapDoc, complete prefab/material/asset/collider/light/LOD closure and builder versions/options. Validate missing, duplicate, cyclic, stale or unsupported references before building. Equal TileSize monolithic/tiled forms resolve equally. Keep playable bounds separate from storage bounds.
 - "One GPU-free triangle compiler yields vertices, topology, surface IDs and geometric normals." Rendering, floor sampling, physics and capture consume the same descriptors. No bilinear movement fallback or coarser height-field replacement for authored geometry.
-- C2 surfaces distinguish canonical support geometry from non-colliding material-override paint. One owner per floor. C3 applies position/yaw/positive uniform scale exactly once. Use oriented asset collision/selection shapes for pick/reach/stance. A broad-phase AABB is not a narrow-phase target.
+- C2 surfaces distinguish canonical support geometry from non-colliding material-override paint. One owner per floor. C3 applies position/yaw/positive uniform scale exactly once. Use the revised T4 shared interaction envelope derived from canonical asset geometry for pick/reach/stance, with minimum 1 m vertical target reach-envelope height (`MinimumObjectReachHeight`) for low objects and explicit selectable bounds. Physical collision and occlusion use unchanged physical shapes. Preserve apertures and lower-2-m tree eligibility. Policy version, geometry closure and transform identity are shared by both heads. R3 refinement pins exact geometry/query rules before execution, with no hidden mesh-AABB versus footprint choice.
 - C4 bounded water retains its explicit level, medium and domain. No rim or camera recomputation, double global-water rendering or implicit terrain-driven water-level edits.
 - "GUI and MCP invoke one undoable native command layer." Mutations report affected IDs, dirty bounds, identity and undo/redo labels. Validation failure writes nothing. Save validates the closure and writes atomically, retaining unindexed-overwrite protection.
 - "Each release takes the next available engine minor after the concurrent pivot program's releases. Only the owner tags." Reserve no engine numbers. Re-read main/version/tags at execution, ride the applicable unreleased round version and reconcile through the owning orchestrator. No pivot repin. Grimhollow adoption waits for both 0.11.0 and accepted grand-world on main.
-- This documents-only lane changes no production code, version, release history or spec. It commits and pushes only its task branch, with no merges, tags or issues. Future package-bearing rounds update version, CHANGELOG and guarded doc declarations together under repository release policy.
+- This documents-only reconciliation changes engine planning documents only, with no code, tests, builds, version or release history changes. The worker commits explicit paths and stops. The controller reviews and pushes, with no worker merge, tag or pack. Future package-bearing rounds update version, CHANGELOG and guarded doc declarations together under repository release policy.
 - Work in an isolated task worktree, preserve unrelated changes and stage explicit paths. Commit subjects use `area(scope): summary`. A delegated implementer stops at the verified commit when integration belongs to its orchestrator.
 - "`AppWindow` is the only class that touches raw Silk.NET or GLFW input." Other code uses InputState through InputManager/Pointer and shared bounds helpers.
 - "Player-facing text resolves through the localization catalog with `StringId`." Prefer LocalizedText at GUI sinks. Developer output and tokens use the explicit raw path.
@@ -112,7 +118,7 @@ These are required by C1 to C9/T1 to T9 and the companion game specification, no
 7. Preserve all 38 frozen markers (32 NPC, one player, five landmarks), their complete values, seven clipped water bodies/113 rectangles at Y -0.37 m and all 25,921 bytes of the 161x161 positive-Z density raster plus every generated sample/decision. Source hash/profile/settings refresh is mandatory for the accepted world.
 8. Actual cottage/bank/crafting-hall interiors and original leaf differences survive via checked membership/overrides. Roofs remain at their source transforms, linked hiding/shadow behavior separates storeys, and the open pasture shelter stays visible in Auto.
 9. Compare routes/reach/picks for spawn-to-bank/cottage doors, adjacent-wall refusal, compound openings/tree bands, bridge deck/bed, river wading, cliff slopes and generic habitat inputs under the established profile/windows. Game pen/duck policies run in later game adoption, not engine policy.
-10. Differential T4 report lists exact old/new hit targets, distances and walk-up outcomes, including the legacy minimum one-metre reach height and mesh-bound selection. Physics preservation and same-head shape agreement are separate gates. Owner-approved exceptions never broaden collision to hide changed reach.
+10. Differential T4 report lists exact old/new hit targets, distances and walk-up outcomes, including the legacy MinimumObjectReachHeight minimum vertical 1 m target height, selectable bounds and mesh-bound selection. The allowance does not set action distance. Include occlusion and stance outcomes, physical shape digest and canonical interaction envelope/policy digest. Physics preservation and same-head shape agreement are separate gates. Owner-approved exceptions never broaden collision to hide changed reach.
 11. Compare complete load versus chunked load, all-spanning bounds/memberships, duplicate-free draws/statics and clean unload. Playable coordinates/bounds and saved world-point compatibility stay unchanged.
 12. Capture fixed-camera native paint/feathers, every indoor/roof/hidden-shadow case, river/bridge, free props/buildings, forest and ridge through the same R8 composition with TAA Native. Keep unchanged legacy/analytic/art goldens. No camera shift or gratuitous rebaseline.
 13. Reload native monolithic/tiled closure, build both headless heads and full nav capture without TileWorld files/packages. Missing/stale closure, nav/profile input or client identity refuses. Full native boot/source/transitive/output audit proves runtime independence.
@@ -135,11 +141,15 @@ These are required by C1 to C9/T1 to T9 and the companion game specification, no
 
 ## Judgement and refinement record
 
+- Reconciliation 2026-10-05. Refreeze the actual shipped source after both game-main barriers. Inventory every `r_-1_*` region with signed tile/world coordinates, full path/digest closure and current key counts. PROGRAM requires r_-1_0 through r_-1_4, tile x -64 through -1 and 6x5/384x320-m world bounds. Historical 25-region/5,566-object/103,041-corner counts remain a regression fixture, never default publication counts. Reject a moved or changed source during conversion, and refreeze changed nav/profile inputs too.
+- Bridge preservation is source-specific. For `river_bridge_grand`, preserve local x -9 through 9 support on its 16x5 deck, bed -130 cm, `walkSurface` 2.825, parapet `collisionHeight` 3.825 and all 32 one-edge 1x1 `river_bridge_parapet` Wall pieces. Validate exact effective source transforms and terrain-relative heights at refreeze. Do not clip deck support to footprint, collapse edge Walls to a full box or silently alter envelope/occlusion. Tasks 2/3/5/7 prove overhang support, deck/bed samples, rail-edge refusal and named T4 differences.
+- The game nav budget is 8 MiB after deterministic `gzip -9`, committed in plain git. Tasks 1/7 record complete actual world/nav/profile identities and evidence hooks for G3's native rebake. Game adoption measures and enforces the artifact budget. This lane claims no bake bytes or package proof and adds no universal engine budget.
+
 - J11.1. Proposed one optional package exports the library request/pipeline and a thin offline `ke-mapimport` entry point. Choose its final packaging against repository dotnet-tool conventions at refinement. Source, destination, membership manifest and ledger paths are required arguments. No importer code is duplicated inside ke-mapedit.
 - J11.2. Checked membership may not be inferred from nominal stamps. Ambiguous/unassigned original content refuses, with exact source keys. A parent is new identity, leaves preserve original IDs. Source seam corner aliases retain evidence, rather than silently deduplicating inconsistent values.
 - J11.3. Converter execution needs no graphics device. Source-side legacy predicate/geometry evaluation stays in the optional package/test corpus. Render differential uses the separate backend test route. MapDoc/native packages never acquire a TileWorld dependency to help conversion.
 - J11.4. Frozen proposal counts test converter regressions. Before real adoption, re-freeze the accepted grand-world and derive its full inventory. Do not weaken baseline assertions to lower bounds or invent owner-approved exceptions.
-- Spec gap J5.1, local water in prefab payload, must be reconciled before building conversion. T4 targetability acceptance and T3/v1 scope remain owner review items, with no new option A/B/C decision.
+- Reconciliation 2026-10-05, OA4 to OA7. Spec/revised-T4 policy, prefab v1/estimate and water boundary policy are approved. OA6 resolves J5.1 with optional local C4 water. Actual target/distance/occlusion/stance and exact water-boundary differentials still require named acceptance. Plan refinement and separate owner approval remain pending.
 
 ---
 
@@ -154,7 +164,7 @@ These are required by C1 to C9/T1 to T9 and the companion game specification, no
 - No read of an unfrozen changing world and no source mutation.
 
 - [ ] Deliver validated inputs and one offline pipeline contract, with no world editor capability.
-- **Tests:** `SourceFreeze_RejectsChangedCatalogPrefabMeshOrWorld` checks all input files. `MembershipManifest_RejectsAmbiguousDuplicateAndUnassignedKeys` names failures. `SourceDestinationOrLedgerOverlapAndExistingUnrelatedOutput_Refuse` checks canonical paths/symlinks. `AcceptedWorldInventory_IsDerivedNotFrozenCountDefault` proves refreshed counts. `ImporterPackage_IsOptInAndNativeGraphHasNoTileWorld` checks package edges.
+- **Tests:** `SourceFreeze_RejectsChangedCatalogPrefabMeshOrWorld` checks all input files. `MembershipManifest_RejectsAmbiguousDuplicateAndUnassignedKeys` names failures. `SourceDestinationOrLedgerOverlapAndExistingUnrelatedOutput_Refuse` checks canonical paths/symlinks. `AcceptedWorldInventory_IsDerivedNotFrozenCountDefault` proves refreshed counts. `NegativeXRegionFreeze_PreservesSignedKeysBoundsAndEveryMarker` includes r_-1_0/r_-1_4 and tile -64/-1. The manifest cannot silently reuse the old 25-region source. `ImporterPackage_IsOptInAndNativeGraphHasNoTileWorld` checks package edges.
 - **Exit proof:** Release filter `FullyQualifiedName~SourceInventoryTests` in TileWorldImport.Tests passes. The complete frozen header/manifest exists before conversion begins.
 
 ### Task 2: Source runtime semantics and exact comparison oracle
@@ -167,7 +177,7 @@ These are required by C1 to C9/T1 to T9 and the companion game specification, no
 - Source oracle records original bilinear art anchoring explicitly, while movement floor uses the legacy drawn triangles. All four plane derivations/empties are inventoried.
 
 - [ ] Deliver the checked source oracle against which native conversion is compared.
-- **Tests:** `AllFourPlanes_IncludeDerivedOverridesAndEmptyCells` covers upper floors without inventing support. `SpikePoint_UsesLegacyMovementTrianglesNotBilinearFloor` pins the measured location. `LegacyWallCornerSolidAndDeck_CompileExactEffectiveShapes` includes terrain-dependent spans. `LegacyWaterAndFoliage_RecordEveryDomainByteSampleAndDecision` checks row direction and predicate parameters. `SourceSeamAliases_DisagreementRefuses` prevents silent corner repair.
+- **Tests:** `AllFourPlanes_IncludeDerivedOverridesAndEmptyCells` covers upper floors without inventing support. `SpikePoint_UsesLegacyMovementTrianglesNotBilinearFloor` pins the measured location. `LegacyWallCornerSolidAndDeck_CompileExactEffectiveShapes` includes terrain-dependent spans and the late bridge overhang/32 edge-Wall corpus, checked against the freshly frozen source. `LegacyWaterAndFoliage_RecordEveryDomainByteSampleAndDecision` checks row direction and predicate parameters. `SourceSeamAliases_DisagreementRefuses` prevents silent corner repair.
 - **Exit proof:** Release filter `FullyQualifiedName~SourceSemanticsTests` passes. Source input digests and effective semantic inventory are stable without a GPU.
 
 ### Task 3: Exact native surfaces, assets and leaf identity
@@ -181,7 +191,7 @@ These are required by C1 to C9/T1 to T9 and the companion game specification, no
 - Numeric allocation starts above all imported/reserved IDs, preserves leaf IDs/tags and never uses ordinal identity.
 
 - [ ] Deliver terrain/assets/leaves with exact authored values and canonical geometry.
-- **Tests:** `EverySurfaceField_PreservesExactIntegerPaintFlagAndReservedMetadata` checks all cuts/rotations/feathers. `CanonicalNativeTriangles_MatchSourceAndAllConsumers` enforces 0.00001 m and 0.000001 normal component tolerances with per-key failures. `SlopeDependentColliderVariant_PreservesRigidSpanAndMeshScale` preserves openings/support. `LargeImportedIDs_ReserveHighWaterAndKeepOrderedTags` covers >2^53 and exhaustion. `StoragePadding_DoesNotWidenPlayableBounds` catches spike-style padding.
+- **Tests:** `EverySurfaceField_PreservesExactIntegerPaintFlagAndReservedMetadata` checks all cuts/rotations/feathers. `CanonicalNativeTriangles_MatchSourceAndAllConsumers` enforces 0.00001 m and 0.000001 normal component tolerances with per-key failures. `SlopeDependentColliderVariant_PreservesRigidSpanAndMeshScale` preserves openings/support. `GrandBridge_OverhangSupportBedAnd32OneEdgeWallsSurvive` checks the 16x5 footprint against local [-9,9] support, -130 cm bed, walkSurface 2.825 and parapet collisionHeight 3.825 without a full-cell rail box. `LargeImportedIDs_ReserveHighWaterAndKeepOrderedTags` covers >2^53 and exhaustion. `StoragePadding_DoesNotWidenPlayableBounds` catches spike-style padding.
 - **Exit proof:** Release filter `FullyQualifiedName~NativeConversionTests` passes. Two native heads agree exactly on the same descriptors and identity table, independent of source comparison tolerances.
 
 ### Task 4: Actual buildings and environment preservation
@@ -195,7 +205,7 @@ These are required by C1 to C9/T1 to T9 and the companion game specification, no
 - New prefab parents/storage metadata have separate accounting from original source leaves.
 
 - [ ] Deliver all non-terrain semantics through native data without stamp reconstruction.
-- **Tests:** `ActualInteriors_KeepCraftingHallDifferencesAndEveryLeafOnce` checks bank/cottage/furniture/lights/roof links. `HigherRoofsOpenShelterAndStoreys_PreservePolicy` checks visibility/shadows as intent. `All38Markers_PreserveRolesHeightsAndTags` checks each row. `SevenBodies113Rects_PreserveSurfaceAndMedium` includes Y -0.37 and bridge feet. `All25921DensityBytesAndGeneratedSamples_Preserve` checks decisions and explicit mask ownership.
+- **Tests:** `ActualInteriors_KeepCraftingHallDifferencesAndEveryLeafOnce` checks bank/cottage/furniture/lights/roof links. `HigherRoofsOpenShelterAndStoreys_PreservePolicy` checks visibility/shadows as intent. `All38Markers_PreserveRolesHeightsAndTags` checks the historical fixture. The accepted source uses its refreshed complete marker key set, including negative x. `SevenBodies113Rects_PreserveSurfaceAndMedium` is the old regression fixture with Y -0.37 and bridge feet. Actual import compares every freshly inventoried body/domain rather than defaulting to those counts. `All25921DensityBytesAndGeneratedSamples_Preserve` checks decisions and explicit mask ownership.
 - **Exit proof:** Release filter `FullyQualifiedName~BuildingEnvironmentConversionTests` passes. Every source building/environment key maps to a native owner without duplication or guessing.
 
 ### Task 5: Canonical ledger and fail-closed fidelity gate
@@ -205,10 +215,10 @@ These are required by C1 to C9/T1 to T9 and the companion game specification, no
 **Interfaces:**
 - Consumes Tasks 1 to 4 inventories/representations, C9 fixed tolerances and explicit owner-approved exception manifest.
 - Produces ledger payload 1 as specified above, full sorted rows/digests and reproducible old/new comparisons.
-- Produces separate T4 hit-target/distance/stance differences, not a claim of unchanged reach. Physics shape preservation and same-head agreement stay independent.
+- Produces separate T4 hit-target/distance/occlusion/stance and exact water-boundary differences, not a claim of unchanged reach. Physics shape preservation and same-head agreement stay independent.
 
 - [ ] Deliver exhaustive source-to-native coverage validation and semantic difference classification.
-- **Tests:** `Ledger_AllSourceKeysAccountedExactlyOnce` compares key sets/inverses. `OneMissingCellByteEmptyPlaneRoofOrSample_RefusesAcceptance` injects sparse loss. `DuplicateDanglingOrUnapprovedDifference_Refuses` checks each failure class. `ToleranceHeaderFixedBeforeConversion_ReportsEveryExceedance` checks exact boundary values. `T4Differential_ListsOldNewTargetDistanceAndApprovedReference` includes the one-metre legacy envelope. `CanonicalRowsAndCompression_AreDeterministic` checks bytes/digests.
+- **Tests:** `Ledger_AllSourceKeysAccountedExactlyOnce` compares key sets/inverses. `OneMissingCellByteEmptyPlaneRoofOrSample_RefusesAcceptance` injects sparse loss. `DuplicateDanglingOrUnapprovedDifference_Refuses` checks each failure class. `ToleranceHeaderFixedBeforeConversion_ReportsEveryExceedance` checks exact boundary values. `T4Differential_ListsOldNewTargetDistanceOcclusionStanceAndNamedReference` includes MinimumObjectReachHeight, unchanged action range and consistent selectable bounds. `WaterBoundaryPolicyWithoutNamedCaseAcceptance_RefusesPublication` proves OA7 does not blanket-accept actual sample changes. `CanonicalRowsAndCompression_AreDeterministic` checks bytes/digests.
 - **Exit proof:** Release filter `FullyQualifiedName~ImportLedgerTests` passes. Aggregate counts alone can never accept conversion.
 
 ### Task 6: Deterministic native reload and atomic publication
@@ -245,3 +255,26 @@ Before execution, refine each task to failing-test, implementation, verification
 Self-review covered spec requirements, consistent contract names, all five Review Focus tests and task proportion. This task-level plan contains no implementation bodies and does not claim later-round completion.
 
 ## Outcome
+
+### Documentation reconciliation, 2026-10-05
+
+- Approval stage: specs approved with revised T4. R11 plan approval and execution remain pending. No round capability release is claimed.
+- Dependency caveat: Refine this draft against released prerequisite APIs at round start. Exact signatures, failing assertions and owner plan approval remain open. Start implementation from current reconciled engine main after the released CellOrigin change, never by merging this historical planning branch.
+- Source inventory: old fixture counts are regression evidence only. R6/R11 refreeze the actual accepted shipped source, including negative x regions, before adoption acceptance.
+- Actual checks: source and planning review only, no builds/tests. Whole-tree documentation guard results for this revision are recorded below. No package, tag, execution SHA or self-recording commit is invented.
+
+- Reconciled requirements: Actual-source refreeze includes signed r_-1_* regions, current full closure/nav/profile identities and dynamic counts. Late bridge overhang/32 one-edge Wall values, 8 MiB gzip-9/plain-git downstream budget, optional local C4 water and named T4/water differential acceptance gates are explicit.
+- Approval record: OA4 to OA7 in game DECISIONS, controller-reported pushed game docs commit `3e46fac49c1d15adf84c948fdc17f4b6606827aa`. No engine implementation approval is inferred.
+
+Documentation checks from `/Users/antonio/KhaozEngine/.worktrees/world-authoring` on 2026-10-05, no builds/tests. The commands below are rerun serially against final text before committing.
+
+| Command | Exit |
+| --- | --- |
+| `sh scripts/check-dashes.sh --tree` | 0 |
+| `sh scripts/check-prose.sh --tree` | 0 |
+| `sh scripts/check-file-size.sh --tree` | 0 |
+| `sh scripts/check-agent-instructions.sh --tree` | 0 |
+| `bash scripts/check-doc-versions.sh` | 0 |
+| `git diff --check` | 0 |
+
+No pre-existing documentation guard blocker was observed. Doc-version validation checks this historical planning branch's 20.24.0 declarations. It does not claim this branch contains released 20.25.0 or its packages. Controller review/push and separate owner round approval remain the next gates.

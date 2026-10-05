@@ -8,9 +8,15 @@
 
 **Tech Stack:** C#/.NET, System.Numerics, versioned JSON and JSON Schema, xUnit, engine-owned rendering/physics seams, MapEditor and ke-mapedit MCP.
 
-**Spec:** [WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md), approved direction at commit `49b045f75`. Read the spec, its evidence register and the earlier rounds' Outcome sections before refinement. OA1 to OA3 are owner rulings. T1 to T9 remain subject to owner review.
+**Spec:** [WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md), spec approved by the owner on 2026-10-05, under OA4, revised T4 under OA5, prefab v1/estimate under OA6 and C4 boundary policy under OA7. Read the spec, its evidence register and the earlier rounds' Outcome sections before refinement. OA1 to OA3 and T1 to T9 with revised T4 are approved. This round plan remains pending owner review.
 
 Task-level plan. Refine to full step level against the landed R1 to R8 APIs before executing, and record the refinement in Outcome.
+
+## Approval stage, reconciled 2026-10-05
+
+The controller supplied the exact owner answer "Approve" for both specs, T1 to T9 with revised T4, rigid prefab v1 and the 12 to 18 elapsed-week estimate, and C4 boundary policy. This R9 document remains a draft for refinement at its round. It requires a full plan against owner-released dependencies and then owner plan approval before execution. Spec approval is not acceptance of actual changed targets, distances, occlusion, stances or exact water-boundary samples. R11 records named import acceptance.
+
+The 1 m allowance is a minimum vertical target reach-envelope height, preserving `MinimumObjectReachHeight`. It is not a 1 m action distance. Action range remains existing game policy and physical colliders never expand. Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in the game DECISIONS record.
 
 ## Global Constraints
 
@@ -22,11 +28,11 @@ Task-level plan. Refine to full step level against the landed R1 to R8 APIs befo
 - "All newly structured payloads use closed schemas and explicit payload versions." Schema transitions are baseline-relative, not reserved numbers. Rebase them onto the next free format if concurrent work takes one. Pure sequential migrations preserve old analytic execution. Refuse future versions.
 - Authored-world identity includes normalized MapDoc, complete prefab/material/asset/collider/light/LOD closure and builder versions/options. Validate missing, duplicate, cyclic, stale or unsupported references before building. Equal TileSize monolithic/tiled forms resolve equally. Keep playable bounds separate from storage bounds.
 - "One GPU-free triangle compiler yields vertices, topology, surface IDs and geometric normals." Rendering, floor sampling, physics and capture consume the same descriptors. No bilinear movement fallback or coarser height-field replacement for authored geometry.
-- C2 surfaces distinguish canonical support geometry from non-colliding material-override paint. One owner per floor. C3 applies position/yaw/positive uniform scale exactly once. Use oriented asset collision/selection shapes for pick/reach/stance. A broad-phase AABB is not a narrow-phase target.
+- C2 surfaces distinguish canonical support geometry from non-colliding material-override paint. One owner per floor. C3 applies position/yaw/positive uniform scale exactly once. Use the revised T4 shared interaction envelope derived from canonical asset geometry for pick/reach/stance, with minimum 1 m vertical target reach-envelope height (`MinimumObjectReachHeight`) for low objects and explicit selectable bounds. Physical collision and occlusion use unchanged physical shapes. Preserve apertures and lower-2-m tree eligibility. Policy version, geometry closure and transform identity are shared by both heads. R3 refinement pins exact geometry/query rules before execution, with no hidden mesh-AABB versus footprint choice.
 - C4 bounded water retains its explicit level, medium and domain. No rim or camera recomputation, double global-water rendering or implicit terrain-driven water-level edits.
 - "GUI and MCP invoke one undoable native command layer." Mutations report affected IDs, dirty bounds, identity and undo/redo labels. Validation failure writes nothing. Save validates the closure and writes atomically, retaining unindexed-overwrite protection.
 - "Each release takes the next available engine minor after the concurrent pivot program's releases. Only the owner tags." Reserve no engine numbers. Re-read main/version/tags at execution, ride the applicable unreleased round version and reconcile through the owning orchestrator. No pivot repin. Grimhollow adoption waits for both 0.11.0 and accepted grand-world on main.
-- This documents-only lane changes no production code, version, release history or spec. It commits and pushes only its task branch, with no merges, tags or issues. Future package-bearing rounds update version, CHANGELOG and guarded doc declarations together under repository release policy.
+- This documents-only reconciliation changes engine planning documents only, with no code, tests, builds, version or release history changes. The worker commits explicit paths and stops. The controller reviews and pushes, with no worker merge, tag or pack. Future package-bearing rounds update version, CHANGELOG and guarded doc declarations together under repository release policy.
 - Work in an isolated task worktree, preserve unrelated changes and stage explicit paths. Commit subjects use `area(scope): summary`. A delegated implementer stops at the verified commit when integration belongs to its orchestrator.
 - "`AppWindow` is the only class that touches raw Silk.NET or GLFW input." Other code uses InputState through InputManager/Pointer and shared bounds helpers.
 - "Player-facing text resolves through the localization catalog with `StringId`." Prefer LocalizedText at GUI sinks. Developer output and tokens use the explicit raw path.
@@ -136,7 +142,7 @@ Produces the C9 GUI frontend covering the native shared command surface, with wo
 - Produces prism lower/upper Y/storey editing, roof memberships and observer volume preview using shared R5 membership.
 
 - [ ] Deliver a complete rigid-building workflow without nested prefabs, CAD or generated foundations/stairs.
-- **Tests:** `PrefabLocalWorkflow_UsesSamePlacementFloorWaterMarkerCommands` covers J5.1 after reconciliation. `OptionalSnap_DisabledPermitsSubmetreNonQuarterPlacement` ensures runtime independence. `StaleOverrideOrPartialRoofSelection_RefusesAssetSave` preserves every referring instance. `PrefabEditCancel_RestoresLocalAndWorldClosure` checks histories. `VolumeAndRoofLinkPreview_AgreesAcrossStoreys` checks open shelter and explicit floor ownership.
+- **Tests:** `PrefabLocalWorkflow_UsesSamePlacementFloorWaterMarkerCommands` covers optional C4 local water approved by OA6, resolving J5.1. `OptionalSnap_DisabledPermitsSubmetreNonQuarterPlacement` ensures runtime independence. `StaleOverrideOrPartialRoofSelection_RefusesAssetSave` preserves every referring instance. `PrefabEditCancel_RestoresLocalAndWorldClosure` checks histories. `VolumeAndRoofLinkPreview_AgreesAcrossStoreys` checks open shelter and explicit floor ownership.
 - **Exit proof:** Release filter `FullyQualifiedName~NativePrefabWorkflowTests` passes. Asset edit invalidation reaches every instance and save/reload preserves bindings/effective transforms.
 
 ### Task 5: Marker, foliage and shape diagnostics
@@ -151,7 +157,7 @@ Produces the C9 GUI frontend covering the native shared command surface, with wo
 - Missing nav profile/capture is a finding, never slope-only clearance success.
 
 - [ ] Deliver native point/density authoring and honest collision/route/height diagnostics.
-- **Tests:** `MarkerAndFoliageControls_UseRegistryAndExactRaster` preserves explicit marker Y and positive-Z rows. `CollisionInspector_UsesOrientedCompoundAndSelectionShapes` covers tree band/door aperture. `MissingNavProfileOrCapture_ShowsLocalizedRefusal` prevents misleading clearance. `MeasuredHeightDryRun_DoesNotResizeMeshOrWriteWorld` separates descriptor files and refresh results. `MovedBuilding_InvalidatesFoliagePreviewAndSeatingDiagnostic` uses shared version/cache inputs.
+- **Tests:** `MarkerAndFoliageControls_UseRegistryAndExactRaster` preserves explicit marker Y and positive-Z rows. `CollisionInspector_UsesPhysicalShapesAndSharedInteractionEnvelope` separately visualizes unchanged physical collision/occlusion and revised-T4 pick/reach/stance envelopes, including minimum 1 m vertical height, consistent selectable bounds, lower-2-m tree band and door aperture. No GUI-only AABB/footprint target. `MissingNavProfileOrCapture_ShowsLocalizedRefusal` prevents misleading clearance. `MeasuredHeightDryRun_DoesNotResizeMeshOrWriteWorld` separates descriptor files and refresh results. `MovedBuilding_InvalidatesFoliagePreviewAndSeatingDiagnostic` uses shared version/cache inputs.
 - **Exit proof:** Release filter `FullyQualifiedName~NativeMarkerFoliageToolTests` passes. Diagnostics identify exact geometry/profile/asset dependencies and every error has a reachable UI state.
 
 ### Task 6: Input-path acceptance, save/reload and published workflow
@@ -174,3 +180,26 @@ Before execution, refine each task to failing-test, implementation, verification
 Self-review covered spec requirements, consistent contract names, all five Review Focus tests and task proportion. This task-level plan contains no implementation bodies and does not claim later-round completion.
 
 ## Outcome
+
+### Documentation reconciliation, 2026-10-05
+
+- Approval stage: specs approved with revised T4. R9 plan approval and execution remain pending. No round capability release is claimed.
+- Dependency caveat: Refine this draft against released prerequisite APIs at round start. Exact signatures, failing assertions and owner plan approval remain open. Start implementation from current reconciled engine main after the released CellOrigin change, never by merging this historical planning branch.
+- Source inventory: old fixture counts are regression evidence only. R6/R11 refreeze the actual accepted shipped source, including negative x regions, before adoption acceptance.
+- Actual checks: source and planning review only, no builds/tests. Whole-tree documentation guard results for this revision are recorded below. No package, tag, execution SHA or self-recording commit is invented.
+
+- Reconciled requirements: GUI diagnostics distinguish physical geometry from canonical interaction envelopes. Prefab-local C4 water is explicitly approved by OA6. Input/workflow acceptance remains future work.
+- Approval record: OA4 to OA7 in game DECISIONS, controller-reported pushed game docs commit `3e46fac49c1d15adf84c948fdc17f4b6606827aa`. No engine implementation approval is inferred.
+
+Documentation checks from `/Users/antonio/KhaozEngine/.worktrees/world-authoring` on 2026-10-05, no builds/tests. The commands below are rerun serially against final text before committing.
+
+| Command | Exit |
+| --- | --- |
+| `sh scripts/check-dashes.sh --tree` | 0 |
+| `sh scripts/check-prose.sh --tree` | 0 |
+| `sh scripts/check-file-size.sh --tree` | 0 |
+| `sh scripts/check-agent-instructions.sh --tree` | 0 |
+| `bash scripts/check-doc-versions.sh` | 0 |
+| `git diff --check` | 0 |
+
+No pre-existing documentation guard blocker was observed. Doc-version validation checks this historical planning branch's 20.24.0 declarations. It does not claim this branch contains released 20.25.0 or its packages. Controller review/push and separate owner round approval remain the next gates.

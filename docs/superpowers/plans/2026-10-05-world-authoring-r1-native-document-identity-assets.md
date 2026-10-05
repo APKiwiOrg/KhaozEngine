@@ -1586,3 +1586,23 @@ remain. Root will verify the bounded fix and obtain a fresh scoped review, not a
 - No main merge, pack, shared-feed refresh or tag occurred. 20.27.0 remains staged. No manual playtest
   is required for these headless proofs. The next owner check is the baseline-cleanup scope, before
   R1 can reach its separate release-authorization gate.
+
+
+### OA10 implementation dispatch, 2026-10-05
+
+Owner approved the separate 273-file baseline whitespace cleanup. The execution worktree is
+/Users/antonio/KhaozEngine/.worktrees/wa-format-baseline, fix/wa-format-baseline, from current engine
+main de78df336. Approved exact-spec plan is docs/superpowers/plans/2026-10-05-engine-format-baseline-cleanup.md.
+Starting worker HEAD is 3c15218a7b6c1acf440165f716eec77640bbf79d, pushed and clean.
+
+One Gauge-selected Claude Max 20x Opus 5.5 high worker is running, task
+`node:delegated-task:command%3Amcp%3A87f7c6df-2d3b-43b2-8cf0-9d291f9ecd43%3Adelegate-task%3Awa-format-baseline-implementation-20261005`.
+SDD workspace is .superpowers/sdd/2026-10-05-engine-format-baseline-cleanup in that worktree, with
+task-1-brief.md, task-1-dispatch-brief.md and task-1-dispatch.json. Expected report is task-1-report.md.
+The brief limits writes to the committed 273-file inventory, requires whitespace and literal/content
+proofs, exact included-file formatter verification and guards through the shared slot. No baseline
+full suite, version bump, ratchet exception, push, merge or release is assigned to the worker.
+
+Controller verifies and pushes, obtains fresh scoped review, then merges into R1 and runs full combined
+verification. R1's five prior MapDoc format fixes stay in R1. Main, releases and game adoption remain
+unchanged. This task completion will wake the controller. No cleanup result is claimed yet.

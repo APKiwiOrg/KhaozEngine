@@ -125,3 +125,28 @@ A fresh scoped review and combined R1 full verification still precede main integ
   engine audit or test rerun. Root will persist its final report and verify any findings.
 - Next is accepted cleanup merge into R1, current-main reconciliation and required full combined
   verification. Main, pack, tags and game adoption remain unchanged. No owner action is needed now.
+
+
+### Cleanup accepted and combined R1 verification passed, 2026-10-06
+
+- Cleanup review 1 reports no findings and approves reconciliation into R1. Full report remains
+  cleanup SDD review-1.md. Scope, exact approved caps, literal/content preservation, logs and
+  source-scanning test risks were inspected. The pending full suite now passes those source scans.
+- Merged cleanup at 3daf2cdc55112af9c942e1d07dee8d852ad1d9fc. One .filesize-baseline conflict was
+  resolved by retaining every R1 ratchet reduction and changing only the five OA11 entries.
+  All 273 merged source files exactly match the reviewed cleanup. No source-code conflict occurred.
+- R1-V2 records this deterministic baseline reconciliation. Main/origin-main were fetched and remain
+  de78df336, already ancestors of R1. Latest tag remains v20.25.0. R1 stages 20.27.0.
+- Full Release build exited 0 with zero warnings/errors. Whole-solution format exited 0 with no
+  formatting diagnostics, plus the known generic workspace-loading warning. Full non-LiveSocket
+  suite exited 0 with 25,671 passed, 1,328 skipped, zero failed across 30 summary records. All five
+  required repository guards exited 0. Every target ran serially through the shared slot.
+- Corrected the earlier full-suite aggregation. Its original log also has 25,671 passed and 1,328
+  skipped. The earlier parser consumed two interleaved records while attaching assembly names.
+  Summary prefixes counted independently recover all 30 results. No tests were rerun for counting.
+  The earlier proof JSON is corrected, while the original command exit and log hashes are unchanged.
+- Final proof is proofs/2026-10-06-world-authoring-r1-combined-verification.json. Logs are under
+  /tmp/grimhollow-orch/logs/wa-r1-combined-20261006. This full rerun followed the source merge and
+  conflict reconciliation, not a flake or stress loop.
+- Pivot thread f61fd8f9 received a pre-integration notice. Its Grimhollow 20.25.0 pin is untouched.
+  Next is documented engine main fast-forward, push and guarded pack, then owner-only tag approval.

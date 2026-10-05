@@ -1,9 +1,9 @@
 {
-  "projects": 28,
+  "projects": 30,
   "failed": 0,
-  "passed": 25360,
-  "skipped": 1275,
-  "total": 26635,
+  "passed": 25671,
+  "skipped": 1328,
+  "total": 26999,
   "failed_projects": [],
   "log_sha256": "5052cc0300e52da16268e8a20d34f63fd1c957c8525d63bc6c51c51077c53f79",
   "source_head": "7e04bc01a9e02f8916a9207d37f3488e2162f386",
@@ -32,5 +32,6 @@
   ],
   "suite_command": "dotnet test KhaozEngine.slnx -c Release --no-build --filter \"Category!=LiveSocket\"",
   "build_warnings": 0,
-  "build_errors": 0
+  "build_errors": 0,
+  "count_correction": "Initial parser consumed two interleaved summary records. Count summary prefixes independently from assembly-name suffixes. Exit and log hashes unchanged."
 }

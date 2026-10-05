@@ -1,0 +1,36 @@
+{
+  "source_merge": "3daf2cdc55112af9c942e1d07dee8d852ad1d9fc",
+  "reconciled_main": "de78df336571d9a5db97b7b9b4f07c842f11556b",
+  "cleanup_source": "da6f46af192745016bb7feaa538dc2960b5a6c46",
+  "reviews": "R1 whole review and scoped follow-up passed, full cleanup scoped review passed",
+  "passed": 25671,
+  "failed": 0,
+  "skipped": 1328,
+  "total": 26999,
+  "project_summaries": 30,
+  "build_warnings": 0,
+  "build_errors": 0,
+  "formatter_warning": "Generic workspace-loading warning, no formatting diagnostics, exit 0",
+  "checks": [
+    {
+      "log": "01-build.log",
+      "exit": 0,
+      "sha256": "16bb2773997a5688e056f30281102913307a138aa300378584e1116a5560428a"
+    },
+    {
+      "log": "02-format.log",
+      "exit": 0,
+      "sha256": "239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c"
+    },
+    {
+      "log": "03-suite.log",
+      "exit": 0,
+      "sha256": "99f5593671d648288053ef5d6948a5b18a56b31d086f513077df2e9bf33fa6ee"
+    },
+    {
+      "log": "04-guards.log",
+      "exit": 0,
+      "sha256": "9418ac662d08e90dfab47a8997b59d39172f65a38f19877a548054cce563ade8"
+    }
+  ]
+}

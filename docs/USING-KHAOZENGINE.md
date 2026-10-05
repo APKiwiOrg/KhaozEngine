@@ -11381,7 +11381,14 @@ form conversion (`convert_to_tiled` / `convert_to_single`) and re-tiling (`retil
 below, and there is no GUI affordance for either. A large authored world is expected to convert once, from
 the tool, and the GUI editor just opens whatever form is already on disk.
 
-**Renaming.** The placement, spawn, player spawn, and region inspectors lead with an inline-editable Name
+**Native placement editing.** Opted-in documents require a verified closure bound with
+`EditorDocument.BindNativeAssets` or `MapEditSession.BindNativeAssets`. Native placement transactions
+validate candidates before publication, and retained allocation high-water marks participate in dirty
+tracking. Native rename edits `DisplayName` without changing selection or either identity. Explicit
+`RemapPlacementIdCommand` changes the stable ID while preserving numeric identity. See the MapEditor
+package README for the supported transaction boundary and low-level validation distinction.
+
+**Renaming.** For analytic documents, the placement, spawn, player spawn, and region inspectors lead with an inline-editable Name
 row. Committing a new value renames the element through `RenamePlacementCommand`, `RenameSpawnCommand`,
 `RenamePlayerSpawnCommand`, or `RenameRegionCommand`, rejecting a blank, unchanged, or colliding target, and
 the selection follows the renamed key once the row loses focus. Terrain features, exclusions, and scatter

@@ -59,6 +59,14 @@ the dirty flag. Every mutation validates the document before it lands (`MapDocum
 JSON schema check on save) and reverts with the validation errors folded into the thrown message on
 failure, so the in-session document is never left invalid.
 
+Native opted-in documents require an explicit `MapEditSession.BindNativeAssets(closure)` before mutation.
+The binding is validated without dirtying the session and is cleared by successful Open/Create replacement.
+Native mutation callbacks edit a detached candidate and publish only after full bound validation, preserving
+the public document instance. Native placement commands additionally preserve their retry state on rejection.
+`PlacementRename` changes the native display label and returns the unchanged placement ID. The explicit
+service APIs `PlacementLabel` and `PlacementRemapId` distinguish label edits from stable-ID remapping.
+These are service APIs, not additional MCP registrations. Native lifecycle asset loading is a separate step.
+
 ## Tiled documents, whole-load vs windowed
 
 `map_open` and `map_save` are form-aware, matching the GUI editor: `map_open` dispatches on

@@ -860,6 +860,31 @@ now seals between them and lands as two separate undo steps instead of silently 
 because no explicit tool-level boundary (a mode switch, a pointer release elsewhere) happened to fall
 between the two drags.
 
+## Native placement transactions
+
+For a document with `ResolverIdentity`, bind an immutable verified `MapAssetClosure` with
+`EditorDocument.BindNativeAssets` before editing. Direct `EditorHistory` users bind with
+`BindNativeAssets(document, assets)`. Binding validates the complete native document without marking it
+dirty. Missing or mismatched closures refuse edits. Loading assets is the host's responsibility.
+
+Native add, remove, move, rotate, scale, label and remap commands prepare a detached candidate and validate
+it before publication. The `MapDocument` object stays the same. Rejections preserve command retry state,
+history, allocator, dirty state and notifications. Commands outside this native placement transaction
+protocol are refused on opted-in documents. Analytic documents keep their existing command behavior.
+Direct placement `Apply` and `Revert` check document-local native validity only, without asset membership.
+
+`AllocateNativePlacementCommand(placement, allocateNumericId)` allocates once on acceptance. Undo and
+delete retain the high-water mark, redo restores the accepted ID, and a new branch allocates above the
+mark. Use `false` when numeric identity is omitted or explicitly supplied. `AddPlacementCommand` allocates
+when its native input has no numeric ID and reserves explicitly supplied IDs. GUI and service duplication
+copy native asset metadata and ordered tags, with fresh identities. Undoing allocation can therefore leave
+an otherwise empty history dirty. `MarkSaved` acknowledges both the history position and the watermark.
+
+For native placements `RenamePlacementCommand` and the inspector edit `DisplayName`, leaving selection
+and both identities unchanged. `SetPlacementLabelCommand` names that behavior explicitly.
+`RemapPlacementIdCommand` is the separate stable-ID operation. Its reference visitor visits only typed
+placement references, of which format 4 has none. Tags and asset/resource IDs are never rewritten.
+
 ## Rebuild semantics
 
 `EditorCommand.AffectsWorld` (internal) classifies each command: terrain features (add, edit, remove, and
@@ -1029,6 +1054,9 @@ all four collections exactly and removes the baked block. `MapEditorScene.Freeze
 outcome in the status strip: the placement count plus how many of each collection were removed.
 
 ## Renaming
+
+The placement ID behavior below applies to analytic documents. Native placements use display labels as
+described under Native placement transactions.
 
 The placement, spawn, player spawn, and region inspectors lead with an inline-editable Name row
 (`MapEditorScene.AddNameRow`, shared by all four). Typing a new id or name and moving focus away routes the

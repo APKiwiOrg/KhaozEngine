@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using KhaozEngine.Content;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Terrain;
 
@@ -20,11 +21,26 @@ public sealed class MapEditSession
     readonly MapDocRegistry _registry = MapDocRegistry.CreateDefault();
 
     MapDocument? _doc;
+    MapAssetClosure? _nativeAssets;
     string? _path;
     IReadOnlyList<string> _manifests = Array.Empty<string>();
     bool _dirty;
     TerrainField? _field;
     MapTileRect? _window;
+
+    /// <summary>Binds a verified closure to the current document. Open/Create clear it. Does not mark dirty.</summary>
+    public void BindNativeAssets(MapAssetClosure assets)
+    {
+        lock (_lock)
+        {
+            RequireDocumentLocked();
+            MapBoundDocumentValidation.Validate(_doc!, assets, _registry);
+            _nativeAssets = assets;
+        }
+    }
+
+    internal void ApplyNative(EditorCommand command, MapDocument document, MapDocRegistry registry) =>
+        NativePlacementTransaction.Run(document, command, false, _nativeAssets, registry);
 
     /// <summary>Occupied-tile ceiling below which <see cref="Open"/> loads a tiled document whole, mirroring
     /// <c>MapEditorOptions.WholeWorldTileLimit</c> so the GUI editor and this MCP session agree on when a
@@ -48,6 +64,7 @@ public sealed class MapEditSession
             MapDocument doc = MapDocumentWindowing.Load(path, options, WholeWorldTileLimit, EditorWindowRadius,
                 out _, out MapTileRect? window);
             _doc = doc;
+            _nativeAssets = null;
             _path = path;
             _manifests = CopyManifests(manifestPaths);
             _dirty = false;
@@ -104,6 +121,7 @@ public sealed class MapEditSession
             MapDocumentFile.Save(doc, path, _registry);
 
             _doc = doc;
+            _nativeAssets = null;
             _path = path;
             _manifests = CopyManifests(manifestPaths);
             _dirty = false;
@@ -385,7 +403,16 @@ public sealed class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
-            T result = fn(_doc!, _registry);
+            T result;
+            if (_doc!.ResolverIdentity is not null)
+            {
+                if (_nativeAssets is null) throw new MapDocumentException("Native editing requires an explicit asset closure binding.");
+                MapDocument candidate = NativeDocumentSnapshot.Clone(_doc, _registry);
+                result = fn(candidate, _registry);
+                MapBoundDocumentValidation.Validate(candidate, _nativeAssets, _registry);
+                NativeDocumentSnapshot.Publish(_doc, candidate);
+            }
+            else result = fn(_doc, _registry);
             _dirty = true;
             if (worldChanged) _field = null;
             return result;

@@ -513,33 +513,33 @@ public sealed partial class EditorToolController
         switch (_dragHandle)
         {
             case GizmoDrag.GizmoHandle.TranslateXZ:
-            {
-                Vector3 delta = GizmoDrag.TranslateXZDelta(_drag, origin, dir);
-                switch (_dragKind)
                 {
-                    case SelectionKind.Placement:
-                        _document.Execute(new MovePlacementCommand(_dragId,
-                            _drag.ObjectStart.X + delta.X, _drag.ObjectStart.Z + delta.Z, _dragStartY));
-                        break;
-                    case SelectionKind.Spawn:
-                        _document.Execute(new MoveSpawnCommand(_dragId,
-                            _drag.ObjectStart.X + delta.X, _drag.ObjectStart.Z + delta.Z));
-                        break;
-                    case SelectionKind.PlayerSpawn:
-                        _document.Execute(new MovePlayerSpawnCommand(_dragId,
-                            _drag.ObjectStart.X + delta.X, _drag.ObjectStart.Z + delta.Z));
-                        break;
-                    case SelectionKind.Feature:
-                        ExecuteFeatureEdit(FeatureGeometry.Translated(_dragStartFeature!, delta.X, delta.Z));
-                        break;
-                    case SelectionKind.Exclusion:
-                    case SelectionKind.ScatterOverride:
-                    case SelectionKind.Region:
-                        ExecuteShapeEdit(ShapeGeometry.Translated(_dragStartShape!, delta.X, delta.Z));
-                        break;
+                    Vector3 delta = GizmoDrag.TranslateXZDelta(_drag, origin, dir);
+                    switch (_dragKind)
+                    {
+                        case SelectionKind.Placement:
+                            _document.Execute(new MovePlacementCommand(_dragId,
+                                _drag.ObjectStart.X + delta.X, _drag.ObjectStart.Z + delta.Z, _dragStartY));
+                            break;
+                        case SelectionKind.Spawn:
+                            _document.Execute(new MoveSpawnCommand(_dragId,
+                                _drag.ObjectStart.X + delta.X, _drag.ObjectStart.Z + delta.Z));
+                            break;
+                        case SelectionKind.PlayerSpawn:
+                            _document.Execute(new MovePlayerSpawnCommand(_dragId,
+                                _drag.ObjectStart.X + delta.X, _drag.ObjectStart.Z + delta.Z));
+                            break;
+                        case SelectionKind.Feature:
+                            ExecuteFeatureEdit(FeatureGeometry.Translated(_dragStartFeature!, delta.X, delta.Z));
+                            break;
+                        case SelectionKind.Exclusion:
+                        case SelectionKind.ScatterOverride:
+                        case SelectionKind.Region:
+                            ExecuteShapeEdit(ShapeGeometry.Translated(_dragStartShape!, delta.X, delta.Z));
+                            break;
+                    }
+                    break;
                 }
-                break;
-            }
             case GizmoDrag.GizmoHandle.TranslateY:
                 if (_dragKind == SelectionKind.Placement)
                 {
@@ -551,11 +551,11 @@ public sealed partial class EditorToolController
                 switch (_dragKind)
                 {
                     case SelectionKind.Placement:
-                    {
-                        float newYaw = _drag.ObjectStartYaw + GizmoDrag.YawDelta(_drag, origin, dir);
-                        _document.Execute(new RotatePlacementCommand(_dragId, newYaw));
-                        break;
-                    }
+                        {
+                            float newYaw = _drag.ObjectStartYaw + GizmoDrag.YawDelta(_drag, origin, dir);
+                            _document.Execute(new RotatePlacementCommand(_dragId, newYaw));
+                            break;
+                        }
                     case SelectionKind.Feature:
                         // Rotate the grab-time snapshot by the whole-gesture yaw delta, so every frame rebuilds from
                         // a fixed start and the EditFeatureCommand same-index merge coalesces the drag into one step,
@@ -569,24 +569,24 @@ public sealed partial class EditorToolController
                 }
                 break;
             case GizmoDrag.GizmoHandle.Scale:
-            {
-                float factor = GizmoDrag.ScaleFactor(_drag, origin, dir);
-                switch (_dragKind)
                 {
-                    case SelectionKind.Placement:
-                        _document.Execute(new ScalePlacementCommand(_dragId, _drag.ObjectStartScale * factor));
-                        break;
-                    case SelectionKind.Feature:
-                        ExecuteFeatureEdit(FeatureGeometry.Scaled(_dragStartFeature!, factor));
-                        break;
-                    case SelectionKind.Exclusion:
-                    case SelectionKind.ScatterOverride:
-                    case SelectionKind.Region:
-                        ExecuteShapeEdit(ShapeGeometry.Scaled(_dragStartShape!, factor));
-                        break;
+                    float factor = GizmoDrag.ScaleFactor(_drag, origin, dir);
+                    switch (_dragKind)
+                    {
+                        case SelectionKind.Placement:
+                            _document.Execute(new ScalePlacementCommand(_dragId, _drag.ObjectStartScale * factor));
+                            break;
+                        case SelectionKind.Feature:
+                            ExecuteFeatureEdit(FeatureGeometry.Scaled(_dragStartFeature!, factor));
+                            break;
+                        case SelectionKind.Exclusion:
+                        case SelectionKind.ScatterOverride:
+                        case SelectionKind.Region:
+                            ExecuteShapeEdit(ShapeGeometry.Scaled(_dragStartShape!, factor));
+                            break;
+                    }
+                    break;
                 }
-                break;
-            }
         }
     }
 
@@ -626,34 +626,6 @@ public sealed partial class EditorToolController
 
     // ---- place -------------------------------------------------------------------------------------------
 
-    // Press-edge Add gives immediate feedback + selection, then the gesture stays held: while down, Move commands
-    // for the placed id track the ground hit. AddPlacementCommand.TryMerge absorbs those same-id moves, so the whole
-    // place-and-adjust folds into ONE undo step whose undo removes the placement. Release seals. A plain click (no
-    // hold-move) lands the lone Add exactly as before.
-    void UpdatePlacePlacement(in EditorFrameInput input)
-    {
-        if (Field is null) return;
-
-        if (input.PointerPressed)
-        {
-            if (!EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 p)) return;
-            string id = UniqueName("placement", PlacementIdExists);
-            _document.Execute(new AddPlacementCommand(new MapPlacement { Id = id, Kind = PlaceKind, X = p.X, Z = p.Z, Y = null }));
-            _document.Selection.Set(SelectionKind.Placement, id);
-            _placing = true; _placeKind = SelectionKind.Placement; _placeId = id;
-            return;
-        }
-
-        if (!_placing || _placeKind != SelectionKind.Placement) return;
-        if (input.PointerReleased) { _document.SealGesture(); _placing = false; return; }
-        if (input.PointerDown && FindPlacement(_placeId) is not null
-            && EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 hit))
-            _document.Execute(new MovePlacementCommand(_placeId, hit.X, hit.Z, null));
-    }
-
-    // The spawn place tool stamps either an NPC spawn or a player start, chosen by PlacingPlayerSpawn (the pinned
-    // "player spawn" palette entry). Both share the press-edge-Add-then-hold-to-adjust place-and-adjust path: the
-    // matching Add absorbs the same-id Move so the whole gesture is ONE undo step, sealed on release.
     void UpdatePlaceSpawn(in EditorFrameInput input)
     {
         if (Field is null) return;
@@ -735,32 +707,32 @@ public sealed partial class EditorToolController
         switch (target)
         {
             case DrawTarget.Region:
-            {
-                string name = UniqueName("region", RegionExists);
-                _document.Execute(new AddRegionCommand(new MapRegion { Name = name, Shape = shape }));
-                _document.SealGesture();
-                _document.Selection.Set(SelectionKind.Region, name);
-                break;
-            }
+                {
+                    string name = UniqueName("region", RegionExists);
+                    _document.Execute(new AddRegionCommand(new MapRegion { Name = name, Shape = shape }));
+                    _document.SealGesture();
+                    _document.Selection.Set(SelectionKind.Region, name);
+                    break;
+                }
             case DrawTarget.ScatterOverride:
-            {
-                // A fresh override starts as a pure shape (unit density, no kind mix, all layers): the inspector
-                // fills in the density multiplier and kind substitutions afterward.
-                _document.Execute(new AddScatterOverrideCommand(new MapScatterOverrideDoc { Shape = shape }));
-                _document.SealGesture();
-                int idx = _document.Doc.ScatterOverrides.Count - 1;
-                _document.Selection.Set(SelectionKind.ScatterOverride, idx.ToString(CultureInfo.InvariantCulture));
-                break;
-            }
+                {
+                    // A fresh override starts as a pure shape (unit density, no kind mix, all layers): the inspector
+                    // fills in the density multiplier and kind substitutions afterward.
+                    _document.Execute(new AddScatterOverrideCommand(new MapScatterOverrideDoc { Shape = shape }));
+                    _document.SealGesture();
+                    int idx = _document.Doc.ScatterOverrides.Count - 1;
+                    _document.Selection.Set(SelectionKind.ScatterOverride, idx.ToString(CultureInfo.InvariantCulture));
+                    break;
+                }
             case DrawTarget.Exclusion:
             default:
-            {
-                _document.Execute(new AddExclusionCommand(new MapExclusion { Shape = shape }));
-                _document.SealGesture();
-                int idx = _document.Doc.Exclusions.Count - 1;
-                _document.Selection.Set(SelectionKind.Exclusion, idx.ToString(CultureInfo.InvariantCulture));
-                break;
-            }
+                {
+                    _document.Execute(new AddExclusionCommand(new MapExclusion { Shape = shape }));
+                    _document.SealGesture();
+                    int idx = _document.Doc.Exclusions.Count - 1;
+                    _document.Selection.Set(SelectionKind.Exclusion, idx.ToString(CultureInfo.InvariantCulture));
+                    break;
+                }
         }
 
         // One shot: a completed draw commits exactly one shape, then falls back to Select so the next click picks
@@ -1003,19 +975,22 @@ public sealed partial class EditorToolController
             case RectShapeDoc r:
                 return new RectShapeDoc
                 {
-                    MinX = r.MinX + dx, MinZ = r.MinZ + dz, MaxX = r.MaxX + dx, MaxZ = r.MaxZ + dz,
+                    MinX = r.MinX + dx,
+                    MinZ = r.MinZ + dz,
+                    MaxX = r.MaxX + dx,
+                    MaxZ = r.MaxZ + dz,
                 };
             case PolygonShapeDoc poly:
-            {
-                var clone = new PolygonShapeDoc();
-                foreach (float[] point in poly.Points)
                 {
-                    float x = point.Length > 0 ? point[0] : 0f;
-                    float z = point.Length > 1 ? point[1] : 0f;
-                    clone.Points.Add(new[] { x + dx, z + dz });
+                    var clone = new PolygonShapeDoc();
+                    foreach (float[] point in poly.Points)
+                    {
+                        float x = point.Length > 0 ? point[0] : 0f;
+                        float z = point.Length > 1 ? point[1] : 0f;
+                        clone.Points.Add(new[] { x + dx, z + dz });
+                    }
+                    return clone;
                 }
-                return clone;
-            }
             default:
                 throw new InvalidOperationException($"No clone support for shape type '{shape.GetType().Name}'.");
         }

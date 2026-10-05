@@ -45,28 +45,10 @@ public static class MapAuthoredIdentity
 
     static void Validate(MapDocument doc, MapAssetClosure assets, MapResolveOptions options)
     {
-        if (doc.Tiles is { IsPartial: true }) throw new MapDocumentException("Complete native identity requires every tile to be loaded.");
-        if (doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 1 } || options.ResolverVersion != 1)
-            throw new MapDocumentException("Native identity requires supported payload and resolver version 1.");
-        if (doc.PlayableBounds is null) throw new MapDocumentException("Native identity requires playable bounds.");
-        if (string.IsNullOrWhiteSpace(options.BuilderId) || options.BuilderVersion <= 0 || string.IsNullOrWhiteSpace(options.OptionsHash))
-            throw new MapDocumentException("Native build identity requires builder ID, positive version and options hash.");
-        var errors = MapDocumentValidator.Validate(doc, MapDocRegistry.CreateDefault());
-        if (errors.Count != 0) throw new MapDocumentException(string.Join("\n", errors));
-        var roots = new HashSet<MapAssetRef>(doc.NativeAssets);
-        if (roots.Count != doc.NativeAssets.Count || roots.Count != assets.Roots.Count || !roots.SetEquals(assets.Roots))
-            throw new MapDocumentException("Native document roots do not match the verified asset closure.");
-        if (!float.IsFinite(doc.Bounds.MinX) || !float.IsFinite(doc.Bounds.MinZ) ||
-            !float.IsFinite(doc.Bounds.MaxX) || !float.IsFinite(doc.Bounds.MaxZ))
-            throw new MapDocumentException("Native storage bounds must be finite.");
-        foreach (MapPlacement p in doc.Placements)
-        {
-            if (string.IsNullOrWhiteSpace(p.AssetId)) throw new MapDocumentException($"Placement '{p.Id}' requires a native asset ID.");
-            assets.GetAsset(p.AssetId);
-            if (!float.IsFinite(p.X) || !float.IsFinite(p.Z) || (p.Y is { } y && !float.IsFinite(y)) ||
-                !float.IsFinite(p.Yaw) || !float.IsFinite(p.Scale) || p.Scale <= 0 || p.Tags is null || p.Tags.Any(t => t is null))
-                throw new MapDocumentException($"Placement '{p.Id}' has invalid transform or tags.");
-        }
+        if (options.ResolverVersion != 1 || string.IsNullOrWhiteSpace(options.BuilderId) ||
+            options.BuilderVersion <= 0 || string.IsNullOrWhiteSpace(options.OptionsHash))
+            throw new MapDocumentException("Native build identity requires supported resolver, builder ID, positive version and options hash.");
+        MapBoundDocumentValidation.Validate(doc, assets);
     }
 
     static void WriteNormalized(Utf8JsonWriter writer, JsonNode? node)

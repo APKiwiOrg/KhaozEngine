@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc;
 
 namespace KhaozEngine.MapEditor;
@@ -14,6 +15,23 @@ public sealed class EditorHistory
     readonly List<IEditorCommand> _undo = new();
     readonly List<IEditorCommand> _redo = new();
     bool _mergeBarrier;
+    MapAssetClosure? _nativeAssets;
+    internal MapDocRegistry Registry { get; set; } = MapDocRegistry.CreateDefault();
+
+    /// <summary>Binds a verified closure without changing history. Rebinding validates before replacing it.</summary>
+    public void BindNativeAssets(MapDocument document, MapAssetClosure assets)
+    {
+        MapBoundDocumentValidation.Validate(document, assets, Registry);
+        _nativeAssets = assets;
+    }
+
+    void Apply(MapDocument doc, IEditorCommand command, bool undo)
+    {
+        if (doc.ResolverIdentity is not null)
+            NativePlacementTransaction.Run(doc, command, undo, _nativeAssets, Registry);
+        else if (undo) command.Revert(doc);
+        else command.Apply(doc);
+    }
 
     /// <summary>True when there is a command to undo.</summary>
     public bool CanUndo => _undo.Count > 0;
@@ -48,7 +66,7 @@ public sealed class EditorHistory
     /// When the command coalesces into the current top (same gesture, no barrier), no new step is pushed.</summary>
     public void Execute(MapDocument doc, IEditorCommand command)
     {
-        command.Apply(doc);
+        Apply(doc, command, false);
         if (_mergeBarrier || _undo.Count == 0 || !_undo[^1].TryMerge(command))
             _undo.Add(command);
         _mergeBarrier = false;
@@ -60,8 +78,8 @@ public sealed class EditorHistory
     {
         if (_undo.Count == 0) return false;
         IEditorCommand c = _undo[^1];
+        Apply(doc, c, true);
         _undo.RemoveAt(_undo.Count - 1);
-        c.Revert(doc);
         _redo.Add(c);
         _mergeBarrier = true;
         return true;
@@ -73,8 +91,8 @@ public sealed class EditorHistory
     {
         if (_redo.Count == 0) return false;
         IEditorCommand c = _redo[^1];
+        Apply(doc, c, false);
         _redo.RemoveAt(_redo.Count - 1);
-        c.Apply(doc);
         _undo.Add(c);
         _mergeBarrier = true;
         return true;

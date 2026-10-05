@@ -1,5 +1,6 @@
 using System;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEditor;
@@ -16,6 +17,7 @@ public sealed class EditorDocument
     const int Unreachable = -1;
 
     int _savedMarker;
+    long _savedHighWater;
 
     // The dirty region accumulated across the commands that set WorldRebuildPending since the last acknowledge.
     // Three states, distinguished cleanly: nothing pending (both null/false), pending-with-rect (_pendingRegion set,
@@ -33,7 +35,12 @@ public sealed class EditorDocument
     {
         Doc = doc ?? throw new ArgumentNullException(nameof(doc));
         Registry = registry ?? MapDocRegistry.CreateDefault();
+        _savedHighWater = doc.NumericIdHighWaterMark;
+        History.Registry = Registry;
     }
+
+    /// <summary>Binds verified native assets without changing dirty state or history.</summary>
+    public void BindNativeAssets(MapAssetClosure assets) => History.BindNativeAssets(Doc, assets);
 
     /// <summary>The document being edited.</summary>
     public MapDocument Doc { get; }
@@ -72,10 +79,10 @@ public sealed class EditorDocument
     /// <see cref="CommandApplied"/>.</summary>
     public event Action<IEditorCommand>? CommandRedone;
 
-    /// <summary>True after any un-undone command since the last <see cref="MarkSaved"/>. Tracked by history
-    /// position: undoing back to the saved point clears it. If a fresh edit discards the history branch that
-    /// held the saved point, the saved state becomes unreachable and this stays true until the next save.</summary>
-    public bool IsDirty => History.UndoDepth != _savedMarker;
+    /// <summary>Tracks history position and persisted numeric allocation state since <see cref="MarkSaved"/>.
+    /// Undo to the saved point clears dirty only when the allocator also matches. A discarded saved history
+    /// branch remains dirty until the next save.</summary>
+    public bool IsDirty => History.UndoDepth != _savedMarker || Doc.NumericIdHighWaterMark != _savedHighWater;
 
     /// <summary>True when the last committed command changed terrain shape or scatter inputs (feature, scatter
     /// layer, exclusion, override, bounds), meaning the viewport must rebuild its streamed world.
@@ -173,6 +180,7 @@ public sealed class EditorDocument
     {
         History.SealGesture();
         _savedMarker = History.UndoDepth;
+        _savedHighWater = Doc.NumericIdHighWaterMark;
     }
 
     // Sets WorldRebuildPending and folds the command's dirty region into the pending accumulation, when the command

@@ -275,12 +275,15 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         _document = new EditorDocument(CreateDocument(registry), registry);
         _controller = new EditorToolController(_document)
         {
-            HeightOf = KindHeight, IsVisible = _visibility.IsElementVisible,
-            PlacementKindVisible = PropKindVisible, PlacementDrawnAt = PlacementDrawnAt,
+            HeightOf = KindHeight,
+            IsVisible = _visibility.IsElementVisible,
+            PlacementKindVisible = PropKindVisible,
+            PlacementDrawnAt = PlacementDrawnAt,
         };
         _viewport = new ViewportWorld(_scene, _options.ManifestPaths)
         {
-            ScatterLayerVisible = _visibility.GetLayer, RenderDistance = _options.RenderDistance,
+            ScatterLayerVisible = _visibility.GetLayer,
+            RenderDistance = _options.RenderDistance,
             TexturedPropsEnabled = () => _options.TexturedProps,
             PropCategoryResolver = _options.ResolvePropCategory,
             PropKindVisible = PropKindVisible,
@@ -900,25 +903,25 @@ public partial class MapEditorScene : GameScene, IGameScene3D
                 _document.Selection.Set(SelectionKind.BiomeBand, added.ToString(CultureInfo.InvariantCulture));
                 break;
             case OutlineActionKind.AddScatterLayer:
-            {
-                string name = GenerateLayerName("layer-", LiveScatterNames());
-                _document.Execute(new AddScatterLayerCommand(new MapScatterLayer { Name = name }));
-                _document.SealGesture();
-                _document.Selection.Set(SelectionKind.ScatterLayer, name);
-                break;
-            }
+                {
+                    string name = GenerateLayerName("layer-", LiveScatterNames());
+                    _document.Execute(new AddScatterLayerCommand(new MapScatterLayer { Name = name }));
+                    _document.SealGesture();
+                    _document.Selection.Set(SelectionKind.ScatterLayer, name);
+                    break;
+                }
             case OutlineActionKind.AddCompanionLayer:
-            {
-                string name = GenerateLayerName("companion-", LiveCompanionNames());
-                // Default the host to the first scatter layer if one exists, so the new companion validates on
-                // save without an extra step. With no scatter layers yet, HostLayer stays empty (invalid until the
-                // operator adds a scatter layer and picks it, a dev-tooling edge the HostLayer chooser handles).
-                string host = _document.Doc.ScatterLayers.Count > 0 ? _document.Doc.ScatterLayers[0].Name : "";
-                _document.Execute(new AddCompanionLayerCommand(new MapCompanionLayer { Name = name, HostLayer = host }));
-                _document.SealGesture();
-                _document.Selection.Set(SelectionKind.CompanionLayer, name);
-                break;
-            }
+                {
+                    string name = GenerateLayerName("companion-", LiveCompanionNames());
+                    // Default the host to the first scatter layer if one exists, so the new companion validates on
+                    // save without an extra step. With no scatter layers yet, HostLayer stays empty (invalid until the
+                    // operator adds a scatter layer and picks it, a dev-tooling edge the HostLayer chooser handles).
+                    string host = _document.Doc.ScatterLayers.Count > 0 ? _document.Doc.ScatterLayers[0].Name : "";
+                    _document.Execute(new AddCompanionLayerCommand(new MapCompanionLayer { Name = name, HostLayer = host }));
+                    _document.SealGesture();
+                    _document.Selection.Set(SelectionKind.CompanionLayer, name);
+                    break;
+                }
         }
     }
 
@@ -1468,35 +1471,6 @@ public partial class MapEditorScene : GameScene, IGameScene3D
                 "and the saved document. Editor view only, does not affect the game.")));
     }
 
-    void BuildPlacementInspector(string id)
-    {
-        if (Placement(id) is null) return;
-        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Identity")));
-        Func<string> cur = AddNameRow(SelectionKind.Placement, id,
-            v => Placement(v) is not null, (oldId, newId) => new RenamePlacementCommand(oldId, newId),
-            LocalizedText.Raw(
-                "Unique id for this placement. Renaming it updates the outline node and the current selection to " +
-                "follow the new id. Must be non-empty and not collide with another placement's id."));
-        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Transform")));
-        AddFloatRow(LocalizedText.Raw("X"),
-            () => Placement(cur())?.X ?? 0f, v => MovePlacement(cur(), x: v),
-            description: LocalizedText.Raw("World-space X coordinate, in world units."));
-        AddFloatRow(LocalizedText.Raw("Z"),
-            () => Placement(cur())?.Z ?? 0f, v => MovePlacement(cur(), z: v),
-            description: LocalizedText.Raw("World-space Z coordinate, in world units."));
-        AddFloatRow(LocalizedText.Raw("Yaw"),
-            () => Placement(cur())?.Yaw ?? 0f, v => _document.Execute(new RotatePlacementCommand(cur(), v)),
-            description: LocalizedText.Raw(
-                "Facing rotation around the vertical (Y) axis, in radians."));
-        AddFloatRow(LocalizedText.Raw("Scale"),
-            () => Placement(cur())?.Scale ?? 1f, v => _document.Execute(new ScalePlacementCommand(cur(), v)),
-            min: 0.01f,
-            description: LocalizedText.Raw(
-                "Uniform scale multiplier applied to the placed kit's mesh. 1 is the kit's authored size, below " +
-                "1 shrinks it, above 1 grows it."));
-        _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("State")));
-        AddVisibleRow(SelectionKind.Placement, cur);
-    }
 
     void BuildSpawnInspector(string id)
     {
@@ -2016,7 +1990,11 @@ public partial class MapEditorScene : GameScene, IGameScene3D
 
     static MapBiomeBand CloneBand(MapBiomeBand b) => new MapBiomeBand
     {
-        Start = b.Start, End = b.End, Biome = b.Biome, BaseHeight = b.BaseHeight, HillAmplitude = b.HillAmplitude,
+        Start = b.Start,
+        End = b.End,
+        Biome = b.Biome,
+        BaseHeight = b.BaseHeight,
+        HillAmplitude = b.HillAmplitude,
     };
 
     // A whole-value band edit: clone the live band, apply `mutate` to the clone, then route (clone, live) through
@@ -2206,7 +2184,8 @@ public partial class MapEditorScene : GameScene, IGameScene3D
                 description: LocalizedText.Raw(
                     "HostKinds names no kit id the host layer can actually place, so this companion currently " +
                     "spawns nothing. Either clear HostKinds to match every host, or list an id the host layer's " +
-                    "rules actually place.")) { TextColor = GuiTheme.Default.DangerBright });
+                    "rules actually place."))
+            { TextColor = GuiTheme.Default.DangerBright });
 
         _inspector.Rows.Add(new HeaderRow(LocalizedText.Raw("Output")));
         _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Kinds"),
@@ -2430,8 +2409,14 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         foreach (MapBiomeScatterRule r in l.Rules) rules.Add(CloneRule(r));
         return new MapScatterLayer
         {
-            Name = l.Name, Seed = l.Seed, CellSize = l.CellSize, Jitter = l.Jitter, MaxHeight = l.MaxHeight,
-            ScaleMin = l.ScaleMin, ScaleMax = l.ScaleMax, Rules = rules,
+            Name = l.Name,
+            Seed = l.Seed,
+            CellSize = l.CellSize,
+            Jitter = l.Jitter,
+            MaxHeight = l.MaxHeight,
+            ScaleMin = l.ScaleMin,
+            ScaleMax = l.ScaleMax,
+            Rules = rules,
         };
     }
 
@@ -2441,9 +2426,18 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         foreach (MapPropKind k in l.Kinds) kinds.Add(CloneKind(k));
         return new MapCompanionLayer
         {
-            Name = l.Name, HostLayer = l.HostLayer, Seed = l.Seed, HostKinds = new List<string>(l.HostKinds),
-            Kinds = kinds, CountMin = l.CountMin, CountMax = l.CountMax, RadiusMin = l.RadiusMin,
-            RadiusMax = l.RadiusMax, ScaleMin = l.ScaleMin, ScaleMax = l.ScaleMax, MaxHeight = l.MaxHeight,
+            Name = l.Name,
+            HostLayer = l.HostLayer,
+            Seed = l.Seed,
+            HostKinds = new List<string>(l.HostKinds),
+            Kinds = kinds,
+            CountMin = l.CountMin,
+            CountMax = l.CountMax,
+            RadiusMin = l.RadiusMin,
+            RadiusMax = l.RadiusMax,
+            ScaleMin = l.ScaleMin,
+            ScaleMax = l.ScaleMax,
+            MaxHeight = l.MaxHeight,
         };
     }
 
@@ -2600,8 +2594,10 @@ public partial class MapEditorScene : GameScene, IGameScene3D
     {
         (DiscShapeDoc d, "rect") => new RectShapeDoc
         {
-            MinX = d.CenterX - d.Radius, MinZ = d.CenterZ - d.Radius,
-            MaxX = d.CenterX + d.Radius, MaxZ = d.CenterZ + d.Radius,
+            MinX = d.CenterX - d.Radius,
+            MinZ = d.CenterZ - d.Radius,
+            MaxX = d.CenterX + d.Radius,
+            MaxZ = d.CenterZ + d.Radius,
         },
         (RectShapeDoc r, "disc") => new DiscShapeDoc
         {

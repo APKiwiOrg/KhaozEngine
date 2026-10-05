@@ -5,6 +5,14 @@ The KhaozEngine zone/map document format: one JSON file per zone capturing what 
 runtime builders that hand games back the exact objects they already consume. Human-diffable,
 git-committed in the game repo. GPU-free.
 
+## Bound native validation
+
+`MapBoundDocumentValidation.Validate(document, assets, registry)` checks a complete native document
+against a verified immutable `MapAssetClosure`, including exact roots, asset membership, identities and
+finite transforms. `ValidateLocal(document, registry)` checks document-local validity only.
+`MapAuthoredIdentity` reuses the bound checks and separately validates builder/hash options. Editing callers
+need no synthetic builder options and never resolve relative resource paths implicitly.
+
 ## Sections
 
 A map document (`MapDocument`) has:

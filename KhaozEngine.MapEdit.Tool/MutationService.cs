@@ -37,6 +37,11 @@ public sealed partial class MutationService(MapEditSession session)
         bool worldChanged = command.AffectsWorld;
         return session.Mutate((doc, registry) =>
         {
+            if (doc.ResolverIdentity is not null)
+            {
+                session.ApplyNative(command, doc, registry);
+                return new MutationResult(verb, detail, worldChanged);
+            }
             command.Apply(doc);
             IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
             if (errors.Count > 0)
@@ -71,6 +76,12 @@ public sealed partial class MutationService(MapEditSession session)
                     $"{command.GetType().Name}.AffectsWorld={command.AffectsWorld}.");
             }
 
+            if (doc.ResolverIdentity is not null)
+            {
+                string message = detail(command);
+                session.ApplyNative(command, doc, registry);
+                return new MutationResult(verb, message, worldChanged);
+            }
             command.Apply(doc);
             IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
             if (errors.Count > 0)
@@ -80,92 +91,6 @@ public sealed partial class MutationService(MapEditSession session)
             }
             return new MutationResult(verb, detail(command), worldChanged);
         }, worldChanged);
-    }
-
-    // ---- placements ---------------------------------------------------------------------------------------
-
-    /// <summary>Adds an authored placement. When <paramref name="id"/> is null, auto-generates
-    /// <c>p-&lt;kind&gt;-N</c> with the smallest N &gt;= 1 unique against existing placement ids. When
-    /// <paramref name="y"/> is null the placement keeps a null Y (ground-snap at load), and either way the result
-    /// reports <see cref="MutationResult.GroundY"/> as the field's sampled height at (x, z), so the caller always
-    /// sees the resolved height.</summary>
-    public MutationResult PlacementAdd(string kind, float x, float z, float? y = null,
-        float yaw = 0f, float scale = 1f, string? id = null, IReadOnlyList<string>? tags = null)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
-
-        float groundY = session.Field().SampleHeight(x, z);
-        string placementId = id ?? session.WithDocument((doc, _) =>
-            GenerateId(doc.Placements.Select(p => p.Id), $"p-{kind}-"));
-
-        var placement = new MapPlacement
-        {
-            Id = placementId,
-            Kind = kind,
-            X = x,
-            Z = z,
-            Y = y,
-            Yaw = yaw,
-            Scale = scale,
-            Tags = tags is null ? new List<string>() : new List<string>(tags),
-        };
-
-        MutationResult result = Apply(new AddPlacementCommand(placement), "placement_add",
-            $"placed {kind} at ({x:F1}, {z:F1}) ground {groundY:F2}");
-        return result with { GroundY = groundY, Id = placementId };
-    }
-
-    /// <summary>Moves a placement to a new XZ. When <paramref name="y"/> is provided it passes straight through.
-    /// When <paramref name="y"/> is null and <paramref name="keepExplicitY"/> is true, the placement's current Y
-    /// is preserved (the gizmo's drag policy). The default (<paramref name="y"/> null, flag false) forces a null
-    /// Y, re-snapping to ground, matching the R-key behavior.</summary>
-    public MutationResult PlacementMove(string id, float x, float z, float? y = null, bool keepExplicitY = false)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(id);
-
-        float? newY = y;
-        if (newY is null && keepExplicitY)
-        {
-            newY = session.WithDocument((doc, _) =>
-                doc.Placements.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.Ordinal))?.Y);
-        }
-
-        return Apply(new MovePlacementCommand(id, x, z, newY), "placement_move",
-            $"moved placement {id} to ({x:F1}, {z:F1})");
-    }
-
-    /// <summary>Sets a placement's yaw.</summary>
-    public MutationResult PlacementRotate(string id, float yaw)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        return Apply(new RotatePlacementCommand(id, yaw), "placement_rotate",
-            $"rotated placement {id} to yaw {yaw:F2}");
-    }
-
-    /// <summary>Sets a placement's uniform scale.</summary>
-    public MutationResult PlacementScale(string id, float scale)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        return Apply(new ScalePlacementCommand(id, scale), "placement_scale",
-            $"scaled placement {id} to {scale:F2}");
-    }
-
-    /// <summary>Renames a placement. The target id must be unique in the document (validated at the choke
-    /// point).</summary>
-    public MutationResult PlacementRename(string oldId, string newId)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(oldId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(newId);
-        MutationResult result = Apply(new RenamePlacementCommand(oldId, newId), "placement_rename",
-            $"renamed placement {oldId} to {newId}");
-        return result with { Id = newId };
-    }
-
-    /// <summary>Removes a placement by id.</summary>
-    public MutationResult PlacementRemove(string id)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        return Apply(new RemovePlacementCommand(id), "placement_remove", $"removed placement {id}");
     }
 
     // ---- spawns ---------------------------------------------------------------------------------------------
@@ -429,7 +354,11 @@ public sealed partial class MutationService(MapEditSession session)
             addedIndex = doc.Terrain.Biomes.Count;   // appended at the current tail
             var band = new MapBiomeBand
             {
-                Start = start, End = end, Biome = parsedBiome, BaseHeight = baseHeight, HillAmplitude = hillAmplitude,
+                Start = start,
+                End = end,
+                Biome = parsedBiome,
+                BaseHeight = baseHeight,
+                HillAmplitude = hillAmplitude,
             };
             return new AddBiomeBandCommand(band);
         }, "biome_band_add", _ => $"added {biome} biome band at index {addedIndex}", worldChanged: true);
@@ -451,7 +380,11 @@ public sealed partial class MutationService(MapEditSession session)
             MapBiomeBand old = doc.Terrain.Biomes[index];
             var newValue = new MapBiomeBand
             {
-                Start = start, End = end, Biome = parsedBiome, BaseHeight = baseHeight, HillAmplitude = hillAmplitude,
+                Start = start,
+                End = end,
+                Biome = parsedBiome,
+                BaseHeight = baseHeight,
+                HillAmplitude = hillAmplitude,
             };
             return new EditBiomeBandCommand(index, newValue, old);
         }, "biome_band_edit", _ => $"edited biome band at index {index}", worldChanged: true);
@@ -484,8 +417,13 @@ public sealed partial class MutationService(MapEditSession session)
 
         var layer = new MapScatterLayer
         {
-            Name = name, Seed = seed, CellSize = cellSize, Jitter = jitter, MaxHeight = maxHeight,
-            ScaleMin = scaleMin, ScaleMax = scaleMax,
+            Name = name,
+            Seed = seed,
+            CellSize = cellSize,
+            Jitter = jitter,
+            MaxHeight = maxHeight,
+            ScaleMin = scaleMin,
+            ScaleMax = scaleMax,
         };
         return Apply(new AddScatterLayerCommand(layer), "scatter_layer_add", $"added scatter layer '{name}'");
     }
@@ -662,11 +600,18 @@ public sealed partial class MutationService(MapEditSession session)
 
         var layer = new MapCompanionLayer
         {
-            Name = name, HostLayer = hostLayer, Seed = seed,
+            Name = name,
+            HostLayer = hostLayer,
+            Seed = seed,
             HostKinds = hostKinds is null ? new List<string>() : new List<string>(hostKinds),
             Kinds = kinds is null ? new List<MapPropKind>() : ParseKinds(kinds),
-            CountMin = countMin, CountMax = countMax, RadiusMin = radiusMin, RadiusMax = radiusMax,
-            ScaleMin = scaleMin, ScaleMax = scaleMax, MaxHeight = maxHeight,
+            CountMin = countMin,
+            CountMax = countMax,
+            RadiusMin = radiusMin,
+            RadiusMax = radiusMax,
+            ScaleMin = scaleMin,
+            ScaleMax = scaleMax,
+            MaxHeight = maxHeight,
         };
 
         bool mismatch = false;
@@ -1144,24 +1089,6 @@ public sealed partial class MutationService(MapEditSession session)
         return index.Value;
     }
 
-    MutationResult DuplicatePlacement(string id)
-    {
-        string? newId = null;
-        MutationResult result = Apply((doc, _) =>
-        {
-            MapPlacement source = doc.Placements.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.Ordinal))
-                ?? throw new InvalidOperationException($"No placement with id '{id}' in the document.");
-            newId = UniqueDuplicateName("placement",
-                n => doc.Placements.Any(p => string.Equals(p.Id, n, StringComparison.Ordinal)));
-            return new AddPlacementCommand(new MapPlacement
-            {
-                Id = newId, Kind = source.Kind, X = source.X + DuplicateOffset, Z = source.Z + DuplicateOffset,
-                Y = source.Y, Yaw = source.Yaw, Scale = source.Scale, Tags = new List<string>(source.Tags),
-            });
-        }, "element_duplicate", _ => $"duplicated placement '{id}' as '{newId}'", worldChanged: false);
-        return result with { Id = newId };
-    }
-
     MutationResult DuplicateSpawn(string id)
     {
         string? newId = null;
@@ -1173,8 +1100,12 @@ public sealed partial class MutationService(MapEditSession session)
                 n => doc.Spawns.Any(s => string.Equals(s.Id, n, StringComparison.Ordinal)));
             return new AddSpawnCommand(new MapSpawn
             {
-                Id = newId, ArchetypeId = source.ArchetypeId, X = source.X + DuplicateOffset,
-                Z = source.Z + DuplicateOffset, Enabled = source.Enabled, Tags = new List<string>(source.Tags),
+                Id = newId,
+                ArchetypeId = source.ArchetypeId,
+                X = source.X + DuplicateOffset,
+                Z = source.Z + DuplicateOffset,
+                Enabled = source.Enabled,
+                Tags = new List<string>(source.Tags),
             });
         }, "element_duplicate", _ => $"duplicated spawn '{id}' as '{newId}'", worldChanged: false);
         return result with { Id = newId };
@@ -1193,8 +1124,12 @@ public sealed partial class MutationService(MapEditSession session)
             // own duplicate relies on, so handing it a plain new instance here is enough.
             return new AddPlayerSpawnCommand(new MapPlayerSpawn
             {
-                Id = newId, X = source.X + DuplicateOffset, Z = source.Z + DuplicateOffset, Yaw = source.Yaw,
-                Enabled = source.Enabled, Tags = new List<string>(source.Tags),
+                Id = newId,
+                X = source.X + DuplicateOffset,
+                Z = source.Z + DuplicateOffset,
+                Yaw = source.Yaw,
+                Enabled = source.Enabled,
+                Tags = new List<string>(source.Tags),
             });
         }, "element_duplicate", _ => $"duplicated player spawn '{id}' as '{newId}'", worldChanged: false);
         return result with { Id = newId };
@@ -1361,8 +1296,11 @@ public sealed partial class MutationService(MapEditSession session)
             // no uniquify, no offset, mirroring the GUI's own biome band duplicate.
             var clone = new MapBiomeBand
             {
-                Start = source.Start, End = source.End, Biome = source.Biome,
-                BaseHeight = source.BaseHeight, HillAmplitude = source.HillAmplitude,
+                Start = source.Start,
+                End = source.End,
+                Biome = source.Biome,
+                BaseHeight = source.BaseHeight,
+                HillAmplitude = source.HillAmplitude,
             };
             newIndex = doc.Terrain.Biomes.Count;   // appended at the current tail
             return new AddBiomeBandCommand(clone);
@@ -1474,8 +1412,14 @@ public sealed partial class MutationService(MapEditSession session)
     /// <see cref="EditScatterLayerCommand"/> so its new and old values never alias the same nested list.</summary>
     static MapScatterLayer WithRules(MapScatterLayer old, List<MapBiomeScatterRule> rules) => new()
     {
-        Name = old.Name, Seed = old.Seed, CellSize = old.CellSize, Jitter = old.Jitter,
-        MaxHeight = old.MaxHeight, ScaleMin = old.ScaleMin, ScaleMax = old.ScaleMax, Rules = rules,
+        Name = old.Name,
+        Seed = old.Seed,
+        CellSize = old.CellSize,
+        Jitter = old.Jitter,
+        MaxHeight = old.MaxHeight,
+        ScaleMin = old.ScaleMin,
+        ScaleMax = old.ScaleMax,
+        Rules = rules,
     };
 
     /// <summary>Counts the document elements that reference the scatter layer named <paramref name="name"/>: a

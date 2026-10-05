@@ -1606,3 +1606,33 @@ full suite, version bump, ratchet exception, push, merge or release is assigned 
 Controller verifies and pushes, obtains fresh scoped review, then merges into R1 and runs full combined
 verification. R1's five prior MapDoc format fixes stay in R1. Main, releases and game adoption remain
 unchanged. This task completion will wake the controller. No cleanup result is claimed yet.
+
+
+### OA10 cleanup partial proof and KESIZE owner gate, 2026-10-05
+
+- Cleanup worker returned partial with a concrete guard conflict. Commit 77ab2ec6ecc48a80e614acf843fc2d7cd247c1d4
+  is pushed on fix/wa-format-baseline and formats 268 of the 273 exact allowlisted source files.
+  Controller verified path membership and zero ASCII-nonwhitespace differences against the base.
+- All 273 formatted versions passed the included-file formatter check and Roslyn token/trivia proof,
+  with zero mismatches across 627,175 tokens including 35,327 literal tokens and 35 raw/verbatim strings.
+  Controller inspected the helper and actual slot exits. Leading doc-comment exterior indentation is
+  normalized, with comment content and markers unchanged. No source semantics change is claimed.
+- Git's line-oriented whitespace-insensitive diff still detects split/joined lines, so it is not used
+  as a green proof. Byte-stripped equality and exact token/trivia checks are the authoritative evidence.
+- Five formatted files exceed their existing KESIZE caps. They were held back in a cleanly applicable
+  patch. The 268-file commit passes the file-size guard. The other four repository guards passed.
+- Exact requested baseline updates: EditorCommandsTests 2115 to 2141, EditorToolTests 1793 to 1808,
+  MapEditorSceneTests 4415 to 4431, GoldenSnapshotTests 1601 to 1632, Room2DGui 1296 to 1300.
+  This is 92 lines of formatter-only growth. No baseline value has been changed and no guard bypassed.
+- Engine AGENTS.md states baseline growth and exemptions require owner approval. OA10 explicitly
+  excluded ratchet changes, so controller requests approval for these five exact values. Arbitrary
+  source splitting or blank-line removal to evade the structure guard is not used.
+- Cleanup proof is preserved through 8a9130d41 in the cleanup plan Outcome and
+  docs/superpowers/plans/proofs/2026-10-05-format-baseline. proof.json holds counts and log hashes.
+  held-whitespace.json and proposed-ratchet.json contain exact patches as JSON string fields.
+  Raw patch context lines initially tripped git diff whitespace diagnostics. Encoding preserves the
+  exact patch payloads without those artifact-only warnings. The encoded-artifact diff check passed.
+- Logs are /tmp/grimhollow-orch/logs/wa-format-baseline-20261005. No new full suite or build ran.
+  No reviewer is dispatched yet. After the baseline decision, finish the five files, verify, obtain
+  one fresh scoped review, merge into R1, then run combined full checks. Main, pack, tags and game
+  adoption remain unchanged. If approval is declined, the five-file format gate still blocks R1.

@@ -642,8 +642,8 @@ git commit -m "feat(mapeditor): preserve native identity through history"
 - Consumes existing: `MapEditSession.Open(string path, IReadOnlyList<string>? manifestPaths = null) -> OpenResult`, `Save() -> SaveResult`, `Validate(bool verifyWholeWorld = false) -> ValidateResult`, `Summary() -> MapSummary`.
 - Consumes existing: `AssetEntry(string id, string file, float heightMeters, string source, string license, ColliderShape? collider = null, bool surface = false, string? heightmap = null, string? collisionShape = null, string? collisionProxy = null, bool textured = false, string? category = null, string? lodFile = null)`.
 - Produces new: `NativeDocumentService.ValidateComplete(MapDocument document, IMapAssetSource source, MapResolveOptions options) -> MapResolvedDocument`, `NativeDocumentSummary(string AuthoredHash, int PlacementCount, int NumericIdCount, long NumericIdHighWaterMark, string ClosureHash)` with decimal converters on numeric fields.
-- Produces new: `MapAssetManifestAdapter.ToAssetEntry(MapResolvedAsset asset, string resourceRoot) -> AssetEntry`. Preserve-source-scale mesh loading is R3, the adapter must not promise normalized native runtime meshes in R1.
-- New lifecycle fixture `NativeLifecycleFixture : IDisposable` exposes `MapEditSession Session`, `string ValidPath`, `string BadPath`, `MapResolvedAsset Asset`, `string ResourceRoot`, `void CorruptResource()`, `byte[] ReadSavedBytes()` and prepares a native document plus local resources in an isolated temporary directory.
+- Produces new: `MapAssetManifestAdapter.ToAssetEntry(MapAssetClosure closure, string assetId, string resourceRoot) -> AssetEntry`. Preserve-source-scale mesh loading is R3, the adapter must not promise normalized native runtime meshes in R1.
+- New lifecycle fixture `NativeLifecycleFixture : IDisposable` exposes `MapEditSession Session`, `string ValidPath`, `string BadPath`, `MapResolvedAsset Asset`, `MapAssetClosure Closure`, `string ResourceRoot`, `void CorruptResource()`, `byte[] ReadSavedBytes()` and prepares a native document plus local resources in an isolated temporary directory.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -672,7 +672,7 @@ public void NativeLifecycle_BadOpenAndAdapterPreservePublishedSession()
     Assert.Throws<MapDocumentException>(() => f.Session.Open(f.BadPath));
     Assert.Equal(id,f.Session.Summary().Id);
     Assert.Equal(before,f.ReadSavedBytes());
-    var adapted = MapAssetManifestAdapter.ToAssetEntry(f.Asset,f.ResourceRoot);
+    var adapted = MapAssetManifestAdapter.ToAssetEntry(f.Closure,f.Asset.Id,f.ResourceRoot);
     Assert.Equal(f.Asset.Id,adapted.Id);
     Assert.Equal(f.Asset.Source,adapted.Source);
     Assert.Equal(f.Asset.License,adapted.License);
@@ -1168,3 +1168,56 @@ work into R9 under #1302. Neither round is approved.
 | `verify-mapedit.tool.log` | 0 | `a14f2082cf803bb000d3eb9ce766856674a14730ba4ebca73a14d519a225e4eb` |
 | `verify-mapeditor.tests.log` | 0 | `8ade7faf0869c98eadece8b389d52d8cc780a3cd04381c85824f71cf85d4972c` |
 | `size-final.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+
+
+### Task 5 accepted and Task 6 preflight, 2026-10-05
+
+Fresh review 2 approves spec compliance and code quality for `020ef8a77..6ac4f6b9d`, resolving
+I1, M1, M2 and N1. Controller verified scene/command routes, binding reset order, original proofs
+and the docs-only move to `34ddf13e0`. Task 5 is complete with a non-blocking remainder.
+
+Review 2 Minor 1 is verified: rejection clears an active native gesture without sealing its merge
+barrier, so a later same-ID inspector Move can merge with the previous accepted Add/Move. Filed
+after local/live prior-art checks as [#1303](https://github.com/APKiwiOrg/KhaozEngine/issues/1303).
+Assign it and the two cosmetic blank-line nits to final R1 triage before release readiness, alongside
+#1293 and #1298. This does not block Task 6. #1302 remains the later R9 copy-cost work.
+
+R1-T6-1 reconciles the final task with the actual immutable closure and transaction APIs:
+
+- Adapter signature is `ToAssetEntry(MapAssetClosure closure, string assetId, string resourceRoot)`.
+  Select the descriptor from that closure and obtain paths/digests through GetResource. Asset ID,
+  resource ID and path are different namespaces. Require an explicit absolute root. Check every
+  returned mesh/compatibility LOD path against the verified digest before returning it. Use the
+  first declared LOD for AssetEntry's single LOD slot and retain all native metadata in the closure.
+  No asset registry duplication, GPU access, mesh normalization or fabricated collision mapping.
+- Add an immutable `AssetClosure` accessor to MapResolvedDocument, retaining the same verified
+  closure passed to its constructor. This additive render-free seam lets ValidateComplete return
+  its actual closure for session binding and later consumers, without a second load or duplicate
+  resource registry. Task 6 owns this small MapResolvedDocument change and its tests/docs.
+- Derive the native resource root explicitly from the absolute document path, file parent for
+  monolithic maps and the map directory for tiled maps. Anchor it for the session. Do not resolve
+  assets against later ambient working-directory changes. Preserve the declared root-path policy.
+- Native Open, Save, Validate and Summary use fresh complete closure validation and the resolver.
+  Session validation uses one documented stable builder/options identity for its actual R1
+  analytic-support policy. Failed Open cannot replace prior document, binding, path or dirty state.
+  Validate reports false plus closure findings. Summary cannot report success for stale/incomplete
+  closure. Partial native loads must refuse clearly, not publish a complete result.
+- SetWindow and other document replacements must validate candidate state before publication and
+  then bind that candidate's newly verified closure. This supersedes the manual-rebind-only
+  expectation from Task 5, never permitting old bindings to survive replacement. Update the
+  affected fixtures to prove fresh binding and failed replacement preservation.
+- Native conversion and retile writes are lifecycle boundaries too. Validate before any write,
+  including references against a conversion destination's resource root. Refuse missing or stale
+  destination resources rather than copying resources or silently rebasing references. Preserve
+  prior in-memory state on failure. Keep existing analytic behavior and tiled overwrite guards.
+- Native monolithic saves stage a sibling file and atomically promote after validation. Do not
+  weaken the existing tiled storage guard. No native GUI asset-loading integration is added here.
+- NativeDocumentSummary uses decimal-string transport for the Int64 high-water mark. Ordinary
+  Int32 counts remain JSON numbers. Any added optional numeric-ID result uses its scoped Int64
+  converter. Do not add global numeric conversion or promise R10 query parity.
+
+Task 6 scope includes the shared resolved document accessor, lifecycle-related session helpers and
+updated native lifecycle/window/history fixtures needed for automatic verified binding. Cohesive
+partial extraction is permitted for file-size limits. Update dependency documentation for the
+planned forward MapDoc reference. Focused task checks run first. The controller owns full round
+verification after Task 6 and whole-branch review, so the worker must not run the full suite now.

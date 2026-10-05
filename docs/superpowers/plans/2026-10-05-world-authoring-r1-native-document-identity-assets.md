@@ -1771,3 +1771,13 @@ Tag CI run 37369358693 is pending. Its GitHub package publication is not yet cla
 R2 begins with read-only cave-representation research only, with no implementation approval.
 Research dispatch metadata and brief live in .superpowers/sdd/2026-10-06-world-authoring-r2-owner-gate
 on this planning worktree. The owner gate follows evidence review.
+
+
+### Publication job acquisition failure and bounded retry, 2026-10-06
+
+Tag CI 37369358693 attempt 1 could not acquire a hosted runner for build-test-pack (job 111962340784).
+GitHub reported the acquisition failure after 15m3s. The job had no runner and no steps, so no build,
+test, pack or publish ran there. All three SQL jobs succeeded. One retry of the exact failed job was
+accepted, exit 0, and attempt 2 is queued on the same tag commit. No code or workflow change, retag
+or test loop occurred. Publication remains pending. The release proof JSON records this state.
+If allocation fails again, the external blocker must be reported without an automatic retry loop.

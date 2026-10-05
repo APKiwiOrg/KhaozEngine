@@ -1,0 +1,34 @@
+{
+  "source_head": "da6f46af192745016bb7feaa538dc2960b5a6c46",
+  "approval": "OA11 2026-10-06",
+  "source_files_formatted": 273,
+  "final_commit_paths": 6,
+  "prior_268_unchanged": true,
+  "exact_approved_baseline_patch": true,
+  "ascii_nonwhitespace_mismatches": 0,
+  "token_mismatches": 0,
+  "roundtrip_failures": 0,
+  "error_diagnostic_deltas": 0,
+  "tokens": 627175,
+  "literal_tokens": 35327,
+  "raw_or_verbatim_strings": 35,
+  "checks": [
+    {
+      "log": "01-tokcheck.log",
+      "exit": 0,
+      "sha256": "c9f656ab0839c04d9bc08bb520480c75fc0e80d8a30291ac352e72999f964ce8"
+    },
+    {
+      "log": "02-format-verify.log",
+      "exit": 0,
+      "sha256": "239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c"
+    },
+    {
+      "log": "03-guards.log",
+      "exit": 0,
+      "sha256": "0f07fb5a0b0d70f8aa939daced3c93f3a9eed21a3a32ba87fa4753db35edbaa0"
+    }
+  ],
+  "format_warning": "Generic workspace-loading warning, no expanded details at default verbosity",
+  "full_combined_r1_checks": "pending after cleanup review and merge"
+}

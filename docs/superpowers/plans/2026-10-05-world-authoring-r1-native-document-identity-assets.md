@@ -1101,3 +1101,23 @@ server cells, precision, water appearance/cost/walker behavior, storage and esti
 R1 task bodies in that planning revision are unchanged. The active execution Outcome stays here.
 The final R1 review must reconcile the OA9 compatibility audit draft in SDD against Tasks 5/6 before
 release readiness. No later round choice or approval is implied.
+
+
+### Task 5 review 1 disposition, 2026-10-05
+
+Fresh review found Task 5 spec-compliant and code-quality approval conditional on Important I1.
+Controller verified I1 in the scene load, tool and inspector paths. Native GUI edits have no bound
+closure and rejection escapes scene input dispatch. R1-T5-2 requires visible scene rejection without
+uncaught frame/widget exceptions, while retaining atomic command refusal and deferring actual source
+loading to lifecycle work. Same implementer owns a TDD fix, then a fresh scoped review.
+
+M1 stale placement_rename tool descriptions and M2 SetWindow retaining a binding across successful
+document replacement are verified and assigned to that fix. Two narrow N1 comment/diagnostic nits
+are included. M3 whole-document cloning, including twice on MCP command-backed edits, is verified
+as a code-cost observation with no latency measurement. It is deferred to R9 in [#1302](https://github.com/APKiwiOrg/KhaozEngine/issues/1302).
+
+The placement-only native history protocol is within incremental C1/R1 scope. R2 and later native
+command families must extend its atomic protocol rather than bypass it. Direct validated MCP
+mutation callbacks and GUI command-backed operations currently differ. Record this at each later
+round refinement before claiming GUI/MCP parity. Task 5 remains unaccepted and Task 6 is gated.
+Original review, controller fix brief and eventual fix report are in R1 SDD.

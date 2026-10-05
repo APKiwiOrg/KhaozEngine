@@ -1543,3 +1543,20 @@ remain. Root will verify the bounded fix and obtain a fresh scoped review, not a
 - Next step after clean scoped review is the full serial Release verification, then documented
   integration/pack and the owner-only release gate. A remaining material finding blocks integration.
   No main integration, release tag, feed refresh or game adoption has occurred.
+
+
+### R1 scoped review accepted and full verification started, 2026-10-05
+
+- Scoped review 2 returns spec PASS, quality APPROVED and every M1/M2/M3/N1/#1306 item ADDRESSED,
+  with no new breakage. Full report is original R1 SDD whole-review-2.md. Controller accepts the
+  verdict against the previously inspected diffs and proof logs. #1302 and #1305 limits are unchanged.
+- Corrected the scratch report's digest-test explanation. The 63-hex-plus-newline case fails the
+  required hexadecimal count. Length constraints catch 64 hex plus newline. The negative lookahead
+  is a sound additional exact-end guard, not independently exercised by these cases. No code change.
+- Current main and origin/main were fetched and remain de78df336. Latest tag is v20.25.0.
+  Source head is 7e04bc01a, current pre-verification docs head ca33cc692. Tree was clean.
+- Full verification is now active through the unchanged shared slot runner, whose SHA-256 matches
+  HANDOFF. Log directory is /tmp/grimhollow-orch/logs/wa-r1-full-20261005. The optional retry wrapper
+  was absent, so its invocation exited 127 without running any target. The existing slot-run.sh
+  directly owns 01-build.log. Format and suite follow serially only after successful preceding checks.
+- This is not an integration or release proof yet. A failing check blocks integration.

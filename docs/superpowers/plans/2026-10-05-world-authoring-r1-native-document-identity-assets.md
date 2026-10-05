@@ -1465,3 +1465,24 @@ tag or permission to tag. Recheck refs again before final integration/release ac
 | `16-mapdoc-tests.log` | 0 | `29c06f2e16c7597119399b28a45b6e0ae78a6ed4b4104a5ba845f0810e5fad81` |
 | `17-client-prediction.log` | 0 | `587c12a67cfc5e9c72ef0934ed6defe351fcb74613699fdfdeae78356229d25b` |
 | `18-guards.log` | 0 | `9eafd63548925867ce3af53a91376b2b647c780afd0334674e92e7f3d77395cd` |
+
+
+### Whole-branch review 1 dispatched, 2026-10-05
+
+Review range is current-main `de78df336571d9a5db97b7b9b4f07c842f11556b` through
+`1b5f8d74c22aa549caa988cdb6caf6455b02830b`. It contains all R1 production/test/living-doc work,
+staged 20.27.0 and the OA9 audit, excluding the already reconciled upstream prediction change.
+The new version/doc guards passed through the shared slot, exit 0, at
+/tmp/grimhollow-orch/logs/wa-r1-review-doc-guards.log. Full solution checks remain pending.
+
+One fresh reviewer uses the exact Gauge Claude Work Opus 5.5 high target, task
+`node:delegated-task:command%3Amcp%3A87f7c6df-2d3b-43b2-8cf0-9d291f9ecd43%3Adelegate-task%3Awa-r1-whole-branch-review1-20261005`.
+SDD identity is whole-review-1-dispatch.json, package review-whole-r1.diff, eventual report
+whole-review-1.md. Prior task approvals are context, not substitutes for this cross-task review.
+
+A new source-inspected lead [#1306](https://github.com/APKiwiOrg/KhaozEngine/issues/1306) asks whether
+mutating an Add command's retained caller payload Id after acceptance can make a later Move of
+another placement coalesce incorrectly. The accepted native snapshot and mutable merge key are
+different objects. No runtime proof or final defect verdict is claimed. Review must confirm or
+refute the reachable behavior and ownership contract. #1305 also needs explicit risk disposition.
+#1302 remains R9. No integration or release approval is implied by this dispatch.

@@ -1560,3 +1560,29 @@ remain. Root will verify the bounded fix and obtain a fresh scoped review, not a
   was absent, so its invocation exited 127 without running any target. The existing slot-run.sh
   directly owns 01-build.log. Format and suite follow serially only after successful preceding checks.
 - This is not an integration or release proof yet. A failing check blocks integration.
+
+
+### R1 full verification result and baseline gate, 2026-10-05
+
+- Full Release solution build passed, exit 0, zero warnings and errors. Full Release non-LiveSocket
+  suite passed, exit 0, 25,360 passed, 1,275 skipped, zero failed across 28 test-project summaries.
+  Required dashes, prose, file-size, agent-instruction and documentation-version guards passed, exit 0.
+- Full solution format verification exited 2, with 3,530 WHITESPACE diagnostics in 273 files. Every
+  affected file is unchanged from reconciled main de78df336. No R1 source file is among them. The
+  formatter also emitted a generic workspace-loading warning without details at default verbosity.
+- Filed [#1308](https://github.com/APKiwiOrg/KhaozEngine/issues/1308), confidence/verified, after local
+  and live issue searches. #1293 was limited to the five MapDoc files already repaired in R1. This
+  solution-wide baseline cleanup was not silently included in the R1 implementation scope.
+- Durable proof inventory is proofs/2026-10-05-world-authoring-r1-full-format-baseline.json alongside
+  this plan. It contains every affected file/count, zero changed-path overlap, command/exit and log hash.
+  proofs/2026-10-05-world-authoring-r1-full-verification.json records all four check exits and log hashes.
+  Actual logs remain under /tmp/grimhollow-orch/logs/wa-r1-full-20261005.
+- R1-V1: after the format failure, the controller ran the independent full suite against the successful
+  build to complete the verification evidence. This did not waive the format gate. No code changed
+  between build and tests, only program bookkeeping. There was one full suite and no test loop.
+- Integration is blocked on an explicit owner disposition of #1308. Controller recommends a separate
+  whitespace-only baseline cleanup, with an exact no-nonwhitespace-difference check and a fresh format
+  verification, then reconciliation through the R1 worktree. No such cleanup has been started.
+- No main merge, pack, shared-feed refresh or tag occurred. 20.27.0 remains staged. No manual playtest
+  is required for these headless proofs. The next owner check is the baseline-cleanup scope, before
+  R1 can reach its separate release-authorization gate.

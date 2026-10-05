@@ -1,0 +1,36 @@
+{
+  "projects": 28,
+  "failed": 0,
+  "passed": 25360,
+  "skipped": 1275,
+  "total": 26635,
+  "failed_projects": [],
+  "log_sha256": "5052cc0300e52da16268e8a20d34f63fd1c957c8525d63bc6c51c51077c53f79",
+  "source_head": "7e04bc01a9e02f8916a9207d37f3488e2162f386",
+  "reconciled_main": "de78df336571d9a5db97b7b9b4f07c842f11556b",
+  "checks": [
+    {
+      "log": "01-build.log",
+      "exit": 0,
+      "sha256": "9825f47a93017ef56b786768230400b025e6739ed2b975975653b9d6e0ceb54d"
+    },
+    {
+      "log": "02-format.log",
+      "exit": 2,
+      "sha256": "443610dbb407bc9be50798bcbdf8de0949e928c96929ca47cf418b405e7f7821"
+    },
+    {
+      "log": "03-suite.log",
+      "exit": 0,
+      "sha256": "5052cc0300e52da16268e8a20d34f63fd1c957c8525d63bc6c51c51077c53f79"
+    },
+    {
+      "log": "04-guards.log",
+      "exit": 0,
+      "sha256": "9418ac662d08e90dfab47a8997b59d39172f65a38f19877a548054cce563ade8"
+    }
+  ],
+  "suite_command": "dotnet test KhaozEngine.slnx -c Release --no-build --filter \"Category!=LiveSocket\"",
+  "build_warnings": 0,
+  "build_errors": 0
+}

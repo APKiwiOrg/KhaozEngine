@@ -964,3 +964,20 @@ reviewer's result and format result are processed. No Task 3 completion claim is
 | `wa-r1-t3-format-production.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
 | `wa-r1-t3-format-tests.log` | 2 | `a6533aefedbb815cbefedc83a4734b95d35335ab46311c8023f2181e9ce10294` |
 | `wa-r1-t3-guards-final.log` | 0 | `cf381f4506e6e547dc0dcbf3a92bc81963015344ab5f4546609dca20f85b1683` |
+
+
+### Task 3 accepted and Task 4 interface refinement, 2026-10-05
+
+Fresh native review approved Task 3 spec compliance and code quality, with no new findings. Controller
+inspected publication, graph/hash and defensive-copy code. The review's pending-format note is resolved
+by actual final test-file format exit0 at14:30:38 local, same reviewed code. The formatter log digest is
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.
+Task 3 is complete for `264e3f647..c6e7b5edd`, with64closure and91regression tests passing, zero failures,
+skips or warnings, and production/test formatting clean. Report is task-3-review-1.md in SDD.
+
+Ruling R1-T4-1. Task 4 must retain the explicit immutable root-reference set in MapAssetClosure and
+compare document root IDs, paths, digests and payload versions exactly before resolve/hash. Looking
+up named resources in the complete graph alone cannot detect a different/extra root set. Task 4 may
+add the cohesive root-reference snapshot/accessor to the existing closure type and tests. This fulfils
+the already approved matching-closure contract. If wrong, the cost is a small API/test adjustment.
+Task 4 also owns exact high-water/tombstone storage and native manifest/tile unknown-member refusal.

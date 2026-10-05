@@ -201,7 +201,9 @@ namespace KhaozEngine.Tests.MapEditor
 
         static Dictionary<string, string> KitCategories() => new(StringComparer.Ordinal)
         {
-            ["oak"] = "trees", ["pine"] = "trees", ["boulder"] = "rocks",
+            ["oak"] = "trees",
+            ["pine"] = "trees",
+            ["boulder"] = "rocks",
         };
 
         // A press-origin tap on a TreeView (press and release both at `at`), the way the pointer fires taps.
@@ -417,8 +419,15 @@ namespace KhaozEngine.Tests.MapEditor
 
         // A depth-only clone of a sample lake, so its footprint matches the original's (a bounded dirty region).
         static LakeFeatureDoc LakeDepth(LakeFeatureDoc src, float depth) =>
-            new() { CenterX = src.CenterX, CenterZ = src.CenterZ, Radius = src.Radius, Depth = depth,
-                InnerFraction = src.InnerFraction, OuterFraction = src.OuterFraction };
+            new()
+            {
+                CenterX = src.CenterX,
+                CenterZ = src.CenterZ,
+                Radius = src.Radius,
+                Depth = depth,
+                InnerFraction = src.InnerFraction,
+                OuterFraction = src.OuterFraction
+            };
 
         static RebuildDispatchScene PushDispatchScene(bool partialSucceeds = true)
         {
@@ -593,7 +602,7 @@ namespace KhaozEngine.Tests.MapEditor
 
             DirtyFull(scene);
             scene.RunRebuildCheck(0.1f);   // 0.1s < 0.25s: still throttled, proving the partial frames above never
-                                            // advanced the full-rebuild timer.
+                                           // advanced the full-rebuild timer.
             Assert.DoesNotContain("full", scene.Log);
         }
 
@@ -1712,9 +1721,9 @@ namespace KhaozEngine.Tests.MapEditor
             {
                 MapDocument doc = ValidDoc();
                 doc.Terrain.Biomes.Add(new MapBiomeBand
-                    { Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Meadow, BaseHeight = 2f, HillAmplitude = 3f });
+                { Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Meadow, BaseHeight = 2f, HillAmplitude = 3f });
                 doc.Terrain.Biomes.Add(new MapBiomeBand
-                    { Start = 40f, End = null, Biome = KhaozEngine.Terrain.BiomeId.Mountains });
+                { Start = 40f, End = null, Biome = KhaozEngine.Terrain.BiomeId.Mountains });
                 return doc;
             });
 
@@ -1745,7 +1754,7 @@ namespace KhaozEngine.Tests.MapEditor
             {
                 MapDocument doc = ValidDoc();
                 doc.Terrain.Biomes.Add(new MapBiomeBand
-                    { Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Meadow });
+                { Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Meadow });
                 return doc;
             });
             scene.Document.Selection.Set(SelectionKind.BiomeBand, "0");
@@ -1897,7 +1906,11 @@ namespace KhaozEngine.Tests.MapEditor
                 doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f });
                 doc.Terrain.Features.Add(new FlattenFeatureDoc
                 {
-                    Name = "taken", CenterX = 1f, CenterZ = 1f, Radius = 4f, TargetHeight = 1f,
+                    Name = "taken",
+                    CenterX = 1f,
+                    CenterZ = 1f,
+                    Radius = 4f,
+                    TargetHeight = 1f,
                 });
                 return doc;
             });
@@ -2870,7 +2883,9 @@ namespace KhaozEngine.Tests.MapEditor
             MapDocument doc = ValidDoc();
             doc.ScatterLayers.Add(new MapScatterLayer
             {
-                Name = "trees", Seed = 11, CellSize = 5f,
+                Name = "trees",
+                Seed = 11,
+                CellSize = 5f,
                 Rules = { new MapBiomeScatterRule
                 {
                     Biome = KhaozEngine.Terrain.BiomeId.Meadow, Density = 0.4f,
@@ -4095,7 +4110,8 @@ namespace KhaozEngine.Tests.MapEditor
         {
             var scene = PushDocScene(() => OverrideDoc(DiscOverride(5f), new MapScatterOverrideDoc
             {
-                Name = "taken", Shape = new DiscShapeDoc { Radius = 3f },
+                Name = "taken",
+                Shape = new DiscShapeDoc { Radius = 3f },
             }));
 
             scene.Document.Selection.Set(SelectionKind.ScatterOverride, "0");

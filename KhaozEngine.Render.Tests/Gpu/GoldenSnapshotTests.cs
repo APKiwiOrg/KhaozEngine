@@ -142,32 +142,48 @@ namespace KhaozEngine.Tests.Gpu
                     // Red filled circle, partway through its sweep (fill smaller than the outline ring).
                     scene.DrawGroundDecal(new GroundDecal
                     {
-                        Shape = DecalShape.Circle, Center = new Vector3(-1.2f, 0.0f, 0.6f),
+                        Shape = DecalShape.Circle,
+                        Center = new Vector3(-1.2f, 0.0f, 0.6f),
                         Size = new Vector4(1.4f, 0, 0, 0),
                         FillColor = new Color(0.95f, 0.15f, 0.1f, 0.55f),
                         OutlineColor = new Color(1f, 0.8f, 0.2f, 0.9f),
-                        EdgeThickness = 0.08f, FillFraction = 0.7f, FlashAdd = 0f,
-                        Blend = DecalBlend.Alpha, YTolerance = 0.3f, MaxStep = 0.4f,
+                        EdgeThickness = 0.08f,
+                        FillFraction = 0.7f,
+                        FlashAdd = 0f,
+                        Blend = DecalBlend.Alpha,
+                        YTolerance = 0.3f,
+                        MaxStep = 0.4f,
                     });
                     // Cyan ring (annulus) off to the other side.
                     scene.DrawGroundDecal(new GroundDecal
                     {
-                        Shape = DecalShape.Ring, Center = new Vector3(1.6f, 0.0f, 1.6f),
+                        Shape = DecalShape.Ring,
+                        Center = new Vector3(1.6f, 0.0f, 1.6f),
                         Size = new Vector4(0.7f, 1.3f, 0, 0),
                         FillColor = new Color(0.2f, 0.8f, 0.9f, 0.55f),
                         OutlineColor = new Color(0.7f, 1f, 1f, 0.9f),
-                        EdgeThickness = 0.08f, FillFraction = 1f, FlashAdd = 0f,
-                        Blend = DecalBlend.Alpha, YTolerance = 0.3f, MaxStep = 0.4f,
+                        EdgeThickness = 0.08f,
+                        FillFraction = 1f,
+                        FlashAdd = 0f,
+                        Blend = DecalBlend.Alpha,
+                        YTolerance = 0.3f,
+                        MaxStep = 0.4f,
                     });
                     // Orange cone facing +X, running under the box (occlusion check on an oriented shape).
                     scene.DrawGroundDecal(new GroundDecal
                     {
-                        Shape = DecalShape.Cone, Center = new Vector3(0.2f, 0.0f, -1.6f),
-                        Rotation = 0f, Size = new Vector4(2.2f, 0.5f, 0, 0),
+                        Shape = DecalShape.Cone,
+                        Center = new Vector3(0.2f, 0.0f, -1.6f),
+                        Rotation = 0f,
+                        Size = new Vector4(2.2f, 0.5f, 0, 0),
                         FillColor = new Color(0.9f, 0.5f, 0.1f, 0.55f),
                         OutlineColor = new Color(1f, 0.85f, 0.3f, 0.9f),
-                        EdgeThickness = 0.08f, FillFraction = 1f, FlashAdd = 0f,
-                        Blend = DecalBlend.Alpha, YTolerance = 0.3f, MaxStep = 0.4f,
+                        EdgeThickness = 0.08f,
+                        FillFraction = 1f,
+                        FlashAdd = 0f,
+                        Blend = DecalBlend.Alpha,
+                        YTolerance = 0.3f,
+                        MaxStep = 0.4f,
                     });
                 },
                 frames: 2);
@@ -1007,18 +1023,30 @@ namespace KhaozEngine.Tests.Gpu
                     // frozen time keep every term deterministic.
                     scene.DrawDistortion(new DistortionSprite
                     {
-                        Position = new Vector3(-2.2f, 1.1f, -1.2f), Size = 1.3f,
-                        Shape = DistortionShape.Ripple, ShapeParam = 0.2f, Strength = 2.2f, Seed = 0.13f,
+                        Position = new Vector3(-2.2f, 1.1f, -1.2f),
+                        Size = 1.3f,
+                        Shape = DistortionShape.Ripple,
+                        ShapeParam = 0.2f,
+                        Strength = 2.2f,
+                        Seed = 0.13f,
                     });
                     scene.DrawDistortion(new DistortionSprite
                     {
-                        Position = new Vector3(2.0f, 1.0f, -1.0f), Size = 1.3f,
-                        Shape = DistortionShape.Lens, ShapeParam = 0.4f, Strength = 2.0f, Seed = 0.41f,
+                        Position = new Vector3(2.0f, 1.0f, -1.0f),
+                        Size = 1.3f,
+                        Shape = DistortionShape.Lens,
+                        ShapeParam = 0.4f,
+                        Strength = 2.0f,
+                        Seed = 0.41f,
                     });
                     scene.DrawDistortion(new DistortionSprite
                     {
-                        Position = new Vector3(0f, 1.2f, 0.4f), Size = 1.4f,
-                        Shape = DistortionShape.Heat, ShapeParam = 0.5f, Strength = 1.6f, Seed = 0.7f,
+                        Position = new Vector3(0f, 1.2f, 0.4f),
+                        Size = 1.4f,
+                        Shape = DistortionShape.Heat,
+                        ShapeParam = 0.5f,
+                        Strength = 1.6f,
+                        Seed = 0.7f,
                     });
                 },
                 frames: 2);
@@ -1487,7 +1515,10 @@ namespace KhaozEngine.Tests.Gpu
             var follow = new FollowCamera3D
             {
                 Target = new Vector3(0f, 0.5f, 0f),
-                Pitch = 0.7f, Yaw = 0.5f, Distance = 9f, HeightOffset = 1.2f,
+                Pitch = 0.7f,
+                Yaw = 0.5f,
+                Distance = 9f,
+                HeightOffset = 1.2f,
                 AspectRatio = (float)W / H,
             };
             byte[] rgba = Render3DSnapshot.Capture(W, H,

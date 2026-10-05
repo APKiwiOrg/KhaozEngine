@@ -212,7 +212,8 @@ namespace KhaozEngine.Showcase
                     ShowcaseStrings.TabWidgets, ShowcaseStrings.TabSprites, ShowcaseStrings.TabInput,
                     ShowcaseStrings.TabImmediate, ShowcaseStrings.TabScreens, ShowcaseStrings.TabDrag,
                 },
-                _a.Small, new Rect((db.Width - barW) * 0.5f, 56f, barW, 40f)) { TextScale = 0.85f };   // six labels share 920
+                _a.Small, new Rect((db.Width - barW) * 0.5f, 56f, barW, 40f))
+            { TextScale = 0.85f };   // six labels share 920
 
             _pages = new ToolkitPage[]
             {
@@ -439,7 +440,9 @@ namespace KhaozEngine.Showcase
             _vertPips = new ProgressBar(default, 0.5f)
             {
                 FillDirection = FillDirection.BottomToTop,
-                SegmentCount = 4, SegmentSpacing = 4f, SegmentFillMode = SegmentFillMode.Discrete,
+                SegmentCount = 4,
+                SegmentSpacing = 4f,
+                SegmentFillMode = SegmentFillMode.Discrete,
                 FillColor = new Vector4(1f, 0.5f, 0.5f, 1f),
             };
 
@@ -452,7 +455,8 @@ namespace KhaozEngine.Showcase
             _skinBar = new ProgressBar(default, 0.7f) { Style = skinStyle, TrackColor = Vector4.One, FillColor = accent };
             _info = new Button(default, ShowcaseStrings.WidgetsHoverForTip, A.Small);
             _confirm = new Button(default, ShowcaseStrings.WidgetsConfirm, A.Small,
-                () => Stack.Add(new PopupScreen(A, _name.Text, _difficulty.SelectedLabel))) { Style = GuiStyle.Primary };
+                () => Stack.Add(new PopupScreen(A, _name.Text, _difficulty.SelectedLabel)))
+            { Style = GuiStyle.Primary };
 
             _tip = new Tooltip(A.Small, A.Small) { Viewport = new Vector2(db.Width, db.Height) };
         }

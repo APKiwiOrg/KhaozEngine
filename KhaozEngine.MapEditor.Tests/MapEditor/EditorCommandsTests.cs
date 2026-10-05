@@ -1173,8 +1173,15 @@ namespace KhaozEngine.Tests.MapEditor
 
         // A depth-only clone of the sample lake (feature 0), so its footprint matches the original's exactly.
         static LakeFeatureDoc LakeDepth(LakeFeatureDoc src, float depth) =>
-            new() { CenterX = src.CenterX, CenterZ = src.CenterZ, Radius = src.Radius, Depth = depth,
-                InnerFraction = src.InnerFraction, OuterFraction = src.OuterFraction };
+            new()
+            {
+                CenterX = src.CenterX,
+                CenterZ = src.CenterZ,
+                Radius = src.Radius,
+                Depth = depth,
+                InnerFraction = src.InnerFraction,
+                OuterFraction = src.OuterFraction
+            };
 
         [Fact]
         public void PendingRebuildRegion_NullWhenNothingPending()
@@ -1193,8 +1200,14 @@ namespace KhaozEngine.Tests.MapEditor
             var flatten = (FlattenFeatureDoc)doc.Terrain.Features[1];
 
             ed.Execute(new EditFeatureCommand(0, LakeDepth(lake, 9f), lake));
-            var flattenNew = new FlattenFeatureDoc { CenterX = flatten.CenterX, CenterZ = flatten.CenterZ,
-                Radius = flatten.Radius, TargetHeight = 7f, Blend = flatten.Blend };
+            var flattenNew = new FlattenFeatureDoc
+            {
+                CenterX = flatten.CenterX,
+                CenterZ = flatten.CenterZ,
+                Radius = flatten.Radius,
+                TargetHeight = 7f,
+                Blend = flatten.Blend
+            };
             ed.Execute(new EditFeatureCommand(1, flattenNew, flatten));
 
             Assert.True(ed.WorldRebuildPending);
@@ -1560,7 +1573,11 @@ namespace KhaozEngine.Tests.MapEditor
         {
             var band = new MapBiomeBand
             {
-                Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Forest, BaseHeight = 3f, HillAmplitude = 5f,
+                Start = 0f,
+                End = 40f,
+                Biome = KhaozEngine.Terrain.BiomeId.Forest,
+                BaseHeight = 3f,
+                HillAmplitude = 5f,
             };
             AssertRoundTrip(Sample(), new AddBiomeBandCommand(band));
 
@@ -1613,7 +1630,11 @@ namespace KhaozEngine.Tests.MapEditor
 
         static MapScatterLayer Layer(string name) => new MapScatterLayer
         {
-            Name = name, Seed = 7, CellSize = 4f, ScaleMin = 0.5f, ScaleMax = 1.5f,
+            Name = name,
+            Seed = 7,
+            CellSize = 4f,
+            ScaleMin = 0.5f,
+            ScaleMax = 1.5f,
             Rules = { new MapBiomeScatterRule { Biome = KhaozEngine.Terrain.BiomeId.Meadow, Density = 0.4f,
                 Kinds = { new MapPropKind { Id = "oak", Weight = 2f } } } },
         };
@@ -1805,8 +1826,13 @@ namespace KhaozEngine.Tests.MapEditor
         public void CompanionLayer_AddEditRemove_HostLayerValidated()
         {
             // Add a companion round-trips and affects the world.
-            var comp = new MapCompanionLayer { Name = "canopy", HostLayer = "trees", HostKinds = { "pine_a" },
-                Kinds = { new MapPropKind { Id = "vine", Weight = 1f } } };
+            var comp = new MapCompanionLayer
+            {
+                Name = "canopy",
+                HostLayer = "trees",
+                HostKinds = { "pine_a" },
+                Kinds = { new MapPropKind { Id = "vine", Weight = 1f } }
+            };
             AssertRoundTrip(Sample(), new AddCompanionLayerCommand(comp));
 
             var edAdd = new EditorDocument(Sample());

@@ -55,7 +55,8 @@ struct ProbePoseIntegratorCallbacks : IPoseIntegratorCallbacks
     public void IntegrateVelocity(
         Vector<int> bodyIndices, Vector3Wide position, QuaternionWide orientation,
         BodyInertiaWide localInertia, Vector<int> integrationMask, int workerIndex,
-        Vector<float> dt, ref BodyVelocityWide velocity) { }
+        Vector<float> dt, ref BodyVelocityWide velocity)
+    { }
 }
 
 struct ProbeNarrowPhaseCallbacks : INarrowPhaseCallbacks

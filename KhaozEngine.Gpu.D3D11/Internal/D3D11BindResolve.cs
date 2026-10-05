@@ -54,24 +54,24 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                     return ViewOf(range.Buffer, file);
 
                 case ID3D11BindableViews views:
-                {
-                    object? view = file switch
                     {
-                        D3D11RegisterFile.ConstantBuffer => views.BufferObject,
-                        D3D11RegisterFile.ShaderResource => views.ShaderResourceViewObject,
-                        D3D11RegisterFile.Sampler => views.SamplerStateObject,
-                        D3D11RegisterFile.UnorderedAccess => views.UnorderedAccessViewObject,
-                        _ => throw new ArgumentOutOfRangeException(nameof(file), file,
-                            "Unmapped Direct3D 11 register file in a bind."),
-                    };
+                        object? view = file switch
+                        {
+                            D3D11RegisterFile.ConstantBuffer => views.BufferObject,
+                            D3D11RegisterFile.ShaderResource => views.ShaderResourceViewObject,
+                            D3D11RegisterFile.Sampler => views.SamplerStateObject,
+                            D3D11RegisterFile.UnorderedAccess => views.UnorderedAccessViewObject,
+                            _ => throw new ArgumentOutOfRangeException(nameof(file), file,
+                                "Unmapped Direct3D 11 register file in a bind."),
+                        };
 
-                    return view ?? throw new ArgumentException(
-                        $"A {resource.GetType().Name} was bound at a '{Letter(file)}' register of the native "
-                        + "Direct3D 11 backend and has no view for it. Views follow from a resource's DECLARED "
-                        + "usage at creation (decision X1 creates them all eagerly and the emitter creates none), "
-                        + "so this is either a layout element of the wrong kind or a resource created without the "
-                        + "usage bit its layout asks for.", nameof(resource));
-                }
+                        return view ?? throw new ArgumentException(
+                            $"A {resource.GetType().Name} was bound at a '{Letter(file)}' register of the native "
+                            + "Direct3D 11 backend and has no view for it. Views follow from a resource's DECLARED "
+                            + "usage at creation (decision X1 creates them all eagerly and the emitter creates none), "
+                            + "so this is either a layout element of the wrong kind or a resource created without the "
+                            + "usage bit its layout asks for.", nameof(resource));
+                    }
 
                 default:
                     throw new ArgumentException(

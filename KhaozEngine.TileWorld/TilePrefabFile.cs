@@ -38,8 +38,12 @@ public static class TilePrefabFile
         ArgumentNullException.ThrowIfNull(prefab);
         var dto = new PrefabDto
         {
-            Name = prefab.Name, Width = prefab.Width, Height = prefab.Height, PlaneCount = prefab.PlaneCount,
-            Objects = prefab.Objects, Markers = prefab.Markers,
+            Name = prefab.Name,
+            Width = prefab.Width,
+            Height = prefab.Height,
+            PlaneCount = prefab.PlaneCount,
+            Objects = prefab.Objects,
+            Markers = prefab.Markers,
             Planes = prefab.Planes.Select(p => p is null ? null : new PlaneDto
             {
                 HeightsRelative = p.HeightsRelative is null ? null : TileLayerCodec.Encode(p.HeightsRelative),

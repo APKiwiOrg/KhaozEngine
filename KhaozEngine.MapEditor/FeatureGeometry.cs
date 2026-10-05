@@ -87,18 +87,34 @@ internal static class FeatureGeometry
     {
         LakeFeatureDoc l => new LakeFeatureDoc
         {
-            Name = l.Name, CenterX = l.CenterX, CenterZ = l.CenterZ, Radius = l.Radius, Depth = l.Depth,
-            InnerFraction = l.InnerFraction, OuterFraction = l.OuterFraction,
+            Name = l.Name,
+            CenterX = l.CenterX,
+            CenterZ = l.CenterZ,
+            Radius = l.Radius,
+            Depth = l.Depth,
+            InnerFraction = l.InnerFraction,
+            OuterFraction = l.OuterFraction,
         },
         FlattenFeatureDoc f => new FlattenFeatureDoc
         {
-            Name = f.Name, CenterX = f.CenterX, CenterZ = f.CenterZ, Radius = f.Radius,
-            TargetHeight = f.TargetHeight, Blend = f.Blend,
+            Name = f.Name,
+            CenterX = f.CenterX,
+            CenterZ = f.CenterZ,
+            Radius = f.Radius,
+            TargetHeight = f.TargetHeight,
+            Blend = f.Blend,
         },
         RidgeFeatureDoc r => new RidgeFeatureDoc
         {
-            Name = r.Name, PointX = r.PointX, PointZ = r.PointZ, DirectionX = r.DirectionX, DirectionZ = r.DirectionZ,
-            Height = r.Height, Width = r.Width, PassAlong = r.PassAlong, PassWidth = r.PassWidth,
+            Name = r.Name,
+            PointX = r.PointX,
+            PointZ = r.PointZ,
+            DirectionX = r.DirectionX,
+            DirectionZ = r.DirectionZ,
+            Height = r.Height,
+            Width = r.Width,
+            PassAlong = r.PassAlong,
+            PassWidth = r.PassWidth,
         },
         RimFeatureDoc rim => CloneRim(rim),
         _ => throw new InvalidOperationException($"No clone support for feature type '{feature.Type}'."),
@@ -108,8 +124,15 @@ internal static class FeatureGeometry
     {
         var clone = new RimFeatureDoc
         {
-            Name = r.Name, CenterX = r.CenterX, CenterZ = r.CenterZ, InnerRadius = r.InnerRadius, OuterRadius = r.OuterRadius,
-            WallHeight = r.WallHeight, Ruggedness = r.Ruggedness, Seed = r.Seed, CrestFrequency = r.CrestFrequency,
+            Name = r.Name,
+            CenterX = r.CenterX,
+            CenterZ = r.CenterZ,
+            InnerRadius = r.InnerRadius,
+            OuterRadius = r.OuterRadius,
+            WallHeight = r.WallHeight,
+            Ruggedness = r.Ruggedness,
+            Seed = r.Seed,
+            CrestFrequency = r.CrestFrequency,
         };
         foreach (RimPassDoc pass in r.Passes)
             clone.Passes.Add(new RimPassDoc { AngleRadians = pass.AngleRadians, HalfWidth = pass.HalfWidth, Falloff = pass.Falloff });
@@ -157,24 +180,24 @@ internal static class FeatureGeometry
         switch (start)
         {
             case RidgeFeatureDoc r:
-            {
-                var c = (RidgeFeatureDoc)Clone(r);
-                float cos = MathF.Cos(deltaRadians), sin = MathF.Sin(deltaRadians);
-                float nx = r.DirectionX * cos - r.DirectionZ * sin;
-                float nz = r.DirectionX * sin + r.DirectionZ * cos;
-                float len = MathF.Sqrt(nx * nx + nz * nz);
-                if (len < 1e-6f) return c;   // degenerate zero direction: nothing to rotate, keep the clone's carried value
-                c.DirectionX = nx / len;
-                c.DirectionZ = nz / len;
-                return c;
-            }
+                {
+                    var c = (RidgeFeatureDoc)Clone(r);
+                    float cos = MathF.Cos(deltaRadians), sin = MathF.Sin(deltaRadians);
+                    float nx = r.DirectionX * cos - r.DirectionZ * sin;
+                    float nz = r.DirectionX * sin + r.DirectionZ * cos;
+                    float len = MathF.Sqrt(nx * nx + nz * nz);
+                    if (len < 1e-6f) return c;   // degenerate zero direction: nothing to rotate, keep the clone's carried value
+                    c.DirectionX = nx / len;
+                    c.DirectionZ = nz / len;
+                    return c;
+                }
             case RimFeatureDoc rim when rim.Passes.Count > 0:
-            {
-                var c = (RimFeatureDoc)Clone(rim);
-                foreach (RimPassDoc pass in c.Passes)
-                    pass.AngleRadians = WrapToPi(pass.AngleRadians + deltaRadians);
-                return c;
-            }
+                {
+                    var c = (RimFeatureDoc)Clone(rim);
+                    foreach (RimPassDoc pass in c.Passes)
+                        pass.AngleRadians = WrapToPi(pass.AngleRadians + deltaRadians);
+                    return c;
+                }
             default: return null;
         }
     }

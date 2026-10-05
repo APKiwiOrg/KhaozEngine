@@ -174,11 +174,17 @@ namespace KhaozEngine.Game
             var cmd = new MoveCommand(move, run, cameraYaw, jump, FaceCamera);
             var tuning = new MoveTuning(WalkSpeed, RunSpeed, CapsuleHalfHeight, MaxSlopeRadians, CapsuleRadius)
             {
-                Gravity = Gravity, JumpSpeed = JumpSpeed, MaxFallSpeed = MaxFallSpeed,
-                CoyoteTime = CoyoteTime, JumpBuffer = JumpBuffer, AirControl = AirControl,
-                GroundedEpsilon = GroundedEpsilon, StepHeight = StepHeight,
+                Gravity = Gravity,
+                JumpSpeed = JumpSpeed,
+                MaxFallSpeed = MaxFallSpeed,
+                CoyoteTime = CoyoteTime,
+                JumpBuffer = JumpBuffer,
+                AirControl = AirControl,
+                GroundedEpsilon = GroundedEpsilon,
+                StepHeight = StepHeight,
                 MaxStepClimbSpeed = MaxStepClimbSpeed,
-                AirMomentum = AirMomentum, AirBrakeAccel = AirBrakeAccel,
+                AirMomentum = AirMomentum,
+                AirBrakeAccel = AirBrakeAccel,
                 FacingTurnSpeed = FacingTurnSpeed,
                 TractionHysteresisRadians = TractionHysteresisRadians,
                 SlideFrictionRampRadians = SlideFrictionRampRadians,

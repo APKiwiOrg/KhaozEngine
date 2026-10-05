@@ -142,7 +142,9 @@ namespace KhaozEngine.Render3D.Internal
                 one[count++] = new ScreenDisc(sunNdc, new SkyDisc
                 {
                     Color = new KhaozEngine.Primitives.Color(sunColor.X, sunColor.Y, sunColor.Z, sunOpacity),
-                    Radius = sunRadius, HaloStrength = haloStrength, HaloFalloff = haloFalloff,
+                    Radius = sunRadius,
+                    HaloStrength = haloStrength,
+                    HaloFalloff = haloFalloff,
                 });
             }
             return ShadeDiscs(ndc, aspect, horizon, zenith, one[..count], worldHorizon);
@@ -249,7 +251,9 @@ namespace KhaozEngine.Render3D.Internal
                 {
                     Direction = sunDirection,
                     Color = new KhaozEngine.Primitives.Color(sunColor.X, sunColor.Y, sunColor.Z, 1f),
-                    Radius = sunRadius, HaloStrength = haloStrength, HaloFalloff = haloFalloff,
+                    Radius = sunRadius,
+                    HaloStrength = haloStrength,
+                    HaloFalloff = haloFalloff,
                 };
             }
             return ShadeDirectionDiscs(direction, horizon, zenith, one[..count], sunStrength, ground);

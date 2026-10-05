@@ -116,14 +116,16 @@ namespace KhaozEngine.Render3D
                 bool castsShadows = true, bool invertShadowDissolve = false, float dissolveComplement = 0f,
                 bool shadowOnly = false)
                 : this(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge, castsShadows,
-                    invertShadowDissolve, dissolveComplement, shadowOnly, MotionKey.None) { }
+                    invertShadowDissolve, dissolveComplement, shadowOnly, MotionKey.None)
+            { }
 
             /// <summary>One queued draw from its descriptor: every knob of <paramref name="draw"/>, its motion key
             /// included, through the same checks as the public constructor.</summary>
             internal Instance(in RigidInstanceDraw draw)
                 : this(draw.Mesh, draw.World, draw.Tint, draw.Material, draw.Dissolve, draw.DissolveEdgeWidth,
                     draw.DissolveEdgeColor, draw.CastsShadows, draw.InvertShadowDissolve, draw.DissolveComplement,
-                    draw.ShadowOnly, draw.Motion) { }
+                    draw.ShadowOnly, draw.Motion)
+            { }
 
             Instance(MeshHandle mesh, Matrix4x4 world, Color tint, Material material, float dissolveThreshold,
                 float dissolveEdgeWidth, Vector4 dissolveEdge, bool castsShadows, bool invertShadowDissolve,
@@ -157,9 +159,14 @@ namespace KhaozEngine.Render3D
             float dissolveComplement)
             => Draw(new RigidInstanceDraw(mesh, world)
             {
-                Tint = tint, Material = material, Dissolve = dissolve, DissolveEdgeWidth = edgeWidth,
-                DissolveEdgeColor = edgeColor, CastsShadows = castsShadows,
-                InvertShadowDissolve = invertShadowDissolve, DissolveComplement = dissolveComplement,
+                Tint = tint,
+                Material = material,
+                Dissolve = dissolve,
+                DissolveEdgeWidth = edgeWidth,
+                DissolveEdgeColor = edgeColor,
+                CastsShadows = castsShadows,
+                InvertShadowDissolve = invertShadowDissolve,
+                DissolveComplement = dissolveComplement,
             });
     }
 }

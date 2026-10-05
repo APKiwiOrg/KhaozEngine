@@ -25,17 +25,17 @@ public class PhysicsGroundProbeTests
         var verts = new ModelVertex[cols * cols];
         int vi = 0;
         for (int iz = 0; iz <= res; iz++)
-        for (int ix = 0; ix <= res; ix++)
-            verts[vi++] = new ModelVertex(new Vector3((float)ix / res * size, height, (float)iz / res * size), Vector3.UnitY, Vector4.One);
+            for (int ix = 0; ix <= res; ix++)
+                verts[vi++] = new ModelVertex(new Vector3((float)ix / res * size, height, (float)iz / res * size), Vector3.UnitY, Vector4.One);
         var inds = new System.Collections.Generic.List<uint>();
         for (int iz = 0; iz < res; iz++)
-        for (int ix = 0; ix < res; ix++)
-        {
-            uint i0 = (uint)(iz * cols + ix), i1 = (uint)(iz * cols + ix + 1);
-            uint i2 = (uint)((iz + 1) * cols + ix), i3 = (uint)((iz + 1) * cols + ix + 1);
-            inds.Add(i0); inds.Add(i2); inds.Add(i3);
-            inds.Add(i0); inds.Add(i3); inds.Add(i1);
-        }
+            for (int ix = 0; ix < res; ix++)
+            {
+                uint i0 = (uint)(iz * cols + ix), i1 = (uint)(iz * cols + ix + 1);
+                uint i2 = (uint)((iz + 1) * cols + ix), i3 = (uint)((iz + 1) * cols + ix + 1);
+                inds.Add(i0); inds.Add(i2); inds.Add(i3);
+                inds.Add(i0); inds.Add(i3); inds.Add(i1);
+            }
         var mesh = new GltfMesh(verts, inds.ToArray());
         return TerrainChunkCollision.Build(mesh, surfaceVertexCount: verts.Length)!;
     }
@@ -116,7 +116,9 @@ public class PhysicsGroundProbeTests
 
         var probe = new PhysicsGroundProbe(world)
         {
-            ProbeHeight = 100f, ProbeRange = 200f, GroundMobility = QueryMobility.All,
+            ProbeHeight = 100f,
+            ProbeRange = 200f,
+            GroundMobility = QueryMobility.All,
         };
         // Now the crate is ground: the probe stops at the crate top (~8.5), not the terrain at 2.
         Assert.Equal(8.5f, probe.Height(10f, 10f), 2);

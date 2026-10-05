@@ -19,34 +19,34 @@ public static partial class CharacterMovement
     private readonly record struct ClimbPacing(Vector3 Position, bool Grounded, float TimeSinceGrounded,
         float VerticalVelocity, bool StepUpRose, float ClimbRate, float ClimbRateEwma);
 
-        // 4b. Smooth step-up climb: cap the per-tick RISE onto step/prop support above the terrain floor to
-        //     MaxStepClimbSpeed. The step-up mounts a whole riser in one tick, so a dungeon stair run (12-18 risers
-        //     of ~0.33 m) otherwise snaps up ~0.33 m per mounting tick - it reads as shooting/jerking up. This paces
-        //     that rise to a steady walk. Scoped tightly so nothing else changes:
-        //       - only when NOT rising ballistically (vVel <= 0): a JUMP (vVel > 0, applied in step 5 below) is
-        //         never throttled, so jump height/arc is untouched; this covers both the grounded climb ticks and
-        //         the brief airborne transition at a stair's emergence, where the support still lifts the capsule a
-        //         step;
-        //       - only the UPWARD delta (a fall/descent, pos.Y < prev, is below the cap and passes through); and
-        //       - only the portion of support ABOVE the analytic terrain floor - a terrain slope is never throttled
-        //         (its height passes through via the terrainGroundY floor of the cap), so horizontal walk speed,
-        //         coyote, and landing stay untouched and only the discrete static step geometry is paced.
-        //     The capped capsule lags the tread it is mounting by at most the few frames it takes to catch up (it
-        //     stays on the step run, resting on the lower treads its footprint still spans); the next tick
-        //     re-resolves the support and rises another budget's worth, so the climb still reliably reaches the top.
-        //     A low curb whose rise is within one tick's budget is unaffected (mounted in one tick as before), and
-        //     MaxStepClimbSpeed <= 0 disables the pacing entirely (the pre-smoothing instant snap).
-        //
-        //     Grounded-through-the-climb: when the cap clamps pos.Y, the real support (the tread/prop the step-up
-        //     mounted) sits ABOVE the paced height, so the capsule is genuinely resting on the step run (its
-        //     footprint still spans the lower treads) while it rises toward the tread ahead - it is NOT airborne.
-        //     Left alone, the paced lag makes step 4's support probe miss the tread once it drifts more than a
-        //     StepHeight above the lagging feet, so `grounded` flips false and vVel goes negative for a few ticks
-        //     between steps - the capsule reads as briefly FALLING mid-climb, which spams the fall animation (the
-        //     10.61 climb jank). So while the cap is actively holding the capsule below its support, force it
-        //     grounded and kill any residual downward velocity: the committed height still lags smoothly for the
-        //     visible rise, but the movement state reports a steady grounded climb. Only reached when NOT rising
-        //     ballistically (vVel <= 0), so a jump is never grounded-forced here.
+    // 4b. Smooth step-up climb: cap the per-tick RISE onto step/prop support above the terrain floor to
+    //     MaxStepClimbSpeed. The step-up mounts a whole riser in one tick, so a dungeon stair run (12-18 risers
+    //     of ~0.33 m) otherwise snaps up ~0.33 m per mounting tick - it reads as shooting/jerking up. This paces
+    //     that rise to a steady walk. Scoped tightly so nothing else changes:
+    //       - only when NOT rising ballistically (vVel <= 0): a JUMP (vVel > 0, applied in step 5 below) is
+    //         never throttled, so jump height/arc is untouched; this covers both the grounded climb ticks and
+    //         the brief airborne transition at a stair's emergence, where the support still lifts the capsule a
+    //         step;
+    //       - only the UPWARD delta (a fall/descent, pos.Y < prev, is below the cap and passes through); and
+    //       - only the portion of support ABOVE the analytic terrain floor - a terrain slope is never throttled
+    //         (its height passes through via the terrainGroundY floor of the cap), so horizontal walk speed,
+    //         coyote, and landing stay untouched and only the discrete static step geometry is paced.
+    //     The capped capsule lags the tread it is mounting by at most the few frames it takes to catch up (it
+    //     stays on the step run, resting on the lower treads its footprint still spans); the next tick
+    //     re-resolves the support and rises another budget's worth, so the climb still reliably reaches the top.
+    //     A low curb whose rise is within one tick's budget is unaffected (mounted in one tick as before), and
+    //     MaxStepClimbSpeed <= 0 disables the pacing entirely (the pre-smoothing instant snap).
+    //
+    //     Grounded-through-the-climb: when the cap clamps pos.Y, the real support (the tread/prop the step-up
+    //     mounted) sits ABOVE the paced height, so the capsule is genuinely resting on the step run (its
+    //     footprint still spans the lower treads) while it rises toward the tread ahead - it is NOT airborne.
+    //     Left alone, the paced lag makes step 4's support probe miss the tread once it drifts more than a
+    //     StepHeight above the lagging feet, so `grounded` flips false and vVel goes negative for a few ticks
+    //     between steps - the capsule reads as briefly FALLING mid-climb, which spams the fall animation (the
+    //     10.61 climb jank). So while the cap is actively holding the capsule below its support, force it
+    //     grounded and kill any residual downward velocity: the committed height still lags smoothly for the
+    //     visible rise, but the movement state reports a steady grounded climb. Only reached when NOT rising
+    //     ballistically (vVel <= 0), so a jump is never grounded-forced here.
     private static ClimbPacing PaceStepClimb(IPhysicsWorld world, in CapsuleShape capsule, Vector3 pos,
         in MoveState s, in MoveTuning t, float dt, float dx, float dz, float halfH, float terrainGroundY,
         bool steppedUp, bool grounded, float tSinceGround, float vVel)

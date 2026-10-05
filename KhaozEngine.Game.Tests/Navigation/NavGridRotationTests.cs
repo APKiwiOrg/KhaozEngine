@@ -48,14 +48,14 @@ public class NavGridRotationTests
         var origin = new Vector2(37, -81);
         NavGrid grid = NavGrid.FromWalkable(8, 5, 2, origin.X, origin.Y, (_, _) => true, yawRadians: yaw);
         for (int z = -1; z <= 5; z++)
-        for (int x = -1; x <= 8; x++)
-        {
-            Vector2 expected = Transform(new Vector2((x + 0.5f) * 2, (z + 0.5f) * 2), origin, yaw);
-            Assert.InRange(Vector2.Distance(expected, grid.CellCenter(x, z)), 0, 0.0001f);
-            Assert.Equal((x, z), grid.CellOf(expected.X, expected.Y));
-            Vector2 corner = Transform(new Vector2((x + 0.01f) * 2, (z + 0.99f) * 2), origin, yaw);
-            Assert.Equal((x, z), grid.CellOf(corner.X, corner.Y));
-        }
+            for (int x = -1; x <= 8; x++)
+            {
+                Vector2 expected = Transform(new Vector2((x + 0.5f) * 2, (z + 0.5f) * 2), origin, yaw);
+                Assert.InRange(Vector2.Distance(expected, grid.CellCenter(x, z)), 0, 0.0001f);
+                Assert.Equal((x, z), grid.CellOf(expected.X, expected.Y));
+                Vector2 corner = Transform(new Vector2((x + 0.01f) * 2, (z + 0.99f) * 2), origin, yaw);
+                Assert.Equal((x, z), grid.CellOf(corner.X, corner.Y));
+            }
     }
 
     [Fact]

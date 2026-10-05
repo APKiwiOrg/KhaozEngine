@@ -121,7 +121,10 @@ public class MovementBoundsTests
         var bounds = new CircleBounds(new Vector2(0f, 0f), 8f);
         var cfg = new ShardedWorldServerConfig
         {
-            TickSeconds = 1f / 30f, CellSize = 10f, OverlapMargin = 4f, InterestRadius = 4f,
+            TickSeconds = 1f / 30f,
+            CellSize = 10f,
+            OverlapMargin = 4f,
+            InterestRadius = 4f,
             SpawnPosition = _ => Vector3.Zero,
         };
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default, groundNormal: null, bounds: bounds);

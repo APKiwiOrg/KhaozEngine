@@ -303,8 +303,14 @@ public sealed class TileWorldCatalogs
         void Arch(string id, TileCollisionKind kind, int sx = 1, int sz = 1, bool roof = false, bool interactive = false) =>
             c.AddArchetype(new TileObjectArchetype
             {
-                Id = id, Name = id, MeshRef = $"greybox/{id}.glb", SizeX = sx, SizeZ = sz,
-                CollisionKind = kind, IsRoof = roof, Interactive = interactive,
+                Id = id,
+                Name = id,
+                MeshRef = $"greybox/{id}.glb",
+                SizeX = sx,
+                SizeZ = sz,
+                CollisionKind = kind,
+                IsRoof = roof,
+                Interactive = interactive,
             }, "greybox");
 
         Mat(1, "grass", "#4d8a3a");

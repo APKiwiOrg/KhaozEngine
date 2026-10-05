@@ -30,8 +30,12 @@ namespace KhaozEngine.Tests.Gui
         {
             var stats = new RenderFrameStats
             {
-                DrawCalls = 5, Instances = 40, Triangles = 1234,
-                Quads = 12, Flushes = 3, TextureSwitches = 2,
+                DrawCalls = 5,
+                Instances = 40,
+                Triangles = 1234,
+                Quads = 12,
+                Flushes = 3,
+                TextureSwitches = 2,
             };
             // Through the recording helpers, so the section is fed a tally whose split really does sum to the total
             // (1024 + 3072 + 512 + 512 = 5120 bytes = 5 KB).

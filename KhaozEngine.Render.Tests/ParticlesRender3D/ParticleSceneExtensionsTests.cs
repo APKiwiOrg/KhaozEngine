@@ -29,10 +29,14 @@ namespace KhaozEngine.Tests.ParticlesRender3D
 
         static EmitterConfig Config(float life) => new()
         {
-            LifetimeMin = life, LifetimeMax = life,
-            SpeedMin = 1f, SpeedMax = 1f,
-            Direction = Vector3.UnitY, SpreadDegrees = 10f,
-            StartSize = 0.3f, EndSize = 0.1f,
+            LifetimeMin = life,
+            LifetimeMax = life,
+            SpeedMin = 1f,
+            SpeedMax = 1f,
+            Direction = Vector3.UnitY,
+            SpreadDegrees = 10f,
+            StartSize = 0.3f,
+            EndSize = 0.1f,
             StartColor = new Color(1f, 0.8f, 0.4f, 1f),
             EndColor = new Color(1f, 0.4f, 0.1f, 0f),
         };
@@ -94,8 +98,11 @@ namespace KhaozEngine.Tests.ParticlesRender3D
 
             var look = new ParticleLook
             {
-                Shape = ParticleShape.Spark, Blend = BillboardBlend.Additive,
-                Trails = true, TrailStyle = TrailStyle.Default, TrailWidthScale = 0.5f,
+                Shape = ParticleShape.Spark,
+                Blend = BillboardBlend.Additive,
+                Trails = true,
+                TrailStyle = TrailStyle.Default,
+                TrailWidthScale = 0.5f,
             };
 
             scene.Begin();
@@ -126,8 +133,10 @@ namespace KhaozEngine.Tests.ParticlesRender3D
             sys.Emit(Config(5f), Vector3.Zero, 8);
             var look = new ParticleLook
             {
-                Shape = ParticleShape.Ember, Blend = BillboardBlend.Additive,
-                LightRadius = 2.5f, LightIntensity = 1.2f,
+                Shape = ParticleShape.Ember,
+                Blend = BillboardBlend.Additive,
+                LightRadius = 2.5f,
+                LightIntensity = 1.2f,
             };
 
             scene.Begin();
@@ -143,8 +152,10 @@ namespace KhaozEngine.Tests.ParticlesRender3D
             sys.Emit(Config(5f), Vector3.Zero, 8);
             var look = new ParticleLook
             {
-                Shape = ParticleShape.Ember, Blend = BillboardBlend.Additive,
-                LightRadius = 2.5f, LightIntensity = 1.2f,
+                Shape = ParticleShape.Ember,
+                Blend = BillboardBlend.Additive,
+                LightRadius = 2.5f,
+                LightIntensity = 1.2f,
             };
 
             scene.Begin();

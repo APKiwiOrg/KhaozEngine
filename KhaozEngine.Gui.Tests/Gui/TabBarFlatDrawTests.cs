@@ -80,7 +80,8 @@ namespace KhaozEngine.Tests.Gui
 
             var wrapped = new TabBar(new[] { LocalizedText.Raw("A"), LocalizedText.Raw("B") }, font: null, Band)
             {
-                TabWidth = 56f, TabHeight = 26f,
+                TabWidth = 56f,
+                TabHeight = 26f,
             };
             Assert.False(wrapped.DrawsFlat);
         }
@@ -182,7 +183,9 @@ namespace KhaozEngine.Tests.Gui
 
                 var strip = new TabBar(new[] { LocalizedText.Raw("A") }, font: null, Band)
                 {
-                    TabWidth = 56f, TabHeight = 26f, DrawMode = TabBarDrawMode.Flat,
+                    TabWidth = 56f,
+                    TabHeight = 26f,
+                    DrawMode = TabBarDrawMode.Flat,
                 };
 
                 Assert.Equal(bronze, strip.FlatTheme.TabActiveFill);

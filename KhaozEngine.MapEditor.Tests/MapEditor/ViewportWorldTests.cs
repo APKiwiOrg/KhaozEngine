@@ -245,8 +245,12 @@ namespace KhaozEngine.Tests.MapEditor
             MapDocument doc = ScatterDoc();
             var original = new MapCompanionLayer
             {
-                Name = "understory", HostLayer = "trees", CountMin = 1, CountMax = 1,
-                RadiusMin = 1f, RadiusMax = 1f,
+                Name = "understory",
+                HostLayer = "trees",
+                CountMin = 1,
+                CountMax = 1,
+                RadiusMin = 1f,
+                RadiusMax = 1f,
                 Kinds = { new MapPropKind { Id = "fern", Weight = 1f } },
             };
             doc.CompanionLayers.Add(original);
@@ -260,8 +264,12 @@ namespace KhaozEngine.Tests.MapEditor
 
             var edited = new MapCompanionLayer
             {
-                Name = "understory", HostLayer = "trees", CountMin = 2, CountMax = 2,
-                RadiusMin = 1f, RadiusMax = 1f,
+                Name = "understory",
+                HostLayer = "trees",
+                CountMin = 2,
+                CountMax = 2,
+                RadiusMin = 1f,
+                RadiusMax = 1f,
                 Kinds = { new MapPropKind { Id = "fern", Weight = 1f } },
             };
             var editor = new EditorDocument(doc);

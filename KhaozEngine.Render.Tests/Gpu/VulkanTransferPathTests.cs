@@ -721,39 +721,39 @@ namespace KhaozEngine.Tests.Gpu
 
                 case "CopyTexture":
                 case "CopyTextureSubresource":
-                {
-                    IGpuTexture source = fixture.Factory.CreateTexture(
-                        VulkanResourceFixture.Texture(8, 8, GpuTextureUsage.RenderTarget));
-                    owned.Add(source);
-                    IGpuTexture destination = fixture.Factory.CreateTexture(
-                        VulkanResourceFixture.Texture(8, 8, GpuTextureUsage.Staging));
-                    owned.Add(destination);
+                    {
+                        IGpuTexture source = fixture.Factory.CreateTexture(
+                            VulkanResourceFixture.Texture(8, 8, GpuTextureUsage.RenderTarget));
+                        owned.Add(source);
+                        IGpuTexture destination = fixture.Factory.CreateTexture(
+                            VulkanResourceFixture.Texture(8, 8, GpuTextureUsage.Staging));
+                        owned.Add(destination);
 
-                    if (member == "CopyTexture") list.CopyTexture(source, destination);
-                    else list.CopyTextureSubresource(source, 0, 0, destination, 8, 8);
-                    return;
-                }
+                        if (member == "CopyTexture") list.CopyTexture(source, destination);
+                        else list.CopyTextureSubresource(source, 0, 0, destination, 8, 8);
+                        return;
+                    }
 
                 case "GenerateMipmaps":
-                {
-                    IGpuTexture chain = fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
-                        8, 8, GpuTextureUsage.Sampled | GpuTextureUsage.GenerateMipmaps, mipLevels: 3));
-                    owned.Add(chain);
-                    list.GenerateMipmaps(chain);
-                    return;
-                }
+                    {
+                        IGpuTexture chain = fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
+                            8, 8, GpuTextureUsage.Sampled | GpuTextureUsage.GenerateMipmaps, mipLevels: 3));
+                        owned.Add(chain);
+                        list.GenerateMipmaps(chain);
+                        return;
+                    }
 
                 default:
-                {
-                    IGpuTexture multisampled = fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
-                        8, 8, GpuTextureUsage.RenderTarget, sampleCount: 4));
-                    owned.Add(multisampled);
-                    IGpuTexture resolved = fixture.Factory.CreateTexture(
-                        VulkanResourceFixture.Texture(8, 8, GpuTextureUsage.RenderTarget));
-                    owned.Add(resolved);
-                    list.ResolveTexture(multisampled, resolved);
-                    return;
-                }
+                    {
+                        IGpuTexture multisampled = fixture.Factory.CreateTexture(VulkanResourceFixture.Texture(
+                            8, 8, GpuTextureUsage.RenderTarget, sampleCount: 4));
+                        owned.Add(multisampled);
+                        IGpuTexture resolved = fixture.Factory.CreateTexture(
+                            VulkanResourceFixture.Texture(8, 8, GpuTextureUsage.RenderTarget));
+                        owned.Add(resolved);
+                        list.ResolveTexture(multisampled, resolved);
+                        return;
+                    }
             }
         }
 

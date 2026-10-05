@@ -57,7 +57,8 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             {
                 case "immediate":
                     return D3D11RecordMode.Immediate;
-                case "deferred": case "stream":
+                case "deferred":
+                case "stream":
                     return D3D11RecordMode.Deferred;
                 default:
                     unrecognizedValue = envValue;

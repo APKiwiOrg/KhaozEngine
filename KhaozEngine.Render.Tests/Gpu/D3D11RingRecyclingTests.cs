@@ -415,7 +415,8 @@ namespace KhaozEngine.Tests.Gpu
                 started.Set();
                 harness.Allocator.UpdateBuffer(harness.Ring, 0, new byte[] { 0x7F });
                 finished.Set();
-            }) { IsBackground = true };
+            })
+            { IsBackground = true };
 
             bool blocked;
             lock (harness.SubmitLock)

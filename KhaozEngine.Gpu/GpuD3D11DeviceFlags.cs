@@ -58,9 +58,15 @@ namespace KhaozEngine.Gpu
 
             switch (envValue.Trim().ToLowerInvariant())
             {
-                case "1": case "true": case "yes": case "on":
+                case "1":
+                case "true":
+                case "yes":
+                case "on":
                     return PreventInternalThreadingOptimizations;
-                case "0": case "false": case "no": case "off":
+                case "0":
+                case "false":
+                case "no":
+                case "off":
                     return 0u;
                 default:
                     unrecognizedValue = envValue;

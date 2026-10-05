@@ -436,7 +436,8 @@ public class GroundMeshQueryOwnershipTests
         public IPhysicsWorld MovementQueries { get; }
         public MoveState Place(float x, float z) => new()
         {
-            Position = new Vector3(x, Colliders.Ground.HeightAt(x, z) + 0.75f, z), Grounded = true
+            Position = new Vector3(x, Colliders.Ground.HeightAt(x, z) + 0.75f, z),
+            Grounded = true
         };
         public MoveState Step(MoveState state, MoveCommand command) => CharacterMovement.Step(state, command, Dt,
             Colliders.Ground.HeightDelegate, Character, Colliders.Ground.NormalDelegate, MovementQueries, null,

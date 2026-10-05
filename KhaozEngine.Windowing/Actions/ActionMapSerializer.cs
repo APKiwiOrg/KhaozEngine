@@ -185,10 +185,19 @@ namespace KhaozEngine.Windowing.Actions
 
             public static SourceDto From(InputSource s) => new()
             {
-                Kind = s.Kind.ToString(), Key = s.Key, Key2 = s.Key2, Key3 = s.Key3, Key4 = s.Key4,
-                MouseButton = s.MouseButton, GamepadButton = s.GamepadButton,
-                Stick = s.Stick, Component = s.StickComponent, Trigger = s.TriggerSide,
-                Scale = s.Scale, Invert = s.Invert, ButtonThreshold = s.ButtonThreshold,
+                Kind = s.Kind.ToString(),
+                Key = s.Key,
+                Key2 = s.Key2,
+                Key3 = s.Key3,
+                Key4 = s.Key4,
+                MouseButton = s.MouseButton,
+                GamepadButton = s.GamepadButton,
+                Stick = s.Stick,
+                Component = s.StickComponent,
+                Trigger = s.TriggerSide,
+                Scale = s.Scale,
+                Invert = s.Invert,
+                ButtonThreshold = s.ButtonThreshold,
             };
 
             /// <summary>

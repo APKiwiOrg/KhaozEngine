@@ -152,15 +152,15 @@ public sealed class ManyPointLightsGpuTests(ManyPointLightsScene scene) : IClass
         ManyPointLightsScene.Surface surface)
     {
         foreach (float azimuth in new[] { LeftAzimuth, RightAzimuth })
-        foreach (float distance in new[] { 4f, 8f })
-        {
-            ManyPointLightsScene.Shot alone = scene.Capture(surface, azimuth,
-                ManyPointLightsScene.LightQueue.RelevantOnly, perspective: true, cameraDistance: distance);
-            ManyPointLightsScene.Shot crowded = scene.Capture(surface, azimuth,
-                ManyPointLightsScene.LightQueue.RelevantLast, perspective: true, cameraDistance: distance);
-            AssertMatchesAlone(alone, crowded, $"{surface}, perspective orbit {azimuth}, distance {distance}",
-                PointLightClusterProjection.Perspective);
-        }
+            foreach (float distance in new[] { 4f, 8f })
+            {
+                ManyPointLightsScene.Shot alone = scene.Capture(surface, azimuth,
+                    ManyPointLightsScene.LightQueue.RelevantOnly, perspective: true, cameraDistance: distance);
+                ManyPointLightsScene.Shot crowded = scene.Capture(surface, azimuth,
+                    ManyPointLightsScene.LightQueue.RelevantLast, perspective: true, cameraDistance: distance);
+                AssertMatchesAlone(alone, crowded, $"{surface}, perspective orbit {azimuth}, distance {distance}",
+                    PointLightClusterProjection.Perspective);
+            }
     }
 
     [GpuFact]

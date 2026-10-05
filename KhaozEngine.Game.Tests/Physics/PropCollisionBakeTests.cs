@@ -174,8 +174,8 @@ static class TestMeshes
         // Build a 6 m tall hollow box room with repeated faces so we exceed the 60-triangle threshold.
         // Floor: one quad.
         AddQuad(verts, idx,
-            new Vector3(-5, 0,-5), new Vector3( 5, 0,-5),
-            new Vector3( 5, 0, 5), new Vector3(-5, 0, 5));
+            new Vector3(-5, 0, -5), new Vector3(5, 0, -5),
+            new Vector3(5, 0, 5), new Vector3(-5, 0, 5));
 
         // Four walls - each one is a series of repeated quads so we get enough triangles.
         // Repeat 12 times per wall (12*4 walls * 2 tris/quad = 96 triangles + 2 floor = 98 > 60).
@@ -183,20 +183,20 @@ static class TestMeshes
         {
             // -Z wall
             AddQuad(verts, idx,
-                new Vector3(-5, 0,-5), new Vector3( 5, 0,-5),
-                new Vector3( 5, 6,-5), new Vector3(-5, 6,-5));
+                new Vector3(-5, 0, -5), new Vector3(5, 0, -5),
+                new Vector3(5, 6, -5), new Vector3(-5, 6, -5));
             // +Z wall
             AddQuad(verts, idx,
-                new Vector3( 5, 0, 5), new Vector3(-5, 0, 5),
-                new Vector3(-5, 6, 5), new Vector3( 5, 6, 5));
+                new Vector3(5, 0, 5), new Vector3(-5, 0, 5),
+                new Vector3(-5, 6, 5), new Vector3(5, 6, 5));
             // -X wall
             AddQuad(verts, idx,
-                new Vector3(-5, 0, 5), new Vector3(-5, 0,-5),
-                new Vector3(-5, 6,-5), new Vector3(-5, 6, 5));
+                new Vector3(-5, 0, 5), new Vector3(-5, 0, -5),
+                new Vector3(-5, 6, -5), new Vector3(-5, 6, 5));
             // +X wall
             AddQuad(verts, idx,
-                new Vector3( 5, 0,-5), new Vector3( 5, 0, 5),
-                new Vector3( 5, 6, 5), new Vector3( 5, 6,-5));
+                new Vector3(5, 0, -5), new Vector3(5, 0, 5),
+                new Vector3(5, 6, 5), new Vector3(5, 6, -5));
         }
 
         return new GltfMesh(verts.ToArray(), idx.ToArray());
@@ -271,5 +271,5 @@ static class TestMeshes
     }
 
     static ModelVertex V(float x, float y, float z) => new ModelVertex(new Vector3(x, y, z), Vector3.UnitY, Vector4.One);
-    static ModelVertex V(Vector3 p)                  => new ModelVertex(p, Vector3.UnitY, Vector4.One);
+    static ModelVertex V(Vector3 p) => new ModelVertex(p, Vector3.UnitY, Vector4.One);
 }

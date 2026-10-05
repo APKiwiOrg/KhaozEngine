@@ -386,7 +386,8 @@ namespace KhaozEngine.Tests.Gpu
             public void CopyTexture(IGpuTexture src, IGpuTexture dst) { }
             public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst, uint width, uint height) { }
             public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer,
-                IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height) { }
+                IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height)
+            { }
             public void GenerateMipmaps(IGpuTexture texture) { }
             public void ResolveTexture(IGpuTexture src, IGpuTexture dst) { }
             public void SetComputePipeline(IGpuComputePipeline p) { }

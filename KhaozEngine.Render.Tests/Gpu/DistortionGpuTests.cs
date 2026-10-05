@@ -198,8 +198,12 @@ namespace KhaozEngine.Tests.Gpu
                     {
                         scene.DrawDistortion(new DistortionSprite
                         {
-                            Position = Vector3.Zero, Size = 2.6f,
-                            Shape = DistortionShape.Ripple, ShapeParam = 0.3f, Strength = 2.5f, Seed = 0.31f,
+                            Position = Vector3.Zero,
+                            Size = 2.6f,
+                            Shape = DistortionShape.Ripple,
+                            ShapeParam = 0.3f,
+                            Strength = 2.5f,
+                            Seed = 0.31f,
                         });
                     }
                 },
@@ -299,21 +303,34 @@ namespace KhaozEngine.Tests.Gpu
                     // An expanding refractive shockwave ring over the checkerboard (flat on the ground).
                     s.DrawDistortion(new DistortionSprite
                     {
-                        Position = new Vector3(-2.6f, 0.1f, 0f), Size = 0.8f + t * 2.4f,
-                        Shape = DistortionShape.Ripple, ShapeParam = 0.15f, Strength = 2.2f,
-                        Orientation = ParticleOrientation.FlatGround, SoftFadeScale = 0.14f, Seed = 0.2f,
+                        Position = new Vector3(-2.6f, 0.1f, 0f),
+                        Size = 0.8f + t * 2.4f,
+                        Shape = DistortionShape.Ripple,
+                        ShapeParam = 0.15f,
+                        Strength = 2.2f,
+                        Orientation = ParticleOrientation.FlatGround,
+                        SoftFadeScale = 0.14f,
+                        Seed = 0.2f,
                     });
                     // Heat haze rising in front of the hot sphere.
                     s.DrawDistortion(new DistortionSprite
                     {
-                        Position = new Vector3(2.6f, 1.2f, 0f), Size = 1.6f,
-                        Shape = DistortionShape.Heat, ShapeParam = 0.5f, Strength = 1.4f, Seed = 0.7f,
+                        Position = new Vector3(2.6f, 1.2f, 0f),
+                        Size = 1.6f,
+                        Shape = DistortionShape.Heat,
+                        ShapeParam = 0.5f,
+                        Strength = 1.4f,
+                        Seed = 0.7f,
                     });
                     // A lens bulge over the checker pattern.
                     s.DrawDistortion(new DistortionSprite
                     {
-                        Position = new Vector3(0f, 1.1f, -0.5f), Size = 1.3f,
-                        Shape = DistortionShape.Lens, ShapeParam = 0.4f, Strength = 2.0f, Seed = 0.4f,
+                        Position = new Vector3(0f, 1.1f, -0.5f),
+                        Size = 1.3f,
+                        Shape = DistortionShape.Lens,
+                        ShapeParam = 0.4f,
+                        Strength = 2.0f,
+                        Seed = 0.4f,
                     });
                 }).Handle, SW, SH);
 

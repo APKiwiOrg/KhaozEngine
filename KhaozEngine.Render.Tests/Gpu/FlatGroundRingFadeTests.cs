@@ -74,13 +74,13 @@ namespace KhaozEngine.Tests.Gpu
             int cx = (int)MathF.Round(center.X), cy = (int)MathF.Round(center.Y);
             int r2 = radius * radius, count = 0;
             for (int y = Math.Max(0, cy - radius); y <= Math.Min(H - 1, cy + radius); y++)
-            for (int x = Math.Max(0, cx - radius); x <= Math.Min(W - 1, cx + radius); x++)
-            {
-                int dx = x - cx, dy = y - cy;
-                if (dx * dx + dy * dy > r2) continue;
-                int i = (y * W + x) * 4;
-                if (rgba[i] > 110 && rgba[i + 1] > 95) count++;   // warm-bright ring pixel
-            }
+                for (int x = Math.Max(0, cx - radius); x <= Math.Min(W - 1, cx + radius); x++)
+                {
+                    int dx = x - cx, dy = y - cy;
+                    if (dx * dx + dy * dy > r2) continue;
+                    int i = (y * W + x) * 4;
+                    if (rgba[i] > 110 && rgba[i + 1] > 95) count++;   // warm-bright ring pixel
+                }
             return count;
         }
     }

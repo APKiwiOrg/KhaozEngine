@@ -58,12 +58,18 @@ public class SignInExceptionBaseTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
         {
             if (req.RequestUri!.AbsolutePath.Contains("well-known"))
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
                     "{\"issuer\":\"https://issuer.test\",\"authorization_endpoint\":\"https://issuer.test/auth\",\"token_endpoint\":\"https://issuer.test/token\"}",
-                    Encoding.UTF8, "application/json") });
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+                    Encoding.UTF8, "application/json")
+                });
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
                 "{\"id_token\":\"the-id-token\",\"access_token\":\"the-access-token\",\"expires_in\":3600}",
-                Encoding.UTF8, "application/json") });
+                Encoding.UTF8, "application/json")
+            });
         }
     }
 

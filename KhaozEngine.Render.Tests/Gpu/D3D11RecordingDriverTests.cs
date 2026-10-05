@@ -399,7 +399,8 @@ namespace KhaozEngine.Tests.Gpu
             {
                 RecordOneOfEverything(list, new Fixtures());
                 recorded.Set();
-            }) { IsBackground = true };
+            })
+            { IsBackground = true };
 
             lock (submitLock)
             {
@@ -431,7 +432,8 @@ namespace KhaozEngine.Tests.Gpu
                 var emitter = new D3D11CountingEmitter(log);
                 D3D11CommandDrivers.Submit(submitLock, list, ref emitter);
                 finished.Set();
-            }) { IsBackground = true };
+            })
+            { IsBackground = true };
 
             bool blocked;
             lock (submitLock)

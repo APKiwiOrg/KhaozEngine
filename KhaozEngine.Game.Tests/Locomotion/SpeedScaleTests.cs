@@ -118,7 +118,9 @@ public class SpeedScaleTests
         var tuning = Tuning with { AirControl = 0.5f };
         MoveState Airborne(float scale) => new()
         {
-            Position = new Vector3(0f, 20f, 0f), Grounded = false, SpeedScale = scale,
+            Position = new Vector3(0f, 20f, 0f),
+            Grounded = false,
+            SpeedScale = scale,
         };
         MoveState hasted = CharacterMovement.Step(Airborne(4f), Forward, Dt, Flat, tuning);
         MoveState unmodified = CharacterMovement.Step(Airborne(1f), Forward, Dt, Flat, tuning);
@@ -135,7 +137,9 @@ public class SpeedScaleTests
         var tuning = Tuning with { CapsuleHalfHeight = 0.5f, SwimEnterDepthFraction = 5f };   // never swims here
         MoveState Wading(float scale) => new()
         {
-            Position = new Vector3(0f, tuning.CapsuleHalfHeight, 0f), Grounded = true, SpeedScale = scale,
+            Position = new Vector3(0f, tuning.CapsuleHalfHeight, 0f),
+            Grounded = true,
+            SpeedScale = scale,
         };
         MoveState slow = CharacterMovement.Step(Wading(1f), Forward, Dt, Flat, tuning, null, null, null, water);
         MoveState fast = CharacterMovement.Step(Wading(2f), Forward, Dt, Flat, tuning, null, null, null, water);
@@ -153,7 +157,9 @@ public class SpeedScaleTests
         Func<float, float, float, MovementMedium> deep = (x, z, feetY) => new MovementMedium(5f, inWater: true);
         MoveState Swimmer(float scale) => new()
         {
-            Position = new Vector3(0f, 4.5f, 0f), Swimming = true, SpeedScale = scale,
+            Position = new Vector3(0f, 4.5f, 0f),
+            Swimming = true,
+            SpeedScale = scale,
         };
         MoveState plain = CharacterMovement.Step(Swimmer(1f), Forward, Dt, Flat, tuning, null, null, null, deep);
         MoveState hasted = CharacterMovement.Step(Swimmer(2f), Forward, Dt, Flat, tuning, null, null, null, deep);

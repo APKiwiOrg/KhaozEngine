@@ -127,8 +127,13 @@ namespace KhaozEngine.Tests.MapDoc
             var registry = MapDocRegistry.CreateDefault();
             var doc = new RimFeatureDoc
             {
-                CenterX = 0f, CenterZ = 0f, InnerRadius = 78f, OuterRadius = 116f, WallHeight = 55f,
-                Ruggedness = 0.5f, Seed = 5,
+                CenterX = 0f,
+                CenterZ = 0f,
+                InnerRadius = 78f,
+                OuterRadius = 116f,
+                WallHeight = 55f,
+                Ruggedness = 0.5f,
+                Seed = 5,
             };
             doc.Passes.Add(new RimPassDoc { AngleRadians = MathF.PI / 2f, HalfWidth = 11f, Falloff = 8f });
             ITerrainFeature built = registry.BuildFeature(doc);

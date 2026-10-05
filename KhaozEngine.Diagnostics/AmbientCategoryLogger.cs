@@ -67,9 +67,9 @@ internal sealed class AmbientCategoryLogger : ILogger
     /// <inheritdoc />
     public void Debug(string message, Exception? exception = null) => Log(LogLevel.Debug, message, exception);
     /// <inheritdoc />
-    public void Info(string message, Exception? exception = null)  => Log(LogLevel.Info,  message, exception);
+    public void Info(string message, Exception? exception = null) => Log(LogLevel.Info, message, exception);
     /// <inheritdoc />
-    public void Warn(string message, Exception? exception = null)  => Log(LogLevel.Warn,  message, exception);
+    public void Warn(string message, Exception? exception = null) => Log(LogLevel.Warn, message, exception);
     /// <inheritdoc />
     public void Error(string message, Exception? exception = null) => Log(LogLevel.Error, message, exception);
     /// <inheritdoc />

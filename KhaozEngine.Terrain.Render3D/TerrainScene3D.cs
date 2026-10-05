@@ -43,8 +43,11 @@ namespace KhaozEngine.Terrain
             foreach (var l in material.Layers)
                 layers.Add(new SplatLayerImage
                 {
-                    AlbedoRgba = l.AlbedoRgba, NormalRgba = l.NormalRgba,
-                    Tint = l.Tint, TilesPerMetre = l.TilesPerMetre, Roughness = l.Roughness,
+                    AlbedoRgba = l.AlbedoRgba,
+                    NormalRgba = l.NormalRgba,
+                    Tint = l.Tint,
+                    TilesPerMetre = l.TilesPerMetre,
+                    Roughness = l.Roughness,
                 });
             return scene.LoadSplatMaterial(material.Width, material.Height, layers,
                 material.TriplanarSharpness, material.Projection, material.BaseSpecStrength, material.Sampler);

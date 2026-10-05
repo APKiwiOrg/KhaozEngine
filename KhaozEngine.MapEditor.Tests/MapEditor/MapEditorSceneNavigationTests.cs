@@ -310,7 +310,12 @@ namespace KhaozEngine.Tests.MapEditor
                 };
                 doc.Placements.Add(new MapPlacement
                 {
-                    Id = "focus-me", Kind = "prop", X = 12f, Z = 8f, Y = 0f, Scale = 1f,
+                    Id = "focus-me",
+                    Kind = "prop",
+                    X = 12f,
+                    Z = 8f,
+                    Y = 0f,
+                    Scale = 1f,
                 });
                 return doc;
             }

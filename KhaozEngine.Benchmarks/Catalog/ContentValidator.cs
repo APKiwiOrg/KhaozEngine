@@ -258,54 +258,54 @@ public sealed class ContentValidator
         switch (typeId)
         {
             case ContentTypes.Tag:
-            {
-                var row = new TagRowData();
-                if (!ContentRowCodec.TryDecodeTag(source, ref row)) return false;
-                written = ContentRowCodec.EncodeTag(in row, scratch);
-                break;
-            }
+                {
+                    var row = new TagRowData();
+                    if (!ContentRowCodec.TryDecodeTag(source, ref row)) return false;
+                    written = ContentRowCodec.EncodeTag(in row, scratch);
+                    break;
+                }
             case ContentTypes.Item:
-            {
-                var row = new ItemRowData();
-                if (!ContentRowCodec.TryDecodeItem(source, ref row)) return false;
-                written = ContentRowCodec.EncodeItem(in row, scratch);
-                break;
-            }
+                {
+                    var row = new ItemRowData();
+                    if (!ContentRowCodec.TryDecodeItem(source, ref row)) return false;
+                    written = ContentRowCodec.EncodeItem(in row, scratch);
+                    break;
+                }
             case ContentTypes.Stat:
-            {
-                var row = new StatRowData();
-                if (!ContentRowCodec.TryDecodeStat(source, ref row)) return false;
-                written = ContentRowCodec.EncodeStat(in row, scratch);
-                break;
-            }
+                {
+                    var row = new StatRowData();
+                    if (!ContentRowCodec.TryDecodeStat(source, ref row)) return false;
+                    written = ContentRowCodec.EncodeStat(in row, scratch);
+                    break;
+                }
             case ContentTypes.LootTable:
-            {
-                var row = new LootTableRowData();
-                if (!ContentRowCodec.TryDecodeLootTable(source, ref row)) return false;
-                written = ContentRowCodec.EncodeLootTable(in row, scratch);
-                break;
-            }
+                {
+                    var row = new LootTableRowData();
+                    if (!ContentRowCodec.TryDecodeLootTable(source, ref row)) return false;
+                    written = ContentRowCodec.EncodeLootTable(in row, scratch);
+                    break;
+                }
             case ContentTypes.LootEntry:
-            {
-                var row = new LootEntryRowData();
-                if (!ContentRowCodec.TryDecodeLootEntry(source, ref row)) return false;
-                written = ContentRowCodec.EncodeLootEntry(in row, scratch);
-                break;
-            }
+                {
+                    var row = new LootEntryRowData();
+                    if (!ContentRowCodec.TryDecodeLootEntry(source, ref row)) return false;
+                    written = ContentRowCodec.EncodeLootEntry(in row, scratch);
+                    break;
+                }
             case ContentTypes.BaseSocket:
-            {
-                var row = new BaseSocketRowData();
-                if (!ContentRowCodec.TryDecodeBaseSocket(source, ref row)) return false;
-                written = ContentRowCodec.EncodeBaseSocket(in row, scratch);
-                break;
-            }
+                {
+                    var row = new BaseSocketRowData();
+                    if (!ContentRowCodec.TryDecodeBaseSocket(source, ref row)) return false;
+                    written = ContentRowCodec.EncodeBaseSocket(in row, scratch);
+                    break;
+                }
             default:
-            {
-                var row = new GameRowData();
-                if (!ContentRowCodec.TryDecodeGame(source, ref row)) return false;
-                written = ContentRowCodec.EncodeGame(in row, scratch);
-                break;
-            }
+                {
+                    var row = new GameRowData();
+                    if (!ContentRowCodec.TryDecodeGame(source, ref row)) return false;
+                    written = ContentRowCodec.EncodeGame(in row, scratch);
+                    break;
+                }
         }
         return source.SequenceEqual(scratch[..written]);
     }

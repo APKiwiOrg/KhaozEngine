@@ -124,7 +124,8 @@ public sealed partial class ShardedWorldServer
             Movement = new PlayerMovementSystem(cellGroundHeight, tuning, cellGroundNormal, cellBounds,
                 cell.Physics, cellMedium, cell.Frame, config.SamplerSpace),
             Clamp = new PlayerMoveSimulator(cellGroundHeight, tuning, cellGroundNormal, cellBounds,
-                cell.Physics, cellMedium, config.SamplerSpace) { Frame = cell.Frame },
+                cell.Physics, cellMedium, config.SamplerSpace)
+            { Frame = cell.Frame },
             Frame = cell.Frame,
         };
         cellRuntime[cell.Coord] = runtime;

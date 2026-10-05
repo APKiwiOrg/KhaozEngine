@@ -59,38 +59,38 @@ namespace KhaozEngine.Tests.Render3D
         public void The_floor_never_narrows_below_either_term_and_never_widens_past_the_old_sum()
         {
             foreach (float footprint in new[] { 0f, 0.01f, 0.5f, 1f, 3.93f, 7.85f, 15.7f, 31.4f, 200f })
-            foreach (float distance in new[] { 0f, 10f, 30f, 60f, 500f })
-            foreach (float gain in new[] { 0f, 0.5f, 1f, 3f })
-            {
-                float detail = WaterMath.DetailScale(distance, FadeDistance, DistantDetail);
-                float lost = Lost(footprint, 4f, detail);
-                float wide = WaterMath.GlintRoughnessAt(Near, Far, distance, FadeDistance, footprint, Lambda);
-                float alpha = WaterMath.GlintAlpha(Near, wide, lost, gain);
+                foreach (float distance in new[] { 0f, 10f, 30f, 60f, 500f })
+                    foreach (float gain in new[] { 0f, 0.5f, 1f, 3f })
+                    {
+                        float detail = WaterMath.DetailScale(distance, FadeDistance, DistantDetail);
+                        float lost = Lost(footprint, 4f, detail);
+                        float wide = WaterMath.GlintRoughnessAt(Near, Far, distance, FadeDistance, footprint, Lambda);
+                        float alpha = WaterMath.GlintAlpha(Near, wide, lost, gain);
 
-                string at = $"footprint {footprint}, distance {distance}, gain {gain}";
-                Assert.True(alpha >= MathF.Min(wide * wide, 1f) - 1e-6f, $"narrower than the widening at {at}");
-                Assert.True(alpha >= Toksvig(lost, gain) - 1e-6f, $"narrower than the Toksvig lobe at {at}");
-                float sum = RippleSpectrum.AlphaFromVariance(wide * wide, lost, gain);
-                Assert.True(alpha <= sum + 1e-6f, $"wider than the old summed lobe at {at}");
-            }
+                        string at = $"footprint {footprint}, distance {distance}, gain {gain}";
+                        Assert.True(alpha >= MathF.Min(wide * wide, 1f) - 1e-6f, $"narrower than the widening at {at}");
+                        Assert.True(alpha >= Toksvig(lost, gain) - 1e-6f, $"narrower than the Toksvig lobe at {at}");
+                        float sum = RippleSpectrum.AlphaFromVariance(wide * wide, lost, gain);
+                        Assert.True(alpha <= sum + 1e-6f, $"wider than the old summed lobe at {at}");
+                    }
         }
 
         [Fact]
         public void The_14_24_lobe_stays_reachable_through_either_knob()
         {
             foreach (float footprint in new[] { 0.01f, 1f, 3.93f, 7.85f, 31.4f })
-            foreach (float distance in new[] { 0f, 30f, 500f })
-            {
-                float wide = WaterMath.GlintRoughnessAt(Near, Far, distance, FadeDistance, footprint, Lambda);
-                float detail = WaterMath.DetailScale(distance, FadeDistance, DistantDetail);
+                foreach (float distance in new[] { 0f, 30f, 500f })
+                {
+                    float wide = WaterMath.GlintRoughnessAt(Near, Far, distance, FadeDistance, footprint, Lambda);
+                    float detail = WaterMath.DetailScale(distance, FadeDistance, DistantDetail);
 
-                // VarianceToRoughness = 0: nothing transfers, whatever was removed.
-                Assert.Equal(wide * wide, WaterMath.GlintAlpha(Near, wide, Lost(footprint, 4f, detail), 0f), 6);
-                // FootprintSamples = 0: the band-limit removes nothing. The detail fade is a separate artistic
-                // removal, so it is held off here (DistantDetailScale = 1).
-                Assert.Equal(0f, Lost(footprint, 0f, 1f), 6);
-                Assert.Equal(wide * wide, WaterMath.GlintAlpha(Near, wide, Lost(footprint, 0f, 1f), 1f), 6);
-            }
+                    // VarianceToRoughness = 0: nothing transfers, whatever was removed.
+                    Assert.Equal(wide * wide, WaterMath.GlintAlpha(Near, wide, Lost(footprint, 4f, detail), 0f), 6);
+                    // FootprintSamples = 0: the band-limit removes nothing. The detail fade is a separate artistic
+                    // removal, so it is held off here (DistantDetailScale = 1).
+                    Assert.Equal(0f, Lost(footprint, 0f, 1f), 6);
+                    Assert.Equal(wide * wide, WaterMath.GlintAlpha(Near, wide, Lost(footprint, 0f, 1f), 1f), 6);
+                }
         }
 
         [Fact]

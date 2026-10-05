@@ -309,7 +309,7 @@ public class TileWorldServerSessionTests
         var hub = new InMemoryTransportHub();
         using var s = new TileWorldServer(hub.Server,
             TileWorldServerTickTests.Config(new TileCoord(4, 10, 0)) with
-                { Move = new TileMoveOptions { MaxRouteSteps = 3 } },
+            { Move = new TileMoveOptions { MaxRouteSteps = 3 } },
             TileMoveSimulatorTests.Bake(doc), new TileDocumentTargets(doc, TileMoveSimulatorTests.Catalogs),
             new AllowAllAuthenticator());
         var raised = new List<long>();

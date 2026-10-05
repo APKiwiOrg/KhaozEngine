@@ -39,20 +39,39 @@ namespace KhaozEngine.Tests.Gpu
 
         static GroundDecal Molten(Vector3 center, float erosion = 0f, float patternParam = 0f, float flashAdd = 0f) => new()
         {
-            Shape = DecalShape.Circle, Center = center, Size = new Vector4(Radius, 0f, 0f, 0f),
-            FillColor = Scorch, AccentColor = Lava, OutlineColor = default,
-            EdgeThickness = 0.08f, FillFraction = 1f, Blend = DecalBlend.Alpha,
-            YTolerance = 0.3f, MaxStep = 0.4f, FeatherWidth = 0.15f,
-            Pattern = DecalFillPattern.MoltenCracks, PatternSpeed = 0.25f, PatternScale = 1.2f,
-            PatternParam = patternParam, EdgeErosion = erosion, FlashAdd = flashAdd,
+            Shape = DecalShape.Circle,
+            Center = center,
+            Size = new Vector4(Radius, 0f, 0f, 0f),
+            FillColor = Scorch,
+            AccentColor = Lava,
+            OutlineColor = default,
+            EdgeThickness = 0.08f,
+            FillFraction = 1f,
+            Blend = DecalBlend.Alpha,
+            YTolerance = 0.3f,
+            MaxStep = 0.4f,
+            FeatherWidth = 0.15f,
+            Pattern = DecalFillPattern.MoltenCracks,
+            PatternSpeed = 0.25f,
+            PatternScale = 1.2f,
+            PatternParam = patternParam,
+            EdgeErosion = erosion,
+            FlashAdd = flashAdd,
         };
 
         static GroundDecal SolidEroded(Vector3 center, float erosion) => new()
         {
-            Shape = DecalShape.Circle, Center = center, Size = new Vector4(Radius, 0f, 0f, 0f),
-            FillColor = new Color(0.55f, 0.55f, 0.6f, 1f), OutlineColor = default,
-            EdgeThickness = 0.08f, FillFraction = 1f, Blend = DecalBlend.Alpha,
-            YTolerance = 0.3f, MaxStep = 0.4f, EdgeErosion = erosion,
+            Shape = DecalShape.Circle,
+            Center = center,
+            Size = new Vector4(Radius, 0f, 0f, 0f),
+            FillColor = new Color(0.55f, 0.55f, 0.6f, 1f),
+            OutlineColor = default,
+            EdgeThickness = 0.08f,
+            FillFraction = 1f,
+            Blend = DecalBlend.Alpha,
+            YTolerance = 0.3f,
+            MaxStep = 0.4f,
+            EdgeErosion = erosion,
         };
 
         static void DrawGrid(Scene3D s, MeshHandle floor)

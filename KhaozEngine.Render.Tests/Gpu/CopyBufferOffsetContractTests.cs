@@ -216,7 +216,8 @@ namespace KhaozEngine.Tests.Gpu
                 MetalBuffer destination = _metal.NewBuffer(256, GpuBufferUsage.Staging);
                 list.Begin();
                 list.CopyBuffer(source, src, destination, dst, CopyBytes);
-            });
+            }
+            );
 
             yield return ("Vulkan", (src, dst) =>
             {
@@ -226,7 +227,8 @@ namespace KhaozEngine.Tests.Gpu
                 IGpuBuffer destination = VulkanBuffer(fixture, GpuBufferUsage.Staging);
                 list.Begin();
                 list.CopyBuffer(source, src, destination, dst, CopyBytes);
-            });
+            }
+            );
 
             yield return ("Direct3D 11", (src, dst) =>
             {
@@ -234,7 +236,8 @@ namespace KhaozEngine.Tests.Gpu
                 using D3D11CommandRecorder<D3D11StreamEmitter> list = D3D11CommandDrivers.CreateDeferred();
                 list.Begin();
                 list.CopyBuffer(fixtures.Uniforms, src, fixtures.Staging, dst, CopyBytes);
-            });
+            }
+            );
         }
 
         MetalCommandList NewMetalList()

@@ -31,12 +31,14 @@ namespace KhaozEngine.Render3D
                 float dissolveThreshold = 0f, float dissolveEdgeWidth = 0f, Vector4 dissolveEdge = default,
                 bool castsShadows = true)
                 : this(mesh, world, tint, material, dissolveThreshold, dissolveEdgeWidth, dissolveEdge, castsShadows,
-                    MotionKey.None) { }
+                    MotionKey.None)
+            { }
 
             /// <summary>One queued draw from its descriptor, motion key included.</summary>
             internal Instance(in SkinnedInstanceDraw draw)
                 : this(draw.Mesh, draw.Model, draw.Tint, draw.Material, draw.Dissolve, draw.DissolveEdgeWidth,
-                    draw.DissolveEdgeColor, draw.CastsShadows, draw.Motion) { }
+                    draw.DissolveEdgeColor, draw.CastsShadows, draw.Motion)
+            { }
 
             Instance(SkinnedMeshHandle mesh, Matrix4x4 world, Color tint, Material material, float dissolveThreshold,
                 float dissolveEdgeWidth, Vector4 dissolveEdge, bool castsShadows, MotionKey motion)

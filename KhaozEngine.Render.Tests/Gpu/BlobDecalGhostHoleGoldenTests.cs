@@ -121,12 +121,16 @@ namespace KhaozEngine.Tests.Gpu
             s.AddShadowBlob(new ShadowBlob(new Vector3(0f, 0f, 0f), groundY: 0f, radius: 2.5f));
             s.DrawGroundDecal(new GroundDecal
             {
-                Shape = DecalShape.Circle, Center = new Vector3(-4.0f, 0f, -4.0f),
+                Shape = DecalShape.Circle,
+                Center = new Vector3(-4.0f, 0f, -4.0f),
                 Size = new Vector4(0.5f, 0f, 0f, 0f),
                 FillColor = new Color(1f, 0.2f, 0.1f, 0.6f),
                 OutlineColor = new Color(1f, 0.9f, 0.2f, 0.9f),
-                EdgeThickness = 0.08f, FillFraction = 1f, Blend = DecalBlend.Alpha,
-                YTolerance = 0.3f, MaxStep = 0.4f,
+                EdgeThickness = 0.08f,
+                FillFraction = 1f,
+                Blend = DecalBlend.Alpha,
+                YTolerance = 0.3f,
+                MaxStep = 0.4f,
             });
         }
 

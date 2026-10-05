@@ -19,17 +19,17 @@ public class ReplicationTickBenchmarkTests
 {
     private static ReplicationBenchmarkConfig SmallConfig(int clients = 3, int entities = 10, int componentsPerEntity = 1,
         ulong seed = 0xC0FFEEUL, int warmup = 0, int timed = 3, float fieldSize = 100f, float moveStep = 0.5f) => new()
-    {
-        Name = "test",
-        ClientCount = clients,
-        EntityCount = entities,
-        ComponentsPerEntity = componentsPerEntity,
-        Seed = seed,
-        WarmupTicks = warmup,
-        TimedTicks = timed,
-        FieldSize = fieldSize,
-        MoveStep = moveStep,
-    };
+        {
+            Name = "test",
+            ClientCount = clients,
+            EntityCount = entities,
+            ComponentsPerEntity = componentsPerEntity,
+            Seed = seed,
+            WarmupTicks = warmup,
+            TimedTicks = timed,
+            FieldSize = fieldSize,
+            MoveStep = moveStep,
+        };
 
     [Fact]
     public void Build_CreatesExpectedEntityAndClientCounts()

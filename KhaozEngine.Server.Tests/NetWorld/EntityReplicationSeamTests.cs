@@ -143,8 +143,13 @@ public class EntityReplicationSeamTests
     public void WorldServer_SpawnEntity_AndOnBeforeTick_SingleWorldParity()
     {
         var (st, ct) = LoopbackTransport.CreatePair();
-        var cfg = new WorldServerConfig { TickSeconds = 1f / 30f, MaxPlayers = 4, InterestRadius = 50f,
-            SpawnPosition = _ => new Vector3(0f, 0f, 0f) };
+        var cfg = new WorldServerConfig
+        {
+            TickSeconds = 1f / 30f,
+            MaxPlayers = 4,
+            InterestRadius = 50f,
+            SpawnPosition = _ => new Vector3(0f, 0f, 0f)
+        };
         var server = new WorldServer(st, cfg, Flat, MoveTuning.Default, registry: ExtendedRegistry());
         long npcNetId = server.SpawnEntity(3f, 0f, (w, e) => w.Set(e, new NpcKind { Kind = 42 }));
 

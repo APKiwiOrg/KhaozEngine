@@ -20,8 +20,8 @@ namespace KhaozEngine.Tests.Terrain
         {
             var d = new float[N * N];
             for (int z = 0; z < N; z++)
-            for (int x = 0; x < N; x++)
-                d[z * N + x] = slope * x;
+                for (int x = 0; x < N; x++)
+                    d[z * N + x] = slope * x;
             return d;
         }
 

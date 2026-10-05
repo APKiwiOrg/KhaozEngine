@@ -34,7 +34,9 @@ namespace KhaozEngine.Tests.MapEditor
             doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees", CellSize = 4f, Jitter = 2f, Rules = { rule } });
             doc.CompanionLayers.Add(new MapCompanionLayer
             {
-                Name = "understory", HostLayer = "trees", Kinds = { new MapPropKind { Id = "fern" } },
+                Name = "understory",
+                HostLayer = "trees",
+                Kinds = { new MapPropKind { Id = "fern" } },
             });
             doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { CenterX = 10f, CenterZ = 10f, Radius = 12f } });
             return doc;

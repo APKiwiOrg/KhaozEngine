@@ -27,12 +27,20 @@ public sealed class TileWorldSceneDescriptorTests
     // Every field a fallback carries is distinct from its default, so a route that forwards the wrong one shows.
     static RigidInstanceDraw Rigid(float dissolve) => new(Handle, World)
     {
-        Tint = Tint, Dissolve = dissolve, DissolveEdgeWidth = 0.14f, DissolveEdgeColor = Edge, Motion = Body,
+        Tint = Tint,
+        Dissolve = dissolve,
+        DissolveEdgeWidth = 0.14f,
+        DissolveEdgeColor = Edge,
+        Motion = Body,
     };
 
     static SkinnedInstanceDraw Skinned(float dissolve) => new(Tube, World)
     {
-        Tint = Tint, Dissolve = dissolve, DissolveEdgeWidth = 0.12f, DissolveEdgeColor = Edge, Motion = Body,
+        Tint = Tint,
+        Dissolve = dissolve,
+        DissolveEdgeWidth = 0.12f,
+        DissolveEdgeColor = Edge,
+        Motion = Body,
     };
 
     [Fact]
@@ -216,10 +224,12 @@ public sealed class TileWorldSceneDescriptorTests
     {
         public List<(MeshHandle Handle, Matrix4x4 World)> Meshes { get; } = new();
         public List<(MeshHandle Handle, Matrix4x4 World, float Dissolve, float EdgeWidth, Color EdgeColor)>
-            MeshDissolves { get; } = new();
+            MeshDissolves
+        { get; } = new();
         public List<(SkinnedMeshHandle Handle, Matrix4x4[] Bones, Matrix4x4 World, Color Tint)> Skinned { get; } = new();
         public List<(SkinnedMeshHandle Handle, Matrix4x4[] Bones, Matrix4x4 World, Color Tint, float Dissolve,
-            float EdgeWidth, Color EdgeColor)> SkinnedDissolves { get; } = new();
+            float EdgeWidth, Color EdgeColor)> SkinnedDissolves
+        { get; } = new();
 
         public MeshHandle LoadMesh(GltfMesh mesh) => default;
         public void UnloadMesh(MeshHandle handle) { }

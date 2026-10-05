@@ -85,9 +85,9 @@ namespace KhaozEngine.Tests.Terrain
             int res = TerrainLod.ResolutionFor(1), cols = res + 1;
             float edgeMinY = float.MaxValue;
             for (int iz = 0; iz <= res; iz++)
-            for (int ix = 0; ix <= res; ix++)
-                if (ix == 0 || ix == res || iz == 0 || iz == res)
-                    edgeMinY = MathF.Min(edgeMinY, chunk.Mesh.Vertices[iz * cols + ix].Position.Y);
+                for (int ix = 0; ix <= res; ix++)
+                    if (ix == 0 || ix == res || iz == 0 || iz == res)
+                        edgeMinY = MathF.Min(edgeMinY, chunk.Mesh.Vertices[iz * cols + ix].Position.Y);
 
             float skirtMinY = float.MaxValue;
             for (int i = chunk.SurfaceVertexCount; i < chunk.Mesh.Vertices.Length; i++)

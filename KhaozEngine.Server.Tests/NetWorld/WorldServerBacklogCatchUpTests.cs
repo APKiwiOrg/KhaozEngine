@@ -29,7 +29,10 @@ public class WorldServerBacklogCatchUpTests
         var hub = new InMemoryTransportHub();
         var config = new WorldServerConfig
         {
-            TickSeconds = 1f / 30f, InterestRadius = 500f, MaxPlayers = 4, MaxInputBacklog = maxInputBacklog,
+            TickSeconds = 1f / 30f,
+            InterestRadius = 500f,
+            MaxPlayers = 4,
+            MaxInputBacklog = maxInputBacklog,
         };
         var server = NewServer(hub.Server, config);
         using var client = new WorldClient(hub.CreateClient(), Flat, MoveTuning.Default,

@@ -344,8 +344,12 @@ namespace KhaozEngine.Tests.Gpu
             int total = Warm + Measured;
             FlyCamera3D Camera(int n) => new()
             {
-                Position = new Vector3((n - total / 2f) * step, 0f, CameraZ), Yaw = MathF.PI,
-                FieldOfView = MathF.PI / 3f, AspectRatio = (float)W / H, NearPlane = 0.1f, FarPlane = 100f,
+                Position = new Vector3((n - total / 2f) * step, 0f, CameraZ),
+                Yaw = MathF.PI,
+                FieldOfView = MathF.PI / 3f,
+                AspectRatio = (float)W / H,
+                NearPlane = 0.1f,
+                FarPlane = 100f,
             };
             Vector3 ObjectAt(int n) => new(-2f + n * displayPerFrame * stage.PixelWorld, 0f, 0f);
             float CameraX(int n) => followed ? ObjectAt(n).X + 2f : 0f;

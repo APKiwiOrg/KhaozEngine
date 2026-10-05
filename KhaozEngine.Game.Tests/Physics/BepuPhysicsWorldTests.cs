@@ -110,7 +110,7 @@ public class BepuPhysicsWorldTests
             new Vector3( 1f,  1f, 5f),
             new Vector3(-1f,  1f, 5f),
         };
-        var indices = new[] { 0, 1, 2,  0, 2, 3 };
+        var indices = new[] { 0, 1, 2, 0, 2, 3 };
         var meshShape = new TriangleMeshShape(verts, indices);
 
         using IPhysicsWorld world = new BepuPhysicsWorld();
@@ -119,8 +119,8 @@ public class BepuPhysicsWorldTests
         {
             // Add the triangle mesh and a couple of box/sphere statics to churn the pool.
             var meshHandle = world.AddStatic(meshShape, Pose.At(Vector3.Zero));
-            var boxHandle  = world.AddStatic(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(new Vector3(10f, 0f, 0f)));
-            var sphHandle  = world.AddStatic(new SphereShape(0.3f), Pose.At(new Vector3(-10f, 0f, 0f)));
+            var boxHandle = world.AddStatic(new BoxShape(new Vector3(0.5f, 0.5f, 0.5f)), Pose.At(new Vector3(10f, 0f, 0f)));
+            var sphHandle = world.AddStatic(new SphereShape(0.3f), Pose.At(new Vector3(-10f, 0f, 0f)));
 
             world.Step(1f / 60f);
 

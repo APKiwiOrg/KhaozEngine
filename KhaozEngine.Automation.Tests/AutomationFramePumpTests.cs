@@ -180,7 +180,8 @@ public class AutomationFramePumpTests
                 finished.SetResult();
             }
             catch (Exception exception) { finished.SetException(exception); }
-        }) { IsBackground = true };
+        })
+        { IsBackground = true };
         pump.Start();
 
         try

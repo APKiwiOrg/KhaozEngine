@@ -110,7 +110,10 @@ namespace KhaozEngine.Tests.Render3D
 
             scene.CameraOverride = new FlyCamera3D
             {
-                Position = new Vector3(6f, 3f, 9f), Yaw = 0.7f, Pitch = -0.3f, AspectRatio = 96f / 64f,
+                Position = new Vector3(6f, 3f, 9f),
+                Yaw = 0.7f,
+                Pitch = -0.3f,
+                AspectRatio = 96f / 64f,
             };
             int drains = rig.Device.WaitForIdleCalls;
             rig.Render(96, 64);   // a capture from another camera inside the same frame
@@ -148,7 +151,9 @@ namespace KhaozEngine.Tests.Render3D
             scene.Post.Quality.AntiAliasing = AntiAliasing.Temporal;
             Action<Scene3D> ripple = s => s.DrawDistortion(new DistortionSprite
             {
-                Position = new Vector3(0f, 1f, 0f), Size = 1f, Strength = 0.5f,
+                Position = new Vector3(0f, 1f, 0f),
+                Size = 1f,
+                Strength = 0.5f,
             });
             for (int i = 0; i < 3; i++) rig.Frame(96, 64);
             TemporalResolveRenderer renderer = scene.TemporalResolveRendererForTests!;
@@ -183,8 +188,12 @@ namespace KhaozEngine.Tests.Render3D
             scene.Post.Temporal.Upscale = TemporalUpscale.Quality;
             var fly = new FlyCamera3D
             {
-                Position = new Vector3(60f, 6f, 30f), Yaw = 0.4f, Pitch = -0.35f, AspectRatio = 240f / 160f,
-                NearPlane = 0.1f, FarPlane = 400f,
+                Position = new Vector3(60f, 6f, 30f),
+                Yaw = 0.4f,
+                Pitch = -0.35f,
+                AspectRatio = 240f / 160f,
+                NearPlane = 0.1f,
+                FarPlane = 400f,
             };
             if (perspective) scene.CameraOverride = fly;
             scene.Camera.Target = new Vector3(70.5f, 0f, 10.25f);

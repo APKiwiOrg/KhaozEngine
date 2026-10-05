@@ -222,7 +222,8 @@ public interface ITileWorldScene
         MeshOutlineGroup group,
         SkinnedMeshHandle mesh,
         ReadOnlySpan<Matrix4x4> boneMatrices,
-        Matrix4x4 world) { }
+        Matrix4x4 world)
+    { }
 
     /// <summary>Adds a posed skinned part whose visible mask follows the ordinary skinned dissolve.</summary>
     void DrawSkinnedOutlineDissolved(

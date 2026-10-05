@@ -254,11 +254,25 @@ public class McpAdapterTests
         await harness.CreateWorldAsync(temp.Sub("world"), cts.Token);
         var layer = new
         {
-            id = "meadow", plane = 0, originX = 0f, originZ = -2f, cellSize = 1f, width = 3, height = 2,
-            density = Convert.ToBase64String(new byte[6]), seed = 9, spacing = 0.3f,
-            scaleMin = 0.8f, scaleMax = 1.2f, rootOffset = -0.04f,
-            archetypes = new[] { new { id = "tree", weight = 1f } }, allowedUnderlays = new[] { 1 },
-            excludeIndoors = true, excludeSolidObjects = true, doorClearance = 1f, edgeFade = 0.5f,
+            id = "meadow",
+            plane = 0,
+            originX = 0f,
+            originZ = -2f,
+            cellSize = 1f,
+            width = 3,
+            height = 2,
+            density = Convert.ToBase64String(new byte[6]),
+            seed = 9,
+            spacing = 0.3f,
+            scaleMin = 0.8f,
+            scaleMax = 1.2f,
+            rootOffset = -0.04f,
+            archetypes = new[] { new { id = "tree", weight = 1f } },
+            allowedUnderlays = new[] { 1 },
+            excludeIndoors = true,
+            excludeSolidObjects = true,
+            doorClearance = 1f,
+            edgeFade = 0.5f,
         };
 
         Assert.NotEqual(true, (await harness.CallAsync("foliage_layer_set", cts.Token, ("layer", layer))).IsError);

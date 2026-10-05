@@ -31,7 +31,11 @@ namespace KhaozEngine.Tests.Render3D
             using IPhysicsWorld world = new BepuPhysicsWorld();   // empty world: nothing along the boom to hit
             var cam = new FollowCamera3D
             {
-                Target = Vector3.Zero, Yaw = 0f, HeightOffset = 0f, MinPitch = 0f, Occlusion = world,
+                Target = Vector3.Zero,
+                Yaw = 0f,
+                HeightOffset = 0f,
+                MinPitch = 0f,
+                Occlusion = world,
             };
             cam.Pitch = 0f;
             cam.Distance = 10f;
@@ -51,7 +55,11 @@ namespace KhaozEngine.Tests.Render3D
 
             var cam = new FollowCamera3D
             {
-                Target = Vector3.Zero, Yaw = 0f, HeightOffset = 0f, MinPitch = 0f, Occlusion = world,
+                Target = Vector3.Zero,
+                Yaw = 0f,
+                HeightOffset = 0f,
+                MinPitch = 0f,
+                Occlusion = world,
             };
             cam.Pitch = 0f;
             cam.Distance = 10f;
@@ -76,7 +84,11 @@ namespace KhaozEngine.Tests.Render3D
 
             var cam = new FollowCamera3D
             {
-                Target = Vector3.Zero, Yaw = 0f, HeightOffset = 0f, MinPitch = 0f, Occlusion = world,
+                Target = Vector3.Zero,
+                Yaw = 0f,
+                HeightOffset = 0f,
+                MinPitch = 0f,
+                Occlusion = world,
             };
             cam.Pitch = 0f;
             cam.Distance = 10f;

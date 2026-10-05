@@ -84,7 +84,9 @@ namespace KhaozEngine.Tests.Gpu
                 s.Post.AmbientColor = new Color(Ambient, Ambient, Ambient, 1f);
                 s.CameraOverride = new FlyCamera3D
                 {
-                    Position = new Vector3(0f, 1.5f, 0f), Pitch = -0.45f, AspectRatio = (float)W / H,
+                    Position = new Vector3(0f, 1.5f, 0f),
+                    Pitch = -0.45f,
+                    AspectRatio = (float)W / H,
                 };
                 ground = s.LoadMesh(Ground(), s.LoadTexture(Checker(), 256, 256));
             });

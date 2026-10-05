@@ -18,8 +18,12 @@ public sealed class FrameViewTests
     static IIsoCamera3D Camera(bool perspective) => perspective
         ? new FollowCamera3D
         {
-            Target = new Vector3(1000f, 1f, 1000f), Yaw = 0.7f, Pitch = 0.5f, Distance = 9f,
-            AspectRatio = (float)W / H, RenderOrigin = Origin,
+            Target = new Vector3(1000f, 1f, 1000f),
+            Yaw = 0.7f,
+            Pitch = 0.5f,
+            Distance = 9f,
+            AspectRatio = (float)W / H,
+            RenderOrigin = Origin,
         }
         : new IsoCamera3D { Target = new Vector3(1000f, 0f, 1000f), AspectRatio = (float)W / H, RenderOrigin = Origin };
 

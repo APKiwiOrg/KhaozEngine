@@ -30,14 +30,14 @@ public class ShardHostParallelTests
         if (sched is not null) host.Scheduler = sched;
         var rng = new DeterministicRng(seed);
         for (int cy = 0; cy < gh; cy++)
-        for (int cx = 0; cx < gw; cx++)
-            for (int i = 0; i < e; i++)
-            {
-                float x = cx * 100f + 5f + rng.NextFloat() * 90f;
-                float y = cy * 100f + 5f + rng.NextFloat() * 90f;
-                Entity ent = host.SpawnAt(x, y, out CellSim cell);
-                cell.World.Set(ent, new Tally { Value = (int)(rng.NextULong() & 0xFFFF) });
-            }
+            for (int cx = 0; cx < gw; cx++)
+                for (int i = 0; i < e; i++)
+                {
+                    float x = cx * 100f + 5f + rng.NextFloat() * 90f;
+                    float y = cy * 100f + 5f + rng.NextFloat() * 90f;
+                    Entity ent = host.SpawnAt(x, y, out CellSim cell);
+                    cell.World.Set(ent, new Tally { Value = (int)(rng.NextULong() & 0xFFFF) });
+                }
         foreach (CellSim cell in host.Cells) cell.World.AddSystem(new IncrementSystem());
         return host;
     }

@@ -175,7 +175,12 @@ namespace KhaozEngine.Tests.MapEditTool
                 {
                     d.PlayerSpawns.Add(new MapPlayerSpawn
                     {
-                        Id = "player-1", X = -25f, Z = 15f, Yaw = 1.5f, Enabled = false, Tags = { "start" },
+                        Id = "player-1",
+                        X = -25f,
+                        Z = 15f,
+                        Yaw = 1.5f,
+                        Enabled = false,
+                        Tags = { "start" },
                     });
                     d.PlayerSpawns.Add(new MapPlayerSpawn { Id = "player-2", X = 200f, Z = 200f });
                     return 0;

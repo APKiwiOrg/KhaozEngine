@@ -48,8 +48,11 @@ public class StepOffsetEndToEndTests
         { new JointTrack(0) { Translation = new Vector3Track(new[] { 0f, 1f }, new[] { Vector3.Zero, Vector3.Zero }, InterpolationMode.Linear) } });
         var clips = new Dictionary<LocomotionState, AnimationClip>
         {
-            [LocomotionState.Idle] = Park("i"), [LocomotionState.Walk] = Park("w"), [LocomotionState.Run] = Park("r"),
-            [LocomotionState.Jump] = Park("j"), [LocomotionState.Fall] = Park("f"),
+            [LocomotionState.Idle] = Park("i"),
+            [LocomotionState.Walk] = Park("w"),
+            [LocomotionState.Run] = Park("r"),
+            [LocomotionState.Jump] = Park("j"),
+            [LocomotionState.Fall] = Park("f"),
         };
         var tuning = CharacterAnimatorTuning.Default;
         if (!stepSmoothing) tuning.StepSmoothingRate = 0f;   // disabled = the raw popup baseline this feature fixes

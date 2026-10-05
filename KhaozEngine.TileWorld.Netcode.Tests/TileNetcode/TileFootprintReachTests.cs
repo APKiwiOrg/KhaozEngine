@@ -37,8 +37,8 @@ public class TileFootprintReachTests
     {
         var found = new List<TileCoord>();
         for (int z = WindowMin; z <= WindowMax; z++)
-        for (int x = WindowMin; x <= WindowMax; x++)
-            if (InRangeOnOpenGround(new TileRect(x, z, n, n), Target(m))) found.Add(new TileCoord(x, z, 0));
+            for (int x = WindowMin; x <= WindowMax; x++)
+                if (InRangeOnOpenGround(new TileRect(x, z, n, n), Target(m))) found.Add(new TileCoord(x, z, 0));
         return found;
     }
 
@@ -51,9 +51,9 @@ public class TileFootprintReachTests
         TileCollisionMap map = OpenMap();
         TileRect target = Target(m);
         for (int z = WindowMin; z <= WindowMax; z++)
-        for (int x = WindowMin; x <= WindowMax; x++)
-            Assert.Equal(InRangeOnOpenGround(new TileRect(x, z, n, n), target),
-                TileReach.Contains(map, target, 0, new TileCoord(x, z, 0), n));
+            for (int x = WindowMin; x <= WindowMax; x++)
+                Assert.Equal(InRangeOnOpenGround(new TileRect(x, z, n, n), target),
+                    TileReach.Contains(map, target, 0, new TileCoord(x, z, 0), n));
     }
 
     [Theory, MemberData(nameof(Pairings))]
@@ -148,13 +148,13 @@ public class TileFootprintReachTests
 
         int denied = 0;
         for (int z = WindowMin; z <= WindowMax; z++)
-        for (int x = WindowMin; x <= WindowMax; x++)
-        {
-            var a = new TileCoord(x, z, 0);
-            bool inRange = TileReach.Contains(walled, target, 0, a, n);
-            Assert.Equal(set.Contains(a), inRange);
-            if (TileReach.Contains(open, target, 0, a, n) && !inRange) denied++;
-        }
+            for (int x = WindowMin; x <= WindowMax; x++)
+            {
+                var a = new TileCoord(x, z, 0);
+                bool inRange = TileReach.Contains(walled, target, 0, a, n);
+                Assert.Equal(set.Contains(a), inRange);
+                if (TileReach.Contains(open, target, 0, a, n) && !inRange) denied++;
+            }
         Assert.True(denied > 0, "the walls deny at least one anchor that reaches on open ground");
     }
 

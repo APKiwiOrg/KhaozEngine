@@ -11,7 +11,8 @@ namespace KhaozEngine.Tests.Terrain
             // single mountain band so there is a real slope toward +Z.
             var cfg = new TerrainConfig
             {
-                Seed = 2, BiomeBlend = 26f,
+                Seed = 2,
+                BiomeBlend = 26f,
                 Biomes = new[]
                 {
                     new BiomeBand { Start = float.NegativeInfinity, End = 48f, Biome = BiomeId.Meadow,    BaseHeight = 0f,  HillAmplitude = 0f },

@@ -103,8 +103,8 @@ internal static class PieceMapper
                             yield return new CellPiece(tile, DungeonPiece.StairDown, sdx, sdz, FloorPieceYOffset);
                             break;
 
-                        // StairLower/StairMid/StairUpper: covered once per run by EnumerateStairRuns.
-                        // StairVoid/Empty: nothing.
+                            // StairLower/StairMid/StairUpper: covered once per run by EnumerateStairRuns.
+                            // StairVoid/Empty: nothing.
                     }
 
                     // A ceiling roofs every walkable cell (whatever piece it resolved to above, including the

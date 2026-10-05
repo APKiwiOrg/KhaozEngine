@@ -12,7 +12,10 @@ public class NpcGroundMovementTests
 {
     private static readonly MoveTuning Tuning = MoveTuning.Default with
     {
-        WalkSpeed = 2f, RunSpeed = 5f, CapsuleRadius = 0.2f, CapsuleHalfHeight = 0.75f,
+        WalkSpeed = 2f,
+        RunSpeed = 5f,
+        CapsuleRadius = 0.2f,
+        CapsuleHalfHeight = 0.75f,
     };
 
     [Theory]
@@ -167,8 +170,12 @@ public class NpcGroundMovementTests
         MoveTuning tuning = Tuning with { AirMomentum = true, AirControl = 0f, AirBrakeAccel = 0f };
         var body = new MoveState
         {
-            Position = new Vector3(0f, 5f, 0f), HorizontalVelocity = new Vector2(2f, -1f),
-            VerticalVelocity = -2f, TimeSinceGrounded = 1f, FacingYaw = 1.25f, SpeedScale = 0.5f,
+            Position = new Vector3(0f, 5f, 0f),
+            HorizontalVelocity = new Vector2(2f, -1f),
+            VerticalVelocity = -2f,
+            TimeSinceGrounded = 1f,
+            FacingYaw = 1.25f,
+            SpeedScale = 0.5f,
         };
         var steering = new RangeSteering(Vector2.UnitY, RangeMoveStatus.Suspended);
 
@@ -197,7 +204,8 @@ public class NpcGroundMovementTests
             {
                 Phase = MovementCommitmentPhase.Airborne,
             },
-            HorizontalVelocity = new Vector2(2f, 0f), VerticalVelocity = 4f,
+            HorizontalVelocity = new Vector2(2f, 0f),
+            VerticalVelocity = 4f,
         };
         var steering = new RangeSteering(-Vector2.UnitX, RangeMoveStatus.Suspended);
 

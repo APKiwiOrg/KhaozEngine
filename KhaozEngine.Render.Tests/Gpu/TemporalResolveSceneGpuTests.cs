@@ -65,8 +65,11 @@ namespace KhaozEngine.Tests.Gpu
                     if (!distortion) return;
                     s.DrawDistortion(new DistortionSprite
                     {
-                        Position = new Vector3(0f, 0f, 1.2f), Size = 2.2f, Shape = DistortionShape.Ripple,
-                        Strength = 2.5f, Seed = 0.31f,
+                        Position = new Vector3(0f, 0f, 1.2f),
+                        Size = 2.2f,
+                        Shape = DistortionShape.Ripple,
+                        Strength = 2.5f,
+                        Seed = 0.31f,
                     });
                 });
 
@@ -101,8 +104,13 @@ namespace KhaozEngine.Tests.Gpu
             h.Scene.Post.Sky.Enabled = true;
             h.Scene.CameraOverride = new FlyCamera3D
             {
-                Position = new Vector3(0f, 1.5f, 0f), Yaw = 0f, Pitch = 0.25f, FieldOfView = MathF.PI / 3f,
-                AspectRatio = 160f / 96f, NearPlane = 0.1f, FarPlane = 400f,
+                Position = new Vector3(0f, 1.5f, 0f),
+                Yaw = 0f,
+                Pitch = 0.25f,
+                FieldOfView = MathF.PI / 3f,
+                AspectRatio = 160f / 96f,
+                NearPlane = 0.1f,
+                FarPlane = 400f,
             };
             MeshHandle ground = h.Scene.LoadMesh(MeshPrimitives.Box(1f));
             byte[] rgba = Array.Empty<byte>();
@@ -141,7 +149,10 @@ namespace KhaozEngine.Tests.Gpu
             MeshHandle box = h.Scene.LoadMesh(MeshPrimitives.Box(1f));
             var other = new FlyCamera3D
             {
-                Position = new Vector3(4f, 3f, 6f), Yaw = 0.6f, Pitch = -0.4f, AspectRatio = 160f / 96f,
+                Position = new Vector3(4f, 3f, 6f),
+                Yaw = 0.6f,
+                Pitch = -0.4f,
+                AspectRatio = 160f / 96f,
             };
             byte[] rgba = Array.Empty<byte>();
             for (int i = 0; i < 5; i++)
@@ -225,8 +236,12 @@ namespace KhaozEngine.Tests.Gpu
 
         static FlyCamera3D CaptureCamera(int width, int height) => new()
         {
-            Position = new Vector3(0f, 1f, 0f), Yaw = 0f, Pitch = 0f, AspectRatio = width / (float)height,
-            NearPlane = 0.1f, FarPlane = 100f,
+            Position = new Vector3(0f, 1f, 0f),
+            Yaw = 0f,
+            Pitch = 0f,
+            AspectRatio = width / (float)height,
+            NearPlane = 0.1f,
+            FarPlane = 100f,
         };
 
         /// <summary>A Solid background frame with nothing opaque still copies the cleared background, not the last

@@ -22,7 +22,12 @@ namespace KhaozEngine.Tests.Render3D
         {
             var s = new PixelPostProcessSettings
             {
-                CelBands = 4, Quantize = true, Dither = true, Outline = true, Starfield = true, Pixelated = true,
+                CelBands = 4,
+                Quantize = true,
+                Dither = true,
+                Outline = true,
+                Starfield = true,
+                Pixelated = true,
             };
             s.UseSmoothPreset();
             Assert.Equal(0, s.CelBands);

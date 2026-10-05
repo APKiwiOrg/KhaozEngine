@@ -282,12 +282,12 @@ public sealed class AuthoredPlacementLayerTests
         var all = new List<string>();
         var served = new List<PropPlacement>();
         for (int z = -4; z <= 3; z++)
-        for (int x = -4; x <= 3; x++)
-        {
-            served.Clear();
-            layer.PlacementsIn(ChunkGrid.AreaOf(new ChunkCoord(x, z), Chunk), served);
-            foreach (PropPlacement p in served) all.Add($"{x},{z}:{p.Id}@{p.X},{p.Z}");
-        }
+            for (int x = -4; x <= 3; x++)
+            {
+                served.Clear();
+                layer.PlacementsIn(ChunkGrid.AreaOf(new ChunkCoord(x, z), Chunk), served);
+                foreach (PropPlacement p in served) all.Add($"{x},{z}:{p.Id}@{p.X},{p.Z}");
+            }
         return all.ToArray();
     }
 

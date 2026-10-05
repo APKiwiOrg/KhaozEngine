@@ -90,10 +90,16 @@ public class BlockRaiseTests
         // without dropping its blade.
         Assert.Equal(walk with
         {
-            LeftArm = blocked.LeftArm, LeftElbow = blocked.LeftElbow, LeftArmYaw = blocked.LeftArmYaw,
-            LeftWrist = blocked.LeftWrist, TorsoLean = blocked.TorsoLean, Bob = blocked.Bob,
-            LeftLeg = blocked.LeftLeg, RightLeg = blocked.RightLeg,
-            LeftKnee = blocked.LeftKnee, RightKnee = blocked.RightKnee,
+            LeftArm = blocked.LeftArm,
+            LeftElbow = blocked.LeftElbow,
+            LeftArmYaw = blocked.LeftArmYaw,
+            LeftWrist = blocked.LeftWrist,
+            TorsoLean = blocked.TorsoLean,
+            Bob = blocked.Bob,
+            LeftLeg = blocked.LeftLeg,
+            RightLeg = blocked.RightLeg,
+            LeftKnee = blocked.LeftKnee,
+            RightKnee = blocked.RightKnee,
         }, blocked);
 
         // A zero raise is the pose untouched, which is what lets this compose unconditionally.

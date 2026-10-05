@@ -356,12 +356,12 @@ namespace KhaozEngine.Tests.Gpu
         {
             var px = new byte[4 * 4 * 4];
             for (int y = 0; y < 4; y++)
-            for (int x = 0; x < 4; x++)
-            {
-                int i = (y * 4 + x) * 4;
-                byte v = (byte)(((x + y) & 1) == 0 ? 235 : 90);
-                px[i] = v; px[i + 1] = (byte)(v / 2); px[i + 2] = (byte)(255 - v); px[i + 3] = 255;
-            }
+                for (int x = 0; x < 4; x++)
+                {
+                    int i = (y * 4 + x) * 4;
+                    byte v = (byte)(((x + y) & 1) == 0 ? 235 : 90);
+                    px[i] = v; px[i + 1] = (byte)(v / 2); px[i + 2] = (byte)(255 - v); px[i + 3] = 255;
+                }
             return px;
         }
     }

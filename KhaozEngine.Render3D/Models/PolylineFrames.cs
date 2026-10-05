@@ -41,7 +41,9 @@ namespace KhaozEngine.Render3D
 
         static Vector3 AxisVec(Axis a) => a switch
         {
-            Axis.X => Vector3.UnitX, Axis.Y => Vector3.UnitY, _ => Vector3.UnitZ
+            Axis.X => Vector3.UnitX,
+            Axis.Y => Vector3.UnitY,
+            _ => Vector3.UnitZ
         };
 
         // Rotation mapping the run axis onto `dir`, with `up` as the secondary reference (Gram-Schmidt basis).

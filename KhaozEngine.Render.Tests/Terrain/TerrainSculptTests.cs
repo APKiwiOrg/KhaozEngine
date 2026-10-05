@@ -38,16 +38,16 @@ namespace KhaozEngine.Tests.Terrain
             var withEmpty = new TerrainField(cfg, new TerrainSculpt(0.5f, Array.Empty<TerrainSculptTile>()));
 
             for (float x = -40f; x <= 40f; x += 7.5f)
-            for (float z = -40f; z <= 40f; z += 7.5f)
-            {
-                float h = analytic.SampleHeight(x, z);
-                Assert.Equal(h, withNull.SampleHeight(x, z));
-                Assert.Equal(h, withEmpty.SampleHeight(x, z));
+                for (float z = -40f; z <= 40f; z += 7.5f)
+                {
+                    float h = analytic.SampleHeight(x, z);
+                    Assert.Equal(h, withNull.SampleHeight(x, z));
+                    Assert.Equal(h, withEmpty.SampleHeight(x, z));
 
-                Vector3 n = analytic.SampleNormal(x, z);
-                Assert.Equal(n, withNull.SampleNormal(x, z));
-                Assert.Equal(n, withEmpty.SampleNormal(x, z));
-            }
+                    Vector3 n = analytic.SampleNormal(x, z);
+                    Assert.Equal(n, withNull.SampleNormal(x, z));
+                    Assert.Equal(n, withEmpty.SampleNormal(x, z));
+                }
         }
 
         [Fact]
@@ -88,8 +88,8 @@ namespace KhaozEngine.Tests.Terrain
             const float cell = 0.5f;
             float[] deltas = ZeroTile();
             for (int j = 0; j < Size; j++)
-            for (int i = 0; i < Size; i++)
-                deltas[j * Size + i] = cell * i;
+                for (int i = 0; i < Size; i++)
+                    deltas[j * Size + i] = cell * i;
             var sculpt = new TerrainSculpt(cell, new[] { new TerrainSculptTile(0, 0, deltas) });
             var field = new TerrainField(FlatConfig(10f), sculpt);
 

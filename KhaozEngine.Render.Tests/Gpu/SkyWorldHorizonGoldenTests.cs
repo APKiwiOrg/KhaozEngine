@@ -135,7 +135,11 @@ namespace KhaozEngine.Tests.Gpu
                     scene.Post.Sky.SunDirectionOverride = sun;
                     scene.Post.Sky.ExtraDiscs.Add(new SkyDisc
                     {
-                        Direction = moon, Color = moonColor, Radius = 0.07f, HaloStrength = 0f, HaloFalloff = 0.04f,
+                        Direction = moon,
+                        Color = moonColor,
+                        Radius = 0.07f,
+                        HaloStrength = 0f,
+                        HaloFalloff = 0.04f,
                     });
                     scene.Post.LightDirection = new Vector3(0.3f, -0.8f, 0.4f);   // NOT where either disc is
                     WaterSceneTuning.ApplyCalmMirror(scene.Post.Water);

@@ -30,29 +30,57 @@ namespace KhaozEngine.Tests.Gpu
             // splits at blend boundaries and overlapping alpha decals composite in the queued order.
             s.DrawGroundDecal(new GroundDecal
             {
-                Shape = DecalShape.Circle, Center = new Vector3(-0.6f, 0f, 0.3f), Size = new Vector4(1.7f, 0, 0, 0),
-                FillColor = new Color(0.95f, 0.12f, 0.06f, 0.7f), OutlineColor = new Color(1f, 0.8f, 0.2f, 0.9f),
-                EdgeThickness = 0.08f, FillFraction = 1f, Blend = DecalBlend.Alpha, YTolerance = 0.3f, MaxStep = 0.4f,
+                Shape = DecalShape.Circle,
+                Center = new Vector3(-0.6f, 0f, 0.3f),
+                Size = new Vector4(1.7f, 0, 0, 0),
+                FillColor = new Color(0.95f, 0.12f, 0.06f, 0.7f),
+                OutlineColor = new Color(1f, 0.8f, 0.2f, 0.9f),
+                EdgeThickness = 0.08f,
+                FillFraction = 1f,
+                Blend = DecalBlend.Alpha,
+                YTolerance = 0.3f,
+                MaxStep = 0.4f,
             });
             s.DrawGroundDecal(new GroundDecal
             {
-                Shape = DecalShape.Ring, Center = new Vector3(0.5f, 0f, -0.2f), Size = new Vector4(0.6f, 1.5f, 0, 0),
-                FillColor = new Color(0.1f, 0.8f, 0.95f, 0.6f), OutlineColor = new Color(0.7f, 1f, 1f, 0.9f),
-                EdgeThickness = 0.08f, FillFraction = 1f, Blend = DecalBlend.Alpha, YTolerance = 0.3f, MaxStep = 0.4f,
+                Shape = DecalShape.Ring,
+                Center = new Vector3(0.5f, 0f, -0.2f),
+                Size = new Vector4(0.6f, 1.5f, 0, 0),
+                FillColor = new Color(0.1f, 0.8f, 0.95f, 0.6f),
+                OutlineColor = new Color(0.7f, 1f, 1f, 0.9f),
+                EdgeThickness = 0.08f,
+                FillFraction = 1f,
+                Blend = DecalBlend.Alpha,
+                YTolerance = 0.3f,
+                MaxStep = 0.4f,
             });
             // An additive glow between two alpha decals: forces a blend-run split in the middle of the submission order.
             s.DrawGroundDecal(new GroundDecal
             {
-                Shape = DecalShape.Circle, Center = new Vector3(0.1f, 0f, 0.1f), Size = new Vector4(1.1f, 0, 0, 0),
-                FillColor = new Color(0.2f, 0.9f, 0.3f, 0.5f), OutlineColor = new Color(0.4f, 1f, 0.5f, 0.7f),
-                EdgeThickness = 0.06f, FillFraction = 1f, Blend = DecalBlend.Additive, YTolerance = 0.3f, MaxStep = 0.4f,
+                Shape = DecalShape.Circle,
+                Center = new Vector3(0.1f, 0f, 0.1f),
+                Size = new Vector4(1.1f, 0, 0, 0),
+                FillColor = new Color(0.2f, 0.9f, 0.3f, 0.5f),
+                OutlineColor = new Color(0.4f, 1f, 0.5f, 0.7f),
+                EdgeThickness = 0.06f,
+                FillFraction = 1f,
+                Blend = DecalBlend.Additive,
+                YTolerance = 0.3f,
+                MaxStep = 0.4f,
             });
             s.DrawGroundDecal(new GroundDecal
             {
-                Shape = DecalShape.Cone, Center = new Vector3(-0.2f, 0f, -0.9f), Rotation = 0.4f,
+                Shape = DecalShape.Cone,
+                Center = new Vector3(-0.2f, 0f, -0.9f),
+                Rotation = 0.4f,
                 Size = new Vector4(2.4f, 0.6f, 0, 0),
-                FillColor = new Color(0.9f, 0.5f, 0.1f, 0.6f), OutlineColor = new Color(1f, 0.85f, 0.3f, 0.9f),
-                EdgeThickness = 0.08f, FillFraction = 1f, Blend = DecalBlend.Alpha, YTolerance = 0.3f, MaxStep = 0.4f,
+                FillColor = new Color(0.9f, 0.5f, 0.1f, 0.6f),
+                OutlineColor = new Color(1f, 0.85f, 0.3f, 0.9f),
+                EdgeThickness = 0.08f,
+                FillFraction = 1f,
+                Blend = DecalBlend.Alpha,
+                YTolerance = 0.3f,
+                MaxStep = 0.4f,
             });
         }
 

@@ -32,7 +32,8 @@ namespace KhaozEngine.Render2D
         /// </summary>
         public PrimitiveRenderer(Render2DSurface surface)
             : this(surface is null ? throw new ArgumentNullException(nameof(surface))
-                : surface.CreateTexture(WhitePixel, 1, 1), ownsWhite: true) { }
+                : surface.CreateTexture(WhitePixel, 1, 1), ownsWhite: true)
+        { }
 
         /// <summary>
         /// Creates a renderer that owns a fresh 1x1 white pixel on the snapshot <paramref name="context"/>'s
@@ -40,7 +41,8 @@ namespace KhaozEngine.Render2D
         /// </summary>
         public PrimitiveRenderer(Render2DContext context)
             : this(context is null ? throw new ArgumentNullException(nameof(context))
-                : context.CreateTexture(WhitePixel, 1, 1), ownsWhite: true) { }
+                : context.CreateTexture(WhitePixel, 1, 1), ownsWhite: true)
+        { }
 
         /// <summary>
         /// Creates a renderer over a caller-supplied 1x1 white <paramref name="white"/> texture. The texture

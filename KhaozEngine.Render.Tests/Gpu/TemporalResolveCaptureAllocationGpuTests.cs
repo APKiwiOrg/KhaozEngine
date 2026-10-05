@@ -37,7 +37,10 @@ namespace KhaozEngine.Tests.Gpu
             MeshHandle box = scene.LoadMesh(MeshPrimitives.Box(1f));
             var other = new FlyCamera3D
             {
-                Position = new Vector3(4f, 3f, 6f), Yaw = 3.6f, Pitch = -0.35f, AspectRatio = W / (float)H,
+                Position = new Vector3(4f, 3f, 6f),
+                Yaw = 3.6f,
+                Pitch = -0.35f,
+                AspectRatio = W / (float)H,
             };
             int n = 0;
 

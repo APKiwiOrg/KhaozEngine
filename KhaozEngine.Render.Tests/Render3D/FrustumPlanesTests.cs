@@ -49,8 +49,14 @@ namespace KhaozEngine.Tests.Render3D
             // Axis-aligned ortho looking down -Z so the frustum faces map to world X/Y (easy to reason about).
             var cam = new IsoCamera3D
             {
-                Target = Vector3.Zero, Azimuth = 0f, Elevation = 0f, OrthoSize = 10f, AspectRatio = 1f,
-                Distance = 50f, NearPlane = 0.1f, FarPlane = 200f,
+                Target = Vector3.Zero,
+                Azimuth = 0f,
+                Elevation = 0f,
+                OrthoSize = 10f,
+                AspectRatio = 1f,
+                Distance = 50f,
+                NearPlane = 0.1f,
+                FarPlane = 200f,
             };
             FrustumPlanes f = FrustumPlanes.Extract(cam.ViewProjection);
 
@@ -67,7 +73,11 @@ namespace KhaozEngine.Tests.Render3D
         {
             var cam = new IsoCamera3D
             {
-                Target = Vector3.Zero, Azimuth = 0f, Elevation = 0f, OrthoSize = 10f, AspectRatio = 1f,
+                Target = Vector3.Zero,
+                Azimuth = 0f,
+                Elevation = 0f,
+                OrthoSize = 10f,
+                AspectRatio = 1f,
             };
             FrustumPlanes f = FrustumPlanes.Extract(cam.ViewProjection);
 
@@ -80,7 +90,11 @@ namespace KhaozEngine.Tests.Render3D
         {
             var cam = new IsoCamera3D
             {
-                Target = Vector3.Zero, Azimuth = 0f, Elevation = 0f, OrthoSize = 10f, AspectRatio = 1f,
+                Target = Vector3.Zero,
+                Azimuth = 0f,
+                Elevation = 0f,
+                OrthoSize = 10f,
+                AspectRatio = 1f,
             };
             FrustumPlanes f = FrustumPlanes.Extract(cam.ViewProjection);
 
@@ -109,7 +123,11 @@ namespace KhaozEngine.Tests.Render3D
         {
             var cam = new IsoCamera3D
             {
-                Target = Vector3.Zero, Azimuth = 0f, Elevation = 0f, OrthoSize = 10f, AspectRatio = 1f,
+                Target = Vector3.Zero,
+                Azimuth = 0f,
+                Elevation = 0f,
+                OrthoSize = 10f,
+                AspectRatio = 1f,
             };
             FrustumPlanes n = FrustumPlanes.Extract(cam.ViewProjection).Normalized();
             // Right face is at X=5; a point at X=3 is 2 units inside it (plane index 1 = right).

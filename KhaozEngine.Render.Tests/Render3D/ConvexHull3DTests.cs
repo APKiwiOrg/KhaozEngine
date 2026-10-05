@@ -25,7 +25,7 @@ public class ConvexHull3DTests
     [Fact]
     public void Tetrahedron_produces_four_triangles()
     {
-        var pts = new[] { new Vector3(0,0,0), new(1,0,0), new(0,1,0), new(0,0,1) };
+        var pts = new[] { new Vector3(0, 0, 0), new(1, 0, 0), new(0, 1, 0), new(0, 0, 1) };
         var (v, i) = ConvexHull3D.Triangulate(pts);
         Assert.Equal(4, i.Length / 3);
         AssertAllFacesOutward(v, i);
@@ -34,7 +34,7 @@ public class ConvexHull3DTests
     [Fact]
     public void Interior_points_do_not_add_faces()
     {
-        var pts = new List<Vector3>(Cube) { new(0,0,0), new(0.5f,0.1f,-0.2f) };
+        var pts = new List<Vector3>(Cube) { new(0, 0, 0), new(0.5f, 0.1f, -0.2f) };
         var (_, i) = ConvexHull3D.Triangulate(pts);
         Assert.Equal(12, i.Length / 3);
     }
@@ -42,7 +42,7 @@ public class ConvexHull3DTests
     [Fact]
     public void Coplanar_input_returns_empty()
     {
-        var pts = new[] { new Vector3(0,0,0), new(1,0,0), new(1,1,0), new(0,1,0) };
+        var pts = new[] { new Vector3(0, 0, 0), new(1, 0, 0), new(1, 1, 0), new(0, 1, 0) };
         var (v, i) = ConvexHull3D.Triangulate(pts);
         Assert.Empty(v);
         Assert.Empty(i);

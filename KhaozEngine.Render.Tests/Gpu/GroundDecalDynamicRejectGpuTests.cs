@@ -34,8 +34,11 @@ namespace KhaozEngine.Tests.Gpu
             Size = new Vector4(6f, 0, 0, 0),
             FillColor = new Color(0.95f, 0.08f, 0.9f, 0.95f),
             OutlineColor = new Color(1f, 0.6f, 1f, 0.95f),
-            EdgeThickness = 0.05f, FillFraction = 1f, Blend = DecalBlend.Alpha,
-            YTolerance = 0.3f, MaxStep = 1.6f,   // band [-0.3, 1.6] covers ground (0) and the tube top (~1.0)
+            EdgeThickness = 0.05f,
+            FillFraction = 1f,
+            Blend = DecalBlend.Alpha,
+            YTolerance = 0.3f,
+            MaxStep = 1.6f,   // band [-0.3, 1.6] covers ground (0) and the tube top (~1.0)
         });
 
         static byte[] Read(IGpuDevice gd, Texture2D tex) => GpuReadback.ToRgba(gd, tex.Handle, W, H);

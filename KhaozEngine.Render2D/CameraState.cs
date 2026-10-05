@@ -10,8 +10,8 @@ namespace KhaozEngine.Render2D
     public readonly struct CameraState
     {
         public readonly Vector2 Position;
-        public readonly float   Zoom;
-        public readonly float   Rotation;
+        public readonly float Zoom;
+        public readonly float Rotation;
 
         public CameraState(Vector2 position, float zoom, float rotation)
         {

@@ -41,7 +41,12 @@ namespace KhaozEngine.Render3D
         /// <summary>Left, right, bottom, top, near, far in that order (index 0..5).</summary>
         public readonly Vector4 this[int i] => i switch
         {
-            0 => _p0, 1 => _p1, 2 => _p2, 3 => _p3, 4 => _p4, 5 => _p5,
+            0 => _p0,
+            1 => _p1,
+            2 => _p2,
+            3 => _p3,
+            4 => _p4,
+            5 => _p5,
             _ => throw new ArgumentOutOfRangeException(nameof(i)),
         };
 

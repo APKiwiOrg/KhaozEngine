@@ -132,15 +132,15 @@ public static class CollisionShapeMesh
         }
 
         for (int r = 0; r < rings; r++)
-        for (int s = 0; s < segs; s++)
-        {
-            int i0 = r * cols + s;
-            int i1 = r * cols + s + 1;
-            int i2 = (r + 1) * cols + s;
-            int i3 = (r + 1) * cols + s + 1;
-            inds.Add(i0); inds.Add(i3); inds.Add(i2);
-            inds.Add(i0); inds.Add(i1); inds.Add(i3);
-        }
+            for (int s = 0; s < segs; s++)
+            {
+                int i0 = r * cols + s;
+                int i1 = r * cols + s + 1;
+                int i2 = (r + 1) * cols + s;
+                int i3 = (r + 1) * cols + s + 1;
+                inds.Add(i0); inds.Add(i3); inds.Add(i2);
+                inds.Add(i0); inds.Add(i1); inds.Add(i3);
+            }
 
         return (verts, inds.ToArray());
     }

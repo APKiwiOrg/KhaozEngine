@@ -126,11 +126,11 @@ public sealed partial class TileWorldServer : IAdminControllable
                     ApplyTeleport(command.Target, command.Position);
                     break;
                 case AdminKind.Kick:
-                {
-                    int slot = ResolveSlot(command.Target);
-                    if (slot >= 0) Kick(slot, KickToken(slot, command.Text));
-                    break;
-                }
+                    {
+                        int slot = ResolveSlot(command.Target);
+                        if (slot >= 0) Kick(slot, KickToken(slot, command.Text));
+                        break;
+                    }
                 case AdminKind.Broadcast:
                     BroadcastNotice(command.Text);
                     break;

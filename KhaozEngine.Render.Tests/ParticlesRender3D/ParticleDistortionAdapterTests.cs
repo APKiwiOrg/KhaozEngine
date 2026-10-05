@@ -28,7 +28,10 @@ namespace KhaozEngine.Tests.ParticlesRender3D
             Orientation = ParticleOrientation.FlatGround,
             Distortion = new DistortionLook
             {
-                Shape = DistortionShape.Ripple, ShapeParam = 0.3f, Strength = 2f, SoftFadeScale = 0.12f,
+                Shape = DistortionShape.Ripple,
+                ShapeParam = 0.3f,
+                Strength = 2f,
+                SoftFadeScale = 0.12f,
             },
         };
 

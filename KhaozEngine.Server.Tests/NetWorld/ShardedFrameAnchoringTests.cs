@@ -282,7 +282,10 @@ public class ShardedFrameAnchoringTests
         // Unframed, the ceiling does not apply: there is no frame-local coordinate for it to bound.
         var unframed = new ShardedWorldServerConfig
         {
-            CellSize = 600f, OverlapMargin = 24f, InterestRadius = 24f, FrameAnchoring = false,
+            CellSize = 600f,
+            OverlapMargin = 24f,
+            InterestRadius = 24f,
+            FrameAnchoring = false,
         };
         _ = new ShardedWorldServer(st, unframed, Flat, Unit);
 

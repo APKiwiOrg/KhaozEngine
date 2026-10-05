@@ -161,7 +161,7 @@ namespace KhaozEngine.Render3D
             if (cam is IRenderOriginAware)
             {
                 ApplyOriginToCamera(cam);   // routes through the m6 tracker too, in case this swapped to a
-                                             // DIFFERENT aware camera since Begin
+                                            // DIFFERENT aware camera since Begin
                 return cam.ViewProjection;
             }
             return _frameOriginActive

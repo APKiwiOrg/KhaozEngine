@@ -62,10 +62,10 @@ internal static class ConstraintFactory
         int count = d.Kind switch
         {
             ConstraintKind.BallSocket => BuildBallSocket(sim, d, r, spring, handles),
-            ConstraintKind.Hinge      => BuildHinge(sim, d, r, spring, handles),
-            ConstraintKind.Slider     => BuildSlider(sim, d, r, spring, handles),
-            ConstraintKind.Distance   => BuildDistance(sim, d, r, spring, handles),
-            ConstraintKind.Weld       => BuildWeld(sim, d, r, spring, handles),
+            ConstraintKind.Hinge => BuildHinge(sim, d, r, spring, handles),
+            ConstraintKind.Slider => BuildSlider(sim, d, r, spring, handles),
+            ConstraintKind.Distance => BuildDistance(sim, d, r, spring, handles),
+            ConstraintKind.Weld => BuildWeld(sim, d, r, spring, handles),
             _ => throw new NotSupportedException($"ConstraintKind '{d.Kind}' is not supported by the Bepu backend."),
         };
 
@@ -211,63 +211,63 @@ internal static class ConstraintFactory
         switch (d.Motor)
         {
             case ConstraintMotor.HingeVelocity:
-            {
-                RequireKind(d, ConstraintKind.Hinge);
-                Vector3 axisA = SafeNormalize(d.AxisA, Vector3.UnitY);
-                // AngularAxisMotor drives the relative angular velocity of the two bodies about a body-A-local axis
-                // toward TargetVelocity. LocalAxisA is the hinge axis in A's frame.
-                var m = new AngularAxisMotor { LocalAxisA = axisA, TargetVelocity = d.MotorTarget, Settings = motorSettings };
-                handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
-                motor = new MotorState(d.Motor, handles[0], axisA, default, default, default, default, spring, servo, motorSettings);
-                return 1;
-            }
+                {
+                    RequireKind(d, ConstraintKind.Hinge);
+                    Vector3 axisA = SafeNormalize(d.AxisA, Vector3.UnitY);
+                    // AngularAxisMotor drives the relative angular velocity of the two bodies about a body-A-local axis
+                    // toward TargetVelocity. LocalAxisA is the hinge axis in A's frame.
+                    var m = new AngularAxisMotor { LocalAxisA = axisA, TargetVelocity = d.MotorTarget, Settings = motorSettings };
+                    handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
+                    motor = new MotorState(d.Motor, handles[0], axisA, default, default, default, default, spring, servo, motorSettings);
+                    return 1;
+                }
             case ConstraintMotor.HingeAngle:
-            {
-                RequireKind(d, ConstraintKind.Hinge);
-                Vector3 axisA = SafeNormalize(d.AxisA, Vector3.UnitY);
-                Vector3 axisB = SafeNormalize(d.AxisB, Vector3.UnitY);
-                // TwistServo drives the twist of the relative rotation about the basis's LOCAL Z axis to TargetAngle,
-                // the SAME basis convention TwistLimit uses (BasisFromAxis builds local-Z = hinge axis). Verified
-                // empirically against a live Z-axis hinge sim: with this basis the servo reaches the target angle
-                // exactly across every speed cap (2..inf rad/s); an early local-X draft only worked for a Y-axis
-                // hinge by coincidence and spun a Z-axis hinge wildly. Both bodies use the same construction so the
-                // rest twist is 0 when their hinge axes align.
-                Quaternion basisA = BasisFromAxis(axisA);
-                Quaternion basisB = BasisFromAxis(axisB);
-                var m = new TwistServo { LocalBasisA = basisA, LocalBasisB = basisB, TargetAngle = d.MotorTarget, SpringSettings = spring, ServoSettings = servo };
-                handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
-                motor = new MotorState(d.Motor, handles[0], default, default, default, basisA, basisB, spring, servo, motorSettings);
-                return 1;
-            }
+                {
+                    RequireKind(d, ConstraintKind.Hinge);
+                    Vector3 axisA = SafeNormalize(d.AxisA, Vector3.UnitY);
+                    Vector3 axisB = SafeNormalize(d.AxisB, Vector3.UnitY);
+                    // TwistServo drives the twist of the relative rotation about the basis's LOCAL Z axis to TargetAngle,
+                    // the SAME basis convention TwistLimit uses (BasisFromAxis builds local-Z = hinge axis). Verified
+                    // empirically against a live Z-axis hinge sim: with this basis the servo reaches the target angle
+                    // exactly across every speed cap (2..inf rad/s); an early local-X draft only worked for a Y-axis
+                    // hinge by coincidence and spun a Z-axis hinge wildly. Both bodies use the same construction so the
+                    // rest twist is 0 when their hinge axes align.
+                    Quaternion basisA = BasisFromAxis(axisA);
+                    Quaternion basisB = BasisFromAxis(axisB);
+                    var m = new TwistServo { LocalBasisA = basisA, LocalBasisB = basisB, TargetAngle = d.MotorTarget, SpringSettings = spring, ServoSettings = servo };
+                    handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
+                    motor = new MotorState(d.Motor, handles[0], default, default, default, basisA, basisB, spring, servo, motorSettings);
+                    return 1;
+                }
             case ConstraintMotor.SliderVelocity:
-            {
-                RequireKind(d, ConstraintKind.Slider);
-                Vector3 axis = SafeNormalize(d.AxisA, Vector3.UnitY);
-                var m = new LinearAxisMotor { LocalOffsetA = d.AnchorA, LocalOffsetB = d.AnchorB, LocalAxis = axis, TargetVelocity = d.MotorTarget, Settings = motorSettings };
-                handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
-                motor = new MotorState(d.Motor, handles[0], d.AnchorA, d.AnchorB, axis, default, default, spring, servo, motorSettings);
-                return 1;
-            }
+                {
+                    RequireKind(d, ConstraintKind.Slider);
+                    Vector3 axis = SafeNormalize(d.AxisA, Vector3.UnitY);
+                    var m = new LinearAxisMotor { LocalOffsetA = d.AnchorA, LocalOffsetB = d.AnchorB, LocalAxis = axis, TargetVelocity = d.MotorTarget, Settings = motorSettings };
+                    handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
+                    motor = new MotorState(d.Motor, handles[0], d.AnchorA, d.AnchorB, axis, default, default, spring, servo, motorSettings);
+                    return 1;
+                }
             case ConstraintMotor.SliderPosition:
-            {
-                RequireKind(d, ConstraintKind.Slider);
-                Vector3 axis = SafeNormalize(d.AxisA, Vector3.UnitY);
-                float target = Math.Clamp(d.MotorTarget, d.MinOffset, d.MaxOffset);
-                // LinearAxisServo drives B's offset from A along LocalPlaneNormal to TargetOffset (its field is named
-                // "PlaneNormal" but empirically it IS the drive axis: a target of 2 along +Y parks the body at +2).
-                var m = new LinearAxisServo { LocalOffsetA = d.AnchorA, LocalOffsetB = d.AnchorB, LocalPlaneNormal = axis, TargetOffset = target, ServoSettings = servo, SpringSettings = spring };
-                handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
-                motor = new MotorState(d.Motor, handles[0], d.AnchorA, d.AnchorB, axis, default, default, spring, servo, motorSettings);
-                return 1;
-            }
+                {
+                    RequireKind(d, ConstraintKind.Slider);
+                    Vector3 axis = SafeNormalize(d.AxisA, Vector3.UnitY);
+                    float target = Math.Clamp(d.MotorTarget, d.MinOffset, d.MaxOffset);
+                    // LinearAxisServo drives B's offset from A along LocalPlaneNormal to TargetOffset (its field is named
+                    // "PlaneNormal" but empirically it IS the drive axis: a target of 2 along +Y parks the body at +2).
+                    var m = new LinearAxisServo { LocalOffsetA = d.AnchorA, LocalOffsetB = d.AnchorB, LocalPlaneNormal = axis, TargetOffset = target, ServoSettings = servo, SpringSettings = spring };
+                    handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
+                    motor = new MotorState(d.Motor, handles[0], d.AnchorA, d.AnchorB, axis, default, default, spring, servo, motorSettings);
+                    return 1;
+                }
             case ConstraintMotor.DistanceLength:
-            {
-                RequireKind(d, ConstraintKind.Distance);
-                var m = new DistanceServo { LocalOffsetA = d.AnchorA, LocalOffsetB = d.AnchorB, TargetDistance = MathF.Max(0f, d.MotorTarget), ServoSettings = servo, SpringSettings = spring };
-                handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
-                motor = new MotorState(d.Motor, handles[0], d.AnchorA, d.AnchorB, default, default, default, spring, servo, motorSettings);
-                return 1;
-            }
+                {
+                    RequireKind(d, ConstraintKind.Distance);
+                    var m = new DistanceServo { LocalOffsetA = d.AnchorA, LocalOffsetB = d.AnchorB, TargetDistance = MathF.Max(0f, d.MotorTarget), ServoSettings = servo, SpringSettings = spring };
+                    handles[0] = sim.Solver.Add(r.HandleA, r.HandleB, in m);
+                    motor = new MotorState(d.Motor, handles[0], d.AnchorA, d.AnchorB, default, default, default, spring, servo, motorSettings);
+                    return 1;
+                }
             default:
                 throw new NotSupportedException($"ConstraintMotor '{d.Motor}' is not supported by the Bepu backend.");
         }
@@ -282,35 +282,35 @@ internal static class ConstraintFactory
         switch (s.Kind)
         {
             case ConstraintMotor.HingeVelocity:
-            {
-                var m = new AngularAxisMotor { LocalAxisA = s.AxisOrOffsetA, TargetVelocity = target, Settings = s.Motor };
-                sim.Solver.ApplyDescription(s.Handle, in m);
-                break;
-            }
+                {
+                    var m = new AngularAxisMotor { LocalAxisA = s.AxisOrOffsetA, TargetVelocity = target, Settings = s.Motor };
+                    sim.Solver.ApplyDescription(s.Handle, in m);
+                    break;
+                }
             case ConstraintMotor.HingeAngle:
-            {
-                var m = new TwistServo { LocalBasisA = s.BasisA, LocalBasisB = s.BasisB, TargetAngle = target, SpringSettings = s.Spring, ServoSettings = s.Servo };
-                sim.Solver.ApplyDescription(s.Handle, in m);
-                break;
-            }
+                {
+                    var m = new TwistServo { LocalBasisA = s.BasisA, LocalBasisB = s.BasisB, TargetAngle = target, SpringSettings = s.Spring, ServoSettings = s.Servo };
+                    sim.Solver.ApplyDescription(s.Handle, in m);
+                    break;
+                }
             case ConstraintMotor.SliderVelocity:
-            {
-                var m = new LinearAxisMotor { LocalOffsetA = s.AxisOrOffsetA, LocalOffsetB = s.OffsetB, LocalAxis = s.Axis, TargetVelocity = target, Settings = s.Motor };
-                sim.Solver.ApplyDescription(s.Handle, in m);
-                break;
-            }
+                {
+                    var m = new LinearAxisMotor { LocalOffsetA = s.AxisOrOffsetA, LocalOffsetB = s.OffsetB, LocalAxis = s.Axis, TargetVelocity = target, Settings = s.Motor };
+                    sim.Solver.ApplyDescription(s.Handle, in m);
+                    break;
+                }
             case ConstraintMotor.SliderPosition:
-            {
-                var m = new LinearAxisServo { LocalOffsetA = s.AxisOrOffsetA, LocalOffsetB = s.OffsetB, LocalPlaneNormal = s.Axis, TargetOffset = target, ServoSettings = s.Servo, SpringSettings = s.Spring };
-                sim.Solver.ApplyDescription(s.Handle, in m);
-                break;
-            }
+                {
+                    var m = new LinearAxisServo { LocalOffsetA = s.AxisOrOffsetA, LocalOffsetB = s.OffsetB, LocalPlaneNormal = s.Axis, TargetOffset = target, ServoSettings = s.Servo, SpringSettings = s.Spring };
+                    sim.Solver.ApplyDescription(s.Handle, in m);
+                    break;
+                }
             case ConstraintMotor.DistanceLength:
-            {
-                var m = new DistanceServo { LocalOffsetA = s.AxisOrOffsetA, LocalOffsetB = s.OffsetB, TargetDistance = MathF.Max(0f, target), ServoSettings = s.Servo, SpringSettings = s.Spring };
-                sim.Solver.ApplyDescription(s.Handle, in m);
-                break;
-            }
+                {
+                    var m = new DistanceServo { LocalOffsetA = s.AxisOrOffsetA, LocalOffsetB = s.OffsetB, TargetDistance = MathF.Max(0f, target), ServoSettings = s.Servo, SpringSettings = s.Spring };
+                    sim.Solver.ApplyDescription(s.Handle, in m);
+                    break;
+                }
             default:
                 throw new NotSupportedException($"ConstraintMotor '{s.Kind}' cannot be retargeted.");
         }

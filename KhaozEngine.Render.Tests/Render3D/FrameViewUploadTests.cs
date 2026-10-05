@@ -38,7 +38,10 @@ public sealed class FrameViewUploadTests
             s.DrawTrail(trail, TrailStyle.Default);                                            // trails
             s.DrawParticle(new ParticleSprite
             {
-                Position = new Vector3(0f, 1.5f, 0f), Size = 0.5f, Color = Color.White, Shape = ParticleShape.SoftGlow,
+                Position = new Vector3(0f, 1.5f, 0f),
+                Size = 0.5f,
+                Color = Color.White,
+                Shape = ParticleShape.SoftGlow,
             });                                                                                // particles
             s.DebugWireSphere(new Vector3(0f, 0.5f, 0f), 1f, Color.White);                     // depth-tested wire
         }

@@ -73,8 +73,11 @@ namespace KhaozEngine.Tests.Gpu
                         Size = new Vector4(3.5f, 0f, 0f, 0f),
                         FillColor = new Color(0.15f, 0.55f, 0.95f, 0.7f),
                         OutlineColor = new Color(0.6f, 0.9f, 1f, 0.9f),
-                        EdgeThickness = 0.08f, FillFraction = 1f, Blend = DecalBlend.Alpha,
-                        YTolerance = 0.3f, MaxStep = 0.4f,
+                        EdgeThickness = 0.08f,
+                        FillFraction = 1f,
+                        Blend = DecalBlend.Alpha,
+                        YTolerance = 0.3f,
+                        MaxStep = 0.4f,
                     });
                     scene.DrawBillboard(at + new Vector3(-2f, 3.5f, -5f), 1.1f, new Color(0.95f, 0.85f, 0.25f, 0.75f));
                     scene.DrawParticle(new ParticleSprite

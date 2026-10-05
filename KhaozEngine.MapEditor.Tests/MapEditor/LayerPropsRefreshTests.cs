@@ -38,7 +38,10 @@ namespace KhaozEngine.Tests.MapEditor
             doc.ScatterLayers.Add(Layer("grass", cell: 2.5f, jitter: 1f, density: 0.6f, "rock_a"));
             doc.CompanionLayers.Add(new MapCompanionLayer
             {
-                Name = "understory", HostLayer = "trees", CountMin = 2, CountMax = 3,
+                Name = "understory",
+                HostLayer = "trees",
+                CountMin = 2,
+                CountMax = 3,
                 Kinds = { new MapPropKind { Id = "fern" } },
             });
             doc.Exclusions.Add(new MapExclusion { Shape = new RectShapeDoc { MinX = 20f, MinZ = 5f, MaxX = 57.5f, MaxZ = 45f } });
@@ -213,7 +216,10 @@ namespace KhaozEngine.Tests.MapEditor
                     "understory",
                     new MapCompanionLayer
                     {
-                        Name = "understory", HostLayer = "trees", CountMin = 0, CountMax = 0,
+                        Name = "understory",
+                        HostLayer = "trees",
+                        CountMin = 0,
+                        CountMax = 0,
                         Kinds = { new MapPropKind { Id = "fern" } },
                     },
                     doc.CompanionLayers[0]),

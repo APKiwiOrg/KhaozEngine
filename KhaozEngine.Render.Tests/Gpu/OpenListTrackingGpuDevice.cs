@@ -119,7 +119,8 @@ namespace KhaozEngine.Tests.Gpu
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged { }
         public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height) { }
         public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height,
-            uint mipLevel, uint arrayLayer) { }
+            uint mipLevel, uint arrayLayer)
+        { }
 
         public MappedData Map(IGpuTexture staging, GpuMapMode mode) => _inner.Map(staging, mode);
         public void Unmap(IGpuTexture staging) { }
@@ -210,7 +211,8 @@ namespace KhaozEngine.Tests.Gpu
             public void CopyTexture(IGpuTexture src, IGpuTexture dst) { }
             public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst, uint width, uint height) { }
             public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer,
-                IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height) { }
+                IGpuTexture dst, uint dstMipLevel, uint dstArrayLayer, uint width, uint height)
+            { }
             public void GenerateMipmaps(IGpuTexture texture) { }
             public void ResolveTexture(IGpuTexture src, IGpuTexture dst) { }
             public void SetComputePipeline(IGpuComputePipeline p) { }

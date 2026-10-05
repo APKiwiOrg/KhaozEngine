@@ -276,7 +276,12 @@ public class TileCombatResolveTests
         using TileWorldServer s = Server(TileMoveSimulatorTests.FlatWorld(), hub.Server, new TileCoord(5, 5, 0), rules);
         TileActorSpawner spawner = s.Actors.Add(new TileActorDefinition
         {
-            Id = "rat", MaxHealth = 30, AttackTicks = 0, WanderRadius = 0, LeashRadius = 8, RespawnDelayTicks = 3,
+            Id = "rat",
+            MaxHealth = 30,
+            AttackTicks = 0,
+            WanderRadius = 0,
+            LeashRadius = 8,
+            RespawnDelayTicks = 3,
         }, new TileCoord(20, 21, 0));
         s.Tick(Dt);
         long victim = spawner.ActorNetId;

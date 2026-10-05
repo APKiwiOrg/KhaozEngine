@@ -375,7 +375,8 @@ namespace KhaozEngine.Tests.Gpu
             {
                 for (int i = 0; i < writes; i++) harness.Ring.Write(0, new byte[] { 0x11 });
                 finished.Set();
-            }) { IsBackground = true };
+            })
+            { IsBackground = true };
 
             writer.Start();
 

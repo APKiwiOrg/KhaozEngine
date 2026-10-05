@@ -106,8 +106,11 @@ public class StairGlideRealisticStreamTests
         { new JointTrack(0) { Translation = new Vector3Track(new[] { 0f, 1f }, new[] { Vector3.Zero, Vector3.Zero }, InterpolationMode.Linear) } });
         var clips = new Dictionary<LocomotionState, AnimationClip>
         {
-            [LocomotionState.Idle] = Park("i"), [LocomotionState.Walk] = Park("w"), [LocomotionState.Run] = Park("r"),
-            [LocomotionState.Jump] = Park("j"), [LocomotionState.Fall] = Park("f"),
+            [LocomotionState.Idle] = Park("i"),
+            [LocomotionState.Walk] = Park("w"),
+            [LocomotionState.Run] = Park("r"),
+            [LocomotionState.Jump] = Park("j"),
+            [LocomotionState.Fall] = Park("f"),
         };
         var t = CharacterAnimatorTuning.Default;
         if (!smootherOn) t.SlopeGlideRate = 0f;   // raw = escape hatch = the pre-feature bridge (render-Y == true feet-Y)

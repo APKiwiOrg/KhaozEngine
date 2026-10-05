@@ -15,16 +15,16 @@ public class ServerTickBenchmarkTests
 {
     private static BenchmarkConfig SmallConfig(int gw = 4, int gh = 2, int e = 5, int s = 2,
         ulong seed = 0xC0FFEEUL, int warmup = 0, int timed = 3) => new()
-    {
-        Name = "test",
-        GridWidth = gw,
-        GridHeight = gh,
-        EntitiesPerCell = e,
-        Systems = s,
-        WarmupTicks = warmup,
-        TimedTicks = timed,
-        Seed = seed,
-    };
+        {
+            Name = "test",
+            GridWidth = gw,
+            GridHeight = gh,
+            EntitiesPerCell = e,
+            Systems = s,
+            WarmupTicks = warmup,
+            TimedTicks = timed,
+            Seed = seed,
+        };
 
     private static List<(float px, float py, float vx, float vy)> Snapshot(ShardHost host)
     {

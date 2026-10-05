@@ -36,8 +36,12 @@ namespace KhaozEngine.Render3D
             Material material, float dissolve, float edgeWidth, Color edgeColor, bool castsShadows)
             => DrawSkinned(new SkinnedInstanceDraw(h, model)
             {
-                Tint = tint, Material = material, Dissolve = dissolve, DissolveEdgeWidth = edgeWidth,
-                DissolveEdgeColor = edgeColor, CastsShadows = castsShadows,
+                Tint = tint,
+                Material = material,
+                Dissolve = dissolve,
+                DissolveEdgeWidth = edgeWidth,
+                DissolveEdgeColor = edgeColor,
+                CastsShadows = castsShadows,
             }, boneMatrices);
 
         /// <summary>The skinned draws recorded this frame that write into the depth pass: the active path's draw

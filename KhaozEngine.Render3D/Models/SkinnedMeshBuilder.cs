@@ -71,17 +71,17 @@ namespace KhaozEngine.Render3D
             // Indices: quad strip between successive rings (two triangles per quad), radial wrap.
             var idx = new List<ushort>();
             for (int r = 0; r < ringSegments; r++)
-            for (int s = 0; s < radialSegments; s++)
-            {
-                int s1 = (s + 1) % radialSegments;
-                int a = r * radialSegments + s;
-                int b = r * radialSegments + s1;
-                int c = (r + 1) * radialSegments + s;
-                int d = (r + 1) * radialSegments + s1;
-                // Counter-clockwise (outward-facing) winding matches the outward radial normals; back-face cull keeps the outer shell.
-                idx.Add((ushort)a); idx.Add((ushort)b); idx.Add((ushort)c);
-                idx.Add((ushort)b); idx.Add((ushort)d); idx.Add((ushort)c);
-            }
+                for (int s = 0; s < radialSegments; s++)
+                {
+                    int s1 = (s + 1) % radialSegments;
+                    int a = r * radialSegments + s;
+                    int b = r * radialSegments + s1;
+                    int c = (r + 1) * radialSegments + s;
+                    int d = (r + 1) * radialSegments + s1;
+                    // Counter-clockwise (outward-facing) winding matches the outward radial normals; back-face cull keeps the outer shell.
+                    idx.Add((ushort)a); idx.Add((ushort)b); idx.Add((ushort)c);
+                    idx.Add((ushort)b); idx.Add((ushort)d); idx.Add((ushort)c);
+                }
 
             // Per-vertex tangents from the UV+position gradient (Lengyel, shared math), so the tube takes a
             // normal map on the skinned pass. The UV runs U along the tube and V around it, so the tangent

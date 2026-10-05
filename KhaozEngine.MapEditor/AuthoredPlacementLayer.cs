@@ -118,9 +118,9 @@ internal sealed class AuthoredPlacementLayer : IPlacementSource
             return;
         }
         for (int z = min.Z; z <= max.Z; z++)
-        for (int x = min.X; x <= max.X; x++)
-            if (buckets.TryGetValue(new ChunkCoord(x, z), out Served[]? bucket))
-                AppendInside(bucket, area, into);
+            for (int x = min.X; x <= max.X; x++)
+                if (buckets.TryGetValue(new ChunkCoord(x, z), out Served[]? bucket))
+                    AppendInside(bucket, area, into);
     }
 
     static void AppendInside(Served[] bucket, RectArea area, List<PropPlacement> into)

@@ -50,10 +50,10 @@ public sealed class MotionTargetCostProbe(ITestOutputHelper output)
             s.Draw(floor, Matrix4x4.Identity);
             for (int i = 0; i < Boxes; i++)
                 s.Draw(new RigidInstanceDraw(box, Matrix4x4.CreateTranslation(i % 20 * 1.5f - 15f, .5f + .02f * (n % 10), i / 20 * 1.5f - 15f))
-                    { Motion = MotionKey.From((ulong)i + 1) });
+                { Motion = MotionKey.From((ulong)i + 1) });
             for (int i = 0; i < Bodies; i++)
                 s.DrawSkinned(new SkinnedInstanceDraw(tube, Matrix4x4.CreateTranslation(i * 3f - 12f, 0f, 8f))
-                    { Motion = MotionKey.From(1000 + (ulong)i) }, pose);
+                { Motion = MotionKey.From(1000 + (ulong)i) }, pose);
             s.DrawFoliage(grass, s.Camera.Target, wind);
         }
 

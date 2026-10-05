@@ -99,7 +99,7 @@ public sealed class MapDocumentWindowingSpawnTests
         {
             for (int tile = 1; tile < MapDocumentWindowing.DefaultPlayerSpawnSearchTileLimit; tile++)
                 doc.Placements.Add(new MapPlacement
-                    { Id = "tile-" + tile, Kind = "rock", X = tile * MapDocumentFile.DefaultTileSize + 5, Z = 5 });
+                { Id = "tile-" + tile, Kind = "rock", X = tile * MapDocumentFile.DefaultTileSize + 5, Z = 5 });
             doc.PlayerSpawns.Add(Spawn("beyond-budget", MapDocumentWindowing.DefaultPlayerSpawnSearchTileLimit));
         }, directory =>
         {
@@ -138,7 +138,7 @@ public sealed class MapDocumentWindowingSpawnTests
         {
             var scene = new HeadlessScene();
             scene.Init(null!, null!, null!, new MapEditorOptions
-                { DocumentPath = directory, WholeWorldTileLimit = 1, EditorWindowRadius = 0 });
+            { DocumentPath = directory, WholeWorldTileLimit = 1, EditorWindowRadius = 0 });
             try
             {
                 scene.OnEnter();
@@ -161,8 +161,10 @@ public sealed class MapDocumentWindowingSpawnTests
             var scene = new HeadlessScene();
             scene.Init(null!, null!, null!, new MapEditorOptions
             {
-                DocumentPath = directory, WholeWorldTileLimit = 1,
-                EditorWindowRadius = 0, PlayerSpawnSearchTileLimit = 0,
+                DocumentPath = directory,
+                WholeWorldTileLimit = 1,
+                EditorWindowRadius = 0,
+                PlayerSpawnSearchTileLimit = 0,
             });
             try
             {
@@ -183,8 +185,10 @@ public sealed class MapDocumentWindowingSpawnTests
         {
             var options = new MapEditorOptions
             {
-                DocumentPath = directory, WholeWorldTileLimit = 1,
-                EditorWindowRadius = 0, PlayerSpawnSearchTileLimit = 0,
+                DocumentPath = directory,
+                WholeWorldTileLimit = 1,
+                EditorWindowRadius = 0,
+                PlayerSpawnSearchTileLimit = 0,
             };
             var scene = new HeadlessScene();
             scene.Init(null!, null!, null!, options);
@@ -217,7 +221,10 @@ public sealed class MapDocumentWindowingSpawnTests
 
     static MapPlayerSpawn Spawn(string id, int tileX, bool enabled = true) => new()
     {
-        Id = id, X = tileX * MapDocumentFile.DefaultTileSize + 5, Z = 5, Enabled = enabled,
+        Id = id,
+        X = tileX * MapDocumentFile.DefaultTileSize + 5,
+        Z = 5,
+        Enabled = enabled,
     };
 
     static void WithWorld(Action<MapDocument> configure, Action<string> assertion)

@@ -25,12 +25,12 @@ namespace KhaozEngine.Tests.Render3D
             // The 8 axis-aligned corners must all appear among the endpoints.
             Vector3 h = size * 0.5f;
             foreach (int sx in new[] { -1, 1 })
-            foreach (int sy in new[] { -1, 1 })
-            foreach (int sz in new[] { -1, 1 })
-            {
-                var corner = center + new Vector3(sx * h.X, sy * h.Y, sz * h.Z);
-                Assert.Contains(segs, p => Vector3.Distance(p, corner) < Eps);
-            }
+                foreach (int sy in new[] { -1, 1 })
+                    foreach (int sz in new[] { -1, 1 })
+                    {
+                        var corner = center + new Vector3(sx * h.X, sy * h.Y, sz * h.Z);
+                        Assert.Contains(segs, p => Vector3.Distance(p, corner) < Eps);
+                    }
 
             // Every edge is axis-aligned: exactly one component differs between its two endpoints.
             for (int i = 0; i < segs.Count; i += 2)

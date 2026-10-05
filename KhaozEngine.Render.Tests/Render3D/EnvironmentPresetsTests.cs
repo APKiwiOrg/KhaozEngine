@@ -121,11 +121,11 @@ namespace KhaozEngine.Tests.Render3D
         public void SunLightDirection_is_always_unit_length()
         {
             foreach (var az in new[] { 0f, 45f, 90f, 180f, 270f, 359f })
-            foreach (var el in new[] { -10f, 0f, 15f, 45f, 89f })
-            {
-                var dir = EnvironmentPresets.SunLightDirection(az, el);
-                Assert.Equal(1f, dir.Length(), 4);
-            }
+                foreach (var el in new[] { -10f, 0f, 15f, 45f, 89f })
+                {
+                    var dir = EnvironmentPresets.SunLightDirection(az, el);
+                    Assert.Equal(1f, dir.Length(), 4);
+                }
         }
 
         [Fact]

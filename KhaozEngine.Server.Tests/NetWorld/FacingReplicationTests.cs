@@ -274,7 +274,10 @@ public class FacingReplicationTests
         (LoopbackTransport st, LoopbackTransport ct) = LoopbackTransport.CreatePair();
         var cfg = new ShardedWorldServerConfig
         {
-            TickSeconds = Dt, CellSize = 60f, OverlapMargin = 24f, InterestRadius = 24f,
+            TickSeconds = Dt,
+            CellSize = 60f,
+            OverlapMargin = 24f,
+            InterestRadius = 24f,
             SpawnPosition = _ => Vector3.Zero,
         };
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
@@ -336,7 +339,10 @@ public class FacingReplicationTests
         var flatCfg = new WorldServerConfig { TickSeconds = Dt, SpawnPosition = _ => Vector3.Zero };
         var shardCfg = new ShardedWorldServerConfig
         {
-            TickSeconds = Dt, CellSize = 60f, OverlapMargin = 24f, InterestRadius = 24f,
+            TickSeconds = Dt,
+            CellSize = 60f,
+            OverlapMargin = 24f,
+            InterestRadius = 24f,
             SpawnPosition = _ => Vector3.Zero,
         };
         var flat = new WorldServer(st1, flatCfg, Flat, tuning);

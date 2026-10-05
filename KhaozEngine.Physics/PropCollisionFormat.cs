@@ -162,48 +162,48 @@ public static class PropCollisionFormat
         switch (kind)
         {
             case KindConvexHull:
-            {
-                int count = ReadCount(r, "convex hull point", Vector3Bytes);
-                var points = new Vector3[count];
-                for (int i = 0; i < count; i++)
-                    points[i] = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
-                return new ConvexHullShape(points);
-            }
-            case KindCylinder:
-            {
-                float radius = r.ReadSingle();
-                float length = r.ReadSingle();
-                return new CylinderShape(radius, length);
-            }
-            case KindTriangleMesh:
-            {
-                int vCount = ReadCount(r, "triangle mesh vertex", Vector3Bytes);
-                var verts = new Vector3[vCount];
-                for (int i = 0; i < vCount; i++)
-                    verts[i] = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
-                int iCount = ReadCount(r, "triangle mesh index", Int32Bytes);
-                var indices = new int[iCount];
-                for (int i = 0; i < iCount; i++)
-                    indices[i] = r.ReadInt32();
-                return new TriangleMeshShape(verts, indices);
-            }
-            case KindBox:
-            {
-                float hx = r.ReadSingle(), hy = r.ReadSingle(), hz = r.ReadSingle();
-                return new BoxShape(new Vector3(hx, hy, hz));
-            }
-            case KindCompound:
-            {
-                int childCount = ReadCount(r, "compound child", MinCompoundChildBytes);
-                var children = new CompoundChild[childCount];
-                for (int i = 0; i < childCount; i++)
                 {
-                    Pose local = ReadPose(r);
-                    PhysicsShape child = ReadShape(r);
-                    children[i] = new CompoundChild(child, local);
+                    int count = ReadCount(r, "convex hull point", Vector3Bytes);
+                    var points = new Vector3[count];
+                    for (int i = 0; i < count; i++)
+                        points[i] = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+                    return new ConvexHullShape(points);
                 }
-                return new CompoundShape(children);
-            }
+            case KindCylinder:
+                {
+                    float radius = r.ReadSingle();
+                    float length = r.ReadSingle();
+                    return new CylinderShape(radius, length);
+                }
+            case KindTriangleMesh:
+                {
+                    int vCount = ReadCount(r, "triangle mesh vertex", Vector3Bytes);
+                    var verts = new Vector3[vCount];
+                    for (int i = 0; i < vCount; i++)
+                        verts[i] = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+                    int iCount = ReadCount(r, "triangle mesh index", Int32Bytes);
+                    var indices = new int[iCount];
+                    for (int i = 0; i < iCount; i++)
+                        indices[i] = r.ReadInt32();
+                    return new TriangleMeshShape(verts, indices);
+                }
+            case KindBox:
+                {
+                    float hx = r.ReadSingle(), hy = r.ReadSingle(), hz = r.ReadSingle();
+                    return new BoxShape(new Vector3(hx, hy, hz));
+                }
+            case KindCompound:
+                {
+                    int childCount = ReadCount(r, "compound child", MinCompoundChildBytes);
+                    var children = new CompoundChild[childCount];
+                    for (int i = 0; i < childCount; i++)
+                    {
+                        Pose local = ReadPose(r);
+                        PhysicsShape child = ReadShape(r);
+                        children[i] = new CompoundChild(child, local);
+                    }
+                    return new CompoundShape(children);
+                }
             default:
                 throw new InvalidOperationException(
                     $"PropCollisionFormat: unknown shape kind {kind}.");

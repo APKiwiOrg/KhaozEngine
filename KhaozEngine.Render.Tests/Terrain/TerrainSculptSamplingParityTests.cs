@@ -15,27 +15,27 @@ public sealed class TerrainSculptSamplingParityTests
         var tiles = new List<TerrainSculptTile>();
         var cells = new Dictionary<(int X, int Z), float>();
         for (int tz = -2; tz <= 2; tz++)
-        for (int tx = -2; tx <= 2; tx++)
-        {
-            if ((tx + tz) % 3 == 0) continue;
-            var values = new float[TerrainSculpt.TileSize * TerrainSculpt.TileSize];
-            for (int z = 0; z < TerrainSculpt.TileSize; z++)
-            for (int x = 0; x < TerrainSculpt.TileSize; x++)
+            for (int tx = -2; tx <= 2; tx++)
             {
-                float value = ((tx * 97 + tz * 71 + x * 13 + z * 7) % 113) * 0.03125f;
-                values[z * TerrainSculpt.TileSize + x] = value;
-                cells[(tx * TerrainSculpt.TileSize + x, tz * TerrainSculpt.TileSize + z)] = value;
+                if ((tx + tz) % 3 == 0) continue;
+                var values = new float[TerrainSculpt.TileSize * TerrainSculpt.TileSize];
+                for (int z = 0; z < TerrainSculpt.TileSize; z++)
+                    for (int x = 0; x < TerrainSculpt.TileSize; x++)
+                    {
+                        float value = ((tx * 97 + tz * 71 + x * 13 + z * 7) % 113) * 0.03125f;
+                        values[z * TerrainSculpt.TileSize + x] = value;
+                        cells[(tx * TerrainSculpt.TileSize + x, tz * TerrainSculpt.TileSize + z)] = value;
+                    }
+                tiles.Add(new TerrainSculptTile(tx, tz, values));
             }
-            tiles.Add(new TerrainSculptTile(tx, tz, values));
-        }
 
         var sculpt = new TerrainSculpt(cellSize, tiles);
         for (int z = -66; z <= 98; z++)
-        for (int x = -66; x <= 98; x++)
-        {
-            AssertSample(x, z);
-            AssertSample(x + 0.375f, z + 0.6875f);
-        }
+            for (int x = -66; x <= 98; x++)
+            {
+                AssertSample(x, z);
+                AssertSample(x + 0.375f, z + 0.6875f);
+            }
 
         void AssertSample(float cellX, float cellZ)
         {

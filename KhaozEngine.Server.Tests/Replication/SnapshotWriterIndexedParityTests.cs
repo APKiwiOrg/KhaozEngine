@@ -111,13 +111,13 @@ public class SnapshotWriterIndexedParityTests
         var owners = new long?[] { null, netIds[0], netIds[entityCount / 2], netIds[entityCount - 1], 999_999L };
 
         foreach (HashSet<long> set in sets)
-        foreach (ReplicationChannels channel in channels)
-        foreach (long? owner in owners)
-        {
-            byte[] expected = SnapshotWriter.WriteFiltered(world, registry, set, channel, owner);
-            byte[] actual = SnapshotWriter.WriteFiltered(index, scratch, world, registry, set, channel, owner);
-            Assert.Equal(expected, actual);
-        }
+            foreach (ReplicationChannels channel in channels)
+                foreach (long? owner in owners)
+                {
+                    byte[] expected = SnapshotWriter.WriteFiltered(world, registry, set, channel, owner);
+                    byte[] actual = SnapshotWriter.WriteFiltered(index, scratch, world, registry, set, channel, owner);
+                    Assert.Equal(expected, actual);
+                }
     }
 
     [Theory]
@@ -162,18 +162,18 @@ public class SnapshotWriterIndexedParityTests
                  {
                      ReplicationChannels.Replicate, ReplicationChannels.Migrate, ReplicationChannels.Default,
                  })
-        foreach (long? owner in new long?[] { null, netIds[0] })
-        {
-            for (int i = 0; i < entityCount; i += 13) // a spread of entities, not every one, to keep the sweep quick
+            foreach (long? owner in new long?[] { null, netIds[0] })
             {
-                long netId = netIds[i];
-                byte[] expected = SnapshotWriter.WriteFiltered(
-                    world, registry, new HashSet<long> { netId }, channel, owner);
-                byte[] actual = SnapshotWriter.WriteSingle(
-                    scratch, world, registry, netId, entities[i], channel, owner);
-                Assert.Equal(expected, actual);
+                for (int i = 0; i < entityCount; i += 13) // a spread of entities, not every one, to keep the sweep quick
+                {
+                    long netId = netIds[i];
+                    byte[] expected = SnapshotWriter.WriteFiltered(
+                        world, registry, new HashSet<long> { netId }, channel, owner);
+                    byte[] actual = SnapshotWriter.WriteSingle(
+                        scratch, world, registry, netId, entities[i], channel, owner);
+                    Assert.Equal(expected, actual);
+                }
             }
-        }
     }
 
     [Fact]

@@ -283,7 +283,8 @@ public class AirMomentumTests
         MoveState s = new()
         {
             Position = new Vector3(origin, 50f, origin),
-            Grounded = false, TimeSinceGrounded = 1f,
+            Grounded = false,
+            TimeSinceGrounded = 1f,
             HorizontalVelocity = launch,
         };
 
@@ -344,7 +345,9 @@ public class AirMomentumTests
         MoveTuning t = MoveTuning.Default with { AirMomentum = true, Gravity = 0f };
         MoveState s = new()
         {
-            Position = new Vector3(0f, 3f, 0f), Grounded = false, TimeSinceGrounded = 1f,
+            Position = new Vector3(0f, 3f, 0f),
+            Grounded = false,
+            TimeSinceGrounded = 1f,
             HorizontalVelocity = new Vector2(0f, 20f),   // flying at the wall at 20, commanded at walk 6
         };
 
@@ -392,7 +395,9 @@ public class AirMomentumTests
         Func<float, float, float, MovementMedium> deep = (x, z, feetY) => new MovementMedium(100f, inWater: true);
         MoveState flying = new()
         {
-            Position = new Vector3(0f, 90f, 0f), Grounded = false, TimeSinceGrounded = 1f,
+            Position = new Vector3(0f, 90f, 0f),
+            Grounded = false,
+            TimeSinceGrounded = 1f,
             HorizontalVelocity = new Vector2(0f, -30f),
         };
 

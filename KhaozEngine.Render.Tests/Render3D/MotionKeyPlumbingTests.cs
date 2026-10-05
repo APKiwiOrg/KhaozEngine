@@ -46,7 +46,7 @@ public sealed class MotionKeyPlumbingTests
         for (int k = 0; k < items.Length; k++)
         {
             var draw = new RigidInstanceDraw(meshes[k], Matrix4x4.CreateTranslation(k, 0f, 0f))
-                { Motion = MotionKey.From((ulong)k + 1) };
+            { Motion = MotionKey.From((ulong)k + 1) };
             items[k] = new SceneInstances.Instance(in draw);
         }
         bool[] retained = [false, true, true, false, true, true];

@@ -52,7 +52,8 @@ static class TestBodies
     /// how far one body walks per cycle.</summary>
     public static BodyRig GrazerBody { get; } =
         BodyRig.Human.Scaled(Grazer.RestHeightMetres / BodyRig.Human.RestHeightMetres)
-            with { StrideMetres = Grazer.StrideMetres };
+            with
+        { StrideMetres = Grazer.StrideMetres };
 
     /// <summary>How far above the floor these hooves are authored, metres.</summary>
     public const float AuthoredFloor = 0.01f;

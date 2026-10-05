@@ -54,16 +54,22 @@ public class OidcClientProviderTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
         {
             if (req.RequestUri!.AbsolutePath.Contains("well-known"))
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
                     "{\"issuer\":\"https://issuer.test\",\"authorization_endpoint\":\"https://issuer.test/auth\",\"token_endpoint\":\"https://issuer.test/token\"}",
-                    Encoding.UTF8, "application/json") };
+                    Encoding.UTF8, "application/json")
+                };
             string form = await req.Content!.ReadAsStringAsync(ct);
             var q = HttpUtility.ParseQueryString(form);
             SeenVerifier = q["code_verifier"];
             SeenGrantType = q["grant_type"];
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
                 "{\"id_token\":\"the-id-token\",\"refresh_token\":\"the-refresh\",\"expires_in\":3600}",
-                Encoding.UTF8, "application/json") };
+                Encoding.UTF8, "application/json")
+            };
         }
     }
 

@@ -55,8 +55,13 @@ public class DynamicBodyReplicationTests
     public void FallingBody_ReplicatesToClient_InterpolatedPoseConvergesToServerPose()
     {
         var (st, ct) = LoopbackTransport.CreatePair();
-        var cfg = new WorldServerConfig { TickSeconds = Dt, MaxPlayers = 4, InterestRadius = 500f,
-            SpawnPosition = _ => new Vector3(0f, 0f, 0f) };
+        var cfg = new WorldServerConfig
+        {
+            TickSeconds = Dt,
+            MaxPlayers = 4,
+            InterestRadius = 500f,
+            SpawnPosition = _ => new Vector3(0f, 0f, 0f)
+        };
         var server = new WorldServer(st, cfg, Flat, MoveTuning.Default);
 
         var (physics, body) = NewPhysicsWithFallingBox(dropY: 8f);
@@ -113,8 +118,13 @@ public class DynamicBodyReplicationTests
     public void FallingBody_IsInterpolated_RenderLagsServer_NoClientSimulation()
     {
         var (st, ct) = LoopbackTransport.CreatePair();
-        var cfg = new WorldServerConfig { TickSeconds = Dt, MaxPlayers = 4, InterestRadius = 500f,
-            SpawnPosition = _ => new Vector3(0f, 0f, 0f) };
+        var cfg = new WorldServerConfig
+        {
+            TickSeconds = Dt,
+            MaxPlayers = 4,
+            InterestRadius = 500f,
+            SpawnPosition = _ => new Vector3(0f, 0f, 0f)
+        };
         var server = new WorldServer(st, cfg, Flat, MoveTuning.Default);
 
         var (physics, body) = NewPhysicsWithFallingBox(dropY: 30f);   // high drop so it is still falling mid-test
@@ -157,8 +167,13 @@ public class DynamicBodyReplicationTests
     {
         var (st, ct) = LoopbackTransport.CreatePair();
         // Small interest radius; the player spawns at the origin, the body is far away.
-        var cfg = new WorldServerConfig { TickSeconds = Dt, MaxPlayers = 4, InterestRadius = 10f,
-            SpawnPosition = _ => new Vector3(0f, 0f, 0f) };
+        var cfg = new WorldServerConfig
+        {
+            TickSeconds = Dt,
+            MaxPlayers = 4,
+            InterestRadius = 10f,
+            SpawnPosition = _ => new Vector3(0f, 0f, 0f)
+        };
         var server = new WorldServer(st, cfg, Flat, MoveTuning.Default);
 
         var physics = new BepuPhysicsWorld();
@@ -200,8 +215,13 @@ public class DynamicBodyReplicationTests
     public void RemovedServerSide_DisappearsClientSide()
     {
         var (st, ct) = LoopbackTransport.CreatePair();
-        var cfg = new WorldServerConfig { TickSeconds = Dt, MaxPlayers = 4, InterestRadius = 500f,
-            SpawnPosition = _ => new Vector3(0f, 0f, 0f) };
+        var cfg = new WorldServerConfig
+        {
+            TickSeconds = Dt,
+            MaxPlayers = 4,
+            InterestRadius = 500f,
+            SpawnPosition = _ => new Vector3(0f, 0f, 0f)
+        };
         var server = new WorldServer(st, cfg, Flat, MoveTuning.Default);
 
         var (physics, body) = NewPhysicsWithFallingBox(dropY: 5f);
@@ -249,8 +269,13 @@ public class DynamicBodyReplicationTests
     public void SleepingBody_StopsChurning_ClientHoldsRestPose()
     {
         var (st, ct) = LoopbackTransport.CreatePair();
-        var cfg = new WorldServerConfig { TickSeconds = Dt, MaxPlayers = 4, InterestRadius = 500f,
-            SpawnPosition = _ => new Vector3(0f, 0f, 0f) };
+        var cfg = new WorldServerConfig
+        {
+            TickSeconds = Dt,
+            MaxPlayers = 4,
+            InterestRadius = 500f,
+            SpawnPosition = _ => new Vector3(0f, 0f, 0f)
+        };
         var server = new WorldServer(st, cfg, Flat, MoveTuning.Default);
 
         var (physics, body) = NewPhysicsWithFallingBox(dropY: 3f);

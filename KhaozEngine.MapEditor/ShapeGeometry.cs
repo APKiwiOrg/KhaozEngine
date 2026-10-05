@@ -39,11 +39,11 @@ internal static class ShapeGeometry
             case DiscShapeDoc d:
                 return new DiscShapeDoc { CenterX = d.CenterX, CenterZ = d.CenterZ, Radius = d.Radius * factor };
             case RectShapeDoc r:
-            {
-                float cx = (r.MinX + r.MaxX) * 0.5f, cz = (r.MinZ + r.MaxZ) * 0.5f;
-                float halfX = (r.MaxX - r.MinX) * 0.5f * factor, halfZ = (r.MaxZ - r.MinZ) * 0.5f * factor;
-                return new RectShapeDoc { MinX = cx - halfX, MinZ = cz - halfZ, MaxX = cx + halfX, MaxZ = cz + halfZ };
-            }
+                {
+                    float cx = (r.MinX + r.MaxX) * 0.5f, cz = (r.MinZ + r.MaxZ) * 0.5f;
+                    float halfX = (r.MaxX - r.MinX) * 0.5f * factor, halfZ = (r.MaxZ - r.MinZ) * 0.5f * factor;
+                    return new RectShapeDoc { MinX = cx - halfX, MinZ = cz - halfZ, MaxX = cx + halfX, MaxZ = cz + halfZ };
+                }
             default:
                 return null;
         }
@@ -98,35 +98,35 @@ internal static class ShapeGeometry
         switch (shape)
         {
             case DiscShapeDoc d:
-            {
-                float r = MathF.Abs(d.Radius) + margin;
-                area = new RectArea(d.CenterX - r, d.CenterZ - r, d.CenterX + r, d.CenterZ + r);
-                return true;
-            }
-            case RectShapeDoc r:
-            {
-                float minX = MathF.Min(r.MinX, r.MaxX) - margin;
-                float minZ = MathF.Min(r.MinZ, r.MaxZ) - margin;
-                float maxX = MathF.Max(r.MinX, r.MaxX) + margin;
-                float maxZ = MathF.Max(r.MinZ, r.MaxZ) + margin;
-                area = new RectArea(minX, minZ, maxX, maxZ);
-                return true;
-            }
-            case PolygonShapeDoc p when p.Points.Count > 0:
-            {
-                float minX = float.MaxValue, minZ = float.MaxValue, maxX = float.MinValue, maxZ = float.MinValue;
-                foreach (float[] pt in p.Points)
                 {
-                    float x = pt.Length > 0 ? pt[0] : 0f;
-                    float z = pt.Length > 1 ? pt[1] : 0f;
-                    if (x < minX) minX = x;
-                    if (x > maxX) maxX = x;
-                    if (z < minZ) minZ = z;
-                    if (z > maxZ) maxZ = z;
+                    float r = MathF.Abs(d.Radius) + margin;
+                    area = new RectArea(d.CenterX - r, d.CenterZ - r, d.CenterX + r, d.CenterZ + r);
+                    return true;
                 }
-                area = new RectArea(minX - margin, minZ - margin, maxX + margin, maxZ + margin);
-                return true;
-            }
+            case RectShapeDoc r:
+                {
+                    float minX = MathF.Min(r.MinX, r.MaxX) - margin;
+                    float minZ = MathF.Min(r.MinZ, r.MaxZ) - margin;
+                    float maxX = MathF.Max(r.MinX, r.MaxX) + margin;
+                    float maxZ = MathF.Max(r.MinZ, r.MaxZ) + margin;
+                    area = new RectArea(minX, minZ, maxX, maxZ);
+                    return true;
+                }
+            case PolygonShapeDoc p when p.Points.Count > 0:
+                {
+                    float minX = float.MaxValue, minZ = float.MaxValue, maxX = float.MinValue, maxZ = float.MinValue;
+                    foreach (float[] pt in p.Points)
+                    {
+                        float x = pt.Length > 0 ? pt[0] : 0f;
+                        float z = pt.Length > 1 ? pt[1] : 0f;
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (z < minZ) minZ = z;
+                        if (z > maxZ) maxZ = z;
+                    }
+                    area = new RectArea(minX - margin, minZ - margin, maxX + margin, maxZ + margin);
+                    return true;
+                }
             default:
                 area = default;
                 return false;

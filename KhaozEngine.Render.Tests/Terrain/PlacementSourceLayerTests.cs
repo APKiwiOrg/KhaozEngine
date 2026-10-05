@@ -171,14 +171,14 @@ namespace KhaozEngine.Tests.Terrain
 
             var seen = new List<string>();
             for (int cx = -1; cx <= 1; cx++)
-            for (int cz = -1; cz <= 1; cz++)
-            {
-                var coord = new ChunkCoord(cx, cz);
-                IReadOnlyList<PropPlacement> a = frozen.ScatterLayersFor(coord)[0];
-                IReadOnlyList<PropPlacement> b = live.ScatterLayersFor(coord)[0];
-                Assert.Equal(a.Select(p => p.Id).ToArray(), b.Select(p => p.Id).ToArray());
-                seen.AddRange(b.Select(p => p.Id));
-            }
+                for (int cz = -1; cz <= 1; cz++)
+                {
+                    var coord = new ChunkCoord(cx, cz);
+                    IReadOnlyList<PropPlacement> a = frozen.ScatterLayersFor(coord)[0];
+                    IReadOnlyList<PropPlacement> b = live.ScatterLayersFor(coord)[0];
+                    Assert.Equal(a.Select(p => p.Id).ToArray(), b.Select(p => p.Id).ToArray());
+                    seen.AddRange(b.Select(p => p.Id));
+                }
 
             // The half-open seam holds both ways: every placement lands in exactly one chunk, none twice.
             Assert.Equal(new[] { "a", "b", "c", "d" }, seen.OrderBy(s => s, StringComparer.Ordinal).ToArray());

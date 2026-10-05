@@ -56,7 +56,11 @@ namespace KhaozEngine.Tests.Gpu
         /// scene.</summary>
         public IsoCamera3D Camera(float targetX = 0f) => new()
         {
-            Azimuth = 0f, Elevation = 0f, AspectRatio = (float)W / H, OrthoSize = OrthoSize, Zoom = 1f,
+            Azimuth = 0f,
+            Elevation = 0f,
+            AspectRatio = (float)W / H,
+            OrthoSize = OrthoSize,
+            Zoom = 1f,
             Target = new Vector3(targetX, 0f, 0f),
         };
 
@@ -338,12 +342,18 @@ namespace KhaozEngine.Tests.Gpu
             if (dissolve <= 0f) { s.Draw(Stage.Box, world, Near); return; }
             s.Draw(new RigidInstanceDraw(Stage.Box, world)
             {
-                Tint = Near, Dissolve = dissolve, DissolveEdgeWidth = 0.001f, DissolveEdgeColor = Color.Black,
+                Tint = Near,
+                Dissolve = dissolve,
+                DissolveEdgeWidth = 0.001f,
+                DissolveEdgeColor = Color.Black,
             });
             if (crossfade)
                 s.Draw(new RigidInstanceDraw(Stage.Box, world)
                 {
-                    Tint = Far, Dissolve = dissolve, DissolveEdgeWidth = 0.001f, DissolveEdgeColor = Color.Black,
+                    Tint = Far,
+                    Dissolve = dissolve,
+                    DissolveEdgeWidth = 0.001f,
+                    DissolveEdgeColor = Color.Black,
                     DissolveComplement = 1f,
                 });
         }

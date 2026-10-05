@@ -12,8 +12,12 @@ public class GroundTraversalProbeTests
 {
     internal static readonly MoveTuning Tuning = MoveTuning.Default with
     {
-        CapsuleRadius = 0.2f, CapsuleHalfHeight = 0.75f, MaxSlopeRadians = 0.8f,
-        StepHeight = 0.4f, WalkSpeed = 9f, RunSpeed = 18f,
+        CapsuleRadius = 0.2f,
+        CapsuleHalfHeight = 0.75f,
+        MaxSlopeRadians = 0.8f,
+        StepHeight = 0.4f,
+        WalkSpeed = 9f,
+        RunSpeed = 18f,
     };
 
     [Fact]

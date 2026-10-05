@@ -254,7 +254,8 @@ namespace KhaozEngine.Tests.Gpu
                     * Matrix4x4.CreateTranslation(boxX, (PassFrame - n) * PixelsPerFrame * _stage.PixelWorld, 0f);
                 s.Draw(new RigidInstanceDraw(_stage.Box, world)
                 {
-                    Tint = new Color(1f, 0.25f, 0.2f, 1f), Motion = MotionKey.From(Key),
+                    Tint = new Color(1f, 0.25f, 0.2f, 1f),
+                    Motion = MotionKey.From(Key),
                 });
             }
 

@@ -31,12 +31,12 @@ public class TerrainMeshCollisionTests
         var verts = new ModelVertex[cols * cols + cols]; // surface grid + one skirt row (proof the skirt is dropped)
         int vi = 0;
         for (int iz = 0; iz <= res; iz++)
-        for (int ix = 0; ix <= res; ix++)
-        {
-            float x = (float)ix / res * size;
-            float z = (float)iz / res * size;
-            verts[vi++] = new ModelVertex(new Vector3(x, height, z), Vector3.UnitY, Vector4.One);
-        }
+            for (int ix = 0; ix <= res; ix++)
+            {
+                float x = (float)ix / res * size;
+                float z = (float)iz / res * size;
+                verts[vi++] = new ModelVertex(new Vector3(x, height, z), Vector3.UnitY, Vector4.One);
+            }
         int surfaceVertexCount = vi;
         // Append a skirt row (dropped copies of the -Z edge) with downward-ish normals; the extractor must NOT
         // reference these (all their indices are >= surfaceVertexCount).
@@ -45,15 +45,15 @@ public class TerrainMeshCollisionTests
 
         var inds = new System.Collections.Generic.List<uint>();
         for (int iz = 0; iz < res; iz++)
-        for (int ix = 0; ix < res; ix++)
-        {
-            uint i0 = (uint)(iz * cols + ix);
-            uint i1 = (uint)(iz * cols + ix + 1);
-            uint i2 = (uint)((iz + 1) * cols + ix);
-            uint i3 = (uint)((iz + 1) * cols + ix + 1);
-            inds.Add(i0); inds.Add(i2); inds.Add(i3);
-            inds.Add(i0); inds.Add(i3); inds.Add(i1);
-        }
+            for (int ix = 0; ix < res; ix++)
+            {
+                uint i0 = (uint)(iz * cols + ix);
+                uint i1 = (uint)(iz * cols + ix + 1);
+                uint i2 = (uint)((iz + 1) * cols + ix);
+                uint i3 = (uint)((iz + 1) * cols + ix + 1);
+                inds.Add(i0); inds.Add(i2); inds.Add(i3);
+                inds.Add(i0); inds.Add(i3); inds.Add(i1);
+            }
         // A couple of skirt triangles that reference the appended skirt row (must be excluded by the extractor).
         uint s0 = (uint)surfaceVertexCount;
         inds.Add(0); inds.Add(s0); inds.Add(s0 + 1);

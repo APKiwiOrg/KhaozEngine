@@ -51,12 +51,12 @@ namespace KhaozEngine.Game
                                         // Re-anchored (frozen) on a detected step so the mesh holds at its previous drawn
                                         // height and eases, never overshooting past the pre-step (see the smoother).
             public float LastStepCumulative;   // last CharacterSample.StepCumulativeY consumed: the step-detect baseline.
-                                        // Seeded to the first sample (no session-history dump) and re-synced on a teleport.
+                                               // Seeded to the first sample (no session-history dump) and re-synced on a teleport.
             public float PrevDrawnY;    // the previous frame's DRAWN feet-Y: the height the step freeze holds the mesh at.
             public PoseOverride Override;   // the active whole-body pose override (None = normal locomotion). Set on the
-                                        // rising edge of CharacterSample.Downed, cleared on the falling edge.
+                                            // rising edge of CharacterSample.Downed, cleared on the falling edge.
             public float OverrideElapsed;   // seconds the current Override has been active. Drives the procedural collapse
-                                        // ramp (0 -> DownedCollapseSeconds). 0 while Override == None.
+                                            // ramp (0 -> DownedCollapseSeconds). 0 while Override == None.
         }
 
         // The disengage ease (climb -> grounded-flat) snaps exact and ends once the residual falls below this: 1 mm is

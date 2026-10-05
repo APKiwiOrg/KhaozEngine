@@ -221,7 +221,8 @@ namespace KhaozEngine.Tests.Gpu
                     * Matrix4x4.CreateTranslation(n < JumpFrame ? TeleportFrom : TeleportTo);
                 s.Draw(new RigidInstanceDraw(stage.Box, world)
                 {
-                    Tint = CrossingScene.Tint, Motion = MotionKey.From(TeleportKey),
+                    Tint = CrossingScene.Tint,
+                    Motion = MotionKey.From(TeleportKey),
                 });
             }
 

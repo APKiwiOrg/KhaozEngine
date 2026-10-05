@@ -105,7 +105,12 @@ public class MmoServerEndToEndTests
         (LoopbackTransport serverTransport, LoopbackTransport clientTransport) = LoopbackTransport.CreatePair();
         var config = new MmoServerConfig
         {
-            CellSize = 100f, TickSeconds = 0.1f, OverlapMargin = 30f, InterestRadius = 30f, SpawnX = 50f, SpawnY = 50f,
+            CellSize = 100f,
+            TickSeconds = 0.1f,
+            OverlapMargin = 30f,
+            InterestRadius = 30f,
+            SpawnX = 50f,
+            SpawnY = 50f,
         };
         var server = new MmoServer(serverTransport, config);
         long npc = server.SpawnNpc(60f, 50f, kind: 5);          // an NPC in the player's area of interest

@@ -37,7 +37,10 @@ public sealed class TileWorldSource
     // the region once that region is loaded.
     static TileMarker Copy(TileMarker m) => new()
     {
-        Name = m.Name, X = m.X, Z = m.Z, Plane = m.Plane,
+        Name = m.Name,
+        X = m.X,
+        Z = m.Z,
+        Plane = m.Plane,
         Tags = m.Tags is null ? null : new List<string>(m.Tags),
     };
 
@@ -64,8 +67,12 @@ public sealed class TileWorldSource
         TileWorldManifest m = TileWorldFile.ReadManifest(directory, options);
         var doc = new TileWorldDocument
         {
-            Id = m.Id, DisplayName = m.DisplayName, TileSize = m.TileSize, PlaneCount = m.PlaneCount,
-            PlaneHeight = m.PlaneHeight, NextObjectId = m.NextObjectId,
+            Id = m.Id,
+            DisplayName = m.DisplayName,
+            TileSize = m.TileSize,
+            PlaneCount = m.PlaneCount,
+            PlaneHeight = m.PlaneHeight,
+            NextObjectId = m.NextObjectId,
         };
         doc.CatalogPaths.AddRange(m.CatalogPaths);
         foreach (TileFoliageLayerDto layer in m.FoliageLayers ?? new List<TileFoliageLayerDto>())
@@ -82,7 +89,10 @@ public sealed class TileWorldSource
         foreach (TileWorldManifestMarker mk in m.Markers)
             markers[mk.Name] = new TileMarker
             {
-                Name = mk.Name, X = mk.X, Z = mk.Z, Plane = mk.Plane,
+                Name = mk.Name,
+                X = mk.X,
+                Z = mk.Z,
+                Plane = mk.Plane,
                 Tags = mk.Tags is null ? null : new List<string>(mk.Tags),
             };
         return new TileWorldSource(directory, doc, known, markers);

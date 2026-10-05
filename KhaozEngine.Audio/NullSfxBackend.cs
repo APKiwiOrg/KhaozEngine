@@ -25,7 +25,8 @@ public sealed class NullSfxBackend : ISfxBackend
         bool positional,
         Vector3 position,
         SfxPriority priority,
-        SfxAttenuation attenuation) { }
+        SfxAttenuation attenuation)
+    { }
 
     public void SetListener(Vector3 position, Vector3 forward, Vector3 up) { }
 

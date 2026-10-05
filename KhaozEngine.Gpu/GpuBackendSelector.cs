@@ -381,18 +381,21 @@ namespace KhaozEngine.Gpu
                 // Suffixed rather than a second variable. The whole token is matched, so these can never be
                 // confused with the two above, and a tester who typo'd the suffix gets the UnrecognizedOverride
                 // diagnostic rather than a silent run on a different implementation under the new name.
-                case "d3d11-native": case "direct3d11-native":
+                case "d3d11-native":
+                case "direct3d11-native":
                     backend = GpuBackendKind.Direct3D11Native; return true;
                 // The same shape for the second native backend (decision V-I1). `vulkan` meant Veldrid's Vulkan until
                 // 18.0.0, which made it the kill switch the native Vulkan design leaned on: an A/B against the
                 // implementation that is now the Linux default was one variable away. With the incumbent gone
                 // the token is retired and redirects here with a WARN.
-                case "vulkan-native": case "vk-native":
+                case "vulkan-native":
+                case "vk-native":
                     backend = GpuBackendKind.VulkanNative; return true;
                 // And the third (decision M-I1). The A/B this pair buys is worth more than either of the others,
                 // because `metal` is the family the fleet's reference images are baked on, so a suspected
                 // difference on a Mac has to be answerable on the same build without a rebuild or a re-bake.
-                case "metal-native": case "mtl-native":
+                case "metal-native":
+                case "mtl-native":
                     backend = GpuBackendKind.MetalNative; return true;
                 case "gl": case "opengl": backend = GpuBackendKind.OpenGL; return true;
                 default: backend = default; return false;

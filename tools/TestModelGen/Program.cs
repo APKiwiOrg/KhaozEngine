@@ -88,19 +88,19 @@ static byte[] WoodTexture(int size)
 {
     var px = new byte[size * size * 4];
     for (int y = 0; y < size; y++)
-    for (int x = 0; x < size; x++)
-    {
-        // Vertical grain: brown base modulated by a few sine bands down the U axis, plus faint noise.
-        float u = (float)x / size;
-        float grain = 0.5f + 0.5f * MathF.Sin(u * MathF.PI * 14f);
-        float knot = 0.5f + 0.5f * MathF.Sin(u * MathF.PI * 3f + 1.3f);
-        float v = 0.55f + 0.30f * grain * knot;
-        int i = (y * size + x) * 4;
-        px[i + 0] = Byte(0.42f * v + 0.12f);   // warm brown
-        px[i + 1] = Byte(0.26f * v + 0.06f);
-        px[i + 2] = Byte(0.12f * v + 0.02f);
-        px[i + 3] = 255;
-    }
+        for (int x = 0; x < size; x++)
+        {
+            // Vertical grain: brown base modulated by a few sine bands down the U axis, plus faint noise.
+            float u = (float)x / size;
+            float grain = 0.5f + 0.5f * MathF.Sin(u * MathF.PI * 14f);
+            float knot = 0.5f + 0.5f * MathF.Sin(u * MathF.PI * 3f + 1.3f);
+            float v = 0.55f + 0.30f * grain * knot;
+            int i = (y * size + x) * 4;
+            px[i + 0] = Byte(0.42f * v + 0.12f);   // warm brown
+            px[i + 1] = Byte(0.26f * v + 0.06f);
+            px[i + 2] = Byte(0.12f * v + 0.02f);
+            px[i + 3] = 255;
+        }
     return KhaozEngine.Imaging.PngWriter.Encode(px, size, size);
 }
 static byte[] CheckerTexture(int size)
@@ -108,16 +108,16 @@ static byte[] CheckerTexture(int size)
     var px = new byte[size * size * 4];
     int cell = size / 8;
     for (int y = 0; y < size; y++)
-    for (int x = 0; x < size; x++)
-    {
-        bool on = ((x / cell) + (y / cell)) % 2 == 0;
-        int i = (y * size + x) * 4;
-        // Teal vs cream, unmistakably different from the brown wood and clearly a repeating pattern.
-        px[i + 0] = on ? (byte)0xF2 : (byte)0x18;
-        px[i + 1] = on ? (byte)0xE8 : (byte)0x9C;
-        px[i + 2] = on ? (byte)0xC8 : (byte)0x8E;
-        px[i + 3] = 255;
-    }
+        for (int x = 0; x < size; x++)
+        {
+            bool on = ((x / cell) + (y / cell)) % 2 == 0;
+            int i = (y * size + x) * 4;
+            // Teal vs cream, unmistakably different from the brown wood and clearly a repeating pattern.
+            px[i + 0] = on ? (byte)0xF2 : (byte)0x18;
+            px[i + 1] = on ? (byte)0xE8 : (byte)0x9C;
+            px[i + 2] = on ? (byte)0xC8 : (byte)0x8E;
+            px[i + 3] = 255;
+        }
     return KhaozEngine.Imaging.PngWriter.Encode(px, size, size);
 }
 static byte Byte(float f) => (byte)Math.Clamp((int)(f * 255f + 0.5f), 0, 255);

@@ -60,7 +60,8 @@ internal sealed class TreeViewDrawRig : IDisposable
         public void UpdateBuffer<T>(IGpuBuffer b, uint offsetBytes, in T data) where T : unmanaged { }
         public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height) { }
         public void UpdateTexture(IGpuTexture texture, byte[] data, uint x, uint y, uint width, uint height,
-            uint mipLevel, uint arrayLayer) { }
+            uint mipLevel, uint arrayLayer)
+        { }
         public MappedData Map(IGpuTexture staging, GpuMapMode mode) => throw new NotSupportedException();
         public void Unmap(IGpuTexture staging) { }
         public MappedData Map(IGpuBuffer staging, GpuMapMode mode) => throw new NotSupportedException();
@@ -132,9 +133,11 @@ internal sealed class TreeViewDrawRig : IDisposable
         public void CopyBuffer(IGpuBuffer src, uint srcOffsetBytes, IGpuBuffer dst, uint dstOffsetBytes, uint sizeInBytes) { }
         public void CopyTexture(IGpuTexture src, IGpuTexture dst) { }
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst,
-            uint width, uint height) { }
+            uint width, uint height)
+        { }
         public void CopyTextureSubresource(IGpuTexture src, uint srcMipLevel, uint srcArrayLayer, IGpuTexture dst,
-            uint dstMipLevel, uint dstArrayLayer, uint width, uint height) { }
+            uint dstMipLevel, uint dstArrayLayer, uint width, uint height)
+        { }
         public void GenerateMipmaps(IGpuTexture texture) { }
         public void ResolveTexture(IGpuTexture src, IGpuTexture dst) { }
         public void SetComputePipeline(IGpuComputePipeline p) { }

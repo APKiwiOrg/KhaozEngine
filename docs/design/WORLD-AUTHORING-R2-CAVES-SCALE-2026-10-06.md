@@ -1,6 +1,7 @@
 # R2 sculpted caves and sparse-world scale
 
-Status: **DRAFT FOR OWNER REVIEW. Candidate refinement only. R2 implementation remains unapproved.**
+Status: **DRAFT FOR OWNER REVIEW. Candidate refinement only, revised for design review 1 findings
+M1 to M3 and pending targeted re-review. R2 implementation remains unapproved.**
 
 ## Outcome and review boundary
 
@@ -27,11 +28,12 @@ Review the envelope, datum and contracts together.
 API evidence is released **v20.27.0**, commit `a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af`.
 The source checkout `wa-r1-document-identity` has that HEAD. Origin advertises annotated tag object
 `2da36f154a6fca514b9a4595da52afe42019fd18` with that peeled commit. Local package identity was
-controller-verified. Publication attempt 2 acquired a runner and built successfully, then failed
-the existing D3D11 threading resize/present test. Publication is blocked by
-[#1309](https://github.com/APKiwiOrg/KhaozEngine/issues/1309), with a test-only repair active in a
-separate worktree. No MapDoc runtime/API regression is claimed. The planning checkout is historical
-and is not the source of the APIs below.
+controller-verified. Publication of v20.27.0 failed the existing D3D11 threading resize/present
+test ([#1309](https://github.com/APKiwiOrg/KhaozEngine/issues/1309)). A separate test-only 20.27.1
+publication repair is integrated at `ca13d62d7` and is locally green. Its hosted main CI exposed an
+existing catalog race matching [#1271](https://github.com/APKiwiOrg/KhaozEngine/issues/1271), so
+publication is still blocked. The repair changes no source API cited below. No MapDoc runtime/API
+regression is claimed. The planning checkout is historical and is not the source of the APIs below.
 
 The controlling intent/corrections are Grimhollow's
 [DECISIONS OA9/OA13](https://github.com/APKiwiOrg/Grimhollow/blob/ae2c0db0/docs/superpowers/programs/world-authoring/DECISIONS.md#oa13-seamless-sculpted-caves-and-mmo-scale-world-intent),
@@ -50,16 +52,21 @@ Roles distinguish support floor, downward-facing ceiling, non-support wall and p
 Authoring layers group/select these records. A layer ID is not an occupied-space volume, water
 container, navigation layer or server cell.
 
-In this candidate, the native presence mask removes complete cells. Smaller cell sizes and explicit
-boundary subdivisions refine a curved mouth. Overlay half/quarter cuts remain paint topology, not
-an aperture tool. Non-cell-aligned arbitrary holes require explicit placed geometry rather than a
-hidden reinterpretation of paint. This first representation's limitation is part of the review.
+In this candidate, the native presence mask removes complete cells. This is a visible authoring
+limit and is summarized for the owner under the approval items. On imported 1 m ground, a cut mouth
+steps in whole 1 m cells in plan view. A smoother curved or diagonal mouth needs the area around it
+converted to a finer-cell patch. Its cell unit must divide the coarse unit exactly, and the coarse
+patch's shared edge must be explicitly subdivided to the same boundary vertex keys, or the seam
+refuses. Placed rock can dress the mouth visually and add collision, but it never owns the canonical
+hole, support or space boundary. Overlay half/quarter cuts remain paint topology, not an aperture
+tool. Arbitrary non-cell-aligned holes are not represented by the mask.
 
 A height field describes one Y for each local XZ. Paired fields describe a variable floor and roof
 over a footprint, including a broad chamber or descending tunnel. They cannot by themselves express
 a closed cave, vertical wall, self-overhang, arch or two floors at the same XZ. Multiple patches and
-spaces permit stacks. Explicit boundary strips provide vertical walls. More complex rock/arch
-geometry can use the existing placement/asset path. This is not a general volumetric modeller.
+spaces permit stacks. Explicit wall strips provide vertical walls, headers and risers. More complex
+rock/arch geometry can use the existing placement/asset path. This is not a general volumetric
+modeller.
 
 The proposed minimal boundary records have stable IDs and reference canonical boundary vertices,
 rather than storing another independently rounded copy of their coordinates:
@@ -67,26 +74,56 @@ rather than storing another independently rounded copy of their coordinates:
 | New record | Geometry contract |
 | --- | --- |
 | `MapSurfaceSeam` | Two patch edges identify the same ordered vertex keys. Compatible units, positions, heights and edge subdivisions agree exactly. The seam changes ownership, not shape |
-| `MapCaveBoundary` | A closed footprint edge joins the referenced floor and ceiling chains. Each corresponding segment becomes a ruled quad, split lower-start to upper-end. Winding points into the occupied air space. Additional authored chain vertices shape the boundary |
-| `MapCavePortal` | An explicitly open boundary interval has no wall faces. It records its floor chain, optional ceiling/lintel chain, side boundaries and the two connected space IDs, one of which may be declared exterior |
-| `MapVerticalLink` | Names the connected spaces, portal/support endpoints and intervening geometry owners. A ramp uses continuous floor patches. A shaft uses an explicit floor aperture and side boundaries. The record does not fabricate traversal or a nav edge |
+| `MapBoundaryChain` | An ordered sequence of boundary vertex keys at one XZ interval. A chain is a floor or ceiling patch edge, a ground rim, or an authored band/lintel chain whose vertices lie on the same lattice keys |
+| `MapWallStrip` | One geometry owner between a referenced lower chain and upper chain over the same XZ vertex sequence. Lower Y must not exceed upper Y at any vertex. Each segment becomes a ruled quad split lower-start to upper-end, and a zero-height end degenerates to one triangle. Its front faces one declared side. Header, riser, side wall and entrance return are all wall strips |
+| `MapCavePortal` | An explicit opening on a shared footprint interval between two spaces, one of which may be declared exterior. It records the interval's vertex sequence and an aperture band given by a bottom chain and a top chain. The band itself has no faces |
+| `MapVerticalLink` | Names the connected spaces, portal/support endpoints and intervening geometry owners. A ramp uses continuous floor patches. A shaft uses horizontal openings defined below. The record does not fabricate traversal or a nav edge |
 
-Floor and ceiling boundaries use corresponding XZ chains in this first representation. Their heights
-vary independently. Vertical wall faces and nonrectangular footprints need those explicit strips,
-not infinitely steep height samples. Free assets can supply shapes outside this representation.
+Wall strips are vertical in this first representation, so their two chains share XZ and only their
+heights differ. Vertical wall faces and nonrectangular footprints need explicit strips, not
+infinitely steep height samples. Free assets can supply shapes outside this representation.
 Boundary subdivisions must occur on the shared lattice or declared half/quarter lattice vertices.
 Joins with incompatible tessellation refuse until the author explicitly subdivides both edges.
 
+**Portal band and coverage.** At every vertex of a portal interval, the aperture band lies within
+the common available air interval: band bottom at or above both sides' floors, band top at or below
+both sides' ceilings or the exterior open top, and bottom strictly below top at every interior
+vertex. Bottom and top may meet only at the interval's two end vertices. The band need not use the
+whole shared interval. A deliberately lower lintel or an arched top chain is valid. Each side
+then covers its own floor-to-ceiling extent over the interval with the band plus wall strips facing
+that side. A high chamber meeting a low passage gets a chamber-facing header from the band top to
+the chamber ceiling. A raised passage gets a chamber-facing riser from the chamber floor to the band
+bottom. Where both sides need solid coverage at the same height, such as a lintel below both roofs,
+one strip declared two-sided emits two oppositely wound faces under one owner with distinct
+primitive keys. Zero-thickness partitions exist only in that explicit form. An open-top exterior
+side is covered from its floor to the band top. Solid faces it sees above the band, such as an
+entrance return, are exterior-facing strips but not coverage requirements.
+
+Validation is exact and per side. Every chain over a portal interval, including both floors, both
+ceilings, the band chains and every header/riser chain, uses one identical ordered vertex sequence.
+A band transition, such as an arch peak or the point where a riser reaches zero height, is a vertex
+of that sequence. A mismatched sequence refuses until the author subdivides explicitly. At each
+vertex, the side's floor, strips, band and ceiling must stack without gap or overlap. Because every
+chain is linear between shared vertices, vertex checks prove the whole segment. The same per-side
+rule applies to ordinary closed footprint edges, which have no band and one or more stacked strips.
+
+**Geometry owner versus space membership.** A strip, patch or portal is created once with one
+geometry owner. A space's boundary lists `(recordId, side)` references and never copies geometry.
+Each `(strip, side)` is referenced by at most one space. The compiler emits faces per owner, not per
+reference, so two spaces bounded by one strip never produce duplicate coincident faces.
+
 A surface-to-cave entrance is one transaction over the outside floor, descending floor, roof-start
 edge and side boundaries. Where outdoor ground covers the proposed entrance, remove its physical
-faces explicitly. Bind the resulting rim to the descending floor/side chains. Start the downward
-ceiling behind the open mouth, with explicit rim/return faces where necessary to join the ground
-above. Keep positive roof thickness where top ground and underside coexist. An opening has no
-invisible floor or closing wall. Terrain outside the edited footprint remains unchanged.
+faces explicitly. Bind the resulting rim chain to the descending floor/side chains. Start the
+downward ceiling behind the open mouth. The return face from the ground rim down to the ceiling's
+leading chain is a wall strip facing the exterior space. Keep positive roof thickness where top
+ground and underside coexist. An opening has no invisible floor or closing wall. Terrain outside the
+edited footprint remains unchanged.
 
-A portal's optional top applies only to an explicitly open-top exterior side. A cave-side roof chain
-must be present, even though the portal has no wall face. The exposed slope before the roof starts
-belongs to the exterior space. It does not become a cave column with missing ceiling geometry.
+A portal's band top may be unbounded only where both sides are explicitly open-top exterior. A
+cave side always has a ceiling chain and a bounded band top, even though the band has no face. The
+exposed slope before the roof starts belongs to the exterior space. It does not become a cave column
+with missing ceiling geometry.
 
 For a simple sloping entrance, the outdoor and descending floor can be the same logical surface.
 They can also meet at a declared seam. In either case their boundary positions agree by vertex key.
@@ -95,13 +132,18 @@ Spaciousness comes from the authored floor/ceiling separation and footprint. No 
 spacing or four-layer limit applies to new caves.
 
 Each face has one geometry owner and stable `(owner, patch, primitiveKey, triangle)` identity.
-Floor/ceiling primitive keys address cells. Wall keys address boundary segments. Storage or
-query memberships may reference that owner several times. They do not create additional faces.
+Floor/ceiling primitive keys address cells. Wall keys address strip segments and, for a two-sided
+strip, the face side. Storage or query memberships may reference that owner several times. They do
+not create additional faces.
 Shared edge/corner vertices have one authoritative key. Interior lattice ownership uses the
-half-open cell partition. At a patch junction, choose the lowest ordinal incident patch key as
-the persisted vertex owner and include that dependency in every touching patch. Missing owners
-make the seam unresolved, never edge-extended implicitly. Changing a shared corner updates every
-dependent patch atomically or refuses the edit.
+half-open cell partition. At a patch junction, the persisted vertex owner is fixed when the
+junction is first created, by import or by the authoring transaction that creates it, using the
+lowest ordinal incident patch key at that moment. Every touching patch records that dependency.
+Adding a patch with a lower key later never moves ownership. Ownership changes only in an explicit
+reassignment, which is part of one transaction's write set together with every dependent reference
+and the resulting identity change. Deleting or splitting an owner patch must include that
+reassignment, or the edit refuses. Missing owners make the seam unresolved, never edge-extended
+implicitly. Changing a shared corner updates every dependent patch atomically or refuses the edit.
 
 Compile positions, topology, face normals, support roles and material subdivisions once. Imported
 topology follows the released diagonal/cut arithmetic [E10/E11]. Ceiling winding reverses floor
@@ -123,12 +165,30 @@ bound an outdoor space and a cave. An interior tag may apply inside a cave. Wate
 explicit contained subset. Layer grouping, XZ coincidence and a global ocean height decide none of
 these memberships.
 
-Proposed `MapSpaceDoc` references a footprint, lower floor patches, upper ceiling patches and its
-wall/portal boundary records. A cave column contains a point when its XZ belongs to that footprint
-and `floorY(X,Z) <= point.Y < ceilingY(X,Z)`. Both heights come from the canonical referenced
-triangles. The vertical interval varies with geometry. Validate positive separation over the common
-floor/ceiling triangulation refinement, including its vertices, not just the original cell corners.
-Explicit wall boundary coverage and declared portals complete the enclosure.
+Proposed `MapSpaceDoc` references a footprint, its lower and upper bound records and its
+`(recordId, side)` wall/portal boundary references. A cave column contains a point when its XZ
+belongs to that footprint and `lowerY(X,Z) <= point.Y < upperY(X,Z)`. Both heights come from the
+canonical referenced triangles. The vertical interval varies with geometry. Validate positive
+separation over the common lower/upper triangulation refinement, including its vertices, not just
+the original cell corners. Per-side wall/portal coverage completes the enclosure.
+
+Every footprint column must have a known lower and upper bound of a declared kind. A lower bound is
+a support floor triangle or a horizontal opening. An upper bound is a ceiling triangle, a horizontal
+opening or, for an exterior space only, a declared open top. A **horizontal opening** is declared
+open connectivity: a set of physically absent cells in one patch, named by a `MapVerticalLink` with
+the space above and the space below. Its membership boundary is the canonical triangulation those
+cells would have, typed as a portal plane. Its persisted normal points up, so the space above owns
+exact-plane points, matching the half-open column rule. It is excluded from support, draw, capture
+and collision, so no physical floor or ceiling is fabricated across the hole. A footprint column
+whose bound is absent and not declared as an opening is missing data. Publication refuses it, and
+queries return `MissingGeometry`, never `NoSupport`.
+
+A shaft is therefore a space column whose lower and upper bounds may both be horizontal openings,
+with wall strips between the hole rims. One valid layout splits the footprint so the shaft is its
+own space between the lower cave's ceiling opening and the upper floor's opening. Another lets the
+shaft space continue down to the lower floor and joins it to the lower chamber through wall portals.
+Neither layout is mandated. Both satisfy the same bound and coverage rules, and support inside a
+known opening returns `NoSupport` unless an eligible lower floor is found through an explicit link.
 
 An exterior space explicitly declares an open top and its support/footprint. The absence of a cave
 match alone does not certify exterior membership. A cave boundary cannot omit its ceiling and
@@ -160,9 +220,9 @@ a prism. Roof/light consumers receive all relevant typed membership keys, not a 
 
 | Condition | Required result |
 | --- | --- |
-| Native physical aperture | Presence mask removes the physical triangles. Support is absent, draw/capture omit them, and wall/portal references explain any occupied-space opening |
+| Native physical aperture | Presence 0 removes the physical triangles. Support is absent, draw/capture omit them, and wall/portal or horizontal-opening references explain any occupied-space opening. Only native authoring writes presence 0 |
 | Overlay cut or feather | Changes material coverage/tessellation on the canonical surface. It never creates an air hole or removes collision/support |
-| Imported void or NoDraw | Preserve integers/bytes and absence of rendered/captured terrain. Preserve the existing explicitly bounded non-capture fallback recipe. Do not reinterpret it as a cave entrance |
+| Imported void or NoDraw | Keeps presence 1, its imported presence policy and its flag bytes exactly. The compiler emits no render/capture faces from those flags, and support returns the existing tagged non-capture fallback. The importer never maps these cells to presence 0, which would replace that fallback with `NoSupport`. Do not reinterpret them as a cave entrance |
 | Indexed patch not loaded, missing digest/asset or unresolved seam | Return missing/incomplete data and refuse a complete result. Never synthesize empty terrain or use the legacy fallback to hide it |
 
 Released TileWorld draw geometry requires a nonzero underlay and no NoDraw flag [E10]. Its bilinear
@@ -184,18 +244,54 @@ not benchmarks. Set a **1 MiB decoded patch limit**, including boundary/referenc
 reject dimensions/count arithmetic before allocating. Variable compiler output has a separate
 proposed **65,536-face limit per patch**. Excessive feather/boundary subdivision refuses explicitly.
 
-Use new `MapSurfaceRef` metadata for stable logical surface ID, units, role and digest-bearing patch
-index reference. Sparse index entries name `(surfaceId, patchKey)`, bounds, payload digest, storage
-owner, corner/seam dependencies and domain links. Index payload pages contain at most **256 entries**
-and **1 MiB decoded data**. A directory references occupied pages only. An unlisted key is empty
-only under a verified index page/range. A listed unloaded key is unavailable. No 64 km rectangle is
-enumerated to create empty patches. Material/support/geometry identity ignores physical file grouping.
+Use new `MapSurfaceRef` document metadata for stable logical surface ID, units, role and a
+semantic surface digest. The document root never stores page or payload byte digests. Sparse index
+entries name `(surfaceId, patchKey)`, bounds, payload byte digest, patch semantic digest,
+corner/seam dependencies and domain links. Index payload pages contain at most **256 entries** and
+**1 MiB decoded data**. A directory references occupied pages only. An unlisted key is empty only
+under a verified index page/range. A listed unloaded key is unavailable. No 64 km rectangle is
+enumerated to create empty patches.
 
 Keep byte-integrity digests separate from semantic geometry digests. Index-page/payload SHA-256
-checks validate the bytes read. Authored geometry identity flattens stable patch keys and canonical
-values/dependencies, excluding filenames, page grouping and storage-owner bookkeeping. A changed
-triangle, unit, portal or support policy changes semantic identity. Merely repacking identical
-records does not. Declared document parameters that affect behavior still enter build identity.
+checks validate the bytes read and live only in storage bookkeeping. A persisted semantic digest is
+recomputed from verified records on read, and a mismatch is `Corrupt`. A changed triangle, unit,
+portal or support policy changes semantic identity. Declared document parameters that affect
+behavior still enter build identity.
+
+**Writer-owned surface storage.** In the tiled form, patch payloads and index/directory pages live
+in a dedicated `surfaces/` subtree of the document directory. Only the tiled storage writer writes
+there, under the existing save lock. File names encode the SHA-256 of the canonical bytes, matching
+the released tile invariant, so a write is idempotent and never replaces a name a manifest needs
+[E18]. Save order is validate, read the previous manifest, write new payloads, then index pages,
+then directory pages, all at names nothing references yet. The manifest rename is the single
+commit. A crash before it leaves the previous world complete. A crash after it leaves only
+unreachable files.
+
+Cleanup runs after the commit and only when the previous manifest was readable, as the released
+sweep does [E18]. It deletes temp files and `surfaces/` files unreachable from the new manifest. A
+windowed save carries every unloaded index entry forward by digest from that previous manifest and
+never rewrites an unloaded patch. It refuses an edit whose seam, corner owner, portal, opening or
+space dependency lies in an unloaded patch, as `GuardMovedContent` refuses moved content [E18].
+
+`MapDocumentStorage.IsReserved` is extended explicitly so the tiled form reserves `surfaces/`
+alongside `tiles/` [E17]. `MapStorageGuardedAssetSource` therefore keeps refusing any generic asset
+reference inside it [E19]. `IMapSurfaceSource` is read-only and does not read through the generic
+asset source. Its storage implementation opens only digests named by the verified
+manifest/directory/page chain inside the reserved namespace and verifies bytes before decoding. It
+never writes, sweeps or repairs. No generic asset guard is weakened to let terrain read its payloads.
+
+The monolithic form uses **bounded embedding**. Its single file embeds patch records inline, sorted by
+`(surfaceId, patchKey)`, without index pages or byte digests. The proposed bound is 256 patch records
+and 8 MiB of decoded surface data. Saving a larger document monolithically refuses and names the
+tiled form. The monolithic writer still owns only its file. A document that carries native surfaces
+requires resolver 2, so it never reaches the scheme-1 `SaveText` hash [E2/E20].
+
+The scheme-2 semantic projection is defined record by record. It contains the stable patch keys,
+canonical integer values, presence and flag bytes, units, roles, ownership, dependencies, boundary,
+space, portal and link records. It excludes physical page grouping, embedding versus paging, file
+names, byte digests and storage bookkeeping. Invariance under repacking and form change is a
+tested property. It is not inferred from the generic version-1 serialized shape, which is a whole
+document text and says nothing about page grouping.
 
 R2 pins patch/page encoding, digest normalization and a bounded provider contract. Proposed
 `IMapSurfaceSource.ReadPatch(key)` and `FindPatches(scope)` distinguish `Present`, `KnownEmpty`,
@@ -216,18 +312,22 @@ implement runtime eviction, a production streaming scheduler or HLOD.
 
 R1 hashes a complete in-memory serialized document and verified complete closure [E2/E4]. It refuses
 partial documents [E4]. Those APIs remain legitimate complete-view operations for small fixtures.
-They are not bounded large-world validation. R2's proposed authored identity scheme 2 hashes sorted
-semantic surface/patch/domain records and dependency digests, builder/resolver versions and policies.
-The complete-view reference calculation must match monolithic and tiled persistence. It must not
-trust a stale persisted tile hash as proof that bytes were checked.
+They are not bounded large-world validation. R2's proposed authored identity scheme 2 hashes the
+semantic projection above, the closure hash and builder/resolver versions and policies. The
+complete-view calculation must give one token for a monolithic-embedded copy, a tiled copy and a
+tiled copy repacked into different pages, while their file bytes differ. It must not trust a stale
+persisted tile or semantic digest as proof that bytes were checked. Existing `SaveText`-based
+identity tests keep their meaning for surface-free documents, subject to the one-time format change
+below.
 
-Pin a new scope identity envelope now: complete document root digest, exact required patch/asset
-digests, coordinate frame, query/build policy versions and a coverage witness for the declared
-scope. A scoped result has its own type and cannot masquerade as `MapResolvedDocument`. R8 owns
-runtime directory-page residency, bounded closure acquisition, scope validation/publication,
-generation fencing and eviction. Complete offline verification can stream all declared resources
-and accumulate digests without simultaneous residency. A loaded window alone certifies only its
-checked scope. Large-world operation is gated on those R8 proofs, not declared finished by R2.
+Pin a new scope identity envelope now: complete document root digest, exact required patch semantic
+digests and asset digests, with patch bytes verified on read, coordinate frame, query/build policy
+versions and a coverage witness for the declared scope. A scoped result has its own type and cannot
+masquerade as `MapResolvedDocument`. R8 owns runtime directory-page residency, bounded closure
+acquisition, scope validation/publication, generation fencing and eviction. Complete offline
+verification can stream all declared resources and accumulate digests without simultaneous
+residency. A loaded window alone certifies only its checked scope. Large-world operation is gated on
+those R8 proofs, not declared finished by R2.
 
 The game nav budget remains **8 MiB aggregate after deterministic gzip -9, in plain git**. Tiling
 does not waive it. R3/R11 supply geometry/profile/tile identity and size accounting. G3 checks the
@@ -253,7 +353,7 @@ The significant coordinate choice has the following weighted scores. Scores are 
 judgments from 1 to 10, not measurements. Weights favor preserving canonical local terrain while
 keeping the released consumer seams.
 
-| Criterion | Weight | A. Absolute float data plus existing frames | B. Integer-addressed terrain patches plus existing float placements/frames | C. Whole-document/runtime double-coordinate rewrite |
+| Criterion | Weight | Absolute float terrain with existing frames | Integer-addressed terrain with existing float placements and frames | Whole-document and runtime double-coordinate rewrite |
 | --- | ---: | ---: | ---: | ---: |
 | Useful near/far geometry precision | 3 | 6 | 9 | 10 |
 | Released consumer compatibility | 3 | 9 | 8 | 3 |
@@ -261,13 +361,16 @@ keeping the released consumer seams.
 | Focused delivery and verifiable scope | 2 | 8 | 7 | 3 |
 | Weighted total, maximum 100 | | 73 | **83** | 59 |
 
-A has the smallest migration but loses local offsets when absolute vertices/samples are materialized.
-B adds a terrain-address/compiler contract while retaining current placement and frame interfaces.
-It controls lattice/seam arithmetic and allows frame-local queries without a large-magnitude round
-trip. It still has float placement precision and requires R3/R8 adapters. C improves stored global
-precision, but expands protocol, transform, backend and consumer migration scope. Doubles alone do
-not solve bounded residency or ensure equal triangles. **Recommend B**, subject to owner review and
-the proofs below. Do not start a sweeping double rewrite.
+Absolute float terrain has the smallest migration but loses local offsets when absolute
+vertices/samples are materialized. Integer-addressed terrain adds a terrain-address/compiler
+contract while retaining current placement and frame interfaces. It controls lattice/seam
+arithmetic and allows frame-local queries without a large-magnitude round trip. It still has float
+placement precision and requires the R3/R8 adapter rules below. A double-coordinate rewrite improves
+stored global precision, but expands protocol, transform, backend and consumer migration scope.
+Doubles alone do not solve bounded residency or ensure equal triangles. **Recommend
+integer-addressed terrain**, subject to owner review and the proofs below. Do not start a sweeping
+double rewrite. These coordinate candidates are unrelated to the program's selected migration
+option A, which stays in force.
 
 Proposed new `MapLatticeFrame` stores signed integer X/Z lattice addresses, explicit positive
 cell-unit numerator/denominator, row direction and datum binding. Patch corner Y uses int32 height
@@ -288,16 +391,41 @@ subtracts patch/frame integer anchors before converting small offsets to floats.
 applies rigid yaw/scale in local space, then adds the **already reduced** placement translation.
 Keep R1 `TransformPoint/Compose` unchanged for old callers. R5 uses the new local composition path
 when resolving prefab floors in a frame. Existing explicit imported world transforms are preserved.
-R8 submits patch-local meshes with an absolute patch translation through RenderOrigin. It must not
-rebake their vertices into absolute floats and claim that subtracting RenderOrigin repairs them.
+
+**Exact patch translation.** A lattice address times a rational unit, such as 1/3 m, is generally
+not a float value. Neither released adapter makes it exact. The physics pattern is
+`new Pose(absolute - world.Origin, rot)` with a caller-computed absolute float [E21]. RenderOrigin
+subtracts its origin from an absolute float matrix translation, which is exact only when that
+translation already is [E5/E21]. So the R2 compiler never emits a float lattice anchor. Each
+compiled patch or wall-strip mesh and each query descriptor carries a **submission anchor** of whole
+metres on X, Y and Z, chosen deterministically from integer data. For native geometry it is the
+floor of its minimum lattice coordinate in X/Z and the floor of the midpoint of its height range in
+Y. For an imported patch it is the source region origin, validated as whole metres, with Y=0, so the
+source operation order `heightCm * 0.01f` is kept and proved by the import differential. Vertex
+offsets from the anchor are computed exactly in integer/rational arithmetic and converted to float
+once.
+
+Whole-metre values in the envelope and padding are exact floats. R3 registers
+`new Pose(anchor - world.Origin, rot)` with both operands whole metres, and the released Bepu rebase
+translates statics by a difference of origins [E6], so the pose stays exact through rebases. R3 must
+assert that a physics origin used on this path has whole-metre components, which WorldFrame's 128 m
+anchors satisfy [E9], and refuse otherwise. R8 submits the patch mesh with the anchor as its matrix
+translation, so the RenderOrigin subtraction stays exact under its released lemma [E21]. R8 must not
+rebake vertices into absolute floats and claim that subtracting RenderOrigin repairs them. Neither
+adapter needs a new engine API for this. An R3 or R8 need for a non-whole-metre anchor is an adapter
+extension scoped to that round, and it must state its exact arithmetic before use.
+
+The Y anchor is used **in computation only**. Stored corner heights stay absolute integers relative
+to the world datum, WorldFrame keeps anchor Y=0, and `MapFramePoint` still returns world-datum Y.
 
 | Quantity | Proposed contract and future proof |
 | --- | --- |
 | Stored authoring precision | Integer terrain values/addresses and units roundtrip exactly. Existing float placement values roundtrip unchanged. No implicit centimetre snap is applied to free transforms |
 | New far-world placement use | At the proposed +/-32,000 m envelope, float XZ spacing is 0.001953125 m. New authoring must preserve a useful 0.01 m position edit. This is an interaction/representation target, not an import tolerance or a claim of submillimetre global positions |
-| Runtime local terrain query | Proposed height/position error target at most 0.0001 m against the canonical descriptor in the **same frame**, tested near/far and on slopes. Render/support/capture triangle identity remains exact. Imported differential/backend gates remain tighter wherever already required |
+| Runtime local terrain query | Proposed height/position error target at most 0.0001 m against the canonical descriptor in the **same frame**, tested near/far and on slopes. Render/support/capture triangle identity remains exact. The tighter imported and physics gates below are unchanged |
+| Imported physics raycast | C2's explicit 0.00001 m backend raycast tolerance stays binding, unrelaxed, inside the imported extents. The 0.0001 m target above never substitutes for it |
 | Frame/cell budget | Keep the released planar-radius sizing rule, including overlap and anchor-grid allowance [E9]. R3/R8 reject an oversized simulation/capture working set before claiming frame precision |
-| Vertical proof | Terrain samples at datum +/-500 m. Fixture objects may extend another 64 m vertically. Probes reach +/-640 m. Y remains absolute under current WorldFrame. Float spacing through +/-640 m is at most 0.00006103515625 m, a representation fact that still needs arithmetic/backend proof |
+| Vertical proof | Terrain samples at datum +/-500 m. Fixture objects may extend another 64 m vertically. Probes reach +/-640 m. Computation uses the whole-metre Y anchor, while the returned Y stays world-datum absolute. **Named proof risk:** float spacing through +/-640 m is up to 0.00006103515625 m, so final rounding alone can consume 0.000030517578125 m of the 0.0001 m target. That spacing is a representation observation, not a backend proof. A failure is reported with its inputs. Its remedy is an owner-reviewed vertical anchor on the new frame-point type in R3/R8 adapters, never a relaxed target or gate |
 | Horizontal proof padding | Include authored geometry/camera/probe bounds up to 128 m beyond the provisional terrain envelope in the sparse fixture. Runtime residency expands from actual effective bounds. An asset exceeding fixture padding requires a wider named proof, not clamping |
 | Import differential | Exact integers/bytes/IDs, at most **0.00001 m** derived position/vertex error and **0.000001** normal component error remain binding. Compare actual old/native computations on identical frozen inputs and declare comparison space |
 | Canonical agreement | Same vertex keys, triangle IDs, winding and geometric normals after the same transform. It is not certified by passing an approximate positional comparison |
@@ -343,13 +471,29 @@ tagged version-1 support recipe when migrated. They do not silently acquire a to
 Propose a separate resolver-version-2 entry point for authored surfaces/support bindings, with
 document `ResolverVersion=2` and options checked together. The existing two-field resolver metadata
 retains `PayloadVersion=1`, with validation extended explicitly for supported resolver meanings.
-The new entry point returns support identity alongside
-the resolved placement. Unsupported combinations refuse before callbacks. Version 1 continues to
-compute its existing identity for untouched format-4 inputs. Authored migration changes format and
-identity explicitly. Analytic migration adds no native surfaces/bindings and preserves execution.
-MapDoc's released format is 4 and its current native migration handles 3 to 4 [E15]. Use the next
-free format for R2's semantic transition, nominally 5, with pure sequential migrations and closed
-payload schemas. Do not reserve a release number.
+The new entry point returns support identity alongside the resolved placement. Unsupported
+combinations refuse before callbacks. MapDoc's released format is 4 and its current native
+migration handles 3 to 4 [E15]. Use the next free format for R2's semantic transition, nominally 5,
+with pure sequential migrations and closed payload schemas. Do not reserve a release number.
+
+**Identity after the format advance.** Released authored identity validates the document, then
+hashes `MapDocumentFile.SaveText`, whose whole-document writer requires the current format version
+[E20]. Loading always migrates a format-4 input to the current format [E15]. So after the advance
+a format-4 document can neither be hashed as format 4 nor keep its token. Every format-4 input
+migrates on load, and its authored identity token changes once, from the new `formatVersion` and,
+where present, from the migration tag on missing-Y placements. **No token continuity across that
+migration is promised.** A frozen format-4 validator, serializer or hash path is not proposed.
+This matches C1, where an explicit format upgrade changes the format hash and needs matching peers.
+It applies to every engine consumer. The program's Grimhollow pin of 20.25.0 is not evidence about
+other consumers, so the release that advances the format must state the one-time token change in
+its consumer notes.
+
+What the migration preserves is **resolver-v1 execution behavior**. Migrated documents resolved
+through version 1 produce the same placements and transforms, keep every explicit Y exactly, and
+invoke the XZ support callback for the same missing-Y placements with the same arguments as
+released v20.27.0 did on the frozen format-4 input. Expectations are recorded from that released
+resolver on identical inputs, not inferred from equal hashes. Analytic migration adds no native
+surfaces/bindings and preserves execution.
 
 The pure format migration retains the old resolver meaning and adds no invented terrain. Explicit
 adoption of authored surfaces selects resolver 2. A migrated legacy support recipe can call the
@@ -357,13 +501,14 @@ old callback only with its declared policy identity included in build options. I
 surface/space binding. The version-1 overload refuses a version-2 document before executing a
 callback, instead of silently changing the old call's meaning.
 
-Extend the **existing** native command preparation/validation/publication seam. It currently
-accepts only `INativePlacementCommand` and publishes Placements/high-water state [E16]. Proposed
-new `INativeDocumentCommand` preparation produces a detached candidate plus a typed write set and
-deferred history state. Placement commands participate through an adapter. A terrain command's
-write set contains affected patches, shared corner owners, seams/portals, space bindings and
-material references. Validate local geometry and the explicitly bound closure before publishing
-that set atomically. Do not publish only Placements or add a separate direct terrain mutation path.
+Extend the **existing** native command preparation/validation/publication seam. It currently accepts
+only `INativePlacementCommand` and publishes Placements/high-water state [E16]. Proposed new
+`INativeDocumentCommand` preparation produces a detached candidate plus a typed write set and
+deferred history state. Placement commands participate through an adapter. A terrain command's write
+set contains affected patches, shared corner owners and any explicit owner reassignment,
+seams/portals, wall strips, openings, space bindings and material references. Validate local
+geometry and the explicitly bound closure before publishing that set atomically. Do not publish only
+Placements or add a separate direct terrain mutation path.
 
 GUI history and MCP use this one transaction. Rejection leaves document, history, dirty state,
 identity, events and command retry state unchanged. Undo/redo restores the same IDs and exact values.
@@ -383,7 +528,7 @@ quantization. A missing/ambiguous shared halo refuses before mutation.
 
 | Owner | Contract/exit responsibility after this candidate is approved |
 | --- | --- |
-| R2 / C2 | Bounded terrain encoding, canonical floor/ceiling/wall/aperture geometry, space membership, height-aware query/resolver contract, migrations/identity and atomic terrain mutations. Proves geometry inputs and compatibility, not complete cave runtime |
+| R2 / C2 | Bounded terrain encoding and writer-owned surface storage, canonical floor/ceiling/wall-strip/portal/aperture geometry, space membership and coverage, height-aware query/resolver contract, whole-metre submission anchors, migrations/identity and atomic terrain mutations. Proves geometry inputs and compatibility, not complete cave runtime |
 | [R3 / C3](../superpowers/plans/2026-10-05-world-authoring-r3-shared-shapes-headless-builders.md) | Physics sidedness, floor support and ceiling/wall headroom, picking/LOS, placement supports and movement integration. Owns tiled/incremental nav capture/profile/link identities under [#1301](https://github.com/APKiwiOrg/KhaozEngine/issues/1301). Must allocate that implementation explicitly within R3 or a named prerequisite before plan approval |
 | [R4 / C4](../superpowers/plans/2026-10-05-world-authoring-r4-bounded-water-medium.md) | Explicit flooded/dry containment and bed/surface semantics using space geometry, OA7 XZ edges and variable vertical coverage. Water overlap is checked within actual wet domains, not rejected from XZ alone. Owns data/geometry dependencies for [#1300](https://github.com/APKiwiOrg/KhaozEngine/issues/1300), [#1297](https://github.com/APKiwiOrg/KhaozEngine/issues/1297) and walker policy [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299) with R3 |
 | [R5 / C5](../superpowers/plans/2026-10-05-world-authoring-r5-free-buildings-prefabs-interiors.md) | Free prefab transforms, native local support/paint, parent-space/interior domains and roof links. Uses the R2 compiler/query in local space. No duplicate floor owner, new cave model, nesting or foundation generation |
@@ -425,11 +570,15 @@ loops, large local benchmark or live client is needed for R2.
 | Proof and owner | Required assertion |
 | --- | --- |
 | `NativeCaveRepresentationContract`, R2 | Ramp enters a broad chamber with variable floor/ceiling, explicit side walls and open portal. A deeper chamber and shaft/link show the representation's ownership, without generated stairs |
-| `CanonicalEntranceSeamAndAperture_Agree`, R2 | Shared vertex/triangle keys, winding/normals and rendered/support/capture input agree across patch edges. Physical hole has no faces/fallback. Changing an overlay cut never substitutes a physical entrance |
+| `PortalBandCoverage_HeadersRisersAndLintels`, R2 | A 30 m chamber joins a 3 m passage through a chamber-facing header. A raised passage joins through a chamber-facing riser. A lintel below both roofs uses one two-sided strip. An arched band top adds its transition vertex. Gaps, overlaps, a band outside the common air interval, mismatched vertex sequences and duplicate `(strip, side)` references refuse. Each face is emitted once |
+| `ShaftOpenings_HaveKnownBoundsWithoutFabricatedFloors`, R2 | A shaft between stacked caves uses horizontal openings in both layouts above. Every column has a declared bound. Opening triangles never reach support, draw, capture or collision. An undeclared missing bound refuses as missing data, distinct from `NoSupport` |
+| `CanonicalEntranceSeamAndAperture_Agree`, R2 | Shared vertex/triangle keys, winding/normals and rendered/support/capture input agree across patch edges. Physical hole has no faces/fallback. Imported NoDraw/void cells keep presence 1, flag bytes and tagged fallback. Changing an overlay cut never substitutes a physical entrance |
+| `SurfaceStorage_ManifestLastCommitAndForms`, R2 | Injected failures before and after the manifest rename leave one complete world. Sweep is skipped with an unreadable previous manifest. Windowed saves carry unloaded entries forward and refuse unloaded dependencies. Generic assets in `surfaces/` refuse. Monolithic embedding over its bound refuses. Monolithic, tiled and repacked copies share one scheme-2 token while byte digests differ |
+| `FormatAdvance_PreservesResolverV1Execution`, R2 | Frozen format-4 inputs migrate on load. Placements, transforms, explicit Y and support callback calls equal expectations recorded from released v20.27.0. The identity token changes once and the test asserts no continuity. A format-4 object in memory still fails current validation |
 | `StackedCaveFloorsAndCeilings_PreserveGeometryAndSupportSelection`, R2/R3 | At least eight vertically stacked supports distinguish height/space, explicit Y, ceiling exclusion, equal-owner ambiguity, links and missing ceiling refusal. R2 proves query descriptors, R3 proves real clearance/collision and nav |
-| `SparseFarAndDeepGeometry_PreservesLocalCoordinates`, R2 | Equivalent cases around origin and around both signs of 32,000 m, including signed storage boundaries, +/-500 m terrain, object bounds to +/-564 m and probes to +/-640 m. Compare canonical frame-local positions/normals and declared precision targets. Include a non-quarter yaw and scales 0.8/1.2 |
+| `SparseFarAndDeepGeometry_PreservesLocalCoordinates`, R2 | Equivalent cases around origin and around both signs of 32,000 m, including signed storage boundaries, +/-500 m terrain, object bounds to +/-564 m and probes to +/-640 m. Compare canonical frame-local positions/normals and declared precision targets. Include a non-quarter yaw, scales 0.8/1.2 and a 1/3 m cell unit with whole-metre submission anchors and exactly computed offsets. R3/R8 prove their physics and render adapters on the same descriptors. The +/-640 m vertical case reports the named proof risk explicitly |
 | `SparseIndex_UnloadedIsNotEmpty`, R2/R8 | Known-empty page/range, indexed-unloaded patch, corrupt payload, missing corner owner and exceeded query budget have distinct results. Bounded query reads only required records. Complete-view and scoped identities cannot be exchanged |
-| `TerrainTransaction_RestoresSeamSpaceAndIdentity`, R2 | Multi-patch entrance edit, invalid ceiling crossing and missing halo demonstrate atomic reject, retry, undo/redo and GUI/service equivalence, including every effect/digest |
+| `TerrainTransaction_RestoresSeamSpaceAndIdentity`, R2 | Multi-patch entrance edit, invalid ceiling crossing and missing halo demonstrate atomic reject, retry, undo/redo and GUI/service equivalence, including every effect/digest. Adding a lower-key patch keeps the corner owner. Deleting the owner without reassignment refuses, and an explicit reassignment changes references and identity atomically |
 | `TiledNav_SeamsLinksAndVerticalLayersAreDeterministic`, R3 | Four small adjacent nav tiles cross a terrain-patch and portal boundary. Capture/profile identity includes local transforms and space/link dependencies. A changed seam invalidates its two sides, while unrelated tile digests stay unchanged. This is an actual tiled bake proof in R3, not a claim that R2 baked nav |
 | `MultiCellGhostHandoff_PreservesLayerAndWorldCoordinates`, R3/R8/G3 | Two neighboring cells cover the same required border geometry in their own frames, preserving support/space and world position across ghosting/handoff. Storage/nav/cell boundaries deliberately differ |
 | `DryCaveUnderOcean_RemainsDry`, R4 | Outdoor ocean, dry cave and lower enclosed lake share XZ but have correct separate containment. Missing geometry and conflicting wet domains refuse. Explicit approved sea connections have their own later cases |
@@ -465,34 +614,42 @@ Retain the six concerns but reconcile their types, source references, tests and 
 
 | Existing task | Required refinement | Indicative implementation/verification labor |
 | --- | --- | ---: |
-| 1. Absolute surfaces/materials/validation | Patch/page encoding, integer lattice addresses and units, presence roles, seam/space reference schema, pure migration and versioned identity. Remove eager whole-surface payload assumptions | 4 to 7 engineer-days |
-| 2. Exact topology/paint | Bounded canonical compiler with ceiling winding, wall strips, portals/rims, shared vertex ownership and aperture-versus-paint distinction. Preserve all legacy arithmetic | 4 to 7 engineer-days |
+| 6a. Oracle freeze (first part of task 6) | Freeze the selected shipped source, its runtime oracle and provenance, derive the inventory, and record released v20.27.0 resolver-v1 expectations on frozen format-4 inputs. No comparison runs yet | 1 to 2 engineer-days |
+| 1. Absolute surfaces/materials/validation | Patch/page encoding, integer lattice addresses and units, presence roles and imported presence policy, seam/strip/portal/space reference schema, writer-owned `surfaces/` storage with reservation, manifest-last commit, sweep and windowed carry-forward, bounded monolithic embedding, pure migration with the one-time token change and scheme-2 semantic identity. Remove eager whole-surface payload assumptions | 6 to 10 engineer-days |
+| 2. Exact topology/paint | Bounded canonical compiler with ceiling winding, lower/upper chain wall strips including headers, risers, two-sided lintels and entrance returns, portal bands, horizontal opening boundaries, stable corner ownership, whole-metre submission anchors and aperture-versus-paint distinction. Preserve all legacy arithmetic against the 6a oracle | 5 to 9 engineer-days |
+| 4. Masks/membership | Variable lower/upper bound spaces and nested semantic domains, per-side band and strip coverage with exact vertex-sequence checks, shaft and opening bounds, owner-versus-reference separation and ambiguity/missing-geometry refusal. Keep import Indoor spans separate | 4 to 6 engineer-days |
 | 3. Sampler/local supports/paint | Frame-local, height-aware request/result and resolver-v2 entry point with explicit support binding, typed absence/overflow and unchanged v1/analytic callers | 3 to 5 engineer-days |
-| 4. Masks/membership | Variable floor/ceiling spaces and nested semantic domains, portal boundary ownership and ambiguity/missing-geometry refusal. Keep import Indoor spans separate | 2 to 4 engineer-days |
-| 5. Height/paint mutations | Extend native transaction write sets, atomic seam/space edits, exact undo/redo, retry safety, unified effects and unchanged J2.1 smoothing | 4 to 7 engineer-days |
-| 6. Compatibility oracle | Freeze selected shipped source/runtime, derive inventory, compare exact data/geometry, add bounded near/far/deep/scoped fixtures and living API documentation | 3 to 5 engineer-days |
+| 5. Height/paint mutations | Extend native transaction write sets, atomic seam/strip/opening/space edits, explicit corner owner reassignment, exact undo/redo, retry safety, unified effects and unchanged J2.1 smoothing | 5 to 8 engineer-days |
+| 6b. Compatibility comparison (rest of task 6) | Exhaustive exact data/geometry comparison against the 6a inventory, bounded near/far/deep/scoped fixtures and living API documentation. Runs last | 2 to 4 engineer-days |
 
-Task 1 declares reference validity. Task 2 produces geometry that Task 4 validates into occupied
-spaces. Task 3's space-filtered query therefore depends on the membership result from Task 4.
-The reconciled executable order should be **1, 2, 4, 3, 5, 6** or explicitly stage Task 3's query
-types before its membership-dependent tests. Do not conceal that dependency in the old numbering.
-Version-2 identity/migration must be tested before publishing resolver-v2 results.
+Task 6a comes first because Task 2's legacy arithmetic and Task 1's format-advance test assert
+against the frozen oracle and recorded resolver expectations, and the later 20.27.0 engine is not
+that oracle. Task 1 declares reference validity and storage. Task 2 produces geometry that Task 4
+validates into occupied spaces. Task 3's space-filtered query therefore depends on the membership
+result from Task 4. The reconciled executable order should be **6a, 1, 2, 4, 3, 5, 6b**, or
+explicitly stage Task 3's query types before its membership-dependent tests. Do not conceal those
+dependencies in the old numbering. Version-2 identity/migration must be tested before publishing
+resolver-v2 results.
 
 The labor ranges assume one experienced implementer, existing headless/schema/storage test seams,
 small fixed fixtures, ordinary review fixes within each task, and the proposed patch/frame strategy.
-They include the bounded schema/compiler/transaction work above. They exclude R3 physics/nav, R4
-water, R5 prefab runtime, R8 streaming/rendering and R9/R10 complete frontend delivery because those
-are assigned to their rounds, **not because they are optional**. An unexpected required public
-coordinate/protocol change or failed import-arithmetic gate requires re-estimation before execution.
+Tasks 1, 2, 4 and 5 rose from the first draft because they now carry the storage lifecycle and
+header/riser/lintel/shaft coverage. They include the bounded schema/compiler/transaction work
+above. They exclude R3 physics/nav, R4 water, R5 prefab runtime, R8 streaming/rendering and
+R9/R10 complete frontend delivery because those are assigned to their rounds, **not because they
+are optional**. An unexpected required public coordinate/protocol change or failed
+import-arithmetic gate requires re-estimation before execution.
 
-The sum is **20 to 35 implementation/verification engineer-days**, plus **2 to 4 engineer-days of
-independent design/code review and reconciliation**, giving **22 to 39 engineer-days of R2 labor**.
+The sum is **26 to 44 implementation/verification engineer-days**, plus **3 to 5 engineer-days of
+independent design/code review and reconciliation** for the larger storage and coverage surface,
+giving **29 to 49 engineer-days of R2 labor**.
 These are decomposed planning judgments, not measured throughput or an elapsed calendar promise.
 With one implementer, review is partly serial. Owner response time, shared-machine verification
 slots, release/publication availability and external infrastructure waits are separate elapsed
 delays and are not silently converted into productive labor. R1's hosted-runner wait illustrates
-that distinction. The subsequent #1309 failure adds separate test-repair work and a publication gate,
-without changing this draft's immutable MapDoc evidence or R2 labor scope.
+that distinction. The #1309 failure and the catalog race matching #1271 on the 20.27.1 repair add
+separate test-repair work and a publication gate, without changing this draft's immutable MapDoc
+evidence or R2 labor scope.
 
 The old **12 to 18 elapsed weeks** predates OA9. The raw memo's **26 to 50 weeks** has no defensible
 task allocation and is not reused. A whole-program calendar cannot yet be defended. Missing
@@ -510,12 +667,25 @@ The material choices remaining for **this design review** are:
 
 1. Accept or revise the provisional 64 km envelope, retained Y=0 datum and named padding/precision
    targets. Existing giant-world/500 m intent and continuous-sculpting choice are already settled.
-2. Accept or revise paired patch geometry with explicit wall/portal/link ownership, variable occupied
-   spaces, nested semantic domains and height-aware refusal rules. These are candidate contracts.
-3. Accept or revise integer-addressed terrain plus existing float placements/frames, bounded payload/
-   query budgets and the explicit format/resolver/identity migration. No coordinate rewrite is approved.
+2. Accept or revise paired patch geometry with lower/upper chain wall strips, portal bands,
+   horizontal openings and link ownership, variable occupied spaces, nested semantic domains and
+   height-aware refusal rules. These are candidate contracts.
+3. Accept or revise integer-addressed terrain plus existing float placements/frames, writer-owned
+   surface storage with bounded monolithic embedding, bounded payload/query budgets and the
+   explicit format/resolver/identity migration. Existing format-4 identity tokens change once on
+   migration, while resolver-v1 execution is preserved. No coordinate rewrite is approved.
 4. Accept the R2 allocation/effort assumptions as a basis for a reconciled full plan, while requiring
    the mandatory downstream decomposition before a whole-program calendar.
+
+**Physical aperture limit, for item 2.** Cave mouths and shaft holes cut whole cells only. On
+imported 1 m ground, a mouth outline steps in 1 m squares in plan view. A smoother curved or
+diagonal mouth means converting the ground around it to a finer-cell patch whose unit divides the
+coarse unit exactly, with the coarse edge explicitly subdivided to the shared boundary vertices.
+Placed rock can dress the mouth and add collision, but does not own the hole. A considered
+alternative is per-triangle presence on each cell's physical diagonal, giving 45 degree outlines.
+It is coherent only if keyed to physical triangle IDs and kept independent of overlay cut and paint
+topology. It is **not selected** here and would be its own owner decision with schema and topology
+tests. The continuous sculpting choice itself stays settled.
 
 C4 sea-connected-water details and any larger nav storage/distribution remain their later explicit
 owner gates. They are not prerequisites for writing the R2 plan and are not silently decided here.
@@ -546,14 +716,25 @@ Proposed types in the preceding sections have no released source citation.
 | E14 | [KhaozEngine.Movement/PhysicsNavBakeOptions.cs:7](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.Movement/PhysicsNavBakeOptions.cs#L7) documents absolute probe Y. Line 12 defaults MaxSurfacesPerColumn to four, lines 63 to 89 validate layout budgets. [GroundNavigationBake.cs:18](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.Movement/GroundNavigationBake.cs#L18) caps serialized surface counts at 255 |
 | E15 | [KhaozEngine.MapDoc/MapDocumentFile.cs:84](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapDoc/MapDocumentFile.cs#L84) is format 4. Lines 174 to 185 refuse future versions and run sequential registered migrations. [MapNativeMigration.cs:10](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapDoc/MapNativeMigration.cs#L10) is the pure 3-to-4 native upgrade |
 | E16 | [KhaozEngine.MapEditor/NativePlacementTransaction.cs:9](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapEditor/NativePlacementTransaction.cs#L9) defines preparation. Lines 21 to 31 reject other commands, clone/validate and publish only placement/high-water state. [MapEdit.Tool/MutationService.cs:40](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapEdit.Tool/MutationService.cs#L40) routes native service mutations through that seam |
+| E17 | [KhaozEngine.MapDoc/MapDocumentStorage.cs:6](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapDoc/MapDocumentStorage.cs#L6) documents the tiled writer's owned namespace and sweep. [MapDocumentStorage.cs:39](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapDoc/MapDocumentStorage.cs#L39) defines `IsReserved`, with lines 50 to 54 reserving the manifest, temp, lock and `tiles` subtree only |
+| E18 | [KhaozEngine.MapDoc/MapTiledFile.Save.cs:15](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapDoc/MapTiledFile.Save.cs#L15) names files by content hash. [MapTiledFile.Save.cs:101](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapDoc/MapTiledFile.Save.cs#L101) commits by manifest rename. [MapTiledFile.Save.cs:107](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapDoc/MapTiledFile.Save.cs#L107) sweeps only after a readable previous manifest. [MapTiledFile.Save.cs:115](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapDoc/MapTiledFile.Save.cs#L115) refuses windowed saves that would overwrite unloaded content |
+| E19 | [KhaozEngine.MapDoc/Assets/MapStorageGuardedAssetSource.cs:45](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapDoc/Assets/MapStorageGuardedAssetSource.cs#L45) refuses any generic asset reference inside the reserved namespace |
+| E20 | [KhaozEngine.MapDoc/MapAuthoredIdentity.cs:18](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapDoc/MapAuthoredIdentity.cs#L18) validates, then [MapAuthoredIdentity.cs:20](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapDoc/MapAuthoredIdentity.cs#L20) hashes `SaveText`. [MapDocumentFile.cs:298](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapDoc/MapDocumentFile.cs#L298) validates every whole write, and [MapDocumentValidator.cs:19](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapDoc/MapDocumentValidator.cs#L19) requires the current format. [MapDocumentFile.cs:178](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.MapDoc/MapDocumentFile.cs#L178) migrates every older input on load |
+| E21 | [KhaozEngine.Physics/IPhysicsWorld.cs:97](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.Physics/IPhysicsWorld.cs#L97) documents the caller-computed `new Pose(absolute - world.Origin, rot)` pattern. [Render3D/Scene3D.RenderOrigin.cs:181](https://github.com/APKiwiOrg/KhaozEngine/blob/a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af/KhaozEngine.Render3D/Scene3D.RenderOrigin.cs#L181) states the exact-subtraction lemma for a grid-multiple origin, and line 190 notes terrain chunks submitted with absolute vertices |
 
 ## Draft self-review
 
-Checked against OA13, C2/C3/C4/C5/C8 and DG9.1 to DG9.6. Continuous sculpting and free native
-placement persist. Geometry, spaces and water are distinct. Walls/openings and stacked support have
-explicit ownership/refusal contracts. Physical apertures never borrow legacy fallback. Sparse
-payloads, integer terrain addresses and frame-local geometry avoid an eager world array, without
-claiming R1 closure or R2 fixtures finish R8 scale. Datum/padding preserve shipped heights. Approved
-import tolerances remain unchanged. Source provenance and later refreeze are separate. Required
-downstream navigation, water, multi-cell and authoring work remain in scope and in estimate gates.
-All new interfaces/budgets are proposals. No implementation, world/content edit or release is claimed.
+Checked against OA13, C1/C2/C3/C4/C5/C8, DG9.1 to DG9.6 and review findings M1 to M3. Continuous
+sculpting and free native placement persist. Geometry owners, spaces and water are distinct, and
+spaces reference strips by side instead of copying faces. Headers, risers, lintels, entrance returns
+and shafts have one owner each, exact per-side coverage and known column bounds, with no fabricated
+floor across an opening. Physical apertures never borrow legacy fallback, and imported NoDraw/void
+keeps its presence policy and flags. Surface storage follows the released content-addressed,
+manifest-last and guarded-namespace rules, and scheme-2 identity ignores page grouping by tested
+projection. Format-4 tokens change once while resolver-v1 execution is preserved. Whole-metre
+submission anchors keep rational lattice translations exact without a new engine API. The vertical
+target is a named proof risk, and the 0.00001 m imported and physics gates stay unchanged. Datum
+and padding preserve shipped heights. Source provenance is frozen before topology tests, and R11/G2
+refreeze later. Required downstream navigation, water, multi-cell and authoring work remain in
+scope and in estimate gates. All new interfaces/budgets are proposals. No implementation,
+world/content edit or release is claimed.

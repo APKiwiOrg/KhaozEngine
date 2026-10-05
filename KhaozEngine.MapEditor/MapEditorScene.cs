@@ -370,8 +370,9 @@ public partial class MapEditorScene : GameScene, IGameScene3D
         // that cancelled a drag would also open the settings menu.
         _toolOwnsEscape = _controller.ConsumesEscape;
         UpdateCamera(dt);
-        UpdateTools(dt);
-        UpdateChrome(dt);
+        RunNativeEditAction(() => UpdateTools(dt));
+        RunNativeEditAction(() => UpdateChrome(dt));
+        RefreshRejectedInspector();
         CheckWorldRebuild(dt);
         UpdateStreaming(dt);
     }
@@ -1309,25 +1310,6 @@ public partial class MapEditorScene : GameScene, IGameScene3D
             case SelectionKind.CompanionLayer: BuildCompanionLayerInspector(sel.Id); break;
             default: BuildLayersInspector(); break;   // nothing selected: the visibility Layers panel
         }
-    }
-
-    // The single spot every FloatRow the inspector builds funnels through, directly or via a domain wrapper
-    // (AddFeatureRow, AddBandFloatRow, AddScatterFloatRow, AddCompanionFloatRow, AddShapeRow): wires
-    // FloatRow.GestureEnded to SealGesture so a scrub or edit commit on this row seals the undo gesture the
-    // moment it ends. Without this, scrubbing two different fields back to back (e.g. WaterLevel then
-    // BiomeBlend) can coalesce into ONE undo step through the underlying command's same-gesture TryMerge
-    // (EditTerrainCommand merges ANY two terrain edits, by design, within one gesture) - sealing here draws the
-    // gesture boundary at the widget level so each field's scrub becomes its own undo step. Same signature as
-    // the FloatRow constructor, so every existing call site converts by dropping "_inspector.Rows.Add(new
-    // FloatRow(" down to "AddFloatRow(".
-    FloatRow AddFloatRow(LocalizedText label, Func<float> get, Action<float> set,
-        float min = float.MinValue, float max = float.MaxValue, float dragScale = 0.01f, int decimals = 2,
-        LocalizedText? description = null)
-    {
-        var row = new FloatRow(label, get, set, min, max, dragScale, decimals, description);
-        row.GestureEnded += _document.SealGesture;
-        _inspector.Rows.Add(row);
-        return row;
     }
 
     // The terrain root inspector: every terrain scalar as an editable row (each routed through the widened

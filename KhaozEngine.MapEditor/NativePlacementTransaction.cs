@@ -48,12 +48,12 @@ internal static class NativePlacementTransaction
 
     internal static MapPlacement Find(MapDocument doc, string id) =>
         doc.Placements.SingleOrDefault(p => string.Equals(p.Id, id, StringComparison.Ordinal))
-        ?? throw new InvalidOperationException($"No placement with id '{id}'.");
+        ?? throw new MapDocumentException($"No placement with id '{id}'.");
 
     internal static void RequireAbsent(MapDocument doc, string id)
     {
         if (string.IsNullOrWhiteSpace(id) || doc.Placements.Any(p => string.Equals(p.Id, id, StringComparison.Ordinal)))
-            throw new InvalidOperationException($"Placement id '{id}' is empty or already exists.");
+            throw new MapDocumentException($"Placement id '{id}' is empty or already exists.");
     }
 }
 

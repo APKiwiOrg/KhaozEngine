@@ -872,6 +872,10 @@ it before publication. The `MapDocument` object stays the same. Rejections prese
 history, allocator, dirty state and notifications. Commands outside this native placement transaction
 protocol are refused on opted-in documents. Analytic documents keep their existing command behavior.
 Direct placement `Apply` and `Revert` check document-local native validity only, without asset membership.
+The scene reports expected native edit refusals in its status strip across tool frames, shortcuts and
+inspector widgets. Rejected actions keep committed document/history and selection, cancel transient
+controller gestures and discard rejected inspector drafts after widget dispatch. Camera and view-only
+controls remain available. Unexpected programming failures still propagate. This does not load or bind assets.
 
 `AllocateNativePlacementCommand(placement, allocateNumericId)` allocates once on acceptance. Undo and
 delete retain the high-water mark, redo restores the accepted ID, and a new branch allocates above the

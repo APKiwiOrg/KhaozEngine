@@ -28,7 +28,7 @@ public sealed class MapEditSession
     TerrainField? _field;
     MapTileRect? _window;
 
-    /// <summary>Binds a verified closure to the current document. Open/Create clear it. Does not mark dirty.</summary>
+    /// <summary>Binds a verified closure to the current document. Document replacement clears it. Does not mark dirty.</summary>
     public void BindNativeAssets(MapAssetClosure assets)
     {
         lock (_lock)
@@ -176,6 +176,7 @@ public sealed class MapEditSession
             var options = new MapDocumentLoadOptions { Registry = _registry };
             var rect = MapTileGrid.RectOf(new RectArea(minX, minZ, maxX, maxZ), _doc.TileSize);
             _doc = MapDocumentFile.LoadTiled(directory, rect, options);
+            _nativeAssets = null;
             _path = directory;
             _window = rect;
             _dirty = false;

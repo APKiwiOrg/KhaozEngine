@@ -53,10 +53,10 @@ public sealed class MutationTools(MutationService mutation, MapEditSession sessi
         [Description("New uniform scale multiplier.")] float scale)
         => ToolGuard.Guard(() => mutation.PlacementScale(id, scale));
 
-    [McpServerTool(Name = "placement_rename"), Description("Renames a placement. The new id must be unique in the document.")]
+    [McpServerTool(Name = "placement_rename"), Description("Sets a native placement display label without changing its stable ID. For analytic maps, renames the placement to a unique new ID.")]
     public MutationResult PlacementRename(
         [Description("Current id of the placement.")] string oldId,
-        [Description("New id for the placement, unique in the document.")] string newId)
+        [Description("Display label for a native placement, leaving its stable ID unchanged. For an analytic placement, the unique new ID.")] string newId)
         => ToolGuard.Guard(() => mutation.PlacementRename(oldId, newId));
 
     [McpServerTool(Name = "placement_remove"), Description("Removes a placement by id.")]

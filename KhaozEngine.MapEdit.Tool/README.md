@@ -60,7 +60,8 @@ JSON schema check on save) and reverts with the validation errors folded into th
 failure, so the in-session document is never left invalid.
 
 Native opted-in documents require an explicit `MapEditSession.BindNativeAssets(closure)` before mutation.
-The binding is validated without dirtying the session and is cleared by successful Open/Create replacement.
+The binding is validated without dirtying the session and is cleared by successful Open/Create/SetWindow
+replacement. Failed loads retain the previous document and binding.
 Native mutation callbacks edit a detached candidate and publish only after full bound validation, preserving
 the public document instance. Native placement commands additionally preserve their retry state on rejection.
 `PlacementRename` changes the native display label and returns the unchanged placement ID. The explicit

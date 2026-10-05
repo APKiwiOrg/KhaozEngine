@@ -26,7 +26,7 @@ namespace KhaozEngine.Tests.MapEditTool
     /// tools through the wire: list, call with JSON arguments, and read the returned content. This exercises the
     /// attribute discovery, DI construction, JSON (de)serialization, and the McpException error mapping end to
     /// end, not just the service methods in isolation.</summary>
-    public class McpAdapterTests
+    public partial class McpAdapterTests
     {
         /// <summary>All 78 verb names, spelled exactly as the plan header's verb table: the original 39 (including
         /// the two render verbs added in Task 6) plus the Task 5 naming, layer-targeting, and procedural-setup
@@ -253,7 +253,9 @@ namespace KhaozEngine.Tests.MapEditTool
                 CallToolResult result = await harness.Client.CallToolAsync("biome_band_add",
                     new Dictionary<string, object?>
                     {
-                        ["biome"] = "Desert", ["baseHeight"] = 4.0, ["hillAmplitude"] = 0.5,
+                        ["biome"] = "Desert",
+                        ["baseHeight"] = 4.0,
+                        ["hillAmplitude"] = 0.5,
                     },
                     cancellationToken: cts.Token);
                 Assert.NotEqual(true, result.IsError);
@@ -326,7 +328,12 @@ namespace KhaozEngine.Tests.MapEditTool
                 CallToolResult result = await harness.Client.CallToolAsync("sculpt_apply",
                     new Dictionary<string, object?>
                     {
-                        ["brush"] = "raise", ["x"] = 8.0, ["z"] = 8.0, ["radius"] = 2.5, ["strength"] = 4.0, ["dt"] = 0.5,
+                        ["brush"] = "raise",
+                        ["x"] = 8.0,
+                        ["z"] = 8.0,
+                        ["radius"] = 2.5,
+                        ["strength"] = 4.0,
+                        ["dt"] = 0.5,
                     },
                     cancellationToken: cts.Token);
                 Assert.NotEqual(true, result.IsError);

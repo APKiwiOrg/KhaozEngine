@@ -16,7 +16,7 @@ public partial class MapEditorScene
             cur = () => id;
             _inspector.Rows.Add(new TextRow(LocalizedText.Raw("Label"),
                 () => Placement(id)?.DisplayName ?? "",
-                label => _document.Execute(new RenamePlacementCommand(id, label)),
+                label => RunNativeEditAction(() => _document.Execute(new RenamePlacementCommand(id, label))),
                 description: LocalizedText.Raw("Display label. Stable and numeric placement identities are unchanged.")));
         }
         else

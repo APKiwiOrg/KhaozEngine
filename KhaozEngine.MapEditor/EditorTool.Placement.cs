@@ -30,7 +30,5 @@ public sealed partial class EditorToolController
             _document.Execute(new MovePlacementCommand(_placeId, hit.X, hit.Z, null));
     }
 
-    // The spawn place tool stamps either an NPC spawn or a player start, chosen by PlacingPlayerSpawn (the pinned
-    // "player spawn" palette entry). Both share the press-edge-Add-then-hold-to-adjust place-and-adjust path: the
-    // matching Add absorbs the same-id Move so the whole gesture is ONE undo step, sealed on release.
+
 }

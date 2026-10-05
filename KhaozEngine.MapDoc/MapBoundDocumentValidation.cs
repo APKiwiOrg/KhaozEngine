@@ -23,7 +23,7 @@ public static class MapBoundDocumentValidation
     public static void ValidateLocal(MapDocument document, MapDocRegistry? registry = null)
     {
         ArgumentNullException.ThrowIfNull(document);
-        if (document.Tiles is { IsPartial: true }) throw new MapDocumentException("Native editing requires every tile to be loaded.");
+        if (document.Tiles is { IsPartial: true }) throw new MapDocumentException("Native document validation requires every tile to be loaded.");
         if (document.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 1 })
             throw new MapDocumentException("Native document requires supported payload and resolver version 1.");
         if (document.PlayableBounds is null) throw new MapDocumentException("Native document requires playable bounds.");

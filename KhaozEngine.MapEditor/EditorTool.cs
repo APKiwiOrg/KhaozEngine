@@ -129,24 +129,6 @@ public sealed partial class EditorToolController
     public EditorToolController(EditorDocument document) =>
         _document = document ?? throw new ArgumentNullException(nameof(document));
 
-    /// <summary>The active tool. Setting it to a different value cancels any in-flight gesture and seals the
-    /// undo stack (the Task 2 gesture barrier), so a later edit never coalesces across the tool switch.</summary>
-    public EditorToolMode Mode
-    {
-        get => _mode;
-        set
-        {
-            if (_mode == value) return;
-            _dragging = false;
-            _drawing = false;
-            _pendingBody = false;
-            _placing = false;
-            _sculpting = false;
-            _document.SealGesture();
-            _mode = value;
-        }
-    }
-
     /// <summary>The kit id a <see cref="EditorToolMode.PlacePlacement"/> click instances (palette-selected).</summary>
     public string PlaceKind { get; set; } = "";
 
@@ -626,6 +608,9 @@ public sealed partial class EditorToolController
 
     // ---- place -------------------------------------------------------------------------------------------
 
+    // The spawn place tool stamps either an NPC spawn or a player start, chosen by PlacingPlayerSpawn (the pinned
+    // "player spawn" palette entry). Both share the press-edge-Add-then-hold-to-adjust place-and-adjust path: the
+    // matching Add absorbs the same-id Move so the whole gesture is ONE undo step, sealed on release.
     void UpdatePlaceSpawn(in EditorFrameInput input)
     {
         if (Field is null) return;

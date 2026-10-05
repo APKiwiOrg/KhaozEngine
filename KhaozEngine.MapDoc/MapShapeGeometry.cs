@@ -19,15 +19,15 @@ public static class MapShapeGeometry
             case RectShapeDoc r:
                 centerX = (r.MinX + r.MaxX) * 0.5f; centerZ = (r.MinZ + r.MaxZ) * 0.5f; return true;
             case PolygonShapeDoc p when p.Points.Count > 0:
-            {
-                float sx = 0f, sz = 0f;
-                foreach (float[] pt in p.Points)
                 {
-                    sx += pt.Length > 0 ? pt[0] : 0f;
-                    sz += pt.Length > 1 ? pt[1] : 0f;
+                    float sx = 0f, sz = 0f;
+                    foreach (float[] pt in p.Points)
+                    {
+                        sx += pt.Length > 0 ? pt[0] : 0f;
+                        sz += pt.Length > 1 ? pt[1] : 0f;
+                    }
+                    centerX = sx / p.Points.Count; centerZ = sz / p.Points.Count; return true;
                 }
-                centerX = sx / p.Points.Count; centerZ = sz / p.Points.Count; return true;
-            }
             default:
                 centerX = 0f; centerZ = 0f; return false;
         }

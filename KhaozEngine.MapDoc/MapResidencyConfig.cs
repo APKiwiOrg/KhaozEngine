@@ -121,13 +121,13 @@ public readonly record struct MapResidencyConfig(
         long best = 0;
         long rSq = (long)radius * radius;
         for (int dz = -radius; dz <= radius; dz++)
-        for (int dx = -radius; dx <= radius; dx++)
-        {
-            if ((long)dx * dx + (long)dz * dz > rSq) continue;
-            long ax = Math.Abs(dx) + 1L, az = Math.Abs(dz) + 1L;
-            long reachSq = ax * ax + az * az;
-            if (reachSq > best) best = reachSq;
-        }
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                if ((long)dx * dx + (long)dz * dz > rSq) continue;
+                long ax = Math.Abs(dx) + 1L, az = Math.Abs(dz) + 1L;
+                long reachSq = ax * ax + az * az;
+                if (reachSq > best) best = reachSq;
+            }
         return chunkSize * MathF.Sqrt(best);
     }
 }

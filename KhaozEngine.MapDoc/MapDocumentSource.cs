@@ -138,7 +138,13 @@ public sealed class MapDocumentSource : IDisposable
         foreach (MapPlacement p in source)
             clones.Add(new MapPlacement
             {
-                Id = p.Id, Kind = p.Kind, X = p.X, Z = p.Z, Y = p.Y, Yaw = p.Yaw, Scale = p.Scale,
+                Id = p.Id,
+                Kind = p.Kind,
+                X = p.X,
+                Z = p.Z,
+                Y = p.Y,
+                Yaw = p.Yaw,
+                Scale = p.Scale,
                 Tags = new List<string>(p.Tags),
             });
         return clones;

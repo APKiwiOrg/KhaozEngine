@@ -317,18 +317,18 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
 
         MapTileRect range = MapTileGrid.RectOf(area, _tileSize);
         for (int z = range.Min.Z; z <= range.Max.Z; z++)
-        for (int x = range.Min.X; x <= range.Max.X; x++)
-        {
-            if (!snapshot.TryGetValue(new MapTileCoord(x, z), out MapTileContent? content)) continue;
-            IReadOnlyList<MapPlacement> placements = content.Placements;
-            for (int i = 0; i < placements.Count; i++)
+            for (int x = range.Min.X; x <= range.Max.X; x++)
             {
-                MapPlacement p = placements[i];
-                if (!MapSpatialIndex.InArea(p.X, p.Z, area)) continue;
-                float y = p.Y ?? Snap(p);
-                into.Add(new PropPlacement(p.Kind, p.X, y, p.Z, p.Scale, p.Yaw, 0));
+                if (!snapshot.TryGetValue(new MapTileCoord(x, z), out MapTileContent? content)) continue;
+                IReadOnlyList<MapPlacement> placements = content.Placements;
+                for (int i = 0; i < placements.Count; i++)
+                {
+                    MapPlacement p = placements[i];
+                    if (!MapSpatialIndex.InArea(p.X, p.Z, area)) continue;
+                    float y = p.Y ?? Snap(p);
+                    into.Add(new PropPlacement(p.Kind, p.X, y, p.Z, p.Scale, p.Yaw, 0));
+                }
             }
-        }
     }
 
     float Snap(MapPlacement p) =>
@@ -348,19 +348,19 @@ public sealed class MapTileResidency : IDisposable, IPlacementSource
         {
             MapTileCoord fc = MapTileGrid.CoordOf(_foci[f].X, _foci[f].Z, _tileSize);
             for (int dz = -r; dz <= r; dz++)
-            for (int dx = -r; dx <= r; dx++)
-            {
-                int cheb = Math.Max(Math.Abs(dx), Math.Abs(dz));
-                var c = new MapTileCoord(fc.X + dx, fc.Z + dz);
-                // Absent tiles are skipped here rather than read and found empty: in a sparse world most of the
-                // ring holds no authored content and has no file, so consulting the manifest index is what keeps
-                // residency off the filesystem entirely for them.
-                if (!tiles.IsOccupied(c)) continue;
-                ChunkRing ring = cheb <= _config.LoadRadius ? ChunkRing.Gameplay : ChunkRing.Decor;
-                // Strongest wins, and min is order-independent by construction.
-                if (_desired.TryGetValue(c, out ChunkRing existing) && existing <= ring) continue;
-                _desired[c] = ring;
-            }
+                for (int dx = -r; dx <= r; dx++)
+                {
+                    int cheb = Math.Max(Math.Abs(dx), Math.Abs(dz));
+                    var c = new MapTileCoord(fc.X + dx, fc.Z + dz);
+                    // Absent tiles are skipped here rather than read and found empty: in a sparse world most of the
+                    // ring holds no authored content and has no file, so consulting the manifest index is what keeps
+                    // residency off the filesystem entirely for them.
+                    if (!tiles.IsOccupied(c)) continue;
+                    ChunkRing ring = cheb <= _config.LoadRadius ? ChunkRing.Gameplay : ChunkRing.Decor;
+                    // Strongest wins, and min is order-independent by construction.
+                    if (_desired.TryGetValue(c, out ChunkRing existing) && existing <= ring) continue;
+                    _desired[c] = ring;
+                }
         }
     }
 

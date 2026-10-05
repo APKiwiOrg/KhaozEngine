@@ -51,11 +51,11 @@ sealed class MapResidencyGate : IChunkBuildGate
         MapTileCoord max = new(LastTile(area.MaxX, tileSize), LastTile(area.MaxZ, tileSize));
 
         for (int z = min.Z; z <= max.Z; z++)
-        for (int x = min.X; x <= max.X; x++)
-        {
-            var tile = new MapTileCoord(x, z);
-            if (_residency.Source.Tiles.IsOccupied(tile) && !_residency.IsResident(tile)) return false;
-        }
+            for (int x = min.X; x <= max.X; x++)
+            {
+                var tile = new MapTileCoord(x, z);
+                if (_residency.Source.Tiles.IsOccupied(tile) && !_residency.IsResident(tile)) return false;
+            }
         return true;
     }
 

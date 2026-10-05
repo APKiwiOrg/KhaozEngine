@@ -55,3 +55,30 @@ pack ritual, with owner-only release tags. No Grimhollow engine pin change.
 
 - OA10 approves the 273-file whitespace-only scope and separate worktree.
 - Created from current engine main de78df336. No implementation or new check has run yet.
+
+
+### Partial result and exact baseline adjustment proposal, 2026-10-05
+
+- Worker returned partial with a concrete KESIZE blocker. Pushed 77ab2ec6e modifies 268 of 273
+  allowed paths. Controller independently verified the path set and zero non-whitespace differences,
+  inspected the Roslyn comparator and actual slot exits, and checked the held patch applies cleanly.
+- All 273 formatted files passed token, literal, comment/directive, round-trip and parse-error-count
+  preservation checks. 627,175 tokens include 35,327 literals and 35 raw/verbatim strings. Only
+  leading indentation on DocumentationCommentExteriorTrivia is normalized, with the marker preserved.
+  This corrected the first helper check, which failed solely on doc-comment indentation.
+- Included-file formatter verification passed for all 273 formatted files. Five files were held
+  back after KESIZE rejected their formatter-added line splits. The 268 committed files retain those
+  exact verified bytes. File-size recheck then passed. Other four repository guards passed.
+- Git's whitespace-insensitive line diff remains nonzero when formatting splits or joins lines.
+  Its raw result is recorded, not claimed green. Byte-stripped equality and token/trivia comparison
+  are the preservation evidence. No new full build or suite has run yet.
+- Five requested baseline adjustments are 2115 to 2141 (EditorCommandsTests), 1793 to 1808
+  (EditorToolTests), 4415 to 4431 (MapEditorSceneTests), 1601 to 1632 (GoldenSnapshotTests), and
+  1296 to 1300 (Room2DGui). Total growth is 92 formatter-generated lines, with no added behavior.
+- AGENTS.md explicitly requires owner approval for baseline growth. OA10 and the brief did not
+  authorize ratchet changes. No baseline was changed and no guard was bypassed.
+- Exact held source patch, proposed five-entry ratchet patch and proof hashes are under
+  proofs/2026-10-05-format-baseline. Proposed ratchet patch is review material only, not applied.
+- Recommend owner approval of these exact five baseline updates. After approval, finish the held
+  files, verify the included formatter and guards, obtain one fresh scoped review, merge into R1,
+  and run combined full checks. No main merge, pack, tag or game pin change has occurred.

@@ -1,0 +1,1103 @@
+diff --git a/KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs b/KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs
+index d5ddfb546..06a7c27c1 100644
+--- a/KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs
++++ b/KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs
+@@ -1173,8 +1173,15 @@ namespace KhaozEngine.Tests.MapEditor
+ 
+         // A depth-only clone of the sample lake (feature 0), so its footprint matches the original's exactly.
+         static LakeFeatureDoc LakeDepth(LakeFeatureDoc src, float depth) =>
+-            new() { CenterX = src.CenterX, CenterZ = src.CenterZ, Radius = src.Radius, Depth = depth,
+-                InnerFraction = src.InnerFraction, OuterFraction = src.OuterFraction };
++            new()
++            {
++                CenterX = src.CenterX,
++                CenterZ = src.CenterZ,
++                Radius = src.Radius,
++                Depth = depth,
++                InnerFraction = src.InnerFraction,
++                OuterFraction = src.OuterFraction
++            };
+ 
+         [Fact]
+         public void PendingRebuildRegion_NullWhenNothingPending()
+@@ -1193,8 +1200,14 @@ namespace KhaozEngine.Tests.MapEditor
+             var flatten = (FlattenFeatureDoc)doc.Terrain.Features[1];
+ 
+             ed.Execute(new EditFeatureCommand(0, LakeDepth(lake, 9f), lake));
+-            var flattenNew = new FlattenFeatureDoc { CenterX = flatten.CenterX, CenterZ = flatten.CenterZ,
+-                Radius = flatten.Radius, TargetHeight = 7f, Blend = flatten.Blend };
++            var flattenNew = new FlattenFeatureDoc
++            {
++                CenterX = flatten.CenterX,
++                CenterZ = flatten.CenterZ,
++                Radius = flatten.Radius,
++                TargetHeight = 7f,
++                Blend = flatten.Blend
++            };
+             ed.Execute(new EditFeatureCommand(1, flattenNew, flatten));
+ 
+             Assert.True(ed.WorldRebuildPending);
+@@ -1560,7 +1573,11 @@ namespace KhaozEngine.Tests.MapEditor
+         {
+             var band = new MapBiomeBand
+             {
+-                Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Forest, BaseHeight = 3f, HillAmplitude = 5f,
++                Start = 0f,
++                End = 40f,
++                Biome = KhaozEngine.Terrain.BiomeId.Forest,
++                BaseHeight = 3f,
++                HillAmplitude = 5f,
+             };
+             AssertRoundTrip(Sample(), new AddBiomeBandCommand(band));
+ 
+@@ -1613,7 +1630,11 @@ namespace KhaozEngine.Tests.MapEditor
+ 
+         static MapScatterLayer Layer(string name) => new MapScatterLayer
+         {
+-            Name = name, Seed = 7, CellSize = 4f, ScaleMin = 0.5f, ScaleMax = 1.5f,
++            Name = name,
++            Seed = 7,
++            CellSize = 4f,
++            ScaleMin = 0.5f,
++            ScaleMax = 1.5f,
+             Rules = { new MapBiomeScatterRule { Biome = KhaozEngine.Terrain.BiomeId.Meadow, Density = 0.4f,
+                 Kinds = { new MapPropKind { Id = "oak", Weight = 2f } } } },
+         };
+@@ -1805,8 +1826,13 @@ namespace KhaozEngine.Tests.MapEditor
+         public void CompanionLayer_AddEditRemove_HostLayerValidated()
+         {
+             // Add a companion round-trips and affects the world.
+-            var comp = new MapCompanionLayer { Name = "canopy", HostLayer = "trees", HostKinds = { "pine_a" },
+-                Kinds = { new MapPropKind { Id = "vine", Weight = 1f } } };
++            var comp = new MapCompanionLayer
++            {
++                Name = "canopy",
++                HostLayer = "trees",
++                HostKinds = { "pine_a" },
++                Kinds = { new MapPropKind { Id = "vine", Weight = 1f } }
++            };
+             AssertRoundTrip(Sample(), new AddCompanionLayerCommand(comp));
+ 
+             var edAdd = new EditorDocument(Sample());
+diff --git a/KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs b/KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs
+index 78905250a..7831c0681 100644
+--- a/KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs
++++ b/KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs
+@@ -1282,390 +1282,405 @@ namespace KhaozEngine.Tests.MapEditor
+             switch (kind)
+             {
+                 case "placement":
+-                {
+-                    doc.Doc.Placements.Add(new MapPlacement
+-                    { Id = "p1", Kind = "hut", X = 1f, Z = 2f, Yaw = 0.3f, Scale = 1.2f, Tags = { "a" } });
+-                    doc.Selection.Set(SelectionKind.Placement, "p1");
+-                    string before = Json(doc);
+-
+-                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+-
+-                    Assert.Equal(1, doc.History.UndoDepth);
+-                    Assert.Equal(2, doc.Doc.Placements.Count);
+-                    Assert.Equal(SelectionKind.Placement, doc.Selection.Kind);
+-                    string newId = doc.Selection.Id;
+-                    Assert.NotEqual("p1", newId);
+-                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Placement, newId), result);
+-                    MapPlacement dup = doc.Doc.Placements[1];
+-                    Assert.Equal(newId, dup.Id);
+-                    Near(3f, dup.X); Near(4f, dup.Z);
+-                    Assert.Equal("hut", dup.Kind);
+-                    Near(0.3f, dup.Yaw); Near(1.2f, dup.Scale);
+-                    Assert.Equal(new List<string> { "a" }, dup.Tags);
+-                    Assert.NotSame(doc.Doc.Placements[0].Tags, dup.Tags);
+-                    Near(1f, doc.Doc.Placements[0].X);   // source untouched
+-
+-                    Assert.True(doc.Undo());
+-                    Assert.Single(doc.Doc.Placements);
+-                    Assert.Equal(before, Json(doc));
+-                    break;
+-                }
++                    {
++                        doc.Doc.Placements.Add(new MapPlacement
++                        { Id = "p1", Kind = "hut", X = 1f, Z = 2f, Yaw = 0.3f, Scale = 1.2f, Tags = { "a" } });
++                        doc.Selection.Set(SelectionKind.Placement, "p1");
++                        string before = Json(doc);
++
++                        EditorToolController.DuplicateResult? result = c.DuplicateSelection();
++
++                        Assert.Equal(1, doc.History.UndoDepth);
++                        Assert.Equal(2, doc.Doc.Placements.Count);
++                        Assert.Equal(SelectionKind.Placement, doc.Selection.Kind);
++                        string newId = doc.Selection.Id;
++                        Assert.NotEqual("p1", newId);
++                        Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Placement, newId), result);
++                        MapPlacement dup = doc.Doc.Placements[1];
++                        Assert.Equal(newId, dup.Id);
++                        Near(3f, dup.X); Near(4f, dup.Z);
++                        Assert.Equal("hut", dup.Kind);
++                        Near(0.3f, dup.Yaw); Near(1.2f, dup.Scale);
++                        Assert.Equal(new List<string> { "a" }, dup.Tags);
++                        Assert.NotSame(doc.Doc.Placements[0].Tags, dup.Tags);
++                        Near(1f, doc.Doc.Placements[0].X);   // source untouched
++
++                        Assert.True(doc.Undo());
++                        Assert.Single(doc.Doc.Placements);
++                        Assert.Equal(before, Json(doc));
++                        break;
++                    }
+                 case "spawn":
+-                {
+-                    doc.Doc.Spawns.Add(new MapSpawn
+-                    { Id = "s1", ArchetypeId = "wolf", X = 5f, Z = 6f, Enabled = false, Tags = { "hostile" } });
+-                    doc.Selection.Set(SelectionKind.Spawn, "s1");
+-                    string before = Json(doc);
+-
+-                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+-
+-                    Assert.Equal(1, doc.History.UndoDepth);
+-                    Assert.Equal(2, doc.Doc.Spawns.Count);
+-                    Assert.Equal(SelectionKind.Spawn, doc.Selection.Kind);
+-                    string newId = doc.Selection.Id;
+-                    Assert.NotEqual("s1", newId);
+-                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Spawn, newId), result);
+-                    MapSpawn dup = doc.Doc.Spawns[1];
+-                    Assert.Equal(newId, dup.Id);
+-                    Near(7f, dup.X); Near(8f, dup.Z);
+-                    Assert.Equal("wolf", dup.ArchetypeId);
+-                    Assert.False(dup.Enabled);
+-                    Assert.Equal(new List<string> { "hostile" }, dup.Tags);
+-                    Assert.NotSame(doc.Doc.Spawns[0].Tags, dup.Tags);
+-
+-                    Assert.True(doc.Undo());
+-                    Assert.Single(doc.Doc.Spawns);
+-                    Assert.Equal(before, Json(doc));
+-                    break;
+-                }
++                    {
++                        doc.Doc.Spawns.Add(new MapSpawn
++                        { Id = "s1", ArchetypeId = "wolf", X = 5f, Z = 6f, Enabled = false, Tags = { "hostile" } });
++                        doc.Selection.Set(SelectionKind.Spawn, "s1");
++                        string before = Json(doc);
++
++                        EditorToolController.DuplicateResult? result = c.DuplicateSelection();
++
++                        Assert.Equal(1, doc.History.UndoDepth);
++                        Assert.Equal(2, doc.Doc.Spawns.Count);
++                        Assert.Equal(SelectionKind.Spawn, doc.Selection.Kind);
++                        string newId = doc.Selection.Id;
++                        Assert.NotEqual("s1", newId);
++                        Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Spawn, newId), result);
++                        MapSpawn dup = doc.Doc.Spawns[1];
++                        Assert.Equal(newId, dup.Id);
++                        Near(7f, dup.X); Near(8f, dup.Z);
++                        Assert.Equal("wolf", dup.ArchetypeId);
++                        Assert.False(dup.Enabled);
++                        Assert.Equal(new List<string> { "hostile" }, dup.Tags);
++                        Assert.NotSame(doc.Doc.Spawns[0].Tags, dup.Tags);
++
++                        Assert.True(doc.Undo());
++                        Assert.Single(doc.Doc.Spawns);
++                        Assert.Equal(before, Json(doc));
++                        break;
++                    }
+                 case "playerSpawn":
+-                {
+-                    doc.Doc.PlayerSpawns.Add(new MapPlayerSpawn
+-                    { Id = "player-1", X = 1f, Z = 1f, Yaw = 0.5f, Enabled = true, Tags = { "start" } });
+-                    doc.Selection.Set(SelectionKind.PlayerSpawn, "player-1");
+-                    string before = Json(doc);
+-
+-                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+-
+-                    Assert.Equal(1, doc.History.UndoDepth);
+-                    Assert.Equal(2, doc.Doc.PlayerSpawns.Count);
+-                    Assert.Equal(SelectionKind.PlayerSpawn, doc.Selection.Kind);
+-                    string newId = doc.Selection.Id;
+-                    Assert.NotEqual("player-1", newId);
+-                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.PlayerSpawn, newId), result);
+-                    MapPlayerSpawn dup = doc.Doc.PlayerSpawns[1];
+-                    Assert.Equal(newId, dup.Id);
+-                    Near(3f, dup.X); Near(3f, dup.Z);
+-                    Near(0.5f, dup.Yaw);
+-                    Assert.True(dup.Enabled);
+-                    Assert.Equal(new List<string> { "start" }, dup.Tags);
+-
+-                    Assert.True(doc.Undo());
+-                    Assert.Single(doc.Doc.PlayerSpawns);
+-                    Assert.Equal(before, Json(doc));
+-                    break;
+-                }
++                    {
++                        doc.Doc.PlayerSpawns.Add(new MapPlayerSpawn
++                        { Id = "player-1", X = 1f, Z = 1f, Yaw = 0.5f, Enabled = true, Tags = { "start" } });
++                        doc.Selection.Set(SelectionKind.PlayerSpawn, "player-1");
++                        string before = Json(doc);
++
++                        EditorToolController.DuplicateResult? result = c.DuplicateSelection();
++
++                        Assert.Equal(1, doc.History.UndoDepth);
++                        Assert.Equal(2, doc.Doc.PlayerSpawns.Count);
++                        Assert.Equal(SelectionKind.PlayerSpawn, doc.Selection.Kind);
++                        string newId = doc.Selection.Id;
++                        Assert.NotEqual("player-1", newId);
++                        Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.PlayerSpawn, newId), result);
++                        MapPlayerSpawn dup = doc.Doc.PlayerSpawns[1];
++                        Assert.Equal(newId, dup.Id);
++                        Near(3f, dup.X); Near(3f, dup.Z);
++                        Near(0.5f, dup.Yaw);
++                        Assert.True(dup.Enabled);
++                        Assert.Equal(new List<string> { "start" }, dup.Tags);
++
++                        Assert.True(doc.Undo());
++                        Assert.Single(doc.Doc.PlayerSpawns);
++                        Assert.Equal(before, Json(doc));
++                        break;
++                    }
+                 case "featureNamed":
+-                {
+-                    doc.Doc.Terrain.Features.Add(new LakeFeatureDoc
+-                    { Name = "MyLake", CenterX = 1f, CenterZ = 2f, Radius = 5f, Depth = 3f });
+-                    doc.Selection.Set(SelectionKind.Feature, "0");
+-                    string before = Json(doc);
+-
+-                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+-
+-                    Assert.Equal(1, doc.History.UndoDepth);
+-                    Assert.Equal(2, doc.Doc.Terrain.Features.Count);
+-                    Assert.Equal(SelectionKind.Feature, doc.Selection.Kind);
+-                    Assert.Equal("1", doc.Selection.Id);
+-                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Feature, "1"), result);
+-                    var dup = Assert.IsType<LakeFeatureDoc>(doc.Doc.Terrain.Features[1]);
+-                    // The source is named, and AddFeatureCommand carries no add-time uniqueness guard, so
+-                    // DuplicateSelection uniquifies it itself: "-copy" via the same UniqueName helper every other
+-                    // auto-named kind uses, so the first copy is "-copy-1", not the bare "-copy".
+-                    Assert.Equal("MyLake-copy-1", dup.Name);
+-                    Near(3f, dup.CenterX); Near(4f, dup.CenterZ);
+-                    Near(5f, dup.Radius); Near(3f, dup.Depth);
+-                    Assert.Equal("MyLake", ((LakeFeatureDoc)doc.Doc.Terrain.Features[0]).Name);   // source untouched
+-
+-                    Assert.True(doc.Undo());
+-                    Assert.Single(doc.Doc.Terrain.Features);
+-                    Assert.Equal(before, Json(doc));
+-                    break;
+-                }
++                    {
++                        doc.Doc.Terrain.Features.Add(new LakeFeatureDoc
++                        { Name = "MyLake", CenterX = 1f, CenterZ = 2f, Radius = 5f, Depth = 3f });
++                        doc.Selection.Set(SelectionKind.Feature, "0");
++                        string before = Json(doc);
++
++                        EditorToolController.DuplicateResult? result = c.DuplicateSelection();
++
++                        Assert.Equal(1, doc.History.UndoDepth);
++                        Assert.Equal(2, doc.Doc.Terrain.Features.Count);
++                        Assert.Equal(SelectionKind.Feature, doc.Selection.Kind);
++                        Assert.Equal("1", doc.Selection.Id);
++                        Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Feature, "1"), result);
++                        var dup = Assert.IsType<LakeFeatureDoc>(doc.Doc.Terrain.Features[1]);
++                        // The source is named, and AddFeatureCommand carries no add-time uniqueness guard, so
++                        // DuplicateSelection uniquifies it itself: "-copy" via the same UniqueName helper every other
++                        // auto-named kind uses, so the first copy is "-copy-1", not the bare "-copy".
++                        Assert.Equal("MyLake-copy-1", dup.Name);
++                        Near(3f, dup.CenterX); Near(4f, dup.CenterZ);
++                        Near(5f, dup.Radius); Near(3f, dup.Depth);
++                        Assert.Equal("MyLake", ((LakeFeatureDoc)doc.Doc.Terrain.Features[0]).Name);   // source untouched
++
++                        Assert.True(doc.Undo());
++                        Assert.Single(doc.Doc.Terrain.Features);
++                        Assert.Equal(before, Json(doc));
++                        break;
++                    }
+                 case "featureUnnamed":
+-                {
+-                    doc.Doc.Terrain.Features.Add(new FlattenFeatureDoc { CenterX = 4f, CenterZ = 5f, Radius = 2f, TargetHeight = 1f });
+-                    doc.Selection.Set(SelectionKind.Feature, "0");
+-                    string before = Json(doc);
+-
+-                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+-
+-                    Assert.Equal(1, doc.History.UndoDepth);
+-                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Feature, "1"), result);
+-                    var dup = Assert.IsType<FlattenFeatureDoc>(doc.Doc.Terrain.Features[1]);
+-                    Assert.Null(dup.Name);   // unnamed stays unnamed: nothing to uniquify
+-                    Near(6f, dup.CenterX); Near(7f, dup.CenterZ);
+-
+-                    Assert.True(doc.Undo());
+-                    Assert.Single(doc.Doc.Terrain.Features);
+-                    Assert.Equal(before, Json(doc));
+-                    break;
+-                }
++                    {
++                        doc.Doc.Terrain.Features.Add(new FlattenFeatureDoc { CenterX = 4f, CenterZ = 5f, Radius = 2f, TargetHeight = 1f });
++                        doc.Selection.Set(SelectionKind.Feature, "0");
++                        string before = Json(doc);
++
++                        EditorToolController.DuplicateResult? result = c.DuplicateSelection();
++
++                        Assert.Equal(1, doc.History.UndoDepth);
++                        Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Feature, "1"), result);
++                        var dup = Assert.IsType<FlattenFeatureDoc>(doc.Doc.Terrain.Features[1]);
++                        Assert.Null(dup.Name);   // unnamed stays unnamed: nothing to uniquify
++                        Near(6f, dup.CenterX); Near(7f, dup.CenterZ);
++
++                        Assert.True(doc.Undo());
++                        Assert.Single(doc.Doc.Terrain.Features);
++                        Assert.Equal(before, Json(doc));
++                        break;
++                    }
+                 case "exclusionNamed":
+-                {
+-                    doc.Doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });   // the Layers filter below must resolve
+-                    doc.Doc.Exclusions.Add(new MapExclusion
+                     {
+-                        Name = "Zone1",
+-                        Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 2f, Radius = 3f },
+-                        Layers = new List<string> { "trees" },
+-                    });
+-                    doc.Selection.Set(SelectionKind.Exclusion, "0");
+-                    string before = Json(doc);
+-
+-                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+-
+-                    Assert.Equal(1, doc.History.UndoDepth);
+-                    Assert.Equal(2, doc.Doc.Exclusions.Count);
+-                    Assert.Equal(SelectionKind.Exclusion, doc.Selection.Kind);
+-                    Assert.Equal("1", doc.Selection.Id);
+-                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Exclusion, "1"), result);
+-                    MapExclusion dup = doc.Doc.Exclusions[1];
+-                    Assert.Equal("Zone1-copy-1", dup.Name);
+-                    var dupShape = Assert.IsType<DiscShapeDoc>(dup.Shape);
+-                    Near(3f, dupShape.CenterX); Near(4f, dupShape.CenterZ); Near(3f, dupShape.Radius);
+-                    Assert.Equal(new List<string> { "trees" }, dup.Layers!);
+-                    Assert.NotSame(doc.Doc.Exclusions[0].Layers, dup.Layers);
+-                    Assert.Equal("Zone1", doc.Doc.Exclusions[0].Name);   // source untouched
+-
+-                    Assert.True(doc.Undo());
+-                    Assert.Single(doc.Doc.Exclusions);
+-                    Assert.Equal(before, Json(doc));
+-                    break;
+-                }
++                        doc.Doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });   // the Layers filter below must resolve
++                        doc.Doc.Exclusions.Add(new MapExclusion
++                        {
++                            Name = "Zone1",
++                            Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 2f, Radius = 3f },
++                            Layers = new List<string> { "trees" },
++                        });
++                        doc.Selection.Set(SelectionKind.Exclusion, "0");
++                        string before = Json(doc);
++
++                        EditorToolController.DuplicateResult? result = c.DuplicateSelection();
++
++                        Assert.Equal(1, doc.History.UndoDepth);
++                        Assert.Equal(2, doc.Doc.Exclusions.Count);
++                        Assert.Equal(SelectionKind.Exclusion, doc.Selection.Kind);
++                        Assert.Equal("1", doc.Selection.Id);
++                        Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Exclusion, "1"), result);
++                        MapExclusion dup = doc.Doc.Exclusions[1];
++                        Assert.Equal("Zone1-copy-1", dup.Name);
++                        var dupShape = Assert.IsType<DiscShapeDoc>(dup.Shape);
++                        Near(3f, dupShape.CenterX); Near(4f, dupShape.CenterZ); Near(3f, dupShape.Radius);
++                        Assert.Equal(new List<string> { "trees" }, dup.Layers!);
++                        Assert.NotSame(doc.Doc.Exclusions[0].Layers, dup.Layers);
++                        Assert.Equal("Zone1", doc.Doc.Exclusions[0].Name);   // source untouched
++
++                        Assert.True(doc.Undo());
++                        Assert.Single(doc.Doc.Exclusions);
++                        Assert.Equal(before, Json(doc));
++                        break;
++                    }
+                 case "exclusionUnnamed":
+-                {
+-                    doc.Doc.Exclusions.Add(new MapExclusion { Shape = new RectShapeDoc { MinX = 0f, MinZ = 0f, MaxX = 2f, MaxZ = 2f } });
+-                    doc.Selection.Set(SelectionKind.Exclusion, "0");
+-                    string before = Json(doc);
+-
+-                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+-
+-                    Assert.Equal(1, doc.History.UndoDepth);
+-                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Exclusion, "1"), result);
+-                    MapExclusion dup = doc.Doc.Exclusions[1];
+-                    Assert.Null(dup.Name);
+-                    var dupShape = Assert.IsType<RectShapeDoc>(dup.Shape);
+-                    Near(2f, dupShape.MinX); Near(2f, dupShape.MinZ); Near(4f, dupShape.MaxX); Near(4f, dupShape.MaxZ);
+-
+-                    Assert.True(doc.Undo());
+-                    Assert.Single(doc.Doc.Exclusions);
+-                    Assert.Equal(before, Json(doc));
+-                    break;
+-                }
++                    {
++                        doc.Doc.Exclusions.Add(new MapExclusion { Shape = new RectShapeDoc { MinX = 0f, MinZ = 0f, MaxX = 2f, MaxZ = 2f } });
++                        doc.Selection.Set(SelectionKind.Exclusion, "0");
++                        string before = Json(doc);
++
++                        EditorToolController.DuplicateResult? result = c.DuplicateSelection();
++
++                        Assert.Equal(1, doc.History.UndoDepth);
++                        Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Exclusion, "1"), result);
++                        MapExclusion dup = doc.Doc.Exclusions[1];
++                        Assert.Null(dup.Name);
++                        var dupShape = Assert.IsType<RectShapeDoc>(dup.Shape);
++                        Near(2f, dupShape.MinX); Near(2f, dupShape.MinZ); Near(4f, dupShape.MaxX); Near(4f, dupShape.MaxZ);
++
++                        Assert.True(doc.Undo());
++                        Assert.Single(doc.Doc.Exclusions);
++                        Assert.Equal(before, Json(doc));
++                        break;
++                    }
+                 case "scatterOverrideNamed":
+-                {
+-                    doc.Doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });   // the Layers filter below must resolve
+-                    doc.Doc.ScatterOverrides.Add(new MapScatterOverrideDoc
+                     {
+-                        Name = "Grove",
+-                        Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 2f, Radius = 3f },
+-                        DensityMultiplier = 2.5f,
+-                        Kinds = new List<MapPropKind> { new MapPropKind { Id = "pine", Weight = 2f } },
+-                        Layers = new List<string> { "trees" },
+-                    });
+-                    doc.Selection.Set(SelectionKind.ScatterOverride, "0");
+-                    string before = Json(doc);
+-
+-                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+-
+-                    Assert.Equal(1, doc.History.UndoDepth);
+-                    Assert.Equal(2, doc.Doc.ScatterOverrides.Count);
+-                    Assert.Equal(SelectionKind.ScatterOverride, doc.Selection.Kind);
+-                    Assert.Equal("1", doc.Selection.Id);
+-                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.ScatterOverride, "1"), result);
+-                    MapScatterOverrideDoc dup = doc.Doc.ScatterOverrides[1];
+-                    Assert.Equal("Grove-copy-1", dup.Name);
+-                    var dupShape = Assert.IsType<DiscShapeDoc>(dup.Shape);
+-                    Near(3f, dupShape.CenterX); Near(4f, dupShape.CenterZ); Near(3f, dupShape.Radius);
+-                    Near(2.5f, dup.DensityMultiplier);
+-                    Assert.Single(dup.Kinds!);
+-                    Assert.Equal("pine", dup.Kinds![0].Id);
+-                    Near(2f, dup.Kinds[0].Weight);
+-                    Assert.Equal(new List<string> { "trees" }, dup.Layers!);
+-                    // Fresh containers AND fresh MapPropKind elements: the Values command copies the Kinds list but
+-                    // not its elements, so Duplicate must rebuild each MapPropKind or a scrub of the clone's kind
+-                    // would mutate the source's.
+-                    Assert.NotSame(doc.Doc.ScatterOverrides[0].Kinds, dup.Kinds);
+-                    Assert.NotSame(doc.Doc.ScatterOverrides[0].Kinds![0], dup.Kinds[0]);
+-                    Assert.NotSame(doc.Doc.ScatterOverrides[0].Layers, dup.Layers);
+-                    Assert.Equal("Grove", doc.Doc.ScatterOverrides[0].Name);   // source untouched
+-
+-                    Assert.True(doc.Undo());
+-                    Assert.Single(doc.Doc.ScatterOverrides);
+-                    Assert.Equal(before, Json(doc));
+-                    break;
+-                }
++                        doc.Doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });   // the Layers filter below must resolve
++                        doc.Doc.ScatterOverrides.Add(new MapScatterOverrideDoc
++                        {
++                            Name = "Grove",
++                            Shape = new DiscShapeDoc { CenterX = 1f, CenterZ = 2f, Radius = 3f },
++                            DensityMultiplier = 2.5f,
++                            Kinds = new List<MapPropKind> { new MapPropKind { Id = "pine", Weight = 2f } },
++                            Layers = new List<string> { "trees" },
++                        });
++                        doc.Selection.Set(SelectionKind.ScatterOverride, "0");
++                        string before = Json(doc);
++
++                        EditorToolController.DuplicateResult? result = c.DuplicateSelection();
++
++                        Assert.Equal(1, doc.History.UndoDepth);
++                        Assert.Equal(2, doc.Doc.ScatterOverrides.Count);
++                        Assert.Equal(SelectionKind.ScatterOverride, doc.Selection.Kind);
++                        Assert.Equal("1", doc.Selection.Id);
++                        Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.ScatterOverride, "1"), result);
++                        MapScatterOverrideDoc dup = doc.Doc.ScatterOverrides[1];
++                        Assert.Equal("Grove-copy-1", dup.Name);
++                        var dupShape = Assert.IsType<DiscShapeDoc>(dup.Shape);
++                        Near(3f, dupShape.CenterX); Near(4f, dupShape.CenterZ); Near(3f, dupShape.Radius);
++                        Near(2.5f, dup.DensityMultiplier);
++                        Assert.Single(dup.Kinds!);
++                        Assert.Equal("pine", dup.Kinds![0].Id);
++                        Near(2f, dup.Kinds[0].Weight);
++                        Assert.Equal(new List<string> { "trees" }, dup.Layers!);
++                        // Fresh containers AND fresh MapPropKind elements: the Values command copies the Kinds list but
++                        // not its elements, so Duplicate must rebuild each MapPropKind or a scrub of the clone's kind
++                        // would mutate the source's.
++                        Assert.NotSame(doc.Doc.ScatterOverrides[0].Kinds, dup.Kinds);
++                        Assert.NotSame(doc.Doc.ScatterOverrides[0].Kinds![0], dup.Kinds[0]);
++                        Assert.NotSame(doc.Doc.ScatterOverrides[0].Layers, dup.Layers);
++                        Assert.Equal("Grove", doc.Doc.ScatterOverrides[0].Name);   // source untouched
++
++                        Assert.True(doc.Undo());
++                        Assert.Single(doc.Doc.ScatterOverrides);
++                        Assert.Equal(before, Json(doc));
++                        break;
++                    }
+                 case "scatterOverrideUnnamed":
+-                {
+-                    doc.Doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new RectShapeDoc { MinX = 0f, MinZ = 0f, MaxX = 2f, MaxZ = 2f } });
+-                    doc.Selection.Set(SelectionKind.ScatterOverride, "0");
+-                    string before = Json(doc);
+-
+-                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+-
+-                    Assert.Equal(1, doc.History.UndoDepth);
+-                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.ScatterOverride, "1"), result);
+-                    MapScatterOverrideDoc dup = doc.Doc.ScatterOverrides[1];
+-                    Assert.Null(dup.Name);   // unnamed stays unnamed: nothing to uniquify
+-                    Assert.Null(dup.Kinds);  // absent lists stay absent (not empty)
+-                    Assert.Null(dup.Layers);
+-                    var dupShape = Assert.IsType<RectShapeDoc>(dup.Shape);
+-                    Near(2f, dupShape.MinX); Near(2f, dupShape.MinZ); Near(4f, dupShape.MaxX); Near(4f, dupShape.MaxZ);
+-
+-                    Assert.True(doc.Undo());
+-                    Assert.Single(doc.Doc.ScatterOverrides);
+-                    Assert.Equal(before, Json(doc));
+-                    break;
+-                }
++                    {
++                        doc.Doc.ScatterOverrides.Add(new MapScatterOverrideDoc { Shape = new RectShapeDoc { MinX = 0f, MinZ = 0f, MaxX = 2f, MaxZ = 2f } });
++                        doc.Selection.Set(SelectionKind.ScatterOverride, "0");
++                        string before = Json(doc);
++
++                        EditorToolController.DuplicateResult? result = c.DuplicateSelection();
++
++                        Assert.Equal(1, doc.History.UndoDepth);
++                        Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.ScatterOverride, "1"), result);
++                        MapScatterOverrideDoc dup = doc.Doc.ScatterOverrides[1];
++                        Assert.Null(dup.Name);   // unnamed stays unnamed: nothing to uniquify
++                        Assert.Null(dup.Kinds);  // absent lists stay absent (not empty)
++                        Assert.Null(dup.Layers);
++                        var dupShape = Assert.IsType<RectShapeDoc>(dup.Shape);
++                        Near(2f, dupShape.MinX); Near(2f, dupShape.MinZ); Near(4f, dupShape.MaxX); Near(4f, dupShape.MaxZ);
++
++                        Assert.True(doc.Undo());
++                        Assert.Single(doc.Doc.ScatterOverrides);
++                        Assert.Equal(before, Json(doc));
++                        break;
++                    }
+                 case "region":
+-                {
+-                    doc.Doc.Regions.Add(new MapRegion
+-                    { Name = "town", Shape = new DiscShapeDoc { CenterX = 5f, CenterZ = 5f, Radius = 2f }, Tags = { "safe" } });
+-                    doc.Selection.Set(SelectionKind.Region, "town");
+-                    string before = Json(doc);
+-
+-                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+-
+-                    Assert.Equal(1, doc.History.UndoDepth);
+-                    Assert.Equal(2, doc.Doc.Regions.Count);
+-                    Assert.Equal(SelectionKind.Region, doc.Selection.Kind);
+-                    string newName = doc.Selection.Id;
+-                    // A region's name IS its identity (always set, always unique), so a duplicate takes the
+-                    // standard generated "region-N" name exactly like a freshly drawn region, not "town-copy".
+-                    Assert.Equal("region-1", newName);
+-                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Region, newName), result);
+-                    MapRegion dup = doc.Doc.Regions[1];
+-                    Assert.Equal(newName, dup.Name);
+-                    var dupShape = Assert.IsType<DiscShapeDoc>(dup.Shape);
+-                    Near(7f, dupShape.CenterX); Near(7f, dupShape.CenterZ);
+-                    Assert.Equal(new List<string> { "safe" }, dup.Tags);
+-                    Assert.NotSame(doc.Doc.Regions[0].Tags, dup.Tags);
+-
+-                    Assert.True(doc.Undo());
+-                    Assert.Single(doc.Doc.Regions);
+-                    Assert.Equal(before, Json(doc));
+-                    break;
+-                }
++                    {
++                        doc.Doc.Regions.Add(new MapRegion
++                        { Name = "town", Shape = new DiscShapeDoc { CenterX = 5f, CenterZ = 5f, Radius = 2f }, Tags = { "safe" } });
++                        doc.Selection.Set(SelectionKind.Region, "town");
++                        string before = Json(doc);
++
++                        EditorToolController.DuplicateResult? result = c.DuplicateSelection();
++
++                        Assert.Equal(1, doc.History.UndoDepth);
++                        Assert.Equal(2, doc.Doc.Regions.Count);
++                        Assert.Equal(SelectionKind.Region, doc.Selection.Kind);
++                        string newName = doc.Selection.Id;
++                        // A region's name IS its identity (always set, always unique), so a duplicate takes the
++                        // standard generated "region-N" name exactly like a freshly drawn region, not "town-copy".
++                        Assert.Equal("region-1", newName);
++                        Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.Region, newName), result);
++                        MapRegion dup = doc.Doc.Regions[1];
++                        Assert.Equal(newName, dup.Name);
++                        var dupShape = Assert.IsType<DiscShapeDoc>(dup.Shape);
++                        Near(7f, dupShape.CenterX); Near(7f, dupShape.CenterZ);
++                        Assert.Equal(new List<string> { "safe" }, dup.Tags);
++                        Assert.NotSame(doc.Doc.Regions[0].Tags, dup.Tags);
++
++                        Assert.True(doc.Undo());
++                        Assert.Single(doc.Doc.Regions);
++                        Assert.Equal(before, Json(doc));
++                        break;
++                    }
+                 case "biomeBand":
+-                {
+-                    doc.Doc.Terrain.Biomes.Add(new MapBiomeBand
+-                    { Start = 10f, End = 20f, Biome = BiomeId.Meadow, BaseHeight = 1f, HillAmplitude = 0.5f });
+-                    doc.Selection.Set(SelectionKind.BiomeBand, "0");
+-                    string before = Json(doc);
+-
+-                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+-
+-                    Assert.Equal(1, doc.History.UndoDepth);
+-                    Assert.Equal(2, doc.Doc.Terrain.Biomes.Count);
+-                    Assert.Equal(SelectionKind.BiomeBand, doc.Selection.Kind);
+-                    Assert.Equal("1", doc.Selection.Id);
+-                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.BiomeBand, "1"), result);
+-                    MapBiomeBand dup = doc.Doc.Terrain.Biomes[1];
+-                    // A band has no name and no position (a world-Z range, not a placed element): a verbatim
+-                    // clone, distinct instance, no offset.
+-                    Assert.Equal(10f, dup.Start);
+-                    Assert.Equal(20f, dup.End);
+-                    Assert.Equal(BiomeId.Meadow, dup.Biome);
+-                    Near(1f, dup.BaseHeight); Near(0.5f, dup.HillAmplitude);
+-                    Assert.NotSame(doc.Doc.Terrain.Biomes[0], dup);
+-
+-                    Assert.True(doc.Undo());
+-                    Assert.Single(doc.Doc.Terrain.Biomes);
+-                    Assert.Equal(before, Json(doc));
+-                    break;
+-                }
++                    {
++                        doc.Doc.Terrain.Biomes.Add(new MapBiomeBand
++                        { Start = 10f, End = 20f, Biome = BiomeId.Meadow, BaseHeight = 1f, HillAmplitude = 0.5f });
++                        doc.Selection.Set(SelectionKind.BiomeBand, "0");
++                        string before = Json(doc);
++
++                        EditorToolController.DuplicateResult? result = c.DuplicateSelection();
++
++                        Assert.Equal(1, doc.History.UndoDepth);
++                        Assert.Equal(2, doc.Doc.Terrain.Biomes.Count);
++                        Assert.Equal(SelectionKind.BiomeBand, doc.Selection.Kind);
++                        Assert.Equal("1", doc.Selection.Id);
++                        Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.BiomeBand, "1"), result);
++                        MapBiomeBand dup = doc.Doc.Terrain.Biomes[1];
++                        // A band has no name and no position (a world-Z range, not a placed element): a verbatim
++                        // clone, distinct instance, no offset.
++                        Assert.Equal(10f, dup.Start);
++                        Assert.Equal(20f, dup.End);
++                        Assert.Equal(BiomeId.Meadow, dup.Biome);
++                        Near(1f, dup.BaseHeight); Near(0.5f, dup.HillAmplitude);
++                        Assert.NotSame(doc.Doc.Terrain.Biomes[0], dup);
++
++                        Assert.True(doc.Undo());
++                        Assert.Single(doc.Doc.Terrain.Biomes);
++                        Assert.Equal(before, Json(doc));
++                        break;
++                    }
+                 case "scatterLayer":
+-                {
+-                    doc.Doc.ScatterLayers.Add(new MapScatterLayer
+                     {
+-                        Name = "trees", Seed = 42, CellSize = 4f, Jitter = 1f, MaxHeight = 10f, ScaleMin = 0.5f, ScaleMax = 1.5f,
+-                        Rules = { new MapBiomeScatterRule { Biome = BiomeId.Meadow, Density = 0.5f, Kinds = { new MapPropKind { Id = "pine", Weight = 2f } } } },
+-                    });
+-                    doc.Selection.Set(SelectionKind.ScatterLayer, "trees");
+-                    string before = Json(doc);
+-
+-                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+-
+-                    Assert.Equal(1, doc.History.UndoDepth);
+-                    Assert.Equal(2, doc.Doc.ScatterLayers.Count);
+-                    Assert.Equal(SelectionKind.ScatterLayer, doc.Selection.Kind);
+-                    string newName = doc.Selection.Id;
+-                    // Name-keyed, no position: UniqueName("trees-copy", exists) always appends "-N" from 1, so
+-                    // the first copy is "trees-copy-1" (never the bare "trees-copy").
+-                    Assert.Equal("trees-copy-1", newName);
+-                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.ScatterLayer, newName), result);
+-                    MapScatterLayer dup = doc.Doc.ScatterLayers[1];
+-                    Assert.Equal(newName, dup.Name);
+-                    Assert.Equal(42, dup.Seed);
+-                    Near(4f, dup.CellSize); Near(1f, dup.Jitter);
+-                    Assert.Equal(10f, dup.MaxHeight);
+-                    Near(0.5f, dup.ScaleMin); Near(1.5f, dup.ScaleMax);
+-                    Assert.Single(dup.Rules);
+-                    Assert.Equal(BiomeId.Meadow, dup.Rules[0].Biome);
+-                    Near(0.5f, dup.Rules[0].Density);
+-                    Assert.Single(dup.Rules[0].Kinds);
+-                    Assert.Equal("pine", dup.Rules[0].Kinds[0].Id);
+-                    Near(2f, dup.Rules[0].Kinds[0].Weight);
+-                    Assert.NotSame(doc.Doc.ScatterLayers[0].Rules, dup.Rules);
+-                    Assert.NotSame(doc.Doc.ScatterLayers[0].Rules[0].Kinds, dup.Rules[0].Kinds);
+-                    Assert.Equal("trees", doc.Doc.ScatterLayers[0].Name);   // source untouched
+-
+-                    Assert.True(doc.Undo());
+-                    Assert.Single(doc.Doc.ScatterLayers);
+-                    Assert.Equal(before, Json(doc));
+-                    break;
+-                }
++                        doc.Doc.ScatterLayers.Add(new MapScatterLayer
++                        {
++                            Name = "trees",
++                            Seed = 42,
++                            CellSize = 4f,
++                            Jitter = 1f,
++                            MaxHeight = 10f,
++                            ScaleMin = 0.5f,
++                            ScaleMax = 1.5f,
++                            Rules = { new MapBiomeScatterRule { Biome = BiomeId.Meadow, Density = 0.5f, Kinds = { new MapPropKind { Id = "pine", Weight = 2f } } } },
++                        });
++                        doc.Selection.Set(SelectionKind.ScatterLayer, "trees");
++                        string before = Json(doc);
++
++                        EditorToolController.DuplicateResult? result = c.DuplicateSelection();
++
++                        Assert.Equal(1, doc.History.UndoDepth);
++                        Assert.Equal(2, doc.Doc.ScatterLayers.Count);
++                        Assert.Equal(SelectionKind.ScatterLayer, doc.Selection.Kind);
++                        string newName = doc.Selection.Id;
++                        // Name-keyed, no position: UniqueName("trees-copy", exists) always appends "-N" from 1, so
++                        // the first copy is "trees-copy-1" (never the bare "trees-copy").
++                        Assert.Equal("trees-copy-1", newName);
++                        Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.ScatterLayer, newName), result);
++                        MapScatterLayer dup = doc.Doc.ScatterLayers[1];
++                        Assert.Equal(newName, dup.Name);
++                        Assert.Equal(42, dup.Seed);
++                        Near(4f, dup.CellSize); Near(1f, dup.Jitter);
++                        Assert.Equal(10f, dup.MaxHeight);
++                        Near(0.5f, dup.ScaleMin); Near(1.5f, dup.ScaleMax);
++                        Assert.Single(dup.Rules);
++                        Assert.Equal(BiomeId.Meadow, dup.Rules[0].Biome);
++                        Near(0.5f, dup.Rules[0].Density);
++                        Assert.Single(dup.Rules[0].Kinds);
++                        Assert.Equal("pine", dup.Rules[0].Kinds[0].Id);
++                        Near(2f, dup.Rules[0].Kinds[0].Weight);
++                        Assert.NotSame(doc.Doc.ScatterLayers[0].Rules, dup.Rules);
++                        Assert.NotSame(doc.Doc.ScatterLayers[0].Rules[0].Kinds, dup.Rules[0].Kinds);
++                        Assert.Equal("trees", doc.Doc.ScatterLayers[0].Name);   // source untouched
++
++                        Assert.True(doc.Undo());
++                        Assert.Single(doc.Doc.ScatterLayers);
++                        Assert.Equal(before, Json(doc));
++                        break;
++                    }
+                 case "companionLayer":
+-                {
+-                    doc.Doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
+-                    doc.Doc.CompanionLayers.Add(new MapCompanionLayer
+                     {
+-                        Name = "ring", HostLayer = "trees", Seed = 7, HostKinds = { "pine" },
+-                        Kinds = { new MapPropKind { Id = "bush", Weight = 1f } },
+-                        CountMin = 2, CountMax = 4, RadiusMin = 0.5f, RadiusMax = 1f, ScaleMin = 0.8f, ScaleMax = 1.2f, MaxHeight = 5f,
+-                    });
+-                    doc.Selection.Set(SelectionKind.CompanionLayer, "ring");
+-                    string before = Json(doc);
+-
+-                    EditorToolController.DuplicateResult? result = c.DuplicateSelection();
+-
+-                    Assert.Equal(1, doc.History.UndoDepth);   // the scatter layer above landed no command (direct Add)
+-                    Assert.Equal(2, doc.Doc.CompanionLayers.Count);
+-                    Assert.Equal(SelectionKind.CompanionLayer, doc.Selection.Kind);
+-                    string newName = doc.Selection.Id;
+-                    Assert.Equal("ring-copy-1", newName);
+-                    Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.CompanionLayer, newName), result);
+-                    MapCompanionLayer dup = doc.Doc.CompanionLayers[1];
+-                    Assert.Equal(newName, dup.Name);
+-                    Assert.Equal("trees", dup.HostLayer);
+-                    Assert.Equal(7, dup.Seed);
+-                    Assert.Equal(new List<string> { "pine" }, dup.HostKinds);
+-                    Assert.Single(dup.Kinds);
+-                    Assert.Equal("bush", dup.Kinds[0].Id);
+-                    Assert.Equal(2, dup.CountMin); Assert.Equal(4, dup.CountMax);
+-                    Near(0.5f, dup.RadiusMin); Near(1f, dup.RadiusMax);
+-                    Near(0.8f, dup.ScaleMin); Near(1.2f, dup.ScaleMax);
+-                    Assert.Equal(5f, dup.MaxHeight);
+-                    Assert.NotSame(doc.Doc.CompanionLayers[0].HostKinds, dup.HostKinds);
+-                    Assert.NotSame(doc.Doc.CompanionLayers[0].Kinds, dup.Kinds);
+-
+-                    Assert.True(doc.Undo());
+-                    Assert.Single(doc.Doc.CompanionLayers);
+-                    Assert.Equal(before, Json(doc));
+-                    break;
+-                }
++                        doc.Doc.ScatterLayers.Add(new MapScatterLayer { Name = "trees" });
++                        doc.Doc.CompanionLayers.Add(new MapCompanionLayer
++                        {
++                            Name = "ring",
++                            HostLayer = "trees",
++                            Seed = 7,
++                            HostKinds = { "pine" },
++                            Kinds = { new MapPropKind { Id = "bush", Weight = 1f } },
++                            CountMin = 2,
++                            CountMax = 4,
++                            RadiusMin = 0.5f,
++                            RadiusMax = 1f,
++                            ScaleMin = 0.8f,
++                            ScaleMax = 1.2f,
++                            MaxHeight = 5f,
++                        });
++                        doc.Selection.Set(SelectionKind.CompanionLayer, "ring");
++                        string before = Json(doc);
++
++                        EditorToolController.DuplicateResult? result = c.DuplicateSelection();
++
++                        Assert.Equal(1, doc.History.UndoDepth);   // the scatter layer above landed no command (direct Add)
++                        Assert.Equal(2, doc.Doc.CompanionLayers.Count);
++                        Assert.Equal(SelectionKind.CompanionLayer, doc.Selection.Kind);
++                        string newName = doc.Selection.Id;
++                        Assert.Equal("ring-copy-1", newName);
++                        Assert.Equal(new EditorToolController.DuplicateResult(SelectionKind.CompanionLayer, newName), result);
++                        MapCompanionLayer dup = doc.Doc.CompanionLayers[1];
++                        Assert.Equal(newName, dup.Name);
++                        Assert.Equal("trees", dup.HostLayer);
++                        Assert.Equal(7, dup.Seed);
++                        Assert.Equal(new List<string> { "pine" }, dup.HostKinds);
++                        Assert.Single(dup.Kinds);
++                        Assert.Equal("bush", dup.Kinds[0].Id);
++                        Assert.Equal(2, dup.CountMin); Assert.Equal(4, dup.CountMax);
++                        Near(0.5f, dup.RadiusMin); Near(1f, dup.RadiusMax);
++                        Near(0.8f, dup.ScaleMin); Near(1.2f, dup.ScaleMax);
++                        Assert.Equal(5f, dup.MaxHeight);
++                        Assert.NotSame(doc.Doc.CompanionLayers[0].HostKinds, dup.HostKinds);
++                        Assert.NotSame(doc.Doc.CompanionLayers[0].Kinds, dup.Kinds);
++
++                        Assert.True(doc.Undo());
++                        Assert.Single(doc.Doc.CompanionLayers);
++                        Assert.Equal(before, Json(doc));
++                        break;
++                    }
+                 default:
+                     Assert.Fail($"unhandled duplicate-kind case '{kind}'");
+                     break;
+diff --git a/KhaozEngine.MapEditor.Tests/MapEditor/MapEditorSceneTests.cs b/KhaozEngine.MapEditor.Tests/MapEditor/MapEditorSceneTests.cs
+index 62e144ef0..55476421b 100644
+--- a/KhaozEngine.MapEditor.Tests/MapEditor/MapEditorSceneTests.cs
++++ b/KhaozEngine.MapEditor.Tests/MapEditor/MapEditorSceneTests.cs
+@@ -201,7 +201,9 @@ namespace KhaozEngine.Tests.MapEditor
+ 
+         static Dictionary<string, string> KitCategories() => new(StringComparer.Ordinal)
+         {
+-            ["oak"] = "trees", ["pine"] = "trees", ["boulder"] = "rocks",
++            ["oak"] = "trees",
++            ["pine"] = "trees",
++            ["boulder"] = "rocks",
+         };
+ 
+         // A press-origin tap on a TreeView (press and release both at `at`), the way the pointer fires taps.
+@@ -417,8 +419,15 @@ namespace KhaozEngine.Tests.MapEditor
+ 
+         // A depth-only clone of a sample lake, so its footprint matches the original's (a bounded dirty region).
+         static LakeFeatureDoc LakeDepth(LakeFeatureDoc src, float depth) =>
+-            new() { CenterX = src.CenterX, CenterZ = src.CenterZ, Radius = src.Radius, Depth = depth,
+-                InnerFraction = src.InnerFraction, OuterFraction = src.OuterFraction };
++            new()
++            {
++                CenterX = src.CenterX,
++                CenterZ = src.CenterZ,
++                Radius = src.Radius,
++                Depth = depth,
++                InnerFraction = src.InnerFraction,
++                OuterFraction = src.OuterFraction
++            };
+ 
+         static RebuildDispatchScene PushDispatchScene(bool partialSucceeds = true)
+         {
+@@ -593,7 +602,7 @@ namespace KhaozEngine.Tests.MapEditor
+ 
+             DirtyFull(scene);
+             scene.RunRebuildCheck(0.1f);   // 0.1s < 0.25s: still throttled, proving the partial frames above never
+-                                            // advanced the full-rebuild timer.
++                                           // advanced the full-rebuild timer.
+             Assert.DoesNotContain("full", scene.Log);
+         }
+ 
+@@ -1712,9 +1721,9 @@ namespace KhaozEngine.Tests.MapEditor
+             {
+                 MapDocument doc = ValidDoc();
+                 doc.Terrain.Biomes.Add(new MapBiomeBand
+-                    { Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Meadow, BaseHeight = 2f, HillAmplitude = 3f });
++                { Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Meadow, BaseHeight = 2f, HillAmplitude = 3f });
+                 doc.Terrain.Biomes.Add(new MapBiomeBand
+-                    { Start = 40f, End = null, Biome = KhaozEngine.Terrain.BiomeId.Mountains });
++                { Start = 40f, End = null, Biome = KhaozEngine.Terrain.BiomeId.Mountains });
+                 return doc;
+             });
+ 
+@@ -1745,7 +1754,7 @@ namespace KhaozEngine.Tests.MapEditor
+             {
+                 MapDocument doc = ValidDoc();
+                 doc.Terrain.Biomes.Add(new MapBiomeBand
+-                    { Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Meadow });
++                { Start = 0f, End = 40f, Biome = KhaozEngine.Terrain.BiomeId.Meadow });
+                 return doc;
+             });
+             scene.Document.Selection.Set(SelectionKind.BiomeBand, "0");
+@@ -1897,7 +1906,11 @@ namespace KhaozEngine.Tests.MapEditor
+                 doc.Terrain.Features.Add(new LakeFeatureDoc { CenterX = 0f, CenterZ = 0f, Radius = 5f, Depth = 2f });
+                 doc.Terrain.Features.Add(new FlattenFeatureDoc
+                 {
+-                    Name = "taken", CenterX = 1f, CenterZ = 1f, Radius = 4f, TargetHeight = 1f,
++                    Name = "taken",
++                    CenterX = 1f,
++                    CenterZ = 1f,
++                    Radius = 4f,
++                    TargetHeight = 1f,
+                 });
+                 return doc;
+             });
+@@ -2870,7 +2883,9 @@ namespace KhaozEngine.Tests.MapEditor
+             MapDocument doc = ValidDoc();
+             doc.ScatterLayers.Add(new MapScatterLayer
+             {
+-                Name = "trees", Seed = 11, CellSize = 5f,
++                Name = "trees",
++                Seed = 11,
++                CellSize = 5f,
+                 Rules = { new MapBiomeScatterRule
+                 {
+                     Biome = KhaozEngine.Terrain.BiomeId.Meadow, Density = 0.4f,
+@@ -4095,7 +4110,8 @@ namespace KhaozEngine.Tests.MapEditor
+         {
+             var scene = PushDocScene(() => OverrideDoc(DiscOverride(5f), new MapScatterOverrideDoc
+             {
+-                Name = "taken", Shape = new DiscShapeDoc { Radius = 3f },
++                Name = "taken",
++                Shape = new DiscShapeDoc { Radius = 3f },
+             }));
+ 
+             scene.Document.Selection.Set(SelectionKind.ScatterOverride, "0");
+diff --git a/KhaozEngine.Render.Tests/Gpu/GoldenSnapshotTests.cs b/KhaozEngine.Render.Tests/Gpu/GoldenSnapshotTests.cs
+index cdf55bec3..8c4359ece 100644
+--- a/KhaozEngine.Render.Tests/Gpu/GoldenSnapshotTests.cs
++++ b/KhaozEngine.Render.Tests/Gpu/GoldenSnapshotTests.cs
+@@ -142,32 +142,48 @@ namespace KhaozEngine.Tests.Gpu
+                     // Red filled circle, partway through its sweep (fill smaller than the outline ring).
+                     scene.DrawGroundDecal(new GroundDecal
+                     {
+-                        Shape = DecalShape.Circle, Center = new Vector3(-1.2f, 0.0f, 0.6f),
++                        Shape = DecalShape.Circle,
++                        Center = new Vector3(-1.2f, 0.0f, 0.6f),
+                         Size = new Vector4(1.4f, 0, 0, 0),
+                         FillColor = new Color(0.95f, 0.15f, 0.1f, 0.55f),
+                         OutlineColor = new Color(1f, 0.8f, 0.2f, 0.9f),
+-                        EdgeThickness = 0.08f, FillFraction = 0.7f, FlashAdd = 0f,
+-                        Blend = DecalBlend.Alpha, YTolerance = 0.3f, MaxStep = 0.4f,
++                        EdgeThickness = 0.08f,
++                        FillFraction = 0.7f,
++                        FlashAdd = 0f,
++                        Blend = DecalBlend.Alpha,
++                        YTolerance = 0.3f,
++                        MaxStep = 0.4f,
+                     });
+                     // Cyan ring (annulus) off to the other side.
+                     scene.DrawGroundDecal(new GroundDecal
+                     {
+-                        Shape = DecalShape.Ring, Center = new Vector3(1.6f, 0.0f, 1.6f),
++                        Shape = DecalShape.Ring,
++                        Center = new Vector3(1.6f, 0.0f, 1.6f),
+                         Size = new Vector4(0.7f, 1.3f, 0, 0),
+                         FillColor = new Color(0.2f, 0.8f, 0.9f, 0.55f),
+                         OutlineColor = new Color(0.7f, 1f, 1f, 0.9f),
+-                        EdgeThickness = 0.08f, FillFraction = 1f, FlashAdd = 0f,
+-                        Blend = DecalBlend.Alpha, YTolerance = 0.3f, MaxStep = 0.4f,
++                        EdgeThickness = 0.08f,
++                        FillFraction = 1f,
++                        FlashAdd = 0f,
++                        Blend = DecalBlend.Alpha,
++                        YTolerance = 0.3f,
++                        MaxStep = 0.4f,
+                     });
+                     // Orange cone facing +X, running under the box (occlusion check on an oriented shape).
+                     scene.DrawGroundDecal(new GroundDecal
+                     {
+-                        Shape = DecalShape.Cone, Center = new Vector3(0.2f, 0.0f, -1.6f),
+-                        Rotation = 0f, Size = new Vector4(2.2f, 0.5f, 0, 0),
++                        Shape = DecalShape.Cone,
++                        Center = new Vector3(0.2f, 0.0f, -1.6f),
++                        Rotation = 0f,
++                        Size = new Vector4(2.2f, 0.5f, 0, 0),
+                         FillColor = new Color(0.9f, 0.5f, 0.1f, 0.55f),
+                         OutlineColor = new Color(1f, 0.85f, 0.3f, 0.9f),
+-                        EdgeThickness = 0.08f, FillFraction = 1f, FlashAdd = 0f,
+-                        Blend = DecalBlend.Alpha, YTolerance = 0.3f, MaxStep = 0.4f,
++                        EdgeThickness = 0.08f,
++                        FillFraction = 1f,
++                        FlashAdd = 0f,
++                        Blend = DecalBlend.Alpha,
++                        YTolerance = 0.3f,
++                        MaxStep = 0.4f,
+                     });
+                 },
+                 frames: 2);
+@@ -1007,18 +1023,30 @@ namespace KhaozEngine.Tests.Gpu
+                     // frozen time keep every term deterministic.
+                     scene.DrawDistortion(new DistortionSprite
+                     {
+-                        Position = new Vector3(-2.2f, 1.1f, -1.2f), Size = 1.3f,
+-                        Shape = DistortionShape.Ripple, ShapeParam = 0.2f, Strength = 2.2f, Seed = 0.13f,
++                        Position = new Vector3(-2.2f, 1.1f, -1.2f),
++                        Size = 1.3f,
++                        Shape = DistortionShape.Ripple,
++                        ShapeParam = 0.2f,
++                        Strength = 2.2f,
++                        Seed = 0.13f,
+                     });
+                     scene.DrawDistortion(new DistortionSprite
+                     {
+-                        Position = new Vector3(2.0f, 1.0f, -1.0f), Size = 1.3f,
+-                        Shape = DistortionShape.Lens, ShapeParam = 0.4f, Strength = 2.0f, Seed = 0.41f,
++                        Position = new Vector3(2.0f, 1.0f, -1.0f),
++                        Size = 1.3f,
++                        Shape = DistortionShape.Lens,
++                        ShapeParam = 0.4f,
++                        Strength = 2.0f,
++                        Seed = 0.41f,
+                     });
+                     scene.DrawDistortion(new DistortionSprite
+                     {
+-                        Position = new Vector3(0f, 1.2f, 0.4f), Size = 1.4f,
+-                        Shape = DistortionShape.Heat, ShapeParam = 0.5f, Strength = 1.6f, Seed = 0.7f,
++                        Position = new Vector3(0f, 1.2f, 0.4f),
++                        Size = 1.4f,
++                        Shape = DistortionShape.Heat,
++                        ShapeParam = 0.5f,
++                        Strength = 1.6f,
++                        Seed = 0.7f,
+                     });
+                 },
+                 frames: 2);
+@@ -1487,7 +1515,10 @@ namespace KhaozEngine.Tests.Gpu
+             var follow = new FollowCamera3D
+             {
+                 Target = new Vector3(0f, 0.5f, 0f),
+-                Pitch = 0.7f, Yaw = 0.5f, Distance = 9f, HeightOffset = 1.2f,
++                Pitch = 0.7f,
++                Yaw = 0.5f,
++                Distance = 9f,
++                HeightOffset = 1.2f,
+                 AspectRatio = (float)W / H,
+             };
+             byte[] rgba = Render3DSnapshot.Capture(W, H,
+diff --git a/KhaozEngine.Showcase/Room2DGui.cs b/KhaozEngine.Showcase/Room2DGui.cs
+index b01dba2b2..a31a124dc 100644
+--- a/KhaozEngine.Showcase/Room2DGui.cs
++++ b/KhaozEngine.Showcase/Room2DGui.cs
+@@ -212,7 +212,8 @@ namespace KhaozEngine.Showcase
+                     ShowcaseStrings.TabWidgets, ShowcaseStrings.TabSprites, ShowcaseStrings.TabInput,
+                     ShowcaseStrings.TabImmediate, ShowcaseStrings.TabScreens, ShowcaseStrings.TabDrag,
+                 },
+-                _a.Small, new Rect((db.Width - barW) * 0.5f, 56f, barW, 40f)) { TextScale = 0.85f };   // six labels share 920
++                _a.Small, new Rect((db.Width - barW) * 0.5f, 56f, barW, 40f))
++            { TextScale = 0.85f };   // six labels share 920
+ 
+             _pages = new ToolkitPage[]
+             {
+@@ -439,7 +440,9 @@ namespace KhaozEngine.Showcase
+             _vertPips = new ProgressBar(default, 0.5f)
+             {
+                 FillDirection = FillDirection.BottomToTop,
+-                SegmentCount = 4, SegmentSpacing = 4f, SegmentFillMode = SegmentFillMode.Discrete,
++                SegmentCount = 4,
++                SegmentSpacing = 4f,
++                SegmentFillMode = SegmentFillMode.Discrete,
+                 FillColor = new Vector4(1f, 0.5f, 0.5f, 1f),
+             };
+ 
+@@ -452,7 +455,8 @@ namespace KhaozEngine.Showcase
+             _skinBar = new ProgressBar(default, 0.7f) { Style = skinStyle, TrackColor = Vector4.One, FillColor = accent };
+             _info = new Button(default, ShowcaseStrings.WidgetsHoverForTip, A.Small);
+             _confirm = new Button(default, ShowcaseStrings.WidgetsConfirm, A.Small,
+-                () => Stack.Add(new PopupScreen(A, _name.Text, _difficulty.SelectedLabel))) { Style = GuiStyle.Primary };
++                () => Stack.Add(new PopupScreen(A, _name.Text, _difficulty.SelectedLabel)))
++            { Style = GuiStyle.Primary };
+ 
+             _tip = new Tooltip(A.Small, A.Small) { Viewport = new Vector2(db.Width, db.Height) };
+         }

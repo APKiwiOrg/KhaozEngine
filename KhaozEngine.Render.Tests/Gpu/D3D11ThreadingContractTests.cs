@@ -18,21 +18,23 @@ namespace KhaozEngine.Tests.Gpu
     /// package README's "Threading: the shipped contract" section, and this file is what makes each clause
     /// something other than a promise.
     /// <para>
-    /// THE TWO RACES ARE THE POINT OF THE FILE. A foreign-thread device-level update racing a submit, and a
-    /// concurrent resize racing a present, are the two interleavings the whole design is shaped around: they are
-    /// the pair that issue #415 records as a frame-long monitor exited from the wrong thread, and neither is
-    /// visible in a single-threaded test of either side. Both run device-free here, against the shipped machinery
-    /// rather than a copy of it, so they run on macOS and Linux as well as Windows.
+    /// THE TWO INTERLEAVINGS ARE THE POINT OF THE FILE. A foreign-thread device-level update racing a submit,
+    /// and a concurrent resize racing a present, are the two the whole design is shaped around: they are the
+    /// pair that issue #415 records as a frame-long monitor exited from the wrong thread, and neither is visible
+    /// in a single-threaded test of either side. Both run device-free here, against the shipped machinery rather
+    /// than a copy of it, so they run on macOS and Linux as well as Windows. The update is a free-running race
+    /// that waits until enough writes have landed inside it. The resize is a forced interleaving, with each
+    /// present held open at its native boundary while the foreign thread queues.
     /// <see cref="GpuDeviceLifecycleTests"/> is the real-device sibling and covers the process-wide create and
     /// dispose gate instead.
     /// </para>
     /// <para>
-    /// A RACE TEST THAT PASSES PROVES LESS THAN ONE THAT FAILS, so both were run against a deliberately unlocked
-    /// build to find out WHICH assertion fails there, rather than assuming the one that reads like the detector
-    /// is it. The update race fails because its writers crash on the map pointer a submit's unmap withdraws
-    /// mid-copy. The resize race fails because the surface starts receiving calls with no submit lock held. The
-    /// torn-content and packed-size assertions are the ones that read like detectors and are not, and each is
-    /// documented at its own test as what it actually is.
+    /// A RACE TEST THAT PASSES PROVES LESS THAN ONE THAT FAILS, so the update race was run against a
+    /// deliberately unlocked build to find out WHICH assertion fails there, rather than assuming the one that
+    /// reads like the detector is it: its writers crash on the map pointer a submit's unmap withdraws mid-copy.
+    /// The resize test's lock detector holds by construction instead, since its interleaving no longer depends
+    /// on timing. The torn-content and packed-size assertions are the ones that read like detectors and are
+    /// not, and each is documented at its own test as what it actually is.
     /// </para>
     /// </summary>
     public sealed class D3D11ThreadingContractTests
@@ -44,8 +46,8 @@ namespace KhaozEngine.Tests.Gpu
         const byte PatternA = 0xA1;
         const byte PatternB = 0xB2;
 
-        // The race loops are bounded twice: an iteration count that is plenty on a fast machine, and a wall clock
-        // so a loaded CI runner ends the test rather than the test ending the runner.
+        // The update race's loops are bounded twice: an iteration count that is plenty on a fast machine, and a
+        // wall clock so a loaded CI runner ends the test rather than the test ending the runner.
         const int SubmitIterations = 400;
         static readonly TimeSpan RaceBudget = TimeSpan.FromSeconds(5);
         static readonly TimeSpan JoinBudget = TimeSpan.FromSeconds(30);
@@ -59,11 +61,16 @@ namespace KhaozEngine.Tests.Gpu
         const int ExtraRoundSubmits = 16;
         static readonly TimeSpan FirstWriteBudget = TimeSpan.FromSeconds(10);
 
-        // The resize race's sizes, which carry their own consistency check: every width is 640 + n and every
-        // height is 480 + n for the SAME n, so a half-applied size is arithmetic rather than a judgement call.
+        // The resize interleaving's sizes, which carry their own consistency check: every width is 640 + n and
+        // every height is 480 + n for the SAME n, so a half-applied size is arithmetic rather than a judgement call.
         const uint WidthBase = 640;
         const uint HeightBase = 480;
         const uint SizeCount = 64;
+
+        // The resize interleaving holds this many presents open, and queues this many requests during each, so
+        // every boundary has a burst to coalesce. All of them fit below SizeCount.
+        const int ResizeBoundaries = 4;
+        const uint RequestsPerBoundary = 8;
 
         // ---- the foreign-thread device-level update, racing a submit (W4) --------------------------------
 
@@ -307,13 +314,36 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>
         /// A RESIZE QUEUED FROM A FOREIGN THREAD WHILE THE SUBMIT THREAD PRESENTS APPLIES WHOLE, AT A BOUNDARY,
         /// AND ONLY THERE. This is decision W3's queue, coalesce and apply under decision W4's one lock, driven
-        /// by the interleaving it exists for: a window callback arriving at an arbitrary point of a present.
+        /// by the interleaving it exists for: a window callback arriving in the middle of a present.
         /// <para>
-        /// THE DETERMINISTIC DETECTOR IS THE LOCK ASSERTION AT THE END, where every call the surface receives
-        /// after the constructor's own is checked to have arrived with the submit lock held. That is the one that
-        /// failed 3 runs out of 3 against a deliberately unlocked build. The two assertions that read like
-        /// detectors are forward-guards instead, and are labelled as such below rather than left to look like
-        /// coverage they do not provide.
+        /// THE INTERLEAVING IS FORCED, NOT HOPED FOR. An earlier version let a producer thread spin on
+        /// <c>QueueResize</c> while the test thread ran a fixed number of presents, and on a hosted release runner
+        /// (issue #1309) every present finished before the producer queued anything, so the test failed on "no
+        /// queued resize was ever applied". Starting a thread does not prove it ran. Here every present is HELD
+        /// OPEN at its native boundary by the fake surface's <see cref="FakeD3D11SwapchainSurface.DuringPresent"/>
+        /// hook, inside the submit lock, until the producer has queued a known burst of
+        /// <see cref="RequestsPerBoundary"/> sizes the backbuffer is not. Only then does the present return and
+        /// apply. Every step is a blocking handoff with a diagnostic timeout, so a run either takes exactly this
+        /// path or fails naming the step that did not happen.
+        /// </para>
+        /// <para>
+        /// WHAT EACH HELD BOUNDARY PROVES. The producer finds the submit lock taken (<c>Monitor.TryEnter</c>
+        /// fails), so its whole burst really is queued while another thread is inside a present under that lock.
+        /// <c>QueueResize</c> returning at all while the lock is held is W3's no-lock clause, since a queue that
+        /// waited for the lock would leave the hook's handoff to time out. The surface's call count does not move
+        /// while the burst lands, which is the no-native-call clause: nothing reaches the swapchain from the
+        /// queueing thread or ahead of the boundary. When the present returns, the calls it added are EXACTLY
+        /// <c>Present</c>, <c>ReleaseAttachments</c>, <c>ResizeBuffers</c> and <c>CreateAttachments</c>, the
+        /// last two at the burst's LAST size, and the framebuffer takes that size. That pins the four-call order
+        /// (present first so the rendered frame is shown, release before resize because
+        /// <c>IDXGISwapChain::ResizeBuffers</c> enforces it) and last-request coalescing as live checks: an
+        /// accumulating queue adds more than one resize, and a first-wins or stale queue applies the wrong size.
+        /// </para>
+        /// <para>
+        /// THE LOCK ASSERTION AT THE END checks that every call the surface received after the constructor's own
+        /// arrived with the submit lock held. With the interleaving forced this no longer depends on timing: a
+        /// present or an apply that ran outside the lock would be recorded unlocked on every run. That is a
+        /// property of the construction and has not been re-measured against a deliberately unlocked build.
         /// </para>
         /// <para>
         /// <see cref="AssertWholeSize"/> IS A FORWARD-GUARD. Every queued size is <c>640 + n</c> by <c>480 + n</c>
@@ -325,24 +355,8 @@ namespace KhaozEngine.Tests.Gpu
         /// would think to add the check.
         /// </para>
         /// <para>
-        /// THE APPLIES-BOUNDED-BY-PRESENTS ASSERTION IS THE SAME KIND OF GUARD. Coalescing to the LAST requested
-        /// size is what makes a drag-resize burst cost one <c>ResizeBuffers</c> per frame rather than one per
-        /// event, but one packed slot cannot hold more than one pending size, so the bound holds by construction
-        /// and no interleaving can break it. It becomes falsifiable the day the queue ACCUMULATES (a list of
-        /// pending sizes, an apply per event), and that is the regression it is here to catch.
-        /// </para>
-        /// <para>
-        /// THE APPLY IS PINNED AS A FOUR-CALL SEQUENCE, not merely as "a resize happened": every
-        /// <c>ResizeBuffers</c> in the trace is preceded by the present it rode and by the release of the old
-        /// views, and followed by the creation of the new ones at the same size. The release-before-resize half
-        /// is the ordering rule <c>IDXGISwapChain::ResizeBuffers</c> enforces and the incumbent dependednds on
-        /// silently, and the present-before-resize half is why a drag-resize does not present an undefined
-        /// backbuffer.
-        /// </para>
-        /// <para>
-        /// The fake surface keeps a plain list and is not thread-safe, which is deliberate: every call it
-        /// receives arrives under the submit lock, so the test would fail on a corrupted trace if the queue ever
-        /// touched it. <c>QueueResize</c> touches nothing native, which is the whole of W3.
+        /// The fake surface keeps a plain list and is not thread-safe, which is deliberate: only the presenting
+        /// thread ever reaches it, and the producer touches the swapchain through <c>QueueResize</c> alone.
         /// </para>
         /// <para>
         /// THE LOCK ASSERTION SKIPS THE FIRST CALL, AND THAT DEPENDS ON THE CONSTRUCTOR. <c>D3D11Swapchain</c>
@@ -362,78 +376,121 @@ namespace KhaozEngine.Tests.Gpu
                 surface, submitLock, WidthBase, HeightBase, syncToVerticalBlank: false);
 
             var failures = new ConcurrentBag<Exception>();
-            using var stop = new ManualResetEventSlim(false);
-            using var queueing = new CountdownEvent(1);
+            using var presentHeld = new SemaphoreSlim(0);
+            using var burstQueued = new SemaphoreSlim(0);
+            using var abandon = new CancellationTokenSource();
 
-            var resizer = new Thread(() =>
+            // Runs on the presenting thread, inside the native present and so inside the submit lock.
+            surface.DuringPresent = () =>
+            {
+                int callsBeforeTheBurst = surface.Calls.Count;
+                presentHeld.Release();
+                Assert.True(burstQueued.Wait(JoinBudget),
+                    "No burst of resizes was queued while a present held the submit lock open. A QueueResize "
+                    + "that waits for the submit lock never returns while a present holds it.");
+                Assert.True(failures.IsEmpty,
+                    $"The producer failed while the present was held: {string.Join(" | ", failures)}");
+                Assert.Equal(callsBeforeTheBurst, surface.Calls.Count);
+                Assert.True(swapchain.HasPendingResize, "The queued burst left nothing pending at the boundary.");
+            };
+
+            var producer = new Thread(() =>
             {
                 try
                 {
-                    uint n = 0;
-                    queueing.Signal();
-                    while (!stop.IsSet)
+                    for (int boundary = 0; boundary < ResizeBoundaries; boundary++)
                     {
-                        n = (n + 1) % SizeCount;
-                        swapchain.QueueResize(WidthBase + n, HeightBase + n);
+                        Assert.True(presentHeld.Wait(JoinBudget, abandon.Token),
+                            "No present was held open for the producer to queue against.");
+
+                        if (Monitor.TryEnter(submitLock))
+                        {
+                            Monitor.Exit(submitLock);
+                            throw new InvalidOperationException(
+                                "The submit lock was free while a present was held open at its native boundary, "
+                                + "so the present is not running under it.");
+                        }
+
+                        for (uint request = 1; request <= RequestsPerBoundary; request++)
+                        {
+                            uint n = RequestIndex(boundary, request);
+                            swapchain.QueueResize(WidthBase + n, HeightBase + n);
+                        }
+
+                        burstQueued.Release();
                     }
+                }
+                catch (OperationCanceledException) when (abandon.IsCancellationRequested)
+                {
+                    // The presenting side stopped early and is already failing with its own reason.
                 }
                 catch (Exception ex)
                 {
                     failures.Add(ex);
+                    // Wake a held present at once rather than leaving it to time out on the handoff.
+                    burstQueued.Release();
                 }
             })
-            { IsBackground = true, Name = "resize-racer" };
+            { IsBackground = true, Name = "resize-producer" };
 
-            resizer.Start();
-            Assert.True(queueing.Wait(JoinBudget), "The resizing thread never started.");
-
-            int presents = 0;
-            var clock = Stopwatch.StartNew();
-            for (int i = 0; i < SubmitIterations && clock.Elapsed < RaceBudget; i++)
+            bool producerJoined;
+            producer.Start();
+            try
             {
+                for (int boundary = 0; boundary < ResizeBoundaries; boundary++)
+                {
+                    uint last = RequestIndex(boundary, RequestsPerBoundary);
+                    string lastSize = FormattableString.Invariant($"{WidthBase + last}x{HeightBase + last}");
+                    Assert.NotEqual(WidthBase + last, surface.BackbufferWidth);
+
+                    int callsBeforeThePresent = surface.Calls.Count;
+                    Assert.Equal(0, swapchain.Present());
+
+                    // One boundary, one apply, at the LAST size of the burst, in the one order that works.
+                    Assert.Equal(
+                        new[] { "Present 0", "ReleaseAttachments", "ResizeBuffers " + lastSize,
+                            "CreateAttachments " + lastSize },
+                        surface.Trace.Skip(callsBeforeThePresent));
+                    Assert.Equal(WidthBase + last, swapchain.Framebuffer.Width);
+                    Assert.Equal(HeightBase + last, swapchain.Framebuffer.Height);
+                    Assert.False(swapchain.HasPendingResize, "The boundary left a resize pending.");
+                }
+
+                // With nothing queued, a boundary presents and applies nothing.
+                surface.DuringPresent = null;
+                int callsBeforeTheQuietPresent = surface.Calls.Count;
                 Assert.Equal(0, swapchain.Present());
-                presents++;
+                Assert.Equal(new[] { "Present 0" }, surface.Trace.Skip(callsBeforeTheQuietPresent));
+                Assert.False(swapchain.ApplyPendingResize());
+            }
+            finally
+            {
+                surface.DuringPresent = null;
+                abandon.Cancel();
+                producerJoined = producer.Join(JoinBudget);
             }
 
-            stop.Set();
-            Assert.True(resizer.Join(JoinBudget), "The resizing thread never finished after the race was stopped.");
+            Assert.True(producerJoined, "The producer thread never finished.");
             Assert.True(failures.IsEmpty, $"{failures.Count} thread(s) failed: {string.Join(" | ", failures)}");
 
             IReadOnlyList<FakeSwapchainCall> calls = surface.Calls;
-            int applied = calls.Count(c => c.Name == "ResizeBuffers");
-            Assert.True(applied > 0, "No queued resize was ever applied, so the race proved nothing.");
+            Assert.Equal(ResizeBoundaries, calls.Count(c => c.Name == "ResizeBuffers"));
+            foreach (FakeSwapchainCall call in calls.Where(c => c.Name is "ResizeBuffers" or "CreateAttachments"))
+                AssertWholeSize(call.Detail);
 
-            // COALESCED: a burst of thirty requests between two presents costs one ResizeBuffers, never thirty.
-            // A forward-guard against an accumulating queue rather than a live detector: one packed slot holds
-            // one pending size, so today this bound cannot be broken. See the doc above.
-            Assert.True(applied <= presents,
-                $"{applied} resizes were applied across {presents} presents, so more than one landed at a "
-                + "boundary.");
-
-            for (int i = 0; i < calls.Count; i++)
-            {
-                if (calls[i].Name != "ResizeBuffers") continue;
-
-                Assert.Equal("ReleaseAttachments", calls[i - 1].Name);
-                Assert.Equal("Present", calls[i - 2].Name);
-                Assert.Equal("CreateAttachments", calls[i + 1].Name);
-                Assert.Equal(calls[i].Detail, calls[i + 1].Detail);
-                AssertWholeSize(calls[i].Detail);
-            }
-
-            // THE DETERMINISTIC DETECTOR (3 of 3 unlocked). Everything the surface was asked to do arrived under
-            // the submit lock. The queue is the one caller that must NOT hold it, and it reaches the surface not
-            // at all. The skipped first call is the constructor's own CreateAttachments, per the doc above.
+            // Everything the surface was asked to do arrived under the submit lock. The queue is the one caller
+            // that must NOT hold it, and it reaches the surface not at all. The skipped first call is the
+            // constructor's own CreateAttachments, per the doc above.
             Assert.All(calls.Skip(1), call => Assert.True(call.HeldTheSubmitLock,
                 $"{call} arrived without the submit lock held."));
 
-            // The framebuffer ends on a size that was actually requested, whole, and matching the backbuffer.
-            swapchain.ApplyPendingResize();
             Assert.Equal(surface.BackbufferWidth, swapchain.Framebuffer.Width);
             Assert.Equal(surface.BackbufferHeight, swapchain.Framebuffer.Height);
-            AssertWholeSize(FormattableString.Invariant(
-                $"{swapchain.Framebuffer.Width}x{swapchain.Framebuffer.Height}"));
         }
+
+        // The n of a request in the resize interleaving: boundaries count up through disjoint runs of n from 1,
+        // so every request is a size the backbuffer is not, and each boundary's last request is a new size.
+        static uint RequestIndex(int boundary, uint request) => (uint)boundary * RequestsPerBoundary + request;
 
         // ---- the creation gate (W4's creation clause) ----------------------------------------------------
 

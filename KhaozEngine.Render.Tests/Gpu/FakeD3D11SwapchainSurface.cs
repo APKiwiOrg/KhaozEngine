@@ -65,6 +65,13 @@ namespace KhaozEngine.Tests.Gpu
         /// call arrived holding it. Left null by a test that does not care.</summary>
         internal object? SubmitLock { get; set; }
 
+        /// <summary>
+        /// Run by <see cref="Present"/> on the presenting thread after the call is recorded and before it returns,
+        /// so a test can hold a present open at its native boundary, with whatever lock the caller holds still
+        /// held, while another thread acts. Left null by a test that does not care.
+        /// </summary>
+        internal Action? DuringPresent { get; set; }
+
         /// <summary>Whether a generation of views is outstanding right now.</summary>
         internal bool AttachmentsOutstanding { get; private set; }
 
@@ -135,6 +142,7 @@ namespace KhaozEngine.Tests.Gpu
         public int Present(int syncInterval)
         {
             Record("Present", syncInterval.ToString(CultureInfo.InvariantCulture));
+            DuringPresent?.Invoke();
             return PresentResult;
         }
 

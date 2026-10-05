@@ -55,4 +55,3 @@ pack ritual, with owner-only release tags. No Grimhollow engine pin change.
 
 - OA10 approves the 273-file whitespace-only scope and separate worktree.
 - Created from current engine main de78df336. No implementation or new check has run yet.
-

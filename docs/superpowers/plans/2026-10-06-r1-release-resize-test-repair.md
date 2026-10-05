@@ -61,3 +61,28 @@ Neither this plan nor the repair worker may overwrite v20.27.0 or its matching l
 - Release attempt 2 failure and scheduling evidence are filed as #1309.
 - Separate repair worktree created from current main and v20.27.0, with no source edits yet.
 - R2 design continues independently in the planning worktree and does no engine builds/tests.
+
+
+### Resize repair verified and scoped review dispatched, 2026-10-06
+
+- Repair worker returned DONE at 6d4d78b842f27089dfe9f8df5d9de666df83f8de, now pushed on
+  fix/wa-r1-ci-resize. Controller verified the two-file scope, clean tree, ancestry, diff, and actual
+  command exits. No production source, version, workflow or ratchet changed.
+- Fake surface gains optional DuringPresent. Four held native-present boundaries hand off eight
+  known non-current size requests each to a foreign producer. Explicit handoffs replace the resize
+  busy loop. Assertions require four actual applies, exact last-size coalescing and native call order,
+  no native calls during queueing, no pending residue, quiet-present behavior and submit-lock ownership.
+- Independent update/submit test code is unchanged. Old resize mutation-experiment claims were
+  qualified. No new fault injection, old-fixture local repro or hosted stress proof is claimed.
+- Focused D3D11 threading/swapchain selection passed 41 tests, including the repaired test at 3 ms.
+  Changed-file formatting and all five repository guards exited 0. Logs are
+  /tmp/grimhollow-orch/logs/wa-r1-resize-repair-20261006/01-focused-test.log and 02-format-guards.log.
+  Shared slot history confirms target exits 0. No full solution suite has run for this repair yet.
+- One fresh Gauge-selected Codex Pro 5x gpt-6.1-sol xhigh reviewer is active, task
+  `node:delegated-task:command%3Amcp%3A87f7c6df-2d3b-43b2-8cf0-9d291f9ecd43%3Adelegate-task%3Awa-r1-ci-resize-repair-review1-20261006`.
+  Repair SDD has review-1-brief.md, review-1-dispatch.json and review-ce6ea0e8c..6d4d78b84.diff.
+  The review explicitly covers timeout cleanup and whether all intended concurrency detectors remain
+  meaningful. The acknowledged beyond-JoinBudget producer lifetime concern has not been dismissed.
+- Next is review disposition, current-main reconciliation and full verification, then the release
+  version/publication decision. Existing v20.27.0 and matching packages remain untouched. No new
+  tag is authorized. R2 design continues independently and no R2 implementation has started.

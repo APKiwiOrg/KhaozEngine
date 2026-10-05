@@ -1,0 +1,21 @@
+{
+  "repair_commit": "6d4d78b842f27089dfe9f8df5d9de666df83f8de",
+  "changed_files": 2,
+  "production_changes": false,
+  "focused_passed": 41,
+  "focused_failed": 0,
+  "checks": [
+    {
+      "log": "01-focused-test.log",
+      "exit": 0,
+      "sha256": "b01c0f504646961cc72e6bb08fcce120edebc015af7926301ad180ce8c808853"
+    },
+    {
+      "log": "02-format-guards.log",
+      "exit": 0,
+      "sha256": "073460145219d5bea6630978b67bf3f91ac3961441db21d8c1178d52ce565028"
+    }
+  ],
+  "full_suite": "pending",
+  "review": "in progress"
+}

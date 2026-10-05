@@ -831,3 +831,39 @@ in this plan's SDD workspace as review-f29eb60c0..0097921b7.diff and task-1-repo
 | `wa-r1-t1-green.log` | 0 | `3b27d656b632b8ba68fec5c2dc1bf60ffbc556cad1705e371b0f41b6df132019` |
 | `wa-r1-t1-format-tests.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
 | `wa-r1-t1-format-mapdoc.log` | 2 | `41cdb9056beef759736a9221e559d65be6384d1bd97e6b33a93c204a45abf209` |
+
+
+### Task 1 fix round 1 and fresh review, 2026-10-05
+
+Review 1 found I1 legacy casing rejection, I2 missing native member/range validation and I3 skipped
+anyOf member checks. Controller verified the named paths. Ruling R1-T1-1 places basic required native
+members, positive versions/optional IDs and nonnegative high-water validation in Task 1. Task 2 retains
+decimal-string encoding and allocation. This makes the declared native schema effective on real
+load/save paths. If wrong, the cost is relocating small validation and test code within R1.
+
+Task 4 must explicitly prove unknown native member refusal for tiled manifest and tile load paths.
+Derived schemas alone do not enforce validation. This integration proof remains open until Task 4.
+
+Fix commit `69978ff6282c543e9cdfd8adae38bff48fb9cd88` follows evidence commit `bb452cc89`.
+Controller checked actual logs and slot history. Initial regression RED exited 1 with 39 failed and
+23 passed, initial GREEN exited 0 with 62 passed. A new legacy-default regression then failed alone
+(62 passed, 1 failed), and final GREEN exited 0 with 63 passed, 0 failed, 0 skipped and no warnings.
+Changed production and test formatting both exited 0. Unrelated baseline issue #1293 stays open.
+
+The fix preserves case-insensitive recognized fields, verifies required native members before defaults
+erase absence, validates DTO ranges/nulls on save, traverses applicable union branches and materializes
+legacy omitted-coordinate defaults only in a newly generated playable-bounds block. A fresh Sol xhigh
+scoped re-review is pending, using review-0097921b7..69978ff62.diff and task-1-review-2.md in SDD.
+No Task 1 acceptance or later implementation is claimed yet.
+
+The original implementer continuation did not wake the controller on completion. The user status
+question exposed the idle gap. Future resumed implementation turns are actively awaited until the
+controller processes their result. Fresh review rounds continue to use new delegated task IDs.
+
+| Fix log under /tmp/grimhollow-orch/logs/wa-r1-t1-fix1-20261005T121328-70812 | Observed exit | SHA-256 |
+| --- | --- | --- |
+| `red.log` | 1 | `43432d07fe11c2a4966db91fdce0f3f1de6045823c1f35287dba8f571b913a77` |
+| `red-legacy-defaults.log` | 1 | `3f18e8f90d2ec4acf625d0584b6cd167a2bd3e198c31ced5604a935e681a22b8` |
+| `green-final.log` | 0 | `8599972b20713c0a9dc10ebfcd271d03fc2f5efd1972f8cd6cf01cb585cc0a51` |
+| `format-mapdoc-final.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `format-tests.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |

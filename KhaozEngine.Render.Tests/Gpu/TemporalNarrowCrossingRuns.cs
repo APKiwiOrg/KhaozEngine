@@ -181,7 +181,8 @@ namespace KhaozEngine.Tests.Gpu
                 Matrix4x4 world = Matrix4x4.CreateScale(Size) * Matrix4x4.CreateTranslation(Centre(n));
                 s.Draw(new RigidInstanceDraw(_textured ? _texturedBox : _stage.Box, world)
                 {
-                    Tint = CrossingScene.Tint, Motion = MotionKey.From(Key),
+                    Tint = CrossingScene.Tint,
+                    Motion = MotionKey.From(Key),
                 });
             }
 

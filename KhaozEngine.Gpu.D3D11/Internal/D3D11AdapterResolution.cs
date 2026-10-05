@@ -53,24 +53,24 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             switch (choice.Kind)
             {
                 case D3D11AdapterChoiceKind.Enumerated:
-                {
-                    // Re-fetched at its index because the enumeration handed the policy plain descriptions and
-                    // released its own objects. An adapter can be removed between the two, which is not a fault.
-                    SharpGen.Runtime.Result result = factory.EnumAdapters1(choice.Index, out IDXGIAdapter1? adapter);
-                    if (result.Success && adapter is not null) return adapter;
+                    {
+                        // Re-fetched at its index because the enumeration handed the policy plain descriptions and
+                        // released its own objects. An adapter can be removed between the two, which is not a fault.
+                        SharpGen.Runtime.Result result = factory.EnumAdapters1(choice.Index, out IDXGIAdapter1? adapter);
+                        if (result.Success && adapter is not null) return adapter;
 
-                    adapter?.Dispose();
-                    warning = $"Adapter {choice.Index} was enumerated a moment ago and is no longer there, so "
-                        + $"{D3D11AdapterSelection.EnvVarName} could not be honoured after all. Letting DXGI pick.";
-                    return null;
-                }
+                        adapter?.Dispose();
+                        warning = $"Adapter {choice.Index} was enumerated a moment ago and is no longer there, so "
+                            + $"{D3D11AdapterSelection.EnvVarName} could not be honoured after all. Letting DXGI pick.";
+                        return null;
+                    }
 
                 case D3D11AdapterChoiceKind.HighPerformance:
-                {
-                    IDXGIAdapter1? preferred = D3D11DxgiQueries.HighPerformanceAdapterWindows(factory);
-                    if (preferred is null) warning = D3D11AdapterSelection.HighPerformanceUnavailableWarning;
-                    return preferred;
-                }
+                    {
+                        IDXGIAdapter1? preferred = D3D11DxgiQueries.HighPerformanceAdapterWindows(factory);
+                        if (preferred is null) warning = D3D11AdapterSelection.HighPerformanceUnavailableWarning;
+                        return preferred;
+                    }
 
                 default:
                     return null;

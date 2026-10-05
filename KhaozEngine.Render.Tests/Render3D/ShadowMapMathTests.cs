@@ -382,11 +382,21 @@ namespace KhaozEngine.Tests.Render3D
         }
 
         [Theory]
-        [InlineData(60f, 2f)] [InlineData(60f, 12f)] [InlineData(60f, 20f)]
-        [InlineData(40f, 2f)] [InlineData(40f, 12f)] [InlineData(40f, 20f)]
-        [InlineData(25f, 2f)] [InlineData(25f, 12f)] [InlineData(25f, 20f)]
-        [InlineData(15f, 2f)] [InlineData(15f, 12f)] [InlineData(15f, 20f)]
-        [InlineData(8f, 2f)] [InlineData(8f, 12f)] [InlineData(8f, 20f)]
+        [InlineData(60f, 2f)]
+        [InlineData(60f, 12f)]
+        [InlineData(60f, 20f)]
+        [InlineData(40f, 2f)]
+        [InlineData(40f, 12f)]
+        [InlineData(40f, 20f)]
+        [InlineData(25f, 2f)]
+        [InlineData(25f, 12f)]
+        [InlineData(25f, 20f)]
+        [InlineData(15f, 2f)]
+        [InlineData(15f, 12f)]
+        [InlineData(15f, 20f)]
+        [InlineData(8f, 2f)]
+        [InlineData(8f, 12f)]
+        [InlineData(8f, 20f)]
         public void DepthPass_CasterAboveTheFocus_ShadowsIt_AtEverySunElevation(float elevationDegrees, float casterHeight)
         {
             // The invariant the whole cascade fit exists to serve, stated without a GPU: a caster standing over a

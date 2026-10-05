@@ -135,8 +135,11 @@ public static class SystemAxisGate
 
         return new Row
         {
-            Entities = entities, SeqMs = seqMs, Layer2Ms = layer2Ms,
-            Layer3CeilMs = layer3Ms, WorkFloorMs = workFloor,
+            Entities = entities,
+            SeqMs = seqMs,
+            Layer2Ms = layer2Ms,
+            Layer3CeilMs = layer3Ms,
+            WorkFloorMs = workFloor,
         };
     }
 

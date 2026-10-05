@@ -129,8 +129,11 @@ public static class TilePrefabs
             var plane = new TilePrefabPlane
             {
                 HeightsRelative = captureHeights ? new short[(w + 1) * (h + 1)] : null,
-                Underlay = new ushort[w * h], Overlay = new ushort[w * h],
-                OverlayShape = new byte[w * h], OverlayRotation = new byte[w * h], Settings = new byte[w * h],
+                Underlay = new ushort[w * h],
+                Overlay = new ushort[w * h],
+                OverlayShape = new byte[w * h],
+                OverlayRotation = new byte[w * h],
+                Settings = new byte[w * h],
             };
             if (plane.HeightsRelative is not null)
                 for (int cz = 0; cz <= h; cz++)
@@ -156,8 +159,14 @@ public static class TilePrefabs
                     TileObjectArchetype? a = catalogs.Archetype(o.ArchetypeId);
                     prefab.Objects.Add(new TilePrefabObject
                     {
-                        ArchetypeId = o.ArchetypeId, X = o.X - rect.X, Z = o.Z - rect.Z, Plane = o.Plane - planeFrom, Rotation = o.Rotation,
-                        SizeX = a?.SizeX ?? 1, SizeZ = a?.SizeZ ?? 1, Tags = o.Tags?.ToList(),
+                        ArchetypeId = o.ArchetypeId,
+                        X = o.X - rect.X,
+                        Z = o.Z - rect.Z,
+                        Plane = o.Plane - planeFrom,
+                        Rotation = o.Rotation,
+                        SizeX = a?.SizeX ?? 1,
+                        SizeZ = a?.SizeZ ?? 1,
+                        Tags = o.Tags?.ToList(),
                     });
                 }
         if (includeMarkers)
@@ -338,8 +347,14 @@ public static class TilePrefabs
             int sx = (o.Rotation & 1) == 0 ? o.SizeX : o.SizeZ;
             r.Objects.Add(new TilePrefabObject
             {
-                ArchetypeId = o.ArchetypeId, X = o.Z, Z = w - o.X - sx, Plane = o.Plane, Rotation = (o.Rotation + 1) & 3,
-                SizeX = o.SizeX, SizeZ = o.SizeZ, Tags = o.Tags?.ToList(),
+                ArchetypeId = o.ArchetypeId,
+                X = o.Z,
+                Z = w - o.X - sx,
+                Plane = o.Plane,
+                Rotation = (o.Rotation + 1) & 3,
+                SizeX = o.SizeX,
+                SizeZ = o.SizeZ,
+                Tags = o.Tags?.ToList(),
             });
         }
         foreach (TilePrefabMarker m in p.Markers)
@@ -377,11 +392,18 @@ public static class TilePrefabs
 
     static TilePrefab Clone(TilePrefab p) => new()
     {
-        Name = p.Name, Width = p.Width, Height = p.Height, PlaneCount = p.PlaneCount,
+        Name = p.Name,
+        Width = p.Width,
+        Height = p.Height,
+        PlaneCount = p.PlaneCount,
         Planes = p.Planes.Select(pl => pl is null ? null : new TilePrefabPlane
         {
-            HeightsRelative = (short[]?)pl.HeightsRelative?.Clone(), Underlay = (ushort[]?)pl.Underlay?.Clone(), Overlay = (ushort[]?)pl.Overlay?.Clone(),
-            OverlayShape = (byte[]?)pl.OverlayShape?.Clone(), OverlayRotation = (byte[]?)pl.OverlayRotation?.Clone(), Settings = (byte[]?)pl.Settings?.Clone(),
+            HeightsRelative = (short[]?)pl.HeightsRelative?.Clone(),
+            Underlay = (ushort[]?)pl.Underlay?.Clone(),
+            Overlay = (ushort[]?)pl.Overlay?.Clone(),
+            OverlayShape = (byte[]?)pl.OverlayShape?.Clone(),
+            OverlayRotation = (byte[]?)pl.OverlayRotation?.Clone(),
+            Settings = (byte[]?)pl.Settings?.Clone(),
         }).ToList(),
         Objects = p.Objects.Select(o => new TilePrefabObject { ArchetypeId = o.ArchetypeId, X = o.X, Z = o.Z, Plane = o.Plane, Rotation = o.Rotation, SizeX = o.SizeX, SizeZ = o.SizeZ, Tags = o.Tags?.ToList() }).ToList(),
         Markers = p.Markers.Select(m => new TilePrefabMarker { Name = m.Name, X = m.X, Z = m.Z, Plane = m.Plane, Tags = m.Tags?.ToList() }).ToList(),

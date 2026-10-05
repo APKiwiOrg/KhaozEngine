@@ -30,7 +30,10 @@ namespace KhaozEngine.Tests.Gui
             // A collapsed side panel's strip: two centred rows of five, flat, with nothing active.
             var strip = new TabBar(tabs, font, PanelFrame.StripRect(bounds, stripHeight: 56f))
             {
-                TabWidth = 56f, TabHeight = 26f, Columns = 5, Spacing = 4f,
+                TabWidth = 56f,
+                TabHeight = 26f,
+                Columns = 5,
+                Spacing = 4f,
                 BlockAlign = GuiAlign.Center,
                 DrawMode = TabBarDrawMode.Flat,
                 AllowNoActiveTab = true,              // either order works: the bar remembers -1 was asked for
@@ -63,7 +66,8 @@ namespace KhaozEngine.Tests.Gui
             var bar = new TabBar(new[] { LocalizedText.Raw("A"), LocalizedText.Raw("B") }, font: null,
                 new Rect(10f, 20f, 200f, 30f))
             {
-                TabWidth = 40f, TabHeight = 20f,
+                TabWidth = 40f,
+                TabHeight = 20f,
             };
 
             Assert.Equal(GuiAlign.Left, bar.BlockAlign);

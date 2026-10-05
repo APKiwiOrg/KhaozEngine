@@ -447,34 +447,34 @@ namespace KhaozEngine.Terrain
             float loadSq = r * (float)r;
             var pending = new List<Pending>();
             for (int dz = -r; dz <= r; dz++)
-            for (int dx = -r; dx <= r; dx++)
-            {
-                int chunkDistSq = dx * dx + dz * dz;
-                if (chunkDistSq > loadSq) continue;
-                var c = new ChunkCoord(pc.X + dx, pc.Z + dz);
-                if (BuildGate is { } gate && !gate.CanBuild(c)) continue;   // deferred: reconsidered next Update
-
-                Vector2 center = ChunkGrid.CenterOf(c, cs);
-                float mdx = center.X - playerPos.X, mdz = center.Y - playerPos.Z;
-                float metreDist = MathF.Sqrt(mdx * mdx + mdz * mdz);
-                ChunkRing ring = RingAt(chunkDistSq);
-                // The applied tier is the hysteresis reference, so a chunk sitting on a boundary keeps its mesh
-                // until the player really commits to the crossing. An unloaded chunk (-1) picks undamped.
-                bool loaded = _loaded.TryGetValue(c, out Entry? e);
-                int lod = _lodConfig.PickLod(metreDist, loaded ? e!.Lod : -1, _config.LodHysteresis);
-
-                if (!loaded)
-                    pending.Add(new Pending(c, lod, ring, metreDist, isLoad: true, ChunkBuildReason.FreshLoad));
-                else if (e!.Lod != lod || e.Ring != ring || e.ConfigurationGeneration != _configurationGeneration)
+                for (int dx = -r; dx <= r; dx++)
                 {
-                    ChunkBuildReason reason = e.Ring != ring
-                        ? ChunkBuildReason.RingChange
-                        : e.ConfigurationGeneration != _configurationGeneration
-                            ? ChunkBuildReason.ConfigurationChange
-                            : ChunkBuildReason.TierChange;
-                    pending.Add(new Pending(c, lod, ring, metreDist, isLoad: false, reason));
+                    int chunkDistSq = dx * dx + dz * dz;
+                    if (chunkDistSq > loadSq) continue;
+                    var c = new ChunkCoord(pc.X + dx, pc.Z + dz);
+                    if (BuildGate is { } gate && !gate.CanBuild(c)) continue;   // deferred: reconsidered next Update
+
+                    Vector2 center = ChunkGrid.CenterOf(c, cs);
+                    float mdx = center.X - playerPos.X, mdz = center.Y - playerPos.Z;
+                    float metreDist = MathF.Sqrt(mdx * mdx + mdz * mdz);
+                    ChunkRing ring = RingAt(chunkDistSq);
+                    // The applied tier is the hysteresis reference, so a chunk sitting on a boundary keeps its mesh
+                    // until the player really commits to the crossing. An unloaded chunk (-1) picks undamped.
+                    bool loaded = _loaded.TryGetValue(c, out Entry? e);
+                    int lod = _lodConfig.PickLod(metreDist, loaded ? e!.Lod : -1, _config.LodHysteresis);
+
+                    if (!loaded)
+                        pending.Add(new Pending(c, lod, ring, metreDist, isLoad: true, ChunkBuildReason.FreshLoad));
+                    else if (e!.Lod != lod || e.Ring != ring || e.ConfigurationGeneration != _configurationGeneration)
+                    {
+                        ChunkBuildReason reason = e.Ring != ring
+                            ? ChunkBuildReason.RingChange
+                            : e.ConfigurationGeneration != _configurationGeneration
+                                ? ChunkBuildReason.ConfigurationChange
+                                : ChunkBuildReason.TierChange;
+                        pending.Add(new Pending(c, lod, ring, metreDist, isLoad: false, reason));
+                    }
                 }
-            }
 
             // 3. Process nearest-first, capped at MaxLoadsPerFrame.
             pending.Sort(static (a, b) => a.Dist.CompareTo(b.Dist));
@@ -486,8 +486,13 @@ namespace KhaozEngine.Terrain
                 if (p.IsLoad)
                 {
                     object handle = _sink.Load(p.Coord, p.Lod, p.Ring);
-                    _loaded[p.Coord] = new Entry { Handle = handle, Lod = p.Lod, Ring = p.Ring,
-                        ConfigurationGeneration = _configurationGeneration };
+                    _loaded[p.Coord] = new Entry
+                    {
+                        Handle = handle,
+                        Lod = p.Lod,
+                        Ring = p.Ring,
+                        ConfigurationGeneration = _configurationGeneration
+                    };
                 }
                 else
                 {
@@ -546,54 +551,54 @@ namespace KhaozEngine.Terrain
             int r = _config.OuterRadius;
             float loadSq = r * (float)r;
             for (int dz = -r; dz <= r; dz++)
-            for (int dx = -r; dx <= r; dx++)
-            {
-                int chunkDistSq = dx * dx + dz * dz;
-                if (chunkDistSq > loadSq) continue;
-                var c = new ChunkCoord(pc.X + dx, pc.Z + dz);
-                // Abandoned: its build threw its way through MaxChunkBuildAttempts. Never request it again, which is
-                // what turns a permanently failing chunk into one hole instead of a per-frame rebuild + error (#402).
-                if (_abandoned.Contains(c)) continue;
-                if (BuildGate is { } gate && !gate.CanBuild(c)) continue;   // deferred: reconsidered next Update
-
-                Vector2 center = ChunkGrid.CenterOf(c, cs);
-                float mdx = center.X - playerPos.X, mdz = center.Y - playerPos.Z;
-                ChunkRing ring = RingAt(chunkDistSq);
-                // The applied tier is the hysteresis reference, so a chunk sitting on a boundary keeps its mesh
-                // until the player really commits to the crossing. An unloaded chunk (-1) picks undamped.
-                bool loaded = _loaded.TryGetValue(c, out Entry? e);
-                int lod = _lodConfig.PickLod(MathF.Sqrt(mdx * mdx + mdz * mdz), loaded ? e!.Lod : -1, _config.LodHysteresis);
-                int reqLod = sched.RequestedLod(c);
-                // The in-flight request already targets exactly this (tier, ring). When untracked reqLod is -1, so
-                // this is false and a fresh request goes out.
-                bool requestMatches = reqLod == lod && sched.RequestedRing(c) == ring;
-
-                if (loaded)
+                for (int dx = -r; dx <= r; dx++)
                 {
-                    if (e!.Lod != lod || e.Ring != ring || e.ConfigurationGeneration != _configurationGeneration)
+                    int chunkDistSq = dx * dx + dz * dz;
+                    if (chunkDistSq > loadSq) continue;
+                    var c = new ChunkCoord(pc.X + dx, pc.Z + dz);
+                    // Abandoned: its build threw its way through MaxChunkBuildAttempts. Never request it again, which is
+                    // what turns a permanently failing chunk into one hole instead of a per-frame rebuild + error (#402).
+                    if (_abandoned.Contains(c)) continue;
+                    if (BuildGate is { } gate && !gate.CanBuild(c)) continue;   // deferred: reconsidered next Update
+
+                    Vector2 center = ChunkGrid.CenterOf(c, cs);
+                    float mdx = center.X - playerPos.X, mdz = center.Y - playerPos.Z;
+                    ChunkRing ring = RingAt(chunkDistSq);
+                    // The applied tier is the hysteresis reference, so a chunk sitting on a boundary keeps its mesh
+                    // until the player really commits to the crossing. An unloaded chunk (-1) picks undamped.
+                    bool loaded = _loaded.TryGetValue(c, out Entry? e);
+                    int lod = _lodConfig.PickLod(MathF.Sqrt(mdx * mdx + mdz * mdz), loaded ? e!.Lod : -1, _config.LodHysteresis);
+                    int reqLod = sched.RequestedLod(c);
+                    // The in-flight request already targets exactly this (tier, ring). When untracked reqLod is -1, so
+                    // this is false and a fresh request goes out.
+                    bool requestMatches = reqLod == lod && sched.RequestedRing(c) == ring;
+
+                    if (loaded)
                     {
-                        if (!requestMatches)
+                        if (e!.Lod != lod || e.Ring != ring || e.ConfigurationGeneration != _configurationGeneration)
                         {
-                            ChunkBuildReason reason = e.Ring != ring
-                                ? ChunkBuildReason.RingChange
-                                : e.ConfigurationGeneration != _configurationGeneration
-                                    ? ChunkBuildReason.ConfigurationChange
-                                    : ChunkBuildReason.TierChange;
-                            sched.Request(c, lod, ring, reason);   // re-LOD / ring change (supersede a stale one)
-                            CountBuild(reason);
+                            if (!requestMatches)
+                            {
+                                ChunkBuildReason reason = e.Ring != ring
+                                    ? ChunkBuildReason.RingChange
+                                    : e.ConfigurationGeneration != _configurationGeneration
+                                        ? ChunkBuildReason.ConfigurationChange
+                                        : ChunkBuildReason.TierChange;
+                                sched.Request(c, lod, ring, reason);   // re-LOD / ring change (supersede a stale one)
+                                CountBuild(reason);
+                            }
+                        }
+                        else if (reqLod != -1)
+                        {
+                            sched.Cancel(c);   // tier + ring returned to the applied state, drop the now-stale in-flight rebuild
                         }
                     }
-                    else if (reqLod != -1)
+                    else if (!requestMatches)
                     {
-                        sched.Cancel(c);   // tier + ring returned to the applied state, drop the now-stale in-flight rebuild
+                        sched.Request(c, lod, ring, ChunkBuildReason.FreshLoad);   // fresh load, or re-target an in-flight load whose tier/ring changed
+                        _freshLoads++;
                     }
                 }
-                else if (!requestMatches)
-                {
-                    sched.Request(c, lod, ring, ChunkBuildReason.FreshLoad);   // fresh load, or re-target an in-flight load whose tier/ring changed
-                    _freshLoads++;
-                }
-            }
 
             // 3. Apply completed builds, nearest-first, capped at MaxLoadsPerFrame (the GPU upload is what we budget).
             // Restamp the comparison state, then reuse the bound delegate (_nearestFirst) rather than closing over
@@ -634,8 +639,8 @@ namespace KhaozEngine.Terrain
             ChunkCoord min = ChunkGrid.CoordOf(area.MinX, area.MinZ, cs);
             ChunkCoord max = ChunkGrid.CoordOf(area.MaxX, area.MaxZ, cs);
             for (int z = min.Z; z <= max.Z; z++)
-            for (int x = min.X; x <= max.X; x++)
-                InvalidateLoaded(new ChunkCoord(x, z));
+                for (int x = min.X; x <= max.X; x++)
+                    InvalidateLoaded(new ChunkCoord(x, z));
         }
 
         /// <summary>Single-chunk form of <see cref="Invalidate(RectArea)"/>: rebuild the chunk in place at its
@@ -729,8 +734,13 @@ namespace KhaozEngine.Terrain
                 ChunkBuild<object> rb = builds[i];
                 object? existing = _loaded.TryGetValue(rb.Coord, out Entry? e) ? e.Handle : null;
                 object handle = _asyncSink!.Apply(rb.Coord, rb.Lod, rb.Ring, rb.Payload, existing);
-                _loaded[rb.Coord] = new Entry { Handle = handle, Lod = rb.Lod, Ring = rb.Ring,
-                    ConfigurationGeneration = _configurationGeneration };
+                _loaded[rb.Coord] = new Entry
+                {
+                    Handle = handle,
+                    Lod = rb.Lod,
+                    Ring = rb.Ring,
+                    ConfigurationGeneration = _configurationGeneration
+                };
                 // A build that landed clears this chunk's failure streak, so the cap only ever counts CONSECUTIVE
                 // failures and a chunk that recovers is not abandoned later for damage it already walked off.
                 if (_attempts.Count > 0) _attempts.Remove(rb.Coord);

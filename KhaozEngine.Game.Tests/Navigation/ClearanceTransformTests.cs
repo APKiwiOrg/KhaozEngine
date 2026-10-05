@@ -53,31 +53,31 @@ public class ClearanceTransformTests
         // exhaustive relaxation until fixpoint, seeded exactly like Compute
         var d = new int[w * h];
         for (int z = 0; z < h; z++)
-        for (int x = 0; x < w; x++)
-        {
-            int i = z * w + x;
-            int edge = System.Math.Min(System.Math.Min(x, z), System.Math.Min(w - 1 - x, h - 1 - z)) + 1;
-            d[i] = blocked[i] ? 0 : System.Math.Min(255, edge * 2);
-        }
+            for (int x = 0; x < w; x++)
+            {
+                int i = z * w + x;
+                int edge = System.Math.Min(System.Math.Min(x, z), System.Math.Min(w - 1 - x, h - 1 - z)) + 1;
+                d[i] = blocked[i] ? 0 : System.Math.Min(255, edge * 2);
+            }
         bool changed = true;
         while (changed)
         {
             changed = false;
             for (int z = 0; z < h; z++)
-            for (int x = 0; x < w; x++)
-            {
-                int i = z * w + x;
-                for (int dz = -1; dz <= 1; dz++)
-                for (int dx = -1; dx <= 1; dx++)
+                for (int x = 0; x < w; x++)
                 {
-                    if (dx == 0 && dz == 0) continue;
-                    int nx = x + dx, nz = z + dz;
-                    if (nx < 0 || nz < 0 || nx >= w || nz >= h) continue;
-                    int cost = (dx == 0 || dz == 0) ? 2 : 3;
-                    int cand = d[nz * w + nx] + cost;
-                    if (cand < d[i]) { d[i] = cand; changed = true; }
+                    int i = z * w + x;
+                    for (int dz = -1; dz <= 1; dz++)
+                        for (int dx = -1; dx <= 1; dx++)
+                        {
+                            if (dx == 0 && dz == 0) continue;
+                            int nx = x + dx, nz = z + dz;
+                            if (nx < 0 || nz < 0 || nx >= w || nz >= h) continue;
+                            int cost = (dx == 0 || dz == 0) ? 2 : 3;
+                            int cand = d[nz * w + nx] + cost;
+                            if (cand < d[i]) { d[i] = cand; changed = true; }
+                        }
                 }
-            }
         }
         var result = new byte[w * h];
         for (int i = 0; i < d.Length; i++) result[i] = (byte)System.Math.Min(255, d[i]);

@@ -243,14 +243,23 @@ namespace KhaozEngine.Tests.Gpu
 
             scene.DrawParticle(new ParticleSprite
             {
-                Position = new Vector3(0.4f, 1.4f, 0.2f), Size = 0.5f, Color = new Color(1f, 0.8f, 0.4f, 1f),
-                Shape = ParticleShape.SoftGlow, ShapeParam = 0.3f, LifeNorm = 0.4f, Seed = 0.21f,
+                Position = new Vector3(0.4f, 1.4f, 0.2f),
+                Size = 0.5f,
+                Color = new Color(1f, 0.8f, 0.4f, 1f),
+                Shape = ParticleShape.SoftGlow,
+                ShapeParam = 0.3f,
+                LifeNorm = 0.4f,
+                Seed = 0.21f,
                 Blend = BillboardBlend.Additive,
             });
             scene.DrawDistortion(new DistortionSprite
             {
-                Position = new Vector3(-0.6f, 1.2f, 0.8f), Size = 1.2f,
-                Shape = DistortionShape.Ripple, ShapeParam = 0.25f, Strength = 1.8f, Seed = 0.37f,
+                Position = new Vector3(-0.6f, 1.2f, 0.8f),
+                Size = 1.2f,
+                Shape = DistortionShape.Ripple,
+                ShapeParam = 0.25f,
+                Strength = 1.8f,
+                Seed = 0.37f,
             });
 
             scene.DrawBeam(new Vector3(-2.5f, 1.1f, 0f), new Vector3(2.5f, 1.1f, 0f), 0.35f,
@@ -277,11 +286,16 @@ namespace KhaozEngine.Tests.Gpu
 
         static GroundDecal Circle(float cx, float cz, float radius, DecalBlend blend = DecalBlend.Alpha) => new()
         {
-            Shape = DecalShape.Circle, Center = new Vector3(cx, 0f, cz),
+            Shape = DecalShape.Circle,
+            Center = new Vector3(cx, 0f, cz),
             Size = new Vector4(radius, 0f, 0f, 0f),
-            FillColor = new Color(1f, 0.2f, 0.1f, 0.6f), OutlineColor = new Color(1f, 0.9f, 0.2f, 0.9f),
-            EdgeThickness = 0.08f, FillFraction = 1f, Blend = blend,
-            YTolerance = 0.3f, MaxStep = 0.4f,
+            FillColor = new Color(1f, 0.2f, 0.1f, 0.6f),
+            OutlineColor = new Color(1f, 0.9f, 0.2f, 0.9f),
+            EdgeThickness = 0.08f,
+            FillFraction = 1f,
+            Blend = blend,
+            YTolerance = 0.3f,
+            MaxStep = 0.4f,
         };
 
         static TrailSample[] Ribbon(float z) =>

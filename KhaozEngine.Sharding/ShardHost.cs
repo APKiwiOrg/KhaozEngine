@@ -243,7 +243,7 @@ public sealed partial class ShardHost : IDisposable
             if (frameAnchoring && physics is not null && physics.Origin != frame.Anchor)
             {
                 Vector3 badOrigin = physics.Origin;   // captured before Dispose, defensive against a backend that
-                                                       // stops answering queries once disposed
+                                                      // stops answering queries once disposed
                 physics.Dispose();   // no CellSim will ever own it now: this world would otherwise leak silently
                 throw new ArgumentException(
                     $"ShardedWorldServerConfig.PhysicsWorldFactory returned a world at Origin {badOrigin} for " +
@@ -687,23 +687,23 @@ public sealed partial class ShardHost : IDisposable
 
             long netId = id.Value;
             for (int dx = -1; dx <= 1; dx++)
-            for (int dy = -1; dy <= 1; dy++)
-            {
-                if (dx == 0 && dy == 0) continue;
-                if (dx == -1 && !nearW) continue;
-                if (dx == 1 && !nearE) continue;
-                if (dy == -1 && !nearS) continue;
-                if (dy == 1 && !nearN) continue;
-
-                var target = new CellCoord(c.X + dx, c.Y + dy);
-                byTarget ??= new Dictionary<CellCoord, HashSet<long>>();
-                if (!byTarget.TryGetValue(target, out HashSet<long>? set))
+                for (int dy = -1; dy <= 1; dy++)
                 {
-                    set = new HashSet<long>();
-                    byTarget[target] = set;
+                    if (dx == 0 && dy == 0) continue;
+                    if (dx == -1 && !nearW) continue;
+                    if (dx == 1 && !nearE) continue;
+                    if (dy == -1 && !nearS) continue;
+                    if (dy == 1 && !nearN) continue;
+
+                    var target = new CellCoord(c.X + dx, c.Y + dy);
+                    byTarget ??= new Dictionary<CellCoord, HashSet<long>>();
+                    if (!byTarget.TryGetValue(target, out HashSet<long>? set))
+                    {
+                        set = new HashSet<long>();
+                        byTarget[target] = set;
+                    }
+                    set.Add(netId);
                 }
-                set.Add(netId);
-            }
         });
 
         return byTarget;

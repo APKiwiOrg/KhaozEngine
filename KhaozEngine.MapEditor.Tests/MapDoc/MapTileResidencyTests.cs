@@ -292,14 +292,20 @@ namespace KhaozEngine.Tests.MapDoc
             // already told is gone.
             var doc = new MapDocument
             {
-                Id = "publish-finally-check", DisplayName = "Publish Finally Check",
+                Id = "publish-finally-check",
+                DisplayName = "Publish Finally Check",
                 Bounds = new MapBounds { MinX = -4096f, MinZ = -4096f, MaxX = 4096f, MaxZ = 4096f },
                 TileSize = ResidencyFixture.Tile,
             };
             doc.Placements.Add(new MapPlacement { Id = "good", Kind = "rock", X = 10f, Z = 20f, Y = 0f });   // tile (0, 0)
             doc.Placements.Add(new MapPlacement                                                              // tile (0, 1), fails per-tile validation
             {
-                Id = "bad", Kind = "rock", X = 10f, Z = ResidencyFixture.Tile + 20f, Y = 0f, Scale = 0f,
+                Id = "bad",
+                Kind = "rock",
+                X = 10f,
+                Z = ResidencyFixture.Tile + 20f,
+                Y = 0f,
+                Scale = 0f,
             });
             using MapDocumentSource source = MapDocumentSource.FromDocument(doc);
             var sink = new RecordingTileSink();
@@ -318,8 +324,8 @@ namespace KhaozEngine.Tests.MapDoc
             Assert.Single(into);
 
             dispatcher.RunAt(0);                             // completes the BAD tile's read. The failure is
-                                                               // caught inside the scheduled body and surfaces
-                                                               // at Pump() instead, on the NEXT Update
+                                                             // caught inside the scheduled body and surfaces
+                                                             // at Pump() instead, on the NEXT Update
 
             // Move far enough that tile (0, 0) departs (beyond UnloadRadius 2) while tile (0, 1)'s failed read
             // stays tracked (still within UnloadRadius 2), so Pump() throws in the SAME update DropDeparted

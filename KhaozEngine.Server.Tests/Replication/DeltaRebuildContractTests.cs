@@ -55,8 +55,12 @@ public class DeltaRebuildContractTests
 
         var custom = new DeltaRebuildOptions
         {
-            MaxRetainedProjections = 8, MaxRetainedPayloadBytes = 4096, MaxKeyframeBytes = 1024,
-            MaxEntities = 10, MaxComponents = 20, NoAckSendWindow = 5,
+            MaxRetainedProjections = 8,
+            MaxRetainedPayloadBytes = 4096,
+            MaxKeyframeBytes = 1024,
+            MaxEntities = 10,
+            MaxComponents = 20,
+            NoAckSendWindow = 5,
         };
         DeltaRebuildOptions charged = custom.WithEnvelopeBytes(12);
         Assert.NotSame(custom, charged);
@@ -107,7 +111,8 @@ public class DeltaRebuildContractTests
         Assert.Equal(nameof(DeltaRebuildOptions.MaxRetainedPayloadBytes),
             Assert.Throws<ArgumentOutOfRangeException>(() => new DeltaRebuildOptions
             {
-                MaxKeyframeBytes = 1000, MaxRetainedPayloadBytes = 3000,
+                MaxKeyframeBytes = 1000,
+                MaxRetainedPayloadBytes = 3000,
             }.WithEnvelopeBytes(12)).ParamName);
         Assert.Equal(12, new DeltaRebuildOptions { MaxKeyframeBytes = 1000, MaxRetainedPayloadBytes = 4000 }
             .WithEnvelopeBytes(12).EnvelopeBytes);

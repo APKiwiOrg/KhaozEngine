@@ -75,16 +75,16 @@ namespace KhaozEngine.Gpu.D3D11.Internal
         /// </summary>
         internal static D3D11SamplerDesc Create(int filter, int addressU, int addressV, int addressW,
             uint maxAnisotropy, float mipLodBias) => new()
-        {
-            Filter = filter,
-            AddressU = addressU,
-            AddressV = addressV,
-            AddressW = addressW,
-            MipLodBias = mipLodBias,
-            MaxAnisotropy = maxAnisotropy,
-            ComparisonFunc = ComparisonNever,
-            MinLod = 0f,
-            MaxLod = uint.MaxValue,
-        };
+            {
+                Filter = filter,
+                AddressU = addressU,
+                AddressV = addressV,
+                AddressW = addressW,
+                MipLodBias = mipLodBias,
+                MaxAnisotropy = maxAnisotropy,
+                ComparisonFunc = ComparisonNever,
+                MinLod = 0f,
+                MaxLod = uint.MaxValue,
+            };
     }
 }

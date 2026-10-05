@@ -172,7 +172,11 @@ public sealed class PerspectiveExpectationTests
         // 30 px at 1/180 m per pixel and a depth of 4 m is a fade height of 2/3 m, so the 1 m blade is 1.5 of them.
         var settings = new FoliageRenderSettings
         {
-            DrawRadius = 100f, DistantDensity = 1f, WindStrength = .2f, WindDirection = Vector2.UnitX, WindFadeBladePixels = 30f,
+            DrawRadius = 100f,
+            DistantDensity = 1f,
+            WindStrength = .2f,
+            WindDirection = Vector2.UnitX,
+            WindFadeBladePixels = 30f,
         };
         FoliageUniforms faded = FoliageUniforms.Build(Vector3.Zero, settings, [], 0f);
         faded.WindFade.Y = 1f / 180f;

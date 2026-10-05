@@ -195,8 +195,15 @@ namespace KhaozEngine.Tests.Render3D
         [Fact]
         public void Enabled_damping_drives_the_eye_and_view_through_the_effective_target()
         {
-            var cam = new FollowCamera3D { Target = Vector3.Zero, Yaw = 0f, HeightOffset = 0f, MinPitch = 0f,
-                EnableTargetDamping = true, TargetDampingRate = 10f };
+            var cam = new FollowCamera3D
+            {
+                Target = Vector3.Zero,
+                Yaw = 0f,
+                HeightOffset = 0f,
+                MinPitch = 0f,
+                EnableTargetDamping = true,
+                TargetDampingRate = 10f
+            };
             cam.Pitch = 0f; cam.Distance = 10f;
             cam.AdvanceTarget(1f / 60f);             // lock onto origin
             cam.Target = new Vector3(20, 0, 0);      // jump the target far away

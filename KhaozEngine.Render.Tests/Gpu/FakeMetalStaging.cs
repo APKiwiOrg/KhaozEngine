@@ -77,19 +77,23 @@ namespace KhaozEngine.Tests.Gpu
     {
         /// <summary>Every buffer-to-buffer copy encoded, in order.</summary>
         internal List<(IntPtr Encoder, IntPtr Source, ulong SourceOffset, IntPtr Destination,
-            ulong DestinationOffset, ulong Size)> Copies { get; } = new();
+            ulong DestinationOffset, ulong Size)> Copies
+        { get; } = new();
 
         /// <summary>Every texture-to-texture copy, in order.</summary>
         internal List<(IntPtr Encoder, IntPtr Source, IntPtr Destination, MetalTextureRegion Region)>
-            TextureCopies { get; } = new();
+            TextureCopies
+        { get; } = new();
 
         /// <summary>Every readback (texture into a staging buffer), in order.</summary>
         internal List<(IntPtr Encoder, IntPtr Source, IntPtr Destination, MetalBufferImageRegion Region)>
-            Readbacks { get; } = new();
+            Readbacks
+        { get; } = new();
 
         /// <summary>Every upload (staging buffer into a texture), in order.</summary>
         internal List<(IntPtr Encoder, IntPtr Source, IntPtr Destination, MetalBufferImageRegion Region)>
-            Uploads { get; } = new();
+            Uploads
+        { get; } = new();
 
         /// <summary>Every mip-chain generation, in order.</summary>
         internal List<(IntPtr Encoder, IntPtr Texture)> MipChains { get; } = new();

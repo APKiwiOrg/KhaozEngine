@@ -49,7 +49,10 @@ public class TeleportEpochTests
     {
         MovementState back = RoundTrip(new MovementState
         {
-            VerticalVelocity = -1.5f, Grounded = true, Swimming = false, TeleportEpoch = 42u,
+            VerticalVelocity = -1.5f,
+            Grounded = true,
+            Swimming = false,
+            TeleportEpoch = 42u,
         });
         Assert.Equal(42u, back.TeleportEpoch);
         // The other movement fields still round-trip alongside it (the epoch is an additional built-in field).
@@ -163,7 +166,9 @@ public class TeleportEpochTests
         // must advance and reach the client there too (the sharded head stores it in the cell world's MovementState).
         var config = new ShardedWorldServerConfig
         {
-            TickSeconds = 1f / 30f, MaxPlayers = 8, SelfRescueDestination = _ => new Vector3(80f, 0f, -80f),
+            TickSeconds = 1f / 30f,
+            MaxPlayers = 8,
+            SelfRescueDestination = _ => new Vector3(80f, 0f, -80f),
         };
         (ShardedWorldServer server, WorldClient client, _) = ConnectSharded(config);
         int slot = server.JoinedSlots.First();

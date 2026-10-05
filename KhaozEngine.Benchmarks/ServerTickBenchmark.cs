@@ -33,19 +33,19 @@ public static class ServerTickBenchmark
         // Populate in row-major order so cell creation order (and thus ShardHost.Cells iteration) is stable, and
         // the RNG is consumed in a fixed order - the two facts that make the population bit-reproducible.
         for (int cy = 0; cy < config.GridHeight; cy++)
-        for (int cx = 0; cx < config.GridWidth; cx++)
-        {
-            float baseX = cx * s, baseY = cy * s;
-            for (int i = 0; i < config.EntitiesPerCell; i++)
+            for (int cx = 0; cx < config.GridWidth; cx++)
             {
-                // Offsets in [0.05, 0.95]·cellSize keep every entity safely inside cell (cx,cy) so it routes there.
-                float x = baseX + (0.05f + 0.9f * rng.NextFloat()) * s;
-                float y = baseY + (0.05f + 0.9f * rng.NextFloat()) * s;
-                Entity e = host.SpawnAt(x, y, out CellSim cell);
-                cell.World.Set(e, new BenchPosition { X = x, Y = y });
-                cell.World.Set(e, new BenchVelocity { X = (rng.NextFloat() - 0.5f) * 2f, Y = (rng.NextFloat() - 0.5f) * 2f });
+                float baseX = cx * s, baseY = cy * s;
+                for (int i = 0; i < config.EntitiesPerCell; i++)
+                {
+                    // Offsets in [0.05, 0.95]·cellSize keep every entity safely inside cell (cx,cy) so it routes there.
+                    float x = baseX + (0.05f + 0.9f * rng.NextFloat()) * s;
+                    float y = baseY + (0.05f + 0.9f * rng.NextFloat()) * s;
+                    Entity e = host.SpawnAt(x, y, out CellSim cell);
+                    cell.World.Set(e, new BenchPosition { X = x, Y = y });
+                    cell.World.Set(e, new BenchVelocity { X = (rng.NextFloat() - 0.5f) * 2f, Y = (rng.NextFloat() - 0.5f) * 2f });
+                }
             }
-        }
 
         // Register the S systems after population, so every cell exists and gets the full system set.
         foreach (CellSim cell in host.Cells)

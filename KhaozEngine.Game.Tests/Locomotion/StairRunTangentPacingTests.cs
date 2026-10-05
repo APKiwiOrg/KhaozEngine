@@ -179,8 +179,11 @@ public class StairRunTangentPacingTests
         });
         var clips = new Dictionary<LocomotionState, AnimationClip>
         {
-            [LocomotionState.Idle] = Park("idle"), [LocomotionState.Walk] = Park("walk"),
-            [LocomotionState.Run] = Park("run"), [LocomotionState.Jump] = Park("jump"), [LocomotionState.Fall] = Park("fall"),
+            [LocomotionState.Idle] = Park("idle"),
+            [LocomotionState.Walk] = Park("walk"),
+            [LocomotionState.Run] = Park("run"),
+            [LocomotionState.Jump] = Park("jump"),
+            [LocomotionState.Fall] = Park("fall"),
         };
         var anim = new AnimatedCharacter(skeleton, clips, new LocomotionThresholds(0.1f, 9f));
 

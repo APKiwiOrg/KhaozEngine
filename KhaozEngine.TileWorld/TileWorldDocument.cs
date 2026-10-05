@@ -168,7 +168,12 @@ public sealed partial class TileWorldDocument
         TileRegion region = RequireRegion(x, z);
         var o = new TileObject
         {
-            Id = id, ArchetypeId = archetypeId, X = x, Z = z, Plane = plane, Rotation = rotation & 3,
+            Id = id,
+            ArchetypeId = archetypeId,
+            X = x,
+            Z = z,
+            Plane = plane,
+            Rotation = rotation & 3,
             Tags = tags is null ? null : tags.ToList(),
         };
         region.Objects.Add(o);

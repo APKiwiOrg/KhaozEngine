@@ -19,14 +19,14 @@ namespace KhaozEngine.Terrain
             ChunkCoord max = ChunkGrid.CoordOf(area.MaxX, area.MaxZ, cs);
             int refreshed = 0;
             for (int z = min.Z; z <= max.Z; z++)
-            for (int x = min.X; x <= max.X; x++)
-            {
-                var coord = new ChunkCoord(x, z);
-                if (!_loaded.TryGetValue(coord, out Entry? e)) continue;
-                if (_sink is IChunkPropRefreshSink props) props.RefreshProps(coord, e.Handle);
-                else InvalidateLoaded(coord);
-                refreshed++;
-            }
+                for (int x = min.X; x <= max.X; x++)
+                {
+                    var coord = new ChunkCoord(x, z);
+                    if (!_loaded.TryGetValue(coord, out Entry? e)) continue;
+                    if (_sink is IChunkPropRefreshSink props) props.RefreshProps(coord, e.Handle);
+                    else InvalidateLoaded(coord);
+                    refreshed++;
+                }
             return refreshed;
         }
     }

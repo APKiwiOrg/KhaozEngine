@@ -114,13 +114,18 @@ public static class TileCollisionBaker
     /// <summary>The edge a wall archetype occupies for a rotation: 0 west, 1 north, 2 east, 3 south.</summary>
     public static TileDirection WallFacing(int rotation) => (rotation & 3) switch
     {
-        0 => TileDirection.W, 1 => TileDirection.N, 2 => TileDirection.E, _ => TileDirection.S,
+        0 => TileDirection.W,
+        1 => TileDirection.N,
+        2 => TileDirection.E,
+        _ => TileDirection.S,
     };
 
     static TileDirection Opposite(TileDirection d) => d switch
     {
-        TileDirection.W => TileDirection.E, TileDirection.E => TileDirection.W,
-        TileDirection.N => TileDirection.S, TileDirection.S => TileDirection.N,
+        TileDirection.W => TileDirection.E,
+        TileDirection.E => TileDirection.W,
+        TileDirection.N => TileDirection.S,
+        TileDirection.S => TileDirection.N,
         _ => throw new ArgumentOutOfRangeException(nameof(d)),
     };
 

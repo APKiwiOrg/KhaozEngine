@@ -79,20 +79,20 @@ namespace KhaozEngine.Render3D
                 int j1 = Math.Clamp((int)MathF.Ceiling((MathF.Max(a.Z, MathF.Max(b.Z, c.Z)) - minZ) / cell), 0, h - 1);
 
                 for (int j = j0; j <= j1; j++)
-                for (int i = i0; i <= i1; i++)
-                {
-                    float px = minX + i * cell, pz = minZ + j * cell;
-                    // Barycentric of (px,pz) in the XZ triangle.
-                    float dpx = px - a.X, dpz = pz - a.Z;
-                    float vb = (dpx * v1z - v1x * dpz) * inv;   // weight of b
-                    float vc = (v0x * dpz - dpx * v0z) * inv;   // weight of c
-                    float va = 1f - vb - vc;                    // weight of a
-                    const float eps = -1e-4f;
-                    if (va < eps || vb < eps || vc < eps) continue; // outside this triangle
-                    float y = va * a.Y + vb * b.Y + vc * c.Y;
-                    int cellIdx = j * w + i;
-                    if (float.IsNaN(heights[cellIdx]) || y > heights[cellIdx]) heights[cellIdx] = y;
-                }
+                    for (int i = i0; i <= i1; i++)
+                    {
+                        float px = minX + i * cell, pz = minZ + j * cell;
+                        // Barycentric of (px,pz) in the XZ triangle.
+                        float dpx = px - a.X, dpz = pz - a.Z;
+                        float vb = (dpx * v1z - v1x * dpz) * inv;   // weight of b
+                        float vc = (v0x * dpz - dpx * v0z) * inv;   // weight of c
+                        float va = 1f - vb - vc;                    // weight of a
+                        const float eps = -1e-4f;
+                        if (va < eps || vb < eps || vc < eps) continue; // outside this triangle
+                        float y = va * a.Y + vb * b.Y + vc * c.Y;
+                        int cellIdx = j * w + i;
+                        if (float.IsNaN(heights[cellIdx]) || y > heights[cellIdx]) heights[cellIdx] = y;
+                    }
             }
             return new PropSurface(w, h, cell, minX, minZ, heights);
         }

@@ -92,7 +92,8 @@ public sealed class TilePresenter
     /// <exception cref="ArgumentNullException"><paramref name="document"/> is null.</exception>
     public TilePresenter(TileWorldDocument document)
         : this((document ?? throw new ArgumentNullException(nameof(document))).TileSize, document.PlaneHeight,
-            new TileDocumentGroundHeight(document)) { }
+            new TileDocumentGroundHeight(document))
+    { }
 
     /// <summary>Builds a presenter from a loaded document AND the catalogs its objects reference, so a pose stands
     /// on the higher of the terrain and any walkable object top covering it (a bridge deck, a dock, a pier). It
@@ -104,7 +105,8 @@ public sealed class TilePresenter
     /// null.</exception>
     public TilePresenter(TileWorldDocument document, TileWorldCatalogs catalogs)
         : this((document ?? throw new ArgumentNullException(nameof(document))).TileSize, document.PlaneHeight,
-            new TileDocumentGroundHeight(document, catalogs)) { }
+            new TileDocumentGroundHeight(document, catalogs))
+    { }
 
     /// <summary>Metres per tile.</summary>
     public float TileSize { get; }

@@ -41,7 +41,9 @@ public sealed class EditorPlacementPickingTests
         var doc = new EditorDocument(md);
         var c = new EditorToolController(doc)
         {
-            Field = Field(), HeightOf = static _ => KindHeight, GizmoScale = 1f,
+            Field = Field(),
+            HeightOf = static _ => KindHeight,
+            GizmoScale = 1f,
             PlacementDrawnAt = static (x, _) => x < 100f,
         };
 

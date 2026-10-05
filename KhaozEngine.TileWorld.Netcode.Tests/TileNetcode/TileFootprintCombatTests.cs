@@ -185,7 +185,11 @@ public class TileFootprintCombatTests
         var home = new TileCoord(17, 20, 0);
         TileActorSpawner spawner = h.Server.Actors.Add(new TileActorDefinition
         {
-            Id = "cow", MaxHealth = 100, WanderRadius = 0, LeashRadius = 10, FootprintSize = 2,
+            Id = "cow",
+            MaxHealth = 100,
+            WanderRadius = 0,
+            LeashRadius = 10,
+            FootprintSize = 2,
         }, home);
         h.Frames(8);
         long player = h.Client.LocalNetId;

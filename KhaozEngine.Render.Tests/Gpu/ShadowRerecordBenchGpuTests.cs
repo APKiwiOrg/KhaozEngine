@@ -308,7 +308,9 @@ namespace KhaozEngine.Tests.Gpu
                 using GpuDeviceContext ctx = GpuDeviceContext.CreateHeadless();
                 using var preview = new Render3DPreview(ctx.GpuDevice, W, H, new ShadowSettings
                 {
-                    Mode = ShadowMode.ShadowMap, ShadowMapResolution = 512, ShadowCascadeCount = Cascades,
+                    Mode = ShadowMode.ShadowMap,
+                    ShadowMapResolution = 512,
+                    ShadowCascadeCount = Cascades,
                     ShadowLightHoldTexels = 0f,
                 });
                 Scene3D scene = preview.Scene;

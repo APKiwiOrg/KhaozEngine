@@ -75,12 +75,12 @@ namespace KhaozEngine.Tests.Gpu
 
             bool anyDifference = false;
             for (int y = y0; y < y1 && !anyDifference; y++)
-            for (int x = x0; x < x1 && !anyDifference; x++)
-            {
-                int i = (y * W + x) * 4;
-                if (hovered[i] != idle[i] || hovered[i + 1] != idle[i + 1] || hovered[i + 2] != idle[i + 2])
-                    anyDifference = true;
-            }
+                for (int x = x0; x < x1 && !anyDifference; x++)
+                {
+                    int i = (y * W + x) * 4;
+                    if (hovered[i] != idle[i] || hovered[i + 1] != idle[i + 1] || hovered[i + 2] != idle[i + 2])
+                        anyDifference = true;
+                }
 
             Assert.True(anyDifference, "the tooltip's own footprint should render differently while hovering the close button");
         }

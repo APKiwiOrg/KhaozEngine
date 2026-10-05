@@ -69,40 +69,40 @@ namespace KhaozEngine.Terrain
 
             // --- surface grid -------------------------------------------------
             for (int iz = 0; iz <= res; iz++)
-            for (int ix = 0; ix <= res; ix++)
-            {
-                // Sample ABSOLUTE (the field is authored in world space), store CHUNK-LOCAL (see the class doc).
-                float lx = (float)ix / res * region.Size;
-                float lz = (float)iz / res * region.Size;
-                float x = region.OriginX + lx;
-                float z = region.OriginZ + lz;
-                float h = field.SampleHeight(x, z);
-                var n = field.SampleNormal(x, z);
-                float slope01 = 1f - n.Y;
-                // Biome shares, not just the dominant biome: the default mix fades a biome's tilt across the band's
-                // blend window, where a discrete biome would switch it along one triangle row. Dominant is exactly
-                // SampleBiome, so the rule still sees the biome it always did.
-                BiomeWeights biomes = field.SampleBiomeWeights(x, z);
-                BiomeId biome = biomes.Dominant;
-                var w = TerrainSplatWeights.FromBlend(h, slope01, biomes, field.WaterLevel, snowLine);
-                // Consumer splat rule (issue #373), presentation only. Null is the whole pre-rule path: the engine's
-                // weights go straight into the vertex. The rule sees the engine's own result as Default so "the
-                // engine's mix plus a sand band" does not have to reimplement (and then drift from) the default mix.
-                if (splatRule is not null) w = splatRule(new TerrainSplatContext(h, slope01, biome, x, z, w));
-                verts[vi] = new ModelVertex(new Vector3(lx, h, lz), n, TerrainRamp.Of(w), new Vector2((float)ix / res, (float)iz / res));
-                splat[vi] = w;
-                vi++;
-            }
+                for (int ix = 0; ix <= res; ix++)
+                {
+                    // Sample ABSOLUTE (the field is authored in world space), store CHUNK-LOCAL (see the class doc).
+                    float lx = (float)ix / res * region.Size;
+                    float lz = (float)iz / res * region.Size;
+                    float x = region.OriginX + lx;
+                    float z = region.OriginZ + lz;
+                    float h = field.SampleHeight(x, z);
+                    var n = field.SampleNormal(x, z);
+                    float slope01 = 1f - n.Y;
+                    // Biome shares, not just the dominant biome: the default mix fades a biome's tilt across the band's
+                    // blend window, where a discrete biome would switch it along one triangle row. Dominant is exactly
+                    // SampleBiome, so the rule still sees the biome it always did.
+                    BiomeWeights biomes = field.SampleBiomeWeights(x, z);
+                    BiomeId biome = biomes.Dominant;
+                    var w = TerrainSplatWeights.FromBlend(h, slope01, biomes, field.WaterLevel, snowLine);
+                    // Consumer splat rule (issue #373), presentation only. Null is the whole pre-rule path: the engine's
+                    // weights go straight into the vertex. The rule sees the engine's own result as Default so "the
+                    // engine's mix plus a sand band" does not have to reimplement (and then drift from) the default mix.
+                    if (splatRule is not null) w = splatRule(new TerrainSplatContext(h, slope01, biome, x, z, w));
+                    verts[vi] = new ModelVertex(new Vector3(lx, h, lz), n, TerrainRamp.Of(w), new Vector2((float)ix / res, (float)iz / res));
+                    splat[vi] = w;
+                    vi++;
+                }
             for (int iz = 0; iz < res; iz++)
-            for (int ix = 0; ix < res; ix++)
-            {
-                uint i0 = (uint)(iz * cols + ix);
-                uint i1 = (uint)(iz * cols + ix + 1);
-                uint i2 = (uint)((iz + 1) * cols + ix);
-                uint i3 = (uint)((iz + 1) * cols + ix + 1);
-                inds[ii++] = i0; inds[ii++] = i2; inds[ii++] = i3;
-                inds[ii++] = i0; inds[ii++] = i3; inds[ii++] = i1;
-            }
+                for (int ix = 0; ix < res; ix++)
+                {
+                    uint i0 = (uint)(iz * cols + ix);
+                    uint i1 = (uint)(iz * cols + ix + 1);
+                    uint i2 = (uint)((iz + 1) * cols + ix);
+                    uint i3 = (uint)((iz + 1) * cols + ix + 1);
+                    inds[ii++] = i0; inds[ii++] = i2; inds[ii++] = i3;
+                    inds[ii++] = i0; inds[ii++] = i3; inds[ii++] = i1;
+                }
 
             int surfaceVertexCount = vi;
 

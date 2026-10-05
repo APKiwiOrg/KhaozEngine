@@ -165,8 +165,8 @@ public class ControllerOnPhysicsTests
         // At yaw=0: forward = (0,0,-1). Move.Y=1 => direction (0,0,-1) = toward -Z => toward dome.
         var state = new MoveState { Position = new Vector3(0f, 0.9f, 3.5f), Grounded = true };
         // Jump from the very first tick and keep walking toward the dome.
-        var cmdJump   = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f, jump: true);
-        var cmdWalk   = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f, jump: false);
+        var cmdJump = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f, jump: true);
+        var cmdWalk = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: 0f, jump: false);
 
         const float CapsuleHalfHeight = 0.9f;
         var sphereCentre = new Vector3(0f, -1f, 0f);

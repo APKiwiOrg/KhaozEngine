@@ -26,7 +26,10 @@ public class PhysicsNavProfileTests
         world.AddStatic(new BoxShape(extents), Pose.At(wall));
         using var bake = Capture(world, alongZ ? Options with
         {
-            MinX = -0.5f, MaxX = 0.5f, MinZ = -1.5f, MaxZ = 1.5f,
+            MinX = -0.5f,
+            MaxX = 0.5f,
+            MinZ = -1.5f,
+            MaxZ = 1.5f,
         } : Options);
         GroundNavigation nav = bake.BuildProfile(Tuning, default);
         (int x, int z) = alongZ ? (0, 1) : (1, 0);
@@ -65,7 +68,11 @@ public class PhysicsNavProfileTests
         world.AddStatic(new BoxShape(new Vector3(0.05f, 1f, 1f)), Pose.At(new Vector3(0f, 1f, -1.5f)));
         using var bake = Capture(world, Options with
         {
-            MinX = -2.25f, MaxX = 2.25f, MinZ = -1.25f, MaxZ = 1.25f, CellSize = 0.5f,
+            MinX = -2.25f,
+            MaxX = 2.25f,
+            MinZ = -1.25f,
+            MaxZ = 1.25f,
+            CellSize = 0.5f,
         });
         GroundNavigation player = bake.BuildProfile(Tuning, default);
         GroundNavigation wide = bake.BuildProfile(Tuning with { CapsuleRadius = 0.55f }, default);
@@ -183,7 +190,11 @@ public class PhysicsNavProfileTests
         world.AddStatic(new BoxShape(new Vector3(3f, 1f, 0.2f)), Pose.At(new Vector3(0f, 1f, -0.65f)));
         using var bake = Capture(world, Options with
         {
-            MinX = -1.125f, MaxX = 1.125f, MinZ = -0.375f, MaxZ = 0.375f, CellSize = 0.25f,
+            MinX = -1.125f,
+            MaxX = 1.125f,
+            MinZ = -0.375f,
+            MaxZ = 0.375f,
+            CellSize = 0.25f,
         });
         GroundNavigation nav = bake.BuildProfile(Tuning with { CapsuleRadius = 0.3f }, default);
 

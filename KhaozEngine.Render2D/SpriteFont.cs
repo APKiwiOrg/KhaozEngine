@@ -204,8 +204,12 @@ namespace KhaozEngine.Render2D
 
                 return new BakedFont
                 {
-                    Atlas = atlas, AtlasW = aw, AtlasH = ah,
-                    Ascent = ascent * scale * k, LineHeight = lineHeight, RenderScale = k,
+                    Atlas = atlas,
+                    AtlasW = aw,
+                    AtlasH = ah,
+                    Ascent = ascent * scale * k,
+                    LineHeight = lineHeight,
+                    RenderScale = k,
                     Glyphs = glyphs,
                 };
             }

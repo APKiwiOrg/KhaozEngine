@@ -66,11 +66,11 @@ foreach (AssetEntry entry in manifest.Props)
     node["collisionShape"] = collName;
     string collKind = plan.Coll switch
     {
-        CompoundShape     => "compound",
+        CompoundShape => "compound",
         TriangleMeshShape => "triangle-mesh",
-        CylinderShape     => "cylinder",
-        ConvexHullShape   => "convex-hull",
-        _                 => "shape",
+        CylinderShape => "cylinder",
+        ConvexHullShape => "convex-hull",
+        _ => "shape",
     };
 
     // Only walkable solids also get a top-surface heightmap (.surf).

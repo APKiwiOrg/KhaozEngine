@@ -51,26 +51,26 @@ public class RealBuildingCollisionTests
         var pinned = new List<string>();
         total = 0;
         for (float sx = -7f; sx <= 7f; sx += 1.0f)
-        for (float sz = -7f; sz <= 7f; sz += 1.0f)
-        {
-            var start = new MoveState { Position = new Vector3(sx, 0.9f, sz), Grounded = true };
-            if (world.ComputePenetration(cap, Pose.At(start.Position), out _)) continue;   // skip starts inside the mesh
-            total++;
-            Vector2 toC = new(-sx, -sz);
-            if (toC.LengthSquared() < 1e-3f) toC = new(0, -1);
-            toC = Vector2.Normalize(toC);
-            float yaw = MathF.Atan2(-toC.X, toC.Y);
-            var s = start;
-            for (int i = 0; i < 200; i++)
+            for (float sz = -7f; sz <= 7f; sz += 1.0f)
             {
-                var cmd = new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: yaw, jump: (i % 50 == 0));
-                s = CharacterMovement.Step(s, cmd, 1f / 60f, Flat, Tuning, null, world);
+                var start = new MoveState { Position = new Vector3(sx, 0.9f, sz), Grounded = true };
+                if (world.ComputePenetration(cap, Pose.At(start.Position), out _)) continue;   // skip starts inside the mesh
+                total++;
+                Vector2 toC = new(-sx, -sz);
+                if (toC.LengthSquared() < 1e-3f) toC = new(0, -1);
+                toC = Vector2.Normalize(toC);
+                float yaw = MathF.Atan2(-toC.X, toC.Y);
+                var s = start;
+                for (int i = 0; i < 200; i++)
+                {
+                    var cmd = new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: yaw, jump: (i % 50 == 0));
+                    s = CharacterMovement.Step(s, cmd, 1f / 60f, Flat, Tuning, null, world);
+                }
+                // Pinned = still airborne, elevated above any reasonable standable height, and railing downward (a
+                // genuine fall lands within a metre and ends grounded; a pin sits frozen as vVel runs to -MaxFallSpeed).
+                if (!s.Grounded && s.Position.Y > 1.3f && s.VerticalVelocity < -20f)
+                    pinned.Add($"({sx:F0},{sz:F0})->y={s.Position.Y:F1},vVel={s.VerticalVelocity:F0}");
             }
-            // Pinned = still airborne, elevated above any reasonable standable height, and railing downward (a
-            // genuine fall lands within a metre and ends grounded; a pin sits frozen as vVel runs to -MaxFallSpeed).
-            if (!s.Grounded && s.Position.Y > 1.3f && s.VerticalVelocity < -20f)
-                pinned.Add($"({sx:F0},{sz:F0})->y={s.Position.Y:F1},vVel={s.VerticalVelocity:F0}");
-        }
         return pinned;
     }
 
@@ -116,18 +116,18 @@ public class RealBuildingCollisionTests
     {
         Vector2 origin = new(settled.Position.X, settled.Position.Z);
         for (int phase = 0; phase < 2; phase++)            // phase 0 = walk, phase 1 = jump-walk
-        for (int d = 0; d < 8; d++)
-        {
-            float yaw = d * MathF.PI / 4f;
-            MoveState s = settled;
-            for (int i = 0; i < 90; i++)
+            for (int d = 0; d < 8; d++)
             {
-                bool jump = phase == 1 && i % 45 == 0;
-                s = CharacterMovement.Step(s, new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: yaw, jump: jump),
-                                           1f / 60f, Flat, Tuning, null, world);
+                float yaw = d * MathF.PI / 4f;
+                MoveState s = settled;
+                for (int i = 0; i < 90; i++)
+                {
+                    bool jump = phase == 1 && i % 45 == 0;
+                    s = CharacterMovement.Step(s, new MoveCommand(new Vector2(0f, -1f), run: true, cameraYaw: yaw, jump: jump),
+                                               1f / 60f, Flat, Tuning, null, world);
+                }
+                if (Vector2.Distance(new Vector2(s.Position.X, s.Position.Z), origin) > 0.5f) return false;
             }
-            if (Vector2.Distance(new Vector2(s.Position.X, s.Position.Z), origin) > 0.5f) return false;
-        }
         return true;
     }
 
@@ -142,14 +142,14 @@ public class RealBuildingCollisionTests
         int total = 0;
         float maxStandY = float.MinValue;
         for (float sx = -7f; sx <= 7f; sx += 0.7f)
-        for (float sz = -7f; sz <= 7f; sz += 0.7f)
-        {
-            MoveState s = Settle(world, sx, sz);
-            if (!s.Grounded) continue;                       // never settled here (above a tall thin edge); skip
-            total++;
-            if (s.Position.Y > maxStandY) maxStandY = s.Position.Y;
-            if (IsWedged(world, s)) wedges.Add($"({sx:F1},{sz:F1})->y={s.Position.Y:F1}");
-        }
+            for (float sz = -7f; sz <= 7f; sz += 0.7f)
+            {
+                MoveState s = Settle(world, sx, sz);
+                if (!s.Grounded) continue;                       // never settled here (above a tall thin edge); skip
+                total++;
+                if (s.Position.Y > maxStandY) maxStandY = s.Position.Y;
+                if (IsWedged(world, s)) wedges.Add($"({sx:F1},{sz:F1})->y={s.Position.Y:F1}");
+            }
 
         Assert.True(total > 0, "no settle spots found around the proxy (fixture not loaded?)");
         Assert.True(wedges.Count == 0,

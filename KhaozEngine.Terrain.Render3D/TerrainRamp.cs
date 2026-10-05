@@ -8,10 +8,10 @@ namespace KhaozEngine.Terrain
     public static class TerrainRamp
     {
         public static readonly Color Grass = new(0.27f, 0.42f, 0.18f);
-        public static readonly Color Dirt  = new(0.34f, 0.30f, 0.24f);
-        public static readonly Color Rock  = new(0.44f, 0.42f, 0.40f);
-        public static readonly Color Sand  = new(0.76f, 0.70f, 0.50f);
-        public static readonly Color Snow  = new(0.93f, 0.94f, 0.96f);
+        public static readonly Color Dirt = new(0.34f, 0.30f, 0.24f);
+        public static readonly Color Rock = new(0.44f, 0.42f, 0.40f);
+        public static readonly Color Sand = new(0.76f, 0.70f, 0.50f);
+        public static readonly Color Snow = new(0.93f, 0.94f, 0.96f);
 
         public static Color Of(in TerrainSplatWeights w) => new(
             Grass.R * w.Grass + Dirt.R * w.Dirt + Rock.R * w.Rock + Sand.R * w.Sand + Snow.R * w.Snow,

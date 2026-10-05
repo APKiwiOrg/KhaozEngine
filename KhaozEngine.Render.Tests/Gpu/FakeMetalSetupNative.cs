@@ -44,7 +44,8 @@ namespace KhaozEngine.Tests.Gpu
 
         /// <summary>Every encode, with the arguments it was given.</summary>
         internal List<(MTLCommandBuffer Batch, MTLBuffer Staged, MTLTexture Destination, ulong SourceRowPitch,
-            MetalTextureUpload Upload)> Encoded { get; } = new();
+            MetalTextureUpload Upload)> Encoded
+        { get; } = new();
 
         /// <summary>How many times a fault has been read.</summary>
         internal int FaultReads { get; private set; }

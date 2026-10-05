@@ -20,7 +20,11 @@ namespace KhaozEngine.Tests.Render3D
         static FrustumPlanes OrthoFrustum() =>
             FrustumPlanes.Extract(new IsoCamera3D
             {
-                Target = Vector3.Zero, Azimuth = 0f, Elevation = 0f, OrthoSize = 10f, AspectRatio = 1f,
+                Target = Vector3.Zero,
+                Azimuth = 0f,
+                Elevation = 0f,
+                OrthoSize = 10f,
+                AspectRatio = 1f,
             }.ViewProjection);   // ortho half-extent 5 on X and Y (see FrustumPlanesTests)
 
         [Fact]

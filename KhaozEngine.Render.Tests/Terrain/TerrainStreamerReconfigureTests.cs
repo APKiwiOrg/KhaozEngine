@@ -21,8 +21,8 @@ public class TerrainStreamerReconfigureTests
     {
         var result = new HashSet<ChunkCoord>();
         for (int z = -radius; z <= radius; z++)
-        for (int x = -radius; x <= radius; x++)
-            if (x * x + z * z <= radius * radius) result.Add(new ChunkCoord(x, z));
+            for (int x = -radius; x <= radius; x++)
+                if (x * x + z * z <= radius * radius) result.Add(new ChunkCoord(x, z));
         return result;
     }
 

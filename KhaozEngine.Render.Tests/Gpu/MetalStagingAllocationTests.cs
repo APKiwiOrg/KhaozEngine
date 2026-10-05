@@ -122,25 +122,31 @@ namespace KhaozEngine.Tests.Gpu
             public void EndEncoding(MetalEncoderKind kind, IntPtr encoder) { }
 
             public void SetBuffers(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> buffers,
-                ReadOnlySpan<nuint> offsets, uint firstIndex) { }
+                ReadOnlySpan<nuint> offsets, uint firstIndex)
+            { }
 
             public void SetTextures(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> textures,
-                uint firstIndex) { }
+                uint firstIndex)
+            { }
 
             public void SetSamplerStates(MetalShaderStage stage, IntPtr encoder, ReadOnlySpan<IntPtr> samplers,
-                uint firstIndex) { }
+                uint firstIndex)
+            { }
 
             public void SetBufferOffset(MetalShaderStage stage, IntPtr encoder, nuint offset, uint index) { }
 
             public void Draw(IntPtr encoder, MTLPrimitiveType topology, uint vertexStart, uint vertexCount,
-                uint instanceCount, uint baseInstance) { }
+                uint instanceCount, uint baseInstance)
+            { }
 
             public void DrawIndexed(IntPtr encoder, MTLPrimitiveType topology, uint indexCount, IntPtr indexBuffer,
                 nuint indexBufferOffset, bool sixteenBitIndices, uint instanceCount, int baseVertex,
-                uint baseInstance) { }
+                uint baseInstance)
+            { }
 
             public void Dispatch(IntPtr encoder, uint groupCountX, uint groupCountY, uint groupCountZ,
-                uint threadsPerGroupX, uint threadsPerGroupY, uint threadsPerGroupZ) { }
+                uint threadsPerGroupX, uint threadsPerGroupY, uint threadsPerGroupZ)
+            { }
         }
 
         // THE BLIT SEAM, COUNTED RATHER THAN LOGGED. Only the buffer copy is on the staging path, so the other four

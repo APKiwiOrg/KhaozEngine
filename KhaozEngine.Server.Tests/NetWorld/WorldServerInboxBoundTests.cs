@@ -104,7 +104,11 @@ public class WorldServerInboxBoundTests
     {
         var config = new ShardedWorldServerConfig
         {
-            TickSeconds = 1f / 30f, MaxPlayers = 4, CellSize = 60f, OverlapMargin = 24f, InterestRadius = 24f,
+            TickSeconds = 1f / 30f,
+            MaxPlayers = 4,
+            CellSize = 60f,
+            OverlapMargin = 24f,
+            InterestRadius = 24f,
         };
         Assert.Equal(BoundedEventQueue<ServerSessionEvent>.DefaultCapacity, config.MaxQueuedEvents);
 

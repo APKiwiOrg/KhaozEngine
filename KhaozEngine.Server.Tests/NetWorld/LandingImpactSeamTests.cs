@@ -121,7 +121,10 @@ public class LandingImpactSeamTests
         (LoopbackTransport st, LoopbackTransport ct) = LoopbackTransport.CreatePair();
         var cfg = new ShardedWorldServerConfig
         {
-            TickSeconds = 1f / 30f, CellSize = 60f, OverlapMargin = 24f, InterestRadius = 24f,
+            TickSeconds = 1f / 30f,
+            CellSize = 60f,
+            OverlapMargin = 24f,
+            InterestRadius = 24f,
             SpawnPosition = _ => Vector3.Zero,
         };
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);

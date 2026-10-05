@@ -73,8 +73,14 @@ namespace KhaozEngine.Tests.Gpu
 
                 var s = new Surface
                 {
-                    _isClip = true, _verts = verts, _clipH = new float[vc], _cell = cell,
-                    _ring = ring, _levels = levels, _ox = new float[levels], _oz = new float[levels],
+                    _isClip = true,
+                    _verts = verts,
+                    _clipH = new float[vc],
+                    _cell = cell,
+                    _ring = ring,
+                    _levels = levels,
+                    _ox = new float[levels],
+                    _oz = new float[levels],
                     _origin = renderOrigin,
                 };
                 // Ring origins reduced exactly as Build reduces them, so the cell lookup below lands in the same

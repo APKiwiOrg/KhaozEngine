@@ -64,20 +64,20 @@ public static class TileReach
         // most one of its tiles, and each footprint tile offers each cardinal once: the same candidate cannot be
         // produced twice, which is what makes this list satisfy Set's contract of a set.
         for (int z = footprint.Z; z < footprint.Z1; z++)
-        for (int x = footprint.X; x < footprint.X1; x++)
-        {
-            foreach (TileDirection outward in Cardinals)
+            for (int x = footprint.X; x < footprint.X1; x++)
             {
-                (int dx, int dz) = TileDirections.Delta(outward);
-                long nextX = (long)x + dx, nextZ = (long)z + dz;
-                if (nextX < int.MinValue || nextX > int.MaxValue
-                    || nextZ < int.MinValue || nextZ > int.MaxValue) continue;
-                int nx = (int)nextX, nz = (int)nextZ;
-                if (footprint.Contains(nx, nz)) continue;             // inside the object is not a reach tile
-                if (!TileCollision.CanStep(map, x, z, plane, outward)) continue;
-                found.Add(new TileCoord(nx, nz, plane));
+                foreach (TileDirection outward in Cardinals)
+                {
+                    (int dx, int dz) = TileDirections.Delta(outward);
+                    long nextX = (long)x + dx, nextZ = (long)z + dz;
+                    if (nextX < int.MinValue || nextX > int.MaxValue
+                        || nextZ < int.MinValue || nextZ > int.MaxValue) continue;
+                    int nx = (int)nextX, nz = (int)nextZ;
+                    if (footprint.Contains(nx, nz)) continue;             // inside the object is not a reach tile
+                    if (!TileCollision.CanStep(map, x, z, plane, outward)) continue;
+                    found.Add(new TileCoord(nx, nz, plane));
+                }
             }
-        }
         return found;
     }
 

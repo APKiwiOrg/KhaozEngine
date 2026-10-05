@@ -547,7 +547,11 @@ namespace KhaozEngine.Tests.Render3D
             Vector3 sunDir = Vector3.Normalize(new Vector3(0.2f, 0.6f, -0.4f));
             SkyDisc Sun(float alpha) => new()
             {
-                Direction = sunDir, Color = new Color(1f, 0.6f, 0.3f, alpha), Radius = 0.06f, HaloStrength = 0f, HaloFalloff = 0.04f,
+                Direction = sunDir,
+                Color = new Color(1f, 0.6f, 0.3f, alpha),
+                Radius = 0.06f,
+                HaloStrength = 0f,
+                HaloFalloff = 0.04f,
             };
             Vector3 At(float alpha) => SkyMath.ShadeDirectionDiscs(sunDir, horizon, zenith, new[] { Sun(alpha) }, 1f);
             Vector3 sky = SkyMath.ShadeDirectionDiscs(sunDir, horizon, zenith, ReadOnlySpan<SkyDisc>.Empty, 1f);

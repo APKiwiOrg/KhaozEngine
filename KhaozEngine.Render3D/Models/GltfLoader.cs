@@ -118,17 +118,17 @@ namespace KhaozEngine.Render3D
         {
             string assetIdentity = $"glTF asset '{path}'";
             foreach (var mesh in root.LogicalMeshes)
-            foreach (var prim in mesh.Primitives)
-            {
-                var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
-                if (pos == null) continue;
-                foreach (var (a, b, c) in prim.GetTriangleIndices())
+                foreach (var prim in mesh.Primitives)
                 {
-                    MeshIndexValidation.Source(a, pos.Count, assetIdentity);
-                    MeshIndexValidation.Source(b, pos.Count, assetIdentity);
-                    MeshIndexValidation.Source(c, pos.Count, assetIdentity);
+                    var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
+                    if (pos == null) continue;
+                    foreach (var (a, b, c) in prim.GetTriangleIndices())
+                    {
+                        MeshIndexValidation.Source(a, pos.Count, assetIdentity);
+                        MeshIndexValidation.Source(b, pos.Count, assetIdentity);
+                        MeshIndexValidation.Source(c, pos.Count, assetIdentity);
+                    }
                 }
-            }
         }
 
         public static GltfMesh Load(string path) => BuildRigid(LoadModel(path), path);
@@ -229,12 +229,12 @@ namespace KhaozEngine.Render3D
             var order = new List<GltfMaterial?>();
             bool sawNull = false;
             foreach (var mesh in root.LogicalMeshes)
-            foreach (var prim in mesh.Primitives)
-            {
-                GltfMaterial? mat = prim.Material;
-                if (mat == null) { if (!sawNull) { sawNull = true; order.Add(null); } continue; }
-                if (!order.Contains(mat)) order.Add(mat);
-            }
+                foreach (var prim in mesh.Primitives)
+                {
+                    GltfMaterial? mat = prim.Material;
+                    if (mat == null) { if (!sawNull) { sawNull = true; order.Add(null); } continue; }
+                    if (!order.Contains(mat)) order.Add(mat);
+                }
 
             var parts = new List<GltfMeshPart>(order.Count);
             foreach (GltfMaterial? material in order)
@@ -426,51 +426,51 @@ namespace KhaozEngine.Render3D
             Skin? skin = null;
 
             foreach (var mesh in root.LogicalMeshes)
-            foreach (var prim in mesh.Primitives)
-            {
-                var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
-                var joints = prim.GetVertexAccessor("JOINTS_0")?.AsVector4Array();
-                var weights = prim.GetVertexAccessor("WEIGHTS_0")?.AsVector4Array();
-                if (pos == null || joints == null || weights == null) continue;
-
-                // Single-skin assumption: the first skin found supplies InverseBind/RestPose for all meshes.
-                // A glb where different meshes use different skins is not supported; later meshes would mis-bind against this skin.
-                skin ??= root.LogicalNodes.FirstOrDefault(n => n.Mesh == mesh && n.Skin != null)?.Skin
-                         ?? root.LogicalSkins.FirstOrDefault();
-
-                var normals = prim.GetVertexAccessor("NORMAL")?.AsVector3Array();
-                var texcoords = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
-                // TANGENT is a vec4 (xyz = tangent direction, w = bitangent sign per glTF spec); when absent,
-                // it is computed below from UV+position.
-                var tangents = prim.GetVertexAccessor("TANGENT")?.AsVector4Array();
-                // Per-vertex COLOR_0 multiplies the material colour exactly as the rigid path does, so a rigged
-                // asset painted with vertex colours reads the same as the prop kit it was authored beside.
-                var colors = prim.GetVertexAccessor("COLOR_0")?.AsColorArray();
-                Vector4 baseColor = ReadBaseColor(prim.Material);
-                string identity = $"glTF asset '{path}'";
-
-                int baseIndex = verts.Count;
-                for (int i = 0; i < pos.Count; i++)
+                foreach (var prim in mesh.Primitives)
                 {
-                    Vector4 w = SkinningMath.NormalizeWeights(weights[i]);
-                    verts.Add(new SkinnedVertex
+                    var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
+                    var joints = prim.GetVertexAccessor("JOINTS_0")?.AsVector4Array();
+                    var weights = prim.GetVertexAccessor("WEIGHTS_0")?.AsVector4Array();
+                    if (pos == null || joints == null || weights == null) continue;
+
+                    // Single-skin assumption: the first skin found supplies InverseBind/RestPose for all meshes.
+                    // A glb where different meshes use different skins is not supported; later meshes would mis-bind against this skin.
+                    skin ??= root.LogicalNodes.FirstOrDefault(n => n.Mesh == mesh && n.Skin != null)?.Skin
+                             ?? root.LogicalSkins.FirstOrDefault();
+
+                    var normals = prim.GetVertexAccessor("NORMAL")?.AsVector3Array();
+                    var texcoords = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
+                    // TANGENT is a vec4 (xyz = tangent direction, w = bitangent sign per glTF spec); when absent,
+                    // it is computed below from UV+position.
+                    var tangents = prim.GetVertexAccessor("TANGENT")?.AsVector4Array();
+                    // Per-vertex COLOR_0 multiplies the material colour exactly as the rigid path does, so a rigged
+                    // asset painted with vertex colours reads the same as the prop kit it was authored beside.
+                    var colors = prim.GetVertexAccessor("COLOR_0")?.AsColorArray();
+                    Vector4 baseColor = ReadBaseColor(prim.Material);
+                    string identity = $"glTF asset '{path}'";
+
+                    int baseIndex = verts.Count;
+                    for (int i = 0; i < pos.Count; i++)
                     {
-                        Position = pos[i],
-                        Normal = normals != null && i < normals.Count ? normals[i] : Vector3.UnitY,
-                        Color = colors != null && i < colors.Count ? baseColor * colors[i] : baseColor,
-                        Uv = texcoords != null && i < texcoords.Count ? texcoords[i] : Vector2.Zero,
-                        BoneIndices = joints[i],
-                        BoneWeights = w,
-                    });
-                    srcTangent.Add(tangents != null && i < tangents.Count ? tangents[i] : (Vector4?)null);
+                        Vector4 w = SkinningMath.NormalizeWeights(weights[i]);
+                        verts.Add(new SkinnedVertex
+                        {
+                            Position = pos[i],
+                            Normal = normals != null && i < normals.Count ? normals[i] : Vector3.UnitY,
+                            Color = colors != null && i < colors.Count ? baseColor * colors[i] : baseColor,
+                            Uv = texcoords != null && i < texcoords.Count ? texcoords[i] : Vector2.Zero,
+                            BoneIndices = joints[i],
+                            BoneWeights = w,
+                        });
+                        srcTangent.Add(tangents != null && i < tangents.Count ? tangents[i] : (Vector4?)null);
+                    }
+                    foreach (var (a, b, c) in prim.GetTriangleIndices())
+                    {
+                        indices.Add(MeshIndexValidation.Rebase(a, pos.Count, baseIndex, identity));
+                        indices.Add(MeshIndexValidation.Rebase(b, pos.Count, baseIndex, identity));
+                        indices.Add(MeshIndexValidation.Rebase(c, pos.Count, baseIndex, identity));
+                    }
                 }
-                foreach (var (a, b, c) in prim.GetTriangleIndices())
-                {
-                    indices.Add(MeshIndexValidation.Rebase(a, pos.Count, baseIndex, identity));
-                    indices.Add(MeshIndexValidation.Rebase(b, pos.Count, baseIndex, identity));
-                    indices.Add(MeshIndexValidation.Rebase(c, pos.Count, baseIndex, identity));
-                }
-            }
 
             if (verts.Count == 0 || skin == null)
                 throw new InvalidOperationException("glTF has no skinned mesh (JOINTS_0/WEIGHTS_0 + skin): " + path);

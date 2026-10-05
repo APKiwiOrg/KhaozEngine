@@ -36,8 +36,8 @@ internal sealed class CategoryLogger : ILogger
 
     public void Trace(string message, Exception? exception = null) => Log(LogLevel.Trace, message, exception);
     public void Debug(string message, Exception? exception = null) => Log(LogLevel.Debug, message, exception);
-    public void Info(string message, Exception? exception = null)  => Log(LogLevel.Info,  message, exception);
-    public void Warn(string message, Exception? exception = null)  => Log(LogLevel.Warn,  message, exception);
+    public void Info(string message, Exception? exception = null) => Log(LogLevel.Info, message, exception);
+    public void Warn(string message, Exception? exception = null) => Log(LogLevel.Warn, message, exception);
     public void Error(string message, Exception? exception = null) => Log(LogLevel.Error, message, exception);
     public void Fatal(string message, Exception? exception = null) => Log(LogLevel.Fatal, message, exception);
 }

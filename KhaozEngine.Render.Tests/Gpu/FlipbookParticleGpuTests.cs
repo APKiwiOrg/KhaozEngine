@@ -505,10 +505,14 @@ namespace KhaozEngine.Tests.Gpu
 
         static EmitterConfig EmitCfg(float life) => new()
         {
-            LifetimeMin = life, LifetimeMax = life,
-            SpeedMin = 0.4f, SpeedMax = 0.9f,
-            Direction = Vector3.UnitY, SpreadDegrees = 35f,
-            StartSize = 0.7f, EndSize = 0.5f,
+            LifetimeMin = life,
+            LifetimeMax = life,
+            SpeedMin = 0.4f,
+            SpeedMax = 0.9f,
+            Direction = Vector3.UnitY,
+            SpreadDegrees = 35f,
+            StartSize = 0.7f,
+            EndSize = 0.5f,
             StartColor = new Color(1f, 0.95f, 0.9f, 1f),
             EndColor = new Color(1f, 0.9f, 0.8f, 0.6f),
         };

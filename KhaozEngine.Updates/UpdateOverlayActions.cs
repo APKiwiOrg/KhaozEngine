@@ -67,7 +67,7 @@ public static class UpdateOverlayActions
         {
             case OverlayAction.Download: _ = service.StartDownloadAsync(); break;
             case OverlayAction.Apply: service.ApplyUpdate(); break;
-            // Failed (Retry) is intentionally not auto-driven: see the summary.
+                // Failed (Retry) is intentionally not auto-driven: see the summary.
         }
     }
 }

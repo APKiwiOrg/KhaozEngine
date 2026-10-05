@@ -46,7 +46,10 @@ public sealed class TemporalCpuIsolationTests
             if (perspective)
                 scene.CameraOverride = new FollowCamera3D
                 {
-                    Target = new Vector3(0.2f, 0.4f, 0f), Yaw = 0.7f, Pitch = 0.5f, Distance = 9f,
+                    Target = new Vector3(0.2f, 0.4f, 0f),
+                    Yaw = 0.7f,
+                    Pitch = 0.5f,
+                    Distance = 9f,
                     AspectRatio = (float)HeadlessSceneRig.Width / HeadlessSceneRig.Height,
                 };
             scene.Post.Water.SwellAmplitude = 0f;   // no reach, so each plane's box is its own tiny rectangle

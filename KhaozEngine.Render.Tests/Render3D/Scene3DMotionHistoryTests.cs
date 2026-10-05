@@ -201,10 +201,10 @@ public sealed class Scene3DMotionHistoryTests
             scene.Begin();
             for (uint i = 0; i < 500; i++)
                 scene.Draw(new RigidInstanceDraw(Box, Matrix4x4.CreateTranslation(i, 0f, 0f))
-                    { Motion = MotionKey.Combine(crowd, i) });
+                { Motion = MotionKey.Combine(crowd, i) });
             for (uint i = 0; i < 16; i++)
                 scene.DrawSkinned(new SkinnedInstanceDraw(tube, Matrix4x4.CreateTranslation(0f, 0f, i))
-                    { Motion = MotionKey.Combine(crowd, 1_000 + i) }, bones);
+                { Motion = MotionKey.Combine(crowd, 1_000 + i) }, bones);
         }
 
         for (int i = 0; i < 4; i++) Frame();
@@ -230,10 +230,10 @@ public sealed class Scene3DMotionHistoryTests
             scene.Begin();
             for (uint i = 0; i < 500; i++)
                 scene.Draw(new RigidInstanceDraw(Box, Matrix4x4.CreateTranslation(i, 0f, 0f))
-                    { Motion = MotionKey.Combine(crowd, i) });
+                { Motion = MotionKey.Combine(crowd, i) });
             for (uint i = 0; i < 16; i++)
                 scene.DrawSkinned(new SkinnedInstanceDraw(tube, Matrix4x4.Identity)
-                    { Motion = MotionKey.Combine(crowd, 1_000 + i) }, mesh.RestPose);
+                { Motion = MotionKey.Combine(crowd, 1_000 + i) }, mesh.RestPose);
         }
 
         for (int i = 0; i < 4; i++) Frame();

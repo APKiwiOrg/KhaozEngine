@@ -527,36 +527,36 @@ public sealed class ParticleSystem
         switch (cfg.Shape)
         {
             case EmissionShape.Sphere:
-            {
-                Vector3 dir = SampleSphere();
-                float u = _rng.NextFloat();
-                float r = cfg.ShapeRadius * MathUtil.Lerp(MathF.Cbrt(u), 1f, cfg.ShapeShell);
-                return dir * r;
-            }
-            case EmissionShape.Hemisphere:
-            {
-                Vector3 dir = SampleSphere();
-                float u = _rng.NextFloat();
-                float r = cfg.ShapeRadius * MathUtil.Lerp(MathF.Cbrt(u), 1f, cfg.ShapeShell);
-                Vector3 offset = dir * r;
-                Vector3 axis = SafeAxis(cfg.Direction);
-                float d = Vector3.Dot(offset, axis);
-                if (d < 0f)
                 {
-                    // Fold the below-axis half up so the dome opens along the axis.
-                    offset -= 2f * d * axis;
+                    Vector3 dir = SampleSphere();
+                    float u = _rng.NextFloat();
+                    float r = cfg.ShapeRadius * MathUtil.Lerp(MathF.Cbrt(u), 1f, cfg.ShapeShell);
+                    return dir * r;
                 }
-                return offset;
-            }
+            case EmissionShape.Hemisphere:
+                {
+                    Vector3 dir = SampleSphere();
+                    float u = _rng.NextFloat();
+                    float r = cfg.ShapeRadius * MathUtil.Lerp(MathF.Cbrt(u), 1f, cfg.ShapeShell);
+                    Vector3 offset = dir * r;
+                    Vector3 axis = SafeAxis(cfg.Direction);
+                    float d = Vector3.Dot(offset, axis);
+                    if (d < 0f)
+                    {
+                        // Fold the below-axis half up so the dome opens along the axis.
+                        offset -= 2f * d * axis;
+                    }
+                    return offset;
+                }
             case EmissionShape.Disc:
-            {
-                Vector3 axis = SafeAxis(cfg.Direction);
-                BuildBasis(axis, out Vector3 t, out Vector3 b);
-                float phi = (MathF.PI * 2f) * _rng.NextFloat();
-                float u = _rng.NextFloat();
-                float r = cfg.ShapeRadius * MathUtil.Lerp(MathF.Sqrt(u), 1f, cfg.ShapeShell);
-                return (t * MathF.Cos(phi) + b * MathF.Sin(phi)) * r;
-            }
+                {
+                    Vector3 axis = SafeAxis(cfg.Direction);
+                    BuildBasis(axis, out Vector3 t, out Vector3 b);
+                    float phi = (MathF.PI * 2f) * _rng.NextFloat();
+                    float u = _rng.NextFloat();
+                    float r = cfg.ShapeRadius * MathUtil.Lerp(MathF.Sqrt(u), 1f, cfg.ShapeShell);
+                    return (t * MathF.Cos(phi) + b * MathF.Sin(phi)) * r;
+                }
             default:
                 return Vector3.Zero;
         }

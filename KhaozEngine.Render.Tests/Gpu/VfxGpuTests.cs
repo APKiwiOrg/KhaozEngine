@@ -109,9 +109,12 @@ namespace KhaozEngine.Tests.Gpu
         {
             var cfg = new Particle2DEmitterConfig
             {
-                MinLife = 1f, MaxLife = 1f,
-                MinSpeed = 0f, MaxSpeed = 0f,
-                StartSize = 40f, EndSize = 40f,
+                MinLife = 1f,
+                MaxLife = 1f,
+                MinSpeed = 0f,
+                MaxSpeed = 0f,
+                StartSize = 40f,
+                EndSize = 40f,
                 StartColor = new Color(0.5f, 0.5f, 0.5f, 1f),
                 EndColor = new Color(0.5f, 0.5f, 0.5f, 1f),
                 Blend = BlendMode.Additive,

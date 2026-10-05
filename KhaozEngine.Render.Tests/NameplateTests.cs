@@ -32,8 +32,13 @@ public sealed class NameplateTests
     static readonly FakeFont Font = new FakeFont(10f, 20f);
     static NameplateStyle Style => NameplateStyle.Default with
     {
-        FontScale = 1f, PadX = 6f, PadY = 4f, MinBarWidth = 50f,
-        BarHeight = 8f, BarSpacing = 3f, MaxWidth = 0f,
+        FontScale = 1f,
+        PadX = 6f,
+        PadY = 4f,
+        MinBarWidth = 50f,
+        BarHeight = 8f,
+        BarSpacing = 3f,
+        MaxWidth = 0f,
     };
 
     [Fact]

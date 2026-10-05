@@ -27,11 +27,11 @@ namespace KhaozEngine.Tests.Render3D
 
             // All four expected corners must appear among the 6 vertices, at the right extents, coplanar in Y.
             foreach (int sx in new[] { -1, 1 })
-            foreach (int sz in new[] { -1, 1 })
-            {
-                var corner = center + new Vector3(sx * half.X, 0, sz * half.Y);
-                Assert.Contains(tris, p => Vector3.Distance(p, corner) < Eps);
-            }
+                foreach (int sz in new[] { -1, 1 })
+                {
+                    var corner = center + new Vector3(sx * half.X, 0, sz * half.Y);
+                    Assert.Contains(tris, p => Vector3.Distance(p, corner) < Eps);
+                }
             Assert.All(tris, p => Assert.True(Math.Abs(p.Y - center.Y) < Eps, "vertex left the XZ plane"));
         }
 

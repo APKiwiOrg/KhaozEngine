@@ -242,7 +242,10 @@ public sealed partial class GenerateDungeonCommand : EditorCommand
 
     private static MapBounds CloneBounds(MapBounds bounds) => new()
     {
-        MinX = bounds.MinX, MinZ = bounds.MinZ, MaxX = bounds.MaxX, MaxZ = bounds.MaxZ,
+        MinX = bounds.MinX,
+        MinZ = bounds.MinZ,
+        MaxX = bounds.MaxX,
+        MaxZ = bounds.MaxZ,
     };
 
     private static void CopyBounds(MapBounds source, MapBounds target)

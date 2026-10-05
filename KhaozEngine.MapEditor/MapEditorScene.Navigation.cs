@@ -97,22 +97,22 @@ public partial class MapEditorScene
         switch (selection.Kind)
         {
             case SelectionKind.Terrain:
-            {
-                MapBounds bounds = _document.Doc.Bounds;
-                float x = (bounds.MinX + bounds.MaxX) * 0.5f;
-                float z = (bounds.MinZ + bounds.MaxZ) * 0.5f;
-                pivot = new Vector3(x, GroundHeight(field, x, z), z);
-                radius = MathF.Max(bounds.MaxX - bounds.MinX, bounds.MaxZ - bounds.MinZ) * 0.5f;
-                return FiniteFrame(pivot, radius);
-            }
+                {
+                    MapBounds bounds = _document.Doc.Bounds;
+                    float x = (bounds.MinX + bounds.MaxX) * 0.5f;
+                    float z = (bounds.MinZ + bounds.MaxZ) * 0.5f;
+                    pivot = new Vector3(x, GroundHeight(field, x, z), z);
+                    radius = MathF.Max(bounds.MaxX - bounds.MinX, bounds.MaxZ - bounds.MinZ) * 0.5f;
+                    return FiniteFrame(pivot, radius);
+                }
             case SelectionKind.Placement when Placement(selection.Id) is MapPlacement placement:
-            {
-                float height = MathF.Max(0.5f, KindHeight(placement.Kind) * MathF.Abs(placement.Scale));
-                float ground = placement.Y ?? GroundHeight(field, placement.X, placement.Z);
-                pivot = new Vector3(placement.X, ground + height * 0.5f, placement.Z);
-                radius = MathF.Max(1f, height * 0.6f);
-                return FiniteFrame(pivot, radius);
-            }
+                {
+                    float height = MathF.Max(0.5f, KindHeight(placement.Kind) * MathF.Abs(placement.Scale));
+                    float ground = placement.Y ?? GroundHeight(field, placement.X, placement.Z);
+                    pivot = new Vector3(placement.X, ground + height * 0.5f, placement.Z);
+                    radius = MathF.Max(1f, height * 0.6f);
+                    return FiniteFrame(pivot, radius);
+                }
             case SelectionKind.Spawn when Spawn(selection.Id) is MapSpawn spawn:
                 pivot = new Vector3(spawn.X, GroundHeight(field, spawn.X, spawn.Z) + 0.75f, spawn.Z);
                 radius = 1f;

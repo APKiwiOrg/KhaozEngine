@@ -166,8 +166,13 @@ public class TileActorSpawnTests
         world.Set(e, new TileHealth { Current = 12, Max = 30 });
         world.Set(e, new TileCombatState
         {
-            AttackTicks = 10, CooldownRemaining = 3, LastDamagedBy = 9L, LastDamagedTick = 44L,
-            LastCombatTick = 46L, TargetSeen = 5L, TargetSinceTick = 41L,
+            AttackTicks = 10,
+            CooldownRemaining = 3,
+            LastDamagedBy = 9L,
+            LastDamagedTick = 44L,
+            LastCombatTick = 46L,
+            TargetSeen = 5L,
+            TargetSinceTick = 41L,
         });
         var interest = new HashSet<long> { 7L };
 

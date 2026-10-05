@@ -126,10 +126,16 @@ namespace KhaozEngine.Windowing
 
             switch (value.Trim().ToLowerInvariant())
             {
-                case "1": case "true": case "yes": case "on":
+                case "1":
+                case "true":
+                case "yes":
+                case "on":
                     focus = true;
                     return true;
-                case "0": case "false": case "no": case "off":
+                case "0":
+                case "false":
+                case "no":
+                case "off":
                     focus = false;
                     return true;
                 default:

@@ -9,10 +9,14 @@ public class TileSteerCodecTests
     const int Planes = 4;
 
     [Theory]
-    [InlineData(TileDirection.W)] [InlineData(TileDirection.E)]
-    [InlineData(TileDirection.S)] [InlineData(TileDirection.N)]
-    [InlineData(TileDirection.SW)] [InlineData(TileDirection.SE)]
-    [InlineData(TileDirection.NW)] [InlineData(TileDirection.NE)]
+    [InlineData(TileDirection.W)]
+    [InlineData(TileDirection.E)]
+    [InlineData(TileDirection.S)]
+    [InlineData(TileDirection.N)]
+    [InlineData(TileDirection.SW)]
+    [InlineData(TileDirection.SE)]
+    [InlineData(TileDirection.NW)]
+    [InlineData(TileDirection.NE)]
     public void Every_direction_round_trips(TileDirection direction)
     {
         TileCommand cmd = TileCommand.Steer(direction, TileMoveMode.Run);
@@ -28,7 +32,10 @@ public class TileSteerCodecTests
     }
 
     [Theory]
-    [InlineData(8L)] [InlineData(-1L)] [InlineData(256L)] [InlineData(long.MaxValue)]
+    [InlineData(8L)]
+    [InlineData(-1L)]
+    [InlineData(256L)]
+    [InlineData(long.MaxValue)]
     public void An_undefined_direction_is_rejected_whole(long target)
     {
         byte[] frame = TileProtocol.EncodeCommand(0,

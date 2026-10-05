@@ -55,8 +55,13 @@ namespace KhaozEngine.Tests.Gpu
                 {
                     var camera = new FlyCamera3D
                     {
-                        Position = Eye, Yaw = yaw, Pitch = Pitch, FieldOfView = MathF.PI / 3f,
-                        AspectRatio = (float)W / H, NearPlane = 0.1f, FarPlane = 2000f,
+                        Position = Eye,
+                        Yaw = yaw,
+                        Pitch = Pitch,
+                        FieldOfView = MathF.PI / 3f,
+                        AspectRatio = (float)W / H,
+                        NearPlane = 0.1f,
+                        FarPlane = 2000f,
                     };
                     byte[] rgba = Render(camera, time);
                     for (int y = 0; y < H; y++)

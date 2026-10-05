@@ -180,29 +180,29 @@ namespace KhaozEngine.Windowing.Actions
             switch (Kind)
             {
                 case InputSourceKind.KeyAxis2D:
-                {
-                    float x = (input.IsDown(Key) ? 1f : 0f) - (input.IsDown(Key2) ? 1f : 0f);
-                    float y = (input.IsDown(Key3) ? 1f : 0f) - (input.IsDown(Key4) ? 1f : 0f);
-                    return new Vector2(Mod(x, Scale, Invert), Mod(y, Scale, Invert));
-                }
-                case InputSourceKind.GamepadStickAxis:
-                {
-                    Vector2 s = Stick == GamepadStick.Left
-                        ? input.Gamepad(playerIndex).LeftStickDeadzoned()
-                        : input.Gamepad(playerIndex).RightStickDeadzoned();
-                    switch (StickComponent)
                     {
-                        // Whole stick: real 2D. Invert is the look-invert convention - it flips Y only, never X.
-                        case StickComponent.Both:
-                            return new Vector2(s.X * Scale, Mod(s.Y, Scale, Invert));
-                        // Component-specific: project onto its own axis so the read is honest (an X source never
-                        // leaks a Y value, and vice versa). Invert flips that one component.
-                        case StickComponent.Y:
-                            return new Vector2(0f, Mod(s.Y, Scale, Invert));
-                        default:
-                            return new Vector2(Mod(s.X, Scale, Invert), 0f);
+                        float x = (input.IsDown(Key) ? 1f : 0f) - (input.IsDown(Key2) ? 1f : 0f);
+                        float y = (input.IsDown(Key3) ? 1f : 0f) - (input.IsDown(Key4) ? 1f : 0f);
+                        return new Vector2(Mod(x, Scale, Invert), Mod(y, Scale, Invert));
                     }
-                }
+                case InputSourceKind.GamepadStickAxis:
+                    {
+                        Vector2 s = Stick == GamepadStick.Left
+                            ? input.Gamepad(playerIndex).LeftStickDeadzoned()
+                            : input.Gamepad(playerIndex).RightStickDeadzoned();
+                        switch (StickComponent)
+                        {
+                            // Whole stick: real 2D. Invert is the look-invert convention - it flips Y only, never X.
+                            case StickComponent.Both:
+                                return new Vector2(s.X * Scale, Mod(s.Y, Scale, Invert));
+                            // Component-specific: project onto its own axis so the read is honest (an X source never
+                            // leaks a Y value, and vice versa). Invert flips that one component.
+                            case StickComponent.Y:
+                                return new Vector2(0f, Mod(s.Y, Scale, Invert));
+                            default:
+                                return new Vector2(Mod(s.X, Scale, Invert), 0f);
+                        }
+                    }
                 default:
                     return new Vector2(EvaluateAxis1D(input, playerIndex), 0f);
             }
@@ -220,26 +220,26 @@ namespace KhaozEngine.Windowing.Actions
                 case InputSourceKind.GamepadButton:
                     return Mod(input.Gamepad(playerIndex).IsDown(GamepadButton) ? 1f : 0f, Scale, Invert);
                 case InputSourceKind.KeyAxis1D:
-                {
-                    float v = (input.IsDown(Key) ? 1f : 0f) - (input.IsDown(Key2) ? 1f : 0f);
-                    return Mod(v, Scale, Invert);
-                }
+                    {
+                        float v = (input.IsDown(Key) ? 1f : 0f) - (input.IsDown(Key2) ? 1f : 0f);
+                        return Mod(v, Scale, Invert);
+                    }
                 case InputSourceKind.GamepadStickAxis:
-                {
-                    Vector2 s = Stick == GamepadStick.Left
-                        ? input.Gamepad(playerIndex).LeftStickDeadzoned()
-                        : input.Gamepad(playerIndex).RightStickDeadzoned();
-                    // Both (whole stick) read as 1D yields X; Y yields Y; X (or anything else) yields X.
-                    float v = StickComponent == StickComponent.Y ? s.Y : s.X;
-                    return Mod(v, Scale, Invert);
-                }
+                    {
+                        Vector2 s = Stick == GamepadStick.Left
+                            ? input.Gamepad(playerIndex).LeftStickDeadzoned()
+                            : input.Gamepad(playerIndex).RightStickDeadzoned();
+                        // Both (whole stick) read as 1D yields X; Y yields Y; X (or anything else) yields X.
+                        float v = StickComponent == StickComponent.Y ? s.Y : s.X;
+                        return Mod(v, Scale, Invert);
+                    }
                 case InputSourceKind.GamepadTrigger:
-                {
-                    float t = TriggerSide == GamepadTriggerSide.Left
-                        ? input.Gamepad(playerIndex).LeftTrigger
-                        : input.Gamepad(playerIndex).RightTrigger;
-                    return Mod(t, Scale, Invert);
-                }
+                    {
+                        float t = TriggerSide == GamepadTriggerSide.Left
+                            ? input.Gamepad(playerIndex).LeftTrigger
+                            : input.Gamepad(playerIndex).RightTrigger;
+                        return Mod(t, Scale, Invert);
+                    }
                 case InputSourceKind.KeyAxis2D:
                     return EvaluateAxis2D(input, playerIndex).X;
                 default:

@@ -22,7 +22,9 @@ public sealed class GroundCoverGpuOptionsTests
         if (immutable) cover = new GroundCoverBatch(cover);
         var options = new GroundCoverRenderOptions
         {
-            UseGpuBatches = requested, FadeMode = fadeMode, CastsShadows = shadows,
+            UseGpuBatches = requested,
+            FadeMode = fadeMode,
+            CastsShadows = shadows,
         };
 
         Assert.Equal(expected, GroundCoverGpuCache.CanRetain(cover, options));
@@ -41,8 +43,12 @@ public sealed class GroundCoverGpuOptionsTests
 
         int drawn = GroundCoverRenderer.Queue(queue, cover, meshes, Vector3.Zero, new GroundCoverRenderOptions
         {
-            UseGpuBatches = true, FadeMode = mode, CastsShadows = shadows, DrawRadius = 20f,
-            FadeBandWidth = 10f, DistantDensity = 1f,
+            UseGpuBatches = true,
+            FadeMode = mode,
+            CastsShadows = shadows,
+            DrawRadius = 20f,
+            FadeBandWidth = 10f,
+            DistantDensity = 1f,
         });
 
         Assert.Equal(1, drawn);
@@ -59,9 +65,17 @@ public sealed class GroundCoverGpuOptionsTests
         var actors = new List<FoliageInteractor> { new(new Vector3(1f, 2f, 3f), 4f, .5f) };
         var options = new GroundCoverRenderOptions
         {
-            DrawRadius = 88f, DensityRadius = 40f, FadeBandWidth = 13f, InstanceFadeBandWidth = 2f,
-            QualityDensity = .8f, DistantDensity = .2f, WindDirection = new Vector2(.3f, -.8f),
-            WindStrength = .5f, WindSpeed = 3f, WindSpatialFrequency = .75f, WindFadeBladePixels = 5f,
+            DrawRadius = 88f,
+            DensityRadius = 40f,
+            FadeBandWidth = 13f,
+            InstanceFadeBandWidth = 2f,
+            QualityDensity = .8f,
+            DistantDensity = .2f,
+            WindDirection = new Vector2(.3f, -.8f),
+            WindStrength = .5f,
+            WindSpeed = 3f,
+            WindSpatialFrequency = .75f,
+            WindFadeBladePixels = 5f,
             Interactors = actors,
         };
         Span<FoliageInteractor> interactors = stackalloc FoliageInteractor[4];

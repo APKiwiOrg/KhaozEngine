@@ -33,7 +33,9 @@ namespace KhaozEngine.Tests.MapDoc
             });
             doc.CompanionLayers.Add(new MapCompanionLayer
             {
-                Name = "understory", HostLayer = "trees", HostKinds = { "pine_a" },
+                Name = "understory",
+                HostLayer = "trees",
+                HostKinds = { "pine_a" },
                 Kinds = { new MapPropKind { Id = "fern", Weight = 1f } },
             });
             doc.Exclusions.Add(new MapExclusion { Shape = new DiscShapeDoc { CenterX = -32f, CenterZ = 22f, Radius = 30f } });

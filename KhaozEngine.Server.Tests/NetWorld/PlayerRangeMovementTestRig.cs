@@ -16,8 +16,12 @@ internal sealed class PlayerRangeMovementTestRig : IDisposable
     public const float TickSeconds = 1f / 30f;
     public static readonly MoveTuning Tuning = MoveTuning.Default with
     {
-        CapsuleRadius = 0.2f, CapsuleHalfHeight = 0.75f, MaxSlopeRadians = 0.8f,
-        StepHeight = 0.4f, WalkSpeed = 6f, RunSpeed = 9f,
+        CapsuleRadius = 0.2f,
+        CapsuleHalfHeight = 0.75f,
+        MaxSlopeRadians = 0.8f,
+        StepHeight = 0.4f,
+        WalkSpeed = 6f,
+        RunSpeed = 9f,
     };
     static readonly Func<float, float, float> Flat = (_, _) => 0f;
     static readonly Func<float, float, Vector3> Normal = (_, _) => Vector3.UnitY;
@@ -55,7 +59,9 @@ internal sealed class PlayerRangeMovementTestRig : IDisposable
 
         Server = new WorldServer(hub.Server, new WorldServerConfig
         {
-            TickSeconds = TickSeconds, InterestRadius = 500f, MaxPlayers = 1,
+            TickSeconds = TickSeconds,
+            InterestRadius = 500f,
+            MaxPlayers = 1,
             SpawnPosition = _ => new Vector3(wallAndBox ? -1.5f : 0f, Tuning.CapsuleHalfHeight, 0f),
         }, Flat, Tuning, groundNormal: Normal, physics: serverPhysics);
         wire = new ObservedTransport(hub.CreateClient());

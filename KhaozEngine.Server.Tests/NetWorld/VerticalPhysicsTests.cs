@@ -146,7 +146,10 @@ public class VerticalPhysicsTests
         var (st, ct) = LoopbackTransport.CreatePair();
         var cfg = new ShardedWorldServerConfig
         {
-            TickSeconds = 1f / 30f, CellSize = 60f, OverlapMargin = 24f, InterestRadius = 24f,
+            TickSeconds = 1f / 30f,
+            CellSize = 60f,
+            OverlapMargin = 24f,
+            InterestRadius = 24f,
             SpawnPosition = _ => Vector3.Zero,
         };
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);
@@ -171,7 +174,10 @@ public class VerticalPhysicsTests
         var (st, ct) = LoopbackTransport.CreatePair();
         var cfg = new ShardedWorldServerConfig
         {
-            TickSeconds = 1f / 30f, CellSize = 8f, OverlapMargin = 4f, InterestRadius = 4f,
+            TickSeconds = 1f / 30f,
+            CellSize = 8f,
+            OverlapMargin = 4f,
+            InterestRadius = 4f,
             SpawnPosition = _ => Vector3.Zero,
         };
         var server = new ShardedWorldServer(st, cfg, Flat, MoveTuning.Default);

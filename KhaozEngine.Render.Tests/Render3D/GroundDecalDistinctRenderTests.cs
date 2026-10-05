@@ -36,23 +36,33 @@ namespace KhaozEngine.Tests.Render3D
                     // Left: an opaque-ish RED filled circle.
                     scene.DrawGroundDecal(new GroundDecal
                     {
-                        Shape = DecalShape.Circle, Center = new Vector3(-1.8f, 0f, 0.4f),
+                        Shape = DecalShape.Circle,
+                        Center = new Vector3(-1.8f, 0f, 0.4f),
                         Size = new Vector4(1.3f, 0, 0, 0),
                         FillColor = new Color(0.95f, 0.1f, 0.05f, 0.92f),
                         OutlineColor = new Color(0.95f, 0.1f, 0.05f, 0.92f),
-                        EdgeThickness = 0.08f, FillFraction = 1f, FlashAdd = 0f,
-                        Blend = DecalBlend.Alpha, YTolerance = 0.3f, MaxStep = 0.4f,
+                        EdgeThickness = 0.08f,
+                        FillFraction = 1f,
+                        FlashAdd = 0f,
+                        Blend = DecalBlend.Alpha,
+                        YTolerance = 0.3f,
+                        MaxStep = 0.4f,
                     });
                     // Right: an opaque-ish CYAN filled circle. With the shared-UBO bug both draws use these params,
                     // so the red circle never appears.
                     scene.DrawGroundDecal(new GroundDecal
                     {
-                        Shape = DecalShape.Circle, Center = new Vector3(1.8f, 0f, 0.4f),
+                        Shape = DecalShape.Circle,
+                        Center = new Vector3(1.8f, 0f, 0.4f),
                         Size = new Vector4(1.3f, 0, 0, 0),
                         FillColor = new Color(0.05f, 0.9f, 0.95f, 0.92f),
                         OutlineColor = new Color(0.05f, 0.9f, 0.95f, 0.92f),
-                        EdgeThickness = 0.08f, FillFraction = 1f, FlashAdd = 0f,
-                        Blend = DecalBlend.Alpha, YTolerance = 0.3f, MaxStep = 0.4f,
+                        EdgeThickness = 0.08f,
+                        FillFraction = 1f,
+                        FlashAdd = 0f,
+                        Blend = DecalBlend.Alpha,
+                        YTolerance = 0.3f,
+                        MaxStep = 0.4f,
                     });
                 },
                 frames: 2);

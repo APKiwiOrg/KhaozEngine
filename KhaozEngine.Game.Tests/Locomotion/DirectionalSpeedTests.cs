@@ -158,25 +158,27 @@ public class DirectionalSpeedTests
         MoveTuning neutral = MoveTuning.Default;
         MoveTuning explicitly = MoveTuning.Default with
         {
-            StrafeSpeedScale = 1f, BackpedalSpeedScale = 1f, BackpedalAllowsRun = true,
+            StrafeSpeedScale = 1f,
+            BackpedalSpeedScale = 1f,
+            BackpedalAllowsRun = true,
         };
         Assert.Equal(1f, neutral.StrafeSpeedScale);
         Assert.Equal(1f, neutral.BackpedalSpeedScale);
         Assert.True(neutral.BackpedalAllowsRun);
 
         foreach (Vector2 axis in Axes())
-        foreach (bool run in new[] { false, true })
-        {
-            MoveCommand cmd = Cmd(axis, run);
-            MoveState a = CharacterMovement.Step(Grounded(neutral), cmd, Dt, Flat, neutral);
-            MoveState b = CharacterMovement.Step(Grounded(explicitly), cmd, Dt, Flat, explicitly);
-            Assert.Equal(a.Position, b.Position);
+            foreach (bool run in new[] { false, true })
+            {
+                MoveCommand cmd = Cmd(axis, run);
+                MoveState a = CharacterMovement.Step(Grounded(neutral), cmd, Dt, Flat, neutral);
+                MoveState b = CharacterMovement.Step(Grounded(explicitly), cmd, Dt, Flat, explicitly);
+                Assert.Equal(a.Position, b.Position);
 
-            // And the neutral run is the full-speed run in every sector, which is what "nothing changed" means in
-            // numbers rather than in a comparison against itself.
-            float expected = axis == Vector2.Zero ? 0f : (run ? neutral.RunSpeed : neutral.WalkSpeed);
-            Assert.Equal(expected, SpeedOf(cmd, neutral), 3);
-        }
+                // And the neutral run is the full-speed run in every sector, which is what "nothing changed" means in
+                // numbers rather than in a comparison against itself.
+                float expected = axis == Vector2.Zero ? 0f : (run ? neutral.RunSpeed : neutral.WalkSpeed);
+                Assert.Equal(expected, SpeedOf(cmd, neutral), 3);
+            }
     }
 
     [Fact]
@@ -189,14 +191,14 @@ public class DirectionalSpeedTests
         MoveTuning neutral = MoveTuning.Default;
 
         foreach (Vector2 axis in Axes())
-        foreach (bool run in new[] { false, true })
-        {
-            MoveCommand cmd = Cmd(axis, run, faceCamera: false);
-            MoveState scaled = CharacterMovement.Step(Grounded(t), cmd, Dt, Flat, t);
-            MoveState plain = CharacterMovement.Step(Grounded(neutral), cmd, Dt, Flat, neutral);
-            Assert.Equal(plain.Position, scaled.Position);
-            Assert.Equal(plain.CommandedVelocity, scaled.CommandedVelocity);
-        }
+            foreach (bool run in new[] { false, true })
+            {
+                MoveCommand cmd = Cmd(axis, run, faceCamera: false);
+                MoveState scaled = CharacterMovement.Step(Grounded(t), cmd, Dt, Flat, t);
+                MoveState plain = CharacterMovement.Step(Grounded(neutral), cmd, Dt, Flat, neutral);
+                Assert.Equal(plain.Position, scaled.Position);
+                Assert.Equal(plain.CommandedVelocity, scaled.CommandedVelocity);
+            }
     }
 
     [Fact]

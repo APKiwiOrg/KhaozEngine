@@ -22,7 +22,9 @@ public class PlayerMoveMediumTests
     // PlayerMoveSwimTests. A null provider is unaffected by swim regardless.
     static readonly MoveTuning Unit = MoveTuning.Default with
     {
-        CapsuleHalfHeight = 0.5f, SwimEnterDepthFraction = 10f, SwimExitDepthFraction = 9f,
+        CapsuleHalfHeight = 0.5f,
+        SwimEnterDepthFraction = 10f,
+        SwimExitDepthFraction = 9f,
     };
 
     static Func<float, float, float, MovementMedium> Water(float surfaceY, float zoneScale = 1f)

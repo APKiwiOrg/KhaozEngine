@@ -90,8 +90,10 @@ public static class TileCollision
         if ((there & TileCollisionFlags.Blocked) != 0) return false;
         TileDirection back = dir switch
         {
-            TileDirection.W => TileDirection.E, TileDirection.E => TileDirection.W,
-            TileDirection.N => TileDirection.S, _ => TileDirection.N,
+            TileDirection.W => TileDirection.E,
+            TileDirection.E => TileDirection.W,
+            TileDirection.N => TileDirection.S,
+            _ => TileDirection.N,
         };
         return (there & TileCollisionBaker.EdgeFlag(back)) == 0;
     }

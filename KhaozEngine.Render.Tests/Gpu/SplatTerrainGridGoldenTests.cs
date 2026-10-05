@@ -141,8 +141,13 @@ namespace KhaozEngine.Tests.Gpu
 
             return new TerrainLayeredMaterial
             {
-                Width = size, Height = size,
-                Grass = Layer(), Dirt = Layer(), Rock = Layer(), Sand = Layer(), Snow = Layer(),
+                Width = size,
+                Height = size,
+                Grass = Layer(),
+                Dirt = Layer(),
+                Rock = Layer(),
+                Sand = Layer(),
+                Snow = Layer(),
             };
         }
     }

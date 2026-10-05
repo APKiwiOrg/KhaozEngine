@@ -34,8 +34,8 @@ namespace KhaozEngine.Tests.MapDoc
             var f2 = MapRuntime.BuildField(fromCurrent, registry);
             var f1 = MapRuntime.BuildField(fromV1, registry);
             for (float x = -60f; x <= 60f; x += 12f)
-            for (float z = -60f; z <= 60f; z += 12f)
-                Assert.Equal(f2.SampleHeight(x, z), f1.SampleHeight(x, z));
+                for (float z = -60f; z <= 60f; z += 12f)
+                    Assert.Equal(f2.SampleHeight(x, z), f1.SampleHeight(x, z));
         }
 
         [Fact]
@@ -127,8 +127,8 @@ namespace KhaozEngine.Tests.MapDoc
             var a = MapRuntime.BuildField(MapDocumentFile.LoadText(json), registry);
             var b = MapRuntime.BuildField(MapDocumentFile.LoadText(json), registry);
             for (float x = -20f; x <= 20f; x += 5f)
-            for (float z = -20f; z <= 20f; z += 5f)
-                Assert.Equal(a.SampleHeight(x, z), b.SampleHeight(x, z));
+                for (float z = -20f; z <= 20f; z += 5f)
+                    Assert.Equal(a.SampleHeight(x, z), b.SampleHeight(x, z));
 
             // The sculpt actually moved the ground: cell (4,6) center is world (2.0, 3.0), + 2.5 m.
             var plain = MapRuntime.BuildField(MapDocumentFileTests.SampleDoc(), registry);

@@ -93,8 +93,12 @@ namespace KhaozEngine.Render3D
             float dissolve, float edgeWidth, Color edgeColor, bool castsShadows)
             => Draw(new RigidInstanceDraw(mesh, world)
             {
-                Tint = tint, Material = material, Dissolve = dissolve, DissolveEdgeWidth = edgeWidth,
-                DissolveEdgeColor = edgeColor, CastsShadows = castsShadows,
+                Tint = tint,
+                Material = material,
+                Dissolve = dissolve,
+                DissolveEdgeWidth = edgeWidth,
+                DissolveEdgeColor = edgeColor,
+                CastsShadows = castsShadows,
             });
 
         /// <summary>The dissolve + opt-out overload plus the inverted SHADOW dither (issue #391):
@@ -108,8 +112,12 @@ namespace KhaozEngine.Render3D
             float dissolve, float edgeWidth, Color edgeColor, bool castsShadows, bool invertShadowDissolve)
             => Draw(new RigidInstanceDraw(mesh, world)
             {
-                Tint = tint, Material = material, Dissolve = dissolve, DissolveEdgeWidth = edgeWidth,
-                DissolveEdgeColor = edgeColor, CastsShadows = castsShadows,
+                Tint = tint,
+                Material = material,
+                Dissolve = dissolve,
+                DissolveEdgeWidth = edgeWidth,
+                DissolveEdgeColor = edgeColor,
+                CastsShadows = castsShadows,
                 InvertShadowDissolve = invertShadowDissolve,
             });
 

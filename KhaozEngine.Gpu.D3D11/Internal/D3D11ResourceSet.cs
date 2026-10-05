@@ -211,11 +211,11 @@ namespace KhaozEngine.Gpu.D3D11.Internal
                 case GpuResourceKind.UniformBuffer:
                 case GpuResourceKind.StructuredBufferReadOnly:
                 case GpuResourceKind.StructuredBufferReadWrite:
-                {
-                    (IGpuBuffer buffer, uint offset, uint size) = ResolveBuffer(element, resource);
-                    return new D3D11BoundResource(element.Kind, slot, element.Stages, element.Dynamic,
-                        resource, buffer, offset, size);
-                }
+                    {
+                        (IGpuBuffer buffer, uint offset, uint size) = ResolveBuffer(element, resource);
+                        return new D3D11BoundResource(element.Kind, slot, element.Stages, element.Dynamic,
+                            resource, buffer, offset, size);
+                    }
 
                 case GpuResourceKind.TextureReadOnly:
                 case GpuResourceKind.TextureReadWrite:
@@ -241,18 +241,18 @@ namespace KhaozEngine.Gpu.D3D11.Internal
             switch (resource)
             {
                 case GpuBufferRange range when range.Buffer is not null:
-                {
-                    uint size = range.Size == 0 ? range.Buffer.SizeInBytes - range.Offset : range.Size;
-                    if (range.Offset + size > range.Buffer.SizeInBytes)
                     {
-                        throw new ArgumentException(
-                            $"The buffer range bound at '{element.Name}' runs past the end of its buffer "
-                            + $"({range.Offset} + {size} bytes into {range.Buffer.SizeInBytes}). Resolving the "
-                            + "window here rather than at draw time is what makes that sayable at all.",
-                            nameof(resource));
+                        uint size = range.Size == 0 ? range.Buffer.SizeInBytes - range.Offset : range.Size;
+                        if (range.Offset + size > range.Buffer.SizeInBytes)
+                        {
+                            throw new ArgumentException(
+                                $"The buffer range bound at '{element.Name}' runs past the end of its buffer "
+                                + $"({range.Offset} + {size} bytes into {range.Buffer.SizeInBytes}). Resolving the "
+                                + "window here rather than at draw time is what makes that sayable at all.",
+                                nameof(resource));
+                        }
+                        return (range.Buffer, range.Offset, size);
                     }
-                    return (range.Buffer, range.Offset, size);
-                }
 
                 case IGpuBuffer buffer:
                     return (buffer, 0, buffer.SizeInBytes);

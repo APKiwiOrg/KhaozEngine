@@ -103,10 +103,10 @@ public class TileWorldCatalogsTests
     static JsonSerializerOptions CatalogWriteOptions()
     {
         var options = new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            };
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        };
         options.Converters.Add(new JsonStringEnumConverter());
         return options;
     }

@@ -51,19 +51,19 @@ public static class OwnerLookupBenchmark
         int total = 0;
         long nextNetId = 1;
         for (int cy = 0; cy < gridHeight; cy++)
-        for (int cx = 0; cx < gridWidth; cx++)
-        {
-            float baseX = cx * cellSize, baseY = cy * cellSize;
-            for (int i = 0; i < entitiesPerCell; i++)
+            for (int cx = 0; cx < gridWidth; cx++)
             {
-                float x = baseX + (0.05f + 0.9f * rng.NextFloat()) * cellSize;
-                float y = baseY + (0.05f + 0.9f * rng.NextFloat()) * cellSize;
-                long netId = nextNetId++;
-                Entity e = host.SpawnOwned(x, y, netId, out CellSim cell);
-                cell.World.Set(e, new BenchNetPos { X = x, Y = y });
-                netIds[total++] = netId;
+                float baseX = cx * cellSize, baseY = cy * cellSize;
+                for (int i = 0; i < entitiesPerCell; i++)
+                {
+                    float x = baseX + (0.05f + 0.9f * rng.NextFloat()) * cellSize;
+                    float y = baseY + (0.05f + 0.9f * rng.NextFloat()) * cellSize;
+                    long netId = nextNetId++;
+                    Entity e = host.SpawnOwned(x, y, netId, out CellSim cell);
+                    cell.World.Set(e, new BenchNetPos { X = x, Y = y });
+                    netIds[total++] = netId;
+                }
             }
-        }
 
         // Index lookups are O(1), so sweep every netId for a stable average.
         double indexNs = TimePerLookup(

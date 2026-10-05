@@ -66,20 +66,20 @@ public readonly struct ParticleCurve
             case ParticleCurveKind.EaseInOut:
                 return S(n);
             case ParticleCurveKind.Flash:
-            {
-                float p = Param <= 0f ? 0.15f : Param;
-                return n < p ? 1f - S(n / p) : S((n - p) / (1f - p));
-            }
+                {
+                    float p = Param <= 0f ? 0.15f : Param;
+                    return n < p ? 1f - S(n / p) : S((n - p) / (1f - p));
+                }
             case ParticleCurveKind.FadeInOut:
-            {
-                float e = Param <= 0f ? 0.2f : Param;
-                return 1f - Math.Clamp(MathF.Min(n, 1f - n) / e, 0f, 1f);
-            }
+                {
+                    float e = Param <= 0f ? 0.2f : Param;
+                    return 1f - Math.Clamp(MathF.Min(n, 1f - n) / e, 0f, 1f);
+                }
             case ParticleCurveKind.Pulse:
-            {
-                float c = Param <= 0f ? 2f : Param;
-                return 0.5f - 0.5f * MathF.Cos(2f * MathF.PI * c * n);
-            }
+                {
+                    float c = Param <= 0f ? 2f : Param;
+                    return 0.5f - 0.5f * MathF.Cos(2f * MathF.PI * c * n);
+                }
             case ParticleCurveKind.One:
                 return 1f;
             default:

@@ -18,8 +18,8 @@ public static partial class CharacterMovement
     // The walkable-contact pass-through advances the remainder UNSWEPT, so this must stay below ~1.0 (each substep
     // under one radius) or such an advance could mask and tunnel a wall in the same substep.
     private const float SubstepFraction = 0.5f;
-    private const int   SlideIterations = 4;
-    private const float SkinWidth       = 0.01f;
+    private const int SlideIterations = 4;
+    private const float SkinWidth = 0.01f;
     // A small "standing on a prop" skin (NOT the larger GroundedEpsilon mount band): a capsule whose carried Y is
     // above terrain by more than this is genuinely on a prop, so the support sweep keeps following the prop surface
     // (e.g. down the far side of a dome it mounted), while one at terrain level is below it. A flank steeper than the
@@ -28,7 +28,7 @@ public static partial class CharacterMovement
     // before (KhaozEngine #1260). Too large a skin would snap the capsule off the prop
     // surface onto terrain mid-descent and clip it into the prop. Read by PropSupportFloor and by StepCore's
     // stair-climb ground-stick and paced-climb blocks, which all mean the same "genuinely up on a step" by it.
-    private const float OnPropSkin      = 0.05f;
+    private const float OnPropSkin = 0.05f;
     // Downward reach of the wall-slide gravity GATE (NOT the support height itself, which step 4 owns): a walkable
     // floor within this far below the feet means "supported", so the wall slide keeps its usual on-slope projection;
     // beyond it the slide must not cancel gravity. > StepHeight + SkinWidth (a step you could mount still counts as
@@ -96,7 +96,7 @@ public static partial class CharacterMovement
     // Depenetration-to-clearance passes before each sweep: push the capsule out of any prop/wall overlap to a small
     // positive clearance so the sweep starts provably outside and yields a REAL contact normal (Bepu reports a
     // useless t=0 zero-normal from a touching start). A few passes clear an inner corner (two simultaneous contacts).
-    private const int   DepenIterations = 4;
+    private const int DepenIterations = 4;
 
     /// <summary>Move the capsule from <paramref name="start"/> through <paramref name="full"/> by a substepped
     /// swept collide-and-slide over <see cref="IPhysicsWorld.SweepCapsule"/>. The displacement is split into
@@ -515,7 +515,7 @@ public static partial class CharacterMovement
     // t = RecoverBackRadii * radius; the forward range is wider because Bepu's mesh sweep does not report a hit that
     // lands in the far portion of the swept range (empirically it must sit within ~half) - so it is swept to
     // RecoverSweepRadii * radius (> 2x the contact distance) to be registered reliably.
-    private const float RecoverBackRadii  = 1f;
+    private const float RecoverBackRadii = 1f;
     private const float RecoverSweepRadii = 3f;
     // Step-up down-sweep range, as a multiple of StepHeight (sibling to RecoverSweepRadii, same Bepu half-range
     // rationale). TryStepUp raises the pose a full StepHeight then sweeps back DOWN to settle onto the ledge, so a

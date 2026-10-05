@@ -28,9 +28,12 @@ namespace KhaozEngine.Tests.Render3D
         {
             var v = new SkinnedVertex
             {
-                Position = new Vector3(1, 2, 3), Normal = Vector3.UnitY,
-                Color = new Vector4(1, 1, 1, 1), Uv = Vector2.Zero,
-                BoneIndices = new Vector4(0, 1, 0, 0), BoneWeights = new Vector4(0.5f, 0.5f, 0, 0),
+                Position = new Vector3(1, 2, 3),
+                Normal = Vector3.UnitY,
+                Color = new Vector4(1, 1, 1, 1),
+                Uv = Vector2.Zero,
+                BoneIndices = new Vector4(0, 1, 0, 0),
+                BoneWeights = new Vector4(0.5f, 0.5f, 0, 0),
             };
             var mesh = new SkinnedGltfMesh(
                 new[] { v }, new ushort[] { 0 },

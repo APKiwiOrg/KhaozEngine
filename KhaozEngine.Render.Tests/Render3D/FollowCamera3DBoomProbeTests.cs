@@ -19,7 +19,11 @@ namespace KhaozEngine.Tests.Render3D
         {
             var cam = new FollowCamera3D
             {
-                Target = Vector3.Zero, Yaw = 0f, HeightOffset = 0f, MinPitch = 0f, BoomProbe = probe,
+                Target = Vector3.Zero,
+                Yaw = 0f,
+                HeightOffset = 0f,
+                MinPitch = 0f,
+                BoomProbe = probe,
             };
             cam.Pitch = 0f;
             cam.Distance = 10f;
@@ -81,7 +85,11 @@ namespace KhaozEngine.Tests.Render3D
             // view keeps its upward tilt.
             var cam = new FollowCamera3D
             {
-                Target = Vector3.Zero, Yaw = 0f, HeightOffset = 0f, MinPitch = -1.4f, PivotHeight = 1.5f,
+                Target = Vector3.Zero,
+                Yaw = 0f,
+                HeightOffset = 0f,
+                MinPitch = -1.4f,
+                PivotHeight = 1.5f,
                 BoomProbe = new FixedReachProbe { ReachAt = 1.2f },
             };
             cam.Pitch = -1.0f;

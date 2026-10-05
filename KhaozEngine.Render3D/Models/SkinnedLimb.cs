@@ -195,13 +195,16 @@ namespace KhaozEngine.Render3D
 
         static Vector3 AxisVec(Axis a) => a switch
         {
-            Axis.X => Vector3.UnitX, Axis.Y => Vector3.UnitY, _ => Vector3.UnitZ
+            Axis.X => Vector3.UnitX,
+            Axis.Y => Vector3.UnitY,
+            _ => Vector3.UnitZ
         };
 
         static Vector3 DefaultUp(Axis a) => a switch
         {
             // Up must not be parallel to the run axis.
-            Axis.Y => Vector3.UnitZ, _ => Vector3.UnitY
+            Axis.Y => Vector3.UnitZ,
+            _ => Vector3.UnitY
         };
     }
 }

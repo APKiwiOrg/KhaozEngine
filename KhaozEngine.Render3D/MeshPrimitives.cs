@@ -300,16 +300,16 @@ namespace KhaozEngine.Render3D
             }
 
             for (int z = 0; z < subdivisionsZ; z++)
-            for (int x = 0; x < subdivisionsX; x++)
-            {
-                ushort i0 = (ushort)(z * colsX + x);
-                ushort i1 = (ushort)(z * colsX + x + 1);
-                ushort i2 = (ushort)((z + 1) * colsX + x);
-                ushort i3 = (ushort)((z + 1) * colsX + x + 1);
-                // CCW seen from +Y (outward up).
-                inds.Add(i0); inds.Add(i2); inds.Add(i3);
-                inds.Add(i0); inds.Add(i3); inds.Add(i1);
-            }
+                for (int x = 0; x < subdivisionsX; x++)
+                {
+                    ushort i0 = (ushort)(z * colsX + x);
+                    ushort i1 = (ushort)(z * colsX + x + 1);
+                    ushort i2 = (ushort)((z + 1) * colsX + x);
+                    ushort i3 = (ushort)((z + 1) * colsX + x + 1);
+                    // CCW seen from +Y (outward up).
+                    inds.Add(i0); inds.Add(i2); inds.Add(i3);
+                    inds.Add(i0); inds.Add(i3); inds.Add(i1);
+                }
 
             return new GltfMesh(verts, inds.ToArray());
         }
@@ -340,50 +340,50 @@ namespace KhaozEngine.Render3D
                 int cols = segments + 1;
                 var grid = new ushort[cols * cols];
                 for (int b = 0; b <= segments; b++)
-                for (int a = 0; a <= segments; a++)
-                {
-                    float fa = (float)a / segments * 2f - 1f;
-                    float fb = (float)b / segments * 2f - 1f;
-                    Vector3 cube = place(fa, fb); // point on the [-half,half] cube shell
-                    // nearest point on the inner box; the offset from it (length radius) is the surface normal.
-                    Vector3 innerPt = new Vector3(
-                        System.Math.Clamp(cube.X, -inner, inner),
-                        System.Math.Clamp(cube.Y, -inner, inner),
-                        System.Math.Clamp(cube.Z, -inner, inner));
-                    Vector3 offset = cube - innerPt;
-                    Vector3 nrm;
-                    Vector3 surf;
-                    if (offset.LengthSquared() > 1e-12f)
+                    for (int a = 0; a <= segments; a++)
                     {
-                        nrm = Vector3.Normalize(offset);
-                        surf = innerPt + nrm * radius;
+                        float fa = (float)a / segments * 2f - 1f;
+                        float fb = (float)b / segments * 2f - 1f;
+                        Vector3 cube = place(fa, fb); // point on the [-half,half] cube shell
+                                                      // nearest point on the inner box; the offset from it (length radius) is the surface normal.
+                        Vector3 innerPt = new Vector3(
+                            System.Math.Clamp(cube.X, -inner, inner),
+                            System.Math.Clamp(cube.Y, -inner, inner),
+                            System.Math.Clamp(cube.Z, -inner, inner));
+                        Vector3 offset = cube - innerPt;
+                        Vector3 nrm;
+                        Vector3 surf;
+                        if (offset.LengthSquared() > 1e-12f)
+                        {
+                            nrm = Vector3.Normalize(offset);
+                            surf = innerPt + nrm * radius;
+                        }
+                        else
+                        {
+                            nrm = Vector3.Normalize(cube); // degenerate (radius 0): fall back to radial
+                            surf = cube;
+                        }
+                        var uv = new Vector2((fa + 1f) * 0.5f, (fb + 1f) * 0.5f);
+                        var key = ((long)MathF.Round(surf.X * 1e4f), (long)MathF.Round(surf.Y * 1e4f), (long)MathF.Round(surf.Z * 1e4f));
+                        if (!weld.TryGetValue(key, out ushort idx))
+                        {
+                            idx = (ushort)verts.Count;
+                            verts.Add(new ModelVertex(surf, nrm, white, uv));
+                            weld[key] = idx;
+                        }
+                        grid[b * cols + a] = idx;
                     }
-                    else
-                    {
-                        nrm = Vector3.Normalize(cube); // degenerate (radius 0): fall back to radial
-                        surf = cube;
-                    }
-                    var uv = new Vector2((fa + 1f) * 0.5f, (fb + 1f) * 0.5f);
-                    var key = ((long)MathF.Round(surf.X * 1e4f), (long)MathF.Round(surf.Y * 1e4f), (long)MathF.Round(surf.Z * 1e4f));
-                    if (!weld.TryGetValue(key, out ushort idx))
-                    {
-                        idx = (ushort)verts.Count;
-                        verts.Add(new ModelVertex(surf, nrm, white, uv));
-                        weld[key] = idx;
-                    }
-                    grid[b * cols + a] = idx;
-                }
 
                 for (int b = 0; b < segments; b++)
-                for (int a = 0; a < segments; a++)
-                {
-                    ushort i0 = grid[b * cols + a];
-                    ushort i1 = grid[b * cols + a + 1];
-                    ushort i2 = grid[(b + 1) * cols + a];
-                    ushort i3 = grid[(b + 1) * cols + a + 1];
-                    inds.Add(i0); inds.Add(i2); inds.Add(i3);
-                    inds.Add(i0); inds.Add(i3); inds.Add(i1);
-                }
+                    for (int a = 0; a < segments; a++)
+                    {
+                        ushort i0 = grid[b * cols + a];
+                        ushort i1 = grid[b * cols + a + 1];
+                        ushort i2 = grid[(b + 1) * cols + a];
+                        ushort i3 = grid[(b + 1) * cols + a + 1];
+                        inds.Add(i0); inds.Add(i2); inds.Add(i3);
+                        inds.Add(i0); inds.Add(i3); inds.Add(i1);
+                    }
             }
 
             // six faces, wound CCW outward (a = first param, b = second).
@@ -500,16 +500,16 @@ namespace KhaozEngine.Render3D
             }
 
             for (int u = 0; u < majorSegments; u++)
-            for (int v = 0; v < minorSegments; v++)
-            {
-                ushort i0 = (ushort)(u * colsV + v);
-                ushort i1 = (ushort)(u * colsV + v + 1);
-                ushort i2 = (ushort)((u + 1) * colsV + v);
-                ushort i3 = (ushort)((u + 1) * colsV + v + 1);
-                // CCW outward (u increases around the major ring, v around the tube).
-                inds.Add(i0); inds.Add(i3); inds.Add(i2);
-                inds.Add(i0); inds.Add(i1); inds.Add(i3);
-            }
+                for (int v = 0; v < minorSegments; v++)
+                {
+                    ushort i0 = (ushort)(u * colsV + v);
+                    ushort i1 = (ushort)(u * colsV + v + 1);
+                    ushort i2 = (ushort)((u + 1) * colsV + v);
+                    ushort i3 = (ushort)((u + 1) * colsV + v + 1);
+                    // CCW outward (u increases around the major ring, v around the tube).
+                    inds.Add(i0); inds.Add(i3); inds.Add(i2);
+                    inds.Add(i0); inds.Add(i1); inds.Add(i3);
+                }
 
             return new GltfMesh(verts, inds.ToArray());
         }

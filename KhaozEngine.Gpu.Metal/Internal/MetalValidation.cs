@@ -136,11 +136,18 @@ namespace KhaozEngine.Gpu.Metal.Internal
 
             switch (envValue.Trim().ToLowerInvariant())
             {
-                case "0": case "false": case "no": case "off":
+                case "0":
+                case "false":
+                case "no":
+                case "off":
                     return MetalValidationMode.Off;
-                case "1": case "true": case "yes": case "on":
+                case "1":
+                case "true":
+                case "yes":
+                case "on":
                     return MetalValidationMode.On;
-                case "shaders": case "shader":
+                case "shaders":
+                case "shader":
                     return MetalValidationMode.Shaders;
                 default:
                     unrecognizedValue = envValue;

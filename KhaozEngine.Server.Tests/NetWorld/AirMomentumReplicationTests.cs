@@ -360,7 +360,9 @@ public class AirMomentumReplicationTests
         {
             Move = new MoveState
             {
-                Position = new Vector3(0f, 60f, 0f), Grounded = false, TimeSinceGrounded = 1f,
+                Position = new Vector3(0f, 60f, 0f),
+                Grounded = false,
+                TimeSinceGrounded = 1f,
                 HorizontalVelocity = new Vector2(18f, -24f),   // 30 m/s, off-axis so a direction bug cannot hide
             },
         };
@@ -412,7 +414,9 @@ public class AirMomentumReplicationTests
         {
             Move = new MoveState
             {
-                Position = new Vector3(0f, 3f, 0f), Grounded = false, TimeSinceGrounded = 1f,
+                Position = new Vector3(0f, 3f, 0f),
+                Grounded = false,
+                TimeSinceGrounded = 1f,
                 HorizontalVelocity = new Vector2(0f, 20f),   // flying head-on at the wall at 20 m/s
             },
         };

@@ -312,7 +312,10 @@ namespace KhaozEngine.Tests.Render3D
         static Dictionary<string, object> Accessor(int bufferView, int componentType, int count, string type) =>
             new()
             {
-                ["bufferView"] = bufferView, ["componentType"] = componentType, ["count"] = count, ["type"] = type,
+                ["bufferView"] = bufferView,
+                ["componentType"] = componentType,
+                ["count"] = count,
+                ["type"] = type,
             };
 
         static IEnumerable<float> MatrixFloats(Matrix4x4 m)

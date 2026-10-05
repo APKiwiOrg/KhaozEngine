@@ -158,7 +158,9 @@ public class ProjectionRetentionTests
             (1, new[] { Frame(OpaqueId, new byte[10]), Frame(OpaqueId + 1, new byte[10]) }));
         var retention = new ProjectionRetention(new DeltaRebuildOptions
         {
-            MaxComponents = 3, MaxRetainedPayloadBytes = 16, MaxKeyframeBytes = 4,
+            MaxComponents = 3,
+            MaxRetainedPayloadBytes = 16,
+            MaxKeyframeBytes = 4,
         });
         Assert.False(retention.TryRetain(Id(1), fourTags, Pins(1), out DeltaRebuildFailure failure));
         Assert.Equal(DeltaRebuildFailure.CapacityExceeded, failure);
@@ -181,7 +183,9 @@ public class ProjectionRetentionTests
     {
         var retention = new ProjectionRetention(new DeltaRebuildOptions
         {
-            MaxRetainedProjections = 4, MaxRetainedPayloadBytes = 100, MaxKeyframeBytes = 25,
+            MaxRetainedProjections = 4,
+            MaxRetainedPayloadBytes = 100,
+            MaxKeyframeBytes = 25,
         });
         ReplicationProjection a = Sized(30), b = Sized(30), c = Sized(30), d = Sized(30);
         Assert.True(retention.TryRetain(Id(1), a, Pins(1), out _));
@@ -260,7 +264,9 @@ public class ProjectionRetentionTests
     {
         var retention = new ProjectionRetention(new DeltaRebuildOptions
         {
-            MaxRetainedProjections = 4, MaxRetainedPayloadBytes = 10, MaxKeyframeBytes = 2,
+            MaxRetainedProjections = 4,
+            MaxRetainedPayloadBytes = 10,
+            MaxKeyframeBytes = 2,
         });
         ReplicationProjection ack = Sized(1), sent1 = Sized(1), sent2 = Sized(1), candidate1 = Sized(1);
         Assert.True(retention.TryRetain(Id(1), ack, Pins(1), out _));

@@ -63,9 +63,15 @@ namespace KhaozEngine.Gpu.D3D11.Internal
 
             switch (envValue.Trim().ToLowerInvariant())
             {
-                case "1": case "true": case "yes": case "on":
+                case "1":
+                case "true":
+                case "yes":
+                case "on":
                     return DebugBuild;
-                case "0": case "false": case "no": case "off":
+                case "0":
+                case "false":
+                case "no":
+                case "off":
                     return Optimized;
                 default:
                     unrecognizedValue = envValue;

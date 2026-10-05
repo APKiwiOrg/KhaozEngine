@@ -283,7 +283,7 @@ namespace KhaozEngine.Showcase
             Vector2 os = _c.Big.Measure(over);
             b.DrawString(_c.Big, over, new Vector2(_dialog.X + (_dialog.Width - os.X) * 0.5f, _dialog.Y + 40f), new Color(text.X, text.Y, text.Z, a));
             string final = LocalizedText.Of(ShowcaseStrings.MiniGameFinalScore, _score).Resolve();
-            Vector2  fs = _c.Small.Measure(final);
+            Vector2 fs = _c.Small.Measure(final);
             b.DrawString(_c.Small, final, new Vector2(_dialog.X + (_dialog.Width - fs.X) * 0.5f, _dialog.Y + 110f), new Color(muted.X, muted.Y, muted.Z, a));
             _retry.Draw(b, _c.White); _quit.Draw(b, _c.White);
         }

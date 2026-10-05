@@ -31,14 +31,14 @@ public class DungeonNavRotationTests
         {
             NavGrid grid = space.Layers[f];
             for (int z = 0; z < layout.Depth; z++)
-            for (int x = 0; x < layout.Width; x++)
-            {
-                var expected = plot.TileCenter(new DungeonTile(x, z, f), layout.CellSizeMeters, layout.FloorHeightMeters);
-                Vector2 actual = grid.CellCenter(x, z);
-                Assert.InRange(Vector2.Distance(new Vector2(expected.X, expected.Z), actual), 0, 0.001f);
-                Assert.Equal((x, z), grid.CellOf(expected.X, expected.Z));
-                Assert.Equal(DungeonLayout.IsWalkable(layout.GetCell(x, z, f)), grid.ClearanceAt(x, z) > 0);
-            }
+                for (int x = 0; x < layout.Width; x++)
+                {
+                    var expected = plot.TileCenter(new DungeonTile(x, z, f), layout.CellSizeMeters, layout.FloorHeightMeters);
+                    Vector2 actual = grid.CellCenter(x, z);
+                    Assert.InRange(Vector2.Distance(new Vector2(expected.X, expected.Z), actual), 0, 0.001f);
+                    Assert.Equal((x, z), grid.CellOf(expected.X, expected.Z));
+                    Assert.Equal(DungeonLayout.IsWalkable(layout.GetCell(x, z, f)), grid.ClearanceAt(x, z) > 0);
+                }
         }
 
         DungeonTile first = WalkableCorner(layout, 0, reverse: false);
@@ -56,12 +56,12 @@ public class DungeonNavRotationTests
     static DungeonTile WalkableCorner(DungeonLayout layout, int floor, bool reverse)
     {
         for (int zi = 0; zi < layout.Depth; zi++)
-        for (int xi = 0; xi < layout.Width; xi++)
-        {
-            int x = reverse ? layout.Width - 1 - xi : xi;
-            int z = reverse ? layout.Depth - 1 - zi : zi;
-            if (DungeonLayout.IsWalkable(layout.GetCell(x, z, floor))) return new DungeonTile(x, z, floor);
-        }
+            for (int xi = 0; xi < layout.Width; xi++)
+            {
+                int x = reverse ? layout.Width - 1 - xi : xi;
+                int z = reverse ? layout.Depth - 1 - zi : zi;
+                if (DungeonLayout.IsWalkable(layout.GetCell(x, z, floor))) return new DungeonTile(x, z, floor);
+            }
         throw new InvalidOperationException("Fixture floor must have walkable cells.");
     }
 

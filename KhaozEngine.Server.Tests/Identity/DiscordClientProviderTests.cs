@@ -68,9 +68,12 @@ public class DiscordClientProviderTests
             var q = HttpUtility.ParseQueryString(form);
             SeenVerifier = q["code_verifier"];
             SeenGrantType = q["grant_type"];
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
                 "{\"access_token\":\"the-access-token\",\"refresh_token\":\"the-refresh\",\"expires_in\":3600}",
-                Encoding.UTF8, "application/json") };
+                Encoding.UTF8, "application/json")
+            };
         }
     }
 

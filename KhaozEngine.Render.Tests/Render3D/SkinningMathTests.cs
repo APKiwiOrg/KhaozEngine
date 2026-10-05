@@ -72,9 +72,12 @@ namespace KhaozEngine.Tests.Render3D
             var bones = new[] { Matrix4x4.CreateRotationZ(0.7f) * Matrix4x4.CreateTranslation(3, 1, 0) };
             var v = new SkinnedVertex
             {
-                Position = new Vector3(1, 2, 0), Normal = Vector3.UnitX,
-                Color = new Vector4(0.3f, 0.4f, 0.5f, 1f), Uv = new Vector2(0.25f, 0.75f),
-                BoneIndices = new Vector4(0, 0, 0, 0), BoneWeights = new Vector4(1, 0, 0, 0),
+                Position = new Vector3(1, 2, 0),
+                Normal = Vector3.UnitX,
+                Color = new Vector4(0.3f, 0.4f, 0.5f, 1f),
+                Uv = new Vector2(0.25f, 0.75f),
+                BoneIndices = new Vector4(0, 0, 0, 0),
+                BoneWeights = new Vector4(1, 0, 0, 0),
                 Tangent = Vector4.Zero,
             };
             ModelVertex got = SkinningMath.SkinVertex(v, bones);
@@ -99,9 +102,12 @@ namespace KhaozEngine.Tests.Render3D
             var bones = new[] { rot };
             var v = new SkinnedVertex
             {
-                Position = Vector3.UnitX, Normal = Vector3.UnitZ,
-                Color = Vector4.One, Uv = Vector2.Zero,
-                BoneIndices = new Vector4(0, 0, 0, 0), BoneWeights = new Vector4(1, 0, 0, 0),
+                Position = Vector3.UnitX,
+                Normal = Vector3.UnitZ,
+                Color = Vector4.One,
+                Uv = Vector2.Zero,
+                BoneIndices = new Vector4(0, 0, 0, 0),
+                BoneWeights = new Vector4(1, 0, 0, 0),
                 Tangent = new Vector4(1, 0, 0, -1),               // tangent +X, handedness -1
             };
             ModelVertex got = SkinningMath.SkinVertex(v, bones);

@@ -27,7 +27,7 @@ public class PropCollisionFormatTests
     [Fact]
     public void Compound_OfHullAndBoxAtNonIdentityPoses_RoundTrips()
     {
-        var hull = new ConvexHullShape(new[] { new Vector3(0,0,0), new Vector3(1,0,0), new Vector3(0,1,0), new Vector3(0,0,1) });
+        var hull = new ConvexHullShape(new[] { new Vector3(0, 0, 0), new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1) });
         Quaternion rot = Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.7f);
         var compound = new CompoundShape(new[]
         {

@@ -162,7 +162,9 @@ public class PreciseMovementReconcileTests
             var settings = PredictionSettings.Default with { TickSeconds = TickSeconds, CorrectionRate = 0f };
             Server = new WorldServer(hub.Server, new WorldServerConfig
             {
-                TickSeconds = TickSeconds, InterestRadius = 500f, MaxPlayers = 1,
+                TickSeconds = TickSeconds,
+                InterestRadius = 500f,
+                MaxPlayers = 1,
             }, Flat, Tuning, medium: medium);
             Wire = new ObservedTransport(hub.CreateClient());
             Client = new WorldClient(Wire, Flat, Tuning,

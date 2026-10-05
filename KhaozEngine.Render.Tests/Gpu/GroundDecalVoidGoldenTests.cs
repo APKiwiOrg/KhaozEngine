@@ -303,7 +303,10 @@ namespace KhaozEngine.Tests.Gpu
             var follow = new FollowCamera3D
             {
                 Target = new Vector3(0f, VoidDecalScene.PlaneY, 0f),
-                Pitch = 0.75f, Yaw = 0.6f, Distance = 16f, HeightOffset = 1.5f,
+                Pitch = 0.75f,
+                Yaw = 0.6f,
+                Distance = 16f,
+                HeightOffset = 1.5f,
                 AspectRatio = (float)W / H,
             };
 

@@ -270,8 +270,8 @@ namespace KhaozEngine.Tests.Gui
             var p = new Pointer();
             // press in the header (y in 100..130), then drag up 50px -> panel grows to 350, top docked at 400-350=50.
             p.Update(Frame(new Vector2(150, 115), false)); sp.Update(p, Frame(new Vector2(150, 115), false));
-            p.Update(Frame(new Vector2(150, 115), true));  sp.Update(p, Frame(new Vector2(150, 115), true));
-            p.Update(Frame(new Vector2(150, 65), true));   sp.Update(p, Frame(new Vector2(150, 65), true));
+            p.Update(Frame(new Vector2(150, 115), true)); sp.Update(p, Frame(new Vector2(150, 115), true));
+            p.Update(Frame(new Vector2(150, 65), true)); sp.Update(p, Frame(new Vector2(150, 65), true));
             Assert.Equal(350f, sp.CurrentBounds.Height, 3);
             Assert.Equal(50f, sp.CurrentBounds.Y, 3);
 
@@ -290,8 +290,8 @@ namespace KhaozEngine.Tests.Gui
             sp.MaxHeight = 400f;
             var p = new Pointer();
             p.Update(Frame(new Vector2(150, 115), false)); sp.Update(p, Frame(new Vector2(150, 115), false));
-            p.Update(Frame(new Vector2(150, 115), true));  sp.Update(p, Frame(new Vector2(150, 115), true));
-            p.Update(Frame(new Vector2(150, 165), true));  sp.Update(p, Frame(new Vector2(150, 165), true));
+            p.Update(Frame(new Vector2(150, 115), true)); sp.Update(p, Frame(new Vector2(150, 115), true));
+            p.Update(Frame(new Vector2(150, 165), true)); sp.Update(p, Frame(new Vector2(150, 165), true));
             Assert.Equal(0f, sp.ScrollOffset, 3);   // the header drag resized, it did not pan the list
         }
 
@@ -308,8 +308,8 @@ namespace KhaozEngine.Tests.Gui
             // region rises past the fixed press-origin - the regression: without the _resizing guard the resize
             // also panned the list (GetDragDelta's press-origin then landed inside the grown ContentBounds).
             p.Update(Frame(new Vector2(150, 115), false)); sp.Update(p, Frame(new Vector2(150, 115), false));
-            p.Update(Frame(new Vector2(150, 115), true));  sp.Update(p, Frame(new Vector2(150, 115), true));
-            p.Update(Frame(new Vector2(150, 65), true));   sp.Update(p, Frame(new Vector2(150, 65), true));
+            p.Update(Frame(new Vector2(150, 115), true)); sp.Update(p, Frame(new Vector2(150, 115), true));
+            p.Update(Frame(new Vector2(150, 65), true)); sp.Update(p, Frame(new Vector2(150, 65), true));
             Assert.Equal(350f, sp.CurrentBounds.Height, 3);   // it did resize (top rose above the press point)
             Assert.Equal(0f, sp.ScrollOffset, 3);             // and the list did not scroll
         }
@@ -323,7 +323,7 @@ namespace KhaozEngine.Tests.Gui
             void Tap(Vector2 at)
             {
                 p.Update(Frame(at, false)); sp.Update(p, Frame(at, false));
-                p.Update(Frame(at, true));  sp.Update(p, Frame(at, true));
+                p.Update(Frame(at, true)); sp.Update(p, Frame(at, true));
                 p.Update(Frame(at, false)); sp.Update(p, Frame(at, false));
             }
             Tap(new Vector2(10, 10));            // in the scrim, outside the panel
@@ -343,9 +343,9 @@ namespace KhaozEngine.Tests.Gui
             // Press ON the list, scroll-drag up past the panel's top edge, release in the dimmed scrim above it.
             // Press-origin is inside the panel, release is not: the gesture began on the panel so it must not dismiss.
             p.Update(Frame(new Vector2(150, 200), false)); sp.Update(p, Frame(new Vector2(150, 200), false));
-            p.Update(Frame(new Vector2(150, 200), true));  sp.Update(p, Frame(new Vector2(150, 200), true));   // press inside the panel
-            p.Update(Frame(new Vector2(150, 50), true));   sp.Update(p, Frame(new Vector2(150, 50), true));    // drag up above the panel (still in the scrim)
-            p.Update(Frame(new Vector2(150, 50), false));  sp.Update(p, Frame(new Vector2(150, 50), false));   // release in the scrim above
+            p.Update(Frame(new Vector2(150, 200), true)); sp.Update(p, Frame(new Vector2(150, 200), true));   // press inside the panel
+            p.Update(Frame(new Vector2(150, 50), true)); sp.Update(p, Frame(new Vector2(150, 50), true));    // drag up above the panel (still in the scrim)
+            p.Update(Frame(new Vector2(150, 50), false)); sp.Update(p, Frame(new Vector2(150, 50), false));   // release in the scrim above
             Assert.False(sp.ScrimDismissed);
         }
 
@@ -358,8 +358,8 @@ namespace KhaozEngine.Tests.Gui
             // Same drag shape, but press-origin AND release are both in the scrim above the panel (never on it):
             // the guard is about the press origin, not about movement, so a genuine off-panel gesture still dismisses.
             p.Update(Frame(new Vector2(150, 40), false)); sp.Update(p, Frame(new Vector2(150, 40), false));
-            p.Update(Frame(new Vector2(150, 40), true));  sp.Update(p, Frame(new Vector2(150, 40), true));    // press above the panel
-            p.Update(Frame(new Vector2(150, 50), true));  sp.Update(p, Frame(new Vector2(150, 50), true));    // small drag, still off-panel
+            p.Update(Frame(new Vector2(150, 40), true)); sp.Update(p, Frame(new Vector2(150, 40), true));    // press above the panel
+            p.Update(Frame(new Vector2(150, 50), true)); sp.Update(p, Frame(new Vector2(150, 50), true));    // small drag, still off-panel
             p.Update(Frame(new Vector2(150, 50), false)); sp.Update(p, Frame(new Vector2(150, 50), false));   // release in the scrim
             Assert.True(sp.ScrimDismissed);
         }
@@ -522,8 +522,8 @@ namespace KhaozEngine.Tests.Gui
             var p = new Pointer();
 
             p.Update(Frame(new Vector2(150, 115), false)); sp.Update(p, Frame(new Vector2(150, 115), false), 0.016f);
-            p.Update(Frame(new Vector2(150, 115), true));  sp.Update(p, Frame(new Vector2(150, 115), true), 0.016f);
-            p.Update(Frame(new Vector2(150, 65), true));   sp.Update(p, Frame(new Vector2(150, 65), true), 0.016f);
+            p.Update(Frame(new Vector2(150, 115), true)); sp.Update(p, Frame(new Vector2(150, 115), true), 0.016f);
+            p.Update(Frame(new Vector2(150, 65), true)); sp.Update(p, Frame(new Vector2(150, 65), true), 0.016f);
             Assert.Equal(350f, sp.EffectiveHeight, 3);   // the drag applies directly, no glide lag
 
             // Release: the glide resumes from wherever the drag left it (no jump back toward a stale target).

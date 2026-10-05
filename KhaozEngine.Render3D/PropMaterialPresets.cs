@@ -22,25 +22,25 @@ namespace KhaozEngine.Render3D
             var moss = new Color(0.24f, 0.38f, 0.16f);
 
             for (int y = 0; y < size; y++)
-            for (int x = 0; x < size; x++)
-            {
-                int i = (y * size + x) * 4;
-                float n = Noise(x, y, seed);                 // 0..1 stone value noise
-                float m = Smooth(Noise(x, y, seed + 91));     // 0..1 moss mask
-                float moss01 = m > 0.6f ? (m - 0.6f) / 0.4f : 0f;
-                float v = 0.8f + 0.4f * n;
-                albedo[i + 0] = ToByte((stone.R * v) * (1f - moss01) + moss.R * moss01);
-                albedo[i + 1] = ToByte((stone.G * v) * (1f - moss01) + moss.G * moss01);
-                albedo[i + 2] = ToByte((stone.B * v) * (1f - moss01) + moss.B * moss01);
-                albedo[i + 3] = 255;
+                for (int x = 0; x < size; x++)
+                {
+                    int i = (y * size + x) * 4;
+                    float n = Noise(x, y, seed);                 // 0..1 stone value noise
+                    float m = Smooth(Noise(x, y, seed + 91));     // 0..1 moss mask
+                    float moss01 = m > 0.6f ? (m - 0.6f) / 0.4f : 0f;
+                    float v = 0.8f + 0.4f * n;
+                    albedo[i + 0] = ToByte((stone.R * v) * (1f - moss01) + moss.R * moss01);
+                    albedo[i + 1] = ToByte((stone.G * v) * (1f - moss01) + moss.G * moss01);
+                    albedo[i + 2] = ToByte((stone.B * v) * (1f - moss01) + moss.B * moss01);
+                    albedo[i + 3] = 255;
 
-                float dx = Noise(x + 1, y, seed) - Noise(x - 1, y, seed);
-                float dy = Noise(x, y + 1, seed) - Noise(x, y - 1, seed);
-                normal[i + 0] = ToByte(0.5f - 0.4f * dx);
-                normal[i + 1] = ToByte(0.5f - 0.4f * dy);
-                normal[i + 2] = 255;
-                normal[i + 3] = 255;
-            }
+                    float dx = Noise(x + 1, y, seed) - Noise(x - 1, y, seed);
+                    float dy = Noise(x, y + 1, seed) - Noise(x, y - 1, seed);
+                    normal[i + 0] = ToByte(0.5f - 0.4f * dx);
+                    normal[i + 1] = ToByte(0.5f - 0.4f * dy);
+                    normal[i + 2] = 255;
+                    normal[i + 3] = 255;
+                }
 
             return new GltfMaterialMaps(
                 new DecodedImage(albedo, size, size),

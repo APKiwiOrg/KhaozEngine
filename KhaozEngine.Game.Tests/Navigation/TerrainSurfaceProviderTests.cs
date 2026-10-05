@@ -26,9 +26,12 @@ public class TerrainSurfaceProviderTests
     static TerrainField BumpyField()
         => new(new TerrainConfig
         {
-            Seed = 7, BiomeBlend = 24f,
-            GentleFrequency = 0.03f, GentleAmplitude = 2f,
-            DetailFrequency = 0.15f, DetailOctaves = 4,
+            Seed = 7,
+            BiomeBlend = 24f,
+            GentleFrequency = 0.03f,
+            GentleAmplitude = 2f,
+            DetailFrequency = 0.15f,
+            DetailOctaves = 4,
             Biomes = new[]
             {
                 new BiomeBand { Start = float.NegativeInfinity, End = float.PositiveInfinity, Biome = BiomeId.Mountains, BaseHeight = 0f, HillAmplitude = 6f },

@@ -92,28 +92,28 @@ public sealed class FoliagePatchSelectionTests
         ];
 
         foreach (FoliageRenderSettings settings in policies)
-        foreach (Vector3 focus in new[] { Vector3.Zero, new Vector3(31.3f, 50f, -26.9f) })
-        {
-            var candidates = new HashSet<Matrix4x4>();
-            foreach (FoliagePatch patch in layout.Patches)
+            foreach (Vector3 focus in new[] { Vector3.Zero, new Vector3(31.3f, 50f, -26.9f) })
             {
-                int count = patch.CandidateCount(layout.Instances, focus, settings);
-                for (int i = patch.Start; i < patch.Start + count; i++) candidates.Add(layout.Instances[i].Transform);
-            }
-            var queued = new SceneInstances();
-            GroundCoverRenderer.Queue(queued, input.Select(i => new GroundCoverInstance("grass", i.Transform.Translation,
-                i.Transform, i.ThinningRank)).ToArray(), meshes, focus, new GroundCoverRenderOptions
-            {
-                DrawRadius = settings.DrawRadius,
-                DensityRadius = settings.DensityRadius,
-                FadeBandWidth = settings.FadeBandWidth,
-                InstanceFadeBandWidth = settings.InstanceFadeBandWidth,
-                QualityDensity = settings.QualityDensity,
-                DistantDensity = settings.DistantDensity,
-            });
+                var candidates = new HashSet<Matrix4x4>();
+                foreach (FoliagePatch patch in layout.Patches)
+                {
+                    int count = patch.CandidateCount(layout.Instances, focus, settings);
+                    for (int i = patch.Start; i < patch.Start + count; i++) candidates.Add(layout.Instances[i].Transform);
+                }
+                var queued = new SceneInstances();
+                GroundCoverRenderer.Queue(queued, input.Select(i => new GroundCoverInstance("grass", i.Transform.Translation,
+                    i.Transform, i.ThinningRank)).ToArray(), meshes, focus, new GroundCoverRenderOptions
+                    {
+                        DrawRadius = settings.DrawRadius,
+                        DensityRadius = settings.DensityRadius,
+                        FadeBandWidth = settings.FadeBandWidth,
+                        InstanceFadeBandWidth = settings.InstanceFadeBandWidth,
+                        QualityDensity = settings.QualityDensity,
+                        DistantDensity = settings.DistantDensity,
+                    });
 
-            Assert.NotEmpty(queued.Items);
-            Assert.All(queued.Items, instance => Assert.Contains(instance.World, candidates));
-        }
+                Assert.NotEmpty(queued.Items);
+                Assert.All(queued.Items, instance => Assert.Contains(instance.World, candidates));
+            }
     }
 }

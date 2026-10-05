@@ -25,13 +25,23 @@ namespace KhaozEngine.Tests
         {
             var a = new RenderFrameStats
             {
-                DrawCalls = 3, Instances = 40, Triangles = 5000, BufferUpdateBytes = 2048,
-                Quads = 0, Flushes = 0, TextureSwitches = 0,
+                DrawCalls = 3,
+                Instances = 40,
+                Triangles = 5000,
+                BufferUpdateBytes = 2048,
+                Quads = 0,
+                Flushes = 0,
+                TextureSwitches = 0,
             };
             var b = new RenderFrameStats
             {
-                DrawCalls = 2, Instances = 0, Triangles = 0, BufferUpdateBytes = 512,
-                Quads = 120, Flushes = 4, TextureSwitches = 6,
+                DrawCalls = 2,
+                Instances = 0,
+                Triangles = 0,
+                BufferUpdateBytes = 512,
+                Quads = 120,
+                Flushes = 4,
+                TextureSwitches = 6,
             };
 
             RenderFrameStats sum = a + b;
@@ -65,8 +75,13 @@ namespace KhaozEngine.Tests
         {
             var s = new RenderFrameStats
             {
-                DrawCalls = 9, Instances = 9, Triangles = 9, BufferUpdateBytes = 9,
-                Quads = 9, Flushes = 9, TextureSwitches = 9,
+                DrawCalls = 9,
+                Instances = 9,
+                Triangles = 9,
+                BufferUpdateBytes = 9,
+                Quads = 9,
+                Flushes = 9,
+                TextureSwitches = 9,
             };
 
             s.Reset();

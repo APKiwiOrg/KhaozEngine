@@ -148,7 +148,9 @@ namespace KhaozEngine.Tests.Terrain
             IReadOnlyList<PropPlacement>[] empty = { Array.Empty<PropPlacement>() };
             var load = new Scene3DChunkSink.ChunkLoad
             {
-                Mesh = new MeshHandle(4, 1), LayerProps = empty, Ring = ChunkRing.Decor,
+                Mesh = new MeshHandle(4, 1),
+                LayerProps = empty,
+                Ring = ChunkRing.Decor,
                 Region = ChunkGrid.RegionOf(Origin, Chunk),
             };
 

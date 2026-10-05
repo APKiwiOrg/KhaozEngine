@@ -50,7 +50,10 @@ namespace KhaozEngine.Render3D
             float dissolve, float edgeWidth, Color edgeColor)
             => Draw(new RigidInstanceDraw(mesh, world)
             {
-                Tint = tint, Material = material, Dissolve = dissolve, DissolveEdgeWidth = edgeWidth,
+                Tint = tint,
+                Material = material,
+                Dissolve = dissolve,
+                DissolveEdgeWidth = edgeWidth,
                 DissolveEdgeColor = edgeColor,
             });
 
@@ -104,7 +107,10 @@ namespace KhaozEngine.Render3D
             Material material, float dissolve, float edgeWidth, Color edgeColor)
             => DrawSkinned(new SkinnedInstanceDraw(h, model)
             {
-                Tint = tint, Material = material, Dissolve = dissolve, DissolveEdgeWidth = edgeWidth,
+                Tint = tint,
+                Material = material,
+                Dissolve = dissolve,
+                DissolveEdgeWidth = edgeWidth,
                 DissolveEdgeColor = edgeColor,
             }, boneMatrices);
 

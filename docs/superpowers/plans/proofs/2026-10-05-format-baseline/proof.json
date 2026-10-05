@@ -1,0 +1,80 @@
+{
+  "commit": "77ab2ec6ecc48a80e614acf843fc2d7cd247c1d4",
+  "allowed": 273,
+  "committed": 268,
+  "held": 5,
+  "nonwhitespace_mismatches": 0,
+  "token_mismatches": 0,
+  "tokens_compared": 627175,
+  "literal_tokens": 35327,
+  "raw_or_verbatim": 35,
+  "round_trip_failures": 0,
+  "error_diagnostic_deltas": 0,
+  "lines_added_by_held_formatting": 92,
+  "limits": [
+    {
+      "path": "KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs",
+      "current": 2115,
+      "proposed": 2141
+    },
+    {
+      "path": "KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs",
+      "current": 1793,
+      "proposed": 1808
+    },
+    {
+      "path": "KhaozEngine.MapEditor.Tests/MapEditor/MapEditorSceneTests.cs",
+      "current": 4415,
+      "proposed": 4431
+    },
+    {
+      "path": "KhaozEngine.Render.Tests/Gpu/GoldenSnapshotTests.cs",
+      "current": 1601,
+      "proposed": 1632
+    },
+    {
+      "path": "KhaozEngine.Showcase/Room2DGui.cs",
+      "current": 1296,
+      "proposed": 1300
+    }
+  ],
+  "helper_sha256": "56f792b1e139046f8d7cb543beb5382d6b9047864bd53587302309a2bddc3cb2",
+  "report_sha256": "77e5a0df8c75ae5d9b199a6650aecfa511a8a71653ffb9197b7db71919b037b2",
+  "checks": [
+    {
+      "log": "01-restore.log",
+      "exit": 0,
+      "sha256": "a3945d52ebd827f9af51cdcf577f10cb508ac24ebab41e4c103c62960d0728fa"
+    },
+    {
+      "log": "02-format-apply.log",
+      "exit": 0,
+      "sha256": "239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c"
+    },
+    {
+      "log": "03-tokcheck.log",
+      "exit": 1,
+      "sha256": "d009a7f3c59166678460df65898c1d29d6830265b0f3ba72c516362fafc620bf"
+    },
+    {
+      "log": "04-tokcheck.log",
+      "exit": 0,
+      "sha256": "12a67fab594d23b4636b5aea88ebcb034fea59e05cd3ff930a8a6c211552a537"
+    },
+    {
+      "log": "05-format-verify.log",
+      "exit": 0,
+      "sha256": "239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c"
+    },
+    {
+      "log": "06-guards.log",
+      "exit": 1,
+      "sha256": "a7141f29e4384ab6a0d884a8c01b232551678da1efa5a1963821552bc841d865"
+    },
+    {
+      "log": "07-filesize-recheck.log",
+      "exit": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

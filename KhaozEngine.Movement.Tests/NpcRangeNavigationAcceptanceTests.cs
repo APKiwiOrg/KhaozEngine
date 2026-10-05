@@ -14,8 +14,12 @@ public class NpcRangeNavigationAcceptanceTests
     private const float Dt = 1f / 30f;
     private static readonly MoveTuning Tuning = MoveTuning.Default with
     {
-        WalkSpeed = 2f, RunSpeed = 5f, CapsuleRadius = 0.2f, CapsuleHalfHeight = 0.75f,
-        StepHeight = 0.4f, MaxSlopeRadians = 0.8f,
+        WalkSpeed = 2f,
+        RunSpeed = 5f,
+        CapsuleRadius = 0.2f,
+        CapsuleHalfHeight = 0.75f,
+        StepHeight = 0.4f,
+        MaxSlopeRadians = 0.8f,
     };
     private static readonly PhysicsNavBakeOptions Options = new(-3.25f, -2.75f, 3.25f, 2.75f,
         0.5f, 5f, 6f, 0.8f, 256, 1024);
@@ -132,7 +136,8 @@ public class NpcRangeNavigationAcceptanceTests
         using var bake = PhysicsNavBake.Capture(context, Options, _ => 0u);
         var move = new MoveToRange(bake.BuildProfile(Tuning, default), new PathFollowConfig
         {
-            ReplanCooldownSeconds = 60f, CorridorTolerance = 0.25f,
+            ReplanCooldownSeconds = 60f,
+            CorridorTolerance = 0.25f,
         });
         var target = ReachTarget.Capsule(new MovementBody(new Vector3(2f, 0.75f, 0f), 0.2f, 0.75f));
         MoveState body = Standing(-2f, 0f, Tuning);

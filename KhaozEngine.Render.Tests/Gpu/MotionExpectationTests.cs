@@ -13,7 +13,10 @@ public sealed class MotionExpectationTests
 
     static IsoCamera3D Camera(Vector3 target, float zoom) => new()
     {
-        Target = target, OrthoSize = 12f, Zoom = zoom, AspectRatio = W / (float)H,
+        Target = target,
+        OrthoSize = 12f,
+        Zoom = zoom,
+        AspectRatio = W / (float)H,
     };
 
     [Fact]

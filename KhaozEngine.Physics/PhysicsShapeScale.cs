@@ -22,13 +22,13 @@ public static class PhysicsShapeScale
 
         return shape switch
         {
-            SphereShape s        => new SphereShape(s.Radius * scale),
-            CapsuleShape c       => new CapsuleShape(c.Radius * scale, c.Length * scale),
-            CylinderShape cy     => new CylinderShape(cy.Radius * scale, cy.Length * scale),
-            BoxShape b           => new BoxShape(b.HalfExtents * scale),
-            ConvexHullShape h    => ScaleConvexHull(h, scale),
-            TriangleMeshShape m  => ScaleTriangleMesh(m, scale),
-            CompoundShape co     => ScaleCompound(co, scale),
+            SphereShape s => new SphereShape(s.Radius * scale),
+            CapsuleShape c => new CapsuleShape(c.Radius * scale, c.Length * scale),
+            CylinderShape cy => new CylinderShape(cy.Radius * scale, cy.Length * scale),
+            BoxShape b => new BoxShape(b.HalfExtents * scale),
+            ConvexHullShape h => ScaleConvexHull(h, scale),
+            TriangleMeshShape m => ScaleTriangleMesh(m, scale),
+            CompoundShape co => ScaleCompound(co, scale),
             _ => throw new NotSupportedException($"PhysicsShapeScale.Uniform: unsupported shape type {shape.GetType().Name}."),
         };
     }

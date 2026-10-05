@@ -274,7 +274,8 @@ namespace KhaozEngine.Tests.MapDoc
             // objects off disk - so this is specific to the in-memory path.
             var doc = new MapDocument
             {
-                Id = "clone-check", DisplayName = "Clone Check",
+                Id = "clone-check",
+                DisplayName = "Clone Check",
                 Bounds = new MapBounds { MinX = -512f, MinZ = -512f, MaxX = 512f, MaxZ = 512f },
                 TileSize = ResidencyFixture.Tile,
             };
@@ -400,7 +401,8 @@ namespace KhaozEngine.Tests.MapDoc
             const float chunkSize = 64f;
             var doc = new MapDocument
             {
-                Id = "streamer-wiring", DisplayName = "Streamer Wiring",
+                Id = "streamer-wiring",
+                DisplayName = "Streamer Wiring",
                 Bounds = new MapBounds { MinX = -512f, MinZ = -512f, MaxX = 512f, MaxZ = 512f },
                 TileSize = ResidencyFixture.Tile,
             };

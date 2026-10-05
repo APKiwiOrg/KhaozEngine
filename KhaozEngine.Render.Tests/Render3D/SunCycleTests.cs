@@ -185,8 +185,11 @@ namespace KhaozEngine.Tests.Render3D
         // lat 0, dec 0: the sun crosses the horizon at t = 0.25 / 0.75 and climbs 360 degrees per day.
         static SunCycleSettings Equatorial(NightKeyMode mode, float discSet) => new()
         {
-            LatitudeDegrees = 0f, SolarDeclinationDegrees = 0f, NightKey = mode,
-            DiscSetElevationDegrees = discSet, SunDiscFadeElevationDegrees = 4f,
+            LatitudeDegrees = 0f,
+            SolarDeclinationDegrees = 0f,
+            NightKey = mode,
+            DiscSetElevationDegrees = discSet,
+            SunDiscFadeElevationDegrees = 4f,
         };
 
         static float TimeAtEveningElevation(float degrees) => 0.75f - degrees / 360f;

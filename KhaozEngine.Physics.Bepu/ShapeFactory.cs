@@ -20,14 +20,14 @@ internal static class ShapeFactory
     {
         return shape switch
         {
-            SphereShape s     => sim.Shapes.Add(new Sphere(s.Radius)),
-            CapsuleShape c    => sim.Shapes.Add(new Capsule(c.Radius, c.Length)),
+            SphereShape s => sim.Shapes.Add(new Sphere(s.Radius)),
+            CapsuleShape c => sim.Shapes.Add(new Capsule(c.Radius, c.Length)),
             // BoxShape HalfExtents -> Bepu Box full width/height/depth
-            BoxShape b        => sim.Shapes.Add(new Box(b.HalfExtents.X * 2f, b.HalfExtents.Y * 2f, b.HalfExtents.Z * 2f)),
-            CylinderShape cy  => AddBaseAlignedCylinder(sim, pool, cy),
+            BoxShape b => sim.Shapes.Add(new Box(b.HalfExtents.X * 2f, b.HalfExtents.Y * 2f, b.HalfExtents.Z * 2f)),
+            CylinderShape cy => AddBaseAlignedCylinder(sim, pool, cy),
             ConvexHullShape ch => AddConvexHull(sim, pool, ch),
             TriangleMeshShape tm => AddTriangleMesh(sim, pool, tm),
-            CompoundShape co  => AddCompound(sim, pool, co),
+            CompoundShape co => AddCompound(sim, pool, co),
             _ => throw new NotSupportedException($"PhysicsShape type '{shape.GetType().Name}' is not supported by the Bepu backend.")
         };
     }
@@ -42,23 +42,23 @@ internal static class ShapeFactory
         switch (shape)
         {
             case SphereShape s:
-            {
-                var sphere = new Sphere(s.Radius);
-                inertia = sphere.ComputeInertia(mass);
-                return sim.Shapes.Add(sphere);
-            }
+                {
+                    var sphere = new Sphere(s.Radius);
+                    inertia = sphere.ComputeInertia(mass);
+                    return sim.Shapes.Add(sphere);
+                }
             case CapsuleShape c:
-            {
-                var capsule = new Capsule(c.Radius, c.Length);
-                inertia = capsule.ComputeInertia(mass);
-                return sim.Shapes.Add(capsule);
-            }
+                {
+                    var capsule = new Capsule(c.Radius, c.Length);
+                    inertia = capsule.ComputeInertia(mass);
+                    return sim.Shapes.Add(capsule);
+                }
             case BoxShape b:
-            {
-                var box = new Box(b.HalfExtents.X * 2f, b.HalfExtents.Y * 2f, b.HalfExtents.Z * 2f);
-                inertia = box.ComputeInertia(mass);
-                return sim.Shapes.Add(box);
-            }
+                {
+                    var box = new Box(b.HalfExtents.X * 2f, b.HalfExtents.Y * 2f, b.HalfExtents.Z * 2f);
+                    inertia = box.ComputeInertia(mass);
+                    return sim.Shapes.Add(box);
+                }
             case CylinderShape cy:
                 return AddBaseAlignedCylinderDynamic(sim, pool, cy, mass, out inertia);
             case ConvexHullShape ch:
@@ -240,42 +240,42 @@ internal static class ShapeFactory
         switch (shape)
         {
             case SphereShape s:
-            {
-                var p = new RigidPose(local.Position, local.Orientation);
-                builder.AddForKinematic(sim.Shapes.Add(new Sphere(s.Radius)), in p, 1f);
-                break;
-            }
+                {
+                    var p = new RigidPose(local.Position, local.Orientation);
+                    builder.AddForKinematic(sim.Shapes.Add(new Sphere(s.Radius)), in p, 1f);
+                    break;
+                }
             case CapsuleShape c:
-            {
-                var p = new RigidPose(local.Position, local.Orientation);
-                builder.AddForKinematic(sim.Shapes.Add(new Capsule(c.Radius, c.Length)), in p, 1f);
-                break;
-            }
+                {
+                    var p = new RigidPose(local.Position, local.Orientation);
+                    builder.AddForKinematic(sim.Shapes.Add(new Capsule(c.Radius, c.Length)), in p, 1f);
+                    break;
+                }
             case BoxShape b:
-            {
-                var p = new RigidPose(local.Position, local.Orientation);
-                builder.AddForKinematic(
-                    sim.Shapes.Add(new Box(b.HalfExtents.X * 2f, b.HalfExtents.Y * 2f, b.HalfExtents.Z * 2f)), in p, 1f);
-                break;
-            }
+                {
+                    var p = new RigidPose(local.Position, local.Orientation);
+                    builder.AddForKinematic(
+                        sim.Shapes.Add(new Box(b.HalfExtents.X * 2f, b.HalfExtents.Y * 2f, b.HalfExtents.Z * 2f)), in p, 1f);
+                    break;
+                }
             case CylinderShape cy:
-            {
-                // Base-aligned: lift +Length/2 along the child's local Y (mirrors AddBaseAlignedCylinder).
-                Vector3 off = Vector3.Transform(new Vector3(0f, cy.Length * 0.5f, 0f), local.Orientation);
-                var p = new RigidPose(local.Position + off, local.Orientation);
-                builder.AddForKinematic(sim.Shapes.Add(new Cylinder(cy.Radius, cy.Length)), in p, 1f);
-                break;
-            }
+                {
+                    // Base-aligned: lift +Length/2 along the child's local Y (mirrors AddBaseAlignedCylinder).
+                    Vector3 off = Vector3.Transform(new Vector3(0f, cy.Length * 0.5f, 0f), local.Orientation);
+                    var p = new RigidPose(local.Position + off, local.Orientation);
+                    builder.AddForKinematic(sim.Shapes.Add(new Cylinder(cy.Radius, cy.Length)), in p, 1f);
+                    break;
+                }
             case ConvexHullShape ch:
-            {
-                // Bepu recenters the hull on its centre of mass; place the leaf at +centre (in the child frame)
-                // so its mesh-local origin lands at child.Local (mirrors AddConvexHull, but as a direct leaf).
-                ConvexHullHelper.CreateShape(ch.Points.AsSpan(), pool, out Vector3 centre, out var hull);
-                Vector3 off = Vector3.Transform(centre, local.Orientation);
-                var p = new RigidPose(local.Position + off, local.Orientation);
-                builder.AddForKinematic(sim.Shapes.Add(hull), in p, 1f);
-                break;
-            }
+                {
+                    // Bepu recenters the hull on its centre of mass; place the leaf at +centre (in the child frame)
+                    // so its mesh-local origin lands at child.Local (mirrors AddConvexHull, but as a direct leaf).
+                    ConvexHullHelper.CreateShape(ch.Points.AsSpan(), pool, out Vector3 centre, out var hull);
+                    Vector3 off = Vector3.Transform(centre, local.Orientation);
+                    var p = new RigidPose(local.Position + off, local.Orientation);
+                    builder.AddForKinematic(sim.Shapes.Add(hull), in p, 1f);
+                    break;
+                }
             case CompoundShape nested:
                 foreach (var c in nested.Children)
                 {
@@ -303,38 +303,38 @@ internal static class ShapeFactory
         switch (shape)
         {
             case SphereShape s:
-            {
-                var p = new RigidPose(local.Position, local.Orientation);
-                builder.Add(new Sphere(s.Radius), in p, mass);
-                break;
-            }
+                {
+                    var p = new RigidPose(local.Position, local.Orientation);
+                    builder.Add(new Sphere(s.Radius), in p, mass);
+                    break;
+                }
             case CapsuleShape c:
-            {
-                var p = new RigidPose(local.Position, local.Orientation);
-                builder.Add(new Capsule(c.Radius, c.Length), in p, mass);
-                break;
-            }
+                {
+                    var p = new RigidPose(local.Position, local.Orientation);
+                    builder.Add(new Capsule(c.Radius, c.Length), in p, mass);
+                    break;
+                }
             case BoxShape b:
-            {
-                var p = new RigidPose(local.Position, local.Orientation);
-                builder.Add(new Box(b.HalfExtents.X * 2f, b.HalfExtents.Y * 2f, b.HalfExtents.Z * 2f), in p, mass);
-                break;
-            }
+                {
+                    var p = new RigidPose(local.Position, local.Orientation);
+                    builder.Add(new Box(b.HalfExtents.X * 2f, b.HalfExtents.Y * 2f, b.HalfExtents.Z * 2f), in p, mass);
+                    break;
+                }
             case CylinderShape cy:
-            {
-                Vector3 off = Vector3.Transform(new Vector3(0f, cy.Length * 0.5f, 0f), local.Orientation);
-                var p = new RigidPose(local.Position + off, local.Orientation);
-                builder.Add(new Cylinder(cy.Radius, cy.Length), in p, mass);
-                break;
-            }
+                {
+                    Vector3 off = Vector3.Transform(new Vector3(0f, cy.Length * 0.5f, 0f), local.Orientation);
+                    var p = new RigidPose(local.Position + off, local.Orientation);
+                    builder.Add(new Cylinder(cy.Radius, cy.Length), in p, mass);
+                    break;
+                }
             case ConvexHullShape ch:
-            {
-                ConvexHullHelper.CreateShape(ch.Points.AsSpan(), pool, out Vector3 centre, out var hull);
-                Vector3 off = Vector3.Transform(centre, local.Orientation);
-                var p = new RigidPose(local.Position + off, local.Orientation);
-                builder.Add(hull, in p, mass);
-                break;
-            }
+                {
+                    ConvexHullHelper.CreateShape(ch.Points.AsSpan(), pool, out Vector3 centre, out var hull);
+                    Vector3 off = Vector3.Transform(centre, local.Orientation);
+                    var p = new RigidPose(local.Position + off, local.Orientation);
+                    builder.Add(hull, in p, mass);
+                    break;
+                }
             case CompoundShape nested:
                 foreach (var c in nested.Children)
                 {

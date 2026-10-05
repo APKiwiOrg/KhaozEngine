@@ -23,7 +23,11 @@ namespace KhaozEngine.Tests.Render3D
 
         static SkyDisc Disc(Vector3 direction, Color color, float radius = 0.05f) => new()
         {
-            Direction = direction, Color = color, Radius = radius, HaloStrength = 0f, HaloFalloff = 0.04f,
+            Direction = direction,
+            Color = color,
+            Radius = radius,
+            HaloStrength = 0f,
+            HaloFalloff = 0.04f,
         };
 
         static Vector3 Rgb(Color c) => new(c.R, c.G, c.B);
@@ -92,7 +96,9 @@ namespace KhaozEngine.Tests.Render3D
         {
             var sky = new SkySettings
             {
-                Horizon = SkyHorizon.World, GroundColor = new Color(0.2f, 0.3f, 0.15f, 1f), HorizonSoftness = 0.002f,
+                Horizon = SkyHorizon.World,
+                GroundColor = new Color(0.2f, 0.3f, 0.15f, 1f),
+                HorizonSoftness = 0.002f,
             };
             var view = Matrix4x4.CreateLookAt(new Vector3(0, 2, 0), new Vector3(0, 2, -10), Vector3.UnitY);
             var projection = Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 3f, 1f, 0.1f, 500f);

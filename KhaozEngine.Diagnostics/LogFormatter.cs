@@ -24,8 +24,8 @@ public static class LogFormatter
     {
         LogLevel.Trace => "TRACE",
         LogLevel.Debug => "DEBUG",
-        LogLevel.Info  => "INFO",
-        LogLevel.Warn  => "WARN",
+        LogLevel.Info => "INFO",
+        LogLevel.Warn => "WARN",
         LogLevel.Error => "ERROR",
         LogLevel.Fatal => "FATAL",
         _ => "INFO"

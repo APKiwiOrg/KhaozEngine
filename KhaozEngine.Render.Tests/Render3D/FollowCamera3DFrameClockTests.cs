@@ -39,7 +39,12 @@ namespace KhaozEngine.Tests.Render3D
         {
             var cam = new FollowCamera3D
             {
-                Target = Vector3.Zero, Yaw = 0f, HeightOffset = 0f, MinPitch = 0f, BoomProbe = probe, FrameClock = clock,
+                Target = Vector3.Zero,
+                Yaw = 0f,
+                HeightOffset = 0f,
+                MinPitch = 0f,
+                BoomProbe = probe,
+                FrameClock = clock,
             };
             cam.Pitch = 0f;
             cam.Distance = 10f;

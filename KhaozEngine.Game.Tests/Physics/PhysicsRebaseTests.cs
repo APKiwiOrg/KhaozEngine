@@ -503,17 +503,17 @@ public class PhysicsRebaseCostTests
         int cols = res + 1;
         var verts = new Vector3[cols * cols];
         for (int iz = 0; iz <= res; iz++)
-        for (int ix = 0; ix <= res; ix++)
-            verts[iz * cols + ix] = new Vector3((float)ix / res * size, 0f, (float)iz / res * size);
+            for (int ix = 0; ix <= res; ix++)
+                verts[iz * cols + ix] = new Vector3((float)ix / res * size, 0f, (float)iz / res * size);
 
         var inds = new List<int>(res * res * 6);
         for (int iz = 0; iz < res; iz++)
-        for (int ix = 0; ix < res; ix++)
-        {
-            int i0 = iz * cols + ix, i1 = i0 + 1, i2 = (iz + 1) * cols + ix, i3 = i2 + 1;
-            inds.Add(i0); inds.Add(i3); inds.Add(i2);
-            inds.Add(i0); inds.Add(i1); inds.Add(i3);
-        }
+            for (int ix = 0; ix < res; ix++)
+            {
+                int i0 = iz * cols + ix, i1 = i0 + 1, i2 = (iz + 1) * cols + ix, i3 = i2 + 1;
+                inds.Add(i0); inds.Add(i3); inds.Add(i2);
+                inds.Add(i0); inds.Add(i1); inds.Add(i3);
+            }
         return new TriangleMeshShape(verts, inds.ToArray());
     }
 }

@@ -118,7 +118,11 @@ public sealed class PerspectiveMotionGpuTests(ITestOutputHelper output)
         using FoliageBatch batch = fx.Scene.CreateFoliageBatch(new[] { new FoliageInstance(plate, Matrix4x4.Identity, .1f) });
         var settings = new FoliageRenderSettings
         {
-            DrawRadius = 100f, DistantDensity = 1f, WindStrength = 1f, WindDirection = Vector2.UnitX, WindFadeBladePixels = 30f,
+            DrawRadius = 100f,
+            DistantDensity = 1f,
+            WindStrength = 1f,
+            WindDirection = Vector2.UnitX,
+            WindFadeBladePixels = 30f,
         };
         var start = new Vector3(0f, 3.2f, -2.4f);
         Vector3 dolly = Pinhole.Of(camera).Forward * .5f;

@@ -124,7 +124,7 @@ namespace KhaozEngine.Render3D
         public static PhysicsShape Bake(GltfMesh normalizedMesh)
         {
             if (normalizedMesh == null) throw new ArgumentNullException(nameof(normalizedMesh));
-            if (IsTree(normalizedMesh))     return BakeTrunkCylinder(normalizedMesh);
+            if (IsTree(normalizedMesh)) return BakeTrunkCylinder(normalizedMesh);
             if (IsBuilding(normalizedMesh)) return BakeTriangleMesh(normalizedMesh);
             return BakeConvexHull(normalizedMesh);
         }
@@ -286,7 +286,7 @@ namespace KhaozEngine.Render3D
             sortedKeys.Sort((a, b) =>
             {
                 int c = a.Item1.CompareTo(b.Item1); if (c != 0) return c;
-                    c = a.Item2.CompareTo(b.Item2); if (c != 0) return c;
+                c = a.Item2.CompareTo(b.Item2); if (c != 0) return c;
                 return a.Item3.CompareTo(b.Item3);
             });
 
@@ -317,8 +317,8 @@ namespace KhaozEngine.Render3D
                 float da = (a - centroid).LengthSquared();
                 float db = (b - centroid).LengthSquared();
                 int c = db.CompareTo(da); if (c != 0) return c;
-                    c = a.X.CompareTo(b.X); if (c != 0) return c;
-                    c = a.Y.CompareTo(b.Y); if (c != 0) return c;
+                c = a.X.CompareTo(b.X); if (c != 0) return c;
+                c = a.Y.CompareTo(b.Y); if (c != 0) return c;
                 return a.Z.CompareTo(b.Z);
             });
 

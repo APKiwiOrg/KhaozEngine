@@ -18,7 +18,8 @@ namespace KhaozEngine.Windowing.Rumble
 
         /// <inheritdoc/>
         public void Pulse(PlayerIndex player, float intensity, TimeSpan duration,
-            float highFrequencyScale = 1f, RumbleDecay shape = RumbleDecay.Linear) { }
+            float highFrequencyScale = 1f, RumbleDecay shape = RumbleDecay.Linear)
+        { }
 
         /// <inheritdoc/>
         public void Tick(float dt) { }

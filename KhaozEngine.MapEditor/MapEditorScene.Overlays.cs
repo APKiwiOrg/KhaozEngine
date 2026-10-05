@@ -187,35 +187,35 @@ public partial class MapEditorScene
         switch (shape)
         {
             case DiscShapeDoc d:
-            {
-                var center = new Vector3(d.CenterX, sampleHeight(d.CenterX, d.CenterZ) + OverlayLift, d.CenterZ);
-                list.Add(new OverlayDraw(category, OverlayShape.Disc, center, d.Radius,
-                    Vector2.Zero, rim: null, color, selected));
-                break;
-            }
-            case RectShapeDoc r:
-            {
-                float cx = (r.MinX + r.MaxX) * 0.5f, cz = (r.MinZ + r.MaxZ) * 0.5f;
-                var center = new Vector3(cx, sampleHeight(cx, cz) + OverlayLift, cz);
-                var half = new Vector2(MathF.Abs(r.MaxX - r.MinX) * 0.5f, MathF.Abs(r.MaxZ - r.MinZ) * 0.5f);
-                list.Add(new OverlayDraw(category, OverlayShape.Rect, center, 0f, half, rim: null, color, selected));
-                break;
-            }
-            case PolygonShapeDoc p when p.Points.Count >= 3:
-            {
-                var rim = new List<Vector3>(p.Points.Count);
-                float sx = 0f, sz = 0f;
-                foreach (float[] pt in p.Points)
                 {
-                    float px = pt.Length > 0 ? pt[0] : 0f, pz = pt.Length > 1 ? pt[1] : 0f;
-                    sx += px; sz += pz;
-                    rim.Add(new Vector3(px, sampleHeight(px, pz) + OverlayLift, pz));
+                    var center = new Vector3(d.CenterX, sampleHeight(d.CenterX, d.CenterZ) + OverlayLift, d.CenterZ);
+                    list.Add(new OverlayDraw(category, OverlayShape.Disc, center, d.Radius,
+                        Vector2.Zero, rim: null, color, selected));
+                    break;
                 }
-                float cx = sx / p.Points.Count, cz = sz / p.Points.Count;
-                var center = new Vector3(cx, sampleHeight(cx, cz) + OverlayLift, cz);
-                list.Add(new OverlayDraw(category, OverlayShape.Polygon, center, 0f, Vector2.Zero, rim, color, selected));
-                break;
-            }
+            case RectShapeDoc r:
+                {
+                    float cx = (r.MinX + r.MaxX) * 0.5f, cz = (r.MinZ + r.MaxZ) * 0.5f;
+                    var center = new Vector3(cx, sampleHeight(cx, cz) + OverlayLift, cz);
+                    var half = new Vector2(MathF.Abs(r.MaxX - r.MinX) * 0.5f, MathF.Abs(r.MaxZ - r.MinZ) * 0.5f);
+                    list.Add(new OverlayDraw(category, OverlayShape.Rect, center, 0f, half, rim: null, color, selected));
+                    break;
+                }
+            case PolygonShapeDoc p when p.Points.Count >= 3:
+                {
+                    var rim = new List<Vector3>(p.Points.Count);
+                    float sx = 0f, sz = 0f;
+                    foreach (float[] pt in p.Points)
+                    {
+                        float px = pt.Length > 0 ? pt[0] : 0f, pz = pt.Length > 1 ? pt[1] : 0f;
+                        sx += px; sz += pz;
+                        rim.Add(new Vector3(px, sampleHeight(px, pz) + OverlayLift, pz));
+                    }
+                    float cx = sx / p.Points.Count, cz = sz / p.Points.Count;
+                    var center = new Vector3(cx, sampleHeight(cx, cz) + OverlayLift, cz);
+                    list.Add(new OverlayDraw(category, OverlayShape.Polygon, center, 0f, Vector2.Zero, rim, color, selected));
+                    break;
+                }
             default:
                 break;   // null shape or a polygon with fewer than three points: no overlay
         }

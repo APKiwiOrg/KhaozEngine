@@ -46,8 +46,12 @@ public class ShardedPlayerMoveSwimTests
         var cfg = new ShardedWorldServerConfig
         {
             // One big cell so the swimmer and observer stay co-owned with no handoff in the middle of the test.
-            TickSeconds = 1f / 30f, CellSize = 400f, OverlapMargin = 30f, InterestRadius = 30f,
-            MaxPlayers = 8, SpawnPosition = _ => new Vector3(30f, 0f, 30f),   // dry land, safely inside cell (0,0)
+            TickSeconds = 1f / 30f,
+            CellSize = 400f,
+            OverlapMargin = 30f,
+            InterestRadius = 30f,
+            MaxPlayers = 8,
+            SpawnPosition = _ => new Vector3(30f, 0f, 30f),   // dry land, safely inside cell (0,0)
         };
         var server = new ShardedWorldServer(hub.Server, cfg, Ground, Unit, medium: Water);
 

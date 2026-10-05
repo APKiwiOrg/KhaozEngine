@@ -96,17 +96,17 @@ namespace KhaozEngine.Gui
         /// </summary>
         public static GuiSkin NineSlice(Texture2D texture, float left, float top, float right, float bottom,
             GuiSkinCenter center = GuiSkinCenter.Stretch) => new()
-        {
-            Texture = texture,
-            Source = new Vector4(0f, 0f, 1f, 1f),
-            SourcePixelWidth = texture.Width,
-            SourcePixelHeight = texture.Height,
-            InsetLeft = left,
-            InsetTop = top,
-            InsetRight = right,
-            InsetBottom = bottom,
-            Center = center,
-        };
+            {
+                Texture = texture,
+                Source = new Vector4(0f, 0f, 1f, 1f),
+                SourcePixelWidth = texture.Width,
+                SourcePixelHeight = texture.Height,
+                InsetLeft = left,
+                InsetTop = top,
+                InsetRight = right,
+                InsetBottom = bottom,
+                Center = center,
+            };
 
         /// <summary>
         /// A nine-slice skin over an atlas SUB-REGION (<paramref name="source"/> = (u0,v0,u1,v1) in 0..1, with its
@@ -115,16 +115,16 @@ namespace KhaozEngine.Gui
         /// </summary>
         public static GuiSkin FromAtlas(Texture2D texture, Vector4 source, float sourcePixelWidth, float sourcePixelHeight,
             float left, float top, float right, float bottom, GuiSkinCenter center = GuiSkinCenter.Stretch) => new()
-        {
-            Texture = texture,
-            Source = source,
-            SourcePixelWidth = sourcePixelWidth,
-            SourcePixelHeight = sourcePixelHeight,
-            InsetLeft = left,
-            InsetTop = top,
-            InsetRight = right,
-            InsetBottom = bottom,
-            Center = center,
-        };
+            {
+                Texture = texture,
+                Source = source,
+                SourcePixelWidth = sourcePixelWidth,
+                SourcePixelHeight = sourcePixelHeight,
+                InsetLeft = left,
+                InsetTop = top,
+                InsetRight = right,
+                InsetBottom = bottom,
+                Center = center,
+            };
     }
 }

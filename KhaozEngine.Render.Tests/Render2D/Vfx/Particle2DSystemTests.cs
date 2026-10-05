@@ -101,7 +101,8 @@ public class Particle2DSystemTests
     {
         var cfg = Fixed(0f, new Vector2(1, 0)) with
         {
-            MinLife = 1f, MaxLife = 1f,
+            MinLife = 1f,
+            MaxLife = 1f,
             StartColor = new Color(1, 0, 0, 1),
             EndColor = new Color(0, 0, 1, 1),
         };
@@ -148,16 +149,22 @@ public class Particle2DSystemTests
     {
         var cfg = new Particle2DEmitterConfig
         {
-            MinLife = 0.5f, MaxLife = 1.5f,
-            MinSpeed = 20f, MaxSpeed = 80f,
+            MinLife = 0.5f,
+            MaxLife = 1.5f,
+            MinSpeed = 20f,
+            MaxSpeed = 80f,
             Emission = Particle2DEmission.Radial,
-            JitterX = 4f, JitterY = 4f,
-            StartSize = 3f, EndSize = 0f,
+            JitterX = 4f,
+            JitterY = 4f,
+            StartSize = 3f,
+            EndSize = 0f,
             Acceleration = new Vector2(0, 50f),
             Drag = 0.2f,
-            SwayFrequency = 5f, SwayAmplitude = 6f,
+            SwayFrequency = 5f,
+            SwayAmplitude = 6f,
             RotationJitter = 3f,
-            MinAngularVelocity = -2f, MaxAngularVelocity = 2f,
+            MinAngularVelocity = -2f,
+            MaxAngularVelocity = 2f,
         };
 
         var a = new Particle2DSystem(64, 12345);
@@ -199,8 +206,10 @@ public class Particle2DSystemTests
     {
         var cfg = new Particle2DEmitterConfig
         {
-            MinLife = 1f, MaxLife = 1f,
-            MinSpeed = 50f, MaxSpeed = 50f,
+            MinLife = 1f,
+            MaxLife = 1f,
+            MinSpeed = 50f,
+            MaxSpeed = 50f,
             Emission = Particle2DEmission.Directional,
             Direction = new Vector2(1, 0),
             SpreadRadians = 0.3f,

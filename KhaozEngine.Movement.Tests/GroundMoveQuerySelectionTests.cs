@@ -13,7 +13,10 @@ public class GroundMoveQuerySelectionTests
 {
     private static readonly MoveTuning Tuning = MoveTuning.Default with
     {
-        WalkSpeed = 4f, RunSpeed = 8f, CapsuleRadius = 0.25f, CapsuleHalfHeight = 0.75f,
+        WalkSpeed = 4f,
+        RunSpeed = 8f,
+        CapsuleRadius = 0.25f,
+        CapsuleHalfHeight = 0.75f,
     };
     private static readonly Vector3 RebasedOrigin = new(100f, 20f, -80f);
 

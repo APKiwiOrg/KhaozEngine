@@ -108,9 +108,15 @@ public static partial class TileWorldFile
 
         var manifest = new TileWorldManifest
         {
-            Schema = SchemaUri, FormatVersion = CurrentFormatVersion, Id = doc.Id, DisplayName = doc.DisplayName,
-            TileSize = doc.TileSize, PlaneCount = doc.PlaneCount, PlaneHeight = doc.PlaneHeight,
-            CatalogPaths = doc.CatalogPaths.ToList(), NextObjectId = doc.NextObjectId,
+            Schema = SchemaUri,
+            FormatVersion = CurrentFormatVersion,
+            Id = doc.Id,
+            DisplayName = doc.DisplayName,
+            TileSize = doc.TileSize,
+            PlaneCount = doc.PlaneCount,
+            PlaneHeight = doc.PlaneHeight,
+            CatalogPaths = doc.CatalogPaths.ToList(),
+            NextObjectId = doc.NextObjectId,
             Regions = hashes.OrderBy(k => k.Key.Rz).ThenBy(k => k.Key.Rx)
                 .Select(k => new TileWorldManifestRegion { Rx = k.Key.Rx, Rz = k.Key.Rz, Hash = k.Value }).ToList(),
             Markers = BuildMarkerIndex(doc, before, hashes),
@@ -224,7 +230,10 @@ public static partial class TileWorldFile
             foreach (TileMarker m in region.Markers)
                 byName[m.Name] = new TileWorldManifestMarker
                 {
-                    Name = m.Name, X = m.X, Z = m.Z, Plane = m.Plane,
+                    Name = m.Name,
+                    X = m.X,
+                    Z = m.Z,
+                    Plane = m.Plane,
                     Tags = m.Tags is null ? null : new List<string>(m.Tags),
                 };
         return byName.Values.ToList();

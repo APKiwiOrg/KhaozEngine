@@ -52,8 +52,8 @@ namespace KhaozEngine.Tests.MapDoc
         {
             var tiles = new List<(int, int)>();
             for (int z = -radius; z <= radius; z++)
-            for (int x = -radius; x <= radius; x++)
-                tiles.Add((centreX + x, centreZ + z));
+                for (int x = -radius; x <= radius; x++)
+                    tiles.Add((centreX + x, centreZ + z));
             return tiles.ToArray();
         }
 

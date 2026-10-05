@@ -1,0 +1,15 @@
+{
+  "main_and_pack_commit": "a87038f5a0441d76f1ca71c8ba8acf6ec7b1b6af",
+  "version": "20.27.0",
+  "nupkg": 101,
+  "snupkg": 99,
+  "all_nuspec_commits_match": true,
+  "release_tag_created": false,
+  "final_pack_exit": 0,
+  "final_pack_log_sha256": "fba57b43d4d3071826c070ea3a77f0a783650b8815ccc4231b925b52b3ba6a0a",
+  "passed": 25671,
+  "skipped": 1328,
+  "failed": 0,
+  "full_format_exit": 0,
+  "guards_exit": 0
+}

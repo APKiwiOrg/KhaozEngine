@@ -55,6 +55,8 @@ public sealed class MapResolvedDocument
 {
     public IReadOnlyList<MapResolvedPlacement> Placements { get; }
     public IReadOnlyList<MapResolvedAsset> Assets { get; }
+    /// <summary>The verified closure this snapshot resolved against, for binding and resource lookup without a second load.</summary>
+    public MapAssetClosure AssetClosure { get; }
     public MapResolvedBounds PlayableBounds { get; }
     public MapResolvedBounds StorageBounds { get; }
     public string AuthoredHash { get; }
@@ -64,6 +66,7 @@ public sealed class MapResolvedDocument
     {
         Placements = Array.AsReadOnly(placements.ToArray());
         Assets = assets.Assets;
+        AssetClosure = assets;
         PlayableBounds = playableBounds;
         StorageBounds = storageBounds;
         AuthoredHash = authoredHash;

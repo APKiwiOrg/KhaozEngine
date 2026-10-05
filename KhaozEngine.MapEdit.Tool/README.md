@@ -59,14 +59,32 @@ the dirty flag. Every mutation validates the document before it lands (`MapDocum
 JSON schema check on save) and reverts with the validation errors folded into the thrown message on
 failure, so the in-session document is never left invalid.
 
-Native opted-in documents require an explicit `MapEditSession.BindNativeAssets(closure)` before mutation.
-The binding is validated without dirtying the session and is cleared by successful Open/Create/SetWindow
-replacement. Failed loads retain the previous document and binding.
-Native mutation callbacks edit a detached candidate and publish only after full bound validation, preserving
-the public document instance. Native placement commands additionally preserve their retry state on rejection.
-`PlacementRename` changes the native display label and returns the unchanged placement ID. The explicit
-service APIs `PlacementLabel` and `PlacementRemapId` distinguish label edits from stable-ID remapping.
-These are service APIs, not additional MCP registrations. Native lifecycle asset loading is a separate step.
+Native opted-in documents (non-null `ResolverIdentity`) are validated completely at every lifecycle boundary by
+`NativeDocumentService.ValidateComplete(document, source, options)`. It checks the document locally, reloads and
+digest-verifies the whole asset closure, then resolves placements with analytic support heights under the
+stable `NativeDocumentService.SessionOptions` build identity. The resource root is the monolithic file's
+directory or the tiled document's own directory, anchored as an absolute path at open, so later working
+directory changes never move it.
+
+- Open and SetWindow verify the candidate before it replaces anything, then bind its fresh closure, so editing
+  works without a manual bind. A windowed (partial) native load refuses. Failed loads keep the previous
+  document, binding, path and dirty state.
+- Save, ConvertToSingle, ConvertToTiled and Retile verify before any write. Conversions verify against the
+  destination's resource root and refuse missing or stale resources rather than copying them or rebasing
+  references. A monolithic native write is staged in a sibling file and promoted with one rename. Tiled writes
+  keep the tiled writer and its guards.
+- Validate reports a stale or incomplete closure as `ClosureValid` false with `ClosureErrors`, and a false
+  `Valid`, instead of throwing. Summary throws for a stale closure, and otherwise reports
+  `MapSummary.Native` (`NativeDocumentSummary`) with the authored and closure hashes and the numeric-ID
+  high-water mark as an exact decimal string. Analytic documents report `Native` null and `ClosureChecked`
+  false.
+
+`MapEditSession.BindNativeAssets(closure)` remains for an explicit rebind. It is validated without dirtying
+the session. Native mutation callbacks edit a detached candidate and publish only after full bound validation,
+preserving the public document instance. Native placement commands additionally preserve their retry state on
+rejection. `PlacementRename` changes the native display label and returns the unchanged placement ID. The
+explicit service APIs `PlacementLabel` and `PlacementRemapId` distinguish label edits from stable-ID
+remapping. These are service APIs, not additional MCP registrations.
 
 ## Tiled documents, whole-load vs windowed
 

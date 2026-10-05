@@ -632,6 +632,17 @@ optional panel when the game supplies a `DungeonKitMap`. Dungeon never reference
 the edge adds no cycle. MapEditor stays outside every umbrella, so consumers that do not install the
 editor do not gain this dependency.
 
+`Terrain.Render3D -> MapDoc` carries the native asset adapter:
+
+```
+KhaozEngine.Terrain.Render3D -> KhaozEngine.MapDoc   (MapAssetManifestAdapter, verified closure to AssetEntry)
+```
+
+It is a forward edge onto a package already below the render arm (`MapDoc -> Terrain`), so it adds no cycle.
+`MapDoc` stays render-free and references no `Render3D`, `Gpu`, `MapEditor` or `TileWorld` package, which
+`NativeManifestAdapterTests` checks on the built assembly. `TileWorld.Render3D` now reaches `MapDoc` transitively
+through its `Terrain.Render3D` edge. The document-level non-edge between `TileWorld` and `MapDoc` is unchanged.
+
 ## Movement composition edges
 
 `KhaozEngine.Movement` is opt-in and outside every umbrella. Its project references are exactly:

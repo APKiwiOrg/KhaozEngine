@@ -284,6 +284,13 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   filters its detail textures at a distance - anisotropy level, filter, mip LOD bias - to trade grazing sharpness
   for less distance "fuzz" from a high-frequency tiling albedo. Null keeps the tuned default (anisotropic 16x +
   a +1 bias).
+- **`MapAssetManifestAdapter.ToAssetEntry(closure, assetId, resourceRoot)`** -> **`AssetEntry`** - the one-way
+  compatibility adapter from a verified `KhaozEngine.MapDoc` native asset closure to the existing prop entry. The
+  root must be explicit and absolute. The mesh and first declared LOD resolve through their resource references,
+  never from asset or resource IDs, and are re-hashed against the verified digests, so a stale or missing file
+  throws `MapDocumentException`. `HeightMeters` is the render bounds height times `SourceUnitsToMetres`. No mesh
+  is loaded, no collider is fabricated, and collision, light, selection and further LOD references stay in the
+  closure. Native source-scale mesh loading is not part of this adapter.
 
 ## Usage
 

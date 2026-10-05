@@ -12,6 +12,9 @@ against a verified immutable `MapAssetClosure`, including exact roots, asset mem
 finite transforms. `ValidateLocal(document, registry)` checks document-local validity only.
 `MapAuthoredIdentity` reuses the bound checks and separately validates builder/hash options. Editing callers
 need no synthetic builder options and never resolve relative resource paths implicitly.
+`MapResolver.Resolve` publishes an immutable `MapResolvedDocument`. Its `AssetClosure` is the exact verified
+closure passed in, for binding and resource lookup without a second load. This package loads no meshes and has
+no render dependency. `KhaozEngine.Terrain.Render3D` owns the one-way `MapAssetManifestAdapter`.
 
 ## Sections
 

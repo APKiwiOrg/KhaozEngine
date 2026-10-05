@@ -9968,6 +9968,15 @@ unknown scatter layer reference, a `terrainOverrides` tile that leaves the docum
 quarantines a corrupt runtime cell blob and carries on. See the `KhaozEngine.MapDoc` package README for
 the full section list and a complete example document.
 
+**Native resolution and render adaptation.** `MapResolver.Resolve` returns an immutable
+`MapResolvedDocument` whose `AssetClosure` is the same verified closure it resolved against, so a consumer
+binds or looks up resources without a second load. `MapAssetManifestAdapter.ToAssetEntry(closure, assetId,
+resourceRoot)` in `KhaozEngine.Terrain.Render3D` adapts one native asset to a render `AssetEntry`. It takes an
+explicit absolute root, resolves the mesh and first LOD through their resource references (never from IDs),
+re-hashes both against the verified digests and computes `HeightMeters` from the render bounds times
+`SourceUnitsToMetres`. Collision, light, selection and further LOD data stay in the closure. It loads no mesh
+and does not provide native source-scale loading.
+
 ---
 
 ## Tile world (`KhaozEngine.TileWorld`)
@@ -11382,7 +11391,8 @@ below, and there is no GUI affordance for either. A large authored world is expe
 the tool, and the GUI editor just opens whatever form is already on disk.
 
 **Native placement editing.** Opted-in documents require a verified closure bound with
-`EditorDocument.BindNativeAssets` or `MapEditSession.BindNativeAssets`. Native placement transactions
+`EditorDocument.BindNativeAssets`. A `ke-mapedit` session binds the closure it verifies on open, see below.
+Native placement transactions
 validate candidates before publication, and retained allocation high-water marks participate in dirty
 tracking. Native rename edits `DisplayName` without changing selection or either identity. Explicit
 `RemapPlacementIdCommand` changes the stable ID while preserving numeric identity. See the MapEditor
@@ -11457,6 +11467,15 @@ world-affecting mutation (terrain features, terrain globals, exclusions, scatter
 `map_summary` reports the dirty flag. Every mutation validates before it lands
 (`MapDocumentValidator`, then a schema check on save) and reverts with the validation errors folded
 into the thrown message on failure, so the in-session document is never left invalid.
+
+**Native lifecycle.** A document with `ResolverIdentity` is verified completely by
+`NativeDocumentService.ValidateComplete(document, source, options)` at open, window moves, save, validate,
+summary, conversion and retile. Its resource root is the monolithic file's directory or the tiled directory,
+anchored as an absolute path at open. Open and `set_window` bind the freshly verified closure only after the
+candidate passes, and a windowed native load refuses. Every write verifies first, conversions against the
+destination's resources (never copied or rebased), and monolithic native saves are staged and promoted
+atomically. `map_validate` reports closure failures as `closureValid` false, `map_summary` refuses a stale
+closure and otherwise carries `native` with its `numericIdHighWaterMark` as a decimal string.
 
 **Tiled documents, whole-load vs windowed.** `map_open` and `map_save` are form-aware, exactly like the GUI
 editor: `map_open` dispatches on `MapDocumentFile.DetectForm` (a directory loads tiled, a file loads

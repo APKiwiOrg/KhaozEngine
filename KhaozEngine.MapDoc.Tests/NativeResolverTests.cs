@@ -148,6 +148,15 @@ public sealed class NativeResolverTests
         Assert.Throws<NotSupportedException>(() => ((IList<MapAssetRef>)closure.Roots).Clear());
     }
 
+    [Fact]
+    public void NativeResolver_PublishesTheSameVerifiedClosure()
+    {
+        var f = NativeResolverFixtures.Create();
+        var resolved = MapResolver.Resolve(f.Document, f.Assets, (_, _) => 0f, f.Options);
+        Assert.Same(f.Assets, resolved.AssetClosure);
+        Assert.Same(f.Assets.Assets, resolved.Assets);
+    }
+
     sealed class MutatingSource(IMapAssetSource source, List<MapAssetRef> roots) : IMapAssetSource
     {
         public ReadOnlyMemory<byte> Read(MapAssetRef reference)

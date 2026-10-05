@@ -139,8 +139,8 @@ public sealed class NativePlacementHistoryTests
         Assert.Equal(0.7f, p.Yaw);
         Assert.Equal(2, p.Scale);
         Assert.Equal(new[] { "existing", "prop", "mesh" }, p.Tags);
-        Assert.ThrowsAny<Exception>(() => f.Service.PlacementLabel("remapped", "unbound"));
-        f.Session.BindNativeAssets(f.Assets);
+        // Open verified the reloaded document against its resources and bound that fresh closure.
+        f.Service.PlacementLabel("remapped", "bound by open");
         f.Service.PlacementRemove("remapped");
         Assert.Equal(11, f.SessionDocument.NumericIdHighWaterMark);
     }

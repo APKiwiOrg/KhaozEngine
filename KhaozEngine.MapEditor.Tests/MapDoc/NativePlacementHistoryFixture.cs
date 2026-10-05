@@ -69,6 +69,14 @@ internal sealed class NativePlacementHistoryFixture : IDisposable
         return new(id, id, Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(), 1);
     }
 
+    /// <summary>Copies the manifest and mesh beside a tiled directory, the resource root native lifecycle binds.</summary>
+    public void CopyResourcesTo(string directory)
+    {
+        Directory.CreateDirectory(directory);
+        foreach (string name in new[] { "manifest", "mesh" })
+            File.Copy(Path.Combine(_directory, name), Path.Combine(directory, name), overwrite: true);
+    }
+
     public MapPlacement NewProp(string id) => new()
     {
         Id = id,

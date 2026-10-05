@@ -30,6 +30,8 @@
     <ProjectReference Include="../KhaozEngine.Render2D/KhaozEngine.Render2D.csproj" />
     <ProjectReference Include="../KhaozEngine.Render3D/KhaozEngine.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Terrain/KhaozEngine.Terrain.csproj" />
+    <!-- NativeManifestAdapterTests exercise the one-way MapDoc closure to AssetEntry adapter. -->
+    <ProjectReference Include="../KhaozEngine.Terrain.Render3D/KhaozEngine.Terrain.Render3D.csproj" />
     <ProjectReference Include="../KhaozEngine.Windowing/KhaozEngine.Windowing.csproj" />
     <!-- ViewportWorldDisposeOrderGpuTests / RenderServiceTests use [GpuFact]. -->
     <ProjectReference Include="../KhaozEngine.TestSupport.Gpu/KhaozEngine.TestSupport.Gpu.csproj" />

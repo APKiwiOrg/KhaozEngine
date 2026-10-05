@@ -23,12 +23,15 @@ public sealed class MapEditSession
     MapDocument? _doc;
     MapAssetClosure? _nativeAssets;
     string? _path;
+    string? _resourceRoot;
     IReadOnlyList<string> _manifests = Array.Empty<string>();
     bool _dirty;
     TerrainField? _field;
     MapTileRect? _window;
 
-    /// <summary>Binds a verified closure to the current document. Document replacement clears it. Does not mark dirty.</summary>
+    /// <summary>Binds a verified closure to the current document. Does not mark dirty. Native open, window
+    /// replacement, conversion and retile bind their own freshly verified closure, and replacing the document with
+    /// an analytic one clears it.</summary>
     public void BindNativeAssets(MapAssetClosure assets)
     {
         lock (_lock)
@@ -55,22 +58,32 @@ public sealed class MapEditSession
     /// or a tiled directory at or under <see cref="WholeWorldTileLimit"/> occupied tiles loads whole. A larger
     /// tiled directory opens windowed (<see cref="MapDocumentWindowing"/>), same rule the GUI editor uses.
     /// There is no dirty guard: the client's git diff is the safety net, but <see cref="MapSummary.Dirty"/>
-    /// reports unsaved state. Throws <see cref="MapDocumentException"/> (naming the path) on any load failure.</summary>
+    /// reports unsaved state. Throws <see cref="MapDocumentException"/> (naming the path) on any load failure.
+    /// A native document must load whole and pass <see cref="NativeDocumentService"/> validation against its
+    /// resource root (the file's directory, or the tiled directory) before it replaces anything. Its path and
+    /// root are anchored as absolute paths, and its verified closure is bound for editing.</summary>
     public OpenResult Open(string path, IReadOnlyList<string>? manifestPaths = null)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
         lock (_lock)
         {
+            string fullPath = Path.GetFullPath(path);
             var options = new MapDocumentLoadOptions { Registry = _registry };
-            MapDocument doc = MapDocumentWindowing.Load(path, options, WholeWorldTileLimit, EditorWindowRadius,
+            MapDocument doc = MapDocumentWindowing.Load(fullPath, options, WholeWorldTileLimit, EditorWindowRadius,
                 out _, out MapTileRect? window);
+            string root = NativeDocumentService.ResourceRootFor(fullPath, MapDocumentFile.DetectForm(fullPath));
+            MapResolvedDocument? resolved = NativeDocumentService.IsNative(doc)
+                ? NativeDocumentService.Verify(doc, root, path)
+                : null;
             _doc = doc;
-            _nativeAssets = null;
-            _path = path;
+            _nativeAssets = resolved?.AssetClosure;
+            _path = resolved is null ? path : fullPath;
+            _resourceRoot = root;
             _manifests = CopyManifests(manifestPaths);
             _dirty = false;
             _field = null;
             _window = window;
-            return new OpenResult(path, doc.Id, doc.DisplayName, BuildSummaryLocked());
+            return new OpenResult(_path, doc.Id, doc.DisplayName, BuildSummaryLocked(resolved));
         }
     }
 
@@ -123,24 +136,33 @@ public sealed class MapEditSession
             _doc = doc;
             _nativeAssets = null;
             _path = path;
+            _resourceRoot = NativeDocumentService.ResourceRootFor(Path.GetFullPath(path), MapDocumentForm.Monolithic);
             _manifests = CopyManifests(manifestPaths);
             _dirty = false;
             _field = null;
             _window = null;
-            return new OpenResult(path, doc.Id, doc.DisplayName, BuildSummaryLocked());
+            return new OpenResult(path, doc.Id, doc.DisplayName, BuildSummaryLocked(null));
         }
     }
 
     /// <summary>Saves the open document back to its path, in the form it was opened or last converted into
     /// (<see cref="MapDocumentFile.SaveAuto"/>): a tiled directory saves tiled, a monolithic file saves
     /// monolithic, never converting implicitly. Validates first, throwing on invalid, and clears dirty on
-    /// success.</summary>
+    /// success. A native document is first verified against its anchored resource root, so a stale or missing
+    /// resource refuses before any byte is written, and a monolithic native save is staged and promoted
+    /// atomically.</summary>
     public SaveResult Save()
     {
         lock (_lock)
         {
             RequireDocumentLocked();
-            if (MapDocumentFile.DetectForm(_path!) == MapDocumentForm.None)
+            if (NativeDocumentService.IsNative(_doc!))
+            {
+                MapResolvedDocument resolved = NativeDocumentService.Verify(_doc!, _resourceRoot!, _path!);
+                NativeDocumentService.Save(_doc!, _path!, _registry);
+                _nativeAssets = resolved.AssetClosure;
+            }
+            else if (MapDocumentFile.DetectForm(_path!) == MapDocumentForm.None)
                 MapDocumentFile.Save(_doc!, _path!, _registry);
             else
                 MapDocumentFile.SaveAuto(_doc!, _path!, _registry);
@@ -156,7 +178,8 @@ public sealed class MapEditSession
     /// true to move anyway. This session keeps no undo stack of its own (each mutation's <c>EditorCommand</c>
     /// is applied, validated, and discarded within one call, per <see cref="Mutate{T}"/>, never retained across
     /// calls the way the GUI editor's history is), so a window move has nothing to replay: the cached field and
-    /// the dirty flag are what actually need resetting, and this does both.</summary>
+    /// the dirty flag are what actually need resetting, and this does both. A native candidate must load whole
+    /// and verify against the directory's resources before it replaces the session, then binds that closure.</summary>
     /// <exception cref="InvalidOperationException">No document is open, the open document is not a tiled
     /// directory, or it is dirty and <paramref name="discard"/> is false.</exception>
     public WindowStatusResult SetWindow(float minX, float minZ, float maxX, float maxZ, bool discard = false)
@@ -175,9 +198,15 @@ public sealed class MapEditSession
 
             var options = new MapDocumentLoadOptions { Registry = _registry };
             var rect = MapTileGrid.RectOf(new RectArea(minX, minZ, maxX, maxZ), _doc.TileSize);
-            _doc = MapDocumentFile.LoadTiled(directory, rect, options);
-            _nativeAssets = null;
+            MapDocument candidate = MapDocumentFile.LoadTiled(directory, rect, options);
+            string root = NativeDocumentService.ResourceRootFor(Path.GetFullPath(directory), MapDocumentForm.Tiled);
+            MapAssetClosure? assets = NativeDocumentService.IsNative(candidate)
+                ? NativeDocumentService.Verify(candidate, root, directory).AssetClosure
+                : null;
+            _doc = candidate;
+            _nativeAssets = assets;
             _path = directory;
+            _resourceRoot = root;
             _window = rect;
             _dirty = false;
             _field = null;
@@ -207,7 +236,8 @@ public sealed class MapEditSession
     /// re-implemented. A directory that already holds a tiled document is refused here, the same as
     /// <see cref="ConvertToSingle"/>: there is no overwrite parameter because a conversion targets a fresh
     /// location, never an existing world (unrefused, this silently replaced the target world's tiles and
-    /// swept the rest away).</summary>
+    /// swept the rest away). A native document is verified against the destination directory's resources before
+    /// anything is written. Missing or stale resources refuse, they are never copied or rebased.</summary>
     /// <exception cref="MapDocumentException">A tiled document already exists at <paramref name="directory"/>.</exception>
     public ConvertResult ConvertToTiled(string directory)
     {
@@ -218,8 +248,14 @@ public sealed class MapEditSession
             if (MapDocumentFile.DetectForm(directory) == MapDocumentForm.Tiled)
                 throw new MapDocumentException(
                     $"{directory}: a tiled document already exists there. Convert or delete it first.");
-            MapDocumentFile.SaveAs(_doc!, directory, MapDocumentForm.Tiled, _registry);
-            _path = directory;
+            bool native = NativeDocumentService.IsNative(_doc!);
+            string target = native ? Path.GetFullPath(directory) : directory;
+            string root = NativeDocumentService.ResourceRootFor(Path.GetFullPath(directory), MapDocumentForm.Tiled);
+            MapAssetClosure? assets = native ? NativeDocumentService.Verify(_doc!, root, directory).AssetClosure : null;
+            MapDocumentFile.SaveAs(_doc!, target, MapDocumentForm.Tiled, _registry);
+            if (native) _nativeAssets = assets;
+            _path = target;
+            _resourceRoot = root;
             _dirty = false;
             _field = null;
             _window = null;   // SaveTiled just refreshed doc.Tiles as a whole (unwindowed) index.
@@ -233,7 +269,8 @@ public sealed class MapEditSession
     /// on a path like <c>island.map</c> returns <c>".map"</c>, not empty, so an extension guess would route a
     /// directory-shaped name to the wrong writer). A windowed (partial) document is refused by
     /// <see cref="MapDocumentFile.Save"/>'s own guard unconditionally, inherited rather than re-implemented.
-    /// <see cref="MapDocument.TileSize"/> is preserved exactly.</summary>
+    /// <see cref="MapDocument.TileSize"/> is preserved exactly. A native document is verified against the
+    /// destination file's directory first and written through a staged sibling file.</summary>
     public ConvertResult ConvertToSingle(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -243,9 +280,16 @@ public sealed class MapEditSession
             if (MapDocumentFile.DetectForm(path) == MapDocumentForm.Tiled)
                 throw new MapDocumentException(
                     $"{path}: a tiled document (a directory) already exists there. Convert or delete it first.");
-            MapDocumentFile.SaveAs(_doc!, path, MapDocumentForm.Monolithic, _registry);
+            bool native = NativeDocumentService.IsNative(_doc!);
+            string target = native ? Path.GetFullPath(path) : path;
+            string root = NativeDocumentService.ResourceRootFor(Path.GetFullPath(path), MapDocumentForm.Monolithic);
+            MapAssetClosure? assets = native ? NativeDocumentService.Verify(_doc!, root, path).AssetClosure : null;
+            if (native) NativeDocumentService.SaveMonolithicStaged(_doc!, target, _registry);
+            else MapDocumentFile.SaveAs(_doc!, path, MapDocumentForm.Monolithic, _registry);
             _doc!.Tiles = null;   // now genuinely monolithic, matching what a fresh MapDocumentFile.Load gives.
-            _path = path;
+            if (native) _nativeAssets = assets;
+            _path = target;
+            _resourceRoot = root;
             _dirty = false;
             _field = null;
             _window = null;
@@ -281,9 +325,15 @@ public sealed class MapEditSession
             string oldHash = MapDocumentHash.OfWorld(_doc, _registry);
             float oldTileSize = _doc.TileSize;
             _doc.TileSize = tileSize;
+            MapAssetClosure? assets = null;
             try
             {
-                MapDocumentFile.SaveAuto(_doc, _path!, _registry);
+                if (NativeDocumentService.IsNative(_doc))
+                {
+                    assets = NativeDocumentService.Verify(_doc, _resourceRoot!, _path!).AssetClosure;
+                    NativeDocumentService.Save(_doc, _path!, _registry);
+                }
+                else MapDocumentFile.SaveAuto(_doc, _path!, _registry);
             }
             catch
             {
@@ -292,6 +342,7 @@ public sealed class MapEditSession
                 _doc.TileSize = oldTileSize;
                 throw;
             }
+            if (assets is not null) _nativeAssets = assets;
             _dirty = false;
             _field = null;
             _window = null;
@@ -307,7 +358,8 @@ public sealed class MapEditSession
     /// <summary>Validates the open document structurally, then schema-checks either the whole document or each
     /// loaded tile in a partial document. When <paramref name="verifyWholeWorld"/> is true, a tiled source also
     /// runs <see cref="MapDocumentFile.VerifyTiled"/> against every tile on disk without widening or mutating
-    /// the loaded window.</summary>
+    /// the loaded window. A native document also runs fresh complete closure validation, reported as closure
+    /// findings and a false <see cref="ValidateResult.Valid"/> instead of an exception.</summary>
     public ValidateResult Validate(bool verifyWholeWorld = false)
     {
         lock (_lock)
@@ -347,6 +399,7 @@ public sealed class MapEditSession
                 };
             }
 
+            if (NativeDocumentService.IsNative(_doc!)) result = WithClosureLocked(result);
             if (!verifyWholeWorld) return result;
 
             if (_doc!.Tiles?.SourceDirectory is not { } directory)
@@ -375,13 +428,18 @@ public sealed class MapEditSession
         }
     }
 
-    /// <summary>A flat summary of the open document (counts, names in fold order, dirty flag).</summary>
+    /// <summary>A flat summary of the open document (counts, names in fold order, dirty flag). A native document
+    /// is verified fresh first, so a stale or incomplete closure throws <see cref="MapDocumentException"/> rather
+    /// than reporting a native identity.</summary>
     public MapSummary Summary()
     {
         lock (_lock)
         {
             RequireDocumentLocked();
-            return BuildSummaryLocked();
+            MapResolvedDocument? resolved = NativeDocumentService.IsNative(_doc!)
+                ? NativeDocumentService.Verify(_doc!, _resourceRoot!, _path!)
+                : null;
+            return BuildSummaryLocked(resolved);
         }
     }
 
@@ -443,7 +501,20 @@ public sealed class MapEditSession
     /// <summary>Whether a document is currently open.</summary>
     public bool HasDocument { get { lock (_lock) return _doc is not null; } }
 
-    MapSummary BuildSummaryLocked()
+    ValidateResult WithClosureLocked(ValidateResult result)
+    {
+        try
+        {
+            NativeDocumentService.Verify(_doc!, _resourceRoot!, _path!);
+            return result with { ClosureChecked = true, ClosureValid = true };
+        }
+        catch (MapDocumentException ex)
+        {
+            return result with { Valid = false, ClosureChecked = true, ClosureValid = false, ClosureErrors = new[] { ex.Message } };
+        }
+    }
+
+    MapSummary BuildSummaryLocked(MapResolvedDocument? resolved)
     {
         MapDocument d = _doc!;
         return new MapSummary(
@@ -457,7 +528,10 @@ public sealed class MapEditSession
             d.Placements.Count, d.Spawns.Count,
             d.PlayerSpawns.Count, d.PlayerSpawns.Select(s => s.Id).ToArray(),
             d.Regions.Select(r => r.Name).ToArray(),
-            _dirty);
+            _dirty)
+        {
+            Native = resolved is null ? null : NativeDocumentService.Summarize(d, resolved),
+        };
     }
 
     // Tiled false for a monolithic or in-memory document (Tiles null). Windowed reads the index's IsPartial

@@ -37,7 +37,9 @@ public sealed record RetileResult(string Path, float TileSize, string OldWorldHa
 /// <summary>Result of validation. <see cref="SchemaScope"/> is <c>document</c> for a whole document,
 /// <c>loadedTiles</c> for a windowed tiled document, and <c>none</c> when structural errors prevented schema
 /// validation. Whole-world fields describe the optional on-disk <c>VerifyTiled</c> pass. <see cref="Valid"/>
-/// includes that pass only when the caller requested it.</summary>
+/// includes that pass only when the caller requested it. Closure fields describe the fresh complete native
+/// validation (<see cref="NativeDocumentService"/>): unchecked for an analytic document, and a failed closure
+/// makes <see cref="Valid"/> false rather than throwing.</summary>
 public sealed record ValidateResult(bool StructuralValid, IReadOnlyList<string> StructuralErrors,
     bool SchemaChecked, bool SchemaValid, IReadOnlyList<string> SchemaErrors)
 {
@@ -46,11 +48,15 @@ public sealed record ValidateResult(bool StructuralValid, IReadOnlyList<string> 
     public bool WholeWorldChecked { get; init; }
     public bool WholeWorldValid { get; init; }
     public IReadOnlyList<string> WholeWorldErrors { get; init; } = System.Array.Empty<string>();
+    public bool ClosureChecked { get; init; }
+    public bool ClosureValid { get; init; }
+    public IReadOnlyList<string> ClosureErrors { get; init; } = System.Array.Empty<string>();
 }
 
 /// <summary>A flat snapshot of the open document: identity, bounds, terrain seed and water level, the feature
 /// types in fold order, layer and companion names, section counts, the player spawn ids, region names, and the
-/// dirty flag. Kept flat so it serializes cleanly to the MCP client.</summary>
+/// dirty flag. Kept flat so it serializes cleanly to the MCP client. <see cref="Native"/> is null for an analytic
+/// document and otherwise comes from a fresh complete native validation.</summary>
 public sealed record MapSummary(string Id, string DisplayName, int FormatVersion,
     float MinX, float MinZ, float MaxX, float MaxZ,
     int Seed, float WaterLevel,
@@ -59,7 +65,10 @@ public sealed record MapSummary(string Id, string DisplayName, int FormatVersion
     int ExclusionCount, int ScatterOverrideCount,
     int PlacementCount, int SpawnCount, int PlayerSpawnCount, IReadOnlyList<string> PlayerSpawnIds,
     IReadOnlyList<string> RegionNames,
-    bool Dirty);
+    bool Dirty)
+{
+    public NativeDocumentSummary? Native { get; init; }
+}
 
 /// <summary>Ground height, slope, and water depth sampled at a single world point.</summary>
 public sealed record GroundInfo(float X, float Z, float Height, float SlopeDegrees, float WaterLevel, bool BelowWater);

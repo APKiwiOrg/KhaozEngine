@@ -62,8 +62,8 @@ only.
 
 `RemainingPresentationMovement` reports the planar displacement still to travel in the current inter-tick
 interpolation, in state position units. It excludes reconciliation offsets and reaches zero at the endpoint.
-A non-hard-snap `Reconcile` translates both endpoints and preserves this movement. `Reset`, `Reseed` and a hard
-snap discard it, including when a quiet reseed retains a correction offset.
+A non-hard-snap `Reconcile` translates both endpoints and preserves this movement. `Reset`, `ResetForTransition`,
+`Reseed` and a hard snap discard it, including when a quiet reseed retains a correction offset.
 
 Tune via `PredictionSettings` (tick rate, buffer cap, hard-snap distance, correction rate, dead-zone,
 correction-speed cap). `PendingCommandCount` is how many predicted commands the host has not yet acknowledged, the
@@ -77,9 +77,9 @@ three default members on `IPredictedState<TSelf>`: `HasYaw` (default false), `Ya
 three-argument `WithRenderState(position, vertical, yaw)`, which defaults to the two-argument one. With both set,
 `RenderedState` eases from the previous tick's heading toward the current one along the shorter arc, wrapped into
 `[-pi, pi)` so a turn across the seam goes the short way round, and lands on the current heading exactly at the end
-of the tick. `Reset`, `Reseed`, a hard snap and a teleport epoch advance collapse the previous heading onto the
-current one. A non-snap `Reconcile` keeps the previous heading and moves only the target. Unlike position, whose
-ordinary reconcile translates both ends and folds the jump into a decaying render offset, a heading correction is not
+of the tick. `Reset`, `ResetForTransition`, `Reseed`, a hard snap and a teleport epoch advance collapse the previous
+heading onto the current one. A non-snap `Reconcile` keeps the previous heading and moves only the target. Unlike
+position, whose ordinary reconcile translates both ends and folds the jump into a decaying render offset, a heading correction is not
 smoothed by an offset, so the current fraction of it shows at once. Existing states compile and render unchanged.
 Turn `InterpolateYaw` on only for a state that implements `HasYaw`, `Yaw` and the three-argument `WithRenderState`,
 because a state keeping the defaults gains nothing and is read through a box.
@@ -112,7 +112,21 @@ into a fast, jerky camera bob.
 horizontal for free). It is computed **only** on the commanded `Predict` path, never in `Reconcile`, so a
 reconciliation rebase/snap never registers as movement - a clean steady value for a speed HUD, footstep audio,
 or a locomotion blend, unlike differencing `RenderedState.Position` (which carries the decaying render offset
-and wobbles under lag). Zero until the first `Predict`; zeroed by `Reset` / `Reseed`.
+and wobbles under lag). Zero until the first `Predict`. `Reset`, `ResetForTransition` and `Reseed` zero it.
+
+For an explicit world transition, call `ResetForTransition(authoritativeState)` after accepting the new basis.
+It preserves the next command sequence, discards all pending commands and installs the new state immediately.
+Planar, vertical and yaw interpolation collapse onto the supplied basis, correction offsets and their decay
+velocities clear, and `PredictedHorizontalSpeed` and `StepCumulativeY` become zero. The next `Reconcile` reports
+`Teleported` once, even when distance and epoch did not change. Consecutive calls before reconciliation install
+the latest basis and coalesce into one pending signal. A later call arms a new signal. The consumer owns
+transition revision checks and clears any transport-side resend history.
+
+| Prediction lifecycle | Next sequence | Pending commands |
+| --- | --- | --- |
+| `Reset(initialState)` for a new session | 0 | cleared |
+| `ResetForTransition(authoritativeState)` for an explicit transition | preserved | cleared |
+| `Reseed(basis)` for reconnect | preserved | retained for acknowledgement and replay |
 
 On a mid-session **reconnect**, call `Reseed(basis)` (not `Reset`) when the first post-reconnect snapshot lands.
 It re-seeds the predicted state to the authoritative basis but keeps the command sequence counter **monotonic**:
@@ -133,11 +147,12 @@ watermark. Any inequality is not enough: the epoch reads 0 whenever the host ser
 is momentarily unreadable, so a real stream dips and recovers, and treating either edge as a teleport fired the cut on
 ordinary snapshots (#409).
 
-`Teleported` means **the local player's world position changed discontinuously**, and nothing else sets it:
+`Teleported` reports **an intentional placement discontinuity**, and nothing else sets it:
 
 | What happened | `Teleported` |
 | --- | --- |
 | First reconcile after `Reset` (a first-ever join) | yes, always: there is no prior position to be continuous with |
+| First reconcile after `ResetForTransition` (an explicit transition) | yes, always, even at the same pose and epoch |
 | First reconcile after `Reseed` (a reconnect), resume position within `HardSnapDistance` | **no** |
 | First reconcile after `Reseed`, resume position at or beyond `HardSnapDistance` | yes: the player moved while away |
 | An authoritative epoch advance (respawn, admin move, fast travel) | yes |

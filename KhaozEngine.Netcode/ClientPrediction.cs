@@ -82,12 +82,12 @@ public sealed class ClientPrediction<TState, TCommand>
     // the RECOVERY reads as a fresh advance and cuts, which is the every-snapshot flip-flop. With the watermark held
     // at 5, neither edge fires.
     private uint lastTeleportEpoch;
-    // Set by Reset/Reseed so the FIRST reconcile after a (re)seed does not additionally count the epoch that seed
-    // captured as an in-session advance.
+    // Set by Reset, ResetForTransition or Reseed so the first reconcile does not additionally count the captured
+    // epoch as an in-session advance.
     private bool justSeeded;
-    // Whether the pending (re)seed's own placement is itself a teleport worth reporting. Always true for Reset (a
-    // first-ever join has no prior state, so the placement IS the discontinuity) and true for Reseed only when the
-    // resume position is genuinely discontinuous - see Reseed.
+    // Whether the pending seed's placement is a teleport worth reporting. Always true for Reset and ResetForTransition
+    // (a join or explicit transition is intentional placement), and true for Reseed only when the resume position
+    // is genuinely discontinuous - see Reseed.
     private bool seedReportsTeleport;
 
     public ClientPrediction(ITickSimulator<TState, TCommand> simulator, PredictionSettings? settings = null)
@@ -112,7 +112,7 @@ public sealed class ClientPrediction<TState, TCommand>
     /// <see cref="RenderedState"/>.Position - which carries the decaying reconciliation render offset, so a steady run
     /// wobbles under lag - this is the clean source for a consumer HUD / audio / locomotion blend: it is computed only
     /// on the commanded path and is therefore immune to reconciliation snaps. Zero until the first
-    /// <see cref="Predict"/>, and reset to zero by <see cref="Reset"/> / <see cref="Reseed"/>.
+    /// <see cref="Predict"/>, and reset to zero by <see cref="Reset"/>, <see cref="ResetForTransition"/> or <see cref="Reseed"/>.
     /// </summary>
     public float PredictedHorizontalSpeed => predictedHorizontalSpeed;
 
@@ -123,9 +123,10 @@ public sealed class ClientPrediction<TState, TCommand>
     /// isolated step EXACTLY ONCE and ease it with a render-time-decaying vertical offset (the continuous stair glide
     /// renders such singles raw, so they would otherwise pop as a mini-teleport). Incremented only on the commanded
     /// <see cref="Predict"/> path and NEVER on a reconciliation replay, so replaying the pending window across a step tick
-    /// does not double-count it. Zero until the first step, and reset to zero by <see cref="Reset"/> / <see cref="Reseed"/>.
-    /// <para>A join and a teleport-reporting resume PAIR that zeroing with the teleport signal, so the consumer
-    /// re-baselines its smoother in the same frame and the drop is never read as a step. A QUIET resume (a reconnect
+    /// does not double-count it. Zero until the first step, and reset to zero by <see cref="Reset"/>,
+    /// <see cref="ResetForTransition"/> or <see cref="Reseed"/>.
+    /// <para>A join, explicit transition and teleport-reporting resume pair that zeroing with the teleport signal,
+    /// so the consumer re-baselines its smoother in the same frame and the drop is never read as a step. A quiet resume (a reconnect
     /// inside <see cref="PredictionSettings.HardSnapDistance"/>) zeroes it with no signal, so the consumer does see one
     /// spurious delta there. That is harmless rather than merely tolerated: the shipped bridge answers a detected step
     /// by freezing the mesh at its PREVIOUS DRAWN height rather than by applying the impulse, and a quiet resume renders
@@ -162,7 +163,8 @@ public sealed class ClientPrediction<TState, TCommand>
 
     /// <summary>The planar movement remaining in the current inter-tick interpolation, in state position units.
     /// Excludes reconciliation offsets. A non-hard-snap reconciliation translates both endpoints and preserves
-    /// this movement. Zero at the endpoint and after <see cref="Reset"/>, <see cref="Reseed"/> or a hard snap.</summary>
+    /// this movement. Zero at the endpoint and after <see cref="Reset"/>, <see cref="ResetForTransition"/>,
+    /// <see cref="Reseed"/> or a hard snap.</summary>
     public Vector2 RemainingPresentationMovement =>
         (predictedState.PredictionTarget - previousPredictedPosition) * (1f - InterTickFraction);
 
@@ -170,12 +172,28 @@ public sealed class ClientPrediction<TState, TCommand>
         ? MathF.Min(1f, secondsSinceLastPredict / settings.TickSeconds)
         : 1f;
 
+    /// <summary>Starts a new prediction session, clearing replay and presentation state and restarting the command
+    /// sequence at zero. The next <see cref="Reconcile"/> reports the initial placement as a teleport.</summary>
     public void Reset(in TState initialState)
     {
-        predictedState = initialState;
-        previousPredictedPosition = initialState.PredictionTarget;
-        previousPredictedVertical = initialState.Vertical;
-        previousPredictedYaw = InterpolatedYaw(initialState);
+        ResetState(initialState);
+        nextSeq = 0;
+    }
+
+    /// <summary>
+    /// Installs an explicit transition basis, clearing replay and presentation state while preserving the next
+    /// command sequence. The next <see cref="Reconcile"/> reports one intentional teleport, even at the same pose
+    /// and epoch. Consecutive calls before reconciliation install the latest basis and coalesce into one signal.
+    /// The consumer owns transition revision checks and transport resend history. Reconnects use <see cref="Reseed"/>.
+    /// </summary>
+    public void ResetForTransition(in TState authoritativeState) => ResetState(authoritativeState);
+
+    private void ResetState(in TState basis)
+    {
+        predictedState = basis;
+        previousPredictedPosition = basis.PredictionTarget;
+        previousPredictedVertical = basis.Vertical;
+        previousPredictedYaw = InterpolatedYaw(basis);
         secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
         pendingCommands.Clear();
         renderOffset = Vector2.Zero;
@@ -184,11 +202,8 @@ public sealed class ClientPrediction<TState, TCommand>
         verticalRenderOffsetVelocity = 0f;
         predictedHorizontalSpeed = 0f;
         stepCumulativeY = 0f;
-        nextSeq = 0;
-        // Capture the seed epoch (so it is not re-counted as an in-session advance) and arm the join teleport signal.
-        // A first-ever join always reports one: the client has no prior state, so there is nothing for the placement
-        // to be continuous WITH, and the consumer has a camera to place and a world to stream in around it.
-        lastTeleportEpoch = initialState.TeleportEpoch;
+        // Capture the basis epoch and arm one placement signal for the join or explicit transition.
+        lastTeleportEpoch = basis.TeleportEpoch;
         justSeeded = true;
         seedReportsTeleport = true;
     }
@@ -376,7 +391,7 @@ public sealed class ClientPrediction<TState, TCommand>
         // whenever the host serves a state with its movement component momentarily absent, and treating that dip - or
         // the recovery back off it - as a teleport fired the cut on ordinary snapshots. justSeeded suppresses counting
         // the (re)seed's own captured epoch as an advance, and whether the seed ITSELF reports a teleport is
-        // seedReportsTeleport (always for a join, only for a discontinuous resume - see Reset / Reseed). A seed that
+        // seedReportsTeleport (always for a join or explicit transition, only for a discontinuous resume). A seed that
         // does report one still does not force the hard-snap branch: it already placed the avatar with no glide.
         uint epoch = authoritativeBasis.TeleportEpoch;
         bool epochAdvanced = !justSeeded && epoch > lastTeleportEpoch;
@@ -445,7 +460,7 @@ public sealed class ClientPrediction<TState, TCommand>
     {
         // The clock here ACCUMULATES, which is why this is a finiteness test rather than a clamp. MathF.Max(0f, NaN)
         // is NaN under IEEE, so a single NaN frame used to take secondsSinceLastPredict, and with it every
-        // RenderedState after it, out for the rest of the session rather than for a frame - and only Reset/Reseed
+        // RenderedState after it, out for the rest of the session rather than for a frame - and only a reset or reseed
         // recover, neither of which is on a per-frame path. An infinite dt is refused in the same breath: the decay's
         // closed form multiplies a zero term by it and lands on NaN the same way. A frame that took no valid amount
         // of time draws the previous one again.

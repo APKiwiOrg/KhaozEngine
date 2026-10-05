@@ -5,6 +5,14 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.26.0
+
+- `ClientPrediction<TState,TCommand>.ResetForTransition(authoritativeState)` clears old replay history while
+  preserving the next command sequence. It installs the new basis with presentation interpolation and
+  correction state cleared, zeroes predicted speed and step accumulation, and reports one teleport on the
+  next reconciliation. Consecutive resets before reconciliation coalesce into one signal. `Reset` still
+  starts at sequence 0, and `Reseed` still retains pending commands for reconnect replay (#1292).
+
 ## 20.25.0
 
 - Sharded servers take a cell grid origin (`ShardedWorldServerConfig.CellOrigin`), so a world that extends below

@@ -39,7 +39,9 @@ public interface IPredictedState<TSelf>
     /// <para>The epoch is per-session and NOT comparable across a reconnect: a rejoining client is a fresh
     /// authoritative entity whose epoch counts from its own zero. The join and reconnect placements are decided by
     /// <see cref="ClientPrediction{TState,TCommand}.Reset"/> / <see cref="ClientPrediction{TState,TCommand}.Reseed"/>
-    /// instead, on prior state and resume distance.</para>
+    /// instead, on prior state and resume distance. An explicit transition uses
+    /// <see cref="ClientPrediction{TState,TCommand}.ResetForTransition"/> to install its basis and report one placement
+    /// signal without retaining old replay or restarting command sequences.</para>
     /// </summary>
     uint TeleportEpoch => 0;
 

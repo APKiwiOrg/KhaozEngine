@@ -203,7 +203,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "path": { "type": "string", "minLength": 1 },
-        "sha256": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[0-9a-f]{64}(?![\\s\\S])", "description": "Lowercase SHA-256 hex digest, exactly 64 ASCII characters, as closure loading requires." },
         "payloadVersion": { "type": "integer", "minimum": 1 }
       }
     },

@@ -140,6 +140,9 @@ public sealed class MapDocumentSource : IDisposable
             {
                 Id = p.Id,
                 Kind = p.Kind,
+                NumericId = p.NumericId,
+                AssetId = p.AssetId,
+                DisplayName = p.DisplayName,
                 X = p.X,
                 Z = p.Z,
                 Y = p.Y,

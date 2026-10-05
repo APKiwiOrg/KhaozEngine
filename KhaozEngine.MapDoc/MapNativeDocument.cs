@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace KhaozEngine.MapDoc;
 
@@ -11,6 +12,7 @@ public sealed partial class MapDocument
     public List<MapAssetRef> NativeAssets { get; set; } = new();
 
     /// <summary>The highest reserved numeric placement identity, including deleted placements.</summary>
+    [JsonConverter(typeof(MapNumericIdJsonConverter))]
     public long NumericIdHighWaterMark { get; set; }
 
     /// <summary>Native resolver version metadata. Null retains the legacy analytic execution path.</summary>
@@ -20,6 +22,7 @@ public sealed partial class MapDocument
 public sealed partial class MapPlacement
 {
     /// <summary>Optional game numeric identity, distinct from the stable editor Id and asset kind.</summary>
+    [JsonConverter(typeof(MapNullableNumericIdJsonConverter))]
     public long? NumericId { get; set; }
 
     /// <summary>Optional native asset reference, distinct from the legacy Kind.</summary>

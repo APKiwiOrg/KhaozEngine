@@ -7,11 +7,7 @@ internal static class MapNativeValidation
 {
     internal static void Validate(MapDocument doc, List<string> errors)
     {
-        if (doc.NumericIdHighWaterMark < 0)
-            errors.Add("numericIdHighWaterMark must be nonnegative.");
-        foreach (MapPlacement placement in doc.Placements)
-            if (placement.NumericId is <= 0)
-                errors.Add($"placement '{placement.Id}': numericId must be positive when present.");
+        ValidateNumericIds(doc, errors);
         if (doc.ResolverIdentity is { } identity && (identity.PayloadVersion <= 0 || identity.ResolverVersion <= 0))
             errors.Add("resolverIdentity payloadVersion and resolverVersion must be positive.");
         if (doc.NativeAssets is null)
@@ -39,5 +35,26 @@ internal static class MapNativeValidation
         if (!(bounds.MinX >= doc.Bounds.MinX) || !(bounds.MinZ >= doc.Bounds.MinZ) ||
             !(bounds.MaxX <= doc.Bounds.MaxX) || !(bounds.MaxZ <= doc.Bounds.MaxZ))
             errors.Add("playableBounds must be contained in bounds.");
+    }
+
+    // Reservation accepts newly imported placements above the old mark, but still checks their IDs.
+    internal static long ValidateNumericIds(MapDocument doc, List<string> errors, bool requireHighWater = true)
+    {
+        long maximum = doc.NumericIdHighWaterMark;
+        if (maximum < 0)
+            errors.Add("numericIdHighWaterMark must be nonnegative.");
+        var seen = new HashSet<long>();
+        foreach (MapPlacement placement in doc.Placements)
+        {
+            if (placement.NumericId is not { } id) continue;
+            if (id <= 0)
+                errors.Add($"placement '{placement.Id}': numericId must be positive when present.");
+            if (!seen.Add(id))
+                errors.Add($"placement '{placement.Id}': duplicate numericId '{id}'.");
+            if (requireHighWater && id > doc.NumericIdHighWaterMark)
+                errors.Add($"placement '{placement.Id}': numericId exceeds numericIdHighWaterMark.");
+            maximum = System.Math.Max(maximum, id);
+        }
+        return maximum;
     }
 }

@@ -5,6 +5,27 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.27.0
+
+- Native MapDoc format 4 adds playable bounds, digest-bearing asset roots, stable placement labels and optional
+  Int64 identities. Numeric identities use exact decimal strings, with matching schema/runtime bounds and a
+  persistent allocation high-water mark. Format 3 documents migrate to format 4. Hashes that include the
+  document format version consequently change, while the legacy canonical hash scheme is preserved (#1291).
+- Render-free asset manifests verify resource bytes, kinds, versions and complete dependency graphs before
+  publishing immutable closures. Native resolution snapshots placements and transforms, verifies exact root
+  bindings and computes fresh authored identity from the complete document, closure and builder inputs.
+- Native placement editing preserves allocation through duplicate, undo, redo and deletion. Labels and explicit
+  stable-ID remaps are separate. Rejected edits preserve document/history state and surface in the editor, and
+  a rejected gesture ends its undo grouping. Existing analytic command behavior is retained.
+- ke-mapedit validates complete native closures before open, replacement and writes, anchors resource roots,
+  reports native identity in summaries and stages monolithic saves atomically. Native conversion can use a
+  prepared resource directory without overwriting an existing map. Storage checks reject resource references
+  in the writer-owned normalized namespace and preserve the expected map form. Filesystem aliases remain
+  outside that path policy. The Terrain.Render3D compatibility adapter resolves verified mesh/LOD paths
+  without loading meshes or introducing rendering dependencies into MapDoc.
+- This is the native document and asset foundation. Native terrain, shared physics, bounded water, prefabs and
+  the complete MapEditor/ke-mapedit authoring workflow remain later world-authoring rounds.
+
 ## 20.26.0
 
 - `ClientPrediction<TState,TCommand>.ResetForTransition(authoritativeState)` clears old replay history while

@@ -929,3 +929,38 @@ Cross-task checks remain assigned. Task 4 must persist native high-water state a
 both storage forms and preserve allocation after deletion/save/reload. It must also enforce native
 unknown-member refusal on manifest/tile load. Task 6 and later MCP integration must use exact decimal
 strings for all IDs above 2^53. These are future gates, not claims completed by Task 2.
+
+
+### Task 3 implementation preserved and review started, 2026-10-05
+
+Task BASE `264e3f647f845060ee11a06ca8c2177c0b523ac0`. Implementer returned BLOCKED on final test-file
+format verification after three slot-only timeouts. No target ran during those attempts. Controller
+verified actual final logs, slot history, the nine staged paths and the manually repaired multiline
+initializer whitespace. Final behavioral proofs are 64 closure tests and 91 prior-class regressions,
+zero failures/skips/compiler warnings. Production formatting and staged guards passed.
+
+Ruling R1-T3-V1. Preserve the tested implementation as a held feature-branch commit and overlap its
+read-only review with the queued final formatting check. This does not accept Task 3 or allow Task 4.
+The remaining format result and independent spec/quality review both remain required. The reason is
+durable work and avoiding idle review time during build-slot contention. If the formatting repair is
+incomplete, correct it on this unreleased branch before task acceptance.
+
+Controller commit `c6e7b5edd97da0bdcc014888efa76ed3ca17cb8b` contains the worker's staged implementation
+and is pushed. The controller changed no implementation logic. The final test-file formatter is
+queued as wa-r1-t3:format-tests-final, session97113, through the shared runner. Pivot coordination
+confirmed its controller will leave the next opening, while its already queued workers cannot be preempted.
+No lock was removed and no parallel build was started.
+
+Fresh native Sol xhigh reviewer `/root/wa_r1_task3_review1` is reviewing
+review-264e3f647..c6e7b5edd.diff against task-3-brief.md/report. Controller remains active until the
+reviewer's result and format result are processed. No Task 3 completion claim is made.
+
+| Log under /tmp/grimhollow-orch/logs/wa-r1-t3-20261005-impl | Observed exit | SHA-256 |
+| --- | --- | --- |
+| `wa-r1-t3-red-slot-retry-1.log` | 1 | `baf97cbd499aefd0165e0aaaa2d5d288f7bca01ac8c5057f8dc8de4df00b6c5e` |
+| `wa-r1-t3-cycle-red.log` | 1 | `fd6d9641826132e2d99affbdbf58e2e9aaffb559e20348debdda62233d36eb36` |
+| `wa-r1-t3-green-final.log` | 0 | `656ea6c133bdb9e435b74184a4f6245c9ad39459067f86aade208c02f5588075` |
+| `wa-r1-t3-regression-final.log` | 0 | `98e42b3805c7080fb149f67177054cf303e1c9d0ed42cc2d9e0538be3772f691` |
+| `wa-r1-t3-format-production.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `wa-r1-t3-format-tests.log` | 2 | `a6533aefedbb815cbefedc83a4734b95d35335ab46311c8023f2181e9ce10294` |
+| `wa-r1-t3-guards-final.log` | 0 | `cf381f4506e6e547dc0dcbf3a92bc81963015344ab5f4546609dca20f85b1683` |

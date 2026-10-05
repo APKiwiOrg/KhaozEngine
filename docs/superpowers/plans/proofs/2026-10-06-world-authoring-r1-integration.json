@@ -1,0 +1,23 @@
+{
+  "integration_main": "64a5ae3895ffc422412e6f4251406ecec54b5e22",
+  "verified_source_merge": "3daf2cdc55112af9c942e1d07dee8d852ad1d9fc",
+  "version": "20.27.0",
+  "release_authorized": false,
+  "pack_exit": 0,
+  "package_files": 200,
+  "pack_log": "/tmp/grimhollow-orch/logs/wa-r1-combined-20261006/05-pack.log",
+  "pack_log_sha256": "36c480d4d74bcc5d5c228d6030562b895921d12663adf7f06d2057050b4ab1a2",
+  "closed_issues": [
+    1293,
+    1298,
+    1303,
+    1304,
+    1306,
+    1307,
+    1308
+  ],
+  "open_limits": [
+    1302,
+    1305
+  ]
+}

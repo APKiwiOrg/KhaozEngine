@@ -1718,3 +1718,23 @@ A fresh scoped review and combined R1 full verification still precede main integ
   conflict reconciliation, not a flake or stress loop.
 - Pivot thread f61fd8f9 received a pre-integration notice. Its Grimhollow 20.25.0 pin is untouched.
   Next is documented engine main fast-forward, push and guarded pack, then owner-only tag approval.
+
+
+### R1 integrated and packed, owner release gate, 2026-10-06
+
+- Engine main was fast-forwarded and pushed to 64a5ae3895ffc422412e6f4251406ecec54b5e22 after
+  verifying clean main, current refs, no incoming ignored-file collisions and verified source identity.
+  It contains source merge 3daf2cdc and all reviewed R1 and baseline-cleanup commits.
+- Guarded scripts/pack-local-feed.sh ran from main under the shared slot and exited 0, refreshing
+  200 package files for staged 20.27.0. Proof is proofs/2026-10-06-world-authoring-r1-integration.json,
+  log /tmp/grimhollow-orch/logs/wa-r1-combined-20261006/05-pack.log. No tag was created.
+- Closed engine issues #1293, #1298, #1303, #1304, #1306, #1307 and #1308 as completed after the
+  verified main push. #1302 remains R9 cost work. #1305 remains the documented lexical-path/physical
+  alias limitation. Native custom-registry resolution and unbound digest validation limits remain
+  explicit. No cave, large-world precision, GUI-native lifecycle or importer certification is claimed.
+- R1 implementation, review, verification and integration are complete. Release checkbox remains open
+  pending owner authorization for v20.27.0. Current main/pack SHA at that authorization is rechecked
+  and recorded in PROGRAM.md. No game pin, authored world or navigation bake was changed.
+- R2 remains unstarted. Its next gate is OA9 cave representation, larger/deeper-world plan reconciliation
+  and estimate review before owner approval. Game adoption still waits for all engine rounds released
+  and its game-main barriers. No manual playtest is needed for the completed R1 headless proof.

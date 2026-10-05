@@ -163,6 +163,7 @@ internal static partial class MapTiledFile
             if (!string.IsNullOrEmpty(doc.DisplayName)) w.WriteString("displayName", doc.DisplayName);
             w.WriteNumber("schemeVersion", MapDocumentHash.SchemeVersion);
             MapCanonical.WriteGlobals(w, doc, options);
+            MapCanonical.WriteNativeGlobals(w, doc, options);
             w.WriteStartArray("tiles");
             foreach (MapTileEntry entry in entries)
             {

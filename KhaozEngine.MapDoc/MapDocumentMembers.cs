@@ -10,6 +10,12 @@ internal static class MapDocumentMembers
 {
     static readonly JsonObject Schema = JsonNode.Parse(MapDocumentSchema.GetJson())!.AsObject();
 
+    static readonly JsonObject Manifest = JsonNode.Parse(MapDocumentSchema.GetManifestJson())!.AsObject();
+    static readonly JsonObject Tile = JsonNode.Parse(MapDocumentSchema.GetTileJson())!.AsObject();
+
+    internal static void ValidateManifest(JsonObject root, string where) => Check(root, Manifest, where, native: false);
+    internal static void ValidateTile(JsonObject root, string where) => Check(root, Tile, where, native: false);
+
     internal static void Validate(JsonObject root, string where) => Check(root, Schema, where, native: false);
 
     // Match the serializer's case-insensitive, last-value-wins property lookup without rewriting input.
@@ -57,7 +63,7 @@ internal static class MapDocumentMembers
         {
             if (TryGetProperty(properties, member.Key, out JsonNode? declared) && declared is JsonObject memberSchema)
             {
-                bool nativeMember = native || (ReferenceEquals(schema, Schema) && IsNativeBlock(member.Key));
+                bool nativeMember = native || ((ReferenceEquals(schema, Schema) || ReferenceEquals(schema, Manifest)) && IsNativeBlock(member.Key));
                 Check(member.Value, memberSchema, path + "." + member.Key, nativeMember);
             }
             else if (closed)

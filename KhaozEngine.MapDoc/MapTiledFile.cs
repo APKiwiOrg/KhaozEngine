@@ -45,6 +45,7 @@ internal static partial class MapTiledFile
         }
 
         root = MapDocumentFile.Migrate(root, options, path);
+        MapDocumentMembers.ValidateManifest(root, path);
 
         int schemeVersion = ReadInt(root, "schemeVersion") ?? MapDocumentHash.SchemeVersion;
         float sculptCellSize = ReadFloat(root, "sculptCellSize") ?? MapTerrainOverrides.DefaultCellSize;

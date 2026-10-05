@@ -68,6 +68,26 @@ internal static class MapCanonical
         JsonSerializer.Serialize(w, doc.Regions, options);
     }
 
+    /// <summary>Native persistence metadata. Kept separate from the legacy analytic hash globals.</summary>
+    internal static void WriteNativeGlobals(Utf8JsonWriter w, MapDocument doc, JsonSerializerOptions options)
+    {
+        if (doc.PlayableBounds is not null)
+        {
+            w.WritePropertyName("playableBounds");
+            JsonSerializer.Serialize(w, doc.PlayableBounds, options);
+        }
+        w.WritePropertyName("nativeAssets");
+        JsonSerializer.Serialize(w, doc.NativeAssets, options);
+        w.WritePropertyName("numericIdHighWaterMark");
+        // Invoke the property's converter explicitly because this writer does not serialize the DTO.
+        new MapNumericIdJsonConverter().Write(w, doc.NumericIdHighWaterMark, options);
+        if (doc.ResolverIdentity is not null)
+        {
+            w.WritePropertyName("resolverIdentity");
+            JsonSerializer.Serialize(w, doc.ResolverIdentity, options);
+        }
+    }
+
     /// <summary>A null sculpt block normalizes to <see cref="MapTerrainOverrides.DefaultCellSize"/>: "no
     /// sculpt" and "an empty sculpt block at the default cell size" are the same world, and the monolithic
     /// writer collapses the second onto the first so a round trip through the tiled form is byte-stable.</summary>

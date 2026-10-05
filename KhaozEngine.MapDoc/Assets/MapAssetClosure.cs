@@ -14,15 +14,18 @@ public sealed class MapAssetClosure
     readonly Dictionary<string, MapResolvedResource> _resources;
     public IReadOnlyList<MapResolvedAsset> Assets { get; }
     public string Hash { get; }
+    /// <summary>The exact input roots, snapshotted before source reads and published in ordinal ID order.</summary>
+    public IReadOnlyList<MapAssetRef> Roots { get; }
 
     MapAssetClosure(Dictionary<string, MapAssetDoc> assets, Dictionary<string, MapResourceDoc> resources,
-        Dictionary<string, byte[]> snapshots)
+        Dictionary<string, byte[]> snapshots, MapAssetRef[] roots)
     {
         _assets = assets.ToDictionary(pair => pair.Key, pair => new MapResolvedAsset(pair.Value), StringComparer.Ordinal);
         _resources = resources.ToDictionary(pair => pair.Key,
             pair => new MapResolvedResource(pair.Value.Reference, pair.Value.Kind, pair.Value.Dependencies, snapshots[pair.Key]),
             StringComparer.Ordinal);
         Assets = Array.AsReadOnly(_assets.Values.OrderBy(asset => asset.Id, StringComparer.Ordinal).ToArray());
+        Roots = Array.AsReadOnly(roots);
         Hash = ComputeHash(resources);
     }
 
@@ -53,7 +56,8 @@ public sealed class MapAssetClosure
         }
 
         // MapAssetRef is immutable. Copy the caller's collection before reading any source buffers.
-        foreach (MapAssetRef root in roots.ToArray())
+        MapAssetRef[] rootSnapshot = roots.ToArray();
+        foreach (MapAssetRef root in rootSnapshot)
             Register(new MapResourceDoc { Reference = root, Kind = MapResourceKind.Manifest });
 
         while (pending.Count != 0)
@@ -83,7 +87,8 @@ public sealed class MapAssetClosure
 
         foreach (MapAssetDoc asset in assets.Values) MapAssetManifestReader.ValidateAssetResources(asset, resources);
         ValidateGraph(edges);
-        return new MapAssetClosure(assets, resources, snapshots);
+        Array.Sort(rootSnapshot, static (a, b) => StringComparer.Ordinal.Compare(a.Id, b.Id));
+        return new MapAssetClosure(assets, resources, snapshots, rootSnapshot);
     }
 
     static byte[] Snapshot(IMapAssetSource source, MapAssetRef reference)

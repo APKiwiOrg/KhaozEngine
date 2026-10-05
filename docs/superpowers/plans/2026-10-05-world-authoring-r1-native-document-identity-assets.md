@@ -1391,3 +1391,77 @@ The bounded [final verification fixes](2026-10-05-world-authoring-r1-final-verif
 cover #1293/#1298/#1303/#1304, with one serial worker and separate issue commits. New main runtime
 coverage and the full R1 checks remain pending. #1305 is explicit whole-round risk disposition,
 #1302 stays with R9. This is R1 finishing, not approval or execution of another round.
+
+
+### OA9 compatibility audit at the R1 review candidate, 2026-10-05
+
+Controller rechecked final native DTOs, MapBoundDocumentValidation, MapResolver, MapAuthoredIdentity,
+asset descriptors and MapTileGrid after all six tasks and final fixes. This is a compatibility audit,
+not a large-world performance or precision certification.
+
+- Stored bounds/placement coordinates, asset bounds and resolved transforms remain floats/Vector3.
+  Finite checks reject NaN/infinity, but do not establish supported horizontal extent, depth or
+  minimum precision. Later plans must also test derived-transform arithmetic at their chosen limits.
+- No four-plane, 4.5 m spacing, one-server-cell or nonnegative-Y restriction was added to native
+  descriptors. Those legacy import values remain fixture facts. Existing signed Int32 document-tile
+  coordinates and bounded count/index APIs remain inherited representation limits to quantify.
+- The R1 support callback is XZ-only. Explicit placement Y bypasses it. R2/R3 must select layer/domain
+  context for stacked cave support and cannot silently interpret this as a topmost-floor cave query.
+- Native payload/resolver metadata and builder ID/version/options enter complete authored identity.
+  A later precision or domain change needs explicit schema/payload/resolver migration and hash
+  invalidation. The current version fields make refusal possible, they do not implement that migration.
+- Changing to double or origin-relative coordinates can change public APIs, JSON normalization, asset
+  bounds, support callbacks and hash stability. Quantify the contract before R2/R3/R8 certification.
+  R1 chooses neither double coordinates nor floating origin, and cannot recover precision already
+  discarded by old float authoring.
+- Complete R1 identity/resolution/lifecycle requires every tile and the full verified resource closure.
+  Scoped domains and tiled capture unions need their own explicit completeness/identity contract in
+  later rounds, never a partial result labelled complete. #1302 tracks later edit-cost work.
+- Storage ownership currently uses the writer's normalized-path/case policy. #1305 remains an explicit
+  alias and actual-volume-case lead for whole-round disposition. No physical-file alias guarantee or
+  alias runtime proof is claimed.
+
+DG9.1 to DG9.6 on the engine planning branch remain later round gates. The R1 data model leaves
+versioned evolution possible but does not certify the larger cave/ocean world. Whole-branch review
+must consider these limitations before R1 release readiness.
+
+
+### Final verification fixes returned, 2026-10-05
+
+Worker returned DONE with four separate commits, now pushed:
+
+- `545e9cb1c`, #1293 formatter-only repair. Controller compared all five files' non-whitespace
+  text and inspected the diff, with no semantic change.
+- `38055896f`, #1298 shared positive Int64 schema range and exact end-of-string handling.
+  Schema rejects overflow and trailing newline like the existing runtime reader.
+- `f977d4104`, #1303 rejected GUI gestures seal the merge barrier. The new headless proof keeps
+  a later inspector move separate from an earlier accepted Add.
+- `a5e16744fe937f93ee2c211f7f02d93534e4e528`, #1304 fixed historical format-3 golden input and
+  current-format migration assertions. The original golden, production hashing, SchemeVersion and
+  shared SampleDoc fixture are unchanged. The format version was the changed hash input.
+
+Controller verified ancestry from e3d85b807, clean tree, changed-file size bounds, diffs and actual
+slot/log exits. Combined MapEditor checks passed 456, with 6 GPU skips and 0 failures. MapDoc checks
+passed 213. Current-main ClientPredictionTransitionTests passed 8. All observed compiler warning
+counts were zero. Full solution build/suite and whole-branch review remain pending.
+
+Live main remains de78df336 with SpaceGame 20.26.0 staged, latest observed tag v20.25.0. Both local
+and remote v20.27.0 were free. R1's review candidate stages 20.27.0, preserving SpaceGame's separate
+20.26.0 entry. Version, changelog and guarded declarations changed together. This is not a release
+tag or permission to tag. Recheck refs again before final integration/release actions.
+
+| Log under /tmp/grimhollow-orch/logs/wa-r1-t1 | Observed exit | SHA-256 |
+| --- | --- | --- |
+| `01-1293-verify-red.log` | 2 | `41cdb9056beef759736a9221e559d65be6384d1bd97e6b33a93c204a45abf209` |
+| `03-1293-verify-green.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `04-1298-red.log` | 1 | `519e62562bf843ab2e62b410ae61e8df42ed57eaf780c9bcfae860fb90bc4e51` |
+| `05-1298-green.log` | 0 | `a721b735a46c30fa1a9fb60314f653789914707b0cb322a9fc2b31ae4b52717d` |
+| `06-1298-runtime.log` | 0 | `be9af4606252f84f5ec17086ff77d3cfdfd2c3b6faa4d1294139f8364215540d` |
+| `08-1303-red.log` | 1 | `eaba86a20d79841736411258cedef20539ac4f9e19b8ba7eb94b081c7f557576` |
+| `09-1303-green.log` | 0 | `7c5ea5f54dc00207b5fb53da32e078c31032d729283a6d31c559fbf6661e5073` |
+| `12-1304-repro.log` | 1 | `030418b2b7dddf14b9c5a356ac1898720059aeed7d76c1aa2be8b7e04686f87e` |
+| `13-1304-green.log` | 0 | `097edbb038d0455a128359c59d94ecb214b92043fd8a77e9736258556b782799` |
+| `15-combined.log` | 0 | `bb903ba0c7016f5305fe0c534262d0f82d9120ec2170288f08f45c178275390f` |
+| `16-mapdoc-tests.log` | 0 | `29c06f2e16c7597119399b28a45b6e0ae78a6ed4b4104a5ba845f0810e5fad81` |
+| `17-client-prediction.log` | 0 | `587c12a67cfc5e9c72ef0934ed6defe351fcb74613699fdfdeae78356229d25b` |
+| `18-guards.log` | 0 | `9eafd63548925867ce3af53a91376b2b647c780afd0334674e92e7f3d77395cd` |

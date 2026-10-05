@@ -571,3 +571,27 @@ No pre-existing documentation guard blocker was observed. Doc-version validation
 
 Recorded the R1 transaction boundary and [#1302](https://github.com/APKiwiOrg/KhaozEngine/issues/1302) as refinement inputs.
 This is not approval of this round, a selected optimization or a measured performance result.
+
+
+### R2 owner-gate research, no implementation approval, 2026-10-06
+
+Released prerequisite is v20.27.0 at a87038f5a. The tagged publication workflow remains queued,
+with SQL jobs green and build-test-pack awaiting a hosted runner. Exact release identity is recorded
+in the R1 Outcome and program. No R2 execution worktree or implementation has been started.
+
+Controller-checked decision brief is Grimhollow's
+[program R2-OWNER-GATE.md](https://github.com/APKiwiOrg/Grimhollow/blob/feature/world-authoring/docs/superpowers/programs/world-authoring/R2-OWNER-GATE.md).
+The recommendation is native floor/ceiling layers for primary continuous cave authoring, with native
+prefab groups as the alternative primary workflow. Weighted judgments rank layers 89/120 and prefab
+groups 79/120 under the continuous-network assumption. This is a proposal, not an approved design.
+
+Await owner cave-model choice and rough horizontal/vertical targets before the full plan is refined
+for approval. Both options permit native local editing. Neither inherently solves precision or
+residency. Floors, ceilings, walls, openings, support context and occupied domains need distinct
+contracts. Do not adopt a single fixed-height prism as every cave layer's complete membership rule.
+
+R1's XZ-only resolver callback and version-1 identity are verified in released source. Extend through
+explicit versioned semantics and preserve analytic consumers. Re-anchor stale task citations and
+fixture provenance. Do not infer failure of the differential tolerance from float spacing alone.
+The research's calendar ranges are not adopted as a forecast. OA9 work is required, and the revised
+estimate must follow actual task allocation and the chosen verification envelope.

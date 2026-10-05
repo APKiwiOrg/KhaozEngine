@@ -20,7 +20,9 @@ public sealed partial class EditorToolController
         }
     }
 
-    // A rejected UI edit cancels transient input state, without applying a command or changing history.
+    // A rejected UI edit cancels transient input state, without applying a command or changing history. It still
+    // ends the UI gesture, so the merge barrier is raised: the release that would normally seal never arrives, and
+    // an accepted Add or Move before the rejection must not absorb a later edit of the same element.
     internal void CancelRejectedGesture(EditorToolMode mode)
     {
         _dragging = false;
@@ -29,6 +31,7 @@ public sealed partial class EditorToolController
         _placing = false;
         _sculpting = false;
         _sculptBase = null;
+        _document.SealGesture();
         _mode = mode;
     }
 }

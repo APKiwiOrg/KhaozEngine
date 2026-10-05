@@ -214,6 +214,40 @@ public partial class MapEditorSceneTests
     }
 
     [Fact]
+    public void NativeRejection_RejectedDragSealsAcceptedAddFromLaterInspectorMove()
+    {
+        using var h = new NativeSceneHarness();
+        var ed = h.Scene.Document;
+        ed.BindNativeAssets(h.Fixture.Assets);
+        h.Scene.Controller.Mode = EditorToolMode.PlacePlacement;
+        h.Scene.Controller.PlaceKind = "prop";
+        int baseDepth = ed.History.UndoDepth;
+        h.Step(NativePress());
+        string placed = ed.Selection.Id;
+        Assert.NotEqual("existing", placed);
+        Assert.Equal(baseDepth + 1, ed.History.UndoDepth);
+        var root = ed.Doc.NativeAssets[0];
+        ed.Doc.NativeAssets.Clear();
+        NativeRejected(h, () => h.Step(NativeDrag()));
+        ed.Doc.NativeAssets.Add(root);
+        string afterAdd = MapDocumentFile.SaveText(ed.Doc);
+
+        var ui = new InputManager();
+        var cell = new Rect(0, 0, 200, 28);
+        FloatRow x = FloatRowByLabel(h.Scene.Inspector, "X");
+        ui.Update(MouseFrame(new Vector2(100, 10), false)); x.Update(cell, ui, 0.016f);
+        ui.Update(MouseFrame(new Vector2(100, 10), true)); x.Update(cell, ui, 0.016f);
+        ui.Update(MouseFrame(new Vector2(200, 10), true)); x.Update(cell, ui, 0.016f);
+        Assert.NotEqual(afterAdd, MapDocumentFile.SaveText(ed.Doc));
+        Assert.Equal(baseDepth + 2, ed.History.UndoDepth);
+
+        ed.Undo();
+        Assert.Equal(afterAdd, MapDocumentFile.SaveText(ed.Doc));
+        Assert.Equal(baseDepth + 1, ed.History.UndoDepth);
+        Assert.Contains(ed.Doc.Placements, p => p.Id == placed);
+    }
+
+    [Fact]
     public void NativeRejection_UnexpectedFailureStillEscapes()
     {
         using var h = new NativeSceneHarness();

@@ -29,6 +29,4 @@ public sealed partial class EditorToolController
             && EditorPicking.PickTerrain(Field, input.RayOrigin, input.RayDirection, PickDistance, out Vector3 hit))
             _document.Execute(new MovePlacementCommand(_placeId, hit.X, hit.Z, null));
     }
-
-
 }

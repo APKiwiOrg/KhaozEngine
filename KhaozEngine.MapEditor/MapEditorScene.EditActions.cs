@@ -63,5 +63,4 @@ public partial class MapEditorScene
         _inspector.Rows.Add(row);
         return row;
     }
-
 }

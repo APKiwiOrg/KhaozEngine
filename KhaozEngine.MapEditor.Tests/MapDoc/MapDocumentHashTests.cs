@@ -15,10 +15,21 @@ namespace KhaozEngine.Tests.MapDoc
     /// culture cannot see any of it.</summary>
     public class MapDocumentHashTests
     {
-        /// <summary>The digest of <see cref="TiledDocFixture.SampleDoc"/> under hash scheme 1. A change here
-        /// is a canonicalization change and needs a <see cref="MapDocumentHash.SchemeVersion"/> bump, which
+        /// <summary>The digest of <see cref="HistoricalFormat3Doc"/> under hash scheme 1. A change here is a
+        /// canonicalization change and needs a <see cref="MapDocumentHash.SchemeVersion"/> bump, which
         /// invalidates every stored hash on purpose.</summary>
         const string GoldenDigest = "b9fae93cc3e51c9978e859ba425189fec9e721e462337fbf4274e06e547bf40a";
+
+        /// <summary>The fixed input the golden was recorded from: <see cref="TiledDocFixture.SampleDoc"/> at
+        /// format version 3. <see cref="MapDocumentHash.OfManifest"/> hashes the document's format version, so
+        /// a fixture that follows <see cref="MapDocumentFile.CurrentFormatVersion"/> is a different input on
+        /// every format bump. Pinning the version keeps this a test of the canonical scheme alone.</summary>
+        static MapDocument HistoricalFormat3Doc()
+        {
+            MapDocument doc = TiledDocFixture.SampleDoc();
+            doc.FormatVersion = 3;
+            return doc;
+        }
 
         [Fact]
         public void TileHash_IsOrderIndependent()
@@ -207,7 +218,17 @@ namespace KhaozEngine.Tests.MapDoc
         [Fact]
         public void WorldHash_MatchesGoldenDigest()
         {
-            Assert.Equal(GoldenDigest, MapDocumentHash.OfWorld(TiledDocFixture.SampleDoc()));
+            Assert.Equal(GoldenDigest, MapDocumentHash.OfWorld(HistoricalFormat3Doc()));
+        }
+
+        [Fact]
+        public void WorldHash_IncludesFormatVersion()
+        {
+            MapDocument current = TiledDocFixture.SampleDoc();
+            Assert.Equal(MapDocumentFile.CurrentFormatVersion, current.FormatVersion);
+            Assert.NotEqual(3, current.FormatVersion);
+            Assert.NotEqual(MapDocumentHash.OfManifest(HistoricalFormat3Doc()), MapDocumentHash.OfManifest(current));
+            Assert.NotEqual(GoldenDigest, MapDocumentHash.OfWorld(current));
         }
 
         [Fact]
@@ -225,7 +246,7 @@ namespace KhaozEngine.Tests.MapDoc
                 // The precondition this test exists for: sv-SE really does format a negative int differently.
                 Assert.NotEqual("-3", (-3).ToString(CultureInfo.CurrentCulture));
 
-                Assert.Equal(GoldenDigest, MapDocumentHash.OfWorld(TiledDocFixture.SampleDoc()));
+                Assert.Equal(GoldenDigest, MapDocumentHash.OfWorld(HistoricalFormat3Doc()));
 
                 string[] swedishNames = SavedTileFiles();
                 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;

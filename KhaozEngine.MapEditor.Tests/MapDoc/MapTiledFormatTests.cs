@@ -15,23 +15,31 @@ namespace KhaozEngine.Tests.MapDoc
     {
         static readonly MapTileRect OriginWindow = new(new MapTileCoord(0, 0), new MapTileCoord(0, 0));
 
-        /// <summary>A genuine v2 document: the current writer's output with tileSize removed and the version
-        /// wound back, so the migration has something real to stamp.</summary>
+        /// <summary>A genuine v2 document: the current writer's output with tileSize and the format 4 native
+        /// members removed and the version wound back, so the migration chain has something real to stamp.</summary>
         static string V2Json()
         {
-            JsonNode root = JsonNode.Parse(MapDocumentFile.SaveText(TiledDocFixture.SampleDoc()))!;
-            root.AsObject().Remove("tileSize");
+            JsonObject root = JsonNode.Parse(MapDocumentFile.SaveText(TiledDocFixture.SampleDoc()))!.AsObject();
+            foreach (string member in new[] { "tileSize", "playableBounds", "nativeAssets", "numericIdHighWaterMark", "resolverIdentity" })
+                root.Remove(member);
             root["formatVersion"] = 2;
             return root.ToJsonString();
         }
 
         [Fact]
-        public void V2Document_LoadsAtV3WithDefaultTileSize()
+        public void V2Document_LoadsAtCurrentFormatWithDefaultTileSize()
         {
+            JsonObject input = JsonNode.Parse(V2Json())!.AsObject();
+            Assert.Equal(2, input["formatVersion"]!.GetValue<int>());
+            Assert.False(input.ContainsKey("tileSize"));
+            Assert.False(input.ContainsKey("playableBounds"));
+
             MapDocument back = MapDocumentFile.LoadText(V2Json());
-            Assert.Equal(3, MapDocumentFile.CurrentFormatVersion);
             Assert.Equal(MapDocumentFile.CurrentFormatVersion, back.FormatVersion);
             Assert.Equal(MapDocumentFile.DefaultTileSize, back.TileSize);
+            Assert.NotNull(back.PlayableBounds);
+            Assert.Equal((back.Bounds.MinX, back.Bounds.MinZ, back.Bounds.MaxX, back.Bounds.MaxZ),
+                (back.PlayableBounds.MinX, back.PlayableBounds.MinZ, back.PlayableBounds.MaxX, back.PlayableBounds.MaxZ));
         }
 
         [Fact]

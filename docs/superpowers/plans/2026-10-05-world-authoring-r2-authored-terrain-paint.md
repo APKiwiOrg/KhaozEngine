@@ -618,3 +618,30 @@ rough terrain extrema. The current nav storage budget remains an owner gate.
 
 Next is a concrete R2 design refinement and task/estimate impact for review, before implementation
 plan steps are reconciled to that selected contract. No R2 source edit or execution worktree exists.
+
+### Reviewed cave and scale design candidate, 2026-10-06
+
+The canonical candidate is docs/design/WORLD-AUTHORING-R2-CAVES-SCALE-2026-10-06.md.
+Review 1 findings M1 to M3 were addressed at 5bc3ce754. Targeted review 2 accepted the geometry,
+precision, shaft, ownership and effort corrections, then identified D1 to D3 in migration/storage.
+Controller checked the cited released code at a87038f5a and corrected those paragraphs directly.
+
+D1 uses a document/manifest-level legacy support recipe, so unloaded tile placements do not need
+migration tags. D2 accepts released resolver-v1 options unchanged. Full resolver-2 adoption converts
+every missing-Y placement and cannot finish through a partial window. D3 puts surface storage under
+the already reserved tiles/surfaces namespace, preserves author-owned surfaces resources, and extends
+the sweep keep set to both tile and surface dependencies. Acceptance rows explicitly cover each case.
+
+The reviewer requested only a targeted check of these paragraphs and proof rows before owner review.
+Controller completed that source check. No new broad review or code execution was started.
+Documentation guards passed in /tmp/grimhollow-orch/logs/wa-r2-review2-docs-20261006.log.
+A final changed-text check follows the last bookkeeping edits.
+
+Separate existing stale-window publication defect #1310 was source-verified and filed, with no
+runtime reproduction claimed. The full plan must allocate or depend on its repair before claiming
+windowed no-loss. It is not silently covered by the existing save lock or marked implemented.
+
+The design proposes a sparse 64 km square verification envelope and roughly +/-500 m terrain,
+paired floor/ceiling patches with wall strips and openings, whole-cell aperture limits, bounded
+storage/query contracts, and 29 to 49 engineer-days of R2 labor. All remain pending owner design
+approval. This full executable plan is still unreconciled and unapproved. R2 has no code worktree.

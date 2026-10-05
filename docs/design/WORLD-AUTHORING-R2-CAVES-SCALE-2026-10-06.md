@@ -1,7 +1,7 @@
 # R2 sculpted caves and sparse-world scale
 
-Status: **DRAFT FOR OWNER REVIEW. Candidate refinement only, revised for design review 1 findings
-M1 to M3 and pending targeted re-review. R2 implementation remains unapproved.**
+Status: **DRAFT FOR OWNER REVIEW. Candidate refinement only. Design reviews 1 and 2 are reconciled,
+including migration and storage corrections D1 to D3. R2 implementation remains unapproved.**
 
 ## Outcome and review boundary
 
@@ -259,8 +259,9 @@ portal or support policy changes semantic identity. Declared document parameters
 behavior still enter build identity.
 
 **Writer-owned surface storage.** In the tiled form, patch payloads and index/directory pages live
-in a dedicated `surfaces/` subtree of the document directory. Only the tiled storage writer writes
-there, under the existing save lock. File names encode the SHA-256 of the canonical bytes, matching
+in a dedicated `tiles/surfaces/` subtree inside the already writer-owned `tiles/` namespace. The
+ordinary resource directory `surfaces/` remains author-owned and is never reserved or swept. Only
+the tiled storage writer writes terrain files in `tiles/surfaces/`, under the existing save lock. File names encode the SHA-256 of the canonical bytes, matching
 the released tile invariant, so a write is idempotent and never replaces a name a manifest needs
 [E18]. Save order is validate, read the previous manifest, write new payloads, then index pages,
 then directory pages, all at names nothing references yet. The manifest rename is the single
@@ -268,15 +269,26 @@ commit. A crash before it leaves the previous world complete. A crash after it l
 unreachable files.
 
 Cleanup runs after the commit and only when the previous manifest was readable, as the released
-sweep does [E18]. It deletes temp files and `surfaces/` files unreachable from the new manifest. A
+sweep does [E18]. Extend its keep set to include both legacy tile files and every surface payload,
+index and directory page reachable from the new manifest before sweeping the shared `tiles/`
+namespace. The existing tile-only sweep must never run with an incomplete keep set. A
 windowed save carries every unloaded index entry forward by digest from that previous manifest and
 never rewrites an unloaded patch. It refuses an edit whose seam, corner owner, portal, opening or
 space dependency lies in an unloaded patch, as `GuardMovedContent` refuses moved content [E18].
 
-`MapDocumentStorage.IsReserved` is extended explicitly so the tiled form reserves `surfaces/`
-alongside `tiles/` [E17]. `MapStorageGuardedAssetSource` therefore keeps refusing any generic asset
-reference inside it [E19]. `IMapSurfaceSource` is read-only and does not read through the generic
-asset source. Its storage implementation opens only digests named by the verified
+The save lock alone does not make a previously opened window current. Released stale-window
+publication can carry old unloaded entries after another writer replaces and sweeps them, tracked
+separately in [#1310](https://github.com/APKiwiOrg/KhaozEngine/issues/1310). The R2 full plan must
+allocate or depend on a verified generation check before claiming windowed no-loss. A stale window
+must refuse before payload writes or manifest replacement. Proof uses two sequential saves with
+one changed unloaded tile, and asserts the newer manifest and its referenced files stay intact.
+That prerequisite is not an implemented capability of the released writer.
+
+`MapDocumentStorage.IsReserved` already reserves all of `tiles/`, including the new subtree [E17].
+Its ownership boundary stays unchanged. `MapStorageGuardedAssetSource` therefore keeps refusing any
+generic asset reference inside `tiles/surfaces/` [E19], while existing assets in `surfaces/` remain
+valid and untouched on the first migrated save and every later save. `IMapSurfaceSource` is
+read-only and does not read through the generic asset source. Its storage implementation opens only digests named by the verified
 manifest/directory/page chain inside the reserved namespace and verifies bytes before decoding. It
 never writes, sweeps or repairs. No generic asset guard is weakened to let terrain read its payloads.
 
@@ -462,11 +474,13 @@ status, geometry owner/triangle, height/normal, capture-support flag and space c
    step. Equal-height independent owners refuse unless explicitly aliased to one canonical owner.
    Report `NoSupport` when a fully known physical hole has no eligible lower support.
 
-Explicit placement Y stays exactly authored and does not invoke support. For **new authored**
+Explicit placement Y stays exactly authored and does not invoke support. For **new resolver-2 authored**
 missing-Y placements, require `MapSupportBinding`: exact surface ID and XZ sampling, or space ID
 plus an authored reference Y and bounded search interval. The latter may still be ambiguous and
-must refuse. Imported placements use explicit Y. Format-4 native missing-Y placements retain a
-tagged version-1 support recipe when migrated. They do not silently acquire a topmost-floor policy.
+must refuse. Imported placements use explicit Y. Format-4 migration records one version-1 support
+recipe on the document root, carried by the manifest in tiled form. Resolver-v1 missing-Y placements
+use this document policy, including placements in tiles not loaded during migration. No per-placement
+migration tag or tile rewrite is required. They do not silently acquire a topmost-floor policy.
 
 Propose a separate resolver-version-2 entry point for authored surfaces/support bindings, with
 document `ResolverVersion=2` and options checked together. The existing two-field resolver metadata
@@ -480,8 +494,8 @@ with pure sequential migrations and closed payload schemas. Do not reserve a rel
 hashes `MapDocumentFile.SaveText`, whose whole-document writer requires the current format version
 [E20]. Loading always migrates a format-4 input to the current format [E15]. So after the advance
 a format-4 document can neither be hashed as format 4 nor keep its token. Every format-4 input
-migrates on load, and its authored identity token changes once, from the new `formatVersion` and,
-where present, from the migration tag on missing-Y placements. **No token continuity across that
+migrates on load, and its authored identity token changes once, from the new `formatVersion` and
+from the document-level legacy support recipe. **No token continuity across that
 migration is promised.** A frozen format-4 validator, serializer or hash path is not proposed.
 This matches C1, where an explicit format upgrade changes the format hash and needs matching peers.
 It applies to every engine consumer. The program's Grimhollow pin of 20.25.0 is not evidence about
@@ -495,11 +509,16 @@ released v20.27.0 did on the frozen format-4 input. Expectations are recorded fr
 resolver on identical inputs, not inferred from equal hashes. Analytic migration adds no native
 surfaces/bindings and preserves execution.
 
-The pure format migration retains the old resolver meaning and adds no invented terrain. Explicit
-adoption of authored surfaces selects resolver 2. A migrated legacy support recipe can call the
-old callback only with its declared policy identity included in build options. It cannot invent a
-surface/space binding. The version-1 overload refuses a version-2 document before executing a
-callback, instead of silently changing the old call's meaning.
+The pure format migration retains the old resolver meaning and adds no invented terrain. Released
+resolver-v1 options and caller-supplied OptionsHash remain accepted unchanged. The compatibility
+recipe identity enters through the document, with no new caller option or policy-hash obligation.
+This identifies the legacy sampling rule, not the behavior of an arbitrary callback. Explicit
+adoption of authored surfaces selects resolver 2 and requires a whole-document conversion that
+assigns explicit Y or valid support bindings to every missing-Y placement before publication.
+A window cannot complete that conversion while placements remain unloaded. The legacy recipe
+never invents a surface/space binding or bypasses resolver-2 validation. The version-1 overload
+refuses a version-2 document before executing a callback. Windowed format migration retains the
+released hash-scheme mismatch guard, which still requires a whole load/save when applicable.
 
 Extend the **existing** native command preparation/validation/publication seam. It currently accepts
 only `INativePlacementCommand` and publishes Placements/high-water state [E16]. Proposed new
@@ -573,8 +592,8 @@ loops, large local benchmark or live client is needed for R2.
 | `PortalBandCoverage_HeadersRisersAndLintels`, R2 | A 30 m chamber joins a 3 m passage through a chamber-facing header. A raised passage joins through a chamber-facing riser. A lintel below both roofs uses one two-sided strip. An arched band top adds its transition vertex. Gaps, overlaps, a band outside the common air interval, mismatched vertex sequences and duplicate `(strip, side)` references refuse. Each face is emitted once |
 | `ShaftOpenings_HaveKnownBoundsWithoutFabricatedFloors`, R2 | A shaft between stacked caves uses horizontal openings in both layouts above. Every column has a declared bound. Opening triangles never reach support, draw, capture or collision. An undeclared missing bound refuses as missing data, distinct from `NoSupport` |
 | `CanonicalEntranceSeamAndAperture_Agree`, R2 | Shared vertex/triangle keys, winding/normals and rendered/support/capture input agree across patch edges. Physical hole has no faces/fallback. Imported NoDraw/void cells keep presence 1, flag bytes and tagged fallback. Changing an overlay cut never substitutes a physical entrance |
-| `SurfaceStorage_ManifestLastCommitAndForms`, R2 | Injected failures before and after the manifest rename leave one complete world. Sweep is skipped with an unreadable previous manifest. Windowed saves carry unloaded entries forward and refuse unloaded dependencies. Generic assets in `surfaces/` refuse. Monolithic embedding over its bound refuses. Monolithic, tiled and repacked copies share one scheme-2 token while byte digests differ |
-| `FormatAdvance_PreservesResolverV1Execution`, R2 | Frozen format-4 inputs migrate on load. Placements, transforms, explicit Y and support callback calls equal expectations recorded from released v20.27.0. The identity token changes once and the test asserts no continuity. A format-4 object in memory still fails current validation |
+| `SurfaceStorage_ManifestLastCommitAndForms`, R2 | Injected failures before and after the manifest rename leave one complete world. Sweep is skipped with an unreadable previous manifest. Windowed saves carry unloaded entries forward and refuse unloaded dependencies. An existing authored asset under `surfaces/` survives the first migrated save byte-for-byte and remains readable. Generic assets under `tiles/surfaces/` refuse. The combined sweep preserves referenced legacy tiles and surface pages. Monolithic embedding over its bound refuses. Monolithic, tiled and repacked copies share one scheme-2 token while byte digests differ |
+| `FormatAdvance_PreservesResolverV1Execution`, R2 | Frozen monolithic and tiled format-4 inputs migrate on load. A windowed load/save followed by loading a previously unloaded missing-Y placement retains the manifest-level legacy recipe. Placements, transforms, explicit Y and support callback calls with unchanged released-shaped options equal expectations recorded from released v20.27.0. Whole-document resolver-2 adoption refuses until every missing-Y placement is converted. The identity token changes once and the test asserts no continuity. A format-4 object in memory still fails current validation |
 | `StackedCaveFloorsAndCeilings_PreserveGeometryAndSupportSelection`, R2/R3 | At least eight vertically stacked supports distinguish height/space, explicit Y, ceiling exclusion, equal-owner ambiguity, links and missing ceiling refusal. R2 proves query descriptors, R3 proves real clearance/collision and nav |
 | `SparseFarAndDeepGeometry_PreservesLocalCoordinates`, R2 | Equivalent cases around origin and around both signs of 32,000 m, including signed storage boundaries, +/-500 m terrain, object bounds to +/-564 m and probes to +/-640 m. Compare canonical frame-local positions/normals and declared precision targets. Include a non-quarter yaw, scales 0.8/1.2 and a 1/3 m cell unit with whole-metre submission anchors and exactly computed offsets. R3/R8 prove their physics and render adapters on the same descriptors. The +/-640 m vertical case reports the named proof risk explicitly |
 | `SparseIndex_UnloadedIsNotEmpty`, R2/R8 | Known-empty page/range, indexed-unloaded patch, corrupt payload, missing corner owner and exceeded query budget have distinct results. Bounded query reads only required records. Complete-view and scoped identities cannot be exchanged |
@@ -615,7 +634,7 @@ Retain the six concerns but reconcile their types, source references, tests and 
 | Existing task | Required refinement | Indicative implementation/verification labor |
 | --- | --- | ---: |
 | 6a. Oracle freeze (first part of task 6) | Freeze the selected shipped source, its runtime oracle and provenance, derive the inventory, and record released v20.27.0 resolver-v1 expectations on frozen format-4 inputs. No comparison runs yet | 1 to 2 engineer-days |
-| 1. Absolute surfaces/materials/validation | Patch/page encoding, integer lattice addresses and units, presence roles and imported presence policy, seam/strip/portal/space reference schema, writer-owned `surfaces/` storage with reservation, manifest-last commit, sweep and windowed carry-forward, bounded monolithic embedding, pure migration with the one-time token change and scheme-2 semantic identity. Remove eager whole-surface payload assumptions | 6 to 10 engineer-days |
+| 1. Absolute surfaces/materials/validation | Patch/page encoding, integer lattice addresses and units, presence roles and imported presence policy, seam/strip/portal/space reference schema, writer-owned `tiles/surfaces/` storage within the existing reservation, manifest-last commit, sweep and windowed carry-forward, bounded monolithic embedding, pure migration with the one-time token change and scheme-2 semantic identity. Remove eager whole-surface payload assumptions | 6 to 10 engineer-days |
 | 2. Exact topology/paint | Bounded canonical compiler with ceiling winding, lower/upper chain wall strips including headers, risers, two-sided lintels and entrance returns, portal bands, horizontal opening boundaries, stable corner ownership, whole-metre submission anchors and aperture-versus-paint distinction. Preserve all legacy arithmetic against the 6a oracle | 5 to 9 engineer-days |
 | 4. Masks/membership | Variable lower/upper bound spaces and nested semantic domains, per-side band and strip coverage with exact vertex-sequence checks, shaft and opening bounds, owner-versus-reference separation and ambiguity/missing-geometry refusal. Keep import Indoor spans separate | 4 to 6 engineer-days |
 | 3. Sampler/local supports/paint | Frame-local, height-aware request/result and resolver-v2 entry point with explicit support binding, typed absence/overflow and unchanged v1/analytic callers | 3 to 5 engineer-days |

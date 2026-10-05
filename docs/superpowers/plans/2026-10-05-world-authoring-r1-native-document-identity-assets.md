@@ -1309,3 +1309,49 @@ negative existing-map/analytic/reserved-resource proofs, then a fresh review cov
 Storage ownership currently follows the writer's normalized-path/case policy. Filesystem aliases
 are not resolved. Qualify any unconditional XML guarantee accordingly and retain the documented
 limit for whole-round review. No claim of complete physical-file alias protection is made.
+
+
+### Task 6 combined fixes, proof and scoped review 2, 2026-10-05
+
+Fix 2 `37dc8e5d8b5c0e8e17835c88778aeacd76837d83` is pushed. Combined fix range is
+`45540c5a9..37dc8e5d8`, including code `a1fc33d11` and docs ruling `1ac143f4c`. Controller
+verified branch ancestry, clean tree, combined changed C# size bounds, diff whitespace, actual
+focused/MapDoc/format exits and unchanged #1304 failure identities.
+
+Final fix 2 focused tests passed 49, MapDoc tests 213, zero failures in either selection. Broader
+editor regression remains 404 passed, 3 failed and 6 skipped. The failures are the known #1304
+trio. Changed-file format exited 0. Worker reports all required repository guards passed.
+
+R1-T6-3 is implemented: native conversion accepts prepared resources without a map manifest,
+refuses an existing map or reserved resource, and preserves the writer's lower guards. Analytic
+conversion and DetectForm are unchanged. The positive test covers conversion, edit/save/reopen,
+complete identity, high-water mark and prepared resource bytes. XML states the normalized-path
+policy explicitly instead of promising protection against all filesystem aliases.
+
+M1's committed regression keeps the disposable Open/edit/Save resource-survival scenario. The
+original code deleted the verified file. A disabled-guard control made all four normalized/absolute
+cases fail on resource deletion, then the guard was restored and the focused tests passed.
+
+Filesystem aliases remain the documented policy limit, filed as lead [#1305](https://github.com/APKiwiOrg/KhaozEngine/issues/1305)
+for whole-round risk disposition. No alias-based runtime proof was performed. No filesystem alias
+infrastructure was added to the bounded conversion fix.
+
+Fresh review 2 task is
+`node:delegated-task:command%3Amcp%3A87f7c6df-2d3b-43b2-8cf0-9d291f9ecd43%3Adelegate-task%3Awa-r1-task6-review2-20261005`,
+using the exact Gauge Claude Work Opus 5.5 high target. It receives original review 1, both fix
+briefs/reports, corrected controller notes and review-45540c5a9..37dc8e5d8.diff in R1 SDD.
+Task 6 is not accepted pending this review. Final R1 triage and full checks have not started.
+
+| Log | Observed exit | SHA-256 |
+| --- | --- | --- |
+| `/tmp/grimhollow-orch/logs/wa-r1-t6-fix1-20261005/wa-r1-t6-fix1-m1-repro.log` | 1 | `a2147640337db129cb0c1bd87fba7c197f3c1b73835d744273d7607df13e207b` |
+| `/tmp/grimhollow-orch/logs/wa-r1-t6-fix1-20261005/wa-r1-t6-fix1-m1-regression-red2.log` | 1 | `9bd5b1fcad671da2b41af3a2a0ecca672c135838ca36d8ac93f6c9293e223e72` |
+| `/tmp/grimhollow-orch/logs/wa-r1-t6-fix1-20261005/wa-r1-t6-fix1-final-focused.log` | 0 | `3e8f7dbabb6cf47deb890167c091b37f218739fc9c5e35f71174c66e2f0bf1a8` |
+| `/tmp/grimhollow-orch/logs/wa-r1-t6-fix1-20261005/wa-r1-t6-fix1-mapdoc-green.log` | 0 | `85461cffa3b97707f021c301460e3864ff10dfcf5ef005eb71bca793dbcb3eb4` |
+| `/tmp/grimhollow-orch/logs/wa-r1-t6-fix1-20261005/wa-r1-t6-fix1-regress-editor.log` | 1 | `3e1f7999f69fc3ad6b21fc79a697eaa63b8f7f672c1e5e754bf6bf535a4d24f3` |
+| `/tmp/grimhollow-orch/logs/wa-r1-t6-fix1-20261005/wa-r1-t6-fix1-format.log` | 0 | `239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c` |
+| `/tmp/grimhollow-orch/logs/wa-r1-t6-fix2-20261005/wa-r1-t6-fix2-red.log` | 1 | `8c054cb8a6920c7a026e884bcd03bdc52f475538772d17a2e59ba7aec31c33e3` |
+| `/tmp/grimhollow-orch/logs/wa-r1-t6-fix2-20261005/wa-r1-t6-fix2-final-focused.log` | 0 | `8e46ab5708a36a094cccfe437cfb6983145e79473f697089f99f1ea3dde05ca9` |
+| `/tmp/grimhollow-orch/logs/wa-r1-t6-fix2-20261005/wa-r1-t6-fix2-mapdoc.log` | 0 | `43548cbc67824b65e4a95337eaf82589ba4007cbdc364096b13d7c0e331969ae` |
+| `/tmp/grimhollow-orch/logs/wa-r1-t6-fix2-20261005/wa-r1-t6-fix2-regress-editor.log` | 1 | `11fc068e8690c1dc02adcb7458ff2759c07b4c1aab0ba570cb5bad810ba05176` |
+| `/tmp/grimhollow-orch/logs/wa-r1-t6-fix2-20261005/wa-r1-t6-fix2-format.log` | 0 | `239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c` |

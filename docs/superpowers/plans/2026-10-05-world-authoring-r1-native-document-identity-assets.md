@@ -867,3 +867,18 @@ controller processes their result. Fresh review rounds continue to use new deleg
 | `green-final.log` | 0 | `8599972b20713c0a9dc10ebfcd271d03fc2f5efd1972f8cd6cf01cb585cc0a51` |
 | `format-mapdoc-final.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
 | `format-tests.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+
+
+### Task 1 accepted, 2026-10-05
+
+Fresh scoped review 2 passed spec compliance and code quality. I1, I2 and I3 are addressed, with no
+new Critical/Important/Minor finding or parked item. Controller checked the cited casing, required
+native validation, union traversal and migration-default code against the fix and retained test logs.
+Task 1 is complete for code range `f29eb60c0..69978ff62`. Final focused evidence is 63 passed,
+0 failed/skipped/warnings. Final changed-file formatting passed. No manual check is needed.
+
+Review artifacts are task-1-review-1.md and task-1-review-2.md in this plan's SDD workspace.
+Task 4 carries the tiled-native unknown-member integration proof. Task 6 carries the living API docs
+sweep. Baseline formatting issue #1293 and required full round verification remain open. Task 2 begins
+from the accepted Task 1 branch after this bookkeeping commit, with basic range/presence checks kept
+in MapNativeValidation and exact encoding/reservation/allocation added by Task 2.

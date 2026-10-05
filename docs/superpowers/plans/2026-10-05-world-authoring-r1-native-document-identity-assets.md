@@ -1221,3 +1221,46 @@ updated native lifecycle/window/history fixtures needed for automatic verified b
 partial extraction is permitted for file-size limits. Update dependency documentation for the
 planned forward MapDoc reference. Focused task checks run first. The controller owns full round
 verification after Task 6 and whole-branch review, so the worker must not run the full suite now.
+
+
+### Task 6 candidate proof and review, 2026-10-05
+
+Candidate `9fe1bc558d22363abbd42f42f1e6faf716652378` is pushed from `5fc007705`. Worker
+returned DONE_WITH_CONCERNS. Controller verified the intended clean branch and ancestry,
+committed diff/changed-file size limits, lifecycle and adapter code, and actual shared-slot
+logs/exits. Passed 15 focused lifecycle/adapter tests, 192 MapDoc tests and 31 architecture tests.
+Game3D build passed with zero warnings/errors. Changed-file solution format exited 0.
+
+The broader editor regression exited 1, with 391 passed, 3 failed and 6 skipped. The failures are
+WorldHash_MatchesGoldenDigest, its Swedish-culture variant and V2Document_LoadsAtV3WithDefaultTileSize.
+Filed after local/live prior-art search as [#1304](https://github.com/APKiwiOrg/KhaozEngine/issues/1304).
+The test/hash paths are unchanged by Task 6. R1 Task 1 introduced current format 4. The version test
+hardcodes 3, while OfManifest includes document format version in hash input. Final triage must
+separate fixture-input drift from canonicalization changes before updating any golden or scheme.
+No separate baseline test run was performed. These are earlier R1 regressions, not released-main
+failures. They block final round acceptance, not read-only Task 6 review.
+
+The worker report's blanket claim that relative references cannot convert to tiled is refuted.
+ConvertToTiled only refuses an existing tiled map, and MapTiledFile.Save allows an existing directory
+with resources but no map manifest. Matching preprovisioned resources can satisfy validation. This
+is a source-level correction, no positive runtime proof for that case was run by the controller.
+
+Fresh review task is
+`node:delegated-task:command%3Amcp%3A87f7c6df-2d3b-43b2-8cf0-9d291f9ecd43%3Adelegate-task%3Awa-r1-task6-review1-20261005`,
+using the exact Gauge Claude Work Opus 5.5 high target. Inputs are the Task 6 brief/ruling, report,
+controller notes and review-5fc007705..9fe1bc558.diff in R1 SDD. The review explicitly assesses
+analytic tiled path normalization and native validation/result fields. Task 6 is not yet accepted.
+
+Final R1 triage now includes #1293, #1298, #1303 and #1304 plus the noted cosmetic nits. #1302
+stays with R9. Whole-branch review, current-main reconciliation, full serial checks and owner release
+authorization are pending. No tag, full-suite pass or round completion is claimed.
+
+| Log under /tmp/grimhollow-orch/logs/wa-r1-t6-20261005 | Observed exit | SHA-256 |
+| --- | --- | --- |
+| `wa-r1-t6-red2.log` | 1 | `f6eae8397dc6719b26146eab0ca094ac8a6d1e6b292e8ab5777daf28ac28f293` |
+| `wa-r1-t6-green.log` | 0 | `c109a94488ac1974d4627a30d6d9005a4ece639fbb446ccddab6d6e56e41cb9d` |
+| `wa-r1-t6-regress-editor.log` | 1 | `2baff922cab7de2fa75af0011b3e42ef0576508e9339279bfe8693be1b6ec529` |
+| `wa-r1-t6-regress-mapdoc.log` | 0 | `952bb0dc8c122845b78c9e71bad68bc5c816836fd734b48a6adef788085912d3` |
+| `wa-r1-t6-architecture.log` | 0 | `59b612e209c54022fb77221d5e5bc4e83b5a1901fd5caf34595ca6f77581c25a` |
+| `wa-r1-t6-build-game3d.log` | 0 | `e8641a5a354558fdc94b608f557e0fb63f79d635a84719ea36e448bf05503caa` |
+| `wa-r1-t6-format.log` | 0 | `239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c` |

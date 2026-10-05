@@ -350,9 +350,9 @@ namespace KhaozEngine.Tests.Gpu
         /// for the same n, so a width from one request paired with a height from another is arithmetic rather
         /// than a judgement about which request should have won. Against the CURRENT design it cannot fail: the
         /// pending size is ONE packed long, written whole and read whole, so no interleaving produces a mixed
-        /// pair. It is kept for the day the queue becomes two fields, or grows a third value that has to agree
-        /// with them, which is the exact change that makes a mixed pair reachable and the exact moment nobody
-        /// would think to add the check.
+        /// pair. This schedule completes every queued write before consumption, so the assertion checks the
+        /// resulting width/height relationship but does not exercise torn reads. Splitting the pending size
+        /// into separate fields would need another controlled write/read interleaving to test atomicity.
         /// </para>
         /// <para>
         /// The fake surface keeps a plain list and is not thread-safe, which is deliberate: only the presenting

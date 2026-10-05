@@ -1486,3 +1486,25 @@ another placement coalesce incorrectly. The accepted native snapshot and mutable
 different objects. No runtime proof or final defect verdict is claimed. Review must confirm or
 refute the reachable behavior and ownership contract. #1305 also needs explicit risk disposition.
 #1302 remains R9. No integration or release approval is implied by this dispatch.
+
+
+### Whole-branch review 1 disposition, 2026-10-05
+
+Review 1 approves spec and quality with three Minor findings and one Nit. Controller verified the
+reported paths and chooses a bounded follow-up before full verification. M1 is recorded as
+[#1307](https://github.com/APKiwiOrg/KhaozEngine/issues/1307): in-memory tile content must preserve
+NumericId, AssetId and DisplayName like the disk source. M2 is resolved by documenting R1's default
+registry restriction, without expanding APIs. M3 documents stricter unknown-member refusal for
+legacy loads. N1 tightens the declared SHA-256 syntax in the schema with focused tests.
+
+R1-WR1-1 chooses native Add coalescing hardening for #1306. Review correctly found no current GUI
+caller retaining/mutating the payload and no MCP history. That does not require a wider caller
+contract. Coalescing will use the accepted native identity, preserving failed-attempt retry and
+legacy behavior. A focused public-API test will verify the proposed edge before the change.
+No claim of an existing in-game trigger is made.
+
+#1305 is non-blocking under the explicitly documented normalized-path/case policy, per review.
+Keep the lead open for stronger filesystem ownership work. Do not justify the limit by assuming
+all resources are in git, and do not claim later validation undoes a prior alias-related loss.
+No alias-based runtime proof or physical-file protection has been claimed. The OA9 and R9 limits
+remain. Root will verify the bounded fix and obtain a fresh scoped review, not another broad sweep.

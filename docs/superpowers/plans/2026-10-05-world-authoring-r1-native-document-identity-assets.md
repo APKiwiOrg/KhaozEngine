@@ -1636,3 +1636,36 @@ unchanged. This task completion will wake the controller. No cleanup result is c
   No reviewer is dispatched yet. After the baseline decision, finish the five files, verify, obtain
   one fresh scoped review, merge into R1, then run combined full checks. Main, pack, tags and game
   adoption remain unchanged. If approval is declined, the five-file format gate still blocks R1.
+
+
+### OA11, exact formatter-only file-size baselines, 2026-10-06
+
+Owner answered "yes" to the five explicit KESIZE baseline increases needed to retain the formatter's
+line splits. Approval is limited to these .filesize-baseline values and the already-proven held
+whitespace patch. It does not approve behavior changes, other baseline growth, guard bypasses or tags.
+
+| File | Old | Approved |
+| --- | ---: | ---: |
+| KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs | 2115 | 2141 |
+| KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs | 1793 | 1808 |
+| KhaozEngine.MapEditor.Tests/MapEditor/MapEditorSceneTests.cs | 4415 | 4431 |
+| KhaozEngine.Render.Tests/Gpu/GoldenSnapshotTests.cs | 1601 | 1632 |
+| KhaozEngine.Showcase/Room2DGui.cs | 1296 | 1300 |
+
+Apply the exact proposed-ratchet.json and held-whitespace.json patch payloads preserved in cleanup
+commit 8a9130d41. Verify all 273 formatted paths, token/literal preservation and required guards.
+A fresh scoped review and combined R1 full verification still precede main integration.
+
+
+### OA11 completion worker active, 2026-10-06
+
+- Exact approved limits are recorded and pushed in cleanup plan commit 2d978efe6b38aa4efbee161bda5934d7f08fc0a4.
+- Gauge selected Claude Work Opus 5.5 high for the continuation, different from the original cleanup
+  account. A fresh bounded worker received the original report, preserved patches and OA11 scope.
+  Task is `node:delegated-task:command%3Amcp%3A87f7c6df-2d3b-43b2-8cf0-9d291f9ecd43%3Adelegate-task%3Awa-format-baseline-oa11-implementation-20261006`.
+- Cleanup SDD has task-1-oa11-brief.md and task-1-oa11-dispatch.json, expected report task-1-oa11-report.md.
+  Ownership is exactly the five held source files plus .filesize-baseline. No changes to the already
+  committed 268 files, no further cap growth, no push/integration/pack/tag are assigned.
+- All 273 included paths, content preservation and guards are rechecked through the shared slot.
+  Controller then verifies, pushes, gets one fresh scoped cleanup review and reconciles into R1.
+  No result is claimed yet. The delegated completion will wake the controller.

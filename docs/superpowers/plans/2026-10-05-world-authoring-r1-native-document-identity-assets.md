@@ -1007,3 +1007,20 @@ remain final-round triage items.
 | `regression.log` | 0 | `8fab8eafc4475e8eaa812766d6c073fc30f468f80a0b4bef8ee70a6334ec6d2d` |
 | `format-production.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
 | `format-tests-final.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+
+
+### Task 4 accepted, 2026-10-05
+
+Fresh review approved spec compliance and code quality for `611dcfd6b..c4e021392`, with no findings.
+Controller inspected normalized identity, exact immutable roots, snapshot-before-callback behavior
+and explicit numeric conversion in the native tiled writer. Actual tests passed 36 focused and 155
+prior regressions, zero failures/skips/warnings, with final production/test formatting clean.
+Task 4 is complete. Task 5 history and Task 6 lifecycle/adapter remain pending. Native custom-registry
+support is not established by these new signatures, while existing analytic APIs remain separate.
+
+OA9 was received during this review. It requires deep multi-level caves, deeper oceans, larger maps,
+tiled navigation, multi-cell behavior and far-origin precision, as recorded in the game's DECISIONS.
+Future round plans are being revised in the engine planning lane. R1 approval remains, with no new
+cave representation or coordinate strategy selected. R1's final compatibility audit must identify
+accidental fixed depth/plane/cell limits and document its current finite-float contract, without
+claiming unlimited precision or implementing the later cave/water/navigation systems here.

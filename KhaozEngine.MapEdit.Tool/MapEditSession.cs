@@ -244,9 +244,11 @@ public sealed class MapEditSession
     /// re-implemented. A directory that already holds a tiled document is refused here, the same as
     /// <see cref="ConvertToSingle"/>: there is no overwrite parameter because a conversion targets a fresh
     /// location, never an existing world (unrefused, this silently replaced the target world's tiles and
-    /// swept the rest away). A native document is verified against the destination directory's resources and its
-    /// tiled storage namespace before anything is written, whatever the source form. Missing, stale or
-    /// writer-owned resources refuse, they are never copied or rebased.</summary>
+    /// swept the rest away). A native document may instead target an existing directory that holds its prepared
+    /// resources but no map manifest (<see cref="MapDocumentStorage.HoldsTiledDocument"/>). It is verified against
+    /// that directory's resources and its tiled storage namespace before anything is written, whatever the source
+    /// form. Missing, stale or writer-owned resources refuse, they are never copied or rebased. An analytic
+    /// document still refuses any existing directory.</summary>
     /// <exception cref="MapDocumentException">A tiled document already exists at <paramref name="directory"/>.</exception>
     public ConvertResult ConvertToTiled(string directory)
     {
@@ -254,10 +256,15 @@ public sealed class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
-            if (MapDocumentFile.DetectForm(directory) == MapDocumentForm.Tiled)
+            bool native = NativeDocumentService.IsNative(_doc!);
+            // A native target may be a directory prepared with its relative resources, refused only once it holds a
+            // map manifest. Analytic conversion keeps refusing any existing directory.
+            bool occupied = native
+                ? MapDocumentStorage.HoldsTiledDocument(directory)
+                : MapDocumentFile.DetectForm(directory) == MapDocumentForm.Tiled;
+            if (occupied)
                 throw new MapDocumentException(
                     $"{directory}: a tiled document already exists there. Convert or delete it first.");
-            bool native = NativeDocumentService.IsNative(_doc!);
             string target = native ? Path.GetFullPath(directory) : directory;
             string storage = Path.GetFullPath(directory);
             // The tiled target's namespace is checked even when the source is monolithic.

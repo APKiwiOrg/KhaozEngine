@@ -5,8 +5,10 @@ namespace KhaozEngine.MapDoc.Assets;
 
 /// <summary>Reads resources under a stored document's resource root, refusing any reference inside the namespace
 /// its storage writer owns before reading it. Every closure reference goes through <see cref="Read"/>, including
-/// roots, unused declarations and transitive dependencies, so a verified closure can never contain a file the next
-/// save would sweep or overwrite.</summary>
+/// roots, unused declarations and transitive dependencies, so no reference whose normalized path falls in that
+/// namespace under <see cref="MapDocumentStorage.IsReserved"/> reaches a verified closure. That policy resolves dot
+/// segments and the platform case rule only. A symbolic link, hard link or other filesystem alias into the
+/// namespace is not detected.</summary>
 public sealed class MapStorageGuardedAssetSource : IMapAssetSource
 {
     readonly string _storagePath;

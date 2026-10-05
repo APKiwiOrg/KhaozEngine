@@ -63,6 +63,21 @@ public sealed class NativeStorageNamespaceTests : IDisposable
         Assert.Throws<ArgumentException>(() => MapDocumentStorage.ResourceRoot(document, MapDocumentForm.None));
     }
 
+    [Fact]
+    public void NativeStorage_OnlyAManifestMakesADirectoryHoldATiledDocument()
+    {
+        Assert.False(MapDocumentStorage.HoldsTiledDocument(Path.Combine(_root, "missing")));
+        Assert.False(MapDocumentStorage.HoldsTiledDocument(_root));
+        Directory.CreateDirectory(Path.Combine(_root, "kit"));
+        File.WriteAllText(Path.Combine(_root, "kit", "mesh.bin"), "prepared resource");
+        Assert.False(MapDocumentStorage.HoldsTiledDocument(_root));
+        Assert.Equal(MapDocumentForm.Tiled, MapDocumentFile.DetectForm(_root));
+        var doc = new MapDocument { Id = "held", Bounds = new() { MinX = -10, MinZ = -10, MaxX = 10, MaxZ = 10 } };
+        doc.Terrain.Biomes.Add(new MapBiomeBand());
+        MapDocumentFile.SaveTiled(doc, _root);
+        Assert.True(MapDocumentStorage.HoldsTiledDocument(_root + Path.DirectorySeparatorChar));
+    }
+
     [Theory]
     [InlineData("root", false)]
     [InlineData("mesh", false)]

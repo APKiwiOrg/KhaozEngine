@@ -79,6 +79,10 @@ directory changes never move it.
   writer owns refuses before it is read: for tiled storage the `tiles` subtree, `map.json`, its temp file and
   the save lock, for monolithic storage the document file. Conversion to tiled checks the target namespace even
   for a monolithic source.
+- `convert_to_tiled` target policy differs by document kind. An analytic document refuses any existing
+  directory. A native document may target an existing directory prepared with its relative resources, and
+  refuses only once that directory holds a map manifest (`MapDocumentStorage.HoldsTiledDocument`). The prepared
+  resources must sit outside the target's reserved namespace, and the tiled writer's own guards still apply.
 - Native writes use the form the document was opened or converted in, never one inferred from the path later.
   Save and Retile refuse when tiled storage has vanished or been replaced. Retile also refuses a missing
   monolithic file, while Save recreates it.
@@ -116,7 +120,8 @@ same guard `SaveTiled` states on the document itself, inherited automatically. `
 / `convert_to_single(path)` change the on-disk FORM explicitly (`MapDocumentFile.SaveAs`, no extension
 heuristics: `Path.GetExtension("island.map")` is `".map"`, not empty, so guessing from the path would
 route a directory-shaped name to the wrong writer) and always preserve `tileSize` and the world hash
-exactly. `retile(tileSize)` changes `tileSize` itself and re-saves: `tileSize` IS part of world identity
+exactly. `convert_to_tiled` refuses an existing directory for an analytic document, and for a native document
+only one that already holds a map manifest (see Session model). `retile(tileSize)` changes `tileSize` itself and re-saves: `tileSize` IS part of world identity
 (`MapDocumentHash.OfWorld`), so this deliberately changes the world hash, and the result's `Warning` states
 the before/after digests plainly so a client and server ship the change together.
 

@@ -25,6 +25,15 @@ public static class MapDocumentStorage
         };
     }
 
+    /// <summary>Whether <paramref name="directory"/> already holds a tiled map, meaning its manifest exists. Unlike
+    /// <see cref="MapDocumentFile.DetectForm"/>, a directory holding only other files, such as prepared native
+    /// resources, does not count.</summary>
+    public static bool HoldsTiledDocument(string directory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        return File.Exists(Path.Combine(MapTiledFile.Normalize(directory), MapTiledFile.ManifestName));
+    }
+
     /// <summary>Whether <paramref name="path"/> lies in the namespace the <paramref name="form"/> writer owns for a
     /// document stored at <paramref name="storagePath"/>. Such a path must never hold an authored resource.</summary>
     public static bool IsReserved(string storagePath, MapDocumentForm form, string path)

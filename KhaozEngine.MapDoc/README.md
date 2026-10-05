@@ -24,6 +24,9 @@ for tiled storage the `tiles` subtree, `map.json`, its temp file and the save lo
 save, and for monolithic storage the document file. Paths are normalized with `Path.GetFullPath`, so dot
 segments resolve first, and compared with the writer's case policy (ordinal on Linux, ignoring case elsewhere).
 Symbolic links and other filesystem aliases are not resolved, so a link into reserved storage is not detected.
+`MapDocumentStorage.HoldsTiledDocument(directory)` is true only when the directory holds a map manifest, unlike
+`MapDocumentFile.DetectForm`, which reports any existing directory as tiled. Native conversion uses it to accept
+a directory prepared with resources.
 `MapStorageGuardedAssetSource(storagePath, form)` reads under that resource root and refuses a reserved
 reference before reading it. Because `MapAssetClosure.Load` reads every root, declared and transitive resource
 through its source, a closure loaded through it never contains a writer-owned file.

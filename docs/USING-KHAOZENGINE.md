@@ -11497,7 +11497,10 @@ item and the target tile rather than silently dropping it, the same guard `SaveT
 document itself. `convert_to_tiled(directory)` / `convert_to_single(path)` change the on-disk FORM
 explicitly (`MapDocumentFile.SaveAs`, no extension heuristics: `Path.GetExtension("island.map")` is
 `".map"`, not empty, so guessing from the path would route a directory-shaped name to the wrong writer) and
-always preserve `tileSize` and the world hash exactly. `retile(tileSize)` changes `tileSize` itself and
+always preserve `tileSize` and the world hash exactly. `convert_to_tiled` refuses any existing directory for an
+analytic document. A native document may target an existing directory prepared with its relative resources
+outside the reserved namespace, and is refused only when that directory already holds a map manifest
+(`MapDocumentStorage.HoldsTiledDocument`). `retile(tileSize)` changes `tileSize` itself and
 re-saves: `tileSize` IS part of world identity (`MapDocumentHash.OfWorld`), so this changes the world hash
 on purpose, and the result's `Warning` states the before/after digests plainly rather than leaving a caller
 to notice a coordinated client/server release is now needed.

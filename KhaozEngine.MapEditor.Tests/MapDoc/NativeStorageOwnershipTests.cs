@@ -37,7 +37,7 @@ public sealed class NativeStorageOwnershipTests
     }
 
     [Fact]
-    public void NativeStorage_ConversionIntoAnExistingDirectoryKeepsTheOverwriteGuardAndItsResources()
+    public void NativeStorage_PreparedTargetWithAReservedResourceRefusesForThatReason()
     {
         using var f = new NativeLifecycleFixture(meshRelativePath: "tiles/props/rock.glb");
         string target = Path.Combine(f.ResourceRoot, "tiled-world");
@@ -45,19 +45,30 @@ public sealed class NativeStorageOwnershipTests
         string targetMesh = Path.Combine(target, "tiles", "props", "rock.glb");
         byte[] before = File.ReadAllBytes(targetMesh);
 
-        // MapDocumentFile.DetectForm reports any existing directory as tiled, so the session refuses first.
+        // A prepared native target directory is allowed, so the refusal must come from the namespace check.
         var ex = Assert.Throws<MapDocumentException>(() => f.Session.ConvertToTiled(target));
-        Assert.Contains("already exists", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("reserved", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("already exists", ex.Message, StringComparison.Ordinal);
         Assert.Equal(before, File.ReadAllBytes(targetMesh));
         Assert.False(File.Exists(Path.Combine(target, "map.json")));
-
-        // The lifecycle check itself names the explicit target form, independent of the source form.
-        var reserved = Assert.Throws<MapDocumentException>(() =>
-            NativeDocumentService.Verify(f.SessionDocument, target, MapDocumentForm.Tiled, target));
-        Assert.Contains("reserved", reserved.Message, StringComparison.Ordinal);
-        Assert.Equal(before, File.ReadAllBytes(targetMesh));
+        Assert.Equal(f.ValidPath, f.Session.DocumentPath);
         f.Session.Save();
         Assert.True(File.Exists(f.MeshPath));
+    }
+
+    [Fact]
+    public void AnalyticConversionStillRefusesAnyExistingDirectory()
+    {
+        using var f = new NativeLifecycleFixture();
+        var session = new MapEditSession();
+        session.Create(Path.Combine(f.ResourceRoot, "analytic.map.json"), "analytic", "Analytic", -10, -10, 10, 10);
+        string target = Path.Combine(f.ResourceRoot, "analytic-tiled");
+        Directory.CreateDirectory(target);
+
+        var ex = Assert.Throws<MapDocumentException>(() => session.ConvertToTiled(target));
+        Assert.Contains("already exists", ex.Message, StringComparison.Ordinal);
+        Assert.Empty(Directory.GetFileSystemEntries(target));
+        Assert.Equal(Path.Combine(f.ResourceRoot, "analytic.map.json"), session.DocumentPath);
     }
 
     [Theory]

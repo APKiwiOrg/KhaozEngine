@@ -182,7 +182,7 @@ public sealed class NativeLifecycleTests
     }
 
     [Fact]
-    public void NativeLifecycle_RelativeConversionIntoAPreprovisionedDirectoryIsRefusedByTheOverwriteGuard()
+    public void NativeLifecycle_RelativeConversionIntoAPreparedResourceDirectoryKeepsIdentity()
     {
         using var f = new NativeLifecycleFixture();
         NativeDocumentSummary monolithic = f.Session.Summary().Native!;
@@ -191,16 +191,52 @@ public sealed class NativeLifecycleTests
         string mesh = Path.Combine(tiled, NativeLifecycleFixture.MeshRelativePath);
         byte[] bytes = File.ReadAllBytes(mesh);
 
+        ConvertResult result = f.Session.ConvertToTiled(tiled);
+        Assert.Equal(nameof(MapDocumentForm.Tiled), result.Form);
+        Assert.Equal(tiled, f.Session.DocumentPath);
+        Assert.True(File.Exists(Path.Combine(tiled, "map.json")));
+        Assert.Equal(monolithic, f.Session.Summary().Native);
+        new MutationService(f.Session).PlacementLabel("post", "converted session");
+        f.Session.Save();
+
+        var reopened = new MapEditSession();
+        reopened.Open(tiled);
+        Assert.Equal("converted session", reopened.WithDocument((d, _) => d.Placements.Single(p => p.Id == "post").DisplayName));
+        new MutationService(reopened).PlacementLabel("gate", "tiled relative");
+        reopened.Save();
+        var saved = MapDocumentFile.Load(tiled);
+        Assert.Equal("tiled relative", saved.Placements.Single(p => p.Id == "gate").DisplayName);
+        Assert.Equal(NativeLifecycleFixture.HighWater, saved.NumericIdHighWaterMark);
+        Assert.Equal(monolithic.ClosureHash, reopened.Summary().Native!.ClosureHash);
+        Assert.Equal(monolithic.NumericIdHighWaterMark, reopened.Summary().Native!.NumericIdHighWaterMark);
+        Assert.True(reopened.Validate(verifyWholeWorld: true).Valid);
+        Assert.Equal(bytes, File.ReadAllBytes(mesh));
+    }
+
+    [Fact]
+    public void NativeLifecycle_ConversionRefusesAnExistingTiledMapWithoutTouchingIt()
+    {
+        using var f = new NativeLifecycleFixture();
+        string tiled = Path.Combine(f.ResourceRoot, "tiled-world");
+        f.CopyResourcesTo(tiled);
+        var other = MapDocumentFile.Load(f.ValidPath);
+        other.Id = "existing-tiled";
+        MapDocumentFile.SaveTiled(other, tiled);
+        string manifest = Path.Combine(tiled, "map.json");
+        byte[] manifestBytes = File.ReadAllBytes(manifest);
+        string mesh = Path.Combine(tiled, NativeLifecycleFixture.MeshRelativePath);
+        byte[] meshBytes = File.ReadAllBytes(mesh);
+        string[] before = Directory.GetFileSystemEntries(tiled, "*", SearchOption.AllDirectories).OrderBy(e => e, StringComparer.Ordinal).ToArray();
+        var document = f.SessionDocument;
+
         var ex = Assert.Throws<MapDocumentException>(() => f.Session.ConvertToTiled(tiled));
         Assert.Contains("already exists", ex.Message, StringComparison.Ordinal);
-        Assert.False(File.Exists(Path.Combine(tiled, "map.json")));
-        Assert.Equal(bytes, File.ReadAllBytes(mesh));
+        Assert.Equal(manifestBytes, File.ReadAllBytes(manifest));
+        Assert.Equal(meshBytes, File.ReadAllBytes(mesh));
+        Assert.Equal(before, Directory.GetFileSystemEntries(tiled, "*", SearchOption.AllDirectories).OrderBy(e => e, StringComparer.Ordinal));
+        Assert.Same(document, f.SessionDocument);
         Assert.Equal(f.ValidPath, f.Session.DocumentPath);
-        Assert.Equal(monolithic, f.Session.Summary().Native);
-
-        // The same preprovisioned resources do verify for the tiled target form.
-        MapResolvedDocument resolved = NativeDocumentService.Verify(f.SessionDocument, tiled, MapDocumentForm.Tiled, tiled);
-        Assert.Equal(monolithic.AuthoredHash, resolved.AuthoredHash);
+        Assert.Equal("native-lifecycle", f.Session.Summary().Id);
     }
 
     [Fact]

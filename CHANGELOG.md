@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.27.1
+
+- Repairs release validation with a deterministic device-free D3D11 resize/present test. Controlled
+  queued bursts retain lock ownership, native-call order, last-request coalescing and whole-size checks
+  without relying on producer scheduling (#1309).
+- Publication repair for 20.27.0. Native MapDoc runtime behavior and shipped APIs are unchanged.
+
 ## 20.27.0
 
 - Native MapDoc format 4 adds playable bounds, digest-bearing asset roots, stable placement labels and optional

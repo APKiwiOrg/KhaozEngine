@@ -804,3 +804,30 @@ Checked against approved c89f260d2 plan, approved native spec and released b39fb
 | 6 | Lifecycle fixture paths and adapter test reference are explicit. Open/save refusal and validate-result behavior are distinct |
 
 No unresolved preflight conflict. Implementers report evidence-backed deviations to the controller for a recorded ruling.
+
+### Task 1 implementation and review dispatch, 2026-10-05
+
+Implementation commit `0097921b776295eac6dd4e634ff58a7cce6a789d`, task BASE
+`f29eb60c0867cfb117765ba0f2e2d81def502d22`. Controller verified commit existence, clean task tree,
+13 changed source/test/project files, actual test log and slot-history exit codes. Focused native
+document test RED-confirm failed solely for missing planned APIs before production implementation.
+GREEN passed 20, failed 0, skipped 0, with zero warnings. Test-project formatting passed.
+
+Full MapDoc-project formatting exited 2 with 52 WHITESPACE diagnostics in five files unchanged from
+BASE. The controller verified the unchanged-file diff and filed
+[engine #1293](https://github.com/APKiwiOrg/KhaozEngine/issues/1293). This remains a round-verification
+concern. Two worker changed-file format attempts exited 75 before any target ran. A controller attempt
+is pending. Neither slot timeout is a formatter failure or success. No full solution check was run.
+
+Cohesive additions beyond Task 1's listed paths are MapNativeValidation, schema-driven unknown-member
+preflight and the GlobalsOnly assignments required by the exercised monolithic serializer path.
+Task 2 retains exact numeric encoding/allocation. Full tiled identity and closure interpretation remain
+later tasks. The fresh Sol xhigh review is pending, task not complete. Review artifact and report live
+in this plan's SDD workspace as review-f29eb60c0..0097921b7.diff and task-1-report.md.
+
+| Log under /tmp/grimhollow-orch/logs/wa-r1-t1-20261005T113610-30228 | Observed exit | SHA-256 |
+| --- | --- | --- |
+| `wa-r1-t1-red-confirm.log` | 1 | `a1f457181fdadf9da15a12c5413c1ad0c466c2924d8ba62695944e504fc50d82` |
+| `wa-r1-t1-green.log` | 0 | `3b27d656b632b8ba68fec5c2dc1bf60ffbc556cad1705e371b0f41b6df132019` |
+| `wa-r1-t1-format-tests.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `wa-r1-t1-format-mapdoc.log` | 2 | `41cdb9056beef759736a9221e559d65be6384d1bd97e6b33a93c204a45abf209` |

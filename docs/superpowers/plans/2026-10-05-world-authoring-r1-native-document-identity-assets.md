@@ -1374,3 +1374,20 @@ R1 still cannot finish until #1293, #1298, #1303 and #1304 are addressed, the OA
 is reconciled against final source, a fresh whole-branch review passes, current main is reconciled,
 and the full serial checks pass. Only the owner authorizes the release tag. Final-triage scope is
 the four recorded items, no new terrain, cave, water, prefab or game adoption capability.
+
+
+### Final-fix preflight and main reconciliation, 2026-10-05
+
+Fetched and checked local/remote main at `de78df336571d9a5db97b7b9b4f07c842f11556b`, the
+SpaceGame prediction-reset change with 20.26.0 staged. Latest observed tag is v20.25.0. Merged
+that main into the R1 feature worktree without conflicts at
+`be72f8405b45866042255ef3878f2b3fcd18394a`. Main itself was not changed.
+
+Pivot coordination confirms Grimhollow 0.11.0 remains pinned at 20.25.0 and needs no engine edit.
+20.26.0 is SpaceGame's line, with its tag between that session and the owner. R1 takes a separate
+free minor at finishing after another live-ref check. No version is reserved or tag authorized here.
+
+The bounded [final verification fixes](2026-10-05-world-authoring-r1-final-verification-fixes.md)
+cover #1293/#1298/#1303/#1304, with one serial worker and separate issue commits. New main runtime
+coverage and the full R1 checks remain pending. #1305 is explicit whole-round risk disposition,
+#1302 stays with R9. This is R1 finishing, not approval or execution of another round.

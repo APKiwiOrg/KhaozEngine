@@ -33,6 +33,15 @@ The 1 m allowance is a minimum vertical target reach-envelope height, preserving
 - **Task ownership:** Refine Tasks 1 to 3 geometry roles, floor/ceiling ownership, layer selection and local support queries before approval. `HeightAt(X,Z)`/a single groundSurfaceId cannot alone select support for stacked cave levels. Bind [R3](2026-10-05-world-authoring-r3-shared-shapes-headless-builders.md) collision/picking/nav, [R4](2026-10-05-world-authoring-r4-bounded-water-medium.md) containment, [R5](2026-10-05-world-authoring-r5-free-buildings-prefabs-interiors.md) volumes and [R8](2026-10-05-world-authoring-r8-native-rendering-residency-captures.md) residency/precision interfaces explicitly.
 - **Named future proofs:** `NativeCaveRepresentationContract` pins the selected DTOs/ownership. `StackedCaveFloorsAndCeilings_PreserveGeometryAndSupportSelection` checks vertically overlapping levels, ceiling clearance and no surface-floor substitution. `LegacyTerrainImport_RemainsExactWithCaveModel` retains the frozen legacy oracle. Quantify supported extents/depth/minimum precision and refresh the OA9 estimate before approval, then again at the R2 exit.
 
+## R1 transaction carry-forward, before R2 approval
+
+R1 Task 5 introduces an atomic native placement command protocol. Native history refuses other
+command types before mutation, while direct MCP mutation callbacks validate a detached document.
+R2 must extend the transaction protocol for native terrain commands, preserving bound closure
+validation, failed-command retry, history/dirty/events and GUI/MCP equivalence. Do not route terrain
+around the protocol merely to avoid the current refusal. Reconcile the actual owner-released R1
+APIs and tests before approving the R2 implementation plan. [#1302](https://github.com/APKiwiOrg/KhaozEngine/issues/1302) tracks document-size copying for R9.
+
 ## Global Constraints
 
 | Ruling | Decision |
@@ -556,3 +565,9 @@ Documentation checks from `/Users/antonio/KhaozEngine/.worktrees/world-authoring
 | `git diff --check` | 0 |
 
 No pre-existing documentation guard blocker was observed. Doc-version validation checks this historical planning branch's 20.24.0 declarations. It does not claim this branch contains released 20.25.0 or its packages. Controller review/push and separate owner round approval remain the next gates.
+
+
+### R1 Task 5 review carry-forward, 2026-10-05
+
+Recorded the R1 transaction boundary and [#1302](https://github.com/APKiwiOrg/KhaozEngine/issues/1302) as refinement inputs.
+This is not approval of this round, a selected optimization or a measured performance result.

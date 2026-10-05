@@ -26,6 +26,21 @@ The 1 m allowance is a minimum vertical target reach-envelope height, preserving
 - **Named future input proofs:** `InputWorkflow_AuthorsSelectedCaveModelAndContainedLake`, `UndergroundUndoRedoSaveReload_PreservesLayerAndClosure` and `LargeWorldScopedEdit_ReportsAffectedNavTilesAndMissingData`. Use real Pointer/InputState/key paths, not direct-handler-only proof. Pin supported coordinate/precision bounds and localized refused states before R9 approval.
 - Share these commands/domain selectors with [R10](2026-10-05-world-authoring-r10-complete-ke-mapedit-parity.md). Future edits expose affected-tile rebakes, with the once-only adoption rebake retained only as its fixture procedure. No cave art, swimming or world enlargement is implemented here.
 
+## Native edit cost and transaction carry-forward
+
+[#1302](https://github.com/APKiwiOrg/KhaozEngine/issues/1302) is an R9 refinement input under OA9.
+R1 candidate `a42fd572e17c2a6e48fa52d9cf4567492380b223` copies the whole document per native
+placement edit, twice through a command-backed MCP mutation. GUI drag emits moves per frame.
+This is verified code behavior, not a latency measurement. Refine bounded candidate/validation work
+for the selected native editing domains, with deterministic work-count proofs on bounded fixtures.
+Preserve failed-edit rollback, same-command retry, numeric high-water persistence, exact closure
+validation and public document identity. Load/stress proof still requires owner permission and the
+hosted workflow, never local load.
+
+R1 native history initially accepts only its placement protocol. R2 and later command families must
+extend that atomic protocol rather than add bypasses. R9 reconciles all selected command families
+and visible rejection feedback across actual GUI input paths, then R10 proves tool parity.
+
 ## Global Constraints
 
 - "One tool, MapEditor GUI plus ke-mapedit MCP, authors terrain, props and buildings. No two-format hybrid"
@@ -217,3 +232,9 @@ Documentation checks from `/Users/antonio/KhaozEngine/.worktrees/world-authoring
 | `git diff --check` | 0 |
 
 No pre-existing documentation guard blocker was observed. Doc-version validation checks this historical planning branch's 20.24.0 declarations. It does not claim this branch contains released 20.25.0 or its packages. Controller review/push and separate owner round approval remain the next gates.
+
+
+### R1 Task 5 review carry-forward, 2026-10-05
+
+Recorded the R1 transaction boundary and [#1302](https://github.com/APKiwiOrg/KhaozEngine/issues/1302) as refinement inputs.
+This is not approval of this round, a selected optimization or a measured performance result.

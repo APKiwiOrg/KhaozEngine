@@ -1121,3 +1121,50 @@ command families must extend its atomic protocol rather than bypass it. Direct v
 mutation callbacks and GUI command-backed operations currently differ. Record this at each later
 round refinement before claiming GUI/MCP parity. Task 5 remains unaccepted and Task 6 is gated.
 Original review, controller fix brief and eventual fix report are in R1 SDD.
+
+
+### Task 5 fix 1 proof and review 2, 2026-10-05
+
+Fix `6ac4f6b9d2ef9a89feb7717c1c1920b4752cadd8` is pushed, from parent `020ef8a77`. Worker
+returned DONE. Controller checked the committed scene action/gesture changes, native exception
+classification, window binding order, tool schema descriptions, clean tree and ancestry.
+Expected native edit refusal becomes visible status feedback, with transient gesture/selection
+recovery and no asset loading or validation bypass. General unexpected failures still propagate.
+
+The affected regression run passed 321 tests, including all 14 new cases, with zero failures/skips.
+Final four project format checks exited 0. Controller verified those logs against slot-history exits,
+independently checked all 14 changed C# size bounds and diff whitespace, and inspected completed
+worker command records for prose/dash/instruction/doc-version guards, whole-tree size and commit
+hooks. No full suite or live proof was repeated.
+
+Initial RED contained eleven intended behavioral failures plus one wrong fixture filename.
+The fixture error was corrected separately. Corrected window RED then failed on retained binding
+while failed-load preservation passed. The fixture error is not counted as behavioral RED evidence.
+
+Affected test target, through the shared slot as `wa-r1-t5-fix1:regression`:
+
+```bash
+dotnet test KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj -c Release --filter 'FullyQualifiedName~MapEditorSceneTests|FullyQualifiedName~EditorHistoryTests|FullyQualifiedName~EditorToolTests|FullyQualifiedName~NativePlacementHistoryTests|FullyQualifiedName~MapEditSessionTests|FullyQualifiedName~McpAdapterTests|FullyQualifiedName~NativeWindowBindingTests'
+```
+
+Fresh scoped review 2 is running under the exact Gauge returned Claude Work Opus 5.5 high target,
+task `node:delegated-task:command%3Amcp%3A87f7c6df-2d3b-43b2-8cf0-9d291f9ecd43%3Adelegate-task%3Awa-r1-task5-review2-20261005`.
+It receives the original brief/review, fix brief/report and all dispositions, with range
+`020ef8a77..6ac4f6b9d`. SDD identity is task-5-review-2-dispatch.json, eventual returned report
+task-5-review-2.md. Task 5 remains unaccepted and Task 6 remains gated.
+
+Engine planning commit `5b948eb6a` carries the atomic protocol gate into R2 and bounded edit-cost
+work into R9 under #1302. Neither round is approved.
+
+| Log under /tmp/grimhollow-orch/logs/wa-r1-t5-fix1 | Observed exit | SHA-256 |
+| --- | --- | --- |
+| `red.log` | 1 | `33a3fcf1088277cc6a342f107bd2f3335e19327f8961f9b47e6576e16e0ebf21` |
+| `red-window.log` | 1 | `93f71c346e7709732184093fb97d8fb7a839139f641bf0834b9865e0d251a955` |
+| `green.log` | 0 | `f4514cf2c96d293bb436905a6a07f0cc2a7e80f2c0d0de81a3900fe4b64d1fda` |
+| `green-widgets.log` | 0 | `0767b6ff9071e7d76121928ba55eae94740315d1965ecadfb05911334cf291f4` |
+| `regression.log` | 0 | `ebf04b7552d8e5e848a39c28bb5a1698cfbfea8cc8a271ccec68ec3ab8cf8a2c` |
+| `verify-mapdoc.log` | 0 | `087d57a17a4f438f2169651e0cef855ed18823e2e6e6d0c5bc592fa5db3fcab9` |
+| `verify-mapeditor.log` | 0 | `6aedd39d01ad40bb571118e931e8ad9094d68357b06ac558547221c9730fa02b` |
+| `verify-mapedit.tool.log` | 0 | `a14f2082cf803bb000d3eb9ce766856674a14730ba4ebca73a14d519a225e4eb` |
+| `verify-mapeditor.tests.log` | 0 | `8ade7faf0869c98eadece8b389d52d8cc780a3cd04381c85824f71cf85d4972c` |
+| `size-final.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |

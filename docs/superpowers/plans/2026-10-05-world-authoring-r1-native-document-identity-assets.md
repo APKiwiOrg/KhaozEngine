@@ -1802,3 +1802,26 @@ Tag v20.27.0 and its matching local packages remain immutable. R1 publication is
 repair and its release disposition are verified. Any new tag requires owner approval. PROGRAM.md
 holds the repair task ID and active state. Failure log is
 /tmp/grimhollow-orch/logs/wa-r1-combined-20261006/09-ci-attempt2-failed.log.
+
+### Publication repair and catalog blocker disposition, 2026-10-06
+
+Resize fixture repair #1309 is reviewed, integrated and closed. Main/origin main ca13d62d7 stages
+20.27.1 without a tag. Full local Release suite passed 25,671 with 1,328 skips and zero failures,
+with build, format and repository guards at exit 0. Guarded local pack produced 200 files whose
+nuspec commits match ca13d62d7. The v20.27.0 tag and all its package bytes remain unchanged.
+
+Hosted main run 37380090926 failed existing Catalog race #1271, in-memory variant. Render passed
+8,903 with 936 skips. Cross-platform run 37380091240 failed the same race's SQLite variant on the
+Metal leg. Windows and Linux succeeded. No graphics regression, retry loop or test suppression
+is claimed.
+
+Read-only investigation and controller source checks identify unconditional failed-publisher cleanup
+clearing a newer-base draft freeze. A deterministic reproduction has not yet run. The recommended
+conditional-base release needs a separate production repair and an explicit public API compatibility
+design before implementation. A required new interface member is breaking and is not implicitly
+approved. No production catalog change or new tag is authorized.
+
+The game program branch contains CATALOG-REPAIR-GATE.md with the evidence and repair options.
+The full investigator report is in the repair worktree SDD catalog1271-report.md. PROGRAM.md remains
+the active cross-repository gate tracker. R2 corrected cave/scale design at 5bc3ce754 is undergoing
+targeted re-review independently. Neither R2 implementation nor the full revised plan is approved.

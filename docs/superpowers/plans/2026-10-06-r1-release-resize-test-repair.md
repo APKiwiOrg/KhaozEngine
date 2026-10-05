@@ -86,3 +86,25 @@ Neither this plan nor the repair worker may overwrite v20.27.0 or its matching l
 - Next is review disposition, current-main reconciliation and full verification, then the release
   version/publication decision. Existing v20.27.0 and matching packages remain untouched. No new
   tag is authorized. R2 design continues independently and no R2 implementation has started.
+
+
+### Reviewed repair and full verification, 2026-10-06
+
+- Fresh review returns spec PASS and quality APPROVE. P3 identified an overstatement in the whole-size
+  comment: writes finish before consumption, so this schedule does not expose torn reads merely by
+  splitting the pending fields. Controller corrected that claim in c982106ea, without changing code
+  or assertions. Ordinary assertion failure paths cancel/join. The beyond-JoinBudget starvation
+  lifetime limit remains acknowledged and was judged nonblocking, not silently dismissed.
+- R1-CI-1: stage 20.27.1 as a publication-repair candidate. An immutable v20.27.0 tag cannot incorporate
+  the fixture correction. This candidate carries the same native MapDoc runtime/APIs with corrected
+  release validation. No existing tag or package bytes are overwritten. A new tag requires the owner.
+- Version/changelog/current examples changed together at 98f3fa8b067da2688796c8a7708b114312c9d238.
+  Current main/origin-main a87038f5a were already ancestors. No production implementation changed.
+- Full Release build exited 0 with zero warnings/errors. Whole-solution format exited 0 with only
+  the known generic workspace-loading warning. Full non-LiveSocket suite exited 0, 25,671 passed,
+  1,328 skipped, zero failed across 30 summaries. All five repository guards exited 0.
+- Every target used the shared slot, one at a time. No stress, test loop or new mutation proof ran.
+  Logs are /tmp/grimhollow-orch/logs/wa-r1-publication-repair-20261006. Exact exits/hashes are
+  proofs/2026-10-06-r1-publication-repair-full.json. The repaired test's focused proof remains 41/41.
+- Next is clean main reconciliation/integration, guarded 20.27.1 pack and an owner tag gate. Main
+  and package identities at that gate are recorded in PROGRAM.md and the planning Outcome mirror.

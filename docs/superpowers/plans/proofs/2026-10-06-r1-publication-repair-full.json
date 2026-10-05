@@ -1,0 +1,38 @@
+{
+  "candidate_version": "20.27.1",
+  "tested_commit": "98f3fa8b067da2688796c8a7708b114312c9d238",
+  "repair_commit": "6d4d78b842f27089dfe9f8df5d9de666df83f8de",
+  "comment_correction": "c982106ea",
+  "passed": 25671,
+  "failed": 0,
+  "skipped": 1328,
+  "test_summaries": 30,
+  "build_warnings": 0,
+  "build_errors": 0,
+  "review": "spec pass, quality approved, P3 comment corrected",
+  "checks": [
+    {
+      "log": "01-build.log",
+      "exit": 0,
+      "sha256": "b7fb78c7914a1cf70dae41da4a6411340cfb680a40828b041fdb1990a54ff104"
+    },
+    {
+      "log": "02-format.log",
+      "exit": 0,
+      "sha256": "239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c"
+    },
+    {
+      "log": "03-suite.log",
+      "exit": 0,
+      "sha256": "cb3b924580b1b3b726499ddcb214cbd1240126e49449ae5a4182a253296d324c"
+    },
+    {
+      "log": "04-guards.log",
+      "exit": 0,
+      "sha256": "78b9dc9ee77316ae9d778377c8c6cd97a541f4c287664a6c8d9f48a86fb75a3a"
+    }
+  ],
+  "formatter_warning": "Generic workspace-loading warning, no format diagnostics",
+  "old_tag_unchanged": "v20.27.0",
+  "new_tag_authorized": false
+}

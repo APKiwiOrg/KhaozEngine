@@ -33,8 +33,8 @@ the controller merges the cleanup into R1. No full baseline suite or whole-solut
    and preprocessor directives. Any content-affecting change is a blocker, not an approved repair.
    No dependency, project, editorconfig, build property or test-expectation changes.
 6. Run the same formatter with --verify-no-changes and the identical include list through the slot.
-   Require exit 0. Run the five repository guards serially through one slot hold. A file-size ratchet
-   change or exemption is not approved. Report any guard failure without widening this task.
+   Require exit 0. Run the five repository guards serially through one slot hold. OA11 now approves exactly the five baseline values recorded in Outcome below. No other ratchet
+   change or exemption is approved. Report any guard failure without widening this task.
 7. Commit explicit changed paths with subject style fix(format): normalize baseline whitespace.
    No attribution. Do not push, merge or close issues. No helper agents, full suite, stress or client.
 8. Write an ignored report in .superpowers/sdd/2026-10-05-engine-format-baseline-cleanup/task-1-report.md.
@@ -82,3 +82,22 @@ pack ritual, with owner-only release tags. No Grimhollow engine pin change.
 - Recommend owner approval of these exact five baseline updates. After approval, finish the held
   files, verify the included formatter and guards, obtain one fresh scoped review, merge into R1,
   and run combined full checks. No main merge, pack, tag or game pin change has occurred.
+
+
+### OA11, exact formatter-only file-size baselines, 2026-10-06
+
+Owner answered "yes" to the five explicit KESIZE baseline increases needed to retain the formatter's
+line splits. Approval is limited to these .filesize-baseline values and the already-proven held
+whitespace patch. It does not approve behavior changes, other baseline growth, guard bypasses or tags.
+
+| File | Old | Approved |
+| --- | ---: | ---: |
+| KhaozEngine.MapEditor.Tests/MapEditor/EditorCommandsTests.cs | 2115 | 2141 |
+| KhaozEngine.MapEditor.Tests/MapEditor/EditorToolTests.cs | 1793 | 1808 |
+| KhaozEngine.MapEditor.Tests/MapEditor/MapEditorSceneTests.cs | 4415 | 4431 |
+| KhaozEngine.Render.Tests/Gpu/GoldenSnapshotTests.cs | 1601 | 1632 |
+| KhaozEngine.Showcase/Room2DGui.cs | 1296 | 1300 |
+
+Apply the exact proposed-ratchet.json and held-whitespace.json patch payloads preserved in cleanup
+commit 8a9130d41. Verify all 273 formatted paths, token/literal preservation and required guards.
+A fresh scoped review and combined R1 full verification still precede main integration.

@@ -1508,3 +1508,38 @@ Keep the lead open for stronger filesystem ownership work. Do not justify the li
 all resources are in git, and do not claim later validation undoes a prior alias-related loss.
 No alias-based runtime proof or physical-file protection has been claimed. The OA9 and R9 limits
 remain. Root will verify the bounded fix and obtain a fresh scoped review, not another broad sweep.
+
+
+### R1 whole-review fixes verified and scoped re-review, 2026-10-05
+
+- Four follow-up commits are verified and pushed through
+  `7e04bc01a9e02f8916a9207d37f3488e2162f386`. No worker remains active.
+  Controller inspected actual diffs, clean status, ancestry, remote containment and slot/log exits.
+- M1/#1307: `ba1ca12eb23cea20d296b8d3a4e29d61f3d46bbc` preserves NumericId, AssetId and
+  DisplayName in in-memory tile reads. Two regressions failed before the fix, 65 affected tests pass.
+  Detachment means already-served content stays independent. Existing live spatial buckets are unchanged.
+- #1306/R1-WR1-1: `63cd0f594479a16a76ca5f9b4f567a32794c97bd` keys native Add merging on the
+  accepted identity. Two regressions failed before the fix, 240 affected tests pass, including failed-Add
+  retry and analytic behavior. No current GUI trigger is claimed, but the public API scenario is now
+  reproduced. The worker report's broader phrase denying a reachable defect is rejected on that basis.
+  The issue is confidence/verified and stays open until integration.
+- N1: `7fc8df8f32ce7eea856db13d62fab7e4dcb202c6` requires a 64-character lowercase hex asset
+  digest in the schema. Seven invalid cases failed before the fix, 82 schema tests pass. The unbound
+  loader still checks nonempty only. Complete closure validation enforces the full digest contract.
+- M2/M3: `7e04bc01a9e02f8916a9207d37f3488e2162f386` documents native default-registry limits
+  and stricter legacy loading, corrects the stale README format version, and pins the accepted legacy
+  load policy with six tests. No loader-policy or native API change is introduced here.
+- Logs are `/tmp/grimhollow-orch/logs/wa-r1-wrf1/`. `12-combined.log` has 470 passed, 0 failed,
+  6 GPU skips. `13-mapdoc-tests.log` has 219 passed, 0 failed. `14-guards.log` records all five
+  required repository guards at exit 0. Changed-file format and docs guards also exited 0.
+  One first slot acquisition returned 75 without running a target. Subsequent targets ran serially.
+- Source HEAD is 7e04bc01a. Full Release solution build, format and suite remain pending.
+  Live fetch still has main/origin-main at de78df336 and latest tag v20.25.0. R1 stages 20.27.0.
+- One fresh scoped reviewer is active, Gauge-selected Claude Work Opus 5.5 high, task
+  `node:delegated-task:command%3Amcp%3A87f7c6df-2d3b-43b2-8cf0-9d291f9ecd43%3Adelegate-task%3Awa-r1-whole-branch-review2-scoped-20261005`.
+  Original R1 SDD contains whole-review-2-brief.md, whole-review-2-dispatch.json and
+  review-1b5f8d74c..7e04bc01a.diff. The finishing SDD has whole-review-fix-1-report.md.
+  Prior review, exact dispositions and the worker-report correction were supplied to this reviewer.
+- Next step after clean scoped review is the full serial Release verification, then documented
+  integration/pack and the owner-only release gate. A remaining material finding blocks integration.
+  No main integration, release tag, feed refresh or game adoption has occurred.

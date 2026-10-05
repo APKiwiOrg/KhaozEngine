@@ -1,22 +1,17 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Text.Json.Serialization;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEdit;
 
-/// <summary>Identity and counts of a freshly verified native document. The int64 high-water mark travels as an
-/// exact decimal string so JSON clients that parse numbers as doubles cannot round it. Int32 counts stay JSON
-/// numbers.</summary>
-public sealed record NativeDocumentSummary(string AuthoredHash, int PlacementCount, int NumericIdCount,
-    [property: JsonConverter(typeof(MapNumericIdJsonConverter))] long NumericIdHighWaterMark, string ClosureHash);
-
 /// <summary>Complete native validation for every lifecycle boundary: open, window replacement, save, validate,
 /// summary, conversion and retile. Each call reloads and digest-verifies the whole closure from the resource
-/// root, so a stale or missing resource refuses before any session state is replaced or any byte is written.</summary>
+/// root, so a stale or missing resource refuses before any session state is replaced or any byte is written.
+/// Session checks name the storage form explicitly and refuse any closure reference inside the namespace that
+/// form's writer owns (<see cref="MapDocumentStorage"/>).</summary>
 public static class NativeDocumentService
 {
     /// <summary>The session's single build identity. R1 native documents take placement support heights from the
@@ -44,23 +39,19 @@ public static class NativeDocumentService
     /// <summary>Native opt-in is a non-null resolver identity. Legacy analytic documents keep their old path.</summary>
     internal static bool IsNative(MapDocument document) => document.ResolverIdentity is not null;
 
-    /// <summary>The resource root for a document at an absolute path: a monolithic file's parent directory, or
-    /// the tiled document's own directory.</summary>
-    internal static string ResourceRootFor(string absolutePath, MapDocumentForm form) =>
-        form == MapDocumentForm.Tiled
-            ? absolutePath
-            : Path.GetDirectoryName(absolutePath) ?? throw new MapDocumentException($"{absolutePath}: no parent directory to hold native resources.");
-
-    /// <summary>Validates against the session's anchored resource root, naming the document and root on failure.</summary>
-    internal static MapResolvedDocument Verify(MapDocument document, string resourceRoot, string context)
+    /// <summary>Validates a document for storage at <paramref name="storagePath"/> in the explicit
+    /// <paramref name="form"/>, reading resources under that storage's resource root through
+    /// <see cref="MapStorageGuardedAssetSource"/>. Names the document and root on failure.</summary>
+    internal static MapResolvedDocument Verify(MapDocument document, string storagePath, MapDocumentForm form, string context)
     {
+        string resourceRoot = MapDocumentStorage.ResourceRoot(storagePath, form);
         if (document.Tiles is { IsPartial: true })
             throw new MapDocumentException(
                 $"{context}: a native document must load every tile. Windowed native editing is not supported " +
                 "yet, so open it whole (raise WholeWorldTileLimit) or move the window over the whole world.");
         try
         {
-            return ValidateComplete(document, new MapDirectoryAssetSource(resourceRoot), SessionOptions);
+            return ValidateComplete(document, new MapStorageGuardedAssetSource(Path.GetFullPath(storagePath), form), SessionOptions);
         }
         catch (MapDocumentException ex)
         {
@@ -73,16 +64,30 @@ public static class NativeDocumentService
         new(resolved.AuthoredHash, resolved.Placements.Count, resolved.Placements.Count(p => p.NumericId is not null),
             document.NumericIdHighWaterMark, resolved.AssetClosure.Hash);
 
-    /// <summary>Writes a verified native document back in its current form. A tiled directory keeps the tiled
-    /// writer and its guards. Anything else is written monolithic through a staged sibling file.</summary>
-    internal static void Save(MapDocument document, string path, MapDocRegistry registry)
+    /// <summary>Refuses unless storage at <paramref name="path"/> still has the session's known
+    /// <paramref name="form"/>. A missing monolithic file is accepted only when <paramref name="allowMissingFile"/>,
+    /// the recovery Save keeps. A form is never inferred from whatever is now at the path.</summary>
+    internal static void RequireStorage(string path, MapDocumentForm form, bool allowMissingFile)
     {
-        if (MapDocumentFile.DetectForm(path) == MapDocumentForm.Tiled) MapDocumentFile.SaveAuto(document, path, registry);
+        MapDocumentForm actual = MapDocumentFile.DetectForm(path);
+        if (actual == form || (allowMissingFile && form == MapDocumentForm.Monolithic && actual == MapDocumentForm.None)) return;
+        throw new MapDocumentException(actual == MapDocumentForm.None
+            ? $"{path}: the {form} storage this document was opened from no longer exists. Nothing was written."
+            : $"{path}: expected {form} storage but found {actual}. Nothing was written.");
+    }
+
+    /// <summary>Writes a verified native document in its known <paramref name="form"/>. Tiled storage keeps the
+    /// tiled writer and all its guards. Monolithic storage is written through <see cref="SaveMonolithicStaged"/>.</summary>
+    internal static void Save(MapDocument document, string path, MapDocumentForm form, MapDocRegistry registry)
+    {
+        if (form == MapDocumentForm.Tiled) MapDocumentFile.SaveTiled(document, path, registry);
         else SaveMonolithicStaged(document, path, registry);
     }
 
     /// <summary>Serializes into a sibling staging file and promotes it with one rename, so a failed write never
-    /// truncates or half-writes the existing document.</summary>
+    /// truncates or half-writes the existing document. The rename replaces the destination directory entry: an
+    /// existing symbolic link at the path is replaced rather than written through, and the new file takes default
+    /// mode and ACL metadata rather than the previous entry's.</summary>
     internal static void SaveMonolithicStaged(MapDocument document, string path, MapDocRegistry registry)
     {
         string directory = Path.GetDirectoryName(path) ?? throw new MapDocumentException($"{path}: no parent directory.");

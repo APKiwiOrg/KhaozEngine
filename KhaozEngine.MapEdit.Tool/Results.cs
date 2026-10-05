@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
+using KhaozEngine.MapDoc;
 
 namespace KhaozEngine.MapEdit;
 
@@ -69,6 +71,12 @@ public sealed record MapSummary(string Id, string DisplayName, int FormatVersion
 {
     public NativeDocumentSummary? Native { get; init; }
 }
+
+/// <summary>Identity and counts of a freshly verified native document. The int64 high-water mark travels as an
+/// exact decimal string so JSON clients that parse numbers as doubles cannot round it. Int32 counts stay JSON
+/// numbers.</summary>
+public sealed record NativeDocumentSummary(string AuthoredHash, int PlacementCount, int NumericIdCount,
+    [property: JsonConverter(typeof(MapNumericIdJsonConverter))] long NumericIdHighWaterMark, string ClosureHash);
 
 /// <summary>Ground height, slope, and water depth sampled at a single world point.</summary>
 public sealed record GroundInfo(float X, float Z, float Height, float SlopeDegrees, float WaterLevel, bool BelowWater);

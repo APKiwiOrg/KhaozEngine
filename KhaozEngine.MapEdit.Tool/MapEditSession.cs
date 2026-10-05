@@ -23,7 +23,10 @@ public sealed class MapEditSession
     MapDocument? _doc;
     MapAssetClosure? _nativeAssets;
     string? _path;
-    string? _resourceRoot;
+    // The absolute storage path and its known form. Native resources resolve under its resource root, and native
+    // writes target exactly this form, never one inferred from whatever is at the path later.
+    string? _storagePath;
+    MapDocumentForm _storageForm;
     IReadOnlyList<string> _manifests = Array.Empty<string>();
     bool _dirty;
     TerrainField? _field;
@@ -71,14 +74,15 @@ public sealed class MapEditSession
             var options = new MapDocumentLoadOptions { Registry = _registry };
             MapDocument doc = MapDocumentWindowing.Load(fullPath, options, WholeWorldTileLimit, EditorWindowRadius,
                 out _, out MapTileRect? window);
-            string root = NativeDocumentService.ResourceRootFor(fullPath, MapDocumentFile.DetectForm(fullPath));
+            MapDocumentForm form = MapDocumentFile.DetectForm(fullPath);
             MapResolvedDocument? resolved = NativeDocumentService.IsNative(doc)
-                ? NativeDocumentService.Verify(doc, root, path)
+                ? NativeDocumentService.Verify(doc, fullPath, form, path)
                 : null;
             _doc = doc;
             _nativeAssets = resolved?.AssetClosure;
             _path = resolved is null ? path : fullPath;
-            _resourceRoot = root;
+            _storagePath = fullPath;
+            _storageForm = form;
             _manifests = CopyManifests(manifestPaths);
             _dirty = false;
             _field = null;
@@ -136,7 +140,8 @@ public sealed class MapEditSession
             _doc = doc;
             _nativeAssets = null;
             _path = path;
-            _resourceRoot = NativeDocumentService.ResourceRootFor(Path.GetFullPath(path), MapDocumentForm.Monolithic);
+            _storagePath = Path.GetFullPath(path);
+            _storageForm = MapDocumentForm.Monolithic;
             _manifests = CopyManifests(manifestPaths);
             _dirty = false;
             _field = null;
@@ -149,8 +154,9 @@ public sealed class MapEditSession
     /// (<see cref="MapDocumentFile.SaveAuto"/>): a tiled directory saves tiled, a monolithic file saves
     /// monolithic, never converting implicitly. Validates first, throwing on invalid, and clears dirty on
     /// success. A native document is first verified against its anchored resource root, so a stale or missing
-    /// resource refuses before any byte is written, and a monolithic native save is staged and promoted
-    /// atomically.</summary>
+    /// resource or one inside writer-owned storage refuses before any byte is written. A native save keeps the
+    /// form the document was opened or converted in: vanished or replaced tiled storage refuses, a missing
+    /// monolithic file is recreated, and a monolithic native save is staged and promoted atomically.</summary>
     public SaveResult Save()
     {
         lock (_lock)
@@ -158,8 +164,9 @@ public sealed class MapEditSession
             RequireDocumentLocked();
             if (NativeDocumentService.IsNative(_doc!))
             {
-                MapResolvedDocument resolved = NativeDocumentService.Verify(_doc!, _resourceRoot!, _path!);
-                NativeDocumentService.Save(_doc!, _path!, _registry);
+                NativeDocumentService.RequireStorage(_storagePath!, _storageForm, allowMissingFile: true);
+                MapResolvedDocument resolved = NativeDocumentService.Verify(_doc!, _storagePath!, _storageForm, _path!);
+                NativeDocumentService.Save(_doc!, _storagePath!, _storageForm, _registry);
                 _nativeAssets = resolved.AssetClosure;
             }
             else if (MapDocumentFile.DetectForm(_path!) == MapDocumentForm.None)
@@ -199,14 +206,15 @@ public sealed class MapEditSession
             var options = new MapDocumentLoadOptions { Registry = _registry };
             var rect = MapTileGrid.RectOf(new RectArea(minX, minZ, maxX, maxZ), _doc.TileSize);
             MapDocument candidate = MapDocumentFile.LoadTiled(directory, rect, options);
-            string root = NativeDocumentService.ResourceRootFor(Path.GetFullPath(directory), MapDocumentForm.Tiled);
+            string storage = Path.GetFullPath(directory);
             MapAssetClosure? assets = NativeDocumentService.IsNative(candidate)
-                ? NativeDocumentService.Verify(candidate, root, directory).AssetClosure
+                ? NativeDocumentService.Verify(candidate, storage, MapDocumentForm.Tiled, directory).AssetClosure
                 : null;
             _doc = candidate;
             _nativeAssets = assets;
             _path = directory;
-            _resourceRoot = root;
+            _storagePath = storage;
+            _storageForm = MapDocumentForm.Tiled;
             _window = rect;
             _dirty = false;
             _field = null;
@@ -236,8 +244,9 @@ public sealed class MapEditSession
     /// re-implemented. A directory that already holds a tiled document is refused here, the same as
     /// <see cref="ConvertToSingle"/>: there is no overwrite parameter because a conversion targets a fresh
     /// location, never an existing world (unrefused, this silently replaced the target world's tiles and
-    /// swept the rest away). A native document is verified against the destination directory's resources before
-    /// anything is written. Missing or stale resources refuse, they are never copied or rebased.</summary>
+    /// swept the rest away). A native document is verified against the destination directory's resources and its
+    /// tiled storage namespace before anything is written, whatever the source form. Missing, stale or
+    /// writer-owned resources refuse, they are never copied or rebased.</summary>
     /// <exception cref="MapDocumentException">A tiled document already exists at <paramref name="directory"/>.</exception>
     public ConvertResult ConvertToTiled(string directory)
     {
@@ -250,12 +259,16 @@ public sealed class MapEditSession
                     $"{directory}: a tiled document already exists there. Convert or delete it first.");
             bool native = NativeDocumentService.IsNative(_doc!);
             string target = native ? Path.GetFullPath(directory) : directory;
-            string root = NativeDocumentService.ResourceRootFor(Path.GetFullPath(directory), MapDocumentForm.Tiled);
-            MapAssetClosure? assets = native ? NativeDocumentService.Verify(_doc!, root, directory).AssetClosure : null;
+            string storage = Path.GetFullPath(directory);
+            // The tiled target's namespace is checked even when the source is monolithic.
+            MapAssetClosure? assets = native
+                ? NativeDocumentService.Verify(_doc!, storage, MapDocumentForm.Tiled, directory).AssetClosure
+                : null;
             MapDocumentFile.SaveAs(_doc!, target, MapDocumentForm.Tiled, _registry);
             if (native) _nativeAssets = assets;
             _path = target;
-            _resourceRoot = root;
+            _storagePath = storage;
+            _storageForm = MapDocumentForm.Tiled;
             _dirty = false;
             _field = null;
             _window = null;   // SaveTiled just refreshed doc.Tiles as a whole (unwindowed) index.
@@ -282,14 +295,17 @@ public sealed class MapEditSession
                     $"{path}: a tiled document (a directory) already exists there. Convert or delete it first.");
             bool native = NativeDocumentService.IsNative(_doc!);
             string target = native ? Path.GetFullPath(path) : path;
-            string root = NativeDocumentService.ResourceRootFor(Path.GetFullPath(path), MapDocumentForm.Monolithic);
-            MapAssetClosure? assets = native ? NativeDocumentService.Verify(_doc!, root, path).AssetClosure : null;
+            string storage = Path.GetFullPath(path);
+            MapAssetClosure? assets = native
+                ? NativeDocumentService.Verify(_doc!, storage, MapDocumentForm.Monolithic, path).AssetClosure
+                : null;
             if (native) NativeDocumentService.SaveMonolithicStaged(_doc!, target, _registry);
             else MapDocumentFile.SaveAs(_doc!, path, MapDocumentForm.Monolithic, _registry);
             _doc!.Tiles = null;   // now genuinely monolithic, matching what a fresh MapDocumentFile.Load gives.
             if (native) _nativeAssets = assets;
             _path = target;
-            _resourceRoot = root;
+            _storagePath = storage;
+            _storageForm = MapDocumentForm.Monolithic;
             _dirty = false;
             _field = null;
             _window = null;
@@ -330,8 +346,10 @@ public sealed class MapEditSession
             {
                 if (NativeDocumentService.IsNative(_doc))
                 {
-                    assets = NativeDocumentService.Verify(_doc, _resourceRoot!, _path!).AssetClosure;
-                    NativeDocumentService.Save(_doc, _path!, _registry);
+                    // Retile keeps refusing absent storage, as the analytic SaveAuto path does.
+                    NativeDocumentService.RequireStorage(_storagePath!, _storageForm, allowMissingFile: false);
+                    assets = NativeDocumentService.Verify(_doc, _storagePath!, _storageForm, _path!).AssetClosure;
+                    NativeDocumentService.Save(_doc, _storagePath!, _storageForm, _registry);
                 }
                 else MapDocumentFile.SaveAuto(_doc, _path!, _registry);
             }
@@ -437,7 +455,7 @@ public sealed class MapEditSession
         {
             RequireDocumentLocked();
             MapResolvedDocument? resolved = NativeDocumentService.IsNative(_doc!)
-                ? NativeDocumentService.Verify(_doc!, _resourceRoot!, _path!)
+                ? NativeDocumentService.Verify(_doc!, _storagePath!, _storageForm, _path!)
                 : null;
             return BuildSummaryLocked(resolved);
         }
@@ -505,7 +523,7 @@ public sealed class MapEditSession
     {
         try
         {
-            NativeDocumentService.Verify(_doc!, _resourceRoot!, _path!);
+            NativeDocumentService.Verify(_doc!, _storagePath!, _storageForm, _path!);
             return result with { ClosureChecked = true, ClosureValid = true };
         }
         catch (MapDocumentException ex)

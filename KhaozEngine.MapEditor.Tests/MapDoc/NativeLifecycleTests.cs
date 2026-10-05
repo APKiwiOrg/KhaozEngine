@@ -182,6 +182,45 @@ public sealed class NativeLifecycleTests
     }
 
     [Fact]
+    public void NativeLifecycle_RelativeConversionIntoAPreprovisionedDirectoryIsRefusedByTheOverwriteGuard()
+    {
+        using var f = new NativeLifecycleFixture();
+        NativeDocumentSummary monolithic = f.Session.Summary().Native!;
+        string tiled = Path.Combine(f.ResourceRoot, "tiled-world");
+        f.CopyResourcesTo(tiled);
+        string mesh = Path.Combine(tiled, NativeLifecycleFixture.MeshRelativePath);
+        byte[] bytes = File.ReadAllBytes(mesh);
+
+        var ex = Assert.Throws<MapDocumentException>(() => f.Session.ConvertToTiled(tiled));
+        Assert.Contains("already exists", ex.Message, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(tiled, "map.json")));
+        Assert.Equal(bytes, File.ReadAllBytes(mesh));
+        Assert.Equal(f.ValidPath, f.Session.DocumentPath);
+        Assert.Equal(monolithic, f.Session.Summary().Native);
+
+        // The same preprovisioned resources do verify for the tiled target form.
+        MapResolvedDocument resolved = NativeDocumentService.Verify(f.SessionDocument, tiled, MapDocumentForm.Tiled, tiled);
+        Assert.Equal(monolithic.AuthoredHash, resolved.AuthoredHash);
+    }
+
+    [Fact]
+    public void NativeLifecycle_FailedOpenPreservesDirtyStateAndManifestPaths()
+    {
+        using var f = new NativeLifecycleFixture();
+        string[] manifests = { "kit/props.manifest.json" };
+        f.Session.Open(f.ValidPath, manifests);
+        new MutationService(f.Session).PlacementLabel("gate", "unsaved");
+        var document = f.SessionDocument;
+
+        Assert.Throws<MapDocumentException>(() => f.Session.Open(f.BadPath));
+        Assert.True(f.Session.IsDirty);
+        Assert.Equal(manifests, f.Session.ManifestPaths);
+        Assert.Same(document, f.SessionDocument);
+        Assert.Equal(f.ValidPath, f.Session.DocumentPath);
+        new MutationService(f.Session).PlacementLabel("post", "still bound");
+    }
+
+    [Fact]
     public void NativeLifecycle_RetileValidatesAndRebindsTheRetiledDocument()
     {
         using var f = new NativeLifecycleFixture();

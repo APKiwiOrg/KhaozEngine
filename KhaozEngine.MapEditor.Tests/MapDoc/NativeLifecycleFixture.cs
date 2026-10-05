@@ -21,6 +21,7 @@ internal sealed class NativeLifecycleFixture : IDisposable
 
     readonly string _root = Path.Combine(Path.GetTempPath(), "native-lifecycle-" + Guid.NewGuid().ToString("N"));
     readonly bool _absoluteReferences;
+    readonly string _meshRelativePath;
 
     public MapEditSession Session { get; } = new();
     public string ResourceRoot => _root;
@@ -30,11 +31,13 @@ internal sealed class NativeLifecycleFixture : IDisposable
     public MapAssetClosure Closure { get; }
     public MapResolvedAsset Asset { get; }
 
-    public NativeLifecycleFixture(bool absoluteReferences = false)
+    // meshRelativePath lets storage ownership tests place the mesh inside a tiled map's reserved namespace.
+    public NativeLifecycleFixture(bool absoluteReferences = false, string meshRelativePath = MeshRelativePath)
     {
         _absoluteReferences = absoluteReferences;
+        _meshRelativePath = meshRelativePath;
         Directory.CreateDirectory(Path.Combine(_root, "kit", "meshes"));
-        MapAssetRef mesh = Write("prop.mesh", MeshRelativePath, "mesh-v1");
+        MapAssetRef mesh = Write("prop.mesh", meshRelativePath, "mesh-v1");
         MapAssetRef lod = Write("prop.lod0", LodRelativePath, "lod-v1");
         string manifest = """
             {"payloadVersion":1,"assets":[
@@ -78,8 +81,10 @@ internal sealed class NativeLifecycleFixture : IDisposable
     MapAssetRef Write(string id, string relativePath, string text)
     {
         byte[] bytes = Encoding.UTF8.GetBytes(text);
-        File.WriteAllBytes(Path.Combine(_root, relativePath), bytes);
-        string path = _absoluteReferences ? Path.Combine(_root, relativePath) : relativePath;
+        string full = Path.GetFullPath(relativePath, _root);
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        File.WriteAllBytes(full, bytes);
+        string path = _absoluteReferences ? full : relativePath;
         return new(id, path, Digest(bytes), 1);
     }
 
@@ -91,16 +96,18 @@ internal sealed class NativeLifecycleFixture : IDisposable
     /// <summary>Copies every resource below <paramref name="directory"/> at the same relative paths.</summary>
     public void CopyResourcesTo(string directory)
     {
-        foreach (string relative in new[] { MeshRelativePath, LodRelativePath, ManifestRelativePath })
+        foreach (string relative in new[] { _meshRelativePath, LodRelativePath, ManifestRelativePath })
         {
-            string target = Path.Combine(directory, relative);
+            string target = Path.GetFullPath(relative, directory);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            File.Copy(Path.Combine(_root, relative), target, overwrite: true);
+            File.Copy(Path.GetFullPath(relative, _root), target, overwrite: true);
         }
     }
 
     /// <summary>Replaces the mesh bytes, leaving every declared digest stale.</summary>
-    public void CorruptResource() => File.WriteAllText(Path.Combine(_root, MeshRelativePath), "mesh-v2");
+    public void CorruptResource() => File.WriteAllText(MeshPath, "mesh-v2");
+
+    public string MeshPath => Path.GetFullPath(_meshRelativePath, _root);
 
     public void CorruptLod() => File.WriteAllText(Path.Combine(_root, LodRelativePath), "lod-v2");
 

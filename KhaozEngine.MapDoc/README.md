@@ -16,6 +16,18 @@ need no synthetic builder options and never resolve relative resource paths impl
 closure passed in, for binding and resource lookup without a second load. This package loads no meshes and has
 no render dependency. `KhaozEngine.Terrain.Render3D` owns the one-way `MapAssetManifestAdapter`.
 
+## Storage ownership
+
+`MapDocumentStorage.ResourceRoot(storagePath, form)` is a monolithic file's directory or a tiled document's own
+directory. `MapDocumentStorage.IsReserved(storagePath, form, path)` names the paths the storage writer owns:
+for tiled storage the `tiles` subtree, `map.json`, its temp file and the save lock, all swept or replaced on
+save, and for monolithic storage the document file. Paths are normalized with `Path.GetFullPath`, so dot
+segments resolve first, and compared with the writer's case policy (ordinal on Linux, ignoring case elsewhere).
+Symbolic links and other filesystem aliases are not resolved, so a link into reserved storage is not detected.
+`MapStorageGuardedAssetSource(storagePath, form)` reads under that resource root and refuses a reserved
+reference before reading it. Because `MapAssetClosure.Load` reads every root, declared and transitive resource
+through its source, a closure loaded through it never contains a writer-owned file.
+
 ## Sections
 
 A map document (`MapDocument`) has:

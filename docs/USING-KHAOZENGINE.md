@@ -11474,7 +11474,10 @@ summary, conversion and retile. Its resource root is the monolithic file's direc
 anchored as an absolute path at open. Open and `set_window` bind the freshly verified closure only after the
 candidate passes, and a windowed native load refuses. Every write verifies first, conversions against the
 destination's resources (never copied or rebased), and monolithic native saves are staged and promoted
-atomically. `map_validate` reports closure failures as `closureValid` false, `map_summary` refuses a stale
+atomically by replacing the destination entry (no write through a symbolic link, no preserved mode or ACL).
+Resources may not live in the storage namespace the writer owns (`MapDocumentStorage.IsReserved`: a tiled
+map's `tiles` subtree, `map.json`, temp and lock files, or a monolithic document's own file), since a save would
+sweep or overwrite them. Native writes keep the known storage form and refuse vanished tiled storage. `map_validate` reports closure failures as `closureValid` false, `map_summary` refuses a stale
 closure and otherwise carries `native` with its `numericIdHighWaterMark` as a decimal string.
 
 **Tiled documents, whole-load vs windowed.** `map_open` and `map_save` are form-aware, exactly like the GUI

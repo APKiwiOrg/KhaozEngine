@@ -205,8 +205,11 @@ internal static partial class MapTiledFile
 
     /// <summary>Path equality for the "a partial document may only be written back where it came from" guard.
     /// Case-insensitive except on Linux, matching how the platforms actually resolve names.</summary>
-    internal static bool SamePath(string a, string b) => string.Equals(Normalize(a), Normalize(b),
-        OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+    internal static bool SamePath(string a, string b) => string.Equals(Normalize(a), Normalize(b), PathComparison);
+
+    /// <summary>The storage path comparison policy shared by every map storage ownership check.</summary>
+    internal static StringComparison PathComparison =>
+        OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
 
     static void CollectIds(MapTileContent content, Dictionary<string, MapTileCoord> ids, List<string> report)
     {

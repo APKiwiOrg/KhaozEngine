@@ -71,8 +71,17 @@ directory changes never move it.
   document, binding, path and dirty state.
 - Save, ConvertToSingle, ConvertToTiled and Retile verify before any write. Conversions verify against the
   destination's resource root and refuse missing or stale resources rather than copying them or rebasing
-  references. A monolithic native write is staged in a sibling file and promoted with one rename. Tiled writes
-  keep the tiled writer and its guards.
+  references. A monolithic native write is staged in a sibling file and promoted with one rename. That rename
+  replaces the destination entry, so it does not write through a symbolic link and does not keep the previous
+  file's mode or ACL metadata. Tiled writes keep the tiled writer and its guards.
+- Every check names the storage form explicitly and reads resources through `MapStorageGuardedAssetSource`.
+  Any closure reference (roots, transitive and unused declarations included) inside the namespace that form's
+  writer owns refuses before it is read: for tiled storage the `tiles` subtree, `map.json`, its temp file and
+  the save lock, for monolithic storage the document file. Conversion to tiled checks the target namespace even
+  for a monolithic source.
+- Native writes use the form the document was opened or converted in, never one inferred from the path later.
+  Save and Retile refuse when tiled storage has vanished or been replaced. Retile also refuses a missing
+  monolithic file, while Save recreates it.
 - Validate reports a stale or incomplete closure as `ClosureValid` false with `ClosureErrors`, and a false
   `Valid`, instead of throwing. Summary throws for a stale closure, and otherwise reports
   `MapSummary.Native` (`NativeDocumentSummary`) with the authored and closure hashes and the numeric-ID

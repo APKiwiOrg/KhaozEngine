@@ -281,6 +281,63 @@ public sealed class NativePlacementHistoryTests
     }
 
     [Fact]
+    public void AcceptedAddDoesNotMergeMoveOfIdLaterWrittenIntoItsPayload()
+    {
+        using var f = new NativePlacementHistoryFixture();
+        var payload = f.NewProp("a");
+        f.Editor.Execute(new AddPlacementCommand(payload));
+        int depth = f.Editor.History.UndoDepth;
+        MapPlacement Live(string id) => f.Document.Placements.Single(p => p.Id == id);
+        (float, float, float?) At(string id) => (Live(id).X, Live(id).Z, Live(id).Y);
+        var existingBefore = At("existing");
+        var addedAt = At("a");
+
+        payload.Id = "existing";
+        f.Editor.Execute(new MovePlacementCommand("existing", 5, 6, -123.5f));
+        Assert.Equal(depth + 1, f.Editor.History.UndoDepth);
+        Assert.Equal((5f, 6f, (float?)-123.5f), At("existing"));
+        Assert.Equal(addedAt, At("a"));
+
+        Assert.True(f.Editor.Undo());
+        Assert.Equal(existingBefore, At("existing"));
+        Assert.Equal(addedAt, At("a"));
+        Assert.Equal(11, Live("a").NumericId);
+        Assert.True(f.Editor.Undo());
+        Assert.DoesNotContain(f.Document.Placements, p => p.Id == "a");
+        Assert.Equal(existingBefore, At("existing"));
+        Assert.Equal(11, f.Document.NumericIdHighWaterMark);
+
+        Assert.True(f.Editor.Redo());
+        Assert.Equal(addedAt, At("a"));
+        Assert.Equal(11, Live("a").NumericId);
+        Assert.Equal(existingBefore, At("existing"));
+        Assert.True(f.Editor.Redo());
+        Assert.Equal((5f, 6f, (float?)-123.5f), At("existing"));
+        Assert.Equal(10, Live("existing").NumericId);
+        Assert.Equal(addedAt, At("a"));
+        Assert.Equal(11, f.Document.NumericIdHighWaterMark);
+    }
+
+    [Fact]
+    public void AcceptedAddStillMergesMoveOfItsAcceptedId()
+    {
+        using var f = new NativePlacementHistoryFixture();
+        var payload = f.NewProp("a");
+        f.Editor.Execute(new AddPlacementCommand(payload));
+        int depth = f.Editor.History.UndoDepth;
+
+        payload.Id = "renamed-payload";
+        f.Editor.Execute(new MovePlacementCommand("a", 7, 8, -123.5f));
+        Assert.Equal(depth, f.Editor.History.UndoDepth);
+
+        Assert.True(f.Editor.Undo());
+        Assert.Single(f.Document.Placements);
+        Assert.True(f.Editor.Redo());
+        MapPlacement redone = f.Document.Placements.Single(p => p.Id == "a");
+        Assert.Equal((7f, 8f, 11L), (redone.X, redone.Z, redone.NumericId!.Value));
+    }
+
+    [Fact]
     public void FailedAddDoesNotCaptureAllocationChoiceBeforeAcceptedRetry()
     {
         using var f = new NativePlacementHistoryFixture();

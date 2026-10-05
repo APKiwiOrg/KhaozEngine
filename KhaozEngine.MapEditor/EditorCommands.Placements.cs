@@ -7,7 +7,12 @@ namespace KhaozEngine.MapEditor;
 /// immediately follows (place-and-adjust): the placed prop can be dragged into position within the same gesture and
 /// the whole thing stays ONE undo step whose <see cref="Revert"/> removes the placement, restoring the pre-place
 /// placement state. Native undo retains the allocation high-water mark. Native direct Apply/Revert validate
-/// locally, while bound editor/history transactions also verify the asset closure.</summary>
+/// locally, while bound editor/history transactions also verify the asset closure.
+/// <para>On an analytic document the payload object itself is appended, so the document owns it. On a native
+/// document the first successful acceptance publishes a copy, and undo, redo and same-ID move merging all
+/// follow that accepted copy's identity. A failed attempt captures nothing, so a retry reads the payload
+/// again. Changing the payload after acceptance does not retarget the command. This does not make any other
+/// direct mutation of the live document safe.</para></summary>
 public sealed partial class AddPlacementCommand : EditorCommand, INativePlacementCommand
 {
     readonly MapPlacement _placement;
@@ -47,7 +52,7 @@ public sealed partial class AddPlacementCommand : EditorCommand, INativePlacemen
     {
         // Fold a same-id move into the Add: the placed prop's final position becomes part of the Add itself, so
         // place-and-adjust is one undo step and Revert still just removes the placement.
-        if (next is MovePlacementCommand m && string.Equals(m.Id, _placement.Id, StringComparison.Ordinal))
+        if (next is MovePlacementCommand m && string.Equals(m.Id, MergeId, StringComparison.Ordinal))
         {
             _nativeAllocation?.MergeMove(m);
             _placement.X = m.NewX;

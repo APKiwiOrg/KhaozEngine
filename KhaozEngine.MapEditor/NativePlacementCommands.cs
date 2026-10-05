@@ -38,6 +38,10 @@ public sealed class AllocateNativePlacementCommand : EditorCommand, INativePlace
         return () => _accepted = accepted;
     }
 
+    /// <summary>The stable ID of the copy this command published on its first successful acceptance, or null
+    /// before then. Later changes to the caller's payload never alter it.</summary>
+    internal string? AcceptedId => _accepted?.Id;
+
     internal void MergeMove(MovePlacementCommand move)
     {
         if (_accepted is null) return;

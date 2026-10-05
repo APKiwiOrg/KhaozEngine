@@ -882,3 +882,30 @@ Task 4 carries the tiled-native unknown-member integration proof. Task 6 carries
 sweep. Baseline formatting issue #1293 and required full round verification remain open. Task 2 begins
 from the accepted Task 1 branch after this bookkeeping commit, with basic range/presence checks kept
 in MapNativeValidation and exact encoding/reservation/allocation added by Task 2.
+
+
+### Task 2 implementation and independent review, 2026-10-05
+
+Task BASE `30d7d5d0bc5c53cbec6d38f6de106e378b7ea7ee`, implementation commit
+`1c28573c5476a988fe08c288099b124d3247d27d`. Property-scoped canonical decimal converters and a
+transactional reservation/checked allocator are added. Existing native validation owns duplicate IDs
+and high-water consistency. Scoped MapNativeDocument attributes replace the need to edit the global
+serializer options or main validator. This preserves unrelated long fields and reuses Task 1's seam.
+
+Controller verified commit, clean tree, six changed implementation/test/schema files, actual logs and
+runner history. RED exited 1 for the missing planned MapNumericIds API. GREEN passed 28 numeric tests,
+then the existing native document regression passed 63. Both had zero failures/skips/warnings. Changed
+production/test formatting exited 0. The slot wait ran no overlapping test process. No full solution
+check was repeated. Fresh Sol xhigh review1 is pending, task not complete.
+
+Review package is review-30d7d5d0b..1c28573c5.diff in SDD, with task-2-brief.md, task-2-report.md and
+expected task-2-review-1.md. Review task is tracked in task-2-review-1-dispatch.json. No new ruling or
+baseline formatting exception was taken. Issue #1293 remains separate.
+
+| Log under /tmp/grimhollow-orch/logs/wa-r1-t2-20261005-implementer | Observed exit | SHA-256 |
+| --- | --- | --- |
+| `red.log` | 1 | `0d25f9d804d8de53729e35f9d44e8b39922919fc8f7a90ea76a47677f8e2f741` |
+| `green.log` | 0 | `7fddcbaca734ed59f0281152d4bb140adfe244a514dd2303f1c5ab453a309449` |
+| `regression.log` | 0 | `53999ad1afd76b9d532a3dc8e0ead290b4012bdf5096688f65b9ebb8f8d22433` |
+| `format.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `format-source.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |

@@ -52,6 +52,13 @@ These constraints extend the approved direction. They do not claim implementatio
 
 Support deep caves far below the surface, several levels with floors and ceilings, dry or possibly flooded. Compare native cave layers with their own floors/ceilings against authored native cave prefabs with collision/nav. Both are fully native MapDoc, never a TileWorld hybrid. R2 refinement records the comparison, trade-offs and proposed choice for owner review before R2 approval, with C3 support/picking/nav, C4 containment, C5 interiors/prefabs and C8 residency consequences. A height lattice represents one surface. The historical four planes and 4.5 m spacing are import facts, not universal native layer/depth limits. Preserve exact imported terrain whatever model is selected.
 
+OA13 on 2026-10-06 clarifies the intended caves as continuous sculpted terrain with seamless
+surface-to-cave entrances and spacious caverns. Rough depth and peak targets are 500 m below and
+above the chosen reference. The horizontal intent is giant MMO scale, described by the owner as
+WoW-sized. Native floor/ceiling layers are the working representation for this workflow, pending the
+precise geometry/ownership design and R2 plan approval. These guidelines do not clamp world objects,
+author new content or change the shipped height datum.
+
 R2 pins selected geometry/ownership interfaces, R3 proves floor/ceiling collision, vertically correct support/picking and nav, and R5 proves transformed cave volumes/prefabs as relevant. R6 underground markers, R7 layer-aware vegetation/exclusions, R8 lighting/camera occlusion/residency and R9/R10 workflows consume the selected contract. Their named proofs live in the linked round plans.
 
 ### DG9.2 Vertical water containment, before R4 approval
@@ -69,6 +76,15 @@ The server must span multiple cells. CellOrigin's current one-cell layout is a f
 ### DG9.4 Coordinate and precision contract
 
 Before the OA8 R1 release, the controller audits planned C1 float bounds/transforms, JSON/schema, identity/hash and resolver interfaces for later extent/depth evolution. Record compatibility risks and migration/version requirements without rewriting R1 code or approval in this lane. C1 float fields are not evidence of unlimited precision. Before R2/R3/R8 certify the relevant capability, their refinements quantify supported horizontal extents, vertical depth/layer range and minimum required precision for stored/resolved coordinates, support, physics/nav and rendering. Record tolerances, boundary/far-origin proofs and coordinate ownership. Do not choose double coordinates or floating origin here. Any R1 scope/compatibility change needs separate controller/owner review.
+
+R2-D1 proposes a 64 km by 64 km continuous-world verification envelope, approximately -32,000 m
+to +32,000 m per horizontal axis, with the owner's rough +/-500 m terrain targets. The horizontal
+number is a controller assumption for design review, not a measured WoW dimension or an approved
+hard limit. Use sparse bounded fixtures at separated near/far regions, with explicit object/camera/
+probe padding. Do not allocate or bake a dense whole-world grid for a capability proof. The next
+refinement must justify bounded payloads, streaming/residency and local coordinate ownership using
+released engine capabilities. No particular coordinate migration is approved by this assumption.
+The 8 MiB game nav-bake budget remains unchanged until a separate storage/distribution ruling.
 
 ### DG9.5 Water dependencies and captures
 

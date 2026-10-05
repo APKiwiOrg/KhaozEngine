@@ -595,3 +595,26 @@ explicit versioned semantics and preserve analytic consumers. Re-anchor stale ta
 fixture provenance. Do not infer failure of the differential tolerance from float spacing alone.
 The research's calendar ranges are not adopted as a forecast. OA9 work is required, and the revised
 estimate must follow actual task allocation and the chosen verification envelope.
+
+
+### OA13 input for design refinement, 2026-10-06
+
+The owner wants seamless sculpted surface-to-cave terrain, spacious caverns, roughly 500 m depth and
+500 m peaks, with giant WoW-scale horizontal scope. Native floor/ceiling layers are the working
+approach. R2-D1 provisionally tests a 64 km by 64 km envelope, not an owner-specified hard limit or
+content commitment. The exact design and this revised full plan remain unapproved.
+
+The pending refinement must explicitly cover entrance apertures and wall/ceiling boundaries, canonical
+render/collision/support/nav seams, sparse bounded surface payloads and chunk/region identity. Do not
+freeze an eager whole-world height-array assumption into the format. Reuse existing origin-relative
+rendering and physics seams where they satisfy measured precision requirements, and expose any
+required compatibility migration instead of silently rewriting R1. No coordinate solution is yet approved.
+
+Keep old NoDraw/fallback and imported four-plane semantics explicit. A visual hole does not silently
+become a physical cave entrance. Preserve the accepted source and refreeze provenance when fixtures
+are prepared. Bound tests at near/far coordinates and vertical extrema without full-area allocations,
+large local benchmarks or stress loops. Padding for objects, cameras and bake probes sits outside the
+rough terrain extrema. The current nav storage budget remains an owner gate.
+
+Next is a concrete R2 design refinement and task/estimate impact for review, before implementation
+plan steps are reconciled to that selected contract. No R2 source edit or execution worktree exists.

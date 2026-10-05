@@ -1285,3 +1285,27 @@ It also refuted the reported analytic SourceDirectory deviation: BASE already no
 directory in MapTiledFile.Load. Only failure-message path spelling changed, OpenResult.Path and
 DocumentPath still retain the caller's string. No analytic compatibility fix is required for that
 claim. Original review and exact fix brief are preserved in R1 SDD. Task 6 is not accepted.
+
+
+### Task 6 fix 1 and corrected conversion ruling, 2026-10-05
+
+Fix 1 `a1fc33d117ea08fe4b2b8db82a8489d013eaeaf3` is pushed. Worker returned DONE_WITH_CONCERNS.
+The M1 data-loss repro is retained as an end-to-end resource-survival regression. Focused editor
+checks passed 47 and MapDoc checks 212. Broader editor checks retain only #1304, 402 passed,
+3 failed and 6 skipped. Format exited 0. Fresh review waits for the N3 conflict below.
+
+R1-T6-3 corrects the controller and first review's earlier relative-conversion inference. Runtime
+proof and MapDocumentFile.DetectForm show that every existing directory is classified Tiled.
+The session therefore refused the preprovisioned target before reaching the permissive writer.
+The controller's earlier statements that this case already worked were wrong. The worker correctly
+kept the existing guard while asking for a ruling.
+
+For native conversion only, allow a prepared resource directory without a map manifest. Refuse
+an existing map manifest via a shared owner helper and retain the writer's other guards plus M1
+resource checks. Analytic conversion keeps its existing any-directory refusal. Do not change
+DetectForm globally. Same worker implements this bounded correction, with positive native and
+negative existing-map/analytic/reserved-resource proofs, then a fresh review covers both fix commits.
+
+Storage ownership currently follows the writer's normalized-path/case policy. Filesystem aliases
+are not resolved. Qualify any unconditional XML guarantee accordingly and retain the documented
+limit for whole-round review. No claim of complete physical-file alias protection is made.

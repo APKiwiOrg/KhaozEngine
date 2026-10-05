@@ -1053,3 +1053,51 @@ allocator. Validate a manifest asset not already placed, missing/mismatched clos
 rejection followed by retry, and closure clearing across document replacement. Existing Task 5
 acceptance tests remain required. This is a dependency seam within the approved transaction contract,
 not a new owner capability or a Task 6 lifecycle implementation.
+
+
+### Task 5 implementation and fresh review, 2026-10-05
+
+Candidate `a42fd572e17c2a6e48fa52d9cf4567492380b223` is pushed on the R1 execution branch.
+The same OA8 implementer returned DONE_WITH_CONCERNS after the R1-T5-1 continuation. Controller
+verified branch containment from source BASE `4a19d6db7`, clean tree, committed diff whitespace and
+actual shared-slot exits. Focused tests passed 18, editor/mutation regressions 323, scene regressions
+168 and MapDoc regressions 191, all without failures/skips. Final four project format checks exited 0.
+
+Implemented allocation-safe placement commands and history, labels/remap, explicit closure binding,
+shared bound validation, GUI/MCP entry paths and detached session mutations. Placement helpers and
+inspector code were extracted to comply with size limits. Four existing baselines decreased.
+No lifecycle source loading, version/tag, native cave/water/scale capability or full tool parity is
+claimed. The current native history protocol refuses non-placement commands before mutation.
+That explicit boundary is a fresh review concern against incremental C1/R1 scope. It is not silently
+accepted as full-program behavior. Existing analytic documents retain their command path.
+
+Fresh review task is
+`node:delegated-task:command%3Amcp%3A87f7c6df-2d3b-43b2-8cf0-9d291f9ecd43%3Adelegate-task%3Awa-r1-task5-review1-20261005`.
+Current binding Gauge assign_route returned Claude Work Opus 5.5 high, target passed unchanged.
+This differs from the earlier Sol route but retains one fresh read-only spec/quality review.
+Package `review-4a19d6db7..a42fd572e.diff`, report `task-5-report.md` and dispatch identity
+`task-5-review-1-dispatch.json` are in R1 SDD. Task 5 is not accepted and Task 6 remains gated.
+
+| Log under /tmp/grimhollow-orch/logs/wa-r1-t5-20261005-cont | Observed exit | SHA-256 |
+| --- | --- | --- |
+| `red.log` | 1 | `bc66b0d58562d9aae213141891a90d069951149147e98a64ebf1bac4a924ca81` |
+| `red-entrypoints.log` | 1 | `f49b638e724e9eedc7b30d8d2b516e3a61c445beca9677089bbcb23120a1e4c3` |
+| `red-retry-order.log` | 1 | `7a0bc5c96390c31565c2305c3bfbf94a1f10aa4d9dad7e811f62789cfdad3b30` |
+| `green-extraction.log` | 0 | `29cd09731e87d68cc497f9dc74dc9e13184ad1c49efab518d45c9cb2792c29f7` |
+| `regression-editor.log` | 0 | `423fed2189bfc5ee0176058a23a008823551309bbdd70230d3632c6ff4ead35a` |
+| `regression-mapdoc.log` | 0 | `84319b18cf1a5bbc13b5fcc9e4240796549757e284faeece71adc5d5093f5608` |
+| `regression-scene.log` | 0 | `08f1bfd7f14257dee0ab52d754debcea40095f074b351f3d3cf11df51a67631d` |
+| `format-verify-mapdoc.log` | 0 | `f5ec71577cd15b15144bc724575f2dda6844f8e5290a8b3defacd55769a2ab37` |
+| `format-verify-mapeditor.log` | 0 | `ec5c481abb37afccfd32bcf75e399389d12f684bd0c868d3f5b24581d3bb32ab` |
+| `format-verify-mapedit.tool.log` | 0 | `6ff6cbb03c4a3512a3c9b486bdcbfb6c2fbb44e87e7120c3a0861422f92a644c` |
+| `format-verify-mapeditor.tests.log` | 0 | `ac82e9f02fb75a2b11689e157a28d3a5c2d7591bb74a43c831f40d0c418b2728` |
+
+Controller independently reran diff, dashes, prose, instruction-budget, doc-version and whole-tree
+file-size guards after the implementation commit. All exited 0. No full suite or live run was repeated.
+
+OA9 planning is verified and pushed at `a95a57a1218da2d6d87610a987ec49b9e148e2aa` on the engine
+planning branch. Its DG9.1 to DG9.6 gates cover cave choice, water containment, tiled navigation and
+server cells, precision, water appearance/cost/walker behavior, storage and estimate revision.
+R1 task bodies in that planning revision are unchanged. The active execution Outcome stays here.
+The final R1 review must reconcile the OA9 compatibility audit draft in SDD against Tasks 5/6 before
+release readiness. No later round choice or approval is implied.

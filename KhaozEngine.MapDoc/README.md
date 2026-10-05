@@ -29,7 +29,7 @@ Symbolic links and other filesystem aliases are not resolved, so a link into res
 a directory prepared with resources.
 `MapStorageGuardedAssetSource(storagePath, form)` reads under that resource root and refuses a reserved
 reference before reading it. Because `MapAssetClosure.Load` reads every root, declared and transitive resource
-through its source, a closure loaded through it never contains a writer-owned file.
+through its source, a closure loaded through it never contains a reference whose normalized path is writer-owned.
 
 ## Sections
 

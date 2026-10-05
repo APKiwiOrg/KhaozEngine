@@ -1355,3 +1355,22 @@ Task 6 is not accepted pending this review. Final R1 triage and full checks have
 | `/tmp/grimhollow-orch/logs/wa-r1-t6-fix2-20261005/wa-r1-t6-fix2-mapdoc.log` | 0 | `43548cbc67824b65e4a95337eaf82589ba4007cbdc364096b13d7c0e331969ae` |
 | `/tmp/grimhollow-orch/logs/wa-r1-t6-fix2-20261005/wa-r1-t6-fix2-regress-editor.log` | 1 | `11fc068e8690c1dc02adcb7458ff2759c07b4c1aab0ba570cb5bad810ba05176` |
 | `/tmp/grimhollow-orch/logs/wa-r1-t6-fix2-20261005/wa-r1-t6-fix2-format.log` | 0 | `239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c` |
+
+
+### Task 6 accepted, 2026-10-05
+
+Fresh review 2 approves spec and quality for `45540c5a9..37dc8e5d8`. M1 and N1 to N4 are
+resolved. Controller verified the named storage-owner paths, explicit session forms, conversion
+branching, tests and prior proof. Task 6 is complete. All six R1 implementation tasks are accepted.
+
+The remaining N-A README sentence overstated physical-file protection. Controller corrected it to
+refer only to references whose normalized paths are writer-owned. This docs-only correction needs
+no test that duplicates wording. The #1305 lead now also records case-insensitive Linux mounts,
+where the inherited ordinal policy can under-refuse, alongside aliases. No runtime proof for those
+limits was claimed. Whole-round review must give an explicit disposition, with no stronger safety
+promise than the implemented policy. #1302 remains R9 work.
+
+R1 still cannot finish until #1293, #1298, #1303 and #1304 are addressed, the OA9 compatibility audit
+is reconciled against final source, a fresh whole-branch review passes, current main is reconciled,
+and the full serial checks pass. Only the owner authorizes the release tag. Final-triage scope is
+the four recorded items, no new terrain, cave, water, prefab or game adoption capability.

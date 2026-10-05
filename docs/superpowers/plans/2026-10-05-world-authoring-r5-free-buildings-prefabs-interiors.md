@@ -14,9 +14,17 @@ Task-level plan. Refine to full step level against the landed R1 to R4 APIs befo
 
 ## Approval stage, reconciled 2026-10-05
 
-The controller supplied the exact owner answer "Approve" for both specs, T1 to T9 with revised T4, rigid prefab v1 and the 12 to 18 elapsed-week estimate, and C4 boundary policy. This R5 document remains a draft for refinement at its round. It requires a full plan against owner-released dependencies and then owner plan approval before execution. Spec approval is not acceptance of actual changed targets, distances, occlusion, stances or exact water-boundary samples. R11 records named import acceptance.
+The controller supplied the exact owner answer "Approve" for both specs, T1 to T9 with revised T4, rigid prefab v1 and the pre-OA9 12 to 18 elapsed-week estimate, and C4 boundary policy. This R5 document remains a draft for refinement at its round. It requires a full plan against owner-released dependencies and then owner plan approval before execution. Spec approval is not acceptance of actual changed targets, distances, occlusion, stances or exact water-boundary samples. R11 records named import acceptance.
 
 The 1 m allowance is a minimum vertical target reach-envelope height, preserving `MinimumObjectReachHeight`. It is not a 1 m action distance. Action range remains existing game policy and physical colliders never expand. Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in the game DECISIONS record.
+
+## OA9 checkpoint, R5 round refinement
+
+[DG9.1, DG9.2 and DG9.6](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#dg91-cave-representation-before-r2-approval) extend this draft. R5 remains unapproved. Consume [R2](2026-10-05-world-authoring-r2-authored-terrain-paint.md)'s cave choice, [R3](2026-10-05-world-authoring-r3-shared-shapes-headless-builders.md)'s layer-correct shape/support/nav and [R4](2026-10-05-world-authoring-r4-bounded-water-medium.md)'s approved vertical water semantics.
+
+- **Tasks 1 to 4:** Refine underground floor/ceiling, interior membership and prefab composition for the selected cave model. If R2 selects cave prefabs, R5 owns authored native collision/nav prefab support. If cave layers are selected, compose their native volumes/interiors without inventing a second cave model. Deep stacked cave volumes can be dry or flooded and are not restricted to four legacy 4.5 m planes. R4 owns water containment, local transforms cannot make surface water fill a dry cave.
+- **Named future proofs:** `SelectedCaveModel_ComposesFloorsCeilingsAndVolumes`, `TransformedCavePrefabOrLayer_PreservesCollisionNavAndMembership` and `DryAndFloodedCaveVolumes_DoNotLeakWaterOrIndoorState`. Refine exact fixture/interfaces and membership/camera implications for [R8](2026-10-05-world-authoring-r8-native-rendering-residency-captures.md) before R5 approval. Existing seven-definition/nine-interior source counts stay historical regression assertions.
+- **Estimate checkpoint:** Refresh the extended-program estimate at R5 refinement and exit with cave/prefab scope and dependency costs. The pre-OA9 12 to 18 weeks is not a fresh estimate. This remains a draft, no art or cave content is authored here.
 
 ## Global Constraints
 
@@ -80,7 +88,7 @@ Produces C5 prefab payload 1, format 6 to 7 semantic migration, persisted instan
 
 ## Judgement and refinement record
 
-- Reconciliation 2026-10-05, OA6. Rigid free transforms, stable children, overrides, optional snapping, local floors/volumes and optional local C4 water are approved. No nested prefabs, generated stairs/foundations or CAD. The approved estimate is 12 to 18 elapsed weeks, with re-estimation after R2/R5, not a delivery promise. Optional local water uses the same domain/medium/version identity and one transform, with no second algorithm. Plan refinement and owner round approval remain pending.
+- Reconciliation 2026-10-05, OA6. Rigid free transforms, stable children, overrides, optional snapping, local floors/volumes and optional local C4 water are approved. No nested prefabs, generated stairs/foundations or CAD. The historical pre-OA9 approved estimate is 12 to 18 elapsed weeks. Refresh for the scope extension before R2 approval and at R2/R5, not a delivery promise. Optional local water uses the same domain/medium/version identity and one transform, with no second algorithm. Plan refinement and owner round approval remain pending.
 
 - Historical J5.1, superseded by OA6 on 2026-10-05. C5 lists placements, floors/paint, lights, markers and volumes in prefab payload 1, but its editor contract also requires local water editing. Plan optional C4 water-body records keyed locally, with the same one-transform expansion and no new water algorithm. That was the pre-approval proposal. OA6 now explicitly approves optional prefab-local water using C4 and resolves the omission. Retain this origin as historical evidence, not an open scope question.
 - J5.2, boundary policy. Propose polygon-edge inclusion and half-open vertical spans [lowerY, upperY), returning all occupied volume keys in stable order. A shared-storey boundary belongs to the upper prism. Auto uses the linked roof set above those occupied volumes. Confirm against R2 indoor-mask compilation and owner-reviewed roof behavior at refinement.
@@ -179,7 +187,13 @@ Self-review covered spec requirements, consistent contract names, all five Revie
 
 ## Outcome
 
-### Documentation reconciliation, 2026-10-05
+### OA9 documentation outcome, 2026-10-05
+
+- Recorded [OA9](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#owner-rulings-binding-direction) and this plan's [checkpoint](#oa9-checkpoint-r5-round-refinement). Existing source-count fixtures and prior guard results below remain historical.
+- R5 remains unapproved. Its checkpoint names pending choices, owning tasks/dependencies and future proofs, to be refined before owner round approval. No capability, art, swimming, world enlargement or fresh benchmark is claimed.
+- This revision requires serial doc guards and explicit-path commit. The worker stops at the docs commit for controller verification/push, with no builds/tests/format/pack or integration.
+
+### Historical documentation reconciliation before OA8/OA9, 2026-10-05
 
 - Approval stage: specs approved with revised T4. R5 plan approval and execution remain pending. No round capability release is claimed.
 - Dependency caveat: Refine this draft against released prerequisite APIs at round start. Exact signatures, failing assertions and owner plan approval remain open. Start implementation from current reconciled engine main after the released CellOrigin change, never by merging this historical planning branch.

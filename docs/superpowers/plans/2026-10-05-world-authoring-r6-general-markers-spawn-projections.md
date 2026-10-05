@@ -14,9 +14,17 @@ Task-level plan. Refine to full step level against the landed R1 to R5 APIs befo
 
 ## Approval stage, reconciled 2026-10-05
 
-The controller supplied the exact owner answer "Approve" for both specs, T1 to T9 with revised T4, rigid prefab v1 and the 12 to 18 elapsed-week estimate, and C4 boundary policy. This R6 document remains a draft for refinement at its round. It requires a full plan against owner-released dependencies and then owner plan approval before execution. Spec approval is not acceptance of actual changed targets, distances, occlusion, stances or exact water-boundary samples. R11 records named import acceptance.
+The controller supplied the exact owner answer "Approve" for both specs, T1 to T9 with revised T4, rigid prefab v1 and the pre-OA9 12 to 18 elapsed-week estimate, and C4 boundary policy. This R6 document remains a draft for refinement at its round. It requires a full plan against owner-released dependencies and then owner plan approval before execution. Spec approval is not acceptance of actual changed targets, distances, occlusion, stances or exact water-boundary samples. R11 records named import acceptance.
 
 The 1 m allowance is a minimum vertical target reach-envelope height, preserving `MinimumObjectReachHeight`. It is not a 1 m action distance. Action range remains existing game policy and physical colliders never expand. Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in the game DECISIONS record.
+
+## OA9 checkpoint, R6 round refinement
+
+[DG9.1 and DG9.4](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#dg91-cave-representation-before-r2-approval) extend this draft. R6 remains unapproved. Consume [R2](2026-10-05-world-authoring-r2-authored-terrain-paint.md)'s selected cave support and [R5](2026-10-05-world-authoring-r5-free-buildings-prefabs-interiors.md)'s volume/prefab ownership, with [R3](2026-10-05-world-authoring-r3-shared-shapes-headless-builders.md) layer-correct queries.
+
+- **Tasks 1 to 3:** Underground markers keep explicit deep XYZ and approved layer/volume association or support-snap semantics. No marker defaults to the surface/topmost floor. Bind local markers once, preserve ownership through move/unpack and require supported depth/precision before certification.
+- **Named future proofs:** `UndergroundMarker_ExplicitHeightAndLayerSurviveReload`, `StackedCaveMarkerSupport_DoesNotSnapToSurface` and `LocalCaveMarker_TransformsOnceAndKeepsVolumeAssociation`. Pin actual signatures/fixtures before R6 approval and expose them to [R9](2026-10-05-world-authoring-r9-unified-mapeditor-workflow.md)/[R10](2026-10-05-world-authoring-r10-complete-ke-mapedit-parity.md).
+- **Task 4/refreeze:** Reported latest source is 384x320 m with `r_-1_0` through `r_-1_4`, merged into continuous-movement at `f1a0d47c`. This does not prove shipped main or released 0.11.0. Refreeze after both game-main barriers and again in [R11](2026-10-05-world-authoring-r11-offline-importer-no-loss-ledger.md). The old 38-marker counts remain historical, never accepted-source defaults.
 
 ## Global Constraints
 
@@ -148,7 +156,13 @@ Self-review covered spec requirements, consistent contract names, all five Revie
 
 ## Outcome
 
-### Documentation reconciliation, 2026-10-05
+### OA9 documentation outcome, 2026-10-05
+
+- Recorded [OA9](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#owner-rulings-binding-direction) and this plan's [checkpoint](#oa9-checkpoint-r6-round-refinement). Existing source-count fixtures and prior guard results below remain historical.
+- R6 remains unapproved. Its checkpoint names pending choices, owning tasks/dependencies and future proofs, to be refined before owner round approval. No capability, art, swimming, world enlargement or fresh benchmark is claimed.
+- This revision requires serial doc guards and explicit-path commit. The worker stops at the docs commit for controller verification/push, with no builds/tests/format/pack or integration.
+
+### Historical documentation reconciliation before OA8/OA9, 2026-10-05
 
 - Approval stage: specs approved with revised T4. R6 plan approval and execution remain pending. No round capability release is claimed.
 - Dependency caveat: Refine this draft against released prerequisite APIs at round start. Exact signatures, failing assertions and owner plan approval remain open. Start implementation from current reconciled engine main after the released CellOrigin change, never by merging this historical planning branch.

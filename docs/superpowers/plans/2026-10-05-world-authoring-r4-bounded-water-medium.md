@@ -12,7 +12,7 @@
 
 ## Approval and execution gate, reconciled 2026-10-05
 
-The exact owner answer supplied by the controller is "Approve". It approves both specs, T1 to T9 with revised T4, the rigid prefab v1 scope and 12 to 18 elapsed-week estimate, and C4 exact-boundary differential policy. It does not approve this round plan or any actual changed query result. Named import-time acceptance of changed targets, distances, occlusion, stances and water boundaries remains required. R1 to R4 are full plans. Reconcile released prerequisite signatures before their owner review. No production execution has started.
+The exact owner answer supplied by the controller is "Approve". It approves both specs, T1 to T9 with revised T4, the rigid prefab v1 scope and pre-OA9 12 to 18 elapsed-week estimate, and C4 exact-boundary differential policy. That earlier policy answer did not approve round execution or any actual changed query result. OA8 subsequently approves R1 and the controller owns its active execution. R2 onward remain unapproved and need OA9 refinement before review. Named import-time acceptance of changed targets, distances, occlusion, stances and water boundaries remains required. R1 to R4 retain existing full plans, this branch holds the R1 planning copy only.
 
 Future verification uses HANDOFF's shared slot runner, restored only if absent. Set a unique log directory from the implementation worktree before Task 1, and retain different red/green log names. These are instructions, not commands run by this documents lane.
 
@@ -23,6 +23,16 @@ test -f /tmp/grimhollow-orch/slot-run.sh
 ```
 
 The 1 m allowance is a minimum vertical target reach-envelope height, preserving `MinimumObjectReachHeight`. It is not a 1 m action distance. Action range remains existing game policy and physical colliders never expand. Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in the game DECISIONS record.
+
+## OA9 checkpoint, before R4 approval
+
+[DG9.2 and DG9.5](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#dg92-vertical-water-containment-before-r4-approval) are design gates, not a selected water model. R4 remains unapproved. Consume [R2](2026-10-05-world-authoring-r2-authored-terrain-paint.md)'s chosen cave representation and [R3](2026-10-05-world-authoring-r3-shared-shapes-headless-builders.md)'s support/nav/profile contracts before refining Tasks 1 to 4.
+
+- **Pending design:** Current proposed DTOs/validator reject all positive-area XZ overlap and sample feet below SurfaceY without cave containment. Approve volume/layer/bed semantics, vertical ownership, schema/identity and query interfaces before R4 approval. Surface oceans, vertically separated cave lakes, dry caves under water and contained flooded caves must coexist without an ocean filling every depth. Flat examples below retain historical behavior only, with new containment/overlap assertions required at refinement. OA7 XZ edge ownership persists within the selected domain.
+- **Data/render dependencies:** [#1300](https://github.com/APKiwiOrg/KhaozEngine/issues/1300) needs an explicit R4 data dependency and [R8](2026-10-05-world-authoring-r8-native-rendering-residency-captures.md) rendering/capture scope. First-background-surface depth currently produces pale geometry bands. Bed-based or other optical algorithms remain proposals. R4 must not promise solved pixels from clipped polygons alone.
+- **Geometry cost:** [#1297](https://github.com/APKiwiOrg/KhaozEngine/issues/1297) requires cost proportional to body area, not a full grid for each row-run, with authored bends preserved. Record R4/R8 dependency ownership/splitting, bounded work counters and seam inputs before approval. No huge unapproved local benchmark.
+- **Movement:** [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299) blocks walkers in deep water, preserves shallow wading and legacy opted-out behavior, and matches client/server/nav profiles. Bind opt-in/profile identity with R3 before approval. Swimming remains [Grimhollow #455](https://github.com/APKiwiOrg/Grimhollow/issues/455).
+- **Named future proofs:** `SurfaceOceanAndCaveLake_ResolveSeparateVerticalDomains`, `DryCaveUnderOcean_RemainsDry`, `FloodedCave_StopsAtApprovedContainment`, `DeepWaterBlocksWalkers_ShallowWadingAndOptOutRemainLegacy` and `BentBodyGeometry_WorkScalesWithAreaAcrossSeams`. R8 captures the 0.3 m submerged ledge, 2 m river, 30 m shelf to 100 m ocean, enclosed cave lake and region-crossing body with no pale/terrace band or seam step.
 
 ## Global Constraints
 
@@ -66,7 +76,7 @@ The approved execution method is subagent-driven-development. Execute serially a
 ## Review Focus
 
 - Negative-Z rectangle edges and polygon vertices must use the same half-open ownership in every consumer (Task 2).
-- Equal-medium/equal-level overlapping bodies must be rejected rather than silently double rendering (Task 1).
+- Bodies in the same approved vertical domain must not double render. Vertically separated ocean/cave domains and dry caves require DG9.2 refinement (Tasks 1 and 3).
 - Feet exactly at water SurfaceY, including a bridge deck, must remain dry (Task 3).
 - An authored map with no bodies must not inherit the old global ocean, and independent levels must survive terrain edits (Tasks 3 and 4).
 - The historical seven-body/113-rectangle regression fixture must survive grouping, save/reload and domain compilation (Task 5).
@@ -92,11 +102,13 @@ The approved execution method is subagent-driven-development. Execute serially a
 
 R3 produces `MapBuiltWorld`, `MapWorldBuilder.Build`, `MapPhysicsRegistration.CreateMoveContext` and `MapWorldBuildOptions`. Extend those types, preserving their names and existing constructor parameters. Existing `MovementMedium(float waterSurfaceY, bool inWater, float wadeSpeedScale = 1f)` with properties WaterSurfaceY, InWater and WadeSpeedScale is the movement seam (`KhaozEngine.Locomotion/MovementMedium.cs:15-40`). `GroundMoveContext.Medium` is `Func<float,float,float,MovementMedium>?`, and `PhysicsNavBakeOptions.SampleWater` controls capture's medium read. R3's context medium is null before this round.
 
-The spec now pins rectangle ownership [MinX,MaxX) x [MinZ,MaxZ) in world coordinates. Normalize simple polygon rings to counter-clockwise XZ winding. For a point on an edge, include a negative-Z directed edge or a horizontal positive-X directed edge. A vertex belongs only if every incident edge owns it. This gives the rectangle predicate exactly and makes adjacent domains own a shared seam once. Positive-area overlap is invalid even with equal level/media. OA7 approves this rule. Every actual legacy negative-Z boundary change records source key/sample, old/new outcome and a separately named acceptance reference at R11/game import. PolicyId alone never accepts a differential.
+The spec now pins rectangle ownership [MinX,MaxX) x [MinZ,MaxZ) in world coordinates. Normalize simple polygon rings to counter-clockwise XZ winding. For a point on an edge, include a negative-Z directed edge or a horizontal positive-X directed edge. A vertex belongs only if every incident edge owns it. This gives the rectangle predicate exactly and makes adjacent domains own a shared seam once. For the historical flat fixture, positive-area XZ overlap is invalid even with equal level/media. OA7 approves XZ boundary ownership, while OA9 requires vertical overlap/containment design at DG9.2 before this plan is approved. Every actual legacy negative-Z boundary change records source key/sample, old/new outcome and a separately named acceptance reference at R11/game import. PolicyId alone never accepts a differential.
 
 Store bodies independently. An editor grouping does not replace body IDs or merge ledger records. Bounded draw triangles retain body/material identity and level, with no camera-centred fallback. Actual Scene3D bounded drawing and backend goldens are R8. R4 provides preview/capture-ready polygons plus GUI/service commands, and R9 completes boundary brush UX.
 
 ### Task 1: Format-6 bounded bodies, mode and validation
+
+OA9 refinement must revise the proposed DTO/validator for approved vertical-domain semantics. The examples below pin only the historical flat fixture. Their overlap refusal is not a ban on vertically separated native ocean/cave domains.
 
 **Files:**
 - Create: `KhaozEngine.MapDoc/Water/MapWaterDoc.cs`, `KhaozEngine.MapDoc/Water/MapWaterValidator.cs`, `KhaozEngine.MapDoc/Water/MapWaterMigration.cs`
@@ -139,7 +151,7 @@ Expected: FAIL for the named new contract or assertion. A missing planned type m
 
 - [ ] **Step 3: Implement the contract**
 
-Implement the produced DTOs, mode migration and validator in the named files. Add pure 5 to 6 migration, analytic maps select LegacyGlobal, authored maps select Bounded, with no implicit water bodies. Schema closes all new payloads and discriminators. Require unique stable body IDs, supported payloads, finite SurfaceY/coordinates, nonempty nondegenerate simple domains, known medium/material resources, finite positive medium parameters and disjoint positive-area interiors within/across bodies. Boundary touching is valid. Reject authored LegacyGlobal and a LegacyGlobal map containing bounded bodies rather than drawing both. Persist water globals and canonical identity in both forms. Add unknown resource/version/field, repeated vertex, empty domain, NaN level and analytic-v5 water compatibility tests.
+Implement the produced DTOs, mode migration and validator in the named files. Add pure 5 to 6 migration, analytic maps select LegacyGlobal, authored maps select Bounded, with no implicit water bodies. Schema closes all new payloads and discriminators. Require unique stable body IDs, supported payloads, finite SurfaceY/coordinates, nonempty nondegenerate simple domains, known medium/material resources, finite positive medium parameters and disjoint positive-area interiors within/across bodies in the historical flat-domain fixture. Vertical-domain overlap/containment validation must be refined under DG9.2 before execution. Boundary touching follows OA7. Reject authored LegacyGlobal and a LegacyGlobal map containing bounded bodies rather than drawing both. Persist water globals and canonical identity in both forms. Add unknown resource/version/field, repeated vertex, empty domain, NaN level and analytic-v5 water compatibility tests.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -224,6 +236,8 @@ git commit -m "feat(mapdocphysics): compile bounded water domains"
 
 ### Task 3: Feet-aware medium and complete capture integration
 
+OA9 refinement must replace below-SurfaceY-only containment with the approved DG9.2 query and bind #1299 opt-in movement/nav profiles. The flat fixture remains a regression case, not proof of dry/flooded cave behavior.
+
 **Files:**
 - Create: `KhaozEngine.MapDoc.Physics/MapWaterSampler.cs`
 - Modify: `KhaozEngine.MapDoc.Physics/MapBuiltWorld.cs`, `KhaozEngine.MapDoc.Physics/MapWorldBuilder.cs`, `KhaozEngine.MapDoc.Physics/MapPhysicsRegistration.cs` from R3
@@ -268,7 +282,7 @@ Expected: FAIL for the named new contract or assertion. A missing planned type m
 
 - [ ] **Step 3: Implement the contract**
 
-Implement Sample/MediumAt in `MapWaterSampler.cs` with immutable spatial indexing over the Task 2 exact domains. Feet must be strictly below SurfaceY to be wet. Dry returns MovementMedium.Dry, body key diagnostics remain in MapWaterMediumSample. Reject nonfinite query inputs. The builder snapshots water independently of terrain and includes water/media versions and parameters in native identity. CreateMoveContext uses the same medium for movement and complete nav capture, retaining deck statics and terrain-excluding movement queries. No global water plane is emitted in Bounded mode, even with zero bodies. Add independent levels at -0.37/1.2, submerged bed, narrow river edges, zero-body dry map, exact level equality, world-origin rebase, medium parameter and two-head equality tests. Capture with SampleWater=true must assert river surface entries and dry deck traversal, while false never calls medium. Add an instrumented sampler test for that contract.
+Implement Sample/MediumAt in `MapWaterSampler.cs` with immutable spatial indexing over the Task 2 exact domains. Feet within the approved DG9.2 domain must be strictly below SurfaceY to be wet. Below-SurfaceY alone never floods a dry cave. Dry returns MovementMedium.Dry, body key diagnostics remain in MapWaterMediumSample. Reject nonfinite query inputs. The builder snapshots water independently of terrain and includes water/media versions and parameters in native identity. CreateMoveContext uses the same medium for movement and complete nav capture, retaining deck statics and terrain-excluding movement queries. No global water plane is emitted in Bounded mode, even with zero bodies. Add independent levels at -0.37/1.2, submerged bed, narrow river edges, zero-body dry map, exact level equality, world-origin rebase, medium parameter and two-head equality tests. Capture with SampleWater=true must assert river surface entries and dry deck traversal, while false never calls medium. Add an instrumented sampler test for that contract.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -440,7 +454,13 @@ Coverage: C4 schema/mode/validation Task 1, normalized clipped domain Task 2, fe
 
 ## Outcome
 
-### Documentation reconciliation, 2026-10-05
+### OA9 documentation outcome, 2026-10-05
+
+- Recorded [OA9](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#owner-rulings-binding-direction) and this plan's [checkpoint](#oa9-checkpoint-before-r4-approval). Existing source-count fixtures and prior guard results below remain historical.
+- R4 remains unapproved. Its checkpoint names pending choices, owning tasks/dependencies and future proofs, to be refined before owner round approval. No capability, art, swimming, world enlargement or fresh benchmark is claimed.
+- This revision requires serial doc guards and explicit-path commit. The worker stops at the docs commit for controller verification/push, with no builds/tests/format/pack or integration.
+
+### Historical documentation reconciliation before OA8/OA9, 2026-10-05
 
 - Approval stage: specs approved with revised T4. R4 plan approval and execution remain pending. No round capability release is claimed.
 - Dependency caveat: Reconcile the released prerequisite APIs and record their actual SHAs before owner plan review. R3 also needs explicit revised-T4 geometry/query refinement. Start implementation from current reconciled engine main after the released CellOrigin change, never by merging this historical planning branch.

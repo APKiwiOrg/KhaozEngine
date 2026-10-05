@@ -4,7 +4,7 @@
 
 **Goal:** Render and capture the complete native resolved world through one adapter while preserving authored geometry and duplicate-free streaming.
 
-**Architecture:** Add an opt-in MapDoc.Render3D adapter over the immutable headless build and verified render asset closure. Native view, MapEditor viewport and ke-mapedit snapshots share terrain, placement, local-floor, light, water, roof and foliage composition. Residency uses effective bounds with one owner and all intersected storage memberships, independently of the server's complete statics.
+**Architecture:** Add an opt-in MapDoc.Render3D adapter over the immutable headless build and verified render asset closure. Native view, MapEditor viewport and ke-mapedit snapshots share terrain, placement, local-floor, light, water, roof and foliage composition. Residency uses effective bounds with one owner and all intersected storage memberships, independently of the server's required simulation-domain statics.
 
 **Tech Stack:** C#/.NET, System.Numerics, versioned JSON and JSON Schema, xUnit, engine-owned rendering/physics seams, MapEditor and ke-mapedit MCP.
 
@@ -14,9 +14,19 @@ Task-level plan. Refine to full step level against the landed R1 to R7 APIs befo
 
 ## Approval stage, reconciled 2026-10-05
 
-The controller supplied the exact owner answer "Approve" for both specs, T1 to T9 with revised T4, rigid prefab v1 and the 12 to 18 elapsed-week estimate, and C4 boundary policy. This R8 document remains a draft for refinement at its round. It requires a full plan against owner-released dependencies and then owner plan approval before execution. Spec approval is not acceptance of actual changed targets, distances, occlusion, stances or exact water-boundary samples. R11 records named import acceptance.
+The controller supplied the exact owner answer "Approve" for both specs, T1 to T9 with revised T4, rigid prefab v1 and the pre-OA9 12 to 18 elapsed-week estimate, and C4 boundary policy. This R8 document remains a draft for refinement at its round. It requires a full plan against owner-released dependencies and then owner plan approval before execution. Spec approval is not acceptance of actual changed targets, distances, occlusion, stances or exact water-boundary samples. R11 records named import acceptance.
 
 The 1 m allowance is a minimum vertical target reach-envelope height, preserving `MinimumObjectReachHeight`. It is not a 1 m action distance. Action range remains existing game policy and physical colliders never expand. Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in the game DECISIONS record.
+
+## OA9 checkpoint, before R8 approval
+
+[DG9.1 to DG9.5](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#dg95-water-dependencies-and-captures) extend this draft. R8 remains unapproved. Consume the cave model from [R2](2026-10-05-world-authoring-r2-authored-terrain-paint.md)/[R5](2026-10-05-world-authoring-r5-free-buildings-prefabs-interiors.md), vertical water identity from [R4](2026-10-05-world-authoring-r4-bounded-water-medium.md) and tiled support/nav/cell contracts from [R3](2026-10-05-world-authoring-r3-shared-shapes-headless-builders.md).
+
+- **Tasks 2/4:** Refine deep multi-level cave lighting, ceiling/camera occlusion, surface-versus-underground visibility and dry/flooded domains. Roof view rules must not silently remove cave physical ceilings or leak surface lighting. `CaveLightingAndCameraOcclusion_RespectSelectedDomain` and `FloodedCaveView_UsesContainedWater` are named future backend proofs.
+- **Tasks 2/6, water dependencies:** Record [#1300](https://github.com/APKiwiOrg/KhaozEngine/issues/1300) optical/data algorithm ownership and [#1297](https://github.com/APKiwiOrg/KhaozEngine/issues/1297) bounded geometry cost before approval. Bed-based depth is unchosen. `WaterDepthAcceptance_NoPaleTerraceBandOrSeamStep` uses fixed-camera Native TAA/backend captures for a ledge 0.3 m under water, 2 m river, 30 m shelf to 100 m ocean, enclosed cave lake and region-crossing body. `BentWaterBody_AreaScaledWorkAndAuthoredShapeSurvive` pins bounded work counters and bends, no huge local benchmark.
+- **Task 3, scale:** [#1301](https://github.com/APKiwiOrg/KhaozEngine/issues/1301) requires explicit tiled/on-demand integration and bounded residency/planning budgets. Resolve ownership/splitting before approval. HLOD and far-origin precision must hold across many vertical layers and server cells. Pin supported extents/depth/minimum precision under DG9.4. No unlimited-precision claim follows from C1 floats.
+- **Named future scale proofs:** `DeepLayerResidency_LoadsOnlyApprovedWorkingSet`, `FarOriginHlodRenderAndPick_MeetPrecisionContract` and `MultiCellGhostHandoff_RenderAndNavStayContinuous`, with R3/downstream game G3. Complete coverage is a checked union of domains/tiles, not a requirement to keep the whole world loaded. Visual windows never own server authority.
+- **Tasks 5/6:** Expose scoped/tiled capture completeness and missing-closure findings to [R9](2026-10-05-world-authoring-r9-unified-mapeditor-workflow.md)/[R10](2026-10-05-world-authoring-r10-complete-ke-mapedit-parity.md)/[R11](2026-10-05-world-authoring-r11-offline-importer-no-loss-ledger.md). Existing complete-load fixture tests stay regression proofs, not a scalable-world certification. Backend tests and owner look review remain future execution gates.
 
 ## Global Constraints
 
@@ -61,7 +71,7 @@ The 1 m allowance is a minimum vertical target reach-envelope height, preserving
 | R6 / C6 | Point/shape markers and ownership in streamed windows |
 | R7 / C7 | Immutable sample sets, sample identity and complete distribution cache keys |
 
-Produces C8 native render adapter/view/snapshot, effective residency integration and complete captures with no schema revision. R9 uses the viewport. R10 uses render/query/streaming tool adapters. R11 uses fixed-camera differential evidence and complete-load versus windowed proof. Grimhollow adoption receives the same client/SnapshotTool view while the GPU-free server keeps independent complete statics.
+Produces C8 native render adapter/view/snapshot, effective residency integration and complete captures with no schema revision. R9 uses the viewport. R10 uses render/query/streaming tool adapters. R11 uses fixed-camera differential evidence and complete-load versus windowed proof. Grimhollow adoption receives the same client/SnapshotTool view while the GPU-free server keeps independent required-domain coverage under DG9.3.
 
 **Name discipline:** `NativeAssetDescriptor`, `ResolvedMapWorld`, `MapWorldBuild`, canonical geometry and residency-owner descriptor names are provisional R1 to R4 contracts. R5 to R7 refinement confirms roof/membership/sample APIs. Baseline MapTileResidency/MapResidencyGate, ViewportWorld, RenderService and Render3DSnapshot exist. MapDoc.Render3D and its types are proposed, not existing packages.
 
@@ -81,8 +91,8 @@ Produces C8 native render adapter/view/snapshot, effective residency integration
 ## Judgement and refinement record
 
 - J8.1. Use a focused optional MapDoc.Render3D package rather than placing GPU dependencies in MapDoc or MapDoc.Physics. Its only headless inputs are resolved descriptors/closure. No umbrella addition is assumed, decide membership against the package catalog at refinement.
-- J8.2. Each resolved resource has a deterministic owner key and references in every intersected storage chunk. Any loaded membership retains it once. Unload releases it only when no membership remains. Complete server statics do not follow camera residency.
-- J8.3. A windowed document exposes its validation scope and missing closure explicitly. Whole-world validation/capture requires the complete closure or deliberate closure loading, never a successful partial result labelled complete.
+- J8.2. Each resolved resource has a deterministic owner key and references in every intersected storage chunk. Any loaded membership retains it once. Unload releases it only when no membership remains. Authoritative simulation-domain statics do not follow camera residency. DG9.3 permits approved on-demand loading, independent of view windows.
+- J8.3. A windowed document exposes its validation scope and missing closure explicitly. Validation/capture reports its explicit domain and requires that complete closure. Whole-world coverage may use a checked union of scoped/tiled captures, never a partial result labelled complete or a forced simultaneous whole-world load.
 - Golden evidence includes sparse-feature and shadow/visibility checks in addition to coarse grids. Use Native TAA for Grimhollow evidence, and do not move cameras to hide differences.
 
 ---
@@ -120,7 +130,7 @@ Produces C8 native render adapter/view/snapshot, effective residency integration
 **Interfaces:**
 - Consumes effective mesh/shape/surface/LOD/light bounds, C5 resource owners and C6/C7 marker/sample bounds.
 - Produces owner plus all intersected chunk memberships, loaded reference tracking and generation-safe publication/unload.
-- Partial load reports incomplete validation scope. Complete server build remains independent from visual window changes.
+- Partial load reports incomplete validation scope. Required-domain server coverage remains independent from visual window changes, with scalable/on-demand integration refined under DG9.3.
 
 - [ ] Deliver cross-chunk load equivalence, single publication and stale-build rejection.
 - **Tests:** `AnchorOutsideWindow_SpanningBuildingAndTreeRemainResident` covers negative seams and elevated floors/lights. `TwoLoadedMemberships_DrawAndStaticsExistOnce` checks owner reference counts. `UnloadOneMembership_RetainsResourceUntilLastRelease` proves cleanup. `LateChunkBuild_CannotResurrectOldClosure` checks generation fence. `CompleteLoadEqualsChunkedResolvedInventory` includes markers/foliage/water and storage-independent coordinates. `PartialLoad_CannotClaimWholeWorldValidation` is fail-closed. `VisualWindowChanges_DoNotChangeCompleteServerStatics` proves server independence.
@@ -173,7 +183,13 @@ Self-review covered spec requirements, consistent contract names, all five Revie
 
 ## Outcome
 
-### Documentation reconciliation, 2026-10-05
+### OA9 documentation outcome, 2026-10-05
+
+- Recorded [OA9](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#owner-rulings-binding-direction) and this plan's [checkpoint](#oa9-checkpoint-before-r8-approval). Existing source-count fixtures and prior guard results below remain historical.
+- R8 remains unapproved. Its checkpoint names pending choices, owning tasks/dependencies and future proofs, to be refined before owner round approval. No capability, art, swimming, world enlargement or fresh benchmark is claimed.
+- This revision requires serial doc guards and explicit-path commit. The worker stops at the docs commit for controller verification/push, with no builds/tests/format/pack or integration.
+
+### Historical documentation reconciliation before OA8/OA9, 2026-10-05
 
 - Approval stage: specs approved with revised T4. R8 plan approval and execution remain pending. No round capability release is claimed.
 - Dependency caveat: Refine this draft against released prerequisite APIs at round start. Exact signatures, failing assertions and owner plan approval remain open. Start implementation from current reconciled engine main after the released CellOrigin change, never by merging this historical planning branch.

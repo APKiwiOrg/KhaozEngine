@@ -12,7 +12,7 @@
 
 ## Approval and execution gate, reconciled 2026-10-05
 
-The exact owner answer supplied by the controller is "Approve". It approves both specs, T1 to T9 with revised T4, the rigid prefab v1 scope and 12 to 18 elapsed-week estimate, and C4 exact-boundary differential policy. It does not approve this round plan or any actual changed query result. Named import-time acceptance of changed targets, distances, occlusion, stances and water boundaries remains required. R1 to R4 are full plans. Reconcile released prerequisite signatures before their owner review. No production execution has started.
+The exact owner answer supplied by the controller is "Approve". It approves both specs, T1 to T9 with revised T4, the rigid prefab v1 scope and pre-OA9 12 to 18 elapsed-week estimate, and C4 exact-boundary differential policy. That earlier policy answer did not approve round execution or any actual changed query result. OA8 subsequently approves R1 and the controller owns its active execution. R2 onward remain unapproved and need OA9 refinement before review. Named import-time acceptance of changed targets, distances, occlusion, stances and water boundaries remains required. R1 to R4 retain existing full plans, this branch holds the R1 planning copy only.
 
 Future verification uses HANDOFF's shared slot runner, restored only if absent. Set a unique log directory from the implementation worktree before Task 1, and retain different red/green log names. These are instructions, not commands run by this documents lane.
 
@@ -23,6 +23,16 @@ test -f /tmp/grimhollow-orch/slot-run.sh
 ```
 
 The 1 m allowance is a minimum vertical target reach-envelope height, preserving `MinimumObjectReachHeight`. It is not a 1 m action distance. Action range remains existing game policy and physical colliders never expand. Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in the game DECISIONS record.
+
+## OA9 checkpoint, before R3 approval
+
+[DG9.1 to DG9.4 and DG9.5](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#dg93-navigation-and-server-scale-before-r3r8-approval) extend the existing T4 refinement gate. R3 remains unapproved. Consume [R2](2026-10-05-world-authoring-r2-authored-terrain-paint.md)'s selected cave/support contract, [R4](2026-10-05-world-authoring-r4-bounded-water-medium.md)'s water contract when available and [R8](2026-10-05-world-authoring-r8-native-rendering-residency-captures.md)'s residency requirements without assuming a single topmost floor.
+
+- **Tasks 2/3/6:** Refine floor/ceiling collision, layer-correct support/picking/LOS and nav under the selected cave model. Current XZ ground delegates and one complete capture are fixture interfaces, not proof of many vertical layers. Pin layer/domain selection before implementation and certify quantified extent/depth/precision under DG9.4.
+- **Tasks 5/6 dependency decision:** [#1301](https://github.com/APKiwiOrg/KhaozEngine/issues/1301) requires tiled/incremental nav, deterministic cross-tile seams/links, many vertical layers, on-demand loading and bounded planning work. Record dependency ownership/splitting and tile invalidation/capture/profile identity before R3 approval. Resolve separately landed support or approved round scope explicitly, with no silent extra round/version reservation. Current once-only whole-world adoption rebake remains a fixture procedure. Future edits rebake affected tiles and links.
+- **Authoritative scale:** Server coverage follows required simulation domains independently of visual streaming. CellOrigin's one-cell layout is a fixture. With [R8](2026-10-05-world-authoring-r8-native-rendering-residency-captures.md) and downstream game G3, define cross-cell geometry/nav ownership and ghosting/handoff continuity. Storage chunks, nav tiles and server cells need explicit mapping, not an assumed identity.
+- **Named future proofs:** `CaveFloorCeilingSupportAndPick_AgreeOnBothHeads`, `TiledNav_SeamsLinksAndVerticalLayersAreDeterministic`, `AffectedTileRebake_PreservesUnaffectedDigests`, `OnDemandNav_RespectsApprovedPlanningBudget` and `MultiCellGhostHandoff_PreservesLayerAndWorldCoordinates`. Pin bounded fixtures/budgets at refinement, no large local rerun of #1301 measurements.
+- **Water/profile dependency:** [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299) and R4 own matching client/server/nav opt-in behavior. `DeepWaterBlocksWalkers_ShallowWadingAndOptOutRemainLegacy` is a named gate. Swimming stays outside the program. Today's 8 MiB gzip-9/plain-git game budget remains until a new owner storage/distribution decision.
 
 ## Global Constraints
 
@@ -390,7 +400,7 @@ Expected: FAIL for the named new contract or assertion. A missing planned type m
 
 - [ ] **Step 3: Implement the contract**
 
-Implement `Build(...)` and `InWindow(...)` in `MapResidencyOwnership.cs`. A stable owner ID is stored once, membership lists every storage chunk intersecting effective shape/mesh/support/light/LOD union bounds, including negative coordinates and exact edges. Use minimum-inclusive maximum-exclusive chunk membership, with degenerate bounds explicitly assigned by anchor. Broad bounds do not replace narrow-phase query geometry. InWindow returns sorted distinct owners whose membership overlaps the window. Server StaticDescriptors always remain complete and do not take a window/camera parameter. Add a transformed spanning wall and tree light/LOD extents, exact-seam no-overcount, union-of-windows equals complete ownership, and partial MapDocument refusal. Actual streamed loading, unload and draw deduplication are R8 gates.
+Implement `Build(...)` and `InWindow(...)` in `MapResidencyOwnership.cs`. A stable owner ID is stored once, membership lists every storage chunk intersecting effective shape/mesh/support/light/LOD union bounds, including negative coordinates and exact edges. Use minimum-inclusive maximum-exclusive chunk membership, with degenerate bounds explicitly assigned by anchor. Broad bounds do not replace narrow-phase query geometry. InWindow returns sorted distinct owners whose membership overlaps the window. For the complete-load regression fixture, server StaticDescriptors remain complete and do not take a client window/camera parameter. DG9.3 refinement defines required authoritative domains and on-demand loading, never camera-owned simulation residency. Add a transformed spanning wall and tree light/LOD extents, exact-seam no-overcount, union-of-windows equals complete ownership, and refusal of partial MapDocument input that lacks declared required-domain closure. DG9.3 must refine domain-scoped validation before scalable loading is claimed. Actual streamed loading, unload and draw deduplication are R8 gates.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -559,7 +569,13 @@ Coverage: C3 payload/package Task 1, transforms/physical descriptors/interaction
 
 ## Outcome
 
-### Documentation reconciliation, 2026-10-05
+### OA9 documentation outcome, 2026-10-05
+
+- Recorded [OA9](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#owner-rulings-binding-direction) and this plan's [checkpoint](#oa9-checkpoint-before-r3-approval). Existing source-count fixtures and prior guard results below remain historical.
+- R3 remains unapproved. Its checkpoint names pending choices, owning tasks/dependencies and future proofs, to be refined before owner round approval. No capability, art, swimming, world enlargement or fresh benchmark is claimed.
+- This revision requires serial doc guards and explicit-path commit. The worker stops at the docs commit for controller verification/push, with no builds/tests/format/pack or integration.
+
+### Historical documentation reconciliation before OA8/OA9, 2026-10-05
 
 - Approval stage: specs approved with revised T4. R3 plan approval and execution remain pending. No round capability release is claimed.
 - Dependency caveat: Reconcile the released prerequisite APIs and record their actual SHAs before owner plan review. R3 also needs explicit revised-T4 geometry/query refinement. Start implementation from current reconciled engine main after the released CellOrigin change, never by merging this historical planning branch.

@@ -14,9 +14,17 @@ Task-level plan. Refine to full step level against the landed R1 to R9 APIs befo
 
 ## Approval stage, reconciled 2026-10-05
 
-The controller supplied the exact owner answer "Approve" for both specs, T1 to T9 with revised T4, rigid prefab v1 and the 12 to 18 elapsed-week estimate, and C4 boundary policy. This R10 document remains a draft for refinement at its round. It requires a full plan against owner-released dependencies and then owner plan approval before execution. Spec approval is not acceptance of actual changed targets, distances, occlusion, stances or exact water-boundary samples. R11 records named import acceptance.
+The controller supplied the exact owner answer "Approve" for both specs, T1 to T9 with revised T4, rigid prefab v1 and the pre-OA9 12 to 18 elapsed-week estimate, and C4 boundary policy. This R10 document remains a draft for refinement at its round. It requires a full plan against owner-released dependencies and then owner plan approval before execution. Spec approval is not acceptance of actual changed targets, distances, occlusion, stances or exact water-boundary samples. R11 records named import acceptance.
 
 The 1 m allowance is a minimum vertical target reach-envelope height, preserving `MinimumObjectReachHeight`. It is not a 1 m action distance. Action range remains existing game policy and physical colliders never expand. Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in the game DECISIONS record.
+
+## OA9 checkpoint, R10 round refinement
+
+[DG9.1 to DG9.4](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#oa9-design-gates-and-future-exit-proofs) extend this draft. R10 remains unapproved. Consume [R9](2026-10-05-world-authoring-r9-unified-mapeditor-workflow.md)'s selected cave/domain workflow and the [R3](2026-10-05-world-authoring-r3-shared-shapes-headless-builders.md)/[R8](2026-10-05-world-authoring-r8-native-rendering-residency-captures.md) scoped nav/residency/capture contracts.
+
+- **Tasks 2/4/5/7:** Refine request/result schemas for selected cave floor/ceiling or prefab editing, underground marker/support queries, layer-aware vegetation/exclusions and contained water. Spatial operations must carry explicit domain/layer context where the approved model requires it. XZ/global-surface shortcuts cannot claim vertically correct native support or nav.
+- **Named future proofs:** `GuiAndMcp_CaveDomainEditsAndQueriesAgree`, `StackedCaveToolSelection_DoesNotTargetSurface`, `ScopedCaptureAndRoute_MissingTilesRefuseCompleteSuccess` and `AffectedTileEdit_ReportsStableNavInvalidation`. Add happy/rejected/undo/redo fixtures during refinement before R10 approval, without expanding this draft into a full plan now.
+- Preserve exact old terrain-import/tool parity and explicit legacy opt-out behavior. Complete captures mean declared domain/closure coverage, not one monolithic whole-world capture. [R11](2026-10-05-world-authoring-r11-offline-importer-no-loss-ledger.md) consumes these identities and findings for importer acceptance.
 
 ## Global Constraints
 
@@ -260,7 +268,13 @@ Self-review covered spec requirements, consistent contract names, all five Revie
 
 ## Outcome
 
-### Documentation reconciliation, 2026-10-05
+### OA9 documentation outcome, 2026-10-05
+
+- Recorded [OA9](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#owner-rulings-binding-direction) and this plan's [checkpoint](#oa9-checkpoint-r10-round-refinement). Existing source-count fixtures and prior guard results below remain historical.
+- R10 remains unapproved. Its checkpoint names pending choices, owning tasks/dependencies and future proofs, to be refined before owner round approval. No capability, art, swimming, world enlargement or fresh benchmark is claimed.
+- This revision requires serial doc guards and explicit-path commit. The worker stops at the docs commit for controller verification/push, with no builds/tests/format/pack or integration.
+
+### Historical documentation reconciliation before OA8/OA9, 2026-10-05
 
 - Approval stage: specs approved with revised T4. R10 plan approval and execution remain pending. No round capability release is claimed.
 - Dependency caveat: Refine this draft against released prerequisite APIs at round start. Exact signatures, failing assertions and owner plan approval remain open. Start implementation from current reconciled engine main after the released CellOrigin change, never by merging this historical planning branch.

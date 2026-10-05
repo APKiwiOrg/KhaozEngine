@@ -14,9 +14,18 @@ Task-level plan. Refine to full step level against the landed R1 to R10 APIs bef
 
 ## Approval stage, reconciled 2026-10-05
 
-The controller supplied the exact owner answer "Approve" for both specs, T1 to T9 with revised T4, rigid prefab v1 and the 12 to 18 elapsed-week estimate, and C4 boundary policy. This R11 document remains a draft for refinement at its round. It requires a full plan against owner-released dependencies and then owner plan approval before execution. Spec approval is not acceptance of actual changed targets, distances, occlusion, stances or exact water-boundary samples. R11 records named import acceptance.
+The controller supplied the exact owner answer "Approve" for both specs, T1 to T9 with revised T4, rigid prefab v1 and the pre-OA9 12 to 18 elapsed-week estimate, and C4 boundary policy. This R11 document remains a draft for refinement at its round. It requires a full plan against owner-released dependencies and then owner plan approval before execution. Spec approval is not acceptance of actual changed targets, distances, occlusion, stances or exact water-boundary samples. R11 records named import acceptance.
 
 The 1 m allowance is a minimum vertical target reach-envelope height, preserving `MinimumObjectReachHeight`. It is not a 1 m action distance. Action range remains existing game policy and physical colliders never expand. Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in the game DECISIONS record.
+
+## OA9 checkpoint, R11 round refinement
+
+[DG9.1 to DG9.6](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#oa9-design-gates-and-future-exit-proofs) extend this draft. R11 remains unapproved. Consume selected-model proofs from [R2](2026-10-05-world-authoring-r2-authored-terrain-paint.md) to [R10](2026-10-05-world-authoring-r10-complete-ke-mapedit-parity.md), with [R3](2026-10-05-world-authoring-r3-shared-shapes-headless-builders.md) tiled/cell and [R8](2026-10-05-world-authoring-r8-native-rendering-residency-captures.md) capture/precision evidence. New cave/ocean test fixtures are capability proofs, not invented source content.
+
+- **Tasks 1/2/5:** Refreeze accepted source commit and complete path/digest inventory at importer acceptance after both game-main barriers. Controller reports `f1a0d47c` grand-world merge into continuous-movement, `r_-1_0` through `r_-1_4`, 384x320 m, bridge bed -130 cm, `walkSurface` 2.825, parapet `collisionHeight` 3.825, pen gate rotation 1 and trees `LodDistance` 0. Preserve those author choices until separately changed. None proves shipped main or released 0.11.0. Historical 25-region/four-plane/4.5 m/count assertions remain regression evidence, never native limits or publication defaults.
+- **Tasks 5/7:** Ledger records actual layer/volume/water ownership, coordinate/precision contract, per-tile geometry/nav/profile identities, seam/link dependencies and declared capture scope. Exact terrain import remains required. Named old/new queries still need acceptance, and a union of scoped captures must account for complete required closure.
+- **Named future proofs:** `RefrozenSource_PreservesBridgeGateTreeAndSignedRegionChoices`, `NativeImport_CaveWaterDomainsDoNotAlterLegacyTerrain`, `TileLedgerAndScopedCaptures_CoverEveryRequiredDomain` and `NativeAdoption_MultiCellGhostHandoffAndPrecisionEvidenceIsLinked`. Game G3 owns its native bake/state/runtime acceptance, the engine supplies evidence hooks rather than claiming game migration.
+- **Storage gate:** Today's aggregate 8 MiB gzip-9/plain-git game nav budget persists. Any larger tiled bake storage/distribution needs a new owner decision before exceeding it, no automatic LFS/artifact switch. Once-only whole-world rebake remains the adoption fixture procedure, future edits use affected-tile rebakes. The old 12 to 18 weeks is not fresh scope evidence, record R2/R5 estimate checkpoints and dependency decisions before importer planning approval.
 
 ## Global Constraints
 
@@ -256,7 +265,13 @@ Self-review covered spec requirements, consistent contract names, all five Revie
 
 ## Outcome
 
-### Documentation reconciliation, 2026-10-05
+### OA9 documentation outcome, 2026-10-05
+
+- Recorded [OA9](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#owner-rulings-binding-direction) and this plan's [checkpoint](#oa9-checkpoint-r11-round-refinement). Existing source-count fixtures and prior guard results below remain historical.
+- R11 remains unapproved. Its checkpoint names pending choices, owning tasks/dependencies and future proofs, to be refined before owner round approval. No capability, art, swimming, world enlargement or fresh benchmark is claimed.
+- This revision requires serial doc guards and explicit-path commit. The worker stops at the docs commit for controller verification/push, with no builds/tests/format/pack or integration.
+
+### Historical documentation reconciliation before OA8/OA9, 2026-10-05
 
 - Approval stage: specs approved with revised T4. R11 plan approval and execution remain pending. No round capability release is claimed.
 - Dependency caveat: Refine this draft against released prerequisite APIs at round start. Exact signatures, failing assertions and owner plan approval remain open. Start implementation from current reconciled engine main after the released CellOrigin change, never by merging this historical planning branch.

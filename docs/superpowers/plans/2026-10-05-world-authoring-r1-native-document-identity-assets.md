@@ -8,11 +8,11 @@
 
 **Tech Stack:** C# on the repository's existing .NET target, System.Numerics, System.Text.Json, closed JSON Schema, xUnit, existing engine seams. No new third-party dependency.
 
-**Spec:** `docs/design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md`, spec approved by the owner on 2026-10-05, under OA4, revised T4 under OA5, prefab v1/estimate under OA6 and C4 boundary policy under OA7. Round-plan approval remains pending. Read C1, T1 to T9 and the evidence register before implementation.
+**Spec:** `docs/design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md`, spec approved by the owner on 2026-10-05, under OA4, revised T4 under OA5, prefab v1/estimate under OA6 and C4 boundary policy under OA7. OA8 approves R1. Read C1, T1 to T9 and the evidence register before implementation.
 
 ## Approval and execution gate, reconciled 2026-10-05
 
-The exact owner answer supplied by the controller is "Approve". It approves both specs, T1 to T9 with revised T4, the rigid prefab v1 scope and 12 to 18 elapsed-week estimate, and C4 exact-boundary differential policy. It does not approve this round plan or any actual changed query result. Named import-time acceptance of changed targets, distances, occlusion, stances and water boundaries remains required. R1 to R4 are full plans. Reconcile released prerequisite signatures before their owner review. No production execution has started.
+The exact owner answer supplied by the controller is "Approve". It approves both specs, T1 to T9 with revised T4, the rigid prefab v1 scope and pre-OA9 12 to 18 elapsed-week estimate, and C4 exact-boundary differential policy. That earlier policy answer did not approve round execution or any actual changed query result. OA8 subsequently approves R1 and the controller owns its active execution. R2 onward remain unapproved and need OA9 refinement before review. Named import-time acceptance of changed targets, distances, occlusion, stances and water boundaries remains required. R1 to R4 retain existing full plans, this branch holds the R1 planning copy only.
 
 Future verification uses HANDOFF's shared slot runner, restored only if absent. Set a unique log directory from the implementation worktree before Task 1, and retain different red/green log names. These are instructions, not commands run by this documents lane.
 
@@ -23,6 +23,14 @@ test -f /tmp/grimhollow-orch/slot-run.sh
 ```
 
 The 1 m allowance is a minimum vertical target reach-envelope height, preserving `MinimumObjectReachHeight`. It is not a 1 m action distance. Action range remains existing game policy and physical colliders never expand. Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in the game DECISIONS record.
+
+## OA9 checkpoint, approved R1 planning copy
+
+[OA9 and DG9.1 to DG9.6](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#oa9-design-gates-and-future-exit-proofs) add deep caves, deeper oceans and larger-world requirements. OA8 R1 approval persists. The controller owns active R1 execution in `wa-r1-document-identity`. This copy records future compatibility review without changing its six tasks, code or approval. R2 onward remain unapproved.
+
+- **Before R1 release, DG9.4:** Controller audits Task 1/4 float bounds/`MapTransform`/JSON schema, resolver signatures and canonical hashing for future extent/depth evolution. Record current range/precision constraints, schema/payload migration needs and peer identity compatibility. Closed schemas and float-based canonical hashes make later coordinate evolution a version/peer compatibility risk to audit, not a proven release blocker from this docs review. If a contract would foreclose OA9, surface it for separate controller/owner review before release. Do not rewrite R1 here or certify unlimited precision from float fields.
+- **Future choice:** [R2](2026-10-05-world-authoring-r2-authored-terrain-paint.md) compares native cave layers with own floors/ceilings against native collision/nav cave prefabs before its approval. [R3](2026-10-05-world-authoring-r3-shared-shapes-headless-builders.md)/[R8](2026-10-05-world-authoring-r8-native-rendering-residency-captures.md) refine coordinate/precision and multi-cell contracts. Neither doubles nor floating origin is selected now. CellOrigin's current one-cell grid is an adoption fixture.
+- **Named future evidence:** `R1CoordinateCompatibilityAudit` records each affected DTO/schema/hash/query path and migration risk. R2/R3/R8 supply quantified horizontal extents, depth/layer range and minimum precision, then boundary/far-origin proofs before capability certification. This audit does not claim implementation or a new R1 test cycle.
 
 ## Global Constraints
 
@@ -61,7 +69,7 @@ The following binding lines are copied from `AGENTS.md`.
 
 `AGENTS.md` routes implementation to `docs/CONTRIBUTOR-RULES.md`, including dependency seams, documentation sweep, package catalog and release rules. Player-facing GUI text uses `StringId` or `LocalizedText`, raw device input stays in `AppWindow`, and no consumer clients are launched for engine tooling work. Documentation alone does not bump the engine version. Package work rides the next available engine minor after concurrent pivot releases, re-reading main and tags at execution, with no reserved numeric engine versions. Schema numbers 4/5/6 are also baseline-relative and rebase together if occupied. Only the owner tags this program. The owning orchestrator handles integration and packing from pushed main. A delegated implementer stops at its verified commit and never merges, packs the shared feed or tags.
 
-The selected execution method is subagent-driven-development, but this R1 plan is separately unapproved. Execute serially only after owner plan approval. The implementation worktree required by HANDOFF is `/Users/antonio/KhaozEngine/.worktrees/wa-r1-document-identity` on `feature/wa-r1-document-identity`, created by the controller from current reconciled released CellOrigin main. Do not execute from this historical planning worktree or merge its entire branch into main. Before dispatch, inspect worktree existence and recheck refs/ancestry. The source baseline below is released main, not this planning branch. No next engine version is reserved.
+The selected execution method is subagent-driven-development and OA8 approves R1. The controller owns serial execution under that approval. The implementation worktree required by HANDOFF is `/Users/antonio/KhaozEngine/.worktrees/wa-r1-document-identity` on `feature/wa-r1-document-identity`, created by the controller from current reconciled released CellOrigin main. Do not execute from this historical planning worktree or merge its entire branch into main. Before dispatch, inspect worktree existence and recheck refs/ancestry. The source baseline below is released main, not this planning branch. No next engine version is reserved.
 
 Future starting guard, from the assigned implementation worktree:
 
@@ -727,7 +735,13 @@ Coverage: C1 schema/migration Task 1, numeric semantics Task 2, closure Task 3, 
 
 ## Outcome
 
-### Documentation reconciliation, 2026-10-05
+### OA9 documentation outcome, 2026-10-05
+
+- Recorded [OA9](../../design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md#owner-rulings-binding-direction) and this plan's [checkpoint](#oa9-checkpoint-approved-r1-planning-copy). Existing source-count fixtures and prior guard results below remain historical.
+- OA8 R1 approval is unchanged. The controller owns active execution and the R1 release compatibility audit, this lane edits its planning copy only. No capability, art, swimming, world enlargement or fresh benchmark is claimed.
+- This revision requires serial doc guards and explicit-path commit. The worker stops at the docs commit for controller verification/push, with no builds/tests/format/pack or integration.
+
+### Historical documentation reconciliation before OA8/OA9, 2026-10-05
 
 - Approval stage: specs approved with revised T4. R1 plan approval and execution remain pending. No round capability release is claimed.
 - Dependency caveat: R1 is reconciled against released CellOrigin main. Its owner plan review is pending. Start implementation from current reconciled engine main after the released CellOrigin change, never by merging this historical planning branch.

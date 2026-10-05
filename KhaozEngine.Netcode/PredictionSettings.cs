@@ -39,9 +39,9 @@ public readonly record struct PredictionSettings(
 
     /// <summary>Eases a heading-carrying state's yaw (<see cref="IPredictedState{TSelf}.HasYaw"/>) from the previous
     /// tick to the current one, the short way round, beside position and height. False (the default) renders the
-    /// last tick's heading, which steps once per tick. A hard snap, a teleport epoch advance, <c>Reset</c> and
-    /// <c>Reseed</c> cut the heading with the position. A non-snap reconcile keeps the inter-tick phase and moves only
-    /// the target. Turn it on only for a state that implements <see cref="IPredictedState{TSelf}.HasYaw"/>,
+    /// last tick's heading, which steps once per tick. A hard snap, a teleport epoch advance, <c>Reset</c>,
+    /// <c>ResetForTransition</c> and <c>Reseed</c> cut the heading with the position. A non-snap reconcile keeps the
+    /// inter-tick phase and moves only the target. Turn it on only for a state that implements <see cref="IPredictedState{TSelf}.HasYaw"/>,
     /// <see cref="IPredictedState{TSelf}.Yaw"/> and the three-argument <c>WithRenderState</c>, because a state keeping
     /// the defaults gains nothing and is read through a box.</summary>
     public bool InterpolateYaw { get; init; }
@@ -54,10 +54,12 @@ public readonly record struct PredictionSettings(
 /// <param name="HardSnapApplied">True if the correction cut instantly (rather than glided): the error met
 /// <see cref="PredictionSettings.HardSnapDistance"/>, OR the authoritative <see cref="IPredictedState{T}.TeleportEpoch"/>
 /// advanced (an in-session teleport cuts regardless of distance).</param>
-/// <param name="Teleported">True when the local player's world position changed DISCONTINUOUSLY this reconciliation.
-/// Three things set it, and nothing else does: the first reconcile after a
+/// <param name="Teleported">True when this reconciliation reports an intentional placement discontinuity.
+/// Four things set it, and nothing else does: the first reconcile after a
 /// <see cref="ClientPrediction{TState,TCommand}.Reset"/> (a first-ever join, which has no prior position to be
-/// continuous with), the first reconcile after a <see cref="ClientPrediction{TState,TCommand}.Reseed"/> whose resume
+/// continuous with), the first reconcile after a <see cref="ClientPrediction{TState,TCommand}.ResetForTransition"/>
+/// (an explicit transition, even at the same pose and epoch), the first reconcile after a
+/// <see cref="ClientPrediction{TState,TCommand}.Reseed"/> whose resume
 /// position sits at or beyond <see cref="PredictionSettings.HardSnapDistance"/> from where this client was, and an
 /// advance of the authoritative <see cref="IPredictedState{T}.TeleportEpoch"/> (an in-session server teleport:
 /// respawn, admin move, fast travel). A transport reconnect that resumes the same position is NOT a teleport, even

@@ -7675,7 +7675,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.25.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.26.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -7971,7 +7971,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.25.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.26.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8664,7 +8664,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.25.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.26.0" />
 ```
 
 ```csharp
@@ -11731,12 +11731,13 @@ lifecycle for animation timing, while the live vertical velocity remains on the 
   `ClientPrediction.RemainingPresentationMovement` reports the planar movement still to travel through
   inter-tick interpolation, in the state's position units, excluding the reconciliation offset. It reaches
   zero at the interpolation endpoint. An ordinary reconciliation translates both endpoints and preserves
-  this commanded segment. Reset, reseed and hard snap discard it.
+  this commanded segment. `Reset`, `ResetForTransition`, `Reseed` and hard snap discard it.
   The local heading steps once per tick by default, so a keyboard turn reads as a 30 Hz stutter on a fast display.
   Set `InterpolateYaw = true` on the `PredictionSettings` passed as `WorldClientConfig.Prediction` (default false)
   and `LocalRenderState.Move.FacingYaw`, and with it the local `EntityRenderState.FacingYaw`, eases from the
   previous tick's heading to the current one the short way round, at the cost of up to one tick of heading latency,
-  the same latency position already has. A reset, reseed, hard snap or teleport cuts it with the position.
+  the same latency position already has. `Reset`, `ResetForTransition`, `Reseed`, hard snap or teleport cuts it
+  with the position.
 
 ```csharp
 var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default, new WorldClientConfig { TickSeconds = 1f/30f });
@@ -15556,7 +15557,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.25.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.26.0" />
 ```
 
 ```csharp
@@ -15592,7 +15593,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.25.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.26.0" />
 ```
 
 ```csharp
@@ -15834,7 +15835,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.25.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.26.0" />
 ```
 
 ```csharp
@@ -17308,6 +17309,26 @@ The renderer-free foundation, one line each (all pure .NET / `System.Numerics`, 
   per-player state, and nothing re-announces either, so an evicted one leaks that state permanently. Terminal
   events are rare and self-limiting (at most one per peer, no payload buffer), so `Count` can exceed `Capacity`
   by however many are buffered. Use it for your own terminal events if you queue through this type.
+
+**Prediction lifecycle (`KhaozEngine.Netcode.ClientPrediction<TState, TCommand>`).** `Reset(initialState)`
+starts a new session with sequence 0 and empty pending history. `Reseed(basis)` resumes a reconnect with the
+sequence and pending commands preserved, so `Reconcile` can prune acknowledgements and replay the rest.
+An explicit transition uses `ResetForTransition(authoritativeState)` to preserve the next sequence while
+discarding all old replay. It installs the supplied prediction basis immediately, collapses planar, vertical
+and yaw interpolation, clears correction offsets and decay velocities, and zeroes `PredictedHorizontalSpeed`
+and `StepCumulativeY`.
+
+```csharp
+// After the consumer validates a new transition revision and its authoritative snapshot:
+prediction.ResetForTransition(authoritativeState);
+int seq = prediction.Predict(command); // continues the existing command sequence
+```
+
+The next `Reconcile` reports `Teleported` once, even at the same pose and epoch. Consecutive transition resets
+before reconciliation install the latest basis and coalesce into one signal. A later reset arms another.
+The consumer owns transition revision checks and transport resend history. Ordinary reconnects still use
+`Reseed`: a quiet resume glides without a teleport signal, while a resume at or beyond `HardSnapDistance` cuts
+and reports one. See the [prediction contract](../KhaozEngine.Netcode/README.md#clientpredictiontstate-tcommand).
 
 **Optional env files (`KhaozEngine.App.EnvFile`).** `Parse(TextReader)` returns ordered
 `IReadOnlyList<KeyValuePair<string, string>>` entries and leaves the reader open. Duplicate entries, key casing and
@@ -20174,7 +20195,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.25.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.26.0" />
 </ItemGroup>
 ```
 

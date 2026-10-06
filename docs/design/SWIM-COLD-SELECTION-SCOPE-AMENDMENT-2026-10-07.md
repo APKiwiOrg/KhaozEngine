@@ -117,5 +117,8 @@ The synthetic cases cover null-hint acquisition, unchanged witness after reconst
 body/support/coverage queries under it, readiness reset through refusal/throw and recovery, blocked
 access through all three entrypoints, known-hint reconstruction rejection, world/hint/identity/frame
 checks, missing/capacity refusal, stacked membership inputs and backing-ID repacking invariance.
-The separately requested prior-environment regression window is pending. Support selection and
-actual volumetric/native producer proof remain outstanding. Task 3 is not complete.
+The separately granted prior-environment regression window passed all 131 cases with no failures
+or skips, exit 0, in `/tmp/swim-cs1-regressions.log`. Before `--no-build`, the worktree was clean at
+e27d35a2d and the relevant source timestamps were unchanged since cold GREEN compilation. The exact
+seven-fixture filter excluded cold20 and the full suite. Compute was explicitly released.
+Support selection and actual volumetric/native producer proof remain outstanding. Task 3 is not complete.

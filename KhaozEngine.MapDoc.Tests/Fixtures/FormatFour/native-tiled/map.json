@@ -1,0 +1,78 @@
+{
+  "$schema": "mapdoc.manifest.schema.json",
+  "formatVersion": 4,
+  "id": "r2-format-four",
+  "schemeVersion": 1,
+  "bounds": {
+    "minX": -100,
+    "minZ": -100,
+    "maxX": 100,
+    "maxZ": 100
+  },
+  "tileSize": 64,
+  "sculptCellSize": 0.5,
+  "terrain": {
+    "seed": 7,
+    "waterLevel": -0.5,
+    "biomeBlend": 24,
+    "gentleFrequency": 0.02,
+    "gentleAmplitude": 0,
+    "detailFrequency": 0.03,
+    "detailOctaves": 4,
+    "biomes": [
+      {
+        "biome": "Meadow",
+        "baseHeight": 1.5,
+        "hillAmplitude": 0
+      }
+    ],
+    "features": []
+  },
+  "scatterLayers": [],
+  "companionLayers": [],
+  "exclusions": [],
+  "scatterOverrides": [],
+  "regions": [],
+  "playableBounds": {
+    "minX": -100,
+    "minZ": -100,
+    "maxX": 100,
+    "maxZ": 100
+  },
+  "nativeAssets": [
+    {
+      "id": "root-a",
+      "path": "assets/root-a",
+      "sha256": "ff6846b0a4cdb19db23191571cc0a96fe70139eb8a76fc2d1a6397d2cd82e1bd",
+      "payloadVersion": 1
+    },
+    {
+      "id": "root-b",
+      "path": "assets/root-b",
+      "sha256": "560aa5f234e4c7c6dc07f42c63f1c04c6c5b9add811a1d9411c1bcd334586e34",
+      "payloadVersion": 1
+    }
+  ],
+  "numericIdHighWaterMark": "13",
+  "resolverIdentity": {
+    "payloadVersion": 1,
+    "resolverVersion": 1
+  },
+  "tiles": [
+    {
+      "x": 1,
+      "z": -2,
+      "hash": "4bd50ba32f4aa9ff4a0c25ec2a147018e43f040096d992e4881fd83a0bafe99b"
+    },
+    {
+      "x": -1,
+      "z": 0,
+      "hash": "0b803a15b947045f2d80c7603169686264ebe23d76a2d34234b67cea327265fb"
+    },
+    {
+      "x": 0,
+      "z": 0,
+      "hash": "45bdad14a826d89b372cd1c83edec84f576b77d1c4e5cc3f86431fe9d643f49a"
+    }
+  ]
+}

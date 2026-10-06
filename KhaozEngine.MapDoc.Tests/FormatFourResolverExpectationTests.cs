@@ -26,7 +26,11 @@ public sealed class FormatFourResolverExpectationTests
     public void FormatFourTiledFixture_MatchesTheMonolithicWorld()
     {
         Assert.Empty(MapDocumentFile.VerifyTiled(FormatFourFixtures.TiledDirectory));
-        Assert.Equal(MapDocumentFile.SaveText(MapDocumentFile.Load(FormatFourFixtures.MonolithicPath)),
-                     MapDocumentFile.SaveText(MapDocumentFile.LoadTiled(FormatFourFixtures.TiledDirectory)));
+        MapDocument monolithic = MapDocumentFile.Load(FormatFourFixtures.MonolithicPath);
+        MapDocument tiled = MapDocumentFile.LoadTiled(FormatFourFixtures.TiledDirectory);
+        // Tiled loading groups placements by tile. Compare all fields after normalizing only that list order.
+        monolithic.Placements.Sort(static (a, b) => string.CompareOrdinal(a.Id, b.Id));
+        tiled.Placements.Sort(static (a, b) => string.CompareOrdinal(a.Id, b.Id));
+        Assert.Equal(MapDocumentFile.SaveText(monolithic), MapDocumentFile.SaveText(tiled));
     }
 }

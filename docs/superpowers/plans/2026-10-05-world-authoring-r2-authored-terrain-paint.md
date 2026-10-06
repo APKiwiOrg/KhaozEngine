@@ -506,7 +506,7 @@ Expected: PASS, 7 new cases plus every existing case in those classes.
 - Produces test-only records: `ResolverExpectations(string AuthoredHashFormatFour, IReadOnlyList<ExpectedPlacement> Placements, IReadOnlyList<ExpectedCall> Calls)`, `ExpectedPlacement(string Id, string Kind, string AssetId, long? NumericId, uint XBits, uint YBits, uint ZBits, uint YawBits, uint ScaleBits, IReadOnlyList<string> Tags)`, `ExpectedCall(uint XBits, uint ZBits)`.
 - Fixture document: `LoadText(AnalyticV3Json())`, then `Id = "r2-format-four"`, `ResolverIdentity = new(1, 1)`, `NativeAssets = NativeAssetFixtures.Valid().Roots`, `NumericIdHighWaterMark = 13`. Placement `a` is the migrated `old-inn` renamed `a`, `AssetId "tree"`, `NumericId 11`, `Y null`. Add `b` (`Kind "scenery"`, `AssetId "tree"`, `NumericId 12`, X 70, Z -70, Y 2.5, tags `first`, `second`) and `c` (`Kind "scenery"`, `AssetId "tree"`, `NumericId 13`, X 10, Z 10, Y null). Tile size 64 puts `a` in (-1, 0), `c` in (0, 0), `b` in (1, -2).
 
-- [ ] **Step 1: Write the expectation and guard tests**
+- [x] **Step 1: Write the expectation and guard tests**
 
 ```csharp
 // FormatFourResolverExpectationTests (MapDoc.Tests)
@@ -563,14 +563,14 @@ public void TileWorld_ReachesMapDocProjectsOnlyThroughTheTwoOracleTestProjects()
 
 The rump parses every top-level `*.csproj` (`LoadGraph`), so the harness is also checked by every existing architecture rule. The selective path adds the rump whenever a `.csproj` changes (`ci-selective-test.sh:133`), so these guards run on any harness project edit. At `ca13d62d7` no MapDoc or MapEdit project reaches TileWorld transitively, so the containment guard starts green.
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 Run: `wa_test t2-red-mapdoc "$MAPDOC" "FullyQualifiedName~FormatFourResolverExpectationTests"`
 Expected: build FAIL naming `FormatFourFixtures` and `ResolverExpectations`.
 Run: `wa_test t2-red-rump "$RUMP" "FullyQualifiedName~ArchitectureTests"`
 Expected: FAIL in `OracleHarness_IsOutsideTheSolutionAndBothCiTestSelections` and `OracleHarness_IsUnreferencedAndNotPackable` because the harness csproj does not exist yet. Every other architecture test passes.
 
-- [ ] **Step 3: Implement fixtures, the harness project and the recorder, then record once**
+- [x] **Step 3: Implement fixtures, the harness project and the recorder, then record once**
 
 `FormatFourRecorder.Record_FormatFourFixtures` requires `KHAOZ_R2_RECORD_DIR` and throws `set KHAOZ_R2_RECORD_DIR` when absent (never skips). It asserts `MapDocumentFile.CurrentFormatVersion == 4`, writes the monolithic file, the tiled directory and the expectations JSON (float bit patterns as unsigned integers) and prints `fixture digest <64 hex>`. These fixtures are synthetic and public, so printing is allowed here and nowhere in the private tests. Before recording, confirm `git diff a87038f5a HEAD -- KhaozEngine.MapDoc/MapResolver.cs KhaozEngine.MapDoc/MapAuthoredIdentity.cs` is empty, so the recording is the released resolver.
 
@@ -578,7 +578,7 @@ Run: `wa_run t2-harness-build dotnet build "$HARNESS" -c Release`
 Run: `wa_run t2-record env KHAOZ_R2_RECORD_DIR="$PWD/KhaozEngine.MapDoc.Tests/Fixtures/FormatFour" dotnet test "$HARNESS" -c Release --no-build --filter "FullyQualifiedName~FormatFourRecorder"`
 Expected: both exit 0, the second prints the digest. Pin it as `FormatFourFixtures.PinnedFixtureDigest`.
 
-- [ ] **Step 4: Run green, including harness format**
+- [x] **Step 4: Run green, including harness format**
 
 Run: `wa_test t2-green-mapdoc "$MAPDOC" "FullyQualifiedName~FormatFourResolverExpectationTests"` (PASS, 3 tests)
 Run: `wa_test t2-green-rump "$RUMP" "FullyQualifiedName~ArchitectureTests"` (PASS, 3 new tests plus every existing architecture case)
@@ -3349,3 +3349,65 @@ proofs/2026-10-07-r2-task2-red.json, including log and TRX hashes. No retries, h
 project change, recorder, generated fixture or private input was introduced. This is an intentional
 RED checkpoint only. Remaining Task2 implementation, one-time recorder, GREEN, harness format and
 review remain required and unopened. No full Task2 completion or downstream work is claimed.
+
+
+### Task 2 public recording completed once
+
+The owner directed progress after the idle checkpoint. With Gauge unable to assign an implementer,
+parent prepared the approved helpers, harness and recorder inline. Pivot independently reviewed the
+complete implementation diff against Task2 and granted the bounded secondary build/record window.
+The harness built with zero warnings/errors. One recorder invocation passed one case and produced
+seven public synthetic files. No private data, workflow, solution entry or production API changed.
+
+The recorder and an independent byte inspection agree on fixture digest
+`d71a03bee5142f1f4e8d4b9bca34a147d145d4fd9e74ea0c46de0b6d9567c93a`.
+The manifest covers the monolithic document, tiled manifest and three tiles, persistent empty
+save-lock file, and resolver expectations. Released resolver/identity source differences against
+a87038f5a were empty. Placement heights and callback order matched the approved literals.
+Proof is proofs/2026-10-07-r2-task2-recording.json.
+
+Secondary compute and fixture-output ownership were explicitly released before pinning the digest.
+The exact digest is now pinned, and all recorded bytes are unchanged. Three resolver expectations,
+34 architecture cases and explicit harness/scoped format checks are the next scheduled proof.
+The recorder is not rerun. Task2 is not complete until those checks and the preserved review pass.
+
+
+### Task 2 first GREEN failure and reviewed ordering correction
+
+The first resolver GREEN executed three cases, two passed and the tiled/monolithic raw SaveText
+comparison failed. No architecture or format command followed. Secondary compute was released.
+The immutable-fixture and recorded-resolver bit-pattern cases passed. All seven recorded bytes
+and the pinned digest stayed unchanged.
+
+Source inspection shows the released tile index orders tiles by Z then X and Load appends their
+placements. The fixture therefore loads b,a,c from tiles but a,b,c from the monolithic document.
+SaveText preserves that list order, while authored identity treats placement order as nonsemantic.
+The test now sorts only the two loaded placement lists by ordinal ID, then retains VerifyTiled
+and full SaveText equality. No field is omitted or tolerance relaxed. This is a correction to the
+plan's raw serialization-order assumption, not a change to production or the frozen recording.
+Pivot independently checked the source path and exact test delta and accepted the correction.
+Evidence is proofs/2026-10-07-r2-task2-first-green-ordering.json.
+
+A new bounded window is queued for the changed three-case resolver run, then the previously unrun
+architecture cases and two diagnostic-verbosity format checks. The recorder remains single-use.
+No further owner approval is required for this corrected test subject within approved Task2.
+
+
+### Task 2 focused verification complete
+
+After the reviewed ordering correction, all three resolver expectations and all34architecture cases
+passed with zero failures/skips. The first harness-format run found only initializer whitespace.
+Those line breaks were corrected, preserving every non-whitespace character and every recorded byte.
+No test or recorder was repeated for that whitespace-only correction.
+
+The subsequently granted harness and scoped-source format checks both exited0 with diagnostic
+verbosity and no workspace warnings/errors. Harness coverage includes its code-style/reference
+analyzers and eight documents. Solution coverage includes the requested MapDoc.Tests and
+KhaozEngine.Tests documents and analyzer passes, with zero changes. Secondarycompute was released.
+Complete focused proof is proofs/2026-10-07-r2-task2-verification.json.
+
+The fixture directory has the scoped text/eol=lf Git rule, preserving raw hashes on Windows
+checkouts. Initial failure evidence remains separate. Task2's public fixtures and isolated harness
+are ready for the scoped commit. No private shipped data was read, no production resolver or
+format changed, and no main/feed/tag or native adoption is included. Task3 owns the later private
+entry boundary and exhaustive source handling.

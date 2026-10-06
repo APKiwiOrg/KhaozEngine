@@ -1,0 +1,23 @@
+{
+  "$schema": "../../mapdoc.tile.schema.json",
+  "placements": [
+    {
+      "id": "b",
+      "kind": "scenery",
+      "x": 70,
+      "z": -70,
+      "y": 2.5,
+      "yaw": 0,
+      "scale": 1,
+      "tags": [
+        "first",
+        "second"
+      ],
+      "numericId": "12",
+      "assetId": "tree"
+    }
+  ],
+  "spawns": [],
+  "playerSpawns": [],
+  "sculpt": []
+}

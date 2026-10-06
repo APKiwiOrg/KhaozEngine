@@ -1,0 +1,57 @@
+{
+  "base": "66ebb4431fe685a29ba892f54490162e97d3243b",
+  "released_resolver_diff": "empty versus a87038f5a for MapResolver.cs and MapAuthoredIdentity.cs",
+  "harness_build_exit": 0,
+  "build_warnings": 0,
+  "record_exit": 0,
+  "record_tests_passed": 1,
+  "record_invocations": 1,
+  "fixture_digest": "d71a03bee5142f1f4e8d4b9bca34a147d145d4fd9e74ea0c46de0b6d9567c93a",
+  "files": [
+    {
+      "path": "native-monolithic.mapdoc.json",
+      "sha256": "f97e6cf21d4600f98ad8e5e8021e5ff7192947ac245b8c1c01081927d673ea35",
+      "bytes": 1932
+    },
+    {
+      "path": "native-tiled/.mapdoc-save.lock",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "native-tiled/map.json",
+      "sha256": "23bebc01bdbac5a48a61365fe720a1b50cfeb62f63585fd14cd34e66f587c9e7",
+      "bytes": 1656
+    },
+    {
+      "path": "native-tiled/tiles/s_-1_0/t_-1_0.0b803a15b947045f2d80c7603169686264ebe23d76a2d34234b67cea327265fb.json",
+      "sha256": "ea6756601447c36eb9041304865b25d97a04e46fff3c044f957d1990ff6b19bc",
+      "bytes": 365
+    },
+    {
+      "path": "native-tiled/tiles/s_0_-1/t_1_-2.4bd50ba32f4aa9ff4a0c25ec2a147018e43f040096d992e4881fd83a0bafe99b.json",
+      "sha256": "528783aaac4bfc05ce8c5493406cc6d643771012c5b2855da9f34d6a0346b0de",
+      "bytes": 368
+    },
+    {
+      "path": "native-tiled/tiles/s_0_0/t_0_0.45bdad14a826d89b372cd1c83edec84f576b77d1c4e5cc3f86431fe9d643f49a.json",
+      "sha256": "8f618e75db9483c942172e5c5679c5de8009db86ec79b02b68ca6859743f3509",
+      "bytes": 310
+    },
+    {
+      "path": "resolver-v1-expectations.json",
+      "sha256": "481839b567a006bda54b645e1592d160d59a888177aae0e9cde23df69ad9404f",
+      "bytes": 1122
+    }
+  ],
+  "build_log_sha256": "3f643a5317085a8b1cbd3c177e1f2c1005d2cdc71e931d17956630b5e7149f65",
+  "record_log_sha256": "40edc882011899901199462aac8adc26654f6e6cf8a9ac4e2beca7c1a495a436",
+  "source_hashes": {
+    "KhaozEngine.MapDoc.Tests/AssertFixtures.cs": "feb22864bcd546ce95be9b8195f1c7a3c9c02c704d39266a171fd7ea7bf04b6b",
+    "KhaozEngine.MapDoc.Tests/FormatFourFixtures.cs": "33e0c3c93e5aa6319a6d10c5e8ee418ee6cdc6f26f7a51e77dfe0b1753a725f5",
+    "KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj": "22ef28d2cd9160f32cb48307e849656a8e902b063e692e3e34e62b3bc1bb7784",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/KhaozEngine.MapDoc.OracleHarness.Tests.csproj": "23ce577fd1c352491b13cb0a67feb77a1e82686ac51e467c35e84faeb279cc34",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/FormatFourRecorder.cs": "e87cab04186b55254b5a03342cbc0e19de9c8cdf62e559a114c78c3a008a2078",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/README.md": "8dd97fb19ffc1a99a43bd97bb58a1c457b24e1f9ed5c083add3f456ab768462b"
+  }
+}

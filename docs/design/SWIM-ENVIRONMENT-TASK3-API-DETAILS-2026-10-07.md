@@ -186,8 +186,29 @@ the adapter's intersection helper. Unsupported analytic geometry refuses explici
 approximating a complete answer. Tests of this adapter prove the generic contract and its consumers
 on declared finite geometry. They cannot establish completeness of a future native producer.
 Jump-through-ceiling prevention and movement acceptance remain later mover/jump proofs, not
-conclusions from interval facts alone. Executable fixture count and filter will be requested only
-after authoring, separately from the queued support-selection RED.
+conclusions from interval facts alone. Each executable subset gets its own exact count and filter
+request after authoring. This matrix does not authorize a heavy command.
+
+The first executable subset is now authored as 25 finite cases in
+`KhaozEngine.Game.Tests/Locomotion/MovementEnvironmentVolumeTests.cs`, selected by
+`FullyQualifiedName~MovementEnvironmentVolumeTests`. Its test-only
+`AnalyticMovementEnvironment` and `AnalyticCapsuleVolume` use at most eight rooms, eight water
+cells and eight declared connections. The exercised capsule has radius 0.25 m and half-height
+0.75 m, centre coordinates within 16 m and displacement components within 8 m. Other capsule
+families/envelopes refuse. Double-precision piecewise quadratics compute rounded capsule versus
+box intersection. Contact fractions round outward and the declared geometric error is 0.00001 m.
+Assertions independently calculate crossing thresholds and inspect every returned span, including
+closed start/end tangencies. The first validation result and correction are recorded below.
+
+This subset covers axis-aligned clipped containment, both vertical crossing directions, oblique
+shore entry, actual rounded-cap overlap, adjacent domains, declared shaft access, rectangular
+partition invariance and refusal atomicity. A small extension to the existing acquisition fixture
+adds an optional body-aware sample callback, preserving its original fixed-value fallback.
+There are no production changes in this preparation. Arbitrary nonrectangular unions refuse when
+their dry coverage cannot be certified. Variable sloped floors/ceilings, complete impact constraints
+and movement acceptance are not proved by this subset. They remain required later proofs rather
+than a native producer claim or a change to F3. No shared signature amendment is needed for these
+25 cases. The first validation request is a compile-enabled finite run, not a missing-capability RED.
 
 ## Implementation evidence
 
@@ -248,4 +269,22 @@ Sources remained unchanged during that granted run and compute was explicitly re
 This proves finite real-Bepu clearance before highest-support selection, canonical alias versus
 independent-owner ties, legal-link provenance, separate sloped capsule placement and refusal on
 missing or uncertifiable physical support. It is not native geometry, swept traversal or Grimhollow
-bridge-route evidence. The volumetric fixture matrix above remains unexecuted preparation.
+bridge-route evidence. The remaining volumetric proof is tracked separately below.
+
+The first volumetric validation compiled and exited 1 with 24 passes, one failure and zero skips
+in `/tmp/swim-environment-volume-first.log`. FinalEndpointTangencyIsNotLostByHalfOpenPathSpans
+expected one contact at the final zero-length span and received none. This was an unexpected
+test-producer defect, not a missing-capability RED. The secondary compute slot was released.
+
+The closed-form fixture clipped the quadratic root before checking its closed endpoint. For the
+exact supplied float radius 0.25099998712539673, origin -0.5019999742507935 and displacement
+0.25099998712539673, scalar arithmetic gives a lower root of 1.0000000000000002, outside the
+path ending at 1. Direct endpoint squared distance and squared radius are both
+0.06300099353694932. The fixture now evaluates every closed piece boundary directly in addition
+to the quadratic interior. It adds no tolerance and preserves the original endpoint assertion.
+The separately granted second run passed all 25 unchanged assertions, zero failures and skips,
+exit 0 in `/tmp/swim-environment-volume-second.log`. Both runs compiled Release with `-m:1` through
+the coordinator's secondary wrapper. That slot was explicitly released after each run.
+This validates the declared finite box/rectangular-union subset and the closed endpoint correction.
+No production movement or native geometry change follows from this fixture failure. Variable
+sloped floor/ceiling clipping, arbitrary nonrectangular unions and full mover proofs remain open.

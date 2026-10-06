@@ -28,6 +28,8 @@ public sealed class EnvironmentAcquisitionFixture : IMovementEnvironmentProvider
     public int SampleCalls;
     public MovementWaterPoint Point;
     public Action? OnSample;
+    public delegate MovementWaterPoint SampleHandler(in MovementBodyQuery body);
+    public SampleHandler? OnBodySample;
     public delegate MovementSupportSet SupportHandler(in MovementSupportRequest request, Span<MovementSupportCandidate> candidates);
     public delegate MovementCoverageResult CoverageHandler(in MovementMediumSweepQuery query,
         Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts);
@@ -113,7 +115,7 @@ public sealed class EnvironmentAcquisitionFixture : IMovementEnvironmentProvider
             owner.SampleCalls++;
             owner.SampleSpaceObserved = body.CurrentSpace;
             owner.OnSample?.Invoke();
-            return owner.Point;
+            return owner.OnBodySample is { } sample ? sample(body) : owner.Point;
         }
 
         public MovementSupportSet EnumerateSupport(in MovementSupportRequest request, Span<MovementSupportCandidate> candidates)

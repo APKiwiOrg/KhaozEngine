@@ -138,11 +138,17 @@ public partial class LowLipTraversalTests
     // A directed-edge discriminator, not a repair: retain each captured surface identity, then ask whether the
     // unchanged proof connects the physical resting positions associated with those surfaces.
     [Theory]
-    [InlineData(-0.375f, -EdgeOffset)]
     [InlineData(-EdgeOffset, -0.375f)]
     [InlineData(-EdgeOffset, EdgeOffset)]
     [InlineData(EdgeOffset, -EdgeOffset)]
     public void RealFootprintProbeConnectsTheRestingLipEndpoints(float fromX, float toX)
+        => CheckRestingLipEdge(fromX, toX, trace: false);
+
+    [Fact]
+    public void RealFootprintProbeReportsTheRestingBankApproach()
+        => CheckRestingLipEdge(-0.375f, -EdgeOffset, trace: true);
+
+    private void CheckRestingLipEdge(float fromX, float toX, bool trace)
     {
         using BepuPhysicsWorld world = LipWorld(RestingLip);
         GroundMoveContext context = Context(world);
@@ -159,14 +165,51 @@ public partial class LowLipTraversalTests
         bool toFits = footprint.Accepts(to.Feet) && footprint.Accepts(toRest);
         bool setup = fromBody.Grounded && toBody.Grounded && fromFits && toFits &&
             fromXz <= GroundTraversalProbe.ArrivalTolerance && toXz <= GroundTraversalProbe.ArrivalTolerance;
+        // Current TryEdge calls the predicate twice on endpoints, once after its hold, then at most 63 more
+        // times after grounded/finite core steps. All 66 accepted inputs with a false result mean budget exhaustion.
+        // Fewer inputs leave preceding grounded/finite/initial-near short-circuits unobserved.
+        const int ObservationLimit = 66;
+        var observations = new List<(Vector3 Feet, bool Accepted)>(trace ? ObservationLimit : 0);
+        int omitted = 0;
+        bool Observe(Vector3 point)
+        {
+            bool accepted = footprint.Accepts(point);
+            if (observations.Count < ObservationLimit) observations.Add((point, accepted));
+            else omitted++;
+            return accepted;
+        }
+        Func<Vector3, bool> predicate = trace ? Observe : footprint.Accepts;
         bool? proved = setup
-            ? GroundTraversalProbe.TryEdge(context, Tuning, fromRest, toRest, footprint.Accepts, Tick, 64)
+            ? GroundTraversalProbe.TryEdge(context, Tuning, fromRest, toRest, predicate, Tick, 64)
             : null;
-        _restingOutput.WriteLine($"from source column=({from.X},{from.Z}) ordinal={from.Ordinal}, raw={from.Feet}, " +
-            $"rest={fromRest}, grounded={fromBody.Grounded}, xzDelta={fromXz:R}, raw/rest footprint={fromFits}");
-        _restingOutput.WriteLine($"to source column=({to.X},{to.Z}) ordinal={to.Ordinal}, raw={to.Feet}, " +
-            $"rest={toRest}, grounded={toBody.Grounded}, xzDelta={toXz:R}, raw/rest footprint={toFits}, " +
-            $"proof={proved?.ToString() ?? "not run, setup refused"}");
+        if (trace)
+        {
+            _restingOutput.WriteLine($"sources from=({from.X},{from.Z})/{from.Ordinal} raw={from.Feet} rest={fromRest}, " +
+                $"to=({to.X},{to.Z})/{to.Ordinal} raw={to.Feet} rest={toRest}, " +
+                $"setup={setup} grounded={fromBody.Grounded}/{toBody.Grounded} xz={fromXz:R}/{toXz:R} " +
+                $"footprint={fromFits}/{toFits}");
+            bool allAccepted = observations.TrueForAll(o => o.Accepted);
+            string result = !setup ? "setup refused" : proved is true ? "arrived" :
+                omitted == 0 && observations.Count == ObservationLimit && allAccepted
+                    ? "budget exhausted by source call order" : "terminal cause unobserved";
+            _restingOutput.WriteLine($"predicate observations={observations.Count}, omitted={omitted}, " +
+                $"all accepted={allAccepted}, proof={proved}, result={result}");
+            for (int i = Math.Max(0, observations.Count - 4); i < observations.Count; i++)
+            {
+                var observation = observations[i];
+                Vector3 residual = observation.Feet - toRest;
+                _restingOutput.WriteLine($"observation {i + 1}: feet={observation.Feet}, target={toRest}, " +
+                    $"residual={residual}, distance={residual.Length():R}, accepted={observation.Accepted}");
+            }
+        }
+        else
+        {
+            _restingOutput.WriteLine($"from source column=({from.X},{from.Z}) ordinal={from.Ordinal}, raw={from.Feet}, " +
+                $"rest={fromRest}, grounded={fromBody.Grounded}, xzDelta={fromXz:R}, raw/rest footprint={fromFits}");
+            _restingOutput.WriteLine($"to source column=({to.X},{to.Z}) ordinal={to.Ordinal}, raw={to.Feet}, " +
+                $"rest={toRest}, grounded={toBody.Grounded}, xzDelta={toXz:R}, raw/rest footprint={toFits}, " +
+                $"proof={proved?.ToString() ?? "not run, setup refused"}");
+        }
         Assert.True(setup, "endpoint setup or footprint failed, no directed-edge conclusion");
         Assert.True(proved is true, "the unchanged directed proof refused the supported resting endpoints");
     }

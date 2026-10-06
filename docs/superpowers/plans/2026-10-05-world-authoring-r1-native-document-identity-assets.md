@@ -1860,3 +1860,15 @@ from the row-only edit-loss issue filed as #1311. Five docs guards and diff chec
 The written design now awaits owner approval, including API transition, version classification,
 Apply/Preview gate and explicitly deferred same-base limits. Implementation planning follows
 approval. No runtime fix, version change, new tag or publication success is claimed.
+
+
+### OA15 approval and implementation planning, 2026-10-06
+
+Owner approved the catalog design and next-free-minor direction under OA15. The approved design
+status is committed at cf0ed48a2 on fix/wa-catalog-freeze. One planner now writes the full
+2026-10-06-catalog-conditional-freeze-repair.md plan in that worktree. PROGRAM.md records its task.
+The owner still approves the full plan before production execution. No release tag is authorized.
+
+Known follow-ups are game wrapper adoption https://github.com/APKiwiOrg/Grimhollow/issues/467,
+same-base text-route boot liveness #1312, and separate row-only edit loss #1311. No deferred repair
+or game pin change is included. R2 design approval remains separate and pending.

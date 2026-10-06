@@ -247,6 +247,9 @@ Tests: new `KhaozEngine.Game.Tests/Physics/CapsuleContactCoverageTests.cs`.
 
 ## Task 3: Explicit environment values, context and support selection
 
+The [approved Task 3 API details](../../design/SWIM-ENVIRONMENT-TASK3-API-DETAILS-2026-10-07.md)
+complete the witness/pin signatures, finite capacity limits and six migration lifecycle/identity clarifications.
+
 **Files:** New Locomotion fact/identity/provider/context/support files above.
 Tests: new `KhaozEngine.Game.Tests/Locomotion/MovementEnvironmentContractTests.cs` and test-only
 `Locomotion/Fixtures/AnalyticMovementEnvironment.cs` using real Bepu solids.

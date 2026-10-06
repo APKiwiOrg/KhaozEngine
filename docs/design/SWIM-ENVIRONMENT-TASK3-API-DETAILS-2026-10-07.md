@@ -336,6 +336,39 @@ shape change is part of this extension, and arbitrary non-box containment remain
 
 ## Implementation evidence
 
+### Continuous single-slope preparation
+
+After the owner retired the overnight coordinator, scheduling moved directly to pivot and semantic
+coordination directly to world authoring. World authoring confirmed compatibility of the bounded
+analytic single-half-space producer with explicit refusal of unproved simultaneous boundaries.
+This changes no facade or native ownership.
+
+`MovementEnvironmentSlopeTests` now contains 12 finite cases using the test-only
+`AnalyticSlopedMovementEnvironment`. The first granted validation compiled and passed all 12 cases,
+zero failures/skips, exit 0 in `/tmp/swim-environment-slope-first.log`. Pivot independently inspected
+both source files and their hashes before granting the secondary slot. Sources remained unchanged
+during the run, with no retry or extra fixture. The secondary slot was explicitly released. The producer
+uses the exact support function of the upright capsule against one affine floor or ceiling plane.
+Signed distance varies affinely along the whole segment, so wet and full-coverage crossing fractions
+are solved directly. Every other finite bound must contain the entire swept capsule with the stated
+error margin before Known is returned. No midpoint membership sample substitutes for clipping.
+Midpoints only classify the open intervals between the analytically determined crossings.
+
+The finite family uses radius 0.25 m, half-height 0.75 m, slope magnitude at most 0.5, intercept
+magnitude at most 1 m, a 12 m enclosure and displacement components at most 4 m. It keeps the existing
+0.001 m skin and declares 0.00001 m numerical error. The capsule support point inside the wet
+half-space supplies each explicitly located column fact. The half-space inequality independently
+certifies the complete footprint and path, not that one column. Existing span/contact capacities
+and atomic output publication remain. A missing dependency or participating second unproved boundary
+returns Unresolved without either caller buffer changing.
+
+Cases cover floor/ceiling full-to-mixed transitions in both directions, following each slope in both
+directions, a capsule fully inside the wet half-space while its bounding prism crosses the boundary,
+stationary skin contact against matching real Bepu solids, second-boundary refusal and missing-data
+refusal. The partial-coverage poses deliberately overlap the matching solid and are asserted as such.
+Coverage is not permission to commit those paths. The proof will remain finite analytic evidence,
+not native patch clipping, residency, tiled seams, full mover behavior or G1b acceptance.
+
 The initial value RED compiled and exited 1 with 27 missing-runtime-type failures. After value
 implementation, the same 27 assertions using direct public types passed in Release with no skips,
 exit 0, in `/tmp/swim-environment-values-green.log`. This validates keys, body/interval/point

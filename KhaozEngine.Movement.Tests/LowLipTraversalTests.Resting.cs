@@ -11,6 +11,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Movement;
@@ -31,6 +32,58 @@ public partial class LowLipTraversalTests
     private const float RestingLip = 0.0425f;
     private const float EdgeOffset = 0.125f;
     private const float Tick = 1f / 30f;
+
+    // One public Hold per case, three output rows. The floor shape matches FlatWorld exactly, but its retained
+    // handle lets the movement view exclude only that shape while keeping the analytic ground at Y zero.
+    [Theory]
+    [InlineData(-0.145f, false)]
+    [InlineData(-0.145f, true)]
+    [InlineData(-0.135f, false)]
+    [InlineData(-0.135f, true)]
+    [InlineData(-0.128f, false)]
+    [InlineData(-0.128f, true)]
+    public void HoldReportsTheLowLipSupportBandWithAndWithoutThePhysicsFloor(float x, bool excludeFloor)
+    {
+        using var world = new BepuPhysicsWorld();
+        StaticHandle floor = world.AddStatic(new BoxShape(new Vector3(8f, 0.1f, 8f)),
+            Pose.At(new Vector3(0f, -0.1f, 0f)));
+        world.AddStatic(new BoxShape(new Vector3(1f, RestingLip / 2f, 2f)),
+            Pose.At(new Vector3(1f, RestingLip / 2f, 0f)));
+        using IPhysicsWorldQueryView view = world.CreateQueryViewExcludingStatics(excludeFloor ? [floor] : []);
+        Assert.Same(world, view.SourceWorld);
+        Assert.Equal(world.Origin, view.Origin);
+        MoveTuning tuning = Tuning with { WalkSpeed = 1f, RunSpeed = 1f, AirMomentum = false };
+        CapsuleShape capsule = CharacterMovement.CapsuleFor(tuning);
+        Pose floorProbe = Pose.At(new Vector3(-2f, tuning.CapsuleHalfHeight - 0.01f, Row));
+        Assert.True(world.ComputePenetration(capsule, floorProbe, out _));
+        Assert.Equal(!excludeFloor, view.ComputePenetration(capsule, floorProbe, out _));
+
+        Vector3 feet = new(x, 0f, Row);
+        MoveState before = StandingAt(feet);
+        // Check the handle-retaining fixture against the original, without taking another movement step.
+        using BepuPhysicsWorld original = LipWorld(RestingLip);
+        bool sourceHit = world.ComputePenetration(capsule, Pose.At(before.Position), out Vector3 sourceMtv);
+        bool originalHit = original.ComputePenetration(capsule, Pose.At(before.Position), out Vector3 originalMtv);
+        Assert.Equal(originalHit, sourceHit);
+        Assert.InRange(Vector3.Distance(sourceMtv, originalMtv), 0f, 0.000001f);
+
+        var context = new GroundMoveContext((_, _) => 0f, groundNormal: null, physics: world,
+            clampXz: null, medium: null, movementQueries: view);
+        bool pre = view.ComputePenetration(capsule, Pose.At(before.Position), out Vector3 preMtv);
+        MoveState after = NpcGroundMovement.Hold(before, Tick, tuning, context);
+        Vector3 afterFeet = after.Position - Vector3.UnitY * tuning.CapsuleHalfHeight;
+        bool post = view.ComputePenetration(capsule, Pose.At(after.Position), out Vector3 postMtv);
+        _restingOutput.WriteLine(string.Create(CultureInfo.InvariantCulture,
+            $"band x={x:R}, excludeFloor={excludeFloor}, lip={RestingLip:R}, dt={Tick:R}, fixtureEquivalent=True"));
+        _restingOutput.WriteLine(string.Create(CultureInfo.InvariantCulture,
+            $"before feet={feet}, grounded={before.Grounded}, overlap={pre}, mtv={preMtv}, depth={preMtv.Length():R}"));
+        _restingOutput.WriteLine(string.Create(CultureInfo.InvariantCulture,
+            $"after feet={afterFeet}, delta={afterFeet - feet}, grounded={after.Grounded}, overlap={post}, mtv={postMtv}, depth={postMtv.Length():R}"));
+        Assert.True(after.Grounded);
+        Assert.True(float.IsFinite(afterFeet.Y));
+        Assert.InRange(new Vector2(afterFeet.X - feet.X, afterFeet.Z - feet.Z).Length(), 0f,
+            GroundTraversalProbe.ArrivalTolerance);
+    }
 
     [Theory]
     [InlineData(RestingLip)]

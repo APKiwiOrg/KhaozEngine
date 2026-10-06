@@ -24,6 +24,9 @@ public sealed class EnvironmentAcquisitionFixture : IMovementEnvironmentProvider
     public bool Pinned;
     public bool Disposed;
     public int WitnessReads;
+    public int SampleCalls;
+    public MovementWaterPoint Point;
+    public Action? OnSample;
 
     public EnvironmentAcquisitionFixture(IPhysicsWorldQueryView view)
     {
@@ -85,6 +88,13 @@ public sealed class EnvironmentAcquisitionFixture : IMovementEnvironmentProvider
         public void AssertCurrent()
         {
             if (owner.Fault == "stale-pin") throw new InvalidOperationException("Pin is stale.");
+        }
+
+        public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body)
+        {
+            owner.SampleCalls++;
+            owner.OnSample?.Invoke();
+            return owner.Point;
         }
 
         public void Dispose()

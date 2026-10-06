@@ -32,7 +32,7 @@ public readonly struct MovementQueryLeaseId : IEquatable<MovementQueryLeaseId>
 }
 
 /// <summary>Thread-affine read interval. Publish pure outputs before disposal and mutate physics afterward.</summary>
-public sealed class MovementQueryLease : IDisposable
+public sealed partial class MovementQueryLease : IDisposable
 {
     readonly IPhysicsWorldQueryView _view;
     readonly IPhysicsQueryLease _physics;

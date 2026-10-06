@@ -19,6 +19,7 @@ public interface IMovementEnvironmentPin : IDisposable
     long EnvironmentGeneration { get; }
     MovementFrameDescriptor Frame { get; }
     MovementScopeWitness Witness { get; }
+    MovementWaterPoint SampleCentreWater(in MovementBodyQuery body);
     void AssertCurrent();
 }
 

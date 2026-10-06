@@ -415,6 +415,16 @@ and is thread-affine. Dispose it before physical writes. Pin disposal precedes p
 with finally-based release even if producer cleanup throws. Local `MovementQueryLeaseId` equality and
 hashing use source reference identity, never a backend's overridden value equality or portable hashing.
 
+`MovementQueryLease.SampleCentreWater` validates the body, certified scope and current pin before
+and after the producer call. Unknown remains unknown, and known data from another world is refused.
+It queries centre-feet membership, not full capsule coverage. `MovementSupportRequest` and
+`MovementSupportCandidate` retain legal-transition context and canonical owner provenance.
+`MovementMediumSweepQuery`, `MovementCoverageSpan`, `MovementDomainContact` and
+`MovementCoverageResult` describe bounded complete-path coverage, including simultaneous wet and dry
+portions. Their constructors reject invalid geometry/counts and cannot make a refusal expose a prefix.
+`FramedMovementState` preserves its recorded physics origin and optional canonical selection. It does
+not convert or relabel positions during construction.
+
 ## Types
 
 - **`MoveCommand`** - movement intent: camera-relative XZ axis, run flag, camera yaw, jump bit, and (17.26.0) the

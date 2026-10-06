@@ -10,10 +10,15 @@ internal sealed class EquatablePhysicsView(IPhysicsWorldQueryView inner) :
 {
     public IPhysicsWorld? ReportedSource;
     public IPhysicsWorld? LeaseSource;
+    public int ValueHashCalls;
     public IPhysicsWorld SourceWorld => ReportedSource ?? inner.SourceWorld;
     public Vector3 Origin => inner.Origin;
     public override bool Equals(object? obj) => obj is EquatablePhysicsView;
-    public override int GetHashCode() => 1;
+    public override int GetHashCode()
+    {
+        ValueHashCalls++;
+        return 1;
+    }
 
     public IPhysicsQueryLease AcquireQueryReadLease() =>
         new SourceLease(((IPhysicsQueryLeaseSource)inner).AcquireQueryReadLease(), LeaseSource ?? SourceWorld);

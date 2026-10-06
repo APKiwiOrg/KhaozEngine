@@ -140,3 +140,11 @@ They prove actual Bepu preparation/pin ordering, exact reference binding despite
 sources/views, one captured witness, partial-pin refusal cleanup and throwing validation/disposal.
 The slot was released immediately. Span forwarding, support, coverage, frame rebinding and the
 remaining lease-thread/local-ID cases are not inferred from this lifecycle-only run.
+
+The next query/value RED compiled with five existing lifecycle controls passing and 27 missing
+capability failures, seven for centre sampling and twenty for value types. The corresponding
+direct-type GREEN exited 0 with all 32 cases passing and no skips in
+`/tmp/swim-environment-query-green.log`. This adds evidence for centre-query scope/lifetime/world
+guards, the named support/coverage/framed value invariants, two finite foreign-thread refusals,
+disposed validation, nested acquisition and local reference equality/hashing. It does not prove
+Span forwarding, support selection, frame rebinding or volumetric geometry coverage.

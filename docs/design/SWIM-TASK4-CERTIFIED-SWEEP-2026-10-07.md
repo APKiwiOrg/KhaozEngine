@@ -141,8 +141,8 @@ stationary query. A zero-displacement Hit can describe touch/overlap but cannot 
 placement. The result defaults to Unresolved, and an unresolved result exposes no usable prefix.
 Closed endpoint/tangency classification must account for the backend tester differences below.
 
-The exact constructor/factory validation, distance rounding and combined sweep/contact error accounting
-are still being pinned. No caller should infer a stronger placement or native coverage guarantee from
+Constructor validation is fixed in the value section above. Backend distance rounding, combined
+sweep/contact error accounting and the supported numerical domain still need proof. No caller should infer a stronger placement or native coverage guarantee from
 these proposed result fields. Final invariants and numerical domain return to world authoring if they
 change a shared boundary before implementation.
 
@@ -260,3 +260,17 @@ After that evidence is inspected, pin the exact API/domain and author its missin
 followed by separately granted GREEN and named affected regressions. No command is authorized by this note.
 Scheduling remains with pivot, with at most two explicitly assigned compatible slots. Native G1b,
 whole-branch review, full final verification and release/adoption gates remain unchanged.
+
+## Value-contract RED evidence
+
+The granted `CapsuleSweepValueTests` Release run compiled and discovered all eight facts. All eight
+failed at `ResultType` because `CapsuleSweepResult` is absent, with zero passes/skips and exit 1 in
+`/tmp/swim-sweep-values-red.log`. There was no compilation or setup failure. The secondary slot was
+explicitly released. This is the expected missing-capability RED, not backend geometry evidence.
+
+World authoring reviewed the exact value section at `89c90fdde` and found no semantic conflict.
+`IsComplete` describes valid Clear/Hit structure only. The lease must independently reject errors
+above 0.001 m, validate both Hit distances against the requested displacement extent, and validate
+Clear against the entire closed path, scope and currentness. Zero displacement requires a complete
+stationary certificate. Unsupported pose orientation or numerical domain must refuse. This review
+does not approve a backend numerical domain or native G1b.

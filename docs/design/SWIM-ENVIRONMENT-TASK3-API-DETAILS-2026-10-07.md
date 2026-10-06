@@ -210,6 +210,64 @@ and movement acceptance are not proved by this subset. They remain required late
 than a native producer claim or a change to F3. No shared signature amendment is needed for these
 25 cases. The first validation request is a compile-enabled finite run, not a missing-capability RED.
 
+## VC1 proposed interval-column locus clarification
+
+Status: proposed for coordinator and migration review, not approved. No shared production edit
+or native adapter follows from this proposal. Accepted F3 remains the semantic authority.
+
+Source boundary: `MovementDomainContact` in `MovementWaterCoverage.cs` carries one
+`MovementWaterInterval`, a path fraction, a normal and an opaque `CoverageRegionHandle`.
+`IMovementEnvironmentPin` has no operation that resolves that handle to varying geometry.
+The box fixture can truthfully supply a constant interval over a region. A floor such as
+`LowerY = 0.5 * X - 2` changes continuously across the capsule footprint and path. Neither the
+centre column nor a minimum/maximum envelope is the actual interval at every covered column.
+The current fields do not state which column the supplied interval describes. An outer wet
+footprint with a dry centre prevents defining that column implicitly as the body's centre.
+
+Recommended bounded completion: add required `Vector2 IntervalColumnXZ` to the unreleased
+`MovementDomainContact` value and constructor. It is in the acquired physics frame, at the
+contact's declared fraction within its certified spatial error. `Interval` is the canonical
+vertical column fact at that explicit XZ and selected space/domain. It is not a constant-depth
+certificate for the span or region. `CoverageRegionHandle` stays opaque, pin-local provenance.
+The producer still certifies the entire capsule trace and all relevant geometry dependencies.
+No geometry fetch method, native sampler, global registry or wire field is introduced.
+
+The lease validates finite column coordinates, containment in its certified scope and compatibility
+with the queried capsule at the contact fraction, including the existing skin/error budget.
+It must not extrapolate that local fact to other columns. Existing source constructors/tests would
+supply their actual column explicitly. There is no zero-column default or legacy overload that
+fabricates one. Deliberately unconfigured legacy locomotion remains unchanged.
+
+| Option | Correct location semantics | Preserves producer ownership | Bounded implementation | Total |
+|---|---:|---:|---:|---:|
+| Required column fact, complete trace stays producer-owned | 9 | 10 | 9 | 28 |
+| Add a region-geometry evaluation API to the facade | 10 | 5 | 3 | 18 |
+
+The required column makes the existing fact auditable with a small explicit addition. It does
+not let generic consumers reconstruct varying geometry. A region-evaluation API could provide
+that power, but needs a new geometry/lifetime contract and risks duplicating native query work.
+That expansion is not justified for this bounded clarification. A single unlocated sampled
+interval or a bounding-height approximation is excluded by F3, not offered as a fallback.
+
+If accepted, the concrete change is confined to `MovementWaterCoverage.cs`, contact-result guards
+in `MovementQueryLease.Buffers.cs`, the existing fact/buffer/volume test constructors and living
+Locomotion API documentation. New finite cases would cover sloped floor and ceiling in both travel
+directions, a flooded ceiling below nominal SurfaceY, a wet outer column with dry centre, coordinate
+rebinding and refusal of an out-of-footprint column. Expected eight cases, exact filter/count to be
+pinned after authoring. All clipping remains in a finite analytic test producer using shared real
+physics for solid prerequisites. This clarification alone does not prove slope clipping or the
+later generic depth-threshold/mover policy. Those require their own measured tests.
+
+Independent nonrectangular preparation needs no shared signature change. Seven finite cases will
+use a constant-depth L-shaped union of two boxes: a dry notch inside its overall bounding box,
+mixed outer-footprint coverage in both declaration orders, full coverage spanning both arms while
+neither arm alone contains the capsule, a moving dry-notch crossing, simultaneous start tangency
+and missing-neighbor refusal. The planned test-only extension classifies the finite complement
+cells instead of replacing the L with its bounding box. Existing complete-buffer and work limits
+remain unchanged. Its first run should expose the current analytic fixture's explicit unsupported
+union refusal, not a production movement defect. No slope/contact-column implementation starts
+before the proposed shared completion receives its required joint approval.
+
 ## Implementation evidence
 
 The initial value RED compiled and exited 1 with 27 missing-runtime-type failures. After value

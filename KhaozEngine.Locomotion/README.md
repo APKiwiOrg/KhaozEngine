@@ -407,6 +407,14 @@ sorting, rejects malformed UTF-16 and duplicate IDs, and returns no witness on r
 limits a combined prepare/pin attempt to 4096 dependency visits. Local backing IDs may differ after
 repacking without changing portable identity. The witness does not validate a native resource directory.
 
+`MovementEnvironmentContext.TryAcquire` composes provider preparation, a physics read lease and
+an already-prepared environment pin, in that order. Enter outside any existing physics read lease.
+It refuses missing backend capabilities, mismatched source/view references, identity/frame/generation
+mismatches and incomplete scope. A successful `MovementQueryLease` retains one immutable witness
+and is thread-affine. Dispose it before physical writes. Pin disposal precedes physical lease disposal,
+with finally-based release even if producer cleanup throws. Local `MovementQueryLeaseId` equality and
+hashing use source reference identity, never a backend's overridden value equality or portable hashing.
+
 ## Types
 
 - **`MoveCommand`** - movement intent: camera-relative XZ axis, run flag, camera yaw, jump bit, and (17.26.0) the

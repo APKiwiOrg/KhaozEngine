@@ -131,3 +131,12 @@ count/byte boundaries, malformed UTF-16 and invalid-name refusal, immutable ordi
 scope identity mismatch refusal and equal portable identity with differing backing IDs.
 No other fixture ran in that window. Actual lease/pin composition, throwing cleanup, caller
 sentinel protection, support selection and coverage remain outstanding before Task 3 completion.
+
+Context lifecycle RED compiled and exited 1 with 17 missing MovementEnvironmentContext failures,
+including cleanup fixtures that saw the missing-type assertion instead of their expected cleanup
+exception. After typed lifecycle implementation and direct fixture conversion, the same 17 cases
+passed in Release with no skips, exit 0, in `/tmp/swim-environment-context-green.log`.
+They prove actual Bepu preparation/pin ordering, exact reference binding despite value-equal
+sources/views, one captured witness, partial-pin refusal cleanup and throwing validation/disposal.
+The slot was released immediately. Span forwarding, support, coverage, frame rebinding and the
+remaining lease-thread/local-ID cases are not inferred from this lifecycle-only run.

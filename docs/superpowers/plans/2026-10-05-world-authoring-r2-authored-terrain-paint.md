@@ -3274,3 +3274,23 @@ The requirement map, interface consistency, dependency and residual-risk checks 
 ## Execution handoff
 
 Plan complete. Please review the plan. Does it capture what you want? The execution method already supplied by the program is subagent-driven-development, serial, with the shared build slot, a fresh reviewer per task and one whole-branch review.
+
+
+### Task 1 execution checkpoint, intended RED
+
+Owner-released R1 prerequisite is v20.27.1 at54a1f358, releaseCI37513485071 and101published package
+provenances verified. R2sourcebase54a1f358, documentationbootstrap a9f0c13ea, approvedplan05e0d6948
+with originalplanhash2ab5ca603b382c237caf70938218115dce51fc1ae3e91e4fa193c7fe3a76280a.
+Onlythis Outcome append changes the execution copy's approvedplan text at this checkpoint.
+
+Coordinator authorized parentinline single-reproduction preparation after Gauge had no worker.
+The46-line test uses only the approved public synthetic TiledDocFixture. Coordinator inspected it
+and granted one primaryRED. Freshdependencies and testassembly compiled, then exactlyonecase failed
+with Assert.Throws() Failure: No exception was thrown, expectedMapDocumentException. Exit1,
+zero passes/skips, intendedreleased-behaviorfailure. Primarycompute was explicitlyreleased.
+Proof is proofs/2026-10-07-r2-task1-red.json. No productbehavior was changed before this result.
+
+Coordinator accepted the RED and authorized only remainingTask1protocoltests and the three listed
+productfiles, with fresh scopedsource review and a separately granted GREEN. No downstream surface
+work, formatversion, privateworld, main/feed/tag or gamepin work is authorized. Snapshot vendoring
+is an independent #459 handoff and not an R2 execution dependency.

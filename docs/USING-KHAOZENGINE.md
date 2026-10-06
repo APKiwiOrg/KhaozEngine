@@ -8568,6 +8568,13 @@ backend (`KhaozEngine.Physics.Bepu`, NOT in any umbrella, added explicitly like 
 same opt-in-backend pattern the `WorldStore.*` durable backends use.
 
 **Seam (`KhaozEngine.Physics`)** - what every caller sees:
+- Optional `IPhysicsQueryLeaseSource.AcquireQueryReadLease() -> IPhysicsQueryLease` establishes a
+  stable synchronous read interval. Bepu owners and restricted views support it. The lease captures
+  `SourceWorld`, `Origin` and process-local `GeometryGeneration`. `AssertCurrent()` rejects expired or
+  wrong-thread use. Perform queries and publish pure state under the lease, then dispose it on its
+  acquiring thread before changing physics. Same-thread writes and nested leases are refused, other
+  threads serialize behind the gate, and view disposal cannot invalidate an active interval. This does
+  not certify native environment residency or provide a cross-head world/bake identity.
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
   `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
   `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,

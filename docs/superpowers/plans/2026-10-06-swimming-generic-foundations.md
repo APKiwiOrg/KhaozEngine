@@ -16,12 +16,16 @@ NetWorld consume the same solver and state, without depending on MapDoc or rende
 at engine 404fa519f, SHA-256 d508ac3b5bed503a30e12e044c91a9a33924f13184efe750961a8c496559f572.
 Section 8's inherited F2 reference means F3 in this plan. No semantic change is made to F3.
 
-**Status:** Concrete P0 refinement and written owner gate amendment, awaiting owner approval.
-The migration lane accepted F3 semantics, not this implementation or a release. Do not start code.
+**Status:** G1a Tasks 1 to 6 approved on 2026-10-06 by coordinator thread
+938c801f-2df0-4298-8bd1-dc39e9015e60 under the owner's explicit overnight delegation, against
+plan commit 49591549d and immutable F3. Execute inline sequentially. This is delegated design/plan
+approval, not human visual acceptance, a release or native G1b approval. Request each local heavy
+run window from the coordinator. Before Task 6, reconcile pivot's committed #1313 presentation
+phase overload and preserve its ownership of ClientPrediction/AdvancePresentation changes.
 
 ## Global Constraints
 
-- G1a is proposed, not active. Owner approval of this plan and its gate amendment is required.
+- G1a is active under the recorded delegated coordinator approval. Do not widen that scope.
 - Native G1b, R2/R3/R4, real native scope/seam/bake proofs, game adoption and WH1 carve stay gated.
 - Migration owns #1300/#1301. No production MapDoc sampler, storage or residency scheduler here.
 - Legacy mode is default and remains behaviorally unchanged. Explicit mode has no unknown-to-dry fallback.
@@ -219,8 +223,8 @@ active lease that pins it. The complete owner remains responsible for all geomet
 
 - [ ] Write finite tests for every listed mutation under a lease, plus disposed lease, wrong-thread
       use, nested lease, thrown query cleanup and a writer after release. Assert mutation did not occur.
-- [ ] Add an ordered fake environment pin test proving no pin before physics acquisition, no I/O under
-      the gate and clean release on refused pin. Do not use racing threads or stress loops.
+- [ ] Verify the environment pin-order integration in Task 3, where the real context exists. Task 1
+      proves the underlying physical lease rather than asserting behavior of a fake-only composition.
 - [ ] Run the new filtered fixture once, expecting missing capability/fence failures.
 - [ ] Implement exclusive gate/lease and audited mutation/query entry guards. Keep diagnostics developer-only.
 - [ ] Run the fixture and existing PhysicsQueryViewLifecycleTests/PhysicsRebaseTests once. Commit
@@ -249,6 +253,9 @@ Tests: new `KhaozEngine.Game.Tests/Locomotion/MovementEnvironmentContractTests.c
 
 - [ ] Write failures for invalid/default values, source/generation/frame mismatches, incomplete scope,
       stale pin, capacity refusal and coordinate conversion. Assert no old-frame state is relabelled.
+- [ ] Prove prepared-environment pinning occurs after the physical gate, preparation does no I/O under
+      that gate, and failed pinning releases the real physical lease. Use observable mutation refusal and
+      successful post-release writes, not only a fake call-order log.
 - [ ] Add dry cave under ocean, stacked intervals, partial/flooded low-ceiling chambers, shaft portal,
       dry bridge and wet below-deck cases for both centre membership and full swept coverage.
 - [ ] Add legal higher step, independent equal-height-owner ambiguity, missing geometry and a corrected
@@ -341,3 +348,15 @@ entry points, package direction, all carried-state routes and error outcomes. Ev
 line has an owning task. Full compile-ready test bodies are written at each RED step against these
 exact contracts. If implementation reveals a semantic impossibility, stop that dependency and
 return the measured evidence, not a weaker fallback hidden behind green synthetic tests.
+
+## Execution checkpoint
+
+Task 1 implemented under the delegated G1a approval. Initial runtime RED compiled and failed all
+18 cases at the missing lease capability. The implemented optional seam and Bepu owner/view
+fences passed all 18 focused cases, then all 20 named query-view/rebase/penetration-allocation
+regressions. Both commands exited 0. No full engine suite, final format, whole-branch review,
+version selection, main merge, pack or release is claimed at this task checkpoint.
+
+The initial reflection bootstrap allowed a true runtime RED before the new interface existed.
+Final tests use the public interface directly, with unchanged behavioral assertions. The environment
+pin-order proof is assigned to Task 3's real context rather than a fake-only test in Task 1.

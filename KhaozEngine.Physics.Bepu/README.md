@@ -52,6 +52,14 @@ either value shifts the bit-exact result legitimately.
   therefore cannot hide the replacement. An empty selection still returns a restricted non-owning view with
   unfiltered query results. The view preserves the source world's mobility gates and dynamic observations,
   while simulation contacts remain unchanged.
+- **Query read leases** - the owner and its restricted views implement `IPhysicsQueryLeaseSource`.
+  A lease holds one exclusive, thread-affine gate because queries reuse backend scratch buffers.
+  The gate also covers every mutation, rebase, query and operational view disposal. Mutations from the
+  lease's own thread fail before changing the world, and a nested lease cannot shorten the first one's
+  lifetime. Other threads wait outside the gate. The captured generation is local to this process and
+  advances conservatively before operations that may change the world, including writes that later fail.
+  Rejected leased mutations never advance it. This is a synchronous lifetime contract, not immutable
+  geometry or permission to call a lease from another thread. Release it before any physics write.
 - **`Origin`/`CanRebase`/`Rebase(newOrigin)`** (floating origin) - `CanRebase` is true here. A rebase is a bulk of
   direct pose writes plus broadphase refits, NOT a remove-and-re-add: `BodyReference.Pose` and
   `StaticReference.Pose` are ref-returning in Bepu 2.4 and `UpdateBounds` refits the broadphase for the new pose

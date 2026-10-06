@@ -22,6 +22,15 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   nested factories throw. `Dispose` is idempotent and disposes only the view. After disposal, operations and
   `Origin` throw `ObjectDisposedException`, while `SourceWorld` and `CanRebase` remain inspectable. The source
   must outlive the view.
+- **`IPhysicsQueryLeaseSource` / `IPhysicsQueryLease`** - optional stable read intervals over a live
+  owner. `AcquireQueryReadLease()` captures the exact owner, origin and process-local mutation generation.
+  Queries remain available on the acquiring thread. Nested leases and same-thread mutations are refused,
+  while other threads serialize behind the owner gate. Call `AssertCurrent()` before publishing pure
+  results, then dispose on that same thread before applying physics mutations. Disposal is idempotent on
+  the acquiring thread. A restricted view leases its complete owner and cannot be disposed during the
+  interval. A lease does not certify water/terrain residency, portable world identity or scope completeness.
+  Those facts belong to the environment adapter paired with this physical read interval. A backend that
+  lacks the optional interface remains valid for legacy callers and cannot promise an explicit lease.
 - **Static handle provenance for query views** - the factory rejects invalid, missing and stale handles at
   creation. Handles are numeric identities local to their source world, so equal values from different worlds
   are not interchangeable. Use handles returned by that source, and do not reuse removed exclusions to infer

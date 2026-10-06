@@ -1825,3 +1825,16 @@ The game program branch contains CATALOG-REPAIR-GATE.md with the evidence and re
 The full investigator report is in the repair worktree SDD catalog1271-report.md. PROGRAM.md remains
 the active cross-repository gate tracker. R2 corrected cave/scale design at 5bc3ce754 is undergoing
 targeted re-review independently. Neither R2 implementation nor the full revised plan is approved.
+
+
+### OA14 catalog design in correction, 2026-10-06
+
+Owner OA14 authorized the written conditional-release design. Separate worktree wa-catalog-freeze,
+branch fix/wa-catalog-freeze, is based on current main ca13d62d7. Its draft at 2ecbf71fc is pushed
+and unapproved. Review verified a second stale-freeze path through row-only decorators and a
+regression-test routing gap. A bounded design correction pairs guarded freeze with conditional
+release and makes the red-first tests use the marker-checking text commit path.
+
+No production API, version or tag changes are authorized. Major-versus-minor and same-base residue
+remain explicit design decisions. PROGRAM.md records task IDs and the next targeted review gate.
+R1 publication stays blocked by existing #1271. R2 design approval is independently pending.

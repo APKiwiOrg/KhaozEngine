@@ -74,7 +74,7 @@ namespace KhaozEngine.Showcase
             var cmd = new MoveCommand(new Vector2(0f, 1f), run: false, cameraYaw: yaw, jump: false);
             _clock.Advance(dt, _ => _client.SendInput(cmd));
 
-            _client.AdvancePresentation(dt);
+            _client.AdvancePresentation(dt, _clock.TickSeconds - _clock.SecondsUntilNextTick);
         }
 
         public void Dispose()
@@ -290,7 +290,9 @@ namespace KhaozEngine.Showcase
             var cmd = new MoveCommand(move, run, _camera.Yaw, jump);
             _clientClock.Advance(dt, _ => _client.SendInput(cmd));
 
-            _client.AdvancePresentation(dt);
+            // The command clock's residual past its latest tick, so a tick landing mid-frame renders only the time
+            // past it and steady walking moves the same distance every frame at any refresh rate.
+            _client.AdvancePresentation(dt, _clientClock.TickSeconds - _clientClock.SecondsUntilNextTick);
 
             foreach (NetBot b in _bots) b.Step(dt);
 

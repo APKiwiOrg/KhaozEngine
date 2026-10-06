@@ -257,7 +257,7 @@ public sealed partial class WorldClient : IDisposable
     public IReadOnlyList<long> RemoteTeleports => remoteTeleports;
 
     /// <summary>The debug per-frame presentation trace, or null unless <see cref="WorldClientConfig.PresentationTraceEnabled"/>
-    /// was set. When enabled it accrues one row per rendered entity per <see cref="AdvancePresentation"/> (the render
+    /// was set. When enabled it accrues one row per rendered entity per <see cref="AdvancePresentation(float)"/> (the render
     /// clock, interpolation delay, render time, seconds-since-snapshot, arrival marks, local reconcile-error, and the
     /// per-remote starvation-hold flag); dump it with <see cref="PresentationTrace.WriteCsv"/>. Diagnostics only -
     /// reading it never affects simulation or presentation.</summary>

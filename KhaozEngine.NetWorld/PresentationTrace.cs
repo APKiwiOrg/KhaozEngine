@@ -9,7 +9,7 @@ namespace KhaozEngine.NetWorld;
 /// <summary>
 /// A first-class, debug-gated per-frame trace of the client presentation layer (enable via
 /// <see cref="WorldClientConfig.PresentationTraceEnabled"/>; read <see cref="WorldClient.PresentationTrace"/>). It
-/// records, once per <see cref="WorldClient.AdvancePresentation"/> and per rendered entity, the RENDERED position
+/// records, once per <see cref="WorldClient.AdvancePresentation(float)"/> and per rendered entity, the RENDERED position
 /// plus the internal signals a consumer cannot otherwise observe: the monotonic render clock, the fixed remote
 /// interpolation delay, the render time (<c>clock - delay</c>), seconds since the last snapshot, whether a snapshot
 /// arrived this frame, the local reconcile-error magnitude, and the per-remote snapshot-starvation hold flag. Dump

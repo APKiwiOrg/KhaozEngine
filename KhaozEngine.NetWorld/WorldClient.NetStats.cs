@@ -37,7 +37,7 @@ public sealed partial class WorldClient
     /// A read-only snapshot of this client's connection health for a diagnostics/telemetry overlay: RTT, packet
     /// loss, and byte rates (from the transport - 0 over loopback), the AoI snapshot ingest rate, and the
     /// prediction-reconciliation correction magnitude (last + rolling average). <see cref="ClientNetStats.Connected"/>
-    /// tracks <see cref="Joined"/>. Rates refresh once per ~1s window as <see cref="AdvancePresentation"/> is pumped, and
+    /// tracks <see cref="Joined"/>. Rates refresh once per ~1s window as <see cref="AdvancePresentation(float)"/> is pumped, and
     /// reading this never mutates state.
     /// </summary>
     public ClientNetStats NetStats

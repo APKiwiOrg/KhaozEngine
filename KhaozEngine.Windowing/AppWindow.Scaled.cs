@@ -7,9 +7,11 @@ namespace KhaozEngine.Windowing;
 public sealed partial class AppWindow
 {
     /// <summary>
-    /// Open a display-fitted window with an explicit launch-focus policy. Sizing follows
-    /// <see cref="FitToScreen"/>. A false <paramref name="focusOnLaunch"/> requests no keyboard focus,
-    /// subject to <c>KE_WINDOW_FOCUS</c> and the constructor's platform caveats.
+    /// Open a display-fitted window with an explicit launch-focus policy. Sizing matches the other
+    /// <c>Scaled</c> overload: <paramref name="maxScale"/> counts logical points and becomes the coordinate-unit cap
+    /// passed to <see cref="FitToScreen"/> after multiplying by the primary monitor's content scale on Win32 and X11.
+    /// <see cref="FitToScreen"/> itself is unchanged. A false <paramref name="focusOnLaunch"/> requests no keyboard
+    /// focus, subject to <c>KE_WINDOW_FOCUS</c> and the constructor's platform caveats.
     /// <para>The required focus argument comes first so existing calls to the original factory remain
     /// unambiguous. All other defaults are unchanged. Positive <paramref name="frameCapHz"/> values
     /// request that cap, and non-positive values request <see cref="Windowing.FrameCap.Uncapped"/>.</para>

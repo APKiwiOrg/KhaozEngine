@@ -320,6 +320,8 @@ Windowing + input foundation for the custom MonoGame-free stack.
   / `AdaptiveViewport` (letterbox/fill/stretch + responsive). All expose `WindowBounds` (10.38.0) - the whole
   window in design space (`DesignBounds` + the letterbox bars) for full-window scrims/backgrounds; `DesignViewport`
   carries the letterbox formula, the always-edge-to-edge viewports return `DesignBounds`.
+  `GameClock.FrameCount` (since 20.14.0) counts `Update` calls, paused or not, and is the per-frame id
+  `FollowCamera3D.FrameClock` reads.
 - `AdaptiveViewport.WithMinimumCanvas(referenceWidth, referenceHeight, minimumWidth, minimumHeight,
   scaleMultiplier = 1f)` is the opt-in minimum-canvas policy. Its uniform scale is
   `min(framebufferHeight / referenceHeight * ScaleMultiplier, framebufferWidth / minimumWidth,
@@ -327,11 +329,15 @@ Windowing + input foundation for the custom MonoGame-free stack.
   so a control anchored at the far edge stays onscreen. A narrow window gains height instead of overflowing to the
   right, and a larger `ScaleMultiplier` enlarges the UI until the minimum canvas binds. Setting `ScaleMultiplier`
   recomputes the transform from the last framebuffer size at once, so drawing and hit testing agree. Zero,
-  negative or non-finite multipliers and non-positive sizes throw `ArgumentOutOfRangeException`. The original
+  negative or non-finite multipliers and non-positive sizes throw `ArgumentOutOfRangeException`. The derived
+  transform must also be representable: a finite positive scale, and a visible `Width` and `Height` of at most
+  16,777,216 (2^24), the range in which every integer design coordinate is exact as a float. The factory, the
+  `ScaleMultiplier` setter and `Update` validate the transform before publishing it and throw
+  `ArgumentOutOfRangeException` otherwise, leaving the previous multiplier, cached framebuffer size and transform
+  intact. A minimum size above 2^24 is always rejected, a tiny multiplier such as `1e-5f` at a 720 reference
+  height fails at creation, and nothing is clamped. The original
   `new AdaptiveViewport(referenceWidth, referenceHeight)` keeps its fixed height and reference-width floor, reports
   `ScaleMultiplier == 1` and throws `InvalidOperationException` when one is set. Neither mode touches the camera.
-  `GameClock.FrameCount` (since 20.14.0) counts `Update` calls, paused or not, and is the per-frame id
-  `FollowCamera3D.FrameClock` reads.
 - `UiViewport` (since 10.12.0) - a point-space viewport for DPI-aware UI, implementing `IDesignViewport`.
   Authoring units are logical points and 1 point maps to `DpiScale` device pixels (no letterbox). `Width`/`Height`
   track the logical window size, so the UI reflows as the window resizes rather than magnifying, and `ScaleX`/`ScaleY`
@@ -349,7 +355,7 @@ Windowing + input foundation for the custom MonoGame-free stack.
 
 | Member | Meaning |
 |--------|---------|
-| `LogicalWidth` / `LogicalHeight` | logical window size in points, the framebuffer divided by `DpiScale` and rounded |
+| `LogicalWidth` / `LogicalHeight` | logical window size in points, the framebuffer divided by `DpiScale` and rounded to the nearest point, so `LogicalWidth * DpiScale` can differ from the framebuffer edge by at most half a logical point |
 | `DpiScale` | the window's OS content scale (`glfwGetWindowContentScale`), e.g. 1 standard, 2 Retina, 1.5 on a 150%-scaled Windows display |
 
 `AppWindow` reads the content scale every frame, so a monitor move or OS scale change reaches the next frame
@@ -358,7 +364,8 @@ negative or non-finite scale, the frame keeps the earlier behavior: logical size
 is `Width / LogicalWidth`. A manually constructed `Frame` uses that same fallback. `Frame.Width`/`Height` remain
 the device-pixel framebuffer size, `AppWindow.WindowWidth`/`WindowHeight` and placement stay in window
 coordinates, and pointer positions still convert through `InputState.FramebufferScale` (framebuffer pixels per
-window coordinate). `AppWindow.LogicalWidth`/`LogicalHeight` report the same logical size as the frame. Bake
+window coordinate). `AppWindow.LogicalWidth`/`LogicalHeight` report the same logical size as the frame and query
+GLFW on each read, so read them on the window thread (the thread that runs the frame loop). Bake
 point-space UI fonts at `frame.DpiScale` and snap UI geometry to whole multiples of it.
 
 The 5.x renderers (`Render2D`, `Render3D`) build on this. Silk.NET windowing ships GLFW natives bundled per-RID,

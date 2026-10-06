@@ -14,9 +14,10 @@ namespace KhaozEngine.Windowing
         /// at (2x the logical size on Retina, etc.). This is what <c>SpriteBatch</c> and <c>DesignViewport</c> map into.</summary>
         public int Width { get; internal set; }
         public int Height { get; internal set; }
-        /// <summary>Logical window size in points (device framebuffer / <see cref="DpiScale"/>, rounded). UI authored
-        /// in points scales to device pixels by <see cref="DpiScale"/>. Drive a <c>UiViewport</c> from this frame so
-        /// text and chrome stay crisp.</summary>
+        /// <summary>Logical window size in points (device framebuffer / <see cref="DpiScale"/>, rounded to the nearest
+        /// point, so the logical extent can differ from the framebuffer edge by at most half a logical point). UI
+        /// authored in points scales to device pixels by <see cref="DpiScale"/>. Drive a <c>UiViewport</c> from this
+        /// frame so text and chrome stay crisp.</summary>
         public int LogicalWidth { get; internal set; }
         public int LogicalHeight { get; internal set; }
         /// <summary>Device pixels per logical point: the window's OS content scale, 1 on a standard display, 2 on

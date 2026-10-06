@@ -25,9 +25,20 @@ namespace KhaozEngine.Windowing
     /// by that scale, so the canvas never drops below the minimum and never extends past the window. The constructor
     /// keeps the original fixed-height policy.
     /// </para>
+    /// <para>
+    /// A minimum-canvas transform is representable when its scale is finite and positive and its visible
+    /// <see cref="Width"/> and <see cref="Height"/> are each at most 16,777,216 (2^24), the range in which every
+    /// integer design coordinate is exact as a float. <see cref="WithMinimumCanvas"/>, the
+    /// <see cref="ScaleMultiplier"/> setter and <see cref="Update"/> validate the transform before publishing any
+    /// state and throw <see cref="ArgumentOutOfRangeException"/> for one that is not, leaving the previous multiplier,
+    /// cached framebuffer size and transform unchanged. Nothing is clamped.
+    /// </para>
     /// </summary>
     public sealed class AdaptiveViewport : IDesignViewport
     {
+        // The largest design extent whose every integer coordinate is exact as a float.
+        const int MaxDesignExtent = 1 << 24;
+
         readonly int _referenceWidth;
         readonly int _referenceHeight;
         // Zero in the original fixed-height policy, positive in the minimum-canvas policy.
@@ -74,16 +85,17 @@ namespace KhaozEngine.Windowing
             _referenceHeight = referenceHeight;
             _minimumWidth = minimumWidth;
             _minimumHeight = minimumHeight;
-            _scaleMultiplier = scaleMultiplier;
-            Update(referenceWidth, referenceHeight);
+            // Every input shapes the initial canvas, so no single parameter is named.
+            FitMinimumCanvas(referenceWidth, referenceHeight, scaleMultiplier, paramName: null);
         }
 
         /// <summary>
         /// Create a viewport with the minimum-canvas policy. <paramref name="referenceHeight"/> sets the base
         /// height-fit scale, <paramref name="minimumWidth"/> x <paramref name="minimumHeight"/> is the smallest design
         /// canvas the window may show, and <paramref name="scaleMultiplier"/> enlarges the UI until that minimum binds.
-        /// The initial state fits the reference size. All sizes must be positive and the multiplier positive and
-        /// finite, otherwise <see cref="ArgumentOutOfRangeException"/> is thrown.
+        /// The initial state fits the reference size. All sizes must be positive, the minimum sizes at most 2^24 and the
+        /// multiplier positive and finite, and the initial transform must be representable (see the class remarks),
+        /// otherwise <see cref="ArgumentOutOfRangeException"/> is thrown.
         /// </summary>
         public static AdaptiveViewport WithMinimumCanvas(int referenceWidth, int referenceHeight,
             int minimumWidth, int minimumHeight, float scaleMultiplier = 1f)
@@ -92,6 +104,9 @@ namespace KhaozEngine.Windowing
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(referenceHeight);
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(minimumWidth);
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(minimumHeight);
+            // The visible canvas is never smaller than the minimum, so a larger minimum can never be representable.
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(minimumWidth, MaxDesignExtent);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(minimumHeight, MaxDesignExtent);
             ValidateMultiplier(scaleMultiplier);
             return new AdaptiveViewport(referenceWidth, referenceHeight, minimumWidth, minimumHeight, scaleMultiplier);
         }
@@ -99,9 +114,10 @@ namespace KhaozEngine.Windowing
         /// <summary>
         /// The UI size multiplier of the minimum-canvas policy, applied to the height-fit scale before the minimum
         /// canvas clamps it. Setting it recomputes the transform from the last framebuffer size at once, so drawing
-        /// and hit testing agree before the next <see cref="Update"/>. Must be positive and finite
-        /// (<see cref="ArgumentOutOfRangeException"/>). Always 1 for the original policy, where setting it throws
-        /// <see cref="InvalidOperationException"/>.
+        /// and hit testing agree before the next <see cref="Update"/>. Must be positive and finite, and the transform it
+        /// gives at the cached framebuffer size must be representable (see the class remarks), otherwise
+        /// <see cref="ArgumentOutOfRangeException"/> is thrown and nothing changes. Always 1 for the original policy,
+        /// where setting it throws <see cref="InvalidOperationException"/>.
         /// </summary>
         public float ScaleMultiplier
         {
@@ -112,20 +128,20 @@ namespace KhaozEngine.Windowing
                     throw new InvalidOperationException(
                         "ScaleMultiplier needs a viewport created by AdaptiveViewport.WithMinimumCanvas.");
                 ValidateMultiplier(value);
-                _scaleMultiplier = value;
-                FitMinimumCanvas();
+                FitMinimumCanvas(_framebufferWidth, _framebufferHeight, value, nameof(ScaleMultiplier));
             }
         }
 
-        /// <summary>Recompute the scale and the adaptive design size from the window size. Ignores non-positive sizes.</summary>
+        /// <summary>Recompute the scale and the adaptive design size from the window size. Ignores non-positive sizes.
+        /// In the minimum-canvas policy a size whose transform is not representable (see the class remarks) throws
+        /// <see cref="ArgumentOutOfRangeException"/> and keeps the previous transform and cached size.</summary>
         public void Update(int windowWidth, int windowHeight)
         {
             if (windowWidth <= 0 || windowHeight <= 0) return;
-            _framebufferWidth = windowWidth;
-            _framebufferHeight = windowHeight;
             if (_minimumWidth > 0)
             {
-                FitMinimumCanvas();
+                // Either axis can make the canvas unrepresentable, so no single parameter is named.
+                FitMinimumCanvas(windowWidth, windowHeight, _scaleMultiplier, paramName: null);
                 return;
             }
             float scale = windowHeight / (float)Height;
@@ -133,20 +149,35 @@ namespace KhaozEngine.Windowing
             Width = Math.Max(_referenceWidth, (int)MathF.Round(windowWidth / scale));
         }
 
-        void FitMinimumCanvas()
+        // Computes the candidate transform, validates it and only then publishes it with its inputs, so a rejected
+        // framebuffer size or multiplier leaves every member as it was.
+        void FitMinimumCanvas(int framebufferWidth, int framebufferHeight, float multiplier, string? paramName)
         {
-            float heightFit = _framebufferHeight / (float)_referenceHeight * _scaleMultiplier;
-            float minimumFit = MathF.Min(_framebufferWidth / (float)_minimumWidth,
-                _framebufferHeight / (float)_minimumHeight);
+            float heightFit = framebufferHeight / (float)_referenceHeight * multiplier;
+            float minimumFit = MathF.Min(framebufferWidth / (float)_minimumWidth,
+                framebufferHeight / (float)_minimumHeight);
             float scale = MathF.Min(heightFit, minimumFit);
+            // Validate the exact quotients that become Width and Height. An underflowed or tiny scale makes them
+            // infinite or huge, which the int cast would otherwise saturate.
+            float width = framebufferWidth / scale;
+            float height = framebufferHeight / scale;
+            if (!float.IsFinite(scale) || scale <= 0f || !(width <= MaxDesignExtent) || !(height <= MaxDesignExtent))
+                throw new ArgumentOutOfRangeException(paramName,
+                    $"A {framebufferWidth}x{framebufferHeight} framebuffer at scale multiplier {multiplier} gives "
+                    + $"scale {scale} and a {width}x{height} design canvas. The scale must be finite and positive "
+                    + $"and each design extent at most {MaxDesignExtent}.");
+
+            _framebufferWidth = framebufferWidth;
+            _framebufferHeight = framebufferHeight;
+            _scaleMultiplier = multiplier;
             ScaleX = ScaleY = scale;
-            Width = VisibleExtent(_framebufferWidth, scale);
-            Height = VisibleExtent(_framebufferHeight, scale);
+            Width = VisibleExtent(width);
+            Height = VisibleExtent(height);
         }
 
         // Round down so a control anchored at the far edge stays inside the framebuffer. The small tolerance keeps an
         // exact quotient such as 1280 / (4 / 3) from losing a unit to float error.
-        static int VisibleExtent(int pixels, float scale) => (int)MathF.Floor(pixels / scale + 1e-3f);
+        static int VisibleExtent(float points) => (int)MathF.Floor(points + 1e-3f);
 
         static void ValidateMultiplier(float multiplier)
         {

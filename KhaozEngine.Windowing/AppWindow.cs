@@ -60,7 +60,8 @@ namespace KhaozEngine.Windowing
         public int FramebufferHeight => _window.FramebufferSize.Y;
         /// <summary>Logical window size in points: the framebuffer divided by the window's OS content scale, the same
         /// size <see cref="Frame.LogicalWidth"/> reports. Falls back to the window-coordinate size when the scale is
-        /// unavailable. Window placement uses <see cref="WindowWidth"/> / <see cref="WindowHeight"/> instead.</summary>
+        /// unavailable. Window placement uses <see cref="WindowWidth"/> / <see cref="WindowHeight"/> instead. Each read
+        /// queries GLFW, so read it on the window thread that runs the frame loop.</summary>
         public int LogicalWidth => CurrentLogicalMetrics().Width;
         public int LogicalHeight => CurrentLogicalMetrics().Height;
         /// <summary>Background colour cleared each frame.</summary>

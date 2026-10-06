@@ -1167,8 +1167,10 @@ them (see "Tap-or-drag gestures" in the follow camera chapter).
 - `AdaptiveViewport.WithMinimumCanvas(1280, 720, 960, 540, scaleMultiplier)` opts a responsive UI into a minimum
   canvas: the scale is `min(height / 720 * ScaleMultiplier, width / 960, height / 540)` and the visible design
   size is the framebuffer divided by it, so a 4:3 or 16:10 window gains height instead of clipping at the right.
-  Bind a player text-size setting to `ScaleMultiplier`. Setting it recomputes the transform at once. The two-argument
-  constructor is unchanged. See the Windowing README for validation rules.
+  Bind a player text-size setting to `ScaleMultiplier`. Setting it recomputes the transform at once. A value whose
+  canvas is not representable throws `ArgumentOutOfRangeException` and keeps the previous transform, so bound a
+  stored setting to the game's own range before applying it. The two-argument constructor is unchanged. See the
+  Windowing README for validation rules.
 - `GameClock`: `TimeScale`, `Pause()`/`Resume()`, `RealDeltaSeconds`/`ScaledDeltaSeconds`,
   `RealWallGapSeconds`/`LastRealTimestamp` (the suspend-robust wall-clock gap that drives `GameApp.OnResume`),
   `Paused`/`Resumed` events, and `FrameCount` (since 20.14.0: one per `Update`, paused or not, the per-frame id a

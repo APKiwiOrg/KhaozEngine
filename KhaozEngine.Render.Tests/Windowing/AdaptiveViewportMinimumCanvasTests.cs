@@ -132,6 +132,78 @@ namespace KhaozEngine.Tests.Windowing
                 referenceWidth, referenceHeight, minimumWidth, minimumHeight));
         }
 
+        // Each visible design extent must stay at most 2^24 = 16,777,216, where every integer design coordinate is
+        // still exact as a float. The initial fit runs at the 1280x720 reference size.
+        [Theory]
+        [InlineData(1280, 720, 960, 540, 1e-5f)]                  // 720 / 1e-5 = 72,000,000 rows
+        [InlineData(1280, 720, 960, 540, 1e-30f)]                 // scale 1e-30, a 1.28e33 wide canvas saturates int
+        [InlineData(1280, 720, 960, 540, float.Epsilon)]          // the height fit underflows to a zero scale
+        [InlineData(1280, 720, int.MaxValue, 540, 1f)]            // the canvas is never narrower than its minimum
+        [InlineData(1280, 720, 960, 16_777_217, 1f)]              // one row past the exact float range
+        [InlineData(1, 16_777_216, 16_777_216, 1, 1f)]            // width-bound at 2^-24, 2^48 rows tall
+        public void Configurations_whose_initial_canvas_is_unrepresentable_are_rejected(int referenceWidth,
+            int referenceHeight, int minimumWidth, int minimumHeight, float multiplier)
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() => AdaptiveViewport.WithMinimumCanvas(
+                referenceWidth, referenceHeight, minimumWidth, minimumHeight, multiplier));
+        }
+
+        [Fact]
+        public void A_tiny_multiplier_with_a_representable_canvas_is_accepted()
+        {
+            var vp = Create(1e-4f);
+
+            // 1280x720 at scale 1e-4 is a 12,800,000 x 7,200,000 canvas, inside the exact float range.
+            Assert.Equal(1e-4f, vp.ScaleX);
+            Assert.Equal(12_800_000, vp.Width);
+            Assert.Equal(7_200_000, vp.Height);
+        }
+
+        [Theory]
+        [InlineData(1e-30f)]          // scale 4.2e-31, a 1.5e33 wide canvas
+        [InlineData(float.Epsilon)]   // 300 / 720 * float.Epsilon underflows to a zero scale
+        public void Setting_a_multiplier_with_an_unrepresentable_canvas_keeps_the_previous_transform(
+            float multiplier)
+        {
+            var vp = Create();
+            vp.Update(640, 300);   // height-bound at 300 / 720, a 1536x720 canvas
+            float scale = vp.ScaleX;
+            var probe = vp.ScreenToDesign(new Vector2(320, 150));
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => vp.ScaleMultiplier = multiplier);
+
+            Assert.Equal(1f, vp.ScaleMultiplier);
+            Assert.Equal(scale, vp.ScaleX);
+            Assert.Equal(scale, vp.ScaleY);
+            Assert.Equal(new Rect(0, 0, 1536, 720), vp.DesignBounds);
+            Assert.Equal(new Rect(0, 0, 1536 * scale, 720 * scale), vp.ContentBounds);
+            Assert.Equal(probe, vp.ScreenToDesign(new Vector2(320, 150)));
+
+            // The cached 640x300 framebuffer survives: 1.25 gives min(0.5208, 0.6667, 0.5556), a 1228x576 canvas.
+            vp.ScaleMultiplier = 1.25f;
+            Assert.Equal(0.5208333f, vp.ScaleX, 5);
+            Assert.Equal(1228, vp.Width);
+            Assert.Equal(576, vp.Height);
+        }
+
+        [Fact]
+        public void An_update_whose_canvas_is_unrepresentable_keeps_the_previous_transform()
+        {
+            var vp = Create(1e-4f);
+
+            // 3840x1080 at scale 1.5e-4 would be 25,600,000 wide, past the exact float range.
+            Assert.Throws<ArgumentOutOfRangeException>(() => vp.Update(3840, 1080));
+
+            Assert.Equal(1e-4f, vp.ScaleX);
+            Assert.Equal(new Rect(0, 0, 12_800_000, 7_200_000), vp.DesignBounds);
+
+            // The cached framebuffer is still the 1280x720 reference, not the rejected 3840x1080 (which gives 1.5).
+            vp.ScaleMultiplier = 1f;
+            Assert.Equal(1f, vp.ScaleX, 5);
+            Assert.Equal(1280, vp.Width);
+            Assert.Equal(720, vp.Height);
+        }
+
         [Fact]
         public void The_initial_state_fits_the_reference_size_before_the_first_update()
         {

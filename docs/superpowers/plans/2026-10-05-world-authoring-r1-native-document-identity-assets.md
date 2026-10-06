@@ -1838,3 +1838,13 @@ release and makes the red-first tests use the marker-checking text commit path.
 No production API, version or tag changes are authorized. Major-versus-minor and same-base residue
 remain explicit design decisions. PROGRAM.md records task IDs and the next targeted review gate.
 R1 publication stays blocked by existing #1271. R2 design approval is independently pending.
+
+
+### Resume checkpoint, 2026-10-06
+
+Owner explicitly resumed after the emergency battery pause. Saved catalog design corrections are
+committed and pushed at 740ab0d2e134dd75de40234c02b3c16927f8981b on fix/wa-catalog-freeze.
+They add guarded freeze to the proposed capability, correct regression routes and specify Preview
+and version choices. Documentation checks passed. One targeted F1 to F4 re-review is active,
+recorded in PROGRAM.md. No catalog production implementation or new tag is authorized.
+R2 design approval remains pending.

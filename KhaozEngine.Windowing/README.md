@@ -323,7 +323,7 @@ Windowing + input foundation for the custom MonoGame-free stack.
   `GameClock.FrameCount` (since 20.14.0) counts `Update` calls, paused or not, and is the per-frame id
   `FollowCamera3D.FrameClock` reads.
 - `AdaptiveViewport.WithMinimumCanvas(referenceWidth, referenceHeight, minimumWidth, minimumHeight,
-  scaleMultiplier = 1f)` (since 20.27.1) is the opt-in minimum-canvas policy. Its uniform scale is
+  scaleMultiplier = 1f)` (since 20.28.0) is the opt-in minimum-canvas policy. Its uniform scale is
   `min(framebufferHeight / referenceHeight * ScaleMultiplier, framebufferWidth / minimumWidth,
   framebufferHeight / minimumHeight)` and `Width`/`Height` are the framebuffer divided by that scale, rounded down
   so a control anchored at the far edge stays onscreen. A narrow window gains height instead of overflowing to the

@@ -3328,3 +3328,24 @@ Task 1 implementation and focused proof are pushed at
 against origin and all four source hashes against GREEN. Five light guards, the hooked commit and
 push exited0. This is the Task 1 branch checkpoint only. R2's later tasks, full-round finishing,
 main integration and release are not claimed. Task2 remains closed pending coordination.
+
+
+### Task 2 tests-first RED checkpoint, implementation unopened
+
+At base2890c0602951d85016fc0f8c0d67074ba66f4ccb, the authorized worker prepared exactly
+FormatFourResolverExpectationTests.cs and ArchitectureTests.MapDoc.cs, three Facts each.
+Parent inspected both files against the approved Task2 section. Pivot independently inspected
+HEAD, scope and frozen hashes, then granted one serial paired RED window.
+
+MapDoc compilation exited1 with one CS0246 for absent ResolverExpectations and nine CS0103
+references to absent FormatFourFixtures. Zero tests executed. No out-variable cascade or unrelated
+diagnostic occurred. This is compile-time missing-capability evidence, not a runtime failure.
+Only after that result was inspected did the second authorized command run. The architecture
+project compiled and executed34cases,32passed and only the two expected missing-harness guards
+failed, with zero skips. All31existing controls and the new containment guard passed.
+
+Both frozen source hashes remained unchanged. Primarycompute was explicitlyreleased. Evidence is
+proofs/2026-10-07-r2-task2-red.json, including log and TRX hashes. No retries, helper, harness,
+project change, recorder, generated fixture or private input was introduced. This is an intentional
+RED checkpoint only. Remaining Task2 implementation, one-time recorder, GREEN, harness format and
+review remain required and unopened. No full Task2 completion or downstream work is claimed.

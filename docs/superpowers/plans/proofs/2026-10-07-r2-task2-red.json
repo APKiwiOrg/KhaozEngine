@@ -1,0 +1,31 @@
+{
+  "base": "2890c0602951d85016fc0f8c0d67074ba66f4ccb",
+  "source_hashes": {
+    "KhaozEngine.MapDoc.Tests/FormatFourResolverExpectationTests.cs": "c30c4adcb84331fcc24990848aef133f26d70587315502f8358b410e825c9aeb",
+    "KhaozEngine.Tests/ArchitectureTests.MapDoc.cs": "178306052331236e455444fc8cefbdbb24f6cf89dc23c7853f431bf6c8fd1cf3"
+  },
+  "mapdoc": {
+    "exit": 1,
+    "executed": 0,
+    "failure_kind": "compile-time missing fixture types",
+    "CS0246_ResolverExpectations": 1,
+    "CS0103_FormatFourFixtures": 9,
+    "other_or_cascade_diagnostics": 0,
+    "log_sha256": "4d1d1b99d63968c7c758a3fd7b4d110bd16252a864a9ed7fae0bf1aacde28adb"
+  },
+  "architecture": {
+    "exit": 1,
+    "executed": 34,
+    "passed": 32,
+    "failed": 2,
+    "skipped": 0,
+    "failures": [
+      "OracleHarness_IsOutsideTheSolutionAndBothCiTestSelections",
+      "OracleHarness_IsUnreferencedAndNotPackable"
+    ],
+    "trx_sha256": "6f70cb0bd8e2dba635529b8e6d30d1007413991d3aefeb191db1de3394b5290b",
+    "log_sha256": "0cf95c5357bd9efe5be5b26f78fa60542627a1302b7dfaba1eda239acf502dab"
+  },
+  "primary_slot_released": true,
+  "implementation_started": false
+}

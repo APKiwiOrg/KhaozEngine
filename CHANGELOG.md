@@ -7,10 +7,14 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.27.1
 
+- Adds fixed-command phase overloads to `ClientPrediction.AdvancePresentation` and
+  `WorldClient.AdvancePresentation`, keeping local movement even at fractional render cadences. The phase is
+  validated before mutation, while the existing overload, correction decay and remote clocks retain their
+  behavior (#1313).
 - Repairs release validation with a deterministic device-free D3D11 resize/present test. Controlled
   queued bursts retain lock ownership, native-call order, last-request coalescing and whole-size checks
   without relying on producer scheduling (#1309).
-- Publication repair for 20.27.0. Native MapDoc runtime behavior and shipped APIs are unchanged.
+- Publication repair for 20.27.0. The D3D11 test repair leaves runtime behavior and shipped APIs unchanged.
 
 ## 20.27.0
 

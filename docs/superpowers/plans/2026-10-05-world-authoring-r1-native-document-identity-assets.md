@@ -1872,3 +1872,16 @@ The owner still approves the full plan before production execution. No release t
 Known follow-ups are game wrapper adoption https://github.com/APKiwiOrg/Grimhollow/issues/467,
 same-base text-route boot liveness #1312, and separate row-only edit loss #1311. No deferred repair
 or game pin change is included. R2 design approval remains separate and pending.
+
+
+### Catalog full-plan owner gate, 2026-10-06
+
+Full plan docs/superpowers/plans/2026-10-06-catalog-conditional-freeze-repair.md is controller-verified
+at 2bbd0fac81d7f07bb6f5a9bdcad6bdca6e210efb on fix/wa-catalog-freeze. Initial planner commit is
+2784ebe27. Root corrected the pre-merge CI trigger gap with exact-branch normal workflow dispatches
+and clarified the base-zero test setup. Source equality against ca13d62d7 and relevant docs checks
+passed. No production code or runtime reproduction has run.
+
+Owner full-plan approval precedes Task 0 and serial SDD execution. Pivot coordination, task reviews,
+final build/test/format, private pack, normal hosted CI, root integration and guarded main pack remain
+explicit gates. Any tag is a later separate owner decision. PROGRAM.md holds the current status.

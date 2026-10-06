@@ -17,11 +17,16 @@ using KhaozEngine.Navigation;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Movement;
 
 public partial class LowLipTraversalTests
 {
+    private readonly ITestOutputHelper _restingOutput;
+
+    public LowLipTraversalTests(ITestOutputHelper output) => _restingOutput = output;
+
     private const float RestingLip = 0.0425f;
     private const float EdgeOffset = 0.125f;
     private const float Tick = 1f / 30f;
@@ -158,11 +163,66 @@ public partial class LowLipTraversalTests
     public void ProbeRefusesTheBankColumnUnderARoofItsRestDoesNotFit(bool resting)
     {
         using BepuPhysicsWorld world = LipWorld(RestingLip);
-        world.AddStatic(new BoxShape(new Vector3(0.5f, 0.25f, 2f)),
+        StaticHandle roof = world.AddStatic(new BoxShape(new Vector3(0.5f, 0.25f, 2f)),
             Pose.At(new Vector3(-EdgeOffset, 2f * Tuning.CapsuleHalfHeight + 0.005f + 0.25f, 0f)));
         Vector3 feet = LipFeet(-EdgeOffset, RestingLip) + Vector3.UnitY * (resting ? CornerRise(RestingLip) : 0f);
 
-        Assert.False(GroundTraversalProbeTests.Probe(Context(world), Tuning, feet, feet));
+        bool accepted = GroundTraversalProbeTests.Probe(Context(world), Tuning, feet, feet);
+        ReportRoofHold(world, roof, feet, resting, accepted);
+        Assert.False(accepted);
+    }
+
+    // At most nine output rows per case. The extra Hold reads the same immutable fixture and changes no world state.
+    // This is observation of the public core, not a replacement for the unchanged permissive-footprint probe above.
+    private void ReportRoofHold(BepuPhysicsWorld world, StaticHandle roof, Vector3 feet, bool resting, bool accepted)
+    {
+        MoveTuning tuning = Tuning with { WalkSpeed = 1f, RunSpeed = 1f, AirMomentum = false };
+        CapsuleShape capsule = CharacterMovement.CapsuleFor(tuning);
+        MoveState before = StandingAt(feet);
+        MoveState after = NpcGroundMovement.Hold(before, Tick, tuning, Context(world));
+        Vector3 afterFeet = after.Position - Vector3.UnitY * tuning.CapsuleHalfHeight;
+        bool pre = world.ComputePenetration(capsule, Pose.At(before.Position - world.Origin), out Vector3 preMtv);
+        bool post = world.ComputePenetration(capsule, Pose.At(after.Position - world.Origin), out Vector3 postMtv);
+        _restingOutput.WriteLine($"roof case resting={resting}, lip={RestingLip:R}, clearance=0.005, " +
+            $"radius={tuning.CapsuleRadius:R}, halfHeight={tuning.CapsuleHalfHeight:R}, dt={Tick:R}");
+        _restingOutput.WriteLine($"before feet={feet}, grounded={before.Grounded}, penetration={pre}, mtv={preMtv}");
+        _restingOutput.WriteLine($"after feet={afterFeet}, delta={afterFeet - feet}, grounded={after.Grounded}, " +
+            $"penetration={post}, mtv={postMtv}");
+
+        using IPhysicsWorldQueryView lipOnly = world.CreateQueryViewExcludingStatics([roof]);
+        using BepuPhysicsWorld baseline = LipWorld(RestingLip);
+        Assert.Same(world, lipOnly.SourceWorld);
+        Assert.Equal(world.Origin, lipOnly.Origin);
+        foreach ((string label, Vector3 position) in new[] { ("before", before.Position), ("after", after.Position) })
+        {
+            bool selected = lipOnly.ComputePenetration(capsule, Pose.At(position - lipOnly.Origin), out Vector3 mtv);
+            bool original = baseline.ComputePenetration(capsule, Pose.At(position - baseline.Origin), out Vector3 originalMtv);
+            Assert.Equal(original, selected);
+            Assert.InRange(Vector3.Distance(mtv, originalMtv), 0f, 0.000001f);
+            _restingOutput.WriteLine($"lip-only {label} penetration={selected}, mtv={mtv}, " +
+                $"matches unmodified LipWorld={original == selected}");
+        }
+        _restingOutput.WriteLine("roof-only view unavailable: unchanged LipWorld does not expose its floor/lip handles, " +
+            "and the public world has no static enumeration. No handles inferred or reflected.");
+
+        var column = new PhysicsColumnProbe(world)
+        {
+            ProbeHeight = Options.ProbeHeight - world.Origin.Y,
+            ProbeRange = Options.ProbeRange,
+            MaxSlopeRadians = Options.MaxSlopeRadians,
+            GroundMobility = QueryMobility.Statics,
+        };
+        var raw = new ColumnSurface[4];
+        int count = column.Sample(feet.X - world.Origin.X, feet.Z - world.Origin.Z, raw);
+        var descriptions = new List<string>();
+        for (int i = 0; i < count; i++)
+            descriptions.Add($"y={raw[i].Height + world.Origin.Y:R} headroom={raw[i].Headroom:R}");
+        _restingOutput.WriteLine($"raw column [{string.Join(", ", descriptions)}], count={count}, cap=4");
+        using PhysicsNavBake bake = PhysicsNavBake.Capture(Context(world), Options, _ => 0u);
+        GroundNavigation nav = bake.BuildProfile(Tuning, default);
+        _restingOutput.WriteLine($"profile candidate heights [{string.Join(", ", NodeHeights(nav, -EdgeOffset))}], " +
+            $"AllowsSegment(feet,feet)={nav.AllowsSegment(feet, feet)}");
+        _restingOutput.WriteLine($"TryEdge with permissive _=>true footprint={accepted}; real profile reported separately");
     }
 
     [Theory]

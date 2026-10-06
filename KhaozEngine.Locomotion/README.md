@@ -449,6 +449,17 @@ both caller buffers untouched. Initial operational limits are 256 support candid
 fraction range from 0 to 1 in order, without gaps or overlap, and certify at most 0.001 m error.
 These guards do not implement native geometry or choose a standing support.
 
+`MovementSupportResolver.Select(request, queries, out placement)` composes the producer's canonical
+candidates with complete physics clearance under the same lease. It filters legal-link provenance,
+rise/drop, slope and clearance before choosing the highest eligible support. Independent owners at
+the same height are ambiguous, even when one was current. Canonical seam aliases share an owner.
+`MovementSupportPlacement.Candidate` retains the original surface point and provenance while
+`Centre` is the separately verified upright-capsule pose. Known with null placement means no candidate
+is eligible. Missing physical support, uncertain clearance and unsupported backend coverage refuse
+instead of returning a usable pose. Solid-contact scratch is bounded at 16384 contacts. These limits
+and tolerances belong in profile/query policy identity. Selection proves a placement only, not the
+swept movement or water transitions required to reach it.
+
 ## Types
 
 - **`MoveCommand`** - movement intent: camera-relative XZ axis, run flag, camera yaw, jump bit, and (17.26.0) the

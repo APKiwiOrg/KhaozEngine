@@ -83,6 +83,32 @@ The consumer checks availability, identity, counts, complete span ordering and e
 before copying either buffer. Missing entries therefore cannot borrow valid leftovers from a prior
 query. Coverage error must fit F3's 0.001 m bound. All failure paths preserve caller sentinels.
 
+## Generic support placement result
+
+The generic selector returns `MovementAvailability` from
+`MovementSupportResolver.Select(in MovementSupportRequest request, MovementQueryLease queries,
+out MovementSupportPlacement? placement)`. The immutable placement retains the original
+`MovementSupportCandidate Candidate` and the profile-derived `Vector3 Centre` separately, so
+capsule clearance does not overwrite canonical surface provenance. Known with null placement
+means no supplied candidate was eligible. Unresolved/Invalid/CapacityExceeded cannot return a placement.
+
+Apply the declared legal-space/link, rise/drop, slope and complete capsule-clearance filters before
+choosing the highest eligible candidate. Same canonical owners may coalesce exact-height seam
+references. Independent exact-height owners remain ambiguous even when one was current. A missing
+physical support proof or incomplete backend query is not Known empty support. The real-backend
+fixtures cover flat/tilted support, bed plus wall, ceiling, higher eligible support, aliases,
+independent owners and capacity refusal. Actual movement to a selected placement still needs the
+shared swept resolver and water-path proof in Task 4.
+
+The initial composition keeps XZ fixed at the queried vertical support line. It derives a candidate
+upright-capsule pose from the canonical normal with 1 mm separation, then queries all real backend
+contacts within 1 mm plus the certified numerical error. Maximum solid-contact scratch is 16384,
+matching the accepted backend bound and participating in policy identity. Scope validation includes
+the additional error margin. A definite penetration rejects the candidate. Uncertain clearance,
+missing matching physical support or uncertifiable contact coverage refuses the selection rather
+than accepting a floating or penetrating pose. Curved or discontinuous geometry for which that
+candidate pose cannot be certified does not inherit the planar fixture's proof.
+
 ## Pin properties
 
 Complete `IMovementEnvironmentPin` with these read-only properties in addition to the already
@@ -127,6 +153,41 @@ Tests use a finite synthetic witness and actual Bepu owner/view. They prove pin 
 under the physical fence, failed pinning releases it, mismatched source/generation/frame and
 incomplete/undersized scope refuse, disposed/stale pins refuse, and old-frame state is converted
 or returned unchanged as a framed refusal. The native resource and geometry proof remains G1b.
+
+## Finite volumetric fixture preparation
+
+The remaining test adapter is `Fixtures/AnalyticMovementEnvironment.cs`. It owns only a fixed,
+small collection of explicitly declared spaces, interval bounds and legal connections. It has no
+MapDoc reader, page directory, residency system or terrain reconstruction. Each scenario acquires
+the existing context and immutable witness. Matching Bepu solids establish the floor, ceiling or
+bridge where the scenario claims physical support. Centre sampling and full capsule tracing are
+asserted separately through the lease.
+
+The following is an assertion matrix, not executed evidence or a ready test-count request:
+
+| Scenario | Required independent assertions |
+|---|---|
+| Dry cave below an ocean | Centre is known dry in the cave. The entire capsule path remains dry despite overlapping ocean XZ coordinates. The ocean domain never appears in contacts. |
+| Two vertically stacked water bodies | Each body's centre and whole path identify its own space, domain and clipped interval. A shared XZ projection cannot merge their identities. |
+| Partly flooded chamber | Paths wholly above the local free surface are dry. A lower path is wet. A crossing path reports the analytic entry fraction and simultaneous dry coverage. |
+| Fully flooded low ceiling | Interval upper containment is the ceiling, below nominal SurfaceY, with UpperIsFreeSurface false. No free-surface contact is manufactured at the remote nominal level. |
+| Shaft connected to a flooded chamber | Only the explicit legal connection exposes the shaft interval and its actual free surface. A lateral path through the chamber ceiling cannot acquire that surface by projection. |
+| Supported bridge and water beneath | Above-deck capsule coverage is dry. A separate legal below-deck query is wet. Neither outcome uses a bridge exemption or subtracts global depth. |
+| Dry centre with wet outer capsule | Centre sampling is dry while tracing includes the wetted cap or side and HasDryCoverage. Use actual capsule geometry, including rounded caps. |
+| Adjacent water domains | A footprint straddling a declared boundary reports both legitimate domains without ambiguous-membership refusal. Reverse declaration order and preserve semantic results. |
+| Vertical and oblique motion | Entry and exit fractions follow the capsule clipped by local containment, not only its centre or horizontal disc. Assert each ordered span and its contact range. |
+| Start tangency and zero displacement | Closed skin tangency remains a contact at fraction zero. Stationary coverage is complete. Contact normal is outward and supports later inward/tangent/away policy checks. |
+| Artificial producer partition seam | Splitting one semantic region changes neither interval membership nor shore classification. Backing identifiers stay local. This is not a native tiled-bake proof. |
+| Missing containment dependency | Return Unresolved with both caller buffers unchanged. Never return a known dry span or a usable partial path. |
+
+Use independently calculated plane/capsule intersection fractions for the finite paths, with the
+F3 skin and certified error stated in the assertion. Do not derive expected fractions by invoking
+the adapter's intersection helper. Unsupported analytic geometry refuses explicitly rather than
+approximating a complete answer. Tests of this adapter prove the generic contract and its consumers
+on declared finite geometry. They cannot establish completeness of a future native producer.
+Jump-through-ceiling prevention and movement acceptance remain later mover/jump proofs, not
+conclusions from interval facts alone. Executable fixture count and filter will be requested only
+after authoring, separately from the queued support-selection RED.
 
 ## Implementation evidence
 
@@ -178,3 +239,13 @@ conversion, fractional precision under large origins, source/target envelope che
 state on refusal and selection invalidation on changed frame/epoch. It does not establish canonical
 membership. The CS1 [cold-selection amendment](SWIM-COLD-SELECTION-SCOPE-AMENDMENT-2026-10-07.md)
 separately governs null-hint acquisition and reconstruction readiness.
+
+Support-selection RED compiled with 14 missing MovementSupportResolver runtime-type failures,
+zero passes and zero skips, exit 1 in `/tmp/swim-support-selection-red.log`. All failures reached
+the capability assertion after scene/context setup. The same direct-type assertions subsequently
+passed in `/tmp/swim-support-selection-green.log`, exit 0, 14 passed with no failures or skips.
+Sources remained unchanged during that granted run and compute was explicitly released afterward.
+This proves finite real-Bepu clearance before highest-support selection, canonical alias versus
+independent-owner ties, legal-link provenance, separate sloped capsule placement and refusal on
+missing or uncertifiable physical support. It is not native geometry, swept traversal or Grimhollow
+bridge-route evidence. The volumetric fixture matrix above remains unexecuted preparation.

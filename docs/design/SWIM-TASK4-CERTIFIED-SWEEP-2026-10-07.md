@@ -47,8 +47,53 @@ backend geometry and diverge between runtime and navigation.
 
 ## Proposed result and ownership
 
-The proposed ownership and result shape below will be pinned to exact signatures before code or
-a missing-capability RED:
+### Exact value and capability surface
+
+The value/read boundary is fixed independently of the still-unproved backend numerical domain:
+
+```csharp
+public enum CapsuleSweepStatus { Unresolved = 0, Clear = 1, Hit = 2 }
+
+public readonly record struct CapsuleSweepResult
+{
+    public CapsuleSweepStatus Status { get; }
+    public float ClearThroughDistance { get; }
+    public float? ImpactDistance { get; }
+    public float CertifiedErrorMetres { get; }
+    public bool IsComplete { get; }
+    public bool IsValid { get; }
+
+    public CapsuleSweepResult(CapsuleSweepStatus status, float clearThroughDistance,
+        float? impactDistance, float certifiedErrorMetres);
+}
+
+public interface IPhysicsCapsuleSweep
+{
+    CapsuleSweepResult SweepCapsuleCertified(CapsuleShape capsule, Pose pose,
+        Vector3 displacement, QueryFilter filter = default);
+}
+```
+
+All distances are finite and nonnegative. Unresolved requires zero clear-through distance, null
+impact distance and zero certified error. Default therefore represents an unusable refusal. Clear
+requires null impact distance. The consumer additionally checks its clear-through distance against
+the full requested displacement length. Hit requires a finite impact distance greater than or equal
+to the lower clear-through bound. A zero/zero Hit is valid data but provides no positive clear prefix
+or placement permission. Unknown enum values are invalid. IsComplete is true only for valid Clear/Hit.
+
+The Physics value validates numeric structure, not the truth of a backend certificate. Its error
+field accepts any finite nonnegative value. The explicit locomotion consumer separately enforces
+F3's 0.001 m accepted error ceiling and validates distances against its request, captured scope and
+lease. This distinction avoids claiming that constructing a value proves a geometry domain.
+No normal, source-world escape, native identity, serialized pointer or world mutation is introduced.
+
+This slice comprises `KhaozEngine.Physics/CapsuleSweep.cs` and eight `CapsuleSweepValueTests` facts.
+The tests cover defaults, clear/hit values, zero-hit meaning, refusal-prefix rejection, malformed
+metrics, interval ordering and the optional interface signature. A compiled missing-type RED is
+required before the value/interface implementation. No Bepu implementation or numerical certificate
+is claimed by that slice. Real backend implementation remains behind the proof obligations below.
+
+Ownership of this exact value surface and the later backend remains:
 
 - Physics owns `IPhysicsCapsuleSweep` and an immutable `CapsuleSweepResult` in a cohesive
   `CapsuleSweep.cs` file. Input is an upright capsule, pose, finite displacement and the existing query

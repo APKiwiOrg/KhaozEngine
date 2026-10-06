@@ -1885,3 +1885,16 @@ passed. No production code or runtime reproduction has run.
 Owner full-plan approval precedes Task 0 and serial SDD execution. Pivot coordination, task reviews,
 final build/test/format, private pack, normal hosted CI, root integration and guarded main pack remain
 explicit gates. Any tag is a later separate owner decision. PROGRAM.md holds the current status.
+
+
+### OA16 catalog execution and coordination, 2026-10-06
+
+Owner approved Tasks 0 to 4 under serial SDD. Catalog task base a85eb8c30 contains the approval
+checkpoint, and Task 0's seven new test files are assigned to a single Gauge-routed implementer.
+No production edit precedes its reviewed deterministic red proof. PROGRAM.md holds task identity.
+
+Pivot coordination thread f61fd8f9 run402 confirmed no engine or game-pin collision. Game main
+d191cd01 remains pinned20.25.0 and no competing engine version bump is in progress. The next
+minor direction is clear, subject to final recheck. The pivot recommends a production-copy catalog
+apply rehearsal when Grimhollow eventually adopts the release, under its own adoption workflow.
+No tag, game pin, R2 execution or deferred same-base fix is approved here.

@@ -1,0 +1,305 @@
+{
+  "tool": "shadow-seam-analysis",
+  "mode": "retained",
+  "status": "REPORT-ONLY",
+  "designSha256": "1c4ebca1d297405cb4b2f7b08f4ef585acc58946506f4a8d8569681499ea6a9d",
+  "units": "m",
+  "parameters": {
+    "designSha256": "1c4ebca1d297405cb4b2f7b08f4ef585acc58946506f4a8d8569681499ea6a9d",
+    "thresholdMetres": 0.008,
+    "phaseBudgetMetres": 0.002,
+    "phases": [
+      [
+        0.0,
+        0.0
+      ],
+      [
+        0.5,
+        0.0
+      ],
+      [
+        0.0,
+        0.5
+      ],
+      [
+        0.5,
+        0.5
+      ]
+    ],
+    "phaseTolerancePixels": 0.02,
+    "cameraRelativeTolerance": 1e-06,
+    "certifiedFloorRegion": {
+      "y": 0.0,
+      "xMin": 1.95,
+      "xMax": 5.25,
+      "zMin": 3.75,
+      "zMax": 7.15
+    },
+    "nonSeamControls": [
+      {
+        "xMin": 2.0,
+        "xMax": 2.4,
+        "zMin": 6.7,
+        "zMax": 7.0
+      },
+      {
+        "xMin": 4.8,
+        "xMax": 5.2,
+        "zMin": 6.8,
+        "zMax": 7.1
+      }
+    ],
+    "bandHalfWidthMetres": 0.04506939094329986,
+    "bandHalfLengthMetres": 0.9,
+    "bumpStations": [
+      3,
+      4,
+      5
+    ],
+    "maxAngleRadians": 0.09817477042468103,
+    "maskMarginFactor": 1.001
+  },
+  "inputs": {
+    "artifactSha256": "ef5ce8d9e72cf5f0d2638aedb0537e48dc80094b95ac73c5313b04d58a4743b5",
+    "manifestSha256": "3033ce431b3d0cd9fc6c21071b3a895c0f50b7e0c0663189c93d4d7152acd4b3",
+    "trxSha256": "a17abd5f7d4bcfba4ccc2a7057dd2eea66442fdbe1b6914c0c6ab89f404a4134",
+    "captureSha256": {
+      "plain": "47c21b30356519c648ec1da4df70d00bb21cb55aed9560f7bfb879d5eb8b98f7",
+      "soft": "ae1914c9d740bee9c730689c6451cf4262602c3def73247aedfd00cc518da405"
+    }
+  },
+  "coverage": {
+    "certificate": {
+      "valid": true,
+      "reason": "orthographic camera, toward-camera ray with positive Y and nonnegative Z, the given draw list equals the approved Wall list (not independently verified), F corners inside the viewport and depth range",
+      "certifiedPixelCount": 30800
+    },
+    "measurements": {
+      "valid": true,
+      "reason": "every probe, band and control footprint is certified",
+      "uncovered": []
+    },
+    "drawList": "approved Wall callback source draw list, not a supplied attestation"
+  },
+  "rows": [
+    {
+      "label": "retained-historical",
+      "metric": "original",
+      "bump": -0.008728723,
+      "bumpMillimetres": -8.728723,
+      "worstElsewhere": 0.008491099,
+      "reach": [
+        0.9140385,
+        0.91098034,
+        0.91133153,
+        0.9041096,
+        0.896209,
+        0.890001,
+        0.90375,
+        0.9024812,
+        0.9043846,
+        0.90519685,
+        0.9070161,
+        0.90815943,
+        0.9135727
+      ],
+      "status": "HISTORICAL"
+    },
+    {
+      "label": "retained-replay-original",
+      "metric": "original",
+      "reach": [
+        0.9140384793281555,
+        0.9109803438186646,
+        0.9113315343856812,
+        0.9041095972061157,
+        0.8962090015411377,
+        0.8900009989738464,
+        0.9037500023841858,
+        0.902481198310852,
+        0.9043846130371094,
+        0.9051968455314636,
+        0.9070160984992981,
+        0.9081594347953796,
+        0.9135727286338806
+      ],
+      "residuals": [
+        0.008491098880767822,
+        0.005444347858428955,
+        0.005806922912597656,
+        -0.0014036893844604492,
+        -0.009292900562286377,
+        -0.015489578247070312,
+        -0.0017291903495788574,
+        -0.002986609935760498,
+        -0.0010718703269958496,
+        -0.00024825334548950195,
+        0.001582324504852295,
+        0.0027370452880859375,
+        0.008161723613739014
+      ],
+      "bump": -0.008728723041713238,
+      "bumpMillimetres": -8.728723041713238,
+      "worstElsewhere": 0.008491098880767822,
+      "minPlainRed": 118,
+      "endpoints": [
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ]
+      ],
+      "status": "REPORT-ONLY"
+    },
+    {
+      "label": "retained-candidate-area-band",
+      "metric": "candidate",
+      "reach": [
+        0.8988102420556326,
+        0.8961973831856535,
+        0.8938920041409244,
+        0.8874946002130712,
+        0.8874754566720612,
+        0.8856912714470085,
+        0.8825118126017812,
+        0.8830438361931531,
+        0.8898284122005252,
+        0.8926152070966137,
+        0.8969214649295209,
+        0.901797858574404,
+        0.899836145113247
+      ],
+      "residuals": [
+        0.008901208470219468,
+        0.005938371935968134,
+        0.0032830152269669455,
+        -0.0034643663651583445,
+        -0.0038334875704404414,
+        -0.005967650459765217,
+        -0.009497086969264656,
+        -0.009315041042164962,
+        -0.0028804426990649556,
+        -0.0004436254672485207,
+        0.0035126547013865084,
+        0.008039070681997496,
+        0.005727379556568435
+      ],
+      "bump": -0.004421834798454667,
+      "bumpMillimetres": -4.421834798454667,
+      "worstElsewhere": 0.009497086969264656,
+      "minPlainRed": 117,
+      "endpoints": [
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ]
+      ],
+      "status": "REPORT-ONLY"
+    }
+  ],
+  "historicalAssertion": {
+    "outcome": "Failed",
+    "testName": "KhaozEngine.Tests.Gpu.PointShadowFilterGpuTests.TheSoftEdgeCrossesACubeFaceBoundaryWithoutAStep",
+    "boundMetres": 0.008
+  },
+  "notAvailable": {
+    "mutant": "the retained artifact holds no clamped-face mutant capture",
+    "phases": "the retained artifact holds phase (0, 0) only",
+    "atlas": "the retained artifact holds no active-atlas row or binding record"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "exit_code": 0,
+  "status": "REPORT-ONLY",
+  "original_assertion": "Failed",
+  "original_replay_float32_values_matched": 28,
+  "original_bump_metres": -0.008728723041713238,
+  "candidate_bump_metres": -0.004421834798454667,
+  "candidate_worst_elsewhere_metres": 0.009497086969264656,
+  "report_sha256": "8ee469b8e10d2e94ea9202050b01cd8f0203050457806317cf82798c697b8845",
+  "artifact_sha256": "ef5ce8d9e72cf5f0d2638aedb0537e48dc80094b95ac73c5313b04d58a4743b5",
+  "source_hashes": {
+    "tools/shadow-seam-analysis/README.md": "2e23d9a9bbcef86eaac375546cead1b70ec528dd45c8bb379a14e9f9f78d6437",
+    "tools/shadow-seam-analysis/analyze.py": "9deb0d85b9bf56b4561f24c267bb3d15036957b97a83cfacced028cc86538cad",
+    "tools/shadow-seam-analysis/shadow_compare.py": "1d99893523a03cba87547fa5989d9c131c2d57db112d279f0a970aa28163fefc",
+    "tools/shadow-seam-analysis/shadow_geometry.py": "60bb376024ace32aa5b61b1c48e0fe2435805e7bc758d5e52d15cce96147d860",
+    "tools/shadow-seam-analysis/shadow_inputs.py": "999c726dc58b1ac9b16258c4d5bbd44b2482d9b1a362310fec99bb85829cd69f",
+    "tools/shadow-seam-analysis/shadow_metrics.py": "5a99e4dcda427c6c18af4cd371bc4b2e4d9ce8a858430bd18f0f1e4e8ceae297",
+    "tools/shadow-seam-analysis/test_shadow_analysis.py": "f7871a80104f9a959142c677159c0bd87ad7c5a7699240ce0a0085537d40b7c9"
+  },
+  "secondary_slot_released": true,
+  "standalone_invocations": 1,
+  "note": "One harmless extra PYTHONDONTWRITECODE=1 environment variable accompanied requested PYTHONDONTWRITEBYTECODE=1. No rerun.",
+  "classification": "No paired comparison, metric adoption, shader exoneration or Catalog clearance"
+}

@@ -10,7 +10,7 @@ namespace KhaozEngine.Tests.NetWorld;
 
 /// <summary>
 /// Covers the <see cref="WorldClient"/> remote-smoothing drive: between the discrete (~tick-rate) replicated
-/// snapshots, <see cref="WorldClient.AdvancePresentation"/> renders remotes on a FIXED delay
+/// snapshots, <see cref="WorldClient.AdvancePresentation(float)"/> renders remotes on a FIXED delay
 /// (<see cref="WorldClientConfig.InterpolationDelayTicks"/>) via <c>ClientReplicationView.InterpolateAt</c>, so a
 /// remote glides in the past (behind the newest snapshot) instead of teleporting one snapshot-step per ingest.
 /// Default-on, opt-out via <see cref="WorldClientConfig.InterpolateRemotes"/>; the local (predicted) avatar is

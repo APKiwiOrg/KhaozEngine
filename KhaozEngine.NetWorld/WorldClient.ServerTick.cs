@@ -22,7 +22,7 @@ public sealed partial class WorldClient
     /// <see cref="WorldClientConfig.InterpolateRemotes"/> it is the ingested ticks bracketed at the remote render time
     /// by the rule the remote samples follow: the oldest tick before the oldest ingest, the newest at or past the newest
     /// (a starved stream holds it), else the lerp by the true ingest times. Without it remotes draw the newest sample,
-    /// so this is <see cref="LatestServerTick"/>. Updated by <see cref="AdvancePresentation"/>, and <c>-1</c> under the
+    /// so this is <see cref="LatestServerTick"/>. Updated by <see cref="AdvancePresentation(float)"/>, and <c>-1</c> under the
     /// same conditions as <see cref="LatestServerTick"/>.</summary>
     public double RemoteRenderTick { get; private set; } = -1;
 

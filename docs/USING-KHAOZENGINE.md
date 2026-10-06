@@ -11759,6 +11759,14 @@ lifecycle for animation timing, while the live vertical velocity remains on the 
   snapshot-step per ingest - at the cost of ~one tick (~33 ms) of remote render latency (it renders ~one snapshot in
   the past, never extrapolating). Set `InterpolateRemotes = false` to read the raw latest position instead. Call
   `AdvancePresentation(dt)` once per render frame to drive both the local smoothing and the remote interpolation.
+  If a fixed command clock drives `SendInput`, prefer `AdvancePresentation(dt, commandPhaseSeconds)`. Read the
+  residual after all catch-up ticks, using `clock.TickSeconds - clock.SecondsUntilNextTick` with `FixedTickHost`.
+  It must be finite and within `[0, TickSeconds]` inclusive. Invalid phases throw before any presentation state,
+  statistics or trace changes. A fresh successful prediction lets the next positive frame place the local
+  interpolation clock at that phase, so fractional render cadences have even local steps. Without a fresh
+  prediction, the clock accumulates and caps as before. Either overload consumes the pending prediction on a
+  valid positive frame. Invalid frame times preserve it, ordinary reconciliation preserves it, and reset,
+  transition reset, reseed and hard snap clear it. Remote timing and correction decay are unchanged.
   A frame time that is not a finite positive number of seconds (negative, zero, infinite, or not a number) is
   treated as zero and advances nothing, on both `WorldClient.AdvancePresentation` and the underlying
   `ClientPrediction.AdvancePresentation`. Both clocks accumulate, so a broken frame clock redraws the previous
@@ -11784,6 +11792,7 @@ lifecycle for animation timing, while the live vertical velocity remains on the 
 var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default, new WorldClientConfig { TickSeconds = 1f/30f });
 // per fixed tick: client.SendInput(new MoveCommand(move, run, camera.Yaw));
 // per frame:      client.Poll(); client.AdvancePresentation(dt);
+// fixed-clock alternative, after ticking: client.AdvancePresentation(dt, clock.TickSeconds - clock.SecondsUntilNextTick);
 foreach (EntityRenderState e in client.Snapshot())
     scene.Draw(capsule, Matrix4x4.CreateTranslation(e.Position - up * halfHeight), e.IsLocal ? localTint : remoteTint);
 ```

@@ -107,7 +107,7 @@ public sealed class WorldClientConfig
     /// <summary>Enable the debug-only per-frame <see cref="PresentationTrace"/> (default false = off, zero overhead).
     /// When set, <see cref="WorldClient.PresentationTrace"/> is non-null and records the presentation-layer internal
     /// signals (render time, interpolation delay, seconds-since-snapshot, per-remote hold flag, snapshot arrivals,
-    /// local reconcile-error) plus rendered positions every <see cref="WorldClient.AdvancePresentation"/>, dumpable to
+    /// local reconcile-error) plus rendered positions every <see cref="WorldClient.AdvancePresentation(float)"/>, dumpable to
     /// CSV. Gate a game's diagnostic key on it; leave off in shipping.</summary>
     public bool PresentationTraceEnabled { get; init; }
 

@@ -11,10 +11,14 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   in logical points on Windows and X11. Pointer framebuffer conversion and legacy viewport defaults are unchanged.
 - `AdaptiveViewport.WithMinimumCanvas` adds an opt-in minimum UI canvas and a live `ScaleMultiplier`.
   Unrepresentable transforms are rejected without changing the previous layout.
+- Adds fixed-command phase overloads to `ClientPrediction.AdvancePresentation` and
+  `WorldClient.AdvancePresentation`, keeping local movement even at fractional render cadences. The phase is
+  validated before mutation, while the existing overload, correction decay and remote clocks retain their
+  behavior (#1313).
 - Repairs release validation with a deterministic device-free D3D11 resize/present test. Controlled
   queued bursts retain lock ownership, native-call order, last-request coalescing and whole-size checks
   without relying on producer scheduling (#1309).
-- Publication repair for 20.27.0. Native MapDoc runtime behavior and its shipped APIs are unchanged.
+- Publication repair for 20.27.0. The D3D11 test repair leaves runtime behavior and shipped APIs unchanged.
 
 ## 20.27.0
 

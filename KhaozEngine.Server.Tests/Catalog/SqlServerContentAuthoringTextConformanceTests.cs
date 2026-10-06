@@ -172,4 +172,14 @@ public sealed class SqlServerContentAuthoringTextConformanceTests : ContentAutho
     [CatalogSqlServerFact]
     public override Task Text18_ARowOnlyImportOverADraftHoldingOnlyRowsIsNotATextRefusal()
         => base.Text18_ARowOnlyImportOverADraftHoldingOnlyRowsIsNotATextRefusal();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ConditionalFreeze_RefusesUnrepresentedTextBeforeWriting()
+        => base.ConditionalFreeze_RefusesUnrepresentedTextBeforeWriting();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ConditionalRelease_PreservesTextAndIntroductions()
+        => base.ConditionalRelease_PreservesTextAndIntroductions();
 }

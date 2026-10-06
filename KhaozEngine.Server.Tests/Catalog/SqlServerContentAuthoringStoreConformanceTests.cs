@@ -264,6 +264,26 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
+    public override Task ConditionalFreeze_ValidatesBaseAndReturnsCompleteDraft()
+        => base.ConditionalFreeze_ValidatesBaseAndReturnsCompleteDraft();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ConditionalFreeze_MovedBasePreservesStaleMarkerAndTimestamp()
+        => base.ConditionalFreeze_MovedBasePreservesStaleMarkerAndTimestamp();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ConditionalRelease_ClearsOnlyMatchingBase()
+        => base.ConditionalRelease_ClearsOnlyMatchingBase();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ConditionalFreeze_RejectsNegativeBaseAndEmptyDraft()
+        => base.ConditionalFreeze_RejectsNegativeBaseAndEmptyDraft();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
     public override Task Fact26_AStoreLevelChangeWhoseAuditWriteFailsIsNotMade()
         => base.Fact26_AStoreLevelChangeWhoseAuditWriteFailsIsNotMade();
 

@@ -199,6 +199,13 @@ public interface IContentAuthoringStore : IContentVersionDirectory, IContentVers
     /// It OVERWRITES whatever marker was there. A marker left by a publish that died is not a reason to
     /// refuse the next one, since the publish is exactly what an operator does to recover.
     /// </para>
+    /// <para>
+    /// <b>It does not compare <paramref name="baseVersion"/> with the active version.</b> A caller standing on a
+    /// base the store has moved past overwrites the marker of the publisher standing on the active one. A store
+    /// that declares <see cref="IContentConditionalDraftFreeze"/> offers the guarded route,
+    /// <see cref="IContentConditionalDraftFreeze.FreezeDraftForBaseAsync"/>, which refuses that base with nothing
+    /// written. This member keeps its behavior for stores without the companion, host tooling and test setup.
+    /// </para>
     /// </summary>
     /// <param name="baseVersion">The version the publish is standing on, which is the active version at step 1.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
@@ -206,14 +213,16 @@ public interface IContentAuthoringStore : IContentVersionDirectory, IContentVers
     Task FreezeDraftAsync(int baseVersion, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Clears the freeze marker, whatever it holds, and leaves the draft and its edits alone. A publish runs
-    /// this on EVERY exit path, so a refusal or a throw releases the draft the same way a success does. It is
-    /// a no-op when no draft is open or none is frozen.
+    /// Clears the freeze marker, whatever it holds, and leaves the draft and its edits alone. It is a no-op when
+    /// no draft is open or none is frozen.
     /// <para>
-    /// A host may also call it to recover a marker left by a publisher process that died before commit, but
-    /// only after proving no publisher is live. Such a marker names the current base version, exactly like a
-    /// live publisher's marker, so the store cannot distinguish the two and never clears it from an edit or
-    /// discard request.
+    /// <b>It is explicit host recovery, run only after proving no publisher is live.</b> A marker left by a
+    /// publisher process that died before commit names the current base version, exactly like a live
+    /// publisher's marker, so the store cannot distinguish the two and never clears it from an edit or discard
+    /// request. Because it clears unconditionally, a publisher releasing its own freeze through it can also clear
+    /// a newer publisher's marker. A publisher on a store that declares <see cref="IContentConditionalDraftFreeze"/>
+    /// releases through <see cref="IContentConditionalDraftFreeze.ReleaseDraftFreezeForBaseAsync"/> with the base
+    /// its own freeze recorded.
     /// </para>
     /// </summary>
     /// <param name="cancellationToken">Cancels the call.</param>

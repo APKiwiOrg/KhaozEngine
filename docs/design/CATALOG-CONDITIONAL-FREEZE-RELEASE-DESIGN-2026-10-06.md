@@ -1,6 +1,6 @@
 # Catalog conditional freeze and release
 
-Status: **DRAFT FOR OWNER REVIEW. Not approved. Revision 1, pending one targeted re-review.** Written under owner
+Status: **DRAFT FOR OWNER REVIEW. Not approved. Reviews 1 and 2 reconciled, including C1 and C2.** Written under owner
 ruling OA14 ("Proceed with conditional-release design") for
 [#1271](https://github.com/APKiwiOrg/KhaozEngine/issues/1271). This is a design, not an implementation plan and not
 a release decision. No version is changed or reserved and no tag is authorized.
@@ -63,7 +63,7 @@ their public contract, both pipelines' call sites, the upgrade runner's capabili
 compatibility for custom stores and decorators, version disposition and deterministic proof.
 
 Not selected, per OA14: a durable owner token, a schema version or migration, treating any `text-state-mismatch`
-as contention, a new contention reason (R2 in the report), widened fault handling, process-local locks, test
+as contention, a new text-refusal contention reason, widened fault handling, process-local locks, test
 serialization or relaxed assertions. The unconditional release and the unconditional freeze stay public, for
 explicit host recovery, legacy stores and test setup.
 
@@ -171,16 +171,15 @@ meaningful only on the store that holds the marker.
 
 ### 4.2 `FreezeDraftForBaseAsync`
 
-The row-only freeze, guarded. It is `FreezeChangesAsync` without the baseline text snapshot, and
-`FreezeDraftAsync` plus the base check, done as one step.
+The row-only freeze, guarded. Unlike the existing text freeze, this new operation runs no preflight
+stale-marker sweep. It checks the active base and representability before its single marker write.
 
 1. **It is one atomic step.** Inside the store's own gate or one transaction, in this order: compare
    `expectedBaseVersion` with the active version, check the draft, run the existing row-only representability
    check, write the marker, and read the draft back. No read outside that step decides the write.
 2. **A moved base is refused with nothing written.** When `expectedBaseVersion` is not the active version it throws
    `ContentAuthoringException` with `BaseVersionMovedReason`, the same refusal and message shape as
-   `FreezeChangesAsync`. A marker naming the active version, which can only be a newer-base publisher's, is left
-   exactly as it is.
+   `FreezeChangesAsync`. A marker naming the active version is left exactly as it is.
 3. **An empty or missing draft is refused.** No open draft, or an open draft with no row edits
    (`ContentDraft.EditCount == 0`), throws with `NoOpenDraftReason`. This keeps the refusal
    `ContentPublisher.FreezeAsync` gives today for a draft with no row edits, including a draft that holds only text.
@@ -189,16 +188,14 @@ The row-only freeze, guarded. It is `FreezeChangesAsync` without the baseline te
    `FreezeDraftAsync` does today (`InMemoryContentAuthoringStore.Freeze.cs:42`, `SqliteContentAuthoringStore.Freeze.cs:44-48`,
    `SqlServerContentAuthoringStore.Freeze.cs:50-54`).
 5. **The write.** The marker becomes `expectedBaseVersion`. A marker already naming that base, which is a same-base
-   rival's or an interrupted run's, is overwritten with the same value (section 8). The store may run the stale
-   sweep first, as `FreezeChangesAsync` does. That sweep clears only a marker naming a base other than the active
-   version, so it can never touch a newer-base publisher's marker.
+   rival's or an interrupted run's, is overwritten with the same value (section 8). A stale marker is
+   replaced directly only after every check succeeds. There is no separate sweep before or within this call.
 6. **The return value** is the open draft exactly as `GetOpenDraftAsync` would return it at that moment, read in
    the same gate or transaction after the write. It is never null, and its `FrozenForBaseVersion` equals
    `expectedBaseVersion`. On a text-capable store it carries the draft's text state, as `GetOpenDraftAsync` does.
 7. **Timestamps.** `catalog_draft.updated_at_utc` moves when the marker value changes and stays when the marker
    already named this base, the rule the existing freeze statements follow (`CASE WHEN frozen_for_base_version IS
-   $base`). A refused call writes nothing except what the stale sweep writes, and the sweep stamps only the rows it
-   clears.
+   $base`). A refused call leaves both the marker and timestamp unchanged, including a stale marker.
 8. **Arguments.** A negative base throws `ArgumentOutOfRangeException`. Base 0 is valid, because the first publish
    freezes at 0.
 9. **Cancellation.** It honors its token like every member. A cancelled or faulted call either wrote nothing or
@@ -227,12 +224,12 @@ does not compile, so the risk is a decorator over an arbitrary inner store, whic
 
 ### 4.5 Store implementations
 
-- In-memory, under `_gate`. Freeze: `ClearStaleFreeze()`, the active check, the empty check,
+- In-memory, under `_gate`. Freeze: the active check, the empty check,
   `RequireRowOnlyRepresentable(open, nameof(FreezeDraftForBaseAsync))`, then `_draft = Reframe(open,
   open.BaseVersion, open.Changes, expectedBaseVersion)` and return the protected copy `GetOpenDraftAsync` returns.
   Release: clear only when `_draft is { FrozenForBaseVersion: int f } && f == frozenForBaseVersion`, through the
   existing `Reframe` with a null marker.
-- SQLite, under the lease. Freeze: the existing `ClearStaleFreezeAsync`, then one transaction that reads the active
+- SQLite, under the lease. Freeze: one transaction, with no preflight sweep, that reads the active
   version, reads the draft, runs `RequireRowOnlyRepresentableAsync`, runs the same `UPDATE` the existing freeze runs
   with `$base` set to the expected base, and reads the draft back before commit. Release, answered by the row
   count:
@@ -242,8 +239,8 @@ does not compile, so the risk is a decorator over an arbitrary inner store, whic
   WHERE draft_key = 1 AND frozen_for_base_version = $base;
   ```
 
-- SQL Server: the same two shapes inside the existing `WriteAsync` scope, with `@base` and `@now`, mirroring
-  `FreezeChangesAsync` at `SqlServerContentAuthoringStore.Text.cs:102-152`.
+- SQL Server: the same two shapes inside the existing `WriteAsync` scope, with `@base` and `@now`.
+  Do not copy the preflight sweep from the existing `FreezeChangesAsync`.
 
 No column, index, schema version or migration changes. `frozen_for_base_version` already holds the value.
 
@@ -384,7 +381,7 @@ learns before an Apply that it will be refused.
 | Event | Behavior after this change |
 |---|---|
 | Success | The commit consumed the draft. The publish `finally` releases `B`, which is a no-op on a later draft frozen at a newer base. The runner owes nothing. |
-| Base moved before the freeze, either route, runner or console | The freeze refuses with `base-version-moved` and writes nothing, so a newer marker stands. The release of `B` is a no-op on it. |
+| Base moved before the freeze, either route, runner or console | Both routes refuse with `base-version-moved` and preserve any active-base marker. The new row freeze writes nothing. The unchanged text freeze may first clear a stale marker and update its timestamp, including when it later refuses or is cancelled. It never clears the active-base marker. The release of `B` is a no-op on a newer marker. |
 | Base moved after the freeze | The commit's number confirmation refuses. The release of `B` clears only this publisher's marker if it still names `B`, never a newer one. |
 | Same-base failure after the freeze: invalid candidate, pack write fault, text chunk mismatch, provider fault | The release of `B` clears the marker naming `B`. That is this publisher's, or a same-base rival's (section 8). |
 | Cancellation | Released on `CancellationToken.None`, unchanged. Same-base residue as the row above. |
@@ -456,9 +453,13 @@ which is harmless by itself.
 - Likelihood: two same-base publishers plus a non-committing exit inside the other's window. The observed failures
   were cross-version, which this design closes.
 
-Closing it requires R2 (a distinct changed-frozen-draft reason that the runner treats as contention) or a durable
-owner token. **Neither is selected, and this design does not claim the residue is solved.** Section 13 asks the
-owner whether to file a follow-up that weighs them.
+A distinct changed-frozen-draft reason treated as contention could improve the **text-route runner's
+retry and boot outcome**. It would not prevent marker theft or repair the row-only commit, which raises no
+such refusal. The row-only edit-loss limitation is tracked as [#1311](https://github.com/APKiwiOrg/KhaozEngine/issues/1311)
+and requires its own commit-confirmation or ownership repair.
+A durable owner token is a broader ownership direction, not a design supplied by this batch.
+**None of these follow-ups is implemented or selected here.** Accepting the text-route boot limitation
+does not imply that a text retry would close the separately recorded row-only risk.
 
 ## 9. Custom stores, decorators and known consumers
 
@@ -585,7 +586,7 @@ These rules exist so a test cannot pass on old code because nothing checked the 
 
 | Id | Location | Forced sequence | Expected after the fix |
 |---|---|---|---|
-| T1 | `KhaozEngine.Server.Tests/Catalog/ContentAuthoringStoreConformance.Freeze.cs`, new virtual facts. In-memory and SQLite through their conformance classes, SQL Server through one-line `[CatalogSqlServerFact]` overrides in `SqlServerContentAuthoringStoreConformanceTests.cs` | Freeze: seed version 1 and a row draft. Freeze for 0, for 1, for 1 again. Publish to 2, edit, freeze for 2, then freeze for 1. No draft, freeze for 1. Plant a stale marker 0 with `FreezeDraftAsync`, freeze for the active base. Negative base. Release: with marker 1, release 0, then 1, then 1 again. With marker 2, release 1. No draft, release 5. Negative base. | Freeze for 0 refused `base-version-moved` with no marker. Freeze for 1 returns the draft frozen at 1, equal to `GetOpenDraftAsync`. The repeat returns the same draft with `updated_at_utc` unchanged. Freeze for 1 against marker 2 is refused and marker 2 and its timestamp stand. No draft refused `no-open-draft`. The stale marker is replaced. `ArgumentOutOfRangeException`. Release results `false`, `true`, `false`, marker 2 survives, `false`, `ArgumentOutOfRangeException`. `ClearDraftFreezeAsync` still clears marker 2 unconditionally. Edits and audit count unchanged by every call. |
+| T1 | `KhaozEngine.Server.Tests/Catalog/ContentAuthoringStoreConformance.Freeze.cs`, new virtual facts. In-memory and SQLite through their conformance classes, SQL Server through one-line `[CatalogSqlServerFact]` overrides in `SqlServerContentAuthoringStoreConformanceTests.cs` | Freeze: seed version 1 and a row draft. Freeze for 0, for 1, for 1 again. Publish to 2, edit, freeze for 2, then freeze for 1. No draft, freeze for 1. At active 2, plant stale marker 0 with `FreezeDraftAsync`, freeze for expected 1 and then for active 2. Negative base. Release: with marker 1, release 0, then 1, then 1 again. With marker 2, release 1. No draft, release 5. Negative base. | Freeze for 0 refused `base-version-moved` with no marker. Freeze for 1 returns the draft frozen at 1, equal to `GetOpenDraftAsync`. The repeat returns the same draft with `updated_at_utc` unchanged. Freeze for 1 against marker 2 is refused and marker 2 and its timestamp stand. No draft refused `no-open-draft`. Expected 1 refuses with stale marker 0 and its timestamp unchanged. Expected 2 then replaces it and stamps the change. `ArgumentOutOfRangeException`. Release results `false`, `true`, `false`, marker 2 survives, `false`, `ArgumentOutOfRangeException`. `ClearDraftFreezeAsync` still clears marker 2 unconditionally. Edits and audit count unchanged by every call. |
 | T1t | `ContentAuthoringTextStoreConformance.cs` with the SQL Server override, `SqliteCatalogRowTimestampTests.cs`, `SqlServer/SqlServerCatalogRowTimestampTests.cs` | Text-only draft, text-and-row draft and a text fork, each through `FreezeDraftForBaseAsync`. A text draft frozen through `FreezeChangesAsync` and released at its base and at another base. | Text-only refused `no-open-draft`. Text-and-row and the fork refused `text-unrepresented` with no marker. Text state and introductions untouched by releases. `updated_at_utc` moves only on a marker change or a `true` release. |
 | T2 | New `KhaozEngine.Catalog.Tests/Publish/ConditionalFreezeReleasePublishTests.cs`, theory over in-memory and SQLite replicas | P1 expecting 1 freezes and parks at its commit. P2 at 1 commits version 2. An edit opens D2. P3 expecting 2 freezes D2 and parks at its commit. P1 resumes, is refused, and its `finally` completes. P3 resumes. | P1 refused `base-version-moved`. D2's marker is still 2. P3 commits version 3. No draft remains. |
 | T2p | Same file. P1 publishes through a row-only decorator that builds its commit over itself, the row route | P1's row route has read its baseline (1) and passed its expectation check, and parks at the entry of its freeze step (`GetOpenDraftAsync` on the baseline, `FreezeDraftForBaseAsync` on the fix). P2 commits version 2. An edit opens D2. P3, on the text route, freezes D2 at 2 and parks at its commit. P1 resumes and completes, then P3 resumes. | P1's freeze refused `base-version-moved`. D2's marker is still 2. P3 commits version 3. |
@@ -674,8 +675,10 @@ and any release tag.
    alternative is a lazy check at the first publish that lets adoption rows land first.
 4. **Preview on a legacy store.** Recommended: keep the preview result and add the `KECU0017` note. The
    alternative is a silent Preview, which leaves the operator to find the refusal in the Apply.
-5. **Same-base residue.** Recommended: accept it as documented in section 8 and have the root file one follow-up
-   issue that weighs R2 against an owner token. The alternative is to bring R2 into this batch.
+5. **Same-base residue.** Recommended: keep this batch focused on cross-version interference and track the
+   text-route boot/refusal limitation separately from the preexisting row-only edit-loss risk. A distinct
+   text-refusal retry is an alternative only for the text-route runner outcome. It cannot close row-only
+   edit loss. Expanding either repair needs a separate scope decision, with no owner-token design implied.
 6. **Consumer handoff.** Recommended: the root files a Grimhollow issue for `CatalogUpgradeRaceStore` to declare the
    companion, forward both members and require it of its inner store at construction, at the next engine pin.
 
@@ -690,3 +693,20 @@ and any release tag.
   T3 to T4r and the existing upgrade suites verify the classification.
 - The same-base residue can still fail a replica boot under cancellation or fault interleavings.
 - SQL Server coverage depends on the existing CI job. A local proof is not available on the development Mac.
+
+
+## Controller disposition of review 2
+
+C1 is corrected by selecting the strict contract for the new guarded row freeze. It has no stale
+sweep and refuses before any marker or timestamp write. A successful call replaces a stale marker
+directly. T1 pins stale-marker plus moved-base refusal. The unchanged text freeze keeps its existing
+preflight maintenance, and the lifecycle table explicitly covers its sweep-only refusal or
+cancellation outcome. Unsupported-capability gates still run before any store call.
+
+C2 is corrected by separating text-route boot/retry behavior from the preexisting unchecked
+row-commit edit-loss risk, now #1311. A distinct text-refusal retry cannot repair that row commit.
+No repair of the deferred residue is bundled into this design.
+
+Controller verified both findings against the cited code and revised these exact contracts. The
+review accepted F1 to F4 apart from these corrections. No new broad review or implementation was
+started. This draft is ready for owner design review, with runtime red proof still required by task 0.

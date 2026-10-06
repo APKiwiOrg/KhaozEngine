@@ -3321,3 +3321,10 @@ closed after an already committed save and the released save ordering is preserv
 changes this task's implementation. No downstream Task2, main/feed integration, format version,
 private oracle, pack or release follows from this focused proof. Full-round verification remains
 at the approved finishing gate, and #1310 stays open until actual integration.
+
+
+Task 1 implementation and focused proof are pushed at
+8e393cf756f9ea3e1cbf5c590275c7274ebc6f2e on feature/wa-r2-caves-scale. Root verified clean HEAD
+against origin and all four source hashes against GREEN. Five light guards, the hooked commit and
+push exited0. This is the Task 1 branch checkpoint only. R2's later tasks, full-round finishing,
+main integration and release are not claimed. Task2 remains closed pending coordination.

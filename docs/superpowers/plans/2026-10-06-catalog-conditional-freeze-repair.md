@@ -952,3 +952,18 @@ Root resumes full Release verification after this source change, using new final
 final2-test.log and final2-format.log through the shared slot. Record the exact clean head before
 running. Private pack, actual hosted SQL Server/GPU CI, integration and shared-pack gates follow
 only on passing verification. No tag is authorized by review approval.
+
+
+### Full local verification and private package proof passed
+
+Verified clean pushed head 50ff5410acc19bfaa90a7e4c3e1e83aea483dd22. Release build passed with
+zero warnings/errors. Full non-LiveSocket suite passed across 30 projects with 25,742 passed,
+zero failed and 1,338 skipped. Full format exited 0 with a workspace-loading warning, no format
+failure. Private pack exited 0. Root inspected all 200 package files, every nuspec names 20.28.0
+and repository commit 50ff5410acc19bfaa90a7e4c3e1e83aea483dd22. No shared-feed bytes changed.
+
+Normal hosted CI run 37440385030 and cross-platform GPU run 37440389468 were dispatched for
+fix/wa-catalog-freeze at that head. GPU inputs are bake=false, legs=all, tier=push. No hosted
+stress or release tag was dispatched. SQL Server and GPU execution/results remain pending.
+Proof counts, log hashes and package hashes are in proofs/2026-10-06-catalog-full-verification.json.
+Root still owns actual hosted result verification, main reconciliation/integration and shared pack.

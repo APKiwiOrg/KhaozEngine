@@ -135,6 +135,60 @@ public partial class LowLipTraversalTests
             $"segments {onto} then {across}, route {route.Status}");
     }
 
+    // A directed-edge discriminator, not a repair: retain each captured surface identity, then ask whether the
+    // unchanged proof connects the physical resting positions associated with those surfaces.
+    [Theory]
+    [InlineData(-0.375f, -EdgeOffset)]
+    [InlineData(-EdgeOffset, -0.375f)]
+    [InlineData(-EdgeOffset, EdgeOffset)]
+    [InlineData(EdgeOffset, -EdgeOffset)]
+    public void RealFootprintProbeConnectsTheRestingLipEndpoints(float fromX, float toX)
+    {
+        using BepuPhysicsWorld world = LipWorld(RestingLip);
+        GroundMoveContext context = Context(world);
+        using PhysicsNavBake bake = PhysicsNavBake.Capture(context, Options, _ => 0u);
+        var footprint = new NavAreaFootprint(bake.Columns, Options, Tuning, default);
+        CapturedLipPoint from = CapturedPoint(bake, fromX), to = CapturedPoint(bake, toX);
+        MoveTuning unit = Tuning with { WalkSpeed = 1f, RunSpeed = 1f, AirMomentum = false };
+        MoveState fromBody = NpcGroundMovement.Hold(StandingAt(from.Feet), Tick, unit, context);
+        MoveState toBody = NpcGroundMovement.Hold(StandingAt(to.Feet), Tick, unit, context);
+        Vector3 fromRest = fromBody.Position - Vector3.UnitY * unit.CapsuleHalfHeight;
+        Vector3 toRest = toBody.Position - Vector3.UnitY * unit.CapsuleHalfHeight;
+        float fromXz = PlanarDelta(from.Feet, fromRest), toXz = PlanarDelta(to.Feet, toRest);
+        bool fromFits = footprint.Accepts(from.Feet) && footprint.Accepts(fromRest);
+        bool toFits = footprint.Accepts(to.Feet) && footprint.Accepts(toRest);
+        bool setup = fromBody.Grounded && toBody.Grounded && fromFits && toFits &&
+            fromXz <= GroundTraversalProbe.ArrivalTolerance && toXz <= GroundTraversalProbe.ArrivalTolerance;
+        bool? proved = setup
+            ? GroundTraversalProbe.TryEdge(context, Tuning, fromRest, toRest, footprint.Accepts, Tick, 64)
+            : null;
+        _restingOutput.WriteLine($"from source column=({from.X},{from.Z}) ordinal={from.Ordinal}, raw={from.Feet}, " +
+            $"rest={fromRest}, grounded={fromBody.Grounded}, xzDelta={fromXz:R}, raw/rest footprint={fromFits}");
+        _restingOutput.WriteLine($"to source column=({to.X},{to.Z}) ordinal={to.Ordinal}, raw={to.Feet}, " +
+            $"rest={toRest}, grounded={toBody.Grounded}, xzDelta={toXz:R}, raw/rest footprint={toFits}, " +
+            $"proof={proved?.ToString() ?? "not run, setup refused"}");
+        Assert.True(setup, "endpoint setup or footprint failed, no directed-edge conclusion");
+        Assert.True(proved is true, "the unchanged directed proof refused the supported resting endpoints");
+    }
+
+    private readonly record struct CapturedLipPoint(int X, int Z, int Ordinal, Vector3 Feet);
+
+    private static CapturedLipPoint CapturedPoint(PhysicsNavBake bake, float x)
+    {
+        int cx = (int)MathF.Floor((x - Options.MinX) / Options.CellSize);
+        int cz = (int)MathF.Floor((Row - Options.MinZ) / Options.CellSize);
+        ReadOnlySpan<PhysicsNavSurface> column = bake.Columns.GetColumn(cx, cz);
+        float expected = LipFeet(x, RestingLip).Y;
+        var matches = new List<CapturedLipPoint>();
+        for (int i = 0; i < column.Length; i++)
+            if (MathF.Abs(column[i].Height - expected) <= GroundTraversalProbe.ArrivalTolerance)
+                matches.Add(new CapturedLipPoint(cx, cz, i, new Vector3(x, column[i].Height, Row)));
+        return Assert.Single(matches);
+    }
+
+    private static float PlanarDelta(Vector3 a, Vector3 b)
+        => new Vector2(a.X - b.X, a.Z - b.Z).Length();
+
     // The bank column must not take the deck height. Its body drops to the corner rest, 27 mm below that target.
     [Fact]
     public void ProbeRefusesTheBankColumnAtTheDeckHeight()

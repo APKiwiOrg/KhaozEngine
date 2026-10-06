@@ -164,7 +164,13 @@ public abstract partial class ContentAuthoringStoreConformance
         // B adopts the first upgrade through the ledger once its own publish failed, then re-reads version 3,
         // where the second plans as already satisfied and is recorded without a publish attempt.
         Assert.Single(b.Diagnostics, d => d.Code == ContentUpgradeCodes.AppliedConcurrently);
-        Assert.Equal(ContentUpgradeStepState.Adopted, b.Steps[^1].State);
+        Assert.Equal(2, b.Steps.Count);
+        Assert.Equal(RaceFirstId, b.Steps[0].Id);
+        Assert.Equal(ContentUpgradeStepState.Applied, b.Steps[0].State);
+        Assert.Equal(2, b.Steps[0].PublishedVersion);
+        Assert.Equal(RaceSecondId, b.Steps[1].Id);
+        Assert.Equal(ContentUpgradeStepState.Adopted, b.Steps[1].State);
+        Assert.Null(b.Steps[1].PublishedVersion);
 
         Assert.Equal(new[] { 1, 2, 3 }, (await store.ListVersionsAsync()).Select(v => v.VersionNumber).Order());
         IReadOnlyList<ContentUpgradeRecord> ledger = await Ledger(store).ListUpgradesAsync();

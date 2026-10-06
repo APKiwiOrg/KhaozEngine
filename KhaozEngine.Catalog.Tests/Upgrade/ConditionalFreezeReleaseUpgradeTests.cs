@@ -125,7 +125,7 @@ public sealed class ConditionalFreezeReleaseUpgradeTests(ITestOutputHelper outpu
         await using var fixture = new FreezeRaceFixture(sqlite);
         await fixture.SeedAsync();
         FreezeRaceStore runner = await fixture.TextParticipantAsync();
-        await RunnerAgainstConsoleAsync(fixture, runner, gate => runner.ArmRunnerFreezeExit(gate, 1));
+        await RunnerAgainstConsoleAsync(fixture, runner, gate => runner.ArmRunnerFreezeExit(gate, 1), expectedReleases: 2);
     }
 
     /// <summary>
@@ -141,7 +141,7 @@ public sealed class ConditionalFreezeReleaseUpgradeTests(ITestOutputHelper outpu
         await using var fixture = new FreezeRaceFixture(sqlite);
         await fixture.SeedAsync();
         FreezeRaceStore runner = await fixture.TextParticipantAsync();
-        await RunnerAgainstConsoleAsync(fixture, runner, gate => runner.ArmRunnerFreezeEntry(gate, 1));
+        await RunnerAgainstConsoleAsync(fixture, runner, gate => runner.ArmRunnerFreezeEntry(gate, 1), expectedReleases: 1);
     }
 
     /// <summary>
@@ -157,19 +157,22 @@ public sealed class ConditionalFreezeReleaseUpgradeTests(ITestOutputHelper outpu
         await using var fixture = new FreezeRaceFixture(sqlite);
         await fixture.SeedAsync();
         RowFreezeRaceStore runner = await fixture.RowParticipantAsync(forwardPublish: true);
-        await RunnerAgainstConsoleAsync(fixture, runner, gate => runner.ArmRunnerFreezeEntry(gate, 1));
+        await RunnerAgainstConsoleAsync(fixture, runner, gate => runner.ArmRunnerFreezeEntry(gate, 1), expectedReleases: 1);
     }
 
     /// <summary>
     /// The one body T3o, T4 and T4r share: R runs the first upgrade alone and parks at its freeze gate, an
     /// ordinary console publish with no upgrade stamp commits R's draft as version 2, a console edit opens
     /// D2, P2 parks at its commit on base 2, R resumes and is held after its first release, then P2 and R
-    /// finish. P2 is the winner, and R records the upgrade once by adoption after version 3.
+    /// finish. P2 is the winner, and R records the upgrade once by adoption after version 3. Every release R
+    /// makes names base 1, answers false and runs on a token nothing can cancel. The caller states how many
+    /// releases its scenario reaches.
     /// </summary>
     async Task RunnerAgainstConsoleAsync(
         FreezeRaceFixture fixture,
         FreezeRaceParticipant runner,
-        Action<OnceGate> armFreeze)
+        Action<OnceGate> armFreeze,
+        int expectedReleases)
     {
         IContentAuthoringStore inner = fixture.Inner;
         ContentUpgradeSet set = await RowOnlySetAsync(fixture, fixture.First);
@@ -233,6 +236,12 @@ public sealed class ConditionalFreezeReleaseUpgradeTests(ITestOutputHelper outpu
         Assert.Equal(0, winner.LegacyFreezeCalls);
         Assert.Equal(0, winner.LegacyClearCalls);
         Assert.Equal(1, runner.GuardedFreezeCalls);
+        Assert.Equal(expectedReleases, runner.ReleaseBases.Count);
+        Assert.Equal(expectedReleases, runner.ReleaseResults.Count);
+        Assert.Equal(expectedReleases, runner.ReleaseTokens.Count);
+        Assert.All(runner.ReleaseBases, b => Assert.Equal(1, b));
+        Assert.All(runner.ReleaseResults, r => Assert.False(r));
+        Assert.All(runner.ReleaseTokens, token => Assert.Equal(CancellationToken.None, token));
     }
 
     /// <summary>

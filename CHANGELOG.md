@@ -20,17 +20,17 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   store that does not implement both `FreezeDraftForBaseAsync` and `ReleaseDraftFreezeForBaseAsync` before
   calling any of its members, and throw `ContentAuthoringException` with the `conditional-freeze-unavailable`
   reason. An upgrade Apply still reads the active version and the ledger first, then with pending work stops as
-  `Unsupported` with `KECU0017` before it reads the draft, adoption of an already satisfied definition included. A Preview on that
-  store keeps its full result and adds `KECU0017` as a note. A decorator declares the companion only when its
-  constructor requires an inner store that declares it, and forwards both members.
+  `Unsupported` with `KECU0017` before it reads the draft, adoption of an already satisfied definition
+  included. A Preview on that store keeps its full result and adds `KECU0017` as a note. A decorator declares
+  the companion only when its constructor requires an inner store that declares it, and forwards both members.
 - The guard is against a marker for another base, not exclusive ownership. Two publishers on the same base
   remain indistinguishable, so one can still clear the other's marker, including through the release after its
   own refused freeze. Text-route boot liveness after that loss is #1312 and row-only edit loss is #1311. A
   catalog shared by writers on mixed engine versions keeps the old exposure until every writer runs 20.28.0 or
   later.
 - The text freeze `FreezeChangesAsync` and the baseline read still clear a stale marker naming any non-active
-  base before their other checks, so a refused or cancelled text freeze is not write free. The new row freeze runs no such
-  cleanup.
+  base before their other checks, so a refused or cancelled text freeze is not write free. The new row freeze
+  runs no such cleanup.
 - Repairs release validation with a deterministic device-free D3D11 resize/present test. Controlled
   queued bursts retain lock ownership, native-call order, last-request coalescing and whole-size checks
   without relying on producer scheduling (#1309).

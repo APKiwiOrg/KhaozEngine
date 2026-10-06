@@ -10,8 +10,8 @@ namespace KhaozEngine.Tests.Catalog.Publish;
 /// row-only provider that can still be published through. It deliberately keeps hiding the text companion, so a
 /// publish over it takes the row route and the text representability checks stay exercised.
 /// <para>
-/// Its constructor requires an inner store that declares the companion, and both members forward there. The
-/// guarded freeze is recorded as a call, exactly as the released freeze is.
+/// Its constructor requires an inner store that declares the companion, and both members forward there. Both
+/// are recorded as calls, so a read-only check against <see cref="RowOnlyStoreView.WriteMembers"/> sees them.
 /// </para>
 /// </summary>
 internal class ConditionalRowOnlyStoreView : RowOnlyStoreView, IContentConditionalDraftFreeze
@@ -41,5 +41,8 @@ internal class ConditionalRowOnlyStoreView : RowOnlyStoreView, IContentCondition
     public virtual Task<bool> ReleaseDraftFreezeForBaseAsync(
         int frozenForBaseVersion,
         CancellationToken cancellationToken = default)
-        => _guarded.ReleaseDraftFreezeForBaseAsync(frozenForBaseVersion, cancellationToken);
+    {
+        Record(nameof(ReleaseDraftFreezeForBaseAsync));
+        return _guarded.ReleaseDraftFreezeForBaseAsync(frozenForBaseVersion, cancellationToken);
+    }
 }

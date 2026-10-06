@@ -73,3 +73,12 @@ does not establish execution of the assertion. TRX is the sole assertion result.
 CPU proof is retained in proofs/2026-10-07-point-shadow-seam-cpu.json, with source and log/TRX
 hashes. GPU and diagnostic capture environment variables were confirmed unset. No rendered
 assertion, artifact capture, full GPU class or workflow ran. This validates artifact logic only.
+
+Coordinator CD10 subsequently authorized one isolated hosted proof. Run 37482238342, job
+112333092389, attempt 1 at proof 8632b57391f1a0cf6d67bf77430c578f8d4fba50 executed exactly one
+probe and failed its original assertion, with a complete artifact. No rerun occurred. The proof
+commit has sole parent be72718673d79d83d34d3467a262e95bbe845151 and changes only ci.yml.
+Never integrate it. Independent artifact checks and offline replay are recorded in
+proofs/2026-10-07-point-shadow-seam-findings.md and its adjacent JSON/script files.
+Sampling sensitivity is established, but the filter-versus-measurement cause remains unresolved.
+No tolerance change or Catalog gate waiver follows from successful evidence capture.

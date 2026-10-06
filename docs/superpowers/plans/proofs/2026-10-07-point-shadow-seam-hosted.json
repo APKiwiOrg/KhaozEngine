@@ -1,0 +1,28 @@
+{
+  "code_sha": "be72718673d79d83d34d3467a262e95bbe845151",
+  "proof_sha": "8632b57391f1a0cf6d67bf77430c578f8d4fba50",
+  "proof_tree": "d9c786f2a5fdb743f8d5b08cc8e8ba95b9db8ce2",
+  "workflow_sha256": "ad594622ace04ec57f303615a117618d72692dc1306860e04cf3aa20564d4bbc",
+  "source_equivalence": "Only .github/workflows/ci.yml differs, sole parent is code SHA, clean and remote verified",
+  "dispatches_authorized": 1,
+  "run_id": 37482238342,
+  "run_attempt": 1,
+  "run_url": "https://github.com/APKiwiOrg/KhaozEngine/actions/runs/37482238342",
+  "dispatches_started": 1,
+  "initial_status": "in_progress",
+  "status": "completed",
+  "conclusion": "failure",
+  "job_id": 112333092389,
+  "artifact_id": 11421552678,
+  "artifact_sha256": "ef5ce8d9e72cf5f0d2638aedb0537e48dc80094b95ac73c5313b04d58a4743b5",
+  "test_counts": {
+    "total": 1,
+    "executed": 1,
+    "passed": 0,
+    "failed": 1,
+    "skipped": 0
+  },
+  "evidence_complete": true,
+  "assertion_failed": true,
+  "offline_script_sha256": "4773d1a3f19770dad686c9ba084d1ed32941e0929c7b90768e9242e171a9a9be"
+}

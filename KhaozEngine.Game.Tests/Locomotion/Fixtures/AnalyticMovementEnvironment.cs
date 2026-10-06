@@ -59,17 +59,19 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
             .ThenBy(w => w.Bounds.Min.X).ThenBy(w => w.Bounds.Min.Y).ToArray();
     }
 
-    public MovementQueryLease Acquire(string room)
+    public MovementQueryLease Acquire(string? room)
     {
         Assert.Null(_view);
         _view = Physics.CreateQueryViewExcludingStatics([]);
         var frame = new MovementFrameDescriptor(WorldFrame.Origin, Vector3.Zero, 1ul);
-        var scope = new MovementQueryScope(new Vector3(-32f), new Vector3(32f), 0f, 0f, Space(room), Identity, frame);
+        var scope = new MovementQueryScope(new Vector3(-32f), new Vector3(32f), 0f, 0f,
+            "world", room is null ? null : Space(room), Identity, frame);
         Acquisition = new EnvironmentAcquisitionFixture(_view, scope)
         {
             Resources = BackingIds,
             OnBodySample = Sample,
-            OnCoverage = Trace
+            OnCoverage = Trace,
+            OnRebuild = Rebuild
         };
         var acquired = Acquisition.Acquire();
         Assert.Equal(MovementAvailability.Known, acquired.Status);
@@ -78,6 +80,19 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
 
     public void Slab(float top, float halfThickness = 0.1f) => Physics.AddStatic(
         new BoxShape(new Vector3(8f, halfThickness, 8f)), Pose.At(new Vector3(0f, top - halfThickness, 0f)));
+
+    MovementAvailability Rebuild(in FramedMovementState state, out MovementSelection selection)
+    {
+        selection = default;
+        Assert.Null(state.Selection);
+        if (MissingContainment) return MovementAvailability.Unresolved;
+        Vector3 centre = state.State.Position;
+        Room[] membership = _rooms.Where(room => room.Bounds.ContainsPoint(centre)).ToArray();
+        if (membership.Length != 1) return MovementAvailability.Unresolved;
+        // This producer reconstructs occupied space only. Standing support is selected separately.
+        selection = new MovementSelection(Space(membership[0].Id), null, Identity);
+        return MovementAvailability.Known;
+    }
 
     MovementWaterPoint Sample(in MovementBodyQuery body)
     {

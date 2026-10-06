@@ -369,6 +369,33 @@ refusal. The partial-coverage poses deliberately overlap the matching solid and 
 Coverage is not permission to commit those paths. The proof will remain finite analytic evidence,
 not native patch clipping, residency, tiled seams, full mover behavior or G1b acceptance.
 
+### Corrected portal selection audit
+
+The original Task 3 plan also requires reconstruction after a discarded predicted portal crossing.
+Existing CS1 cases prove readiness, identity, null-hint certificates and a bounded stacked-Y choice.
+The final focused preparation adds three `MovementEnvironmentReconstructionTests` against actual
+declared finite room bounds in the analytic producer: correction back into the left room after a
+right-room prediction, exact half-open ownership at the portal plane with mixed wet/dry footprint,
+and successful reconstruction followed by an out-of-room correction that blocks all three selected
+queries until another valid reconstruction. The witness remains the same immutable null-hint witness.
+
+The analytic fixture now accepts null-hint acquisition and derives the canonical room from the
+corrected framed position, never the discarded selection. It reconstructs space only, with no
+invented standing support. Existing support-resolver proofs cover later support selection.
+This test-only extension passed all three cases, zero failures/skips, exit 0 in
+`/tmp/swim-environment-reconstruction-first.log`. With sources unchanged, the conditional
+`--no-build` run passed the affected 25 volume and seven nonrectangular cases, zero failures/skips,
+exit 0 in `/tmp/swim-environment-reconstruction-regressions.log`. The secondary slot was explicitly
+released after both commands. No production, native adapter or G1b change is included.
+
+Before the first run, pivot's source inspection caught a fixture-subject mismatch: MoveState.Position
+is the capsule centre, but the new Body helper added a half-height. That offset is removed, Rebuild's
+local variable is named centre, and each corrected/restored body's centre is explicitly asserted equal
+to the framed state's position. Room, portal and refusal expectations are unchanged. No tests had run.
+The same audit found an existing half-height offset in the VC1 frame-rebinding fixture. That separate
+test-only correction remains pending and is not silently included in this three-case window. Earlier
+VC1 results do not prove the missing framed-state/body-centre equality assertion.
+
 The initial value RED compiled and exited 1 with 27 missing-runtime-type failures. After value
 implementation, the same 27 assertions using direct public types passed in Release with no skips,
 exit 0, in `/tmp/swim-environment-values-green.log`. This validates keys, body/interval/point

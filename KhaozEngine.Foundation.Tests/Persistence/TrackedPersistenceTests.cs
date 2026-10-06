@@ -1,14 +1,16 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using KhaozEngine.App;
 using KhaozEngine.Persistence;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests;
 
-public sealed class TrackedPersistenceTests
+public sealed class TrackedPersistenceTests(ITestOutputHelper output)
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
@@ -199,81 +201,119 @@ public sealed class TrackedPersistenceTests
     public async Task Drain_resolves_supersession_even_when_the_replacing_producer_is_paused(bool dispose, bool trackedReplacement)
     {
         using var files = new TestFiles();
-        using var writer = new WriteGate("hold");
-        using var supersession = new WriteGate("supersession");
-        using var continueDrain = new ManualResetEventSlim(false);
-        var writesDrained = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var drainDecision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var queue = new PersistenceQueue((path, json) =>
+        // Diagnostics for #1317. The trace, traced gates and runner add evidence and keep the body's first
+        // failure without changing the scenario's gates, Task.Run scheduling, watchdogs or assertions.
+        var trace = new TrackedDrainTrace();
+        trace.Record("scenario", $"dispose={dispose} trackedReplacement={trackedReplacement}");
+        using var writer = new TrackedDrainGate("writer", Timeout, "The controlled writer was not released.", trace);
+        using var supersession = new TrackedDrainGate("supersession", Timeout, "The controlled writer was not released.", trace);
+        using var continueDrain = new TrackedDrainGate("drain-decision", Timeout, "The drain decision was not released.", trace);
+        string invalidChildPath = System.IO.Path.Combine(files.OtherPath, "fail.json");
+        var writesDrained = new TrackedDrainFailureSignal(trace, invalidChildPath, new Dictionary<string, string>
         {
-            writer.BeforeWrite(json);
+            [files.OtherPath] = "hold",
+            [files.Path] = "tracked-target",
+            [invalidChildPath] = "invalid-child",
+        });
+        var drainDecision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var queue = new PersistenceQueue((path, json) => trace.Guard("write", () =>
+        {
+            trace.Record("write-enter", $"role={writesDrained.RoleOf(path)} payload={json}");
+            if (json == "hold") writer.Hold();
             AtomicJsonWriter.WriteText(path, json);
-        }, maxAttempts: 1, retryDelay: TimeSpan.Zero,
-            beforeSupersessionCompletion: () => supersession.BeforeWrite("supersession"),
-            observeDrainDecision: waiting =>
+            trace.Record("write-exit", $"role={writesDrained.RoleOf(path)} payload={json}");
+        }), maxAttempts: 1, retryDelay: TimeSpan.Zero,
+            beforeSupersessionCompletion: () => trace.Guard("supersession", supersession.Hold),
+            observeDrainDecision: waiting => trace.Guard("drain-decision", () =>
             {
+                trace.Record("drain-predicate", $"waiting={waiting}");
                 drainDecision.TrySetResult(waiting);
-                if (!continueDrain.Wait(Timeout)) throw new TimeoutException("The drain decision was not released.");
-            });
+                continueDrain.Hold();
+            }));
+        // Subscribe before the held write starts, so its watchdog failure is also recorded.
+        queue.WriteFailed += writesDrained.Observe;
         Task? producer = null;
         Task? drain = null;
+        Task<PersistenceWriteResult>? firstTask = null;
         Task<PersistenceWriteResult>? latestTask = null;
-        try
+        void RecordTasks(string phase) => trace.Record("tasks",
+            $"{phase} producer={producer?.Status} drain={drain?.Status} first={firstTask?.Status} latest={latestTask?.Status}");
+
+        await TrackedDrainRunner.RunAsync(trace, async () =>
         {
             queue.Enqueue(files.OtherPath, "hold");
+            trace.Record("body", "await writer entry");
             await writer.Entered.Task.WaitAsync(Timeout);
-            Task<PersistenceWriteResult> firstTask = queue.EnqueueTracked(files.Path, "first");
-            // The real failed write delivers WriteFailed only after the drain latch is clear.
-            queue.WriteFailed += (_, _) => writesDrained.TrySetResult(true);
-            queue.Enqueue(System.IO.Path.Combine(files.OtherPath, "fail.json"), "failure");
-            producer = Task.Run(() =>
+            Task<PersistenceWriteResult> first = queue.EnqueueTracked(files.Path, "first");
+            firstTask = first;
+            // The real failed write delivers WriteFailed only after the drain latch is clear. Only the
+            // deliberately invalid child path counts as that signal.
+            queue.Enqueue(invalidChildPath, "failure");
+            trace.Record("producer", "scheduled");
+            producer = Task.Run(() => trace.Guard("producer", () =>
             {
+                trace.Record("producer", "entered");
                 if (trackedReplacement) latestTask = queue.EnqueueTracked(files.Path, "latest");
                 else queue.Enqueue(files.Path, "latest");
-            });
+                trace.Record("producer", "returned");
+            }));
+            trace.Record("body", "await supersession entry");
             await supersession.Entered.Task.WaitAsync(Timeout);
-            writer.Release.Set();
-            await writesDrained.Task.WaitAsync(Timeout);
+            writer.Release("body");
+            trace.Record("body", "await invalid child WriteFailed");
+            await writesDrained.Expected.WaitAsync(Timeout);
+            RecordTasks("writes-drained");
             Assert.Equal("latest", File.ReadAllText(files.Path));
-            Assert.False(firstTask.IsCompleted);
+            Assert.False(first.IsCompleted);
 
-            drain = Task.Run(() =>
+            trace.Record("drain", "scheduled");
+            drain = Task.Run(() => trace.Guard("drain", () =>
             {
+                trace.Record("drain", "entered");
                 if (dispose) queue.Dispose();
                 else queue.Flush();
-                Assert.True(firstTask.IsCompletedSuccessfully, "Drain returned with an unresolved superseded request.");
-            });
+                trace.Record("drain", "returned");
+                Assert.True(first.IsCompletedSuccessfully, "Drain returned with an unresolved superseded request.");
+            }));
             // Observe the actual drain predicate outside the lock. A wait decision releases the
             // producer before Flush rechecks, proving a completion pulse cannot be lost. A return
             // decision keeps the producer paused so the real terminal-task assertion catches it.
+            trace.Record("body", "await drain decision");
             if (await drainDecision.Task.WaitAsync(Timeout))
             {
-                supersession.Release.Set();
+                supersession.Release("body");
+                trace.Record("body", "await producer after supersession release");
                 await producer.WaitAsync(Timeout);
-                Assert.True(firstTask.IsCompletedSuccessfully);
+                Assert.True(first.IsCompletedSuccessfully);
             }
-            continueDrain.Set();
+            continueDrain.Release("body");
+            trace.Record("body", "await drain");
             await drain.WaitAsync(Timeout);
+            trace.Record("body", "await producer");
             await producer.WaitAsync(Timeout);
+            RecordTasks("drained");
 
-            Assert.Equal(PersistenceWriteOutcome.Superseded, (await firstTask).Outcome);
+            Assert.Equal(PersistenceWriteOutcome.Superseded, (await first).Outcome);
             if (latestTask is not null)
             {
                 Assert.Equal(PersistenceWriteOutcome.Saved, (await latestTask).Outcome);
             }
-        }
-        finally
-        {
-            writer.Release.Set();
-            supersession.Release.Set();
-            continueDrain.Set();
-            try
+            writesDrained.AssertNoUnexpected();
+        },
+        [
+            new("release-writer", () => { writer.Release("cleanup"); return Task.CompletedTask; }),
+            new("release-supersession", () => { supersession.Release("cleanup"); return Task.CompletedTask; }),
+            new("release-drain-decision", () => { continueDrain.Release("cleanup"); return Task.CompletedTask; }),
+            new("task-states", () => { RecordTasks("cleanup"); return Task.CompletedTask; }),
+            new("producer", () => producer?.WaitAsync(Timeout) ?? Task.CompletedTask),
+            new("drain", () => drain?.WaitAsync(Timeout) ?? Task.CompletedTask),
+            new("dispose", () => Task.Run(() => trace.Guard("dispose", () =>
             {
-                if (producer is not null) await producer.WaitAsync(Timeout);
-                if (drain is not null) await drain.WaitAsync(Timeout);
-            }
-            finally { await Task.Run(queue.Dispose).WaitAsync(Timeout); }
-        }
+                trace.Record("dispose", "entered");
+                queue.Dispose();
+                trace.Record("dispose", "returned");
+            })).WaitAsync(Timeout)),
+        ], output.WriteLine);
     }
 
     [Theory]

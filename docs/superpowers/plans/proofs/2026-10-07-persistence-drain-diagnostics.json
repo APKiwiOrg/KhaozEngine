@@ -1,0 +1,79 @@
+{
+  "source_base": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f",
+  "source_sha256": {
+    "KhaozEngine.Foundation.Tests/Persistence/TrackedDrainDiagnosticsTests.cs": "dbb36290fb8a24f01dbcde0dbb61f03cb26014ea47b29b20d3f06e54c28d9c10",
+    "KhaozEngine.Foundation.Tests/Persistence/TrackedDrainFailureSignal.cs": "77ea7d5bfdcec1aaeac0d2885e1dc8c15066c8e318e1b2c7a45e8be513772d63",
+    "KhaozEngine.Foundation.Tests/Persistence/TrackedDrainGate.cs": "f2b21d620fbb6a572b0a92d2bac9542d884c9587a042e18b118f4232300c2666",
+    "KhaozEngine.Foundation.Tests/Persistence/TrackedDrainRunner.cs": "fa099354fa9d2451514c72875e7431cb0aa7e3263a7e03db17d846b1319592b9",
+    "KhaozEngine.Foundation.Tests/Persistence/TrackedDrainTrace.cs": "45be117fcdcfeb51fbd4478068021a278843e5f257d1e30140fe998336174ee8",
+    "KhaozEngine.Foundation.Tests/Persistence/TrackedPersistenceTests.cs": "141b22047bd8f5dc2de5f2e1733db670408c5dd7634054ada4ee6d81b63450ca"
+  },
+  "scope": "Local diagnostic proof only. Historical Windows first cause and Catalog integration remain unresolved.",
+  "review": "Fresh source review 1 plus scoped review 2 approved M1/M2 corrections.",
+  "test_counts": {
+    "total": 32,
+    "executed": 32,
+    "passed": 32,
+    "failed": 0,
+    "skipped": 0
+  },
+  "commands": {
+    "test_exit": 0,
+    "scoped_format_exit": 0
+  },
+  "log_sha256": {
+    "b-finite-tests.log": "3d68f089df1f0dd46b9cabf56fcd8aa1c23b401391bf753fc7dae87779a332d6",
+    "b-finite-format.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "results/gateb-finite.trx": "494756c0becb677f9d0bdcbe123b811ef60a32ad3fbcf017d53a723fdc6a7607"
+  },
+  "drain_rows": [
+    {
+      "test": "KhaozEngine.Tests.TrackedPersistenceTests.Drain_resolves_supersession_even_when_the_replacing_producer_is_paused(dispose: False, trackedReplacement: False)",
+      "outcome": "Passed",
+      "phase_checks": {
+        "primary_none": true,
+        "cleanup_zero": true,
+        "intentional_notification": true,
+        "initial_predicate_waits": true,
+        "cleanup_predicate_clear": true,
+        "late_notification_caveat": true
+      }
+    },
+    {
+      "test": "KhaozEngine.Tests.TrackedPersistenceTests.Drain_resolves_supersession_even_when_the_replacing_producer_is_paused(dispose: False, trackedReplacement: True)",
+      "outcome": "Passed",
+      "phase_checks": {
+        "primary_none": true,
+        "cleanup_zero": true,
+        "intentional_notification": true,
+        "initial_predicate_waits": true,
+        "cleanup_predicate_clear": true,
+        "late_notification_caveat": true
+      }
+    },
+    {
+      "test": "KhaozEngine.Tests.TrackedPersistenceTests.Drain_resolves_supersession_even_when_the_replacing_producer_is_paused(dispose: True, trackedReplacement: True)",
+      "outcome": "Passed",
+      "phase_checks": {
+        "primary_none": true,
+        "cleanup_zero": true,
+        "intentional_notification": true,
+        "initial_predicate_waits": true,
+        "cleanup_predicate_clear": true,
+        "late_notification_caveat": true
+      }
+    },
+    {
+      "test": "KhaozEngine.Tests.TrackedPersistenceTests.Drain_resolves_supersession_even_when_the_replacing_producer_is_paused(dispose: True, trackedReplacement: False)",
+      "outcome": "Passed",
+      "phase_checks": {
+        "primary_none": true,
+        "cleanup_zero": true,
+        "intentional_notification": true,
+        "initial_predicate_waits": true,
+        "cleanup_predicate_clear": true,
+        "late_notification_caveat": true
+      }
+    }
+  ]
+}

@@ -864,3 +864,20 @@ focused verification, fresh Task 4 review and whole-branch review. No wider runt
 Main/origin were fetched and remain ca13d62d7, staged20.27.1 with newest tagv20.27.0. Choose20.28.0
 under OA15/OA16, no tag. Worker handles steps1-3 plus these pins. Root handles review, full
 verification, private pack, exact-head CI, integration and guarded shared pack under steps4-7.
+
+
+### Task 4 worker accepted, final root gates remain
+
+Full worker range6e04a814e..f5585b675 contains release/docs/test-pin commita694f2aae and wording
+completionf5585b675. Native fresh reviewer wa_catalog_task4_review (Sol xhigh, Gauge route)
+approved spec and quality with no findings. Root saved the returned review record in task-4-review-1.md.
+
+Root verified version/changelog co-location in a694f2aae, all focused40 passes and actual guard
+exits. Remote main remainsca13d62d7. Immutable v20.27.0 tag object2da36f154 points ata87038f5a
+as before, and v20.28.0 is absent. No merge, pack, full suite or tag has occurred. Evidence hashes
+are in proofs/2026-10-06-catalog-task4-worker.json.
+
+The two provider README qualifiers and exact stale/no-call distinctions are complete. Describing
+the common moved-past refusal does not promise acceptance of future bases, so the reviewer found
+no further wording defect. Whole-branch review must still judge carried timeout/cancellation notes.
+Root now owns steps4-7. Task4 overall and the repair remain incomplete until all final gates pass.

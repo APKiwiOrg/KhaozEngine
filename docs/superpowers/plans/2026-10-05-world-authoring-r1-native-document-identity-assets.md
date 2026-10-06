@@ -1848,3 +1848,15 @@ They add guarded freeze to the proposed capability, correct regression routes an
 and version choices. Documentation checks passed. One targeted F1 to F4 re-review is active,
 recorded in PROGRAM.md. No catalog production implementation or new tag is authorized.
 R2 design approval remains pending.
+
+
+### Catalog design review gate complete, 2026-10-06
+
+Corrected design 6a2f2a2b85b49b2ed63f74c9e85b0212769e9706 on fix/wa-catalog-freeze reconciles
+both review passes. C1 selects a mutation-free refusal for the new row freeze with no preflight
+sweep, and distinguishes the existing text freeze's maintenance. C2 separates text-route retries
+from the row-only edit-loss issue filed as #1311. Five docs guards and diff checks passed.
+
+The written design now awaits owner approval, including API transition, version classification,
+Apply/Preview gate and explicitly deferred same-base limits. Implementation planning follows
+approval. No runtime fix, version change, new tag or publication success is claimed.

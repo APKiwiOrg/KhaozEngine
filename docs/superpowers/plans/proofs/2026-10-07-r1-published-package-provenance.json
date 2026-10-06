@@ -1,0 +1,1416 @@
+[
+  {
+    "id": "KhaozEngine.Accounts",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 24861,
+    "sha256": "7bba815bdb5414e242fce66a74ee49efa4cd2e2e862f8b184ee0502806969295",
+    "nuspec_sha256": "0ec73f0067f79a156501943fbc09721a137af18c96594f9f716060e6a5c7671f",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.accounts/20.27.1/khaozengine.accounts.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Accounts.SqlServer",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 31601,
+    "sha256": "2690886bd4787938a25ffd65a59c37c910352d019eef0dc9eb05d9ce054e694e",
+    "nuspec_sha256": "1dac2175d971fbdc04dd0bd71e8c940bb30926a1e21e6f6fefe33c08e08333cd",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.accounts.sqlserver/20.27.1/khaozengine.accounts.sqlserver.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Accounts.Sqlite",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 23049,
+    "sha256": "8cb6ff33effa798f25484b7e48eecfc17f4dd08e4877849a806f07bb4aa8b706",
+    "nuspec_sha256": "2d3c5f0c3e3cb64503fc0dc1a0f7570aa43139775e62a9dc21242500832d90e6",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.accounts.sqlite/20.27.1/khaozengine.accounts.sqlite.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.App",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 37084,
+    "sha256": "989da44100ffb207485134e0f1c55b3fa1f46619dd7d32cd69ce930288d792ea",
+    "nuspec_sha256": "5115663f2479b0f439a03cefd5998d49f3a96091c63656da87ffa110a184f3af",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.app/20.27.1/khaozengine.app.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Audio",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 45354,
+    "sha256": "ab06cf11e86331c74d364218333b0a6f21ebadef604a883a11eaf5055e0c58fe",
+    "nuspec_sha256": "9f9d63dd9b297ef3423ef80b110bef7f262677518aec17f811868facd828b834",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.audio/20.27.1/khaozengine.audio.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Automation",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 42838,
+    "sha256": "26c240a9d6e91071c20974b377d78668c93975b42e41ab08a76037c2a0619053",
+    "nuspec_sha256": "feacba6450b1f491c00e5e7215f8de288b414fbfdb15d805b02956ae9dff60cd",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.automation/20.27.1/khaozengine.automation.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Catalog",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 254150,
+    "sha256": "4822f86221a83da7be2720225c94f77b3d6af617c59d3308653be738d34343eb",
+    "nuspec_sha256": "42463db7633ede876392dd5f7867ec5fc81fd6353b39a2b79d8c097a6365083a",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.catalog/20.27.1/khaozengine.catalog.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Catalog.Authoring",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 329151,
+    "sha256": "cd84ea02318b15f9c76283aa1e5fb1e44f819baa7239e413a4cdbac766acf864",
+    "nuspec_sha256": "be517c7e9ce481655c2013b9406d0b153b387882589aded18986e2c1dd21beb9",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.catalog.authoring/20.27.1/khaozengine.catalog.authoring.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Catalog.AzureBlob",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 23857,
+    "sha256": "24915c873fbda3292090b9a493576f825bfc09f509353c013c25fbd184190b1b",
+    "nuspec_sha256": "9002af7d1fde8ada36582f3c788a8cb3c2d2595fcd218b07d06eba1267aa50fc",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.catalog.azureblob/20.27.1/khaozengine.catalog.azureblob.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Catalog.GameTypes",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 71400,
+    "sha256": "9eec8556b32614f2e515d16ff346edc6b022927a49726435be2d5eca9175c533",
+    "nuspec_sha256": "e92fcde984a4222ffecd1f6e18127fedb6dc2ef988f09f1043aeb693873d5456",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.catalog.gametypes/20.27.1/khaozengine.catalog.gametypes.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Catalog.Netcode",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 15765,
+    "sha256": "a946a361eb67d14545e06876339b2c60326b163d20295dd7737fa33d2bf603a0",
+    "nuspec_sha256": "fd8136a5169a267e7eea5b86bd1f2fbcf735125967a5cee146de335d4c9dba44",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.catalog.netcode/20.27.1/khaozengine.catalog.netcode.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Catalog.SqlServer",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 172691,
+    "sha256": "1d6ed20efcf78cff6c0675e5277254bb26e2be4a3c3d969d9db91fb990e18f11",
+    "nuspec_sha256": "8ed6d7d236c7ee34d26bfacfbe829d7135557c22e412c0d1277319c3b9ebf9ba",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.catalog.sqlserver/20.27.1/khaozengine.catalog.sqlserver.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Catalog.Sqlite",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 149779,
+    "sha256": "da8a9542017463e6fde8ba7f1237823352794d92f98adb88f4716740f64919ea",
+    "nuspec_sha256": "847ce6af740c94096980d23354a8ff7298031a0ba0bea01a1174bbdf40a05745",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.catalog.sqlite/20.27.1/khaozengine.catalog.sqlite.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.CodeHealth.Analyzers",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 12993,
+    "sha256": "c70af9c4743deeb0d0f366a00f02a3b7b3fcbba576c16de91875bd34a12b01cd",
+    "nuspec_sha256": "6da9c99b0ddaf0ee2d837c2850e81fd32ccfcf14d6ff8315010357a656c416bd",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.codehealth.analyzers/20.27.1/khaozengine.codehealth.analyzers.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Collision",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 22818,
+    "sha256": "d0f88407cd22c3e76fca039703e03ab7b5286f060bf8da2a8eae2be54ea04c9e",
+    "nuspec_sha256": "8fb45c39384d4f85c7add0d78536d3b6e67f1f39f6edb72f09496e986ec00ebe",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.collision/20.27.1/khaozengine.collision.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Commerce",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 22204,
+    "sha256": "ea76dfd026bbaf9c112ffdcb693ee6648212342a9f1aef674c4f96283d064966",
+    "nuspec_sha256": "616713d4f70d739d6349bfd9c125f5ec6c3bac2c45e0c7cc1730a10e351d4a47",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.commerce/20.27.1/khaozengine.commerce.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Commerce.SqlServer",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 24591,
+    "sha256": "d263869da5d2f995d8b7a7c1773355d0c773bb92e2c506806e30420e9c768f0c",
+    "nuspec_sha256": "d1b19e9d0860a3fdf436d7dfc8fe38fa7d8429ee2a3b196a51afc246910ca080",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.commerce.sqlserver/20.27.1/khaozengine.commerce.sqlserver.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Commerce.Sqlite",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 16666,
+    "sha256": "18c1286b65d52d119ca213c7a0bcc5eaeb6a43d98ee869ea040c030355141ab9",
+    "nuspec_sha256": "b2394e103eae24b72b355a6733f23f7748167e1314c9a9f1cb09d388e26d8f28",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.commerce.sqlite/20.27.1/khaozengine.commerce.sqlite.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Content",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 720995,
+    "sha256": "139fd65acab47a402d95750dfcaa85dd9ba47d9de278608b2ddbb0cb9d420850",
+    "nuspec_sha256": "7941edba36a413b38476aa40360da667d6333e63f31f8f0edf4238293b341055",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.content/20.27.1/khaozengine.content.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Determinism",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 11144,
+    "sha256": "3c863f44bfc124c3540c1923333ebd943f6a18450ed3b5aad326e42353e102fe",
+    "nuspec_sha256": "e39b19f38755427254141dce36591a73a0576ff76ab5035af1a3932e63838ba2",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.determinism/20.27.1/khaozengine.determinism.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Diagnostics",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 103418,
+    "sha256": "1e6799735ba0864f0887f608f4b58c8037030088e7a7266b27afe166dffcae8a",
+    "nuspec_sha256": "beb24bfda8ad4ede8a547fa352542dd351aff21e5d84c90f1774035c00ebff31",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.diagnostics/20.27.1/khaozengine.diagnostics.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Dungeon",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 80184,
+    "sha256": "b98391f12eb67e0331a9d3adaab60191857a449209141c658ac2a82fc1ab55db",
+    "nuspec_sha256": "e60781678ff795e80b9a26b58dc2e269b1cefc66e7d05fd8a275243891d1bb81",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.dungeon/20.27.1/khaozengine.dungeon.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Ecs",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 59981,
+    "sha256": "4e775544a2050bff6e7576d8379661e0a30bc40c3b1c979307f73b2c2802b009",
+    "nuspec_sha256": "94ca5f2a82b342e3ddf60f76eff54838b2901b0815b9114fb209a1def286a603",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.ecs/20.27.1/khaozengine.ecs.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Foundation",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 16519,
+    "sha256": "617a4965e80e26cb1a04293779701b2141ef0030ffbab77dc348aa7d7e298dca",
+    "nuspec_sha256": "0983dbbfb588396b1e45888ac85917a6dc2651a6e53e6e20116d95209b83f348",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.foundation/20.27.1/khaozengine.foundation.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Game",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 61802,
+    "sha256": "00483b4275183f2d7c3346a679456497f0c422ad9c763628786a9b6c36d83c78",
+    "nuspec_sha256": "d8356b6b943581cc82c0ab2032751af1e3c9e058bbfb5a610ad1d50e86f74bee",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.game/20.27.1/khaozengine.game.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Game.Render3D",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 67464,
+    "sha256": "906a6cdde56611b8a3b66918e26740dd5e03667b244ea9a3ec8d4fdb3e63e16b",
+    "nuspec_sha256": "bf477aa9b0dc4d16455257333c948b732e1fc14df3c69a3bf01feacfd314b27c",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.game.render3d/20.27.1/khaozengine.game.render3d.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Game2D",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 4993,
+    "sha256": "303b196e457bc6026e0384535e08908e8dc73e8150de7af9c9af70ad2b9306b1",
+    "nuspec_sha256": "7844ea7c418cb5561a46729ee8f7fae187aa3cb41ec12ebc702005574b34f4cf",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.game2d/20.27.1/khaozengine.game2d.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Game3D",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 5047,
+    "sha256": "d811a291aee126193e37dede829a99db62fbd815d68126a17d944207888f0b3d",
+    "nuspec_sha256": "7a5403ea9adcb08860c34aa27b132ea59eab0371098760dd2e0877a1675dac26",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.game3d/20.27.1/khaozengine.game3d.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Gpu",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 211713,
+    "sha256": "7e8f821308c4c2e564e40ed6ab6cdbda2aa97c1831febdce411c33dcbc49a5f4",
+    "nuspec_sha256": "699497eb00d568e83ffa1e9981a3757ecb029c40a3be6401840653693fae0e2d",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.gpu/20.27.1/khaozengine.gpu.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Gpu.D3D11",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 338368,
+    "sha256": "a5542018638c81eda4d9157401926745b35d305e93e9960d3ec856c47f4964db",
+    "nuspec_sha256": "6c70fbee6e8f25e9a8c11e2e80f43299160279eb82caea47797a5097631ad870",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.gpu.d3d11/20.27.1/khaozengine.gpu.d3d11.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Gpu.Metal",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 529284,
+    "sha256": "60b45c22e646b6390b1c3c3395d2c657a4f076ef3cf7bce390c692e9bad0ad79",
+    "nuspec_sha256": "09c9930de4a6a7188eebad44ecc605a7791a784cb4e432785f2220748727b283",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.gpu.metal/20.27.1/khaozengine.gpu.metal.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Gpu.TestKit",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 14910,
+    "sha256": "180ef50c690c04aab7059a03f4473f165323f695dbb651ba067f02096f6cd70b",
+    "nuspec_sha256": "78e254f9accab5d8bb2807095c91fba25e4d7643e556e5da5fc38648b94614ed",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.gpu.testkit/20.27.1/khaozengine.gpu.testkit.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Gpu.Vulkan",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 558891,
+    "sha256": "188dedb2e40ad0a86e19ec897e67c1574853f7005accad8072f21e5ac4813215",
+    "nuspec_sha256": "557dfbc81069e45d9309d5b6b0b472431aea67d6bb380af51d2696837f776cc6",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.gpu.vulkan/20.27.1/khaozengine.gpu.vulkan.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Gui",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 281694,
+    "sha256": "ad3983dc72c18f6953c47a3d31a4def039aa422072f0f5df1bed13c73728ee73",
+    "nuspec_sha256": "98c35471bd6b2f18eebbc31ba1f89e243441ee29efa65552a290dbb74c65dce1",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.gui/20.27.1/khaozengine.gui.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Http",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 23526,
+    "sha256": "0590c92616c8a39c5e195a808f9e427aa798c71182063283373d29a52006d677",
+    "nuspec_sha256": "b6ed8b1c881b214f91120816e17f492eec4926d2641b2fee6f99770c68c7d90e",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.http/20.27.1/khaozengine.http.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Identity",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 37929,
+    "sha256": "1489fd0db69e90964ebffaec5326f2c1829bc362ae04d14d4db2ec6e4f05c5a0",
+    "nuspec_sha256": "fbcf912535f3577a31f14e9d08f6f839b64632bb49266face6ff95d874682393",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.identity/20.27.1/khaozengine.identity.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Identity.Discord",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 21344,
+    "sha256": "4439603edc602fca97bf239c044f49297b64a92a7aa0e2bd4bec5eef30e0a8c6",
+    "nuspec_sha256": "4a7bead5d9371fd6fd17a56b6d66cd02e3e6333a702bf0a7f42d063ad1fe836b",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.identity.discord/20.27.1/khaozengine.identity.discord.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Identity.Exchange",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 25486,
+    "sha256": "658c51724e51287c920e0f34e5e0ada3577ceef642f7b4319b22744b0dcd965c",
+    "nuspec_sha256": "326a75c4d399b9214fdcf911658b75a76c2cf0c8a457dfe0dff14764183ddf39",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.identity.exchange/20.27.1/khaozengine.identity.exchange.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Identity.Exchange.AspNetCore",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 31711,
+    "sha256": "62b61ca1ea3fa6bbb330d209e7e3d1aac1ca080882c649ca5f0c544fd47c569a",
+    "nuspec_sha256": "f7565657d1900b3598e4bfa4bcb7ec7cc796f72a4efb05ede470461f0f3e07c2",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.identity.exchange.aspnetcore/20.27.1/khaozengine.identity.exchange.aspnetcore.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Identity.Oidc",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 22117,
+    "sha256": "493b832e3955424731ae73145fc435a2cb3e5bfa218aea007da6c5f2698dd709",
+    "nuspec_sha256": "634192e35ee8e3602b12a387c7fe0ba86cd92de5f639bb9523434bbef5b4e33b",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.identity.oidc/20.27.1/khaozengine.identity.oidc.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Imaging",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 21080,
+    "sha256": "1da92e7c06477e6022939180b62c8fa19e40b19298e37c31fe19ee68ebab8f1b",
+    "nuspec_sha256": "65d0a39ffbf9da1f072d697c38736bb57b60f5cc576cdc862b54660008ef3a68",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.imaging/20.27.1/khaozengine.imaging.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.ItemInstances",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 308715,
+    "sha256": "7c6137d6c249e3e2a19dd878231c8e9a0fac75db7650db12b449ebbfafe7362f",
+    "nuspec_sha256": "1d447666cc8610614bb9d1ba98223f43e7e8ed9ad193e13b0ea095c90914ff69",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.iteminstances/20.27.1/khaozengine.iteminstances.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.ItemInstances.Journal",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 76310,
+    "sha256": "7990363076b1c1362f5cc568af56f9333f812347cf980c072e5caaabc906d5a9",
+    "nuspec_sha256": "c3c101fdbb17d1b45f110043d1bdf5e14259d80fd6184e56ccd6d7a209907545",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.iteminstances.journal/20.27.1/khaozengine.iteminstances.journal.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Items",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 21461,
+    "sha256": "be3e9c274ae364bbe89af083c83260f037707bbc6522077c3aca599de26221a6",
+    "nuspec_sha256": "eb47f2838a7732f3b7fb35b0f5631e63ca73f0162980f9c3b9ab2361a8bf7e7d",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.items/20.27.1/khaozengine.items.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Localization.Analyzers",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 18393,
+    "sha256": "47b9fba1882a635b0561acf722fcf8d375a86f1e90f115bf37efd77fb1360ab9",
+    "nuspec_sha256": "5a5a1b3bca3191c86e76f01e9d723ba2b8ddd88dc1514762a3f85d80bd4426ca",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.localization.analyzers/20.27.1/khaozengine.localization.analyzers.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Localization.TestKit",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 13290,
+    "sha256": "2da78916073bf1a479ecb40340d7fc1b16667df30d3e5ecdf5a388607f32df7c",
+    "nuspec_sha256": "ef83dc97b0a5ac2ec728c6fe1cb1b4d1dd154c5b2b6d89829f2eb3c850c73f3a",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.localization.testkit/20.27.1/khaozengine.localization.testkit.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Locomotion",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 110414,
+    "sha256": "3dcd4e204a985227ea59e8f12e47a10223dabf85a8998e85486ede2b159122d8",
+    "nuspec_sha256": "51597fed2f5c55186e870534ed6ce7e5c879057010a2a51865061256379757f9",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.locomotion/20.27.1/khaozengine.locomotion.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.MapDoc",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 129948,
+    "sha256": "71261771f883b8bb180fe7f1725a9c2e8242a7e2801e5f563e8173345ca7410e",
+    "nuspec_sha256": "d29a02b945882208448f62ed21ad2560e804132c8ab2b1b53025930ccc57b9dc",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.mapdoc/20.27.1/khaozengine.mapdoc.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.MapEdit.Tool",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 46050026,
+    "sha256": "4a1892597b5b2f54a239c1faf80dd127276f7bac6317eec79be5752064ffe24f",
+    "nuspec_sha256": "c8ef31724a4288ea5ea2cfb14711483b554ea0c0a8033191c7049a8560a52ad3",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.mapedit.tool/20.27.1/khaozengine.mapedit.tool.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.MapEditor",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 267161,
+    "sha256": "4cbf018938360ded3044f5d2653b0f7da563e22a11197bf9d8d6d26ec7c34fd3",
+    "nuspec_sha256": "0c8ebc936a8be3b2c5934c240ec2792f35d127bfb88c36c84d93762e7c19b027",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.mapeditor/20.27.1/khaozengine.mapeditor.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Movement",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 92137,
+    "sha256": "c80776a7674859661c140d0e26f28ea31b008ec722c3ccfe014948f9ae18d02f",
+    "nuspec_sha256": "e9c0073ddc48bfddd30919c094692cf05a00acd5678db27017ace9e105457491",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.movement/20.27.1/khaozengine.movement.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Navigation",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 77965,
+    "sha256": "ddc07a89d8355cdfe24d970a2cda0919aeeaba04be467b2ce75994cc770ff410",
+    "nuspec_sha256": "c73a081c14d2489729d9a43738e9c6f82e382dbb110446c71e8c4f85543af858",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.navigation/20.27.1/khaozengine.navigation.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.NetWorld",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 315076,
+    "sha256": "1cb6faef800e79b364494657e14dcaea0b7b858cb11b9e51bcf4c356e9c61aec",
+    "nuspec_sha256": "87223b260c6d59935e13f78db7035a2a7785f16c47b3c0b8eee0e28e249cdf5e",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.networld/20.27.1/khaozengine.networld.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Netcode",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 98229,
+    "sha256": "f9e4a39f81d7d6b1c4aac044bd7f4bcffb17ae00990a07c7c1af8769a0d54572",
+    "nuspec_sha256": "e251e5df55ecff34880aa236bf81657c954feecbf37ce03969d556d2b23c4b98",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.netcode/20.27.1/khaozengine.netcode.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Netcode.Abstractions",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 8334,
+    "sha256": "71dfccae62fd126292cd91fe7ea72787f255d3690c47b43f60d423a8b12d4743",
+    "nuspec_sha256": "0bc7fb3f7ac970582cd878415113bc9ea42eded0ef9fa253ca12395eb95afebc",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.netcode.abstractions/20.27.1/khaozengine.netcode.abstractions.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Netcode.LiteNetLib",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 13915,
+    "sha256": "7ff8a294d258dbbe1db4665fc98ac515ec6f64f92a3f05dbf5633fcea20b31b1",
+    "nuspec_sha256": "fdb93401f84fabce88361faadbed54343a8e7881a6b7cb60703c040e27cf1fd0",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.netcode.litenetlib/20.27.1/khaozengine.netcode.litenetlib.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Objectives",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 21149,
+    "sha256": "319d854e06a404794006918614da5909a9f9137f07a468c50d5d0b0361f1e9d9",
+    "nuspec_sha256": "447e338b3d260a16d4ab06ddc08e0ced73c177dcbd16e14ff096d36f59ad0750",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.objectives/20.27.1/khaozengine.objectives.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Particles",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 30283,
+    "sha256": "9b14996ffa5f284bc09232c1ea0d559c13b54c4035be36a0add5dfe87ab2e03b",
+    "nuspec_sha256": "905201d474b465de6b736af4abab9ec9ffd7d98f185de7ff111cd34ad114a871",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.particles/20.27.1/khaozengine.particles.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Particles.Render3D",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 20178,
+    "sha256": "120f903a666afec5945e611c5de1af785b911e25513be523d6201c670d0002a0",
+    "nuspec_sha256": "c25a1d83c4ed2079eb7b81ac66b9e2253b89b545fbabc03c07b8f5ea9b0d6e51",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.particles.render3d/20.27.1/khaozengine.particles.render3d.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Persistence",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 51341,
+    "sha256": "7ef8595ba933f8c057cb8364dabc2f4b5476f94a695aa1934afffcb86cb7e5d4",
+    "nuspec_sha256": "52719445a4d9920e92055be9ab66662f9088b2c974946fe09a5b8302712777b4",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.persistence/20.27.1/khaozengine.persistence.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Physics",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 42667,
+    "sha256": "ed89ca4ac7616194c2716a967552aa3b31edf03b1f5c21ef2dba0801fb8353e7",
+    "nuspec_sha256": "43c289ef837fdecdbf15db006177be4cc65a6cbbfce279ab30af029fca77f906",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.physics/20.27.1/khaozengine.physics.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Physics.Bepu",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 34987,
+    "sha256": "e144161913eab60f9ebb463cbb644f6296ea22feaf619b02af8b6852f158ae05",
+    "nuspec_sha256": "b167b64ce4ac802500d170808f175f11dc3f61ba67ae18302da5ccb269f83d5d",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.physics.bepu/20.27.1/khaozengine.physics.bepu.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Platform",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 26202,
+    "sha256": "f063f59390f421ca777d82f89e83292223f067471ae74ea9a72e7ba78ba6f934",
+    "nuspec_sha256": "4f10d4e9bfb1cfaa4e5f5296447b6c335c175ee5440db36f697e17f9ce95de73",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.platform/20.27.1/khaozengine.platform.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Primitives",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 89379,
+    "sha256": "49da1adc2a15cc18c4ab9c07b8f41c1d75838429c725e98f01b254557ec8d99e",
+    "nuspec_sha256": "44bb3fed2ac61cf7ffaf16ffd5c3081138c092b2f21ef998264b2854d57c740d",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.primitives/20.27.1/khaozengine.primitives.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Progression",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 10421,
+    "sha256": "02260e993d8a3ddafbb41dff77f8406fbbf85aeb5eda1180d8427e4bd869ea05",
+    "nuspec_sha256": "8e93fdf105a182944cd7bd440dea16ac9539685b3eabd1f078989f755bcbbe62",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.progression/20.27.1/khaozengine.progression.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.PropSurface.Tool",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 42242331,
+    "sha256": "b28abf2cb1ae962348c0125087131bce967fb7bf1921c19b3ec48f0904b2e320",
+    "nuspec_sha256": "91dc64824bfdbdb2e636dbc3ba3b91917ab7299d2f70cb8d289f00acee13b47a",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.propsurface.tool/20.27.1/khaozengine.propsurface.tool.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Render2D",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 211223,
+    "sha256": "e22401e7d560a339bd559fe56f6bac783dda4c2c311af789238a8f4366b324f9",
+    "nuspec_sha256": "f543a78139999d20a2a0a32f44edf0d28f184a33796c8edb2528a22b2c85dc50",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.render2d/20.27.1/khaozengine.render2d.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Render3D",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 1633176,
+    "sha256": "26ea9987e849c49a4a8a911094a0c4bda2183ddea89356a9fd027f4ddf2341a8",
+    "nuspec_sha256": "1cc104ab248d1ee64c40e6c348187dae753bd98624bace121fd3cd6c0f3db933",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.render3d/20.27.1/khaozengine.render3d.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Render3D.Ecs",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 11727,
+    "sha256": "1fc386d36581a76d6a08a750e8e7be729ceaa3d04dab89fd8641bd3017fbb406",
+    "nuspec_sha256": "b3373f3561edc5be10dac72bffc6fe882d29b53cbf416ae2611b3085ba3ededf",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.render3d.ecs/20.27.1/khaozengine.render3d.ecs.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Replication",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 95643,
+    "sha256": "91d3fa30658643c03725703d0709498dd97cc243c4e1819805e9c44625df4715",
+    "nuspec_sha256": "df09cfceec3e76599992aaf5ebb8a8b65ba3db461f7903db9be23e2d311b087d",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.replication/20.27.1/khaozengine.replication.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.SegmentRig",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 90190,
+    "sha256": "0cc1c81025a16c814d0ffaa5ebd5eececff58adb6f477b27d5c0f24b41be679e",
+    "nuspec_sha256": "17e1286ff641599bc0c0fcd86cd8047d957b2231f832699df2f0a4d50837476b",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.segmentrig/20.27.1/khaozengine.segmentrig.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Serialization",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 9408,
+    "sha256": "eb79a91815bad56c7f882ca29f0d63691d2790f5c27317b5a0785de07a54015d",
+    "nuspec_sha256": "69cb342f5b360beb730f87f7bae1a24e5f12b34b8affcb585e05afd3fb50e9d8",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.serialization/20.27.1/khaozengine.serialization.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Server",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 6805,
+    "sha256": "ff20f6416d0a87f9ede235d9a5a280dcb39ce17b4f5f9207b1b10383abba777b",
+    "nuspec_sha256": "efef4e165d5d3e0bfc28db79792829ce7999a22504b815f386734d97a2832cb6",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.server/20.27.1/khaozengine.server.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Server.Admin",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 133152,
+    "sha256": "b7479f392e50895aa343fab9fd62c43f99c27ad0617d2cf9db473ec4a689c60b",
+    "nuspec_sha256": "6bd0488691eada84252c6a73d9306aa79588ade9b788168515800c8743e9a56e",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.server.admin/20.27.1/khaozengine.server.admin.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.ServerStatus",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 76675,
+    "sha256": "bc68fdf7fcbaa4dbf9a24537d17782ad7c698ee37dbf9ba3619cbf9b795ee511",
+    "nuspec_sha256": "bb7fa7953fb29f1e0e145d77a8692c8380747462dc120f8c85857ccca62e2f8b",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.serverstatus/20.27.1/khaozengine.serverstatus.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Sfx.Tool",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 60243,
+    "sha256": "7256be0d9bba48873408123dd5d6f78afbc795c28eb4bebd820e38665bbfc8f3",
+    "nuspec_sha256": "dbc2036efe9d7950daedffe962616dc0950e16535d14083afd7aee296a1f00ea",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.sfx.tool/20.27.1/khaozengine.sfx.tool.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Sharding",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 52007,
+    "sha256": "afaf20a740bc2ecac4b5cd75b1cb0c94100560883e5152bdab3ae3923da1f098",
+    "nuspec_sha256": "b9eade64fa3c3e7cc6682dcb9abe5dcd184cb0decd4c24697e2fe5d3aa1babda",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.sharding/20.27.1/khaozengine.sharding.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Simulation",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 19801,
+    "sha256": "8554263f64ab2ae46db9d1be640a8b0c66c2b5a062e6b1d8bad1beff78f0ffb1",
+    "nuspec_sha256": "2034e7e5b25080261875af79441cf50d5b1931420f57ed6cba74e65761ca185a",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.simulation/20.27.1/khaozengine.simulation.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Skills",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 31065,
+    "sha256": "e3dd587f1e2ac3edb54c6aa00b5626ed05d976412d73b2214b7866b473c5be36",
+    "nuspec_sha256": "ca702019f607da0c067b305653ff9265b91a0b53266c8dc6d7df84b172e9eaff",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.skills/20.27.1/khaozengine.skills.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Snapshot",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 9557,
+    "sha256": "cc3cb828dc7b7be16c20fb0f64dd685ab11f4844ef3def8c7e1e252e68a1f56a",
+    "nuspec_sha256": "60b9f051b23951be29d50fa479ca66f9b529f963e4df22690a9521ed765bb116",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.snapshot/20.27.1/khaozengine.snapshot.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Snapshot.Render3D",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 7478,
+    "sha256": "9f3b7a97558af916b14ce3f3e801abc4df2c06b9d877774552eea11840b008bf",
+    "nuspec_sha256": "b115fd25c61497219e8660890a3de11de9f8ded6743156d15c465b217167b634",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.snapshot.render3d/20.27.1/khaozengine.snapshot.render3d.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Social",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 24394,
+    "sha256": "55af3e81dc43861d70c49949cbebb0f11fca8c343b2e0483171f4362fe2eb97a",
+    "nuspec_sha256": "eefe792a7fd930a731458877b3d7e11a4f0419e29dd5996307a197444b295994",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.social/20.27.1/khaozengine.social.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Social.Discord",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 22124,
+    "sha256": "be9e15e1a59239115db64651c1f1dc1bff6684b9ea3bf58c44df6e12bd672594",
+    "nuspec_sha256": "566f853b5aed29ee3a931b915c4b5c8285272b377c69b696a80a7e789a5eebb5",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.social.discord/20.27.1/khaozengine.social.discord.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Sqlite",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 14314,
+    "sha256": "ac4112f183908cd17bb9eaf79351212960da40a1107c7a560ddde06b2b30a97c",
+    "nuspec_sha256": "09c7f581b67d8acde298fd1dba85f0e52961299a6c01f5dbe4a06b387651c821",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.sqlite/20.27.1/khaozengine.sqlite.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Stats",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 14845,
+    "sha256": "a2e0a7c44b7f8a39b7df013d2fa0f0d4bd7ee206826c1a48007963068c4c7715",
+    "nuspec_sha256": "2ef0dcd41d99a22de8c233cd8644d90ecd67b93c452a16dd08e8d5c07dcfe143",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.stats/20.27.1/khaozengine.stats.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Telegraphs",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 23264,
+    "sha256": "83894053b96b4bbb0fc62b1ab2a3fc7e84fb2aa094ab0bfeadb2ff56569ab60d",
+    "nuspec_sha256": "5cdbaae0cdb13eda5bc08d5b736bdf0e1c088a60f78f79fca2a79e252b5093f9",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.telegraphs/20.27.1/khaozengine.telegraphs.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Telegraphs.Render3D",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 12624,
+    "sha256": "d2defda09915c64151714809b7fbe3d5d82df653e3a3d33dc2ba3e5e74420e06",
+    "nuspec_sha256": "a1884e80c9875f54f86cc15334be4b815b8006c66a14c7fc347b0666afcb4736",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.telegraphs.render3d/20.27.1/khaozengine.telegraphs.render3d.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Terrain",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 82747,
+    "sha256": "0115a09067c2678adcf8765b9a09bb4703ea7d7cfb34dd720a73bc5985d6786b",
+    "nuspec_sha256": "a1181b90744686c5281f819bafe97e4699aa19ac7ed9495317ba741b6022661b",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.terrain/20.27.1/khaozengine.terrain.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Terrain.Render3D",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 93348,
+    "sha256": "8cc3390b2a2b119b4c6bf80a764e30e012158cd39dd627182d1ac2f4c93d5ca3",
+    "nuspec_sha256": "1a8b259d9ede68c838404a785b0dc6663e8c9e18c003f639101c68282b6b4075",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.terrain.render3d/20.27.1/khaozengine.terrain.render3d.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.TileEdit.Tool",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 44947344,
+    "sha256": "e83f79636484a125fd3dae25894170e7b59f3f02e624a957f6f07359eaf317a8",
+    "nuspec_sha256": "db778c0c6fbe7cc8af12940b2d97f9272d2100f44b3d39bbe5f8e2d481c1a639",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.tileedit.tool/20.27.1/khaozengine.tileedit.tool.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.TileWorld",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 111784,
+    "sha256": "12e7dab975e2ad6dc863066a7df5be9d6801d3390b07de07e9e3cc62424e7e68",
+    "nuspec_sha256": "21f26feb09448db58f6d249ed950dfdb308c93a97e7cd361d3f92121a35cd9d2",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.tileworld/20.27.1/khaozengine.tileworld.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.TileWorld.Editing",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 50774,
+    "sha256": "45653f5fd69e6ecab4b9b8bdc16d95af2db2b4c27969c0e48deb5cff404842b9",
+    "nuspec_sha256": "11e4cfb0353b5394b47b0ba276d36f97f43b699d5b4353a2295c09c3f0fea718",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.tileworld.editing/20.27.1/khaozengine.tileworld.editing.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.TileWorld.Netcode",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 302163,
+    "sha256": "b3845689b5256f85940bf1e6f1881f385394af05779c44a4de72257a834f8f4b",
+    "nuspec_sha256": "b92e2c63ea0adf77d94dbd8214a3b1b34530dafdb64035a899ff7471255a1a98",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.tileworld.netcode/20.27.1/khaozengine.tileworld.netcode.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.TileWorld.Physics",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 26612,
+    "sha256": "a47d9006a2f047b458bd273945c31128ccb0e356e54c85dbf8480b9467c5a110",
+    "nuspec_sha256": "f47b90cfdc9be6d5ccf7d317d21aca1c49497bf77b655d26a5a663a458adc700",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.tileworld.physics/20.27.1/khaozengine.tileworld.physics.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.TileWorld.Render3D",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 140655,
+    "sha256": "201e0fe4ac90e461a5141f6a2077afcc435d0fb095bc061748746adf786ba7c0",
+    "nuspec_sha256": "59a616918e720506efa78095daf54f98f830189c327c84b59960a75f915b5642",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.tileworld.render3d/20.27.1/khaozengine.tileworld.render3d.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Updates",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 106207,
+    "sha256": "e51cd23e06dca05d8cfec042d5feacf2efaa17571d9dd82ec372d2bb320d73ea",
+    "nuspec_sha256": "6ee40ff23eece17f4ee4afe2e9a83357fec6310cce3e62a9b09a433b262c9908",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.updates/20.27.1/khaozengine.updates.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Updates.Tool",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 288489,
+    "sha256": "a07d8a8243bb89f86fee276a5ec4788e116767550b81de522beb72e11f0f11f0",
+    "nuspec_sha256": "b895bd9d7ade87062ee8437544f7700e5100871f072966821585983588721f56",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.updates.tool/20.27.1/khaozengine.updates.tool.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.Windowing",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 138432,
+    "sha256": "81ab0e370b768af0843eba3c5c0a925cfe073f9fa7bca56289c188d2c9c78192",
+    "nuspec_sha256": "ce819ac1463723db0dc4507529d8c9f3641e9bd450966856addfa44a2d7b655d",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.windowing/20.27.1/khaozengine.windowing.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.WorldStore",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 113760,
+    "sha256": "ff9e10d7830cab899548cb5ba29380f9bac24eb92421e77d455320231e31ee5d",
+    "nuspec_sha256": "db835901ade1366c5c5f16dc54e3b9cf88c8a9d4c90e88933a2dab0ac31a12e3",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.worldstore/20.27.1/khaozengine.worldstore.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.WorldStore.SqlServer",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 86057,
+    "sha256": "bc79428810d282ea79b8de79b69d9a93ee27c5a316f1fb32f889aee0fd58426f",
+    "nuspec_sha256": "9b1f4bffa948d04f88cf91f11d9adf3aa4805dccc5f2863bc10d1b12a34d2963",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.worldstore.sqlserver/20.27.1/khaozengine.worldstore.sqlserver.20.27.1.nupkg"
+  },
+  {
+    "id": "KhaozEngine.WorldStore.Sqlite",
+    "version": "20.27.1",
+    "http_status": 200,
+    "bytes": 63480,
+    "sha256": "f0c7e2991d4f8e765e0f4f4fdb1b5f7b6d801db9666e2f743cf422149a6be4e2",
+    "nuspec_sha256": "74f0bb8d4e9a864443ed2288cdbf0cbe1af5dc947d20816a331d1ee599d3b59d",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/APKiwiOrg/KhaozEngine",
+      "commit": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f"
+    },
+    "url": "https://nuget.pkg.github.com/APKiwiOrg/download/khaozengine.worldstore.sqlite/20.27.1/khaozengine.worldstore.sqlite.20.27.1.nupkg"
+  }
+]

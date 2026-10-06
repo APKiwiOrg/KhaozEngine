@@ -1898,3 +1898,33 @@ d191cd01 remains pinned20.25.0 and no competing engine version bump is in progre
 minor direction is clear, subject to final recheck. The pivot recommends a production-copy catalog
 apply rehearsal when Grimhollow eventually adopts the release, under its own adoption workflow.
 No tag, game pin, R2 execution or deferred same-base fix is approved here.
+
+
+### Owner-authorized R1 publication completed as 20.27.1
+
+The owner authorized the prerequisite release and the coordinator assigned this thread as its
+single release owner. Canonical annotated v20.27.1 is remotely verified with tag object
+86b35c62c7df2c1d121932af684744b0a2a1317a, targeting
+54a1f35842e1ec9c8af3ad87c7f058bf757da04f. That source contains R1 a87038f5a and the staged
+publication repair. The isolated release checkout had no source changes. No version bump,
+local re-build, shared-feed write, game pin or deployment occurred.
+
+Normal release CI https://github.com/APKiwiOrg/KhaozEngine/actions/runs/37513485071 succeeded
+on attempt 1. Full Release tests passed 25,709 with zero failures and 1,328 skips across 30
+projects. Determinism passed 6 plus 2 cases at each JIT tier setting. SQL jobs passed Accounts
+52, Catalog 562 and Server 504 cases with zero skips. Full build, pack and tags-only publication
+succeeded. All 101 published packages were downloaded independently and verified as version
+20.27.1 with embedded repository commit 54a1f358, HTTP 200, and no provenance error.
+
+Evidence is proofs/2026-10-07-r1-release-20-27-1.json and
+proofs/2026-10-07-r1-published-package-provenance.json. The package manifest SHA-256 is
+faa104fcfdc7c4d70fd48c021066c76dbd6b4224c5fe9275878801c222e9280f.
+This satisfies the owner-released R1 publication prerequisite. The known Catalog #1271 repair
+and its B/C integration gates remain separate. A green release does not refute that recorded race.
+
+Fresh main and origin/main remain 54a1f358. R2 relevant source paths are unchanged from its
+ca13d62d7 evidence base, and R1 native API paths are unchanged from a87038f5a. The approved R2
+plan at 05e0d6948 retains SHA-256
+2ab5ca603b382c237caf70938218115dce51fc1ae3e91e4fa193c7fe3a76280a.
+Only the first Task 1 tests-only preparation is being returned for coordinator authorization.
+No R2 implementation was dispatched by this release. Native G1b and game adoption remain gated.

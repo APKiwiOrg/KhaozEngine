@@ -1,0 +1,99 @@
+{
+  "tag": "v20.27.1",
+  "tag_object": "86b35c62c7df2c1d121932af684744b0a2a1317a",
+  "target": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f",
+  "annotation": "release(20.27.1): publish native world foundation and presentation phase repair",
+  "authority": "owner-r1-release-20-27-1-grant-20261007, explicit owner authorization reported by coordinator",
+  "worktree": "/Users/antonio/KhaozEngine/.worktrees/wa-r1-release-20-27-1",
+  "branch": "fix/wa-r1-release-20-27-1",
+  "source_changes": false,
+  "push_exit": 0,
+  "packages_preflight_count": 101,
+  "existing_20_27_1_versions": 0,
+  "run_id": 37513485071,
+  "run_url": "https://github.com/APKiwiOrg/KhaozEngine/actions/runs/37513485071",
+  "publication": "verified: full tag CI plus101downloaded packages with exact nuspec provenance",
+  "monitor_session": 6629,
+  "monitor_log": "/tmp/grimhollow-orch/wa-r1-release-20.27.1/release-ci-watch.log",
+  "known_risk": "Catalog1271 remains on tagged main. No waiver or rerun.",
+  "ci_conclusion": "success",
+  "full_suite": {
+    "projects": 30,
+    "passed": 25709,
+    "failed": 0,
+    "skipped": 1328
+  },
+  "determinism": {
+    "tiering0": [
+      6,
+      2
+    ],
+    "tiering1": [
+      6,
+      2
+    ],
+    "failures": 0,
+    "skips": 0
+  },
+  "sql": {
+    "accounts": {
+      "passed": 52,
+      "skipped": 0
+    },
+    "catalog": {
+      "passed": 562,
+      "skipped": 0
+    },
+    "server": {
+      "passed": 504,
+      "skipped": 0
+    }
+  },
+  "jobs": [
+    {
+      "id": 112440358008,
+      "name": "accounts-sqlserver",
+      "conclusion": "success",
+      "log_sha256": "534688c03b015c1b4b90212821dc4ec5161ded7f574cbbcf6233d457f43ea606"
+    },
+    {
+      "id": 112440358283,
+      "name": "server-sqlserver",
+      "conclusion": "success",
+      "log_sha256": "e544dcfa83418efd1a7ba04f2e30905cfba1f9a5481d1a35ba560803bc92ed71"
+    },
+    {
+      "id": 112440358386,
+      "name": "build-test-pack",
+      "conclusion": "success",
+      "log_sha256": "94b179256447fe8df8b34042e715fdfa1637c5e516c45884aeadfe9a6ce540da"
+    },
+    {
+      "id": 112440358731,
+      "name": "catalog-sqlserver",
+      "conclusion": "success",
+      "log_sha256": "fcc97d6ddc1fcb6bc168b97dda47b2bf3c8be660926a69b8a56a71c4d76dc20a"
+    }
+  ],
+  "publish_log_package_count": 101,
+  "fresh_base_check": {
+    "main": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f",
+    "origin_main": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f",
+    "release_worktree_clean": true,
+    "approved_plan": "05e0d6948755e26b590c8fc2fd50c1c471b3f0c3",
+    "approved_plan_sha256": "2ab5ca603b382c237caf70938218115dce51fc1ae3e91e4fa193c7fe3a76280a",
+    "api_evidence_base": "ca13d62d7c9f5bbdc5e6adbfffdd24d5c9148efc",
+    "r2_source_diff_exit": 0,
+    "r1_native_api_diff_exit": 0,
+    "delta_since_evidence": "Only three #1313 netcode presentation commits. Referenced R2 source paths unchanged."
+  },
+  "published_packages": {
+    "count": 101,
+    "total_bytes": 143852331,
+    "provenance_manifest_sha256": "faa104fcfdc7c4d70fd48c021066c76dbd6b4224c5fe9275878801c222e9280f",
+    "all_repository_commits": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f",
+    "download_exit": 0
+  },
+  "owner_released_r1_prerequisite": "satisfied",
+  "r2_dispatch": "not authorized yet, coordinator tests-only authorization pending"
+}

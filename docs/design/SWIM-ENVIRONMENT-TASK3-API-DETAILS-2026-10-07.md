@@ -171,3 +171,10 @@ nonzero caller sentinels through refusals and throws, count/identity/value/scope
 complete ordered span coverage checks and validation of both output buffers before either copy.
 The slot was explicitly released. These are consumer-contract proofs, not native producer geometry,
 support-selection or frame-rebinding evidence.
+
+Pure frame RED compiled with 12 missing-helper failures. The same direct assertions passed in
+`/tmp/swim-frame-rebind-green.log`, exit 0, 12 passed and no skips. This proves recorded-origin XYZ
+conversion, fractional precision under large origins, source/target envelope checks, unchanged
+state on refusal and selection invalidation on changed frame/epoch. It does not establish canonical
+membership. The CS1 [cold-selection amendment](SWIM-COLD-SELECTION-SCOPE-AMENDMENT-2026-10-07.md)
+separately governs null-hint acquisition and reconstruction readiness.

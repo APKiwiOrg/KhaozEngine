@@ -425,6 +425,13 @@ portions. Their constructors reject invalid geometry/counts and cannot make a re
 `FramedMovementState` preserves its recorded physics origin and optional canonical selection. It does
 not convert or relabel positions during construction.
 
+`MovementFrameRebinding.TryRebind` performs that coordinate-only conversion using the recorded
+physics origins, including Y exactly once. It subtracts origins in double before adding local floats,
+validates the existing 512 m planar-magnitude and 640 m vertical local envelopes, and preserves the
+entire original framed state on refusal. A changed frame or epoch clears the carried selection for
+later canonical reconstruction. An unchanged valid frame preserves it. No membership is established
+by this pure helper.
+
 `MovementQueryLease.EnumerateSupport` and `TraceWater` use cleared private scratch and validate the
 complete producer result before publishing caller buffers. Refusal or a provider exception leaves
 both caller buffers untouched. Initial operational limits are 256 support candidates, 64 spans and

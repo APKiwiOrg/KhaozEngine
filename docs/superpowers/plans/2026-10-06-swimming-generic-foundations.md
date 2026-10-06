@@ -161,7 +161,11 @@ Prepare starts no background work owned by the movement kernel. A native caller 
 through its scheduler before stepping. Pin performs no I/O and returns Unresolved if not ready.
 
 `MovementQueryScope` contains `Vector3 Min`, `Vector3 Max`, `float MaxRise`, `float MaxDrop`,
-`MovementSpaceKey CurrentSpace`, `MovementQueryIdentity Identity`, `MovementFrameDescriptor Frame`.
+`string WorldId`, nullable `MovementSpaceKey? CurrentSpace`, `MovementQueryIdentity Identity`,
+`MovementFrameDescriptor Frame`. The coordinator-approved, migration-compatible
+[CS1 amendment](../../design/SWIM-COLD-SELECTION-SCOPE-AMENDMENT-2026-10-07.md) adds the producer-bound
+WorldId and nullable acquisition hint. The provider exposes its actual served WorldId. Cold
+reconstruction requires a null-hint witness and cannot reuse a selected-space certificate.
 The pin exposes its certified scope and identity, actual source
 world/generation/frame binding, and these methods:
 

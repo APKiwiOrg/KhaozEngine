@@ -78,9 +78,10 @@ public sealed class PointShadowFilterGpuTests(PointShadowScene fixture, ITestOut
 
     /// <summary>The visibility profile across an edge: one entry per probe, each the shadowed level over the
     /// unshadowed one, walking <paramref name="steps"/> probes from <paramref name="from"/> to
-    /// <paramref name="to"/>.</summary>
+    /// <paramref name="to"/>. <paramref name="probe"/>, when given, is handed each probe's index, world point, the
+    /// two levels and the ratio exactly as computed here, and changes nothing about the profile.</summary>
     float[] Profile(PointShadowScene.Shot shadowed, PointShadowScene.Shot plain, Vector3 from, Vector3 to,
-        int steps)
+        int steps, Action<int, Vector3, int, int, float>? probe = null)
     {
         var v = new float[steps + 1];
         for (int i = 0; i <= steps; i++)
@@ -90,7 +91,9 @@ public sealed class PointShadowFilterGpuTests(PointShadowScene fixture, ITestOut
             Assert.True(lit > 24,
                 $"the unshadowed capture reads {lit} at {at}, too dark to divide by. Move the probe row inside "
                 + "the light's reach or raise the intensity.");
-            v[i] = Texel(shadowed, at) / (float)lit;
+            int shade = Texel(shadowed, at);
+            v[i] = shade / (float)lit;
+            probe?.Invoke(i, at, lit, shade, v[i]);
         }
         return v;
     }
@@ -200,8 +203,8 @@ public sealed class PointShadowFilterGpuTests(PointShadowScene fixture, ITestOut
     }
 
     /// <summary>A series with its least-squares straight line taken out, so a local bump is readable against a
-    /// slow trend.</summary>
-    static float[] Detrend(float[] series)
+    /// slow trend. <paramref name="line"/> is the fitted line and the sums it came from.</summary>
+    static float[] Detrend(float[] series, out LeastSquaresLine line)
     {
         int n = series.Length;
         float meanX = (n - 1) / 2f, meanY = 0f;
@@ -216,6 +219,7 @@ public sealed class PointShadowFilterGpuTests(PointShadowScene fixture, ITestOut
         float slope = sxy / sxx;
         var residual = new float[n];
         for (int i = 0; i < n; i++) residual[i] = series[i] - (meanY + slope * (i - meanX));
+        line = new LeastSquaresLine(meanX, meanY, sxx, sxy, slope);
         return residual;
     }
 
@@ -233,57 +237,97 @@ public sealed class PointShadowFilterGpuTests(PointShadowScene fixture, ITestOut
     /// along a clean edge, it moves if either the position or the width of the penumbra moves, and averaging forty
     /// probes takes the dither out of it.
     /// </para>
+    /// <para>
+    /// <see cref="PointShadowSeamEvidenceOptions.DirectoryVariable"/> turns on a full record of the run (#1024),
+    /// written before the assertion and kept when anything earlier fails. Unset, the case is unchanged.
+    /// </para>
     /// </summary>
     [GpuFact]
     public void TheSoftEdgeCrossesACubeFaceBoundaryWithoutAStep()
     {
+        PointShadowSeamEvidenceOptions? evidenceOptions = PointShadowSeamEvidenceOptions.FromEnvironment();
         var light = new Vector3(0f, 5f, 0f);
         PointShadowSettings budget = Budget(PointShadowFilter.Soft, maxPenumbraTexels: 16f, lightSizeMetres: 0.5f);
-        fixture.FrameOn(new Vector3(3.6f, 0f, 5.4f), 1.8f);
+        var frameCentre = new Vector3(3.6f, 0f, 5.4f);
+        const float frameHalfExtent = 1.8f;
+        const int shadowId = 307;
+        fixture.FrameOn(frameCentre, frameHalfExtent);
 
         PointShadowScene.Shot plain = Wall(light, LightShadow.None, budget);
-        PointShadowScene.Shot soft = Wall(light, LightShadow.Static(307), budget);
+        PointShadowScene.Shot soft = Wall(light, LightShadow.Static(shadowId), budget);
 
         // Across the edge: the boundary line runs along (1, 1.5) normalised, so this points out of the lit side
         // and into the shadowed one.
         var across = Vector3.Normalize(new Vector3(1.5f, 0f, -1f));
         const float window = 0.9f;
         const int stations = 13, probes = 60;
+        PointShadowSeamEvidenceRun? evidence = evidenceOptions is null ? null
+            : new PointShadowSeamEvidenceRun(evidenceOptions, fixture, plain, soft,
+                new SeamScene(light, Radius, Intensity, shadowId, frameCentre, frameHalfExtent, across, window, budget),
+                output);
 
-        var reach = new float[stations];
-        for (int s = 0; s < stations; s++)
+        float bump, worstElsewhere;
+        Exception? evidenceFailure = null;
+        try
         {
-            float x = 2.9f + s * 0.1f;                       // the crossing at x = 3.333 falls in station 4 to 5
-            var on = new Vector3(x, 0f, 1.5f * x);
-            float[] profile = Profile(soft, plain, on - across * window, on + across * window, probes);
-            Assert.True(profile[0] > 0.9f && profile[^1] < 0.1f,
-                $"the cross-edge window at {on} runs {profile[0]:0.00} to {profile[^1]:0.00}, so it does not "
-                + "reach clear of the penumbra at both ends and the integral below is clipped");
-            float sum = 0f;
-            foreach (float v in profile) sum += 1f - v;
-            reach[s] = sum * 2f * window / probes;
+            var reach = new float[stations];
+            for (int s = 0; s < stations; s++)
+            {
+                float x = 2.9f + s * 0.1f;                       // the crossing at x = 3.333 falls in station 4 to 5
+                var on = new Vector3(x, 0f, 1.5f * x);
+                Vector3 from = on - across * window, to = on + across * window;
+                float[] profile = Profile(soft, plain, from, to, probes, evidence?.Probes(s));
+                Assert.True(profile[0] > 0.9f && profile[^1] < 0.1f,
+                    $"the cross-edge window at {on} runs {profile[0]:0.00} to {profile[^1]:0.00}, so it does not "
+                    + "reach clear of the penumbra at both ends and the integral below is clipped");
+                float sum = 0f;
+                foreach (float v in profile) sum += 1f - v;
+                reach[s] = sum * 2f * window / probes;
+                evidence?.Record.RecordStation(s, on, from, to, sum, reach[s]);
+            }
+
+            // The reach drifts slowly along the edge, because the receiver is getting further from the light and
+            // the penumbra is widening with it, so the drift is taken out with a least-squares line and what is
+            // left is the RESIDUAL. A clamped kernel does not show up as one step: it is a bump three stations
+            // wide, centred on the crossing, which is why the residuals are averaged over that neighbourhood rather
+            // than differenced pairwise. Station 4 is x = 3.30 and station 5 is x = 3.40, so stations 3 to 5
+            // straddle the crossing at 3.333 with the kernel's own reach either side of it.
+            float[] residual = Detrend(reach, out LeastSquaresLine line);
+            bump = (residual[3] + residual[4] + residual[5]) / 3f;
+            worstElsewhere = 0f;
+            for (int s = 0; s < stations; s++)
+                if (s is < 3 or > 5) worstElsewhere = Math.Max(worstElsewhere, Math.Abs(residual[s]));
+            output.WriteLine($"face seam: crossing bump {bump:0.0000} m, largest residual elsewhere "
+                + $"{worstElsewhere:0.0000} m; reach "
+                + string.Join(", ", Array.ConvertAll(reach, r => r.ToString("0.000"))));
+            evidence?.Record.RecordFit(line, residual, bump, worstElsewhere);
+            evidenceFailure = evidence?.Emit(failure: null);
+        }
+        catch (Exception early) when (evidence is { Emitted: false })
+        {
+            Exception? unwritten = evidence.Emit(early);
+            if (unwritten is not null)
+                throw new AggregateException("The seam probe failed before its statistic, and its configured "
+                    + "evidence could not be written either.", early, unwritten);
+            throw;
         }
 
-        // The reach drifts slowly along the edge, because the receiver is getting further from the light and the
-        // penumbra is widening with it, so the drift is taken out with a least-squares line and what is left is
-        // the RESIDUAL. A clamped kernel does not show up as one step: it is a bump three stations wide, centred
-        // on the crossing, which is why the residuals are averaged over that neighbourhood rather than differenced
-        // pairwise. Station 4 is x = 3.30 and station 5 is x = 3.40, so stations 3 to 5 straddle the crossing at
-        // 3.333 with the kernel's own reach either side of it.
-        float[] residual = Detrend(reach);
-        float bump = (residual[3] + residual[4] + residual[5]) / 3f;
-        float worstElsewhere = 0f;
-        for (int s = 0; s < stations; s++)
-            if (s is < 3 or > 5) worstElsewhere = Math.Max(worstElsewhere, Math.Abs(residual[s]));
-        output.WriteLine($"face seam: crossing bump {bump:0.0000} m, largest residual elsewhere "
-            + $"{worstElsewhere:0.0000} m; reach "
-            + string.Join(", ", Array.ConvertAll(reach, r => r.ToString("0.000"))));
-
-        Assert.True(Math.Abs(bump) <= 0.008f,
-            $"the shadow's reach into the window sits {bump:0.0000} m off its own trend across the three stations "
-            + $"either side of the cube face boundary at x = 3.333, against {worstElsewhere:0.0000} m anywhere "
-            + "else along the same edge. That is a tap clamped inside its own face cell instead of crossing to "
-            + "the neighbouring face");
+        try
+        {
+            Assert.True(Math.Abs(bump) <= 0.008f,
+                $"the shadow's reach into the window sits {bump:0.0000} m off its own trend across the three "
+                + $"stations either side of the cube face boundary at x = 3.333, against {worstElsewhere:0.0000} m "
+                + "anywhere else along the same edge. That is a tap clamped inside its own face cell instead of "
+                + "crossing to the neighbouring face");
+        }
+        catch (Exception seam) when (evidenceFailure is not null)
+        {
+            throw new AggregateException("The seam assertion failed, and its configured evidence could not be "
+                + "written either.", seam, evidenceFailure);
+        }
+        if (evidenceFailure is not null)
+            throw new InvalidOperationException("The seam assertion passed, but its configured evidence could not "
+                + "be written, so this diagnostic run proves nothing.", evidenceFailure);
     }
 
     /// <summary>

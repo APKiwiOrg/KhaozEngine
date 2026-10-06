@@ -168,6 +168,30 @@ public sealed class PointShadowScene : IDisposable
         }
     }
 
+    /// <summary>The device the captures run on, so evidence can name the backend and adapter the device reports
+    /// rather than the ones a run was asked for.</summary>
+    public GpuDeviceContext DeviceContext
+    {
+        get
+        {
+            Device();
+            return _gpu!;
+        }
+    }
+
+    /// <summary>The camera's matrices and eye as they stand now, which is the framing every capture since the last
+    /// <see cref="FrameOn"/> was taken under.</summary>
+    public (Matrix4x4 View, Matrix4x4 Projection, Matrix4x4 ViewProjection, Vector3 Eye, Vector3 RenderOrigin)
+        CameraState
+    {
+        get
+        {
+            Device();
+            IsoCamera3D camera = _scene!.Camera;
+            return (camera.View, camera.Projection, camera.ViewProjection, camera.Eye, camera.RenderOrigin);
+        }
+    }
+
     /// <summary>Whether an atlas is allocated at all, which is what the released case asserts.</summary>
     public bool HasAtlas
     {

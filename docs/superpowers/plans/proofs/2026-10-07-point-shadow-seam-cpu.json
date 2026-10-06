@@ -1,0 +1,39 @@
+{
+  "source_base": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f",
+  "scope": "CPU artifact logic only, no GPU capture or rendered assertion proof.",
+  "environment_verified_unset": [
+    "KE_GPU_TESTS",
+    "KE_POINT_SHADOW_SEAM_EVIDENCE_DIR",
+    "KE_POINT_SHADOW_SEAM_SOURCE_COMMIT",
+    "KE_POINT_SHADOW_SEAM_SOURCE_TREE"
+  ],
+  "source_sha256": {
+    "KhaozEngine.Render.Tests/Gpu/PointShadowFilterGpuTests.cs": "45231b783b68af395ea1c6301633494d73144140a725adea93b3a0b2d938669b",
+    "KhaozEngine.Render.Tests/Gpu/PointShadowScene.cs": "deb9cb50af43950f9b18bb68ef15021b48fdd7f1d3062df21f69fea276a18b2c",
+    "KhaozEngine.Render.Tests/Gpu/PointShadowSeamEvidence.cs": "dde41ca42d7993a206b8ae7c9fa1adc6b82939665c5aff263edcd7e126856392",
+    "KhaozEngine.Render.Tests/Gpu/PointShadowSeamEvidenceOptions.cs": "acf138648842a4629be0c893d052f6654d1978b9cc20338436049f97c6888253",
+    "KhaozEngine.Render.Tests/Gpu/PointShadowSeamEvidenceRun.cs": "ae096f9045dbefaa761f4abbdd8f80a5192d7bc6c4824ebb27ff90d3978d277a",
+    "KhaozEngine.Render.Tests/Gpu/PointShadowSeamEvidenceTests.cs": "85fe4af867a8796a8aceccdbe2a2b02532be62bfbbe0a9039bf74fc06c3be7fb"
+  },
+  "review": "Source review 1 corrections R1/R2 and scoped review 2 approved.",
+  "counts": {
+    "total": 31,
+    "executed": 31,
+    "passed": 31,
+    "failed": 0,
+    "skipped": 0
+  },
+  "test_exit": 0,
+  "scoped_format_exit": 0,
+  "log_sha256": {
+    "c-finite-tests.log": "2303ff215e8224e53f0eb0c0de35128b340a284fcf99ae73ddf1be0307d3ceae",
+    "c-finite-format.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "results/gatec-cpu.trx": "0de6f450f3a1e0e3a8782ee15631fc952ce32c2218efd7afd1eea1c0f055d7c4"
+  },
+  "limitations": [
+    "Catalog source hashes are passive and are not device bytecode or a bound-program inventory.",
+    "Post-render provenance refusal remains possible.",
+    "Output creation is per file. The hosted proof must use a fresh unique directory.",
+    "TRX is the sole assertion result. An incomplete record does not establish assertion execution."
+  ]
+}

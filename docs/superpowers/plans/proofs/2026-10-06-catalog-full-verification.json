@@ -245,6 +245,26 @@
   "ci": {
     "normal": 37440385030,
     "gpu": 37440389468,
-    "status": "dispatched, results pending"
+    "status": "normal success, GPU in progress",
+    "normal_result": {
+      "head": "50ff5410acc19bfaa90a7e4c3e1e83aea483dd22",
+      "conclusion": "success",
+      "jobs": [
+        "accounts-sqlserver",
+        "catalog-sqlserver",
+        "server-sqlserver",
+        "build-test-pack"
+      ],
+      "catalog_sqlserver": {
+        "job_id": 112192423743,
+        "total": 590,
+        "executed": 590,
+        "passed": 590,
+        "failed": 0,
+        "skipped": 0,
+        "log_sha256": "de6365a43913085b75096baa1608eefc9a8ec5b38989ef93322f25ea5062b08f"
+      },
+      "evidence_limit": "Job log and executed==total gate, no downloadable TRX artifact published"
+    }
   }
 }

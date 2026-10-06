@@ -967,3 +967,16 @@ fix/wa-catalog-freeze at that head. GPU inputs are bake=false, legs=all, tier=pu
 stress or release tag was dispatched. SQL Server and GPU execution/results remain pending.
 Proof counts, log hashes and package hashes are in proofs/2026-10-06-catalog-full-verification.json.
 Root still owns actual hosted result verification, main reconciliation/integration and shared pack.
+
+
+### Hosted SQL Server and normal CI passed
+
+Normal CI run37440385030 succeeded at50ff5410acc19bfaa90a7e4c3e1e83aea483dd22. All four
+jobs passed: build-test-pack, catalog-sqlserver, accounts-sqlserver and server-sqlserver. Root
+read the Catalog job log and its executed-count gate:590 passed,590 executed of590, zero failures
+and zero skips. The tested source declares all ten new guarded SQL Server facts within that
+Catalog filter:four row conformance, two text conformance, one timestamp and three runner cases.
+No TRX artifact was published, so the archived job log and all-executed gate are the proof.
+
+GPU run37440389468 is still in progress at the same head. Do not integrate before its result.
+The proof JSON now records hosted normal results and the SQL Server job log hash.

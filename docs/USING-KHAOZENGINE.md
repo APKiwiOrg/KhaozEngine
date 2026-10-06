@@ -8487,6 +8487,12 @@ rect/polygon rim and gravity/jump are named follow-ups (prop/building collision 
 
 ### Movement medium + wading (`MovementMedium`, `KhaozEngine.Locomotion`)
 
+The separate explicit environment values use `MovementAvailability.Unresolved` by default.
+`MovementWaterPoint` requires world-qualified space/domain identity and actual vertical containment
+before a wet result can be Known. `MovementWaterInterval.UpperY` may be a flooded cave ceiling below
+`NominalSurfaceY`, with `UpperIsFreeSurface == false`. These value contracts do not alter the legacy
+provider below. See [Locomotion](../KhaozEngine.Locomotion/README.md#explicit-environment-value-contracts).
+
 The movement step takes an **optional fluid-medium provider** `(x, z, feetY) -> MovementMedium` alongside the
 ground delegate. It reports whether a world sample is in water and the water surface height, so wading slows the
 character by submersion depth.

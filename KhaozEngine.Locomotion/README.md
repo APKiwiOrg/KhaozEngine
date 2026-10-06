@@ -385,6 +385,20 @@ in deep water). `CharacterMovement.ResolveSwimming(wasSwimming, medium, feetY, t
 decision. **A null provider never engages swim.** The swim flag replicates via NetWorld's `MovementState.Swimming`
 (a breaking wire change: `MoveProtocol.WireProtocolVersion` -> 3).
 
+### Explicit environment value contracts
+
+`MovementDomainKey`, `MovementSpaceKey` and `MovementSupportKey` are ordinal, world-qualified
+semantic identities. Default keys cannot describe known membership or support. `MovementQueryIdentity`
+binds a portable closure, nonzero policy version and scope digest. `MovementFrameDescriptor` retains
+the host WorldFrame, exact physics origin and local epoch, separate from portable identity.
+
+`MovementBodyQuery` validates an upright capsule and its selected space/support. `MovementWaterPoint`
+defaults to Unresolved. A Known wet point requires a domain and valid containing `MovementWaterInterval`,
+while a Known dry point cannot carry either. The interval keeps LowerY/UpperY separate from
+NominalSurfaceY. A flooded cave ceiling may bound the interval below that nominal surface, and only
+UpperIsFreeSurface identifies a surface belonging to this interval. These values do not change the
+legacy medium-provider overloads or supply a native water sampler.
+
 ## Types
 
 - **`MoveCommand`** - movement intent: camera-relative XZ axis, run flag, camera yaw, jump bit, and (17.26.0) the

@@ -3,8 +3,8 @@
 Status: accepted by migration and approved by the coordinator on 2026-10-07 under the owner's
 delegated authority, with all six clarification points incorporated below. This fills the
 scope-witness and pin-property signatures left descriptive in the approved generic plan.
-It does not replace F3 or authorize native producers. The initial 27-case value RED is queued,
-not granted. No heavy command starts without an explicit slot grant.
+It does not replace F3 or authorize native producers. No heavy command starts without an
+explicit slot grant. Task 3 remains in progress, with evidence tracked below.
 
 ## Scope witness
 
@@ -109,3 +109,15 @@ Tests use a finite synthetic witness and actual Bepu owner/view. They prove pin 
 under the physical fence, failed pinning releases it, mismatched source/generation/frame and
 incomplete/undersized scope refuse, disposed/stale pins refuse, and old-frame state is converted
 or returned unchanged as a framed refusal. The native resource and geometry proof remains G1b.
+
+## Implementation evidence
+
+The initial value RED compiled and exited 1 with 27 missing-runtime-type failures. After value
+implementation, the same 27 assertions using direct public types passed in Release with no skips,
+exit 0, in `/tmp/swim-environment-values-green.log`. This validates keys, body/interval/point
+invariants and the unresolved default, not environment acquisition or support composition.
+
+The separately selected 13-case witness RED then exited 1 with no skips, at the absent
+MovementQueryScope type. It used the successful compilation above with `--no-build`.
+`/tmp/swim-environment-witness-red.log` is missing-capability evidence, not a proof of witness
+capacity/refusal behavior. Each granted window explicitly released the shared compute slot.

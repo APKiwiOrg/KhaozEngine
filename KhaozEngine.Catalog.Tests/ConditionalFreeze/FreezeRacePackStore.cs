@@ -9,7 +9,8 @@ namespace KhaozEngine.Tests.Catalog.ConditionalFreeze;
 
 /// <summary>
 /// One participant's view of the shared pack root, which can park that participant inside a real pack write
-/// and records whether the write was cancelled there. Everything else forwards to the file store.
+/// and records every write it was asked for and whether one was cancelled there. Everything else forwards to
+/// the file store. A view built after the catalog was seeded therefore observes nothing of the seed.
 /// <para>
 /// <b>It declares every half the file store has</b>, the version pointer half and the pruning half included, so
 /// wrapping a participant's pack target changes neither how its commit is constructed nor what its sweep does.
@@ -21,10 +22,15 @@ namespace KhaozEngine.Tests.Catalog.ConditionalFreeze;
 internal sealed class FreezeRacePackStore(FileSystemPackStore inner)
     : IPackStore, IPackStorePruning, IContentVersionPointerSource, IPackVersionPointerStore
 {
+    readonly List<string> _writes = [];
     OnceGate? _put;
 
-    /// <summary>How many object writes this participant made.</summary>
-    public int PutCalls { get; private set; }
+    /// <summary>
+    /// Every write this participant asked for, in order: an object by its hash, a version pointer as
+    /// <c>pointer:</c> and its number, a sweep deletion as <c>delete:</c> and its hash. Recorded at entry,
+    /// whatever the write answered.
+    /// </summary>
+    public IReadOnlyList<string> Writes => _writes;
 
     /// <summary>How many object writes this participant's token cancelled while it was parked in one.</summary>
     public int CancelledPuts { get; private set; }
@@ -44,7 +50,7 @@ internal sealed class FreezeRacePackStore(FileSystemPackStore inner)
     /// <inheritdoc />
     public async Task PutAsync(string hash, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken = default)
     {
-        PutCalls++;
+        _writes.Add(hash);
         if (_put is OnceGate gate)
         {
             _put = null;
@@ -72,7 +78,10 @@ internal sealed class FreezeRacePackStore(FileSystemPackStore inner)
 
     /// <inheritdoc />
     public Task<bool> DeleteAsync(string hash, CancellationToken cancellationToken = default)
-        => inner.DeleteAsync(hash, cancellationToken);
+    {
+        _writes.Add("delete:" + hash);
+        return inner.DeleteAsync(hash, cancellationToken);
+    }
 
     /// <inheritdoc />
     public Task PutVersionPointerAsync(
@@ -80,7 +89,10 @@ internal sealed class FreezeRacePackStore(FileSystemPackStore inner)
         string serverManifestHash,
         string clientManifestHash,
         CancellationToken cancellationToken = default)
-        => inner.PutVersionPointerAsync(versionNumber, serverManifestHash, clientManifestHash, cancellationToken);
+    {
+        _writes.Add("pointer:" + versionNumber.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return inner.PutVersionPointerAsync(versionNumber, serverManifestHash, clientManifestHash, cancellationToken);
+    }
 
     /// <inheritdoc />
     public Task<PackVersionPointer?> GetVersionPointerAsync(

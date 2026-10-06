@@ -177,6 +177,11 @@ internal sealed class FreezeRaceFixture : IAsyncDisposable
         _ => $"{failure.GetType().Name}: {failure.Message}",
     };
 
+    /// <summary>A freeze marker as a report line names it, or <c>none</c>.</summary>
+    /// <param name="marker">The marker, or null.</param>
+    public static string Marker(int? marker)
+        => marker?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none";
+
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {

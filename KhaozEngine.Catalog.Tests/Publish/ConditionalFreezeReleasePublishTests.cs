@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
 using KhaozEngine.Tests.Catalog.ConditionalFreeze;
+using KhaozEngine.Tests.Catalog.Upgrade;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -66,7 +67,7 @@ public sealed class ConditionalFreezeReleasePublishTests(ITestOutputHelper outpu
         (_, Exception? olderFailure) = await FreezeRaceFixture.OutcomeAsync(older);
         int? markerAfterOlderExit = (await inner.GetOpenDraftAsync())?.FrozenForBaseVersion;
         output.WriteLine("P1 " + FreezeRaceFixture.Describe(olderFailure));
-        output.WriteLine("D2 marker after P1's exit: " + Marker(markerAfterOlderExit));
+        output.WriteLine("D2 marker after P1's exit: " + FreezeRaceFixture.Marker(markerAfterOlderExit));
 
         winnerCommit.Resume();
         (ContentPublishResult? winnerResult, Exception? winnerFailure) = await FreezeRaceFixture.OutcomeAsync(newer);
@@ -125,7 +126,7 @@ public sealed class ConditionalFreezeReleasePublishTests(ITestOutputHelper outpu
         (_, Exception? olderFailure) = await FreezeRaceFixture.OutcomeAsync(older);
         int? markerAfterOlderExit = (await inner.GetOpenDraftAsync())?.FrozenForBaseVersion;
         output.WriteLine("P1 " + FreezeRaceFixture.Describe(olderFailure));
-        output.WriteLine("D2 marker after P1's exit: " + Marker(markerAfterOlderExit));
+        output.WriteLine("D2 marker after P1's exit: " + FreezeRaceFixture.Marker(markerAfterOlderExit));
 
         winnerCommit.Resume();
         (ContentPublishResult? winnerResult, Exception? winnerFailure) = await FreezeRaceFixture.OutcomeAsync(newer);
@@ -184,7 +185,7 @@ public sealed class ConditionalFreezeReleasePublishTests(ITestOutputHelper outpu
         Assert.Single(p1.ReleaseTokens);
 
         await fixture.EditAsync(
-            ContentEdit.Add(UpgradeFixtureThing, new ContentKey("gap_row"), PublishFixtures.Fields(77)));
+            ContentEdit.Add(UpgradeFixtures.Thing, new ContentKey("gap_row"), PublishFixtures.Fields(77)));
 
         winnerCommit.Resume();
         (_, Exception? failure) = await FreezeRaceFixture.OutcomeAsync(sameBase);
@@ -201,8 +202,4 @@ public sealed class ConditionalFreezeReleasePublishTests(ITestOutputHelper outpu
         Assert.False(held.IsFrozen);
         Assert.Equal(1, sameBaseWinner.TextCommitCalls);
     }
-
-    static ContentTypeId UpgradeFixtureThing => new(PublishFixtures.ThingTypeId);
-
-    static string Marker(int? marker) => marker?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none";
 }

@@ -39,10 +39,18 @@ public sealed record ContentPackWrite(int ObjectsWritten, long BytesWritten);
 /// driven on its own therefore leaves a frozen draft behind, deliberately: half a publish is exactly the
 /// state the marker describes, and the next baseline read or the next publish clears it.
 /// </para>
+/// <para>
+/// <b>Publishing requires <see cref="IContentConditionalDraftFreeze"/>.</b> The release names the base this
+/// publish's request recorded and clears the marker only while it still names that base, so an older
+/// publish can never take a newer publisher's freeze away. A store without the companion is refused before
+/// <see cref="PublishAsync"/> calls it at all. Building this type over one stays valid, because
+/// <see cref="WriteAsync"/> and <see cref="SweepAsync"/> never freeze.
+/// </para>
 /// </summary>
 public sealed class ContentPublishCommit
 {
     readonly IContentAuthoringStore _store;
+    readonly IContentConditionalDraftFreeze? _guarded;
     readonly ContentPublisher _publisher;
 
     /// <summary>Builds the commit half over one store, one pack target and one prepared pipeline.</summary>
@@ -61,6 +69,7 @@ public sealed class ContentPublishCommit
         ArgumentNullException.ThrowIfNull(publisher);
 
         _store = store;
+        _guarded = store as IContentConditionalDraftFreeze;
         _publisher = publisher;
         PackStore = packStore;
         Pointers = PackVersionPointers.Resolve(packStore)
@@ -97,12 +106,16 @@ public sealed class ContentPublishCommit
     /// <param name="request">The publish request, carrying the required expected base version.</param>
     /// <param name="cancellationToken">Cancels the publish.</param>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is null.</exception>
-    /// <exception cref="ContentAuthoringException">There is no open draft, the base version moved, or the candidate did not validate.</exception>
+    /// <exception cref="ContentAuthoringException">The store does not implement <see cref="IContentConditionalDraftFreeze"/>, there is no open draft, the base version moved, or the candidate did not validate.</exception>
     public async Task<ContentPublishResult> PublishAsync(
         ContentPublishRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        // Refused before the try, so a store that could not release by base is never called at all.
+        IContentConditionalDraftFreeze guarded = _guarded
+            ?? throw ContentPublisher.ConditionalFreezeUnavailable(_store, nameof(PublishAsync));
 
         long started = Stopwatch.GetTimestamp();
         try
@@ -150,11 +163,13 @@ public sealed class ContentPublishCommit
         }
         finally
         {
-            // The freeze of step 1 ends HERE, on every exit path there is. A commit that ran already took the
-            // draft with it and this is a no-op, and any other ending is one where a draft is still sitting
-            // there frozen for a publish that is over. CancellationToken.None because a cancelled publish is
-            // the case that most needs its draft handed back.
-            await ClearTheFreezeAsync().ConfigureAwait(false);
+            // The freeze of step 1 ends HERE, on every exit path there is, including a freeze whose answer
+            // was lost. A commit that ran already took the draft with it and this is a no-op, and any other
+            // ending is one where a draft may still be sitting there frozen for a publish that is over. The
+            // release names the base this request recorded, so a marker a newer publisher set is left alone.
+            // CancellationToken.None because a cancelled publish is the case that most needs its draft
+            // handed back.
+            await ReleaseTheFreezeAsync(guarded, request.ExpectedBaseVersion).ConfigureAwait(false);
         }
     }
 
@@ -209,16 +224,19 @@ public sealed class ContentPublishCommit
     }
 
     /// <summary>
-    /// Releases the draft step 1 froze, with its OWN failure swallowed. Whatever ended the publish is what
-    /// the caller needs to read, and replacing it with a failure from the release would lose it. A release
-    /// that did not happen is recoverable on its own: the marker names a base version, and the next baseline
-    /// read clears one the store no longer stands at.
+    /// Releases the draft step 1 froze for <paramref name="frozenForBaseVersion"/>, with its OWN failure
+    /// swallowed. Whatever ended the publish is what the caller needs to read, and replacing it with a failure
+    /// from the release would lose it. A release that did not happen is recoverable on its own: the marker
+    /// names a base version, and the next baseline read clears one the store no longer stands at.
     /// </summary>
-    async Task ClearTheFreezeAsync()
+    /// <param name="guarded">The store's guarded freeze companion.</param>
+    /// <param name="frozenForBaseVersion">The base this publish's request recorded before it froze.</param>
+    static async Task ReleaseTheFreezeAsync(IContentConditionalDraftFreeze guarded, int frozenForBaseVersion)
     {
         try
         {
-            await _store.ClearDraftFreezeAsync(CancellationToken.None).ConfigureAwait(false);
+            await guarded
+                .ReleaseDraftFreezeForBaseAsync(frozenForBaseVersion, CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception release) when (release is not OperationCanceledException)
         {

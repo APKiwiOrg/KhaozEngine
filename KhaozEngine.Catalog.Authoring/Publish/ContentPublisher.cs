@@ -71,7 +71,7 @@ public sealed class ContentPublisher
     /// <param name="baseline">The base version, read under the lock step 1 took.</param>
     /// <param name="cancellationToken">Cancels the call.</param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
-    /// <exception cref="ContentAuthoringException">No draft is open, the base version moved, or an edit names something the registry or the base version does not carry.</exception>
+    /// <exception cref="ContentAuthoringException">The store does not implement <see cref="IContentConditionalDraftFreeze"/>, no draft is open, the base version moved, or an edit names something the registry or the base version does not carry.</exception>
     public async Task<ContentPublishPlan> PrepareAsync(
         ContentPublishRequest request,
         ContentPublishBaseline baseline,
@@ -79,11 +79,14 @@ public sealed class ContentPublisher
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(baseline);
+        IContentConditionalDraftFreeze guarded = _store as IContentConditionalDraftFreeze
+            ?? throw ConditionalFreezeUnavailable(_store, nameof(PrepareAsync));
 
         // STEP 1. Freeze the draft. The store writes a durable marker naming this publish's base version and
-        // refuses every draft write until it is cleared, so the change set read here is the one the commit
-        // will delete. The commit half clears the marker on every exit path.
-        ContentDraft draft = await FreezeAsync(request, baseline, cancellationToken).ConfigureAwait(false);
+        // refuses every draft write until it is cleared, and it returns the draft it froze in the same step, so
+        // the change set planned here is the one the commit will delete. The commit half releases the marker
+        // on every exit path.
+        ContentDraft draft = await FreezeAsync(guarded, request, baseline, cancellationToken).ConfigureAwait(false);
         ContentPublishRowPhase rows = await PrepareRowsAsync(request, baseline, draft, cancellationToken)
             .ConfigureAwait(false);
 
@@ -229,8 +232,9 @@ public sealed class ContentPublisher
     /// provider here holds a row lock across those: SQLite leases its one connection per call and SQL
     /// Server's Serializable transaction covers step 10 alone. So the store writes
     /// <c>catalog_draft.frozen_for_base_version</c> under its own transaction and every draft write reads it.
-    /// <see cref="ContentPublishCommit"/> clears it on every exit path, and a marker a dead publish left
-    /// behind naming a base version the store no longer stands at is cleared by the next baseline read.
+    /// <see cref="ContentPublishCommit"/> releases the base it recorded on every exit path, which leaves a
+    /// newer publisher's marker standing, and a marker a dead publish left behind naming a base version the
+    /// store no longer stands at is cleared by the next baseline read.
     /// </para>
     /// <para>
     /// <see cref="ContentPublishRequest.ExpectedBaseVersion"/> is optimistic concurrency and it is checked
@@ -238,8 +242,16 @@ public sealed class ContentPublisher
     /// second one's expectation is stale and it is refused with both numbers named. That check runs BEFORE
     /// the marker is written, so a publish refused for a stale expectation freezes nothing.
     /// </para>
+    /// <para>
+    /// <b>The freeze is the guarded one, and its answer is the draft.</b>
+    /// <see cref="IContentConditionalDraftFreeze.FreezeDraftForBaseAsync"/> compares the base with the active
+    /// version, checks the draft holds row work and writes the marker in one atomic step, then returns the draft
+    /// it froze. There is no separate draft read, so no edit can land between what is planned and what is
+    /// frozen, and a store that has moved past the baseline refuses rather than overwriting a newer marker.
+    /// </para>
     /// </summary>
-    async Task<ContentDraft> FreezeAsync(
+    static async Task<ContentDraft> FreezeAsync(
+        IContentConditionalDraftFreeze guarded,
         ContentPublishRequest request,
         ContentPublishBaseline baseline,
         CancellationToken cancellationToken)
@@ -254,19 +266,23 @@ public sealed class ContentPublisher
                 ContentAuthoringException.BaseVersionMovedReason);
         }
 
-        ContentDraft? draft = await _store.GetOpenDraftAsync(cancellationToken).ConfigureAwait(false);
-        if (draft is null || draft.EditCount == 0)
-        {
-            throw new ContentAuthoringException(
-                "There is no open draft with pending edits, so there is nothing to publish. A version is a set of changes and an empty one would be a number with no content behind it.",
-                default,
-                0,
-                ContentAuthoringException.NoOpenDraftReason);
-        }
-
-        await _store.FreezeDraftAsync(baseline.VersionNumber, cancellationToken).ConfigureAwait(false);
-        return draft;
+        return await guarded
+            .FreezeDraftForBaseAsync(baseline.VersionNumber, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// The refusal a publish or a standalone preparation meets over a store without the guarded freeze, before
+    /// any member of that store is called.
+    /// </summary>
+    /// <param name="store">The store that does not implement <see cref="IContentConditionalDraftFreeze"/>.</param>
+    /// <param name="operation">The refused operation, named in the message.</param>
+    internal static ContentAuthoringException ConditionalFreezeUnavailable(IContentAuthoringStore store, string operation)
+        => new(
+            FormattableString.Invariant(
+                $"{operation} needs the guarded draft freeze, and the store {store.GetType().Name} does not implement {nameof(IContentConditionalDraftFreeze)}. Without it a publish could overwrite or release a newer publisher's freeze marker, so nothing was read or written."),
+            default,
+            0,
+            ContentAuthoringException.ConditionalFreezeUnavailableReason);
 
     void Step(ContentPublishStep step) => OnStep?.Invoke(step);
 

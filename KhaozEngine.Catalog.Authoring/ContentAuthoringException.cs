@@ -217,6 +217,14 @@ public sealed class ContentAuthoringException : Exception
     /// </summary>
     public const string TextChunkMismatchReason = "text-chunk-mismatch";
 
+    /// <summary>
+    /// A publish or a standalone row preparation reached a store that does not implement
+    /// <see cref="IContentConditionalDraftFreeze"/>. It is refused before any store member is called, because a
+    /// freeze that cannot be conditioned on its base, or released by the base it recorded, can overwrite or clear
+    /// a newer publisher's marker. Every engine store implements the companion.
+    /// </summary>
+    public const string ConditionalFreezeUnavailableReason = "conditional-freeze-unavailable";
+
     /// <summary>Creates the exception with no message.</summary>
     public ContentAuthoringException()
     {

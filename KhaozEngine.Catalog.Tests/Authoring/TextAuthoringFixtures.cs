@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using KhaozEngine.Catalog;
 using KhaozEngine.Catalog.Authoring;
+using Xunit;
 
 namespace KhaozEngine.Tests.Catalog.Authoring;
 
@@ -104,6 +105,11 @@ internal static class TextAuthoringFixtures
     /// <summary>
     /// Freezes the store's complete draft and builds the ordinary row plan for it over a row-only twin, whose
     /// baseline names <paramref name="languages"/> so both manifests carry the text chunk list.
+    /// <para>
+    /// The twin's guarded freeze compares the requested base with its own active version, so the twin is first
+    /// published forward to the held base version on scratch rows of its own, and only then stages the frozen
+    /// row edits. Its plan is built on the held baseline, so none of those scratch rows reach the candidate.
+    /// </para>
     /// </summary>
     public static async Task<(ContentTextPublishSnapshot Snapshot, ContentPublishPlan RowPlan)> FreezeAndPlanAsync(
         InMemoryContentAuthoringStore store, IReadOnlyList<ManifestLanguageEntry> languages)
@@ -111,11 +117,11 @@ internal static class TextAuthoringFixtures
         IContentTextAuthoringStore text = store;
         ContentTextPublishSnapshot snapshot = await text.FreezeChangesAsync(
             await store.GetActiveVersionAsync());
+        ContentPublishBaseline held = snapshot.Baseline;
 
-        var twin = new InMemoryContentAuthoringStore(TextRegistry());
+        InMemoryContentAuthoringStore twin = await TwinAtAsync(held.VersionNumber);
         await twin.ApplyEditsAsync(snapshot.Draft.Changes.Edits, Actor, Operator, "twin");
         var publisher = new ContentPublisher(twin, store, TextRegistry());
-        ContentPublishBaseline held = snapshot.Baseline;
         var baseline = new ContentPublishBaseline(
             held.VersionNumber, held.Rows, held.Rules, held.Chunks, languages,
             held.MinimumServerBuild, held.MinimumClientBuild);
@@ -125,7 +131,31 @@ internal static class TextAuthoringFixtures
             throw new InvalidOperationException("The fixture row plan did not validate.");
         }
 
+        Assert.DoesNotContain(
+            plan.Candidate.Rows(Item), row => row.Key.ToString().StartsWith(TwinSeedPrefix, StringComparison.Ordinal));
         return (snapshot, plan);
+    }
+
+    const string TwinSeedPrefix = "twin_seed_";
+
+    /// <summary>
+    /// A scratch row-only store whose active version is <paramref name="versionNumber"/>, reached through its
+    /// own publisher and id allocator with one scratch row per version and a direct commit, so no pack is written.
+    /// </summary>
+    static async Task<InMemoryContentAuthoringStore> TwinAtAsync(int versionNumber)
+    {
+        var twin = new InMemoryContentAuthoringStore(TextRegistry());
+        var publisher = new ContentPublisher(twin, twin, TextRegistry());
+        for (int version = 1; version <= versionNumber; version++)
+        {
+            await twin.ApplyEditsAsync(new[] { Add(TwinSeedPrefix + version) }, Actor, Operator, "twin seed");
+            ContentPublishBaseline baseline = await twin.ReadPublishBaselineAsync();
+            ContentPublishPlan plan = await publisher.PrepareAsync(Request(baseline.VersionNumber), baseline);
+            await twin.CommitPublishAsync(plan, Request(baseline.VersionNumber), null);
+        }
+
+        Assert.Equal(versionNumber, await twin.GetActiveVersionAsync());
+        return twin;
     }
 
     /// <summary>

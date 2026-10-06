@@ -289,7 +289,8 @@ public abstract partial class ContentAuthoringTextStoreConformance
         Assert.Equal(audits, (await AuditAsync(store)).Count);
 
         // An old wrapper exposing only the row-only seam takes the legacy publish route, which is refused at
-        // the backend's freeze before any file or row is written.
+        // the backend's guarded freeze before any file or row is written. Its forwarding base declares that
+        // freeze and still hides the text companion.
         var view = new RowOnlyView(store);
         var legacy = new ContentPublishCommit(
             view, PackOf(store), new ContentPublisher(view, (IContentIdPersistence)store, TextRegistry()));
@@ -424,7 +425,10 @@ public abstract partial class ContentAuthoringTextStoreConformance
         return value + new string('b', bytes - Encoding.UTF8.GetByteCount(value));
     }
 
-    /// <summary>A view of a store exposing only the row-only seam, which is the route an old wrapper takes.</summary>
+    /// <summary>
+    /// A view of a store exposing only the row-only seam and the guarded freeze its forwarding base declares,
+    /// which is the route an old wrapper takes. It hides the text companion.
+    /// </summary>
     sealed class RowOnlyView(IContentAuthoringStore inner) : ForwardingContentAuthoringStore(inner);
 
     sealed class ItemCodec(ContentFieldSchema schema) : ContentRowCodecBase(new ContentTypeId(1024), schema);

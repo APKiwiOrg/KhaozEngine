@@ -28,9 +28,6 @@ internal sealed class RowFreezeRaceStore(
     bool forwardPublish)
     : FreezeRaceParticipant(inner, ids, registry, packs)
 {
-    /// <summary>Whether a publish is forwarded to the inner store rather than built over this decorator.</summary>
-    public bool ForwardsPublish => forwardPublish;
-
     /// <inheritdoc />
     public override Task<ContentPublishResult> PublishAsync(
         ContentPublishRequest request,

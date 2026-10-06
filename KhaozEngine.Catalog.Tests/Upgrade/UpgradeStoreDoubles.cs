@@ -12,9 +12,17 @@ namespace KhaozEngine.Tests.Catalog.Upgrade;
 /// <summary>
 /// Every member of <see cref="IContentAuthoringStore"/> forwarded to an inner store, so a double overrides
 /// the one member it is about and says nothing about the other twenty-five.
+/// <para>
+/// It declares the guarded freeze companion, so its constructor requires an inner store that declares it and
+/// both companion members forward there. Every engine store does.
+/// </para>
 /// </summary>
-internal abstract class ForwardingContentAuthoringStore(IContentAuthoringStore inner) : IContentAuthoringStore
+internal abstract class ForwardingContentAuthoringStore(IContentAuthoringStore inner)
+    : IContentAuthoringStore, IContentConditionalDraftFreeze
 {
+    readonly IContentConditionalDraftFreeze _guarded = inner as IContentConditionalDraftFreeze
+        ?? throw new ArgumentException("a forwarding store's inner store must declare the guarded freeze companion.", nameof(inner));
+
     /// <summary>The store behind the decorator, which a double also reads directly.</summary>
     protected IContentAuthoringStore Inner => inner;
 
@@ -94,6 +102,18 @@ internal abstract class ForwardingContentAuthoringStore(IContentAuthoringStore i
     /// <inheritdoc />
     public virtual Task ClearDraftFreezeAsync(CancellationToken cancellationToken = default)
         => inner.ClearDraftFreezeAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<ContentDraft> FreezeDraftForBaseAsync(
+        int expectedBaseVersion,
+        CancellationToken cancellationToken = default)
+        => _guarded.FreezeDraftForBaseAsync(expectedBaseVersion, cancellationToken);
+
+    /// <inheritdoc />
+    public virtual Task<bool> ReleaseDraftFreezeForBaseAsync(
+        int frozenForBaseVersion,
+        CancellationToken cancellationToken = default)
+        => _guarded.ReleaseDraftFreezeForBaseAsync(frozenForBaseVersion, cancellationToken);
 
     /// <inheritdoc />
     public virtual Task<ContentPublishBaseline> ReadPublishBaselineAsync(CancellationToken cancellationToken = default)

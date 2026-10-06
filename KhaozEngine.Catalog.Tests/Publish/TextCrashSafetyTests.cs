@@ -192,12 +192,13 @@ public sealed class TextCrashSafetyTests
 
         var packB = new FileSystemPackStore(rootB.Path);
         InMemoryContentAuthoringStore plain = TextAuthoringFixtures.TextStore(packB);
-        var rowOnly = new RowOnlyStoreView(plain);
+        var rowOnly = new ConditionalRowOnlyStoreView(plain);
         await rowOnly.ApplyEditsAsync(new[] { TextAuthoringFixtures.Add() }, Actor, Operator, "row only");
         ContentPublishResult published = await Commit(rowOnly, packB, TextAuthoringFixtures.TextRegistry(), plain)
             .PublishAsync(TextAuthoringFixtures.Request(0));
         Assert.Equal(1, published.VersionNumber);
-        Assert.Contains(nameof(IContentAuthoringStore.FreezeDraftAsync), rowOnly.Calls);
+        Assert.Contains(nameof(IContentConditionalDraftFreeze.FreezeDraftForBaseAsync), rowOnly.Calls);
+        Assert.DoesNotContain(nameof(IContentAuthoringStore.FreezeDraftAsync), rowOnly.Calls);
         Assert.Contains(nameof(IContentAuthoringStore.CommitPublishAsync), rowOnly.Calls);
     }
 

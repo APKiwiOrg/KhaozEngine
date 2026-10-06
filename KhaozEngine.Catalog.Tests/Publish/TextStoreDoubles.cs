@@ -11,6 +11,10 @@ namespace KhaozEngine.Tests.Catalog.Publish;
 /// An authoring store that forwards every ROW-ONLY member to a real store and implements no text companion,
 /// recording each member it was asked for. It is the honest shape of a provider that cannot read or commit
 /// text: the publish and rebuild code see exactly the seam such a provider exposes.
+/// <para>
+/// It declares no guarded freeze companion either, so a publish over it is refused. A test that publishes
+/// through the row-only seam uses <see cref="ConditionalRowOnlyStoreView"/>.
+/// </para>
 /// </summary>
 /// <param name="inner">The real store every member is answered from.</param>
 internal class RowOnlyStoreView(IContentAuthoringStore inner) : IContentAuthoringStore
@@ -106,7 +110,7 @@ internal class RowOnlyStoreView(IContentAuthoringStore inner) : IContentAuthorin
         => inner.LoadSnapshotAsync(versionNumber, registry, cancellationToken);
 
     /// <inheritdoc />
-    public Task<ContentDraft?> GetOpenDraftAsync(CancellationToken cancellationToken = default)
+    public virtual Task<ContentDraft?> GetOpenDraftAsync(CancellationToken cancellationToken = default)
         => inner.GetOpenDraftAsync(cancellationToken);
 
     /// <inheritdoc />
@@ -125,7 +129,7 @@ internal class RowOnlyStoreView(IContentAuthoringStore inner) : IContentAuthorin
     }
 
     /// <inheritdoc />
-    public Task FreezeDraftAsync(int baseVersion, CancellationToken cancellationToken = default)
+    public virtual Task FreezeDraftAsync(int baseVersion, CancellationToken cancellationToken = default)
     {
         Record(nameof(FreezeDraftAsync));
         return inner.FreezeDraftAsync(baseVersion, cancellationToken);
@@ -229,9 +233,11 @@ internal class RowOnlyStoreView(IContentAuthoringStore inner) : IContentAuthorin
 /// version's text with a supplied snapshot, or refuse it as UNKNOWN provenance, which is the legacy state a
 /// durable provider holds for a version committed before text existed. The reference store itself never
 /// produces an unknown version, so this branch is reachable only through a double, never a production shortcut.
+/// It forwards the guarded freeze companion too, so a publish over it keeps the text route.
 /// </summary>
 /// <param name="inner">The reference store.</param>
-internal sealed class TextStoreDouble(InMemoryContentAuthoringStore inner) : RowOnlyStoreView(inner), IContentTextAuthoringStore
+internal sealed class TextStoreDouble(InMemoryContentAuthoringStore inner)
+    : ConditionalRowOnlyStoreView(inner), IContentTextAuthoringStore
 {
     IContentTextAuthoringStore Text => (IContentTextAuthoringStore)Inner;
 

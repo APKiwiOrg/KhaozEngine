@@ -190,8 +190,7 @@ public sealed class ConditionalFreezeReleaseUpgradeTests(ITestOutputHelper outpu
         runnerFreeze.Resume();
         await FreezeRaceFixture.ReachAsync(runnerRelease, run, "R's first release exit");
         int? markerAfterOlderExit = (await inner.GetOpenDraftAsync())?.FrozenForBaseVersion;
-        output.WriteLine("D2 marker after R's first release: " + (markerAfterOlderExit?.ToString(
-            System.Globalization.CultureInfo.InvariantCulture) ?? "none"));
+        output.WriteLine("D2 marker after R's first release: " + FreezeRaceFixture.Marker(markerAfterOlderExit));
 
         winnerCommit.Resume();
         (ContentPublishResult? winnerResult, Exception? winnerFailure) = await FreezeRaceFixture.OutcomeAsync(newer);

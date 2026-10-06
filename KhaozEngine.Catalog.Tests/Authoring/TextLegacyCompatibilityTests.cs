@@ -298,13 +298,14 @@ public sealed class TextLegacyCompatibilityTests
 
     /// <summary>
     /// A publish through the ROW-ONLY seam: the legacy pipeline over a view of the store that exposes no text
-    /// companion, which is the route an old wrapper takes. The store's own publish dispatches through the
-    /// companion and is covered by the text publish suites.
+    /// companion, which is the route an old wrapper takes. The view still forwards the guarded freeze, which a
+    /// publish requires. The store's own publish dispatches through the companion and is covered by the text
+    /// publish suites.
     /// </summary>
     static Task<ContentPublishResult> LegacyPublishAsync(
         InMemoryContentAuthoringStore store, IPackStore pack, ContentPublishRequest request)
     {
-        var view = new RowOnlyStoreView(store);
+        var view = new ConditionalRowOnlyStoreView(store);
         return new ContentPublishCommit(view, pack, new ContentPublisher(view, store, TextRegistry())).PublishAsync(request);
     }
 

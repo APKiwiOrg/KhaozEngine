@@ -1,0 +1,114 @@
+{
+  "task": "catalog conditional freeze Task 1",
+  "base": "07b605e4218c87a64f04a940abc79f8554bb7f1e",
+  "commit": "0d1832fa642ad9b911dfa52a5c77e080f78d85ba",
+  "red_exit": 1,
+  "red_kind": "compile only, expected missing new interface plus corrected test comparer error",
+  "results": {
+    "t1-green-server": {
+      "exit": 0,
+      "cases": [
+        {
+          "name": "KhaozEngine.Tests.Catalog.SqlServer.SqlServerCatalogRowTimestampTests.ConditionalFreeze_StampsOnlyMarkerChanges",
+          "outcome": "NotExecuted"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.InMemoryContentAuthoringStoreConformanceTests.ConditionalFreeze_RejectsNegativeBaseAndEmptyDraft",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.SqlServerContentAuthoringTextConformanceTests.ConditionalRelease_PreservesTextAndIntroductions",
+          "outcome": "NotExecuted"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.SqlServerContentAuthoringStoreConformanceTests.ConditionalRelease_ClearsOnlyMatchingBase",
+          "outcome": "NotExecuted"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.InMemoryContentAuthoringTextConformanceTests.ConditionalRelease_PreservesTextAndIntroductions",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.SqlServerContentAuthoringTextConformanceTests.ConditionalFreeze_RefusesUnrepresentedTextBeforeWriting",
+          "outcome": "NotExecuted"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.SqlServerContentAuthoringStoreConformanceTests.ConditionalFreeze_MovedBasePreservesStaleMarkerAndTimestamp",
+          "outcome": "NotExecuted"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.SqliteContentAuthoringTextConformanceTests.ConditionalRelease_PreservesTextAndIntroductions",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.SqlServerContentAuthoringStoreConformanceTests.ConditionalFreeze_RejectsNegativeBaseAndEmptyDraft",
+          "outcome": "NotExecuted"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.SqliteContentAuthoringStoreConformanceTests.ConditionalRelease_ClearsOnlyMatchingBase",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.SqliteContentAuthoringTextConformanceTests.ConditionalFreeze_RefusesUnrepresentedTextBeforeWriting",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.InMemoryContentAuthoringStoreConformanceTests.ConditionalRelease_ClearsOnlyMatchingBase",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.InMemoryContentAuthoringTextConformanceTests.ConditionalFreeze_RefusesUnrepresentedTextBeforeWriting",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.InMemoryContentAuthoringStoreConformanceTests.ConditionalFreeze_ValidatesBaseAndReturnsCompleteDraft",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.SqliteContentAuthoringStoreConformanceTests.ConditionalFreeze_ValidatesBaseAndReturnsCompleteDraft",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.SqliteContentAuthoringStoreConformanceTests.ConditionalFreeze_RejectsNegativeBaseAndEmptyDraft",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.SqliteContentAuthoringStoreConformanceTests.ConditionalFreeze_MovedBasePreservesStaleMarkerAndTimestamp",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.SqlServerContentAuthoringStoreConformanceTests.ConditionalFreeze_ValidatesBaseAndReturnsCompleteDraft",
+          "outcome": "NotExecuted"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.InMemoryContentAuthoringStoreConformanceTests.ConditionalFreeze_MovedBasePreservesStaleMarkerAndTimestamp",
+          "outcome": "Passed"
+        }
+      ],
+      "sha256": "d59cf573f4bb9321d544950e3b195b4303f466883f449a0f076e37440ca5d361"
+    },
+    "t1-green-sqlite": {
+      "exit": 0,
+      "cases": [
+        {
+          "name": "KhaozEngine.Tests.Catalog.Sqlite.SqliteCatalogRowTimestampTests.ConditionalFreeze_StampsOnlyMarkerChanges",
+          "outcome": "Passed"
+        }
+      ],
+      "sha256": "aeb490f0b48110b00da88bbc98363e2ac2da9fdbe1bc42cd6a6b88dcf11ae1e9"
+    }
+  },
+  "logs_root": "/tmp/grimhollow-orch/catalog-conditional-freeze",
+  "log_sha256": {
+    "t1-red.log": "cf5e531d17aab120169a82ca5ac298709da3a828de404a6497063184f59d3ef5",
+    "t1-green-server.log": "68e1e44721a2cebfef5ce89c02f01e6cfa953f14b9bf4c4716df1f82a0a8c7ac",
+    "t1-green-sqlite.log": "c6d7d500f545696669cf75175dac78a6b80dfbb3f35f4bb2671d30c358e462d7",
+    "t1-format.log": "239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c",
+    "t1-dashes.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "t1-filesize.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "t1-commit.log": "66e109f21ead048eda2240cd6ea8088c81c2bf93ce32a795fa87c689694e4828"
+  },
+  "sql_server": "7 locally skipped facts, normal remote CI still required",
+  "review": "fresh Task 1 review pending",
+  "limitations": "Callers unchanged. Task 0 races remain owned red. No full repair success claim."
+}

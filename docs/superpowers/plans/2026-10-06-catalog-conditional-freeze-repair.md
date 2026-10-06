@@ -685,3 +685,20 @@ failure order, while green-path checks remain intact. The reviewer accepted this
 Task 3's reviewer must verify cleanup still runs after refused guarded freeze, preserving T4/T4r's
 release-exit gate. SQL Server execution remains the later normal CI gate. Task 1 begins with the
 new store companion/conformance only. Existing pipeline races remain intentionally owned red.
+
+
+### Task 1 implemented, fresh review pending
+
+Commit 0d1832fa642ad9b911dfa52a5c77e080f78d85ba over 07b605e42 touches exactly eleven owned
+paths. Controller inspected the interface XML diff and all three atomic operations, verified commit
+ancestry/scope and parsed the actual TRX. Server selection passed12 and skipped7 SQL Server facts.
+SQLite timestamp selection passed1. Actual shared-slot green/format/guard/commit exits were0.
+
+The compile red exited1 with expected missing-interface errors plus an inaccessible test comparer,
+corrected before production implementation. No clean runtime-red or mutation proof is claimed for
+Task1. Task0 already supplies the reviewed old-code runtime reproduction. Its caller races were not
+rerun and remain owned red because no callers moved. No schema, version or legacy behavior changed.
+
+Proof hashes/cases are in proofs/2026-10-06-catalog-task1-stores.json. SQL Server remains a remote
+CI gate. One fresh spec/quality review is active, task wa-catalog1271-task1-review1-20261006.
+Task1 is not marked complete and Task2 remains blocked on its review.

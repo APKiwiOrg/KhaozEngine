@@ -899,3 +899,18 @@ format/checks/commit were0. No production behavior changed and no full suite ran
 Proof counts/hashes are in proofs/2026-10-06-catalog-final-fix1.json. Single scoped re-review
 wa-catalog1271-final-review2-scoped-20261006 is pending before final checks. No second broad
 review is planned. Root still owns all verification, packaging, CI, integration and release gates.
+
+
+### Final review gates passed, full verification begins
+
+Whole-branch review approved code readiness with four optional minors. The single fix wave
+5ce2b87e295fc1033431b306cd79106b69501793 addressed all four, and scoped re-review
+wa-catalog1271-final-review2-scoped-20261006 confirmed each addressed with no new Critical/Important
+breakage. The remaining call-line wrap nit is accepted as cosmetic, with no behavior or guard impact.
+No additional review/fix loop is started.
+
+Root re-fetched main/origin, both still ca13d62d7 and ancestors of this branch. Source equality
+from reviewed5ce2b87e2 to the bookkeeping head passed with docs excluded. No reconciliation is
+needed. Root now runs the full Release build, non-LiveSocket suite and full format once through
+the shared slot, logging final-build.log, final-test.log and final-format.log. Final results,
+private pack, actual SQL Server/Metal CI, integration and shared-feed proof remain unclaimed.

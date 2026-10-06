@@ -212,8 +212,9 @@ than a native producer claim or a change to F3. No shared signature amendment is
 
 ## VC1 proposed interval-column locus clarification
 
-Status: proposed for coordinator and migration review, not approved. No shared production edit
-or native adapter follows from this proposal. Accepted F3 remains the semantic authority.
+Status: approved by coordinator under delegated authority with migration's clarification below.
+Finite tests and a separately granted first validation precede shared production implementation.
+No native adapter is authorized. Accepted F3 remains the semantic authority.
 
 Source boundary: `MovementDomainContact` in `MovementWaterCoverage.cs` carries one
 `MovementWaterInterval`, a path fraction, a normal and an opaque `CoverageRegionHandle`.
@@ -267,6 +268,53 @@ cells instead of replacing the L with its bounding box. Existing complete-buffer
 remain unchanged. Its first run should expose the current analytic fixture's explicit unsupported
 union refusal, not a production movement defect. No slope/contact-column implementation starts
 before the proposed shared completion receives its required joint approval.
+
+### VC1 migration compatibility clarification
+
+Migration accepted the required-column shape after reviewing immutable `f08274387` and file hash
+`54ab2f7e4a3dda6bbb3c3e9e76f866aec5bcf70e9751ddd90287fea038ea8276`.
+The coordinator subsequently approved this shape with all of the following clarifications, scoped
+to the listed production files and tests-first execution. This record precedes any shared edit:
+
+- The column uses the acquired pin/lease frame and exact physics view binding. Evaluate the body
+  at `Centre + Fraction * Delta` under the same identity and immutable witness.
+- Validate the actual rounded capsule's vertical slice at the column, including overlap with the
+  interval and closed skin tangency. A horizontal disc or capsule AABB alone is insufficient. Keep
+  existing skin and CertifiedErrorMetres budgets, with no additional tolerance.
+- Scope validation covers the certified XZ and relevant overlap/dependencies. Do not require the
+  complete LowerY..UpperY interval inside the narrow capsule-query Y bounds. Deep columns remain valid
+  when their locally relevant overlap and dependencies are certified.
+- The producer proves the locus belongs to the named space/domain covered intersection and that its
+  interval contains the actual local floor, ceiling and free-surface facts. Generic validation checks
+  numeric/scope/capsule coherence, not opaque-handle membership or reconstructed native geometry.
+- Full swept coverage, mixed dry/wet regions, boundary normals, endpoint rules and capacity refusal
+  remain required. One located column does not prove whole-region depth or the later mover policy.
+- Frame changes transform XZ and interval Y coherently. Portable semantic identity remains meaningful,
+  and handles stay pin-local. Requery in the new pin rather than carrying a prior pin's lookup handle.
+- Preserve CS1 readiness/currentness and both-buffer atomicity. Invalid locus data publishes nothing.
+
+The revised finite inventory is eight cases, some with two explicitly bounded direction/invalid
+subcases: sloped floor in both directions, sloped ceiling in both directions, flooded ceiling with
+wet outer column and dry centre, same-XZ/wrong-Y refusal, deep-column-outside-query-Y acceptance,
+nonfinite/out-of-scope refusal, coherent frame rebinding with fresh pin provenance, and rounded-cap
+disc-only rejection versus closed tangency. This inventory is proposed, not authored or executed.
+
+### Independent nonrectangular fixture checkpoint
+
+The seven-case first validation compiled with five expected Known-versus-Unresolved fixture refusals
+and two passing controls, zero skips, exit 1 in `/tmp/swim-environment-nonrect-first.log`. The five
+unsupported cases are mixed arms in both declaration orders, fully covered rounded footprint across
+both arms, moving notch crossing and simultaneous tangencies. This is not a production capability RED.
+The secondary slot was explicitly released.
+
+The authorized test-only extension now partitions the finite swept envelope at every box face and
+classifies complete cells as wet or dry. Actual rounded-capsule overlap with the dry complement
+determines HasDryCoverage, including when neither arm alone covers the capsule. It never substitutes
+the union's bounding box. At most 512 complement cells are inspected, with refusal before enumeration
+when that finite fixture bound is exceeded. Existing eight-room/water/link, query span/contact and
+numeric limits remain. The original seven assertions are unchanged. The granted seven-case GREEN
+and conditional prior 25-case volume regression both passed, as recorded below. No production or native
+shape change is part of this extension, and arbitrary non-box containment remains unsupported.
 
 ## Implementation evidence
 
@@ -346,3 +394,13 @@ the coordinator's secondary wrapper. That slot was explicitly released after eac
 This validates the declared finite box/rectangular-union subset and the closed endpoint correction.
 No production movement or native geometry change follows from this fixture failure. Variable
 sloped floor/ceiling clipping, arbitrary nonrectangular unions and full mover proofs remain open.
+
+The bounded L-union extension passed all seven unchanged cases in
+`/tmp/swim-environment-nonrect-green.log`, exit 0 with no failures or skips. The conditional
+`--no-build` affected run then passed all 25 prior volume cases in
+`/tmp/swim-environment-volume-regression.log`, exit 0 with no failures or skips. Sources remained
+unchanged between those commands. The secondary slot was explicitly released afterward.
+This proves the declared finite L-union complement cases, including rounded full coverage across
+both arms, order invariance, moving-notch coverage, tied tangencies and missing-neighbor refusal.
+It does not prove arbitrary non-box geometry or authorize a native adapter. VC1 is separately
+approved for tests-first work, with no shared production implementation in this fixture slice.

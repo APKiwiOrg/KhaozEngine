@@ -10,8 +10,8 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Locomotion.Fixtures;
 
-// Finite test producer only. The geometry family is clipped axis-aligned boxes, exact rectangular
-// unions and explicitly declared connections. Unsupported unions refuse instead of inventing dry space.
+// Finite test producer only. The geometry family is clipped axis-aligned boxes, bounded unions
+// and explicitly declared connections. Uncertifiable coverage refuses instead of inventing dry space.
 internal sealed class AnalyticMovementEnvironment : IDisposable
 {
     internal readonly record struct Room(string Id, AnalyticBox Bounds);
@@ -129,8 +129,13 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
         for (int i = 0; i < union.Count; i++)
             for (int j = union.Count - 1; j > i; j--)
                 if (union[i].TryMerge(union[j], out var merged)) { union[i] = merged; union.RemoveAt(j); }
-        foreach (AnalyticBox box in union)
-            if (box.ContainedInterval(query.Body.Centre, query.Delta, radius, halfHeight, out double enter, out double exit))
+        Vector3 endCentre = query.Body.Centre + query.Delta;
+        Vector3 extent = new(radius, halfHeight, radius);
+        var envelope = new AnalyticBox(Vector3.Min(query.Body.Centre, endCentre) - extent,
+            Vector3.Max(query.Body.Centre, endCentre) + extent);
+        if (!AnalyticBoxComplement.TryCreate(envelope, union, out var dry)) return Refused();
+        foreach (AnalyticBox box in dry)
+            if (box.IntersectCapsule(query.Body.Centre, query.Delta, radius, halfHeight, out double enter, out double exit))
             { cuts.Add((float)enter); cuts.Add((float)exit); }
 
         var outputSpans = new List<MovementCoverageSpan>();
@@ -140,10 +145,9 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
         {
             float start = boundaries[i];
             // Explicit zero-length spans preserve closed tangency, including both path endpoints.
-            if (!Append(start, start, query, radius, halfHeight, hits, union, outputSpans, outputContacts)) return Refused();
-            if (i + 1 < boundaries.Length &&
-                !Append(start, boundaries[i + 1], query, radius, halfHeight, hits, union, outputSpans, outputContacts))
-                return Refused();
+            Append(start, start, query, radius, halfHeight, hits, dry, outputSpans, outputContacts);
+            if (i + 1 < boundaries.Length)
+                Append(start, boundaries[i + 1], query, radius, halfHeight, hits, dry, outputSpans, outputContacts);
         }
         if (outputSpans.Count > Math.Min(spans.Length, MovementQueryLease.MaxCoverageSpans) ||
             outputContacts.Count > Math.Min(contacts.Length, MovementQueryLease.MaxDomainContacts))
@@ -154,26 +158,20 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
             outputContacts.Count, outputContacts.Count, Error, Identity);
     }
 
-    static bool Append(float start, float end, in MovementMediumSweepQuery query, float radius, float halfHeight,
-        List<Hit> hits, List<AnalyticBox> union, List<MovementCoverageSpan> spans, List<MovementDomainContact> contacts)
+    static void Append(float start, float end, in MovementMediumSweepQuery query, float radius, float halfHeight,
+        List<Hit> hits, List<AnalyticBox> dry, List<MovementCoverageSpan> spans, List<MovementDomainContact> contacts)
     {
         float at = (start + end) * 0.5f;
         Vector3 centre = query.Body.Centre + query.Delta * at;
-        int intersectingUnions = 0;
-        bool entirelyWet = false;
-        foreach (AnalyticBox box in union)
-        {
-            if (box.IntersectCapsule(centre, Vector3.Zero, radius, halfHeight, out _, out _)) intersectingUnions++;
-            if (box.ContainsCapsule(centre, radius, halfHeight)) entirelyWet = true;
-        }
-        if (intersectingUnions > 1 && !entirelyWet) return false;
+        bool hasDryCoverage = false;
+        foreach (AnalyticBox box in dry)
+            if (box.HasPositiveCapsuleOverlap(centre, radius, halfHeight)) { hasDryCoverage = true; break; }
         int first = contacts.Count;
         foreach (Hit hit in hits)
             if (at >= hit.Enter && at <= hit.Exit)
                 contacts.Add(new MovementDomainContact(Domain(hit.Water.Domain), Space(hit.Water.Room), Interval(hit.Water),
                     hit.Normal, hit.Enter, BoundaryId(hit), hit.Handle));
-        spans.Add(new MovementCoverageSpan(start, end, first, contacts.Count - first, !entirelyWet));
-        return true;
+        spans.Add(new MovementCoverageSpan(start, end, first, contacts.Count - first, hasDryCoverage));
     }
 
     bool KnownFeetPath(in MovementMediumSweepQuery query, HashSet<string> reachable)

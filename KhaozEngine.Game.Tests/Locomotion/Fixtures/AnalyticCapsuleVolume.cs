@@ -11,10 +11,15 @@ internal readonly record struct AnalyticBox(Vector3 Min, Vector3 Max)
     public bool ContainsPoint(Vector3 point) => point.X >= Min.X && point.X < Max.X &&
         point.Y >= Min.Y && point.Y < Max.Y && point.Z >= Min.Z && point.Z < Max.Z;
 
-    public bool ContainsCapsule(Vector3 centre, float radius, float halfHeight) =>
-        centre.X - radius >= Min.X && centre.X + radius <= Max.X &&
-        centre.Y - halfHeight >= Min.Y && centre.Y + halfHeight <= Max.Y &&
-        centre.Z - radius >= Min.Z && centre.Z + radius <= Max.Z;
+    public bool HasPositiveCapsuleOverlap(Vector3 centre, float radius, float halfHeight)
+    {
+        double core = halfHeight - radius;
+        double x = centre.X - Math.Clamp((double)centre.X, Min.X, Max.X);
+        double y = centre.Y - Math.Clamp((double)centre.Y, Min.Y - core, Max.Y + core);
+        double z = centre.Z - Math.Clamp((double)centre.Z, Min.Z, Max.Z);
+        // A wet boundary may touch a dry cell without occupying its open interior.
+        return x * x + y * y + z * z < (double)radius * radius;
+    }
 
     public AnalyticBox Clip(AnalyticBox other) => new(Vector3.Max(Min, other.Min), Vector3.Min(Max, other.Max));
     public bool HasVolume => Min.X < Max.X && Min.Y < Max.Y && Min.Z < Max.Z;
@@ -84,15 +89,6 @@ internal readonly record struct AnalyticBox(Vector3 Min, Vector3 Max)
             exit = Math.Max(exit, end);
         }
         return enter <= exit;
-    }
-
-    public bool ContainedInterval(Vector3 centre, Vector3 delta, float radius, float halfHeight,
-        out double enter, out double exit)
-    {
-        Vector3 extent = new(radius, halfHeight, radius);
-        var inner = new AnalyticBox(Min + extent, Max - extent);
-        if (!inner.HasVolume) { enter = exit = 0d; return false; }
-        return inner.IntersectCapsule(centre, delta, 0f, 0f, out enter, out exit);
     }
 
     public Vector3 ContactNormal(Vector3 centre, float radius, float halfHeight)

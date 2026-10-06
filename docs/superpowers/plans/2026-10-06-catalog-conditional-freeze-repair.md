@@ -721,3 +721,28 @@ assertion value. Append actually changed owned helper paths to the sample commit
 reconciles the stated adapter scope with the narrower sample path list. Cost if wrong is extra
 test churn, bounded by the focused proof and independent review. Task 0's operator-row coverage
 minor stays with Task 3 and timeout diagnostic masking stays with final review.
+
+
+### Task 2 fixture dependency ruling T2-C2
+
+The first Task 2 implementation returned NEEDS_CONTEXT with seventeen saved paths and no commit,
+HEAD 9b1c0d519. Its new tests produced fourteen named behavior reds. The publish green selection
+passed31/failed1, Server selection passed40, and one focused text inventory passed61/failed10.
+The new publishing cases and T2/T2p passed, but two existing fixtures require migration.
+
+Controller verified TextAuthoringFixtures.FreezeAndPlanAsync stages a twin at active0 while
+supplying the real store's version1 or later baseline, and TextCrashSafetyTests still publishes
+through the intentionally incapable row-only view. These dependencies belong to this API migration.
+
+Ruling T2-C2 adds those two test files to Task 2. Advance the scratch twin's actual version line
+using existing public authoring/commit operations and its own scratch ID allocator before staging
+the captured edits. Assert its active version equals the captured baseline. Preserve the real
+store's ID persistence for the returned plan, its supplied baseline and all text/candidate assertions.
+Scratch seeding rows must not enter the returned candidate. Do not use a wrapper that ignores
+the supplied expected base, reflection or a production escape hatch. Move the crash test to the
+capable row-only view and guarded-freeze assertion, keeping its row-commit assertions.
+
+Cost if wrong is extra fixture setup or changed fixture semantics, covered by the failed selection
+and affected-class regressions plus fresh review. After actual changes, run each affected selection
+once. Do not repeat the unchanged successful Server selection. The continuation preserves all
+existing work and report evidence. No fresh task review or completion claim precedes those greens.

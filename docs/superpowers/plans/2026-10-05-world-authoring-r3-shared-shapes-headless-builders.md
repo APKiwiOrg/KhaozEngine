@@ -95,11 +95,17 @@ under one frame/read witness. Declare authored versus live state and its produce
 acoustic simulation and no game-maintained topology. Exact R3 adapters consume released generic
 F3 prerequisites and the approved R2 producer signatures, not similarly named provisional types.
 
-Swimming Task 2 reports proposed fail-closed Bepu cases above 1,024 triangles in a mesh's expanded
-local capsule region, and for retained wedged-mesh normals rotated without recomputed/certifiable
-separation. Other proposed bounds are 4,096 broad-phase candidates or child callbacks, 16,384
-contacts, certified error at most 0.001 m and unit mesh scale only. Its first GREEN
-proof is pending, so these are reported backend considerations, not verified final capability limits.
+Swimming Task 2's immutable focused evidence is engine e1b6e04c838f9dd8972ba2ece3ba0b3cb816ca14,
+docs/design/SWIM-CONTACT-BACKEND-EVIDENCE-2026-10-06.md. Root checked the recorded logs and slot
+exits: corrected contacts 23/23 and regressions 46/46 passed. The first 21-pass/1-failure run is
+preserved. Margin-expanded convex-leaf selection fixed a complete-but-empty mesh contact result
+before the real Bepu narrow phase. This is focused generic proof, not whole-branch/release/G1b proof.
+
+Explicit refusal remains above 1,024 triangles in a mesh's expanded local capsule region, or when
+retained smoothed normals lack certifiable recomputed separation. Other bounds are 4,096 selected
+broad-phase candidates/leaves, 4,096 children per compound, 16,384 contacts, certified error at
+most 0.001 m and unit mesh scale only. Nonzero layer masks remain unsupported, with legacy filter
+work tracked separately in #1315. These finite tests do not prove every native solid/input.
 R2's 65,536-face compiled-patch budget is not a promise that one patch can be one complete-contact
 physics mesh. Before R3/G1b acceptance, pin either proved collision chunking or a verified backend
 capability resolution. Prove complete swept/contact coverage across chunk boundaries, canonical
@@ -109,6 +115,15 @@ truncate a patch or reduce R2's authored/compiled budget to hide an adapter limi
 Partitioning alone does not prove dense or wedged cases impossible. Refusal remains unresolved,
 never dry/traversable or proven unreachable. Preserve free transformed placement semantics and
 prove the actual native solid representation against the verified backend capability at G1b.
+
+Task 3 witness/pin details are accepted at engine e74e3274c805bc57ae76f339ea3e87e1a967c942,
+docs/design/SWIM-ENVIRONMENT-TASK3-API-DETAILS-2026-10-07.md. Generic policy bounds are 256 witness
+IDs, 1,024 UTF-8 bytes per ID, 65,536 aggregate UTF-8 bytes and 4,096 producer dependency entries
+per combined prepare/pin attempt. They are not world-size limits. Native G1b must satisfy or
+explicitly refuse them, including malformed UTF-16, with no partial witness, whole-world scan or
+local backing-ID comparison across heads. Known-empty attests the declared scope, source/view
+binding uses ReferenceEquals, identities agree and cleanup releases the physics gate on failure.
+These signatures are accepted planning dependencies, not a released native producer or G1b proof.
 
 Refinement must pin fixtures for connected distinct supports, occluded stacked spaces sharing XZ,
 portal/shaft transitions and missing/stale topology. Producer tests verify geometry/identity and

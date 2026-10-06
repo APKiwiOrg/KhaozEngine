@@ -14,36 +14,6 @@ using SilkMouseButton = Silk.NET.Input.MouseButton;
 
 namespace KhaozEngine.Windowing
 {
-    /// <summary>One render frame: timing, the input snapshot, and the GPU command list to draw into
-    /// (the swapchain is already bound and cleared by <see cref="AppWindow"/>).</summary>
-    public sealed class Frame
-    {
-        public float Dt { get; internal set; }
-        public InputState Input { get; internal set; } = InputState.Empty;
-        /// <summary>Render (framebuffer) size in device pixels - the swapchain resolution the 2D/3D renderers draw
-        /// at (2x the logical size on Retina, etc.). This is what <c>SpriteBatch</c> and <c>DesignViewport</c> map into.</summary>
-        public int Width { get; internal set; }
-        public int Height { get; internal set; }
-        /// <summary>Logical window size in points (device framebuffer / DPI scale). UI authored in points scales to
-        /// device pixels by <see cref="DpiScale"/>; drive a <c>UiViewport</c> from this so text/chrome stay crisp.</summary>
-        public int LogicalWidth { get; internal set; }
-        public int LogicalHeight { get; internal set; }
-        /// <summary>Device pixels per logical point (<see cref="Width"/> / <see cref="LogicalWidth"/>): 1 on a
-        /// standard display, 2 on Retina, 1.5 on a 150%-scaled display. Bake point-space UI fonts at this scale
-        /// (<c>DpiFont.For(frame.DpiScale)</c>) and snap UI geometry to whole multiples of it. Falls back to 1
-        /// before the logical size is known.</summary>
-        public float DpiScale => LogicalWidth > 0 ? (float)Width / LogicalWidth : 1f;
-        /// <summary>The engine GPU command list for this frame (the swapchain is already bound and cleared;
-        /// renderers draw into it). Backend GPU types stay hidden behind <see cref="IGpuCommandList"/>.</summary>
-        public IGpuCommandList Commands { get; internal set; } = null!;
-        /// <summary>True when the loop is suppressing render + present for this frame (the window is minimized under
-        /// the background-throttle policy): the swapchain was NOT begun/cleared and will NOT be presented, so a
-        /// callback must NOT draw into <see cref="Commands"/> this frame - run update-only. Update still runs each
-        /// suppressed frame so simulation/netcode/timers keep advancing while iconified. Always false while the
-        /// window is visible. <c>GameApp</c> honours this automatically.</summary>
-        public bool RenderSuppressed { get; internal set; }
-    }
-
     /// <summary>
     /// Owns the Silk.NET window + input + frame loop (GLFW natives bundled per-RID, so no <c>brew install sdl2</c>), the engine GPU
     /// device (<see cref="IGpuDevice"/>, backend GPU types hidden behind the KhaozEngine.Gpu seam), and presentation. The
@@ -88,10 +58,11 @@ namespace KhaozEngine.Windowing
         /// if it is below the monitor's native pixels, the OS is upscaling the window.</summary>
         public int FramebufferWidth => _window.FramebufferSize.X;
         public int FramebufferHeight => _window.FramebufferSize.Y;
-        /// <summary>Logical window size in points (physical size / DPI scale). FramebufferWidth / LogicalWidth is the
-        /// DPI scale factor (1.0 = no HiDPI scaling, 2.0 = Retina).</summary>
-        public int LogicalWidth => _window.Size.X;
-        public int LogicalHeight => _window.Size.Y;
+        /// <summary>Logical window size in points: the framebuffer divided by the window's OS content scale, the same
+        /// size <see cref="Frame.LogicalWidth"/> reports. Falls back to the window-coordinate size when the scale is
+        /// unavailable. Window placement uses <see cref="WindowWidth"/> / <see cref="WindowHeight"/> instead.</summary>
+        public int LogicalWidth => CurrentLogicalMetrics().Width;
+        public int LogicalHeight => CurrentLogicalMetrics().Height;
         /// <summary>Background colour cleared each frame.</summary>
         public Color ClearColor = new(0.10f, 0.12f, 0.16f, 1f);
 
@@ -204,13 +175,15 @@ namespace KhaozEngine.Windowing
             set => ApplyWindowMode(value);
         }
 
-        /// <summary>Current logical window width in points (see <see cref="LogicalWidth"/>).</summary>
+        /// <summary>Current window width in GLFW window coordinates (points on Cocoa and Wayland, pixels on Win32 and
+        /// X11), the unit placement and <see cref="Resize"/> use.</summary>
         public int WindowWidth => _window.Size.X;
-        /// <summary>Current logical window height in points (see <see cref="LogicalHeight"/>).</summary>
+        /// <summary>Current window height in GLFW window coordinates (see <see cref="WindowWidth"/>).</summary>
         public int WindowHeight => _window.Size.Y;
 
         /// <summary>
-        /// Set the windowed size in logical points. In <see cref="Windowing.WindowMode.Windowed"/> it applies
+        /// Set the windowed size in window coordinates (see <see cref="WindowWidth"/>). In
+        /// <see cref="Windowing.WindowMode.Windowed"/> it applies
         /// immediately (Silk resizes the window and the <c>FramebufferResize</c> hook resizes the swapchain to the new
         /// drawable); in a fullscreen mode it is stored as the size to restore when returning to windowed. Non-positive
         /// sizes are ignored. HiDPI is preserved: the backbuffer tracks the physical framebuffer, not this logical size.

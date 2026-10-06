@@ -60,12 +60,17 @@ namespace KhaozEngine.Windowing
             ScaleX = ScaleY = DpiScale;
         }
 
-        /// <summary>Recompute from a <see cref="Frame"/> (its framebuffer <see cref="Frame.Width"/>/<see cref="Frame.Height"/>
-        /// and logical <see cref="Frame.LogicalWidth"/>/<see cref="Frame.LogicalHeight"/>). The per-frame call a host makes.</summary>
+        /// <summary>Recompute from a <see cref="Frame"/>: its logical <see cref="Frame.LogicalWidth"/>/<see cref="Frame.LogicalHeight"/>
+        /// and its exact <see cref="Frame.DpiScale"/>, so rounding the logical size on a resize never moves the scale.
+        /// The per-frame call a host makes. Frames with a non-positive framebuffer or logical size are ignored.</summary>
         public void Update(Frame frame)
         {
             ArgumentNullException.ThrowIfNull(frame);
-            Update(frame.Width, frame.Height, frame.LogicalWidth, frame.LogicalHeight);
+            if (frame.Width <= 0 || frame.Height <= 0 || frame.LogicalWidth <= 0 || frame.LogicalHeight <= 0) return;
+            Width = frame.LogicalWidth;
+            Height = frame.LogicalHeight;
+            DpiScale = frame.DpiScale;
+            ScaleX = ScaleY = DpiScale;
         }
 
         /// <summary>

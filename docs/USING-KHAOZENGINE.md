@@ -1164,6 +1164,11 @@ them (see "Tap-or-drag gestures" in the follow camera chapter).
   the whole window in design space = design rect + letterbox bars). Fill `WindowBounds`, not `Width`/`Height`,
   for a full-window scrim or opaque `Screen` background so the letterbox bars are covered instead of showing the
   screen below (it reduces to `DesignBounds` when unletterboxed).
+- `AdaptiveViewport.WithMinimumCanvas(1280, 720, 960, 540, scaleMultiplier)` opts a responsive UI into a minimum
+  canvas: the scale is `min(height / 720 * ScaleMultiplier, width / 960, height / 540)` and the visible design
+  size is the framebuffer divided by it, so a 4:3 or 16:10 window gains height instead of clipping at the right.
+  Bind a player text-size setting to `ScaleMultiplier`. Setting it recomputes the transform at once. The two-argument
+  constructor is unchanged. See the Windowing README for validation rules.
 - `GameClock`: `TimeScale`, `Pause()`/`Resume()`, `RealDeltaSeconds`/`ScaledDeltaSeconds`,
   `RealWallGapSeconds`/`LastRealTimestamp` (the suspend-robust wall-clock gap that drives `GameApp.OnResume`),
   `Paused`/`Resumed` events, and `FrameCount` (since 20.14.0: one per `Update`, paused or not, the per-frame id a
@@ -3117,7 +3122,9 @@ layer is decoupled.
 
 **`UiViewport` (`KhaozEngine.Windowing`)** is a point-space `IDesignViewport` where 1 logical point = `DpiScale`
 device pixels, with no letterbox. Its `Width`/`Height` track the logical window, so the UI reflows on resize
-rather than scaling. Drive it once per frame with `uiViewport.Update(frame)`.
+rather than scaling. Drive it once per frame with `uiViewport.Update(frame)`. `Frame.DpiScale` is the window's
+OS content scale, so a Windows display at 150% gives 1.5 even though its window coordinates are pixels, and a
+resize never perturbs the scale.
 
 **`DpiFont` (`KhaozEngine.Render2D`)** authors at a logical `pixelHeight`, and each frame you call
 `font.For(frame.DpiScale)` to get a `SpriteFont` baked for the current DPI, drawn 1:1 in the point-space pass. It

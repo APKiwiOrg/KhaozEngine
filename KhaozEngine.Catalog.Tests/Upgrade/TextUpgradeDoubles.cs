@@ -124,6 +124,11 @@ internal sealed class TextUpgradeStore(InMemoryContentAuthoringStore inner)
 /// old constructor, so text the backend holds is invisible to whatever reads through it. It can also land a
 /// rival translation straight into the backend right after the run's own write, which is the moment an
 /// operator's console would.
+/// <para>
+/// Its guarded freeze companion is inherited unchanged and forwards the backend's genuine complete snapshot,
+/// text state included, because that freeze answers from inside the store. Only the draft reads and writes this
+/// wrapper answers itself are rebuilt.
+/// </para>
 /// </summary>
 /// <param name="inner">The reference store, which keeps the text and the ledger.</param>
 internal sealed class OldWrapperStore(InMemoryContentAuthoringStore inner)

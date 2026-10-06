@@ -111,9 +111,10 @@ public sealed class ContentUpgradeRecoveryTests
 
         Assert.Equal(ContentUpgradeOutcome.Applied, report.Outcome);
 
-        // The gate and both publish attempts each read the draft, and both publishes read it again while
-        // frozen. A stand-off adds a progress read and another attempt, so exactly five means none occurred.
-        Assert.Equal(5, counting.OpenDraftReads);
+        // The gate and both publish attempts each read the draft. The guarded freeze returns its own snapshot,
+        // so no publish reads it again. A stand-off adds a progress read and another attempt, so exactly three
+        // means none occurred.
+        Assert.Equal(3, counting.OpenDraftReads);
         Assert.Equal(3, (await harness.Store.ListVersionsAsync()).Count);
         Assert.Null(await harness.Store.GetOpenDraftAsync());
 
@@ -353,9 +354,10 @@ public sealed class ContentUpgradeRecoveryTests
 
         Assert.Equal(ContentUpgradeOutcome.Applied, report.Outcome);
 
-        // An ordinary two-upgrade run reads the draft five times. The rival adds one progress read and one
-        // retry pre-flight before withdrawing on the fourth look, so seven proves the stand-off occurred.
-        Assert.Equal(7, appearing.Looks);
+        // An ordinary two-upgrade run reads the draft three times, because the guarded freeze returns its own
+        // snapshot rather than a separate read. The rival adds one progress read and one retry pre-flight
+        // before withdrawing on the fourth look, so five proves the stand-off occurred.
+        Assert.Equal(5, appearing.Looks);
         await AssertRecoveredAsync(harness, report);
     }
 

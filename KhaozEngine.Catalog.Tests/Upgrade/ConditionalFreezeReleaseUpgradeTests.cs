@@ -88,10 +88,21 @@ public sealed class ConditionalFreezeReleaseUpgradeTests(ITestOutputHelper outpu
         Assert.Equal(1, runnerB.TextCommitCalls);
         Assert.Contains(a.Diagnostics, d => d.Code == "KECU0010");
         Assert.DoesNotContain(a.Diagnostics, d => d.Code == "KECU0009");
-        Assert.Equal(2, b.Diagnostics.Count(d => d.Code == "KECU0011"));
+        Assert.Single(b.Diagnostics, d => d.Code == "KECU0011");
+        Assert.Equal(2, b.Steps.Count);
+        Assert.Equal(UpgradeHarness.FirstId, b.Steps[0].Id);
+        Assert.Equal(ContentUpgradeStepState.Applied, b.Steps[0].State);
+        Assert.Equal(2, b.Steps[0].PublishedVersion);
+        Assert.Equal(UpgradeHarness.SecondId, b.Steps[1].Id);
+        Assert.Equal(ContentUpgradeStepState.Adopted, b.Steps[1].State);
+        Assert.Null(b.Steps[1].PublishedVersion);
         Assert.Equal(new int?[] { 1, 1 }, runnerB.ReleaseBases);
         Assert.Equal(new bool?[] { false, false }, runnerB.ReleaseResults);
         Assert.All(runnerB.ReleaseTokens, token => Assert.Equal(CancellationToken.None, token));
+        Assert.Equal(0, runnerB.LegacyFreezeCalls);
+        Assert.Equal(0, runnerB.LegacyClearCalls);
+        Assert.Equal(0, runnerA.LegacyFreezeCalls);
+        Assert.Equal(0, runnerA.LegacyClearCalls);
         Assert.Equal(3, (await inner.ListVersionsAsync()).Count);
         Assert.Equal(new[] { 2, 3 }, ledger.OrderBy(r => r.VersionNumber).Select(r => r.VersionNumber));
         Assert.All(ledger, r => Assert.Equal(ContentUpgradeDisposition.Applied, r.Disposition));
@@ -198,6 +209,8 @@ public sealed class ConditionalFreezeReleaseUpgradeTests(ITestOutputHelper outpu
         runnerRelease.Resume();
         (ContentUpgradeReport? report, Exception? runFailure) = await FreezeRaceFixture.OutcomeAsync(run);
         output.WriteLine("R " + Describe(report, runFailure, runner));
+        output.WriteLine(FormattableString.Invariant(
+            $"R releases {string.Join(", ", runner.ReleaseBases.Zip(runner.ReleaseResults, (b, r) => FreezeRaceFixture.Marker(b) + ":" + (r?.ToString() ?? "none")))} | guarded freezes {runner.GuardedFreezeCalls} | text commits {runner.TextCommitCalls}"));
 
         Assert.Equal(1, winner.TextCommitCalls);
         Assert.Equal(0, winner.RowCommitCalls);
@@ -205,6 +218,8 @@ public sealed class ConditionalFreezeReleaseUpgradeTests(ITestOutputHelper outpu
         Assert.Equal(2, markerAfterOlderExit);
         Assert.Equal(3, winnerResult!.VersionNumber);
         Assert.Null(await inner.GetOpenDraftAsync());
+        ContentRowPage operatorRow = await inner.ListRowsAsync(UpgradeFixtures.Thing, 3, "old_row", false, 0, 10);
+        Assert.Equal(33, Assert.Single(operatorRow.Rows).Fields[0].Number);
 
         Assert.Null(runFailure);
         Assert.DoesNotContain(report!.Diagnostics, d => d.Code == "KECU0009");
@@ -213,6 +228,10 @@ public sealed class ConditionalFreezeReleaseUpgradeTests(ITestOutputHelper outpu
         Assert.Equal(ContentUpgradeDisposition.Adopted, recorded.Disposition);
         Assert.Equal(3, recorded.VersionNumber);
         Assert.Equal(3, (await inner.ListVersionsAsync()).Count);
+        Assert.Equal(0, runner.LegacyFreezeCalls);
+        Assert.Equal(0, runner.LegacyClearCalls);
+        Assert.Equal(0, winner.LegacyFreezeCalls);
+        Assert.Equal(0, winner.LegacyClearCalls);
     }
 
     /// <summary>

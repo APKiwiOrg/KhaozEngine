@@ -24,9 +24,11 @@ namespace KhaozEngine.Tests.Catalog.Upgrade;
 /// pass proves nothing about interleaving.
 /// </para>
 /// <para>
-/// Both runners share ONE store instance, which is the shape a host really has: a process opens its catalog
-/// once. The publishes still interleave, because a publish writes its whole pack outside any connection
-/// lease and the runners' plans, draft writes and commits are separate calls.
+/// Both runners share ONE store instance, which is two runners inside one process over its one catalog. The
+/// publishes still interleave, because a publish writes its whole pack outside any connection lease and the
+/// runners' plans, draft writes and commits are separate calls. Separately connected provider replicas, which
+/// is what two booting hosts really are, are proved by the forced race reproductions instead, which give each
+/// participant its own store over one database.
 /// </para>
 /// </summary>
 public sealed class ContentUpgradeConcurrencyTests

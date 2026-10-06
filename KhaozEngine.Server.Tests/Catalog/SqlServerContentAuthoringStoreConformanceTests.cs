@@ -414,6 +414,21 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
+    public override Task ConditionalFreeze_RunnersRecoverWithoutCrossVersionCleanup()
+        => base.ConditionalFreeze_RunnersRecoverWithoutCrossVersionCleanup();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ConditionalFreeze_StaleRunnerCannotOverwriteNewerMarker()
+        => base.ConditionalFreeze_StaleRunnerCannotOverwriteNewerMarker();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
+    public override Task ConditionalFreeze_RaceDecoratorsRefuseAnIncapableStore()
+        => base.ConditionalFreeze_RaceDecoratorsRefuseAnIncapableStore();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
     public override Task ACarriedAddIntoAPopulatedCatalogPublishesUnderExactlyThatId()
         => base.ACarriedAddIntoAPopulatedCatalogPublishesUnderExactlyThatId();
 

@@ -252,7 +252,10 @@ internal sealed class CountingContentAuthoringStore(InMemoryContentAuthoringStor
     /// <summary>How many times the runner discarded the draft.</summary>
     public int Discards { get; private set; }
 
-    /// <summary>How many times the runner cleared a freeze marker.</summary>
+    /// <summary>
+    /// How many freeze releases the runner made, which is the guarded release of the base it recorded. A run never
+    /// calls the released unconditional clear, so that is not a release this counts.
+    /// </summary>
     public int FreezeClears { get; private set; }
 
     /// <summary>How many publishes the runner started.</summary>
@@ -295,10 +298,12 @@ internal sealed class CountingContentAuthoringStore(InMemoryContentAuthoringStor
     }
 
     /// <inheritdoc />
-    public override Task ClearDraftFreezeAsync(CancellationToken cancellationToken = default)
+    public override Task<bool> ReleaseDraftFreezeForBaseAsync(
+        int frozenForBaseVersion,
+        CancellationToken cancellationToken = default)
     {
         FreezeClears++;
-        return base.ClearDraftFreezeAsync(cancellationToken);
+        return base.ReleaseDraftFreezeForBaseAsync(frozenForBaseVersion, cancellationToken);
     }
 
     /// <inheritdoc />

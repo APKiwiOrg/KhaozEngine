@@ -28,7 +28,11 @@ namespace KhaozEngine.Tests.Catalog;
 /// has already inspected what its own write returned, and nothing looks at the draft again until the publish
 /// freezes it. That rival is content no shipped definition plans, under an identity that is nobody's runner.
 /// </para>
-/// <param name="inner">The store behind the double, which must keep the upgrade ledger.</param>
+/// <para>
+/// It declares the guarded freeze companion, so its constructor requires an inner store that declares it, and
+/// both companion members forward there. That is the freeze and release the runner makes.
+/// </para>
+/// <param name="inner">The store behind the double, which must keep the upgrade ledger and the guarded freeze.</param>
 /// <param name="captureNote">The note whose write is captured to be replayed later, empty under an operator edit.</param>
 /// <param name="targetNote">The note of the write the rival's write lands around.</param>
 /// <param name="operatorEdit">The operator's edit to land AFTER the targeted write, or null to replay the capture before it.</param>
@@ -39,11 +43,15 @@ internal sealed class UpgradeDraftRaceStore(
     string targetNote,
     ContentEdit? operatorEdit = null,
     string operatorActor = "")
-    : IContentAuthoringStore, IContentUpgradeLedger
+    : IContentAuthoringStore, IContentUpgradeLedger, IContentConditionalDraftFreeze
 {
     readonly IContentUpgradeLedger _ledger = inner as IContentUpgradeLedger
         ?? throw new ArgumentException(
             "The race store decorates a catalog store that keeps an upgrade ledger.", nameof(inner));
+
+    readonly IContentConditionalDraftFreeze _guarded = inner as IContentConditionalDraftFreeze
+        ?? throw new ArgumentException(
+            "The race store decorates a catalog store that declares the guarded freeze companion.", nameof(inner));
 
     IReadOnlyList<ContentEdit>? _captured;
     string _capturedActor = string.Empty;
@@ -159,6 +167,14 @@ internal sealed class UpgradeDraftRaceStore(
     /// <inheritdoc />
     public Task ClearDraftFreezeAsync(CancellationToken cancellationToken = default)
         => inner.ClearDraftFreezeAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task<ContentDraft> FreezeDraftForBaseAsync(int expectedBaseVersion, CancellationToken cancellationToken = default)
+        => _guarded.FreezeDraftForBaseAsync(expectedBaseVersion, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<bool> ReleaseDraftFreezeForBaseAsync(int frozenForBaseVersion, CancellationToken cancellationToken = default)
+        => _guarded.ReleaseDraftFreezeForBaseAsync(frozenForBaseVersion, cancellationToken);
 
     /// <inheritdoc />
     public Task<ContentPublishBaseline> ReadPublishBaselineAsync(CancellationToken cancellationToken = default)

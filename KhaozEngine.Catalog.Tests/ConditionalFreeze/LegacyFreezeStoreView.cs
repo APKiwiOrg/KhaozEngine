@@ -12,11 +12,12 @@ namespace KhaozEngine.Tests.Catalog.ConditionalFreeze;
 /// guarded freeze, which is the shape of a custom provider built before the guarded freeze existed.
 /// <para>
 /// <b>It is independent of every other test double</b>, so it inherits no capability by accident, and a test can
-/// say exactly which members a refused publish reached: none.
+/// say exactly which members a refused publish reached: none. A derived view may add a released seam such as the
+/// upgrade ledger and record its calls through <see cref="Record"/>, and still declares no guarded freeze.
 /// </para>
 /// </summary>
 /// <param name="inner">The real store every member is answered from.</param>
-internal sealed class LegacyFreezeStoreView(IContentAuthoringStore inner) : IContentAuthoringStore
+internal class LegacyFreezeStoreView(IContentAuthoringStore inner) : IContentAuthoringStore
 {
     readonly List<string> _calls = [];
 
@@ -275,7 +276,9 @@ internal sealed class LegacyFreezeStoreView(IContentAuthoringStore inner) : ICon
         return inner.ExportBundleAsync(versionNumber, cancellationToken);
     }
 
-    void Record(string member)
+    /// <summary>Records one member call, in order.</summary>
+    /// <param name="member">The member's name.</param>
+    protected void Record(string member)
     {
         lock (_calls)
         {

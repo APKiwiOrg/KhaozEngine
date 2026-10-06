@@ -98,4 +98,11 @@ public static class ContentUpgradeCodes
     /// a second runner's leaves behind, and no operator work is ever cleared under it.
     /// </summary>
     public const string DraftCleared = "KECU0016";
+
+    /// <summary>
+    /// The store does not implement <see cref="IContentConditionalDraftFreeze"/>, so a run cannot freeze and release
+    /// only its own marker. An apply with pending work stops on it before it reads the draft, adoption included. A
+    /// preview keeps its result and carries it as a note.
+    /// </summary>
+    public const string ConditionalFreezeUnsupported = "KECU0017";
 }

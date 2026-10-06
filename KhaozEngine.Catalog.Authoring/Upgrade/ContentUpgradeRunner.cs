@@ -41,7 +41,11 @@ public static partial class ContentUpgradeRunner
     /// Runs the pending upgrades, or previews them, and reports what happened. The gates run in the order
     /// design section 7 declares them, and each one that stops the run leaves the catalog exactly as it was.
     /// </summary>
-    /// <param name="store">The authoring store, which must also implement <see cref="IContentUpgradeLedger"/>.</param>
+    /// <param name="store">
+    /// The authoring store, which must also implement <see cref="IContentUpgradeLedger"/>. An apply with pending work
+    /// also needs <see cref="IContentConditionalDraftFreeze"/>, and stops with
+    /// <see cref="ContentUpgradeCodes.ConditionalFreezeUnsupported"/> without it.
+    /// </param>
     /// <param name="registry">This build's registry, which a planner checks a committed bundle against.</param>
     /// <param name="set">The definitions this build ships.</param>
     /// <param name="options">The mode, the expected version, who is running it and the build ordinals.</param>
@@ -103,7 +107,8 @@ public static partial class ContentUpgradeRunner
     }
 
     /// <summary>
-    /// Gates 3 to 7 and then the preview or the apply, with the run already standing on its active version.
+    /// Gates 3 to 7 and then the preview or the apply, with the run already standing on its active version. The
+    /// capability gate sits between pending-work detection and the draft gate.
     /// It is apart from <see cref="RunAsync"/> so that one handler covers every store call rather than one
     /// per gate.
     /// </summary>
@@ -167,6 +172,27 @@ public static partial class ContentUpgradeRunner
                 ContentUpgradeCodes.UpToDate,
                 FormattableString.Invariant(
                     $"this catalog at version {active} already holds all {set.Count} shipped upgrade(s). Nothing was written."));
+        }
+
+        // Step 4a. Every way an apply continues from here can end in a freeze or a ledger write, adoption
+        // included, and a store without the guarded freeze cannot keep an older run off a newer publisher's
+        // marker. So the apply stops before it reads the draft. A preview writes nothing and keeps its answer.
+        if (!run.Route.CanFreezeGuarded)
+        {
+            string storeName = store.GetType().Name;
+            if (options.Mode != ContentUpgradeMode.Preview)
+            {
+                return run.Stop(
+                    ContentUpgradeOutcome.Unsupported,
+                    ContentUpgradeCodes.ConditionalFreezeUnsupported,
+                    FormattableString.Invariant(
+                        $"this catalog store {storeName} does not implement {nameof(IContentConditionalDraftFreeze)}, so the {pending.Count} pending upgrade(s) cannot be applied or adopted. An apply needs its {nameof(IContentConditionalDraftFreeze.FreezeDraftForBaseAsync)} and {nameof(IContentConditionalDraftFreeze.ReleaseDraftFreezeForBaseAsync)} so it never overwrites or releases another publisher's freeze. Implement the companion, then run again. Nothing was read past the ledger and nothing was written."));
+            }
+
+            run.Note(new ContentUpgradeDiagnostic(
+                ContentUpgradeCodes.ConditionalFreezeUnsupported,
+                FormattableString.Invariant(
+                    $"this catalog store {storeName} does not implement {nameof(IContentConditionalDraftFreeze)}, so an apply on this store is refused before any write. This preview shows what a store with the companion would do.")));
         }
 
         // Step 5. A draft this run can prove is its own is left standing for the apply loop to publish, and

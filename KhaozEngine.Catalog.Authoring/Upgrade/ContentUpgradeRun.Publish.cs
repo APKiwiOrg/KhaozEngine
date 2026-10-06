@@ -13,19 +13,20 @@ namespace KhaozEngine.Catalog.Authoring;
 /// <para>
 /// <b>Contention with a second runner is waited out rather than reported.</b> Two replicas booting together
 /// is an ordinary deployment, and a boot that lost a race is a real outage. The catalog offers no lock that
-/// spans a whole publish (the freeze marker is durable and overwritable by design), so the runner stands off
-/// while another publish holds the one draft and replans when it is free. The ledger's primary key is what
-/// makes standing off safe: an upgrade that DID land cannot be published a second time.
+/// spans a whole publish (the freeze marker is durable and any publisher on the same base may replace it), so
+/// the runner stands off while another publish holds the one draft and replans when it is free. The ledger's
+/// primary key is what makes standing off safe: an upgrade that DID land cannot be published a second time.
 /// </para>
 /// </summary>
 sealed partial class ContentUpgradeRun
 {
     /// <summary>
-    /// Whether the freeze standing over the draft is the one THIS attempt set for its own publish. It is
-    /// what lets a failure path tell a marker this run owes a release from one that arrived from somewhere
-    /// else, which the seam itself cannot, because the marker carries no identity.
+    /// The base THIS attempt's freeze recorded, or null when it owes no release. It is recorded before the
+    /// freeze is called, so a freeze whose answer was lost still owes the release of exactly that base, and the
+    /// release clears a marker only while it still names it. A newer publisher's marker names a newer base and
+    /// survives every release this run makes.
     /// </summary>
-    bool _frozenForPublish;
+    int? _frozenForBaseVersion;
 
     /// <summary>
     /// The publish of one definition's edits, stamped with its id so the ledger row lands inside the commit.
@@ -130,15 +131,14 @@ sealed partial class ContentUpgradeRun
                 if (!ContentUpgradeTextMatch.IsPlan(frozen, plan) || frozen.BaseVersion != Active)
                 {
                     // Released HERE rather than left to the finally, because the obstruction path DISCARDS
-                    // and the store refuses a discard while any marker stands. The release is idempotent, so
-                    // the finally then does nothing.
+                    // and the store refuses a discard while any marker stands. The recorded base is cleared
+                    // before the release, so the finally then does nothing.
                     //
-                    // The marker cleared may not be the one this attempt set: the seam's freeze OVERWRITES
-                    // and carries no identity, so a console publish that froze this same draft in the gap
-                    // between the read above and this attempt's own freeze has already lost its marker to
-                    // this one, and releasing takes it away. That is the third residual window, and it is
-                    // narrow enough to accept next to the other two: a rival RUNNER's own re-proof under its
-                    // own freeze refuses this contaminated draft exactly as this one just did, and only the
+                    // The release clears only a marker naming the base this attempt recorded, so a newer
+                    // publisher's marker survives it. A console publish that froze this same draft on the SAME
+                    // base in the gap is indistinguishable by its base. That is the third residual window, and
+                    // it is narrow enough to accept next to the other two: a rival RUNNER's own re-proof under
+                    // its own freeze refuses this contaminated draft exactly as this one just did, and only the
                     // admin console publishes a draft with no plan proof at all. Leaving the marker instead
                     // wedges the draft for certain, every time, which is worse.
                     await ReleaseFreezeAsync().ConfigureAwait(false);
@@ -167,10 +167,9 @@ sealed partial class ContentUpgradeRun
                     },
                     CancellationToken).ConfigureAwait(false);
 
-                // The ONE exit that owes nothing. The publish took the marker over: it overwrites it with its
-                // own at its first step and releases it on every exit path of its own, and the draft it just
-                // committed is gone, so a release here would be a no-op anyway.
-                _frozenForPublish = false;
+                // The ONE exit that owes nothing. The publish took the marker over at its own first step and
+                // completed its own lifecycle, and the draft it just committed is gone.
+                _frozenForBaseVersion = null;
                 RecordPublished(published.VersionNumber);
                 _steps.Add(
                     ContentUpgradeStepResult.Applied(definition, published.VersionNumber, ContentUpgradeTextLines.For(plan)));
@@ -179,9 +178,10 @@ sealed partial class ContentUpgradeRun
             finally
             {
                 // Every other exit, including a publish that entered the store's pipeline and failed inside
-                // it. That one released its own marker on its own way out, so this is a no-op except in the
-                // gap another publisher's freeze can land in, which is the same third window named above.
-                // A failure before the freeze released nothing at all: the flag says which.
+                // it, and a freeze that was refused or whose answer was lost. A publish that failed released
+                // its own marker on its own way out, and a refused freeze wrote none, so this release then
+                // finds no marker naming the recorded base and clears nothing. A failure before the freeze
+                // owes nothing at all: the recorded base says which.
                 await ReleaseFreezeAsync().ConfigureAwait(false);
             }
         }
@@ -194,58 +194,57 @@ sealed partial class ContentUpgradeRun
     }
 
     /// <summary>
-    /// Steps (a) and (b) of the publish window: the draft FROZEN for the version this plan was computed
-    /// against, then read back under that marker. While the marker stands the store refuses
+    /// The publish window's freeze: the draft FROZEN for the version this plan was computed against and returned
+    /// by that same call, which is the snapshot the re-proof reads. While the marker stands the store refuses
     /// <see cref="IContentAuthoringStore.ApplyEditsAsync"/> and
     /// <see cref="IContentAuthoringStore.DiscardDraftAsync"/>, so what comes back here is what the publish
-    /// will take. The store's own publish overwrites the marker with its own, so freezing first costs the
-    /// publish nothing.
+    /// will take. The store's own publish freezes on the same base at its first step, so freezing first costs
+    /// the publish nothing.
     /// <para>
-    /// A draft gone after a freeze that succeeded is a rival that discarded it in the one moment it could,
-    /// which is contention. It is raised as such and resolved through the ledger like any other.
+    /// A base the store has moved past, or a draft gone or emptied before the freeze, is refused by the freeze
+    /// itself with nothing written. That is contention, raised as such and resolved through the ledger like any
+    /// other.
     /// </para>
     /// </summary>
     async Task<ContentDraft> FreezeForPublishAsync(ContentUpgradePlan plan)
     {
         Operation = "freeze the draft for its own publish";
 
-        // Set BEFORE the call and not after. A freeze that commits its marker and then reports a failure, an
-        // acknowledgement lost on a dropped connection, leaves a DURABLE marker behind a call that said it
-        // failed, and a flag set afterwards would leave nobody owing it a release. Setting it early costs one
-        // release nothing needed on the freeze that really did fail, and that release is a no-op.
-        _frozenForPublish = true;
+        // Recorded BEFORE the call and not after. A freeze that commits its marker and then reports a failure,
+        // an acknowledgement lost on a dropped connection, leaves a DURABLE marker behind a call that said it
+        // failed, and a base recorded afterwards would leave nobody owing it a release. Recording it early
+        // costs one release nothing needed on a freeze that really did fail, and that release clears nothing.
+        int frozenFor = Active;
+        _frozenForBaseVersion = frozenFor;
 
-        // A plan carrying text freezes through the companion, which reads the complete frozen draft back in
-        // the same step. The row-only freeze refuses a draft holding text, which is exactly this one.
-        return await Route.FreezeAsync(plan, Active, CancellationToken).ConfigureAwait(false)
-            ?? throw new ContentAuthoringException(
-                "the draft this run froze for its own publish is no longer open.",
-                default,
-                0,
-                ContentAuthoringException.NoOpenDraftReason);
+        // A plan carrying text freezes through the text companion, and every other plan through the guarded
+        // freeze. Both return the complete frozen draft from the same step.
+        return await Route.FreezeAsync(plan, frozenFor, CancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// The freeze THIS attempt set, released, and nothing otherwise: a marker no attempt of this run set
+    /// The freeze THIS attempt recorded, released, and nothing otherwise: a marker naming another base
     /// belongs to a publisher that may be live, and the whole obstruction path reads one standing over a
-    /// draft as exactly that. The flag is what says which, because the marker itself carries no identity.
+    /// draft as exactly that. The release compares the marker with the recorded base inside the store.
     /// <para>
-    /// <b>It is idempotent and it is reached from a finally</b>, so the cleanup is not a promise about where
-    /// the attempt threw. The release itself runs on <see cref="CancellationToken.None"/>: the token this run
-    /// was given is exactly what is likely to be cancelled on the path that needs the release most, and a
-    /// token that went away must not leave a marker standing over a draft nobody is publishing.
+    /// <b>It is reached from a finally and runs at most once per freeze</b>, because the recorded base is
+    /// cleared before the release is awaited, so the cleanup is not a promise about where the attempt threw. A
+    /// release that faults raises that fault to the caller's handler. The release itself runs on
+    /// <see cref="CancellationToken.None"/>: the token this run was given is exactly what is likely to be
+    /// cancelled on the path that needs the release most, and a token that went away must not leave a marker
+    /// standing over a draft nobody is publishing.
     /// </para>
     /// </summary>
     async Task ReleaseFreezeAsync()
     {
-        if (!_frozenForPublish)
+        if (_frozenForBaseVersion is not int frozenFor)
         {
             return;
         }
 
-        _frozenForPublish = false;
+        _frozenForBaseVersion = null;
         Operation = "release the freeze it set";
-        await Store.ClearDraftFreezeAsync(CancellationToken.None).ConfigureAwait(false);
+        await Route.ReleaseAsync(frozenFor).ConfigureAwait(false);
     }
 
     /// <summary>

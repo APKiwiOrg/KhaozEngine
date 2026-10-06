@@ -41,6 +41,7 @@ internal class RowOnlyStoreView(IContentAuthoringStore inner) : IContentAuthorin
         nameof(AppendOperationalAuditAsync), nameof(AllocateAsync), nameof(AllocateInFamilyAsync),
         nameof(CreateFamilyAsync), nameof(ImportBundleAsync), "ApplyChangesAsync", "FreezeChangesAsync",
         "CommitTextPublishAsync", "TryDiscardChangesAsync", "ImportTextBundleAsync", "RollbackTextToAsync",
+        "FreezeDraftForBaseAsync", "ReleaseDraftFreezeForBaseAsync",
     ];
 
     /// <summary>The store behind the view.</summary>

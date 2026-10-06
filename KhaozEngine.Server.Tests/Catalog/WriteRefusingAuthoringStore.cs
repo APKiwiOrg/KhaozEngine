@@ -18,17 +18,28 @@ namespace KhaozEngine.Tests.Catalog;
 /// <see cref="IContentAuthoringStore.InitializeAsync"/>, which creates the schema under auto create. The pack
 /// the store publishes into is wrapped the same way, so a put through <see cref="PackStore"/> is refused too.
 /// </para>
+/// <para>
+/// It declares the guarded freeze companion over an inner store that declares it, and both companion members are
+/// write attempts, so an action set that reached for the guarded freeze or release is caught exactly as one that
+/// reached for the released pair.
+/// </para>
 /// </summary>
-/// <param name="inner">The store the reads forward to.</param>
-internal sealed class WriteRefusingAuthoringStore(IContentAuthoringStore inner) : IContentAuthoringStore
+/// <param name="inner">The store the reads forward to, which must declare the guarded freeze companion.</param>
+internal sealed class WriteRefusingAuthoringStore(IContentAuthoringStore inner)
+    : IContentAuthoringStore, IContentConditionalDraftFreeze
 {
+    readonly IContentAuthoringStore _inner = inner is IContentConditionalDraftFreeze
+        ? inner
+        : throw new ArgumentException(
+            "a write-refusing store's inner store must declare the guarded freeze companion.", nameof(inner));
+
     readonly List<string> _attempts = [];
 
     /// <summary>Every write member reached, in call order, which a test asserts is empty.</summary>
     public IReadOnlyList<string> WriteAttempts => _attempts;
 
     /// <inheritdoc />
-    public IPackStore? PackStore => inner.PackStore is IPackStore pack ? new WriteRefusingPack(pack, this) : null;
+    public IPackStore? PackStore => _inner.PackStore is IPackStore pack ? new WriteRefusingPack(pack, this) : null;
 
     /// <inheritdoc />
     public Task InitializeAsync(ContentAuthoringSchemaMode mode, CancellationToken cancellationToken = default)
@@ -36,19 +47,19 @@ internal sealed class WriteRefusingAuthoringStore(IContentAuthoringStore inner) 
 
     /// <inheritdoc />
     public Task<int> GetSchemaVersionAsync(CancellationToken cancellationToken = default)
-        => inner.GetSchemaVersionAsync(cancellationToken);
+        => _inner.GetSchemaVersionAsync(cancellationToken);
 
     /// <inheritdoc />
     public Task<string> GetStoreEpochAsync(CancellationToken cancellationToken = default)
-        => inner.GetStoreEpochAsync(cancellationToken);
+        => _inner.GetStoreEpochAsync(cancellationToken);
 
     /// <inheritdoc />
     public Task<int> GetActiveVersionAsync(CancellationToken cancellationToken = default)
-        => inner.GetActiveVersionAsync(cancellationToken);
+        => _inner.GetActiveVersionAsync(cancellationToken);
 
     /// <inheritdoc />
     public Task<int?> GetPinnedVersionAsync(CancellationToken cancellationToken = default)
-        => inner.GetPinnedVersionAsync(cancellationToken);
+        => _inner.GetPinnedVersionAsync(cancellationToken);
 
     /// <inheritdoc />
     public Task SetPinnedVersionAsync(
@@ -61,24 +72,24 @@ internal sealed class WriteRefusingAuthoringStore(IContentAuthoringStore inner) 
     /// <inheritdoc />
     public Task<IReadOnlyList<ContentVersionRecord>> ListVersionsAsync(
         CancellationToken cancellationToken = default)
-        => inner.ListVersionsAsync(cancellationToken);
+        => _inner.ListVersionsAsync(cancellationToken);
 
     /// <inheritdoc />
     public Task<ContentVersionRecord?> GetVersionAsync(
         int versionNumber,
         CancellationToken cancellationToken = default)
-        => inner.GetVersionAsync(versionNumber, cancellationToken);
+        => _inner.GetVersionAsync(versionNumber, cancellationToken);
 
     /// <inheritdoc />
     public Task<ContentSnapshot> LoadSnapshotAsync(
         int versionNumber,
         ContentTypeRegistry registry,
         CancellationToken cancellationToken = default)
-        => inner.LoadSnapshotAsync(versionNumber, registry, cancellationToken);
+        => _inner.LoadSnapshotAsync(versionNumber, registry, cancellationToken);
 
     /// <inheritdoc />
     public Task<ContentDraft?> GetOpenDraftAsync(CancellationToken cancellationToken = default)
-        => inner.GetOpenDraftAsync(cancellationToken);
+        => _inner.GetOpenDraftAsync(cancellationToken);
 
     /// <inheritdoc />
     public Task<ContentDraft> ApplyEditsAsync(
@@ -102,6 +113,14 @@ internal sealed class WriteRefusingAuthoringStore(IContentAuthoringStore inner) 
 
     /// <inheritdoc />
     public Task ClearDraftFreezeAsync(CancellationToken cancellationToken = default)
+        => throw Refuse();
+
+    /// <inheritdoc />
+    public Task<ContentDraft> FreezeDraftForBaseAsync(int expectedBaseVersion, CancellationToken cancellationToken = default)
+        => throw Refuse();
+
+    /// <inheritdoc />
+    public Task<bool> ReleaseDraftFreezeForBaseAsync(int frozenForBaseVersion, CancellationToken cancellationToken = default)
         => throw Refuse();
 
     /// <inheritdoc />
@@ -140,14 +159,14 @@ internal sealed class WriteRefusingAuthoringStore(IContentAuthoringStore inner) 
         int skip,
         int take,
         CancellationToken cancellationToken = default)
-        => inner.ListRowsAsync(type, versionNumber, keyPrefix, includeRetired, skip, take, cancellationToken);
+        => _inner.ListRowsAsync(type, versionNumber, keyPrefix, includeRetired, skip, take, cancellationToken);
 
     /// <inheritdoc />
     public Task<IReadOnlyList<ContentRowRevision>> GetRowHistoryAsync(
         ContentTypeId type,
         int definitionId,
         CancellationToken cancellationToken = default)
-        => inner.GetRowHistoryAsync(type, definitionId, cancellationToken);
+        => _inner.GetRowHistoryAsync(type, definitionId, cancellationToken);
 
     /// <inheritdoc />
     public Task<IReadOnlyList<ContentAuditEntry>> ListAuditAsync(
@@ -156,7 +175,7 @@ internal sealed class WriteRefusingAuthoringStore(IContentAuthoringStore inner) 
         int skip,
         int take,
         CancellationToken cancellationToken = default)
-        => inner.ListAuditAsync(type, definitionId, skip, take, cancellationToken);
+        => _inner.ListAuditAsync(type, definitionId, skip, take, cancellationToken);
 
     /// <inheritdoc />
     public Task AppendOperationalAuditAsync(
@@ -184,7 +203,7 @@ internal sealed class WriteRefusingAuthoringStore(IContentAuthoringStore inner) 
     public Task<IReadOnlyList<ContentFamily>> ListFamiliesAsync(
         ContentTypeId type,
         CancellationToken cancellationToken = default)
-        => inner.ListFamiliesAsync(type, cancellationToken);
+        => _inner.ListFamiliesAsync(type, cancellationToken);
 
     /// <inheritdoc />
     public Task<ContentFamily> CreateFamilyAsync(
@@ -209,7 +228,7 @@ internal sealed class WriteRefusingAuthoringStore(IContentAuthoringStore inner) 
     public Task<ContentBundle> ExportBundleAsync(
         int versionNumber,
         CancellationToken cancellationToken = default)
-        => inner.ExportBundleAsync(versionNumber, cancellationToken);
+        => _inner.ExportBundleAsync(versionNumber, cancellationToken);
 
     InvalidOperationException Refuse([CallerMemberName] string member = "")
     {

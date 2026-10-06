@@ -23,7 +23,8 @@ namespace KhaozEngine.Tests.Catalog.Upgrade;
 /// </para>
 /// <para>
 /// Every stale-plan run counts its open-draft reads. The exact count keeps an extra stand-off observable
-/// without making correctness depend on how long a loaded machine takes.
+/// without making correctness depend on how long a loaded machine takes. A guarded row freeze returns its
+/// own snapshot, so a publish adds no separate read after its freeze.
 /// </para>
 /// </summary>
 public sealed class ContentUpgradeStaleApplyTests
@@ -93,7 +94,7 @@ public sealed class ContentUpgradeStaleApplyTests
         using var files = new TemporaryCatalogDatabase();
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
         using ContentAuthoringStoreLease lease = await LeaseAsync(files, registry, sqlite);
-        int expectedReads = moment == DraftRaceMoment.BeforeTheRunnersWrite ? 8 : 11;
+        int expectedReads = moment == DraftRaceMoment.BeforeTheRunnersWrite ? 6 : 8;
         var race = new DraftRaceStore(
             lease.Store,
             ContentUpgradeRunner.NoteFor(UpgradeHarness.FirstId),

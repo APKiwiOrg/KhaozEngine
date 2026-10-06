@@ -6,8 +6,8 @@ using System.Threading.Tasks;
 namespace KhaozEngine.Catalog.Authoring;
 
 /// <summary>
-/// The store calls an upgrade run makes that differ once text exists: the baseline export with its text
-/// provenance gate, the write, the freeze, and the atomic expected-draft discard.
+/// The store calls an upgrade run makes that differ once text exists or the freeze is guarded: the baseline export
+/// with its text provenance gate, the write, the freeze and its release, and the atomic expected-draft discard.
 /// <para>
 /// <b>A store with the text companion is held to its complete state.</b> The baseline's text is read from
 /// the exact version, so an unknown version refuses with
@@ -22,6 +22,13 @@ namespace KhaozEngine.Catalog.Authoring;
 /// A store without the companion keeps exactly the row-only calls, and a plan carrying text is refused for it
 /// before anything is written.
 /// </para>
+/// <para>
+/// <b>Every other freeze is the guarded one.</b> A plan carrying no text freezes through
+/// <see cref="IContentConditionalDraftFreeze.FreezeDraftForBaseAsync"/>, which compares the base, writes the marker
+/// and returns the frozen draft in one step, on a text-capable store too. Every release, after either freeze, is
+/// <see cref="IContentConditionalDraftFreeze.ReleaseDraftFreezeForBaseAsync"/> with the base the run recorded. An
+/// apply over a store without that companion stops at the runner's capability gate and never reaches either.
+/// </para>
 /// </summary>
 /// <param name="store">The run's store.</param>
 sealed class ContentUpgradeTextRoute(IContentAuthoringStore store)
@@ -32,8 +39,13 @@ sealed class ContentUpgradeTextRoute(IContentAuthoringStore store)
 
     readonly IContentTextAuthoringStore? _text = store as IContentTextAuthoringStore;
 
+    readonly IContentConditionalDraftFreeze? _guarded = store as IContentConditionalDraftFreeze;
+
     /// <summary>Whether the store can apply a plan carrying text.</summary>
     public bool CanAuthorText => _text is not null;
+
+    /// <summary>Whether the store offers the guarded freeze and release an apply needs.</summary>
+    public bool CanFreezeGuarded => _guarded is not null;
 
     /// <summary>
     /// The baseline bundle at the active version, after the text gate a store with the companion runs: the
@@ -85,14 +97,17 @@ sealed class ContentUpgradeTextRoute(IContentAuthoringStore store)
             : store.ApplyEditsAsync(plan.Edits, actor, operatorId, note, cancellationToken);
 
     /// <summary>
-    /// The draft frozen for the run's own publish and read back under that marker, through the companion's
-    /// complete freeze when the plan carries text, which the row-only freeze refuses.
+    /// The draft frozen for the run's own publish, as the freeze itself returned it. A plan carrying text freezes
+    /// through the text companion's complete freeze, which the row-only freeze refuses. Every other plan freezes
+    /// through the guarded freeze, whose answer is the draft read in the same atomic step, so no separate read
+    /// follows it.
     /// </summary>
     /// <param name="plan">The bound plan.</param>
-    /// <param name="active">The base version the plan stands on.</param>
-    /// <param name="cancellationToken">Cancels the calls.</param>
-    /// <returns>The frozen draft, or null when none is open after the freeze.</returns>
-    public async Task<ContentDraft?> FreezeAsync(ContentUpgradePlan plan, int active, CancellationToken cancellationToken)
+    /// <param name="active">The base version the plan stands on, which the caller has already recorded.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <returns>The frozen draft.</returns>
+    /// <exception cref="ContentAuthoringException">The base moved, no draft holds work, or the draft is not representable.</exception>
+    public async Task<ContentDraft> FreezeAsync(ContentUpgradePlan plan, int active, CancellationToken cancellationToken)
     {
         if (plan.CarriesText)
         {
@@ -102,9 +117,17 @@ sealed class ContentUpgradeTextRoute(IContentAuthoringStore store)
             return snapshot.Draft;
         }
 
-        await store.FreezeDraftAsync(active, cancellationToken).ConfigureAwait(false);
-        return await store.GetOpenDraftAsync(cancellationToken).ConfigureAwait(false);
+        return await Guarded().FreezeDraftForBaseAsync(active, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Clears the marker only while it still names <paramref name="frozenForBaseVersion"/>, on
+    /// <see cref="CancellationToken.None"/>, so a newer publisher's marker on another base survives.
+    /// </summary>
+    /// <param name="frozenForBaseVersion">The base the run recorded before its freeze.</param>
+    /// <returns>Whether this call cleared a marker.</returns>
+    public Task<bool> ReleaseAsync(int frozenForBaseVersion)
+        => Guarded().ReleaseDraftFreezeForBaseAsync(frozenForBaseVersion, CancellationToken.None);
 
     /// <summary>
     /// Discards exactly <paramref name="expected"/> in one step when the store has the companion and the draft
@@ -131,6 +154,10 @@ sealed class ContentUpgradeTextRoute(IContentAuthoringStore store)
     IContentTextAuthoringStore Companion()
         => _text ?? throw new InvalidOperationException(
             "A plan carrying text is refused at planning for a store without the companion.");
+
+    IContentConditionalDraftFreeze Guarded()
+        => _guarded ?? throw new InvalidOperationException(
+            "An apply over a store without the guarded freeze stops at the capability gate before it reaches a freeze.");
 
     /// <summary>
     /// Whether the baseline bundle carries the languages and the value count the version records. The values

@@ -21,10 +21,12 @@ namespace KhaozEngine.Tests.Catalog.Upgrade;
 /// discard a draft they can do neither to, and no publisher is coming to recover it.
 /// </para>
 /// <para>
-/// The three ways out of the frozen region that are NOT a failed re-proof are the ones covered here: a
-/// cancelled token, a handled fault raised by a freeze whose marker had already committed, and a fault of a
-/// type this package does not answer with a report at all. Each one is run against the reference store and
-/// against a real SQLite file, because the marker is a field on one and a column on the other.
+/// The three ways out of the frozen region that are NOT a failed re-proof are the ones covered here, each
+/// raised at the exit of the guarded freeze after its marker committed, which is where its snapshot boundary
+/// is: a cancelled token, a handled fault, and a fault of a type this package does not answer with a report
+/// at all. Each one releases the base the run recorded, on <see cref="CancellationToken.None"/>. Each runs
+/// against the reference store and against a real SQLite file, because the marker is a field on one and a
+/// column on the other.
 /// </para>
 /// </summary>
 public sealed class ContentUpgradeFreezeReleaseTests
@@ -37,27 +39,29 @@ public sealed class ContentUpgradeFreezeReleaseTests
         => ContentEdit.Add(UpgradeFixtures.Thing, new ContentKey("operator_row"), PublishFixtures.Fields(77));
 
     /// <summary>
-    /// (a) The token is cancelled inside the read-back that follows the freeze. The cancellation still
-    /// propagates, because a host that cancelled its own boot is not waiting for a report, and the draft is
-    /// left UNFROZEN, so the operator it is handed back to can edit it and discard it.
+    /// (a) The token is cancelled at the exit of the guarded freeze, after its marker committed and before its
+    /// snapshot reached the run. The cancellation still propagates, because a host that cancelled its own boot
+    /// is not waiting for a report, and the draft is left UNFROZEN, so the operator it is handed back to can
+    /// edit it and discard it.
     /// </summary>
     /// <param name="sqlite">Whether the catalog is a real SQLite file rather than the reference store.</param>
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ACancelledReadBackAfterTheFreezeStillLeavesTheDraftTheOperatorCanUse(bool sqlite)
+    public async Task ACancellationAtTheFreezeExitStillLeavesTheDraftTheOperatorCanUse(bool sqlite)
     {
         using var files = new TemporaryCatalogDatabase();
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
         using ContentAuthoringStoreLease lease = await OlderCatalogAsync(files, registry, sqlite);
         using var cancel = new CancellationTokenSource(Deadline);
-        var store = new CancelsTheReadBackStore(lease.Store, cancel);
+        var store = new CancelsAtTheFreezeExitStore(lease.Store, cancel);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             async () => await ContentUpgradeRunner.RunAsync(
                 store, registry, SetFor(registry), UpgradeFixtures.Apply(), cancel.Token));
 
-        Assert.True(store.Cancelled, "the read back never ran, so the interleaving was not exercised.");
+        Assert.True(store.Cancelled, "the freeze exit never ran, so the interleaving was not exercised.");
+        AssertReleasedOnlyBaseOne(store, released: true);
         ContentDraft? draft = await lease.Store.GetOpenDraftAsync();
         Assert.NotNull(draft);
         Assert.False(draft.IsFrozen, "the run left a marker standing that nothing will ever clear.");
@@ -89,6 +93,10 @@ public sealed class ContentUpgradeFreezeReleaseTests
         ContentUpgradeReport report = await RunAsync(store, registry);
 
         Assert.True(store.Faulted, "the freeze never faulted, so the interleaving was not exercised.");
+        Assert.Equal(1, store.ReleaseBases[0]);
+        Assert.True(store.ReleaseResults[0], "the release after the lost answer cleared nothing.");
+        Assert.All(store.ReleaseTokens, token => Assert.Equal(CancellationToken.None, token));
+        Assert.Equal(0, store.LegacyFreezeClears);
         Assert.NotNull(store.DraftAfterTheFault);
         Assert.False(
             store.DraftAfterTheFault.IsFrozen,
@@ -100,25 +108,26 @@ public sealed class ContentUpgradeFreezeReleaseTests
     }
 
     /// <summary>
-    /// (c) A fault of a type this package does not answer with a report, raised by the read-back under the
-    /// marker. It propagates, because an unknown fault is a defect worth a stack trace, and the marker is
-    /// still released on the way out.
+    /// (c) A fault of a type this package does not answer with a report, raised at the exit of the guarded
+    /// freeze after its marker committed. It propagates, because an unknown fault is a defect worth a stack
+    /// trace, and the marker is still released on the way out.
     /// </summary>
     /// <param name="sqlite">Whether the catalog is a real SQLite file rather than the reference store.</param>
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task AnUnhandledFaultInTheReadBackPropagatesAndLeavesTheDraftUnfrozen(bool sqlite)
+    public async Task AnUnhandledFaultAtTheFreezeExitPropagatesAndLeavesTheDraftUnfrozen(bool sqlite)
     {
         using var files = new TemporaryCatalogDatabase();
         ContentTypeRegistry registry = PublishFixtures.Registry(PublishFixtures.Thing, PublishFixtures.Other);
         using ContentAuthoringStoreLease lease = await OlderCatalogAsync(files, registry, sqlite);
-        var store = new TheReadBackFaultsStore(lease.Store);
+        var store = new TheFreezeExitFaultsStore(lease.Store);
 
         InvalidOperationException escaped = await Assert.ThrowsAsync<InvalidOperationException>(
             async () => await RunAsync(store, registry));
 
         Assert.Contains("frozen draft", escaped.Message, StringComparison.Ordinal);
+        AssertReleasedOnlyBaseOne(store, released: true);
         ContentDraft? draft = await lease.Store.GetOpenDraftAsync();
         Assert.NotNull(draft);
         Assert.False(draft.IsFrozen, "the run left a marker standing that nothing will ever clear.");
@@ -144,9 +153,22 @@ public sealed class ContentUpgradeFreezeReleaseTests
 
         Assert.Equal(ContentUpgradeOutcome.Applied, report.Outcome);
         Assert.Equal(2, store.Publishes);
-        Assert.Equal(0, store.FreezeClears);
+        Assert.Equal(2, store.GuardedFreezes);
+        Assert.Empty(store.ReleaseBases);
+        Assert.Equal(0, store.LegacyFreezeClears);
         Assert.Null(await lease.Store.GetOpenDraftAsync());
         Assert.Equal(3, (await lease.Store.ListVersionsAsync()).Count);
+    }
+
+    /// <summary>The one release a freeze exit owes: base 1, on <see cref="CancellationToken.None"/>.</summary>
+    /// <param name="store">The double that observed the release.</param>
+    /// <param name="released">Whether that release cleared the marker.</param>
+    static void AssertReleasedOnlyBaseOne(ForwardingUpgradeStore store, bool released)
+    {
+        Assert.Equal(new[] { 1 }, store.ReleaseBases);
+        Assert.Equal(new[] { released }, store.ReleaseResults);
+        Assert.All(store.ReleaseTokens, token => Assert.Equal(CancellationToken.None, token));
+        Assert.Equal(0, store.LegacyFreezeClears);
     }
 
     /// <summary>One apply run under a hard deadline, so a stall fails fast instead of spending the budget.</summary>
@@ -204,12 +226,48 @@ public sealed class ContentUpgradeFreezeReleaseTests
 /// <summary>
 /// A forwarding double over ANY store that also keeps the upgrade ledger, which is what these cases need:
 /// the same interleaving has to run against the reference store and against a real SQLite file, so the inner
-/// store cannot be typed as either one.
+/// store cannot be typed as either one. It observes every guarded release with the base, token and answer the
+/// call actually carried, and counts any released unconditional clear, which a run must never make.
 /// </summary>
 /// <param name="inner">The store behind the double.</param>
 internal abstract class ForwardingUpgradeStore(IContentAuthoringStore inner)
     : ForwardingContentAuthoringStore(inner), IContentUpgradeLedger
 {
+    readonly List<int> _releaseBases = [];
+    readonly List<bool> _releaseResults = [];
+    readonly List<CancellationToken> _releaseTokens = [];
+
+    /// <summary>The base each guarded release named.</summary>
+    public IReadOnlyList<int> ReleaseBases => _releaseBases;
+
+    /// <summary>What each guarded release answered.</summary>
+    public IReadOnlyList<bool> ReleaseResults => _releaseResults;
+
+    /// <summary>The token each guarded release was given.</summary>
+    public IReadOnlyList<CancellationToken> ReleaseTokens => _releaseTokens;
+
+    /// <summary>How many unconditional clears reached the store.</summary>
+    public int LegacyFreezeClears { get; private set; }
+
+    /// <inheritdoc />
+    public override async Task<bool> ReleaseDraftFreezeForBaseAsync(
+        int frozenForBaseVersion,
+        CancellationToken cancellationToken = default)
+    {
+        _releaseBases.Add(frozenForBaseVersion);
+        _releaseTokens.Add(cancellationToken);
+        bool released = await base.ReleaseDraftFreezeForBaseAsync(frozenForBaseVersion, cancellationToken);
+        _releaseResults.Add(released);
+        return released;
+    }
+
+    /// <inheritdoc />
+    public override Task ClearDraftFreezeAsync(CancellationToken cancellationToken = default)
+    {
+        LegacyFreezeClears++;
+        return base.ClearDraftFreezeAsync(cancellationToken);
+    }
+
     /// <inheritdoc />
     public Task<IReadOnlyList<ContentUpgradeRecord>> ListUpgradesAsync(
         CancellationToken cancellationToken = default)
@@ -229,45 +287,34 @@ internal abstract class ForwardingUpgradeStore(IContentAuthoringStore inner)
 }
 
 /// <summary>
-/// A store whose freeze succeeds and whose read-back then observes a CANCELLED token, which is the host
-/// shutting down in the one moment the draft is frozen and nothing has been published.
+/// A store whose guarded freeze commits its marker and whose exit then observes a CANCELLED token, which is the
+/// host shutting down in the one moment the draft is frozen and nothing has been published.
 /// </summary>
 /// <param name="inner">The store behind the double.</param>
-/// <param name="cancel">The run's own token source, cancelled from inside the read back.</param>
-internal sealed class CancelsTheReadBackStore(
+/// <param name="cancel">The run's own token source, cancelled at the freeze's exit.</param>
+internal sealed class CancelsAtTheFreezeExitStore(
     IContentAuthoringStore inner,
     CancellationTokenSource cancel)
     : ForwardingUpgradeStore(inner)
 {
-    bool _frozen;
-
-    /// <summary>Whether the read back really observed the cancellation.</summary>
+    /// <summary>Whether the freeze exit really observed the cancellation.</summary>
     public bool Cancelled { get; private set; }
 
     /// <inheritdoc />
-    public override async Task FreezeDraftAsync(int baseVersion, CancellationToken cancellationToken = default)
+    public override async Task<ContentDraft> FreezeDraftForBaseAsync(
+        int expectedBaseVersion,
+        CancellationToken cancellationToken = default)
     {
-        await base.FreezeDraftAsync(baseVersion, cancellationToken);
-        _frozen = true;
-    }
-
-    /// <inheritdoc />
-    public override async Task<ContentDraft?> GetOpenDraftAsync(CancellationToken cancellationToken = default)
-    {
-        if (_frozen)
-        {
-            _frozen = false;
-            Cancelled = true;
-            await cancel.CancelAsync();
-            cancellationToken.ThrowIfCancellationRequested();
-        }
-
-        return await base.GetOpenDraftAsync(cancellationToken);
+        ContentDraft frozen = await base.FreezeDraftForBaseAsync(expectedBaseVersion, cancellationToken);
+        Cancelled = true;
+        await cancel.CancelAsync();
+        cancellationToken.ThrowIfCancellationRequested();
+        return frozen;
     }
 }
 
 /// <summary>
-/// A store whose FIRST freeze commits its marker and then reports a failure, which is what a dropped
+/// A store whose FIRST guarded freeze commits its marker and then reports a failure, which is what a dropped
 /// connection on the acknowledgement of a committed write looks like from the caller's side. It disarms
 /// itself, so the retry the contention refusal buys gets through.
 /// </summary>
@@ -284,12 +331,14 @@ internal sealed class FreezeCommitsThenFailsStore(IContentAuthoringStore inner) 
     public ContentDraft? DraftAfterTheFault { get; private set; }
 
     /// <inheritdoc />
-    public override async Task FreezeDraftAsync(int baseVersion, CancellationToken cancellationToken = default)
+    public override async Task<ContentDraft> FreezeDraftForBaseAsync(
+        int expectedBaseVersion,
+        CancellationToken cancellationToken = default)
     {
-        await base.FreezeDraftAsync(baseVersion, cancellationToken);
+        ContentDraft frozen = await base.FreezeDraftForBaseAsync(expectedBaseVersion, cancellationToken);
         if (!_armed)
         {
-            return;
+            return frozen;
         }
 
         _armed = false;
@@ -317,53 +366,43 @@ internal sealed class FreezeCommitsThenFailsStore(IContentAuthoringStore inner) 
 }
 
 /// <summary>
-/// A store whose read-back under the marker raises a fault this package does NOT answer with a report, which
-/// is how a defect rather than a catalog refusal reaches the frozen region.
+/// A store whose guarded freeze commits its marker and then raises, at its exit, a fault this package does NOT
+/// answer with a report, which is how a defect rather than a catalog refusal reaches the frozen region.
 /// </summary>
 /// <param name="inner">The store behind the double.</param>
-internal sealed class TheReadBackFaultsStore(IContentAuthoringStore inner) : ForwardingUpgradeStore(inner)
+internal sealed class TheFreezeExitFaultsStore(IContentAuthoringStore inner) : ForwardingUpgradeStore(inner)
 {
-    bool _frozen;
-
     /// <inheritdoc />
-    public override async Task FreezeDraftAsync(int baseVersion, CancellationToken cancellationToken = default)
+    public override async Task<ContentDraft> FreezeDraftForBaseAsync(
+        int expectedBaseVersion,
+        CancellationToken cancellationToken = default)
     {
-        await base.FreezeDraftAsync(baseVersion, cancellationToken);
-        _frozen = true;
-    }
-
-    /// <inheritdoc />
-    public override async Task<ContentDraft?> GetOpenDraftAsync(CancellationToken cancellationToken = default)
-    {
-        if (_frozen)
-        {
-            _frozen = false;
-            throw new InvalidOperationException("the seam faulted while reading the frozen draft back.");
-        }
-
-        return await base.GetOpenDraftAsync(cancellationToken);
+        await base.FreezeDraftForBaseAsync(expectedBaseVersion, cancellationToken);
+        throw new InvalidOperationException("the seam faulted while returning the frozen draft.");
     }
 }
 
 /// <summary>
-/// Counts the freeze releases and the publishes the RUNNER itself made. A store's own publish pipeline runs
-/// against the inner store, so the marker it sets and releases for itself never reaches this decorator, which
-/// is exactly the separation the assertion needs.
+/// Counts the guarded freezes, the releases and the publishes the RUNNER itself made. A store's own publish
+/// pipeline runs against the inner store, so the marker it sets and releases for itself never reaches this
+/// decorator, which is exactly the separation the assertion needs.
 /// </summary>
 /// <param name="inner">The store behind the double.</param>
 internal sealed class CountsFreezeReleasesStore(IContentAuthoringStore inner) : ForwardingUpgradeStore(inner)
 {
-    /// <summary>How many times the runner cleared a freeze marker.</summary>
-    public int FreezeClears { get; private set; }
+    /// <summary>How many guarded freezes the runner made.</summary>
+    public int GuardedFreezes { get; private set; }
 
     /// <summary>How many publishes the runner started.</summary>
     public int Publishes { get; private set; }
 
     /// <inheritdoc />
-    public override Task ClearDraftFreezeAsync(CancellationToken cancellationToken = default)
+    public override Task<ContentDraft> FreezeDraftForBaseAsync(
+        int expectedBaseVersion,
+        CancellationToken cancellationToken = default)
     {
-        FreezeClears++;
-        return base.ClearDraftFreezeAsync(cancellationToken);
+        GuardedFreezes++;
+        return base.FreezeDraftForBaseAsync(expectedBaseVersion, cancellationToken);
     }
 
     /// <inheritdoc />

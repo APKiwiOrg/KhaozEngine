@@ -140,8 +140,30 @@ Every gate is evaluated before any metric. Any failure makes the run INVALID.
 | G3 scene and atlas | Every manifest matches the retained `scene` block: light (0,5,0), radius 30, intensity 1, id 307, faceResolution 256, bias 0.01, slopeBias 0.02, Soft, lightSize 0.5, maxPenumbraTexels 16, maxShadowedLights 8, not degraded, `transientAtlasRows` 0, `softShadowedLights` 1, `plainShadowedLights` 0. |
 | G4 camera | Projection and view rotation (upper 3 by 3) match the retained values within `abs(a-b) <= 1e-6 * max(1, abs(a), abs(b))`, render origin (0,0,0). At phase (0,0) the view-projection equals the retained one bit for bit. Achieved phase (section 8) within 0.02 px of nominal. |
 | G5 matched data | For every phase, plain(B) and plain(M) are byte identical. The active base-atlas row is also byte identical between B and M, using the readback below. The receiver binding must reference that atlas. Any mismatch is INVALID before interpreting metrics. |
-| G6 mutant exercised and confined | For every phase, soft(M) differs from soft(B) in at least one pixel whose footprint overlaps a station 3, 4 or 5 band, and in zero pixels outside the crossing mask. Crossing mask: for each pixel-centre floor point, use the receiver direction and its dominant face. Measure angular distance to each boundary plane between that face and another axis, and conservatively expand by the pixel-footprint angular radius plus `maxAngle * (1 + 1e-3)`. The radius is the maximum angle between the centre ray and the four footprint-corner rays, computed with clamped dot products. The floor footprint lies inside that convex ray cone. Only the four planes bounding the receiver's dominant face matter, not a tie between two non-dominant axes. Do not use only corner inclusion, which can miss a band crossing a footprint. All actual taps are within `atan(maxAngle) <= maxAngle` of the centre ray. Pixels outside this conservative mask cannot cross a face under either kernel. Require a nonempty outside-mask set in both fixed non-seam rectangles defined below. |
+| G6 mutant exercised and confined | For every phase, soft(M) differs from soft(B) in at least one certified floor pixel whose footprint overlaps a station 3, 4 or 5 band, and in zero certified floor pixels outside the crossing mask. Certification is restricted to the fixed visible-floor region below. Differences on all other pixels are reported separately without a floor-confinement claim. Crossing mask: for each pixel-centre floor point, use the receiver direction and its dominant face. Measure angular distance to each boundary plane between that face and another axis, and conservatively expand by the pixel-footprint angular radius plus `maxAngle * (1 + 1e-3)`. The radius is the maximum angle between the centre ray and the four footprint-corner rays, computed with clamped dot products. The floor footprint lies inside that convex ray cone. Only the four planes bounding the receiver's dominant face matter, not a tie between two non-dominant axes. Do not use only corner inclusion, which can miss a band crossing a footprint. All actual taps are within `atan(maxAngle) <= maxAngle` of the centre ray. Certified floor pixels outside this conservative mask cannot cross a face under either kernel. Require a nonempty outside-mask set in both fixed non-seam rectangles defined below. |
 | G7 preconditions | The existing per-station conditions hold for B and M at every phase: plain red above 24 on every read, cross-window endpoints above 0.9 lit and below 0.1 shadowed, for both metrics' read sets. |
+
+**Certified visible-floor region for G6.** Fix `F = { y=0, X in [1.95,5.25], Z in [3.75,7.15] }`
+now, for every phase and both builds. A pixel is certified only when its entire unprojected floor
+footprint is contained in F and the following source/geometry visibility proof succeeds. The
+approved `Wall` callback draws only the 40 m square floor at y=0 (X and Z in [-20,20]) and the
+box wall X=[2,2.4], Y=[0,3], Z=[-3,3]. All of F is inside the floor. For each recorded orthographic
+camera, require its toward-camera ray direction to have positive Y and nonnegative Z. From any
+floor point in F, the ray toward the camera then stays at Z>=3.75, separated from the wall's
+maximum Z=3. Require all four F corners to project inside the viewport and depth interval, and
+verify the approved draw list and transforms are unchanged. These facts establish floor visibility
+without classifying receiver geometry from pixel colour. If the projection is not orthographic,
+the ray direction changes sign, another occluder is drawn, or this proof is otherwise unavailable,
+classify INVALID. Do not infer floor visibility from a ray's intersection with y=0 alone.
+
+Every original probe pixel and every pixel footprint used by a station-band or fixed non-seam
+control must be certified. F includes a fixed margin around those regions, but the actual coverage
+check is mandatory. If a required footprint is not fully certified, classify INVALID, never shrink
+or move a band, control or F after seeing results. G6's zero-outside-mask claim applies only within
+this certified set. Report the count and coordinates of all differing pixels outside the set as
+`outside-certified-floor-region`, retaining both captures. Those pixels may be wall, background,
+other geometry or uncertified floor. They receive no floor-mask confinement conclusion and cannot
+be silently omitted from the report. All diagnostic classifications are scoped to the certified floor.
 
 **Atlas identity, without a production API.** The existing internal
 `Scene3D.DebugReadPointShadowAtlas(out width, out height)` in `Scene3D.PointShadowPass.cs:328` returns

@@ -75,3 +75,12 @@ Read only. Nothing was built, run, captured or edited outside this SDD directory
 Root narrowed two claims in the design. Four chosen phases do not prove a continuous worst case.
 Detecting a deliberately bad control and measuring a baseline exceedance still does not uniquely
 identify the production shader as the cause. No new capture or shader compilation was performed.
+
+## Fixed visible-floor certification for G6
+
+`PointShadowFilterGpuTests.Wall` draws only `DrawFloor` and `DrawWall`. The latter's bounds are
+X=[2,2.4], Y=[0,3], Z=[-3,3] in `PointShadowScene.cs:92-93`. `Device` loads
+`MeshPrimitives.Plane(40f, 40f)`, and `DrawFloor` uses identity transform. The plane is centred at
+the origin on y=0. The fixed F region and per-camera ray/projection checks in the design establish
+that its receiver is the floor. No current pixel colour or assumed floor intersection supplies
+that proof. Non-certified differences are retained separately, not classified by the floor mask.

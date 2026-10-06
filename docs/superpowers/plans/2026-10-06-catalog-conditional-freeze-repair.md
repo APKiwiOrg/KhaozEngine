@@ -1002,3 +1002,18 @@ Proof JSON records every failed test, stack, run/head/job and downloaded artifac
 validation artifact contains the armed VulkanValidationLogHost producer marker. Raw logs and
 TRX archive remain retained locally. Catalog integration is CLOSED even if Vulkan later passes.
 No tag, main/shared-feed mutation, stress, cancellation or new monitor is authorized by this finding.
+
+
+### Group A Windows fixture proof passed
+
+Reviewed test-only fixture commit 75801a6dda6661c9e645a5929534190b780e90cf is pushed on its own
+branch. Local finite proof passed 22 MapDoc and 29 MapEditor cases, both format checks and guards.
+The coordinator-approved single Windows run 37457162690/job 112247486958 passed at proof commit
+021694fe67d0a1d17f2375490f7420967e4ab814. Its parent is exactly the fixture commit, and only
+ci.yml differs. Never merge or cherry-pick that proof workflow commit into code/main.
+
+Root downloaded artifact 11410500409 and parsed both TRX files. Counts are exactly 22/22 and
+29/29 executed/passed, zero failures/skips, and all eight original native failure names match
+passed results. Proof JSON records source/proof SHAs, artifact hash and every passed case.
+Group A is platform-verified, not integrated. Groups B #1317 and C #1157/#1190 keep the Catalog
+integration gate closed. No main/feed change, release, retry, stress or full-suite rerun occurred.

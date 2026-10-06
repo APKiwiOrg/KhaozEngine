@@ -10,7 +10,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Movement;
 
 /// <summary>KhaozEngine #1253: a 0.3 m capsule stepping from the ground onto a 2.5 cm deck lip whose west edge is x 0.</summary>
-public class LowLipTraversalTests
+public partial class LowLipTraversalTests
 {
     // The ground height callback reads 0 under the deck as well as the bank. Before the core's low prop support
     // rule, a grounded body at that height never took the deck top as support. It walked through the lip with its

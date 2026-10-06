@@ -121,14 +121,33 @@ Create cohesive files, not one file per small record:
 | `ExplicitCharacterMovement.cs` | Public explicit step and shared camera-relative/world-direction core |
 | `WaterExcursionState.cs` | Enum None=0, Surface=1, AirborneFromWater=2 |
 
+Pin the referenced value fields as follows. Availability and nullable data are validated together,
+so a known wet result cannot omit its domain/interval, and a known dry result cannot invent one.
+
+| Value | Fields |
+| --- | --- |
+| `MovementBodyQuery` | `Vector3 Centre`, `float Radius`, `float HalfHeight`, `MovementSpaceKey CurrentSpace`, `MovementSupportKey? CurrentSupport` |
+| `MovementWaterInterval` | `float LowerY`, `float UpperY`, `float NominalSurfaceY`, `bool UpperIsFreeSurface`, `string LowerBoundaryId`, `string UpperBoundaryId` |
+| `MovementWaterPoint` | `MovementAvailability Availability`, `MovementSpaceKey Space`, `MovementDomainKey? Domain`, `bool InWater`, `float SpeedScale`, `MovementWaterInterval? Interval` |
+| `MovementTransitionContext` | `MovementSpaceKey OriginSpace`, `Vector3 StartFeet`. The provider certifies the legal portal/link path from this origin to the queried body, not a client-supplied permission bit |
+| `MovementSupportRequest` | `MovementBodyQuery Body`, `float MaxRise`, `float MaxDrop`, `float MaxSlopeRadians`, `MovementTransitionContext Transition` |
+| `MovementSupportCandidate` | `MovementSupportKey Owner`, `MovementSpaceKey Space`, `Vector3 Feet`, `Vector3 Normal`, `string? TraversedLinkId` |
+| `MovementSupportSet` | `MovementAvailability Availability`, `int Written`, `int RequiredCapacity`, `MovementQueryIdentity Identity` |
+| `MovementMediumSweepQuery` | `MovementBodyQuery Body`, `Vector3 Delta` |
+| `MovementCoverageSpan` | `float EnterFraction`, `float ExitFraction`, `int ContactStart`, `int ContactCount`, `bool HasDryCoverage` |
+| `MovementDomainContact` | `MovementDomainKey Domain`, `MovementSpaceKey Space`, `MovementWaterInterval Interval`, `Vector3 Normal`, `float Fraction`, `string BoundaryId`, `uint CoverageRegionHandle`. The final handle is pin-local provenance for the clipped region, never wire/persistent data |
+| `MovementCoverageResult` | `MovementAvailability Availability`, `int SpansWritten`, `int RequiredSpanCapacity`, `int ContactsWritten`, `int RequiredContactCapacity`, `float CertifiedErrorMetres`, `MovementQueryIdentity Identity` |
+| `MovementPreparationResult` | `MovementAvailability Availability`, `MovementQueryIdentity Identity` |
+
 The provider interface is `Prepare(in MovementQueryScope scope) -> MovementPreparationResult`
 outside the physics gate, then `TryPinPrepared(in MovementQueryScope scope,
 IPhysicsQueryLease physicsLease, out IMovementEnvironmentPin? pin) -> MovementAvailability`.
 Prepare starts no background work owned by the movement kernel. A native caller can prefetch
 through its scheduler before stepping. Pin performs no I/O and returns Unresolved if not ready.
 
-`MovementQueryScope` contains local swept bounds, support rise/drop bounds, current stable space
-and identity/frame descriptors. The pin exposes its certified scope and identity, actual source
+`MovementQueryScope` contains `Vector3 Min`, `Vector3 Max`, `float MaxRise`, `float MaxDrop`,
+`MovementSpaceKey CurrentSpace`, `MovementQueryIdentity Identity`, `MovementFrameDescriptor Frame`.
+The pin exposes its certified scope and identity, actual source
 world/generation/frame binding, and these methods:
 
 ```csharp
@@ -169,13 +188,18 @@ step events and consumes no physics/world effect.
 
 Public entry points:
 
+The caller acquires the query lease, steps and publishes pure state/output before releasing it.
+The explicit kernel receives that lease rather than acquiring and disposing one internally before
+its caller can publish. The context remains the acquisition/composition object. This concretizes
+F3's lifetime rule without changing its semantics.
+
 ```csharp
 MovementStepResult ExplicitCharacterMovement.Step(in FramedMovementState state,
     in MoveCommand command, float deltaSeconds, in MoveTuning tuning,
-    in WaterTraversalPolicy water, MovementEnvironmentContext context);
+    in WaterTraversalPolicy water, MovementQueryLease queries);
 MovementStepResult ExplicitCharacterMovement.StepTowards(in FramedMovementState state,
     Vector2 direction, bool run, float deltaSeconds, in MoveTuning tuning,
-    in WaterTraversalPolicy water, MovementEnvironmentContext context);
+    in WaterTraversalPolicy water, MovementQueryLease queries);
 ```
 
 Retain existing CharacterMovement entry points and default behavior. Do not append facade
@@ -272,6 +296,9 @@ Tests: new `KhaozEngine.Game.Tests/Locomotion/CharacterMovementSurfaceJumpTests.
 **Files:** NetWorld `MovementState.cs`, `PlayerMoveState.cs`, `PlayerMoveSimulator.cs`,
 `PlayerMovementSystem.cs`, `MovementComponents.cs`, `MoveProtocol.cs`, `BuiltinBlobLayout.cs`,
 `WorldServer.cs`, `ShardedWorldServer.cs` and narrow current configuration homes for opt-in contexts.
+Include `WorldClient` prediction/reconciliation call sites so each simulation/replay read interval
+remains leased until its pure state is stored. Do not release a simulator-internal lease before
+the prediction owner publishes its result.
 Keep pure water-origin state as the one appended byte, not local lease/support pointers.
 Tests extend existing Server.Tests NetWorld swim and ShardedPlayerMoveSwim fixtures.
 

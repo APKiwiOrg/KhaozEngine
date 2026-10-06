@@ -32,12 +32,13 @@ Checked `r2-full-plan-v4.md` against the CD1-approved design (`docs/design/WORLD
 | Face identity, vertex owner at creation, lower key never moves ownership, deletion needs reassignment | 9 `MapFaceKey` tuple and order, 10 dependency tests, 17 `CornerOwner_...` |
 | Collision-free identities under multi-edge subdivision | 9 `RimSubdivision_TwoEdgesOfOneTriangleAt64StayDisjointAndCollisionFree` |
 | Compile once, legacy arithmetic, ceiling winding, strip normals, shared descriptors | 9, 13 `CanonicalEntranceSeamAndAperture_Agree` |
+| Compiled bound-face reuse in one immutable context per validation or query call, counted from bytes, each patch compiled once, over-budget refusal with zero compiles, no hidden clones (coordinator final review I1) | D7 compiled reuse, 9 `CountFaces_MatchesTheCompilerAndAMaskedCompileKeepsExactlyItsCells`, 12A `BoundFaces_CountInRangeFacesFromBytesBeforeAnyCompile`, `BoundFaceContext_CompilesEachBoundPatchOnceAndOverBudgetDemandCompilesNothing` (8 by 8: 2 compiles, 640 faces, 0 clones, the same footprint at `MaxContextFaces` 639: 640 counted, 0 compiles, default values asserted separately), 12B `CoverageValidator_SharesOneContextWithoutClonesAndRefusesOverBudgetDemandWithZeroCompiles`, `Membership_ReadsOneQueryContextWithoutClones`, 13 `Support_ReadsOneQueryContextWithoutClones` |
 | Feather is paint only here | 9, R8 owns tessellation |
 | Three identities: owner, space, domain | 5, 12B |
 | Variable bounds, positive separation over the common lower/upper triangulation refinement including its vertices | D7, 12A (algorithm, near and far 1/2 against 1/3, crossings, degenerate and adversarial cases, budgets), 12B `RidgeUnderValley_...` (the only zero is a crossing neither lattice owns), `MixedResolutionBounds_ValidateOnTheCommonRefinement` |
 | Mixed-resolution general rational bounds (D7 ruling) | 5 `..._ButAcceptsAnyRationalBound`, 8 bound enumeration tests, 12A, 12B, 11 |
 | Explicit matching seam subdivisions stay strict | 10 seam theory, 12B `MixedResolutionWalls_StillRequireMatchingSubdivisions`, `PortalBandCoverage` `arch-mismatch` |
-| Horizontal openings as portal planes, missing bound is `MissingGeometry` | 10, 12B `ShaftOpenings_...`, 13 `KnownHolesAreNoSupport_...` |
+| Horizontal openings as portal planes, missing bound is `MissingGeometry` | 10, 12B `ShaftOpenings_...` (`WithoutOpening` leaves the other `shaft-top` references dangling on purpose and asserts the dangling, `missing bound` and `missing geometry` findings, coordinator final review M2), 13 `KnownHolesAreNoSupport_...` |
 | Both shaft layouts | 12B `NativeCaveRepresentationContract` |
 | Exterior declared, portal tie rules | 12B `ExactPortalAndOpeningPlanes_FollowTheOwnershipTieRules` |
 | Membership statuses, stacked spaces, no fallback | 12B |
@@ -47,13 +48,17 @@ Checked `r2-full-plan-v4.md` against the CD1-approved design (`docs/design/WORLD
 | Reserved Bridge preserved, never support | 4 flags, 9 and 18 cell bytes |
 | Budgets: 64 by 64, 1 MiB, 65,536 faces, pages, query budgets, `CapacityExceeded` | 4, 5, 7, 8, 9 (`Compile_RefusesBeforeExceedingTheFaceBudget`), 12A, 12B, 13 |
 | Refinement work and output budgets with no partial result | 12A outcome and 1/64 tests, 12B `MixedRefinementOutcomes_BecomeExplicitFindings` |
+| Per-bound in-range face budget distinct from total unique compiled work and memory, checked preflight for both, no partial publication | Global Constraints, D7 compiled reuse (`MaxSourceFacesPerBound` against `MaxContextPatches` 256 and `MaxContextFaces` 262,144, proposed defaults for coordinator approval, enforced as cardinalities of patches, masks and faces with paint and vertex entries per face by construction, borrowed immutable inputs, demand merged and deduplicated while traversing, call-scoped lifetime, 512 bytes per face as an unmeasured estimate only), the I1 tests above |
 | Every attempted pair charged before bounding-box rejection, checked arithmetic, early refusal without hidden quadratic work (D7 settlement) | D7 step 4, 12A `Refine_ChargesEveryAttemptedPairBeforeBoundingBoxRejection` (8,192, default 65,536 and 262,143 refuse, a separate 2 by 2 grid completes 64 checks with 8 faces), `PairBudget_RefusesBeforeAnyComparisonAndCountsBoundingBoxPairsSeparately` (MapEditor.Tests internal counters: 262,144 charged and 0 comparisons on refusal, 64 comparisons, 16 positive boxes and 8 intersections for the small complete control, 6, 6, 6 and 5 for the tee) |
 | Semantic and byte digests separate, mismatch is `Corrupt` | 5, 7, 8 `SchemeTwo_StaleSemanticDigestIsCorrupt` |
 | Sparse index, occupied directory, unlisted empty only under verified pages, no enumeration | 7 (`PagesRead == 4`), 8 acquisition page counts |
 | Bounded record lookup without scans | 5 `MapRecordRef`, 7 `IncidentRecords`, 8 `Acquire_*` tests |
 | Bound-surface acquisition on any lattice, budgeted before reads | 8 `LatticeRanges_...`, `Acquire_EnumeratesExactly...`, `Acquire_BoundSlotBudgetRefusesBeforeReading`, `Acquire_UnrepresentableBoundRangeIsNotRepresentableNotCapacity` |
+| Bound-slot counting with checked arithmetic before iteration, overlap with the bounded known set subtracted by scanning that set, never about 244M slots (coordinator final review M4, root reconciliation 2) | D7, 8 acquisition order (3), `BoundSlotEnumeration_RefusesFromTheCheckedCountWithoutVisitingSlots` (range 244,140,625, 0 visits), `BoundSlotEnumeration_SubtractsAlreadyAcquiredSlotsBeforeRefusing` (remaining 0, gross 1, fresh 0, complete, 0 visits) |
 | Writer-owned `tiles/surfaces/`, manifest-last, sweep keep set | 7 |
 | Windowed carry-forward and unloaded dependency refusal | 7 (slot-2 window fixture) |
+| Raw save certifies reference integrity including exact XZ owner-address agreement, never geometry. Partial raw save proves its reverse scan complete, refuses unknown or unloaded reverse dependants, structural and record edits, and deletion that would orphan a non-spatial referrer, keeps demonstrated carry-forward (coordinator final review M3, root reconciliation 2) | 7 raw-save rules and completeness argument, `PartialSave_RefusesEditsWithUnknownOrUnloadedReverseDependants` (`dependant`, `page`, `records`, `delete`, `presence`, files and manifest unchanged), `RawSave_RefusesACornerDependencyWhoseOwnerVertexIsElsewhere`, `SurfaceStorage_WindowCarriesUnloadedPatchesAndRefusesUnloadedDependencies` unchanged |
+| Linked fixture names never collide with MapEditor.Tests types (coordinator final review M1) | File Structure link invariant, 7 Step 3 name check, compiler CS0101 and CS0104 |
 | #1310 generation check, including surfaces-only windows | 1, 7 `SurfacesOnlyWindows_SecondSaveRefusesAsStale` |
 | One completeness contract across load, window, source, refresh, clone, save, save-as, identity, transactions | 7 `SurfacesOnlyWindow_IsPartialEverywhere...`, 8 `SchemeTwo_RefusesAPartialView`, 16 `PartialDocument_NativeTerrainCommandRefuses` |
 | `IsReserved` unchanged, `surfaces/` untouched | 7 namespace test |
@@ -84,6 +89,7 @@ Checked `r2-full-plan-v4.md` against the CD1-approved design (`docs/design/WORLD
 | R3 physical request with caller-supplied segment or path, no route planner, explicit status | D5 R3 plan input |
 | Downstream R3 to G5, including the immutable contact evidence (`e1b6e04c`) and Task 3 witness details (`e74e3274`) as R3/G1b dependencies, and the importer's duty to declare `LegacyExteriorV1` | Downstream allocation (R3, R9/R10, R11 and G2 rows), D9 |
 | Verification through the slot, exit 75 reported, no retry helper, owner-only tags, owner-released prerequisite | Verification conventions, approval gate, release section |
+| Integration fresh-checks `main` and returns to reconciliation and affected candidate verification if it advanced, whole-branch review covers D1 to D9 (coordinator final review M5, M6) | Review section steps 1 and 7 |
 
 ## Review Focus check
 
@@ -91,8 +97,8 @@ Each line has its test in the owning task: Task 1 and Task 7 stale windows (incl
 
 ## Step scan
 
-- Every named test has an executable body with exact values (166 methods: v3's 157 plus one in Task 5, five in Task 12A across MapDoc, MapEditor and Compatibility tests, one in Task 12B and two in Task 13). No test is a comment-only name. No assertion block was moved out of its task.
-- Green counts updated: Task 5 15, Task 12A 12 MapDoc plus 1 MapEditor plus 3 Compatibility, Task 12B 15 membership and 10 refinement, Task 13 12, Task 18 Compatibility 4. Task 11 stays 17 (assertions added to existing tests).
+- Every named test has an executable body with exact values (176 methods: v3's 157 plus one in Task 5, five in Task 12A across MapDoc, MapEditor and Compatibility tests, one in Task 12B and two in Task 13, then eight from the coordinator final review of 08d4be1a: one theory with three cases in Task 7, one each in Tasks 8 and 9, two in Task 12A, two in Task 12B and one in Task 13, all MapEditor.Tests, then two from root reconciliation 2: the Task 7 `dependency position` method and the Task 8 already-acquired range method, plus two more cases on the Task 7 theory). No test is a comment-only name. No assertion block was moved out of its task.
+- Green counts updated: Task 5 15, Task 12A 12 MapDoc plus 3 MapEditor work cases (with the 2 Task 9 budget cases in its filter) plus 3 Compatibility, Task 12B 15 membership and 10 refinement plus 2 MapEditor work cases, Task 13 12 plus 1 MapEditor work case, Task 18 Compatibility 4. Task 11 stays 17 (assertions added to existing tests). The final review moved Task 7 from 11 to 14 MapEditor cases, Task 8 MapEditor to 2 new cases and Task 9 MapEditor from 1 to 2. Root reconciliation 2 moved Task 7 to 17 and Task 8 MapEditor to 3. Replacing the overdense fixture changed no count. Task 12B's M2 change adds assertions to an existing test only.
 - Mechanical check over the plan: every `Map*`, fixture and harness identifier used in test code is defined in an Interfaces line, a fixture paragraph, the D5 R3 block or the public register. Remaining matches were test method names and BCL members.
 - Hand-checked arithmetic: the k = 2 and k = 3 conversion corners from the two centre planes, the `HalfUnderThird` cell (vertices, five areas summing to 1/9, six pairs), the `FanFromSouthMidpoint` tee (six vertices, five faces), the NW-SE against SW-NE crossing, the ridge and valley minimum, the 1/64 counts (8,192 faces, 16,384 pairs, 4,225 vertices), the `long.MaxValue` crossing denominator `2p - 1`, the `int.MaxValue` unit numerator `5p^2`, the boundary-touch range 63 to 63, and the precision slot and frame positions.
 - v4 hand checks, recomputed for attempted pairs rather than relabelled: `HalfUnderThird` 3 by 2 = 6 attempted, 6 positive boxes, 5 faces of 1/72, 1/24, 1/72, 1/36, 1/72 (sum 1/9). Tee 2 by 3 = 6, 6, 5 with areas 1/12, 1/6, 1/4, 1/6, 1/3 in (Lower, Upper) order (sum 1). NW-SE against SW-NE 4, 4, 4. Coincident 4, 4, 2. 1/64 m floor 16,384, 16,384, 8,192 faces, 4,225 vertices. Identical 16 by 16 grids 262,144 attempted, 1,024 positive boxes, 512 faces, 289 vertices, unit separation. Legacy row centres 3.0 m and 4.5 m, exact in `float`. `32001.1f` is 32001.099609375. The straddling porch cells are 1 and 65, so the message names cell 1.
@@ -104,8 +110,8 @@ Each line has its test in the owning task: Task 1 and Task 7 stale windows (incl
 - Introduced per task: exact scalars, `MapExactXz`, `MapExactOverflowException`, addresses, frames, patch types (4), records and digests (5), recipe and `MapSurfaceSet` (6), storage, completeness, scopes, limits and sources (7), scheme 2, factory-only witnesses and identity, `MapScopedSurfaces`, `MapLatticeRanges` (8), compiler types and `MapFaceKey` order (9), boundary types and opening keys (10), conversion types (11), refinement types, `MapRefinementWork`, `MapCommonRefinement`, `MapLowerCellClass`, `MapLegacyCellTag`, `MapLowerCellClassification`, `MapLowerCellClassifier` and `MapLegacyBilinear` (12A), `MapLegacyExteriorRecipe` and `MapBoundKind.LegacyExteriorV1` (5), `MapFramePoint`, membership and validator (12B), support types (13), frame-local types (14), relation and aperture types (15), transaction effects (16), terrain edits (17), harness comparison helpers (18).
 - Status enums are consistent: every query and acquisition enum carries `CapacityExceeded` and `NotRepresentable`, and every factory-only result carries its acquisition's `MapReadWitness`. v4 appends `Invalid` to `MapMembershipStatus`, `MapSupportStatus` and `MapRelationStatus` for a D9 recipe violation, matching `MapRefinementStatus.Invalid`.
 - `MaxPairChecks` and `PairChecks` replace `MaxCandidatePairs` and `CandidatePairs` everywhere (Global Constraints, D7, Task 12A types and tests, Task 12B). No old name remains.
-- `BoundFaces` now takes the footprint and one of its bounds. Its only callers are `RefineFootprintCell` and `RefinementFixtures.LedgeBoundFaces`, both updated.
-- Shared fixtures cross projects only by `<Compile Link>` of `*Fixtures.cs`. No test project references another. `FilteredSurfaceSourceFixtures.cs` follows that naming so the link includes it.
+- `BoundFaces` now takes the footprint and one of its bounds. Its public callers are `RefineFootprintCell` and `RefinementFixtures.LedgeBoundFaces`. The internal context overloads of `BoundFaces` and `RefineFootprintCell`, `PrepareFootprints`, `MapBoundFaceContext`, `MapCellDemand`, `MapFootprintPreparation` and `MapBoundFaceWork` are declared in Task 12A, `MapSlotCellMask`, `CountFaces` and the masked `Compile` in Task 9, `TryAcquiredPatch`, `PatchClones` and `MapAcquisitionWork` in Task 8, and the counter overloads of `Validate`, `Query` and `Select` in Tasks 12B and 13. Each later use matches its declaration.
+- Shared fixtures cross projects only by `<Compile Link>` of `*Fixtures.cs`. No test project references another. `FilteredSurfaceSourceFixtures.cs` and `BoundFaceContextFixtures.cs` follow that naming so the link includes them. The earlier claim that MapEditor.Tests helpers lack the suffix was wrong (`GltfTriangleFixtures` exists). The invariant is now name disjointness, checked at Task 7 against the evidence base snapshot (intersection empty) and enforced by the compiler.
 
 ## Dependency and conflict check
 
@@ -117,7 +123,7 @@ The per-task column sums to 34 to 57.5, plus 4 to 6 review, 38 to 63.5, presente
 
 ## Proportion
 
-v4 is 3,105 lines and about 350 KB. v3 was 2,866 lines and 311 KB, v2 1,561 lines and 202 KB. The design is 797 lines, so the plan is about 3.9 times its length. The v4 growth is the D9 decision and table, the pair-count table, the legacy fixture and nine executable test bodies. No settled section was rewritten. The growth is the restored assertion bodies required by controller review 2, plus the D7 algorithm and fixtures, the corrected R3 boundary and the harness rules. No class wrappers, usings or repeated shell blocks were reintroduced. Root may still judge it heavy. Root retains the inline assertions because task execution needs the complete proof at the owning step.
+v4 is 3,105 lines and about 350 KB. v3 was 2,866 lines and 311 KB, v2 1,561 lines and 202 KB. The design is 797 lines, so the plan is about 3.9 times its length. The v4 growth is the D9 decision and table, the pair-count table, the legacy fixture and nine executable test bodies. No settled section was rewritten. The growth is the restored assertion bodies required by controller review 2, plus the D7 algorithm and fixtures, the corrected R3 boundary and the harness rules. No class wrappers, usings or repeated shell blocks were reintroduced. Root may still judge it heavy. Root retains the inline assertions because task execution needs the complete proof at the owning step. The final-review correction brings the plan to 3,245 lines and about 380 KB, about 4.1 times the design. The growth is the D7 compiled-reuse decision, the Task 7 partial-save rules and eight counter or refusal test bodies, with no settled section rewritten. Root reconciliation 2 brings it to 3,276 lines and about 391 KB, still about 4.1 times the design, from the reverse-scan proof, the structural refusals and two test bodies.
 
 ## Residual risks
 
@@ -127,10 +133,12 @@ v4 is 3,105 lines and about 350 KB. v3 was 2,866 lines and 311 KB, v2 1,561 line
 4. `IncidentRecords` is writer-maintained bookkeeping. A stale list would hide a record from a scope. `VerifyTiled` reports it and transactions recompute it, but large-world maintenance is R8/R9 territory.
 5. The private oracle is enforced by controller runs, not public CI. That is the accepted cost of D1.
 6. Footprint straddle refusal on conversion is conservative and coordinator-approved. Authors align conversion regions or split footprints, guided by R9/R10, until a later authoring decision says otherwise.
-7. Refinement cost is bounded per footprint cell, not per validation. Whole-document validation stays a bounded-fixture and transaction operation, and large-world validation remains R8/R9 work.
+7. Refinement work is bounded per footprint cell and, after I1, per validation call by the context limits. A complete view whose footprints demand more than 262,144 compiled faces or 256 bound patches refuses its refinement findings with `refinement capacity (context faces)` rather than validating. Those two defaults are proposed for coordinator approval, not approved world limits. Whole-document validation stays a bounded-fixture and transaction operation, and large-world validation remains R8/R9 work. The enforced bounds are cardinalities. The 512 bytes per face figure is an unmeasured estimate and no byte cap exists.
 8. The attempted-pair budget is conservative. A legitimate cell whose clipped polygon counts multiply past 65,536 refuses even when few boxes overlap. That is the accepted simple bound. An explicitly bounded spatial join would be a later, separately approved change.
 9. D9 coverage exists only where the importer declares the tag. R11/G2 must declare it on imported exterior footprints, or those cells validate as `missing bound`, which is the safe failure direction.
 10. The bilinear bit-equality proof covers tile size 1, the imported recipe. Any other legacy tile size is outside the recipe and refused, not approximated.
+11. Partial raw saves are deliberately conservative. Any change to a patch with an unloaded reverse dependant or an unread covering page refuses, even when the change could not affect that dependant. Record edits, new or deleted patches, rectangle, presence, subdivision and dependency edits, and surface frame changes in a window always refuse. Authors load a wider window or use a complete document. Native transactions remain the only geometry-certifying path. The reverse-scan proof rests on exact XZ owner-address agreement, which every raw save now enforces. A generation written outside the engine writers that violates it is outside the proof, the same class as a forged digest.
+12. Query contexts reuse `MaxInspectedFaces` as their compiled-face budget. A point whose evaluated cells need more compiled faces than that refuses as `CapacityExceeded`, consistent with the existing inspected-face rule.
 
 ## Controller reconciliation, 2026-10-07
 
@@ -154,3 +162,32 @@ v4 is 3,105 lines and about 350 KB. v3 was 2,866 lines and 311 KB, v2 1,561 line
   resolver-1 arithmetic remains its separate compatibility contract.
 - Source review only. No task test, runtime command, private oracle or GPU capture has run. The
   complete canonical plan is submitted for separate coordinator review, not execution approval.
+
+## Coordinator final review corrections, 2026-10-07 (base 08d4be1a)
+
+Scoped correction of the canonical plan against `coordinator-final-review-08d4be1a.md`. Settled design, rational math, privacy, precision, release prerequisites and owner-only tags are unchanged. No runtime command ran.
+
+- I1: D7 now pins one immutable `MapBoundFaceContext` per validation or query call, bound by reference to one view, keyed by `MapPatchKey` with demanded slot-cell masks, read through no-clone internal access, preflighted from bytes for the per-bound in-range budget and the total unique compiled budget, compiled once per patch, with zero compiles on refusal. Counter proofs replace any timing claim.
+- M1: the link invariant is name disjointness between linked files and MapEditor.Tests types, with a Task 7 check. The false suffix claim is removed.
+- M2: `WithoutOpening("shaft-top")` leaves the other references dangling on purpose, and the test asserts each resulting finding.
+- M3: partial raw saves certify reference integrity only, add reverse-knowledge, reverse-dependant and topology refusals, keep the demonstrated carry-forward, and weaken no atomic, dependency or no-loss guarantee.
+- M4: bound-slot counting uses a checked product before iteration and stops at the remaining budget plus one, with a zero-visit counter proof.
+- M5: integration fresh-checks `main` and returns to step 3 and affected candidate verification if it advanced.
+- M6: the whole-branch review covers D1 to D9.
+- The latest 38 to 64 allowance is kept. The added work is absorbed in existing rows.
+
+## Root targeted reconciliation 2, 2026-10-07
+
+Bounded follow-up to `root-correction-review-2.md`. The compile-once, masked-compile and no-clone design is unchanged. No runtime command ran.
+
+- Memory: D7 states enforced cardinalities (patches, masks, faces, with paint and vertex entries per face by construction), borrowed immutable inputs, call-scoped lifetime and demand merged and deduplicated while traversing, with no separate preflight cap. 512 bytes per face is an estimate only. The 256 and 262,144 defaults are proposed for coordinator approval.
+- M4: each range subtracts its overlap with the bounded acquired and pending key set, found by scanning that set, before the early refusal. A fitting range is bounded by the remaining budget plus the known-set size. Task 8 adds the already-acquired range counter test.
+- M3: raw saves enforce exact XZ owner-address agreement, the existing shared-vertex contract, as a reference-validity invariant. Task 7 states why the spatial reverse scan and `IncidentRecords` are complete under it, refuses structural edits (new or deleted patches, rectangle, presence, subdivisions, dependencies, surface frame) and compares records against the loaded entry so a deletion cannot escape. A deletion counterexample with a non-spatial unloaded referrer is pinned.
+- Overdense: the 33-patch fixture is gone. The 8 by 8 footprint at `MaxContextFaces` 639 proves 640 demanded faces and zero compiles, and the default values are asserted separately.
+
+Root targeted reconciliation confirms the 640-face count and the 639-face early-refusal case,
+plus fresh-slot accounting after bounded known-key overlap. Owner-address validity includes
+internal declared-cell corners and cell-edge subdivision vertices, not only patch-rectangle
+corners. IncidentRecords uses height-independent XZ footprint incidence, making carry-forward
+under permitted payload-only changes explicit. The proposed context defaults and stricter raw-save
+refusals remain named decisions for coordinator review. No execution proof is claimed.

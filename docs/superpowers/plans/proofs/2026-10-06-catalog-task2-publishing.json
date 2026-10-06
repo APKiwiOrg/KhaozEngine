@@ -1,0 +1,115 @@
+{
+  "task": "catalog conditional freeze Task 2",
+  "base": "9b1c0d51961b2f49938fc62962869b1d94348afd",
+  "commit": "6b4e95a2dd06315d369a716f5b4426f80c6afb16",
+  "rulings": [
+    "T2-C1",
+    "T2-C2"
+  ],
+  "results": {
+    "t2-red": {
+      "counts": {
+        "total": "14",
+        "executed": "14",
+        "passed": "0",
+        "failed": "14",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "sha256": "933dbabb65c5a58f5ddff51d24d54a86c97c65618db2c7db5950d90adf037902",
+      "exit": 1
+    },
+    "t2-green-c2": {
+      "counts": {
+        "total": "32",
+        "executed": "32",
+        "passed": "32",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "sha256": "33a9efb27ae6017271427ce86f42fb028205023c74e3568168c32f83a1054d5a",
+      "exit": 0
+    },
+    "t2-inventory-c1": {
+      "counts": {
+        "total": "103",
+        "executed": "103",
+        "passed": "103",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "sha256": "0d379334c94aa7df35e36fcc7681f12e446c006870a9198bec08bacf002b3a6a",
+      "exit": 0
+    },
+    "t2-green-server": {
+      "counts": {
+        "total": "40",
+        "executed": "40",
+        "passed": "40",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "sha256": "b6264c122cfb91327008bfffde323ecb0d1d0c4f3290081ce4fdc6b9b8d84ae6",
+      "exit": 0
+    }
+  },
+  "logs_root": "/tmp/grimhollow-orch/catalog-conditional-freeze",
+  "log_sha256": {
+    "t2-red.log": "7eb2924e353cc8e71e2bd59cff048f8162f1eb18907bfac25cd4b27a31719b26",
+    "t2-green-c2.log": "bc149a8c3faad547e29846c59fc47f9bd95f405cd896e7dbf797a519663d05bd",
+    "t2-inventory-c1.log": "25074707ff5e7fb660aa3799bf2f5737d6912f136b5d0d94c5e1917379912139",
+    "t2-green-server.log": "d3bc99cc130f43637b4d7e821d69cc34a620bbd8ca4874c157be18977705da3d",
+    "t2-format-c1.log": "239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c",
+    "t2-commit-c1.log": "238c2c16cd7ac2dece8c4372649ac8beed3db5c78286b0204dcc7c5f1aea97af"
+  },
+  "scope": "19 code/test paths plus controller plan-only ruling in full range",
+  "review": "fresh Task 2 review pending",
+  "limits": [
+    "Task 3 runner cases remain owned red",
+    "SQL Server remains remote CI",
+    "No full suite or complete repair claim"
+  ]
+}

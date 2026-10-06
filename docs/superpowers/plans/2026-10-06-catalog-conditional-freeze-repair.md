@@ -746,3 +746,24 @@ Cost if wrong is extra fixture setup or changed fixture semantics, covered by th
 and affected-class regressions plus fresh review. After actual changes, run each affected selection
 once. Do not repeat the unchanged successful Server selection. The continuation preserves all
 existing work and report evidence. No fresh task review or completion claim precedes those greens.
+
+
+### Task 2 implemented with fixture migration, fresh review pending
+
+Commit 6b4e95a2dd06315d369a716f5b4426f80c6afb16 over the docs-only 5decfb9dd checkpoint
+contains nineteen code/test paths. Overall task review remains 9b1c0d519..6b4e95a2d. Root verified
+ancestry/scope, all production changes, both fixture changes and unchanged runner/store/version paths.
+
+Ruling T2-C2 is implemented by advancing the scratch twin through public preparation/commit with
+its own allocator before staging captured rows. The returned row plan still uses the real store's
+allocator and held baseline, and an assertion excludes scratch rows. No expected-base bypass exists.
+The crash test adopts the capable row-only view and retains its row-commit assertions.
+
+Final publish selection passed 32, affected text/fixture inventory passed 103, and the earlier
+unaffected Server selection passed 40. Root parsed the actual TRX and shared-slot exits. An initial
+continuation failure was a hyphenated fixture key, corrected to twin_seed_ before the final green.
+Original failed logs remain preserved. Exact-path formatting and hooked commit exited 0.
+
+Evidence hashes/counts are in proofs/2026-10-06-catalog-task2-publishing.json. Fresh review task
+wa-catalog1271-task2-review1-20261006 covers the entire range, including the two scope rulings.
+Task 2 is not complete until review resolves. Runner-only cases and SQL Server remain later gates.

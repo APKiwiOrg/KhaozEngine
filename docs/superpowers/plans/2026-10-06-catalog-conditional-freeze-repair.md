@@ -881,3 +881,21 @@ The two provider README qualifiers and exact stale/no-call distinctions are comp
 the common moved-past refusal does not promise acceptance of future bases, so the reviewer found
 no further wording defect. Whole-branch review must still judge carried timeout/cancellation notes.
 Root now owns steps4-7. Task4 overall and the repair remain incomplete until all final gates pass.
+
+
+### Whole-branch review and single final fix wave
+
+Whole-branch review ca13d62d7..19d5a1522 found no Critical/Important issue and accepted the
+cross-task behavior and all rulings. Root dispositioned every declined-to-judge item in progress.md.
+SQL Server/full-suite/pack evidence remains mandatory. Game467 and same-base1311/1312 remain
+separate scope. Timeout diagnostic masking and cancellation layering were explicitly accepted.
+
+The four optional minors were assigned together. Commit5ce2b87e295fc1033431b306cd79106b69501793
+records release calls in the capable row view, asserts exact nonvacuous scenario release counts,
+aligns T6 hosted step shape and wraps two prose/XML areas. Root read the full five-file diff and
+actual TRX32 Catalog passes plus2 Server passes with1 SQL Server skip. Actual slot exits for
+format/checks/commit were0. No production behavior changed and no full suite ran.
+
+Proof counts/hashes are in proofs/2026-10-06-catalog-final-fix1.json. Single scoped re-review
+wa-catalog1271-final-review2-scoped-20261006 is pending before final checks. No second broad
+review is planned. Root still owns all verification, packaging, CI, integration and release gates.

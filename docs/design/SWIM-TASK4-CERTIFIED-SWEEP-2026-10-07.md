@@ -184,6 +184,33 @@ reported one contact. Disabling forced progression alone therefore does not supp
 closed-endpoint semantics. These results do not establish an all-shape numerical certificate or
 attribute any Grimhollow route/support failure to sweeping.
 
+The next prepared diagnostic is eight `CapsuleSweepBracketCharacterizationTests` cases: head-on,
+grazing, separated and closed-endpoint scenes at declared outer iteration budgets 1 and 64.
+Each case calls the pinned real convex task once, retaining its raw t0/t1 bracket, and performs one
+complete-contact witness query. It adds observations unavailable through the simulation-wide API.
+The one-iteration outcomes do not assert which termination branch fired. A noninverted miss remains
+an unfinished-search observation, never a complete-clear certificate. The 64-iteration interior
+crossings and independent geometry/contact controls remain assertions.
+
+This requires unsafe compilation in the nonshipping Game.Tests project solely to pass the actual
+capsule and registered shape-data pointers to the public raw Bepu task. The pointers are local to
+the one-static private world and physical read lease, with no escaped pointer or world mutation.
+The same source-world, no-dynamics/no-exclusions restrictions as the first diagnostic apply.
+No production package, query API, native sampler or runtime pointer access is added. The test file
+and test-project property passed peer source inspection and one granted eight-case run, exit 0 with
+eight passes and zero failures/skips in `/tmp/swim-sweep-brackets.log`. The secondary slot was
+explicitly released. No old twelve-case repeat or additional invocation ran. This is characterization,
+not capability RED or a repeated confidence loop.
+
+The [committed raw-bracket rows](../verification/2026-10-07-swim-sweep-brackets.json) show false results
+with noninverted brackets at budget 1 for both actual interior crossings and the separated scene.
+At budget 64, the interior crossings returned true with narrow brackets, while the separated scene
+returned false with an inverted bracket. The exact endpoint returned false with an inverted bracket
+at both budgets despite its complete contact witness. Inversion alone is not a closed-path certificate.
+The grazing budget-64 lower value is about 0.31 micrometres beyond the analytic entry, so a raw lower
+value is not a strictly conservative distance without numerical accounting. The declared budget is
+an input, not evidence of which termination branch fired. No broad numerical domain is inferred.
+
 After that evidence is inspected, pin the exact API/domain and author its missing-capability fixture,
 followed by separately granted GREEN and named affected regressions. No command is authorized by this note.
 Scheduling remains with pivot, with at most two explicitly assigned compatible slots. Native G1b,

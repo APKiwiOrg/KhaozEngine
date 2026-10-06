@@ -2,6 +2,7 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <OutputType>Library</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Pinned so moved files keep their KhaozEngine.Tests.* namespaces, consistent with every other split
          test project. -->
     <RootNamespace>KhaozEngine.Tests</RootNamespace>

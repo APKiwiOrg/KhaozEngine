@@ -8,7 +8,7 @@
 
 **Tech Stack:** C#, .NET, xUnit, in-memory catalog, Microsoft.Data.Sqlite, Microsoft.Data.SqlClient, existing normal GitHub CI.
 
-**Spec:** [Approved catalog conditional freeze and release design](../../design/CATALOG-CONDITIONAL-FREEZE-RELEASE-DESIGN-2026-10-06.md), OA14 and OA15 in [DECISIONS](/Users/antonio/Grimhollow/.worktrees/world-authoring/docs/superpowers/programs/world-authoring/DECISIONS.md). OA15 approves planning and the next-free-minor direction, currently `20.28.0`. Owner approval of this full plan and production execution are still pending. The execution method is serial SDD under [HANDOFF](/Users/antonio/Grimhollow/.worktrees/world-authoring/docs/superpowers/programs/world-authoring/HANDOFF.md).
+**Spec:** [Approved catalog conditional freeze and release design](../../design/CATALOG-CONDITIONAL-FREEZE-RELEASE-DESIGN-2026-10-06.md), OA14 and OA15 in [DECISIONS](/Users/antonio/Grimhollow/.worktrees/world-authoring/docs/superpowers/programs/world-authoring/DECISIONS.md). OA15 approves planning and the next-free-minor direction, currently `20.28.0`. Owner approved this full plan and serial execution under OA16 on 2026-10-06. Tags remain separately gated. The execution method is serial SDD under [HANDOFF](/Users/antonio/Grimhollow/.worktrees/world-authoring/docs/superpowers/programs/world-authoring/HANDOFF.md).
 
 ## Global Constraints
 
@@ -617,12 +617,12 @@ Expected all exits 0. Recheck no concurrent main movement before using the SHA g
 
 ## Outcome
 
-Status on 2026-10-06: **full implementation plan prepared for independent root verification and OWNER approval**. Serial SDD is preserved. No task is executed, no code/test/version changes made, no production execution or release authorized by this plan.
+Status on 2026-10-06: **full plan verified and approved for serial execution under OA16**. Task 0 is next. No code/test/version change has yet executed and no release tag is authorized.
 
 | Gate | Required durable record | Current state |
 | --- | --- | --- |
 | Plan | Planning commit SHA, self-review coverage, documentation guard commands/exits/logs | Written by planner in `.superpowers/sdd/2026-10-06-catalog-conditional-freeze-design/implementation-plan-report.md` |
-| Approval | Root verification and explicit OWNER full-plan approval | Pending |
+| Approval | Root verification and explicit OWNER full-plan approval | OA16, owner answered yes on 2026-10-06 |
 | Coordination | Pivot thread reply, engine code/pinable barrier ruling | Pending root action |
 | Task 0 | Exact source-diff exit, twelve named reds/two residue passes, test-only SHA, fresh review | Pending |
 | Tasks 1 to 3 | Task bases/SHAs, focused green exits/counts, constructor/forwarder inventory, fresh reviews | Pending |
@@ -641,3 +641,11 @@ source, task extraction for Task 0, baseline equality and the planner's guard ex
 pre-merge CI trigger gap with one explicit dispatch per normal workflow on the verified branch,
 and clarified the nonempty draft needed for the base-zero fact. All five Review Focus cases have
 owned tests. No executable source changed and owner plan approval remains pending.
+
+
+### OA16 execution start
+
+Owner approved the full plan at 2bbd0fac81d7f07bb6f5a9bdcad6bdca6e210efb. The controller sent the
+pivot thread the catalog execution and next-minor coordination notice before Task 0. This task changes
+only new test files. Its accepted deterministic red proof and review must precede production changes.
+SDD preflight records task/interface consistency in the plan workspace progress.md. No tag is approved.

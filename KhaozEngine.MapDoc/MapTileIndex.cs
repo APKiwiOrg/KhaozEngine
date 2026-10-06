@@ -24,7 +24,8 @@ public sealed class MapTileIndex
     /// <summary>Builds an index from entries in any order. They are sorted ascending (Z, then X) here, so the
     /// world hash never depends on the order the caller happened to discover tiles in.</summary>
     /// <exception cref="MapDocumentException">Two entries share a tile coordinate.</exception>
-    internal MapTileIndex(float tileSize, int schemeVersion, string? sourceDirectory, IEnumerable<MapTileEntry> entries)
+    internal MapTileIndex(float tileSize, int schemeVersion, string? sourceDirectory, IEnumerable<MapTileEntry> entries,
+                          string? manifestSha256 = null)
     {
         ArgumentNullException.ThrowIfNull(entries);
         var list = new List<MapTileEntry>(entries);
@@ -43,6 +44,7 @@ public sealed class MapTileIndex
         TileSize = tileSize;
         SchemeVersion = schemeVersion;
         SourceDirectory = sourceDirectory;
+        ManifestSha256 = manifestSha256;
         LoadedCount = loaded;
     }
 
@@ -69,6 +71,10 @@ public sealed class MapTileIndex
     /// <summary>The directory this index was read from, null for an index built in memory from a whole
     /// document. A partial document may only be written back here.</summary>
     public string? SourceDirectory { get; }
+
+    /// <summary>Lowercase SHA-256 of the exact manifest bytes this index read or committed, null for an
+    /// index built in memory. A partial save requires the same generation before writing.</summary>
+    public string? ManifestSha256 { get; }
 
     public bool TryGet(MapTileCoord coord, out MapTileEntry entry) => _byCoord.TryGetValue(coord, out entry);
 

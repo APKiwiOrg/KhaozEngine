@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.Serialization;
@@ -26,12 +27,13 @@ internal static partial class MapTiledFile
             throw new MapDocumentException(
                 $"{directory}: not a tiled map document (no {ManifestName}). A directory without a manifest has no form.");
 
-        string json;
-        try { json = File.ReadAllText(path); }
+        byte[] manifestBytes;
+        try { manifestBytes = File.ReadAllBytes(path); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             throw new MapDocumentException($"{path}: cannot read map manifest. {ex.Message}", ex);
         }
+        string json = DecodeManifest(manifestBytes);
 
         JsonObject root;
         try
@@ -82,8 +84,17 @@ internal static partial class MapTiledFile
         if (errors.Count > 0)
             throw new MapDocumentException($"{path}: invalid map manifest:\n  " + string.Join("\n  ", errors));
 
-        index = new MapTileIndex(doc.TileSize, schemeVersion, Normalize(directory), entries);
+        index = new MapTileIndex(doc.TileSize, schemeVersion, Normalize(directory), entries, HashManifest(manifestBytes));
         return doc;
+    }
+
+    static string HashManifest(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
+
+    static string DecodeManifest(byte[] bytes)
+    {
+        using var stream = new MemoryStream(bytes, writable: false);
+        using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
     }
 
     /// <summary>Loads the manifest plus tiles: every occupied tile when <paramref name="window"/> is null,
@@ -121,7 +132,7 @@ internal static partial class MapTiledFile
             entries.Add(entry with { Loaded = load });
         }
 
-        doc.Tiles = new MapTileIndex(index.TileSize, index.SchemeVersion, Normalize(directory), entries);
+        doc.Tiles = new MapTileIndex(index.TileSize, index.SchemeVersion, Normalize(directory), entries, index.ManifestSha256);
 
         IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, options.Registry);
         if (errors.Count > 0)

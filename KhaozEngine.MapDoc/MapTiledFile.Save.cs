@@ -59,6 +59,18 @@ internal static partial class MapTiledFile
                     "would silently keep the wrong size. Load the whole world first, then retile.");
         }
 
+        byte[]? current;
+        try { current = File.ReadAllBytes(manifestPath); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            if (doc.Tiles is { IsPartial: true })
+                throw new MapDocumentException($"{directory}: stale window, the current manifest cannot be read.", ex);
+            current = null;
+        }
+        if (doc.Tiles is { IsPartial: true } generation &&
+            (current is null || !string.Equals(generation.ManifestSha256, HashManifest(current), StringComparison.Ordinal)))
+            throw new MapDocumentException($"{directory}: stale window, the manifest changed after this window was loaded.");
+
         // 2. Bucket and hash.
         MapSpatialIndex spatial = MapSpatialIndex.Build(doc);
         var entries = new List<MapTileEntry>(spatial.OccupiedTiles.Count);
@@ -76,7 +88,7 @@ internal static partial class MapTiledFile
         // 3. Read the previous manifest. The ONLY source of the previous per-tile hashes: never a directory
         //    listing, never a parse of a file name.
         DeleteQuietly(Path.Combine(root, ManifestTempName));
-        PreviousManifest? previous = ReadPrevious(manifestPath);
+        PreviousManifest? previous = ReadPrevious(current);
 
         // 4. Write changed tiles, at names nothing points at yet.
         JsonSerializerOptions indented = MapDocumentFile.CreateOptions(registry, write: true);
@@ -97,6 +109,7 @@ internal static partial class MapTiledFile
 
         // 5. Commit: the manifest rename, and nothing before this mutated anything live.
         WriteManifest(root, doc, entries, indented, save.Durability);
+        string manifestSha256 = HashManifest(File.ReadAllBytes(Path.Combine(root, ManifestTempName)));
         save.OnStep?.Invoke(MapTiledSaveStep.BeforeManifestRename);
         File.Move(Path.Combine(root, ManifestTempName), manifestPath, overwrite: true);
         FlushDirectories(root, touchedShards, save.Durability);
@@ -109,7 +122,7 @@ internal static partial class MapTiledFile
         // The document now describes what is on disk. Refreshing the index here is what keeps
         // MapDocumentHash.OfWorld honest on an edited document: it reads stored hashes and never opens a
         // tile file, so a stale index would report the pre-edit world forever.
-        doc.Tiles = new MapTileIndex(doc.TileSize, MapDocumentHash.SchemeVersion, root, entries);
+        doc.Tiles = new MapTileIndex(doc.TileSize, MapDocumentHash.SchemeVersion, root, entries, manifestSha256);
     }
 
     static void GuardMovedContent(MapSpatialIndex spatial, MapTileIndex window)
@@ -243,12 +256,12 @@ internal static partial class MapTiledFile
     /// <summary>The previous occupied set and per-tile hashes, or null when there is no readable previous
     /// version. Deliberately parses only <c>schemeVersion</c> and <c>tiles</c>: a previous manifest whose
     /// globals no longer validate must not block a save that fixes them.</summary>
-    static PreviousManifest? ReadPrevious(string manifestPath)
+    static PreviousManifest? ReadPrevious(byte[]? manifestBytes)
     {
+        if (manifestBytes is null) return null;
         try
         {
-            if (!File.Exists(manifestPath)) return null;
-            if (Jsonc.ParseNode(File.ReadAllText(manifestPath)) is not JsonObject root) return null;
+            if (Jsonc.ParseNode(DecodeManifest(manifestBytes)) is not JsonObject root) return null;
             var hashes = new Dictionary<MapTileCoord, string>();
             if (root["tiles"] is JsonArray array)
                 foreach (JsonNode? node in array)

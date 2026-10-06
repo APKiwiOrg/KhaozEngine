@@ -3294,3 +3294,30 @@ Coordinator accepted the RED and authorized only remainingTask1protocoltests and
 productfiles, with fresh scopedsource review and a separately granted GREEN. No downstream surface
 work, formatversion, privateworld, main/feed/tag or gamepin work is authorized. Snapshot vendoring
 is an independent #459 handoff and not an R2 execution dependency.
+
+
+### Task 1 reviewed source and focused GREEN
+
+Implementation starts from RED checkpoint ef06f06543b1b380ad8a953fd218fa0a221dfc96.
+The approved seven protocol cases were written before the witness/refusal implementation in the
+three named product files. Fresh source review verified the product against the specification and
+found one missing MapEditor namespace import in the clone assertion. Root added only that import
+and verified every other reviewed byte was unchanged. Coordinator accepted that correction.
+
+One authorized focused GREEN compiled and passed all 63 cases with zero failures and skips,
+including all seven new cases. TRX SHA-256 is
+4f1d11a034a1339f50e4624b17d9e0e3081a6e0510178b801fb0d08f7b9eb576.
+The log SHA-256 is60db8b44107004dd3135944266618a3b32636ac0583cf02876fed079289f82bb.
+One separately granted four-file format verification exited0 with a workspace-loading warning.
+The default output does not identify its cause. No warning-free workspace load is claimed and no
+autofix, diagnostic rerun or extra tests were performed. Four source hashes remained unchanged.
+The format log SHA-256 is239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c.
+Both secondary compute grants were explicitly released. Focused proof is
+proofs/2026-10-07-r2-task1-green.json.
+
+Optional review notes remain recorded: the existing four-guards comment is stale, and a throw after
+manifest rename leaves the caller's old witness, so a retry refuses until reload. The latter fails
+closed after an already committed save and the released save ordering is preserved. Neither note
+changes this task's implementation. No downstream Task2, main/feed integration, format version,
+private oracle, pack or release follows from this focused proof. Full-round verification remains
+at the approved finishing gate, and #1310 stays open until actual integration.

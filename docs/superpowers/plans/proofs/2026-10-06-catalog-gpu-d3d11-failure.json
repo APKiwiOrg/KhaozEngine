@@ -1,0 +1,148 @@
+{
+  "run": 37440389468,
+  "job": 112192477528,
+  "head": "50ff5410acc19bfaa90a7e4c3e1e83aea483dd22",
+  "conclusion": "failure",
+  "failed_step": "Run test suite",
+  "exit": 1,
+  "completed_utc": "2026-10-06T09:54:37Z",
+  "counts": {
+    "trx_projects": 30,
+    "passed": 26906,
+    "failed": 10,
+    "skipped": 386,
+    "job_log_extra_preflight_passes": 25
+  },
+  "failures": [
+    {
+      "file": "runneradmin_runnervmfi6oq_2026-10-06_09_09_37_net10.0.trx",
+      "name": "KhaozEngine.Tests.TrackedPersistenceTests.Drain_resolves_supersession_even_when_the_replacing_producer_is_paused(dispose: True, trackedReplacement: True)",
+      "start": "2026-10-06T09:10:00.4456852+00:00",
+      "end": "2026-10-06T09:10:00.4456854+00:00",
+      "duration": "00:00:21.2932003",
+      "message": "System.TimeoutException : The controlled writer was not released.",
+      "stack": "   at KhaozEngine.Tests.TrackedPersistenceTests.WriteGate.BeforeWrite(String json) in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.Foundation.Tests\\Persistence\\TrackedPersistenceTests.cs:line 335\r\n   at KhaozEngine.Tests.TrackedPersistenceTests.<>c__DisplayClass8_0.<Drain_resolves_supersession_even_when_the_replacing_producer_is_paused>b__1() in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.Foundation.Tests\\Persistence\\TrackedPersistenceTests.cs:line 212\r\n   at KhaozEngine.Persistence.PersistenceQueue.Enqueue(String path, PendingWrite request) in /_/KhaozEngine.Persistence/PersistenceQueue.cs:line 118\r\n   at KhaozEngine.Persistence.PersistenceQueue.EnqueueTracked(String path, String json) in /_/KhaozEngine.Persistence/PersistenceQueue.cs:line 87\r\n   at KhaozEngine.Tests.TrackedPersistenceTests.<>c__DisplayClass8_0.<Drain_resolves_supersession_even_when_the_replacing_producer_is_paused>b__4() in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.Foundation.Tests\\Persistence\\TrackedPersistenceTests.cs:line 231\r\n   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)\r\n--- End of stack trace from previous location ---\r\n   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)\r\n   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)\r\n--- End of stack trace from previous location ---\r\n   at KhaozEngine.Tests.TrackedPersistenceTests.Drain_resolves_supersession_even_when_the_replacing_producer_is_paused(Boolean dispose, Boolean trackedReplacement) in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.Foundation.Tests\\Persistence\\TrackedPersistenceTests.cs:line 272\r\n   at KhaozEngine.Tests.TrackedPersistenceTests.Drain_resolves_supersession_even_when_the_replacing_producer_is_paused(Boolean dispose, Boolean trackedReplacement) in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.Foundation.Tests\\Persistence\\TrackedPersistenceTests.cs:line 275\r\n--- End of stack trace from previous location ---"
+    },
+    {
+      "file": "runneradmin_runnervmfi6oq_2026-10-06_09_10_34_net10.0.trx",
+      "name": "KhaozEngine.Tests.MapDoc.NativeStorageNamespaceTests.NativeStorage_GuardRefusesEveryClosureReferenceBeforeReadingIt(reserved: \"mesh\", absolute: True)",
+      "start": "2026-10-06T09:10:34.8631096+00:00",
+      "end": "2026-10-06T09:10:34.8631097+00:00",
+      "duration": "00:00:00.0079030",
+      "message": "Assert.Contains() Failure: Sub-string not found\r\nString:    \"Invalid native manifest 'root': 'U' is an\"\u00b7\u00b7\u00b7\r\nNot found: \"reserved\"",
+      "stack": "   at KhaozEngine.Tests.MapDoc.NativeStorageNamespaceTests.NativeStorage_GuardRefusesEveryClosureReferenceBeforeReadingIt(String reserved, Boolean absolute) in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.MapDoc.Tests\\NativeStorageNamespaceTests.cs:line 93\r\n   at InvokeStub_NativeStorageNamespaceTests.NativeStorage_GuardRefusesEveryClosureReferenceBeforeReadingIt(Object, Span`1)\r\n   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)"
+    },
+    {
+      "file": "runneradmin_runnervmfi6oq_2026-10-06_09_10_43_net10.0.trx",
+      "name": "KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_MissingTiledStorageRefusesSaveAndRetileWithoutRecreatingIt",
+      "start": "2026-10-06T09:10:57.8720989+00:00",
+      "end": "2026-10-06T09:10:57.8720991+00:00",
+      "duration": "00:00:00.0493671",
+      "message": "KhaozEngine.MapDoc.MapDocumentException : Invalid native manifest 'kit': 'U' is an invalid escapable character within a JSON string. The string should be correctly escaped. LineNumber: 5 | BytePositionInLine: 56.\r\n---- System.Text.Json.JsonReaderException : 'U' is an invalid escapable character within a JSON string. The string should be correctly escaped. LineNumber: 5 | BytePositionInLine: 56.",
+      "stack": "   at KhaozEngine.MapDoc.Assets.MapAssetManifestReader.Read(Byte[] bytes, String id) in /_/KhaozEngine.MapDoc/Assets/MapAssetManifestReader.cs:line 45\r\n   at KhaozEngine.MapDoc.Assets.MapAssetClosure.Load(IReadOnlyList`1 roots, IMapAssetSource source) in /_/KhaozEngine.MapDoc/Assets/MapAssetClosure.cs:line 74\r\n   at KhaozEngine.Tests.MapDoc.NativeLifecycleFixture..ctor(Boolean absoluteReferences, String meshRelativePath) in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.MapEditor.Tests\\MapDoc\\NativeLifecycleFixture.cs:line 59\r\n   at KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_MissingTiledStorageRefusesSaveAndRetileWithoutRecreatingIt() in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.MapEditor.Tests\\MapDoc\\NativeStorageOwnershipTests.cs:line 114\r\n   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)\r\n   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)\r\n----- Inner Stack Trace -----\r\n   at System.Text.Json.ThrowHelper.ThrowJsonReaderException(Utf8JsonReader& json, ExceptionResource resource, Byte nextByte, ReadOnlySpan`1 bytes)\r\n   at System.Text.Json.Utf8JsonReader.ConsumeStringAndValidate(ReadOnlySpan`1 data, Int32 idx)\r\n   at System.Text.Json.Utf8JsonReader.ConsumeString()\r\n   at System.Text.Json.Utf8JsonReader.ConsumeValue(Byte marker)\r\n   at System.Text.Json.Utf8JsonReader.ReadSingleSegment()\r\n   at System.Text.Json.Utf8JsonReader.Read()\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlySpan`1 utf8JsonSpan, JsonReaderOptions readerOptions, MetadataDb& database, StackRowStack& stack)\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlyMemory`1 utf8Json, JsonReaderOptions readerOptions, Byte[] extraRentedArrayPoolBytes, PooledByteBufferWriter extraPooledByteBufferWriter, Boolean allowDuplicateProperties)\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlyMemory`1 utf8Json, JsonDocumentOptions options)\r\n   at KhaozEngine.MapDoc.Assets.MapAssetManifestReader.Read(Byte[] bytes, String id) in /_/KhaozEngine.MapDoc/Assets/MapAssetManifestReader.cs:line 16"
+    },
+    {
+      "file": "runneradmin_runnervmfi6oq_2026-10-06_09_10_43_net10.0.trx",
+      "name": "KhaozEngine.Tests.MapDoc.NativeManifestAdapterTests.Adapter_RejectsStaleOrMissingMeshAndLodFiles",
+      "start": "2026-10-06T09:10:50.4665822+00:00",
+      "end": "2026-10-06T09:10:50.4665825+00:00",
+      "duration": "00:00:00.0758378",
+      "message": "Assert.Equal() Failure: Strings differ\r\n                                    \u2193 (pos 104)\r\nExpected: \u00b7\u00b7\u00b7\"01827\\\\other-root\\\\kit/meshes/prop-body.glb\"\r\nActual:   \u00b7\u00b7\u00b7\"01827\\\\other-root\\\\kit\\\\meshes\\\\prop-body.glb\"\r\n                                    \u2191 (pos 104)",
+      "stack": "   at KhaozEngine.Tests.MapDoc.NativeManifestAdapterTests.Adapter_RejectsStaleOrMissingMeshAndLodFiles() in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.MapEditor.Tests\\MapDoc\\NativeManifestAdapterTests.cs:line 69\r\n   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)\r\n   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)"
+    },
+    {
+      "file": "runneradmin_runnervmfi6oq_2026-10-06_09_10_43_net10.0.trx",
+      "name": "KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_ConversionChecksTheTiledTargetNamespaceForAMonolithicSource",
+      "start": "2026-10-06T09:10:57.9332532+00:00",
+      "end": "2026-10-06T09:10:57.9332535+00:00",
+      "duration": "00:00:00.0581818",
+      "message": "KhaozEngine.MapDoc.MapDocumentException : Invalid native manifest 'kit': 'U' is an invalid escapable character within a JSON string. The string should be correctly escaped. LineNumber: 5 | BytePositionInLine: 56.\r\n---- System.Text.Json.JsonReaderException : 'U' is an invalid escapable character within a JSON string. The string should be correctly escaped. LineNumber: 5 | BytePositionInLine: 56.",
+      "stack": "   at KhaozEngine.MapDoc.Assets.MapAssetManifestReader.Read(Byte[] bytes, String id) in /_/KhaozEngine.MapDoc/Assets/MapAssetManifestReader.cs:line 45\r\n   at KhaozEngine.MapDoc.Assets.MapAssetClosure.Load(IReadOnlyList`1 roots, IMapAssetSource source) in /_/KhaozEngine.MapDoc/Assets/MapAssetClosure.cs:line 74\r\n   at KhaozEngine.Tests.MapDoc.NativeLifecycleFixture..ctor(Boolean absoluteReferences, String meshRelativePath) in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.MapEditor.Tests\\MapDoc\\NativeLifecycleFixture.cs:line 59\r\n   at KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_ConversionChecksTheTiledTargetNamespaceForAMonolithicSource() in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.MapEditor.Tests\\MapDoc\\NativeStorageOwnershipTests.cs:line 19\r\n   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)\r\n   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)\r\n----- Inner Stack Trace -----\r\n   at System.Text.Json.ThrowHelper.ThrowJsonReaderException(Utf8JsonReader& json, ExceptionResource resource, Byte nextByte, ReadOnlySpan`1 bytes)\r\n   at System.Text.Json.Utf8JsonReader.ConsumeStringAndValidate(ReadOnlySpan`1 data, Int32 idx)\r\n   at System.Text.Json.Utf8JsonReader.ConsumeString()\r\n   at System.Text.Json.Utf8JsonReader.ConsumeValue(Byte marker)\r\n   at System.Text.Json.Utf8JsonReader.ReadSingleSegment()\r\n   at System.Text.Json.Utf8JsonReader.Read()\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlySpan`1 utf8JsonSpan, JsonReaderOptions readerOptions, MetadataDb& database, StackRowStack& stack)\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlyMemory`1 utf8Json, JsonReaderOptions readerOptions, Byte[] extraRentedArrayPoolBytes, PooledByteBufferWriter extraPooledByteBufferWriter, Boolean allowDuplicateProperties)\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlyMemory`1 utf8Json, JsonDocumentOptions options)\r\n   at KhaozEngine.MapDoc.Assets.MapAssetManifestReader.Read(Byte[] bytes, String id) in /_/KhaozEngine.MapDoc/Assets/MapAssetManifestReader.cs:line 16"
+    },
+    {
+      "file": "runneradmin_runnervmfi6oq_2026-10-06_09_10_43_net10.0.trx",
+      "name": "KhaozEngine.Tests.MapDoc.NativeLifecycleTests.NativeLifecycle_PartialNativeOpenRefusesWithoutReplacingSession",
+      "start": "2026-10-06T09:18:47.6246789+00:00",
+      "end": "2026-10-06T09:18:47.6246790+00:00",
+      "duration": "00:00:00.1221954",
+      "message": "KhaozEngine.MapDoc.MapDocumentException : Invalid native manifest 'kit': 'U' is an invalid escapable character within a JSON string. The string should be correctly escaped. LineNumber: 5 | BytePositionInLine: 56.\r\n---- System.Text.Json.JsonReaderException : 'U' is an invalid escapable character within a JSON string. The string should be correctly escaped. LineNumber: 5 | BytePositionInLine: 56.",
+      "stack": "   at KhaozEngine.MapDoc.Assets.MapAssetManifestReader.Read(Byte[] bytes, String id) in /_/KhaozEngine.MapDoc/Assets/MapAssetManifestReader.cs:line 45\r\n   at KhaozEngine.MapDoc.Assets.MapAssetClosure.Load(IReadOnlyList`1 roots, IMapAssetSource source) in /_/KhaozEngine.MapDoc/Assets/MapAssetClosure.cs:line 74\r\n   at KhaozEngine.Tests.MapDoc.NativeLifecycleFixture..ctor(Boolean absoluteReferences, String meshRelativePath) in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.MapEditor.Tests\\MapDoc\\NativeLifecycleFixture.cs:line 59\r\n   at KhaozEngine.Tests.MapDoc.NativeLifecycleTests.NativeLifecycle_PartialNativeOpenRefusesWithoutReplacingSession() in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.MapEditor.Tests\\MapDoc\\NativeLifecycleTests.cs:line 273\r\n   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)\r\n   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)\r\n----- Inner Stack Trace -----\r\n   at System.Text.Json.ThrowHelper.ThrowJsonReaderException(Utf8JsonReader& json, ExceptionResource resource, Byte nextByte, ReadOnlySpan`1 bytes)\r\n   at System.Text.Json.Utf8JsonReader.ConsumeStringAndValidate(ReadOnlySpan`1 data, Int32 idx)\r\n   at System.Text.Json.Utf8JsonReader.ConsumeString()\r\n   at System.Text.Json.Utf8JsonReader.ConsumeValue(Byte marker)\r\n   at System.Text.Json.Utf8JsonReader.ReadSingleSegment()\r\n   at System.Text.Json.Utf8JsonReader.Read()\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlySpan`1 utf8JsonSpan, JsonReaderOptions readerOptions, MetadataDb& database, StackRowStack& stack)\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlyMemory`1 utf8Json, JsonReaderOptions readerOptions, Byte[] extraRentedArrayPoolBytes, PooledByteBufferWriter extraPooledByteBufferWriter, Boolean allowDuplicateProperties)\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlyMemory`1 utf8Json, JsonDocumentOptions options)\r\n   at KhaozEngine.MapDoc.Assets.MapAssetManifestReader.Read(Byte[] bytes, String id) in /_/KhaozEngine.MapDoc/Assets/MapAssetManifestReader.cs:line 16"
+    },
+    {
+      "file": "runneradmin_runnervmfi6oq_2026-10-06_09_10_43_net10.0.trx",
+      "name": "KhaozEngine.Tests.MapDoc.NativeLifecycleTests.NativeLifecycle_TiledIdentityAndDecimalTransportSurviveConversionAndReopen",
+      "start": "2026-10-06T09:17:56.6904336+00:00",
+      "end": "2026-10-06T09:17:56.6904337+00:00",
+      "duration": "00:00:00.1204025",
+      "message": "KhaozEngine.MapDoc.MapDocumentException : Invalid native manifest 'kit': 'U' is an invalid escapable character within a JSON string. The string should be correctly escaped. LineNumber: 5 | BytePositionInLine: 56.\r\n---- System.Text.Json.JsonReaderException : 'U' is an invalid escapable character within a JSON string. The string should be correctly escaped. LineNumber: 5 | BytePositionInLine: 56.",
+      "stack": "   at KhaozEngine.MapDoc.Assets.MapAssetManifestReader.Read(Byte[] bytes, String id) in /_/KhaozEngine.MapDoc/Assets/MapAssetManifestReader.cs:line 45\r\n   at KhaozEngine.MapDoc.Assets.MapAssetClosure.Load(IReadOnlyList`1 roots, IMapAssetSource source) in /_/KhaozEngine.MapDoc/Assets/MapAssetClosure.cs:line 74\r\n   at KhaozEngine.Tests.MapDoc.NativeLifecycleFixture..ctor(Boolean absoluteReferences, String meshRelativePath) in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.MapEditor.Tests\\MapDoc\\NativeLifecycleFixture.cs:line 59\r\n   at KhaozEngine.Tests.MapDoc.NativeLifecycleTests.NativeLifecycle_TiledIdentityAndDecimalTransportSurviveConversionAndReopen() in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.MapEditor.Tests\\MapDoc\\NativeLifecycleTests.cs:line 154\r\n   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)\r\n   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)\r\n----- Inner Stack Trace -----\r\n   at System.Text.Json.ThrowHelper.ThrowJsonReaderException(Utf8JsonReader& json, ExceptionResource resource, Byte nextByte, ReadOnlySpan`1 bytes)\r\n   at System.Text.Json.Utf8JsonReader.ConsumeStringAndValidate(ReadOnlySpan`1 data, Int32 idx)\r\n   at System.Text.Json.Utf8JsonReader.ConsumeString()\r\n   at System.Text.Json.Utf8JsonReader.ConsumeValue(Byte marker)\r\n   at System.Text.Json.Utf8JsonReader.ReadSingleSegment()\r\n   at System.Text.Json.Utf8JsonReader.Read()\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlySpan`1 utf8JsonSpan, JsonReaderOptions readerOptions, MetadataDb& database, StackRowStack& stack)\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlyMemory`1 utf8Json, JsonReaderOptions readerOptions, Byte[] extraRentedArrayPoolBytes, PooledByteBufferWriter extraPooledByteBufferWriter, Boolean allowDuplicateProperties)\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlyMemory`1 utf8Json, JsonDocumentOptions options)\r\n   at KhaozEngine.MapDoc.Assets.MapAssetManifestReader.Read(Byte[] bytes, String id) in /_/KhaozEngine.MapDoc/Assets/MapAssetManifestReader.cs:line 16"
+    },
+    {
+      "file": "runneradmin_runnervmfi6oq_2026-10-06_09_10_43_net10.0.trx",
+      "name": "KhaozEngine.Tests.MapDoc.NativeManifestAdapterTests.Adapter_ResolvesResourceIdsToVerifiedPathsNotAssetIds",
+      "start": "2026-10-06T09:10:50.5342951+00:00",
+      "end": "2026-10-06T09:10:50.5342953+00:00",
+      "duration": "00:00:00.0622756",
+      "message": "Assert.Equal() Failure: Strings differ\r\n                                   \u2193 (pos 93)\r\nExpected: \u00b7\u00b7\u00b7\"b1f662439cbd21eb\\\\kit/meshes/prop-body.glb\"\r\nActual:   \u00b7\u00b7\u00b7\"b1f662439cbd21eb\\\\kit\\\\meshes\\\\prop-body.glb\"\r\n                                   \u2191 (pos 93)",
+      "stack": "   at KhaozEngine.Tests.MapDoc.NativeManifestAdapterTests.Adapter_ResolvesResourceIdsToVerifiedPathsNotAssetIds() in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.MapEditor.Tests\\MapDoc\\NativeManifestAdapterTests.cs:line 38\r\n   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)\r\n   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)"
+    },
+    {
+      "file": "runneradmin_runnervmfi6oq_2026-10-06_09_10_43_net10.0.trx",
+      "name": "KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_TiledOpenRefusesResourceInsideItsNamespaceBeforePublishing(mesh: \"tiled-world/tiles/rock.glb\", absolute: True)",
+      "start": "2026-10-06T09:10:57.4737497+00:00",
+      "end": "2026-10-06T09:10:57.4737499+00:00",
+      "duration": "00:00:00.0888877",
+      "message": "KhaozEngine.MapDoc.MapDocumentException : Invalid native manifest 'kit': 'U' is an invalid escapable character within a JSON string. The string should be correctly escaped. LineNumber: 5 | BytePositionInLine: 56.\r\n---- System.Text.Json.JsonReaderException : 'U' is an invalid escapable character within a JSON string. The string should be correctly escaped. LineNumber: 5 | BytePositionInLine: 56.",
+      "stack": "   at KhaozEngine.MapDoc.Assets.MapAssetManifestReader.Read(Byte[] bytes, String id) in /_/KhaozEngine.MapDoc/Assets/MapAssetManifestReader.cs:line 45\r\n   at KhaozEngine.MapDoc.Assets.MapAssetClosure.Load(IReadOnlyList`1 roots, IMapAssetSource source) in /_/KhaozEngine.MapDoc/Assets/MapAssetClosure.cs:line 74\r\n   at KhaozEngine.Tests.MapDoc.NativeLifecycleFixture..ctor(Boolean absoluteReferences, String meshRelativePath) in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.MapEditor.Tests\\MapDoc\\NativeLifecycleFixture.cs:line 59\r\n   at KhaozEngine.Tests.MapDoc.NativeStorageOwnershipTests.NativeStorage_TiledOpenRefusesResourceInsideItsNamespaceBeforePublishing(String mesh, Boolean absolute) in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.MapEditor.Tests\\MapDoc\\NativeStorageOwnershipTests.cs:line 81\r\n   at InvokeStub_NativeStorageOwnershipTests.NativeStorage_TiledOpenRefusesResourceInsideItsNamespaceBeforePublishing(Object, Span`1)\r\n   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)\r\n----- Inner Stack Trace -----\r\n   at System.Text.Json.ThrowHelper.ThrowJsonReaderException(Utf8JsonReader& json, ExceptionResource resource, Byte nextByte, ReadOnlySpan`1 bytes)\r\n   at System.Text.Json.Utf8JsonReader.ConsumeStringAndValidate(ReadOnlySpan`1 data, Int32 idx)\r\n   at System.Text.Json.Utf8JsonReader.ConsumeString()\r\n   at System.Text.Json.Utf8JsonReader.ConsumeValue(Byte marker)\r\n   at System.Text.Json.Utf8JsonReader.ReadSingleSegment()\r\n   at System.Text.Json.Utf8JsonReader.Read()\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlySpan`1 utf8JsonSpan, JsonReaderOptions readerOptions, MetadataDb& database, StackRowStack& stack)\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlyMemory`1 utf8Json, JsonReaderOptions readerOptions, Byte[] extraRentedArrayPoolBytes, PooledByteBufferWriter extraPooledByteBufferWriter, Boolean allowDuplicateProperties)\r\n   at System.Text.Json.JsonDocument.Parse(ReadOnlyMemory`1 utf8Json, JsonDocumentOptions options)\r\n   at KhaozEngine.MapDoc.Assets.MapAssetManifestReader.Read(Byte[] bytes, String id) in /_/KhaozEngine.MapDoc/Assets/MapAssetManifestReader.cs:line 16"
+    },
+    {
+      "file": "runneradmin_runnervmfi6oq_2026-10-06_09_11_02_net10.0[1].trx",
+      "name": "KhaozEngine.Tests.Gpu.PointShadowFilterGpuTests.TheSoftEdgeCrossesACubeFaceBoundaryWithoutAStep",
+      "start": "2026-10-06T09:29:19.8096733+00:00",
+      "end": "2026-10-06T09:29:19.8096736+00:00",
+      "duration": "00:00:00.9370004",
+      "message": "the shadow's reach into the window sits -0.0087 m off its own trend across the three stations either side of the cube face boundary at x = 3.333, against 0.0085 m anywhere else along the same edge. That is a tap clamped inside its own face cell instead of crossing to the neighbouring face",
+      "stack": "   at KhaozEngine.Tests.Gpu.PointShadowFilterGpuTests.TheSoftEdgeCrossesACubeFaceBoundaryWithoutAStep() in D:\\a\\KhaozEngine\\KhaozEngine\\KhaozEngine.Render.Tests\\Gpu\\PointShadowFilterGpuTests.cs:line 282\r\n   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target, Void** arguments, ObjectHandleOnStack sig, BOOL isConstructor, ObjectHandleOnStack result)\r\n   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)"
+    }
+  ],
+  "groups": {
+    "A": {
+      "count": 8,
+      "issue": 1316,
+      "approval": "Coordinator approved test-only preparation, verification window pending",
+      "branch": "fix/wa-r1-windows-fixtures",
+      "base": "ca13d62d7c9f5bbdc5e6adbfffdd24d5c9148efc"
+    },
+    "B": {
+      "count": 1,
+      "issue": 1317,
+      "status": "lead, first causal failure may be masked by cleanup await, not classified"
+    },
+    "C": {
+      "count": 1,
+      "issues": [
+        1157,
+        1190
+      ],
+      "status": "matches exact prior numerical evidence, no tolerance change"
+    }
+  },
+  "gate": "Catalog integration CLOSED regardless of remaining Vulkan outcome",
+  "artifacts": {
+    "pool-watch-direct3d11-native.zip": {
+      "id": 11403860313,
+      "path": "/tmp/grimhollow-orch/catalog-conditional-freeze/pool-watch-direct3d11-native.zip",
+      "sha256": "5bfef3863ff91f40bf50000a2a60764ef06f24b2e6d6907ede89b7aae3f6a7b2"
+    },
+    "vulkan-validation-sync.zip": {
+      "id": 11401815264,
+      "path": "/tmp/grimhollow-orch/catalog-conditional-freeze/vulkan-validation-sync.zip",
+      "sha256": "e77f48e723e97f10f14d4076a809f2d2ecb977a79786332f2eed623a4cbfd8c2"
+    }
+  },
+  "job_log": {
+    "path": "/tmp/grimhollow-orch/catalog-conditional-freeze/gpu-d3d11-job.log",
+    "sha256": "0ba704d8dccb017e3d82bdf2bfe410a51558a58b2232a7f500309c9bd201a7df"
+  },
+  "sync_validation_producer_verified": true
+}

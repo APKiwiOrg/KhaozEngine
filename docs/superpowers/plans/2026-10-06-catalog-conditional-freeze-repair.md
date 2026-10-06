@@ -980,3 +980,25 @@ No TRX artifact was published, so the archived job log and all-executed gate are
 
 GPU run37440389468 is still in progress at the same head. Do not integrate before its result.
 The proof JSON now records hosted normal results and the SQL Server job log hash.
+
+
+### Windows hosted gate failed, integration closed
+
+GPU run 37440389468 at 50ff5410acc19bfaa90a7e4c3e1e83aea483dd22 has a terminal D3D11
+failure in job 112192477528, Run test suite exit 1, completed 09:54:37Z. The 30 retained TRX
+files show 26,906 passed and 10 failed. The job log additionally records 25 preflight passes.
+This is an assertion/watchdog failure set, not an infrastructure job timeout. Metal and Vulkan
+sync validation passed. Main Vulkan remains unresolved at the last requested status read.
+
+Group A is eight native fixture JSON/path failures, tracked in #1316. Coordinator approved a
+separate test-only preparation branch from current main, fix/wa-r1-windows-fixtures. No local
+verification window or integration permission is granted yet, and Windows proof remains required.
+Group B is the tracked-persistence watchdog, filed as confidence/lead #1317 after duplicate search.
+Its finally awaits a producer fault and may hide an earlier body failure, so cause stays unclassified.
+Group C matches the exact -0.0087 m / 0.0085 m evidence in open #1157 and related #1190. No duplicate
+issue, tolerance widening or rerun was started. #1309's queued resize test is not in this failure set.
+
+Proof JSON records every failed test, stack, run/head/job and downloaded artifact hash. The sync
+validation artifact contains the armed VulkanValidationLogHost producer marker. Raw logs and
+TRX archive remain retained locally. Catalog integration is CLOSED even if Vulkan later passes.
+No tag, main/shared-feed mutation, stress, cancellation or new monitor is authorized by this finding.

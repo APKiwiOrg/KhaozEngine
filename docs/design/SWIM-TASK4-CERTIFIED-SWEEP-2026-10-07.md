@@ -67,6 +67,56 @@ a missing-capability RED:
 
 ## Required backend proof before implementation acceptance
 
+World authoring reviewed immutable `17c191c2c` and found no native ownership conflict. That was a
+semantic ownership review, not numerical verification, exact API approval or G1b acceptance.
+Its boundary conditions are part of this completion:
+
+- Sweep and active-contact queries use the exact captured restricted PhysicsView, exclusions,
+  mobility/filter and physical read gate. Check lease currentness before and after. Configured callers
+  cannot escape to the unrestricted source world or fall back to the legacy boolean.
+- Clear covers every relevant supported leaf over the complete displacement. Missing tasks,
+  unsupported geometry, incomplete brackets or one unproved child refuse the whole result.
+- Endpoint inclusion and start overlap are explicit result invariants. Zero or tangent results do
+  not establish a valid placement by themselves.
+- Numerical, work and capability policy belongs in query/navigation identity. Native solids must prove
+  that policy at G1b. Existing contact caps and R2's 65536-face patch limit are not a sweep certificate.
+
+### Result invariants to pin in the exact API
+
+The proposed distances are metres along the supplied displacement, never coordinates or timing in
+seconds. A Hit's clear-through distance is a conservative lower bound before the possible impact,
+not a safe inclusive placement at that bound. The impact distance is the upper end of the certified
+earliest bracket and is a query pose, not a position the caller may commit. At lower distance zero,
+the certified forward-clear interval is empty. Initial overlap or closed tangency must be resolved
+using complete current contacts, not the first sweep normal or a guessed safe t=0.
+
+A Clear result includes both request endpoints and every point between them, within its explicitly
+declared numerical domain. A zero-displacement Clear result therefore requires a complete certified
+stationary query. A zero-displacement Hit can describe touch/overlap but cannot authorize movement or
+placement. The result defaults to Unresolved, and an unresolved result exposes no usable prefix.
+Closed endpoint/tangency classification must account for the backend tester differences below.
+
+The exact constructor/factory validation, distance rounding and combined sweep/contact error accounting
+are still being pinned. No caller should infer a stronger placement or native coverage guarantee from
+these proposed result fields. Final invariants and numerical domain return to world authoring if they
+change a shared boundary before implementation.
+
+### Distance-tester audit checkpoint
+
+Pinned [CapsuleBoxDistanceTester](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/CollisionDetection/SweepTasks/CapsuleBoxDistanceTester.cs)
+uses a strict negative-distance intersection test, while
+[CapsulePairDistanceTester](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/CollisionDetection/SweepTasks/CapsulePairDistanceTester.cs)
+includes zero distance. Their boolean flags therefore do not share closed-tangency semantics. The
+capsule-pair normal also divides by segment distance, so coincident-axis results require explicit
+handling rather than trusting a finite normal at an initial hit.
+
+Pinned [GJKDistanceTester](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/CollisionDetection/SweepTasks/GJKDistanceTester.cs)
+terminates on nonprogress or a progress tolerance scaled by simplex size. It then adjusts the returned
+distance by a containment margin that can include the shapes' real support margins. Neither that
+margin nor the existing point-contact error estimate is automatically a bound on sweep error.
+The supported geometry/scale and conservative numerical certificate still need to be derived and
+tested. No guessed tolerance or assumed all-shape guarantee has been selected from this audit.
+
 1. Enumerate the complete candidate/convex-leaf set intersecting the conservative swept bounds under
    the physical gate, with the same view/mobility filters and explicit work limits. Unknown shape/task,
    unsupported scale or filter, over-capacity or uncertain geometry must refuse the whole query.

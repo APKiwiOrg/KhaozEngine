@@ -14,7 +14,7 @@
 
 - Execution is blocked until root independently verifies this plan and records OWNER plan approval. No production implementation or tag is authorized by this planning commit.
 - Work only in `/Users/antonio/KhaozEngine/.worktrees/wa-catalog-freeze` on `fix/wa-catalog-freeze`, with explicit per-task base SHA and owned paths. Workers do not push, merge, tag, clean up or spawn helpers.
-- Source baseline is `ca13d62d7c9f5bbdc5e6adbfffdd24d5c9148efc`. Planning started at `cf0ed48a2fed34af4d06f016177d0554d8ade9c1`, whose four later commits change only `docs/INDEX.md` and the approved design.
+- Source baseline is `ca13d62d7c9f5bbdc5e6adbfffdd24d5c9148efc`. Planning started at `cf0ed48a2fed34af4d06f016177d0554d8ade9c1`. All changes after the source baseline through that planning start are documentation only.
 - Task 0 uses existing APIs only and owns the single red-first baseline reproduction. An intermediate red commit is allowed only with its named failures, unchanged source proof and owned-red ledger. No shipping or integration until every regression is green.
 - The companion extends `IContentAuthoringStore` and declares exactly `Task<ContentDraft> FreezeDraftForBaseAsync(int expectedBaseVersion, CancellationToken cancellationToken = default)` and `Task<bool> ReleaseDraftFreezeForBaseAsync(int frozenForBaseVersion, CancellationToken cancellationToken = default)`.
 - New row freeze runs no stale sweep. Active comparison, draft/row-work check, representability, marker write and returned complete snapshot share one gate or transaction, in that order.
@@ -253,7 +253,8 @@ Assert.Equal(2, (await store.GetOpenDraftAsync())!.FrozenForBaseVersion);
 await store.ClearDraftFreezeAsync();
 Assert.Null((await store.GetOpenDraftAsync())!.FrozenForBaseVersion);
 
-// Empty store first freeze supports base zero. No-draft test uses current base.
+// Catalog with no published version, but with an applied nonempty row draft, supports base zero.
+// Create emptySafe over that staged draft. The separate noDraftSafe has no open draft and uses current base.
 Assert.Equal(0, (await emptySafe.FreezeDraftForBaseAsync(0)).FrozenForBaseVersion);
 Assert.False(await noDraftSafe.ReleaseDraftFreezeForBaseAsync(5));
 Assert.Equal("no-open-draft", (await Assert.ThrowsAsync<ContentAuthoringException>(
@@ -584,7 +585,16 @@ bash /tmp/grimhollow-orch/slot-run.sh "catalog-freeze:private-pack" /tmp/grimhol
 
 Expected exit 0. Inspect the produced nupkg nuspec repository commit and version for all three changed store packages, requiring `catalog_verified_sha` and the selected minor. This branch feed is intentionally unmerged, so `check-local-feed --strict` would report UNSAFE before origin/main contains it and is not the right private-proof assertion.
 
-Root alone may push the fully green reviewed branch for normal CI. Record the exact run head SHA and all job conclusions. Require all triggered legs green, including the Metal SQLite leg and `catalog-sqlserver`, with new SQL Server facts actually executed, not skipped. A workflow rerun without changed code or an unrelated green SHA is not evidence. No stress workflow is authorized.
+Root pushes the fully green reviewed branch, then starts one normal run of each existing workflow on that verified branch. A feature-branch push alone triggers neither workflow: both push triggers target main. Use the GitHub connector if it exposes workflow dispatch, otherwise the CLI equivalents below. This is the initial normal CI proof for changed code, not an unchanged rerun or stress request.
+
+```bash
+git push origin fix/wa-catalog-freeze
+test "$(git ls-remote origin refs/heads/fix/wa-catalog-freeze | cut -f1)" = "$catalog_verified_sha"
+gh workflow run ci.yml --repo APKiwiOrg/KhaozEngine --ref fix/wa-catalog-freeze
+gh workflow run cross-platform-gpu.yml --repo APKiwiOrg/KhaozEngine --ref fix/wa-catalog-freeze -f bake=false -f legs=all -f tier=push
+```
+
+Record both returned run IDs, verify each run's head SHA equals `catalog_verified_sha`, and hold the branch at that commit while these gates run. The CI dispatch includes the SQL Server job and full normal suite. Cross-platform uses the existing non-bake validation path with its default empty test filter, including the full Metal/headless suite. Neither dispatch publishes packages or creates a tag. Require all jobs green, with new SQL Server facts actually executed, not skipped. A different head or skipped required job is not proof. No automatic rerun or stress workflow is authorized. Use the available completion notification mechanism instead of repeated polling.
 
 - [ ] **Step 7: Root integrates, pushes main and packs that same SHA behind the guards.**
 
@@ -624,3 +634,10 @@ Status on 2026-10-06: **full implementation plan prepared for independent root v
 | Residue | #1312 text-route boot liveness, #1311 row-only edit loss | Deferred, separate scope |
 
 Self-review performed by this planner against the full approved spec: sections 4 to 7 map to Tasks 1 to 3, compatibility/rollout/version to Tasks 2 to 4, H1 to H6 and T1 to T6 to the named tests, both review-2 corrections to RF1/RF4 and the separate residue issues. No helper reviewer is spawned. Runtime red proof, full-plan approval, pivot coordination, remote SQL Server/Metal evidence, final version recheck and integration remain explicit gates. Unresolved spec conflicts must be reported to root rather than silently changed.
+
+
+Controller self-review, 2026-10-06: verified the complete plan against the approved design and actual
+source, task extraction for Task 0, baseline equality and the planner's guard exits. Corrected the
+pre-merge CI trigger gap with one explicit dispatch per normal workflow on the verified branch,
+and clarified the nonempty draft needed for the base-zero fact. All five Review Focus cases have
+owned tests. No executable source changed and owner plan approval remains pending.

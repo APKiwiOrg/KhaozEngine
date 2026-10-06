@@ -400,7 +400,8 @@ UpperIsFreeSurface identifies a surface belonging to this interval. These values
 legacy medium-provider overloads or supply a native water sampler.
 
 `MovementQueryScope` bounds the query in the physics frame and carries its support rise/drop
-envelope, identity and selected space. `MovementScopeWitness.TryCreate` requires a matching identity
+envelope, identity, required WorldId and optional current-space hint. The producer binds WorldId to
+its actual served world. `MovementScopeWitness.TryCreate` requires a matching identity
 and complete known-empty classification, including the vacuously complete all-nonempty case.
 It validates the 256-ID, 1024-byte-per-ID and 65536-byte aggregate UTF-8 limits before copying and
 sorting, rejects malformed UTF-16 and duplicate IDs, and returns no witness on refusal. The producer
@@ -431,6 +432,15 @@ validates the existing 512 m planar-magnitude and 640 m vertical local envelopes
 entire original framed state on refusal. A changed frame or epoch clears the carried selection for
 later canonical reconstruction. An unchanged valid frame preserves it. No membership is established
 by this pure helper.
+
+Cold restore, correction and handoff acquire a null-hint certificate, then call
+`MovementQueryLease.RebuildSelection`. A known-hint certificate cannot bootstrap this path, even
+when the input selection is null. Reconstruction ignores discarded selection and resets local
+readiness before its semantic preconditions or producer call. Only validated Known/current results
+enable selected-space sampling, support or coverage queries. Every refusal or exception leaves
+readiness cleared and the out selection empty. The same null-hint witness stays unchanged after
+success, while subsequent requests carry the returned canonical key. This guard does not cache
+membership or replace producer validation.
 
 `MovementQueryLease.EnumerateSupport` and `TraceWater` use cleared private scratch and validate the
 complete producer result before publishing caller buffers. Refusal or a provider exception leaves

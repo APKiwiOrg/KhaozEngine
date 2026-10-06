@@ -11,6 +11,7 @@ public sealed class MovementEnvironmentContext
     readonly IPhysicsWorld _source;
     readonly IMovementEnvironmentProvider _provider;
     readonly MovementQueryIdentity _identity;
+    readonly string _worldId;
     int _inUse;
 
     public MovementEnvironmentContext(IPhysicsWorldQueryView physics, IMovementEnvironmentProvider provider,
@@ -23,6 +24,8 @@ public sealed class MovementEnvironmentContext
         _source = physics.SourceWorld ?? throw new ArgumentException("A query view must name its source.", nameof(physics));
         _provider = provider;
         _identity = identity;
+        _worldId = provider.WorldId;
+        MovementEnvironmentValidation.RequireName(_worldId, nameof(provider));
     }
 
     /// <summary>Enter outside other physics leases. Success retains both gates until the returned lease is disposed.</summary>
@@ -30,6 +33,8 @@ public sealed class MovementEnvironmentContext
     {
         lease = null;
         if (!scope.IsValid || scope.Identity != _identity ||
+            !string.Equals(scope.WorldId, _worldId, StringComparison.Ordinal) ||
+            !string.Equals(_provider.WorldId, _worldId, StringComparison.Ordinal) ||
             _physics is not IPhysicsQueryLeaseSource leaseSource || _physics is not IPhysicsCapsuleContacts)
             return MovementAvailability.Invalid;
         // Refuse nested or concurrent reuse before preparation could perform work inside an existing interval.
@@ -42,7 +47,8 @@ public sealed class MovementEnvironmentContext
             MovementPreparationResult prepared = _provider.Prepare(scope);
             if (!MovementEnvironmentValidation.Availability(prepared.Availability)) return MovementAvailability.Invalid;
             if (prepared.Availability != MovementAvailability.Known) return prepared.Availability;
-            if (prepared.Identity != _identity) return MovementAvailability.Invalid;
+            if (prepared.Identity != _identity || !string.Equals(_provider.WorldId, _worldId, StringComparison.Ordinal))
+                return MovementAvailability.Invalid;
 
             physicsLease = leaseSource.AcquireQueryReadLease();
             if (physicsLease is null) return MovementAvailability.Invalid;
@@ -62,6 +68,7 @@ public sealed class MovementEnvironmentContext
             MovementScopeWitness witness = pin.Witness;
             long environmentGeneration = pin.EnvironmentGeneration;
             if (witness is null || !ReferenceEquals(pin.PhysicsView, _physics) ||
+                !string.Equals(_provider.WorldId, _worldId, StringComparison.Ordinal) ||
                 !ReferenceEquals(pin.PhysicsView.SourceWorld, _source) ||
                 pin.GeometryGeneration != physicsLease.GeometryGeneration || environmentGeneration < 0 ||
                 pin.Frame != scope.Frame || witness.Identity != _identity || witness.Scope.Identity != _identity ||

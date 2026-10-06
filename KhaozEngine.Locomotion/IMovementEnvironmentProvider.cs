@@ -6,6 +6,8 @@ namespace KhaozEngine.Locomotion;
 /// <summary>Preparation is ungated. Pinning uses already-prepared resources under the physical read gate.</summary>
 public interface IMovementEnvironmentProvider
 {
+    /// <summary>Actual served world identity, bound by the producer factory rather than the request.</summary>
+    string WorldId { get; }
     MovementPreparationResult Prepare(in MovementQueryScope scope);
     MovementAvailability TryPinPrepared(in MovementQueryScope scope, IPhysicsQueryLease physicsLease,
         out IMovementEnvironmentPin? pin);
@@ -23,6 +25,7 @@ public interface IMovementEnvironmentPin : IDisposable
     MovementSupportSet EnumerateSupport(in MovementSupportRequest request, Span<MovementSupportCandidate> candidates);
     MovementCoverageResult TraceWater(in MovementMediumSweepQuery query,
         Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts);
+    MovementAvailability RebuildSelection(in FramedMovementState state, out MovementSelection selection);
     void AssertCurrent();
 }
 

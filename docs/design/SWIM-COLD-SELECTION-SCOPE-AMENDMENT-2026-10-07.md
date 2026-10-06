@@ -104,3 +104,18 @@ proves that a selected-space query cannot reach the producer or publish data thr
 The independent pure frame-rebinding helper will translate recorded physics origins before querying,
 preserve the original framed state on refusal, and validate the existing 512 m planar / 640 m vertical
 local envelopes without changing import accuracy. This does not establish canonical membership.
+
+## Focused implementation evidence
+
+The compile-enabled cold RED exited 1 with 19 missing constructor/method failures and one existing
+known-hint A versus known-hint B rejection control passing, 20 total with no skips. The corresponding
+direct-call GREEN exited 0 with all 20 cases passing and no skips, in
+`/tmp/swim-cold-selection-green.log`. Each run used its explicit shared-slot grant and released
+compute immediately. No extra fixture or retry ran in those windows.
+
+The synthetic cases cover null-hint acquisition, unchanged witness after reconstruction, successful
+body/support/coverage queries under it, readiness reset through refusal/throw and recovery, blocked
+access through all three entrypoints, known-hint reconstruction rejection, world/hint/identity/frame
+checks, missing/capacity refusal, stacked membership inputs and backing-ID repacking invariance.
+The separately requested prior-environment regression window is pending. Support selection and
+actual volumetric/native producer proof remain outstanding. Task 3 is not complete.

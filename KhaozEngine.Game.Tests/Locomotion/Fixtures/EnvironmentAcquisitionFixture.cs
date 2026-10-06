@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Physics;
@@ -35,12 +36,20 @@ public sealed class EnvironmentAcquisitionFixture : IMovementEnvironmentProvider
     public int SupportCalls;
     public int CoverageCalls;
     public MovementQueryIdentity Identity => _identity;
+    public string WorldId => "world";
+    public MovementAvailability PrepareAvailability = MovementAvailability.Known;
+    public MovementQueryScope? WitnessScope;
+    public IReadOnlyList<string> Resources = new[] { "directory" };
+    public MovementSpaceKey? SampleSpaceObserved;
+    public delegate MovementAvailability RebuildHandler(in FramedMovementState state, out MovementSelection selection);
+    public RebuildHandler? OnRebuild;
+    public int RebuildCalls;
 
-    public EnvironmentAcquisitionFixture(IPhysicsWorldQueryView view)
+    public EnvironmentAcquisitionFixture(IPhysicsWorldQueryView view, MovementQueryScope? scope = null)
     {
         _view = view;
         var frame = new MovementFrameDescriptor(WorldFrame.Origin, view.Origin, 1ul);
-        _scope = new MovementQueryScope(new Vector3(-4f), new Vector3(4f), 0.5f, 2f,
+        _scope = scope ?? new MovementQueryScope(new Vector3(-4f), new Vector3(4f), 0.5f, 2f,
             new MovementSpaceKey("world", "room"), _identity, frame);
         _context = new MovementEnvironmentContext(view, this, _identity);
     }
@@ -55,7 +64,7 @@ public sealed class EnvironmentAcquisitionFixture : IMovementEnvironmentProvider
     {
         Prepared = true;
         OnPrepare?.Invoke();
-        return new MovementPreparationResult(MovementAvailability.Known,
+        return new MovementPreparationResult(PrepareAvailability,
             Fault == "preparation-identity" ? OtherIdentity : _identity);
     }
 
@@ -83,12 +92,13 @@ public sealed class EnvironmentAcquisitionFixture : IMovementEnvironmentProvider
                 owner.WitnessReads++;
                 if (owner.Fault == "throw-validation") throw new FixtureException();
                 MovementQueryIdentity identity = owner.Fault == "witness-identity" ? OtherIdentity : owner._identity;
-                var scope = new MovementQueryScope(owner._scope.Min,
+                var scope = owner.WitnessScope ?? (owner.Fault is "scope" or "support-envelope" or "witness-identity"
+                    ? new MovementQueryScope(owner._scope.Min,
                     owner.Fault == "scope" ? owner._scope.Max - Vector3.UnitX : owner._scope.Max,
                     owner.Fault == "support-envelope" ? 0f : owner._scope.MaxRise, owner._scope.MaxDrop,
-                    owner._scope.CurrentSpace, identity, owner._scope.Frame);
+                    owner._scope.WorldId, owner._scope.CurrentSpace, identity, owner._scope.Frame) : owner._scope);
                 Assert.Equal(MovementAvailability.Known,
-                    MovementScopeWitness.TryCreate(scope, identity, ["directory"], true, out var witness));
+                    MovementScopeWitness.TryCreate(scope, identity, owner.Resources, true, out var witness));
                 return witness!;
             }
         }
@@ -101,6 +111,7 @@ public sealed class EnvironmentAcquisitionFixture : IMovementEnvironmentProvider
         public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body)
         {
             owner.SampleCalls++;
+            owner.SampleSpaceObserved = body.CurrentSpace;
             owner.OnSample?.Invoke();
             return owner.Point;
         }
@@ -116,6 +127,12 @@ public sealed class EnvironmentAcquisitionFixture : IMovementEnvironmentProvider
         {
             owner.CoverageCalls++;
             return owner.OnCoverage!(query, spans, contacts);
+        }
+
+        public MovementAvailability RebuildSelection(in FramedMovementState state, out MovementSelection selection)
+        {
+            owner.RebuildCalls++;
+            return owner.OnRebuild!(state, out selection);
         }
 
         public void Dispose()

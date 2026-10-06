@@ -301,6 +301,13 @@ Tests: `CharacterMovementNonSwimmerTests.cs`, `ExplicitSwimCollisionTests.cs` an
 - [ ] Assert runtime and profile probe use the same resolver/outcomes, then commit
       `feat(locomotion): unify explicit swim collision and deep-water boundaries`.
 
+The #426 coordination observation is within this existing explicit-solver boundary: released
+v20.25.0 `CharacterMovement.Step` enters `SwimStep` without passing physics and returns before dry
+collision. A post-bake wall therefore cannot characterize a failed swimming stop on that baseline.
+Include a real-backend explicit swim traversal fixture with a newly added wall and the exact live
+movement view/profile. Preserve the deliberately unconfigured legacy path. This planned coverage
+does not resolve duck population/stop-spacing policy or claim shipped/native adoption.
+
 ## Task 5: Surface jump and water-origin arc
 
 **Files:** Add carried enum to MoveState and new explicit fluid/air step concern under Locomotion.

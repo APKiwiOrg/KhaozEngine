@@ -9,7 +9,8 @@ public sealed partial class MovementQueryLease
     public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body)
     {
         AssertUsable();
-        if (!body.IsValid || !string.Equals(body.CurrentSpace.WorldId, Witness.Scope.CurrentSpace.WorldId, StringComparison.Ordinal))
+        if (!_selectionReady) return NoWaterFact(MovementAvailability.Unresolved);
+        if (!body.IsValid || !SameWorld(body.CurrentSpace))
             return NoWaterFact(MovementAvailability.Invalid);
         Vector3 extent = new(body.Radius, body.HalfHeight, body.Radius);
         if (!Witness.Scope.ContainsBounds(body.Centre - extent, body.Centre + extent))
@@ -21,7 +22,7 @@ public sealed partial class MovementQueryLease
             AssertCurrent();
             if (!point.IsValid) return NoWaterFact(MovementAvailability.Invalid);
             if (point.Availability != MovementAvailability.Known) return NoWaterFact(point.Availability);
-            return string.Equals(point.Space.WorldId, Witness.Scope.CurrentSpace.WorldId, StringComparison.Ordinal)
+            return SameWorld(point.Space)
                 ? point : NoWaterFact(MovementAvailability.Invalid);
         }
         catch (ObjectDisposedException) when (_disposed) { throw; }

@@ -16,6 +16,7 @@ public sealed partial class MovementQueryLease
     public MovementSupportSet EnumerateSupport(in MovementSupportRequest request, Span<MovementSupportCandidate> candidates)
     {
         AssertUsable();
+        if (!_selectionReady) return NoSupport(MovementAvailability.Unresolved);
         if (!request.IsValid || !SameWorld(request.Body.CurrentSpace)) return NoSupport(MovementAvailability.Invalid);
         Vector3 extent = BodyExtent(request.Body);
         if (request.MaxRise > Witness.Scope.MaxRise || request.MaxDrop > Witness.Scope.MaxDrop ||
@@ -59,6 +60,7 @@ public sealed partial class MovementQueryLease
         Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
     {
         AssertUsable();
+        if (!_selectionReady) return NoCoverage(MovementAvailability.Unresolved);
         if (!query.IsValid || !SameWorld(query.Body.CurrentSpace)) return NoCoverage(MovementAvailability.Invalid);
         Vector3 end = query.Body.Centre + query.Delta;
         Vector3 extent = BodyExtent(query.Body);
@@ -116,7 +118,7 @@ public sealed partial class MovementQueryLease
     }
 
     bool SameWorld(MovementSpaceKey space) =>
-        string.Equals(space.WorldId, Witness.Scope.CurrentSpace.WorldId, StringComparison.Ordinal);
+        string.Equals(space.WorldId, Witness.Scope.WorldId, StringComparison.Ordinal);
 
     bool ResultIdentityMismatch(MovementQueryIdentity identity, MovementAvailability availability) =>
         availability == MovementAvailability.Known ? identity != Identity : identity.IsValid && identity != Identity;

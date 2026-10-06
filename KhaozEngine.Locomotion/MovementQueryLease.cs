@@ -40,6 +40,7 @@ public sealed partial class MovementQueryLease : IDisposable
     readonly Action _releaseContext;
     readonly int _thread = Environment.CurrentManagedThreadId;
     bool _disposed;
+    bool _selectionReady;
 
     public MovementQueryLeaseId Id { get; }
     public MovementScopeWitness Witness { get; }
@@ -56,6 +57,7 @@ public sealed partial class MovementQueryLease : IDisposable
         Witness = witness;
         Frame = frame;
         _releaseContext = releaseContext;
+        _selectionReady = witness.Scope.CurrentSpace.HasValue;
         Id = new MovementQueryLeaseId(physics.SourceWorld, physics.GeometryGeneration, environmentGeneration, frame.Epoch);
     }
 

@@ -8588,6 +8588,11 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   Contact normals point out of the source body. Body/child/feature identifiers are source-local.
   Bepu preserves child constraints before final manifold reduction and refuses unsupported layer masks.
   Its [backend limits](../KhaozEngine.Physics.Bepu/README.md) can refuse otherwise valid mesh inputs.
+- Optional `IPhysicsCapsuleSweep.SweepCapsuleCertified(capsule, pose, displacement, filter)` returns
+  a validated `CapsuleSweepResult` value. The seam currently has no Bepu implementation. Default is
+  `Unresolved` without a usable prefix. `IsComplete` reports structural Clear/Hit status, not proof of
+  the backend certificate. Validate the whole request extent, error budget, scope and read lifetime.
+  Closed endpoints and stationary requests are included. Hit bounds do not authorize placement.
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
   `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
   `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,

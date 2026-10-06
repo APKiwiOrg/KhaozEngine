@@ -1,7 +1,8 @@
 # Task 4 certified capsule sweep prerequisite
 
 Status: source-audited design completion for the existing approved G1a collision prerequisite.
-No implementation or runtime repro is claimed. This does not open native G1b or change legacy
+The value/interface seam is implemented with eight passing contract facts. No certified backend
+implementation is claimed. This does not open native G1b or change legacy
 locomotion. The [generic plan](../superpowers/plans/2026-10-06-swimming-generic-foundations.md)
 and accepted F3 require conservative swept completeness, not only complete point contacts.
 
@@ -274,3 +275,54 @@ above 0.001 m, validate both Hit distances against the requested displacement ex
 Clear against the entire closed path, scope and currentness. Zero displacement requires a complete
 stationary certificate. Unsupported pose orientation or numerical domain must refuse. This review
 does not approve a backend numerical domain or native G1b.
+
+The unchanged eight assertions were converted to direct types after RED. The granted Release GREEN
+passed all eight, zero failures/skips, exit 0 in `/tmp/swim-sweep-values-green.log`. The secondary
+slot was explicitly released. Production is limited to `KhaozEngine.Physics/CapsuleSweep.cs`.
+There is no Bepu capability implementation or leased sweep forwarding yet. These tests establish
+value validation and the optional interface signature only. Whole-branch verification remains open.
+
+## Next bounded consumer proof
+
+After the value slice, the existing leased-solid adapter needs an internal sweep operation taking
+`in MovementBodyQuery body`, `Vector3 displacement` and an `out CapsuleSweepResult`. It returns
+`MovementAvailability`, leaving the output at default unless the whole acceptance check succeeds.
+This is consumer validation under the existing lease, independent of the still-unimplemented backend.
+It must forward only to `_view` when that exact object implements `IPhysicsCapsuleSweep`.
+
+Readiness, valid body/world and finite displacement/end pose are checked before backend access.
+The certified scope must contain the entire swept capsule AABB, expanded by the existing 2 mm
+skin/error envelope. The request uses the actual capsule centre, upright pose and existing default
+filter. Both currentness checks bracket the backend call. There is no source-world fallback.
+
+Compute displacement length in double from the float components to avoid float squared-length
+overflow. A backend value uses float metre distances, so complete Clear extent is the correctly
+rounded float representation of that length. This representation rule does not make the endpoint
+optional. The backend still certifies the original vector's complete closed path. Hit bounds must
+lie in that representable request extent. Conversion uncertainty belongs in the backend's declared
+numerical budget, not a new consumer tolerance. A nonrepresentable request length is refused.
+The exact distance-rounding rule remains part of the backend numerical contract before its acceptance.
+
+Proposed finite fixture inventory, using a scripted capability over an actual leased restricted view:
+
+1. Clear forwards the exact centre, capsule dimensions and displacement and returns the value.
+2. Ordered Hit in the request is accepted as data without moving a body.
+3. Zero displacement Clear and zero Hit retain closed stationary semantics.
+4. Short Clear coverage is invalid and publishes no prefix.
+5. Overlong Clear coverage is invalid and publishes no prefix.
+6. Hit upper bound beyond the request is invalid and publishes no prefix.
+7. Both Hit bounds beyond the request are invalid and publish no prefix.
+8. Error above 1 mm is unresolved, including the next representable value above the cap.
+9. Error exactly at the cap is structurally accepted, without proving backend accuracy.
+10. Default unresolved backend output remains unresolved with an empty out value.
+11. Missing capability refuses without touching the underlying owner's legacy sweep.
+12. Swept endpoint outside certified scope refuses before the backend call.
+13. Cold unready selection refuses before the backend call.
+14. A stale pin before the call prevents backend access.
+15. A pin becoming stale during the call discards a structurally complete returned result.
+16. Backend unsupported-domain refusal leaves output empty and the lease releasable.
+
+These fixtures cannot establish geometric completeness, numerical accuracy or native support.
+They prevent a later backend result from bypassing the accepted request/read boundary. Tests will
+precede adapter implementation and need their own bounded compute grant. No consumer fixture has
+run, and no leased sweep method exists at this checkpoint.

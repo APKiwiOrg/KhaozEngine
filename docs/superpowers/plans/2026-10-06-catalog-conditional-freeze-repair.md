@@ -822,3 +822,22 @@ behavior assertion. Cost if wrong is missed extra reads/retries, bounded by thos
 Use the analyzer-approved Assert.Single predicate overload with unchanged semantics. The stale
 ContentUpgradeRun.Drafts.cs XML remains Task4's sweep. After actual test edits, rerun the Catalog
 green selection once, retaining original logs and the unchanged successful Server evidence.
+
+
+### Task 3 implemented, all focused cases green, fresh review pending
+
+Commit 550175fd855eb370df182022fa2427fff0ec3812 contains twenty code/test paths. Overall review
+range is d25c5672a..550175fd8, including controller docs-only b880ac5fb. Root verified ancestry,
+scope, recorded-base capture/release and capability route/gate, with adoption, IsContention, stores,
+publishing and version/ratchet unchanged. T3-C3/C4 retain every semantic and exact-count obligation.
+
+Actual Catalog TRX has 185 passes, including all eight runner race cases and the six publish
+race/characterization cases. Server evidence remains 390 passes and 200 SQL Server skips, with
+no Server dependency changed in the continuation. Root checked actual slot exits and matched the
+format c3 path manifest to all twenty committed paths. Earlier c1/c2 format invocations were
+invalid shell commands, not proof. Evidence hashes/cases are in proofs/2026-10-06-catalog-task3-runner.json.
+
+Code is pushed. Fresh review wa-catalog1271-task3-review1-20261006 is pending before Task 3
+completion or Task 4 dispatch. Review includes same-base/refusal wording limits and the full
+expectation/read-count corrections. Full suite, normal SQL Server/Metal CI and final branch review
+remain open. No release tag or full-repair completion is claimed.

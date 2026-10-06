@@ -1,0 +1,133 @@
+{
+  "task": "catalog conditional freeze Task 3",
+  "base": "d25c5672ae3828cba829d20f0e101f97133172b3",
+  "commit": "550175fd855eb370df182022fa2427fff0ec3812",
+  "rulings": [
+    "T3-C1",
+    "T3-C2",
+    "T3-C3",
+    "T3-C4"
+  ],
+  "results": {
+    "t3-green-c1": {
+      "counts": {
+        "total": "185",
+        "executed": "185",
+        "passed": "185",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "skipped_cases": 0,
+      "sha256": "bdb768f8a12927b6bd1ef8478dd850971ac3840962ba963e2d1b5b612e440798",
+      "exit": 0,
+      "task0_cases": [
+        {
+          "name": "KhaozEngine.Tests.Catalog.Publish.ConditionalFreezeReleasePublishTests.T2r_SameBaseCancellationStillRefusesChangedTextDraft(sqlite: False)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.Publish.ConditionalFreezeReleasePublishTests.T2_OlderPublishReleasePreservesNewerTextWinner(sqlite: True)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T4_BeforeRunnerFreezePreservesNewerTextWinner(sqlite: False)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T3o_AfterRunnerFreezePreservesNewerTextWinner(sqlite: False)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T4_BeforeRunnerFreezePreservesNewerTextWinner(sqlite: True)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.Publish.ConditionalFreezeReleasePublishTests.T2_OlderPublishReleasePreservesNewerTextWinner(sqlite: False)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T3o_AfterRunnerFreezePreservesNewerTextWinner(sqlite: True)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.Publish.ConditionalFreezeReleasePublishTests.T2p_RowPublishFreezePreservesNewerTextWinner(sqlite: True)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.Publish.ConditionalFreezeReleasePublishTests.T2r_SameBaseCancellationStillRefusesChangedTextDraft(sqlite: True)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T4r_ForwardingRowRunnerPreservesNewerTextWinner(sqlite: False)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T3_TwoRunnersPreserveNewerTextWinner(sqlite: False)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T3_TwoRunnersPreserveNewerTextWinner(sqlite: True)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T4r_ForwardingRowRunnerPreservesNewerTextWinner(sqlite: True)",
+          "outcome": "Passed"
+        },
+        {
+          "name": "KhaozEngine.Tests.Catalog.Publish.ConditionalFreezeReleasePublishTests.T2p_RowPublishFreezePreservesNewerTextWinner(sqlite: False)",
+          "outcome": "Passed"
+        }
+      ]
+    },
+    "t3-green-server": {
+      "counts": {
+        "total": "590",
+        "executed": "390",
+        "passed": "390",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "skipped_cases": 200,
+      "sha256": "31965a906584ed6842b0c912975f772508cc7c21d49fe5d2bef7808a43d2475e",
+      "exit": 0
+    }
+  },
+  "log_root": "/tmp/grimhollow-orch/catalog-conditional-freeze",
+  "log_sha256": {
+    "t3-green-c1.log": "e8f183915994471524c0056f743ab312b723169cbcbd1653d35b970f45b58c46",
+    "t3-green-server.log": "2f2f8de9d20baab3af61e55bd53d157f2913522d6cbd61be098ed5eb0b0ed223",
+    "t3-format-c3.log": "239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c",
+    "t3-c1-paths.txt": "7f6c24a8ae2760e53894208c0e0e42f8d0e20e3e38bdbfb211652865e9de1a3c",
+    "t3-commit.log": "56638d4461a4f2b504866d7b958911489138b4101cc43597a536b2873bb1a51a"
+  },
+  "format": "Only c3 is valid evidence, its path manifest matches all 20 committed source/test paths. c1 and c2 invalid.",
+  "review": "fresh Task 3 review pending",
+  "remaining": [
+    "SQL Server normal CI",
+    "Full suite including statistical concurrency class",
+    "Task 4 docs/version and final whole-branch review",
+    "Release tag owner gate"
+  ]
+}

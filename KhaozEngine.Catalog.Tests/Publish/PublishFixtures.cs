@@ -197,12 +197,16 @@ internal static class PublishFixtures
         => store.ApplyEditsAsync(edits, Actor, "oid:tests", "publish tests");
 
     /// <summary>
-    /// Applies edits, prepares steps 1 to 8, and DISCARDS the draft afterwards, which stands in for the
-    /// commit. Chaining publishes needs it, because nothing the pipeline does is durable.
+    /// Applies edits, prepares steps 1 to 8, and then COMMITS a valid plan's rows through the store, so the
+    /// store's active version is the plan's and a chained publish against <see cref="ContentPublishBaseline.After"/>
+    /// passes the guarded freeze for the version it really stands on.
     /// <para>
-    /// The freeze step 1 took is RELEASED first, because that is the other half of what the commit does and
-    /// a discard against a frozen draft is refused. It is <c>ContentPublishCommit</c> that owns the release
-    /// on a real publish, and this fixture drives the pipeline without it.
+    /// The commit is the store's own transaction with no pointer store, so no pack file is written and no step
+    /// after the manifest runs. It clears the frozen draft, because the plan froze every edit the draft held.
+    /// </para>
+    /// <para>
+    /// An INVALID plan cannot be committed, so its freeze is released at the base it was taken for and the
+    /// draft is discarded, which leaves the store at the same version a refused publish leaves it.
     /// </para>
     /// </summary>
     public static async Task<ContentPublishPlan> PublishAsync(
@@ -212,10 +216,15 @@ internal static class PublishFixtures
         params ContentEdit[] edits)
     {
         await ApplyAsync(store, edits).ConfigureAwait(false);
-        ContentPublishPlan plan = await publisher
-            .PrepareAsync(Request(baseline.VersionNumber), baseline)
-            .ConfigureAwait(false);
-        await store.ClearDraftFreezeAsync().ConfigureAwait(false);
+        ContentPublishRequest request = Request(baseline.VersionNumber);
+        ContentPublishPlan plan = await publisher.PrepareAsync(request, baseline).ConfigureAwait(false);
+        if (plan.IsValid)
+        {
+            await store.CommitPublishAsync(plan, request, null).ConfigureAwait(false);
+            return plan;
+        }
+
+        Assert.True(await store.ReleaseDraftFreezeForBaseAsync(baseline.VersionNumber).ConfigureAwait(false));
         await store.DiscardDraftAsync(Actor, "oid:tests").ConfigureAwait(false);
         return plan;
     }

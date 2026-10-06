@@ -13,9 +13,10 @@ namespace KhaozEngine.Tests.Catalog.Publish;
 /// The ordered steps of spec 6.1, the two id SOURCES of spec 6.3, and contracts 4.3's
 /// registration-order independence.
 /// <para>
-/// Steps 1 to 8 write nothing durable, so every test here drives the plan rather than the store's published
-/// state: the store carries the draft, the baseline carries the base version, and the plan carries
-/// everything the commit of task 16 will need.
+/// Steps 1 to 8 write nothing durable, so every test here asserts on the plan rather than the store's
+/// published state: the store carries the draft, the baseline carries the base version, and the plan carries
+/// everything the commit needs. A chained publish commits the earlier plan's rows first, so the base it names
+/// is the store's real active version.
 /// </para>
 /// </summary>
 public sealed class PublishPipelineTests
@@ -256,10 +257,8 @@ public sealed class PublishPipelineTests
         ContentPublishPlan first = PublishFixtures.AssertValid(
             await publisher.PrepareAsync(PublishFixtures.Request(0, 40, 41), ContentPublishBaseline.Empty));
 
-        // Step 1 froze the draft and no commit ran to release it, so the discard standing in for one has to
-        // do both halves.
-        await store.ClearDraftFreezeAsync();
-        await store.DiscardDraftAsync(PublishFixtures.Actor, "oid:tests");
+        // The second publish's guarded freeze needs the store to stand on version 1, so the first plan commits.
+        await store.CommitPublishAsync(first, PublishFixtures.Request(0, 40, 41), null);
 
         Assert.Equal(40, first.MinimumServerBuild);
         Assert.Equal(41, first.MinimumClientBuild);

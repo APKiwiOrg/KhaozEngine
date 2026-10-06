@@ -267,7 +267,7 @@ public class MovementEnvironmentBufferTests
         Space, new Vector3(0f, 0.25f + n * 0.25f, 0f), Vector3.UnitY, null);
     static MovementDomainContact Contact(string name, float fraction, string world = "world") =>
         new(new MovementDomainKey(world, name), new MovementSpaceKey(world, "room"),
-            new MovementWaterInterval(-4f, 2f, 2f, true, "bed", "surface"), Vector3.UnitZ, fraction, "bank", 0u);
+            new MovementWaterInterval(-4f, 2f, 2f, true, "bed", "surface"), new Vector2(fraction, 0f), Vector3.UnitZ, fraction, "bank", 0u);
     static MovementQueryIdentity WrongIdentity => new("closure", 1u, "wrong-scope");
     static MovementCoverageResult Complete(MovementQueryIdentity identity) =>
         new(MovementAvailability.Known, 1, 1, 1, 1, 0.001f, identity);

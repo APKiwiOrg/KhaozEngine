@@ -268,7 +268,7 @@ public class MovementColdSelectionTests
         Assert.Equal(candidate, candidates[0]);
         var span = new MovementCoverageSpan(0.5f, 1f, 0, 0, true);
         var contact = new MovementDomainContact(new MovementDomainKey("world", "sentinel"), Future,
-            new MovementWaterInterval(-4f, 2f, 2f, true, "bed", "top"), Vector3.UnitY, 0.5f, "edge", 0u);
+            new MovementWaterInterval(-4f, 2f, 2f, true, "bed", "top"), Vector2.Zero, Vector3.UnitY, 0.5f, "edge", 0u);
         MovementCoverageSpan[] spans = [span];
         MovementDomainContact[] contacts = [contact];
         Assert.NotEqual(MovementAvailability.Known,

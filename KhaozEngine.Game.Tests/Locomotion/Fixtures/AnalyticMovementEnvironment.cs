@@ -94,7 +94,7 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
         return new(MovementAvailability.Known, Space(selected), Domain(water.Domain), true, 1f, Interval(water));
     }
 
-    readonly record struct Hit(Water Water, float Enter, float Exit, Vector3 Normal, uint Handle);
+    readonly record struct Hit(Water Water, float Enter, float Exit, Vector2 Column, Vector3 Normal, uint Handle);
 
     MovementCoverageResult Trace(in MovementMediumSweepQuery query, Span<MovementCoverageSpan> spans,
         Span<MovementDomainContact> contacts)
@@ -123,7 +123,10 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
             cuts.Add(enter);
             cuts.Add(exit);
             float boundaryAt = first == 0d && last < 1d ? exit : enter;
-            hits.Add(new Hit(water, enter, exit, water.Bounds.ContactNormal(query.Body.Centre + query.Delta * boundaryAt,
+            Vector3 atEntry = query.Body.Centre + query.Delta * enter;
+            Vector2 column = new(Math.Clamp(atEntry.X, water.Bounds.Min.X, water.Bounds.Max.X),
+                Math.Clamp(atEntry.Z, water.Bounds.Min.Z, water.Bounds.Max.Z));
+            hits.Add(new Hit(water, enter, exit, column, water.Bounds.ContactNormal(query.Body.Centre + query.Delta * boundaryAt,
                 radius, halfHeight), (uint)i));
         }
         for (int i = 0; i < union.Count; i++)
@@ -170,7 +173,7 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
         foreach (Hit hit in hits)
             if (at >= hit.Enter && at <= hit.Exit)
                 contacts.Add(new MovementDomainContact(Domain(hit.Water.Domain), Space(hit.Water.Room), Interval(hit.Water),
-                    hit.Normal, hit.Enter, BoundaryId(hit), hit.Handle));
+                    hit.Column, hit.Normal, hit.Enter, BoundaryId(hit), hit.Handle));
         spans.Add(new MovementCoverageSpan(start, end, first, contacts.Count - first, hasDryCoverage));
     }
 

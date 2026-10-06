@@ -99,7 +99,8 @@ public sealed partial class MovementQueryLease
             }
             if (next != 1f) return NoCoverage(MovementAvailability.Invalid);
             for (int i = 0; i < result.ContactsWritten; i++)
-                if (!scratchContacts[i].IsValid || !SameWorld(scratchContacts[i].Space))
+                if (!scratchContacts[i].IsValid || !SameWorld(scratchContacts[i].Space) ||
+                    !ColumnOverlapsCapsule(query, scratchContacts[i], result.CertifiedErrorMetres))
                     return NoCoverage(MovementAvailability.Invalid);
 
             // No producer callback or fallible validation occurs between the two copies.
@@ -115,6 +116,32 @@ public sealed partial class MovementQueryLease
             if (contactStorage is not null) ArrayPool<MovementDomainContact>.Shared.Return(contactStorage, clearArray: true);
             ArrayPool<MovementCoverageSpan>.Shared.Return(spanStorage, clearArray: true);
         }
+    }
+
+    bool ColumnOverlapsCapsule(in MovementMediumSweepQuery query, in MovementDomainContact contact, float error)
+    {
+        Vector2 column = contact.IntervalColumnXZ;
+        Vector3 min = Witness.Scope.EnvelopeMin, max = Witness.Scope.EnvelopeMax;
+        if (column.X < min.X || column.X > max.X || column.Y < min.Z || column.Y > max.Z) return false;
+
+        double fraction = contact.Fraction;
+        double centreX = query.Body.Centre.X + fraction * query.Delta.X;
+        double centreY = query.Body.Centre.Y + fraction * query.Delta.Y;
+        double centreZ = query.Body.Centre.Z + fraction * query.Delta.Z;
+        double radius = query.Body.Radius + (double)CoverageSkinMetres + error;
+        double dx = column.X - centreX, dz = column.Y - centreZ;
+        double capSquared = radius * radius - dx * dx - dz * dz;
+        if (capSquared < 0d) return false;
+
+        // Isotropic skin/error inflation enlarges the caps, not the cylindrical core. A disc or
+        // vertical prism would accept columns that miss the actual rounded capsule vertically.
+        double cap = Math.Sqrt(capSquared);
+        double core = (double)query.Body.HalfHeight - query.Body.Radius;
+        double overlapMin = Math.Max(centreY - core - cap, contact.Interval.LowerY);
+        double overlapMax = Math.Min(centreY + core + cap, contact.Interval.UpperY);
+        // Only the relevant overlap needs certified query Y. The actual deep column can extend far
+        // beyond it. Canonical membership and geometry dependencies remain the producer's proof.
+        return overlapMin <= overlapMax && overlapMax >= min.Y && overlapMin <= max.Y;
     }
 
     bool SameWorld(MovementSpaceKey space) =>

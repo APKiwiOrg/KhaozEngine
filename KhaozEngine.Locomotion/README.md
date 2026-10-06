@@ -423,6 +423,13 @@ It queries centre-feet membership, not full capsule coverage. `MovementSupportRe
 `MovementMediumSweepQuery`, `MovementCoverageSpan`, `MovementDomainContact` and
 `MovementCoverageResult` describe bounded complete-path coverage, including simultaneous wet and dry
 portions. Their constructors reject invalid geometry/counts and cannot make a refusal expose a prefix.
+Each domain contact requires `IntervalColumnXZ` in the acquired physics frame. Its interval is the
+actual local column fact there at `Fraction`, not a constant-depth description of its entire region.
+Trace validation checks certified XZ and overlap with the upright capsule's rounded vertical slice,
+using the existing skin and result error budget. It does not require an entire deep column inside
+the narrow query's Y bounds. Canonical space/domain membership and complete clipping remain the
+producer's responsibility. Requery under a new pin after frame changes, transforming XZ and interval
+Y coherently and discarding old pin-local handles.
 `FramedMovementState` preserves its recorded physics origin and optional canonical selection. It does
 not convert or relabel positions during construction.
 

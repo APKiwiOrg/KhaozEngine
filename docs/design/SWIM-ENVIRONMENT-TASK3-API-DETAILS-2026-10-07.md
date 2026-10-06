@@ -297,7 +297,25 @@ The revised finite inventory is eight cases, some with two explicitly bounded di
 subcases: sloped floor in both directions, sloped ceiling in both directions, flooded ceiling with
 wet outer column and dry centre, same-XZ/wrong-Y refusal, deep-column-outside-query-Y acceptance,
 nonfinite/out-of-scope refusal, coherent frame rebinding with fresh pin provenance, and rounded-cap
-disc-only rejection versus closed tangency. This inventory is proposed, not authored or executed.
+disc-only rejection versus closed tangency. These eight cases are now authored in
+`MovementEnvironmentColumnTests`, selected by `FullyQualifiedName~MovementEnvironmentColumnTests`,
+and initially used a runtime check for the required constructor/property. The granted RED compiled
+and failed all eight cases at the missing constructor, with zero passes/skips, exit 1 in
+`/tmp/swim-environment-column-red.log`. The primary slot was explicitly released. The exact
+constructor order is `(domain, space, interval, intervalColumnXZ, normal, fraction, boundaryId,
+coverageRegionHandle)`. Scripted linear floor/ceiling facts test location and consumer coherence,
+not complete continuous slope clipping. The same assertions now use direct types. After that RED,
+the approved value and buffer files gained the required field and double-precision slice validation
+at the contact fraction. Isotropic skin plus certified error enlarges the spherical caps while the
+cylindrical core remains unchanged. Only relevant certified overlap is checked in Y, not the entire
+column. Both arrays remain private until every contact passes. Test producers now supply explicit
+columns, including the analytic box's nearest covered XZ at its entry fraction. The separately
+granted GREEN passed all eight unchanged direct assertions, zero failures/skips, exit 0 in
+`/tmp/swim-environment-column-green.log`. With sources unchanged, the conditional `--no-build`
+affected run passed 102 cases, zero failures/skips, exit 0 in
+`/tmp/swim-environment-column-regressions.log`. It selected QueryValue 20, Buffer 30, ColdSelection 20,
+Volume 25 and Nonrectangular 7. The primary slot was explicitly released. These are located-fact,
+consumer-coherence and affected fixture proofs, not continuous sloped producer or full mover proof.
 
 ### Independent nonrectangular fixture checkpoint
 

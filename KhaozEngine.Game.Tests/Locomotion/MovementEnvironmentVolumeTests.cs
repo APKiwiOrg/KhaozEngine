@@ -268,7 +268,7 @@ public class MovementEnvironmentVolumeTests
         Assert.Equal(MovementAvailability.Unresolved, lease.SampleCentreWater(body).Availability);
         MovementCoverageSpan sentinel = new(0.5f, 1f, 0, 1, true);
         MovementDomainContact contact = new(Domain("sentinel"), Space("room"), new(-4f, 0f, 0f, true, "low", "top"),
-            Vector3.UnitZ, 0.75f, "sentinel", 123u);
+            Vector2.Zero, Vector3.UnitZ, 0.75f, "sentinel", 123u);
         MovementCoverageSpan[] spans = [sentinel];
         MovementDomainContact[] contacts = [contact];
         MovementCoverageResult result = lease.TraceWater(new(body, Vector3.UnitX), spans, contacts);

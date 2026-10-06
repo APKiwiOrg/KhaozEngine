@@ -95,7 +95,7 @@ public class MovementEnvironmentQueryValueTests
     {
         var domain = new MovementDomainKey("world", "river");
         var interval = new MovementWaterInterval(-4f, 0f, 0f, true, "bed", "surface");
-        MovementDomainContact contact = new MovementDomainContact(domain, Space, interval, Vector3.UnitX, 0.25f, "bank", 0u);
+        MovementDomainContact contact = new MovementDomainContact(domain, Space, interval, Vector2.Zero, Vector3.UnitX, 0.25f, "bank", 0u);
         Assert.Equal(interval, contact.Interval);
         Assert.Equal(0u, contact.CoverageRegionHandle);
     }
@@ -106,7 +106,7 @@ public class MovementEnvironmentQueryValueTests
         var domain = new MovementDomainKey("another-world", "river");
         var interval = new MovementWaterInterval(-4f, 0f, 0f, true, "bed", "surface");
         Assert.ThrowsAny<ArgumentException>(() =>
-            new MovementDomainContact(domain, Space, interval, Vector3.UnitX, 0.25f, "bank", 0u));
+            new MovementDomainContact(domain, Space, interval, Vector2.Zero, Vector3.UnitX, 0.25f, "bank", 0u));
     }
 
     [Theory]

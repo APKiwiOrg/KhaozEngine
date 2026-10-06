@@ -42,26 +42,30 @@ public readonly record struct MovementCoverageSpan
     }
 }
 
-/// <summary>Clipped water-region provenance. CoverageRegionHandle is valid only within its acquired pin.</summary>
+/// <summary>Clipped water-region provenance with an actual local column fact at Fraction.
+/// The interval does not describe every column in the region. CoverageRegionHandle is pin-local.</summary>
 public readonly record struct MovementDomainContact
 {
     public MovementDomainKey Domain { get; }
     public MovementSpaceKey Space { get; }
     public MovementWaterInterval Interval { get; }
+    public Vector2 IntervalColumnXZ { get; }
     public Vector3 Normal { get; }
     public float Fraction { get; }
     public string BoundaryId { get; }
     public uint CoverageRegionHandle { get; }
     public bool IsValid => Domain.IsValid && Space.IsValid && Interval.IsValid &&
+        float.IsFinite(IntervalColumnXZ.X) && float.IsFinite(IntervalColumnXZ.Y) &&
         string.Equals(Domain.WorldId, Space.WorldId, StringComparison.Ordinal) &&
         MovementEnvironmentValidation.Unit(Normal) && float.IsFinite(Fraction) && Fraction >= 0f && Fraction <= 1f &&
         MovementEnvironmentValidation.Name(BoundaryId);
     public MovementDomainContact(MovementDomainKey domain, MovementSpaceKey space, MovementWaterInterval interval,
-        Vector3 normal, float fraction, string boundaryId, uint coverageRegionHandle)
+        Vector2 intervalColumnXZ, Vector3 normal, float fraction, string boundaryId, uint coverageRegionHandle)
     {
         Domain = domain;
         Space = space;
         Interval = interval;
+        IntervalColumnXZ = intervalColumnXZ;
         Normal = normal;
         Fraction = fraction;
         BoundaryId = boundaryId;

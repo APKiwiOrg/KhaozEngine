@@ -20,6 +20,9 @@ public interface IMovementEnvironmentPin : IDisposable
     MovementFrameDescriptor Frame { get; }
     MovementScopeWitness Witness { get; }
     MovementWaterPoint SampleCentreWater(in MovementBodyQuery body);
+    MovementSupportSet EnumerateSupport(in MovementSupportRequest request, Span<MovementSupportCandidate> candidates);
+    MovementCoverageResult TraceWater(in MovementMediumSweepQuery query,
+        Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts);
     void AssertCurrent();
 }
 

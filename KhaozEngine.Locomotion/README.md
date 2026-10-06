@@ -425,6 +425,13 @@ portions. Their constructors reject invalid geometry/counts and cannot make a re
 `FramedMovementState` preserves its recorded physics origin and optional canonical selection. It does
 not convert or relabel positions during construction.
 
+`MovementQueryLease.EnumerateSupport` and `TraceWater` use cleared private scratch and validate the
+complete producer result before publishing caller buffers. Refusal or a provider exception leaves
+both caller buffers untouched. Initial operational limits are 256 support candidates, 64 spans and
+256 domain contacts, independent of a larger caller capacity. A Known trace must cover the full
+fraction range from 0 to 1 in order, without gaps or overlap, and certify at most 0.001 m error.
+These guards do not implement native geometry or choose a standing support.
+
 ## Types
 
 - **`MoveCommand`** - movement intent: camera-relative XZ axis, run flag, camera yaw, jump bit, and (17.26.0) the

@@ -27,6 +27,14 @@ public sealed class EnvironmentAcquisitionFixture : IMovementEnvironmentProvider
     public int SampleCalls;
     public MovementWaterPoint Point;
     public Action? OnSample;
+    public delegate MovementSupportSet SupportHandler(in MovementSupportRequest request, Span<MovementSupportCandidate> candidates);
+    public delegate MovementCoverageResult CoverageHandler(in MovementMediumSweepQuery query,
+        Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts);
+    public SupportHandler? OnSupport;
+    public CoverageHandler? OnCoverage;
+    public int SupportCalls;
+    public int CoverageCalls;
+    public MovementQueryIdentity Identity => _identity;
 
     public EnvironmentAcquisitionFixture(IPhysicsWorldQueryView view)
     {
@@ -95,6 +103,19 @@ public sealed class EnvironmentAcquisitionFixture : IMovementEnvironmentProvider
             owner.SampleCalls++;
             owner.OnSample?.Invoke();
             return owner.Point;
+        }
+
+        public MovementSupportSet EnumerateSupport(in MovementSupportRequest request, Span<MovementSupportCandidate> candidates)
+        {
+            owner.SupportCalls++;
+            return owner.OnSupport!(request, candidates);
+        }
+
+        public MovementCoverageResult TraceWater(in MovementMediumSweepQuery query,
+            Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts)
+        {
+            owner.CoverageCalls++;
+            return owner.OnCoverage!(query, spans, contacts);
         }
 
         public void Dispose()

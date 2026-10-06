@@ -40,6 +40,17 @@ phase overload and preserve its ownership of ClientPrediction/AdvancePresentatio
 - One build/test/bake at a time through the shared slot. No load/stress runs or repeat-until-green loops.
 - Current repo AGENTS, KESIZE, Release checks, main reconciliation and docs sweep apply. Never tag.
 
+Native dependency checkpoint, 2026-10-07: coordinator OA17/CD9 approved the complete R2 written plan
+at engine `05e0d6948755e26b590c8fc2fd50c1c471b3f0c3`,
+[`2026-10-05-world-authoring-r2-authored-terrain-paint.md`](https://github.com/APKiwiOrg/KhaozEngine/blob/05e0d6948755e26b590c8fc2fd50c1c471b3f0c3/docs/superpowers/plans/2026-10-05-world-authoring-r2-authored-terrain-paint.md).
+This is an approved planned producer contract, not released API or G1b acceptance. Planned seams are
+`MapScopedSurfaces.Acquire`, factory-owned identity/read witness, `MapSpaceMembership.Query(MapFramePoint)`,
+`MapSupportQuery.Select/EnumerateCandidates`, and `MapSpaceRelations.Relate`. Immutable context reuse and
+masked compilation preserve the view witness. The 256-patch/262144-face limits bound validation work,
+not world size, and query contexts retain their declared query budgets. R2 Task 1 still requires the
+actual owner-released R1 tag, successful publication and a fresh base check. R3/R4 plans and actual
+adapter interfaces need their later approvals. Migration retains native producers, #1300 and #1301.
+
 ## Review Focus
 
 1. A callback tries to mutate or rebase the live physics owner during a query lease (Task 1).

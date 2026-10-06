@@ -68,6 +68,21 @@ Capacity fixtures cover 257 entries without indexing them, one 1025-byte identif
 65537 bytes, exact boundaries, duplicate/blank identifiers, malformed UTF-16, and immutable copying.
 The all-known-nonempty fixture sets the attestation true without manufacturing an empty region.
 
+### Query output working limits
+
+The generic consumer uses private bounded scratch buffers before publishing caller outputs.
+The initial limits are 256 support candidates, 64 coverage spans and 256 domain contacts.
+The latter two are F3's limits. The support cap bounds one local candidate enumeration while
+allowing substantially more than the ordinary few stacked support surfaces. These are query-policy
+limits, not world-size limits or assumptions about native partitioning. Larger caller spans do not
+enlarge the producer's work allowance. Required capacity beyond a limit returns an explicit refusal,
+without a copied prefix. Native G1b must prove its canonical queries fit or explicitly refuse.
+
+The producer receives cleared scratch spans bounded by both the caller's capacity and these limits.
+The consumer checks availability, identity, counts, complete span ordering and every returned value
+before copying either buffer. Missing entries therefore cannot borrow valid leftovers from a prior
+query. Coverage error must fit F3's 0.001 m bound. All failure paths preserve caller sentinels.
+
 ## Pin properties
 
 Complete `IMovementEnvironmentPin` with these read-only properties in addition to the already
@@ -148,3 +163,11 @@ direct-type GREEN exited 0 with all 32 cases passing and no skips in
 guards, the named support/coverage/framed value invariants, two finite foreign-thread refusals,
 disposed validation, nested acquisition and local reference equality/hashing. It does not prove
 Span forwarding, support selection, frame rebinding or volumetric geometry coverage.
+
+Buffer RED compiled with 30 missing EnumerateSupport/TraceWater failures. The corresponding
+direct-call GREEN exited 0 with all 30 cases passing and no skips in
+`/tmp/swim-environment-buffer-green.log`. It proves bounded cleared scratch, preservation of
+nonzero caller sentinels through refusals and throws, count/identity/value/scope/error validation,
+complete ordered span coverage checks and validation of both output buffers before either copy.
+The slot was explicitly released. These are consumer-contract proofs, not native producer geometry,
+support-selection or frame-rebinding evidence.

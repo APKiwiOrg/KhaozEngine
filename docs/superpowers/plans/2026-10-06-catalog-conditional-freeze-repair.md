@@ -939,3 +939,16 @@ Fresh scoped review wa-catalog1271-full-suite-fixture-review1-20261006 is active
 verification-discovered Task 2 dependency repair, not another broad review sweep. Full verification
 after the source change, private pack, hosted SQL Server/GPU CI, integration and shared pack remain
 open. No tag is authorized.
+
+### Fixture repair review accepted
+
+Fresh scoped review wa-catalog1271-full-suite-fixture-review1-20261006 approves spec and quality,
+with no actionable finding. It checked 44 qualified callers, real committed version/rule history,
+invalid-plan cleanup, allocator/high-water, unchanged step hooks and no pack I/O. Root verified
+the actual two-file diff and all focused exits. Optional equal-request reuse is accepted as cosmetic.
+Repair 294621f7f and proof checkpoint 4ca78c6e3 are pushed. No further source edit is needed.
+
+Root resumes full Release verification after this source change, using new final2-build.log,
+final2-test.log and final2-format.log through the shared slot. Record the exact clean head before
+running. Private pack, actual hosted SQL Server/GPU CI, integration and shared-pack gates follow
+only on passing verification. No tag is authorized by review approval.

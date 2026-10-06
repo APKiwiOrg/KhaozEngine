@@ -624,7 +624,7 @@ Expected all exits 0. Recheck no concurrent main movement before using the SHA g
 
 ## Outcome
 
-Status on 2026-10-06: **full plan verified and approved for serial execution under OA16**. Task 0 expected-red proof and fresh review are complete. Task 1 store capability and fresh review are complete. Task 2 publishing and fresh review are complete. Task 3 runner is next. No code/test/version change has yet executed and no release tag is authorized.
+Status on 2026-10-06: **full plan verified and approved for serial execution under OA16**. Task 0 expected-red proof and fresh review are complete. Task 1 store capability and fresh review are complete. Task 2 publishing and fresh review are complete. Task 3 runner and fresh review are complete. Task 4 finalization is next. No code/test/version change has yet executed and no release tag is authorized.
 
 | Gate | Required durable record | Current state |
 | --- | --- | --- |
@@ -841,3 +841,26 @@ Code is pushed. Fresh review wa-catalog1271-task3-review1-20261006 is pending be
 completion or Task 4 dispatch. Review includes same-base/refusal wording limits and the full
 expectation/read-count corrections. Full suite, normal SQL Server/Metal CI and final branch review
 remain open. No release tag or full-repair completion is claimed.
+
+
+### Task 3 accepted and Task 4 finalization ruling
+
+Fresh review wa-catalog1271-task3-review1-20261006 approved spec and quality for d25c5672a..550175fd8,
+no Critical/Important findings. Root accepts Task 3 and the layered timestamp proof from store
+conformance plus runner lifecycle/marker assertions. SQL Server remains normal CI.
+
+Ruling T4-C1 assigns the four minor corrections within Task 4 before whole-branch review. Add
+comment/message-only ownership of ContentUpgradeRun.Publish.cs, ContentUpgradeRunner.cs,
+ContentUpgradeDiagnostic.cs and ContentUpgradeRun.Drafts.cs. Correct newer-base versus same-base
+ownership and no-write versus unchanged text-maintenance claims without changing behavior.
+Add XML-only ownership of IContentConditionalDraftFreeze.cs and the SQL Server ConditionalFreeze
+partial for provider-contention and gated-evidence wording.
+
+The Task 4 worker may add legacy-freeze counting/zero assertions in ContentUpgradeFreezeReleaseTests.cs
+and assert GuardedFreezeCalls==1 in the shared T3o/T4/T4r body after existing checks. Keep all
+scenario ordering and assertions. Cost if wrong is wording or instrumentation drift, checked by
+focused verification, fresh Task 4 review and whole-branch review. No wider runtime repair.
+
+Main/origin were fetched and remain ca13d62d7, staged20.27.1 with newest tagv20.27.0. Choose20.28.0
+under OA15/OA16, no tag. Worker handles steps1-3 plus these pins. Root handles review, full
+verification, private pack, exact-head CI, integration and guarded shared pack under steps4-7.

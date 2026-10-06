@@ -411,7 +411,7 @@ Commit command exits 0 with hooks enabled. Omit an unchanged owned path only aft
 
 ### Task 3: Guard runner freeze, lifecycle and capability precedence
 
-**Files:** Task 3 rows from the map. Task 0 test bodies remain unchanged.
+**Files:** Task 3 rows from the map, ConditionalFreezeReleaseUpgradeTests.cs for T3-C1, and LegacyFreezeStoreView.cs for T3-C2. Preserve existing Task 0 scenario ordering and assertion values, with the additional operator-row assertion explicitly allowed by T3-C1.
 
 **Interfaces:** Consume Task 1 companion. `ContentUpgradeTextRoute.FreezeAsync(ContentUpgradePlan plan, int active, CancellationToken cancellationToken)` returns `Task<ContentDraft>`. Resolve the conditional companion beside `_text`, with an internal companion resolver that throws `InvalidOperationException` if reached without the gate. Produce `ContentUpgradeCodes.ConditionalFreezeUnsupported = "KECU0017"`. Produce the server-local `ConditionalFreezeRaceStore(IContentAuthoringStore inner, IContentIdPersistence ids, ContentTypeRegistry registry, IPackStore packs)`, requiring the inner text, ledger and conditional companions and exposing the same one-shot sequencing and real commit/release counters as the catalog adapter.
 
@@ -785,3 +785,10 @@ winner assertions for T3o/T4/T4r, keeping every earlier assertion and scenario o
 strengthens the accepted preservation requirement. Cost if wrong is a fixture-selection assertion
 error, caught by the focused run and review. Capture-before-freeze cleanup remains mandatory so
 refused guarded freezes still reach the release-exit gate. Task 3 owns the remaining runner reds.
+
+
+Ruling T3-C2: the existing test-only LegacyFreezeStoreView is sealed and its recorder private,
+but the approved LegacyFreezeLedgerView must derive from it and share call ordering. Task 3 may
+unseal it and expose the existing recorder as protected, with no new capability and no forwarding
+behavior change. Include the path in its owned commit list. Cost if wrong is test-instrumentation
+inheritance drift, checked by the T5 assertions and fresh task review.

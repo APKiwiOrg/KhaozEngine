@@ -95,6 +95,21 @@ under one frame/read witness. Declare authored versus live state and its produce
 acoustic simulation and no game-maintained topology. Exact R3 adapters consume released generic
 F3 prerequisites and the approved R2 producer signatures, not similarly named provisional types.
 
+Swimming Task 2 reports proposed fail-closed Bepu cases above 1,024 triangles in a mesh's expanded
+local capsule region, and for retained wedged-mesh normals rotated without recomputed/certifiable
+separation. Other proposed bounds are 4,096 broad-phase candidates or child callbacks, 16,384
+contacts, certified error at most 0.001 m and unit mesh scale only. Its first GREEN
+proof is pending, so these are reported backend considerations, not verified final capability limits.
+R2's 65,536-face compiled-patch budget is not a promise that one patch can be one complete-contact
+physics mesh. Before R3/G1b acceptance, pin either proved collision chunking or a verified backend
+capability resolution. Prove complete swept/contact coverage across chunk boundaries, canonical
+triangle/owner mapping, normals and certified separation without duplicate or missing constraints.
+Record relevant packing/policy identity and refusal outcomes. Do not weaken F3, silently fall back,
+truncate a patch or reduce R2's authored/compiled budget to hide an adapter limitation.
+Partitioning alone does not prove dense or wedged cases impossible. Refusal remains unresolved,
+never dry/traversable or proven unreachable. Preserve free transformed placement semantics and
+prove the actual native solid representation against the verified backend capability at G1b.
+
 Refinement must pin fixtures for connected distinct supports, occluded stacked spaces sharing XZ,
 portal/shaft transitions and missing/stale topology. Producer tests verify geometry/identity and
 connectivity facts. Pivot's consumer fixtures verify each policy and server-authoritative actions.

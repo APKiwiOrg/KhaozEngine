@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapEdit;
@@ -39,17 +40,7 @@ internal sealed class NativeLifecycleFixture : IDisposable
         Directory.CreateDirectory(Path.Combine(_root, "kit", "meshes"));
         MapAssetRef mesh = Write("prop.mesh", meshRelativePath, "mesh-v1");
         MapAssetRef lod = Write("prop.lod0", LodRelativePath, "lod-v1");
-        string manifest = """
-            {"payloadVersion":1,"assets":[
-              {"id":"prop","meshResourceId":"prop.mesh","supportResourceIds":[],"materialResourceIds":[],
-               "lodResourceIds":["prop.lod0"],"lightResourceIds":[],"sourceUnitsToMetres":0.5,
-               "renderBounds":{"min":{"x":-1,"y":-1,"z":-1},"max":{"x":1,"y":3,"z":1}},
-               "source":"authored kit","license":"CC0","category":"fence","textured":true}],
-             "resources":[MESH,LOD]}
-            """
-            .Replace("MESH", Resource(mesh, "Mesh"), StringComparison.Ordinal)
-            .Replace("LOD", Resource(lod, "Lod"), StringComparison.Ordinal);
-        MapAssetRef root = Write("kit", ManifestRelativePath, manifest);
+        MapAssetRef root = Write("kit", ManifestRelativePath, Manifest(mesh, lod));
 
         Document = NewDocument("native-lifecycle", root);
         MapDocumentFile.Save(Document, ValidPath);
@@ -88,8 +79,33 @@ internal sealed class NativeLifecycleFixture : IDisposable
         return new(id, path, Digest(bytes), 1);
     }
 
-    static string Resource(MapAssetRef reference, string kind) =>
-        $$"""{"reference":{"id":"{{reference.Id}}","path":"{{reference.Path}}","sha256":"{{reference.Sha256}}","payloadVersion":1},"kind":"{{kind}}","dependencies":[]}""";
+    /// <summary>The kit manifest declaring <paramref name="mesh"/> and <paramref name="lod"/>. The JSON writer
+    /// serializes every reference value, so absolute Windows paths stay valid JSON strings.</summary>
+    internal static string Manifest(MapAssetRef mesh, MapAssetRef lod)
+    {
+        JsonObject manifest = JsonNode.Parse("""
+            {"payloadVersion":1,"assets":[
+              {"id":"prop","meshResourceId":"prop.mesh","supportResourceIds":[],"materialResourceIds":[],
+               "lodResourceIds":["prop.lod0"],"lightResourceIds":[],"sourceUnitsToMetres":0.5,
+               "renderBounds":{"min":{"x":-1,"y":-1,"z":-1},"max":{"x":1,"y":3,"z":1}},
+               "source":"authored kit","license":"CC0","category":"fence","textured":true}]}
+            """)!.AsObject();
+        manifest["resources"] = new JsonArray(Resource(mesh, "Mesh"), Resource(lod, "Lod"));
+        return manifest.ToJsonString();
+    }
+
+    static JsonObject Resource(MapAssetRef reference, string kind) => new()
+    {
+        ["reference"] = new JsonObject
+        {
+            ["id"] = reference.Id,
+            ["path"] = reference.Path,
+            ["sha256"] = reference.Sha256,
+            ["payloadVersion"] = 1
+        },
+        ["kind"] = kind,
+        ["dependencies"] = new JsonArray()
+    };
 
     public static string Digest(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 

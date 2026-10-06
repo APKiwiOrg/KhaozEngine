@@ -109,15 +109,17 @@ public class MovementEnvironmentColumnTests
     public void RebindingRequeriesColumnAndIntervalYUnderAFreshPin()
     {
         var oldFrame = new MovementFrameDescriptor(WorldFrame.Origin, Vector3.Zero, 1ul);
-        var state = new FramedMovementState(new MoveState { Position = Vector3.Zero }, oldFrame, null);
+        var state = new FramedMovementState(new MoveState { Position = new Vector3(0f, 0.75f, 0f) }, oldFrame, null);
         Vector3 origin = new(2f, 3f, -1f);
         var newFrame = new MovementFrameDescriptor(WorldFrame.Nearest(origin), origin, 2ul);
         Assert.True(MovementFrameRebinding.TryRebind(state, newFrame, out FramedMovementState rebound));
         Assert.Null(rebound.Selection);
+        MovementBodyQuery originalBody = Body(state.State.Position);
+        Assert.Equal(state.State.Position, originalBody.Centre);
         MovementDomainContact original = Contact(new(-4f, 1f, 1f, true, "floor", "surface"), Vector2.Zero, 0f, 7u);
         using (var old = new Scene())
             Assert.Equal(MovementAvailability.Known,
-                old.Read(new(Body(new Vector3(0f, 0.75f, 0f)), Vector3.Zero), original).Result.Availability);
+                old.Read(new(originalBody, Vector3.Zero), original).Result.Availability);
 
         using var scene = new Scene(origin, cold: true);
         scene.Environment.OnRebuild = (in FramedMovementState _, out MovementSelection selection) =>
@@ -128,7 +130,10 @@ public class MovementEnvironmentColumnTests
         Assert.Equal(MovementAvailability.Known, scene.Lease.RebuildSelection(rebound, out _));
         Vector2 column = new(-origin.X, -origin.Z);
         MovementDomainContact fresh = Contact(new(-4f - origin.Y, 1f - origin.Y, 1f - origin.Y, true, "floor", "surface"), column, 0f, 99u);
-        var query = new MovementMediumSweepQuery(Body(rebound.State.Position + Vector3.UnitY * HalfHeight), Vector3.Zero);
+        MovementBodyQuery reboundBody = Body(rebound.State.Position);
+        Assert.Equal(rebound.State.Position, reboundBody.Centre);
+        Assert.Equal(originalBody.Centre - origin, reboundBody.Centre);
+        var query = new MovementMediumSweepQuery(reboundBody, Vector3.Zero);
         Capture result = scene.Read(query, fresh);
         Assert.Equal(MovementAvailability.Known, result.Result.Availability);
         Assert.Equal(Identity, result.Result.Identity);

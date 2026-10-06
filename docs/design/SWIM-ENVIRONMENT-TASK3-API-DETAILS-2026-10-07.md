@@ -393,8 +393,13 @@ is the capsule centre, but the new Body helper added a half-height. That offset 
 local variable is named centre, and each corrected/restored body's centre is explicitly asserted equal
 to the framed state's position. Room, portal and refusal expectations are unchanged. No tests had run.
 The same audit found an existing half-height offset in the VC1 frame-rebinding fixture. That separate
-test-only correction remains pending and is not silently included in this three-case window. Earlier
-VC1 results do not prove the missing framed-state/body-centre equality assertion.
+test-only correction is now prepared and is not included in this three-case window. Its initial framed
+state carries the already-tested original centre (0, 0.75, 0). Both original and rebound queries use
+their state's Position directly, with explicit equality and origin-translation assertions. Physical
+query poses and prior interval/handle/refusal assertions are unchanged. The separately granted
+changed-fact validation passed one case, zero failures/skips, exit 0 in
+`/tmp/swim-column-centre-fact.log`. No eight-case or 102-case repeat ran. The secondary slot was
+explicitly released. This closes the framed-state/body-centre fixture mismatch with fresh assertions.
 
 The initial value RED compiled and exited 1 with 27 missing-runtime-type failures. After value
 implementation, the same 27 assertions using direct public types passed in Release with no skips,

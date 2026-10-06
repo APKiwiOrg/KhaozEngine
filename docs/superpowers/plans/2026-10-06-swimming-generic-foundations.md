@@ -236,13 +236,13 @@ AddConstraint, RemoveConstraint, SetConstraintTarget, Step, Rebase and Dispose. 
 already inside a writer scope must not reacquire a read scope. Query-view Dispose must respect an
 active lease that pins it. The complete owner remains responsible for all geometry generation.
 
-- [ ] Write finite tests for every listed mutation under a lease, plus disposed lease, wrong-thread
+- [x] Write finite tests for every listed mutation under a lease, plus disposed lease, wrong-thread
       use, nested lease, thrown query cleanup and a writer after release. Assert mutation did not occur.
-- [ ] Verify the environment pin-order integration in Task 3, where the real context exists. Task 1
+- [x] Verify the environment pin-order integration in Task 3, where the real context exists. Task 1
       proves the underlying physical lease rather than asserting behavior of a fake-only composition.
-- [ ] Run the new filtered fixture once, expecting missing capability/fence failures.
-- [ ] Implement exclusive gate/lease and audited mutation/query entry guards. Keep diagnostics developer-only.
-- [ ] Run the fixture and existing PhysicsQueryViewLifecycleTests/PhysicsRebaseTests once. Commit
+- [x] Run the new filtered fixture once, expecting missing capability/fence failures.
+- [x] Implement exclusive gate/lease and audited mutation/query entry guards. Keep diagnostics developer-only.
+- [x] Run the fixture and existing PhysicsQueryViewLifecycleTests/PhysicsRebaseTests once. Commit
       `feat(physics): add scoped read leases for movement queries`.
 
 ## Task 2: Complete capsule contacts on the real backend
@@ -269,18 +269,18 @@ complete the witness/pin signatures, finite capacity limits and six migration li
 Tests: new `KhaozEngine.Game.Tests/Locomotion/MovementEnvironmentContractTests.cs` and test-only
 `Locomotion/Fixtures/AnalyticMovementEnvironment.cs` using real Bepu solids.
 
-- [ ] Write failures for invalid/default values, source/generation/frame mismatches, incomplete scope,
+- [x] Write failures for invalid/default values, source/generation/frame mismatches, incomplete scope,
       stale pin, capacity refusal and coordinate conversion. Assert no old-frame state is relabelled.
-- [ ] Prove prepared-environment pinning occurs after the physical gate, preparation does no I/O under
+- [x] Prove prepared-environment pinning occurs after the physical gate, preparation does no I/O under
       that gate, and failed pinning releases the real physical lease. Use observable mutation refusal and
       successful post-release writes, not only a fake call-order log.
-- [ ] Add dry cave under ocean, stacked intervals, partial/flooded low-ceiling chambers, shaft portal,
+- [x] Add dry cave under ocean, stacked intervals, partial/flooded low-ceiling chambers, shaft portal,
       dry bridge and wet below-deck cases for both centre membership and full swept coverage.
-- [ ] Add legal higher step, independent equal-height-owner ambiguity, missing geometry and a corrected
+- [x] Add legal higher step, independent equal-height-owner ambiguity, missing geometry and a corrected
       pose after a predicted portal crossing. Assert legal filtering then highest support and fresh reconstruction.
-- [ ] Implement values/context/selection composition. The test adapter is finite analytic fixture data,
+- [x] Implement values/context/selection composition. The test adapter is finite analytic fixture data,
       not a production MapDoc parser, terrain sampler or native storage implementation.
-- [ ] Run filtered tests once after the change. Commit
+- [x] Run filtered tests once after the change. Commit
       `feat(locomotion): add explicit scoped movement environment`.
 
 ## Task 4: Shared capsule traversal and opt-in deep boundary
@@ -385,3 +385,18 @@ version selection, main merge, pack or release is claimed at this task checkpoin
 The initial reflection bootstrap allowed a true runtime RED before the new interface existed.
 Final tests use the public interface directly, with unchanged behavioral assertions. The environment
 pin-order proof is assigned to Task 3's real context rather than a fake-only test in Task 1.
+
+
+Task 3 focused implementation and planned generic proofs are complete at `368e2f505`, following
+values, witness, real lease/context, atomic query buffers, support composition, CS1 reconstruction,
+coordinate rebinding, located interval facts and finite volume/union/slope/portal fixtures. The
+[Task 3 evidence record](../../design/SWIM-ENVIRONMENT-TASK3-API-DETAILS-2026-10-07.md) preserves
+each granted run, initial failures and bounded corrections. Pivot's fixture-centre finding was
+corrected and the changed rebind fact passed separately. Task 1's real environment pin-order
+integration is also proved by the completed context fixtures.
+
+This closes the Task 3 implementation step only. Native adapter geometry, residency and real tiled
+seams remain G1b. Tasks 4 to 6, whole-branch review, full final verification and coordinated integration
+remain open. No generic foundation result is a released pin, game adoption or shipped swimming.
+Task 4 now enters source and test preparation under the existing G1a plan, with no heavy run authorized
+by this checkpoint. New slots are requested directly from pivot after the owner retired the coordinator.

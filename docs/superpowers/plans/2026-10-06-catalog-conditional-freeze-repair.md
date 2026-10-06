@@ -167,7 +167,14 @@ Assert.True(a.Success, string.Join(" | ", a.Lines));
 Assert.True(b.Success, string.Join(" | ", b.Lines));
 Assert.Contains(a.Diagnostics, d => d.Code == "KECU0010");
 Assert.DoesNotContain(a.Diagnostics, d => d.Code == "KECU0009");
-Assert.Equal(2, b.Diagnostics.Count(d => d.Code == "KECU0011"));
+Assert.Single(b.Diagnostics, d => d.Code == "KECU0011");
+Assert.Equal(2, b.Steps.Count);
+Assert.Equal(UpgradeHarness.FirstId, b.Steps[0].Id);
+Assert.Equal(ContentUpgradeStepState.Applied, b.Steps[0].State);
+Assert.Equal(2, b.Steps[0].PublishedVersion);
+Assert.Equal(UpgradeHarness.SecondId, b.Steps[1].Id);
+Assert.Equal(ContentUpgradeStepState.Adopted, b.Steps[1].State);
+Assert.Null(b.Steps[1].PublishedVersion);
 Assert.Equal(new int?[] { 1, 1 }, runnerB.ReleaseBases);
 Assert.Equal(new bool?[] { false, false }, runnerB.ReleaseResults);
 Assert.All(runnerB.ReleaseTokens, token => Assert.Equal(CancellationToken.None, token));
@@ -792,3 +799,26 @@ but the approved LegacyFreezeLedgerView must derive from it and share call order
 unseal it and expose the existing recorder as protected, with no new capability and no forwarding
 behavior change. Include the path in its owned commit list. Cost if wrong is test-instrumentation
 inheritance drift, checked by the T5 assertions and fresh task review.
+
+
+### Task 3 continuation rulings T3-C3 and T3-C4
+
+The first implementation saved eighteen paths without committing. Root parsed the catalog result
+177 passed/8 failed and Server result390 passed/200 SQL Server skips. All remaining failures are
+the two T3 diagnostic-count expectations and six exact read counts affected by the removed read-back.
+
+T3-C3 corrects the plan's erroneous two-KECU0011 assertion. Unchanged AdoptRecordedAsync emits
+one diagnostic and rereads active3. The second definition then takes unchanged AlreadySatisfied
+with an Adopted step and no concurrent diagnostic. Require one diagnostic and two steps with exact
+definition IDs, first Applied at version2 and second Adopted with no PublishedVersion. Preserve all
+success, release, ledger, row and version assertions. Do not change production diagnostics. Cost
+if wrong is weaker diagnostic coverage, offset by the exact step/identity and persisted-state checks.
+
+T3-C4 adds ContentUpgradeStaleApplyTests.cs and ContentUpgradeRecoveryTests.cs to owned scope
+for exact counts/comments only. Counts8/11 become6/8, recovered5 becomes3 and rival-progress7
+becomes5, one removed read-back per reached freeze. Preserve exact stand-off limits and every
+behavior assertion. Cost if wrong is missed extra reads/retries, bounded by those exact checks.
+
+Use the analyzer-approved Assert.Single predicate overload with unchanged semantics. The stale
+ContentUpgradeRun.Drafts.cs XML remains Task4's sweep. After actual test edits, rerun the Catalog
+green selection once, retaining original logs and the unchanged successful Server evidence.

@@ -712,3 +712,14 @@ No repair of the deferred residue is bundled into this design.
 Controller verified both findings against the cited code and revised these exact contracts. The
 review accepted F1 to F4 apart from these corrections. No new broad review or implementation was
 started. This draft is ready for owner design review, with runtime red proof still required by task 0.
+
+
+## Execution clarification T3-C3
+
+The two-runner T3 outcome means B accepts both existing results, not two concurrent-adoption
+diagnostics. The unchanged first adoption rereads active version3. B then finds the second
+definition AlreadySatisfied. Assert one KECU0011 and two steps in definition order, Applied at
+version2 from the existing ledger followed by Adopted with no new PublishedVersion. Both reports
+succeed, B attempts one text commit, and the original persisted ledger/version/row assertions
+remain unchanged. This corrects an impossible diagnostic-count expectation without changing
+production behavior or the cross-version safety contract.

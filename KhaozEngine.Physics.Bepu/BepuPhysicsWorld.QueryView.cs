@@ -22,7 +22,7 @@ public sealed partial class BepuPhysicsWorld
         return new QueryView(this, new StaticQueryExclusions(snapshot, _reverseHandles));
     }
 
-    private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource
+    private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts
     {
         private readonly BepuPhysicsWorld _owner;
         private readonly StaticQueryExclusions _exclusions;
@@ -86,6 +86,14 @@ public sealed partial class BepuPhysicsWorld
             using QueryOperation scope = _owner.EnterQuery();
             ThrowIfDisposed();
             return _owner.ComputePenetrationCore(capsule, pose, out mtv, _exclusions);
+        }
+
+        public CapsuleContactResult QueryCapsuleContacts(CapsuleShape capsule, Pose pose, float maxSeparationMetres,
+            Span<CapsuleContact> destination, QueryFilter filter = default)
+        {
+            using QueryOperation scope = _owner.EnterQuery();
+            ThrowIfDisposed();
+            return _owner.QueryCapsuleContactsCore(capsule, pose, maxSeparationMetres, destination, filter, _exclusions);
         }
 
         public Pose GetDynamicPose(DynamicBodyHandle handle)

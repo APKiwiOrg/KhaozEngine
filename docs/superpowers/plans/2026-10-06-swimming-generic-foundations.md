@@ -235,14 +235,14 @@ active lease that pins it. The complete owner remains responsible for all geomet
 **Files:** New seam/contact types above, `BepuPhysicsWorld.CapsuleContacts.cs`, QueryView forwarding.
 Tests: new `KhaozEngine.Game.Tests/Physics/CapsuleContactCoverageTests.cs`.
 
-- [ ] Add tests using real Bepu solids for bed plus shallower wall, post plus low ceiling, two tied
+- [x] Add tests using real Bepu solids for bed plus shallower wall, post plus low ceiling, two tied
       thin walls, positive separation exactly 0.002 m, beyond-margin exclusion, compound child contacts,
       insertion-order reversal and too-small destination buffer. Assert complete normal sets, not only counts.
-- [ ] Run RED, then implement complete candidate/manifold gathering with explicit margin and exclusions.
+- [x] Run RED, then implement complete candidate/manifold gathering with explicit margin and exclusions.
       Sort/reduce geometrically equivalent constraints deterministically. Never discard a distinct normal.
-- [ ] Validate error bounds against analytic box/capsule fixtures and existing mesh/hull regressions.
+- [x] Validate error bounds against analytic box/capsule fixtures and existing mesh/hull regressions.
       Uncertifiable backend cases return incomplete, never clear.
-- [ ] Run new and affected penetration/query-view tests once. Commit
+- [x] Run new and affected penetration/query-view tests once. Commit
       `feat(physics): expose complete capsule contact coverage`.
 
 ## Task 3: Explicit environment values, context and support selection

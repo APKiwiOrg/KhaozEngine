@@ -8575,6 +8575,13 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   acquiring thread before changing physics. Same-thread writes and nested leases are refused, other
   threads serialize behind the gate, and view disposal cannot invalidate an active interval. This does
   not certify native environment residency or provide a cross-head world/bake identity.
+- Optional `IPhysicsCapsuleContacts.QueryCapsuleContacts(capsule, pose, maxSeparationMetres,
+  destination, filter) -> CapsuleContactResult` gathers independent constraints, including positive
+  separations within the margin. Check `Complete` and `CertifiedErrorMetres` before using the output.
+  Incomplete queries write nothing and report zero `Written`, with `RequiredCapacity` when known.
+  Contact normals point out of the source body. Body/child/feature identifiers are source-local.
+  Bepu preserves child constraints before final manifold reduction and refuses unsupported layer masks.
+  Its [backend limits](../KhaozEngine.Physics.Bepu/README.md) can refuse otherwise valid mesh inputs.
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
   `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
   `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,

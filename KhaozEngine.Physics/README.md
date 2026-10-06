@@ -31,6 +31,14 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   interval. A lease does not certify water/terrain residency, portable world identity or scope completeness.
   Those facts belong to the environment adapter paired with this physical read interval. A backend that
   lacks the optional interface remains valid for legacy callers and cannot promise an explicit lease.
+- **`IPhysicsCapsuleContacts` / `QueryCapsuleContacts`** - optional complete contact constraints in the
+  current physics frame. Supply a finite nonnegative separation margin and caller-owned span. Normals
+  point away from the contacted body, separation is positive outside and negative inside. Contacts retain
+  source-local body, child and feature provenance. `Complete == false` leaves the entire span untouched,
+  with `Written == 0`. `RequiredCapacity` reports the needed size when known, otherwise zero. Check the
+  returned `CertifiedErrorMetres` against the caller's tolerance before using a complete result. Uncertain
+  boundary contacts may appear within that error beyond the requested margin. Unsupported filters must
+  be refused, never silently ignored. Use a query lease when composing several queries into one result.
 - **Static handle provenance for query views** - the factory rejects invalid, missing and stale handles at
   creation. Handles are numeric identities local to their source world, so equal values from different worlds
   are not interchangeable. Use handles returned by that source, and do not reuse removed exclusions to infer

@@ -55,6 +55,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
     // Bodies.Remove frees the body entry but NOT the shape, so RecursivelyRemoveAndDispose on RemoveDynamic
     // keeps the shape pool from growing across body add/remove cycles.
     private readonly Dictionary<int, (BepuBodyHandle Handle, TypedIndex Shape)> _dynamics = new();
+    private readonly Dictionary<int, int> _reverseDynamics = new();
     // Restitution bookkeeping for the explicit bounce pass in Step (see Step): the set of dynamic-body ids with a
     // non-zero restitution, each id's coefficient, and a scratch snapshot of pre-step velocities (reused to avoid
     // per-step allocation). A body with zero restitution is never in these, so the common case adds no overhead.
@@ -196,6 +197,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
         }
 
         _dynamics[id] = (bepuHandle, shapeIndex);
+        _reverseDynamics[bepuHandle.Value] = id;
         float restitution = material?.Restitution ?? 0f;
         if (restitution > 0f)
         {
@@ -223,6 +225,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
             _sim.Bodies.Remove(entry.Handle);
             _sim.Shapes.RecursivelyRemoveAndDispose(entry.Shape, _pool);
             _dynamics.Remove(handle.Value);
+            _reverseDynamics.Remove(entry.Handle.Value);
             _restitutiveDynamics.Remove(handle.Value);
             _restitutionOf.Remove(handle.Value);
         }

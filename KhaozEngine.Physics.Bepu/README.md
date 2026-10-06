@@ -45,6 +45,16 @@ either value shifts the bit-exact result legitimately.
   pressure. Throws on a stale handle or a motorless joint.
 - **`Step(dt)`**, **`Raycast`**, **`SweepCapsule`**, **`ComputePenetration`** - the last is one
   CollisionBatcher manifold query over every shape type, deepest contact wins.
+- **Complete capsule contacts** - the owner and restricted views implement `IPhysicsCapsuleContacts`.
+  The query selects convex leaves with margin-expanded bounds, bypasses final contact-count reduction, applies mesh seam
+  smoothing, then sorts geometric constraints with local provenance. Distinct normals survive even when
+  a deeper bed contact exists. Mobility and view exclusions apply before gathering. Nonzero layer masks
+  throw `NotSupportedException` because this backend does not assign per-body layers.
+  Work limits are 4096 broad-phase candidates, 4096 selected leaves, 4096 children per compound, 16384 contacts and 1024 triangles per
+  mesh smoothing region. Exhaustion, an unsupported mesh scale, a smoothed normal whose depth cannot be
+  certified, or a numerical budget above 0.001 m returns incomplete without writing the destination.
+  A too-small destination also returns incomplete and reports the required capacity. These limits and
+  the pinned backend version belong in any bake policy identity that consumes this capability.
 - **Static query views** - `BepuPhysicsWorld` supports
   `IPhysicsWorld.CreateQueryViewExcludingStatics(ReadOnlySpan<StaticHandle>)`. It validates every live seam
   handle at creation, copies the selection, and resolves the stable seam handle back to the current static

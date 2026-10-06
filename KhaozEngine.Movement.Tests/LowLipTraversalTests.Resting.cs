@@ -4,8 +4,9 @@
 // corner.
 //
 // The facts named Accepts with a hypothesis comment state that a physically supported resting offset keeps its bank
-// column, edges and route. They are expected to fail at the starting commit. The Refuses facts guard any repair against the deck layer
-// on the bank column, an unsupported height and a resting pose a roof does not fit. Prior art is the SlopeArrivalTests
+// column, edges and route. They are expected to fail at the starting commit. The refusal facts guard the deck layer
+// and unsupported heights. Roof safety reads the real captured footprint, separately from a permissive-helper
+// characterization with no safe-bake guarantee. Prior art is the SlopeArrivalTests
 // header (#1265): a generic upward arrival band plus a grounded vertical push-out broke 7 stair tests and was reverted.
 
 using System;
@@ -156,25 +157,65 @@ public partial class LowLipTraversalTests
         Assert.False(GroundTraversalProbeTests.Probe(Context(world), Tuning, feet, feet));
     }
 
-    // The roof clears a body at the captured bank height by 5 mm, so the corner rest pushes 10 mm into it.
+    // The roof clears the raw bank by 5 mm. The real footprint also reads the deck neighbor, whose headroom is
+    // below the 1.5 m capsule. This is a profile safety control, not the permissive helper characterization below.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void ProbeRefusesTheBankColumnUnderARoofItsRestDoesNotFit(bool resting)
+    public void ProfileRefusesTheBankColumnUnderARoofItsRestDoesNotFit(bool resting)
     {
         using BepuPhysicsWorld world = LipWorld(RestingLip);
-        StaticHandle roof = world.AddStatic(new BoxShape(new Vector3(0.5f, 0.25f, 2f)),
-            Pose.At(new Vector3(-EdgeOffset, 2f * Tuning.CapsuleHalfHeight + 0.005f + 0.25f, 0f)));
+        _ = AddRoof(world);
         Vector3 feet = LipFeet(-EdgeOffset, RestingLip) + Vector3.UnitY * (resting ? CornerRise(RestingLip) : 0f);
+        using PhysicsNavBake bake = PhysicsNavBake.Capture(Context(world), Options, _ => 0u);
+        var footprint = new NavAreaFootprint(bake.Columns, Options, Tuning, default);
+        bool eligible = footprint.Accepts(feet);
+        bool proved = GroundTraversalProbe.TryEdge(Context(world), Tuning, feet, feet, footprint.Accepts, Tick, 64);
+        GroundNavigation nav = bake.BuildProfile(Tuning, default);
+        float[] heights = NodeHeights(nav, -EdgeOffset);
+        bool allows = nav.AllowsSegment(feet, feet);
+        _restingOutput.WriteLine($"real roof safety resting={resting}, footprint={eligible}, proof={proved}, " +
+            $"candidates=[{string.Join(", ", heights)}], segment={allows}");
 
-        bool accepted = GroundTraversalProbeTests.Probe(Context(world), Tuning, feet, feet);
-        ReportRoofHold(world, roof, feet, resting, accepted);
-        Assert.False(accepted);
+        Assert.False(eligible);
+        Assert.False(proved);
+        Assert.DoesNotContain(heights, height => height < RoofBottom);
+        Assert.Contains(heights, height => MathF.Abs(height - RoofTop) <= GroundTraversalProbe.ArrivalTolerance);
+        Assert.False(allows);
     }
+
+    // This intentionally bypasses footprint eligibility. Its measured result and residual contact characterize
+    // the current core only. They are not permission to route a capsule into the roof squeeze.
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void PermissiveFootprintProbeCharacterizesTheRoofSqueeze(bool resting, bool expectedProbe)
+    {
+        using BepuPhysicsWorld world = LipWorld(RestingLip);
+        StaticHandle roof = AddRoof(world);
+        Vector3 feet = LipFeet(-EdgeOffset, RestingLip) + Vector3.UnitY * (resting ? CornerRise(RestingLip) : 0f);
+        bool accepted = GroundTraversalProbeTests.Probe(Context(world), Tuning, feet, feet);
+        RoofHoldObservation observed = ReportRoofHold(world, roof, feet, resting, accepted);
+
+        Assert.Equal(expectedProbe, accepted);
+        Assert.True(observed.Grounded);
+        Assert.InRange(Vector3.Distance(observed.Feet, LipFeet(-EdgeOffset, RestingLip)), 0f, 0.000001f);
+        Assert.True(observed.Penetrating);
+        Assert.InRange(Vector3.Distance(observed.Mtv, new Vector3(-0.0060106213f, 0.012381879f, 0f)), 0f, 0.00001f);
+    }
+
+    private static float RoofBottom => 2f * Tuning.CapsuleHalfHeight + 0.005f;
+    private static float RoofTop => RoofBottom + 0.5f;
+
+    private static StaticHandle AddRoof(BepuPhysicsWorld world)
+        => world.AddStatic(new BoxShape(new Vector3(0.5f, 0.25f, 2f)),
+            Pose.At(new Vector3(-EdgeOffset, RoofBottom + 0.25f, 0f)));
+
+    private readonly record struct RoofHoldObservation(Vector3 Feet, bool Grounded, bool Penetrating, Vector3 Mtv);
 
     // At most nine output rows per case. The extra Hold reads the same immutable fixture and changes no world state.
     // This is observation of the public core, not a replacement for the unchanged permissive-footprint probe above.
-    private void ReportRoofHold(BepuPhysicsWorld world, StaticHandle roof, Vector3 feet, bool resting, bool accepted)
+    private RoofHoldObservation ReportRoofHold(BepuPhysicsWorld world, StaticHandle roof, Vector3 feet, bool resting, bool accepted)
     {
         MoveTuning tuning = Tuning with { WalkSpeed = 1f, RunSpeed = 1f, AirMomentum = false };
         CapsuleShape capsule = CharacterMovement.CapsuleFor(tuning);
@@ -223,6 +264,7 @@ public partial class LowLipTraversalTests
         _restingOutput.WriteLine($"profile candidate heights [{string.Join(", ", NodeHeights(nav, -EdgeOffset))}], " +
             $"AllowsSegment(feet,feet)={nav.AllowsSegment(feet, feet)}");
         _restingOutput.WriteLine($"TryEdge with permissive _=>true footprint={accepted}; real profile reported separately");
+        return new RoofHoldObservation(afterFeet, after.Grounded, post, postMtv);
     }
 
     [Theory]

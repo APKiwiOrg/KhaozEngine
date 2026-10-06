@@ -617,14 +617,14 @@ Expected all exits 0. Recheck no concurrent main movement before using the SHA g
 
 ## Outcome
 
-Status on 2026-10-06: **full plan verified and approved for serial execution under OA16**. Task 0 is next. No code/test/version change has yet executed and no release tag is authorized.
+Status on 2026-10-06: **full plan verified and approved for serial execution under OA16**. Task 0 expected-red proof and fresh review are complete. Task 1 is next. No code/test/version change has yet executed and no release tag is authorized.
 
 | Gate | Required durable record | Current state |
 | --- | --- | --- |
 | Plan | Planning commit SHA, self-review coverage, documentation guard commands/exits/logs | Written by planner in `.superpowers/sdd/2026-10-06-catalog-conditional-freeze-design/implementation-plan-report.md` |
 | Approval | Root verification and explicit OWNER full-plan approval | OA16, owner answered yes on 2026-10-06 |
 | Coordination | Pivot thread reply, engine code/pinable barrier ruling | Pending root action |
-| Task 0 | Exact source-diff exit, twelve named reds/two residue passes, test-only SHA, fresh review | Pending |
+| Task 0 | Exact source-diff exit, twelve named reds/two residue passes, test-only SHA, fresh review | b194240e8, source diff 0, runtime 12 expected failures/2 passes, fresh spec and quality approved |
 | Tasks 1 to 3 | Task bases/SHAs, focused green exits/counts, constructor/forwarder inventory, fresh reviews | Pending |
 | Task 4 | Rechecked main/tags, chosen minor, matching changelog, docs sweep/guard exits | Pending |
 | Final | Whole-branch review, full Release build/test/format exits, private-feed version/SHA | Pending |
@@ -668,3 +668,20 @@ Worker moved B's fixed-state commit-count assertion after A's success assertion 
 every assertion so the old-code failure remains the required KECU0009 diagnostic. The fresh review
 assesses this and all seven files. It is pending, and Task 1 remains blocked on that review. No
 production fix or Task 0 completion verdict is claimed yet. PROGRAM.md records the active reviewer.
+
+
+### Task 0 accepted, Task 1 preparation
+
+Fresh review task wa-catalog1271-task0-review1-20261006 returned spec compliant and quality
+approved for a85eb8c30..b194240e8, no Critical/Important finding. Controller accepts the expected-red
+proof, not a production fix. Minor helper duplication and unused adapter members carry to Task 2,
+operator-edit assertion coverage carries to Task 3, and cleanup-timeout diagnostic masking carries
+to final review. No minor is silently discarded or used to start an unrelated fix.
+
+Ruling T0-C1 retains every T3 assertion but puts B's fixed-state commit-count check after A's
+success assertion, preserving H5's named old-code failure. Cost if wrong is a misleading baseline
+failure order, while green-path checks remain intact. The reviewer accepted this order.
+
+Task 3's reviewer must verify cleanup still runs after refused guarded freeze, preserving T4/T4r's
+release-exit gate. SQL Server execution remains the later normal CI gate. Task 1 begins with the
+new store companion/conformance only. Existing pipeline races remain intentionally owned red.

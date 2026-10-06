@@ -617,7 +617,7 @@ Expected all exits 0. Recheck no concurrent main movement before using the SHA g
 
 ## Outcome
 
-Status on 2026-10-06: **full plan verified and approved for serial execution under OA16**. Task 0 expected-red proof and fresh review are complete. Task 1 store capability and fresh review are complete. Task 2 publishing is next. No code/test/version change has yet executed and no release tag is authorized.
+Status on 2026-10-06: **full plan verified and approved for serial execution under OA16**. Task 0 expected-red proof and fresh review are complete. Task 1 store capability and fresh review are complete. Task 2 publishing and fresh review are complete. Task 3 runner is next. No code/test/version change has yet executed and no release tag is authorized.
 
 | Gate | Required durable record | Current state |
 | --- | --- | --- |
@@ -767,3 +767,21 @@ Original failed logs remain preserved. Exact-path formatting and hooked commit e
 Evidence hashes/counts are in proofs/2026-10-06-catalog-task2-publishing.json. Fresh review task
 wa-catalog1271-task2-review1-20261006 covers the entire range, including the two scope rulings.
 Task 2 is not complete until review resolves. Runner-only cases and SQL Server remain later gates.
+
+
+### Task 2 accepted, Task 3 preparation
+
+Fresh review wa-catalog1271-task2-review1-20261006 approved spec compliance and task quality for
+9b1c0d519..6b4e95a2d, with no Critical/Important finding. Root accepts Task 2. Root had parsed
+all actual proof files, resolving the review's evidence-not-in-diff note. Both T2r cases passed in
+t2-green-c2.trx, so the review's claim they were not rerun is refuted. The broader existing upgrade
+classes still need Task 3's approved green selection. Do not add another run before that change.
+
+Task 0 duplicate helpers and unused observations are resolved. A direct Server forwarding-base
+constructor-refusal assertion is a minor Task 3/final-review item. SQL Server remains normal CI.
+
+Ruling T3-C1 permits the direct operator old_row value33 assertion in version3 after the existing
+winner assertions for T3o/T4/T4r, keeping every earlier assertion and scenario order. This
+strengthens the accepted preservation requirement. Cost if wrong is a fixture-selection assertion
+error, caught by the focused run and review. Capture-before-freeze cleanup remains mandatory so
+refused guarded freezes still reach the release-exit gate. Task 3 owns the remaining runner reds.

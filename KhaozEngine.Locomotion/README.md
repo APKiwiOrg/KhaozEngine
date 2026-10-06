@@ -399,6 +399,14 @@ NominalSurfaceY. A flooded cave ceiling may bound the interval below that nomina
 UpperIsFreeSurface identifies a surface belonging to this interval. These values do not change the
 legacy medium-provider overloads or supply a native water sampler.
 
+`MovementQueryScope` bounds the query in the physics frame and carries its support rise/drop
+envelope, identity and selected space. `MovementScopeWitness.TryCreate` requires a matching identity
+and complete known-empty classification, including the vacuously complete all-nonempty case.
+It validates the 256-ID, 1024-byte-per-ID and 65536-byte aggregate UTF-8 limits before copying and
+sorting, rejects malformed UTF-16 and duplicate IDs, and returns no witness on refusal. The producer
+limits a combined prepare/pin attempt to 4096 dependency visits. Local backing IDs may differ after
+repacking without changing portable identity. The witness does not validate a native resource directory.
+
 ## Types
 
 - **`MoveCommand`** - movement intent: camera-relative XZ axis, run flag, camera yaw, jump bit, and (17.26.0) the

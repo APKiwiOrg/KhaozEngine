@@ -60,6 +60,9 @@ Bound each string's UTF-16 length before counting UTF-8 bytes, then accumulate b
 arithmetic. Reject malformed UTF-16 rather than using replacement encoding. Do not allocate an
 output copy or sort until all size/identity checks pass. Over-capacity returns CapacityExceeded
 and null witness. Invalid identifiers/duplicates return Invalid and null witness. Nothing truncates.
+An incomplete classification attestation returns Unresolved and null witness. The factory validates
+the copied values again after the first bounded pass, so a mutable input cannot evade byte limits
+between validation and copying. Published witness storage remains immutable afterward.
 
 Capacity fixtures cover 257 entries without indexing them, one 1025-byte identifier, aggregate
 65537 bytes, exact boundaries, duplicate/blank identifiers, malformed UTF-16, and immutable copying.
@@ -121,3 +124,10 @@ The separately selected 13-case witness RED then exited 1 with no skips, at the 
 MovementQueryScope type. It used the successful compilation above with `--no-build`.
 `/tmp/swim-environment-witness-red.log` is missing-capability evidence, not a proof of witness
 capacity/refusal behavior. Each granted window explicitly released the shared compute slot.
+
+Witness GREEN subsequently compiled and exited 0 with all 13 direct-type assertions passing,
+no failures and no skips, in `/tmp/swim-environment-witness-green.log`. It proves the finite
+count/byte boundaries, malformed UTF-16 and invalid-name refusal, immutable ordinal copying,
+scope identity mismatch refusal and equal portable identity with differing backing IDs.
+No other fixture ran in that window. Actual lease/pin composition, throwing cleanup, caller
+sentinel protection, support selection and coverage remain outstanding before Task 3 completion.

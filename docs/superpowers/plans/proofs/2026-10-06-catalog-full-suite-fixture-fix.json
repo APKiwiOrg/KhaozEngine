@@ -1,0 +1,66 @@
+{
+  "base": "a407e74ca471f9e48babb5ab7d1c6782eed4bfb9",
+  "repair_commit": "294621f7f8c3fdb4732fe729b43ac005fd805fda",
+  "scope": [
+    "KhaozEngine.Catalog.Tests/Publish/PublishFixtures.cs",
+    "KhaozEngine.Catalog.Tests/Publish/PublishPipelineTests.cs"
+  ],
+  "original_full_run": {
+    "build_exit": 0,
+    "test_exit": 1,
+    "passed": 25716,
+    "failed": 26,
+    "skipped": 1338,
+    "format_ran": false
+  },
+  "focused": {
+    "exit": 0,
+    "passed": 203,
+    "failed": 0,
+    "skipped": 0,
+    "original_failures_matched_and_passed": 26
+  },
+  "verification": {
+    "fv1-publish.log": {
+      "path": "/tmp/grimhollow-orch/catalog-conditional-freeze/fv1-publish.log",
+      "sha256": "68588ac8eb54ad80e0313db986cce5d836c788f26e6efdbdf6ce5f4256d61110"
+    },
+    "fv1-publish.trx": {
+      "path": "/tmp/grimhollow-orch/catalog-conditional-freeze/fv1-publish.trx",
+      "sha256": "6f3f34c4b5b98236c8a058e2ced15e7aea9c6fb3ad05c7863357b25f819725f5"
+    },
+    "fv1-format.log": {
+      "path": "/tmp/grimhollow-orch/catalog-conditional-freeze/fv1-format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "fv1-dashes.log": {
+      "path": "/tmp/grimhollow-orch/catalog-conditional-freeze/fv1-dashes.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "fv1-prose.log": {
+      "path": "/tmp/grimhollow-orch/catalog-conditional-freeze/fv1-prose.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "fv1-file-size.log": {
+      "path": "/tmp/grimhollow-orch/catalog-conditional-freeze/fv1-file-size.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "fv1-doc-versions.log": {
+      "path": "/tmp/grimhollow-orch/catalog-conditional-freeze/fv1-doc-versions.log",
+      "sha256": "4cbe05d8b0efb5d7c1655f5c6d7f57a8eacd0389b2e1417d2b64cdbf92246792"
+    },
+    "fv1-commit.log": {
+      "path": "/tmp/grimhollow-orch/catalog-conditional-freeze/fv1-commit.log",
+      "sha256": "c3e07768be7ed8653b19de4f937824267eab1d188eb6973175ba586d127be04a"
+    }
+  },
+  "review": "wa-catalog1271-full-suite-fixture-review1-20261006 pending",
+  "remaining": [
+    "full verification",
+    "private pack",
+    "hosted CI with SQL Server",
+    "integration",
+    "shared pack",
+    "owner release approval"
+  ]
+}

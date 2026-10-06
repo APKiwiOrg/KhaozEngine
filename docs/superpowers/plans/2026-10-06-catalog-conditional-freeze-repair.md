@@ -914,3 +914,28 @@ from reviewed5ce2b87e2 to the bookkeeping head passed with docs excluded. No rec
 needed. Root now runs the full Release build, non-LiveSocket suite and full format once through
 the shared slot, logging final-build.log, final-test.log and final-format.log. Final results,
 private pack, actual SQL Server/Metal CI, integration and shared-feed proof remain unclaimed.
+
+
+### Full-suite fixture regression repaired, scoped review pending
+
+Full verification at a407e74ca built with zero warnings/errors, but tests exited 1 with
+25,716 passed, 26 failed and 1,338 skipped. All 26 failures requested base 1 from a fixture
+store still at 0. The other 29 projects passed. Format did not run after the failed suite.
+
+Ruling FV-C1 completes Task 2 fixture migration through public store commit operations, without
+weakening the production guard or changing scenario assertions. Valid prepared plans now commit
+real rows/version history. Invalid plans release their recorded-base freeze and discard without
+advancing. One direct minimum-build chaining test commits its first plan. Risk is altered
+pipeline-only semantics, bounded by caller inventory, focused coverage and fresh scoped review.
+
+Worker commit 294621f7f8c3fdb4732fe729b43ac005fd805fda changes only PublishFixtures.cs and PublishPipelineTests.cs.
+Root inspected the complete diff, public commit implementation, branch containment and actual
+slot exits. Publish namespace Release coverage passed 203 tests, zero failures/skips. Root matched
+all 26 original failing test names to passed TRX results. Changed-file format and whole-tree
+dash/prose/file-size guards passed, with version docs consistent at 20.28.0. Proof hashes and
+counts are in proofs/2026-10-06-catalog-full-suite-fixture-fix.json.
+
+Fresh scoped review wa-catalog1271-full-suite-fixture-review1-20261006 is active. This is a
+verification-discovered Task 2 dependency repair, not another broad review sweep. Full verification
+after the source change, private pack, hosted SQL Server/GPU CI, integration and shared pack remain
+open. No tag is authorized.

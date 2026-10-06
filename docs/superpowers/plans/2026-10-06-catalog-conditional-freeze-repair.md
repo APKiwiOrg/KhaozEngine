@@ -325,7 +325,7 @@ Commit command exits 0 with hooks enabled. Omit an unchanged owned path only aft
 
 ### Task 2: Require the capability in publishing and release the recorded base
 
-**Files:** Task 2 rows in the map, plus Task 0 adapters. Keep the runner production code unchanged.
+**Files:** Task 2 rows in the map, plus all seven existing Task 0 test/harness files for conditional forwarding, pack observations and helper cleanup under ruling T2-C1 below. Preserve all Task 0 scenario ordering and assertion values. Keep the runner production code unchanged.
 
 **Interfaces:** Consume Task 1's companion. Produce `ContentAuthoringException.ConditionalFreezeUnavailableReason = "conditional-freeze-unavailable"`. Existing public publish/Prepare signatures stay unchanged. Race adapters gain read-only `int GuardedFreezeCalls` and populate Task 0's existing nullable release observations from actual companion calls. Test-only `LegacyFreezeStoreView` implements the released authoring seam independently and records every member call without declaring any new capability. Test `ConditionalRowOnlyStoreView` extends the existing incapable `RowOnlyStoreView`, requires a capable inner and forwards both new members.
 
@@ -617,7 +617,7 @@ Expected all exits 0. Recheck no concurrent main movement before using the SHA g
 
 ## Outcome
 
-Status on 2026-10-06: **full plan verified and approved for serial execution under OA16**. Task 0 expected-red proof and fresh review are complete. Task 1 is next. No code/test/version change has yet executed and no release tag is authorized.
+Status on 2026-10-06: **full plan verified and approved for serial execution under OA16**. Task 0 expected-red proof and fresh review are complete. Task 1 store capability and fresh review are complete. Task 2 publishing is next. No code/test/version change has yet executed and no release tag is authorized.
 
 | Gate | Required durable record | Current state |
 | --- | --- | --- |
@@ -691,10 +691,10 @@ new store companion/conformance only. Existing pipeline races remain intentional
 
 Commit 0d1832fa642ad9b911dfa52a5c77e080f78d85ba over 07b605e42 touches exactly eleven owned
 paths. Controller inspected the interface XML diff and all three atomic operations, verified commit
-ancestry/scope and parsed the actual TRX. Server selection passed12 and skipped7 SQL Server facts.
-SQLite timestamp selection passed1. Actual shared-slot green/format/guard/commit exits were0.
+ancestry/scope and parsed the actual TRX. Server selection passed 12 and skipped 7 SQL Server facts.
+SQLite timestamp selection passed 1. Actual shared-slot green/format/guard/commit exits were 0.
 
-The compile red exited1 with expected missing-interface errors plus an inaccessible test comparer,
+The compile red exited 1 with expected missing-interface errors plus an inaccessible test comparer,
 corrected before production implementation. No clean runtime-red or mutation proof is claimed for
 Task1. Task0 already supplies the reviewed old-code runtime reproduction. Its caller races were not
 rerun and remain owned red because no callers moved. No schema, version or legacy behavior changed.
@@ -702,3 +702,22 @@ rerun and remain owned red because no callers moved. No schema, version or legac
 Proof hashes/cases are in proofs/2026-10-06-catalog-task1-stores.json. SQL Server remains a remote
 CI gate. One fresh spec/quality review is active, task wa-catalog1271-task1-review1-20261006.
 Task1 is not marked complete and Task2 remains blocked on its review.
+
+
+### Task 1 accepted, Task 2 preparation
+
+Fresh review wa-catalog1271-task1-review1-20261006 approved spec compliance and quality for
+07b605e42..0d1832fa6, with no Critical/Important findings. Root accepts this task. SQL Server's
+seven facts remain a normal CI gate. Legacy pipeline calls still exist and transitional XML must
+be made true by Tasks 2/3 and checked in the whole-branch review.
+
+Minor SQL Server evidence wording and provider-contention documentation carry to Task 4/final
+review. Mid-call cancellation coverage is a recorded final-review concern, with cleanup/lost-ack
+behavior still owned by Tasks 2/3. No same-base repair is added.
+
+Ruling T2-C1 permits Task 2 to edit all seven existing Task 0 test/harness files for conditional
+forwarding, pack observations and accepted helper cleanup, preserving scenario ordering and every
+assertion value. Append actually changed owned helper paths to the sample commit command. This
+reconciles the stated adapter scope with the narrower sample path list. Cost if wrong is extra
+test churn, bounded by the focused proof and independent review. Task 0's operator-row coverage
+minor stays with Task 3 and timeout diagnostic masking stays with final review.

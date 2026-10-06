@@ -186,7 +186,7 @@ public static partial class ContentUpgradeRunner
                     ContentUpgradeOutcome.Unsupported,
                     ContentUpgradeCodes.ConditionalFreezeUnsupported,
                     FormattableString.Invariant(
-                        $"this catalog store {storeName} does not implement {nameof(IContentConditionalDraftFreeze)}, so the {pending.Count} pending upgrade(s) cannot be applied or adopted. An apply needs its {nameof(IContentConditionalDraftFreeze.FreezeDraftForBaseAsync)} and {nameof(IContentConditionalDraftFreeze.ReleaseDraftFreezeForBaseAsync)} so it never overwrites or releases another publisher's freeze. Implement the companion, then run again. Nothing was read past the ledger and nothing was written."));
+                        $"this catalog store {storeName} does not implement {nameof(IContentConditionalDraftFreeze)}, so the {pending.Count} pending upgrade(s) cannot be applied or adopted. An apply needs its {nameof(IContentConditionalDraftFreeze.FreezeDraftForBaseAsync)} and {nameof(IContentConditionalDraftFreeze.ReleaseDraftFreezeForBaseAsync)} so it never overwrites or releases a freeze set for a newer base. Implement the companion, then run again. Nothing was read past the ledger and nothing was written."));
             }
 
             run.Note(new ContentUpgradeDiagnostic(

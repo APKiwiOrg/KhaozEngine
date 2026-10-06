@@ -15,6 +15,12 @@ namespace KhaozEngine.Catalog.Authoring;
 /// cannot: the freeze refuses a base the store has moved past and the release leaves a marker naming another base.
 /// </para>
 /// <para>
+/// <b>The protection is against a marker for another base, not exclusive ownership.</b> A marker carries a base
+/// version and no publisher identity, so two publishers standing on the same base are indistinguishable. A guarded
+/// freeze at that base replaces a same-base rival's marker with the same value, and a release at that base clears
+/// it, even when this caller's own freeze was refused and wrote nothing.
+/// </para>
+/// <para>
 /// <b>A declaring type guarantees both contracts for every instance.</b> A decorator declares this interface only
 /// when its constructor requires an inner store that declares it, and it forwards both members to that store.
 /// </para>
@@ -47,7 +53,9 @@ public interface IContentConditionalDraftFreeze : IContentAuthoringStore
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="expectedBaseVersion"/> is negative.</exception>
     /// <exception cref="ContentAuthoringException">
     /// <see cref="ContentAuthoringException.BaseVersionMovedReason"/> when the store does not stand at
-    /// <paramref name="expectedBaseVersion"/>. <see cref="ContentAuthoringException.NoOpenDraftReason"/> when no draft is
+    /// <paramref name="expectedBaseVersion"/>, and on a provider that maps transaction contention to that reason, such
+    /// as SQL Server, also when the database refused the call's transaction.
+    /// <see cref="ContentAuthoringException.NoOpenDraftReason"/> when no draft is
     /// open or the open draft holds no row edit, including a draft holding only text.
     /// <see cref="ContentAuthoringException.TextUnrepresentedReason"/> when the draft holds text intents or language
     /// introductions, or forks a row that holds text at the active version.
@@ -67,5 +75,9 @@ public interface IContentConditionalDraftFreeze : IContentAuthoringStore
     /// <param name="cancellationToken">Cancels the call. The engine pipelines pass <see cref="CancellationToken.None"/>.</param>
     /// <returns>True when this call cleared a marker, false otherwise, including on any repeat.</returns>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="frozenForBaseVersion"/> is negative.</exception>
+    /// <exception cref="ContentAuthoringException">
+    /// <see cref="ContentAuthoringException.BaseVersionMovedReason"/> on a provider that maps transaction contention to
+    /// that reason, such as SQL Server, when the database refused the call's transaction and nothing was cleared.
+    /// </exception>
     Task<bool> ReleaseDraftFreezeForBaseAsync(int frozenForBaseVersion, CancellationToken cancellationToken = default);
 }

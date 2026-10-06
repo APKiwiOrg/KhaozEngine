@@ -26,6 +26,11 @@ Version 0 reads the active published version and ignores the open draft and oper
 It adds per-language display text to drafts, publishes, bundles, rollback and recovery. [Catalog text](#catalog-text)
 documents it.
 
+`IContentConditionalDraftFreeze` is the guarded freeze companion, implemented by the same three stores and
+REQUIRED to publish, to prepare a row publish and to apply an upgrade. A custom store without it is refused at
+runtime, so it still compiles and loads against this version.
+[The guarded freeze and the recorded-base release](#the-guarded-freeze-and-the-recorded-base-release) documents it.
+
 `IContentAuthoringStore` also INHERITS `KhaozEngine.Catalog`'s `IContentVersionDirectory`, which declares its two version reads, so
 a host that boots off its authoring database assigns the store itself to `ContentBootOptions.Directory` and
 writes no adapter.
@@ -246,10 +251,9 @@ carrying the `base-version-moved` reason.
 
 ### The draft is frozen for the whole publish
 
-Step 1 marks the open draft FROZEN for the base version it is publishing, through
-`IContentAuthoringStore.FreezeDraftAsync`, and every write to the draft is refused while the marker stands:
-`ApplyEditsAsync` and `DiscardDraftAsync` both throw with the `publish-in-progress` reason.
-`ContentDraft.FrozenForBaseVersion` and `ContentDraft.IsFrozen` are how a console reads it. Without it a
+Step 1 marks the open draft FROZEN for the base version it is publishing, and every write to the draft is refused
+while the marker stands: `ApplyEditsAsync` and `DiscardDraftAsync` both throw with the `publish-in-progress`
+reason. `ContentDraft.FrozenForBaseVersion` and `ContentDraft.IsFrozen` are how a console reads it. Without it a
 second actor's edit lands in a change set the pipeline has already read, version N publishes without it, and
 step 10 deletes the draft it was sitting in: an edit an operator saved that no version carries and no draft
 still holds.
@@ -258,22 +262,66 @@ still holds.
 steps 1 to 10, step 9 writes the whole pack, and no provider holds a row lock across that: SQLite leases its
 one connection per call, and SQL Server's Serializable transaction covers step 10 alone.
 
-`ContentPublishCommit.PublishAsync` clears the marker in a `finally`, so a success, a refusal, a throw and a
-cancellation all release the draft. Two things recover a marker nothing cleared, which is what a killed
-process leaves. A marker naming a version the store has moved past is STALE, and
-`ReadPublishBaselineAsync` clears it, which is the read every publish starts with. A marker naming the
-version the store still stands at belongs to a publish that died before its commit. A later publish
-overwrites that marker at step 1 and clears it on exit.
+#### The guarded freeze and the recorded-base release
 
-The same-version marker carries no publisher identity, so an edit or discard cannot tell a dead publisher
-from a live one and never clears it. After confirming no publisher is live, a host can call
-`IContentAuthoringStore.ClearDraftFreezeAsync` to release the marker and preserve every pending edit, so the
+Publishing requires `IContentConditionalDraftFreeze`, the guarded companion every engine store implements:
+
+```csharp
+Task<ContentDraft> FreezeDraftForBaseAsync(int expectedBaseVersion, CancellationToken cancellationToken = default);
+Task<bool> ReleaseDraftFreezeForBaseAsync(int frozenForBaseVersion, CancellationToken cancellationToken = default);
+```
+
+`FreezeDraftForBaseAsync` is the row route's step 1. In one atomic step it compares the expected base with the
+active version, checks the draft holds row work, runs the row-only representability check, writes the marker and
+returns the frozen draft, so the change set planned is exactly the one frozen and no separate read sits between
+them. A refusal writes nothing, a stale marker included: `base-version-moved` for a base the store has moved past,
+`no-open-draft` for a missing, empty or text-only draft, and `text-unrepresented` for text the row route cannot
+carry. A plan carrying text freezes through `IContentTextAuthoringStore.FreezeChangesAsync` instead, unchanged.
+
+`ContentPublishCommit.PublishAsync` releases in a `finally` through `ReleaseDraftFreezeForBaseAsync` with the base
+its request recorded, so a success, a refusal, a throw and a cancellation all release the draft, including after
+a freeze whose answer was lost. The release clears the marker only while it still names that base, so an older
+publisher can no longer overwrite or clear the marker of a publisher standing on a newer base (#1271).
+
+A store without the companion is refused before any of its members is called. `ContentPublishCommit.PublishAsync`
+and `ContentPublisher.PrepareAsync` throw `ContentAuthoringException` with the `conditional-freeze-unavailable`
+reason, and the upgrade runner's Apply stops with `KECU0017` (see [What the runner does](#what-the-runner-does-in-order)).
+A custom store implements both members atomically inside its own gate or transaction. A decorator declares the
+companion only when its constructor requires an inner store that declares it, and it forwards both members there,
+because the pipelines trust a declared companion and an undeclared one would only be refused.
+
+**The protection is against a marker for another base, not exclusive ownership.** The marker carries a base
+version and no publisher identity, so two publishers on the same base are indistinguishable. A freeze at that base
+replaces a same-base rival's marker with the same value, and a release at that base clears it, including the
+release that follows this publisher's own refused freeze. [What is closed and what is only narrowed](#what-is-closed-and-what-is-only-narrowed)
+states what that leaves.
+
+#### Stale markers and recovery
+
+A marker naming a version the store has moved past is STALE. `ReadPublishBaselineAsync`, the read every publish
+starts with, clears one, and so does `FreezeChangesAsync` before its own checks. Both run that cleanup as a step
+of its own, committed before the rest of the call, so it can clear a stale marker and move the draft's update time
+even when the text freeze then refuses or is cancelled. Neither is write free, and neither ever clears a marker naming the active
+version. `FreezeDraftForBaseAsync` runs no such cleanup.
+
+A marker naming the version the store still stands at belongs to a publish that died before its commit, or to
+one that is live. The next publish at that base replaces it at step 1 and releases it on exit. An edit or discard
+cannot tell a dead publisher from a live one and never clears it. After confirming no publisher is live, a host can
+call `IContentAuthoringStore.ClearDraftFreezeAsync` to release the marker and preserve every pending edit, so the
 operator can continue editing or intentionally discard the draft. Run `catalog-publish` only when the current
-draft is intentionally ready to publish, since it may commit that draft. Its step 1 replaces the marker and
-its exit clears it.
+draft is intentionally ready to publish, since it may commit that draft.
+
+`IContentAuthoringStore.FreezeDraftAsync` and `ClearDraftFreezeAsync` keep their signatures and their
+unconditional behavior for host tooling, recovery and test setup. No engine pipeline calls either of them, and a
+caller that does bypasses the base guard.
+
+The guard holds only among writers running this engine version or later. A replica on an earlier engine still
+runs the unguarded row freeze and the unconditional release, so a rolling deploy that overlaps old and new
+writers on one catalog keeps the old cross-base exposure until every writer is upgraded.
 
 Driving `ContentPublisher.PrepareAsync` on its own therefore leaves a frozen draft behind, deliberately: half
-a publish is the state the marker describes. Call `ClearDraftFreezeAsync` when standing in for the commit.
+a publish is the state the marker describes. Release it with `ReleaseDraftFreezeForBaseAsync` and the request's
+expected base when standing in for the commit.
 
 ### Ids come from the edit, not from the caller
 
@@ -749,6 +797,14 @@ ContentUpgradeReport report = await ContentUpgradeRunner.RunAsync(
 3. A ledger id this build does not ship is `CatalogAheadOfBuild`, with nothing changed.
 4. Pending means shipped and not in the ledger. None pending is `UpToDate` and writes **nothing**: no draft,
    no version, no audit row, no ledger row.
+
+   With work pending, a store implementing no `IContentConditionalDraftFreeze` stops an Apply as
+   `Unsupported` with `KECU0017`, naming the store type and both companion members, before the open draft is
+   read. Every way an apply continues can end in a freeze or a ledger write, adoption included, so an
+   `AlreadySatisfied` plan is refused here too. It takes precedence over the operator draft, pin and moved
+   expectation stops below. A Preview on the same store adds `KECU0017` as one informational note and carries
+   on, so it still reports what a store with the companion would publish or adopt, and those later stops as
+   they stand. The earlier stops above are unchanged and never carry it.
 5. An open draft is the runner's OWN only when three things hold together: the actor matches, the note is
    `content upgrade <id>` naming a pending upgrade, and the draft's expanded edits are exactly what a fresh
    plan of that definition produces against the current active version. The actor and the note alone are not
@@ -826,19 +882,17 @@ either: both runners read it as the other's live work and stood off until their 
 
 Three windows sit between a run's reads and its writes. One is closed and two are not.
 
-1. **Publish. CLOSED, by a freeze and a re-proof.** Every publish the runner performs calls `FreezeDraftAsync`
-   with the version the plan was computed against, re-reads the open draft under that marker, and publishes
-   only when it is exactly this definition's plan on that base version. While the marker stands the store
-   refuses `ApplyEditsAsync` and `DiscardDraftAsync`, so what was proved is what is published. The rule for
-   the marker is the whole of it: the runner freezes only a draft it has just read as exactly its own plan,
-   and it releases the marker on every attempt that froze and did not publish, including a cancelled token
-   and a fault of a type this package does not report on, because a run that stops for an operator must not
-   hand back a draft they can neither edit nor discard. What it releases is not always what it set.
-   `FreezeDraftAsync` OVERWRITES and carries no identity, so a publisher that froze the same draft in the gap
-   between the runner's read and the runner's own freeze has already lost its marker to the runner's. A rival
-   RUNNER loses nothing by that, because its own re-proof under its own freeze refuses a contaminated draft
-   exactly as this one did. The admin console's publish takes whatever is drafted with no plan proof at all,
-   and that is the third residue below.
+1. **Publish. CLOSED, by a freeze and a re-proof.** Every publish the runner performs freezes the draft for the
+   version the plan was computed against, through `FreezeDraftForBaseAsync` or, for a plan carrying text,
+   `FreezeChangesAsync`, and re-proves the draft that same call returned. It publishes only when that draft is
+   exactly this definition's plan on that base version. While the marker stands the store refuses
+   `ApplyEditsAsync` and `DiscardDraftAsync`, so what was proved is what is published. The runner records the
+   base before it freezes and releases through `ReleaseDraftFreezeForBaseAsync` with that base on every attempt
+   that froze and did not publish, including a lost freeze answer, a cancelled token and a fault of a type this
+   package does not report on, because a run that stops for an operator must not hand back a draft they can
+   neither edit nor discard. A freeze for a base the store has moved past is refused, and the release leaves a
+   marker naming any other base, so a runner never overwrites or clears the marker of a publisher standing on
+   a newer base. The marker carries no identity within one base, which is the third residue below.
 2. **Discard. NARROWED, not closed.** `DiscardDraftAsync` is refused while a freeze stands, so the marker
    that closes the publish window is the one thing that cannot guard this one, and the proof stays check then
    act. It is as narrow as the seam allows: the run re-reads the draft and re-proves `IsKnownWork` over
@@ -856,11 +910,21 @@ Three residues remain. The first two are one store round trip wide.
 - An operator edit on the SAME target under the SAME operation as one of the run's planned edits, written
   into the window where the run had seen no draft, is replaced by the run's own apply. A change set holds one
   pending intent per row, so the second write of a target takes the first one's place.
-- A CONSOLE publish that froze the same draft in the gap between the runner's read and the runner's own
-  freeze loses its marker. The runner reads the draft as exactly its own plan, an operator edit lands, the
-  console's publish freezes the draft, the runner freezes over that marker, re-reads, fails its re-proof on
-  the changed draft and releases what stands. A further operator edit on a target inside the console
-  publish's own frozen edit set is then accepted, and that publish's commit deletes it unpublished.
+- A publisher on the SAME base, a console or a rival runner, can lose its marker. The marker names a base and
+  no publisher, so a release at that base clears it, whoever set it. The runner's release after its refused
+  re-proof is one such release. A publish that leaves without committing, through cancellation, a pack write
+  fault, a provider fault, a candidate that fails validation or a same-base refusal such as `no-open-draft`, is another. A
+  refused guarded freeze writes nothing, yet the release that follows it still clears a same-base rival's
+  marker. Two same-base freezes also overwrite each other with the same value, which is harmless by itself.
+  - On the text route, edits accepted in the gap make the rival's complete-draft check refuse its commit with
+    `text-state-mismatch`. Nothing unreviewed is published and no edit is lost. A rival console republishes. A
+    rival runner reads no ledger row and reports `KECU0009`, because that reason is not contention, so a boot
+    in that deploy fails and a restart retries. Keeping that boot live is
+    [#1312](https://github.com/APKiwiOrg/KhaozEngine/issues/1312).
+  - On the row route the commit checks neither the draft nor the marker, so a gap edit can be removed
+    unpublished or carried into the next draft unpublished. Only custom row-only stores and row-only views take
+    that route. That edit loss is [#1311](https://github.com/APKiwiOrg/KhaozEngine/issues/1311), which needs its
+    own commit confirmation or ownership repair. A text retry such as #1312's would not repair it.
 
 They are accepted rather than closed because of where the runner runs. A hosted upgrade runs in a maintenance
 window with editing AND console publishing stopped, and a local automatic boot has no operator at the
@@ -1106,7 +1170,8 @@ holds:
 
 - `FreezeDraftAsync` and `CommitPublishAsync` refuse while the draft holds text intents or introductions, a plan
   that is the row half of a text plan, a Fork of a row that holds text, and a plan whose languages are not the
-  ones the active version recorded.
+  ones the active version recorded. The guarded `FreezeDraftForBaseAsync` runs the same check before it writes
+  a marker.
 - `DiscardDraftAsync` refuses a draft holding text intents or introductions.
 - `RollbackToAsync` refuses when the current or the target version holds a value or a language, or has no
   complete text record.

@@ -5,12 +5,37 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.27.1
+## 20.28.0
 
+- Catalog publishing and upgrades no longer let an older publisher overwrite or clear the draft freeze of a
+  publisher standing on a newer base (#1271). The new `IContentConditionalDraftFreeze` companion adds
+  `FreezeDraftForBaseAsync`, a row freeze that refuses a base the store has moved past and writes nothing when
+  it refuses, and `ReleaseDraftFreezeForBaseAsync`, which clears the marker only while it still names the base
+  the publisher recorded. The in-memory, SQLite and SQL Server stores implement both. `ContentPublishCommit`,
+  `ContentPublisher` and `ContentUpgradeRunner` use them, and no engine pipeline calls the legacy
+  `FreezeDraftAsync` or `ClearDraftFreezeAsync` any more. Both legacy members keep their signatures and
+  unconditional behavior for host recovery and tooling.
+- Behavior change for custom catalog stores. The API change is additive and source and binary compatible, but
+  runtime behavior is not: a store that does not implement both `FreezeDraftForBaseAsync` and
+  `ReleaseDraftFreezeForBaseAsync` is refused before any of its members is called.
+  `ContentPublishCommit.PublishAsync` and `ContentPublisher.PrepareAsync` throw `ContentAuthoringException` with
+  the `conditional-freeze-unavailable` reason. An upgrade Apply with pending work stops as `Unsupported` with
+  `KECU0017` before it reads the draft, adoption of an already satisfied definition included. A Preview on that
+  store keeps its full result and adds `KECU0017` as a note. A decorator declares the companion only when its
+  constructor requires an inner store that declares it, and forwards both members.
+- The guard is against a marker for another base, not exclusive ownership. Two publishers on the same base
+  remain indistinguishable, so one can still clear the other's marker, including through the release after its
+  own refused freeze. Text-route boot liveness after that loss is #1312 and row-only edit loss is #1311. A
+  catalog shared by writers on mixed engine versions keeps the old exposure until every writer runs 20.28.0 or
+  later.
+- The text freeze `FreezeChangesAsync` and the baseline read still clear a stale marker for an older base before
+  their other checks, so a refused or cancelled text freeze is not write free. The new row freeze runs no such
+  cleanup.
 - Repairs release validation with a deterministic device-free D3D11 resize/present test. Controlled
   queued bursts retain lock ownership, native-call order, last-request coalescing and whole-size checks
   without relying on producer scheduling (#1309).
-- Publication repair for 20.27.0. Native MapDoc runtime behavior and shipped APIs are unchanged.
+- Publication repair for 20.27.0. Native MapDoc runtime behavior and the MapDoc and rendering APIs it shipped
+  are unchanged by that repair.
 
 ## 20.27.0
 

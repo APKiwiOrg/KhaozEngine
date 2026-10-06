@@ -97,6 +97,7 @@ public sealed class ContentUpgradeFreezeReleaseTests
         Assert.True(store.ReleaseResults[0], "the release after the lost answer cleared nothing.");
         Assert.All(store.ReleaseTokens, token => Assert.Equal(CancellationToken.None, token));
         Assert.Equal(0, store.LegacyFreezeClears);
+        Assert.Equal(0, store.LegacyFreezes);
         Assert.NotNull(store.DraftAfterTheFault);
         Assert.False(
             store.DraftAfterTheFault.IsFrozen,
@@ -156,6 +157,7 @@ public sealed class ContentUpgradeFreezeReleaseTests
         Assert.Equal(2, store.GuardedFreezes);
         Assert.Empty(store.ReleaseBases);
         Assert.Equal(0, store.LegacyFreezeClears);
+        Assert.Equal(0, store.LegacyFreezes);
         Assert.Null(await lease.Store.GetOpenDraftAsync());
         Assert.Equal(3, (await lease.Store.ListVersionsAsync()).Count);
     }
@@ -169,6 +171,7 @@ public sealed class ContentUpgradeFreezeReleaseTests
         Assert.Equal(new[] { released }, store.ReleaseResults);
         Assert.All(store.ReleaseTokens, token => Assert.Equal(CancellationToken.None, token));
         Assert.Equal(0, store.LegacyFreezeClears);
+        Assert.Equal(0, store.LegacyFreezes);
     }
 
     /// <summary>One apply run under a hard deadline, so a stall fails fast instead of spending the budget.</summary>
@@ -227,7 +230,8 @@ public sealed class ContentUpgradeFreezeReleaseTests
 /// A forwarding double over ANY store that also keeps the upgrade ledger, which is what these cases need:
 /// the same interleaving has to run against the reference store and against a real SQLite file, so the inner
 /// store cannot be typed as either one. It observes every guarded release with the base, token and answer the
-/// call actually carried, and counts any released unconditional clear, which a run must never make.
+/// call actually carried, and counts any unconditional clear and any unguarded freeze reaching it, neither of which
+/// a run may make.
 /// </summary>
 /// <param name="inner">The store behind the double.</param>
 internal abstract class ForwardingUpgradeStore(IContentAuthoringStore inner)
@@ -249,6 +253,9 @@ internal abstract class ForwardingUpgradeStore(IContentAuthoringStore inner)
     /// <summary>How many unconditional clears reached the store.</summary>
     public int LegacyFreezeClears { get; private set; }
 
+    /// <summary>How many unguarded freezes reached the store.</summary>
+    public int LegacyFreezes { get; private set; }
+
     /// <inheritdoc />
     public override async Task<bool> ReleaseDraftFreezeForBaseAsync(
         int frozenForBaseVersion,
@@ -266,6 +273,13 @@ internal abstract class ForwardingUpgradeStore(IContentAuthoringStore inner)
     {
         LegacyFreezeClears++;
         return base.ClearDraftFreezeAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public override Task FreezeDraftAsync(int baseVersion, CancellationToken cancellationToken = default)
+    {
+        LegacyFreezes++;
+        return base.FreezeDraftAsync(baseVersion, cancellationToken);
     }
 
     /// <inheritdoc />

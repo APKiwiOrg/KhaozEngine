@@ -232,6 +232,7 @@ public sealed class ConditionalFreezeReleaseUpgradeTests(ITestOutputHelper outpu
         Assert.Equal(0, runner.LegacyClearCalls);
         Assert.Equal(0, winner.LegacyFreezeCalls);
         Assert.Equal(0, winner.LegacyClearCalls);
+        Assert.Equal(1, runner.GuardedFreezeCalls);
     }
 
     /// <summary>

@@ -16,9 +16,16 @@ namespace KhaozEngine.Catalog.SqlServer;
 /// one replaces it in its own update.
 /// </para>
 /// <para>
-/// <b>Exercised against a real instance.</b> Both statements mirror the SQLite provider's. The SQL Server conformance
-/// and timestamp classes override the shared facts under their gated attribute, and they run whenever
-/// <c>KE_CATALOG_SQLSERVER</c> names an instance, which the catalog SQL Server CI job sets.
+/// <b>Gated coverage against a real instance.</b> Both statements mirror the SQLite provider's. The SQL Server
+/// conformance and timestamp classes override the shared facts under their gated attribute, so they run only when
+/// <c>KE_CATALOG_SQLSERVER</c> names an instance, which the catalog SQL Server CI job sets. A local run without it
+/// skips them, so this provider's guarded freeze is proven only by a run that executed them.
+/// </para>
+/// <para>
+/// <b>A base-version-moved refusal is not always a moved base here.</b> A deadlock victim or a snapshot conflict
+/// inside either member's write scope surfaces with the same reason, because the scope maps provider contention to
+/// it, as it does for every other write. The upgrade runner already reads that reason as contention, and its
+/// classification is unchanged.
 /// </para>
 /// </summary>
 public sealed partial class SqlServerContentAuthoringStore : IContentConditionalDraftFreeze

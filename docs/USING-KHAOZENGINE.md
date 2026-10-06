@@ -7675,7 +7675,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.27.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.28.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -7971,7 +7971,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.27.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.28.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8664,7 +8664,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.27.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.28.0" />
 ```
 
 ```csharp
@@ -15589,7 +15589,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.27.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.28.0" />
 ```
 
 ```csharp
@@ -15625,7 +15625,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.27.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.28.0" />
 ```
 
 ```csharp
@@ -15867,7 +15867,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.27.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.28.0" />
 ```
 
 ```csharp
@@ -17889,6 +17889,30 @@ rewrote one chunk and reused the rest. `ContentRollback` builds a reviewable dra
 version's field values, `ContentDiff` is the field-level comparison, and `ContentBundle` is the lossless
 seeding document, imported into an EMPTY database only.
 
+**Publishing needs the guarded freeze (20.28.0).** A publish freezes the draft for its base and releases it on
+every exit. Since 20.28.0 both halves go through `IContentConditionalDraftFreeze`, which the in-memory, SQLite
+and SQL Server stores implement:
+
+```csharp
+Task<ContentDraft> FreezeDraftForBaseAsync(int expectedBaseVersion, CancellationToken cancellationToken = default);
+Task<bool> ReleaseDraftFreezeForBaseAsync(int frozenForBaseVersion, CancellationToken cancellationToken = default);
+```
+
+The freeze refuses a base the store has moved past and writes nothing when it refuses. The release clears the
+marker only while it still names the base the publisher recorded. Together they stop an older publisher from
+overwriting or clearing the marker of a publisher on a newer base. The change is additive at compile time and
+binary compatible, but it changes runtime behavior for a CUSTOM store: one without the companion is refused
+before any of its members is called. `ContentPublishCommit.PublishAsync` and `ContentPublisher.PrepareAsync`
+throw `ContentAuthoringException` with the `conditional-freeze-unavailable` reason, and an upgrade Apply with
+pending work, adoption included, stops with `KECU0017`. A Preview still answers and carries `KECU0017` as a note.
+To migrate, implement both members atomically inside the store's own gate or transaction. A decorator declares
+the companion only when its constructor requires an inner store that declares it, then forwards both members.
+
+The marker carries no publisher identity, so this is protection against another base, not exclusive ownership.
+Two publishers on the same base can still clear each other's marker, and a writer on an engine before 20.28.0
+still runs the old unguarded pair until every writer to the catalog is upgraded. The Authoring package README
+states both limits.
+
 A rollback refuses a row live at the target and retired since. `ContentRollbackBlocker.RuleKind` reports
 the matching rule's actual kind, or null if the provider baseline has no matching rule. That missing-rule
 case retains the blocker with `RuleSequence` and `IntroducedIn` at 0. The admin action renders the same
@@ -18265,25 +18289,30 @@ What the runner guarantees. A run with nothing pending writes nothing at all. Ea
 its own version. A draft is PUBLISHED as it stands only when the actor, the note and the exact edits all
 match one definition's fresh plan. A draft is DISCARDED only when the runner can prove every edit in it is its
 own work: the actor matches and each edit equals an edit of a plan this run computed. Anything else is
-`OperatorDraftOpen`, untouched. The pin is
-never moved. A pin on the active version does not block the publish and the report names the version to repin
-to. Before every publish it freezes the draft, re-reads it and requires exactly its own plan on the expected
-base, so an operator edit that lands in the draft is never published inside an upgrade. It freezes only a
-draft it has just read as exactly its own plan, and it releases that marker on every attempt that froze and
-did not publish, so no run leaves behind a draft nobody can edit or discard. A ledger id this build does not
-ship is `CatalogAheadOfBuild`. Two hosts racing publish each upgrade exactly once.
+`OperatorDraftOpen`, untouched. The pin is never moved. A pin on the active version does not block the publish
+and the report names the version to repin to. Before every publish it freezes the draft for the expected base
+and requires the draft that freeze returned to be exactly its own plan on that base, so an operator edit that
+lands in the draft is never published inside an upgrade. It freezes only a draft it has just read as exactly
+its own plan, and it releases that marker on every attempt that froze and did not publish, so no run leaves
+behind a draft nobody can edit or discard. A ledger id this build does not ship is `CatalogAheadOfBuild`. Two
+hosts racing publish each upgrade exactly once. Since 20.28.0 an Apply with pending work on a store without
+`IContentConditionalDraftFreeze` stops with `KECU0017` before it reads the draft, adoption included, and a
+Preview on that store keeps its answer and adds `KECU0017` as a note.
 
-What it cannot guarantee through this seam, stated plainly. Discarding a draft, applying into an empty one and
-the freeze itself are narrowed and not closed. The store offers no compare and act, so an operator edit landing
-in the one re-read between the proof and the discard, or on the same target in the window where the runner saw
-no draft, can be lost. And `FreezeDraftAsync` overwrites any standing marker and carries no identity, so a
-console publish that froze the same draft in the gap between the runner's read and the runner's own freeze
-loses its marker to the runner's and gets it released when the re-proof fails. An operator edit made under that
-released marker, on a target inside the console publish's frozen edit set, is deleted unpublished by that
-publish's own commit. A rival upgrade RUNNER is not exposed to it, because its own re-proof refuses the same
-contaminated draft. Run a hosted upgrade in a maintenance window with editing AND console publishing stopped,
-and give the runner a DEDICATED actor string that no console user authenticates as. A local automatic boot has
-no operator.
+What it cannot guarantee through this seam, stated plainly. Discarding a draft and applying into an empty one
+are narrowed and not closed. The store offers no compare and act for those, so an operator edit landing in the
+one re-read between the proof and the discard, or on the same target in the window where the
+runner saw no draft, can be lost. The freeze and its release are guarded by base since 20.28.0, so a runner never
+overwrites or clears the marker of a publisher on a newer base. They cannot tell two publishers on the SAME base
+apart. A console publish or a rival runner that froze the same draft on that base can lose its marker to the
+runner's release, including the release that follows a refused freeze or a failed re-proof. On the text route the
+rival's commit then refuses with `text-state-mismatch` and nothing unreviewed is published, but a rival runner
+reports `KECU0009` and its boot fails until a restart
+([#1312](https://github.com/APKiwiOrg/KhaozEngine/issues/1312)). On the row-only route of a custom row-only store an
+operator edit made in that gap can be removed unpublished
+([#1311](https://github.com/APKiwiOrg/KhaozEngine/issues/1311)). Run a hosted upgrade in a maintenance window with
+editing AND console publishing stopped, and give the runner a DEDICATED actor string that no console user
+authenticates as. A local automatic boot has no operator.
 
 The hosted arm never upgrades implicitly. A deploy step runs the game's command in `Preview`, then `Apply`
 with `ExpectedVersion` set to the version the preview printed, before the server starts. `Preview` writes
@@ -20227,7 +20256,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.27.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.28.0" />
 </ItemGroup>
 ```
 

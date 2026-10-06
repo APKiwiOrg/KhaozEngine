@@ -135,12 +135,12 @@ sealed partial class ContentUpgradeRun
                     // before the release, so the finally then does nothing.
                     //
                     // The release clears only a marker naming the base this attempt recorded, so a newer
-                    // publisher's marker survives it. A console publish that froze this same draft on the SAME
-                    // base in the gap is indistinguishable by its base. That is the third residual window, and
-                    // it is narrow enough to accept next to the other two: a rival RUNNER's own re-proof under
-                    // its own freeze refuses this contaminated draft exactly as this one just did, and only the
-                    // admin console publishes a draft with no plan proof at all. Leaving the marker instead
-                    // wedges the draft for certain, every time, which is worse.
+                    // publisher's marker survives it. A publisher that froze this same draft on the SAME base in
+                    // the gap, a console or a rival runner, is indistinguishable by its base and loses its marker
+                    // here. That is the third residual window, and it is narrow enough to accept next to the other
+                    // two. A rival runner's re-proof still refuses a contaminated draft, but its commit can then
+                    // fail on the missing marker, and a row-route commit checks no marker at all. Leaving the
+                    // marker instead wedges the draft for certain, every time, which is worse.
                     await ReleaseFreezeAsync().ConfigureAwait(false);
                     return await ResolveObstructionAsync(
                         definition,
@@ -179,9 +179,11 @@ sealed partial class ContentUpgradeRun
             {
                 // Every other exit, including a publish that entered the store's pipeline and failed inside
                 // it, and a freeze that was refused or whose answer was lost. A publish that failed released
-                // its own marker on its own way out, and a refused freeze wrote none, so this release then
-                // finds no marker naming the recorded base and clears nothing. A failure before the freeze
-                // owes nothing at all: the recorded base says which.
+                // its own marker on its own way out. A refused guarded freeze writes no marker, so this release
+                // clears one only when a publisher on the same base set it, the accepted same-base window named
+                // above. A refused text freeze may have cleared a stale marker first, one naming a base older
+                // than the active version and never the active one. A failure before the freeze owes nothing at
+                // all: the recorded base says which.
                 await ReleaseFreezeAsync().ConfigureAwait(false);
             }
         }
@@ -202,8 +204,9 @@ sealed partial class ContentUpgradeRun
     /// the publish nothing.
     /// <para>
     /// A base the store has moved past, or a draft gone or emptied before the freeze, is refused by the freeze
-    /// itself with nothing written. That is contention, raised as such and resolved through the ledger like any
-    /// other.
+    /// itself. The guarded row freeze writes nothing when it refuses. The text freeze first clears a marker naming
+    /// an older base, which can move the draft's update time before it refuses. That is contention, raised as such
+    /// and resolved through the ledger like any other.
     /// </para>
     /// </summary>
     async Task<ContentDraft> FreezeForPublishAsync(ContentUpgradePlan plan)
@@ -213,7 +216,8 @@ sealed partial class ContentUpgradeRun
         // Recorded BEFORE the call and not after. A freeze that commits its marker and then reports a failure,
         // an acknowledgement lost on a dropped connection, leaves a DURABLE marker behind a call that said it
         // failed, and a base recorded afterwards would leave nobody owing it a release. Recording it early
-        // costs one release nothing needed on a freeze that really did fail, and that release clears nothing.
+        // costs one release nothing needed on a freeze that really did fail, a release that finds a marker only
+        // when a publisher on the same base set one.
         int frozenFor = Active;
         _frozenForBaseVersion = frozenFor;
 

@@ -26,16 +26,17 @@ namespace KhaozEngine.Catalog.Authoring;
 /// <b>A proven own draft is PUBLISHED, never discarded, and no marker is cleared ON SIGHT.</b> A marker
 /// found standing here is either a live publish or a dead one and nothing on the seam tells them apart, so
 /// clearing one where it is found would let a later edit land in a draft a live publisher's commit then
-/// deletes. The store's own rule is that a publish is how a dead freeze is recovered, because
-/// <see cref="IContentAuthoringStore.FreezeDraftAsync"/> overwrites the marker. So the publish path freezes
-/// the draft for ITSELF and proves it again under that marker before publishing it, and it releases what
-/// stands there on every attempt that froze and did not publish. What it releases is not always what it set:
-/// the freeze overwrites and carries no identity, so a publisher that froze the same draft in the gap
-/// between this run's read and its own freeze has already lost its marker to this one. A rival RUNNER loses
-/// nothing by that, because its own re-proof under its own freeze refuses a contaminated draft exactly as
-/// this one does, and an admin console publish carries no plan proof at all, which is the third residual
-/// window the README names. Carried ids make two runners' plans for one definition identical and the
-/// commit's version confirmation lets exactly one of them win.
+/// deletes. The store's own rule is that a publish is how a dead freeze is recovered: a freeze on the active
+/// base replaces a marker naming that base, and the baseline read clears one naming an older base. So the
+/// publish path freezes the draft for ITSELF, through
+/// <see cref="IContentConditionalDraftFreeze.FreezeDraftForBaseAsync"/> or the text freeze for a plan carrying
+/// text, proves again the draft that same call returned, and on every attempt that froze and did not publish
+/// releases through <see cref="IContentConditionalDraftFreeze.ReleaseDraftFreezeForBaseAsync"/> with the base
+/// it recorded. A marker naming a newer base survives that release. A marker naming the SAME base carries no
+/// identity, so a publisher that froze the same draft on that base, a console or a rival runner, can lose its
+/// marker to this run's release, which is the third residual window the README names. Carried ids make two
+/// runners' plans for one definition identical and the commit's version confirmation lets exactly one of them
+/// win.
 /// </para>
 /// </summary>
 sealed partial class ContentUpgradeRun

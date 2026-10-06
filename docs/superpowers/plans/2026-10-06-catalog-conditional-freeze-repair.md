@@ -624,16 +624,16 @@ Expected all exits 0. Recheck no concurrent main movement before using the SHA g
 
 ## Outcome
 
-Status on 2026-10-06: **full plan verified and approved for serial execution under OA16**. Task 0 expected-red proof and fresh review are complete. Task 1 store capability and fresh review are complete. Task 2 publishing and fresh review are complete. Task 3 runner and fresh review are complete. Task 4 finalization is next. No code/test/version change has yet executed and no release tag is authorized.
+Status on 2026-10-06: **full plan verified and approved for serial execution under OA16**. Task 0 expected-red proof and fresh review are complete. Task 1 store capability and fresh review are complete. Task 2 publishing and fresh review are complete. Task 3 runner and fresh review are complete. Task 4 worker steps 1 to 3 (documentation, T4-C1 corrections, version 20.28.0) are committed and await root's Task 4 review, whole-branch review, final checks, CI and integration. No release tag is authorized.
 
 | Gate | Required durable record | Current state |
 | --- | --- | --- |
 | Plan | Planning commit SHA, self-review coverage, documentation guard commands/exits/logs | Written by planner in `.superpowers/sdd/2026-10-06-catalog-conditional-freeze-design/implementation-plan-report.md` |
 | Approval | Root verification and explicit OWNER full-plan approval | OA16, owner answered yes on 2026-10-06 |
-| Coordination | Pivot thread reply, engine code/pinable barrier ruling | Pending root action |
+| Coordination | Pivot thread reply, engine code/pinable barrier ruling | Clear, 2026-10-06: no engine pin collision or competing bump, next minor direction confirmed (SDD progress ledger) |
 | Task 0 | Exact source-diff exit, twelve named reds/two residue passes, test-only SHA, fresh review | b194240e8, source diff 0, runtime 12 expected failures/2 passes, fresh spec and quality approved |
-| Tasks 1 to 3 | Task bases/SHAs, focused green exits/counts, constructor/forwarder inventory, fresh reviews | Pending |
-| Task 4 | Rechecked main/tags, chosen minor, matching changelog, docs sweep/guard exits | Pending |
+| Tasks 1 to 3 | Task bases/SHAs, focused green exits/counts, constructor/forwarder inventory, fresh reviews | 0d1832fa6, 6b4e95a2d and 550175fd8, each with fresh spec and quality approval. Minor findings carried to Task 4 under T4-C1 or to final review |
+| Task 4 | Rechecked main/tags, chosen minor, matching changelog, docs sweep/guard exits | Worker portion done: main/origin ca13d62d7, newest tag v20.27.0, 20.27.1 untagged and folded into 20.28.0. Evidence in the SDD task-4 report. Task 4 review pending |
 | Final | Whole-branch review, full Release build/test/format exits, private-feed version/SHA | Pending |
 | Remote | Exact-head normal CI, Metal SQLite and executed SQL Server facts | Pending |
 | Integration | Verified branch/main/origin SHA, main push, guarded shared pack and strict feed proof | Pending root action |

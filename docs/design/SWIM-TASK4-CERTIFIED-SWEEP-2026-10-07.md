@@ -154,7 +154,37 @@ tied impacts in reversed insertion order, initial overlap/tangency, live-view ne
 compound children, explicit unsupported/refused work, incomplete bracket termination and both
 supported-frame edges. They must exercise the real backend. Source characterization is not RED.
 
-The first requested run will be one exact finite missing-capability fixture after authoring, followed
-by separately granted GREEN and named affected regressions. No command is authorized by this note.
+Before pinning that numerical contract, a test-only `CapsuleSweepCharacterizationTests` fixture now
+prepares 12 private one-box worlds: nine grazing intersections at three depths and three X offsets,
+one head-on crossing, one separated control and one closed-endpoint contact. It compares the current
+public sweep with the pinned library's explicit zero-progression/64-iteration overload, then queries
+complete contacts at the independently known witness pose. Each case emits one bounded diagnostic row.
+
+The raw-library diagnostic obtains the private fixture world's simulation by reflection, under its
+physical read lease. The world has one static, no dynamics and no exclusions. Both legs select that
+same static set. This is deliberate test-only inspection, not a permitted production escape from a
+restricted PhysicsView. No configured native caller, runtime solver or production query is changed.
+The first granted command stopped before test discovery with CS0118 at the diagnostic's Simulation
+type name, which resolved to an enclosing namespace. No case or diagnostic row ran. The secondary slot
+was explicitly released. The fixture qualifies the pinned Bepu type with the existing repository
+alias convention. Cases and assertions remained unchanged. The separately granted executable run
+passed all 12 cases, zero failures/skips, exit 0 in `/tmp/swim-sweep-characterization2.log`.
+The secondary slot was explicitly released, with no duplicate invocation or extra run.
+The earlier compilation failure remains distinct from capability RED or sweep behavior evidence.
+Legacy hit/miss outcomes and closed-endpoint boolean outcomes are observations, not certificates of
+clearance. The separated and contact witnesses and the zero-progression interior crossings are asserted.
+This does not establish a sweep-wide numerical bound or the final optional capability implementation.
+
+The [committed diagnostic rows](../verification/2026-10-07-swim-sweep-characterization.json) preserve
+all inputs, observed sweep booleans/distances, analytic crossing intervals and contact controls.
+Both sweep variants detected all nine grazing and the head-on interior crossings. This fixture did
+not reproduce a grazing miss. Both reported no hit for the separated control, whose contact query
+was empty. At the exact closed endpoint, both sweeps reported no hit while the complete contact query
+reported one contact. Disabling forced progression alone therefore does not supply the required
+closed-endpoint semantics. These results do not establish an all-shape numerical certificate or
+attribute any Grimhollow route/support failure to sweeping.
+
+After that evidence is inspected, pin the exact API/domain and author its missing-capability fixture,
+followed by separately granted GREEN and named affected regressions. No command is authorized by this note.
 Scheduling remains with pivot, with at most two explicitly assigned compatible slots. Native G1b,
 whole-branch review, full final verification and release/adoption gates remain unchanged.

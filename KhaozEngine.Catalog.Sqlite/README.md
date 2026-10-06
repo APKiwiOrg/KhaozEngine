@@ -257,9 +257,12 @@ What the re-read does NOT cover is the draft changing under a plan that already 
 frozen in `catalog_draft.frozen_for_base_version` and `ApplyEditsAsync` and `DiscardDraftAsync` refuse while
 the marker stands, with reason `publish-in-progress`. It is a durable column rather than the row lock spec
 6.2 describes for the same reason the version is re-read: no lock this provider can take spans steps 1 to 10,
-because step 9 writes the whole pack outside any lease. The publish clears the marker on every exit path, and
-a marker naming a version the database has moved past is a dead publish's leftover that the next baseline
-read clears. A marker naming the current version may belong to a live publisher or one that died before
+because step 9 writes the whole pack outside any lease. The publish releases the marker on every exit path
+through `ReleaseDraftFreezeForBaseAsync` with the base it recorded, which clears the marker only while it still
+names that base. A marker written for a newer base survives that release. A marker for the same base carries no
+publisher identity, so a same-base publisher's marker is indistinguishable from this one and the release clears
+it too. A marker naming a version the database has moved past is a dead publish's leftover that the next
+baseline read clears. A marker naming the current version may belong to a live publisher or one that died before
 commit, so draft writes never clear it. After proving no publisher is live, call
 `IContentAuthoringStore.ClearDraftFreezeAsync` from a host recovery path to release the marker and preserve
 every pending edit, so editing or an intentional discard can continue. Run `catalog-publish` only when the

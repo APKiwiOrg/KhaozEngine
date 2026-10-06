@@ -16,11 +16,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `FreezeDraftAsync` or `ClearDraftFreezeAsync` any more. Both legacy members keep their signatures and
   unconditional behavior for host recovery and tooling.
 - Behavior change for custom catalog stores. The API change is additive and source and binary compatible, but
-  runtime behavior is not: a store that does not implement both `FreezeDraftForBaseAsync` and
-  `ReleaseDraftFreezeForBaseAsync` is refused before any of its members is called.
-  `ContentPublishCommit.PublishAsync` and `ContentPublisher.PrepareAsync` throw `ContentAuthoringException` with
-  the `conditional-freeze-unavailable` reason. An upgrade Apply with pending work stops as `Unsupported` with
-  `KECU0017` before it reads the draft, adoption of an already satisfied definition included. A Preview on that
+  runtime behavior is not. `ContentPublishCommit.PublishAsync` and `ContentPublisher.PrepareAsync` refuse a
+  store that does not implement both `FreezeDraftForBaseAsync` and `ReleaseDraftFreezeForBaseAsync` before
+  calling any of its members, and throw `ContentAuthoringException` with the `conditional-freeze-unavailable`
+  reason. An upgrade Apply still reads the active version and the ledger first, then with pending work stops as
+  `Unsupported` with `KECU0017` before it reads the draft, adoption of an already satisfied definition included. A Preview on that
   store keeps its full result and adds `KECU0017` as a note. A decorator declares the companion only when its
   constructor requires an inner store that declares it, and forwards both members.
 - The guard is against a marker for another base, not exclusive ownership. Two publishers on the same base
@@ -28,8 +28,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   own refused freeze. Text-route boot liveness after that loss is #1312 and row-only edit loss is #1311. A
   catalog shared by writers on mixed engine versions keeps the old exposure until every writer runs 20.28.0 or
   later.
-- The text freeze `FreezeChangesAsync` and the baseline read still clear a stale marker for an older base before
-  their other checks, so a refused or cancelled text freeze is not write free. The new row freeze runs no such
+- The text freeze `FreezeChangesAsync` and the baseline read still clear a stale marker naming any non-active
+  base before their other checks, so a refused or cancelled text freeze is not write free. The new row freeze runs no such
   cleanup.
 - Repairs release validation with a deterministic device-free D3D11 resize/present test. Controlled
   queued bursts retain lock ownership, native-call order, last-request coalescing and whole-size checks

@@ -17901,10 +17901,11 @@ Task<bool> ReleaseDraftFreezeForBaseAsync(int frozenForBaseVersion, Cancellation
 The freeze refuses a base the store has moved past and writes nothing when it refuses. The release clears the
 marker only while it still names the base the publisher recorded. Together they stop an older publisher from
 overwriting or clearing the marker of a publisher on a newer base. The change is additive at compile time and
-binary compatible, but it changes runtime behavior for a CUSTOM store: one without the companion is refused
-before any of its members is called. `ContentPublishCommit.PublishAsync` and `ContentPublisher.PrepareAsync`
-throw `ContentAuthoringException` with the `conditional-freeze-unavailable` reason, and an upgrade Apply with
-pending work, adoption included, stops with `KECU0017`. A Preview still answers and carries `KECU0017` as a note.
+binary compatible, but it changes runtime behavior for a CUSTOM store without the companion.
+`ContentPublishCommit.PublishAsync` and `ContentPublisher.PrepareAsync` refuse it before calling any of its
+members and throw `ContentAuthoringException` with the `conditional-freeze-unavailable` reason. An upgrade Apply
+still reads the active version and the ledger first, then with pending work, adoption included, stops with
+`KECU0017` before it reads the draft. A Preview still answers and carries `KECU0017` as a note.
 To migrate, implement both members atomically inside the store's own gate or transaction. A decorator declares
 the companion only when its constructor requires an inner store that declares it, then forwards both members.
 

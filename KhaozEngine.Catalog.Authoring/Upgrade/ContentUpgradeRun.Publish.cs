@@ -181,7 +181,7 @@ sealed partial class ContentUpgradeRun
                 // it, and a freeze that was refused or whose answer was lost. A publish that failed released
                 // its own marker on its own way out. A refused guarded freeze writes no marker, so this release
                 // clears one only when a publisher on the same base set it, the accepted same-base window named
-                // above. A refused text freeze may have cleared a stale marker first, one naming a base older
+                // above. A refused text freeze may have cleared a stale marker first, one naming any base other
                 // than the active version and never the active one. A failure before the freeze owes nothing at
                 // all: the recorded base says which.
                 await ReleaseFreezeAsync().ConfigureAwait(false);
@@ -205,8 +205,8 @@ sealed partial class ContentUpgradeRun
     /// <para>
     /// A base the store has moved past, or a draft gone or emptied before the freeze, is refused by the freeze
     /// itself. The guarded row freeze writes nothing when it refuses. The text freeze first clears a marker naming
-    /// an older base, which can move the draft's update time before it refuses. That is contention, raised as such
-    /// and resolved through the ledger like any other.
+    /// any non-active base, which can move the draft's update time before it refuses. That is contention, raised
+    /// as such and resolved through the ledger like any other.
     /// </para>
     /// </summary>
     async Task<ContentDraft> FreezeForPublishAsync(ContentUpgradePlan plan)

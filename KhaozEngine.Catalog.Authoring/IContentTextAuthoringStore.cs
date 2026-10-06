@@ -58,7 +58,7 @@ public interface IContentTextAuthoringStore : IContentAuthoringStore
     /// <see cref="ContentAuthoringException.TextProvenanceUnknownReason"/> before any marker is written.
     /// </para>
     /// <para>
-    /// <b>It first clears a STALE marker</b>, one naming a base older than the active version, in a step of its own
+    /// <b>It first clears a STALE marker</b>, one naming any base other than the active version, in a step of its own
     /// committed before its base, work and provenance checks. A call that then refuses or is cancelled may still
     /// have cleared that marker and moved the draft's update time, so the call is not write free on refusal. It
     /// never clears a marker naming the active version. The guarded row freeze,

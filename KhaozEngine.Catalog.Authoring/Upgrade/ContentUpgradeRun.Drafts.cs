@@ -27,7 +27,7 @@ namespace KhaozEngine.Catalog.Authoring;
 /// found standing here is either a live publish or a dead one and nothing on the seam tells them apart, so
 /// clearing one where it is found would let a later edit land in a draft a live publisher's commit then
 /// deletes. The store's own rule is that a publish is how a dead freeze is recovered: a freeze on the active
-/// base replaces a marker naming that base, and the baseline read clears one naming an older base. So the
+/// base replaces a marker naming that base, and the baseline read clears one naming any other base. So the
 /// publish path freezes the draft for ITSELF, through
 /// <see cref="IContentConditionalDraftFreeze.FreezeDraftForBaseAsync"/> or the text freeze for a plan carrying
 /// text, proves again the draft that same call returned, and on every attempt that froze and did not publish

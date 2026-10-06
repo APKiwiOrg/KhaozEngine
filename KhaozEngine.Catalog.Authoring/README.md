@@ -283,9 +283,10 @@ its request recorded, so a success, a refusal, a throw and a cancellation all re
 a freeze whose answer was lost. The release clears the marker only while it still names that base, so an older
 publisher can no longer overwrite or clear the marker of a publisher standing on a newer base (#1271).
 
-A store without the companion is refused before any of its members is called. `ContentPublishCommit.PublishAsync`
-and `ContentPublisher.PrepareAsync` throw `ContentAuthoringException` with the `conditional-freeze-unavailable`
-reason, and the upgrade runner's Apply stops with `KECU0017` (see [What the runner does](#what-the-runner-does-in-order)).
+`ContentPublishCommit.PublishAsync` and `ContentPublisher.PrepareAsync` refuse a store without the companion before
+calling any of its members and throw `ContentAuthoringException` with the `conditional-freeze-unavailable` reason.
+The upgrade runner's Apply still reads the active version and the ledger first, then with work pending stops with
+`KECU0017` before it reads the draft (see [What the runner does](#what-the-runner-does-in-order)).
 A custom store implements both members atomically inside its own gate or transaction. A decorator declares the
 companion only when its constructor requires an inner store that declares it, and it forwards both members there,
 because the pipelines trust a declared companion and an undeclared one would only be refused.
@@ -298,7 +299,8 @@ states what that leaves.
 
 #### Stale markers and recovery
 
-A marker naming a version the store has moved past is STALE. `ReadPublishBaselineAsync`, the read every publish
+A marker naming any version other than the active one is STALE, whether the store has moved past it or a legacy
+`FreezeDraftAsync` call wrote a higher value. `ReadPublishBaselineAsync`, the read every publish
 starts with, clears one, and so does `FreezeChangesAsync` before its own checks. Both run that cleanup as a step
 of its own, committed before the rest of the call, so it can clear a stale marker and move the draft's update time
 even when the text freeze then refuses or is cancelled. Neither is write free, and neither ever clears a marker naming the active

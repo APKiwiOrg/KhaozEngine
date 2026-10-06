@@ -1,0 +1,123 @@
+{
+  "task": "catalog conditional freeze Task 0",
+  "base": "a85eb8c309469560e9d9407fd9a55de0a3f6aac2",
+  "commit": "b194240e8462c428eae2e0b7deca918938fa495d",
+  "production_baseline": "ca13d62d7c9f5bbdc5e6adbfffdd24d5c9148efc",
+  "production_source_diff_exit": 0,
+  "expected_red_exit": 1,
+  "counts": {
+    "total": "14",
+    "executed": "14",
+    "passed": "2",
+    "failed": "12",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "cases": [
+    {
+      "test": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T4r_ForwardingRowRunnerPreservesNewerTextWinner(sqlite: True)",
+      "outcome": "Failed",
+      "text_state_mismatch": true,
+      "kecu0009": false
+    },
+    {
+      "test": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T3o_AfterRunnerFreezePreservesNewerTextWinner(sqlite: True)",
+      "outcome": "Failed",
+      "text_state_mismatch": true,
+      "kecu0009": false
+    },
+    {
+      "test": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T3o_AfterRunnerFreezePreservesNewerTextWinner(sqlite: False)",
+      "outcome": "Failed",
+      "text_state_mismatch": true,
+      "kecu0009": false
+    },
+    {
+      "test": "KhaozEngine.Tests.Catalog.Publish.ConditionalFreezeReleasePublishTests.T2p_RowPublishFreezePreservesNewerTextWinner(sqlite: False)",
+      "outcome": "Failed",
+      "text_state_mismatch": true,
+      "kecu0009": false
+    },
+    {
+      "test": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T4_BeforeRunnerFreezePreservesNewerTextWinner(sqlite: True)",
+      "outcome": "Failed",
+      "text_state_mismatch": true,
+      "kecu0009": false
+    },
+    {
+      "test": "KhaozEngine.Tests.Catalog.Publish.ConditionalFreezeReleasePublishTests.T2_OlderPublishReleasePreservesNewerTextWinner(sqlite: False)",
+      "outcome": "Failed",
+      "text_state_mismatch": true,
+      "kecu0009": false
+    },
+    {
+      "test": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T4r_ForwardingRowRunnerPreservesNewerTextWinner(sqlite: False)",
+      "outcome": "Failed",
+      "text_state_mismatch": true,
+      "kecu0009": false
+    },
+    {
+      "test": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T3_TwoRunnersPreserveNewerTextWinner(sqlite: False)",
+      "outcome": "Failed",
+      "text_state_mismatch": true,
+      "kecu0009": true
+    },
+    {
+      "test": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T4_BeforeRunnerFreezePreservesNewerTextWinner(sqlite: False)",
+      "outcome": "Failed",
+      "text_state_mismatch": true,
+      "kecu0009": false
+    },
+    {
+      "test": "KhaozEngine.Tests.Catalog.Publish.ConditionalFreezeReleasePublishTests.T2p_RowPublishFreezePreservesNewerTextWinner(sqlite: True)",
+      "outcome": "Failed",
+      "text_state_mismatch": true,
+      "kecu0009": false
+    },
+    {
+      "test": "KhaozEngine.Tests.Catalog.Publish.ConditionalFreezeReleasePublishTests.T2r_SameBaseCancellationStillRefusesChangedTextDraft(sqlite: False)",
+      "outcome": "Passed",
+      "text_state_mismatch": true,
+      "kecu0009": false
+    },
+    {
+      "test": "KhaozEngine.Tests.Catalog.Upgrade.ConditionalFreezeReleaseUpgradeTests.T3_TwoRunnersPreserveNewerTextWinner(sqlite: True)",
+      "outcome": "Failed",
+      "text_state_mismatch": true,
+      "kecu0009": true
+    },
+    {
+      "test": "KhaozEngine.Tests.Catalog.Publish.ConditionalFreezeReleasePublishTests.T2_OlderPublishReleasePreservesNewerTextWinner(sqlite: True)",
+      "outcome": "Failed",
+      "text_state_mismatch": true,
+      "kecu0009": false
+    },
+    {
+      "test": "KhaozEngine.Tests.Catalog.Publish.ConditionalFreezeReleasePublishTests.T2r_SameBaseCancellationStillRefusesChangedTextDraft(sqlite: True)",
+      "outcome": "Passed",
+      "text_state_mismatch": true,
+      "kecu0009": false
+    }
+  ],
+  "log_root": "/tmp/grimhollow-orch/catalog-conditional-freeze",
+  "sha256": {
+    "t0-red.log": "e9cec31f456533aeb86897430f27942cd4a68f80a3ee462983915b1d0b87ec43",
+    "t0-red/t0-red.trx": "adb7119194f2f5df29e93d1fad8a225df837540353a17c850c202a1fb9d436fa",
+    "t0-build2.log": "741a4b90da06273c5b78985c9a661866161a1a36bbdd457b55115f6ad3d7a609",
+    "t0-format.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "t0-guards.log": "be90f3e85a6f9a395bf4d8fe0270aa11072315bf68c34cb838fecfcb65cffbed",
+    "t0-commit.log": "f8b23e455fb88e6efd5ef6ca99a1b6d6edfddb321e265a677eb306e0b2e0361b"
+  },
+  "review": "pending fresh Task 0 review",
+  "claim": "Reproduction only. No production fix."
+}

@@ -649,3 +649,22 @@ Owner approved the full plan at 2bbd0fac81d7f07bb6f5a9bdcad6bdca6e210efb. The co
 pivot thread the catalog execution and next-minor coordination notice before Task 0. This task changes
 only new test files. Its accepted deterministic red proof and review must precede production changes.
 SDD preflight records task/interface consistency in the plan workspace progress.md. No tag is approved.
+
+
+### Task 0 expected-red proof, 2026-10-06
+
+Test-only commit b194240e8462c428eae2e0b7deca918938fa495d adds exactly the seven Task 0 files
+over a85eb8c30. Controller independently verified source equality to ca13d62d7, commit ancestry,
+TRX counters and each named refusal. One forced runtime run exited 1 with twelve expected failures
+and two T2r characterization passes, no errors/timeouts/aborts. Every deciding winner used the
+text commit path. T3 reports both KECU0009 and text-state-mismatch on each backend.
+
+An initial compile check found a nullable tuple-pattern error. The worker corrected it before the
+sole test run. The succeeding build had zero warnings/errors. Format and docs/size guards exited 0.
+The compile failure is not counted as runtime red proof. Evidence hashes and per-case results are
+recorded in proofs/2026-10-06-catalog-task0-red.json. The committed test result is pushed.
+
+Worker moved B's fixed-state commit-count assertion after A's success assertion in T3, retaining
+every assertion so the old-code failure remains the required KECU0009 diagnostic. The fresh review
+assesses this and all seven files. It is pending, and Task 1 remains blocked on that review. No
+production fix or Task 0 completion verdict is claimed yet. PROGRAM.md records the active reviewer.

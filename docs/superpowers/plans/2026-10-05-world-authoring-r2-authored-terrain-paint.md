@@ -35,6 +35,14 @@ The 1 m allowance is a minimum vertical target reach-envelope height, preserving
 
 ## R1 transaction carry-forward, before R2 approval
 
+Coordinator CD1 under owner delegation OA17 approves the revised cave/scale design through
+0bd1d69d8 as the basis for rewriting this full plan. It does not approve this stale task structure
+or implementation. The rewrite must carry accepted F3 producer boundaries, #458 canonical
+membership/connectivity consumers, #1310's deterministic prerequisite, exact fine-patch geometry
+and material preservation or declared authored differences, and mandatory downstream allocation.
+R2 emits canonical facts. Swimming owns generic movement consumers and pivot owns #458 policy.
+No floor-key equality or global Y threshold may substitute for the selected space/portal geometry.
+
 R1 Task 5 introduces an atomic native placement command protocol. Native history refuses other
 command types before mutation, while direct MCP mutation callbacks validate a detached document.
 R2 must extend the transaction protocol for native terrain commands, preserving bound closure

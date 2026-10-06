@@ -1,7 +1,45 @@
 # R2 sculpted caves and sparse-world scale
 
-Status: **DRAFT FOR OWNER REVIEW. Candidate refinement only. Design reviews 1 and 2 are reconciled,
-including migration and storage corrections D1 to D3. R2 implementation remains unapproved.**
+Status: **APPROVED AS THE BASIS FOR FULL PLANNING by coordinator decision CD1 under the owner's
+delegation OA17 on 2026-10-06. Review corrections through 0bd1d69d8 are accepted. The complete
+executable plan requires separate approval. R2 implementation and release remain unapproved.**
+
+## Coordinator approval and consumer refinements
+
+Coordinator 938c801f-2df0-4298-8bd1-dc39e9015e60 accepted all six choices in the R2 gate brief:
+the sparse 64 km verification envelope with retained datum/padding, paired sculpted patches and
+explicit boundaries/links, whole-cell apertures with finer patches, integer/local precision with
+bounded sparse storage, one identity transition preserving resolver-v1 execution, and 29 to 49
+engineer-days as planning assumptions. This is delegated coordinator approval, not a fresh direct
+owner answer. Keep #1310 as a code-verified no-loss prerequisite requiring deterministic reproduction.
+The plan must allocate mandatory downstream work and retain all precision and nav-budget gates.
+
+Fine-patch conversion must preserve canonical geometry and material semantics exactly or report an
+intentional authored difference. Dividing a cell unit does not prove interpolation preservation.
+Pin physical triangle subdivision, shared boundary vertices, cut/paint/material coverage, stable
+ownership and conversion roundtrip tests. Never silently resample a source diagonal or its paint.
+
+The mutually accepted swimming [F3 contract](https://github.com/APKiwiOrg/KhaozEngine/blob/404fa519f/docs/design/SWIM-ENVIRONMENT-FACADE-F3-2026-10-06.md)
+is the producer/consumer boundary. Migration supplies canonical native geometry, occupied-space,
+support, water and bounded coverage facts. Swimming owns generic leases/capsule policy/consumers
+under its separate approved-plan gates. Neither R2 nor R3 duplicates #1299's generic implementation.
+
+[Grimhollow #458](https://github.com/APKiwiOrg/Grimhollow/issues/458) consumes the same canonical
+identity and space/portal/link relationships. Pivot owns sound, presentation and interaction
+eligibility policy. The producer must expose bounded, provenance-bearing membership/connectivity
+facts with explicit incomplete/ambiguous/capacity outcomes. Concrete signatures/files are pinned
+in the reconciled plan before implementation. No client eligibility API is currently released.
+
+Include geometric relations and portal aperture/state plus physical occlusion/clearance certainty
+under the same frame/read witness. Pin which authored or live state is actually supplied, rather
+than inventing an acoustic propagation subsystem. Consumer distance/intent rules remain unchanged.
+
+Different support owners alone imply neither inaudibility, invisibility nor interaction refusal.
+Continuous slopes, patch seams and lawful portals may connect distinct owners. Equal support IDs,
+near Y or general graph connectivity likewise do not grant eligibility. Physical occlusion, legal
+traversal and acoustic/visual policy are separate concerns. No global Y threshold, parallel floor-ID
+system or game-maintained copy of the native topology is introduced. Fixture contracts cover
+connected distinct supports, separate stacked spaces, portals/shafts and unresolved residency.
 
 ## Outcome and review boundary
 

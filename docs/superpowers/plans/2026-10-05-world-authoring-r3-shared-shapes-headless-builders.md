@@ -75,6 +75,31 @@ The approved execution method is subagent-driven-development. Execute serially a
 
 ## Review Focus
 
+### Shared producer boundaries to pin before plan approval
+
+Consume the CD1-approved R2 cave design and mutually accepted swimming F3 at engine 404fa519f.
+Migration owns canonical geometry/support/occupied-space identity, native adapters and bounded
+space/portal/link connectivity facts. Swimming owns the generic read lease, complete capsule
+resolver and movement consumers under its separate gates. R3 must consume those prerequisites
+without duplicating #1299. Record exact shared package/signature and released-pin dependencies.
+
+[Grimhollow #458](https://github.com/APKiwiOrg/Grimhollow/issues/458) is a required consumer of
+these producer facts. Pivot owns hearing/presentation/dialogue/shop/follow/target eligibility.
+Different support keys cannot classify separate floors across slopes, seams or valid portals.
+Do not export one universal CanHear/CanSee/CanInteract result from topology, or build a parallel
+floor-ID scheme. Supply scoped provenance and explicit unresolved outcomes. Physical LOS, target
+envelopes, traversal and game policy retain their distinct meanings.
+
+Pin bounded geometric relations, portal aperture/state and physical occlusion/clearance certainty
+under one frame/read witness. Declare authored versus live state and its producer, with no new
+acoustic simulation and no game-maintained topology. Exact R3 adapters consume released generic
+F3 prerequisites and the approved R2 producer signatures, not similarly named provisional types.
+
+Refinement must pin fixtures for connected distinct supports, occluded stacked spaces sharing XZ,
+portal/shaft transitions and missing/stale topology. Producer tests verify geometry/identity and
+connectivity facts. Pivot's consumer fixtures verify each policy and server-authoritative actions.
+Native integration remains blocked until exact contracts, required releases and adoption gates.
+
 - A compound doorway must remain open to rays, capsule clearance and stance after non-quarter yaw and scaling (Tasks 2 to 4).
 - A lower tree interaction band must constrain eligible hits without replacing its physical collider (Task 3).
 - A large placement crossing negative-coordinate storage seams must be resident in every intersected chunk, but built once (Task 5).

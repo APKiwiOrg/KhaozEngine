@@ -36,6 +36,13 @@ The 1 m allowance is a minimum vertical target reach-envelope height, preserving
 
 ## Global Constraints
 
+Before plan approval, reconcile against mutually accepted swimming F3 at engine 404fa519f.
+Swimming owns generic #1299 leases/capsule movement/medium consumers. Migration owns native
+domain containment, stable identities, support/space adapters, actual local upper bounds and
+free-surface availability, plus #1300 appearance inputs and #1301 infrastructure. Do not duplicate
+the generic movement implementation described in historical tasks below. Native dry/flooded cave
+proof and released-adapter integration remain separate gates. The accepted F3 does not approve R4.
+
 | Ruling | Decision |
 | --- | --- |
 | OA1 | One tool, MapEditor GUI plus ke-mapedit MCP, authors terrain, props and buildings. No two-format hybrid |

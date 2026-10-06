@@ -1,9 +1,11 @@
 # Catalog conditional freeze and release
 
-Status: **DRAFT FOR OWNER REVIEW. Not approved. Reviews 1 and 2 reconciled, including C1 and C2.** Written under owner
+Status: **APPROVED FOR IMPLEMENTATION PLANNING under OA15, 2026-10-06. Reviews 1 and 2 reconciled,
+including C1 and C2. The full implementation plan still requires owner approval.** Written under owner
 ruling OA14 ("Proceed with conditional-release design") for
 [#1271](https://github.com/APKiwiOrg/KhaozEngine/issues/1271). This is a design, not an implementation plan and not
-a release decision. No version is changed or reserved and no tag is authorized.
+a release-tag authorization. OA15 selects the next-free-minor direction, currently 20.28.0.
+No version is changed or reserved and no tag is authorized.
 
 Base: `fix/wa-catalog-freeze` at `ca13d62d7c9f5bbdc5e6adbfffdd24d5c9148efc`. Every line reference below is to that
 commit.

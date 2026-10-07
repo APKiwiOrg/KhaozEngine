@@ -10,18 +10,80 @@ git-committed in the game repo. GPU-free.
 `MapBoundDocumentValidation.Validate(document, assets, registry)` checks a complete native document
 against a verified immutable `MapAssetClosure`, including exact roots, asset membership, identities and
 finite transforms. `ValidateLocal(document, registry)` checks document-local validity only.
-`MapAuthoredIdentity` reuses the bound checks and separately validates builder/hash options. Editing callers
+`MapAuthoredIdentity` and complete-document `MapAuthoredIdentityV2` reuse the bound checks and separately
+validate builder/hash options. Editing callers
 need no synthetic builder options and never resolve relative resource paths implicitly.
 `MapResolver.Resolve` publishes an immutable `MapResolvedDocument`. Its `AssetClosure` is the exact verified
 closure passed in, for binding and resource lookup without a second load. This package loads no meshes and has
 no render dependency. `KhaozEngine.Terrain.Render3D` owns the one-way `MapAssetManifestAdapter`.
 
-Native identity and resolution use the default registry only. `MapAuthoredIdentity.Compute` and
+Native identity and resolution use the default registry only. Complete-document `MapAuthoredIdentityV2.Compute`,
+`MapAuthoredIdentity.Compute` and
 `MapResolver.Resolve` take no registry and validate with `MapDocRegistry.CreateDefault()`, and ke-mapedit's
 `NativeDocumentService` builds its support field from the default registry too. A native document that uses
 a terrain feature registered on a custom `MapDocRegistry` is therefore refused by them as an unregistered
 feature type, even where `Validate` or `ValidateLocal` accept it when given that registry. Custom terrain
 features are not supported in native documents yet.
+
+## Whole authored surface identity
+
+`KhaozEngine.MapDoc.Identity.MapAuthoredIdentityV2.Compute(document, assets, options)` requires a complete
+document with resolver identity `(1, 2)`, `AuthoredBindingsV2`, and options with `ResolverVersion: 2`, a
+nonempty builder ID and options hash, and a positive builder version. A partial editing window refuses
+before metadata validation with a `MapDocumentException` containing `window`. Complete unsaved edits hash
+current patch semantics. Old tile baselines and surface digest fields do not certify corruption in an
+editable complete document. Its native roots must exactly match the supplied verified closure.
+
+The `Compute(MapStoredSurfaceSource, assets, options)` overload verifies the whole original pinned storage
+closure. `Open(directory)` retains the original resolver, support recipe, roots and root digest. Identity
+checks those metadata and closure roots before payload reads, then verifies every directory and index
+address, reads and hashes one payload at a time, and checks patch and per-surface semantic digests. Index
+metadata may be cached, but every identity call rereads payload bytes. A freshly opened lazy source is
+valid input. A swept payload refuses with `Missing`, and mismatched bytes or semantics refuse with
+`Corrupt`. Replacing `map.json` never switches an existing source to the new generation. Open a new source
+to select that generation.
+
+Both overloads hash the root digest, ordered `(patchKey, semanticDigest)` facts, verified asset closure
+hash, builder ID and version, options hash and resolver version under `kemap/native-authored/2`. Storage
+paths, page packing, embedding and incident index bookkeeping do not enter this identity. Equivalent
+complete in-memory and stored documents share one token. Resolver 1 continues to use `MapAuthoredIdentity`.
+
+## Bounded scoped acquisition
+
+`MapScopedSurfaces.Acquire(source, scope, assetSha256)` requires `IMapSurfaceAcquisitionSource`, implemented
+by `MapStoredSurfaceSource` and `MapDocumentSurfaceSource.Capture(document)`. A producer implementing only
+`IMapSurfaceSource` refuses with `surface source does not support bounded scoped acquisition` before its
+legacy callbacks run. Custom producers must open one pinned `IMapSurfaceAcquisitionSession` for discovery,
+record-anchor expansion and bound reads. Snapshot, root and copied request stay fixed for that session.
+
+`ReservedPatchKeys` is a detached, ordered unique-key snapshot. Every discovery key and explicitly read
+key consumes the same `MaxCandidatePatches` allowance before work, including known-empty and unavailable
+keys. Discovery payloads must have reservations, and extra reservations must have an unavailable fact or
+known-empty coverage. Later reservations must exactly match the coordinator's requested keys. Reads must
+return the requested key, present payloads must match their semantic digests, and surface lookups must
+return the requested declared surface. Violations refuse instead of publishing incoherent facts.
+
+After a key is served, `TryGetIncidentRecords` returns true with a detached list when incidence is known.
+A true empty list certifies no incidents. False with null means unknown incidence, including an unread
+partial-window key, and makes acquisition incomplete. Incident-only remote anchors remain required even
+when ordinary references and spatial payload selection do not discover them. Missing, corrupt and
+unloaded data never become known-empty facts.
+
+The session shares candidate, directory/index visit, metadata and range allowances across all three
+phases. Stored and captured implementations charge visits before cache checks, metadata before inspection,
+range bookkeeping before work, and decode attempts before I/O. Metadata and range allowances are separate,
+each `1 + 4 * 256 * MaxPageReads`. `PagesRead` counts successful new directory/index decodes cumulatively
+on the session and as a delta on each operation. A cached traversal can exhaust its allowance with zero
+decodes. Record reads and expansion depth also obey the scope's limits. Capacity or exact-overflow refusal
+publishes no acquired content and disposes the session.
+
+The returned view, `MapCoverageWitness`, `MapReadWitness` and `MapScopedIdentity` are factory-only and
+immutable. They detach payloads, nested record and span lists, scope filters and asset digests. `Patch`
+returns a fresh clone and no access after publication rereads the producer. Scoped identity stays under
+`kemap/scoped/1` and describes the acquired facts, frame, scope and policies. `RequireComplete()` refuses an
+incomplete identity. A complete scoped acquisition from a partial editing window still cannot replace a
+whole current-edit identity. `CompleteView(set)` captures all resident patches and records without bound
+enumeration for complete in-memory surface sets.
 
 ## Storage ownership
 

@@ -11,13 +11,19 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
 {
     readonly string _directory;
     readonly IReadOnlyDictionary<string, MapSurfaceRef> _surfaceLookup;
+    readonly IReadOnlyList<MapAssetRef> _nativeAssets;
     internal MapSurfaceStorageIndex Index { get; }
+    internal MapResolverIdentityDoc? ResolverIdentity { get; }
+    internal MapSupportRecipe SupportRecipe { get; }
     MapStoredSurfaceSource(string directory, MapDocument manifest, MapTileIndex tiles)
     {
         _directory = Path.GetFullPath(directory);
         Index = tiles.Surfaces ?? new MapSurfaceStorageIndex(Array.Empty<MapDirectoryPageRef>(), manifest.Surfaces.Refs);
         Surfaces = Array.AsReadOnly(MapSurfaceStorageIndex.CopyRefs(manifest.Surfaces.Refs).OrderBy(s => s.Id, StringComparer.Ordinal).ToArray());
         _surfaceLookup = Surfaces.ToDictionary(s => s.Id, StringComparer.Ordinal);
+        ResolverIdentity = manifest.ResolverIdentity;
+        SupportRecipe = manifest.SupportRecipe;
+        _nativeAssets = Array.AsReadOnly(manifest.NativeAssets.ToArray());
         SnapshotId = "manifest:" + tiles.ManifestSha256;
         RootSha256 = MapSurfaceSemantics.RootDigest(manifest);
     }

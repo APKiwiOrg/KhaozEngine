@@ -9970,6 +9970,50 @@ unknown scatter layer reference, a `terrainOverrides` tile that leaves the docum
 quarantines a corrupt runtime cell blob and carries on. See the `KhaozEngine.MapDoc` package README for
 the full section list and a complete example document.
 
+**Whole authored surface identity.** Resolver-2 documents use `MapAuthoredIdentityV2` from
+`KhaozEngine.MapDoc.Identity`, with an explicitly verified `MapAssetClosure` and resolver-2 options:
+
+```csharp
+var options = new MapResolveOptions("headless", 1, "options", ResolverVersion: 2);
+string editedToken = MapAuthoredIdentityV2.Compute(completeDocument, verifiedAssets, options);
+var pinned = MapStoredSurfaceSource.Open(tiledDirectory);
+string storedToken = MapAuthoredIdentityV2.Compute(pinned, verifiedAssets, options);
+```
+
+The complete-document overload hashes current unsaved semantics, even when persisted baselines are old.
+A partial editing window refuses with `window` before other validation. Both overloads require resolver
+`(1, 2)`, `AuthoredBindingsV2`, valid builder options and exact native root membership in the supplied
+closure. The stored overload retains the original manifest metadata, traverses every pinned directory
+and index, verifies and hashes one payload at a time, and checks per-surface aggregates. It rereads payload
+bytes even with warm metadata caches. A swept payload refuses with `Missing`, while byte or semantic
+mismatches refuse with `Corrupt`. A changed manifest requires a new `Open`, never an implicit replacement.
+The `kemap/native-authored/2` token includes the root digest, ordered patch keys and semantic digests,
+closure hash and builder/resolver options. Repacking, embedding and incident bookkeeping do not change it.
+Equivalent complete in-memory and stored documents share a token. Resolver 1 uses `MapAuthoredIdentity`.
+
+**Scoped authored surface reads.** `MapScopedSurfaces.Acquire(source, scope, assetSha256)` publishes an
+immutable view and factory-only coverage, read and identity witnesses. Stored sources and
+`MapDocumentSurfaceSource.Capture(document)` support it. Custom producers must implement
+`IMapSurfaceAcquisitionSource` and open one pinned session across discovery, record expansion and bound
+reads. A source implementing only `IMapSurfaceSource` refuses with
+`surface source does not support bounded scoped acquisition` before legacy callbacks run.
+
+Sessions report ordered `ReservedPatchKeys` before work for every discovery or explicitly read key,
+including known-empty and unavailable keys, against one unique-key budget. Returned keys, reservations,
+surface metadata, payload digests, snapshots and per-operation decode deltas must be coherent.
+`TryGetIncidentRecords` distinguishes true with an empty list (known no incidents) from false with null
+(unknown incidence, which makes the view incomplete). Remote incident-only anchors remain required.
+Missing or unread data cannot certify emptiness. One visit budget spans all phases, including cache
+hits, with separate metadata and range allowances of `1 + 4 * 256 * MaxPageReads` each. `PagesRead`
+counts newly decoded pages, so zero decodes do not imply zero charged work.
+
+Published views copy payloads, nested lists, scope filters and asset digests, return fresh patch clones,
+and never reread the producer. `MapScopedIdentity` uses `kemap/scoped/1` for those acquired facts and
+policies, and `RequireComplete()` refuses incomplete coverage. A complete scoped result from a partial
+editing window remains distinct from a whole current-edit identity. See the
+[`MapDoc` package reference](../KhaozEngine.MapDoc/README.md#bounded-scoped-acquisition) for producer
+conformance and session budgets.
+
 **Native resolution and render adaptation.** `MapResolver.Resolve` returns an immutable
 `MapResolvedDocument` whose `AssetClosure` is the same verified closure it resolved against, so a consumer
 binds or looks up resources without a second load. `MapAssetManifestAdapter.ToAssetEntry(closure, assetId,

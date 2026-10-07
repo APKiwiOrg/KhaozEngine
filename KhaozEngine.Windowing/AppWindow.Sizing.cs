@@ -18,7 +18,11 @@ namespace KhaozEngine.Windowing
         /// Open a window for a fixed design resolution, sized up to fill the display. The window opens at the
         /// largest multiple of (<paramref name="designWidth"/> x <paramref name="designHeight"/>) that preserves the
         /// design aspect and fits within <paramref name="screenFraction"/> of the primary monitor's work area,
-        /// clamped to [1, <paramref name="maxScale"/>]. A small-tall (portrait) design on a desktop monitor thus
+        /// clamped to [1, <paramref name="maxScale"/>] in logical points. Where window coordinates are pixels (Win32
+        /// and X11) the coordinate-unit cap is <paramref name="maxScale"/> times the primary monitor's content scale,
+        /// so a 1280x720 design on a 3840x2160 screen at 250% opens at 3456x1944. Cocoa and Wayland coordinates are
+        /// already points, and an unreadable scale keeps the plain cap. The pure <see cref="FitToScreen"/> keeps its
+        /// coordinate-unit <c>maxScale</c>. A small-tall (portrait) design on a desktop monitor thus
         /// opens large enough to read instead of at life-size; pair with a <c>DesignViewport</c> (Fit) so the whole
         /// UI scales uniformly. Never opens smaller than the design size, and falls back to it if the monitor size
         /// is unavailable.

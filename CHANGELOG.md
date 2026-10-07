@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.28.0
+
+- Windowing reads each GLFW window's OS content scale for `Frame` and `UiViewport`. `Scaled` windows cap their size
+  in logical points on Windows and X11. Pointer framebuffer conversion and legacy viewport defaults are unchanged.
+- `AdaptiveViewport.WithMinimumCanvas` adds an opt-in minimum UI canvas and a live `ScaleMultiplier`.
+  Unrepresentable transforms are rejected without changing the previous layout.
+
 ## 20.27.1
 
 - Adds fixed-command phase overloads to `ClientPrediction.AdvancePresentation` and

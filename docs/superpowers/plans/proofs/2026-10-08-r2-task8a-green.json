@@ -1,0 +1,155 @@
+{
+  "task": "8A producer sessions",
+  "source_commit": "ee965b1c73616cd30b23cd50247aa124371eecb7",
+  "red_commit": "22614fc290ec7c18f8fa766431bc5eeb2d34e062",
+  "source_sha256": {
+    "KhaozEngine.MapDoc/Storage/IMapSurfaceAcquisitionSource.cs": "664e0d3ca7c6a85a7e4fa26a7ab69a6f0fc5efc7a7fe9336f037882efae7709f",
+    "KhaozEngine.MapDoc/Storage/MapSurfaceCapacityException.cs": "82a3cbe0cef1f63d122035d52336b0c7d246c1e8057818e453d0454eb71eb369",
+    "KhaozEngine.MapDoc/Storage/MapPageBudget.cs": "a2f52b36b25d7646d133e753aed9f7c33024da809c470fc96823b212aa938e68",
+    "KhaozEngine.MapDoc/Storage/MapSurfaceSessionState.cs": "795aa5b9754711a30f84d76a848dd457c75186c2df42f396be0b5daee08457f2",
+    "KhaozEngine.MapDoc/Storage/MapSurfaceAcquisitionRead.cs": "e1aa2d122ca2303b4fcba9b6eb13a02a533ceac7c06f7dea26a6c4de2ccb4b18",
+    "KhaozEngine.MapDoc/Storage/MapSurfaceAcquisitionWork.cs": "dcad6bb4e632946bfabe7ed5d120286a4c4c708001f8b4b15b1d17ba2c7eee1a",
+    "KhaozEngine.MapDoc/Storage/MapStoredSurfaceSource.Acquisition.cs": "62d338293dd9d72f356b4fdca77511efca5c87c61dee95f334c6fc428a8b6f3b",
+    "KhaozEngine.MapDoc/Storage/MapDocumentSurfaceSource.Acquisition.cs": "05bdc5b59e3663df6ead72b8af2b176420150ccf6074625bc39ab490c0fdaebf",
+    "KhaozEngine.MapDoc/Storage/MapStoredSurfaceSource.cs": "0ee83242deff699bda873191178992828d82ccef75a794f462d04ca872a30737",
+    "KhaozEngine.MapDoc/Storage/MapDocumentSurfaceSource.cs": "60c84dda7887768084ece191c4da15fc73de28e23f6b954fdde630e0f1abb2c1",
+    "KhaozEngine.MapDoc/Storage/MapSurfaceQuery.cs": "fc644c4564c4ea5905df2aa6b103d6879f83df6836befee095076e159a552eba",
+    "KhaozEngine.MapDoc/Storage/MapSurfacePageLookup.cs": "d5374c6b65bbdee35767d653cc8cb5704f65d1bfdf728ebf687bd0426a762076",
+    "KhaozEngine.MapDoc.Tests/Storage/SurfaceAcquisitionSessionTests.cs": "53886aeed2d404d7392e53231ab320ef9ef0784e21ed0d08a9fef0fd195e7d63",
+    "KhaozEngine.MapDoc.Tests/Storage/SessionConformanceFixtures.cs": "a11d555fc0407ad8162b83db3cc31dfb5b9256184b5e14facdb944fb5a471c8a",
+    "KhaozEngine.MapEditor.Tests/MapDoc/SurfaceAcquisitionBudgetTests.cs": "9cad6c056d4787ab1e87eec2f0bc342c5f808b8d8a18599746838612fb8b07dc"
+  },
+  "test_results": [
+    {
+      "artifact": "t8a-green-mapdoc.trx",
+      "sha256": "67f51d5b933a5aeff16ae706e0cd0245e2a85dfc98e96d64294af5e4db72e235",
+      "counts": {
+        "total": 3,
+        "executed": 3,
+        "passed": 3,
+        "failed": 0,
+        "notExecuted": 0
+      }
+    },
+    {
+      "artifact": "t8a-green-editor.trx",
+      "sha256": "b67fd6d988fa69babc37b2bf0423a8154c54e51413e1d9a9fb6b420f2b35a1fa",
+      "counts": {
+        "total": 10,
+        "executed": 10,
+        "passed": 10,
+        "failed": 0,
+        "notExecuted": 0
+      }
+    },
+    {
+      "artifact": "t8a-regression-mapdoc.trx",
+      "sha256": "2a0b98c91f23b7c2daebe660f219c0e151d2bef2a564b0ae518a86138b0aea2a",
+      "counts": {
+        "total": 4,
+        "executed": 4,
+        "passed": 4,
+        "failed": 0,
+        "notExecuted": 0
+      }
+    },
+    {
+      "artifact": "t8a-regression-editor.trx",
+      "sha256": "93b74179664d45e44d0a60a12c80bc1e37bac2b4f2dad3c3a2e773bcf8fb2bb4",
+      "counts": {
+        "total": 29,
+        "executed": 29,
+        "passed": 29,
+        "failed": 0,
+        "notExecuted": 0
+      }
+    }
+  ],
+  "focused_new_cases": 13,
+  "existing_regression_cases": 33,
+  "tests_changed_after_red": false,
+  "format": {
+    "exit_code": 0,
+    "included_cs_files": 15,
+    "workspace_files": 6270,
+    "changed": 0,
+    "workspace_warnings": 0,
+    "style_analyzers": {
+      "MapDoc": 5,
+      "MapDoc.Tests": 5,
+      "MapEditor.Tests": 5
+    },
+    "reference_analyzers": {
+      "MapDoc": 155,
+      "MapDoc.Tests": 211,
+      "MapEditor.Tests": 213
+    }
+  },
+  "review": {
+    "spec": "Approved",
+    "quality": "Approved",
+    "critical": 0,
+    "important": 0,
+    "minor": 0,
+    "range": "c62a17c70..ee965b1c7"
+  },
+  "logs": [
+    {
+      "name": "t8a-green-mapdoc.log",
+      "sha256": "86c8b961b7ec31e9d67fa0658790fd02def95098e981076d35eda43fd35a75ce",
+      "exit_code": 0
+    },
+    {
+      "name": "t8a-green-editor.log",
+      "sha256": "127de354334157ad81a153c3343964fb3dc920e7e02e943b7b7969604f4336d1",
+      "exit_code": 0
+    },
+    {
+      "name": "t8a-regression-mapdoc.log",
+      "sha256": "62e0d671b9ac2b03b7b9ce2287b418a12978624e5d737d1d4f1859cd4b0a4954",
+      "exit_code": 0
+    },
+    {
+      "name": "t8a-regression-editor.log",
+      "sha256": "c40e4a1b2b845598c255d0219d7c39daedd89772c41f3d3e68c454cb3244b639",
+      "exit_code": 0
+    },
+    {
+      "name": "t8a-format.log",
+      "sha256": "b82ecdb20eac7671bd317f2f8e70cda7dbbdae92ee0b26eed218bc31ed72b2ce",
+      "exit_code": 0
+    },
+    {
+      "name": "t8a-diff-check.log",
+      "sha256": "3147a0f41b01f89b67f2d81ee0892b3bffcfd4581bc74c9c69cd92c256d49475",
+      "exit_code": 0
+    },
+    {
+      "name": "t8a-dashes.log",
+      "sha256": "d8bde9c4afd84914b6654717d2525a5f5e647e57a77abb0c27f12a53179926db",
+      "exit_code": 0
+    },
+    {
+      "name": "t8a-prose.log",
+      "sha256": "a39efe969bf87fc0eec954d52db423838a8493ac7c3d9d670717b6bc03f62cff",
+      "exit_code": 0
+    },
+    {
+      "name": "t8a-file-size.log",
+      "sha256": "465f838c88e709c0541754d30af289dfad2eb282266c8650762b53b8d6367fbf",
+      "exit_code": 0
+    },
+    {
+      "name": "t8a-agent-instructions.log",
+      "sha256": "270cc89ba334d59359008026d58605dd4fa7ac9985b47ec770e3a85e6c97ae85",
+      "exit_code": 0
+    },
+    {
+      "name": "t8a-doc-versions.log",
+      "sha256": "1254c7002bcede6215d3b5425f6cfc862e3bcbe90c28f1599fa5f38a4988be2c",
+      "exit_code": 0
+    }
+  ],
+  "execution": "Owner OA20 removed scheduling waits. Bounded commands ran directly and serially. No stress or unchanged retry.",
+  "limitations": "Focused Task8A proof only. Task8B/C and full-round integration/release remain separate."
+}

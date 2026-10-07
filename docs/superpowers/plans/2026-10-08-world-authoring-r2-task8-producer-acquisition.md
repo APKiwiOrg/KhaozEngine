@@ -21,7 +21,7 @@
 - Whole identity keeps `kemap/native-authored/2`. Scoped identity keeps `kemap/scoped/1`. Storage names, packing and incident bookkeeping remain outside semantic identity. A partial editing scoped digest is not a whole current editing hash.
 - Witnesses remain sealed, factory-only and get-only, with detached `ReadOnlyCollection<T>` lists. Copy nested record lists, surface span tags, scope roles/space ids, asset digests and returned payloads. No producer is reread after publication.
 - Only public synthetic inputs and finite headless conformance tests. No geometry/compiler work, full-world scoped scan, private oracle, stress, native adoption, release, version, main or feed work belongs to these substeps.
-- Serial execution uses the existing shared compute workflow, one building worker at a time. Workers stop at reviewed verified commits. Slot exit 75 means not run and is handed to the controller, never retried in a loop.
+- Owner override OA20 removes slot/grant waits. Run authorized bounded commands directly and serially, one building worker in this lane at a time. Preserve actual exits and stop on unexpected failure. Workers stop at verified commits for controller review. No stress or repeated unchanged runs.
 
 ## Review Focus
 
@@ -47,7 +47,7 @@ For every substep, record its exact owned `.cs` paths in a shell array `wa_t8_fi
 wa_run t8X-format dotnet format KhaozEngine.slnx --verify-no-changes --no-restore --include "${wa_t8_files[@]}" --verbosity diagnostic
 ```
 
-Replace `X` with `a`, `b` or `c`. Require exit 0 and actual analyzer/document coverage for MapDoc, MapDoc.Tests and MapEditor.Tests when their files are owned by the substep. Retain any workspace warning and its coverage disposition. Explicit paths ensure new sources are covered. This command verifies all configured diagnostics and whitespace, not only IDE0005. The final whole-solution format gate remains required. After a failure, release the slot, make the reviewed correction and request only the affected verification window. Never suppress warnings or change ratchet baselines.
+Replace `X` with `a`, `b` or `c`. Require exit 0 and actual analyzer/document coverage for MapDoc, MapDoc.Tests and MapEditor.Tests when their files are owned by the substep. Retain any workspace warning and its coverage disposition. Explicit paths ensure new sources are covered. This command verifies all configured diagnostics and whitespace, not only IDE0005. The final whole-solution format gate remains required. After a failure, diagnose it, make the reviewed correction and run only the affected verification. Never suppress warnings or change ratchet baselines.
 
 Every commit uses explicit owned paths, `git diff --cached --check`, then the stated subject. No whole-directory staging, stash, push or main integration by a worker. The controller owns current-main reconciliation and the canonical candidate/release gates later.
 
@@ -296,6 +296,6 @@ After those pass, run the changed Task 7 storage regression filters once because
 
 Final project counts for these exact classes are MapDoc.Tests 44 and MapEditor.Tests 20. Embedded controls and loops are assertions within those cases, not extra discovery counts. Existing Task 7 regressions add their own current counts and must not be reported as new Task 8 cases.
 
-Stop and report a concrete blocker for source/API drift, an approval gap, an unavailable compute slot, first RED failing for unrelated setup, any required contract that cannot be tested finitely, a need to weaken a frozen assertion, or a review finding outside the worker's scope. Do not invent a null/dry fallback, increase allowances, silently broaden source support, scan a whole world during scoped acquisition, add geometry work or advance Task 9 to make Task 8 pass.
+Stop and report a concrete blocker for source/API drift, an approval gap, first RED failing for unrelated setup, any required contract that cannot be tested finitely, a need to weaken a frozen assertion, or a review finding outside the worker's scope. Do not invent a null/dry fallback, increase allowances, silently broaden source support, scan a whole world during scoped acquisition, add geometry work or advance Task 9 to make Task 8 pass.
 
 Parent self-review completed the spec coverage, checkable-step, type/signature, Review Focus and proportion checks. Independent review returned Ready, with its nonempty nested-tag fixture clarification incorporated. These are source/design checks only. Owner written-plan approval is recorded as OA19. These reviews do not establish a runtime result or Task 8 implementation completion.

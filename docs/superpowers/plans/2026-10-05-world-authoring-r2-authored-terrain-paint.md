@@ -327,11 +327,14 @@ R2 does not estimate other rounds. Each row is mandatory work the owning round's
 
 ## Verification conventions
 
+Owner override OA20 (2026-10-08) removes slot/grant waiting. Execute authorized bounded commands
+directly and serially. Earlier slot-specific checkpoint instructions are historical. Preserve
+actual exits, tests-first evidence, review, no-stress and exclusive shared-mutation boundaries.
+
 Run once per execution session from the worktree root, before Task 1:
 
 ```bash
 test "$(git branch --show-current)" = "feature/wa-r2-caves-scale"
-test -f /tmp/grimhollow-orch/slot-run.sh
 wa_r2_log_dir="/tmp/grimhollow-orch/logs/wa-r2-$(date +%Y%m%dT%H%M%S)-$$"
 mkdir -p "$wa_r2_log_dir"
 MAPDOC=KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj
@@ -339,8 +342,8 @@ EDITOR=KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj
 COMPAT=KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj
 HARNESS=KhaozEngine.MapDoc.OracleHarness.Tests/KhaozEngine.MapDoc.OracleHarness.Tests.csproj
 RUMP=KhaozEngine.Tests/KhaozEngine.Tests.csproj
-wa_run()  { n=$1; shift; local wa_command_rc; if bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-$n" "$wa_r2_log_dir/$n.log" -- "$@"; then wa_command_rc=0; else wa_command_rc=$?; fi; echo "exit $wa_command_rc for $n"; return "$wa_command_rc"; }
-wa_test() { wa_run "$1" dotnet test "$2" -c Release --filter "$3"; }
+wa_run()  { n=$1; shift; local wa_command_rc; if "$@" >"$wa_r2_log_dir/$n.log" 2>&1; then wa_command_rc=0; else wa_command_rc=$?; fi; tail -25 "$wa_r2_log_dir/$n.log"; echo "exit $wa_command_rc for $n"; return "$wa_command_rc"; }
+wa_test() { wa_run "$1" dotnet test "$2" -c Release -m:1 --filter "$3"; }
 ```
 
 Each run is one invocation with its own log name. `wa_run` reports the exit and never retries. Exit 75 means the slot was busy and nothing ran: record "not run" and wait for the coordinator. A red step is valid only when the named tests fail for the stated reason, or the build fails only because a type this task introduces does not exist. A green step needs exit 0, zero failed tests and a nonzero matching test count read from the log. A filter matching nothing is a failure.
@@ -3730,3 +3733,15 @@ original SHA256 b89a2bb41c7e9ab9a0bb2860ffa3472c1076ed9f37938acf97c9ff94c0ceffa9
 Earlier pending-review statements describe prior checkpoints. Serial8A/8B/8C execution resumes,
 starting with the13producer-session tests before any new behavior. Review, scheduled verification
 and final integration obligations remain unchanged.
+
+
+### Task8A producer sessions verified
+
+Source ee965b1c73616cd30b23cd50247aa124371eecb7 implements the approved opt-in source sessions,
+shared before-work budgets, explicit-key reservations, incident knowledge and immutable producer
+metadata. Paired compile-time RED is preserved at22614fc29. Focused3+10 and existing4+29cases
+passed, zero failures/skips/warnings. Tests stayed byte-identical to RED. Explicit15fileformat
+passed with actual MapDoc/MapDoc.Tests/MapEditor.Tests analyzer coverage and no workspace warning.
+Repository guards passed. Independent spec and quality review approved without findings.
+Proof is `proofs/2026-10-08-r2-task8a-green.json`. This completes8A's focused checkpoint, not
+Task8B/C or whole-round integration. Serial8Btests-first preparation follows under OA19/OA20.

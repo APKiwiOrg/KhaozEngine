@@ -334,3 +334,9 @@ capability RED. Source inspection found that the new selected-view decorator omi
 `IPhysicsCapsuleContacts` capability required by `MovementEnvironmentContext.TryAcquire`. The real
 wrapped Bepu view supplies it. Correct only that decorator's capability forwarding and preserve
 every consumer assertion before a separately granted attempt. No production sweep method exists.
+
+The corrected decorator forwards the mandatory existing complete-contact capability to its exact
+inner view. A separately granted run of the unchanged 16 facts compiled, passed acquisition controls
+and failed all 16 at the absent `QuerySolidSweep` lookup, zero passes/skips, exit 1 in
+`/tmp/swim-sweep-lease-red2.log`. No acquisition-constructor failure remained. This is valid
+missing-method RED. The secondary slot was explicitly released before consumer implementation.

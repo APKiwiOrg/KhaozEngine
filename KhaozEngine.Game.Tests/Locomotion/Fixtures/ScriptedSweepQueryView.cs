@@ -5,7 +5,8 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Tests.Locomotion.Fixtures;
 
 // This decorator retains a real selected view and physical lease. It supplies no geometry certificate.
-internal class SweepQueryView(IPhysicsWorldQueryView inner) : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource
+internal class SweepQueryView(IPhysicsWorldQueryView inner) :
+    IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts
 {
     public int LegacySweepCalls;
     public IPhysicsWorld SourceWorld => inner.SourceWorld;
@@ -22,6 +23,9 @@ internal class SweepQueryView(IPhysicsWorldQueryView inner) : IPhysicsWorldQuery
     }
     public bool ComputePenetration(CapsuleShape capsule, Pose pose, out Vector3 mtv)
         => inner.ComputePenetration(capsule, pose, out mtv);
+    public CapsuleContactResult QueryCapsuleContacts(CapsuleShape capsule, Pose pose, float margin,
+        Span<CapsuleContact> destination, QueryFilter filter = default)
+        => ((IPhysicsCapsuleContacts)inner).QueryCapsuleContacts(capsule, pose, margin, destination, filter);
     public Pose GetDynamicPose(DynamicBodyHandle handle) => inner.GetDynamicPose(handle);
     public void GetDynamicVelocity(DynamicBodyHandle handle, out Vector3 linear, out Vector3 angular)
         => inner.GetDynamicVelocity(handle, out linear, out angular);

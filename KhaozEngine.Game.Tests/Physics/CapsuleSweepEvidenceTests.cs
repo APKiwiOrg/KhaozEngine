@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
 
@@ -142,32 +141,12 @@ public class CapsuleSweepEvidenceTests
 
     sealed record Source(int Identity);
 
-    sealed class Proof
+    sealed class Proof(object source)
     {
-        readonly Type type;
-        readonly object value;
-
-        internal Proof(object source)
-        {
-            Type? found = typeof(BepuPhysicsWorld).Assembly.GetType("KhaozEngine.Physics.Bepu.CapsuleSweepEvidence");
-            Assert.NotNull(found);
-            type = found;
-            object? instance = Activator.CreateInstance(type, BindingFlags.Instance | BindingFlags.NonPublic,
-                binder: null, args: [source], culture: null);
-            Assert.NotNull(instance);
-            value = instance;
-        }
-
-        object? Call(string name, params object?[] arguments)
-        {
-            MethodInfo? method = type.GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.NotNull(method);
-            return method.Invoke(value, arguments);
-        }
-
-        internal bool Current(object source, long generation) => (bool)Call("IsCurrent", source, generation)!;
-        internal object Begin(long generation) => Call("BeginMutation", generation)!;
+        readonly CapsuleSweepEvidence value = new(source);
+        internal bool Current(object source, long generation) => value.IsCurrent(source, generation);
+        internal object Begin(long generation) => value.BeginMutation(generation);
         internal bool Complete(object? token, long generation, bool recordsComplete = true) =>
-            (bool)Call("CompleteMutation", token, generation, recordsComplete)!;
+            value.CompleteMutation((CapsuleSweepEvidence.Mutation?)token, generation, recordsComplete);
     }
 }

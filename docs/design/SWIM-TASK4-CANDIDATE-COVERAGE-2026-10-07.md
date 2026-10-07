@@ -224,3 +224,9 @@ known pre-write failures and the complete mutation inventory still require separ
 The twelve lifecycle facts compiled and failed at the absent `CapsuleSweepEvidence` type, zero
 passes/skips, exit 1 in `/tmp/swim-evidence-lifecycle-red.log`. No lifecycle behavior or actual
 registration proof is inferred from this RED result.
+
+The lifecycle helper passed all twelve unchanged direct assertions, zero failures/skips, exit 0 in
+`/tmp/swim-evidence-lifecycle-green.log`. Source/token identity, immediate invalidation and persistent
+refusal now have isolated behavior evidence. Known-empty initialization, the actual source generation,
+physical gate ownership and complete registration records remain caller premises. No backend hook or
+geometry certificate was added by this slice.

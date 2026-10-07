@@ -299,9 +299,10 @@ Compute displacement length in double from the float components to avoid float s
 overflow. A backend value uses float metre distances, so complete Clear extent is the correctly
 rounded float representation of that length. This representation rule does not make the endpoint
 optional. The backend still certifies the original vector's complete closed path. Hit bounds must
-lie in the actual request extent. The initial unit-axis consumer slice compares the represented
-length, so a rounded-up non-axis norm still requires its separate boundary proof and correction
-before this consumer can authorize a physical prefix. Conversion uncertainty belongs in the backend's declared
+lie in the actual request extent. The initial unit-axis consumer slice compared the represented
+length. The non-axis regression below corrects the demonstrated rounded-up overrun by comparing Hit
+bounds against the double length instead. This is not a mathematical norm enclosure, and the full
+backend numerical contract remains required before physical-prefix use. Conversion uncertainty belongs in the backend's declared
 numerical budget, not a new consumer tolerance. A nonrepresentable request length is refused.
 The exact distance-rounding rule remains part of the backend numerical contract before its acceptance.
 
@@ -414,3 +415,12 @@ independent squared-value assertion proves that the float representation of sqrt
 the exact request norm. The current Hit guard compared against that rounded-up float and accepted
 the overlong bound. All acquisition controls passed. The secondary slot was explicitly released.
 This is a consumer extent defect, not evidence about any physical backend sweep or feature query.
+
+The consumer now compares Hit bounds to its double-precision length rather than the rounded float
+encoding reserved for Clear. The separately granted numeric GREEN passed all eight facts, then the
+conditional no-build affected run passed the original 16 consumer facts, both zero failures/skips
+and exit 0. Logs are `/tmp/swim-sweep-numeric-green.log` and `/tmp/swim-sweep-lease-regressions.log`.
+Sources were unchanged between commands and the secondary slot was explicitly released. No old
+value or full-suite rerun was included. This fixes the demonstrated float rounding overrun only.
+A mathematical norm enclosure, supported backend geometry and continuous sweep certificate remain
+separate obligations, not consequences of these finite tests.

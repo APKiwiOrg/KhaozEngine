@@ -40,7 +40,9 @@ public sealed partial class MovementQueryLease
                 // The field encodes the full original vector, never a shorter accepted path.
                 if (query.ClearThroughDistance != representedLength) return MovementAvailability.Invalid;
             }
-            else if (query.ClearThroughDistance > representedLength || query.ImpactDistance > representedLength)
+            // Hit bounds are distances inside the request. A rounded-up float norm must not
+            // authorize a longer interval merely because Clear uses that encoding for its vector.
+            else if (query.ClearThroughDistance > length || query.ImpactDistance > length)
                 return MovementAvailability.Invalid;
             result = query;
             return MovementAvailability.Known;

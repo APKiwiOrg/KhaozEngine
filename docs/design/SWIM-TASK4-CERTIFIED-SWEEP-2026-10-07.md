@@ -619,3 +619,8 @@ failures/skips, exit 0 in `/tmp/swim-leaf-support-green.log`. It reads installed
 its dimensions and exact identity pose, and encloses all eight translated vertices. The composed
 fixture discharges the support premise for its one known box while the real read lease remains
 held. No complete world candidate set, general pose or public sweep is inferred.
+
+The ten closed-range facts ran from the already compiled fixture and all failed at the absent
+`EvaluateRange` method. Existing whole-path controls passed before lookup. Zero passes/skips,
+expected exit 1 in `/tmp/swim-swept-range-red.log`. This is missing-method RED, not a new compilation
+or geometry failure. The secondary slot is released before implementing the range operation.

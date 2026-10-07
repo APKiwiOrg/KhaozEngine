@@ -229,8 +229,9 @@ public sealed class ContentPublisher
     /// provider here holds a row lock across those: SQLite leases its one connection per call and SQL
     /// Server's Serializable transaction covers step 10 alone. So the store writes
     /// <c>catalog_draft.frozen_for_base_version</c> under its own transaction and every draft write reads it.
-    /// <see cref="ContentPublishCommit"/> clears it on every exit path, and a marker a dead publish left
-    /// behind naming a base version the store no longer stands at is cleared by the next baseline read.
+    /// A successful commit consumes it, and <see cref="ContentPublishCommit"/> scopes a failed attempt's
+    /// release to its base when the store supplies <see cref="IContentDraftFreezeStore"/>. A stale marker
+    /// naming a base version the store no longer stands at is cleared by the next baseline read.
     /// </para>
     /// <para>
     /// <see cref="ContentPublishRequest.ExpectedBaseVersion"/> is optimistic concurrency and it is checked

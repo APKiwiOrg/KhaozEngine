@@ -400,6 +400,16 @@ what makes that the whole draft, so scoping it can only matter when the marker f
 the point: an edit the publish never carried survives into the next draft rather than being deleted
 unpublished.
 
+Publish cleanup uses the optional `IContentDraftFreezeStore` companion on the in-memory, SQLite and SQL
+Server stores. Its `ClearDraftFreezeAsync(expectedBaseVersion)` compares and releases the freeze marker
+in one gate or transaction. Cleanup from an earlier version leaves a later frozen draft
+untouched. A successful commit consumes its draft and owes no release, including when the following sweep
+fails. The upgrade runner scopes its own failed attempt's release the same way.
+
+The original `IContentAuthoringStore.ClearDraftFreezeAsync()` remains the unscoped recovery operation.
+External stores and wrappers without the companion keep that legacy cleanup behavior, which cannot protect
+a concurrent later draft. The companion scopes base versions, not publishers sharing the same draft.
+
 **It CONFIRMS the version number rather than trusting it.** The plan digested its number into both manifest
 hashes at step 8, so the transaction re-reads the highest published number and refuses with the
 `base-version-moved` reason when the plan's is not the next one. A provider that leases a connection per call

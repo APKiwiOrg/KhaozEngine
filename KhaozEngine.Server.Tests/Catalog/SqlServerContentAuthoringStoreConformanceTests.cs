@@ -469,6 +469,11 @@ public sealed class SqlServerContentAuthoringStoreConformanceTests : ContentAuth
 
     /// <inheritdoc />
     [CatalogSqlServerFact]
+    public override Task AReleaseForAnEarlierBaseCannotUnfreezeTheCurrentDraft()
+        => base.AReleaseForAnEarlierBaseCannotUnfreezeTheCurrentDraft();
+
+    /// <inheritdoc />
+    [CatalogSqlServerFact]
     public override Task AFamilyForkRoundTripsThroughExportAndImportWithTheCopyInsideTheBlock()
         => base.AFamilyForkRoundTripsThroughExportAndImportWithTheCopyInsideTheBlock();
 

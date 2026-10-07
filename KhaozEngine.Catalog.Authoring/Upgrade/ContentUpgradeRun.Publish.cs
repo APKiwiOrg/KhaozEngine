@@ -167,9 +167,8 @@ sealed partial class ContentUpgradeRun
                     },
                     CancellationToken).ConfigureAwait(false);
 
-                // The ONE exit that owes nothing. The publish took the marker over: it overwrites it with its
-                // own at its first step and releases it on every exit path of its own, and the draft it just
-                // committed is gone, so a release here would be a no-op anyway.
+                // The commit consumed this attempt's draft, so it owes no release. Another runner may
+                // already have frozen a later draft while this publish finished its sweep.
                 _frozenForPublish = false;
                 RecordPublished(published.VersionNumber);
                 _steps.Add(
@@ -178,10 +177,9 @@ sealed partial class ContentUpgradeRun
             }
             finally
             {
-                // Every other exit, including a publish that entered the store's pipeline and failed inside
-                // it. That one released its own marker on its own way out, so this is a no-op except in the
-                // gap another publisher's freeze can land in, which is the same third window named above.
-                // A failure before the freeze released nothing at all: the flag says which.
+                // Every other exit, including a pipeline failure. Scope the release to the attempt's base,
+                // so a failure after commit cannot release a later draft's marker. Publishers on the same
+                // base still share the ownerless marker. The flag says whether this attempt set one.
                 await ReleaseFreezeAsync().ConfigureAwait(false);
             }
         }
@@ -245,7 +243,7 @@ sealed partial class ContentUpgradeRun
 
         _frozenForPublish = false;
         Operation = "release the freeze it set";
-        await Store.ClearDraftFreezeAsync(CancellationToken.None).ConfigureAwait(false);
+        await ContentDraftFreezeRelease.ClearAsync(Store, Active, CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>

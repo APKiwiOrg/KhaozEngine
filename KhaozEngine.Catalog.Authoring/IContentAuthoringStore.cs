@@ -206,9 +206,9 @@ public interface IContentAuthoringStore : IContentVersionDirectory, IContentVers
     Task FreezeDraftAsync(int baseVersion, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Clears the freeze marker, whatever it holds, and leaves the draft and its edits alone. A publish runs
-    /// this on EVERY exit path, so a refusal or a throw releases the draft the same way a success does. It is
-    /// a no-op when no draft is open or none is frozen.
+    /// Clears the freeze marker, whatever it holds, and leaves the draft and its edits alone. It is a no-op
+    /// when no draft is open or none is frozen. Publishers use <see cref="IContentDraftFreezeStore"/> when
+    /// supplied to scope cleanup to their own base version, and owe no release after a successful commit.
     /// <para>
     /// A host may also call it to recover a marker left by a publisher process that died before commit, but
     /// only after proving no publisher is live. Such a marker names the current base version, exactly like a

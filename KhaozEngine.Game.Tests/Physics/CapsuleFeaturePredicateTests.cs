@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Reflection;
-using System.Runtime.ExceptionServices;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
 
@@ -16,29 +14,10 @@ public class CapsuleFeaturePredicateTests
     public void ClosedRepresentedTriangleHasItsIndependentNamedClassification(
         string caseName, Vector3 a, Vector3 b, Vector3 c, Vector3 point, string expectedName)
     {
-        // Keep the first RED compilable while the production predicate and result enum are absent.
-        Type? predicates = typeof(BepuPhysicsWorld).Assembly.GetType(
-            "KhaozEngine.Physics.Bepu.CapsuleFeaturePredicates");
-        Assert.True(predicates is not null, $"{caseName}: missing internal CapsuleFeaturePredicates");
-        Type predicateType = predicates!;
-        Assert.True(predicateType.IsNotPublic, "The predicate type must remain internal");
-        MethodInfo? classify = predicateType.GetMethod("ClassifyTrianglePoint",
-            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null,
-            [typeof(Vector3), typeof(Vector3), typeof(Vector3), typeof(Vector3)], null);
-        Assert.NotNull(classify);
-        Type classification = classify.ReturnType;
-        Assert.True(classification.IsEnum && (classification.IsNotPublic || classification.IsNestedAssembly),
-            "The classification must be an internal enum");
-        Assert.Equal("Unresolved", Activator.CreateInstance(classification)?.ToString());
-
-        object? actual;
-        try { actual = classify.Invoke(null, [a, b, c, point]); }
-        catch (TargetInvocationException e) when (e.InnerException is not null)
-        {
-            ExceptionDispatchInfo.Capture(e.InnerException).Throw();
-            throw;
-        }
-        Assert.Equal(expectedName, actual?.ToString());
+        Assert.True(typeof(CapsuleFeaturePredicates).IsNotPublic, caseName);
+        Assert.True(typeof(TrianglePointLocation).IsNotPublic, caseName);
+        Assert.Equal(TrianglePointLocation.Unresolved, default);
+        Assert.Equal(expectedName, CapsuleFeaturePredicates.ClassifyTrianglePoint(a, b, c, point).ToString());
     }
 
     public static IEnumerable<object[]> RepresentedTriangleCases()

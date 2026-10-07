@@ -61,6 +61,35 @@ invalid inputs and over-budget refusal. The expected signs use separately stated
 This proves only the sign for the supplied represented coordinates. It does not turn uncertain
 transformed coordinates into exact geometry, authenticate installed shapes, or certify a contact.
 
+## Closed finite triangle membership
+
+`Orient2D` takes six represented binary32 coordinates. Conversion to binary64 is exact. Each
+coordinate difference is formed as a signed dyadic sum, never a floating-point subtraction. The
+oriented area is the exact difference of two bounded integer products. `Orient3D` forms the three
+exact coordinate-difference vectors, their cross product and its dot product with the query-point
+difference. Every product checks the sum of its operand bit lengths before multiplication. Every
+sum uses the existing pre-shift alignment and carry checks. A refusal propagates as `Unresolved`.
+There are fixed counts of operations, with no adaptive refinement or input-dependent iteration.
+
+The triangle classifier first rejects non-finite input. Its three projected area signs are the
+three components of the exact cross product. All zero means a degenerate triangle, independently
+of point coincidence. For a nondegenerate triangle, a nonzero scalar triple product proves the
+supplied point is not on its plane and therefore not on the finite triangle.
+
+For a coplanar point, choose a coordinate projection with nonzero triangle area. That projection
+is injective on this plane. The three oriented edge tests therefore classify the original finite
+triangle, not its infinite plane. A sign opposite to the triangle winding is outside. Otherwise,
+zero, one or two zero edge signs mean interior, edge or vertex respectively. Three zero edge signs
+would contradict nondegeneracy and are conservatively unresolved. Reversing the winding reverses
+all nonzero signs and leaves the relation unchanged. Signed zero contributes exact zero.
+
+Twenty independent cases include an oblique off-plane residual, exact one-float offsets, a
+cancellation determinant of `2^-46`, an underflow determinant of `2^-160`, both windings and
+finite degeneracy. These predicates describe only their supplied represented coordinates. A
+rounded closest-point proposal or uncertain transformed point must not be substituted for an
+exact point and treated as a proved membership relation. Normal construction, closest-feature
+ordering and installed geometry correspondence remain separate obligations.
+
 ## Square roots
 
 `Math.Sqrt` only proposes candidate endpoints. A negative input interval refuses. A positive lower

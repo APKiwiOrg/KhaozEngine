@@ -110,6 +110,76 @@ internal static class BoundedGeometryArithmetic
         return Compare(left, right);
     }
 
+    /// <summary>Exact oriented area sign for three supplied binary32 points.</summary>
+    internal static GeometrySign Orient2D(float ax, float ay, float bx, float by, float cx, float cy)
+    {
+        if (!float.IsFinite(ax) || !float.IsFinite(ay) || !float.IsFinite(bx) ||
+            !float.IsFinite(by) || !float.IsFinite(cx) || !float.IsFinite(cy) ||
+            !TryDifference(bx, ax, out Dyadic x1) || !TryDifference(by, ay, out Dyadic y1) ||
+            !TryDifference(cx, ax, out Dyadic x2) || !TryDifference(cy, ay, out Dyadic y2) ||
+            !TryProductDifference(x1, y2, y1, x2, out Dyadic area))
+            return GeometrySign.Unresolved;
+        return Sign(area);
+    }
+
+    /// <summary>Exact sign of ((b-a) cross (c-a)) dot (point-a), with no rounded differences.</summary>
+    internal static GeometrySign Orient3D(Vector3 a, Vector3 b, Vector3 c, Vector3 point)
+    {
+        if (!Finite(a) || !Finite(b) || !Finite(c) || !Finite(point) ||
+            !TryDifference(b, a, out DyadicVector ab) || !TryDifference(c, a, out DyadicVector ac) ||
+            !TryDifference(point, a, out DyadicVector ap) ||
+            !TryProductDifference(ab.Y, ac.Z, ab.Z, ac.Y, out Dyadic x) ||
+            !TryProductDifference(ab.Z, ac.X, ab.X, ac.Z, out Dyadic y) ||
+            !TryProductDifference(ab.X, ac.Y, ab.Y, ac.X, out Dyadic z) ||
+            !TryMultiply(x, ap.X, out Dyadic px) || !TryMultiply(y, ap.Y, out Dyadic py) ||
+            !TryMultiply(z, ap.Z, out Dyadic pz) || !TryAdd(px, py, out Dyadic xy) ||
+            !TryAdd(xy, pz, out Dyadic volume))
+            return GeometrySign.Unresolved;
+        return Sign(volume);
+    }
+
+    readonly record struct DyadicVector(Dyadic X, Dyadic Y, Dyadic Z);
+
+    static bool Finite(Vector3 value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
+    static GeometrySign Sign(Dyadic value) => value.Mantissa.Sign switch
+    {
+        < 0 => GeometrySign.Negative,
+        > 0 => GeometrySign.Positive,
+        _ => GeometrySign.Zero,
+    };
+
+    static bool TryDifference(Vector3 a, Vector3 b, out DyadicVector result)
+    {
+        result = default;
+        if (!TryDifference(a.X, b.X, out Dyadic x) || !TryDifference(a.Y, b.Y, out Dyadic y) ||
+            !TryDifference(a.Z, b.Z, out Dyadic z)) return false;
+        result = new(x, y, z);
+        return true;
+    }
+
+    static bool TryDifference(float a, float b, out Dyadic result)
+    {
+        Dyadic second = Split(b);
+        return TryAdd(Split(a), new(-second.Mantissa, second.Exponent), out result);
+    }
+
+    static bool TryMultiply(Dyadic a, Dyadic b, out Dyadic result)
+    {
+        result = default;
+        if (BigInteger.Abs(a.Mantissa).GetBitLength() + BigInteger.Abs(b.Mantissa).GetBitLength() > MaximumPredicateBits)
+            return false;
+        BigInteger mantissa = a.Mantissa * b.Mantissa;
+        result = new(mantissa, mantissa.IsZero ? 0 : a.Exponent + b.Exponent);
+        return true;
+    }
+
+    static bool TryProductDifference(Dyadic a, Dyadic b, Dyadic c, Dyadic d, out Dyadic result)
+    {
+        result = default;
+        return TryMultiply(a, b, out Dyadic first) && TryMultiply(c, d, out Dyadic second) &&
+            TryAdd(first, new(-second.Mantissa, second.Exponent), out result);
+    }
+
     static GeometrySign Compare(Dyadic left, Dyadic right)
     {
         int exponent = Math.Min(left.Exponent, right.Exponent);

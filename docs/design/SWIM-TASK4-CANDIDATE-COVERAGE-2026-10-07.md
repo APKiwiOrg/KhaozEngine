@@ -340,3 +340,11 @@ First integrated validation stopped at compilation in SweepBounds.cs, CS0206/CS1
 The StaticHandle indexer returns StaticReference, not the raw Static record. No original 32 case or
 proposed-domain case executed. Exit 1 in `/tmp/swim-backend-first.log`. The corrected access must use
 the already validated dense integer index. No formula or assertion change is indicated by this failure.
+
+Corrected first validation compiled. All original 32 integrated cases passed, including the finite
+capacity, actual partial mutation, exclusion/filter and source-lifecycle controls. Both proposed-domain
+cases failed only at their final refusal assertions, returning Clear with encoded distance 4. Their
+preceding setup/boundary assertions passed. Total 32 passed, 2 failed, zero skipped, exit 1 in
+`/tmp/swim-backend-first2.log`. This establishes desired-policy RED, not an overflow reproduction or
+acceptance of the numerical bound. The guard remains absent. Tracked evidence is
+[the first backend proof](../verification/2026-10-07-certified-sweep-backend-first.json).

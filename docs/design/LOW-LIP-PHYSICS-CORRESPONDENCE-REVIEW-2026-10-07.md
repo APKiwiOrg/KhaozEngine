@@ -21,7 +21,7 @@ Reviewed current engine main `e34cd884be10c22bee10b82b76aacc7a3514dd17` and swim
   face facts. `CapsuleContactCollector.AddManifold` takes the normal/feature from a collision manifold,
   discards its contact position and can deduplicate constraints differing only in feature ID.
   `CapsuleMeshContacts` applies contact smoothing. No public feature-to-face resolver exists.
-- Swimming's new `CapsuleSweepResult` represents distance bounds only and has no implemented Bepu
+- At this review checkpoint, swimming's `CapsuleSweepResult` represented distance bounds only and had no implemented Bepu
   certificate. It supplies neither this correspondence nor an error budget that #1270 may borrow.
 
 The 24-case observations reported by pivot are consistent with this missing contract. This review

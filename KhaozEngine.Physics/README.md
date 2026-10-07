@@ -39,8 +39,8 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   returned `CertifiedErrorMetres` against the caller's tolerance before using a complete result. Uncertain
   boundary contacts may appear within that error beyond the requested margin. Unsupported filters must
   be refused, never silently ignored. Use a query lease when composing several queries into one result.
-- **`IPhysicsCapsuleSweep` / `SweepCapsuleCertified`** - optional closed-path sweep contract, currently
-  a value/interface seam without a Bepu implementation. `CapsuleSweepResult` defaults to `Unresolved`
+- **`IPhysicsCapsuleSweep` / `SweepCapsuleCertified`** - optional closed-path sweep contract. Bepu has an
+  identity-box development implementation pending numerical-domain acceptance and final verification. `CapsuleSweepResult` defaults to `Unresolved`
   with no usable prefix. `Clear` has no impact distance and must cover the full request. `Hit` has an
   ordered clear-through/impact interval, neither endpoint grants placement. Distances and declared error
   are finite nonnegative metres. `IsComplete` validates Clear/Hit structure only. Consumers still check

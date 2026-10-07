@@ -21,7 +21,7 @@ public sealed partial class BepuPhysicsWorld
         int index = _sim.Statics.HandleToIndex[entry.Handle.Value];
         if ((uint)index >= (uint)_sim.Statics.Count || _sim.Statics.IndexToHandle[index].Value != entry.Handle.Value)
             return false;
-        ref var body = ref _sim.Statics[entry.Handle];
+        ref var body = ref _sim.Statics[index];
         if (!SameSweepShape(body.Shape, entry.Shape) ||
             !ReadSweepStoredBounds(_sim.BroadPhase.StaticTree, body.BroadPhaseIndex, out Vector3 min, out Vector3 max))
             return false;

@@ -187,6 +187,25 @@ The shape factory papers over three Bepu behaviours so seam shapes act like thei
   (`RecursivelyRemoveAndDispose`), so streaming terrain/building meshes register on load and remove on
   unload with a flat pool across thousands of cycles (no leak).
 
+## Certified sweep development status
+
+The owner and restricted query views implement `IPhysicsCapsuleSweep` for an initial identity-box
+geometry domain. This development implementation is not ready for consumer adoption: numerical-domain
+acceptance, affected regressions, general geometry and final backend verification remain pending.
+The first 32 integrated fixtures passed. Two proposed coordinate-domain refusal controls remain RED.
+See [the candidate proof](../docs/design/SWIM-TASK4-CANDIDATE-COVERAGE-2026-10-07.md).
+
+Selected unproved bound families refuse even outside the raw aperture. View/mobility exclusions retain
+their exact source meaning. Unsupported query orientation/layer filters, incomplete mutation evidence
+and capacity exhaustion return Unresolved without a prefix. Failed or missed physical mutations cannot
+be healed by an unrelated successful mutation. The actual read-lease contract is unchanged.
+
+Current work limits are 8192 visited nodes, 4096 leaves and 128 pending branches per tree, 4096 aggregate
+examined callbacks (including filtered entries), 4096 unproved static records inspected, and 256 cells
+at depth at most 48 per admitted leaf. Hit error is capped at 1 mm. Clear encodes the whole original
+vector, not a replacement trajectory. Closed tangency can be Hit(0), and an unencodable Hit endpoint
+refuses. These limits are not native geometry/residency or navigation acceptance.
+
 ## Usage
 
 ```csharp

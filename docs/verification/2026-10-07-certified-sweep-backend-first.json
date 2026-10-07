@@ -1,0 +1,30 @@
+{
+  "status": "partial development evidence, not final backend approval",
+  "baseCommit": "45cc18cae",
+  "validatedChange": "Use the validated dense Static index instead of the StaticHandle indexer",
+  "sourceHash": "dd78e4ad9efdf5f37c41e41ca5841fa4f0c15c48b1fbad892059ab102c0e7875",
+  "command": "dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release -m:1 --filter FullyQualifiedName~BepuCertifiedCapsuleSweepTests",
+  "log": "/tmp/swim-backend-first2.log",
+  "exitCode": 1,
+  "originalIntegrationCases": {
+    "passed": 32,
+    "failed": 0,
+    "skipped": 0
+  },
+  "proposedDomainControls": {
+    "passed": 0,
+    "failed": 2,
+    "skipped": 0,
+    "actualResults": "Both returned Clear with encoded distance 4",
+    "setup": "Inclusive-boundary and input controls preceding refusal assertions passed",
+    "interpretation": "Desired-policy RED, not an overflow reproduction or numerical-domain approval"
+  },
+  "pending": [
+    "Numerical-domain source proof and acceptance",
+    "13 lifecycle cases including the value-token change",
+    "Existing allocation and affected legacy regressions",
+    "Whole-branch verification and review",
+    "General geometry and full movement resolver",
+    "Native G1b"
+  ]
+}

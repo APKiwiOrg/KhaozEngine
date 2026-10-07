@@ -8598,7 +8598,8 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   Bepu preserves child constraints before final manifold reduction and refuses unsupported layer masks.
   Its [backend limits](../KhaozEngine.Physics.Bepu/README.md) can refuse otherwise valid mesh inputs.
 - Optional `IPhysicsCapsuleSweep.SweepCapsuleCertified(capsule, pose, displacement, filter)` returns
-  a validated `CapsuleSweepResult` value. The seam currently has no Bepu implementation. Default is
+  a validated `CapsuleSweepResult` value. Bepu has an identity-box development implementation whose
+  numerical-domain acceptance and final verification remain pending. Default is
   `Unresolved` without a usable prefix. `IsComplete` reports structural Clear/Hit status, not proof of
   the backend certificate. Validate the whole request extent, error budget, scope and read lifetime.
   Closed endpoints and stationary requests are included. Hit bounds do not authorize placement.

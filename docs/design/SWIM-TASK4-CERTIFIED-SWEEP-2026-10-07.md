@@ -340,3 +340,49 @@ inner view. A separately granted run of the unchanged 16 facts compiled, passed 
 and failed all 16 at the absent `QuerySolidSweep` lookup, zero passes/skips, exit 1 in
 `/tmp/swim-sweep-lease-red2.log`. No acquisition-constructor failure remained. This is valid
 missing-method RED. The secondary slot was explicitly released before consumer implementation.
+
+## Candidate independent swept-clear certificate
+
+This is a mathematical design candidate, not an implemented or accepted backend domain. It addresses
+why a raw Bepu miss or inverted bracket cannot itself certify Clear. No geometry helper is copied
+from the separately owned feature-query implementation. Shared arithmetic ownership is being
+coordinated before either lane creates a second interval/transform kernel.
+
+For the upright capsule, let A and B be its axis endpoints, r its radius and D its requested
+displacement. Its complete swept volume is the convex hull of the starting and ending capsules.
+For any finite nonzero direction n, its minimum projection is
+
+```text
+min(dot(n, A), dot(n, B)) - r * length(n) + min(0, dot(n, D))
+```
+
+For a convex solid leaf S, subtract its maximum support projection in n. If an outward-rounded
+enclosure proves this gap strictly positive, the whole closed swept capsule and S are disjoint.
+The direction may come from approximate Bepu output because the certificate verifies the projection
+independently. Correctness does not require that proposed direction to be the exact separating
+normal. Zero-containing or negative gap intervals prove nothing and cannot become Clear.
+
+Every relevant convex leaf must receive a certificate over the entire request, or over a finite
+cover of closed subintervals with no gaps. A thin collision interval cannot be skipped by sample
+spacing. The derivation follows from support projections of a convex hull, rather than a claim about
+Bepu's termination branch. A conservative certificate against a triangle's full finite geometry is
+sufficient for disjointness even when the collision surface is one-sided. It is not sufficient for
+classifying a Hit or a back-face interaction.
+
+Still required before implementation acceptance:
+
+- Enclosures must cover actual installed transforms, shape support and float output conversion.
+  Arithmetic helper reuse does not import another query's error ceiling or domain.
+- Candidate and child exclusion need independent conservative bounds. An unproved broadphase or
+  child-tree bound cannot hide geometry before certificate evaluation.
+- Hit needs an independently proved contact/intersection witness and earliest-bracket construction.
+  A failure to find a separating axis is not a Hit. Initial overlap, closed tangency and one-sided
+  mesh behavior remain explicit cases, with no arbitrary safe placement.
+- A lower prefix certificate and upper witness must enclose the earliest event across all leaves.
+  Complete active contacts at the selected query pose remain a separate requirement.
+- Supported shape/transform ranges, finite axis/interval/candidate work limits and numeric error
+  accounting must be pinned in backend/profile identity. Unsupported or exhausted work refuses.
+
+This direction may use existing raw sweeps as proposals without pretending they carry conservative
+bounds. It does not authorize a second native sampler, a local stress proof, a changed F3 tolerance
+or an implicit dependency on the low-lip face query's future runtime implementation.

@@ -525,3 +525,12 @@ ordering, returning no output on invalid/capacity/uncertain arithmetic. `PolicyV
 input/distinct caps and arithmetic screen require follow-through in the eventual solver/profile
 identity. Its 64 binary64-ULP scale and measured float-rounding screen are not mathematical geometry
 certificates. A Known candidate can never bypass the mandatory complete solid and water retrace.
+
+The exact shared scalar subset was imported with its owner's agreement from `dcb744976` and test
+parent `140c4781c`, plus only the Game.Tests friend declaration and local documentation index link.
+No feature-query contract, plan, classification or branch merge was imported. The immutable helper
+and test hashes above were rechecked before the granted run. The 14 primitive tests passed in this
+branch, then the no-build 10 swept-support facts all failed at the absent `CapsuleSweptSupport` type.
+Both runs compiled/setup correctly, with zero skips. Logs are `/tmp/swim-arithmetic-reconcile.log`
+(exit 0) and `/tmp/swim-swept-support-red.log` (expected exit 1). The secondary slot was released
+before sweep-kernel implementation. The supplied solid-support premise remains unproved geometry.

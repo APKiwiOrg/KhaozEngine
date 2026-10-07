@@ -3557,3 +3557,22 @@ One granted secondary RED failed only on MapSupportRecipe: two CS0246 signature 
 CS0103 attribute errors. Zero tests executed, source hash unchanged. Earlier enum binding prevents
 claims about additional missing body members/helpers or runtime behavior. Secondary was released.
 Proof is proofs/2026-10-07-r2-task6-red.json. Approved format migration implementation follows.
+
+
+### Task 6 propagation preparation and duplicate-path RED
+
+Worker prepared the format transition, metadata/validation/serialization and snapshot propagation.
+Parent independently verified all fourteen tests and seven frozen format-4 files unchanged. Four
+older accepted-input rows needed setup reconciliation under the approved recipe contract: current
+resolver-2 metadata saves select AuthoredBindingsV2, legacy format-3/4 casing uses resolver 1,
+and a new format-5 casing row retains explicit resolver-2 coverage. Validation was not weakened.
+Existing current-format output assertions in NativeDocumentTests and NativeNumericIdTests change
+to 5. The direct 3-to-4 migration assertion and format-3 golden remain unchanged.
+
+Two existing placement duplication initializers omit the new immutable support binding. Parent
+prepared two synthetic real-fixture rows before fixing them. One granted run compiled and failed
+both binding equality assertions with actual null after valid setup. Later offset, allocation and
+undo assertions were not reached. No compiler notice, skip or unrelated outcome occurred. All
+25 frozen hashes remained unchanged and primary was released. Proof is
+proofs/2026-10-07-r2-task6-copy-red.json. The two field copies and full source review follow.
+This is not Task 6 GREEN or completion, and no fixture data was regenerated.

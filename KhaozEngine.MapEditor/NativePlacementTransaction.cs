@@ -38,6 +38,7 @@ internal static class NativePlacementTransaction
         AssetId = p.AssetId,
         NumericId = p.NumericId,
         DisplayName = p.DisplayName,
+        SupportBinding = p.SupportBinding,
         X = p.X,
         Y = p.Y,
         Z = p.Z,

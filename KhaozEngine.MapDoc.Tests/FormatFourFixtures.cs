@@ -21,6 +21,33 @@ internal static class FormatFourFixtures
     internal static string MonolithicPath => Path.Combine(DirectoryPath, "native-monolithic.mapdoc.json");
     internal static string TiledDirectory => Path.Combine(DirectoryPath, "native-tiled");
 
+    internal static string CopyTiledToTemp()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "mapdoc-format-four-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(root);
+            foreach (string path in Directory.EnumerateFiles(TiledDirectory, "*", SearchOption.AllDirectories))
+            {
+                string target = Path.Combine(root, Path.GetRelativePath(TiledDirectory, path));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(path, target);
+            }
+            return root;
+        }
+        catch
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            throw;
+        }
+    }
+
+    internal static IReadOnlyList<string> TileFileDigests(string root) =>
+        Directory.EnumerateFiles(Path.Combine(root, "tiles"), "*", SearchOption.AllDirectories)
+            .Select(path => (Path: path, Relative: Path.GetRelativePath(root, path).Replace('\\', '/')))
+            .OrderBy(entry => entry.Relative, StringComparer.Ordinal)
+            .Select(entry => entry.Relative + "\t" + AssertFixtures.Sha256(entry.Path)).ToArray();
+
     internal static (MapDocument Document, MapAssetClosure Assets, MapResolveOptions Options) Build()
     {
         var assets = NativeAssetFixtures.Valid();

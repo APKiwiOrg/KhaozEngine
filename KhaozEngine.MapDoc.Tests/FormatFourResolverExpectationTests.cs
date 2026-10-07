@@ -15,7 +15,7 @@ public sealed class FormatFourResolverExpectationTests
         Assert.Equal(new[] { 2.5f, 2.5f, 7.5f }, r.Placements.Select(p => p.Transform.Position.Y));
         Assert.Equal(new[] { (-30f, 20f), (10f, 10f) }, calls);
         FormatFourFixtures.AssertMatchesExpectations(r, calls);
-        Assert.Equal(e.AuthoredHashFormatFour, r.AuthoredHash);      // Task 6 flips only this line to NotEqual
+        Assert.NotEqual(e.AuthoredHashFormatFour, r.AuthoredHash);      // Task 6 flips only this line to NotEqual
     }
 
     [Fact]

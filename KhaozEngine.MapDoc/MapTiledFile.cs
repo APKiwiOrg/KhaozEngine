@@ -201,6 +201,8 @@ internal static partial class MapTiledFile
         NativeAssets = doc.NativeAssets,
         NumericIdHighWaterMark = doc.NumericIdHighWaterMark,
         ResolverIdentity = doc.ResolverIdentity,
+        SupportRecipe = doc.SupportRecipe,
+        Surfaces = doc.Surfaces,
         TileSize = doc.TileSize,
         Terrain = doc.Terrain,
         ScatterLayers = doc.ScatterLayers,

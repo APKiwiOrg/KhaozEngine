@@ -36,5 +36,7 @@ internal static class NativeDocumentSnapshot
         target.NativeAssets = candidate.NativeAssets;
         target.NumericIdHighWaterMark = candidate.NumericIdHighWaterMark;
         target.ResolverIdentity = candidate.ResolverIdentity;
+        target.SupportRecipe = candidate.SupportRecipe;
+        target.Surfaces = candidate.Surfaces;
     }
 }

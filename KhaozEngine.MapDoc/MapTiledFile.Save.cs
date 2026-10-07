@@ -23,6 +23,7 @@ internal static partial class MapTiledFile
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        doc.Surfaces?.RequireWritable();
         save ??= new MapDocumentSaveOptions();
         string root = Normalize(directory);
 

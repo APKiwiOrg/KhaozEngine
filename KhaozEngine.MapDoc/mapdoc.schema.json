@@ -7,7 +7,9 @@
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
-    "formatVersion": { "type": "integer", "const": 4 },
+    "formatVersion": { "type": "integer", "const": 5 },
+    "supportRecipe": { "type": "string", "enum": ["LegacyXzCallbackV1", "AuthoredBindingsV2"] },
+    "surfaces": { "type": "array", "items": { "$ref": "#/$defs/surface" } },
     "id": { "type": "string", "minLength": 1 },
     "displayName": { "type": "string" },
     "tileSize": { "type": "number", "exclusiveMinimum": 0 },
@@ -190,6 +192,96 @@
     }
   },
   "$defs": {
+    "positiveRational": {
+      "type": "object",
+      "required": ["numerator", "denominator"],
+      "additionalProperties": false,
+      "properties": {
+        "numerator": { "type": "integer", "minimum": 1, "maximum": 2147483647 },
+        "denominator": { "type": "integer", "minimum": 1, "maximum": 2147483647 }
+      }
+    },
+    "latticeFrame": {
+      "type": "object",
+      "required": ["cellUnitMetres", "heightUnitMetres", "rowDirection", "datum"],
+      "additionalProperties": false,
+      "properties": {
+        "cellUnitMetres": { "$ref": "#/$defs/positiveRational" },
+        "heightUnitMetres": { "$ref": "#/$defs/positiveRational" },
+        "rowDirection": { "type": "string", "enum": ["PositiveZ", "NegativeZ"] },
+        "datum": { "type": "string", "const": "WorldY0" }
+      }
+    },
+    "patchKey": {
+      "type": "object",
+      "required": ["surfaceId", "slotX", "slotZ"],
+      "additionalProperties": false,
+      "properties": {
+        "surfaceId": { "type": "string", "minLength": 1 },
+        "slotX": { "$ref": "#/$defs/signedInt64Decimal" },
+        "slotZ": { "$ref": "#/$defs/signedInt64Decimal" }
+      }
+    },
+    "recordRef": {
+      "type": "object",
+      "required": ["id", "anchor"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "anchor": { "$ref": "#/$defs/patchKey" }
+      }
+    },
+    "indoorSpan": {
+      "type": ["object", "null"],
+      "required": ["id", "parentSpace", "lowerOffsetUnits", "upperOffsetUnits", "domainTags"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "parentSpace": { "$ref": "#/$defs/recordRef" },
+        "lowerOffsetUnits": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "upperOffsetUnits": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "domainTags": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "surface": {
+      "type": "object",
+      "required": ["id", "frame", "role", "presencePolicy", "semanticSha256"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "frame": { "$ref": "#/$defs/latticeFrame" },
+        "role": { "type": "string", "enum": ["SupportFloor", "Ceiling", "PaintOverride"] },
+        "presencePolicy": { "type": "string", "enum": ["Native", "LegacyTileWorld"] },
+        "paintTargetSurfaceId": { "type": ["string", "null"] },
+        "indoorSpan": { "$ref": "#/$defs/indoorSpan" },
+        "semanticSha256": { "type": "string", "minLength": 64, "maxLength": 64, "pattern": "^[0-9a-f]{64}(?![\\s\\S])" }
+      }
+    },
+    "supportBinding": {
+      "type": ["object", "null"],
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["Surface", "Space"] },
+        "surfaceId": { "type": ["string", "null"] },
+        "spaceId": { "type": ["string", "null"] },
+        "referenceY": { "type": ["number", "null"] },
+        "searchBelow": { "type": ["number", "null"], "minimum": 0 },
+        "searchAbove": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "signedInt64Decimal": {
+      "description": "Canonical int64 decimal string, preserving exact signed patch slots.",
+      "anyOf": [
+        { "const": "0" },
+        { "$ref": "#/$defs/positiveInt64Decimal" },
+        {
+          "type": "string",
+          "maxLength": 20,
+          "pattern": "^-(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-8])(?![\\s\\S])"
+        }
+      ]
+    },
     "positiveInt64Decimal": {
       "description": "Canonical ASCII decimal string from 1 to 9223372036854775807 with no sign or leading zero. Each alternative bounds one prefix of the int64 maximum, and the final lookahead refuses a trailing newline that a bare end anchor would allow.",
       "type": "string",
@@ -219,6 +311,7 @@
           "numericId": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/positiveInt64Decimal" }], "description": "Positive int64 decimal string, at most 9223372036854775807." },
           "assetId": { "type": ["string", "null"] },
           "displayName": { "type": ["string", "null"] },
+          "supportBinding": { "$ref": "#/$defs/supportBinding" },
           "x": { "type": "number" },
           "z": { "type": "number" },
           "y": { "type": ["number", "null"] },

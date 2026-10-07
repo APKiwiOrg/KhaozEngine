@@ -143,6 +143,7 @@ public sealed class MapDocumentSource : IDisposable
                 NumericId = p.NumericId,
                 AssetId = p.AssetId,
                 DisplayName = p.DisplayName,
+                SupportBinding = p.SupportBinding,
                 X = p.X,
                 Z = p.Z,
                 Y = p.Y,

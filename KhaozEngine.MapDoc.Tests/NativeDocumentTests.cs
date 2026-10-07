@@ -71,7 +71,7 @@ public sealed partial class NativeDocumentTests
         root["formatVersion"] = version;
         if (version < 3) root.Remove("tileSize");
         var doc = MapDocumentFile.LoadText(root.ToJsonString());
-        Assert.Equal(4, doc.FormatVersion);
+        Assert.Equal(5, doc.FormatVersion);
         Assert.Equal(version < 3 ? 512f : 64f, doc.TileSize);
         Assert.Equal(-100f, doc.PlayableBounds!.MinX);
         Assert.Equal(100f, doc.PlayableBounds.MaxZ);
@@ -88,6 +88,7 @@ public sealed partial class NativeDocumentTests
         doc.PlayableBounds = new MapBounds { MinX = -40, MinZ = -50, MaxX = 40, MaxZ = 50 };
         doc.NativeAssets.Add(new MapAssetRef("inn", "assets/inn.json", new string('a', 64), 1));
         doc.ResolverIdentity = new MapResolverIdentityDoc(1, 2);
+        doc.SupportRecipe = MapSupportRecipe.AuthoredBindingsV2;
         doc.NumericIdHighWaterMark = 9;
         doc.Placements[0].NumericId = 7;
         doc.Placements[0].AssetId = "inn";
@@ -99,6 +100,7 @@ public sealed partial class NativeDocumentTests
         Assert.Equal(50f, loaded.PlayableBounds.MaxZ);
         Assert.Equal(doc.NativeAssets[0], Assert.Single(loaded.NativeAssets));
         Assert.Equal(doc.ResolverIdentity, loaded.ResolverIdentity);
+        Assert.Equal(doc.SupportRecipe, loaded.SupportRecipe);
         Assert.Equal(9L, loaded.NumericIdHighWaterMark);
         Assert.Equal(7L, loaded.Placements[0].NumericId);
         Assert.Equal("inn", loaded.Placements[0].AssetId);

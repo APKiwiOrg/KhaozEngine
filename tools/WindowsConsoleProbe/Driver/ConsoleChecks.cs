@@ -123,16 +123,22 @@ internal sealed class ConsoleChecks(string probeExe, string root)
             Require(SameStreams(value.Entry, value.Before), "Natural launch changed a native standard handle before the engine call.");
             if (mode == "natural-console-handles")
             {
-                Require(value.Before.Output.Handle is not (0 or -1) && value.Before.Error.Handle is not (0 or -1),
-                    "Native STARTF launch did not inherit the driver's real console handles.");
+                // The driver validates the real console handles before CreateProcess. A WinExe can
+                // receive null or stale values until it joins that console, even with STARTF set.
+                foreach (StreamState stream in new[] { value.Before.Output, value.Before.Error })
+                    Require((stream.FileType == 0 && stream.FileTypeError == 6 && !stream.ConsoleMode)
+                        || (stream.FileType == 2 && stream.ConsoleMode),
+                        "Native STARTF launch unexpectedly received a non-console destination.");
                 return;
             }
             uint naturalOutput = mode == "natural-stdout-file" ? 1u : 0u;
             uint naturalError = mode == "natural-stderr-file" ? 1u : 0u;
             Require(value.Entry.Output.FileType == naturalOutput && value.Entry.Error.FileType == naturalError,
                 "Natural cmd launch did not produce the expected absent/disk native stream types.");
-            if (naturalOutput == 0) Require(value.Entry.Output.Handle == 0, "Natural cmd stdout was not absent.");
-            if (naturalError == 0) Require(value.Entry.Error.Handle == 0, "Natural cmd stderr was not absent.");
+            if (naturalOutput == 0) Require(value.Entry.Output.FileTypeError == 6 && !value.Entry.Output.ConsoleMode,
+                "Natural cmd stdout was not an absent or invalid handle.");
+            if (naturalError == 0) Require(value.Entry.Error.FileTypeError == 6 && !value.Entry.Error.ConsoleMode,
+                "Natural cmd stderr was not an absent or invalid handle.");
             return;
         }
         long absent = mode == "invalid" ? -1 : 0;

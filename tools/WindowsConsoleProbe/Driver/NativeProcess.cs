@@ -24,6 +24,9 @@ internal sealed class NativeProcess(Process process, SafeFileHandle processHandl
                 startup.Input = NativeConsole.GetStdHandle(NativeConsole.StdInput);
                 startup.Output = NativeConsole.GetStdHandle(NativeConsole.StdOutput);
                 startup.Error = NativeConsole.GetStdHandle(NativeConsole.StdError);
+                foreach (IntPtr handle in new[] { startup.Input, startup.Output, startup.Error })
+                    NativeConsole.Require(NativeConsole.GetConsoleMode(handle, out _),
+                        "Inherited driver standard handle must be a real console handle before launch");
             }
             // Assign the job before any child code runs. Driver death closes the non-inherited job
             // handle and terminates cmd plus its probe, including failures before evidence is written.

@@ -1,0 +1,28 @@
+{
+  "base": "a37a752a3572e5e86f4c8917b2339f6d9a1a6d58",
+  "sources": {
+    "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.CapsuleFeatures.cs": "bdc673feb8079193ac811cc14ab91c555d4bb50f88307f0ccd888f690c0b610b",
+    "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.QueryView.cs": "ffc05ad403bf414092a8c19886235a4ec432cf6898d2a65b7619cf05e18435f5",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureGeometry.cs": "fafd0109f4d249f35203ad3b838dc45f5d85b0c73f40a56a87053832ecf7a1d8",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureGeometryNumbers.cs": "d092063ecfe4ceb88e616a67f04a6d5e0a96fb6404cf9e3bbd13941317375cab",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureGeometryQuery.cs": "5772d445ed83db7ddcf3f4d75aae40d4d91f476e3677262abde22aa970b1faa6",
+    "KhaozEngine.Physics.Bepu/CapsuleFeaturePolyhedra.cs": "747ade99654c384a32e69bdc61937a5a8b83db12e4d1866a88aca9950f9b9fc2",
+    "KhaozEngine.Physics.Bepu/CapsuleFeaturePolyhedraClosest.cs": "e5d32e8a4082b261e9abd85429d5aa4c43f3e197a1cf73e1825863b8a3d149f9",
+    "docs/design/CAPSULE-FEATURE-POLYHEDRA-PROOF-2026-10-07.md": "d54b2d4d96570998b6d3d2a852d890fc55888ea7dea9dbccc90d8a7a5116dc22",
+    "KhaozEngine.Game.Tests/Physics/CapsuleFeaturePolyhedronTests.cs": "b8a5a323f0dcbe3ffff37a7b3005b9ee4e39b1ea4889c33efcfcddde95e935e1"
+  },
+  "review": "feature-polyhedron-source-review-20261007-r1. No unsafe acceptance found within its advertised subset, but not ready for legacy use due two binary32 representability restrictions.",
+  "red": {
+    "exit": 1,
+    "executed": 2,
+    "failed": 2,
+    "passed": 0,
+    "skipped": 0,
+    "expected": "Complete",
+    "actual": "Unresolved",
+    "controls": "Both ordinary-contact controls completed successfully. Exact capsule and translated-extent rational controls passed before the failing query assertions."
+  },
+  "log_sha256": "16919f0a8a76de5e402e01b800788793b638221ef4aa0cd07d995a5664f84677",
+  "command_note": "Primary wrapper waited for unrelated local Grimhollow full tests before starting. This was one executed invocation.",
+  "limits": "Prototype compiled, but the original14 polyhedron and12 lifetime cases have not yet been run on it. No whole-family GREEN, broader transform, mesh or consumer proof claimed."
+}

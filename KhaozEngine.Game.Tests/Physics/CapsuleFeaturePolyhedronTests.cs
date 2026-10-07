@@ -224,6 +224,48 @@ public class CapsuleFeaturePolyhedronTests
             CapsuleFeatureStatus.CapacityExceeded);
     }
 
+    [Fact]
+    public void StandardTranslatedCapsuleCanPublishANonFloatAxisEndpointWithAnErrorBound()
+    {
+        using var scene = new Scene(UnitBox(), Pose.At(new Vector3(0, 1, 0)),
+            new Vector3(0, 3, 0), -Vector3.UnitY, Point(0, 1.5, 0), Direction(0, 1, 0));
+        // Control reaches the same finite face with endpoints that already encode as binary32.
+        AssertContact(scene, new CapsuleShape(0.25f, 1), Pose.At(new Vector3(0, 2.25f, 0)),
+            CapsuleFeatureKind.FaceInterior, Point(0, 1.75, 0), Point(0, 1.5, 0), Direction(0, 1, 0),
+            [Direction(0, 1, 0)]);
+        var tuning = KhaozEngine.Locomotion.MoveTuning.Default with
+        { CapsuleRadius = 0.3f, CapsuleHalfHeight = 0.75f };
+        CapsuleShape capsule = KhaozEngine.Locomotion.CharacterMovement.CapsuleFor(tuning);
+        Assert.Equal(0.3f, capsule.Radius);
+        Assert.Equal(0.9f, capsule.Length);
+        Rational lowerY = Rational.From(2.25) - Rational.From(capsule.Length) / new Rational(2, 1);
+        Assert.Equal(new Rational(30198989, 16777216), lowerY);
+        Assert.NotEqual(Rational.From(1.8f), lowerY);
+        AssertContact(scene, capsule, Pose.At(new Vector3(0, 2.25f, 0)), CapsuleFeatureKind.FaceInterior,
+            new ExactVector(Rational.Zero, lowerY, Rational.Zero), Point(0, 1.5, 0), Direction(0, 1, 0),
+            [Direction(0, 1, 0)]);
+    }
+
+    [Fact]
+    public void TranslatedDecimalExtentRetainsItsExactGeometryBeforePublication()
+    {
+        using (var control = new Scene(UnitBox(), Pose.At(new Vector3(0, 1, 0)),
+            new Vector3(0, 3, 0), -Vector3.UnitY, Point(0, 1.5, 0), Direction(0, 1, 0)))
+            AssertContact(control, new CapsuleShape(0.5f, 0), Pose.At(new Vector3(0, 2, 0)),
+                CapsuleFeatureKind.FaceInterior, Point(0, 2, 0), Point(0, 1.5, 0), Direction(0, 1, 0),
+                [Direction(0, 1, 0)]);
+        using var scene = new Scene(new BoxShape(new Vector3(0.5f, 0.1f, 0.5f)),
+            Pose.At(new Vector3(0, 1.5f, 0)), new Vector3(0, 3, 0), -Vector3.UnitY,
+            Point(0, 1.6, 0), Direction(0, 1, 0));
+        Rational top = Rational.From(1.5) + Rational.From(0.1f);
+        Assert.NotEqual(Rational.From(1.6f), top);
+        Rational separation = Rational.From(2) - top - Rational.From(0.4f);
+        Assert.Equal(new Rational(-1, 134217728), separation);
+        AssertContact(scene, new CapsuleShape(0.4f, 0), Pose.At(new Vector3(0, 2, 0)),
+            CapsuleFeatureKind.FaceInterior, Point(0, 2, 0), new ExactVector(Rational.Zero, top, Rational.Zero),
+            Direction(0, 1, 0), [Direction(0, 1, 0)], separation, 0.0001f);
+    }
+
     static void AssertInstalledHullMatchesSource(Scene scene, Vector3[] source)
     {
         // This reads only the test's owned registry under its actual lease. It does not call a solver
@@ -277,9 +319,11 @@ public class CapsuleFeaturePolyhedronTests
         new(new Rational(x, denominator), new Rational(y, denominator), new Rational(z, denominator));
 
     static void AssertContact(Scene scene, CapsuleShape capsule, Pose pose, CapsuleFeatureKind kind,
-        ExactVector expectedAxis, ExactVector expectedGeometry, ExactVector expectedNormal, ExactVector[] expectedFaces)
+        ExactVector expectedAxis, ExactVector expectedGeometry, ExactVector expectedNormal, ExactVector[] expectedFaces,
+        Rational? expectedSeparation = null, float maximumSeparationMetres = 0)
     {
-        AssertExactTangency(expectedAxis, expectedGeometry, expectedNormal, capsule.Radius);
+        Rational separation = expectedSeparation ?? Rational.Zero;
+        AssertExactSeparation(expectedAxis, expectedGeometry, expectedNormal, capsule.Radius, separation);
         Assert.Equal(Quaternion.Identity, pose.Orientation);
         Rational halfLength = Rational.From(capsule.Length) / new Rational(2, 1);
         Assert.Equal(Rational.From(pose.Position.X), expectedAxis.X);
@@ -289,7 +333,7 @@ public class CapsuleFeaturePolyhedronTests
         CapsuleIncidentFace[] faces = Sentinels(), original = (CapsuleIncidentFace[])faces.Clone();
 
         CapsuleFeatureResult result = scene.Features.QueryCapsuleFeature(scene.Lease, scene.Target, capsule,
-            pose, 0, faces, QueryFilter.StaticsOnly);
+            pose, maximumSeparationMetres, faces, QueryFilter.StaticsOnly);
 
         Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
         Assert.Same(scene.View, result.QueryWorld);
@@ -311,7 +355,7 @@ public class CapsuleFeaturePolyhedronTests
         Rational normalError = AssertError(result.NormalError, NormalCeiling);
         AssertVectorWithin(result.SeparationNormal, expectedNormal, normalError, "separation normal");
         Rational lower = Rational.From(result.SeparationLower), upper = Rational.From(result.SeparationUpper);
-        Assert.True(lower <= Rational.Zero && upper >= Rational.Zero, "Exact contact separation zero must be enclosed.");
+        Assert.True(lower <= separation && upper >= separation, "The exact expected separation must be enclosed.");
         Assert.True(lower <= upper, "Separation bounds must be ordered.");
         Assert.True(upper - lower <= SeparationWidthCeiling, "Separation width must be at most 1/10000 metre.");
 
@@ -340,13 +384,18 @@ public class CapsuleFeaturePolyhedronTests
             Assert.Equal(original[i], faces[i]);
     }
 
-    static void AssertExactTangency(ExactVector axis, ExactVector geometry, ExactVector normal, float radius)
+    static void AssertExactTangency(ExactVector axis, ExactVector geometry, ExactVector normal, float radius) =>
+        AssertExactSeparation(axis, geometry, normal, radius, Rational.Zero);
+
+    static void AssertExactSeparation(ExactVector axis, ExactVector geometry, ExactVector normal,
+        float radius, Rational separation)
     {
-        Rational r = Rational.From(radius);
+        Rational distance = Rational.From(radius) + separation;
+        Assert.True(distance >= Rational.Zero);
         ExactVector delta = axis - geometry;
         Assert.Equal(new Rational(1, 1), normal.LengthSquared());
-        Assert.Equal(r * r, delta.LengthSquared());
-        Assert.Equal(normal * r, delta);
+        Assert.Equal(distance * distance, delta.LengthSquared());
+        Assert.Equal(normal * distance, delta);
     }
 
     static void AssertRefusal(Scene scene, CapsuleShape capsule, Pose pose, CapsuleFeatureStatus expected)

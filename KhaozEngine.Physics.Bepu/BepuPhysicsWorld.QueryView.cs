@@ -61,7 +61,7 @@ public sealed partial class BepuPhysicsWorld
         {
             _owner.AuthenticateFeatureLease(lease);
             ThrowIfDisposed();
-            return _owner.QueryCapsuleFeatureCore(lease, target, capsule, pose, maximumSeparationMetres,
+            return _owner.QueryCapsuleFeatureCore(this, lease, target, capsule, pose, maximumSeparationMetres,
                 faces, filter, _exclusions);
         }
 

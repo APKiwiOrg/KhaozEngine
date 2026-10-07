@@ -11,7 +11,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleFeatures
     public CapsuleFeatureResult QueryCapsuleFeature(IPhysicsQueryLease lease, StaticHandle target,
         CapsuleShape capsule, Pose pose, float maximumSeparationMetres, Span<CapsuleIncidentFace> faces,
         QueryFilter filter = default) =>
-        QueryCapsuleFeatureCore(lease, target, capsule, pose, maximumSeparationMetres, faces, filter, null);
+        QueryCapsuleFeatureCore(this, lease, target, capsule, pose, maximumSeparationMetres, faces, filter, null);
 
     /// <inheritdoc/>
     public void AssertFeatureCurrent(in CapsuleFeatureResult result, IPhysicsQueryLease lease) =>
@@ -37,7 +37,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleFeatures
             throw new InvalidOperationException("The feature metadata does not describe its original read interval.");
     }
 
-    CapsuleFeatureResult QueryCapsuleFeatureCore(IPhysicsQueryLease lease, StaticHandle target,
+    CapsuleFeatureResult QueryCapsuleFeatureCore(IPhysicsWorld receiver, IPhysicsQueryLease lease, StaticHandle target,
         CapsuleShape capsule, Pose pose, float maximumSeparationMetres, Span<CapsuleIncidentFace> faces,
         QueryFilter filter, StaticQueryExclusions? exclusions)
     {
@@ -63,9 +63,14 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleFeatures
             !RepresentedGeometryTransforms.PosePoint(pose, Vector3.Zero).IsResolved)
             return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unsupported);
 
-        // The lifetime/selection protocol cannot publish a feature until the finite geometry proof
-        // supplies a complete witness. In particular, a contact or ray hit is not a substitute.
-        return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unresolved);
+        // Read the live registry and pose under the authenticated gate, including rebase changes.
+        // Uncached managed scratch avoids shape removal/reuse and cache lifetime mutation hooks.
+        _sim.Statics.GetDescription(entry.Handle, out var description);
+        CapsuleFeatureStatus captured = CapsuleFeatureGeometry.Capture(_sim, description.Shape, description.Pose,
+            out CapsuleFeaturePolyhedron[] leaves);
+        if (captured != CapsuleFeatureStatus.Complete) return CapsuleFeatureResult.Refused(captured);
+        return CapsuleFeatureGeometryQuery.Query(leaves, receiver, lease, target, capsule, pose,
+            maximumSeparationMetres, faces);
     }
 
     static bool FeatureFinite(Vector3 value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);

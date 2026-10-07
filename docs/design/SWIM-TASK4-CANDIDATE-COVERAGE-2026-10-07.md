@@ -353,3 +353,7 @@ The follow-up lifecycle/allocation command passed 14/14 with zero failures/skips
 `/tmp/swim-backend-lifecycle-regressions.log`, using unchanged compiled sources. This covers all 13
 evidence lifecycle facts and the existing steady-state SetConstraintTarget allocation regression.
 Other affected legacy checks, numerical-domain acceptance and full backend verification remain open.
+
+The unchanged-binary affected legacy batch passed 105/105, zero failures/skips and exit 0 in
+`/tmp/swim-backend-legacy-regressions.log`. It covered query leases/views, rebase, contact coverage,
+explicit sweep consumer/numeric guards and constraints. No original 32-case or 14-case repeat ran.

@@ -21,7 +21,6 @@
   },
   "pending": [
     "Numerical-domain source proof and acceptance",
-    "Affected legacy regressions",
     "Whole-branch verification and review",
     "General geometry and full movement resolver",
     "Native G1b"
@@ -34,5 +33,14 @@
     "failed": 0,
     "skipped": 0,
     "scope": "13 evidence lifecycle cases and the existing finite steady-state allocation regression, using unchanged compiled sources"
+  },
+  "affectedLegacyVerification": {
+    "log": "/tmp/swim-backend-legacy-regressions.log",
+    "configuration": "Release, --no-build, unchanged compiled sources",
+    "filter": "PhysicsQueryLeaseTests|PhysicsQueryViewLifecycleTests|PhysicsRebaseTests|CapsuleContactCoverageTests|MovementCapsuleSweepLeaseTests|MovementCapsuleSweepNumericTests|ConstraintTests",
+    "passed": 105,
+    "failed": 0,
+    "skipped": 0,
+    "exitCode": 0
   }
 }

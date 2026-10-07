@@ -1,6 +1,9 @@
 # R2 Task 8 producer acquisition completion
 
-Status: proposed written amendment. No producer-session implementation is authorized by this document.
+Status: written contract approved directly by the owner on 2026-10-08 (OA18).
+Approved revision: `86890fe22b340b483eaeed936dfb766b758ea53f`, original SHA256
+`7d61c91e7b07963267f631b62b5b4055656ed21c72df0bcb7fed0953592ab800`.
+Executable-plan reconciliation and review precede producer-session implementation.
 Baseline: Task 7 checkpoint `e0e975cb4c2e0768b51d740fe14ff31e1ee08101`.
 This completes the incident-discovery and before-work budget requirements of the approved R2 plan.
 It does not reopen cave geometry, rational lattices, privacy, native ownership or release gates.
@@ -43,7 +46,7 @@ independent source methods remain unchanged. Capable custom sources can supply t
 and strict budgets as built-ins. Unsupported sources are refused explicitly rather than silently
 wrapped with incomplete discovery or weaker accounting.
 
-## Proposed public contract
+## Approved public contract
 
 All new types are in `KhaozEngine.MapDoc.Storage`. Existing source and result signatures remain unchanged.
 
@@ -213,7 +216,7 @@ At the Task 7 baseline, inspect `Storage/IMapSurfaceSource.cs`, `MapStoredSurfac
 budgets, and stored root globals are available in MapTiledFile.ReadManifest but not retained for the
 identity overload. The approved Task 8 section requires all three missing facilities.
 
-Approval is requested only for this producer contract completion and its explicit refusal/cap semantics.
-After written approval, reconcile the executable Task 8 steps and file/test ownership, review that plan
-amendment and execute through the existing subagent and shared compute workflow. Existing R2 geometry,
+Owner approval covers this producer contract completion and its explicit refusal/cap semantics.
+Reconcile the executable Task 8 steps and file/test ownership, review that plan amendment, then
+execute through the existing subagent and shared compute workflow. Existing R2 geometry,
 precision, privacy and release prerequisites remain unchanged.

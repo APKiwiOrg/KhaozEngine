@@ -1341,6 +1341,12 @@ comm -12 \
 
 ### Task 8: Scheme-2 identity, bounded scope acquisition and factory-only scoped identity
 
+**Execution amendment:** OA18 approved the producer-session contract on 2026-10-08. The
+[Task 8 executable amendment](2026-10-08-world-authoring-r2-task8-producer-acquisition.md)
+reconciles its file ownership, additional conformance tests and serial execution steps. It is
+pending written-plan review. The original interfaces, fixtures and 22 cases below remain the
+acceptance baseline. Do not execute the older five-step sequence independently of that amendment.
+
 **Files:**
 - Create: `KhaozEngine.MapDoc/Identity/MapAuthoredIdentityV2.cs`, `KhaozEngine.MapDoc/Identity/MapScopedIdentity.cs`, `KhaozEngine.MapDoc/Identity/MapWitnesses.cs`, `KhaozEngine.MapDoc/Storage/MapScopedSurfaces.cs`, `KhaozEngine.MapDoc/Surfaces/MapLatticeRanges.cs`
 - Test: `KhaozEngine.MapDoc.Tests/Identity/SchemeTwoIdentityTests.cs`, `KhaozEngine.MapDoc.Tests/Storage/ScopedAcquisitionTests.cs`, `KhaozEngine.MapEditor.Tests/MapDoc/SchemeTwoRepackTests.cs`, `KhaozEngine.MapEditor.Tests/MapDoc/ScopedAcquisitionWorkTests.cs` (internal work counters), fixtures `KhaozEngine.MapDoc.Tests/Storage/AnchorFixtures.cs`, `ScopeFixtures.cs`, `AcquisitionBoundFixtures.cs`
@@ -3705,3 +3711,13 @@ review. The final fixture wording places two fresh bound keys in one over-limit 
 zero-slot-visit assertion. Proof is proofs/2026-10-07-r2-task8-amendment-review.json. No producer-session
 implementation, additional conformance test application or approval is inferred. Written contract
 approval and executable-plan reconciliation precede that implementation.
+
+
+### Task 8 producer contract owner approval
+
+The owner approved the written contract directly on 2026-10-08, recorded as OA18 in the game
+program decisions. Approved revision 86890fe22b340b483eaeed936dfb766b758ea53f has original design
+SHA256 7d61c91e7b07963267f631b62b5b4055656ed21c72df0bcb7fed0953592ab800.
+The preceding proposed status is historical. The linked executable amendment reconciles this
+contract with the original Task 8 tests and remains subject to written-plan review. No Task 8
+product implementation or test application is part of this documentation checkpoint.

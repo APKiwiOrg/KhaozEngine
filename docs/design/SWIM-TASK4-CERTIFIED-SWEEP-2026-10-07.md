@@ -771,3 +771,16 @@ without trusting a rounded square root. This can make a Hit exactly at an irrati
 unrepresentable by the current float contract. Refuse that input rather than clamp away the impact
 witness. Exact axis-length endpoints and zero-distance initial contacts remain representable. Clear
 encoding is a separate full-request declaration and must not be used to evade a refused Hit.
+
+### Remaining candidate-bound premise
+
+Pinned Bepu [Box.ComputeBounds](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/Collidables/Box.cs#L50)
+forms extents from the orientation basis. For exact identity orientation, the local extents reduce
+to the stored half sizes. [Statics](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/Statics.cs#L334)
+installs the shape batch's pose-space bounds in the broad phase and updates them on description
+changes. These observations do not yet certify the broad-phase candidate set. The remaining audit
+must bind translation rounding, closed overlap traversal, body updates and unsupported shape bounds
+before any selected-world Clear result. A complete single-leaf result cannot fill that gap.
+
+The twelve distance-encoding facts compiled and failed at the absent helper type, zero passes/skips,
+exit 1 in `/tmp/swim-distance-encoding-red.log`. The independent rounded-up endpoint control passed.

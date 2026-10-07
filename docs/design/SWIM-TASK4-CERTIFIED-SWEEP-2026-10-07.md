@@ -678,3 +678,21 @@ data access into `CapsuleSweepGeometry`. Both commands exited 0 with zero failur
 `/tmp/swim-box-witness-green.log` and `/tmp/swim-leaf-reader-regressions.log`. Source remained
 unchanged between runs. This proves the stated supplied-point predicate, including refusal of
 lossy coordinate proposals. It does not bind a point to a swept path or certify a world query.
+
+## Binding supplied points to the original path
+
+The next helper encloses C + t*D from the original represented centre/displacement and a finite
+fraction in [0,1]. It uses the shared interval operations. A proposed double coordinate may be
+tightened to Exact only after `CompareProducts` proves the product exact and squared-difference
+equality plus sign proves the sum exact. A lost low bit retains a resolved interval instead of
+fabricating a point or forcing all movement to refuse. Any unresolved component refuses the vector.
+
+This output is a path-position enclosure, not a geometry or collision result. The point witness
+above may consume an Exact coordinate set. Uncertain coordinates require a later interval geometry
+predicate or remain unresolved. Ten facts cover exact endpoints and dyadic fractions, signed motion,
+lost product/sum bits with independent rational checks, per-axis exactness, invalid fractions/path
+inputs and reversed parameterization. No replacement trajectory or rounded-point Hit is authorized.
+
+The ten path-point facts compiled and failed at the absent `CapsuleSweepPath` type, after the
+independent rational/rounding controls passed. Zero passes/skips, expected exit 1 in
+`/tmp/swim-path-point-red.log`. No compile or setup failure occurred.

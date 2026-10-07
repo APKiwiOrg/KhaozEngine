@@ -1,0 +1,40 @@
+{
+  "status": "Candidate vertical motion only. Tasks 4 and 5 remain incomplete.",
+  "baseCommit": "3621b0dcb",
+  "command": "dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release -m:1 --filter FullyQualifiedName~SurfaceWaterMotionTests",
+  "redClassification": "All 24 compiled cases reached the missing SurfaceWaterMotion type.",
+  "runs": {
+    "red": {
+      "path": "/tmp/swim-surface-motion-red.log",
+      "sha256": "c090f82ed13a2533f72d632e946ea4478052f1e57bf41e317276130fbb8c0184",
+      "exitCode": 1,
+      "passed": 0,
+      "failed": 24,
+      "skipped": 0
+    },
+    "green": {
+      "path": "/tmp/swim-surface-motion-green.log",
+      "sha256": "e692c9358e674063d6f1291d5a70383df49bac6a38eee72aabe57f4614c8d8ed",
+      "exitCode": 0,
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "pending": [
+    "Combined solid and medium traversal",
+    "Actual surface entry, landing and shore integration",
+    "Transport and prediction",
+    "Full verification and independent whole-branch review"
+  ],
+  "format": {
+    "applyExit": 0,
+    "verifyExit": 0,
+    "changedFiles": 0,
+    "analyzers": "Game.Tests 212, Locomotion 154"
+  },
+  "sourceHashes": {
+    "KhaozEngine.Locomotion/SurfaceWaterMotion.cs": "11c152c4c643ede2e83b3ec7957bfd364ac629a53c0e5669e5b96cebb4056856",
+    "KhaozEngine.Game.Tests/Locomotion/SurfaceWaterMotionTests.cs": "17ba74e7c85e378d9dd0d7d33f0290ba5bd3ef64a703fe74d455cfd715b2d53b"
+  }
+}

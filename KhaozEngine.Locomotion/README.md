@@ -467,6 +467,19 @@ instead of returning a usable pose. Solid-contact scratch is bounded at 16384 co
 and tolerances belong in profile/query policy identity. Selection proves a placement only, not the
 swept movement or water transitions required to reach it.
 
+### Explicit surface motion development status
+
+The internal `SurfaceWaterMotion` proposes vertical buoyancy or a water-origin jump arc. A launch
+requires the actual local interval's free top and the inclusive 0.03 m band around its resting
+waterline. The independent launch speed uses the existing gravity-first `JumpSpeedForApex` tuning.
+Bed depth does not gate a launch. An airborne arc uses gravity without buoyancy recapture or a
+second launch. Rejected submerged presses do not affect the candidate and never create a buffer.
+
+This helper does not publish state or certify movement. The explicit mover still requires complete
+solid and medium proof for every segment, endpoint entry/landing classification, supported shore
+transitions and transport integration. The existing legacy swimming path is unchanged. No playable
+or native swimming capability is established by these candidate-motion tests.
+
 ## Types
 
 - **`MoveCommand`** - movement intent: camera-relative XZ axis, run flag, camera yaw, jump bit, and (17.26.0) the

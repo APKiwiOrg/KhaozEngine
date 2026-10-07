@@ -191,7 +191,8 @@ public partial class BepuCertifiedCapsuleSweepTests
         ConstraintDescription description = ConstraintDescription.HingeJoint(
             ConstraintAttachment.OnBody(body), ConstraintAttachment.AtWorld(new Vector3(20, 0, 0)),
             Vector3.Zero, Vector3.Zero, Vector3.UnitY, Vector3.UnitY)
-            with { Motor = ConstraintMotor.HingeVelocity, MotorTarget = 0 };
+            with
+        { Motor = ConstraintMotor.HingeVelocity, MotorTarget = 0 };
         ConstraintHandle joint = world.AddConstraint(description);
         Contains(Read(world, filter: QueryFilter.StaticsOnly), 1.25);
         world.SetConstraintTarget(joint, 0.5f);

@@ -8,6 +8,7 @@ namespace KhaozEngine.Physics.Bepu;
 
 public sealed partial class BepuPhysicsWorld
 {
+    const float MaximumSweepStoredCoordinate = 1_000_000f;
     readonly Dictionary<int, bool> _sweepStaticBounds = new();
     readonly Dictionary<int, bool> _sweepDynamicBounds = new();
     readonly HashSet<int> _unprovedSweepStatics = new();
@@ -70,7 +71,9 @@ public sealed partial class BepuPhysicsWorld
         ref readonly Node node = ref tree.Nodes[leaf.NodeIndex];
         NodeChild child = leaf.ChildIndex == 0 ? node.A : node.B;
         if (child.Index != Tree.Encode(leafIndex) || !Finite(child.Min) || !Finite(child.Max) ||
-            child.Min.X > child.Max.X || child.Min.Y > child.Max.Y || child.Min.Z > child.Max.Z) return false;
+            child.Min.X > child.Max.X || child.Min.Y > child.Max.Y || child.Min.Z > child.Max.Z ||
+            MaxAbs(child.Min) > MaximumSweepStoredCoordinate || MaxAbs(child.Max) > MaximumSweepStoredCoordinate)
+            return false;
         min = child.Min;
         max = child.Max;
         return true;

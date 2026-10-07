@@ -357,3 +357,13 @@ Other affected legacy checks, numerical-domain acceptance and full backend verif
 The unchanged-binary affected legacy batch passed 105/105, zero failures/skips and exit 0 in
 `/tmp/swim-backend-legacy-regressions.log`. It covered query leases/views, rebase, contact coverage,
 explicit sweep consumer/numeric guards and constraints. No original 32-case or 14-case repeat ran.
+
+The conservative stored-coordinate guard is now accepted for code-only implementation. It is applied
+inside ReadSweepStoredBounds before either output is published. The corrected
+[numerical argument](SWIM-SWEEP-NUMERICAL-DOMAIN-2026-10-07.md) distinguishes signed grouped sums below
+1e25 from normalized values below 1e35, pins scale 1, excludes sentinels and records the separate
+source-derived exact-epsilon gap in #1324. No upstream code was changed. The guarded batch passed
+48/48 with no skips, followed by scoped format apply and verification on the exact eleven source
+files. Both target projects ran style and reference analyzers. Only initializer whitespace changed.
+[Tracked hashes and results](../verification/2026-10-08-certified-sweep-domain.json) retain the before
+and after sources. This does not certify the whole backend or native G1b.

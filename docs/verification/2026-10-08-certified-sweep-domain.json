@@ -1,0 +1,98 @@
+{
+  "status": "validated conservative refusal guard, not whole-backend or native certification",
+  "baseCommit": "61e7b05ab",
+  "test": {
+    "filter": "FullyQualifiedName~BepuCertifiedCapsuleSweepTests|FullyQualifiedName~CapsuleSweepEvidenceTests|FullyQualifiedName~ConstraintMotorAllocTests.SetConstraintTarget_SteadyState_AllocatesNothing",
+    "configuration": "Release -m:1",
+    "passed": 48,
+    "failed": 0,
+    "skipped": 0,
+    "scope": {
+      "originalIntegration": 32,
+      "domainPolicy": 2,
+      "lifecycle": 13,
+      "existingAllocation": 1
+    }
+  },
+  "format": {
+    "solution": "KhaozEngine.slnx",
+    "include": [
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.cs",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.QueryView.cs",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.Rebase.cs",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.SweepBounds.cs",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.SweepMutations.cs",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.CertifiedSweeps.cs",
+      "KhaozEngine.Physics.Bepu/CapsuleSweepEvidence.cs",
+      "KhaozEngine.Game.Tests/Physics/CapsuleSweepEvidenceTests.cs",
+      "KhaozEngine.Game.Tests/Physics/BepuCertifiedCapsuleSweepTests.cs",
+      "KhaozEngine.Game.Tests/Physics/BepuCertifiedCapsuleSweepTests.Lifecycle.cs",
+      "KhaozEngine.Game.Tests/Physics/BepuCertifiedCapsuleSweepTests.Domain.cs"
+    ],
+    "beforeSha256": {
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.cs": "74fa83d26f111131bd80c671a64d3e872ca6932e914f19d35729d9a88fcc43be",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.QueryView.cs": "d1d047614352a98c7c4aa3f51337af1afdbda951a2a2fc10b6524469386aff47",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.Rebase.cs": "8eadcbb1296da85dacce54ba7d01e4e252e4b2a41c44de6727a2d984742a412d",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.SweepBounds.cs": "1d3de75da79ad0a2b318d0b7e5ed2b176d8acb3f18c1e56651b923b214d44ac8",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.SweepMutations.cs": "9e8116e1c8ca9054ecfaaeaca0b34b73725a3a32d251d0d8692b449d824fc0ac",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.CertifiedSweeps.cs": "557b0922e9c8c856a906415bbb15f6d3efe5a3977fc7d3e6a02a225b07a3caf6",
+      "KhaozEngine.Physics.Bepu/CapsuleSweepEvidence.cs": "77d195a56f298932ca69dbe7401898bed169b299416fd8caf4634262c8c7619c",
+      "KhaozEngine.Game.Tests/Physics/CapsuleSweepEvidenceTests.cs": "097d14a31328967a3663ca96913b6a3161948bfbd96a60c5803f8c68d33f3604",
+      "KhaozEngine.Game.Tests/Physics/BepuCertifiedCapsuleSweepTests.cs": "4cdbbcc01dc7e4e97ba3765a6c5defb3640276502bbf3a4847b83f3e8b64e008",
+      "KhaozEngine.Game.Tests/Physics/BepuCertifiedCapsuleSweepTests.Lifecycle.cs": "2b3c0f2ce3853822d5bba29888582da200225184bf8b12776f2379d80e9101a1",
+      "KhaozEngine.Game.Tests/Physics/BepuCertifiedCapsuleSweepTests.Domain.cs": "c38c14cb99d9bbefeaee2d19a2f691a70707b56ccd82d62f007e0dcc3e6c71b9"
+    },
+    "afterSha256": {
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.cs": "74fa83d26f111131bd80c671a64d3e872ca6932e914f19d35729d9a88fcc43be",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.QueryView.cs": "d1d047614352a98c7c4aa3f51337af1afdbda951a2a2fc10b6524469386aff47",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.Rebase.cs": "8eadcbb1296da85dacce54ba7d01e4e252e4b2a41c44de6727a2d984742a412d",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.SweepBounds.cs": "1d3de75da79ad0a2b318d0b7e5ed2b176d8acb3f18c1e56651b923b214d44ac8",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.SweepMutations.cs": "9e8116e1c8ca9054ecfaaeaca0b34b73725a3a32d251d0d8692b449d824fc0ac",
+      "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.CertifiedSweeps.cs": "557b0922e9c8c856a906415bbb15f6d3efe5a3977fc7d3e6a02a225b07a3caf6",
+      "KhaozEngine.Physics.Bepu/CapsuleSweepEvidence.cs": "77d195a56f298932ca69dbe7401898bed169b299416fd8caf4634262c8c7619c",
+      "KhaozEngine.Game.Tests/Physics/CapsuleSweepEvidenceTests.cs": "097d14a31328967a3663ca96913b6a3161948bfbd96a60c5803f8c68d33f3604",
+      "KhaozEngine.Game.Tests/Physics/BepuCertifiedCapsuleSweepTests.cs": "4cdbbcc01dc7e4e97ba3765a6c5defb3640276502bbf3a4847b83f3e8b64e008",
+      "KhaozEngine.Game.Tests/Physics/BepuCertifiedCapsuleSweepTests.Lifecycle.cs": "9e1c320486832d1ce32f143b7bea544481c50e0a29d5ca05c3383ff7f5a059d6",
+      "KhaozEngine.Game.Tests/Physics/BepuCertifiedCapsuleSweepTests.Domain.cs": "c38c14cb99d9bbefeaee2d19a2f691a70707b56ccd82d62f007e0dcc3e6c71b9"
+    },
+    "verifyPreservedAllPostApplyHashes": true,
+    "changedFiles": [
+      "KhaozEngine.Game.Tests/Physics/BepuCertifiedCapsuleSweepTests.Lifecycle.cs"
+    ],
+    "delta": "Only whitespace in the lifecycle fixture with-initializer. No token or assertion change.",
+    "analyzerCoverage": {
+      "KhaozEngine.Game.Tests": {
+        "codeStyle": 5,
+        "reference": 212
+      },
+      "KhaozEngine.Physics.Bepu": {
+        "codeStyle": 5,
+        "reference": 154
+      }
+    },
+    "applyFormattedFiles": 1,
+    "verifyFormattedFiles": 0
+  },
+  "logs": {
+    "swim-backend-domain-green": {
+      "path": "/tmp/swim-backend-domain-green.log",
+      "sha256": "4892886b2eb883120ed1f33f5163d376b7829a87f0c3ff662a8f60c4e902fcdb",
+      "exitCode": 0
+    },
+    "swim-backend-format": {
+      "path": "/tmp/swim-backend-format.log",
+      "sha256": "16386004ec94e298f7d1b37b8d31063a4a86e6b10f3c1c13577ec6a4d0c4ea12",
+      "exitCode": 0
+    },
+    "swim-backend-format-verify": {
+      "path": "/tmp/swim-backend-format-verify.log",
+      "sha256": "42a797d26b1f6b0b686396e8995b2f893d520d6113c63960386386943e96aed9",
+      "exitCode": 0
+    }
+  },
+  "limitations": [
+    "The coordinate policy does not prove general geometry or full movement resolution.",
+    "Upstream exact-epsilon refinement gap remains source-derived and unresolved in issue 1324.",
+    "Whole-branch review/verification and native G1b remain outstanding."
+  ]
+}

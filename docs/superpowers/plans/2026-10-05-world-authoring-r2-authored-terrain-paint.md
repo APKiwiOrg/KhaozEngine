@@ -730,7 +730,7 @@ Run: `wa_test t3-red-harness "$HARNESS" "FullyQualifiedName~PrivateOracleGuardTe
 
 `ShippedSourceInventoryTests.ShippedSourceInventory_VerifiesAndInventoriesTheFrozenSource` is `PrivateOracleEntry.Run((inputs, report) => { ... })`: `Require` has already verified the extraction against the provenance, the body loads with `TileWorldFile.Load`, records the inventory through `report.Record`, and calls `report.Check("inventory", regions.Count > 0, "{}")`. Counts are recorded privately, never compared with historical fixed counts. The harness `AssertFixtures` reference is the linked `KhaozEngine.MapDoc.Tests/AssertFixtures.cs` (add the `<Compile Include ... Link>` line).
 
-- [ ] **Step 4: Run green, then the private inventory**
+- [x] **Step 4: Run green, then the private inventory**
 
 Run: `wa_test t3-green-compat "$COMPAT" "FullyQualifiedName~LegacyOracleWorldTests"` (PASS, 1 test)
 Run: `wa_test t3-green-harness "$HARNESS" "FullyQualifiedName~PrivateOracleGuardTests"` (PASS, 23 cases after review regressions)
@@ -749,7 +749,7 @@ wa_run t3-private env KHAOZ_R2_SHIPPED_SOURCE="$priv" KHAOZ_R2_ORACLE_PROVENANCE
 
 Expected: exit 0. Record the report digest in the private `RUNS.md` and only "inventory passed, private record <Grimhollow commit>" in engine Outcome. Delete the extraction after recording. A missing or mismatched input is a failure to report, never a skip. The slot log of this run contains only sanitized messages by construction, and stays under `/tmp/grimhollow-orch`, never in a public artifact.
 
-- [ ] **Step 5: Commit** `KhaozEngine.MapDoc.Compatibility.Tests KhaozEngine.MapDoc.OracleHarness.Tests KhaozEngine.slnx`, message `test(mapdoc): add the public legacy oracle and a sanitized private oracle entry`.
+- [x] **Step 5: Commit** `KhaozEngine.MapDoc.Compatibility.Tests KhaozEngine.MapDoc.OracleHarness.Tests KhaozEngine.slnx`, message `test(mapdoc): add the public legacy oracle and a sanitized private oracle entry`.
 
 ---
 
@@ -3461,3 +3461,9 @@ All 14 source/project hashes remained unchanged. The primary slot was explicitly
 Proof is proofs/2026-10-07-r2-task3-public-green.json. No private input, extraction, recorder,
 main/feed/version or release action ran. Step 4 remains open for actual private inventory
 acceptance, and this focused checkpoint is not whole-engine verification or Task 3 completion.
+
+
+### Task 3 private acceptance complete
+
+Inventory passed at engine 3b294a6fbb278b95e38dd8b125b50164a9bcb9e6. Private record
+Grimhollow 10a5779c73804fd8d140938515c86b13dcdb6a92. Task 3 is complete. Detailed evidence remains private.

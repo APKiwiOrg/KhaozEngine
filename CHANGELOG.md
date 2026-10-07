@@ -5,12 +5,28 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.29.0
+
+- Physics adds optional thread-affine query read leases that pin the owner, origin and geometry generation.
+  Bepu owners and selected views fence mutations during the lease and serialize access to query scratch.
+
+## 20.28.0
+
+- Windowing reads each GLFW window's OS content scale for `Frame` and `UiViewport`. `Scaled` windows cap their size
+  in logical points on Windows and X11. Pointer framebuffer conversion and legacy viewport defaults are unchanged.
+- `AdaptiveViewport.WithMinimumCanvas` adds an opt-in minimum UI canvas and a live `ScaleMultiplier`.
+  Unrepresentable transforms are rejected without changing the previous layout.
+
 ## 20.27.1
 
+- Adds fixed-command phase overloads to `ClientPrediction.AdvancePresentation` and
+  `WorldClient.AdvancePresentation`, keeping local movement even at fractional render cadences. The phase is
+  validated before mutation, while the existing overload, correction decay and remote clocks retain their
+  behavior (#1313).
 - Repairs release validation with a deterministic device-free D3D11 resize/present test. Controlled
   queued bursts retain lock ownership, native-call order, last-request coalescing and whole-size checks
   without relying on producer scheduling (#1309).
-- Publication repair for 20.27.0. Native MapDoc runtime behavior and shipped APIs are unchanged.
+- Publication repair for 20.27.0. The D3D11 test repair leaves runtime behavior and shipped APIs unchanged.
 
 ## 20.27.0
 

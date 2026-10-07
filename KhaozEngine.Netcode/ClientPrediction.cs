@@ -55,6 +55,11 @@ public sealed class ClientPrediction<TState, TCommand>
     // collapses with the position at every cut, and a non-snap reconcile leaves it alone so only the target moves.
     private float previousPredictedYaw;
     private float secondsSinceLastPredict;
+    // Set by a forward Predict and consumed by the next presentation frame that advances time. While it is set the
+    // phase overload of AdvancePresentation may place the inter-tick clock on the caller's command-clock residual.
+    // Without it the caller's phase would describe a tick the latest segment does not belong to, so the clock
+    // accumulates instead. Reconcile replays never set it, and every cut (reset, reseed, hard snap) clears it.
+    private bool predictedSincePresentation;
     // The local player's predicted horizontal (planar) speed, recomputed each Predict from the per-tick position
     // delta. Computed ONLY in Predict (the commanded path), never in Reconcile, so a reconciliation rebase/snap is
     // not mistaken for movement: a consumer HUD/audio/locomotion gets a clean steady value under lag instead of the
@@ -195,6 +200,7 @@ public sealed class ClientPrediction<TState, TCommand>
         previousPredictedVertical = basis.Vertical;
         previousPredictedYaw = InterpolatedYaw(basis);
         secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
+        predictedSincePresentation = false;
         pendingCommands.Clear();
         renderOffset = Vector2.Zero;
         renderOffsetVelocity = Vector2.Zero;
@@ -257,6 +263,7 @@ public sealed class ClientPrediction<TState, TCommand>
         previousPredictedVertical = basis.Vertical;
         previousPredictedYaw = InterpolatedYaw(basis);
         secondsSinceLastPredict = settings.TickSeconds; // start fully on the current state (frac = 1)
+        predictedSincePresentation = false;
         if (seedReportsTeleport)
         {
             // A reported teleport CUTS: drop the offsets so rendered == predicted the frame the seed lands, matched by
@@ -325,6 +332,7 @@ public sealed class ClientPrediction<TState, TCommand>
             pendingCommands.RemoveAt(0);
         }
 
+        predictedSincePresentation = true;
         return seq;
     }
 
@@ -410,6 +418,7 @@ public sealed class ClientPrediction<TState, TCommand>
             previousPredictedVertical = predictedState.Vertical;
             previousPredictedYaw = InterpolatedYaw(predictedState);
             secondsSinceLastPredict = settings.TickSeconds;
+            predictedSincePresentation = false;
             renderOffset = Vector2.Zero;
             renderOffsetVelocity = Vector2.Zero;
             verticalRenderOffset = 0f;
@@ -455,8 +464,65 @@ public sealed class ClientPrediction<TState, TCommand>
 
     /// <summary>Advances the inter-tick interpolation clock and decays the smoothing offset toward zero;
     /// frame-rate independent within clamping. Anything that is not a finite positive number of seconds (negative,
-    /// zero, infinite, or not a number) is treated as zero and advances nothing.</summary>
+    /// zero, infinite, or not a number) is treated as zero and advances nothing.
+    /// <para>The clock always accumulates the whole frame here, so a tick predicted partway through a frame renders
+    /// the full frame time past it. A caller that runs its own fixed command clock passes that clock's residual to
+    /// <see cref="AdvancePresentation(float, float)"/> instead, which keeps steady motion uniform at render rates that
+    /// do not divide the tick rate. A valid frame here also consumes the pending-prediction mark, so a later phase
+    /// frame never re-places the clock on a segment this one already advanced.</para></summary>
     public void AdvancePresentation(float elapsedSeconds)
+    {
+        float dt = PresentationStep(elapsedSeconds);
+        if (dt > 0f) predictedSincePresentation = false;
+        AccumulateInterTickClock(dt);
+        DecayCorrectionOffsets(dt);
+    }
+
+    /// <summary>
+    /// Advances presentation against the caller's fixed command clock. <paramref name="commandPhaseSeconds"/> is the
+    /// command-clock time left over after the latest fixed tick, including any catch-up ticks, that the caller ran
+    /// before this frame. When a forward <see cref="Predict"/> landed since the last presentation frame that advanced
+    /// time, the inter-tick clock is placed on that residual instead of accumulating the whole frame, so a tick that
+    /// fires partway through a frame renders only the time actually past it. Steady motion then advances a uniform
+    /// distance per frame at any render rate. With several predictions in one frame the residual belongs to the latest.
+    /// <para>Without a fresh prediction (a stalled tick stream, or a frame whose send was refused) the supplied phase
+    /// is ignored and the clock accumulates and clamps exactly as <see cref="AdvancePresentation(float)"/> does, so the
+    /// render never steps back across a segment it already showed. A frame time that is not a finite positive number
+    /// advances nothing, applies no phase and leaves a pending prediction for the next valid frame. A non-hard-snap
+    /// <see cref="Reconcile"/> keeps a pending prediction pending. The correction offset decays exactly as in the
+    /// single-argument overload.</para>
+    /// </summary>
+    /// <param name="elapsedSeconds">Seconds since the last render frame.</param>
+    /// <param name="commandPhaseSeconds">The command clock's residual after its latest tick, in seconds, from zero
+    /// through <see cref="PredictionSettings.TickSeconds"/> inclusive.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="commandPhaseSeconds"/> is not finite or lies
+    /// outside zero through <see cref="PredictionSettings.TickSeconds"/>. Checked before any state changes.</exception>
+    public void AdvancePresentation(float elapsedSeconds, float commandPhaseSeconds)
+    {
+        // Validate the phase independently of the configured tick. The phase comes from the caller's own clock,
+        // so a non-finite value or one outside the tick is a caller bug rather than a frame to clamp quietly.
+        if (!(float.IsFinite(commandPhaseSeconds)
+            && commandPhaseSeconds >= 0f && commandPhaseSeconds <= settings.TickSeconds))
+        {
+            throw new ArgumentOutOfRangeException(nameof(commandPhaseSeconds), commandPhaseSeconds,
+                "The command phase must lie between zero and the prediction tick inclusive.");
+        }
+
+        float dt = PresentationStep(elapsedSeconds);
+        if (dt > 0f && predictedSincePresentation)
+        {
+            predictedSincePresentation = false;
+            secondsSinceLastPredict = commandPhaseSeconds;
+        }
+        else
+        {
+            AccumulateInterTickClock(dt);
+        }
+
+        DecayCorrectionOffsets(dt);
+    }
+
+    private static float PresentationStep(float elapsedSeconds)
     {
         // The clock here ACCUMULATES, which is why this is a finiteness test rather than a clamp. MathF.Max(0f, NaN)
         // is NaN under IEEE, so a single NaN frame used to take secondsSinceLastPredict, and with it every
@@ -464,10 +530,15 @@ public sealed class ClientPrediction<TState, TCommand>
         // recover, neither of which is on a per-frame path. An infinite dt is refused in the same breath: the decay's
         // closed form multiplies a zero term by it and lands on NaN the same way. A frame that took no valid amount
         // of time draws the previous one again.
-        float dt = float.IsFinite(elapsedSeconds) && elapsedSeconds > 0f ? elapsedSeconds : 0f;
-        // Advance toward the current tick (clamped at one tick so a stalled tick stream holds, not overshoots).
+        return float.IsFinite(elapsedSeconds) && elapsedSeconds > 0f ? elapsedSeconds : 0f;
+    }
+
+    // Advance toward the current tick (clamped at one tick so a stalled tick stream holds, not overshoots).
+    private void AccumulateInterTickClock(float dt) =>
         secondsSinceLastPredict = MathF.Min(secondsSinceLastPredict + dt, settings.TickSeconds);
 
+    private void DecayCorrectionOffsets(float dt)
+    {
         if (renderOffset == Vector2.Zero && verticalRenderOffset == 0f)
         {
             return;

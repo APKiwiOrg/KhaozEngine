@@ -1164,6 +1164,13 @@ them (see "Tap-or-drag gestures" in the follow camera chapter).
   the whole window in design space = design rect + letterbox bars). Fill `WindowBounds`, not `Width`/`Height`,
   for a full-window scrim or opaque `Screen` background so the letterbox bars are covered instead of showing the
   screen below (it reduces to `DesignBounds` when unletterboxed).
+- `AdaptiveViewport.WithMinimumCanvas(1280, 720, 960, 540, scaleMultiplier)` opts a responsive UI into a minimum
+  canvas: the scale is `min(height / 720 * ScaleMultiplier, width / 960, height / 540)` and the visible design
+  size is the framebuffer divided by it, so a 4:3 or 16:10 window gains height instead of clipping at the right.
+  Bind a player text-size setting to `ScaleMultiplier`. Setting it recomputes the transform at once. A value whose
+  canvas is not representable throws `ArgumentOutOfRangeException` and keeps the previous transform, so bound a
+  stored setting to the game's own range before applying it. The two-argument constructor is unchanged. See the
+  Windowing README for validation rules.
 - `GameClock`: `TimeScale`, `Pause()`/`Resume()`, `RealDeltaSeconds`/`ScaledDeltaSeconds`,
   `RealWallGapSeconds`/`LastRealTimestamp` (the suspend-robust wall-clock gap that drives `GameApp.OnResume`),
   `Paused`/`Resumed` events, and `FrameCount` (since 20.14.0: one per `Update`, paused or not, the per-frame id a
@@ -3117,7 +3124,9 @@ layer is decoupled.
 
 **`UiViewport` (`KhaozEngine.Windowing`)** is a point-space `IDesignViewport` where 1 logical point = `DpiScale`
 device pixels, with no letterbox. Its `Width`/`Height` track the logical window, so the UI reflows on resize
-rather than scaling. Drive it once per frame with `uiViewport.Update(frame)`.
+rather than scaling. Drive it once per frame with `uiViewport.Update(frame)`. `Frame.DpiScale` is the window's
+OS content scale, so a Windows display at 150% gives 1.5 even though its window coordinates are pixels, and a
+resize never perturbs the scale.
 
 **`DpiFont` (`KhaozEngine.Render2D`)** authors at a logical `pixelHeight`, and each frame you call
 `font.For(frame.DpiScale)` to get a `SpriteFont` baked for the current DPI, drawn 1:1 in the point-space pass. It
@@ -7675,7 +7684,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.27.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.29.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -7971,7 +7980,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.27.1" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.29.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8689,7 +8698,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.27.1" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.29.0" />
 ```
 
 ```csharp
@@ -11775,6 +11784,14 @@ lifecycle for animation timing, while the live vertical velocity remains on the 
   snapshot-step per ingest - at the cost of ~one tick (~33 ms) of remote render latency (it renders ~one snapshot in
   the past, never extrapolating). Set `InterpolateRemotes = false` to read the raw latest position instead. Call
   `AdvancePresentation(dt)` once per render frame to drive both the local smoothing and the remote interpolation.
+  If a fixed command clock drives `SendInput`, prefer `AdvancePresentation(dt, commandPhaseSeconds)`. Read the
+  residual after all catch-up ticks, using `clock.TickSeconds - clock.SecondsUntilNextTick` with `FixedTickHost`.
+  It must be finite and within `[0, TickSeconds]` inclusive. Invalid phases throw before any presentation state,
+  statistics or trace changes. A fresh successful prediction lets the next positive frame place the local
+  interpolation clock at that phase, so fractional render cadences have even local steps. Without a fresh
+  prediction, the clock accumulates and caps as before. Either overload consumes the pending prediction on a
+  valid positive frame. Invalid frame times preserve it, ordinary reconciliation preserves it, and reset,
+  transition reset, reseed and hard snap clear it. Remote timing and correction decay are unchanged.
   A frame time that is not a finite positive number of seconds (negative, zero, infinite, or not a number) is
   treated as zero and advances nothing, on both `WorldClient.AdvancePresentation` and the underlying
   `ClientPrediction.AdvancePresentation`. Both clocks accumulate, so a broken frame clock redraws the previous
@@ -11800,6 +11817,7 @@ lifecycle for animation timing, while the live vertical velocity remains on the 
 var client = new WorldClient(transport, terrain.GroundHeight, MoveTuning.Default, new WorldClientConfig { TickSeconds = 1f/30f });
 // per fixed tick: client.SendInput(new MoveCommand(move, run, camera.Yaw));
 // per frame:      client.Poll(); client.AdvancePresentation(dt);
+// fixed-clock alternative, after ticking: client.AdvancePresentation(dt, clock.TickSeconds - clock.SecondsUntilNextTick);
 foreach (EntityRenderState e in client.Snapshot())
     scene.Draw(capsule, Matrix4x4.CreateTranslation(e.Position - up * halfHeight), e.IsLocal ? localTint : remoteTint);
 ```
@@ -15614,7 +15632,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.27.1" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.29.0" />
 ```
 
 ```csharp
@@ -15650,7 +15668,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.27.1" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.29.0" />
 ```
 
 ```csharp
@@ -15892,7 +15910,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.27.1" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.29.0" />
 ```
 
 ```csharp
@@ -20252,7 +20270,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.27.1" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.29.0" />
 </ItemGroup>
 ```
 

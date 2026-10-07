@@ -73,6 +73,13 @@ movement core to the authoritative netcode stack ([Netcode](../KhaozEngine.Netco
   `AdvancePresentation` treats a frame time that is not a finite positive number of seconds (negative, zero,
   infinite, or not a number) as zero, so a broken frame clock advances neither the local avatar nor the remote
   render timeline instead of pinning both for the session.
+  A fixed command loop should call `AdvancePresentation(dt, commandPhaseSeconds)` after running its ticks.
+  With `FixedTickHost`, pass `clock.TickSeconds - clock.SecondsUntilNextTick`. The finite phase must lie in
+  `[0, TickSeconds]` or the call throws before changing any clock, statistics or trace. Only a fresh successful
+  `SendInput` lets the phase place the local interpolation clock. Without one it accumulates and caps as before.
+  Invalid or nonpositive frame times leave that prediction pending. Either overload consumes it on the next
+  valid positive frame. This changes no remote timing or correction decay, and the one-argument overload keeps
+  its existing behavior.
   Remote interpolation is a **fixed-delay snapshot buffer** (since 9.23.0): each render frame renders remotes at
   `latest - interpolationDelay` and lerps the two buffered snapshots bracketing that time by their true timestamps,
   so presentation is decoupled from both the tick cadence and the render fps - no hold frames, no catch-up snaps at

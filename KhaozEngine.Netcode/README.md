@@ -54,6 +54,12 @@ prediction.AdvancePresentation(elapsedSeconds);                                 
 Draw(prediction.RenderedState);
 ```
 
+When a fixed command clock drives `Predict`, use `AdvancePresentation(elapsedSeconds, commandPhaseSeconds)`.
+The phase is the residual simulation time since its latest tick, after catch-up ticks, in `[0, TickSeconds]`.
+For `FixedTickHost`, read `clock.TickSeconds - clock.SecondsUntilNextTick` after `clock.Advance`.
+This places a freshly predicted segment at its actual phase and keeps local steps even at fractional render
+cadences. The one-argument overload retains its whole-frame accumulation behavior.
+
 `IPredictedState.PredictionTarget` is the planar endpoint the inter-tick render ease reaches. It defaults to
 `Position`, so ordinary continuous and discrete states need no extra member. A state whose deterministic
 `Position` deliberately remains at the start of a newly committed presentation path can override the target.
@@ -87,6 +93,14 @@ because a state keeping the defaults gains nothing and is read through a box.
 `AdvancePresentation` refuses a frame time that is not a finite positive number of seconds (negative, zero,
 infinite, or not a number): it is treated as zero and advances nothing. The inter-tick clock accumulates, so one
 bad frame would otherwise make every `RenderedState` after it NaN for the rest of the session.
+
+The phase overload throws `ArgumentOutOfRangeException` for a non-finite or out-of-range phase before changing
+any state, even when the frame time is invalid. A valid positive frame consumes the latest forward prediction's
+pending phase through either overload. Invalid or nonpositive frame times leave it pending. Without a fresh
+prediction the clock accumulates and caps as before, regardless of the supplied valid phase. Reconciliation
+replay does not create a pending phase. Ordinary reconciliation preserves it, while reset, transition reset,
+reseed and hard snap clear it. Correction decay is identical in both overloads, including its legacy zero-time
+behavior.
 
 `Reconcile` is **C1-continuous** (since 9.23.0): a non-hard-snap rebase does NOT collapse the in-flight inter-tick
 interpolation onto the new basis. It folds only the genuine misprediction into the decaying render offset, so a

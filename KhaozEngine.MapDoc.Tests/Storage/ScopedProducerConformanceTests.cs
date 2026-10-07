@@ -41,6 +41,9 @@ public sealed class ScopedProducerConformanceTests
     public void Acquire_CopiesRequestBeforeOpeningTheSession()
     {
         R2AcquisitionProbeSource probe = AcquisitionConformanceFixtures.OneSeed();
+        MapSurfacePatch seed = probe.Reads[AcquisitionConformanceFixtures.Seed].Patch!;
+        seed.Records.Add(AcquisitionBoundFixtures.Space("room-original"));
+        probe.SetRead(seed);
         MapSurfaceRole[] roles = { MapSurfaceRole.SupportFloor };
         string[] spaces = { "room-original" }, assets = { new('a', 64), new('b', 64) };
         MapSurfaceScope scope = AcquisitionConformanceFixtures.Scope() with { Roles = roles, SpaceIds = spaces };
@@ -257,8 +260,10 @@ public sealed class ScopedProducerConformanceTests
             MapScopedSurfaces view = ScopeFixtures.Acquire(probe, AcquisitionConformanceFixtures.Scope());
             MapAcquireStatus expected = terminal switch
             {
-                "Complete" => MapAcquireStatus.Complete, "Incomplete" => MapAcquireStatus.Incomplete,
-                "ExactOverflow" => MapAcquireStatus.NotRepresentable, _ => MapAcquireStatus.CapacityExceeded,
+                "Complete" => MapAcquireStatus.Complete,
+                "Incomplete" => MapAcquireStatus.Incomplete,
+                "ExactOverflow" => MapAcquireStatus.NotRepresentable,
+                _ => MapAcquireStatus.CapacityExceeded,
             };
             Assert.Equal(expected, view.Status);
             if (expected is MapAcquireStatus.CapacityExceeded or MapAcquireStatus.NotRepresentable) AcquisitionConformanceFixtures.AssertNoFacts(view);

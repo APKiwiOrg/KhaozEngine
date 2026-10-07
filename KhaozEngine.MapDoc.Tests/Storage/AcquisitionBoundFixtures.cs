@@ -11,13 +11,16 @@ namespace KhaozEngine.Tests.MapDoc.Storage;
 internal static class AcquisitionBoundFixtures
 {
     internal static MapSurfaceScope TouchScope => ScopeFixtures.Around(WorldFrame.Origin, 31.8f, 0.2f, 0.1f)
-        with { Roles = new[] { MapSurfaceRole.Ceiling } };
+        with
+    { Roles = new[] { MapSurfaceRole.Ceiling } };
     internal static MapSurfaceScope MicroScope => ScopeFixtures.Around(WorldFrame.Origin, 0.5f, 0.5f, 0.25f)
-        with { Roles = new[] { MapSurfaceRole.Ceiling } };
+        with
+    { Roles = new[] { MapSurfaceRole.Ceiling } };
     internal static MapSurfaceScope AcquiredScope => ScopeFixtures.Around(WorldFrame.Origin, 0.5f, 0.5f, 0.25f,
         new MapQueryLimits(MaxCandidatePatches: 2));
     internal static MapSurfaceScope AdversarialScope => ScopeFixtures.Around(WorldFrame.Origin, 5.5f, 0.5f, 0.25f)
-        with { Roles = new[] { MapSurfaceRole.Ceiling } };
+        with
+    { Roles = new[] { MapSurfaceRole.Ceiling } };
 
     internal static MapDocument BoundaryTouch()
     {
@@ -72,7 +75,11 @@ internal static class AcquisitionBoundFixtures
         int count = width * depth;
         var patch = new MapSurfacePatch
         {
-            Key = key, CellMinX = minX, CellMinZ = minZ, Width = width, Depth = depth,
+            Key = key,
+            CellMinX = minX,
+            CellMinZ = minZ,
+            Width = width,
+            Depth = depth,
             Heights = Enumerable.Repeat(height, (width + 1) * (depth + 1)).ToArray(),
             Cells = Enumerable.Repeat(new MapSurfaceCell(1, 0, MapOverlayCut.Full, 0, MapCellFlags.None, MapCellTopology.Auto), count).ToArray(),
             Presence = Enumerable.Repeat(ulong.MaxValue, (count + 63) / 64).ToArray(),

@@ -110,7 +110,8 @@ internal static class AcquisitionConformanceFixtures
     {
         Assert.NotEmpty(values);
         var list = Assert.IsAssignableFrom<IList<T>>(values);
-        if (list.IsReadOnly) Assert.Throws<NotSupportedException>(() => list[0] = replacement);
+        if (values is T[] array) array[0] = replacement;
+        else if (list.IsReadOnly) Assert.Throws<NotSupportedException>(() => list[0] = replacement);
         else list[0] = replacement;
     }
     internal static void MutatePatch(MapSurfacePatch patch)
@@ -261,7 +262,9 @@ internal sealed class R2AcquisitionProbeSession : IMapSurfaceAcquisitionSession
             Scope, SnapshotId, patches.AsReadOnly(), empty.AsReadOnly(), unavailable.AsReadOnly(), 0);
         if (result.Status == MapFindStatus.CapacityExceeded) result = result with
         {
-            Patches = Array.Empty<MapPatchRead>(), KnownEmpty = Array.Empty<MapCoveredRange>(), Unavailable = Array.Empty<MapPatchRead>(),
+            Patches = Array.Empty<MapPatchRead>(),
+            KnownEmpty = Array.Empty<MapCoveredRange>(),
+            Unavailable = Array.Empty<MapPatchRead>(),
         };
         return _source.FindFault is { } fault ? fault(result) : result;
     }

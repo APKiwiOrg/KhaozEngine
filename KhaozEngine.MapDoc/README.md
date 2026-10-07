@@ -248,14 +248,23 @@ touched tiles are stored, and an absent or empty block leaves terrain byte-ident
 
 ## Format versioning
 
-`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes (currently 4,
-which added the native metadata, after version 3 added the root `tileSize`). Loading a document with an
+`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes (currently 5,
+which adds the support recipe and surface metadata, after version 4 added native metadata). Loading a document with an
 older `formatVersion` runs migrations
 (`MapDocumentLoadOptions.RegisterMigration`, each a pure `JsonObject -> JsonObject` step from N to N+1)
 until it reaches the current version. The engine's own steps are pre-registered by the
 `MapDocumentLoadOptions` constructor: v1 -> v2 loads a v1 document (which had no sculpt layer) with an
 empty layer and byte-identical terrain, v2 -> v3 stamps `MapDocumentFile.DefaultTileSize` (512 m), and
-v3 -> v4 (`MapNativeMigration.Upgrade`) adds `playableBounds` from `bounds` when it is absent.
+v3 -> v4 (`MapNativeMigration.Upgrade`) adds `playableBounds` from `bounds` when it is absent, and
+v4 -> v5 (`MapSurfaceMigration.Upgrade`) stamps `LegacyXzCallbackV1` without changing resolver-v1
+execution. The format advance changes authored identity once. It does not preserve the old token.
+`MapSurfaceMigration.Upgrade` clones its input and leaves a format-5 input semantically unchanged.
+
+`MapDocument.SupportRecipe` pairs resolver 1 with `LegacyXzCallbackV1` and resolver 2 with
+`AuthoredBindingsV2`. Resolver 1 refuses authored surfaces and placement support bindings. A placement
+with `SupportBinding` cannot also provide explicit `Y`. `Surfaces` owns metadata and resident patches,
+and snapshots clone its mutable collections. Current persistence writes metadata but refuses resident
+patch payloads before changing files until the surface storage implementation is available.
 Any default is as arbitrary as any other for a document that had no tile concept, so the rule is
 "deterministic and documented" rather than "derived". A document newer than the engine, or an old one with
 no migration path, fails to load. Saving always writes the current version.

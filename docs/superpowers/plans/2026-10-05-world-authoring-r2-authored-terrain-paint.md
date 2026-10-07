@@ -3576,3 +3576,23 @@ undo assertions were not reached. No compiler notice, skip or unrelated outcome 
 25 frozen hashes remained unchanged and primary was released. Proof is
 proofs/2026-10-07-r2-task6-copy-red.json. The two field copies and full source review follow.
 This is not Task 6 GREEN or completion, and no fixture data was regenerated.
+
+
+### Task 6 reviewed format migration and propagation complete
+
+Fresh independent review covered all 25 source/schema/test files and found no blocking issue.
+The two real duplication paths now retain the immutable support binding. The complete MapDoc suite
+passed 275 cases, including all fourteen format cases. The selected editor/tool suite passed 455
+cases, including both duplication rows and seventeen legacy hash controls. Six unchanged opt-in GPU
+facts skipped. Per-result TRX rows identify these skips despite the aggregate notExecuted counter
+reporting zero. No GPU proof is claimed. All frozen source and format-4 fixture bytes stayed unchanged.
+
+The exact 24-file diagnostic format check exited zero with both style and reference analyzers on
+MapDoc, MapDoc.Tests, MapEditor, MapEditor.Tests and MapEdit.Tool. It changed zero of 6216 workspace
+files and reported no warning. Both compute slots were released after their respective runs.
+Proof is proofs/2026-10-07-r2-task6-green.json. The living MapDoc format documentation now describes
+format 5, the legacy support recipe and the current resident-payload persistence refusal.
+
+This completes the focused Task 6 checkpoint after repository guards. Full engine verification,
+current-main/version reconciliation and publication remain round-end gates. Task 7 tests are being
+prepared only in ignored staging while this checkpoint is preserved.

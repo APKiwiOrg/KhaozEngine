@@ -82,9 +82,10 @@ including mesh-edge ambiguity and the numeric domain. No fallback or resting-anc
 
 ### Approved design scope extension
 
-The owner approved writing the optional-query design on 2026-10-07. The
+The owner approved the
 [written specification](../superpowers/specs/2026-10-07-capsule-feature-correspondence-design.md)
-awaits review. This approval does not establish its numerical domain or authorize the fallback.
+at `44acfe9b9` on 2026-10-07. Its execution plan is underway. The numerical and geometric proof gates
+remain open, so the fallback is not yet enabled.
 
 The swimming source review at `acd452762` independently identifies the missing relation. The ray
 handler discards child identity and culls competing hits. Sweep results retain no geometric feature.
@@ -108,8 +109,8 @@ rise, footprint, clearance and layer eligibility. No native identity, bake forma
 | Implementation simplicity | 4 | 9 |
 | Total | 22 | 20 |
 
-The approved scope is design and test-first proof for the new seam. Exact signatures and the numeric
-domain are not approved by this document. The fallback and anchors remain gated on a successful proof.
+The approved specification governs the exact API and test-first implementation. Its numeric ceilings
+are proof targets, not established guarantees. The fallback and anchors remain gated on successful proof.
 
 ## Bake-local resting anchors
 

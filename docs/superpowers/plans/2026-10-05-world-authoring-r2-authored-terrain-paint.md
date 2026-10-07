@@ -3755,3 +3755,18 @@ passed. The original12cases remain byte-identical. Initial27/2failed new-helper 
 subsequent array-helper correction are retained. Full16file format and repository guards passed.
 Independent spec/quality review approved without findings. Proof is
 `proofs/2026-10-08-r2-task8b-green.json`. Task8C's brief is prepared, with no worker or command started.
+
+
+### Task 8C whole identity verified and Task 8 closed
+
+Source acac9e43865acd84afaf683d2d71c53212a9e442 implements whole scheme-2 identity from current
+complete edits or the pinned original stored closure, with immutable original resolver, recipe and
+root retention, root membership before payload work and one verified payload at a time. Paired
+compile RED is preserved at e050e87d2. Focused 12 MapDoc and 6 Editor cases passed, plus affected
+storage regressions of 36 MapDoc and 78 Editor cases, zero failures or skips. The original 10 cases
+are byte-identical to the Task 8 preparation drafts. The first explicit-file format run found only
+indentation in the test-only Apply helper, corrected without a token change (ruling C2), then the
+ten-file diagnostic format and repository guards passed. Independent spec and quality review approved
+with one deferred minor note (a verified patch digest is hashed twice). Proof is
+`proofs/2026-10-08-r2-task8c-green.json`. Task 8's 64 planned cases (8A 13, 8B 33, 8C 18) are now
+closed as focused checkpoints, not whole-round integration. Task 9 tests-first preparation follows.

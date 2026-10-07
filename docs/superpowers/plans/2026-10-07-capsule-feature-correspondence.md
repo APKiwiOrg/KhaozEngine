@@ -72,18 +72,22 @@ Produce a verified shared-main prerequisite, not a second lease implementation.
 `CapsuleIncidentFace` exposes `FaceId`, geometric `Normal`, `NormalError` and incidence kind.
 Constructors/factories enforce structural invariants only, never claim numerical proof.
 
-- [ ] Write contract RED covering default Unresolved, all refusal statuses, malformed bounds/counts,
+- [x] Write contract RED covering default Unresolved, all refusal statuses, malformed bounds/counts,
   finite normal/point invariants and the exact optional method signatures. Use reflection only to
   bootstrap absent types, then direct calls after implementation.
-- [ ] Run `dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release -m:1
+- [x] Run `dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release -m:1
   --filter FullyQualifiedName~CapsuleFeatureContractTests`. Require intended missing-contract failures.
-- [ ] Implement the immutable contract and direct tests. Run the same finite filter once GREEN.
-- [ ] Write scripted-provider lifetime tests with distinct owners/views, wrong-thread entry,
+- [x] Implement the immutable contract and direct tests. Run the same finite filter once GREEN.
+- [x] Write scripted-provider lifetime tests with distinct owners/views, wrong-thread entry,
   disposed receiver, expired lease, a new same-generation lease and untouched sentinel face spans.
   No backend geometry success is faked or inferred from these protocol tests.
-- [ ] Prove RED/GREEN for the lifetime validation path, preserving actual owner lease authentication.
+- [x] Prove RED/GREEN for the lifetime validation path, preserving actual owner lease authentication.
   Wrong-thread tests use bounded synchronization and `finally` cleanup, not sleeps or load loops.
-- [ ] Commit the contract and focused proof. Document that structural validity is not completeness.
+- [x] Commit the contract and focused proof. Document that structural validity is not completeness.
+
+Recorded proof: `docs/verification/2026-10-07-feature-completed-values.json` and
+`docs/verification/2026-10-07-feature-lifetime-protocol.json`. The backend exposes only the
+validated lifetime/refusal path until the geometric proof is implemented.
 
 ### Task 3: Prove bounded geometric arithmetic
 

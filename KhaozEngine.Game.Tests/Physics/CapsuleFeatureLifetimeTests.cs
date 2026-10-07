@@ -115,7 +115,8 @@ public class CapsuleFeatureLifetimeTests
             queryError = Record.Exception(() => capability.QueryCapsuleFeature(scene.Lease, scene.Target,
                 Capsule, Pose.Identity, 0.001f, faces));
             consumeError = Record.Exception(() => capability.AssertFeatureCurrent(result, scene.Lease));
-        }) { IsBackground = true };
+        })
+        { IsBackground = true };
         bool completedWhileHeld;
         worker.Start();
         try { completedWhileHeld = worker.Join(TimeSpan.FromSeconds(5)); }

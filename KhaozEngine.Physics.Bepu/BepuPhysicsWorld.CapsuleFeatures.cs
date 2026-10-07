@@ -58,7 +58,8 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleFeatures
         if (!_handles.TryGetValue(target.Value, out var entry) || filter.Mobility == QueryMobility.Dynamics ||
             (exclusions is not null && !exclusions.Allows(new CollidableReference(entry.Handle))))
             return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unavailable);
-        if (capsule.Radius is < 0.01f or > 2f || capsule.Length > 8f || maximumSeparationMetres > 0.01f ||
+        if (pose.Orientation.X != 0f || pose.Orientation.Z != 0f ||
+            capsule.Radius is < 0.01f or > 2f || capsule.Length > 8f || maximumSeparationMetres > 0.01f ||
             !RepresentedGeometryTransforms.PosePoint(pose, Vector3.Zero).IsResolved)
             return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unsupported);
 

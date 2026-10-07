@@ -1,12 +1,11 @@
 # Capsule feature polyhedra proof argument
 
-Status: bounded coordinate correction reviewed and compiled. The first combined invocation passed
-27 of 28 cases, including both translated-domain regressions and all twelve lifetime controls.
-The existing hull-centroid case returned Ambiguous instead of Complete after its installed-source
-controls passed. Its internal refusal reason remains unmeasured. Format was not run after that failure.
-The retained evidence is `docs/verification/2026-10-07-feature-polyhedron-first-validation.json`.
-Whole polyhedron GREEN remains open. This document does not authorize a runtime consumer, a mesh
-backend, a release or a geometry tolerance change.
+Status: independently reviewed bounded coordinate correction, then source-confirmed hull winding
+correction. Focused verification passed all 16 polyhedron and 12 lifetime cases. Scoped format ran
+both analyzer stages for the backend and test projects and changed no files. The prior 27-pass,
+one-failure run remains recorded separately. See `docs/verification/2026-10-07-feature-polyhedron-green.json`.
+This proves the declared exact-rigid polyhedron subset only. Nonexact rotations, meshes and unresolved
+rational witnesses remain outside it. No runtime movement consumer, release or game bridge fix follows.
 
 ## Installed authority and read interval
 
@@ -22,10 +21,13 @@ that same interval. A box uses the installed half dimensions. A hull uses every 
 source index remains the vertex identity. Distinct source indices with equal represented positions
 refuse rather than silently merging an alias.
 
-The pinned hull implementation explicitly reverses its source indices in `ConvexHullTriangleSource`
-to obtain externally counterclockwise triangles. Capture applies that one documented reversal to
-every polygon. It then independently checks every outward supporting plane and every polygon's
-winding. Per-face repair of inconsistent winding is not performed.
+The pinned `ConvexHullHelper.CreateShape` preserves the source face order and derives each outward
+bounding-plane normal by summing `Cross(previousOffset, offset)` in that order. Capture preserves the
+same order for its identical cross-product convention. The separate `ConvexHullTriangleSource`
+inertia adapter reverses indices, but its comment does not define this finite-face validator's
+orientation. The first combined proof exposed the incorrect copied reversal as an Ambiguous hull
+refusal. Correcting that conversion retains every strict supporting-plane and polygon-winding
+check. Per-face repair of inconsistent winding is not performed.
 
 A flattened `Compound` uses its installed child indices and `LocalPose`, including hull centroid
 offsets already folded into those poses. `Compound.GetWorldPose` supplies the exact backend's
@@ -40,6 +42,7 @@ the registry. Existing mutation fencing remains unchanged.
 
 Pinned primary source inspected for this implementation:
 
+- [ConvexHullHelper 2.4.0](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/Collidables/ConvexHullHelper.cs)
 - [ConvexHull 2.4.0](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/Collidables/ConvexHull.cs)
 - [Compound 2.4.0](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/Collidables/Compound.cs)
 - [Box 2.4.0](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/Collidables/Box.cs)

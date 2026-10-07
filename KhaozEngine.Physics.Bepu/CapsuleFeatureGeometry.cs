@@ -100,8 +100,9 @@ internal static class CapsuleFeatureGeometry
                         ids.Add(key, vertex);
                         vertices.Add(point);
                     }
-                    // ConvexHullTriangleSource in 2.4 explicitly flips this inward source convention.
-                    polygons[face][indices.Length - 1 - i] = vertex;
+                    // CreateShape derives outward planes from this stored order. Preserve it for
+                    // the same cross-product convention used by the strict face validator.
+                    polygons[face][i] = vertex;
                 }
             }
             local = vertices.ToArray();

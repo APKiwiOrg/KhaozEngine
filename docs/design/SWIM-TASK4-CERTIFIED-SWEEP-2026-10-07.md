@@ -671,3 +671,10 @@ no-build point-witness run then failed all ten cases at the absent `CapsuleBoxPo
 after source/lease/pose and stored tiny-height controls passed. Zero skips. Logs are
 `/tmp/swim-distance-reconcile.log` (exit 0) and `/tmp/swim-box-witness-red.log` (expected exit 1).
 This preserves the arithmetic-versus-geometry distinction before point-witness implementation.
+
+The exact point-witness implementation passed all ten unchanged assertions converted to direct
+calls. The conditional no-build eight leaf-reader regressions passed after factoring identity-box
+data access into `CapsuleSweepGeometry`. Both commands exited 0 with zero failures/skips, using
+`/tmp/swim-box-witness-green.log` and `/tmp/swim-leaf-reader-regressions.log`. Source remained
+unchanged between runs. This proves the stated supplied-point predicate, including refusal of
+lossy coordinate proposals. It does not bind a point to a swept path or certify a world query.

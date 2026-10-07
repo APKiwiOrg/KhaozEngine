@@ -11,17 +11,11 @@ namespace KhaozEngine.Physics.Bepu;
 /// This does not establish the selected world's candidate set or a general pose certificate.</summary>
 internal static class CapsuleSweepLeafProjection
 {
-    internal static unsafe GeometryInterval Project(Shapes shapes, TypedIndex shape, RigidPose pose, Vector3 axis)
+    internal static GeometryInterval Project(Shapes shapes, TypedIndex shape, RigidPose pose, Vector3 axis)
     {
-        if (shapes is null || !shape.Exists || shape.Type != default(Box).TypeId ||
-            pose.Orientation != Quaternion.Identity || !Finite(pose.Position) ||
-            !Finite(axis) || axis == Vector3.Zero)
+        if (!Finite(axis) || axis == Vector3.Zero ||
+            !CapsuleSweepGeometry.TryReadIdentityBox(shapes, shape, pose, out Box box))
             return default;
-
-        shapes[shape.Type].GetShapeData(shape.Index, out void* data, out int size);
-        if (data == null || size < sizeof(Box)) return default;
-        Box box = *(Box*)data;
-        if (!Positive(box.HalfWidth) || !Positive(box.HalfHeight) || !Positive(box.HalfLength)) return default;
 
         double lower = double.NegativeInfinity, upper = double.NegativeInfinity;
         Matrix3x3 identity = Matrix3x3.Identity;
@@ -44,7 +38,6 @@ internal static class CapsuleSweepLeafProjection
         return GeometryInterval.Enclose(lower, upper);
     }
 
-    static bool Positive(float value) => float.IsFinite(value) && value > 0f;
     static bool Finite(Vector3 value) =>
         float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
 }

@@ -1,7 +1,6 @@
 using System;
 using System.Numerics;
 using System.Reflection;
-using BepuPhysics;
 using BepuPhysics.Collidables;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
@@ -14,8 +13,6 @@ namespace KhaozEngine.Tests.Physics;
 public class CapsuleBoxPointWitnessTests
 {
     static readonly BoxShape BoxShape = new(new Vector3(0.5f));
-    delegate GeometrySign ClassifyCall(Shapes shapes, TypedIndex shape, RigidPose pose,
-        ReadOnlySpan<double> centre, float radius, float halfCylinderLength);
 
     [Fact]
     public void ASeparatedCapsuleHasPositiveSign() =>
@@ -98,17 +95,9 @@ public class CapsuleBoxPointWitnessTests
             Assert.True(size >= sizeof(Box));
             Assert.Equal(installedHalfHeight.Value, ((Box*)data)->HalfHeight);
         }
-        GeometrySign result = Bind()(simulation.Shapes, target.Shape, target.Pose, centre, radius, halfCylinderLength);
+        GeometrySign result = CapsuleBoxPointWitness.Classify(simulation.Shapes, target.Shape, target.Pose, centre, radius, halfCylinderLength);
         lease.AssertCurrent();
         Assert.Equal(expected, result);
     }
 
-    static ClassifyCall Bind()
-    {
-        Type? type = typeof(BepuPhysicsWorld).Assembly.GetType("KhaozEngine.Physics.Bepu.CapsuleBoxPointWitness");
-        Assert.NotNull(type);
-        MethodInfo? method = type.GetMethod("Classify", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        return method.CreateDelegate<ClassifyCall>();
-    }
 }

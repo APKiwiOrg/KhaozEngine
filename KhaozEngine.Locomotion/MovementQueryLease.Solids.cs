@@ -11,14 +11,18 @@ public sealed partial class MovementQueryLease
 
     /// <summary>Private consumer scratch only. No result is usable without Known and complete coverage.</summary>
     internal MovementAvailability QuerySolidContacts(in MovementBodyQuery body, Span<CapsuleContact> scratch,
-        out CapsuleContactResult result)
+        out CapsuleContactResult result) => QuerySolidContacts(body, CoverageSkinMetres, scratch, out result);
+
+    internal MovementAvailability QuerySolidContacts(in MovementBodyQuery body, float margin,
+        Span<CapsuleContact> scratch, out CapsuleContactResult result)
     {
         result = default;
         AssertUsable();
         if (!_selectionReady) return MovementAvailability.Unresolved;
-        if (!body.IsValid || !SameWorld(body.CurrentSpace)) return MovementAvailability.Invalid;
+        if (!body.IsValid || !SameWorld(body.CurrentSpace) || !float.IsFinite(margin) ||
+            margin < 0f || margin > 2f * CoverageSkinMetres) return MovementAvailability.Invalid;
         // The backend may include uncertain contacts by up to one additional skin of numerical error.
-        Vector3 extent = new Vector3(body.Radius, body.HalfHeight, body.Radius) + new Vector3(2f * CoverageSkinMetres);
+        Vector3 extent = new Vector3(body.Radius, body.HalfHeight, body.Radius) + new Vector3(margin + CoverageSkinMetres);
         if (!Witness.Scope.ContainsBounds(body.Centre - extent, body.Centre + extent))
             return MovementAvailability.Unresolved;
         if (_view is not IPhysicsCapsuleContacts contacts) return MovementAvailability.Unresolved;
@@ -27,7 +31,7 @@ public sealed partial class MovementQueryLease
             AssertCurrent();
             var capsule = new CapsuleShape(body.Radius, 2f * (body.HalfHeight - body.Radius));
             CapsuleContactResult query = contacts.QueryCapsuleContacts(capsule, Pose.At(body.Centre),
-                CoverageSkinMetres, scratch[..Math.Min(scratch.Length, MaxSolidContacts)]);
+                margin, scratch[..Math.Min(scratch.Length, MaxSolidContacts)]);
             AssertCurrent();
             if (!query.Complete)
                 return query.RequiredCapacity > scratch.Length || query.RequiredCapacity > MaxSolidContacts

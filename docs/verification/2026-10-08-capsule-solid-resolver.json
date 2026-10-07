@@ -1,0 +1,44 @@
+{
+  "status": "focused solid-path development evidence, not combined water traversal or full mover approval",
+  "baseCommit": "0ee66f31c",
+  "firstAttempt": {
+    "exitCode": 1,
+    "classification": "fixture compile error CS9107, no behavior executed",
+    "correction": "Explicit derived constructor retains capability reference without capturing primary constructor parameter twice"
+  },
+  "red": {
+    "exitCode": 1,
+    "passed": 0,
+    "failed": 23,
+    "skipped": 0,
+    "classification": "Missing MovementCapsuleResolver runtime type after actual read-lease setup controls"
+  },
+  "green": {
+    "exitCode": 0,
+    "passed": 23,
+    "failed": 0,
+    "skipped": 0,
+    "filter": "FullyQualifiedName~MovementCapsuleResolverTests",
+    "configuration": "Release -m:1"
+  },
+  "logs": {
+    "swim-resolver-red": {
+      "path": "/tmp/swim-resolver-red.log",
+      "sha256": "b4a35452810ee637a8500349ead32be034f0bb463e05bb74c8c64837217bf1cf"
+    },
+    "swim-resolver-red2": {
+      "path": "/tmp/swim-resolver-red2.log",
+      "sha256": "e94ab14e29b59790214484c69442ce7759e5855b584c0f1497ee4cb07e97d1c8"
+    },
+    "swim-resolver-green": {
+      "path": "/tmp/swim-resolver-green.log",
+      "sha256": "5e911693834d8eaa675b384619d830e39937e114b4cefd6e2f5cb1b3be02da1b"
+    }
+  },
+  "pending": [
+    "Independent rounding/impact-margin boundary tests",
+    "Affected support/contact consumer regressions and formatting",
+    "Combined water policy and support/step correction",
+    "Whole-branch review and native G1b"
+  ]
+}

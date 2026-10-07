@@ -236,8 +236,11 @@ public partial class MovementCapsuleResolverTests
 
     readonly record struct Trace(Vector3 Centre, Vector3 Delta, float Radius, float HalfHeight, CapsuleSweepStatus Status);
 
-    sealed class ResolverQueryView(IPhysicsWorldQueryView inner) : SweepQueryView(inner), IPhysicsCapsuleSweep
+    sealed class ResolverQueryView : SweepQueryView, IPhysicsCapsuleSweep
     {
+        readonly IPhysicsCapsuleSweep _sweep;
+        public ResolverQueryView(IPhysicsWorldQueryView inner) : base(inner) =>
+            _sweep = (IPhysicsCapsuleSweep)inner;
         public readonly System.Collections.Generic.List<Trace> Calls = [];
         public bool FailAfterProgress;
         bool progressed;
@@ -246,7 +249,7 @@ public partial class MovementCapsuleResolverTests
             QueryFilter filter = default)
         {
             CapsuleSweepResult result = FailAfterProgress && progressed ? default :
-                ((IPhysicsCapsuleSweep)inner).SweepCapsuleCertified(capsule, pose, delta, filter);
+                _sweep.SweepCapsuleCertified(capsule, pose, delta, filter);
             Calls.Add(new(pose.Position, delta, capsule.Radius, capsule.Length * 0.5f + capsule.Radius, result.Status));
             if (result.Status == CapsuleSweepStatus.Clear && delta != Vector3.Zero) progressed = true;
             AfterSweep?.Invoke();

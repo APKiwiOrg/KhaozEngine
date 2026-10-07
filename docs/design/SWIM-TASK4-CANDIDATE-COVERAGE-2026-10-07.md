@@ -400,3 +400,13 @@ controls, initial placement refusal, unknown geometry, cold/stale context, inval
 failure after a proved prefix. Every returned nonempty segment must correspond to an observed Clear
 query on the exact selected view. These fixtures prove the solid stage only. Wet-boundary policy,
 step/support correction, native geometry and full mover acceptance remain subsequent Task 4 work.
+
+The solid stage is now implemented. First execution stopped at fixture CS9107, before any behavior
+ran. An explicit decorator constructor corrected that capture warning. The unchanged 23 assertions
+then reached the missing resolver type under valid real leases. After implementation all 23 passed
+with no skips. [Tracked evidence](../verification/2026-10-08-capsule-solid-resolver.json) distinguishes
+those attempts. The implementation gathers all active normals before choosing a retreat, accounts
+for approach angle rather than fixed along-path backoff, and freshly sweeps every proposed segment.
+A bounded capsule enclosure covers the stored endpoint rounding. Dedicated numerical boundary and
+affected support regression checks remain pending. No water traversal or MoveState publication is
+implemented by this solid-stage checkpoint.

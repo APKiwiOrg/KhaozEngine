@@ -19,8 +19,9 @@ Section 8's inherited F2 reference means F3 in this plan. No semantic change is 
 **Status:** G1a Tasks 1 to 6 approved on 2026-10-06 by coordinator thread
 938c801f-2df0-4298-8bd1-dc39e9015e60 under the owner's explicit overnight delegation, against
 plan commit 49591549d and immutable F3. Execute inline sequentially. This is delegated design/plan
-approval, not human visual acceptance, a release or native G1b approval. The coordinator is retired by owner instruction. Request each local heavy
-run window directly from pivot, the shared compute/main/feed scheduling owner. Before Task 6, reconcile pivot's committed #1313 presentation
+approval, not human visual acceptance, a release or native G1b approval. The coordinator is retired by owner instruction. On 2026-10-08 the owner explicitly removed the
+compute-slot/grant process. Run necessary builds and tests directly without scheduling approval.
+Coordinate actual shared-source/main/feed conflicts only. Before Task 6, reconcile pivot's committed #1313 presentation
 phase overload and preserve its ownership of ClientPrediction/AdvancePresentation changes.
 
 ## Global Constraints
@@ -37,9 +38,8 @@ phase overload and preserve its ownership of ClientPrediction/AdvancePresentatio
 - Commands are consumed once even on explicit query refusal. No new jump epoch or hidden buffered submerged press.
 - No game combat, inventory, journal or animation policy in the engine.
 - No new third-party dependency, package or broad umbrella reference. Preserve GPU-free server closure.
-- At most two compatible, explicitly assigned bounded heavy slots through the shared wrappers, per the
-  owner's later instruction. Pivot schedules primary/secondary ownership. No third job, load/stress runs
-  or repeat-until-green loops. Shared main/feed/artifact mutations remain exclusive.
+- The owner removed compute slots and grants on 2026-10-08. Do authorized build/test work directly.
+  Do not create synthetic load, stress runs or unchanged test loops. Preserve actual shared mutation ownership.
 - Current repo AGENTS, KESIZE, Release checks, main reconciliation and docs sweep apply. Never tag.
 
 Native dependency checkpoint, 2026-10-07: coordinator OA17/CD9 approved the complete R2 written plan
@@ -351,8 +351,8 @@ Tests extend existing Server.Tests NetWorld swim and ShardedPlayerMoveSwim fixtu
 
 ## Commands, review and finish
 
-For each task's RED/GREEN run, use its named fixture in the matching project through the shared
-slot. Example Task 1 command, from the engine worktree root:
+For each task's RED/GREEN run, use its named fixture directly in the matching project. The old
+slot wrapper in the historical example below is superseded by the 2026-10-08 owner instruction.
 
 ```bash
 /tmp/grimhollow-orch/slot-run.sh swim-lease-tests /tmp/swim-lease-tests.log -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~PhysicsQueryLeaseTests'

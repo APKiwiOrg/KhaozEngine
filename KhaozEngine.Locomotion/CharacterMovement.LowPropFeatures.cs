@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Locomotion;
@@ -7,6 +8,57 @@ public static partial class CharacterMovement
 {
     // The represented query band is slightly inside the exact 0.1 mm limit. It never widens contact.
     private const float LowPropFeatureContactBand = 0.0001f;
+
+    private static bool TryLowPropFeatureSupport(IPhysicsWorld world, in CapsuleShape capsule,
+        in Vector3 pos, in Vector3 expectedOrigin, float probeStart, float maxProbe, StaticHandle target,
+        float cosMaxSlope, out float centreY)
+    {
+        centreY = 0;
+        if (world is not IPhysicsCapsuleFeatures features || world is not IPhysicsQueryLeaseSource source)
+            return false;
+        IPhysicsQueryLease lease;
+        try { lease = source.AcquireQueryReadLease(); }
+        catch (InvalidOperationException error) when (error is not ObjectDisposedException)
+        {
+            // A caller may already own a non-nestable read interval. This optional path cannot
+            // borrow it, and declines without masking query, authentication or disposal failures.
+            return false;
+        }
+        using (lease)
+        {
+            lease.AssertCurrent();
+            if (lease.Origin != expectedOrigin || world.Origin != expectedOrigin) return false;
+            // The first sweep is a hint. Repeat it inside this interval so candidate generation
+            // and finite-feature consumption share the same selected receiver and physical state.
+            if (!world.SweepCapsule(capsule, Pose.At(new Vector3(pos.X, probeStart, pos.Z)),
+                    -Vector3.UnitY, maxProbe, out SweepHit current) || current.Body != target ||
+                !(current.Normal.Y >= cosMaxSlope) || !UnderFootprint(current.Point, pos, capsule.Radius))
+                return false;
+            float candidateY = probeStart - current.Distance;
+            Pose candidate = Pose.At(new Vector3(pos.X, candidateY, pos.Z));
+            Span<CapsuleIncidentFace> faces = stackalloc CapsuleIncidentFace[256];
+            CapsuleFeatureResult result = features.QueryCapsuleFeature(lease, target, capsule, candidate,
+                LowPropFeatureContactBand, faces, QueryFilter.StaticsOnly);
+            if (result.Status != CapsuleFeatureStatus.Complete || result.Written < 1 || result.Written > faces.Length ||
+                !LowPropFeatureEligible(features, lease, result, faces[..result.Written], cosMaxSlope) ||
+                !FeatureFootprintFits(result, pos, capsule.Radius)) return false;
+            centreY = candidateY;
+            return true;
+        }
+    }
+
+    private static bool FeatureFootprintFits(in CapsuleFeatureResult result, in Vector3 center, float radius)
+    {
+        // A Euclidean position error bounds both horizontal components. Bound the complete
+        // witness rectangle outward instead of accepting only its rounded representative.
+        double x = Math.BitIncrement(Math.Abs((double)result.GeometryPoint.X - center.X));
+        double z = Math.BitIncrement(Math.Abs((double)result.GeometryPoint.Z - center.Z));
+        x = Math.BitIncrement(x + result.PositionErrorMetres);
+        z = Math.BitIncrement(z + result.PositionErrorMetres);
+        double squared = Math.BitIncrement(Math.BitIncrement(x * x) + Math.BitIncrement(z * z));
+        // Squaring a finite binary32 radius is exact in binary64.
+        return double.IsFinite(squared) && squared <= (double)radius * radius;
+    }
 
     private static bool LowPropFeatureEligible(IPhysicsCapsuleFeatures capability, IPhysicsQueryLease lease,
         in CapsuleFeatureResult result, ReadOnlySpan<CapsuleIncidentFace> faces, float cosMaxSlope)

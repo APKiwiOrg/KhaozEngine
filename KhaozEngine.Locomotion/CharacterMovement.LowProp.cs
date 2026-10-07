@@ -26,15 +26,22 @@ public static partial class CharacterMovement
     private static float LowPropSupport(IPhysicsWorld world, in CapsuleShape capsule, in Vector3 pos,
         in Vector3 startPos, float halfH, float terrainGroundY, float groundY, float cosMaxSlope)
     {
+        Vector3 origin = world.Origin;
         float probeStart = pos.Y + 2f * halfH;
         // Only a top above the terrain can qualify, so the sweep stops a skin below the terrain rest height.
         float maxProbe = MathF.Max(SkinWidth, probeStart - terrainGroundY + SkinWidth);
         if (!world.SweepCapsule(capsule, Pose.At(new Vector3(pos.X, probeStart, pos.Z)), -Vector3.UnitY, maxProbe,
                 out SweepHit hit) ||
-            hit.Normal.Y < MathF.Max(LipLandingFlatNormalY, cosMaxSlope) ||
+            !(hit.Normal.Y >= cosMaxSlope) ||
             !UnderFootprint(hit.Point, pos, capsule.Radius))
             return groundY;
         float centreY = probeStart - hit.Distance;
+        if (!(centreY > groundY && centreY <= startPos.Y + LowPropRise)) return groundY;
+        // Keep the existing near-flat path without a lease or feature-query allocation.
+        if (hit.Normal.Y >= MathF.Max(LipLandingFlatNormalY, cosMaxSlope)) return centreY;
+        if (hit.Body is not StaticHandle target ||
+            !TryLowPropFeatureSupport(world, capsule, pos, origin, probeStart, maxProbe, target,
+                cosMaxSlope, out centreY)) return groundY;
         return centreY > groundY && centreY <= startPos.Y + LowPropRise ? centreY : groundY;
     }
 }

@@ -1,0 +1,36 @@
+{
+  "base": "b76af4af2d93dc9f67a700f73c3c20c17a6535e3",
+  "sources": {
+    "KhaozEngine.Locomotion/CharacterMovement.LowProp.cs": "1b266bb6231e04268fbc9ffebb624e6d6588534e4fa6373abe177522170bc27a",
+    "KhaozEngine.Locomotion/CharacterMovement.LowPropFeatures.cs": "f8d8e4d0f7eb447498acfaa4bfd95a2636d399ce27c779d0d058ece261870f5e"
+  },
+  "classification": "Incomplete runtime repair checkpoint. Four non-flat Hold regressions now pass. The previously failing directed approach remains unresolved.",
+  "command": "dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release -m:1 --filter FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.HoldRetainsCorroboratedFiniteLipSupport|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.HoldUnderAnExistingQueryLeaseRetainsUnavailableQualificationBehavior|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.FeatureEligibilityRejectsTwoNearFlatIncidentTops|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.BodySetOnTheDeckStaysOnIt|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.LiveBodyMountsTheLipAtWalkPace|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.LiveBodyMountsLowLipsUpToATenthOfAMetre|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.HoldRestsTheBankBodyOnTheLipCorner|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.LiveBodyCrossesARestingLipBothWays|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.HoldReportsTheLowLipSupportBandWithAndWithoutThePhysicsFloor|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.RealFootprintProbeReportsTheRestingBankApproach|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.RealFootprintProbeConnectsTheRestingLipEndpoints|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.ProbeHoldsTheBankBodyAtItsRestingHeight|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.ProbeAcceptsColumnsClearOfARestingLipCorner|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.ProbeRefusesTheBankColumnAtTheDeckHeight|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.ProbeRefusesUnsupportedHeightsBesideARestingLip|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.ProfileRefusesTheBankColumnUnderARoofItsRestDoesNotFit|FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.PermissiveFootprintProbeCharacterizesTheRoofSqueeze|FullyQualifiedName~KhaozEngine.Tests.Movement.GroundMoveQuerySelectionTests",
+  "log": "/tmp/grimhollow-orch/feature-query-runtime-movement-green.log",
+  "log_sha256": "cf33fa7d809d527bf33fdc3d351618716d446ca1d768aed482b0818a93980149",
+  "exit": 1,
+  "executed": 62,
+  "passed": 61,
+  "failed": 1,
+  "skipped": 0,
+  "failure": "LowLipTraversalTests.RealFootprintProbeReportsTheRestingBankApproach",
+  "observations": [
+    "sources from=(4,4)/0 raw=<-0.375, 0, 0.125> rest=<-0.375, 0, 0.125>, to=(5,4)/0 raw=<-0.125, 0, 0.125> rest=<-0.125, 0.015217662, 0.125>, setup=True grounded=True/True xz=0/0 footprint=True/True",
+    "predicate observations=66, omitted=0, all accepted=True, proof=False, result=budget exhausted by source call order",
+    "observation 63: feet=<-0.13175462, 0.012019396, 0.125>, target=<-0.125, 0.015217662, 0.125>, residual=<-0.006754622, -0.003198266, 0>, distance=0.0074735414, accepted=True",
+    "observation 64: feet=<-0.13175464, 0.012019396, 0.125>, target=<-0.125, 0.015217662, 0.125>, residual=<-0.0067546368, -0.003198266, 0>, distance=0.007473555, accepted=True",
+    "observation 65: feet=<-0.13175462, 0.012019396, 0.125>, target=<-0.125, 0.015217662, 0.125>, residual=<-0.006754622, -0.003198266, 0>, distance=0.0074735414, accepted=True",
+    "observation 66: feet=<-0.13175464, 0.012019396, 0.125>, target=<-0.125, 0.015217662, 0.125>, residual=<-0.0067546368, -0.003198266, 0>, distance=0.007473555, accepted=True"
+  ],
+  "source_review": "Independent runtime connection review Ready with no findings. This is a source verdict, not a route completion claim.",
+  "not_run": [
+    "Game low-prop and seven-stair prior-art regression slice",
+    "Runtime format check",
+    "Final full solution verification"
+  ],
+  "limits": [
+    "All endpoint setup and real footprint controls pass. Exactly 66 accepted callbacks establish source-derived budget exhaustion.",
+    "The remaining motion mechanism is unmeasured. Inflated moving-capsule depenetration is a hypothesis only.",
+    "No arrival tolerance, step budget, solver, bake, world, release or game pin change. No issue closure or main integration."
+  ]
+}

@@ -525,9 +525,9 @@ on a snapshot it cannot decode. Both are additive: the wire and existing ctors a
     as bit 2 of the existing flags byte. Run remains bit 0, `FaceCamera` remains bit 1, unknown remaining bits stay
     ignored, and the move frame remains 18 bytes with yaw at byte 13 and jump at byte 17. Older peers are rejected by
     the automatic generation gate before player admission because they would ignore precise speed intent and apply full
-    speed. Persisted built-in payloads retain their generation-12 layout: the explicit generation-13 movement size is
-    56 bytes and the generation-12 owner timer frame remains 8 bytes. Restoring a generation-12 body updates the
-    header to current without changing its body bytes, commitments or opaque extension frames. There is no
+    speed. Generation 14 appends `MovementState.WaterExcursion` as one byte, growing the movement payload
+    from 56 to 57 bytes. The owner timer frame remains 8 bytes. Restoring an older body appends None (0),
+    preserving commitments, legacy Swimming and opaque extension frames. There is no
     dual-format wire, so peers on
     different generations MUST reject each other at connect rather than misparse a frame. As of 10.2.0 the engine
     enforces this for you: `WorldClient` always folds the
@@ -1000,6 +1000,24 @@ demultiplexer remains aligned. The automatic generation-13 handshake rejects an 
 because that peer would ignore the flag and run precise input at full speed. No persisted schema or game
 `ProtocolVersion` change is made by this engine wire-generation bump.
 
+## Explicit water excursion transport (wire generation 14)
+
+`MoveState.WaterExcursion` and `MovementState.WaterExcursion` carry `WaterExcursionState.None` (0),
+`Surface` (1) or `AirborneFromWater` (2). The observer-visible codec appends exactly one byte.
+Correction seeding and frame rebinding retain the received value. `WorldClient.Snapshot()` exposes
+`EntityRenderState.WaterExcursion` from the local predicted state or the remote delayed discrete
+movement timeline. Existing render-state constructors default it to None. Invalid values reject
+encoding or decoding.
+No support selection, region handle, query lease or environment cache is serialized.
+
+Older persisted payloads append None through the existing ordered layout rewrite. Their legacy
+Swimming flag is preserved. The automatic generation handshake rejects peers on the earlier codec.
+The movement payload is now 57 bytes, while owner timers remain 8 and input frames remain 18.
+
+This is transport groundwork. Explicit simulation, descent/footing transitions, refused-command
+consumption, cold environment reconstruction and native acceptance remain pending. Legacy movement
+still leaves the new excursion at None. A transported flag alone does not certify water traversal.
+
 ## Client simulation state versus presentation state
 
 `WorldClient.LocalPredictedState` is the local player's current predicted simulation state, returned as an
@@ -1425,8 +1443,8 @@ and changes nothing for a host or client that does not opt in.
   throws `ArgumentException` at construction. Limits and cadence come from each config's **`ReplicationStream`**
   (`ReplicationStreamOptions`), validated only when the opt-in is on. Movement, notices, game messages,
   authentication and journal traffic keep their channels.
-- **Capability gate at wire generation 13.** `MoveProtocol.WireProtocolVersion` stays 13, because no existing body or
-  built-in codec changed. A requesting client sends `ClientControlKind.RebuildDeltaCapable` (3) reliably beside
+- **Capability gate introduced at wire generation 13.** This capability introduced no wire-generation bump.
+  Its control negotiation remains independent of later built-in codec additions. A requesting client sends `ClientControlKind.RebuildDeltaCapable` (3) reliably beside
   `DeltaCapable`. An older server ignores the unknown control and keeps serving reliable deltas. A current server
   answers with one reliable `ServerFrameKind.ReplicationMode` (6) offer and sends kinds 4 and 5 only after the client
   accepted a mode 1 offer.

@@ -12,9 +12,11 @@ public static partial class MoveProtocol
 {
     /// <summary>
     /// The engine wire-format generation. Bumped when a wire layout or command interpretation changes incompatibly.
-    /// Generation <c>13</c> adds <see cref="MoveCommand.ScaleSpeedByAxis"/> at bit 2 of the move flags byte. Older
-    /// peers would silently apply full speed to precise input, so they must reject at connect. Move frames stay
-    /// 18 bytes and persisted built-in payloads keep their generation-12 layout. <c>12</c> was the owner-only movement
+    /// Generation <c>14</c> appends the one-byte explicit water excursion to the movement built-in.
+    /// Older persisted states default to None. Generation <c>13</c> added <see cref="MoveCommand.ScaleSpeedByAxis"/>
+    /// at bit 2 of the move flags byte. Older peers would silently apply full speed to precise input, so they must
+    /// reject at connect. That change kept 18-byte move frames and the generation-12 persisted layout.
+    /// <c>12</c> was the owner-only movement
     /// split, which moved <see cref="MovementOwnerState.TimeSinceGrounded"/> and
     /// <see cref="MovementOwnerState.JumpBufferRemaining"/> out of the movement built-in (8 bytes fewer to every AoI
     /// observer) into a new built-in, <see cref="MovementOwnerState"/> at id <see cref="MovementOwnerTypeId"/>, which
@@ -65,7 +67,7 @@ public static partial class MoveProtocol
     /// <see cref="WorldClientConfig.ProtocolVersion"/> game-version gate still layers on top via
     /// <see cref="VersionCheckingAuthenticator"/>.
     /// </summary>
-    public const int WireProtocolVersion = 13;
+    public const int WireProtocolVersion = 14;
 
     /// <summary>Type id of <see cref="ReplicatedPosition"/> in the shared registry.</summary>
     public const ushort PositionTypeId = 1;
@@ -171,6 +173,7 @@ public static partial class MoveProtocol
                 bw.Write(m.Commitment.RecoveryRemaining);
                 bw.Write(m.Commitment.TimeoutRemaining);
                 bw.Write((byte)m.Commitment.EndReason);
+                bw.Write(WaterExcursionWire.Encode(m.WaterExcursion));
             },
             read: br => new MovementState
             {
@@ -196,6 +199,7 @@ public static partial class MoveProtocol
                     TimeoutRemaining = br.ReadSingle(),
                     EndReason = (MovementCommitmentEndReason)br.ReadByte(),
                 },
+                WaterExcursion = WaterExcursionWire.Decode(br.ReadByte()),
             });
         // Display name. Length-prefixed UTF-8, capped at MaxDisplayNameBytes. Not interpolated (strings do not blend);
         // re-sent in every AoI snapshot (names are static, so this is wasteful but simple and consistent at the

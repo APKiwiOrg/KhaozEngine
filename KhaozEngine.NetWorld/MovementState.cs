@@ -34,6 +34,10 @@ public struct MovementState : IComponent
     /// connect by the always-on <see cref="WireGenerationAuthenticator"/>.</summary>
     public bool Swimming;
 
+    /// <summary>Portable explicit water-origin state, including flight after a surface jump.
+    /// Appended in wire generation 14. Local support and environment handles never ride the wire.</summary>
+    public WaterExcursionState WaterExcursion;
+
     /// <summary>The authoritative teleport epoch (see <see cref="PlayerMoveState.TeleportEpoch"/>): a monotonic
     /// counter the server bumps only at teleport sites, replicated to the local owner alongside the vertical axis so
     /// its prediction cuts on an advance. Added on the wire in generation 4
@@ -339,6 +343,7 @@ public struct MovementState : IComponent
         VerticalVelocity = state.Move.VerticalVelocity,
         Grounded = state.Move.Grounded,
         Swimming = state.Move.Swimming,
+        WaterExcursion = state.Move.WaterExcursion,
         TeleportEpoch = state.TeleportEpoch,
         ClimbRateQ = QuantizeClimbRate(state.Move.ClimbRate),
         SpeedScaleQ = QuantizeSpeedScale(state.Move.SpeedScale),

@@ -41,6 +41,10 @@ public struct MoveState
     /// NetWorld so the local owner reconciles it and remotes animate it.</summary>
     public bool Swimming;
 
+    /// <summary>Explicit surface-water excursion, retained through water-origin flight until
+    /// supported footing. None is the legacy default. Local query selection is never carried here.</summary>
+    public WaterExcursionState WaterExcursion;
+
     /// <summary>Storage for <see cref="SpeedScale"/>, held as the OFFSET FROM 1 (<c>scale - 1</c>) rather than the scale
     /// itself, which is the whole reason the multiplier is a property and not a plain public field like everything else
     /// here. A struct field cannot have a non-zero default, so a raw <c>SpeedScale</c> field would make

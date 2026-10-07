@@ -153,6 +153,7 @@ public static class BuiltinBlobLayout
         11 => 64,       // + MovementCommitment (38 bytes)
         12 => 56,       // - TimeSinceGrounded, JumpBufferRemaining (moved to MovementOwnerState, owner only)
         13 => 56,       // precise move-command flag, persisted payload unchanged
+        14 => 57,       // + WaterExcursion (byte, None=0 for earlier generations)
         _ => throw new ArgumentOutOfRangeException(nameof(wireGeneration), wireGeneration,
             $"No cell-blob movement layout is recorded for wire generation {wireGeneration}. Add its row here (and " +
             "its CellBlobRewriter case if the change was not a plain append) in the same change that bumps " +

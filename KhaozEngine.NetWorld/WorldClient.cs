@@ -496,6 +496,7 @@ public sealed partial class WorldClient : IDisposable
             bool grounded;
             float verticalVelocity;
             bool swimming;
+            WaterExcursionState waterExcursion;
             float climbRate;
             float facingYaw;
             // Local-only signals: a remote receives neither (see EntityRenderState).
@@ -510,6 +511,7 @@ public sealed partial class WorldClient : IDisposable
                 grounded = rs.Grounded;
                 verticalVelocity = rs.VerticalVelocity;
                 swimming = rs.Swimming;
+                waterExcursion = rs.Move.WaterExcursion;
                 // Local: the exact predicted values, un-quantized.
                 climbRate = rs.Move.ClimbRate;
                 landingImpact = rs.Move.LandingImpactSpeed;
@@ -534,11 +536,12 @@ public sealed partial class WorldClient : IDisposable
                 grounded = hasMs ? ms.Grounded : true;
                 verticalVelocity = ms.VerticalVelocity;
                 swimming = hasMs && ms.Swimming;
+                waterExcursion = ms.WaterExcursion;
                 climbRate = hasMs ? MovementState.DecodeClimbRate(ms.ClimbRateQ) : 0f;
                 facingYaw = hasMs ? MovementState.DecodeFacingYaw(ms.FacingYawQ) : 0f;
             }
             string? name = world.TryGet(kv.Value, out PlayerIdentity identity) ? identity.DisplayName : null;
-            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity, swimming, climbRate, stepCumulativeY, landingImpact, facingYaw));
+            list.Add(new EntityRenderState(new NetId(kv.Key), pos, isLocal, name, grounded, verticalVelocity, swimming, climbRate, stepCumulativeY, landingImpact, facingYaw, waterExcursion));
         }
         return list;
     }

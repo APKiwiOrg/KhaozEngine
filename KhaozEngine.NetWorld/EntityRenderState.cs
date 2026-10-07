@@ -1,5 +1,6 @@
 using System.Numerics;
 using KhaozEngine.Replication;
+using KhaozEngine.Locomotion;
 
 namespace KhaozEngine.NetWorld;
 
@@ -55,6 +56,12 @@ public readonly struct EntityRenderState
     }
 
     public EntityRenderState(NetId id, Vector3 position, bool isLocal, string? displayName, bool grounded, float verticalVelocity, bool swimming, float climbRate, float stepCumulativeY, float landingImpactSpeed, float facingYaw)
+        : this(id, position, isLocal, displayName, grounded, verticalVelocity, swimming, climbRate,
+            stepCumulativeY, landingImpactSpeed, facingYaw, WaterExcursionState.None)
+    {
+    }
+
+    public EntityRenderState(NetId id, Vector3 position, bool isLocal, string? displayName, bool grounded, float verticalVelocity, bool swimming, float climbRate, float stepCumulativeY, float landingImpactSpeed, float facingYaw, WaterExcursionState waterExcursion)
     {
         Id = id;
         Position = position;
@@ -67,6 +74,7 @@ public readonly struct EntityRenderState
         StepCumulativeY = stepCumulativeY;
         LandingImpactSpeed = landingImpactSpeed;
         FacingYaw = facingYaw;
+        WaterExcursion = waterExcursion;
     }
 
     /// <summary>The entity's network identity (stable server/client).</summary>
@@ -95,6 +103,11 @@ public readonly struct EntityRenderState
     /// <c>MovementState.Swimming</c>). Feed it into <c>KhaozEngine.Game.CharacterSample</c> so the animator plays the
     /// swim/tread clips. Defaults to false (a land character) when a remote has no replicated movement yet.</summary>
     public bool Swimming { get; }
+
+    /// <summary>Explicit water-origin state on the same timeline as Swimming. Remains
+    /// AirborneFromWater after a surface jump until authoritative supported footing clears it.
+    /// A consumer may use this for presentation without changing durable equipment ownership.</summary>
+    public WaterExcursionState WaterExcursion { get; }
 
     /// <summary>The entity's signed step-climb rate this frame (m/s; +ascending, -descending, 0 not on a step climb;
     /// local: predicted <c>MoveState.ClimbRate</c>; remote: the decoded replicated <c>MovementState.ClimbRateQ</c>,

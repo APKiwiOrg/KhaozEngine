@@ -71,15 +71,17 @@ public class WireGenerationBlobMigrationTests
     }
 
     [Fact]
-    public void UnstampedGenerationTwelveBodyWithEquivalentCandidatesIsUnchanged()
+    public void UnstampedGenerationTwelveBodyWithEquivalentCandidatesDefaultsNewFields()
     {
         byte[] atTwelve = BodyAt(12, CommittedMovement(), Owner(),
             (16, CellBlobFixtures.Extension(new byte[] { 0x04, 0x0C, 0x80, 0xFF })));
 
         byte[] normalized = WireGenerationBlobMigration.NormalizeV3ToV4(atTwelve);
 
-        Assert.Equal(atTwelve, normalized);
-        Assert.Equal(atTwelve, BuiltinBlobLayout.NormalizeToCurrent(atTwelve, 12));
+        byte[] expected = BodyAt(MoveProtocol.WireProtocolVersion, CommittedMovement(), Owner(),
+            (16, CellBlobFixtures.Extension(new byte[] { 0x04, 0x0C, 0x80, 0xFF })));
+        Assert.Equal(expected, normalized);
+        Assert.Equal(expected, BuiltinBlobLayout.NormalizeToCurrent(atTwelve, 12));
     }
 
     [Theory]
@@ -101,7 +103,10 @@ public class WireGenerationBlobMigrationTests
         persistence.SaveDirtyPass();
         await persistence.FlushAsync();
 
-        Assert.Equal(CellBlobFixtures.Wrap(4, 13, atTwelve), await store.LoadAsync("cell:0:0"));
+        byte[] expected = BodyAt(MoveProtocol.WireProtocolVersion, m, Owner(),
+            (16, CellBlobFixtures.Extension(new byte[] { 0x04, 0x0C, 0x80, 0xFF })));
+        Assert.Equal(CellBlobFixtures.Wrap(4, MoveProtocol.WireProtocolVersion, expected),
+            await store.LoadAsync("cell:0:0"));
         Assert.DoesNotContain(issues, i => i.Kind == CellPersistenceIssueKind.QuarantinedCorrupt);
         Assert.DoesNotContain(issues, i => i.Kind == CellPersistenceIssueKind.SkippedTooNew);
         Assert.Contains(issues, i => i.Kind == CellPersistenceIssueKind.Migrated);
@@ -111,7 +116,7 @@ public class WireGenerationBlobMigrationTests
         Assert.Equal(m, cell.World.Get<MovementState>(entity));
         Assert.Equal(m.Commitment, cell.World.Get<MovementState>(entity).Commitment);
         Assert.Equal(Owner(), cell.World.Get<MovementOwnerState>(entity));
-        Assert.Equal(atTwelve, host.SnapshotCell(C00));
+        Assert.Equal(expected, host.SnapshotCell(C00));
     }
 
     private static MovementState CommittedMovement()

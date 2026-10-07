@@ -61,6 +61,7 @@ internal static class CellBlobFixtures
             bw.Write(m.Commitment.TimeoutRemaining);
             bw.Write((byte)m.Commitment.EndReason);
         }
+        if (generation >= 14) bw.Write((byte)m.WaterExcursion);
         bw.Flush();
         return ms.ToArray();
     }

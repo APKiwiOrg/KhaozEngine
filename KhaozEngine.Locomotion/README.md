@@ -471,6 +471,8 @@ swept movement or water transitions required to reach it.
 
 ### Explicit surface motion development status
 
+`WaterExcursionState` is the pure None/Surface/AirborneFromWater value carried by
+`MoveState.WaterExcursion`. Its zero default preserves legacy callers.
 The internal `SurfaceWaterMotion` proposes vertical buoyancy or a water-origin jump arc. A launch
 requires the actual local interval's free top and the inclusive 0.03 m band around its resting
 waterline. The independent launch speed uses the existing gravity-first `JumpSpeedForApex` tuning.

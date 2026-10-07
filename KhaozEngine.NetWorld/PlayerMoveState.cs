@@ -155,6 +155,7 @@ public struct PlayerMoveState : IPredictedState<PlayerMoveState>
             TimeSinceGrounded = owner.TimeSinceGrounded,
             JumpBufferRemaining = owner.JumpBufferRemaining,
             Swimming = movement.Swimming,
+            WaterExcursion = movement.WaterExcursion,
             ClimbRate = MovementState.DecodeClimbRate(movement.ClimbRateQ),
             // Seed the sim-local ascent EWMA (MoveState.ClimbRateEwma, which does NOT ride the wire) from the wire's
             // decoded rate, so client-prediction replay CONTINUES the average from the authoritative value instead of

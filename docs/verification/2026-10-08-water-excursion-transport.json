@@ -1,0 +1,104 @@
+{
+  "status": "Pure excursion transport only. Explicit movement, replay and native acceptance remain pending.",
+  "baseCommit": "8cbf68c58",
+  "red": "All fifteen cases compiled. Missing carried enum fields and required wire-generation bump failed.",
+  "runs": {
+    "transport-red": {
+      "log": "/tmp/swim-excursion-transport-red.log",
+      "sha256": "b1ec35316987734c01192b243929bfa7d25c62c1f8b3aef20377b9dfb434269a",
+      "exitCode": 1,
+      "passed": 0,
+      "failed": 15,
+      "skipped": 0
+    },
+    "transport-green": {
+      "log": "/tmp/swim-excursion-transport-green.log",
+      "sha256": "48e0febb43e7404e59a2eac4acb965cbc1e0ffdff7b4d05c816b319da9774f74",
+      "exitCode": 0,
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    "transport-regressions": {
+      "log": "/tmp/swim-excursion-transport-regressions.log",
+      "sha256": "c2c290fb645620e2eeeb474b6edda31144a45e345e64e2868e0b0ba2d2b95af3",
+      "exitCode": 1,
+      "passed": 184,
+      "failed": 3,
+      "skipped": 0
+    },
+    "migration-green": {
+      "log": "/tmp/swim-excursion-migration-green.log",
+      "sha256": "caa4350cab7a2042eb13f2f9de3001c60b7c6692ae5581a24dd34094cfeaadfb",
+      "exitCode": 1,
+      "passed": 50,
+      "failed": 2,
+      "skipped": 0
+    },
+    "migration-final": {
+      "log": "/tmp/swim-excursion-migration-final.log",
+      "sha256": "caa526d3c33a33d1edac947e1f43ee58c680daa9db91a89a50bfd43aae6423fe",
+      "exitCode": 0,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    "render-red": {
+      "log": "/tmp/swim-excursion-render-red.log",
+      "sha256": "a4b09ddd1b450868886426419ba6a58c18663a4c41e383bc9ec4c21d61831b23",
+      "exitCode": 1,
+      "passed": 0,
+      "failed": 3,
+      "skipped": 0
+    },
+    "render-green": {
+      "log": "/tmp/swim-excursion-render-green.log",
+      "sha256": "e964eeb85320740eaccd485268f635dfb923e42599607e2ff1fdf23462c2a27d",
+      "exitCode": 0,
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "regressionCorrections": "Three historical migration assertions required generation-14 header and appended-zero payload. The first correction missed two live SnapshotCell expectations. These were corrected to the independently encoded new body. No runtime migration change was needed.",
+  "format": {
+    "applyExit": 0,
+    "verifyExit": 0,
+    "formattedFiles": 0
+  },
+  "pending": [
+    "Explicit simulation and excursion transitions",
+    "Command acknowledgement and replay refusal integration",
+    "Native destination classification and actual handoff",
+    "Whole-branch review and full verification"
+  ],
+  "render": "Two real loopback cases carry Surface/AirborneFromWater to the remote render snapshot and then None on a replicated supported state. The old constructor defaults None. Sixteen existing rendering/interpolation regressions pass. Actual swimming simulation is still not wired.",
+  "sourceHashes": {
+    "KhaozEngine.Locomotion/MoveState.cs": "f56b57756198f29a9409d3b5e0edb0272440e376a450f792045709d44f1679c8",
+    "KhaozEngine.Locomotion/WaterExcursionState.cs": "00d2155ee9f48e02081c9c69bb347195d56995133a0188d2aa3f6d0a40cdd790",
+    "KhaozEngine.NetWorld/BuiltinBlobLayout.cs": "6d5e92863712297f9908958bb6557c8521b870edf83123b8d2ecb56b03d02f4f",
+    "KhaozEngine.NetWorld/EntityRenderState.cs": "4d5e74fe35159c12c28c077aca449cc20990ed2e23cc3b0b2d1f276d9766fd73",
+    "KhaozEngine.NetWorld/MoveProtocol.cs": "347f82037b9885a9a05b9ff1a0d7192a3798a47dd59c1d5f5df5e6312130d784",
+    "KhaozEngine.NetWorld/MovementState.cs": "11989d81123b913f8ed777ae548fd2094b05e7498f27ed94846f61d0ee404ca9",
+    "KhaozEngine.NetWorld/PlayerMoveState.cs": "cee5a7875f0446059bc071ec487cc90769a08bd48f77e1400ea823e2ace09791",
+    "KhaozEngine.NetWorld/WaterExcursionWire.cs": "d70e04ba48630f4a29ac3ec7dcf4b3fd9032bd1969e9c704477d1b1d8ad24447",
+    "KhaozEngine.NetWorld/WorldClient.cs": "ea32dff648c57aa0b6e1864484213ad01d8e6ac55775f4a3c20f79c99eb6def5",
+    "KhaozEngine.Server.Tests/NetWorld/CellBlobFixtures.cs": "f96630347d6645688423c020434874b8986f5204fc7a58713ea551fd3677eb29",
+    "KhaozEngine.Server.Tests/NetWorld/WireGenerationBlobMigrationTests.cs": "d9c4bc07ddb958fbbee4353ce61e5606c5f089874a17c63bb6313a5ce5ad8dac",
+    "KhaozEngine.Server.Tests/NetWorld/WaterExcursionTransportTests.cs": "b510884b91d9256a7d2626cf938257cad8b8b52ffb2a13afb3cec149ec13187e",
+    "KhaozEngine.Server.Tests/NetWorld/WaterExcursionRenderStateTests.cs": "eadede17d2cafee13e43ef6e3e948ec7ba8a0edf0ddacf3326e0db74af731564"
+  },
+  "guardResults": {
+    "dashes": 0,
+    "prose": 0,
+    "fileSize": 0,
+    "docVersions": 0,
+    "diffWhitespace": 0
+  },
+  "renderFormat": {
+    "applyExit": 0,
+    "verifyExit": 0,
+    "formattedFiles": 0,
+    "analyzers": "NetWorld 154, Server.Tests 223"
+  }
+}

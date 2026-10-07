@@ -13,8 +13,6 @@ namespace KhaozEngine.Tests.Physics;
 public class CapsuleBoxEnclosureWitnessTests
 {
     static readonly BoxShape BoxShape = new(new Vector3(0.5f));
-    delegate GeometrySign ClassifyCall(Shapes shapes, TypedIndex shape, RigidPose pose,
-        GeometryVector centre, float radius, float halfCylinderLength);
 
     [Fact]
     public void AWhollyOverlappingEnclosureHasNegativeSign() =>
@@ -89,10 +87,7 @@ public class CapsuleBoxEnclosureWitnessTests
         ref var target = ref simulation.Statics[0];
         Assert.Equal(sourcePose.Position, target.Pose.Position);
         Assert.Equal(sourcePose.Orientation, target.Pose.Orientation);
-        MethodInfo? method = typeof(CapsuleBoxPointWitness).GetMethod("ClassifyEnclosure",
-            BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        GeometrySign result = method.CreateDelegate<ClassifyCall>()(
+        GeometrySign result = CapsuleBoxPointWitness.ClassifyEnclosure(
             simulation.Shapes, target.Shape, target.Pose, centre, radius, 0.5f);
         lease.AssertCurrent();
         Assert.Equal(expected, result);

@@ -719,3 +719,35 @@ Unsupported shape/pose/input and unresolved arithmetic retain no contact asserti
 The ten enclosure facts compiled and failed at the absent `ClassifyEnclosure` method after the
 actual world/read-lease and path-enclosure controls passed. Zero passes/skips, expected exit 1 in
 `/tmp/swim-box-enclosure-red.log`. This is missing-capability RED, not a geometry result.
+
+The enclosure implementation passed all ten direct assertions, followed by all ten existing exact
+point cases. Both exited 0 with no failures/skips in `/tmp/swim-box-enclosure-green.log` and
+`/tmp/swim-box-point-regressions.log`. Shared arithmetic was unchanged.
+
+## Single identity-box fraction search
+
+The next composition searches one installed identity-box leaf on the original capsule path. It
+returns normalized fractions internally, before any metre encoding or selected-world aggregation.
+The closed coordinate hull of two enclosed path endpoints contains every intermediate position
+because each coordinate is affine in the fraction. A positive enclosure classification therefore
+certifies the whole closed fraction cell. Endpoint sampling alone never certifies that cell.
+
+Visit cells from left to right. A cell may be discarded only with whole-cell separation proof.
+A Hit requires an actual nonpositive point witness at its upper bound and a cell width no greater
+than the requested fraction width. The lower bound is the beginning of the first remaining cell,
+with every preceding cell already proved separated. It is not an accepted placement. Initial overlap
+or closed tangency returns [0,0]. Clear requires every cell through the closed endpoint to be proved
+separated. No nonpositive support gap is used as a collision witness.
+
+Unproved cells subdivide at their dyadic midpoint, retaining original C and D. The search has a
+maximum of 256 processed cells and depth 48, with explicit refusal on exhausted work, unrepresentable
+subdivision, unsupported geometry or unresolved classification that cannot be refined. A refusal
+returns no prefix. These are operational query limits to include in the eventual policy identity,
+not world-size limits. The finite fixture matrix covers forward/reverse entry, translated boxes,
+vertical and corner entry, endpoint/start tangency, initial penetration, stationary clear/overlap,
+interior collision with clear endpoints, diagonal separation requiring subdivision, and exhaustion.
+
+This establishes neither complete selected-world candidate enumeration nor general rotated/mesh
+geometry. Fraction-to-metre outward encoding, aggregate earliest contacts and the movement consumer
+remain separate prerequisites. In particular an irrational grazing event without a provable point
+witness must refuse rather than manufacture a Hit or Clear from the remaining small interval.

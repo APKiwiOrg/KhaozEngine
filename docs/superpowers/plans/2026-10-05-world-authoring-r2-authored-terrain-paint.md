@@ -3641,3 +3641,19 @@ unchanged. Parent rejected unrelated typed-writer expansion. R1/R3 corrections a
 unverified, and targeted review identified remaining excluded-role and lookup-node traversal work
 under R2. Their two public-API regressions are prepared separately, pending a compilable embedding
 implementation before runtime proof. None of these checkpoints closes Task 7.
+
+
+### Task 7 remaining traversal RED reached
+
+The bounded embedding helper and both read adapters are prepared and compiled, with their scoped
+source review still independent. R1/R3 corrections are source-ready but unverified. One granted run
+executed both new metadata-work regressions. Both failed exactly at expected CapacityExceeded versus
+actual Complete, zero skips and no compiler notices. Later sufficient-budget assertions were not
+reached. All 46 frozen hashes were unchanged and primary was released. Proof is
+proofs/2026-10-07-r2-task7-traversal-red.json. The eight storage boundary controls and 25 embedding
+rows remain unexecuted. This checkpoint preserves compiled preparation and known RED, not acceptance.
+
+The remaining correction charges surface refs before role filtering and lookup nodes before bounds
+inspection through one call-owned metadata allowance, separate from decoded-page counts. After scoped
+review, Task 7 GREEN, affected regressions and diagnostic format checks will share one requested
+serial work window. No main/feed/publication or private input action is included.

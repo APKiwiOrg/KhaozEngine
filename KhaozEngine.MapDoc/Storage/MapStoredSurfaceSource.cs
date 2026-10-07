@@ -15,7 +15,7 @@ public sealed class MapStoredSurfaceSource : IMapSurfaceSource
     {
         _directory = Path.GetFullPath(directory);
         Index = tiles.Surfaces ?? new MapSurfaceStorageIndex(Array.Empty<MapDirectoryPageRef>(), manifest.Surfaces.Refs);
-        Surfaces = Array.AsReadOnly(MapSurfaceStorageIndex.CopyRefs(manifest.Surfaces.Refs).ToArray());
+        Surfaces = Array.AsReadOnly(MapSurfaceStorageIndex.CopyRefs(manifest.Surfaces.Refs).OrderBy(s => s.Id, StringComparer.Ordinal).ToArray());
         SnapshotId = "manifest:" + tiles.ManifestSha256;
         RootSha256 = MapSurfaceSemantics.RootDigest(manifest);
     }

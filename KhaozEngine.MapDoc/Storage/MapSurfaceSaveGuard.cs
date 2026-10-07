@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Storage;
@@ -22,6 +23,7 @@ internal static class MapSurfaceSaveGuard
     {
         MapSurfaceSet set = doc.Surfaces;
         bool surfaceChanged = false;
+        var reverseSurfaces = new List<MapSurfaceRef>(index.OriginalRefs);
         var positions = new MapSurfaceSet();
         positions.Refs.AddRange(set.Refs);
         foreach (var patch in set.Patches) positions.Patches.Add(patch.Key, patch.Value);
@@ -30,6 +32,13 @@ internal static class MapSurfaceSaveGuard
             MapSurfaceRef? current = set.Refs.FirstOrDefault(s => s.Id == old.Id);
             surfaceChanged |= current is null || current.Frame != old.Frame;
             if (current is null) positions.Refs.Add(old);
+        }
+        foreach (MapSurfaceRef surface in set.Refs)
+        {
+            MapSurfaceRef? original = index.OriginalRefs.FirstOrDefault(s => s.Id == surface.Id);
+            if (original is null) reverseSurfaces.Add(surface);
+            if (surface.IndoorSpan is { } span && span.ParentSpace != original?.IndoorSpan?.ParentSpace)
+                ParentSpace(set, index, surface.Id, span);
         }
         var changed = new SortedSet<MapPatchKey>(index.Baselines.Keys.Where(k => !set.Patches.ContainsKey(k)));
         foreach (var pair in set.Patches)
@@ -54,9 +63,12 @@ internal static class MapSurfaceSaveGuard
                 Positions(positions, current);
             }
             MapSurfacePatch extent = original ?? current!;
-            MapSurfaceRef owner = positions.Refs.First(s => s.Id == key.SurfaceId);
+            // Original coverage stays authoritative until the later structural refusal.
+            MapSurfaceRef owner = original is not null
+                ? index.OriginalRefs.First(s => s.Id == key.SurfaceId)
+                : set.Refs.First(s => s.Id == key.SurfaceId);
             MapExactRect world = MapSurfaceRanges.World(MapSurfaceRanges.Rectangle(extent), owner.Frame);
-            foreach (MapSurfaceRef surface in set.Refs)
+            foreach (MapSurfaceRef surface in reverseSurfaces)
             {
                 MapSlotRect slots = MapSurfaceRanges.Slots(MapSurfaceRanges.Cells(world, surface.Frame));
                 foreach (MapDirectoryPageRef dir in index.Covering(surface.Id, slots))
@@ -86,6 +98,19 @@ internal static class MapSurfaceSaveGuard
                 throw new MapDocumentException("unsupported partial edit: records");
         }
         if (surfaceChanged) throw new MapDocumentException("unsupported partial edit: surface");
+    }
+    static void ParentSpace(MapSurfaceSet set, MapSurfaceStorageIndex index, string surfaceId, MapIndoorSpan span)
+    {
+        MapRecordRef reference = span.ParentSpace;
+        if (!set.Patches.TryGetValue(reference.Anchor, out MapSurfacePatch? anchor))
+        {
+            if (index.StatusOf(reference.Anchor) == MapPatchStatus.Unloaded) RefuseUnloaded(reference.Anchor);
+            throw new MapDocumentException($"missing referenced patch '{reference.Anchor}'");
+        }
+        string source = $"indoor span '{span.Id}' on surface '{surfaceId}'";
+        MapTopologyRecord? record = anchor.Records.FirstOrDefault(r => r.Id == reference.Id);
+        if (record is null) throw new MapDocumentException($"missing record '{reference.Id}' in '{source}'");
+        if (record is not MapSpaceDoc) throw new MapDocumentException($"wrong type for '{reference.Id}' in '{source}'");
     }
     static void RefuseUnloaded(MapPatchKey key) => throw new MapDocumentException($"unloaded referenced patch '{key}'");
     static void Positions(MapSurfaceSet set, MapSurfacePatch dependent)

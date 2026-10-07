@@ -23,17 +23,28 @@ internal static class MapSurfaceEmbedding
             bytes += length;
         }
     }
-    internal static void Read(JsonObject root, MapSurfaceSet set)
+    internal static void Read(JsonObject root, MapSurfaceSet set) =>
+        Read(root, set, MapSurfacePatchCodec.MaxEncodedBytes, MaxEncodedBytes, static size => new byte[size]);
+
+    internal static void Read(JsonObject root, MapSurfaceSet set, int maxPatchBytes, long maxEncodedBytes,
+        Func<int, byte[]> allocatePayload)
     {
+        ArgumentNullException.ThrowIfNull(allocatePayload);
         if (!MapDocumentMembers.TryGetProperty(root, "surfacePatches", out JsonNode? node)) return;
-        if (node is not JsonArray patches || patches.Count > MaxPatches) throw Limit();
-        long total = 2;
+        if (node is not JsonArray patches || patches.Count > MaxPatches || maxPatchBytes < 0 || maxEncodedBytes < 2) throw Limit();
+        long remaining = maxEncodedBytes - 2;
+        bool first = true;
         foreach (JsonNode? item in patches)
         {
             if (item is not JsonObject patch) throw new MapDocumentException("invalid embedded surface patch");
-            byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(patch);
-            total = checked(total + bytes.Length + 1);
-            if (total > MaxEncodedBytes) throw Limit();
+            if (!first)
+            {
+                if (remaining < 1) throw Limit();
+                remaining--;
+            }
+            byte[] bytes = MapSurfaceEmbeddedPayload.Encode(patch, (int)Math.Min(maxPatchBytes, remaining), allocatePayload);
+            remaining -= bytes.Length;
+            first = false;
             MapPatchKey key = patch["key"]!.Deserialize<MapPatchKey>(MapDocumentFile.CreateCompactOptions(MapDocRegistry.CreateDefault()));
             if (!set.Patches.TryAdd(key, MapSurfacePatchCodec.Decode(bytes, key))) throw new MapDocumentException("duplicate embedded surface patch");
         }

@@ -264,8 +264,12 @@ execution. The format advance changes authored identity once. It does not preser
 `AuthoredBindingsV2`. Resolver 1 refuses authored surfaces and placement support bindings. A placement
 with `SupportBinding` cannot also provide explicit `Y`. `Surfaces` owns metadata and resident patches,
 and snapshots clone its mutable collections. Monolithic documents embed canonical `surfacePatches`,
-bounded to 256 patches and 8 MiB. Larger worlds use tiled storage under `tiles/surfaces/`, with SHA-256
-payloads, index pages and directory pages. The manifest's `surfaceStorage` commits their closure last.
+bounded to 256 patches, 1 MiB per encoded patch and 8 MiB including array brackets and inter-patch commas.
+Embedded reads measure compact payload bytes before allocating each exact output buffer. General strings
+use default JSON escaping and packed base64 retains the codec's ASCII spelling. Parsed DOM storage and
+decoded scalar strings remain bounded by the supplied input. Larger worlds use tiled storage under
+`tiles/surfaces/`, with SHA-256 payloads, index pages and directory pages. The manifest's `surfaceStorage`
+commits their closure last.
 Any default is as arbitrary as any other for a document that had no tile concept, so the rule is
 "deterministic and documented" rather than "derived". A document newer than the engine, or an old one with
 no migration path, fails to load. Saving always writes the current version.

@@ -46,26 +46,44 @@ public sealed class MapDocumentSurfaceSource : IMapSurfaceSource
         : new(key, _index.StatusOf(key) == MapPatchStatus.Present ? MapPatchStatus.KnownEmpty : _index.StatusOf(key), null, null, null, 0);
     public MapPatchFindResult FindPatches(MapSurfaceScope scope)
     {
-        MapPatchFindResult known = Find(_index, scope);
+        ArgumentNullException.ThrowIfNull(scope);
+        scope.Validate();
+        var budget = new MapPageBudget(scope.Limits.MaxPageReads);
+        MapPatchFindResult known = Find(_index, scope, budget);
         if (ReferenceEquals(_index, _residentIndex) || known.Status == MapFindStatus.CapacityExceeded) return known;
-        MapPatchFindResult resident = Find(_residentIndex, scope);
+        MapPatchFindResult resident = Find(_residentIndex, scope, budget);
         if (resident.Status == MapFindStatus.CapacityExceeded) return resident;
-        MapPatchRead[] patches = known.Patches.Concat(resident.Patches).DistinctBy(p => p.Key).OrderBy(p => p.Key).ToArray();
-        if (patches.Length > scope.Limits.MaxCandidatePatches)
-            return new(MapFindStatus.CapacityExceeded, scope, SnapshotId, Array.Empty<MapPatchRead>(),
-                Array.Empty<MapCoveredRange>(), Array.Empty<MapPatchRead>(), 0);
-        var empty = new List<MapCoveredRange>();
-        foreach (MapCoveredRange range in known.KnownEmpty)
+        try
         {
-            var rects = new List<MapSlotRect> { range.Slots };
-            foreach (MapPatchRead patch in patches.Where(p => p.Key.SurfaceId == range.SurfaceId))
-                MapSurfaceQuery.Subtract(rects, new(patch.Key.SlotX, patch.Key.SlotZ, checked(patch.Key.SlotX + 1), checked(patch.Key.SlotZ + 1)));
-            empty.AddRange(rects.Select(r => new MapCoveredRange(range.SurfaceId, r)));
+            var patches = new SortedDictionary<MapPatchKey, MapPatchRead>();
+            foreach (MapPatchRead patch in known.Patches.Concat(resident.Patches))
+            {
+                if (patches.ContainsKey(patch.Key)) continue;
+                if (patches.Count >= scope.Limits.MaxCandidatePatches) throw new MapSurfaceCapacityException();
+                patches.Add(patch.Key, patch);
+            }
+            var empty = new List<MapCoveredRange>();
+            foreach (MapCoveredRange range in known.KnownEmpty)
+            {
+                budget.BeforeRange();
+                var rects = new List<MapSlotRect> { range.Slots };
+                foreach (MapPatchRead patch in patches.Values.Where(p => p.Key.SurfaceId == range.SurfaceId))
+                    MapSurfaceQuery.Subtract(rects, new(patch.Key.SlotX, patch.Key.SlotZ, checked(patch.Key.SlotX + 1), checked(patch.Key.SlotZ + 1)), budget);
+                empty.AddRange(rects.Select(r => new MapCoveredRange(range.SurfaceId, r)));
+            }
+            return known with { Patches = Array.AsReadOnly(patches.Values.ToArray()), KnownEmpty = Array.AsReadOnly(empty.ToArray()) };
         }
-        return known with { Patches = Array.AsReadOnly(patches), KnownEmpty = Array.AsReadOnly(empty.ToArray()) };
+        catch (MapSurfaceCapacityException)
+        {
+            return MapSurfaceQuery.Capacity(this, scope, budget);
+        }
+        catch (Exception ex) when (ex is MapExactOverflowException or OverflowException)
+        {
+            throw new MapDocumentException("surface scope not representable", ex);
+        }
     }
-    MapPatchFindResult Find(MapSurfaceStorageIndex index, MapSurfaceScope scope) => MapSurfaceQuery.Find(this, index, scope,
+    MapPatchFindResult Find(MapSurfaceStorageIndex index, MapSurfaceScope scope, MapPageBudget budget) => MapSurfaceQuery.Find(this, index, scope,
         (dir, _) => index.DirectoryPages.ContainsKey(dir.Sha256) ? MapPatchStatus.Present : MapPatchStatus.Unloaded,
         (_, page, _) => index.IndexPages.ContainsKey(page.Sha256) ? MapPatchStatus.Present : MapPatchStatus.Unloaded,
-        entry => ReadPatch(entry.Key));
+        entry => ReadPatch(entry.Key), budget);
 }

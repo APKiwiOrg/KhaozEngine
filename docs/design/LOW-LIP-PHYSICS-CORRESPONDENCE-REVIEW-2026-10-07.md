@@ -78,3 +78,47 @@ Recommendation: acknowledge that the existing seam is insufficient, then request
 feature-correspondence design with that edge/support rule made explicit. Keep the repair gate closed
 until the geometric relation and numerical domain are proved. This assessment does not approve the
 new API or claim it will make all existing corner fixtures eligible.
+
+## Draft shared-seam review
+
+Reviewed the complete proposed spec at
+`docs/superpowers/specs/2026-10-07-capsule-feature-correspondence-design.md` in the owning low-lip
+worktree, SHA-256 `93ea3b111e55d3daae10f686cf0d3eb072a116516833e01b529838c70e66e0de`.
+This is a bounded lifetime/selection compatibility review, not numerical verification or API approval.
+
+The optional feature query is compatible in direction. It neither replaces existing lease signatures
+nor expands the certified-sweep contract. Its explicit static target, installed geometry, incident
+feature classification and independently declared numerical domain preserve the agreed separation.
+The following lifetime details must be explicit before freezing the shared portion:
+
+1. Authenticate the actual owner-issued live lease and reject wrong-thread use before attempting
+   `EnterQuery` or any other monitor acquisition. `ReadLease.AssertCurrent` deliberately checks thread
+   first in `BepuPhysicsWorld.QueryLease.cs`. Calling a new forwarding method from a foreign thread
+   must not block on the gate held by the very lease being validated. After entry, recheck the actual
+   receiver and currentness before publication. No signature replacement is needed.
+2. Bind consumption to the exact original lease instance, not only source/origin/generation. Acquiring
+   and disposing a read lease does not advance `_queryGeneration`. A later lease can therefore have
+   identical metadata after the first expires. The result needs an enforceable original-lease binding
+   or validation operation retaining it. A later live lease must not revive an old result.
+3. The lease certifies its owner, not a selected view. `QueryView.AcquireQueryReadLease` returns the
+   owner's lease. Preserve the actual query receiver separately by reference identity and forward its
+   exact exclusions/filter. Do not infer selection from `lease.SourceWorld`, and do not fall back to
+   that owner. The draft's receiver field is the right boundary. A receiver's disposal must invalidate
+   result use even when owner/generation metadata still match.
+4. Keep lazy derived geometry caches under the existing gate without treating cache publication as a
+   physical mutation. Actual shape/pose changes remain under the mutation fence and advance the
+   generation. A generation change is conservative evidence of a changed source, not a portable
+   geometry hash or an exact count of successful geometry edits. The current fence can advance it
+   before a mutation that subsequently fails validation.
+
+Two contract clarifications avoid overstating proof. `StaticHandle` is an integer, so lookup cannot
+prove which source originally issued an equal-valued integer. Capturing it from the selected source
+within the live interval is a caller obligation unless a future separately designed scoped token
+encodes that provenance. Do not promise detection of all foreign integer handles. Also state that
+refusal/exception leaves the caller face span untouched, using private bounded scratch and committing
+only after complete validation. Zero written count alone should not hide partially published faces.
+
+No change to the existing Physics lease interfaces is requested. The shared `QueryView` implementation
+still requires serialized edits, and any extraction of the prerequisite needs its own reviewed,
+verified integration. None of the proposed 2048 m domain or face-query error ceilings is a certified
+sweep policy, F3 tolerance amendment or native support acceptance.

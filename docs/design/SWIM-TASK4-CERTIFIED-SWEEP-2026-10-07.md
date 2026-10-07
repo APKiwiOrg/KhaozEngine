@@ -424,3 +424,13 @@ Sources were unchanged between commands and the secondary slot was explicitly re
 value or full-suite rerun was included. This fixes the demonstrated float rounding overrun only.
 A mathematical norm enclosure, supported backend geometry and continuous sweep certificate remain
 separate obligations, not consequences of these finite tests.
+
+## Landed lease reconciliation
+
+The lease prerequisite landed independently on main at `c3c076a22`, staged 20.29.0. Swimming merged
+that source at `c65946989`, retaining its contacts and sweep work and taking the main lease-test
+formatter change. All Physics/Bepu/Locomotion runtime files remained identical to pre-merge swimming
+source. The separately granted five-fixture Release check passed 82 cases, zero failures/skips,
+exit 0. The [reconciliation evidence](../verification/2026-10-07-swimming-main-reconciliation.json)
+records the exact tested commit, command and log hash. The secondary slot was explicitly released.
+This is focused reconciliation, not final whole-branch or native/backend certification.

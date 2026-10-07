@@ -1,0 +1,13 @@
+{
+  "tested_merge": "c65946989db095173a713b1e8e0a29d6c8d4a3af",
+  "landed_main": "c3c076a228b4829f642f997aef933f63b1561dcb",
+  "version": "20.29.0",
+  "command": "dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release -m:1 --filter FullyQualifiedName~PhysicsQueryLeaseTests|FullyQualifiedName~CapsuleContactCoverageTests|FullyQualifiedName~MovementEnvironmentContextTests|FullyQualifiedName~MovementCapsuleSweepLeaseTests|FullyQualifiedName~MovementCapsuleSweepNumericTests",
+  "log_sha256": "f31b7960403ea5ca2d409d980acfccb3645a1ea33be13ef908741ce1fe21e4c8",
+  "exit": 0,
+  "passed": 82,
+  "failed": 0,
+  "skipped": 0,
+  "reconciliation": "All Physics/Bepu/Locomotion runtime files unchanged from pre-merge swimming source. Lease test uses the exact main formatter change. Presentation and WorldClient source match landed main. Contact/sweep capabilities and docs retained.",
+  "limits": "Focused source reconciliation only. No full-branch verification, certified backend sweep, native G1b, game pin or release claim."
+}

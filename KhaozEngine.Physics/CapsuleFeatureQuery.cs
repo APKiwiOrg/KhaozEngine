@@ -72,6 +72,74 @@ public readonly struct CapsuleFeatureResult
             throw new ArgumentOutOfRangeException(nameof(requiredCapacity));
         return new(status, requiredCapacity);
     }
+
+    /// <summary>Publishes structurally valid witness data under its original live interval. This does
+    /// not authenticate a backend, prove face completeness or enforce a backend's numerical ceilings.
+    /// The provider must establish those facts and commit the validated faces to the caller together.</summary>
+    public static CapsuleFeatureResult Completed(IPhysicsWorld queryWorld, IPhysicsQueryLease lease,
+        StaticHandle target, int leafId, int featureId, CapsuleFeatureKind kind, Vector3 axisPoint,
+        Vector3 geometryPoint, Vector3 separationNormal, double separationLower, double separationUpper,
+        float positionErrorMetres, float normalError, ReadOnlySpan<CapsuleIncidentFace> faces) =>
+        new(queryWorld, lease, target, leafId, featureId, kind, axisPoint, geometryPoint, separationNormal,
+            separationLower, separationUpper, positionErrorMetres, normalError, faces);
+
+    CapsuleFeatureResult(IPhysicsWorld queryWorld, IPhysicsQueryLease lease, StaticHandle target,
+        int leafId, int featureId, CapsuleFeatureKind kind, Vector3 axisPoint, Vector3 geometryPoint,
+        Vector3 separationNormal, double separationLower, double separationUpper, float positionErrorMetres,
+        float normalError, ReadOnlySpan<CapsuleIncidentFace> faces)
+    {
+        ArgumentNullException.ThrowIfNull(queryWorld);
+        ArgumentNullException.ThrowIfNull(lease);
+        lease.AssertCurrent();
+        if (target.Value < 0 || leafId < 0 || featureId < 0 || !ValidKind(kind))
+            throw new ArgumentException("Feature identities and kind must be valid.");
+        if (!Finite(axisPoint) || !Finite(geometryPoint) || !Finite(separationNormal) || separationNormal == Vector3.Zero)
+            throw new ArgumentException("Feature witness points and a nonzero normal must be finite.");
+        if (!double.IsFinite(separationLower) || !double.IsFinite(separationUpper) || separationLower > separationUpper)
+            throw new ArgumentException("Feature separation bounds must be finite and ordered.");
+        if (!ValidError(positionErrorMetres) || !ValidError(normalError))
+            throw new ArgumentException("Feature error bounds must be finite and nonnegative.");
+        if (faces.Length is < 1 or > 256)
+            throw new ArgumentOutOfRangeException(nameof(faces), "A complete feature has one to 256 incident faces.");
+        for (int i = 0; i < faces.Length; i++)
+        {
+            CapsuleIncidentFace face = faces[i];
+            if (face.FaceId < 0 || !Finite(face.Normal) || face.Normal == Vector3.Zero ||
+                !ValidError(face.NormalError) || !ValidKind(face.Incidence))
+                throw new ArgumentException("Incident face fields must be valid.", nameof(faces));
+            for (int previous = 0; previous < i; previous++)
+                if (faces[previous].FaceId == face.FaceId)
+                    throw new ArgumentException("Incident face identities must be distinct.", nameof(faces));
+        }
+        IPhysicsWorld source = lease.SourceWorld;
+        Vector3 origin = lease.Origin;
+        long generation = lease.GeometryGeneration;
+        if (source is null || !Finite(origin) || generation < 0)
+            throw new ArgumentException("Lease metadata must be valid.", nameof(lease));
+        this = default;
+        Status = CapsuleFeatureStatus.Complete;
+        Written = faces.Length;
+        QueryWorld = queryWorld;
+        SourceWorld = source;
+        Lease = lease;
+        Origin = origin;
+        GeometryGeneration = generation;
+        Target = target;
+        LeafId = leafId;
+        FeatureId = featureId;
+        Kind = kind;
+        AxisPoint = axisPoint;
+        GeometryPoint = geometryPoint;
+        SeparationNormal = separationNormal;
+        SeparationLower = separationLower;
+        SeparationUpper = separationUpper;
+        PositionErrorMetres = positionErrorMetres;
+        NormalError = normalError;
+    }
+
+    static bool Finite(Vector3 value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
+    static bool ValidError(float value) => float.IsFinite(value) && value >= 0;
+    static bool ValidKind(CapsuleFeatureKind value) => value is > CapsuleFeatureKind.None and <= CapsuleFeatureKind.Vertex;
 }
 
 /// <summary>Optional finite-feature correspondence in the exact selected query view.

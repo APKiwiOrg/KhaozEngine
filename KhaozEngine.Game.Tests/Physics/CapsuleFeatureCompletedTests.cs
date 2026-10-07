@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -124,9 +123,7 @@ public class CapsuleFeatureCompletedTests
 
     static CompleteCall Bind()
     {
-        MethodInfo? method = typeof(CapsuleFeatureResult).GetMethod("Completed", BindingFlags.Public | BindingFlags.Static);
-        Assert.NotNull(method);
-        return method.CreateDelegate<CompleteCall>();
+        return CapsuleFeatureResult.Completed;
     }
 
     sealed class Scene : IDisposable

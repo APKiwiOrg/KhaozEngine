@@ -87,13 +87,15 @@ Constructors/factories enforce structural invariants only, never claim numerical
 
 ### Task 3: Prove bounded geometric arithmetic
 
-**Files:** Create `KhaozEngine.Physics.Bepu/CapsuleFeaturePredicates.cs`,
+**Files:** Create `KhaozEngine.Physics.Bepu/BoundedGeometryArithmetic.cs`,
+`KhaozEngine.Physics.Bepu/CapsuleFeaturePredicates.cs`,
 `KhaozEngine.Game.Tests/Physics/CapsuleFeaturePredicateTests.cs`, and
 `docs/design/CAPSULE-FEATURE-NUMERICAL-PROOF-2026-10-07.md`.
 
-**Interfaces:** Internal `FeatureInterval` provides outward `Lower`/`Upper`, arithmetic and verified
+**Interfaces:** Internal `GeometryInterval` in the shared arithmetic file provides outward `Lower`/`Upper`, arithmetic and verified
 square-root enclosures. `FeaturePredicateSign` distinguishes Negative, Zero, Positive and Unresolved.
-`CapsuleFeaturePredicates` provides finite membership, orientation and closest-feature ordering with
+`BoundedGeometryArithmetic` owns transform enclosures and the bounded exact arithmetic.
+`CapsuleFeaturePredicates` provides feature-specific finite membership, orientation and closest-feature ordering with
 the spec's 4,096-bit exact-predicate refusal cap. No caller interprets Unresolved as zero or absence.
 
 - [ ] Write finite independent dyadic/rational tests for cancellation, representable boundaries,

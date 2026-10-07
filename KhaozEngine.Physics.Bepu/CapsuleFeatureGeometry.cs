@@ -109,12 +109,22 @@ internal static class CapsuleFeatureGeometry
         }
         else
         {
-            // Mesh is Task 5. Curves, BigCompound and unknown/nonconvex child types also refuse.
+            // Mesh has its own finite one-sided owner. Nonconvex compound children still refuse.
             return CapsuleFeatureStatus.Unsupported;
         }
 
+        CapsuleFeatureStatus transformed = TransformVertices(local, pose, out FeaturePoint[] world);
+        if (transformed != CapsuleFeatureStatus.Complete) return transformed;
+        var candidate = new CapsuleFeaturePolyhedron(index, localPose, pose, leafId, local, world, polygons);
+        CapsuleFeatureStatus validation = candidate.Validate();
+        if (validation == CapsuleFeatureStatus.Complete) leaf = candidate;
+        return validation;
+    }
+
+    internal static CapsuleFeatureStatus TransformVertices(Vector3[] local, in RigidPose pose, out FeaturePoint[] world)
+    {
+        world = new FeaturePoint[local.Length];
         Matrix3x3.CreateFromQuaternion(pose.Orientation, out Matrix3x3 matrix);
-        var world = new FeaturePoint[local.Length];
         var seamPose = new Pose(pose.Position, pose.Orientation);
         for (int i = 0; i < local.Length; i++)
         {
@@ -135,13 +145,10 @@ internal static class CapsuleFeatureGeometry
             if (!world[i].IsResolved) return CapsuleFeatureStatus.Unresolved;
             if (!world[i].Within(2048)) return CapsuleFeatureStatus.Unsupported;
         }
-        var candidate = new CapsuleFeaturePolyhedron(index, localPose, pose, leafId, local, world, polygons);
-        CapsuleFeatureStatus validation = candidate.Validate();
-        if (validation == CapsuleFeatureStatus.Complete) leaf = candidate;
-        return validation;
+        return CapsuleFeatureStatus.Complete;
     }
 
-    static bool ProveRigidPose(in RigidPose pose)
+    internal static bool ProveRigidPose(in RigidPose pose)
     {
         if (!Within(pose.Position, 2048)) return false;
         var seamPose = new Pose(pose.Position, pose.Orientation);

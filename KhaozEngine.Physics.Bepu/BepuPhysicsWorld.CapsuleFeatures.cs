@@ -66,6 +66,14 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleFeatures
         // Read the live registry and pose under the authenticated gate, including rebase changes.
         // Uncached managed scratch avoids shape removal/reuse and cache lifetime mutation hooks.
         _sim.Statics.GetDescription(entry.Handle, out var description);
+        if (description.Shape.Type == default(Mesh).TypeId)
+        {
+            CapsuleFeatureStatus meshCaptured = CapsuleFeatureMesh.Capture(_sim, description.Shape, description.Pose,
+                out CapsuleFeatureMesh? mesh);
+            if (meshCaptured != CapsuleFeatureStatus.Complete) return CapsuleFeatureResult.Refused(meshCaptured);
+            return CapsuleFeatureMeshQuery.Query(mesh!, receiver, lease, target, capsule, pose,
+                maximumSeparationMetres, faces);
+        }
         CapsuleFeatureStatus captured = CapsuleFeatureGeometry.Capture(_sim, description.Shape, description.Pose,
             out CapsuleFeaturePolyhedron[] leaves);
         if (captured != CapsuleFeatureStatus.Complete) return CapsuleFeatureResult.Refused(captured);

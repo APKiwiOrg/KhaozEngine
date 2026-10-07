@@ -63,45 +63,52 @@ internal static class CapsuleFeatureGeometryQuery
     }
 
     static CapsuleFeatureResult Publish(CapsuleFeaturePolyhedronCandidate selected, IPhysicsWorld receiver,
-        IPhysicsQueryLease lease, StaticHandle target, FeatureNumber radius, Span<CapsuleIncidentFace> destination)
+        IPhysicsQueryLease lease, StaticHandle target, FeatureNumber radius, Span<CapsuleIncidentFace> destination) =>
+        Publish(selected.Leaf.LeafId, selected.FeatureId, selected.Kind, selected.Axis, selected.Geometry,
+            selected.SquaredDistance, selected.IncidentFaces, selected.Leaf.Normals,
+            CapsuleFeatureGeometry.MaximumFaces, receiver, lease, target, radius, destination);
+
+    internal static CapsuleFeatureResult Publish(int leafId, int featureId, CapsuleFeatureKind kind,
+        FeaturePoint axisPoint, FeaturePoint geometryPoint, FeatureNumber squaredDistance, int[] incidentFaces,
+        FeaturePoint[] normals, int faceIdStride, IPhysicsWorld receiver, IPhysicsQueryLease lease,
+        StaticHandle target, FeatureNumber radius, Span<CapsuleIncidentFace> destination)
     {
-        if (!selected.Axis.Within(2048) || !selected.Geometry.Within(2048))
+        if (!axisPoint.Within(2048) || !geometryPoint.Within(2048))
             return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unsupported);
-        GeometryVectorOutput axis = GeometryVectorOperations.Publish(selected.Axis.Bounds);
-        GeometryVectorOutput geometry = GeometryVectorOperations.Publish(selected.Geometry.Bounds);
-        GeometryVector direction = GeometryVectorOperations.Normalize(FeaturePoint.Subtract(selected.Axis, selected.Geometry).Bounds);
+        GeometryVectorOutput axis = GeometryVectorOperations.Publish(axisPoint.Bounds);
+        GeometryVectorOutput geometry = GeometryVectorOperations.Publish(geometryPoint.Bounds);
+        GeometryVector direction = GeometryVectorOperations.Normalize(FeaturePoint.Subtract(axisPoint, geometryPoint).Bounds);
         GeometryVectorOutput normal = GeometryVectorOperations.Publish(direction);
         if (!axis.IsResolved || !geometry.IsResolved || !normal.IsResolved || !WithinCeiling(axis.Error, 4000) ||
             !WithinCeiling(geometry.Error, 4000) || !WithinCeiling(normal.Error, 100000))
             return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unresolved);
-        GeometryInterval squared = selected.SquaredDistance.Bounds;
+        GeometryInterval squared = squaredDistance.Bounds;
         if (!squared.IsResolved || squared.Lower <= 0)
             return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unresolved);
         GeometryInterval separation = squared.Sqrt().Subtract(radius.Bounds);
-        GeometrySign exactContact = FeaturePoint.CompareDistanceToRadius(selected.Axis, selected.Geometry, radius.Value);
+        GeometrySign exactContact = FeaturePoint.CompareDistanceToRadius(axisPoint, geometryPoint, radius.Value);
         if (exactContact == GeometrySign.Zero) separation = GeometryInterval.Exact(0);
         GeometryInterval width = GeometryInterval.Exact(separation.Upper).Subtract(GeometryInterval.Exact(separation.Lower));
         if (!separation.IsResolved || !width.IsResolved || !WithinCeiling(width.Upper, 10000))
             return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unresolved);
-        int required = selected.IncidentFaces.Length;
+        int required = incidentFaces.Length;
         if (required is < 1 or > 256)
             return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.CapacityExceeded, required);
         var scratch = new CapsuleIncidentFace[required];
         for (int i = 0; i < required; i++)
         {
-            int id = selected.IncidentFaces[i];
-            GeometryVector faceNormal = GeometryVectorOperations.Normalize(selected.Leaf.Normals[id].Bounds);
+            int id = incidentFaces[i];
+            GeometryVector faceNormal = GeometryVectorOperations.Normalize(normals[id].Bounds);
             GeometryVectorOutput face = GeometryVectorOperations.Publish(faceNormal);
             if (!face.IsResolved || !WithinCeiling(face.Error, 100000))
                 return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unresolved);
-            scratch[i] = new(selected.Leaf.LeafId * CapsuleFeatureGeometry.MaximumFaces + id,
-                face.Value, face.Error, selected.Kind);
+            scratch[i] = new(leafId * faceIdStride + id, face.Value, face.Error, kind);
         }
         if (destination.Length < required)
             return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.CapacityExceeded, required);
         // Construct first: lifecycle or structural failure must not expose a written prefix.
-        CapsuleFeatureResult result = CapsuleFeatureResult.Completed(receiver, lease, target, selected.Leaf.LeafId,
-            selected.FeatureId, selected.Kind, axis.Value, geometry.Value, normal.Value, separation.Lower, separation.Upper,
+        CapsuleFeatureResult result = CapsuleFeatureResult.Completed(receiver, lease, target, leafId,
+            featureId, kind, axis.Value, geometry.Value, normal.Value, separation.Lower, separation.Upper,
             Math.Max(axis.Error, geometry.Error), normal.Error, scratch);
         scratch.AsSpan().CopyTo(destination);
         return result;

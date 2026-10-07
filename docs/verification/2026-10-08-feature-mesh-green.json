@@ -1,0 +1,42 @@
+{
+  "base": "d2e27a71184148b7577720b41fd3166b2da8b924",
+  "sources": {
+    "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.CapsuleFeatures.cs": "e5d17959b8a8cfc0508e71577488c428ac9304666e2c3d0f4f388297bdeff6c4",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureGeometry.cs": "e770c56135c146f327416157e72358a757e62744022cb344d4ed497d5de57be2",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureGeometryQuery.cs": "e09919fa879a2b9c751d748ffb63c14e3c6f3df3215c5c43bd743122b256512b",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureMesh.cs": "0e60c5b6da6db2ffc4c8a67e4d51c8715dac3c712b17ba47964b3888c1528d62",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureMeshBounds.cs": "e606b439aa245099860a025c1bedd5805d20c37a75b7f5d776778cdb5bd0dcb8",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureMeshClosest.cs": "80e6d5873c1debe9d8c5149d13e1686174d3b82a034a0b3cbc84df9a2e4f1480",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureMeshQuery.cs": "041f9b9b233f162d1f4faf4ffd0ffcea53057418edf28a09c832bf7aec733aa5",
+    "KhaozEngine.Game.Tests/Physics/CapsuleFeatureMeshTests.cs": "3264a6094cfdffbcb101724c67cb1cb68005190dea046d238e4b068f9b699541",
+    "KhaozEngine.Game.Tests/Physics/CapsuleFeatureMeshOracle.cs": "049b4c00ac4c4737f16cdc6b814c3dd4521c0dedf820abdc73eaf0a190301621",
+    "KhaozEngine.Game.Tests/Physics/CapsuleFeaturePolyhedronTests.cs": "b8a5a323f0dcbe3ffff37a7b3005b9ee4e39b1ea4889c33efcfcddde95e935e1",
+    "KhaozEngine.Game.Tests/Physics/CapsuleFeatureLifetimeTests.cs": "e9ba073cd84da2e977098333afa617bffb1d4ed6c653fba806ec8b8d6425e058"
+  },
+  "reviewed_proof_sha256": "0964dbc4614213d8116bc06dc039f4ca89d15bef76c52d6282a8ce3f1b917e84",
+  "green": {
+    "exit": 0,
+    "passed": 44,
+    "failed": 0,
+    "skipped": 0,
+    "mesh": 16,
+    "polyhedron": 16,
+    "lifetime": 12
+  },
+  "format": {
+    "exit": 0,
+    "changed": 0,
+    "explicit_files": 9,
+    "projects": [
+      "KhaozEngine.Game.Tests",
+      "KhaozEngine.Physics.Bepu"
+    ],
+    "style_and_reference_analyzers": true
+  },
+  "review": "Independent finite_mesh_backend_review Approved for the declared bounded slice, no findings. Parent inspected integration, finite enumeration, incidence and publication paths.",
+  "logs": {
+    "green": "cf174104ec0d380d8527e6e6a44a0853e3e583a84c656b6b1bebc97e0922ecb3",
+    "format": "bcecc41dfeef75be155802252a3ec45be2830d3796b16cb63904f1af65101520"
+  },
+  "limits": "No full Task5 corner/support-consumer proof, broader rotations, native geometry, movement/nav, release or game bridge claim. Unresolved rational/side/large-fan cases retain refusal."
+}

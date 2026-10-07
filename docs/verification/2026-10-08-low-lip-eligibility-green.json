@@ -1,0 +1,29 @@
+{
+  "base": "01b1c4fbf16b4fe830b00e0d02a8ddfc1917ba04",
+  "sources": {
+    "KhaozEngine.Locomotion/CharacterMovement.LowPropFeatures.cs": "76bb9e4baaf9fd26068846f3e4eea86cff050b0cc618debefeb55c587adb74ce",
+    "KhaozEngine.Movement.Tests/LowLipTraversalTests.ConsumerEligibility.cs": "ec201a12ff33e1184b2eda4b46e892d60b2c8b7ed1387f78043560dd2d4f581f",
+    "KhaozEngine.Locomotion/CharacterMovement.LowProp.cs": "704c9aa306b470528114d76b8b36800ffe66592bb0f61cb93ed68e8c4113f11d"
+  },
+  "green": {
+    "exit": 0,
+    "passed": 15,
+    "failed": 0,
+    "skipped": 0
+  },
+  "format": {
+    "exit": 0,
+    "changed": 0,
+    "explicit_files": 2,
+    "style_and_reference_projects": [
+      "KhaozEngine.Locomotion",
+      "KhaozEngine.Movement.Tests"
+    ]
+  },
+  "review": "Independent low_lip_eligibility_review Ready, no findings.",
+  "limits": "Private evidence qualification only. CharacterMovement.LowProp callsite byte-unchanged. General installed-pose proof, runtime support/clearance/rise, navigation anchors, release and game bridge proof remain open.",
+  "logs": {
+    "green": "9de79c75a7a25c993745f23ea0d6879f22ab290f315dcea441ed5ba35cf0fb46",
+    "format": "2a6733f5e7aaec04502a32aedb88a9bb32be3c7bdd1a86f6373ef7f3938cccc6"
+  }
+}

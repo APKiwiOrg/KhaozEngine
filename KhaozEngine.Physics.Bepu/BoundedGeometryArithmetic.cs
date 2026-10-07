@@ -97,7 +97,21 @@ internal static class BoundedGeometryArithmetic
     {
         if (!double.IsFinite(a) || !double.IsFinite(b) || !double.IsFinite(c) || !double.IsFinite(d))
             return GeometrySign.Unresolved;
-        Dyadic left = Product(a, b), right = Product(c, d);
+        return Compare(Product(a, b), Product(c, d));
+    }
+
+    /// <summary>Exact sign of sum((a-b)^2)-sum((c-d)^2), with one to three coordinates per distance.
+    /// Operands are supplied represented values. No preceding transform or geometry premise is inferred.</summary>
+    internal static GeometrySign CompareSquaredDistances(ReadOnlySpan<double> a, ReadOnlySpan<double> b,
+        ReadOnlySpan<double> c, ReadOnlySpan<double> d)
+    {
+        if (!TrySquaredDistance(a, b, out Dyadic left) || !TrySquaredDistance(c, d, out Dyadic right))
+            return GeometrySign.Unresolved;
+        return Compare(left, right);
+    }
+
+    static GeometrySign Compare(Dyadic left, Dyadic right)
+    {
         int exponent = Math.Min(left.Exponent, right.Exponent);
         int leftShift = left.Exponent - exponent, rightShift = right.Exponent - exponent;
         if (BigInteger.Abs(left.Mantissa).GetBitLength() + leftShift > MaximumPredicateBits ||
@@ -105,6 +119,42 @@ internal static class BoundedGeometryArithmetic
             return GeometrySign.Unresolved;
         int comparison = (left.Mantissa << leftShift).CompareTo(right.Mantissa << rightShift);
         return comparison < 0 ? GeometrySign.Negative : comparison > 0 ? GeometrySign.Positive : GeometrySign.Zero;
+    }
+
+    static bool TrySquaredDistance(ReadOnlySpan<double> a, ReadOnlySpan<double> b, out Dyadic distance)
+    {
+        distance = default;
+        if (a.Length is < 1 or > 3 || a.Length != b.Length) return false;
+        for (int i = 0; i < a.Length; i++)
+        {
+            if (!double.IsFinite(a[i]) || !double.IsFinite(b[i])) return false;
+            Dyadic first = Split(a[i]), second = Split(b[i]);
+            if (!TryAdd(first, new Dyadic(-second.Mantissa, second.Exponent), out Dyadic delta)) return false;
+            // Refuse before allocating an over-budget product, even if a later operation might cancel it.
+            if (2 * BigInteger.Abs(delta.Mantissa).GetBitLength() > MaximumPredicateBits) return false;
+            var square = new Dyadic(delta.Mantissa * delta.Mantissa, delta.Mantissa.IsZero ? 0 : 2 * delta.Exponent);
+            if (!TryAdd(distance, square, out Dyadic sum)) return false;
+            distance = sum;
+        }
+        return true;
+    }
+
+    static bool TryAdd(Dyadic a, Dyadic b, out Dyadic sum)
+    {
+        sum = default;
+        if (BigInteger.Abs(a.Mantissa).GetBitLength() > MaximumPredicateBits ||
+            BigInteger.Abs(b.Mantissa).GetBitLength() > MaximumPredicateBits) return false;
+        if (a.Mantissa.IsZero) { sum = b; return true; }
+        if (b.Mantissa.IsZero) { sum = a; return true; }
+        int exponent = Math.Min(a.Exponent, b.Exponent);
+        int aShift = a.Exponent - exponent, bShift = b.Exponent - exponent;
+        long bits = Math.Max(BigInteger.Abs(a.Mantissa).GetBitLength() + aShift,
+            BigInteger.Abs(b.Mantissa).GetBitLength() + bShift);
+        // Reserve the possible carry before shifting or adding. Conservative refusal is permitted.
+        if (bits + 1 > MaximumPredicateBits) return false;
+        BigInteger mantissa = (a.Mantissa << aShift) + (b.Mantissa << bShift);
+        sum = new Dyadic(mantissa, mantissa.IsZero ? 0 : exponent);
+        return true;
     }
 
     static Dyadic Product(double a, double b)

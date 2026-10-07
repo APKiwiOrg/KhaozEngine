@@ -40,6 +40,27 @@ integers exactly. Before shifting, the helper checks the resulting operand bit l
 An over-budget comparison returns `Unresolved`, not zero or a guessed sign. The two mantissa products
 are already bounded before that check. No input-dependent unbounded refinement loop exists.
 
+## Exact squared-distance comparison
+
+`CompareSquaredDistances` compares two sums of squared differences of supplied binary64 coordinates.
+Each distance has one to three coordinates. The two distances may have different dimensions, but each
+endpoint pair must have matching lengths. Invalid lengths, non-finite coordinates or a bit-budget
+refusal return `Unresolved`.
+
+Every subtraction aligns the exact signed dyadic operands. Before either shift or addition, the
+helper reserves the possible carry within the existing 4096-bit operand ceiling. Squaring first
+checks twice the difference mantissa's bit length, then forms the exact integer product. At most
+three such squares are added with the same bounded alignment rule. Final comparison aligns the two
+nonnegative sums using the existing exact comparison. No floating-point subtraction, multiplication
+or summation determines the published sign. Conservative budget refusal is permitted even when later
+cancellation could make the result small.
+
+The eight fixed cases include a positive term lost by ordinary binary64 summation, a subtraction
+whose subnormal difference is lost by ordinary rounding, exact tangency, translation and symmetry,
+invalid inputs and over-budget refusal. The expected signs use separately stated dyadic identities.
+This proves only the sign for the supplied represented coordinates. It does not turn uncertain
+transformed coordinates into exact geometry, authenticate installed shapes, or certify a contact.
+
 ## Square roots
 
 `Math.Sqrt` only proposes candidate endpoints. A negative input interval refuses. A positive lower

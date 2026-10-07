@@ -7,15 +7,17 @@ using KhaozEngine.MapDoc.Surfaces;
 namespace KhaozEngine.MapDoc.Storage;
 
 /// <summary>Pins one manifest. Files swept by another generation become Missing, never replacement data.</summary>
-public sealed class MapStoredSurfaceSource : IMapSurfaceSource
+public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSource
 {
     readonly string _directory;
+    readonly IReadOnlyDictionary<string, MapSurfaceRef> _surfaceLookup;
     internal MapSurfaceStorageIndex Index { get; }
     MapStoredSurfaceSource(string directory, MapDocument manifest, MapTileIndex tiles)
     {
         _directory = Path.GetFullPath(directory);
         Index = tiles.Surfaces ?? new MapSurfaceStorageIndex(Array.Empty<MapDirectoryPageRef>(), manifest.Surfaces.Refs);
         Surfaces = Array.AsReadOnly(MapSurfaceStorageIndex.CopyRefs(manifest.Surfaces.Refs).OrderBy(s => s.Id, StringComparer.Ordinal).ToArray());
+        _surfaceLookup = Surfaces.ToDictionary(s => s.Id, StringComparer.Ordinal);
         SnapshotId = "manifest:" + tiles.ManifestSha256;
         RootSha256 = MapSurfaceSemantics.RootDigest(manifest);
     }
@@ -50,12 +52,14 @@ public sealed class MapStoredSurfaceSource : IMapSurfaceSource
     public MapPatchFindResult FindPatches(MapSurfaceScope scope) => MapSurfaceQuery.Find(this, Index, scope, Directory, Page, Payload);
     internal MapPatchStatus Directory(MapDirectoryPageRef dir, MapPageBudget budget)
     {
+        if (budget.Work is { } work) work.DirectoryCallbacks++;
         if (Index.DirectoryPages.ContainsKey(dir.Sha256)) return MapPatchStatus.Present;
         return ReadPage(dir.Sha256, budget, () => Index.AddDirectory(dir,
             MapSurfacePages.DecodeDirectory(MapSurfaceStorageLayout.Read(_directory, 'd', dir.Sha256), dir)));
     }
     internal MapPatchStatus Page(MapDirectoryPageRef dir, MapIndexPageRef page, MapPageBudget budget)
     {
+        if (budget.Work is { } work) work.IndexCallbacks++;
         if (Index.IndexPages.ContainsKey(page.Sha256)) return MapPatchStatus.Present;
         return ReadPage(page.Sha256, budget, () => Index.AddIndex(page,
             MapSurfacePages.DecodeIndex(MapSurfaceStorageLayout.Read(_directory, 'i', page.Sha256), dir.SurfaceId, page)));

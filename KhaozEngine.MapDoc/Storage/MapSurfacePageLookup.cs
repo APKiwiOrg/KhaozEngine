@@ -28,6 +28,7 @@ internal sealed class MapSurfacePageLookup
     static IEnumerable<MapDirectoryPageRef> Visit(Node node, MapSlotRect range, MapPageBudget? budget)
     {
         budget?.BeforeMetadata();
+        if (budget?.Work is { } work) work.LookupNodeInspections++;
         if (!node.Bounds.Overlaps(range)) yield break;
         if (node.Page is { } page) yield return page;
         else

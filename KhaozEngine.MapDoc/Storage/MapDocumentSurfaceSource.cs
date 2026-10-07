@@ -7,15 +7,17 @@ using KhaozEngine.MapDoc.Surfaces;
 namespace KhaozEngine.MapDoc.Storage;
 
 /// <summary>Resident editing snapshot. Both captured and returned payloads are detached.</summary>
-public sealed class MapDocumentSurfaceSource : IMapSurfaceSource
+public sealed partial class MapDocumentSurfaceSource : IMapSurfaceAcquisitionSource
 {
     readonly MapSurfaceSet _surfaces;
     readonly MapSurfaceStorageIndex _index;
     readonly MapSurfaceStorageIndex _residentIndex;
+    readonly IReadOnlyDictionary<string, MapSurfaceRef> _surfaceLookup;
     MapDocumentSurfaceSource(MapDocument doc)
     {
         _surfaces = doc.Surfaces.Clone();
         Surfaces = Array.AsReadOnly(MapSurfaceStorageIndex.CopyRefs(_surfaces.Refs).OrderBy(s => s.Id, StringComparer.Ordinal).ToArray());
+        _surfaceLookup = Surfaces.ToDictionary(s => s.Id, StringComparer.Ordinal);
         _residentIndex = MapSurfaceTiledStore.BuildResidentIndex(_surfaces);
         _index = doc.Tiles is { IsPartial: true, Surfaces: { } stored } ? stored.Clone() : _residentIndex;
         MapDocument capturedRoot = MapTiledFile.GlobalsOnly(doc);

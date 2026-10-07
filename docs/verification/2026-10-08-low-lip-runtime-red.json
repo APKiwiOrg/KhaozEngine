@@ -1,0 +1,35 @@
+{
+  "base": "7bcc47537667abcc7a78468dd0df8830d9b7376b",
+  "sources": {
+    "KhaozEngine.Movement.Tests/LowLipTraversalTests.RuntimeFeatureSupport.cs": "ab8f694fa98225828dbe4c8475d96d04bf5400204f04bd4c90158e88cb83135a",
+    "KhaozEngine.Movement.Tests/GroundMoveQuerySelectionTests.cs": "67de757ffc5e611b4a7b0a01ddb60dd3e5318f96c4c7499618a03c7bae9e56c2",
+    "KhaozEngine.Movement.Tests/CornerFeatureControlScene.cs": "0e904d34add51071dc396195fb000fa1edec675320a3559a484a3ce452dc9996",
+    "KhaozEngine.Movement.Tests/LowLipTraversalTests.ConsumerEligibility.cs": "b42372515985f9accf1a1344745381344fcf29c3b13eee0e0ee54be06d3cd858"
+  },
+  "exit": 1,
+  "executed": 9,
+  "failed": 4,
+  "passed": 5,
+  "skipped": 0,
+  "classification": "Four non-flat Hold cases fail returned-body finite near-contact after candidate geometry and eligibility setup passed. Near-flat, held-lease, missing-capability and two-eligible-top controls passed.",
+  "failures": [
+    {
+      "case": "KhaozEngine.Tests.Movement.LowLipTraversalTests.HoldRetainsCorroboratedFiniteLipSupport(x: -0.135000005, excludeFloor: True, nearFlat: False) [92 ms]",
+      "output": "runtime x=-0.135, excludeFloor=True, nearFlat=False, candidate=<-0.135, 0.7604079, 0.125>, returned=<-0.135, 0.75, 0.125>, grounded=True, overlap=True, mtv=<-0.004298475, 0.008198943, -1.8978452E-09>"
+    },
+    {
+      "case": "KhaozEngine.Tests.Movement.LowLipTraversalTests.HoldRetainsCorroboratedFiniteLipSupport(x: -0.135000005, excludeFloor: False, nearFlat: False) [1 ms]",
+      "output": "runtime x=-0.135, excludeFloor=False, nearFlat=False, candidate=<-0.135, 0.7604079, 0.125>, returned=<-0.135, 0.75, 0.125>, grounded=True, overlap=True, mtv=<-0.004298475, 0.008198943, -1.8978452E-09>"
+    },
+    {
+      "case": "KhaozEngine.Tests.Movement.LowLipTraversalTests.HoldRetainsCorroboratedFiniteLipSupport(x: -0.144999996, excludeFloor: True, nearFlat: False) [1 ms]",
+      "output": "runtime x=-0.145, excludeFloor=True, nearFlat=False, candidate=<-0.145, 0.7551309, 0.125>, returned=<-0.145, 0.75, 0.125>, grounded=True, overlap=True, mtv=<-0.002198844, 0.003904844, -9.0387126E-10>"
+    },
+    {
+      "case": "KhaozEngine.Tests.Movement.LowLipTraversalTests.HoldRetainsCorroboratedFiniteLipSupport(x: -0.144999996, excludeFloor: False, nearFlat: False) [1 ms]",
+      "output": "runtime x=-0.145, excludeFloor=False, nearFlat=False, candidate=<-0.145, 0.7551309, 0.125>, returned=<-0.145, 0.75, 0.125>, grounded=True, overlap=True, mtv=<-0.002198844, 0.003904844, -9.0387126E-10>"
+    }
+  ],
+  "log_sha256": "0ab91046d71dbb8ee1485022c7960e446f5f964c5e5d212d560f911afc01f811",
+  "limits": "No runtime fix or route/bake proof. The original behavior and all control assertions are preserved before the fallback change."
+}

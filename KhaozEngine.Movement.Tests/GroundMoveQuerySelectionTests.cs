@@ -382,4 +382,50 @@ public class GroundMoveQuerySelectionTests
         public Vector3? OriginOverride { get; set; }
         public override Vector3 Origin => OriginOverride ?? base.Origin;
     }
+    // Catches accidentally requiring the optional feature capability for ordinary legacy Hold.
+    [Fact]
+    public void HoldWithoutFeatureCapabilityRetainsTheLegacyLowLipResult()
+    {
+        using var world = new BepuPhysicsWorld();
+        StaticHandle floor = world.AddStatic(new BoxShape(new Vector3(8f, 0.1f, 8f)),
+            Pose.At(new Vector3(0f, -0.1f, 0f)));
+        world.AddStatic(new TriangleMeshShape(
+            [new(0f, 0.0425f, -2f), new(2f, 0.0425f, -2f),
+             new(0f, 0.0425f, 2f), new(2f, 0.0425f, 2f)], [0, 1, 2, 1, 3, 2]), Pose.At(Vector3.Zero));
+        using IPhysicsWorldQueryView selected = world.CreateQueryViewExcludingStatics([floor]);
+        IPhysicsWorld legacy = new LeaseOnlyPhysicsDecorator(selected,
+            Assert.IsAssignableFrom<IPhysicsQueryLeaseSource>(selected));
+        Assert.False(legacy is IPhysicsCapsuleFeatures);
+        Assert.IsAssignableFrom<IPhysicsQueryLeaseSource>(legacy);
+        MoveTuning tuning = Tuning with
+        {
+            CapsuleRadius = 0.3f,
+            CapsuleHalfHeight = 0.75f,
+            MaxSlopeRadians = 0.8f,
+            StepHeight = 0.4f,
+            WalkSpeed = 1f,
+            RunSpeed = 1f,
+            AirMomentum = false,
+        };
+        var before = new MoveState
+        {
+            Position = new Vector3(-0.135f, 0.75f, 0.125f),
+            Grounded = true,
+            SpeedScale = 1f,
+        };
+        var context = new GroundMoveContext((_, _) => 0f, physics: legacy);
+
+        MoveState after = NpcGroundMovement.Hold(before, 1f / 30f, tuning, context);
+
+        Assert.True(after.Grounded);
+        Assert.InRange(Vector3.Distance(after.Position, new Vector3(-0.135f, 0.75f, 0.125f)),
+            0f, GroundTraversalProbe.ArrivalTolerance);
+    }
+
+    private sealed class LeaseOnlyPhysicsDecorator(IPhysicsWorld inner, IPhysicsQueryLeaseSource leases)
+        : PhysicsDecorator(inner), IPhysicsQueryLeaseSource
+    {
+        public IPhysicsQueryLease AcquireQueryReadLease() => leases.AcquireQueryReadLease();
+    }
+
 }

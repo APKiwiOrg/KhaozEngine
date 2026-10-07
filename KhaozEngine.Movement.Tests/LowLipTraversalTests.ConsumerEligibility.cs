@@ -103,6 +103,20 @@ public partial class LowLipTraversalTests
             MathF.Cos(Tuning.MaxSlopeRadians)));
     }
 
+    [Fact]
+    public void FeatureEligibilityRejectsTwoNearFlatIncidentTops()
+    {
+        using var scene = new CornerFeatureControlScene("ridge");
+        CapsuleFeatureResult result = scene.AssertCorrespondence(out CapsuleIncidentFace[] faces);
+        Assert.Equal(2, result.Written);
+        Assert.True(R.From(result.SeparationNormal.Y) - R.From(result.NormalError) >= R.From(0.9f));
+        for (int i = 0; i < result.Written; i++)
+            Assert.True(R.From(faces[i].Normal.Y) - R.From(faces[i].NormalError) >= R.From(0.9f));
+        FeatureEligibility policy = BindFeatureEligibility();
+        Assert.False(policy(scene.Features, scene.Lease, result, faces.AsSpan(0, result.Written),
+            MathF.Cos(Tuning.MaxSlopeRadians)));
+    }
+
     static FeatureEligibility BindFeatureEligibility()
     {
         MethodInfo? method = typeof(CharacterMovement).GetMethod("LowPropFeatureEligible",

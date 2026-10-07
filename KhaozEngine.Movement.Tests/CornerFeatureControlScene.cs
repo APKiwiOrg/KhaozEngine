@@ -47,6 +47,27 @@ internal sealed class CornerFeatureControlScene : IDisposable
                 ExpectedKind = CapsuleFeatureKind.ConvexCrease;
                 ExpectedEligibility = true;
                 break;
+            case "ridge":
+                // Two near-flat incident planes have unit normals (+/-5/13,12/13,0).
+                // They meet at a genuine convex ridge, but neither is a sole supporting top.
+                triangles =
+                [
+                    new(new(0, 0, -2), new(0, 0, 2), new(-1.5f, -0.625f, -2)),
+                    new(new(0, 0, 2), new(0, 0, -2), new(1.5f, -0.625f, -2)),
+                ];
+                shape = Mesh(triangles);
+                controls =
+                [
+                    new(new(-0.375f, -0.15625f, -1), new(-5f / 13, 12f / 13, 0)),
+                    new(new(0.375f, -0.15625f, -1), new(5f / 13, 12f / 13, 0)),
+                ];
+                Capsule = new(0.25f, 0.5f);
+                Candidate = Pose.At(new Vector3(0, 0.5f, 0));
+                _axis = V(0, 1, 0, 4);
+                _geometry = V(0, 0, 0);
+                _normals = [V(-5, 12, 0, 13), V(5, 12, 0, 13)];
+                ExpectedKind = CapsuleFeatureKind.ConvexCrease;
+                break;
             case "concave":
                 triangles = [Top(), new(new(0, 0, -2), new(0, 0, 2), new(0, 2, -2))];
                 shape = Mesh(triangles);

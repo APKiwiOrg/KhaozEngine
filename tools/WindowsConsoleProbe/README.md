@@ -79,3 +79,16 @@ acceptance belong to their existing independent checks.
 For test-first use, commit and push this harness while production is unchanged. Confirm native
 failure comes from the missing attachment or stream preservation contract, then apply the engine
 fix and rerun the same workflow. This directory does not change production.
+
+## Issue 1322 proof
+
+The same harness produced these hosted `windows-2025` results. Both runs used engine source through
+the project reference, not a released package or a consumer shim.
+
+| Source commit | Result | Hosted evidence |
+| --- | --- | --- |
+| `a7c61bec1` (original console implementation) | 16 attachment failures, 5 guard cases passed | [Baseline run](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/37604463364) |
+| `d17418706` (corrected console implementation) | All 21 cases passed | [Fixed run](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/37604340657) |
+
+Released-package adoption remains a separate acceptance step in
+[game-template issue 26](https://github.com/APKiwiOrg/game-template/issues/26).

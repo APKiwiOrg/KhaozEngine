@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using KhaozEngine.TileWorld;
 using System.Runtime.Versioning;
 using KhaozEngine.Tests.MapDoc;
 using Xunit;
@@ -106,4 +110,110 @@ public sealed class PrivateOracleGuardTests
         Assert.False(ran);
         Assert.False(File.Exists(env["KHAOZ_R2_ORACLE_REPORT"]!));
     });
+
+    [Fact]
+    public void Require_RejectsDanglingReportLink() => PrivateOracleFixtures.InSecureTemp(root =>
+    {
+        Dictionary<string, string?> env = PrivateOracleFixtures.SyntheticEnvironment(root, Secret);
+        string report = env[Names[3]]!;
+        string target = Path.Combine(root, "out", "absent.json");
+        File.CreateSymbolicLink(report, target);
+        Assert.Equal("report path already exists",
+            Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env)).Message);
+        Assert.Equal(PrivateOracleReport.SecureFailure,
+            Refuse<PrivateOracleFailure>(() => { using var unused = PrivateOracleReport.Open(report); }).Message);
+        Assert.False(File.Exists(target));
+    });
+
+    [Fact]
+    public void Inventory_CountsOverlayOnlyCellAsVoid() => PrivateOracleFixtures.InSecureTemp(root =>
+    {
+        var document = new TileWorldDocument { Id = "synthetic-inventory" };
+        document.GetOrCreateRegion(new RegionCoord(0, 0));
+        document.SetUnderlay(0, 0, 0, 1);
+        document.SetUnderlay(1, 0, 0, 1);
+        document.SetSettings(1, 0, 0, TileSettings.NoDraw);
+        document.SetOverlay(2, 0, 0, 5);
+        string world = Path.Combine(root, "world");
+        TileWorldFile.Save(document, world);
+        PlaneInventory plane = ShippedSourceInventory.Build(world).Planes.Single(p => p.Plane == 0);
+        Assert.Equal(1L, plane.DrawableCells);
+        Assert.Equal((long)TileRegion.Size * TileRegion.Size - 2, plane.VoidCells);
+        Assert.Equal(1L, plane.NoDrawCells);
+        Assert.Equal(1L, plane.OverlayCells);
+    });
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("extra")]
+    [InlineData("modified")]
+    [InlineData("symlink")]
+    public void Require_RefusesChangedSourceWithoutEchoingNames(string change) => PrivateOracleFixtures.InSecureTemp(root =>
+    {
+        Dictionary<string, string?> env = PrivateOracleFixtures.SyntheticEnvironment(root, Secret);
+        string source = env[Names[0]]!;
+        string file = Path.Combine(source, "region.txt");
+        switch (change)
+        {
+            case "missing": File.Delete(file); break;
+            case "extra": File.WriteAllText(Path.Combine(source, Secret), "extra"); break;
+            case "modified": File.AppendAllText(file, Secret); break;
+            case "symlink": File.CreateSymbolicLink(Path.Combine(source, Secret), file); break;
+        }
+        Assert.Equal("source verification failed: 1 files",
+            Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env)).Message);
+        Assert.False(File.Exists(env[Names[3]]!));
+    });
+
+    [Theory]
+    [InlineData("aggregate")]
+    [InlineData("unsafe-path")]
+    [InlineData("duplicate-path")]
+    [InlineData("null-tag")]
+    [InlineData("missing-tag")]
+    public void Require_RefusesInvalidProvenanceWithMatchingOuterDigest(string change) => PrivateOracleFixtures.InSecureTemp(root =>
+    {
+        Dictionary<string, string?> env = PrivateOracleFixtures.SyntheticEnvironment(root, Secret);
+        string file = env[Names[1]]!;
+        JsonObject json = JsonNode.Parse(File.ReadAllText(file))!.AsObject();
+        switch (change)
+        {
+            case "aggregate": json["aggregateSha256"] = new string('0', 64); break;
+            case "unsafe-path":
+                json["paths"]![0]!["path"] = "../" + Secret;
+                RewriteAggregate(json);
+                break;
+            case "duplicate-path":
+                json["paths"]!.AsArray().Add(json["paths"]![0]!.DeepClone());
+                RewriteAggregate(json);
+                break;
+            case "null-tag": json["tag"] = null; break;
+            case "missing-tag": json.Remove("tag"); break;
+        }
+        File.WriteAllText(file, json.ToJsonString());
+        env[Names[2]] = AssertFixtures.Sha256(file);
+        Assert.Equal("provenance unreadable",
+            Refuse<PrivateOracleInputException>(() => PrivateOracleInputs.Require(env)).Message);
+    });
+
+    [Fact]
+    public void Require_AcceptsAnExplicitlyUntaggedImmutableSource() => PrivateOracleFixtures.InSecureTemp(root =>
+    {
+        Dictionary<string, string?> env = PrivateOracleFixtures.SyntheticEnvironment(root, Secret);
+        string file = env[Names[1]]!;
+        JsonObject json = JsonNode.Parse(File.ReadAllText(file))!.AsObject();
+        json["tag"] = "";
+        File.WriteAllText(file, json.ToJsonString());
+        env[Names[2]] = AssertFixtures.Sha256(file);
+        PrivateOracleInputs inputs = PrivateOracleInputs.Require(env);
+        Assert.Equal("", inputs.Provenance.Tag);
+        Assert.Equal(new string('1', 40), inputs.Provenance.Commit);
+    });
+
+    static void RewriteAggregate(JsonObject json)
+    {
+        ShippedSourceProvenance value = JsonSerializer.Deserialize<ShippedSourceProvenance>(
+            json.ToJsonString(), ShippedSourceProvenance.JsonOptions)!;
+        json["aggregateSha256"] = value.ComputeAggregate();
+    }
 }

@@ -3431,3 +3431,17 @@ Proof is proofs/2026-10-07-r2-task3-red.json. Primarycompute was explicitlyrelea
 world input, extraction, recorder rerun or implementation occurred during the window. Approved
 public/synthetic implementation follows, with actual private inventory kept as its separate
 controlled acceptance step after guard verification and source-provenance preparation.
+
+
+### Task 3 source review and two-defect RED checkpoint
+
+The first independent source review identified an overlay-only void-count defect and a final
+report-symlink refusal defect. Parent verified the reachable paths and added synthetic regressions.
+The granted two-fact run compiled successfully and exited 1 with two expected assertion failures,
+zero passes and zero skips. Void count was 4093 rather than 4094. Require did not throw for a
+dangling report link. The later direct Open assertion was not reached. All 11 frozen source hashes
+were unchanged. Proof is proofs/2026-10-07-r2-task3-review-red.json. The primary slot was released.
+
+This checkpoint preserves the initial public oracle/harness implementation with its intentional
+RED defects. It is not completed Task 3 or private acceptance. Ten further synthetic metadata and
+source-set cases are prepared but unrun. No real private inputs, recorder or package mutation ran.

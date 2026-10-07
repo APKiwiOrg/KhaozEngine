@@ -33,12 +33,28 @@ in the fixture directory. Expectation tests read the committed copy from their o
 
 ## Private oracle boundary
 
-This project will later host the private exhaustive oracle under R2 Task 3. That private entry
-boundary is not implemented or authorized by the public recorder. Never commit private shipped
+The private oracle entry is separate from the public recorder and uses Unix permission checks.
+It has no discovery-time input reads. Never commit private shipped
 source, derived geometry, coordinate inventories, private digests, snapshots or detailed reports
 to this public repository. Do not add private credentials or source access to public CI.
 
-Only approved public synthetic fixtures may be recorded here. Private acceptance requires its
-separate input verification, sanitized entry boundary and private report path. Missing private
-inputs must fail that acceptance gate, never silently skip. The harness requires its own explicit
-build, test and format verification because the solution does not include it.
+Only approved public synthetic fixtures may be recorded here. The synthetic guard cases use a
+deliberate public secret marker and temporary files, not a shipped world. They can be selected with
+`FullyQualifiedName~PrivateOracleGuardTests` after a separately scheduled build/test window.
+
+Actual private acceptance reads exactly `KHAOZ_R2_SHIPPED_SOURCE`, `KHAOZ_R2_ORACLE_PROVENANCE`,
+`KHAOZ_R2_ORACLE_PROVENANCE_SHA256` and `KHAOZ_R2_ORACLE_REPORT`, in that order. The provenance
+digest is checked before parsing. Its relative path list and aggregate digest bind the extraction.
+The inventory chooses exactly one attested `world.json` path, without a game-specific directory or
+unattested search. An untagged checkpoint is represented by an explicitly empty `tag` with its
+full commit recorded. Comparison, units and oracle-equivalence metadata may be structured JSON.
+
+Reports must be outside a git work tree, in an existing directory with mode `0700`. They are
+created exclusively with mode `0600`. Source details and exception messages belong only in that
+report. Failure messages expose only fixed reasons, category/count and the report digest, with
+no inner exception. Missing or mismatched private inputs fail, never skip. Actual private source
+selection, extraction and execution belong to the controller's separate acceptance step.
+
+The harness requires its own explicit build, test and format verification because the solution
+does not include it. An unfiltered harness run is not a substitute for the separately gated
+recorder, synthetic guard and private inventory runs.

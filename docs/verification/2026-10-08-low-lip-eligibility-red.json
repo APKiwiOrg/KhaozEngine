@@ -1,0 +1,12 @@
+{
+  "base": "52eb5422347964f4f57cd24a96a59c3a1f2fc7ca",
+  "source_sha256": "ec201a12ff33e1184b2eda4b46e892d60b2c8b7ed1387f78043560dd2d4f581f",
+  "exit": 1,
+  "executed": 15,
+  "failed": 15,
+  "passed": 0,
+  "skipped": 0,
+  "classification": "All fifteen cases reached missing private LowPropFeatureEligible lookup after actual backend correspondence controls. Wider-proof policy assertions, expired-query consumption and original-receiver assertions remain unexecuted until implementation.",
+  "scope": "Eight real neighborhoods, four truthful wider-enclosure controls, two lifetime/receiver controls, one connected coplanar-patch control. No runtime callsite change.",
+  "log_sha256": "e75efaba4ca4d4d7c5b10f2f9608da54d2ff0410358e0b4a26787139fe688b9a"
+}

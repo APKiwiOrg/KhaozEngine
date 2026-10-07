@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Reflection;
 using BepuPhysics.Trees;
+using BepuUtilities;
 using BepuUtilities.Collections;
 using BepuUtilities.Memory;
 using KhaozEngine.Physics.Bepu;

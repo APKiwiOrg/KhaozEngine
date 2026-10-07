@@ -191,3 +191,7 @@ review before editing, as agreed with the feature owner.
 The first preflight invocation stopped at fixture compilation, CS0246 for `IBreakableForEach<>`
 at line 188. The required BepuUtilities root import was omitted. No tests executed and no capability
 RED was established. Exit 1 in `/tmp/swim-tree-preflight-red.log`, with production still absent.
+
+Restoring the single import produced valid compilation and twelve expected missing-helper failures,
+zero passes/skips, exit 1 in `/tmp/swim-tree-preflight-red2.log`. Leading raw-enumerator/capacity controls
+passed where reached. Assertions after a missing-helper call remain unexecuted until GREEN.

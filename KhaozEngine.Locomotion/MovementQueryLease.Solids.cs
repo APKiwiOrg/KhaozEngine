@@ -22,8 +22,13 @@ public sealed partial class MovementQueryLease
         if (!body.IsValid || !SameWorld(body.CurrentSpace) || !float.IsFinite(margin) ||
             margin < 0f || margin > 2f * CoverageSkinMetres) return MovementAvailability.Invalid;
         // The backend may include uncertain contacts by up to one additional skin of numerical error.
-        Vector3 extent = new Vector3(body.Radius, body.HalfHeight, body.Radius) + new Vector3(margin + CoverageSkinMetres);
-        if (!Witness.Scope.ContainsBounds(body.Centre - extent, body.Centre + extent))
+        double radial = (double)body.Radius + margin + CoverageSkinMetres;
+        double vertical = (double)body.HalfHeight + margin + CoverageSkinMetres;
+        Vector3 min = Witness.Scope.EnvelopeMin;
+        Vector3 max = Witness.Scope.EnvelopeMax;
+        if (!AxisInside(body.Centre.X, 0, radial, min.X, max.X) ||
+            !AxisInside(body.Centre.Y, 0, vertical, min.Y, max.Y) ||
+            !AxisInside(body.Centre.Z, 0, radial, min.Z, max.Z))
             return MovementAvailability.Unresolved;
         if (_view is not IPhysicsCapsuleContacts contacts) return MovementAvailability.Unresolved;
         try

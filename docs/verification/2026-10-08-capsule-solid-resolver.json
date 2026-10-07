@@ -33,12 +33,61 @@
     "swim-resolver-green": {
       "path": "/tmp/swim-resolver-green.log",
       "sha256": "5e911693834d8eaa675b384619d830e39937e114b4cefd6e2f5cb1b3be02da1b"
+    },
+    "swim-resolver-numerics-first": {
+      "path": "/tmp/swim-resolver-numerics-first.log",
+      "sha256": "9aff93aca488b77c7702dec7a0317b51e6e8808a961339febd29ba8719c1cb75"
+    },
+    "swim-resolver-affected": {
+      "path": "/tmp/swim-resolver-affected.log",
+      "sha256": "cd43c57587322eaab1f38ee3bf57a42f0447d51f7f1c23d32d4f471b948020e7"
+    },
+    "swim-resolver-format": {
+      "path": "/tmp/swim-resolver-format.log",
+      "sha256": "890d7d32d8cbf58bd3bad72e8eb3df4a0f51c89160cfe03c47f3dfaeb70d2637"
+    },
+    "swim-resolver-format-verify": {
+      "path": "/tmp/swim-resolver-format-verify.log",
+      "sha256": "06418d6808ef46e806d1ef6ede6996f7c5ee35804d66f0e29035e5f46a552676"
     }
   },
   "pending": [
-    "Independent rounding/impact-margin boundary tests",
-    "Affected support/contact consumer regressions and formatting",
+    "Additional impact-set/bounded-iteration acceptance coverage",
     "Combined water policy and support/step correction",
     "Whole-branch review and native G1b"
-  ]
+  ],
+  "numericFirst": {
+    "log": "/tmp/swim-resolver-numerics-first.log",
+    "exitCode": 1,
+    "passed": 10,
+    "failed": 1,
+    "skipped": 0,
+    "failure": "Contact scope addition rounded inward and returned Known. Independent double inequality control passed."
+  },
+  "affected": {
+    "log": "/tmp/swim-resolver-affected.log",
+    "exitCode": 0,
+    "passed": 84,
+    "failed": 0,
+    "skipped": 0,
+    "scope": "23 resolver, 10 rounding, one scope, 14 support, 12 projection, 16 sweep lease and eight sweep numeric cases",
+    "correction": "Contact scope checks use double radial/vertical extents and existing AxisInside helper, retaining the expanded impact margin."
+  },
+  "format": {
+    "applyLog": "/tmp/swim-resolver-format.log",
+    "verifyLog": "/tmp/swim-resolver-format-verify.log",
+    "exitCodes": [
+      0,
+      0
+    ],
+    "formattedFiles": [
+      0,
+      0
+    ],
+    "scope": "Three Locomotion runtime files and four resolver/numeric/scope fixture files",
+    "analyzerProjects": [
+      "KhaozEngine.Locomotion",
+      "KhaozEngine.Game.Tests"
+    ]
+  }
 }

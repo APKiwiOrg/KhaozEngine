@@ -410,3 +410,27 @@ for approach angle rather than fixed along-path backoff, and freshly sweeps ever
 A bounded capsule enclosure covers the stored endpoint rounding. Dedicated numerical boundary and
 affected support regression checks remain pending. No water traversal or MoveState publication is
 implemented by this solid-stage checkpoint.
+
+### Stored-pose enclosure and focused acceptance
+
+The solid stage encloses endpoint storage error instead of accepting an unchecked rounded endpoint.
+For each binary32 addition it bounds the exact sum around the binary64 sum by adjacent binary64
+values, then bounds the difference to the stored binary32 endpoint. An outward L1 sum bounds the
+whole vector error. Inflating the capsule radius by that bound contains the endpoint connector and
+the straight segment between stored endpoints. The represented cylinder conversion is checked to
+contain the requested cylinder too. The total admitted inflation remains at most one millimetre.
+This is a query enclosure. A complete sweep is still required for every returned segment.
+
+Impact-pose proposals use the original displacement and an upper distance. Full binary32 coordinate
+spacings plus a conservative 32-binary64-roundoff bound cover the norm/division/product/sum chain.
+The positive finite float inputs keep the norm products inside the normal binary64 range. The
+resolver refuses when the bracket width, pose bound and query inflation do not fit the active-contact
+margin. A proposed contact point or projected vector never becomes an accepted placement by itself.
+
+Ten independent numerical facts passed, including exact integer-dyadic checks for lost coordinate
+bits, the represented cylinder, multi-axis endpoint error and a rational Pythagorean impact point.
+An additional scope-boundary fact exposed a float extent addition rounding inward. It returned Known
+where the requested contact region extended past the certified bound. Using double extents corrected
+that measured failure. The combined affected batch passed 84/84 without skips. Scoped apply and
+verify formatting passed with no source changes, with analyzers active in both target projects.
+Combined water traversal, support-path correction and broader acceptance remain pending.

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Spaces;
@@ -90,5 +91,133 @@ public sealed class TopologyRecordTests
         Assert.NotEqual(MapSurfaceSemantics.PatchDigest(patch), MapSurfaceSemantics.PatchDigest(clone));
         clone.Records.Clear();
         Assert.Equal(3, patch.Records.Count);
+    }
+
+    [Fact]
+    public void AllRecordDiscriminatorsRoundTripWithReferenceIntegrity()
+    {
+        TopologyWorld world = TopologyRecordFixtures.WithEveryRecordKind();
+        Assert.Empty(world.Validate());
+        MapSurfacePatch floor = world.Patches.Single(p => p.Key == Floor00);
+        byte[] bytes = MapSurfacePatchCodec.Encode(floor);
+        MapSurfacePatch decoded = MapSurfacePatchCodec.Decode(bytes, Floor00);
+        Assert.Equal(bytes, MapSurfacePatchCodec.Encode(decoded));
+        Assert.Equal(8, decoded.Records.Select(r => r.GetType()).Distinct().Count());
+        world.Patches[world.Patches.IndexOf(floor)] = decoded;
+        Assert.Empty(world.Validate());
+        int aIndex = decoded.Records.FindIndex(r => r.Id == "a");
+        var a = Assert.IsType<MapSpaceDoc>(decoded.Records[aIndex]);
+        decoded.Records[aIndex] = a with { Portals = Array.Empty<MapBoundaryRef>(), Links = Array.Empty<MapRecordRef>() };
+        Assert.Contains(world.Validate(), f => f.Contains("portal list"));
+        Assert.Contains(world.Validate(), f => f.Contains("link list"));
+    }
+
+    [Fact]
+    public void ReferenceValidatorRefusesParentCyclesAliasChainsWrongTypesAndDuplicateIds()
+    {
+        TopologyWorld world = TopologyRecordFixtures.TwoSpacesSharingOneStrip();
+        MapSurfacePatch floor = world.Patches.Single(p => p.Key == Floor00);
+        int ai = floor.Records.FindIndex(r => r.Id == "a"), bi = floor.Records.FindIndex(r => r.Id == "b");
+        var a = Assert.IsType<MapSpaceDoc>(floor.Records[ai]);
+        var b = Assert.IsType<MapSpaceDoc>(floor.Records[bi]);
+        floor.Records[ai] = a with { Parent = new("b", Floor00) };
+        floor.Records[bi] = b with { Parent = new("a", Floor00) };
+        Assert.Contains(world.Validate(), f => f.Contains("cycle"));
+        floor.Records[ai] = a with { AliasOf = new("b", Floor00) };
+        floor.Records[bi] = b with { AliasOf = new("a", Floor00) };
+        Assert.Contains(world.Validate(), f => f.Contains("alias"));
+        floor.Records[ai] = a;
+        floor.Records[bi] = b;
+        int wi = floor.Records.FindIndex(r => r.Id == "wall");
+        var wall = Assert.IsType<MapWallStrip>(floor.Records[wi]);
+        floor.Records[wi] = wall with { LowerChain = new("a", Floor00) };
+        Assert.Contains(world.Validate(), f => f.Contains("type"));
+        floor.Records[wi] = wall;
+        floor.Records.Add(a);
+        Assert.Contains(world.Validate(), f => f.Contains("duplicate id"));
+    }
+
+    [Fact]
+    public void SurfaceDigestExcludesItsOwnHashAndCanonicalizesPatchOrder()
+    {
+        TopologyWorld world = TopologyRecordFixtures.TwoSpacesSharingOneStrip();
+        MapSurfaceRef surface = world.Surfaces.Single(s => s.Id == "floor");
+        MapSurfacePatch floor = world.Patches.Single(p => p.Key == Floor00);
+        var first = new KeyValuePair<MapPatchKey, string>(Floor00, MapSurfaceSemantics.PatchDigest(floor));
+        var second = new KeyValuePair<MapPatchKey, string>(new("floor", -1, 0), new string('a', 64));
+        string digest = MapSurfaceSemantics.SurfaceDigest(surface, new[] { first, second });
+        Assert.Equal(digest, MapSurfaceSemantics.SurfaceDigest(surface with { SemanticSha256 = "ignored" }, new[] { second, first }));
+        Assert.NotEqual(digest, MapSurfaceSemantics.SurfaceDigest(surface with { Role = MapSurfaceRole.Ceiling }, new[] { first, second }));
+        Assert.Throws<MapDocumentException>(() => MapSurfaceSemantics.SurfaceDigest(surface, new[] { first, first }));
+        Assert.Throws<MapDocumentException>(() => MapSurfaceSemantics.SurfaceDigest(surface, new[]
+        {
+            new KeyValuePair<MapPatchKey, string>(Ceiling00, first.Value),
+        }));
+    }
+
+    [Theory]
+    [InlineData("missing", "missing")]
+    [InlineData("anchor", "anchor")]
+    [InlineData("type", "type")]
+    public void ReferenceValidator_RefusesInvalidIndoorParent(string fault, string diagnostic)
+    {
+        TopologyWorld world = TopologyRecordFixtures.TwoSpacesSharingOneStrip();
+        int index = world.Surfaces.FindIndex(s => s.Id == "floor");
+        MapSurfaceRef surface = world.Surfaces[index];
+        var span = new MapIndoorSpan("indoor", new("a", Floor00), 0, 300, Array.Empty<string>());
+        world.Surfaces[index] = surface with { IndoorSpan = span };
+        Assert.Empty(world.Validate());
+        MapRecordRef parent = fault switch
+        {
+            "missing" => new("missing-space", Floor00),
+            "anchor" => new("a", Ceiling00),
+            _ => new("wall", Floor00),
+        };
+        world.Surfaces[index] = surface with { IndoorSpan = span with { ParentSpace = parent } };
+        Assert.Contains(world.Validate(), finding => finding.Contains(diagnostic));
+    }
+
+    [Theory]
+    [InlineData("pairs")]
+    [InlineData("domainTags")]
+    [InlineData("openings")]
+    [InlineData("linkPortals")]
+    [InlineData("geometryOwners")]
+    [InlineData("walls")]
+    [InlineData("spacePortals")]
+    [InlineData("links")]
+    [InlineData("interval")]
+    public void Codec_RefusesOversizedListsBeforeEnumeration(string field)
+    {
+        MapSurfacePatch patch = SurfacePatchFixtures.Row(1);
+        var reference = new MapRecordRef("target", patch.Key);
+        var vertex = new MapLatticeVertex("r", MapLatticeAddress.Corner(0, 0));
+        var edge = new MapSurfaceEdgeRef(patch.Key, vertex, vertex);
+        MapTopologyRecord record = field switch
+        {
+            "pairs" => new MapSurfaceSeam("large", edge, edge,
+                new UnenumerableList<(MapLatticeVertex First, MapLatticeVertex Second)>()),
+            "interval" => new MapCavePortal("large", reference, reference,
+                new UnenumerableList<MapLatticeVertex>(), reference, null),
+            "domainTags" or "walls" or "spacePortals" or "links" => new MapSpaceDoc("large", MapSpaceKind.Exterior,
+                null, null, field == "domainTags" ? new UnenumerableList<string>() : Array.Empty<string>(),
+                field == "walls" ? new UnenumerableList<MapBoundaryRef>() : Array.Empty<MapBoundaryRef>(),
+                field == "spacePortals" ? new UnenumerableList<MapBoundaryRef>() : Array.Empty<MapBoundaryRef>(),
+                field == "links" ? new UnenumerableList<MapRecordRef>() : Array.Empty<MapRecordRef>()),
+            _ => new MapVerticalLink("large", reference, reference,
+                field == "openings" ? new UnenumerableList<MapRecordRef>() : Array.Empty<MapRecordRef>(),
+                field == "linkPortals" ? new UnenumerableList<MapRecordRef>() : Array.Empty<MapRecordRef>(),
+                field == "geometryOwners" ? new UnenumerableList<MapRecordRef>() : Array.Empty<MapRecordRef>()),
+        };
+        patch.Records.Add(record);
+        Assert.Contains("1048576", Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Encode(patch)).Message);
+    }
+
+    sealed class UnenumerableList<T> : IReadOnlyList<T>
+    {
+        public int Count => int.MaxValue;
+        public T this[int index] => throw new InvalidOperationException("collection read before budget refusal");
+        public IEnumerator<T> GetEnumerator() => throw new InvalidOperationException("collection enumerated before budget refusal");
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

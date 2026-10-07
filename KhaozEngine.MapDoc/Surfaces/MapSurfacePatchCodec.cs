@@ -9,7 +9,7 @@ using System.Text.Json;
 namespace KhaozEngine.MapDoc.Surfaces;
 
 /// <summary>Canonical, bounded UTF-8 patch payload. Packed integer arrays are little-endian.</summary>
-public static class MapSurfacePatchCodec
+public static partial class MapSurfacePatchCodec
 {
     public const int MaxEncodedBytes = 1_048_576;
 
@@ -56,7 +56,7 @@ public static class MapSurfacePatchCodec
                 writer.WriteStartObject(); writer.WriteNumber("cellX", e.CellX); writer.WriteNumber("cellZ", e.CellZ);
                 writer.WriteNumber("edge", (byte)e.Edge); writer.WriteNumber("segments", e.Segments); writer.WriteEndObject();
             }
-            writer.WriteEndArray(); writer.WriteStartArray("records"); writer.WriteEndArray(); writer.WriteEndObject();
+            writer.WriteEndArray(); WriteRecords(writer, patch.Records); writer.WriteEndObject();
         }
         return output.Bytes();
     }
@@ -85,7 +85,7 @@ public static class MapSurfacePatchCodec
             byte[] presenceBytes = Base64(root.GetProperty("presence"), wordCount * 8, "presence");
             JsonElement dependencies = Array(root.GetProperty("cornerDependencies"), cornerCount, "cornerDependencies");
             JsonElement edges = Array(root.GetProperty("edgeSubdivisions"), cellCount * 4, "edgeSubdivisions");
-            _ = Array(root.GetProperty("records"), 0, "records");
+            JsonElement records = Array(root.GetProperty("records"), MaxEncodedBytes / 24, "records");
             var patch = new MapSurfacePatch
             {
                 Key = key,
@@ -120,11 +120,18 @@ public static class MapSurfacePatchCodec
                 patch.EdgeSubdivisions.Add(new(e.GetProperty("cellX").GetInt32(), e.GetProperty("cellZ").GetInt32(),
                     (MapCellEdge)e.GetProperty("edge").GetByte(), e.GetProperty("segments").GetInt32()));
             }
+            var recordIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (JsonElement value in records.EnumerateArray())
+            {
+                MapTopologyRecord record = ReadRecord(value);
+                if (!recordIds.Add(record.Id)) throw new MapDocumentException("duplicate record id");
+                patch.Records.Add(record);
+            }
             IReadOnlyList<string> errors = patch.ValidateLocal();
             if (errors.Count != 0) throw new MapDocumentException(errors[0]);
             return patch;
         }
-        catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException or OverflowException)
+        catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException or OverflowException or KeyNotFoundException)
         {
             throw new MapDocumentException("invalid surface patch payload", ex);
         }

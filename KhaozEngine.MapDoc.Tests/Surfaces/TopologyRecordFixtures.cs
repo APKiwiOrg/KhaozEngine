@@ -91,6 +91,36 @@ internal static class TopologyRecordFixtures
         return patch;
     }
 
+    internal static TopologyWorld WithEveryRecordKind()
+    {
+        TopologyWorld world = TwoSpacesSharingOneStrip();
+        MapSurfacePatch floor = world.Patches.Single(p => p.Key == Floor00);
+        floor.SetPresent(0, 0, false);
+        var f0 = new MapLatticeVertex("floor", MapLatticeAddress.Corner(0, 0));
+        var f1 = new MapLatticeVertex("floor", MapLatticeAddress.Corner(1, 0));
+        var c0 = new MapLatticeVertex("ceiling", MapLatticeAddress.Corner(0, 0));
+        var c1 = new MapLatticeVertex("ceiling", MapLatticeAddress.Corner(1, 0));
+        floor.Records.Add(new MapSurfaceSeam("seam", new(Floor00, f0, f1), new(Ceiling00, c0, c1),
+            new[] { (f0, c0), (f1, c1) }));
+        floor.Records.Add(new MapHorizontalOpening("opening", Floor00, new[] { 0 }));
+        floor.Records.Add(new MapCavePortal("portal", new("a", Floor00), new("b", Floor00),
+            new[] { f0, f1 }, new("lower", Floor00), new("upper", Floor00)));
+        floor.Records.Add(new MapVerticalLink("link", new("a", Floor00), new("b", Floor00),
+            new[] { new MapRecordRef("opening", Floor00) }, new[] { new MapRecordRef("portal", Floor00) },
+            new[] { new MapRecordRef("wall", Floor00) }));
+        Replace<MapSpaceDoc>(world, "a", space => space with
+        {
+            Portals = new[] { new MapBoundaryRef(new("portal", Floor00), MapSide.Front) },
+            Links = new[] { new MapRecordRef("link", Floor00) },
+        });
+        Replace<MapSpaceDoc>(world, "b", space => space with
+        {
+            Portals = new[] { new MapBoundaryRef(new("portal", Floor00), MapSide.Back) },
+            Links = new[] { new MapRecordRef("link", Floor00) },
+        });
+        return world;
+    }
+
     static MapSpaceDoc Space(string id, MapSpaceKind kind, IReadOnlyList<MapBoundaryRef> walls)
         => new(id, kind, null, null, Array.Empty<string>(), walls, Array.Empty<MapBoundaryRef>(), Array.Empty<MapRecordRef>());
 

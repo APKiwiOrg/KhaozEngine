@@ -960,7 +960,7 @@ public void Codec_RefusesARecordSetOverTheBound()
 
 - [x] **Step 2: Run red.** `wa_test t5-red "$MAPDOC" "FullyQualifiedName~TopologyRecordTests"`. Expected: build FAIL naming `MapWallStrip`.
 - [ ] **Step 3: Implement records, the codec member, the validator and digests.**
-- [ ] **Step 4: Run green.** `wa_test t5-green "$MAPDOC" "FullyQualifiedName~TopologyRecordTests|FullyQualifiedName~SurfacePatchCodecTests|FullyQualifiedName~LatticeAddressTests"`. Expected: PASS, 23 cases including Task 4 boundary cases and Task 5 deep-clone coverage.
+- [ ] **Step 4: Run green.** `wa_test t5-green "$MAPDOC" "FullyQualifiedName~TopologyRecordTests|FullyQualifiedName~SurfacePatchCodecTests|FullyQualifiedName~LatticeAddressTests"`. Expected: PASS, 38 cases including Task 4 boundary cases, Task 5 full-record coverage and review regressions.
 - [ ] **Step 5: Commit** `KhaozEngine.MapDoc/Surfaces KhaozEngine.MapDoc/Spaces KhaozEngine.MapDoc.Tests/Surfaces`, message `feat(mapdoc): add anchored cave topology and space records with semantic digests`.
 
 ---
@@ -3514,3 +3514,18 @@ two missing Spaces namespace and eight missing planned topology/space signature 
 tests executed. Earlier binding failures prevent a MapWallStrip-specific or runtime claim. Both
 frozen source hashes were unchanged, with no unrelated compiler/setup failure. Primary was
 explicitly released. Proof is proofs/2026-10-07-r2-task5-red.json. Approved implementation follows.
+
+
+### Task 5 reviewed implementation and bounded regression RED
+
+Fresh independent source review identified an omitted IndoorSpan.ParentSpace reference and nested
+canonical sorts occurring before collection budget checks. Parent verified both and prepared three
+parent-reference rows plus nine count-only list rows. The lists throw on enumeration and allocate
+no large backing data. One granted run compiled and produced exactly twelve intended assertion
+failures, zero passes/skips, with unchanged eleven source hashes. Every parent row reached the
+missing finding after a valid-parent control. Every collection row hit its enumeration sentinel.
+No unrelated compiler/setup failure or runtime outcome occurred. Primary was explicitly released.
+
+Proof is proofs/2026-10-07-r2-task5-review-red.json. This checkpoint preserves the initial Task 5
+implementation with two intentional RED defects. It is not a completed or accepted Task 5. The
+bounded corrections and fresh targeted rereview precede first combined GREEN, now 38 cases.

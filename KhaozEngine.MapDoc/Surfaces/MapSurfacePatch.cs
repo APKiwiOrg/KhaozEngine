@@ -80,6 +80,7 @@ public sealed partial class MapSurfacePatch
         // Metadata records and their nested values are immutable. Lists and all mutable arrays are copied.
         copy.CornerDependencies.AddRange(CornerDependencies);
         copy.EdgeSubdivisions.AddRange(EdgeSubdivisions);
+        CloneRecordsTo(copy);
         return copy;
     }
 

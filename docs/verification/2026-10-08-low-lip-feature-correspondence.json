@@ -1,0 +1,47 @@
+{
+  "base": "5ce77c4f1b2697b5547ba607816382d6916dc5fa",
+  "sources": {
+    "KhaozEngine.Movement.Tests/LowLipTraversalTests.FeatureContract.cs": {
+      "staged_sha256": "1debc3d579b0b3cd2140ce592c614b4a29db8bc1cbfa06901793b881811b9e94",
+      "applied_sha256": "1debc3d579b0b3cd2140ce592c614b4a29db8bc1cbfa06901793b881811b9e94"
+    },
+    "KhaozEngine.Movement.Tests/LowLipFeaturePolicyControls.cs": {
+      "staged_sha256": "4d04f7a0675455b73ba706d6cf937e2a5eb48c203066ed3979d7aca91ca3fb57",
+      "applied_sha256": "0bee0a5780ce158ac6d7110152f1eb57842025b10afb9fcf938dd312dd5d2fdc"
+    },
+    "KhaozEngine.Movement.Tests/CornerFeatureOracle.cs": {
+      "staged_sha256": "880df6201187af705419b3acfa3159e293a5e7a5705b692a86545262b62587e0",
+      "applied_sha256": "880df6201187af705419b3acfa3159e293a5e7a5705b692a86545262b62587e0"
+    },
+    "KhaozEngine.Movement.Tests/CornerFeatureControlScene.cs": {
+      "staged_sha256": "8de27572e737b07f938de5f13b1193eca47e46810e0500406b7b3d547603e11e",
+      "applied_sha256": "8de27572e737b07f938de5f13b1193eca47e46810e0500406b7b3d547603e11e"
+    },
+    "KhaozEngine.Movement.Tests/LowLipFeatureSourceCapacityTests.cs": {
+      "staged_sha256": "9c3fe5740b56aa1e1440ddcbe6f0cc10673233467c9a40da4b385b0026ef8209",
+      "applied_sha256": "9c3fe5740b56aa1e1440ddcbe6f0cc10673233467c9a40da4b385b0026ef8209"
+    }
+  },
+  "green": {
+    "exit": 0,
+    "passed": 24,
+    "failed": 0,
+    "skipped": 0,
+    "real_lip_corners": 12,
+    "finite_neighborhoods": 8,
+    "caller_local_incident_source_capacity": 4
+  },
+  "format": {
+    "exit": 0,
+    "changed": 0,
+    "explicit_files": 5,
+    "style_and_reference_project": "KhaozEngine.Movement.Tests"
+  },
+  "review": "Parent read all five staged sources against approved spec and original fixtures before adoption. Independent rational witnesses, squared separation, root-enclosed normal checks, authentic selected lease and real installed source controls retained.",
+  "observations": "Six original corner configurations and their translated counterparts passed at the unchanged sweep-proposed capsule pose. Convex top/wall incidence, refusal controls and four capacity cases passed. Source cap used one65537-triangle disjoint grid static, one ordinary ray and one feature query.",
+  "limits": "Correspondence and capacity only. No runtime low-prop helper/callsite, general pose completion, nav anchor, release or game bridge proof. Original24 contact-ray observations unchanged.",
+  "logs": {
+    "green": "a6972f312f575dc505dbbc794c07324aba3c56965499b4466738df3079a95bfa",
+    "format": "36f1f2d18bf5b367882cc3099aa5098007264a2c4cc903f75e3254b4aeedb985"
+  }
+}

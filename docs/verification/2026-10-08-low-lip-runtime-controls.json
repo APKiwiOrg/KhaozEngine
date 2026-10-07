@@ -1,0 +1,28 @@
+{
+  "base": "776f1863b5f5c3165f0d2047f87423d86d99bd56",
+  "sources": {
+    "KhaozEngine.Locomotion/CharacterMovement.LowProp.cs": "1b266bb6231e04268fbc9ffebb624e6d6588534e4fa6373abe177522170bc27a",
+    "KhaozEngine.Locomotion/CharacterMovement.LowPropFeatures.cs": "f8d8e4d0f7eb447498acfaa4bfd95a2636d399ce27c779d0d058ece261870f5e"
+  },
+  "classification": "Task 6 Game controls and runtime format on the support fallback alone. No collision change is included.",
+  "command": "dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release -m:1 --filter FullyQualifiedName~KhaozEngine.Tests.Locomotion.LowPropSupportTests.|FullyQualifiedName=KhaozEngine.Tests.Physics.ControllerOnPhysicsTests.Capsule_CannotWalkThroughAWall|FullyQualifiedName=KhaozEngine.Tests.Physics.ControllerOnPhysicsTests.Capsule_BlockedAtDomeBase_DoesNotPenetrate|FullyQualifiedName=KhaozEngine.Tests.Locomotion.WalkableSlopeNoStepUpTests.WalkableSlope_ClimbsSmoothly_NoStepUpForwardTeleport|FullyQualifiedName=KhaozEngine.Tests.Locomotion.StairRunTangentPacingTests.Penetration_StaysSmall_EveryClimbingTick|FullyQualifiedName=KhaozEngine.Tests.Locomotion.LipContactShortRiserTests.ShallowTreadStaircaseBase_MountsViaRayFanFallback|FullyQualifiedName=KhaozEngine.Tests.Locomotion.StairDescentGroundedHoldTests.StepDownBeyondStepHeight_StillReleasesAndFalls",
+  "log": "/tmp/grimhollow-orch/lowlip-game-controls.log",
+  "log_sha256": "cd2c40b6feb2ebd1dff31e7aeee1b21be252b73b58dd50a284e843f57e6fcddf",
+  "exit": 0,
+  "executed": 39,
+  "passed": 39,
+  "failed": 0,
+  "skipped": 0,
+  "groups": [
+    "23 low-prop, mound, slope, wall and dome controls across four terms",
+    "16 seven-stair prior-art superset rows: 8 run-climb penetration, 6 shallow-tread base, 2 step-down release"
+  ],
+  "format": [
+    "dotnet format KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj --verify-no-changes --no-restore --include CharacterMovement.LowProp.cs CharacterMovement.LowPropFeatures.cs exit 0",
+    "dotnet format KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj --verify-no-changes --no-restore --include CornerFeatureControlScene.cs GroundMoveQuerySelectionTests.cs LowLipTraversalTests.ConsumerEligibility.cs LowLipTraversalTests.RuntimeFeatureSupport.cs LowLipTraversalTests.ApproachMechanism.cs exit 0"
+  ],
+  "limits": [
+    "The directed approach from x -0.375 to the resting bank column still fails. Its mechanism is recorded in 2026-10-08-low-lip-approach-mechanism.json.",
+    "A collision response change would require these controls to run again."
+  ]
+}

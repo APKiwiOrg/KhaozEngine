@@ -1,0 +1,41 @@
+{
+  "base": "776f1863b5f5c3165f0d2047f87423d86d99bd56",
+  "sources": {
+    "KhaozEngine.Movement.Tests/LowLipTraversalTests.ApproachMechanism.cs": "663c2f54e93ab3bdf6eba4a97733ec636c27361cc57a85ac3f880962b004f433",
+    "KhaozEngine.Locomotion/CharacterMovement.cs": "450f5d076a623386ed04678b020293c9d94630d1f73f9ee8d4d47d082c656640",
+    "KhaozEngine.Locomotion/CharacterMovement.Collision.cs": "801a3741a384943054b103945afa4bf0820691fe29b0046d4d4f2f691d3abd64",
+    "KhaozEngine.Locomotion/CharacterMovement.Settle.cs": "6279995ad8c3c6265a285741a73dacd3a9d2697421eee545c895045a01c6a807",
+    "KhaozEngine.Locomotion/CharacterMovement.LowProp.cs": "1b266bb6231e04268fbc9ffebb624e6d6588534e4fa6373abe177522170bc27a",
+    "KhaozEngine.Locomotion/CharacterMovement.LowPropFeatures.cs": "f8d8e4d0f7eb447498acfaa4bfd95a2636d399ce27c779d0d058ece261870f5e",
+    "KhaozEngine.Movement/GroundTraversalProbe.cs": "e1f395c2bdae149da24d4077692c8437e782d3945dd8297b803a197b2385dfaa"
+  },
+  "classification": "Measured mechanism of the remaining directed-approach failure. Diagnostic only, production code unchanged.",
+  "command": "dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release -m:1 --filter FullyQualifiedName=KhaozEngine.Tests.Movement.LowLipTraversalTests.RestingBankApproachStallsOnTheMovingCornerDepenetration --logger console;verbosity=detailed",
+  "log": "/tmp/grimhollow-orch/lowlip-approach-discriminator.log",
+  "log_sha256": "75861257233e64e087b8b2a0223cb03e984ce1f0184c0a1cc1f86565c7d876ec",
+  "exit": 0,
+  "executed": 1,
+  "passed": 1,
+  "format": "dotnet format KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj --verify-no-changes --no-restore --include KhaozEngine.Movement.Tests/LowLipTraversalTests.ApproachMechanism.cs exit 0",
+  "observations": [
+    "proof=False inputs=66 replayExact=True from=(-0.375, 0, 0.125) to=(-0.125, 0.015217662, 0.125)",
+    "feet x converges geometrically from -0.16979103 at step 9 to the alternating fixed point -0.13175462/-0.13175464 by step 29 of 64",
+    "carried feet=(-0.13175464, 0.012019396, 0.125) grounded=True vVel=0 climbRate=0 climbEwma=0 stepDeltaY=0 sinceGround=0 support=True",
+    "next carried=(-0.13175462, 0.7620194, 0.125) fresh=(-0.13175462, 0.7620194, 0.125) same=True groundedNext=True/True",
+    "shadow pushes=1 push=(-0.004391817, 0.008983972, 0) delta=(0.0067546368, -0.02777778, 0) hitDistance=0.010246429 normal=(-0.44575053, 0.8951572, 0) walkable=True",
+    "shadow advanced=(-0.13175464, 0.75294244, 0.125) settleOverlap=True settleDepth=0.00812751 supportNormal=(-0.4391657, 0.89840615, 0) shadow=(-0.13175464, 0.7620194, 0.125) error=1.4901161E-08",
+    "fixed point cornerDistance=0.3 pushbackX=0.004391821 gainX=0.0043918216 netX=1.4901161E-08 residual=0.007473555"
+  ],
+  "mechanism": [
+    "The replay of TryEdge's call order matches all 64 step outputs bit for bit. Carried and fresh grounded state produce the identical next position, so no carried velocity, climb or grounded state contributes.",
+    "SlideSubstep's inflated pre-sweep depenetration keeps the full walkable corner MTV for a moving grounded body. It moves the body 4.391817 mm away from the lip edge.",
+    "The walkable pass-through advances the remainder minus one skin along the mostly vertical sweep direction, which returns d(1 - skin/|delta|) of the horizontal command, 4.391822 mm here.",
+    "The settle overlap of 8.13 mm is inside the 10 mm settle slop, so settle does not correct it. Support then raises the body vertically onto the corner.",
+    "The two horizontal terms balance at d = 6.75 mm, outside the 1 mm arrival ball. More steps converge to the same point."
+  ],
+  "limits": [
+    "Not support loss, footprint refusal, step budget, climb pacing or carried state. Each was measured above.",
+    "The repair lies in moving collision response, outside the approved support and anchor scope. It needs an owner scope decision before implementation.",
+    "No production, tolerance, budget, pace, bake, world, release or game pin change."
+  ]
+}

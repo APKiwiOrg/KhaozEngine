@@ -179,6 +179,11 @@ feature contract. Missing capability/refusal retains current behavior.
   and the seven-stair prior-art regression slice serially. Stop any control failure.
 - [ ] Commit and document unchanged authority and tolerance boundaries.
 
+Task 6 status on 2026-10-08: the support fallback passes the non-flat Hold rows and all 39 Game
+low-prop, wall, dome, slope and stair controls. The x -0.375 to -0.125 approach still stops 6.75 mm
+short. [The measured mechanism](../../design/LOW-LIP-APPROACH-MECHANISM-2026-10-08.md) is moving
+collision response, outside this plan's scope, so Task 6 GREEN waits for an owner scope decision.
+
 ### Task 7: Prove private resting anchors and finish
 
 **Files:** Modify `KhaozEngine.Movement/PhysicsNavBake.Profiles.cs` through a cohesive

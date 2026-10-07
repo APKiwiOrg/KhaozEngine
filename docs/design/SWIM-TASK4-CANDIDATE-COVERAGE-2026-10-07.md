@@ -128,3 +128,7 @@ required around any eventual public backend result.
 Eight pure aperture facts compiled and failed at the absent helper type after independent endpoint
 rounding controls passed. Zero passes/skips, exit 1 in `/tmp/swim-aperture-red.log`. No tree preflight
 or bound-metadata production was present. These cases address query enclosure only.
+
+The aperture helper passed all eight unchanged direct assertions, zero failures/skips, exit 0 in
+`/tmp/swim-aperture-green.log`. It uses the unchanged path/interval primitives and publishes both
+bounds only after every axis succeeds. Tree traversal and registration evidence remain unimplemented.

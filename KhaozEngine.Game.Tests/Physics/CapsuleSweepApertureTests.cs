@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
 
@@ -8,8 +7,6 @@ namespace KhaozEngine.Tests.Physics;
 
 public class CapsuleSweepApertureTests
 {
-    delegate bool CreateCall(Vector3 centre, float radius, float halfCylinderLength, Vector3 displacement,
-        out Vector3 min, out Vector3 max);
 
     [Fact]
     public void WholeHorizontalCapsulePathIsEnclosed()
@@ -90,11 +87,7 @@ public class CapsuleSweepApertureTests
     static (bool Complete, Vector3 Min, Vector3 Max) Create(Vector3 centre, Vector3 displacement,
         float radius = 0.25f, float halfCylinderLength = 0.5f)
     {
-        Type? type = typeof(BepuPhysicsWorld).Assembly.GetType("KhaozEngine.Physics.Bepu.CapsuleSweepAperture");
-        Assert.NotNull(type);
-        MethodInfo? method = type.GetMethod("TryCreate", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        bool complete = method.CreateDelegate<CreateCall>()(centre, radius, halfCylinderLength, displacement,
+        bool complete = CapsuleSweepAperture.TryCreate(centre, radius, halfCylinderLength, displacement,
             out Vector3 min, out Vector3 max);
         return (complete, min, max);
     }

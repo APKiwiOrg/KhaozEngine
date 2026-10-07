@@ -1344,7 +1344,7 @@ comm -12 \
 **Execution amendment:** OA18 approved the producer-session contract on 2026-10-08. The
 [Task 8 executable amendment](2026-10-08-world-authoring-r2-task8-producer-acquisition.md)
 reconciles its file ownership, additional conformance tests and serial execution steps. It is
-pending written-plan review. The original interfaces, fixtures and 22 cases below remain the
+approved for serial execution by OA19. The original interfaces, fixtures and 22 cases below remain the
 acceptance baseline. Do not execute the older five-step sequence independently of that amendment.
 
 **Files:**
@@ -3721,3 +3721,12 @@ SHA256 7d61c91e7b07963267f631b62b5b4055656ed21c72df0bcb7fed0953592ab800.
 The preceding proposed status is historical. The linked executable amendment reconciles this
 contract with the original Task 8 tests and remains subject to written-plan review. No Task 8
 product implementation or test application is part of this documentation checkpoint.
+
+
+### Task 8 executable amendment approved
+
+The owner directly approved amendment c62a17c70650835015abf3a41d0d2ff1b7155e88 on 2026-10-08,
+original SHA256 b89a2bb41c7e9ab9a0bb2860ffa3472c1076ed9f37938acf97c9ff94c0ceffa9 (OA19).
+Earlier pending-review statements describe prior checkpoints. Serial8A/8B/8C execution resumes,
+starting with the13producer-session tests before any new behavior. Review, scheduled verification
+and final integration obligations remain unchanged.

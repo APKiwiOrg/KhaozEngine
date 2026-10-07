@@ -3,7 +3,8 @@
 Status: written contract approved directly by the owner on 2026-10-08 (OA18).
 Approved revision: `86890fe22b340b483eaeed936dfb766b758ea53f`, original SHA256
 `7d61c91e7b07963267f631b62b5b4055656ed21c72df0bcb7fed0953592ab800`.
-Executable-plan reconciliation and review precede producer-session implementation.
+The executable Task 8 amendment was subsequently approved as OA19 on 2026-10-08.
+Implementation follows its serial tests-first, review and shared compute gates.
 Baseline: Task 7 checkpoint `e0e975cb4c2e0768b51d740fe14ff31e1ee08101`.
 This completes the incident-discovery and before-work budget requirements of the approved R2 plan.
 It does not reopen cave geometry, rational lattices, privacy, native ownership or release gates.

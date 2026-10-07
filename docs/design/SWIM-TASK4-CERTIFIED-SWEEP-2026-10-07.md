@@ -784,3 +784,8 @@ before any selected-world Clear result. A complete single-leaf result cannot fil
 
 The twelve distance-encoding facts compiled and failed at the absent helper type, zero passes/skips,
 exit 1 in `/tmp/swim-distance-encoding-red.log`. The independent rounded-up endpoint control passed.
+
+The Hit encoder passed all twelve unchanged direct assertions, zero failures/skips, exit 0 in
+`/tmp/swim-distance-encoding-green.log`. It verifies an exact norm proposal before tightening,
+otherwise keeps interval norm/product bounds, rounds float bounds outward and verifies the request
+extent exactly. Its error covers the encoded bracket width. Shared arithmetic was unchanged.

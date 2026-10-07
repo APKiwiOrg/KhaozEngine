@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -9,8 +8,6 @@ namespace KhaozEngine.Tests.Physics;
 
 public class CapsuleSweepDistanceEncodingTests
 {
-    delegate CapsuleSweepResult EncodeCall(Vector3 displacement, double lowerFraction,
-        double upperFraction, float maximumErrorMetres);
 
     [Fact]
     public void AxisBracketKeepsBothExactDistanceBounds()
@@ -134,12 +131,6 @@ public class CapsuleSweepDistanceEncodingTests
         Assert.Equal(CapsuleSweepStatus.Unresolved, result.Status);
     }
 
-    static CapsuleSweepResult Hit(Vector3 delta, double from, double to, float error = 0.001f)
-    {
-        Type? type = typeof(BepuPhysicsWorld).Assembly.GetType("KhaozEngine.Physics.Bepu.CapsuleSweepDistanceEncoding");
-        Assert.NotNull(type);
-        MethodInfo? method = type.GetMethod("Hit", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        return method.CreateDelegate<EncodeCall>()(delta, from, to, error);
-    }
+    static CapsuleSweepResult Hit(Vector3 delta, double from, double to, float error = 0.001f) =>
+        CapsuleSweepDistanceEncoding.Hit(delta, from, to, error);
 }

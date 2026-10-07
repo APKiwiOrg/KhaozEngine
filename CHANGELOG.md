@@ -7,6 +7,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.28.0
 
+- Physics adds optional thread-affine query read leases that pin the owner, origin and geometry generation.
+  Bepu owners and selected views fence mutations during the lease and serialize access to query scratch.
 - Windowing reads each GLFW window's OS content scale for `Frame` and `UiViewport`. `Scaled` windows cap their size
   in logical points on Windows and X11. Pointer framebuffer conversion and legacy viewport defaults are unchanged.
 - `AdaptiveViewport.WithMinimumCanvas` adds an opt-in minimum UI canvas and a live `ScaleMultiplier`.

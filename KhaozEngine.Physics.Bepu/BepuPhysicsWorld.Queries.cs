@@ -26,6 +26,7 @@ public sealed partial class BepuPhysicsWorld
     private bool RaycastCore(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit,
         QueryFilter filter, StaticQueryExclusions? exclusions)
     {
+        using QueryOperation scope = EnterQuery();
         var handler = new RayHitHandler(filter.Mobility, exclusions);
         _sim.RayCast(origin, direction, maxDistance, ref handler);
 
@@ -49,6 +50,7 @@ public sealed partial class BepuPhysicsWorld
     private bool SweepCapsuleCore(CapsuleShape capsule, Pose pose, Vector3 direction, float maxDistance,
         out SweepHit hit, QueryFilter filter, StaticQueryExclusions? exclusions)
     {
+        using QueryOperation scope = EnterQuery();
         var bepuCapsule = new Capsule(capsule.Radius, capsule.Length);
         var rigidPose = new RigidPose(pose.Position, pose.Orientation);
         var velocity = new BodyVelocity(direction);
@@ -75,6 +77,7 @@ public sealed partial class BepuPhysicsWorld
     private unsafe bool ComputePenetrationCore(CapsuleShape capsule, Pose pose, out Vector3 mtv,
         StaticQueryExclusions? exclusions)
     {
+        using QueryOperation scope = EnterQuery();
         // General capsule-vs-static depenetration over EVERY shape type (box, sphere, cylinder, convex
         // hull, triangle mesh, compound) via one BepuPhysics CollisionBatcher manifold query. This
         // replaced the per-shape analytic switch (which only handled box/sphere and reported no

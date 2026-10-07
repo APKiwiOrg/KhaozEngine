@@ -17,7 +17,14 @@ public sealed partial class BepuPhysicsWorld
     private Vector3 _origin;
 
     /// <inheritdoc/>
-    public Vector3 Origin => _origin;
+    public Vector3 Origin
+    {
+        get
+        {
+            using QueryOperation scope = EnterQuery(allowDisposed: true);
+            return _origin;
+        }
+    }
 
     /// <inheritdoc/>
     public bool CanRebase => true;
@@ -47,6 +54,7 @@ public sealed partial class BepuPhysicsWorld
     /// </summary>
     public void Rebase(Vector3 newOrigin)
     {
+        using QueryOperation scope = EnterMutation();
         Vector3 delta = _origin - newOrigin;
         _origin = newOrigin;
         if (delta == Vector3.Zero) return;   // adopting the origin you already have moves nothing

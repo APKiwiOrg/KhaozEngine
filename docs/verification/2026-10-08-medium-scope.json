@@ -1,0 +1,35 @@
+{
+  "status": "Scoped medium-query numerical guard. Combined water traversal remains pending.",
+  "baseCommit": "18eff48f4",
+  "redCause": "The complete skinned affine path extended beyond the witness even though rounded float bounds fit. Twelve cases returned Known instead of Unresolved.",
+  "fix": "Compare all three axes using double endpoint and extent arithmetic through the existing AxisInside helper. No producer or semantic facade change.",
+  "cases": "Both signs of each axis, stationary and swept capsules, plus next-float expanded-scope acceptance controls.",
+  "greenScope": "12 new numeric cases plus 28 environment/coverage/impact regressions",
+  "runs": {
+    "red": {
+      "path": "/tmp/swim-medium-scope-red.log",
+      "sha256": "f8461432acbb214fa479cf469254270ccb7bb01a67bf61c0ff342986b322c1c1",
+      "exitCode": 1,
+      "passed": 0,
+      "failed": 12,
+      "skipped": 0
+    },
+    "green": {
+      "path": "/tmp/swim-medium-scope-green.log",
+      "sha256": "ebd31857e08a4b896fa9f24b63aaeae5aab6a74a44ec5197b924008fc4cdb617",
+      "exitCode": 0,
+      "passed": 40,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "format": {
+    "applyExit": 0,
+    "verifyExit": 0,
+    "formattedFiles": 0
+  },
+  "sourceHashes": {
+    "KhaozEngine.Locomotion/MovementQueryLease.Buffers.cs": "4ea9affcc0b6b49d6a267c74374a5c5d746efed81a9f6dc81a67b5b4204f5a3f",
+    "KhaozEngine.Game.Tests/Locomotion/MovementMediumScopeTests.cs": "8cb6d98225360aacc6cf6e0127be5dc2486192ba3ad6f53eae5874e901386582"
+  }
+}

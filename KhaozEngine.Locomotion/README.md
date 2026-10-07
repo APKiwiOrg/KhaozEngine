@@ -454,7 +454,9 @@ complete producer result before publishing caller buffers. Refusal or a provider
 both caller buffers untouched. Initial operational limits are 256 support candidates, 64 spans and
 256 domain contacts, independent of a larger caller capacity. A Known trace must cover the full
 fraction range from 0 to 1 in order, without gaps or overlap, and certify at most 0.001 m error.
-These guards do not implement native geometry or choose a standing support.
+The water scope guard compares the skinned affine path using double intermediates so inward float
+rounding cannot authorize a query beyond the witness. These guards do not implement native geometry
+or choose a standing support.
 
 `MovementSupportResolver.Select(request, queries, out placement)` composes the producer's canonical
 candidates with complete physics clearance under the same lease. It filters legal-link provenance,

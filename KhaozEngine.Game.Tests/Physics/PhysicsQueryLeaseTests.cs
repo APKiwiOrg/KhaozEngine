@@ -144,7 +144,8 @@ public class PhysicsQueryLeaseTests
         {
             readError = Record.Exception(lease.AssertCurrent);
             disposeError = Record.Exception(lease.Dispose);
-        }) { IsBackground = true };
+        })
+        { IsBackground = true };
         thread.Start();
         Assert.True(thread.Join(TimeSpan.FromSeconds(5)), "Wrong-thread checks must not wait on the owned gate.");
         Assert.IsType<InvalidOperationException>(readError);

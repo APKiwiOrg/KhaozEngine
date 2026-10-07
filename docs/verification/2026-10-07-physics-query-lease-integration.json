@@ -1,0 +1,39 @@
+{
+  "imported_source": "80734c9b1c1cf16c436a2bd3d8d30bd37a56fbd1",
+  "integration_base": "e34cd884be10c22bee10b82b76aacc7a3514dd17",
+  "build_and_test_commit": "38a282a6162536b50d2ae6e82ffa3b20b5647954",
+  "final_delta": "Only one thread-initializer newline in the test file and this evidence record. No production or test-token change. The initial format exit2 and corrected format exit0 are retained separately.",
+  "test_file_before_sha256": "496883b835622f295457fb432270bf3bbeb32aa8f9075e46a27fb5b0b282cca7",
+  "test_file_after_sha256": "38e689e7fc3d4bf8774bcdb2cb59af4f9efec7ffd6f00ddd020a97afe8ae61f5",
+  "logs": {
+    "focused": {
+      "sha256": "45d9fe38079f638010dd7eefee63d8b69a975f9d01149445da1e543b468ecba6",
+      "exit": 0
+    },
+    "build": {
+      "sha256": "4bf98c06611be2a7261a37960dd2aa720f09294f489cc7f5d53ea2ca335dab82",
+      "exit": 0
+    },
+    "tests": {
+      "sha256": "e8eb03ff1c2323d2c0a41fac976eca10130fc211203ea8925ab53eff2af0cce8",
+      "exit": 0,
+      "project_summaries": 30,
+      "passed": 25789,
+      "skipped": 1328
+    },
+    "format": {
+      "sha256": "2bb67b304bf8cd5fc0c564e056527ffa000880f702de6c177c8a88eb785bd1dd",
+      "exit": 0
+    }
+  },
+  "guards": {
+    "dashes": 0,
+    "prose": 0,
+    "file_size": 0,
+    "agent_instructions": 0,
+    "doc_versions": 0,
+    "diff": 0
+  },
+  "format_notice": "Known analyzer-only Localization.Analyzers metadata-reference notice. Diagnostic output confirms relevant source-project analysis and zero changed files. No warning was suppressed.",
+  "limits": "Focused/current-main integration proof and full standard suite. No feature correspondence, certified sweep, game adoption or release claim."
+}

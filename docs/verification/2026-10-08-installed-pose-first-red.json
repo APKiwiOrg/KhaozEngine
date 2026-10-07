@@ -1,0 +1,75 @@
+{
+  "base": "65207ea48b3feda940abac3bee90ae15e32386a9",
+  "sources": {
+    "KhaozEngine.Game.Tests/Physics/InstalledPoseDomainTests.cs": "645b59e190053230a764249c36c701b4a87dc541b0cd5ee71abbc998edca02b8",
+    "KhaozEngine.Game.Tests/Physics/InstalledPoseFeatureTests.cs": "45c360956fb03572f9406c5c07bf6e59cd652498babccf6b475f9d6ef2fd9228",
+    "KhaozEngine.Game.Tests/Physics/InstalledPoseOracle.cs": "447596feae6c25cd1762ef0f6c85c488a25aa4ea15a0fff735250a866e0b2d28",
+    "KhaozEngine.Game.Tests/Physics/InstalledPoseFixture.cs": "95630534cbf6bf8e4d9e2893b171c1e236ed0fbef5b02ecc1e711c9e89714c5a"
+  },
+  "exit": 1,
+  "executed": 20,
+  "passed": 7,
+  "failed": 13,
+  "skipped": 0,
+  "classification": {
+    "intended_capability_or_closed_band": 12,
+    "unexpected_hull_setup": 1
+  },
+  "setup_failure": "Raw hull builder returned centroid <-0,1.0000001,-0>, disproving the ideal <0,1,0> fixture premise before feature query. Do not count this as intended RED.",
+  "rows": [
+    {
+      "test": "KhaozEngine.Tests.Physics.InstalledPoseFeatureTests.InstalledMeshRequiresForwardAndPinnedLocalSideAgreement(row: \"tilted-back\", front: False) [58 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: NoFeature\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.InstalledPoseDomainTests.ClosedNormBandUsesExactRepresentedSumAndAdjacentValues(endpoint: 0, step: 0, admitted: True) [< 1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: True\nActual:   False"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.InstalledPoseDomainTests.ClosedNormBandUsesExactRepresentedSumAndAdjacentValues(endpoint: 1, step: 0, admitted: True) [< 1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: True\nActual:   False"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.InstalledPoseFeatureTests.InstalledMeshRequiresForwardAndPinnedLocalSideAgreement(row: \"tilted-front\", front: True) [1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.InstalledPoseFeatureTests.InstalledMeshRequiresForwardAndPinnedLocalSideAgreement(row: \"three-dimensional-front\", front: True) [< 1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.InstalledPoseFeatureTests.InstalledBoxRobustFaceInteriorPublishesUnchangedErrorBounds(row: \"yaw\") [1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.InstalledPoseFeatureTests.InstalledBoxRobustFaceInteriorPublishesUnchangedErrorBounds(row: \"near-w\") [< 1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.InstalledPoseFeatureTests.InstalledBoxRobustFaceInteriorPublishesUnchangedErrorBounds(row: \"three-dimensional\") [< 1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.InstalledPoseFeatureTests.InstalledBoxRobustFaceInteriorPublishesUnchangedErrorBounds(row: \"tilt\") [< 1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.InstalledPoseFeatureTests.InstalledBoxRobustFaceInteriorPublishesUnchangedErrorBounds(row: \"large-frame-tilt\") [< 1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.InstalledPoseFeatureTests.InstalledBoxRobustFaceInteriorPublishesUnchangedErrorBounds(row: \"translated-yaw\") [3 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.InstalledPoseFeatureTests.InstalledCompoundUsesTheRepresentedComposedLeafPoseInsteadOfIdealMatrixComposition [1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.InstalledPoseFeatureTests.RecenteredInstalledHullKeepsItsRepresentedCentroidWrapperAndTilt [6 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: <0, 1, 0>\nActual:   <-0, 1.0000001, -0>"
+    }
+  ],
+  "log_sha256": "3937178fafb7cdbc39f93e3102ca767e5439ebc9a12338705878b0a7b96e8aa5",
+  "limits": "No production pose change authorized by the invalid hull row. Remaining twelve failures reached intended domain/status assertions after preceding controls. Seven controls passed."
+}

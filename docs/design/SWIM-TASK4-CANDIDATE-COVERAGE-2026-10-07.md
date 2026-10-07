@@ -24,8 +24,10 @@ Pinned source observations:
   visits active and static trees. A callback refusal in the first tree does not prevent starting the
   second tree, so an exhausted collector must stay exhausted across both.
 - [Tree volume query](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/Trees/Tree_VolumeQuery.cs)
-  delegates bound comparisons to BoundingBox.Intersects. Closed comparisons, parent-bound maintenance
-  and dynamic update ordering still require their own pinned audit before relying on them.
+  delegates to [BoundingBox.Intersects](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuUtilities/BoundingBox.cs#L63),
+  which uses inclusive comparisons. The pinned tree query uses a fixed traversal stack with a
+  Debug-only depth assertion. A leaf callback budget alone therefore does not bound its traversal.
+  Parent-bound maintenance and dynamic update ordering still need their own pinned audit.
 
 ## Recommendation
 
@@ -64,6 +66,21 @@ The first usable bound domain may be identity-box statics only. That is an expli
 not the completion of Task 4 or a sufficient native domain. Other shape families and dynamics remain
 unresolved until their bounds and swept geometry are proved. General installed-pose arithmetic stays
 owned by the feature-query lane. Sweep candidate selection and aggregation stay owned by swimming.
+
+## Bounded tree preflight proposal
+
+Before calling the existing overlap enumerator, traverse the same public Tree node buffers under the
+same physical read interval with checked, bounded scratch storage. Certify only the exact query
+aperture. Bound node visits, pending stack depth and visited leaves, including leaves later excluded
+by selection. Validate node/leaf indices and refuse malformed or over-budget traversal. This avoids
+claiming that callback limits protect work or stack depth before the first callback.
+
+Only after both active/static preflights succeed may the existing backend enumerator resolve its
+internal leaf references. Both passes use the identical immutable trees and aperture. This retains
+the backend's leaf-to-collidable mapping without reflection, a copied spatial index or a whole-world
+scan. The second traversal is deliberate bounded overhead. Candidate collection still keeps a sticky
+refusal and validates its final counts. A tree mutation between these passes is forbidden by the read
+gate. The exact finite caps and degenerate-tree controls remain to be pinned before implementation.
 
 ## Proposed file and lifecycle scope
 

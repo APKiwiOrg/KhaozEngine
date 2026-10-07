@@ -13,13 +13,26 @@ internal static class NativeDocumentSnapshot
         // Snapshotting a complete tiled world is independent of the small-file embedding limit.
         var root = new MapDocument
         {
-            Schema = document.Schema, FormatVersion = document.FormatVersion, Id = document.Id, DisplayName = document.DisplayName,
-            Bounds = document.Bounds, TileSize = document.TileSize, Terrain = document.Terrain,
-            ScatterLayers = document.ScatterLayers, CompanionLayers = document.CompanionLayers, Exclusions = document.Exclusions,
-            ScatterOverrides = document.ScatterOverrides, Placements = document.Placements, Spawns = document.Spawns,
-            PlayerSpawns = document.PlayerSpawns, Regions = document.Regions, TerrainOverrides = document.TerrainOverrides,
-            PlayableBounds = document.PlayableBounds, NativeAssets = document.NativeAssets,
-            NumericIdHighWaterMark = document.NumericIdHighWaterMark, ResolverIdentity = document.ResolverIdentity,
+            Schema = document.Schema,
+            FormatVersion = document.FormatVersion,
+            Id = document.Id,
+            DisplayName = document.DisplayName,
+            Bounds = document.Bounds,
+            TileSize = document.TileSize,
+            Terrain = document.Terrain,
+            ScatterLayers = document.ScatterLayers,
+            CompanionLayers = document.CompanionLayers,
+            Exclusions = document.Exclusions,
+            ScatterOverrides = document.ScatterOverrides,
+            Placements = document.Placements,
+            Spawns = document.Spawns,
+            PlayerSpawns = document.PlayerSpawns,
+            Regions = document.Regions,
+            TerrainOverrides = document.TerrainOverrides,
+            PlayableBounds = document.PlayableBounds,
+            NativeAssets = document.NativeAssets,
+            NumericIdHighWaterMark = document.NumericIdHighWaterMark,
+            ResolverIdentity = document.ResolverIdentity,
             SupportRecipe = document.SupportRecipe,
         };
         var metadata = new MapSurfaceSet();

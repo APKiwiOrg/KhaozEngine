@@ -197,7 +197,11 @@ internal static class SurfaceAcceptancePatchFixture
         if (count is < 1 or > 64) throw new ArgumentOutOfRangeException(nameof(width));
         return new MapSurfacePatch
         {
-            Key = key, CellMinX = minX, CellMinZ = minZ, Width = width, Depth = depth,
+            Key = key,
+            CellMinX = minX,
+            CellMinZ = minZ,
+            Width = width,
+            Depth = depth,
             Heights = Enumerable.Repeat(1000, (width + 1) * (depth + 1)).ToArray(),
             Cells = Enumerable.Repeat(new MapSurfaceCell(1, 0, MapOverlayCut.Full, 0,
                 MapCellFlags.None, MapCellTopology.Auto), count).ToArray(),

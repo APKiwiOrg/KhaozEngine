@@ -82,8 +82,11 @@ internal static class MapSurfacePages
         ValidateEntries(surface, page.Covers, page.Entries);
         return Array.AsReadOnly(page.Entries.Select(e => e with
         {
-            Dependencies = Array.AsReadOnly(e.Dependencies.ToArray()), RecordIds = Array.AsReadOnly(e.RecordIds.ToArray()),
-            IncidentRecords = Array.AsReadOnly(e.IncidentRecords.ToArray()), SpaceIds = Array.AsReadOnly(e.SpaceIds.ToArray()), Loaded = false,
+            Dependencies = Array.AsReadOnly(e.Dependencies.ToArray()),
+            RecordIds = Array.AsReadOnly(e.RecordIds.ToArray()),
+            IncidentRecords = Array.AsReadOnly(e.IncidentRecords.ToArray()),
+            SpaceIds = Array.AsReadOnly(e.SpaceIds.ToArray()),
+            Loaded = false,
         }).ToArray());
     }
     static JsonDocument Parse(byte[] bytes)

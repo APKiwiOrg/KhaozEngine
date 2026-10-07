@@ -15,7 +15,8 @@ internal sealed class MapSurfaceEmbeddingConverter : JsonConverter<List<MapSurfa
     readonly Func<int, byte[]> _allocatePayload;
 
     public MapSurfaceEmbeddingConverter() : this(MapSurfacePatchCodec.MaxEncodedBytes,
-        MapSurfaceEmbedding.MaxEncodedBytes, static size => new byte[size]) { }
+        MapSurfaceEmbedding.MaxEncodedBytes, static size => new byte[size])
+    { }
 
     internal MapSurfaceEmbeddingConverter(int maxPatchBytes, long maxEncodedBytes, Func<int, byte[]> allocatePayload)
     {

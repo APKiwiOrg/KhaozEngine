@@ -36,8 +36,8 @@ internal static class MapSurfaceReferences
     internal static IReadOnlyList<string> Spaces(MapSurfaceSet set, MapSurfacePatch patch, IReadOnlyList<MapRecordRef> incident)
     {
         var records = patch.Records.Concat(incident.Select(r => set.TryGetRecord(r, out MapTopologyRecord? record) ? record : null).OfType<MapTopologyRecord>());
-        return Array.AsReadOnly(records.SelectMany(SpaceIds).Concat(set.Refs.Where(s => s.Id == patch.Key.SurfaceId)
-            .Select(s => s.IndoorSpan?.ParentSpace.Id).OfType<string>()).Distinct().OrderBy(s => s, StringComparer.Ordinal).ToArray());
+        // Root span metadata can change without a payload edit. Combine it at query time, not in carried pages.
+        return Array.AsReadOnly(records.SelectMany(SpaceIds).Distinct().OrderBy(s => s, StringComparer.Ordinal).ToArray());
     }
     static IEnumerable<string> SpaceIds(MapTopologyRecord r) => r switch
     {

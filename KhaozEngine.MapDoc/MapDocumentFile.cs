@@ -320,9 +320,12 @@ public static class MapDocumentFile
         for (int i = 0; i < copy.Surfaces.Refs.Count; i++)
         {
             MapSurfaceRef surface = copy.Surfaces.Refs[i];
-            copy.Surfaces.Refs[i] = surface with { SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface,
+            copy.Surfaces.Refs[i] = surface with
+            {
+                SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface,
                 copy.Surfaces.Patches.Where(p => p.Key.SurfaceId == surface.Id)
-                    .Select(p => new KeyValuePair<MapPatchKey, string>(p.Key, MapSurfaceSemantics.PatchDigest(p.Value)))) };
+                    .Select(p => new KeyValuePair<MapPatchKey, string>(p.Key, MapSurfaceSemantics.PatchDigest(p.Value))))
+            };
         }
         return copy;
     }

@@ -219,8 +219,10 @@ share the same id string with no collision.
 a whole document against the document schema, or checks each loaded tile of a windowed document against
 `MapDocumentSchema.GetTileJson()`. Tile errors name their tile coordinate. The result reports `SchemaScope`
 as `document`, `loadedTiles`, or `none`, so a partial check is never presented as whole-world coverage.
-Pass `verifyWholeWorld: true` for a tiled document to run `MapDocumentFile.VerifyTiled` against every tile on
-disk without loading cold tiles into the session. `WholeWorldChecked`, `WholeWorldValid`, and
+Pass `verifyWholeWorld: true` for a tiled document to run `MapDocumentFile.VerifyTiled` against every tile and
+the native surface storage closure without loading cold content into the session. Surface checks include
+byte and semantic integrity, references and incident bookkeeping, not geometry or navigation certification.
+`WholeWorldChecked`, `WholeWorldValid`, and
 `WholeWorldErrors` report that separate pass. `Valid` includes whole-world validity only when the option was
 requested. `bake_region` freezes a scatter layer's procedural output over a world rect
 into authored placements (`baked-<layer>-N`, an explicit ground Y, tagged `baked`) plus a covering

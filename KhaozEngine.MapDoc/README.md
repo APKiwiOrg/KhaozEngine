@@ -386,6 +386,8 @@ positions. Geometry, seam heights and separation require complete native transac
 pins one manifest generation and verifies named bytes and patch semantics without asset reads or directory
 enumeration. Files swept by a newer save return `Missing`. `FindPatches` bounds local candidate and page
 work through `MapQueryLimits`, and capacity refusal returns no partial patches. Returned patches are clones.
+Index `SpaceIds` summarizes payload records and incidence only. Queries also consider the current surface's
+`IndoorSpan.ParentSpace`, so metadata-only edits cannot leave space filtering tied to an older page generation.
 `MapSurfaceSemantics.RootDigest` includes surface semantics and excludes storage names and page packing.
 
 **Every save entry point refuses a partial document** (`Save`, `SaveText`, `SaveTo`, `SaveAuto`,

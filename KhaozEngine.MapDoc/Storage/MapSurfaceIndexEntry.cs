@@ -15,6 +15,8 @@ public readonly record struct MapCellRect(long MinX, long MinZ, long MaxXExclusi
     internal bool Overlaps(MapCellRect other) => MinX < other.MaxXExclusive && MaxXExclusive > other.MinX &&
         MinZ < other.MaxZExclusive && MaxZExclusive > other.MinZ;
 }
+/// <summary>Payload and incidence summary. SpaceIds excludes the root surface's current span parent.</summary>
+/// <remarks>Queries combine these intrinsic ids with current surface metadata, which can change independently.</remarks>
 public sealed record MapSurfaceIndexEntry(MapPatchKey Key, MapCellRect Cells, int MinHeightUnits,
     int MaxHeightUnits, string PayloadSha256, string SemanticSha256, IReadOnlyList<MapPatchKey> Dependencies,
     IReadOnlyList<string> RecordIds, IReadOnlyList<MapRecordRef> IncidentRecords, IReadOnlyList<string> SpaceIds,

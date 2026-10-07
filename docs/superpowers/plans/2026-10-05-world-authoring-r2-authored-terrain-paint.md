@@ -3667,3 +3667,24 @@ after unfiltered controls, typed save and Complete status passed. Zero skips, no
 unchanged 48-path freeze, primary released. Payload equality was later and not reached. Proof is
 proofs/2026-10-07-r2-task7-space-filter-red.json. The final bundled GREEN/format window remains held
 until this narrow correctness repair is source-reviewed. Prior R2/R4 source verdicts remain Ready.
+
+
+### Task 7 focused acceptance complete
+
+Whole MapDoc passed 279 cases and the encompassing editor/tool slice passed 519 with six unchanged
+opt-in GPU skips. All 68 new Task 7 cases ran, including bounded input construction, independent exact
+scope/incidence controls, valid-parent carry, stale-filter repair and both sufficient-budget controls.
+Prior fourteen format-migration, two binding-copy and seventeen legacy hash controls passed too.
+Forty-eight source hashes and seven frozen format-4 files stayed fixed during the runs.
+
+Initial diagnostic format covered all four target projects but reported whitespace in seven files.
+Only the reported initializer/constructor line breaks were changed, with non-whitespace characters
+and quoted literals preserved. No test was repeated. The separately granted exact-file recheck
+passed, zero changes among 6258 workspace files, both analyzer stages on all four targets and no
+workspace notices. Both compute slots were explicitly released after their respective windows.
+Proof is proofs/2026-10-07-r2-task7-green.json. A living-doc sweep clarified unified partial views,
+native embedding limits and whole-storage verification, without claiming geometry/nav certification.
+
+Repository guards and scoped push preserve this focused checkpoint. Task 8 tests remain ignored
+preparation until this push completes. Their incident-metadata/budget/global-identity source seam
+reconciliation is design-only. This does not integrate the round, release packages or adopt game data.

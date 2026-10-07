@@ -9794,15 +9794,17 @@ tile once, O(n) to build and O(k) per query, so a whole-document workflow still 
 `MapRuntime.BuildPlacements` grows a rect overload and two index overloads beside the untouched
 whole-document one.
 
-**Windowed loading.** `LoadTiled(directory, window)` reads the manifest plus the tiles in a `MapTileRect`.
-Unloaded tiles keep their index entries, so a later `SaveTiled` back to the SAME directory carries them
-through untouched. **Every save entry point refuses a partial document** (`MapTileIndex.IsPartial`): a
-whole-document write of a window silently drops every unloaded tile and looks like a successful save. The
-guard is on the document rather than on one writer, so a save path added later inherits it.
+**Windowed loading.** `LoadTiled(directory, window)` reads the manifest, the tiles in a `MapTileRect`,
+and native surface pages and patches intersecting the world window expanded by one surface cell.
+`MapTileIndex.IsPartial` includes unloaded tiles, unread surface pages and unloaded surface patches.
+`HasUnloadedTiles` retains the tile-only meaning. `SaveTiled` back to the SAME directory carries cold
+content through unchanged, subject to its reference and partial-edit guards. Whole-document writers
+refuse partial views, including surface-only windows, rather than silently dropping cold content.
 
-**Saving never materializes the document.** `SaveTo(doc, stream)` serializes straight through a
-`Utf8JsonWriter`, and `Save` is reimplemented over it, so the monolithic ceiling is disk rather than the
-.NET single-object element count. `SaveTiled` writes one tile at a time and **does not rewrite a tile whose
+**Streamed content and bounded surface embedding.** `SaveTo(doc, stream)` serializes through a
+`Utf8JsonWriter`, and `Save` uses it without building one whole-document text buffer. Native surface
+embedding has separate limits of 256 patches and 8 MiB. Larger native surfaces require tiled storage.
+`SaveTiled` writes one tile at a time and **does not rewrite a tile whose
 canonical hash is unchanged**. Its ordering is crash-consistent: changed tiles are written at names nothing
 points at yet, then a single `map.json` rename commits, then a best-effort sweep collects what the new
 manifest does not name. Crash at any instant and the directory loads as entirely the old version or
@@ -11508,7 +11510,8 @@ to notice a coordinated client/server release is now needed.
 **Validation scope.** `map_validate()` validates the document structure and schema, including each loaded
 tile of a windowed document against the tile schema. `SchemaScope` reports `document`, `loadedTiles`, or
 `none`. Pass `verifyWholeWorld: true` to also run `MapDocumentFile.VerifyTiled` against a tiled source's
-saved directory. `WholeWorldChecked`, `WholeWorldValid`, and `WholeWorldErrors` describe that separate
+saved directory, including native surface byte/semantic integrity, references and incident bookkeeping.
+This is not geometry or navigation certification. `WholeWorldChecked`, `WholeWorldValid`, and `WholeWorldErrors` describe that separate
 on-disk check, which does not replace validation of unsaved loaded edits. A failed requested whole-world
 check makes the overall `Valid` result false.
 

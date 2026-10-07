@@ -18,8 +18,12 @@ public sealed class SurfaceEmbeddingWriterBudgetControls
         {
             var patch = new MapSurfacePatch
             {
-                Key = new("s", i, 0), Width = 1, Depth = 1,
-                Heights = new int[4], Cells = new MapSurfaceCell[1], Presence = new ulong[] { 1 },
+                Key = new("s", i, 0),
+                Width = 1,
+                Depth = 1,
+                Heights = new int[4],
+                Cells = new MapSurfaceCell[1],
+                Presence = new ulong[] { 1 },
             };
             set.Patches.Add(patch.Key, patch);
         }

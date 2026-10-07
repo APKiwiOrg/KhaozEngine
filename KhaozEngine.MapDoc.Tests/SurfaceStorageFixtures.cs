@@ -87,7 +87,12 @@ internal static class SurfaceStorageFixtures
     }
     internal static MapPlacement ExplicitYPlacement(string id, float x, float z) => new()
     {
-        Id = id, Kind = "scenery", AssetId = "tree", X = x, Z = z, Y = 10,
+        Id = id,
+        Kind = "scenery",
+        AssetId = "tree",
+        X = x,
+        Z = z,
+        Y = 10,
     };
     internal static MapSurfacePatch FlatPatch(MapPatchKey key, int height) => Patch(key, height, 0, 0, 4, 4);
     static MapSurfacePatch Patch(MapPatchKey key, int height, int minX, int minZ, int width, int depth)
@@ -95,7 +100,11 @@ internal static class SurfaceStorageFixtures
         int count = width * depth;
         var patch = new MapSurfacePatch
         {
-            Key = key, CellMinX = minX, CellMinZ = minZ, Width = width, Depth = depth,
+            Key = key,
+            CellMinX = minX,
+            CellMinZ = minZ,
+            Width = width,
+            Depth = depth,
             Heights = Enumerable.Repeat(height, (width + 1) * (depth + 1)).ToArray(),
             Cells = Enumerable.Repeat(new MapSurfaceCell(1, 0, MapOverlayCut.Full, 0, MapCellFlags.None, MapCellTopology.Auto), count).ToArray(),
             Presence = Enumerable.Repeat(ulong.MaxValue, (count + 63) / 64).ToArray(),

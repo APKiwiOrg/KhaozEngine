@@ -129,7 +129,8 @@ internal static class MapSurfaceQuery
         MapExactValue min = surface.Frame.Metres(new(entry.MinHeightUnits, 1)), max = surface.Frame.Metres(new(entry.MaxHeightUnits, 1));
         return !(scope.MinY is { } low && max.CompareTo(MapExactValue.FromSingle(low)) < 0) &&
             !(scope.MaxY is { } high && min.CompareTo(MapExactValue.FromSingle(high)) > 0) &&
-            (scope.SpaceIds is null || entry.SpaceIds.Any(scope.SpaceIds.Contains));
+            (scope.SpaceIds is null || entry.SpaceIds.Any(scope.SpaceIds.Contains) ||
+                surface.IndoorSpan is { } span && scope.SpaceIds.Contains(span.ParentSpace.Id));
     }
     static void Unavailable(string surface, MapSlotRect covers, MapPatchStatus status, List<MapPatchRead> unavailable,
         List<MapSlotRect> empty, MapPageBudget budget)

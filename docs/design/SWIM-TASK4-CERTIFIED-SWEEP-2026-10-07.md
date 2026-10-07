@@ -434,3 +434,40 @@ source. The separately granted five-fixture Release check passed 82 cases, zero 
 exit 0. The [reconciliation evidence](../verification/2026-10-07-swimming-main-reconciliation.json)
 records the exact tested commit, command and log hash. The secondary slot was explicitly released.
 This is focused reconciliation, not final whole-branch or native/backend certification.
+
+## Independent active-constraint projection slice
+
+While the separately owned backend arithmetic kernel is being implemented, Task 4 can implement
+its generic displacement projection without importing Bepu geometry. This is the existing F3
+requirement to consider the whole active constraint set, rather than successively choosing one
+convenient wall. It is not a swept-clear certificate or permission to commit a position.
+
+The internal helper takes a requested displacement and all active outward unit normals, returning
+a candidate displacement or explicit refusal. In three dimensions, projection onto the homogeneous
+half-space intersection has zero, one or two independent active planes unless the result is zero.
+Evaluate the unchanged request, each plane projection, each pair's intersection-line projection,
+and zero. Validate each candidate against the whole set and choose the closest one to the request.
+Canonical normal ordering makes ties independent of insertion order. Opposing parallel planes are
+handled by the single-plane candidates, not division by a zero cross product.
+
+Exact duplicate normals are coalesced after validation. Bound input to the existing 16,384 solid
+plus 256 water contacts, and use at most 64 distinct normals for this first policy. More distinct
+normals returns CapacityExceeded, never a subset. That operational bound must enter the eventual
+profile/solver policy identity and be proved at native G1b. With 64 unique normals there are at
+most 2,082 candidates including the unchanged request and zero. No local stress proof is implied.
+
+Use double intermediate vector algebra and track float output rounding. The helper's candidate
+still requires complete solid and water retracing. Arithmetic uncertainty or output rounding above
+the existing 1 mm query skin refuses, rather than enlarging a physical tolerance. This vector-algebra
+helper is in Locomotion and does not duplicate the backend interval/transform kernel or certify
+geometric normals. No body, support selection or physics object changes during projection.
+
+Initial finite tests cover unchanged free/away/tangent movement, one inward wall, two-wall corner,
+opposing planes, a closed corner, a nonorthogonal plane, reversed input order, duplicate normals,
+invalid normals and explicit capacity refusal. Tests precede implementation and require their own
+bounded grant. The complete resolver and runtime/nav integration remain separate following work.
+
+The initial 12 projection facts compiled and failed at the absent helper type, zero passes/skips,
+exit 1 in `/tmp/swim-constraint-projection-red.log`. No setup or compile failure occurred. The
+secondary slot was explicitly released before implementation. Comparison slack in the fixture is
+not permission to move through a plane. Candidate retracing remains mandatory.

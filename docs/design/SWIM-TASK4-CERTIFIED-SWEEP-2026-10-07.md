@@ -696,3 +696,8 @@ inputs and reversed parameterization. No replacement trajectory or rounded-point
 The ten path-point facts compiled and failed at the absent `CapsuleSweepPath` type, after the
 independent rational/rounding controls passed. Zero passes/skips, expected exit 1 in
 `/tmp/swim-path-point-red.log`. No compile or setup failure occurred.
+
+The path-point implementation passed all ten unchanged assertions converted to direct calls, zero
+failures/skips, exit 0 in `/tmp/swim-path-point-green.log`. It preserves enclosing intervals when
+exact product/sum verification fails, and independently tightens axes whose proposals are proved.
+This binds the coordinate enclosure to the original C+tD expression without claiming a collision.

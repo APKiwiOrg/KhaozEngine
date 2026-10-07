@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
 
@@ -61,18 +60,16 @@ public class CapsuleSweepPathTests
     [Fact]
     public void InvalidFractionsCannotPublishAPathPoint()
     {
-        var point = Bind();
         foreach (double fraction in new[] { double.NaN, double.PositiveInfinity, -double.Epsilon, Math.BitIncrement(1d) })
-            Assert.False(point(Vector3.Zero, Vector3.One, fraction).IsResolved);
+            Assert.False(CapsuleSweepPath.Point(Vector3.Zero, Vector3.One, fraction).IsResolved);
     }
 
     [Fact]
     public void InvalidFullPathCannotBeSalvagedAsAValidPrefixPoint()
     {
-        var point = Bind();
-        Assert.False(point(new Vector3(float.NaN), Vector3.One, 0).IsResolved);
-        Assert.False(point(Vector3.Zero, new Vector3(float.PositiveInfinity), 0).IsResolved);
-        Assert.False(point(new Vector3(float.MaxValue), new Vector3(float.MaxValue), 0).IsResolved);
+        Assert.False(CapsuleSweepPath.Point(new Vector3(float.NaN), Vector3.One, 0).IsResolved);
+        Assert.False(CapsuleSweepPath.Point(Vector3.Zero, new Vector3(float.PositiveInfinity), 0).IsResolved);
+        Assert.False(CapsuleSweepPath.Point(new Vector3(float.MaxValue), new Vector3(float.MaxValue), 0).IsResolved);
     }
 
     [Fact]
@@ -114,14 +111,6 @@ public class CapsuleSweepPathTests
     }
 
     static GeometryVector Point(Vector3 centre, Vector3 displacement, double fraction) =>
-        Bind()(centre, displacement, fraction);
+        CapsuleSweepPath.Point(centre, displacement, fraction);
 
-    static Func<Vector3, Vector3, double, GeometryVector> Bind()
-    {
-        Type? type = typeof(BepuPhysicsWorld).Assembly.GetType("KhaozEngine.Physics.Bepu.CapsuleSweepPath");
-        Assert.NotNull(type);
-        MethodInfo? method = type.GetMethod("Point", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        return method.CreateDelegate<Func<Vector3, Vector3, double, GeometryVector>>();
-    }
 }

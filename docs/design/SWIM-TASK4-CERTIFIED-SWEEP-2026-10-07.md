@@ -471,3 +471,57 @@ The initial 12 projection facts compiled and failed at the absent helper type, z
 exit 1 in `/tmp/swim-constraint-projection-red.log`. No setup or compile failure occurred. The
 secondary slot was explicitly released before implementation. Comparison slack in the fixture is
 not permission to move through a plane. Candidate retracing remains mandatory.
+
+## Shared arithmetic primitive compatibility checkpoint
+
+Read the complete first primitive slice in the owned low-lip worktree:
+
+- `BoundedGeometryArithmetic.cs`, SHA-256 `f9f2b5cba0b60ad40d394c90c9dc204c6e98d0c8ed77ff996d789d1e8d94a365`.
+- `BoundedGeometryArithmeticTests.cs`, SHA-256 `d3bdeb5eeae7e6bec4f7f3343149bd08a839f6b409f88ce789c83be9a6f7b7ac`.
+- `CAPSULE-FEATURE-NUMERICAL-PROOF-2026-10-07.md`, SHA-256 `ef2468a223a68d5ff25bad0b4f4885902b472cfcc195831fc462cb766e5d318b`.
+
+No blocking primitive compatibility finding in its stated IEEE binary64 domain. The finite outward
+endpoint and unresolved rules are coherent. Four-corner multiplication/division enclosures cover
+the continuous zero-free denominator domain. Square handles zero crossing, and square-root
+publication is gated on exact dyadic squared-endpoint inequalities. Predicate operand growth is
+checked before shifting, with bounded initial mantissa products. `Exact`/`Enclose` assert the
+supplied represented numbers, not earlier measurement or transformation accuracy.
+
+This source review did not rerun or independently verify the reported 14-case runtime result. It
+does not accept transforms, finite-feature membership, candidate enumeration, a vector-norm
+enclosure for the generic consumer, or geometric sweep error ceilings. Reuse waits for the exact
+committed/tested source handoff, preserving one arithmetic implementation.
+
+## Next swept-support kernel fixture inventory
+
+After the immutable arithmetic handoff, the first sweep-specific kernel will enclose the projection
+gap derived above. It accepts the actual represented upright capsule centre, radius and cylindrical
+half-length, displacement, a nonzero finite separating-axis proposal and an already enclosed maximum
+solid support projection. The support interval is a premise whose installed-geometry derivation is
+owned by the later backend adapter. This kernel neither invents that premise nor labels a nonpositive
+gap as a Hit. Only a resolved strictly positive lower gap can prove separation along the supplied axis.
+
+Ten finite facts are prepared as the next test inventory, before implementation:
+
+1. Positive gap for a capsule whose entire sweep stops before a plane.
+2. Opposite axis/displacement signs choose the correct path endpoint.
+3. A thin interior crossing cannot become Clear from clear start/end samples.
+4. Exact closed tangency has no strictly positive lower gap.
+5. A non-unit axis preserves the separation classification without guessed normalization.
+6. The cylindrical half-length participates in a vertical projection.
+7. Zero displacement retains stationary full-capsule extent.
+8. Reversing the same swept volume preserves the enclosed mathematical minimum.
+9. An unresolved support premise and zero axis cannot produce a certificate.
+10. Non-finite or malformed capsule/path inputs refuse.
+
+Use dyadic inputs with independently written exact expected gaps. Tests must inspect enclosing bounds
+and refusal, not call the production calculation to construct expectations. There is no geometric
+query, native sampler, physical mutation or automatic compute run in this preparation.
+
+The projection implementation passed the unchanged 12 facts under its separately granted Release
+GREEN, zero failures/skips, exit 0 in `/tmp/swim-constraint-projection-green.log`. The secondary
+slot was explicitly released. It enumerates the complete candidate set above under canonical normal
+ordering, returning no output on invalid/capacity/uncertain arithmetic. `PolicyVersion = 1`, the
+input/distinct caps and arithmetic screen require follow-through in the eventual solver/profile
+identity. Its 64 binary64-ULP scale and measured float-rounding screen are not mathematical geometry
+certificates. A Known candidate can never bypass the mandatory complete solid and water retrace.

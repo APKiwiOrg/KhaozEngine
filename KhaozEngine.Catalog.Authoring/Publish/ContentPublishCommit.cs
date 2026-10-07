@@ -33,9 +33,9 @@ public sealed record ContentPackWrite(int ObjectsWritten, long BytesWritten);
 /// which is what stops a bad publish from turning into a lost pack.
 /// </para>
 /// <para>
-/// <b>This type owns the END of step 1's freeze.</b> The pipeline marks the draft frozen and only a caller
-/// that runs all the way through step 11 knows when the publish is over, so the release is a <c>finally</c>
-/// here rather than anything the pipeline can do for itself. A <see cref="ContentPublisher.PrepareAsync"/>
+/// <b>This type owns the END of step 1's freeze.</b> The transaction consumes the draft on success, and a
+/// pre-commit failure releases only this attempt's base through <see cref="IContentDraftFreezeStore"/> when
+/// supplied. Cleanup after the sweep must leave a later draft alone. A <see cref="ContentPublisher.PrepareAsync"/>
 /// driven on its own therefore leaves a frozen draft behind, deliberately: half a publish is exactly the
 /// state the marker describes, and the next baseline read or the next publish clears it.
 /// </para>
@@ -105,6 +105,7 @@ public sealed class ContentPublishCommit
         ArgumentNullException.ThrowIfNull(request);
 
         long started = Stopwatch.GetTimestamp();
+        var freeze = new ContentDraftFreezeRelease(_store, request.ExpectedBaseVersion);
         try
         {
             // A store that implements the text companion publishes through it, row-only work included, so
@@ -112,7 +113,7 @@ public sealed class ContentPublishCommit
             // does not keeps exactly the route below.
             if (_store is IContentTextAuthoringStore text)
             {
-                return await PublishTextAsync(text, request, started, cancellationToken).ConfigureAwait(false);
+                return await PublishTextAsync(text, request, started, freeze, cancellationToken).ConfigureAwait(false);
             }
 
             ContentPublishBaseline baseline = await _store
@@ -132,6 +133,7 @@ public sealed class ContentPublishCommit
             Step(ContentPublishStep.BeforeCommit);
             ContentVersionRecord record = await _store
                 .CommitPublishAsync(plan, request, Pointers, cancellationToken).ConfigureAwait(false);
+            freeze.Committed();
             Step(ContentPublishStep.AfterCommit);
 
             // STEP 11. Only now, and only because the commit succeeded.
@@ -150,11 +152,9 @@ public sealed class ContentPublishCommit
         }
         finally
         {
-            // The freeze of step 1 ends HERE, on every exit path there is. A commit that ran already took the
-            // draft with it and this is a no-op, and any other ending is one where a draft is still sitting
-            // there frozen for a publish that is over. CancellationToken.None because a cancelled publish is
-            // the case that most needs its draft handed back.
-            await ClearTheFreezeAsync().ConfigureAwait(false);
+            // A commit consumed its own draft. A later draft may already be frozen during the sweep, so
+            // cleanup is owed only before commit and is scoped to this attempt's base version.
+            await ClearTheFreezeAsync(freeze).ConfigureAwait(false);
         }
     }
 
@@ -169,6 +169,7 @@ public sealed class ContentPublishCommit
         IContentTextAuthoringStore text,
         ContentPublishRequest request,
         long started,
+        ContentDraftFreezeRelease freeze,
         CancellationToken cancellationToken)
     {
         ContentTextPublishSnapshot snapshot = await text
@@ -184,6 +185,7 @@ public sealed class ContentPublishCommit
         Step(ContentPublishStep.BeforeCommit);
         ContentVersionRecord record = await text
             .CommitTextPublishAsync(plan, request, Pointers, cancellationToken).ConfigureAwait(false);
+        freeze.Committed();
         Step(ContentPublishStep.AfterCommit);
 
         // STEP 11. Only now, and only because the commit succeeded.
@@ -214,11 +216,11 @@ public sealed class ContentPublishCommit
     /// that did not happen is recoverable on its own: the marker names a base version, and the next baseline
     /// read clears one the store no longer stands at.
     /// </summary>
-    async Task ClearTheFreezeAsync()
+    static async Task ClearTheFreezeAsync(ContentDraftFreezeRelease freeze)
     {
         try
         {
-            await _store.ClearDraftFreezeAsync(CancellationToken.None).ConfigureAwait(false);
+            await freeze.ReleaseAsync().ConfigureAwait(false);
         }
         catch (Exception release) when (release is not OperationCanceledException)
         {

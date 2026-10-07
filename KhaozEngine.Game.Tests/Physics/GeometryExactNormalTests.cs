@@ -1,4 +1,3 @@
-using System;
 using System.Numerics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;

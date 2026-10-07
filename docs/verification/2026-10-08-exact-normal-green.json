@@ -1,0 +1,32 @@
+{
+  "base": "5861e56e63c11f67725714e4ea6b72c5c295146d",
+  "runtime_sha256": "7954759a61e8228d5d1bf32821b80601f8d08d1fb78c545f336809793e940dba",
+  "tested_test_sha256": "46a292ff27273adf9f6907989a52e839cc020d581459891fcc992fcd04a85d34",
+  "final_test_sha256": "62d1a4a5ae23177ba428b5d593590df56a5fd1c9b21d72196519d442dcbbcedd",
+  "post_green_delta": "Only unused using System removed from the test file before format, all assertions/bodies unchanged.",
+  "green": {
+    "exit": 0,
+    "passed": 66,
+    "failed": 0,
+    "skipped": 0,
+    "new_exact_cases": 8,
+    "prior_vector": 14,
+    "mesh_polyhedron_lifetime": 44
+  },
+  "format": {
+    "exit": 0,
+    "changed": 0,
+    "explicit_files": 2,
+    "style_and_reference_projects": [
+      "KhaozEngine.Game.Tests",
+      "KhaozEngine.Physics.Bepu"
+    ]
+  },
+  "review": "Independent exact_normal_certificate_review Ready, no findings.",
+  "proof": "Three singleton inputs, positive finite norm verified by exact sum of squares, three exact quotient products required. All rejected proposals use unchanged interval fallback.",
+  "limits": "Exact supplied-vector normalization only. No new geometry/domain/tolerance claim. Near-axis and interval uncertainty remain enclosing.",
+  "logs": {
+    "green": "19672da436d09691c4ea4828bff4a67a4ed21b0537fc26f8c7583553a867ca9f",
+    "format": "4924c01c728eed4b2e6a929d26ae83d029aacc0b65b0910e778d2b344c86d289"
+  }
+}

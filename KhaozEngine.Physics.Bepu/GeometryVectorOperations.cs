@@ -42,6 +42,7 @@ internal static class GeometryVectorOperations
     internal static GeometryVector Normalize(GeometryVector value)
     {
         if (!value.IsResolved) return default;
+        if (TryNormalizeExactly(value, out GeometryVector exact)) return exact;
         // Square retains the self-dependency when a component straddles zero. Dot(value,value)
         // would instead bound products of independently chosen components and lose that fact.
         GeometryInterval squared = value.X.Square().Add(value.Y.Square()).Add(value.Z.Square());
@@ -49,6 +50,28 @@ internal static class GeometryVectorOperations
         GeometryInterval length = squared.Sqrt();
         if (!length.IsResolved || length.Lower <= 0) return default;
         return new(value.X.Divide(length), value.Y.Divide(length), value.Z.Divide(length));
+    }
+
+    static bool TryNormalizeExactly(GeometryVector value, out GeometryVector result)
+    {
+        result = default;
+        if (value.X.Lower != value.X.Upper || value.Y.Lower != value.Y.Upper ||
+            value.Z.Lower != value.Z.Upper) return false;
+        double x = value.X.Lower, y = value.Y.Lower, z = value.Z.Lower;
+        double length = Math.Sqrt(x * x + y * y + z * z);
+        // Floating arithmetic proposes the norm and quotients. Exact dyadic equalities must
+        // certify all four before an interval can become a singleton, including zero components.
+        if (!double.IsFinite(length) || length <= 0 ||
+            BoundedGeometryArithmetic.CompareSquaredDistances([x, y, z], [0, 0, 0], [length], [0]) != GeometrySign.Zero)
+            return false;
+        double nx = x / length, ny = y / length, nz = z / length;
+        if (!double.IsFinite(nx) || !double.IsFinite(ny) || !double.IsFinite(nz) ||
+            BoundedGeometryArithmetic.CompareProducts(nx, length, x, 1) != GeometrySign.Zero ||
+            BoundedGeometryArithmetic.CompareProducts(ny, length, y, 1) != GeometrySign.Zero ||
+            BoundedGeometryArithmetic.CompareProducts(nz, length, z, 1) != GeometrySign.Zero)
+            return false;
+        result = new(GeometryInterval.Exact(nx), GeometryInterval.Exact(ny), GeometryInterval.Exact(nz));
+        return true;
     }
 
     internal static GeometryVectorOutput Publish(GeometryVector value)

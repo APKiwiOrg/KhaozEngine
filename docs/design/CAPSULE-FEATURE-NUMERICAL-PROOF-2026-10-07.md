@@ -184,3 +184,28 @@ establish the spec's 0.25 mm position, 0.1 mm separation-width or 0.00001 normal
 any geometric query. Those require the later operation-level composition proof and independent
 geometric tests. Swimming may share reviewed arithmetic, but retains its own coverage and bracket
 proof. Passing these primitive tests cannot authorize either movement consumer.
+
+## Exact normalized singleton certificate
+
+A supplied vector with three singleton components may retain an exact normalized direction. This is
+needed when an exactly vertical incident face has zero upward derivative. A positive isotropic normal
+error cannot prove that sign, regardless of how small it is. No threshold is widened to cover it.
+
+`GeometryVectorOperations.Normalize` first proposes a positive finite binary64 length using ordinary
+floating arithmetic. `CompareSquaredDistances` must prove that its square equals the exact sum of
+the three supplied component squares. It then proposes each quotient and uses `CompareProducts` to
+prove that multiplying it by the certified length equals the original component exactly. All four
+equalities are required before publishing singleton components. No square-root or division accuracy
+assumption supplies the certificate. A rounded unit-length proposal for `(1,2^-30,0)` fails the exact
+squared-norm check. Non-singleton input cannot enter this path.
+
+Failed proposals retain the existing outward interval normalization, including unresolved overflow
+and zero-norm refusal. Successful proposals describe the same mathematical normalized vector, so
+later float publication and its error proof remain unchanged. This does not assert exact geometry or
+normal components for a source whose prior operations left an interval. The exact-predicate work cap
+and every feature output ceiling remain unchanged.
+
+Independent source review accepted this certificate. Focused verification passed all eight new
+exactness/refusal cases, fourteen existing vector cases and forty-four affected feature/lifetime
+cases. Scoped format covered both target projects. See
+`docs/verification/2026-10-08-exact-normal-green.json` for source and log identities.

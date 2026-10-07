@@ -9,6 +9,7 @@ internal sealed class CapsuleSweepEvidence
 {
     readonly object source;
     long generation;
+    long issue;
     bool valid = true;
     Mutation? pending;
 
@@ -28,15 +29,19 @@ internal sealed class CapsuleSweepEvidence
         // pending completion able to publish evidence later.
         valid = false;
         pending = null;
-        var token = new Mutation(this, advancedGeneration, canCarry);
+        long issued = checked(++issue);
+        var token = new Mutation(this, advancedGeneration, canCarry, issued);
         pending = token;
         return token;
     }
 
     internal bool CompleteMutation(Mutation? token, long currentGeneration, bool recordsComplete)
     {
-        bool accepted = token is not null && ReferenceEquals(token.Owner, this) &&
-            ReferenceEquals(token, pending) && token.CanCarry && token.Generation == currentGeneration && recordsComplete;
+        bool accepted = token is Mutation supplied && pending is Mutation expected &&
+            ReferenceEquals(supplied.Owner, this) && ReferenceEquals(expected.Owner, this) &&
+            supplied.Issue == expected.Issue && supplied.Generation == expected.Generation &&
+            supplied.CanCarry == expected.CanCarry && expected.CanCarry &&
+            expected.Generation == currentGeneration && recordsComplete;
         pending = null;
         valid = false;
         if (accepted)
@@ -47,9 +52,12 @@ internal sealed class CapsuleSweepEvidence
         return accepted;
     }
 
-    internal sealed class Mutation(CapsuleSweepEvidence owner, long generation, bool canCarry)
+    // Immutable issued identity is carried by value so physical mutation hooks remain allocation-free.
+    // The local issue number is never serialized, reset or compared between evidence owners.
+    internal readonly struct Mutation(CapsuleSweepEvidence owner, long generation, bool canCarry, long issue)
     {
-        internal CapsuleSweepEvidence Owner { get; } = owner;
+        internal CapsuleSweepEvidence? Owner { get; } = owner;
+        internal long Issue { get; } = issue;
         internal long Generation { get; } = generation;
         internal bool CanCarry { get; } = canCarry;
     }

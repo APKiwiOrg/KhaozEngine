@@ -299,3 +299,44 @@ Integrated RED compiled and all 32 facts failed at the expected missing IPhysics
 capability (25 owner, 7 view). Zero passes/skips and no compiler/setup failure, exit 1 in
 `/tmp/swim-backend-red.log`. Assertions and capacity population after the capability check remain
 unexecuted. This is capability absence evidence only.
+
+### Allocation compatibility refinement
+
+Hooking the isolated class-token helper into every mutation would allocate a token on each existing
+allocation-free SetConstraintTarget call. The integrated batch therefore carries immutable tokens by
+value, with the same exact owner reference and a checked, never-reset local issuance number. Completion
+requires the complete pending issued identity, generation and carry state. An older successful token
+cannot authorize a newer pending mutation. This is local bookkeeping only, not a source registry, wire
+identity or change to the actual read-lease object. Issuance overflow leaves readiness/pending cleared.
+
+The original twelve lifecycle assertions remain, with one new previously-successful-token replay
+control. The existing SetConstraintTarget_SteadyState_AllocatesNothing regression is required alongside
+the integrated batch. No allocation-free or integration claim is made before those commands pass.
+
+### Pinned maintenance argument and proposed numerical bound
+
+The backend keeps the authoritative topology. The wrapper does not accept arbitrary external trees as
+world evidence. Pinned [Tree_Add](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/Trees/Tree_Add.cs)
+merges inserted bounds up the chosen path. [Tree_Remove](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/Trees/Tree_Remove.cs)
+repairs leaf/parent links and refits removal ancestors. [Tree_Refit](https://github.com/bepu/bepuphysics2/blob/v2.4.0/BepuPhysics/Trees/Tree_Refit.cs)
+uses componentwise minimum/maximum unions. BroadPhase maintains the private leaf-reference array when
+adding or swapping a removed leaf. The same gate binds preflight and enumeration to this maintained tree.
+These source invariants are distinct from the preflight's finite traversal/count checks.
+
+The source audit also found that binned-refinement selection uses float area/count-weighted costs.
+Finite stored coordinates alone do not bound intermediate costs. The proposed initial certified domain
+therefore requires every stored broad-phase coordinate to lie within +/-1,000,000 local metres. This
+keeps extents and the pinned int-count-weighted area costs well below binary32 overflow. Rebase/local
+frames remain the route for larger logical worlds. This is an explicit conservative backend bound,
+not approval of native residency or a world-size limit. Excluding an object cannot erase an unsupported
+structural tree bound. Leaving this domain invalidates evidence, with no automatic recovery path.
+
+Two new facts are authored before this guard is implemented: the inclusive stored-bound limit versus
+the next float, and an out-of-domain bound on an excluded object. Their expected first result is refusal
+assertion failure from today's unguarded backend, alongside the first execution of the original 32
+integrated cases. No extreme overflow or stress scene is run. The bound is not claimed validated yet.
+
+First integrated validation stopped at compilation in SweepBounds.cs, CS0206/CS1061 at lines 24/26.
+The StaticHandle indexer returns StaticReference, not the raw Static record. No original 32 case or
+proposed-domain case executed. Exit 1 in `/tmp/swim-backend-first.log`. The corrected access must use
+the already validated dense integer index. No formula or assertion change is indicated by this failure.

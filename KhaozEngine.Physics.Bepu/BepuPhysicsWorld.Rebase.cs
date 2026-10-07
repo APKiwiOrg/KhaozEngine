@@ -55,9 +55,14 @@ public sealed partial class BepuPhysicsWorld
     public void Rebase(Vector3 newOrigin)
     {
         using QueryOperation scope = EnterMutation();
+        CapsuleSweepEvidence.Mutation evidence = BeginSweepMutation();
         Vector3 delta = _origin - newOrigin;
         _origin = newOrigin;
-        if (delta == Vector3.Zero) return;   // adopting the origin you already have moves nothing
+        if (delta == Vector3.Zero)
+        {
+            CompleteSweepMutation(evidence);
+            return;
+        }
 
         // Bodies: every allocated set, so awake and sleeping alike. A sleeping body written this way stays asleep
         // and does not move on the next step, which is the whole reason the poses are written directly.
@@ -81,5 +86,6 @@ public sealed partial class BepuPhysicsWorld
             _sim.Statics[handle].Pose.Position += delta;
             _sim.Statics.UpdateBounds(handle);
         }
+        CompleteSweepMutation(evidence, refreshStatics: true);
     }
 }

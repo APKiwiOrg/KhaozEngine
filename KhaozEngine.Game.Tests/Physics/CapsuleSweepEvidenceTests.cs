@@ -139,6 +139,19 @@ public class CapsuleSweepEvidenceTests
         Assert.False(proof.Current(source, 0));
     }
 
+    [Fact]
+    public void APreviouslySuccessfulTokenCannotCompleteTheNextValidMutation()
+    {
+        object source = new();
+        var proof = new Proof(source);
+        object old = proof.Begin(1);
+        Assert.True(proof.Complete(old, 1));
+        object current = proof.Begin(2);
+        Assert.False(proof.Complete(old, 2));
+        Assert.False(proof.Complete(current, 2));
+        Assert.False(proof.Current(source, 2));
+    }
+
     sealed record Source(int Identity);
 
     sealed class Proof(object source)

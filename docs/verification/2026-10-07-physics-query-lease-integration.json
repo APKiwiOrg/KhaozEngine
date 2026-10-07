@@ -1,8 +1,8 @@
 {
   "imported_source": "80734c9b1c1cf16c436a2bd3d8d30bd37a56fbd1",
   "integration_base": "e34cd884be10c22bee10b82b76aacc7a3514dd17",
-  "build_and_test_commit": "38a282a6162536b50d2ae6e82ffa3b20b5647954",
-  "final_delta": "Only one thread-initializer newline in the test file and this evidence record. No production or test-token change. The initial format exit2 and corrected format exit0 are retained separately.",
+  "build_and_test_commit": "6e7ffa895e224ad74e2ff80016b609932895ac5e",
+  "final_delta": "Only this evidence record updated after final verification. All runtime and test source, including the initializer newline, is in the tested commit.",
   "test_file_before_sha256": "496883b835622f295457fb432270bf3bbeb32aa8f9075e46a27fb5b0b282cca7",
   "test_file_after_sha256": "38e689e7fc3d4bf8774bcdb2cb59af4f9efec7ffd6f00ddd020a97afe8ae61f5",
   "logs": {
@@ -11,18 +11,18 @@
       "exit": 0
     },
     "build": {
-      "sha256": "4bf98c06611be2a7261a37960dd2aa720f09294f489cc7f5d53ea2ca335dab82",
+      "sha256": "eb1a8f33a6d9c92a045f82bd7fb880a19853592721568dea36152daf29baef6d",
       "exit": 0
     },
     "tests": {
-      "sha256": "e8eb03ff1c2323d2c0a41fac976eca10130fc211203ea8925ab53eff2af0cce8",
+      "sha256": "f45d4b21ec7583e2ef1be41c8c8212702a2cf0e5280fa4a93cdd35848b161c8d",
       "exit": 0,
       "project_summaries": 30,
       "passed": 25789,
       "skipped": 1328
     },
     "format": {
-      "sha256": "2bb67b304bf8cd5fc0c564e056527ffa000880f702de6c177c8a88eb785bd1dd",
+      "sha256": "62fa5786769c83e38165e0924a7d6d1b61e937c0167730693158d0d4b5b50a2c",
       "exit": 0
     }
   },
@@ -35,5 +35,8 @@
     "diff": 0
   },
   "format_notice": "Known analyzer-only Localization.Analyzers metadata-reference notice. Diagnostic output confirms relevant source-project analysis and zero changed files. No warning was suppressed.",
-  "limits": "Focused/current-main integration proof and full standard suite. No feature correspondence, certified sweep, game adoption or release claim."
+  "limits": "Focused/current-main integration proof and full standard suite. No feature correspondence, certified sweep, game adoption or release claim.",
+  "previous_build_and_test_commit": "38a282a6162536b50d2ae6e82ffa3b20b5647954",
+  "version": "20.29.0",
+  "version_reconciliation": "The normal push guard refused a stale20.28.0 package version after v20.28.0 was released at e34cd884. Metadata was corrected on the task branch to additive minor20.29.0 and the full build, test and format sequence passed again. No hook bypass, tag or publication."
 }

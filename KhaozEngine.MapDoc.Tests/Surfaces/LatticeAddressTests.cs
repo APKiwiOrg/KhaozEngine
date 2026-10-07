@@ -53,4 +53,37 @@ public sealed class LatticeAddressTests
         p.EdgeSubdivisions[^1] = new(0, 0, MapCellEdge.South, 65);
         Assert.Contains(p.ValidateLocal(), f => f.Contains("segments"));
     }
+
+    [Fact]
+    public void ExactValue_RoundsBinary32MidpointsWithoutDoubleRounding()
+    {
+        const long denominator = 1L << 60;
+        long midpoint = denominator + (1L << 36);
+        Assert.Equal(0x3f800000, BitConverter.SingleToInt32Bits(new MapExactValue(midpoint, denominator).ToSingle()));
+        Assert.Equal(0x3f800001, BitConverter.SingleToInt32Bits(new MapExactValue(midpoint + 1, denominator).ToSingle()));
+        Assert.Equal(0x3f800000, BitConverter.SingleToInt32Bits(new MapExactValue(midpoint - 1, denominator).ToSingle()));
+        Assert.Equal(0x3f800002, BitConverter.SingleToInt32Bits(new MapExactValue(16777219, 16777216).ToSingle()));
+        Assert.Equal(unchecked((int)0xbf800001), BitConverter.SingleToInt32Bits(new MapExactValue(-midpoint - 1, denominator).ToSingle()));
+        Assert.Equal(new MapExactValue(long.MinValue, 1), MapExactValue.FromSingle(-9223372036854775808f));
+        Assert.Throws<MapExactOverflowException>(() => MapExactValue.FromSingle(9223372036854775808f));
+    }
+
+    [Fact]
+    public void ExactValue_ArithmeticReducesBeforeRangeChecksAndRejectsInvalidAddresses()
+    {
+        Assert.Equal(new MapExactValue(1, 1), new MapExactValue(long.MinValue, long.MinValue));
+        Assert.Equal(default, new MapExactValue(0, long.MinValue));
+        var large = new MapExactValue(long.MaxValue, long.MaxValue - 1);
+        Assert.Equal(default, large.Add(large.Negate()));
+        Assert.Equal(new MapExactValue(1, 6), new MapExactValue(1, 2).Subtract(new(1, 3)));
+        Assert.Equal(new MapExactValue(2, 3), new MapExactValue(1, 2).Divide(new(3, 4)));
+        Assert.Equal(new MapExactValue(1, 1), new MapExactValue(long.MinValue, 1).Divide(new(long.MinValue, 1)));
+        Assert.Throws<MapExactOverflowException>(() => new MapExactValue(long.MinValue, 1).Negate());
+        Assert.Throws<ArgumentException>(() => new MapExactValue(1, 0));
+        Assert.Throws<ArgumentException>(() => large.Divide(default));
+        Assert.Throws<MapDocumentException>(() => MapLatticeFrame.ImportedMetreCentimetre.WorldXz(default));
+        Assert.Throws<MapDocumentException>(() => new MapLatticeFrame(default, new(1, 100),
+            MapRowDirection.PositiveZ, MapHeightDatum.WorldY0).WorldXz(MapLatticeAddress.Corner(0, 0)));
+        Assert.Equal(MapLatticeAddress.Corner(long.MinValue, 0), MapLatticeAddress.Create(long.MinValue, 0, 1));
+    }
 }

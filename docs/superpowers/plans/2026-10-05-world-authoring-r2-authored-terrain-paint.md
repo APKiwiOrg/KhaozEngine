@@ -865,9 +865,9 @@ public void Subdivision_LegalOnlyOnThePatchBoundaryOrAPresenceRim()
 ```
 
 - [x] **Step 2: Run red.** `wa_test t4-red "$MAPDOC" "FullyQualifiedName~SurfacePatchCodecTests|FullyQualifiedName~LatticeAddressTests"`. Expected: build FAIL naming `MapSurfacePatch`, `MapExactValue` and `MapLatticeAddress`.
-- [ ] **Step 3: Implement the types and the codec.**
-- [ ] **Step 4: Run green.** `wa_test t4-green "$MAPDOC" "FullyQualifiedName~SurfacePatchCodecTests|FullyQualifiedName~LatticeAddressTests"`. Expected: PASS, 10 cases.
-- [ ] **Step 5: Commit** `KhaozEngine.MapDoc/Surfaces KhaozEngine.MapDoc.Tests/Surfaces`, message `feat(mapdoc): add exact scalars, rational lattice addresses and bounded surface patches`.
+- [x] **Step 3: Implement the types and the codec.**
+- [x] **Step 4: Run green.** `wa_test t4-green "$MAPDOC" "FullyQualifiedName~SurfacePatchCodecTests|FullyQualifiedName~LatticeAddressTests"`. Expected: PASS, 17 cases including seven finite review additions.
+- [x] **Step 5: Commit** `KhaozEngine.MapDoc/Surfaces KhaozEngine.MapDoc.Tests/Surfaces`, message `feat(mapdoc): add exact scalars, rational lattice addresses and bounded surface patches`.
 
 ---
 
@@ -3476,3 +3476,32 @@ namespace errors and two missing MapSurfacePatch return types. Zero tests execut
 namespace and return types prevented binding the remaining bodies, so no separate scalar/address
 diagnostic is claimed. All three frozen hashes were unchanged. The secondary slot was released.
 Proof is proofs/2026-10-07-r2-task4-red.json. Approved Task 4 implementation proceeds next.
+
+
+### Task 4 implementation source review Ready
+
+Parent implemented the nine planned source files after intended RED and added seven finite tests
+for numeric boundaries and codec invariants, retaining the original ten cases. Gauge returned no
+assignable worker or reviewer, so pivot performed the independent source review. Verdict Ready,
+no blocking finding, with all twelve frozen source hashes checked by reviewer and parent. The
+17-case focused GREEN is queued for secondary, with no wrapper started before its explicit grant.
+This is source review only. No compiled, numeric runtime, format or full-engine proof is claimed.
+
+
+### Task 4 focused verification complete
+
+The nine planned production files implement exact scalar arithmetic, lattice/frame addresses,
+bounded patches and the canonical codec. Original ten cases plus seven finite numerical/codec
+boundary cases passed, 17 executed and zero failures/skips. Independent peer source review was
+Ready, with no blocking finding. No compiler warning or error was reported.
+
+The initial directory-include format exited 0 but selected no target analyzer pass. It is retained
+as a scope failure, not accepted as format proof. The explicitly granted correction named all
+twelve source files and passed with 5 style/155 reference analyzers on MapDoc and 5 style/211
+reference analyzers on MapDoc.Tests. No workspace warnings or source changes occurred. Every
+frozen hash remained unchanged. Secondary compute was explicitly released after both commands.
+Proof is proofs/2026-10-07-r2-task4-green.json. No tests were repeated for format validation.
+
+Task 4 is ready for its scoped commit after repository guards. Task 5's five planned test cases
+and synthetic fixture are prepared in ignored staging only, preserving Task 4's verified source.
+Full-engine verification, actual current-main reconciliation and release remain round-end gates.

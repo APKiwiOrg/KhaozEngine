@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Surfaces;
 using Xunit;
@@ -47,5 +48,46 @@ public sealed class SurfacePatchCodecTests
         Assert.Contains("positive", Assert.Throws<MapDocumentException>(() => new MapRational(0, 1)).Message);
         Assert.Equal(new MapExactPoint(new(4, 1), new(1433, 100), new(-64, 1)), MapLatticeFrame.ImportedMetreCentimetre.Corner(4, 64, 1433));
         Assert.Contains("overflow", Assert.Throws<MapExactOverflowException>(() => new MapExactValue(long.MaxValue, 1).Multiply(new(2, 1))).Message);
+    }
+
+    [Theory]
+    [InlineData(4, 4, "cut")]
+    [InlineData(5, 4, "rotation")]
+    [InlineData(6, 128, "flags")]
+    [InlineData(7, 3, "topology")]
+    public void Decode_RejectsInvalidPackedCellBytes(int offset, int value, string diagnostic)
+    {
+        MapSurfacePatch patch = SurfacePatchFixtures.Sample();
+        JsonObject json = JsonNode.Parse(MapSurfacePatchCodec.Encode(patch))!.AsObject();
+        byte[] cells = Convert.FromBase64String(json["cells"]!.GetValue<string>());
+        cells[offset] = (byte)value;
+        json["cells"] = Convert.ToBase64String(cells);
+        Assert.Contains(diagnostic, Assert.Throws<MapDocumentException>(() =>
+            MapSurfacePatchCodec.Decode(Encoding.UTF8.GetBytes(json.ToJsonString()), patch.Key)).Message);
+    }
+
+    [Fact]
+    public void Patch_MetadataOrderingIsCanonicalAndCloneOwnsMutableStorage()
+    {
+        MapSurfacePatch patch = SurfacePatchFixtures.Row(3);
+        patch.EdgeSubdivisions.Add(new(2, 0, MapCellEdge.East, 3));
+        patch.EdgeSubdivisions.Add(new(0, 0, MapCellEdge.West, 2));
+        patch.CornerDependencies.Add(new(1, 0, new(new("other", 0, 0), MapLatticeAddress.Corner(1, 0))));
+        patch.CornerDependencies.Add(new(0, 0, new(new("other", 0, 0), MapLatticeAddress.Corner(0, 0))));
+        byte[] encoded = MapSurfacePatchCodec.Encode(patch);
+        MapSurfacePatch clone = patch.Clone();
+        clone.EdgeSubdivisions.Reverse();
+        clone.CornerDependencies.Reverse();
+        Assert.Equal(encoded, MapSurfacePatchCodec.Encode(clone));
+        Assert.Equal(encoded, MapSurfacePatchCodec.Encode(MapSurfacePatchCodec.Decode(encoded, patch.Key)));
+        Assert.Throws<MapDocumentException>(() => MapSurfacePatchCodec.Decode(encoded, new("wrong", 0, 0)));
+        clone.Heights[0] = 12;
+        clone.Cells[0] = default;
+        clone.SetPresent(0, 0, false);
+        clone.CornerDependencies.Clear();
+        Assert.Equal(0, patch.Heights[0]);
+        Assert.Equal((ushort)1, patch.Cells[0].Underlay);
+        Assert.True(patch.IsPresent(0, 0));
+        Assert.Equal(2, patch.CornerDependencies.Count);
     }
 }

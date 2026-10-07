@@ -1,0 +1,70 @@
+{
+  "base": "9bee13a1aabe5ae41eac0d96672ea781f7888d56",
+  "exit": 0,
+  "counters": {
+    "total": "17",
+    "executed": "17",
+    "passed": "17",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "source_hashes": {
+    "KhaozEngine.MapDoc/Surfaces/MapExactValue.cs": "9310716352f4913d025220cb0efef4ec6ff9c59a374e2981e611c091da752a35",
+    "KhaozEngine.MapDoc/Surfaces/MapLatticeAddress.cs": "a772337538c9c1677aa6f8ab32af45f75e38dc8955586a0d468efc830e4049c5",
+    "KhaozEngine.MapDoc/Surfaces/MapLatticeFrame.cs": "293f1d2eb25b6b6e2905f411e24ed9e22227068082266b2bc72e95c035eab23a",
+    "KhaozEngine.MapDoc/Surfaces/MapPatchKey.cs": "0bd71fe55e064b2df6babd54ca7846f87243407799716fa0a2ec5b0adf4e70de",
+    "KhaozEngine.MapDoc/Surfaces/MapRational.cs": "6add0ccf85dd13de03ee2f95d6585986ec54a6f1080a1403500047f41927469c",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfaceCell.cs": "d26cdc0af17d17a45c3c391a2edaca2e3dedf9feb0ceabb1d8f8444c2bdb045f",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfacePatch.cs": "ad5d62ff4037e59136d5d23b57c0a8e1b655667592736396f64218661ee89393",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfacePatchCodec.cs": "c02c5e40957d7f97dbd275e2215e63f4dad5fbf80224be2ea4556bde73f8ed0b",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfaceRef.cs": "744d45d675f74837dbeb18b3a7b9356c91cc8fed3ad5e1c7daf4b47e7017730d",
+    "KhaozEngine.MapDoc.Tests/Surfaces/LatticeAddressTests.cs": "b2a9bb095d028ba33f6893b9028b84d551aa74c2d94a8220421832f9232b6a67",
+    "KhaozEngine.MapDoc.Tests/Surfaces/SurfacePatchCodecTests.cs": "54a68fe748c47bd654e9daa37b7cb3a569a54253a833dc8ebd460276d2eb000a",
+    "KhaozEngine.MapDoc.Tests/Surfaces/SurfacePatchFixtures.cs": "08f01f442a226a1ef08220572fc6ca73a165340f52343b7a297ecb966fa3736a"
+  },
+  "source_unchanged": true,
+  "log_sha256": "8a61e8da9262e5e41aec63094036a632ff8241be00a9ac594e6a1a3acd96dc7f",
+  "trx_sha256": "87dc6718ff8c73de90f50c8ab0c02840279b7441f049baa2bd0c3bc37a5492b2",
+  "secondary_released": true,
+  "format_pending": false,
+  "format": {
+    "exit": 0,
+    "include_files": [
+      "KhaozEngine.MapDoc.Tests/Surfaces/LatticeAddressTests.cs",
+      "KhaozEngine.MapDoc.Tests/Surfaces/SurfacePatchCodecTests.cs",
+      "KhaozEngine.MapDoc.Tests/Surfaces/SurfacePatchFixtures.cs",
+      "KhaozEngine.MapDoc/Surfaces/MapExactValue.cs",
+      "KhaozEngine.MapDoc/Surfaces/MapLatticeAddress.cs",
+      "KhaozEngine.MapDoc/Surfaces/MapLatticeFrame.cs",
+      "KhaozEngine.MapDoc/Surfaces/MapPatchKey.cs",
+      "KhaozEngine.MapDoc/Surfaces/MapRational.cs",
+      "KhaozEngine.MapDoc/Surfaces/MapSurfaceCell.cs",
+      "KhaozEngine.MapDoc/Surfaces/MapSurfacePatch.cs",
+      "KhaozEngine.MapDoc/Surfaces/MapSurfacePatchCodec.cs",
+      "KhaozEngine.MapDoc/Surfaces/MapSurfaceRef.cs"
+    ],
+    "analyzer_coverage": [
+      "Running 5 analyzers on KhaozEngine.MapDoc.Tests.",
+      "Running 5 analyzers on KhaozEngine.MapDoc.",
+      "Running 211 analyzers on KhaozEngine.MapDoc.Tests.",
+      "Running 155 analyzers on KhaozEngine.MapDoc."
+    ],
+    "warnings": [],
+    "log_sha256": "398aa706fe58c07c3833c1d163dfb70dce0dc972ae6a11167177db3ce55244cb",
+    "changed_files": 0,
+    "prior_directory_scope_log_sha256": "c0854d15d9bdb4ea083687ee36b9592403831ceeffd4d102c9a5657372f4e392",
+    "prior_directory_scope_not_accepted_as_proof": true
+  },
+  "source_review": "Ready, independent peer review of all nine production files and 17 cases"
+}

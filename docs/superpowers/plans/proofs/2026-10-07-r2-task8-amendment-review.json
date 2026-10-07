@@ -1,0 +1,22 @@
+{
+  "status": "proposed, ready for owner written-contract review, not implementation approved",
+  "task7_checkpoint": "e0e975cb4c2e0768b51d740fe14ff31e1ee08101",
+  "proposal": "docs/design/WORLD-AUTHORING-R2-SOURCE-ACQUISITION-2026-10-07.md",
+  "proposal_sha256": "7d61c91e7b07963267f631b62b5b4055656ed21c72df0bcb7fed0953592ab800",
+  "reviews": [
+    {
+      "file": "task-8-amendment-review1.md",
+      "sha256": "d3dd46419ea66be100bf2a6044fe610d284bde1b66eba19a83799465166f0c32",
+      "verdict": "Needs changes: missing discovery-key provenance"
+    },
+    {
+      "file": "task-8-amendment-review2.md",
+      "sha256": "acffa633078e27824bfcfa81883d171459d6045add0e7b3f15ea391c054ce6ef",
+      "verdict": "Ready: reservation set, strict preflight and overflow normalized"
+    }
+  ],
+  "parent_final_clarification": "Cap-three zero-slot-visit fixture uses one over-limit range, as review2 requested. No algorithm or interface change in this final prose correction.",
+  "code_changed": false,
+  "tests_applied": false,
+  "runtime_checks_run": false
+}

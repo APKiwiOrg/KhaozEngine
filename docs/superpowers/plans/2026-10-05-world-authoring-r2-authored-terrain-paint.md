@@ -3688,3 +3688,20 @@ native embedding limits and whole-storage verification, without claiming geometr
 Repository guards and scoped push preserve this focused checkpoint. Task 8 tests remain ignored
 preparation until this push completes. Their incident-metadata/budget/global-identity source seam
 reconciliation is design-only. This does not integrate the round, release packages or adopt game data.
+
+
+### Task 8 public producer contract completion proposed
+
+The 22 approved cases are prepared in ignored source, not compiled. Source reconciliation found
+IMapSurfaceSource does not expose incident metadata or one cumulative before-read budget. A reviewed
+written amendment is docs/design/WORLD-AUTHORING-R2-SOURCE-ACQUISITION-2026-10-07.md. It proposes an
+opt-in producer session, bounded surface metadata lookup, authoritative explicit-key reservations,
+strict cross-phase budgets, explicit unsupported-source refusal and internal stored resolver/recipe
+retention. It preserves the generic producer boundary and factory-only consumer witnesses.
+
+Review 1's missing discovery-key provenance blocker is resolved by ReservedPatchKeys, including
+explicit known-empty/unavailable reads while excluding page sentinels. Review 2 is Ready for owner
+review. The final fixture wording places two fresh bound keys in one over-limit range for its
+zero-slot-visit assertion. Proof is proofs/2026-10-07-r2-task8-amendment-review.json. No producer-session
+implementation, additional conformance test application or approval is inferred. Written contract
+approval and executable-plan reconciliation precede that implementation.

@@ -230,3 +230,72 @@ The lifecycle helper passed all twelve unchanged direct assertions, zero failure
 refusal now have isolated behavior evidence. Known-empty initialization, the actual source generation,
 physical gate ownership and complete registration records remain caller premises. No backend hook or
 geometry certificate was added by this slice.
+
+## Integrated backend batch
+
+The next implementation/test batch is the actual optional backend sweep, not another isolated value
+helper. Thirty-two prepared facts use the real Bepu owner or its exact restricted view and actual read
+leases. Production does not yet implement IPhysicsCapsuleSweep, so initial RED expects missing backend
+capability after valid setup. No native producer or movement adoption is part of this batch.
+
+Planned production scope:
+
+| File | Responsibility |
+| --- | --- |
+| `BepuPhysicsWorld.SweepBounds.cs` | Derived per-registration bound status, actual stored-bound observation, source count checks and bounded unsupported-selection checks |
+| `BepuPhysicsWorld.CertifiedSweeps.cs` | Input/filter domain, current evidence, checked aperture/tree preflight, bounded selected collection, complete per-leaf dispatch and earliest-bracket aggregation |
+| `BepuPhysicsWorld.SweepMutations.cs` | Existing-generation transaction bookkeeping and audited record refresh after successful physical mutations |
+| `BepuPhysicsWorld.cs` | Initialize evidence once after creation of the known-empty simulation and hook all physical mutation entry points already inventoried |
+| `BepuPhysicsWorld.Rebase.cs` | Refresh every translated static/dynamic bound, including the successful no-op generation transition |
+| `BepuPhysicsWorld.QueryView.cs` | Only the optional sweep interface and its exact receiver/exclusion forwarding |
+
+No EnterMutation/QueryLease or feature-query method change is planned. Each physical operation begins
+evidence bookkeeping after the existing generation increment. Failed operations never complete it.
+Successful completion is conditional on the original token and all required record checks. Read-lease
+refusal occurs before that increment and before bookkeeping, preserving unchanged evidence.
+
+Observe actual registered shape, pose and stored broad-phase bounds under the owner's gate. Finite
+ordered stored bounds are a structural prerequisite. For an identity box, require those bounds to
+contain the pinned binary32 box-face calculation. Combined with the outward query aperture and the
+monotonic-rounding argument, this permits conservative stored-bound expansion. Other geometry bounds
+remain explicitly unproved. Unproved selected bounds refuse even outside the raw aperture. Explicit
+view/mobility exclusion may omit them only while tree structure/bounds remain valid. No invalid stored
+bound may be silently discarded merely because its object is excluded.
+
+Static records update on registration/removal and all refresh on rebase. Dynamic bounds need refresh
+after operations that can integrate, wake or transfer bodies, including static and constraint changes.
+The initial correctness implementation may revisit registered dynamics at mutation completion. That
+cost is explicit and needs measurement before finish. It is not a per-query world scan or permission
+to add an unbounded acquisition walk. Existing legacy movement/query outputs remain unchanged.
+
+Complete source counts compare the existing handle/reverse maps, derived records, actual static count
+and the sum of active/static broad-phase leaves. Shapeless constraint anchors do not contribute leaves.
+Missing or partially failed writes invalidate evidence persistently. A later successful add cannot
+heal them. Unsupported but structurally valid records remain distinguishable from incomplete records.
+
+Before raw overlap enumeration, both exact tree/aperture preflights must succeed in the same gate.
+Collection bounds every examined callback, including excluded entries, and keeps refusal sticky across
+trees. Use a 4096 aggregate callback/candidate cap and a 4096 unsupported-record examination cap, in
+addition to the preflight's per-tree caps. Each admitted selected leaf receives the same original path.
+Any unresolved leaf refuses the complete result, including when another leaf already reports Hit(0).
+Across complete Hit brackets, min(lower) and min(upper) enclose the earliest event. Their width is
+bounded by the maximum admitted per-leaf error. Clear requires every selected leaf to certify Clear.
+These capacities, numerical domain and policy versions enter the later profile identity integration.
+
+Fixture coverage includes owner/view queries, insertion order, exclusions, filters, thin walls,
+ceilings, bed-plus-wall, closed endpoints/start contacts, invalid requests, unsupported bounds away
+from the aperture, live add/remove/handle replacement, dynamic velocity/step/removal, rebase/no-op,
+leased mutation refusal, successful constraint changes, actual partial constraint failure, an injected
+missed generation hook, receiver disposal and one finite 4097-static capacity case. The latter uses
+non-overlapping small boxes, checks actual leaf count and bounded preflight refusal, and never invokes
+the raw overlap enumerator directly on that over-budget tree. There are no loops of test runs or stress
+loads. The partial-failure fixture observes the newly allocated shapeless anchor before asserting
+persistent refusal, rather than inferring partial mutation from an exception alone.
+
+The initial identity-box sweep/bound domain remains a material backend capability limit. Passing these
+fixtures will not finish Task 4, general-shape support, the full movement resolver or native G1b.
+
+Integrated RED compiled and all 32 facts failed at the expected missing IPhysicsCapsuleSweep backend
+capability (25 owner, 7 view). Zero passes/skips and no compiler/setup failure, exit 1 in
+`/tmp/swim-backend-red.log`. Assertions and capacity population after the capability check remain
+unexecuted. This is capability absence evidence only.

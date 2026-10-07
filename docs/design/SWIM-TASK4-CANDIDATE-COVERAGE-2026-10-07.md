@@ -75,6 +75,10 @@ aperture. Bound node visits, pending stack depth and visited leaves, including l
 by selection. Validate node/leaf indices and refuse malformed or over-budget traversal. This avoids
 claiming that callback limits protect work or stack depth before the first callback.
 
+Pending-stack certification must follow the pinned traversal order (A first, B pending when both
+intersect), or prove an order-independent bound that dominates it. Another DFS order with a smaller
+observed stack is insufficient. Use actual node/leaf counts, not backing buffer capacity.
+
 Only after both active/static preflights succeed may the existing backend enumerator resolve its
 internal leaf references. Both passes use the identical immutable trees and aperture. This retains
 the backend's leaf-to-collidable mapping without reflection, a copied spatial index or a whole-world
@@ -118,3 +122,9 @@ and their policy-identity fields will be pinned with the implementation fixtures
 This proposal does not authorize an assumption about native meshes or residency. Migration still
 owns the native producers and G1b proof. The existing scope, frame, identity and lease checks remain
 required around any eventual public backend result.
+
+## Aperture fixture checkpoint
+
+Eight pure aperture facts compiled and failed at the absent helper type after independent endpoint
+rounding controls passed. Zero passes/skips, exit 1 in `/tmp/swim-aperture-red.log`. No tree preflight
+or bound-metadata production was present. These cases address query enclosure only.

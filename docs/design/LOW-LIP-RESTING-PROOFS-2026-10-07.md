@@ -1,6 +1,10 @@
 # Low lip resting proofs
 
-Status: proposed, not approved for implementation. The measured fixtures are preserved on
+Status: owner approved the gated repair direction on 2026-10-07. Implementation remains conditional on
+proving geometric-face correspondence with existing queries. A new Physics API or bake format requires
+a new decision. The owner chose strict-probe refusals with separate resting-anchor coverage for the
+four raw-point acceptance hypotheses. Their tests have not yet been converted. The measured fixtures
+are preserved on
 `fix/low-lip-resting-proof`. This proposal addresses
 [#1270](https://github.com/APKiwiOrg/KhaozEngine/issues/1270) and the consumer failure in
 [Grimhollow #416](https://github.com/APKiwiOrg/Grimhollow/issues/416).
@@ -61,6 +65,21 @@ a wall, an overhang and a mesh edge. Preserve the movement view's terrain exclus
 query seam cannot establish the required correspondence, stop and review a specific Physics/query-view
 capability with swimming. Do not import MapDoc into legacy locomotion or infer a face from feature IDs.
 
+### Existing-query observation result
+
+The 24-case diagnostic passed its fixture controls on the main-reconciled `938cc1ea6` base. Its
+[complete measurements](LOW-LIP-FACE-OBSERVATIONS-2026-10-07.json) retain the source and log hashes.
+The six origin mesh-corner rays missed, with reported contact X between about 0.03 and 5.08 micrometres
+outside the known edge. The translated mesh corner hit at exactly the edge. The box corner rays hit
+in these cases. All five interior controls, including the translated mesh at Y 100 m, matched their
+known geometry. Roof and wall initial-overlap controls returned zero-time hits with no normal.
+
+These observations do not establish the required runtime correspondence bound. A successful body-handle
+match in one finite fixture is not a geometric-face contract, and a boundary miss cannot be repaired by
+choosing an arbitrary inset. The implementation gate remains closed. The next decision must address
+how a selected Physics query view can supply a corresponding face or explicitly unresolved result,
+including mesh-edge ambiguity and the numeric domain. No fallback or resting-anchor code has changed.
+
 ## Bake-local resting anchors
 
 Keep raw captured heights, layer assignment, headroom and area identity unchanged. During legacy
@@ -84,7 +103,7 @@ the format. Verify live traversal and stopping at the affected waypoint, not onl
 The four tests hypothesizing that `GroundTraversalProbe` should accept a raw bank point are not the
 same contract as bake-local anchor resolution. Under this proposal the strict probe continues to
 refuse a raw point that its Hold moves by 15 mm. Do not weaken its 1 mm arrival check to make those
-hypotheses green. An implementation approval must explicitly resolve this disposition, preserving the
+hypotheses green. The owner approved this disposition, preserving the
 original failing evidence and replacing the hypothesis with raw-point refusal plus anchor-resolution
 coverage. Candidate retention and both route directions remain required positive proofs.
 
@@ -106,5 +125,7 @@ Scores use 1 to 10, higher is better. They compare delivery approaches, not corr
 | Total | 35 | 20 |
 
 Recommend the bounded legacy direction, gated on geometric-face correspondence and the explicit
-raw-probe test disposition above. This document authorizes no implementation, new test execution,
-package, release, game pin or bake. Exact filters and shared ownership return for review before work.
+raw-probe test disposition above. The approval permits implementation only after the geometric-face
+gate passes. It authorizes no
+release, game pin or world edit. A new query API or bake format returns for a separate decision.
+Exact finite filters and shared compute ownership are reviewed before execution.

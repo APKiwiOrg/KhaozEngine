@@ -367,3 +367,36 @@ source-derived exact-epsilon gap in #1324. No upstream code was changed. The gua
 files. Both target projects ran style and reference analyzers. Only initializer whitespace changed.
 [Tracked hashes and results](../verification/2026-10-08-certified-sweep-domain.json) retain the before
 and after sources. This does not certify the whole backend or native G1b.
+
+## Shared resolver solid-path batch
+
+Task 4 next composes the existing sweep, full contact set and whole-set projection into the single
+`MovementCapsuleResolver`. Its internal `TryResolveSolids` stage accepts a body, displacement and
+live MovementQueryLease, and returns a bounded tentative polyline through a caller span. It does not
+publish MoveState or approve water traversal. The subsequent combined resolver must check all those
+segments against water policy, including every correction. No second nav or water collision solver
+is introduced.
+
+The stage has at most eight contact corrections and nine polyline endpoints. Incomplete queries,
+invalid inputs, capacity exhaustion, stale leases and unprovable initial placement return no prefix.
+Initial penetration or exact solid tangency may refuse placement under F3 rather than invent recovery.
+Separated tangent motion and supported poses retain their actual capsule centres.
+
+At each impact, gather every solid contact through skin plus the certified sweep error, then project
+against the complete normal set. Extend only the existing private contact-query helper to accept this
+bounded margin, preserving its default support-query behavior and expanding scope checks coherently.
+No shared Physics signature or backend feature-query ownership changes. Candidate projection never
+proves clearance. Every proposed prefix and projected remainder needs another certified sweep.
+
+The implementation must account for the stored binary32 endpoint separately from the exact affine
+query path. Any enclosing inflation used for endpoint rounding must be outward, remain within the
+existing one-millimetre budget and refuse when unproved. A returned distance bound alone is never an
+accepted placement. The tentative path is copied only after every segment and final placement pass.
+
+Twenty-three finite tests are authored in MovementCapsuleResolverTests and its Refusals partial.
+They cover both body heights, clear/zero paths, thin walls, wall and bed sliding, ceilings, tied corners
+and reversed insertion, selected exclusions, a live kinematic box, mirrored approach, actual read-gate
+controls, initial placement refusal, unknown geometry, cold/stale context, invalid/scope/capacity and
+failure after a proved prefix. Every returned nonempty segment must correspond to an observed Clear
+query on the exact selected view. These fixtures prove the solid stage only. Wet-boundary policy,
+step/support correction, native geometry and full mover acceptance remain subsequent Task 4 work.

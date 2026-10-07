@@ -1,7 +1,8 @@
 # Capsule feature correspondence
 
-Status: proposed written design. The owner approved this design scope on 2026-10-07, not its exact
-API or implementation. Runtime low-lip support and navigation anchors remain gated on the proof below.
+Status: written design approved by the owner on 2026-10-07 at `44acfe9b9`. Execute through the
+[implementation plan](../plans/2026-10-07-capsule-feature-correspondence.md). Runtime low-lip support
+and navigation anchors remain gated on the proof below.
 
 ## Intent and boundaries
 

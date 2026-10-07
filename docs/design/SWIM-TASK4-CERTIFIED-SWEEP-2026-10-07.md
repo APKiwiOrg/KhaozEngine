@@ -572,3 +572,44 @@ real and possible binary32 values, and the row-basis transform composes each pro
 that enclosure. Whole-vector refusal and translation-free Direction remain explicit. The review
 does not infer an installed pose, rigidity, inverse-transpose normal or geometric error ceiling.
 Its reported 22-case runtime result was not rerun or independently claimed here.
+
+## Installed identity-box support slice
+
+The shared supplied-matrix extension at `2859e3595` is imported as an authorized exact subset, with
+its eight tests and proof/evidence. No shared helper edits, feature branch merge or classification
+code is included. The first sweep leaf reader will consume actual `Shapes`/`TypedIndex` data from
+a live leased fixture and support exact identity-oriented boxes only. Every other shape or pose
+refuses. It does not silently treat general poses as identity or claim world candidate completeness.
+
+The reader validates the live shape type and finite positive installed half-extents, enumerates all
+eight local box vertices, encloses their represented identity-plus-translation transforms, and
+bounds the maximum projection across every vertex. Scalar maximum is taken over both endpoint
+sets. This derives the earlier support premise for that installed leaf, not a whole-world query.
+Registry/pose coherence and holding the owner's gate are internal caller preconditions. The eventual
+public sweep must bind them through its exact selected owner/view and live read interval.
+
+Eight first tests cover both axis signs, a non-unit diagonal, translated negative coordinates,
+unsupported registered shape, nonidentity pose, invalid axes and composition into the existing
+whole-path capsule gap. They read only their own private Bepu fixture under its actual lease.
+Assertions run before release. This is not a native adapter or a ray/shape-descriptor fallback.
+
+## Continuous-prefix extension preparation
+
+The full-path support kernel also needs a closed fraction-range operation over the original centre
+and displacement. Do not round a new centre/displacement for each subdivision, which would silently
+change the path being certified. For a directional travel projection p and exact requested fractions
+a <= b in [0,1], the path contribution is min(a*p, b*p). It is monotone in p, so interval endpoint
+operations can enclose this minimum without endpoint collision sampling. Full-path evaluation remains
+the [0,1] case. Reversed/non-finite/out-of-range fractions refuse the whole result.
+
+The next finite inventory covers clear prefix and suffix of an otherwise nonseparated path, positive
+and negative axis choices on interior ranges, a zero-width closed range, endpoint tangency, reversed
+parameterization, invalid fractions, stationary displacement and a nonzero tangent displacement.
+This supplies a later earliest-event search with bounds over genuine subpaths. It does not select
+that earliest event, prove a Hit or permit a partial movement commit.
+
+The granted eight supplied-matrix reconciliation facts passed in this branch. The conditional
+no-build eight leaf-reader facts all failed at the absent `CapsuleSweepLeafProjection` type after
+their real Bepu lease and installed-pose controls passed. There were no skips or setup/compile
+failures. Logs are `/tmp/swim-transform-reconcile.log` (exit 0) and `/tmp/swim-leaf-support-red.log`
+(expected exit 1). The secondary slot was explicitly released before leaf-reader implementation.

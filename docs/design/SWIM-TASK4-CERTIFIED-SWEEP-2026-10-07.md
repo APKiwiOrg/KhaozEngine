@@ -805,3 +805,7 @@ They do not enumerate other world colliders or expose the optional public backen
 Composition RED compiled and reached all ten expected absent-type failures after the installed
 world/read controls, zero passes/skips, exit 1 in `/tmp/swim-box-composition-red.log`. The irrational
 endpoint case observes composed refusal only. It does not instrument which internal stage refused.
+
+The composed adapter passed all ten unchanged assertions converted to direct calls, zero
+failures/skips, exit 0 in `/tmp/swim-box-composition-green.log`. The irrational-endpoint test name now
+states composed refusal and makes no internal-stage attribution. Existing primitives were unchanged.

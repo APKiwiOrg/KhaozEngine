@@ -1,8 +1,6 @@
 using System;
 using System.Numerics;
 using System.Reflection;
-using BepuPhysics;
-using BepuPhysics.Collidables;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -12,9 +10,6 @@ namespace KhaozEngine.Tests.Physics;
 
 public class CapsuleBoxSweepTests
 {
-    delegate CapsuleSweepResult SweepCall(Shapes shapes, TypedIndex shape, RigidPose pose,
-        Vector3 centre, float radius, float halfCylinderLength, Vector3 displacement,
-        float maximumErrorMetres, int maximumCells);
 
     [Fact]
     public void ClearCertifiesTheOriginalVectorWithItsRequiredLengthEncoding()
@@ -44,7 +39,7 @@ public class CapsuleBoxSweepTests
         Contains(Query(new(-4.75f, 0, 0), new(4, 0, 0)), 4);
 
     [Fact]
-    public void UnencodableEndpointRefusesAfterItsGeometryWasProved()
+    public void UnencodableEndpointProducesAComposedRefusal()
     {
         // X is less than -.75 until t=1, where Y=0 is inside the expanded box's side face.
         // The first event is therefore exactly at sqrt(5), which has no exact binary32 encoding.
@@ -113,11 +108,7 @@ public class CapsuleBoxSweepTests
         ref var target = ref simulation.Statics[0];
         Assert.Equal(sourcePose.Position, target.Pose.Position);
         Assert.Equal(sourcePose.Orientation, target.Pose.Orientation);
-        Type? type = typeof(BepuPhysicsWorld).Assembly.GetType("KhaozEngine.Physics.Bepu.CapsuleBoxSweep");
-        Assert.NotNull(type);
-        MethodInfo? method = type.GetMethod("Sweep", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        CapsuleSweepResult result = method.CreateDelegate<SweepCall>()(simulation.Shapes, target.Shape,
+        CapsuleSweepResult result = CapsuleBoxSweep.Sweep(simulation.Shapes, target.Shape,
             target.Pose, centre, 0.25f, 0.5f, delta, error, maximumCells);
         lease.AssertCurrent();
         return result;

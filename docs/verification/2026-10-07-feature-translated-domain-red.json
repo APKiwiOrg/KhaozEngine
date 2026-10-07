@@ -8,7 +8,6 @@
     "KhaozEngine.Physics.Bepu/CapsuleFeatureGeometryQuery.cs": "5772d445ed83db7ddcf3f4d75aae40d4d91f476e3677262abde22aa970b1faa6",
     "KhaozEngine.Physics.Bepu/CapsuleFeaturePolyhedra.cs": "747ade99654c384a32e69bdc61937a5a8b83db12e4d1866a88aca9950f9b9fc2",
     "KhaozEngine.Physics.Bepu/CapsuleFeaturePolyhedraClosest.cs": "e5d32e8a4082b261e9abd85429d5aa4c43f3e197a1cf73e1825863b8a3d149f9",
-    "docs/design/CAPSULE-FEATURE-POLYHEDRA-PROOF-2026-10-07.md": "d54b2d4d96570998b6d3d2a852d890fc55888ea7dea9dbccc90d8a7a5116dc22",
     "KhaozEngine.Game.Tests/Physics/CapsuleFeaturePolyhedronTests.cs": "b8a5a323f0dcbe3ffff37a7b3005b9ee4e39b1ea4889c33efcfcddde95e935e1"
   },
   "review": "feature-polyhedron-source-review-20261007-r1. No unsafe acceptance found within its advertised subset, but not ready for legacy use due two binary32 representability restrictions.",
@@ -24,5 +23,7 @@
   },
   "log_sha256": "16919f0a8a76de5e402e01b800788793b638221ef4aa0cd07d995a5664f84677",
   "command_note": "Primary wrapper waited for unrelated local Grimhollow full tests before starting. This was one executed invocation.",
-  "limits": "Prototype compiled, but the original14 polyhedron and12 lifetime cases have not yet been run on it. No whole-family GREEN, broader transform, mesh or consumer proof claimed."
+  "limits": "Prototype compiled, but the original14 polyhedron and12 lifetime cases have not yet been run on it. No whole-family GREEN, broader transform, mesh or consumer proof claimed.",
+  "reviewed_proof_sha256": "d54b2d4d96570998b6d3d2a852d890fc55888ea7dea9dbccc90d8a7a5116dc22",
+  "proof_note": "The numerical argument was reviewed at this hash before its status paragraphs were updated with the observed two-case RED. Compiled-source hashes remain in sources."
 }

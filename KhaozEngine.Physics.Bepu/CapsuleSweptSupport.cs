@@ -9,9 +9,16 @@ namespace KhaozEngine.Physics.Bepu;
 internal static class CapsuleSweptSupport
 {
     internal static GeometryInterval Evaluate(Vector3 centre, float radius, float halfCylinderLength,
-        Vector3 displacement, Vector3 axis, GeometryInterval maximumSolidProjection)
+        Vector3 displacement, Vector3 axis, GeometryInterval maximumSolidProjection) =>
+        EvaluateRange(centre, radius, halfCylinderLength, displacement, axis, maximumSolidProjection, 0d, 1d);
+
+    /// <summary>Encloses the minimum on a closed fraction range of the original path.
+    /// It does not round a replacement start or displacement, or authorize a prefix commitment.</summary>
+    internal static GeometryInterval EvaluateRange(Vector3 centre, float radius, float halfCylinderLength,
+        Vector3 displacement, Vector3 axis, GeometryInterval maximumSolidProjection, double from, double to)
     {
-        if (!maximumSolidProjection.IsResolved || !Finite(centre) || !Finite(displacement) ||
+        if (!double.IsFinite(from) || !double.IsFinite(to) || from < 0d || to < from || to > 1d ||
+            !maximumSolidProjection.IsResolved || !Finite(centre) || !Finite(displacement) ||
             !Finite(centre + displacement) || !Finite(axis) || axis == Vector3.Zero ||
             !float.IsFinite(radius) || radius <= 0f ||
             !float.IsFinite(halfCylinderLength) || halfCylinderLength < 0f)
@@ -25,10 +32,13 @@ internal static class CapsuleSweptSupport
             .Multiply(GeometryInterval.Exact(Math.Abs(axis.Y)));
         GeometryInterval travelProjection = Dot(axis, displacement);
         if (!travelProjection.IsResolved) return default;
-        // Minimum over the entire closed translation interval, not sampled endpoint clearance.
-        // min(0,x) is monotone, so its image of an enclosure uses both enclosed endpoints.
+        // A linear projection attains its minimum at a range endpoint. These are bounds on
+        // that scalar function over the whole subpath, not endpoint collision samples.
+        GeometryInterval atStart = travelProjection.Multiply(GeometryInterval.Exact(from));
+        GeometryInterval atEnd = travelProjection.Multiply(GeometryInterval.Exact(to));
+        if (!atStart.IsResolved || !atEnd.IsResolved) return default;
         GeometryInterval travelMinimum = GeometryInterval.Enclose(
-            Math.Min(0d, travelProjection.Lower), Math.Min(0d, travelProjection.Upper));
+            Math.Min(atStart.Lower, atEnd.Lower), Math.Min(atStart.Upper, atEnd.Upper));
         return Dot(axis, centre).Subtract(axialExtent).Subtract(radialExtent)
             .Add(travelMinimum).Subtract(maximumSolidProjection);
     }

@@ -624,3 +624,16 @@ The ten closed-range facts ran from the already compiled fixture and all failed 
 `EvaluateRange` method. Existing whole-path controls passed before lookup. Zero passes/skips,
 expected exit 1 in `/tmp/swim-swept-range-red.log`. This is missing-method RED, not a new compilation
 or geometry failure. The secondary slot is released before implementing the range operation.
+
+The closed-range implementation passed all ten unchanged assertions converted to direct calls.
+The conditional affected run passed the ten full-path and eight installed-leaf facts, zero
+failures/skips and exit 0 for both runs. Logs are `/tmp/swim-swept-range-green.log` and
+`/tmp/swim-swept-support-regressions.log`. Source was unchanged between runs. Range evaluation
+retains the original centre/displacement and includes both requested endpoints. It is still a
+support bound conditional on geometry, not an earliest-Hit result or permission to commit a prefix.
+
+The exact-distance primitive at `9518d0e1` was reviewed before reuse. No blocking arithmetic finding:
+signed dyadic subtraction, pre-shift carry reservation, pre-square size check and at most three
+term additions preserve exact signs within the 4096-bit cap. Existing product comparison semantics
+are retained. The eight source facts state independent dyadic identities. This does not validate
+any transform that produced the supplied coordinates, and no runtime result was rerun in that review.

@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
 
@@ -9,9 +8,6 @@ namespace KhaozEngine.Tests.Physics;
 // Closed subpaths of the original represented request, not rounded replacement paths or accepted movement.
 public class CapsuleSweptRangeTests
 {
-    delegate GeometryInterval RangeCall(Vector3 centre, float radius, float halfCylinderLength,
-        Vector3 displacement, Vector3 axis, GeometryInterval maximumSolidProjection, double from, double to);
-
     [Fact]
     public void ClearPrefixDoesNotDeclareTheWholeRequestClear()
     {
@@ -70,13 +66,12 @@ public class CapsuleSweptRangeTests
     [Fact]
     public void InvalidFractionsRefuseInsteadOfClampingAUsableRange()
     {
-        RangeCall evaluate = Bind();
         foreach ((double from, double to) in new[]
         {
             (double.NaN, 0.5), (0d, double.PositiveInfinity), (-double.Epsilon, 0.5),
             (0.5, Math.BitIncrement(1d)), (0.75, 0.5)
         })
-            Assert.False(evaluate(Vector3.Zero, 0.25f, 0.5f, Vector3.UnitX, Vector3.UnitY,
+            Assert.False(CapsuleSweptSupport.EvaluateRange(Vector3.Zero, 0.25f, 0.5f, Vector3.UnitX, Vector3.UnitY,
                 GeometryInterval.Exact(-2), from, to).IsResolved);
     }
 
@@ -104,13 +99,6 @@ public class CapsuleSweptRangeTests
 
     static GeometryInterval Range(Vector3 centre, Vector3 displacement, Vector3 axis,
         GeometryInterval support, double from, double to) =>
-        Bind()(centre, 0.25f, 0.5f, displacement, axis, support, from, to);
+        CapsuleSweptSupport.EvaluateRange(centre, 0.25f, 0.5f, displacement, axis, support, from, to);
 
-    static RangeCall Bind()
-    {
-        MethodInfo? method = typeof(CapsuleSweptSupport).GetMethod("EvaluateRange",
-            BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        return method.CreateDelegate<RangeCall>();
-    }
 }

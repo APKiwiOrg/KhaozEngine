@@ -1018,6 +1018,25 @@ This is transport groundwork. Explicit simulation, descent/footing transitions, 
 consumption, cold environment reconstruction and native acceptance remain pending. Legacy movement
 still leaves the new excursion at None. A transported flag alone does not certify water traversal.
 
+## Explicit player simulation read scope
+
+The opt-in `PlayerMoveSimulator` overload accepts `ExplicitPlayerMovement`, comprising the caller's
+`MovementEnvironmentContext`, bounded scope factory and water policy. The scope factory receives the
+player state and current island frame and supplies a null selection hint for cold reconstruction.
+The captured physics origin must match that island's anchor, with the retained Y datum.
+
+Call `BeginExplicitRead(basis)` and retain its `PlayerMoveReadScope` through `Step`, prediction or
+reconciliation and pure state publication. A corrected/restored basis may be published only when
+`BasisValid` is true. `ExplicitCharacterMovement.ValidatePlacement` classifies that exact pose
+without simulating a tick. Disposal releases the environment pin before the physics lease, including
+when publication throws. Unconfigured simulators return a null read scope and keep legacy behavior.
+Configured simulators called without a read scope hold and clear refused-step effects rather than
+falling back to legacy sampling. `LastExplicitOutcome` reports the last explicit simulation result.
+
+Real Bepu/prediction tests cover publication fencing, corrected pending-command replay, acknowledged
+refused presses and frame mismatch. WorldServer, WorldClient and sharded call-site wiring are still
+being implemented. Wet-region admission remains subject to the shared producer-fact dependency.
+
 ## Client simulation state versus presentation state
 
 `WorldClient.LocalPredictedState` is the local player's current predicted simulation state, returned as an

@@ -20,7 +20,7 @@ namespace KhaozEngine.NetWorld;
 /// What this class adds is the adaptation that puts the samplers in that frame.
 /// </para>
 /// </summary>
-public sealed class PlayerMoveSimulator : ITickSimulator<PlayerMoveState, MoveCommand>
+public sealed partial class PlayerMoveSimulator : ITickSimulator<PlayerMoveState, MoveCommand>
 {
     private readonly Func<float, float, float> groundHeight;
     private readonly Func<float, float, Vector3>? groundNormal;
@@ -127,6 +127,7 @@ public sealed class PlayerMoveSimulator : ITickSimulator<PlayerMoveState, MoveCo
     /// always says which space its position is in.</para></summary>
     public PlayerMoveState Step(in PlayerMoveState state, in MoveCommand command, float dt)
     {
+        if (explicitMovement is not null) return StepExplicit(state, command, dt);
         MoveState m = CharacterMovement.Step(state.Move, command, dt, groundHeightAdapter, tuning, groundNormalAdapter,
             physics, clampXzAdapter, mediumAdapter);
         // Carry the teleport epoch through unchanged: it is a networking marker, not a movement quantity, so a step

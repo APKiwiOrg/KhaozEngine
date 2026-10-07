@@ -1,0 +1,54 @@
+{
+  "status": "Scoped simulator and real prediction/replay proof. Head call-site integration is next.",
+  "baseCommit": "9a5b8145f",
+  "runs": {
+    "runtime-red2": {
+      "path": "/tmp/swim-explicit-player-read-runtime-red2.log",
+      "sha256": "26e0cf8de3814a4d0d6990e579f66fd7fc84ca38430cbf5602348d699633bb3c",
+      "exitCode": 1,
+      "passed": 0,
+      "failed": 6,
+      "skipped": 0
+    },
+    "green": {
+      "path": "/tmp/swim-explicit-player-read-green.log",
+      "sha256": "23e13f44ad1813597c6d64eb43fc91dc20f8c148a1646632ae0f56321b0743b3",
+      "exitCode": 0,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "game-regressions": {
+      "path": "/tmp/swim-explicit-player-read-game-regressions.log",
+      "sha256": "91da5f74918a3973322ab1b46a68d4a98b7a7e1906f9afa1830a2d058b149b21",
+      "exitCode": 0,
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "redHistory": "Missing API compiler diagnostics were followed by an xUnit throw-only lambda selecting the obsolete async overload. The fixture was explicitly cast to Action, then six runtime failures reached the missing read scope/legacy fallback.",
+  "contract": "BeginExplicitRead acquires a cold witness, classifies the exact basis without advancing a tick, and remains live through caller publication. An explicit simulator without the scope holds, consumes the press and never calls legacy terrain. Corrected replay reconstructs each pose without cached predicted selection.",
+  "pending": [
+    "WorldServer and WorldClient call sites",
+    "Sharded movement and restore/handoff admission",
+    "Wet-region proof",
+    "Full branch verification and review"
+  ],
+  "format": {
+    "applyExit": 0,
+    "verifyExit": 0,
+    "change": "Initializer whitespace in ExplicitPlayerEnvironment only. Verify changed zero files."
+  },
+  "sourceHashes": {
+    "KhaozEngine.Locomotion/ExplicitCharacterMovement.cs": "884236349ed07ef35dcfef4221395ac7e99287ca70dce1a93714564608e96999",
+    "KhaozEngine.Locomotion/ExplicitCharacterMovement.Queries.cs": "5685bbc6ea9bb5274d7e4ebbeade4b1929b3b0c2ccc1996252dd80d690ae59d5",
+    "KhaozEngine.Locomotion/ExplicitCharacterMovement.Placement.cs": "6c0e59d9cc0f18201c5ca2e768b1731b64ed36343419ff2decbad460323883b0",
+    "KhaozEngine.Locomotion/MovementStepResult.cs": "c164a6470c55ef75f69287e7ccdc92ec5c55d30daecf24657920fe5d4779f7e1",
+    "KhaozEngine.NetWorld/PlayerMoveSimulator.cs": "d612d3b9825e04ee0abebe5debd370f17e8a6e9552192189ddd39b989716384c",
+    "KhaozEngine.NetWorld/PlayerMoveSimulator.Explicit.cs": "2a5a6196a30cf220d06f90d4ba02d5c0fb962e70868e6ea0ef2d4703fead027e",
+    "KhaozEngine.NetWorld/ExplicitPlayerMovement.cs": "114d8371c676d5d71301aa1c25d9d6e9a0b8de6e93e270ac9784291edfd99c96",
+    "KhaozEngine.Server.Tests/NetWorld/ExplicitPlayerReadTests.cs": "c1f02e6d887fbfcc6ca6b84498626aa7eb0206398cd5c5a4c9f203540567cba8",
+    "KhaozEngine.Server.Tests/NetWorld/Fixtures/ExplicitPlayerEnvironment.cs": "9aa72cb980281970b28e150737574cc6998d3f9b37d41f05d74c0f64e0c80089"
+  }
+}

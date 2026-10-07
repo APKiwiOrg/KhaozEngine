@@ -58,7 +58,7 @@ public static partial class ExplicitCharacterMovement
                 if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
             }
 
-            MoveState next = ClearEvents(input.State);
+            MoveState next = MovementStepResult.HoldState(input.State);
             next.JumpBufferRemaining = 0;
             MovementBodyQuery body = Body(next.Position, tuning, selection);
             // Even an idle tick needs complete initial placement and medium evidence.

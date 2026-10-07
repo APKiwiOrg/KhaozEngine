@@ -38,20 +38,10 @@ public static partial class ExplicitCharacterMovement
     static MovementBodyQuery Body(Vector3 position, in MoveTuning tuning, in MovementSelection selection) =>
         new(position, tuning.CapsuleRadius, tuning.CapsuleHalfHeight, selection.Space, selection.Support);
 
-    static MoveState ClearEvents(MoveState state)
-    {
-        state.StepDeltaY = 0;
-        state.ClimbRate = 0;
-        state.LandingImpactSpeed = 0;
-        state.SupportGranted = false;
-        state.CommandedVelocity = Vector2.Zero;
-        return state;
-    }
-
     static MovementStepResult Hold(in FramedMovementState state, MovementStepOutcome outcome)
     {
         if (!state.IsValid) return new(state, outcome);
-        MoveState held = ClearEvents(state.State);
+        MoveState held = MovementStepResult.HoldState(state.State);
         held.JumpBufferRemaining = 0;
         return new(new(held, state.Frame, null), outcome);
     }

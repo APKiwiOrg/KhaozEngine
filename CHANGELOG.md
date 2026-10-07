@@ -5,6 +5,15 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.29.1
+
+- Catalog publication keeps freeze cleanup scoped to the draft it froze. Concurrent upgrade runners
+  preserve a later draft's freeze after adopting an earlier committed upgrade (#1325).
+  The optional `IContentDraftFreezeStore` companion provides atomic base-scoped release on built-in
+  stores without changing the original interface. Legacy external stores keep their existing behavior.
+- Publication repair for 20.29.0. Its full release gate stopped before pack or publish. This patch
+  includes the Windows console attachment fix and physics query leases recorded below.
+
 ## 20.29.0
 
 - Windows `WinExe` terminal launches attach when native output handles are absent or invalid, even when managed

@@ -19,8 +19,8 @@ Section 8's inherited F2 reference means F3 in this plan. No semantic change is 
 **Status:** G1a Tasks 1 to 6 approved on 2026-10-06 by coordinator thread
 938c801f-2df0-4298-8bd1-dc39e9015e60 under the owner's explicit overnight delegation, against
 plan commit 49591549d and immutable F3. Execute inline sequentially. This is delegated design/plan
-approval, not human visual acceptance, a release or native G1b approval. Request each local heavy
-run window from the coordinator. Before Task 6, reconcile pivot's committed #1313 presentation
+approval, not human visual acceptance, a release or native G1b approval. The coordinator is retired by owner instruction. Request each local heavy
+run window directly from pivot, the shared compute/main/feed scheduling owner. Before Task 6, reconcile pivot's committed #1313 presentation
 phase overload and preserve its ownership of ClientPrediction/AdvancePresentation changes.
 
 ## Global Constraints
@@ -37,7 +37,9 @@ phase overload and preserve its ownership of ClientPrediction/AdvancePresentatio
 - Commands are consumed once even on explicit query refusal. No new jump epoch or hidden buffered submerged press.
 - No game combat, inventory, journal or animation policy in the engine.
 - No new third-party dependency, package or broad umbrella reference. Preserve GPU-free server closure.
-- One build/test/bake at a time through the shared slot. No load/stress runs or repeat-until-green loops.
+- At most two compatible, explicitly assigned bounded heavy slots through the shared wrappers, per the
+  owner's later instruction. Pivot schedules primary/secondary ownership. No third job, load/stress runs
+  or repeat-until-green loops. Shared main/feed/artifact mutations remain exclusive.
 - Current repo AGENTS, KESIZE, Release checks, main reconciliation and docs sweep apply. Never tag.
 
 Native dependency checkpoint, 2026-10-07: coordinator OA17/CD9 approved the complete R2 written plan
@@ -400,3 +402,38 @@ seams remain G1b. Tasks 4 to 6, whole-branch review, full final verification and
 remain open. No generic foundation result is a released pin, game adoption or shipped swimming.
 Task 4 now enters source and test preparation under the existing G1a plan, with no heavy run authorized
 by this checkpoint. New slots are requested directly from pivot after the owner retired the coordinator.
+
+## Read-lease prerequisite integration handoff
+
+The owner approved pivot's separate feature-correspondence spec at `44acfe9b95917aa92c1700e58b1ced5eda605c53`
+and authorized continued execution without routine approval loops. On 2026-10-07 swimming confirmed
+that pivot may separately integrate the existing read lease prerequisite. Pivot owns that integration
+and its fresh-main reconciliation, review, full verification and coordinated pack. Swimming retains
+the lease semantics. This does not transfer contacts, medium queries or certified-sweep ownership.
+
+Extract only these ten file deltas from `80734c9b1c1cf16c436a2bd3d8d30bd37a56fbd1`:
+
+- `KhaozEngine.Physics/IPhysicsQueryLeaseSource.cs`
+- `KhaozEngine.Physics.Bepu/BepuPhysicsWorld.QueryLease.cs`
+- `KhaozEngine.Physics.Bepu/BepuPhysicsWorld.cs`
+- `KhaozEngine.Physics.Bepu/BepuPhysicsWorld.QueryView.cs`
+- `KhaozEngine.Physics.Bepu/BepuPhysicsWorld.Queries.cs`
+- `KhaozEngine.Physics.Bepu/BepuPhysicsWorld.Rebase.cs`
+- `KhaozEngine.Game.Tests/Physics/PhysicsQueryLeaseTests.cs`
+- `KhaozEngine.Physics/README.md`
+- `KhaozEngine.Physics.Bepu/README.md`
+- `docs/USING-KHAOZENGINE.md`
+
+Exclude the commit's swimming-plan tracking delta and every later branch change. All query/mutation
+fence sites are one prerequisite, not independently optional edits. No new dependency or project
+reference is needed. The extracted patch passed read-only `git apply --check` against main
+`e34cd884be10c22bee10b82b76aacc7a3514dd17`, staged 20.28.0. Current version/metadata still need
+fresh integration reconciliation. Original focused evidence remains 18 lease facts and 20 named
+query-view lifecycle, rebase and penetration-allocation regressions, zero failures/skips. This is
+not the required final verification against current main.
+
+Preserve actual lease identity, thread-before-monitor refusal, owner-backed selected views and the
+conservative mutation generation. The reader gate is exclusive because queries share scratch. A
+failed write may advance generation, but a leased mutation is refused before changing it. No
+resulting physical mutation is allowed until release. Swimming will reconcile the integrated
+prerequisite before later main integration rather than applying a duplicate lease implementation.

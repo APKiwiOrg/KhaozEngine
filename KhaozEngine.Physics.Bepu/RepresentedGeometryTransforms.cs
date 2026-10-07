@@ -1,5 +1,7 @@
+using System;
 using System.Numerics;
 using BepuUtilities;
+using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
 
@@ -25,6 +27,38 @@ internal readonly struct GeometryVector
 /// This does not establish matrix/pose correspondence, rigidity, shape ownership or geometric eligibility.</summary>
 internal static class RepresentedGeometryTransforms
 {
+    internal const float MaximumPositionMagnitude = 2048f;
+    internal const float MaximumLocalMagnitude = 64f;
+    internal const double SquaredUnitTolerance = 1d / (1 << 20);
+
+    /// <summary>Encloses the pinned backend quaternion polynomial and its binary32 evaluation.
+    /// Input bounds and squared unit band are necessary checks, not installed-shape provenance,
+    /// output-domain acceptance, geometric eligibility or an error-ceiling certificate.</summary>
+    public static GeometryVector PosePoint(in Pose pose, Vector3 local)
+    {
+        if (!Within(pose.Position, MaximumPositionMagnitude) || !Within(local, MaximumLocalMagnitude))
+            return default;
+        Quaternion q = pose.Orientation;
+        GeometryInterval x = GeometryInterval.Exact(q.X), y = GeometryInterval.Exact(q.Y);
+        GeometryInterval z = GeometryInterval.Exact(q.Z), w = GeometryInterval.Exact(q.W);
+        GeometryInterval norm = x.Square().Add(y.Square()).Add(z.Square()).Add(w.Square());
+        if (!norm.IsResolved || norm.Lower < 1d - SquaredUnitTolerance || norm.Upper > 1d + SquaredUnitTolerance)
+            return default;
+
+        GeometryInterval x2 = Add(x, x), y2 = Add(y, y), z2 = Add(z, z);
+        GeometryInterval xx = Multiply(x2, x), yy = Multiply(y2, y), zz = Multiply(z2, z);
+        GeometryInterval xy = Multiply(x2, y), xz = Multiply(x2, z), xw = Multiply(x2, w);
+        GeometryInterval yz = Multiply(y2, z), yw = Multiply(y2, w), zw = Multiply(z2, w);
+        GeometryInterval one = GeometryInterval.Exact(1);
+        var rotated = new GeometryVector(
+            Dot(local, Subtract(Subtract(one, yy), zz), Subtract(xy, zw), Add(xz, yw)),
+            Dot(local, Add(xy, zw), Subtract(Subtract(one, xx), zz), Subtract(yz, xw)),
+            Dot(local, Subtract(xz, yw), Add(yz, xw), Subtract(Subtract(one, xx), yy)));
+        if (!rotated.IsResolved) return default;
+        return new(AddTranslation(rotated.X, pose.Position.X), AddTranslation(rotated.Y, pose.Position.Y),
+            AddTranslation(rotated.Z, pose.Position.Z));
+    }
+
     public static GeometryVector Point(in Matrix3x3 matrix, Vector3 translation, Vector3 local)
     {
         GeometryVector rotated = Direction(matrix, local);
@@ -41,10 +75,18 @@ internal static class RepresentedGeometryTransforms
     static GeometryInterval AddTranslation(GeometryInterval value, float translation) =>
         value.Add(GeometryInterval.Exact(translation)).EncloseSingleRounding();
 
-    static GeometryInterval Product(float a, float b) =>
-        GeometryInterval.Exact(a).Multiply(GeometryInterval.Exact(b)).EncloseSingleRounding();
+    static GeometryInterval Multiply(GeometryInterval a, GeometryInterval b) => a.Multiply(b).EncloseSingleRounding();
+    static GeometryInterval Add(GeometryInterval a, GeometryInterval b) => a.Add(b).EncloseSingleRounding();
+    static GeometryInterval Subtract(GeometryInterval a, GeometryInterval b) => a.Subtract(b).EncloseSingleRounding();
 
     static GeometryInterval Dot(Vector3 v, float x, float y, float z) =>
-        Product(v.X, x).Add(Product(v.Y, y)).EncloseSingleRounding()
-            .Add(Product(v.Z, z)).EncloseSingleRounding();
+        Dot(v, GeometryInterval.Exact(x), GeometryInterval.Exact(y), GeometryInterval.Exact(z));
+
+    static GeometryInterval Dot(Vector3 v, GeometryInterval x, GeometryInterval y, GeometryInterval z) =>
+        Add(Add(Multiply(GeometryInterval.Exact(v.X), x), Multiply(GeometryInterval.Exact(v.Y), y)),
+            Multiply(GeometryInterval.Exact(v.Z), z));
+
+    static bool Within(Vector3 value, float bound) =>
+        float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z) &&
+        MathF.Abs(value.X) <= bound && MathF.Abs(value.Y) <= bound && MathF.Abs(value.Z) <= bound;
 }

@@ -701,3 +701,21 @@ The path-point implementation passed all ten unchanged assertions converted to d
 failures/skips, exit 0 in `/tmp/swim-path-point-green.log`. It preserves enclosing intervals when
 exact product/sum verification fails, and independently tightens axes whose proposals are proved.
 This binds the coordinate enclosure to the original C+tD expression without claiming a collision.
+
+## Interval point classification preparation
+
+Path coordinates that are not exactly representable must retain their intervals. The next identity-box
+predicate subtracts the installed translation using interval arithmetic, computes distance to the
+Y-expanded finite box, and compares the squared-distance enclosure with radius squared. A wholly
+negative result proves overlap, a wholly positive result proves separation. A boundary-straddling
+result stays unresolved unless an exact contribution proof resolves it. Never classify the midpoint.
+
+An axis wholly inside the box contributes exactly zero distance despite coordinate uncertainty.
+Otherwise an exact local coordinate and exact extent can supply a pair to the shared exact predicate.
+This permits a proved face tangency with uncertain tangential coordinates without pretending those
+coordinates are exact. All three contributions must be proved before the exact fallback is used.
+Unsupported shape/pose/input and unresolved arithmetic retain no contact assertion.
+
+The ten enclosure facts compiled and failed at the absent `ClassifyEnclosure` method after the
+actual world/read-lease and path-enclosure controls passed. Zero passes/skips, expected exit 1 in
+`/tmp/swim-box-enclosure-red.log`. This is missing-capability RED, not a geometry result.

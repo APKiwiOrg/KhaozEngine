@@ -67,7 +67,6 @@
 5 KhaozEngine.Physics/README.md
 5 KhaozEngine.Locomotion/README.md
 5 KhaozEngine.Gpu/README.md
-5 KhaozEngine.Game/README.md
 5 KhaozEngine.Diagnostics/README.md
 5 KhaozEngine.Audio/README.md
 4 docs/design/WATER-SHORE-DESIGN-2026-07-27.md
@@ -76,6 +75,7 @@
 4 KhaozEngine.Terrain.Render3D/README.md
 4 KhaozEngine.Platform/README.md
 4 KhaozEngine.Objectives/README.md
+4 KhaozEngine.Game/README.md
 3 tools/PixelLabSheetAssembler/README.md
 3 docs/design/MAP-EDITOR-DESIGN.md
 3 docs/design/GUI-DRAG-AND-DROP-DESIGN-2026-07-28.md

@@ -201,3 +201,26 @@ exit 0 in `/tmp/swim-tree-preflight-green.log`. The A-first pending peaks, raw v
 live-count refusals and zero outputs on incomplete traversal now have finite behavior evidence.
 Topology, installed geometry bounds, mutation tracking and selected-world completeness remain separate
 premises. No public sweep forwarding or registration hook was added by this slice.
+
+## Evidence bookkeeping fixture proposal
+
+The next isolated helper is a lifecycle guard, not a second lease, registry or geometry proof.
+`CapsuleSweepEvidence(object source)` starts only from the caller premise of a newly constructed,
+known-empty source at generation zero. Future backend integration must create it once in the owner,
+never recreate it to repair an already mutated source. `IsCurrent(object source, long generation)`
+requires reference identity and the accepted generation. It neither acquires a gate nor samples data.
+
+`BeginMutation(long advancedGeneration)` immediately invalidates readiness and returns an instance-
+bound token. It may carry evidence only from exactly advancedGeneration-1. `CompleteMutation(token,
+long currentGeneration, bool recordsComplete)` accepts only that exact pending token, owner,
+generation and complete-record assertion. Otherwise it clears pending/readiness. Abandoned, missing,
+replayed, foreign, out-of-order and incomplete completions cannot be healed by an unrelated success.
+No automatic recovery or generation reset is included.
+
+Twelve prepared facts pin those lifecycle transitions, including distinct source objects equal by
+value. They do not prove actual registration facts or mutation-hook coverage. Real backend hooks,
+known pre-write failures and the complete mutation inventory still require separate integration proof.
+
+The twelve lifecycle facts compiled and failed at the absent `CapsuleSweepEvidence` type, zero
+passes/skips, exit 1 in `/tmp/swim-evidence-lifecycle-red.log`. No lifecycle behavior or actual
+registration proof is inferred from this RED result.

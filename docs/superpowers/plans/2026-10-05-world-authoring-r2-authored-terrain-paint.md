@@ -3625,3 +3625,19 @@ or captured Incomplete instead of CapacityExceeded. Zero skips, unchanged 37-pat
 was released. Proof is proofs/2026-10-07-r2-task7-review-red.json. This checkpoint contains initial
 storage implementation with known review defects, not Task 7 acceptance. Bounded corrections and
 fresh targeted review follow. Embedding read-bound tests are separately prepared in ignored staging.
+
+
+### Task 7 embedding read-bound test seams proven absent
+
+Parent inspected four finite test/helper files with 25 predicted rows, including three existing
+writer framing controls. Literal JSON lengths and packed values were checked independently. One
+granted invocation failed compilation only on the planned internal encoding helper (four CS0103),
+five-argument read overload (one CS1501) and three-argument converter constructor (one CS1729).
+Zero tests executed. No unrelated diagnostic, warning or cascade. All 41 hashes stayed fixed and
+primary was released. Proof is proofs/2026-10-07-r2-task7-embedding-red.json.
+
+Bounded read implementation follows. Original 1 MiB/8 MiB/256 caps and canonical packed bytes stay
+unchanged. Parent rejected unrelated typed-writer expansion. R1/R3 corrections are source-ready but
+unverified, and targeted review identified remaining excluded-role and lookup-node traversal work
+under R2. Their two public-API regressions are prepared separately, pending a compilable embedding
+implementation before runtime proof. None of these checkpoints closes Task 7.

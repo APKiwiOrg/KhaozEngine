@@ -755,3 +755,19 @@ witness must refuse rather than manufacture a Hit or Clear from the remaining sm
 The sixteen fraction-search facts compiled and failed at the absent `CapsuleBoxFractionSweep` type
 after the installed-world/read controls passed. Zero passes/skips, exit 1 in
 `/tmp/swim-box-fraction-red.log`. The production helper was absent throughout RED.
+
+The single-leaf implementation passed all sixteen unchanged direct assertions, zero failures/skips,
+exit 0 in `/tmp/swim-box-fraction-green.log`. The existing enclosure/path helpers were unchanged.
+
+## Fraction-to-distance boundary
+
+A later Hit encoder must enclose the mathematical displacement norm, tighten a proposed exact norm
+only with the shared exact squared-distance predicate, and multiply the fraction bounds outward.
+Encode the lower distance downward and upper distance upward into binary32. The declared error must
+bound the complete resulting distance interval. Refuse if that error exceeds the query limit.
+
+The upper encoded distance must also be no greater than the mathematical request extent, checked
+without trusting a rounded square root. This can make a Hit exactly at an irrational-length endpoint
+unrepresentable by the current float contract. Refuse that input rather than clamp away the impact
+witness. Exact axis-length endpoints and zero-distance initial contacts remain representable. Clear
+encoding is a separate full-request declaration and must not be used to evade a refused Hit.

@@ -13,9 +13,6 @@ namespace KhaozEngine.Tests.Physics;
 public class CapsuleBoxFractionSweepTests
 {
     const double Width = 1d / 1024;
-    delegate bool SweepCall(Shapes shapes, TypedIndex shape, RigidPose pose, Vector3 centre,
-        float radius, float halfCylinderLength, Vector3 displacement, double maximumFractionWidth,
-        int maximumCells, out double lower, out double? upper);
 
     [Fact]
     public void ASeparatedWholePathIsClear() =>
@@ -139,11 +136,7 @@ public class CapsuleBoxFractionSweepTests
         ref var target = ref simulation.Statics[0];
         Assert.Equal(sourcePose.Position, target.Pose.Position);
         Assert.Equal(sourcePose.Orientation, target.Pose.Orientation);
-        Type? type = typeof(BepuPhysicsWorld).Assembly.GetType("KhaozEngine.Physics.Bepu.CapsuleBoxFractionSweep");
-        Assert.NotNull(type);
-        MethodInfo? method = type.GetMethod("TrySweep", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        bool complete = method.CreateDelegate<SweepCall>()(simulation.Shapes, target.Shape, target.Pose,
+        bool complete = CapsuleBoxFractionSweep.TrySweep(simulation.Shapes, target.Shape, target.Pose,
             centre, radius, 0.5f, delta, width, maximumCells, out double lower, out double? upper);
         lease.AssertCurrent();
         return (complete, lower, upper);

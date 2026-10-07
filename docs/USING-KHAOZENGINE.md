@@ -211,8 +211,9 @@ vanishes when a developer launches the game from a terminal (`dotnet run`, cmd, 
 that catch: `GameApp` calls `AppWindow.TryAttachParentConsole()` as the very first thing it does, attaching the
 process to the launching terminal's console (if there is one) and rewiring `Console.Out`/`Console.Error` to it, so
 terminal launches keep full engine + game stdout/stderr. It is a no-op - silently - for a normal Explorer/Start
-launch (no parent console), off Windows, for a console-subsystem exe, and when output is redirected (a pipe, a
-`> out.txt`, or a CI/test-runner capture is respected and left untouched); it never throws. A bare `AppWindow`
+launch (no parent console), off Windows, for a console-subsystem exe, and when both output streams are redirected.
+File and pipe destinations are preserved per stream, while absent or invalid native handles are connected to
+the parent console. The managed redirection flags alone cannot distinguish those cases. It never throws. A bare `AppWindow`
 host (no `GameApp`) gets the same attach from the `AppWindow` constructor. **Opt out** by setting
 `GameAppOptions.SuppressParentConsoleAttach = true` (default is off, i.e. the attach is on).
 

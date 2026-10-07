@@ -7,6 +7,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.29.0
 
+- Windows `WinExe` terminal launches attach when native output handles are absent or invalid, even when managed
+  redirection flags report true. File and pipe destinations survive attachment independently per stream,
+  and the exit newline stays out of redirected output. Hosted Windows regression coverage verifies native
+  console membership and output destinations (#1322).
 - Physics adds optional thread-affine query read leases that pin the owner, origin and geometry generation.
   Bepu owners and selected views fence mutations during the lease and serialize access to query scratch.
 

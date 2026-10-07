@@ -6,12 +6,13 @@ namespace KhaozEngine.Tests.Platform
 {
     /// <summary>
     /// Headless coverage for <see cref="WindowsConsole"/>. The actual AttachConsole/stream-rewire is a Windows
-    /// runtime side effect that needs a real WinExe launched from a terminal to observe, so it stays out; these
+    /// runtime side effect covered by tools/WindowsConsoleProbe on hosted Windows. These tests
     /// cover the pure attach decision (<see cref="WindowsConsole.ShouldAttach"/>, exercised on every OS) and the
     /// guard behaviour: <see cref="WindowsConsole.HasConsole"/> reports a console off Windows, and
     /// <see cref="WindowsConsole.EnsureParentConsoleAttached"/> never throws and is a one-shot. Off Windows the
     /// whole attach path short-circuits to false, which is exercised whenever the suite runs on macOS/Linux.
     /// </summary>
+    [Collection("WindowsConsoleSerial")]
     public sealed class WindowsConsoleTests
     {
         // isWindows, enable, hasConsole, outRedirected, errRedirected -> expected
@@ -57,4 +58,7 @@ namespace KhaozEngine.Tests.Platform
             Assert.False(WindowsConsole.EnsureParentConsoleAttached(enable: false));
         }
     }
+
+    [CollectionDefinition("WindowsConsoleSerial", DisableParallelization = true)]
+    public sealed class WindowsConsoleSerialCollection { }
 }

@@ -248,7 +248,8 @@ Windowing + input foundation for the custom MonoGame-free stack.
   console, so it attaches the process to the launching terminal's console and rewires stdout/stderr, keeping
   `Console.Write*` visible under `dotnet run` / cmd / PowerShell. `AppWindow.ProcessHasConsole` (static) reports
   whether a console is now owned. Both forward to `Platform.WindowsConsole`; no-ops off Windows / for a console exe
-  / with no parent console / with redirected output, never throwing. The constructor calls the attach itself (so a
+  / with no parent console / with both output streams redirected, never throwing. Missing native handles can
+  attach, while real redirection is preserved per stream. The constructor calls the attach itself (so a
   bare `AppWindow` host is covered - it also un-loses the Metal-vsync `Console.Error` warning above on a WinExe),
   and `GameApp` calls it first (opt out with `GameAppOptions.SuppressParentConsoleAttach`).
 - `InputManager` / `Pointer` - the higher-level read: unified pointer, edges, bounds helpers (`IsTapIn` etc.),

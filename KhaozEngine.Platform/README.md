@@ -89,9 +89,12 @@ bool haveConsole = WindowsConsole.HasConsole; // true after a successful attach,
 It is idempotent (attempts once per process) and never throws. A no-op returning `false`: off Windows, for a
 console-subsystem exe (which already owns a console), on a normal Explorer/Start launch (no parent console), when
 disabled via `enable`, and when both stdout and stderr are already redirected (a pipe, a `> out.txt`, or a
-CI/test-runner capture is respected - only the non-redirected streams are rewired). Most games never call it
+CI/test-runner capture is respected - only the non-redirected streams are rewired). Missing or invalid native
+handles are eligible for attachment even when `Console.IsOutputRedirected` or `Console.IsErrorRedirected`
+reports true. Real file, pipe and non-console device handles are preserved independently across attachment,
+including redirected input. The exit newline goes only to an attached console stream. Most games never call it
 directly: `GameApp` calls `AppWindow.TryAttachParentConsole` (a windowing-layer forwarder) as its first action,
-and a bare `AppWindow` host gets it from the constructor; opt out with `GameAppOptions.SuppressParentConsoleAttach`.
+and a bare `AppWindow` host gets it from the constructor. Opt out with `GameAppOptions.SuppressParentConsoleAttach`.
 `HasConsole` returns `true` off Windows (there is no Windows-subsystem/no-console case to guard there).
 
 ## Process control (self-relaunch seam)

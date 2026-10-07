@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
@@ -32,9 +31,7 @@ internal sealed class CapsuleFeaturePolyhedraClosest
 
     internal CapsuleFeatureStatus Enumerate(CapsuleFeaturePolyhedron leaf)
     {
-        if (!_lower.TrySingle(out Vector3 low) || !_upper.TrySingle(out Vector3 high))
-            return CapsuleFeatureStatus.Unresolved;
-        GeometrySign lowInside = leaf.Contains(low), highInside = leaf.Contains(high);
+        GeometrySign lowInside = leaf.Contains(_lower), highInside = leaf.Contains(_upper);
         if (lowInside != GeometrySign.Negative || highInside != GeometrySign.Negative)
             return CapsuleFeatureStatus.Unresolved;
         for (int i = 0; i < leaf.Vertices.Length && _status == CapsuleFeatureStatus.Complete; i++)
@@ -48,9 +45,8 @@ internal sealed class CapsuleFeaturePolyhedraClosest
 
     void Vertex(CapsuleFeaturePolyhedron leaf, int vertex)
     {
-        Vector3 point = leaf.Vertices[vertex];
-        if (Far([point])) return;
-        FeaturePoint geometry = FeaturePoint.Exact(point);
+        FeaturePoint geometry = leaf.Vertices[vertex];
+        if (Far([geometry])) return;
         FeaturePoint axis = _lower;
         if (_axisSquared.Sign != GeometrySign.Zero)
         {
@@ -65,9 +61,9 @@ internal sealed class CapsuleFeaturePolyhedraClosest
     void Edge(CapsuleFeaturePolyhedron leaf, int id)
     {
         CapsuleFeaturePolyhedronEdge edge = leaf.Edges[id];
-        Vector3 first = leaf.Vertices[edge.A], second = leaf.Vertices[edge.B];
+        FeaturePoint first = leaf.Vertices[edge.A], second = leaf.Vertices[edge.B];
         if (Far([first, second])) return;
-        FeaturePoint a = FeaturePoint.Exact(first), e = FeaturePoint.Subtract(FeaturePoint.Exact(second), a);
+        FeaturePoint a = first, e = FeaturePoint.Subtract(second, a);
         FeatureNumber c = FeaturePoint.Dot(e, e);
         if (c.Sign != GeometrySign.Positive) { _status = CapsuleFeatureStatus.Unresolved; return; }
         EdgeEndpoint(leaf, id, a, e, c, _lower);
@@ -107,10 +103,10 @@ internal sealed class CapsuleFeaturePolyhedraClosest
     void Face(CapsuleFeaturePolyhedron leaf, int id)
     {
         int[] indices = leaf.Faces[id];
-        var points = new Vector3[indices.Length];
+        var points = new FeaturePoint[indices.Length];
         for (int i = 0; i < points.Length; i++) points[i] = leaf.Vertices[indices[i]];
         if (Far(points)) return;
-        FeaturePoint origin = FeaturePoint.Exact(points[0]), n = leaf.Normals[id];
+        FeaturePoint origin = points[0], n = leaf.Normals[id];
         FeatureNumber squared = FeaturePoint.Dot(n, n);
         if (squared.Sign != GeometrySign.Positive) { _status = CapsuleFeatureStatus.Unresolved; return; }
         FaceEndpoint(leaf, id, origin, n, squared, _lower);
@@ -179,19 +175,23 @@ internal sealed class CapsuleFeaturePolyhedraClosest
         Candidates.Add(new(leaf, feature, kind, axis, geometry, distance, faces));
     }
 
-    bool Far(ReadOnlySpan<Vector3> points)
+    bool Far(ReadOnlySpan<FeaturePoint> points)
     {
-        if (!_lower.TrySingle(out Vector3 low) || !_upper.TrySingle(out Vector3 high) || !_bandSquared.IsResolved)
+        if (!_lower.IsResolved || !_upper.IsResolved || !_bandSquared.IsResolved)
             return false;
-        Vector3 minimum = points[0], maximum = points[0];
-        for (int i = 1; i < points.Length; i++)
-        { minimum = Vector3.Min(minimum, points[i]); maximum = Vector3.Max(maximum, points[i]); }
         GeometryInterval bound = GeometryInterval.Exact(0);
         for (int i = 0; i < 3; i++)
         {
-            double axisLow = Math.Min(Component(low, i), Component(high, i));
-            double axisHigh = Math.Max(Component(low, i), Component(high, i));
-            double shapeLow = Component(minimum, i), shapeHigh = Component(maximum, i);
+            double axisLow = Math.Min(Component(_lower, i).Lower, Component(_upper, i).Lower);
+            double axisHigh = Math.Max(Component(_lower, i).Upper, Component(_upper, i).Upper);
+            double shapeLow = double.PositiveInfinity, shapeHigh = double.NegativeInfinity;
+            foreach (FeaturePoint point in points)
+            {
+                GeometryInterval component = Component(point, i);
+                if (!component.IsResolved) return false;
+                shapeLow = Math.Min(shapeLow, component.Lower);
+                shapeHigh = Math.Max(shapeHigh, component.Upper);
+            }
             GeometryInterval gap = axisHigh < shapeLow
                 ? GeometryInterval.Exact(shapeLow).Subtract(GeometryInterval.Exact(axisHigh))
                 : shapeHigh < axisLow ? GeometryInterval.Exact(axisLow).Subtract(GeometryInterval.Exact(shapeHigh))
@@ -202,5 +202,5 @@ internal sealed class CapsuleFeaturePolyhedraClosest
         return bound.IsResolved && bound.Lower > _bandSquared.Bounds.Upper;
     }
 
-    static float Component(Vector3 p, int axis) => axis == 0 ? p.X : axis == 1 ? p.Y : p.Z;
+    static GeometryInterval Component(FeaturePoint p, int axis) => axis == 0 ? p.X.Bounds : axis == 1 ? p.Y.Bounds : p.Z.Bounds;
 }

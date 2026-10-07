@@ -10,15 +10,17 @@ namespace KhaozEngine.Physics.Bepu;
 internal readonly record struct CapsuleFeaturePolyhedronEdge(int A, int B, int FirstFace, int SecondFace);
 
 /// <summary>A strictly convex, closed, consistently wound finite solid. Admission checks all faces,
-/// all represented vertices and the complete edge/vertex neighborhoods before any closest query.</summary>
+/// all source vertices and the complete edge/vertex neighborhoods before any closest query.
+/// The proved rigid affine map preserves that topology without rounding world vertices.</summary>
 internal sealed class CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose localPose, RigidPose worldPose,
-    int leafId, Vector3[] vertices, int[][] faces)
+    int leafId, Vector3[] localVertices, FeaturePoint[] vertices, int[][] faces)
 {
     internal TypedIndex InstalledShape { get; } = shape;
     internal RigidPose InstalledLocalPose { get; } = localPose;
     internal RigidPose InstalledWorldPose { get; } = worldPose;
     internal int LeafId { get; } = leafId;
-    internal Vector3[] Vertices { get; } = vertices;
+    internal Vector3[] LocalVertices { get; } = localVertices;
+    internal FeaturePoint[] Vertices { get; } = vertices;
     internal int[][] Faces { get; } = faces;
     internal CapsuleFeaturePolyhedronEdge[] Edges { get; private set; } = [];
     internal FeaturePoint[] Normals { get; private set; } = [];
@@ -26,10 +28,11 @@ internal sealed class CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose local
 
     internal CapsuleFeatureStatus Validate()
     {
-        if (Vertices.Length < 4 || Faces.Length < 4) return CapsuleFeatureStatus.Unsupported;
+        if (Vertices.Length < 4 || Faces.Length < 4 || LocalVertices.Length != Vertices.Length)
+            return CapsuleFeatureStatus.Unsupported;
         if (Faces.Length > CapsuleFeatureGeometry.MaximumFaces || Vertices.Length > CapsuleFeatureGeometry.MaximumVertices)
             return CapsuleFeatureStatus.CapacityExceeded;
-        if (new HashSet<Vector3>(Vertices).Count != Vertices.Length) return CapsuleFeatureStatus.Ambiguous;
+        if (new HashSet<Vector3>(LocalVertices).Count != Vertices.Length) return CapsuleFeatureStatus.Ambiguous;
         var edges = new List<CapsuleFeaturePolyhedronEdge>();
         var edgeIds = new Dictionary<(int, int), int>();
         var incidence = new List<int>[Vertices.Length];
@@ -42,13 +45,13 @@ internal sealed class CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose local
                 return CapsuleFeatureStatus.Ambiguous;
             for (int i = 0; i < face.Length; i++)
                 if ((uint)face[i] >= (uint)Vertices.Length) return CapsuleFeatureStatus.Unsupported;
-            Vector3 a = Vertices[face[0]], b = Vertices[face[1]], c = Vertices[face[2]];
+            Vector3 a = LocalVertices[face[0]], b = LocalVertices[face[1]], c = LocalVertices[face[2]];
             int projection = Projection(a, b, c);
             if (projection < 0) return CapsuleFeatureStatus.Unsupported;
             GeometrySign winding = ProjectedOrient(a, b, c, projection);
             for (int vertex = 0; vertex < Vertices.Length; vertex++)
             {
-                GeometrySign side = BoundedGeometryArithmetic.Orient3D(a, b, c, Vertices[vertex]);
+                GeometrySign side = BoundedGeometryArithmetic.Orient3D(a, b, c, LocalVertices[vertex]);
                 if (side == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unresolved;
                 bool member = Array.IndexOf(face, vertex) >= 0;
                 if (member ? side != GeometrySign.Zero : side != GeometrySign.Negative)
@@ -61,7 +64,7 @@ internal sealed class CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose local
                 {
                     int tested = face[j];
                     if (tested == first || tested == second) continue;
-                    GeometrySign side = ProjectedOrient(Vertices[first], Vertices[second], Vertices[tested], projection);
+                    GeometrySign side = ProjectedOrient(LocalVertices[first], LocalVertices[second], LocalVertices[tested], projection);
                     if (side == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unresolved;
                     // Strictness refuses collinear aliases and self-intersecting or concave polygons.
                     if (side != winding) return CapsuleFeatureStatus.Ambiguous;
@@ -81,8 +84,8 @@ internal sealed class CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose local
                 }
                 incidence[first].Add(faceId);
             }
-            FeaturePoint ab = FeaturePoint.Subtract(FeaturePoint.Exact(b), FeaturePoint.Exact(a));
-            FeaturePoint ac = FeaturePoint.Subtract(FeaturePoint.Exact(c), FeaturePoint.Exact(a));
+            FeaturePoint ab = FeaturePoint.Subtract(Vertices[face[1]], Vertices[face[0]]);
+            FeaturePoint ac = FeaturePoint.Subtract(Vertices[face[2]], Vertices[face[0]]);
             normals[faceId] = FeaturePoint.Cross(ab, ac);
             if (FeaturePoint.Dot(normals[faceId], normals[faceId]).Sign != GeometrySign.Positive)
                 return CapsuleFeatureStatus.Unresolved;
@@ -127,13 +130,13 @@ internal sealed class CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose local
         return reached.Count == faces.Count;
     }
 
-    internal GeometrySign Contains(Vector3 point)
+    internal GeometrySign Contains(FeaturePoint point)
     {
         bool outside = false;
-        foreach (int[] face in Faces)
+        for (int faceId = 0; faceId < Faces.Length; faceId++)
         {
-            GeometrySign side = BoundedGeometryArithmetic.Orient3D(Vertices[face[0]], Vertices[face[1]],
-                Vertices[face[2]], point);
+            FeaturePoint delta = FeaturePoint.Subtract(point, Vertices[Faces[faceId][0]]);
+            GeometrySign side = FeaturePoint.Dot(Normals[faceId], delta).Sign;
             if (side == GeometrySign.Unresolved) return GeometrySign.Unresolved;
             outside |= side == GeometrySign.Positive;
         }
@@ -147,8 +150,8 @@ internal sealed class CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose local
         bool boundary = false;
         for (int i = 0; i < face.Length; i++)
         {
-            FeaturePoint a = FeaturePoint.Exact(Vertices[face[i]]);
-            FeaturePoint b = FeaturePoint.Exact(Vertices[face[(i + 1) % face.Length]]);
+            FeaturePoint a = Vertices[face[i]];
+            FeaturePoint b = Vertices[face[(i + 1) % face.Length]];
             FeatureNumber side = FeaturePoint.Dot(FeaturePoint.Cross(FeaturePoint.Subtract(b, a),
                 FeaturePoint.Subtract(point, a)), Normals[faceId]);
             GeometrySign sign = side.Sign;

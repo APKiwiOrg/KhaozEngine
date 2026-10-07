@@ -1,10 +1,12 @@
 # Capsule feature polyhedra proof argument
 
-Status: reviewed initial implementation with two verified applicability failures. The first
-compiled invocation executed the two translated-domain regressions, both failing after ordinary
-contact controls passed. The preserved 14-case RED remains the original geometry baseline. Whole
-feature GREEN, format and corrected-source review remain parent-owned gates. This document does not
-authorize a runtime consumer, a mesh backend, a release or a geometry tolerance change.
+Status: bounded coordinate correction reviewed and compiled. The first combined invocation passed
+27 of 28 cases, including both translated-domain regressions and all twelve lifetime controls.
+The existing hull-centroid case returned Ambiguous instead of Complete after its installed-source
+controls passed. Its internal refusal reason remains unmeasured. Format was not run after that failure.
+The retained evidence is `docs/verification/2026-10-07-feature-polyhedron-first-validation.json`.
+Whole polyhedron GREEN remains open. This document does not authorize a runtime consumer, a mesh
+backend, a release or a geometry tolerance change.
 
 ## Installed authority and read interval
 
@@ -50,14 +52,17 @@ whole near-unit quaternion band.
 
 The query capsule is upright under the existing exact X/Z quaternion check and shared squared-unit
 band check. Radius remains 0.01 to 2 m, cylinder length 0 to 8 m and separation band 0 to 0.01 m.
-Its vertical endpoints must be exactly reconstructible as binary32 coordinates within 2048 m.
-Yaw leaves this axis unchanged. Endpoint reconstruction that loses represented information refuses.
+Its vertical endpoints retain the certified expressions `centerY +/- length/2` within 2048 m.
+Binary32 encoding of those endpoints is not an admission condition. Yaw leaves this axis unchanged.
+Unresolved endpoint arithmetic or a coordinate enclosure outside the frame refuses.
 
 Installed rigid poses additionally require a proved exact squared quaternion norm of one, exact
 orthonormal matrix rows and positive determinant one. All local vertices lie within 64 m on each
-axis. All transformed world vertices must equal their real represented-matrix affine expression
-exactly as binary32 values, within 2048 m. A finite transform outside this admitted subset refuses.
-No pose is renormalized.
+axis. World vertices retain their real represented-matrix affine expressions as `FeaturePoint`
+coordinates, certified exact binary64 values where possible and outward intervals otherwise. Every
+coordinate enclosure must remain within 2048 m. Neither binary32 representability nor equality to a
+rounded backend point proposal is required. A finite transform outside the admitted rigid subset
+refuses. No pose is renormalized.
 
 The stronger quaternion gate also certifies matrix conversion without a second quaternion kernel.
 Every binary32 component is dyadic. Reduce an exactly unit quaternion to integer numerators over
@@ -67,12 +72,13 @@ eight, contradicting `4^k`. Thus `k` is zero or one. The components are a single
 or four signed halves. The pinned conversion polynomial is exact binary32 arithmetic for these
 values. This is an operation-domain gate, not box/hull or fixture-coordinate recognition.
 
-The matrix is obtained from Bepu. Bepu also proposes each transformed point. A dot/translation
-equality certificate verifies that proposal against the represented affine map. The shared
-`RepresentedGeometryTransforms.PosePoint` still checks the approved domain and supplies its
-conversion/rounding enclosure. No independent interval, BigInteger or quaternion transform kernel
-is introduced. The admitted exact affine equality removes uncertainty for topology and exact
-contact comparisons. It does not generalize that equality to rounded transforms that fail the gate.
+The matrix is obtained from Bepu. The existing feature expression adapter applies its row-basis
+dot products and installed translation without substituting a binary32 point proposal. Its exact
+certificates and outward intervals describe the real affine image of the installed local vertex.
+The shared `RepresentedGeometryTransforms.PosePoint` still checks the approved domain and supplies
+the conversion/rounding enclosure. Its potentially wider enclosure does not define a different
+geometry. The exact rigid gate proves the represented matrix is the installed rotation's affine
+map. No independent interval, BigInteger or quaternion transform kernel is introduced.
 
 ## Expression and enclosure operations
 
@@ -98,12 +104,28 @@ complete enclosure, including division and multiply/add reconstruction. A nonbin
 an interval, never a rounded exact point. Finite membership and ordering must either have strict
 outward sign bounds or a valid exact certificate. Uncertainty refuses.
 
+Endpoint half-length multiplication and center addition/subtraction use these same operations.
+For the standard represented radius `0.3f`, length `0.9f` and center Y `2.25f`, the lower endpoint is
+exactly `30198989/16777216`. Its distance to the top at `1.5` is exactly the represented radius.
+The shared squared-distance comparator can certify that contact directly from the exact binary64
+coordinates. Final binary32 publication differs from the endpoint by `1/16777216`, which the existing
+publication helper must enclose. No input or geometric witness is moved to obtain contact.
+
+For represented half-height `0.1f` translated by `1.5f`, the affine top is exactly
+`1.600000001490116119384765625`. A zero-length capsule at Y `2` with represented radius `0.4f` has
+separation `-1/134217728`. Closed-band checks use this top and the supplied band `0.0001f`, before
+publication. Encoding the top as `1.6f` differs by `3/134217728`, included only in the output error.
+These are operation-level consequences of represented-input affine arithmetic, not coordinate
+recognition branches or an expanded error allowance.
+
 ## Full polyhedral topology
 
-Each admitted leaf has at least four vertices and four faces. Source-coordinate duplicates refuse.
-Every face contains distinct vertex IDs, has a nonzero projected orientation and is exactly planar
-under the shared bounded `Orient3D`. All vertices outside that face must lie strictly behind its
-outward supporting plane. Coplanar aliases and inconsistent winding refuse.
+Each admitted leaf retains both installed local binary32 vertices and their world `FeaturePoint`
+images under the same source IDs. It has at least four vertices and four faces. Source-coordinate
+duplicates refuse. Every local face contains distinct vertex IDs, has a nonzero projected
+orientation and is exactly planar under the shared bounded `Orient3D`. All local vertices outside
+that face must lie strictly behind its outward supporting plane. Coplanar aliases and inconsistent
+winding refuse.
 
 For every directed polygon edge, every other polygon vertex must have the same strict projected
 orientation. The projection is injective on its already proved plane. This proves a simple strict
@@ -112,20 +134,35 @@ convex polygon, excludes collinear redundant vertices and checks its entire fini
 Every undirected edge must have exactly two oppositely directed incident faces. The complete
 face graph is connected. Each vertex has at least three incident faces and a connected degree-two
 face link. Euler characteristic must be two. Together with the strict supporting-plane checks,
-these closed convex boundary conditions admit the complete solid, rather than an open collection
-of convenient planes. No epsilon welding, local missing-face repair or approximate alias rule runs.
+these closed convex boundary conditions admit the complete local solid, rather than an open
+collection of convenient planes. The already proved affine rotation is invertible with determinant
+one. It preserves distinctness, coplanarity, supporting-plane signs, strict convexity, winding and
+incidence. Thus the exact world images have the complete same topology even when their coordinates
+are not binary32 or are enclosed by intervals. Topology never uses rounded world vectors. No epsilon
+welding, local missing-face repair or approximate alias rule runs.
 
-Face normals are cross products of that outward polygon's finite vertices. Strict convexity and
-the two-face edge neighborhood prove a convex crease. A vertex reports its complete checked face
-link. Face interior reports its own face. Per-face incidence equals the shared classified stratum.
+Face normals are cross products of the world affine expressions for that outward polygon's finite
+edges. They enclose the actual outward normal, with a separately required positive squared norm.
+Containment takes each normal's dot product with the endpoint minus the corresponding world face
+origin. A strict outward sign proves an outside half-space. Certified nonpositive signs on all faces
+include the solid boundary. An undecidable side refuses, even if another face proves outside.
+Finite face membership retains its full oriented edge tests over the same expressions. Strict
+convexity and the two-face edge neighborhood prove a convex crease. A vertex reports its complete
+checked face link. Face interior reports its own face. Per-face incidence equals the shared
+classified stratum.
 
 ## Exhaustive closest pairs
 
 The axis is a closed segment. The finite solid boundary is partitioned into strict face interiors,
 strict edge interiors and vertices. Every generated point is feasible in its stated stratum.
-Cartesian feature bounds may exclude a feature only when an outward lower distance bound is
-strictly greater than the upper contact-band distance. They are supersets of the finite geometry.
-No infinite-plane exclusion substitutes for finite membership.
+For each Cartesian component, segment bounds use the minimum of the endpoint enclosure lowers and
+the maximum of their uppers. Feature bounds use the minimum vertex enclosure lower and maximum
+vertex enclosure upper. These boxes contain the entire true segment and finite convex feature.
+Disjoint coordinate ranges give an outward subtraction enclosure of their nonnegative gap.
+Outward squared gaps and their sum give a lower bound for every pair's squared distance. A feature
+is excluded only if that lower bound is strictly greater than the upper contact-band squared
+distance. Unresolved bounds cannot exclude. Neither bounds construction nor containment casts to
+binary32. No infinite-plane exclusion substitutes for finite membership.
 
 For each vertex, project to the axis and certify clamping to its closed parameter range. For each
 edge, project both axis endpoints to the strict edge interior. Also solve the unconstrained
@@ -187,9 +224,12 @@ the destination untouched. Copying the already validated prefix is the only call
 
 ## Remaining gates and missing extensions
 
-The prototype compiled, but the two added translated-domain regressions failed. The parent must
-resolve those applicability gaps and verify the original 14 public-world cases, both new domain
-cases and the 12 lifetime facts. Proposed finite GREEN after correction, once:
+The prior prototype compiled, but both translated-domain regressions failed. This source round
+removes their binary32 admission restrictions while retaining exact/interval coordinates through
+containment, conservative culling and exhaustive candidate enumeration. It changes no tests, shared
+arithmetic kernels, public API, lifecycle access or publication ceilings. Parent source review and
+verification of the original 14 public-world cases, both domain cases and the 12 lifetime facts are
+still required. Proposed finite GREEN after source review, once:
 
 ```bash
 dotnet test /Users/antonio/KhaozEngine/.worktrees/low-lip-resting-proof/KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~CapsuleFeaturePolyhedronTests|FullyQualifiedName~CapsuleFeatureLifetimeTests'
@@ -201,8 +241,8 @@ remain separate parent-owned commands. No successful result is claimed by this s
 Meshes, one-sided triangle incidence and connected coplanar patch unions remain Task 5. Curves,
 nested/nonconvex installed children and unknown shape types return Unsupported. Duplicate or
 non-manifold polyhedral neighborhoods return Ambiguous. An over-budget or undecidable predicate,
-nonrepresentable world-vertex equality, unresolved candidate ordering or membership, and deep
-overlap return Unresolved. Nonexact installed unit rotations return Unsupported in this slice.
+unresolved affine arithmetic, candidate ordering or membership, and deep overlap return Unresolved.
+Nonexact installed unit rotations return Unsupported in this slice.
 
 To expand exact closed-band acceptance to nonbinary reconstructed witnesses, the missing shared
 operation is a bounded rational expression value with exact represented-input construction,
@@ -214,7 +254,7 @@ the rational witness with rounded coordinates. This slice does not copy such a k
 
 General near-unit represented rotations additionally need a shared installed-affine certificate
 covering matrix conversion, departure from orthogonality, transformed finite incidence and normal
-reconstruction. The exact admitted subset here cannot stand in for that proof. The first parent review found the exact subset internally consistent but inadequate for ordinary
-translated legacy capsules and decimal extents. Those two restrictions are now executable RED
-cases, without widened publication error ceilings. Cache performance, actual bridge fit, runtime support, navigation and consumer
+reconstruction. The exact admitted subset here cannot stand in for that proof. The translated capsule
+and decimal-extent regressions remain executable parent-owned gates, without widened publication
+error ceilings. Cache performance, actual bridge fit, runtime support, navigation and consumer
 arrival proofs remain gated. No 1 mm arrival or legacy movement threshold changes.

@@ -93,13 +93,10 @@ internal readonly record struct FeaturePoint(FeatureNumber X, FeatureNumber Y, F
             y.IsExact ? y : FeatureNumber.Enclosed(bounds.Y), z.IsExact ? z : FeatureNumber.Enclosed(bounds.Z));
     }
 
-    internal bool TrySingle(out Vector3 value)
-    {
-        value = default;
-        if (!IsExact) return false;
-        value = new((float)X.Value, (float)Y.Value, (float)Z.Value);
-        return value.X == X.Value && value.Y == Y.Value && value.Z == Z.Value;
-    }
+    internal bool Within(double maximum) => IsResolved &&
+        X.Bounds.Lower >= -maximum && X.Bounds.Upper <= maximum &&
+        Y.Bounds.Lower >= -maximum && Y.Bounds.Upper <= maximum &&
+        Z.Bounds.Lower >= -maximum && Z.Bounds.Upper <= maximum;
 
     internal bool SameExact(FeaturePoint other) => IsExact && other.IsExact &&
         X.Value == other.X.Value && Y.Value == other.Y.Value && Z.Value == other.Z.Value;

@@ -15,7 +15,7 @@ internal static class CapsuleFeatureGeometryQuery
         FeatureNumber half = FeatureNumber.Exact(capsule.Length).Multiply(FeatureNumber.Exact(0.5));
         var lower = new FeaturePoint(center.X, center.Y.Subtract(half), center.Z);
         var upper = new FeaturePoint(center.X, center.Y.Add(half), center.Z);
-        if (!lower.TrySingle(out _) || !upper.TrySingle(out _) || !InFrame(lower) || !InFrame(upper))
+        if (!lower.Within(2048) || !upper.Within(2048))
             return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unresolved);
         FeatureNumber radius = FeatureNumber.Exact(capsule.Radius);
         FeatureNumber band = FeatureNumber.Exact(maximumSeparationMetres);
@@ -65,7 +65,7 @@ internal static class CapsuleFeatureGeometryQuery
     static CapsuleFeatureResult Publish(CapsuleFeaturePolyhedronCandidate selected, IPhysicsWorld receiver,
         IPhysicsQueryLease lease, StaticHandle target, FeatureNumber radius, Span<CapsuleIncidentFace> destination)
     {
-        if (!InFrame(selected.Axis) || !InFrame(selected.Geometry))
+        if (!selected.Axis.Within(2048) || !selected.Geometry.Within(2048))
             return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unsupported);
         GeometryVectorOutput axis = GeometryVectorOperations.Publish(selected.Axis.Bounds);
         GeometryVectorOutput geometry = GeometryVectorOperations.Publish(selected.Geometry.Bounds);
@@ -106,11 +106,6 @@ internal static class CapsuleFeatureGeometryQuery
         scratch.AsSpan().CopyTo(destination);
         return result;
     }
-
-    static bool InFrame(FeaturePoint point) => point.IsResolved &&
-        point.X.Bounds.Lower >= -2048 && point.X.Bounds.Upper <= 2048 &&
-        point.Y.Bounds.Lower >= -2048 && point.Y.Bounds.Upper <= 2048 &&
-        point.Z.Bounds.Lower >= -2048 && point.Z.Bounds.Upper <= 2048;
 
     static bool WithinCeiling(double value, double denominator) =>
         BoundedGeometryArithmetic.CompareProducts(value, denominator, 1, 1)

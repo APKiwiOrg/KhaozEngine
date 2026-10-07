@@ -113,7 +113,7 @@ internal static class CapsuleFeatureGeometry
         }
 
         Matrix3x3.CreateFromQuaternion(pose.Orientation, out Matrix3x3 matrix);
-        var world = new Vector3[local.Length];
+        var world = new FeaturePoint[local.Length];
         var seamPose = new Pose(pose.Position, pose.Orientation);
         for (int i = 0; i < local.Length; i++)
         {
@@ -121,10 +121,8 @@ internal static class CapsuleFeatureGeometry
             if (!Within(point, 64)) return CapsuleFeatureStatus.Unsupported;
             GeometryVector enclosure = RepresentedGeometryTransforms.PosePoint(seamPose, point);
             if (!enclosure.IsResolved) return CapsuleFeatureStatus.Unsupported;
-            Matrix3x3.Transform(point, matrix, out Vector3 transformed);
-            world[i] = Canonical(transformed + pose.Position);
-            if (!Within(world[i], 2048)) return CapsuleFeatureStatus.Unsupported;
-            // This is an equality certificate for the backend's proposal, not another transform kernel.
+            // Retain the real represented-matrix affine expression. Binary32 evaluation is not
+            // the finite geometry, and its rounding belongs only in bounded output publication.
             FeaturePoint p = FeaturePoint.Exact(point);
             FeatureNumber x = FeaturePoint.Dot(p, FeaturePoint.Exact(new(matrix.X.X, matrix.Y.X, matrix.Z.X)))
                 .Add(FeatureNumber.Exact(pose.Position.X));
@@ -132,11 +130,11 @@ internal static class CapsuleFeatureGeometry
                 .Add(FeatureNumber.Exact(pose.Position.Y));
             FeatureNumber z = FeaturePoint.Dot(p, FeaturePoint.Exact(new(matrix.X.Z, matrix.Y.Z, matrix.Z.Z)))
                 .Add(FeatureNumber.Exact(pose.Position.Z));
-            if (!x.IsExact || !y.IsExact || !z.IsExact || x.Value != world[i].X ||
-                y.Value != world[i].Y || z.Value != world[i].Z)
-                return CapsuleFeatureStatus.Unresolved;
+            world[i] = new(x, y, z);
+            if (!world[i].IsResolved) return CapsuleFeatureStatus.Unresolved;
+            if (!world[i].Within(2048)) return CapsuleFeatureStatus.Unsupported;
         }
-        var candidate = new CapsuleFeaturePolyhedron(index, localPose, pose, leafId, world, polygons);
+        var candidate = new CapsuleFeaturePolyhedron(index, localPose, pose, leafId, local, world, polygons);
         CapsuleFeatureStatus validation = candidate.Validate();
         if (validation == CapsuleFeatureStatus.Complete) leaf = candidate;
         return validation;

@@ -1,0 +1,25 @@
+{
+  "base": "bd6a4ce5f2a4b90191562c917736fd51e33dd1c8",
+  "exit": 1,
+  "executed": 0,
+  "diagnostics": {
+    "CS0234_missing_Spaces": 2,
+    "CS0246_missing_types": [
+      "MapBoundaryRef",
+      "MapBoundRef",
+      "MapBoundKind",
+      "MapSpaceKind",
+      "MapBoundaryRef",
+      "MapSpaceDoc",
+      "MapBoundaryChain",
+      "MapTopologyRecord"
+    ]
+  },
+  "source_hashes": {
+    "KhaozEngine.MapDoc.Tests/Surfaces/TopologyRecordFixtures.cs": "48f8105d1db73b57badd18ec3d0c3e1c43197fa82460b8bc44e7c96d6199b4ab",
+    "KhaozEngine.MapDoc.Tests/Surfaces/TopologyRecordTests.cs": "bfd1f94a452a86e07d76f68dae31cab1f78e472310a402c9b728daf14160c5b4"
+  },
+  "log_sha256": "179e0def195f16c5bfe93f1801a552a44b7d7946d1f38f9adf2dc7978f2957fa",
+  "limitation": "Earlier namespace/signature binding failures prevent body binding. No MapWallStrip-specific diagnostic or runtime outcome inferred.",
+  "primary_released": true
+}

@@ -893,7 +893,7 @@ public void Subdivision_LegalOnlyOnThePatchBoundaryOrAPresenceRim()
 
 **Fixture.** `TopologyRecordFixtures.TwoSpacesSharingOneStrip() -> TopologyWorld` where `sealed record TopologyWorld(List<MapSurfaceRef> Surfaces, List<MapSurfacePatch> Patches)` with `Validate() => MapTopologyReferenceValidator.Validate(Surfaces, Patches)`. Surfaces `floor` (SupportFloor, heights 0) and `ceiling` (Ceiling, heights 300), both `(1/1, 1/100, PositiveZ)`, slot (0, 0), cells x 0 to 1, z 0. Every record is anchored in `floor` (0, 0): spaces `a` and `b` (Cave), footprints `fragment-a` (slot cell 0) and `fragment-b` (slot cell 1) with lower `(SupportFloor, "floor", null)` and upper `(Ceiling, "ceiling", null)`, chains `lower` (`floor` edge at corner x 1) and `upper` (`ceiling` edge at x 1), strip `wall` (`TwoSided`) in `a.Walls` as `(wall, Front)` and `b.Walls` as `(wall, Back)`. `ReplaceWall(world, spaceId, MapBoundaryRef)`, `SetUpper(world, footprintId, MapBoundRef)`, `SetLowerKind(world, footprintId, MapBoundKind)` and `SetLowerSurface(world, footprintId, surfaceId, MapLatticeFrame)` (adds that `SupportFloor` surface ref if absent) rewrite in place. `LegacyExteriorWorld()` is surface `plane-0` (`ImportedMetreCentimetre`, `LegacyTileWorld`, `SupportFloor`), slot (0, 0), cells x 0 to 1, z 0, flat 0, with Exterior space `world` and footprint `world-cells` (lattice `plane-0` (0, 0), slot cells `[0, 1]`, lower `(LegacyExteriorV1, "plane-0", null)`, upper `OpenTop`), both anchored in `plane-0` (0, 0). `OpeningOverPresentCell(world)` adds an opening over present cell 0. `SampleWithRecords()` is `SurfacePatchFixtures.Sample()` plus strip `strip-b` (`TwoSided`, chain refs anchored at the sample key), `SurfaceEdge` chain `lower` and `Authored` chain `upper` (heights 300) at addresses `Corner(-4, 0)` and `Corner(-3, 0)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 static readonly MapPatchKey Floor00 = new("floor", 0, 0), Ceiling00 = new("ceiling", 0, 0);
@@ -958,9 +958,9 @@ public void Codec_RefusesARecordSetOverTheBound()
 }
 ```
 
-- [ ] **Step 2: Run red.** `wa_test t5-red "$MAPDOC" "FullyQualifiedName~TopologyRecordTests"`. Expected: build FAIL naming `MapWallStrip`.
+- [x] **Step 2: Run red.** `wa_test t5-red "$MAPDOC" "FullyQualifiedName~TopologyRecordTests"`. Expected: build FAIL naming `MapWallStrip`.
 - [ ] **Step 3: Implement records, the codec member, the validator and digests.**
-- [ ] **Step 4: Run green.** `wa_test t5-green "$MAPDOC" "FullyQualifiedName~TopologyRecordTests|FullyQualifiedName~SurfacePatchCodecTests|FullyQualifiedName~LatticeAddressTests"`. Expected: PASS, 15 cases.
+- [ ] **Step 4: Run green.** `wa_test t5-green "$MAPDOC" "FullyQualifiedName~TopologyRecordTests|FullyQualifiedName~SurfacePatchCodecTests|FullyQualifiedName~LatticeAddressTests"`. Expected: PASS, 23 cases including Task 4 boundary cases and Task 5 deep-clone coverage.
 - [ ] **Step 5: Commit** `KhaozEngine.MapDoc/Surfaces KhaozEngine.MapDoc/Spaces KhaozEngine.MapDoc.Tests/Surfaces`, message `feat(mapdoc): add anchored cave topology and space records with semantic digests`.
 
 ---
@@ -3505,3 +3505,12 @@ Proof is proofs/2026-10-07-r2-task4-green.json. No tests were repeated for forma
 Task 4 is ready for its scoped commit after repository guards. Task 5's five planned test cases
 and synthetic fixture are prepared in ignored staging only, preserving Task 4's verified source.
 Full-engine verification, actual current-main reconciliation and release remain round-end gates.
+
+
+### Task 5 tests-first RED preserved
+
+The six synthetic cases (five plan cases plus deep-clone isolation) failed compilation only on
+two missing Spaces namespace and eight missing planned topology/space signature types. Zero
+tests executed. Earlier binding failures prevent a MapWallStrip-specific or runtime claim. Both
+frozen source hashes were unchanged, with no unrelated compiler/setup failure. Primary was
+explicitly released. Proof is proofs/2026-10-07-r2-task5-red.json. Approved implementation follows.

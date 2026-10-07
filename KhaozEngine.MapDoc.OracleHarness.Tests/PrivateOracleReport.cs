@@ -32,7 +32,8 @@ internal sealed class PrivateOracleReport : IDisposable
         try
         {
             if (OperatingSystem.IsWindows()) throw new PrivateOracleFailure(SecureFailure);
-            path = PrivateOraclePaths.Canonical(path);
+            path = PrivateOraclePaths.CanonicalReportPath(path);
+            if (new FileInfo(path).LinkTarget is not null) throw new PrivateOracleFailure(SecureFailure);
             string parent = Path.GetDirectoryName(path)!;
             const UnixFileMode parentMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
             const UnixFileMode fileMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;

@@ -46,7 +46,7 @@ internal sealed record ShippedSourceInventory(IReadOnlyList<InventoryRegion> Reg
                         ushort overlay = document.GetOverlay(worldX, worldZ, plane);
                         TileSettings settings = document.GetSettings(worldX, worldZ, plane);
                         if (overlay != 0) overlays++;
-                        if (underlay == 0 && overlay == 0) voids++;
+                        if (underlay == 0) voids++;
                         if ((settings & TileSettings.NoDraw) != 0) noDraw++;
                         string raw = document.GetOverlayShape(worldX, worldZ, plane).ToString();
                         rawCuts[raw] = rawCuts.GetValueOrDefault(raw) + 1;

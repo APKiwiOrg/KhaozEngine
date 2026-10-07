@@ -52,7 +52,11 @@ full commit recorded. Comparison, units and oracle-equivalence metadata may be s
 Reports must be outside a git work tree, in an existing directory with mode `0700`. They are
 created exclusively with mode `0600`. Source details and exception messages belong only in that
 report. Failure messages expose only fixed reasons, category/count and the report digest, with
-no inner exception. Missing or mismatched private inputs fail, never skip. Actual private source
+no inner exception. The entry owns report completion. Bodies call `Record` and `Check`, leaving
+`ThrowIfAnyFailed` and disposal to the entry. Premature disposal followed by failure is a closed
+report error and fails with the fixed secure-report message. Final report links are refused,
+including dangling links. Parent directory links are resolved before containment and mode checks.
+Missing or mismatched private inputs fail, never skip. Actual private source
 selection, extraction and execution belong to the controller's separate acceptance step.
 
 The harness requires its own explicit build, test and format verification because the solution

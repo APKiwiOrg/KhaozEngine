@@ -724,7 +724,7 @@ public void Entry_FailsClosedWhenTheReportCannotBeCreatedSecurely() => PrivateOr
 Run: `wa_test t3-red-compat "$COMPAT" "FullyQualifiedName~LegacyOracleWorldTests"` (build FAIL naming `LegacyOracleWorld`)
 Run: `wa_test t3-red-harness "$HARNESS" "FullyQualifiedName~PrivateOracleGuardTests"` (build FAIL naming `PrivateOracleInputs` and `PrivateOracleEntry`)
 
-- [ ] **Step 3: Implement the public oracle, the guard, the entry, the report and the inventory**
+- [x] **Step 3: Implement the public oracle, the guard, the entry, the report and the inventory**
 
 `Require` checks in this order: all four variables present, provenance bytes read (an IO failure is `provenance unreadable`), their digest compared, the JSON parsed (a failure is `provenance unreadable`), the report path checked, the extraction verified. Every exception inside `Require` is caught and mapped to one of its fixed messages.
 
@@ -733,7 +733,7 @@ Run: `wa_test t3-red-harness "$HARNESS" "FullyQualifiedName~PrivateOracleGuardTe
 - [ ] **Step 4: Run green, then the private inventory**
 
 Run: `wa_test t3-green-compat "$COMPAT" "FullyQualifiedName~LegacyOracleWorldTests"` (PASS, 1 test)
-Run: `wa_test t3-green-harness "$HARNESS" "FullyQualifiedName~PrivateOracleGuardTests"` (PASS, 11 cases)
+Run: `wa_test t3-green-harness "$HARNESS" "FullyQualifiedName~PrivateOracleGuardTests"` (PASS, 23 cases after review regressions)
 Run: `wa_run t3-harness-format dotnet format "$HARNESS" --verify-no-changes --no-restore` (exit 0)
 
 Private run, controller only, with inputs from the private Grimhollow proofs record:
@@ -3445,3 +3445,19 @@ were unchanged. Proof is proofs/2026-10-07-r2-task3-review-red.json. The primary
 This checkpoint preserves the initial public oracle/harness implementation with its intentional
 RED defects. It is not completed Task 3 or private acceptance. Ten further synthetic metadata and
 source-set cases are prepared but unrun. No real private inputs, recorder or package mutation ran.
+
+
+### Task 3 public oracle and synthetic guards GREEN
+
+Targeted independent review 2 was Ready after the two-defect RED checkpoint. The parent verified
+all reviewed hashes and normalized only using order before freezing the public proof. The public
+legacy oracle passed 1/1 and synthetic harness guards passed 23/23, with zero failures or skips.
+The expanded guards include both regressions and exact provenance/source-set refusal cases.
+Both explicit diagnostic format commands exited 0. Harness coverage was 8 style and 211 reference
+analyzers, zero of 16 files changed. Scoped Compatibility coverage was 5 style and 211 reference
+analyzers, zero of 6188 workspace files changed. Neither log reported workspace warnings.
+
+All 14 source/project hashes remained unchanged. The primary slot was explicitly released.
+Proof is proofs/2026-10-07-r2-task3-public-green.json. No private input, extraction, recorder,
+main/feed/version or release action ran. Step 4 remains open for actual private inventory
+acceptance, and this focused checkpoint is not whole-engine verification or Task 3 completion.

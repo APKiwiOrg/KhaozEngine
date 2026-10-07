@@ -65,7 +65,7 @@ internal sealed class PrivateOracleInputs
         string reportPath;
         try
         {
-            reportPath = PrivateOraclePaths.Canonical(environment[Names[3]]!);
+            reportPath = PrivateOraclePaths.CanonicalReportPath(environment[Names[3]]!);
             for (DirectoryInfo? directory = new(Path.GetDirectoryName(reportPath)!); directory is not null; directory = directory.Parent)
             {
                 string marker = Path.Combine(directory.FullName, ".git");
@@ -89,6 +89,13 @@ internal sealed class PrivateOracleInputs
 
 internal static class PrivateOraclePaths
 {
+    // Resolve parent links but preserve the requested leaf so an existing dangling link is refused.
+    internal static string CanonicalReportPath(string path)
+    {
+        string full = Path.GetFullPath(path);
+        return Path.Combine(Canonical(Path.GetDirectoryName(full)!), Path.GetFileName(full));
+    }
+
     internal static string Canonical(string path)
     {
         string full = Path.GetFullPath(path);

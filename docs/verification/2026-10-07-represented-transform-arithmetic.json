@@ -1,0 +1,35 @@
+{
+  "base": "402d2099ef9666daf2f3e5bb27de106bf469a35f",
+  "sources": {
+    "KhaozEngine.Physics.Bepu/BoundedGeometryArithmetic.cs": "ab9f367cdf4c023bfe24403b23dffee1cb9daa6ae1ac31769de438b8ac5ad9dd",
+    "KhaozEngine.Physics.Bepu/RepresentedGeometryTransforms.cs": "5374e8510b1b7a6ba8f05e92f33a8411bfe81b927e2b4378703f13dcb33a9b7b",
+    "KhaozEngine.Game.Tests/Physics/RepresentedGeometryTransformTests.cs": "d0dad2564c6c046a86060a5c904e68056ac4fc73c82764973441201619501357"
+  },
+  "red": {
+    "exit": 1,
+    "executed": 0,
+    "diagnostic": "Two missing GeometryVector signature diagnostics"
+  },
+  "green": {
+    "exit": 0,
+    "passed": 22,
+    "failed": 0,
+    "skipped": 0,
+    "new_cases": 8,
+    "primitive_regressions": 14
+  },
+  "format": {
+    "exit": 0,
+    "changed": 0,
+    "projects": [
+      "KhaozEngine.Game.Tests",
+      "KhaozEngine.Physics.Bepu"
+    ]
+  },
+  "logs": {
+    "red": "0d6f0a6ccc1fbbf47b3efac17c79587766a6b6d8ff7eb452c1cc5789cc7dabb9",
+    "green": "5199a29d0cfe30b0ee64c2ad7b503aafe77238176b628ec4dcaabaafdff44f4e",
+    "format": "48536c1191cba81cebd9eb3c3a28d02d349ae1e321afb735546177b731bb97dd"
+  },
+  "limits": "Supplied represented matrix arithmetic only. No installed pose correspondence, unit quaternion or normal/geometry/sweep certificate."
+}

@@ -22,6 +22,16 @@ internal readonly struct GeometryInterval
     public static GeometryInterval Enclose(double lower, double upper) =>
         double.IsFinite(lower) && double.IsFinite(upper) && lower <= upper ? new(lower, upper) : default;
 
+    /// <summary>Encloses both this real interval and its possible binary32 encodings.
+    /// It does not assert that the supplied values came from an installed shape or transform.</summary>
+    public GeometryInterval EncloseSingleRounding()
+    {
+        if (!IsResolved) return default;
+        float lower = (float)Lower, upper = (float)Upper;
+        if (!float.IsFinite(lower) || !float.IsFinite(upper)) return default;
+        return Enclose(Math.Min(Lower, MathF.BitDecrement(lower)), Math.Max(Upper, MathF.BitIncrement(upper)));
+    }
+
     static GeometryInterval Rounded(double lower, double upper) =>
         double.IsFinite(lower) && double.IsFinite(upper)
             ? Enclose(Math.BitDecrement(lower), Math.BitIncrement(upper)) : default;

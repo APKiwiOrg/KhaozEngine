@@ -80,7 +80,11 @@ choosing an arbitrary inset. The implementation gate remains closed. The next de
 how a selected Physics query view can supply a corresponding face or explicitly unresolved result,
 including mesh-edge ambiguity and the numeric domain. No fallback or resting-anchor code has changed.
 
-### Proposed scope extension, awaiting owner decision
+### Approved design scope extension
+
+The owner approved writing the optional-query design on 2026-10-07. The
+[written specification](../superpowers/specs/2026-10-07-capsule-feature-correspondence-design.md)
+awaits review. This approval does not establish its numerical domain or authorize the fallback.
 
 The swimming source review at `acd452762` independently identifies the missing relation. The ray
 handler discards child identity and culls competing hits. Sweep results retain no geometric feature.
@@ -104,7 +108,7 @@ rise, footprint, clearance and layer eligibility. No native identity, bake forma
 | Implementation simplicity | 4 | 9 |
 | Total | 22 | 20 |
 
-This requests design and test-first proof authority for the new seam. Exact signatures and the numeric
+The approved scope is design and test-first proof for the new seam. Exact signatures and the numeric
 domain are not approved by this document. The fallback and anchors remain gated on a successful proof.
 
 ## Bake-local resting anchors

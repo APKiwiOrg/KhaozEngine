@@ -789,3 +789,19 @@ The Hit encoder passed all twelve unchanged direct assertions, zero failures/ski
 `/tmp/swim-distance-encoding-green.log`. It verifies an exact norm proposal before tightening,
 otherwise keeps interval norm/product bounds, rounds float bounds outward and verifies the request
 extent exactly. Its error covers the encoded bracket width. Shared arithmetic was unchanged.
+
+## Composed single-leaf result
+
+The single-box adapter proposes a fraction width from the error budget and estimated path length,
+then runs the proved fraction search. That estimate schedules refinement only. A Hit is published
+only if outward distance encoding independently proves the final error and extent constraints.
+Unachievable accuracy refuses. A complete separated leaf returns Clear for the entire original
+vector, with its nearest-float length representation, exactly as the existing explicit lease contract
+requires. That Clear field never supplies a substitute shorter trajectory or a safe movement prefix.
+
+Ten actual installed-box fixtures compose geometry, fraction search and distance representation.
+They do not enumerate other world colliders or expose the optional public backend capability yet.
+
+Composition RED compiled and reached all ten expected absent-type failures after the installed
+world/read controls, zero passes/skips, exit 1 in `/tmp/swim-box-composition-red.log`. The irrational
+endpoint case observes composed refusal only. It does not instrument which internal stage refused.

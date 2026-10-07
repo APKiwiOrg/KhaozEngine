@@ -86,3 +86,16 @@ scene, load test or stress run was used.
 The guard stays held pending source-proof/domain acceptance. The 13 updated lifecycle cases and the
 existing allocation regression subsequently passed in one unchanged-binary 14-case run. Affected legacy
 checks, whole-branch review and native G1b remain separate gates.
+
+## Migration compatibility ruling
+
+Migration accepted frame compatibility of the proposal at `32e54bd32`. It constrains one installed
+physics view, not MapDoc logical coordinates, cave depth, water extent or world size. Producers must
+install every active/static/excluded bound in the chosen local frame from the start and preserve the
+condition at mutation completion. Rebase alone is not recovery after a breach: the permanent
+invalidation rule requires a fresh correctly framed source. Invalid evidence must never become
+clear, dry or proven unreachable. No conflict with the approved R2 framing was identified.
+
+This accepts compatibility only. It does not accept the maintenance-arithmetic argument or broader
+sweep completeness. G1b must prove the actual installed set, frame/rebase lifecycle and all other
+backend limits. The numerical guard remains held.

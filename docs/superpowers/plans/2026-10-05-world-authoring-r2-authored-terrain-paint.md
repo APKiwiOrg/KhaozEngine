@@ -1388,7 +1388,7 @@ public sealed class MapReadWitness
 | `outside-origin` footprint | `ground` (0, 0) | cell 0, lower `ground`, upper `OpenTop` |
 | `annex` (Cave) | `ground` (40, 0) | `Portals` `(door, Front)`, `Walls` `(annex-south, Front)`, `(annex-north, Back)`, `(annex-east, Back)` |
 | `outside-near`, `annex-cells` footprints | `ground` (40, 0) | Lattice `ground` (40, 0), cells x 0 to 1 (outside, upper `OpenTop`) and x 2 to 3 (annex, upper `roof`), z 0 to 3, lower `ground` |
-| `door` portal | `ground` (40, 0) | From `outside`, To `annex`, interval `Corner(2562, 0..4)`, bottom `door-bottom`, top `door-top` |
+| `door` portal | `ground` (40, 0) | From `annex`, To `outside`, interval `Corner(2562, 0..4)`, bottom `door-bottom`, top `door-top` |
 | `door-bottom` chain | `ground` (40, 0) | SurfaceEdge of `ground` at X 2562, z 0 to 4 |
 | `door-top` chain | `roof` (41, 0) | SurfaceEdge of `roof` at X 2562, z 0 to 4 (anchored outside the point window on purpose) |
 | `annex-south`, `annex-north` strips and every strip chain | `ground` (40, 0) or `roof` (40, 0) | Edges z 0 (x 2562 to 2564) and z 4, lower `ground` edge, upper `roof` edge |

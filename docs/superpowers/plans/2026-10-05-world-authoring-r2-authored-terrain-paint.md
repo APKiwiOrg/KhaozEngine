@@ -3745,3 +3745,13 @@ passed with actual MapDoc/MapDoc.Tests/MapEditor.Tests analyzer coverage and no 
 Repository guards passed. Independent spec and quality review approved without findings.
 Proof is `proofs/2026-10-08-r2-task8a-green.json`. This completes8A's focused checkpoint, not
 Task8B/C or whole-round integration. Serial8Btests-first preparation follows under OA19/OA20.
+
+
+### Task 8B scoped acquisition verified
+
+Source 2d75816678c4e7b1ce34b9bdae86e172be3fb3b2 implements scoped acquisition, M4 bound
+preflight, immutable consumer witnesses and exact lattice ranges. Final29MapDoc and4Editor cases
+passed. The original12cases remain byte-identical. Initial27/2failed new-helper assertions and
+subsequent array-helper correction are retained. Full16file format and repository guards passed.
+Independent spec/quality review approved without findings. Proof is
+`proofs/2026-10-08-r2-task8b-green.json`. Task8C's brief is prepared, with no worker or command started.

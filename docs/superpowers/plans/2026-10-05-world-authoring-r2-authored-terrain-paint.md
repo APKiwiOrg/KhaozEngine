@@ -3596,3 +3596,14 @@ format 5, the legacy support recipe and the current resident-payload persistence
 This completes the focused Task 6 checkpoint after repository guards. Full engine verification,
 current-main/version reconciliation and publication remain round-end gates. Task 7 tests are being
 prepared only in ignored staging while this checkpoint is preserved.
+
+
+### Task 7 paired tests-first RED preserved
+
+The reviewed four-file preparation contains seventeen editor and four MapDoc cases after the
+planned APIs and fixture exist. The one granted serial RED window produced one editor CS0234 and
+three MapDoc CS0234 diagnostics, all for the missing planned Storage namespace. Both commands exited
+one before test discovery. Zero tests executed, with no unrelated compiler/setup failure or warning.
+Earlier import binding prevents claims about body-level missing members or runtime behavior.
+All four frozen hashes stayed unchanged. Primary was released. Proof is
+proofs/2026-10-07-r2-task7-red.json. Approved storage implementation and fixture source preparation follow.

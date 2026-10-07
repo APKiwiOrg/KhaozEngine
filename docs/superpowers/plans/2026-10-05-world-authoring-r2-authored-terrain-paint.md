@@ -3657,3 +3657,13 @@ The remaining correction charges surface refs before role filtering and lookup n
 inspection through one call-owned metadata allowance, separate from decoded-page counts. After scoped
 review, Task 7 GREEN, affected regressions and diagnostic format checks will share one requested
 serial work window. No main/feed/publication or private input action is included.
+
+
+### Task 7 valid parent-space filter regression reached
+
+Parent found valid metadata-only parent edits left entry.SpaceIds derived from an older surface span.
+Two small loaded/carried regressions compiled and failed at the exact target-key versus empty result,
+after unfiltered controls, typed save and Complete status passed. Zero skips, no compiler notices,
+unchanged 48-path freeze, primary released. Payload equality was later and not reached. Proof is
+proofs/2026-10-07-r2-task7-space-filter-red.json. The final bundled GREEN/format window remains held
+until this narrow correctness repair is source-reviewed. Prior R2/R4 source verdicts remain Ready.

@@ -13,8 +13,14 @@ internal sealed class MapPageBudget(int limit)
     int _attempts;
     int _visits;
     long _ranges;
+    long _metadata;
     // Each admitted page has at most 256 entries. Splitting one rectangle emits at most four pieces.
     readonly long _rangeLimit = 1L + 4L * MapSurfacePages.MaxEntries * limit;
+    internal void BeforeMetadata()
+    {
+        if (_metadata >= _rangeLimit) throw new MapSurfaceCapacityException();
+        _metadata++;
+    }
     internal void BeforeVisit()
     {
         if (_visits >= _limit) throw new MapSurfaceCapacityException();
@@ -53,12 +59,13 @@ internal static class MapSurfaceQuery
             MapExactRect world = scope.WorldRectangle();
             foreach (MapSurfaceRef surface in source.Surfaces)
             {
+                budget.BeforeMetadata();
                 if (!scope.Roles.Contains(surface.Role)) continue;
                 MapCellRect cells = MapSurfaceRanges.Cells(world, surface.Frame);
                 MapSlotRect slots = MapSurfaceRanges.Slots(cells);
                 budget.BeforeRange();
                 var emptyRects = new List<MapSlotRect> { slots };
-                foreach (MapDirectoryPageRef dir in index.Covering(surface.Id, slots))
+                foreach (MapDirectoryPageRef dir in index.Covering(surface.Id, slots, budget))
                 {
                     budget.BeforeVisit();
                     MapPatchStatus ds = directory(dir, budget);

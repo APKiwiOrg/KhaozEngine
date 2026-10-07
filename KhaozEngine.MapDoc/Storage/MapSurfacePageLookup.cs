@@ -13,8 +13,8 @@ internal sealed class MapSurfacePageLookup
         foreach (var group in pages.GroupBy(p => p.SurfaceId))
             _roots.Add(group.Key, Build(group.ToArray(), 0));
     }
-    internal IEnumerable<MapDirectoryPageRef> Covering(string surface, MapSlotRect range) =>
-        _roots.TryGetValue(surface, out Node? node) ? Visit(node, range) : Array.Empty<MapDirectoryPageRef>();
+    internal IEnumerable<MapDirectoryPageRef> Covering(string surface, MapSlotRect range, MapPageBudget? budget = null) =>
+        _roots.TryGetValue(surface, out Node? node) ? Visit(node, range, budget) : Array.Empty<MapDirectoryPageRef>();
     static Node Build(MapDirectoryPageRef[] pages, int depth)
     {
         if (pages.Length == 1) return new(pages[0].Covers, pages[0], null, null);
@@ -25,14 +25,15 @@ internal sealed class MapSurfacePageLookup
             Math.Max(left.Bounds.MaxXExclusive, right.Bounds.MaxXExclusive), Math.Max(left.Bounds.MaxZExclusive, right.Bounds.MaxZExclusive)),
             null, left, right);
     }
-    static IEnumerable<MapDirectoryPageRef> Visit(Node node, MapSlotRect range)
+    static IEnumerable<MapDirectoryPageRef> Visit(Node node, MapSlotRect range, MapPageBudget? budget)
     {
+        budget?.BeforeMetadata();
         if (!node.Bounds.Overlaps(range)) yield break;
         if (node.Page is { } page) yield return page;
         else
         {
-            foreach (var p in Visit(node.Left!, range)) yield return p;
-            foreach (var p in Visit(node.Right!, range)) yield return p;
+            foreach (var p in Visit(node.Left!, range, budget)) yield return p;
+            foreach (var p in Visit(node.Right!, range, budget)) yield return p;
         }
     }
     sealed record Node(MapSlotRect Bounds, MapDirectoryPageRef? Page, Node? Left, Node? Right);

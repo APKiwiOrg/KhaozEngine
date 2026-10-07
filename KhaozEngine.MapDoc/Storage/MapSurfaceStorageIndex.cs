@@ -35,7 +35,8 @@ public sealed class MapSurfaceStorageIndex
         }
     }
     public IReadOnlyList<MapDirectoryPageRef> Directory { get; }
-    internal IEnumerable<MapDirectoryPageRef> Covering(string surface, MapSlotRect slots) => _lookup.Covering(surface, slots);
+    internal IEnumerable<MapDirectoryPageRef> Covering(string surface, MapSlotRect slots, MapPageBudget? budget = null) =>
+        _lookup.Covering(surface, slots, budget);
     public IReadOnlyList<MapDirectoryPageRef> ReadDirectoryPages => Array.AsReadOnly(Directory.Where(d => DirectoryPages.ContainsKey(d.Sha256)).ToArray());
     public IReadOnlyList<MapIndexPageRef> ReadIndexPages => Array.AsReadOnly(DirectoryPages.Values.SelectMany(p => p)
         .Where(p => IndexPages.ContainsKey(p.Sha256)).ToArray());

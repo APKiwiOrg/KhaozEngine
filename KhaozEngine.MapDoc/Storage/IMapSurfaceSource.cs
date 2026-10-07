@@ -12,6 +12,8 @@ public sealed record MapPatchRead(MapPatchKey Key, MapPatchStatus Status, MapSur
 /// MaxPageReads bounds directory and index page visits, including cached and unread pages.
 /// Captured-source passes share this ceiling and charge repeated visits again.
 /// Rectangle seeds and split additions share a ceiling of 1 + 4 * 256 * MaxPageReads, including the merge.
+/// A separate allowance with that same ceiling bounds surface-ref inspections and lookup-node bounds
+/// checks, including excluded roles and rejected nodes. Both captured passes share that allowance.
 /// PagesRead on results reports only newly decoded pages, so cached and captured calls can report zero
 /// while exhausting their traversal or bookkeeping limit. MaxCandidatePatches still bounds patch output.
 /// </remarks>

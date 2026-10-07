@@ -348,3 +348,8 @@ preceding setup/boundary assertions passed. Total 32 passed, 2 failed, zero skip
 `/tmp/swim-backend-first2.log`. This establishes desired-policy RED, not an overflow reproduction or
 acceptance of the numerical bound. The guard remains absent. Tracked evidence is
 [the first backend proof](../verification/2026-10-07-certified-sweep-backend-first.json).
+
+The follow-up lifecycle/allocation command passed 14/14 with zero failures/skips and exit 0 in
+`/tmp/swim-backend-lifecycle-regressions.log`, using unchanged compiled sources. This covers all 13
+evidence lifecycle facts and the existing steady-state SetConstraintTarget allocation regression.
+Other affected legacy checks, numerical-domain acceptance and full backend verification remain open.

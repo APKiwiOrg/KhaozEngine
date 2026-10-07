@@ -83,5 +83,6 @@ Both were executed once after correcting the unrelated Static indexer compilatio
 are finite and moderate. They are desired-policy tests, not a reproduced numerical failure. No extreme
 scene, load test or stress run was used.
 
-The guard stays held pending source-proof/domain acceptance. The 13 updated lifecycle cases, existing
-allocation regression, affected legacy checks, whole-branch review and native G1b remain separate gates.
+The guard stays held pending source-proof/domain acceptance. The 13 updated lifecycle cases and the
+existing allocation regression subsequently passed in one unchanged-binary 14-case run. Affected legacy
+checks, whole-branch review and native G1b remain separate gates.

@@ -21,10 +21,18 @@
   },
   "pending": [
     "Numerical-domain source proof and acceptance",
-    "13 lifecycle cases including the value-token change",
-    "Existing allocation and affected legacy regressions",
+    "Affected legacy regressions",
     "Whole-branch verification and review",
     "General geometry and full movement resolver",
     "Native G1b"
-  ]
+  ],
+  "followupVerification": {
+    "command": "dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release -m:1 --no-build --filter 'FullyQualifiedName~CapsuleSweepEvidenceTests|FullyQualifiedName~ConstraintMotorAllocTests.SetConstraintTarget_SteadyState_AllocatesNothing'",
+    "log": "/tmp/swim-backend-lifecycle-regressions.log",
+    "exitCode": 0,
+    "passed": 14,
+    "failed": 0,
+    "skipped": 0,
+    "scope": "13 evidence lifecycle cases and the existing finite steady-state allocation regression, using unchanged compiled sources"
+  }
 }

@@ -1,0 +1,46 @@
+{
+  "status": "Generic supported step approach over certified dry coverage. Wet shore admission remains pending.",
+  "baseCommit": "1f19cdb76",
+  "runs": {
+    "red": {
+      "path": "/tmp/swim-explicit-bank-red.log",
+      "sha256": "ae6bd41f44c1096229868b97f3a8bb04e7ebc4674016c5b5b7e88132e47238fe",
+      "passed": 2,
+      "failed": 3,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "green": {
+      "path": "/tmp/swim-explicit-bank-green.log",
+      "sha256": "dbf9b96f876d9e2e40883841e3e3ea10b7346d8490281f043689247e147a8525",
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    }
+  },
+  "implementation": "Select an eligible canonical support within StepHeight, prove the actual required vertical rise, then the complete horizontal approach with the same combined capsule resolver. Never publish a blocked approach or a prefix after an unresolved medium query.",
+  "cases": [
+    "Reachable 0.2m bank",
+    "Actual rise fits a 1.75m ceiling although a full StepHeight rise would not",
+    "0.6m bank remains blocked",
+    "1.6m ceiling prevents granting bank support",
+    "Missing proof on the rise rolls back the already-proved wall prefix"
+  ],
+  "pending": [
+    "Wet-region permission and tangency facts",
+    "Surface swimming and water jump integration",
+    "Network simulation ownership and full branch verification"
+  ],
+  "format": {
+    "applyExit": 0,
+    "verifyExit": 0,
+    "formattedFiles": 0
+  },
+  "sourceHashes": {
+    "KhaozEngine.Locomotion/ExplicitCharacterMovement.cs": "e6304bd6558464dace84c0cf9f62c7ee129ddafce60811af252d8c1cb7ee2c0f",
+    "KhaozEngine.Locomotion/ExplicitCharacterMovement.Steps.cs": "3b9b4d6c6ef0b52c732ee4242d57cde67c56feabf20cebb1400ae9c1f775d516",
+    "KhaozEngine.Game.Tests/Locomotion/ExplicitCharacterMovementTests.cs": "847c879a20f3093577f44ee07bb627f5ffa4c54bde841b7607f6b782cdcf1b18",
+    "KhaozEngine.Game.Tests/Locomotion/ExplicitCharacterMovementTests.Steps.cs": "f1320519d37a4c1c3af9baca706b1023ce95a9122d1861169285a5171b62797f"
+  }
+}

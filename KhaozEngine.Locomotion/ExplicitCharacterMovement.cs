@@ -106,6 +106,19 @@ public static partial class ExplicitCharacterMovement
             Vector3 origin = next.Position;
             status = Move(Body(origin, tuning, selection), delta, queries, out Vector3 position, out bool blocked);
             if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
+            if (blocked && supported && !launched)
+            {
+                status = TryStepUp(Body(origin, tuning, selection), new(delta.X, delta.Z), tuning,
+                    queries, out MovementSupportPlacement? step);
+                if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
+                if (step is { } reached)
+                {
+                    position = reached.Centre;
+                    selection = new(reached.Candidate.Space, reached.Candidate.Owner, queries.Identity);
+                    blocked = false;
+                    next.StepDeltaY = position.Y - origin.Y;
+                }
+            }
             next.Position = position;
             next.VerticalVelocity = velocity;
             next.Grounded = false;

@@ -8,7 +8,7 @@ using static KhaozEngine.Tests.Locomotion.Fixtures.AnalyticMovementEnvironment;
 
 namespace KhaozEngine.Tests.Locomotion;
 
-public class ExplicitCharacterMovementTests
+public partial class ExplicitCharacterMovementTests
 {
     static readonly WaterTraversalPolicy Policy = new(WaterTraversalMode.SurfaceSwimmer, 7);
     static MoveTuning Tuning => MoveTuning.Default with
@@ -206,19 +206,29 @@ public class ExplicitCharacterMovementTests
         public AnalyticMovementEnvironment Environment { get; }
         public MovementQueryLease Lease { get; }
         readonly bool cold;
-        public Scene(bool floor = false, bool wall = false, bool cold = false, bool wet = false)
+        public Scene(bool floor = false, bool wall = false, bool cold = false, bool wet = false,
+            float? bankHeight = null, float? ceiling = null)
         {
             this.cold = cold;
             Environment = new([new Room("room", new(new(-16), new(16)))], wet
                 ? [new Water("lake", "room", new(new(-8, -8, -8), new(8, 1, 8)), 1)] : []);
             if (floor) Environment.Physics.AddStatic(new BoxShape(new(8, 0.125f, 8)), Pose.At(new(0, -0.125f, 0)));
             if (wall) Environment.Physics.AddStatic(new BoxShape(new(0.03125f, 8, 8)), Pose.At(new(2, 0, 0)));
+            if (bankHeight is { } height) Environment.Physics.AddStatic(new BoxShape(new(2, height / 2, 4)),
+                Pose.At(new(3, height / 2, 0)));
+            if (ceiling is { } top) Environment.Physics.AddStatic(new BoxShape(new(8, 0.125f, 8)),
+                Pose.At(new(0, top + 0.125f, 0)));
             Lease = Environment.Acquire(cold ? null : "room", 1, 4);
             Environment.Acquisition.OnSupport = (in MovementSupportRequest request, Span<MovementSupportCandidate> candidates) =>
             {
-                if (floor) candidates[0] = new(new("world", "floor"), Space("room"),
+                int count = 0;
+                if (floor) candidates[count++] = new(new("world", "floor"), Space("room"),
                     new(request.Body.Centre.X, 0, request.Body.Centre.Z), Vector3.UnitY, null);
-                return new(MovementAvailability.Known, floor ? 1 : 0, floor ? 1 : 0, Identity);
+                if (bankHeight is { } bank && request.Body.Centre.X >= 1 && request.Body.Centre.X <= 5 &&
+                    Math.Abs(request.Body.Centre.Z) <= 4)
+                    candidates[count++] = new(new("world", "bank"), Space("room"),
+                        new(request.Body.Centre.X, bank, request.Body.Centre.Z), Vector3.UnitY, null);
+                return new(MovementAvailability.Known, count, count, Identity);
             };
         }
         public FramedMovementState State(Vector3 position, bool grounded = false) => new(

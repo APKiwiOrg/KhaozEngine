@@ -481,11 +481,13 @@ jump buffer. Cold state rebuilds canonical selection through the existing null-h
 The combined resolver checks medium coverage on every accepted solid prefix and correction using
 the same outward capsule enclosure. Certified dry paths can move, collide, settle onto proved
 support and land-jump. Water-origin flight over certified dry space retains swim pace and direction
-scaling, then clears its excursion on proved footing. No local query state enters the wire.
+scaling, then clears its excursion on proved footing. Step-up selects an eligible support, traces
+the actual rise and then its horizontal approach, and grants footing only after both paths pass.
+No local query state enters the wire.
 
 Wet-region admission remains unresolved until the producer supplies the missing region/contact
 facts. A local column interval is never extrapolated into a whole-region permission. Supported
-step-up/shore transitions, actual surface entry/jump settlement, movement-head wiring and native
+wet-shore transitions, actual surface entry/jump settlement, movement-head wiring and native
 acceptance are still in development. Active committed movement currently refuses this opt-in path.
 Legacy entry points and unconfigured callers retain their existing behavior.
 

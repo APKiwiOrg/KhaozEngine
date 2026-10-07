@@ -404,3 +404,13 @@ dyadic predicates and represented-transform enclosures. Feature-specific members
 `CapsuleFeaturePredicates.cs`. No helper implementation or diff is available yet. Swimming retains
 continuous swept coverage, candidate completeness, bracket and error policy, and will review the
 actual helper interface before consuming it. No numerical domain or certificate is inherited.
+
+## Non-axis consumer boundary RED
+
+Eight new `MovementCapsuleSweepNumericTests` compiled and ran under a separate grant. Seven controls
+passed and `HitAtARoundedUpNormCannotExtendBeyondTheActualRequest` failed, expected Invalid and
+actual Known, with zero skips and exit 1 in `/tmp/swim-sweep-numeric-red.log`. For D=(1,2,0), the
+independent squared-value assertion proves that the float representation of sqrt(5) is greater than
+the exact request norm. The current Hit guard compared against that rounded-up float and accepted
+the overlong bound. All acquisition controls passed. The secondary slot was explicitly released.
+This is a consumer extent defect, not evidence about any physical backend sweep or feature query.

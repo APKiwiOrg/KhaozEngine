@@ -143,6 +143,34 @@ unit rotation, invalid rotations, the unit-band boundary, input-domain boundarie
 quaternion signs. Thirty tests passed with the earlier arithmetic regressions. Installed geometry,
 normal reconstruction and the complete feature query remain separate proof gates.
 
+## Vector normalization and represented output
+
+Dot and cross products compose the scalar outward operations component by component. They retain
+the entire supplied Cartesian boxes. An unresolved operand refuses rather than becoming zero
+through multiplication. A norm uses each component's Square operation, which retains the same-value
+dependency across zero, then outward addition. If the squared-norm lower bound is not strictly
+positive, normalization refuses. Otherwise the verified root encloses every norm, and interval
+division encloses each normalized component. Lost dependence between components and the norm can
+widen this enclosure, but cannot exclude an actual normalized input vector.
+
+Publication chooses a finite binary32 representative as a proposal. It does not assert that the
+midpoint arithmetic or the representative is exact. For each component, outward subtraction from
+the supplied interval and Square bound every squared error. Their outward sum bounds the squared
+Euclidean error for every point in the input box. The mathematical sum is nonnegative, so zero is a
+valid lower bound even if outward additions produced a negative lower endpoint. The verified upper
+root supplies an error bound. If casting that upper endpoint to binary32 rounds down, publication
+advances once to the next binary32 value. The resulting finite float therefore remains an upper
+bound. Non-finite representatives, unresolved arithmetic or a nonrepresentable error refuse the
+whole output. A singleton box equal to the represented vector has exactly zero error directly.
+
+The fourteen finite cases use integer units of `2^-1074` as an independent oracle. Their rational
+normalization extrema and squared Euclidean comparisons do not call production arithmetic or a
+floating square root to decide whether an error bound contains the box. The cases include signed
+3-4-5 normalization, a component crossing zero while the vector norm stays positive, cancellation,
+large-frame float rounding and error overflow. This still supplies only arithmetic over the input
+enclosures. The caller must establish their physical meaning and enforce its own position/normal
+error ceilings. A represented output with an error bound is not an exact geometric witness.
+
 ## Finite checks and remaining gates
 
 The primitive tests use independent rational comparisons against known nonbinary sums, products and

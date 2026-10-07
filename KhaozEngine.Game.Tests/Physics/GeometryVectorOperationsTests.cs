@@ -1,7 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
-using System.Runtime.ExceptionServices;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
 
@@ -156,58 +154,14 @@ public class GeometryVectorOperationsTests
     static GeometryVector Box(double lx, double ux, double ly, double uy, double lz, double uz) =>
         new(GeometryInterval.Enclose(lx, ux), GeometryInterval.Enclose(ly, uy), GeometryInterval.Enclose(lz, uz));
 
-    // No static reference to either absent Task 3 type. Missing contracts fail assertions at runtime.
-    static GeometryInterval Dot(GeometryVector a, GeometryVector b) =>
-        Assert.IsType<GeometryInterval>(Invoke("Dot", typeof(GeometryInterval), a, b));
-
-    static GeometryVector Cross(GeometryVector a, GeometryVector b) =>
-        Assert.IsType<GeometryVector>(Invoke("Cross", typeof(GeometryVector), a, b));
-
-    static GeometryVector Normalize(GeometryVector value) =>
-        Assert.IsType<GeometryVector>(Invoke("Normalize", typeof(GeometryVector), value));
+    static GeometryInterval Dot(GeometryVector a, GeometryVector b) => GeometryVectorOperations.Dot(a, b);
+    static GeometryVector Cross(GeometryVector a, GeometryVector b) => GeometryVectorOperations.Cross(a, b);
+    static GeometryVector Normalize(GeometryVector value) => GeometryVectorOperations.Normalize(value);
 
     static Output Publish(GeometryVector value)
     {
-        object result = Invoke("Publish", Required("GeometryVectorOutput"), value);
-        return new(Read<bool>(result, "IsResolved"), Read<Vector3>(result, "Value"), Read<float>(result, "Error"));
-    }
-
-    static Type Required(string name)
-    {
-        Type? type = typeof(GeometryVector).Assembly.GetType("KhaozEngine.Physics.Bepu." + name);
-        Assert.True(type is not null, "Missing Task 3 type " + name);
-        Assert.True(type!.IsNotPublic, name + " must remain internal");
-        return type!;
-    }
-
-    static object Invoke(string name, Type returnType, params GeometryVector[] values)
-    {
-        Type[] parameters = values.Length == 2 ? [typeof(GeometryVector), typeof(GeometryVector)] : [typeof(GeometryVector)];
-        MethodInfo? method = Required("GeometryVectorOperations").GetMethod(name,
-            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null, parameters, null);
-        Assert.True(method is not null, "Missing Task 3 method " + name);
-        Assert.Equal(returnType, method!.ReturnType);
-        object[] arguments = values.Length == 2 ? [values[0], values[1]] : [values[0]];
-        try
-        {
-            object? result = method!.Invoke(null, arguments);
-            Assert.NotNull(result);
-            return result!;
-        }
-        catch (TargetInvocationException exception) when (exception.InnerException is not null)
-        {
-            ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
-            throw;
-        }
-    }
-
-    static T Read<T>(object value, string name)
-    {
-        PropertyInfo? property = value.GetType().GetProperty(name,
-            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(property);
-        Assert.Equal(typeof(T), property.PropertyType);
-        return Assert.IsType<T>(property.GetValue(value));
+        GeometryVectorOutput result = GeometryVectorOperations.Publish(value);
+        return new(result.IsResolved, result.Value, result.Error);
     }
 
     static void AssertDefault(Output value)

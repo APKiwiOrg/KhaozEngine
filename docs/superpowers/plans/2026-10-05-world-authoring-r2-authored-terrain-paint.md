@@ -980,7 +980,7 @@ public void Codec_RefusesARecordSetOverTheBound()
 - Validation: resolver `(1, 1)` (`MapResolverIdentityDoc(PayloadVersion, ResolverVersion)`) requires `LegacyXzCallbackV1`, no surfaces, no bindings. `(1, 2)` requires `AuthoredBindingsV2`. Explicit `Y` with a binding refuses. `MapBoundDocumentValidation.ValidateLocal` accepts exactly those pairs. `MapAuthoredIdentity.Compute` refuses resolver version 2 with a message containing `MapAuthoredIdentityV2`, so `MapResolver.Resolve` refuses before any callback. `MapDocumentHash.SchemeVersion` and its format-3 golden stay unchanged.
 - Test-only additions to `FormatFourFixtures`: `CopyTiledToTemp() -> string` (fresh temp copy of the tiled fixture) and `TileFileDigests(string root) -> IReadOnlyList<string>` (ordinal `relativePath TAB sha256` lines over `tiles/`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 static MapDocument Migrated() => MapDocumentFile.Load(FormatFourFixtures.MonolithicPath);
@@ -1048,9 +1048,9 @@ public void AnalyticFormatFour_MigratesWithoutNativeAdditions()
 }
 ```
 
-- [ ] **Step 2: Run red.** `wa_test t6-red "$MAPDOC" "FullyQualifiedName~FormatAdvanceTests"`. Expected: build FAIL naming `MapSupportRecipe`.
+- [x] **Step 2: Run red.** `wa_test t6-red "$MAPDOC" "FullyQualifiedName~FormatAdvanceTests"`. Expected: build FAIL naming `MapSupportRecipe`.
 - [ ] **Step 3: Implement the advance.** The migration and the writers are the only places that learn format 5. `GlobalsOnly`, `WriteNativeGlobals` and `NativeDocumentSnapshot.Publish` all carry both new root members.
-- [ ] **Step 4: Run green.** `wa_run t6-green-mapdoc dotnet test "$MAPDOC" -c Release` (whole project) and `wa_test t6-green-editor "$EDITOR" "FullyQualifiedName~KhaozEngine.Tests.MapDoc|FullyQualifiedName~MapEditTool"`. Expected: PASS (9 new cases). An existing test that hard-codes format-4 output text is a consumer-visible change: update it here and list each file in the commit body.
+- [ ] **Step 4: Run green.** `wa_run t6-green-mapdoc dotnet test "$MAPDOC" -c Release` (whole project) and `wa_test t6-green-editor "$EDITOR" "FullyQualifiedName~KhaozEngine.Tests.MapDoc|FullyQualifiedName~MapEditTool"`. Expected: PASS (14 new cases including isolated parent coverage). An existing test that hard-codes format-4 output text is a consumer-visible change: update it here and list each file in the commit body.
 - [ ] **Step 5: Commit** `KhaozEngine.MapDoc KhaozEngine.MapEditor/NativeDocumentSnapshot.cs KhaozEngine.MapDoc.Tests KhaozEngine.MapEditor.Tests`, message `feat(mapdoc): advance to format 5 with a document-level legacy support recipe`. The release states that every format-4 token changes once on load and resolver-v1 execution is unchanged.
 
 ---
@@ -3544,3 +3544,16 @@ Proof is proofs/2026-10-07-r2-task5-green.json, including both format results an
 post-GREEN whitespace delta. Scoped commit follows repository guards. Native geometry certification,
 full-engine verification and current-main/version reconciliation remain later gates. Task 6 tests
 are prepared in ignored staging only until Task 5's validated checkpoint is pushed.
+
+
+### Task 6 fourteen-case test source and intended RED
+
+Worker prepared the nine plan cases in ignored staging. Parent verified and strengthened the
+required resolver-v2 diagnostic, supported-pair controls, isolated explicit-Y refusal, populated
+rational metadata/binding round-trip and deep SurfaceSet ownership/anchor lookup. Fourteen cases
+were applied after Task 5 completion. No frozen fixture bytes or recorder changed.
+
+One granted secondary RED failed only on MapSupportRecipe: two CS0246 signature errors and five
+CS0103 attribute errors. Zero tests executed, source hash unchanged. Earlier enum binding prevents
+claims about additional missing body members/helpers or runtime behavior. Secondary was released.
+Proof is proofs/2026-10-07-r2-task6-red.json. Approved format migration implementation follows.

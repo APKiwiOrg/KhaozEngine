@@ -32,15 +32,21 @@ public static partial class MapSurfacePatchCodec
     {
         string type = record switch
         {
-            MapSurfaceSeam => "seam", MapBoundaryChain => "chain", MapWallStrip => "strip",
-            MapCavePortal => "portal", MapHorizontalOpening => "opening", MapVerticalLink => "link",
-            MapSpaceDoc => "space", MapSpaceFootprint => "footprint",
+            MapSurfaceSeam => "seam",
+            MapBoundaryChain => "chain",
+            MapWallStrip => "strip",
+            MapCavePortal => "portal",
+            MapHorizontalOpening => "opening",
+            MapVerticalLink => "link",
+            MapSpaceDoc => "space",
+            MapSpaceFootprint => "footprint",
             _ => throw new MapDocumentException("unknown topology record type"),
         };
         w.WriteStartObject(); w.WriteString("type", type); Text(w, "id", record.Id);
         switch (record)
         {
             case MapSurfaceSeam seam:
+                WireCount(seam.Pairs.Count, 64);
                 w.WritePropertyName("first"); WriteEdge(w, seam.First);
                 w.WritePropertyName("second"); WriteEdge(w, seam.Second);
                 WriteArray(w, "pairs", seam.Pairs.OrderBy(p => p.First.SurfaceId, StringComparer.Ordinal)
@@ -68,6 +74,7 @@ public static partial class MapSurfacePatchCodec
                 EnumValue(strip.Facing); w.WriteNumber("facing", (byte)strip.Facing); w.WriteNumber("materialId", strip.MaterialId);
                 break;
             case MapCavePortal portal:
+                WireCount(portal.Interval.Count, 40);
                 RefProperty(w, "fromSpace", portal.FromSpace); RefProperty(w, "toSpace", portal.ToSpace);
                 WriteArray(w, "interval", portal.Interval, WriteVertex);
                 RefProperty(w, "bandBottom", portal.BandBottom); RefProperty(w, "bandTop", portal.BandTop);
@@ -80,6 +87,7 @@ public static partial class MapSurfacePatchCodec
                 Refs(w, "openings", link.Openings); Refs(w, "portals", link.Portals); Refs(w, "geometryOwners", link.GeometryOwners);
                 break;
             case MapSpaceDoc space:
+                WireCount(space.DomainTags.Count, 3);
                 EnumValue(space.Kind); w.WriteNumber("kind", (byte)space.Kind);
                 RefProperty(w, "parent", space.Parent); RefProperty(w, "aliasOf", space.AliasOf);
                 WriteArray(w, "domainTags", space.DomainTags.OrderBy(t => t, StringComparer.Ordinal), static (writer, tag) =>
@@ -190,15 +198,22 @@ public static partial class MapSurfacePatchCodec
         return new(id, ReadKey(r.GetProperty("anchor")));
     }
     static MapRecordRef? OptionalRef(JsonElement r) => r.ValueKind == JsonValueKind.Null ? null : ReadRef(r);
-    static IEnumerable<MapRecordRef> OrderedRefs(IEnumerable<MapRecordRef> refs) => refs.OrderBy(r => r.Id, StringComparer.Ordinal).ThenBy(r => r.Anchor);
+    static IEnumerable<MapRecordRef> OrderedRefs(IReadOnlyList<MapRecordRef> refs)
+    {
+        WireCount(refs.Count, 32);
+        return refs.OrderBy(r => r.Id, StringComparer.Ordinal).ThenBy(r => r.Anchor);
+    }
     static void Refs(Utf8JsonWriter w, string name, IReadOnlyList<MapRecordRef> refs) => WriteArray(w, name, OrderedRefs(refs), WriteRef);
     static void Boundaries(Utf8JsonWriter w, string name, IReadOnlyList<MapBoundaryRef> boundaries)
-        => WriteArray(w, name, boundaries.OrderBy(b => b.Record.Id, StringComparer.Ordinal).ThenBy(b => b.Record.Anchor).ThenBy(b => b.Side),
+    {
+        WireCount(boundaries.Count, 40);
+        WriteArray(w, name, boundaries.OrderBy(b => b.Record.Id, StringComparer.Ordinal).ThenBy(b => b.Record.Anchor).ThenBy(b => b.Side),
             static (writer, b) =>
             {
                 EnumValue(b.Side); writer.WriteStartObject(); RefProperty(writer, "record", b.Record);
                 writer.WriteNumber("side", (byte)b.Side); writer.WriteEndObject();
             });
+    }
     static MapBoundaryRef ReadBoundary(JsonElement b)
     {
         Members(b, "record", "side"); return new(ReadRef(b.GetProperty("record")), ReadEnum<MapSide>(b.GetProperty("side")));
@@ -262,6 +277,12 @@ public static partial class MapSurfacePatchCodec
             if (++count % 64 == 0) FlushBudget(w);
         }
         w.WriteEndArray(); FlushBudget(w);
+    }
+    // Conservative minimum wire bytes per valid item, excluding array separators and parent fields.
+    // These checks precede LINQ buffering and do not restrict geometry that fits the payload budget.
+    static void WireCount(int count, int minimumItemBytes)
+    {
+        if (count < 0 || checked((long)count * minimumItemBytes) > MaxEncodedBytes) throw Limit();
     }
     static void FlushBudget(Utf8JsonWriter w)
     {

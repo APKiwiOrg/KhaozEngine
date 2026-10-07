@@ -68,6 +68,9 @@ public static class MapTopologyReferenceValidator
 
         internal void Validate()
         {
+            foreach (MapSurfaceRef surface in _surfaces.Values.OrderBy(s => s.Id, StringComparer.Ordinal))
+                if (surface.IndoorSpan is { } span)
+                    _ = Find<MapSpaceDoc>(span.ParentSpace, $"indoor span '{span.Id}' on surface '{surface.Id}'");
             foreach (var row in _records.OrderBy(r => r.Key, StringComparer.Ordinal).Select(r => r.Value))
             {
                 MapTopologyRecord record = row.Record;

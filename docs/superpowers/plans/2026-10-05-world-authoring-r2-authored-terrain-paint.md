@@ -959,9 +959,9 @@ public void Codec_RefusesARecordSetOverTheBound()
 ```
 
 - [x] **Step 2: Run red.** `wa_test t5-red "$MAPDOC" "FullyQualifiedName~TopologyRecordTests"`. Expected: build FAIL naming `MapWallStrip`.
-- [ ] **Step 3: Implement records, the codec member, the validator and digests.**
-- [ ] **Step 4: Run green.** `wa_test t5-green "$MAPDOC" "FullyQualifiedName~TopologyRecordTests|FullyQualifiedName~SurfacePatchCodecTests|FullyQualifiedName~LatticeAddressTests"`. Expected: PASS, 38 cases including Task 4 boundary cases, Task 5 full-record coverage and review regressions.
-- [ ] **Step 5: Commit** `KhaozEngine.MapDoc/Surfaces KhaozEngine.MapDoc/Spaces KhaozEngine.MapDoc.Tests/Surfaces`, message `feat(mapdoc): add anchored cave topology and space records with semantic digests`.
+- [x] **Step 3: Implement records, the codec member, the validator and digests.**
+- [x] **Step 4: Run green.** `wa_test t5-green "$MAPDOC" "FullyQualifiedName~TopologyRecordTests|FullyQualifiedName~SurfacePatchCodecTests|FullyQualifiedName~LatticeAddressTests"`. Expected: PASS, 38 cases including Task 4 boundary cases, Task 5 full-record coverage and review regressions.
+- [x] **Step 5: Commit** `KhaozEngine.MapDoc/Surfaces KhaozEngine.MapDoc/Spaces KhaozEngine.MapDoc.Tests/Surfaces`, message `feat(mapdoc): add anchored cave topology and space records with semantic digests`.
 
 ---
 
@@ -3529,3 +3529,18 @@ No unrelated compiler/setup failure or runtime outcome occurred. Primary was exp
 Proof is proofs/2026-10-07-r2-task5-review-red.json. This checkpoint preserves the initial Task 5
 implementation with two intentional RED defects. It is not a completed or accepted Task 5. The
 bounded corrections and fresh targeted rereview precede first combined GREEN, now 38 cases.
+
+
+### Task 5 combined GREEN and scoped format complete
+
+The complete Task 4/5 selection passed 38 executed cases, zero failures/skips and no compiler
+notices. Fresh targeted review closed both prior findings. Parent verified the exact TRX and
+all eleven frozen source hashes. First explicit-file format found five whitespace-only switch-arm
+line breaks. They were corrected manually, with all non-whitespace characters unchanged and no
+test repetition. The separately granted recheck passed with 5 style/155 reference analyzers on
+MapDoc and 5 style/211 on MapDoc.Tests, no warnings and no source changes. Primary was released.
+
+Proof is proofs/2026-10-07-r2-task5-green.json, including both format results and the disclosed
+post-GREEN whitespace delta. Scoped commit follows repository guards. Native geometry certification,
+full-engine verification and current-main/version reconciliation remain later gates. Task 6 tests
+are prepared in ignored staging only until Task 5's validated checkpoint is pushed.

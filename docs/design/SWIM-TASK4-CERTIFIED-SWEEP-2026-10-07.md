@@ -534,3 +534,41 @@ branch, then the no-build 10 swept-support facts all failed at the absent `Capsu
 Both runs compiled/setup correctly, with zero skips. Logs are `/tmp/swim-arithmetic-reconcile.log`
 (exit 0) and `/tmp/swim-swept-support-red.log` (expected exit 1). The secondary slot was released
 before sweep-kernel implementation. The supplied solid-support premise remains unproved geometry.
+
+## Remaining real-backend obligations after the gap kernel
+
+A supplied support interval must be replaced by a bound derived from installed shape data under the
+exact selected view. Rotated/recentered/compound geometry must use the shared represented-transform
+proof, with unsupported shapes or transforms explicitly refusing. A descriptor originally supplied
+by a caller is not the installed geometry authority.
+
+Candidate completeness is independent of that leaf certificate. A raw broadphase miss needs a
+conservative numerical-domain argument for its bounds before it can exclude geometry. Complete
+point-contact output is not a list of all features that may participate later along a path, so
+collecting start/end contact body IDs is not a replacement. In particular, one-sided and finite
+geometry must retain its own swept coverage proof. Do not solve this by silently assuming a native
+partition or making whole-world enumeration an unbounded query prerequisite.
+
+A strictly positive separating gap proves disjointness. Failure to find such an axis proves neither
+collision nor free space. Hit needs a proved contact/intersection witness and a complete clear
+prefix enclosing the earliest event across all leaves. Closed tangency needs an exact boundary
+decision or explicit unresolved result, never the raw tester's strict-negative convention.
+The next shared dyadic surface has been asked to accommodate sums of squared differences for such
+point/axis-to-solid decisions, without duplicating its implementation in this lane.
+
+No public Bepu certified-sweep implementation has been added at this checkpoint. The bounded real
+backend, corrected-segment retracing and actual runtime/nav mover still need their separate proofs.
+
+The 43-line `CapsuleSweptSupport` implementation composes only the imported scalar interval
+operations. The same ten assertions converted to direct calls passed the granted Release GREEN,
+zero failures/skips, exit 0 in `/tmp/swim-swept-support-green.log`. The secondary slot was released.
+No primitive test repeat or extra fixture ran. The helper certifies only a separating projection
+conditional on the supplied same-frame/axis solid support enclosure. Actual installed-solid support,
+complete candidate coverage, transforms and Hit witnesses remain open.
+
+The later additive supplied-matrix slice at `2859e3595` was reviewed separately without import.
+No blocking compatibility finding in its stated arithmetic scope. `EncloseSingleRounding` retains
+real and possible binary32 values, and the row-basis transform composes each product/addition with
+that enclosure. Whole-vector refusal and translation-free Direction remain explicit. The review
+does not infer an installed pose, rigidity, inverse-transpose normal or geometric error ceiling.
+Its reported 22-case runtime result was not rerun or independently claimed here.

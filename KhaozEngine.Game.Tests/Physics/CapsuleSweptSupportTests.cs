@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
 
@@ -9,9 +8,6 @@ namespace KhaozEngine.Tests.Physics;
 // A solid-support interval is a premise here, not proof of installed geometry or candidate completeness.
 public class CapsuleSweptSupportTests
 {
-    delegate GeometryInterval GapCall(Vector3 centre, float radius, float halfCylinderLength,
-        Vector3 displacement, Vector3 axis, GeometryInterval maximumSolidProjection);
-
     [Fact]
     public void AWholeSweepStoppingBeforeThePlaneHasPositiveSeparation()
     {
@@ -103,14 +99,13 @@ public class CapsuleSweptSupportTests
     [Fact]
     public void MalformedCapsuleOrPathInputsRefuse()
     {
-        GapCall evaluate = Bind();
         GeometryInterval support = GeometryInterval.Exact(-1);
-        Assert.False(evaluate(Vector3.Zero, -0.25f, 0.5f, Vector3.UnitX, Vector3.UnitY, support).IsResolved);
-        Assert.False(evaluate(Vector3.Zero, 0.25f, -0.5f, Vector3.UnitX, Vector3.UnitY, support).IsResolved);
-        Assert.False(evaluate(Vector3.Zero, float.NaN, 0.5f, Vector3.UnitX, Vector3.UnitY, support).IsResolved);
-        Assert.False(evaluate(new Vector3(float.NaN), 0.25f, 0.5f, Vector3.UnitX, Vector3.UnitY, support).IsResolved);
-        Assert.False(evaluate(Vector3.Zero, 0.25f, 0.5f, new Vector3(float.PositiveInfinity), Vector3.UnitY, support).IsResolved);
-        Assert.False(evaluate(Vector3.Zero, 0.25f, 0.5f, Vector3.UnitX, new Vector3(float.NaN), support).IsResolved);
+        Assert.False(CapsuleSweptSupport.Evaluate(Vector3.Zero, -0.25f, 0.5f, Vector3.UnitX, Vector3.UnitY, support).IsResolved);
+        Assert.False(CapsuleSweptSupport.Evaluate(Vector3.Zero, 0.25f, -0.5f, Vector3.UnitX, Vector3.UnitY, support).IsResolved);
+        Assert.False(CapsuleSweptSupport.Evaluate(Vector3.Zero, float.NaN, 0.5f, Vector3.UnitX, Vector3.UnitY, support).IsResolved);
+        Assert.False(CapsuleSweptSupport.Evaluate(new Vector3(float.NaN), 0.25f, 0.5f, Vector3.UnitX, Vector3.UnitY, support).IsResolved);
+        Assert.False(CapsuleSweptSupport.Evaluate(Vector3.Zero, 0.25f, 0.5f, new Vector3(float.PositiveInfinity), Vector3.UnitY, support).IsResolved);
+        Assert.False(CapsuleSweptSupport.Evaluate(Vector3.Zero, 0.25f, 0.5f, Vector3.UnitX, new Vector3(float.NaN), support).IsResolved);
     }
 
     static void Contains(GeometryInterval interval, double exact)
@@ -122,14 +117,6 @@ public class CapsuleSweptSupportTests
 
     static GeometryInterval Gap(Vector3 centre, float radius, float halfCylinderLength,
         Vector3 displacement, Vector3 axis, GeometryInterval support) =>
-        Bind()(centre, radius, halfCylinderLength, displacement, axis, support);
+        CapsuleSweptSupport.Evaluate(centre, radius, halfCylinderLength, displacement, axis, support);
 
-    static GapCall Bind()
-    {
-        Type? type = typeof(BepuPhysicsWorld).Assembly.GetType("KhaozEngine.Physics.Bepu.CapsuleSweptSupport");
-        Assert.NotNull(type);
-        MethodInfo? method = type.GetMethod("Evaluate", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        return method.CreateDelegate<GapCall>();
-    }
 }

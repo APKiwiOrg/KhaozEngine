@@ -434,3 +434,9 @@ where the requested contact region extended past the certified bound. Using doub
 that measured failure. The combined affected batch passed 84/84 without skips. Scoped apply and
 verify formatting passed with no source changes, with analyzers active in both target projects.
 Combined water traversal, support-path correction and broader acceptance remain pending.
+
+Four additional adversarial consumer cases now cover a bracket too wide to locate the active set,
+a Hit with no active contacts, caller capacity exhausted after a slide is computed, and exhaustion
+of all eight corrections. These synthetic-result cases prove refusal and bounded control flow, not
+backend geometry. The real tied-corner fixture now also checks identical full polylines under reversed
+insertion and observes both normals in one contact query. All 27 resolver cases passed without skips.

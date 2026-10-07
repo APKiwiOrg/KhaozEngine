@@ -49,10 +49,17 @@
     "swim-resolver-format-verify": {
       "path": "/tmp/swim-resolver-format-verify.log",
       "sha256": "06418d6808ef46e806d1ef6ede6996f7c5ee35804d66f0e29035e5f46a552676"
+    },
+    "swim-resolver-acceptance-format": {
+      "path": "/tmp/swim-resolver-acceptance-format.log",
+      "sha256": "239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c"
+    },
+    "swim-resolver-acceptance-format-verify": {
+      "path": "/tmp/swim-resolver-acceptance-format-verify.log",
+      "sha256": "239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c"
     }
   },
   "pending": [
-    "Additional impact-set/bounded-iteration acceptance coverage",
     "Combined water policy and support/step correction",
     "Whole-branch review and native G1b"
   ],
@@ -89,5 +96,28 @@
       "KhaozEngine.Locomotion",
       "KhaozEngine.Game.Tests"
     ]
+  },
+  "acceptance": {
+    "log": "/tmp/swim-resolver-acceptance.log",
+    "sha256": "b19642c4352de4eb3593a9988d7cb809d6bc5c1b12b2f1c76d8d444c2602a465",
+    "exitCode": 0,
+    "passed": 27,
+    "failed": 0,
+    "skipped": 0,
+    "changes": "Four adversarial consumer cases plus stronger real tied-corner assertions. Wide bracket, missing active contacts, late caller-capacity refusal and correction exhaustion are explicit. Reversed insertion gives identical polylines and the real impact query contains both tied normals.",
+    "formatExitCodes": [
+      0,
+      0
+    ],
+    "formatDelta": "Initializer whitespace only, no behavior or assertion change"
+  },
+  "finalSourceHashes": {
+    "KhaozEngine.Locomotion/MovementCapsuleResolver.cs": "2d632e0a198cba8af8ae97e7a20c36790a6d47c2a2edbf36929980715b045c12",
+    "KhaozEngine.Locomotion/MovementCapsuleRounding.cs": "55e1e4dc7963c2d016ce4dc253ae9030fe7b76f75e6c47beffc87c03a91c69ad",
+    "KhaozEngine.Locomotion/MovementQueryLease.Solids.cs": "d2c3070573aebc7e55156a8402cceb3091a6a1498ba8e2774713d11e24ec1f9b",
+    "KhaozEngine.Game.Tests/Locomotion/MovementCapsuleResolverTests.cs": "a747dc86c993912af9df06382824076ee9cad4883c9f4b0123cee7f979389a34",
+    "KhaozEngine.Game.Tests/Locomotion/MovementCapsuleResolverTests.Refusals.cs": "d997ac82afa7fdb3f2c6dd5ded77a7b7819d90a1f5502bac738feb8d9812d8ef",
+    "KhaozEngine.Game.Tests/Locomotion/MovementCapsuleRoundingTests.cs": "784b0f5795d2feeca8581545e32c1da7543551871ed4fb99b96e038b40b1c1f4",
+    "KhaozEngine.Game.Tests/Locomotion/MovementImpactScopeTests.cs": "a561f2c66614698ebd97e65cba33044ad0ae8aa075d7b12e65ca273b8a2e9369"
   }
 }

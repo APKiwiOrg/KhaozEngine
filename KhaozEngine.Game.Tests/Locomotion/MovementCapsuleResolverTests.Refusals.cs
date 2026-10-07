@@ -95,6 +95,39 @@ public partial class MovementCapsuleResolverTests
         AssertRefused(scene.Resolve(Body(), Vector3.UnitX, capacity: 0), MovementAvailability.CapacityExceeded);
     }
 
+    [Fact]
+    public void ABracketTooWideToLocateTheActiveSetCannotAuthorizeAPlacement()
+    {
+        using var scene = new Scene { WideBracket = true };
+        AssertRefused(scene.Resolve(Body(), new(4, 0, 0)), MovementAvailability.Unresolved);
+        Assert.Equal(1, scene.View.NonzeroSweeps);
+    }
+
+    [Fact]
+    public void AHitWithoutACompleteActiveConstraintSetIsUnresolved()
+    {
+        using var scene = new Scene { OmitImpactContacts = true };
+        scene.WallX();
+        AssertRefused(scene.Resolve(Body(), new(4, 0, 2)), MovementAvailability.Unresolved);
+    }
+
+    [Fact]
+    public void CapacityExhaustedAfterComputingASlidePublishesNoPrefix()
+    {
+        using var scene = new Scene();
+        scene.WallX();
+        AssertRefused(scene.Resolve(Body(), new(4, 0, 2), capacity: 1), MovementAvailability.CapacityExceeded);
+        Assert.Contains(scene.View.Calls, call => call.Status == CapsuleSweepStatus.Clear && call.Delta != Vector3.Zero);
+    }
+
+    [Fact]
+    public void EightCorrectionsDoNotBecomeAnUnboundedProjectionLoop()
+    {
+        using var scene = new Scene { EndlessConstraints = true };
+        AssertRefused(scene.Resolve(Body(), new(4, 0, 2)), MovementAvailability.Unresolved);
+        Assert.Equal(9, scene.View.NonzeroSweeps);
+    }
+
     static void AssertRefused(Capture capture, MovementAvailability expected)
     {
         Assert.Equal(expected, capture.Status);

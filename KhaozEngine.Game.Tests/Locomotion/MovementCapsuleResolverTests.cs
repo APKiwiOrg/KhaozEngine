@@ -104,6 +104,9 @@ public partial class MovementCapsuleResolverTests
         AssertBlocked(first);
         AssertBlocked(second);
         Assert.Equal(first.End, second.End);
+        Assert.Equal(first.Path.AsSpan(0, first.Count).ToArray(), second.Path.AsSpan(0, second.Count).ToArray());
+        Assert.Contains(a.View.ContactSets, set => Array.Exists(set, n => n.X < -0.99f) &&
+            Array.Exists(set, n => n.Z < -0.99f));
         Assert.InRange(first.End.X, 1.70f, 1.71875f);
         Assert.InRange(first.End.Z, 1.70f, 1.71875f);
         AssertCertifiedSegments(a, Body(), first);
@@ -207,6 +210,9 @@ public partial class MovementCapsuleResolverTests
         public bool Stale;
         public bool FailAfterProgress;
         public bool StaleDuringSweep;
+        public bool WideBracket;
+        public bool OmitImpactContacts;
+        public bool EndlessConstraints;
         public StaticHandle WallX(float x = 2) => World.AddStatic(new BoxShape(new(0.03125f, 3, 8)), Pose.At(new(x, 0, 0)));
         public void WallZ() => World.AddStatic(new BoxShape(new(8, 3, 0.03125f)), Pose.At(new(0, 0, 2)));
         public void Floor() => World.AddStatic(new BoxShape(new(8, 0.125f, 8)), Pose.At(new(0, -0.125f, 0)));
@@ -214,7 +220,13 @@ public partial class MovementCapsuleResolverTests
         public Capture Resolve(MovementBodyQuery body, Vector3 delta, int capacity = 9)
         {
             using var selected = World.CreateQueryViewExcludingStatics(Excluded);
-            using var view = new ResolverQueryView(selected) { FailAfterProgress = FailAfterProgress };
+            using var view = new ResolverQueryView(selected)
+            {
+                FailAfterProgress = FailAfterProgress,
+                WideBracket = WideBracket,
+                OmitImpactContacts = OmitImpactContacts,
+                EndlessConstraints = EndlessConstraints
+            };
             View = view;
             var identity = new MovementQueryIdentity("closure", 1, "scope");
             var frame = new MovementFrameDescriptor(WorldFrame.Origin, World.Origin, 1);
@@ -236,23 +248,55 @@ public partial class MovementCapsuleResolverTests
 
     readonly record struct Trace(Vector3 Centre, Vector3 Delta, float Radius, float HalfHeight, CapsuleSweepStatus Status);
 
-    sealed class ResolverQueryView : SweepQueryView, IPhysicsCapsuleSweep
+    sealed class ResolverQueryView : SweepQueryView, IPhysicsCapsuleSweep, IPhysicsCapsuleContacts
     {
         readonly IPhysicsCapsuleSweep _sweep;
-        public ResolverQueryView(IPhysicsWorldQueryView inner) : base(inner) =>
+        readonly IPhysicsCapsuleContacts _contacts;
+        public ResolverQueryView(IPhysicsWorldQueryView inner) : base(inner)
+        {
             _sweep = (IPhysicsCapsuleSweep)inner;
+            _contacts = (IPhysicsCapsuleContacts)inner;
+        }
         public readonly System.Collections.Generic.List<Trace> Calls = [];
         public bool FailAfterProgress;
+        public bool WideBracket;
+        public bool OmitImpactContacts;
+        public bool EndlessConstraints;
+        public int NonzeroSweeps;
+        Vector3 lastDelta;
+        public readonly System.Collections.Generic.List<Vector3[]> ContactSets = [];
         bool progressed;
         public Action? AfterSweep;
         public CapsuleSweepResult SweepCapsuleCertified(CapsuleShape capsule, Pose pose, Vector3 delta,
             QueryFilter filter = default)
         {
-            CapsuleSweepResult result = FailAfterProgress && progressed ? default :
+            if (delta != Vector3.Zero) { NonzeroSweeps++; lastDelta = delta; }
+            CapsuleSweepResult result = delta != Vector3.Zero && WideBracket
+                ? new(CapsuleSweepStatus.Hit, 1, 3, 0.001f)
+                : delta != Vector3.Zero && EndlessConstraints ? new(CapsuleSweepStatus.Hit, 0, 0, 0)
+                : FailAfterProgress && progressed ? default :
                 _sweep.SweepCapsuleCertified(capsule, pose, delta, filter);
             Calls.Add(new(pose.Position, delta, capsule.Radius, capsule.Length * 0.5f + capsule.Radius, result.Status));
             if (result.Status == CapsuleSweepStatus.Clear && delta != Vector3.Zero) progressed = true;
             AfterSweep?.Invoke();
+            return result;
+        }
+
+        // Adversarial consumer modes are synthetic result injection, not backend geometry evidence.
+        public new CapsuleContactResult QueryCapsuleContacts(CapsuleShape capsule, Pose pose, float margin,
+            Span<CapsuleContact> destination, QueryFilter filter = default)
+        {
+            if (NonzeroSweeps > 0 && OmitImpactContacts) return new(true, 0, 0, 0);
+            if (NonzeroSweeps > 0 && EndlessConstraints)
+            {
+                Vector3 normal = Vector3.Normalize(new Vector3(-lastDelta.X + lastDelta.Z, 0, -lastDelta.Z - lastDelta.X));
+                destination[0] = new(normal, 0, false, 1, 0, 0);
+                return new(true, 1, 1, 0);
+            }
+            CapsuleContactResult result = _contacts.QueryCapsuleContacts(capsule, pose, margin, destination, filter);
+            var normals = new Vector3[result.Written];
+            for (int i = 0; i < normals.Length; i++) normals[i] = destination[i].Normal;
+            ContactSets.Add(normals);
             return result;
         }
     }

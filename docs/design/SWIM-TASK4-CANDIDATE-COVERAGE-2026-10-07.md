@@ -195,3 +195,9 @@ RED was established. Exit 1 in `/tmp/swim-tree-preflight-red.log`, with producti
 Restoring the single import produced valid compilation and twelve expected missing-helper failures,
 zero passes/skips, exit 1 in `/tmp/swim-tree-preflight-red2.log`. Leading raw-enumerator/capacity controls
 passed where reached. Assertions after a missing-helper call remain unexecuted until GREEN.
+
+The preflight implementation passed all twelve unchanged direct assertions, zero failures/skips,
+exit 0 in `/tmp/swim-tree-preflight-green.log`. The A-first pending peaks, raw valid-tree controls,
+live-count refusals and zero outputs on incomplete traversal now have finite behavior evidence.
+Topology, installed geometry bounds, mutation tracking and selected-world completeness remain separate
+premises. No public sweep forwarding or registration hook was added by this slice.

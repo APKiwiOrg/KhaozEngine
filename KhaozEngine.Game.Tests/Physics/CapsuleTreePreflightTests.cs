@@ -1,9 +1,7 @@
 using System;
 using System.Numerics;
-using System.Reflection;
 using BepuPhysics.Trees;
 using BepuUtilities;
-using BepuUtilities.Collections;
 using BepuUtilities.Memory;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -14,8 +12,6 @@ namespace KhaozEngine.Tests.Physics;
 // Owned finite trees, not native geometry or a selected-world coverage certificate.
 public unsafe class CapsuleTreePreflightTests
 {
-    delegate bool ValidateCall(in BepuTree tree, Vector3 min, Vector3 max, int maximumNodes, int maximumLeaves,
-        int maximumPending, out int nodes, out int leaves, out int pending);
 
     [Fact]
     public void EmptyTreeNeedsNoNodeOrLeafVisit()
@@ -133,11 +129,7 @@ public unsafe class CapsuleTreePreflightTests
     static (bool Complete, int Nodes, int Leaves, int Pending) Run(Fixture fixture,
         Vector3? min = null, Vector3? max = null, int nodes = 8192, int leaves = 4096, int pending = 128)
     {
-        Type? type = typeof(BepuPhysicsWorld).Assembly.GetType("KhaozEngine.Physics.Bepu.CapsuleTreePreflight");
-        Assert.NotNull(type);
-        MethodInfo? method = type.GetMethod("TryValidate", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        bool complete = method.CreateDelegate<ValidateCall>()(in fixture.Tree, min ?? new(-1), max ?? new(1),
+        bool complete = CapsuleTreePreflight.TryValidate(in fixture.Tree, min ?? new(-1), max ?? new(1),
             nodes, leaves, pending, out int visitedNodes, out int visitedLeaves, out int peak);
         return (complete, visitedNodes, visitedLeaves, peak);
     }

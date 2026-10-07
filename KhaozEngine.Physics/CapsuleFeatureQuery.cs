@@ -27,7 +27,8 @@ public enum CapsuleFeatureKind : byte
 }
 
 /// <summary>One incident geometric face. Its identity is local to the result's original read interval.
-/// The normal is geometric, not a smoothed collision-manifold normal.</summary>
+/// The normal is geometric, not a smoothed collision-manifold normal. In backend-published output,
+/// incidence describes this face's participation in the shared classified witness.</summary>
 public readonly record struct CapsuleIncidentFace(int FaceId, Vector3 Normal, float NormalError,
     CapsuleFeatureKind Incidence);
 

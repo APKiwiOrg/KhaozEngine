@@ -72,17 +72,18 @@ public class InstalledPoseFeatureTests
     public void RecenteredInstalledHullKeepsItsRepresentedCentroidWrapperAndTilt()
     {
         Vector3[] source = HullVertices();
-        InstalledPoseSourceChecks.HullConstruction(source);
-        // Actual pinned helper's raw vertex/centroid premise is checked separately above.
-        Pose root = new(Vector3.Zero, Tilt), child = Pose.At(new Vector3(0, 1, 0));
-        Pose representedLeaf = InstalledPoseSourceChecks.Composition(child, root);
-        Assert.Equal(new Vector3(-0.9600000381469727f, 0.2799999713897705f, 0), representedLeaf.Position);
+        Pose root = new(Vector3.Zero, Tilt);
+        using var scene = new InstalledPoseScene(new ConvexHullShape((Vector3[])source.Clone()), root);
+        // Setup restored every actual raw vertex through the actual centroid with exact rationals.
+        // Expected geometry starts from those installed values, never a feature-query result.
+        Pose local = Assert.IsType<Pose>(scene.InstalledHullLocalPose);
+        Pose representedLeaf = Assert.IsType<Pose>(scene.InstalledHullPose);
         Assert.Equal(Tilt, representedLeaf.Orientation);
         Assert.True(InBand(representedLeaf.Orientation));
+        R bottom = -R.From(local.Position.Y), top = new R(2, 1) - R.From(local.Position.Y);
         Vector3 proposal = new(-2.1600000858306885f, 0.6299999952316284f, 0);
-        Face real = BoxTop(Real(representedLeaf.Orientation), V.From(representedLeaf.Position), proposal);
-        Face represented = BoxTop(Represented(representedLeaf.Orientation), V.From(representedLeaf.Position), proposal);
-        using var scene = new InstalledPoseScene(new ConvexHullShape((Vector3[])source.Clone()), root);
+        Face real = BoxTop(Real(representedLeaf.Orientation), V.From(representedLeaf.Position), proposal, bottom, top);
+        Face represented = BoxTop(Represented(representedLeaf.Orientation), V.From(representedLeaf.Position), proposal, bottom, top);
         scene.CheckTargetRay(proposal, new Vector3(0.96f, -0.28f, 0));
         scene.AssertComplete(proposal, real, represented);
     }

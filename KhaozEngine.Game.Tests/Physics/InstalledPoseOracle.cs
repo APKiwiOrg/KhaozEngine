@@ -72,23 +72,25 @@ internal static class InstalledPoseOracle
         internal I Separation => Distance - R.From(0.25f);
     }
 
-    internal static Face BoxTop(M a, V translation, Vector3 proposal)
+    internal static Face BoxTop(M a, V translation, Vector3 proposal, R? localBottom = null, R? localTop = null)
     {
         Assert.True(a.Determinant > R.Zero, "The finite affine image must preserve convex orientation.");
+        R bottom = localBottom ?? -R.One, top = localTop ?? R.One;
+        Assert.True(bottom < top);
         V center = V.From(proposal);
-        V anchor = a.Apply(V.UnitY) + translation;
+        V anchor = a.Apply(new V(R.Zero, top, R.Zero)) + translation;
         V normal = V.Cross(a.Z, a.X);
         Face face = Project(center, anchor, normal);
         Assert.True(face.Front);
         V local = a.Inverse(face.Geometry - translation);
-        Assert.Equal(R.One, local.Y);
+        Assert.Equal(top, local.Y);
         Assert.True(Abs(local.X) < new R(3, 4) && Abs(local.Z) < new R(3, 4),
             "The unique orthogonal witness must lie strictly inside the finite face.");
         // Convexity gives the global minimum. Strict face interior excludes every other stratum.
         foreach (int x in new[] { -1, 1 })
-            foreach (int y in new[] { -1, 1 })
+            foreach (R y in new[] { bottom, top })
                 foreach (int z in new[] { -1, 1 })
-                    Assert.True(V.Dot(a.Apply(new V(new R(x, 1), new R(y, 1), new R(z, 1))) +
+                    Assert.True(V.Dot(a.Apply(new V(new R(x, 1), y, new R(z, 1))) +
                         translation - anchor, normal) <= R.Zero);
         AssertContactBand(face);
         return face;

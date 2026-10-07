@@ -4,7 +4,6 @@ using System.Numerics;
 using System.Reflection;
 using BepuPhysics.Collidables;
 using BepuUtilities;
-using BepuUtilities.Memory;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -74,39 +73,6 @@ internal static class InstalledPoseSourceChecks
         return expected;
     }
 
-    internal static void HullConstruction(Vector3[] source)
-    {
-        var pool = new BufferPool();
-        ConvexHull hull = default;
-        bool owned = false;
-        try
-        {
-            ConvexHullHelper.CreateShape(((Vector3[])source.Clone()).AsSpan(), pool, out Vector3 center, out hull);
-            owned = true;
-            Assert.Equal(new Vector3(0, 1, 0), center);
-            Assert.Equal(6, hull.FaceToVertexIndicesStart.Length);
-            var raw = new HashSet<V>();
-            for (int face = 0; face < hull.FaceToVertexIndicesStart.Length; face++)
-            {
-                hull.GetVertexIndicesForFace(face, out var indices);
-                Assert.Equal(4, indices.Length);
-                for (int i = 0; i < indices.Length; i++)
-                {
-                    hull.GetPoint(indices[i], out Vector3 vertex);
-                    raw.Add(V.From(vertex) + V.From(center));
-                }
-            }
-            var snapshot = new HashSet<V>();
-            foreach (Vector3 vertex in source) snapshot.Add(V.From(vertex));
-            Assert.True(snapshot.SetEquals(raw), "Raw pinned hull vertices plus centroid must equal the frozen cuboid.");
-        }
-        finally
-        {
-            try { if (owned) hull.Dispose(pool); }
-            finally { pool.Clear(); }
-        }
-    }
-
     static M Read(Matrix3x3 matrix) => new(V.From(matrix.X), V.From(matrix.Y), V.From(matrix.Z));
 }
 
@@ -117,6 +83,8 @@ internal sealed class InstalledPoseScene : IDisposable
     internal IPhysicsCapsuleFeatures Features { get; private set; } = null!;
     internal IPhysicsQueryLease Lease { get; private set; } = null!;
     internal StaticHandle Target { get; private set; }
+    internal Pose? InstalledHullLocalPose { get; private set; }
+    internal Pose? InstalledHullPose { get; private set; }
 
     internal InstalledPoseScene(PhysicsShape shape, Pose targetPose)
     {
@@ -231,17 +199,23 @@ internal sealed class InstalledPoseScene : IDisposable
         Assert.Equal(Bits(frozen.Vertices[frozen.Indices[2]]), Bits(triangle.C));
     }
 
-    static void AssertHull(BepuSim simulation, TypedIndex index, RigidPose root, Pose expectedRoot, ConvexHullShape frozen)
+    void AssertHull(BepuSim simulation, TypedIndex index, RigidPose root, Pose expectedRoot, ConvexHullShape frozen)
     {
         Assert.Equal(default(BepuCompound).TypeId, index.Type);
         ref BepuCompound wrapper = ref simulation.Shapes.GetShape<BepuCompound>(index.Index);
         Assert.Equal(1, wrapper.Children.Length);
         ref var child = ref wrapper.Children[0];
         Assert.Equal(default(ConvexHull).TypeId, child.ShapeIndex.Type);
-        Pose expectedLocal = Pose.At(new Vector3(0, 1, 0));
-        AssertPose(child.LocalPose, expectedLocal);
+        // The floating hull builder's centroid is installed data, not the ideal cuboid centre.
+        // Exact source restoration below proves the centered vertices and this offset together.
+        Assert.Equal(Quaternion.Identity, child.LocalPose.Orientation);
+        Assert.Equal(0f, child.LocalPose.Position.X);
+        Assert.Equal(0f, child.LocalPose.Position.Z);
+        Pose actualLocal = new(child.LocalPose.Position, child.LocalPose.Orientation);
         BepuCompound.GetWorldPose(child.LocalPose, root, out RigidPose installedLeafPose);
-        AssertPose(installedLeafPose, Composed(expectedLocal, expectedRoot));
+        AssertPose(installedLeafPose, Composed(actualLocal, expectedRoot));
+        InstalledHullLocalPose = actualLocal;
+        InstalledHullPose = new(installedLeafPose.Position, installedLeafPose.Orientation);
         ref ConvexHull installed = ref simulation.Shapes.GetShape<ConvexHull>(child.ShapeIndex.Index);
         Assert.Equal(8, frozen.Points.Length);
         Assert.Equal(6, installed.FaceToVertexIndicesStart.Length);

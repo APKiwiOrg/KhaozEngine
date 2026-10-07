@@ -63,7 +63,7 @@ internal sealed class CapsuleFeaturePolyhedraClosest
         CapsuleFeaturePolyhedronEdge edge = leaf.Edges[id];
         FeaturePoint first = leaf.Vertices[edge.A], second = leaf.Vertices[edge.B];
         if (Far([first, second])) return;
-        FeaturePoint a = first, e = FeaturePoint.Subtract(second, a);
+        FeaturePoint a = first, e = leaf.EdgeDirection(edge.A, edge.B);
         FeatureNumber c = FeaturePoint.Dot(e, e);
         if (c.Sign != GeometrySign.Positive) { _status = CapsuleFeatureStatus.Unresolved; return; }
         EdgeEndpoint(leaf, id, a, e, c, _lower);

@@ -27,8 +27,10 @@ internal static class InstalledPoseSourceChecks
         Assert.Equal(expected, Read(scalar));
         var wideQuaternion = new QuaternionWide
         {
-            X = new Vector<float>(q.X), Y = new Vector<float>(q.Y),
-            Z = new Vector<float>(q.Z), W = new Vector<float>(q.W),
+            X = new Vector<float>(q.X),
+            Y = new Vector<float>(q.Y),
+            Z = new Vector<float>(q.Z),
+            W = new Vector<float>(q.W),
         };
         Matrix3x3Wide.CreateFromQuaternion(wideQuaternion, out Matrix3x3Wide wide);
         // Every broadcast lane is checked against the independent per-operation binary32 graph.
@@ -49,8 +51,10 @@ internal static class InstalledPoseSourceChecks
         Assert.Equal(expected, V.From(scalarOutput + translation));
         var wideQuaternion = new QuaternionWide
         {
-            X = new Vector<float>(q.X), Y = new Vector<float>(q.Y),
-            Z = new Vector<float>(q.Z), W = new Vector<float>(q.W),
+            X = new Vector<float>(q.X),
+            Y = new Vector<float>(q.Y),
+            Z = new Vector<float>(q.Z),
+            W = new Vector<float>(q.W),
         };
         Matrix3x3Wide.CreateFromQuaternion(wideQuaternion, out Matrix3x3Wide wide);
         Vector3Wide.Broadcast(local, out Vector3Wide wideLocal);

@@ -12,7 +12,8 @@ internal readonly record struct CapsuleFeatureMeshEdge(int A, int B, int FirstFa
 
 /// <summary>One uncached unit-scale installed mesh, with complete exact source incidence. Raw
 /// triangle IDs survive coplanar seams. Signed zero is canonicalized, but no other vertices weld.</summary>
-internal sealed class CapsuleFeatureMesh(Vector3[] localVertices, FeaturePoint[] vertices, int[][] faces)
+internal sealed class CapsuleFeatureMesh(Vector3[] localVertices, FeaturePoint[] vertices, int[][] faces,
+    InstalledPoseOperator transform)
 {
     internal const int MaximumTriangles = 65536;
     internal const int MaximumIncidentFaces = 256;
@@ -23,12 +24,24 @@ internal sealed class CapsuleFeatureMesh(Vector3[] localVertices, FeaturePoint[]
     internal CapsuleFeatureMeshEdge[] Edges { get; private set; } = [];
     internal int[][] VertexFaces { get; private set; } = [];
     internal CapsuleFeatureKind[] VertexKinds { get; private set; } = [];
+    internal FeaturePoint EdgeDirection(int a, int b) => transform.Edge(LocalVertices[a], LocalVertices[b]);
+
+    internal bool AgreeSides(int id, FeaturePoint lower, FeaturePoint upper,
+        out GeometrySign lowSide, out GeometrySign highSide)
+    {
+        int[] face = Faces[id];
+        return InstalledMeshSides.Agree(transform, LocalVertices[face[0]], LocalVertices[face[1]],
+            LocalVertices[face[2]], Vertices[face[0]], Normals[id], lower, upper, out lowSide, out highSide);
+    }
+
+    internal bool AgreeCandidateSides(int id, FeaturePoint lower, FeaturePoint upper) =>
+        transform.IsExactlyRigid || AgreeSides(id, lower, upper, out _, out _);
 
     internal static CapsuleFeatureStatus Capture(Simulation simulation, TypedIndex index, in RigidPose pose,
         out CapsuleFeatureMesh? captured)
     {
         captured = null;
-        if (!CapsuleFeatureGeometry.ProveRigidPose(pose)) return CapsuleFeatureStatus.Unsupported;
+        if (!CapsuleFeatureGeometry.ProveInstalledPose(pose)) return CapsuleFeatureStatus.Unsupported;
         ref Mesh installed = ref simulation.Shapes.GetShape<Mesh>(index.Index);
         if (installed.Scale != Vector3.One) return CapsuleFeatureStatus.Unsupported;
         int count = installed.Triangles.Length;
@@ -60,9 +73,9 @@ internal sealed class CapsuleFeatureMesh(Vector3[] localVertices, FeaturePoint[]
         }
         Vector3[] localArray = local.ToArray();
         CapsuleFeatureStatus transformed = CapsuleFeatureGeometry.TransformVertices(localArray, pose,
-            out FeaturePoint[] world);
+            out FeaturePoint[] world, out InstalledPoseOperator certifiedTransform);
         if (transformed != CapsuleFeatureStatus.Complete) return transformed;
-        var mesh = new CapsuleFeatureMesh(localArray, world, faces);
+        var mesh = new CapsuleFeatureMesh(localArray, world, faces, certifiedTransform);
         CapsuleFeatureStatus validated = mesh.Validate();
         if (validated == CapsuleFeatureStatus.Complete) captured = mesh;
         return validated;
@@ -85,8 +98,8 @@ internal sealed class CapsuleFeatureMesh(Vector3[] localVertices, FeaturePoint[]
             int[] sorted = (int[])face.Clone();
             Array.Sort(sorted);
             if (!duplicates.Add((sorted[0], sorted[1], sorted[2]))) return CapsuleFeatureStatus.Ambiguous;
-            FeaturePoint ab = FeaturePoint.Subtract(Vertices[face[1]], Vertices[face[0]]);
-            FeaturePoint ac = FeaturePoint.Subtract(Vertices[face[2]], Vertices[face[0]]);
+            FeaturePoint ab = EdgeDirection(face[0], face[1]);
+            FeaturePoint ac = EdgeDirection(face[0], face[2]);
             // Bepu 2.4 Triangle.RayTest defines the front as Cross(ac, ab).
             Normals[id] = FeaturePoint.Cross(ac, ab);
             if (FeaturePoint.Dot(Normals[id], Normals[id]).Sign != GeometrySign.Positive)
@@ -207,8 +220,10 @@ internal sealed class CapsuleFeatureMesh(Vector3[] localVertices, FeaturePoint[]
                 else flat |= edge.Kind == CapsuleFeatureKind.FaceInterior;
             }
         if (!flat || open.Count != 2) return CapsuleFeatureStatus.Complete;
-        FeaturePoint a = FeaturePoint.Subtract(Vertices[open[0]], Vertices[vertex]);
-        FeaturePoint b = FeaturePoint.Subtract(Vertices[open[1]], Vertices[vertex]);
+        // Collinearity and opposite direction are local identities carried by the same invertible
+        // operator. Comparing independent world enclosures would lose those exact identities.
+        FeaturePoint a = FeaturePoint.Subtract(FeaturePoint.Exact(LocalVertices[open[0]]), FeaturePoint.Exact(LocalVertices[vertex]));
+        FeaturePoint b = FeaturePoint.Subtract(FeaturePoint.Exact(LocalVertices[open[1]]), FeaturePoint.Exact(LocalVertices[vertex]));
         FeaturePoint cross = FeaturePoint.Cross(a, b);
         GeometrySign collinear = FeaturePoint.Dot(cross, cross).Sign;
         if (collinear == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unresolved;
@@ -267,10 +282,10 @@ internal sealed class CapsuleFeatureMesh(Vector3[] localVertices, FeaturePoint[]
         bool boundary = false;
         for (int i = 0; i < 3; i++)
         {
-            FeaturePoint a = Vertices[face[i]], b = Vertices[face[(i + 1) % 3]];
+            FeaturePoint a = Vertices[face[i]], edge = EdgeDirection(face[i], face[(i + 1) % 3]);
             // The stored front normal reverses the usual oriented-edge cross convention.
             GeometrySign side = FeaturePoint.Dot(FeaturePoint.Cross(FeaturePoint.Subtract(point, a),
-                FeaturePoint.Subtract(b, a)), Normals[id]).Sign;
+                edge), Normals[id]).Sign;
             if (side == GeometrySign.Negative) return side;
             if (side == GeometrySign.Unresolved) return side;
             boundary |= side == GeometrySign.Zero;

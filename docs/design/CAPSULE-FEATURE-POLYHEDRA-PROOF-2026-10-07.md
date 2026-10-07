@@ -7,6 +7,13 @@ one-failure run remains recorded separately. See `docs/verification/2026-10-07-f
 This proves the declared exact-rigid polyhedron subset only. Nonexact rotations, meshes and unresolved
 rational witnesses remain outside it. No runtime movement consumer, release or game bridge fix follows.
 
+Validated expanded-admission slice: the [installed-pose argument](CAPSULE-FEATURE-INSTALLED-POSE-PROOF-2026-10-08.md)
+records the closed-band common affine certificate and operational correspondence limits. Independent
+source/math review, 124 arithmetic/geometry cases, 39 movement correspondence/policy cases and scoped
+format passed. Earlier exact-rigid admission restrictions below describe their historical subset.
+Current admission is governed by the linked certificate. APIs, caps and output ceilings are unchanged.
+
+
 ## Installed authority and read interval
 
 The owner authenticates its own live read lease before acquiring the query monitor. Its existing

@@ -39,24 +39,50 @@ internal static class RepresentedGeometryTransforms
         if (!Within(pose.Position, MaximumPositionMagnitude) || !Within(local, MaximumLocalMagnitude))
             return default;
         Quaternion q = pose.Orientation;
+        if (!QuaternionNormWithinBand(q)) return default;
+        QuaternionCoefficients(q, out GeometryVector basisX, out GeometryVector basisY, out GeometryVector basisZ);
+        var rotated = new GeometryVector(
+            Dot(local, basisX.X, basisY.X, basisZ.X),
+            Dot(local, basisX.Y, basisY.Y, basisZ.Y),
+            Dot(local, basisX.Z, basisY.Z, basisZ.Z));
+        if (!rotated.IsResolved) return default;
+        return new(AddTranslation(rotated.X, pose.Position.X), AddTranslation(rotated.Y, pose.Position.Y),
+            AddTranslation(rotated.Z, pose.Position.Z));
+    }
+
+    internal static bool QuaternionNormWithinBand(Quaternion q)
+    {
         GeometryInterval x = GeometryInterval.Exact(q.X), y = GeometryInterval.Exact(q.Y);
         GeometryInterval z = GeometryInterval.Exact(q.Z), w = GeometryInterval.Exact(q.W);
         GeometryInterval norm = x.Square().Add(y.Square()).Add(z.Square()).Add(w.Square());
-        if (!norm.IsResolved || norm.Lower < 1d - SquaredUnitTolerance || norm.Upper > 1d + SquaredUnitTolerance)
-            return default;
+        if (!norm.IsResolved) return false;
+        double lower = 1d - SquaredUnitTolerance, upper = 1d + SquaredUnitTolerance;
+        if (norm.Upper < lower || norm.Lower > upper) return false;
+        // Only undecided closed endpoints require exact work. Four represented component squares
+        // use the shared dyadic operations and the same pre-allocation 4096-bit limits.
+        GeometrySign low = norm.Lower >= lower ? GeometrySign.Positive
+            : BoundedGeometryArithmetic.CompareSumOfFourSquares(q.X, q.Y, q.Z, q.W, lower);
+        GeometrySign high = norm.Upper <= upper ? GeometrySign.Negative
+            : BoundedGeometryArithmetic.CompareSumOfFourSquares(q.X, q.Y, q.Z, q.W, upper);
+        return (low is GeometrySign.Positive or GeometrySign.Zero) && (high is GeometrySign.Negative or GeometrySign.Zero);
+    }
 
+    // Bepu 2.4.0 Matrix3x3.cs:279-304 and Matrix3x3Wide.cs:220-241 have the same
+    // coefficient expression graph. Each stage retains its real value and binary32 rounding.
+    // These are coefficient/operation enclosures, not independently rounded geometry vertices.
+    internal static void QuaternionCoefficients(Quaternion q, out GeometryVector basisX,
+        out GeometryVector basisY, out GeometryVector basisZ)
+    {
+        GeometryInterval x = GeometryInterval.Exact(q.X), y = GeometryInterval.Exact(q.Y);
+        GeometryInterval z = GeometryInterval.Exact(q.Z), w = GeometryInterval.Exact(q.W);
         GeometryInterval x2 = Add(x, x), y2 = Add(y, y), z2 = Add(z, z);
         GeometryInterval xx = Multiply(x2, x), yy = Multiply(y2, y), zz = Multiply(z2, z);
         GeometryInterval xy = Multiply(x2, y), xz = Multiply(x2, z), xw = Multiply(x2, w);
         GeometryInterval yz = Multiply(y2, z), yw = Multiply(y2, w), zw = Multiply(z2, w);
         GeometryInterval one = GeometryInterval.Exact(1);
-        var rotated = new GeometryVector(
-            Dot(local, Subtract(Subtract(one, yy), zz), Subtract(xy, zw), Add(xz, yw)),
-            Dot(local, Add(xy, zw), Subtract(Subtract(one, xx), zz), Subtract(yz, xw)),
-            Dot(local, Subtract(xz, yw), Add(yz, xw), Subtract(Subtract(one, xx), yy)));
-        if (!rotated.IsResolved) return default;
-        return new(AddTranslation(rotated.X, pose.Position.X), AddTranslation(rotated.Y, pose.Position.Y),
-            AddTranslation(rotated.Z, pose.Position.Z));
+        basisX = new(Subtract(Subtract(one, yy), zz), Add(xy, zw), Subtract(xz, yw));
+        basisY = new(Subtract(xy, zw), Subtract(Subtract(one, xx), zz), Add(yz, xw));
+        basisZ = new(Add(xz, yw), Subtract(yz, xw), Subtract(Subtract(one, xx), yy));
     }
 
     public static GeometryVector Point(in Matrix3x3 matrix, Vector3 translation, Vector3 local)

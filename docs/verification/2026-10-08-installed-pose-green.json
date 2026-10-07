@@ -1,0 +1,87 @@
+{
+  "base": "13b0bfa7783553cfd1790842ec0457a23a5ca850",
+  "tested_production": {
+    "KhaozEngine.Physics.Bepu/BoundedGeometryArithmetic.cs": "a6e76756830e94d584f1f5da8a015c671e5b0507081c820e04aa656586bc8e91",
+    "KhaozEngine.Physics.Bepu/RepresentedGeometryTransforms.cs": "41754c74fc8d49857ca6999f73f386a310895894dba98630e9af76e918d7684a",
+    "KhaozEngine.Physics.Bepu/InstalledPoseOperator.cs": "9baf0ee8069ea9fe8148a30b0d3b360cc2a9b4c77fd471f07ed7062f23aa905a",
+    "KhaozEngine.Physics.Bepu/InstalledPoseOperations.cs": "6c1aa87eddad6c7468e61bcd76c7809a7126927188dd210264808665b7666b99",
+    "KhaozEngine.Physics.Bepu/InstalledMeshSides.cs": "8b361f14886dfe69e29a0ce996ff83a92a37a3792437761bbe0884d6f8191678",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureGeometry.cs": "4f3819eb39570a2d3f289c8043ac47dbdd6f02264d9bcd9433f10dee73f40afe",
+    "KhaozEngine.Physics.Bepu/CapsuleFeaturePolyhedra.cs": "41229a31785ea36e610a8387852d2eaf6f743c8fa18299c7f8c73de0f984979b",
+    "KhaozEngine.Physics.Bepu/CapsuleFeaturePolyhedraClosest.cs": "ba61dd7d378069e1ea3cfe05b55e019a680fe64c3c4092ae63feb00dddd5c21b",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureMesh.cs": "de8df7f3b732b9f680071808818042791cdd45917fa94e079b7abb7c684f1819",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureMeshClosest.cs": "7f12739999aefa73ce6202eae22f9a82e0650c25f94682bc956c644d45e71e4f"
+  },
+  "final_sources": {
+    "KhaozEngine.Physics.Bepu/BoundedGeometryArithmetic.cs": "a6e76756830e94d584f1f5da8a015c671e5b0507081c820e04aa656586bc8e91",
+    "KhaozEngine.Physics.Bepu/RepresentedGeometryTransforms.cs": "41754c74fc8d49857ca6999f73f386a310895894dba98630e9af76e918d7684a",
+    "KhaozEngine.Physics.Bepu/InstalledPoseOperator.cs": "ae9b751399248569304c292a71294fe686fc5946df8fefe1a3548e4723c7aa1f",
+    "KhaozEngine.Physics.Bepu/InstalledPoseOperations.cs": "2acad84908dafce3e14da2f24b7c38dbff597b655a2f2cf628c60a61e271256d",
+    "KhaozEngine.Physics.Bepu/InstalledMeshSides.cs": "8b361f14886dfe69e29a0ce996ff83a92a37a3792437761bbe0884d6f8191678",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureGeometry.cs": "4f3819eb39570a2d3f289c8043ac47dbdd6f02264d9bcd9433f10dee73f40afe",
+    "KhaozEngine.Physics.Bepu/CapsuleFeaturePolyhedra.cs": "41229a31785ea36e610a8387852d2eaf6f743c8fa18299c7f8c73de0f984979b",
+    "KhaozEngine.Physics.Bepu/CapsuleFeaturePolyhedraClosest.cs": "ba61dd7d378069e1ea3cfe05b55e019a680fe64c3c4092ae63feb00dddd5c21b",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureMesh.cs": "de8df7f3b732b9f680071808818042791cdd45917fa94e079b7abb7c684f1819",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureMeshClosest.cs": "7f12739999aefa73ce6202eae22f9a82e0650c25f94682bc956c644d45e71e4f",
+    "KhaozEngine.Game.Tests/Physics/InstalledPoseDomainTests.cs": "645b59e190053230a764249c36c701b4a87dc541b0cd5ee71abbc998edca02b8",
+    "KhaozEngine.Game.Tests/Physics/InstalledPoseFeatureTests.cs": "706f2df14f38397c2884e9c32898cd512250731114ba6efcd2122aa2039cfd03",
+    "KhaozEngine.Game.Tests/Physics/InstalledPoseOracle.cs": "2bac78dd6c8bb62e8b2da8337c3a6a65a211d69935c921feded8a1499ce36fc1",
+    "KhaozEngine.Game.Tests/Physics/InstalledPoseFixture.cs": "efc1e2d09ce46069b6354d7c4eeda0a70e14417583688e9d5e4d801212a5c2db"
+  },
+  "game": {
+    "exit": 0,
+    "passed": 124,
+    "failed": 0,
+    "skipped": 0,
+    "new_pose_cases": 20
+  },
+  "movement": {
+    "exit": 0,
+    "passed": 39,
+    "failed": 0,
+    "skipped": 0,
+    "corner_neighborhood_capacity": 24,
+    "private_eligibility": 15
+  },
+  "format_first": {
+    "exit": 2,
+    "classification": "Eight initializer whitespace diagnostics in three files, no workspace issue."
+  },
+  "whitespace_only": {
+    "KhaozEngine.Game.Tests/Physics/InstalledPoseFixture.cs": {
+      "before_sha256": "cc7d1d9a2ee1238b32840f899ccc7dc6297e4a1944b936c5b577e4168a9bef58",
+      "after_sha256": "efc1e2d09ce46069b6354d7c4eeda0a70e14417583688e9d5e4d801212a5c2db",
+      "non_whitespace_equal": true,
+      "quoted_literals_equal": true
+    },
+    "KhaozEngine.Physics.Bepu/InstalledPoseOperations.cs": {
+      "before_sha256": "6c1aa87eddad6c7468e61bcd76c7809a7126927188dd210264808665b7666b99",
+      "after_sha256": "2acad84908dafce3e14da2f24b7c38dbff597b655a2f2cf628c60a61e271256d",
+      "non_whitespace_equal": true,
+      "quoted_literals_equal": true
+    },
+    "KhaozEngine.Physics.Bepu/InstalledPoseOperator.cs": {
+      "before_sha256": "9baf0ee8069ea9fe8148a30b0d3b360cc2a9b4c77fd471f07ed7062f23aa905a",
+      "after_sha256": "ae9b751399248569304c292a71294fe686fc5946df8fefe1a3548e4723c7aa1f",
+      "non_whitespace_equal": true,
+      "quoted_literals_equal": true
+    }
+  },
+  "format": {
+    "exit": 0,
+    "explicit_files": 14,
+    "changed": 0,
+    "style_and_reference_projects": [
+      "KhaozEngine.Game.Tests",
+      "KhaozEngine.Physics.Bepu"
+    ]
+  },
+  "review": "Independent installed_pose_certificate_review Ready, no findings, all10 tested production hashes verified. Parent also checked source graphs and raw versus centered contact operations.",
+  "limits": "Bounded source-certified forward affine geometry and conservative operational-side agreement only. No universal resolution, ray/manifold parity, runtime movement fallback, nav anchors, release or game bridge fix.",
+  "logs": {
+    "game": "76b4ecc0995e6f5e127e8e2cce0982536506ddb16c48f8271b6477b3e745d005",
+    "movement": "1b94f450f6842e212b99818387fddd58d1ebf81955c9d98de15fbe4cbfec1194",
+    "format_first": "0cc768d1b0a9201f10f5448ba8bd74002c357b7ad95731426c5143320307afa3",
+    "format": "9b515626553ac5fdc09f05a691504d5b084b577541ee12a5dd0e69d2750afc91"
+  }
+}

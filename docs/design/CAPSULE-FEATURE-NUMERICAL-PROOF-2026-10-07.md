@@ -6,6 +6,13 @@ tests, format and shared source review. The supplied-matrix extension passed 22 
 14 regressions, with scoped format and shared arithmetic review passing. Supplied-pose arithmetic
 passed 30 cases and scoped format. Its shared review is pending. Later gates remain open.
 
+Validated expanded-admission slice: the [installed-pose argument](CAPSULE-FEATURE-INSTALLED-POSE-PROOF-2026-10-08.md)
+records the closed-band common affine certificate and operational correspondence limits. Independent
+source/math review, 124 arithmetic/geometry cases, 39 movement correspondence/policy cases and scoped
+format passed. Earlier exact-rigid admission restrictions below describe their historical subset.
+Current admission is governed by the linked certificate. APIs, caps and output ceilings are unchanged.
+
+
 ## Represented inputs and default
 
 `GeometryInterval` encloses real numbers between two finite binary64 endpoints. `Exact(x)` denotes

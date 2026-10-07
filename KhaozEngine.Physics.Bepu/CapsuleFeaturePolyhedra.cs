@@ -11,9 +11,9 @@ internal readonly record struct CapsuleFeaturePolyhedronEdge(int A, int B, int F
 
 /// <summary>A strictly convex, closed, consistently wound finite solid. Admission checks all faces,
 /// all source vertices and the complete edge/vertex neighborhoods before any closest query.
-/// The proved rigid affine map preserves that topology without rounding world vertices.</summary>
+/// The common positive-determinant affine map preserves topology without rounded world vertices.</summary>
 internal sealed class CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose localPose, RigidPose worldPose,
-    int leafId, Vector3[] localVertices, FeaturePoint[] vertices, int[][] faces)
+    int leafId, Vector3[] localVertices, FeaturePoint[] vertices, int[][] faces, InstalledPoseOperator transform)
 {
     internal TypedIndex InstalledShape { get; } = shape;
     internal RigidPose InstalledLocalPose { get; } = localPose;
@@ -25,6 +25,7 @@ internal sealed class CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose local
     internal CapsuleFeaturePolyhedronEdge[] Edges { get; private set; } = [];
     internal FeaturePoint[] Normals { get; private set; } = [];
     internal int[][] VertexFaces { get; private set; } = [];
+    internal FeaturePoint EdgeDirection(int a, int b) => transform.Edge(LocalVertices[a], LocalVertices[b]);
 
     internal CapsuleFeatureStatus Validate()
     {
@@ -84,8 +85,8 @@ internal sealed class CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose local
                 }
                 incidence[first].Add(faceId);
             }
-            FeaturePoint ab = FeaturePoint.Subtract(Vertices[face[1]], Vertices[face[0]]);
-            FeaturePoint ac = FeaturePoint.Subtract(Vertices[face[2]], Vertices[face[0]]);
+            FeaturePoint ab = EdgeDirection(face[0], face[1]);
+            FeaturePoint ac = EdgeDirection(face[0], face[2]);
             normals[faceId] = FeaturePoint.Cross(ab, ac);
             if (FeaturePoint.Dot(normals[faceId], normals[faceId]).Sign != GeometrySign.Positive)
                 return CapsuleFeatureStatus.Unresolved;
@@ -151,8 +152,8 @@ internal sealed class CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose local
         for (int i = 0; i < face.Length; i++)
         {
             FeaturePoint a = Vertices[face[i]];
-            FeaturePoint b = Vertices[face[(i + 1) % face.Length]];
-            FeatureNumber side = FeaturePoint.Dot(FeaturePoint.Cross(FeaturePoint.Subtract(b, a),
+            FeaturePoint edge = EdgeDirection(face[i], face[(i + 1) % face.Length]);
+            FeatureNumber side = FeaturePoint.Dot(FeaturePoint.Cross(edge,
                 FeaturePoint.Subtract(point, a)), Normals[faceId]);
             GeometrySign sign = side.Sign;
             if (sign == GeometrySign.Unresolved) return sign;

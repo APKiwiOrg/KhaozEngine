@@ -7,6 +7,13 @@ stages for backend and test projects and changed no files. Evidence is recorded 
 corner/support-consumer proof or authorize movement, navigation, a release, a game adoption or a
 bridge-repair claim.
 
+Validated expanded-admission slice: the [installed-pose argument](CAPSULE-FEATURE-INSTALLED-POSE-PROOF-2026-10-08.md)
+records the closed-band common affine certificate and operational correspondence limits. Independent
+source/math review, 124 arithmetic/geometry cases, 39 movement correspondence/policy cases and scoped
+format passed. Earlier exact-rigid admission restrictions below describe their historical subset.
+Current admission is governed by the linked certificate. APIs, caps and output ceilings are unchanged.
+
+
 ## Installed source and lifetime
 
 The existing feature owner authenticates the exact owner-issued lease and its thread/current state

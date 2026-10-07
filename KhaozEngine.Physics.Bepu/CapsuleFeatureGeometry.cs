@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Numerics;
 using BepuPhysics;
 using BepuPhysics.Collidables;
-using BepuUtilities;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
@@ -22,7 +21,7 @@ internal static class CapsuleFeatureGeometry
         out CapsuleFeaturePolyhedron[] leaves)
     {
         leaves = [];
-        if (!ProveRigidPose(pose)) return CapsuleFeatureStatus.Unsupported;
+        if (!ProveInstalledPose(pose)) return CapsuleFeatureStatus.Unsupported;
         if (shape.Type == default(Compound).TypeId)
         {
             ref Compound compound = ref simulation.Shapes.GetShape<Compound>(shape.Index);
@@ -32,9 +31,11 @@ internal static class CapsuleFeatureGeometry
             for (int i = 0; i < scratch.Length; i++)
             {
                 ref var child = ref compound.Children[i];
-                if (!ProveRigidPose(child.LocalPose)) return CapsuleFeatureStatus.Unsupported;
+                if (!ProveInstalledPose(child.LocalPose)) return CapsuleFeatureStatus.Unsupported;
                 // Exactly the pinned backend's composition, including its represented rounding.
                 Compound.GetWorldPose(child.LocalPose, pose, out RigidPose worldPose);
+                if (!InstalledPoseOperations.ProveComposition(child.LocalPose, pose, worldPose))
+                    return CapsuleFeatureStatus.Unsupported;
                 CapsuleFeatureStatus status = CaptureLeaf(simulation, child.ShapeIndex, worldPose,
                     child.LocalPose, i, out CapsuleFeaturePolyhedron? leaf);
                 if (status != CapsuleFeatureStatus.Complete) return status;
@@ -53,7 +54,7 @@ internal static class CapsuleFeatureGeometry
         in RigidPose localPose, int leafId, out CapsuleFeaturePolyhedron? leaf)
     {
         leaf = null;
-        if (!ProveRigidPose(pose)) return CapsuleFeatureStatus.Unsupported;
+        if (!ProveInstalledPose(pose)) return CapsuleFeatureStatus.Unsupported;
         Vector3[] local;
         int[][] polygons;
         if (index.Type == default(Box).TypeId)
@@ -113,18 +114,20 @@ internal static class CapsuleFeatureGeometry
             return CapsuleFeatureStatus.Unsupported;
         }
 
-        CapsuleFeatureStatus transformed = TransformVertices(local, pose, out FeaturePoint[] world);
+        CapsuleFeatureStatus transformed = TransformVertices(local, pose, out FeaturePoint[] world,
+            out InstalledPoseOperator transform);
         if (transformed != CapsuleFeatureStatus.Complete) return transformed;
-        var candidate = new CapsuleFeaturePolyhedron(index, localPose, pose, leafId, local, world, polygons);
+        var candidate = new CapsuleFeaturePolyhedron(index, localPose, pose, leafId, local, world, polygons, transform);
         CapsuleFeatureStatus validation = candidate.Validate();
         if (validation == CapsuleFeatureStatus.Complete) leaf = candidate;
         return validation;
     }
 
-    internal static CapsuleFeatureStatus TransformVertices(Vector3[] local, in RigidPose pose, out FeaturePoint[] world)
+    internal static CapsuleFeatureStatus TransformVertices(Vector3[] local, in RigidPose pose, out FeaturePoint[] world,
+        out InstalledPoseOperator transform)
     {
         world = new FeaturePoint[local.Length];
-        Matrix3x3.CreateFromQuaternion(pose.Orientation, out Matrix3x3 matrix);
+        if (!InstalledPoseOperator.TryCreate(pose, out transform)) return CapsuleFeatureStatus.Unsupported;
         var seamPose = new Pose(pose.Position, pose.Orientation);
         for (int i = 0; i < local.Length; i++)
         {
@@ -132,42 +135,18 @@ internal static class CapsuleFeatureGeometry
             if (!Within(point, 64)) return CapsuleFeatureStatus.Unsupported;
             GeometryVector enclosure = RepresentedGeometryTransforms.PosePoint(seamPose, point);
             if (!enclosure.IsResolved) return CapsuleFeatureStatus.Unsupported;
-            // Retain the real represented-matrix affine expression. Binary32 evaluation is not
-            // the finite geometry, and its rounding belongs only in bounded output publication.
-            FeaturePoint p = FeaturePoint.Exact(point);
-            FeatureNumber x = FeaturePoint.Dot(p, FeaturePoint.Exact(new(matrix.X.X, matrix.Y.X, matrix.Z.X)))
-                .Add(FeatureNumber.Exact(pose.Position.X));
-            FeatureNumber y = FeaturePoint.Dot(p, FeaturePoint.Exact(new(matrix.X.Y, matrix.Y.Y, matrix.Z.Y)))
-                .Add(FeatureNumber.Exact(pose.Position.Y));
-            FeatureNumber z = FeaturePoint.Dot(p, FeaturePoint.Exact(new(matrix.X.Z, matrix.Y.Z, matrix.Z.Z)))
-                .Add(FeatureNumber.Exact(pose.Position.Z));
-            world[i] = new(x, y, z);
+            // PosePoint is an operation correspondence record only. The common certified affine
+            // operator below contains real and actual represented coefficients through every
+            // witness expression. Independently rounded point outputs never define topology.
+            world[i] = transform.Point(point);
             if (!world[i].IsResolved) return CapsuleFeatureStatus.Unresolved;
             if (!world[i].Within(2048)) return CapsuleFeatureStatus.Unsupported;
         }
         return CapsuleFeatureStatus.Complete;
     }
 
-    internal static bool ProveRigidPose(in RigidPose pose)
-    {
-        if (!Within(pose.Position, 2048)) return false;
-        var seamPose = new Pose(pose.Position, pose.Orientation);
-        if (!RepresentedGeometryTransforms.PosePoint(seamPose, Vector3.Zero).IsResolved) return false;
-        Quaternion q = pose.Orientation;
-        FeatureNumber norm = FeatureNumber.Exact(q.X).Multiply(FeatureNumber.Exact(q.X))
-            .Add(FeatureNumber.Exact(q.Y).Multiply(FeatureNumber.Exact(q.Y)))
-            .Add(FeatureNumber.Exact(q.Z).Multiply(FeatureNumber.Exact(q.Z)))
-            .Add(FeatureNumber.Exact(q.W).Multiply(FeatureNumber.Exact(q.W)));
-        if (!norm.IsExact || norm.Value != 1) return false;
-        Matrix3x3.CreateFromQuaternion(q, out Matrix3x3 matrix);
-        FeaturePoint x = FeaturePoint.Exact(matrix.X), y = FeaturePoint.Exact(matrix.Y), z = FeaturePoint.Exact(matrix.Z);
-        return EqualsExact(FeaturePoint.Dot(x, x), 1) && EqualsExact(FeaturePoint.Dot(y, y), 1) &&
-            EqualsExact(FeaturePoint.Dot(z, z), 1) && EqualsExact(FeaturePoint.Dot(x, y), 0) &&
-            EqualsExact(FeaturePoint.Dot(x, z), 0) && EqualsExact(FeaturePoint.Dot(y, z), 0) &&
-            EqualsExact(FeaturePoint.Dot(FeaturePoint.Cross(x, y), z), 1);
-    }
+    internal static bool ProveInstalledPose(in RigidPose pose) => InstalledPoseOperator.TryCreate(pose, out _);
 
-    static bool EqualsExact(FeatureNumber value, double expected) => value.IsExact && value.Value == expected;
     static Vector3 Canonical(Vector3 p) => new(p.X == 0 ? 0 : p.X, p.Y == 0 ? 0 : p.Y, p.Z == 0 ? 0 : p.Z);
     static bool Within(Vector3 p, float maximum) => float.IsFinite(p.X) && float.IsFinite(p.Y) &&
         float.IsFinite(p.Z) && MathF.Abs(p.X) <= maximum && MathF.Abs(p.Y) <= maximum && MathF.Abs(p.Z) <= maximum;

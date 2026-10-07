@@ -58,7 +58,7 @@ internal sealed class CapsuleFeatureMeshClosest
         CapsuleFeatureMeshEdge edge = _mesh.Edges[id];
         FeaturePoint a = _mesh.Vertices[edge.A], second = _mesh.Vertices[edge.B];
         if (Far([a, second])) return;
-        FeaturePoint e = FeaturePoint.Subtract(second, a);
+        FeaturePoint e = _mesh.EdgeDirection(edge.A, edge.B);
         FeatureNumber c = FeaturePoint.Dot(e, e);
         if (c.Sign != GeometrySign.Positive) { _status = CapsuleFeatureStatus.Unresolved; return; }
         EdgeEndpoint(id, a, e, c, _lower);
@@ -96,8 +96,8 @@ internal sealed class CapsuleFeatureMeshClosest
         int[] face = _mesh.Faces[id];
         FeaturePoint origin = _mesh.Vertices[face[0]], n = _mesh.Normals[id];
         if (Far([origin, _mesh.Vertices[face[1]], _mesh.Vertices[face[2]]])) return;
-        GeometrySign lowSide = FeaturePoint.Dot(n, FeaturePoint.Subtract(_lower, origin)).Sign;
-        GeometrySign highSide = FeaturePoint.Dot(n, FeaturePoint.Subtract(_upper, origin)).Sign;
+        if (!_mesh.AgreeSides(id, _lower, _upper, out GeometrySign lowSide, out GeometrySign highSide))
+        { _status = CapsuleFeatureStatus.Unresolved; return; }
         if (lowSide == GeometrySign.Negative && highSide == GeometrySign.Negative) return;
         // A segment crossing the front half-space introduces a clipped-side parameter boundary.
         // This slice refuses that local case instead of omitting its possible constrained minimum.
@@ -146,6 +146,8 @@ internal sealed class CapsuleFeatureMeshClosest
         bool front = false, back = false, uncertain = false;
         foreach (int face in faces)
         {
+            if (!_mesh.AgreeCandidateSides(face, _lower, _upper))
+            { _status = CapsuleFeatureStatus.Unresolved; return; }
             GeometrySign side = FeaturePoint.Dot(_mesh.Normals[face],
                 FeaturePoint.Subtract(axis, _mesh.Vertices[_mesh.Faces[face][0]])).Sign;
             front |= side == GeometrySign.Positive;

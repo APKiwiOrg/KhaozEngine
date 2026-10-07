@@ -103,17 +103,17 @@ square-root enclosures. `GeometrySign` distinguishes Negative, Zero, Positive an
 `CapsuleFeaturePredicates` provides feature-specific finite membership, orientation and closest-feature ordering with
 the spec's 4,096-bit exact-predicate refusal cap. No caller interprets Unresolved as zero or absence.
 
-- [ ] Write finite independent dyadic/rational tests for cancellation, representable boundaries,
+- [x] Write finite independent dyadic/rational tests for cancellation, representable boundaries,
   positive/negative zero, degenerate triangles, skinny triangles, interval ordering, transform
   rounding and overflow. Expected values come from an independent test oracle or closed form.
-- [ ] Run `FullyQualifiedName~CapsuleFeaturePredicateTests` in Game.Tests Release and inspect RED.
-- [ ] Implement bounded predicates and intervals. Verify square-root endpoints by squared bounds.
+- [x] Run `FullyQualifiedName~CapsuleFeaturePredicateTests` in Game.Tests Release and inspect RED.
+- [x] Implement bounded predicates and intervals. Verify square-root endpoints by squared bounds.
   Return Unresolved if enclosure cannot be established within the work cap.
-- [ ] Write the operation-level enclosure argument for transforms, dot/cross/division/root,
+- [x] Write the operation-level enclosure argument for transforms, dot/cross/division/root,
   normalization, witness reconstruction and float output. Cover the exact spec domain and ceilings.
-- [ ] Run GREEN once and have the proof checked independently before treating it as a backend
+- [x] Run GREEN once and have the proof checked independently before treating it as a backend
   certificate. A finite passing sample alone does not complete this task.
-- [ ] Commit the kernel/proof. Do not change the spec's bounds to make failing cases pass.
+- [x] Commit the kernel/proof. Do not change the spec's bounds to make failing cases pass.
 
 ### Task 4: Prove selected-view box and convex features
 
@@ -124,15 +124,15 @@ the spec's 4,096-bit exact-predicate refusal cap. No caller interprets Unresolve
 **Interfaces:** Implement `QueryCapsuleFeature` and `AssertFeatureCurrent` over the live owner-issued
 lease. Internal geometry consumes actual installed `TypedIndex` shapes/poses, not source descriptors.
 
-- [ ] Write RED for box face, edge and vertex incidence, convex hull recentering, flattened child
+- [x] Write RED for box face, edge and vertex incidence, convex hull recentering, flattened child
   transforms, ambiguous disconnected minima and unsupported curved shapes. Include selected-floor
   exclusion, same-static unrelated faces and exact sentinel-span preservation on every refusal.
-- [ ] Run `FullyQualifiedName~CapsuleFeaturePolyhedronTests` once and inspect intended failures.
-- [ ] Implement private bounded scratch, complete candidate enumeration and atomic output commit.
+- [x] Run `FullyQualifiedName~CapsuleFeaturePolyhedronTests` once and inspect intended failures.
+- [x] Implement private bounded scratch, complete candidate enumeration and atomic output commit.
   Authenticate thread/lease before the monitor. Bind successful results to the original lease and
   receiver. Lazy immutable geometry caches do not mutate physical generation.
-- [ ] Run GREEN plus only the affected lease/lifetime filter. Prove cache disposal and rebase behavior.
-- [ ] Commit the backend slice. No LowPropSupport call site changes yet.
+- [x] Run GREEN plus only the affected lease/lifetime filter. Prove cache disposal and rebase behavior.
+- [x] Commit the backend slice. No LowPropSupport call site changes yet.
 
 ### Task 5: Prove finite mesh incidence and the actual corner rule
 
@@ -143,17 +143,22 @@ Create `KhaozEngine.Game.Tests/Physics/CapsuleFeatureMeshTests.cs` and
 **Interfaces:** Mesh output uses the same complete feature/incident-face contract. The legacy
 eligibility helper consumes only that output, never backend shape types or contact-manifold IDs.
 
-- [ ] Write RED for all six origin mesh corners and their translations, interior seam aliases,
+- [x] Write RED for all six origin mesh corners and their translations, interior seam aliases,
   exact open boundaries, non-manifold/reversed faces, concave edges, cracks, disconnected coplanar
   patches, local/source/caller capacity refusal and one unsupported leaf in a compound.
-- [ ] Run the two named classes, keeping the filter below 25 terms.
-- [ ] Implement exact finite incidence and conservative local enumeration. Enclose every exclusion.
+- [x] Run the two named classes, keeping the filter below 25 terms.
+- [x] Implement exact finite incidence and conservative local enumeration. Enclose every exclusion.
   Refuse uncertain minima/topology and preserve front-side membership.
-- [ ] Prove the spec's sole eligible top at a convex top/wall edge and front-side open top boundary.
+- [x] Prove the spec's sole eligible top at a convex top/wall edge and front-side open top boundary.
   Prove competing tops, underside, wall, dome, concave and unresolved neighborhoods refuse.
-- [ ] Run GREEN and independently review geometry plus numerical proof. The existing 24 diagnostic
+- [x] Run GREEN and independently review geometry plus numerical proof. The existing 24 diagnostic
   observations stay intact and are not relabeled as the acceptance oracle.
-- [ ] Commit. Only a successful Tasks 3 to 5 proof opens the runtime gate.
+- [x] Commit. Only a successful Tasks 3 to 5 proof opens the runtime gate.
+
+Recorded geometry gates: `docs/verification/2026-10-08-installed-pose-green.json`,
+`2026-10-08-feature-mesh-green.json`, `2026-10-08-low-lip-feature-correspondence.json` and
+`2026-10-08-low-lip-eligibility-green.json`. Additional corner/capacity integration facts passed
+first validation after their backend RED/GREEN. No artificial RED was introduced for working code.
 
 ### Task 6: Repair legacy low-prop support behind the proof gate
 

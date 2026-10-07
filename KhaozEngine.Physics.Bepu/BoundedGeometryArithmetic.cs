@@ -110,6 +110,24 @@ internal static class BoundedGeometryArithmetic
         return Compare(left, right);
     }
 
+    /// <summary>Exact sign of x*x+y*y+z*z+w*w-expected. This fixed four-component
+    /// operation does not extend the one-to-three-coordinate distance contract.</summary>
+    internal static GeometrySign CompareSumOfFourSquares(double x, double y, double z, double w, double expected)
+    {
+        if (!double.IsFinite(x) || !double.IsFinite(y) || !double.IsFinite(z) ||
+            !double.IsFinite(w) || !double.IsFinite(expected)) return GeometrySign.Unresolved;
+        Dyadic sum = default;
+        ReadOnlySpan<double> values = [x, y, z, w];
+        foreach (double value in values)
+        {
+            Dyadic operand = Split(value);
+            if (!TryMultiply(operand, operand, out Dyadic square) ||
+                !TryAdd(sum, square, out Dyadic next)) return GeometrySign.Unresolved;
+            sum = next;
+        }
+        return Compare(sum, Split(expected));
+    }
+
     /// <summary>Exact oriented area sign for three supplied binary32 points.</summary>
     internal static GeometrySign Orient2D(float ax, float ay, float bx, float by, float cx, float cy)
     {

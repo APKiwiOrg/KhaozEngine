@@ -53,6 +53,10 @@ to redirected stdout. Anonymous pipe readers stay in the driver and drain once u
 `Console.IsOutputRedirected` and `Console.IsErrorRedirected` are diagnostic evidence only. Absent
 handles can report redirected and the managed flags can remain cached after attachment. Success is
 gated by native handles and observed output, never by those flags.
+An unassociated WinExe can also receive a nonzero stale handle. Natural terminal setup requires
+`GetFileType` to report `ERROR_INVALID_HANDLE`, rather than assuming every missing handle is zero.
+Inherited console handles are verified in the driver before launch, then repaired and verified in
+the child after attachment.
 
 Windows can replace handles during attachment when `STARTF_USESTDHANDLES` was absent. The native
 launch cases assert that the requested startup flag was actually used, forcing coverage of both

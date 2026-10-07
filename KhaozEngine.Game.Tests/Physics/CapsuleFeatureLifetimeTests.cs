@@ -167,6 +167,25 @@ public class CapsuleFeatureLifetimeTests
     }
 
     [Fact]
+    public void AUnitTiltOutsideTheUprightDomainRefusesWithoutWritingFaces()
+    {
+        using var scene = new Scene();
+        IPhysicsCapsuleFeatures capability = Capability(scene.View);
+        CapsuleFeatureResult upright = capability.QueryCapsuleFeature(scene.Lease, scene.Target,
+            Capsule, Pose.Identity, 0.001f, new CapsuleIncidentFace[2]);
+        Assert.NotEqual(CapsuleFeatureStatus.Unsupported, upright.Status);
+        Quaternion rotation = new(0.5f, 0.5f, 0.5f, 0.5f);
+        Assert.Equal(1f, rotation.LengthSquared());
+        CapsuleIncidentFace[] faces = Sentinels(), original = (CapsuleIncidentFace[])faces.Clone();
+        CapsuleFeatureResult tilted = capability.QueryCapsuleFeature(scene.Lease, scene.Target,
+            Capsule, new Pose(Vector3.Zero, rotation), 0.001f, faces);
+        Assert.Equal(CapsuleFeatureStatus.Unsupported, tilted.Status);
+        Assert.Equal(0, tilted.Written);
+        Assert.Null(tilted.Lease);
+        Assert.Equal(original, faces);
+    }
+
+    [Fact]
     public void ARefusalCannotBeConsumedAsACurrentFeature()
     {
         using var scene = new Scene();

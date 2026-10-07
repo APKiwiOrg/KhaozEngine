@@ -1,0 +1,70 @@
+using System;
+using System.Numerics;
+
+namespace KhaozEngine.Locomotion;
+
+public static partial class ExplicitCharacterMovement
+{
+    static MovementAvailability Move(in MovementBodyQuery body, Vector3 delta, MovementQueryLease queries,
+        out Vector3 position, out bool blocked)
+    {
+        position = body.Centre;
+        Span<Vector3> path = stackalloc Vector3[MovementCapsuleResolver.MaximumEndpoints];
+        MovementAvailability status = MovementCapsuleResolver.TryResolve(body, delta, queries, path, out int count, out blocked);
+        if (status == MovementAvailability.Known) position = path[count - 1];
+        return status;
+    }
+
+    static MovementAvailability Settle(ref MoveState state, ref MovementSelection selection, float drop,
+        in MoveTuning tuning, MovementQueryLease queries, out bool supported)
+    {
+        supported = false;
+        MovementBodyQuery body = Body(state.Position, tuning, selection);
+        var request = new MovementSupportRequest(body, 0, drop, tuning.MaxSlopeRadians,
+            new(selection.Space, body.Feet));
+        MovementAvailability status = MovementSupportResolver.Select(request, queries, out var placement);
+        if (status != MovementAvailability.Known || placement is null) return status;
+        MovementSupportPlacement support = placement.Value;
+        status = Move(body, support.Centre - body.Centre, queries, out Vector3 position, out _);
+        if (status != MovementAvailability.Known) return status;
+        // A cleared endpoint is not permission to skip a blocked approach to that endpoint.
+        if (position != support.Centre) return MovementAvailability.Known;
+        state.Position = position;
+        selection = new(support.Candidate.Space, support.Candidate.Owner, queries.Identity);
+        supported = true;
+        return MovementAvailability.Known;
+    }
+
+    static MovementBodyQuery Body(Vector3 position, in MoveTuning tuning, in MovementSelection selection) =>
+        new(position, tuning.CapsuleRadius, tuning.CapsuleHalfHeight, selection.Space, selection.Support);
+
+    static MoveState ClearEvents(MoveState state)
+    {
+        state.StepDeltaY = 0;
+        state.ClimbRate = 0;
+        state.LandingImpactSpeed = 0;
+        state.SupportGranted = false;
+        state.CommandedVelocity = Vector2.Zero;
+        return state;
+    }
+
+    static MovementStepResult Hold(in FramedMovementState state, MovementStepOutcome outcome)
+    {
+        if (!state.IsValid) return new(state, outcome);
+        MoveState held = ClearEvents(state.State);
+        held.JumpBufferRemaining = 0;
+        return new(new(held, state.Frame, null), outcome);
+    }
+
+    static MovementStepOutcome Outcome(MovementAvailability status) => status == MovementAvailability.Invalid
+        ? MovementStepOutcome.EnvironmentInvalid : MovementStepOutcome.EnvironmentUnresolved;
+
+    static bool Valid(in MoveTuning tuning) =>
+        Positive(tuning.CapsuleRadius) && Positive(tuning.CapsuleHalfHeight) &&
+        tuning.CapsuleHalfHeight >= tuning.CapsuleRadius && Positive(tuning.Gravity) && Positive(tuning.MaxFallSpeed) &&
+        Nonnegative(tuning.WalkSpeed) && Nonnegative(tuning.RunSpeed) && Nonnegative(tuning.SwimSpeed) &&
+        Nonnegative(tuning.JumpSpeed) && Nonnegative(tuning.GroundedEpsilon) && Nonnegative(tuning.StepHeight) &&
+        Nonnegative(tuning.CoyoteTime) && Nonnegative(tuning.MaxSlopeRadians) && tuning.MaxSlopeRadians < MathF.PI * 0.5f;
+    static bool Positive(float value) => float.IsFinite(value) && value > 0;
+    static bool Nonnegative(float value) => float.IsFinite(value) && value >= 0;
+}

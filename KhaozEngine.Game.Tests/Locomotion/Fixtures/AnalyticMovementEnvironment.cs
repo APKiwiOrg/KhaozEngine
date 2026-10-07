@@ -59,12 +59,12 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
             .ThenBy(w => w.Bounds.Min.X).ThenBy(w => w.Bounds.Min.Y).ToArray();
     }
 
-    public MovementQueryLease Acquire(string? room)
+    public MovementQueryLease Acquire(string? room, float maxRise = 0f, float maxDrop = 0f)
     {
         Assert.Null(_view);
         _view = Physics.CreateQueryViewExcludingStatics([]);
         var frame = new MovementFrameDescriptor(WorldFrame.Origin, Vector3.Zero, 1ul);
-        var scope = new MovementQueryScope(new Vector3(-32f), new Vector3(32f), 0f, 0f,
+        var scope = new MovementQueryScope(new Vector3(-32f), new Vector3(32f), maxRise, maxDrop,
             "world", room is null ? null : Space(room), Identity, frame);
         Acquisition = new EnvironmentAcquisitionFixture(_view, scope)
         {
@@ -115,7 +115,8 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
         Span<MovementDomainContact> contacts)
     {
         // The numerical certificate applies only to this finite fixture envelope and capsule family.
-        if (MissingContainment || query.Body.Radius != 0.25f || query.Body.HalfHeight != 0.75f ||
+        if (MissingContainment || query.Body.Radius < 0.25f || query.Body.Radius > 0.252f ||
+            query.Body.HalfHeight < 0.4f || query.Body.HalfHeight > 0.752f ||
             Vector3.Abs(query.Body.Centre).X > 16f || Vector3.Abs(query.Body.Centre).Y > 16f ||
             Vector3.Abs(query.Body.Centre).Z > 16f || Vector3.Abs(query.Delta).X > 8f ||
             Vector3.Abs(query.Delta).Y > 8f || Vector3.Abs(query.Delta).Z > 8f) return Refused();

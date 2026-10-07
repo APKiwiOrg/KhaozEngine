@@ -42,7 +42,7 @@ public static partial class CharacterMovement
     /// length below the same 1e-6 length-squared dead-zone the player path uses is treated as idle. This is the only
     /// difference between the legacy AI and player entry points. Precise input preserves smaller magnitudes.
     /// Once resolved, both drive the identical <c>StepCore</c>.</summary>
-    private static (Vector2 dir, float fraction) ResolveWorldDir(Vector2 worldDir, bool preserveSmallMagnitude)
+    internal static (Vector2 dir, float fraction) ResolveWorldDir(Vector2 worldDir, bool preserveSmallMagnitude)
     {
         if (preserveSmallMagnitude) return ResolvePreciseDirection(worldDir);
 

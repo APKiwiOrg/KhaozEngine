@@ -15,7 +15,15 @@ internal static class MovementCapsuleResolver
     const float Skin = MovementQueryLease.CoverageSkinMetres;
 
     internal static MovementAvailability TryResolveSolids(in MovementBodyQuery body, Vector3 displacement,
-        MovementQueryLease queries, Span<Vector3> destination, out int written, out bool blocked)
+        MovementQueryLease queries, Span<Vector3> destination, out int written, out bool blocked) =>
+        ResolveCore(body, displacement, queries, false, destination, out written, out blocked);
+
+    internal static MovementAvailability TryResolve(in MovementBodyQuery body, Vector3 displacement,
+        MovementQueryLease queries, Span<Vector3> destination, out int written, out bool blocked) =>
+        ResolveCore(body, displacement, queries, true, destination, out written, out blocked);
+
+    static MovementAvailability ResolveCore(in MovementBodyQuery body, Vector3 displacement,
+        MovementQueryLease queries, bool proveMedium, Span<Vector3> destination, out int written, out bool blocked)
     {
         written = 0;
         blocked = false;
@@ -29,7 +37,7 @@ internal static class MovementCapsuleResolver
             Span<CapsuleContact> contactBuffer = contacts.AsSpan(0, MovementQueryLease.MaxSolidContacts);
             Span<Vector3> normalBuffer = normals.AsSpan(0, MovementQueryLease.MaxSolidContacts);
             Span<Vector3> path = stackalloc Vector3[MaximumEndpoints];
-            MovementAvailability status = Trace(body, Vector3.Zero, queries, out CapsuleSweepResult initial,
+            MovementAvailability status = Trace(body, Vector3.Zero, queries, proveMedium, out CapsuleSweepResult initial,
                 out _, out _);
             if (status != MovementAvailability.Known) return status;
             // A closed zero-time Hit is neither a safe starting pose nor a recovery certificate.
@@ -43,7 +51,7 @@ internal static class MovementCapsuleResolver
             bool obstructed = false;
             for (int correction = 0; correction <= MaximumCorrections; correction++)
             {
-                status = Trace(current, remaining, queries, out CapsuleSweepResult sweep,
+                status = Trace(current, remaining, queries, proveMedium, out CapsuleSweepResult sweep,
                     out Vector3 requestedEnd, out double inflation);
                 if (status != MovementAvailability.Known) return status;
                 if (sweep.Status == CapsuleSweepStatus.Clear)
@@ -84,7 +92,7 @@ internal static class MovementCapsuleResolver
                 if (advance > 0)
                 {
                     Vector3 prefix = remaining * (float)(advance / length);
-                    status = Trace(current, prefix, queries, out CapsuleSweepResult prefixSweep,
+                    status = Trace(current, prefix, queries, proveMedium, out CapsuleSweepResult prefixSweep,
                         out Vector3 prefixEnd, out _);
                     if (status != MovementAvailability.Known) return status;
                     if (prefixSweep.Status != CapsuleSweepStatus.Clear) return MovementAvailability.Unresolved;
@@ -115,12 +123,15 @@ internal static class MovementCapsuleResolver
     }
 
     static MovementAvailability Trace(in MovementBodyQuery body, Vector3 delta, MovementQueryLease queries,
-        out CapsuleSweepResult result, out Vector3 end, out double inflation)
+        bool proveMedium, out CapsuleSweepResult result, out Vector3 end, out double inflation)
     {
         result = default;
         if (!MovementCapsuleRounding.TryEnclose(body, delta, out MovementBodyQuery enclosure, out end, out inflation))
             return MovementAvailability.Unresolved;
-        return queries.QuerySolidSweep(enclosure, delta, out result);
+        MovementAvailability status = queries.QuerySolidSweep(enclosure, delta, out result);
+        if (status != MovementAvailability.Known || result.Status != CapsuleSweepStatus.Clear || !proveMedium)
+            return status;
+        return MovementWaterPathProof.Check(enclosure, delta, queries);
     }
 
     static MovementAvailability ClearPlacement(in MovementBodyQuery body, MovementQueryLease queries,

@@ -80,7 +80,7 @@ public static partial class CharacterMovement
     /// (the NPC path always passes <c>null</c>: there is no camera on it).</param>
     /// <param name="dt">Timestep in seconds. A non-positive dt turns nothing.</param>
     /// <param name="t">Carries <see cref="MoveTuning.FacingTurnSpeed"/>.</param>
-    private static float ResolveFacing(float current, Vector2 moveDir, float? faceYaw, float dt, in MoveTuning t)
+    internal static float ResolveFacing(float current, Vector2 moveDir, float? faceYaw, float dt, in MoveTuning t)
     {
         float held = WrapYaw(current);
         float target = faceYaw.HasValue ? WrapYaw(faceYaw.Value)

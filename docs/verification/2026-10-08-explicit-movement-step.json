@@ -1,0 +1,100 @@
+{
+  "status": "Certified dry movement and explicit holds. Wet traversal and Tasks 4 to 6 remain incomplete.",
+  "baseCommit": "1937aaa78",
+  "runs": {
+    "combined-path-red": {
+      "path": "/tmp/swim-combined-path-red.log",
+      "sha256": "d44ef435948c432a781baf281d65f35699b3eb64aa4d945ff497f7412a98748f",
+      "exitCode": 1,
+      "passed": 0,
+      "failed": 12,
+      "skipped": 0
+    },
+    "combined-path-green": {
+      "path": "/tmp/swim-combined-path-green.log",
+      "sha256": "dbd2bd53b55f615fe9d601c5d24a12625d14125b6db40450c4239806a329dba7",
+      "exitCode": 1,
+      "passed": 34,
+      "failed": 5,
+      "skipped": 0
+    },
+    "combined-path-fixture-green": {
+      "path": "/tmp/swim-combined-path-fixture-green.log",
+      "sha256": "dabe87eb13e23f76e8eaa727fd56acc2db580e4beb8d0b1d248b7181b337fc15",
+      "exitCode": 0,
+      "passed": 50,
+      "failed": 0,
+      "skipped": 0
+    },
+    "combined-path-controls": {
+      "path": "/tmp/swim-combined-path-controls.log",
+      "sha256": "edd72d4f7b182695de309445788fd639f2615c2e6e3a9d1c4f2e9298b5a85eac",
+      "exitCode": 0,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "explicit-step-runtime-red": {
+      "path": "/tmp/swim-explicit-step-runtime-red.log",
+      "sha256": "63846abe7785c70f8c9baf1c8a269bf394bbedc2af46999657459c3645ecd7c0",
+      "exitCode": 1,
+      "passed": 0,
+      "failed": 12,
+      "skipped": 0
+    },
+    "explicit-water-pace-red": {
+      "path": "/tmp/swim-explicit-water-pace-red.log",
+      "sha256": "9a18f82f9141e5c4ab98491e8d9cb20ff9dd398804c3db3bec06fbc4b5c796e6",
+      "exitCode": 1,
+      "passed": 0,
+      "failed": 5,
+      "skipped": 0
+    },
+    "explicit-step-green": {
+      "path": "/tmp/swim-explicit-step-green.log",
+      "sha256": "6ddf49621d80de15e3d9c1becf2cf846bea153e91c8b4c1cb9179706d06e1d93",
+      "exitCode": 0,
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0
+    },
+    "explicit-step-regressions": {
+      "path": "/tmp/swim-explicit-step-regressions.log",
+      "sha256": "b648d296bcd39f2dda1f6fdda3abab0c59b6f3beedc29af6e0f1c302091bacb8",
+      "exitCode": 0,
+      "passed": 166,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "fixtureCorrection": "The prior finite analytic producer accepted only exact 0.25/0.75 dimensions and rejected the outward query enclosure. Its finite radius/half-height range now covers both required bodies and the bounded enclosing inflation. Six analytic entry controls and explicit Known-wet controls prevent fixture refusal from masquerading as a wet-policy test.",
+  "stepRed": "The first compiler run found the missing policy/outcome types. API shells then compiled and all twelve step cases failed at NotImplementedException. Five new water-pace cases separately failed at that same missing step.",
+  "pending": [
+    "Wet region and initial-contact certificate",
+    "Step-up/shore transition",
+    "Full fluid entry/landing integration",
+    "Movement-head lease publication and command consumption",
+    "Full verification and independent whole-branch review"
+  ],
+  "sourceHashes": {
+    "KhaozEngine.Locomotion/MovementCapsuleResolver.cs": "42b627eee0a55db0e92704424ea50006c6cbea036febea2bbb2eec7bcfec478a",
+    "KhaozEngine.Locomotion/MovementWaterPathProof.cs": "b4fbcae6a94fb06d4ed2975ebebef7375e534e7dcfae6d56fc2644e6e0f2aca8",
+    "KhaozEngine.Locomotion/ExplicitCharacterMovement.cs": "6d02636918dcaddd7f4d96f60f91f227228fe4339a734a9a4249b3d8743d0dff",
+    "KhaozEngine.Locomotion/ExplicitCharacterMovement.Queries.cs": "aa7feaa97d1dd4186954089a9cdf683435818a11d058f648255b82b0f9f9e3f0",
+    "KhaozEngine.Locomotion/MovementStepResult.cs": "5402d11dbc3ef39c87c3e697525e55f8f6a094eb307860e4f5aec5febf09f600",
+    "KhaozEngine.Locomotion/WaterTraversalPolicy.cs": "c96efa0d6ffa46a3f6e9df824b38633332c2bbebb119dc460ed93a7a84bfbdc7",
+    "KhaozEngine.Locomotion/CharacterMovement.Directional.cs": "5f5e517ebe2b05bee82fa8079a6e5aa9198574f18ffb8ebb3d08a2e67a4ccaff",
+    "KhaozEngine.Locomotion/CharacterMovement.Horizontal.cs": "305525d84a18d4dac904843939d39ec8cb8ae294395983cdaedd1e88c3357a18",
+    "KhaozEngine.Locomotion/CharacterMovement.Facing.cs": "2d72eed112632193bf024780e623efb0e0a390e7d7a85b8b96d0352901f798f3",
+    "KhaozEngine.Game.Tests/Locomotion/MovementCombinedPathTests.cs": "394bb504940f07acf465f9acf4aeed9d4a4b3607f523dfa40bd8403dd2d187d5",
+    "KhaozEngine.Game.Tests/Locomotion/MovementEnvironmentEnclosureTests.cs": "82219cade20ae620ae5773a04ea319c7b5b58161d19d16185234d330147fc468",
+    "KhaozEngine.Game.Tests/Locomotion/ExplicitCharacterMovementTests.cs": "573aadd0bf5f50d70042105323df4790838a0a19a8dc4410d76353b8f256f4f0",
+    "KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.cs": "32f04b4965ef1992563c264bfede16cd1997b5c3c3d389455d7373d37f853c3f"
+  },
+  "format": {
+    "applyExit": 0,
+    "verifyExit": 0,
+    "applyChangedFiles": 1,
+    "change": "Initializer whitespace in ExplicitCharacterMovementTests only. Verify changed zero files."
+  }
+}

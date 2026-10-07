@@ -469,6 +469,26 @@ instead of returning a usable pose. Solid-contact scratch is bounded at 16384 co
 and tolerances belong in profile/query policy identity. Selection proves a placement only, not the
 swept movement or water transitions required to reach it.
 
+### Explicit movement development status
+
+`ExplicitCharacterMovement.Step` and `StepTowards` use a caller-owned `MovementQueryLease` and
+return `MovementStepResult`. Publish its pure framed state before disposing the lease. Camera and
+world commands share the existing direction and facing rules and the same capsule resolver.
+`Advanced` and `Blocked` are distinct from unresolved/invalid environment, placement refusal and
+frame mismatch. A refusal holds the recorded pose/frame, clears per-tick effects and consumes the
+jump buffer. Cold state rebuilds canonical selection through the existing null-hint witness.
+
+The combined resolver checks medium coverage on every accepted solid prefix and correction using
+the same outward capsule enclosure. Certified dry paths can move, collide, settle onto proved
+support and land-jump. Water-origin flight over certified dry space retains swim pace and direction
+scaling, then clears its excursion on proved footing. No local query state enters the wire.
+
+Wet-region admission remains unresolved until the producer supplies the missing region/contact
+facts. A local column interval is never extrapolated into a whole-region permission. Supported
+step-up/shore transitions, actual surface entry/jump settlement, movement-head wiring and native
+acceptance are still in development. Active committed movement currently refuses this opt-in path.
+Legacy entry points and unconfigured callers retain their existing behavior.
+
 ### Explicit surface motion development status
 
 `WaterExcursionState` is the pure None/Surface/AirborneFromWater value carried by

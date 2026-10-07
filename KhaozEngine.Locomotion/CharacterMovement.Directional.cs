@@ -72,7 +72,7 @@ public static partial class CharacterMovement
     /// <para>The run bit is the one thing a fraction cannot carry, since refusing a sprint changes the BASE speed the
     /// fraction multiplies rather than the fraction, so it rides back alongside it. Forward and strafe pass it
     /// through untouched.</para></summary>
-    private static (Vector2 dir, float fraction, bool run) ResolveCameraCommand(in MoveCommand cmd, in MoveTuning tuning)
+    internal static (Vector2 dir, float fraction, bool run) ResolveCameraCommand(in MoveCommand cmd, in MoveTuning tuning)
     {
         (Vector2 dir, float fraction) = ResolveCameraRelative(cmd);
         if (!cmd.FaceCamera) return (dir, fraction, cmd.Run);   // no front, no sectors, nothing to charge

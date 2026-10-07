@@ -776,7 +776,7 @@ Expected: exit 0. Record the report digest in the private `RUNS.md` and only "in
 
 **Fixture.** `SurfacePatchFixtures.Sample()`: key `("ground", -1, 0)`, `CellMinX 60`, `CellMinZ 0`, width 4, depth 2, heights `{ -50000, 0, 1433, 1331, 1363, 518, int.MaxValue, int.MinValue, 7, 8, 9, 10, 11, 12, 13 }`, cells in order: `(14,0,Full,0,None,Auto)`, `(3,5,DiagonalHalf,1,FeatherOverlay,Auto)`, `(3,5,CornerQuarter,2,Blocked|Indoor,Auto)`, `(0,0,Full,0,NoDraw|LegacyBridge,Auto)`, `(65535,65535,CornerThreeQuarter,3,None,ForceNwSe)`, `(1,0,Full,0,None,ForceSwNe)`, `(1,0,Full,0,None,Auto)` twice, presence `{ 0b1111_1101UL }`. `Row(int cells)` is surface `r`, slot (0, 0), one row of `cells` present `Full` cells, heights 0.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // SurfacePatchCodecTests
@@ -864,7 +864,7 @@ public void Subdivision_LegalOnlyOnThePatchBoundaryOrAPresenceRim()
 }
 ```
 
-- [ ] **Step 2: Run red.** `wa_test t4-red "$MAPDOC" "FullyQualifiedName~SurfacePatchCodecTests|FullyQualifiedName~LatticeAddressTests"`. Expected: build FAIL naming `MapSurfacePatch`, `MapExactValue` and `MapLatticeAddress`.
+- [x] **Step 2: Run red.** `wa_test t4-red "$MAPDOC" "FullyQualifiedName~SurfacePatchCodecTests|FullyQualifiedName~LatticeAddressTests"`. Expected: build FAIL naming `MapSurfacePatch`, `MapExactValue` and `MapLatticeAddress`.
 - [ ] **Step 3: Implement the types and the codec.**
 - [ ] **Step 4: Run green.** `wa_test t4-green "$MAPDOC" "FullyQualifiedName~SurfacePatchCodecTests|FullyQualifiedName~LatticeAddressTests"`. Expected: PASS, 10 cases.
 - [ ] **Step 5: Commit** `KhaozEngine.MapDoc/Surfaces KhaozEngine.MapDoc.Tests/Surfaces`, message `feat(mapdoc): add exact scalars, rational lattice addresses and bounded surface patches`.
@@ -3467,3 +3467,12 @@ acceptance, and this focused checkpoint is not whole-engine verification or Task
 
 Inventory passed at engine 3b294a6fbb278b95e38dd8b125b50164a9bcb9e6. Private record
 Grimhollow 10a5779c73804fd8d140938515c86b13dcdb6a92. Task 3 is complete. Detailed evidence remains private.
+
+
+### Task 4 intended compile-time RED
+
+The approved ten-case source compiled to five expected diagnostics: three missing Surfaces
+namespace errors and two missing MapSurfacePatch return types. Zero tests executed. Missing
+namespace and return types prevented binding the remaining bodies, so no separate scalar/address
+diagnostic is claimed. All three frozen hashes were unchanged. The secondary slot was released.
+Proof is proofs/2026-10-07-r2-task4-red.json. Approved Task 4 implementation proceeds next.

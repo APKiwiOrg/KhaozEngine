@@ -637,3 +637,37 @@ signed dyadic subtraction, pre-shift carry reservation, pre-square size check an
 term additions preserve exact signs within the 4096-bit cap. Existing product comparison semantics
 are retained. The eight source facts state independent dyadic identities. This does not validate
 any transform that produced the supplied coordinates, and no runtime result was rerun in that review.
+
+## Identity-box point-witness preparation
+
+The authorized exact-distance subset from `9518d0e1`/`05379bbc3` is imported without supplied-pose
+code or its unrelated proof section. A point witness must verify every coordinate operation before
+passing it to that exact predicate. A double subtraction or addition is only a proposal.
+
+For an identity box, propose each local centre coordinate by subtracting the installed translation.
+Verify the proposal's squared difference exactly with `CompareSquaredDistances`, plus its sign,
+so a rounded subtraction cannot become an exact local point. Expand the box's Y half-extent by
+the capsule's cylindrical half-length. Verify that positive sum by comparing `(sum-halfExtent)^2`
+with `halfLength^2`, again preserving the sign. Refuse if either proposal is not exact.
+
+The distance from a vertical capsule axis to an axis-aligned box equals the distance from its centre
+to the box expanded only along Y by the axis half-length. Clamp the verified local point to that
+finite expanded box. The clamped coordinates are selected represented values, not rounded arithmetic.
+Compare their exact squared distance with the supplied radius squared. Negative means overlap, zero
+closed tangency, positive separation, and unresolved retains no contact assertion.
+
+This is a predicate for the supplied point only. A later sweep must separately prove that a witness
+point lies on its original path, and certify the complete prefix and candidate set. Registered shape
+access remains under the owner's gate. Factor the existing identity-box data validation into one
+internal reader used by support and point predicates, preserving its exact supported domain.
+
+Ten fixtures cover separation, penetration, face/corner tangency, cylindrical extent, zero-length
+axis, translated geometry, unrepresentable translation, unrepresentable extent addition and malformed
+or unsupported inputs. No general pose, mutable descriptor, world-index or native-query assumption
+is introduced. Tests precede the implementation.
+
+The exact-distance import passed its 22 requested primitive/reconciliation facts. The conditional
+no-build point-witness run then failed all ten cases at the absent `CapsuleBoxPointWitness` type,
+after source/lease/pose and stored tiny-height controls passed. Zero skips. Logs are
+`/tmp/swim-distance-reconcile.log` (exit 0) and `/tmp/swim-box-witness-red.log` (expected exit 1).
+This preserves the arithmetic-versus-geometry distinction before point-witness implementation.

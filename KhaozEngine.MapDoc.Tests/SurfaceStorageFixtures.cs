@@ -55,6 +55,51 @@ internal static class SurfaceStorageFixtures
             doc.Surfaces.Patches.Add(patch.Key, patch);
         return doc;
     }
+    internal static void Apply(MapDocument doc, string change)
+    {
+        switch (change)
+        {
+            case "height":
+                doc.Surfaces.Patches[new("ground", 0, 0)].Heights[5]++;
+                break;
+            case "unit":
+            {
+                int index = doc.Surfaces.Refs.FindIndex(s => s.Id == "ridge");
+                MapSurfaceRef surface = doc.Surfaces.Refs[index];
+                doc.Surfaces.Refs[index] = surface with { Frame = surface.Frame with { HeightUnitMetres = new(1, 1000) } };
+                MapSurfacePatch patch = doc.Surfaces.Patches[new("ridge", 0, 0)];
+                for (int i = 0; i < patch.Heights.Length; i++) patch.Heights[i] *= 10;
+                int recordIndex = patch.Records.FindIndex(r => r.Id == "ridge-rim");
+                var chain = (MapBoundaryChain)patch.Records[recordIndex];
+                patch.Records[recordIndex] = chain with
+                {
+                    Vertices = chain.Vertices.Select(v => v with { HeightUnits = v.HeightUnits * 10 }).ToArray(),
+                };
+                break;
+            }
+            case "record":
+            {
+                MapSurfacePatch patch = doc.Surfaces.Patches[new("ridge", 0, 0)];
+                int index = patch.Records.FindIndex(r => r.Id == "ridge-rim");
+                var chain = (MapBoundaryChain)patch.Records[index];
+                MapChainVertex[] vertices = chain.Vertices.ToArray();
+                vertices[0] = vertices[0] with { HeightUnits = vertices[0].HeightUnits + 1 };
+                patch.Records[index] = chain with { Vertices = vertices };
+                break;
+            }
+            case "role":
+            {
+                int index = doc.Surfaces.Refs.FindIndex(s => s.Id == "ridge");
+                doc.Surfaces.Refs[index] = doc.Surfaces.Refs[index] with { Role = MapSurfaceRole.Ceiling };
+                break;
+            }
+            case "displayName":
+                doc.DisplayName += " renamed";
+                break;
+            default:
+                throw new ArgumentException("unknown synthetic identity change", nameof(change));
+        }
+    }
     internal static MapDocument ReverseDependants(bool withFinePage)
     {
         MapDocument doc = Document();

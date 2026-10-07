@@ -339,7 +339,7 @@ EDITOR=KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj
 COMPAT=KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj
 HARNESS=KhaozEngine.MapDoc.OracleHarness.Tests/KhaozEngine.MapDoc.OracleHarness.Tests.csproj
 RUMP=KhaozEngine.Tests/KhaozEngine.Tests.csproj
-wa_run()  { n=$1; shift; bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-$n" "$wa_r2_log_dir/$n.log" -- "$@"; echo "exit $? for $n"; }
+wa_run()  { n=$1; shift; local wa_command_rc; if bash /tmp/grimhollow-orch/slot-run.sh "wa-r2-$n" "$wa_r2_log_dir/$n.log" -- "$@"; then wa_command_rc=0; else wa_command_rc=$?; fi; echo "exit $wa_command_rc for $n"; return "$wa_command_rc"; }
 wa_test() { wa_run "$1" dotnet test "$2" -c Release --filter "$3"; }
 ```
 

@@ -124,8 +124,9 @@ Three public Facts in `SurfaceAcquisitionSessionTests`:
 // One declared ref has IndoorSpan.DomainTags backed by ["captured"]. TryGetSurface succeeds,
 // returns a read-only detached tag list, later caller edits leave it unchanged. Unknown id -> false/null.
 // Session_IncidentKnowledgeDistinguishesCompleteExistingAndNewPartialKeys
-// Complete OnePatch: Find then true/empty incidents. RecordReferrer saved then slot-0 window:
-// the existing seed preserves yard-far@ground(300,0) incidence. Add new ground(1,0) to that
+// Complete OnePatch: Find then true/empty incidents. Start from RecordReferrer and copy only
+// yard-far with Lattice ground(0,0), retaining its ground(300,0) anchor, before Save. Its
+// actual footprint now intersects seed0. Load slot0 and preserve that remote incidence. Add new ground(1,0) to that
 // partial document without saving: serve it, then false/null incidence, never true/empty.
 ```
 

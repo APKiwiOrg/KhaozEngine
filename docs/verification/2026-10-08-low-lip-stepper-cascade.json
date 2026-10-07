@@ -1,0 +1,31 @@
+{
+  "base": "5eceb2c16",
+  "classification": "Work in progress, not for integration. The proper local fix for the #1270 approach exposes pre-existing stepper defects, and the follow-on fixes break other pinned behaviors.",
+  "changes": {
+    "D1 walkable clearance": "CharacterMovement.WalkablePush.cs. A moving body keeps real overlap recovery along the MTV, and only the skin clearance of a walkable push is vertical.",
+    "D2 forward tread-find": "PropSupportFloor reads only the tread-fan half ahead of the intended travel.",
+    "D3 surface step drop": "DropsBeyondStep measures a ledge drop from the supporting contact, shared by the GroundedEpsilon stick and the step-down hold.",
+    "D4 nearer landing": "TryStepUp retries a half and quarter advance when the one-radius landing is not walkable."
+  },
+  "results": [
+    "D1 only: the #1270 approach arrives in 14 steps at 0.41 mm. Movement project fails only the 7 known Task 7 raw-point hypotheses. Game Locomotion and Physics namespaces fail 4 of 1399: StepDownBeyondStepHeight 0.45 and three ShallowTreadStaircaseBase walk rows. The three run-climb penetration rows that broke the #1265 broad attempt pass.",
+    "Old code deterministic sweep: shallow-tread staircase walk stalls on all 21 starts at 2 m/s, none at 3 or 4 m/s. D1 stalls all 21 at 3 m/s, none at 2 or 4 m/s.",
+    "Step-down sweep r 0.4: old code steps up to 0.44 m. D1 steps 0.43 to 0.51 m by rolling over the edge, and 0.41 and 0.42 fall after the tread-find re-grabs the ledge behind the body.",
+    "D1 to D4: new and existing targets pass, 29 of 29. Locomotion-dependent projects: Game 17 of 2459 fail, Movement 7 known hypotheses, Server, TileWorld.Physics and MapEditor pass.",
+    "Attribution with D4 disabled: D4 alone causes 11 ConsumerStairBaseMount run rows, SteeperGrade_RunClimb and two run StairGlide streams. D1 to D3 still fail Capsule_MountsDomeFromSide_ByJumping, IsolatedStepDown_StampsNegativeStepDelta and the walk-descend StairGlide stream."
+  ],
+  "logs": [
+    "/tmp/grimhollow-orch/lowlip-walkable-push-movement.log",
+    "/tmp/grimhollow-orch/lowlip-approach-trace.log",
+    "/tmp/grimhollow-orch/lowlip-walkable-push-game.log",
+    "/tmp/grimhollow-orch/lowlip-walkable-sweep.log",
+    "/tmp/grimhollow-orch/lowlip-stair-red.log",
+    "/tmp/grimhollow-orch/lowlip-stair-green2.log",
+    "/tmp/grimhollow-orch/lowlip-locomotion-dependents.log",
+    "/tmp/grimhollow-orch/lowlip-attrib-nod4.log"
+  ],
+  "limits": [
+    "Diagnostic sweeps ran through temporary instrumentation that is not in this commit. The sweep source is preserved beside the logs as TempWalkablePushTrace.cs.txt.",
+    "Not integrated. Owner decision pending on the stepper direction versus #438."
+  ]
+}

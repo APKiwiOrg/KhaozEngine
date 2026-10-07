@@ -234,4 +234,45 @@ public class LipContactShortRiserTests
             $"{climbed:F3} m - the full-radius down-sweep straddled the {tread:F2} m first tread and only the ray-fan " +
             $"fallback should start the mount from the terrain floor.");
     }
+
+    // The same shallow-tread staircase climbed END TO END at three walk speeds. Mid-run, the step-up's one-radius forward
+    // probe lands across the NEXT nosing, whose edge normal is too steep to stand on, so the full-radius landing is
+    // refused on every riser. Before the step-up searched a shorter landing, a walk only rose when the support sweep's
+    // first hit happened to be that steep nosing, which depended on millimetres of approach: every 2 m/s start stalled
+    // after two risers. The whole 12-riser run is 3.0 m.
+    [Theory]
+    [InlineData(2f, 1.00f)]
+    [InlineData(2f, 1.20f)]
+    [InlineData(2f, 1.40f)]
+    [InlineData(3f, 1.00f)]
+    [InlineData(3f, 1.20f)]
+    [InlineData(3f, 1.40f)]
+    [InlineData(4f, 1.00f)]
+    [InlineData(4f, 1.20f)]
+    [InlineData(4f, 1.40f)]
+    public void ShallowTreadStaircase_WalkClimbsEveryRiser(float walkSpeed, float startZ)
+    {
+        const float riser = 0.25f, tread = 0.35f;
+        MoveTuning t = Consumer with { WalkSpeed = walkSpeed };
+        float halfH = t.CapsuleHalfHeight;
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        AddBoxStairs(world, riser, tread);
+        world.Step(1f / 30f);
+
+        var state = new MoveState { Position = new Vector3(0f, halfH, startZ), Grounded = true };
+        var cmd = new MoveCommand(new Vector2(0f, 1f), false, cameraYaw: 0f, jump: false);
+        float Ground(float x, float z) => 0f;
+        Func<float, float, Vector3> normal = (x, z) => Vector3.UnitY;
+
+        float maxY = halfH;
+        for (int i = 0; i < 300; i++)
+        {
+            state = CharacterMovement.Step(state, cmd, 1f / 30f, Ground, t, normal, world);
+            maxY = MathF.Max(maxY, state.Position.Y);
+        }
+        float climbed = maxY - halfH;
+        Assert.True(climbed > 12f * riser - 0.05f,
+            $"shallow-tread staircase walk stalled ({walkSpeed:F1} m/s, startZ={startZ:F2}): climbed only {climbed:F3} " +
+            $"of {12f * riser:F2} m");
+    }
 }

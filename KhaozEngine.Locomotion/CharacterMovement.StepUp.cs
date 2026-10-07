@@ -102,22 +102,11 @@ public static partial class CharacterMovement
         float advanced = Vector3.Distance(new Vector3(fwd.X, 0f, fwd.Z), new Vector3(pos.X, 0f, pos.Z));
         if (advanced <= 1e-4f) return false;
 
-        // 3. Down to settle onto the ledge; must be a walkable slope strictly higher than pos. The down-sweep RANGE is
-        // StepDownSweepRangeSteps * StepHeight (2x, not 1x) to work around Bepu's mesh-sweep far-half under-report - see
-        // that const for the full rationale (a one-sided mesh tread sits in the far half of a bare StepHeight range).
+        // 3. Down to settle onto the ledge; must be a walkable slope strictly higher than pos (TryLandStep).
         float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
         float downRange = StepDownSweepRangeSteps * step + SkinWidth;
-        if (world.SweepCapsule(capsule, Pose.At(fwd), -Vector3.UnitY, downRange, out SweepHit downHit) &&
-            downHit.Normal.Y >= cosMaxSlope)                                 // a walkable ledge the full-radius sweep found
-        {
-            Vector3 landed = fwd; landed.Y -= MathF.Max(0f, downHit.Distance - SkinWidth);
-            if (landed.Y > pos.Y + 1e-4f)                                    // and strictly higher than the start
-            {
-                stepped = landed;
-                landedNormalY = downHit.Normal.Y;
-                return true;
-            }
-        }
+        if (TryLandStep(world, capsule, fwd, pos.Y, downRange, cosMaxSlope, out stepped, out landedNormalY))
+            return true;
 
         // Shallow-tread fallback (near-vertical risers, at the terrain-floor handoff only). When the tread is shallower
         // than the capsule diameter, the footprint STRADDLES it and the full-radius down-sweep above grazes the tread's
@@ -145,6 +134,44 @@ public static partial class CharacterMovement
             landedNormalY = 1f;   // the ray fan accepts only a walkable tread; the near-vertical band skips the flat-landing gate
             return true;
         }
+
+        // Nearer landing, for a run of treads shallower than the capsule. One radius forward, the footprint reaches
+        // past the tread being mounted onto the NEXT nosing, whose edge is too steep to stand on, so the landing above
+        // is refused on every riser of the run. Before this, a walk only rose when the support sweep happened to read
+        // that steep nosing first, which depended on millimetres of approach. The riser being mounted is still a step:
+        // land on it from a shorter advance along the same clear forward sweep. Each candidate passes the same capsule
+        // landing test, walkable and strictly higher than the start, so it finds only a stand the full advance missed.
+        foreach (float fraction in NearerLandingFractions)
+        {
+            if (TryLandStep(world, capsule, up + (fwd - up) * fraction, pos.Y, downRange, cosMaxSlope,
+                    out Vector3 nearer, out float nearerNormalY))
+            {
+                stepped = nearer;
+                landedNormalY = nearerNormalY;
+                return true;
+            }
+        }
+        stepped = pos;
+        landedNormalY = 0f;
         return false;
+    }
+
+    // Fractions of the forward advance TryStepUp retries when the full advance lands on a face it cannot stand on.
+    private static readonly float[] NearerLandingFractions = { 0.5f, 0.25f };
+
+    /// <summary>Sweeps down from the raised, advanced pose <paramref name="from"/> and lands on a walkable surface strictly
+    /// higher than <paramref name="startY"/>. The down-sweep range is StepDownSweepRangeSteps * StepHeight to work around
+    /// Bepu's mesh-sweep far-half under-report (see that const).</summary>
+    private static bool TryLandStep(IPhysicsWorld world, CapsuleShape capsule, Vector3 from, float startY,
+        float downRange, float cosMaxSlope, out Vector3 landed, out float landedNormalY)
+    {
+        landed = from; landedNormalY = 0f;
+        if (!world.SweepCapsule(capsule, Pose.At(from), -Vector3.UnitY, downRange, out SweepHit downHit) ||
+            !(downHit.Normal.Y >= cosMaxSlope))
+            return false;
+        landed.Y -= MathF.Max(0f, downHit.Distance - SkinWidth);
+        if (!(landed.Y > startY + 1e-4f)) return false;
+        landedNormalY = downHit.Normal.Y;
+        return true;
     }
 }

@@ -158,19 +158,9 @@ public static partial class CharacterMovement
             for (int d = 0; d < DepenIterations; d++)
             {
                 if (!world.ComputePenetration(probe, Pose.At(pos), out Vector3 push) || push.LengthSquared() <= 1e-12f) break;
-                // WALKABLE-CONTACT REST DEPENETRATION IS VERTICAL (mirrors the settle pass in StepCore): a grounded
-                // capsule with NO horizontal command, pushed off a tilted WALKABLE surface, takes only the vertical
-                // component, so a resting capsule cannot creep down-slope; a steep (wall/riser) normal keeps the full
-                // MTV so walking into a wall still pushes out horizontally. Gated on no command (not just grounded)
-                // because a fast run-climb IS grounded yet embeds in the risers, and its horizontal depenetration is
-                // load-bearing for extracting the swept climb - suppressing it there re-embeds the capsule and
-                // collapses support (the StairRunTangentPacing regression). cosMaxSlope is the slope gate at the top
-                // of this method. NaN-safe: push.LengthSquared() > 1e-12 guards the length divide above.
-                if (restHold)
-                {
-                    float pl = push.Length();
-                    if (push.Y >= cosMaxSlope * pl) push = new Vector3(0f, push.Y, 0f);
-                }
+                // A walkable push never shoves the body along its own support (CharacterMovement.WalkablePush.cs).
+                // A steep (wall/riser) push is returned whole. NaN-safe: the guard above bounds the length divide.
+                push = WalkableContactPush(push, restHold, cosMaxSlope);
                 pos += push;
                 applied += push;   // MTV is direction*depth; the inflated overlap depth lands the real capsule ~SkinWidth clear
             }
@@ -331,9 +321,11 @@ public static partial class CharacterMovement
     /// step-DOWN (a lower tread ahead is below the feet, out of the band - left to the downward sweep and gravity).
     /// Deterministic: a fixed 5-ray fan over the deterministic Bepu raycast, keeping the highest hit. Follows the
     /// one-sided-mesh-safe convention of <see cref="WalkableFloorUnderFeet"/> - a radius-less downward ray never hits the
-    /// zero-normal degeneracy a capsule sweep does, and reads a consumer +Y-wound tread top cleanly.</summary>
+    /// zero-normal degeneracy a capsule sweep does, and reads a consumer +Y-wound tread top cleanly. A nonzero
+    /// <c>ahead</c> direction samples only the centre and the half of the footprint ahead of it, so a tread the body
+    /// is leaving behind it is never read as one it is mounting.</summary>
     private static bool WalkableTreadUnderFeet(IPhysicsWorld world, CapsuleShape capsule, Vector3 pos, in MoveTuning t,
-        out float treadCentreY)
+        out float treadCentreY, Vector2 ahead = default)
     {
         treadCentreY = 0f;
         float cosMaxSlope = MathF.Cos(t.MaxSlopeRadians);
@@ -344,6 +336,7 @@ public static partial class CharacterMovement
         float bestY = float.NegativeInfinity;
         foreach (Vector2 off in TreadFanOffsets)
         {
+            if (Vector2.Dot(off, ahead) < 0f) continue;
             var origin = new Vector3(pos.X + off.X * radius, originY, pos.Z + off.Y * radius);
             if (world.Raycast(origin, -Vector3.UnitY, reach, out RayHit hit) &&
                 // Reject an embedded origin (distance < SkinWidth => the tread top is at/above the band ceiling, or the
@@ -557,10 +550,11 @@ public static partial class CharacterMovement
     /// <param name="terrainGroundY">The analytic terrain support height (capsule centre) at the resolved XZ.</param>
     /// <param name="groundY">The support height resolved so far (terrain, plus any stepped ledge).</param>
     /// <param name="steppedUp">Whether the swept step-up mounted a riser this tick.</param>
+    /// <param name="intendedTravel">The horizontal move this tick asked for, before collision.</param>
     /// <returns>The support height, never below <paramref name="groundY"/>.</returns>
     private static float PropSupportFloor(IPhysicsWorld world, in CapsuleShape capsule, in Vector3 pos,
         in Vector3 startPos, bool wasGrounded, in MoveTuning t, float halfH, float terrainGroundY, float groundY,
-        bool steppedUp)
+        bool steppedUp, Vector2 intendedTravel)
     {
         bool overProp = !wasGrounded || startPos.Y > terrainGroundY + OnPropSkin || steppedUp;
         if (overProp)
@@ -615,6 +609,10 @@ public static partial class CharacterMovement
         // overProp sweep above gates on startPos.Y. treadCentreY is bounded into the step band by the fan itself, so
         // the upper guard only defends against a marginal skin overshoot.
         //
+        // Only the half of the footprint ahead of the intended travel is read. Walking off a ledge, a body that rolled
+        // over the edge into this band still has the ledge top under the trailing rim of the fan, and seating it back
+        // up there popped the feet up by the roll before the drop.
+        //
         // Scoped to the BASE by pos.Y <= terrainGroundY + GroundedEpsilon: the collapse ONLY fires where the onGround
         // snap below can reach the terrain, i.e. within one GroundedEpsilon of it - the first riser. A step or more up,
         // the capsule sits well above that band, so onGround never snaps it to terrain and there is nothing to fix; MID
@@ -623,13 +621,45 @@ public static partial class CharacterMovement
         // This fires the fan on exactly the ticks the collapse would fire the snap-down, and nowhere else.
         if (wasGrounded && groundY <= terrainGroundY + 1e-4f &&
             startPos.Y > terrainGroundY + OnPropSkin && pos.Y <= terrainGroundY + t.GroundedEpsilon &&
-            WalkableTreadUnderFeet(world, capsule, pos, t, out float treadCentreY) &&
+            WalkableTreadUnderFeet(world, capsule, pos, t, out float treadCentreY, intendedTravel) &&
             treadCentreY > groundY && treadCentreY <= pos.Y + t.StepHeight + SkinWidth)
         {
             groundY = treadCentreY;
         }
 
         return groundY;
+    }
+
+    /// <summary>Whether leaving the support under <paramref name="start"/> for support at <paramref name="groundY"/> (a
+    /// capsule-centre height) is a drop beyond <see cref="MoveTuning.StepHeight"/>, so the body walks off a ledge and
+    /// falls instead of being held to the ground. The drop is between the surfaces, as a step's height is: on an edge
+    /// the rounded bottom has rolled over, the surface left behind is the edge, above the feet. Measured from the feet,
+    /// a ledge up to r(1 - cos MaxSlope) higher than StepHeight was still held as a step. 1e-4 absorbs the edge
+    /// contact's query rounding for a drop of exactly StepHeight.</summary>
+    private static bool DropsBeyondStep(IPhysicsWorld? world, CapsuleShape capsule, Vector3 start, float groundY,
+        in MoveTuning t)
+    {
+        float drop = start.Y - groundY;
+        // No roll can lift a drop this small past StepHeight, so the common case reads no geometry.
+        if (drop <= t.StepHeight - capsule.Radius * (1f - MathF.Cos(t.MaxSlopeRadians))) return false;
+        if (world is not null) drop += SupportContactRise(world, capsule, start, t);
+        return drop > t.StepHeight + 1e-4f;
+    }
+
+    /// <summary>How far the surface supporting a body at <paramref name="centre"/> sits above its feet. Zero on a flat
+    /// floor. On an edge the rounded bottom has rolled over, the contact is the edge itself, up to r(1 - cos MaxSlope)
+    /// above the feet, and a step's drop is measured from that edge. Zero when no walkable surface supports the lower
+    /// hemisphere under the footprint.</summary>
+    private static float SupportContactRise(IPhysicsWorld world, CapsuleShape capsule, Vector3 centre, in MoveTuning t)
+    {
+        float halfH = t.CapsuleHalfHeight, feetY = centre.Y - halfH;
+        float probeStart = centre.Y + 2f * halfH;
+        if (!world.SweepCapsule(capsule, Pose.At(new Vector3(centre.X, probeStart, centre.Z)), -Vector3.UnitY,
+                4f * halfH, out SweepHit hit) ||
+            !(hit.Normal.Y >= MathF.Cos(t.MaxSlopeRadians)) || !UnderFootprint(hit.Point, centre, capsule.Radius))
+            return 0f;
+        float rise = hit.Point.Y - feetY;
+        return rise > 0f && rise <= capsule.Radius ? rise : 0f;
     }
 
     // The last skin-inflated slide probe on this thread, kept apart from the step capsule cache so the two never evict

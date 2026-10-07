@@ -77,7 +77,10 @@ public class StairDescentGroundedHoldTests
 
     // A drop BEYOND StepHeight is a genuine ledge walk-off: it MUST still release and fall (grounded-hold must not
     // over-hold). Pairs with GroundedCapsule_WalksOffLedge_ReleasesAndFalls (a 3 m ledge) in ControllerOnPhysicsTests.
+    // The drop is the ledge's height, not what remains after the rounded capsule bottom has rolled over the walkable
+    // part of the edge, so 0.41 m falls for every capsule radius.
     [Theory]
+    [InlineData(0.41f)]
     [InlineData(0.45f)]
     [InlineData(0.60f)]
     public void StepDownBeyondStepHeight_StillReleasesAndFalls(float riser)
@@ -89,6 +92,24 @@ public class StairDescentGroundedHoldTests
         Assert.True(worstDown < -BallisticVerticalSpeed, $"riser {riser}: a real ledge fall should build a ballistic vertical velocity (got {worstDown:F2})");
         // Still lands on the terrain by the end (it is a fall, not a launch into space).
         Assert.True(MathF.Abs(p[^1].Pos.Y - 0.9f) < 0.05f, $"riser {riser}: did not land on the terrain (final Y {p[^1].Pos.Y:F3})");
+    }
+
+    // Walking off a ledge only ever lowers the feet. A support probe that reads the top of the ledge being left behind
+    // the body, at the rim of the footprint, must not seat the body back up onto it after it has rolled over the edge.
+    [Theory]
+    [InlineData(0.32f)]
+    [InlineData(0.40f)]
+    [InlineData(0.41f)]
+    [InlineData(0.42f)]
+    [InlineData(0.45f)]
+    [InlineData(0.50f)]
+    [InlineData(0.60f)]
+    public void StepDown_NeverRaisesTheFeet(float riser)
+    {
+        List<Tick> p = StepDown(riser);
+        for (int i = 1; i < p.Count; i++)
+            Assert.True(p[i].Pos.Y <= p[i - 1].Pos.Y + 0.0001f,
+                $"riser {riser}: feet rose {p[i].Pos.Y - p[i - 1].Pos.Y:F4} m at tick {i}, centre {p[i].Pos}");
     }
 
     // End-to-end: feed the 0.40 m step-down through the SIGNAL-GATED render glide at 120 fps. Assert the render never

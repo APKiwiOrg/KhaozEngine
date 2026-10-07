@@ -343,14 +343,15 @@ public static partial class CharacterMovement
         // above the analytic terrain, and it is skipped entirely on a terrain-only step.
         if (world is not null)
             groundY = PropSupportFloor(world, capsule, pos, s.Position, s.Grounded, t, halfH, terrainGroundY, groundY,
-                steppedUp);
+                steppedUp, new Vector2(dx - s.Position.X, dz - s.Position.Z));
 
         bool grounded;
         float tSinceGround;
         // The swept resolver leaves the capsule at SkinWidth above a surface (not flush). Extend the landing
         // threshold by SkinWidth so a swept-settled capsule on a flat prop top counts as grounded on the first
         // contact tick (without this, pos.Y = groundY + SkinWidth > groundY and the capsule falls forever).
-        bool onGround = vVel <= 0f && (pos.Y <= groundY + (world is not null ? SkinWidth : 0f) || (s.Grounded && pos.Y <= groundY + t.GroundedEpsilon));
+        bool onGround = vVel <= 0f && (pos.Y <= groundY + (world is not null ? SkinWidth : 0f) ||
+            (s.Grounded && pos.Y <= groundY + t.GroundedEpsilon && !DropsBeyondStep(world, capsule, s.Position, groundY, t)));
         if (onGround) pos.Y = groundY;          // snap onto the support surface (generalizes the old terrain clamp)
         if (pos.Y < groundY) pos.Y = groundY;   // and never rest below it, even on a tick that is not "onGround"
         // NO TRACTION ON STEEP GROUND. A terrain surface steeper than THIS TICK'S TRACTION GATE seats the capsule (the
@@ -435,10 +436,10 @@ public static partial class CharacterMovement
         //       - `s.Grounded` (grounded LAST tick): this fires ONLY on the FIRST tick of leaving the ground, so a real
         //         FALL (airborne, hence !s.Grounded, on every tick after the first) is never caught mid-air and landed
         //         early - only the tick you actually step off a ledge is a candidate;
-        //       - the drop from the last grounded height to the resolved support is strictly positive and at MOST
-        //         StepHeight (`0 < s.Position.Y - groundY <= StepHeight`): a DESCENT (ascent has support at/above the
-        //         feet, so this is <= 0 and skips), and a genuine ledge walk-off beyond StepHeight (the ledge-release
-        //         pin's 3 m box) exceeds the band and FALLS as before; and
+        //       - the drop from the last grounded height to the resolved support is strictly positive
+        //         (`0 < s.Position.Y - groundY`), a DESCENT (ascent has support at/above the feet, so this is <= 0 and
+        //         skips), and, measured between the surfaces, at MOST StepHeight (DropsBeyondStep). A genuine ledge
+        //         walk-off beyond StepHeight (the ledge-release pin's 3 m box) exceeds the band and FALLS as before; and
         //       - `groundY` is the resolved walkable support (terrain + walkable-normal props), so there is really a
         //         surface within a step below - open air past the drop leaves groundY at the far floor and it falls.
         //     Seat pos.Y onto that support this tick (a one-tick step-down snap, exactly what a within-GroundedEpsilon
@@ -455,7 +456,7 @@ public static partial class CharacterMovement
             !RefusesTraction(pos, propGrounded, groundY, terrainGroundY, groundNormal, tractionGate))
         {
             float stepDrop = s.Position.Y - groundY;
-            if (stepDrop > 0f && stepDrop <= t.StepHeight)
+            if (stepDrop > 0f && !DropsBeyondStep(world, capsule, s.Position, groundY, t))
             {
                 pos.Y = groundY;
                 grounded = true;
@@ -472,7 +473,7 @@ public static partial class CharacterMovement
                 // within GroundedEpsilon never reaches here (the onGround stick catches it), so a sub-perceptible
                 // micro-step-down leaves BOTH signals 0 - the honest dead-zone.
                 stepDownSeated = true;
-                stepDownDeltaY = pos.Y - s.Position.Y;   // = -stepDrop (negative): the seated drop the mesh offset eases
+                stepDownDeltaY = pos.Y - s.Position.Y;   // negative: the seated drop of the feet, which the mesh offset eases
             }
         }
 

@@ -751,3 +751,7 @@ This establishes neither complete selected-world candidate enumeration nor gener
 geometry. Fraction-to-metre outward encoding, aggregate earliest contacts and the movement consumer
 remain separate prerequisites. In particular an irrational grazing event without a provable point
 witness must refuse rather than manufacture a Hit or Clear from the remaining small interval.
+
+The sixteen fraction-search facts compiled and failed at the absent `CapsuleBoxFractionSweep` type
+after the installed-world/read controls passed. Zero passes/skips, exit 1 in
+`/tmp/swim-box-fraction-red.log`. The production helper was absent throughout RED.

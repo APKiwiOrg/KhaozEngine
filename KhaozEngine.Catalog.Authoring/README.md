@@ -258,9 +258,11 @@ still holds.
 steps 1 to 10, step 9 writes the whole pack, and no provider holds a row lock across that: SQLite leases its
 one connection per call, and SQL Server's Serializable transaction covers step 10 alone.
 
-`ContentPublishCommit.PublishAsync` clears the marker in a `finally`, so a success, a refusal, a throw and a
-cancellation all release the draft. Two things recover a marker nothing cleared, which is what a killed
-process leaves. A marker naming a version the store has moved past is STALE, and
+A successful commit consumes its draft and marker before any later sweep runs. Unfinished attempts use
+`ContentPublishCommit.PublishAsync`'s `finally` to release only their expected base through
+`IContentDraftFreezeStore` when supported. Legacy external stores retain the original unscoped cleanup.
+Two things recover a marker nothing cleared, which is what a killed process leaves. A marker naming a
+version the store has moved past is STALE, and
 `ReadPublishBaselineAsync` clears it, which is the read every publish starts with. A marker naming the
 version the store still stands at belongs to a publish that died before its commit. A later publish
 overwrites that marker at step 1 and clears it on exit.

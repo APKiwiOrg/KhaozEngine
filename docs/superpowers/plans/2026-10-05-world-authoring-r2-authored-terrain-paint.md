@@ -584,7 +584,7 @@ Run: `wa_test t2-green-mapdoc "$MAPDOC" "FullyQualifiedName~FormatFourResolverEx
 Run: `wa_test t2-green-rump "$RUMP" "FullyQualifiedName~ArchitectureTests"` (PASS, 3 new tests plus every existing architecture case)
 Run: `wa_run t2-harness-format dotnet format "$HARNESS" --verify-no-changes --no-restore` (exit 0)
 
-- [ ] **Step 5: Commit** `KhaozEngine.MapDoc.OracleHarness.Tests KhaozEngine.MapDoc.Tests/Fixtures/FormatFour KhaozEngine.MapDoc.Tests/FormatFourFixtures.cs KhaozEngine.MapDoc.Tests/AssertFixtures.cs KhaozEngine.MapDoc.Tests/FormatFourResolverExpectationTests.cs KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj KhaozEngine.Tests/ArchitectureTests.MapDoc.cs`, message `test(mapdoc): freeze format-4 resolver expectations and fence the oracle harness`.
+- [x] **Step 5: Commit** `KhaozEngine.MapDoc.OracleHarness.Tests KhaozEngine.MapDoc.Tests/Fixtures/FormatFour KhaozEngine.MapDoc.Tests/FormatFourFixtures.cs KhaozEngine.MapDoc.Tests/AssertFixtures.cs KhaozEngine.MapDoc.Tests/FormatFourResolverExpectationTests.cs KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj KhaozEngine.Tests/ArchitectureTests.MapDoc.cs`, message `test(mapdoc): freeze format-4 resolver expectations and fence the oracle harness`.
 
 ---
 
@@ -605,7 +605,7 @@ Run: `wa_run t2-harness-format dotnet format "$HARNESS" --verify-no-changes --no
 - Produces (harness test-only): `PrivateOracleFixtures.InSecureTemp(Action<string>)` (a fresh `0700` directory under `Path.GetTempPath()`, deleted afterwards), `SyntheticEnvironment(string root, string secret) -> Dictionary<string, string?>` (writes `root/<secret>/src/region.txt` with text `synthetic`, a matching provenance file at `root/<secret>/provenance.json` with one path, creates `root/out` with mode `0700`, returns the four variables with report `root/out/report.json`), `Throw(string fault, string sourceRoot)` (throws `FileNotFoundException`, `JsonException`, `InvalidDataException` or `OverflowException` for `filesystem`, `json`, `loader` or `arithmetic`, each with message `"at " + sourceRoot`).
 - Produces (harness): `ShippedSourceInventory.Build(string root) -> ShippedSourceInventory` (per-plane counts of drawable cells, overlays, each cut, each flag bit, void and NoDraw cells, authored upper-plane corners, signed region keys and distinct corners), written only to the private report.
 
-- [ ] **Step 1: Write the public oracle test and the harness guard tests**
+- [x] **Step 1: Write the public oracle test and the harness guard tests**
 
 ```csharp
 // LegacyOracleWorldTests (Compatibility.Tests, public)
@@ -719,7 +719,7 @@ public void Entry_FailsClosedWhenTheReportCannotBeCreatedSecurely() => PrivateOr
 });
 ```
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 Run: `wa_test t3-red-compat "$COMPAT" "FullyQualifiedName~LegacyOracleWorldTests"` (build FAIL naming `LegacyOracleWorld`)
 Run: `wa_test t3-red-harness "$HARNESS" "FullyQualifiedName~PrivateOracleGuardTests"` (build FAIL naming `PrivateOracleInputs` and `PrivateOracleEntry`)
@@ -3411,3 +3411,23 @@ checkouts. Initial failure evidence remains separate. Task2's public fixtures an
 are ready for the scoped commit. No private shipped data was read, no production resolver or
 format changed, and no main/feed/tag or native adoption is included. Task3 owns the later private
 entry boundary and exhaustive source handling.
+
+
+Task2 is committed at0374d2810e880c0f7e3bc623abf08e9acc2c7f37, with root verification of clean
+origin equality, frozen fixture blobs and passing focused checks. Task3 begins from that source.
+
+### Task 3 public/synthetic RED checkpoint
+
+One worker prepared the compatibility project and public topology test plus eleven synthetic
+privacy-guard cases. Parent and pivot inspected the exact three-file source before the paired RED.
+Compatibility compilation emitted three diagnostics for absent LegacyOracleWorld/LegacyOracleCase.
+Harness compilation emitted eight diagnostics: six for PrivateOracleFixtures and one each for
+PrivateOracleInputException and PrivateOracleInputs. Both exited1 with zero tests executed.
+No unrelated compiler/setup/platform diagnostic occurred. The missing fixture receiver prevented
+binding its lambda bodies, so Entry/Report/Failure were not separately diagnosed, and no runtime
+or platform-analyzer success is inferred. All three source hashes stayed unchanged.
+
+Proof is proofs/2026-10-07-r2-task3-red.json. Primarycompute was explicitlyreleased. No private
+world input, extraction, recorder rerun or implementation occurred during the window. Approved
+public/synthetic implementation follows, with actual private inventory kept as its separate
+controlled acceptance step after guard verification and source-provenance preparation.

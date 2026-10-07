@@ -7684,7 +7684,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.28.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.29.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -7980,7 +7980,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.28.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.29.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8577,6 +8577,13 @@ backend (`KhaozEngine.Physics.Bepu`, NOT in any umbrella, added explicitly like 
 same opt-in-backend pattern the `WorldStore.*` durable backends use.
 
 **Seam (`KhaozEngine.Physics`)** - what every caller sees:
+- Optional `IPhysicsQueryLeaseSource.AcquireQueryReadLease() -> IPhysicsQueryLease` establishes a
+  stable synchronous read interval. Bepu owners and restricted views support it. The lease captures
+  `SourceWorld`, `Origin` and process-local `GeometryGeneration`. `AssertCurrent()` rejects expired or
+  wrong-thread use. Perform queries and publish pure state under the lease, then dispose it on its
+  acquiring thread before changing physics. Same-thread writes and nested leases are refused, other
+  threads serialize behind the gate, and view disposal cannot invalidate an active interval. This does
+  not certify native environment residency or provide a cross-head world/bake identity.
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
   `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
   `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,
@@ -8673,7 +8680,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.28.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.29.0" />
 ```
 
 ```csharp
@@ -15607,7 +15614,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.28.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.29.0" />
 ```
 
 ```csharp
@@ -15643,7 +15650,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.28.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.29.0" />
 ```
 
 ```csharp
@@ -15885,7 +15892,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.28.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.29.0" />
 ```
 
 ```csharp
@@ -20245,7 +20252,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.28.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.29.0" />
 </ItemGroup>
 ```
 

@@ -5,6 +5,11 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.29.0
+
+- Physics adds optional thread-affine query read leases that pin the owner, origin and geometry generation.
+  Bepu owners and selected views fence mutations during the lease and serialize access to query scratch.
+
 ## 20.28.0
 
 - Windowing reads each GLFW window's OS content scale for `Frame` and `UiViewport`. `Scaled` windows cap their size

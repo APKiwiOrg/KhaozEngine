@@ -122,6 +122,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 
     public SeamHandle AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null)
     {
+        using QueryOperation scope = EnterMutation();
         var shapeIndex = ShapeFactory.Add(_sim, _pool, shape);
         var desc = new StaticDescription(pose.Position, pose.Orientation, shapeIndex);
         var bepuHandle = _sim.Statics.Add(desc);
@@ -133,6 +134,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 
     public void RemoveStatic(SeamHandle handle)
     {
+        using QueryOperation scope = EnterMutation();
         if (_handles.TryGetValue(handle.Value, out var entry))
         {
             _sim.Statics.Remove(entry.Handle);
@@ -161,6 +163,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 
     public DynamicBodyHandle AddDynamic(PhysicsShape shape, Pose pose, DynamicBodyDescription body, PhysicsMaterial? material = null)
     {
+        using QueryOperation scope = EnterMutation();
         var rigidPose = new RigidPose(pose.Position, pose.Orientation);
         var velocity = new BodyVelocity(body.LinearVelocity, body.AngularVelocity);
         // Sleep threshold: negative keeps the Bepu default; otherwise honour the caller (0 disables sleep).
@@ -204,6 +207,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 
     public void RemoveDynamic(DynamicBodyHandle handle)
     {
+        using QueryOperation scope = EnterMutation();
         if (_dynamics.TryGetValue(handle.Value, out var entry))
         {
             // Remove every constraint touching this body FIRST. Bepu corrupts / asserts if a body is removed while
@@ -226,6 +230,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 
     public SeamConstraintHandle AddConstraint(in ConstraintDescription description)
     {
+        using QueryOperation scope = EnterMutation();
         // Resolve each end to a Bepu body handle + current pose. A dynamic end resolves to its live body (stale
         // -> ArgumentException, matching the seam pattern); a world-space anchor end pins a fresh infinite-mass
         // SHAPELESS kinematic body at the anchor pose (Bepu has no one-body position joint, so the static side
@@ -252,10 +257,15 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
         return new SeamConstraintHandle(id);
     }
 
-    public void RemoveConstraint(SeamConstraintHandle handle) => RemoveConstraintInternal(handle.Value);
+    public void RemoveConstraint(SeamConstraintHandle handle)
+    {
+        using QueryOperation scope = EnterMutation();
+        RemoveConstraintInternal(handle.Value);
+    }
 
     public void SetConstraintTarget(SeamConstraintHandle handle, float target)
     {
+        using QueryOperation scope = EnterMutation();
         // Stale handle (body removed, or constraint removed) throws, matching the mutation throw-on-stale pattern
         // (GetDynamicPose / SetDynamicVelocity do the same on a dead body).
         if (!_constraints.TryGetValue(handle.Value, out var entry))
@@ -344,6 +354,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 
     public Pose GetDynamicPose(DynamicBodyHandle handle)
     {
+        using QueryOperation scope = EnterQuery();
         var body = _sim.Bodies.GetBodyReference(RequireDynamic(handle));
         RigidPose p = body.Pose;
         return new Pose(p.Position, p.Orientation);
@@ -351,6 +362,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 
     public void GetDynamicVelocity(DynamicBodyHandle handle, out Vector3 linear, out Vector3 angular)
     {
+        using QueryOperation scope = EnterQuery();
         var body = _sim.Bodies.GetBodyReference(RequireDynamic(handle));
         BodyVelocity v = body.Velocity;
         linear = v.Linear;
@@ -359,13 +371,17 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 
     public void SetDynamicVelocity(DynamicBodyHandle handle, Vector3 linear, Vector3 angular)
     {
+        using QueryOperation scope = EnterMutation();
         var body = _sim.Bodies.GetBodyReference(RequireDynamic(handle));
         body.Velocity = new BodyVelocity(linear, angular);
         body.Awake = true; // a velocity change must wake a sleeping body or it will not move
     }
 
     public bool IsAwake(DynamicBodyHandle handle)
-        => _sim.Bodies.GetBodyReference(RequireDynamic(handle)).Awake;
+    {
+        using QueryOperation scope = EnterQuery();
+        return _sim.Bodies.GetBodyReference(RequireDynamic(handle)).Awake;
+    }
 
     private BepuBodyHandle RequireDynamic(DynamicBodyHandle handle)
     {
@@ -376,6 +392,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 
     public void Step(float dt)
     {
+        using QueryOperation scope = EnterMutation();
         // Explicit, deterministic, approximate restitution (a game-feel bounce, NOT a true coefficient of
         // restitution). Bepu 2.4 has no restitution coefficient and its contact MaximumRecoveryVelocity only acts
         // on penetration depth (which gives a constant-height limit cycle, not a decaying bounce). So for every
@@ -425,6 +442,9 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
 
     public void Dispose()
     {
+        using QueryOperation scope = EnterMutation(allowDisposed: true);
+        if (_disposed) return;
+        _disposed = true;
         _sim.Dispose();
         _pool.Clear();
     }

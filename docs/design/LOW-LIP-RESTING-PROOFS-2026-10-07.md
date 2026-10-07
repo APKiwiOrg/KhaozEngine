@@ -80,6 +80,33 @@ choosing an arbitrary inset. The implementation gate remains closed. The next de
 how a selected Physics query view can supply a corresponding face or explicitly unresolved result,
 including mesh-edge ambiguity and the numeric domain. No fallback or resting-anchor code has changed.
 
+### Proposed scope extension, awaiting owner decision
+
+The swimming source review at `acd452762` independently identifies the missing relation. The ray
+handler discards child identity and culls competing hits. Sweep results retain no geometric feature.
+Neither contact-manifold feature IDs nor the unreleased certified-sweep values supply this contract.
+
+Recommend designing and proving an optional selected-view capsule/solid feature query before changing
+legacy support. It must identify actual finite incident geometry, preserve source, frame, read lifetime,
+static selection and filters, and return explicit unsupported, unresolved or ambiguous outcomes. Its
+accepted shapes, coordinate domain, numeric error and work bounds require independent proof. A sweep
+point is only a search hint. No arbitrary inset or nearest-flat-face choice may manufacture agreement.
+
+The design must separate a fully identified top/wall edge that admits one eligible supporting top
+from genuinely competing support interpretations. Requiring a unique incident face everywhere would
+also refuse the intended corner. Physics establishes geometry, while the legacy caller retains slope,
+rise, footprint, clearance and layer eligibility. No native identity, bake format or release is implied.
+
+| Criterion | Design optional feature query | Defer legacy repair |
+| --- | ---: | ---: |
+| Addresses the measured bridge defect | 9 | 2 |
+| Preserves explicit proof boundaries | 9 | 9 |
+| Implementation simplicity | 4 | 9 |
+| Total | 22 | 20 |
+
+This requests design and test-first proof authority for the new seam. Exact signatures and the numeric
+domain are not approved by this document. The fallback and anchors remain gated on a successful proof.
+
 ## Bake-local resting anchors
 
 Keep raw captured heights, layer assignment, headroom and area identity unchanged. During legacy

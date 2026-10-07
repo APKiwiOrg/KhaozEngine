@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.Serialization;
 
 namespace KhaozEngine.MapDoc;
@@ -149,6 +151,10 @@ public static class MapDocumentFile
 
         root = Migrate(root, options, where);
         MapDocumentMembers.Validate(root, where);
+        var patches = new MapSurfaceSet();
+        MapSurfaceEmbedding.Read(root, patches);
+        foreach (string name in root.Select(p => p.Key).Where(n => string.Equals(n, "surfacePatches", StringComparison.OrdinalIgnoreCase)).ToArray())
+            root.Remove(name);
 
         MapDocument doc;
         try
@@ -160,6 +166,7 @@ public static class MapDocumentFile
         {
             throw new MapDocumentException($"{where}: {ex.Message}", ex);
         }
+        foreach (var patch in patches.Patches) doc.Surfaces.Patches.Add(patch.Key, patch.Value);
 
         IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, options.Registry);
         if (errors.Count > 0)
@@ -293,7 +300,6 @@ public static class MapDocumentFile
     /// silently drop.</para></summary>
     static MapDocument PrepareWholeWrite(MapDocument doc, MapDocRegistry registry)
     {
-        doc.Surfaces?.RequireWritable();
         if (doc.Tiles is { IsPartial: true })
             throw new MapDocumentException(
                 "refusing to write a windowed document as a whole document: it would silently drop every tile the " +
@@ -302,15 +308,22 @@ public static class MapDocumentFile
         IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
         if (errors.Count > 0)
             throw new MapDocumentException("refusing to save an invalid map document:\n  " + string.Join("\n  ", errors));
-
-        if (doc.TerrainOverrides is not { IsEmpty: true, CellSize: MapTerrainOverrides.DefaultCellSize })
-            return doc;
+        MapSurfaceEmbedding.Check(doc.Surfaces, MapSurfaceEmbedding.MaxPatches, MapSurfaceEmbedding.MaxEncodedBytes);
+        MapSurfaceSaveGuard.Whole(doc.Surfaces);
 
         MapDocument copy = MapTiledFile.GlobalsOnly(doc);
         copy.Placements = doc.Placements;
         copy.Spawns = doc.Spawns;
         copy.PlayerSpawns = doc.PlayerSpawns;
-        copy.TerrainOverrides = null;
+        copy.TerrainOverrides = doc.TerrainOverrides is { IsEmpty: true, CellSize: MapTerrainOverrides.DefaultCellSize } ? null : doc.TerrainOverrides;
+        copy.Surfaces = doc.Surfaces.Clone();
+        for (int i = 0; i < copy.Surfaces.Refs.Count; i++)
+        {
+            MapSurfaceRef surface = copy.Surfaces.Refs[i];
+            copy.Surfaces.Refs[i] = surface with { SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface,
+                copy.Surfaces.Patches.Where(p => p.Key.SurfaceId == surface.Id)
+                    .Select(p => new KeyValuePair<MapPatchKey, string>(p.Key, MapSurfaceSemantics.PatchDigest(p.Value)))) };
+        }
         return copy;
     }
 

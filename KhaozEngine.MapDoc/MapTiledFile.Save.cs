@@ -4,6 +4,8 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.Serialization;
+using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc;
 
@@ -19,11 +21,11 @@ namespace KhaozEngine.MapDoc;
 /// stated rather than implied.</para></summary>
 internal static partial class MapTiledFile
 {
-    internal static void Save(MapDocument doc, string directory, MapDocRegistry registry, MapDocumentSaveOptions? save)
+    internal static void Save(MapDocument doc, string directory, MapDocRegistry registry, MapDocumentSaveOptions? save,
+        MapSurfacePacking? packing = null)
     {
         ArgumentNullException.ThrowIfNull(doc);
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
-        doc.Surfaces?.RequireWritable();
         save ??= new MapDocumentSaveOptions();
         string root = Normalize(directory);
 
@@ -72,6 +74,8 @@ internal static partial class MapTiledFile
             (current is null || !string.Equals(generation.ManifestSha256, HashManifest(current), StringComparison.Ordinal)))
             throw new MapDocumentException($"{directory}: stale window, the manifest changed after this window was loaded.");
 
+        MapSurfaceTiledStore.Prepared surfaces = MapSurfaceTiledStore.Prepare(doc, root, packing);
+
         // 2. Bucket and hash.
         MapSpatialIndex spatial = MapSpatialIndex.Build(doc);
         var entries = new List<MapTileEntry>(spatial.OccupiedTiles.Count);
@@ -107,9 +111,13 @@ internal static partial class MapTiledFile
             touchedShards.Add(Normalize(MapTileFile.ShardPath(root, entry.Coord)));
             save.OnStep?.Invoke(MapTiledSaveStep.AfterTileWrite);
         }
+        MapSurfaceTiledStore.Write(root, surfaces, save, touchedShards);
 
         // 5. Commit: the manifest rename, and nothing before this mutated anything live.
-        WriteManifest(root, doc, entries, indented, save.Durability);
+        MapDocument manifestDoc = GlobalsOnly(doc);
+        manifestDoc.Surfaces = new MapSurfaceSet();
+        manifestDoc.Surfaces.Refs.AddRange(surfaces.Refs);
+        WriteManifest(root, manifestDoc, entries, surfaces.Index.Directory, indented, save.Durability);
         string manifestSha256 = HashManifest(File.ReadAllBytes(Path.Combine(root, ManifestTempName)));
         save.OnStep?.Invoke(MapTiledSaveStep.BeforeManifestRename);
         File.Move(Path.Combine(root, ManifestTempName), manifestPath, overwrite: true);
@@ -118,12 +126,14 @@ internal static partial class MapTiledFile
 
         // 6. Sweep, after the commit. Skipped when the previous manifest could not be read: deleting files on
         //    the authority of a manifest that failed to parse is how a bad save turns into a lost world.
-        if (previous is not null) Sweep(root, entries, save);
+        if (previous is not null) Sweep(root, entries, surfaces.Keep, save);
 
         // The document now describes what is on disk. Refreshing the index here is what keeps
         // MapDocumentHash.OfWorld honest on an edited document: it reads stored hashes and never opens a
         // tile file, so a stale index would report the pre-edit world forever.
-        doc.Tiles = new MapTileIndex(doc.TileSize, MapDocumentHash.SchemeVersion, root, entries, manifestSha256);
+        doc.Surfaces.Refs.Clear();
+        doc.Surfaces.Refs.AddRange(surfaces.Refs);
+        doc.Tiles = new MapTileIndex(doc.TileSize, MapDocumentHash.SchemeVersion, root, entries, manifestSha256, surfaces.Index);
     }
 
     static void GuardMovedContent(MapSpatialIndex spatial, MapTileIndex window)
@@ -165,7 +175,7 @@ internal static partial class MapTiledFile
     }
 
     static void WriteManifest(string root, MapDocument doc, List<MapTileEntry> entries,
-                              JsonSerializerOptions options, MapSaveDurability durability)
+                              IReadOnlyList<MapDirectoryPageRef> surfaces, JsonSerializerOptions options, MapSaveDurability durability)
     {
         string temp = Path.Combine(root, ManifestTempName);
         WriteThroughTemp(temp, moveTo: null, durability, w =>
@@ -178,6 +188,8 @@ internal static partial class MapTiledFile
             w.WriteNumber("schemeVersion", MapDocumentHash.SchemeVersion);
             MapCanonical.WriteGlobals(w, doc, options);
             MapCanonical.WriteNativeGlobals(w, doc, options);
+            w.WritePropertyName("surfaceStorage");
+            JsonSerializer.Serialize(w, surfaces, options);
             w.WriteStartArray("tiles");
             foreach (MapTileEntry entry in entries)
             {
@@ -222,10 +234,11 @@ internal static partial class MapTiledFile
         foreach (string shard in touchedShards) UnixDirectorySync.Flush(shard);
     }
 
-    static void Sweep(string root, List<MapTileEntry> entries, MapDocumentSaveOptions save)
+    static void Sweep(string root, List<MapTileEntry> entries, IReadOnlyCollection<string> surfaceFiles, MapDocumentSaveOptions save)
     {
         var keep = new HashSet<string>(StringComparer.Ordinal);
         foreach (MapTileEntry entry in entries) keep.Add(Normalize(MapTileFile.PathOf(root, entry.Coord, entry.Hash)));
+        foreach (string file in surfaceFiles) keep.Add(Normalize(file));
 
         string tiles = Path.Combine(root, MapTileFile.TilesDirectory);
         if (Directory.Exists(tiles))
@@ -263,6 +276,7 @@ internal static partial class MapTiledFile
         try
         {
             if (Jsonc.ParseNode(DecodeManifest(manifestBytes)) is not JsonObject root) return null;
+            _ = MapSurfaceTiledStore.ReadDirectory(root);
             var hashes = new Dictionary<MapTileCoord, string>();
             if (root["tiles"] is JsonArray array)
                 foreach (JsonNode? node in array)
@@ -276,7 +290,7 @@ internal static partial class MapTiledFile
             int scheme = root["schemeVersion"] is JsonValue sv && sv.TryGetValue(out int s) ? s : MapDocumentHash.SchemeVersion;
             return new PreviousManifest(scheme, hashes);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException or FormatException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException or FormatException or MapDocumentException)
         {
             return null;
         }

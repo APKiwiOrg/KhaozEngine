@@ -116,5 +116,7 @@ internal static class MapDocumentMembers
         string.Equals(name, "nativeAssets", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "resolverIdentity", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "supportRecipe", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "surfaces", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "surfaces", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "surfacePatches", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "surfaceStorage", StringComparison.OrdinalIgnoreCase);
 }

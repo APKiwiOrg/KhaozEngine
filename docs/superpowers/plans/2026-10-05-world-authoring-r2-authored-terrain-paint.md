@@ -3607,3 +3607,21 @@ one before test discovery. Zero tests executed, with no unrelated compiler/setup
 Earlier import binding prevents claims about body-level missing members or runtime behavior.
 All four frozen hashes stayed unchanged. Primary was released. Proof is
 proofs/2026-10-07-r2-task7-red.json. Approved storage implementation and fixture source preparation follow.
+
+
+### Task 7 initial implementation and six review regressions preserved
+
+Independent full-source review found four introduced gaps. Parent confirmed metadata-only parent
+reference bypass, unbounded cached/unread metadata traversal, reverse-knowledge ordering after surface
+removal, and embedding allocations before byte checks. Six regressions cover the first three.
+The first invocation stopped at a missing Collections.Generic import. After the import-only correction,
+the second compiled but aborted in recursive PageOutput Write overload forwarding. The byte-array
+forwarding now reaches base MemoryStream.Write directly under the same byte cap. Neither attempt
+executed a recorded assertion. Both failures are retained in the review compile/abort proofs.
+
+The separately granted third invocation compiled with no notices and executed six cases, all failing
+exactly as predicted: three missing metadata refusals, one reverse-order message, and cached Complete
+or captured Incomplete instead of CapacityExceeded. Zero skips, unchanged 37-path freeze. Primary
+was released. Proof is proofs/2026-10-07-r2-task7-review-red.json. This checkpoint contains initial
+storage implementation with known review defects, not Task 7 acceptance. Bounded corrections and
+fresh targeted review follow. Embedding read-bound tests are separately prepared in ignored staging.

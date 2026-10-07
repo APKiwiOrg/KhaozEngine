@@ -41,8 +41,4 @@ public sealed class MapSurfaceSet
         return record is not null;
     }
 
-    internal void RequireWritable()
-    {
-        if (Patches.Count != 0) throw new MapDocumentException("surface storage requires Task 7");
-    }
 }

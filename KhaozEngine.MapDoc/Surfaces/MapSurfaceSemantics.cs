@@ -6,12 +6,36 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using KhaozEngine.MapDoc.Storage;
 
 namespace KhaozEngine.MapDoc.Surfaces;
 
 /// <summary>Portable content identity. Physical topology and authored metadata are semantic inputs.</summary>
 public static class MapSurfaceSemantics
 {
+    /// <summary>Portable native root identity. Storage addresses and page packing are excluded.</summary>
+    public static string RootDigest(MapDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        MapDocument root = MapTiledFile.GlobalsOnly(document);
+        root.Surfaces = new MapSurfaceSet();
+        foreach (MapSurfaceRef surface in document.Surfaces.Refs.OrderBy(s => s.Id, StringComparer.Ordinal))
+        {
+            MapSurfaceStorageIndex? index = document.Tiles?.Surfaces;
+            bool unknown = index is not null && (index.Directory.Any(d => d.SurfaceId == surface.Id &&
+                !index.DirectoryPages.ContainsKey(d.Sha256)) || index.Directory.Where(d => d.SurfaceId == surface.Id)
+                .Where(d => index.DirectoryPages.ContainsKey(d.Sha256)).SelectMany(d => index.DirectoryPages[d.Sha256])
+                .Any(p => !index.IndexPages.ContainsKey(p.Sha256)));
+            var digests = new SortedDictionary<MapPatchKey, string>();
+            if (index is not null)
+                foreach (MapSurfaceIndexEntry entry in index.Entries.Where(e => e.Key.SurfaceId == surface.Id && !e.Loaded))
+                    digests.Add(entry.Key, entry.SemanticSha256);
+            foreach (var patch in document.Surfaces.Patches.Where(p => p.Key.SurfaceId == surface.Id))
+                digests[patch.Key] = PatchDigest(patch.Value);
+            root.Surfaces.Refs.Add(surface with { SemanticSha256 = unknown ? surface.SemanticSha256 : SurfaceDigest(surface, digests) });
+        }
+        return MapSurfaceRootProjection.Digest(root);
+    }
     public static string PatchDigest(MapSurfacePatch patch)
     {
         byte[] bytes = MapSurfacePatchCodec.Encode(patch);

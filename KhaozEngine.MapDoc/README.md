@@ -263,8 +263,9 @@ execution. The format advance changes authored identity once. It does not preser
 `MapDocument.SupportRecipe` pairs resolver 1 with `LegacyXzCallbackV1` and resolver 2 with
 `AuthoredBindingsV2`. Resolver 1 refuses authored surfaces and placement support bindings. A placement
 with `SupportBinding` cannot also provide explicit `Y`. `Surfaces` owns metadata and resident patches,
-and snapshots clone its mutable collections. Current persistence writes metadata but refuses resident
-patch payloads before changing files until the surface storage implementation is available.
+and snapshots clone its mutable collections. Monolithic documents embed canonical `surfacePatches`,
+bounded to 256 patches and 8 MiB. Larger worlds use tiled storage under `tiles/surfaces/`, with SHA-256
+payloads, index pages and directory pages. The manifest's `surfaceStorage` commits their closure last.
 Any default is as arbitrary as any other for a document that had no tile concept, so the rule is
 "deterministic and documented" rather than "derived". A document newer than the engine, or an old one with
 no migration path, fails to load. Saving always writes the current version.
@@ -368,7 +369,20 @@ macOS do, Windows has no equivalent primitive and orders metadata through the NT
 
 `LoadTiled(directory, window)` loads the manifest plus the tiles in a `MapTileRect`. Unloaded tiles keep
 their index entries, so the document knows they exist and a later `SaveTiled` back to the SAME directory
-carries them through untouched.
+carries them through untouched. Surface reads map the window's world rectangle into each rational lattice,
+expand it by one cell, and load intersecting patches through covering directory and index pages.
+`MapTileIndex.IsPartial` includes unloaded surface pages and patches. `HasUnloadedTiles` retains the
+tile-only meaning. A surface-only window has the same generation fence and whole-document refusals.
+
+Raw partial surface saves permit payload edits only after outgoing references, reverse page knowledge,
+reverse dependants, structure and record checks. They certify reference integrity and exact XZ owner
+positions. Geometry, seam heights and separation require complete native transactions.
+
+`MapDocumentSurfaceSource.Capture` detaches resident patches and storage knowledge. `MapStoredSurfaceSource.Open`
+pins one manifest generation and verifies named bytes and patch semantics without asset reads or directory
+enumeration. Files swept by a newer save return `Missing`. `FindPatches` bounds local candidate and page
+work through `MapQueryLimits`, and capacity refusal returns no partial patches. Returned patches are clones.
+`MapSurfaceSemantics.RootDigest` includes surface semantics and excludes storage names and page packing.
 
 **Every save entry point refuses a partial document** (`Save`, `SaveText`, `SaveTo`, `SaveAuto`,
 `SaveAs`), because the data-loss path is a windowed document reaching a whole-document writer: that write

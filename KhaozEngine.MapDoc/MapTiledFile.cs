@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.Serialization;
+using KhaozEngine.MapDoc.Storage;
 
 namespace KhaozEngine.MapDoc;
 
@@ -52,10 +53,12 @@ internal static partial class MapTiledFile
         int schemeVersion = ReadInt(root, "schemeVersion") ?? MapDocumentHash.SchemeVersion;
         float sculptCellSize = ReadFloat(root, "sculptCellSize") ?? MapTerrainOverrides.DefaultCellSize;
         List<MapTileEntry> entries = ReadTileEntries(root, path);
+        IReadOnlyList<MapDirectoryPageRef> surfaces = MapSurfaceTiledStore.ReadDirectory(root);
 
         root.Remove("schemeVersion");
         root.Remove("sculptCellSize");
         root.Remove("tiles");
+        root.Remove("surfaceStorage");
         // $schema is a file-level annotation on the MANIFEST, not document content: the writer emits it and
         // the reader ignores it, exactly as for a tile file. Carrying it onto the document would point a
         // later monolithic save at the manifest's schema.
@@ -84,7 +87,9 @@ internal static partial class MapTiledFile
         if (errors.Count > 0)
             throw new MapDocumentException($"{path}: invalid map manifest:\n  " + string.Join("\n  ", errors));
 
-        index = new MapTileIndex(doc.TileSize, schemeVersion, Normalize(directory), entries, HashManifest(manifestBytes));
+        index = new MapTileIndex(doc.TileSize, schemeVersion, Normalize(directory), entries, HashManifest(manifestBytes),
+            new MapSurfaceStorageIndex(surfaces, doc.Surfaces.Refs));
+        doc.Tiles = index;
         return doc;
     }
 
@@ -132,7 +137,8 @@ internal static partial class MapTiledFile
             entries.Add(entry with { Loaded = load });
         }
 
-        doc.Tiles = new MapTileIndex(index.TileSize, index.SchemeVersion, Normalize(directory), entries, index.ManifestSha256);
+        MapSurfaceTiledStore.Load(directory, doc, index, window);
+        doc.Tiles = new MapTileIndex(index.TileSize, index.SchemeVersion, Normalize(directory), entries, index.ManifestSha256, index.Surfaces);
 
         IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, options.Registry);
         if (errors.Count > 0)
@@ -184,6 +190,7 @@ internal static partial class MapTiledFile
             CollectIds(content, ids, report);
         }
 
+        MapSurfaceTiledStore.Verify(directory, doc, index, named, report);
         CollectStrays(directory, named, report);
         return report;
     }

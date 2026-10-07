@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.MapDoc.Storage;
 
 namespace KhaozEngine.MapDoc;
 
@@ -25,7 +26,7 @@ public sealed class MapTileIndex
     /// world hash never depends on the order the caller happened to discover tiles in.</summary>
     /// <exception cref="MapDocumentException">Two entries share a tile coordinate.</exception>
     internal MapTileIndex(float tileSize, int schemeVersion, string? sourceDirectory, IEnumerable<MapTileEntry> entries,
-                          string? manifestSha256 = null)
+                          string? manifestSha256 = null, MapSurfaceStorageIndex? surfaces = null)
     {
         ArgumentNullException.ThrowIfNull(entries);
         var list = new List<MapTileEntry>(entries);
@@ -45,6 +46,7 @@ public sealed class MapTileIndex
         SchemeVersion = schemeVersion;
         SourceDirectory = sourceDirectory;
         ManifestSha256 = manifestSha256;
+        Surfaces = surfaces;
         LoadedCount = loaded;
     }
 
@@ -63,10 +65,15 @@ public sealed class MapTileIndex
     /// canonicalizations under one label is permanently wrong rather than detectably wrong.</summary>
     public int SchemeVersion { get; }
 
-    /// <summary>True when at least one indexed tile is NOT loaded, so this document is a WINDOW onto a larger
-    /// world. Every save entry point checks this flag: a whole-document write of a window silently drops every
-    /// unloaded tile and looks like a successful save.</summary>
-    public bool IsPartial => LoadedCount < _entries.Length;
+    /// <summary>True when any tile, surface directory page, index page or patch is unloaded. Every whole-document
+    /// writer and complete-document operation checks this unified flag to prevent a window dropping data.</summary>
+    public bool IsPartial => HasUnloadedTiles || Surfaces?.IsPartial == true;
+
+    /// <summary>The tile-only residency flag, independent of surface completeness.</summary>
+    public bool HasUnloadedTiles => LoadedCount < _entries.Length;
+
+    /// <summary>Surface storage knowledge from the same manifest generation.</summary>
+    public MapSurfaceStorageIndex? Surfaces { get; }
 
     /// <summary>The directory this index was read from, null for an index built in memory from a whole
     /// document. A partial document may only be written back here.</summary>

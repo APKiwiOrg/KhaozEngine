@@ -51,6 +51,8 @@ public static class MapDocumentSchema
         properties.Remove("spawns");
         properties.Remove("playerSpawns");
         properties.Remove("terrainOverrides");
+        properties.Remove("surfacePatches");
+        properties["surfaceStorage"] = new JsonObject { ["type"] = "array", ["items"] = Ref("surfaceDirectoryRef") };
 
         properties["schemeVersion"] = new JsonObject { ["type"] = "integer", ["minimum"] = 0 };
         properties["sculptCellSize"] = new JsonObject { ["type"] = "number", ["exclusiveMinimum"] = 0 };

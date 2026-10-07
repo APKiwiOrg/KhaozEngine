@@ -299,7 +299,9 @@ Compute displacement length in double from the float components to avoid float s
 overflow. A backend value uses float metre distances, so complete Clear extent is the correctly
 rounded float representation of that length. This representation rule does not make the endpoint
 optional. The backend still certifies the original vector's complete closed path. Hit bounds must
-lie in that representable request extent. Conversion uncertainty belongs in the backend's declared
+lie in the actual request extent. The initial unit-axis consumer slice compares the represented
+length, so a rounded-up non-axis norm still requires its separate boundary proof and correction
+before this consumer can authorize a physical prefix. Conversion uncertainty belongs in the backend's declared
 numerical budget, not a new consumer tolerance. A nonrepresentable request length is refused.
 The exact distance-rounding rule remains part of the backend numerical contract before its acceptance.
 
@@ -325,7 +327,7 @@ Proposed finite fixture inventory, using a scripted capability over an actual le
 These fixtures cannot establish geometric completeness, numerical accuracy or native support.
 They prevent a later backend result from bypassing the accepted request/read boundary. Tests will
 precede adapter implementation and need their own bounded compute grant. The prepared consumer fixtures and their first-run classification follow below.
-No leased sweep method exists at this checkpoint.
+The consumer implementation and focused evidence are recorded below.
 
 The first granted 16-case `MovementCapsuleSweepLeaseTests` run compiled but all cases failed their
 acquisition control, expected Known and actual Invalid, before looking up the missing sweep method.
@@ -386,3 +388,19 @@ Still required before implementation acceptance:
 This direction may use existing raw sweeps as proposals without pretending they carry conservative
 bounds. It does not authorize a second native sampler, a local stress proof, a changed F3 tolerance
 or an implicit dependency on the low-lip face query's future runtime implementation.
+
+## Initial leased-consumer GREEN
+
+`MovementQueryLease.Sweeps.cs` implements the optional selected-view consumer after valid RED.
+The unchanged 16 facts passed under the separately granted Release run, zero failures/skips, exit 0
+in `/tmp/swim-sweep-lease-green.log`. The secondary slot was explicitly released. This covers the
+original unit-axis/scripted acceptance, scope/readiness/currentness and atomic out-result rules.
+It does not establish a backend certificate or the outstanding non-axis distance-rounding boundary.
+The latter is an explicit next test-first correction before any physical-prefix use.
+
+Shared arithmetic ownership is agreed directly with pivot: its internal
+`KhaozEngine.Physics.Bepu/BoundedGeometryArithmetic.cs` will own outward double intervals, bounded
+dyadic predicates and represented-transform enclosures. Feature-specific membership stays in its
+`CapsuleFeaturePredicates.cs`. No helper implementation or diff is available yet. Swimming retains
+continuous swept coverage, candidate completeness, bracket and error policy, and will review the
+actual helper interface before consuming it. No numerical domain or certificate is inherited.

@@ -324,5 +324,13 @@ Proposed finite fixture inventory, using a scripted capability over an actual le
 
 These fixtures cannot establish geometric completeness, numerical accuracy or native support.
 They prevent a later backend result from bypassing the accepted request/read boundary. Tests will
-precede adapter implementation and need their own bounded compute grant. No consumer fixture has
-run, and no leased sweep method exists at this checkpoint.
+precede adapter implementation and need their own bounded compute grant. The prepared consumer fixtures and their first-run classification follow below.
+No leased sweep method exists at this checkpoint.
+
+The first granted 16-case `MovementCapsuleSweepLeaseTests` run compiled but all cases failed their
+acquisition control, expected Known and actual Invalid, before looking up the missing sweep method.
+`/tmp/swim-sweep-lease-red.log` exited 1, zero passes/skips. This is a fixture setup failure, not
+capability RED. Source inspection found that the new selected-view decorator omitted the existing
+`IPhysicsCapsuleContacts` capability required by `MovementEnvironmentContext.TryAcquire`. The real
+wrapped Bepu view supplies it. Correct only that decorator's capability forwarding and preserve
+every consumer assertion before a separately granted attempt. No production sweep method exists.

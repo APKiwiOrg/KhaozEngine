@@ -613,3 +613,9 @@ no-build eight leaf-reader facts all failed at the absent `CapsuleSweepLeafProje
 their real Bepu lease and installed-pose controls passed. There were no skips or setup/compile
 failures. Logs are `/tmp/swim-transform-reconcile.log` (exit 0) and `/tmp/swim-leaf-support-red.log`
 (expected exit 1). The secondary slot was explicitly released before leaf-reader implementation.
+
+The identity-box reader passed the eight unchanged assertions converted to direct calls, zero
+failures/skips, exit 0 in `/tmp/swim-leaf-support-green.log`. It reads installed Box data, validates
+its dimensions and exact identity pose, and encloses all eight translated vertices. The composed
+fixture discharges the support premise for its one known box while the real read lease remains
+held. No complete world candidate set, general pose or public sweep is inferred.

@@ -1,8 +1,6 @@
 using System;
 using System.Numerics;
 using System.Reflection;
-using BepuPhysics;
-using BepuPhysics.Collidables;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
@@ -13,8 +11,6 @@ namespace KhaozEngine.Tests.Physics;
 // Installed single-leaf support only. This is not a world candidate set or public certified sweep.
 public class CapsuleSweepLeafProjectionTests
 {
-    delegate GeometryInterval ProjectCall(Shapes shapes, TypedIndex shape, RigidPose pose, Vector3 axis);
-
     [Fact]
     public void PositiveAxisReadsTheInstalledBoxExtent() =>
         WithProjection(new BoxShape(new Vector3(0.5f, 0.25f, 0.125f)), Pose.At(new Vector3(2f, 0f, 0f)),
@@ -91,17 +87,9 @@ public class CapsuleSweepLeafProjectionTests
         ref var target = ref simulation.Statics[0];
         Assert.Equal(pose.Position, target.Pose.Position);
         Assert.Equal(pose.Orientation, target.Pose.Orientation);
-        GeometryInterval projection = Bind()(simulation.Shapes, target.Shape, target.Pose, axis);
+        GeometryInterval projection = CapsuleSweepLeafProjection.Project(simulation.Shapes, target.Shape, target.Pose, axis);
         lease.AssertCurrent();
         inspect(projection);
     }
 
-    static ProjectCall Bind()
-    {
-        Type? type = typeof(BepuPhysicsWorld).Assembly.GetType("KhaozEngine.Physics.Bepu.CapsuleSweepLeafProjection");
-        Assert.NotNull(type);
-        MethodInfo? method = type.GetMethod("Project", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-        return method.CreateDelegate<ProjectCall>();
-    }
 }

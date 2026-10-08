@@ -18,26 +18,35 @@ public sealed class BoundaryContractTests
     {
         var (surface, patch) = CompilerFixtures.Row(MapPresencePolicy.LegacyTileWorld,
             (CompilerFixtures.Full with { Overlay = 2, Cut = MapOverlayCut.CornerQuarter }, true));
-        patch.Heights = new[] { 101, 239, 367, 503 };
+        patch.Heights = new[] { 367, 503, 101, 239 };
         patch.EdgeSubdivisions.Add(new(0, 0, MapCellEdge.South, segments));
         var chain = new MapBoundaryChain("rim", MapChainKind.SurfaceEdge, patch.Key, new[]
         {
             new MapChainVertex(new(surface.Id, MapLatticeAddress.Corner(0, 0)), null),
             new MapChainVertex(new(surface.Id, MapLatticeAddress.Create(1, 0, segments)), null),
             new MapChainVertex(new(surface.Id, MapLatticeAddress.Create(1, 0, 2)), null),
+            new MapChainVertex(new(surface.Id, MapLatticeAddress.Create(segments - 1, 0, segments)), null),
             new MapChainVertex(new(surface.Id, MapLatticeAddress.Corner(1, 0)), null),
         });
         patch.Records.Add(chain);
         MapScopedSurfaces view = CompleteView(new[] { surface }, patch);
-        MapExactValue corner = MapExactValue.FromSingle(101 * 0.01f);
-        MapExactValue midpoint = MapExactValue.FromSingle((101 * 0.01f + 239 * 0.01f) * 0.5f);
+        MapExactValue corner = MapExactValue.FromSingle(367 * 0.01f);
+        MapExactValue end = MapExactValue.FromSingle(503 * 0.01f);
+        MapExactValue midpoint = MapExactValue.FromSingle((367 * 0.01f + 503 * 0.01f) * 0.5f);
+        MapExactValue exactAverage = corner.Add(end).Divide(new(2, 1));
         MapExactValue subdivision = corner.Add(midpoint.Subtract(corner).Multiply(new(2, segments)));
+        MapExactValue upperSubdivision = midpoint.Add(end.Subtract(midpoint).Multiply(new(segments - 2, segments)));
+        Assert.Equal(new MapExactValue(9122611, 2097152), midpoint);
+        Assert.NotEqual(exactAverage, midpoint);
+        Assert.NotEqual(corner.Add(exactAverage.Subtract(corner).Multiply(new(2, segments))), subdivision);
+        Assert.NotEqual(exactAverage.Add(end.Subtract(exactAverage).Multiply(new(segments - 2, segments))), upperSubdivision);
         MapExactPoint[] expected =
         {
             new(new(0, 1), corner, new(0, 1)),
             new(new(1, segments), subdivision, new(0, 1)),
             new(new(1, 2), midpoint, new(0, 1)),
-            new(new(1, 1), MapExactValue.FromSingle(239 * 0.01f), new(0, 1)),
+            new(new(segments - 1, segments), upperSubdivision, new(0, 1)),
+            new(new(1, 1), end, new(0, 1)),
         };
 
         MapChainResolution resolved = MapBoundaryGeometry.ResolveChain(chain, view);
@@ -111,12 +120,16 @@ public sealed class BoundaryContractTests
     }
 
     [Theory]
-    [InlineData(1, 0, false)]
-    [InlineData(0, 1, false)]
-    [InlineData(0, 0, true)]
-    public void WallStrip_EqualLengthDifferentOrderedWorldPositionsRefuse(int shiftX, int shiftZ, bool reverse)
+    [InlineData(1, 0, false, 1)]
+    [InlineData(0, 1, false, 1)]
+    [InlineData(0, 0, true, 1)]
+    [InlineData(1, 0, false, 1000000)]
+    [InlineData(0, 1, false, 1000000)]
+    public void WallStrip_EqualLengthDifferentOrderedWorldPositionsRefuse(int shiftX, int shiftZ, bool reverse,
+        int cellUnitDenominator)
     {
         var (surface, patch) = CompilerFixtures.OneCell(0, 0, 0, 0, CompilerFixtures.Full);
+        surface = surface with { Frame = surface.Frame with { CellUnitMetres = new(1, cellUnitDenominator) } };
         var lower = new MapBoundaryChain("lower", MapChainKind.Authored, null, new[]
         {
             new MapChainVertex(new(surface.Id, MapLatticeAddress.Corner(0, 0)), 0),
@@ -132,18 +145,25 @@ public sealed class BoundaryContractTests
         MapChainResolution u = MapBoundaryGeometry.ResolveChain(upper, view);
         Assert.Equal(MapResolveStatus.Resolved, l.Status);
         Assert.Equal(MapResolveStatus.Resolved, u.Status);
-        Assert.Equal(new[] { new MapExactPoint(new(0, 1), new(0, 1), new(0, 1)), new(new(1, 1), new(0, 1), new(0, 1)) }, l.Points);
+        Assert.Equal(new[] { new MapExactPoint(new(0, 1), new(0, 1), new(0, 1)), new(new(1, cellUnitDenominator), new(0, 1), new(0, 1)) }, l.Points);
         Assert.Equal(Enumerable.Range(0, 2).Select(i => new MapExactPoint(
-            new(shiftX + (reverse ? 1 - i : i), 1), new(3, 1), new(shiftZ, 1))), u.Points);
+            new(shiftX + (reverse ? 1 - i : i), cellUnitDenominator), new(3, 1), new(shiftZ, cellUnitDenominator))), u.Points);
         Assert.Equal(l.Points.Count, u.Points.Count);
+        MapExactValue mismatch = shiftZ != 0
+            ? u.Points[0].Z.Subtract(l.Points[0].Z)
+            : u.Points[0].X.Subtract(l.Points[0].X);
+        Assert.Equal(new MapExactValue(1, cellUnitDenominator), mismatch);
+        if (cellUnitDenominator > 1) Assert.True(mismatch.CompareTo(new(1, 10000)) < 0);
 
         MapDocumentException error = Assert.Throws<MapDocumentException>(() => MapWallStripCompiler.Compile(strip, l, u));
 
         Assert.Contains("vertex sequence", error.Message);
     }
 
-    [Fact]
-    public void Seam_DifferentWorldPositionsReportPositionDespiteCompleteEdgeCoverage()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(1000000)]
+    public void Seam_DifferentWorldPositionsReportPositionDespiteCompleteEdgeCoverage(int cellUnitDenominator)
     {
         var (originalView, originalSeam) = BoundaryFixtures.CoarseFineSeam(2, true, 0);
         var seam = originalSeam with
@@ -155,10 +175,24 @@ public sealed class BoundaryContractTests
         MapSurfacePatch fine = originalView.Patch(seam.Second.Patch).Patch!;
         coarse.Records.Clear();
         coarse.Records.Add(seam);
-        MapScopedSurfaces view = CompleteView(originalView.Surfaces.ToArray(), coarse, fine);
+        MapSurfaceRef[] surfaces = originalView.Surfaces.Select(surface => surface with
+        {
+            Frame = surface.Frame with
+            {
+                CellUnitMetres = new(surface.Frame.CellUnitMetres.Numerator,
+                    checked(surface.Frame.CellUnitMetres.Denominator * cellUnitDenominator)),
+            },
+        }).ToArray();
+        MapScopedSurfaces view = CompleteView(surfaces, coarse, fine);
         Assert.Equal(MapLatticeAddress.Corner(0, 1), seam.Pairs[0].First.Address);
         Assert.Equal(MapLatticeAddress.Corner(2, 2), seam.Pairs[0].Second.Address);
-        // The first pair is world X 0 versus 1 on the same world Z 1.
+        MapExactXz first = surfaces.Single(s => s.Id == seam.First.Patch.SurfaceId).Frame.WorldXz(seam.Pairs[0].First.Address);
+        MapExactXz second = surfaces.Single(s => s.Id == seam.Second.Patch.SurfaceId).Frame.WorldXz(seam.Pairs[0].Second.Address);
+        Assert.Equal(new MapExactXz(new(0, 1), new(1, cellUnitDenominator)), first);
+        Assert.Equal(new MapExactXz(new(1, cellUnitDenominator), new(1, cellUnitDenominator)), second);
+        MapExactValue mismatch = second.X.Subtract(first.X);
+        Assert.Equal(new MapExactValue(1, cellUnitDenominator), mismatch);
+        if (cellUnitDenominator > 1) Assert.True(mismatch.CompareTo(new(1, 10000)) < 0);
 
         var findings = MapSeamValidator.Validate(seam, view);
 

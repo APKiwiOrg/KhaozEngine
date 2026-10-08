@@ -13,7 +13,7 @@ public sealed class CompilerContractInternalTests
     {
         var (surface, patch) = CompilerFixtures.Row(MapPresencePolicy.LegacyTileWorld,
             (CompilerFixtures.Full with { Overlay = 2, Cut = MapOverlayCut.CornerQuarter }, true));
-        patch.Heights = new[] { 101, 239, 367, 503 };
+        patch.Heights = new[] { 367, 503, 101, 239 };
         patch.EdgeSubdivisions.Add(new(0, 0, MapCellEdge.South, segments));
         Assert.Empty(patch.ValidateLocal());
         Assert.Empty(MapTopologyReferenceValidator.Validate(new[] { surface }, new[] { patch }));
@@ -34,9 +34,12 @@ public sealed class CompilerContractInternalTests
         Assert.All(mesh.Faces, face => Assert.Equal(
             CompilerFixtures.ParentPlaneHeight(mesh, face), CompilerFixtures.CentreHeight(mesh, face)));
 
-        MapExactValue sw = MapExactValue.FromSingle(101 * 0.01f);
-        MapExactValue se = MapExactValue.FromSingle(239 * 0.01f);
-        MapExactValue midpoint = MapExactValue.FromSingle((101 * 0.01f + 239 * 0.01f) * 0.5f);
+        MapExactValue sw = MapExactValue.FromSingle(367 * 0.01f);
+        MapExactValue se = MapExactValue.FromSingle(503 * 0.01f);
+        MapExactValue midpoint = MapExactValue.FromSingle((367 * 0.01f + 503 * 0.01f) * 0.5f);
+        MapExactValue exactAverage = sw.Add(se).Divide(new(2, 1));
+        Assert.Equal(new MapExactValue(9122611, 2097152), midpoint);
+        Assert.NotEqual(exactAverage, midpoint);
         var midAddress = MapLatticeAddress.Create(1, 0, 2);
         Assert.Equal(new MapExactPoint(new(1, 2), midpoint, new(0, 1)),
             CompilerFixtures.ExactAt(mesh, surface.Id, midAddress));
@@ -46,6 +49,10 @@ public sealed class CompilerContractInternalTests
             MapExactValue expectedHeight = 2 * step < segments
                 ? sw.Add(midpoint.Subtract(sw).Multiply(new(2 * step, segments)))
                 : midpoint.Add(se.Subtract(midpoint).Multiply(new(2 * step - segments, segments)));
+            MapExactValue unroundedHeight = 2 * step < segments
+                ? sw.Add(exactAverage.Subtract(sw).Multiply(new(2 * step, segments)))
+                : exactAverage.Add(se.Subtract(exactAverage).Multiply(new(2 * step - segments, segments)));
+            Assert.NotEqual(unroundedHeight, expectedHeight);
             var address = MapLatticeAddress.Create(step, 0, segments);
             Assert.Equal(1, mesh.VertexIds.Count(v => v.Address == address));
             Assert.Equal(new MapExactPoint(new(step, segments), expectedHeight, new(0, 1)),

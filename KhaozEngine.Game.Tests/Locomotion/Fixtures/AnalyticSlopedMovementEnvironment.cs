@@ -77,7 +77,8 @@ internal sealed class AnalyticSlopedMovementEnvironment : IDisposable
         double distance = sign * (query.Body.Centre.Y - (double)_slope * query.Body.Centre.X - _height) / _length;
         double change = sign * (query.Delta.Y - (double)_slope * query.Delta.X) / _length;
         double core = (double)query.Body.HalfHeight - query.Body.Radius;
-        double radius = query.Body.Radius + (double)Skin;
+        double queryRadius = query.Body.Radius;
+        double radius = queryRadius + Skin;
         double reach = radius + core / _length;
         var cuts = new SortedSet<float> { 0f, 1f };
         if (change != 0d)
@@ -115,8 +116,11 @@ internal sealed class AnalyticSlopedMovementEnvironment : IDisposable
                 double x = bodyCentre.X + (double)start * delta.X - sign * _slope * radius / _length;
                 double z = bodyCentre.Z + (double)start * delta.Z;
                 Vector2 column = new((float)x, (float)z);
+                double rawReach = queryRadius + core / _length;
+                bool overlap = distance + start * change + rawReach >= -Error;
                 outputContacts.Add(new MovementDomainContact(Water, Room, Column(column.X), column,
-                    -WetNormal, start, _ceiling ? "sloped-ceiling" : "sloped-floor", 0u));
+                    -WetNormal, start, _ceiling ? "sloped-ceiling" : "sloped-floor", 0u,
+                    overlap ? MovementContactOverlap.Overlapping : MovementContactOverlap.Tangent));
             }
             outputSpans.Add(new MovementCoverageSpan(start, end, first, outputContacts.Count - first, dry));
         }

@@ -105,9 +105,12 @@ public sealed partial class MovementQueryLease
             if (next != 1f) return NoCoverage(MovementAvailability.Invalid);
             for (int i = 0; i < result.ContactsWritten; i++)
                 if (!scratchContacts[i].IsValid || !SameWorld(scratchContacts[i].Space) ||
-                    !ColumnOverlapsCapsule(query, scratchContacts[i], result.CertifiedErrorMetres))
+                    !ColumnOverlapsCapsule(query, scratchContacts[i], result.CertifiedErrorMetres) ||
+                    !TangentCoherent(query, scratchContacts[i], result.CertifiedErrorMetres))
                     return NoCoverage(MovementAvailability.Invalid);
 
+            MovementAvailability facts = RememberWaterContacts(scratchContacts[..result.ContactsWritten]);
+            if (facts != MovementAvailability.Known) return NoCoverage(facts);
             // No producer callback or fallible validation occurs between the two copies.
             scratchSpans[..result.SpansWritten].CopyTo(spans);
             scratchContacts[..result.ContactsWritten].CopyTo(contacts);

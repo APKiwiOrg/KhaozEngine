@@ -424,7 +424,12 @@ It queries centre-feet membership, not full capsule coverage. `MovementSupportRe
 `MovementCoverageResult` describe bounded complete-path coverage, including simultaneous wet and dry
 portions. Their constructors reject invalid geometry/counts and cannot make a refusal expose a prefix.
 Each domain contact requires `IntervalColumnXZ` in the acquired physics frame. Its interval is the
-actual local column fact there at `Fraction`, not a constant-depth description of its entire region.
+actual local column fact there at `Fraction` for the lower bound, ceiling upper bound and boundary IDs.
+Under [SM1](../docs/design/SWIM-MEDIUM-FACTS-SM1-2026-10-08.md), nominal surface and free-top kind
+certify the entire covered subregion. Producers split free/closed transitions and classify each
+contact as Tangent or Overlapping. The lease rejects an incoherent Tangent and conflicting nominal
+levels for one domain, with a 256-distinct-domain bound per lease. It never publishes partial buffers
+or level registrations from a failed trace.
 Trace validation checks certified XZ and overlap with the upright capsule's rounded vertical slice,
 using the existing skin and result error budget. It does not require an entire deep column inside
 the narrow query's Y bounds. Canonical space/domain membership and complete clipping remain the

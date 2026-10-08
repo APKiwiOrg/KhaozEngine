@@ -184,7 +184,7 @@ public class MovementEnvironmentSlopeTests
     {
         MovementCoverageSpan span = new(0.5f, 1f, 0, 1, true);
         MovementDomainContact contact = new(Water, Room, new(-4f, 2f, 2f, true, "sentinel-low", "sentinel-high"),
-            Vector2.Zero, Vector3.UnitY, 0.75f, "sentinel", 123u);
+            Vector2.Zero, Vector3.UnitY, 0.75f, "sentinel", 123u, MovementContactOverlap.Overlapping);
         MovementCoverageSpan[] spans = [span];
         MovementDomainContact[] contacts = [contact];
         MovementCoverageResult result = scene.Lease.TraceWater(query, spans, contacts);

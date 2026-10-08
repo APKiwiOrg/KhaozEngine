@@ -42,8 +42,13 @@ public readonly record struct MovementCoverageSpan
     }
 }
 
-/// <summary>Clipped water-region provenance with an actual local column fact at Fraction.
-/// The interval does not describe every column in the region. CoverageRegionHandle is pin-local.</summary>
+/// <summary>Whether the uninflated capsule overlaps water at the contact fraction.
+/// Uncertain intersection is Overlapping. Zero is not a valid producer classification.</summary>
+public enum MovementContactOverlap { Unspecified = 0, Tangent = 1, Overlapping = 2 }
+
+/// <summary>Clipped water-region provenance. NominalSurfaceY and UpperIsFreeSurface certify the
+/// whole covered subregion. LowerY, a ceiling UpperY and boundary IDs remain column-local.
+/// Producers split every free/closed transition. CoverageRegionHandle is pin-local.</summary>
 public readonly record struct MovementDomainContact
 {
     public MovementDomainKey Domain { get; }
@@ -54,13 +59,15 @@ public readonly record struct MovementDomainContact
     public float Fraction { get; }
     public string BoundaryId { get; }
     public uint CoverageRegionHandle { get; }
+    public MovementContactOverlap Overlap { get; }
     public bool IsValid => Domain.IsValid && Space.IsValid && Interval.IsValid &&
         float.IsFinite(IntervalColumnXZ.X) && float.IsFinite(IntervalColumnXZ.Y) &&
         string.Equals(Domain.WorldId, Space.WorldId, StringComparison.Ordinal) &&
         MovementEnvironmentValidation.Unit(Normal) && float.IsFinite(Fraction) && Fraction >= 0f && Fraction <= 1f &&
-        MovementEnvironmentValidation.Name(BoundaryId);
+        MovementEnvironmentValidation.Name(BoundaryId) &&
+        Overlap is MovementContactOverlap.Tangent or MovementContactOverlap.Overlapping;
     public MovementDomainContact(MovementDomainKey domain, MovementSpaceKey space, MovementWaterInterval interval,
-        Vector2 intervalColumnXZ, Vector3 normal, float fraction, string boundaryId, uint coverageRegionHandle)
+        Vector2 intervalColumnXZ, Vector3 normal, float fraction, string boundaryId, uint coverageRegionHandle, MovementContactOverlap overlap)
     {
         Domain = domain;
         Space = space;
@@ -70,6 +77,7 @@ public readonly record struct MovementDomainContact
         Fraction = fraction;
         BoundaryId = boundaryId;
         CoverageRegionHandle = coverageRegionHandle;
+        Overlap = overlap;
         MovementEnvironmentValidation.Require(IsValid, nameof(domain));
     }
 }

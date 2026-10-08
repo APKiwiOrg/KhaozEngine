@@ -1,0 +1,61 @@
+{
+  "status": "SM1 level/overlap guards and fixture classification. Surface policy integration remains next.",
+  "baseCommit": "35b102109",
+  "runs": {
+    "sm1-red": {
+      "path": "/tmp/swim-sm1-red.log",
+      "sha256": "24577d81b4c7d60d0876066937771623edeaae48a5c9010cd55d76dae9c764f5",
+      "passed": 2,
+      "failed": 6,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "sm1-cap-red": {
+      "path": "/tmp/swim-sm1-cap-red.log",
+      "sha256": "ea46159b8a675ea93048cbc97439d5fa9efc8bc4aec91f603574da0cd718953a",
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "sm1-green": {
+      "path": "/tmp/swim-sm1-green.log",
+      "sha256": "211da90751a8f091ce8b0c043262959ee9cbc17834a446e89f828e8e0e915852",
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "overlap-red": {
+      "path": "/tmp/swim-overlap-red.log",
+      "sha256": "92fab4d450513e5b1caaa9da67a18deab0736cd81c44deafb58bb1ec188b52aa",
+      "passed": 4,
+      "failed": 2,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "sm1-affected": {
+      "path": "/tmp/swim-sm1-affected.log",
+      "sha256": "949e632666cff09c0006520071919b5a3ef54b316bc7a8d05160e77c3550d790",
+      "passed": 249,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    }
+  },
+  "format": {
+    "applyExit": 0,
+    "verifyExit": 0,
+    "change": "Initializer whitespace in MovementEnvironmentVolumeTests only."
+  },
+  "sourceHashes": {
+    "KhaozEngine.Locomotion/MovementWaterCoverage.cs": "cc1241f9085732db460b0a917036b369006bffd9b2e7551849720e3f5e9885f3",
+    "KhaozEngine.Locomotion/MovementQueryLease.WaterFacts.cs": "0365aa99f88042e2965e883a9efbdc12b86e32692dbea4514ff73591c1b024f1",
+    "KhaozEngine.Locomotion/MovementQueryLease.Buffers.cs": "530e4927503ad0e87b4757d8b10bd24c812ce621618ce6143ee3671877e01982",
+    "KhaozEngine.Locomotion/MovementQueryLease.Queries.cs": "846321ab94ebc3616d47abfad74fa1aaa8d7feacacec5d896ded6501451d01c3",
+    "KhaozEngine.Game.Tests/Locomotion/MovementMediumFactTests.cs": "fd8632c8ec5e70cfdcc0dd59bf22470e0de5d7762b7ff83085fd9ecdd8463cb9",
+    "KhaozEngine.Game.Tests/Locomotion/MovementOverlapProducerTests.cs": "25029d3a0c736b04659aae81d6622df179dcd15cc880b7ec715595b36fe691f7",
+    "KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.cs": "82f88943d96565e08c8ea3674a223124c46a47f4145985d6dd40315101343775",
+    "KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticSlopedMovementEnvironment.cs": "2c1de4fceedd8ee61ec99279503898111316616bcf79ed0d75d529bbffd7cdf7"
+  }
+}

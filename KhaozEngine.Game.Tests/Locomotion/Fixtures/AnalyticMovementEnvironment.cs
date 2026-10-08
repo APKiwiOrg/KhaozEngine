@@ -188,8 +188,14 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
         int first = contacts.Count;
         foreach (Hit hit in hits)
             if (at >= hit.Enter && at <= hit.Exit)
+            {
+                Vector3 contactCentre = query.Body.Centre + query.Delta * hit.Enter;
+                bool overlap = hit.Water.Bounds.HasPositiveCapsuleOverlap(contactCentre,
+                    query.Body.Radius + Error, query.Body.HalfHeight + Error);
                 contacts.Add(new MovementDomainContact(Domain(hit.Water.Domain), Space(hit.Water.Room), Interval(hit.Water),
-                    hit.Column, hit.Normal, hit.Enter, BoundaryId(hit), hit.Handle));
+                    hit.Column, hit.Normal, hit.Enter, BoundaryId(hit), hit.Handle,
+                    overlap ? MovementContactOverlap.Overlapping : MovementContactOverlap.Tangent));
+            }
         spans.Add(new MovementCoverageSpan(start, end, first, contacts.Count - first, hasDryCoverage));
     }
 

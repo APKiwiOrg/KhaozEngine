@@ -22,8 +22,9 @@ public sealed partial class MovementQueryLease
             AssertCurrent();
             if (!point.IsValid) return NoWaterFact(MovementAvailability.Invalid);
             if (point.Availability != MovementAvailability.Known) return NoWaterFact(point.Availability);
-            return SameWorld(point.Space)
-                ? point : NoWaterFact(MovementAvailability.Invalid);
+            if (!SameWorld(point.Space)) return NoWaterFact(MovementAvailability.Invalid);
+            MovementAvailability facts = RememberWaterPoint(point);
+            return facts == MovementAvailability.Known ? point : NoWaterFact(facts);
         }
         catch (ObjectDisposedException) when (_disposed) { throw; }
         catch (InvalidOperationException) { return NoWaterFact(MovementAvailability.Stale); }

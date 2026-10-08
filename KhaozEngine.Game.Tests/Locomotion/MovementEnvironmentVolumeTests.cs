@@ -248,7 +248,8 @@ public class MovementEnvironmentVolumeTests
         using var whole = OrdinaryWater();
         using var split = new AnalyticMovementEnvironment([new Room("room", RoomBounds)],
             [new Water("water", "room", Box(-6f, -4f, 0f, 0f), 0f),
-             new Water("water", "room", Box(0f, -4f, 6f, 0f), 0f)]) { BackingIds = ["left-page", "right-page"] };
+             new Water("water", "room", Box(0f, -4f, 6f, 0f), 0f)])
+        { BackingIds = ["left-page", "right-page"] };
         Snapshot a = Read(whole, Body(-1f, -1f), Vector3.UnitX * 2f);
         Snapshot b = Read(split, Body(-1f, -1f), Vector3.UnitX * 2f);
         AssertWet(a, "water", false);
@@ -268,7 +269,7 @@ public class MovementEnvironmentVolumeTests
         Assert.Equal(MovementAvailability.Unresolved, lease.SampleCentreWater(body).Availability);
         MovementCoverageSpan sentinel = new(0.5f, 1f, 0, 1, true);
         MovementDomainContact contact = new(Domain("sentinel"), Space("room"), new(-4f, 0f, 0f, true, "low", "top"),
-            Vector2.Zero, Vector3.UnitZ, 0.75f, "sentinel", 123u);
+            Vector2.Zero, Vector3.UnitZ, 0.75f, "sentinel", 123u, MovementContactOverlap.Overlapping);
         MovementCoverageSpan[] spans = [sentinel];
         MovementDomainContact[] contacts = [contact];
         MovementCoverageResult result = lease.TraceWater(new(body, Vector3.UnitX), spans, contacts);

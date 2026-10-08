@@ -80,9 +80,15 @@ internal sealed class MapAcquiredFacts
         : new(key, MapPatchStatus.Unloaded, null, null, "not acquired", 0);
     internal bool CopyRecord(MapRecordRef reference, out MapTopologyRecord? record, out MapPatchStatus status)
     {
+        if (!TryRecord(reference, out record, out status)) return false;
+        record = OwnedPatch(reference.Anchor)?.Clone().Records.FirstOrDefault(r => r.Id == reference.Id);
+        return true;
+    }
+    internal bool TryRecord(MapRecordRef reference, out MapTopologyRecord? record, out MapPatchStatus status)
+    {
         ArgumentNullException.ThrowIfNull(reference);
         status = Status(reference.Anchor);
-        record = OwnedPatch(reference.Anchor)?.Clone().Records.FirstOrDefault(r => r.Id == reference.Id);
+        record = OwnedPatch(reference.Anchor)?.Records.FirstOrDefault(r => r.Id == reference.Id);
         if (record is not null) return true;
         if (status == MapPatchStatus.Present) status = MapPatchStatus.Missing;
         return false;

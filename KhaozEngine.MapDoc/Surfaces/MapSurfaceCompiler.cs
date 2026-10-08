@@ -41,7 +41,6 @@ public static class MapSurfaceCompiler
         Validate(surface, patch);
         ArgumentNullException.ThrowIfNull(cells);
         int[] subdivisions = Subdivisions(patch);
-        Span<MapLatticeTriangle> parents = stackalloc MapLatticeTriangle[4];
         long count = 0;
         for (int z = 0; z < patch.Depth; z++)
             for (int x = 0; x < patch.Width; x++)
@@ -49,11 +48,33 @@ public static class MapSurfaceCompiler
                 if (!cells.Contains(SlotCell(patch, x, z)) || !patch.IsPresent(x, z)) continue;
                 MapSurfaceCell cell = patch.Cells[z * patch.Width + x];
                 if (Fallback(surface, cell)) continue;
-                int parentCount = Describe(patch, x, z, parents);
                 ReadOnlySpan<int> segments = subdivisions.AsSpan(4 * (z * patch.Width + x), 4);
-                for (int i = 0; i < parentCount; i++)
-                    count = checked(count + MapSubdividedTriangle.CountChildren(parents[i], segments));
+                count = checked(count + CountParents(patch, x, z, segments));
             }
+        return count;
+    }
+
+    // Internal callers validate each borrowed patch once before counting individual demanded cells.
+    internal static long CountFaces(MapSurfaceRef surface, MapSurfacePatch patch, int slotCell)
+    {
+        if (slotCell is < 0 or >= 4096) throw new ArgumentOutOfRangeException(nameof(slotCell));
+        int x = slotCell % 64 - patch.CellMinX, z = slotCell / 64 - patch.CellMinZ;
+        if (x < 0 || x >= patch.Width || z < 0 || z >= patch.Depth || !patch.IsPresent(x, z) ||
+            Fallback(surface, patch.Cells[z * patch.Width + x])) return 0;
+        Span<int> segments = stackalloc int[4];
+        segments.Clear();
+        foreach (MapEdgeSubdivision edge in patch.EdgeSubdivisions)
+            if (edge.CellX == x && edge.CellZ == z) segments[(int)edge.Edge] = edge.Segments;
+        return CountParents(patch, x, z, segments);
+    }
+
+    static long CountParents(MapSurfacePatch patch, int x, int z, ReadOnlySpan<int> segments)
+    {
+        Span<MapLatticeTriangle> parents = stackalloc MapLatticeTriangle[4];
+        int parentCount = Describe(patch, x, z, parents);
+        long count = 0;
+        for (int i = 0; i < parentCount; i++)
+            count = checked(count + MapSubdividedTriangle.CountChildren(parents[i], segments));
         return count;
     }
 
@@ -161,7 +182,7 @@ public static class MapSurfaceCompiler
     static int SlotCell(MapSurfacePatch patch, int x, int z) =>
         (patch.CellMinZ + z) * MapPatchKey.SlotCells + patch.CellMinX + x;
 
-    static bool Fallback(MapSurfaceRef surface, MapSurfaceCell cell) =>
+    internal static bool Fallback(MapSurfaceRef surface, MapSurfaceCell cell) =>
         surface.PresencePolicy == MapPresencePolicy.LegacyTileWorld &&
         (cell.Underlay == 0 || (cell.Flags & MapCellFlags.NoDraw) != 0);
 

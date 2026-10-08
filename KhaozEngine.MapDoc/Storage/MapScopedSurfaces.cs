@@ -124,6 +124,8 @@ public sealed class MapScopedSurfaces
         return copy;
     }
     public bool TryRecord(MapRecordRef r, out MapTopologyRecord? record, out MapPatchStatus status) => _facts.CopyRecord(r, out record, out status);
+    internal bool TryRecord(MapRecordRef r, out MapTopologyRecord? record, out MapPatchStatus status, bool borrow) =>
+        borrow ? _facts.TryRecord(r, out record, out status) : _facts.CopyRecord(r, out record, out status);
     public IEnumerable<MapTopologyRecord> RecordsIn(MapPatchKey key) => _facts.CopyRecords(key);
     internal bool TryAcquiredPatch(MapPatchKey key, out MapSurfacePatch? patch, out MapPatchStatus status)
     {

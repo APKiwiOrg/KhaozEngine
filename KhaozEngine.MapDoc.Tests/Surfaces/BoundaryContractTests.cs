@@ -30,16 +30,19 @@ public sealed class BoundaryContractTests
         });
         patch.Records.Add(chain);
         MapScopedSurfaces view = CompleteView(new[] { surface }, patch);
-        MapExactValue corner = MapExactValue.FromSingle(367 * 0.01f);
-        MapExactValue end = MapExactValue.FromSingle(503 * 0.01f);
-        MapExactValue midpoint = MapExactValue.FromSingle((367 * 0.01f + 503 * 0.01f) * 0.5f);
-        MapExactValue exactAverage = corner.Add(end).Divide(new(2, 1));
-        MapExactValue subdivision = corner.Add(midpoint.Subtract(corner).Multiply(new(2, segments)));
-        MapExactValue upperSubdivision = midpoint.Add(end.Subtract(midpoint).Multiply(new(segments - 2, segments)));
-        Assert.Equal(new MapExactValue(9122611, 2097152), midpoint);
-        Assert.NotEqual(exactAverage, midpoint);
-        Assert.NotEqual(corner.Add(exactAverage.Subtract(corner).Multiply(new(2, segments))), subdivision);
-        Assert.NotEqual(exactAverage.Add(end.Subtract(exactAverage).Multiply(new(segments - 2, segments))), upperSubdivision);
+        MapExactValue corner = new(367, 100);
+        MapExactValue end = new(503, 100);
+        MapExactValue midpoint = new(87, 20);
+        MapExactValue subdivision = new(367L * segments + 136, 100L * segments);
+        MapExactValue upperSubdivision = new(503L * segments - 136, 100L * segments);
+        float submittedMidpoint = (367 * 0.01f + 503 * 0.01f) * 0.5f;
+        Assert.Equal(new MapExactValue(9122611, 2097152), MapExactValue.FromSingle(submittedMidpoint));
+        Assert.NotEqual(midpoint, MapExactValue.FromSingle(submittedMidpoint));
+        // Resolved heights are canonical even where the released float midpoint rounded away from them.
+        MapCompiledPatch mesh = MapSurfaceCompiler.Compile(surface, patch);
+        int midIndex = mesh.VertexIds.ToList().FindIndex(v => v.Address == MapLatticeAddress.Create(1, 0, 2));
+        Assert.Equal(submittedMidpoint, mesh.Offsets[midIndex].Y);
+        Assert.Equal(new MapExactPoint(new(1, 2), midpoint, new(0, 1)), mesh.ExactVertices[midIndex]);
         MapExactPoint[] expected =
         {
             new(new(0, 1), corner, new(0, 1)),

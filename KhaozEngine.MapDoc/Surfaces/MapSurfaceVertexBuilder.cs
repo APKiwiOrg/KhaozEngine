@@ -19,9 +19,9 @@ internal sealed class MapSurfaceVertexBuilder(MapSurfaceRef surface, MapSurfaceP
         MapLatticeAddress address = Address(origin, x, z, 2);
         MapExactValue y = a.Exact.Y.Add(b.Exact.Y.Subtract(a.Exact.Y).Divide(new(2, 1)));
         if (surface.PresencePolicy != MapPresencePolicy.LegacyTileWorld) return Exact(address, y);
-        // Both the offset and exact descriptor retain the released midpoint float operation.
+        // Only submission retains the released midpoint float operation.
         Vector3 offset = (a.Offset + b.Offset) * 0.5f;
-        return new(address, LegacyExact(offset), offset);
+        return Exact(address, y) with { Offset = offset };
     }
 
     MapSurfaceVertex Corner(int cellX, int cellZ, MapLatticePoint point)
@@ -36,13 +36,8 @@ internal sealed class MapSurfaceVertexBuilder(MapSurfaceRef surface, MapSurfaceP
         long originZ = checked(-anchor.Z);
         var offset = new Vector3((float)checked(address.X - anchor.X), height * 0.01f,
             -(float)checked(address.Z - originZ));
-        return new(address, LegacyExact(offset), offset);
+        return Exact(address, surface.Frame.Metres(new(height, 1))) with { Offset = offset };
     }
-
-    MapExactPoint LegacyExact(Vector3 offset) => new(
-        new MapExactValue(anchor.X, 1).Add(MapExactValue.FromSingle(offset.X)),
-        MapExactValue.FromSingle(offset.Y),
-        new MapExactValue(anchor.Z, 1).Add(MapExactValue.FromSingle(offset.Z)));
 
     internal MapSurfaceVertex Insert(int cellX, int cellZ, MapCellEdge edge, int step, int segments,
         MapSurfaceVertex from, MapSurfaceVertex to, int fromTwice, int toTwice)
@@ -58,7 +53,10 @@ internal sealed class MapSurfaceVertexBuilder(MapSurfaceRef surface, MapSurfaceP
         var t = new MapExactValue(2L * step - (long)fromTwice * segments,
             (long)(toTwice - fromTwice) * segments);
         MapExactValue y = from.Exact.Y.Add(to.Exact.Y.Subtract(from.Exact.Y).Multiply(t));
-        return Exact(Address(origin, x, z, segments), y);
+        MapExactValue submittedY = surface.PresencePolicy == MapPresencePolicy.LegacyTileWorld
+            ? MapExactValue.FromSingle(from.Offset.Y).Add(MapExactValue.FromSingle(to.Offset.Y)
+                .Subtract(MapExactValue.FromSingle(from.Offset.Y)).Multiply(t)) : y;
+        return Exact(Address(origin, x, z, segments), y, submittedY);
     }
 
     internal MapSurfaceVertex Centre(int cellX, int cellZ, MapLatticeTriangle parent,
@@ -70,14 +68,22 @@ internal sealed class MapSurfaceVertexBuilder(MapSurfaceRef surface, MapSurfaceP
         MapLatticeAddress address = Address(patch.CornerAddress(cellX, cellZ), ax + bx + cx, az + bz + cz, 6);
         MapExactValue y = a.Exact.Y.Add(b.Exact.Y.Subtract(a.Exact.Y).Divide(new(3, 1)))
             .Add(c.Exact.Y.Subtract(a.Exact.Y).Divide(new(3, 1)));
-        return Exact(address, y);
+        MapExactValue submittedY = y;
+        if (surface.PresencePolicy == MapPresencePolicy.LegacyTileWorld)
+        {
+            MapExactValue first = MapExactValue.FromSingle(a.Offset.Y);
+            submittedY = first.Add(MapExactValue.FromSingle(b.Offset.Y).Subtract(first).Divide(new(3, 1)))
+                .Add(MapExactValue.FromSingle(c.Offset.Y).Subtract(first).Divide(new(3, 1)));
+        }
+        return Exact(address, y, submittedY);
     }
 
-    MapSurfaceVertex Exact(MapLatticeAddress address, MapExactValue y)
+    MapSurfaceVertex Exact(MapLatticeAddress address, MapExactValue y, MapExactValue? submittedY = null)
     {
         MapExactXz xz = surface.Frame.WorldXz(address);
         var exact = new MapExactPoint(xz.X, y, xz.Z);
-        return new(address, exact, MapSubmissionGeometry.Offset(exact, anchor));
+        // Legacy fan and subdivision offsets interpolate the released float endpoints independently of exact geometry.
+        return new(address, exact, MapSubmissionGeometry.Offset(exact with { Y = submittedY ?? y }, anchor));
     }
 
     static MapLatticeAddress Address(MapLatticeAddress origin, int x, int z, int denominator)

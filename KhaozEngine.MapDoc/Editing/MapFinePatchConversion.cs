@@ -38,6 +38,9 @@ public static class MapFinePatchConversion
         }
         MapSurfaceSet candidate = surfaces.Clone();
         RequireReferences(candidate);
+        MapScopedSurfaces originalView = MapScopedSurfaces.CompleteView(candidate);
+        foreach (MapSurfacePatch patch in candidate.Patches.Values.Where(p => p.CornerDependencies.Count != 0))
+            RequireValid(MapSeamValidator.ValidateCornerDependencies(patch, originalView));
         MapSurfaceRef source = candidate.Refs.SingleOrDefault(s => s.Id == request.SourceSurfaceId)
             ?? throw new MapDocumentException($"missing source surface '{request.SourceSurfaceId}'");
         if (source.Role == MapSurfaceRole.PaintOverride) throw new MapDocumentException("conversion requires a physical surface");
@@ -81,8 +84,9 @@ public static class MapFinePatchConversion
                 refused.Select(c => $"cell ({c.CellX}, {c.CellZ}) ({c.Reason ?? "LegacyTileWorld arithmetic policy"})")));
         }
         IReadOnlyList<MapSurfacePatch> patches = MapConversionFinePatches.Build(cells, classifications, request);
+        IReadOnlyList<MapCornerOwnerChange> retargets = MapConversionOwners.Plan(candidate, source, fine, cells, patches, request);
 
-        // Classification, record and footprint checks all precede the first candidate mutation.
+        // Classification, record, footprint and existing owner checks precede the first candidate mutation.
         var writes = new SortedSet<MapPatchKey>();
         var records = new SortedSet<string>(StringComparer.Ordinal);
         var spaces = new SortedSet<string>(StringComparer.Ordinal);
@@ -100,6 +104,14 @@ public static class MapFinePatchConversion
             writes.Add(cell.Patch.Key);
         }
         IReadOnlyList<(long X, long Z)> rim = MapConversionRim.Apply(candidate, source, cells, request, writes, records, owners);
+        foreach (MapCornerOwnerChange change in retargets)
+        {
+            MapSurfacePatch dependent = candidate.Patches[change.Dependent];
+            int index = dependent.CornerDependencies.FindIndex(d => d.CornerX == change.CornerX && d.CornerZ == change.CornerZ);
+            dependent.CornerDependencies[index] = new(change.CornerX, change.CornerZ, change.NewOwner);
+            writes.Add(dependent.Key);
+            owners.Add(change);
+        }
         foreach (MapFootprintRetarget plan in footprints)
         {
             MapSurfacePatch anchor = candidate.Patches[plan.Anchor];
@@ -114,9 +126,10 @@ public static class MapFinePatchConversion
         MapScopedSurfaces view = MapScopedSurfaces.CompleteView(candidate);
         foreach (MapSurfaceSeam seam in candidate.AllRecords().OfType<MapSurfaceSeam>().Where(s => records.Contains(s.Id)))
             RequireValid(MapSeamValidator.Validate(seam, view));
+        foreach (MapSurfacePatch patch in candidate.Patches.Values.Where(p => p.CornerDependencies.Count != 0))
+            RequireValid(MapSeamValidator.ValidateCornerDependencies(patch, view));
         foreach (MapSurfacePatch patch in patches)
         {
-            RequireValid(MapSeamValidator.ValidateCornerDependencies(patch, view));
             _ = MapSurfacePatchCodec.Encode(patch);
             _ = MapSurfaceCompiler.Compile(fine, patch);
         }

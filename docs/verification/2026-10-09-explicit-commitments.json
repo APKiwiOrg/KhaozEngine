@@ -1,0 +1,37 @@
+{
+  "change": "Use the existing commitment lifecycle inside explicit movement and the same leased solid/medium solver. No second solver.",
+  "evidence": [
+    {
+      "log": "/tmp/swim-commitment-red.log",
+      "sha256": "6f202ae04a0317ba77b015fb15b0ed195522071778927567919917f10a1d6eb4"
+    },
+    {
+      "log": "/tmp/swim-commitment-green.log",
+      "sha256": "81c8da8ecf4abeb3fa3dabb3747795924f174f02ade8b1b79c9e3d74d1aba85c"
+    },
+    {
+      "log": "/tmp/swim-commitment-refusal-tests.log",
+      "sha256": "86c45549215eedd8985f89c0f298b7fe60146d7fedf706caceedb4b38519eb46"
+    },
+    {
+      "log": "/tmp/swim-commitment-format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "results": [
+    "RED 5 new failures and 2 unrelated matching controls passed",
+    "GREEN 104 explicit movement tests passed, known step dependency excluded",
+    "GREEN 21 commitment/refusal/legacy tests passed"
+  ],
+  "coverage": [
+    "Preparation, command suppression, half-step ballistic seed, collision clipping, blocked launch, landing/recovery and timeout",
+    "Initial and descending water entry abort, no buffered relaunch",
+    "Late unresolved trace preserves original lifecycle and pose",
+    "Malformed commitment rejected"
+  ],
+  "remaining": [
+    "Known bank-step support failure",
+    "Full current-main verification and independent review of these additional changes",
+    "Native producers, release and game adoption"
+  ]
+}

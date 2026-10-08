@@ -69,7 +69,7 @@ public static partial class ExplicitCharacterMovement
 
     static bool ValidCarriedState(in MoveState state) =>
         Nonnegative(state.TimeSinceGrounded) && Nonnegative(state.JumpBufferRemaining) &&
-        Nonnegative(state.ClimbRateEwma) && Nonnegative(state.SpeedScale) && float.IsFinite(state.FacingYaw) &&
+        ValidCommitment(state.Commitment) && Nonnegative(state.ClimbRateEwma) && Nonnegative(state.SpeedScale) && float.IsFinite(state.FacingYaw) &&
         float.IsFinite(state.HorizontalVelocity.X) && float.IsFinite(state.HorizontalVelocity.Y) &&
         state.WaterExcursion is >= WaterExcursionState.None and <= WaterExcursionState.AirborneFromWater;
 

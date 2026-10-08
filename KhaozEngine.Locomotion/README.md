@@ -503,8 +503,11 @@ wading-bank transition all use the same combined resolver. Bed contact alone doe
 swim-exit policy or grant footing. DryOnly and WadeOnly use the same resolver for thin channels,
 shore sliding, simultaneous solid/water constraints and body-relative depth thresholds. Positive
 forbidden starting overlap refuses placement. Every corrected segment is fully re-proved.
-Sharded integration, generic nav proof and native acceptance remain in development. Active committed movement currently refuses
-this opt-in path.
+Scripted movement commitments use the shared preparation, ballistic seed, timeout and recovery lifecycle.
+They suppress player steering and buffered jumps, retain their carried collision-clipped velocity,
+and use the same solid/medium resolver. Surface entry aborts the commitment. An environment refusal
+preserves its original lifecycle and pose while consuming the player press. Sharded integration,
+generic nav proof and native acceptance remain in development.
 Dry explicit motion uses carried coyote/buffer timers and the existing pure air-momentum law.
 Collision denial clips the carried horizontal velocity while keeping the unconstrained command for
 anomaly measurement. Unsupported wet presses cannot borrow the dry coyote/buffer path. Nonfinite

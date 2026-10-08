@@ -122,8 +122,9 @@ scene's request itself. The capture rules are `KhaozEngine.Windowing`'s (see doc
 **WinExe console attach.** Ship the Desktop head as `<OutputType>WinExe</OutputType>` (no stray console window on
 Windows). Because a Windows-subsystem exe has no console, `GameApp` calls `AppWindow.TryAttachParentConsole()` as
 its very first action, attaching the launching terminal's console so `Console.Write*` still shows under
-`dotnet run` / cmd / PowerShell; it is a silent no-op off Windows, on an Explorer/Start launch, and when output is
-redirected. Opt out with `GameAppOptions.SuppressParentConsoleAttach = true` (default off).
+`dotnet run` / cmd / PowerShell. It is a silent no-op off Windows, on an Explorer/Start launch, and when both output
+streams are redirected. Redirection is preserved per stream, while absent or invalid native handles can attach.
+Opt out with `GameAppOptions.SuppressParentConsoleAttach = true` (default off).
 
 **Last-chance crash file.** `GameApp` arms `KhaozEngine.Diagnostics.CrashReport` for every head, so an unhandled
 exception is written with its type, message, stack, the engine version and the graphics backend to a file in the

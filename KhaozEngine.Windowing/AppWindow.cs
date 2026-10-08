@@ -556,8 +556,8 @@ namespace KhaozEngine.Windowing
         /// <c>Console.Write*</c> vanishes when the head is launched from a terminal (<c>dotnet run</c> / cmd /
         /// PowerShell). This attaches the process to the parent's console (if any) once and rewires stdout/stderr
         /// to it. No-op returning <c>false</c> off Windows, for a console-subsystem exe, when there is no parent
-        /// console (a normal Explorer/Start launch), or when output is redirected (CI/pipes are left untouched);
-        /// never throws. Forwards to <see cref="KhaozEngine.Platform.WindowsConsole.EnsureParentConsoleAttached"/>.
+        /// console (a normal Explorer/Start launch), or when both output streams are redirected (each is preserved).
+        /// Never throws. Forwards to <see cref="KhaozEngine.Platform.WindowsConsole.EnsureParentConsoleAttached"/>.
         /// Call BEFORE the first write so no startup logging is lost. GameApp calls this automatically (opt out via
         /// <c>GameAppOptions.SuppressParentConsoleAttach</c>); the ctor also calls it as a fallback for a bare
         /// AppWindow host, and the one-shot guard means the two calls collapse to a single attach.

@@ -963,7 +963,8 @@ the owning client's reconciliation replay exact. Nothing a remote observer rende
   both heads write it only on the receiving client's own player. Cell persistence and cell handoff write it for every
   entity that has it, so a restored or handed-off player keeps its windows. A border ghost does not carry it, which
   is safe because a ghost is never simulated.
-- **What an observer saves.** The movement payload drops from 64 to 56 bytes, so every moving player costs each
+- **What an observer saves.** The owner-state split removed 8 movement bytes per observer. The current movement payload is
+  57 bytes including the excursion byte, so every moving player costs each
   observer 8 bytes less per snapshot, and on the delta path a change confined to the timers (a decaying jump buffer
   while nothing else moves) reaches the owner alone and costs an observer nothing. The owner pays 2 bytes more, the
   owner frame's type id.

@@ -13,11 +13,13 @@ public class PreciseMovementWireHandshakeTests
     private static float Flat(float x, float z) => 0f;
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void GenerationTwelveHelloIsRejectedBeforePlayerAdmission(bool sharded)
+    [InlineData(false, 12)]
+    [InlineData(true, 12)]
+    [InlineData(false, 13)]
+    [InlineData(true, 13)]
+    public void EarlierGenerationHelloIsRejectedBeforePlayerAdmission(bool sharded, int generation)
     {
-        var result = Hello(sharded, ProtocolHandshake.BuildClientToken(12, consumerVersion: null, null));
+        var result = Hello(sharded, ProtocolHandshake.BuildClientToken(generation, consumerVersion: null, null));
 
         Assert.Equal(-1, result.Slot);
         Assert.Equal(0, result.Players);
@@ -26,15 +28,15 @@ public class PreciseMovementWireHandshakeTests
         ClientSessionEvent rejected = Assert.Single(result.Events, ev => ev.Kind == ClientSessionEventKind.Rejected);
         ConnectRefusal refusal = ConnectRefusal.Read(rejected.RejectReason);
         Assert.Equal(DisconnectReason.IncompatibleVersion, refusal.Reason);
-        Assert.Equal(ProtocolHandshake.WireGenerationLabel(13), refusal.Detail);
+        Assert.Equal(ProtocolHandshake.WireGenerationLabel(14), refusal.Detail);
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void GenerationThirteenHelloJoinsAndReceivesSnapshots(bool sharded)
+    public void GenerationFourteenHelloJoinsAndReceivesSnapshots(bool sharded)
     {
-        var result = Hello(sharded, ProtocolHandshake.BuildClientToken(13, consumerVersion: null, null));
+        var result = Hello(sharded, ProtocolHandshake.BuildClientToken(14, consumerVersion: null, null));
 
         Assert.True(result.Slot >= 0);
         Assert.Equal(1, result.Players);

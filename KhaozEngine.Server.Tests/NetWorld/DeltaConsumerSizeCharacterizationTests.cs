@@ -190,10 +190,10 @@ internal static class SizeCharacterization
     private const int Slot = 0;
 
     // NetWorld built-in payloads, rechecked against MoveProtocol.CreateRegistry: the position frame stamp is two shorts
-    // then three floats, MovementState is 18 movement bytes then a 38-byte commitment, PlayerIdentity is a ushort
+    // then three floats, MovementState is 18 movement bytes, a 38-byte commitment and one excursion byte. PlayerIdentity is a ushort
     // length then UTF-8, and MovementOwnerState is two floats on the owner's wire only.
     internal const int PositionPayload = 2 + 2 + 4 + 4 + 4;
-    internal const int MovementPayload = (4 + 1 + 1 + 4 + 1 + 1 + 2 + 2 + 2) + (4 + 1 + 8 + 4 + 4 + 4 + 4 + 4 + 4 + 1);
+    internal const int MovementPayload = (4 + 1 + 1 + 4 + 1 + 1 + 2 + 2 + 2) + (4 + 1 + 8 + 4 + 4 + 4 + 4 + 4 + 4 + 1) + 1;
     internal const int OwnerStatePayload = 4 + 4;
     internal const int NameLengthPrefix = 2;
 
@@ -378,7 +378,7 @@ internal static class SizeCharacterization
         Assert.Equal(new[] { 1, 30, 12, 2, 4, 16, 50 }, Manifest.Select(m => m.PayloadBytes));
         Assert.Equal(Enumerable.Range(TileProtocol.FirstGameTypeId, 7).Select(i => (ushort)i), Manifest.Select(m => m.TypeId));
         Assert.Equal(16, PositionPayload);
-        Assert.Equal(56, MovementPayload);
+        Assert.Equal(57, MovementPayload);
         Assert.Equal(32, Encoding.UTF8.GetByteCount(PlayerName));
         Assert.True(Encoding.UTF8.GetByteCount(PlayerName) <= MoveProtocol.MaxDisplayNameBytes);
         var defaults = new DeltaRebuildOptions();

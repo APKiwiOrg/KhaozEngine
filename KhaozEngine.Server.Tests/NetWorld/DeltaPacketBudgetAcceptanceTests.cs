@@ -26,7 +26,7 @@ public sealed class DeltaPacketBudgetAcceptanceTests
     private const int ExtensionFrameHead = 2;
     private const int KeyframePrefix = 12 + 18 + 4 + 4;
     private const int PositionFrame = 2 + 16;
-    private const int MovementFrame = 2 + 56;
+    private const int MovementFrame = 2 + 57;
     private const int OwnerStateFrame = 2 + 8;
 
     public static TheoryData<bool, string> Cases()
@@ -169,6 +169,7 @@ public sealed class DeltaPacketBudgetAcceptanceTests
         {
             List<FaultSend> chunks = c.Downstream.Sends.Where(s => s.Kind == FaultFrameKind.KeyframeChunk
                 && s.Subtick >= DeltaFaultSchedule.Subtick(20)).ToList();
+            Assert.NotEmpty(chunks);
             ReplicationPacketId id = DeltaReliabilityAcceptanceTests.IdOf(chunks[0]);
             Assert.All(chunks, s => Assert.Equal(id, DeltaReliabilityAcceptanceTests.IdOf(s)));
             Assert.Equal(64u * 1024u, BinaryPrimitives.ReadUInt32LittleEndian(chunks[0].Payload.AsSpan(14)));

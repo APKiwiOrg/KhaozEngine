@@ -161,7 +161,10 @@ public unsafe class CapsuleTreePreflightTests
 
         static NodeChild Child(int index, int leaves) => new()
         {
-            Min = new(-1), Max = new(1), Index = index, LeafCount = leaves
+            Min = new(-1),
+            Max = new(1),
+            Index = index,
+            LeafCount = leaves
         };
 
         internal int CountActual(Vector3 min, Vector3 max)

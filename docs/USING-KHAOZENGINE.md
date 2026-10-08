@@ -23612,8 +23612,8 @@ PlayerMoveState full = PlayerMoveState.From(position, movement, owner);
   client's own player, so `WorldClient.TryGetComponent<MovementOwnerState>` answers `false` for any other player.
   Cell persistence and cell handoff write it for every entity that has it, so a restored or handed-off player keeps
   its coyote and jump-buffer windows. A border ghost does not carry it, and is never simulated.
-- **What it saves.** The movement payload drops from 64 to 56 bytes, 8 bytes less per moving player per observer per
-  snapshot, and on the delta path a change confined to the timers no longer resends the movement frame to observers
+- **What it saves.** The owner-state split saves 8 bytes per moving player per observer per snapshot. The current movement
+  payload is 57 bytes including the excursion byte, and on the delta path a change confined to the timers no longer resends the movement frame to observers
   at all. The owner pays 2 bytes more, the owner frame's type id.
 - **Remotes are unaffected.** `VerticalVelocity`, `Grounded`, `Swimming`, `TeleportEpoch`, `ClimbRateQ`,
   `SpeedScaleQ`, the carried arc, `FacingYawQ` and `Commitment` keep their meaning and their order.

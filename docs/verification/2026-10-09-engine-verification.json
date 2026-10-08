@@ -1,0 +1,77 @@
+{
+  "testedImplementationHead": "4024d57f4930d1bb1ec6823de9d8429171625af5",
+  "mainReconciled": "bf3186075",
+  "build": {
+    "exitCode": 0,
+    "warnings": 0,
+    "errors": 0
+  },
+  "fullSuite": {
+    "exitCode": 1,
+    "projects": 30,
+    "failed": 9,
+    "passed": 26653,
+    "skipped": 1329,
+    "total": 27991
+  },
+  "failureDisposition": {
+    "knownSupportDependency": 1,
+    "staleWireGenerationAndPayloadExpectations": 8,
+    "correction": "Updated the independent 57-byte movement layout and generation 14 handshake expectations. Both generations 12 and 13 are rejected by both heads. Exact 64KiB and one-byte-over tests remain intact.",
+    "focusedCorrectionResult": {
+      "exitCode": 0,
+      "passed": 83,
+      "failed": 0,
+      "skipped": 0
+    },
+    "fullSuiteRerun": false
+  },
+  "format": {
+    "initialExitCode": 2,
+    "cause": "Single NodeChild initializer whitespace in CapsuleTreePreflightTests.cs",
+    "correction": "Expanded initializer fields onto separate lines",
+    "verification": "Full solution verify-no-changes passed, exit 0. Workspace-loading warnings were printed, no format errors."
+  },
+  "review": {
+    "wholeBranchReviewedThrough": "4b9013ac5596493240ee7fc5784d9b544e3e93d8",
+    "findingsFixedAndApproved": "34f62f29cbfa699721cd46bbd0d361fcebd48d9c",
+    "additionalImplementationReviewedThrough": "4024d57f4930d1bb1ec6823de9d8429171625af5",
+    "additionalVerdict": "Approved, no findings",
+    "limits": "Known support failure prevents merge readiness. Latest test/docs corrections were checked against the writer layout by the implementer."
+  },
+  "evidence": [
+    {
+      "log": "/tmp/swim-engine-final-build.log",
+      "sha256": "9102249fec89305345579e7fb1c607b0b82c4fcf53c13c8788182530a93ef2f6"
+    },
+    {
+      "log": "/tmp/swim-engine-full-tests.log",
+      "sha256": "74d817b5b8000f33483e5abc1e25adb8f01424aaa4f7a0a401bc71f3621846d6"
+    },
+    {
+      "log": "/tmp/swim-wire-budget-green.log",
+      "sha256": "192a577bab52ca6979c92fe717ffa1241fcc7db375f4a97ae573f73248429f6e"
+    },
+    {
+      "log": "/tmp/swim-engine-full-format.log",
+      "sha256": "042b01c3a5a8a9b3e5473bc01a414376130cbc32c340477b33d760da962c8217"
+    },
+    {
+      "log": "/tmp/swim-engine-full-format-fixed.log",
+      "sha256": "239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c"
+    }
+  ],
+  "remainingGates": [
+    "30Hz bank approach needs finite support producer/correspondence alignment",
+    "Ground/step/traction model alignment with adjacent controller owner",
+    "Native G1b, released engine adoption, dependent game implementation and human visual acceptance"
+  ],
+  "completionClaim": false,
+  "repositoryGuards": {
+    "dashes": "passed",
+    "prose": "passed",
+    "fileSize": "passed",
+    "agentInstructions": "passed",
+    "docVersions": "passed"
+  }
+}

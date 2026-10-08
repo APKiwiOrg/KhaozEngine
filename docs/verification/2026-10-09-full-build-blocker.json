@@ -17,5 +17,10 @@
     "GHSA-jjfr-hcj7-qf5w",
     "GHSA-wmxv-xphr-5c9g"
   ],
-  "issue": "https://github.com/APKiwiOrg/KhaozEngine/issues/1326"
+  "issue": "https://github.com/APKiwiOrg/KhaozEngine/issues/1326",
+  "resolution": {
+    "commit": "c150c448e",
+    "evidence": "2026-10-09-sheet-codec-build-fix.json",
+    "status": "Historical restore blocker fixed on feature branch by using existing engine image seams. Full Release build passes. Main integration remains pending."
+  }
 }

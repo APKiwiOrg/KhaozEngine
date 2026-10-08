@@ -351,11 +351,12 @@ Tests extend existing Server.Tests NetWorld swim and ShardedPlayerMoveSwim fixtu
 
 ## Commands, review and finish
 
-For each task's RED/GREEN run, use its named fixture directly in the matching project. The old
-slot wrapper in the historical example below is superseded by the 2026-10-08 owner instruction.
+For each task's RED/GREEN run, use its named fixture directly in the matching project.
+Routine verification is already authorized. Follow the active harness build policy without requesting
+compute permission or contacting a coordinator.
 
 ```bash
-/tmp/grimhollow-orch/slot-run.sh swim-lease-tests /tmp/swim-lease-tests.log -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~PhysicsQueryLeaseTests'
+dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter 'FullyQualifiedName~PhysicsQueryLeaseTests'
 ```
 
 Expected RED is the specified missing behavior, not a broken fixture or unrelated compile error.
@@ -400,8 +401,8 @@ integration is also proved by the completed context fixtures.
 This closes the Task 3 implementation step only. Native adapter geometry, residency and real tiled
 seams remain G1b. Tasks 4 to 6, whole-branch review, full final verification and coordinated integration
 remain open. No generic foundation result is a released pin, game adoption or shipped swimming.
-Task 4 now enters source and test preparation under the existing G1a plan, with no heavy run authorized
-by this checkpoint. New slots are requested directly from pivot after the owner retired the coordinator.
+That was the Task 3 checkpoint. The existing G1a approval authorizes the subsequent implementation
+and required verification. There is no coordinator or compute-approval dependency.
 
 ## Read-lease prerequisite integration handoff
 
@@ -437,3 +438,25 @@ conservative mutation generation. The reader gate is exclusive because queries s
 failed write may advance generation, but a leased mutation is refused before changing it. No
 resulting physical mutation is allowed until release. Swimming will reconcile the integrated
 prerequisite before later main integration rather than applying a duplicate lease implementation.
+
+## Current implementation checkpoint, 2026-10-09
+
+Task 4 now includes the shared bounded solid/water resolver, dry/wading/swimming policies,
+closed-water boundaries, exact play-area constraints and runtime/profile motion equivalence.
+The ordinary 30 Hz bank approach remains a failing regression. See
+[the measured support dependency](../../design/SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md).
+Column-only support cannot supply the required finite bank feature. Native support/correspondence
+alignment and the overlapping ground-controller model remain unresolved. Do not replace that
+missing certificate with an off-axis point, inferred infinite plane or a second solver.
+
+Tasks 5 and 6 now have implementations and focused evidence for surface motion/jumps/excursions,
+wire state, prediction/reconciliation, leased publication, cold admission, cell/player persistence,
+transfer and generic motion/profile identity. Scripted commitments also traverse the same resolver.
+These results do not establish complete ground/step/traction behavior or native G1b acceptance.
+
+Independent whole-branch review found two defects, both reproduced, fixed and re-reviewed at
+`34f62f29c`. The subsequent image-tool dependency repair and commitment integration were reviewed
+at `4024d57f4` with no findings. Full Release compilation passes with zero warnings/errors. Final
+suite/format evidence is recorded separately. The known bank-step failure prevents integration.
+Native producer handoff, released engine adoption, game work and human visual acceptance remain
+separate gates. No release or playable swimming is claimed.

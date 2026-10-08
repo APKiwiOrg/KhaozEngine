@@ -3785,3 +3785,15 @@ in the ledger. The first implementation worker was cancelled by a session restar
 files were snapshotted, reviewed and kept unchanged by a continuation worker. Independent review
 approved with three deferred coverage notes (paint override, exact-overflow refusal and legacy
 midpoint subdivision). Proof is `proofs/2026-10-08-r2-task9-green.json`.
+
+
+### Task 10 boundary geometry verified
+
+Source ef4993561f805655197989c1502997994e5f4448 adds chain resolution, wall strip compilation, exact
+cross-lattice seam and corner-dependency validation and opening membership planes, reusing the Task 9
+compiler through a shared submission-geometry helper. Compile RED is preserved at 8616e5c6d in MapDoc and
+Editor (ruling T10-1, the linked fixture). Focused 25 MapDoc, 2 Editor and 2 Compatibility cases passed,
+zero failures or skips, with the frozen Task 9 and Task 10 tests unchanged. Format and guards passed.
+Independent review approved with coverage notes only, confirming the Task 9 extraction keeps exact
+arithmetic and legacy float order. Proof is `proofs/2026-10-08-r2-task10-green.json`. Ruling T10-2 adds
+one tests-only hardening step for the Task 9 and Task 10 refusal and boundary contracts before Task 11.

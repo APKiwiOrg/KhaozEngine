@@ -141,7 +141,7 @@ public static class MapSurfaceCompiler
         }
     }
 
-    static int Describe(MapSurfacePatch patch, int x, int z, Span<MapLatticeTriangle> parents)
+    internal static int Describe(MapSurfacePatch patch, int x, int z, Span<MapLatticeTriangle> parents)
     {
         MapSurfaceCell cell = patch.Cells[z * patch.Width + x];
         bool split = MapSurfaceTopology.SplitSwNe(patch.Height(x, z), patch.Height(x + 1, z),
@@ -165,7 +165,7 @@ public static class MapSurfaceCompiler
         surface.PresencePolicy == MapPresencePolicy.LegacyTileWorld &&
         (cell.Underlay == 0 || (cell.Flags & MapCellFlags.NoDraw) != 0);
 
-    static void Validate(MapSurfaceRef surface, MapSurfacePatch patch)
+    internal static void Validate(MapSurfaceRef surface, MapSurfacePatch patch)
     {
         ArgumentNullException.ThrowIfNull(patch);
         IReadOnlyList<string> findings = patch.ValidateLocal();
@@ -188,7 +188,7 @@ public static class MapSurfaceCompiler
             }
     }
 
-    static MapSubmissionAnchor Anchor(MapSurfaceRef surface, MapSurfacePatch patch)
+    internal static MapSubmissionAnchor Anchor(MapSurfaceRef surface, MapSurfacePatch patch)
     {
         if (surface.PresencePolicy == MapPresencePolicy.LegacyTileWorld)
             return new(checked(patch.Key.SlotX * 64), 0, checked(-patch.Key.SlotZ * 64));
@@ -196,9 +196,8 @@ public static class MapSurfaceCompiler
         MapExactXz last = surface.Frame.WorldXz(patch.CornerAddress(patch.Width, patch.Depth));
         int min = patch.Heights[0], max = min;
         foreach (int height in patch.Heights) { min = Math.Min(min, height); max = Math.Max(max, height); }
-        return new((first.X.CompareTo(last.X) < 0 ? first.X : last.X).Floor(),
-            surface.Frame.Metres(new MapExactValue((long)min + max, 2)).Floor(),
-            (first.Z.CompareTo(last.Z) < 0 ? first.Z : last.Z).Floor());
+        return MapSubmissionGeometry.Anchor(first, last,
+            surface.Frame.Metres(new MapExactValue((long)min + max, 2)));
     }
 
     public static MapExactValue? ExactHeight(MapSurfaceRef surface, MapSurfacePatch patch,

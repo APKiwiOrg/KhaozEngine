@@ -77,10 +77,7 @@ internal sealed class MapSurfaceVertexBuilder(MapSurfaceRef surface, MapSurfaceP
     {
         MapExactXz xz = surface.Frame.WorldXz(address);
         var exact = new MapExactPoint(xz.X, y, xz.Z);
-        return new(address, exact, new Vector3(
-            exact.X.Subtract(new(anchor.X, 1)).ToSingle(),
-            exact.Y.Subtract(new(anchor.Y, 1)).ToSingle(),
-            exact.Z.Subtract(new(anchor.Z, 1)).ToSingle()));
+        return new(address, exact, MapSubmissionGeometry.Offset(exact, anchor));
     }
 
     static MapLatticeAddress Address(MapLatticeAddress origin, int x, int z, int denominator)

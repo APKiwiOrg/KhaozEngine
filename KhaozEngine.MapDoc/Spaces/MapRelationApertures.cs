@@ -61,6 +61,8 @@ internal static class MapRelationApertures
         }
         else if (record is MapHorizontalOpening opening)
         {
+            if (link is null)
+                throw new MapDocumentException($"missing geometry: vertical link for opening '{opening.Id}' {reference.Anchor}");
             if (!view.TryAcquiredPatch(opening.Patch, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
                 throw new MapDocumentException($"missing geometry: opening '{opening.Id}' patch {opening.Patch} ({status})");
             MapOpeningPlane plane;

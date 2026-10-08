@@ -34,6 +34,7 @@ internal sealed class MapBoundPreparation
     }
 
     internal IEnumerable<MapValidatedSurfacePatch> ValidatedPatches => _validated.Values;
+    internal string? Refusal { get; private set; }
 
     internal void RequireView(MapScopedSurfaces view)
     {
@@ -92,7 +93,7 @@ internal sealed class MapBoundPreparation
                 return Failure(MapRefinementStatus.MissingGeometry, $"patch {key}: {status}");
             if (status == MapPatchStatus.KnownEmpty) continue;
             if (patch is null) return Failure(MapRefinementStatus.MissingGeometry, $"patch {key}: {status} without payload");
-            _ = ValidatedPatch(surface, patch);
+            if (ValidatedPatch(surface, patch) is null) return Failure(MapRefinementStatus.CapacityExceeded, Refusal);
             long faces = MapSurfaceCompiler.CountFaces(surface, patch, slot);
             count = checked(count + faces);
             if (_work is not null) _work.BoundFacesCounted += faces;
@@ -114,7 +115,7 @@ internal sealed class MapBoundPreparation
         if (!WithinCellBudget(range)) return Failure(MapRefinementStatus.CapacityExceeded, "source faces: cell range");
         if (!_view.TryAcquiredPatch(opening.Patch, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
             return Failure(MapRefinementStatus.MissingGeometry, $"opening '{reference.Id}' {opening.Patch}: {status}");
-        _ = ValidatedPatch(surface, patch);
+        if (ValidatedPatch(surface, patch) is null) return Failure(MapRefinementStatus.CapacityExceeded, Refusal);
         var demands = new List<MapCellDemand>();
         long count = 0;
         foreach (int slot in opening.SlotCells.Order())
@@ -147,13 +148,17 @@ internal sealed class MapBoundPreparation
             for (long x = range.MinX; x < range.MaxXExclusive; x++) yield return (x, z);
     }
 
-    internal MapValidatedSurfacePatch ValidatedPatch(MapSurfaceRef surface, MapSurfacePatch patch)
+    internal MapValidatedSurfacePatch? ValidatedPatch(MapSurfaceRef surface, MapSurfacePatch patch)
     {
         if (_context is not null) return _context.ValidatedPatch(patch.Key);
         if (_validated.TryGetValue(patch.Key, out MapValidatedSurfacePatch? validated)) return validated;
+        if (_validated.Count >= _limits.MaxContextPatches)
+        {
+            Refusal = "context patches";
+            return null;
+        }
         validated = new(surface, patch, _validationWork);
-        // Retain evidence for every borrowed input visited by preflight, including face-free bounds.
-        // The context's patch budget limits demanded compilation masks, not validation evidence.
+        // Count every validated bound patch before retaining evidence, including face-free bounds.
         _validated.Add(patch.Key, validated);
         return validated;
     }

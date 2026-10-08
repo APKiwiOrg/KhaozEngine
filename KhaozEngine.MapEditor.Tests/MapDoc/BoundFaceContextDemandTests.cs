@@ -74,7 +74,7 @@ public sealed class BoundFaceContextDemandTests
     }
 
     [Fact]
-    public void FaceFreeUpperBound_RetainsValidationEvidenceWithoutConsumingCompileBudget()
+    public void FaceFreeUpperBound_RetainsValidationEvidenceWithoutConsumingFaceBudget()
     {
         var set = new MapSurfaceSet();
         set.Refs.Add(MixedResolutionFixtures.Surface("floor", 1, MapSurfaceRole.SupportFloor));
@@ -87,7 +87,7 @@ public sealed class BoundFaceContextDemandTests
         set.Patches.Add(roof.Key, roof);
         MixedResolutionFixtures.Room(floor, "room", "cells", MapSpaceKind.Exterior, floor.Key, new[] { 0, 1 }, "floor", "roof");
         var (view, footprint) = MixedResolutionFixtures.ViewWithFootprint(set);
-        var limits = new MapRefinementLimits(MaxContextPatches: 1);
+        var limits = new MapRefinementLimits(MaxContextPatches: 2);
         var work = new MapBoundFaceWork();
         MapFootprintPreparation prepared = MapCommonRefinement.PrepareFootprints(view, new[] { footprint }, limits, work);
         Assert.Null(prepared.Refusal);
@@ -103,6 +103,58 @@ public sealed class BoundFaceContextDemandTests
             Assert.Empty(result.Faces);
         }
         Assert.Equal(2, work.PatchValidations);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(1, 1)]
+    [InlineData(2, 2)]
+    public void FaceFreeUpperBounds_RefuseBeforeRetainingEvidencePastPatchBudget(int budget, int expectedValidations)
+    {
+        var (view, footprints) = FaceFreeUpperBounds();
+        var limits = new MapRefinementLimits(MaxSourceFacesPerBound: 1, MaxContextPatches: budget, MaxContextFaces: 0);
+        var work = new MapBoundFaceWork();
+        MapFootprintPreparation prepared = MapCommonRefinement.PrepareFootprints(view, footprints, limits, work);
+        Assert.Null(prepared.Context);
+        Assert.Equal("context patches", prepared.Refusal);
+        Assert.Equal((expectedValidations, 0, 0L, 0L, 0L),
+            (work.PatchValidations, work.Compiles, work.CompiledFaces, work.BoundFacesCounted, work.ContextFacesCounted));
+        Assert.All(prepared.CellOutcomes.Values, outcome =>
+        {
+            Assert.Equal(MapRefinementStatus.CapacityExceeded, outcome.Status);
+            Assert.Equal("context patches", outcome.Detail);
+            Assert.Empty(outcome.Faces);
+            Assert.Empty(outcome.Vertices);
+        });
+    }
+
+    [Fact]
+    public void FaceFreeUpperBounds_AtPatchBudgetRetainEvidenceForEveryRead()
+    {
+        var (view, footprints) = FaceFreeUpperBounds();
+        var limits = new MapRefinementLimits(MaxSourceFacesPerBound: 1, MaxContextPatches: 3, MaxContextFaces: 0);
+        var work = new MapBoundFaceWork();
+        MapFootprintPreparation prepared = MapCommonRefinement.PrepareFootprints(view, footprints, limits, work);
+        Assert.NotNull(prepared.Context);
+        Assert.Null(prepared.Refusal);
+        Assert.Empty(prepared.CellOutcomes);
+        // Three distinct absent upper patches need validation. No bound contributes a face.
+        Assert.Equal((3, 0, 0L), (work.PatchValidations, work.Compiles, work.CompiledFaces));
+        foreach (MapSpaceFootprint footprint in footprints)
+        {
+            MapCellRefinement result = MapCommonRefinement.RefineFootprintCell(prepared.Context, footprint, 0, limits);
+            Assert.Equal(MapRefinementStatus.Complete, result.Status);
+            Assert.Equal((new MapExactValue(1, 1), new MapExactValue(0, 1), (MapExactValue?)new MapExactValue(0, 1)),
+                (result.CellArea, result.LowerArea, result.UpperArea));
+            Assert.Empty(result.Faces);
+            Assert.Empty(result.Vertices);
+            MapBoundFaceSet upper = MapCommonRefinement.BoundFaces(prepared.Context, footprint, footprint.Upper,
+                new(new(0, 1), new(0, 1)), new(new(1, 1), new(1, 1)), limits);
+            Assert.Equal(MapRefinementStatus.Complete, upper.Status);
+            Assert.Empty(upper.Faces);
+            Assert.Equal(3, work.PatchValidations);
+        }
+        Assert.Equal((3, 0, 0L, 0), (work.PatchValidations, work.Compiles, work.CompiledFaces, view.PatchClones));
     }
 
     [Fact]
@@ -123,6 +175,26 @@ public sealed class BoundFaceContextDemandTests
             Assert.Equal((MapRefinementStatus.Complete, 2), (result.Status, result.Faces.Count));
         }
         Assert.Equal((1, 1, 4L), (work.PatchValidations, work.Compiles, work.CompiledFaces));
+    }
+
+    static (MapScopedSurfaces View, MapSpaceFootprint[] Footprints) FaceFreeUpperBounds()
+    {
+        var set = new MapSurfaceSet();
+        set.Refs.Add(MixedResolutionFixtures.Surface("floor", 1, MapSurfaceRole.SupportFloor));
+        MapSurfacePatch floor = MixedResolutionFixtures.Patch(new("floor", 0, 0), 1, 1, (_, _) => 0);
+        floor.SetPresent(0, 0, false);
+        set.Patches.Add(floor.Key, floor);
+        for (int i = 0; i < 3; i++)
+        {
+            string roofId = "roof" + i;
+            set.Refs.Add(MixedResolutionFixtures.Surface(roofId, 1, MapSurfaceRole.Ceiling));
+            MapSurfacePatch roof = MixedResolutionFixtures.Patch(new(roofId, 0, 0), 1, 1, (_, _) => 300);
+            roof.SetPresent(0, 0, false);
+            set.Patches.Add(roof.Key, roof);
+            MixedResolutionFixtures.Room(floor, "room" + i, "cells" + i, MapSpaceKind.Exterior,
+                floor.Key, new[] { 0 }, "floor", roofId);
+        }
+        return (MapScopedSurfaces.CompleteView(set), floor.Records.OfType<MapSpaceFootprint>().ToArray());
     }
 
     static (MapScopedSurfaces View, MapSpaceFootprint Footprint, MapHorizontalOpening Opening) OpeningFootprint(bool upper)

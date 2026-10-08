@@ -61,6 +61,7 @@ internal sealed class MapBoundFaceContext
         ArgumentNullException.ThrowIfNull(demands);
         preparation?.RequireView(view);
         if (maxPatches < 0 || maxFaces < 0) throw new ArgumentOutOfRangeException(nameof(maxPatches));
+        preparation ??= new(view, new(MaxContextPatches: maxPatches), work);
         if (work is not null) work.ContextsPrepared++;
         refusal = null;
         var pending = new SortedDictionary<MapPatchKey, Pending>();
@@ -69,16 +70,18 @@ internal sealed class MapBoundFaceContext
         foreach (MapBoundFaceDemand boundDemand in demands)
         {
             // Drain phase 1 after refusal. Do not allocate masks or count any further context work.
+            refusal ??= preparation.Refusal;
             if (refusal is not null) continue;
             MapCellDemand demand = boundDemand.Cell;
             if (demand.SlotCell is < 0 or >= 4096) throw new ArgumentOutOfRangeException(nameof(demands));
             if (!pending.TryGetValue(demand.Patch, out Pending? entry))
             {
-                if (pending.Count >= maxPatches) { refusal = "context patches"; continue; }
                 MapSurfaceRef? surface = view.Surfaces.FirstOrDefault(s => s.Id == demand.Patch.SurfaceId);
                 if (surface is null || !view.TryAcquiredPatch(demand.Patch, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
                     throw new MapDocumentException($"context demand patch {demand.Patch}: unavailable");
-                entry = new(preparation?.ValidatedPatch(surface, patch) ?? new MapValidatedSurfacePatch(surface, patch, work));
+                MapValidatedSurfacePatch? validatedPatch = preparation.ValidatedPatch(surface, patch);
+                if (validatedPatch is null) { refusal = preparation.Refusal; continue; }
+                entry = new(validatedPatch);
                 pending.Add(demand.Patch, entry);
             }
             bool freshCell = !entry.Contains(demand.SlotCell);
@@ -116,9 +119,11 @@ internal sealed class MapBoundFaceContext
                 requested.Cells.Add(demand.SlotCell);
             }
         }
+        // A face-free phase-1 refusal may finish without yielding any demand.
+        refusal ??= preparation.Refusal;
         if (refusal is not null) return null;
         // Face-free bounds also retain their phase-1 validation evidence for subsequent reads.
-        var validated = preparation?.ValidatedPatches.ToDictionary(p => p.Patch.Key) ?? new Dictionary<MapPatchKey, MapValidatedSurfacePatch>();
+        var validated = preparation.ValidatedPatches.ToDictionary(p => p.Patch.Key);
         var entries = new Dictionary<MapPatchKey, Entry>();
         var openings = new Dictionary<MapRecordRef, OpeningEntry>();
         foreach (var (key, pendingEntry) in pending)

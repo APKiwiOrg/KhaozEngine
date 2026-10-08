@@ -34,6 +34,23 @@ JSON with fixed field order, sorted patch keys and ordinal IDs, invariant number
 `MapNativeWriteSet` names patch payloads, surface declarations and placement state for publication.
 Records, spaces, corner owners and material uses are carried by the named patch payloads.
 
+The unreleased R2 terrain API uses `MapTerrainEdits.Prepare(surfaces, edit)` to return a detached candidate,
+its exact `MapNativeWriteSet` and effects without mutating the input. `MapSetCornerHeights`, `MapSmoothCorners`,
+`MapSetCells` and `MapSetPresence` use patch-local coordinates (presence takes slot-cell indices).
+Smoothing accepts 1 to 64 passes, averages a double-buffered 3 by 3 neighbourhood including the centre,
+and rounds away from zero. Its unchanged halo must be available on this patch or an unambiguous resident
+same-surface neighbour. Missing halo geometry refuses the edit.
+
+`MapReassignCornerOwner`, `MapReanchorRecords` and `MapReplaceTopology` make ownership and anchor changes
+explicit. Upserts retain current shared-corner owners. Removing an owner or anchor requires reassignment
+of its dependants or re-anchoring of its records, respectively. Re-anchoring updates every `MapRecordRef`,
+including surface span metadata. `MapCompositeEdit` prepares its ordered edits as one candidate.
+`MapConvertFinePatch` reuses `MapFinePatchConversion`, including its authored-difference policy.
+Preparation validates references, seams and owners and refreshes affected surface semantic digests.
+Heights, smoothing, presence and ownership invalidate Terrain, Physics, Nav and Residency. Topology and
+conversion also invalidate Material. Cell material-ID changes alone invalidate Terrain and Material,
+other cell fields invalidate all five, and re-anchoring alone invalidates Residency.
+
 ## Whole authored surface identity
 
 `KhaozEngine.MapDoc.Identity.MapAuthoredIdentityV2.Compute(document, assets, options)` requires a complete

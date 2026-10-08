@@ -880,6 +880,22 @@ Placement commands use the same seam with `PlacementsOnly` and the `Placements` 
 Commands outside this native document transaction protocol are refused on opted-in documents.
 Analytic documents keep their existing command behavior.
 Direct placement `Apply` and `Revert` check document-local native validity only, without asset membership.
+
+The unreleased R2 `TerrainEditCommand(MapTerrainEdit)` uses the same transaction seam for native terrain
+edits. It captures exact before and after patch and surface-ref snapshots of the accepted write set.
+Undo and redo replay those snapshots, restoring corner owners, topology records and semantic identity
+without rerunning smoothing or conversion. A rejected preparation never captures command state.
+Direct terrain `Apply` and `Revert` validate locally, while bound editor transactions also check the
+asset closure and space coverage. `MutationService.TerrainApply(edit)` runs this same command under the
+service session lock and returns `MapTerrainMutationResult` with identical document bytes and effects
+text. These are programmatic APIs. Terrain MCP verbs are deferred to R10.
+
+The unreleased R2 service lifecycle routes resolver identity `(1, 2)` through
+`NativeDocumentService.SessionOptionsV2` and `MapResolverV2` over captured authored surfaces at every
+open, window replacement, save, validate, summary, conversion and retile. Resolver identity `(1, 1)`
+keeps `SessionOptions` and analytic support. Unknown identities or mismatched resolver options refuse
+before resource reads. See the MapEdit.Tool README for both session build identities.
+
 The scene reports expected native edit refusals in its status strip across tool frames, shortcuts and
 inspector widgets. Rejected actions keep committed document/history and selection, cancel transient
 controller gestures and discard rejected inspector drafts after widget dispatch. Camera and view-only

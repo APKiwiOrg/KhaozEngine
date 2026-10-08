@@ -11446,6 +11446,15 @@ tracking. Native rename edits `DisplayName` without changing selection or either
 `RemapPlacementIdCommand` changes the stable ID while preserving numeric identity. See the MapEditor
 package README for the supported transaction boundary and low-level validation distinction.
 
+The unreleased R2 terrain path prepares `MapTerrainEdit` values with `MapTerrainEdits.Prepare`, without
+mutating its input surface set. Execute `new TerrainEditCommand(edit)` through a bound `EditorDocument`
+for validation and atomic publication. Accepted commands retain exact patch and surface-ref snapshots,
+so undo and redo restore owners, records and identity without resampling. The programmatic service method
+`MutationService.TerrainApply(edit)` runs the same command under the session lock and returns both the
+`MutationResult` and `MapNativeEditEffects`. GUI and service edits produce identical canonical documents
+and `Effects.Describe()` text. Missing smoothing halos, unresolved owners, anchors and invalid space
+separation refuse without changing committed state. Terrain MCP verbs remain planned for R10.
+
 **Renaming.** For analytic documents, the placement, spawn, player spawn, and region inspectors lead with an inline-editable Name
 row. Committing a new value renames the element through `RenamePlacementCommand`, `RenameSpawnCommand`,
 `RenamePlayerSpawnCommand`, or `RenameRegionCommand`, rejecting a blank, unchanged, or colliding target, and
@@ -11519,7 +11528,14 @@ into the thrown message on failure, so the in-session document is never left inv
 **Native lifecycle.** A document with `ResolverIdentity` is verified completely by
 `NativeDocumentService.ValidateComplete(document, source, options)` at open, window moves, save, validate,
 summary, conversion and retile. Its resource root is the monolithic file's directory or the tiled directory,
-anchored as an absolute path at open. Open and `set_window` bind the freshly verified closure only after the
+anchored as an absolute path at open. Resolver identity `(1, 1)` uses the unchanged analytic `SessionOptions`
+(`khaozengine.mapedit.analytic-support`, builder version 1, options hash
+`mapruntime-buildfield-default-registry-v1`). The unreleased R2 identity `(1, 2)` uses `SessionOptionsV2`
+(`khaozengine.mapedit.authored-support`, builder version 1, options hash
+`mapdoc-resolver-v2-authored-bindings-v1`, resolver version 2) with `MapResolverV2` over a captured document
+surface source. Unknown identities and options with a mismatched resolver version refuse before reading
+resources. Authored bindings never fall back to analytic support.
+Open and `set_window` bind the freshly verified closure only after the
 candidate passes, and a windowed native load refuses. Every write verifies first, conversions against the
 destination's resources (never copied or rebased), and monolithic native saves are staged and promoted
 atomically by replacing the destination entry (no write through a symbolic link, no preserved mode or ACL).

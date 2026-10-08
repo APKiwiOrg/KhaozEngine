@@ -61,8 +61,15 @@ failure, so the in-session document is never left invalid.
 
 Native opted-in documents (non-null `ResolverIdentity`) are validated completely at every lifecycle boundary by
 `NativeDocumentService.ValidateComplete(document, source, options)`. It checks the document locally, reloads and
-digest-verifies the whole asset closure, then resolves placements with analytic support heights under the
-stable `NativeDocumentService.SessionOptions` build identity. The resource root is the monolithic file's
+digest-verifies the whole asset closure, then resolves placements under the document's resolver identity.
+Resolver identity `(1, 1)` keeps analytic support from `MapRuntime.BuildField` and the unchanged
+`NativeDocumentService.SessionOptions` build identity (`khaozengine.mapedit.analytic-support`, builder
+version 1, options hash `mapruntime-buildfield-default-registry-v1`). The unreleased R2 identity `(1, 2)`
+uses `MapResolverV2` over `MapDocumentSurfaceSource.Capture(document)` with `SessionOptionsV2`
+(`khaozengine.mapedit.authored-support`, builder version 1, options hash
+`mapdoc-resolver-v2-authored-bindings-v1`, resolver version 2). Unknown identities and mismatched resolver
+options refuse before resource reads. Authored bindings never fall back to analytic support.
+The resource root is the monolithic file's
 directory or the tiled document's own directory, anchored as an absolute path at open, so later working
 directory changes never move it.
 

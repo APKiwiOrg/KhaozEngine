@@ -3875,3 +3875,14 @@ on the last commit passed all 10 MapDoc cases, including the added strip case (T
 32 km and depths to 640 m reproduce near-origin local positions exactly, and heights and composed vertices match
 independent double references within 0.0001 m. The named vertical risk is recorded with no target relaxed. Review
 approved on the first pass. Proof is `proofs/2026-10-09-r2-task14-green.json`.
+
+
+### Task 15 relation and portal facts verified
+
+Sources d29d4199b and c44b81feb relate two framed points in one acquired scope through canonical membership and a
+deterministic bounded breadth-first search over acquired wall portals and openings, with exact apertures whose
+provenance is in the acquisition witness. Exhausting the bound is NotConnectedWithinBound, never a disconnection claim,
+and Occlusion and Clearance stay NotEvaluated. Compile RED is preserved at 657d24983 in MapDoc and Editor. Final runs on
+the last commit passed 12 MapDoc cases, the 9 planned and 3 regressions, with format and guards clean. Review needed one
+fix round: an opening path now requires its acquired vertical link and refuses as MissingGeometry without it. Ruling
+T15-2 has aperture columns follow the resolved band chain vertices. Proof is `proofs/2026-10-09-r2-task15-green.json`.

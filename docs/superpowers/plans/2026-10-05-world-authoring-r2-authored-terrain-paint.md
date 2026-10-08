@@ -3809,3 +3809,18 @@ Commits 3f4fd752b and 4fc77cc93 add 27 MapDoc and 2 Editor cases. One review rou
 rounding sensitive and added position mismatches of 0.000001 m, so exact averaging or a 0.0001 m tolerance
 would now fail. Final runs passed 52 MapDoc and 4 Editor cases with format and guards clean. Proof is
 `proofs/2026-10-09-r2-task10h-green.json`. Task 11 follows.
+
+
+### Task 11 fine-patch conversion verified
+
+Sources 9fecbeb3c, cdcd13358 and 1fe82a391 convert coarse regions into exact finer patches, classify cells,
+report authored differences, retarget footprints per D4 and keep rim seams and owners exact. Compile RED is
+preserved at 8938176ba. Final runs passed 90 MapDoc, 4 Editor and 2 Compatibility cases, then the two
+strengthened contract classes, with format and guards clean. Rulings: T11-2 (crossed fine topology derives
+from the crease), T11-3 (the frozen mixed-porch digest assertion contradicted D4's in-place retarget and now
+compares with a clone that retargets only porch-cells), T11-4 (one seam per contiguous fine-patch span across
+fine slot boundaries), T11-5 (canonical exact geometry for every presence policy, with the released float
+arithmetic only in compiled offsets, legacy normals and the D9 bilinear helper, so partial legacy conversion
+meets its rim exactly while render and physics offsets stay as released) and T11-6 (existing fractional owners
+are retargeted or the conversion refuses atomically). Review needed two fix rounds and closed with all
+findings addressed. Proof is `proofs/2026-10-09-r2-task11-green.json`.

@@ -1,0 +1,53 @@
+{
+  "task": "11 exact fine-patch conversion",
+  "stage": "intended compile-time RED",
+  "base": "144eb298d",
+  "sources": {
+    "KhaozEngine.MapDoc.Tests/Editing/FinePatchConversionTests.cs": "736d23267f8dd2af940ac1ae1be8cf14c233d5604c8bf5e04e27f998f1b8d85f",
+    "KhaozEngine.MapDoc.Tests/Editing/ConversionFixtures.cs": "305275600c0737f2d1f408257d22a85b2da53be7de6a3877a4619a3c554d6789"
+  },
+  "results": [
+    {
+      "project": "mapdoc",
+      "filter": "FullyQualifiedName~FinePatchConversionTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 10,
+        "CS0234": 2,
+        "CS0103": 1
+      },
+      "missing": {
+        "MapConversionResult": 5,
+        "MapFinePatchRequest": 4,
+        "Editing": 2,
+        "MapCellConversionClass": 2
+      },
+      "planned_new_cases": 17,
+      "log_sha256": "83c10329018400d42a7696217c443e80180d299772b92b97bb854bd98e1a2d3c"
+    },
+    {
+      "project": "editor",
+      "filter": "FullyQualifiedName~CompilerBudgetTests (linked ConversionFixtures compile check)",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 7,
+        "CS0234": 1
+      },
+      "missing": {
+        "MapConversionResult": 4,
+        "MapFinePatchRequest": 3,
+        "Editing": 1
+      },
+      "planned_new_cases": 0,
+      "log_sha256": "d1e10c9eb3413ea993b0961ab05eb4ad43478505824ab9cc5ebdba22417b7637"
+    }
+  ],
+  "classification": "Every unique diagnostic names the missing KhaozEngine.MapDoc.Editing namespace or a planned Task 11 type. No unrelated errors. A whitespace verify of both files passed before RED.",
+  "rulings": [
+    "T11-1 ConversionFixtures compiles into MapEditor.Tests, so RED is paired and GREEN adds an Editor compile check.",
+    "T11-2 the Slopes centre cell uses Auto topology. Its heights already split NW-SE, so a conversion must derive the forced diagonal for crossed fine cells from the crease rather than copy a forced source flag."
+  ],
+  "execution": "Direct and serial under owner OA20 through build-slot, one invocation per project, no retry."
+}

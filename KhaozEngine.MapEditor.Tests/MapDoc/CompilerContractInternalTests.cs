@@ -77,5 +77,19 @@ public sealed class CompilerContractInternalTests
         };
         Assert.All(centres, centre => Assert.Equal(centre.Height.ToSingle(),
             mesh.Offsets[mesh.VertexIds.ToList().FindIndex(v => v.Address == centre.Address)].Y));
+
+        // The north midpoint distinguishes released float submission from canonical rounding.
+        var (northSurface, northPatch) = CompilerFixtures.Row(MapPresencePolicy.LegacyTileWorld,
+            (patch.Cells[0] with { Rotation = 1 }, true));
+        northPatch.Heights = patch.Heights.ToArray();
+        Assert.Empty(northPatch.ValidateLocal());
+        Assert.Empty(MapTopologyReferenceValidator.Validate(new[] { northSurface }, new[] { northPatch }));
+        MapCompiledPatch northMesh = MapSurfaceCompiler.Compile(northSurface, northPatch);
+        float submittedNorthMidpoint = (101 * 0.01f + 239 * 0.01f) * 0.5f;
+        float canonicalNorthMidpoint = (float)((101 + 239) / 200m);
+        Assert.NotEqual(canonicalNorthMidpoint, submittedNorthMidpoint);
+        int northIndex = northMesh.VertexIds.ToList().FindIndex(v => v.Address == MapLatticeAddress.Create(1, 2, 2));
+        Assert.Equal(submittedNorthMidpoint, northMesh.Offsets[northIndex].Y);
+        Assert.Equal(new MapExactPoint(new(1, 2), new(101 + 239, 200), new(-1, 1)), northMesh.ExactVertices[northIndex]);
     }
 }

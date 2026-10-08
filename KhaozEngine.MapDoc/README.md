@@ -25,6 +25,15 @@ a terrain feature registered on a custom `MapDocRegistry` is therefore refused b
 feature type, even where `Validate` or `ValidateLocal` accept it when given that registry. Custom terrain
 features are not supported in native documents yet.
 
+## Native edit effects
+
+`KhaozEngine.MapDoc.Editing.MapNativeEditEffects` describes an accepted document edit with old and new
+`MapBox3` bounds, patch keys, space and dependency IDs, `MapDigestChange` values and `MapNativeInvalidation`
+flags for Terrain, Physics, Nav, Material, Residency and Placements. `Describe()` emits compact canonical
+JSON with fixed field order, sorted patch keys and ordinal IDs, invariant numbers and explicit nulls.
+`MapNativeWriteSet` names patch payloads, surface declarations and placement state for publication.
+Records, spaces, corner owners and material uses are carried by the named patch payloads.
+
 ## Whole authored surface identity
 
 `KhaozEngine.MapDoc.Identity.MapAuthoredIdentityV2.Compute(document, assets, options)` requires a complete

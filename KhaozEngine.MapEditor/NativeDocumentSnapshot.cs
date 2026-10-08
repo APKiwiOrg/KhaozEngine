@@ -1,4 +1,5 @@
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapEditor;
@@ -45,6 +46,33 @@ internal static class NativeDocumentSnapshot
         candidate.Surfaces = document.Surfaces.Clone();
         candidate.Tiles = document.Tiles;
         return candidate;
+    }
+
+    internal static void PublishWriteSet(MapDocument target, MapDocument candidate, MapNativeWriteSet writeSet)
+    {
+        // Records, spaces, owner dependencies and material uses live in their named patch payloads.
+        foreach (MapPatchKey key in writeSet.Patches)
+        {
+            if (candidate.Surfaces.Patches.TryGetValue(key, out MapSurfacePatch? patch))
+                target.Surfaces.Patches[key] = patch;
+            else target.Surfaces.Patches.Remove(key);
+        }
+        foreach (string id in writeSet.SurfaceIds)
+        {
+            int oldIndex = target.Surfaces.Refs.FindIndex(s => s.Id == id);
+            MapSurfaceRef? surface = candidate.Surfaces.Refs.Find(s => s.Id == id);
+            if (surface is null)
+            {
+                if (oldIndex >= 0) target.Surfaces.Refs.RemoveAt(oldIndex);
+            }
+            else if (oldIndex >= 0) target.Surfaces.Refs[oldIndex] = surface;
+            else target.Surfaces.Refs.Add(surface);
+        }
+        if (writeSet.Placements)
+        {
+            target.Placements = candidate.Placements;
+            target.NumericIdHighWaterMark = candidate.NumericIdHighWaterMark;
+        }
     }
 
     internal static void Publish(MapDocument target, MapDocument candidate)

@@ -11436,10 +11436,12 @@ form conversion (`convert_to_tiled` / `convert_to_single`) and re-tiling (`retil
 below, and there is no GUI affordance for either. A large authored world is expected to convert once, from
 the tool, and the GUI editor just opens whatever form is already on disk.
 
-**Native placement editing.** Opted-in documents require a verified closure bound with
+**Native document editing.** Opted-in documents require a verified closure bound with
 `EditorDocument.BindNativeAssets`. A `ke-mapedit` session binds the closure it verifies on open, see below.
-Native placement transactions
-validate candidates before publication, and retained allocation high-water marks participate in dirty
+Native document transactions validate typed write sets before selective publication and refuse partial
+windows before preparation. `EditorDocument.LastNativeEffects` reports accepted execute, undo and redo
+effects, preserving the previous result on rejection. Placement commands use the same seam, and retained
+allocation high-water marks participate in dirty
 tracking. Native rename edits `DisplayName` without changing selection or either identity. Explicit
 `RemapPlacementIdCommand` changes the stable ID while preserving numeric identity. See the MapEditor
 package README for the supported transaction boundary and low-level validation distinction.

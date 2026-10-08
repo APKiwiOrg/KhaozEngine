@@ -1,6 +1,7 @@
 using System;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEditor;
@@ -50,6 +51,9 @@ public sealed class EditorDocument
 
     /// <summary>The undo/redo command stack backing this document.</summary>
     public EditorHistory History { get; } = new();
+
+    /// <summary>Effects of the last accepted native execute, undo or redo. Rejections leave them unchanged.</summary>
+    public MapNativeEditEffects? LastNativeEffects => History.LastNativeEffects;
 
     /// <summary>The current selection.</summary>
     public EditorSelection Selection { get; } = new();

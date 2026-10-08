@@ -3824,3 +3824,17 @@ arithmetic only in compiled offsets, legacy normals and the D9 bilinear helper, 
 meets its rim exactly while render and physics offsets stay as released) and T11-6 (existing fractional owners
 are retargeted or the conversion refuses atomically). Review needed two fix rounds and closed with all
 findings addressed. Proof is `proofs/2026-10-09-r2-task11-green.json`.
+
+
+### Task 12A exact common refinement verified
+
+Sources a948ea674, 33c40d458 and f19d16979 refine footprint cells exactly over mixed-resolution bounds,
+prepare one compiled bound-face context per call from counted cell bytes, classify legacy lower cells in
+the D9 order and reproduce the released bilinear height bit for bit. Compile RED is preserved at b220388e0
+in MapDoc, Editor and Compatibility. Final parent runs on the last commit passed 138 MapDoc, 96 Editor and
+3 Compatibility cases, with format and guards clean and the frozen Task 9 to 12A tests unchanged. Review
+needed two fix rounds: undemanded opening reads now refuse with `context demand`, each bound patch is
+validated once per context, and ruling T12A-6 counts every visited bound patch, face-free included, against
+MaxContextPatches so retained validation evidence stays within the budget. Rulings T12A-1 to T12A-6 are in
+the ledger. Tasks 12B and 13 pass opening owner references through PrepareBounds. Proof is
+`proofs/2026-10-09-r2-task12a-green.json`.

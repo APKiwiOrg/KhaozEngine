@@ -1,6 +1,6 @@
 # Contact-classification character controller
 
-Date: 2026-10-08. Specifies [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438), the phase 2
+Date: 2026-10-08, revised 2026-10-09 for ground ownership. Specifies [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438), the phase 2
 direction chosen in [PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md](PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md).
 Status: written for owner review. Phase 1 is specified in full. Phases 2 to 6 are specified at the level
 of contracts and exit criteria, and each gets its own detailed spec before implementation.
@@ -65,6 +65,31 @@ These carry over unchanged from the 2026-08-02 design and #438.
   general manifold solver and 34 for a classified legacy skeleton.
 - Support model A: foot footprint support. It scored 34 against 22 for round-bottom tangent support.
 - Proper fixes over scope. A known proper fix is built even when a plan's scope excludes it.
+- 2026-10-09: this controller owns ground movement for every movement path, including swimming's explicit
+  path. It scored 34 against 25 for moving this controller to round-bottom support and 24 for keeping two
+  models (see Ownership with swimming).
+
+## Ownership with swimming
+
+Swimming's approved F3 required full-capsule solid clearance with round-bottom tangent support, and its
+generic resolver could not take a normal 30 Hz step onto a 0.25 m bank from centre-column support. One
+ground model governs the engine, so the boundary is:
+
+- **This controller owns** support semantics and support-owner binding, the body model, the up, side and
+  down passes, steps, ledges, walls, ceilings, air, ground state and the ground signals.
+- **Swimming owns** medium classification, water policies, buoyancy, swim, wade and water entry and exit
+  arcs, the medium half of every placement proof, transport and read admission, lease discipline, and
+  sweep completeness with its error brackets.
+- **Handoff.** Swimming's explicit grounded ticks call this controller's ground core through the phase 4
+  handoff. `MovementSupportResolver`'s land selection is replaced by the support primitive. F3 is amended
+  from full-capsule solid proof to shell solid proof, certified footprint support and medium proof.
+- **Queries.** Every query in one tick runs under one authenticated read interval (`IPhysicsQueryLease`,
+  and `MovementQueryLease` on the explicit path). A decision that depends on a sign uses certified error,
+  never a tolerance chosen to make a case pass.
+- **Canonical owners.** A support sample carries the installed static and its certified finite feature.
+  The producer that installed the static maps it to the canonical owner. Support is evaluated at the axis
+  column, so a candidate's feet always share the body's XZ. The touched point inside the disc is the
+  witness attached to the candidate, never its feet.
 
 ## Body model
 
@@ -156,10 +181,10 @@ Every phase's suite asserts these.
 
 | Phase | Delivers | Exit criteria |
 |---|---|---|
-| 1. Contact foundation | Shape sweep seam, support primitive, contact classifier | Phase 1 suite green. Legacy stepper byte-unchanged. |
+| 1. Contact foundation | Shape sweep seam, integrated feature query, certified support primitive, contact classifier | Phase 1 suite green, including the swimming bank repro. Legacy stepper byte-unchanged. |
 | 2. Ground core | Up, side, down passes, recovery, slopes, walls, step-up, step-down, ledges | Ground suite green, including the shallow-tread runs at 2, 3 and 4 m/s and the 0.41 m ledge. |
 | 3. Air and state | Jump, coyote, momentum, landing impact, commitment, steep slide, traction hysteresis | Air and slide suite green with invariants 5 to 8. |
-| 4. Signals and fluids | Climb signals, step delta, support grant, facing, wade and swim handoff | Signal suite green. Wade and swim fixtures match today. |
+| 4. Signals and fluids | Climb signals, step delta, support grant, facing, the swimming handoff contract | Signal suite green. Swimming's explicit grounded ticks run on this ground core. |
 | 5. Switch, wire, navigation | `MoveTuning` selector, any wire fields, bake identity, traversal probe and capture on the selected controller | Both controllers selectable. Legacy bakes still load. A new-controller bake round-trips. |
 | 6. Grimhollow adoption | Grimhollow opt-in, #1270 resting route, bridge Complete and 600-step proof | Engine release, game pin and playtest, each separately authorized. |
 
@@ -197,23 +222,31 @@ readonly record struct SupportSample(bool Found, float Height, Vector3 Normal, S
     bool Walkable);
 ```
 
-`SupportSource` names analytic terrain or a `StaticHandle`. Candidates come from three bounded queries.
+`SupportSource` names analytic terrain or a `StaticHandle` with its certified finite feature. Candidates
+are proposed by bounded queries and bound to a face only by certification.
 
 1. **Terrain.** `h(axis)` and its normal from the ground delegates, the same ones `StepCore` takes today.
-2. **Physics under the axis and on two rings.** Downward rays from `feetY + reachUp` at the axis and at 8
-   directions on each of two rings, `0.5` and `1.0` of the footprint radius. Each hit gives a face point
-   and a face normal, so it contributes `min(plane at axis, hit height)` exactly.
-3. **Highest point in the disc.** One downward `SweepConvex` of a thin cylinder of the footprint radius
-   catches a rail or edge that falls between rays. Its plane comes from a downward ray at the contact XZ
-   moved 1 mm toward the axis. If that ray finds no face, the sweep contact contributes its own height
-   only when its contact normal is walkable.
+   The analytic surface is exact at the axis and needs no certificate.
+2. **Proposals.** A downward ray at the axis proposes the surface under the axis. One downward
+   `SweepConvex` of a thin cylinder of the footprint radius proposes the highest point in the disc, which
+   also catches a rail or edge that a ray would miss. A proposal is a hint about which static and where,
+   never a face.
+3. **Certification.** Each proposed static is queried with `QueryCapsuleFeature` under the tick's lease,
+   with the leg capsule (footprint radius, spanning the step band) at the proposed pose and the existing
+   0.1 mm contact band. A `Complete` result names the incident faces with certified normals and witness.
+   The supporting face is chosen by the existing eligibility predicate: every incident face of a face or
+   open-boundary patch supports it, and a convex crease has exactly one supporting top. Its plane and
+   witness give `min(plane at axis, highest point in disc)`. Any refusal (`Unsupported`, `Ambiguous`,
+   uncertain sign) contributes nothing. A ray hit, sweep normal or nudged sample never stands in for a
+   face. The 2026-10-07 measurements found corner rays missing the edge by 0.03 to 5.08 micrometres.
 
 Candidates outside `[feetY - reachDown, feetY + reachUp]` are discarded. The result is the highest walkable
 contribution, else the highest steep one flagged not walkable, else not found. Ties keep the lower source
 index, so the order of queries fixes the answer.
 
-Known limit: a surface lying under a higher sloped surface inside the same disc can be missed if no ray
-reaches it. The phase 1 suite pins the case, and phase 2 decides whether an extra ray ring is needed.
+Known limit: a surface lying under a higher sloped surface inside the same disc is not proposed, because
+the disc sweep stops at the higher one. The phase 1 suite pins the case, and phase 2 decides whether a
+second proposal below the first is needed.
 
 ### Shell queries
 
@@ -230,6 +263,11 @@ volume. It reads no other state.
 
 - `KhaozEngine.Physics/IPhysicsShapeSweeps.cs`, with the Bepu implementation beside the existing sweeps and
   forwarding in the selected query view, serialized with the swimming owner of that file.
+- The capsule-feature query from `fix/low-lip-resting-proof`, integrated as reviewed: the contract,
+  bounded geometry arithmetic, finite polyhedron and mesh backends, the installed-pose certificate and
+  their proofs. Its eligibility predicate moves from the legacy stepper partial into
+  `KhaozEngine.Locomotion/Contacts/SupportCertification.cs`. The legacy low-prop fallback and every legacy
+  stepper change on that branch stay out.
 - `KhaozEngine.Locomotion/Contacts/FootSupport.cs`, `SupportSample.cs`, `ShellPose.cs` and
   `ContactClassifier.cs`. All internal until a consumer needs them.
 - Tests in `KhaozEngine.Game.Tests` under the `KhaozEngine.Tests.Locomotion.Contacts` namespace, next to the
@@ -254,19 +292,24 @@ equivalent triangle mesh, and must give the same answer within float rounding.
 - A rebased world origin. Results equal the unrebased world after translation.
 - Determinism. Two identical queries return bit-identical samples.
 - A world without `IPhysicsShapeSweeps`. `FootSupport` throws.
+- The swimming repro: a 0.25 m bank at X 1, radius 0.25, half-height 0.75, walking at 4 m/s and 30 Hz.
+  At X 0.881 the disc touches the bank top, the certified crease names the top face, and support is 0.25
+  at the axis with feet XZ equal to the body's.
+- A certification refusal at a proposed static leaves that static out, never a guessed plane.
 
 ### Phase 1 boundaries
 
 No `MoveTuning` field is added until phase 2 needs it, so navigation bake identity is unchanged. No
-legacy file changes. No wire change. The new seam is public and additive, so phase 1 rides the next minor
-engine version under the release ritual.
+legacy file changes. No wire change. The shape sweep and capsule-feature seams are public and additive, so
+phase 1 rides the next minor engine version under the release ritual.
 
 ## Disposition of the #1270 branches
 
 `fix/low-lip-resting-proof` carries the finite capsule-feature query, the legacy low-prop support fallback
-and their proofs. The new controller needs neither, because downward rays already return face normals. The
-branch stays pushed and unmerged. An unused public capability is speculative complexity. It is revived only
-if a second consumer appears. Swimming's earlier imports of shared arithmetic are unaffected.
+and their proofs. Phase 1 integrates the feature query as this controller's certified face identity, with
+both this controller and swimming's explicit path as consumers. The legacy low-prop fallback and the
+stepper changes are not integrated. Swimming's earlier imports of shared arithmetic stay compatible because
+the integrated arithmetic is the reviewed source they were taken from.
 `fix/1270-stepper-cascade` stays pushed as evidence and is never integrated. #1270 and Grimhollow #416
 stay open until phase 6 proves the resting route on the new controller.
 
@@ -274,8 +317,9 @@ stay open until phase 6 proves the resting route on the new controller.
 
 - **Presentation below the knee.** Legs may overlap low obstacles up to `CapsuleRadius - FootRadius`
   before stepping. Foot IK can hide it. The playtest decides the default.
-- **Query cost.** The down pass runs up to 17 rays and one sweep, against several sweeps in the stepper.
-  Phase 2 measures it with the existing allocation and timing guards before adoption.
+- **Query cost.** The down pass runs one ray, one disc sweep and up to two feature certifications under a
+  lease, against several sweeps in the stepper. Phase 2 measures it with the existing allocation and timing
+  guards before adoption.
 - **Analytic cliffs.** Steep analytic terrain is not in the physics world, so it cannot block the shell.
   Phase 2 blocks it through the down pass, where a rise above `StepHeight` refuses the move. Its suite
   covers a terrain cliff explicitly.

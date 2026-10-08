@@ -42,8 +42,10 @@ public class MovementFreeTopPartitionTests
         using var scene = new Scene();
         float boundary = 2 * Error;
         var body = new MovementBodyQuery(new(boundary + 0.251f, -3, 0), 0.25f, 0.75f, Room, null);
+        Assert.Equal(MovementAvailability.Known, Check(body, Vector3.Zero, scene.Lease));
+        Assert.True(scene.SawClosed); // SM2 certifies that only the skin reaches the closed region.
+        body = new(new(boundary + 0.25f, -3, 0), 0.25f, 0.75f, Room, null);
         Assert.Equal(MovementAvailability.Unresolved, Check(body, Vector3.Zero, scene.Lease));
-        Assert.True(scene.SawClosed);
         scene.Unplaceable = true;
         body = new(new(1, -3, 0), 0.25f, 0.75f, Room, null);
         Assert.Equal(MovementAvailability.Unresolved, Check(body, Vector3.Zero, scene.Lease));

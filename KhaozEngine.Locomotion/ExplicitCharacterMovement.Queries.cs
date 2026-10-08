@@ -24,7 +24,7 @@ public static partial class ExplicitCharacterMovement
             if (availability != MovementAvailability.Known) return Outcome(availability);
             if (!inside) return MovementStepOutcome.PlacementRefused;
         }
-        if (water.Mode is not (WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly))
+        if (water.Mode is not (WaterTraversalMode.SurfaceSwimmer or WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly))
             return MovementStepOutcome.Advanced;
         Span<Vector3> normals = stackalloc Vector3[MovementQueryLease.MaxDomainContacts];
         MovementAvailability status = MovementWaterBoundary.Find(body, Vector3.Zero, body.HalfHeight,

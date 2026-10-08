@@ -17,7 +17,7 @@ internal static class MovementWaterBoundary
     {
         normalCount = 0;
         hit = default;
-        if (mode is not (WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly))
+        if (mode is not (WaterTraversalMode.SurfaceSwimmer or WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly))
             return MovementAvailability.Invalid;
         MovementCoverageSpan[] spans = ArrayPool<MovementCoverageSpan>.Shared.Rent(MovementQueryLease.MaxCoverageSpans);
         MovementDomainContact[] contacts = ArrayPool<MovementDomainContact>.Shared.Rent(MovementQueryLease.MaxDomainContacts);
@@ -32,8 +32,21 @@ internal static class MovementWaterBoundary
             bool overlap = false;
             foreach (MovementCoverageSpan span in spans.AsSpan(0, result.SpansWritten))
             {
-                foreach (MovementDomainContact contact in contacts.AsSpan(span.ContactStart, span.ContactCount))
+                ReadOnlySpan<MovementDomainContact> region = contacts.AsSpan(span.ContactStart, span.ContactCount);
+                if (mode == WaterTraversalMode.SurfaceSwimmer)
                 {
+                    float? level = null;
+                    foreach (MovementDomainContact contact in region)
+                    {
+                        if (!contact.Interval.UpperIsFreeSurface) continue;
+                        if (level is { } previous && previous != contact.Interval.NominalSurfaceY)
+                            return MovementAvailability.Unresolved;
+                        level = contact.Interval.NominalSurfaceY;
+                    }
+                }
+                foreach (MovementDomainContact contact in region)
+                {
+                    if (mode == WaterTraversalMode.SurfaceSwimmer && contact.Interval.UpperIsFreeSurface) continue;
                     if (contact.SpanOverlap == MovementContactOverlap.Tangent) continue;
                     double at = span.EnterFraction;
                     Vector3 normal = contact.Normal;
@@ -50,7 +63,7 @@ internal static class MovementWaterBoundary
                             normal = Vector3.UnitY;
                         }
                     }
-                    if (at == 0 && contact.Fraction == 0 && contact.Overlap == MovementContactOverlap.Overlapping)
+                    if ((delta == Vector3.Zero || at == 0 && contact.Fraction == 0) && contact.Overlap == MovementContactOverlap.Overlapping)
                         overlap = true;
                     // A zero-length placement can use the point certificate. A finite path cannot
                     // extrapolate this tag to the rest of a curved region.

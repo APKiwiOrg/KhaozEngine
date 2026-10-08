@@ -11,6 +11,13 @@ internal static class MovementWaterPathProof
     internal static MovementAvailability Check(in MovementBodyQuery enclosure, Vector3 delta,
         MovementQueryLease queries, WaterTraversalMode mode)
     {
+        if (mode == WaterTraversalMode.SurfaceSwimmer)
+        {
+            Span<Vector3> normals = stackalloc Vector3[MovementQueryLease.MaxDomainContacts];
+            MovementAvailability status = MovementWaterBoundary.Find(enclosure, delta, enclosure.HalfHeight, 0,
+                mode, queries, normals, out _, out var hit);
+            return status == MovementAvailability.Known && hit.Blocked ? MovementAvailability.Unresolved : status;
+        }
         MovementCoverageSpan[] spans = ArrayPool<MovementCoverageSpan>.Shared.Rent(MovementQueryLease.MaxCoverageSpans);
         MovementDomainContact[]? contacts = null;
         try
@@ -26,12 +33,7 @@ internal static class MovementWaterPathProof
                     if (!span.HasDryCoverage) return MovementAvailability.Invalid;
                 return MovementAvailability.Known;
             }
-            if (mode != WaterTraversalMode.SurfaceSwimmer) return MovementAvailability.Unresolved;
-            float level = contacts[0].Interval.NominalSurfaceY;
-            foreach (MovementDomainContact contact in contacts.AsSpan(0, result.ContactsWritten))
-                if (!contact.Interval.UpperIsFreeSurface || contact.Interval.NominalSurfaceY != level)
-                    return MovementAvailability.Unresolved;
-            return MovementAvailability.Known;
+            return MovementAvailability.Unresolved;
         }
         finally
         {

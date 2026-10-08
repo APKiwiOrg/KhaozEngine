@@ -1,0 +1,41 @@
+{
+  "status": "Known closed-water constraints and per-span level agreement. The separate short-step support acceptance remains RED.",
+  "baseCommit": "11f666282",
+  "runs": {
+    "closed-policy-red": {
+      "path": "/tmp/swim-closed-policy-red.log",
+      "sha256": "f85921c7cf243c27fe68225ee226811cbc7871ada4478947df3db31799e87036",
+      "passed": 0,
+      "failed": 3,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "closed-policy-green": {
+      "path": "/tmp/swim-closed-policy-green.log",
+      "sha256": "ec604b97c769141f17f80cf2374ca6315be113b81c2b51c09e2ac81a98ef8795",
+      "passed": 104,
+      "failed": 3,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "closed-policy-affected-green": {
+      "path": "/tmp/swim-closed-policy-affected-green.log",
+      "sha256": "f2b4693e0abc11003c131242fd28a8908861201b23a609529151bee07d074ecc",
+      "passed": 113,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    }
+  },
+  "corrections": [
+    "Two former uncertainty expectations now assert known Blocked/PlacementRefused outcomes.",
+    "The upper-kind error-tie test now separates SM2-proved skin-only contact from raw-body error-tie overlap. The unplaceable-partition refusal remains."
+  ],
+  "scope": "All surface, dry-only and wade-only corrections use the same resolver. No additional native fact or sampler was added.",
+  "pending": [
+    "Short-step support witness/controller alignment",
+    "Generic motion probe and profile identity",
+    "Whole-branch independent review, main reconciliation and full verification",
+    "Native, released and game adoption"
+  ]
+}

@@ -9,7 +9,7 @@ namespace KhaozEngine.Locomotion;
 /// movement. Every returned segment still needs the combined resolver's water-policy proof.</summary>
 internal static class MovementCapsuleResolver
 {
-    internal const uint PolicyVersion = 3;
+    internal const uint PolicyVersion = 4;
     internal const int MaximumCorrections = 8;
     internal const int MaximumEndpoints = MaximumCorrections + 1;
     const float Skin = MovementQueryLease.CoverageSkinMetres;
@@ -98,7 +98,7 @@ internal static class MovementCapsuleResolver
                     waterNormals[..waterCount].CopyTo(normalBuffer[normalCount..]);
                     normalCount += waterCount;
                 }
-                if (proveMedium && mode is WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly)
+                if (proveMedium && mode is WaterTraversalMode.SurfaceSwimmer or WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly)
                 {
                     var near = new MovementBodyQuery(impact, current.Radius + Skin, current.HalfHeight + Skin,
                         current.CurrentSpace, current.CurrentSupport);
@@ -181,7 +181,7 @@ internal static class MovementCapsuleResolver
         }
         MovementAvailability status = queries.QuerySolidSweep(enclosure, delta, out result);
         if (status != MovementAvailability.Known || !proveMedium) return status;
-        if (mode is WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly)
+        if (mode is WaterTraversalMode.SurfaceSwimmer or WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly)
             return MovementWaterBoundary.Find(enclosure, delta, body.HalfHeight, enterFraction, mode, queries,
                 waterNormals, out waterCount, out waterHit);
         return result.Status == CapsuleSweepStatus.Clear

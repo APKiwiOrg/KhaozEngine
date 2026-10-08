@@ -195,7 +195,7 @@ public partial class ExplicitCharacterMovementTests
         state = new(swim, state.Frame, state.Selection);
         var result = ExplicitCharacterMovement.Step(state, new(Vector2.Zero, false, 0, jump: true),
             1f / 30, Tuning, Policy, scene.Lease);
-        Assert.Equal(MovementStepOutcome.EnvironmentUnresolved, result.Outcome);
+        Assert.Equal(MovementStepOutcome.PlacementRefused, result.Outcome);
         Assert.Equal(state.State.Position, result.State.State.Position);
         Assert.Equal(WaterExcursionState.Surface, result.State.State.WaterExcursion);
         Assert.Equal(0, result.State.State.JumpBufferRemaining);

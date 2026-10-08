@@ -25,6 +25,10 @@ A non-swimmer may cross a wet coverage span when every forbidden-region contact 
 Tangent. A point Tangent alone never approves a finite segment. Point overlap distinguishes an
 invalid starting placement from a boundary approached by the candidate motion.
 
+SurfaceSwimmer uses the same constraint path for known closed-water regions. Free-surface level
+agreement is checked per simultaneous coverage span, allowing separated bodies at different levels
+without introducing a rule for overlapping unequal surfaces.
+
 DryOnly forbids positive water overlap. WadeOnly uses the original capsule height and configured
 entry fraction to forbid deep overlap. Constant domain levels permit evaluating that threshold over
 the entire affine path without extrapolating a bed column. Closed regions are forbidden. Actual

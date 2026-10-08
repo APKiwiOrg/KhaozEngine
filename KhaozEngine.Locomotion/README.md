@@ -493,9 +493,11 @@ scaling, then clears its excursion on proved footing. Step-up selects an eligibl
 the actual rise and then its horizontal approach, and grants footing only after both paths pass.
 No local query state enters the wire.
 
-SurfaceSwimmer admits wet paths only when every SM1-covered region has a free top and one exact
-nominal level. Distinct equal-level domain keys are allowed. Closed regions and simultaneous unequal
-levels refuse. A local bed/ceiling column is never extrapolated into a whole-region permission.
+SurfaceSwimmer admits overlapping free-water regions at one exact nominal level per coverage span.
+Distinct equal-level domain keys are allowed. Sequential separated levels are not simultaneous ambiguity.
+Known closed water blocks entry, and positive starting overlap refuses placement. Simultaneous unequal
+free levels remain Unresolved until a transition policy is defined. SM2-certified skin-only contact
+with a closed region does not invent positive wet overlap. A local bed/ceiling column is never extrapolated into a whole-region permission.
 Buoyancy, independent surface jumps, ceiling/wall collision, descent back into water and a proved
 wading-bank transition all use the same combined resolver. Bed contact alone does not override the
 swim-exit policy or grant footing. DryOnly and WadeOnly use the same resolver for thin channels,

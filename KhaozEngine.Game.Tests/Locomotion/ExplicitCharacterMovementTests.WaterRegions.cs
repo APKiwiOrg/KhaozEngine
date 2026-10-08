@@ -45,8 +45,9 @@ public partial class ExplicitCharacterMovementTests
         var point = scene.Lease.SampleCentreWater(new(move.Position, 0.25f, 0.75f, state.Selection!.Value.Space, null));
         Assert.True(point.Interval!.Value.UpperIsFreeSurface);
         var result = ExplicitCharacterMovement.StepTowards(state, Vector2.UnitX, false, 0.1f, Tuning, Policy, scene.Lease);
-        Assert.Equal(MovementStepOutcome.EnvironmentUnresolved, result.Outcome);
-        Assert.Equal(state.State.Position, result.State.State.Position);
+        Assert.Equal(MovementStepOutcome.Blocked, result.Outcome);
+        Assert.InRange(result.State.State.Position.X, -0.26f, -0.25f);
+        Assert.True(result.State.State.Swimming);
     }
 
     [Fact]

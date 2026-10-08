@@ -1,0 +1,54 @@
+{
+  "task": "12B occupied-space membership, coverage and separation validation",
+  "stage": "intended compile-time RED",
+  "base": "183833a24",
+  "sources": {
+    "KhaozEngine.MapDoc.Tests/Spaces/SpaceMembershipTests.cs": "d288dd0d919146682eff9b74078cdd8b6e4ea63cd3322b751e7d3fd708f8abe5",
+    "KhaozEngine.MapDoc.Tests/Spaces/PortalBandCoverageTests.cs": "066d23c70f534bbc04058654b996c0ef5fca49b615bf648dab6cb151d465b735",
+    "KhaozEngine.MapDoc.Tests/Spaces/CaveFixtures.cs": "1e6adf54d49c312f490b4e66e9e946675d1478752cc6c47a0e9b051dfb66cc18",
+    "KhaozEngine.MapDoc.Tests/Spaces/PortalBandFixtures.cs": "5ddf4623ffbea7404d542230d9234959d9226fc8d764c0c107c71c079989a4ec",
+    "KhaozEngine.MapDoc.Tests/Spaces/FilteredSurfaceSourceFixtures.cs": "79e49831457772d6a1a5ceb4d955e85685818fccbccba1b56af2430da1bab0c9",
+    "KhaozEngine.MapEditor.Tests/MapDoc/CoverageWorkTests.cs": "8258522e98ff0571f00c6e81b74935ae5e5b25fdffac0c1613d2b47ba185022b"
+  },
+  "results": [
+    {
+      "project": "mapdoc",
+      "filter": "FullyQualifiedName~SpaceMembershipTests|FullyQualifiedName~PortalBandCoverageTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 3
+      },
+      "missing": {
+        "MapMembershipResult": 2,
+        "MapMembershipStatus": 1
+      },
+      "planned_new_cases": 26,
+      "log_sha256": "07922f3b6c9f5ce1ae3618dea1ab04972bc5691298eff6923cd53e4557044710"
+    },
+    {
+      "project": "editor",
+      "filter": "FullyQualifiedName~CoverageWorkTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 2
+      },
+      "missing": {
+        "MapMembershipResult": 2
+      },
+      "planned_new_cases": 2,
+      "log_sha256": "1b63c720a0c73d5c5cccb7835e8ed78465733707fcf358e4f35bc42f47b8221b"
+    }
+  ],
+  "classification": "Every unique diagnostic names a planned Task 12B product type (MapMembershipResult, MapMembershipStatus). The compiler stops at signatures. No unrelated errors. Whitespace verify of the six files passed before RED.",
+  "rulings": [
+    "T12B-1 new fixtures compile into MapEditor.Tests, paired RED.",
+    "T12B-2 membership has 14 methods and 15 cases.",
+    "T12B-3 FilteredSurfaceSource implements the Task 8 acquisition contract and reports hidden keys Unloaded.",
+    "T12B-4 the TwoSided lintel over the z 0,1,2 corner sequence emits 8 faces, correcting the brief count 4.",
+    "T12B-5 the arch variant adds an arch-upper Front strip to close the passage side above the arch.",
+    "T12B-6 the joined-shaft variant has no south portal, extends shaft-south to deep-floor and splits deep-south into west and east pieces."
+  ],
+  "execution": "Direct and serial under owner OA20 through build-slot, one invocation per project, no retry."
+}

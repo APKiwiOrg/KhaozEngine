@@ -31,6 +31,8 @@ internal static class MixedResolutionFixtures
             SupportRecipe = MapSupportRecipe.AuthoredBindingsV2,
             NativeAssets = NativeAssetFixtures.Valid().Roots.ToList(),
             Bounds = new() { MinX = -32128, MinZ = -32128, MaxX = 32128, MaxZ = 32128 },
+            // Native bound validation requires playable bounds, so fixture documents can open in the editor and resolver.
+            PlayableBounds = new() { MinX = -32128, MinZ = -32128, MaxX = 32128, MaxZ = 32128 },
             TileSize = 64,
             Surfaces = surfaces,
         };

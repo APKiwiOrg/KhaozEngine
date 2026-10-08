@@ -304,4 +304,62 @@ internal static class CaveFixtures
         if (errors.Count != 0)
             throw new InvalidOperationException("occupied-space fixture " + operation + " failed: " + string.Join(", ", errors));
     }
+
+    internal static MapDocument ClosedMouth()
+    {
+        MapSurfaceSet set = RampChamberShaft().Surfaces;
+        MapSurfacePatch outer = Patch(set, "outer");
+        for (int z = 0; z < outer.Depth; z++)
+            for (int x = 0; x < outer.Width; x++) outer.SetPresent(x, z, true);
+        Replace(outer, ((MapSpaceDoc)outer.Records.Single(r => r.Id == "outside")) with
+        {
+            Walls = Array.Empty<MapBoundaryRef>(),
+            Portals = Array.Empty<MapBoundaryRef>(),
+        });
+        Replace(outer, ((MapSpaceFootprint)outer.Records.Single(r => r.Id == "outside-outer")) with
+        {
+            SlotCells = Cells(0, 0, 8, 8),
+        });
+        MapSurfacePatch ramp = Patch(set, "cave-floor");
+        var floor = new MapSurfacePatch
+        {
+            Key = ramp.Key,
+            CellMinX = ramp.CellMinX,
+            CellMinZ = 3,
+            Width = ramp.Width,
+            Depth = ramp.Depth - 1,
+            Heights = ramp.Heights.Skip(ramp.Width + 1).ToArray(),
+            Cells = ramp.Cells.Skip(ramp.Width).ToArray(),
+            Presence = new[] { ramp.Presence[0] >> ramp.Width },
+        };
+        floor.Records.AddRange(ramp.Records.Where(r => r.Id is not ("outside-ramp" or "rim-seam" or "mouth") &&
+            !r.Id.StartsWith("ramp-west", StringComparison.Ordinal) &&
+            !r.Id.StartsWith("ramp-east", StringComparison.Ordinal) &&
+            !r.Id.StartsWith("mouth-", StringComparison.Ordinal)));
+        set.Patches[floor.Key] = floor;
+        MapSpaceDoc chamber = (MapSpaceDoc)floor.Records.Single(r => r.Id == "chamber");
+        Replace(floor, chamber with
+        {
+            Walls = chamber.Walls.Append(Side("mouth-seal", MapSide.Back)).ToArray(),
+            Portals = Array.Empty<MapBoundaryRef>(),
+        });
+        AddStrip(set, "mouth-seal", "cave-floor", "cave-ceiling", 2, 3, 6, 3, MapStripFacing.Back);
+        MapDocument doc = Document(set);
+        RequireEmpty(MapSpaceCoverageValidator.Validate(View(doc)), "coverage validation");
+        return doc;
+    }
+
+    internal static KhaozEngine.MapDoc.Editing.MapReplaceTopology OpenMouthEdit()
+    {
+        MapSurfaceSet set = RampChamberShaft().Surfaces;
+        return new(new[] { Patch(set, "outer"), Patch(set, "cave-floor") }, Array.Empty<MapPatchKey>(),
+            Array.Empty<MapSurfaceRef>(), Array.Empty<string>());
+    }
+
+    internal static KhaozEngine.MapDoc.Editing.MapReplaceTopology CeilingCrossingEdit()
+    {
+        MapSurfacePatch ceiling = Patch(RampChamberShaft().Surfaces, "cave-ceiling");
+        for (int x = 0; x <= ceiling.Width; x++) ceiling.Heights[x] = 700;
+        return new(new[] { ceiling }, Array.Empty<MapPatchKey>(), Array.Empty<MapSurfaceRef>(), Array.Empty<string>());
+    }
 }

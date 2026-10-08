@@ -1,0 +1,57 @@
+{
+  "task": "17 terrain edits, commands and the shared service path",
+  "stage": "intended compile-time RED",
+  "base": "d46e9a250",
+  "sources": {
+    "KhaozEngine.MapDoc.Tests/Editing/TerrainEditsTests.cs": "e6034458a880e77b7fe652b2b15faa330fa12d0dd157eecfa08292f7d9dcf039",
+    "KhaozEngine.MapDoc.Tests/Editing/TerrainEditFixtures.cs": "60134bae6fb7b4a25ae5098d278f883df6ded62fa60287bd6c6a0ddccbe6037d",
+    "KhaozEngine.MapEditor.Tests/MapEditTool/TerrainTransactionTests.cs": "721f019975b5c2b724f3788c3d91ff728ad8509174658222be0867da1f1e0363",
+    "KhaozEngine.MapEditor.Tests/MapEditTool/TerrainTransactionFixture.cs": "75e4e1e9166a220c16c682c5d5a156b0f03c71bef7c873d8e7805b1560f0545d",
+    "KhaozEngine.MapDoc.Tests/Spaces/CaveFixtures.cs": "8751ff69e153c50055007b7a1bfdd9c7a45eb826b4c66848175db7c31b6da2e4",
+    "KhaozEngine.MapDoc.Tests/Spaces/MixedResolutionFixtures.cs": "033867986cbf5e4250bbff9434525b3544875d3cb33f0453f43723f682468e39"
+  },
+  "results": [
+    {
+      "project": "mapdoc",
+      "filter": "FullyQualifiedName~TerrainEditsTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 5,
+        "CS0234": 2
+      },
+      "missing": {
+        "MapReassignCornerOwner": 1,
+        "MapTerrainEdit": 2,
+        "MapReplaceTopology": 3,
+        "MapTerrainEditResult": 1
+      },
+      "planned_new_cases": 13,
+      "log_sha256": "646e58219d4f810dfbfc741aaf1e68137e045e6f804ca492fadeae1955662c74"
+    },
+    {
+      "project": "editor",
+      "filter": "FullyQualifiedName~TerrainTransactionTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 2,
+        "CS0234": 2
+      },
+      "missing": {
+        "MapReassignCornerOwner": 1,
+        "MapReplaceTopology": 2,
+        "MapTerrainEdit": 1
+      },
+      "planned_new_cases": 2,
+      "log_sha256": "2370a2991c97736c8a00a38d0e51b544ee0231ab0422722c458525820e5ebdb1"
+    }
+  ],
+  "classification": "Every unique diagnostic names a planned Task 17 type in KhaozEngine.MapDoc.Editing (MapTerrainEdit, MapTerrainEditResult, MapReplaceTopology, MapReassignCornerOwner). The compiler stops at signatures. No unrelated errors. Full format verify of all six files passed before RED.",
+  "rulings": [
+    "T17-1 TerrainEditFixtures.cs and CaveFixtures.cs compile into MapEditor.Tests and Editor gains tests, paired RED.",
+    "T17-2 ClosedMouth, OpenMouthEdit and CeilingCrossingEdit appended to CaveFixtures.cs, 58 lines added and none removed.",
+    "T17-3 MixedResolutionFixtures.Document sets PlayableBounds equal to Bounds so factory documents satisfy native bound validation."
+  ],
+  "execution": "Direct and serial under owner OA20 through build-slot, one invocation per project, no retry."
+}

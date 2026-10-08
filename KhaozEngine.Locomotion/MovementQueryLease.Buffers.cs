@@ -94,17 +94,28 @@ public sealed partial class MovementQueryLease
                 return NoCoverage(MovementAvailability.Invalid);
             if (result.CertifiedErrorMetres > CoverageSkinMetres) return NoCoverage(MovementAvailability.Unresolved);
             float next = 0f;
+            Span<bool> owned = stackalloc bool[MaxDomainContacts];
+            owned.Clear();
             for (int i = 0; i < result.SpansWritten; i++)
             {
                 MovementCoverageSpan span = scratchSpans[i];
                 if (!span.IsValid || span.EnterFraction != next ||
                     span.ContactStart + span.ContactCount > result.ContactsWritten)
                     return NoCoverage(MovementAvailability.Invalid);
+                for (int j = span.ContactStart; j < span.ContactStart + span.ContactCount; j++)
+                {
+                    MovementDomainContact contact = scratchContacts[j];
+                    if (owned[j] || contact.Fraction < span.EnterFraction || contact.Fraction > span.ExitFraction ||
+                        contact.SpanOverlap == MovementContactOverlap.Tangent && contact.Overlap != MovementContactOverlap.Tangent ||
+                        span.EnterFraction == span.ExitFraction && contact.SpanOverlap != contact.Overlap)
+                        return NoCoverage(MovementAvailability.Invalid);
+                    owned[j] = true;
+                }
                 next = span.ExitFraction;
             }
             if (next != 1f) return NoCoverage(MovementAvailability.Invalid);
             for (int i = 0; i < result.ContactsWritten; i++)
-                if (!scratchContacts[i].IsValid || !SameWorld(scratchContacts[i].Space) ||
+                if (!owned[i] || !scratchContacts[i].IsValid || !SameWorld(scratchContacts[i].Space) ||
                     !ColumnOverlapsCapsule(query, scratchContacts[i], result.CertifiedErrorMetres) ||
                     !TangentCoherent(query, scratchContacts[i], result.CertifiedErrorMetres))
                     return NoCoverage(MovementAvailability.Invalid);

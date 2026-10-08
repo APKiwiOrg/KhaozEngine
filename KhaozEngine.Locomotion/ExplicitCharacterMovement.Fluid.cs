@@ -8,8 +8,8 @@ public static partial class ExplicitCharacterMovement
         in MoveTuning tuning, in WaterTraversalPolicy water)
     {
         if (!point.InWater) return true;
-        if (water.Mode != WaterTraversalMode.SurfaceSwimmer || !point.Interval!.Value.UpperIsFreeSurface) return false;
-        return !RequiresSwimming(point, wasSwimming, centreY, tuning);
+        if (water.Mode is not (WaterTraversalMode.SurfaceSwimmer or WaterTraversalMode.WadeOnly) || !point.Interval!.Value.UpperIsFreeSurface) return false;
+        return !RequiresSwimming(point, wasSwimming && water.Mode == WaterTraversalMode.SurfaceSwimmer, centreY, tuning);
     }
 
     static bool RequiresSwimming(in MovementWaterPoint point, bool wasSwimming, float centreY, in MoveTuning tuning) =>

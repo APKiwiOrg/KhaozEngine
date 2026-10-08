@@ -217,7 +217,7 @@ public class MovementEnvironmentColumnTests
     static MovementBodyQuery Body(Vector3 centre) => new(centre, Radius, HalfHeight, Room, null);
 
     static MovementDomainContact Contact(MovementWaterInterval interval, Vector2 column, float fraction, uint handle = 1u) =>
-        new(Water, Room, interval, column, Vector3.UnitY, fraction, "boundary", handle, MovementContactOverlap.Overlapping);
+        new(Water, Room, interval, column, Vector3.UnitY, fraction, "boundary", handle, MovementContactOverlap.Overlapping, MovementContactOverlap.Overlapping);
 
     static Vector2 Column(MovementDomainContact contact) => contact.IntervalColumnXZ;
 }

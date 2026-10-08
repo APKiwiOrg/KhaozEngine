@@ -60,14 +60,18 @@ public readonly record struct MovementDomainContact
     public string BoundaryId { get; }
     public uint CoverageRegionHandle { get; }
     public MovementContactOverlap Overlap { get; }
+    /// <summary>No-positive-overlap certificate over the closed interval of the single owning span.
+    /// Tangent is a whole-path fact. Positive or uncertain overlap is Overlapping.</summary>
+    public MovementContactOverlap SpanOverlap { get; }
     public bool IsValid => Domain.IsValid && Space.IsValid && Interval.IsValid &&
         float.IsFinite(IntervalColumnXZ.X) && float.IsFinite(IntervalColumnXZ.Y) &&
         string.Equals(Domain.WorldId, Space.WorldId, StringComparison.Ordinal) &&
         MovementEnvironmentValidation.Unit(Normal) && float.IsFinite(Fraction) && Fraction >= 0f && Fraction <= 1f &&
         MovementEnvironmentValidation.Name(BoundaryId) &&
-        Overlap is MovementContactOverlap.Tangent or MovementContactOverlap.Overlapping;
+        Overlap is MovementContactOverlap.Tangent or MovementContactOverlap.Overlapping &&
+        SpanOverlap is MovementContactOverlap.Tangent or MovementContactOverlap.Overlapping;
     public MovementDomainContact(MovementDomainKey domain, MovementSpaceKey space, MovementWaterInterval interval,
-        Vector2 intervalColumnXZ, Vector3 normal, float fraction, string boundaryId, uint coverageRegionHandle, MovementContactOverlap overlap)
+        Vector2 intervalColumnXZ, Vector3 normal, float fraction, string boundaryId, uint coverageRegionHandle, MovementContactOverlap overlap, MovementContactOverlap spanOverlap)
     {
         Domain = domain;
         Space = space;
@@ -78,6 +82,7 @@ public readonly record struct MovementDomainContact
         BoundaryId = boundaryId;
         CoverageRegionHandle = coverageRegionHandle;
         Overlap = overlap;
+        SpanOverlap = spanOverlap;
         MovementEnvironmentValidation.Require(IsValid, nameof(domain));
     }
 }

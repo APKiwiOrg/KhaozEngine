@@ -80,7 +80,7 @@ public class MovementEnvironmentReconstructionTests
         Assert.Equal(candidate, candidates[0]);
         MovementCoverageSpan span = new(0.5f, 1f, 0, 1, true);
         MovementDomainContact contact = new(Domain("sentinel"), Space("right"), new(-4f, 3f, 3f, true, "low", "high"),
-            Vector2.One, Vector3.UnitZ, 0.75f, "sentinel", 123u, MovementContactOverlap.Overlapping);
+            Vector2.One, Vector3.UnitZ, 0.75f, "sentinel", 123u, MovementContactOverlap.Overlapping, MovementContactOverlap.Overlapping);
         MovementCoverageSpan[] spans = [span];
         MovementDomainContact[] contacts = [contact];
         Assert.Equal(MovementAvailability.Unresolved, lease.TraceWater(new(oldBody, Vector3.Zero), spans, contacts).Availability);

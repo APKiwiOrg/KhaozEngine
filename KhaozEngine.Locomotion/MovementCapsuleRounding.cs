@@ -20,6 +20,18 @@ internal static class MovementCapsuleRounding
         double rounding = Up(Up(SumError(body.Centre.X, delta.X, endpoint.X) +
             SumError(body.Centre.Y, delta.Y, endpoint.Y)) + SumError(body.Centre.Z, delta.Z, endpoint.Z));
         if (rounding > Skin) return false;
+        if (rounding == 0 && body.HalfHeight <= (double)body.Radius * 1024)
+        {
+            double exactCore = (double)body.HalfHeight - body.Radius;
+            float representedLength = 2f * (body.HalfHeight - body.Radius);
+            if ((double)representedLength * 0.5 == exactCore)
+            {
+                // Both the endpoint sum and the CapsuleShape conversion are exact. Inflating this
+                // already enclosing body would destroy a producer's exact tangency certificate.
+                enclosed = body;
+                return true;
+            }
+        }
         float radius = UpperFloat(Up(body.Radius + rounding));
         double cylinder = body.HalfHeight == body.Radius ? 0 : Up((double)body.HalfHeight - body.Radius);
         float halfHeight = UpperFloat(Up(radius + cylinder));
@@ -64,6 +76,11 @@ internal static class MovementCapsuleRounding
     {
         if (a == 0 || b == 0) return 0;
         double sum = (double)a + b;
+        // Two binary32 significands within 24 exponent steps fit exactly in binary64, including
+        // cancellation. Only return zero when that exact sum is also the stored binary32 value.
+        const double ratio = 16777216d;
+        if (Math.Abs((double)a) <= Math.Abs((double)b) * ratio &&
+            Math.Abs((double)b) <= Math.Abs((double)a) * ratio && sum == stored) return 0;
         double error = Math.Max(sum - Math.BitDecrement(sum), Math.BitIncrement(sum) - sum);
         return Up(Up(Math.Abs(sum - stored)) + error);
     }

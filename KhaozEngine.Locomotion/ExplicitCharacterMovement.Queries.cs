@@ -6,13 +6,25 @@ namespace KhaozEngine.Locomotion;
 public static partial class ExplicitCharacterMovement
 {
     static MovementAvailability Move(in MovementBodyQuery body, Vector3 delta, MovementQueryLease queries,
-        in WaterTraversalPolicy water, out Vector3 position, out bool blocked)
+        in WaterTraversalPolicy water, in MoveTuning tuning, out Vector3 position, out bool blocked)
     {
         position = body.Centre;
         Span<Vector3> path = stackalloc Vector3[MovementCapsuleResolver.MaximumEndpoints];
-        MovementAvailability status = MovementCapsuleResolver.TryResolvePolicy(body, delta, queries, water.Mode, path, out int count, out blocked);
+        MovementAvailability status = MovementCapsuleResolver.TryResolvePolicy(body, delta, queries, water.Mode, tuning.SwimEnterDepthFraction, path, out int count, out blocked);
         if (status == MovementAvailability.Known) position = path[count - 1];
         return status;
+    }
+
+    static MovementStepOutcome WaterPlacement(in MovementBodyQuery body, in MoveTuning tuning,
+        in WaterTraversalPolicy water, MovementQueryLease queries)
+    {
+        if (water.Mode is not (WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly))
+            return MovementStepOutcome.Advanced;
+        Span<Vector3> normals = stackalloc Vector3[MovementQueryLease.MaxDomainContacts];
+        MovementAvailability status = MovementWaterBoundary.Find(body, Vector3.Zero, body.HalfHeight,
+            tuning.SwimEnterDepthFraction, water.Mode, queries, normals, out _, out var hit);
+        return status != MovementAvailability.Known ? Outcome(status)
+            : hit.InitialOverlap ? MovementStepOutcome.PlacementRefused : MovementStepOutcome.Advanced;
     }
 
     static MovementAvailability Settle(ref MoveState state, ref MovementSelection selection, float drop,
@@ -25,7 +37,7 @@ public static partial class ExplicitCharacterMovement
         MovementAvailability status = MovementSupportResolver.Select(request, queries, out var placement);
         if (status != MovementAvailability.Known || placement is null) return status;
         MovementSupportPlacement support = placement.Value;
-        status = Move(body, support.Centre - body.Centre, queries, water, out Vector3 position, out _);
+        status = Move(body, support.Centre - body.Centre, queries, water, tuning, out Vector3 position, out _);
         if (status != MovementAvailability.Known) return status;
         // A cleared endpoint is not permission to skip a blocked approach to that endpoint.
         if (position != support.Centre) return MovementAvailability.Known;
@@ -54,6 +66,7 @@ public static partial class ExplicitCharacterMovement
         tuning.CapsuleHalfHeight >= tuning.CapsuleRadius && Positive(tuning.Gravity) && Positive(tuning.MaxFallSpeed) &&
         Nonnegative(tuning.WalkSpeed) && Nonnegative(tuning.RunSpeed) && Nonnegative(tuning.SwimSpeed) &&
         Nonnegative(tuning.JumpSpeed) && Nonnegative(tuning.GroundedEpsilon) && Nonnegative(tuning.StepHeight) &&
+        Positive(tuning.SwimEnterDepthFraction) && tuning.SwimEnterDepthFraction <= 1 &&
         Nonnegative(tuning.CoyoteTime) && Nonnegative(tuning.MaxSlopeRadians) && tuning.MaxSlopeRadians < MathF.PI * 0.5f;
     static bool Positive(float value) => float.IsFinite(value) && value > 0;
     static bool Nonnegative(float value) => float.IsFinite(value) && value >= 0;

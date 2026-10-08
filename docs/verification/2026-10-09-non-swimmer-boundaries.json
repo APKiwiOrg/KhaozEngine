@@ -1,0 +1,99 @@
+{
+  "status": "Generic shared non-swimmer boundary and SM2 proof. Native/game adoption remains gated.",
+  "baseCommit": "67ed07aad",
+  "runs": {
+    "boundary-red": {
+      "path": "/tmp/swim-boundary-red.log",
+      "sha256": "e20aca038080959b4cc7f2fc16a44b2b3fed39422fa4bf5f7e9ebef743778885",
+      "passed": 0,
+      "failed": 9,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "boundary-green": {
+      "path": "/tmp/swim-boundary-green.log",
+      "sha256": "cfb9fb35c6008e66594e7f1324182ce2ea670ee81e9eed6361abe8229590d443",
+      "passed": 94,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "boundary-extended-red": {
+      "path": "/tmp/swim-boundary-extended-red.log",
+      "sha256": "d75497b6d440a9e789c796ed34caff586d22b1f21e1a4dd9f8e8326a639e7f46",
+      "passed": 4,
+      "failed": 5,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "span-overlap-red": {
+      "path": "/tmp/swim-span-overlap-red.log",
+      "sha256": "8ee16abfd5c124637ecced77afab48f06b1deb94c3041d6b3c44557239d8ccdb",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "span-overlap-green": {
+      "path": "/tmp/swim-span-overlap-green.log",
+      "sha256": "76229d33e01b9cd16f358b4c66fa9780dca0d535e0d7f58e4c34014094062dcc",
+      "passed": 307,
+      "failed": 5,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "span-fixture-correction": {
+      "path": "/tmp/swim-span-fixture-correction.log",
+      "sha256": "d6b90d4accb427ebe976efb8c1748fe9af33986dbf0797b32b0684368b7c455e",
+      "passed": 95,
+      "failed": 2,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "exact-tangent-red": {
+      "path": "/tmp/swim-exact-tangent-red.log",
+      "sha256": "fabf96a2fad9abbcf3e7b9b382fad6f7fb6eb6a9e0d37b33081a49987fb7a86c",
+      "passed": 0,
+      "failed": 3,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "boundary-sm2-green": {
+      "path": "/tmp/swim-boundary-sm2-green.log",
+      "sha256": "79ec5f077509f984570057880429f9f51b2963f732e02149ceeb0484b090f3f4",
+      "passed": 315,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "wade-history-red": {
+      "path": "/tmp/swim-wade-history-red.log",
+      "sha256": "5977fb74f0939613dfbba4962800fc669d282468ee8928a9206ae5384ff2bebf",
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "boundary-numeric-green": {
+      "path": "/tmp/swim-boundary-numeric-green.log",
+      "sha256": "f314d22e64903ce2f1db0806812baadb69383c3e414c12d626fe7576408bb532",
+      "passed": 46,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    }
+  },
+  "corrections": [
+    "Extended RED had three missing depth-policy validation failures and two test expectations omitting the configured wading speed. Those assertions now independently preserve the commanded horizontal travel.",
+    "SM2 RED was the missing ten-argument contact constructor.",
+    "SM2 fixture migration initially changed boundary normals and left old global-entry fraction assertions. Normals retain canonical boundary provenance and fractions are checked against each owning span.",
+    "Exact tangent RED exposed unnecessary capsule inflation even when stored endpoint arithmetic and CapsuleShape conversion were exact. Inexact enclosures retain their previous guards.",
+    "WadeOnly reclassification uses its own entry threshold rather than carried swimmer exit hysteresis."
+  ],
+  "pending": [
+    "Sharded integration and generic profile/nav equivalence",
+    "Land movement compatibility and commitments",
+    "Whole-branch review and full verification",
+    "Native producer acceptance, released adoption and game feature"
+  ]
+}

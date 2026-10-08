@@ -222,7 +222,11 @@ public class MovementEnvironmentVolumeTests
         Assert.Equal(0f, result.Spans[0].EnterFraction);
         Assert.Equal(0f, result.Spans[0].ExitFraction);
         Assert.Equal(1, result.Spans[0].ContactCount);
-        Assert.All(result.Contacts, contact => { Assert.Equal(0f, contact.Fraction); Assert.Equal(-Vector3.UnitX, contact.Normal); });
+        Assert.Contains(result.Contacts, contact => contact.Fraction == 0f);
+        Assert.All(result.Contacts, contact => Assert.Equal(-Vector3.UnitX, contact.Normal));
+        foreach (MovementCoverageSpan span in result.Spans)
+            foreach (MovementDomainContact contact in result.Contacts.AsSpan(span.ContactStart, span.ContactCount))
+                Assert.InRange(contact.Fraction, span.EnterFraction, span.ExitFraction);
         Assert.All(result.Spans.Where(span => span.ExitFraction > span.EnterFraction),
             span => Assert.Equal(direction >= 0f, span.ContactCount > 0));
     }
@@ -269,7 +273,7 @@ public class MovementEnvironmentVolumeTests
         Assert.Equal(MovementAvailability.Unresolved, lease.SampleCentreWater(body).Availability);
         MovementCoverageSpan sentinel = new(0.5f, 1f, 0, 1, true);
         MovementDomainContact contact = new(Domain("sentinel"), Space("room"), new(-4f, 0f, 0f, true, "low", "top"),
-            Vector2.Zero, Vector3.UnitZ, 0.75f, "sentinel", 123u, MovementContactOverlap.Overlapping);
+            Vector2.Zero, Vector3.UnitZ, 0.75f, "sentinel", 123u, MovementContactOverlap.Overlapping, MovementContactOverlap.Overlapping);
         MovementCoverageSpan[] spans = [sentinel];
         MovementDomainContact[] contacts = [contact];
         MovementCoverageResult result = lease.TraceWater(new(body, Vector3.UnitX), spans, contacts);

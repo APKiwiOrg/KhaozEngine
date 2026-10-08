@@ -61,7 +61,9 @@ public static partial class ExplicitCharacterMovement
             MoveState next = MovementStepResult.HoldState(input.State);
             bool wasSwimming = input.State.Swimming || input.State.WaterExcursion == WaterExcursionState.Surface;
             MovementBodyQuery body = Body(next.Position, tuning, selection);
-            status = Move(body, Vector3.Zero, queries, water, out _, out _);
+            MovementStepOutcome placement = WaterPlacement(body, tuning, water, queries);
+            if (placement != MovementStepOutcome.Advanced) return Hold(input, placement);
+            status = Move(body, Vector3.Zero, queries, water, tuning, out _, out _);
             if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
             MovementWaterPoint point = queries.SampleCentreWater(body);
             if (point.Availability != MovementAvailability.Known) return Hold(input, Outcome(point.Availability));
@@ -109,7 +111,7 @@ public static partial class ExplicitCharacterMovement
                 return Hold(input, MovementStepOutcome.EnvironmentInvalid);
             Vector3 delta = new(horizontal.X * dt, targetY - next.Position.Y, horizontal.Y * dt);
             Vector3 origin = next.Position;
-            status = Move(Body(origin, tuning, selection), delta, queries, water, out Vector3 position, out bool blocked);
+            status = Move(Body(origin, tuning, selection), delta, queries, water, tuning, out Vector3 position, out bool blocked);
             if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
             if (blocked && (supported || next.Swimming) && !launched)
             {

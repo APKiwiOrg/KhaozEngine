@@ -429,7 +429,10 @@ Under [SM1](../docs/design/SWIM-MEDIUM-FACTS-SM1-2026-10-08.md), nominal surface
 certify the entire covered subregion. Producers split free/closed transitions and classify each
 contact as Tangent or Overlapping. The lease rejects an incoherent Tangent and conflicting nominal
 levels for one domain, with a 256-distinct-domain bound per lease. It never publishes partial buffers
-or level registrations from a failed trace.
+or level registrations from a failed trace. Under
+[SM2](../docs/design/SWIM-MEDIUM-FACTS-SM2-2026-10-09.md), each contact additionally requires
+`SpanOverlap` over its single owning span. Only this whole-span Tangent certificate can approve a
+finite non-swimmer tangent/away path. The lease checks ownership, point fraction and tag coherence.
 Trace validation checks certified XZ and overlap with the upright capsule's rounded vertical slice,
 using the existing skin and result error budget. It does not require an entire deep column inside
 the narrow query's Y bounds. Canonical space/domain membership and complete clipping remain the
@@ -495,8 +498,10 @@ nominal level. Distinct equal-level domain keys are allowed. Closed regions and 
 levels refuse. A local bed/ceiling column is never extrapolated into a whole-region permission.
 Buoyancy, independent surface jumps, ceiling/wall collision, descent back into water and a proved
 wading-bank transition all use the same combined resolver. Bed contact alone does not override the
-swim-exit policy or grant footing. Non-swimmer boundary resolution, sharded integration, generic nav
-proof and native acceptance remain in development. Active committed movement currently refuses
+swim-exit policy or grant footing. DryOnly and WadeOnly use the same resolver for thin channels,
+shore sliding, simultaneous solid/water constraints and body-relative depth thresholds. Positive
+forbidden starting overlap refuses placement. Every corrected segment is fully re-proved.
+Sharded integration, generic nav proof and native acceptance remain in development. Active committed movement currently refuses
 this opt-in path.
 Legacy entry points and unconfigured callers retain their existing behavior.
 

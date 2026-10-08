@@ -117,19 +117,23 @@ public class MovementFreeTopPartitionTests
             {
                 double middle = origin + ((double)start + end) * 0.5 * delta;
                 int first = outputContacts.Count;
-                if (middle - radius <= boundary + Error) Emit(false, start);
-                if (middle + radius > boundary) Emit(true, start);
+                if (middle - radius <= boundary + Error) Emit(false, start, end);
+                if (middle + radius > boundary) Emit(true, start, end);
                 outputSpans.Add(new(start, end, first, outputContacts.Count - first, false));
             }
-            void Emit(bool free, float at)
+            void Emit(bool free, float at, float end)
             {
                 double x = origin + at * delta;
                 float column = free ? Math.Max((float)x, MathF.BitIncrement((float)boundary)) : Math.Min((float)x, (float)boundary);
                 float upper = free ? 0 : Math.Min(0, 0.5f * column);
                 bool overlapping = free ? x + 0.25 >= boundary - Error : x - 0.25 <= boundary + Error;
+                double lastX = origin + end * delta;
+                bool spanOverlap = free ? Math.Max(x, lastX) + 0.25 >= boundary - Error
+                    : Math.Min(x, lastX) - 0.25 <= boundary + Error;
                 outputContacts.Add(new(Water, Room, new(-6, upper, 0, free, "floor", free ? "surface" : "ceiling"),
                     new(column, 0), free ? -Vector3.UnitX : Vector3.UnitX, at, "upper-kind", free ? 2u : 1u,
-                    overlapping ? MovementContactOverlap.Overlapping : MovementContactOverlap.Tangent));
+                    overlapping ? MovementContactOverlap.Overlapping : MovementContactOverlap.Tangent,
+                    spanOverlap ? MovementContactOverlap.Overlapping : MovementContactOverlap.Tangent));
                 SawFree |= free;
                 SawClosed |= !free;
             }

@@ -23,6 +23,7 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
     IPhysicsWorldQueryView? _view;
     public BepuPhysicsWorld Physics { get; } = new(Vector3.Zero);
     public bool MissingContainment;
+    public bool CertifyAxisSeparation;
     public string[] BackingIds = ["fixture-page"];
     public EnvironmentAcquisitionFixture Acquisition { get; private set; } = null!;
     public static readonly MovementQueryIdentity Identity = new("closure", 1u, "scope");
@@ -177,7 +178,7 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
             outputContacts.Count, outputContacts.Count, Error, Identity);
     }
 
-    static void Append(float start, float end, in MovementMediumSweepQuery query, float radius, float halfHeight,
+    void Append(float start, float end, in MovementMediumSweepQuery query, float radius, float halfHeight,
         List<Hit> hits, List<AnalyticBox> dry, List<MovementCoverageSpan> spans, List<MovementDomainContact> contacts)
     {
         float at = (start + end) * 0.5f;
@@ -189,14 +190,37 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
         foreach (Hit hit in hits)
             if (at >= hit.Enter && at <= hit.Exit)
             {
-                Vector3 contactCentre = query.Body.Centre + query.Delta * hit.Enter;
+                Vector3 contactCentre = query.Body.Centre + query.Delta * start;
+                Vector2 column = new(Math.Clamp(contactCentre.X, hit.Water.Bounds.Min.X, hit.Water.Bounds.Max.X),
+                    Math.Clamp(contactCentre.Z, hit.Water.Bounds.Min.Z, hit.Water.Bounds.Max.Z));
                 bool overlap = hit.Water.Bounds.HasPositiveCapsuleOverlap(contactCentre,
                     query.Body.Radius + Error, query.Body.HalfHeight + Error);
+                bool spanOverlap = start == end ? overlap : hit.Water.Bounds.IntersectCapsule(contactCentre,
+                    query.Delta * (end - start), query.Body.Radius + Error, query.Body.HalfHeight + Error, out _, out _);
+                if (CertifyAxisSeparation && SeparatedByAxis(query, hit.Water.Bounds))
+                    overlap = spanOverlap = false;
                 contacts.Add(new MovementDomainContact(Domain(hit.Water.Domain), Space(hit.Water.Room), Interval(hit.Water),
-                    hit.Column, hit.Normal, hit.Enter, BoundaryId(hit), hit.Handle,
-                    overlap ? MovementContactOverlap.Overlapping : MovementContactOverlap.Tangent));
+                    column, hit.Normal, start, BoundaryId(hit), hit.Handle,
+                    overlap ? MovementContactOverlap.Overlapping : MovementContactOverlap.Tangent,
+                    spanOverlap ? MovementContactOverlap.Overlapping : MovementContactOverlap.Tangent));
             }
         spans.Add(new MovementCoverageSpan(start, end, first, contacts.Count - first, hasDryCoverage));
+    }
+
+    static bool SeparatedByAxis(in MovementMediumSweepQuery query, AnalyticBox box)
+    {
+        Vector3 c = query.Body.Centre, d = query.Delta;
+        float r = query.Body.Radius, h = query.Body.HalfHeight;
+        return Outside(c.X, r, d.X, box.Min.X, box.Max.X) ||
+            Outside(c.Y, h, d.Y, box.Min.Y, box.Max.Y) || Outside(c.Z, r, d.Z, box.Min.Z, box.Max.Z);
+
+        static bool Outside(float centre, float extent, float delta, float min, float max)
+        {
+            // Within this ratio, adding two binary32 inputs is exact in binary64. This optional
+            // certificate proves an entire stationary/away path, including equality at a plane.
+            if (centre != 0 && (Math.Abs(centre) < extent / 1024d || Math.Abs(centre) > extent * 1024d)) return false;
+            return delta <= 0 && (double)centre + extent <= min || delta >= 0 && (double)centre - extent >= max;
+        }
     }
 
     bool KnownFeetPath(in MovementMediumSweepQuery query, HashSet<string> reachable)

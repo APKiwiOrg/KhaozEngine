@@ -118,9 +118,11 @@ internal sealed class AnalyticSlopedMovementEnvironment : IDisposable
                 Vector2 column = new((float)x, (float)z);
                 double rawReach = queryRadius + core / _length;
                 bool overlap = distance + start * change + rawReach >= -Error;
+                bool spanOverlap = distance + Math.Max(start * change, end * change) + rawReach >= -Error;
                 outputContacts.Add(new MovementDomainContact(Water, Room, Column(column.X), column,
                     -WetNormal, start, _ceiling ? "sloped-ceiling" : "sloped-floor", 0u,
-                    overlap ? MovementContactOverlap.Overlapping : MovementContactOverlap.Tangent));
+                    overlap ? MovementContactOverlap.Overlapping : MovementContactOverlap.Tangent,
+                    spanOverlap ? MovementContactOverlap.Overlapping : MovementContactOverlap.Tangent));
             }
             outputSpans.Add(new MovementCoverageSpan(start, end, first, outputContacts.Count - first, dry));
         }

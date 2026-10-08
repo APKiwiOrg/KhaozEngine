@@ -15,7 +15,7 @@ public class MovementMediumFactTests
     static readonly MovementBodyQuery Body = new(new(0, 0.75f, 0), 0.25f, 0.75f, Room, null);
     static MovementWaterInterval Interval(float level) => new(-1, level, level, true, "bed", "surface");
     static MovementDomainContact Contact(float level, MovementDomainKey? domain = null, Vector2 column = default) =>
-        new(domain ?? Lake, Room, Interval(level), column, Vector3.UnitX, 0, "edge", 1, MovementContactOverlap.Overlapping);
+        new(domain ?? Lake, Room, Interval(level), column, Vector3.UnitX, 0, "edge", 1, MovementContactOverlap.Overlapping, MovementContactOverlap.Overlapping);
     static MovementWaterPoint Point(float level) => new(MovementAvailability.Known, Room, Lake, true, 1, Interval(level));
 
     [Fact]
@@ -109,19 +109,9 @@ public class MovementMediumFactTests
 
     static MovementDomainContact Tagged(MovementDomainContact value, string tag)
     {
-        Type? overlap = typeof(MovementDomainContact).Assembly.GetType("KhaozEngine.Locomotion.MovementContactOverlap");
-        Assert.NotNull(overlap);
-        ConstructorInfo? constructor = typeof(MovementDomainContact).GetConstructor(new[]
-        {
-            typeof(MovementDomainKey), typeof(MovementSpaceKey), typeof(MovementWaterInterval), typeof(Vector2),
-            typeof(Vector3), typeof(float), typeof(string), typeof(uint), overlap
-        });
-        Assert.NotNull(constructor);
-        return (MovementDomainContact)constructor.Invoke(new object[]
-        {
-            value.Domain, value.Space, value.Interval, value.IntervalColumnXZ, value.Normal, value.Fraction,
-            value.BoundaryId, value.CoverageRegionHandle, Enum.Parse(overlap, tag)
-        });
+        var parsed = Enum.Parse<MovementContactOverlap>(tag);
+        return new(value.Domain, value.Space, value.Interval, value.IntervalColumnXZ, value.Normal,
+            value.Fraction, value.BoundaryId, value.CoverageRegionHandle, parsed, parsed);
     }
 
     static void AssertInvalidAtomic(Scene scene)

@@ -22,11 +22,11 @@ public static partial class ExplicitCharacterMovement
         // Use the actual eligible support height, not a full StepHeight rise. A full rise can hit
         // a ceiling even though the supported destination and its exact approach both fit.
         Vector3 above = new(start.Centre.X, support.Centre.Y, start.Centre.Z);
-        status = Move(start, above - start.Centre, queries, water, out Vector3 raised, out _);
+        status = Move(start, above - start.Centre, queries, water, tuning, out Vector3 raised, out _);
         if (status != MovementAvailability.Known) return status;
         if (raised != above) return MovementAvailability.Known;
         var airborne = new MovementBodyQuery(raised, start.Radius, start.HalfHeight, start.CurrentSpace, null);
-        status = Move(airborne, support.Centre - raised, queries, water, out Vector3 end, out _);
+        status = Move(airborne, support.Centre - raised, queries, water, tuning, out Vector3 end, out _);
         if (status != MovementAvailability.Known) return status;
         if (end != support.Centre) return MovementAvailability.Known;
         queries.AssertCurrent();

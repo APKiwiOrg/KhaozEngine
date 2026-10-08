@@ -60,7 +60,9 @@ public static partial class ExplicitCharacterMovement
             MovementAvailability status = queries.RebuildSelection(unselected, out MovementSelection selection);
             if (status != MovementAvailability.Known) return Hold(state, Outcome(status));
             MovementBodyQuery body = Body(state.State.Position, tuning, selection);
-            status = Move(body, Vector3.Zero, queries, water, out _, out _);
+            MovementStepOutcome placement = WaterPlacement(body, tuning, water, queries);
+            if (placement != MovementStepOutcome.Advanced) return Hold(state, placement);
+            status = Move(body, Vector3.Zero, queries, water, tuning, out _, out _);
             if (status != MovementAvailability.Known) return Hold(state, Outcome(status));
             MovementWaterPoint point = queries.SampleCentreWater(body);
             if (point.Availability != MovementAvailability.Known) return Hold(state, Outcome(point.Availability));

@@ -3852,3 +3852,15 @@ compatibility-only peers report ambiguity, and portal containment splits at heig
 T12B-1 to T12B-7 are in the ledger. Task 13 support stays a column query at the body axis (T13-2), and owner
 provenance for installed map statics is KhaozEngine#1327 for R3. Proof is
 `proofs/2026-10-09-r2-task12b-green.json`.
+
+
+### Task 13 height-aware support and resolver version 2 verified
+
+Sources e82b0a282 and 19188f65d select support as a column query at the queried XZ in the design's order, sharing one
+prepared context with membership, counting intersections before space filtering and keeping exact heights. Resolver
+version 2 keeps explicit Y, refuses any binding that is not Supported, and refuses a space binding without a reference
+height and bounded search. Adoption returns a detached version-2 copy. Compile RED is preserved at c94653c02 in MapDoc
+and Editor. Final runs on the last commit passed 64 MapDoc and 3 Editor cases, with regressions of 178 MapDoc,
+96 Editor and 3 Compatibility, format and guards clean, and the frozen tests unchanged apart from whitespace-only
+formatting (T13-9). Review approved on the first pass. Rulings T13-1 to T13-9 are in the ledger. Owner provenance for
+installed map statics is KhaozEngine#1327 for R3. Proof is `proofs/2026-10-09-r2-task13-green.json`.

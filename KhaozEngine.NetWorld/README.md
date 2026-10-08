@@ -1043,7 +1043,10 @@ frame. Its `PlayerMovementSystem` retains the read through position, movement an
 Ghosts and migrating entities acquire no movement read. Join and configured-spawn settlement must
 classify before publication. A configured factory returning null is invalid, not a legacy fallback.
 Generic wet-head tests cover actual surface launch, replicated excursion and return to swimming.
-Sharded teleport, persisted-cell restore and handoff admission remain in progress.
+Cell restore and handoff use staged, batch-wide destination admission. Unknown/refused environments
+retain saved or transferred state for retry, with no live prefix, corrupt-blob quarantine or empty
+replacement save. Cached freezes retain their transient marks. Reads remain held through publication.
+Sharded teleport and player-record persistence admission remain in progress.
 
 ## Client simulation state versus presentation state
 

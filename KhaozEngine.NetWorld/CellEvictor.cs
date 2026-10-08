@@ -45,7 +45,7 @@ namespace KhaozEngine.NetWorld;
 /// <para>Call <see cref="Update"/> once per server frame on the server thread, alongside
 /// <see cref="CellPersistence.Update"/>.</para>
 /// </remarks>
-public sealed class CellEvictor
+public sealed partial class CellEvictor
 {
     // A cell whose eviction snapshot has been handed to the store and is not durable yet. The cell keeps ticking
     // meanwhile, so the finalize pass re-checks that it still matches what was written before removing it.
@@ -132,6 +132,7 @@ public sealed class CellEvictor
     /// </summary>
     public void Update(float dt)
     {
+        RetryCacheAdmissions();
         FinishPending();
         sinceScan += dt;
         if (sinceScan < config.ScanIntervalSeconds) return;
@@ -168,26 +169,9 @@ public sealed class CellEvictor
         if (!cachedSnapshots.Remove(coord, out CachedFreeze freeze)) return;
         cacheOrder.Remove(coord);
 
-        CellRestoreResult result = host.TryRestoreCell(coord, freeze.Bytes);
-        if (!result.Ok)
-        {
-            // These are bytes this process wrote moments ago, so a decode failure means something is badly wrong.
-            // Hand the coordinate back to the store-backed path rather than leaving the cell silently empty.
-            persistence.ForgetCell(coord);
-            persistence.RequestLoad(coord);
-            return;
-        }
-
-        // Before anything can tick or save: the freeze's bytes never carried the marks, so re-apply them now or the
-        // next interval save writes an entity that was marked never to be written (#668).
-        if (freeze.Marks.Count > 0) host.ApplyTransientMarks(coord, freeze.Marks);
-
-        long max = 0;
-        foreach (long id in result.NetIds) if (id > max) max = id;
-        if (max > 0) host.EnsureNextNetIdAtLeast(max + 1);
-
-        RestoredFromCacheCount++;
-        CellRestoredFromCache?.Invoke(coord);
+        var waiting = new CachedAdmission(freeze, persistence.HoldRestore(coord));
+        pendingCacheAdmissions.Add(coord, waiting);
+        TryRestoreCache(coord, waiting);
     }
 
     private void FinishPending()

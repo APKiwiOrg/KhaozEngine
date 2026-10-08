@@ -181,3 +181,17 @@ Phase 3A of the seamless-shard topology: the in-process container. No cross-cell
 (that's 3B/3C). Deterministic and headless - no sockets, no window, no GPU. Depends on `KhaozEngine.Ecs`,
 `KhaozEngine.Simulation`, `KhaozEngine.Physics` (the seam a cell's own world is typed as) and
 `KhaozEngine.Replication`.
+
+## Destination import admission
+
+`CellSim.ImportAdmission` optionally classifies frame-adapted staged entities before publication.
+Its `CellAdmissionRead` holds any query lease through typed component copies, transient marks and
+owned registration. Every actor in a batch must be admitted before any actor is published.
+`TryRestoreOwned(snapshot, marks)` installs cached transient marks inside this publication boundary.
+`CellRestoreResult.NeedsAdmission` is an environment refusal, not a corrupt snapshot. Callers retain
+and retry those bytes. Existing live NetIds remain protected from stale snapshots.
+
+`ShardHost.ProcessHandoffs` retains refused imports and retries them on later passes. Sources stay
+frozen and both involved cells remain protected from eviction. `PendingMigrationAdmissions` reports
+these waiting transfers. At-least-once delivery is deduplicated by source, destination and entity.
+No local lease or selection pointer is serialized.

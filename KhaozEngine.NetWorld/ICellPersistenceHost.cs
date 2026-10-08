@@ -87,12 +87,21 @@ public interface ICellPersistenceHost
     /// <summary>
     /// Restores entities into a cell reporting decode success (so the driver can quarantine a corrupt blob instead of
     /// crash-looping) and how many unknown extension frames were retained. The default wraps <see cref="RestoreCell"/>
-    /// as an always-Ok result for back-compat; <see cref="KhaozEngine.Sharding.CellSim.TryRestoreOwned"/>-backed hosts
+    /// as an always-Ok result for back-compat; <see cref="KhaozEngine.Sharding.CellSim.TryRestoreOwned(byte[])"/>-backed hosts
     /// (like <c>ShardedWorldServer</c>) override it to surface a genuine decode failure and retention count. Call on
     /// the server thread.
     /// </summary>
     CellRestoreResult TryRestoreCell(CellCoord coord, byte[] snapshot)
         => new(true, RestoreCell(coord, snapshot), 0, null);
+
+    /// <summary>Restores a cached freeze with its transient marks. Admission-aware hosts install
+    /// these marks before releasing their publication read. Legacy hosts apply them after restore.</summary>
+    CellRestoreResult TryRestoreCell(CellCoord coord, byte[] snapshot, IReadOnlyDictionary<long, TransientScope> marks)
+    {
+        CellRestoreResult result = TryRestoreCell(coord, snapshot);
+        if (result.Ok && marks.Count > 0) ApplyTransientMarks(coord, marks);
+        return result;
+    }
 
     /// <summary>Instantiates a cell by coordinate (firing <see cref="CellCreated"/> if new); used by preload.</summary>
     void EnsureCell(CellCoord coord);

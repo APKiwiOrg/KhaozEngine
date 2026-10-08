@@ -45,6 +45,8 @@ public sealed partial class ShardHost
     {
         if (!cells.TryGetValue(coord, out CellSim? cell)) return false;
         if (cell.HasMigratingEntities) return false;
+        foreach (var pending in deferredMigrations.Keys)
+            if (pending.Target == coord || pending.Source == coord) return false;
         if (link.HasPending(coord)) return false;
         // Index-only membership check: a scanning CellSim.TryGetOwned per bound client would cost
         // players x cellPopulation here, paid on every eviction candidate. ownerCell already answers "does this

@@ -23,7 +23,7 @@ namespace KhaozEngine.Sharding;
 /// <see cref="InterestGrid"/> are exposed but not auto-driven by <see cref="Tick"/> - snapshot rate is
 /// intentionally decoupled from tick rate, so the host/game captures and queries when it chooses.
 /// </remarks>
-public sealed class CellSim
+public sealed partial class CellSim
 {
     /// <summary>An empty full-state snapshot (entity count 0): applying it despawns all of a view's ghosts.</summary>
     private static readonly byte[] EmptySnapshot = new byte[4];
@@ -475,7 +475,7 @@ public sealed class CellSim
     /// Restores the entities in <paramref name="snapshot"/> into this cell's world as freshly owned entities
     /// (a throwaway <see cref="ClientReplicationView"/>, exactly like <see cref="AdoptFromMigrate"/>), keeping their
     /// <see cref="NetId"/>s. Returns the restored NetId values (empty if the blob failed to decode). Non-throwing:
-    /// delegates to <see cref="TryRestoreOwned"/>, so a corrupt blob rolls back and returns empty rather than
+    /// delegates to <see cref="TryRestoreOwned(byte[])"/>, so a corrupt blob rolls back and returns empty rather than
     /// throwing. Intended to run once on cell creation.
     /// </summary>
     public IReadOnlyList<long> RestoreOwned(byte[] snapshot) => TryRestoreOwned(snapshot).NetIds;
@@ -492,53 +492,14 @@ public sealed class CellSim
     /// (retain-and-rewrite), so a registry downgrade cannot strip data at rest;
     /// <see cref="CellRestoreResult.RetainedFrameCount"/> reports how many. Intended to run once on cell creation.
     /// </summary>
-    public CellRestoreResult TryRestoreOwned(byte[] snapshot)
+    public CellRestoreResult TryRestoreOwned(byte[] snapshot) => TryRestoreOwned(snapshot, null);
+
+    /// <summary>Restores a cached freeze, installing its transient marks before ownership publication
+    /// and before the destination admission read is released.</summary>
+    public CellRestoreResult TryRestoreOwned(byte[] snapshot, IReadOnlyDictionary<long, TransientScope>? marks)
     {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        // What this cell owns BEFORE the apply. Read here rather than after, because the apply spawns the blob's
-        // entities into this same world, and a check made afterwards would find a restored copy and call it live.
-        // A scan rather than the owned index, so the pre-index raw spawn idiom counts too. Cheap where it matters:
-        // a restore runs once on cell creation, whose world is normally empty.
-        HashSet<long> ownedBeforeRestore = LiveOwnedNetIds();
-        var view = new ClientReplicationView(registry);
-        if (!view.TryApplyRetainingUnknown(World, snapshot, out IReadOnlyList<RetainedComponent> retained, out string? error))
-        {
-            // Roll back the partial apply so the cell starts genuinely fresh (the caller quarantines the bytes).
-            foreach (KeyValuePair<long, Entity> kv in view.Entities)
-                if (World.IsAlive(kv.Value)) World.Despawn(kv.Value);
-            return CellRestoreResult.Failed(error ?? "cell snapshot failed to decode");
-        }
-        var netIds = new List<long>(view.Entities.Count);
-        int skipped = 0;
-        foreach (KeyValuePair<long, Entity> kv in view.Entities)
-        {
-            if (ownedBeforeRestore.Contains(kv.Key))
-            {
-                // The blob carries a stale copy of something this cell is already simulating, which is what a
-                // consumer host produces when it captures a cell without excluding the players bound to it. The
-                // old behaviour registered it anyway, and RegisterOwned overwrites, so ownership silently
-                // re-pointed at the stale copy and its old MovementState became the basis the next teleport
-                // stamped its epoch from. Drop the copy instead and leave the live entity exactly as it was.
-                if (World.IsAlive(kv.Value)) World.Despawn(kv.Value);
-                skipped++;
-                continue;
-            }
-            netIds.Add(kv.Key);
-            RegisterOwned(kv.Key, kv.Value); // restored entities are owned here -> index them
-            AdaptFrame(kv.Value);            // a blob written by another frame (or an unframed build) lands in ours
-        }
-        int retainedKept = 0;
-        foreach (RetainedComponent rc in retained)
-        {
-            // A skipped entity's retained frames go with it: re-emitting them would attach the stale copy's
-            // unknown extension data to the live entity on the next snapshot.
-            if (ownedBeforeRestore.Contains(rc.NetId)) continue;
-            if (!retainedUnknown.TryGetValue(rc.NetId, out List<RetainedComponent>? list))
-                retainedUnknown[rc.NetId] = list = new List<RetainedComponent>();
-            list.Add(rc);
-            retainedKept++;
-        }
-        return new CellRestoreResult(true, netIds, retainedKept, null, skipped);
+        using ImportPreparation prepared = PrepareImport(snapshot);
+        return prepared.Publish(marks);
     }
 
     /// <summary>The NetIds this cell authoritatively owns right now (alive, not a ghost, not migrating), read by a
@@ -573,24 +534,11 @@ public sealed class CellSim
     /// </summary>
     public IReadOnlyList<long> AdoptFromMigrate(byte[] snapshot)
     {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        // Throwaway view: spawns the entity (and sets NetId + components), then is discarded so the entity is
-        // untracked = a normal owned entity.
-        var adopter = new ClientReplicationView(registry);
-        adopter.Apply(World, snapshot);
-        var netIds = new List<long>(adopter.Entities.Count);
-        foreach (KeyValuePair<long, Entity> kv in adopter.Entities)
-        {
-            netIds.Add(kv.Key);
-            RegisterOwned(kv.Key, kv.Value); // the adopted entity is now owned here -> index it
-            // The handoff conversion happens where the component LANDS, not where it is sent: the destination is the
-            // side that knows its own frame and the side that owns the entity afterwards. Exact to half a ULP of the
-            // destination magnitude (about 3.8 micrometres inside the design target), not bit-exact, because a
-            // crossing can grow the local's magnitude across a binade boundary.
-            AdaptFrame(kv.Value);
-        }
-        foreach (long netId in netIds) DespawnGhost(netId); // drop any pre-existing ghost of the now-owned entity
-        return netIds;
+        using ImportPreparation prepared = PrepareImport(snapshot);
+        CellRestoreResult result = prepared.Publish();
+        if (!result.Ok) return Array.Empty<long>();
+        foreach (long netId in prepared.AllNetIds) DespawnGhost(netId);
+        return prepared.AllNetIds;
     }
 
     /// <summary>Releases (despawns) the <see cref="Migrating"/> entity with <paramref name="netId"/> after its destination acked.</summary>

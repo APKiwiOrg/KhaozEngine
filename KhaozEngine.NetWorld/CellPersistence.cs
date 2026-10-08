@@ -136,7 +136,7 @@ public sealed class CellPersistenceConfig
 /// it; the meta write is monotonic and re-attempted whenever the high-water advances; a faulted quarantine write is
 /// surfaced and dropped (the cell already started fresh, so the load path is unaffected).</para>
 /// </summary>
-public sealed class CellPersistence
+public sealed partial class CellPersistence
 {
     // Header: [int32 magic][int32 schemaVersion], then from WireGenerationBlobMigration.StampedSchemaVersion on
     // [int32 wireGeneration], then the raw Replication snapshot. The schema version itself says which of the two
@@ -359,7 +359,7 @@ public sealed class CellPersistence
     /// write that has not landed. The gate a cell-eviction driver checks before snapshotting, since a cell caught
     /// mid-restore would be persisted (and then unloaded) in its pre-restore state.
     /// </summary>
-    public bool IsBusy(CellCoord coord) => loadsInFlight.ContainsKey(coord) || savesInFlight.ContainsKey(coord);
+    public bool IsBusy(CellCoord coord) => loadsInFlight.ContainsKey(coord) || savesInFlight.ContainsKey(coord) || restoreHolds.Contains(coord);
 
     /// <summary>
     /// The bytes last durably written for this cell (the dirty-tracking baseline), unwrapped. Exposed so an
@@ -381,6 +381,7 @@ public sealed class CellPersistence
     {
         loadRequested.Remove(coord);
         lastSaved.TryRemove(coord, out _);
+        if (deferredRestores.Remove(coord)) loadsInFlight.TryRemove(coord, out _);
     }
 
     /// <summary>
@@ -394,6 +395,7 @@ public sealed class CellPersistence
     public Task<bool> SaveCellAsync(CellCoord coord, byte[] snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        if (loadsInFlight.ContainsKey(coord) || restoreHolds.Contains(coord)) return Task.FromResult(false);
         savesInFlight[coord] = 0;
         Task<bool> task = SaveOneCellAsync(coord, snapshot);
         Track(task);
@@ -453,10 +455,12 @@ public sealed class CellPersistence
 
     private void DrainRestores()
     {
+        RetryDeferredRestores();
         while (restoreQueue.TryDequeue(out (CellCoord coord, byte[] rawBlob) r))
         {
             ProcessLoadedBlob(r.coord, r.rawBlob);
-            loadsInFlight.TryRemove(r.coord, out _);     // load handled (restored/migrated/skipped/quarantined): safe to dirty-save
+            if (!deferredRestores.ContainsKey(r.coord))
+                loadsInFlight.TryRemove(r.coord, out _); // unresolved admission keeps the save/eviction fence
         }
     }
 
@@ -564,6 +568,12 @@ public sealed class CellPersistence
         string? migrationDetail = null)
     {
         CellRestoreResult r = host.TryRestoreCell(coord, body);
+        if (r.NeedsAdmission)
+        {
+            deferredRestores[coord] = new(body, rawBlob, migrated, fromVersion, migrationDetail);
+            return;
+        }
+        deferredRestores.Remove(coord);
         if (!r.Ok)
         {
             Quarantine(coord, rawBlob, CellPersistenceIssue.QuarantinedCorrupt(coord, r.Error ?? "cell snapshot failed to decode"));
@@ -609,7 +619,7 @@ public sealed class CellPersistence
         List<(CellCoord coord, byte[] snap)>? dirty = null;
         foreach (CellCoord coord in new List<CellCoord>(host.LiveCellCoords))
         {
-            if (loadsInFlight.ContainsKey(coord)) continue;   // load outstanding: skip so a periodic save can't overwrite the stored blob with pre-restore state
+            if (loadsInFlight.ContainsKey(coord) || restoreHolds.Contains(coord)) continue;   // load outstanding: skip so a periodic save can't overwrite the stored blob with pre-restore state
             if (savesInFlight.ContainsKey(coord)) continue;   // save outstanding (an eviction): skip so this pass can't race that write with an unordered one of its own
             byte[]? snap = host.SnapshotCell(coord);
             if (snap is null) continue;

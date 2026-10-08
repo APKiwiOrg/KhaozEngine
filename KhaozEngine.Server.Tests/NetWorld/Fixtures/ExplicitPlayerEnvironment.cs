@@ -24,6 +24,7 @@ internal sealed partial class ExplicitPlayerEnvironment : IMovementEnvironmentPr
     public int Prepared;
     public int PinsDisposed;
     public Action? OnPinDispose;
+    public Func<Vector3, MovementAvailability>? ReconstructionAvailability;
     public static MoveTuning Tuning => MoveTuning.Default with
     {
         CapsuleRadius = 0.25f,
@@ -100,6 +101,11 @@ internal sealed partial class ExplicitPlayerEnvironment : IMovementEnvironmentPr
         public MovementAvailability RebuildSelection(in FramedMovementState state, out MovementSelection selection)
         {
             owner.RebuiltPositions.Add(state.State.Position);
+            if (owner.ReconstructionAvailability?.Invoke(state.State.Position) is { } status && status != MovementAvailability.Known)
+            {
+                selection = default;
+                return status;
+            }
             selection = new(new("world", "room"), null, owner.Identity);
             return MovementAvailability.Known;
         }

@@ -450,24 +450,9 @@ public sealed partial class ShardHost : IDisposable
             source.UnregisterOwned(netId); // frozen: relinquished here, so drop it from the owned index at once
         }
 
-        // Phase 2: destinations adopt the migrated entities and ack their source.
-        foreach (CellSim cell in ordered.ToArray())
-        {
-            foreach (CellMessage msg in link.Drain(cell.Coord, CellMessageKind.Migrate))
-            {
-                foreach (long netId in cell.AdoptFromMigrate(msg.Payload))
-                {
-                    // Re-mark before the ack, so the entity is never persistable in its new cell for even one
-                    // snapshot: an interval save between adopt and re-mark is exactly the husk this prevents. The
-                    // entry is CONSUMED here rather than read, which is what lets the mark survive a link that
-                    // delivers the Migrate on a later call instead of within this one.
-                    if (transientCrossings.Remove(netId, out TransientScope scope) &&
-                        cell.TryGetOwned(netId, out Entity adopted))
-                        cell.World.Set(adopted, new Transient { Scope = scope });
-                    link.Send(new CellMessage(cell.Coord, msg.Source, CellMessageKind.MigrateAck, BitConverter.GetBytes(netId)));
-                }
-            }
-        }
+        // Phase 2: retain refused admissions locally and retry them on the next handoff pass.
+        // Accepted reads remain held through publication, transient marks and acknowledgement.
+        foreach (CellSim cell in ordered.ToArray()) ProcessMigrationAdmissions(cell);
 
         // Phase 3: sources release the frozen entity once its destination acked.
         foreach (CellSim cell in ordered.ToArray())

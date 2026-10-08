@@ -4,26 +4,32 @@ using System.Collections.Generic;
 namespace KhaozEngine.Sharding;
 
 /// <summary>
-/// The outcome of <see cref="CellSim.TryRestoreOwned"/>: whether the snapshot decoded, the restored net ids, how many
+/// The outcome of <see cref="CellSim.TryRestoreOwned(byte[])"/>: whether the snapshot decoded, the restored net ids, how many
 /// unknown extension frames were retained for re-persist (retain-and-rewrite), and (on failure) the decode error. A
-/// failed restore is rolled back inside <see cref="CellSim.TryRestoreOwned"/> (its partially spawned entities are
+/// failed restore is rolled back inside <see cref="CellSim.TryRestoreOwned(byte[])"/> (its partially spawned entities are
 /// despawned), so the cell is left empty and the driver can quarantine the bytes instead of crash-looping on a
 /// poisoned blob.
 /// </summary>
 public readonly struct CellRestoreResult
 {
     public CellRestoreResult(bool ok, IReadOnlyList<long> netIds, int retainedFrameCount, string? error,
-                             int skippedOwnedCount = 0)
+                             int skippedOwnedCount = 0, CellAdmissionOutcome? admission = null)
     {
         Ok = ok;
         NetIds = netIds ?? Array.Empty<long>();
         RetainedFrameCount = retainedFrameCount;
         Error = error;
         SkippedOwnedCount = skippedOwnedCount;
+        Admission = admission;
     }
 
     /// <summary>True when the snapshot decoded and restored cleanly.</summary>
     public bool Ok { get; }
+
+    /// <summary>An environment admission refusal, distinct from a corrupt blob. Preserve and retry
+    /// the original bytes without publishing an empty save or quarantining them as corrupt.</summary>
+    public CellAdmissionOutcome? Admission { get; }
+    public bool NeedsAdmission => !Ok && Admission.HasValue;
 
     /// <summary>The restored (now owned) net ids. Empty on failure.</summary>
     public IReadOnlyList<long> NetIds { get; }
@@ -43,6 +49,10 @@ public readonly struct CellRestoreResult
     /// </summary>
     public int SkippedOwnedCount { get; }
 
-    /// <summary>A rolled-back failure result carrying <paramref name="error"/>.</summary>
+    /// <summary>An environment refusal that preserves the snapshot for later admission.</summary>
+    public static CellRestoreResult AwaitingAdmission(CellAdmissionOutcome outcome, string? detail) =>
+        new(false, Array.Empty<long>(), 0, detail, admission: outcome);
+
+    /// <summary>A rolled-back decode failure carrying <paramref name="error"/>.</summary>
     public static CellRestoreResult Failed(string error) => new(false, Array.Empty<long>(), 0, error);
 }

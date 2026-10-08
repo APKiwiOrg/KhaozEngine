@@ -308,3 +308,11 @@ Transport-free: snapshots/deltas are plain `byte[]`, shipped via your `KhaozEngi
 
 Full-state (`SnapshotWriter`), whole-world delta (`ServerReplicator`), per-client AoI delta
 (`AoiDeltaReplicator`) and format 2 acknowledged rebuild (`ClientDeltaRebuild` with either writer) all ship.
+
+## Owned snapshot staging
+
+`SnapshotStaging.TryDecode` decodes a snapshot into a private `World` and retains unknown extension
+frames. A caller can validate or derive staged state before publication. `CopyTo` installs the
+registered typed components into a new destination entity without invoking wire readers again.
+The caller owns collision handling for NetIds, admission-read lifetime and ownership registration.
+Cell restore and migration use this boundary to avoid exposing an unclassified partial import.

@@ -155,6 +155,8 @@ public sealed partial class ShardedWorldServer
             Tuning = tuning,
             Explicit = explicitMovement,
         };
+        if (explicitMovement is not null)
+            cell.ImportAdmission = new ExplicitCellAdmission(explicitMovement, tuning, cell.Frame, cell.Physics);
         cellRuntime[cell.Coord] = runtime;
         cell.World.AddSystem(runtime.Movement);
         return runtime;

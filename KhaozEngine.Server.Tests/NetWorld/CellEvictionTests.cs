@@ -22,7 +22,7 @@ namespace KhaozEngine.Tests.NetWorld;
 /// handoff-into-an-evicted-coord case), the ownership index carries no stale entries, an in-flight load or save
 /// defers the eviction, and dirty tracking stays honest across an evict and a recreate.
 /// </summary>
-public class CellEvictionTests
+public partial class CellEvictionTests
 {
     private struct Node : IComponent { public int Amount; }
     private struct Pos : IComponent { public float X; public float Y; }
@@ -48,6 +48,7 @@ public class CellEvictionTests
     private sealed class GridHost : ICellEvictionHost
     {
         public readonly ShardHost Host;
+        public CellAdmissionOutcome? AdmissionRefusal;
         private readonly List<CellCoord> playerCells = new();
         private long nextNetId = 1;
 
@@ -72,9 +73,19 @@ public class CellEvictionTests
             Host.TryGetCell(coord, out CellSim cell) ? cell.RestoreOwned(snapshot) : Array.Empty<long>();
 
         public CellRestoreResult TryRestoreCell(CellCoord coord, byte[] snapshot) =>
+            AdmissionRefusal is { } refusal ? CellRestoreResult.AwaitingAdmission(refusal, "fixture unavailable") :
             Host.TryGetCell(coord, out CellSim cell)
                 ? cell.TryRestoreOwned(snapshot)
                 : new CellRestoreResult(true, Array.Empty<long>(), 0, null);
+
+        public byte[]? SnapshotCell(CellCoord coord, SnapshotPurpose purpose) =>
+            Host.TryGetCell(coord, out CellSim cell) ? cell.SnapshotOwned(new HashSet<long>(), purpose) : null;
+        public IReadOnlyDictionary<long, TransientScope> ReadTransientMarks(CellCoord coord, SnapshotPurpose purpose) =>
+            Host.TryGetCell(coord, out CellSim cell) ? cell.ReadTransientMarks(purpose) : new Dictionary<long, TransientScope>();
+        public void ApplyTransientMarks(CellCoord coord, IReadOnlyDictionary<long, TransientScope> marks)
+        {
+            if (Host.TryGetCell(coord, out CellSim cell)) cell.ApplyTransientMarks(marks);
+        }
 
         public void EnsureCell(CellCoord coord) => Host.EnsureCell(coord);
         public long NextNetId => nextNetId;

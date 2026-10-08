@@ -1,0 +1,115 @@
+{
+  "status": "Generic staged cell restore, migration and cached-freeze admission. Other placement doors remain unfinished.",
+  "baseCommit": "0f067cfaf",
+  "runs": {
+    "cell-admission-red": {
+      "path": "/tmp/swim-cell-admission-red.log",
+      "sha256": "2c2b5a283965831091a6b202d8197f5a0636856100f72c1d61827c01f30f4cf4",
+      "passed": 0,
+      "failed": 2,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "cell-admission-green": {
+      "path": "/tmp/swim-cell-admission-green.log",
+      "sha256": "0e04b0056158919031b5648bb6764f57deb25e234d415ee297f797823a08e696",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "cell-admission-build-fix": {
+      "path": "/tmp/swim-cell-admission-build-fix.log",
+      "sha256": "44ac1fc3630a82a8407a90dbaa3541bcda9c363e049e991d95693575dd245fce",
+      "passed": 44,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "persistence-admission-red": {
+      "path": "/tmp/swim-persistence-admission-red.log",
+      "sha256": "3a43e9977a039ba5455f80927a3bea6c728ec9c49e84ebae068196d3ad23cb81",
+      "passed": 0,
+      "failed": 2,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "persistence-admission-green": {
+      "path": "/tmp/swim-persistence-admission-green.log",
+      "sha256": "74c7bff83c7325939e958e55cb9cd4b295fdc126384f47e6001769a9f0631921",
+      "passed": 49,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "handoff-admission-red": {
+      "path": "/tmp/swim-handoff-admission-red.log",
+      "sha256": "ef9fdefcf848cd59fad66061bc3c6b78f6f228e41924ece06244a49d39854561",
+      "passed": 0,
+      "failed": 2,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "handoff-admission-green": {
+      "path": "/tmp/swim-handoff-admission-green.log",
+      "sha256": "5ac56dd04e369a8bc397deb0dae7e1ec210ecfbbada80d700ad39c81f32b0521",
+      "passed": 37,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "cache-admission-red": {
+      "path": "/tmp/swim-cache-admission-red.log",
+      "sha256": "da8d4bad0fe394798e08ed0e1edc407367fd475d29b666c2278e5b339c9f654c",
+      "passed": 0,
+      "failed": 4,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "cache-admission-green": {
+      "path": "/tmp/swim-cache-admission-green.log",
+      "sha256": "d762425244587c8a08bfa762fcd8614d9ba05297ea1ecf3c02787b9ad8aafe2b",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "admission-atomic": {
+      "path": "/tmp/swim-admission-atomic.log",
+      "sha256": "d762425244587c8a08bfa762fcd8614d9ba05297ea1ecf3c02787b9ad8aafe2b",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "admission-affected-green": {
+      "path": "/tmp/swim-admission-affected-green.log",
+      "sha256": "df493cc4605b180c8c11852df4742af4b31b19af9338f1e4dbf871d2a105be6d",
+      "passed": 55,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    }
+  },
+  "buildCorrections": [
+    "CS1734 from a moved XML comment, corrected before the valid 44-case run.",
+    "New marked-restore overloads required explicit XML cref signatures. Two compile attempts saw CS0419 before the full signature sweep and valid 55-case run."
+  ],
+  "coverage": [
+    "Private typed staging with one wire read",
+    "Cold water restoration derives swimming",
+    "Later actor refusal publishes no batch prefix",
+    "Store bytes and save/eviction fence retained through environment refusal",
+    "Direct save also respects the restore fence",
+    "Cached transient entities survive deferred admission",
+    "Frozen migration retries without losing the source",
+    "Transient marks visible before admission read release",
+    "Source and destination eviction refused while migration admission is pending"
+  ],
+  "pending": [
+    "Sharded teleport and player-record persistence admission",
+    "Movement/nav profile equivalence and ordinary movement compatibility",
+    "Whole-branch review, current-main reconciliation and full verification",
+    "Native producer acceptance, released adoption and game feature"
+  ]
+}

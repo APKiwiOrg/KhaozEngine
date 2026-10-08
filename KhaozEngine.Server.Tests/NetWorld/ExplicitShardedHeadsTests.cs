@@ -1,6 +1,10 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Locomotion;
+using KhaozEngine.Ecs;
+using KhaozEngine.Primitives;
+using KhaozEngine.Replication;
+using System.Collections.Generic;
 using KhaozEngine.Netcode;
 using KhaozEngine.NetWorld;
 using KhaozEngine.Tests.NetWorld.Fixtures;
@@ -90,6 +94,83 @@ public class ExplicitShardedHeadsTests
         Assert.False(landed.Grounded);
         Assert.Equal(WaterExcursionState.Surface, landed.Move.WaterExcursion);
         Assert.Equal(0, pair.LegacyCalls);
+    }
+
+
+    [Fact]
+    public void UnclassifiedRestoredCellStateDoesNotPublishAnyEntity()
+    {
+        using var pair = new Pair();
+        pair.Pump(6);
+        var cell = pair.Server.Host.CellFor(4, 4);
+        pair.Environment.Availability = MovementAvailability.Unresolved;
+        var result = pair.Server.TryRestoreCell(cell.Coord, RestoreBytes(pair.Server.Registry, 0.751f));
+        Assert.False(result.Ok);
+        Assert.False(pair.Server.TryGetEntity(99, out _, out _));
+        Assert.True(pair.Server.TryGetPlayerState(0, out _));
+    }
+
+    [Fact]
+    public void ColdWaterRestoreDerivesSwimmingAndPublishesUnderTheDestinationRead()
+    {
+        using var pair = new Pair(wet: true);
+        pair.Pump(6);
+        var cell = pair.Server.Host.CellFor(4, 4);
+        int published = 0;
+        pair.Environment.OnPinDispose = () =>
+        {
+            Assert.True(pair.Server.TryGetEntity(99, out var world, out var entity));
+            Assert.True(world.Get<MovementState>(entity).Swimming);
+            Assert.Equal(WaterExcursionState.Surface, world.Get<MovementState>(entity).WaterExcursion);
+            Assert.Throws<InvalidOperationException>(() => pair.Environment.Physics.Step(0.1f));
+            published++;
+        };
+        var result = pair.Server.TryRestoreCell(cell.Coord, RestoreBytes(pair.Server.Registry, 0.7f));
+        Assert.True(result.Ok);
+        Assert.True(published > 0);
+        pair.Environment.OnPinDispose = null;
+    }
+
+
+    [Fact]
+    public void ASecondUnresolvedRestoredActorDiscardsTheEntireStagedBatch()
+    {
+        using var pair = new Pair();
+        pair.Pump(6);
+        var cell = pair.Server.Host.CellFor(4, 4);
+        pair.Environment.ReconstructionAvailability = p => p.X > 4.5f ? MovementAvailability.Unresolved : MovementAvailability.Known;
+        int releases = 0;
+        pair.Environment.OnPinDispose = () =>
+        {
+            Assert.False(pair.Server.TryGetEntity(99, out _, out _));
+            Assert.False(pair.Server.TryGetEntity(100, out _, out _));
+            releases++;
+        };
+        var result = pair.Server.TryRestoreCell(cell.Coord, RestoreBytes(pair.Server.Registry, 0.751f, second: true));
+        Assert.False(result.Ok);
+        Assert.True(result.NeedsAdmission);
+        Assert.Equal(KhaozEngine.Sharding.CellAdmissionOutcome.Unresolved, result.Admission);
+        Assert.True(releases > 0);
+        pair.Environment.OnPinDispose = null;
+    }
+
+    static byte[] RestoreBytes(ReplicationRegistry registry, float y, bool second = false)
+    {
+        var world = new World();
+        Entity entity = world.Spawn();
+        world.Set(entity, new NetId(99));
+        world.Set(entity, ReplicatedPosition.FromWorld(new(4, y, 4), WorldFrame.Origin));
+        world.Set(entity, new MovementState());
+        world.Set(entity, new MovementOwnerState());
+        if (second)
+        {
+            Entity another = world.Spawn();
+            world.Set(another, new NetId(100));
+            world.Set(another, ReplicatedPosition.FromWorld(new(5, y, 4), WorldFrame.Origin));
+            world.Set(another, new MovementState());
+            world.Set(another, new MovementOwnerState());
+        }
+        return SnapshotWriter.WriteFiltered(world, registry, new HashSet<long> { 99, 100 }, ReplicationChannels.Persist);
     }
 
     sealed class Pair : IDisposable

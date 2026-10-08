@@ -124,7 +124,12 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
             physicsFactory: config.PhysicsWorldFactory,
             frameAnchoring: config.FrameAnchoring,
             cellOrigin: config.CellOrigin);
-        host.CellCreated += cell => { cell.FrameAdapter = ReplicatedPositionFrameAdapter.Instance; CellCreated?.Invoke(cell.Coord); };
+        host.CellCreated += cell =>
+        {
+            cell.FrameAdapter = ReplicatedPositionFrameAdapter.Instance;
+            if (config.ExplicitMovementFactory is not null) EnsureWired(cell);
+            CellCreated?.Invoke(cell.Coord);
+        };
         // An unloaded coordinate comes back as a genuinely fresh cell with an empty world, so the record of having
         // wired its movement system has to go with it or the recreated cell would never simulate.
         host.CellRemoved += cell => cellRuntime.Remove(cell.Coord);
@@ -200,6 +205,12 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
     public CellRestoreResult TryRestoreCell(CellCoord coord, byte[] snapshot) =>
         host.TryGetCell(coord, out CellSim cell)
             ? cell.TryRestoreOwned(snapshot)
+            : new CellRestoreResult(true, Array.Empty<long>(), 0, null);
+
+    /// <inheritdoc />
+    public CellRestoreResult TryRestoreCell(CellCoord coord, byte[] snapshot, IReadOnlyDictionary<long, TransientScope> marks) =>
+        host.TryGetCell(coord, out CellSim cell)
+            ? cell.TryRestoreOwned(snapshot, marks)
             : new CellRestoreResult(true, Array.Empty<long>(), 0, null);
 
     /// <inheritdoc />

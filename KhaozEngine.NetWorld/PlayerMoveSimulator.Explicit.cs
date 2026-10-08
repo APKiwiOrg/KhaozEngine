@@ -29,38 +29,49 @@ public sealed partial class PlayerMoveSimulator
     public PlayerMoveReadScope? BeginExplicitRead(in PlayerMoveState basis)
     {
         if (explicitMovement is null) return null;
-        if (Interlocked.CompareExchange(ref explicitReadActive, 1, 0) != 0)
-            throw new InvalidOperationException("Explicit player reads cannot overlap or recurse.");
+        lock (frameMutationGate)
+        {
+            if (Interlocked.CompareExchange(ref explicitReadActive, 1, 0) != 0)
+                throw new InvalidOperationException("Explicit player reads cannot overlap or recurse.");
+        }
         MovementQueryLease? queries = null;
+        MovementBoundary? boundary = null;
         try
         {
             MovementStepOutcome outcome = MovementStepOutcome.FrameMismatch;
             if (basis.FrameAnchor == new Vector2(Frame.Anchor.X, Frame.Anchor.Z))
             {
-                MovementQueryScope scope = explicitMovement.Scope(basis, Frame);
-                if (scope.Frame.Frame == Frame && scope.Frame.PhysicsOrigin == new Vector3(Frame.Anchor.X, 0, Frame.Anchor.Z))
+                MovementAvailability boundaryStatus = bounds is null ? MovementAvailability.Known
+                    : bounds.TryCaptureExplicit(Frame.Anchor, out boundary);
+                outcome = boundaryStatus == MovementAvailability.Invalid ? MovementStepOutcome.EnvironmentInvalid
+                    : MovementStepOutcome.EnvironmentUnresolved;
+                if (boundaryStatus == MovementAvailability.Known)
                 {
-                    outcome = MovementStepOutcome.EnvironmentInvalid;
-                    if (scope.CurrentSpace is null)
+                    MovementQueryScope scope = explicitMovement.Scope(basis, Frame);
+                    if (scope.Frame.Frame == Frame && scope.Frame.PhysicsOrigin == new Vector3(Frame.Anchor.X, 0, Frame.Anchor.Z))
                     {
-                        MovementAvailability status = explicitMovement.Environment.TryAcquire(scope, out queries);
-                        outcome = status == MovementAvailability.Invalid ? MovementStepOutcome.EnvironmentInvalid
-                            : MovementStepOutcome.EnvironmentUnresolved;
-                        if (status == MovementAvailability.Known && queries is not null)
+                        outcome = MovementStepOutcome.EnvironmentInvalid;
+                        if (scope.CurrentSpace is null)
                         {
-                            IPhysicsWorld? expected = physics is IPhysicsWorldQueryView selected ? selected.SourceWorld : physics;
-                            if (ReferenceEquals(queries.Id.SourceWorld, expected))
+                            MovementAvailability status = explicitMovement.Environment.TryAcquire(scope, out queries);
+                            outcome = status == MovementAvailability.Invalid ? MovementStepOutcome.EnvironmentInvalid
+                                : MovementStepOutcome.EnvironmentUnresolved;
+                            if (status == MovementAvailability.Known && queries is not null)
                             {
-                                var framed = new FramedMovementState(basis.Move, queries.Frame, null);
-                                outcome = ExplicitCharacterMovement.ValidatePlacement(framed, tuning,
-                                    explicitMovement.Water, queries).Outcome;
+                                IPhysicsWorld? expected = physics is IPhysicsWorldQueryView selected ? selected.SourceWorld : physics;
+                                if (ReferenceEquals(queries.Id.SourceWorld, expected))
+                                {
+                                    var framed = new FramedMovementState(basis.Move, queries.Frame, null);
+                                    outcome = ExplicitCharacterMovement.ValidatePlacement(framed, tuning,
+                                        explicitMovement.Water, queries, boundary).Outcome;
+                                }
+                                else outcome = MovementStepOutcome.EnvironmentInvalid;
                             }
-                            else outcome = MovementStepOutcome.EnvironmentInvalid;
                         }
                     }
                 }
             }
-            explicitRead = new PlayerMoveReadScope(queries, outcome, EndExplicitRead);
+            explicitRead = new PlayerMoveReadScope(queries, outcome, EndExplicitRead, boundary);
             return explicitRead;
         }
         catch
@@ -93,7 +104,7 @@ public sealed partial class PlayerMoveSimulator
             // selection or local handle survives through the player state or this adapter.
             var framed = new FramedMovementState(state.Move, queries.Frame, null);
             MovementStepResult result = ExplicitCharacterMovement.Step(framed, command, dt, tuning,
-                explicitMovement!.Water, queries);
+                explicitMovement!.Water, queries, read.Boundary);
             LastExplicitOutcome = result.Outcome;
             return new PlayerMoveState
             {

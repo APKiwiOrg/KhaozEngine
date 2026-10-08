@@ -8,9 +8,9 @@ public static partial class ExplicitCharacterMovement
     /// <summary>Classifies a placement without advancing time. A nearby eligible floor is reached
     /// only through the same combined resolver. Use ValidatePlacement for an exact correction basis.</summary>
     public static MovementStepResult SettlePlacement(in FramedMovementState state, in MoveTuning tuning,
-        in WaterTraversalPolicy water, MovementQueryLease queries)
+        in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary = null)
     {
-        MovementStepResult validated = ValidatePlacement(state, tuning, water, queries);
+        MovementStepResult validated = ValidatePlacement(state, tuning, water, queries, boundary);
         if (validated.Outcome != MovementStepOutcome.Advanced) return validated;
         try
         {
@@ -20,7 +20,7 @@ public static partial class ExplicitCharacterMovement
             if (placed.Grounded || placed.VerticalVelocity <= 0)
             {
                 MovementAvailability status = Settle(ref placed, ref selection, tuning.GroundedEpsilon,
-                    tuning, water, queries, out supported);
+                    tuning, water, queries, boundary, out supported);
                 if (status != MovementAvailability.Known) return Hold(state, Outcome(status));
             }
             MovementWaterPoint point = queries.SampleCentreWater(Body(placed.Position, tuning, selection));
@@ -46,7 +46,7 @@ public static partial class ExplicitCharacterMovement
     /// <summary>Rebuilds membership and validates the exact restored/corrected pose without running
     /// a tick or changing its carried state. Retain the lease through publication of a successful basis.</summary>
     public static MovementStepResult ValidatePlacement(in FramedMovementState state, in MoveTuning tuning,
-        in WaterTraversalPolicy water, MovementQueryLease queries)
+        in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary = null)
     {
         ArgumentNullException.ThrowIfNull(queries);
         if (!state.IsValid || !ValidCarriedState(state.State) || !Valid(tuning) || !water.IsValid || water.Mode == WaterTraversalMode.Legacy)
@@ -60,9 +60,9 @@ public static partial class ExplicitCharacterMovement
             MovementAvailability status = queries.RebuildSelection(unselected, out MovementSelection selection);
             if (status != MovementAvailability.Known) return Hold(state, Outcome(status));
             MovementBodyQuery body = Body(state.State.Position, tuning, selection);
-            MovementStepOutcome placement = WaterPlacement(body, tuning, water, queries);
+            MovementStepOutcome placement = WaterPlacement(body, tuning, water, queries, boundary);
             if (placement != MovementStepOutcome.Advanced) return Hold(state, placement);
-            status = Move(body, Vector3.Zero, queries, water, tuning, out _, out _);
+            status = Move(body, Vector3.Zero, queries, water, tuning, boundary, out _, out _);
             if (status != MovementAvailability.Known) return Hold(state, Outcome(status));
             MovementWaterPoint point = queries.SampleCentreWater(body);
             if (point.Availability != MovementAvailability.Known) return Hold(state, Outcome(point.Availability));

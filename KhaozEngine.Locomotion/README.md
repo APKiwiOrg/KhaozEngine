@@ -791,3 +791,11 @@ Depends on `KhaozEngine.Primitives` and `KhaozEngine.Physics` (the `IPhysicsWorl
 or netcode dependency. Part of the `Foundation` umbrella metapackage.
 
 Part of [KhaozEngine](https://github.com/APKiwiOrg/KhaozEngine).
+
+### Explicit play-area certificates
+
+The explicit entry points optionally accept `MovementBoundary`. Its immutable physics-frame snapshot
+classifies the starting centre, proposes constrained motion and certifies every complete segment.
+The same resolver rechecks it after solid/water corrections. Rectangle and circle factories use exact
+dyadic membership, including the affine endpoint that a stored float can round inward. A failed
+boundary proof publishes no prefix. A known outside placement is PlacementRefused.

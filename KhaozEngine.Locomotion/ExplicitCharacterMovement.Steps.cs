@@ -5,12 +5,18 @@ namespace KhaozEngine.Locomotion;
 public static partial class ExplicitCharacterMovement
 {
     static MovementAvailability TryStepUp(in MovementBodyQuery start, Vector2 horizontal, in MoveTuning tuning,
-        in WaterTraversalPolicy water, MovementQueryLease queries, out MovementSupportPlacement? reached)
+        in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary, out MovementSupportPlacement? reached)
     {
         reached = null;
         if (horizontal == Vector2.Zero || tuning.StepHeight == 0) return MovementAvailability.Known;
         Vector3 target = start.Centre + new Vector3(horizontal.X, 0, horizontal.Y);
         if (!MovementEnvironmentValidation.Finite(target)) return MovementAvailability.Invalid;
+        if (boundary is not null)
+        {
+            MovementAvailability limited = boundary.Constrain(start.Centre, target - start.Centre, out Vector3 constrained);
+            if (limited != MovementAvailability.Known) return limited;
+            target = start.Centre + constrained;
+        }
         var goal = new MovementBodyQuery(target, start.Radius, start.HalfHeight, start.CurrentSpace, start.CurrentSupport);
         var request = new MovementSupportRequest(goal, tuning.StepHeight, 0, tuning.MaxSlopeRadians,
             new(start.CurrentSpace, start.Feet));
@@ -22,11 +28,11 @@ public static partial class ExplicitCharacterMovement
         // Use the actual eligible support height, not a full StepHeight rise. A full rise can hit
         // a ceiling even though the supported destination and its exact approach both fit.
         Vector3 above = new(start.Centre.X, support.Centre.Y, start.Centre.Z);
-        status = Move(start, above - start.Centre, queries, water, tuning, out Vector3 raised, out _);
+        status = Move(start, above - start.Centre, queries, water, tuning, boundary, out Vector3 raised, out _);
         if (status != MovementAvailability.Known) return status;
         if (raised != above) return MovementAvailability.Known;
         var airborne = new MovementBodyQuery(raised, start.Radius, start.HalfHeight, start.CurrentSpace, null);
-        status = Move(airborne, support.Centre - raised, queries, water, tuning, out Vector3 end, out _);
+        status = Move(airborne, support.Centre - raised, queries, water, tuning, boundary, out Vector3 end, out _);
         if (status != MovementAvailability.Known) return status;
         if (end != support.Centre) return MovementAvailability.Known;
         queries.AssertCurrent();

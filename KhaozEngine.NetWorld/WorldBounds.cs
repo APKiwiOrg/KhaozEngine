@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Locomotion;
 
 namespace KhaozEngine.NetWorld;
 
@@ -17,6 +18,31 @@ public abstract class WorldBounds
 
     /// <summary>The nearest point inside-or-on the bounds; (x, z) itself when already inside.</summary>
     public abstract Vector2 Clamp(float x, float z);
+
+    /// <summary>Captures an immutable complete-path boundary in the selected physics frame.
+    /// A custom point-only clamp remains unsupported until it supplies this certificate.</summary>
+    public MovementAvailability TryCaptureExplicit(Vector3 physicsOrigin, out MovementBoundary? boundary)
+    {
+        boundary = null;
+        if (!float.IsFinite(physicsOrigin.X) || !float.IsFinite(physicsOrigin.Y) || !float.IsFinite(physicsOrigin.Z))
+            return MovementAvailability.Invalid;
+        try
+        {
+            MovementAvailability status = CaptureExplicit(physicsOrigin, out var captured);
+            if (status != MovementAvailability.Known) return status;
+            if (captured is null || string.IsNullOrWhiteSpace(captured.SemanticIdentity)) return MovementAvailability.Invalid;
+            boundary = captured;
+            return MovementAvailability.Known;
+        }
+        catch (ArgumentException) { return MovementAvailability.Invalid; }
+    }
+    protected virtual MovementAvailability CaptureExplicit(Vector3 physicsOrigin, out MovementBoundary? boundary)
+    {
+        boundary = null;
+        return MovementAvailability.Unresolved;
+    }
+    protected static string BoundaryBits(float value) => BitConverter.SingleToInt32Bits(value).ToString("X8");
+
 }
 
 /// <summary>A circular play area centred at <see cref="Center"/> with radius <see cref="Radius"/>.</summary>
@@ -30,6 +56,14 @@ public sealed class CircleBounds : WorldBounds
 
     public Vector2 Center { get; }
     public float Radius { get; }
+
+    protected override MovementAvailability CaptureExplicit(Vector3 physicsOrigin, out MovementBoundary? boundary)
+    {
+        boundary = MovementBoundary.Circle((double)Center.X - physicsOrigin.X, (double)Center.Y - physicsOrigin.Z, Radius,
+            $"circle-world-v1/{BoundaryBits(Center.X)}/{BoundaryBits(Center.Y)}/{BoundaryBits(Radius)}");
+        return MovementAvailability.Known;
+    }
+
 
     public override bool Contains(float x, float z)
     {
@@ -64,6 +98,15 @@ public sealed class RectBounds : WorldBounds
     public float MinZ { get; }
     public float MaxX { get; }
     public float MaxZ { get; }
+
+    protected override MovementAvailability CaptureExplicit(Vector3 physicsOrigin, out MovementBoundary? boundary)
+    {
+        boundary = MovementBoundary.Rectangle((double)MinX - physicsOrigin.X, (double)MinZ - physicsOrigin.Z,
+            (double)MaxX - physicsOrigin.X, (double)MaxZ - physicsOrigin.Z,
+            $"rect-world-v1/{BoundaryBits(MinX)}/{BoundaryBits(MinZ)}/{BoundaryBits(MaxX)}/{BoundaryBits(MaxZ)}");
+        return MovementAvailability.Known;
+    }
+
 
     public override bool Contains(float x, float z) => x >= MinX && x <= MaxX && z >= MinZ && z <= MaxZ;
 

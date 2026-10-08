@@ -8,27 +8,27 @@ namespace KhaozEngine.Locomotion;
 public static partial class ExplicitCharacterMovement
 {
     public static MovementStepResult Step(in FramedMovementState state, in MoveCommand command,
-        float deltaSeconds, in MoveTuning tuning, in WaterTraversalPolicy water, MovementQueryLease queries)
+        float deltaSeconds, in MoveTuning tuning, in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary = null)
     {
         if (!float.IsFinite(command.Move.X) || !float.IsFinite(command.Move.Y) || !float.IsFinite(command.CameraYaw))
             return Hold(state, MovementStepOutcome.EnvironmentInvalid);
         var (direction, fraction, run) = CharacterMovement.ResolveCameraCommand(command, tuning);
         return StepCore(state, direction, fraction, run, command.Jump,
-            command.FaceCamera ? command.CameraYaw : null, deltaSeconds, tuning, water, queries);
+            command.FaceCamera ? command.CameraYaw : null, deltaSeconds, tuning, water, queries, boundary);
     }
 
     public static MovementStepResult StepTowards(in FramedMovementState state, Vector2 direction, bool run,
-        float deltaSeconds, in MoveTuning tuning, in WaterTraversalPolicy water, MovementQueryLease queries)
+        float deltaSeconds, in MoveTuning tuning, in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary = null)
     {
         if (!float.IsFinite(direction.X) || !float.IsFinite(direction.Y))
             return Hold(state, MovementStepOutcome.EnvironmentInvalid);
         var (resolved, fraction) = CharacterMovement.ResolveWorldDir(direction, preserveSmallMagnitude: true);
-        return StepCore(state, resolved, fraction, run, false, null, deltaSeconds, tuning, water, queries);
+        return StepCore(state, resolved, fraction, run, false, null, deltaSeconds, tuning, water, queries, boundary);
     }
 
     static MovementStepResult StepCore(in FramedMovementState input, Vector2 direction, float fraction,
         bool run, bool jump, float? facing, float dt, in MoveTuning tuning, in WaterTraversalPolicy water,
-        MovementQueryLease queries)
+        MovementQueryLease queries, MovementBoundary? boundary = null)
     {
         ArgumentNullException.ThrowIfNull(queries);
         if (!input.IsValid || !Valid(tuning) || !water.IsValid || water.Mode == WaterTraversalMode.Legacy ||
@@ -60,9 +60,9 @@ public static partial class ExplicitCharacterMovement
             MoveState next = MovementStepResult.HoldState(input.State);
             bool wasSwimming = input.State.Swimming || input.State.WaterExcursion == WaterExcursionState.Surface;
             MovementBodyQuery body = Body(next.Position, tuning, selection);
-            MovementStepOutcome placement = WaterPlacement(body, tuning, water, queries);
+            MovementStepOutcome placement = WaterPlacement(body, tuning, water, queries, boundary);
             if (placement != MovementStepOutcome.Advanced) return Hold(input, placement);
-            status = Move(body, Vector3.Zero, queries, water, tuning, out _, out _);
+            status = Move(body, Vector3.Zero, queries, water, tuning, boundary, out _, out _);
             if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
             MovementWaterPoint point = queries.SampleCentreWater(body);
             if (point.Availability != MovementAvailability.Known) return Hold(input, Outcome(point.Availability));
@@ -71,7 +71,7 @@ public static partial class ExplicitCharacterMovement
             bool physicalSupport = false;
             if (next.Grounded || next.VerticalVelocity <= 0)
             {
-                status = Settle(ref next, ref selection, tuning.GroundedEpsilon, tuning, water, queries, out physicalSupport);
+                status = Settle(ref next, ref selection, tuning.GroundedEpsilon, tuning, water, queries, boundary, out physicalSupport);
                 if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
                 point = queries.SampleCentreWater(Body(next.Position, tuning, selection));
                 if (point.Availability != MovementAvailability.Known) return Hold(input, Outcome(point.Availability));
@@ -120,12 +120,12 @@ public static partial class ExplicitCharacterMovement
                 return Hold(input, MovementStepOutcome.EnvironmentInvalid);
             Vector3 delta = new(horizontal.X * dt, targetY - next.Position.Y, horizontal.Y * dt);
             Vector3 origin = next.Position;
-            status = Move(Body(origin, tuning, selection), delta, queries, water, tuning, out Vector3 position, out bool blocked);
+            status = Move(Body(origin, tuning, selection), delta, queries, water, tuning, boundary, out Vector3 position, out bool blocked);
             if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
             if (blocked && (supported || next.Swimming) && !launched)
             {
                 status = TryStepUp(Body(origin, tuning, selection), new(delta.X, delta.Z), tuning,
-                    water, queries, out MovementSupportPlacement? step);
+                    water, queries, boundary, out MovementSupportPlacement? step);
                 if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
                 if (step is { } reached)
                 {
@@ -149,7 +149,7 @@ public static partial class ExplicitCharacterMovement
             if (velocity <= 0 && !launched)
             {
                 float drop = supported ? tuning.StepHeight + tuning.GroundedEpsilon : tuning.GroundedEpsilon;
-                status = Settle(ref next, ref selection, drop, tuning, water, queries, out bool landed);
+                status = Settle(ref next, ref selection, drop, tuning, water, queries, boundary, out bool landed);
                 if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
                 point = queries.SampleCentreWater(Body(next.Position, tuning, selection));
                 if (point.Availability != MovementAvailability.Known) return Hold(input, Outcome(point.Availability));

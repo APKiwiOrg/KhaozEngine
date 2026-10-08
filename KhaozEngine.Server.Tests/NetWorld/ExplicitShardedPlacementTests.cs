@@ -83,6 +83,22 @@ public class ExplicitShardedPlacementTests
         Assert.Equal(before.TeleportEpoch, after.TeleportEpoch);
     }
 
+
+    [Theory]
+    [InlineData(5f, 4.5f)]
+    [InlineData(65542f, 65541f)]
+    public void TeleportCannotBypassTheCapturedBoundaryAtEitherDestination(float targetX, float maximumX)
+    {
+        using var pair = new Pair(new RectBounds(0, 0, maximumX, 8));
+        Assert.True(pair.Server.TryGetPlayerState(pair.Slot, out var before));
+        var target = before;
+        target.Position = new(targetX, targetX > 128 ? 0.7f : 0.751f, 4);
+        Assert.False(pair.Server.TrySetPlayerState(pair.Slot, target, teleport: true));
+        Assert.True(pair.Server.TryGetPlayerState(pair.Slot, out var after));
+        Assert.Equal(before.Position, after.Position);
+        Assert.Equal(before.TeleportEpoch, after.TeleportEpoch);
+    }
+
     sealed class Pair : IDisposable
     {
         public ShardedWorldServer Server { get; }
@@ -91,7 +107,7 @@ public class ExplicitShardedPlacementTests
         readonly LoopbackTransport ct;
         readonly NetClient client;
         public int Slot => client.Slot;
-        public Pair()
+        public Pair(WorldBounds? bounds = null)
         {
             (st, ct) = LoopbackTransport.CreatePair();
             ShardedWorldServer? created = null;
@@ -115,7 +131,7 @@ public class ExplicitShardedPlacementTests
                     var environment = Environments[cell.Coord];
                     return new(environment.Context, environment.Scope, new(WaterTraversalMode.SurfaceSwimmer, 7));
                 }
-            }, (_, _) => throw new InvalidOperationException("Legacy sampler called."), ExplicitPlayerEnvironment.Tuning);
+            }, (_, _) => throw new InvalidOperationException("Legacy sampler called."), ExplicitPlayerEnvironment.Tuning, bounds: bounds);
             client = new(ct, TestHandshake.Wire(Encoding.UTF8.GetBytes("hero")));
             for (int tick = 0; tick < 6; tick++) { client.Poll(); Server.Poll(); Server.Tick(0.1f); }
             Assert.True(Server.TryGetPlayerState(Slot, out _));

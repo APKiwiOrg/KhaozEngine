@@ -1,0 +1,60 @@
+{
+  "status": "Generic play-area constraints through the shared resolver. No native or game completion claim.",
+  "baseCommit": "74cfe9db6",
+  "runs": {
+    "explicit-bounds-red": {
+      "path": "/tmp/swim-explicit-bounds-red.log",
+      "sha256": "ce4960055a57b7a0100c7d2cbaaf13abac3e7d266ea8f5e7c758125ab99e9076",
+      "passed": 1,
+      "failed": 6,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "explicit-bounds-green": {
+      "path": "/tmp/swim-explicit-bounds-green.log",
+      "sha256": "fecde43cf3176cafb94854efbdeb7210b3f300046e1b415825fe5df58ae0d6e5",
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "boundary-proof-tests": {
+      "path": "/tmp/swim-boundary-proof-tests.log",
+      "sha256": "e427dbbe4990d29a128cc7f4b336396d05f5e7ea6b81c76696b3bc9f66f26fda",
+      "passed": 130,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "boundary-frame-red": {
+      "path": "/tmp/swim-boundary-frame-red.log",
+      "sha256": "046bc8a65e953ef48657ea10accfb7d2376c8b04bc916cdd6303deb0d708eb9b",
+      "passed": 8,
+      "failed": 2,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "boundary-frame-green": {
+      "path": "/tmp/swim-boundary-frame-green.log",
+      "sha256": "b9b888d4a772ee26f485d88ef712fa2081fffd77b1866f4e2126074be5d92db8",
+      "passed": 41,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "boundary-placement-gates": {
+      "path": "/tmp/swim-boundary-placement-gates.log",
+      "sha256": "e661ee733cc791ac52aba5beede67b482b716613256ab770926785c77f6a74a0",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    }
+  },
+  "pending": [
+    "Short-step support witness and controller-model alignment",
+    "Generic runtime/nav equivalence and portable profile identity",
+    "Whole-branch independent review, current-main reconciliation and full verification",
+    "Native producer acceptance, released adoption and game feature"
+  ]
+}

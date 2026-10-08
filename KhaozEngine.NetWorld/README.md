@@ -1614,3 +1614,13 @@ if (client.ConnectionState == WorldConnectionState.Disconnected
 
 Bounded acceptance evidence, including a consumer size characterization at 1, 32, 128 and 256 visible entities, is
 recorded in [`docs/DELTA-RELIABILITY-ACCEPTANCE.md`](../docs/DELTA-RELIABILITY-ACCEPTANCE.md).
+
+### Explicit bounds and frame capture
+
+`WorldBounds.TryCaptureExplicit` captures a complete-path certificate for explicit movement.
+CircleBounds and RectBounds implement it. Custom point-only clamps return Unresolved until their
+`CaptureExplicit` override supplies an immutable `MovementBoundary`. Its semantic identity describes
+authored geometry, independent of the physics origin. Legacy unconfigured movement is unchanged.
+A player read captures the boundary once, and its simulator frame cannot change during preparation
+or while the read is active. Ticks, correction bases, settlement and cell imports all use that
+captured boundary. Outside teleport/correction placements refuse without changing pose or epoch.

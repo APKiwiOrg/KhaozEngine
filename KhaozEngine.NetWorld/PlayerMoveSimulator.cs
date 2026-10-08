@@ -70,7 +70,21 @@ public sealed partial class PlayerMoveSimulator : ITickSimulator<PlayerMoveState
     /// two, so the frame and that world's <c>Origin</c> move as one or the step queries colliders in a space its
     /// state is not in.</para>
     /// </summary>
-    public WorldFrame Frame { get; set; } = WorldFrame.Origin;
+    readonly object frameMutationGate = new();
+    WorldFrame frame = WorldFrame.Origin;
+    public WorldFrame Frame
+    {
+        get => frame;
+        set
+        {
+            lock (frameMutationGate)
+            {
+                if (value != frame && System.Threading.Volatile.Read(ref explicitReadActive) != 0)
+                    throw new InvalidOperationException("The movement frame cannot change during an explicit read or its preparation.");
+                frame = value;
+            }
+        }
+    }
 
     /// <summary>The coordinate space this simulator's sampler delegates read. <see cref="SamplerSpace.World"/> (the
     /// default) means they take absolute coordinates and the step converts for them.</summary>

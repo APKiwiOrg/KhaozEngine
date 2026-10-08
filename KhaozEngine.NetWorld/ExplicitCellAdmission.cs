@@ -12,13 +12,21 @@ namespace KhaozEngine.NetWorld;
 /// <summary>Classifies the complete imported movement batch under one destination lease. The
 /// scope union is prepared before acquisition, and all derived state stays staged until accepted.</summary>
 internal sealed class ExplicitCellAdmission(ExplicitPlayerMovement settings, MoveTuning tuning,
-    WorldFrame frame, IPhysicsWorld? physics) : ICellImportAdmission
+    WorldFrame frame, IPhysicsWorld? physics, WorldBounds? bounds) : ICellImportAdmission
 {
     public CellAdmissionRead Acquire(World staged, IReadOnlyDictionary<long, Entity> entities, CellImportPurpose purpose)
     {
         MovementQueryLease? queries = null;
         try
         {
+            MovementBoundary? boundary = null;
+            if (bounds is not null)
+            {
+                MovementAvailability capture = bounds.TryCaptureExplicit(frame.Anchor, out boundary);
+                if (capture != MovementAvailability.Known)
+                    return new(capture == MovementAvailability.Invalid ? CellAdmissionOutcome.Refused : CellAdmissionOutcome.Unresolved,
+                        detail: "The destination boundary has no complete path certificate.");
+            }
             var actors = new List<(Entity Entity, PlayerMoveState State)>();
             MovementQueryScope? aggregate = null;
             foreach (Entity entity in entities.Values)
@@ -55,8 +63,8 @@ internal sealed class ExplicitCellAdmission(ExplicitPlayerMovement settings, Mov
             {
                 var framed = new FramedMovementState(actor.State.Move, queries.Frame, null);
                 var result = purpose == CellImportPurpose.Transfer
-                    ? ExplicitCharacterMovement.ReclassifyContinuation(framed, tuning, settings.Water, queries)
-                    : ExplicitCharacterMovement.SettlePlacement(framed, tuning, settings.Water, queries);
+                    ? ExplicitCharacterMovement.ReclassifyContinuation(framed, tuning, settings.Water, queries, boundary)
+                    : ExplicitCharacterMovement.SettlePlacement(framed, tuning, settings.Water, queries, boundary);
                 if (result.Outcome != MovementStepOutcome.Advanced)
                     return Reject(result.Outcome is MovementStepOutcome.EnvironmentInvalid or MovementStepOutcome.PlacementRefused
                         ? CellAdmissionOutcome.Refused : CellAdmissionOutcome.Unresolved, "Imported movement placement was not admitted.");

@@ -125,7 +125,7 @@ public sealed partial class ShardedWorldServer
             if (read.BasisValid && read.Queries is { } queries)
             {
                 var result = ExplicitCharacterMovement.SettlePlacement(new(seeded.Move, queries.Frame, null),
-                    Tuning, Explicit!.Water, queries);
+                    Tuning, Explicit!.Water, queries, read.Boundary);
                 if (result.Outcome == MovementStepOutcome.Advanced)
                 {
                     seeded.Move = result.State.State;
@@ -156,7 +156,7 @@ public sealed partial class ShardedWorldServer
             Explicit = explicitMovement,
         };
         if (explicitMovement is not null)
-            cell.ImportAdmission = new ExplicitCellAdmission(explicitMovement, tuning, cell.Frame, cell.Physics);
+            cell.ImportAdmission = new ExplicitCellAdmission(explicitMovement, tuning, cell.Frame, cell.Physics, cellBounds);
         cellRuntime[cell.Coord] = runtime;
         cell.World.AddSystem(runtime.Movement);
         return runtime;

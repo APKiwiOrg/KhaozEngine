@@ -33,13 +33,15 @@ public sealed class PlayerMoveReadScope : IDisposable
     readonly int thread = System.Environment.CurrentManagedThreadId;
     bool disposed;
     internal MovementQueryLease? Queries { get; }
+    internal MovementBoundary? Boundary { get; }
     public bool BasisValid => Outcome == MovementStepOutcome.Advanced;
     public MovementStepOutcome Outcome { get; }
 
     internal PlayerMoveReadScope(MovementQueryLease? queries, MovementStepOutcome outcome,
-        Action<PlayerMoveReadScope> release)
+        Action<PlayerMoveReadScope> release, MovementBoundary? boundary = null)
     {
         Queries = queries;
+        Boundary = boundary;
         Outcome = outcome;
         this.release = release;
     }

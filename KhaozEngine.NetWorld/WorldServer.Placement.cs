@@ -50,7 +50,7 @@ public sealed partial class WorldServer
             if (read?.Queries is { } queries)
             {
                 var placement = ExplicitCharacterMovement.SettlePlacement(new(next.Move, queries.Frame, null),
-                    tuning, config.ExplicitMovement!.Water, queries);
+                    tuning, config.ExplicitMovement!.Water, queries, read.Boundary);
                 if (placement.Outcome != MovementStepOutcome.Advanced) return false;
                 next.Move = placement.State.State;
             }

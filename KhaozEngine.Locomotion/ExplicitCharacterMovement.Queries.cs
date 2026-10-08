@@ -6,18 +6,24 @@ namespace KhaozEngine.Locomotion;
 public static partial class ExplicitCharacterMovement
 {
     static MovementAvailability Move(in MovementBodyQuery body, Vector3 delta, MovementQueryLease queries,
-        in WaterTraversalPolicy water, in MoveTuning tuning, out Vector3 position, out bool blocked)
+        in WaterTraversalPolicy water, in MoveTuning tuning, MovementBoundary? boundary, out Vector3 position, out bool blocked)
     {
         position = body.Centre;
         Span<Vector3> path = stackalloc Vector3[MovementCapsuleResolver.MaximumEndpoints];
-        MovementAvailability status = MovementCapsuleResolver.TryResolvePolicy(body, delta, queries, water.Mode, tuning.SwimEnterDepthFraction, path, out int count, out blocked);
+        MovementAvailability status = MovementCapsuleResolver.TryResolvePolicy(body, delta, queries, water.Mode, tuning.SwimEnterDepthFraction, boundary, path, out int count, out blocked);
         if (status == MovementAvailability.Known) position = path[count - 1];
         return status;
     }
 
     static MovementStepOutcome WaterPlacement(in MovementBodyQuery body, in MoveTuning tuning,
-        in WaterTraversalPolicy water, MovementQueryLease queries)
+        in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary)
     {
+        if (boundary is not null)
+        {
+            MovementAvailability availability = boundary.Classify(body.Centre, out bool inside);
+            if (availability != MovementAvailability.Known) return Outcome(availability);
+            if (!inside) return MovementStepOutcome.PlacementRefused;
+        }
         if (water.Mode is not (WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly))
             return MovementStepOutcome.Advanced;
         Span<Vector3> normals = stackalloc Vector3[MovementQueryLease.MaxDomainContacts];
@@ -28,7 +34,7 @@ public static partial class ExplicitCharacterMovement
     }
 
     static MovementAvailability Settle(ref MoveState state, ref MovementSelection selection, float drop,
-        in MoveTuning tuning, in WaterTraversalPolicy water, MovementQueryLease queries, out bool supported)
+        in MoveTuning tuning, in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary, out bool supported)
     {
         supported = false;
         MovementBodyQuery body = Body(state.Position, tuning, selection);
@@ -37,7 +43,7 @@ public static partial class ExplicitCharacterMovement
         MovementAvailability status = MovementSupportResolver.Select(request, queries, out var placement);
         if (status != MovementAvailability.Known || placement is null) return status;
         MovementSupportPlacement support = placement.Value;
-        status = Move(body, support.Centre - body.Centre, queries, water, tuning, out Vector3 position, out _);
+        status = Move(body, support.Centre - body.Centre, queries, water, tuning, boundary, out Vector3 position, out _);
         if (status != MovementAvailability.Known) return status;
         // A cleared endpoint is not permission to skip a blocked approach to that endpoint.
         if (position != support.Centre) return MovementAvailability.Known;

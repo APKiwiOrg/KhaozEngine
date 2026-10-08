@@ -9,25 +9,25 @@ namespace KhaozEngine.Locomotion;
 /// movement. Every returned segment still needs the combined resolver's water-policy proof.</summary>
 internal static class MovementCapsuleResolver
 {
-    internal const uint PolicyVersion = 2;
+    internal const uint PolicyVersion = 3;
     internal const int MaximumCorrections = 8;
     internal const int MaximumEndpoints = MaximumCorrections + 1;
     const float Skin = MovementQueryLease.CoverageSkinMetres;
 
     internal static MovementAvailability TryResolveSolids(in MovementBodyQuery body, Vector3 displacement,
         MovementQueryLease queries, Span<Vector3> destination, out int written, out bool blocked) =>
-        ResolveCore(body, displacement, queries, false, WaterTraversalMode.Legacy, 0, destination, out written, out blocked);
+        ResolveCore(body, displacement, queries, false, WaterTraversalMode.Legacy, 0, null, destination, out written, out blocked);
 
     internal static MovementAvailability TryResolve(in MovementBodyQuery body, Vector3 displacement,
         MovementQueryLease queries, Span<Vector3> destination, out int written, out bool blocked) =>
-        ResolveCore(body, displacement, queries, true, WaterTraversalMode.Legacy, 0, destination, out written, out blocked);
+        ResolveCore(body, displacement, queries, true, WaterTraversalMode.Legacy, 0, null, destination, out written, out blocked);
 
     internal static MovementAvailability TryResolvePolicy(in MovementBodyQuery body, Vector3 displacement,
-        MovementQueryLease queries, WaterTraversalMode mode, float enterFraction, Span<Vector3> destination, out int written, out bool blocked) =>
-        ResolveCore(body, displacement, queries, true, mode, enterFraction, destination, out written, out blocked);
+        MovementQueryLease queries, WaterTraversalMode mode, float enterFraction, MovementBoundary? boundary, Span<Vector3> destination, out int written, out bool blocked) =>
+        ResolveCore(body, displacement, queries, true, mode, enterFraction, boundary, destination, out written, out blocked);
 
     static MovementAvailability ResolveCore(in MovementBodyQuery body, Vector3 displacement,
-        MovementQueryLease queries, bool proveMedium, WaterTraversalMode mode, float enterFraction,
+        MovementQueryLease queries, bool proveMedium, WaterTraversalMode mode, float enterFraction, MovementBoundary? boundary,
         Span<Vector3> destination, out int written, out bool blocked)
     {
         written = 0;
@@ -43,7 +43,7 @@ internal static class MovementCapsuleResolver
             Span<Vector3> normalBuffer = normals.AsSpan(0, MovementConstraintProjection.MaximumInputNormals);
             Span<Vector3> waterNormals = stackalloc Vector3[MovementQueryLease.MaxDomainContacts];
             Span<Vector3> path = stackalloc Vector3[MaximumEndpoints];
-            MovementAvailability status = Trace(body, Vector3.Zero, queries, proveMedium, mode, enterFraction, waterNormals, out _, out MovementWaterBoundary.Hit initialWater,
+            MovementAvailability status = Trace(body, Vector3.Zero, queries, proveMedium, mode, enterFraction, boundary, waterNormals, out _, out MovementWaterBoundary.Hit initialWater,
                 out CapsuleSweepResult initial, out _, out _);
             if (status != MovementAvailability.Known) return status;
             // A closed zero-time Hit is neither a safe starting pose nor a recovery certificate.
@@ -57,7 +57,15 @@ internal static class MovementCapsuleResolver
             bool obstructed = false;
             for (int correction = 0; correction <= MaximumCorrections; correction++)
             {
-                status = Trace(current, remaining, queries, proveMedium, mode, enterFraction, waterNormals, out int waterCount, out MovementWaterBoundary.Hit waterHit,
+                if (boundary is not null)
+                {
+                    status = boundary.Constrain(current.Centre, remaining, out Vector3 constrained);
+                    if (status != MovementAvailability.Known) return status;
+                    if (!MovementEnvironmentValidation.Finite(constrained)) return MovementAvailability.Invalid;
+                    obstructed |= constrained != remaining;
+                    remaining = constrained;
+                }
+                status = Trace(current, remaining, queries, proveMedium, mode, enterFraction, boundary, waterNormals, out int waterCount, out MovementWaterBoundary.Hit waterHit,
                     out CapsuleSweepResult sweep, out Vector3 requestedEnd, out double inflation);
                 if (status != MovementAvailability.Known) return status;
                 if (sweep.Status == CapsuleSweepStatus.Clear && !waterHit.Blocked)
@@ -126,7 +134,7 @@ internal static class MovementCapsuleResolver
                 if (advance > 0)
                 {
                     Vector3 prefix = remaining * (float)(advance / length);
-                    status = Trace(current, prefix, queries, proveMedium, mode, enterFraction, waterNormals, out _, out MovementWaterBoundary.Hit prefixWater,
+                    status = Trace(current, prefix, queries, proveMedium, mode, enterFraction, boundary, waterNormals, out _, out MovementWaterBoundary.Hit prefixWater,
                         out CapsuleSweepResult prefixSweep, out Vector3 prefixEnd, out _);
                     if (status != MovementAvailability.Known) return status;
                     if (prefixSweep.Status != CapsuleSweepStatus.Clear || prefixWater.Blocked) return MovementAvailability.Unresolved;
@@ -157,7 +165,7 @@ internal static class MovementCapsuleResolver
     }
 
     static MovementAvailability Trace(in MovementBodyQuery body, Vector3 delta, MovementQueryLease queries,
-        bool proveMedium, WaterTraversalMode mode, float enterFraction, Span<Vector3> waterNormals,
+        bool proveMedium, WaterTraversalMode mode, float enterFraction, MovementBoundary? boundary, Span<Vector3> waterNormals,
         out int waterCount, out MovementWaterBoundary.Hit waterHit, out CapsuleSweepResult result, out Vector3 end, out double inflation)
     {
         result = default;
@@ -165,6 +173,12 @@ internal static class MovementCapsuleResolver
         waterHit = default;
         if (!MovementCapsuleRounding.TryEnclose(body, delta, out MovementBodyQuery enclosure, out end, out inflation))
             return MovementAvailability.Unresolved;
+        if (boundary is not null)
+        {
+            MovementAvailability proof = boundary.ProveSegment(body.Centre, delta, end, out bool admitted);
+            if (proof != MovementAvailability.Known) return proof;
+            if (!admitted) return MovementAvailability.Unresolved;
+        }
         MovementAvailability status = queries.QuerySolidSweep(enclosure, delta, out result);
         if (status != MovementAvailability.Known || !proveMedium) return status;
         if (mode is WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly)

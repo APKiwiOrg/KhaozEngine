@@ -9,9 +9,9 @@ public static partial class ExplicitCharacterMovement
     /// advancing time or consuming an already accepted buffered press. Footing and water mode are
     /// reclassified from the destination facts. Restore and teleport use SettlePlacement instead.</summary>
     public static MovementStepResult ReclassifyContinuation(in FramedMovementState state, in MoveTuning tuning,
-        in WaterTraversalPolicy water, MovementQueryLease queries)
+        in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary = null)
     {
-        MovementStepResult validated = ValidatePlacement(state, tuning, water, queries);
+        MovementStepResult validated = ValidatePlacement(state, tuning, water, queries, boundary);
         if (validated.Outcome != MovementStepOutcome.Advanced) return validated;
         try
         {
@@ -32,7 +32,7 @@ public static partial class ExplicitCharacterMovement
                 if (status != MovementAvailability.Known) return Hold(state, Outcome(status));
                 if (support is { } candidate)
                 {
-                    status = Move(body, candidate.Centre - body.Centre, queries, water, tuning, out Vector3 end, out _);
+                    status = Move(body, candidate.Centre - body.Centre, queries, water, tuning, boundary, out Vector3 end, out _);
                     if (status != MovementAvailability.Known) return Hold(state, Outcome(status));
                     footing = end == candidate.Centre;
                     if (footing) owner = candidate.Candidate.Owner;

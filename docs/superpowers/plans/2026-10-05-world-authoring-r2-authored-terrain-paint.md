@@ -3797,3 +3797,15 @@ zero failures or skips, with the frozen Task 9 and Task 10 tests unchanged. Form
 Independent review approved with coverage notes only, confirming the Task 9 extraction keeps exact
 arithmetic and legacy float order. Proof is `proofs/2026-10-08-r2-task10-green.json`. Ruling T10-2 adds
 one tests-only hardening step for the Task 9 and Task 10 refusal and boundary contracts before Task 11.
+
+
+### Task 10H compiler and boundary contract hardening verified
+
+Ruling T10-2 added tests only, with no product change, for seven Task 9 and Task 10 contracts that both
+reviews read as correct but left untested: paint override replacement and its T9-3 refusals, exact-overflow
+refusal, legacy corner-cut rim subdivisions with the released float midpoint, SurfaceEdge chain heights,
+unavailable sources as MissingGeometry, vertex sequence and position refusals, and the ruled-quad split.
+Commits 3f4fd752b and 4fc77cc93 add 27 MapDoc and 2 Editor cases. One review round made the midpoint case
+rounding sensitive and added position mismatches of 0.000001 m, so exact averaging or a 0.0001 m tolerance
+would now fail. Final runs passed 52 MapDoc and 4 Editor cases with format and guards clean. Proof is
+`proofs/2026-10-09-r2-task10h-green.json`. Task 11 follows.

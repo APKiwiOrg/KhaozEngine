@@ -75,6 +75,7 @@ public sealed class MapSpaceMembership
             MapTopologyRecord[] records = MapSpaceGeometry.Records(_view).OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
             var candidates = new List<Candidate>();
             var demands = new List<MapBoundFaceDemand>();
+            var portalChains = new Dictionary<MapRecordRef, (MapBoundaryChain Chain, MapCellDemand[] Cells)>();
             foreach (MapSpaceFootprint footprint in records.OfType<MapSpaceFootprint>())
             {
                 if (MapSpaceGeometry.FootprintCell(_view, footprint, xz) is null) continue;
@@ -141,14 +142,19 @@ public sealed class MapSpaceMembership
             }
             void DemandChain(MapRecordRef reference)
             {
-                MapBoundaryChain chain = MapSpaceGeometry.Record<MapBoundaryChain>(_view, reference);
-                if (chain.SourcePatch is { } key) demands.Add(new(bounds.SourceCell(key, xz), null));
+                if (portalChains.ContainsKey(reference)) return;
+                MapBoundaryChain chain = PointChain(MapSpaceGeometry.Record<MapBoundaryChain>(_view, reference), xz);
+                MapCellDemand[] cells = bounds.SourceCells(chain).ToArray();
+                portalChains.Add(reference, (chain, cells));
+                demands.AddRange(cells.Select(cell => new MapBoundFaceDemand(cell, null)));
             }
             MapExactValue PortalHeight(MapRecordRef reference)
             {
-                MapBoundaryChain source = PointChain(MapSpaceGeometry.Record<MapBoundaryChain>(_view, reference), xz);
+                var (source, cells) = portalChains[reference];
+                // A supplied context must also have prepared every source cell for this selected segment.
+                foreach (MapCellDemand cell in cells) _ = context.Faces(cell);
                 MapChainResolution chain = MapBoundaryGeometry.ResolveChain(source, _view,
-                    key => new MapBoundarySurface(context.ValidatedPatch(key), MapSlotCellMask.Of(new[] { bounds.SourceCell(key, xz).SlotCell })));
+                    key => new MapBoundarySurface(context.ValidatedPatch(key), MapSlotCellMask.Of(cells.Select(cell => cell.SlotCell))));
                 if (chain.Detail?.Contains("not representable", StringComparison.Ordinal) == true) throw new MapExactOverflowException();
                 if (chain.Status != MapResolveStatus.Resolved) throw new MapDocumentException(chain.Detail ?? "missing geometry: portal band");
                 return MapSpaceGeometry.ChainHeight(chain.Points, xz) ?? throw new MapDocumentException("invalid portal vertex sequence");

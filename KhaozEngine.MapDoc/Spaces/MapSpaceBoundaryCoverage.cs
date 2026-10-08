@@ -9,7 +9,8 @@ namespace KhaozEngine.MapDoc.Spaces;
 /// <summary>Per-side exact interval coverage for walls, portals and changes between occupied columns.</summary>
 internal static class MapSpaceBoundaryCoverage
 {
-    sealed record Band(string Id, IReadOnlyList<MapExactPoint> Lower, IReadOnlyList<MapExactPoint>? Upper);
+    sealed record Band(string Id, IReadOnlyList<MapExactPoint> Lower, IReadOnlyList<MapExactPoint>? Upper,
+        IReadOnlyList<MapSide>? Sides = null);
     readonly record struct Interval(MapExactValue Lower, MapExactValue? Upper, bool Authored);
 
     internal static void Validate(MapScopedSurfaces view, IReadOnlyList<MapTopologyRecord> records,
@@ -22,8 +23,8 @@ internal static class MapSpaceBoundaryCoverage
             try
             {
                 MapChainResolution lower = Chain(strip.LowerChain), upper = Chain(strip.UpperChain);
-                _ = MapWallStripCompiler.Compile(strip, lower, upper);
-                strips.Add(strip.Id, new(strip.Id, lower.Points, upper.Points));
+                MapCompiledStrip compiled = MapWallStripCompiler.Compile(strip, lower, upper);
+                strips.Add(strip.Id, new(strip.Id, lower.Points, upper.Points, compiled.Faces.Select(f => f.Key.Side).Distinct().ToArray()));
             }
             catch (MapDocumentException error) { add(strip.Id, -1, $"{error.Message}: strip '{strip.Id}'"); }
         }
@@ -47,15 +48,13 @@ internal static class MapSpaceBoundaryCoverage
                     for (int segment = 0; segment + 1 < interval.Length; segment++)
                     {
                         MapExactXz a = interval[segment], b = interval[segment + 1];
-                        var cuts = Cuts(a, b, owned, new[] { band });
+                        var cuts = Crossings(a, b, Cuts(a, b, owned, new[] { band }), owned, new[] { band });
                         for (int i = 0; i + 1 < cuts.Count; i++)
                         {
-                            MapExactXz point = Along(a, b, Mid(cuts[i], cuts[i + 1]));
-                            MapExactValue lo = MapSpaceGeometry.ChainHeight(band.Lower, point)!.Value;
-                            MapExactValue? hi = band.Upper is null ? null : MapSpaceGeometry.ChainHeight(band.Upper, point);
-                            if ((hi is { } upper && upper.CompareTo(lo) <= 0) || !owned.Any(c => Contains(c, point) &&
-                                c.Bottom(point) is { } bottomHeight && lo.CompareTo(bottomHeight) >= 0 &&
-                                (c.Upper is null || (hi is { } topHeight && c.Top(point) is { } ceiling && topHeight.CompareTo(ceiling) <= 0))))
+                            MapExactXz first = Along(a, b, cuts[i]), last = Along(a, b, cuts[i + 1]);
+                            // Every bound and band is linear on this piece. Endpoints prove the whole interval.
+                            if (!owned.Any(c => Contains(c, first) && Contains(c, last) &&
+                                AirContains(c, band, first) && AirContains(c, band, last)))
                                 add(portal.Id, -1, $"air interval: portal '{portal.Id}' side '{space.Id}'");
                         }
                     }
@@ -69,7 +68,8 @@ internal static class MapSpaceBoundaryCoverage
             if (column.Lower.Count == 0) continue;
             try
             {
-                Band[] bands = column.Space.Walls.Where(w => strips.ContainsKey(w.Record.Id)).Select(w => strips[w.Record.Id])
+                Band[] bands = column.Space.Walls.Where(w => strips.TryGetValue(w.Record.Id, out Band? strip) && strip.Sides!.Contains(w.Side))
+                    .Select(w => strips[w.Record.Id])
                     .Concat(column.Space.Portals.Where(p => portals.ContainsKey(p.Record.Id)).Select(p => portals[p.Record.Id])).ToArray();
                 foreach (MapCellEdge edge in Enum.GetValues<MapCellEdge>())
                 {
@@ -79,7 +79,7 @@ internal static class MapSpaceBoundaryCoverage
                     if (column.Space.Kind == MapSpaceKind.Exterior && adjacent.Length == 0) continue;
                     var cuts = Cuts(a, b, adjacent.Append(column), bands);
                     // All interval heights are linear between these vertices. Split again wherever their ordering changes.
-                    cuts = Crossings(a, b, cuts, column, peers, bands);
+                    cuts = Crossings(a, b, cuts, peers.Append(column), bands);
                     for (int i = 0; i + 1 < cuts.Count; i++)
                     {
                         MapExactXz point = Along(a, b, Mid(cuts[i], cuts[i + 1]));
@@ -128,6 +128,14 @@ internal static class MapSpaceBoundaryCoverage
             }
             return resolved;
         }
+    }
+
+    static bool AirContains(MapSpaceColumn column, Band band, MapExactXz point)
+    {
+        MapExactValue lo = MapSpaceGeometry.ChainHeight(band.Lower, point)!.Value;
+        MapExactValue? hi = band.Upper is null ? null : MapSpaceGeometry.ChainHeight(band.Upper, point);
+        return (hi is null || hi.Value.CompareTo(lo) > 0) && column.Bottom(point) is { } bottom && lo.CompareTo(bottom) >= 0 &&
+            (column.Upper is null || (hi is { } top && column.Top(point) is { } ceiling && top.CompareTo(ceiling) <= 0));
     }
 
     static bool Gap(MapExactValue lower, MapExactValue? upper, IEnumerable<Interval> source)
@@ -185,28 +193,43 @@ internal static class MapSpaceBoundaryCoverage
         var cuts = new SortedSet<MapExactValue> { default, new(1, 1) };
         foreach (MapSpaceColumn column in columns)
         {
-            Add(column.Min); Add(column.Max); Add(new(column.Min.X, column.Max.Z)); Add(new(column.Max.X, column.Min.Z));
+            MapExactXz northwest = new(column.Min.X, column.Max.Z), southeast = new(column.Max.X, column.Min.Z);
+            AddEdge(column.Min, southeast); AddEdge(southeast, column.Max);
+            AddEdge(column.Max, northwest); AddEdge(northwest, column.Min);
             foreach (MapExactXz vertex in column.Refinement.Vertices) Add(vertex);
             foreach (MapBoundFace face in column.Lower.Concat(column.Upper ?? Array.Empty<MapBoundFace>()))
             {
-                Add(MapSpaceGeometry.Xz(face.Triangle.A)); Add(MapSpaceGeometry.Xz(face.Triangle.B)); Add(MapSpaceGeometry.Xz(face.Triangle.C));
+                MapExactXz first = MapSpaceGeometry.Xz(face.Triangle.A), second = MapSpaceGeometry.Xz(face.Triangle.B), third = MapSpaceGeometry.Xz(face.Triangle.C);
+                AddEdge(first, second); AddEdge(second, third); AddEdge(third, first);
             }
         }
         foreach (Band band in bands)
             foreach (MapExactPoint point in band.Lower.Concat(band.Upper ?? Array.Empty<MapExactPoint>())) Add(MapSpaceGeometry.Xz(point));
         return cuts.ToList();
         void Add(MapExactXz point) { if (MapSpaceGeometry.OnSegment(point, a, b)) cuts.Add(Parameter(point, a, b)); }
+        void AddEdge(MapExactXz first, MapExactXz last)
+        {
+            Add(first); Add(last);
+            MapExactValue dx = b.X.Subtract(a.X), dz = b.Z.Subtract(a.Z);
+            MapExactValue ex = last.X.Subtract(first.X), ez = last.Z.Subtract(first.Z);
+            MapExactValue determinant = dx.Multiply(ez).Subtract(dz.Multiply(ex));
+            if (determinant.Sign == 0) return;
+            MapExactValue px = first.X.Subtract(a.X), pz = first.Z.Subtract(a.Z);
+            MapExactValue t = px.Multiply(ez).Subtract(pz.Multiply(ex)).Divide(determinant);
+            MapExactValue u = px.Multiply(dz).Subtract(pz.Multiply(dx)).Divide(determinant);
+            if (MapSpaceGeometry.Between(t, default, new(1, 1)) && MapSpaceGeometry.Between(u, default, new(1, 1))) cuts.Add(t);
+        }
     }
 
     static List<MapExactValue> Crossings(MapExactXz a, MapExactXz b, List<MapExactValue> cuts,
-        MapSpaceColumn owner, IReadOnlyList<MapSpaceColumn> peers, IReadOnlyList<Band> bands)
+        IEnumerable<MapSpaceColumn> columns, IReadOnlyList<Band> bands)
     {
         var result = new SortedSet<MapExactValue>(cuts);
         for (int step = 0; step + 1 < cuts.Count; step++)
         {
             MapExactXz p = Along(a, b, cuts[step]), q = Along(a, b, cuts[step + 1]);
             var heights = new List<(MapExactValue P, MapExactValue Q)>();
-            foreach (MapSpaceColumn column in peers.Append(owner))
+            foreach (MapSpaceColumn column in columns)
             {
                 if (!Contains(column, Along(a, b, Mid(cuts[step], cuts[step + 1])))) continue;
                 Add(column.Bottom(p), column.Bottom(q)); Add(column.Top(p), column.Top(q));

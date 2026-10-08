@@ -90,6 +90,29 @@ internal sealed class MapSpacePointBounds
         return new(key, MapLowerCellClassifier.SlotCell(x, z));
     }
 
+    internal IEnumerable<MapCellDemand> SourceCells(MapBoundaryChain segment)
+    {
+        if (segment.SourcePatch is not { } key) yield break;
+        MapSurfaceRef surface = MapSpaceGeometry.Surface(_view, key.SurfaceId);
+        if (!_view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
+            throw new MapDocumentException($"missing geometry: patch {key} ({status})");
+        _ = _preparation.ValidatedPatch(surface, patch);
+        long minX = checked(key.SlotX * 64 + patch.CellMinX), minZ = checked(key.SlotZ * 64 + patch.CellMinZ);
+        long maxX = checked(minX + patch.Width), maxZ = checked(minZ + patch.Depth);
+        var cells = new SortedSet<int>();
+        foreach (MapChainVertex vertex in segment.Vertices)
+        {
+            MapLatticeAddress address = vertex.Vertex.Address;
+            var x = new MapExactValue(address.X, address.Denominator);
+            var z = new MapExactValue(address.Z, address.Denominator);
+            // Closed incident cells include the preceding row at an endpoint and the owner of an edge subdivision.
+            for (long row = Math.Max(minZ, checked(z.Ceiling() - 1)); row <= Math.Min(maxZ - 1, z.Floor()); row++)
+                for (long column = Math.Max(minX, checked(x.Ceiling() - 1)); column <= Math.Min(maxX - 1, x.Floor()); column++)
+                    cells.Add(MapLowerCellClassifier.SlotCell(column, row));
+        }
+        foreach (int cell in cells) yield return new(key, cell);
+    }
+
     internal static MapExactValue? Height(MapBoundFaceContext context, Bound bound, MapExactXz point)
     {
         if (bound.Cell is not { } cell) return null;

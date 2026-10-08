@@ -22,7 +22,10 @@ internal static class MapSpaceOverlapValidator
                     bool peer = MapSpaceGeometry.Owner(view, a.Space) != MapSpaceGeometry.Owner(view, b.Space) &&
                         !MapSpaceGeometry.Ancestors(view, a.Space).Any(s => s.Id == b.Space.Id) &&
                         !MapSpaceGeometry.Ancestors(view, b.Space).Any(s => s.Id == a.Space.Id);
-                    bool ambiguous = false, coincident = false;
+                    // D9 compatibility domains have finite bilinear lower bounds and open tops, so peers share air.
+                    // Their classified coverage remains provenance, never a physical face or separation claim.
+                    bool ambiguous = peer && a.Refinement.CompatibilityCells.Count != 0 && b.Refinement.CompatibilityCells.Count != 0;
+                    bool coincident = false;
                     foreach (MapRefinementFace fa in a.Refinement.Faces)
                         foreach (MapRefinementFace fb in b.Refinement.Faces)
                         {

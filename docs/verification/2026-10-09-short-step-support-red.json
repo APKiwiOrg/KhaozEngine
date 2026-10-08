@@ -1,0 +1,32 @@
+{
+  "status": "Open short-step support dependency. The ordinary 30Hz acceptance test remains RED.",
+  "baseCommit": "74cfe9db6",
+  "runs": {
+    "step-column-red": {
+      "path": "/tmp/swim-step-column-red.log",
+      "sha256": "863076df6aae2227fd2dfebfbfc03e0762b200679f67c168fcba9c7397c89e14",
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "step-footprint-red": {
+      "path": "/tmp/swim-step-footprint-red.log",
+      "sha256": "d79e580f8a25c72c4cda210bac2d14a72e1055fdfaff41a33d223757115d5e9a",
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "step-column-guard": {
+      "path": "/tmp/swim-step-column-guard.log",
+      "sha256": "ce9c1145d6faa08c4e65bd87834794d52fe846b22dcd8f2635d4df5f7c10ebad",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    }
+  },
+  "disposition": "The off-column exploratory acceptance was rejected after checking the existing resolver and correspondence-owner explanation. It is now a passing guard against treating a bare off-column point as a plane. The centre-column approach failure remains unchanged.",
+  "nativeStatus": "No native sampler, facade amendment or new ground model implemented."
+}

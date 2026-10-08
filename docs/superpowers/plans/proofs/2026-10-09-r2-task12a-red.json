@@ -1,0 +1,70 @@
+{
+  "task": "12A exact common refinement and legacy lower-cell classification",
+  "stage": "intended compile-time RED",
+  "base": "879494d3c",
+  "sources": {
+    "KhaozEngine.MapDoc.Tests/Spaces/CommonRefinementTests.cs": "f45b868371a25e231c3fd68392ebf7b5cc102495d881e3985b11a0aa22e5b4c2",
+    "KhaozEngine.MapDoc.Tests/Spaces/LowerCellClassifierTests.cs": "d820005635d7ffe5aafdd6fa774310cbd864c85b68675e954ce3903c53e55094",
+    "KhaozEngine.MapDoc.Tests/Spaces/RefinementFixtures.cs": "5aa32e06982bad973fea7eea632445a9b2821af7b8732c89d6c4d99aa90f4beb",
+    "KhaozEngine.MapDoc.Tests/Spaces/MixedResolutionFixtures.cs": "94c324e53fa21e259165410565490823ad15788a12e1b90bfb94dc43a61169c5",
+    "KhaozEngine.MapDoc.Tests/Spaces/LegacyExteriorFixtures.cs": "8c6cd7efe535d6ff598474b33434190262dca68fc5a539e960160fcd10df4ef9",
+    "KhaozEngine.MapDoc.Tests/Spaces/BoundFaceContextFixtures.cs": "ee6aff49bb9f4ab09979f4a16ed5bbc2d49f3d051f8253b6fa1a0d901bfab96a",
+    "KhaozEngine.MapEditor.Tests/MapDoc/RefinementWorkTests.cs": "58eb49f99153d2e9e7a744618f42f016c9209ccbabe9d69c6719c199f544090b",
+    "KhaozEngine.MapDoc.Compatibility.Tests/LegacyBilinearOracleTests.cs": "96439c405a6e515f38c80c478e4f75cbf399a6cb688d72d2c75611c512c770c4"
+  },
+  "results": [
+    {
+      "project": "mapdoc",
+      "filter": "FullyQualifiedName~CommonRefinementTests|FullyQualifiedName~LowerCellClassifierTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 15
+      },
+      "missing": {
+        "MapCellRefinement": 1,
+        "MapRefinementLimits": 1,
+        "MapLowerCellClass": 1,
+        "MapBoundFace": 12
+      },
+      "planned_new_cases": 12,
+      "log_sha256": "11c70eb05055bbb1b5272d961bc7aae52ca539a67095f2fba8844c78dfa196a2"
+    },
+    {
+      "project": "editor",
+      "filter": "FullyQualifiedName~RefinementWorkTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 12
+      },
+      "missing": {
+        "MapBoundFace": 12
+      },
+      "planned_new_cases": 3,
+      "log_sha256": "cb299e0ba5fa84358999d2ff2139d7247d0ff581ff937fdac65816537ea65eee"
+    },
+    {
+      "project": "compatibility",
+      "filter": "whole project",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0103": 1
+      },
+      "missing": {
+        "MapLegacyBilinear": 1
+      },
+      "planned_new_cases": 1,
+      "log_sha256": "2f2534a7a0b2ea234ec46bcedd6858058e7800da7f06602f8ada44c0b5da1606"
+    }
+  ],
+  "classification": "Every unique diagnostic names a planned Task 12A product type (MapBoundFace, MapCellRefinement, MapLowerCellClass, MapRefinementLimits, MapLegacyBilinear). The compiler stops at signatures, so body-level references are not claimed. No unrelated errors. The MapDoc RED ran before a whitespace-only correction whose token stream is identical.",
+  "rulings": [
+    "T12A-1 fixtures compile into MapEditor.Tests, RED and GREEN cover MapDoc, Editor and Compatibility.",
+    "T12A-2 synthetic RefinementFixtures keys carry the listed index in Primitive, (owner, null, index, 0, 0, Front), because ParentTriangle is a byte and Grid16 lists 512 faces.",
+    "T12A-3 the upper-tag variant pins exactly two reference findings, the stated legacy recipe upper failure and the inherent bound surface role mismatch.",
+    "T12A-4 whitespace-only formatting of three brief lines in CommonRefinementTests, token stream identical."
+  ],
+  "execution": "Direct and serial under owner OA20 through build-slot, one invocation per project, no retry."
+}

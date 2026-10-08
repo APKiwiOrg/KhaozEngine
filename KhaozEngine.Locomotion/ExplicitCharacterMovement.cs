@@ -78,6 +78,8 @@ public static partial class ExplicitCharacterMovement
             }
             bool supported = physicalSupport && FootingAllowed(point, wasSwimming, next.Position.Y, tuning, water);
             next.Grounded = supported;
+            if (supported && !input.State.Grounded)
+                next.LandingImpactSpeed = Math.Max(0, -input.State.VerticalVelocity);
             if (physicalSupport && next.VerticalVelocity < 0) next.VerticalVelocity = 0;
             if (supported) { next.VerticalVelocity = 0; next.TimeSinceGrounded = 0; }
             else selection = new(selection.Space, null, selection.Identity);
@@ -161,7 +163,7 @@ public static partial class ExplicitCharacterMovement
                     {
                         next.TimeSinceGrounded = 0;
                         next.SupportGranted = true;
-                        if (!input.State.Grounded) next.LandingImpactSpeed = Math.Max(0, -velocity);
+                        if (!input.State.Grounded) next.LandingImpactSpeed = Math.Max(next.LandingImpactSpeed, Math.Max(0, -velocity));
                     }
                 }
             }

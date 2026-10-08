@@ -1,0 +1,21 @@
+{
+  "status": "Full Release build blocked during restore, not a compile/test pass.",
+  "head": "bef457d2b0c6671271f234c7a28a0ea298a2356e",
+  "main": "bf3186075",
+  "command": "dotnet build KhaozEngine.slnx -c Release -m:1",
+  "exitCode": 1,
+  "errors": 10,
+  "warnings": 0,
+  "cause": "PixelLabSheetAssembler and its tests reference SixLabors.ImageSharp 2.1.13, rejected by NuGet security audit NU1902/NU1903.",
+  "log": "/tmp/swim-engine-release-build.log",
+  "logSha256": "a55219d91e01a3172ec253d57e4e9c530bbb210e8edf29f746977f165d660a07",
+  "policy": "No audit suppression, package update, decoder replacement, tag or release applied.",
+  "advisories": [
+    "GHSA-gwg2-r3hj-4w44",
+    "GHSA-j3p4-wp97-rph4",
+    "GHSA-j9gm-c75j-xc9q",
+    "GHSA-jjfr-hcj7-qf5w",
+    "GHSA-wmxv-xphr-5c9g"
+  ],
+  "issue": "https://github.com/APKiwiOrg/KhaozEngine/issues/1326"
+}

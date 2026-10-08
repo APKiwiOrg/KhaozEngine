@@ -1,0 +1,39 @@
+{
+  "reviewedHead": "4b9013ac5596493240ee7fc5784d9b544e3e93d8",
+  "reviewVerdict": "Changes required",
+  "findings": [
+    {
+      "finding": "Initial eligible footing settlement discarded incoming landing impact",
+      "resolution": "Capture impact before vertical clipping, retain it through an immediate jump, and max with final settlement impact."
+    },
+    {
+      "finding": "Explicit runtime accepted invalid water tuning rejected by motion profiles",
+      "resolution": "Validate finite ordered water fractions, buoyancy stiffness and air-control fraction before querying or advancing."
+    }
+  ],
+  "evidence": [
+    {
+      "log": "/tmp/swim-review-findings-red.log",
+      "sha256": "9c7313346bf190795a41878948c3bf0392123a27a572f6374859c205fa2884a4"
+    },
+    {
+      "log": "/tmp/swim-review-findings-green.log",
+      "sha256": "00b54dc43448d9abaf3a81b6374963f63a195ab58a5d054182d2340a035ca739"
+    },
+    {
+      "log": "/tmp/swim-review-event-guards.log",
+      "sha256": "95e2953e2b984fecde24387d665e0b9657572adfd45fb65d29c76dd27f547f44"
+    }
+  ],
+  "results": [
+    "RED 6 failed and 1 existing guard passed",
+    "GREEN 96 affected movement tests passed, excluding the already recorded short-step dependency",
+    "GREEN 10 event and tuning guards passed"
+  ],
+  "remainingGates": [
+    "Ordinary 30 Hz step support repro remains RED",
+    "Shared support correspondence and native producer handoff",
+    "Current-main full verification is blocked by ImageSharp audit, issue 1326",
+    "Final branch review, integration, released engine and dependent game adoption"
+  ]
+}

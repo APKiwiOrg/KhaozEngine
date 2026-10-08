@@ -78,9 +78,14 @@ public static partial class ExplicitCharacterMovement
         tuning.CapsuleHalfHeight >= tuning.CapsuleRadius && Positive(tuning.Gravity) && Positive(tuning.MaxFallSpeed) &&
         Nonnegative(tuning.WalkSpeed) && Nonnegative(tuning.RunSpeed) && Nonnegative(tuning.SwimSpeed) &&
         Nonnegative(tuning.JumpSpeed) && Nonnegative(tuning.GroundedEpsilon) && Nonnegative(tuning.StepHeight) &&
+        Fraction(tuning.WadeStartDepthFraction) && Fraction(tuning.WadeEndDepthFraction) &&
+        tuning.WadeEndDepthFraction > tuning.WadeStartDepthFraction && Fraction(tuning.WadeMinSpeedScale) &&
         Positive(tuning.SwimEnterDepthFraction) && tuning.SwimEnterDepthFraction <= 1 &&
-        Nonnegative(tuning.CoyoteTime) && Nonnegative(tuning.JumpBuffer) && Nonnegative(tuning.AirControl) &&
+        Fraction(tuning.SwimExitDepthFraction) && tuning.SwimExitDepthFraction <= tuning.SwimEnterDepthFraction &&
+        Fraction(tuning.SwimSurfaceSubmersionFraction) && Nonnegative(tuning.SwimBuoyancyStiffness) &&
+        Nonnegative(tuning.CoyoteTime) && Nonnegative(tuning.JumpBuffer) && Fraction(tuning.AirControl) &&
         Nonnegative(tuning.AirBrakeAccel) && Nonnegative(tuning.MaxSlopeRadians) && tuning.MaxSlopeRadians < MathF.PI * 0.5f;
+    static bool Fraction(float value) => Nonnegative(value) && value <= 1;
     static bool Positive(float value) => float.IsFinite(value) && value > 0;
     static bool Nonnegative(float value) => float.IsFinite(value) && value >= 0;
 }

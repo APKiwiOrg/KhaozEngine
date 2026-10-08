@@ -36,6 +36,7 @@ internal sealed record MapFootprintPreparation(MapBoundFaceContext? Context, str
 internal sealed class MapBoundFaceWork
 {
     internal int ContextsPrepared;
+    internal int PatchValidations;
     internal long BoundFacesCounted;
     internal long ContextFacesCounted;
     internal int Compiles;

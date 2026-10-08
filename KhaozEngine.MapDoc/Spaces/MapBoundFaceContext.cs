@@ -11,30 +11,33 @@ namespace KhaozEngine.MapDoc.Spaces;
 internal sealed class MapBoundFaceContext
 {
     readonly IReadOnlyDictionary<MapPatchKey, Entry> _entries;
-    readonly IReadOnlyDictionary<MapRecordRef, IReadOnlyList<MapBoundFace>> _openings;
+    readonly IReadOnlyDictionary<MapRecordRef, OpeningEntry> _openings;
+    readonly IReadOnlyDictionary<MapPatchKey, MapValidatedSurfacePatch> _validated;
     internal MapScopedSurfaces View { get; }
+    internal MapBoundFaceWork? Work { get; }
 
     MapBoundFaceContext(MapScopedSurfaces view, Dictionary<MapPatchKey, Entry> entries,
-        Dictionary<MapRecordRef, IReadOnlyList<MapBoundFace>> openings)
+        Dictionary<MapRecordRef, OpeningEntry> openings, Dictionary<MapPatchKey, MapValidatedSurfacePatch> validated, MapBoundFaceWork? work)
     {
         View = view;
+        Work = work;
         _entries = new ReadOnlyDictionary<MapPatchKey, Entry>(entries);
-        _openings = new ReadOnlyDictionary<MapRecordRef, IReadOnlyList<MapBoundFace>>(openings);
+        _openings = new ReadOnlyDictionary<MapRecordRef, OpeningEntry>(openings);
+        _validated = new ReadOnlyDictionary<MapPatchKey, MapValidatedSurfacePatch>(validated);
     }
 
     sealed record Entry(MapSlotCellMask Mask, MapCompiledPatch Compiled,
+        IReadOnlyDictionary<int, IReadOnlyList<MapBoundFace>> Cells);
+    sealed record OpeningEntry(MapPatchKey Patch, MapSlotCellMask Mask,
         IReadOnlyDictionary<int, IReadOnlyList<MapBoundFace>> Cells);
     sealed class Pending
     {
         internal readonly ulong[] Words = new ulong[64];
         internal long PhysicalFaces;
-        internal MapSurfaceRef Surface { get; }
-        internal MapSurfacePatch Patch { get; }
-        internal Pending(MapSurfaceRef surface, MapSurfacePatch patch)
-        {
-            Surface = surface;
-            Patch = patch;
-        }
+        internal MapValidatedSurfacePatch Validated { get; }
+        internal MapSurfaceRef Surface => Validated.Surface;
+        internal MapSurfacePatch Patch => Validated.Patch;
+        internal Pending(MapValidatedSurfacePatch validated) => Validated = validated;
         internal bool Contains(int slot) => (Words[slot / 64] & (1UL << (slot % 64))) != 0;
         internal void Add(int slot) => Words[slot / 64] |= 1UL << (slot % 64);
         internal IEnumerable<int> Cells()
@@ -52,10 +55,11 @@ internal sealed class MapBoundFaceContext
         PrepareBounds(view, demands.Select(d => new MapBoundFaceDemand(d, null)), maxPatches, maxFaces, work, out refusal);
 
     internal static MapBoundFaceContext? PrepareBounds(MapScopedSurfaces view, IEnumerable<MapBoundFaceDemand> demands,
-        int maxPatches, long maxFaces, MapBoundFaceWork? work, out string? refusal)
+        int maxPatches, long maxFaces, MapBoundFaceWork? work, out string? refusal, MapBoundPreparation? preparation = null)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(demands);
+        preparation?.RequireView(view);
         if (maxPatches < 0 || maxFaces < 0) throw new ArgumentOutOfRangeException(nameof(maxPatches));
         if (work is not null) work.ContextsPrepared++;
         refusal = null;
@@ -74,8 +78,7 @@ internal sealed class MapBoundFaceContext
                 MapSurfaceRef? surface = view.Surfaces.FirstOrDefault(s => s.Id == demand.Patch.SurfaceId);
                 if (surface is null || !view.TryAcquiredPatch(demand.Patch, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
                     throw new MapDocumentException($"context demand patch {demand.Patch}: unavailable");
-                MapSurfaceCompiler.Validate(surface, patch);
-                entry = new(surface, patch);
+                entry = new(preparation?.ValidatedPatch(surface, patch) ?? new MapValidatedSurfacePatch(surface, patch, work));
                 pending.Add(demand.Patch, entry);
             }
             bool freshCell = !entry.Contains(demand.SlotCell);
@@ -114,13 +117,16 @@ internal sealed class MapBoundFaceContext
             }
         }
         if (refusal is not null) return null;
+        // Face-free bounds also retain their phase-1 validation evidence for subsequent reads.
+        var validated = preparation?.ValidatedPatches.ToDictionary(p => p.Patch.Key) ?? new Dictionary<MapPatchKey, MapValidatedSurfacePatch>();
         var entries = new Dictionary<MapPatchKey, Entry>();
-        var openings = new Dictionary<MapRecordRef, IReadOnlyList<MapBoundFace>>();
+        var openings = new Dictionary<MapRecordRef, OpeningEntry>();
         foreach (var (key, pendingEntry) in pending)
         {
+            validated[key] = pendingEntry.Validated;
             MapSlotCellMask mask = MapSlotCellMask.Of(pendingEntry.Cells());
             MapCompiledPatch compiled;
-            try { compiled = MapSurfaceCompiler.Compile(pendingEntry.Surface, pendingEntry.Patch, mask, MapSurfaceCompiler.MaxFacesPerPatch); }
+            try { compiled = MapSurfaceCompiler.Compile(pendingEntry.Validated, mask, MapSurfaceCompiler.MaxFacesPerPatch); }
             catch (MapDocumentException error) when (MapCommonRefinement.NotRepresentable(error)) { throw new MapExactOverflowException(); }
             if (work is not null) { work.Compiles++; work.CompiledFaces += compiled.Faces.Count; }
             var cells = compiled.Faces.GroupBy(f => f.Key.Primitive).ToDictionary(g => g.Key,
@@ -134,15 +140,18 @@ internal sealed class MapBoundFaceContext
             MapOpeningPlane plane;
             try
             {
-                plane = MapOpeningBoundary.Compile(entry.Surface, entry.Patch,
-                requested.Record with { SlotCells = Array.AsReadOnly(requested.Cells.ToArray()) });
+                plane = MapOpeningBoundary.Compile(entry.Validated,
+                    requested.Record with { SlotCells = Array.AsReadOnly(requested.Cells.ToArray()) });
             }
             catch (MapDocumentException error) when (MapCommonRefinement.NotRepresentable(error)) { throw new MapExactOverflowException(); }
             IReadOnlyList<MapBoundFace> faces = Array.AsReadOnly(plane.Keys.Select((face, i) => new MapBoundFace(face, plane.ExactTriangles[i])).ToArray());
-            openings.Add(reference, faces);
+            var cells = faces.GroupBy(f => f.Key.Primitive).ToDictionary(g => g.Key,
+                g => (IReadOnlyList<MapBoundFace>)Array.AsReadOnly(g.OrderBy(f => f.Key).ToArray()));
+            openings.Add(reference, new(requested.Record.Patch, MapSlotCellMask.Of(requested.Cells),
+                new ReadOnlyDictionary<int, IReadOnlyList<MapBoundFace>>(cells)));
             if (work is not null) work.CompiledFaces += faces.Count;
         }
-        return new(view, entries, openings);
+        return new(view, entries, openings, validated, work);
     }
 
     internal void RequireView(MapScopedSurfaces view)
@@ -158,8 +167,14 @@ internal sealed class MapBoundFaceContext
     }
     internal MapCompiledPatch Compiled(MapPatchKey key) => _entries.TryGetValue(key, out Entry? entry)
         ? entry.Compiled : throw new InvalidOperationException("context demand patch was not prepared");
-    internal IReadOnlyList<MapBoundFace> Opening(MapRecordRef reference) => _openings.TryGetValue(reference, out IReadOnlyList<MapBoundFace>? faces)
-        ? faces : throw new InvalidOperationException("context demand opening was not prepared");
+    internal MapValidatedSurfacePatch ValidatedPatch(MapPatchKey key) => _validated.TryGetValue(key, out MapValidatedSurfacePatch? validated)
+        ? validated : throw new InvalidOperationException("context demand patch was not prepared");
+    internal IReadOnlyList<MapBoundFace> Opening(MapRecordRef reference, MapCellDemand cell)
+    {
+        if (!_openings.TryGetValue(reference, out OpeningEntry? entry) || entry.Patch != cell.Patch || !entry.Mask.Contains(cell.SlotCell))
+            throw new InvalidOperationException("context demand opening cell was not prepared");
+        return entry.Cells.TryGetValue(cell.SlotCell, out IReadOnlyList<MapBoundFace>? faces) ? faces : Array.Empty<MapBoundFace>();
+    }
 
     internal static int OpeningFaceCount(MapSurfacePatch patch, int slot)
     {

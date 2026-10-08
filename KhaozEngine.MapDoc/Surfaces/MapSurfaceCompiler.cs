@@ -17,14 +17,18 @@ public static class MapSurfaceCompiler
     internal static MapCompiledPatch Compile(MapSurfaceRef surface, MapSurfacePatch patch, int maxFaces) =>
         Compile(surface, patch, MapSlotCellMask.All, maxFaces);
 
-    internal static MapCompiledPatch Compile(MapSurfaceRef surface, MapSurfacePatch patch, MapSlotCellMask cells, int maxFaces)
+    internal static MapCompiledPatch Compile(MapSurfaceRef surface, MapSurfacePatch patch, MapSlotCellMask cells, int maxFaces) =>
+        Compile(new MapValidatedSurfacePatch(surface, patch), cells, maxFaces);
+
+    internal static MapCompiledPatch Compile(MapValidatedSurfacePatch validated, MapSlotCellMask cells, int maxFaces)
     {
-        Validate(surface, patch);
         ArgumentNullException.ThrowIfNull(cells);
         if (maxFaces < 0) throw new ArgumentOutOfRangeException(nameof(maxFaces));
+        MapSurfaceRef surface = validated.Surface;
+        MapSurfacePatch patch = validated.Patch;
         try
         {
-            long count = CountFaces(surface, patch, cells);
+            long count = CountFaces(validated, cells);
             if (count > maxFaces) throw new MapDocumentException($"compiled patch exceeds face budget {maxFaces}");
             if (surface.Role == MapSurfaceRole.PaintOverride)
                 throw new MapDocumentException("paint override has no physical faces. Use ApplyPaintOverride.");
@@ -36,10 +40,14 @@ public static class MapSurfaceCompiler
         }
     }
 
-    internal static long CountFaces(MapSurfaceRef surface, MapSurfacePatch patch, MapSlotCellMask cells)
+    internal static long CountFaces(MapSurfaceRef surface, MapSurfacePatch patch, MapSlotCellMask cells) =>
+        CountFaces(new MapValidatedSurfacePatch(surface, patch), cells);
+
+    static long CountFaces(MapValidatedSurfacePatch validated, MapSlotCellMask cells)
     {
-        Validate(surface, patch);
         ArgumentNullException.ThrowIfNull(cells);
+        MapSurfaceRef surface = validated.Surface;
+        MapSurfacePatch patch = validated.Patch;
         int[] subdivisions = Subdivisions(patch);
         long count = 0;
         for (int z = 0; z < patch.Depth; z++)
@@ -186,9 +194,10 @@ public static class MapSurfaceCompiler
         surface.PresencePolicy == MapPresencePolicy.LegacyTileWorld &&
         (cell.Underlay == 0 || (cell.Flags & MapCellFlags.NoDraw) != 0);
 
-    internal static void Validate(MapSurfaceRef surface, MapSurfacePatch patch)
+    internal static void Validate(MapSurfaceRef surface, MapSurfacePatch patch, MapBoundFaceWork? work = null)
     {
         ArgumentNullException.ThrowIfNull(patch);
+        if (work is not null) work.PatchValidations++;
         IReadOnlyList<string> findings = patch.ValidateLocal();
         if (findings.Count != 0) throw new MapDocumentException(findings[0]);
         ArgumentNullException.ThrowIfNull(surface);

@@ -120,7 +120,7 @@ public static class MapCommonRefinement
             if (plan.Status != MapRefinementStatus.Complete) return EmptyBound(plan.Status, plan.Detail);
             MapBoundFaceContext? context = MapBoundFaceContext.PrepareBounds(view,
                 plan.Demands.Select(d => new MapBoundFaceDemand(d, plan.Opening)),
-                limits.MaxContextPatches, limits.MaxContextFaces, null, out string? refusal);
+                limits.MaxContextPatches, limits.MaxContextFaces, null, out string? refusal, preparation);
             return context is null ? EmptyBound(MapRefinementStatus.CapacityExceeded, refusal) : ReadBound(context, plan);
         }
         catch (MapExactOverflowException) { return EmptyBound(MapRefinementStatus.NotRepresentable, "overflow"); }
@@ -132,7 +132,7 @@ public static class MapCommonRefinement
     {
         try
         {
-            MapBoundPreparation.Plan plan = new MapBoundPreparation(context.View, limits, null).Bound(footprint, bound, min, max);
+            MapBoundPreparation.Plan plan = new MapBoundPreparation(context, limits).Bound(footprint, bound, min, max);
             return plan.Status == MapRefinementStatus.Complete ? ReadBound(context, plan) : EmptyBound(plan.Status, plan.Detail);
         }
         catch (MapExactOverflowException) { return EmptyBound(MapRefinementStatus.NotRepresentable, "overflow"); }
@@ -144,7 +144,7 @@ public static class MapCommonRefinement
         if (plan.Demands.Count == 0)
             return new(MapRefinementStatus.Complete, Array.Empty<MapBoundFace>(), plan.Compatibility, null);
         IEnumerable<MapBoundFace> faces = plan.Opening is { } opening
-            ? context.Opening(opening).Where(f => plan.Demands.Any(d => d.SlotCell == f.Key.Primitive))
+            ? plan.Demands.SelectMany(d => context.Opening(opening, d))
             : plan.Demands.SelectMany(context.Faces);
         return new(MapRefinementStatus.Complete, Array.AsReadOnly(faces.OrderBy(f => f.Key).ToArray()),
             Array.AsReadOnly(plan.Compatibility.OrderBy(c => c.Patch).ThenBy(c => c.SlotCell).ToArray()), null);
@@ -185,7 +185,7 @@ public static class MapCommonRefinement
         try
         {
             context = MapBoundFaceContext.PrepareBounds(view, Demands(),
-                limits.MaxContextPatches, limits.MaxContextFaces, work, out refusal);
+                limits.MaxContextPatches, limits.MaxContextFaces, work, out refusal, preparation);
         }
         catch (Exception error) when (error is MapExactOverflowException or MapDocumentException)
         {
@@ -235,7 +235,7 @@ public static class MapCommonRefinement
     {
         try
         {
-            MapExactXz[] rect = new MapBoundPreparation(context.View, limits, null).Rectangle(footprint, slotCell);
+            MapExactXz[] rect = new MapBoundPreparation(context, limits).Rectangle(footprint, slotCell);
             MapBoundFaceSet lower = BoundFaces(context, footprint, footprint.Lower, rect[0], rect[1], limits);
             if (lower.Status != MapRefinementStatus.Complete) return Failure(lower.Status, lower.Detail);
             MapBoundFaceSet? upper = footprint.Upper.Kind == MapBoundKind.OpenTop ? null

@@ -19,7 +19,14 @@ public static class MapOpeningBoundary
     public static MapOpeningPlane Compile(MapSurfaceRef surface, MapSurfacePatch patch, MapHorizontalOpening opening)
     {
         ArgumentNullException.ThrowIfNull(opening);
-        MapSurfaceCompiler.Validate(surface, patch);
+        return Compile(new MapValidatedSurfacePatch(surface, patch), opening);
+    }
+
+    internal static MapOpeningPlane Compile(MapValidatedSurfacePatch validated, MapHorizontalOpening opening)
+    {
+        ArgumentNullException.ThrowIfNull(opening);
+        MapSurfaceRef surface = validated.Surface;
+        MapSurfacePatch patch = validated.Patch;
         if (opening.Patch != patch.Key || opening.SlotCells.Count == 0)
             throw new MapDocumentException("opening must name absent cells in its patch");
         try

@@ -12,7 +12,9 @@ internal sealed class MapBoundPreparation
     readonly MapScopedSurfaces _view;
     readonly MapRefinementLimits _limits;
     readonly MapBoundFaceWork? _work;
-    readonly HashSet<MapPatchKey> _validated = new();
+    readonly MapBoundFaceWork? _validationWork;
+    readonly Dictionary<MapPatchKey, MapValidatedSurfacePatch> _validated = new();
+    readonly MapBoundFaceContext? _context;
 
     internal MapBoundPreparation(MapScopedSurfaces view, MapRefinementLimits limits, MapBoundFaceWork? work)
     {
@@ -21,6 +23,21 @@ internal sealed class MapBoundPreparation
         _view = view;
         _limits = limits;
         _work = work;
+        _validationWork = work;
+    }
+
+    internal MapBoundPreparation(MapBoundFaceContext context, MapRefinementLimits limits)
+        : this(context.View, limits, null)
+    {
+        _context = context;
+        _validationWork = context.Work;
+    }
+
+    internal IEnumerable<MapValidatedSurfacePatch> ValidatedPatches => _validated.Values;
+
+    internal void RequireView(MapScopedSurfaces view)
+    {
+        if (!ReferenceEquals(view, _view)) throw new ArgumentException("context view does not match", nameof(view));
     }
 
     internal sealed record Plan(MapRefinementStatus Status, IReadOnlyList<MapCellDemand> Demands,
@@ -75,7 +92,7 @@ internal sealed class MapBoundPreparation
                 return Failure(MapRefinementStatus.MissingGeometry, $"patch {key}: {status}");
             if (status == MapPatchStatus.KnownEmpty) continue;
             if (patch is null) return Failure(MapRefinementStatus.MissingGeometry, $"patch {key}: {status} without payload");
-            Validate(surface, patch);
+            _ = ValidatedPatch(surface, patch);
             long faces = MapSurfaceCompiler.CountFaces(surface, patch, slot);
             count = checked(count + faces);
             if (_work is not null) _work.BoundFacesCounted += faces;
@@ -97,7 +114,7 @@ internal sealed class MapBoundPreparation
         if (!WithinCellBudget(range)) return Failure(MapRefinementStatus.CapacityExceeded, "source faces: cell range");
         if (!_view.TryAcquiredPatch(opening.Patch, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
             return Failure(MapRefinementStatus.MissingGeometry, $"opening '{reference.Id}' {opening.Patch}: {status}");
-        Validate(surface, patch);
+        _ = ValidatedPatch(surface, patch);
         var demands = new List<MapCellDemand>();
         long count = 0;
         foreach (int slot in opening.SlotCells.Order())
@@ -130,11 +147,15 @@ internal sealed class MapBoundPreparation
             for (long x = range.MinX; x < range.MaxXExclusive; x++) yield return (x, z);
     }
 
-    void Validate(MapSurfaceRef surface, MapSurfacePatch patch)
+    internal MapValidatedSurfacePatch ValidatedPatch(MapSurfaceRef surface, MapSurfacePatch patch)
     {
-        if (_validated.Contains(patch.Key)) return;
-        MapSurfaceCompiler.Validate(surface, patch);
-        if (_validated.Count < _limits.MaxContextPatches) _validated.Add(patch.Key);
+        if (_context is not null) return _context.ValidatedPatch(patch.Key);
+        if (_validated.TryGetValue(patch.Key, out MapValidatedSurfacePatch? validated)) return validated;
+        validated = new(surface, patch, _validationWork);
+        // Retain evidence for every borrowed input visited by preflight, including face-free bounds.
+        // The context's patch budget limits demanded compilation masks, not validation evidence.
+        _validated.Add(patch.Key, validated);
+        return validated;
     }
     MapSurfaceRef? Surface(string? id) => _view.Surfaces.FirstOrDefault(s => s.Id == id);
     static Plan ClassificationFailure(MapLowerCellClassification classification) => Failure(

@@ -1,7 +1,11 @@
 # Explicit motion profiles and generic proof
 
-The profile identifies F3's full-capsule controller, not the later #438 raised-shell draft. It is
-independent of local query leases and frame epochs. It does not choose a new game body model.
+The current profile identifies the implemented F3 full-capsule controller. The
+[2026-10-09 owner amendment](SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md) assigns ground movement
+to #438 and supersedes this body model with shell solids plus certified footprint support.
+The current identity remains accurate for the pre-handoff code. Change it when the phase 4
+handoff changes runtime and probe together, so earlier proofs cannot be reused for the new model.
+The profile remains independent of local query leases and frame epochs.
 
 ## Identity
 

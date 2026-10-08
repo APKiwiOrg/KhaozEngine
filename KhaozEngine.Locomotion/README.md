@@ -479,6 +479,12 @@ swept movement or water transitions required to reach it.
 
 ### Explicit movement development status
 
+The [2026-10-09 owner amendment](../docs/design/SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md)
+assigns all ground movement to #438, including this explicit path. Its phase 4 handoff will replace
+land support selection and ground passes with the shared knee-height shell and certified footprint
+core. Swimming retains medium proofs, water motion/policies and leased admission/transport.
+The code described below is the pre-handoff implementation. The bank-step RED remains open.
+
 `ExplicitCharacterMovement.Step` and `StepTowards` use a caller-owned `MovementQueryLease` and
 return `MovementStepResult`. Publish its pure framed state before disposing the lease. Camera and
 world commands share the existing direction and facing rules and the same capsule resolver.

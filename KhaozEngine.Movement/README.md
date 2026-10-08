@@ -842,7 +842,11 @@ The driver has no wall following or local avoidance. It walks straight and repor
 
 ## Explicit framed motion and profile identity
 
-`ExplicitMovementProfile` describes the F3 full-capsule motion model. Its fingerprint includes all
+`ExplicitMovementProfile` currently describes the implemented F3 full-capsule motion model.
+The [owner amendment](../docs/design/SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md) supersedes that ground
+model with #438 shell solids and certified footprint support. The identity must change with the
+phase 4 implementation handoff, not before the runtime and probe actually use the new core.
+Its fingerprint includes all
 MoveTuning inputs, water capability and launch tuning, area masks, captured boundary identity,
 probe cadence and budget, finite resolver limits and versions, engine version, and ordinal-sorted
 semantic source digests. Supply every query/clearance, shore-policy and actual route-cost dependency

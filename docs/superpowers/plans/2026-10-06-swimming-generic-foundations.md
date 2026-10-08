@@ -7,14 +7,19 @@
 with complete collision and explicit environment-query availability, before native adapters.
 
 **Architecture:** A physics-owner lease binds live solid queries to a prepared environment pin.
-Locomotion composes canonical membership/support facts with one capsule solver. Movement and
-NetWorld consume the same solver and state, without depending on MapDoc or rendering.
+Locomotion composes certified medium facts with the shared movement core. Under the 2026-10-09
+owner amendment, #438 owns shell solids and footprint support, and swimming owns medium proofs.
+Movement and NetWorld consume the same core and state, without depending on MapDoc or rendering.
 
 **Tech Stack:** .NET/C#, existing Physics/Bepu, Primitives, Locomotion, Movement and NetWorld.
 
 **Spec:** [Immutable F3](../../design/SWIM-ENVIRONMENT-FACADE-F3-2026-10-06.md), accepted by migration
 at engine 404fa519f, SHA-256 d508ac3b5bed503a30e12e044c91a9a33924f13184efe750961a8c496559f572.
-Section 8's inherited F2 reference means F3 in this plan. No semantic change is made to F3.
+Section 8's inherited F2 reference means F3 in this plan. The original file/hash remains the historical
+baseline. The [2026-10-09 owner amendment](../../design/SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md)
+supersedes its ground body/support model. Explicit grounded ticks adopt the #438 ground core at
+phase 4, replacing land selection with its certified support primitive. The #438 specification
+at 86ff2b637 still awaits owner review before a plan. Do not implement that ground core in this lane.
 
 **Status:** G1a Tasks 1 to 6 approved on 2026-10-06 by coordinator thread
 938c801f-2df0-4298-8bd1-dc39e9015e60 under the owner's explicit overnight delegation, against
@@ -445,9 +450,10 @@ Task 4 now includes the shared bounded solid/water resolver, dry/wading/swimming
 closed-water boundaries, exact play-area constraints and runtime/profile motion equivalence.
 The ordinary 30 Hz bank approach remains a failing regression. See
 [the measured support dependency](../../design/SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md).
-Column-only support cannot supply the required finite bank feature. Native support/correspondence
-alignment and the overlapping ground-controller model remain unresolved. Do not replace that
-missing certificate with an off-axis point, inferred infinite plane or a second solver.
+Column-only support cannot supply the required finite bank feature. The owner has resolved the
+model and ownership through #438. Its phases 1 and 2 own the certified bank-footprint behavior,
+and phase 4 hands the ground core to swimming. Keep both StepFootprint tests unchanged until
+phases 1 and 2 land. Do not substitute an off-axis point, inferred plane or a second solver.
 
 Tasks 5 and 6 now have implementations and focused evidence for surface motion/jumps/excursions,
 wire state, prediction/reconciliation, leased publication, cold admission, cell/player persistence,

@@ -3864,3 +3864,14 @@ and Editor. Final runs on the last commit passed 64 MapDoc and 3 Editor cases, w
 96 Editor and 3 Compatibility, format and guards clean, and the frozen tests unchanged apart from whitespace-only
 formatting (T13-9). Review approved on the first pass. Rulings T13-1 to T13-9 are in the ledger. Owner provenance for
 installed map statics is KhaozEngine#1327 for R3. Proof is `proofs/2026-10-09-r2-task13-green.json`.
+
+
+### Task 14 frame-local precision verified
+
+Source 5a95ef952 expresses compiled patches and strips in a world frame through integer anchor subtraction and one
+float rounding, refuses local XZ beyond the frame radius, and composes prefab patches from exact local vertices in
+double with one final rounding, leaving R1 MapTransform unchanged. Compile RED is preserved at 526d711b4. The final run
+on the last commit passed all 10 MapDoc cases, including the added strip case (T14-2). Far frames 250 and 251 at
+32 km and depths to 640 m reproduce near-origin local positions exactly, and heights and composed vertices match
+independent double references within 0.0001 m. The named vertical risk is recorded with no target relaxed. Review
+approved on the first pass. Proof is `proofs/2026-10-09-r2-task14-green.json`.

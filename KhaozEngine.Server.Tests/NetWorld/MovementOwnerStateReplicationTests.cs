@@ -83,9 +83,9 @@ public class MovementOwnerStateReplicationTests
 
     /// <summary>
     /// The measured saving. A moving player as one non-owner observer receives it in a full snapshot is
-    /// <c>[count:4][netId:8]</c>, a position frame <c>[2 + 16]</c>, a movement frame <c>[2 + 56]</c> and the
-    /// terminator: 90 bytes. Generation 11 sent the same entity with a 64-byte movement payload, 98 bytes. The owner
-    /// pays two bytes more than before for the frame id, and nobody else pays anything.
+    /// <c>[count:4][netId:8]</c>, a position frame <c>[2 + 16]</c>, a movement frame <c>[2 + 57]</c> and the
+    /// terminator: 91 bytes. Generation 12 separated the eight timer bytes from the movement payload.
+    /// Generation 14 adds one excursion byte for every observer. Only the owner receives the timer frame.
     /// </summary>
     [Fact]
     public void Bytes_per_move_to_a_non_owner_drop_by_the_eight_timer_bytes()
@@ -100,7 +100,7 @@ public class MovementOwnerStateReplicationTests
 
         Assert.Equal(64, BuiltinBlobLayout.MovementPayloadLength(BuiltinBlobLayout.MovementOwnerWireGeneration - 1));
         Assert.Equal(56, BuiltinBlobLayout.MovementPayloadLength(BuiltinBlobLayout.MovementOwnerWireGeneration));
-        Assert.Equal(4 + 8 + (2 + 16) + (2 + 56) + 2, toObserver.Length);
+        Assert.Equal(4 + 8 + (2 + 16) + (2 + 57) + 2, toObserver.Length);
         Assert.Equal(toObserver.Length + 2 + BuiltinBlobLayout.MovementOwnerPayloadBytes, toOwner.Length);
     }
 

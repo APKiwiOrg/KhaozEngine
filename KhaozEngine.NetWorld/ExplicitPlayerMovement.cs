@@ -1,6 +1,7 @@
 using System;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Primitives;
+using KhaozEngine.Sharding;
 
 namespace KhaozEngine.NetWorld;
 
@@ -74,4 +75,12 @@ public sealed partial class WorldClientConfig
     /// <summary>Opt-in leased prediction and correction queries. Unresolved bases are held for retry
     /// before publication. Null retains legacy prediction.</summary>
     public ExplicitPlayerMovement? ExplicitMovement { get; init; }
+}
+
+public sealed partial class ShardedWorldServerConfig
+{
+    /// <summary>Creates one explicit environment binding per live cell runtime. The binding must
+    /// use that cell's physics source and frame. The caller owns its query view and environment.
+    /// Null retains legacy movement. A configured factory cannot return null.</summary>
+    public Func<CellSim, ExplicitPlayerMovement>? ExplicitMovementFactory { get; init; }
 }

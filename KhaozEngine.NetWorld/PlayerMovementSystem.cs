@@ -25,13 +25,13 @@ namespace KhaozEngine.NetWorld;
 /// <see cref="Migrating"/> entities are skipped: the owning cell is the sole simulator.
 /// <para>
 /// ONE INSTANCE PER CELL, holding that cell's physics world and that cell's island <see cref="Frame"/>. All of its
-/// fields are readonly for the instance's life and it keeps no per-TICK mutable state, so the scheduler fan-out and
-/// its scheduler-independence claim are unchanged. The per-cell shape is what makes the frame safe: a single shared
+/// bindings are fixed for the instance's life. Its explicit simulator and read scope belong to this cell only,
+/// so no mutable movement state is shared across the scheduler fan-out. The per-cell shape is what makes the frame safe: a single shared
 /// instance with a settable frame would be a write-then-read on state shared across parallel cell ticks, and the
 /// symptom of losing that race is a player in the wrong cell's coordinates for one tick, which is a 128 m teleport.
 /// </para>
 /// </summary>
-public sealed class PlayerMovementSystem : ISystem
+public sealed partial class PlayerMovementSystem : ISystem
 {
     private readonly Func<float, float, float> groundHeight;
     private readonly Func<float, float, Vector3>? groundNormal;
@@ -108,6 +108,7 @@ public sealed class PlayerMovementSystem : ISystem
 
     public void Update(World world, float dt)
     {
+        if (explicitSimulator is not null) PrepareExplicitOwners(world);
         // Built once per Update rather than per entity, and skipped entirely on an unframed cell, so the framed path
         // costs one delegate allocation per cell per tick and the unframed path costs nothing.
         Func<float, float, float> ground = adaptSamplers ? GroundHeightIn : groundHeight;
@@ -147,18 +148,19 @@ public sealed class PlayerMovementSystem : ISystem
             // a valid, non-canonical stamp), and it IS healed the moment it crosses a door this system does not own
             // (a border ghost mirror or a cell handoff both convert through CellSim.AdaptFrame). One comparison per
             // covered entity per tick.
-            if (pos.Frame != cellFrame) pos = pos.ToFrame(cellFrame);
+            ReplicatedPosition localPosition = pos.Frame == cellFrame ? pos : pos.ToFrame(cellFrame);
 
             // The feel timers ride their own owner-only component. Carried IN and written back OUT like every other
             // carried field, so the coyote window and the jump buffer count across ticks.
             bool hasOwner = world.TryGet(e, out MovementOwnerState owner);
             var state = new MoveState
             {
-                Position = pos.Local,
+                Position = localPosition.Local,
                 VerticalVelocity = ms.VerticalVelocity,
                 Grounded = ms.Grounded,
                 TimeSinceGrounded = owner.TimeSinceGrounded,
                 JumpBufferRemaining = owner.JumpBufferRemaining,
+                WaterExcursion = ms.WaterExcursion,
                 Swimming = ms.Swimming,   // carry the swim flag IN so the enter/exit hysteresis band works across ticks
                 // Carry the full sim-local average during ordinary ticks. A shard handoff reconstructs the component
                 // through its observer-safe codec, which intentionally omits that float but preserves ClimbRateQ.
@@ -190,15 +192,25 @@ public sealed class PlayerMovementSystem : ISystem
                 FacingYaw = MovementState.DecodeFacingYaw(ms.FacingYawQ),
                 Commitment = ms.Commitment,
             };
-            state = CharacterMovement.Step(state, move.Command, dt, ground, tuning, normal, physics, clampXz, fluid);
+            var basis = new PlayerMoveState
+            {
+                Move = state,
+                TeleportEpoch = ms.TeleportEpoch,
+                FrameAnchor = new(cellFrame.Anchor.X, cellFrame.Anchor.Z)
+            };
+            using PlayerMoveReadScope? read = explicitSimulator?.BeginExplicitRead(basis);
+            state = explicitSimulator is null
+                ? CharacterMovement.Step(state, move.Command, dt, ground, tuning, normal, physics, clampXz, fluid)
+                : explicitSimulator.Step(basis, move.Command, dt).Move;
 
-            pos = pos.WithLocal(state.Position);   // frame preserved by construction, never re-derived
+            pos = localPosition.WithLocal(state.Position);   // frame preserved by construction, never re-derived
             ms.VerticalVelocity = state.VerticalVelocity;
             ms.Grounded = state.Grounded;
             owner.TimeSinceGrounded = state.TimeSinceGrounded;
             owner.JumpBufferRemaining = state.JumpBufferRemaining;
             if (hasOwner) world.Get<MovementOwnerState>(e) = owner;
             else (unseeded ??= new List<(Entity, MovementOwnerState)>()).Add((e, owner));
+            ms.WaterExcursion = state.WaterExcursion;
             ms.Swimming = state.Swimming;   // write the swim flag back OUT so it replicates (TryGetPlayerState + remotes)
             ms.ClimbRateEwma = state.ClimbRateEwma;   // persist the sim-local ascent EWMA tick-to-tick (rides no wire)
             // Write the quantized step-climb rate OUT so it replicates to remotes (the glide signal). The single-World

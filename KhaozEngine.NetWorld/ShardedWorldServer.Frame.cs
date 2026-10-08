@@ -102,15 +102,38 @@ public sealed partial class ShardedWorldServer
         public required PlayerMovementSystem Movement { get; init; }
         public required PlayerMoveSimulator Clamp { get; init; }
         public required WorldFrame Frame { get; init; }
+        public required MoveTuning Tuning { get; init; }
+        public ExplicitPlayerMovement? Explicit { get; init; }
 
         /// <summary>Ground-clamps an ABSOLUTE spawn position and hands back an ABSOLUTE state: the clamp steps in
         /// the cell's frame (so it queries the cell's own colliders in their own space) and the conversion happens on
         /// both sides of it, because the caller keys the owning cell off the absolute position.</summary>
-        public PlayerMoveState SpawnClamp(in PlayerMoveState absolute, float dt)
+        public PlayerMoveReadScope? BeginPlacement(in PlayerMoveState absolute, float dt,
+            out PlayerMoveState placed, out bool accepted)
         {
             Vector3 anchor = Frame.Anchor;
             PlayerMoveState seeded = absolute.ToAnchor(new Vector2(anchor.X, anchor.Z));
-            return Clamp.Step(seeded, MoveCommand.Idle, dt).Absolute;
+            PlayerMoveReadScope? read = Clamp.BeginExplicitRead(seeded);
+            if (read is null)
+            {
+                placed = Clamp.Step(seeded, MoveCommand.Idle, dt).Absolute;
+                accepted = true;
+                return null;
+            }
+            placed = default;
+            accepted = false;
+            if (read.BasisValid && read.Queries is { } queries)
+            {
+                var result = ExplicitCharacterMovement.SettlePlacement(new(seeded.Move, queries.Frame, null),
+                    Tuning, Explicit!.Water, queries);
+                if (result.Outcome == MovementStepOutcome.Advanced)
+                {
+                    seeded.Move = result.State.State;
+                    placed = seeded.Absolute;
+                    accepted = true;
+                }
+            }
+            return read;
         }
     }
 
@@ -119,14 +142,18 @@ public sealed partial class ShardedWorldServer
     private CellRuntime RuntimeFor(CellSim cell)
     {
         if (cellRuntime.TryGetValue(cell.Coord, out CellRuntime? runtime)) return runtime;
+        ExplicitPlayerMovement? explicitMovement = config.ExplicitMovementFactory is { } factory
+            ? factory(cell) ?? throw new InvalidOperationException("The explicit cell movement factory returned null.") : null;
         runtime = new CellRuntime
         {
             Movement = new PlayerMovementSystem(cellGroundHeight, tuning, cellGroundNormal, cellBounds,
-                cell.Physics, cellMedium, cell.Frame, config.SamplerSpace),
+                cell.Physics, cellMedium, cell.Frame, config.SamplerSpace, explicitMovement),
             Clamp = new PlayerMoveSimulator(cellGroundHeight, tuning, cellGroundNormal, cellBounds,
-                cell.Physics, cellMedium, config.SamplerSpace)
+                cell.Physics, cellMedium, config.SamplerSpace, explicitMovement)
             { Frame = cell.Frame },
             Frame = cell.Frame,
+            Tuning = tuning,
+            Explicit = explicitMovement,
         };
         cellRuntime[cell.Coord] = runtime;
         cell.World.AddSystem(runtime.Movement);

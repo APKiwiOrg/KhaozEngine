@@ -10,12 +10,14 @@ using KhaozEngine.Primitives;
 namespace KhaozEngine.Tests.NetWorld.Fixtures;
 
 // Finite dry room and real solid floor. This is not a native producer or a second movement solver.
-internal sealed class ExplicitPlayerEnvironment : IMovementEnvironmentProvider, IDisposable
+internal sealed partial class ExplicitPlayerEnvironment : IMovementEnvironmentProvider, IDisposable
 {
     public BepuPhysicsWorld Physics { get; } = new(Vector3.Zero);
     public IPhysicsWorldQueryView View { get; }
     public MovementEnvironmentContext Context { get; }
-    public MovementQueryIdentity Identity { get; } = new("explicit-player-fixture", 1, "dry-room");
+    public MovementQueryIdentity Identity { get; }
+    public float? SurfaceY { get; }
+    public float FloorY { get; }
     public string WorldId => "world";
     public MovementAvailability Availability = MovementAvailability.Known;
     public readonly List<Vector3> RebuiltPositions = [];
@@ -39,9 +41,13 @@ internal sealed class ExplicitPlayerEnvironment : IMovementEnvironmentProvider, 
         FrameAnchor = Vector2.Zero
     };
 
-    public ExplicitPlayerEnvironment()
+    public ExplicitPlayerEnvironment(Vector3 origin = default, float? surfaceY = null)
     {
-        Physics.AddStatic(new BoxShape(new(8, 0.125f, 8)), Pose.At(new(0, -0.125f, 0)));
+        SurfaceY = surfaceY;
+        FloorY = surfaceY.HasValue ? surfaceY.Value - 8 : 0;
+        Identity = new("explicit-player-fixture", 1, surfaceY?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "dry-room");
+        Physics.AddStatic(new BoxShape(new(8, 0.125f, 8)), Pose.At(origin + new Vector3(0, FloorY - 0.125f, 0)));
+        if (origin != Vector3.Zero) Physics.Rebase(origin);
         View = Physics.CreateQueryViewExcludingStatics([]);
         Context = new(View, this, Identity);
     }
@@ -80,20 +86,17 @@ internal sealed class ExplicitPlayerEnvironment : IMovementEnvironmentProvider, 
         public MovementScopeWitness Witness { get; }
         public void AssertCurrent() => physics.AssertCurrent();
         public MovementWaterPoint SampleCentreWater(in MovementBodyQuery body) =>
-            new(MovementAvailability.Known, new("world", "room"), null, false, 1, null);
+            owner.SampleWater(body);
         public MovementSupportSet EnumerateSupport(in MovementSupportRequest request, Span<MovementSupportCandidate> candidates)
         {
             bool floor = Math.Abs(request.Body.Centre.X) < 8 && Math.Abs(request.Body.Centre.Z) < 8;
             if (floor) candidates[0] = new(new("world", "floor"), new("world", "room"),
-                new(request.Body.Centre.X, 0, request.Body.Centre.Z), Vector3.UnitY, null);
+                new(request.Body.Centre.X, owner.FloorY, request.Body.Centre.Z), Vector3.UnitY, null);
             return new(MovementAvailability.Known, floor ? 1 : 0, floor ? 1 : 0, owner.Identity);
         }
         public MovementCoverageResult TraceWater(in MovementMediumSweepQuery query, Span<MovementCoverageSpan> spans,
             Span<MovementDomainContact> contacts)
-        {
-            spans[0] = new(0, 1, 0, 0, true);
-            return new(MovementAvailability.Known, 1, 1, 0, 0, 0, owner.Identity);
-        }
+            => owner.TraceWater(query, spans, contacts);
         public MovementAvailability RebuildSelection(in FramedMovementState state, out MovementSelection selection)
         {
             owner.RebuiltPositions.Add(state.State.Position);

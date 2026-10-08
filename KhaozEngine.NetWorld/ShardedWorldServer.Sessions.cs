@@ -37,24 +37,32 @@ public sealed partial class ShardedWorldServer
         tickedSlots.Remove(slot);
         replication.Forget(slot);
         Vector3 spawn = JoinSpawn(slot, persistenceKey);
-        PlayerMoveState state = RuntimeFor(host.CellFor(spawn.X, spawn.Z))
-            .SpawnClamp(new PlayerMoveState { Position = spawn }, config.TickSeconds);
-        long netId = allocator.Next().Value;
-        Entity entity = host.SpawnOwned(state.Position.X, state.Position.Z, netId, out CellSim cell);
-        cell.World.Set(entity, ReplicatedPosition.FromWorld(state.Position, cell.Frame));
-        MovementComponents.Set(cell.World, entity, state);
-        if (!string.IsNullOrEmpty(displayName))
-            cell.World.Set(entity, new PlayerIdentity { DisplayName = displayName });
-        EnsureWired(cell);
-        netIdBySlot[slot] = netId;
-        slotByNetId[netId] = slot;
-        lastAckBySlot[slot] = -1;
-        accountIdBySlot[slot] = accountId;
-        RateLimiter? limiter = config.AntiCheat.CreateLimiter(config.TickSeconds);
-        if (limiter is not null) rateBySlot[slot] = limiter; else rateBySlot.Remove(slot);
-        correctionStreakBySlot[slot] = 0;
-        host.BindClient(slot, netId);
-        boundPlayerCellsVersion++;
+        using (var read = RuntimeFor(host.CellFor(spawn.X, spawn.Z)).BeginPlacement(
+            new PlayerMoveState { Position = spawn }, config.TickSeconds, out PlayerMoveState state, out bool accepted))
+        {
+            if (!accepted)
+            {
+                ReleasePersistenceKey(slot);
+                net.Disconnect(slot);
+                return;
+            }
+            long netId = allocator.Next().Value;
+            Entity entity = host.SpawnOwned(state.Position.X, state.Position.Z, netId, out CellSim cell);
+            cell.World.Set(entity, ReplicatedPosition.FromWorld(state.Position, cell.Frame));
+            MovementComponents.Set(cell.World, entity, state);
+            if (!string.IsNullOrEmpty(displayName))
+                cell.World.Set(entity, new PlayerIdentity { DisplayName = displayName });
+            EnsureWired(cell);
+            netIdBySlot[slot] = netId;
+            slotByNetId[netId] = slot;
+            lastAckBySlot[slot] = -1;
+            accountIdBySlot[slot] = accountId;
+            RateLimiter? limiter = config.AntiCheat.CreateLimiter(config.TickSeconds);
+            if (limiter is not null) rateBySlot[slot] = limiter; else rateBySlot.Remove(slot);
+            correctionStreakBySlot[slot] = 0;
+            host.BindClient(slot, netId);
+            boundPlayerCellsVersion++;
+        }
         PlayerJoined?.Invoke(slot, accountId);
     }
 

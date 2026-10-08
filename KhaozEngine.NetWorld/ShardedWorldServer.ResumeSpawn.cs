@@ -78,7 +78,8 @@ public sealed partial class ShardedWorldServer
         // absolute. The reset itself moves the entity through SetPlayerState, so the owning cell follows on the
         // next handoff pass exactly as any other out-of-cell placement does.
         Vector3 at = ConfiguredSpawn(slot);
-        spawn = RuntimeFor(host.CellFor(at.X, at.Z)).SpawnClamp(new PlayerMoveState { Position = at }, config.TickSeconds);
-        return true;
+        using var read = RuntimeFor(host.CellFor(at.X, at.Z)).BeginPlacement(new PlayerMoveState { Position = at },
+            config.TickSeconds, out spawn, out bool accepted);
+        return accepted;
     }
 }

@@ -1,0 +1,82 @@
+{
+  "status": "Generic sharded step, join and configured-spawn read ownership. Other destination doors remain pending.",
+  "baseCommit": "28f2edd9a",
+  "runs": {
+    "cell-step-red": {
+      "path": "/tmp/swim-cell-step-red.log",
+      "sha256": "2d1376af43e6374e6fc8d6ebe88b4b6c2769a82fb981772b9ec91d9c8518d793",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "cell-step-green": {
+      "path": "/tmp/swim-cell-step-green.log",
+      "sha256": "e7bf7fba32eb0727200556bc231ef5dad51fdd258fad64c2f430b451e4e92315",
+      "passed": 40,
+      "failed": 1,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "sharded-head-red": {
+      "path": "/tmp/swim-sharded-head-red.log",
+      "sha256": "612dabdab6a5ebf04abd7006cb70fe4b2c660cc0710252351289acd83dab5f47",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "sharded-head-green": {
+      "path": "/tmp/swim-sharded-head-green.log",
+      "sha256": "05a29b2496caff4fff13fb2680bac21d3a430e9c502ea272c7793e0ee52511d1",
+      "passed": 15,
+      "failed": 3,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "sharded-head-fixture-fix": {
+      "path": "/tmp/swim-sharded-head-fixture-fix.log",
+      "sha256": "4531b2f6d0658632ba7c51fbdf57361f08fe1d46d6b7e7aafed3d6dcee547f53",
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "sharded-frame-green": {
+      "path": "/tmp/swim-sharded-frame-green.log",
+      "sha256": "f1dac6646bf4a793ab9c21f3c14aa97826d472aa4e9fc6bdacf16e6d27d2758a",
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "sharded-water": {
+      "path": "/tmp/swim-sharded-water.log",
+      "sha256": "26ee3b8b7fb53eb56cbe22190fdf108a99d74a9225cd21c67abf548ca7b1e5e6",
+      "passed": 17,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "sharded-prediction-green": {
+      "path": "/tmp/swim-sharded-prediction-green.log",
+      "sha256": "6c1e4bc8cd117d81086ca37edfeb654874cbbf9ef1880a9535aefd3fa8e7a7fc",
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    }
+  },
+  "corrections": [
+    "REDs were missing explicit cell constructor and factory property.",
+    "Cell regressions found one stale 56-byte current-wire expectation. Historical generation-12 assertions remain 56, current generation-14 observer assertion is 57.",
+    "Initial sharded head fixture had InterestRadius larger than OverlapMargin and was corrected before valid runtime proof."
+  ],
+  "pending": [
+    "Sharded teleport, restore and handoff admission",
+    "Generic runtime/nav equivalence and profile identity",
+    "Ordinary movement compatibility and commitments",
+    "Whole-branch review, main reconciliation and full verification",
+    "Native producer acceptance, released adoption and game feature"
+  ]
+}

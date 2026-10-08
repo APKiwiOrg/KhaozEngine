@@ -1014,9 +1014,10 @@ Older persisted payloads append None through the existing ordered layout rewrite
 Swimming flag is preserved. The automatic generation handshake rejects peers on the earlier codec.
 The movement payload is now 57 bytes, while owner timers remain 8 and input frames remain 18.
 
-This is transport groundwork. Explicit simulation, descent/footing transitions, refused-command
-consumption, cold environment reconstruction and native acceptance remain pending. Legacy movement
-still leaves the new excursion at None. A transported flag alone does not certify water traversal.
+Explicit simulation consumes the excursion through surface motion, descent/footing transitions and
+cold environment reconstruction. Refused steps consume their input and clear tick effects. Legacy
+callers default the new excursion to None. Native producer acceptance and game adoption remain
+separate from these generic movement and transport proofs.
 
 ## Explicit player simulation read scope
 
@@ -1037,7 +1038,12 @@ Real Bepu/prediction tests cover publication fencing, corrected pending-command 
 refused presses and frame mismatch. WorldServerConfig and WorldClientConfig expose ExplicitMovement. Single-world ticks, prediction,
 replay, spawn, reset and teleport hold the lease through publication. Unclassified client bases
 remain pending and retry before new prediction. A first unclassified basis renders no local avatar.
-Sharded integration remains in progress. Wet-region admission awaits the agreed SM1 implementation.
+`ShardedWorldServerConfig.ExplicitMovementFactory` binds each cell to its own physics source and
+frame. Its `PlayerMovementSystem` retains the read through position, movement and owner-timer writes.
+Ghosts and migrating entities acquire no movement read. Join and configured-spawn settlement must
+classify before publication. A configured factory returning null is invalid, not a legacy fallback.
+Generic wet-head tests cover actual surface launch, replicated excursion and return to swimming.
+Sharded teleport, persisted-cell restore and handoff admission remain in progress.
 
 ## Client simulation state versus presentation state
 

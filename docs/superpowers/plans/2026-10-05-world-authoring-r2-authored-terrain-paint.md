@@ -3770,3 +3770,18 @@ ten-file diagnostic format and repository guards passed. Independent spec and qu
 with one deferred minor note (a verified patch digest is hashed twice). Proof is
 `proofs/2026-10-08-r2-task8c-green.json`. Task 8's 64 planned cases (8A 13, 8B 33, 8C 18) are now
 closed as focused checkpoints, not whole-round integration. Task 9 tests-first preparation follows.
+
+
+### Task 9 canonical surface compiler verified
+
+Source 305e13356ebc2e99e7dd3b679aa2582f566cc1e3 adds the canonical topology table, the face compiler
+with exact centroid subdivision fans, legacy float arithmetic, shared face counting, masked compiles
+and paint override. Compile RED is preserved at 06a4dc5d2 in all three projects. Focused 13 MapDoc,
+2 Editor and 2 Compatibility cases passed, zero failures or skips, with the frozen tests unchanged.
+Explicit-file diagnostic format and repository guards passed. Rulings T9-1 (test-only helpers before
+RED), T9-2 (fan centre found explicitly in the edge helper) and T9-3 (paint override refuses a
+boundary that crosses an unchanged physical face, finer paint goes through fine-patch conversion) are
+in the ledger. The first implementation worker was cancelled by a session restart, and its partial
+files were snapshotted, reviewed and kept unchanged by a continuation worker. Independent review
+approved with three deferred coverage notes (paint override, exact-overflow refusal and legacy
+midpoint subdivision). Proof is `proofs/2026-10-08-r2-task9-green.json`.

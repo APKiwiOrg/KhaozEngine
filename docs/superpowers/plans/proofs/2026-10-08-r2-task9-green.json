@@ -1,0 +1,95 @@
+{
+  "task": "9 canonical surface compiler",
+  "source_commit": "305e13356ebc2e99e7dd3b679aa2582f566cc1e3",
+  "red_commit": "06a4dc5d2b0352120631a54d42cbbb98e4ae08ab",
+  "source_sha256": {
+    "KhaozEngine.MapDoc.Compatibility.Tests/LegacyOracleCompilerTests.cs": "128b46b39e3fa4ba29c6c5a4b601192e841b1f2e8c28b7c924974971f2b6aceb",
+    "KhaozEngine.MapDoc.Compatibility.Tests/LegacyOracleConverter.cs": "c619d5b9fc800772f3e1b738ab74e422342ad59f17e814d529c2062e32250ff5",
+    "KhaozEngine.MapDoc.Tests/Surfaces/CompilerFixtures.cs": "17060cd6becbcece0a4ceb8a97feb3c452ffae20fd633b08051d70f399f5c6d4",
+    "KhaozEngine.MapDoc.Tests/Surfaces/SurfaceCompilerTests.cs": "5ea58058a7aea2ca52984f55edef212caa99518e482a920688b12e224fdb8e3a",
+    "KhaozEngine.MapDoc/Surfaces/MapCompiledPatch.cs": "457ee046fff00e1c69e2eb31f8e4e3b9ccdfcacaf7c0cf4980ecc6507d89b5d1",
+    "KhaozEngine.MapDoc/Surfaces/MapSlotCellMask.cs": "75ceac869341458799dc81d420044623867c05bdbfaa9ad0640b6314ef0af60b",
+    "KhaozEngine.MapDoc/Surfaces/MapSubdividedTriangle.cs": "3051505d14ce747e28ccc230c8f91eb72147ec1d9e1e6ec824316364ceef0e3c",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfaceCompiler.cs": "cc73b3350ce1f02abfddf4a54d9f28d3842fe7753a2e3039519beae87a51f300",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfacePaintOverride.cs": "3f712f8ac23324ea7aaaae9fecdb214c22a90febf2ce022cceea0c06dd5be965",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfaceTopology.cs": "c381967e9b1b5c3ff63c3641e8c80d335b673be784fab012d688241642a302ae",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfaceVertexBuilder.cs": "d0077f6c2da785c1586a492f6daafe965592c26c775e73e34aa1b62269899fec",
+    "KhaozEngine.MapEditor.Tests/MapDoc/CompilerBudgetTests.cs": "57e9a5fd12712abe799f6fbc7c9ca4ec649ff34ee50265de58ca4134489105c5"
+  },
+  "test_runs": [
+    {
+      "name": "t9-green-mapdoc",
+      "project": "mapdoc",
+      "filter": "FullyQualifiedName~SurfaceCompilerTests",
+      "exit_code": 0,
+      "executed": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "log_sha256": "44da6b71bc3e2949a3f17e38e5ce40e9cfbfe3d0096672f173f8b9a0fc46dc2a",
+      "trx_sha256": "e171a2f16ca6639d5ac2532fb6b2dcebe68f1f9d257637c1a30e6006995aa40a"
+    },
+    {
+      "name": "t9-green-editor",
+      "project": "editor",
+      "filter": "FullyQualifiedName~CompilerBudgetTests",
+      "exit_code": 0,
+      "executed": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "log_sha256": "6fc7b141bd28df82580e649ac00e617c49627d77e68725b4818455d279c3e1a3",
+      "trx_sha256": "9614eee66dd9524bfb854c4ff9a3ff1f45bf9bfbe2dde2a0d1465228ced1f8d5"
+    },
+    {
+      "name": "t9-green-compat",
+      "project": "compatibility",
+      "filter": "whole project",
+      "exit_code": 0,
+      "executed": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "log_sha256": "075bdd333b7b933728d54a369169451ac98ecccf06f430cbc4b31487244e138a",
+      "trx_sha256": "7577d881dab34d84902ae3380ed5db0d85c7522bc6b9d6cd15f9a7d27d1ee338"
+    }
+  ],
+  "format": {
+    "exit_code": 0,
+    "formatted": "0 of 6311",
+    "analyzers": {
+      "KhaozEngine.MapDoc": "5+155",
+      "KhaozEngine.MapDoc.Tests": "5+211",
+      "KhaozEngine.MapEditor.Tests": "5+213",
+      "KhaozEngine.MapDoc.Compatibility.Tests": "5+211"
+    },
+    "workspace_warnings": 0,
+    "log_sha256": "774cb51919d042918e1a0477172a5f7943e75cc8c4ea95a9f8cd9f43fa04f194"
+  },
+  "guards": {
+    "check-dashes": 0,
+    "check-prose": 0,
+    "check-file-size": 0,
+    "check-agent-instructions": 0,
+    "check-doc-versions": 0
+  },
+  "review": {
+    "verdict": "Approved",
+    "spec": "compliant",
+    "blocking_findings": 0,
+    "minor_deferred": [
+      "paint override regression coverage",
+      "exact-overflow refusal coverage",
+      "legacy midpoint subdivision coverage"
+    ]
+  },
+  "rulings": [
+    "T9-1 test-only helpers prepared before RED",
+    "T9-2 ChildEdges identifies the fan centre explicitly",
+    "T9-3 paint override refuses a boundary crossing an unchanged physical face"
+  ],
+  "recovery": "The first implementation worker was cancelled by a session restart. Its seven untracked files were snapshotted with hashes, then reviewed and kept unchanged by a continuation worker before any verification ran.",
+  "frozen_tests_byte_identical_to_red": true,
+  "scope": "Focused Task 9 proof. Not full-engine integration, candidate or release gates.",
+  "execution": "Direct and serial under owner OA20 through build-slot, each command once."
+}

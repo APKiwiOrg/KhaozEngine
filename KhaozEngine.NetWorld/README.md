@@ -1046,7 +1046,13 @@ Generic wet-head tests cover actual surface launch, replicated excursion and ret
 Cell restore and handoff use staged, batch-wide destination admission. Unknown/refused environments
 retain saved or transferred state for retry, with no live prefix, corrupt-blob quarantine or empty
 replacement save. Cached freezes retain their transient marks. Reads remain held through publication.
-Sharded teleport and player-record persistence admission remain in progress.
+Both heads expose `TrySetPlayerState` and `TryResetToConfiguredSpawn`. A refused placement leaves
+pose, epoch, ownership and movement events unchanged. Explicit sharded cross-cell placement uses
+typed staging and immediately publishes in the admitted destination frame, never a far pose inside
+the source frame. Teleport clears the old water arc before destination classification.
+Player persistence retains refused records and their save guards, retries once per drain, and applies
+the game-state blob only after placement succeeds. Session/seat checks still precede each attempt.
+An invalid record waits for an admitted configured reset before quarantine completes.
 
 ## Client simulation state versus presentation state
 

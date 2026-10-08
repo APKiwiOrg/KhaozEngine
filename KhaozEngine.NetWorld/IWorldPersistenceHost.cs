@@ -8,7 +8,7 @@ namespace KhaozEngine.NetWorld;
 /// save-on-leave, periodic dirty snapshot, keyed <c>player:{accountId}</c>) serves both the single-<see cref="KhaozEngine.Ecs.World"/>
 /// <see cref="WorldServer"/> and the multi-cell <see cref="ShardedWorldServer"/>. Player-keyed and cell-agnostic:
 /// <see cref="IPersistenceHost{TState}.SetPlayerState"/> places a loaded player at its saved position wherever that
-/// falls (a sharded host relocates it to the containing cell on its next handoff pass).
+/// falls. Explicit sharded placement admits and relocates to the destination before publication.
 /// <para>Every member except <see cref="SetResumePositionProvider"/> is inherited verbatim from
 /// <see cref="IPersistenceHost{TState}"/> over <see cref="PlayerMoveState"/>, which is what lets one persistence
 /// core serve this package and the tile stack alike. The signatures did not change when it moved, so an existing

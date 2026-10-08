@@ -9,15 +9,14 @@ namespace KhaozEngine.Replication;
 public sealed class SnapshotStaging
 {
     readonly ReplicationRegistry registry;
-    readonly ClientReplicationView view;
     public World World { get; } = new();
-    public IReadOnlyDictionary<long, Entity> Entities => view.Entities;
+    public ReplicationRegistry Registry => registry;
+    public IReadOnlyDictionary<long, Entity> Entities { get; private set; } = new Dictionary<long, Entity>();
     public IReadOnlyList<RetainedComponent> Retained { get; private set; } = Array.Empty<RetainedComponent>();
 
     SnapshotStaging(ReplicationRegistry registry)
     {
         this.registry = registry;
-        view = new(registry);
     }
 
     public static bool TryDecode(ReplicationRegistry registry, byte[] snapshot,
@@ -26,14 +25,34 @@ public sealed class SnapshotStaging
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(snapshot);
         var candidate = new SnapshotStaging(registry);
-        if (!candidate.view.TryApplyRetainingUnknown(candidate.World, snapshot, out var retained, out error))
+        var view = new ClientReplicationView(registry);
+        if (!view.TryApplyRetainingUnknown(candidate.World, snapshot, out var retained, out error))
         {
             staged = null;
             return false;
         }
+        candidate.Entities = view.Entities;
         candidate.Retained = retained;
         staged = candidate;
         return true;
+    }
+
+    /// <summary>Stages one live entity by typed copy on the requested transport channel. No codec
+    /// writer or reader runs, so a local relocation does not quantize an intermediate pose.</summary>
+    public static SnapshotStaging Capture(ReplicationRegistry registry, World source, Entity entity,
+        ReplicationChannels channel, long? ownerNetId = null)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(source);
+        if (!source.TryGet(entity, out NetId id)) throw new ArgumentException("The source has no network identity.", nameof(entity));
+        var staged = new SnapshotStaging(registry);
+        Entity target = staged.World.Spawn();
+        staged.World.Set(target, id);
+        foreach (ComponentCodec codec in registry.Ordered)
+            if (codec.ShouldWrite(channel, id.Value, ownerNetId) && codec.HasComponent(source, entity))
+                codec.CopyComponent(source, entity, staged.World, target);
+        staged.Entities = new Dictionary<long, Entity> { [id.Value] = target };
+        return staged;
     }
 
     /// <summary>Publishes one admitted entity into a different world. The caller owns net-id

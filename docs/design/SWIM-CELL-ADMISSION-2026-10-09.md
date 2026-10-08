@@ -42,5 +42,11 @@ frozen entity is deduplicated. A changed snapshot for the same pending transfer 
 source and destination cells remain ineligible for eviction until the transfer finishes. Accepted
 migration retains the existing acknowledgement/release handshake.
 
-These are generic destination admission guarantees. Teleport and player-record persistence doors,
-profile/nav equivalence, final review and native/game adoption remain separate unfinished work.
+Immediate local relocation now uses the same destination admission with a typed Migrate-channel
+copy. The source stays untouched until admission succeeds, then ownership changes entirely inside
+the read. Explicit sharded teleports use it instead of temporarily writing far coordinates into the
+source frame. The boolean player-placement seam lets record persistence retain its save guard and
+opaque game blob until the placement or configured reset succeeds.
+
+These are generic destination admission guarantees. Profile/nav equivalence, ordinary movement
+compatibility, final review and native/game adoption remain unfinished work.

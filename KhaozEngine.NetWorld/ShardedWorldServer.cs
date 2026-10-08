@@ -328,31 +328,6 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         return false;
     }
 
-    /// <summary>Places a joined player at <paramref name="state"/> (load-on-join, admin/self-rescue teleport). Writes
-    /// its owning cell's <see cref="ReplicatedPosition"/>; if that position falls in another cell the next
-    /// <see cref="Tick"/>'s handoff relocates the entity there (NetId stable). No-op for an unknown slot. When
-    /// <paramref name="teleport"/> is true the player's monotonic teleport epoch (held on the cell's
-    /// <see cref="MovementState"/>) is advanced so the client cuts to the new position instead of gliding; otherwise
-    /// the current epoch is preserved. The per-cell <see cref="PlayerMovementSystem"/> preserves it in place, so
-    /// ordinary movement never advances it.</summary>
-    public void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false)
-    {
-        if (netIdBySlot.TryGetValue(slot, out long netId) && host.TryGetOwner(netId, out CellSim cell, out Entity e))
-        {
-            if (teleport && TryGetPlayerState(slot, out PlayerMoveState current)
-                && current.Move.Commitment.IsActive)
-                QueueMovementCommitmentEnd(slot, current, MovementCommitmentEndReason.Teleported);
-            uint baseEpoch = TeleportEpochGuard.BaseEpoch(cell.World, e, slot);   // reports rather than zeroing
-            PlayerMoveState next = state;
-            if (teleport) next.Move.Commitment = default;
-            next.TeleportEpoch = teleport ? baseEpoch + 1u : baseEpoch;   // server owns the monotonic epoch
-            // The state came from OUTSIDE the simulation (an admin teleport, a load-on-join record, a self-rescue),
-            // so its position is absolute and lands in the owning cell's frame.
-            cell.World.Set(e, ReplicatedPosition.FromWorld(next.Position, cell.Frame));
-            MovementComponents.Set(cell.World, e, next);
-        }
-    }
-
     /// <summary>Sets the display name replicated for a joined player (added to its owning cell's entity as a
     /// <see cref="PlayerIdentity"/>; it migrates with the entity across cell handoffs since the registered component
     /// is transferred). Cosmetic and independent of the account id; the same seam as

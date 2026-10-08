@@ -100,6 +100,44 @@ public class CellImportAdmissionTests
         Assert.Equal(4, source.Get<Position>(entity).X);
     }
 
+
+    struct MigratedValue : IComponent { public float Value; }
+
+    [Fact]
+    public void LocalRelocationStagesTypedValuesAndPreservesSourceUntilAdmissionSucceeds()
+    {
+        var registry = Registry();
+        registry.Register<MigratedValue>(16, (_, _) => throw new InvalidOperationException("Unexpected wire write."),
+            _ => throw new InvalidOperationException("Unexpected wire read."), channels: ReplicationChannels.Migrate);
+        using var host = new ShardHost(10, 0.1f, registry, 10, 0, Locate);
+        Entity entity = host.SpawnOwned(5, 5, 1, out var source);
+        source.World.Set(entity, new Position { X = 5 });
+        source.World.Set(entity, new MigratedValue { Value = 0.1234567f });
+        source.World.Set(entity, new Transient { Scope = TransientScope.DurableOnly });
+        var destination = host.CellFor(11, 5);
+        var gate = new Gate { Ready = false };
+        destination.ImportAdmission = gate;
+        Assert.False(host.TryRelocateOwned(1, destination.Coord,
+            (world, candidate) => world.Set(candidate, new Position { X = 11 }), out var refusal));
+        Assert.True(refusal.NeedsAdmission);
+        Assert.True(source.TryGetOwned(1, out var original));
+        Assert.Equal(entity, original);
+        Assert.Equal(5, source.World.Get<Position>(entity).X);
+        Assert.False(source.World.Has<Migrating>(entity));
+        gate.Ready = true;
+        gate.OnDispose = () =>
+        {
+            Assert.False(source.World.IsAlive(entity));
+            Assert.True(destination.TryGetOwned(1, out var adopted));
+            Assert.Equal(0.1234567f, destination.World.Get<MigratedValue>(adopted).Value);
+            Assert.Equal(TransientScope.DurableOnly, destination.World.Get<Transient>(adopted).Scope);
+            Assert.Equal(1, host.OwnerCount(1));
+        };
+        Assert.True(host.TryRelocateOwned(1, destination.Coord,
+            (world, candidate) => world.Set(candidate, new Position { X = 11 }), out var accepted));
+        Assert.True(accepted.Ok);
+    }
+
     sealed class Gate : ICellImportAdmission
     {
         public bool Ready = true;

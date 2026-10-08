@@ -195,3 +195,8 @@ and retry those bytes. Existing live NetIds remain protected from stale snapshot
 frozen and both involved cells remain protected from eviction. `PendingMigrationAdmissions` reports
 these waiting transfers. At-least-once delivery is deduplicated by source, destination and entity.
 No local lease or selection pointer is serialized.
+
+`ShardHost.TryRelocateOwned` handles an immediate local transfer to another cell. Its configuration
+callback changes a private Migrate-channel copy. Destination admission precedes any source mutation.
+The read stays held until the destination owns the admitted copy and the source is released. Refusal
+preserves source pose and ownership. This is the explicit NetWorld teleport/restore path.

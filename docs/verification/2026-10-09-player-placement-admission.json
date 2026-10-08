@@ -1,0 +1,105 @@
+{
+  "status": "Generic player restore admission and immediate sharded destination-frame placement. Native/game adoption remains gated.",
+  "baseCommit": "04ed63106",
+  "runs": {
+    "player-admission-red": {
+      "path": "/tmp/swim-player-admission-red.log",
+      "sha256": "b7810a0d7b8c4f3f495743367ef1954fe916ada5315970ded7f7143d38b742e4",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "player-admission-green": {
+      "path": "/tmp/swim-player-admission-green.log",
+      "sha256": "b7810a0d7b8c4f3f495743367ef1954fe916ada5315970ded7f7143d38b742e4",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "player-admission-runtime-red": {
+      "path": "/tmp/swim-player-admission-runtime-red.log",
+      "sha256": "86a31eda96bd82cdc3f1f1c49baf867f7423b0baf16060385e4441bd829b8d0e",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "player-admission-runtime-green": {
+      "path": "/tmp/swim-player-admission-runtime-green.log",
+      "sha256": "86a31eda96bd82cdc3f1f1c49baf867f7423b0baf16060385e4441bd829b8d0e",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "player-admission-valid-red": {
+      "path": "/tmp/swim-player-admission-valid-red.log",
+      "sha256": "fdc2e48c1f86350b01779d2252e89c356289cec99e0141ec792cec61839c554f",
+      "passed": 0,
+      "failed": 3,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "player-admission-valid-green": {
+      "path": "/tmp/swim-player-admission-valid-green.log",
+      "sha256": "86f9fa8d1a0975603c2bd2fd48d67d04d6c984e3d0c792f3832141cc0f7ba984",
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "sharded-placement-red": {
+      "path": "/tmp/swim-sharded-placement-red.log",
+      "sha256": "99db8de8a36ffbe9c007eece4ccd125fa00849f7612090c1bee84f6c7994b830",
+      "passed": 0,
+      "failed": 3,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "sharded-placement-green": {
+      "path": "/tmp/swim-sharded-placement-green.log",
+      "sha256": "55dcc839c60883f99f4a06ac94b245899e22c22a20e2f1f7fd619dfd7d8ddf77",
+      "passed": 33,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "player-placement-regressions": {
+      "path": "/tmp/swim-player-placement-regressions.log",
+      "sha256": "a596b11186db1b7a5efaa2254bd240beefde6be4f8d0f60c6f97eb2919bfb025",
+      "passed": 125,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "player-tile-compatibility": {
+      "path": "/tmp/swim-player-tile-compatibility.log",
+      "sha256": "1119b56abfb622afca63c098543772bad2939aa0a6fffe2ead321dc2e07d2484",
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    }
+  },
+  "fixtureCorrections": [
+    "Initial callback lambdas omitted the in PlayerPersistenceContext parameter, then used byte[] instead of ReadOnlySpan<byte>. Four compile attempts saw these fixture errors.",
+    "The proposed load-callsite edit was saved and the callsite restored to committed baseline after fixture correction. Valid runtime RED then failed all three data-loss/admission tests before reapplying the implementation. No compile failure is counted as runtime RED."
+  ],
+  "coverage": [
+    "Refused player placement retains original record and game blob",
+    "Rejected records retain save guard until configured reset can be admitted",
+    "Deferred record cannot write through a recycled seat or departed session",
+    "Same-cell and far-cell refusal preserves pose and epoch",
+    "Far water teleport classifies and publishes in destination frame under its read",
+    "Typed local relocation invokes no wire codecs and preserves transient state",
+    "Existing persistence and tile-host default implementations remain compatible"
+  ],
+  "pending": [
+    "Ordinary movement semantics and commitments",
+    "Generic runtime/nav equivalence and portable profile identity",
+    "Whole-branch review, current-main reconciliation and full verification",
+    "Native producer acceptance, released adoption and game feature"
+  ]
+}

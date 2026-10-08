@@ -10,7 +10,7 @@ namespace KhaozEngine.WorldStore;
 /// <c>ShardedWorldServer</c> through <c>KhaozEngine.NetWorld</c>'s named <c>IWorldPersistenceHost</c>, and a tile
 /// head through <c>IPersistenceHost&lt;TileMoveState&gt;</c> directly.
 /// <para>Player-keyed and cell-agnostic: <see cref="SetPlayerState"/> places a loaded player at its saved position
-/// wherever that falls (a sharded host relocates it to the containing cell on its next handoff pass).</para>
+/// wherever that falls. Admission-aware hosts defer a placement until its destination can be certified.</para>
 /// <para><typeparamref name="TState"/> is the head's own authoritative per-player state. This seam never reads
 /// inside it: how a state becomes a stored record, and where it sits in space, are the binding's job
 /// (<see cref="PersistenceBinding{TState}"/>), which is what keeps this interface identical for a continuous world
@@ -33,6 +33,20 @@ public interface IPersistenceHost<TState>
     /// a quiet reconnect loud (<see cref="PersistenceCoreConfig.QuietRestoreDistance"/>). Normal per-tick movement
     /// never advances it.</summary>
     void SetPlayerState(int slot, in TState state, bool teleport = false);
+
+    /// <summary>Attempts destination admission and publication. False keeps the loaded record guarded
+    /// for retry and must not change live state. Legacy hosts retain their existing synchronous placement.</summary>
+    bool TrySetPlayerState(int slot, in TState state, bool teleport = false)
+    {
+        SetPlayerState(slot, state, teleport);
+        return true;
+    }
+
+    /// <summary>Attempts the configured reset after a rejected record. False defers the reset and
+    /// retains the save guard. A legacy host with no configured-spawn seam has no reset to perform.</summary>
+    bool TryResetToConfiguredSpawn(int slot) =>
+        !TryGetConfiguredSpawn(slot, out TState spawn) || TrySetPlayerState(slot, spawn, teleport: true);
+
 
     /// <summary>The slots of all currently joined players.</summary>
     IReadOnlyCollection<int> JoinedSlots { get; }

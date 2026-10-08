@@ -521,3 +521,15 @@ to an untrusted browser.
 Poll only the selected stream while its detail view is active. Do not add an all-player projection endpoint. Do not
 publish inventory, bank, skills, or quest snapshots on simulation ticks. Online presence is separate transient
 state and cannot overwrite a durable projection.
+
+## Deferred player placement
+
+`IPersistenceHost<TState>.TrySetPlayerState` reports whether a loaded pose was admitted and published.
+`TryResetToConfiguredSpawn` does the same for the reset after a rejected record. Existing hosts keep
+their synchronous behavior through default implementations. Admission-aware hosts return false
+without changing state while the destination is unavailable.
+
+`StatePersistence<TState>` retains that record, session token and save guard for retry once per drain.
+It applies no game blob, hint or baseline before placement succeeds. Every retry rechecks the session
+and seat, so a deferred load cannot affect a recycled slot. A failed reset also retains its guard.
+Flush finishes its actual IO without spinning on unresolved placement.

@@ -316,3 +316,7 @@ frames. A caller can validate or derive staged state before publication. `CopyTo
 registered typed components into a new destination entity without invoking wire readers again.
 The caller owns collision handling for NetIds, admission-read lifetime and ownership registration.
 Cell restore and migration use this boundary to avoid exposing an unclassified partial import.
+
+`SnapshotStaging.Capture` stages a live entity on a selected channel by typed copy. It invokes no
+wire codec, allowing an immediate local relocation to preserve exact carried values. The registry
+identity remains attached to staging and must match the receiving cell's registry.

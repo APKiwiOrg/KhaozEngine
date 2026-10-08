@@ -21,9 +21,15 @@ public sealed partial class CellSim
         ArgumentNullException.ThrowIfNull(snapshot);
         if (!SnapshotStaging.TryDecode(registry, snapshot, out SnapshotStaging? staged, out string? error))
             return new(this, error ?? "cell snapshot failed to decode");
+        return PrepareImport(staged!);
+    }
+
+    internal ImportPreparation PrepareImport(SnapshotStaging staged)
+    {
+        if (!ReferenceEquals(staged.Registry, registry)) throw new ArgumentException("Import staging uses a different registry.", nameof(staged));
         var existing = LiveOwnedNetIds();
         var selected = new Dictionary<long, Entity>();
-        foreach (var pair in staged!.Entities)
+        foreach (var pair in staged.Entities)
         {
             if (existing.Contains(pair.Key)) continue;
             FrameAdapter?.ToFrame(staged.World, pair.Value, Frame);
@@ -54,14 +60,20 @@ public sealed partial class CellSim
             this.read = read;
             AllNetIds = new List<long>(staged.Entities.Keys);
         }
-        public CellRestoreResult Publish(IReadOnlyDictionary<long, TransientScope>? marks = null)
+        internal CellRestoreResult CheckAdmission()
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             read?.AssertUsable();
-            if (published) throw new InvalidOperationException("A cell import can only publish once.");
             if (decodeError is not null) return CellRestoreResult.Failed(decodeError);
             if (read is { Outcome: not CellAdmissionOutcome.Accepted })
                 return CellRestoreResult.AwaitingAdmission(read.Outcome, read.Detail);
+            return new(true, Array.Empty<long>(), 0, null);
+        }
+        public CellRestoreResult Publish(IReadOnlyDictionary<long, TransientScope>? marks = null)
+        {
+            if (published) throw new InvalidOperationException("A cell import can only publish once.");
+            CellRestoreResult admission = CheckAdmission();
+            if (!admission.Ok) return admission;
             var copies = new Dictionary<long, Entity>();
             try
             {

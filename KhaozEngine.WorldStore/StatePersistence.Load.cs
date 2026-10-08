@@ -107,7 +107,8 @@ public sealed partial class StatePersistence<TState>
     // resume hint, then clear the guard. Shared by Update and FlushAsync so both paths validate identically.
     private void DrainApplyQueue()
     {
-        while (applyQueue.TryDequeue(out PendingApply a))
+        int ready = applyQueue.Count;
+        for (int index = 0; index < ready && applyQueue.TryDequeue(out PendingApply a); index++)
         {
             // SESSION first, because it is the narrower of the two identities: an account can be sitting in the seat
             // and still not be the party this record was read for. loadsInFlight holds the token of the account's
@@ -173,7 +174,6 @@ public sealed partial class StatePersistence<TState>
 
             if (failure is not null)
             {
-                Track(store.SaveAsync(config.QuarantineKeyPrefix + Key(a.PersistenceKey), a.Raw));
                 // Reset to the configured spawn RATHER than simply declining to place the player. Before the join
                 // seed, "not applied" meant the player kept the spawn the join built them at and quarantine needed
                 // no placement at all. It does not mean that any more: a rejoin is built at the resume hint, which
@@ -183,8 +183,12 @@ public sealed partial class StatePersistence<TState>
                 // Forget the hint first, so a further rejoin cannot re-seed the position this record was rejected
                 // for, and place as a genuine teleport: policy moved the player, and the client should cut.
                 hints.Forget(a.PersistenceKey);
-                if (server.TryGetConfiguredSpawn(a.Slot, out TState spawn))
-                    server.SetPlayerState(a.Slot, spawn, teleport: true);
+                if (!server.TryResetToConfiguredSpawn(a.Slot))
+                {
+                    applyQueue.Enqueue(a);
+                    continue;
+                }
+                Track(store.SaveAsync(config.QuarantineKeyPrefix + Key(a.PersistenceKey), a.Raw));
                 ClearGuard(a.PersistenceKey, a.Token);
                 OnRecordQuarantined?.Invoke(a.PersistenceKey, failure);
                 continue;                                      // NOT applied, baseline NOT advanced
@@ -200,7 +204,13 @@ public sealed partial class StatePersistence<TState>
                 || (binding.RestoreDistance?.Invoke(live, a.State)
                     ?? Vector3.Distance(binding.PositionOf(live), binding.PositionOf(a.State)))
                 > config.QuietRestoreDistance;
-            server.SetPlayerState(a.Slot, a.State, teleport: moved);
+            if (!server.TrySetPlayerState(a.Slot, a.State, teleport: moved))
+            {
+                // One attempt per drain. Keep the session token, raw bytes and save guard together,
+                // and do not apply the game blob or advance hints/baselines before placement succeeds.
+                applyQueue.Enqueue(a);
+                continue;
+            }
             if (a.Game is { Length: > 0 } && config.ApplyGameState is { } apply)
                 apply(a.Slot, a.PersistenceKey, a.Game);
             // A converted record has not reached the primary store, even if an older session cached identical bytes.

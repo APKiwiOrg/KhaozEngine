@@ -371,52 +371,6 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     /// <summary>The slots of all currently joined players.</summary>
     public IReadOnlyCollection<int> JoinedSlots => netIdBySlot.Keys;
 
-    /// <summary>Overrides a joined player's authoritative state (and its replicated position). Used by
-    /// load-on-join to place the player at the saved position, and by admin/self-rescue teleports; no-op for an
-    /// unknown slot. When <paramref name="teleport"/> is true the player's monotonic teleport epoch is advanced
-    /// (from the server-held value, ignoring any epoch on the incoming state) so the client cuts to the new position
-    /// instead of gliding; otherwise the current epoch is preserved. The per-tick movement path bypasses this and
-    /// never advances the epoch.
-    /// <para>The incoming position is ABSOLUTE world metres unless the state carries a
-    /// <see cref="PlayerMoveState.FrameAnchor"/> saying otherwise (one read back from this server does not: it is
-    /// handed out absolute). A framed island converts it in, exactly.</para></summary>
-    public void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false)
-    {
-        if (!entityBySlot.TryGetValue(slot, out Entity e)) return;
-        uint baseEpoch = TeleportEpochGuard.BaseEpoch(stateBySlot, slot);
-        PlayerMoveState next = ToIsland(state);
-        if (teleport)
-        {
-            next.Move.Commitment = default;
-            if (config.ExplicitMovement is not null)
-            {
-                next.Move = MovementStepResult.HoldState(next.Move);
-                next.Move.WaterExcursion = WaterExcursionState.None;
-                next.Move.Swimming = false;
-                next.Move.Grounded = false;
-                next.Move.VerticalVelocity = 0;
-                next.Move.HorizontalVelocity = Vector2.Zero;
-            }
-        }
-        using (var read = simulator.BeginExplicitRead(next))
-        {
-            if (read?.BasisValid == false) return;
-            if (read?.Queries is { } queries)
-            {
-                var placement = ExplicitCharacterMovement.SettlePlacement(new(next.Move, queries.Frame, null),
-                    tuning, config.ExplicitMovement!.Water, queries);
-                if (placement.Outcome != MovementStepOutcome.Advanced) return;
-                next.Move = placement.State.State;
-            }
-            if (teleport && stateBySlot.TryGetValue(slot, out PlayerMoveState current) && current.Move.Commitment.IsActive)
-                QueueMovementCommitmentEnd(slot, current, MovementCommitmentEndReason.Teleported);
-            next.TeleportEpoch = teleport ? baseEpoch + 1u : baseEpoch;
-            stateBySlot[slot] = next;
-            world.Set(e, ReplicatedPosition.InFrame(islandFrame, next.Position));
-            MovementComponents.Set(world, e, next);
-        }
-    }
-
     /// <summary>Sets the display name replicated for a joined player (added to its entity as a
     /// <see cref="PlayerIdentity"/>, so the next snapshot carries it to every client in range). Cosmetic and
     /// independent of the account id. Call it from a <see cref="PlayerJoined"/> handler (e.g. resolved from the

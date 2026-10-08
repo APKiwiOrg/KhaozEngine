@@ -1,0 +1,57 @@
+{
+  "status": "Generic-only profile identity, exact-view runtime/probe equivalence and synthetic adjacent frames. Not native bake acceptance.",
+  "baseCommit": "11f666282",
+  "runs": {
+    "motion-profile-red": {
+      "path": "/tmp/swim-motion-profile-red.log",
+      "sha256": "dd93e88b3fef2a7f1be799385ad409e33a45e6b1535a1cf7766b9ae9dff8b5bb",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "motion-profile-green": {
+      "path": "/tmp/swim-motion-profile-green.log",
+      "sha256": "7d9d340169e4525726d426fab2b91ca5ed6175c7b9e1e17de071d11f09048749",
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "motion-profile-fixture-fix": {
+      "path": "/tmp/swim-motion-profile-fixture-fix.log",
+      "sha256": "5ed4e7481159f819aa8b7ebf0ca31c38a5a54954b5b55144327e42c67af2eb35",
+      "passed": 39,
+      "failed": 1,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "motion-profile-affected-green": {
+      "path": "/tmp/swim-motion-profile-affected-green.log",
+      "sha256": "30abcc7c58d1ddfddcc5f9e783a276ac97a6a2da4f7438305a5277fa34f239c0",
+      "passed": 151,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "motion-profile-seams": {
+      "path": "/tmp/swim-motion-profile-seams.log",
+      "sha256": "090ebfbcd48c1239e82855e8cf0aaeabd36c41de7bddbc584eee93fd9cb8a8a9",
+      "passed": 45,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    }
+  },
+  "corrections": [
+    "Initial RED was missing profile/proof APIs.",
+    "Linked fixture needed an explicit false initializer for its optional internal flag to avoid CS0649 in the second test assembly.",
+    "The first executable run passed39 cases and failed one test cleanup. It disposed an alternate physics view before releasing the fixture lease. Corrected disposal order preserved the mutation fence."
+  ],
+  "knownOpen": "AThirtyHertzColumnProducerApproachReachesAWithinStepHeightBank remains RED pending support witness/controller alignment.",
+  "pending": [
+    "Native support witness and controller-model alignment",
+    "Whole-branch independent review, current-main reconciliation and full verification",
+    "Native/released adoption and game feature"
+  ]
+}

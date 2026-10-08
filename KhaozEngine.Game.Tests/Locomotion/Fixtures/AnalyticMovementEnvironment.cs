@@ -22,8 +22,9 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
     readonly Link[] _links;
     IPhysicsWorldQueryView? _view;
     public BepuPhysicsWorld Physics { get; } = new(Vector3.Zero);
+    public IPhysicsWorldQueryView View => _view ?? throw new InvalidOperationException("Acquire the fixture before reading its view.");
     public bool MissingContainment;
-    public bool CertifyAxisSeparation;
+    public bool CertifyAxisSeparation = false;
     public string[] BackingIds = ["fixture-page"];
     public EnvironmentAcquisitionFixture Acquisition { get; private set; } = null!;
     public static readonly MovementQueryIdentity Identity = new("closure", 1u, "scope");

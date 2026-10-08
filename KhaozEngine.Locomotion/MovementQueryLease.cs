@@ -61,6 +61,14 @@ public sealed partial class MovementQueryLease : IDisposable
         Id = new MovementQueryLeaseId(physics.SourceWorld, physics.GeometryGeneration, environmentGeneration, frame.Epoch);
     }
 
+    /// <summary>Reference identity of the exact captured selection, checked while this lease is usable.
+    /// Equal-looking views of the same source are not interchangeable.</summary>
+    public bool UsesPhysicsView(IPhysicsWorldQueryView view)
+    {
+        AssertCurrent();
+        return ReferenceEquals(_view, view);
+    }
+
     public void AssertCurrent()
     {
         AssertThread();

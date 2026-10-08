@@ -13,4 +13,10 @@
     <ProjectReference Include="../KhaozEngine.Movement/KhaozEngine.Movement.csproj" />
     <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.cs" Link="Fixtures/AnalyticMovementEnvironment.cs" />
+    <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticCapsuleVolume.cs" Link="Fixtures/AnalyticCapsuleVolume.cs" />
+    <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticBoxComplement.cs" Link="Fixtures/AnalyticBoxComplement.cs" />
+    <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/EnvironmentAcquisitionFixture.cs" Link="Fixtures/EnvironmentAcquisitionFixture.cs" />
+  </ItemGroup>
 </Project>

@@ -839,3 +839,25 @@ Differences from a typical game-side walk-up rule:
 - Call `Tick` exactly once per simulation tick, since the windows count ticks.
 
 The driver has no wall following or local avoidance. It walks straight and reports a stall.
+
+## Explicit framed motion and profile identity
+
+`ExplicitMovementProfile` describes the F3 full-capsule motion model. Its fingerprint includes all
+MoveTuning inputs, water capability and launch tuning, area masks, captured boundary identity,
+probe cadence and budget, finite resolver limits and versions, engine version, and ordinal-sorted
+semantic source digests. Supply every query/clearance, shore-policy and actual route-cost dependency
+through NavBakeSources. No new route-cost control is added. Profile construction snapshots those
+inputs. Local leases, physics handles and frame epochs never enter the fingerprint.
+
+`GroundMoveContext.StepExplicit` uses that profile's actual cadence and tuning with the existing
+explicit locomotion kernel. The context must name the exact captured movement query view. A second
+view of the same source does not qualify. The caller owns the MovementQueryLease and retains it
+through pure state publication. Legacy terrain and medium delegates are not consulted.
+
+`ProbeExplicitMotion` consumes the same step and reports a local directed-motion proof. Only Proven
+has an End state. Blocked is a local edge result, not globally unreachable. Query refusal, a changed
+frame and budget exhaustion retain their own outcomes and expose no state prefix. Area permission,
+complete search scope and native bake/seam certification remain the navigation producer's work.
+This API adds no native sampler, tiled bake or legacy bake-format change. Generic tests cover dry and
+surface motion, a live wall, exact-view matching, refusal after earlier steps, all tuning inputs,
+semantic-source order and synthetic adjacent-frame equivalence. Real native adoption remains G1b.

@@ -21,6 +21,11 @@ public readonly record struct WaterTraversalPolicy
     public int MaxCoverageSpans => MovementQueryLease.MaxCoverageSpans;
     public int MaxDomainContacts => MovementQueryLease.MaxDomainContacts;
     public int MaxCorrections => MovementCapsuleResolver.MaximumCorrections;
+    public uint ResolverPolicyVersion => MovementCapsuleResolver.PolicyVersion;
+    public uint ProjectionPolicyVersion => MovementConstraintProjection.PolicyVersion;
+    public int MaxSolidContacts => MovementQueryLease.MaxSolidContacts;
+    public int MaxDistinctNormals => MovementConstraintProjection.MaximumDistinctNormals;
+    public int MaxWaterDomainsPerLease => MovementQueryLease.MaxWaterDomainsPerLease;
     public bool IsValid => Mode is >= WaterTraversalMode.Legacy and <= WaterTraversalMode.DryOnly &&
         float.IsFinite(SurfaceJumpSpeed) && SurfaceJumpSpeed >= 0;
 

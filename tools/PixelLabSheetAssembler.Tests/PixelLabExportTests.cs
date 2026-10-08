@@ -3,8 +3,8 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using KhaozEngine.Render2D;
+using static PixelLabSheetAssembler.Tests.ImageFixtures;
 using Xunit;
 
 namespace PixelLabSheetAssembler.Tests;
@@ -33,7 +33,9 @@ public class PixelLabExportTests
                 string rel = $"{folder}/animations/walking/{d}/frame_{i:000}.png";
                 string full = Path.Combine(root, rel);
                 Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-                using (var img = new Image<Rgba32>(12, 12)) { img[6, 11] = new Rgba32(255, 255, 255, 255); img.SaveAsPng(full); }
+                var img = Create(12, 12);
+                SetPixel(img, 6, 11, 255, 255, 255, 255);
+                Save(img, full);
                 paths.Add($"\"{rel}\"");
             }
             dirJson.Add($"\"{d}\": [{string.Join(",", paths)}]");
@@ -138,7 +140,7 @@ public class PixelLabExportTests
         string root = WriteExport();
         var (anim, _) = PixelLabExport.Load(root, "walking");
         var result = SheetAssembler.Assemble(anim, new AssemblyOptions());
-        using var sheet = result.Sheet;
+        var sheet = result.Sheet;
 
         Assert.Equal(3, result.FrameCount);
         Assert.Equal(12 * 3, sheet.Width);

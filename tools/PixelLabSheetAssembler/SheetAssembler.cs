@@ -1,8 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using KhaozEngine.Render2D;
 
 namespace PixelLabSheetAssembler;
 
@@ -40,7 +39,8 @@ public static class SheetAssembler
             }
 
         var warnings = new List<string>();
-        var sheet = new Image<Rgba32>(cellW * frameCount, cellH * DirectionRows.RowCount); // transparent
+        var sheet = new ImageRgba(new byte[checked(cellW * frameCount * cellH * DirectionRows.RowCount * 4)],
+            checked(cellW * frameCount), checked(cellH * DirectionRows.RowCount)); // transparent
 
         // 4. Composite each direction row.
         foreach (var (name, row) in DirectionRows.NameToRow)
@@ -51,7 +51,7 @@ public static class SheetAssembler
 
             for (int col = 0; col < frameCount; col++)
             {
-                Image<Rgba32> frame = byIndex[sources[col]];
+                ImageRgba frame = byIndex[sources[col]];
                 Blit(sheet, frame, col * cellW, row * cellH, cellW, cellH, opt.BottomPad, opt.AlphaThreshold);
             }
         }
@@ -65,7 +65,7 @@ public static class SheetAssembler
     // are clipped: only transparent padding, unless bottomPad > 0 and a frame's opaque area reaches
     // the canvas top (then its top rows can clip; keep bottomPad small relative to frame headroom).
     private static void Blit(
-        Image<Rgba32> sheet, Image<Rgba32> frame,
+        ImageRgba sheet, ImageRgba frame,
         int cellX, int cellY, int cellW, int cellH, int bottomPad, int alphaThreshold)
     {
         int frameW = frame.Width, frameH = frame.Height;
@@ -91,7 +91,8 @@ public static class SheetAssembler
             {
                 int dx = cellX + xOff + x;
                 if (dx < cellX || dx >= cellX + cellW) continue;
-                sheet[dx, dy] = frame[x, y];
+                frame.Pixels.AsSpan((y * frame.Width + x) * 4, 4)
+                    .CopyTo(sheet.Pixels.AsSpan((dy * sheet.Width + dx) * 4, 4));
             }
         }
     }

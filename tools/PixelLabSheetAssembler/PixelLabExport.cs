@@ -5,8 +5,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using KhaozEngine.Render2D;
 
 namespace PixelLabSheetAssembler;
 
@@ -96,7 +95,7 @@ public static class PixelLabExport
                 string full = Path.Combine(root, rel);
                 if (!File.Exists(full)) continue; // metadata lists it but it's absent -> treat as a gap
                 int idx = ParseIndex(rel);
-                list.Add(new FrameEntry(idx, Image.Load<Rgba32>(full)));
+                list.Add(new FrameEntry(idx, ImageRgba.Load(full)));
             }
             list.Sort((a, b) => a.Index.CompareTo(b.Index));
             byDir[dirProp.Name] = list;

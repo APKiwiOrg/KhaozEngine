@@ -1,6 +1,6 @@
 using System.Collections.Generic;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using KhaozEngine.Render2D;
+using static PixelLabSheetAssembler.Tests.ImageFixtures;
 using Xunit;
 
 namespace PixelLabSheetAssembler.Tests;
@@ -14,10 +14,10 @@ public class SheetAssemblerTests
     };
 
     // A frame with a single opaque pixel at (px, py) on a transparent canvas of (w, h).
-    private static Image<Rgba32> Dot(int w, int h, int px, int py)
+    private static ImageRgba Dot(int w, int h, int px, int py)
     {
-        var img = new Image<Rgba32>(w, h);
-        img[px, py] = new Rgba32(255, 255, 255, 255);
+        var img = Create(w, h);
+        SetPixel(img, px, py, 255, 255, 255, 255);
         return img;
     }
 
@@ -38,7 +38,7 @@ public class SheetAssemblerTests
     public void Sheet_dimensions_are_8_rows_by_frameCount_columns()
     {
         var anim = FullAnim(w: 16, h: 16, frameCount: 4, px: 8, py: 15);
-        using var r = SheetAssembler.Assemble(anim, new AssemblyOptions()).Sheet;
+        var r = SheetAssembler.Assemble(anim, new AssemblyOptions()).Sheet;
 
         Assert.Equal(16 * 4, r.Width);
         Assert.Equal(16 * 8, r.Height);
@@ -54,7 +54,7 @@ public class SheetAssemblerTests
         var anim2 = anim with { FramesByDir = byDir };
 
         var result = SheetAssembler.Assemble(anim2, new AssemblyOptions());
-        using var sheet = result.Sheet;
+        var sheet = result.Sheet;
 
         Assert.Equal(20, result.CellWidth);
         Assert.Equal(24, result.CellHeight);
@@ -74,13 +74,13 @@ public class SheetAssemblerTests
         var anim = new CharacterAnimation("Test", "walking", byDir);
 
         var result = SheetAssembler.Assemble(anim, new AssemblyOptions(BottomPad: 0));
-        using var sheet = result.Sheet;
+        var sheet = result.Sheet;
 
         // south is row 0. Both columns: opaque pixel must be at cell-local y = 15 (baseline).
-        Assert.Equal(255, sheet[8, 15].A);        // row 0, col 0, baseline
-        Assert.Equal(255, sheet[16 + 8, 15].A);   // row 0, col 1, baseline
+        Assert.Equal(255, sheet.AlphaAt(8, 15));        // row 0, col 0, baseline
+        Assert.Equal(255, sheet.AlphaAt(16 + 8, 15));   // row 0, col 1, baseline
         // And NOT floating above (the source y differences are normalized away).
-        Assert.Equal(0, sheet[8, 5].A);
+        Assert.Equal(0, sheet.AlphaAt(8, 5));
     }
 
     [Fact]
@@ -88,11 +88,11 @@ public class SheetAssemblerTests
     {
         var anim = FullAnim(w: 16, h: 16, frameCount: 1, px: 8, py: 15);
         var result = SheetAssembler.Assemble(anim, new AssemblyOptions(BottomPad: 2));
-        using var sheet = result.Sheet;
+        var sheet = result.Sheet;
 
         // baseline row = cellH - bottomPad - 1 = 13.
-        Assert.Equal(255, sheet[8, 13].A);
-        Assert.Equal(0, sheet[8, 15].A);
+        Assert.Equal(255, sheet.AlphaAt(8, 13));
+        Assert.Equal(0, sheet.AlphaAt(8, 15));
     }
 
     [Fact]
@@ -102,18 +102,18 @@ public class SheetAssemblerTests
         var byDir = new Dictionary<string, IReadOnlyList<FrameEntry>>();
         foreach (var d in Dirs)
         {
-            var img = new Image<Rgba32>(16, 16);
-            img[8, 15] = new Rgba32((byte)(DirectionRows.NameToRow[d] * 10 + 5), 0, 0, 255);
+            var img = Create(16, 16);
+            SetPixel(img, 8, 15, (byte)(DirectionRows.NameToRow[d] * 10 + 5), 0, 0, 255);
             byDir[d] = new List<FrameEntry> { new(0, img) };
         }
         var anim = new CharacterAnimation("Test", "walking", byDir);
 
-        using var sheet = SheetAssembler.Assemble(anim, new AssemblyOptions()).Sheet;
+        var sheet = SheetAssembler.Assemble(anim, new AssemblyOptions()).Sheet;
 
         foreach (var d in Dirs)
         {
             int row = DirectionRows.NameToRow[d];
-            Assert.Equal((byte)(row * 10 + 5), sheet[8, row * 16 + 15].R);
+            Assert.Equal((byte)(row * 10 + 5), sheet.Pixels[((row * 16 + 15) * sheet.Width + (8)) * 4]);
         }
     }
 
@@ -128,7 +128,7 @@ public class SheetAssemblerTests
         var anim = new CharacterAnimation("Test", "walking", byDir);
 
         var result = SheetAssembler.Assemble(anim, new AssemblyOptions());
-        using var sheet = result.Sheet;
+        var sheet = result.Sheet;
 
         Assert.Equal(3, result.FrameCount);
         Assert.Single(result.Warnings);

@@ -50,3 +50,7 @@ tool and the engine grows a matching loader.
 - `0` success
 - `1` assembly error (bad export, missing direction, `--strict` gap)
 - `2` bad arguments
+
+Image decoding uses the engine `ImageRgba` seam, including palette and interlaced PNGs.
+Sheet pixels remain straight-alpha RGBA8 and `PngWriter` writes the output without a GPU.
+The tool has no separate image-library dependency.

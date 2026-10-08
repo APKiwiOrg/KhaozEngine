@@ -35,5 +35,10 @@
     "Shared support correspondence and native producer handoff",
     "Current-main full verification is blocked by ImageSharp audit, issue 1326",
     "Final branch review, integration, released engine and dependent game adoption"
-  ]
+  ],
+  "targetedReReview": {
+    "head": "34f62f29cbfa699721cd46bbd0d361fcebd48d9c",
+    "verdict": "Approved for both fixes. No remaining objection in scope. Whole-branch merge readiness not established.",
+    "evidence": "Reviewer verified all three log hashes and inspected initial impact, final max, refusal clearing, water guards and regression cases."
+  }
 }

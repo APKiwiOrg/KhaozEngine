@@ -1,0 +1,32 @@
+{
+  "issue": "https://github.com/APKiwiOrg/KhaozEngine/issues/1326",
+  "change": "Removed tool-only ImageSharp pin and used existing ImageRgba decode and PngWriter output seams. No third-party upgrade or audit suppression.",
+  "evidence": [
+    {
+      "log": "/tmp/swim-sheet-codec-tests.log",
+      "sha256": "c7962fc1e466b56050b2261509100626437d26bb1279330297d0d5895a7d2ebd"
+    },
+    {
+      "log": "/tmp/swim-sheet-png-compatibility.log",
+      "sha256": "68a554f513391a9a35a9c7448009aa86d18aa9d23136d25094fa97393faf1244"
+    },
+    {
+      "log": "/tmp/swim-sheet-format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "log": "/tmp/swim-engine-release-build-fixed.log",
+      "sha256": "ec55dde2826b4c355b5458ee97847607fe332be47fff475e09a16b495808a2ef"
+    }
+  ],
+  "results": [
+    "23 existing tool tests passed",
+    "2 palette+tRNS and Adam7 export/assembly/output tests passed",
+    "Scoped format applied successfully",
+    "Full solution Release build passed with 0 warnings and 0 errors"
+  ],
+  "limits": [
+    "Full solution tests and final branch review remain pending",
+    "Known ordinary-step RED and native adoption gates remain open"
+  ]
+}

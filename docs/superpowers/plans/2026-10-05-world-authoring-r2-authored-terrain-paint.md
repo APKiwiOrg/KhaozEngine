@@ -3886,3 +3886,14 @@ and Occlusion and Clearance stay NotEvaluated. Compile RED is preserved at 657d2
 the last commit passed 12 MapDoc cases, the 9 planned and 3 regressions, with format and guards clean. Review needed one
 fix round: an opening path now requires its acquired vertical link and refuses as MissingGeometry without it. Ruling
 T15-2 has aperture columns follow the resolved band chain vertices. Proof is `proofs/2026-10-09-r2-task15-green.json`.
+
+
+### Task 16 native document transaction seam verified
+
+Source 1d3f6125c generalizes native editing to typed document write sets. A partial document refuses first, preparation
+runs on a detached candidate that keeps the same tile index, local, seam, corner and coverage validation precede
+publication, and only declared write-set members publish before Accept. A rejection leaves document, history, dirty
+state, identity and effects unchanged. Placement commands keep their released behavior through an adapter, and
+EditorDocument.LastNativeEffects and MapEditSession.ApplyNative report MapNativeEditEffects. Compile RED is preserved at
+22359173d. Final runs passed 86 Editor cases including the 4 new ones and a 65-case MapDoc regression, with format and
+guards clean. Review approved on the first pass. Proof is `proofs/2026-10-09-r2-task16-green.json`.

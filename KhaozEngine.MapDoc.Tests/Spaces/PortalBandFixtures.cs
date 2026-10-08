@@ -26,7 +26,7 @@ internal static class PortalBandFixtures
         MapSurfacePatch anchor = CaveFixtures.Patch(set, "hall-floor");
         var hallWalls = new List<MapBoundaryRef>();
         var passageWalls = new List<MapBoundaryRef>();
-        Close("hall", "hall-floor", "hall-ceiling", 0, 0, 0, 2, MapStripFacing.Front, hallWalls);
+        Close("hall-west", "hall-floor", "hall-ceiling", 0, 0, 0, 2, MapStripFacing.Front, hallWalls);
         Close("hall-south", "hall-floor", "hall-ceiling", 0, 0, 2, 0, MapStripFacing.Back, hallWalls);
         Close("hall-north", "hall-floor", "hall-ceiling", 0, 2, 2, 2, MapStripFacing.Front, hallWalls);
         if (variant != "cave-open-edge")

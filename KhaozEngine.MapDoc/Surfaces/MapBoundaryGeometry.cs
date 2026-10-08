@@ -12,6 +12,10 @@ public sealed record MapChainResolution(MapResolveStatus Status, IReadOnlyList<M
 public static class MapBoundaryGeometry
 {
     public static MapChainResolution ResolveChain(MapBoundaryChain chain, MapScopedSurfaces view)
+        => ResolveChain(chain, view, null);
+
+    internal static MapChainResolution ResolveChain(MapBoundaryChain chain, MapScopedSurfaces view,
+        Func<MapPatchKey, MapBoundarySurface?>? preparedSource)
     {
         ArgumentNullException.ThrowIfNull(chain);
         ArgumentNullException.ThrowIfNull(view);
@@ -23,8 +27,9 @@ public static class MapBoundaryGeometry
             MapBoundarySurface? source = null;
             if (chain.SourcePatch is { } key)
             {
-                source = Read(key, view, out string? detail);
-                if (source is null) return Failure(MapResolveStatus.MissingGeometry, detail!);
+                string? detail = null;
+                source = preparedSource is null ? Read(key, view, out detail) : preparedSource(key);
+                if (source is null) return Failure(MapResolveStatus.MissingGeometry, detail ?? $"unresolved surface patch '{key}'");
             }
             var points = new List<MapExactPoint>(chain.Vertices.Count);
             foreach (MapChainVertex vertex in chain.Vertices)
@@ -66,15 +71,15 @@ public static class MapBoundaryGeometry
 
     internal static MapBoundarySurface? Read(MapPatchKey key, MapScopedSurfaces view, out string? detail)
     {
-        MapPatchRead read = view.Patch(key);
         MapSurfaceRef? surface = Surface(view, key.SurfaceId);
-        if (read.Status != MapPatchStatus.Present || read.Patch is null || surface is null)
+        if (!view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out MapPatchStatus status) ||
+            status != MapPatchStatus.Present || patch is null || surface is null)
         {
-            detail = $"unresolved surface patch '{key}' ({read.Status})";
+            detail = $"unresolved surface patch '{key}' ({status})";
             return null;
         }
         detail = null;
-        return new(surface, read.Patch);
+        return new(surface, patch);
     }
 }
 
@@ -85,8 +90,12 @@ internal sealed class MapBoundarySurface
     internal Dictionary<MapLatticeAddress, MapExactPoint> Vertices { get; } = new();
 
     internal MapBoundarySurface(MapSurfaceRef surface, MapSurfacePatch patch)
+        : this(new MapValidatedSurfacePatch(surface, patch)) { }
+
+    internal MapBoundarySurface(MapValidatedSurfacePatch validated, MapSlotCellMask? mask = null)
     {
-        MapSurfaceCompiler.Validate(surface, patch);
+        MapSurfaceRef surface = validated.Surface;
+        MapSurfacePatch patch = validated.Patch;
         Surface = surface;
         var builder = new MapSurfaceVertexBuilder(surface, patch, MapSurfaceCompiler.Anchor(surface, patch));
         var subdivisions = new int[patch.Cells.Length * 4];
@@ -97,6 +106,7 @@ internal sealed class MapBoundarySurface
         for (int z = 0; z < patch.Depth; z++)
             for (int x = 0; x < patch.Width; x++)
             {
+                if (mask is not null && !mask.Contains((z + patch.CellMinZ) * 64 + x + patch.CellMinX)) continue;
                 // Stored corners remain addressable even beside an authored hole.
                 Add(builder.Point(x, z, MapLatticePoint.Sw));
                 Add(builder.Point(x, z, MapLatticePoint.Se));

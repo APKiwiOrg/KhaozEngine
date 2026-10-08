@@ -59,11 +59,11 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
             .ThenBy(w => w.Bounds.Min.X).ThenBy(w => w.Bounds.Min.Y).ToArray();
     }
 
-    public MovementQueryLease Acquire(string? room, float maxRise = 0f, float maxDrop = 0f)
+    public MovementQueryLease Acquire(string? room, float maxRise = 0f, float maxDrop = 0f, WorldFrame? worldFrame = null)
     {
         Assert.Null(_view);
         _view = Physics.CreateQueryViewExcludingStatics([]);
-        var frame = new MovementFrameDescriptor(WorldFrame.Origin, Vector3.Zero, 1ul);
+        var frame = new MovementFrameDescriptor(worldFrame ?? WorldFrame.Origin, Physics.Origin, 1ul);
         var scope = new MovementQueryScope(new Vector3(-32f), new Vector3(32f), maxRise, maxDrop,
             "world", room is null ? null : Space(room), Identity, frame);
         Acquisition = new EnvironmentAcquisitionFixture(_view, scope)

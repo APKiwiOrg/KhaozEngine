@@ -185,9 +185,9 @@ public partial class ExplicitCharacterMovementTests
     }
 
     [Fact]
-    public void UncertifiedWetPathCannotPublishTheCandidateSurfaceJump()
+    public void ClosedTopWetPathCannotPublishTheCandidateSurfaceJump()
     {
-        using var scene = new Scene(wet: true);
+        using var scene = new Scene(wet: true, closedWet: true);
         var state = scene.State(new(0, 0.85f, 0));
         MoveState swim = state.State;
         swim.Swimming = true;
@@ -207,23 +207,27 @@ public partial class ExplicitCharacterMovementTests
         public MovementQueryLease Lease { get; }
         readonly bool cold;
         public Scene(bool floor = false, bool wall = false, bool cold = false, bool wet = false,
-            float? bankHeight = null, float? ceiling = null)
+            float? bankHeight = null, float? ceiling = null, float floorY = 0, float waterDepth = 8, bool closedWet = false, Water[]? waterRegions = null, Vector3? physicsOrigin = null)
         {
             this.cold = cold;
-            Environment = new([new Room("room", new(new(-16), new(16)))], wet
-                ? [new Water("lake", "room", new(new(-8, -8, -8), new(8, 1, 8)), 1)] : []);
-            if (floor) Environment.Physics.AddStatic(new BoxShape(new(8, 0.125f, 8)), Pose.At(new(0, -0.125f, 0)));
-            if (wall) Environment.Physics.AddStatic(new BoxShape(new(0.03125f, 8, 8)), Pose.At(new(2, 0, 0)));
+            Vector3 origin = physicsOrigin ?? Vector3.Zero;
+            float roomBottom = Math.Min(-16, Math.Min(floorY - 1, -waterDepth));
+            Environment = new([new Room("room", new(new(-16, roomBottom, -16), new(16)))], waterRegions ?? (wet
+                ? [new Water("lake", "room", new(new(-8, 1 - waterDepth, -8), new(8, closedWet ? 0.5f : 1, 8)), 1)] : []));
+            if (floor) Environment.Physics.AddStatic(new BoxShape(new(8, 0.125f, 8)), Pose.At(origin + new Vector3(0, floorY - 0.125f, 0)));
+            if (wall) Environment.Physics.AddStatic(new BoxShape(new(0.03125f, 8, 8)), Pose.At(origin + new Vector3(2, 0, 0)));
             if (bankHeight is { } height) Environment.Physics.AddStatic(new BoxShape(new(2, height / 2, 4)),
-                Pose.At(new(3, height / 2, 0)));
+                Pose.At(origin + new Vector3(3, height / 2, 0)));
             if (ceiling is { } top) Environment.Physics.AddStatic(new BoxShape(new(8, 0.125f, 8)),
-                Pose.At(new(0, top + 0.125f, 0)));
-            Lease = Environment.Acquire(cold ? null : "room", 1, 4);
+                Pose.At(origin + new Vector3(0, top + 0.125f, 0)));
+            if (origin != Vector3.Zero) Environment.Physics.Rebase(origin);
+            Lease = Environment.Acquire(cold ? null : "room", 1, 4, KhaozEngine.Primitives.WorldFrame.Nearest(origin));
             Environment.Acquisition.OnSupport = (in MovementSupportRequest request, Span<MovementSupportCandidate> candidates) =>
             {
                 int count = 0;
-                if (floor) candidates[count++] = new(new("world", "floor"), Space("room"),
-                    new(request.Body.Centre.X, 0, request.Body.Centre.Z), Vector3.UnitY, null);
+                if (floor && floorY >= request.Body.Feet.Y - request.MaxDrop && floorY <= request.Body.Feet.Y + request.MaxRise)
+                    candidates[count++] = new(new("world", "floor"), Space("room"),
+                        new(request.Body.Centre.X, floorY, request.Body.Centre.Z), Vector3.UnitY, null);
                 if (bankHeight is { } bank && request.Body.Centre.X >= 1 && request.Body.Centre.X <= 5 &&
                     Math.Abs(request.Body.Centre.Z) <= 4)
                     candidates[count++] = new(new("world", "bank"), Space("room"),

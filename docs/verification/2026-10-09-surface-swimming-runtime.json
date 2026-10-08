@@ -1,0 +1,117 @@
+{
+  "status": "Generic explicit surface swimming and water-origin arcs under real Bepu reads. Native/game adoption remains gated.",
+  "baseCommit": "a9c18e5f2",
+  "runs": {
+    "fluid-integration-red": {
+      "path": "/tmp/swim-fluid-integration-red.log",
+      "sha256": "2a263ff9cb6c2fa7f62b05bdbc28abac4a291e74f7ed94e314a9788f1ae74ad7",
+      "passed": 0,
+      "failed": 14,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "fluid-integration-green": {
+      "path": "/tmp/swim-fluid-integration-green.log",
+      "sha256": "021c23628e8c6cec8873e8f353232d699c5387ab7ac8cde801f595d6faacc174",
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "placement-regions-red": {
+      "path": "/tmp/swim-placement-regions-red.log",
+      "sha256": "97b0b3a9d2c1ca2d3b44ed9a9b8de3f8c5e0cbfc22e1be1a1a498dda6f63ef05",
+      "passed": 3,
+      "failed": 2,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "fluid-regions-green": {
+      "path": "/tmp/swim-fluid-regions-green.log",
+      "sha256": "b7e32ffeb1707c0848991f5bc4ed83c082e75dc877e0a2b821cd2d9df3e15398",
+      "passed": 77,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "free-top-partitions": {
+      "path": "/tmp/swim-free-top-partitions.log",
+      "sha256": "be33c5d4fe6a57f311c1c731d2d17458b44e32df1887f6264eb579f1b0af7cb7",
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "shore-red": {
+      "path": "/tmp/swim-shore-red.log",
+      "sha256": "8d7ba9ae20c57d64bcc3b9a5a0c90817a38101c9c8652ad03ab9df6f6d7ca914",
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "shore-green": {
+      "path": "/tmp/swim-shore-green.log",
+      "sha256": "7982ed10828a16239a74d29bc6325d033d313f68fe3a73a0eb5769e45c140027",
+      "passed": 49,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "far-frame": {
+      "path": "/tmp/swim-far-frame.log",
+      "sha256": "116c987a1c46ae187832927bd8f1d03bac03a8e892e763a525c8e4de45b77fdf",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "fluid-head-regressions": {
+      "path": "/tmp/swim-fluid-head-regressions.log",
+      "sha256": "6d2fd4598f05421fcdc717ad2ced17e1a253143dd17c1efe3034364a92642577",
+      "passed": 41,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "descent-red": {
+      "path": "/tmp/swim-descent-red.log",
+      "sha256": "94f95fcb5097f6d8f544a571adf701c407cb6b0604e2edb956c01795976b11e7",
+      "passed": 1,
+      "failed": 1,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "descent-green": {
+      "path": "/tmp/swim-descent-green.log",
+      "sha256": "04f1466ddf257a3cf26e21505a3395866433536fece6d19c9006858c99d1addb",
+      "passed": 70,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    }
+  },
+  "coverage": [
+    "SM1 free-top/equal-level admission on every accepted solid segment",
+    "Actual 3m/s surface motion and 0.65 backpedal",
+    "Independent 1m and 0.5m jump apex over 2m/100m beds at 30/60Hz",
+    "Submerged press consumed without buffering",
+    "Ceiling clips ascent while retaining water excursion",
+    "Physical bed contact and eligible footing remain distinct",
+    "Cold wet placement derives swimming",
+    "Equal-level separate domains admitted, unequal simultaneous levels refused",
+    "Free centre cannot hide closed outer coverage",
+    "Sloped free/closed region partition checked in both directions, including error tie and refusal",
+    "Wall added after prior read affects actual swimming",
+    "Proved wading-bank step ends excursion",
+    "Far rebased world matches the origin trajectory exactly",
+    "Descent into a separated lower pool selects its own centre domain",
+    "Bed contact preserves pre-clipping descent for buoyancy recapture, without recapturing ceiling-clipped ascent"
+  ],
+  "pending": [
+    "Non-swimmer boundary resolution",
+    "Sharded head and generic nav equivalence",
+    "Whole-branch review and full verification",
+    "Native producers, released adoption and game feature"
+  ]
+}

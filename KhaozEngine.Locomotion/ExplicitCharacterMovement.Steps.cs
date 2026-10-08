@@ -5,7 +5,7 @@ namespace KhaozEngine.Locomotion;
 public static partial class ExplicitCharacterMovement
 {
     static MovementAvailability TryStepUp(in MovementBodyQuery start, Vector2 horizontal, in MoveTuning tuning,
-        MovementQueryLease queries, out MovementSupportPlacement? reached)
+        in WaterTraversalPolicy water, MovementQueryLease queries, out MovementSupportPlacement? reached)
     {
         reached = null;
         if (horizontal == Vector2.Zero || tuning.StepHeight == 0) return MovementAvailability.Known;
@@ -22,11 +22,11 @@ public static partial class ExplicitCharacterMovement
         // Use the actual eligible support height, not a full StepHeight rise. A full rise can hit
         // a ceiling even though the supported destination and its exact approach both fit.
         Vector3 above = new(start.Centre.X, support.Centre.Y, start.Centre.Z);
-        status = Move(start, above - start.Centre, queries, out Vector3 raised, out _);
+        status = Move(start, above - start.Centre, queries, water, out Vector3 raised, out _);
         if (status != MovementAvailability.Known) return status;
         if (raised != above) return MovementAvailability.Known;
         var airborne = new MovementBodyQuery(raised, start.Radius, start.HalfHeight, start.CurrentSpace, null);
-        status = Move(airborne, support.Centre - raised, queries, out Vector3 end, out _);
+        status = Move(airborne, support.Centre - raised, queries, water, out Vector3 end, out _);
         if (status != MovementAvailability.Known) return status;
         if (end != support.Centre) return MovementAvailability.Known;
         queries.AssertCurrent();

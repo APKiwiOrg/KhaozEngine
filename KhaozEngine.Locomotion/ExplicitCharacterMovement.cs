@@ -59,57 +59,62 @@ public static partial class ExplicitCharacterMovement
             }
 
             MoveState next = MovementStepResult.HoldState(input.State);
-            next.JumpBufferRemaining = 0;
+            bool wasSwimming = input.State.Swimming || input.State.WaterExcursion == WaterExcursionState.Surface;
             MovementBodyQuery body = Body(next.Position, tuning, selection);
-            // Even an idle tick needs complete initial placement and medium evidence.
-            status = Move(body, Vector3.Zero, queries, out _, out _);
+            status = Move(body, Vector3.Zero, queries, water, out _, out _);
             if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
             MovementWaterPoint point = queries.SampleCentreWater(body);
             if (point.Availability != MovementAvailability.Known) return Hold(input, Outcome(point.Availability));
             if (point.Space != selection.Space) return Hold(input, MovementStepOutcome.EnvironmentInvalid);
 
-            bool supported = false;
+            bool physicalSupport = false;
             if (next.Grounded || next.VerticalVelocity <= 0)
             {
-                status = Settle(ref next, ref selection, tuning.GroundedEpsilon, tuning, queries, out supported);
+                status = Settle(ref next, ref selection, tuning.GroundedEpsilon, tuning, water, queries, out physicalSupport);
                 if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
+                point = queries.SampleCentreWater(Body(next.Position, tuning, selection));
+                if (point.Availability != MovementAvailability.Known) return Hold(input, Outcome(point.Availability));
             }
+            bool supported = physicalSupport && FootingAllowed(point, wasSwimming, next.Position.Y, tuning, water);
             next.Grounded = supported;
-            if (supported)
+            if (physicalSupport && next.VerticalVelocity < 0) next.VerticalVelocity = 0;
+            if (supported) { next.VerticalVelocity = 0; next.TimeSinceGrounded = 0; }
+            else selection = new(selection.Space, null, selection.Identity);
+            ClassifyWater(ref next, point, supported, wasSwimming, tuning, water, input.State.VerticalVelocity < 0);
+
+            bool fluidMotion = next.Swimming || next.WaterExcursion == WaterExcursionState.AirborneFromWater;
+            bool launched;
+            float velocity, targetY;
+            if (fluidMotion)
             {
-                next.Swimming = false;
-                next.WaterExcursion = WaterExcursionState.None;
-                next.VerticalVelocity = 0;
-                next.TimeSinceGrounded = 0;
+                status = SurfaceWaterMotion.TryPropose(next, !next.Swimming, jump, point, dt, tuning,
+                    water.SurfaceJumpSpeed, out Vector2 vertical, out launched);
+                if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
+                targetY = vertical.X;
+                velocity = vertical.Y;
+                if (launched) { next.Swimming = false; next.WaterExcursion = WaterExcursionState.AirborneFromWater; }
             }
             else
             {
-                selection = new(selection.Space, null, selection.Identity);
-                if (next.WaterExcursion == WaterExcursionState.Surface)
-                    next.WaterExcursion = WaterExcursionState.AirborneFromWater;
-                next.Swimming = false;
+                launched = jump && supported;
+                velocity = launched ? tuning.JumpSpeed : next.VerticalVelocity;
+                if (!supported || launched)
+                    velocity = (float)Math.Max(-tuning.MaxFallSpeed, velocity - (double)tuning.Gravity * dt);
+                targetY = next.Position.Y + velocity * dt;
             }
-
-            // Wet policy is not inferred from SampleCentreWater. The initial complete trace above
-            // currently refuses wet regions until their shared producer facts can certify admission.
-            bool waterFlight = next.WaterExcursion == WaterExcursionState.AirborneFromWater;
-            bool launched = jump && supported;
-            float velocity = launched ? tuning.JumpSpeed : next.VerticalVelocity;
-            if (!supported || launched)
-                velocity = (float)Math.Max(-tuning.MaxFallSpeed, velocity - (double)tuning.Gravity * dt);
-            float speed = (waterFlight ? tuning.SwimSpeed : run ? tuning.RunSpeed : tuning.WalkSpeed) *
-                fraction * next.SpeedScale;
+            float speed = (fluidMotion ? tuning.SwimSpeed : run ? tuning.RunSpeed : tuning.WalkSpeed) *
+                fraction * next.SpeedScale * MediumSpeed(point, next.Position.Y, fluidMotion, tuning);
             Vector2 horizontal = direction * speed;
-            if (!float.IsFinite(horizontal.X) || !float.IsFinite(horizontal.Y) || !float.IsFinite(velocity))
+            if (!float.IsFinite(horizontal.X) || !float.IsFinite(horizontal.Y) || !float.IsFinite(velocity) || !float.IsFinite(targetY))
                 return Hold(input, MovementStepOutcome.EnvironmentInvalid);
-            Vector3 delta = new(horizontal.X * dt, velocity * dt, horizontal.Y * dt);
+            Vector3 delta = new(horizontal.X * dt, targetY - next.Position.Y, horizontal.Y * dt);
             Vector3 origin = next.Position;
-            status = Move(Body(origin, tuning, selection), delta, queries, out Vector3 position, out bool blocked);
+            status = Move(Body(origin, tuning, selection), delta, queries, water, out Vector3 position, out bool blocked);
             if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
-            if (blocked && supported && !launched)
+            if (blocked && (supported || next.Swimming) && !launched)
             {
                 status = TryStepUp(Body(origin, tuning, selection), new(delta.X, delta.Z), tuning,
-                    queries, out MovementSupportPlacement? step);
+                    water, queries, out MovementSupportPlacement? step);
                 if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
                 if (step is { } reached)
                 {
@@ -132,25 +137,28 @@ public static partial class ExplicitCharacterMovement
             if (velocity <= 0 && !launched)
             {
                 float drop = supported ? tuning.StepHeight + tuning.GroundedEpsilon : tuning.GroundedEpsilon;
-                status = Settle(ref next, ref selection, drop, tuning, queries, out bool landed);
+                status = Settle(ref next, ref selection, drop, tuning, water, queries, out bool landed);
                 if (status != MovementAvailability.Known) return Hold(input, Outcome(status));
+                point = queries.SampleCentreWater(Body(next.Position, tuning, selection));
+                if (point.Availability != MovementAvailability.Known) return Hold(input, Outcome(point.Availability));
                 if (landed)
                 {
-                    next.Grounded = true;
                     next.VerticalVelocity = 0;
-                    next.TimeSinceGrounded = 0;
-                    next.Swimming = false;
-                    next.WaterExcursion = WaterExcursionState.None;
-                    next.SupportGranted = true;
-                    if (!input.State.Grounded) next.LandingImpactSpeed = Math.Max(0, -velocity);
+                    next.Grounded = FootingAllowed(point, wasSwimming, next.Position.Y, tuning, water);
+                    if (next.Grounded)
+                    {
+                        next.TimeSinceGrounded = 0;
+                        next.SupportGranted = true;
+                        if (!input.State.Grounded) next.LandingImpactSpeed = Math.Max(0, -velocity);
+                    }
                 }
             }
-            else if (blocked && position.Y < origin.Y + delta.Y)
+            else if (blocked && position.Y < targetY - water.ContactSkinMetres)
                 next.VerticalVelocity = 0;
 
             MovementWaterPoint destination = queries.SampleCentreWater(Body(next.Position, tuning, selection));
             if (destination.Availability != MovementAvailability.Known) return Hold(input, Outcome(destination.Availability));
-            if (destination.InWater) return Hold(input, MovementStepOutcome.EnvironmentUnresolved);
+            ClassifyWater(ref next, destination, next.Grounded, wasSwimming || next.Swimming, tuning, water, velocity < 0);
             selection = new(destination.Space, next.Grounded ? selection.Support : null, queries.Identity);
             var framed = new FramedMovementState(next, input.Frame, selection);
             if (!MovementFrameRebinding.TryRebind(framed, framed.Frame, out _))

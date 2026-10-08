@@ -490,10 +490,14 @@ scaling, then clears its excursion on proved footing. Step-up selects an eligibl
 the actual rise and then its horizontal approach, and grants footing only after both paths pass.
 No local query state enters the wire.
 
-Wet-region admission remains unresolved until the producer supplies the missing region/contact
-facts. A local column interval is never extrapolated into a whole-region permission. Supported
-wet-shore transitions, actual surface entry/jump settlement, movement-head wiring and native
-acceptance are still in development. Active committed movement currently refuses this opt-in path.
+SurfaceSwimmer admits wet paths only when every SM1-covered region has a free top and one exact
+nominal level. Distinct equal-level domain keys are allowed. Closed regions and simultaneous unequal
+levels refuse. A local bed/ceiling column is never extrapolated into a whole-region permission.
+Buoyancy, independent surface jumps, ceiling/wall collision, descent back into water and a proved
+wading-bank transition all use the same combined resolver. Bed contact alone does not override the
+swim-exit policy or grant footing. Non-swimmer boundary resolution, sharded integration, generic nav
+proof and native acceptance remain in development. Active committed movement currently refuses
+this opt-in path.
 Legacy entry points and unconfigured callers retain their existing behavior.
 
 ### Explicit surface motion development status
@@ -506,10 +510,10 @@ waterline. The independent launch speed uses the existing gravity-first `JumpSpe
 Bed depth does not gate a launch. An airborne arc uses gravity without buoyancy recapture or a
 second launch. Rejected submerged presses do not affect the candidate and never create a buffer.
 
-This helper does not publish state or certify movement. The explicit mover still requires complete
-solid and medium proof for every segment, endpoint entry/landing classification, supported shore
-transitions and transport integration. The existing legacy swimming path is unchanged. No playable
-or native swimming capability is established by these candidate-motion tests.
+This helper does not publish state or certify movement. The explicit mover consumes its proposal,
+proves every solid/medium segment and classifies endpoint entry or footing before publication.
+The existing legacy swimming path is unchanged. The generic fixtures do not establish native
+producer acceptance or a playable consumer feature.
 
 ## Types
 

@@ -20,23 +20,22 @@ public static partial class ExplicitCharacterMovement
             if (placed.Grounded || placed.VerticalVelocity <= 0)
             {
                 MovementAvailability status = Settle(ref placed, ref selection, tuning.GroundedEpsilon,
-                    tuning, queries, out supported);
+                    tuning, water, queries, out supported);
                 if (status != MovementAvailability.Known) return Hold(state, Outcome(status));
             }
-            placed.Grounded = supported;
-            placed.Swimming = false;
-            if (supported)
+            MovementWaterPoint point = queries.SampleCentreWater(Body(placed.Position, tuning, selection));
+            if (point.Availability != MovementAvailability.Known) return Hold(state, Outcome(point.Availability));
+            bool wasSwimming = state.State.Swimming || state.State.WaterExcursion == WaterExcursionState.Surface;
+            bool footing = supported && FootingAllowed(point, wasSwimming, placed.Position.Y, tuning, water);
+            placed.Grounded = footing;
+            if (supported && placed.VerticalVelocity < 0) placed.VerticalVelocity = 0;
+            if (footing)
             {
                 placed.VerticalVelocity = 0;
                 placed.TimeSinceGrounded = 0;
-                placed.WaterExcursion = WaterExcursionState.None;
             }
-            else
-            {
-                selection = new(selection.Space, null, selection.Identity);
-                if (placed.WaterExcursion == WaterExcursionState.Surface)
-                    placed.WaterExcursion = WaterExcursionState.AirborneFromWater;
-            }
+            else selection = new(selection.Space, null, selection.Identity);
+            ClassifyWater(ref placed, point, footing, wasSwimming, tuning, water, state.State.VerticalVelocity < 0);
             queries.AssertCurrent();
             return new(new(placed, state.Frame, selection), MovementStepOutcome.Advanced);
         }
@@ -61,12 +60,13 @@ public static partial class ExplicitCharacterMovement
             MovementAvailability status = queries.RebuildSelection(unselected, out MovementSelection selection);
             if (status != MovementAvailability.Known) return Hold(state, Outcome(status));
             MovementBodyQuery body = Body(state.State.Position, tuning, selection);
-            status = Move(body, Vector3.Zero, queries, out _, out _);
+            status = Move(body, Vector3.Zero, queries, water, out _, out _);
             if (status != MovementAvailability.Known) return Hold(state, Outcome(status));
             MovementWaterPoint point = queries.SampleCentreWater(body);
             if (point.Availability != MovementAvailability.Known) return Hold(state, Outcome(point.Availability));
             if (point.Space != selection.Space) return Hold(state, MovementStepOutcome.EnvironmentInvalid);
-            if (point.InWater) return Hold(state, MovementStepOutcome.EnvironmentUnresolved);
+            if (point.InWater && !point.Interval!.Value.UpperIsFreeSurface)
+                return Hold(state, MovementStepOutcome.PlacementRefused);
             queries.AssertCurrent();
             return new(new(state.State, state.Frame, selection), MovementStepOutcome.Advanced);
         }

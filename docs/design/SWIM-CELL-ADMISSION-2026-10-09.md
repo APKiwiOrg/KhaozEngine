@@ -19,7 +19,10 @@ NetIds are excluded before admission, preserving the stale-save backstop.
 
 `CellSim.ImportAdmission` returns a thread-affine `CellAdmissionRead`. The NetWorld implementation
 unions the bounded cold scopes for all imported movement actors, acquires one destination lease,
-classifies every actor, and derives their movement state only in staging. The captured source must
+classifies every actor, and derives their movement state only in staging. `CellImportPurpose`
+distinguishes cold restore/relocation from live transfer. A live transfer reclassifies footing and
+water while preserving its pose, velocities, timers, accepted dry jump buffer and sampled climb state.
+Cold settlement cannot be reused for that continuation because it intentionally consumes buffers. The captured source must
 be the destination cell's physics source. Any failed actor refuses the entire batch.
 
 Only an accepted batch is copied into the live world. Transient marks are installed before owned

@@ -16,15 +16,15 @@ public sealed partial class CellSim
         foreach (long id in netIds) DespawnGhost(id);
     }
 
-    internal ImportPreparation PrepareImport(byte[] snapshot)
+    internal ImportPreparation PrepareImport(byte[] snapshot, CellImportPurpose purpose)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         if (!SnapshotStaging.TryDecode(registry, snapshot, out SnapshotStaging? staged, out string? error))
             return new(this, error ?? "cell snapshot failed to decode");
-        return PrepareImport(staged!);
+        return PrepareImport(staged!, purpose);
     }
 
-    internal ImportPreparation PrepareImport(SnapshotStaging staged)
+    internal ImportPreparation PrepareImport(SnapshotStaging staged, CellImportPurpose purpose)
     {
         if (!ReferenceEquals(staged.Registry, registry)) throw new ArgumentException("Import staging uses a different registry.", nameof(staged));
         var existing = LiveOwnedNetIds();
@@ -36,7 +36,7 @@ public sealed partial class CellSim
             selected.Add(pair.Key, pair.Value);
         }
         CellAdmissionRead? read = selected.Count > 0 && ImportAdmission is { } policy
-            ? policy.Acquire(staged.World, selected) ?? new(CellAdmissionOutcome.Refused, detail: "The import policy returned no verdict.")
+            ? policy.Acquire(staged.World, selected, purpose) ?? new(CellAdmissionOutcome.Refused, detail: "The import policy returned no verdict.")
             : null;
         return new(this, staged, selected, read);
     }

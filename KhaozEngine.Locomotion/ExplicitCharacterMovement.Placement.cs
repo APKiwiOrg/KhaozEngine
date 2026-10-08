@@ -49,7 +49,7 @@ public static partial class ExplicitCharacterMovement
         in WaterTraversalPolicy water, MovementQueryLease queries)
     {
         ArgumentNullException.ThrowIfNull(queries);
-        if (!state.IsValid || !Valid(tuning) || !water.IsValid || water.Mode == WaterTraversalMode.Legacy)
+        if (!state.IsValid || !ValidCarriedState(state.State) || !Valid(tuning) || !water.IsValid || water.Mode == WaterTraversalMode.Legacy)
             return Hold(state, MovementStepOutcome.EnvironmentInvalid);
         if (state.Frame != queries.Frame) return Hold(state, MovementStepOutcome.FrameMismatch);
         if (!MovementFrameRebinding.TryRebind(state, state.Frame, out _))

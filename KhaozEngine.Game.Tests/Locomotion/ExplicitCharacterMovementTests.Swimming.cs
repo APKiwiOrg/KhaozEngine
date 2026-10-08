@@ -198,4 +198,42 @@ public partial class ExplicitCharacterMovementTests
         }
     }
 
+    [Fact]
+    public void AnUnsupportedColdSurfacePoseDerivesSwimmingWithoutFirstSinking()
+    {
+        using var scene = new Scene(wet: true, floor: true, floorY: -99, waterDepth: 100, cold: true);
+        var input = scene.State(new(0, 0.85f, 0));
+        var placed = ExplicitCharacterMovement.SettlePlacement(input, Tuning, Policy, scene.Lease);
+        Assert.Equal(MovementStepOutcome.Advanced, placed.Outcome);
+        Assert.True(placed.State.State.Swimming);
+        Assert.Equal(WaterExcursionState.Surface, placed.State.State.WaterExcursion);
+        Assert.Equal(input.State.Position, placed.State.State.Position);
+    }
+
+    [Fact]
+    public void AnUnflaggedSurfaceContactUsesTheWaterLaunchRatherThanDryCoyote()
+    {
+        using var scene = new Scene(wet: true);
+        var result = ExplicitCharacterMovement.Step(scene.State(new(0, 0.85f, 0)),
+            new(Vector2.Zero, false, 0, jump: true), 1f / 30, Tuning,
+            new(WaterTraversalMode.SurfaceSwimmer, 9), scene.Lease);
+        Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
+        Assert.Equal(WaterExcursionState.AirborneFromWater, result.State.State.WaterExcursion);
+        Assert.True(result.State.State.VerticalVelocity > Tuning.JumpSpeed);
+    }
+
+    [Fact]
+    public void AnUnflaggedUpwardArcIsNotCapturedByTheSurfaceBand()
+    {
+        using var scene = new Scene(wet: true);
+        var input = scene.State(new(0, 0.85f, 0));
+        var move = input.State;
+        move.VerticalVelocity = 3;
+        var result = ExplicitCharacterMovement.Step(new(move, input.Frame, input.Selection), MoveCommand.Idle,
+            0.1f, Tuning, Policy, scene.Lease);
+        Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
+        Assert.False(result.State.State.Swimming);
+        Assert.True(result.State.State.Position.Y > input.State.Position.Y);
+    }
+
 }

@@ -65,7 +65,7 @@ public static partial class CharacterMovement
     /// <param name="targetSpeed">The full commanded speed this tick, air control EXCLUDED.</param>
     /// <param name="dt">Timestep in seconds, for the brake decay.</param>
     /// <param name="t">Carries <see cref="MoveTuning.AirControl"/> and <see cref="MoveTuning.AirBrakeAccel"/>.</param>
-    private static Vector2 ResolveAirborneVelocity(Vector2 carried, Vector2 moveDir, float targetSpeed, float dt,
+    internal static Vector2 ResolveAirborneVelocity(Vector2 carried, Vector2 moveDir, float targetSpeed, float dt,
         in MoveTuning t)
     {
         // Air control is the steering authority over DIRECTION, clamped into [0,1] so a mis-set tuning cannot
@@ -123,7 +123,7 @@ public static partial class CharacterMovement
     /// <param name="intended">The velocity the step commanded this tick (<see cref="MoveState.CommandedVelocity"/>).</param>
     /// <param name="achievedDelta">The horizontal displacement the collision resolve actually committed.</param>
     /// <param name="dt">Timestep in seconds. A non-positive dt has no velocity to measure, so nothing is carried.</param>
-    private static Vector2 ClipToAchieved(Vector2 intended, Vector2 achievedDelta, float dt)
+    internal static Vector2 ClipToAchieved(Vector2 intended, Vector2 achievedDelta, float dt)
     {
         float len = intended.Length();
         if (len <= MomentumEpsilon || dt <= 0f) return Vector2.Zero;

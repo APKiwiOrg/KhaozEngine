@@ -200,3 +200,7 @@ No local lease or selection pointer is serialized.
 callback changes a private Migrate-channel copy. Destination admission precedes any source mutation.
 The read stays held until the destination owns the admitted copy and the source is released. Refusal
 preserves source pose and ownership. This is the explicit NetWorld teleport/restore path.
+
+Admission receives `CellImportPurpose.Restore`, `Transfer` or `Relocate`. The distinction is semantic:
+a live transfer preserves carried motion and accepted input buffers, while a cold restore or relocation
+settles and reclassifies its destination. Neither purpose may publish an unproved batch prefix.

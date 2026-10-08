@@ -1043,7 +1043,9 @@ frame. Its `PlayerMovementSystem` retains the read through position, movement an
 Ghosts and migrating entities acquire no movement read. Join and configured-spawn settlement must
 classify before publication. A configured factory returning null is invalid, not a legacy fallback.
 Generic wet-head tests cover actual surface launch, replicated excursion and return to swimming.
-Cell restore and handoff use staged, batch-wide destination admission. Unknown/refused environments
+Cell restore and handoff use staged, batch-wide destination admission. Live transfers preserve their
+pose, motion timers, accepted dry jump buffer and sampled climb state while rebuilding destination
+footing/water facts. Cold restore and relocation use placement settlement. Unknown/refused environments
 retain saved or transferred state for retry, with no live prefix, corrupt-blob quarantine or empty
 replacement save. Cached freezes retain their transient marks. Reads remain held through publication.
 Both heads expose `TrySetPlayerState` and `TryResetToConfiguredSpawn`. A refused placement leaves

@@ -498,7 +498,7 @@ public sealed partial class CellSim
     /// and before the destination admission read is released.</summary>
     public CellRestoreResult TryRestoreOwned(byte[] snapshot, IReadOnlyDictionary<long, TransientScope>? marks)
     {
-        using ImportPreparation prepared = PrepareImport(snapshot);
+        using ImportPreparation prepared = PrepareImport(snapshot, CellImportPurpose.Restore);
         return prepared.Publish(marks);
     }
 
@@ -534,7 +534,7 @@ public sealed partial class CellSim
     /// </summary>
     public IReadOnlyList<long> AdoptFromMigrate(byte[] snapshot)
     {
-        using ImportPreparation prepared = PrepareImport(snapshot);
+        using ImportPreparation prepared = PrepareImport(snapshot, CellImportPurpose.Transfer);
         CellRestoreResult result = prepared.Publish();
         if (!result.Ok) return Array.Empty<long>();
         foreach (long netId in prepared.AllNetIds) DespawnGhost(netId);

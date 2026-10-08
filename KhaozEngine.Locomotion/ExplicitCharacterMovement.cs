@@ -32,8 +32,7 @@ public static partial class ExplicitCharacterMovement
     {
         ArgumentNullException.ThrowIfNull(queries);
         if (!input.IsValid || !Valid(tuning) || !water.IsValid || water.Mode == WaterTraversalMode.Legacy ||
-            !float.IsFinite(dt) || dt <= 0 || !float.IsFinite(fraction) || !float.IsFinite(input.State.FacingYaw) ||
-            !float.IsFinite(input.State.SpeedScale) || input.State.WaterExcursion > WaterExcursionState.AirborneFromWater ||
+            !float.IsFinite(dt) || dt <= 0 || !float.IsFinite(fraction) || !ValidCarriedState(input.State) ||
             input.State.Commitment.IsActive)
             return Hold(input, MovementStepOutcome.EnvironmentInvalid);
         if (input.Frame != queries.Frame) return Hold(input, MovementStepOutcome.FrameMismatch);
@@ -85,6 +84,11 @@ public static partial class ExplicitCharacterMovement
             ClassifyWater(ref next, point, supported, wasSwimming, tuning, water, input.State.VerticalVelocity < 0);
 
             bool fluidMotion = next.Swimming || next.WaterExcursion == WaterExcursionState.AirborneFromWater;
+            bool landInput = !fluidMotion && (!point.InWater || supported);
+            bool jumpRequested = landInput && (jump || input.State.JumpBufferRemaining > 0);
+            float sinceGround = supported ? 0 : input.State.TimeSinceGrounded + dt;
+            next.JumpBufferRemaining = landInput
+                ? jump ? tuning.JumpBuffer : Math.Max(0, input.State.JumpBufferRemaining - dt) : 0;
             bool launched;
             float velocity, targetY;
             if (fluidMotion)
@@ -98,7 +102,8 @@ public static partial class ExplicitCharacterMovement
             }
             else
             {
-                launched = jump && supported;
+                launched = jumpRequested && (supported || sinceGround <= tuning.CoyoteTime);
+                if (launched) next.JumpBufferRemaining = 0;
                 velocity = launched ? tuning.JumpSpeed : next.VerticalVelocity;
                 if (!supported || launched)
                     velocity = (float)Math.Max(-tuning.MaxFallSpeed, velocity - (double)tuning.Gravity * dt);
@@ -106,7 +111,11 @@ public static partial class ExplicitCharacterMovement
             }
             float speed = (fluidMotion ? tuning.SwimSpeed : run ? tuning.RunSpeed : tuning.WalkSpeed) *
                 fraction * next.SpeedScale * MediumSpeed(point, next.Position.Y, fluidMotion, tuning);
-            Vector2 horizontal = direction * speed;
+            Vector2 horizontal = !fluidMotion && !supported
+                ? tuning.AirMomentum
+                    ? CharacterMovement.ResolveAirborneVelocity(input.State.HorizontalVelocity, direction, speed, dt, tuning)
+                    : direction * (speed * tuning.AirControl)
+                : direction * speed;
             if (!float.IsFinite(horizontal.X) || !float.IsFinite(horizontal.Y) || !float.IsFinite(velocity) || !float.IsFinite(targetY))
                 return Hold(input, MovementStepOutcome.EnvironmentInvalid);
             Vector3 delta = new(horizontal.X * dt, targetY - next.Position.Y, horizontal.Y * dt);
@@ -130,9 +139,10 @@ public static partial class ExplicitCharacterMovement
             next.VerticalVelocity = velocity;
             next.Grounded = false;
             next.CommandedVelocity = horizontal;
-            next.HorizontalVelocity = horizontal;
+            next.HorizontalVelocity = CharacterMovement.ClipToAchieved(horizontal,
+                new(position.X - origin.X, position.Z - origin.Z), dt);
             next.FacingYaw = CharacterMovement.ResolveFacing(next.FacingYaw, direction, facing, dt, tuning);
-            next.TimeSinceGrounded = launched ? tuning.CoyoteTime : input.State.TimeSinceGrounded + dt;
+            next.TimeSinceGrounded = launched ? tuning.CoyoteTime + dt : sinceGround;
             next.SupportGranted = supported;
             selection = new(selection.Space, null, selection.Identity);
 
@@ -161,6 +171,18 @@ public static partial class ExplicitCharacterMovement
             MovementWaterPoint destination = queries.SampleCentreWater(Body(next.Position, tuning, selection));
             if (destination.Availability != MovementAvailability.Known) return Hold(input, Outcome(destination.Availability));
             ClassifyWater(ref next, destination, next.Grounded, wasSwimming || next.Swimming, tuning, water, velocity < 0);
+            if (next.Swimming || next.WaterExcursion == WaterExcursionState.AirborneFromWater ||
+                destination.InWater && !next.Grounded)
+                next.JumpBufferRemaining = 0;
+            else if (!launched && jumpRequested && next.Grounded)
+            {
+                // The landing approach has already been proved. Latch the buffered launch without
+                // inventing another position advance. Its upward segment is resolved next tick.
+                next.VerticalVelocity = tuning.JumpSpeed;
+                next.Grounded = false;
+                next.TimeSinceGrounded = tuning.CoyoteTime + dt;
+                next.JumpBufferRemaining = 0;
+            }
             selection = new(destination.Space, next.Grounded ? selection.Support : null, queries.Identity);
             var framed = new FramedMovementState(next, input.Frame, selection);
             if (!MovementFrameRebinding.TryRebind(framed, framed.Frame, out _))

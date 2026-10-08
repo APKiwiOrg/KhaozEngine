@@ -29,7 +29,7 @@ public sealed partial class ShardHost
         if (!staged.World.TryGet(candidate, out NetId identity) || identity.Value != netId || positionAccessor is null ||
             !positionAccessor(staged.World, candidate, out float x, out float y) || CoordFor(x, y) != destination)
             throw new ArgumentException("The configured entity does not name the requested destination and identity.", nameof(configure));
-        using CellSim.ImportPreparation prepared = target.PrepareImport(staged);
+        using CellSim.ImportPreparation prepared = target.PrepareImport(staged, CellImportPurpose.Relocate);
         result = prepared.CheckAdmission();
         if (!result.Ok) return false;
         Dictionary<long, TransientScope>? marks = source.World.TryGet(entity, out Transient mark)

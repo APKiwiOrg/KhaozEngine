@@ -5,12 +5,13 @@ using KhaozEngine.Ecs;
 namespace KhaozEngine.Sharding;
 
 public enum CellAdmissionOutcome { Accepted, Unresolved, Refused }
+public enum CellImportPurpose { Restore, Transfer, Relocate }
 
 /// <summary>Classifies frame-adapted staged entities before any live publication. Implementations
 /// may update staged pure state. The returned read remains held through publication and ownership changes.</summary>
 public interface ICellImportAdmission
 {
-    CellAdmissionRead Acquire(World staged, IReadOnlyDictionary<long, Entity> entities);
+    CellAdmissionRead Acquire(World staged, IReadOnlyDictionary<long, Entity> entities, CellImportPurpose purpose);
 }
 
 /// <summary>A thread-affine import verdict and optional read lease. Unresolved/refused environment

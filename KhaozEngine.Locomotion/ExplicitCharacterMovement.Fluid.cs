@@ -31,9 +31,11 @@ public static partial class ExplicitCharacterMovement
             return;
         }
         bool free = water.Mode == WaterTraversalMode.SurfaceSwimmer && point.InWater && point.Interval!.Value.UpperIsFreeSurface;
+        bool surfaceContact = free && state.VerticalVelocity <= 0 &&
+            Math.Abs(state.Position.Y - SurfaceCentre(point, tuning)) <= water.SurfaceContactToleranceMetres;
         bool swimming = free && (state.WaterExcursion == WaterExcursionState.AirborneFromWater
             ? (state.VerticalVelocity < 0 || descending) && state.Position.Y <= SurfaceCentre(point, tuning) + water.SurfaceContactToleranceMetres
-            : RequiresSwimming(point, wasSwimming, state.Position.Y, tuning));
+            : surfaceContact || RequiresSwimming(point, wasSwimming, state.Position.Y, tuning));
         state.Swimming = swimming;
         if (swimming) state.WaterExcursion = WaterExcursionState.Surface;
         else if (state.WaterExcursion == WaterExcursionState.Surface)

@@ -14,7 +14,7 @@ namespace KhaozEngine.NetWorld;
 internal sealed class ExplicitCellAdmission(ExplicitPlayerMovement settings, MoveTuning tuning,
     WorldFrame frame, IPhysicsWorld? physics) : ICellImportAdmission
 {
-    public CellAdmissionRead Acquire(World staged, IReadOnlyDictionary<long, Entity> entities)
+    public CellAdmissionRead Acquire(World staged, IReadOnlyDictionary<long, Entity> entities, CellImportPurpose purpose)
     {
         MovementQueryLease? queries = null;
         try
@@ -53,8 +53,10 @@ internal sealed class ExplicitCellAdmission(ExplicitPlayerMovement settings, Mov
                 return Reject(CellAdmissionOutcome.Refused, "Imported movement captured a different physics source.");
             foreach (var actor in actors)
             {
-                var result = ExplicitCharacterMovement.SettlePlacement(new(actor.State.Move, queries.Frame, null),
-                    tuning, settings.Water, queries);
+                var framed = new FramedMovementState(actor.State.Move, queries.Frame, null);
+                var result = purpose == CellImportPurpose.Transfer
+                    ? ExplicitCharacterMovement.ReclassifyContinuation(framed, tuning, settings.Water, queries)
+                    : ExplicitCharacterMovement.SettlePlacement(framed, tuning, settings.Water, queries);
                 if (result.Outcome != MovementStepOutcome.Advanced)
                     return Reject(result.Outcome is MovementStepOutcome.EnvironmentInvalid or MovementStepOutcome.PlacementRefused
                         ? CellAdmissionOutcome.Refused : CellAdmissionOutcome.Unresolved, "Imported movement placement was not admitted.");

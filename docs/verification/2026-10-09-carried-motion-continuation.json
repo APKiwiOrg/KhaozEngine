@@ -1,0 +1,103 @@
+{
+  "status": "Generic dry motion and live-transfer continuation. Other motion policies and native/game adoption remain pending.",
+  "baseCommit": "83ad8d8bb",
+  "runs": {
+    "ground-motion-red": {
+      "path": "/tmp/swim-ground-motion-red.log",
+      "sha256": "0bb4b32b36aa8908b71bfabc74c1c2398e01e22bf1b812e7ce539af5a77e7be8",
+      "passed": 3,
+      "failed": 7,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "ground-motion-green": {
+      "path": "/tmp/swim-ground-motion-green.log",
+      "sha256": "c93f10269d10ef98f02ca558bf934b9301f8813232847293615ca076681b92a3",
+      "passed": 104,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "transfer-timers-red": {
+      "path": "/tmp/swim-transfer-timers-red.log",
+      "sha256": "994d862955f984ceafb75c7508b5e0094d54b9861645344911fb9660976198f6",
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "transfer-timers-green": {
+      "path": "/tmp/swim-transfer-timers-green.log",
+      "sha256": "92e29b91d89b988357ecf3b73d898eed2e0051f233dc199c36ae0ec592c1bd3d",
+      "passed": 32,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "carried-motion-red": {
+      "path": "/tmp/swim-carried-motion-red.log",
+      "sha256": "d759afefaf4170e18c8faf8ccea9cb82c07e9e78b97e86bdc1b18e84e25315ff",
+      "passed": 0,
+      "failed": 3,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "carried-motion-green": {
+      "path": "/tmp/swim-carried-motion-green.log",
+      "sha256": "92d7b8b8250055556482b0213294e3db879454f42b5d52f055d8c7e3403609e3",
+      "passed": 105,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "cold-surface-band-red": {
+      "path": "/tmp/swim-cold-surface-band-red.log",
+      "sha256": "ecb39b78ce7b9758c9eb39ce5e378f75e3c94e73e5424723d874810ff80438c1",
+      "passed": 1,
+      "failed": 2,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "cold-surface-band-green": {
+      "path": "/tmp/swim-cold-surface-band-green.log",
+      "sha256": "57b4999c68d8fac424c7d1f8d60497ac4e306422f9c30213e9708e1db663584b",
+      "passed": 107,
+      "failed": 1,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "cold-surface-fixture": {
+      "path": "/tmp/swim-cold-surface-fixture.log",
+      "sha256": "c5bde6ce5120db330ed5603ebc34ebbf5d95538440846eaa9b44fc1394015e76",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "carried-motion-heads": {
+      "path": "/tmp/swim-carried-motion-heads.log",
+      "sha256": "89972acc183f80ea8dc66ff91d6658ad563abc0fcab05e39c6785208d2bf3c21",
+      "passed": 54,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    }
+  },
+  "fixtureCorrection": "The initial cold-at-rest placement fixture accidentally used a selected-space witness. RebuildSelection correctly refused it. The missing surface-contact behavior was independently RED through Step. The placement fixture was corrected to a null-hint cold witness, then passed.",
+  "coverage": [
+    "Dry coyote window and buffered landing",
+    "Air-control scale, conserved momentum and braking reuse existing pure helper",
+    "Achieved motion clips carried velocity without altering exported command",
+    "Unsupported submerged presses consume without dry buffering",
+    "Live transfer preserves legitimate accepted buffer and pose",
+    "Nonfinite carried motion refused before placement and step",
+    "Cold surface-contact pose derives water mode and uses independent water launch",
+    "Unflagged upward arc does not get captured by surface band"
+  ],
+  "pending": [
+    "Movement commitments, step pacing/traction and explicit bounds",
+    "GroundMoveContext/nav equivalence and portable profile identity",
+    "Whole-branch independent review, current-main reconciliation and full verification",
+    "Native/released adoption and eventual game feature"
+  ]
+}

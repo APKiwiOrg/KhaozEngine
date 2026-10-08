@@ -143,7 +143,7 @@ public class CellImportAdmissionTests
         public bool Ready = true;
         public int Attempts;
         public Action? OnDispose;
-        public CellAdmissionRead Acquire(World staged, IReadOnlyDictionary<long, Entity> entities)
+        public CellAdmissionRead Acquire(World staged, IReadOnlyDictionary<long, Entity> entities, CellImportPurpose purpose)
         {
             Attempts++;
             return new(Ready ? CellAdmissionOutcome.Accepted : CellAdmissionOutcome.Unresolved,

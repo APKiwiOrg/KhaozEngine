@@ -503,6 +503,13 @@ shore sliding, simultaneous solid/water constraints and body-relative depth thre
 forbidden starting overlap refuses placement. Every corrected segment is fully re-proved.
 Sharded integration, generic nav proof and native acceptance remain in development. Active committed movement currently refuses
 this opt-in path.
+Dry explicit motion uses carried coyote/buffer timers and the existing pure air-momentum law.
+Collision denial clips the carried horizontal velocity while keeping the unconstrained command for
+anomaly measurement. Unsupported wet presses cannot borrow the dry coyote/buffer path. Nonfinite
+carried motion is refused before placement or movement. An unsupported, non-rising cold pose in the
+certified surface-contact band derives swimming without first sinking below the entry threshold.
+`ReclassifyContinuation` rebuilds current footing/water facts without advancing a live transferred
+pose or consuming its accepted dry jump buffer. Cold placement uses `SettlePlacement`.
 Legacy entry points and unconfigured callers retain their existing behavior.
 
 ### Explicit surface motion development status

@@ -61,13 +61,20 @@ public static partial class ExplicitCharacterMovement
     static MovementStepOutcome Outcome(MovementAvailability status) => status == MovementAvailability.Invalid
         ? MovementStepOutcome.EnvironmentInvalid : MovementStepOutcome.EnvironmentUnresolved;
 
+    static bool ValidCarriedState(in MoveState state) =>
+        Nonnegative(state.TimeSinceGrounded) && Nonnegative(state.JumpBufferRemaining) &&
+        Nonnegative(state.ClimbRateEwma) && Nonnegative(state.SpeedScale) && float.IsFinite(state.FacingYaw) &&
+        float.IsFinite(state.HorizontalVelocity.X) && float.IsFinite(state.HorizontalVelocity.Y) &&
+        state.WaterExcursion is >= WaterExcursionState.None and <= WaterExcursionState.AirborneFromWater;
+
     static bool Valid(in MoveTuning tuning) =>
         Positive(tuning.CapsuleRadius) && Positive(tuning.CapsuleHalfHeight) &&
         tuning.CapsuleHalfHeight >= tuning.CapsuleRadius && Positive(tuning.Gravity) && Positive(tuning.MaxFallSpeed) &&
         Nonnegative(tuning.WalkSpeed) && Nonnegative(tuning.RunSpeed) && Nonnegative(tuning.SwimSpeed) &&
         Nonnegative(tuning.JumpSpeed) && Nonnegative(tuning.GroundedEpsilon) && Nonnegative(tuning.StepHeight) &&
         Positive(tuning.SwimEnterDepthFraction) && tuning.SwimEnterDepthFraction <= 1 &&
-        Nonnegative(tuning.CoyoteTime) && Nonnegative(tuning.MaxSlopeRadians) && tuning.MaxSlopeRadians < MathF.PI * 0.5f;
+        Nonnegative(tuning.CoyoteTime) && Nonnegative(tuning.JumpBuffer) && Nonnegative(tuning.AirControl) &&
+        Nonnegative(tuning.AirBrakeAccel) && Nonnegative(tuning.MaxSlopeRadians) && tuning.MaxSlopeRadians < MathF.PI * 0.5f;
     static bool Positive(float value) => float.IsFinite(value) && value > 0;
     static bool Nonnegative(float value) => float.IsFinite(value) && value >= 0;
 }

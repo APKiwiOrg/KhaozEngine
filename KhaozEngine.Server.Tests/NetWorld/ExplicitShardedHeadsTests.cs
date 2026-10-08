@@ -154,6 +154,38 @@ public class ExplicitShardedHeadsTests
         pair.Environment.OnPinDispose = null;
     }
 
+
+    [Fact]
+    public void LiveHandoffPreservesTheCarriedJumpBufferAndAirbornePose()
+    {
+        using var pair = new Pair();
+        pair.Pump(6);
+        var target = pair.Server.Host.CellFor(4, 4);
+        var source = new World();
+        var entity = source.Spawn();
+        var state = new PlayerMoveState
+        {
+            Position = new(4, 2, 4),
+            TeleportEpoch = 17
+        };
+        state.Move.VerticalVelocity = -2;
+        state.Move.TimeSinceGrounded = 0.2f;
+        state.Move.JumpBufferRemaining = 0.075f;
+        source.Set(entity, new NetId(99));
+        source.Set(entity, ReplicatedPosition.FromWorld(state.Position, WorldFrame.Origin));
+        source.Set(entity, MovementState.From(state));
+        source.Set(entity, MovementOwnerState.From(state));
+        byte[] bytes = SnapshotWriter.WriteFiltered(source, pair.Server.Registry, new HashSet<long> { 99 }, ReplicationChannels.Migrate);
+        var adopted = target.AdoptFromMigrate(bytes);
+        Assert.Contains(99L, adopted);
+        Assert.True(target.TryGetOwned(99, out var moved));
+        Assert.Equal(state.Position, target.World.Get<ReplicatedPosition>(moved).Value);
+        Assert.Equal(state.Move.VerticalVelocity, target.World.Get<MovementState>(moved).VerticalVelocity);
+        Assert.Equal(state.TeleportEpoch, target.World.Get<MovementState>(moved).TeleportEpoch);
+        Assert.Equal(state.Move.JumpBufferRemaining, target.World.Get<MovementOwnerState>(moved).JumpBufferRemaining);
+        Assert.Equal(state.Move.TimeSinceGrounded, target.World.Get<MovementOwnerState>(moved).TimeSinceGrounded);
+    }
+
     static byte[] RestoreBytes(ReplicationRegistry registry, float y, bool second = false)
     {
         var world = new World();

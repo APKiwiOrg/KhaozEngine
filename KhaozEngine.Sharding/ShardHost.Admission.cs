@@ -36,7 +36,7 @@ public sealed partial class ShardHost
         foreach (var pair in deferredMigrations.Where(pair => pair.Key.Target == cell.Coord).ToArray())
         {
             CellMessage message = pair.Value;
-            using CellSim.ImportPreparation prepared = cell.PrepareImport(message.Payload);
+            using CellSim.ImportPreparation prepared = cell.PrepareImport(message.Payload, CellImportPurpose.Transfer);
             CellRestoreResult result = prepared.Publish(transientCrossings);
             if (result.NeedsAdmission) continue;
             if (!result.Ok) throw new InvalidDataException(result.Error ?? "The migration snapshot could not be decoded.");

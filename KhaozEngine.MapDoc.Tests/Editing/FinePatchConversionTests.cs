@@ -165,10 +165,16 @@ public sealed class FinePatchConversionTests
     public void Conversion_OnAMixedFootprintRetargetsOnlyTheConvertedBound()
     {
         MapSurfaceSet input = ConversionFixtures.MixedPorch();
+        // D4 retargets a fully moved footprint in place, and porch-cells is stored in half-floor, so the only
+        // permitted change to that patch is the upper bound of that one record.
+        MapSurfacePatch expectedFloor = input.Patches[new("half-floor", 0, 0)].Clone();
+        int porchIndex = expectedFloor.Records.FindIndex(x => x.Id == "porch-cells");
+        var originalPorch = (MapSpaceFootprint)expectedFloor.Records[porchIndex];
+        expectedFloor.Records[porchIndex] = originalPorch with { Upper = originalPorch.Upper with { SurfaceId = "third-roof-fine-1" } };
         MapConversionResult r = Convert(input, ConversionFixtures.PorchRoofRequest(width: 3));
         MapSpaceFootprint porch = r.Candidate.AllRecords().OfType<MapSpaceFootprint>().Single(f => f.Id == "porch-cells");
         Assert.Equal(("half-floor", "third-roof-fine-1"), (porch.Lower.SurfaceId, porch.Upper.SurfaceId));
-        Assert.Equal(Digests(input)[new("half-floor", 0, 0)], MapSurfaceSemantics.PatchDigest(r.Candidate.Patches[new("half-floor", 0, 0)]));
+        Assert.Equal(MapSurfaceSemantics.PatchDigest(expectedFloor), MapSurfaceSemantics.PatchDigest(r.Candidate.Patches[new("half-floor", 0, 0)]));
         Assert.Empty(MapTopologyReferenceValidator.Validate(r.Candidate.Refs, r.Candidate.Patches.Values));
     }
 

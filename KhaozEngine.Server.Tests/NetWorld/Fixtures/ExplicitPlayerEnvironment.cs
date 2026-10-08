@@ -21,6 +21,7 @@ internal sealed class ExplicitPlayerEnvironment : IMovementEnvironmentProvider, 
     public readonly List<Vector3> RebuiltPositions = [];
     public int Prepared;
     public int PinsDisposed;
+    public Action? OnPinDispose;
     public static MoveTuning Tuning => MoveTuning.Default with
     {
         CapsuleRadius = 0.25f,
@@ -99,7 +100,7 @@ internal sealed class ExplicitPlayerEnvironment : IMovementEnvironmentProvider, 
             selection = new(new("world", "room"), null, owner.Identity);
             return MovementAvailability.Known;
         }
-        public void Dispose() { owner.PinsDisposed++; }
+        public void Dispose() { owner.OnPinDispose?.Invoke(); owner.PinsDisposed++; }
     }
     public void Dispose() { View.Dispose(); Physics.Dispose(); }
 }

@@ -10,7 +10,7 @@ using KhaozEngine.Replication;
 namespace KhaozEngine.NetWorld;
 
 /// <summary>Tunables for <see cref="WorldServer"/>.</summary>
-public sealed class WorldServerConfig
+public sealed partial class WorldServerConfig
 {
     /// <summary>Fixed server tick, seconds.</summary>
     public float TickSeconds { get; init; } = 1f / 30f;
@@ -238,7 +238,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                 "colliders in a space its state is not in.", nameof(physics));
         this.physics = physics;
         simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics, medium,
-            this.config.SamplerSpace);
+            this.config.SamplerSpace, this.config.ExplicitMovement);
         // Always enforce the engine wire generation at connect (independent of any consumer version gate), so a
         // wire-skewed or version-less client is rejected cleanly instead of admitted and left to misparse the wire.
         var admission = new ReplicationAdmissionGate(WireGenerationAuthenticator.Install(authenticator));
@@ -383,16 +383,38 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
     public void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false)
     {
         if (!entityBySlot.TryGetValue(slot, out Entity e)) return;
-        if (teleport && stateBySlot.TryGetValue(slot, out PlayerMoveState current)
-            && current.Move.Commitment.IsActive)
-            QueueMovementCommitmentEnd(slot, current, MovementCommitmentEndReason.Teleported);
-        uint baseEpoch = TeleportEpochGuard.BaseEpoch(stateBySlot, slot);   // reports rather than silently zeroing
+        uint baseEpoch = TeleportEpochGuard.BaseEpoch(stateBySlot, slot);
         PlayerMoveState next = ToIsland(state);
-        if (teleport) next.Move.Commitment = default;
-        next.TeleportEpoch = teleport ? baseEpoch + 1u : baseEpoch;   // server owns the monotonic epoch
-        stateBySlot[slot] = next;
-        world.Set(e, ReplicatedPosition.InFrame(islandFrame, next.Position));
-        MovementComponents.Set(world, e, next);
+        if (teleport)
+        {
+            next.Move.Commitment = default;
+            if (config.ExplicitMovement is not null)
+            {
+                next.Move = MovementStepResult.HoldState(next.Move);
+                next.Move.WaterExcursion = WaterExcursionState.None;
+                next.Move.Swimming = false;
+                next.Move.Grounded = false;
+                next.Move.VerticalVelocity = 0;
+                next.Move.HorizontalVelocity = Vector2.Zero;
+            }
+        }
+        using (var read = simulator.BeginExplicitRead(next))
+        {
+            if (read?.BasisValid == false) return;
+            if (read?.Queries is { } queries)
+            {
+                var placement = ExplicitCharacterMovement.SettlePlacement(new(next.Move, queries.Frame, null),
+                    tuning, config.ExplicitMovement!.Water, queries);
+                if (placement.Outcome != MovementStepOutcome.Advanced) return;
+                next.Move = placement.State.State;
+            }
+            if (teleport && stateBySlot.TryGetValue(slot, out PlayerMoveState current) && current.Move.Commitment.IsActive)
+                QueueMovementCommitmentEnd(slot, current, MovementCommitmentEndReason.Teleported);
+            next.TeleportEpoch = teleport ? baseEpoch + 1u : baseEpoch;
+            stateBySlot[slot] = next;
+            world.Set(e, ReplicatedPosition.InFrame(islandFrame, next.Position));
+            MovementComponents.Set(world, e, next);
+        }
     }
 
     /// <summary>Sets the display name replicated for a joined player (added to its entity as a
@@ -560,10 +582,14 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
             // pre-frame server: a state converted from Origin to Origin is the same state, and InFrame(Origin, p)
             // is the same component as { Value = p }.
             PlayerMoveState prev = ToIsland(stateBySlot[slot]);
-            PlayerMoveState state = simulator.Step(prev, cmd, dt);
-            stateBySlot[slot] = state;
-            world.Set(entityBySlot[slot], ReplicatedPosition.InFrame(islandFrame, state.Position));
-            MovementComponents.Set(world, entityBySlot[slot], state);   // replicate the vertical axis and timers
+            PlayerMoveState state;
+            using (simulator.BeginExplicitRead(prev))
+            {
+                state = simulator.Step(prev, cmd, dt);
+                stateBySlot[slot] = state;
+                world.Set(entityBySlot[slot], ReplicatedPosition.InFrame(islandFrame, state.Position));
+                MovementComponents.Set(world, entityBySlot[slot], state);
+            }
             InspectMovementCommitmentTransition(slot, prev, state);
             if (config.AntiCheat.CorrectionEnabled && !prev.Move.Commitment.IsActive)
                 TrackCorrection(slot, prev, state, dt);

@@ -80,8 +80,13 @@ public sealed partial class WorldServer
         if (!entityBySlot.ContainsKey(slot)) { spawn = default; return false; }
         // The same idle step OnJoin runs, so the reset settles onto the ground exactly as a fresh join does. The
         // simulator speaks the island's frame and the caller wants absolute, so it converts in and back out.
-        spawn = ToAbsolute(simulator.Step(
-            ToIsland(new PlayerMoveState { Position = ConfiguredSpawn(slot) }), MoveCommand.Idle, config.TickSeconds));
+        PlayerMoveState basis = ToIsland(new PlayerMoveState { Position = ConfiguredSpawn(slot) });
+        using var read = simulator.BeginExplicitRead(basis);
+        if (read?.BasisValid == false) { spawn = default; return false; }
+        PlayerMoveState candidate = simulator.Step(basis, MoveCommand.Idle, config.TickSeconds);
+        if (simulator.LastExplicitOutcome is not (null or MovementStepOutcome.Advanced or MovementStepOutcome.Blocked))
+        { spawn = default; return false; }
+        spawn = ToAbsolute(candidate);
         return true;
     }
 }

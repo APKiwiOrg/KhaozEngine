@@ -4,7 +4,7 @@ using KhaozEngine.Replication;
 namespace KhaozEngine.NetWorld;
 
 /// <summary>Tunables for <see cref="WorldClient"/>.</summary>
-public sealed class WorldClientConfig
+public sealed partial class WorldClientConfig
 {
     /// <summary>Fixed client prediction tick, seconds. Must match the server tick for clean reconciliation.</summary>
     public float TickSeconds { get; init; } = 1f / 30f;

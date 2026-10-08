@@ -1,0 +1,79 @@
+{
+  "status": "Single-world server/client leased integration. Wet admission and sharded paths remain pending.",
+  "baseCommit": "19572b2bc",
+  "runs": {
+    "heads-runtime-red": {
+      "path": "/tmp/swim-explicit-heads-runtime-red.log",
+      "sha256": "8b3fd71314fa9227f2fdf12a6080689d24be0485d7d3888d81bc8a7978e52d10",
+      "passed": 0,
+      "failed": 5,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "heads-green": {
+      "path": "/tmp/swim-explicit-heads-green.log",
+      "sha256": "9527ae3e6321ce8ffa05d6dd5be57926f65154a707f34b63090061b8324e346c",
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "heads-regressions": {
+      "path": "/tmp/swim-explicit-heads-regressions.log",
+      "sha256": "0c5cb0da5d158870bbdaaa0d720249b18aea02a1d1aac5f99325e0e1affa5fb7",
+      "passed": 117,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "placement-red": {
+      "path": "/tmp/swim-explicit-placement-red.log",
+      "sha256": "2115f0430758f09c2f2e0e3ceae8aa191a7b5c5fd8b7971c773a8c5bf839f58f",
+      "passed": 0,
+      "failed": 4,
+      "skipped": 0,
+      "exitCode": 1
+    },
+    "placement-green": {
+      "path": "/tmp/swim-explicit-placement-green.log",
+      "sha256": "27c3ff828a206fb0a1b1397b2024a7b81cf7cd7d3595bdb9e114ddf5f642081f",
+      "passed": 26,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    }
+  },
+  "coverage": [
+    "Both heads publish state before pin disposal",
+    "Server query refusal acknowledges and consumes jump",
+    "Unresolved spawn publishes no player",
+    "Client defers invalid/unavailable correction, retries before prediction",
+    "No default-origin avatar for an unclassified initial basis",
+    "Teleport refusal preserves state and epoch",
+    "Successful teleport clears water arc and classifies footing",
+    "Configured spawn validation follows explicit queries"
+  ],
+  "pending": [
+    "SM1 and wet traversal",
+    "Sharded head, handoff and restore",
+    "Independent whole-branch review and full checks"
+  ],
+  "format": {
+    "applyExit": 0,
+    "verifyExit": 0,
+    "change": "Initializer whitespace in ExplicitPlayerHeadsTests only."
+  },
+  "sourceHashes": {
+    "KhaozEngine.Locomotion/ExplicitCharacterMovement.Placement.cs": "8603c9b1f239c67d1d374cdedeb4f06f1b73f1a3fc751aa76f94d423ccc12975",
+    "KhaozEngine.NetWorld/ExplicitPlayerMovement.cs": "a74564b21805d7b5b80ca29f03b673859d896b62606848647acacd446ed5382b",
+    "KhaozEngine.NetWorld/WorldClient.cs": "2d4f9e3ca44bec5a9631d9a035f567167326bdae146d46a2878bf6ef06bc878d",
+    "KhaozEngine.NetWorld/WorldClientConfig.cs": "b9b9b581ec95e0a4cfa539cb4e69160931ee06058b2db7554cd10a9d96dc1945",
+    "KhaozEngine.NetWorld/WorldClient.ExplicitMovement.cs": "9f66507b67a48effc446ffc5bcc137eacf7fa8a723a8d79249bce4b6b1c4edd0",
+    "KhaozEngine.NetWorld/WorldServer.cs": "0c8afbfdca8bef2ebb9083ca5e43260bf5d5d6652821ecf650faa923df810def",
+    "KhaozEngine.NetWorld/WorldServer.Sessions.cs": "03689440a024a6ce63d58e4a5b6503ee953099109dd399087b9d7988b0bb9336",
+    "KhaozEngine.NetWorld/WorldServer.ResumeSpawn.cs": "9f619cf4b1cee607366f1c5908e698bad0bb8a89d60789366cf87f2b28187913",
+    "KhaozEngine.Server.Tests/NetWorld/Fixtures/ExplicitPlayerEnvironment.cs": "baee7a8633cda8633483153395092ecbf2502fd7c3de952efe1aabfc0e6d033b",
+    "KhaozEngine.Server.Tests/NetWorld/ExplicitPlayerHeadsTests.cs": "b133d78f688ab065aa2bcf216ab75ab264af2fa13c1cdbe7f3c66b56a0278f07",
+    "KhaozEngine.Server.Tests/NetWorld/ExplicitPlayerHeadsTests.Placement.cs": "5d0bfedd76499f3fbca9718c40d5ba20bfcb66aeae1306c0881a7eea2c49c506"
+  }
+}

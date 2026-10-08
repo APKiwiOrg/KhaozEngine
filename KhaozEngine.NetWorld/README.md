@@ -1034,8 +1034,10 @@ Configured simulators called without a read scope hold and clear refused-step ef
 falling back to legacy sampling. `LastExplicitOutcome` reports the last explicit simulation result.
 
 Real Bepu/prediction tests cover publication fencing, corrected pending-command replay, acknowledged
-refused presses and frame mismatch. WorldServer, WorldClient and sharded call-site wiring are still
-being implemented. Wet-region admission remains subject to the shared producer-fact dependency.
+refused presses and frame mismatch. WorldServerConfig and WorldClientConfig expose ExplicitMovement. Single-world ticks, prediction,
+replay, spawn, reset and teleport hold the lease through publication. Unclassified client bases
+remain pending and retry before new prediction. A first unclassified basis renders no local avatar.
+Sharded integration remains in progress. Wet-region admission awaits the agreed SM1 implementation.
 
 ## Client simulation state versus presentation state
 

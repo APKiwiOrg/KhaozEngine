@@ -60,3 +60,18 @@ public sealed class PlayerMoveReadScope : IDisposable
         finally { release(this); }
     }
 }
+
+
+public sealed partial class WorldServerConfig
+{
+    /// <summary>Opt-in leased environment. Configured spawn/resume positions must be valid capsule centres.
+    /// Null retains the legacy simulator. The caller owns the environment and its physics view.</summary>
+    public ExplicitPlayerMovement? ExplicitMovement { get; init; }
+}
+
+public sealed partial class WorldClientConfig
+{
+    /// <summary>Opt-in leased prediction and correction queries. Unresolved bases are held for retry
+    /// before publication. Null retains legacy prediction.</summary>
+    public ExplicitPlayerMovement? ExplicitMovement { get; init; }
+}

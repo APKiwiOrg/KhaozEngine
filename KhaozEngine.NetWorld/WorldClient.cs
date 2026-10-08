@@ -134,7 +134,8 @@ public sealed partial class WorldClient : IDisposable
         // to rebase for. Forcing rebasability on it anyway would refuse a perfectly safe non-rebasable world.
         if (frameAnchoring) RequireRebasablePhysics(physics);
         islandPhysics = physics;
-        simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics, medium, config.SamplerSpace);
+        simulator = new PlayerMoveSimulator(groundHeight, tuning, groundNormal, bounds, physics, medium,
+            config.SamplerSpace, config.ExplicitMovement);
         PredictionSettings settings = config.Prediction ?? (PredictionSettings.Default with { TickSeconds = config.TickSeconds });
         prediction = new ClientPrediction<PlayerMoveState, MoveCommand>(simulator, settings);
         interpolateRemotes = config.InterpolateRemotes;
@@ -391,6 +392,7 @@ public sealed partial class WorldClient : IDisposable
         rebuild = NewRebuildStream();        // the stream binds one connection and view: a fresh receiver per attempt
         lastTeleportEpochByEntity.Clear();   // the fresh view has no entities/samples; start remote-teleport tracking clean
         LocalNetId = -1;
+        deferredMovementBasis = null;
         ForgetServerTick();
         secondsSinceServerFrame = 0f;
         attemptDeadlineRemaining = disconnectTimeout;
@@ -414,7 +416,8 @@ public sealed partial class WorldClient : IDisposable
     }
 
     /// <summary>Predicts one command forward and transmits it. Returns the assigned seq, or <c>-1</c> when the
-    /// session is not <see cref="WorldConnectionState.Connected"/> (nothing is predicted or sent). A game loop that
+    /// session is not <see cref="WorldConnectionState.Connected"/> or an explicit corrected basis still cannot be
+    /// classified (nothing is predicted or sent). A game loop that
     /// calls this every frame regardless of state is safe: input produced during a (possibly minutes-long)
     /// auto-reconnect outage is dropped here rather than predicted forward and queued. Without this gate the
     /// prediction sequence inflated and the predicted avatar marched away from authority for the whole outage, so on
@@ -425,7 +428,9 @@ public sealed partial class WorldClient : IDisposable
     public int SendInput(in MoveCommand cmd)
     {
         if (state != WorldConnectionState.Connected) return -1;
-        int seq = prediction.Predict(cmd);
+        if (!RetryDeferredMovementBasis()) return -1;
+        int seq;
+        using (simulator.BeginExplicitRead(prediction.PredictedState)) seq = prediction.Predict(cmd);
         SendToServer(MoveProtocol.EncodeMove(seq, cmd), NetChannelReliability.ReliableOrdered);
         return seq;
     }
@@ -492,6 +497,7 @@ public sealed partial class WorldClient : IDisposable
         {
             if (!world.IsAlive(kv.Value)) continue;
             bool isLocal = kv.Key == LocalNetId;
+            if (isLocal && !seededPredictionOnce && deferredMovementBasis.HasValue) continue;
             Vector3 pos;
             bool grounded;
             float verticalVelocity;
@@ -670,24 +676,7 @@ public sealed partial class WorldClient : IDisposable
             world.TryGet(local, out MovementOwnerState owner);    // the owner-only feel timers (served to us alone)
             PlayerMoveState basis = PlayerMoveState.From(p, ms, owner);
             AdoptIslandFrame(p.Frame);
-            if (first)
-            {
-                // First frame of the genuine initial connect: seed prediction at the authoritative spawn from seq 0
-                // (client + server both start fresh). First frame of a RECONNECT (we have seeded before): re-seed the
-                // predicted state but keep the seq counter monotonic - the fresh server already advanced its ack from
-                // the commands sent in the join gap, so zeroing the seq would get every post-reconnect command
-                // rejected as stale and pin the avatar forever.
-                if (seededPredictionOnce) prediction.Reseed(basis);
-                else { prediction.Reset(basis); seededPredictionOnce = true; }
-            }
-            ReconciliationResult rr = prediction.Reconcile(authoritativeTick++, basis, ackSeq);
-            RecordCorrection(rr.PositionError);                  // NetStats: predicted-vs-authoritative delta (m)
-            lastReconcileError = rr.PositionError;               // for the trace's local reconcile-error signal
-            if (rr.Teleported)                                   // a teleport landed: seed placement or an epoch advance
-            {
-                LocalTeleportEpoch++;
-                LocalTeleported?.Invoke();
-            }
+            ApplyMovementBasis(basis, ackSeq, first);
         }
     }
 

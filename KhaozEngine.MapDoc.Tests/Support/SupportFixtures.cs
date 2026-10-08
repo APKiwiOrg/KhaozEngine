@@ -129,7 +129,11 @@ internal static class SupportFixtures
         document.PlayableBounds = new() { MinX = 0, MinZ = 0, MaxX = 1, MaxZ = 1 };
         document.Placements.Add(new MapPlacement
         {
-            Id = "p-amb", Kind = "scenery", AssetId = "tree", X = 0.5f, Z = 0.5f,
+            Id = "p-amb",
+            Kind = "scenery",
+            AssetId = "tree",
+            X = 0.5f,
+            Z = 0.5f,
             SupportBinding = new(MapSupportBindingKind.Space, null, "room", 0.2f, 1f, 1f),
         });
         return ValidatedNativeDocument(document, EqualSlabFindings);

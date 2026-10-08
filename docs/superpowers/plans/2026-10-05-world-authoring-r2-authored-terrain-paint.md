@@ -3838,3 +3838,17 @@ validated once per context, and ruling T12A-6 counts every visited bound patch, 
 MaxContextPatches so retained validation evidence stays within the budget. Rulings T12A-1 to T12A-6 are in
 the ledger. Tasks 12B and 13 pass opening owner references through PrepareBounds. Proof is
 `proofs/2026-10-09-r2-task12a-green.json`.
+
+
+### Task 12B occupied-space membership and cave coverage verified
+
+Sources fc88a1a16 and 5e2f619ab convert framed points exactly, resolve occupied-space membership in the
+design's status order without reading missing data as outside, and validate mixed-resolution cave coverage,
+portal bands and separation over one prepared context per call. Compile RED is preserved at f25477acb in
+MapDoc and Editor. Final runs on the last commit passed 181 MapDoc, 98 Editor and 3 Compatibility cases, with
+format and guards clean and the frozen Task 9 to 12B tests unchanged. Review needed one fix round: portal
+endpoints now prepare both segment vertices, coverage requires the strip to emit the registered side,
+compatibility-only peers report ambiguity, and portal containment splits at height crossings. Rulings
+T12B-1 to T12B-7 are in the ledger. Task 13 support stays a column query at the body axis (T13-2), and owner
+provenance for installed map statics is KhaozEngine#1327 for R3. Proof is
+`proofs/2026-10-09-r2-task12b-green.json`.

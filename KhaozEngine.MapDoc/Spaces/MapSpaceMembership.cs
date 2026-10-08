@@ -43,18 +43,22 @@ public sealed class MapSpaceMembership
         _view = scoped;
     }
 
-    public MapMembershipResult Query(MapFramePoint point) => QueryCore(point, null, null);
-    internal MapMembershipResult Query(MapFramePoint point, MapBoundFaceWork work) => QueryCore(point, work, null);
+    public MapMembershipResult Query(MapFramePoint point) => QueryCore(point, null, null, null, out _);
+    internal MapMembershipResult Query(MapFramePoint point, MapBoundFaceWork work) => QueryCore(point, work, null, null, out _);
+    internal MapMembershipResult Query(MapFramePoint point, IEnumerable<MapBoundFaceDemand> demands,
+        MapBoundFaceWork? work, out MapBoundFaceContext? prepared) => QueryCore(point, work, null, demands, out prepared);
     internal MapMembershipResult Query(MapFramePoint point, MapBoundFaceContext context)
     {
         context.RequireView(_view);
-        return QueryCore(point, null, context);
+        return QueryCore(point, null, context, null, out _);
     }
 
     sealed record Candidate(MapSpaceFootprint Footprint, MapSpacePointBounds.Bound Lower, MapSpacePointBounds.Bound Upper);
 
-    MapMembershipResult QueryCore(MapFramePoint point, MapBoundFaceWork? work, MapBoundFaceContext? supplied)
+    MapMembershipResult QueryCore(MapFramePoint point, MapBoundFaceWork? work, MapBoundFaceContext? supplied,
+        IEnumerable<MapBoundFaceDemand>? additional, out MapBoundFaceContext? prepared)
     {
+        prepared = supplied;
         if (point.Frame != _view.Scope.Frame) throw new ArgumentException("point frame differs from acquired frame", nameof(point));
         if (!float.IsFinite(point.Local.X) || !float.IsFinite(point.Local.Y) || !float.IsFinite(point.Local.Z))
             throw new ArgumentException("point must be finite", nameof(point));
@@ -104,8 +108,10 @@ public sealed class MapSpaceMembership
                     (patch.Cells[lz * patch.Width + lx].Flags & MapCellFlags.Indoor) != 0)
                     demands.Add(new(bounds.SourceCell(key, xz), null));
             }
+            if (additional is not null) demands.AddRange(additional);
             MapBoundFaceContext? context = supplied ?? MapBoundFaceContext.PrepareBounds(_view, demands,
                 budgets.MaxCandidatePatches, budgets.MaxInspectedFaces, work, out _, bounds.Preparation);
+            prepared = context;
             if (context is null) return Failure(MapMembershipStatus.CapacityExceeded, bounds.Preparation.Refusal ?? "context faces");
             foreach (MapCavePortal portal in incident)
             {
@@ -199,7 +205,7 @@ public sealed class MapSpaceMembership
             new(status, point, null, Array.Empty<string>(), null, detail, _view.ReadWitness);
     }
 
-    bool OnPortal(MapCavePortal portal, MapExactXz point)
+    internal bool OnPortal(MapCavePortal portal, MapExactXz point)
     {
         for (int i = 0; i + 1 < portal.Interval.Count; i++)
         {

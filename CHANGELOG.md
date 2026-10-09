@@ -10,6 +10,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - The PixelLab sheet assembler tool reads and writes PNG through `KhaozEngine.Imaging` instead of
   `SixLabors.ImageSharp` 2.1.13, whose five advisories failed Release restore under NuGet audit (#1326). The
   central ImageSharp pin is removed. The tool accepts 8 and 16-bit grey, grey with alpha, RGB and RGBA PNGs.
+- Physics: `BepuPhysicsWorld.SweepCapsule` returns the nearest hit across mesh and compound statics. A farther
+  edge-sharing mesh no longer wins over a nearer one, and a sweep shorter than 1 no longer misses a mesh
+  within its distance.
 
 ## 20.29.1
 

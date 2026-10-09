@@ -15,7 +15,6 @@ namespace KhaozEngine.Tests.Locomotion.Contacts;
 public class GroundCoreTests
 {
     static readonly MoveTuning Tuning = MoveTuning.Default;
-    // A parameterless new on a record struct is the zero default, not the 0.5 default parameter.
     static readonly GroundCoreSettings Settings = new(FootRadiusFraction: 0.5f);
     const float Dt = 1f / 30f;
 
@@ -212,15 +211,14 @@ public class GroundCoreTests
         AssertNear(new Vector2(0.1f, 0.1f), result.Achieved);
     }
 
-    // A 55 degree face falls from the floor edge at x 0. At x 0.21 the edge is outside the disc and the face is
-    // 0.3 below the feet. At 60 degrees the seated shell's lower sphere would sit exactly 0.8 cos 60 = 0.4 from the
-    // face, tangent to it, so 55 keeps the seat clearance clear of a float tie.
+    // A 60 degree face falls from the floor edge at x 0. At x 0.21 the edge is outside the disc and the face is
+    // 0.364 below the feet, within StepHeight.
     [Theory]
     [InlineData(SceneVariant.Box)]
     [InlineData(SceneVariant.Mesh)]
     public void WalkingOffOntoSteepGivesSteep(SceneVariant variant)
     {
-        using FootSupportScene scene = Ramp(variant, -2f * MathF.Tan(Radians(55f)));
+        using FootSupportScene scene = Ramp(variant, -2f * MathF.Tan(Radians(60f)));
         var move = new Vector2(0.2f, 0);
 
         GroundStepResult result = Step(scene, new Vector3(0.01f, 0, 0), move);
@@ -313,6 +311,16 @@ public class GroundCoreTests
         AssertFeetY(0, free);
     }
 
+    // The parameterless constructor carries the documented default. The zero default is still rejected.
+    [Fact]
+    public void DefaultSettingsUseHalfTheRadius()
+    {
+        Assert.Equal(0.5f, new GroundCoreSettings().FootRadiusFraction);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            GroundCore.Step(Vector3.Zero, Vector2.UnitX, Dt, Tuning, default(GroundCoreSettings), (_, _) => 0, null,
+                null, null));
+    }
+
     [Fact]
     public void InvalidInputsThrow()
     {
@@ -328,7 +336,7 @@ public class GroundCoreTests
         Assert.Throws<ArgumentOutOfRangeException>(() => Run(Vector3.Zero, Vector2.UnitX, -Dt));
         Assert.Throws<ArgumentOutOfRangeException>(() => Run(Vector3.Zero, Vector2.UnitX, float.NaN));
 
-        settings = new GroundCoreSettings();
+        settings = new GroundCoreSettings(0);
         Assert.Throws<ArgumentOutOfRangeException>(() => Run(Vector3.Zero, Vector2.UnitX, Dt));
 
         // A span of 2 * 0.5 - 0.4 = 0.6 cannot hold the 0.8 diameter shell.

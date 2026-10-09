@@ -6,7 +6,11 @@ namespace KhaozEngine.Locomotion.Contacts;
 
 /// <summary>Ground core options that are not yet <see cref="MoveTuning"/> fields. The foot disc radius is
 /// <see cref="FootRadiusFraction"/> of the capsule radius.</summary>
-internal readonly record struct GroundCoreSettings(float FootRadiusFraction = 0.5f);
+internal readonly record struct GroundCoreSettings(float FootRadiusFraction = 0.5f)
+{
+    // A parameterless new on a record struct would skip the default parameter and give zero.
+    public GroundCoreSettings() : this(0.5f) { }
+}
 
 /// <summary>What supports the body after a grounded tick. <see cref="Held"/> means the support at the start could
 /// not be certified, so the body did not move.</summary>
@@ -190,7 +194,10 @@ internal static class GroundCore
                 };
                 Vector2 axis = Axis + attempt.Achieved;
                 var target = new Vector3(axis.X, feetY, axis.Y);
-                if (!Clear(target, out Vector3 placed))
+                // Steep motion is phase 3 work, so a steep seat keeps its target without a clearance push and
+                // never depends on a clearance float tie.
+                Vector3 placed = target;
+                if (seat.Outcome != SeatOutcome.SteepSeated && !Clear(target, out placed))
                 {
                     blocked = true;
                     break;

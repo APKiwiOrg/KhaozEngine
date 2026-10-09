@@ -8,9 +8,11 @@ namespace KhaozEngine.Locomotion.Contacts;
 internal enum CertifiedSupportKind : byte { Refused, Walkable, Steep }
 
 /// <summary>One feature's support at the body axis. <see cref="Lower"/> and <see cref="Upper"/> enclose the
-/// contribution height. For <see cref="CertifiedSupportKind.Walkable"/>, <see cref="Normal"/> is the walkable
-/// face that wins the minimum. For <see cref="CertifiedSupportKind.Steep"/>, the bounds enclose the witness
-/// height and <see cref="Normal"/> is the least steep incident face. A refusal carries no usable values.</summary>
+/// contribution height, the minimum of the faces' planes at the axis and the witness height. A
+/// <see cref="CertifiedSupportKind.Walkable"/> contribution takes that minimum over its walkable faces. A
+/// <see cref="CertifiedSupportKind.Steep"/> one has no walkable face and takes it over every face with a
+/// positive upward bound. <see cref="Normal"/> is the face that wins the minimum. A refusal carries no usable
+/// values.</summary>
 internal readonly record struct SupportContribution(CertifiedSupportKind Kind, double Lower, double Upper,
     Vector3 Normal, Vector3 Witness, int FeatureId);
 
@@ -33,9 +35,8 @@ internal static class SupportCertification
         capability.AssertFeatureCurrent(result, lease);
         if (!Admissible(result, faces, axis, cosMaxSlope)) return Refusal;
 
-        int walkable = 0, winner = -1, leastSteep = -1;
-        double lower = double.PositiveInfinity, upper = double.PositiveInfinity, leastSteepY = double.NegativeInfinity;
-        double winnerLower = double.PositiveInfinity, winnerUpper = double.PositiveInfinity;
+        int walkable = 0;
+        PlaneMinimum walkablePlanes = PlaneMinimum.Empty, risingPlanes = PlaneMinimum.Empty;
         for (int i = 0; i < faces.Length; i++)
         {
             CapsuleIncidentFace face = faces[i];
@@ -43,31 +44,63 @@ internal static class SupportCertification
             double upward = LowerBound(face.Normal.Y, face.NormalError);
             // A face that may lean back over the witness cannot be part of an upward support neighborhood.
             if (!(upward >= 0)) return Refusal;
-            if (upward > leastSteepY) { leastSteepY = upward; leastSteep = i; }
-            if (upward < cosMaxSlope) continue;
-            walkable++;
+            bool isWalkable = upward >= cosMaxSlope;
+            if (isWalkable) walkable++;
+            // A face whose upward bound is zero has no bounded plane at the axis. Only a walkable one refuses.
+            if (!(upward > 0))
+            {
+                if (isWalkable) return Refusal;
+                continue;
+            }
             if (!PlaneAtAxis(result, face, upward, axis, out double faceLower, out double faceUpper))
                 return Refusal;
-            // The face with the lowest enclosure wins. Equal lower bounds prefer the lower upper bound.
-            if (faceLower < winnerLower || (faceLower == winnerLower && faceUpper < winnerUpper))
-                (winner, winnerLower, winnerUpper) = (i, faceLower, faceUpper);
-            lower = Math.Min(lower, faceLower);
-            upper = Math.Min(upper, faceUpper);
+            risingPlanes.Offer(i, faceLower, faceUpper);
+            if (isWalkable) walkablePlanes.Offer(i, faceLower, faceUpper);
         }
 
-        double witnessLower = LowerBound(result.GeometryPoint.Y, result.PositionErrorMetres);
-        double witnessUpper = UpperBound(result.GeometryPoint.Y, result.PositionErrorMetres);
-        if (walkable == 0)
-            return new(CertifiedSupportKind.Steep, witnessLower, witnessUpper, faces[leastSteep].Normal,
-                result.GeometryPoint, result.FeatureId);
-        // Raw coplanar triangles of one face or open-boundary patch must agree. A convex crease is
-        // supported by any walkable side because its other sides fall away below the shared edge.
-        if (result.Kind != CapsuleFeatureKind.ConvexCrease && walkable != faces.Length) return Refusal;
-        lower = Math.Min(lower, witnessLower);
-        upper = Math.Min(upper, witnessUpper);
+        CertifiedSupportKind kind;
+        PlaneMinimum planes;
+        if (walkable > 0)
+        {
+            // Raw coplanar triangles of one face or open-boundary patch must agree. A convex crease is
+            // supported by any walkable side because its other sides fall away below the shared edge.
+            if (result.Kind != CapsuleFeatureKind.ConvexCrease && walkable != faces.Length) return Refusal;
+            (kind, planes) = (CertifiedSupportKind.Walkable, walkablePlanes);
+        }
+        else if (risingPlanes.Winner >= 0)
+            (kind, planes) = (CertifiedSupportKind.Steep, risingPlanes);
+        else
+            return Refusal;
+        double lower = Math.Min(planes.Lower, LowerBound(result.GeometryPoint.Y, result.PositionErrorMetres));
+        double upper = Math.Min(planes.Upper, UpperBound(result.GeometryPoint.Y, result.PositionErrorMetres));
         if (!double.IsFinite(lower) || !double.IsFinite(upper) || lower > upper) return Refusal;
-        return new(CertifiedSupportKind.Walkable, lower, upper, faces[winner].Normal, result.GeometryPoint,
-            result.FeatureId);
+        return new(kind, lower, upper, faces[planes.Winner].Normal, result.GeometryPoint, result.FeatureId);
+    }
+
+    // The running minimum of face plane enclosures at the axis. The face with the lowest enclosure wins. Equal
+    // lower bounds prefer the lower upper bound.
+    struct PlaneMinimum
+    {
+        internal double Lower, Upper;
+        internal int Winner;
+        double _winnerLower, _winnerUpper;
+
+        internal static PlaneMinimum Empty => new()
+        {
+            Lower = double.PositiveInfinity,
+            Upper = double.PositiveInfinity,
+            Winner = -1,
+            _winnerLower = double.PositiveInfinity,
+            _winnerUpper = double.PositiveInfinity,
+        };
+
+        internal void Offer(int face, double lower, double upper)
+        {
+            if (lower < _winnerLower || (lower == _winnerLower && upper < _winnerUpper))
+                (Winner, _winnerLower, _winnerUpper) = (face, lower, upper);
+            Lower = Math.Min(Lower, lower);
+            Upper = Math.Min(Upper, upper);
+        }
     }
 
     static bool Admissible(in CapsuleFeatureResult result, ReadOnlySpan<CapsuleIncidentFace> faces, Vector2 axis,

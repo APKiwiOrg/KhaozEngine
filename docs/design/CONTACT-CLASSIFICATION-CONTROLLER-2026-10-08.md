@@ -118,7 +118,8 @@ contribution = min(height of the surface's plane at the axis, highest point of t
 ```
 
 Support is the highest contribution, returned with its surface normal and its source. A surface is
-walkable when its face normal passes `cos(MaxSlopeRadians)`.
+walkable when its face normal passes `cos(MaxSlopeRadians)`. A steep surface contributes by the same rule
+and is reported as steep support.
 
 What the rule gives, case by case:
 

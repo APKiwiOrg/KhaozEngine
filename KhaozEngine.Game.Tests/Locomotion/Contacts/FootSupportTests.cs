@@ -80,6 +80,22 @@ public class FootSupportTests
         Assert.True(sample.Status == SupportStatus.Steep, $"Expected Steep, got {sample}");
     }
 
+    // The footprint rests on the steep face 0.3 above walkable terrain, so the higher steep face is the support.
+    [Theory]
+    [InlineData(SceneVariant.Box)]
+    [InlineData(SceneVariant.Mesh)]
+    public void SteepFaceAboveWalkableTerrainIsSteep(SceneVariant variant)
+    {
+        using FootSupportScene scene = Slope(variant, 60f);
+        float x = (float)(0.3 / Math.Tan(Math.PI / 3));
+        double plane = scene.TopHeightAt("slope", x, 0);
+        SupportSample sample = FootSupport.Find((_, _) => 0f, null, scene.World, scene.Lease,
+            Query(x, 0, (float)plane));
+        Assert.True(sample.Status == SupportStatus.Steep, $"Expected Steep, got {sample}");
+        AssertHeight(plane, sample);
+        Assert.Equal(scene["slope"], sample.Static);
+    }
+
     [Theory]
     [InlineData(SceneVariant.Box)]
     [InlineData(SceneVariant.Mesh)]

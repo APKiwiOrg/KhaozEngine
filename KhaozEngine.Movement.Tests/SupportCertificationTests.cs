@@ -157,5 +157,18 @@ public class SupportCertificationTests
         SupportContribution contribution = SupportCertification.Certify(world, lease, result,
             faces.AsSpan(0, result.Written), new Vector2(top.X, top.Z), CosMaxSlope);
         Assert.Equal(CertifiedSupportKind.Steep, contribution.Kind);
+        // The installed top plane through the float quaternion, evaluated in double at the axis.
+        (double X, double Y, double Z) Rotate(double x, double y, double z)
+        {
+            double qx = tilt.X, qy = tilt.Y, qz = tilt.Z, qw = tilt.W;
+            double tx = 2 * (qy * z - qz * y), ty = 2 * (qz * x - qx * z), tz = 2 * (qx * y - qy * x);
+            return (x + qw * tx + (qy * tz - qz * ty), y + qw * ty + (qz * tx - qx * tz),
+                z + qw * tz + (qx * ty - qy * tx));
+        }
+        var centre = Rotate(0, 0.5, 0);
+        var normal = Rotate(0, 1, 0);
+        double plane = centre.Y - (normal.X * (top.X - centre.X) + normal.Z * (top.Z - centre.Z)) / normal.Y;
+        Assert.True(contribution.Lower <= plane && plane <= contribution.Upper,
+            $"Plane {plane:R} outside [{contribution.Lower:R}, {contribution.Upper:R}]");
     }
 }

@@ -27,9 +27,10 @@ internal static class FootSupport
         new(SupportStatus.None, float.NaN, float.NaN, Vector3.Zero, null, -1, Vector3.Zero);
     static readonly SupportSample RefusedSupport = NoSupport with { Status = SupportStatus.Refused };
 
-    /// <summary>Returns the highest certified walkable support within the reach band, else the highest steep
-    /// one, else <see cref="SupportStatus.None"/>. A refused proposal above the selected support, or with no
-    /// support at all, returns <see cref="SupportStatus.Refused"/>. A non-null <paramref name="world"/> must
+    /// <summary>Returns the certified support with the highest midpoint within the reach band, walkable or
+    /// steep, carrying its own status, else <see cref="SupportStatus.None"/>. Equal midpoints prefer walkable,
+    /// then the witness nearest the axis, then terrain, then the lower static. A refused proposal above the
+    /// selected support, or with no support at all, returns <see cref="SupportStatus.Refused"/>. A non-null <paramref name="world"/> must
     /// offer <see cref="IPhysicsCapsuleFeatures"/> and <paramref name="lease"/> must be its current read
     /// interval.</summary>
     internal static SupportSample Find(Func<float, float, float>? groundHeight,
@@ -130,7 +131,7 @@ internal static class FootSupport
         readonly FootSupportQuery _query = query;
         readonly double _bandLower = (double)query.FeetY - query.ReachDown;
         readonly double _bandUpper = (double)query.FeetY + query.ReachUp;
-        Candidate? _walkable, _steep;
+        Candidate? _best;
         double _refusedTop = double.NegativeInfinity;
 
         // Analytic terrain is exact at the axis and needs no certificate.
@@ -149,15 +150,16 @@ internal static class FootSupport
         {
             double midpoint = candidate.Midpoint;
             if (!(midpoint >= _bandLower && midpoint <= _bandUpper)) return;
-            ref Candidate? best = ref candidate.Status == SupportStatus.Walkable ? ref _walkable : ref _steep;
-            if (best is not Candidate current || Beats(candidate, current)) best = candidate;
+            if (_best is not Candidate current || Beats(candidate, current)) _best = candidate;
         }
 
-        // Highest midpoint first. Ties prefer the witness nearest the axis, then terrain, then the lower static.
+        // Highest midpoint first. Ties prefer walkable, then the witness nearest the axis, then terrain, then the
+        // lower static.
         readonly bool Beats(in Candidate challenger, in Candidate holder)
         {
             double a = challenger.Midpoint, b = holder.Midpoint;
             if (a != b) return a > b;
+            if (challenger.Status != holder.Status) return challenger.Status == SupportStatus.Walkable;
             double da = AxisDistanceSquared(challenger.Witness), db = AxisDistanceSquared(holder.Witness);
             if (da != db) return da < db;
             if (challenger.Static is not StaticHandle challengerStatic) return holder.Static is not null;
@@ -173,7 +175,7 @@ internal static class FootSupport
         internal readonly SupportSample Result()
         {
             bool refused = _refusedTop != double.NegativeInfinity;
-            if ((_walkable ?? _steep) is not Candidate chosen) return refused ? RefusedSupport : NoSupport;
+            if (_best is not Candidate chosen) return refused ? RefusedSupport : NoSupport;
             if (refused && _refusedTop > chosen.Upper) return RefusedSupport;
             float height = (float)chosen.Midpoint;
             // The error encloses both bounds from the rounded height, so it covers the midpoint's rounding too.

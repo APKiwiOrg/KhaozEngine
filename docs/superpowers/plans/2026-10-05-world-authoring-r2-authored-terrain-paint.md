@@ -3185,7 +3185,7 @@ public void ShippedTerrain_RemainsExactWithCaveModel() => PrivateOracleEntry.Run
 Run: `wa_test t18-red "$COMPAT" "FullyQualifiedName~LegacyTerrainImportTests"`. Expected: build FAIL naming `LegacyCorners`.
 Run: `wa_run t18-green dotnet test "$COMPAT" -c Release`. Expected: PASS, 4 tests (Tasks 3, 9 and 12A plus this one).
 Run: `wa_run t18-harness-build dotnet build "$HARNESS" -c Release`, then `wa_test t18-harness-guards "$HARNESS" "FullyQualifiedName~PrivateOracleGuardTests"`, then `wa_run t18-harness-format dotnet format "$HARNESS" --verify-no-changes --no-restore`. Expected: exit 0 for all three, 11 guard cases.
-Private run (controller): the Task 3 private block with `--filter "FullyQualifiedName~ShippedSourceInventory|FullyQualifiedName~ShippedTerrainComparison"` and report `comparison.json`. Expected: exit 0. Engine Outcome records only pass or fail and the private record reference. An exceedance is a reported blocker carried privately, never a tolerance change.
+Private run (controller): the Task 3 private block as two invocations on one extraction, because each private entry opens its own report and the secure report rule refuses an existing path (T18-6): `--filter "FullyQualifiedName~ShippedSourceInventory_VerifiesAndInventoriesTheFrozenSource"` with report `inventory.json`, then `--filter "FullyQualifiedName~ShippedTerrainComparison"` with report `comparison.json`. Expected: exit 0 for both. Engine Outcome records only pass or fail and the private record reference. An exceedance is a reported blocker carried privately, never a tolerance change.
 
 - [ ] **Step 4: Update living documentation**
 
@@ -3222,7 +3222,7 @@ wa_run final-agent-instructions sh scripts/check-agent-instructions.sh --tree
 wa_run final-doc-versions bash scripts/check-doc-versions.sh
 ```
 
-The solution suite already includes the rump's harness exclusion guards, so no suite runs twice. The harness is outside the solution, so its build, guard tests and format run separately. Then the controller runs the Task 18 private block once on this head with a fresh extraction and a new report name. Every command needs exit 0, zero warnings, a nonzero test count where tests run, and no format diff. A failure is repaired through the review path and only the affected commands re-run once. No GPU tests, clients, windows, stress or repeated runs.
+The solution suite already includes the rump's harness exclusion guards, so no suite runs twice. The harness is outside the solution, so its build, guard tests and format run separately. Then the controller runs the Task 18 private block once on this head with a fresh extraction and new report names, one per entry. Every command needs exit 0, zero warnings, a nonzero test count where tests run, and no format diff. A failure is repaired through the review path and only the affected commands re-run once. No GPU tests, clients, windows, stress or repeated runs.
 
 **5. Private pack of the candidate.** `priv_feed="$(mktemp -d /tmp/wa-r2-feed-XXXXXX)"`, then `wa_run final-private-pack env KHAOZENGINE_FEED="$priv_feed" scripts/pack-local-feed.sh`. Expected: exit 0 and the package set at the chosen version, recorded in Outcome. The shared feed is untouched.
 
@@ -3911,3 +3911,15 @@ session identity through MapResolverV2 and refusing mismatched combinations befo
 preserved at b92fbcb6e in MapDoc and Editor. Final runs passed 40 MapDoc and 167 Editor cases, a 128-case MapDoc and
 3-case compatibility regression and a 20-case placement seam run, with format and guards clean. Review needed one fix
 round. Rulings T17-1 to T17-5 are in the ledger. Proof is `proofs/2026-10-10-r2-task17-green.json`.
+
+
+### Task 18 legacy terrain comparison verified
+
+Sources be00089d0 and dad4f8bb1 add LegacyCorners and SharedCornerMismatches to the compatibility converter, the
+shipped region loader and the shipped terrain comparison to the private harness, and the R2 living documentation. The
+comparison checks every region and all four planes through report.Check only, records per-plane counts and maximum
+errors privately, and records exactly one spike-point outcome per run, failing when the manifest names none or the
+world has no regions. Compile RED is preserved at 3257ed35a. Final runs passed 5 compatibility cases and 28 harness
+cases (23 guards plus 5 spike-outcome regressions), with format and guards clean. Review needed one fix round. The
+private comparison and inventory passed on dad4f8bb1, private record a480c761. Ruling T18-6 gives each private entry
+its own report name. Rulings T18-1 to T18-6 are in the ledger. Proof is `proofs/2026-10-10-r2-task18-green.json`.

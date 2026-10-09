@@ -60,3 +60,14 @@ The old F3 alternative would have used tangent-plane feet Y=0.1856 with corner-n
 placing the lower sphere centre at Y=0.4699. That round-bottom route is superseded, not a fallback.
 Do not fork shared arithmetic, relax XZ equality or add another ground-step resolver. Shared Bepu
 QueryView edits remain serialized between the owning lanes.
+
+## Lane decision, 2026-10-10
+
+The owner parked the separate swimming lane. #438 phase 4 takes over integrating this branch, so ground
+and swim movement have one owner. Phase 4 merges current main into this branch, replaces
+`MovementSupportResolver` land selection with the #438 support primitive on explicit grounded ticks,
+turns both StepFootprint tests green without changing them, and integrates the branch with the rest of
+phase 4. The swimming-owned medium, buoyancy, surface jump, transport and lease code stays as it is.
+
+No other thread works on this branch until then. Native G1b, engine release, game pin and adoption, the
+river carve and owner visual acceptance keep their existing gates.

@@ -27,7 +27,7 @@ internal static class MapSurfaceRootProjection
         using (var writer = new Utf8JsonWriter(sink)) WriteNormalized(writer, node);
         return Convert.ToHexStringLower(sink.GetHashAndReset());
     }
-    static void WriteNormalized(Utf8JsonWriter writer, JsonNode? node)
+    internal static void WriteNormalized(Utf8JsonWriter writer, JsonNode? node)
     {
         if (node is JsonObject obj)
         {

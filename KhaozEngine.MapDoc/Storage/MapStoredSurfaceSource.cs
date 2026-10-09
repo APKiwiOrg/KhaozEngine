@@ -12,6 +12,8 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
     readonly string _directory;
     readonly IReadOnlyDictionary<string, MapSurfaceRef> _surfaceLookup;
     readonly IReadOnlyList<MapAssetRef> _nativeAssets;
+    readonly MapTileIndex _pinnedTiles;
+    readonly float _sculptCellSize;
     internal MapSurfaceStorageIndex Index { get; }
     internal MapResolverIdentityDoc? ResolverIdentity { get; }
     internal MapSupportRecipe SupportRecipe { get; }
@@ -24,6 +26,8 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
         ResolverIdentity = manifest.ResolverIdentity;
         SupportRecipe = manifest.SupportRecipe;
         _nativeAssets = Array.AsReadOnly(manifest.NativeAssets.ToArray());
+        _pinnedTiles = tiles;
+        _sculptCellSize = MapCanonical.SculptCellSizeOf(manifest);
         SnapshotId = "manifest:" + tiles.ManifestSha256;
         RootSha256 = MapSurfaceSemantics.RootDigest(manifest);
     }

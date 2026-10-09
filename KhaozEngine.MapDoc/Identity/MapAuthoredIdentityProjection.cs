@@ -5,15 +5,18 @@ using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Identity;
 
-/// <summary>The shared semantic projection, independent of physical storage and acquisition bookkeeping.</summary>
+/// <summary>The shared semantic projection, independent of physical storage and acquisition bookkeeping. The
+/// manifest root covers globals and surface metadata, the content digest covers placements, spawns, player
+/// spawns and sculpt, and the ordered patch facts cover surface payloads.</summary>
 internal static class MapAuthoredIdentityProjection
 {
-    internal static string Compute(string rootDigest, IEnumerable<KeyValuePair<MapPatchKey, string>> patches,
+    internal static string Compute(string rootDigest, string contentDigest, IEnumerable<KeyValuePair<MapPatchKey, string>> patches,
         MapAssetClosure assets, MapResolveOptions options) => MapCanonical.HashHex(w =>
     {
         w.WriteStartObject();
         w.WriteString("domain", "kemap/native-authored/2");
         w.WriteString("rootDigest", rootDigest);
+        w.WriteString("contentDigest", contentDigest);
         w.WriteStartArray("patches");
         foreach (var patch in patches.OrderBy(p => p.Key))
         {

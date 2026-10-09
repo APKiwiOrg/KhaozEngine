@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.Serialization;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc;
 
@@ -196,7 +198,9 @@ internal static partial class MapTiledFile
     }
 
     /// <summary>A shallow copy of a document carrying only the globals: same references for terrain, layers
-    /// and shapes, with the four point-shaped lists empty and the sculpt block reduced to its header.</summary>
+    /// and shapes, with the four point-shaped lists empty and the sculpt block reduced to its header. Surfaces
+    /// are a metadata-only copy (copied refs, no patches) and native assets a copied list, so a later edit
+    /// published into the document never shows through the copy.</summary>
     internal static MapDocument GlobalsOnly(MapDocument doc) => new()
     {
         Schema = doc.Schema,
@@ -205,11 +209,11 @@ internal static partial class MapTiledFile
         DisplayName = doc.DisplayName,
         Bounds = doc.Bounds,
         PlayableBounds = doc.PlayableBounds,
-        NativeAssets = doc.NativeAssets,
+        NativeAssets = doc.NativeAssets.ToList(),
         NumericIdHighWaterMark = doc.NumericIdHighWaterMark,
         ResolverIdentity = doc.ResolverIdentity,
         SupportRecipe = doc.SupportRecipe,
-        Surfaces = doc.Surfaces,
+        Surfaces = MetadataOnly(doc.Surfaces),
         TileSize = doc.TileSize,
         Terrain = doc.Terrain,
         ScatterLayers = doc.ScatterLayers,
@@ -219,6 +223,13 @@ internal static partial class MapTiledFile
         Regions = doc.Regions,
         TerrainOverrides = new MapTerrainOverrides(MapCanonical.SculptCellSizeOf(doc)),
     };
+
+    static MapSurfaceSet MetadataOnly(MapSurfaceSet surfaces)
+    {
+        var copy = new MapSurfaceSet();
+        copy.Refs.AddRange(MapSurfaceStorageIndex.CopyRefs(surfaces.Refs));
+        return copy;
+    }
 
     internal static string Normalize(string path) =>
         Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));

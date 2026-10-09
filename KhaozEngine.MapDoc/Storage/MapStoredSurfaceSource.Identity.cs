@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Assets;
-using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Storage;
 
@@ -31,13 +30,8 @@ public sealed partial class MapStoredSurfaceSource
         MapPatchRead read = Payload(entry);
         RequireIdentityStorage(read.Status, "payload " + entry.Key);
         work?.HoldPayload();
-        try
-        {
-            string digest = MapSurfaceSemantics.PatchDigest(read.Patch!);
-            if (digest != entry.SemanticSha256)
-                throw new MapDocumentException($"Corrupt patch semantic digest for '{entry.Key}'.");
-            return digest;
-        }
+        // Payload already recomputed the semantic digest from the verified bytes and refused a mismatch.
+        try { return read.SemanticSha256!; }
         finally { work?.ReleasePayload(); }
     }
 

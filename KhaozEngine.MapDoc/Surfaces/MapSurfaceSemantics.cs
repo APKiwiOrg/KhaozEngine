@@ -13,7 +13,10 @@ namespace KhaozEngine.MapDoc.Surfaces;
 /// <summary>Portable content identity. Physical topology and authored metadata are semantic inputs.</summary>
 public static class MapSurfaceSemantics
 {
-    /// <summary>Portable native root identity. Storage addresses and page packing are excluded.</summary>
+    /// <summary>Portable native root identity, computable from a manifest alone. It covers globals and surface
+    /// metadata only, never tile content: placements, spawns, player spawns and sculpt are outside it, and the
+    /// resolver-2 whole token adds them through its content digest. Storage addresses and page packing are
+    /// excluded.</summary>
     public static string RootDigest(MapDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);

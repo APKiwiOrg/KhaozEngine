@@ -1,7 +1,11 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapEditor;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc
@@ -78,6 +82,25 @@ namespace KhaozEngine.Tests.MapDoc
             Assert.Equal("assets/rock-variant", served.AssetId);
             Assert.Equal("Placement p-a", served.DisplayName);
             Assert.DoesNotContain("changed", served.Tags);
+        }
+
+        /// <summary>The manifest is a metadata snapshot. A terrain edit published into the document afterward
+        /// does not show through the source's surfaces.</summary>
+        [Fact]
+        public void FromDocument_ManifestSurfacesIgnoreALaterPublishedTerrainEdit()
+        {
+            EditorDocument editor = TransactionFixtures.NativeWithSurfaces();
+            using MapDocumentSource source = MapDocumentSource.FromDocument(editor.Doc);
+            MapSurfaceRef[] refs = source.Manifest.Surfaces.Refs.ToArray();
+            MapPatchKey[] patches = source.Manifest.Surfaces.Patches.Keys.ToArray();
+
+            editor.Execute(new TerrainEditCommand(new MapReplaceTopology(Array.Empty<MapSurfacePatch>(),
+                new MapPatchKey[] { new("ground", 0, 0), new("ground", 1, 0) }, Array.Empty<MapSurfaceRef>(), new[] { "ground" })));
+
+            Assert.DoesNotContain(editor.Doc.Surfaces.Refs, s => s.Id == "ground");
+            Assert.Equal(new[] { "ground", "ridge", "far" }, source.Manifest.Surfaces.Refs.Select(s => s.Id));
+            Assert.Equal(refs, source.Manifest.Surfaces.Refs);
+            Assert.Equal(patches, source.Manifest.Surfaces.Patches.Keys);
         }
     }
 }

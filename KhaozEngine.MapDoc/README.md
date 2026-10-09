@@ -27,6 +27,7 @@ features are not supported in native documents yet.
 
 ## Native edit effects
 
+Every API in this section is unreleased R2 work.
 `KhaozEngine.MapDoc.Editing.MapNativeEditEffects` describes an accepted document edit with old and new
 `MapBox3` bounds, patch keys, space and dependency IDs, `MapDigestChange` values and `MapNativeInvalidation`
 flags for Terrain, Physics, Nav, Material, Residency and Placements. `Describe()` emits compact canonical
@@ -71,13 +72,25 @@ valid input. A swept payload refuses with `Missing`, and mismatched bytes or sem
 `Corrupt`. Replacing `map.json` never switches an existing source to the new generation. Open a new source
 to select that generation.
 
-Both overloads hash the root digest, ordered `(patchKey, semanticDigest)` facts, verified asset closure
-hash, builder ID and version, options hash and resolver version under `kemap/native-authored/2`. Storage
-paths, page packing, embedding and incident index bookkeeping do not enter this identity. Equivalent
-complete in-memory and stored documents share one token. Resolver 1 continues to use `MapAuthoredIdentity`.
+The stored overload also reads the tile files named by the generation pinned at `Open`, one tile at a time,
+by their pinned names. Each tile's parsed content must hash to its pinned tile hash before any entry is
+used. A removed tile file refuses with `Missing` and altered content with `Corrupt`. Identity never rereads
+the manifest, lists directories or trusts a stored hash without reading the file.
+
+Both overloads hash exactly these inputs under `kemap/native-authored/2`: the root digest, the authored
+content digest, ordered `(patchKey, semanticDigest)` facts, the verified asset closure hash, builder ID and
+version, options hash and resolver version. The content digest (`kemap/native-content/1`) covers
+placements (including explicit `Y` and `SupportBinding`), spawns, player spawns and sculpt tiles. Each entry
+is normalized as scheme 1 normalizes it, ordered by ordinal id or sculpt tile, with placement display names
+stripped and an empty sculpt block equal to an absent one. `MapSurfaceSemantics.RootDigest` covers globals
+and surface metadata only, computable from a manifest alone, so it and scoped identity never cover tile
+content. Storage paths, tile and page packing, embedding and incident index bookkeeping do not enter the
+whole identity. Equivalent complete in-memory, monolithic, tiled and repacked documents share one token.
+Resolver 1 continues to use `MapAuthoredIdentity`.
 
 ## Bounded scoped acquisition
 
+Every API in this section is unreleased R2 work.
 `MapScopedSurfaces.Acquire(source, scope, assetSha256)` requires `IMapSurfaceAcquisitionSource`, implemented
 by `MapStoredSurfaceSource` and `MapDocumentSurfaceSource.Capture(document)`. A producer implementing only
 `IMapSurfaceSource` refuses with `surface source does not support bounded scoped acquisition` before its
@@ -112,6 +125,13 @@ returns a fresh clone and no access after publication rereads the producer. Scop
 incomplete identity. A complete scoped acquisition from a partial editing window still cannot replace a
 whole current-edit identity. `CompleteView(set)` captures all resident patches and records without bound
 enumeration for complete in-memory surface sets.
+
+## Frame-local compiled geometry
+
+`MapFrameLocal.ToFrame` converts a compiled patch or strip into a `MapFrameMesh` in one `WorldFrame` with
+world-datum heights, and `MapFrameLocal.CompileInFrame` places an exact local patch by a `MapTransform`,
+composing in double before the one frame-local float rounding. Neither takes an absolute world-float round
+trip. They are unreleased R2 work, and R5 consumes them.
 
 ## Authored surfaces, caves and support (unreleased R2)
 

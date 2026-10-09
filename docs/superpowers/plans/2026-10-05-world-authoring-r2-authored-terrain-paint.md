@@ -3897,3 +3897,17 @@ state, identity and effects unchanged. Placement commands keep their released be
 EditorDocument.LastNativeEffects and MapEditSession.ApplyNative report MapNativeEditEffects. Compile RED is preserved at
 22359173d. Final runs passed 86 Editor cases including the 4 new ones and a 65-case MapDoc regression, with format and
 guards clean. Review approved on the first pass. Proof is `proofs/2026-10-09-r2-task16-green.json`.
+
+
+### Task 17 terrain transactions verified
+
+Sources 6273347c4 and fb26b81ae add pure terrain edits that never mutate their input, an editor command that runs them
+through the Task 16 seam with exact snapshot undo and redo, and MutationService.TerrainApply on the same session lock
+and seam, so GUI and service edits yield identical documents and effects. Smoothing keeps J2.1 and reads consistent
+shared halo corners from neighbouring patches. Owner, anchor and identity changes publish together, and undo restores
+exact saved text including surface ref order. Implementation first stopped because every session boundary resolved
+resolver-v2 documents through resolver v1. Ruling T17-4 routes each boundary by resolver identity, adding a version-2
+session identity through MapResolverV2 and refusing mismatched combinations before resource reads. Compile RED is
+preserved at b92fbcb6e in MapDoc and Editor. Final runs passed 40 MapDoc and 167 Editor cases, a 128-case MapDoc and
+3-case compatibility regression and a 20-case placement seam run, with format and guards clean. Review needed one fix
+round. Rulings T17-1 to T17-5 are in the ledger. Proof is `proofs/2026-10-10-r2-task17-green.json`.

@@ -195,13 +195,16 @@ public static class MapTerrainEdits
         MapLatticeAddress origin = patch.CornerAddress(0, 0);
         long absoluteX = checked(origin.X + x), absoluteZ = checked(origin.Z + z);
         int? height = null;
+        // Incident neighbours share boundary corners, so only a disagreement between them is ambiguous.
         foreach (MapSurfacePatch neighbour in set.Patches.Values.Where(p => p.Key.SurfaceId == patch.Key.SurfaceId && p.Key != patch.Key))
         {
             MapLatticeAddress start = neighbour.CornerAddress(0, 0);
             Int128 nx = (Int128)absoluteX - start.X, nz = (Int128)absoluteZ - start.Z;
             if (nx < 0 || nx > neighbour.Width || nz < 0 || nz > neighbour.Depth) continue;
-            if (height.HasValue) throw new MapDocumentException("smoothing halo corner is ambiguous");
-            height = neighbour.Height((int)nx, (int)nz);
+            int value = neighbour.Height((int)nx, (int)nz);
+            if (height.HasValue && height.Value != value)
+                throw new MapDocumentException("smoothing halo corner is ambiguous: incident neighbours disagree on its height");
+            height = value;
         }
         return height ?? throw new MapDocumentException("smoothing halo corner is outside the surface or unloaded");
     }

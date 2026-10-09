@@ -69,9 +69,8 @@ uses `MapResolverV2` over `MapDocumentSurfaceSource.Capture(document)` with `Ses
 (`khaozengine.mapedit.authored-support`, builder version 1, options hash
 `mapdoc-resolver-v2-authored-bindings-v1`, resolver version 2). Unknown identities and mismatched resolver
 options refuse before resource reads. Authored bindings never fall back to analytic support.
-The resource root is the monolithic file's
-directory or the tiled document's own directory, anchored as an absolute path at open, so later working
-directory changes never move it.
+The resource root is the monolithic file's directory or the tiled document's own directory, anchored as an
+absolute path at open, so later working directory changes never move it.
 
 - Open and SetWindow verify the candidate before it replaces anything, then bind its fresh closure, so editing
   works without a manual bind. A windowed (partial) native load refuses. Failed loads keep the previous

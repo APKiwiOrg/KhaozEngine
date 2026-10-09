@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Surfaces;
@@ -57,22 +60,42 @@ internal static class NativeDocumentSnapshot
                 target.Surfaces.Patches[key] = patch;
             else target.Surfaces.Patches.Remove(key);
         }
+        string[] order = candidate.Surfaces.Refs.Select(s => s.Id).ToArray();
         foreach (string id in writeSet.SurfaceIds)
         {
-            int oldIndex = target.Surfaces.Refs.FindIndex(s => s.Id == id);
             MapSurfaceRef? surface = candidate.Surfaces.Refs.Find(s => s.Id == id);
-            if (surface is null)
-            {
-                if (oldIndex >= 0) target.Surfaces.Refs.RemoveAt(oldIndex);
-            }
-            else if (oldIndex >= 0) target.Surfaces.Refs[oldIndex] = surface;
-            else target.Surfaces.Refs.Add(surface);
+            if (surface is not null) PlaceRef(target.Surfaces.Refs, surface, order);
+            else if (target.Surfaces.Refs.FindIndex(s => s.Id == id) is var oldIndex and >= 0)
+                target.Surfaces.Refs.RemoveAt(oldIndex);
         }
         if (writeSet.Placements)
         {
             target.Placements = candidate.Placements;
             target.NumericIdHighWaterMark = candidate.NumericIdHighWaterMark;
         }
+    }
+
+    /// <summary>Replaces a ref in place, or inserts it before the first existing ref that follows it in
+    /// <paramref name="order"/>, so a restored ref returns to its original position.</summary>
+    internal static void PlaceRef(List<MapSurfaceRef> refs, MapSurfaceRef surface, IReadOnlyList<string> order)
+    {
+        int index = refs.FindIndex(s => s.Id == surface.Id);
+        if (index >= 0)
+        {
+            refs[index] = surface;
+            return;
+        }
+        int rank = IndexOf(order, surface.Id);
+        int next = rank < 0 ? -1 : refs.FindIndex(s => IndexOf(order, s.Id) > rank);
+        if (next < 0) refs.Add(surface);
+        else refs.Insert(next, surface);
+    }
+
+    static int IndexOf(IReadOnlyList<string> order, string id)
+    {
+        for (int i = 0; i < order.Count; i++)
+            if (string.Equals(order[i], id, StringComparison.Ordinal)) return i;
+        return -1;
     }
 
     internal static void Publish(MapDocument target, MapDocument candidate)

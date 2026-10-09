@@ -883,10 +883,11 @@ Direct placement `Apply` and `Revert` check document-local native validity only,
 
 The unreleased R2 `TerrainEditCommand(MapTerrainEdit)` uses the same transaction seam for native terrain
 edits. It captures exact before and after patch and surface-ref snapshots of the accepted write set.
-Undo and redo replay those snapshots, restoring corner owners, topology records and semantic identity
-without rerunning smoothing or conversion. A rejected preparation never captures command state.
-Direct terrain `Apply` and `Revert` validate locally, while bound editor transactions also check the
-asset closure and space coverage. `MutationService.TerrainApply(edit)` runs this same command under the
+Undo and redo replay those snapshots, restoring corner owners, topology records, surface-ref order and
+semantic identity without rerunning smoothing or conversion. Undo reports digest and owner changes from
+new to old. A rejected preparation never captures command state. Both modes validate the published
+surfaces, including space coverage. Direct terrain `Apply` and `Revert` check document-local validity
+only, while bound editor transactions also check the asset closure. `MutationService.TerrainApply(edit)` runs this same command under the
 service session lock and returns `MapTerrainMutationResult` with identical document bytes and effects
 text. These are programmatic APIs. Terrain MCP verbs are deferred to R10.
 

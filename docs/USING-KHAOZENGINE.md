@@ -11452,8 +11452,8 @@ for validation and atomic publication. Accepted commands retain exact patch and 
 so undo and redo restore owners, records and identity without resampling. The programmatic service method
 `MutationService.TerrainApply(edit)` runs the same command under the session lock and returns both the
 `MutationResult` and `MapNativeEditEffects`. GUI and service edits produce identical canonical documents
-and `Effects.Describe()` text. Missing smoothing halos, unresolved owners, anchors and invalid space
-separation refuse without changing committed state. Terrain MCP verbs remain planned for R10.
+and `Effects.Describe()` text. Missing or disagreeing smoothing halos, unresolved owners, anchors and
+invalid space separation refuse without changing committed state. Terrain MCP verbs remain planned for R10.
 
 **Renaming.** For analytic documents, the placement, spawn, player spawn, and region inspectors lead with an inline-editable Name
 row. Committing a new value renames the element through `RenamePlacementCommand`, `RenameSpawnCommand`,

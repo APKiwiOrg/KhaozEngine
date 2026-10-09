@@ -38,8 +38,9 @@ The unreleased R2 terrain API uses `MapTerrainEdits.Prepare(surfaces, edit)` to 
 its exact `MapNativeWriteSet` and effects without mutating the input. `MapSetCornerHeights`, `MapSmoothCorners`,
 `MapSetCells` and `MapSetPresence` use patch-local coordinates (presence takes slot-cell indices).
 Smoothing accepts 1 to 64 passes, averages a double-buffered 3 by 3 neighbourhood including the centre,
-and rounds away from zero. Its unchanged halo must be available on this patch or an unambiguous resident
-same-surface neighbour. Missing halo geometry refuses the edit.
+and rounds away from zero. Its unchanged halo must be available on this patch or a resident same-surface
+neighbour. Neighbours share boundary corners, so a halo corner in several neighbours is read when they all
+agree on its height. Missing halo geometry or disagreeing neighbours refuse the edit.
 
 `MapReassignCornerOwner`, `MapReanchorRecords` and `MapReplaceTopology` make ownership and anchor changes
 explicit. Upserts retain current shared-corner owners. Removing an owner or anchor requires reassignment

@@ -98,6 +98,36 @@ public class FootSupportBoundaryTests
         AssertStatus(SupportStatus.None, Find(scene, Query(0)));
     }
 
+    // The band is inclusive. The floor at Y 0 is exactly ReachDown below the feet.
+    [Theory]
+    [InlineData(SceneVariant.Box)]
+    [InlineData(SceneVariant.Mesh)]
+    public void SupportAtTheBandBottomIsIncluded(SceneVariant variant)
+    {
+        using FootSupportScene scene = Floor(variant, 0);
+        AssertWalkable(0, scene["floor"], Find(scene, Query(0, 0, 0.4f)));
+    }
+
+    // The crate top is exactly ReachUp above the feet, and its edge at x 0 is inside the disc.
+    [Theory]
+    [InlineData(SceneVariant.Box)]
+    [InlineData(SceneVariant.Mesh)]
+    public void SupportAtTheBandTopIsIncluded(SceneVariant variant)
+    {
+        using FootSupportScene scene = Floor(variant, 0).Flat("crate", 0, 1, -1, 1, 0.4f);
+        AssertWalkable(0.4f, scene["crate"], Find(scene, Query(-0.1f)));
+    }
+
+    // The crate top is 0.0005 above the band top. It hides the floor at the feet, so nothing may be trusted.
+    [Theory]
+    [InlineData(SceneVariant.Box)]
+    [InlineData(SceneVariant.Mesh)]
+    public void StepJustAboveTheBandRefuses(SceneVariant variant)
+    {
+        using FootSupportScene scene = Floor(variant, 0).Flat("crate", 0, 1, -1, 1, 0.4005f);
+        AssertStatus(SupportStatus.Refused, Find(scene, Query(-0.1f)));
+    }
+
     [Theory]
     [InlineData(SceneVariant.Box)]
     [InlineData(SceneVariant.Mesh)]

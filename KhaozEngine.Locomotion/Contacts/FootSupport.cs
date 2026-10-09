@@ -21,16 +21,20 @@ internal static class FootSupport
 
     // The probes' cylindrical segment. Its lower cap holds the probe's lowest point.
     const float ProbeLength = 0.01f;
+    // The probes start this far above the band and sweep this far past it, so a surface exactly on either band
+    // edge is reached by a sweep rather than landing on the sweep's start or end.
+    const float BandMargin = 0.001f;
     const int FaceCapacity = 256;
 
     static readonly SupportSample NoSupport =
         new(SupportStatus.None, float.NaN, float.NaN, Vector3.Zero, null, -1, Vector3.Zero);
     static readonly SupportSample RefusedSupport = NoSupport with { Status = SupportStatus.Refused };
 
-    /// <summary>Returns the certified support with the highest midpoint within the reach band, walkable or
-    /// steep, carrying its own status, else <see cref="SupportStatus.None"/>. Equal midpoints prefer walkable,
-    /// then the witness nearest the axis, then terrain, then the lower static. A refused proposal above the
-    /// selected support, or with no support at all, returns <see cref="SupportStatus.Refused"/>. A non-null <paramref name="world"/> must
+    /// <summary>Returns the certified support with the highest midpoint whose interval meets the inclusive reach
+    /// band, walkable or steep, carrying its own status, else <see cref="SupportStatus.None"/>. Equal midpoints
+    /// prefer walkable, then the witness nearest the axis, then terrain, then the lower static. A probed surface
+    /// wholly above the band is a refused proposal. A refused proposal above the selected support, or with no
+    /// support at all, returns <see cref="SupportStatus.Refused"/>. A non-null <paramref name="world"/> must
     /// offer <see cref="IPhysicsCapsuleFeatures"/> and <paramref name="lease"/> must be its current read
     /// interval.</summary>
     internal static SupportSample Find(Func<float, float, float>? groundHeight,
@@ -75,8 +79,8 @@ internal static class FootSupport
             throw new ArgumentOutOfRangeException(nameof(query), "ReachDown must be nonnegative and finite.");
         if (!float.IsFinite(query.CosMaxSlope) || query.CosMaxSlope < 0 || query.CosMaxSlope > 1)
             throw new ArgumentOutOfRangeException(nameof(query), "CosMaxSlope must lie in [0, 1].");
-        if (!float.IsFinite(query.FeetY + query.ReachUp + query.FootRadius + ProbeLength) ||
-            !float.IsFinite(query.ReachUp + query.ReachDown))
+        if (!float.IsFinite(query.FeetY + query.ReachUp + BandMargin + query.FootRadius + ProbeLength) ||
+            !float.IsFinite(query.ReachUp + query.ReachDown + 2 * BandMargin))
             throw new ArgumentOutOfRangeException(nameof(query), "The probe band must be finite.");
     }
 
@@ -86,13 +90,13 @@ internal static class FootSupport
         in FootSupportQuery query, float radius, Span<CapsuleIncidentFace> faces, ref Selection selection)
     {
         var capsule = new CapsuleShape(radius, ProbeLength);
-        float lowest = query.FeetY + query.ReachUp;
+        float lowest = query.FeetY + query.ReachUp + BandMargin;
         float centreY = lowest + radius + ProbeLength / 2;
         Pose start = Pose.At(new Vector3(query.Axis.X, centreY, query.Axis.Y));
-        if (!world.SweepCapsule(capsule, start, -Vector3.UnitY, query.ReachUp + query.ReachDown,
+        if (!world.SweepCapsule(capsule, start, -Vector3.UnitY, query.ReachUp + query.ReachDown + 2 * BandMargin,
                 out SweepHit hit, QueryFilter.StaticsOnly))
             return;
-        // A sweep that starts inside geometry reports no contact normal.
+        // A sweep that starts inside geometry reports no contact normal. Geometry inside the raised start refuses.
         if (hit.Distance == 0 && hit.Normal == Vector3.Zero)
         {
             selection.Refuse(lowest);
@@ -112,6 +116,12 @@ internal static class FootSupport
         if (contribution.Kind == CertifiedSupportKind.Refused)
         {
             selection.Refuse(contactLowest);
+            return;
+        }
+        // The sweep stops at the first surface, so support wholly above the band hides anything lower.
+        if (contribution.Lower > (double)query.FeetY + query.ReachUp)
+        {
+            selection.Refuse(contribution.Lower);
             return;
         }
         selection.Offer(new Candidate(
@@ -148,8 +158,8 @@ internal static class FootSupport
 
         internal void Offer(in Candidate candidate)
         {
-            double midpoint = candidate.Midpoint;
-            if (!(midpoint >= _bandLower && midpoint <= _bandUpper)) return;
+            // The band is inclusive, so any overlap of the certified interval with it qualifies.
+            if (!(candidate.Upper >= _bandLower && candidate.Lower <= _bandUpper)) return;
             if (_best is not Candidate current || Beats(candidate, current)) _best = candidate;
         }
 

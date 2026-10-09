@@ -311,6 +311,70 @@ public class GroundCoreTests
         AssertFeetY(0, free);
     }
 
+    // The start is tick 12 of a 6 m/s climb up a 40 degree incline from x -6. A move of 0.20000002 takes two
+    // substeps. Summed, they reach x -3.400002, one ulp short of the planned -3.4000018, which is 2e-7 of height
+    // here. The feet must sit on the support certified at their own axis.
+    [Fact]
+    public void FeetSitOnTheSupportAtTheirOwnAxis()
+    {
+        using FootSupportScene scene = Incline(40);
+        var move = new Vector2(6 * Dt, 0);
+
+        GroundStepResult result = Step(scene, new Vector3(-3.6000018f, -3.0207605f, 0), move);
+
+        AssertFooting(GroundFooting.Walkable, result);
+        Assert.Equal(move, result.Achieved);
+        AssertFeetY(scene.TopHeightAt("incline", result.Feet.X, result.Feet.Z), result);
+    }
+
+    // Treads of 0.35 with risers of 0.30. The body stands on tread 1 at x 0.1 with its feet 0.1333 below the
+    // tread, as a paced climb leaves them. Tread 2 is then 0.4333 above the feet, past the band. The owed climb is
+    // paid first, MaxStepClimbSpeed * dt of it, so the band reaches tread 2 at x 0.25 and the body seats there
+    // with nothing left to climb this tick.
+    [Theory]
+    [InlineData(SceneVariant.Box)]
+    [InlineData(SceneVariant.Mesh)]
+    public void LaggingBodyPaysItsClimbBeforeMoving(SceneVariant variant)
+    {
+        using FootSupportScene scene = Stairs(variant, 0.35f, 0.30f, 3);
+        var start = new Vector3(0.1f, 0.3f - 0.4f / 3f, 0);
+        var move = new Vector2(0.15f, 0);
+        double budget = (double)Tuning.MaxStepClimbSpeed * Dt;
+
+        GroundStepResult result = Step(scene, start, move);
+
+        AssertFooting(GroundFooting.Walkable, result);
+        Assert.False(result.Blocked, $"{result}");
+        Assert.Equal(move, result.Achieved);
+        Assert.True(Math.Abs(result.Support.Height - 2 * 0.30f) <= result.Support.HeightError, $"{result}");
+        Assert.True(Math.Abs(result.Rise - budget) <= 1e-6, $"{result}");
+    }
+
+    // Treads of 0.35 with risers of 0.30. The body stands at x 0.65 with its feet at 0.6, owing 0.3 of climb onto
+    // tread 3 at 0.9. It pays MaxStepClimbSpeed * dt of it first, which spends the budget. At x 0.84 its shell,
+    // 0.4 above the feet at 0.7167, comes 0.38 from the tread 4 nosing at (1.05, 1.2), inside the 0.4 radius. A
+    // clearance push out of the nosing would raise the body past the spent budget, so the move is blocked at the
+    // start with the shell clear.
+    [Theory]
+    [InlineData(SceneVariant.Box)]
+    [InlineData(SceneVariant.Mesh)]
+    public void PacedShellAtTheNextNosingWaits(SceneVariant variant)
+    {
+        using FootSupportScene scene = Stairs(variant, 0.35f, 0.30f, 6);
+        var start = new Vector3(0.65f, 2 * 0.30f, 0);
+        double budget = (double)Tuning.MaxStepClimbSpeed * Dt;
+
+        GroundStepResult result = Step(scene, start, new Vector2(0.19f, 0));
+
+        AssertFooting(GroundFooting.Walkable, result);
+        Assert.True(result.Blocked, $"{result}");
+        Assert.Equal(Vector2.Zero, result.Achieved);
+        Assert.True(Math.Abs(result.Rise - budget) <= 1e-6, $"{result}");
+        Vector3 centre = ShellGeometry.Centre(result.Feet, Tuning);
+        Assert.False(scene.World.ComputePenetration(ShellGeometry.Shape(Tuning), Pose.At(centre), out _),
+            $"The shell overlaps at {result}");
+    }
+
     // The parameterless constructor carries the documented default. The zero default is still rejected.
     [Fact]
     public void DefaultSettingsUseHalfTheRadius()

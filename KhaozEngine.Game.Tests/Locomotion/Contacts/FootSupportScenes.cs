@@ -133,7 +133,7 @@ internal static class FootSupportScenes
     internal const float CrateTop = 0.3f;
     internal const float BankTop = 0.25f;
 
-    static FootSupportScene Floor(SceneVariant variant, Vector3 origin = default) =>
+    internal static FootSupportScene Floor(SceneVariant variant, Vector3 origin = default) =>
         new FootSupportScene(variant, origin).Flat("floor", -4, 6, -5, 5, 0);
 
     internal static FootSupportScene PropFloor(SceneVariant variant) =>
@@ -212,6 +212,52 @@ internal static class FootSupportScenes
 
     internal static FootSupportScene Bank(SceneVariant variant) =>
         Floor(variant).Flat("bank", 1, 5, -4, 4, BankTop);
+
+    /// <summary>A floor for x at most 0, then <paramref name="risers"/> risers of <paramref name="riser"/> with
+    /// treads <paramref name="tread"/> deep. Riser k, counted from 1, stands at x <c>tread (k - 1)</c> and its
+    /// tread tops out at <c>riser k</c>. The top tread is a 2 m landing. The box variant stacks solid boxes on
+    /// Y 0, so every nosing belongs to one static. The mesh variant is one static of tread and riser quads.</summary>
+    internal static FootSupportScene Stairs(SceneVariant variant, float tread, float riser, int risers,
+        float halfWidth = 1)
+    {
+        float landingEnd = tread * (risers - 1) + 2;
+        if (variant == SceneVariant.Box)
+        {
+            var boxes = new FootSupportScene(variant).Flat("floor", -4, 0, -5, 5, 0);
+            for (int k = 1; k <= risers; k++)
+                boxes.Flat($"step{k}", tread * (k - 1), landingEnd, -halfWidth, halfWidth, riser * k);
+            return boxes;
+        }
+        var vertices = new List<Vector3>(FootSupportScene.Quad(new(-4, 0, -5), new(0, 0, -5), new(-4, 0, 5),
+            new(0, 0, 5)));
+        for (int k = 1; k <= risers; k++)
+        {
+            float x0 = tread * (k - 1), x1 = k == risers ? landingEnd : tread * k;
+            float y0 = riser * (k - 1), y1 = riser * k;
+            // The riser quad's low Y edge plays the low X edge, so it faces -X toward the climb.
+            vertices.AddRange(FootSupportScene.Quad(new(x0, y0, -halfWidth), new(x0, y1, -halfWidth),
+                new(x0, y0, halfWidth), new(x0, y1, halfWidth)));
+            vertices.AddRange(FootSupportScene.Quad(new(x0, y1, -halfWidth), new(x1, y1, -halfWidth),
+                new(x0, y1, halfWidth), new(x1, y1, halfWidth)));
+        }
+        return new FootSupportScene(variant).Mesh("stairs", [.. vertices]);
+    }
+
+    /// <summary>One mesh triangle "incline" through the origin rising to +X by <paramref name="degrees"/>, covering
+    /// x in [-10.5, 10.5] along z 0. Its recorded top is the plane through its installed vertices.</summary>
+    internal static FootSupportScene Incline(float degrees)
+    {
+        float grade = MathF.Tan(Radians(degrees));
+        Vector3 a = new(-14, -14 * grade, -4), b = new(14, 14 * grade, -4), c = new(0, 0, 12);
+        return new FootSupportScene(SceneVariant.Mesh).Mesh("incline", [a, b, c]).Top("incline", a, b, c);
+    }
+
+    /// <summary>A wall whose face stands at x <paramref name="x"/>, facing -X, from Y 0 to
+    /// <paramref name="height"/> over z in [-<paramref name="halfWidth"/>, <paramref name="halfWidth"/>]. The box
+    /// variant is <paramref name="thickness"/> deep toward +X. The mesh variant is the face alone.</summary>
+    internal static FootSupportScene Wall(this FootSupportScene scene, string name, float x, float thickness,
+        float height = 3, float halfWidth = 5) =>
+        scene.Slab(name, new Vector3(x, height / 2, 0), MathF.PI / 2, height / 2, halfWidth, thickness);
 
     internal static float Radians(float degrees) => degrees * MathF.PI / 180f;
 }

@@ -151,6 +151,7 @@ internal static class GroundCore
                 : double.PositiveInfinity;
             footing = GroundFooting.Walkable;
             blocked = false;
+            PayLag(ref budget);
             // While nothing has deviated from the plan, the achieved move is the planned prefix itself, so free
             // motion is exact however many substeps it takes.
             bool onPlan = true;
@@ -162,7 +163,7 @@ internal static class GroundCore
                 planned = next;
                 if (move == Vector2.Zero) continue;
 
-                Attempt attempt = Resolve(move);
+                Attempt attempt = Resolve(move, onPlan ? next : null);
                 if (attempt.Moved && attempt.Seat.Outcome == SeatOutcome.Wall)
                 {
                     // Undo the substep and slide the whole of it along the wall's horizontal tangent once.
@@ -170,7 +171,7 @@ internal static class GroundCore
                     onPlan = false;
                     Vector2 tangent = Tangent(move, attempt.Seat.WallNormal);
                     if (tangent == Vector2.Zero) break;
-                    attempt = Resolve(tangent);
+                    attempt = Resolve(tangent, null);
                     if (attempt.Moved && attempt.Seat.Outcome == SeatOutcome.Wall) break;
                 }
                 // The same substep from the same position gives the same result, so a stop ends the tick.
@@ -192,7 +193,7 @@ internal static class GroundCore
                     SeatOutcome.SteepSeated => seat.FeetY,
                     _ => FeetY,
                 };
-                Vector2 axis = Axis + attempt.Achieved;
+                Vector2 axis = _startAxis + attempt.Total;
                 var target = new Vector3(axis.X, feetY, axis.Y);
                 // Steep motion is phase 3 work, so a steep seat keeps its target without a clearance push and
                 // never depends on a clearance float tie.
@@ -202,9 +203,23 @@ internal static class GroundCore
                     blocked = true;
                     break;
                 }
+                // A clearance push that raises the body climbs, so it is paid from the step budget like any other
+                // climb. A paced body whose shell meets the next nosing waits below it rather than being lifted
+                // past the budget.
+                double raised = (double)placed.Y - target.Y;
+                if (raised > 0)
+                {
+                    if (raised > budget)
+                    {
+                        blocked = true;
+                        break;
+                    }
+                    budget -= raised;
+                }
                 if (placed != target) onPlan = false;
-                _achieved = onPlan ? next : _achieved + attempt.Achieved +
-                    new Vector2(placed.X - target.X, placed.Z - target.Z);
+                _achieved = placed == target
+                    ? attempt.Total
+                    : attempt.Total + new Vector2(placed.X - target.X, placed.Z - target.Z);
                 FeetY = placed.Y;
                 Support = seat.Support;
                 if (seat.Outcome == SeatOutcome.SteepSeated)
@@ -221,26 +236,46 @@ internal static class GroundCore
             return _achieved;
         }
 
+        // A body certainly below its walkable support, left there by an earlier tick's pacing, pays that owed
+        // climb first from the tick's budget, within the lift the up pass proved clear. Paid after a refusal
+        // instead, it would never be paid, because the refusal repeats from the same feet every tick. Feet within
+        // the support's error already stand on it and owe nothing.
+        void PayLag(ref double budget)
+        {
+            if (Support.Status != SupportStatus.Walkable ||
+                !((double)Support.Height - Support.HeightError > FeetY)) return;
+            double owed = Math.Min(Math.Min((double)Support.Height - FeetY, budget), _lift);
+            if (!(owed > 0)) return;
+            FeetY = (float)(FeetY + owed);
+            budget -= owed;
+        }
+
         // A lifted attempt that ends on a refusal is repeated once without the lift. The lifted shell travels at
         // one height, so a body that climbs within the tick never raises it above the swept lift.
-        readonly Attempt Resolve(Vector2 move)
+        readonly Attempt Resolve(Vector2 move, Vector2? planned)
         {
             float lift = FeetY == _startY ? _lift : (float)Math.Clamp((double)_startY + _lift - FeetY, 0, _lift);
-            Attempt attempt = Try(move, lift);
+            Attempt attempt = Try(move, lift, planned);
             if (attempt.Moved && attempt.Seat.Outcome == SeatOutcome.Refused && lift > 0)
-                attempt = Try(move, 0);
+                attempt = Try(move, 0, planned);
             return attempt;
         }
 
-        readonly Attempt Try(Vector2 move, float lift)
+        // The seat is queried at the axis the body will report, the start axis plus the achieved total. A full move
+        // on plan totals the planned prefix itself, so the feet are certified at their own axis, not at a summed
+        // axis an ulp away.
+        readonly Attempt Try(Vector2 move, float lift, Vector2? planned)
         {
             var feet = new Vector3(Axis.X, FeetY, Axis.Y);
             ShellSweep sweep = ShellMotion.Sweep(_world, feet, lift, move, _tuning, _cosMaxSlope);
             if (sweep.Achieved == Vector2.Zero)
-                return new Attempt(false, Vector2.Zero, sweep.Blocked, default);
+                return new Attempt(false, Vector2.Zero, sweep.Blocked, default, _achieved);
+            Vector2 total = planned is Vector2 prefix && !sweep.Blocked && sweep.Achieved == move
+                ? prefix
+                : _achieved + sweep.Achieved;
             GroundSeatResult seat = GroundSeat.Resolve(_groundHeight, _groundNormal, _world, _lease, Support, Axis,
-                FeetY, Axis + sweep.Achieved, Direction(move), _footRadius, _tuning);
-            return new Attempt(true, sweep.Achieved, sweep.Blocked, seat);
+                FeetY, _startAxis + total, Direction(move), _footRadius, _tuning);
+            return new Attempt(true, sweep.Achieved, sweep.Blocked, seat, total);
         }
 
         // The step part of this substep plus any climb an earlier tick left unpaid, the body's lag below its
@@ -276,7 +311,8 @@ internal static class GroundCore
         }
     }
 
-    readonly record struct Attempt(bool Moved, Vector2 Achieved, bool Blocked, GroundSeatResult Seat);
+    // Total is the tick's achieved move once this attempt is taken, before any clearance push.
+    readonly record struct Attempt(bool Moved, Vector2 Achieved, bool Blocked, GroundSeatResult Seat, Vector2 Total);
 
     // The move less its component into the wall. Zero when the move does not press into the wall.
     static Vector2 Tangent(Vector2 move, Vector3 wallNormal)

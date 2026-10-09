@@ -1,0 +1,51 @@
+{
+  "task": "18 compatibility comparison, private exhaustive oracle and living documentation",
+  "stage": "intended compile-time RED",
+  "base": "ccd504aa9",
+  "sources": {
+    "KhaozEngine.MapDoc.Compatibility.Tests/LegacyTerrainImportTests.cs": "30db5fb285b6ba811717ae7e26fa3c2a8af0a09135ac9033ec28c71f77ead5de",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/ShippedTerrainComparisonTests.cs": "dfdeb4d81f04c8db67edd6f9adc8210d4023ee0998a91933441f058b4642a0a2"
+  },
+  "results": [
+    {
+      "project": "compatibility",
+      "command": "dotnet test --filter FullyQualifiedName~LegacyTerrainImportTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0117": 2
+      },
+      "missing": {
+        "SharedCornerMismatches": 1,
+        "LegacyCorners": 1
+      },
+      "planned_new_cases": 1,
+      "log_sha256": "afeffb0ad821959321726186973e1d7c7971a81c5ba013f45d6575bc6ee8f18c"
+    },
+    {
+      "project": "oracle-harness",
+      "command": "dotnet build (outside the solution)",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0117": 1,
+        "CS0103": 1,
+        "CS0246": 1
+      },
+      "missing": {
+        "ReadRegions": 1,
+        "ShippedTerrainComparison": 1,
+        "ShippedRegion": 1
+      },
+      "planned_new_cases": 1,
+      "log_sha256": "a3dd29e7fb25c38463545769a42cfe7ce1a293737518b735d37bed11eb1534bb"
+    }
+  ],
+  "classification": "Every unique diagnostic names a planned Task 18 member (LegacyOracleConverter.LegacyCorners and SharedCornerMismatches, ShippedRegion, ShippedTerrainComparison, ShippedSourceInventory.ReadRegions). No unrelated errors. Format verify of both files passed before RED. No private input was read.",
+  "rulings": [
+    "T18-1 GREEN expects the current PrivateOracleGuardTests count from Task 3.",
+    "T18-2 the loader is ShippedSourceInventory.ReadRegions(PrivateOracleInputs), keeping the private inventory report schema.",
+    "T18-3 the harness links LegacyOracleConverter.cs and CompareRegion uses only assertion-free converter members."
+  ],
+  "execution": "Direct and serial under owner OA20 through build-slot, one invocation per project, no retry."
+}

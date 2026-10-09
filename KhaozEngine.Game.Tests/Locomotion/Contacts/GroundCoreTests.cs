@@ -350,6 +350,36 @@ public class GroundCoreTests
         Assert.True(Math.Abs(result.Rise - budget) <= 1e-6, $"{result}");
     }
 
+    // A body on the 0.3 crate with its feet 0.3 below the top, as a paced climb that stopped leaves them. Standing
+    // still, it pays MaxStepClimbSpeed * dt of the owed climb each tick, so it stands on the crate within
+    // ceil(0.3 / budget) = 3 ticks without moving horizontally.
+    [Theory]
+    [InlineData(SceneVariant.Box)]
+    [InlineData(SceneVariant.Mesh)]
+    public void LaggingBodyAtRestReachesItsTread(SceneVariant variant)
+    {
+        using FootSupportScene crate = Crate(variant);
+        var feet = new Vector3(0.5f, 0, 0.25f);
+        double budget = (double)Tuning.MaxStepClimbSpeed * Dt;
+        int ticks = (int)Math.Ceiling(CrateTop / budget);
+        GroundStepResult result = default;
+
+        for (int tick = 1; tick <= ticks; tick++)
+        {
+            result = Step(crate, feet, Vector2.Zero);
+            AssertFooting(GroundFooting.Walkable, result);
+            Assert.False(result.Blocked, $"{result}");
+            Assert.Equal(Vector2.Zero, result.Achieved);
+            Assert.Equal(feet.X, result.Feet.X);
+            Assert.Equal(feet.Z, result.Feet.Z);
+            Assert.True(result.Rise <= budget + 1e-6, $"Tick {tick} climbed past the budget: {result}");
+            feet = result.Feet;
+        }
+
+        Assert.Equal(crate["crate"], result.Support.Static);
+        AssertFeetY(CrateTop, result);
+    }
+
     // Treads of 0.35 with risers of 0.30. The body stands at x 0.65 with its feet at 0.6, owing 0.3 of climb onto
     // tread 3 at 0.9. It pays MaxStepClimbSpeed * dt of it first, which spends the budget. At x 0.84 its shell,
     // 0.4 above the feet at 0.7167, comes 0.38 from the tread 4 nosing at (1.05, 1.2), inside the 0.4 radius. A

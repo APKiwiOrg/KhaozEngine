@@ -49,11 +49,17 @@ internal static class GroundCore
         bool moving = displacement != Vector2.Zero;
         if (support.Status == SupportStatus.Refused)
             return Result(feet, start, start.Y, GroundFooting.Held, support, Vector2.Zero, moving);
-        if (!cleared || support.Status != SupportStatus.Walkable || !moving)
+        if (!cleared || support.Status != SupportStatus.Walkable || (!moving && !Owes(support, start.Y)))
             return Result(feet, start, start.Y, Footing(support.Status), support, Vector2.Zero, !cleared);
 
         var tick = new Tick(groundHeight, groundNormal, world, lease, tuning, footRadius, cosMaxSlope, start,
             ShellMotion.Lift(world, start, tuning), support);
+        if (!moving)
+        {
+            // A body at rest still climbs onto the tread a paced climb left it below.
+            tick.Settle(dt);
+            return Result(feet, start, tick.FeetY, GroundFooting.Walkable, support, Vector2.Zero, false);
+        }
         Vector2 moved = tick.Run(displacement, substeps, dt, out GroundFooting footing, out bool blocked);
         return Result(feet, start, tick.FeetY, footing, tick.Support, moved, blocked);
     }
@@ -69,6 +75,14 @@ internal static class GroundCore
         Vector2 achieved = new Vector2(start.X - input.X, start.Z - input.Z) + moved;
         return new(final, footing, support, feetY - input.Y, achieved, blocked);
     }
+
+    // Feet certainly below their walkable support owe that climb. Feet within the support's error already stand on
+    // it.
+    static bool Owes(in SupportSample support, float feetY) =>
+        support.Status == SupportStatus.Walkable && (double)support.Height - support.HeightError > feetY;
+
+    static double Budget(in MoveTuning tuning, float dt) =>
+        tuning.MaxStepClimbSpeed > 0 ? (double)tuning.MaxStepClimbSpeed * dt : double.PositiveInfinity;
 
     static GroundFooting Footing(SupportStatus status) => status switch
     {
@@ -146,9 +160,7 @@ internal static class GroundCore
         internal Vector2 Run(Vector2 displacement, int substeps, float dt, out GroundFooting footing,
             out bool blocked)
         {
-            double budget = _tuning.MaxStepClimbSpeed > 0
-                ? (double)_tuning.MaxStepClimbSpeed * dt
-                : double.PositiveInfinity;
+            double budget = Budget(_tuning, dt);
             footing = GroundFooting.Walkable;
             blocked = false;
             PayLag(ref budget);
@@ -238,16 +250,21 @@ internal static class GroundCore
 
         // A body certainly below its walkable support, left there by an earlier tick's pacing, pays that owed
         // climb first from the tick's budget, within the lift the up pass proved clear. Paid after a refusal
-        // instead, it would never be paid, because the refusal repeats from the same feet every tick. Feet within
-        // the support's error already stand on it and owe nothing.
+        // instead, it would never be paid, because the refusal repeats from the same feet every tick.
         void PayLag(ref double budget)
         {
-            if (Support.Status != SupportStatus.Walkable ||
-                !((double)Support.Height - Support.HeightError > FeetY)) return;
+            if (!Owes(Support, FeetY)) return;
             double owed = Math.Min(Math.Min((double)Support.Height - FeetY, budget), _lift);
             if (!(owed > 0)) return;
             FeetY = (float)(FeetY + owed);
             budget -= owed;
+        }
+
+        // A tick without displacement only pays owed climb.
+        internal void Settle(float dt)
+        {
+            double budget = Budget(_tuning, dt);
+            PayLag(ref budget);
         }
 
         // A lifted attempt that ends on a refusal is repeated once without the lift. The lifted shell travels at

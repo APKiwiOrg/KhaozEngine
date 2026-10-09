@@ -13,7 +13,7 @@ internal readonly record struct QueryCounts(int Sweeps, int Penetrations, int Ra
 }
 
 /// <summary>A query view that forwards every call to a real selected view and counts the sweeps, penetrations,
-/// raycasts and capsule-feature queries. Leases come from the inner view and <see cref="SourceWorld"/> is the
+/// raycasts and capsule-feature queries, and how many feature queries came back Unresolved. Leases come from the inner view and <see cref="SourceWorld"/> is the
 /// inner view's, so foot support accepts it as that view. The caller owns the inner view.</summary>
 internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
     : IPhysicsWorldQueryView, IPhysicsCapsuleFeatures, IPhysicsQueryLeaseSource
@@ -22,9 +22,11 @@ internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
 
     internal QueryCounts Counts => new(_sweeps, _penetrations, _raycasts, _features);
 
+    internal int UnresolvedFeatures { get; private set; }
+
     public IPhysicsWorld SourceWorld => inner.SourceWorld;
     public Vector3 Origin => inner.Origin;
-    public bool CanRebase => false;
+    public bool CanRebase => inner.CanRebase;
 
     public IPhysicsQueryLease AcquireQueryReadLease() => ((IPhysicsQueryLeaseSource)inner).AcquireQueryReadLease();
 
@@ -53,8 +55,10 @@ internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
         QueryFilter filter = default)
     {
         _features++;
-        return ((IPhysicsCapsuleFeatures)inner).QueryCapsuleFeature(lease, target, capsule, pose,
-            maximumSeparationMetres, faces, filter);
+        CapsuleFeatureResult result = ((IPhysicsCapsuleFeatures)inner).QueryCapsuleFeature(lease, target, capsule,
+            pose, maximumSeparationMetres, faces, filter);
+        if (result.Status == CapsuleFeatureStatus.Unresolved) UnresolvedFeatures++;
+        return result;
     }
 
     public void AssertFeatureCurrent(in CapsuleFeatureResult result, IPhysicsQueryLease lease) =>

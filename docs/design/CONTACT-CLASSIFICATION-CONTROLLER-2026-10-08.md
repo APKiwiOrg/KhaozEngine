@@ -181,7 +181,7 @@ Every phase's suite asserts these.
 
 | Phase | Delivers | Exit criteria |
 |---|---|---|
-| 1. Contact foundation | Shape sweep seam, integrated feature query, certified support primitive, contact classifier | Phase 1 suite green, including the swimming bank repro. Legacy stepper byte-unchanged. |
+| 1. Contact foundation | Integrated feature query, certified support primitive, contact classifier | Phase 1 suite green, including the swimming bank repro. Legacy stepper byte-unchanged. |
 | 2. Ground core | Up, side, down passes, recovery, slopes, walls, step-up, step-down, ledges | Ground suite green, including the shallow-tread runs at 2, 3 and 4 m/s and the 0.41 m ledge. |
 | 3. Air and state | Jump, coyote, momentum, landing impact, commitment, steep slide, traction hysteresis | Air and slide suite green with invariants 5 to 8. |
 | 4. Signals and fluids | Climb signals, step delta, support grant, facing, the swimming handoff contract | Signal suite green. Swimming's explicit grounded ticks run on this ground core. |
@@ -192,61 +192,73 @@ Every phase's suite asserts these.
 
 ### Physics seam
 
-Add an optional capability to `KhaozEngine.Physics`, in the established optional-interface pattern:
-
-```csharp
-public interface IPhysicsShapeSweeps
-{
-    bool SweepConvex(PhysicsShape shape, Pose pose, Vector3 direction, float maxDistance,
-        out SweepHit hit, QueryFilter filter = default);
-}
-```
-
-It accepts `SphereShape`, `CapsuleShape`, `CylinderShape` and `BoxShape` and throws
-`NotSupportedException` for any other shape. The Bepu world and its selected query views implement it with
-the same filter, exclusion, origin and lease rules as `SweepCapsule`. `IPhysicsWorld` itself is unchanged,
-so existing implementers and decorators keep compiling. `FootSupport` throws `NotSupportedException` for a
-non-null world without the capability, and phase 5 makes a context selecting the new controller check it at
-creation. The controller never silently degrades.
+Phase 1 adds no sweep seam. `FootSupport` proposes candidates through the existing `IPhysicsWorld.SweepCapsule`
+and certifies them through the optional `IPhysicsCapsuleFeatures` capability, in the established
+optional-interface pattern. A probe sweep leaves the probe capsule exactly in contact, which is the pose the
+feature query certifies, so a cylinder or general convex sweep would add a public API with no remaining use.
+`IPhysicsWorld` itself is unchanged. `FootSupport` throws `NotSupportedException` for a non-null world without
+`IPhysicsCapsuleFeatures`, and phase 5 makes a context selecting the new controller check it at creation. The
+controller never silently degrades.
 
 ### Support primitive
 
 An internal Locomotion type, `FootSupport`, answers one question for one pose:
 
 ```csharp
-SupportSample Find(Func<float, float, float> groundHeight, Func<float, float, Vector3>? groundNormal,
-    IPhysicsWorld? world, Vector2 axis, float feetY, float footRadius, float reachUp, float reachDown,
-    float cosMaxSlope);
+SupportSample Find(Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal,
+    IPhysicsWorld? world, IPhysicsQueryLease? lease, in FootSupportQuery query);
 
-readonly record struct SupportSample(bool Found, float Height, Vector3 Normal, SupportSource Source,
-    bool Walkable);
+readonly record struct FootSupportQuery(Vector2 Axis, float FeetY, float FootRadius, float ReachUp,
+    float ReachDown, float CosMaxSlope);
+
+readonly record struct SupportSample(SupportStatus Status, float Height, float HeightError, Vector3 Normal,
+    StaticHandle? Static, int FeatureId, Vector3 Witness);
 ```
 
-`SupportSource` names analytic terrain or a `StaticHandle` with its certified finite feature. Candidates
-are proposed by bounded queries and bound to a face only by certification.
+`SupportStatus` is `None`, `Walkable`, `Steep` or `Refused`. `Static` null means analytic terrain. The true
+support height lies within `HeightError` of `Height`. Coordinates are the world's local frame, as `StepCore`
+receives them. Candidates are proposed by bounded queries and bound to a face only by certification.
 
 1. **Terrain.** `h(axis)` and its normal from the ground delegates, the same ones `StepCore` takes today.
-   The analytic surface is exact at the axis and needs no certificate.
-2. **Proposals.** A downward ray at the axis proposes the surface under the axis. One downward
-   `SweepConvex` of a thin cylinder of the footprint radius proposes the highest point in the disc, which
-   also catches a rail or edge that a ray would miss. A proposal is a hint about which static and where,
-   never a face.
-3. **Certification.** Each proposed static is queried with `QueryCapsuleFeature` under the tick's lease,
-   with the leg capsule (footprint radius, spanning the step band) at the proposed pose and the existing
-   0.1 mm contact band. A `Complete` result names the incident faces with certified normals and witness.
-   The supporting face is chosen by the existing eligibility predicate: every incident face of a face or
-   open-boundary patch supports it, and a convex crease has exactly one supporting top. Its plane and
-   witness give `min(plane at axis, highest point in disc)`. Any refusal (`Unsupported`, `Ambiguous`,
-   uncertain sign) contributes nothing. A ray hit, sweep normal or nudged sample never stands in for a
+   The analytic surface is exact at the axis and needs no certificate. It is steep when the normal's Y is
+   below `cos(MaxSlopeRadians)`.
+2. **Proposals.** Two downward probe capsules at the axis, each `CapsuleShape(radius, 0.01)` swept against
+   statics from its lowest point at `feetY + reachUp` over `reachUp + reachDown`. The axis probe has radius
+   0.01, the feature backend's minimum query radius, and proposes the surface under the axis. The leg probe
+   has the footprint radius and proposes the first surface the disc meets, which also catches a rail or edge
+   the axis probe would miss. A proposal is a hint about which static and where, never a face. A probe that
+   starts overlapped is a refused proposal at the band top.
+3. **Certification.** Each hit is queried with `QueryCapsuleFeature` under the tick's lease, with the probe
+   capsule at its contact pose and the existing 0.1 mm contact band, then certified at the axis by
+   `SupportCertification`. The walkable threshold is `cos(MaxSlopeRadians)`. Every incident face of a face or
+   open-boundary patch must be walkable. A convex crease is walkable when any side is and contributes its
+   lowest walkable plane at the axis, so a ridge supports its axis side instead of refusing. A walkable
+   contribution is the certified interval of `min(plane at axis, witness height)`. A feature with no walkable
+   face is steep at the witness. Concave creases, vertices and curved primitives the backend reports as
+   `Unresolved`, `Ambiguous` or `Unsupported` refuse, as does any uncertain sign. A refusal is a refused
+   proposal at the probe's lowest point. A ray hit, sweep normal or nudged sample never stands in for a
    face. The 2026-10-07 measurements found corner rays missing the edge by 0.03 to 5.08 micrometres.
 
-Candidates outside `[feetY - reachDown, feetY + reachUp]` are discarded. The result is the highest walkable
-contribution, else the highest steep one flagged not walkable, else not found. Ties keep the lower source
-index, so the order of queries fixes the answer.
+Contributions whose interval midpoint lies outside `[feetY - reachDown, feetY + reachUp]` are discarded. The
+result is the walkable contribution with the highest midpoint, else the highest steep one, else `None`. Ties
+prefer the witness nearest the axis in XZ, then terrain, then the lower static handle. A refused proposal
+above the selected contribution's upper bound, or a refusal with nothing selected, returns `Refused`, so the
+body never stands under a surface it could not certify. `Height` is the selected midpoint and `HeightError`
+encloses both bounds from it.
 
-Known limit: a surface lying under a higher sloped surface inside the same disc is not proposed, because
-the disc sweep stops at the higher one. The phase 1 suite pins the case, and phase 2 decides whether a
-second proposal below the first is needed.
+Known limits:
+
+- A surface lying under a higher sloped surface inside the same disc is not proposed, because the leg probe
+  stops at the higher one. The phase 1 suite pins the case, and phase 2 decides whether a second proposal
+  below the first is needed.
+- Separate statics cannot form a certified crease. A convex seam between them is supported by whichever face
+  a probe meets first. Where the leg probe reaches the shared edge before the axis-side face, roughly at
+  seams of 30 to 45 degrees, support floats up to `FootRadius tan(theta)` above the axis-side plane. At
+  10 degrees the probe meets the axis-side face first and matches the single-static crease.
+- Until the backend sweep fix lands, a capsule sweep can lose a nearer mesh static when another mesh static
+  shares its edge. A 0.2 m leg probe over a floor mesh and a descending ramp mesh sweeps to t 0.40000004 on
+  the floor alone and 0.42679498 on the ramp alone, yet returns the ramp at 0.42679498 with both present. The
+  mesh variants of the descending ramp and two-static ridge cases fail until then.
 
 ### Shell queries
 
@@ -261,8 +273,8 @@ volume. It reads no other state.
 
 ### Files
 
-- `KhaozEngine.Physics/IPhysicsShapeSweeps.cs`, with the Bepu implementation beside the existing sweeps and
-  forwarding in the selected query view, serialized with the swimming owner of that file.
+- No new physics file. `FootSupport` probes through the existing `SweepCapsule`, so the shape sweep seam
+  of the first draft is not built.
 - The capsule-feature query from `fix/low-lip-resting-proof`, integrated as reviewed: the contract,
   bounded geometry arithmetic, finite polyhedron and mesh backends, the installed-pose certificate and
   their proofs. Its eligibility predicate moves from the legacy stepper partial into
@@ -285,13 +297,13 @@ equivalent triangle mesh, and must give the same answer within float rounding.
 - Treads of 0.35 m under a 0.3 m and a 0.4 m capsule. The highest tread the disc reaches.
 - Descending and ascending ramps starting inside the disc. Flat level and ground under the axis.
 - Cracks of half and twice the disc diameter. Bridged, then the bottom or not found.
-- A 2 cm rail between ray samples. Caught by the disc sweep.
+- A 2 cm rail inside the disc beside the axis. Caught by the leg probe.
 - An overhang above `reachUp` and a floor below `reachDown`. Both ignored.
 - A steep face under the whole disc. Found and not walkable.
 - A selected query view with an excluded static. The excluded static never contributes.
 - A rebased world origin. Results equal the unrebased world after translation.
 - Determinism. Two identical queries return bit-identical samples.
-- A world without `IPhysicsShapeSweeps`. `FootSupport` throws.
+- A world without `IPhysicsCapsuleFeatures`. `FootSupport` throws.
 - The swimming repro: a 0.25 m bank at X 1, radius 0.25, half-height 0.75, walking at 4 m/s and 30 Hz.
   At X 0.881 the disc touches the bank top, the certified crease names the top face, and support is 0.25
   at the axis with feet XZ equal to the body's.
@@ -300,7 +312,7 @@ equivalent triangle mesh, and must give the same answer within float rounding.
 ### Phase 1 boundaries
 
 No `MoveTuning` field is added until phase 2 needs it, so navigation bake identity is unchanged. No
-legacy file changes. No wire change. The shape sweep and capsule-feature seams are public and additive, so
+legacy file changes. No wire change. The capsule-feature seam is public and additive, so
 phase 1 rides the next minor engine version under the release ritual.
 
 ## Disposition of the #1270 branches
@@ -317,7 +329,7 @@ stay open until phase 6 proves the resting route on the new controller.
 
 - **Presentation below the knee.** Legs may overlap low obstacles up to `CapsuleRadius - FootRadius`
   before stepping. Foot IK can hide it. The playtest decides the default.
-- **Query cost.** The down pass runs one ray, one disc sweep and up to two feature certifications under a
+- **Query cost.** The down pass runs two probe sweeps and up to two feature certifications under a
   lease, against several sweeps in the stepper. Phase 2 measures it with the existing allocation and timing
   guards before adoption.
 - **Analytic cliffs.** Steep analytic terrain is not in the physics world, so it cannot block the shell.

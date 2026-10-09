@@ -1,0 +1,34 @@
+{
+  "base": "470beb42d138ee7f51af6762109d33990caf35ff",
+  "sources": {
+    "KhaozEngine.Physics.Bepu/RepresentedGeometryTransforms.cs": "13e28b824a7ef370b22cbce0f3aaf74f73e6de14595d75f311cc2283a75d3d49",
+    "KhaozEngine.Game.Tests/Physics/QuaternionGeometryTransformTests.cs": "fbcaf5bb3fd0bc49f601c7031a64efa0ec879f68176d69729da757b1eda6aa8a"
+  },
+  "red": {
+    "exit": 1,
+    "executed": 0,
+    "diagnostic": "CS0117 missing PosePoint"
+  },
+  "green": {
+    "exit": 0,
+    "passed": 30,
+    "failed": 0,
+    "skipped": 0,
+    "new_cases": 8,
+    "affected_regressions": 22
+  },
+  "format": {
+    "exit": 0,
+    "changed": 0,
+    "projects": [
+      "KhaozEngine.Game.Tests",
+      "KhaozEngine.Physics.Bepu"
+    ]
+  },
+  "logs": {
+    "red": "e1631f3c26106845628ff08304ef0805416b792babc831a2434b2b274fdf37d2",
+    "green": "f35243e6805db3316dbc5fecbf15ef5b7a6533712337a29d7e3660306959287d",
+    "format": "b9f8a5826f57a9b5576e4317908388672af8f0b40e8302a207c062998924d42e"
+  },
+  "limits": "Supplied pose polynomial/input-domain checks only. No installed-body/pose correspondence, output-domain/error ceiling, normal, finite-feature or sweep certificate."
+}

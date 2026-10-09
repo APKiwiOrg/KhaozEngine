@@ -1,0 +1,17 @@
+{
+  "base": "08124769e851b061a57ec0ea9ccf3c39d257a5ac",
+  "source_sha256": "a5f79020e7f7991b5491f08a178ab96567ec4ccc7ca887554ad49052b9253a5f",
+  "runtime_behavior": "Unchanged. Only public face-incidence XML clarified.",
+  "red": {
+    "exit": 1,
+    "executed": 14,
+    "failed": 13,
+    "passed": 1,
+    "skipped": 0,
+    "failures": "Nine Complete, one Ambiguous, one Unsupported and two CapacityExceeded expectations all observed Unresolved.",
+    "control": "Strictly inside axis remains Unresolved.",
+    "setup": "All owned world/selected-view/lease/ray controls passed. Independent exact installed hull vertices plus centroid offset matched the source cuboid before its expected status failure."
+  },
+  "log_sha256": "8ee67fee949d86f9d0ef0c462e1a175a76c9d1ebc60b689c09bc728d4d7f5f3a",
+  "limits": "No successful finite geometry or incidence output yet. Later normal/witness assertions were not reached in the thirteen failures. No mesh/general-rotation/cache/consumer proof inferred."
+}

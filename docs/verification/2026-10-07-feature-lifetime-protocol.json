@@ -1,0 +1,37 @@
+{
+  "red_snapshot": "33a240e052665e518d301e62652f5d9de0071ba9",
+  "sources": {
+    "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.CapsuleFeatures.cs": "092b1381001cf5e92365ea45c4b1f641eca1fa540dc49710aaa3e112e71a7e82",
+    "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.QueryView.cs": "2a497adf7ce4ae1213af7a5bd709b56598691530aad288d535239a4b24659801",
+    "KhaozEngine.Game.Tests/Physics/CapsuleFeatureLifetimeTests.cs": "e9ba073cd84da2e977098333afa617bffb1d4ed6c653fba806ec8b8d6425e058"
+  },
+  "green": {
+    "exit": 0,
+    "passed": 12,
+    "failed": 0,
+    "skipped": 0,
+    "scope": "Feature lifetime class after exact upright guard and initializer whitespace correction."
+  },
+  "retained_regressions": {
+    "passed": 27,
+    "source": "2026-10-07-feature-lifetime-red.json",
+    "scope": "18 lease and 9 query-view lifecycle cases passed before the feature-only upright guard. Not repeated."
+  },
+  "format": {
+    "exit": 0,
+    "changed": 0,
+    "projects": [
+      "KhaozEngine.Game.Tests",
+      "KhaozEngine.Physics.Bepu"
+    ]
+  },
+  "review": {
+    "round1": "One verified upright-domain omission, reproduced before correction.",
+    "round2": "Ready. Exact X/Z guard closes the finding, no directly introduced issue."
+  },
+  "logs": {
+    "green": "d161a0b2af2d10f28080657611d0b302a87056280ae7f19283db3f17932c35cc",
+    "format": "740b1e35ea9f5aa232f224db60795cd28873896204e527daf250c2d75e48c540"
+  },
+  "limits": "Authentic owner-issued lease, original receiver/interval, view exclusions and untouched refusal buffers only. Backend geometry queries cannot return Complete yet. No finite geometry, support or navigation certificate."
+}

@@ -1,0 +1,120 @@
+using System;
+using KhaozEngine.Physics;
+
+namespace KhaozEngine.Physics.Bepu;
+
+/// <summary>Selected finite minimum and atomic publication. All geometry, ordering, band and rounding
+/// gates finish in private scratch before the caller's incident-face destination is touched.</summary>
+internal static class CapsuleFeatureGeometryQuery
+{
+    internal static CapsuleFeatureResult Query(CapsuleFeaturePolyhedron[] leaves, IPhysicsWorld receiver,
+        IPhysicsQueryLease lease, StaticHandle target, CapsuleShape capsule, Pose pose,
+        float maximumSeparationMetres, Span<CapsuleIncidentFace> destination)
+    {
+        FeaturePoint center = FeaturePoint.Exact(pose.Position);
+        FeatureNumber half = FeatureNumber.Exact(capsule.Length).Multiply(FeatureNumber.Exact(0.5));
+        var lower = new FeaturePoint(center.X, center.Y.Subtract(half), center.Z);
+        var upper = new FeaturePoint(center.X, center.Y.Add(half), center.Z);
+        if (!lower.Within(2048) || !upper.Within(2048))
+            return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unresolved);
+        FeatureNumber radius = FeatureNumber.Exact(capsule.Radius);
+        FeatureNumber band = FeatureNumber.Exact(maximumSeparationMetres);
+        var closest = new CapsuleFeaturePolyhedraClosest(lower, upper, radius.Add(band));
+        foreach (CapsuleFeaturePolyhedron leaf in leaves)
+        {
+            CapsuleFeatureStatus status = closest.Enumerate(leaf);
+            if (status != CapsuleFeatureStatus.Complete) return CapsuleFeatureResult.Refused(status);
+        }
+        if (closest.Candidates.Count == 0) return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.NoFeature);
+        CapsuleFeaturePolyhedronCandidate selected = closest.Candidates[0];
+        bool ambiguous = false;
+        for (int i = 1; i < closest.Candidates.Count; i++)
+        {
+            CapsuleFeaturePolyhedronCandidate candidate = closest.Candidates[i];
+            GeometrySign order = FeaturePoint.CompareDistances(candidate.Axis, candidate.Geometry,
+                selected.Axis, selected.Geometry);
+            if (order == GeometrySign.Unresolved) order = candidate.SquaredDistance.Compare(selected.SquaredDistance);
+            if (order == GeometrySign.Unresolved) return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unresolved);
+            if (order == GeometrySign.Negative)
+            {
+                selected = candidate;
+                ambiguous = false;
+            }
+            else if (order == GeometrySign.Zero)
+            {
+                bool same = ReferenceEquals(selected.Leaf, candidate.Leaf) && selected.FeatureId == candidate.FeatureId &&
+                    selected.Axis.SameExact(candidate.Axis) && selected.Geometry.SameExact(candidate.Geometry);
+                if (!same) ambiguous = true;
+            }
+        }
+        if (ambiguous) return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Ambiguous);
+
+        // Certify the entire closed contact band. In particular a zero band needs exact equality,
+        // not an interval overlapping zero. A deeper overlap is deliberately unresolved here.
+        FeatureNumber minimumRadius = radius.Subtract(band);
+        GeometrySign lowerBand = minimumRadius.IsExact
+            ? FeaturePoint.CompareDistanceToRadius(selected.Axis, selected.Geometry, minimumRadius.Value)
+            : GeometrySign.Unresolved;
+        if (lowerBand == GeometrySign.Unresolved)
+            lowerBand = selected.SquaredDistance.Compare(minimumRadius.Multiply(minimumRadius));
+        if (lowerBand is not (GeometrySign.Zero or GeometrySign.Positive))
+            return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unresolved);
+        return Publish(selected, receiver, lease, target, radius, destination);
+    }
+
+    static CapsuleFeatureResult Publish(CapsuleFeaturePolyhedronCandidate selected, IPhysicsWorld receiver,
+        IPhysicsQueryLease lease, StaticHandle target, FeatureNumber radius, Span<CapsuleIncidentFace> destination) =>
+        Publish(selected.Leaf.LeafId, selected.FeatureId, selected.Kind, selected.Axis, selected.Geometry,
+            selected.SquaredDistance, selected.IncidentFaces, selected.Leaf.Normals,
+            CapsuleFeatureGeometry.MaximumFaces, receiver, lease, target, radius, destination);
+
+    internal static CapsuleFeatureResult Publish(int leafId, int featureId, CapsuleFeatureKind kind,
+        FeaturePoint axisPoint, FeaturePoint geometryPoint, FeatureNumber squaredDistance, int[] incidentFaces,
+        FeaturePoint[] normals, int faceIdStride, IPhysicsWorld receiver, IPhysicsQueryLease lease,
+        StaticHandle target, FeatureNumber radius, Span<CapsuleIncidentFace> destination)
+    {
+        if (!axisPoint.Within(2048) || !geometryPoint.Within(2048))
+            return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unsupported);
+        GeometryVectorOutput axis = GeometryVectorOperations.Publish(axisPoint.Bounds);
+        GeometryVectorOutput geometry = GeometryVectorOperations.Publish(geometryPoint.Bounds);
+        GeometryVector direction = GeometryVectorOperations.Normalize(FeaturePoint.Subtract(axisPoint, geometryPoint).Bounds);
+        GeometryVectorOutput normal = GeometryVectorOperations.Publish(direction);
+        if (!axis.IsResolved || !geometry.IsResolved || !normal.IsResolved || !WithinCeiling(axis.Error, 4000) ||
+            !WithinCeiling(geometry.Error, 4000) || !WithinCeiling(normal.Error, 100000))
+            return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unresolved);
+        GeometryInterval squared = squaredDistance.Bounds;
+        if (!squared.IsResolved || squared.Lower <= 0)
+            return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unresolved);
+        GeometryInterval separation = squared.Sqrt().Subtract(radius.Bounds);
+        GeometrySign exactContact = FeaturePoint.CompareDistanceToRadius(axisPoint, geometryPoint, radius.Value);
+        if (exactContact == GeometrySign.Zero) separation = GeometryInterval.Exact(0);
+        GeometryInterval width = GeometryInterval.Exact(separation.Upper).Subtract(GeometryInterval.Exact(separation.Lower));
+        if (!separation.IsResolved || !width.IsResolved || !WithinCeiling(width.Upper, 10000))
+            return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unresolved);
+        int required = incidentFaces.Length;
+        if (required is < 1 or > 256)
+            return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.CapacityExceeded, required);
+        var scratch = new CapsuleIncidentFace[required];
+        for (int i = 0; i < required; i++)
+        {
+            int id = incidentFaces[i];
+            GeometryVector faceNormal = GeometryVectorOperations.Normalize(normals[id].Bounds);
+            GeometryVectorOutput face = GeometryVectorOperations.Publish(faceNormal);
+            if (!face.IsResolved || !WithinCeiling(face.Error, 100000))
+                return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.Unresolved);
+            scratch[i] = new(leafId * faceIdStride + id, face.Value, face.Error, kind);
+        }
+        if (destination.Length < required)
+            return CapsuleFeatureResult.Refused(CapsuleFeatureStatus.CapacityExceeded, required);
+        // Construct first: lifecycle or structural failure must not expose a written prefix.
+        CapsuleFeatureResult result = CapsuleFeatureResult.Completed(receiver, lease, target, leafId,
+            featureId, kind, axis.Value, geometry.Value, normal.Value, separation.Lower, separation.Upper,
+            Math.Max(axis.Error, geometry.Error), normal.Error, scratch);
+        scratch.AsSpan().CopyTo(destination);
+        return result;
+    }
+
+    static bool WithinCeiling(double value, double denominator) =>
+        BoundedGeometryArithmetic.CompareProducts(value, denominator, 1, 1)
+            is GeometrySign.Negative or GeometrySign.Zero;
+}

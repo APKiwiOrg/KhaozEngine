@@ -1,0 +1,38 @@
+{
+  "base": "183d141cb7008a9b6aae04af5df3b3760da83073",
+  "test_sha256": "46a292ff27273adf9f6907989a52e839cc020d581459891fcc992fcd04a85d34",
+  "runtime": "GeometryVectorOperations unchanged",
+  "exit": 1,
+  "executed": 8,
+  "failed": 6,
+  "passed": 2,
+  "skipped": 0,
+  "classification": "Six exact signed-axis normal directions retain a positive output error instead of a proved singleton. Both near-axis irrational and uncertain-interval controls pass. No unsafe old output claimed. Exact zero derivative cannot be inferred from that positive isotropic error.",
+  "failures": [
+    {
+      "case": "KhaozEngine.Tests.Physics.GeometryExactNormalTests.AProvedAxisNormalPublishesItsExactDirection(x: 0, y: 0, z: 16, nx: 0, ny: 0, nz: 1) [9 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: 0\nActual:   5.55111565E-16"
+    },
+    {
+      "case": "KhaozEngine.Tests.Physics.GeometryExactNormalTests.AProvedAxisNormalPublishesItsExactDirection(x: 0, y: 0, z: -0.25, nx: 0, ny: 0, nz: -1) [< 1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: 0\nActual:   5.55111565E-16"
+    },
+    {
+      "case": "KhaozEngine.Tests.Physics.GeometryExactNormalTests.AProvedAxisNormalPublishesItsExactDirection(x: 0, y: 0.5, z: 0, nx: 0, ny: 1, nz: 0) [< 1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: 0\nActual:   6.66133868E-16"
+    },
+    {
+      "case": "KhaozEngine.Tests.Physics.GeometryExactNormalTests.AProvedAxisNormalPublishesItsExactDirection(x: 2, y: 0, z: 0, nx: 1, ny: 0, nz: 0) [< 1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: 0\nActual:   6.66133868E-16"
+    },
+    {
+      "case": "KhaozEngine.Tests.Physics.GeometryExactNormalTests.AProvedAxisNormalPublishesItsExactDirection(x: -8, y: 0, z: 0, nx: -1, ny: 0, nz: 0) [< 1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: 0\nActual:   6.66133868E-16"
+    },
+    {
+      "case": "KhaozEngine.Tests.Physics.GeometryExactNormalTests.AProvedAxisNormalPublishesItsExactDirection(x: 0, y: -4, z: 0, nx: 0, ny: -1, nz: 0) [< 1 ms]",
+      "message": "Assert.Equal() Failure: Values differ\nExpected: 0\nActual:   6.66133868E-16"
+    }
+  ],
+  "log_sha256": "3af8c4bc9c191631953599515c9c5fa519faa3dffb0c17f270f98a517ac616f6"
+}

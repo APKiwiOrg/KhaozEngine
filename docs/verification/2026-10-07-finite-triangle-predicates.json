@@ -1,0 +1,37 @@
+{
+  "red_commit": "30f4bcf53882089c9df2b2b2f4d150775b3cbac6",
+  "sources": {
+    "KhaozEngine.Physics.Bepu/BoundedGeometryArithmetic.cs": "92a8a63328e71be2d0be05e5a4ca1902e6fe3ebfea105e55f0d789fb4da55ef4",
+    "KhaozEngine.Physics.Bepu/CapsuleFeaturePredicates.cs": "1594c119be60f1b82f0c8adf0e09ab440ea9fadb5f07a42d5f375b53243938d4",
+    "KhaozEngine.Game.Tests/Physics/CapsuleFeaturePredicateTests.cs": "a10d0e9ab33c2b2895f656a1e1ef8c1d026841c3452a4eeb66038f7468406a5b"
+  },
+  "red": {
+    "exit": 1,
+    "executed": 20,
+    "failed": 20,
+    "cause": "Missing internal CapsuleFeaturePredicates after valid compilation."
+  },
+  "green": {
+    "exit": 0,
+    "passed": 42,
+    "failed": 0,
+    "skipped": 0,
+    "new_cases": 20,
+    "affected_arithmetic_cases": 22
+  },
+  "format": {
+    "exit": 0,
+    "changed": 0,
+    "projects": [
+      "KhaozEngine.Game.Tests",
+      "KhaozEngine.Physics.Bepu"
+    ]
+  },
+  "review": "feature-predicate-proof-review-20261007-r1 Ready, source and numerical argument inspected independently.",
+  "logs": {
+    "red": "59ab034ecbbd5187d5e1955c7428036fcf048d436dc22b06f9acdb9aea87325d",
+    "green": "ed313dd12704eff227d03df59ceba50b01a2b747f7faaa65eb80002732805054",
+    "format": "0c478c5a24ca8e02fc095502eba48db98790c0f9468970f4c3aa5c4f47b3d7fc"
+  },
+  "limits": "Closed finite-triangle membership for supplied represented coordinates only. No closest-point construction, transform uncertainty, installed geometry, contact, feature-query completeness or support certificate."
+}

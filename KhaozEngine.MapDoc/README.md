@@ -162,8 +162,10 @@ patches, 4,096 inspected faces and 64 support intersections). It returns `Suppor
 `NoSupport`, `MissingGeometry`, `Ambiguous`, `CapacityExceeded`, `NotRepresentable` or `Invalid`. A
 `LegacyFallback` result has no face, no normal and `IsCaptureSupport` false. `MapSpaceRelations.Relate`
 reports `SameSpace`, `ConnectedThroughPortals`, `ConnectedThroughVerticalLink`, `NotConnectedWithinBound` or
-`Undetermined` from a bounded breadth-first search over acquired wall portals and horizontal openings. Each
-portal fact carries exact aperture columns whose provenance is in the acquisition witness.
+`Undetermined` from a bounded breadth-first search over acquired wall portals and horizontal openings. Its
+`MapRelationStatus` is `Resolved`, `MissingGeometry`, `Ambiguous`, `CapacityExceeded`, `NotRepresentable` or
+`Invalid`, and every status but `Resolved` carries `Undetermined` with an empty path. Each portal fact carries
+exact aperture columns whose provenance is in the acquisition witness.
 `NotConnectedWithinBound` is never a disconnection claim, and `Occlusion` and `Clearance` stay
 `NotEvaluated`. Membership, support and relation results are factory-only and immutable.
 

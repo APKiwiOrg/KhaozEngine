@@ -91,10 +91,12 @@ checks, through `report.Check` only:
 - shared corners across every signed region seam
 - no topology records
 
-The document must use tile size 1 and four planes. When the provenance `comparison` object names
-`spikePoint` as `{ "worldX": <metres>, "worldZ": <metres> }` and the source still draws ground there on
-plane 0, the native support height from `MapSurfaceCompiler.ExactHeight` must equal the legacy plane-0
-movement triangle within 0.00001 m. An absent `spikePoint` names no point, and a malformed one fails the run.
+The document must use tile size 1 and four planes. The provenance `comparison` object must name
+`spikePoint` as `{ "worldX": <metres>, "worldZ": <metres> }` on plane 0. An absent `spikePoint` is a
+`spike-point-named` failure, and a malformed one fails the run. Each run records exactly one `spike-point`
+outcome, carried by one region: no loaded region owns the point, the owning tile draws no ground, or the
+point was compared. When it is compared, the native support height from `MapSurfaceCompiler.ExactHeight` must
+equal the legacy plane-0 movement triangle within 0.00001 m. A world with no regions fails the run.
 Per-plane counts and maximum errors are recorded only in the private report. An exceedance is a reported
 failure carried privately, never a tolerance change.
 

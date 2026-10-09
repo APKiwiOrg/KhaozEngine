@@ -11,11 +11,37 @@ using KhaozEngine.TileWorld;
 
 namespace KhaozEngine.Tests.MapDocOracle;
 
-// One region of the verified source world. SpikePoint is the historical movement spike the private manifest names
-// under comparison.spikePoint, null when it names none.
+// One region of the verified source world. Spike is the run's one spike-point outcome when this region records it,
+// null for every other region.
 internal sealed record ShippedRegion(RegionCoord Coord, TileWorldDocument Document)
 {
-    internal ShippedSpikePoint? SpikePoint { get; init; }
+    internal ShippedSpikeDuty? Spike { get; init; }
+
+    // Every region in signed region order. The spike point is a required input, so exactly one region carries its
+    // outcome: the region owning the named point, else the first region, which records that no region owns it or
+    // that the manifest named none. A world with no regions fails the run, since nothing would be compared.
+    internal static IReadOnlyList<ShippedRegion> All(TileWorldDocument document, JsonElement comparison)
+    {
+        TileRegion[] regions = document.Regions.Values.OrderBy(r => r.Coord.Rz).ThenBy(r => r.Coord.Rx).ToArray();
+        if (regions.Length == 0) throw new InvalidDataException("source world has no regions");
+        ShippedSpikePoint? point = ShippedSpikePoint.From(comparison);
+        RegionCoord? named = point?.Owner(document.TileSize);
+        int owner = Array.FindIndex(regions, r => r.Coord == named);
+        ShippedSpikeDuty spike = point is null ? new ShippedSpikeDuty.NotNamed()
+            : owner < 0 ? new ShippedSpikeDuty.Unowned() : new ShippedSpikeDuty.Owned(point);
+        int carrier = Math.Max(owner, 0);
+        return Array.AsReadOnly(regions
+            .Select((r, i) => new ShippedRegion(r.Coord, document) { Spike = i == carrier ? spike : null }).ToArray());
+    }
+}
+
+// What the region carrying the run's spike outcome records: a failure when the manifest names no point, the absence
+// of an owning region, or the comparison at the owned point.
+internal abstract record ShippedSpikeDuty
+{
+    internal sealed record NotNamed : ShippedSpikeDuty;
+    internal sealed record Unowned : ShippedSpikeDuty;
+    internal sealed record Owned(ShippedSpikePoint Point) : ShippedSpikeDuty;
 }
 
 // A world point in metres on plane 0, the one plane the legacy movement sampler describes.
@@ -23,7 +49,8 @@ internal sealed record ShippedSpikePoint(float WorldX, float WorldZ)
 {
     internal const string Property = "spikePoint";
 
-    // An absent property names no point. A present but malformed one throws, so the entry fails the run.
+    // An absent property names no point, which the comparison reports as a failure. A present but malformed one
+    // throws, so the entry fails the run.
     internal static ShippedSpikePoint? From(JsonElement comparison)
     {
         if (comparison.ValueKind != JsonValueKind.Object || !comparison.TryGetProperty(Property, out JsonElement point))
@@ -35,6 +62,12 @@ internal sealed record ShippedSpikePoint(float WorldX, float WorldZ)
             throw new InvalidDataException("invalid spike point");
         return new(worldX, worldZ);
     }
+
+    internal float TileX(float tileSize) => TileWorldSpace.TileX(WorldX, tileSize);
+    internal float TileZ(float tileSize) => TileWorldSpace.TileZ(WorldZ, tileSize);
+
+    internal RegionCoord Owner(float tileSize)
+        => RegionCoord.Of((int)MathF.Floor(TileX(tileSize)), (int)MathF.Floor(TileZ(tileSize)));
 }
 
 // The exhaustive shipped comparison. Public code with no data. Every outcome goes through report.Check or
@@ -130,20 +163,30 @@ internal static class ShippedTerrainComparison
         return (vertex, normal);
     }
 
-    // When the source still draws ground under the named point, native support height on the canonical faces must
-    // equal the legacy movement triangle the plane-0 ground sampler reads there.
+    // Exactly one region per run records the spike outcome. At an owned point that still draws ground, native support
+    // height on the canonical faces must equal the legacy movement triangle the plane-0 ground sampler reads there.
     static void CompareSpikePoint(ShippedRegion region, PrivateOracleReport report)
     {
-        if (region.SpikePoint is not { } spike) return;
-        TileWorldDocument document = region.Document;
-        float tileX = TileWorldSpace.TileX(spike.WorldX, document.TileSize);
-        float tileZ = TileWorldSpace.TileZ(spike.WorldZ, document.TileSize);
-        int x = (int)MathF.Floor(tileX), z = (int)MathF.Floor(tileZ);
-        if (RegionCoord.Of(x, z) != region.Coord) return;
-
-        if (!TryMovementHeight(document, tileX, tileZ, out float legacy))
+        switch (region.Spike)
         {
-            report.Record("spike-point", Json(new { drawable = false }));
+            case ShippedSpikeDuty.NotNamed:
+                report.Check("spike-point-named", false, "{}");
+                return;
+            case ShippedSpikeDuty.Unowned:
+                report.Record("spike-point", Json(new { owned = false, drawable = false }));
+                return;
+            case ShippedSpikeDuty.Owned(ShippedSpikePoint spike):
+                CompareOwnedSpikePoint(region, spike, report);
+                return;
+        }
+    }
+
+    static void CompareOwnedSpikePoint(ShippedRegion region, ShippedSpikePoint spike, PrivateOracleReport report)
+    {
+        TileWorldDocument document = region.Document;
+        if (!TryMovementHeight(document, spike.TileX(document.TileSize), spike.TileZ(document.TileSize), out float legacy))
+        {
+            report.Record("spike-point", Json(new { owned = true, drawable = false }));
             return;
         }
         var (surface, patch) = LegacyOracleConverter.ToNative(document, region.Coord, 0);
@@ -152,11 +195,14 @@ internal static class ShippedTerrainComparison
         double error = native is { } height ? Math.Abs(height.ToDouble() - legacy) : double.NaN;
         report.Check("spike-support", error <= SupportTolerance,
             Json(new { drawable = true, legacy = Finite(legacy), native = native?.ToDouble(), error = Finite(error) }));
-        report.Record("spike-point", Json(new { drawable = true, error = Finite(error) }));
+        report.Record("spike-point", Json(new { owned = true, drawable = true, error = Finite(error) }));
     }
 
     // The released plane-0 movement triangle: among the tile's drawn triangles, the one whose smallest barycentric
-    // weight is largest, its height interpolated from lattice positions placed relative to the tile corner.
+    // weight is largest, its height interpolated from lattice positions placed relative to the tile corner. This and
+    // Weights copy TileGroundSampler.TryTriangle and TileGroundSampler.Weights in KhaozEngine.TileWorld.Physics and
+    // must change with them. They cannot be called directly because both are private to the sampler, which also
+    // clamps into the rectangle it was built over, and the harness does not reference the physics package.
     static bool TryMovementHeight(TileWorldDocument document, float tileX, float tileZ, out float height)
     {
         int x = (int)MathF.Floor(tileX), z = (int)MathF.Floor(tileZ);

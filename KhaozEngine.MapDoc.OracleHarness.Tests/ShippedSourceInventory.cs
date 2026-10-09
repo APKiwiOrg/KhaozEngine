@@ -14,18 +14,18 @@ internal sealed record PlaneInventory(int Plane, long DrawableCells, long Overla
 
 internal sealed record ShippedSourceInventory(IReadOnlyList<InventoryRegion> Regions, IReadOnlyList<PlaneInventory> Planes)
 {
-    // The verified world's regions in signed region order. The world root is the directory of the single attested
-    // world manifest under the verified extraction root, even when git archive kept its directory prefix.
-    internal static IReadOnlyList<ShippedRegion> ReadRegions(PrivateOracleInputs inputs)
+    // The world root is the directory of the single attested world manifest under the verified extraction root, even
+    // when git archive kept its directory prefix.
+    internal static string WorldRoot(PrivateOracleInputs inputs)
     {
         ShippedSourcePath manifest = inputs.Provenance.Paths.Single(p =>
             Path.GetFileName(p.Path) == TileWorldFile.ManifestFileName);
-        string root = Path.GetDirectoryName(Path.Combine(inputs.SourceRoot, manifest.Path))!;
-        TileWorldDocument document = TileWorldFile.Load(root);
-        ShippedSpikePoint? spike = ShippedSpikePoint.From(inputs.Provenance.Comparison);
-        return Array.AsReadOnly(document.Regions.Values.OrderBy(r => r.Coord.Rz).ThenBy(r => r.Coord.Rx)
-            .Select(r => new ShippedRegion(r.Coord, document) { SpikePoint = spike }).ToArray());
+        return Path.GetDirectoryName(Path.Combine(inputs.SourceRoot, manifest.Path))!;
     }
+
+    // The verified world's regions in signed region order, one of them carrying the run's spike-point outcome.
+    internal static IReadOnlyList<ShippedRegion> ReadRegions(PrivateOracleInputs inputs)
+        => ShippedRegion.All(TileWorldFile.Load(WorldRoot(inputs)), inputs.Provenance.Comparison);
 
     internal static ShippedSourceInventory Build(string root)
     {

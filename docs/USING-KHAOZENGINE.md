@@ -9746,11 +9746,12 @@ version or the load fails. The engine's own steps are pre-registered: v1 to v2 d
 `terrainOverrides` placeholder, v2 to v3 stamps `tileSize` with `MapDocumentFile.DefaultTileSize`
 (512 m), v3 to v4 adds `playableBounds` from `bounds` when it is absent, and v4 to v5 stamps the
 `LegacyXzCallbackV1` support recipe. `MapDocumentFile.CurrentFormatVersion` is 5, and saving always writes
-it. Version and layout are independent axes, so a monolithic file at the current version is legal.
+it. Version and layout are independent axes, so a monolithic file at the current version is legal. Format 5
+and the v4 to v5 step are unreleased R2 work. The latest release still writes format 4.
 
-A format-4 document migrates on load with no action from the game. Its authored identity token changes
-exactly once at that format advance, with no continuity to the old token, so recompute any stored token
-after the first load. Resolver-v1 options, including the caller's `OptionsHash`, and resolver-v1 execution
+Once format 5 ships, a format-4 document migrates on load with no action from the game. Its authored
+identity token changes exactly once at that format advance, with no continuity to the old token, so
+recompute any stored token after the first load. That token change is unreleased R2 work too. Resolver-v1 options, including the caller's `OptionsHash`, and resolver-v1 execution
 are unchanged. The authored-surface resolver version 2 is unreleased R2 work and is opt-in through a
 document's resolver identity.
 

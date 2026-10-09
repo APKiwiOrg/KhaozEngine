@@ -72,17 +72,23 @@ internal static class LegacyOracleConverter
 
     // The seams one region owns: its east, north, north-east and north-west neighbours.
     internal static IReadOnlyList<string> SharedCornerMismatches(TileWorldDocument document, RegionCoord region)
+        => SharedCornerMismatches(document, region, (r, plane) => ToNative(document, r, plane).Patch.Heights);
+
+    // The same comparison over any source of converted corner lattices in MapSurfacePatch.Heights order. A document
+    // converted through the one global lattice never disagrees across a seam, so a control supplies lattices that do.
+    internal static IReadOnlyList<string> SharedCornerMismatches(TileWorldDocument document, RegionCoord region,
+        Func<RegionCoord, int, int[]> corners)
     {
         var mismatches = new List<string>();
         const int side = TileRegion.Size + 1;
         for (int plane = 0; plane < document.PlaneCount; plane++)
         {
-            int[] own = ToNative(document, region, plane).Patch.Heights;
+            int[] own = corners(region, plane);
             RegionCoord[] peers = { region.Offset(1, 0), region.Offset(-1, 1), region.Offset(0, 1), region.Offset(1, 1) };
             foreach (RegionCoord other in peers)
             {
                 if (document.GetRegion(other) is null) continue;
-                int[] peer = ToNative(document, other, plane).Patch.Heights;
+                int[] peer = corners(other, plane);
                 int x0 = Math.Max(region.OriginX, other.OriginX);
                 int x1 = Math.Min(region.OriginX, other.OriginX) + TileRegion.Size;
                 int z0 = Math.Max(region.OriginZ, other.OriginZ);

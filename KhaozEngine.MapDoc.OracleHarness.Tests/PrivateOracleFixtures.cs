@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using KhaozEngine.Tests.MapDoc;
@@ -22,23 +23,32 @@ internal static class PrivateOracleFixtures
     }
 
     internal static Dictionary<string, string?> SyntheticEnvironment(string root, string secret)
+        => SyntheticEnvironment(root, secret, source => File.WriteAllText(Path.Combine(source, "region.txt"), "synthetic"),
+            JsonSerializer.SerializeToElement("exact"));
+
+    // A verified synthetic source holding whatever writeSource puts under it, every file attested.
+    internal static Dictionary<string, string?> SyntheticEnvironment(string root, string secret,
+        Action<string> writeSource, JsonElement comparison)
     {
         string source = Path.Combine(root, secret, "src");
         Directory.CreateDirectory(source);
-        string file = Path.Combine(source, "region.txt");
-        File.WriteAllText(file, "synthetic");
+        writeSource(source);
+        ShippedSourcePath[] paths = Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories)
+            .Select(file => new ShippedSourcePath(Path.GetRelativePath(source, file).Replace('\\', '/'),
+                AssertFixtures.Sha256(file)))
+            .OrderBy(p => p.Path, StringComparer.Ordinal).ToArray();
         var provenance = new ShippedSourceProvenance
         {
             SourceRepository = "synthetic",
             Tag = "synthetic",
             Commit = new string('1', 40),
             SourceEnginePin = "20.27.1",
-            ExtractionPathspec = new[] { "region.txt" },
-            Paths = new[] { new ShippedSourcePath("region.txt", AssertFixtures.Sha256(file)) },
+            ExtractionPathspec = paths.Select(p => p.Path).ToArray(),
+            Paths = paths,
             AggregateRule = ShippedSourceProvenance.AggregateDefinition,
             Units = JsonSerializer.SerializeToElement("synthetic"),
             RowOrientation = "synthetic",
-            Comparison = JsonSerializer.SerializeToElement("exact"),
+            Comparison = comparison,
             OracleEquivalence = JsonSerializer.SerializeToElement("synthetic"),
         };
         provenance = provenance with { AggregateSha256 = provenance.ComputeAggregate() };

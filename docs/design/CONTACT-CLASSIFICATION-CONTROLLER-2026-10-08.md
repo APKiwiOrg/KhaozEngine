@@ -183,7 +183,8 @@ Every phase's suite asserts these.
 | Phase | Delivers | Exit criteria |
 |---|---|---|
 | 1. Contact foundation | Integrated feature query, certified support primitive, contact classifier | Phase 1 suite green, including the swimming bank repro. Legacy stepper byte-unchanged. |
-| 2. Ground core | Up, side, down passes, recovery, slopes, walls, step-up, step-down, ledges | Ground suite green, including the shallow-tread runs at 2, 3 and 4 m/s and the 0.41 m ledge. |
+| 2. Ground core | Up, side, down passes, recovery, slopes, walls, step-up, step-down, ledges ([phase 2 spec](CONTACT-CONTROLLER-PHASE-2-GROUND-CORE-2026-10-10.md)) | Ground suite green, including the shallow-tread runs at 2, 3 and 4 m/s and the 0.41 m ledge. |
+| 2b. Certified support coverage | Certified support at concave creases, vertices, curved primitives and through one-sided back faces (#1329 to #1332) | Every phase 1 refusal row replaced by a certified result. Must land before any game adopts. |
 | 3. Air and state | Jump, coyote, momentum, landing impact, commitment, steep slide, traction hysteresis | Air and slide suite green with invariants 5 to 8. |
 | 4. Signals and fluids | Climb signals, step delta, support grant, facing, the swimming handoff contract | Signal suite green. Swimming's explicit grounded ticks run on this ground core. |
 | 5. Switch, wire, navigation | `MoveTuning` selector, any wire fields, bake identity, traversal probe and capture on the selected controller | Both controllers selectable. Legacy bakes still load. A new-controller bake round-trips. |

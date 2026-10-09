@@ -260,6 +260,10 @@ Known limits:
   shares its edge. A 0.2 m leg probe over a floor mesh and a descending ramp mesh sweeps to t 0.40000004 on
   the floor alone and 0.42679498 on the ramp alone, yet returns the ramp at 0.42679498 with both present. The
   mesh variants of the descending ramp and two-static ridge cases fail until then.
+- At an exact seam between coplanar statics, the owner is the backend's first hit, deterministic for a world
+  built in the same order.
+- Seeing past the back face of a one-sided mesh inside the reach band is deferred to phase 2. A probe that
+  meets a back face refuses until then.
 
 ### Shell queries
 

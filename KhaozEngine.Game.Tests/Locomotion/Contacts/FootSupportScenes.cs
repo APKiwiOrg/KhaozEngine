@@ -18,7 +18,13 @@ internal sealed class FootSupportScene : IDisposable
     readonly Dictionary<string, Point[]> _tops = [];
     IPhysicsQueryLease? _lease;
 
-    internal FootSupportScene(SceneVariant variant) => _variant = variant;
+    /// <summary>A scene whose world is expressed against <paramref name="origin"/> before any static is added, so
+    /// every builder still works in the local frame.</summary>
+    internal FootSupportScene(SceneVariant variant, Vector3 origin = default)
+    {
+        _variant = variant;
+        if (origin != Vector3.Zero) World.Rebase(origin);
+    }
 
     internal BepuPhysicsWorld World { get; } = new(Vector3.Zero);
 
@@ -127,8 +133,8 @@ internal static class FootSupportScenes
     internal const float CrateTop = 0.3f;
     internal const float BankTop = 0.25f;
 
-    static FootSupportScene Floor(SceneVariant variant) =>
-        new FootSupportScene(variant).Flat("floor", -4, 6, -5, 5, 0);
+    static FootSupportScene Floor(SceneVariant variant, Vector3 origin = default) =>
+        new FootSupportScene(variant, origin).Flat("floor", -4, 6, -5, 5, 0);
 
     internal static FootSupportScene PropFloor(SceneVariant variant) =>
         new FootSupportScene(variant).Flat("floor", -2, 2, -2, 2, 0.1f);
@@ -137,8 +143,8 @@ internal static class FootSupportScenes
     internal static FootSupportScene Slope(SceneVariant variant, float degrees) =>
         new FootSupportScene(variant).Slab("slope", Vector3.Zero, Radians(degrees), 2, 2);
 
-    internal static FootSupportScene Lip(SceneVariant variant) =>
-        Floor(variant).Flat("lip", 0, 2, -2, 2, LipTop);
+    internal static FootSupportScene Lip(SceneVariant variant, Vector3 origin = default) =>
+        Floor(variant, origin).Flat("lip", 0, 2, -2, 2, LipTop);
 
     internal static FootSupportScene Crate(SceneVariant variant) =>
         Floor(variant).Flat("crate", 0, 1, -1, 1, CrateTop);

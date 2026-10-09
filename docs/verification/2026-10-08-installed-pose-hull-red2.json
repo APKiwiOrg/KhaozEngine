@@ -1,0 +1,17 @@
+{
+  "base": "f82302a2d1f96427dd3b840a284c52d13e59ab59",
+  "sources": {
+    "KhaozEngine.Game.Tests/Physics/InstalledPoseFeatureTests.cs": "706f2df14f38397c2884e9c32898cd512250731114ba6efcd2122aa2039cfd03",
+    "KhaozEngine.Game.Tests/Physics/InstalledPoseFixture.cs": "cc7d1d9a2ee1238b32840f899ccc7dc6297e4a1944b936c5b577e4168a9bef58",
+    "KhaozEngine.Game.Tests/Physics/InstalledPoseOracle.cs": "2bac78dd6c8bb62e8b2da8337c3a6a65a211d69935c921feded8a1499ce36fc1"
+  },
+  "exit": 1,
+  "executed": 1,
+  "failed": 1,
+  "passed": 0,
+  "skipped": 0,
+  "classification": "Corrected hull fixture reached intended Complete-versus-Unsupported assertion after live installed centroid/vertices/composed-pose and independent finite projection controls passed.",
+  "correction": "Removed false ideal-centroid assumption and duplicate standalone builder. Expected finite hull geometry uses actual installed centering data after exact raw-vertex plus centroid restoration to the unchanged frozen cuboid. Box oracle defaults unchanged; hull supplies actual local Y limits. No tolerance, descriptor or production change.",
+  "retained_evidence": "First20run has twelve intended failures/seven controls and one separately preserved setup failure. Only changed hull fact reran. No claim that all20 ran on corrected source.",
+  "log_sha256": "b8856d9c116d8795df21d33cd4e9d336bd8f0bb622cd1dd61537b1903515a9cc"
+}

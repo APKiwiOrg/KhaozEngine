@@ -14,7 +14,7 @@ namespace KhaozEngine.Platform
     /// <para>Pure BCL P/Invoke (kernel32), guarded by <see cref="OperatingSystem.IsWindows"/> and wrapped so any
     /// failure degrades to a no-op rather than throwing into startup. A no-op returning <c>false</c> off Windows,
     /// for a console-subsystem process (which already owns a console), when there is no parent console, or when
-    /// stdout/stderr are redirected (CI, test runners, piped output are left untouched). Idempotent: it attempts
+    /// both stdout and stderr are redirected (CI, test runners, piped output are left untouched). Idempotent: it attempts
     /// the attach at most once per process. The macOS/Linux counterpart is a plain <see cref="HasConsole"/> that
     /// always reports a console, because those platforms have no Windows-subsystem/no-console problem.</para>
     /// </summary>
@@ -65,14 +65,15 @@ namespace KhaozEngine.Platform
             if (!enable) return false;
             if (!OperatingSystem.IsWindows()) return false;
 
-            bool outputRedirected, errorRedirected, hasConsole;
+            WindowsConsoleHandle input, output, error;
+            bool hasConsole;
             try
             {
-                // Read redirection BEFORE attaching: a redirected handle (a pipe or `> out.txt`, and CI/test-runner
-                // capture) must be left pointing at its target. AttachConsole itself never overwrites an already-set
-                // standard handle, but we also skip rewiring those streams below.
-                outputRedirected = Console.IsOutputRedirected;
-                errorRedirected = Console.IsErrorRedirected;
+                // Console.Is*Redirected also reports true for a WinExe's absent standard handles.
+                // Preserve actual destinations independently from streams that need a console handle.
+                input = WindowsConsoleHandle.Capture(WindowsConsoleHandle.Input);
+                output = WindowsConsoleHandle.Capture(WindowsConsoleHandle.Output);
+                error = WindowsConsoleHandle.Capture(WindowsConsoleHandle.Error);
                 hasConsole = GetConsoleWindow() != IntPtr.Zero;
             }
             catch
@@ -80,13 +81,16 @@ namespace KhaozEngine.Platform
                 return false;
             }
 
-            if (!ShouldAttach(isWindows: true, enable: true, hasConsole, outputRedirected, errorRedirected))
+            if (!ShouldAttach(isWindows: true, enable: true, hasConsole, output.Redirected, error.Redirected))
                 return false;
 
             try
             {
                 if (!AttachConsole(ATTACH_PARENT_PROCESS)) return false; // no parent console (normal GUI launch)
-                RewireStreams(outputRedirected, errorRedirected);
+                input.RestoreRedirected();
+                output.RestoreRedirected();
+                error.RestoreRedirected();
+                RewireStreams(output.Redirected, error.Redirected);
                 return true;
             }
             catch
@@ -108,20 +112,22 @@ namespace KhaozEngine.Platform
             // Point Console.Out/Error at the freshly-attached console. Only the streams that were NOT redirected are
             // rewired; a redirected one keeps flowing to its pipe/file. AutoFlush so a GUI process that never runs a
             // clean shutdown still gets its output out (and a crash keeps what was written).
-            bool rewired = false;
+            TextWriter? consoleWriter = null;
             if (!outputRedirected)
             {
+                WindowsConsoleHandle.EnsureConsoleOutput(WindowsConsoleHandle.Output);
                 var writer = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
                 Console.SetOut(writer);
-                rewired = true;
+                consoleWriter = writer;
             }
             if (!errorRedirected)
             {
+                WindowsConsoleHandle.EnsureConsoleOutput(WindowsConsoleHandle.Error);
                 var writer = new StreamWriter(Console.OpenStandardError()) { AutoFlush = true };
                 Console.SetError(writer);
-                rewired = true;
+                consoleWriter ??= writer;
             }
-            if (!rewired) return;
+            if (consoleWriter == null) return;
 
             // Trailing-newline courtesy. A Windows GUI-subsystem process detaches from the shell immediately, so the
             // shell prints its next prompt before the app's output arrives; the two interleave. Emitting one newline
@@ -131,9 +137,8 @@ namespace KhaozEngine.Platform
             {
                 try
                 {
-                    Console.Out.Flush();
-                    Console.Out.Write(Environment.NewLine);
-                    Console.Out.Flush();
+                    consoleWriter.Write(Environment.NewLine);
+                    consoleWriter.Flush();
                 }
                 catch
                 {

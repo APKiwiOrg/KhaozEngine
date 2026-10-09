@@ -5,6 +5,47 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.30.0
+
+- The PixelLab sheet assembler tool reads and writes PNG through `KhaozEngine.Imaging` instead of
+  `SixLabors.ImageSharp` 2.1.13, whose five advisories failed Release restore under NuGet audit (#1326). The
+  central ImageSharp pin is removed. The tool accepts 8 and 16-bit grey, grey with alpha, RGB and RGBA PNGs.
+- Physics: `BepuPhysicsWorld.SweepCapsule` returns the nearest hit across mesh and compound statics. A farther
+  edge-sharing mesh no longer wins over a nearer one, and a sweep shorter than 1 no longer misses a mesh
+  within its distance.
+- Physics adds the optional `IPhysicsCapsuleFeatures` capability. Under a read lease it names the closest
+  finite feature of one static to a capsule and returns every incident face with its geometric normal, or a
+  refusal status. Bepu worlds and their selected query views implement it for boxes, convex hulls, compounds
+  of those and one-sided meshes. A result is valid only under its original receiver and lease.
+- Locomotion gains the internal foot-support primitive, shell geometry and contact classes for the #438
+  contact-classification controller. Nothing consumes them yet, so movement, navigation bakes and the wire
+  are unchanged.
+
+## 20.29.1
+
+- Catalog publication keeps freeze cleanup scoped to the draft it froze. Concurrent upgrade runners
+  preserve a later draft's freeze after adopting an earlier committed upgrade (#1325).
+  The optional `IContentDraftFreezeStore` companion provides atomic base-scoped release on built-in
+  stores without changing the original interface. Legacy external stores keep their existing behavior.
+- Publication repair for 20.29.0. Its full release gate stopped before pack or publish. This patch
+  includes the Windows console attachment fix and physics query leases recorded below.
+
+## 20.29.0
+
+- Windows `WinExe` terminal launches attach when native output handles are absent or invalid, even when managed
+  redirection flags report true. File and pipe destinations survive attachment independently per stream,
+  and the exit newline stays out of redirected output. Hosted Windows regression coverage verifies native
+  console membership and output destinations (#1322).
+- Physics adds optional thread-affine query read leases that pin the owner, origin and geometry generation.
+  Bepu owners and selected views fence mutations during the lease and serialize access to query scratch.
+
+## 20.28.0
+
+- Windowing reads each GLFW window's OS content scale for `Frame` and `UiViewport`. `Scaled` windows cap their size
+  in logical points on Windows and X11. Pointer framebuffer conversion and legacy viewport defaults are unchanged.
+- `AdaptiveViewport.WithMinimumCanvas` adds an opt-in minimum UI canvas and a live `ScaleMultiplier`.
+  Unrepresentable transforms are rejected without changing the previous layout.
+
 ## 20.27.1
 
 - Adds fixed-command phase overloads to `ClientPrediction.AdvancePresentation` and

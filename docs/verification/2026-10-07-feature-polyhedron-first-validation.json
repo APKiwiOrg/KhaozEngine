@@ -1,0 +1,27 @@
+{
+  "base": "ccaff2818cfb336d5fd558bd5d181c180fa0746b",
+  "sources": {
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureGeometry.cs": "c022e2e9b99b2ebb32f847d8a059865d3e638655c5ce47d0336ee98a285f2056",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureGeometryNumbers.cs": "1e0670fc8725a3f7e28b4a9dae194467faa009c19f24ca1a00a42289e0040605",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureGeometryQuery.cs": "3a3612f003f1ebeed5897060346696e6eac51dc47ffb173a92f5791695c4429e",
+    "KhaozEngine.Physics.Bepu/CapsuleFeaturePolyhedra.cs": "e956ce6d142bbd05f8ba360dc1c1ff3e936a6b189e1890a17c7f3e518b05019b",
+    "KhaozEngine.Physics.Bepu/CapsuleFeaturePolyhedraClosest.cs": "2dd114b5165dd3160231b30cfdd952b98bcab88e78edd83d9cfd0f48a08ab1e2",
+    "docs/design/CAPSULE-FEATURE-POLYHEDRA-PROOF-2026-10-07.md": "ac99866c0a7645a06c633fbe565ba5fe3c5f855109b3d3f5ecc5b441dcb19440"
+  },
+  "review": "feature-polyhedron-domain-review-20261007-r1 Ready for bounded correction",
+  "command": "dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release -m:1 --filter 'FullyQualifiedName~CapsuleFeaturePolyhedronTests|FullyQualifiedName~CapsuleFeatureLifetimeTests'",
+  "exit": 1,
+  "executed": 28,
+  "passed": 27,
+  "failed": 1,
+  "skipped": 0,
+  "failure": {
+    "test": "HullCentroidWrapperPreservesTheSourceTopAtTwoMetres",
+    "expected": "Complete",
+    "actual": "Ambiguous",
+    "site": "CapsuleFeaturePolyhedronTests.AssertContact status assertion"
+  },
+  "classification": "Unexpected existing hull control failure. Both translated-domain regressions and all twelve lifetime controls passed. No whole-polyhedron GREEN claimed. Internal refusal source remains unmeasured.",
+  "log_sha256": "850efad1e394bed2faaaf888f6f8a0410b6bd0fbf47396a6417686c955dc2039",
+  "format": "Not run after failure. Compute released."
+}

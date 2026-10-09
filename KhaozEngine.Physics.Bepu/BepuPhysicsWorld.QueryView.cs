@@ -11,6 +11,7 @@ public sealed partial class BepuPhysicsWorld
     /// <inheritdoc/>
     public IPhysicsWorldQueryView CreateQueryViewExcludingStatics(ReadOnlySpan<SeamStaticHandle> excludedStatics)
     {
+        using QueryOperation scope = EnterQuery();
         SeamStaticHandle[] snapshot = excludedStatics.ToArray();
         foreach (SeamStaticHandle handle in snapshot)
         {
@@ -21,7 +22,7 @@ public sealed partial class BepuPhysicsWorld
         return new QueryView(this, new StaticQueryExclusions(snapshot, _reverseHandles));
     }
 
-    private sealed class QueryView : IPhysicsWorldQueryView
+    private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsCapsuleFeatures
     {
         private readonly BepuPhysicsWorld _owner;
         private readonly StaticQueryExclusions _exclusions;
@@ -35,12 +36,47 @@ public sealed partial class BepuPhysicsWorld
 
         public IPhysicsWorld SourceWorld => _owner;
 
+        public IPhysicsQueryLease AcquireQueryReadLease()
+        {
+            ThrowIfDisposed();
+            IPhysicsQueryLease lease = _owner.AcquireQueryReadLease();
+            try
+            {
+                // Disposal may have won the gate after the first check but before acquisition.
+                ThrowIfDisposed();
+                return lease;
+            }
+            catch
+            {
+                lease.Dispose();
+                throw;
+            }
+        }
+
         public bool CanRebase => false;
+
+        public CapsuleFeatureResult QueryCapsuleFeature(IPhysicsQueryLease lease, SeamStaticHandle target,
+            CapsuleShape capsule, Pose pose, float maximumSeparationMetres, Span<CapsuleIncidentFace> faces,
+            QueryFilter filter = default)
+        {
+            _owner.AuthenticateFeatureLease(lease);
+            ThrowIfDisposed();
+            return _owner.QueryCapsuleFeatureCore(this, lease, target, capsule, pose, maximumSeparationMetres,
+                faces, filter, _exclusions);
+        }
+
+        public void AssertFeatureCurrent(in CapsuleFeatureResult result, IPhysicsQueryLease lease)
+        {
+            _owner.AuthenticateFeatureLease(lease);
+            ThrowIfDisposed();
+            _owner.AssertFeatureCurrentCore(this, result, lease);
+        }
 
         public Vector3 Origin
         {
             get
             {
+                using QueryOperation scope = _owner.EnterQuery();
                 ThrowIfDisposed();
                 return _owner.Origin;
             }
@@ -49,6 +85,7 @@ public sealed partial class BepuPhysicsWorld
         public bool Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit,
             QueryFilter filter = default)
         {
+            using QueryOperation scope = _owner.EnterQuery();
             ThrowIfDisposed();
             return _owner.RaycastCore(origin, direction, maxDistance, out hit, filter, _exclusions);
         }
@@ -56,30 +93,35 @@ public sealed partial class BepuPhysicsWorld
         public bool SweepCapsule(CapsuleShape capsule, Pose pose, Vector3 direction, float maxDistance,
             out SweepHit hit, QueryFilter filter = default)
         {
+            using QueryOperation scope = _owner.EnterQuery();
             ThrowIfDisposed();
             return _owner.SweepCapsuleCore(capsule, pose, direction, maxDistance, out hit, filter, _exclusions);
         }
 
         public bool ComputePenetration(CapsuleShape capsule, Pose pose, out Vector3 mtv)
         {
+            using QueryOperation scope = _owner.EnterQuery();
             ThrowIfDisposed();
             return _owner.ComputePenetrationCore(capsule, pose, out mtv, _exclusions);
         }
 
         public Pose GetDynamicPose(DynamicBodyHandle handle)
         {
+            using QueryOperation scope = _owner.EnterQuery();
             ThrowIfDisposed();
             return _owner.GetDynamicPose(handle);
         }
 
         public void GetDynamicVelocity(DynamicBodyHandle handle, out Vector3 linear, out Vector3 angular)
         {
+            using QueryOperation scope = _owner.EnterQuery();
             ThrowIfDisposed();
             _owner.GetDynamicVelocity(handle, out linear, out angular);
         }
 
         public bool IsAwake(DynamicBodyHandle handle)
         {
+            using QueryOperation scope = _owner.EnterQuery();
             ThrowIfDisposed();
             return _owner.IsAwake(handle);
         }
@@ -110,7 +152,12 @@ public sealed partial class BepuPhysicsWorld
         public IPhysicsWorldQueryView CreateQueryViewExcludingStatics(ReadOnlySpan<SeamStaticHandle> excludedStatics)
             => throw MutationDenied();
 
-        public void Dispose() => _disposed = true;
+        public void Dispose()
+        {
+            if (_disposed) return;
+            using QueryOperation scope = _owner.EnterMutation(allowDisposed: true, changesGeometry: false);
+            _disposed = true;
+        }
 
         private NotSupportedException MutationDenied()
         {

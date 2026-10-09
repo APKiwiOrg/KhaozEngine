@@ -1,0 +1,34 @@
+{
+  "base": "140c4781cbec4bb58e0ab2e67e0c14bef40389f9",
+  "sources": {
+    "KhaozEngine.Physics.Bepu/BoundedGeometryArithmetic.cs": "f9f2b5cba0b60ad40d394c90c9dc204c6e98d0c8ed77ff996d789d1e8d94a365",
+    "KhaozEngine.Game.Tests/Physics/BoundedGeometryArithmeticTests.cs": "d3bdeb5eeae7e6bec4f7f3343149bd08a839f6b409f88ce789c83be9a6f7b7ac",
+    "KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj": "a72f2287ebb407609cf0e6d90158735b9da596667dd485c9db3f1dec446c7252",
+    "docs/design/CAPSULE-FEATURE-NUMERICAL-PROOF-2026-10-07.md": "4cd9b468202d61945058f031d6992e34b94e00272bb503e7593ed9820917cba5"
+  },
+  "red": {
+    "exit": 1,
+    "executed": 0,
+    "diagnostic": "CS0246 missing GeometryInterval in test helper signature"
+  },
+  "green": {
+    "exit": 0,
+    "passed": 14,
+    "failed": 0,
+    "skipped": 0
+  },
+  "format": {
+    "exit": 0,
+    "changed": 0,
+    "target_projects": [
+      "KhaozEngine.Game.Tests",
+      "KhaozEngine.Physics.Bepu"
+    ]
+  },
+  "logs": {
+    "red": "00d401286a8e3acfe9c218eff41bd0c5743a380644258d9e2fd22896225abb8f",
+    "green": "7302f3db5845dd88ad1516f4344f7018d5420a0441f94ff562a7898f5d1e6725",
+    "format": "b469581b34ed8af151eaa20ee73e3e905400fb4b658daa16979b3d3d71f09b88"
+  },
+  "limits": "Only scalar interval primitives and bounded exact product comparison. No represented transform, finite-feature, sweep or runtime repair certificate. Shared source review pending."
+}

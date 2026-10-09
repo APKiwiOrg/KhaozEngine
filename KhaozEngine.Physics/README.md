@@ -22,6 +22,29 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   nested factories throw. `Dispose` is idempotent and disposes only the view. After disposal, operations and
   `Origin` throw `ObjectDisposedException`, while `SourceWorld` and `CanRebase` remain inspectable. The source
   must outlive the view.
+- **`IPhysicsQueryLeaseSource` / `IPhysicsQueryLease`** - optional stable read intervals over a live
+  owner. `AcquireQueryReadLease()` captures the exact owner, origin and process-local mutation generation.
+  Queries remain available on the acquiring thread. Nested leases and same-thread mutations are refused,
+  while other threads serialize behind the owner gate. Call `AssertCurrent()` before publishing pure
+  results, then dispose on that same thread before applying physics mutations. Disposal is idempotent on
+  the acquiring thread. A restricted view leases its complete owner and cannot be disposed during the
+  interval. A lease does not certify water/terrain residency, portable world identity or scope completeness.
+  Those facts belong to the environment adapter paired with this physical read interval. A backend that
+  lacks the optional interface remains valid for legacy callers and cannot promise an explicit lease.
+- **`IPhysicsCapsuleFeatures`** - optional finite-feature certification for one static. Under a read lease
+  from the same receiver, `QueryCapsuleFeature(lease, target, capsule, pose, maximumSeparationMetres, faces)`
+  names the closest feature of `target` to a capsule at `pose` within the capsule radius plus the
+  separation band. A `Complete` `CapsuleFeatureResult` carries the feature `Kind` (`FaceInterior`,
+  `OpenBoundary`, `ConvexCrease`, `ConcaveCrease` or `Vertex`), witness points, separation bounds, error
+  bounds and every incident face written into `faces` together, each with a geometric normal. Every other
+  status is a refusal with no witness and leaves `faces` untouched. `NoFeature` means nothing lies within
+  the band, `Unavailable` that the target is not a live static in this view, `Unsupported` that the shape or
+  pose is outside the backend's certified domain, `Ambiguous` and `Unresolved` that the backend could not
+  decide the closest feature exactly, and `CapacityExceeded` that `faces` is too short (`RequiredCapacity`
+  names the need when known). A result is bound to its receiver and its original lease. Call
+  `AssertFeatureCurrent(result, lease)` before publishing from it, and never consume it after the lease is
+  disposed. A later lease of the same generation cannot revive it. Structural fields alone do not permit
+  movement. Support eligibility is the caller's decision.
 - **Static handle provenance for query views** - the factory rejects invalid, missing and stale handles at
   creation. Handles are numeric identities local to their source world, so equal values from different worlds
   are not interchangeable. Use handles returned by that source, and do not reuse removed exclusions to infer

@@ -1,0 +1,57 @@
+{
+  "base": "52b1c565aab858dc80f8f5cab5e332b81db7d030",
+  "source": "5eceb2c16c78d2815f265aecc92fd4d8b2b518dc",
+  "source_branch": "fix/low-lip-resting-proof",
+  "brought_paths": 67,
+  "byte_identical": "Every brought path except the correspondence spec equals 5eceb2c16.",
+  "link_rewrite": {
+    "file": "docs/superpowers/specs/2026-10-07-capsule-feature-correspondence-design.md",
+    "source_sha256": "e7034c1ba0fa1ce887487174c5ef8a0c7ce1503918859d7bb9785244cf39f52d",
+    "final_sha256": "5e887a9eca0d81b12f82d39f5ef283138a927483fbfb280f9c09d43c578f4df1",
+    "changed_lines": [4, 246],
+    "reason": "The plan and LOW-LIP-RESTING-PROOFS-2026-10-07.md are not integrated, so both relative links became commit-pinned URLs at 5eceb2c16. No other change."
+  },
+  "face_observations": {
+    "file": "docs/design/LOW-LIP-FACE-OBSERVATIONS-2026-10-07.json",
+    "note": "Its source test KhaozEngine.Movement.Tests/LowLipTraversalTests.Faces.cs exists only at 5eceb2c16 and is not integrated, so the recorded observation cannot be re-run on this branch."
+  },
+  "scope_replacement": {
+    "issue": "https://github.com/APKiwiOrg/KhaozEngine/issues/1326",
+    "reason": "Solution restore fails NuGet audit (NU1902, NU1903) on SixLabors.ImageSharp 2.1.13 in tools/PixelLabSheetAssembler, which main shares. Solution-wide build and format were replaced by project scope. Audit stays on.",
+    "solution_build": {
+      "command": "build-slot --label p1-integrate-build -- dotnet build KhaozEngine.slnx -c Release -m:1",
+      "exit": 1,
+      "warnings": 0,
+      "errors": 10,
+      "log_sha256": "a9ebb167269b8eb327a347029bbf2aae71e817778e09d2267f70ac4071129ac8"
+    }
+  },
+  "build": {
+    "command": "build-slot --label p1-integrate-build -- sh -c 'dotnet build KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release -m:1 && dotnet build KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release -m:1'",
+    "exit": 0,
+    "game_tests": { "warnings": 0, "errors": 0 },
+    "movement_tests": { "warnings": 0, "errors": 0 },
+    "log_sha256": "96cde4addfba96fafe1f4f6649c416dd4fe3aeff986bcbb2c2ddbdfda3be0fa2"
+  },
+  "tests": {
+    "command": "build-slot --label p1-feature-suite -- sh -c 'dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release -m:1 --no-build --filter \"FullyQualifiedName~BoundedGeometryArithmeticTests|FullyQualifiedName~CapsuleFeature|FullyQualifiedName~DyadicDistanceComparisonTests|FullyQualifiedName~GeometryExactNormalTests|FullyQualifiedName~GeometryVectorOperationsTests|FullyQualifiedName~InstalledPose|FullyQualifiedName~QuaternionGeometryTransformTests|FullyQualifiedName~RepresentedGeometryTransformTests\" && dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release -m:1 --no-build --filter \"FullyQualifiedName~LowLipFeatureSourceCapacityTests|FullyQualifiedName~LowLipFeaturePolicyControls\"'",
+    "exit": 0,
+    "game": { "passed": 162, "failed": 0, "skipped": 0, "total": 162 },
+    "movement": { "passed": 12, "failed": 0, "skipped": 0, "total": 12 },
+    "movement_note": "Lower than the source's 39 because the private eligibility cases live in LowLipTraversalTests files, which are not integrated.",
+    "log": ".superpowers/sdd/2026-10-09-contact-controller-phase1/logs/p1-feature-suite.log",
+    "log_sha256": "bf935c4ab66cee3bed4587d334f7525e5f47ddf9c3b4e952991f0c5636397b04"
+  },
+  "format": {
+    "command": "build-slot --label p1-integrate-format -- sh -c 'for p in KhaozEngine.Physics/KhaozEngine.Physics.csproj KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj; do dotnet format $p --verify-no-changes --no-restore || exit 1; done'",
+    "exit": 0,
+    "log_sha256": "995f019f38efbc396f16ca4ba6369360ddd0e1d73ff11a14fdf1a56ff448e91f"
+  },
+  "guards": {
+    "check-dashes --tree": 0,
+    "check-prose --tree": 0,
+    "check-file-size --tree": 0,
+    "check-doc-versions": 0
+  },
+  "limits": "Integration only. No new production logic, no runtime low-lip support, no movement call site change, no release."
+}

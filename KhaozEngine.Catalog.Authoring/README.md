@@ -258,9 +258,11 @@ still holds.
 steps 1 to 10, step 9 writes the whole pack, and no provider holds a row lock across that: SQLite leases its
 one connection per call, and SQL Server's Serializable transaction covers step 10 alone.
 
-`ContentPublishCommit.PublishAsync` clears the marker in a `finally`, so a success, a refusal, a throw and a
-cancellation all release the draft. Two things recover a marker nothing cleared, which is what a killed
-process leaves. A marker naming a version the store has moved past is STALE, and
+A successful commit consumes its draft and marker before any later sweep runs. Unfinished attempts use
+`ContentPublishCommit.PublishAsync`'s `finally` to release only their expected base through
+`IContentDraftFreezeStore` when supported. Legacy external stores retain the original unscoped cleanup.
+Two things recover a marker nothing cleared, which is what a killed process leaves. A marker naming a
+version the store has moved past is STALE, and
 `ReadPublishBaselineAsync` clears it, which is the read every publish starts with. A marker naming the
 version the store still stands at belongs to a publish that died before its commit. A later publish
 overwrites that marker at step 1 and clears it on exit.
@@ -399,6 +401,16 @@ The draft delete is scoped to `ContentPublishPlan.FrozenEdits`, the change set s
 what makes that the whole draft, so scoping it can only matter when the marker failed to hold, and that is
 the point: an edit the publish never carried survives into the next draft rather than being deleted
 unpublished.
+
+Publish cleanup uses the optional `IContentDraftFreezeStore` companion on the in-memory, SQLite and SQL
+Server stores. Its `ClearDraftFreezeAsync(expectedBaseVersion)` compares and releases the freeze marker
+in one gate or transaction. Cleanup from an earlier version leaves a later frozen draft
+untouched. A successful commit consumes its draft and owes no release, including when the following sweep
+fails. The upgrade runner scopes its own failed attempt's release the same way.
+
+The original `IContentAuthoringStore.ClearDraftFreezeAsync()` remains the unscoped recovery operation.
+External stores and wrappers without the companion keep that legacy cleanup behavior, which cannot protect
+a concurrent later draft. The companion scopes base versions, not publishers sharing the same draft.
 
 **It CONFIRMS the version number rather than trusting it.** The plan digested its number into both manifest
 hashes at step 8, so the transaction re-reads the highest published number and refuses with the

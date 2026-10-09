@@ -1,0 +1,34 @@
+{
+  "base": "05379bbc3867af7b10db5253429a707fbb034c9c",
+  "sources": {
+    "KhaozEngine.Physics.Bepu/BoundedGeometryArithmetic.cs": "81f1ac1123513994b514ba2c4761e2a47cc781adce0bcf17fe9f4f7cbc76f8a3",
+    "KhaozEngine.Game.Tests/Physics/DyadicDistanceComparisonTests.cs": "3ba588e683cbd81e8e7c17492a8602bacd44e3a90bb89837c6a15b067e39234c"
+  },
+  "red": {
+    "exit": 1,
+    "executed": 0,
+    "diagnostic": "CS0117 missing CompareSquaredDistances"
+  },
+  "green": {
+    "exit": 0,
+    "passed": 22,
+    "failed": 0,
+    "skipped": 0,
+    "new_cases": 8,
+    "affected_regressions": 14
+  },
+  "format": {
+    "exit": 0,
+    "changed": 0,
+    "projects": [
+      "KhaozEngine.Game.Tests",
+      "KhaozEngine.Physics.Bepu"
+    ]
+  },
+  "logs": {
+    "red": "900befa7202f96fc47811720968600219df70bc0aa26b95936775377da00d7fe",
+    "green": "0df52e45d1786abd63996c8b7d53bec8551c9213a19edafd0ae86c93ceb42f54",
+    "format": "223b40f19b3a95b83a2ee0f8e0ae275dd30e91f3390bc0f3f4e8cf96e1e89571"
+  },
+  "limits": "Exact sign for supplied represented coordinates with bounded dyadic operands only. No transform uncertainty, installed geometry, contact or sweep certificate."
+}

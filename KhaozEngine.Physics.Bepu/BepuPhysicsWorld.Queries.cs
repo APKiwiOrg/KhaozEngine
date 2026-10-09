@@ -26,6 +26,7 @@ public sealed partial class BepuPhysicsWorld
     private bool RaycastCore(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit,
         QueryFilter filter, StaticQueryExclusions? exclusions)
     {
+        using QueryOperation scope = EnterQuery();
         var handler = new RayHitHandler(filter.Mobility, exclusions);
         _sim.RayCast(origin, direction, maxDistance, ref handler);
 
@@ -49,12 +50,21 @@ public sealed partial class BepuPhysicsWorld
     private bool SweepCapsuleCore(CapsuleShape capsule, Pose pose, Vector3 direction, float maxDistance,
         out SweepHit hit, QueryFilter filter, StaticQueryExclusions? exclusions)
     {
+        using QueryOperation scope = EnterQuery();
         var bepuCapsule = new Capsule(capsule.Radius, capsule.Length);
         var rigidPose = new RigidPose(pose.Position, pose.Orientation);
-        var velocity = new BodyVelocity(direction);
+        // Bepu 2.4 sweeps a mesh or compound target by searching its child tree along velocity * maximumT
+        // over a ray bounded by maximumT again (ConvexCompoundSweepOverlapFinder.FindOverlaps feeding
+        // Mesh.FindLocalOverlaps, Compound.FindLocalOverlaps and BigCompound.FindLocalOverlaps). That search
+        // reaches only maximumT squared along the motion, so below 1 it drops children short of the requested
+        // distance. The whole motion is therefore carried in the velocity with maximumT exactly 1, where the
+        // square is the identity. SweepHitHandler lowers maximumT only for a hit at t 0, which nothing can
+        // beat. Bepu t then spans [0, 1] and scales back to distance.
+        float scale = maxDistance > 0f && float.IsFinite(maxDistance) ? maxDistance : 1f;
+        var velocity = new BodyVelocity(direction * scale);
         var handler = new SweepHitHandler(filter.Mobility, exclusions);
 
-        _sim.Sweep(bepuCapsule, rigidPose, velocity, maxDistance, _pool, ref handler);
+        _sim.Sweep(bepuCapsule, rigidPose, velocity, maxDistance / scale, _pool, ref handler);
 
         if (!handler.DidHit)
         {
@@ -65,7 +75,7 @@ public sealed partial class BepuPhysicsWorld
         // SweepHit.Body is a nullable static handle. A dynamic hit (only possible with QueryMobility.All/Dynamics)
         // has no static seam handle, so Body is null rather than reverse-looking-up a non-static hit.
         var seamHandle = handler.HitWasStatic ? ResolveSeamHandle(handler.HitStatic) : null;
-        hit = new SweepHit(handler.HitT, handler.HitLocation, handler.HitNormal, seamHandle);
+        hit = new SweepHit(handler.HitT * scale, handler.HitLocation, handler.HitNormal, seamHandle);
         return true;
     }
 
@@ -75,6 +85,7 @@ public sealed partial class BepuPhysicsWorld
     private unsafe bool ComputePenetrationCore(CapsuleShape capsule, Pose pose, out Vector3 mtv,
         StaticQueryExclusions? exclusions)
     {
+        using QueryOperation scope = EnterQuery();
         // General capsule-vs-static depenetration over EVERY shape type (box, sphere, cylinder, convex
         // hull, triangle mesh, compound) via one BepuPhysics CollisionBatcher manifold query. This
         // replaced the per-shape analytic switch (which only handled box/sphere and reported no

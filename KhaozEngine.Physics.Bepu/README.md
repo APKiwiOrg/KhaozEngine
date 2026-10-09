@@ -52,6 +52,22 @@ either value shifts the bit-exact result legitimately.
   therefore cannot hide the replacement. An empty selection still returns a restricted non-owning view with
   unfiltered query results. The view preserves the source world's mobility gates and dynamic observations,
   while simulation contacts remain unchanged.
+- **Query read leases** - the owner and its restricted views implement `IPhysicsQueryLeaseSource`.
+  A lease holds one exclusive, thread-affine gate because queries reuse backend scratch buffers.
+  The gate also covers every mutation, rebase, query and operational view disposal. Mutations from the
+  lease's own thread fail before changing the world, and a nested lease cannot shorten the first one's
+  lifetime. Other threads wait outside the gate. The captured generation is local to this process and
+  advances conservatively before operations that may change the world, including writes that later fail.
+  Rejected leased mutations never advance it. This is a synchronous lifetime contract, not immutable
+  geometry or permission to call a lease from another thread. Release it before any physics write.
+- **Capsule-feature certification** - the owner and its restricted views implement
+  `IPhysicsCapsuleFeatures`. The query authenticates the lease as this owner's before entering the gate,
+  reads the live static, and certifies boxes, convex hulls, compounds of those, and one-sided triangle meshes
+  with bounded exact arithmetic. Sphere, capsule and cylinder statics, mesh children of a compound, tilted
+  capsules, a radius outside 0.01 to 2, a length over 8 and a band over 0.01 m return `Unsupported`. A
+  static excluded by a view, removed, or filtered out by a dynamics-only `QueryFilter` returns
+  `Unavailable`. A probe that meets only the back face of a mesh returns `NoFeature`. A result from a view
+  is valid only through that view and its original lease.
 - **`Origin`/`CanRebase`/`Rebase(newOrigin)`** (floating origin) - `CanRebase` is true here. A rebase is a bulk of
   direct pose writes plus broadphase refits, NOT a remove-and-re-add: `BodyReference.Pose` and
   `StaticReference.Pose` are ref-returning in Bepu 2.4 and `UpdateBounds` refits the broadphase for the new pose

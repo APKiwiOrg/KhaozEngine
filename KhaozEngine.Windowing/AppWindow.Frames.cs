@@ -70,8 +70,9 @@ namespace KhaozEngine.Windowing
                 FramePlan plan = _backgroundThrottle.Plan(new WindowActivity(_accumulator.IsFocused, _minimized), _effectiveBaseCapHz);
                 bool render = plan.RenderAndPresent;
 
-                _frame.Dt = fdt; _frame.Input = input; _frame.Width = w; _frame.Height = h;
-                _frame.LogicalWidth = _window.Size.X; _frame.LogicalHeight = _window.Size.Y;
+                _frame.Dt = fdt; _frame.Input = input;
+                // Exact OS content scale, re-read each frame so a monitor move or OS scale change lands here.
+                _frame.SetMetrics(w, h, _window.Size.X, _window.Size.Y, WindowContentScale());
                 _frame.Commands = _cl;
                 _frame.RenderSuppressed = !render;
 

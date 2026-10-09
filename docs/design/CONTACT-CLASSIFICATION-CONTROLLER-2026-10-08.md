@@ -256,10 +256,11 @@ Known limits:
   a probe meets first. Where the leg probe reaches the shared edge before the axis-side face, roughly at
   seams of 30 to 45 degrees, support floats up to `FootRadius tan(theta)` above the axis-side plane. At
   10 degrees the probe meets the axis-side face first and matches the single-static crease.
-- Until the backend sweep fix lands, a capsule sweep can lose a nearer mesh static when another mesh static
-  shares its edge. A 0.2 m leg probe over a floor mesh and a descending ramp mesh sweeps to t 0.40000004 on
-  the floor alone and 0.42679498 on the ramp alone, yet returns the ramp at 0.42679498 with both present. The
-  mesh variants of the descending ramp and two-static ridge cases fail until then.
+- Before the backend sweep fix in 309c8e861, a capsule sweep could lose a nearer mesh static when another
+  mesh static shared its edge. A 0.2 m leg probe over a floor mesh and a descending ramp mesh swept to
+  t 0.40000004 on the floor alone and 0.42679498 on the ramp alone, yet returned the ramp with both present.
+  The fix returns the nearest hit, and the mesh variants of the descending ramp and two-static ridge cases
+  pass. Compound statics share the fix without a dedicated regression test (#1335).
 - At an exact seam between coplanar statics, the owner is the backend's first hit, deterministic for a world
   built in the same order.
 - Seeing past the back face of a one-sided mesh inside the reach band is deferred to phase 2. A probe that
@@ -267,9 +268,10 @@ Known limits:
 
 ### Shell queries
 
-`ShellPose(feetY)` places a `CapsuleShape` of the capsule radius with its bottom at the knee. Sweeps and
-overlap use the existing `SweepCapsule` and `ComputePenetration`. Phase 1 adds the helper and its
-validation only. The passes that use it are phase 2.
+`ShellGeometry.Shape` and `ShellGeometry.Centre(feet)` place a `CapsuleShape` of the capsule radius spanning
+from the knee at `feet + StepHeight` to the head, and `ShellGeometry.Validate` refuses a tuning whose span
+cannot hold one diameter. Sweeps and overlap use the existing `SweepCapsule` and `ComputePenetration`.
+Phase 1 adds the helper and its validation only. The passes that use it are phase 2.
 
 ### Classifier
 
@@ -285,7 +287,7 @@ volume. It reads no other state.
   their proofs. Its eligibility predicate moves from the legacy stepper partial into
   `KhaozEngine.Locomotion/Contacts/SupportCertification.cs`. The legacy low-prop fallback and every legacy
   stepper change on that branch stay out.
-- `KhaozEngine.Locomotion/Contacts/FootSupport.cs`, `SupportSample.cs`, `ShellPose.cs` and
+- `KhaozEngine.Locomotion/Contacts/FootSupport.cs`, `SupportSample.cs`, `ShellGeometry.cs` and
   `ContactClassifier.cs`. All internal until a consumer needs them.
 - Tests in `KhaozEngine.Game.Tests` under the `KhaozEngine.Tests.Locomotion.Contacts` namespace, next to the
   existing Locomotion suites, following the test-project reference rules.

@@ -1,0 +1,228 @@
+{
+  "candidate_base": "a1dfe97f981855a1b3374b563dbe29a4b2875171",
+  "candidate": "The base plus the docs, version and changelog of the commit carrying this file. The run used that working tree, so the committed tree differs from it only by this file.",
+  "origin_main": "309c8e861",
+  "version": "20.30.0",
+  "full_run": {
+    "command": "build-slot --heavy --label p1-final -- sh -c 'dotnet build KhaozEngine.slnx -c Release && dotnet test KhaozEngine.slnx -c Release --no-build --filter \"Category!=LiveSocket\" && dotnet format KhaozEngine.slnx --verify-no-changes --no-restore'",
+    "exit": 0,
+    "ran_seconds": 235.086,
+    "build": {
+      "warnings": 0,
+      "errors": 0
+    },
+    "tests": {
+      "assemblies": 30,
+      "totals": {
+        "failed": 0,
+        "passed": 26078,
+        "skipped": 1329,
+        "total": 27407
+      },
+      "failures": [],
+      "per_assembly": {
+        "KeDungeon.Tests": {
+          "failed": 0,
+          "passed": 13,
+          "skipped": 0,
+          "total": 13
+        },
+        "KhaozEngine.Accounts.Tests": {
+          "failed": 0,
+          "passed": 286,
+          "skipped": 46,
+          "total": 332
+        },
+        "KhaozEngine.Audio.Tests": {
+          "failed": 0,
+          "passed": 206,
+          "skipped": 3,
+          "total": 209
+        },
+        "KhaozEngine.Automation.Tests": {
+          "failed": 0,
+          "passed": 106,
+          "skipped": 0,
+          "total": 106
+        },
+        "KhaozEngine.Catalog.AzureBlob.Tests": {
+          "failed": 0,
+          "passed": 25,
+          "skipped": 7,
+          "total": 32
+        },
+        "KhaozEngine.Catalog.Tests": {
+          "failed": 0,
+          "passed": 1513,
+          "skipped": 0,
+          "total": 1513
+        },
+        "KhaozEngine.CodeHealth.Analyzers.Tests": {
+          "failed": 0,
+          "passed": 51,
+          "skipped": 0,
+          "total": 51
+        },
+        "KhaozEngine.Foundation.Tests": {
+          "failed": 0,
+          "passed": 1404,
+          "skipped": 0,
+          "total": 1404
+        },
+        "KhaozEngine.Game.Tests": {
+          "failed": 0,
+          "passed": 2518,
+          "skipped": 1,
+          "total": 2519
+        },
+        "KhaozEngine.Gui.Tests": {
+          "failed": 0,
+          "passed": 1276,
+          "skipped": 0,
+          "total": 1276
+        },
+        "KhaozEngine.Identity.Exchange.Tests": {
+          "failed": 0,
+          "passed": 177,
+          "skipped": 0,
+          "total": 177
+        },
+        "KhaozEngine.ItemInstances.Tests": {
+          "failed": 0,
+          "passed": 888,
+          "skipped": 0,
+          "total": 888
+        },
+        "KhaozEngine.Localization.Analyzers.Tests": {
+          "failed": 0,
+          "passed": 46,
+          "skipped": 0,
+          "total": 46
+        },
+        "KhaozEngine.MapDoc.Tests": {
+          "failed": 0,
+          "passed": 219,
+          "skipped": 0,
+          "total": 219
+        },
+        "KhaozEngine.MapEditor.Tests": {
+          "failed": 0,
+          "passed": 1204,
+          "skipped": 9,
+          "total": 1213
+        },
+        "KhaozEngine.Movement.Tests": {
+          "failed": 0,
+          "passed": 667,
+          "skipped": 3,
+          "total": 670
+        },
+        "KhaozEngine.Netcode.Abstractions.DecouplingTests": {
+          "failed": 0,
+          "passed": 4,
+          "skipped": 0,
+          "total": 4
+        },
+        "KhaozEngine.Netcode.DecouplingTests": {
+          "failed": 0,
+          "passed": 4,
+          "skipped": 0,
+          "total": 4
+        },
+        "KhaozEngine.Particles.Tests": {
+          "failed": 0,
+          "passed": 106,
+          "skipped": 0,
+          "total": 106
+        },
+        "KhaozEngine.Physics.HeadlessLoaderTests": {
+          "failed": 0,
+          "passed": 5,
+          "skipped": 0,
+          "total": 5
+        },
+        "KhaozEngine.Render.Tests": {
+          "failed": 0,
+          "passed": 8965,
+          "skipped": 936,
+          "total": 9901
+        },
+        "KhaozEngine.Server.Tests": {
+          "failed": 0,
+          "passed": 3846,
+          "skipped": 317,
+          "total": 4163
+        },
+        "KhaozEngine.Showcase.Tests": {
+          "failed": 0,
+          "passed": 83,
+          "skipped": 0,
+          "total": 83
+        },
+        "KhaozEngine.Simulation.Tests": {
+          "failed": 0,
+          "passed": 302,
+          "skipped": 0,
+          "total": 302
+        },
+        "KhaozEngine.Tests": {
+          "failed": 0,
+          "passed": 54,
+          "skipped": 0,
+          "total": 54
+        },
+        "KhaozEngine.TileEdit.Tests": {
+          "failed": 0,
+          "passed": 97,
+          "skipped": 7,
+          "total": 104
+        },
+        "KhaozEngine.TileWorld.Netcode.Tests": {
+          "failed": 0,
+          "passed": 1382,
+          "skipped": 0,
+          "total": 1382
+        },
+        "KhaozEngine.TileWorld.Physics.Tests": {
+          "failed": 0,
+          "passed": 89,
+          "skipped": 0,
+          "total": 89
+        },
+        "KhaozEngine.TileWorld.Tests": {
+          "failed": 0,
+          "passed": 514,
+          "skipped": 0,
+          "total": 514
+        },
+        "PixelLabSheetAssembler.Tests": {
+          "failed": 0,
+          "passed": 28,
+          "skipped": 0,
+          "total": 28
+        }
+      }
+    },
+    "format": "clean, exit 0 as the last step of the chain",
+    "log": ".superpowers/sdd/2026-10-09-contact-controller-phase1/logs/p1-final.log",
+    "log_sha256": "1e4c0b29927add764f79d08e2362512074d330a64699f685e3b6a08242e5a8df"
+  },
+  "skips": "Environment-gated GPU, live store and SQL Server facts, unchanged in kind from the 309c8e861 full run.",
+  "guards": {
+    "check-dashes --tree": 0,
+    "check-prose --tree": 0,
+    "check-file-size --tree": 0,
+    "check-agent-instructions --tree": 0,
+    "check-doc-versions": 0
+  },
+  "follow_up_issues": {
+    "concave creases": 1329,
+    "vertices": 1330,
+    "curved primitives": 1331,
+    "one-sided mesh back face": 1332,
+    "convex seams between separate statics": 1333,
+    "per-down-pass query cost": 1334,
+    "compound static sweep regression test": 1335
+  },
+  "limits": "Full solution verification of phase 1. No merge, tag or pack."
+}

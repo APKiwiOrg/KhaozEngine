@@ -7685,7 +7685,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.29.2" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.30.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -7981,7 +7981,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.29.2" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.30.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8585,6 +8585,9 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   acquiring thread before changing physics. Same-thread writes and nested leases are refused, other
   threads serialize behind the gate, and view disposal cannot invalidate an active interval. This does
   not certify native environment residency or provide a cross-head world/bake identity.
+- Optional `IPhysicsCapsuleFeatures.QueryCapsuleFeature(lease, target, capsule, pose, maximumSeparationMetres, faces) -> CapsuleFeatureResult`
+  certifies the closest finite feature of one static under a read lease. Bepu owners and restricted views
+  support it. See [Capsule-feature certification](#capsule-feature-certification-iphysicscapsulefeatures).
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
   `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
   `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,
@@ -8681,7 +8684,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.29.2" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.30.0" />
 ```
 
 ```csharp
@@ -8885,6 +8888,52 @@ only loading goes headless.
 
 **NativeAOT note:** `BepuPhysicsWorld` requires an `rd.xml` shim for `Dynamic=Required All` on `BepuPhysics`
 when publishing under NativeAOT (iOS/AOT reach). Desktop and headless server targets are fine without it.
+
+### Capsule-feature certification (`IPhysicsCapsuleFeatures`)
+
+A sweep or ray hit reports a contact normal, not the face it touched. `IPhysicsCapsuleFeatures` names the
+finite feature of one static closest to a capsule and returns every incident face with its geometric normal,
+so a caller can decide support from certified faces. Query it under a read lease from the same receiver, and
+consume the result before that lease is disposed.
+
+```csharp
+// world is a BepuPhysicsWorld or one of its restricted views.
+if (world is IPhysicsCapsuleFeatures features && world is IPhysicsQueryLeaseSource leases)
+{
+    using IPhysicsQueryLease lease = leases.AcquireQueryReadLease();
+    var probe = new CapsuleShape(0.2f, 0.01f);
+    if (world.SweepCapsule(probe, start, -Vector3.UnitY, reach, out SweepHit hit, QueryFilter.StaticsOnly) &&
+        hit.Body is StaticHandle target)
+    {
+        // The probe at the hit distance is exactly in contact with the static.
+        Pose contact = Pose.At(start.Position - Vector3.UnitY * hit.Distance);
+        Span<CapsuleIncidentFace> faces = stackalloc CapsuleIncidentFace[16];
+        CapsuleFeatureResult result = features.QueryCapsuleFeature(lease, target, probe, contact,
+            maximumSeparationMetres: 0.0001f, faces);
+        if (result.Status == CapsuleFeatureStatus.Complete)
+        {
+            features.AssertFeatureCurrent(result, lease);
+            ReadOnlySpan<CapsuleIncidentFace> incident = faces[..result.Written];
+            // Decide from result.Kind and each incident face's Normal, then publish pure state.
+        }
+    }
+}   // the lease ends here, and so does the result
+```
+
+- `Complete` commits all incident faces together. Every other status is a refusal with no witness, and
+  `faces` is left untouched.
+- `NoFeature` means nothing lies within the capsule radius plus the band. `Unavailable` means the target is
+  not a live static in this view, for example excluded by the view or removed. `Unsupported` means the shape
+  or pose is outside the backend's certified domain. The Bepu backend certifies boxes, convex hulls,
+  compounds of those and one-sided triangle meshes, and refuses sphere, capsule and cylinder statics.
+  `Ambiguous` and `Unresolved` mean the closest feature could not be decided exactly. `CapacityExceeded`
+  means `faces` is too short, and `RequiredCapacity` names the need when it is known.
+- Treat a refusal as "not certified", never as a guessed plane. A sweep normal or a nudged ray must not stand
+  in for a refused face.
+- A result belongs to its receiver and its original lease. Never consume it after the lease is disposed, and
+  never carry it into a later lease. A later lease of the same generation cannot revive it, and
+  `AssertFeatureCurrent` throws for another receiver, another lease or an expired interval.
+- The faces describe geometry only. Whether a face is walkable support is the caller's rule.
 
 ---
 
@@ -15615,7 +15664,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.29.2" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.30.0" />
 ```
 
 ```csharp
@@ -15651,7 +15700,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.29.2" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.30.0" />
 ```
 
 ```csharp
@@ -15893,7 +15942,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.29.2" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.30.0" />
 ```
 
 ```csharp
@@ -20253,7 +20302,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.29.2" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.30.0" />
 </ItemGroup>
 ```
 

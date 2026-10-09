@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.29.2
+## 20.30.0
 
 - The PixelLab sheet assembler tool reads and writes PNG through `KhaozEngine.Imaging` instead of
   `SixLabors.ImageSharp` 2.1.13, whose five advisories failed Release restore under NuGet audit (#1326). The
@@ -13,6 +13,13 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Physics: `BepuPhysicsWorld.SweepCapsule` returns the nearest hit across mesh and compound statics. A farther
   edge-sharing mesh no longer wins over a nearer one, and a sweep shorter than 1 no longer misses a mesh
   within its distance.
+- Physics adds the optional `IPhysicsCapsuleFeatures` capability. Under a read lease it names the closest
+  finite feature of one static to a capsule and returns every incident face with its geometric normal, or a
+  refusal status. Bepu worlds and their selected query views implement it for boxes, convex hulls, compounds
+  of those and one-sided meshes. A result is valid only under its original receiver and lease.
+- Locomotion gains the internal foot-support primitive, shell geometry and contact classes for the #438
+  contact-classification controller. Nothing consumes them yet, so movement, navigation bakes and the wire
+  are unchanged.
 
 ## 20.29.1
 

@@ -66,6 +66,14 @@ internal sealed class FootSupportScene : IDisposable
         return p[0].Y - (nx * (x - p[0].X) + nz * (z - p[0].Z)) / ny;
     }
 
+    /// <summary>Records the plane through three installed float vertices as the top of <paramref name="name"/>,
+    /// for a static whose builder does not record one.</summary>
+    internal FootSupportScene Top(string name, Vector3 p0, Vector3 p1, Vector3 p2)
+    {
+        _tops.Add(name, [new(p0), new(p1), new(p2)]);
+        return this;
+    }
+
     /// <summary>A binary64 point. Float inputs convert exactly.</summary>
     internal readonly record struct Point(double X, double Y, double Z)
     {
@@ -162,13 +170,15 @@ internal static class FootSupportScenes
     }
 
     /// <summary>One static "roof" with two planes at <paramref name="degrees"/> meeting at a ridge of height 0.5
-    /// along x 0, each 2 m along its slope. The box variant is a convex hull, the mesh variant one mesh.</summary>
+    /// along x 0, each 2 m along its slope. The box variant is a convex hull, the mesh variant one mesh. The
+    /// recorded top of "roof" is its low X plane.</summary>
     internal static FootSupportScene Ridge(SceneVariant variant, float degrees)
     {
         float angle = Radians(degrees);
         float eaveX = 2 * MathF.Cos(angle), eaveY = 0.5f - 2 * MathF.Sin(angle);
         Vector3 Point(float x, float y, float z) => new(x, y, z);
-        var scene = new FootSupportScene(variant);
+        var scene = new FootSupportScene(variant)
+            .Top("roof", Point(0, 0.5f, -2), Point(0, 0.5f, 2), Point(-eaveX, eaveY, 2));
         if (variant == SceneVariant.Mesh)
             return scene.Mesh("roof", [
                 .. FootSupportScene.Quad(Point(-eaveX, eaveY, -2), Point(0, 0.5f, -2), Point(-eaveX, eaveY, 2),

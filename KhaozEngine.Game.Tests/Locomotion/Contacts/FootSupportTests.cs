@@ -159,8 +159,7 @@ public class FootSupportTests
     public void ConvexRidgeSupportsTheAxisSide(SceneVariant variant)
     {
         using FootSupportScene scene = Ridge(variant, 10f);
-        AssertWalkable(0.5 - 0.1 * Math.Tan(10 * Math.PI / 180), scene["roof"],
-            Find(scene, Query(-0.1f, 0, 0.48f)));
+        AssertWalkable(scene.TopHeightAt("roof", -0.1f, 0), scene["roof"], Find(scene, Query(-0.1f, 0, 0.48f)));
     }
 
     // At 10 degrees the leg probe meets the axis-side face before the ridge edge, so separate statics agree
@@ -171,7 +170,7 @@ public class FootSupportTests
     public void RidgeOfTwoSeparateStaticsSupportsTheAxisFace(SceneVariant variant)
     {
         using FootSupportScene scene = TwoStaticRidge(variant, 10f);
-        AssertWalkable(0.5 - 0.1 * Math.Tan(10 * Math.PI / 180), scene["left"], Find(scene, Query(-0.1f, 0, 0.48f)));
+        AssertWalkable(scene.TopHeightAt("left", -0.1f, 0), scene["left"], Find(scene, Query(-0.1f, 0, 0.48f)));
     }
 
     [Theory]

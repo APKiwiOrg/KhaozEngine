@@ -89,24 +89,28 @@ internal static class MapNativeValidation
                     errors.Add($"surface '{surface.Id}': invalid indoor span.");
             }
         }
-        foreach (MapPlacement placement in doc.Placements)
+        foreach (MapPlacement placement in doc.Placements) ValidateSupportBinding(placement, surfaces, errors);
+    }
+
+    /// <summary>One placement's support binding against the document's declared surfaces.</summary>
+    internal static void ValidateSupportBinding(MapPlacement placement, IReadOnlyDictionary<string, MapSurfaceRef> surfaces,
+        List<string> errors)
+    {
+        if (placement.SupportBinding is not { } binding) return;
+        string prefix = $"placement '{placement.Id}': ";
+        if (placement.Y is not null) errors.Add(prefix + "explicit Y cannot have a support binding.");
+        if (!Enum.IsDefined(binding.Kind)) errors.Add(prefix + "unsupported support binding kind.");
+        else if (binding.Kind == MapSupportBindingKind.Surface)
         {
-            if (placement.SupportBinding is not { } binding) continue;
-            string prefix = $"placement '{placement.Id}': ";
-            if (placement.Y is not null) errors.Add(prefix + "explicit Y cannot have a support binding.");
-            if (!Enum.IsDefined(binding.Kind)) errors.Add(prefix + "unsupported support binding kind.");
-            else if (binding.Kind == MapSupportBindingKind.Surface)
-            {
-                if (string.IsNullOrWhiteSpace(binding.SurfaceId) || !surfaces.ContainsKey(binding.SurfaceId) || binding.SpaceId is not null)
-                    errors.Add(prefix + "surface support binding requires a declared surface and no spaceId.");
-            }
-            else if (string.IsNullOrWhiteSpace(binding.SpaceId) || binding.SurfaceId is not null)
-                errors.Add(prefix + "space support binding requires a spaceId and no surfaceId.");
-            if ((binding.ReferenceY is { } y && !float.IsFinite(y)) ||
-                (binding.SearchBelow is { } below && (!float.IsFinite(below) || below < 0)) ||
-                (binding.SearchAbove is { } above && (!float.IsFinite(above) || above < 0)))
-                errors.Add(prefix + "support search values must be finite with nonnegative extents.");
+            if (string.IsNullOrWhiteSpace(binding.SurfaceId) || !surfaces.ContainsKey(binding.SurfaceId) || binding.SpaceId is not null)
+                errors.Add(prefix + "surface support binding requires a declared surface and no spaceId.");
         }
+        else if (string.IsNullOrWhiteSpace(binding.SpaceId) || binding.SurfaceId is not null)
+            errors.Add(prefix + "space support binding requires a spaceId and no surfaceId.");
+        if ((binding.ReferenceY is { } y && !float.IsFinite(y)) ||
+            (binding.SearchBelow is { } below && (!float.IsFinite(below) || below < 0)) ||
+            (binding.SearchAbove is { } above && (!float.IsFinite(above) || above < 0)))
+            errors.Add(prefix + "support search values must be finite with nonnegative extents.");
     }
 
     // Reservation accepts newly imported placements above the old mark, but still checks their IDs.
@@ -118,15 +122,23 @@ internal static class MapNativeValidation
         var seen = new HashSet<long>();
         foreach (MapPlacement placement in doc.Placements)
         {
-            if (placement.NumericId is not { } id) continue;
-            if (id <= 0)
-                errors.Add($"placement '{placement.Id}': numericId must be positive when present.");
-            if (!seen.Add(id))
-                errors.Add($"placement '{placement.Id}': duplicate numericId '{id}'.");
-            if (requireHighWater && id > doc.NumericIdHighWaterMark)
-                errors.Add($"placement '{placement.Id}': numericId exceeds numericIdHighWaterMark.");
-            maximum = System.Math.Max(maximum, id);
+            ValidateNumericId(placement, doc.NumericIdHighWaterMark, seen, errors, requireHighWater);
+            if (placement.NumericId is { } id) maximum = System.Math.Max(maximum, id);
         }
         return maximum;
+    }
+
+    /// <summary>One placement's numeric ID. <paramref name="seen"/> accumulates the IDs of every placement checked
+    /// so far in the same document.</summary>
+    internal static void ValidateNumericId(MapPlacement placement, long highWaterMark, HashSet<long> seen,
+        List<string> errors, bool requireHighWater = true)
+    {
+        if (placement.NumericId is not { } id) return;
+        if (id <= 0)
+            errors.Add($"placement '{placement.Id}': numericId must be positive when present.");
+        if (!seen.Add(id))
+            errors.Add($"placement '{placement.Id}': duplicate numericId '{id}'.");
+        if (requireHighWater && id > highWaterMark)
+            errors.Add($"placement '{placement.Id}': numericId exceeds numericIdHighWaterMark.");
     }
 }

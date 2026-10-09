@@ -9,7 +9,8 @@ namespace KhaozEngine.MapDoc.Identity;
 
 /// <summary>Whole authored identity from current complete edits or verified pinned storage. It covers the manifest
 /// root, the authored content digest, the ordered surface patch facts, the asset closure, the builder, the options
-/// hash and the resolver version.</summary>
+/// hash and the resolver version. Both overloads refuse the same documents through the same validation
+/// code.</summary>
 public static class MapAuthoredIdentityV2
 {
     public static string Compute(MapDocument document, MapAssetClosure assets, MapResolveOptions options)
@@ -37,14 +38,14 @@ public static class MapAuthoredIdentityV2
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(options);
         Validate(source.ResolverIdentity, source.SupportRecipe, options);
-        source.RequireIdentityRoots(assets);
+        source.RequireIdentityManifest(assets);
         var patches = new SortedDictionary<MapPatchKey, string>();
         foreach (MapSurfaceIndexEntry entry in source.EnumeratePinnedEntries(work))
             patches.Add(entry.Key, source.IdentityPatchDigest(entry, work));
         foreach (MapSurfaceRef surface in source.Surfaces)
             if (MapSurfaceSemantics.SurfaceDigest(surface, patches.Where(p => p.Key.SurfaceId == surface.Id)) != surface.SemanticSha256)
                 throw new MapDocumentException($"Corrupt surface semantic digest for '{surface.Id}'.");
-        return MapAuthoredIdentityProjection.Compute(source.RootSha256, source.IdentityContentDigest(), patches, assets, options);
+        return MapAuthoredIdentityProjection.Compute(source.RootSha256, source.IdentityContentDigest(assets), patches, assets, options);
     }
 
     static void Validate(MapResolverIdentityDoc? resolver, MapSupportRecipe recipe, MapResolveOptions options)

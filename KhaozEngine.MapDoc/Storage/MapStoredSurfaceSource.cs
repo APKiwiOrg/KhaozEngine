@@ -14,6 +14,8 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
     readonly IReadOnlyList<MapAssetRef> _nativeAssets;
     readonly MapTileIndex _pinnedTiles;
     readonly float _sculptCellSize;
+    // The pinned manifest without content, so identity validates the globals the loaded document would carry.
+    readonly MapDocument _globals;
     internal MapSurfaceStorageIndex Index { get; }
     internal MapResolverIdentityDoc? ResolverIdentity { get; }
     internal MapSupportRecipe SupportRecipe { get; }
@@ -28,6 +30,7 @@ public sealed partial class MapStoredSurfaceSource : IMapSurfaceAcquisitionSourc
         _nativeAssets = Array.AsReadOnly(manifest.NativeAssets.ToArray());
         _pinnedTiles = tiles;
         _sculptCellSize = MapCanonical.SculptCellSizeOf(manifest);
+        _globals = MapTiledFile.GlobalsOnly(manifest);
         SnapshotId = "manifest:" + tiles.ManifestSha256;
         RootSha256 = MapSurfaceSemantics.RootDigest(manifest);
     }

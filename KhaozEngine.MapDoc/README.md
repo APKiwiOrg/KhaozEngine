@@ -75,7 +75,8 @@ to select that generation.
 The stored overload also reads the tile files named by the generation pinned at `Open`, one tile at a time,
 by their pinned names. Each tile's parsed content must hash to its pinned tile hash before any entry is
 used. A removed tile file refuses with `Missing` and altered content with `Corrupt`. Identity never rereads
-the manifest, lists directories or trusts a stored hash without reading the file.
+the manifest, lists directories or trusts a stored hash without reading the file. Stored identity validates
+the same document rules as the loaded document, through the same code and with the same messages.
 
 Both overloads hash exactly these inputs under `kemap/native-authored/2`: the root digest, the authored
 content digest, ordered `(patchKey, semanticDigest)` facts, the verified asset closure hash, builder ID and

@@ -5,11 +5,11 @@ namespace KhaozEngine.MapDoc.Storage;
 
 public sealed partial class MapStoredSurfaceSource
 {
-    internal void RequireIdentityRoots(MapAssetClosure assets)
+    /// <summary>The manifest-level checks the loaded document runs, through the same validation code.</summary>
+    internal void RequireIdentityManifest(MapAssetClosure assets)
     {
-        var roots = new HashSet<MapAssetRef>(_nativeAssets);
-        if (roots.Count != _nativeAssets.Count || roots.Count != assets.Roots.Count || !roots.SetEquals(assets.Roots))
-            throw new MapDocumentException("Native document roots do not match the verified asset closure.");
+        MapBoundDocumentValidation.ValidateLocal(_globals);
+        MapBoundDocumentValidation.RequireRoots(_nativeAssets, assets);
     }
 
     internal IEnumerable<MapSurfaceIndexEntry> EnumeratePinnedEntries(MapWholeIdentityWork? work)

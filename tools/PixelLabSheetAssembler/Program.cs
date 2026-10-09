@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using SixLabors.ImageSharp;
 
 namespace PixelLabSheetAssembler;
 
@@ -53,26 +52,21 @@ internal static class Program
         }
 
         string? temp = null;
-        CharacterAnimation? charAnim = null;
         try
         {
-            var (loaded, t) = PixelLabExport.Load(input!, anim!);
-            charAnim = loaded;
+            var (charAnim, t) = PixelLabExport.Load(input!, anim!);
             temp = t;
 
             AssemblyResult result = SheetAssembler.Assemble(
                 charAnim, new AssemblyOptions(bottomPad, alphaThreshold, strict, fps));
 
             outPath ??= DefaultOut(input!, anim!);
-            using (result.Sheet)
-            {
-                result.Sheet.SaveAsPng(outPath);
+            result.Sheet.SaveAsPng(outPath);
 
-                Console.WriteLine(
-                    $"Wrote {outPath}  ({result.FrameCount}x{DirectionRows.RowCount} cells, " +
-                    $"cell {result.CellWidth}x{result.CellHeight}, " +
-                    $"sheet {result.Sheet.Width}x{result.Sheet.Height})");
-            }
+            Console.WriteLine(
+                $"Wrote {outPath}  ({result.FrameCount}x{DirectionRows.RowCount} cells, " +
+                $"cell {result.CellWidth}x{result.CellHeight}, " +
+                $"sheet {result.Sheet.Width}x{result.Sheet.Height})");
             Console.WriteLine($"frameCount = {result.FrameCount}");
             Console.WriteLine($"suggested fps = {result.SuggestedFps:0.#}");
             Console.WriteLine(
@@ -97,15 +91,6 @@ internal static class Program
         }
         finally
         {
-            // Dispose the loaded frame images (each holds an unmanaged pixel buffer); the sheet was
-            // already disposed in the using above. Matters most if this is ever reused as a library.
-            if (charAnim != null)
-            {
-                foreach (var frames in charAnim.FramesByDir.Values)
-                    foreach (var f in frames)
-                        f.Image.Dispose();
-            }
-
             if (temp != null)
             {
                 try { Directory.Delete(temp, recursive: true); } catch { /* best effort */ }

@@ -1,12 +1,10 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace PixelLabSheetAssembler;
 
 /// <summary>Computes the inclusive bounding box of a frame's opaque pixels (alpha &gt; threshold).</summary>
 public static class Bbox
 {
-    public static (int MinX, int MinY, int MaxX, int MaxY)? OpaqueBounds(Image<Rgba32> img, int alphaThreshold)
+    public static (int MinX, int MinY, int MaxX, int MaxY)? OpaqueBounds(RgbaImage img, int alphaThreshold)
     {
         int minX = int.MaxValue, minY = int.MaxValue, maxX = -1, maxY = -1;
         for (int y = 0; y < img.Height; y++)

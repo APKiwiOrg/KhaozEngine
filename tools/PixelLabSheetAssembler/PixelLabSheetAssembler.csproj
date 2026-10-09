@@ -6,6 +6,6 @@
     <RootNamespace>PixelLabSheetAssembler</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="SixLabors.ImageSharp" />
+    <ProjectReference Include="../../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
   </ItemGroup>
 </Project>

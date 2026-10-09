@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace PixelLabSheetAssembler;
 
@@ -40,7 +38,7 @@ public static class SheetAssembler
             }
 
         var warnings = new List<string>();
-        var sheet = new Image<Rgba32>(cellW * frameCount, cellH * DirectionRows.RowCount); // transparent
+        var sheet = new RgbaImage(cellW * frameCount, cellH * DirectionRows.RowCount); // transparent
 
         // 4. Composite each direction row.
         foreach (var (name, row) in DirectionRows.NameToRow)
@@ -51,7 +49,7 @@ public static class SheetAssembler
 
             for (int col = 0; col < frameCount; col++)
             {
-                Image<Rgba32> frame = byIndex[sources[col]];
+                RgbaImage frame = byIndex[sources[col]];
                 Blit(sheet, frame, col * cellW, row * cellH, cellW, cellH, opt.BottomPad, opt.AlphaThreshold);
             }
         }
@@ -65,7 +63,7 @@ public static class SheetAssembler
     // are clipped: only transparent padding, unless bottomPad > 0 and a frame's opaque area reaches
     // the canvas top (then its top rows can clip; keep bottomPad small relative to frame headroom).
     private static void Blit(
-        Image<Rgba32> sheet, Image<Rgba32> frame,
+        RgbaImage sheet, RgbaImage frame,
         int cellX, int cellY, int cellW, int cellH, int bottomPad, int alphaThreshold)
     {
         int frameW = frame.Width, frameH = frame.Height;

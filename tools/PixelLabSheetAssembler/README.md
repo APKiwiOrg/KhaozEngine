@@ -8,6 +8,11 @@ and the rest of `KhaozEngine.Sprites` were deleted in the MonoGame purge, commit
 consuming game loads the PNG itself and slices the grid until one adopts this tool's output.
 Not a runtime package (IsPackable=false): it is never NuGet-packed and never published.
 
+PNG load and save go through the engine's own `KhaozEngine.Imaging` (`PngReader`, `PngWriter`), so the
+tool carries no third-party image library. Frames may be noninterlaced 8-bit or 16-bit greyscale,
+greyscale plus alpha, RGB or RGBA, all widened to RGBA8 on load. PixelLab exports are 8-bit RGBA.
+Palette and interlaced PNGs are rejected with exit code `1`. The output sheet is an 8-bit RGBA PNG.
+
 ## Run
 
     dotnet run --project tools/PixelLabSheetAssembler -- \

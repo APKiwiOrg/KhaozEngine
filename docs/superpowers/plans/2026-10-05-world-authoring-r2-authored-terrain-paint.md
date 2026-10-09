@@ -3923,3 +3923,24 @@ world has no regions. Compile RED is preserved at 3257ed35a. Final runs passed 5
 cases (23 guards plus 5 spike-outcome regressions), with format and guards clean. Review needed one fix round. The
 private comparison and inventory passed on dad4f8bb1, private record a480c761. Ruling T18-6 gives each private entry
 its own report name. Rulings T18-1 to T18-6 are in the ledger. Proof is `proofs/2026-10-10-r2-task18-green.json`.
+
+
+### Whole-branch review, release preparation and integration
+
+The whole-branch review of 54a1f3584..5e4e7fa58 found that the resolver-2 whole identity ignored placements, spawns,
+player spawns and sculpt. Fix round a40fc6483 adds a storage-independent content digest to the whole projection, read
+for stored documents from the pinned tile files and verified against their pinned tile hashes, while RootDigest stays
+the manifest-only surface root (rulings WBR-1 to WBR-4). Fix round db59633aa makes stored identity refuse exactly what
+the loaded document refuses, through shared validation helpers (WBR-5 and WBR-6). Deferred items are filed as #1336,
+#1337 and #1338.
+
+Engine main staged 20.30.0, so R2 rides it. Main was merged first (ecdcbda1b), then release commit 64db89a15 appended
+R2 to the 20.30.0 entry and reworded every unreleased R2 marking (REL-1). Candidate verification on 64db89a15 passed
+the Release build with 0 warnings, the solution suite with 26,566 tests and 0 failures, solution and harness format,
+23 harness guards, 5 spike-outcome cases and the five repository guards. The private inventory and comparison passed
+with reports identical to Task 18, private record 2b4a8243. The private pack produced 200 package files at 20.30.0.
+
+Hosted CI run 37999418518 failed only StairRunTangentPacingTests on x64, which main had failed since 309c8e861 before R2
+merged (#1339, handed to the owning lane). Ruling CI-1 fast-forwarded main to 64db89a15, because the failure is
+identical, unrelated to R2 and every R2 project passed on hosted x64. The shared pack then ran from main. The v20.30.0
+tag stays with the owner and needs #1339 fixed first, since tag CI runs the full suite.

@@ -23,13 +23,17 @@ internal static class GroundSeat
     /// <summary>Applies the seat rules in order. Analytic terrain more than <see cref="MoveTuning.StepHeight"/>
     /// above the start feet is a wall. Otherwise walkable support seats, steep support above the start feet is a
     /// wall, steep support at or below seats with steep footing, no support leaves the body airborne at the start
-    /// height and a refusal refuses. <paramref name="start"/> is the support at <paramref name="startAxis"/>. A
-    /// non-null <paramref name="world"/> follows the <see cref="FootSupport.Find"/> contract.</summary>
+    /// height and a refusal refuses. <paramref name="start"/> is the support at <paramref name="startAxis"/>.
+    /// <paramref name="moveDirection"/> must be finite and non-zero. A non-null <paramref name="world"/> follows
+    /// the <see cref="FootSupport.Find"/> contract.</summary>
     internal static GroundSeatResult Resolve(Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
         in SupportSample start, Vector2 startAxis, float startFeetY, Vector2 axis, Vector2 moveDirection,
         float footRadius, in MoveTuning tuning)
     {
+        if (!float.IsFinite(moveDirection.X) || !float.IsFinite(moveDirection.Y) || moveDirection == Vector2.Zero)
+            throw new ArgumentOutOfRangeException(nameof(moveDirection),
+                "The move direction must be finite and non-zero.");
         float stepHeight = tuning.StepHeight;
         if (groundHeight is not null && groundHeight(axis.X, axis.Y) > startFeetY + stepHeight)
         {

@@ -145,6 +145,19 @@ public class GroundSeatTests
         Assert.Equal(0f, result.FeetY);
     }
 
+    // An analytic cliff ahead takes the move's reverse as its wall normal when the terrain gives none, so a zero or
+    // non-finite move direction is rejected before any rule runs.
+    [Fact]
+    public void ZeroMoveDirectionThrows()
+    {
+        static float Height(float x, float z) => x > 0.1f ? 1 : 0;
+        SupportSample start = Start(Height, null, null, null, Vector2.Zero, 0);
+        Vector2[] directions = [Vector2.Zero, new(float.NaN, 0), new(0, float.PositiveInfinity)];
+        foreach (Vector2 direction in directions)
+            Assert.Throws<ArgumentOutOfRangeException>(() => GroundSeat.Resolve(Height, null, null, null, start,
+                Vector2.Zero, 0, new Vector2(0.2f, 0), direction, FootRadius, Tuning));
+    }
+
     // Flat until x 0.1, then rising 5 in 1, so the terrain is 0.5 at x 0.2, above the start feet plus StepHeight.
     // The diagonal move separates the terrain normal from the reverse of the move.
     [Fact]

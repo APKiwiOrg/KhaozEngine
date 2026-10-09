@@ -1,0 +1,194 @@
+{
+  "issue": "https://github.com/APKiwiOrg/KhaozEngine/issues/1334",
+  "spec": "docs/design/CONTACT-CONTROLLER-PHASE-2-GROUND-CORE-2026-10-10.md",
+  "candidate_base": "ed538682e",
+  "candidate": "The base plus the commit carrying this file. The run used that working tree.",
+  "test": "KhaozEngine.Game.Tests/Locomotion/Contacts/GroundScenarioTests.cs QueryCostPerTick",
+  "command": "build-slot --label p2-task4 -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter \"FullyQualifiedName~KhaozEngine.Tests.Locomotion.Contacts.GroundScenarioTests\" --logger \"console;verbosity=detailed\"",
+  "exit": 0,
+  "method": "Every GroundCore.Step call goes through CountingQueryView, a forwarding view over a real Bepu query view with no exclusions, under one read lease. Each tick counts the calls the step makes. Default MoveTuning, foot radius fraction 0.5, dt 1/30, 30 ticks per scene, each tick fed the previous result's feet.",
+  "scenes_described": {
+    "flat": "Floor, 3 m/s along X from the origin.",
+    "stairs": "Six risers of 0.25 on treads of 0.35, 3 m/s along X from x -1. The run reaches the top tread.",
+    "wall": "Floor with a wall face at x 1, 4 m/s at 30 degrees off the wall normal from (0, -2). The shell meets the wall on tick 6 and slides along it."
+  },
+  "budget": {
+    "rule": "Per tick with n substeps. Two support probes, each one sweep and at most one feature query, at the start and in each substep's down pass. One lift sweep. Up to 1 + MaxSlides (5) shell sweeps per substep. Recovery takes up to 1 + MaxRecoveryPasses (5) penetration tests, and each substep up to 2 clearance tests plus one touch normal per shell sweep. No raycasts.",
+    "sweep_capsule": "2 (1 + n) + 1 + 5 n",
+    "compute_penetration": "5 + 7 n",
+    "raycast": "0",
+    "query_capsule_feature": "2 (1 + n)"
+  },
+  "scenes": {
+    "flat_box": {
+      "variant": "Box",
+      "ground": "flat",
+      "ticks": 30,
+      "substeps_per_tick": 1,
+      "blocked_ticks": 0,
+      "per_tick": {
+        "sweep_capsule": {
+          "min": 6,
+          "max": 6,
+          "mean": 6,
+          "budget": 10
+        },
+        "compute_penetration": {
+          "min": 2,
+          "max": 2,
+          "mean": 2,
+          "budget": 12
+        },
+        "raycast": {
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "budget": 0
+        },
+        "query_capsule_feature": {
+          "min": 4,
+          "max": 4,
+          "mean": 4,
+          "budget": 4
+        }
+      }
+    },
+    "flat_mesh": {
+      "variant": "Mesh",
+      "ground": "flat",
+      "ticks": 30,
+      "substeps_per_tick": 1,
+      "blocked_ticks": 0,
+      "per_tick": {
+        "sweep_capsule": {
+          "min": 6,
+          "max": 6,
+          "mean": 6,
+          "budget": 10
+        },
+        "compute_penetration": {
+          "min": 2,
+          "max": 2,
+          "mean": 2,
+          "budget": 12
+        },
+        "raycast": {
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "budget": 0
+        },
+        "query_capsule_feature": {
+          "min": 4,
+          "max": 4,
+          "mean": 4,
+          "budget": 4
+        }
+      }
+    },
+    "stairs_box": {
+      "variant": "Box",
+      "ground": "stairs",
+      "ticks": 30,
+      "substeps_per_tick": 1,
+      "blocked_ticks": 0,
+      "per_tick": {
+        "sweep_capsule": {
+          "min": 6,
+          "max": 6,
+          "mean": 6,
+          "budget": 10
+        },
+        "compute_penetration": {
+          "min": 2,
+          "max": 2,
+          "mean": 2,
+          "budget": 12
+        },
+        "raycast": {
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "budget": 0
+        },
+        "query_capsule_feature": {
+          "min": 4,
+          "max": 4,
+          "mean": 4,
+          "budget": 4
+        }
+      }
+    },
+    "wall_box": {
+      "variant": "Box",
+      "ground": "wall",
+      "ticks": 30,
+      "substeps_per_tick": 1,
+      "blocked_ticks": 25,
+      "per_tick": {
+        "sweep_capsule": {
+          "min": 6,
+          "max": 7,
+          "mean": 6.833,
+          "budget": 10
+        },
+        "compute_penetration": {
+          "min": 2,
+          "max": 2,
+          "mean": 2,
+          "budget": 12
+        },
+        "raycast": {
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "budget": 0
+        },
+        "query_capsule_feature": {
+          "min": 4,
+          "max": 4,
+          "mean": 4,
+          "budget": 4
+        }
+      }
+    },
+    "wall_mesh": {
+      "variant": "Mesh",
+      "ground": "wall",
+      "ticks": 30,
+      "substeps_per_tick": 1,
+      "blocked_ticks": 25,
+      "per_tick": {
+        "sweep_capsule": {
+          "min": 6,
+          "max": 7,
+          "mean": 6.833,
+          "budget": 10
+        },
+        "compute_penetration": {
+          "min": 2,
+          "max": 2,
+          "mean": 2,
+          "budget": 12
+        },
+        "raycast": {
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "budget": 0
+        },
+        "query_capsule_feature": {
+          "min": 4,
+          "max": 4,
+          "mean": 4,
+          "budget": 4
+        }
+      }
+    }
+  },
+  "not_measured": {
+    "stairs_mesh": "Blocked by https://github.com/APKiwiOrg/KhaozEngine/issues/1342. At 3 m/s the first substep axis lands 1.94e-7 past the first nosing, the feature query is Unresolved, and the body stalls there, so its counts would not describe a stair climb.",
+    "time_and_allocation": "Not measured here. #1334 also asks for per down pass time and allocation against the legacy stepper."
+  },
+  "reading": "An unobstructed tick costs 6 sweeps, 2 penetration tests, 4 feature queries and no raycasts. That is 2 start probes, the lift, 1 shell sweep and 2 down pass probes, with the recovery test and one clearance test. A wall slide adds one shell sweep on the ticks where the shell slides. Feature queries sit at their budget of 2 per down pass on every tick."
+}

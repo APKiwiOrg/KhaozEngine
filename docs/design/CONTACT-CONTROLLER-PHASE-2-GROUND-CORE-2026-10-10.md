@@ -15,7 +15,8 @@ the wire and the navigation binding.
 
 Out of scope: airborne ticks, landing, sliding on steep ground, signals, wire, navigation and the certified
 support gaps. Those gaps (#1329 concave creases, #1330 vertices, #1331 curved primitives, #1332 one-sided back
-faces) close in a separate phase 2b that must land before any game adopts the controller (owner ruling,
+faces, #1340 one static proposed per probe at a shared edge, #1342 an unresolved feature query at a convex nosing)
+close in a separate phase 2b that must land before any game adopts the controller (owner ruling,
 2026-10-10).
 
 ## Interface
@@ -60,18 +61,27 @@ internal static class GroundCore
 3. **Up pass.** Sweep the shell straight up by `StepHeight`. The lift is the clear distance, less the contact
    skin. The lift exists because the shell's front can meet a walkable slope rising ahead before the down pass
    reseats it. Steps up to `StepHeight` never touch the shell.
-4. **Side pass.** Sweep the lifted shell along `displacement` in substeps of at most half the capsule radius.
-   Passes 4 and 5 run per substep, so a wall-like outcome of the down pass slides from where it was met. On a
+4. **Owed climb.** Feet certainly below a walkable start support, where pacing leaves them for a tick or two, owe
+   that climb. The tick pays it first, before any horizontal motion, from the same `MaxStepClimbSpeed * dt` budget
+   that paces the step part and within the lift the up pass cleared. A tick with zero displacement pays it too and
+   reports no horizontal motion. Feet within the support's height error owe nothing. Paid only after a seat, the
+   climb would never be paid once a refusal blocks the next substep, because the refusal repeats from the same
+   feet.
+5. **Side pass.** Sweep the lifted shell along `displacement` in substeps of at most half the capsule radius.
+   Passes 5 and 6 run per substep, so a wall-like outcome of the down pass slides from where it was met. On a
    hit, advance to the contact less the skin. A wall, ceiling or rising-support contact removes the move's
    component along the contact's horizontal normal and the rest continues, up to four slides per substep. Free
    motion is never shortened: on open ground `Achieved` equals `displacement` exactly.
-5. **Down pass.** `FootSupport` at the new axis, same band around the start feet.
+6. **Down pass.** `FootSupport` at the new axis, same band around the start feet. The new axis is the axis the
+   tick reports. While the motion follows its plan that is the start axis plus the planned part of the
+   displacement, so the reported feet are certified at their own axis and not at a summed axis a rounding step
+   away.
    - **Walkable:** seat on it. The step part of the rise is the rise the start support's own plane does not
      explain: the seated height less that plane extrapolated to the new axis. When `MaxStepClimbSpeed` is
-     positive, the tick's total step part is capped at `MaxStepClimbSpeed * dt`, so a run up stairs paces its
-     climb as the knob always meant, while a continuous slope is followed exactly and never throttled. A paced
-     body stays `Walkable` with its feet below the tread for a tick or two. That is legs-band overlap, which the
-     body model allows.
+     positive, the tick's owed climb and step part together are capped at `MaxStepClimbSpeed * dt`, so a run up
+     stairs paces its climb as the knob always meant, while a continuous slope is followed exactly and never
+     throttled. A paced body stays `Walkable` with its feet below the tread for a tick or two. That is legs-band
+     overlap, which the body model allows.
    - **Steep above the start feet:** a footed tick never climbs ground it cannot stand on (#486). The steep
      face acts as a wall: undo the substep and slide along its horizontal tangent.
    - **Steep at or below the start feet:** seat on it with `Steep` footing. Phase 3 slides from there.
@@ -80,11 +90,13 @@ internal static class GroundCore
    - **Refused:** the move is blocked. The body stays at the last certified position of this tick.
    - **Analytic cliff:** terrain at the new axis more than `StepHeight` above the start feet acts as a wall,
      with the terrain normal when the delegate gives one, else the reverse of the move.
-6. **Unlifted retry.** If a lifted substep ends on a refusal, repeat that substep once without the lift. A
+7. **Unlifted retry.** If a lifted substep ends on a refusal, repeat that substep once without the lift. A
    lifted shell can pass over an obstacle taller than `StepHeight` that the probe then refuses, and the
    unlifted shell meets it as a wall. If the retry also refuses, the substep is blocked.
-7. **Seat clearance.** The shell at the seated feet must not overlap. If it does, recover once along the MTV.
-   If it still overlaps, the move is blocked at the last clear position.
+8. **Seat clearance.** The shell at the seated feet must not overlap. If it does, recover once along the MTV.
+   If it still overlaps, the move is blocked at the last clear position. A push that raises the body is a climb
+   and is paid from the same budget. When the budget cannot pay it, the move is blocked at the last clear
+   position, so a paced shell that meets the next nosing waits below it.
 
 The contact skin is 1 mm. It backs off a sweep only when the sweep hits something, so it never shortens free
 motion. That is the difference from the legacy pre-sweep clearance push measured in #1270.

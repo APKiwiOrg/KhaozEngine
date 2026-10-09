@@ -20,6 +20,25 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Locomotion gains the internal foot-support primitive, shell geometry and contact classes for the #438
   contact-classification controller. Nothing consumes them yet, so movement, navigation bakes and the wire
   are unchanged.
+- MapDoc format 5 adds sculpted caves and sparse authored surfaces (World Authoring R2). Surfaces live on
+  exact rational lattices with floor, ceiling and paint-override roles, cave spaces sit between
+  mixed-resolution bounds, and resolver version 2 resolves placements through height-aware support queries.
+  Legacy terrain converts exactly into fine patches, and relation and portal facts are canonical. MapEditor
+  and `ke-mapedit` gain atomic terrain edits (`TerrainEditCommand`, `MutationService.TerrainApply`) shared by
+  the GUI and the service. R2 claims no physics, navigation, water or rendering capability.
+- Format-4 documents migrate to format 5 on load. Resolver-1 options and execution are unchanged, but every
+  migrated document's authored identity token changes once, so recompute stored tokens after the first load.
+  Resolver-2 documents use the scheme-2 whole identity, which covers globals, surfaces, placements, spawns,
+  player spawns, sculpt, the asset closure and the resolve options, and agrees across monolithic, tiled and
+  repacked storage.
+- `SaveTiled` refuses every partial save, including a surfaces-only window, with `stale window` when another
+  writer changed the manifest after the window loaded (#1310). Raw partial surface saves refuse a
+  `dependency position` that disagrees or is not representable, an unloaded reverse dependant, and partial
+  edits of surface declarations, patch structure or records.
+- Mixed-resolution bounds refine exactly per footprint cell within published budgets and report `Complete`,
+  `CapacityExceeded`, `NotRepresentable`, `Invalid` or `MissingGeometry`. One validation context holds at
+  most 256 unique bound patches, so a native terrain edit in a world whose complete view needs more refuses
+  with `refinement capacity` until scoped transactions land.
 
 ## 20.29.1
 

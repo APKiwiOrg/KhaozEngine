@@ -64,7 +64,7 @@ Native opted-in documents (non-null `ResolverIdentity`) are validated completely
 digest-verifies the whole asset closure, then resolves placements under the document's resolver identity.
 Resolver identity `(1, 1)` keeps analytic support from `MapRuntime.BuildField` and the unchanged
 `NativeDocumentService.SessionOptions` build identity (`khaozengine.mapedit.analytic-support`, builder
-version 1, options hash `mapruntime-buildfield-default-registry-v1`). The unreleased R2 identity `(1, 2)`
+version 1, options hash `mapruntime-buildfield-default-registry-v1`). The resolver identity `(1, 2)`, new in 20.30.0,
 uses `MapResolverV2` over `MapDocumentSurfaceSource.Capture(document)` with `SessionOptionsV2`
 (`khaozengine.mapedit.authored-support`, builder version 1, options hash
 `mapdoc-resolver-v2-authored-bindings-v1`, resolver version 2). Unknown identities and mismatched resolver
@@ -105,7 +105,7 @@ rejection. `PlacementRename` changes the native display label and returns the un
 explicit service APIs `PlacementLabel` and `PlacementRemapId` distinguish label edits from stable-ID
 remapping. These are service APIs, not additional MCP registrations.
 
-The unreleased R2 terrain path is also a service API. `MutationService.TerrainApply(edit)` runs the GUI's
+The terrain path, new in 20.30.0, is also a service API. `MutationService.TerrainApply(edit)` runs the GUI's
 `TerrainEditCommand(MapTerrainEdit)` under the session lock, through the same native transaction seam. It
 refuses an analytic document and returns `MapTerrainMutationResult`, holding the `MutationResult` and the
 accepted `MapNativeEditEffects`. A GUI edit and a service edit of the same document produce identical

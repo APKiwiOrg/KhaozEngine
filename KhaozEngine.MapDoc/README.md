@@ -27,7 +27,7 @@ features are not supported in native documents yet.
 
 ## Native edit effects
 
-Every API in this section is unreleased R2 work.
+Every API in this section is new in 20.30.0.
 `KhaozEngine.MapDoc.Editing.MapNativeEditEffects` describes an accepted document edit with old and new
 `MapBox3` bounds, patch keys, space and dependency IDs, `MapDigestChange` values and `MapNativeInvalidation`
 flags for Terrain, Physics, Nav, Material, Residency and Placements. `Describe()` emits compact canonical
@@ -35,7 +35,7 @@ JSON with fixed field order, sorted patch keys and ordinal IDs, invariant number
 `MapNativeWriteSet` names patch payloads, surface declarations and placement state for publication.
 Records, spaces, corner owners and material uses are carried by the named patch payloads.
 
-The unreleased R2 terrain API uses `MapTerrainEdits.Prepare(surfaces, edit)` to return a detached candidate,
+The terrain API, new in 20.30.0, uses `MapTerrainEdits.Prepare(surfaces, edit)` to return a detached candidate,
 its exact `MapNativeWriteSet` and effects without mutating the input. `MapSetCornerHeights`, `MapSmoothCorners`,
 `MapSetCells` and `MapSetPresence` use patch-local coordinates (presence takes slot-cell indices).
 Smoothing accepts 1 to 64 passes, averages a double-buffered 3 by 3 neighbourhood including the centre,
@@ -55,7 +55,7 @@ other cell fields invalidate all five, and re-anchoring alone invalidates Reside
 
 ## Whole authored surface identity
 
-Scheme 2 is the unreleased R2 whole-document identity.
+Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity.
 `KhaozEngine.MapDoc.Identity.MapAuthoredIdentityV2.Compute(document, assets, options)` requires a complete
 document with resolver identity `(1, 2)`, `AuthoredBindingsV2`, and options with `ResolverVersion: 2`, a
 nonempty builder ID and options hash, and a positive builder version. A partial editing window refuses
@@ -91,7 +91,7 @@ Resolver 1 continues to use `MapAuthoredIdentity`.
 
 ## Bounded scoped acquisition
 
-Every API in this section is unreleased R2 work.
+Every API in this section is new in 20.30.0.
 `MapScopedSurfaces.Acquire(source, scope, assetSha256)` requires `IMapSurfaceAcquisitionSource`, implemented
 by `MapStoredSurfaceSource` and `MapDocumentSurfaceSource.Capture(document)`. A producer implementing only
 `IMapSurfaceSource` refuses with `surface source does not support bounded scoped acquisition` before its
@@ -132,11 +132,11 @@ enumeration for complete in-memory surface sets.
 `MapFrameLocal.ToFrame` converts a compiled patch or strip into a `MapFrameMesh` in one `WorldFrame` with
 world-datum heights, and `MapFrameLocal.CompileInFrame` places an exact local patch by a `MapTransform`,
 composing in double before the one frame-local float rounding. Neither takes an absolute world-float round
-trip. They are unreleased R2 work, and R5 consumes them.
+trip. They are new in 20.30.0, and R5 consumes them.
 
-## Authored surfaces, caves and support (unreleased R2)
+## Authored surfaces, caves and support
 
-Every API in this section is unreleased R2 work. It proves geometry inputs and legacy compatibility, not a
+Every API in this section is new in 20.30.0. It proves geometry inputs and legacy compatibility, not a
 complete cave runtime.
 
 **Lattices and patches.** A `MapSurfaceRef` declares a surface with a `MapLatticeFrame` (exact rational cell
@@ -228,7 +228,7 @@ for tiled storage the `tiles` subtree, `map.json`, its temp file and the save lo
 save, and for monolithic storage the document file. Paths are normalized with `Path.GetFullPath`, so dot
 segments resolve first, and compared with the writer's case policy (ordinal on Linux, ignoring case elsewhere).
 Symbolic links and other filesystem aliases are not resolved, so a link into reserved storage is not detected.
-Writer-owned native surface storage (unreleased R2) lives under `tiles/surfaces/`, inside the existing `tiles`
+Writer-owned native surface storage (new in 20.30.0) lives under `tiles/surfaces/`, inside the existing `tiles`
 reservation. An author-owned `surfaces/` resource directory is never reserved, swept or rewritten, and R2 leaves
 `IsReserved` unchanged.
 `MapDocumentStorage.HoldsTiledDocument(directory)` is true only when the directory holds a map manifest, unlike

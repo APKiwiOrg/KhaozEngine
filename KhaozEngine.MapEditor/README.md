@@ -881,7 +881,7 @@ Commands outside this native document transaction protocol are refused on opted-
 Analytic documents keep their existing command behavior.
 Direct placement `Apply` and `Revert` check document-local native validity only, without asset membership.
 
-The unreleased R2 `TerrainEditCommand(MapTerrainEdit)` uses the same transaction seam for native terrain
+`TerrainEditCommand(MapTerrainEdit)`, new in 20.30.0, uses the same transaction seam for native terrain
 edits. It captures exact before and after patch and surface-ref snapshots of the accepted write set.
 Undo and redo replay those snapshots, restoring corner owners, topology records, surface-ref order and
 semantic identity without rerunning smoothing or conversion. Undo reports digest and owner changes from
@@ -892,7 +892,7 @@ reports the accepted terrain execute, undo or redo. `MutationService.TerrainAppl
 command under the service session lock and returns `MapTerrainMutationResult` with identical document
 bytes and effects text. These are programmatic APIs. Terrain MCP verbs are deferred to R10.
 
-The unreleased R2 service lifecycle routes resolver identity `(1, 2)` through
+The service lifecycle, new in 20.30.0, routes resolver identity `(1, 2)` through
 `NativeDocumentService.SessionOptionsV2` and `MapResolverV2` over captured authored surfaces at every
 open, window replacement, save, validate, summary, conversion and retile. Resolver identity `(1, 1)`
 keeps `SessionOptions` and analytic support. Unknown identities or mismatched resolver options refuse

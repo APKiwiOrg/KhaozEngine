@@ -9813,13 +9813,13 @@ version or the load fails. The engine's own steps are pre-registered: v1 to v2 d
 (512 m), v3 to v4 adds `playableBounds` from `bounds` when it is absent, and v4 to v5 stamps the
 `LegacyXzCallbackV1` support recipe. `MapDocumentFile.CurrentFormatVersion` is 5, and saving always writes
 it. Version and layout are independent axes, so a monolithic file at the current version is legal. Format 5
-and the v4 to v5 step are unreleased R2 work. The latest release still writes format 4.
+and the v4 to v5 step are new in 20.30.0. Releases up to 20.29.1 write format 4.
 
-Once format 5 ships, a format-4 document migrates on load with no action from the game. Its authored
+From 20.30.0, a format-4 document migrates on load with no action from the game. Its authored
 identity token changes exactly once at that format advance, with no continuity to the old token, so
-recompute any stored token after the first load. That token change is unreleased R2 work too. Resolver-v1
+recompute any stored token after the first load. That token change arrives with 20.30.0 too. Resolver-v1
 options, including the caller's `OptionsHash`, and resolver-v1 execution are unchanged. The authored-surface
-resolver version 2 is unreleased R2 work and is opt-in through a document's resolver identity.
+resolver version 2 is new in 20.30.0 and is opt-in through a document's resolver identity.
 
 ### The tiled form: a directory instead of a file
 
@@ -9833,7 +9833,7 @@ island.map/                        a directory, not a file
     s_0_0/                         shard dir, shard = tile >> 4, a filesystem nicety and never a load unit
       t_0_0.<64 hex>.json          content-addressed: the suffix IS that tile's canonical hash
       t_3_-2.<64 hex>.json
-    surfaces/                      writer-owned native surface storage, unreleased R2 work
+    surfaces/                      writer-owned native surface storage, new in 20.30.0
       d/<64 hex>.json              directory pages, content-addressed
       i/<64 hex>.json              index pages, content-addressed
       p/<2 hex>/<64 hex>.json      surface patch payloads, content-addressed
@@ -9875,7 +9875,7 @@ whole-document one.
 
 **Windowed loading.** `LoadTiled(directory, window)` reads the manifest, the tiles in a `MapTileRect`, and
 native surface pages and patches intersecting the world window expanded by one surface cell. Windowed surface
-loading is unreleased R2 work. `MapTileIndex.IsPartial` includes unloaded tiles, unread surface pages and
+loading is new in 20.30.0. `MapTileIndex.IsPartial` includes unloaded tiles, unread surface pages and
 unloaded surface patches. `HasUnloadedTiles` retains the tile-only meaning. `SaveTiled` back to the SAME
 directory carries cold content through unchanged, subject to its reference and partial-edit guards.
 Whole-document writers refuse partial views, including surface-only windows, rather than silently dropping
@@ -10052,7 +10052,7 @@ unknown scatter layer reference, a `terrainOverrides` tile that leaves the docum
 quarantines a corrupt runtime cell blob and carries on. See the `KhaozEngine.MapDoc` package README for
 the full section list and a complete example document.
 
-**Whole authored surface identity.** Scheme 2 is the unreleased R2 whole-document identity. Resolver-2
+**Whole authored surface identity.** Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity. Resolver-2
 documents use `MapAuthoredIdentityV2` from `KhaozEngine.MapDoc.Identity`, with an explicitly verified
 `MapAssetClosure` and resolver-2 options:
 
@@ -10083,7 +10083,7 @@ surfaces only, never tile content. Repacking, embedding and incident bookkeeping
 Equivalent complete in-memory, monolithic, tiled and repacked documents share a token. Resolver 1 uses
 `MapAuthoredIdentity`.
 
-**Scoped authored surface reads.** Scoped acquisition is unreleased R2 work.
+**Scoped authored surface reads.** Scoped acquisition is new in 20.30.0.
 `MapScopedSurfaces.Acquire(source, scope, assetSha256)` publishes an immutable view and factory-only
 coverage, read and identity witnesses. Stored sources and `MapDocumentSurfaceSource.Capture(document)`
 support it. Custom producers must implement
@@ -11529,7 +11529,7 @@ form conversion (`convert_to_tiled` / `convert_to_single`) and re-tiling (`retil
 below, and there is no GUI affordance for either. A large authored world is expected to convert once, from
 the tool, and the GUI editor just opens whatever form is already on disk.
 
-**Native document editing.** This path is unreleased R2 work. Opted-in documents require a verified closure
+**Native document editing.** This path is new in 20.30.0. Opted-in documents require a verified closure
 bound with `EditorDocument.BindNativeAssets`. A `ke-mapedit` session binds the closure it verifies on open,
 see below. Native document transactions validate typed write sets before selective publication and refuse
 partial windows before preparation. `EditorDocument.LastNativeEffects` reports accepted execute, undo and redo
@@ -11539,7 +11539,7 @@ selection or either identity. Explicit `RemapPlacementIdCommand` changes the sta
 numeric identity. See the MapEditor package README for the supported transaction boundary and low-level
 validation distinction.
 
-The unreleased R2 terrain path prepares `MapTerrainEdit` values with `MapTerrainEdits.Prepare`, without
+The terrain path, new in 20.30.0, prepares `MapTerrainEdit` values with `MapTerrainEdits.Prepare`, without
 mutating its input surface set. Execute `new TerrainEditCommand(edit)` through a bound `EditorDocument`
 for validation and atomic publication. Accepted commands retain exact patch and surface-ref snapshots,
 so undo and redo restore owners, records and identity without resampling. The programmatic service method
@@ -11623,7 +11623,7 @@ into the thrown message on failure, so the in-session document is never left inv
 summary, conversion and retile. Its resource root is the monolithic file's directory or the tiled directory,
 anchored as an absolute path at open. Resolver identity `(1, 1)` uses the unchanged analytic `SessionOptions`
 (`khaozengine.mapedit.analytic-support`, builder version 1, options hash
-`mapruntime-buildfield-default-registry-v1`). The unreleased R2 identity `(1, 2)` uses `SessionOptionsV2`
+`mapruntime-buildfield-default-registry-v1`). The resolver identity `(1, 2)`, new in 20.30.0, uses `SessionOptionsV2`
 (`khaozengine.mapedit.authored-support`, builder version 1, options hash
 `mapdoc-resolver-v2-authored-bindings-v1`, resolver version 2) with `MapResolverV2` over a captured document
 surface source. Unknown identities and options with a mismatched resolver version refuse before reading

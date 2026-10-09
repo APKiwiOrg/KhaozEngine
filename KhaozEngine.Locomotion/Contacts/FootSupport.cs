@@ -33,10 +33,10 @@ internal static class FootSupport
     /// <summary>Returns the certified support with the highest midpoint whose interval meets the inclusive reach
     /// band, walkable or steep, carrying its own status, else <see cref="SupportStatus.None"/>. Equal midpoints
     /// prefer walkable, then the witness nearest the axis, then terrain, then the lower static. A probed surface
-    /// wholly above the band is a refused proposal. A refused proposal above the selected support, or with no
-    /// support at all, returns <see cref="SupportStatus.Refused"/>. A non-null <paramref name="world"/> must
-    /// offer <see cref="IPhysicsCapsuleFeatures"/> and <paramref name="lease"/> must be its current read
-    /// interval.</summary>
+    /// wholly above the band is a refused proposal, and one below the band is ignored. A refused proposal above
+    /// the selected support, or with no support at all, returns <see cref="SupportStatus.Refused"/>. A non-null
+    /// <paramref name="world"/> must offer <see cref="IPhysicsCapsuleFeatures"/> and <paramref name="lease"/>
+    /// must be its current read interval.</summary>
     internal static SupportSample Find(Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
         in FootSupportQuery query)
@@ -154,7 +154,12 @@ internal static class FootSupport
                 new Vector3(_query.Axis.X, height, _query.Axis.Y)));
         }
 
-        internal void Refuse(double height) => _refusedTop = Math.Max(_refusedTop, height);
+        // A refusal below the band bottom lies in the sweep margin only, so it cannot hide support in the band.
+        internal void Refuse(double height)
+        {
+            if (height < _bandLower) return;
+            _refusedTop = Math.Max(_refusedTop, height);
+        }
 
         internal void Offer(in Candidate candidate)
         {

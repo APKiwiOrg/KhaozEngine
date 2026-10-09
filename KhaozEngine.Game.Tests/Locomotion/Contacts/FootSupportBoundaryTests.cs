@@ -226,6 +226,16 @@ public class FootSupportBoundaryTests
         AssertStatus(SupportStatus.Refused, Find(scene, Query(0)));
     }
 
+    // A sphere centred under the axis, its top 0.0005 below the band bottom at -0.4. Both probes meet the top
+    // inside the sweep margin, the sphere cannot be certified, and nothing else is in reach.
+    [Fact]
+    public void RefusedSurfaceBelowTheBandIsIgnored()
+    {
+        using var scene = new FootSupportScene(SceneVariant.Box);
+        scene.World.AddStatic(new SphereShape(0.25f), Pose.At(new Vector3(0, -0.4005f - 0.25f, 0)));
+        AssertStatus(SupportStatus.None, Find(scene, Query(0)));
+    }
+
     [Fact]
     public void CurvedPrimitiveRefuses()
     {

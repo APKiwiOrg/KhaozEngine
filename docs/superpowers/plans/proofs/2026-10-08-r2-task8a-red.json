@@ -1,0 +1,35 @@
+{
+  "stage": "Task8A intended compile-time RED",
+  "source_base": "20481eb1136de32ec23f717acb2d816e5b31a384",
+  "owner_override": "Bounded verification runs directly and serially, no slot/grant wait",
+  "sources": {
+    "KhaozEngine.MapDoc.Tests/Storage/SurfaceAcquisitionSessionTests.cs": "53886aeed2d404d7392e53231ab320ef9ef0784e21ed0d08a9fef0fd195e7d63",
+    "KhaozEngine.MapDoc.Tests/Storage/SessionConformanceFixtures.cs": "a11d555fc0407ad8162b83db3cc31dfb5b9256184b5e14facdb944fb5a471c8a",
+    "KhaozEngine.MapEditor.Tests/MapDoc/SurfaceAcquisitionBudgetTests.cs": "9cad6c056d4787ab1e87eec2f0bc342c5f808b8d8a18599746838612fb8b07dc"
+  },
+  "results": [
+    {
+      "project": "mapdoc",
+      "exit_code": 1,
+      "executed": 0,
+      "diagnostics": {
+        "CS0246": 14,
+        "CS0619": 8
+      },
+      "log_sha256": "c33eec854442e924915dc1ea6db7f9e5cda84eaf1de1f2d69bacc997c150053d"
+    },
+    {
+      "project": "editor",
+      "exit_code": 1,
+      "executed": 0,
+      "diagnostics": {
+        "CS0246": 26,
+        "CS1061": 13,
+        "CS0619": 6,
+        "CS1729": 2
+      },
+      "log_sha256": "cd5a12336757bfb7549cda0d10af7ef2cbd75f30420a2976e0941355ae27a733"
+    }
+  ],
+  "classification": "Missing planned producer/session/observation types, OpenAcquisition methods and MapPageBudget observation constructor. CS0619 locations invoke methods on the absent session type and are error-type overload-resolution cascades, not asynchronous test bodies. No unrelated diagnostic found. Zero tests executed, no behavioral assertion result claimed."
+}

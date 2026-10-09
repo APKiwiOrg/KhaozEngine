@@ -1,0 +1,103 @@
+{
+  "formatVersion": 4,
+  "id": "r2-format-four",
+  "displayName": "",
+  "bounds": {
+    "minX": -100,
+    "minZ": -100,
+    "maxX": 100,
+    "maxZ": 100
+  },
+  "tileSize": 64,
+  "terrain": {
+    "seed": 7,
+    "waterLevel": -0.5,
+    "biomeBlend": 24,
+    "gentleFrequency": 0.02,
+    "gentleAmplitude": 0,
+    "detailFrequency": 0.03,
+    "detailOctaves": 4,
+    "biomes": [
+      {
+        "biome": "Meadow",
+        "baseHeight": 1.5,
+        "hillAmplitude": 0
+      }
+    ],
+    "features": []
+  },
+  "scatterLayers": [],
+  "companionLayers": [],
+  "exclusions": [],
+  "scatterOverrides": [],
+  "placements": [
+    {
+      "id": "a",
+      "kind": "building_inn",
+      "x": -30,
+      "z": 20,
+      "yaw": 0.371,
+      "scale": 1.137,
+      "tags": [
+        "first",
+        "second"
+      ],
+      "numericId": "11",
+      "assetId": "tree"
+    },
+    {
+      "id": "b",
+      "kind": "scenery",
+      "x": 70,
+      "z": -70,
+      "y": 2.5,
+      "yaw": 0,
+      "scale": 1,
+      "tags": [
+        "first",
+        "second"
+      ],
+      "numericId": "12",
+      "assetId": "tree"
+    },
+    {
+      "id": "c",
+      "kind": "scenery",
+      "x": 10,
+      "z": 10,
+      "yaw": 0,
+      "scale": 1,
+      "tags": [],
+      "numericId": "13",
+      "assetId": "tree"
+    }
+  ],
+  "spawns": [],
+  "playerSpawns": [],
+  "regions": [],
+  "playableBounds": {
+    "minX": -100,
+    "minZ": -100,
+    "maxX": 100,
+    "maxZ": 100
+  },
+  "nativeAssets": [
+    {
+      "id": "root-a",
+      "path": "assets/root-a",
+      "sha256": "ff6846b0a4cdb19db23191571cc0a96fe70139eb8a76fc2d1a6397d2cd82e1bd",
+      "payloadVersion": 1
+    },
+    {
+      "id": "root-b",
+      "path": "assets/root-b",
+      "sha256": "560aa5f234e4c7c6dc07f42c63f1c04c6c5b9add811a1d9411c1bcd334586e34",
+      "payloadVersion": 1
+    }
+  ],
+  "numericIdHighWaterMark": "13",
+  "resolverIdentity": {
+    "payloadVersion": 1,
+    "resolverVersion": 1
+  }
+}

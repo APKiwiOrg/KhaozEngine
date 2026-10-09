@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.Serialization;
 
 namespace KhaozEngine.MapDoc;
@@ -32,6 +35,7 @@ public sealed class MapDocumentLoadOptions
         RegisterMigration(1, MigrateV1ToV2);
         RegisterMigration(2, MigrateV2ToV3);
         RegisterMigration(3, MapNativeMigration.Upgrade);
+        RegisterMigration(4, MapSurfaceMigration.Upgrade);
     }
 
     /// <summary>Registers the transform from <paramref name="fromVersion"/> to fromVersion + 1. The step does
@@ -80,8 +84,9 @@ public static class MapDocumentFile
     /// <see cref="MapDocument.TerrainOverrides"/> sculpt/delta layer, and v3 added the root
     /// <see cref="MapDocument.TileSize"/>, which per-tile hashing needs even for a monolithic document or a
     /// monolithic and a tiled copy of the same world would hash differently. Version and layout are
-    /// independent axes. v4 adds native metadata and separate playable bounds.</summary>
-    public const int CurrentFormatVersion = 4;
+    /// independent axes. v4 adds native metadata and separate playable bounds. v5 adds the support recipe
+    /// and authored surface metadata.</summary>
+    public const int CurrentFormatVersion = 5;
 
     /// <summary>The document tile edge, in world meters, a document gets when it does not declare one (and
     /// what the v2 to v3 migration stamps). At a heavily authored density a fully authored 512 m tile is
@@ -146,6 +151,10 @@ public static class MapDocumentFile
 
         root = Migrate(root, options, where);
         MapDocumentMembers.Validate(root, where);
+        var patches = new MapSurfaceSet();
+        MapSurfaceEmbedding.Read(root, patches);
+        foreach (string name in root.Select(p => p.Key).Where(n => string.Equals(n, "surfacePatches", StringComparison.OrdinalIgnoreCase)).ToArray())
+            root.Remove(name);
 
         MapDocument doc;
         try
@@ -157,6 +166,7 @@ public static class MapDocumentFile
         {
             throw new MapDocumentException($"{where}: {ex.Message}", ex);
         }
+        foreach (var patch in patches.Patches) doc.Surfaces.Patches.Add(patch.Key, patch.Value);
 
         IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, options.Registry);
         if (errors.Count > 0)
@@ -298,15 +308,25 @@ public static class MapDocumentFile
         IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, registry);
         if (errors.Count > 0)
             throw new MapDocumentException("refusing to save an invalid map document:\n  " + string.Join("\n  ", errors));
-
-        if (doc.TerrainOverrides is not { IsEmpty: true, CellSize: MapTerrainOverrides.DefaultCellSize })
-            return doc;
+        MapSurfaceEmbedding.Check(doc.Surfaces, MapSurfaceEmbedding.MaxPatches, MapSurfaceEmbedding.MaxEncodedBytes);
+        MapSurfaceSaveGuard.Whole(doc.Surfaces);
 
         MapDocument copy = MapTiledFile.GlobalsOnly(doc);
         copy.Placements = doc.Placements;
         copy.Spawns = doc.Spawns;
         copy.PlayerSpawns = doc.PlayerSpawns;
-        copy.TerrainOverrides = null;
+        copy.TerrainOverrides = doc.TerrainOverrides is { IsEmpty: true, CellSize: MapTerrainOverrides.DefaultCellSize } ? null : doc.TerrainOverrides;
+        copy.Surfaces = doc.Surfaces.Clone();
+        for (int i = 0; i < copy.Surfaces.Refs.Count; i++)
+        {
+            MapSurfaceRef surface = copy.Surfaces.Refs[i];
+            copy.Surfaces.Refs[i] = surface with
+            {
+                SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface,
+                copy.Surfaces.Patches.Where(p => p.Key.SurfaceId == surface.Id)
+                    .Select(p => new KeyValuePair<MapPatchKey, string>(p.Key, MapSurfaceSemantics.PatchDigest(p.Value))))
+            };
+        }
         return copy;
     }
 
@@ -334,6 +354,8 @@ public static class MapDocumentFile
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         };
         MapNativeJson.Configure(options);
+        options.Converters.Add(new MapRationalJsonConverter());
+        options.Converters.Add(new MapPatchKeyJsonConverter());
         options.Converters.Add(new JsonStringEnumConverter());
         options.Converters.Add(new MapFeatureConverter(registry));
         return options;

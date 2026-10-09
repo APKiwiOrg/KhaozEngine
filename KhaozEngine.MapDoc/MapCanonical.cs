@@ -71,6 +71,10 @@ internal static class MapCanonical
     /// <summary>Native persistence metadata. Kept separate from the legacy analytic hash globals.</summary>
     internal static void WriteNativeGlobals(Utf8JsonWriter w, MapDocument doc, JsonSerializerOptions options)
     {
+        w.WritePropertyName("supportRecipe");
+        JsonSerializer.Serialize(w, doc.SupportRecipe, options);
+        w.WritePropertyName("surfaces");
+        JsonSerializer.Serialize(w, doc.Surfaces.Refs, options);
         if (doc.PlayableBounds is not null)
         {
             w.WritePropertyName("playableBounds");

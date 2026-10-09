@@ -1,0 +1,72 @@
+{
+  "task": "10H compiler and boundary contract hardening (ruling T10-2)",
+  "commits": [
+    "3f4fd752b9dc57cad0d078d69d3a78ce5fa4c4be",
+    "4fc77cc939f02a229115fe2009f882d270b65f79"
+  ],
+  "source_sha256": {
+    "KhaozEngine.MapDoc.Tests/Surfaces/BoundaryContractTests.cs": "af4e4de1991bdc0720543f6d7137bef0e28c4c9182a54788fbdc940dce18d00d",
+    "KhaozEngine.MapDoc.Tests/Surfaces/CompilerContractTests.cs": "892a3a53623dcfa6f08433116d85c665f1859bea79b326cf7b610ed415f7f24d",
+    "KhaozEngine.MapEditor.Tests/MapDoc/CompilerContractInternalTests.cs": "ab235ad9477833227ecffd4b1d8e0db9445799de2306340559fb89ca68bfcd76"
+  },
+  "test_runs": [
+    {
+      "name": "t10h-mapdoc-r2",
+      "project": "mapdoc",
+      "executed": 49,
+      "passed": 49,
+      "failed": 0,
+      "exit_code": 0,
+      "trx_sha256": "9c7ab060780fe8e978c8f3f2464e4212f5cdcec078b8349e4b8aa809c1cc17f9",
+      "note": "first run of the worker hit analyzer xUnit2031 before any case ran, ruling T10H-1"
+    },
+    {
+      "name": "t10h-editor",
+      "project": "editor",
+      "executed": 4,
+      "passed": 4,
+      "failed": 0,
+      "exit_code": 0,
+      "trx_sha256": "446ca7b9ad6cfe40812a2cd2432933b0da3e267457bfb19a0260e183105ef019"
+    },
+    {
+      "name": "t10h-fix1-mapdoc",
+      "project": "mapdoc",
+      "executed": 52,
+      "passed": 52,
+      "failed": 0,
+      "exit_code": 0,
+      "trx_sha256": "2923d202f8ff16d6adb205d342ee753917cfe848dd32d962f448bb38bfc5c0df"
+    },
+    {
+      "name": "t10h-fix1-editor",
+      "project": "editor",
+      "executed": 4,
+      "passed": 4,
+      "failed": 0,
+      "exit_code": 0,
+      "trx_sha256": "1acaa9f4b2d92593de9cf77cb4c65e2276ec655f23f856856851a0d6d26b4308"
+    }
+  ],
+  "new_cases": {
+    "mapdoc": 27,
+    "editor": 2
+  },
+  "format_and_guards": "explicit-file diagnostic format exit 0 and guards exit 0 for both commits",
+  "review": {
+    "review1": "Needs fixes, 2 Important (legacy midpoint rounding, sub-tolerance position refusals)",
+    "fix_round": 1,
+    "rereview": "All findings addressed, no new issues"
+  },
+  "contracts_pinned": [
+    "paint override replacement and T9-3 refusals",
+    "exact overflow not representable",
+    "legacy corner-cut rim subdivisions with float midpoint rounding",
+    "SurfaceEdge chain heights",
+    "unavailable source as MissingGeometry or unresolved",
+    "vertex sequence and position refusals below 0.0001 m",
+    "ruled-quad triangle vertex sets"
+  ],
+  "product_code_changed": false,
+  "scope": "Tests-only hardening. Not full-engine integration."
+}

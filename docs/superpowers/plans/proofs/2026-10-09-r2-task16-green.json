@@ -1,0 +1,45 @@
+{
+  "task": "16 general native document transaction seam",
+  "red_commit": "22359173d33fb7b49b90717df7621d656992f40a",
+  "commits": [
+    "1d3f6125c54ee2ddfdc4e9385cf9e7bb56470556"
+  ],
+  "source_sha256": {
+    "KhaozEngine.MapDoc/Editing/MapNativeEditEffects.cs": "63cb49fc2f4015e76d06ef7f0874dc56b5a19bc81ac70b0f32383889e083ae27",
+    "KhaozEngine.MapEdit.Tool/MapEditSession.cs": "889c2cdb05d4d64421193515a215e5e2e0a7337942791b6838ccd806bd26f327",
+    "KhaozEngine.MapEditor.Tests/MapDoc/NativeDocumentTransactionTests.cs": "72846e200714816e48fe00465aa0facf64de5e5a50d1d8619f78c8d1484364af",
+    "KhaozEngine.MapEditor.Tests/MapDoc/TransactionFixtures.cs": "1e54229a530ed3ebeb3f16060fcdbf685a9876f099441dbcd90a0d35cb8eccaf",
+    "KhaozEngine.MapEditor/EditorDocument.cs": "866b5706c7f90f1a882465b92ebde01216ff7951edbb586662860fd8eea211f3",
+    "KhaozEngine.MapEditor/EditorHistory.cs": "55073776ef9c1195591a876b129caebafbcf53c54dcd44c506a881f16057089a",
+    "KhaozEngine.MapEditor/NativeDocumentSnapshot.cs": "be6ba3ca10451c1d65f5089c819cafa02184eb4485307370810eb3fb15c4ce4e",
+    "KhaozEngine.MapEditor/NativeDocumentTransaction.cs": "3ff65f92417abbbe9e106e82a269703267abe4948afe28375415dc47f6d80f46",
+    "KhaozEngine.MapEditor/NativePlacementTransaction.cs": "97fe4749e96f68d14f8034f3782d9779225ee2e71a39fd88a993294148e6a5e8"
+  },
+  "final_runs": [
+    {
+      "name": "t16-green-editor",
+      "executed": 86,
+      "passed": 86,
+      "failed": 0,
+      "trx_sha256": "db51d0e0c04c1e56159032607ffbf9cefec73495d207309f4e8f00b5a31fb27d"
+    },
+    {
+      "name": "t16-regress-mapdoc",
+      "executed": 65,
+      "passed": 65,
+      "failed": 0,
+      "trx_sha256": "0468310c6435e3c1e4f7ec641a2d9cc782f2ec7e58611ffb7fa5a1ef71e78fac"
+    }
+  ],
+  "run_verification": "Delegated worker runs. Parent verified every TRX started after the last product edit and the committed tree matched the tested tree.",
+  "format_and_guards": "full explicit-file format verify exit 0 and five guards exit 0",
+  "docs": "KhaozEngine.MapDoc and KhaozEngine.MapEditor READMEs and docs/USING-KHAOZENGINE.md describe the seam and effects API",
+  "reviews": {
+    "review1": "Approved, spec compliant, one Minor (no direct canonical-text regression for MapNativeEditEffects.Describe)"
+  },
+  "rulings": [
+    "T16-1 the brief line anchors date from ca13d62d7, NativeDocumentSnapshot.Clone already deep-copied Surfaces"
+  ],
+  "frozen_plan_tests_unchanged": true,
+  "scope": "Focused Task 16 proof. Not full-engine integration, candidate or release gates."
+}

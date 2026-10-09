@@ -1,0 +1,112 @@
+{
+  "task": "12B occupied-space membership and mixed-resolution cave coverage validation",
+  "red_commit": "f25477acb12583d185e36e6e8881141c60dc3b6e",
+  "commits": [
+    "fc88a1a162c38ad08ebd5491f750e9bee8719a95",
+    "5e2f619abc07da3b26b1a373f66bb5452cb3dd74"
+  ],
+  "source_sha256": {
+    "KhaozEngine.MapDoc.Tests/Spaces/CaveFixtures.cs": "1e6adf54d49c312f490b4e66e9e946675d1478752cc6c47a0e9b051dfb66cc18",
+    "KhaozEngine.MapDoc.Tests/Spaces/FilteredSurfaceSourceFixtures.cs": "79e49831457772d6a1a5ceb4d955e85685818fccbccba1b56af2430da1bab0c9",
+    "KhaozEngine.MapDoc.Tests/Spaces/PortalBandCoverageTests.cs": "066d23c70f534bbc04058654b996c0ef5fca49b615bf648dab6cb151d465b735",
+    "KhaozEngine.MapDoc.Tests/Spaces/PortalBandFixtures.cs": "97760272cfaa497896220f735357548f594bde3565cebe8544d0ff48afd0220d",
+    "KhaozEngine.MapDoc.Tests/Spaces/SpaceCoverageRegressionTests.cs": "8bc96900246680444a3921d073e6ba506905278967e18ec292aee2ec61025934",
+    "KhaozEngine.MapDoc.Tests/Spaces/SpaceMembershipTests.cs": "d288dd0d919146682eff9b74078cdd8b6e4ea63cd3322b751e7d3fd708f8abe5",
+    "KhaozEngine.MapDoc/MapFramePoint.cs": "d78eace28978439f19dc58443edeb3d72de272308d20164f24aebba4e8887d5e",
+    "KhaozEngine.MapDoc/Spaces/MapSpaceBoundaryCoverage.cs": "958d4943d24f8bd8205d052d86ac3ce49833aa92051e3d01973389ab8d89fde2",
+    "KhaozEngine.MapDoc/Spaces/MapSpaceCoverageValidator.cs": "3e96a8d4ea01cfb318d6a8fbc795a9ef1951f5d3b0dabbc299d3276e708400c3",
+    "KhaozEngine.MapDoc/Spaces/MapSpaceGeometry.cs": "1a4aa43540f15035d777a9f1b91fa914ef03b915b0b0d278c62adc7ab6c0ddaf",
+    "KhaozEngine.MapDoc/Spaces/MapSpaceMembership.cs": "01eec15281ff4b0481de23342ecc0240ce589116773c3b0b70dd05bd4ad36e69",
+    "KhaozEngine.MapDoc/Spaces/MapSpaceOverlapValidator.cs": "7ab7744129bbf3866435f9b303400779610671b15a778de780936bfebe8a7e72",
+    "KhaozEngine.MapDoc/Spaces/MapSpacePointBounds.cs": "8473a578397113712b48efc602983206a9e169043c65dec20ca79ee9013a248d",
+    "KhaozEngine.MapDoc/Surfaces/MapBoundaryGeometry.cs": "36f6a593dcbab758a226c7aa36eb74c0940716b39e750991b053b0d0c1d4a93c",
+    "KhaozEngine.MapEditor.Tests/MapDoc/CoverageWorkTests.cs": "8258522e98ff0571f00c6e81b74935ae5e5b25fdffac0c1613d2b47ba185022b"
+  },
+  "final_runs": [
+    {
+      "name": "t12bf1-final-mapdoc",
+      "executed": 181,
+      "passed": 181,
+      "failed": 0,
+      "trx_sha256": "ca761e0f0a5263f8aea011fec9d4d52d74f396aeac0fc987572623c5680cb1fe"
+    },
+    {
+      "name": "t12bf1-final-editor",
+      "executed": 98,
+      "passed": 98,
+      "failed": 0,
+      "trx_sha256": "d0f9dd75fd6af60cdd5b5d2fb7c852fb045cfa2aae6ba3b60ed67c809aada418"
+    },
+    {
+      "name": "t12bf1-final-compatibility",
+      "executed": 3,
+      "passed": 3,
+      "failed": 0,
+      "trx_sha256": "05e4999ef6dc6d345913996ec7f7d998b6a7786108bf117a88afd23f2534aef9"
+    }
+  ],
+  "earlier_runs": [
+    {
+      "name": "t12b-final-mapdoc",
+      "executed": 36,
+      "passed": 36,
+      "failed": 0,
+      "trx_sha256": "e0142bd19c3943125f8853859d451178e7d774027d9cfce6b596718b40add23d"
+    },
+    {
+      "name": "t12b-final-editor",
+      "executed": 5,
+      "passed": 5,
+      "failed": 0,
+      "trx_sha256": "10c23f9753541bceeb0954c1007a52f28b025500525e353977b5753dc8b0f7cc"
+    },
+    {
+      "name": "t12b-regress-mapdoc",
+      "executed": 128,
+      "passed": 128,
+      "failed": 0,
+      "trx_sha256": "9c73ca45fec48602842f75e399faf66db3c0814c0c325811991c4322b8e3e444"
+    },
+    {
+      "name": "t12b-regress-editor",
+      "executed": 93,
+      "passed": 93,
+      "failed": 0,
+      "trx_sha256": "5d3599daf1accfca8be1b33a87c44ee479a6137159f123fec5bd25164f6d27cc"
+    },
+    {
+      "name": "t12b-regress-compatibility",
+      "executed": 3,
+      "passed": 3,
+      "failed": 0,
+      "trx_sha256": "78c32084640f9fae9a9457707eee01cd0745a09f72e2dbe69d7a289d516cf2cc"
+    }
+  ],
+  "fix_round_1_red": {
+    "name": "t12bf1-red-final",
+    "executed": 17,
+    "passed": 6,
+    "failed": 11,
+    "trx_sha256": "26fcc93e9069b394d5b1a685ac3a06a44d8eaf668b825a47ad1da04f71b15e86"
+  },
+  "run_verification": "Delegated worker runs. Parent verified every TRX started after the last product edit and the committed tree matched the tested tree.",
+  "format_and_guards": "explicit-file diagnostic format exit 0 and five guards exit 0 for every commit",
+  "reviews": {
+    "review1": "Needs fixes, 4 Important (portal endpoint source cells, strip side not checked, compatibility-only ambiguity, midpoint-only portal containment)",
+    "fix_round_1": "all four addressed, no new breakage"
+  },
+  "rulings": [
+    "T12B-1 the three new fixture files compile into MapEditor.Tests, so RED is paired",
+    "T12B-2 membership has 14 methods and 15 cases, no change",
+    "T12B-3 FilteredSurfaceSource implements IMapSurfaceAcquisitionSource and reports hidden keys Unloaded",
+    "T12B-4 the TwoSided lintel over the z 0,1,2 corner sequence emits 8 faces",
+    "T12B-5 arch-upper Front strip closes the passage-side gap in the arch variant",
+    "T12B-6 joined-shaft variant drops shaft-portal-s, extends shaft-south and splits deep-south",
+    "T12B-7 PortalBandFixtures closing strip renamed hall-west, a duplicate-id setup defect"
+  ],
+  "notes": [
+    "Task 13 support stays a column query at the body axis (ruling T13-2, owner ruling on #438). Owner provenance for installed map statics is KhaozEngine#1327 for R3."
+  ],
+  "frozen_plan_tests_unchanged": true,
+  "scope": "Focused Task 12B proof. Not full-engine integration, candidate or release gates."
+}

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Editing;
 
 namespace KhaozEngine.MapEditor;
 
@@ -17,6 +18,7 @@ public sealed class EditorHistory
     bool _mergeBarrier;
     MapAssetClosure? _nativeAssets;
     internal MapDocRegistry Registry { get; set; } = MapDocRegistry.CreateDefault();
+    internal MapNativeEditEffects? LastNativeEffects { get; private set; }
 
     /// <summary>Binds a verified closure without changing history. Rebinding validates before replacing it.</summary>
     public void BindNativeAssets(MapDocument document, MapAssetClosure assets)
@@ -28,7 +30,7 @@ public sealed class EditorHistory
     void Apply(MapDocument doc, IEditorCommand command, bool undo)
     {
         if (doc.ResolverIdentity is not null)
-            NativePlacementTransaction.Run(doc, command, undo, _nativeAssets, Registry);
+            LastNativeEffects = NativeDocumentTransaction.Run(doc, command, undo, _nativeAssets, Registry);
         else if (undo) command.Revert(doc);
         else command.Apply(doc);
     }

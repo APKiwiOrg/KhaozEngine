@@ -1,0 +1,66 @@
+{
+  "task": "9 canonical surface compiler",
+  "stage": "intended compile-time RED",
+  "base": "d25b4ddf2",
+  "sources": {
+    "KhaozEngine.MapDoc.Tests/Surfaces/SurfaceCompilerTests.cs": "5ea58058a7aea2ca52984f55edef212caa99518e482a920688b12e224fdb8e3a",
+    "KhaozEngine.MapDoc.Tests/Surfaces/CompilerFixtures.cs": "17060cd6becbcece0a4ceb8a97feb3c452ffae20fd633b08051d70f399f5c6d4",
+    "KhaozEngine.MapEditor.Tests/MapDoc/CompilerBudgetTests.cs": "57e9a5fd12712abe799f6fbc7c9ca4ec649ff34ee50265de58ca4134489105c5",
+    "KhaozEngine.MapDoc.Compatibility.Tests/LegacyOracleConverter.cs": "c619d5b9fc800772f3e1b738ab74e422342ad59f17e814d529c2062e32250ff5",
+    "KhaozEngine.MapDoc.Compatibility.Tests/LegacyOracleCompilerTests.cs": "128b46b39e3fa4ba29c6c5a4b601192e841b1f2e8c28b7c924974971f2b6aceb"
+  },
+  "results": [
+    {
+      "project": "mapdoc",
+      "filter": "FullyQualifiedName~SurfaceCompilerTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 17
+      },
+      "missing_types": {
+        "MapCompiledFace": 6,
+        "MapCompiledPatch": 10,
+        "MapVertexId": 1
+      },
+      "planned_cases": 13,
+      "log_sha256": "d1e4974e72f76bf3967b109996e5e5f01d8aa720aed41471388a6de0231c4379"
+    },
+    {
+      "project": "editor",
+      "filter": "FullyQualifiedName~CompilerBudgetTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 16
+      },
+      "missing_types": {
+        "MapCompiledFace": 6,
+        "MapCompiledPatch": 9,
+        "MapVertexId": 1
+      },
+      "planned_cases": 2,
+      "log_sha256": "835a3d6abc5c0ff78330d64abdb5ba989b9d1297c1035d6fc727defb3cd1dc7f"
+    },
+    {
+      "project": "compatibility",
+      "filter": "whole project",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 1
+      },
+      "missing_types": {
+        "MapCompiledPatch": 1
+      },
+      "planned_cases": 2,
+      "log_sha256": "86bbc902399744cc52e9efd6b52bbed3cc819ddb27b16b85c25c8a265bce8df3"
+    }
+  ],
+  "classification": "Every unique diagnostic is CS0246 on a planned product type (MapCompiledPatch, MapCompiledFace, MapVertexId). The compiler stops at the fixture and converter signatures, so body-level references such as MapSurfaceCompiler and MapSlotCellMask are not reported yet and no claim is made about them. No unrelated errors. A whitespace verify of the five files passed before RED.",
+  "rulings": [
+    "T9-1 all test-only helpers, including LegacyOracleConverter, are prepared before RED so RED shows only absent product types.",
+    "T9-2 ChildEdges finds the fan centre as the one exact point every child shares and returns each child's other two vertices as an ordered pair, so the 129-distinct-edges assertion does not depend on an unspecified compiler vertex order."
+  ],
+  "execution": "Direct and serial under owner OA20 through build-slot with immediate admission, one invocation per project, no retry."
+}

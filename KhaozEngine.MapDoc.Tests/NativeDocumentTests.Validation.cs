@@ -47,17 +47,21 @@ public sealed partial class NativeDocumentTests
     [Theory]
     [InlineData(3)]
     [InlineData(4)]
+    [InlineData(5)]
     public void NativeCasing_RetainsExplicitBoundsAndRecognizesRequiredMembers(int version)
     {
         var root = JsonNode.Parse(NativeFixtures.AnalyticV3Json())!.AsObject();
         root["formatVersion"] = version;
         root["PlayableBounds"] = JsonNode.Parse("""{ "MINX": -40, "minz": -50, "MAXX": 40, "maxz": 50 }""");
-        root["ResolverIdentity"] = JsonNode.Parse("""{ "PayloadVersion": 1, "ResolverVersion": 2 }""");
+        int resolverVersion = version == 5 ? 2 : 1;
+        root["ResolverIdentity"] = new JsonObject { ["PayloadVersion"] = 1, ["ResolverVersion"] = resolverVersion };
+        if (version == 5) root["SupportRecipe"] = "AuthoredBindingsV2";
         root["NativeAssets"] = JsonNode.Parse("""[{ "ID": "inn", "Path": "inn.json", "SHA256": "abc", "PayloadVersion": 1 }]""");
         var doc = MapDocumentFile.LoadText(root.ToJsonString());
         Assert.Equal(-40f, doc.PlayableBounds!.MinX);
         Assert.Equal(50f, doc.PlayableBounds.MaxZ);
-        Assert.Equal(2, doc.ResolverIdentity!.ResolverVersion);
+        Assert.Equal(resolverVersion, doc.ResolverIdentity!.ResolverVersion);
+        Assert.Equal(version == 5 ? MapSupportRecipe.AuthoredBindingsV2 : MapSupportRecipe.LegacyXzCallbackV1, doc.SupportRecipe);
         Assert.Equal("inn", Assert.Single(doc.NativeAssets).Id);
     }
 

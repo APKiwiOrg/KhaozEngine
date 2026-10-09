@@ -1,0 +1,17 @@
+{
+  "exit": 1,
+  "executed": 3,
+  "passed": 2,
+  "failed": 1,
+  "skipped": 0,
+  "test": "FormatFourTiledFixture_MatchesTheMonolithicWorld",
+  "reason": "SaveText preserves placement list order, tiled Load appends by sorted tile coordinates. Monolithic a,b,c differs from tiled b,a,c.",
+  "log_sha256": "3afdb28142c5585437f9be318b3a6f23592c8193d13cfc3d5276849845f6fa03",
+  "fixture_digest_unchanged": "d71a03bee5142f1f4e8d4b9bca34a147d145d4fd9e74ea0c46de0b6d9567c93a",
+  "unrun": [
+    "architecture GREEN",
+    "harness format",
+    "scoped source format"
+  ],
+  "correction": "Normalize only the two loaded placement lists by ordinal ID, then retain full serialized-document equality and VerifyTiled. No fixture regeneration or production change."
+}

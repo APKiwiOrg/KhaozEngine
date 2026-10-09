@@ -1,0 +1,34 @@
+{
+  "base": "27bb6320dd27b1acaabff7fd26dce5974e419751",
+  "source_hashes": {
+    "KhaozEngine.MapDoc.Tests/Storage/SparseSurfaceIndexTests.cs": "1fd30490a761ed6a3247c67872d76e123e8c75ae16dc2957ba5606f9988b4cc1",
+    "KhaozEngine.MapDoc.Tests/Storage/SurfaceSourceSnapshotTests.cs": "4c278ea5e8772394e2c4d478d2367854a1133ab53f71d45685cdbc96a277e5a2",
+    "KhaozEngine.MapDoc.Tests/Storage/SurfaceStorageNamespaceTests.cs": "dfeaa34d1e390267d4dca65b8ca0e82c9666d52f20f278c8eb0d5813fa3fbbfe",
+    "KhaozEngine.MapEditor.Tests/MapDoc/SurfaceStorageTests.cs": "f4dbccf18f40ed61c2ec506202bac636a49566f2fc90b8041e539da212ac1de9"
+  },
+  "runs": {
+    "editor": {
+      "exit": 1,
+      "executed": 0,
+      "errors": [
+        "KhaozEngine.MapEditor.Tests/MapDoc/SurfaceStorageTests.cs(6,26): error CS0234: The type or namespace name 'Storage' does not exist in the namespace 'KhaozEngine.MapDoc' (are you missing an assembly reference?) [KhaozEngine.MapEditor.Tests/KhaozEngine.MapEditor.Tests.csproj]"
+      ],
+      "compiler_warnings": [],
+      "log_sha256": "36c809bee2d6cbc3a57f9c6b9daa4ec58f2e150d243437ba7a32c5483c459440"
+    },
+    "mapdoc": {
+      "exit": 1,
+      "executed": 0,
+      "errors": [
+        "KhaozEngine.MapDoc.Tests/Storage/SparseSurfaceIndexTests.cs(6,26): error CS0234: The type or namespace name 'Storage' does not exist in the namespace 'KhaozEngine.MapDoc' (are you missing an assembly reference?) [KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj]",
+        "KhaozEngine.MapDoc.Tests/Storage/SurfaceSourceSnapshotTests.cs(5,26): error CS0234: The type or namespace name 'Storage' does not exist in the namespace 'KhaozEngine.MapDoc' (are you missing an assembly reference?) [KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj]",
+        "KhaozEngine.MapDoc.Tests/Storage/SurfaceStorageNamespaceTests.cs(4,26): error CS0234: The type or namespace name 'Storage' does not exist in the namespace 'KhaozEngine.MapDoc' (are you missing an assembly reference?) [KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj]"
+      ],
+      "compiler_warnings": [],
+      "log_sha256": "4dc8422382e574b1b09f7f1fec20299f7fedf5db0243558c9e95c596bfb56b70"
+    }
+  },
+  "source_unchanged": true,
+  "classification": "Missing planned Storage namespace at import binding. No body diagnostics or runtime outcomes are inferred.",
+  "primary_released": true
+}

@@ -5,6 +5,7 @@ using System.Linq;
 using KhaozEngine.Content;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Terrain;
 
@@ -45,8 +46,8 @@ public sealed class MapEditSession
         }
     }
 
-    internal void ApplyNative(EditorCommand command, MapDocument document, MapDocRegistry registry) =>
-        NativePlacementTransaction.Run(document, command, false, _nativeAssets, registry);
+    internal MapNativeEditEffects ApplyNative(EditorCommand command, MapDocument document, MapDocRegistry registry) =>
+        NativeDocumentTransaction.Run(document, command, false, _nativeAssets, registry);
 
     /// <summary>Occupied-tile ceiling below which <see cref="Open"/> loads a tiled document whole, mirroring
     /// <c>MapEditorOptions.WholeWorldTileLimit</c> so the GUI editor and this MCP session agree on when a

@@ -1,0 +1,88 @@
+{
+  "base": "62a08e42b342f241cb0b22aae9f86ca2f4928e27",
+  "exit": 0,
+  "counters": {
+    "total": "38",
+    "executed": "38",
+    "passed": "38",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "source_hashes": {
+    "KhaozEngine.MapDoc.Tests/Surfaces/TopologyRecordFixtures.cs": "dd2f6d8aa87e994b83b6acc769b2bfab49b92d9deb7868dfef0bf74ba61f91d8",
+    "KhaozEngine.MapDoc.Tests/Surfaces/TopologyRecordTests.cs": "a290ef35bb65631962004ea4a01c363018a315afcfee4987419479fe650c3a15",
+    "KhaozEngine.MapDoc/Spaces/MapLegacyExteriorRecipe.cs": "d7fa76297cd1fdeef196b432c764ab7e4b54e71edc60fcfd4626f68e71d85827",
+    "KhaozEngine.MapDoc/Spaces/MapSpaceRecords.cs": "55ef4415dfd1efe4a704589efdcaf4a34edde6e3b4ccdb52494f93da2c574bb2",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfacePatch.Records.cs": "ed8ca077f23ab5c53085c7e284f92abcea399ecd6063b4d70ce0a09f4f9ce299",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfacePatch.cs": "b4cd2c22391861414ed6378c1e154819d0a749dbc22261f0fc6d5196b71d01f4",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfacePatchCodec.Records.cs": "04af8e8992f3cf0caf80072af46e353fa3f5b91bcb3a6288bba6a19c59f6d296",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfacePatchCodec.cs": "5d90d510cc45b518b880f61117b847fae4a60ac4e9d16ddcaea352a7c925fb96",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfaceSemantics.cs": "1862b44aedd328c61f21a5478375a6e88375a33c5b27dbb003682ab91895d1f1",
+    "KhaozEngine.MapDoc/Surfaces/MapTopologyRecords.cs": "4eaa664287bb42009a84c84236cd86eaca4676761adbbd0b38fc1ce4bfe2304d",
+    "KhaozEngine.MapDoc/Surfaces/MapTopologyReferenceValidator.cs": "1a941435b444ddceb96c0dfd7589a2b598e1cb4d5a53926c7e123880e9369344"
+  },
+  "source_unchanged": true,
+  "compiler_notices": [],
+  "log_sha256": "e172395d5c711650293bd776967e9ce676ab69b9c3af6d2657032f5e4224f909",
+  "trx_sha256": "84749860a282477ab140c6364386a508df969b53c5d3c3ba2d00498de506cbdf",
+  "primary_released": true,
+  "format_pending": false,
+  "final_source_hashes": {
+    "KhaozEngine.MapDoc.Tests/Surfaces/TopologyRecordFixtures.cs": "dd2f6d8aa87e994b83b6acc769b2bfab49b92d9deb7868dfef0bf74ba61f91d8",
+    "KhaozEngine.MapDoc.Tests/Surfaces/TopologyRecordTests.cs": "a290ef35bb65631962004ea4a01c363018a315afcfee4987419479fe650c3a15",
+    "KhaozEngine.MapDoc/Spaces/MapLegacyExteriorRecipe.cs": "d7fa76297cd1fdeef196b432c764ab7e4b54e71edc60fcfd4626f68e71d85827",
+    "KhaozEngine.MapDoc/Spaces/MapSpaceRecords.cs": "55ef4415dfd1efe4a704589efdcaf4a34edde6e3b4ccdb52494f93da2c574bb2",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfacePatch.Records.cs": "ed8ca077f23ab5c53085c7e284f92abcea399ecd6063b4d70ce0a09f4f9ce299",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfacePatch.cs": "b4cd2c22391861414ed6378c1e154819d0a749dbc22261f0fc6d5196b71d01f4",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfacePatchCodec.Records.cs": "af1641b6b3fc432e015bac20fa17d9f6c1b007eeac8d0bd57bff5539edf26112",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfacePatchCodec.cs": "5d90d510cc45b518b880f61117b847fae4a60ac4e9d16ddcaea352a7c925fb96",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfaceSemantics.cs": "1862b44aedd328c61f21a5478375a6e88375a33c5b27dbb003682ab91895d1f1",
+    "KhaozEngine.MapDoc/Surfaces/MapTopologyRecords.cs": "4eaa664287bb42009a84c84236cd86eaca4676761adbbd0b38fc1ce4bfe2304d",
+    "KhaozEngine.MapDoc/Surfaces/MapTopologyReferenceValidator.cs": "1a941435b444ddceb96c0dfd7589a2b598e1cb4d5a53926c7e123880e9369344"
+  },
+  "format": {
+    "exit": 0,
+    "log_sha256": "c638ce7852c5080b822539174363221f9f6509457453afb35082651b7a2fd44e",
+    "coverage": [
+      "Running 5 analyzers on KhaozEngine.MapDoc.Tests.",
+      "Running 5 analyzers on KhaozEngine.MapDoc.",
+      "Running 211 analyzers on KhaozEngine.MapDoc.Tests.",
+      "Running 155 analyzers on KhaozEngine.MapDoc."
+    ],
+    "warnings": [],
+    "source_unchanged_during_format": true,
+    "prior_format": {
+      "exit": 2,
+      "diagnostics": [
+        "/Users/antonio/KhaozEngine/.worktrees/wa-r2-caves-scale/KhaozEngine.MapDoc/Surfaces/MapSurfacePatchCodec.Records.cs(35,38): error WHITESPACE: Fix whitespace formatting. Replace 1 characters with '\\n\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s'. [/Users/antonio/KhaozEngine/.worktrees/wa-r2-caves-scale/KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj]",
+        "/Users/antonio/KhaozEngine/.worktrees/wa-r2-caves-scale/KhaozEngine.MapDoc/Surfaces/MapSurfacePatchCodec.Records.cs(35,67): error WHITESPACE: Fix whitespace formatting. Replace 1 characters with '\\n\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s'. [/Users/antonio/KhaozEngine/.worktrees/wa-r2-caves-scale/KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj]",
+        "/Users/antonio/KhaozEngine/.worktrees/wa-r2-caves-scale/KhaozEngine.MapDoc/Surfaces/MapSurfacePatchCodec.Records.cs(36,39): error WHITESPACE: Fix whitespace formatting. Replace 1 characters with '\\n\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s'. [/Users/antonio/KhaozEngine/.worktrees/wa-r2-caves-scale/KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj]",
+        "/Users/antonio/KhaozEngine/.worktrees/wa-r2-caves-scale/KhaozEngine.MapDoc/Surfaces/MapSurfacePatchCodec.Records.cs(36,74): error WHITESPACE: Fix whitespace formatting. Replace 1 characters with '\\n\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s'. [/Users/antonio/KhaozEngine/.worktrees/wa-r2-caves-scale/KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj]",
+        "/Users/antonio/KhaozEngine/.worktrees/wa-r2-caves-scale/KhaozEngine.MapDoc/Surfaces/MapSurfacePatchCodec.Records.cs(37,36): error WHITESPACE: Fix whitespace formatting. Replace 1 characters with '\\n\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s\\s'. [/Users/antonio/KhaozEngine/.worktrees/wa-r2-caves-scale/KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj]"
+      ],
+      "source_hashes_unchanged": true,
+      "log_sha256": "21233ed8f8b0bc8d347c8026b2434db6037d2f54f0495a685e894e4c10205a07",
+      "analyzer_coverage": [
+        "Running 5 analyzers on KhaozEngine.MapDoc.Tests.",
+        "Running 5 analyzers on KhaozEngine.MapDoc.",
+        "Running 211 analyzers on KhaozEngine.MapDoc.Tests.",
+        "Running 155 analyzers on KhaozEngine.MapDoc."
+      ],
+      "primary_released": true,
+      "classification": "five whitespace-only line breaks in record discriminator switch, verify-no-changes did not edit source"
+    },
+    "whitespace_only_change_after_green": true,
+    "whitespace_diff_sha256": "f725877e5264486ab69cf374a085fa4ac4447f3e0ea32476b7de4a95a098440e"
+  }
+}

@@ -13,6 +13,12 @@ public static class MapResolver
     {
         ArgumentNullException.ThrowIfNull(supportHeight);
         string hash = MapAuthoredIdentity.Compute(document, assets, options);
+        return Resolve(document, assets, (_, x, z) => supportHeight(x, z), hash);
+    }
+
+    internal static MapResolvedDocument Resolve(MapDocument document, MapAssetClosure assets,
+        Func<string, float, float, float> supportHeight, string hash)
+    {
         var playable = MapResolvedBounds.Of(document.PlayableBounds!);
         var storage = MapResolvedBounds.Of(document.Bounds);
         // Snapshot every caller-owned value before invoking the consumer's support callback.
@@ -20,7 +26,7 @@ public static class MapResolver
             .Select(p => new { p.Id, p.Kind, AssetId = p.AssetId!, p.NumericId, p.X, p.Y, p.Z, p.Yaw, p.Scale, Tags = p.Tags.ToArray() }).ToArray();
         var placements = authored.Select(p =>
         {
-            float y = p.Y ?? supportHeight(p.X, p.Z);
+            float y = p.Y ?? supportHeight(p.Id, p.X, p.Z);
             if (!float.IsFinite(y)) throw new MapDocumentException($"Placement '{p.Id}' has nonfinite support height.");
             return new MapResolvedPlacement(p.Id, p.Kind, p.AssetId, p.NumericId,
                 new MapTransform(new Vector3(p.X, y, p.Z), p.Yaw, p.Scale), p.Tags);

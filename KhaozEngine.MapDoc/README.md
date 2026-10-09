@@ -10,18 +10,215 @@ git-committed in the game repo. GPU-free.
 `MapBoundDocumentValidation.Validate(document, assets, registry)` checks a complete native document
 against a verified immutable `MapAssetClosure`, including exact roots, asset membership, identities and
 finite transforms. `ValidateLocal(document, registry)` checks document-local validity only.
-`MapAuthoredIdentity` reuses the bound checks and separately validates builder/hash options. Editing callers
+`MapAuthoredIdentity` and complete-document `MapAuthoredIdentityV2` reuse the bound checks and separately
+validate builder/hash options. Editing callers
 need no synthetic builder options and never resolve relative resource paths implicitly.
 `MapResolver.Resolve` publishes an immutable `MapResolvedDocument`. Its `AssetClosure` is the exact verified
 closure passed in, for binding and resource lookup without a second load. This package loads no meshes and has
 no render dependency. `KhaozEngine.Terrain.Render3D` owns the one-way `MapAssetManifestAdapter`.
 
-Native identity and resolution use the default registry only. `MapAuthoredIdentity.Compute` and
+Native identity and resolution use the default registry only. Complete-document `MapAuthoredIdentityV2.Compute`,
+`MapAuthoredIdentity.Compute` and
 `MapResolver.Resolve` take no registry and validate with `MapDocRegistry.CreateDefault()`, and ke-mapedit's
 `NativeDocumentService` builds its support field from the default registry too. A native document that uses
 a terrain feature registered on a custom `MapDocRegistry` is therefore refused by them as an unregistered
 feature type, even where `Validate` or `ValidateLocal` accept it when given that registry. Custom terrain
 features are not supported in native documents yet.
+
+## Native edit effects
+
+Every API in this section is new in 20.30.0.
+`KhaozEngine.MapDoc.Editing.MapNativeEditEffects` describes an accepted document edit with old and new
+`MapBox3` bounds, patch keys, space and dependency IDs, `MapDigestChange` values and `MapNativeInvalidation`
+flags for Terrain, Physics, Nav, Material, Residency and Placements. `Describe()` emits compact canonical
+JSON with fixed field order, sorted patch keys and ordinal IDs, invariant numbers and explicit nulls.
+`MapNativeWriteSet` names patch payloads, surface declarations and placement state for publication.
+Records, spaces, corner owners and material uses are carried by the named patch payloads.
+
+The terrain API, new in 20.30.0, uses `MapTerrainEdits.Prepare(surfaces, edit)` to return a detached candidate,
+its exact `MapNativeWriteSet` and effects without mutating the input. `MapSetCornerHeights`, `MapSmoothCorners`,
+`MapSetCells` and `MapSetPresence` use patch-local coordinates (presence takes slot-cell indices).
+Smoothing accepts 1 to 64 passes, averages a double-buffered 3 by 3 neighbourhood including the centre,
+and rounds away from zero. Its unchanged halo must be available on this patch or a resident same-surface
+neighbour. Neighbours share boundary corners, so a halo corner in several neighbours is read when they all
+agree on its height. Missing halo geometry or disagreeing neighbours refuse the edit.
+
+`MapReassignCornerOwner`, `MapReanchorRecords` and `MapReplaceTopology` make ownership and anchor changes
+explicit. Upserts retain current shared-corner owners. Removing an owner or anchor requires reassignment
+of its dependants or re-anchoring of its records, respectively. Re-anchoring updates every `MapRecordRef`,
+including surface span metadata. `MapCompositeEdit` prepares its ordered edits as one candidate.
+`MapConvertFinePatch` reuses `MapFinePatchConversion`, including its authored-difference policy.
+Preparation validates references, seams and owners and refreshes affected surface semantic digests.
+Heights, smoothing, presence and ownership invalidate Terrain, Physics, Nav and Residency. Topology and
+conversion also invalidate Material. Cell material-ID changes alone invalidate Terrain and Material,
+other cell fields invalidate all five, and re-anchoring alone invalidates Residency.
+
+## Whole authored surface identity
+
+Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity.
+`KhaozEngine.MapDoc.Identity.MapAuthoredIdentityV2.Compute(document, assets, options)` requires a complete
+document with resolver identity `(1, 2)`, `AuthoredBindingsV2`, and options with `ResolverVersion: 2`, a
+nonempty builder ID and options hash, and a positive builder version. A partial editing window refuses
+before metadata validation with a `MapDocumentException` containing `window`. Complete unsaved edits hash
+current patch semantics. Old tile baselines and surface digest fields do not certify corruption in an
+editable complete document. Its native roots must exactly match the supplied verified closure.
+
+The `Compute(MapStoredSurfaceSource, assets, options)` overload verifies the whole original pinned storage
+closure. `Open(directory)` retains the original resolver, support recipe, roots and root digest. Identity
+checks those metadata and closure roots before payload reads, then verifies every directory and index
+address, reads and hashes one payload at a time, and checks patch and per-surface semantic digests. Index
+metadata may be cached, but every identity call rereads payload bytes. A freshly opened lazy source is
+valid input. A swept payload refuses with `Missing`, and mismatched bytes or semantics refuse with
+`Corrupt`. Replacing `map.json` never switches an existing source to the new generation. Open a new source
+to select that generation.
+
+The stored overload also reads the tile files named by the generation pinned at `Open`, one tile at a time,
+by their pinned names. Each tile's parsed content must hash to its pinned tile hash before any entry is
+used. A removed tile file refuses with `Missing` and altered content with `Corrupt`. Identity never rereads
+the manifest, lists directories or trusts a stored hash without reading the file. Stored identity validates
+the same document rules as the loaded document, through the same code and with the same messages.
+
+Both overloads hash exactly these inputs under `kemap/native-authored/2`: the root digest, the authored
+content digest, ordered `(patchKey, semanticDigest)` facts, the verified asset closure hash, builder ID and
+version, options hash and resolver version. The content digest (`kemap/native-content/1`) covers
+placements (including explicit `Y` and `SupportBinding`), spawns, player spawns and sculpt tiles. Each entry
+is normalized as scheme 1 normalizes it, ordered by ordinal id or sculpt tile, with placement display names
+stripped and an empty sculpt block equal to an absent one. `MapSurfaceSemantics.RootDigest` covers globals
+and surface metadata only, computable from a manifest alone, so it and scoped identity never cover tile
+content. Storage paths, tile and page packing, embedding and incident index bookkeeping do not enter the
+whole identity. Equivalent complete in-memory, monolithic, tiled and repacked documents share one token.
+Resolver 1 continues to use `MapAuthoredIdentity`.
+
+## Bounded scoped acquisition
+
+Every API in this section is new in 20.30.0.
+`MapScopedSurfaces.Acquire(source, scope, assetSha256)` requires `IMapSurfaceAcquisitionSource`, implemented
+by `MapStoredSurfaceSource` and `MapDocumentSurfaceSource.Capture(document)`. A producer implementing only
+`IMapSurfaceSource` refuses with `surface source does not support bounded scoped acquisition` before its
+legacy callbacks run. Custom producers must open one pinned `IMapSurfaceAcquisitionSession` for discovery,
+record-anchor expansion and bound reads. Snapshot, root and copied request stay fixed for that session.
+
+`ReservedPatchKeys` is a detached, ordered unique-key snapshot. Every discovery key and explicitly read
+key consumes the same `MaxCandidatePatches` allowance before work, including known-empty and unavailable
+keys. Discovery payloads must have reservations, and extra reservations must have an unavailable fact or
+known-empty coverage. Later reservations must exactly match the coordinator's requested keys. Reads must
+return the requested key, present payloads must match their semantic digests, and surface lookups must
+return the requested declared surface. Violations refuse instead of publishing incoherent facts.
+
+After a key is served, `TryGetIncidentRecords` returns true with a detached list when incidence is known.
+A true empty list certifies no incidents. False with null means unknown incidence, including an unread
+partial-window key, and makes acquisition incomplete. Incident-only remote anchors remain required even
+when ordinary references and spatial payload selection do not discover them. Missing, corrupt and
+unloaded data never become known-empty facts.
+
+The session shares candidate, directory/index visit, metadata and range allowances across all three
+phases. Stored and captured implementations charge visits before cache checks, metadata before inspection,
+range bookkeeping before work, and decode attempts before I/O. Metadata and range allowances are separate,
+each `1 + 4 * 256 * MaxPageReads`. `PagesRead` counts successful new directory/index decodes cumulatively
+on the session and as a delta on each operation. A cached traversal can exhaust its allowance with zero
+decodes. Record reads and expansion depth also obey the scope's limits. Capacity or exact-overflow refusal
+publishes no acquired content and disposes the session.
+
+The returned view, `MapCoverageWitness`, `MapReadWitness` and `MapScopedIdentity` are factory-only and
+immutable. They detach payloads, nested record and span lists, scope filters and asset digests. `Patch`
+returns a fresh clone and no access after publication rereads the producer. Scoped identity stays under
+`kemap/scoped/1` and describes the acquired facts, frame, scope and policies. `RequireComplete()` refuses an
+incomplete identity. A complete scoped acquisition from a partial editing window still cannot replace a
+whole current-edit identity. `CompleteView(set)` captures all resident patches and records without bound
+enumeration for complete in-memory surface sets.
+
+## Frame-local compiled geometry
+
+`MapFrameLocal.ToFrame` converts a compiled patch or strip into a `MapFrameMesh` in one `WorldFrame` with
+world-datum heights, and `MapFrameLocal.CompileInFrame` places an exact local patch by a `MapTransform`,
+composing in double before the one frame-local float rounding. Neither takes an absolute world-float round
+trip. They are new in 20.30.0, and R5 consumes them.
+
+## Authored surfaces, caves and support
+
+Every API in this section is new in 20.30.0. It proves geometry inputs and legacy compatibility, not a
+complete cave runtime.
+
+**Lattices and patches.** A `MapSurfaceRef` declares a surface with a `MapLatticeFrame` (exact rational cell
+and height units, row direction and the world Y 0 datum), a role (`SupportFloor`, `Ceiling` or
+`PaintOverride`) and a presence policy (`Native` or `LegacyTileWorld`). `MapLatticeFrame.ImportedMetreCentimetre`
+is the legacy recipe: one metre cells, centimetre heights and rows running toward negative Z. Authored
+vertices are `MapLatticeAddress` values, reduced rational addresses whose denominator is at most 64. Vertices
+that clipping generates are exact world `MapExactXz` values, never lattice addresses. `MapExactValue` (a
+reduced `long` over `long` computed through `Int128`) is the only exact scalar. Patches are sparse: a
+`MapSurfacePatch` covers at most one 64 by 64 slot of cells with int32 corner heights, per-cell paint,
+flags, topology and presence bits, and only occupied patches are stored. A canonical patch payload is at
+most 1 MiB, a compiled patch at most 65,536 faces, and an edge subdivision 2 to 64 segments. Index pages
+hold at most 256 entries and 1 MiB. `MapSurfaceCompiler.Compile` emits canonical floor or ceiling faces
+keyed by `MapFaceKey`, with exact triangles and the released float arithmetic only in compiled offsets and
+legacy normals.
+
+**Mixed-resolution bounds.** A `MapSpaceFootprint` names a lower and an upper `MapBoundRef` that may sit on
+different rational lattices. `MapCommonRefinement` clips them to their exact common refinement per footprint
+cell. `MapRefinementLimits` budgets each cell at 16,384 source faces per bound, 65,536 pair checks,
+32,768 refinement faces and 131,072 refinement vertices. Every attempted lower and upper pair is charged as a
+pair check before any bounding-box rejection. One compiled bound-face context per validation or query call
+is limited to 256 unique bound patches and 262,144 compiled faces, counted from cell bytes before any
+compile. Those two context values are proposed operational defaults, not world limits. A refinement ends
+`Complete`, `CapacityExceeded` (with no partial result), `NotRepresentable`, `Invalid` or `MissingGeometry`.
+Declared seam and strip vertex sequences stay strict. Refinement never waives a matching subdivision.
+
+**Legacy lower coverage.** Only a lower bound of kind `MapBoundKind.LegacyExteriorV1`, in an `Exterior`
+space with an `OpenTop` upper bound, may cover a presence-1 `LegacyTileWorld` void or NoDraw cell.
+`MapLegacyExteriorRecipe.Check` returns the first failing rule in the order `legacy recipe: space`,
+`upper`, `surface` and `lattice`. The lower surface must be a `SupportFloor` with `LegacyTileWorld` presence on
+exactly `ImportedMetreCentimetre`, and the footprint lattice must be that surface. The policy ID is
+`kemap/legacy-exterior/1`. `MapLowerCellClassifier.Classify` is the one place a lower cell is classed as
+`Physical`, `LegacyNonCapture`, `KnownHole`, `UntaggedLegacy`, `Unavailable` or `InvalidRecipe`. A
+`LegacyNonCapture` cell is compatibility coverage tagged with a `MapLegacyCellTag`, never a physical face, a
+filled hole or a capture support. Its height comes from `MapLegacyBilinear`, which reproduces the released
+`TileWorldDocument.HeightAt` arithmetic bit for bit. Missing, unloaded or corrupt data and presence-0 holes
+are never covered this way, and an ordinary `SupportFloor` lower bound never accepts the fallback.
+
+**Membership, support and relations.** Queries take a `MapFramePoint` and run over one immutable
+`MapScopedSurfaces` acquisition. `MapSpaceMembership.Query` returns `Resolved`, `Outside`, `MissingGeometry`,
+`Ambiguous`, `CapacityExceeded`, `NotRepresentable` or `Invalid`, and never reads missing data as outside.
+`MapSupportQuery.Select` is a column query at the requested XZ under `MapQueryLimits` (256 candidate
+patches, 4,096 inspected faces and 64 support intersections). It returns `Supported`, `LegacyFallback`,
+`NoSupport`, `MissingGeometry`, `Ambiguous`, `CapacityExceeded`, `NotRepresentable` or `Invalid`. A
+`LegacyFallback` result has no face, no normal and `IsCaptureSupport` false. `MapSpaceRelations.Relate`
+reports `SameSpace`, `ConnectedThroughPortals`, `ConnectedThroughVerticalLink`, `NotConnectedWithinBound` or
+`Undetermined` from a bounded breadth-first search over acquired wall portals and horizontal openings. Its
+`MapRelationStatus` is `Resolved`, `MissingGeometry`, `Ambiguous`, `CapacityExceeded`, `NotRepresentable` or
+`Invalid`, and every status but `Resolved` carries `Undetermined` with an empty path. Each portal fact carries
+exact aperture columns whose provenance is in the acquisition witness.
+`NotConnectedWithinBound` is never a disconnection claim, and `Occlusion` and `Clearance` stay
+`NotEvaluated`. Membership, support and relation results are factory-only and immutable.
+
+**Exact representability.** A reduced value that does not fit a `MapExactValue` is not representable.
+Queries and acquisition return `NotRepresentable`. Document operations refuse with a message containing
+`not representable`. It is never `CapacityExceeded` and never rounded, snapped or toleranced.
+
+**Resolver version 2.** `MapResolverV2.Resolve` resolves documents whose recipe is `AuthoredBindingsV2`. It
+keeps explicit Y, refuses any binding whose support is not `Supported`, and refuses a space binding without a
+reference height and bounded search. `MapResolverAdoption.ConvertToAuthoredSupport` returns a detached
+version-2 copy. Resolver version 1, its options and its execution are unchanged.
+
+**Fine-patch conversion.** `MapFinePatchConversion.Convert` turns coarse regions into exact finer patches.
+Each coarse cell is classified before anything mutates as `ExactCoplanar`, `ExactDiagonal`,
+`UnsupportedEncoding` or `NotRepresentable`. The last two refuse unless the request sets
+`AcceptAuthoredDifferences`, which lists every changed face, removed fallback and removed flag. A footprint
+over a converted bound moves its wholly inside cells to the fine surface, retargets in place when every cell
+moves, and otherwise splits into `<footprintId>-<fineSurfaceId>`. A moved `LegacyExteriorV1` lower bound
+becomes `SupportFloor`. A footprint cell that the region boundary crosses refuses the whole conversion
+atomically with `footprint straddle: footprint '<id>' cell <slotCell> crosses the conversion region boundary`.
+Conversion never subdivides a footprint automatically.
+
+**Generation pinning and acquisitions.** A `MapStoredSurfaceSource` pins one manifest generation until it is
+reopened. `MapScopedSurfaces` is a further step: it publishes a detached, immutable set of acquired facts,
+so no later read touches the producer, even one pinned to the same generation.
+
+**Later rounds.** R3 owns physics sidedness, floor support and headroom, picking, placement supports, movement
+integration and tiled nav capture. R4 owns flooded and dry containment and water bed semantics over R2
+space geometry. R5 owns free prefab transforms, interior domains and roof links over the R2 compiler and
+queries in local space. R8 owns bounded surface and asset residency, lighting, occlusion, HLOD, render-origin
+adapters and backend water captures. Each must keep legacy fallback cells non-capture and emit no physics,
+nav or water faces for them. R2 claims no physics, nav, water or rendering capability.
 
 ## Storage ownership
 
@@ -31,6 +228,9 @@ for tiled storage the `tiles` subtree, `map.json`, its temp file and the save lo
 save, and for monolithic storage the document file. Paths are normalized with `Path.GetFullPath`, so dot
 segments resolve first, and compared with the writer's case policy (ordinal on Linux, ignoring case elsewhere).
 Symbolic links and other filesystem aliases are not resolved, so a link into reserved storage is not detected.
+Writer-owned native surface storage (new in 20.30.0) lives under `tiles/surfaces/`, inside the existing `tiles`
+reservation. An author-owned `surfaces/` resource directory is never reserved, swept or rewritten, and R2 leaves
+`IsReserved` unchanged.
 `MapDocumentStorage.HoldsTiledDocument(directory)` is true only when the directory holds a map manifest, unlike
 `MapDocumentFile.DetectForm`, which reports any existing directory as tiled. Native conversion uses it to accept
 a directory prepared with resources.
@@ -248,14 +448,28 @@ touched tiles are stored, and an absent or empty block leaves terrain byte-ident
 
 ## Format versioning
 
-`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes (currently 4,
-which added the native metadata, after version 3 added the root `tileSize`). Loading a document with an
+`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes (currently 5,
+which adds the support recipe and surface metadata, after version 4 added native metadata). Loading a document with an
 older `formatVersion` runs migrations
 (`MapDocumentLoadOptions.RegisterMigration`, each a pure `JsonObject -> JsonObject` step from N to N+1)
 until it reaches the current version. The engine's own steps are pre-registered by the
 `MapDocumentLoadOptions` constructor: v1 -> v2 loads a v1 document (which had no sculpt layer) with an
 empty layer and byte-identical terrain, v2 -> v3 stamps `MapDocumentFile.DefaultTileSize` (512 m), and
-v3 -> v4 (`MapNativeMigration.Upgrade`) adds `playableBounds` from `bounds` when it is absent.
+v3 -> v4 (`MapNativeMigration.Upgrade`) adds `playableBounds` from `bounds` when it is absent, and
+v4 -> v5 (`MapSurfaceMigration.Upgrade`) stamps `LegacyXzCallbackV1` without changing resolver-v1
+execution. The format advance changes authored identity once. It does not preserve the old token.
+`MapSurfaceMigration.Upgrade` clones its input and leaves a format-5 input semantically unchanged.
+
+`MapDocument.SupportRecipe` pairs resolver 1 with `LegacyXzCallbackV1` and resolver 2 with
+`AuthoredBindingsV2`. Resolver 1 refuses authored surfaces and placement support bindings. A placement
+with `SupportBinding` cannot also provide explicit `Y`. `Surfaces` owns metadata and resident patches,
+and snapshots clone its mutable collections. Monolithic documents embed canonical `surfacePatches`,
+bounded to 256 patches, 1 MiB per encoded patch and 8 MiB including array brackets and inter-patch commas.
+Embedded reads measure compact payload bytes before allocating each exact output buffer. General strings
+use default JSON escaping and packed base64 retains the codec's ASCII spelling. Parsed DOM storage and
+decoded scalar strings remain bounded by the supplied input. Larger worlds use tiled storage under
+`tiles/surfaces/`, with SHA-256 payloads, index pages and directory pages. The manifest's `surfaceStorage`
+commits their closure last.
 Any default is as arbitrary as any other for a document that had no tile concept, so the rule is
 "deterministic and documented" rather than "derived". A document newer than the engine, or an old one with
 no migration path, fails to load. Saving always writes the current version.
@@ -359,7 +573,34 @@ macOS do, Windows has no equivalent primitive and orders metadata through the NT
 
 `LoadTiled(directory, window)` loads the manifest plus the tiles in a `MapTileRect`. Unloaded tiles keep
 their index entries, so the document knows they exist and a later `SaveTiled` back to the SAME directory
-carries them through untouched.
+carries them through untouched. Surface reads map the window's world rectangle into each rational lattice,
+expand it by one cell, and load intersecting patches through covering directory and index pages.
+`MapTileIndex.IsPartial` is the unified partial flag. It includes unloaded tiles and unloaded surface pages
+and patches. `HasUnloadedTiles` retains the tile-only meaning.
+
+A window records the SHA-256 of the manifest it loaded. `SaveTiled` refuses every partial save, including a
+surfaces-only window, with `stale window` when the current manifest cannot be read or has changed since the
+window was loaded, so a window never overwrites another writer's commit
+([#1310](https://github.com/APKiwiOrg/KhaozEngine/issues/1310)). The save lock alone does not give that
+guarantee.
+
+Raw partial surface saves permit payload edits only after outgoing references, reverse page knowledge,
+reverse dependants, structure and record checks. A raw save certifies reference integrity, including exact
+XZ agreement between each corner owner's address and its dependent corner, and never geometry. It refuses a
+`dependency position` that disagrees or is not representable. A partial raw save also refuses an unloaded
+reverse dependant (`unloaded: reverse dependant`) and an unsupported partial edit of a surface declaration,
+patch structure or records. Geometry, seam heights and separation require complete native transactions.
+
+`IMapSurfaceSource` reads report `MapPatchStatus` as `Present`, `KnownEmpty`, `Unloaded`, `Missing` or `Corrupt`,
+and `FindPatches` reports `MapFindStatus` as `Complete`, `Incomplete` or `CapacityExceeded`. Only `Present` and
+`KnownEmpty` are facts. The other read outcomes are never treated as empty.
+`MapDocumentSurfaceSource.Capture` detaches resident patches and storage knowledge. `MapStoredSurfaceSource.Open`
+pins one manifest generation and verifies named bytes and patch semantics without asset reads or directory
+enumeration. Files swept by a newer save return `Missing`. `FindPatches` bounds local candidate and page
+work through `MapQueryLimits`, and capacity refusal returns no partial patches. Returned patches are clones.
+Index `SpaceIds` summarizes payload records and incidence only. Queries also consider the current surface's
+`IndoorSpan.ParentSpace`, so metadata-only edits cannot leave space filtering tied to an older page generation.
+`MapSurfaceSemantics.RootDigest` includes surface semantics and excludes storage names and page packing.
 
 **Every save entry point refuses a partial document** (`Save`, `SaveText`, `SaveTo`, `SaveAuto`,
 `SaveAs`), because the data-loss path is a windowed document reaching a whole-document writer: that write

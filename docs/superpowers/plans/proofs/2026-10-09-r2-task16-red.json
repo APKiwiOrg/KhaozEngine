@@ -1,0 +1,32 @@
+{
+  "task": "16 general native document transaction seam",
+  "stage": "intended compile-time RED",
+  "base": "b32ab3685",
+  "sources": {
+    "KhaozEngine.MapEditor.Tests/MapDoc/NativeDocumentTransactionTests.cs": "72846e200714816e48fe00465aa0facf64de5e5a50d1d8619f78c8d1484364af",
+    "KhaozEngine.MapEditor.Tests/MapDoc/TransactionFixtures.cs": "1e54229a530ed3ebeb3f16060fcdbf685a9876f099441dbcd90a0d35cb8eccaf"
+  },
+  "results": [
+    {
+      "project": "editor",
+      "filter": "FullyQualifiedName~NativeDocumentTransactionTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0538": 1,
+        "CS0246": 3
+      },
+      "missing": {
+        "INativeDocumentCommand": 3,
+        "NativeDocumentPreparation": 1
+      },
+      "planned_new_cases": 4,
+      "log_sha256": "3ed3b1e305b77c1483b1936cb38d5f74246e7925d977609da4f90751c05efb5e"
+    }
+  ],
+  "classification": "Every unique diagnostic names a planned Task 16 product type (INativeDocumentCommand, NativeDocumentPreparation). CS0538 is the explicit interface declaration on the missing interface. No unrelated errors. Both files live in MapEditor.Tests only. Full format verify passed before RED.",
+  "rulings": [
+    "T16-1 the brief line anchors date from ca13d62d7, and Task 7 already made NativeDocumentSnapshot.Clone deep-copy Surfaces, so workers follow current source."
+  ],
+  "execution": "Direct and serial under owner OA20 through build-slot, one invocation, no retry."
+}

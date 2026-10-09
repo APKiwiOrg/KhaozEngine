@@ -1,0 +1,47 @@
+{
+  "task": "15 canonical relation and portal facts for F3 and Grimhollow #458",
+  "stage": "intended compile-time RED",
+  "base": "3c7efa4ae",
+  "sources": {
+    "KhaozEngine.MapDoc.Tests/Spaces/SpaceRelationFactsTests.cs": "bd6b04e3410c810003c649ee73ea60be5a58f8dbd058c1d77fe376c27d46ba26",
+    "KhaozEngine.MapDoc.Tests/Spaces/RelationFixtures.cs": "dbaa9d0e1ea3d7b8db007a165ee82050164702cc6a449fa931c9ce454b8107b8"
+  },
+  "results": [
+    {
+      "project": "mapdoc",
+      "filter": "FullyQualifiedName~SpaceRelationFactsTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 5
+      },
+      "missing": {
+        "MapRelationResult": 3,
+        "MapRelationQuery": 2
+      },
+      "planned_new_cases": 9,
+      "log_sha256": "3ab429005c018a6432fbd51453bcc7713e234f8447b7e43cc3eab75ac55adca6"
+    },
+    {
+      "project": "editor",
+      "filter": "dotnet build (fixture glob compile check)",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 5
+      },
+      "missing": {
+        "MapRelationResult": 3,
+        "MapRelationQuery": 2
+      },
+      "planned_new_cases": 0,
+      "log_sha256": "d8e7f5db3877893acf5514f7944370b0019267d337cbb84c9c5dd7f0c95d7a46"
+    }
+  ],
+  "classification": "Every unique diagnostic names a planned Task 15 product type (MapRelationResult, MapRelationQuery). The compiler stops at signatures. No unrelated errors. Full format verify of both files passed before RED.",
+  "rulings": [
+    "T15-1 RelationFixtures.cs compiles into MapEditor.Tests, paired RED.",
+    "T15-2 aperture columns follow the resolved band chain vertices, so the far door authored at z 0 and z 4 has two columns, correcting the brief's five."
+  ],
+  "execution": "Direct and serial under owner OA20 through build-slot, one invocation per project, no retry."
+}

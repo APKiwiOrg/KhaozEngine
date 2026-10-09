@@ -1,0 +1,42 @@
+{
+  "task": "8B scoped acquisition",
+  "stage": "intended compile-time RED",
+  "base": "46652f86dd158c3070ff9586ee3335bc4ec7de01",
+  "sources": {
+    "KhaozEngine.MapDoc.Tests/Storage/AnchorFixtures.cs": "791700227ea6ae3720abd6cc3afe637823b1bfdcb890e336d7baf5aea36af664",
+    "KhaozEngine.MapDoc.Tests/Storage/ScopeFixtures.cs": "aa3e5619d4cab4ac48ec08dae920e406fa5b0237986f424d91ffa2630fe17ec3",
+    "KhaozEngine.MapDoc.Tests/Storage/AcquisitionBoundFixtures.cs": "872e2ce34a593fcc2cde9277749634f005d9f9f44a085ce4dd164d938fe04174",
+    "KhaozEngine.MapDoc.Tests/Storage/AcquisitionConformanceFixtures.cs": "89ad4f260b567610b40d3bab20b6198ce8269b61ea265d2ed53c69eb9acb3708",
+    "KhaozEngine.MapDoc.Tests/Storage/ScopedAcquisitionTests.cs": "ab94ab37ce629be2f061257b29f21b630ee78fddf00b5d41e1ee3b1b04273614",
+    "KhaozEngine.MapDoc.Tests/Storage/ScopedProducerConformanceTests.cs": "ca923c27043456835c54ab416fb66a7e5f987c80aadc3ff73e7931b0169ec13f",
+    "KhaozEngine.MapEditor.Tests/MapDoc/ScopedAcquisitionWorkTests.cs": "53a4cc8706fb34f8f3841f468529935df4c222c22cb9653216802eee3484ed9f",
+    "KhaozEngine.MapEditor.Tests/MapDoc/ScopedProducerBoundWorkTests.cs": "d36d25007f825698831768f5a19114199c54f0948f8cf954a3103432d8b2c4d5"
+  },
+  "results": [
+    {
+      "project": "mapdoc",
+      "exit_code": 1,
+      "executed": 0,
+      "diagnostics": {
+        "CS0234": 2,
+        "CS0246": 2
+      },
+      "log_sha256": "2c3514cbfcc3b17f93e6ec5037f4dd43c2ae9ba62aa366ebb002c4d08380d32c"
+    },
+    {
+      "project": "editor",
+      "exit_code": 1,
+      "executed": 0,
+      "diagnostics": {
+        "CS0246": 2
+      },
+      "log_sha256": "fe995107d63ebcb599308c0d07a95db1ff482e860e30ac0236527a40cd454a67"
+    }
+  ],
+  "classification": "MapDoc reports two missing Identity namespace imports and two missing MapScopedSurfaces declarations. Editor reports the two missing MapScopedSurfaces declarations in linked fixtures. Compiler stops at declarations, so no body-level MapAcquisitionWork or other missing-capability diagnostics are claimed. No unrelated errors.",
+  "rulings": [
+    "B1 CompleteView uses a finite256-slot public control plus source review rather than inventing a counter API.",
+    "B2 FarAnchors portal From is annex and To is outside, preserving fixed Front/Back lists required by existing validator."
+  ],
+  "execution": "Direct and serial under owner OA20, no scheduling wait or repeated invocation."
+}

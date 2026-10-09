@@ -14,22 +14,8 @@ internal interface INativePlacementCommand
 internal static class NativePlacementTransaction
 {
     internal static void Run(MapDocument document, IEditorCommand command, bool undo,
-        MapAssetClosure? assets, MapDocRegistry? registry = null, bool localOnly = false)
-    {
-        registry ??= MapDocRegistry.CreateDefault();
-        if (!localOnly && assets is null) throw new MapDocumentException("Native editing requires an explicit asset closure binding.");
-        if (command is not INativePlacementCommand native)
-            throw new MapDocumentException("This command does not support atomic native placement editing.");
-        // Serialization is also a deep copy of extension-owned analytic payloads using the caller's registry.
-        var candidate = NativeDocumentSnapshot.Clone(document, registry);
-        Action accept = native.Prepare(candidate, undo);
-        if (localOnly) MapBoundDocumentValidation.ValidateLocal(candidate, registry);
-        else MapBoundDocumentValidation.Validate(candidate, assets!, registry);
-        // Keep the public document instance. Only placement state belongs to this transaction.
-        document.Placements = candidate.Placements;
-        document.NumericIdHighWaterMark = candidate.NumericIdHighWaterMark;
-        accept();
-    }
+        MapAssetClosure? assets, MapDocRegistry? registry = null, bool localOnly = false) =>
+        NativeDocumentTransaction.Run(document, command, undo, assets, registry, localOnly);
 
     internal static MapPlacement Copy(MapPlacement p) => new()
     {
@@ -38,6 +24,7 @@ internal static class NativePlacementTransaction
         AssetId = p.AssetId,
         NumericId = p.NumericId,
         DisplayName = p.DisplayName,
+        SupportBinding = p.SupportBinding,
         X = p.X,
         Y = p.Y,
         Z = p.Z,

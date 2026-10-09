@@ -9809,8 +9809,17 @@ silently dropping it.
 `JsonObject -> JsonObject` transform run before deserialization when an old document's `formatVersion` is
 behind `MapDocumentFile.CurrentFormatVersion`. Migrations must form a contiguous chain up to the current
 version or the load fails. The engine's own steps are pre-registered: v1 to v2 dropped the reserved
-`terrainOverrides` placeholder, and v2 to v3 stamps `tileSize` with `MapDocumentFile.DefaultTileSize`
-(512 m). A v3 monolithic file is legal and is what `Save` writes: version and layout are independent axes.
+`terrainOverrides` placeholder, v2 to v3 stamps `tileSize` with `MapDocumentFile.DefaultTileSize`
+(512 m), v3 to v4 adds `playableBounds` from `bounds` when it is absent, and v4 to v5 stamps the
+`LegacyXzCallbackV1` support recipe. `MapDocumentFile.CurrentFormatVersion` is 5, and saving always writes
+it. Version and layout are independent axes, so a monolithic file at the current version is legal. Format 5
+and the v4 to v5 step are new in 20.30.0. Releases up to 20.29.1 write format 4.
+
+From 20.30.0, a format-4 document migrates on load with no action from the game. Its authored
+identity token changes exactly once at that format advance, with no continuity to the old token, so
+recompute any stored token after the first load. That token change arrives with 20.30.0 too. Resolver-v1
+options, including the caller's `OptionsHash`, and resolver-v1 execution are unchanged. The authored-surface
+resolver version 2 is new in 20.30.0 and is opt-in through a document's resolver identity.
 
 ### The tiled form: a directory instead of a file
 
@@ -9824,6 +9833,10 @@ island.map/                        a directory, not a file
     s_0_0/                         shard dir, shard = tile >> 4, a filesystem nicety and never a load unit
       t_0_0.<64 hex>.json          content-addressed: the suffix IS that tile's canonical hash
       t_3_-2.<64 hex>.json
+    surfaces/                      writer-owned native surface storage, new in 20.30.0
+      d/<64 hex>.json              directory pages, content-addressed
+      i/<64 hex>.json              index pages, content-addressed
+      p/<2 hex>/<64 hex>.json      surface patch payloads, content-addressed
 ```
 
 The manifest carries the globals (bounds, terrain, scatter and companion layers, exclusions, scatter
@@ -9860,15 +9873,20 @@ tile once, O(n) to build and O(k) per query, so a whole-document workflow still 
 `MapRuntime.BuildPlacements` grows a rect overload and two index overloads beside the untouched
 whole-document one.
 
-**Windowed loading.** `LoadTiled(directory, window)` reads the manifest plus the tiles in a `MapTileRect`.
-Unloaded tiles keep their index entries, so a later `SaveTiled` back to the SAME directory carries them
-through untouched. **Every save entry point refuses a partial document** (`MapTileIndex.IsPartial`): a
-whole-document write of a window silently drops every unloaded tile and looks like a successful save. The
-guard is on the document rather than on one writer, so a save path added later inherits it.
+**Windowed loading.** `LoadTiled(directory, window)` reads the manifest, the tiles in a `MapTileRect`, and
+native surface pages and patches intersecting the world window expanded by one surface cell. Windowed surface
+loading is new in 20.30.0. `MapTileIndex.IsPartial` includes unloaded tiles, unread surface pages and
+unloaded surface patches. `HasUnloadedTiles` retains the tile-only meaning. `SaveTiled` back to the SAME
+directory carries cold content through unchanged, subject to its reference and partial-edit guards.
+Whole-document writers refuse partial views, including surface-only windows, rather than silently dropping
+cold content. A window remembers the manifest it loaded. A windowed `SaveTiled`, including a surfaces-only
+window, refuses with `stale window` when another writer has changed the manifest since the window was loaded,
+or when the current manifest cannot be read. Reload the window and reapply the edit.
 
-**Saving never materializes the document.** `SaveTo(doc, stream)` serializes straight through a
-`Utf8JsonWriter`, and `Save` is reimplemented over it, so the monolithic ceiling is disk rather than the
-.NET single-object element count. `SaveTiled` writes one tile at a time and **does not rewrite a tile whose
+**Streamed content and bounded surface embedding.** `SaveTo(doc, stream)` serializes through a
+`Utf8JsonWriter`, and `Save` uses it without building one whole-document text buffer. Native surface
+embedding has separate limits of 256 patches and 8 MiB. Larger native surfaces require tiled storage.
+`SaveTiled` writes one tile at a time and **does not rewrite a tile whose
 canonical hash is unchanged**. Its ordering is crash-consistent: changed tiles are written at names nothing
 points at yet, then a single `map.json` rename commits, then a best-effort sweep collects what the new
 manifest does not name. Crash at any instant and the directory loads as entirely the old version or
@@ -10033,6 +10051,61 @@ unknown scatter layer reference, a `terrainOverrides` tile that leaves the docum
 `MapDocumentException`, so a game does not boot on a bad document, the opposite of how the engine
 quarantines a corrupt runtime cell blob and carries on. See the `KhaozEngine.MapDoc` package README for
 the full section list and a complete example document.
+
+**Whole authored surface identity.** Scheme 2, new in 20.30.0, is the resolver-2 whole-document identity. Resolver-2
+documents use `MapAuthoredIdentityV2` from `KhaozEngine.MapDoc.Identity`, with an explicitly verified
+`MapAssetClosure` and resolver-2 options:
+
+```csharp
+var options = new MapResolveOptions("headless", 1, "options", ResolverVersion: 2);
+string editedToken = MapAuthoredIdentityV2.Compute(completeDocument, verifiedAssets, options);
+var pinned = MapStoredSurfaceSource.Open(tiledDirectory);
+string storedToken = MapAuthoredIdentityV2.Compute(pinned, verifiedAssets, options);
+```
+
+The complete-document overload hashes current unsaved semantics, even when persisted baselines are old.
+A partial editing window refuses with `window` before other validation. Both overloads require resolver
+`(1, 2)`, `AuthoredBindingsV2`, valid builder options and exact native root membership in the supplied
+closure. The stored overload retains the original manifest metadata, traverses every pinned directory
+and index, verifies and hashes one payload at a time, and checks per-surface aggregates. It rereads payload
+bytes even with warm metadata caches. A swept payload refuses with `Missing`, while byte or semantic
+mismatches refuse with `Corrupt`. A changed manifest requires a new `Open`, never an implicit replacement.
+It also reads the tile files the pinned generation names, one at a time by their pinned names, and checks
+each tile's parsed content against its pinned tile hash. A removed tile file refuses with `Missing` and
+altered content with `Corrupt`.
+
+The `kemap/native-authored/2` token covers exactly the root digest, the authored content digest, ordered
+patch keys and semantic digests, the closure hash, the builder ID and version, the options hash and the
+resolver version. The content digest (`kemap/native-content/1`) covers placements, including explicit `Y`
+and `SupportBinding`, spawns, player spawns and sculpt tiles, normalized as scheme 1 normalizes them with
+placement display names stripped. `MapSurfaceSemantics.RootDigest` and scoped identity cover globals and
+surfaces only, never tile content. Repacking, embedding and incident bookkeeping do not change the token.
+Equivalent complete in-memory, monolithic, tiled and repacked documents share a token. Resolver 1 uses
+`MapAuthoredIdentity`.
+
+**Scoped authored surface reads.** Scoped acquisition is new in 20.30.0.
+`MapScopedSurfaces.Acquire(source, scope, assetSha256)` publishes an immutable view and factory-only
+coverage, read and identity witnesses. Stored sources and `MapDocumentSurfaceSource.Capture(document)`
+support it. Custom producers must implement
+`IMapSurfaceAcquisitionSource` and open one pinned session across discovery, record expansion and bound
+reads. A source implementing only `IMapSurfaceSource` refuses with
+`surface source does not support bounded scoped acquisition` before legacy callbacks run.
+
+Sessions report ordered `ReservedPatchKeys` before work for every discovery or explicitly read key,
+including known-empty and unavailable keys, against one unique-key budget. Returned keys, reservations,
+surface metadata, payload digests, snapshots and per-operation decode deltas must be coherent.
+`TryGetIncidentRecords` distinguishes true with an empty list (known no incidents) from false with null
+(unknown incidence, which makes the view incomplete). Remote incident-only anchors remain required.
+Missing or unread data cannot certify emptiness. One visit budget spans all phases, including cache
+hits, with separate metadata and range allowances of `1 + 4 * 256 * MaxPageReads` each. `PagesRead`
+counts newly decoded pages, so zero decodes do not imply zero charged work.
+
+Published views copy payloads, nested lists, scope filters and asset digests, return fresh patch clones,
+and never reread the producer. `MapScopedIdentity` uses `kemap/scoped/1` for those acquired facts and
+policies, and `RequireComplete()` refuses incomplete coverage. A complete scoped result from a partial
+editing window remains distinct from a whole current-edit identity. See the
+[`MapDoc` package reference](../KhaozEngine.MapDoc/README.md#bounded-scoped-acquisition) for producer
+conformance and session budgets.
 
 **Native resolution and render adaptation.** `MapResolver.Resolve` returns an immutable
 `MapResolvedDocument` whose `AssetClosure` is the same verified closure it resolved against, so a consumer
@@ -11456,13 +11529,24 @@ form conversion (`convert_to_tiled` / `convert_to_single`) and re-tiling (`retil
 below, and there is no GUI affordance for either. A large authored world is expected to convert once, from
 the tool, and the GUI editor just opens whatever form is already on disk.
 
-**Native placement editing.** Opted-in documents require a verified closure bound with
-`EditorDocument.BindNativeAssets`. A `ke-mapedit` session binds the closure it verifies on open, see below.
-Native placement transactions
-validate candidates before publication, and retained allocation high-water marks participate in dirty
-tracking. Native rename edits `DisplayName` without changing selection or either identity. Explicit
-`RemapPlacementIdCommand` changes the stable ID while preserving numeric identity. See the MapEditor
-package README for the supported transaction boundary and low-level validation distinction.
+**Native document editing.** This path is new in 20.30.0. Opted-in documents require a verified closure
+bound with `EditorDocument.BindNativeAssets`. A `ke-mapedit` session binds the closure it verifies on open,
+see below. Native document transactions validate typed write sets before selective publication and refuse
+partial windows before preparation. `EditorDocument.LastNativeEffects` reports accepted execute, undo and redo
+effects, preserving the previous result on rejection. Placement commands use the same seam, and retained
+allocation high-water marks participate in dirty tracking. Native rename edits `DisplayName` without changing
+selection or either identity. Explicit `RemapPlacementIdCommand` changes the stable ID while preserving
+numeric identity. See the MapEditor package README for the supported transaction boundary and low-level
+validation distinction.
+
+The terrain path, new in 20.30.0, prepares `MapTerrainEdit` values with `MapTerrainEdits.Prepare`, without
+mutating its input surface set. Execute `new TerrainEditCommand(edit)` through a bound `EditorDocument`
+for validation and atomic publication. Accepted commands retain exact patch and surface-ref snapshots,
+so undo and redo restore owners, records and identity without resampling. The programmatic service method
+`MutationService.TerrainApply(edit)` runs the same command under the session lock and returns both the
+`MutationResult` and `MapNativeEditEffects`. GUI and service edits produce identical canonical documents
+and `Effects.Describe()` text. Missing or disagreeing smoothing halos, unresolved owners, anchors and
+invalid space separation refuse without changing committed state. Terrain MCP verbs remain planned for R10.
 
 **Renaming.** For analytic documents, the placement, spawn, player spawn, and region inspectors lead with an inline-editable Name
 row. Committing a new value renames the element through `RenamePlacementCommand`, `RenameSpawnCommand`,
@@ -11537,7 +11621,14 @@ into the thrown message on failure, so the in-session document is never left inv
 **Native lifecycle.** A document with `ResolverIdentity` is verified completely by
 `NativeDocumentService.ValidateComplete(document, source, options)` at open, window moves, save, validate,
 summary, conversion and retile. Its resource root is the monolithic file's directory or the tiled directory,
-anchored as an absolute path at open. Open and `set_window` bind the freshly verified closure only after the
+anchored as an absolute path at open. Resolver identity `(1, 1)` uses the unchanged analytic `SessionOptions`
+(`khaozengine.mapedit.analytic-support`, builder version 1, options hash
+`mapruntime-buildfield-default-registry-v1`). The resolver identity `(1, 2)`, new in 20.30.0, uses `SessionOptionsV2`
+(`khaozengine.mapedit.authored-support`, builder version 1, options hash
+`mapdoc-resolver-v2-authored-bindings-v1`, resolver version 2) with `MapResolverV2` over a captured document
+surface source. Unknown identities and options with a mismatched resolver version refuse before reading
+resources. Authored bindings never fall back to analytic support.
+Open and `set_window` bind the freshly verified closure only after the
 candidate passes, and a windowed native load refuses. Every write verifies first, conversions against the
 destination's resources (never copied or rebased), and monolithic native saves are staged and promoted
 atomically by replacing the destination entry (no write through a symbolic link, no preserved mode or ACL).
@@ -11574,7 +11665,8 @@ to notice a coordinated client/server release is now needed.
 **Validation scope.** `map_validate()` validates the document structure and schema, including each loaded
 tile of a windowed document against the tile schema. `SchemaScope` reports `document`, `loadedTiles`, or
 `none`. Pass `verifyWholeWorld: true` to also run `MapDocumentFile.VerifyTiled` against a tiled source's
-saved directory. `WholeWorldChecked`, `WholeWorldValid`, and `WholeWorldErrors` describe that separate
+saved directory, including native surface byte/semantic integrity, references and incident bookkeeping.
+This is not geometry or navigation certification. `WholeWorldChecked`, `WholeWorldValid`, and `WholeWorldErrors` describe that separate
 on-disk check, which does not replace validation of unsaved loaded edits. A failed requested whole-world
 check makes the overall `Valid` result false.
 

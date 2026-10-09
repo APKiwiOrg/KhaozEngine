@@ -174,7 +174,7 @@ public sealed class NativeNumericIdTests
         Assert.Equal(12L, doc.Placements[0].NumericId);
         Assert.Equal(12L, doc.NumericIdHighWaterMark);
         var saved = JsonNode.Parse(MapDocumentFile.SaveText(doc))!;
-        Assert.Equal(4, saved["formatVersion"]!.GetValue<int>());
+        Assert.Equal(5, saved["formatVersion"]!.GetValue<int>());
         Assert.Equal(7, saved["terrain"]!["seed"]!.GetValue<int>());
     }
 

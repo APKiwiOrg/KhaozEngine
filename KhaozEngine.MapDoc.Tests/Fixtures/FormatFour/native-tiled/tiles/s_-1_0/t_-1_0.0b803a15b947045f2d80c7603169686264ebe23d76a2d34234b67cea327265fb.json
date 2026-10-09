@@ -1,0 +1,22 @@
+{
+  "$schema": "../../mapdoc.tile.schema.json",
+  "placements": [
+    {
+      "id": "a",
+      "kind": "building_inn",
+      "x": -30,
+      "z": 20,
+      "yaw": 0.371,
+      "scale": 1.137,
+      "tags": [
+        "first",
+        "second"
+      ],
+      "numericId": "11",
+      "assetId": "tree"
+    }
+  ],
+  "spawns": [],
+  "playerSpawns": [],
+  "sculpt": []
+}

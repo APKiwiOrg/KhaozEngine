@@ -9743,8 +9743,16 @@ silently dropping it.
 `JsonObject -> JsonObject` transform run before deserialization when an old document's `formatVersion` is
 behind `MapDocumentFile.CurrentFormatVersion`. Migrations must form a contiguous chain up to the current
 version or the load fails. The engine's own steps are pre-registered: v1 to v2 dropped the reserved
-`terrainOverrides` placeholder, and v2 to v3 stamps `tileSize` with `MapDocumentFile.DefaultTileSize`
-(512 m). A v3 monolithic file is legal and is what `Save` writes: version and layout are independent axes.
+`terrainOverrides` placeholder, v2 to v3 stamps `tileSize` with `MapDocumentFile.DefaultTileSize`
+(512 m), v3 to v4 adds `playableBounds` from `bounds` when it is absent, and v4 to v5 stamps the
+`LegacyXzCallbackV1` support recipe. `MapDocumentFile.CurrentFormatVersion` is 5, and saving always writes
+it. Version and layout are independent axes, so a monolithic file at the current version is legal.
+
+A format-4 document migrates on load with no action from the game. Its authored identity token changes
+exactly once at that format advance, with no continuity to the old token, so recompute any stored token
+after the first load. Resolver-v1 options, including the caller's `OptionsHash`, and resolver-v1 execution
+are unchanged. The authored-surface resolver version 2 is unreleased R2 work and is opt-in through a
+document's resolver identity.
 
 ### The tiled form: a directory instead of a file
 
@@ -9800,6 +9808,9 @@ and native surface pages and patches intersecting the world window expanded by o
 `HasUnloadedTiles` retains the tile-only meaning. `SaveTiled` back to the SAME directory carries cold
 content through unchanged, subject to its reference and partial-edit guards. Whole-document writers
 refuse partial views, including surface-only windows, rather than silently dropping cold content.
+A window remembers the manifest it loaded. A windowed `SaveTiled`, including a surfaces-only window,
+refuses with `stale window` when another writer has changed the manifest since the window was loaded, or
+when the current manifest cannot be read. Reload the window and reapply the edit.
 
 **Streamed content and bounded surface embedding.** `SaveTo(doc, stream)` serializes through a
 `Utf8JsonWriter`, and `Save` uses it without building one whole-document text buffer. Native surface

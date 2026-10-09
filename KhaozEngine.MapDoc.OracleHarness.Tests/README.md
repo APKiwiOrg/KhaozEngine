@@ -33,6 +33,22 @@ in the fixture directory. Expectation tests read the committed copy from their o
 
 ## Private oracle boundary
 
+KhaozEngine is public and its shipped-source oracle is private. These rules restate the D1 boundary the
+harness enforces:
+
+- Public CI runs only synthetic fixtures. This project is the one place the exhaustive shipped comparison
+  runs, outside `KhaozEngine.slnx`, and public PR CI never sees its credentials, the private checkout or this
+  project.
+- Every private test body runs inside `PrivateOracleEntry.Run`, the one entry boundary. It reads exactly the
+  four named variables, validates them, creates the report securely, runs the body and maps every exception.
+- Missing or unsafe inputs fail and are never skipped or waived.
+- The report is created securely or the body never runs.
+- Every failure route is sanitized. Bodies use only `report.Check` and `report.Record`, never `Assert` on
+  source-derived values, `ITestOutputHelper`, the console or `[InlineData]` with source data.
+- Nothing private enters this repository, its CI or its logs of record: no source bytes, per-path
+  provenance, coordinates, derived geometry, counts, digests of private content or detailed reports. The
+  engine records only pass or fail and the private record reference.
+
 The private oracle entry is separate from the public recorder and uses Unix permission checks.
 It has no discovery-time input reads. Never commit private shipped
 source, derived geometry, coordinate inventories, private digests, snapshots or detailed reports
@@ -58,6 +74,29 @@ report error and fails with the fixed secure-report message. Final report links 
 including dangling links. Parent directory links are resolved before containment and mode checks.
 Missing or mismatched private inputs fail, never skip. Actual private source
 selection, extraction and execution belong to the controller's separate acceptance step.
+
+## Exhaustive terrain comparison
+
+`ShippedTerrainComparisonTests` enters through `PrivateOracleEntry.Run`. `ShippedSourceInventory.ReadRegions`
+loads the world named by the single attested `world.json` path under the verified extraction root and returns
+its regions in signed region order. `ShippedTerrainComparison.CompareRegion` links the public
+`LegacyOracleConverter` and calls only its assertion-free members. For every region and every plane it
+checks, through `report.Check` only:
+
+- exact corners against the stored lattice, with derived upper planes recorded as derived
+- exact cell bytes, including the reserved Bridge bit
+- equal legacy triangle and native support-face counts, every vertex within 0.00001 m and every normal
+  component within 0.000001
+- the legacy fallback cell set
+- shared corners across every signed region seam
+- no topology records
+
+The document must use tile size 1 and four planes. When the provenance `comparison` object names
+`spikePoint` as `{ "worldX": <metres>, "worldZ": <metres> }` and the source still draws ground there on
+plane 0, the native support height from `MapSurfaceCompiler.ExactHeight` must equal the legacy plane-0
+movement triangle within 0.00001 m. An absent `spikePoint` names no point, and a malformed one fails the run.
+Per-plane counts and maximum errors are recorded only in the private report. An exceedance is a reported
+failure carried privately, never a tolerance change.
 
 The harness requires its own explicit build, test and format verification because the solution
 does not include it. An unfiltered harness run is not a substitute for the separately gated

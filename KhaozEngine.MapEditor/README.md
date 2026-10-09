@@ -887,9 +887,10 @@ Undo and redo replay those snapshots, restoring corner owners, topology records,
 semantic identity without rerunning smoothing or conversion. Undo reports digest and owner changes from
 new to old. A rejected preparation never captures command state. Both modes validate the published
 surfaces, including space coverage. Direct terrain `Apply` and `Revert` check document-local validity
-only, while bound editor transactions also check the asset closure. `MutationService.TerrainApply(edit)` runs this same command under the
-service session lock and returns `MapTerrainMutationResult` with identical document bytes and effects
-text. These are programmatic APIs. Terrain MCP verbs are deferred to R10.
+only, while bound editor transactions also check the asset closure. `EditorDocument.LastNativeEffects`
+reports the accepted terrain execute, undo or redo. `MutationService.TerrainApply(edit)` runs this same
+command under the service session lock and returns `MapTerrainMutationResult` with identical document
+bytes and effects text. These are programmatic APIs. Terrain MCP verbs are deferred to R10.
 
 The unreleased R2 service lifecycle routes resolver identity `(1, 2)` through
 `NativeDocumentService.SessionOptionsV2` and `MapResolverV2` over captured authored surfaces at every

@@ -18,5 +18,6 @@
     <Compile Include="../KhaozEngine.MapDoc.Tests/NativeAssetFixtures.cs" Link="NativeAssetFixtures.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Tests/FormatFourFixtures.cs" Link="FormatFourFixtures.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Tests/AssertFixtures.cs" Link="AssertFixtures.cs" />
+    <Compile Include="../KhaozEngine.MapDoc.Compatibility.Tests/LegacyOracleConverter.cs" Link="LegacyOracleConverter.cs" />
   </ItemGroup>
 </Project>

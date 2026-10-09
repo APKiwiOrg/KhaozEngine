@@ -105,6 +105,13 @@ rejection. `PlacementRename` changes the native display label and returns the un
 explicit service APIs `PlacementLabel` and `PlacementRemapId` distinguish label edits from stable-ID
 remapping. These are service APIs, not additional MCP registrations.
 
+The unreleased R2 terrain path is also a service API. `MutationService.TerrainApply(edit)` runs the GUI's
+`TerrainEditCommand(MapTerrainEdit)` under the session lock, through the same native transaction seam. It
+refuses an analytic document and returns `MapTerrainMutationResult`, holding the `MutationResult` and the
+accepted `MapNativeEditEffects`. A GUI edit and a service edit of the same document produce identical
+document bytes and effects text, which the GUI reports through `EditorDocument.LastNativeEffects`. Terrain
+MCP verbs are deferred to R10.
+
 ## Tiled documents, whole-load vs windowed
 
 `map_open` and `map_save` are form-aware, matching the GUI editor: `map_open` dispatches on

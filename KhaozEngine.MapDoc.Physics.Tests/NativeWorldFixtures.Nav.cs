@@ -11,6 +11,7 @@ using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Movement;
 using KhaozEngine.Navigation;
 using KhaozEngine.Physics.Bepu;
+using KhaozEngine.Terrain;
 
 namespace KhaozEngine.Tests.MapDoc.Physics;
 
@@ -90,6 +91,35 @@ internal static partial class NativeWorldFixtures
         new MapBox3(55, -1, 19.5, 57, 1, 21), new MapBox3(55, -1, 19.5, 57, 1, 21),
         Array.Empty<MapPatchKey>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<MapDigestChange>(),
         MapNativeInvalidation.Terrain | MapNativeInvalidation.Nav);
+
+    /// <summary>A resolver-1 world over x 0 to 128 and z -64 to 0, so it spans navigation tiles (0, -1) and (1, -1) of
+    /// a 64 m grid at the origin, over flat analytic ground at y 0. Its terrain block and its one sculpt tile are the
+    /// ones <c>MapLegacyTerrainDigestTests</c> pins: seed 7, water level -0.5 and one meadow band at base height 1.5,
+    /// and tile (1, -1) at the default 0.5 m cell with delta 1.5 at local cell (0, 0) and -0.25 at (1, 1). That tile's
+    /// footprint spans x 15.5 to 32 and z -16.5 to 0, so it meets the capture of tile (0, -1) only. The crate stands at
+    /// (16, 0, -48) in tile (0, -1).</summary>
+    internal static MapBuiltWorld BuildLegacyPinnedTerrain()
+    {
+        NativeFixture f = Crate();
+        MapDocument document = f.Document;
+        document.ResolverIdentity = new(1, 1);
+        document.SupportRecipe = MapSupportRecipe.LegacyXzCallbackV1;
+        document.Surfaces = new MapSurfaceSet();
+        document.Bounds = new() { MinX = 0, MinZ = -64, MaxX = 128, MaxZ = 0 };
+        document.PlayableBounds = new() { MinX = 0, MinZ = -64, MaxX = 128, MaxZ = 0 };
+        document.Placements[0].X = 16f;
+        document.Placements[0].Z = -48f;
+        document.Terrain.Seed = 7;
+        document.Terrain.WaterLevel = -0.5f;
+        document.Terrain.Biomes.Add(new MapBiomeBand { Biome = BiomeId.Meadow, BaseHeight = 1.5f });
+        var tile = new MapSculptTile(1, -1);
+        tile[0, 0] = 1.5f;
+        tile[1, 1] = -0.25f;
+        document.TerrainOverrides = new MapTerrainOverrides();
+        document.TerrainOverrides.PutTile(tile);
+        return MapWorldBuilder.Build(document, f.Assets,
+            Options() with { Resolve = LegacyResolveOptions, LegacySupportHeight = (_, _) => 0f });
+    }
 
     static MapBuiltWorld BuildLegacyStripWith(float crateX, (int X, int Z)? sculptCell)
     {

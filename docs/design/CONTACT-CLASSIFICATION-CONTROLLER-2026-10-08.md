@@ -2,8 +2,10 @@
 
 Date: 2026-10-08, revised 2026-10-09 for ground ownership. Specifies [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438), the phase 2
 direction chosen in [PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md](PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md).
-Status: written for owner review. Phase 1 is specified in full. Phases 2 to 6 are specified at the level
-of contracts and exit criteria, and each gets its own detailed spec before implementation.
+Status: phases 1 and 2 are implemented and released in 20.30.0, and phase 2b is implemented and staged for
+20.31.0. Nothing consumes the controller yet. Phases 3 to 6 are specified at the level of contracts and exit
+criteria, and each gets its own detailed spec before implementation. No game adopts before the two gates in the
+phases table pass.
 
 ## Why now
 
@@ -190,8 +192,9 @@ Every phase's suite asserts these.
 |---|---|---|
 | 1. Contact foundation | Integrated feature query, certified support primitive, contact classifier | Phase 1 suite green, including the swimming bank repro. Legacy stepper byte-unchanged. |
 | 2. Ground core | Up, side, down passes, recovery, slopes, walls, step-up, step-down, ledges ([phase 2 spec](CONTACT-CONTROLLER-PHASE-2-GROUND-CORE-2026-10-10.md)) | Ground suite green, including the shallow-tread runs at 2, 3 and 4 m/s and the 0.41 m ledge. |
-| 2b. Certified support coverage | A complete support neighborhood across statics, certified at concave creases, vertices, curved primitives and through one-sided back faces (#1329 to #1333, #1340, #1342, [phase 2b spec](CONTACT-CONTROLLER-PHASE-2B-SUPPORT-NEIGHBORHOOD-2026-10-10.md)) | Every phase 1 refusal row replaced by a certified result. Must land before any game adopts. Implemented, staged for 20.30.1. |
+| 2b. Certified support coverage | A complete support neighborhood across statics, certified at concave creases, vertices, curved primitives and through one-sided back faces (#1329 to #1333, #1340, #1342, [phase 2b spec](CONTACT-CONTROLLER-PHASE-2B-SUPPORT-NEIGHBORHOOD-2026-10-10.md)) | Every phase 1 refusal row replaced by a certified result. Must land before any game adopts. Implemented, staged for 20.31.0. |
 | Cost gate before adoption | Support query time ([#1334](https://github.com/APKiwiOrg/KhaozEngine/issues/1334)). A `FootSupport.Find` takes 55 to 165 microseconds on ordinary scenes, 542 microseconds on a 20,000-triangle grid and 102 ms on a 96-triangle fan, with zero allocation. Candidate approaches: filtered predicates with an exact fallback, lazy joins tested only where certification reads them, and a per-lease join cache. | Recorded time per `Find` within the #1334 budget on ordinary scenes and dense fans, results unchanged against the recorded equivalence fixture. No game adopts before it passes. |
+| Hidden support gate before adoption | Support hidden under a sloped first contact ([#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347)). `FootSupport` certifies only the neighborhood at each probe's first sweep contact, so a sloped surface that stops the leg probe can hide a lower walkable surface inside the disc. Candidate approaches: a neighborhood over the whole foot cylinder, or a second proposal below the first contact. | The wedge and crate case in the known limits gives the crate top's 0.1. Navigation capture and adoption wait for it. |
 | 3. Air and state | Jump, coyote, momentum, landing impact, commitment, steep slide, traction hysteresis | Air and slide suite green with invariants 5 to 8. |
 | 4. Signals and fluids | Climb signals, step delta, support grant, facing, the swimming handoff contract | Signal suite green. Swimming's explicit grounded ticks run on this ground core. |
 | 5. Switch, wire, navigation | `MoveTuning` selector, any wire fields, bake identity, traversal probe and capture on the selected controller | Both controllers selectable. Legacy bakes still load. A new-controller bake round-trips. |
@@ -286,9 +289,17 @@ Known limits:
 - A one-sided fin tilted very slightly upward within 1 cm of the axis is still hit by the probe, contributes
   below the band and hides the floor beneath, giving `None`. An exactly vertical fin is culled.
 - Support query time misses its target and is the cost gate before adoption in the phases table.
+- A surface lying under a higher sloped surface inside the same disc can still be hidden, because each probe
+  certifies only the neighborhood at its first sweep contact. Over a floor at 0 with foot radius 0.2, a crate top
+  at 0.1 spanning x 0.05 to 0.12 and a 60 degree wedge `y = 0.25 + tan60 (x - 0.2)` at the disc rim, the leg probe
+  meets the wedge first with its centre at about 0.303. The crate top is not a member of that neighborhood, so
+  support is Walkable at 0 where the support rule gives 0.1. This is the hidden support gate in the phases table
+  ([#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347)).
+- A steep roof built from two interpenetrating box slabs pitched above 45 degrees reads Walkable at the ridge, as
+  it did in phase 1.
 
-Phase 2b closed the phase 1 limits where a lower surface under a higher one inside the disc was not proposed,
-where separate statics could not form a certified crease, and where a probe meeting a back face refused.
+Phase 2b closed the phase 1 limits where separate statics could not form a certified crease and where a probe
+meeting a back face refused. It closed the hidden lower surface limit only for back faces.
 
 ### Shell queries
 

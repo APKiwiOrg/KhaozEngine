@@ -4,7 +4,7 @@ Date: 2026-10-10. Detailed spec for phase 2b of [#438](https://github.com/APKiwi
 program, body model, support rule and invariants are in
 [CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md](CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md). Phase 1 and
 [phase 2](CONTACT-CONTROLLER-PHASE-2-GROUND-CORE-2026-10-10.md) are on main at `b51f4fdf9`. Status: approved by
-the owner 2026-10-10, implemented, staged for 20.30.1. No consumer or movement change. Plan in
+the owner 2026-10-10, implemented, staged for 20.31.0. No consumer or movement change. Plan in
 `docs/superpowers/plans/2026-10-10-contact-controller-phase2b.md`. This document describes what shipped,
 including the rulings made during implementation.
 
@@ -26,7 +26,9 @@ It closes:
 | [#1340](https://github.com/APKiwiOrg/KhaozEngine/issues/1340) | Each probe certifies only the static its sweep reports, so a plateau beside a separate steep face reads `Steep`. |
 | [#1342](https://github.com/APKiwiOrg/KhaozEngine/issues/1342) | The feature query returns `Unresolved` within about 2e-7 m of a face and edge boundary, which stalls stair runs. |
 
-It also closes the phase 1 known limit where a lower surface under a higher one inside the disc is not proposed.
+It closes the phase 1 known limit where a lower surface under a higher one inside the disc is not proposed only
+where a back face hid it. A sloped surface that stops the leg probe can still hide one
+([#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347)), as Known limits describes.
 
 ## The root cause
 
@@ -190,9 +192,10 @@ pose to the neighborhood query instead of naming a single static.
   culled, and raycasts are already one-sided. Bepu's contact generation treats mesh triangles as one-sided, so the
   support probe now agrees with the simulation. It passes a down-facing or vertical one-sided triangle and reaches
   the floor beneath. Shell sweeps do not set the flag, and a back face stays a wall to the shell.
-- **Hidden lower surface.** Selection takes the highest contribution, so a lower surface under a higher one only
-  mattered when the higher one was excluded. Back faces were the only exclusion, and the probe now passes them.
-  The phase 1 known limit closes with no third probe.
+- **Hidden lower surface.** The probe now passes back faces, so a one-sided triangle no longer hides the floor
+  beneath it. The limit is not closed in general. Each probe certifies only the neighborhood at its first sweep
+  contact, so a sloped surface that stops the leg probe can still hide a lower walkable surface inside the disc,
+  as Known limits describes.
 
 ## Refusals and held bodies
 
@@ -243,6 +246,15 @@ for surfaces that meet within the contact band.
   the band and hides the floor beneath, giving `None` as phase 1 did. An exactly vertical fin is culled and the
   floor is read.
 - A join decided at exactly the band tolerance switches a cap on or off, as above.
+- A surface lying under a higher sloped surface inside the same disc can be hidden, because each probe certifies
+  only the neighborhood at its first sweep contact. Over a floor at 0 with foot radius 0.2, a crate top at 0.1
+  spanning x 0.05 to 0.12 and a 60 degree wedge `y = 0.25 + tan60 (x - 0.2)` at the disc rim, the leg probe meets
+  the wedge first with its centre at about 0.303. The crate top is not a member of that neighborhood, so support
+  is Walkable at 0 where the support rule gives 0.1. A neighborhood over the whole foot cylinder or a second
+  proposal below the first contact would close it. It gates navigation capture and adoption beside the #1334 cost
+  gate ([#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347)).
+- A steep roof built from two interpenetrating box slabs pitched above 45 degrees reads Walkable at the ridge, as
+  it did in phase 1.
 
 ## Suite
 
@@ -283,7 +295,8 @@ contact skin, and no test depends on a micrometre sweep result.
 ## Boundaries
 
 No `MoveTuning`, wire, navigation or consumer change. The legacy stepper stays byte-unchanged. `QueryCapsuleFeature`
-and its proofs stay as they are. Phase 2b rides 20.30.1 under the release ritual.
+and its proofs stay as they are. Phase 2b rides 20.31.0 under the release ritual. It is a minor version because
+`IPhysicsSupportNeighborhood` and `QueryFilter.CullBackFaces` are additive public API.
 
 ## Risks
 

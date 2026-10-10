@@ -202,8 +202,9 @@ public class FootSupportBoundaryTests
     public void BackFaceOfOneSidedMeshSeesTheFloor(SceneVariant variant)
     {
         // Reversed from the up-facing quad winding, so the triangle faces down. The probes pass its back face, as
-        // the simulation's one-sided contacts do, and certify the floor beneath. This was the phase 1 hidden lower
-        // surface limit: the back face was the only surface that could hide a lower one from the probes.
+        // the simulation's one-sided contacts do, and certify the floor beneath. This closes the back-face case of
+        // the hidden lower surface limit only. A sloped surface that stops the leg probe can still hide a lower
+        // walkable surface inside the disc (#1347).
         using FootSupportScene scene = Floor(variant, 0)
             .Mesh("ceiling", [new(-2, 0.1f, -2), new(-2, 0.1f, 4), new(4, 0.1f, -2)]);
         AssertWalkable(0, scene["floor"], Find(scene, Query(0)));

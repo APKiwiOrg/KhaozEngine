@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.30.1
+## 20.31.0
 
 - The PixelLab sheet assembler tool reads palette and interlaced PNGs again (#1345). `PngReader` in
   `KhaozEngine.Imaging` decodes 1, 2, 4 and 8-bit palette PNGs, with `tRNS` alpha, and Adam7-interlaced images
@@ -17,11 +17,14 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   phase 2b of the #438 contact-classification controller. Concave creases, vertices, sphere, capsule and
   cylinder statics, one-sided back faces, ridges split across statics and stair nosing ties now certify
   instead of refusing (#1329 to #1333, #1340, #1342). Nothing consumes it yet, so movement is unchanged.
-- Physics adds `QueryFilter.CullBackFaces`, which makes `SweepCapsule` skip mesh triangles that do not face
-  against the sweep, and `IPhysicsCapsuleFeatures.QuerySupportNeighborhood`, which publishes every surface
-  element of every selected static within a band of an upright probe with the joins between them. Bepu worlds
-  and their selected query views implement it for boxes, convex hulls, meshes, spheres, capsules, cylinders and
-  compounds of those.
+- Physics adds the init-only `QueryFilter.CullBackFaces` property, which makes `SweepCapsule` skip mesh triangles
+  that do not face against the sweep. The positional constructor and `Deconstruct` are unchanged.
+- Physics adds the optional `IPhysicsSupportNeighborhood` capability. `QuerySupportNeighborhood` publishes every
+  surface element of every selected static within a band of an upright probe with the joins between them, and
+  `AssertNeighborhoodCurrent` binds a result to its receiver and lease. A join span shorter than
+  `elements.Length * JoinWordsFor(elements.Length)` throws `ArgumentException`. Bepu worlds and their selected
+  query views implement it for boxes, convex hulls, meshes, spheres, capsules, cylinders and compounds of those.
+  `IPhysicsCapsuleFeatures` is unchanged.
 - `BepuPhysicsWorld.AddStatic` throws `ArgumentException` for a triangle mesh with a non-finite vertex.
 
 ## 20.30.0

@@ -3,7 +3,7 @@
 Date: 2026-10-10. Detailed spec for phase 2 of [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438). The
 program, body model, support rule and invariants are in
 [CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md](CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md), and phase 1
-is on main at `d8a9d45d6`. Status: implemented, staged for 20.30.0. Nothing consumes it yet, so movement is unchanged.
+is on main at `d8a9d45d6`. Status: implemented, released in 20.30.0. Nothing consumes it yet, so movement is unchanged.
 
 ## Scope
 
@@ -18,7 +18,7 @@ support gaps. Those gaps (#1329 concave creases, #1330 vertices, #1331 curved pr
 faces, #1340 one static proposed per probe at a shared edge, #1342 an unresolved feature query at a convex nosing)
 close in a separate phase 2b that must land before any game adopts the controller (owner ruling,
 2026-10-10). The [phase 2b spec](CONTACT-CONTROLLER-PHASE-2B-SUPPORT-NEIGHBORHOOD-2026-10-10.md) closes them,
-staged for 20.30.1.
+staged for 20.31.0.
 
 ## Interface
 
@@ -45,9 +45,10 @@ internal static class GroundCore
 - `Rise` is the change in feet height this tick. Positive climbs, negative descends.
 - `Achieved` is the horizontal move that actually happened. `Blocked` says a wall, cliff, steep rise or refusal
   stopped part of it.
-- `Held` means the support at the start could not be certified. The body holds its position. Since phase 2b only
-  a support neighborhood refusal (capacity or a domain the backend cannot certify) or a probe stopped above the
-  reach band causes it.
+- `Held` means the support at the start could not be certified. The body holds its position. Since phase 2b it
+  has four causes: a support neighborhood refusal (capacity or a domain the backend cannot certify), a probe
+  stopped above the reach band, a probe whose neighborhood supports nothing at or below the band top, and a probe
+  that starts overlapped.
 - The foot disc radius comes from `settings` until phase 5 moves it into `MoveTuning` together with the
   navigation bake identity, so bakes change once.
 - Input is validated like `FootSupport`: non-finite values, a non-positive `dt` and an invalid shell

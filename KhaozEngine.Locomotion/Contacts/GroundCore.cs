@@ -33,6 +33,12 @@ internal readonly record struct GroundStepResult(Vector3 Feet, GroundFooting Foo
     /// <summary>True when the start was already steep or unsupported, so the footing changed before any time was
     /// spent and <see cref="RemainingTime"/> is the whole tick.</summary>
     internal bool ChangedAtStart { get; init; }
+
+    /// <summary>The signed discrete rise applied by accepted ground placements and lag payments.</summary>
+    internal float StepRise { get; init; }
+
+    /// <summary>The feet change from accepted placements and lag payments, excluding start recovery.</summary>
+    internal float MoveRise { get; init; }
 }
 
 /// <summary>Resolves one grounded tick: recovery, start support, the lift, then per substep the shell sweep and
@@ -124,6 +130,8 @@ internal static class GroundCore
             return Result(feet, start, tick.FeetY, GroundFooting.Walkable, support, Vector2.Zero, false) with
             {
                 ClimbBudget = budget,
+                StepRise = tick.StepRise,
+                MoveRise = tick.MoveRise,
             };
         }
         Vector2 moved = tick.Run(displacement, substeps, ref budget, out GroundFooting footing, out bool blocked,
@@ -132,6 +140,8 @@ internal static class GroundCore
         {
             RemainingTime = unspent == 0 ? 0f : (float)((double)dt * unspent / substeps),
             ClimbBudget = budget,
+            StepRise = tick.StepRise,
+            MoveRise = tick.MoveRise,
         };
     }
 
@@ -218,6 +228,9 @@ internal static class GroundCore
         readonly bool _slide;
         readonly Func<float, float, Vector2>? _clampXz;
         Vector2 _achieved;
+        double _owedDiscrete;
+        double _stepRise;
+        double _moveRise;
 
         internal Tick(Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal,
             IPhysicsWorld? world, IPhysicsQueryLease? lease, in MoveTuning tuning, float footRadius,
@@ -238,10 +251,15 @@ internal static class GroundCore
             _clampXz = clampXz;
             FeetY = start.Y;
             Support = support;
+            double lag = (double)support.Height - start.Y;
+            _owedDiscrete = support.Status == SupportStatus.Walkable &&
+                lag > (double)ShellMotion.ContactSkin + support.HeightError ? lag : 0;
         }
 
         internal float FeetY { get; private set; }
         internal SupportSample Support { get; private set; }
+        internal readonly float StepRise => (float)_stepRise;
+        internal readonly float MoveRise => (float)_moveRise;
 
         readonly Vector2 Axis => _startAxis + _achieved;
 
@@ -316,6 +334,20 @@ internal static class GroundCore
                     onPlan = false;
                 }
                 _achieved = placement.Total;
+                _moveRise += (double)placement.Feet.Y - FeetY;
+                if (!_slide && seat.Outcome == SeatOutcome.Seated)
+                {
+                    if (seat.DiscreteStep < 0)
+                    {
+                        _stepRise += seat.DiscreteStep + _owedDiscrete;
+                        _owedDiscrete = 0;
+                    }
+                    else
+                    {
+                        _owedDiscrete += seat.DiscreteStep;
+                        PayDiscrete(placement.Paid);
+                    }
+                }
                 FeetY = placement.Feet.Y;
                 Support = placement.Support;
                 if (seat.Outcome == SeatOutcome.SteepSeated)
@@ -344,8 +376,19 @@ internal static class GroundCore
             if (!Owes(Support, FeetY)) return;
             double owed = Math.Min(Math.Min((double)Support.Height - FeetY, budget), _lift);
             if (!(owed > 0)) return;
-            FeetY = GroundPlacement.NotAbove(FeetY + owed);
+            float paidFeetY = GroundPlacement.NotAbove(FeetY + owed);
+            _moveRise += (double)paidFeetY - FeetY;
+            FeetY = paidFeetY;
             budget -= owed;
+            if (!_slide) PayDiscrete(owed);
+        }
+
+        // Budget payments settle discrete debt before any continuous residual they also paid.
+        void PayDiscrete(double paid)
+        {
+            double settled = Math.Min(paid, _owedDiscrete);
+            _owedDiscrete -= settled;
+            _stepRise += settled;
         }
 
         // A tick without displacement only pays owed climb.

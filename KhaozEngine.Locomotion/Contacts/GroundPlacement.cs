@@ -7,7 +7,7 @@ namespace KhaozEngine.Locomotion.Contacts;
 /// <summary>A seated placement proposal with its certified support and remaining climb budget. Only a valid
 /// proposal commits the budget or changes the tick's position.</summary>
 internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, SupportSample Support,
-    double Budget, bool Pushed, Vector2 Total)
+    double Budget, bool Pushed, Vector2 Total, double Paid)
 {
     /// <summary>Places a seat. A steep seat is placed as seated unless <paramref name="clearSteep"/> asks for its
     /// clearance, which a slide does. A steep seat takes no push, because a push off the face would leave the feet
@@ -17,9 +17,10 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         in SupportSample start, float startFeetY, Vector2 startAxis, Vector2 total, in GroundSeatResult seat,
         float footRadius, in MoveTuning tuning, float cosMaxSlope, double budget, bool clearSteep = false)
     {
+        double paid = 0;
         float feetY = seat.Outcome switch
         {
-            SeatOutcome.Seated => Paced(start, startFeetY, seat, ref budget),
+            SeatOutcome.Seated => Paced(start, startFeetY, seat, ref budget, out paid),
             SeatOutcome.SteepSeated => seat.FeetY,
             _ => startFeetY,
         };
@@ -28,9 +29,9 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         if (seat.Outcome == SeatOutcome.SteepSeated)
             return clearSteep && Overlaps(world, tuning, target)
                 ? default
-                : new(true, target, seat.Support, budget, false, total);
+                : new(true, target, seat.Support, budget, false, total, paid);
         if (!Clear(world, tuning, target, startAxis, ref total, out Vector3 placed)) return default;
-        if (placed == target) return new(true, target, seat.Support, budget, false, total);
+        if (placed == target) return new(true, target, seat.Support, budget, false, total, paid);
 
         // A clearance push proposes a different axis and height. It must earn its own footing, without hovering
         // above it. Feet below a tread remain permitted for paced climbs.
@@ -40,16 +41,18 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
             return default;
         double raised = Math.Max(0, (double)placed.Y - target.Y);
         if (raised > budget) return default;
-        return new(true, placed, support, budget - raised, true, total);
+        return new(true, placed, support, budget - raised, true, total, paid);
     }
 
     // The step part plus the unpaid lag is paid from this attempt's copy of the tick budget.
-    static float Paced(in SupportSample start, float startFeetY, in GroundSeatResult seat, ref double budget)
+    static float Paced(in SupportSample start, float startFeetY, in GroundSeatResult seat, ref double budget,
+        out double paid)
     {
+        paid = 0;
         double lag = start.Status == SupportStatus.Walkable ? Math.Max(0, (double)start.Height - startFeetY) : 0;
         double wanted = (double)seat.StepPart + lag;
         if (!(wanted > 0)) return seat.FeetY;
-        double paid = Math.Min(wanted, budget);
+        paid = Math.Min(wanted, budget);
         budget -= paid;
         return paid < wanted ? NotAbove((double)seat.FeetY - (wanted - paid)) : seat.FeetY;
     }

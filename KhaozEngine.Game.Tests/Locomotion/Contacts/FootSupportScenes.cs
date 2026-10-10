@@ -319,6 +319,14 @@ internal static class FootSupportScenes
         return new FootSupportScene(variant).Mesh("stairs", [.. vertices]);
     }
 
+    /// <summary>Ascending +X from x 0, with a floor before the first riser and a landing after the last.</summary>
+    internal static FootSupportScene Staircase(SceneVariant variant, int steps, float riser, float tread) =>
+        Stairs(variant, tread, riser, steps);
+
+    /// <summary>A single riser at x 0 between a level floor and a level landing.</summary>
+    internal static FootSupportScene Doorstep(SceneVariant variant, float height) =>
+        Staircase(variant, 1, height, 0.3f);
+
     /// <summary>One mesh triangle "incline" through the origin rising to +X by <paramref name="degrees"/>, covering
     /// x in [-10.5, 10.5] along z 0. Its recorded top is the plane through its installed vertices.</summary>
     internal static FootSupportScene Incline(float degrees)

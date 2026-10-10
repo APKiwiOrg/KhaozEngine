@@ -47,6 +47,101 @@ public class GroundSeatTests
         Assert.True(Vector3.Distance(expected, actual) <= 1e-6f, $"Expected {expected}, got {actual}");
     }
 
+    static SupportSample Sample(float height, Vector3 normal, float error = 0) =>
+        new(SupportStatus.Walkable, height, error, normal, null, -1, new Vector3(0, height, 0));
+
+    [Fact]
+    public void RiserBetweenLevelTreadsIsItsHeight()
+    {
+        SupportSample start = Sample(0, Vector3.UnitY), next = Sample(0.18f, Vector3.UnitY);
+        Assert.Equal(0.18f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+    }
+
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(-1f)]
+    public void ConvexAndConcaveCurvesAreNotSteps(float sign)
+    {
+        const float x0 = 0.3f, x1 = 0.4f;
+        SupportSample start = Sample(sign * 0.5f * x0 * x0, Vector3.Normalize(new Vector3(-sign * x0, 1, 0)));
+        SupportSample next = Sample(sign * 0.5f * x1 * x1, Vector3.Normalize(new Vector3(-sign * x1, 1, 0)));
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, new Vector2(x0, 0), next, new Vector2(x1, 0)));
+    }
+
+    [Fact]
+    public void PlanarRampIsExactlyZero()
+    {
+        float angle = Radians(30);
+        Vector3 normal = new(-MathF.Sin(angle), MathF.Cos(angle), 0);
+        // The second point is one unit along the tangent, so its float coordinates also define the plane.
+        SupportSample start = Sample(0, normal), next = Sample(-normal.X, normal);
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(normal.Y, 0)));
+    }
+
+    [Fact]
+    public void DropIsTheNegativeHeight()
+    {
+        SupportSample start = Sample(0.18f, Vector3.UnitY), next = Sample(0, Vector3.UnitY);
+        Assert.Equal(-0.18f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+    }
+
+    [Fact]
+    public void StepOntoASlopedTreadIsTheRiser()
+    {
+        float grade = MathF.Tan(Radians(10));
+        SupportSample start = Sample(0, Vector3.UnitY);
+        SupportSample next = Sample(0.18f, Vector3.Normalize(new Vector3(-grade, 1, 0)));
+        float step = GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0));
+        // rf is 0.18. rb is 0.18 less the new tread's rise over the 0.1 move.
+        Assert.True(step > 0 && Math.Abs(step - 0.18f) <= 0.1 * grade, $"Discrete step {step:R}");
+    }
+
+    [Theory]
+    [InlineData((int)SupportStatus.Steep, false)]
+    [InlineData((int)SupportStatus.Steep, true)]
+    [InlineData((int)SupportStatus.None, false)]
+    [InlineData((int)SupportStatus.None, true)]
+    [InlineData((int)SupportStatus.Refused, false)]
+    [InlineData((int)SupportStatus.Refused, true)]
+    public void NonWalkableEitherSideIsZero(int status, bool atStart)
+    {
+        SupportSample start = Sample(0, Vector3.UnitY), next = Sample(0.18f, Vector3.UnitY);
+        if (atStart) start = start with { Status = (SupportStatus)status };
+        else next = next with { Status = (SupportStatus)status };
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+    }
+
+    [Theory]
+    [InlineData(0.18f)]
+    [InlineData(-0.18f)]
+    public void CertifiedHeightErrorAbsorbsTheResidual(float height)
+    {
+        SupportSample start = Sample(0, Vector3.UnitY, MathF.Abs(height) / 2);
+        SupportSample next = Sample(height, Vector3.UnitY, MathF.Abs(height) / 2);
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+    }
+
+    [Theory]
+    [InlineData(1f, false, false)]
+    [InlineData(-1f, false, false)]
+    [InlineData(1f, true, false)]
+    [InlineData(-1f, true, false)]
+    [InlineData(1f, false, true)]
+    [InlineData(-1f, false, true)]
+    [InlineData(1f, true, true)]
+    [InlineData(-1f, true, true)]
+    public void ContactSkinAndErrorsBoundTheSmallestStep(float sign, bool withErrors, bool above)
+    {
+        float error = withErrors ? ShellMotion.ContactSkin / 2 : 0;
+        float height = withErrors ? 2 * ShellMotion.ContactSkin : ShellMotion.ContactSkin;
+        if (above) height = MathF.BitIncrement(height);
+        height *= sign;
+        SupportSample start = Sample(0, Vector3.UnitY, error), next = Sample(height, Vector3.UnitY, error);
+
+        Assert.Equal(above ? height : 0f,
+            GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+    }
+
     // The step part is charged against the climb budget, so it rounds up, never to nearest. Feet at -2^-28 seated
     // on terrain at 0.25 + 2^-25 rise 0.25 + 2^-25 + 2^-28, which lies between floats and rounds to nearest below
     // itself. Both the level reference and a start plane read the same rise.

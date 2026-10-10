@@ -11,8 +11,6 @@ namespace KhaozEngine.Locomotion.Contacts;
 /// with one climb budget shared by the whole tick.</summary>
 internal static class ContactController
 {
-    // Below this squared length a slide plane's horizontal normal carries no fall line, as in the slide core.
-    const float FlatNormalSquared = 1e-12f;
     // A bound on one tick's mode changes. Every cycle of mode changes passes through the air pass, and each air
     // segment spends at least one of its substeps before it hands on, so the time left shrinks and the cap is a guard.
     const int MaxSegments = 8;
@@ -221,7 +219,7 @@ internal static class ContactController
             {
                 SlideStepResult slide = SlideCore.Step(feet, velocity, vertical, intent, time, t, c.Settings, c.Gate,
                     support, c.GroundHeight, c.GroundNormal, c.World, c.Lease, budget);
-                Vector2 drive = slide.HorizontalVelocity + Contour(support.Normal, intent);
+                Vector2 drive = slide.HorizontalVelocity + slide.Steer;
                 last = new Segment(slide.HorizontalVelocity, drive, slide.Achieved, time);
                 first ??= drive;
                 // A wedge swallows the descent the body carried into it.
@@ -259,17 +257,6 @@ internal static class ContactController
             }
         }
         return new Tick(feet, vertical, grounded, fallSpeed, first ?? commanded, last);
-    }
-
-    // The steer's part along the contour of a plane with this normal, as the slide core moves it.
-    static Vector2 Contour(Vector3 normal, Vector2 steer)
-    {
-        var across = new Vector2(normal.X, normal.Z);
-        float squared = across.LengthSquared();
-        if (!(squared > FlatNormalSquared) || !float.IsFinite(squared)) return Vector2.Zero;
-        Vector2 down = across / MathF.Sqrt(squared);
-        var contour = new Vector2(-down.Y, down.X);
-        return Vector2.Dot(steer, contour) * contour;
     }
 
     static bool Finite(in MoveState s) =>

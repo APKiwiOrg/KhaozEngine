@@ -10,8 +10,8 @@ namespace KhaozEngine.Locomotion.Contacts;
 internal enum SlideOutcome : byte { Sliding, Wedged, Landed, Airborne }
 
 /// <summary>One slide tick. <see cref="HorizontalVelocity"/> is the slide's carry, without the steer.
-/// <see cref="VerticalVelocity"/> is the seated rise over dt while sliding or wedged, zero after a landing, and the
-/// slide's own vertical speed when airborne. <see cref="ImpactSpeed"/> is the downward vertical speed of a landing,
+/// <see cref="VerticalVelocity"/> is the vertical part of the fall-line speed while sliding, wedged or airborne, and
+/// zero after a landing. <see cref="ImpactSpeed"/> is the downward vertical speed of a landing,
 /// else zero.</summary>
 internal readonly record struct SlideStepResult(Vector3 Feet, Vector2 HorizontalVelocity, float VerticalVelocity,
     Vector2 Achieved, SlideOutcome Outcome, SupportSample Support, float ImpactSpeed)
@@ -22,6 +22,9 @@ internal readonly record struct SlideStepResult(Vector3 Feet, Vector2 Horizontal
 
     /// <summary>The climb budget left after the slide's move, in metres.</summary>
     internal double ClimbBudget { get; init; }
+
+    /// <summary>The steer's contour velocity the move applied: zero when a blocked steer was dropped.</summary>
+    internal Vector2 Steer { get; init; }
 }
 
 /// <summary>Slides a body on certified steep support, analytic terrain and physics statics alike. The dynamics come
@@ -60,7 +63,8 @@ internal static class SlideCore
     /// <summary>One slide tick on the steep <paramref name="support"/> under <paramref name="feet"/>. The fall line
     /// and contour come from the support's plane. The fall-line speed takes gravity along the plane through the
     /// friction ramp at the gate, clamped to <c>MaxFallSpeed / max(sin(slope), sin(gate))</c>, and
-    /// <paramref name="steer"/> adds its contour part to the move only. A tick that ends no lower than it started,
+    /// <paramref name="steer"/> adds its contour part to the move only. A steered move that is blocked reruns with the
+    /// carry alone, so input never costs the slide its speed. A tick that ends no lower than it started,
     /// where the fall lines oppose, is wedged. <paramref name="climbBudget"/> is the climb the tick may still pay, in
     /// metres. Null means a whole tick's <c>MaxStepClimbSpeed * dt</c>.</summary>
     internal static SlideStepResult Step(Vector3 feet, Vector2 carry, float verticalVelocity, Vector2 steer,
@@ -103,45 +107,64 @@ internal static class SlideCore
         Vector2 velocity = Horizontal(fall, contour, tx, tz, cx, cz);
         float vertical = fall * ty;
         float steerAlong = steer.X * cx + steer.Y * cz;
-        Vector2 move = (velocity + steerAlong * new Vector2(cx, cz)) * dt;
+        Vector2 applied = steerAlong * new Vector2(cx, cz);
 
-        GroundStepResult step = GroundCore.Slide(feet, move, dt, tuning, settings, groundHeight, groundNormal,
-            world, lease, tractionSlopeRadians, climbBudget);
+        // Progress down the fall line: the achieved move along its horizontal direction, or on a vertical plane the
+        // drop.
+        float Progress(in GroundStepResult result) =>
+            ny > 0f ? Vector2.Dot(result.Achieved, down) : feet.Y - result.Feet.Y;
+
+        GroundStepResult step = GroundCore.Slide(feet, (velocity + applied) * dt, dt, tuning, settings, groundHeight,
+            groundNormal, world, lease, tractionSlopeRadians, climbBudget);
+        if (step.Blocked && steerAlong != 0f)
+        {
+            // The steer's own travel may be what met the block, for example a contour that climbs the real surface
+            // where the support's plane disagrees with it, or it may be what frees a body pinned against a wall. The
+            // tick reruns with the carry alone and keeps whichever went further down the fall line, so input never
+            // costs the slide its speed.
+            GroundStepResult carried = GroundCore.Slide(feet, velocity * dt, dt, tuning, settings, groundHeight,
+                groundNormal, world, lease, tractionSlopeRadians, climbBudget);
+            if (Progress(carried) > Progress(step)) (step, steerAlong, applied) = (carried, 0f, Vector2.Zero);
+        }
         switch (step.Footing)
         {
             case GroundFooting.Walkable:
                 return new(step.Feet, velocity, 0f, step.Achieved, SlideOutcome.Landed, step.Support,
                     MathF.Max(0f, -vertical))
-                { ClimbBudget = step.ClimbBudget };
+                { ClimbBudget = step.ClimbBudget, Steer = applied };
             case GroundFooting.None:
                 return new(step.Feet, velocity, vertical, step.Achieved, SlideOutcome.Airborne, step.Support, 0f)
                 {
                     RemainingTime = step.RemainingTime,
                     ClimbBudget = step.ClimbBudget,
+                    Steer = applied,
                 };
         }
         float rise = step.Feet.Y - feet.Y;
         if (step.Blocked)
         {
-            // A blocked slide keeps only the velocity its move achieved: the achieved move over dt with the seated
-            // rise, split on the plane. Each part keeps the integrated part's direction and no more than its size,
-            // and the steer's contour part never enters the carry.
-            float ax = step.Achieved.X / dt, ay = rise / dt, az = step.Achieved.Y / dt;
-            fall = Toward(fall, ax * tx + ay * ty + az * tz);
-            contour = Toward(contour, ax * cx + az * cz - steerAlong);
+            // The slide's state is its fall-line speed, and a block keeps only the part of it the fall line achieved:
+            // the achieved progress down the fall line over dt, no faster than the integrated speed and in its
+            // direction. The carry's contour part keeps no more than its own share of the achieved contour move. The
+            // steer's contour part never feeds or resets either.
+            fall = Toward(fall, ny > 0f ? Progress(step) / (ny * dt) : Progress(step) / (h * dt));
+            contour = Toward(contour, (step.Achieved.X * cx + step.Achieved.Y * cz) / dt - steerAlong);
             velocity = Horizontal(fall, contour, tx, tz, cx, cz);
         }
+        // The seat sets only the position. The vertical speed is the fall-line speed's vertical part, as legacy.
+        vertical = fall * ty;
         // Support that cannot be certified holds the body where it is, still sliding on what it had.
         if (step.Footing == GroundFooting.Held)
-            return new(step.Feet, velocity, rise / dt, step.Achieved, SlideOutcome.Sliding, support, 0f)
+            return new(step.Feet, velocity, vertical, step.Achieved, SlideOutcome.Sliding, support, 0f)
             {
                 ClimbBudget = step.ClimbBudget,
+                Steer = applied,
             };
         bool wedged = rise >= 0 && Opposed(step.Feet, step.Support, tuning, settings, tractionSlopeRadians,
             groundHeight, groundNormal, world, lease);
-        return new(step.Feet, velocity, rise / dt, step.Achieved, wedged ? SlideOutcome.Wedged : SlideOutcome.Sliding,
+        return new(step.Feet, velocity, vertical, step.Achieved, wedged ? SlideOutcome.Wedged : SlideOutcome.Sliding,
             step.Support, 0f)
-        { ClimbBudget = step.ClimbBudget };
+        { ClimbBudget = step.ClimbBudget, Steer = applied };
     }
 
     static Vector2 Horizontal(float fall, float contour, float tx, float tz, float cx, float cz) =>

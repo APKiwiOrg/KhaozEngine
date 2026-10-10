@@ -129,7 +129,8 @@ public class ContactScenarioTests
     // pressed on that tick, so only footing on the face could launch it. The crossing tick is neither footed nor
     // launched, no tick is footed anywhere but the top or the pit, and the body ends on the pit past the face.
     public static IEnumerable<object[]> Rates() =>
-        from ground in new[] { "terrain", "box", "mesh" } from hz in new[] { 30, 60 }
+        from ground in new[] { "terrain", "box", "mesh" }
+        from hz in new[] { 30, 60 }
         select new object[] { ground, hz };
 
     [Theory]
@@ -184,22 +185,38 @@ public class ContactScenarioTests
 
     // ---- #468: a held run-jump across a creased cliff ----
 
+    // The legacy normal for the creased cliff: a central difference over a 5 m stencil, wider than the 4 m creases, so
+    // it never matches the plane under the feet.
+    static Vector3 SmoothedCreaseNormal(float x, float z)
+    {
+        const float Stencil = 5;
+        float dx = (CreasedCliffHeight(x + Stencil, z) - CreasedCliffHeight(x - Stencil, z)) / (2 * Stencil);
+        float dz = (CreasedCliffHeight(x, z + Stencil) - CreasedCliffHeight(x, z - Stencil)) / (2 * Stencil);
+        return Vector3.Normalize(new Vector3(-dx, 1, -dz));
+    }
+
     public static IEnumerable<object[]> CreaseRows() =>
-        from ground in new[] { "terrain", "mesh" } from hz in new[] { 30, 60 } select new object[] { ground, hz };
+        from ground in new[] { "terrain", "smoothed", "mesh" }
+        from hz in new[] { 30, 60 }
+        select new object[] { ground, hz };
 
     // Every cell is a plane of 68.6 to 77.1 degrees whose fall lines lie within 24 degrees of each other, so there is
-    // no footing and no wedge anywhere. Terrain seeds at rest on the face at (2, 2) with each cell's own normal. The
-    // mesh is the same planes, so its body seeds a radius and a skin out along the plane's normal, where the shell
-    // clears it, and falls along the face. Holding a run and the jump along each of 24 headings for 10 s, no tick is
-    // footed or launched and every tick descends, which is stronger than invariant 5's bound on a footless rise. The
-    // peak feet between one crease crossing and the next never rise above the previous peak, over at least two
-    // crossings.
+    // no footing and no wedge anywhere. Terrain seeds at rest on the face at (2, 2) with each cell's own normal, or
+    // with the legacy smoothed normal. The mesh is the same planes, so its body seeds a radius and a skin out along
+    // the plane's normal, where the shell clears it, and falls along the face. Holding a run and the jump along each
+    // of 24 headings for 10 s, no tick is footed or launched and every tick descends, which is stronger than
+    // invariant 5's bound on a footless rise. The peak feet between one crease crossing and the next never rise above
+    // the previous peak, over at least two crossings.
     [Theory]
     [MemberData(nameof(CreaseRows))]
     public void CreasedCliffNeverRatchets(string ground, int hz)
     {
-        using Ground g = ground == "mesh" ? new Ground(CreasedCliff(), Abyss)
-            : new Ground(null, CreasedCliffHeight, CreasedCliffNormal);
+        using Ground g = ground switch
+        {
+            "mesh" => new Ground(CreasedCliff(), Abyss),
+            "smoothed" => new Ground(null, CreasedCliffHeight, SmoothedCreaseNormal),
+            _ => new Ground(null, CreasedCliffHeight, CreasedCliffNormal),
+        };
         float dt = 1f / hz;
         // The seed cell's plane: x gradient 0.5, z gradient -4.1.
         Vector3 plane = Vector3.Normalize(new Vector3(-0.5f, 1, 4.1f));

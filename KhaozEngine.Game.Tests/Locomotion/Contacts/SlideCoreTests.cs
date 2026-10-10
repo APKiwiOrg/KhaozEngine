@@ -496,4 +496,54 @@ public class SlideCoreTests
         AssertNear(0, air.Feet.Y, HalfSkin, air);
         Assert.True(air.Feet.X < 0, $"{air}");
     }
+
+    // The creased cliff under a normal delegate smoothed over 5 m, wider than its 4 m creases, so the support's plane
+    // never matches the plane under the feet. A run along the delegate's contour at the seed climbs the real plane
+    // there, gradient (0.5, -4.1), so the steered move meets steep ground above the feet and is blocked. The tick
+    // then moves the carry alone: from rest it is the unsteered tick to the bit, with no steer applied, and over 30
+    // ticks the steered slide descends on every tick. On a consistent 50 degree plane the same steer is applied whole.
+    [Fact]
+    public void BlockedSteerNeverCostsTheSlideItsSpeed()
+    {
+        static Vector3 Smoothed(float x, float z)
+        {
+            const float Stencil = 5;
+            float dx = (CreasedCliffHeight(x + Stencil, z) - CreasedCliffHeight(x - Stencil, z)) / (2 * Stencil);
+            float dz = (CreasedCliffHeight(x, z + Stencil) - CreasedCliffHeight(x, z - Stencil)) / (2 * Stencil);
+            return Vector3.Normalize(new Vector3(-dx, 1, -dz));
+        }
+        using var g = new Ground(null, CreasedCliffHeight, Smoothed);
+        Vector3 n = Smoothed(2, 2);
+        Vector2 down = Vector2.Normalize(new Vector2(n.X, n.Z));
+        Vector2 contour = new(-down.Y, down.X);
+        Vector2 steer = Tuning.RunSpeed * contour;
+        Assert.True(0.5f * steer.X - 4.1f * steer.Y > 0, $"the steer must climb the real plane: {steer}");
+
+        var feet = new Vector3(2, CreasedCliffHeight(2, 2), 2);
+        Assert.True(g.Contact(feet, out SupportSample seed), $"{seed}");
+        SlideStepResult steered = g.Step(feet, Vector2.Zero, 0, steer, seed);
+        SlideStepResult idle = g.Step(feet, Vector2.Zero, 0, Vector2.Zero, seed);
+        Assert.Equal(Vector2.Zero, steered.Steer);
+        Assert.Equal(idle.Feet, steered.Feet);
+        Assert.Equal(idle.HorizontalVelocity, steered.HorizontalVelocity);
+        Assert.Equal(idle.VerticalVelocity, steered.VerticalVelocity);
+        Assert.True(steered.Feet.Y <= feet.Y - HalfSkin, $"{steered}");
+
+        Vector2 carry = Vector2.Zero;
+        float verticalVelocity = 0;
+        for (int tick = 1; tick <= 30; tick++)
+        {
+            Assert.True(g.Contact(feet, out SupportSample support), $"tick {tick} at {feet}: {support}");
+            SlideStepResult result = g.Step(feet, carry, verticalVelocity, steer, support);
+            Assert.True(result.Outcome == SlideOutcome.Sliding, $"tick {tick}: {result}");
+            Assert.True(result.Feet.Y <= feet.Y - HalfSkin, $"tick {tick} hung: {result}");
+            (feet, carry, verticalVelocity) = (result.Feet, result.HorizontalVelocity, result.VerticalVelocity);
+        }
+
+        using Ground plane = Plane("terrain", 50);
+        Vector3 start = plane.Seated("slope", 1);
+        Assert.True(plane.Contact(start, out SupportSample face), $"{face}");
+        SlideStepResult along = plane.Step(start, Vector2.Zero, 0, new Vector2(0, 3), face);
+        Assert.True(!along.Achieved.Equals(Vector2.Zero) && along.Steer.Y == 3 && along.Steer.X == 0, $"{along}");
+    }
 }

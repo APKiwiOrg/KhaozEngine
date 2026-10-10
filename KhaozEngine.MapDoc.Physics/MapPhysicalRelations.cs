@@ -44,8 +44,8 @@ public sealed class MapPhysicalRelations
     /// <see cref="MapPhysicalCertainty.Blocked"/>, a hit within it of the end is <see cref="MapPhysicalCertainty.Unknown"/>
     /// and a miss is <see cref="MapPhysicalCertainty.Clear"/>. An end outside the document's playable bounds is
     /// Unknown, and two equal ends are Clear. Throws <see cref="ArgumentException"/> for a non-finite point or a lease
-    /// over another physics world, and whatever <see cref="IPhysicsQueryLease.AssertCurrent"/> throws for a stale
-    /// lease.</summary>
+    /// over another physics world, <see cref="ObjectDisposedException"/> for a disposed registration, and whatever
+    /// <see cref="IPhysicsQueryLease.AssertCurrent"/> throws for a stale lease.</summary>
     public MapPhysicalResult LineOfSight(IPhysicsQueryLease lease, MapFramePoint from, MapFramePoint to)
     {
         RequireFinite(from, nameof(from));
@@ -67,11 +67,17 @@ public sealed class MapPhysicalRelations
     /// <summary>Whether the contact shell of <paramref name="tuning"/> can stand at the first feet point and move along
     /// <paramref name="feetPath"/>. The shell is tested in place at the first point, then swept along each segment
     /// between consecutive points. Penetration deeper than <see cref="Tolerance"/>, or a sweep hit before a segment's
-    /// end, is <see cref="MapPhysicalCertainty.Blocked"/>, with the distance along the path. A point outside the
-    /// document's playable bounds is <see cref="MapPhysicalCertainty.Unknown"/>. Throws
-    /// <see cref="ArgumentOutOfRangeException"/> for a path of other than 1 to <see cref="MaxClearancePoints"/>
-    /// points, <see cref="ArgumentException"/> for an invalid tuning, a non-finite point or a lease over another
-    /// physics world, and whatever <see cref="IPhysicsQueryLease.AssertCurrent"/> throws for a stale lease.</summary>
+    /// end, is <see cref="MapPhysicalCertainty.Blocked"/>, with the distance along the path. A shell that starts in
+    /// contact no deeper than <see cref="Tolerance"/> sweeps its first segment from a start pushed out along the
+    /// minimum translation vector to <see cref="Tolerance"/> clear of the contact, as the contact controller recovers.
+    /// The backend reports a sweep that starts overlapping as a hit at distance 0 with no normal, so the push-out, not
+    /// the hit normal, decides: a path moving away from the touched surface is clear and a path moving into it is
+    /// blocked. The shell's later segments start from the path points themselves. A point outside the document's
+    /// playable bounds is <see cref="MapPhysicalCertainty.Unknown"/>. Throws <see cref="ArgumentOutOfRangeException"/>
+    /// for a path of other than 1 to <see cref="MaxClearancePoints"/> points, <see cref="ArgumentException"/> for an
+    /// invalid tuning, a non-finite point or a lease over another physics world, <see cref="ObjectDisposedException"/>
+    /// for a disposed registration, and whatever <see cref="IPhysicsQueryLease.AssertCurrent"/> throws for a stale
+    /// lease.</summary>
     public MapPhysicalResult Clearance(IPhysicsQueryLease lease, IReadOnlyList<MapFramePoint> feetPath, in MoveTuning tuning)
     {
         ArgumentNullException.ThrowIfNull(feetPath);
@@ -87,9 +93,14 @@ public sealed class MapPhysicalRelations
         IPhysicsWorld physics = _registration.Physics;
         CapsuleShape shell = ContactShell.Shape(tuning);
         Vector3 feet = Local(lease, feetPath[0]);
-        if (physics.ComputePenetration(shell, Pose.At(ContactShell.Centre(feet, tuning)), out Vector3 mtv) &&
-            mtv.Length() > Tolerance)
-            return Result(MapPhysicalCertainty.Blocked, null, 0f);
+        // The first sweep starts here: the shell pushed out of a tolerated contact to Tolerance clear of it.
+        Vector3 pushOut = Vector3.Zero;
+        if (physics.ComputePenetration(shell, Pose.At(ContactShell.Centre(feet, tuning)), out Vector3 mtv))
+        {
+            float depth = mtv.Length();
+            if (depth > Tolerance) return Result(MapPhysicalCertainty.Blocked, null, 0f);
+            if (depth > 0f) pushOut = mtv * ((depth + Tolerance) / depth);
+        }
 
         float travelled = 0f;
         for (int i = 1; i < feetPath.Count; i++)
@@ -98,12 +109,13 @@ public sealed class MapPhysicalRelations
             Vector3 delta = next - feet;
             float length = delta.Length();
             if (length > 0f &&
-                physics.SweepCapsule(shell, Pose.At(ContactShell.Centre(feet, tuning)), delta / length, length,
+                physics.SweepCapsule(shell, Pose.At(ContactShell.Centre(feet, tuning) + pushOut), delta / length, length,
                     out SweepHit hit, QueryFilter.StaticsOnly) &&
                 hit.Distance < length)
                 return Result(MapPhysicalCertainty.Blocked, Owner(hit.Body), travelled + hit.Distance);
             travelled += length;
             feet = next;
+            pushOut = Vector3.Zero;
         }
         return Result(MapPhysicalCertainty.Clear);
     }
@@ -111,6 +123,7 @@ public sealed class MapPhysicalRelations
     void RequireLease(IPhysicsQueryLease lease)
     {
         ArgumentNullException.ThrowIfNull(lease);
+        _registration.ThrowIfDisposed();
         if (!ReferenceEquals(lease.SourceWorld, _registration.Physics))
             throw new ArgumentException("The lease is over another physics world than the registration's.", nameof(lease));
         lease.AssertCurrent();

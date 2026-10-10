@@ -122,6 +122,9 @@ public sealed class MapPhysicsRegistration : IDisposable
             null, null);
     }
 
+    /// <summary>Throws <see cref="ObjectDisposedException"/> once every static has been removed.</summary>
+    internal void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+
     /// <summary>Removes every static this registration added, in reverse order, attempting each even after a failure.
     /// Never disposes <see cref="Physics"/>. Never call this inside a held query read lease: the backend refuses
     /// mutation then. When a removal fails, the <see cref="AggregateException"/> carries every removal failure, the

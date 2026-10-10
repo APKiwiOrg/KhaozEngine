@@ -62,13 +62,16 @@ MapPhysicalResult sight = relations.LineOfSight(lease, eye, target);
 MapPhysicalResult walk = relations.Clearance(lease, feetPath, tuning);
 ```
 
-Both relations run under a held read lease over the registration's own physics world and call `AssertCurrent` first.
-Points convert from their frame to world double, less the lease's origin. Queries see statics only.
+Both relations run under a held read lease over the registration's own physics world and call `AssertCurrent` before
+any query. A disposed registration refuses with `ObjectDisposedException`. Points convert from their frame to world
+double, less the lease's origin. Queries see statics only.
 
 Line of sight casts one ray. A hit nearer than the segment length less 0.001 m is `Blocked` and names its owner, a
 placement id or a terrain chunk id. A hit within 0.001 m of the end is `Unknown`, and a miss is `Clear`. Clearance
 places the locomotion `ContactShell` at the first feet point and sweeps it along each segment of a path of 1 to 64
-points. Penetration deeper than 0.001 m, or a sweep hit before a segment's end, is `Blocked`. A point outside the
+points. Penetration deeper than 0.001 m, or a sweep hit before a segment's end, is `Blocked`. A shell that starts in
+contact no deeper than that sweeps its first segment from 0.001 m clear of the contact along the minimum translation
+vector, so a path may leave a wall it starts touching but not enter it. A point outside the
 document's playable bounds is `Unknown` for either relation. Every result carries the world's `BuildHash` and its
 terrain witness digest.
 

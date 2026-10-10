@@ -49,8 +49,9 @@ internal static class GroundCore
     /// gate, and every slope decision in the tick uses it. Null means
     /// <see cref="MoveTuning.MaxSlopeRadians"/>. <paramref name="climbBudget"/> is the climb the tick may still pay,
     /// in metres. Null means a whole tick's <c>MaxStepClimbSpeed * dt</c>. <paramref name="clampXz"/> is the
-    /// play-area clamp. It cuts every substep's move before the move, a wall's tangent included, so no substep ends
-    /// outside the bound, and a substep it shortens counts as blocked.</summary>
+    /// play-area clamp. It cuts every substep's move before the move, a wall's tangent included, and every slide of
+    /// the shell along a contact, so no substep that starts inside the bound ends outside it. A substep it shortens
+    /// counts as blocked.</summary>
     internal static GroundStepResult Step(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
         in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
@@ -379,7 +380,7 @@ internal static class GroundCore
         readonly Attempt Try(Vector2 move, float lift, Vector2? planned, double budget)
         {
             var feet = new Vector3(Axis.X, FeetY, Axis.Y);
-            ShellSweep sweep = ShellMotion.Sweep(_world, feet, lift, move, _tuning, _cosMaxSlope);
+            ShellSweep sweep = ShellMotion.Sweep(_world, feet, lift, move, _tuning, _cosMaxSlope, _clampXz);
             if (sweep.Achieved == Vector2.Zero)
                 return new Attempt(false, Vector2.Zero, sweep.Blocked, default, _achieved, default, sweep.Obstructions);
             Vector2 total = planned is Vector2 prefix && !sweep.Blocked && sweep.Achieved == move

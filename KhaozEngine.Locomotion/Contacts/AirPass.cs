@@ -51,8 +51,9 @@ internal static class AirPass
     /// the tick's traction gate. A non-null <paramref name="world"/> follows the <see cref="FootSupport.Find"/>
     /// contract. <paramref name="climbBudget"/> is the climb the tick may still pay, in metres. Null means a whole
     /// tick's <c>MaxStepClimbSpeed * dt</c>. <paramref name="clampXz"/> is the play-area clamp. It cuts every
-    /// substep's horizontal move before the sweep, a terrain wall's rerun included, so no substep ends outside the
-    /// bound. The clamp is not a contact, so it leaves the velocity alone.</summary>
+    /// substep's horizontal move before the sweep, a terrain wall's rerun included, and every slide of the shell
+    /// along a contact, so no substep that starts inside the bound ends outside it. The clamp is not a contact, so it
+    /// leaves the velocity alone.</summary>
     internal static AirStepResult Step(Vector3 feet, Vector2 velocity, float verticalVelocity, float dt,
         float gravity, in MoveTuning tuning, in GroundCoreSettings settings, float tractionSlopeRadians,
         Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal,
@@ -95,7 +96,7 @@ internal static class AirPass
             Vector3 before = current;
             var origin = new Vector2(from.X, from.Z);
             if (Bounded(origin, ref move, clampXz)) onPlan = false;
-            ShellFlight flight = ShellMotion.Fly(world, from, move, ref current, tuning, cosMaxSlope);
+            ShellFlight flight = ShellMotion.Fly(world, from, move, ref current, tuning, cosMaxSlope, clampXz);
             // Analytic terrain has no shell to meet. As in the ground core, terrain at the new axis more than
             // StepHeight above the substep's highest feet is a wall, and so is steep terrain above them, so the axis
             // never sinks into a face it cannot stand on. The substep reruns without its component into the wall,
@@ -107,12 +108,12 @@ internal static class AirPass
                 Vector2 alongVelocity = Along(new Vector2(before.X, before.Z), wall);
                 current = new Vector3(alongVelocity.X, before.Y, alongVelocity.Y);
                 flight = ShellMotion.Fly(world, from, new Vector3(alongMove.X, move.Y, alongMove.Y), ref current,
-                    tuning, cosMaxSlope);
+                    tuning, cosMaxSlope, clampXz);
                 if (TerrainWall(groundHeight, groundNormal, from, flight, tuning, cosMaxSlope) is not null)
                 {
                     current = new Vector3(0f, before.Y, 0f);
                     flight = ShellMotion.Fly(world, from, new Vector3(0f, move.Y, 0f), ref current, tuning,
-                        cosMaxSlope);
+                        cosMaxSlope, clampXz);
                 }
                 blocked = true;
             }

@@ -63,9 +63,11 @@ internal static class ShellMotion
     /// <summary>Sweeps the shell, raised by <paramref name="lift"/>, horizontally by <paramref name="move"/>. A
     /// hit advances to the contact less the skin. A wall, ceiling or rising-support contact then removes the
     /// rest of the move's component along the contact's horizontal normal, at most <see cref="MaxSlides"/>
-    /// times. The caller splits a long move into substeps.</summary>
+    /// times. <paramref name="clampXz"/> is the play-area clamp, which cuts each slide along a contact to the bound
+    /// as <see cref="BoundSlide"/> describes. The caller clamps the move itself and splits a long move into
+    /// substeps.</summary>
     internal static ShellSweep Sweep(IPhysicsWorld? world, Vector3 feet, float lift, Vector2 move,
-        in MoveTuning tuning, float cosMaxSlope)
+        in MoveTuning tuning, float cosMaxSlope, Func<float, float, Vector2>? clampXz = null)
     {
         if (world is null)
             return new ShellSweep(move, false);
@@ -121,6 +123,7 @@ internal static class ShellMotion
             {
                 remaining -= into * across;
                 blocked = true;
+                BoundSlide(new Vector2(feet.X, feet.Z) + achieved, ref remaining, across, clampXz);
             }
         }
         return new ShellSweep(achieved, blocked || remaining != Vector2.Zero, obstructions);
@@ -131,9 +134,11 @@ internal static class ShellMotion
     /// <paramref name="velocity"/>, at most <see cref="MaxSlides"/> times. A ceiling or a walkable face removes it
     /// whole, vertical included, so a flat ceiling stops a rise. A wall or a face steeper than the gate
     /// (<paramref name="cosMaxSlope"/>) removes it with horizontal motion alone, so it never lifts the body or slows
-    /// its fall. The caller splits a long move into substeps.</summary>
+    /// its fall. <paramref name="clampXz"/> is the play-area clamp, which cuts the horizontal part of each slide
+    /// along a contact to the bound as <see cref="BoundSlide"/> describes and leaves the velocity alone, because the
+    /// bound is not a contact. The caller clamps the move itself and splits a long move into substeps.</summary>
     internal static ShellFlight Fly(IPhysicsWorld? world, Vector3 feet, Vector3 move, ref Vector3 velocity,
-        in MoveTuning tuning, float cosMaxSlope)
+        in MoveTuning tuning, float cosMaxSlope, Func<float, float, Vector2>? clampXz = null)
     {
         if (world is null)
             return new ShellFlight(move, false, MathF.Max(0f, move.Y), MathF.Min(0f, move.Y));
@@ -183,10 +188,28 @@ internal static class ShellMotion
             if (slide == MaxSlides)
                 break;
             Vector3 rest = Slide(remaining, normal, cosMaxSlope);
-            blocked |= rest != remaining;
+            if (rest != remaining)
+            {
+                blocked = true;
+                var along = new Vector2(rest.X, rest.Z);
+                if (BoundSlide(new Vector2(feet.X + achieved.X, feet.Z + achieved.Z), ref along,
+                        new Vector2(normal.X, normal.Z), clampXz))
+                    rest = new Vector3(along.X, rest.Y, along.Y);
+            }
             remaining = rest;
         }
         return new ShellFlight(achieved, blocked || remaining != Vector3.Zero, highest, lowest);
+    }
+
+    /// <summary>Cuts a slide along a contact, <paramref name="remaining"/> from <paramref name="axis"/>, to the play
+    /// area, because the contact can turn a move that ended inside the bound toward it. True when the clamp cut it. A
+    /// cut slide that still presses into the contact, whose horizontal normal is <paramref name="across"/>, stands in
+    /// the corner of the contact and the bound, which holds it as any inner corner does, so it is dropped.</summary>
+    static bool BoundSlide(Vector2 axis, ref Vector2 remaining, Vector2 across, Func<float, float, Vector2>? clampXz)
+    {
+        if (!PlayArea.Clamp(axis, ref remaining, clampXz)) return false;
+        if (Vector2.Dot(remaining, across) < 0f) remaining = Vector2.Zero;
+        return true;
     }
 
     // The vector less its component into the contact. A wall or steep face keeps the vertical part and leaves the

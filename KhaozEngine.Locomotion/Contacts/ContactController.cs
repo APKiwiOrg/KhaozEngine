@@ -77,7 +77,8 @@ internal static class ContactController
 
         // The play-area clamp cuts the planned move's end before the move, as legacy clamps its target. The move
         // then runs at the velocity that reaches the clamped end. A slide plans its own move and clamps it the same
-        // way, and every mode clamps each of its substeps, so the clamp after the move is only a backstop.
+        // way, and every mode clamps each of its substeps and each slide of the shell along a contact, so the clamp
+        // after the move is only a backstop.
         Vector2 velocity = commanded, displacement = commanded * dt;
         if (clampXz is not null)
         {
@@ -163,8 +164,8 @@ internal static class ContactController
         Commitment = commitment,
     };
 
-    // The clamp after the move is a backstop. Every mode clamps each substep's move, so only a clearance push or a
-    // recovery can still end past the play area. A shifted end is placed at the clamped axis through the ground
+    // The clamp after the move is a backstop. Every mode clamps each substep's move and every slide of the shell
+    // along a contact, so only a clearance push or a recovery can still end past the play area. A shifted end is placed at the clamped axis through the ground
     // core's placement, which pays a rise from the climb budget the tick has left and clears the shell. An end that
     // stood on support takes walkable support within StepHeight above or below it, and steep support at or below it.
     // An airborne end takes only walkable support above it, never steep. A placement the shell can clear only by a

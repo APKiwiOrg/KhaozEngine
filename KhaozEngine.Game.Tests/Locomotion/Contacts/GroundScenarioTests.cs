@@ -472,6 +472,8 @@ public class GroundScenarioTests(ITestOutputHelper output)
         output.WriteLine($"ALLOC {name}: {allocated} bytes, status {support.Status} (warm {warm.Status}), " +
             $"stack at most {SupportFindStackBytes()} bytes");
         Assert.Equal(warm, support);
+        // Every cost scene stands on walkable support, so a refused or empty Find cannot pass the check vacuously.
+        Assert.Equal(SupportStatus.Walkable, support.Status);
         if (name != "fan 96") Assert.Equal(0, allocated);
     }
 

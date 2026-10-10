@@ -166,7 +166,7 @@ public class SupportNeighborhoodTests
     {
         using var scene = new Scene();
         var cube = new BoxShape(new Vector3(0.5f));
-        // Leaf 1 is curved. It is skipped and never refuses the box leaves beside it.
+        // Leaf 1 is a sphere out of the probe's band. It publishes nothing and never refuses the box leaves beside it.
         StaticHandle compound = scene.World.AddStatic(new CompoundShape(
         [
             new(cube, Pose.At(new Vector3(-0.5f, 0, 0))),
@@ -359,18 +359,22 @@ public class SupportNeighborhoodTests
             {
                 OracleFace face = faces[random.Next(faces.Count)];
                 OracleVector target = SurfacePoint(random, face);
-                // Outward from the chosen face, tilted at random, at a separation inside the band.
+                // Outward from the chosen face, tilted at random, offset from the target by a gap from one band
+                // inside to three bands out, so both edges of the band are crossed.
                 OracleVector tilt = new OracleVector(Signed(random), Signed(random), Signed(random)) * 0.7;
                 OracleVector outward = (face.Normal + tilt).Unit;
                 if (OracleVector.Dot(outward, face.Normal) < 0.2) outward = face.Normal;
-                OracleVector lowest = target + outward * (Radius + Between(random, -5e-5, 5e-5));
+                double gap = Between(random, -Band, 3 * Band);
+                OracleVector lowest = target + outward * (Radius + gap);
                 Pose probe = Lowest(lowest.X, lowest.Y, lowest.Z);
                 Query query = scene.Query(scene.World, probe);
                 Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
                 (OracleVector lower, OracleVector upper) = Segment(probe);
                 SupportNeighborhoodOracle.AssertMatches(query.Elements, faces, lower, upper, Radius, Band);
-                Assert.True(SupportNeighborhoodOracle.IndexOf(query.Elements, face) >= 0,
-                    $"Pose {poses}: the face the probe was placed against is a member.");
+                // The face is no farther than the target, so a gap certainly inside the band makes it a member.
+                if (gap <= Band - SupportNeighborhoodOracle.Geometry)
+                    Assert.True(SupportNeighborhoodOracle.IndexOf(query.Elements, face) >= 0,
+                        $"Pose {poses}: the face the probe was placed against is a member.");
             }
         }
         Assert.Equal(500, poses);

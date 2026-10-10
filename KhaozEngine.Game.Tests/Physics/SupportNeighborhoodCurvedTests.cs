@@ -210,6 +210,35 @@ public class SupportNeighborhoodCurvedTests
     }
 
     [Fact]
+    public void ZeroLengthCapsuleBelowItsCentreIsCertified()
+    {
+        // A capsule of length zero is round about its centre. The probe's upper end rests one radius out along a
+        // direction 20 degrees below the centre plane, so the whole axis lies below that plane.
+        using var scene = new Scene();
+        var centre = new Vector3(0.5f, 1, -0.25f);
+        const double capsuleRadius = 0.4;
+        StaticHandle capsule = scene.World.AddStatic(new CapsuleShape((float)capsuleRadius, 0), Pose.At(centre));
+        List<OracleTangent> installed = SupportNeighborhoodOracle.InstalledCurved(scene.World, capsule);
+        Assert.Equal(0, Assert.Single(installed).HalfLength);
+        double below = -20 * Math.PI / 180;
+        OracleVector upperEnd = OracleVector.From(centre) +
+            new OracleVector(Math.Cos(below), Math.Sin(below), 0) * (capsuleRadius + Radius);
+        Pose pose = Lowest(upperEnd.X, upperEnd.Y - 0.01, upperEnd.Z);
+        (OracleVector lower, OracleVector upper) = Segment(pose);
+        Assert.True(upper.Y < centre.Y, "The whole axis lies below the centre plane.");
+
+        Query query = scene.Query(scene.World, pose);
+        Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
+        SupportElement member = Assert.Single(query.Elements);
+        Assert.Equal(capsule, member.Static);
+        Assert.Equal(1, SupportNeighborhoodOracle.AssertTangentsMatch(query.Elements, installed, lower, upper, Radius,
+            Band));
+        // The axis rises toward the centre plane, so its upper end is the closest point.
+        OracleVector normal = (upper - OracleVector.From(centre)).Unit;
+        AssertTight(member, OracleVector.From(centre) + normal * capsuleRadius, normal);
+    }
+
+    [Fact]
     public void ProbeInsideTheSolidIsNotAMember()
     {
         // The axis lies inside a sphere and inside an upright cylinder, its upper end one probe radius below the top.
@@ -255,19 +284,25 @@ public class SupportNeighborhoodCurvedTests
             {
                 OracleTangent element = tangents[random.Next(tangents.Count)];
                 (OracleVector target, OracleVector normal) = SurfacePoint(random, element);
-                // Outward from the chosen surface, tilted at random, at a separation inside the band.
+                // Outward from the chosen surface, offset from the target by a gap from one band inside to three bands
+                // out. Odd samples tilt at random. A tilt brings a convex surface nearer than the gap, so even samples
+                // go straight out along the normal, where the gap is the separation whenever the lowest axis point is
+                // the closest, and both edges of the band are crossed.
                 OracleVector tilt = new OracleVector(Signed(random), Signed(random), Signed(random)) * 0.7;
-                OracleVector outward = (normal + tilt).Unit;
+                OracleVector outward = sample % 2 == 0 ? normal : (normal + tilt).Unit;
                 if (OracleVector.Dot(outward, normal) < 0.2) outward = normal;
-                OracleVector lowest = target + outward * (Radius + Between(random, -5e-5, 5e-5));
+                double gap = Between(random, -Band, 3 * Band);
+                OracleVector lowest = target + outward * (Radius + gap);
                 Pose probe = Lowest(lowest.X, lowest.Y, lowest.Z);
                 Query query = scene.Query(scene.World, probe);
                 Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
                 Assert.Empty(query.Joins);
                 (OracleVector lower, OracleVector upper) = Segment(probe);
                 SupportNeighborhoodOracle.AssertTangentsMatch(query.Elements, tangents, lower, upper, Radius, Band);
-                Assert.True(SupportNeighborhoodOracle.IndexOf(query.Elements, element) >= 0,
-                    $"Pose {poses}: the element the probe was placed against is a member.");
+                // The element is no farther than the target, so a gap certainly inside the band makes it a member.
+                if (gap <= Band - SupportNeighborhoodOracle.Geometry)
+                    Assert.True(SupportNeighborhoodOracle.IndexOf(query.Elements, element) >= 0,
+                        $"Pose {poses}: the element the probe was placed against is a member.");
             }
         }
         Assert.Equal(500, poses);

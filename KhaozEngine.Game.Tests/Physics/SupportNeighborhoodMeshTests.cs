@@ -185,13 +185,14 @@ public class SupportNeighborhoodMeshTests
         {
             CapsuleShape probe = sample % 2 == 0 ? AxisProbe : FootProbe;
             OracleFace face = faces[random.Next(20_000)];
-            Pose pose = Against(random, face, probe);
+            Pose pose = Against(random, face, probe, out double gap);
             Query query = scene.Query(scene.World, pose, probe: probe);
             Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
             (OracleVector lower, OracleVector upper) = Segment(pose);
             SupportNeighborhoodOracle.AssertMatches(query.Elements, faces, lower, upper, probe.Radius, Band);
-            Assert.True(SupportNeighborhoodOracle.IndexOf(query.Elements, face) >= 0,
-                $"Sample {sample}: the face the probe was placed against is a member.");
+            if (gap <= Band - SupportNeighborhoodOracle.Geometry)
+                Assert.True(SupportNeighborhoodOracle.IndexOf(query.Elements, face) >= 0,
+                    $"Sample {sample}: the face the probe was placed against is a member.");
         }
     }
 
@@ -314,13 +315,15 @@ public class SupportNeighborhoodMeshTests
             {
                 CapsuleShape probe = sample % 2 == 0 ? AxisProbe : FootProbe;
                 OracleFace face = faces[random.Next(faces.Count)];
-                Pose pose = Against(random, face, probe);
+                Pose pose = Against(random, face, probe, out double gap);
                 Query query = scene.Query(scene.World, pose, probe: probe);
                 Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
                 (OracleVector lower, OracleVector upper) = Segment(pose);
                 SupportNeighborhoodOracle.AssertMatches(query.Elements, faces, lower, upper, probe.Radius, Band);
-                Assert.True(SupportNeighborhoodOracle.IndexOf(query.Elements, face) >= 0,
-                    $"Pose {poses}: the face the probe was placed against is a member.");
+                // The face is no farther than the target, so a gap certainly inside the band makes it a member.
+                if (gap <= Band - SupportNeighborhoodOracle.Geometry)
+                    Assert.True(SupportNeighborhoodOracle.IndexOf(query.Elements, face) >= 0,
+                        $"Pose {poses}: the face the probe was placed against is a member.");
             }
         }
         Assert.Equal(500, poses);
@@ -339,16 +342,18 @@ public class SupportNeighborhoodMeshTests
         return [.. vertices];
     }
 
-    // The probe placed against a random point of the face: outward, tilted at random, at a separation inside the
-    // band. The axis end nearer the face's plane takes that point, so the whole axis lies in front of the face. A
-    // short probe under a down-facing face would otherwise reach behind its plane.
-    static Pose Against(Random random, OracleFace face, CapsuleShape probe)
+    // The probe placed against a random point of the face: outward, tilted at random, offset from it by a gap from
+    // one band inside to three bands out, so both edges of the band are crossed. The axis end nearer the face's
+    // plane takes that point, so the whole axis lies in front of the face. A short probe under a down-facing face
+    // would otherwise reach behind its plane.
+    static Pose Against(Random random, OracleFace face, CapsuleShape probe, out double gap)
     {
         OracleVector target = SurfacePoint(random, face);
         OracleVector tilt = new OracleVector(Signed(random), Signed(random), Signed(random)) * 0.7;
         OracleVector outward = (face.Normal + tilt).Unit;
         if (OracleVector.Dot(outward, face.Normal) < 0.2) outward = face.Normal;
-        OracleVector anchor = target + outward * (probe.Radius + Between(random, -5e-5, 5e-5));
+        gap = Between(random, -Band, 3 * Band);
+        OracleVector anchor = target + outward * (probe.Radius + gap);
         return face.Normal.Y >= 0 ? Lowest(anchor.X, anchor.Y, anchor.Z)
             : Lowest(anchor.X, anchor.Y - probe.Length, anchor.Z);
     }

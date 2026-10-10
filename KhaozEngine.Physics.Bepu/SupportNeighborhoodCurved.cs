@@ -10,7 +10,9 @@ internal enum SupportCurvedShape : byte { Sphere, Capsule, Cylinder }
 
 /// <summary>A curved leaf as the rigid solid the neighborhood measures: the leaf's installed world centre, the unit
 /// direction of its installed local Y axis, its radius and its half length. A sphere is round about its centre, a
-/// capsule is round about its core segment, and a cylinder has a side and two caps. The rows of I - Axis Axis^T
+/// capsule is round about its core segment, and a cylinder has a side and two caps. Published errors enclose this
+/// rigid solid, with the centre and Y column of the leaf's float world pose, not the float path Bepu evaluates for
+/// each colliding pair, which can differ from it by about 1e-7 m. The rows of I - Axis Axis^T
 /// project an offset across the axis with each offset component used once, so interval dependency does not widen
 /// the radial direction along the axis.</summary>
 internal readonly record struct SupportCurvedLeaf(int LeafId, SupportCurvedShape Shape, GeometryVector Centre,
@@ -256,15 +258,12 @@ internal sealed class SupportTangentKernel
             // Beside the core the offset from it is the offset across the axis. Beyond an end it is the offset from
             // that end. A span reaching both encloses both.
             GeometryInterval core = Clamp(along, leaf.HalfLength);
+            // Each end is chosen by which side of the core it bounds, never by its sign, so a zero length capsule
+            // whose ends are both zero still encloses every axis point.
             GeometryVector radial = default;
-            bool beside = along.Upper > -leaf.HalfLength && along.Lower < leaf.HalfLength;
-            if (beside) radial = across;
-            foreach (double end in (ReadOnlySpan<double>)[-leaf.HalfLength, leaf.HalfLength])
-            {
-                if (end < 0 ? along.Lower > end : along.Upper < end) continue;
-                GeometryVector beyond = Subtract(offset, Scale(leaf.Axis, GeometryInterval.Exact(end)));
-                radial = radial.IsResolved ? Hull(radial, beyond) : beyond;
-            }
+            if (along.Upper > -leaf.HalfLength && along.Lower < leaf.HalfLength) radial = across;
+            if (along.Lower <= -leaf.HalfLength) radial = Join(radial, Beyond(offset, leaf.Axis, -leaf.HalfLength));
+            if (along.Upper >= leaf.HalfLength) radial = Join(radial, Beyond(offset, leaf.Axis, leaf.HalfLength));
             return Round(Add(leaf.Centre, Scale(leaf.Axis, core)), radial, leaf.Radius);
         }
         GeometryInterval distance = SupportGeometry.Length(across);
@@ -287,6 +286,13 @@ internal sealed class SupportTangentKernel
         GeometryVector centre = Add(leaf.Centre, Scale(normal, half));
         return new(Hypot(rise, outside), rise, Add(centre, Scale(across, Shrink(distance, leaf.Radius))), normal);
     }
+
+    // The offset of an axis point from the core end at the signed half length.
+    static GeometryVector Beyond(GeometryVector offset, GeometryVector axis, double end) =>
+        Subtract(offset, Scale(axis, GeometryInterval.Exact(end)));
+
+    static GeometryVector Join(GeometryVector enclosure, GeometryVector more) =>
+        enclosure.IsResolved ? Hull(enclosure, more) : more;
 
     // Round about a core point: the closest surface point is radial from the core.
     static Sample Round(GeometryVector core, GeometryVector offset, double radius)

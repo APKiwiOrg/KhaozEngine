@@ -32,9 +32,9 @@ public sealed record MapStaticDescriptor(string OwnerId, MapStaticKind Kind, Phy
     Quaternion Orientation, MapBox3 Bounds, string Digest, IReadOnlyList<MapFaceKey> TriangleOwners);
 
 /// <summary>Whether the backend's capsule feature query, <see cref="IPhysicsCapsuleFeatures"/>, can
-/// capture a static, and why not. These predict that capability only. The contact controller certifies foot support
-/// through <see cref="IPhysicsSupportNeighborhood"/>, whose limits differ: it captures curved
-/// leaves and reads only the mesh triangles near its probe.</summary>
+/// capture a static, and why not. These predict that capability only. The contact controller's foot-support primitive,
+/// not yet used by movement, certifies through <see cref="IPhysicsSupportNeighborhood"/>, whose limits differ: it
+/// captures curved leaves and reads only the mesh triangles near its probe.</summary>
 public enum MapFeatureQuerySupport
 {
     /// <summary>The static meets none of the limits this builder measures: flattened leaf count, curved leaves, mesh

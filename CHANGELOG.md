@@ -30,18 +30,21 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   document (World Authoring R3). It is in no umbrella, so add it explicitly, with `KhaozEngine.Physics.Bepu` for
   the shipped backend. `MapAssetShapes` reads collider and selection shapes from a verified asset closure.
   `MapPlacementShapes` resolves placement geometry with each placement's `MapInteractionEnvelope`, and
-  `MapTerrainPhysics` compiles native terrain into bounded physics chunks. `MapWorldBuilder` assembles them into a `MapBuiltWorld` with a build
-  identity. `MapWorldQueries` answers pick and reach, and `MapStanceCandidates` proposes stances.
+  `MapTerrainPhysics` compiles native terrain into bounded physics chunks. `MapWorldBuilder` assembles them into a
+  `MapBuiltWorld` with a build identity. `MapWorldQueries` answers pick and reach, and `MapStanceCandidates` proposes
+  stances.
   `MapWorldGrids` and `MapResidencyOwnership` map storage tiles, navigation tiles and server cells to residency
   owners. `MapPhysicsRegistration` installs the statics into any `IPhysicsWorld` and names the compiled face of
   every terrain triangle. `MapPhysicalRelations` answers line of sight and clearance under a held read lease.
   `MapNavTiling` gives navigation tile identity, seams and links and lists the tiles an edit invalidates.
 - `KhaozEngine.MapDoc.Physics` adds no step limit, ledge rule or support model. Ground support, seating and steps
-  stay with the #438 contact controller, which stands on the statics a native world installs.
+  stay with the #438 contact controller, which will stand on the statics a native world installs.
 - `MapBuiltWorld.Diagnostics` reports each `IPhysicsCapsuleFeatures` limit a static meets, without refusing the
   static: `LeafCapacity`, `CurvedLeaf`, `MeshTriangleCapacity`, `LocalExtent` and `HullCapacity`. They predict
-  that capability only. `IPhysicsSupportNeighborhood`, which the contact controller certifies support through,
-  captures curved leaves and has different limits.
+  that capability only. The contact controller's foot-support primitive, not yet used by movement, certifies through
+  `IPhysicsSupportNeighborhood`. It captures curved leaves and applies its own 64 m local bound to curved leaf sizes
+  and to the mesh triangles near its probe, which `LocalExtent` does not predict. One unsupported static near a probe
+  refuses the whole neighborhood query.
 - `MapAssetShapes.Read` throws `MapDocumentException` for an asset that declares a `Surface` (support)
   resource. Placement-local support surfaces arrive with World Authoring R5.
 - Locomotion exposes the contact controller's shell as the public `ContactShell` in

@@ -10217,7 +10217,7 @@ What it produces:
   and navigation tiles an edit invalidates.
 
 **Ownership boundary.** The package adds no step limit, ledge rule or support model. Ground support, seating, steps
-and navigation column sampling stay with the #438 contact controller, which stands on the statics a native world
+and navigation column sampling stay with the #438 contact controller, which will stand on the statics a native world
 installs. A resolver 1 world keeps analytic ground behind `LegacySupportHeight` and installs no terrain statics.
 Vertical-layer navigation on native worlds waits for #438 phase 5.
 
@@ -10227,10 +10227,12 @@ Vertical-layer navigation on native worlds waits for #438 phase 5.
 does not capture), `MeshTriangleCapacity` (a mesh over 65,536 triangles), `LocalExtent` (a leaf reaching more than
 64 m from its origin) and `HullCapacity`. `HullCapacity` is conservative: any convex hull over 130 points is flagged,
 because 130 points always fit the backend's 256 faces and 1,524 face entries, even though a larger hull may still be
-captured. Every diagnostic predicts `IPhysicsCapsuleFeatures` capture only. The #438 contact controller now certifies
-foot support through `IPhysicsSupportNeighborhood`, which has different limits: it captures curved leaves, reads only
-the mesh triangles near its probe and caps one query at 256 elements, while it shares the 64 leaf, 64 m local extent
-and hull face limits.
+captured. Every diagnostic predicts `IPhysicsCapsuleFeatures` capture only. The #438 contact controller's
+foot-support primitive, not yet used by movement, certifies through `IPhysicsSupportNeighborhood`, which has different
+limits: it captures curved leaves, reads only the mesh triangles near its probe and caps one query at 256 elements,
+while it shares the 64 leaf and hull face limits. It applies its own 64 m local bound to curved leaf sizes and to the
+mesh triangles near its probe, which `LocalExtent` does not predict, and one unsupported static near a probe refuses
+the whole neighborhood query.
 
 **Refusals.** `MapAssetShapes.Read` throws `MapDocumentException` for an asset that declares a `Surface` (support)
 resource, since placement-local support surfaces arrive with R5. It also refuses a compound holding a triangle mesh,

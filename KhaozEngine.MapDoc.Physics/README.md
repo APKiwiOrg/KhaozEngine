@@ -17,7 +17,7 @@ The package is opt-in and in no umbrella. Add it explicitly.
 
 This package owns geometry, interaction envelopes, physical relations, residency, registration and navigation tile
 identity. It adds no step limit, ledge rule or support model. Ground support, seating, steps and navigation column
-sampling belong to the #438 contact controller, which stands on the statics this package installs. A native
+sampling belong to the #438 contact controller, which will stand on the statics this package installs. A native
 (resolver 2) world installs its terrain as statics. A resolver 1 world keeps its analytic ground behind
 `MapBuiltWorld.LegacySupportHeight` and installs no terrain statics.
 
@@ -147,11 +147,15 @@ list.
 vertices has at most 2V - 4 faces and 6V - 12 face entries, so a hull of 130 points or fewer always fits. Any hull
 over 130 points is flagged, even one the query would still capture.
 
-Every diagnostic predicts `IPhysicsCapsuleFeatures` capture and nothing else. The #438 contact controller now
-certifies foot support through `IPhysicsSupportNeighborhood`, which has different limits. It captures sphere, capsule
-and cylinder leaves, so `CurvedLeaf` does not apply to it. It reads only the mesh triangles near its probe, so
-`MeshTriangleCapacity` does not apply either, and it caps one query at 256 elements. It shares the 64 leaf limit of
-`LeafCapacity`, the 64 m limit of `LocalExtent` and the hull face limits behind `HullCapacity`.
+Every diagnostic predicts `IPhysicsCapsuleFeatures` capture and nothing else. The #438 contact controller's
+foot-support primitive, not yet used by movement, certifies through `IPhysicsSupportNeighborhood`, which has
+different limits. It captures sphere, capsule and cylinder leaves, so `CurvedLeaf` does not apply to it. It reads only
+the mesh triangles near its probe, so `MeshTriangleCapacity` does not apply either, and it caps one query at 256
+elements. It shares the 64 leaf limit of `LeafCapacity` and the hull face limits behind `HullCapacity`. It applies its
+own 64 m local bound to the radius and half length of a curved leaf and to the mesh triangles near its probe.
+`LocalExtent` does not predict that bound: the builder never flags it on a curved leaf, and a mesh it flags may still
+pass when the triangles near the probe stay within 64 m. One unsupported static near a probe refuses the whole
+neighborhood query.
 
 ## Pick, reach and stances
 
@@ -302,8 +306,8 @@ terrain witness digest.
 Terrain chunks are one-sided meshes, so a line of sight ray meeting a face from behind passes through it. A clearance
 sweep sees no back-face culling, the same filter the #438 contact controller's shell sweeps use, so a face met from
 behind blocks clearance as it blocks movement. Only the controller's support probes set `QueryFilter.CullBackFaces`.
-Interaction envelopes are never installed and never block. A portal is an opening with no faces, so an authored open portal needs no
-extra state.
+Interaction envelopes are never installed and never block. A portal is an opening with no faces, so an authored open
+portal needs no extra state.
 
 This departs from R2's planned D5 signature in four ways:
 

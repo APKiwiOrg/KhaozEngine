@@ -129,6 +129,20 @@ public class MapNavTilingTests
         var far = new MapWorldGrids(64f, 1, 4, new Vector2(-1_099_511_627_776f, 0f));
         var error = Assert.Throws<MapDocumentException>(() =>
             MapNavTiling.Partition(NativeWorldFixtures.BuildLegacyStrip(), far, Options));
+        // Validate refuses the grids before any capture is placed.
+        Assert.Contains("grid alignment", error.Message);
+        Assert.Contains("tile range", error.Message);
+    }
+
+    [Fact]
+    public void SeamMarginBeyondTheIntRange_RefusesNamingTheNavigationTile()
+    {
+        // With the origin 2^36 m west, the strip's tiles index near 2^30 and pass Validate, but a 10^12 m margin
+        // carries the capture past the int range.
+        var nearEdge = new MapWorldGrids(64f, 1, 4, new Vector2(-68_719_476_736f, 0f));
+        var error = Assert.Throws<MapDocumentException>(() => MapNavTiling.Partition(
+            NativeWorldFixtures.BuildLegacyStrip(), nearEdge, Options with { SeamMarginMetres = 1e12f }));
+        Assert.Contains("Navigation tile", error.Message);
         Assert.Contains("tile range", error.Message);
     }
 

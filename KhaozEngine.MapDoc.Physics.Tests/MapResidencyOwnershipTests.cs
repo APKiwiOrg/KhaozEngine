@@ -67,6 +67,17 @@ public class MapResidencyOwnershipTests
     }
 
     [Fact]
+    public void NavTileOf_RefusesAFarTileNamingTheTileRange()
+    {
+        // With the origin 2^40 m west, storage tile 0 lies 2^34 navigation tiles east of it.
+        var far = new MapWorldGrids(64f, 1, 4, new Vector2(-1_099_511_627_776f, 0f));
+        Assert.Contains("tile range", Assert.Throws<MapDocumentException>(() => far.NavTileOf(new MapTileCoord(0, 0))).Message);
+        // An origin past 2^62 storage tiles leaves no long tile offset.
+        var beyondLong = new MapWorldGrids(64f, 1, 4, new Vector2(1e30f, 0f));
+        Assert.Contains("tile range", Assert.Throws<MapDocumentException>(() => beyondLong.NavTileOf(new MapTileCoord(0, 0))).Message);
+    }
+
+    [Fact]
     public void EditEffects_MapToAffectedOwnersAndTiles()
     {
         var world = NativeWorldFixtures.BuildStackedCave();

@@ -131,7 +131,7 @@ Pass `stepInProgress: state.StepDeltaY > 0 || state.ClimbRate > 0` to the tick's
 
 **Interfaces:**
 - Consumes: Task 2's `Tick` sums, `FootSupport.Find`, the tick's lease, world, terrain callbacks, foot radius and traction gate.
-- Produces: `internal static class GroundSignals` with constants `RunGrade = 0.3f`, `SeedFraction = 0.7f`, `SmoothingRate = 5f`, `MaxDescentRate = 6f`, `MaxDescentGrade = 2f`, `Samples = 3`, and `internal static (float ClimbRate, float Ewma, float StepDeltaY) Resolve(in MoveState input, float stepRise, float moveRise, Vector2 groundTravel, Vector3 feet, bool walkableGround, float dt, in MoveTuning tuning, float footRadius, float cosMaxSlope, Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease)` returning the three outputs. `walkableGround` is true only when the tick's final mode is ground with walkable footing.
+- Produces: `internal static class GroundSignals` with constants `RunGrade = 0.3f`, `SeedFraction = 0.7f`, `SmoothingRate = 5f`, `MaxDescentRate = 6f`, `MaxDescentGrade = 2f`, `Samples = 3`, and `internal static (float ClimbRate, float Ewma, float StepDeltaY) Resolve(in MoveState input, float stepRise, float moveRise, Vector2 groundTravel, Vector3 feet, in SupportSample axisSupport, bool walkableGround, float dt, in MoveTuning tuning, float footRadius, float cosMaxSlope, Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease)` returning the three outputs. `walkableGround` is true only when the tick's final mode is ground with walkable footing.
 
 - [ ] **Step 1: Write the failing rows**
 
@@ -144,13 +144,14 @@ Scene `Staircase(8, 0.18, 0.28)`, box and mesh, 30 and 60 Hz, walk and run:
 - `DeniedDescentExportsNothing`: pressing into a wall at the top of the descending stair, `ClimbRate` 0.
 - `ReplayFromAQuantizedClimbRateIsIdentical` (Review Focus): an input with `ClimbRate = 35 * 0.05f` and `ClimbRateEwma = 1.75f` mid-stair, two runs give bit-identical outputs.
 - Extend `ReplayIsBitIdentical` so a stair run is in its sequence.
-- `WarmStairTickAllocatesNothing`: after two warm-up ticks, `GC.GetAllocatedBytesForCurrentThread()` is unchanged across a stair tick that runs the look-ahead.
+- `WarmSignalResolveAllocatesNothing`: under one acquired lease, after two warm-up calls, `GC.GetAllocatedBytesForCurrentThread()` is unchanged across a `GroundSignals.Resolve` call that runs the look-ahead on the staircase. (A whole tick allocates the backend read lease, which is #1334's.)
+- `SmoothGroundReportsNoSignals` (existing, Task 2) must keep passing unchanged: carried `ClimbRate` 1 and EWMA 2 on a 20 degree ramp and a planar analytic slope report zero.
 
 - [ ] **Step 2: Run, expect failure**
 
 - [ ] **Step 3: Implement `GroundSignals` and wire it**
 
-Trigger, samples, least-squares grade, run and rates exactly as the spec's Runs and Rates sections. The ascent rate is `MoveRise / dt` (step rise plus plane following). Use stack storage for the four samples. Call it once at the end of the tick, before the jump, inside the existing lease.
+Trigger, samples (sample 0 is `axisSupport`, no query), least-squares grade, window steps by `GroundSeat.DiscreteStep` between consecutive walkable samples, run start and continuation, and rates exactly as the spec's Runs and Rates sections (Ruling 4a-7). The ascent rate is `MoveRise / dt` (step rise plus plane following). Use stack storage for the four samples. Call it once at the end of the tick, before the jump, inside the existing lease.
 
 - [ ] **Step 4: Run `Locomotion.Contacts`, expect PASS**
 

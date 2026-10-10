@@ -100,14 +100,30 @@ nonzero achieved horizontal travel, and when at least one of these holds:
 
 Bodies on terrain or ramps never trigger it, so its cost falls only on stairs.
 
-**Samples.** Along the unit direction of the tick's achieved horizontal travel, at distances `k * CapsuleRadius`
-for k = 1, 2, 3, the controller calls `FootSupport.Find` with the tick's foot radius, the final feet height as the
-reference, `ReachUp = ReachDown = StepHeight + 2 * k * CapsuleRadius` and the tick's traction gate. The axis
-support is sample 0. Only walkable samples count. The grade is the least-squares slope of height against distance
-over the walkable samples, and it needs sample 0 plus at least two ahead.
+**Samples.** Sample 0 is the tick's final certified support at the axis, passed in, so it costs no query. Along
+the unit direction of the tick's achieved horizontal travel, at distances `k * CapsuleRadius` for k = 1, 2, 3, the
+controller calls `FootSupport.Find` with the tick's foot radius, the final feet height as the reference,
+`ReachUp = ReachDown = StepHeight + 2 * k * CapsuleRadius` and the tick's traction gate. Only walkable samples
+count. The grade is the least-squares slope of height against distance over the walkable samples, and it needs
+sample 0 plus at least two ahead. The window holds a rise (or a drop) when the discrete step of Discrete steps,
+taken between consecutive walkable samples, is positive (or negative) for some pair.
 
-**Run.** A run is a grade whose magnitude is at least 0.3, the legacy run grade. The constant stays a named
-internal constant beside the others.
+**Run.** A run starts on a grade whose magnitude is at least 0.3, the legacy run grade, and only when the window
+holds a step of the same sign. A smooth ramp has no discrete step between its samples, so it never starts a run
+however steep it is. A run in progress continues without the grade test:
+
+- an ascent (input `ClimbRate > 0`) continues while the tick applied a discrete rise, the window holds a rise, or
+  the feet still owe climb below their walkable support by more than the contact skin
+- a descent (input `ClimbRate < 0`) continues while the tick applied a discrete drop or the window holds a drop
+
+Near the top or bottom of a staircase, the window sees the landing and its fitted grade flattens while the last
+risers are still being climbed or dropped. Continuation carries the run through them and ends it once the steps
+are done. The constants stay named internal constants beside the others.
+
+**Ruling 4a-7.** Runs need a discrete step, and runs in progress continue on step evidence rather than on the
+fitted grade. The Task 3 implementer showed that a grade-only test turns a steep ramp into a run whenever a rate is
+carried in, and that a three-sample horizon drops the run on the last risers. Cost if wrong: a staircase whose
+risers are more than three capsule radii apart reads as isolated steps.
 
 **Ruling 4a-6.** Carried lag counts as an owed step only while the input state shows a step in progress. The
 controller carries no new state, and a reviewer probe showed that lag left by pacing a smooth hill otherwise surfaced
@@ -117,7 +133,7 @@ wrong: a paced riser whose first tick paid nothing (its budget spent earlier in 
 
 **Ruling 4a-2.** Look-ahead uses the certified support primitive, gated by the trigger, rather than an uncertified
 ray fan every tick. The signal stays on the engine's single support truth, and the cost stays off the common
-path. Cost if wrong: up to three extra support queries per tick on stairs, measured in the #1334 cost gate.
+path. Cost if wrong: three extra support queries per tick on stairs, measured in the #1334 cost gate.
 
 **Ruling 4a-3.** The first riser of a staircase emits `ClimbRate`, not `StepDeltaY`, because the trigger fires on
 that riser and finds the run ahead. Legacy emitted the first riser as `StepDeltaY` because its run test also
@@ -125,12 +141,13 @@ required the body to stand on a prop. The stair glide animator composes either w
 
 ## Rates
 
-- **Ascent** (run with grade at least 0.3): the applied rate is the tick's summed `StepRise` plus plane following
+- **Ascent** (an ascent run): the applied rate is the tick's summed `StepRise` plus plane following
   on the ground segments, divided by the whole tick `dt`. `ClimbRateEwma` follows the legacy formula: seed
   `0.7 * rate` when the carried value is exactly zero, otherwise `previous + (1 - exp(-5 * dt)) * (rate -
   previous)`. `ClimbRate = max(0, ClimbRateEwma)`.
-- **Descent** (run with grade at most -0.3): `ClimbRate = -min(achieved / dt * clamp(-grade, 0.3, 2), 6)`, where
-  `achieved` is the length of the tick's achieved horizontal ground travel. `ClimbRateEwma` is zero.
+- **Descent** (a descent run): `ClimbRate = -min(achieved / dt * clamp(-grade, 0.3, 2), 6)`, where `achieved` is
+  the length of the tick's achieved horizontal ground travel and `grade` is the fitted grade, or -0.3 when fewer
+  than two samples ahead are walkable. `ClimbRateEwma` is zero.
 - **Otherwise** both are zero.
 
 **Ruling 4a-4.** Descent uses achieved travel, not commanded travel, so a wall or bound that stops the body cannot
@@ -155,7 +172,8 @@ disables pacing now sees step events it did not see before.
 - The signals never feed movement. Only the signal computation reads the input `ClimbRate`, `ClimbRateEwma` and
   `StepDeltaY`: the trigger, the EWMA update and the carried-lag test.
 - Replay is bit-identical (invariant 1), signals included.
-- A warm tick allocates nothing, look-ahead included.
+- The signal computation allocates nothing on a warm tick. The whole tick already allocates the backend's read lease
+  object (208 bytes measured), which belongs to the #1334 cost gate, not to this phase.
 
 ## Suite
 
@@ -180,7 +198,9 @@ legacy numbers. Box and mesh variants where statics are involved, 30 and 60 Hz, 
 - **Pacing off.** With `MaxStepClimbSpeed` zero, the doorstep still reports its height in one tick.
 - **Grant and facing.** The Held-on-refused-support policy keeps the grant (pinned as built), and a commitment
   freezes facing (already pinned, kept).
-- **Replay and allocation.** Replay bits include the three floats. A warm stair tick allocates nothing.
+- **Replay and allocation.** Replay bits include the three floats. A warm `GroundSignals.Resolve` call with
+  look-ahead allocates nothing.
+- **Steep ramps.** A 20 degree ramp and a planar analytic slope with a carried `ClimbRate` and EWMA report zero.
 - **Scenario harness.** Every scenario tick asserts finite signals and never both `ClimbRate` and `StepDeltaY`
   nonzero.
 
@@ -197,5 +217,5 @@ legacy numbers. Box and mesh variants where statics are involved, 30 and 60 Hz, 
 
 - Run detection reads three samples ahead, so a staircase shorter than about three capsule radii may not register
   as a run and emits isolated steps instead.
-- A staircase that turns into a ramp keeps `ClimbRate` while the grade ahead stays above 0.3.
+- A staircase whose steps are farther apart than the look-ahead (three capsule radii) reads as isolated steps.
 - A riser on a strongly curved tread reports its height less the curvature disagreement (Ruling 4a-1).

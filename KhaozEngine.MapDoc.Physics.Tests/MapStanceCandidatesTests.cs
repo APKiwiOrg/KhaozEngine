@@ -161,4 +161,25 @@ public class MapStanceCandidatesTests
             NativeWorldFixtures.BuildCrate(), "crate", Vector3.Zero, tuning, options, accept));
         Assert.Equal(parameter, error.ParamName);
     }
+
+    [Fact]
+    public void ProposalCap_CoversTheWholeCallRatherThanEachMember()
+    {
+        // The doorway's members are two 0.3 m square jambs and a 1.8 by 0.3 m lintel. Each outline, outset by the
+        // capsule radius, is the member's perimeter plus one full circle. At this spacing every member alone proposes
+        // at most 2^20 points, but the three together propose more.
+        const int cap = 1 << 20;
+        double circle = 2d * Math.PI * MoveTuning.Default.CapsuleRadius, jamb = 1.2d + circle, lintel = 4.2d + circle;
+        float spacing = (float)(lintel / (0.9d * cap));
+        Assert.True(Math.Ceiling(lintel / spacing) <= cap);
+        Assert.True(2d * Math.Ceiling(jamb / spacing) + Math.Ceiling(lintel / spacing) > cap);
+        var f = NativeWorldFixtures.Doorway(0f, 1f);
+        var world = MapWorldBuilder.Build(f.Document, f.Assets, NativeWorldFixtures.Options());
+        int calls = 0;
+        MapStanceValidator count = (Vector3 c, out Vector3 seated) => { calls++; seated = c; return true; };
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() => MapStanceCandidates.Find(world, "doorway",
+            Vector3.Zero, MoveTuning.Default, new MapStanceOptions(spacing, 0.5f), count));
+        Assert.Equal("options", error.ParamName);
+        Assert.Equal(0, calls);
+    }
 }

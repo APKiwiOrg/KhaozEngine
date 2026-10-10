@@ -93,6 +93,10 @@ public static class MapTerrainPhysics
     internal static string PatchChunkPrefix(MapPatchKey key) =>
         FormattableString.Invariant($"{key.SurfaceId}/{key.SlotX},{key.SlotZ}/");
 
+    /// <summary>The <see cref="MapTerrainChunk.ChunkId"/> prefix shared by every chunk of one wall strip,
+    /// <c>stripId/</c>. It ends in its separator, so "wall-1/" never matches "wall-10/...".</summary>
+    internal static string StripChunkPrefix(string stripId) => stripId + "/";
+
     /// <summary>Chunks every present support floor and ceiling patch of a complete view, quadrant by quadrant within
     /// each 64 by 64 slot block, and every wall strip side by contiguous primitive range, until each chunk holds at
     /// most the cap and every exact vertex lies within 64 m of its anchor on every axis. Faces are
@@ -219,7 +223,8 @@ public static class MapTerrainPhysics
             MapSubmissionAnchor anchor = Anchor(exact, faces, out bool fits);
             if (faces.Length <= cap && fits)
             {
-                Emit(FormattableString.Invariant($"{stripId}/{faces[0].Key.Primitive}/{side}"), anchor, exact, faces);
+                string id = StripChunkPrefix(stripId) + FormattableString.Invariant($"{faces[0].Key.Primitive}/{side}");
+                Emit(id, anchor, exact, faces);
                 return;
             }
             if (hi - lo > 1)
@@ -230,7 +235,8 @@ public static class MapTerrainPhysics
                 return;
             }
             // One ruled quad holds at most two faces, always under the cap, so only the extent splits it.
-            SplitByFace(exact, faces, k => FormattableString.Invariant($"{stripId}/{k.Primitive}.{k.ParentTriangle}/{side}"));
+            string prefix = StripChunkPrefix(stripId);
+            SplitByFace(exact, faces, k => prefix + FormattableString.Invariant($"{k.Primitive}.{k.ParentTriangle}/{side}"));
         }
 
         /// <summary>Halves a face run in key order until each half fits its anchor or is a single face.</summary>

@@ -192,7 +192,9 @@ contact controller.
 
 Any failure during `Register` removes what it added, in reverse order. `Dispose` removes every static in reverse
 order, never disposes the physics world, and leaves the statics a failed removal kept in `Handles` so a later call
-retries them. Never register or dispose inside a held query read lease: the backend refuses mutation then.
+retries them. A removal that throws `ObjectDisposedException` counts as done, since a disposed physics world's statics
+are gone with it, so disposing the physics world first is safe. Never register or dispose inside a held query read
+lease: the backend refuses mutation then.
 
 ## Residency ownership
 
@@ -217,6 +219,10 @@ every listed patch, including the chunks of the wall strips recorded in it.
 the post-edit world. `Affected` then lists every static as an owner and every storage tile the post-edit world's
 bounds reach. Pre-edit extents outside the post-edit world cannot be listed, which is why a consumer must reset rather
 than patch.
+
+`MapResidencyOwnership.MaxStorageTiles` (2^20) caps every storage tile list: one static's membership, and each extent
+`Affected` lists. A static or extent that reaches more refuses with `MapDocumentException` naming the count before
+any tile is listed.
 
 `MapTileResidency` remains the streaming loader keyed by storage tile. This index is the ownership R8 consumes.
 
@@ -244,10 +250,13 @@ the semantic digests of the record and its aperture records, and both tiles. `Af
 edit also widens by the footprint of every sculpt tile position its bounds meet, whether the edit added or removed that
 tile. The result stays inside the edited world's partition. An edit flagged `MapNativeInvalidation.Unbounded`, a full
 reset, lists every tile of that partition without listing storage tiles first, under the same `MaxPartitionTiles`
-refusal as `Partition`.
+refusal as `Partition`, and still refuses an edit box beyond 1,000,000 m. A tile that leaves the partition, because the
+edit shrank the world, is never listed, so a consumer that keeps state per tile diffs the old and new partitions to
+find removed tiles.
 
-`Partition` refuses a world whose bounds reach more than `MapNavTiling.MaxPartitionTiles` (2^20) navigation tiles, and
-the refusal names the count.
+`Partition` refuses a world whose bounds reach more than `MapNavTiling.MaxPartitionTiles` (2^20) navigation tiles
+before it places any static, and the refusal names the count. A grid origin so far from the world that a tile index
+leaves the int range refuses naming the tile range.
 
 Tile and capture bounds are residency extents, not probe windows. A resolver 1 world's bounds exclude its analytic
 terrain height, so a capture picks its own vertical window.
@@ -300,7 +309,7 @@ loads a native asset's verified mesh with its source units applied once and no h
 agrees with the collider this package reads. The [ke-mapedit](../KhaozEngine.MapEdit.Tool) `NativeCollisionService`
 measures a placement's mesh top against its collider and resizes box colliders through content-addressed resources.
 
-Editor placement edits report what they invalidate (P16). `KhaozEngine.MapEditor` takes no reference to this package.
+Editor placement edits report what they invalidate. `KhaozEngine.MapEditor` takes no reference to this package.
 It defines `INativePlacementBounds`, bound next to the asset closure, and ke-mapedit's `NativePlacementBoundsProvider`
 implements it with `MapPlacementShapes.Bounds` over the session resolve options. A placement add, remove, move,
 rotate, scale or asset change then reports `Physics`, `Nav` and `Residency` with the changed placements' bounds
@@ -322,6 +331,7 @@ reports `Unbounded` the same way. Collider height edits size their placements th
 | Live portal and door state | R5 | Portals are authored open |
 | Water medium and walker profiles | R4 and #1299 | `CreateLegacyMoveContext` leaves the medium delegate null |
 | Clearance body model confirmation | Owner, #1344 | Clearance uses the #438 shell through `ContactShell` |
-| Editor placement edits reporting old and new placement bounds with Physics, Nav and Residency (P16) | R3 | Done, see Editor tooling |
-| GUI native editing: `MapEditorScene`, hosted by Showcase, binds no closure or placement bounds provider yet | R3 follow-up | Wiring it needs the provider reachable from that host, in this package or a shared adapter, since Showcase does not reference ke-mapedit |
+| Editor placement edits reporting old and new placement bounds with Physics, Nav and Residency | R3 | Done, see Editor tooling |
+| GUI native editing: `MapEditorScene`, hosted by Showcase, binds no closure or placement bounds provider yet | R3 follow-up, [#1349](https://github.com/APKiwiOrg/KhaozEngine/issues/1349) | Wiring it needs the provider reachable from that host, in this package or a shared adapter, since Showcase does not reference ke-mapedit |
+| Import-time acceptance of changed targets, distances, occlusion and stances | R11 and G2 | Named differentials at import |
 | Terrain edits that reseat support-bound placements without widening their tiles | #1348 | `Affected` widens terrain edits by patch extents only |

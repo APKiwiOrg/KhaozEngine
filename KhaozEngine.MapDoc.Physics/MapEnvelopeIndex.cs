@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using KhaozEngine.MapDoc.Editing;
 
 namespace KhaozEngine.MapDoc.Physics;
@@ -12,6 +13,10 @@ internal sealed class MapEnvelopeIndex
     /// <summary>The cell edge in metres.</summary>
     internal const double CellMetres = 16d;
 
+    /// <summary>The most cells one envelope's padded bounds may reach, 2^20, for example 1,024 by 1,024 cells of one
+    /// layer, a square about 16 km on a side.</summary>
+    internal const int MaxCellsPerEnvelope = 1 << 20;
+
     // Bounds grow by this much before they are binned, so a ray rounded onto a cell face still finds an envelope that
     // touches it.
     const double Padding = 1d / 1024d;
@@ -19,9 +24,24 @@ internal sealed class MapEnvelopeIndex
     readonly Dictionary<(int X, int Y, int Z), int[]> _cells;
     readonly double _minX, _minY, _minZ, _maxX, _maxY, _maxZ;
 
-    internal MapEnvelopeIndex(IReadOnlyList<MapBox3> bounds)
+    /// <summary>Indexes <paramref name="bounds"/>, whose envelopes belong to <paramref name="owners"/> in the same order.
+    /// Throws <see cref="MapDocumentException"/> naming the owner and the cell count, before indexing it, when one
+    /// envelope reaches more than <see cref="MaxCellsPerEnvelope"/> cells.</summary>
+    internal MapEnvelopeIndex(IReadOnlyList<MapBox3> bounds, IReadOnlyList<string> owners)
     {
         ArgumentNullException.ThrowIfNull(bounds);
+        ArgumentNullException.ThrowIfNull(owners);
+        for (int i = 0; i < bounds.Count; i++)
+        {
+            MapBox3 b = bounds[i];
+            double reached = (double)Span(b.MinX - Padding, b.MaxX + Padding) * Span(b.MinY - Padding, b.MaxY + Padding) *
+                Span(b.MinZ - Padding, b.MaxZ + Padding);
+            if (reached > MaxCellsPerEnvelope)
+                throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
+                    "The envelope of placement '{0}' reaches {1:N0} index cells of {2} m, more than the {3:N0} one " +
+                    "envelope may reach.",
+                    owners[i], reached, CellMetres, MaxCellsPerEnvelope));
+        }
         var cells = new Dictionary<(int X, int Y, int Z), List<int>>();
         _minX = _minY = _minZ = double.PositiveInfinity;
         _maxX = _maxY = _maxZ = double.NegativeInfinity;

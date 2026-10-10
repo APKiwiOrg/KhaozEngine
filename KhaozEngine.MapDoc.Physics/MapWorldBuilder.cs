@@ -124,7 +124,7 @@ public static class MapWorldBuilder
     {
         if (Math.Abs(x) > MaxCoordinateMetres || Math.Abs(y) > MaxCoordinateMetres || Math.Abs(z) > MaxCoordinateMetres)
             throw new MapDocumentException(FormattableString.Invariant(
-                $"Static '{owner}' at ({x}, {y}, {z}) lies beyond 1,000,000 m from the world origin on an axis."));
+                $"Static '{owner}' at ({x}, {y}, {z}) lies beyond {MaxCoordinateMetres:N0} m from the world origin on an axis."));
     }
 
     /// <summary>The feature query limits a static meets, measured per installed leaf as the backend measures it.</summary>

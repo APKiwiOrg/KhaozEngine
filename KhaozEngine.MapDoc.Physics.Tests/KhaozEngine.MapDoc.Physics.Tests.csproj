@@ -11,7 +11,7 @@
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The package, which brings MapDoc, Physics and Movement with it. -->
+    <!-- The package, which brings MapDoc, Physics, Movement and Locomotion with it. -->
     <ProjectReference Include="../KhaozEngine.MapDoc.Physics/KhaozEngine.MapDoc.Physics.csproj" />
     <!-- The shipped backend, so shapes are proven against a real IPhysicsWorld rather than a test double. -->
     <ProjectReference Include="../KhaozEngine.Physics.Bepu/KhaozEngine.Physics.Bepu.csproj" />

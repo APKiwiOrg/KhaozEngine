@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Numerics;
+using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Physics;
 using KhaozEngine.Movement;
 using Xunit;
@@ -133,5 +134,18 @@ public class MapWorldQueriesTests
         Assert.True(q.Within(body, "parapet-1m", 0.25f));
         Assert.False(q.Within(body, "parapet-1m", 0.5f, band: band));
         Assert.True(q.Within(body, "parapet-1m", 0.7f, band: band));
+    }
+
+    [Fact]
+    public void EnvelopeReachingMoreIndexCellsThanTheCap_Refuses()
+    {
+        // At 36 times its size the building spans x and z -1,800 to 1,800 and y 0 to 360, so its padded envelope reaches
+        // 226 by 24 by 226 cells of 16 m.
+        var f = NativeWorldFixtures.Placed("large-building", scale: 36f);
+        var world = MapWorldBuilder.Build(f.Document, f.Assets, NativeWorldFixtures.Options());
+        var error = Assert.Throws<MapDocumentException>(() => new MapWorldQueries(world));
+        Assert.Contains("'large-building'", error.Message);
+        Assert.Contains("1,225,824", error.Message);
+        Assert.Contains("1,048,576", error.Message);
     }
 }

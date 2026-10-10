@@ -56,19 +56,22 @@ public static class MapNavTiling
     /// excludes one. <see cref="MapNavTile.CaptureIdentity"/> is the SHA-256 over the geometry digest, profile,
     /// controller, seam margin, tile coordinate and tile bounds.</para>
     /// <para>Throws <see cref="MapDocumentException"/> naming the grid alignment when the grids do not align with the
-    /// world, naming the tile count when the world's bounds reach more than <see cref="MaxPartitionTiles"/> tiles, and
-    /// <see cref="ArgumentException"/> for invalid options.</para></summary>
+    /// world, naming the tile range when a tile index falls outside the int range, naming the tile count when the
+    /// world's bounds reach more than <see cref="MaxPartitionTiles"/> tiles or one static reaches more than
+    /// <see cref="MapResidencyOwnership.MaxStorageTiles"/> storage tiles, and <see cref="ArgumentException"/> for invalid
+    /// options.</para></summary>
     public static IReadOnlyList<MapNavTile> Partition(MapBuiltWorld world, MapWorldGrids grids, MapNavTileOptions options)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(grids);
         ValidateOptions(options);
+        // The tile count is refused before any static is placed on the grids.
+        grids.Validate(world);
+        (int minX, int maxX, int minZ, int maxZ) = PartitionRange(world, grids);
+        long count = RequirePartitionCount(minX, maxX, minZ, maxZ);
         IReadOnlyList<MapResidencyEntry> entries = MapResidencyOwnership.Build(world, grids);
         var digests = new Dictionary<string, string>(world.Statics.Count, StringComparer.Ordinal);
         foreach (MapStaticDescriptor descriptor in world.Statics) digests.Add(descriptor.OwnerId, descriptor.Digest);
-
-        (int minX, int maxX, int minZ, int maxZ) = PartitionRange(world, grids);
-        long count = RequirePartitionCount(minX, maxX, minZ, maxZ);
         var statics = new Dictionary<MapNavTileCoord, List<MapResidencyEntry>>();
         foreach (MapResidencyEntry entry in entries)
             foreach (MapNavTileCoord tile in CaptureTilesMeeting(entry.WorldBounds.MinX, entry.WorldBounds.MinZ,
@@ -135,7 +138,8 @@ public static class MapNavTiling
     /// record reaching more yields one link per pair of them, ordered by <see cref="MapNavLink.From"/> and then
     /// <see cref="MapNavLink.To"/>. A resolver-1 world has no surfaces and so no links.
     /// <para>Throws <see cref="MapDocumentException"/> naming the grid alignment when the grids do not align with the
-    /// world, and naming missing geometry when an aperture record, patch or surface is absent.</para></summary>
+    /// world, naming missing geometry when an aperture record, patch or surface is absent, and naming the tile range
+    /// when an aperture reaches a tile index outside the int range.</para></summary>
     public static IReadOnlyList<MapNavLink> Links(MapBuiltWorld world, MapWorldGrids grids)
     {
         ArgumentNullException.ThrowIfNull(world);
@@ -187,9 +191,12 @@ public static class MapNavTiling
     /// digest it enters or leaves. The result is clipped to the tiles <see cref="Partition"/> lists for
     /// <paramref name="world"/>. An edit flagged <see cref="MapNativeInvalidation.Unbounded"/>, a full reset, lists every
     /// one of those tiles without first listing every storage tile.
-    /// <para>Throws as <see cref="MapResidencyOwnership.Affected"/> does, as <see cref="Partition"/> does when an
-    /// unbounded edit's world reaches more than <see cref="MaxPartitionTiles"/> tiles, and
-    /// <see cref="ArgumentException"/> for invalid options.</para></summary>
+    /// <para>A tile that leaves the partition, because the edit shrank the world's bounds, is never listed, since the
+    /// result is clipped to the post-edit partition. A consumer that keeps derived state per tile diffs the old and new
+    /// partitions to find removed tiles.</para>
+    /// <para>Throws as <see cref="MapResidencyOwnership.Affected"/> does, including for an unbounded edit's boxes, as
+    /// <see cref="Partition"/> does when an unbounded edit's world reaches more than <see cref="MaxPartitionTiles"/>
+    /// tiles, and <see cref="ArgumentException"/> for invalid options.</para></summary>
     public static IReadOnlyList<MapNavTileCoord> AffectedTiles(MapBuiltWorld world, MapWorldGrids grids,
         MapNavTileOptions options, MapNativeEditEffects effects)
     {
@@ -200,8 +207,11 @@ public static class MapNavTiling
         const MapNativeInvalidation unbounded = MapNativeInvalidation.Nav | MapNativeInvalidation.Unbounded;
         if ((effects.Invalidates & unbounded) == unbounded)
         {
-            // Every partition tile, without enumerating every storage tile through Affected first.
+            // Every partition tile, without enumerating every storage tile through Affected first. The edit boxes are
+            // still checked, as Affected checks them.
             grids.Validate(world);
+            foreach (MapBox3? box in new[] { effects.OldBounds, effects.NewBounds })
+                if (box is { } within) MapResidencyOwnership.RequireWithinWorld(within);
             (int minX, int maxX, int minZ, int maxZ) = PartitionRange(world, grids);
             var every = new MapNavTileCoord[RequirePartitionCount(minX, maxX, minZ, maxZ)];
             int index = 0;
@@ -288,14 +298,19 @@ public static class MapNavTiling
     }
 
     /// <summary>The tiles a range reaches: minimum inclusive, maximum exclusive, and an axis with no extent in the tile
-    /// holding its minimum, counted from <paramref name="origin"/>.</summary>
+    /// holding its minimum, counted from <paramref name="origin"/>. Throws <see cref="MapDocumentException"/> naming the
+    /// tile range when an index falls outside the int range.</summary>
     static (int Min, int Max) TileAxis(double min, double max, double origin, double size)
     {
         if (!double.IsFinite(min) || !double.IsFinite(max) || max < min)
             throw new ArgumentException(FormattableString.Invariant($"bounds [{min}, {max}] are not a finite range"));
-        int first = checked((int)Math.Floor((min - origin) / size));
-        if (!(max > min)) return (first, first);
-        return (first, Math.Max(first, checked((int)Math.Ceiling((max - origin) / size) - 1)));
+        double first = Math.Floor((min - origin) / size);
+        double last = max > min ? Math.Max(first, Math.Ceiling((max - origin) / size) - 1) : first;
+        if (first < int.MinValue || last > int.MaxValue)
+            throw new MapDocumentException(FormattableString.Invariant(
+                $"Bounds [{min}, {max}] reach navigation tiles {first:F0} to {last:F0} from origin {origin}, ") +
+                FormattableString.Invariant($"outside the {int.MinValue:N0} to {int.MaxValue:N0} tile range."));
+        return ((int)first, (int)last);
     }
 
     static MapBox3 TileBounds(MapNavTileCoord tile, MapWorldGrids grids, double minY, double maxY)

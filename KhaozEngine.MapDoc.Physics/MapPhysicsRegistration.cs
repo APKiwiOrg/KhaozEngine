@@ -54,7 +54,7 @@ public sealed class MapPhysicsRegistration : IDisposable
         Vector3 origin = physics.Origin;
         if (!WholeMetreWithinWorld(origin.X) || !WholeMetreWithinWorld(origin.Y) || !WholeMetreWithinWorld(origin.Z))
             throw new MapDocumentException(FormattableString.Invariant(
-                $"Registration needs a whole-metre origin within 1,000,000 m of the world origin on each axis, and the physics world's origin is ({origin.X}, {origin.Y}, {origin.Z})."));
+                $"Registration needs a whole-metre origin within {MapWorldBuilder.MaxCoordinateMetres:N0} m of the world origin on each axis, and the physics world's origin is ({origin.X}, {origin.Y}, {origin.Z})."));
 
         var handles = new List<StaticHandle>(world.Statics.Count);
         var owners = new Dictionary<StaticHandle, (MapStaticOwner Owner, IReadOnlyList<MapFaceKey> Faces)>(world.Statics.Count);
@@ -126,10 +126,12 @@ public sealed class MapPhysicsRegistration : IDisposable
     internal void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 
     /// <summary>Removes every static this registration added, in reverse order, attempting each even after a failure.
-    /// Never disposes <see cref="Physics"/>. Never call this inside a held query read lease: the backend refuses
-    /// mutation then. When a removal fails, the <see cref="AggregateException"/> carries every removal failure, the
-    /// statics not removed stay in <see cref="Handles"/> with their owners, and the registration stays undisposed so a
-    /// later call retries them. Once every static is removed, further calls do nothing.</summary>
+    /// Never disposes <see cref="Physics"/>. A removal that throws <see cref="ObjectDisposedException"/> counts as done,
+    /// because a disposed physics world's statics are gone with it, so disposing the physics world first is safe. Never
+    /// call this inside a held query read lease: the backend refuses mutation then. When a removal fails, the
+    /// <see cref="AggregateException"/> carries every removal failure, the statics not removed stay in
+    /// <see cref="Handles"/> with their owners, and the registration stays undisposed so a later call retries them. Once
+    /// every static is removed, further calls do nothing.</summary>
     public void Dispose()
     {
         if (_disposed) return;
@@ -140,6 +142,10 @@ public sealed class MapPhysicsRegistration : IDisposable
             try
             {
                 Physics.RemoveStatic(handle);
+            }
+            catch (ObjectDisposedException)
+            {
+                // The caller disposed the physics world first, and its statics went with it.
             }
             catch (Exception failure)
             {

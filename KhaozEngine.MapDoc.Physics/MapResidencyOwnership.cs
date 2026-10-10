@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Surfaces;
@@ -26,13 +27,20 @@ public sealed record MapAffectedSet(IReadOnlyList<string> Owners, IReadOnlyList<
 /// and the owners and tiles an edit invalidates.</summary>
 public static class MapResidencyOwnership
 {
+    /// <summary>The most storage tiles one list here holds, 2^20: a static's
+    /// <see cref="MapResidencyEntry.Membership"/>, and each extent <see cref="Affected"/> lists, whether an edit box,
+    /// a listed patch chunk or, for an unbounded edit, the whole world. At 64 m tiles that is, for example, a square
+    /// about 65 km on a side.</summary>
+    public const int MaxStorageTiles = 1 << 20;
+
     const MapNativeInvalidation Spatial =
         MapNativeInvalidation.Physics | MapNativeInvalidation.Nav | MapNativeInvalidation.Residency;
 
     /// <summary>One entry per static of <paramref name="world"/>, in static order. A static belongs to every storage
     /// tile its bounds reach, minimum inclusive and maximum exclusive on each axis. An axis with no extent belongs to
     /// the tile holding its minimum. Throws <see cref="MapDocumentException"/> when the grids do not align with the
-    /// world.</summary>
+    /// world, and naming the tile count, before listing them, when one static reaches more than
+    /// <see cref="MaxStorageTiles"/> storage tiles.</summary>
     public static IReadOnlyList<MapResidencyEntry> Build(MapBuiltWorld world, MapWorldGrids grids)
     {
         ArgumentNullException.ThrowIfNull(world);
@@ -43,6 +51,7 @@ public static class MapResidencyOwnership
         {
             MapStaticDescriptor descriptor = world.Statics[i];
             MapTileRect tiles = TilesOf(descriptor.Bounds, grids.StorageTileSize);
+            RequireStorageTiles(tiles, $"Static '{descriptor.OwnerId}'");
             MapNavTileCoord navMin = grids.AlignedNavTileOf(tiles.Min), navMax = grids.AlignedNavTileOf(tiles.Max);
             MapServerCellCoord cellMin = grids.AlignedServerCellOf(tiles.Min), cellMax = grids.AlignedServerCellOf(tiles.Max);
             // A placement static's position is its resolved transform position, whose X and Z are the authored floats.
@@ -79,7 +88,8 @@ public static class MapResidencyOwnership
     /// world's bounds reach is listed, together with the tiles of any edit bounds and listed patches. Pre-edit extents
     /// outside the post-edit world cannot be listed.</para>
     /// <para>Throws <see cref="MapDocumentException"/> when the grids do not align with the world or an edit box has a
-    /// coordinate beyond <see cref="MapWorldBuilder.MaxCoordinateMetres"/>.</para></summary>
+    /// coordinate beyond <see cref="MapWorldBuilder.MaxCoordinateMetres"/>, and naming the tile count, before listing
+    /// them, when one extent reaches more than <see cref="MaxStorageTiles"/> storage tiles.</para></summary>
     public static MapAffectedSet Affected(MapBuiltWorld world, MapWorldGrids grids, MapNativeEditEffects effects)
     {
         ArgumentNullException.ThrowIfNull(world);
@@ -95,13 +105,13 @@ public static class MapResidencyOwnership
         var owners = new SortedSet<string>(StringComparer.Ordinal);
         var tiles = new SortedSet<MapTileCoord>(TileOrder);
         bool unbounded = (effects.Invalidates & MapNativeInvalidation.Unbounded) != 0;
-        foreach (MapBox3 box in edited) tiles.UnionWith(Enumerate(TilesOf(box, grids.StorageTileSize)));
-        if (unbounded) tiles.UnionWith(Enumerate(TilesOf(world.Bounds, grids.StorageTileSize)));
+        foreach (MapBox3 box in edited) tiles.UnionWith(StorageTiles(box, grids, "An edit box"));
+        if (unbounded) tiles.UnionWith(StorageTiles(world.Bounds, grids, "The world"));
         foreach (MapStaticDescriptor descriptor in world.Statics)
         {
             bool patchChunk = descriptor.Kind == MapStaticKind.TerrainChunk &&
                 prefixes.Any(p => descriptor.OwnerId.StartsWith(p, StringComparison.Ordinal));
-            if (patchChunk) tiles.UnionWith(Enumerate(TilesOf(descriptor.Bounds, grids.StorageTileSize)));
+            if (patchChunk) tiles.UnionWith(StorageTiles(descriptor.Bounds, grids, $"Chunk '{descriptor.OwnerId}'"));
             if (unbounded || patchChunk || edited.Any(box => Meets(box, descriptor.Bounds))) owners.Add(descriptor.OwnerId);
         }
         MapNavTileCoord[] nav = tiles.Select(grids.AlignedNavTileOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray();
@@ -117,7 +127,7 @@ public static class MapResidencyOwnership
         {
             prefixes.Add(MapTerrainPhysics.PatchChunkPrefix(key));
             foreach (MapWallStrip strip in world.Surfaces.RecordsIn(key).OfType<MapWallStrip>())
-                prefixes.Add(strip.Id + "/");
+                prefixes.Add(MapTerrainPhysics.StripChunkPrefix(strip.Id));
         }
         return prefixes.ToArray();
     }
@@ -125,13 +135,30 @@ public static class MapResidencyOwnership
     static readonly Comparer<MapTileCoord> TileOrder =
         Comparer<MapTileCoord>.Create((a, b) => a.Z != b.Z ? a.Z.CompareTo(b.Z) : a.X.CompareTo(b.X));
 
-    static void RequireWithinWorld(MapBox3 box)
+    /// <summary>Refuses an edit box with a coordinate beyond <see cref="MapWorldBuilder.MaxCoordinateMetres"/>.</summary>
+    internal static void RequireWithinWorld(MapBox3 box)
     {
         const double limit = MapWorldBuilder.MaxCoordinateMetres;
         foreach (double value in new[] { box.MinX, box.MinY, box.MinZ, box.MaxX, box.MaxY, box.MaxZ })
             if (!(Math.Abs(value) <= limit))
                 throw new MapDocumentException(FormattableString.Invariant(
-                    $"Edit bounds ({box.MinX}, {box.MinY}, {box.MinZ}) to ({box.MaxX}, {box.MaxY}, {box.MaxZ}) reach beyond 1,000,000 m from the world origin on an axis."));
+                    $"Edit bounds ({box.MinX}, {box.MinY}, {box.MinZ}) to ({box.MaxX}, {box.MaxY}, {box.MaxZ}) reach beyond {limit:N0} m from the world origin on an axis."));
+    }
+
+    // The storage tiles box reaches, after refusing more than MaxStorageTiles of them.
+    static IReadOnlyList<MapTileCoord> StorageTiles(MapBox3 box, MapWorldGrids grids, string what)
+    {
+        MapTileRect tiles = TilesOf(box, grids.StorageTileSize);
+        RequireStorageTiles(tiles, what);
+        return Enumerate(tiles);
+    }
+
+    static void RequireStorageTiles(MapTileRect tiles, string what)
+    {
+        long count = ((long)tiles.Max.X - tiles.Min.X + 1) * ((long)tiles.Max.Z - tiles.Min.Z + 1);
+        if (count > MaxStorageTiles)
+            throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
+                "{0} reaches {1:N0} storage tiles, more than the {2:N0} one list allows.", what, count, MaxStorageTiles));
     }
 
     /// <summary>The storage tiles a box reaches: minimum inclusive, maximum exclusive, and an axis with no extent in

@@ -92,4 +92,19 @@ public class MapResidencyOwnershipTests
         Assert.Empty(affected.StorageTiles);
         Assert.Empty(affected.NavTiles);
     }
+
+    [Fact]
+    public void StaticReachingMoreStorageTilesThanTheCap_RefusesBeforeListingThem()
+    {
+        // At 165 times its size the building spans x and z -8,250 to 8,250, which is 1,032 by 1,032 storage tiles of
+        // 16 m, the narrowest tile a document accepts.
+        NativeFixture f = NativeWorldFixtures.Placed("large-building", scale: 165f);
+        f.Document.TileSize = 16f;
+        var world = MapWorldBuilder.Build(f.Document, f.Assets, NativeWorldFixtures.Options());
+        var error = Assert.Throws<MapDocumentException>(() =>
+            MapResidencyOwnership.Build(world, new MapWorldGrids(16f, 4, 16, Vector2.Zero)));
+        Assert.Contains("'large-building'", error.Message);
+        Assert.Contains("1,065,024", error.Message);
+        Assert.Contains("1,048,576", error.Message);
+    }
 }

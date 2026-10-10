@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Physics;
 using Xunit;
 
@@ -119,5 +120,28 @@ public class MapNavTilingTests
         Assert.True(NativeWorldFixtures.BoundsUnionEquals(tiles.Select(t => t.Bounds), world.Bounds, Grids));
         Assert.NotEqual(tiles[0].CaptureIdentity, MapNavTiling.Partition(world, Grids, Options with { ProfileIdentity = "profile-b" })[0].CaptureIdentity);
         Assert.NotEqual(tiles[0].CaptureIdentity, MapNavTiling.Partition(world, Grids, Options with { ControllerIdentity = "contact-controller" })[0].CaptureIdentity);
+    }
+
+    [Fact]
+    public void TileIndexBeyondTheIntRange_RefusesAsADocumentError()
+    {
+        // With the origin 2^40 m west, the strip's tiles lie about 2^34 tiles east of it.
+        var far = new MapWorldGrids(64f, 1, 4, new Vector2(-1_099_511_627_776f, 0f));
+        var error = Assert.Throws<MapDocumentException>(() =>
+            MapNavTiling.Partition(NativeWorldFixtures.BuildLegacyStrip(), far, Options));
+        Assert.Contains("tile range", error.Message);
+    }
+
+    [Fact]
+    public void UnboundedEdit_StillRefusesAnEditBoxBeyondTheWorld()
+    {
+        var effects = NativeWorldFixtures.MovedCrateEffects() with
+        {
+            NewBounds = new MapBox3(2_000_000, 0, 0, 2_000_001, 1, 1),
+            Invalidates = MapNativeInvalidation.Nav | MapNativeInvalidation.Unbounded,
+        };
+        var error = Assert.Throws<MapDocumentException>(() =>
+            MapNavTiling.AffectedTiles(NativeWorldFixtures.BuildLegacyStrip(), Grids, Options, effects));
+        Assert.Contains("1,000,000", error.Message);
     }
 }

@@ -91,6 +91,18 @@ public class MapPhysicsRegistrationTests
     }
 
     [Fact]
+    public void Dispose_AfterThePhysicsWorldWasDisposed_Completes()
+    {
+        var physics = new BepuPhysicsWorld();
+        var r = MapPhysicsRegistration.Register(NativeWorldFixtures.BuildStackedCave(), physics);
+        Assert.NotEmpty(r.Handles);
+        physics.Dispose();
+        r.Dispose();
+        Assert.Empty(r.Handles);
+        r.Dispose();
+    }
+
+    [Fact]
     public void Rollback_RemovesInReverseOrder()
     {
         var fault = new NativeRegistrationFaultWorld(failOnAdd: 4);

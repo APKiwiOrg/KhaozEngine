@@ -274,7 +274,6 @@ public static class MapShapeQueries
         inside = true;
         return true;
     }
-
 }
 
 /// <summary>An upright probe segment in world metres with the radius around it. A movement body keeps itself so a

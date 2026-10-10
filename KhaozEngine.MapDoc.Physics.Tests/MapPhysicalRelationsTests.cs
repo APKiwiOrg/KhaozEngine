@@ -176,8 +176,10 @@ public class MapPhysicalRelationsTests
         var whole = r.Clearance(lease, new[] { Touching, At(0.5f, 0f, 0.4988f) }, MoveTuning.Default);
         Assert.Equal((MapPhysicalCertainty.Blocked, (string?)null), (whole.Certainty, whole.BlockingOwner));
         Assert.Equal(0.5f, whole.BlockDistance!.Value, 1e-4f);
-        var split = new[] { Touching, At(0.4f, 0f, 0.49894f), At(0.5f, 0f, 0.4988f) };
-        Assert.Equal(MapPhysicalCertainty.Blocked, r.Clearance(lease, split, MoveTuning.Default).Certainty);
+        var split = r.Clearance(lease, new[] { Touching, At(0.4f, 0f, 0.49894f), At(0.5f, 0f, 0.4988f) }, MoveTuning.Default);
+        Assert.Equal(MapPhysicalCertainty.Blocked, split.Certainty);
+        // The middle point's own in-place test blocks, at the distance travelled to it, before the end is reached.
+        Assert.Equal(0.4f, split.BlockDistance!.Value, 1e-4f);
     }
 
     [Fact]

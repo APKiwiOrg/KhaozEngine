@@ -18,6 +18,13 @@ public partial class ArchitectureTests
     }
 
     [Fact]
+    public void MapDocPhysics_ClosureStaysFreeOfTheMapEditor()
+    {
+        // The editor defines the placement bounds seam and ke-mapedit implements it, so the package never needs the editor.
+        Assert.DoesNotContain("KhaozEngine.MapEditor", TransitiveClosure("KhaozEngine.MapDoc.Physics", LoadGraph()));
+    }
+
+    [Fact]
     public void MapDocPhysics_IsAnExplicitReferenceOutsideEveryUmbrella()
     {
         var graph = LoadGraph();

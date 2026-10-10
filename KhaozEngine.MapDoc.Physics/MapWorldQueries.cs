@@ -29,15 +29,22 @@ public sealed class MapWorldQueries
     readonly IReadOnlyList<MapPlacementGeometry> _placements;
     readonly MapEnvelopeIndex _index;
 
-    /// <summary>Indexes the envelopes of <paramref name="world"/>.</summary>
+    /// <summary>Indexes the envelopes of <paramref name="world"/> on a grid of 16 m cells. Throws
+    /// <see cref="MapDocumentException"/> naming the placement and the cell count when one envelope reaches more than
+    /// 2^20 cells.</summary>
     public MapWorldQueries(MapBuiltWorld world)
     {
         ArgumentNullException.ThrowIfNull(world);
         _world = world;
         _placements = world.Placements;
         var bounds = new MapBox3[_placements.Count];
-        for (int i = 0; i < _placements.Count; i++) bounds[i] = _placements[i].Envelope.Bounds;
-        _index = new MapEnvelopeIndex(bounds);
+        var owners = new string[_placements.Count];
+        for (int i = 0; i < _placements.Count; i++)
+        {
+            bounds[i] = _placements[i].Envelope.Bounds;
+            owners[i] = _placements[i].PlacementId;
+        }
+        _index = new MapEnvelopeIndex(bounds, owners);
     }
 
     /// <summary>The nearest envelope <paramref name="ray"/> enters within its maximum distance and inside

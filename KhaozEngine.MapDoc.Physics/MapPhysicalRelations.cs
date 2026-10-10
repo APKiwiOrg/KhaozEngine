@@ -114,6 +114,8 @@ public sealed class MapPhysicalRelations
             if (!(length > 0f)) continue;
             if (!measured && !TryPushOut(physics, shell, feet, tuning, out pushOut))
                 return Result(MapPhysicalCertainty.Blocked, null, travelled);
+            // The controller's shell sweeps use this filter, without back-face culling, so clearance and movement
+            // agree on one-sided terrain.
             if (physics.SweepCapsule(shell, Pose.At(ContactShell.Centre(feet, tuning) + pushOut), delta / length, length,
                     out SweepHit hit, QueryFilter.StaticsOnly) &&
                 hit.Distance < length)

@@ -31,7 +31,10 @@ public enum MapStaticKind
 public sealed record MapStaticDescriptor(string OwnerId, MapStaticKind Kind, PhysicsShape Shape, Vector3 Position,
     Quaternion Orientation, MapBox3 Bounds, string Digest, IReadOnlyList<MapFaceKey> TriangleOwners);
 
-/// <summary>Whether the backend's capsule feature query can capture a static, and why not.</summary>
+/// <summary>Whether the backend's capsule feature query, <see cref="IPhysicsCapsuleFeatures"/>, can
+/// capture a static, and why not. These predict that capability only. The contact controller certifies foot support
+/// through <see cref="IPhysicsSupportNeighborhood"/>, whose limits differ: it captures curved
+/// leaves and reads only the mesh triangles near its probe.</summary>
 public enum MapFeatureQuerySupport
 {
     /// <summary>The static meets none of the limits this builder measures: flattened leaf count, curved leaves, mesh
@@ -43,8 +46,8 @@ public enum MapFeatureQuerySupport
     /// <summary>A compound flattens to more than 64 leaves.</summary>
     LeafCapacity,
 
-    /// <summary>A sphere, capsule or cylinder leaf, which the query captures from phase 2b.</summary>
-    CurvedUntilPhase2b,
+    /// <summary>A sphere, capsule or cylinder leaf. The capsule feature query does not capture curved leaves.</summary>
+    CurvedLeaf,
 
     /// <summary>A triangle mesh over 65,536 triangles.</summary>
     MeshTriangleCapacity,

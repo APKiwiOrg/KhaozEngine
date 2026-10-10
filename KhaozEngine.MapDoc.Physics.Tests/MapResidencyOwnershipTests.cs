@@ -51,6 +51,22 @@ public class MapResidencyOwnershipTests
     }
 
     [Fact]
+    public void Grids_RefuseAnOriginThatPutsTheWorldOutsideTheIntRange()
+    {
+        var world = NativeWorldFixtures.BuildSeamAligned();
+        // With the origin 2^40 m west, the world lies about 2^34 storage tiles east of it.
+        var farNav = new MapWorldGrids(64f, 1, 1 << 12, new Vector2(-1_099_511_627_776f, 0f));
+        var navError = Assert.Throws<MapDocumentException>(() => MapResidencyOwnership.Build(world, farNav));
+        Assert.Contains("grid alignment", navError.Message);
+        Assert.Contains("navigation tiles", navError.Message);
+        // Navigation tiles of 2^12 storage tiles still index, so only the server cells leave the range.
+        var farCells = new MapWorldGrids(64f, 1 << 12, 1, new Vector2(-1_099_511_627_776f, 0f));
+        var cellError = Assert.Throws<MapDocumentException>(() => MapResidencyOwnership.Build(world, farCells));
+        Assert.Contains("grid alignment", cellError.Message);
+        Assert.Contains("server cells", cellError.Message);
+    }
+
+    [Fact]
     public void EditEffects_MapToAffectedOwnersAndTiles()
     {
         var world = NativeWorldFixtures.BuildStackedCave();

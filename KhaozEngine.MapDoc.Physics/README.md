@@ -130,14 +130,15 @@ for resolver 1, every resolution, placement and terrain refusal, a static beyond
 
 ### Feature query diagnostics
 
-`MapBuiltWorld.Diagnostics` lists, in static order, every limit of the backend's capsule feature query a static
-meets, as a `MapStaticDiagnostic(OwnerId, Support)`. A limit is reported, never refused, because the static still
-collides and blocks. A static that meets none is `Supported` and absent from the list.
+`MapBuiltWorld.Diagnostics` lists, in static order, every limit of the backend's capsule feature query
+(`IPhysicsCapsuleFeatures`) a static meets, as a `MapStaticDiagnostic(OwnerId, Support)`. A limit is reported, never
+refused, because the static still collides and blocks. A static that meets none is `Supported` and absent from the
+list.
 
 | `MapFeatureQuerySupport` | Meaning |
 | --- | --- |
 | `LeafCapacity` | A compound flattens to more than 64 leaves |
-| `CurvedUntilPhase2b` | A sphere, capsule or cylinder leaf, which the query captures from phase 2b |
+| `CurvedLeaf` | A sphere, capsule or cylinder leaf, which the capsule feature query does not capture |
 | `MeshTriangleCapacity` | A triangle mesh over 65,536 triangles |
 | `LocalExtent` | A leaf whose installed geometry reaches more than 64 m from its own origin on an axis |
 | `HullCapacity` | A convex hull leaf with more than 130 points |
@@ -145,6 +146,12 @@ collides and blocks. A static that meets none is `Supported` and absent from the
 `HullCapacity` is conservative. The backend captures at most 256 faces and 1,524 face entries, and a hull with V
 vertices has at most 2V - 4 faces and 6V - 12 face entries, so a hull of 130 points or fewer always fits. Any hull
 over 130 points is flagged, even one the query would still capture.
+
+Every diagnostic predicts `IPhysicsCapsuleFeatures` capture and nothing else. The #438 contact controller now
+certifies foot support through `IPhysicsSupportNeighborhood`, which has different limits. It captures sphere, capsule
+and cylinder leaves, so `CurvedLeaf` does not apply to it. It reads only the mesh triangles near its probe, so
+`MeshTriangleCapacity` does not apply either, and it caps one query at 256 elements. It shares the 64 leaf limit of
+`LeafCapacity`, the 64 m limit of `LocalExtent` and the hull face limits behind `HullCapacity`.
 
 ## Pick, reach and stances
 
@@ -255,8 +262,10 @@ edit shrank the world, is never listed, so a consumer that keeps state per tile 
 find removed tiles.
 
 `Partition` refuses a world whose bounds reach more than `MapNavTiling.MaxPartitionTiles` (2^20) navigation tiles
-before it places any static, and the refusal names the count. A grid origin so far from the world that a tile index
-leaves the int range refuses naming the tile range.
+before it places any static, and the refusal names the count. `MapWorldGrids.Validate`, which every grid consumer runs
+first, refuses a grid origin so far from the world that a navigation tile or server cell index of the world's bounds,
+widened by one block on each side, leaves the int range. The refusal names the grid alignment and the tile range. A
+seam margin or edit box reaching past the int range beyond the world refuses naming the tile range too.
 
 Tile and capture bounds are residency extents, not probe windows. A resolver 1 world's bounds exclude its analytic
 terrain height, so a capture picks its own vertical window.
@@ -290,8 +299,10 @@ than 0.001 m, so splitting a path can change the verdict only within that band. 
 playable bounds is `Unknown` for either relation. Every result carries the world's `BuildHash` and its
 terrain witness digest.
 
-Terrain chunks are one-sided, so a ray or sweep meeting a face from behind passes through it. Interaction envelopes
-are never installed and never block. A portal is an opening with no faces, so an authored open portal needs no
+Terrain chunks are one-sided meshes, so a line of sight ray meeting a face from behind passes through it. A clearance
+sweep sees no back-face culling, the same filter the #438 contact controller's shell sweeps use, so a face met from
+behind blocks clearance as it blocks movement. Only the controller's support probes set `QueryFilter.CullBackFaces`.
+Interaction envelopes are never installed and never block. A portal is an opening with no faces, so an authored open portal needs no
 extra state.
 
 This departs from R2's planned D5 signature in four ways:
@@ -331,6 +342,7 @@ reports `Unbounded` the same way. Collider height edits size their placements th
 | Live portal and door state | R5 | Portals are authored open |
 | Water medium and walker profiles | R4 and #1299 | `CreateLegacyMoveContext` leaves the medium delegate null |
 | Clearance body model confirmation | Owner, #1344 | Clearance uses the #438 shell through `ContactShell` |
+| Support certification of curved statics, creases and one-sided back faces | #438 phase 2b | Landed. The controller certifies support through `IPhysicsSupportNeighborhood`, and the diagnostics here still predict `IPhysicsCapsuleFeatures` |
 | Editor placement edits reporting old and new placement bounds with Physics, Nav and Residency | R3 | Done, see Editor tooling |
 | GUI native editing: `MapEditorScene`, hosted by Showcase, binds no closure or placement bounds provider yet | R3 follow-up, [#1349](https://github.com/APKiwiOrg/KhaozEngine/issues/1349) | Wiring it needs the provider reachable from that host, in this package or a shared adapter, since Showcase does not reference ke-mapedit |
 | Import-time acceptance of changed targets, distances, occlusion and stances | R11 and G2 | Named differentials at import |

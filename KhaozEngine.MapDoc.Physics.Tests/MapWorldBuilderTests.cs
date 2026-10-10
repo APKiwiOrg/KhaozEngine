@@ -42,7 +42,7 @@ public class MapWorldBuilderTests
     public void FeatureQueryLimits_AreReportedNotRefused()
     {
         var world = NativeWorldFixtures.BuildTreeAndWideCompound();
-        Assert.Contains(new MapStaticDiagnostic("tree", MapFeatureQuerySupport.CurvedUntilPhase2b), world.Diagnostics);
+        Assert.Contains(new MapStaticDiagnostic("tree", MapFeatureQuerySupport.CurvedLeaf), world.Diagnostics);
         Assert.Contains(new MapStaticDiagnostic("parapet-70", MapFeatureQuerySupport.LeafCapacity), world.Diagnostics);
         Assert.Contains(new MapStaticDiagnostic("long-wall", MapFeatureQuerySupport.LocalExtent), world.Diagnostics);
         Assert.DoesNotContain(world.Diagnostics, d => d.OwnerId == "crate");

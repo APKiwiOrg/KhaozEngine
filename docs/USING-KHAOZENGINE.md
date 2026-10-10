@@ -10222,11 +10222,15 @@ installs. A resolver 1 world keeps analytic ground behind `LegacySupportHeight` 
 Vertical-layer navigation on native worlds waits for #438 phase 5.
 
 **Feature query diagnostics.** `MapBuiltWorld.Diagnostics` reports each limit of the backend's capsule feature query
-a static meets, without refusing the static, which still collides and blocks: `LeafCapacity` (a compound of more
-than 64 leaves), `CurvedUntilPhase2b` (a sphere, capsule or cylinder leaf), `MeshTriangleCapacity` (a mesh over
-65,536 triangles), `LocalExtent` (a leaf reaching more than 64 m from its origin) and `HullCapacity`. `HullCapacity`
-is conservative: any convex hull over 130 points is flagged, because 130 points always fit the backend's 256 faces
-and 1,524 face entries, even though a larger hull may still be captured.
+(`IPhysicsCapsuleFeatures`) a static meets, without refusing the static, which still collides and blocks:
+`LeafCapacity` (a compound of more than 64 leaves), `CurvedLeaf` (a sphere, capsule or cylinder leaf, which that query
+does not capture), `MeshTriangleCapacity` (a mesh over 65,536 triangles), `LocalExtent` (a leaf reaching more than
+64 m from its origin) and `HullCapacity`. `HullCapacity` is conservative: any convex hull over 130 points is flagged,
+because 130 points always fit the backend's 256 faces and 1,524 face entries, even though a larger hull may still be
+captured. Every diagnostic predicts `IPhysicsCapsuleFeatures` capture only. The #438 contact controller now certifies
+foot support through `IPhysicsSupportNeighborhood`, which has different limits: it captures curved leaves, reads only
+the mesh triangles near its probe and caps one query at 256 elements, while it shares the 64 leaf, 64 m local extent
+and hull face limits.
 
 **Refusals.** `MapAssetShapes.Read` throws `MapDocumentException` for an asset that declares a `Surface` (support)
 resource, since placement-local support surfaces arrive with R5. It also refuses a compound holding a triangle mesh,

@@ -160,7 +160,7 @@ public static class MapWorldBuilder
         switch (shape)
         {
             case SphereShape or CapsuleShape or CylinderShape:
-                found.Add(MapFeatureQuerySupport.CurvedUntilPhase2b);
+                found.Add(MapFeatureQuerySupport.CurvedLeaf);
                 break;
             case BoxShape box:
                 if (Beyond(box.HalfExtents)) found.Add(MapFeatureQuerySupport.LocalExtent);

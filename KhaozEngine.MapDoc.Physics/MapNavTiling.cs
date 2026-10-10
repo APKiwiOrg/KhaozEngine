@@ -56,10 +56,11 @@ public static class MapNavTiling
     /// excludes one. <see cref="MapNavTile.CaptureIdentity"/> is the SHA-256 over the geometry digest, profile,
     /// controller, seam margin, tile coordinate and tile bounds.</para>
     /// <para>Throws <see cref="MapDocumentException"/> naming the grid alignment when the grids do not align with the
-    /// world, naming the tile range when a tile index falls outside the int range, naming the tile count when the
-    /// world's bounds reach more than <see cref="MaxPartitionTiles"/> tiles or one static reaches more than
-    /// <see cref="MapResidencyOwnership.MaxStorageTiles"/> storage tiles, and <see cref="ArgumentException"/> for invalid
-    /// options.</para></summary>
+    /// world, including an origin so far from the world that a navigation tile or server cell index of its bounds
+    /// leaves the int range, naming the tile range when a seam margin carries a capture outside the int range, naming
+    /// the tile count when the world's bounds reach more than <see cref="MaxPartitionTiles"/> tiles or one static
+    /// reaches more than <see cref="MapResidencyOwnership.MaxStorageTiles"/> storage tiles, and
+    /// <see cref="ArgumentException"/> for invalid options.</para></summary>
     public static IReadOnlyList<MapNavTile> Partition(MapBuiltWorld world, MapWorldGrids grids, MapNavTileOptions options)
     {
         ArgumentNullException.ThrowIfNull(world);
@@ -330,10 +331,10 @@ public static class MapNavTiling
         MapWorldGrids grids, double margin)
     {
         double size = grids.NavTileSize;
-        int x0 = checked((int)Math.Floor((minX - margin - grids.Origin.X) / size) - 1);
-        int x1 = checked((int)Math.Floor((maxX + margin - grids.Origin.X) / size) + 1);
-        int z0 = checked((int)Math.Floor((minZ - margin - grids.Origin.Y) / size) - 1);
-        int z1 = checked((int)Math.Floor((maxZ + margin - grids.Origin.Y) / size) + 1);
+        int x0 = TileIndex(Math.Floor((minX - margin - grids.Origin.X) / size) - 1);
+        int x1 = TileIndex(Math.Floor((maxX + margin - grids.Origin.X) / size) + 1);
+        int z0 = TileIndex(Math.Floor((minZ - margin - grids.Origin.Y) / size) - 1);
+        int z1 = TileIndex(Math.Floor((maxZ + margin - grids.Origin.Y) / size) + 1);
         for (long z = z0; z <= z1; z++)
             for (long x = x0; x <= x1; x++)
             {
@@ -342,6 +343,13 @@ public static class MapNavTiling
                 if (MeetsXz(capture.MinX, capture.MinZ, capture.MaxX, capture.MaxZ, minX, minZ, maxX, maxZ)) yield return tile;
             }
     }
+
+    // A candidate index. Validate keeps the world's own range, one tile wider, inside int, so only geometry or a seam
+    // margin reaching far past the world refuses here.
+    static int TileIndex(double index) => index is >= int.MinValue and <= int.MaxValue
+        ? (int)index
+        : throw new MapDocumentException(FormattableString.Invariant(
+            $"Navigation tile {index:F0} lies outside the {int.MinValue:N0} to {int.MaxValue:N0} tile range."));
 
     static bool MeetsXz(double aMinX, double aMinZ, double aMaxX, double aMaxZ, double bMinX, double bMinZ, double bMaxX,
         double bMaxZ) => aMinX <= bMaxX && bMinX <= aMaxX && aMinZ <= bMaxZ && bMinZ <= aMaxZ;

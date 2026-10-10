@@ -1,4 +1,3 @@
-using System.Reflection;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.Terrain;
@@ -31,12 +30,8 @@ public sealed class MapLegacyTerrainDigestTests
     [Fact]
     public void SculptTile_EqualsTheContentDigestSculptEntry()
     {
-        // The content digest's entry digest is internal to MapDoc, so it is reached by name.
-        MethodInfo entry = typeof(MapLegacyTerrainDigest).Assembly
-            .GetType("KhaozEngine.MapDoc.Identity.MapAuthoredContentDigest", throwOnError: true)!
-            .GetMethod("SculptDigest", BindingFlags.NonPublic | BindingFlags.Static)!;
         MapSculptTile tile = Tile();
-        Assert.Equal((string)entry.Invoke(null, new object[] { tile })!, MapLegacyTerrainDigest.SculptTile(tile));
+        Assert.Equal(MapAuthoredContentDigest.SculptDigest(tile), MapLegacyTerrainDigest.SculptTile(tile));
     }
 
     // Tile (1, -1) with two nonzero deltas.

@@ -56,7 +56,7 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   `SupportNeighborhoodResult.MaximumElements` (256) and `JoinWordsFor`. Mesh triangles certify one by one, so
   mesh topology never refuses. Refusals are `CapacityExceeded` with `RequiredElements`, `Unsupported` outside
   the certified probe, pose, band or shape domain, and `Ambiguous` for a hull not proven convex. A layer filter
-  throws `ArgumentException`. Check a complete result with `AssertNeighborhoodCurrent(result, lease)`.
+  and a join span shorter than `elements.Length * JoinWordsFor(elements.Length)` throw `ArgumentException`. Check a complete result with `AssertNeighborhoodCurrent(result, lease)`.
 - **Static handle provenance for query views** - the factory rejects invalid, missing and stale handles at
   creation. Handles are numeric identities local to their source world, so equal values from different worlds
   are not interchangeable. Use handles returned by that source, and do not reuse removed exclusions to infer

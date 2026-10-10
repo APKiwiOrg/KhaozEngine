@@ -242,15 +242,6 @@ public class SupportNeighborhoodTests
         Assert.Equal(originalElements, elements);
         Assert.Equal(originalJoins, joins);
 
-        elements = ElementSentinels(8);
-        originalElements = (SupportElement[])elements.Clone();
-        joins = JoinSentinels(2);
-        originalJoins = (ulong[])joins.Clone();
-        AssertRefused(capability.QuerySupportNeighborhood(scene.Lease, Probe, Corner(), Band, elements, joins),
-            CapsuleFeatureStatus.CapacityExceeded, 3);
-        Assert.Equal(originalElements, elements);
-        Assert.Equal(originalJoins, joins);
-
         // Exactly the matrix for the member count fits.
         elements = ElementSentinels(3);
         joins = JoinSentinels(3);
@@ -260,6 +251,33 @@ public class SupportNeighborhoodTests
         Assert.Equal(3, exact.Elements);
         Assert.Equal(1, exact.JoinWordsPerRow);
         Assert.Equal([0b110UL, 0b101UL, 0b011UL], joins);
+    }
+
+    // The join span must hold the matrix for the whole element span, elements.Length * JoinWordsFor(elements.Length)
+    // words, whatever the member count turns out to be. A shorter span is argument misuse and throws before anything
+    // is written, on the owner and on a view.
+    [Fact]
+    public void JoinSpanShorterThanDocumentedThrows()
+    {
+        using var scene = new Scene();
+        scene.World.AddStatic(new BoxShape(new Vector3(0.5f)), Pose.Identity);
+        foreach (IPhysicsWorld receiver in new IPhysicsWorld[] { scene.World, scene.View() })
+        {
+            IPhysicsSupportNeighborhood capability = scene.Capability(receiver);
+            foreach ((int elementCount, int joinCount) in new[] { (8, 7), (3, 2), (65, 129) })
+            {
+                SupportElement[] elements = ElementSentinels(elementCount);
+                SupportElement[] originalElements = (SupportElement[])elements.Clone();
+                ulong[] joins = JoinSentinels(joinCount), originalJoins = (ulong[])joins.Clone();
+                Assert.Throws<ArgumentException>(() => capability.QuerySupportNeighborhood(scene.Lease, Probe,
+                    Corner(), Band, elements, joins));
+                Assert.Equal(originalElements, elements);
+                Assert.Equal(originalJoins, joins);
+            }
+            // The documented size for the element span is enough.
+            Assert.Equal(CapsuleFeatureStatus.Complete, capability.QuerySupportNeighborhood(scene.Lease, Probe,
+                Corner(), Band, ElementSentinels(65), JoinSentinels(130)).Status);
+        }
     }
 
     [Fact]

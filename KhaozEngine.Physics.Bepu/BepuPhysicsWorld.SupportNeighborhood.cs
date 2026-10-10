@@ -49,6 +49,9 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportNeighborhood
             throw new ArgumentOutOfRangeException(nameof(bandMetres));
         if (filter.Mobility is < QueryMobility.All or > QueryMobility.Dynamics || filter.Layers != 0)
             throw new ArgumentException("The neighborhood query does not support this filter value.", nameof(filter));
+        if (joins.Length < (long)elements.Length * SupportNeighborhoodResult.JoinWordsFor(elements.Length))
+            throw new ArgumentException("The join span must hold elements.Length * JoinWordsFor(elements.Length) words.",
+                nameof(joins));
         // The same proven domain as the feature query: an upright probe of bounded size and a bounded band.
         if (pose.Orientation.X != 0f || pose.Orientation.Z != 0f ||
             probe.Radius is < 0.01f or > 2f || probe.Length > 8f || bandMetres > 0.01f ||

@@ -8991,7 +8991,8 @@ if (result.Status == CapsuleFeatureStatus.Complete)
   upright probe of radius 0.01 to 2, length up to 8 and a band up to 0.01) or a shape it cannot capture.
   `Ambiguous` means a convex hull whose faces could not be proven convex and manifold. A refusal leaves both
   spans untouched.
-- A layer filter, a non-finite pose and an invalid probe throw `ArgumentException`.
+- A layer filter, a non-finite pose, an invalid probe and a join span shorter than
+  `elements.Length * JoinWordsFor(elements.Length)` throw `ArgumentException`.
 - A result belongs to its receiver and original lease. `AssertNeighborhoodCurrent` throws for another receiver,
   another lease or an expired interval.
 

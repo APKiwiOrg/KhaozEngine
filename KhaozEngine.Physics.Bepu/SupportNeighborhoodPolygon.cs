@@ -344,7 +344,8 @@ internal static class SupportGeometry
     internal static GeometryInterval Component(FeaturePoint point, int axis) =>
         axis == 0 ? point.X.Bounds : axis == 1 ? point.Y.Bounds : point.Z.Bounds;
 
-    /// <summary>A lower bound on the distance between two axis-aligned boxes. Infinity marks a refusal to bound.</summary>
+    /// <summary>A lower bound on the distance between two axis-aligned boxes. When the bound cannot be resolved it
+    /// returns 0, which never excludes anything.</summary>
     internal static double BoxGap(ReadOnlySpan<double> lowA, ReadOnlySpan<double> highA, ReadOnlySpan<double> lowB,
         ReadOnlySpan<double> highB)
     {

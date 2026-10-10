@@ -113,13 +113,14 @@ The contract:
 - **Order.** Elements are ordered by static handle, then element id, so certification is deterministic.
 - **Capacity.** 256 elements per query, matching the backend's existing 256 incident-face cap, so a dense mesh fan
   never meets a capacity refusal the feature query would not.
-- **Refusals.** `CapacityExceeded` when the element span or the join matrix for the member count is too small,
-  atomically, with `RequiredElements`. `Unsupported` for a pose, probe size or band outside the proven domain, a
+- **Refusals.** `CapacityExceeded` when the member count exceeds the element span or 256, atomically, with
+  `RequiredElements`. `Unsupported` for a pose, probe size or band outside the proven domain, a
   shape outside the captured domain such as a scaled mesh, or bounded arithmetic that cannot be resolved.
   `Ambiguous` remains only for a convex hull whose captured faces the backend cannot prove convex and manifold, as
   the feature query refuses it. Nothing else refuses. A refusal or exception leaves both spans untouched.
-- **Arguments.** A layer filter, a non-finite pose, a zero rotation and an invalid probe throw `ArgumentException`,
-  as `QueryCapsuleFeature` does. Argument misuse is an exception in this API, not a refusal.
+- **Arguments.** A layer filter, a non-finite pose, a zero rotation, an invalid probe and a join span shorter than
+  `elements.Length * JoinWordsFor(elements.Length)` throw `ArgumentException`, as `QueryCapsuleFeature` does for its
+  own arguments. Argument misuse is an exception in this API, not a refusal.
 - **Lease.** The result is bound to the lease and receiver like `CapsuleFeatureResult`. The distinct method
   `AssertNeighborhoodCurrent` checks it, so `AssertFeatureCurrent` keeps its single signature.
 - **Compounds.** Each convex leaf contributes its own elements. A curved leaf never refuses the polyhedral leaves

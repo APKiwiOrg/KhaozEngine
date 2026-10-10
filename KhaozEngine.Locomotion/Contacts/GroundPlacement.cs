@@ -58,6 +58,14 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         return rounded > value ? MathF.BitDecrement(rounded) : rounded;
     }
 
+    /// <summary>The smallest float not below <paramref name="value"/>, the mirror of <see cref="NotAbove"/>. A step
+    /// part rounds up, so the climb it charges is never less than the rise.</summary>
+    internal static float NotBelow(double value)
+    {
+        float rounded = (float)value;
+        return rounded < value ? MathF.BitIncrement(rounded) : rounded;
+    }
+
     // A touching shell is clear. An overlapping shell gets one MTV proposal and one clearance check.
     static bool Clear(IPhysicsWorld? world, in MoveTuning tuning, Vector3 target, Vector2 startAxis,
         ref Vector2 total, out Vector3 placed)

@@ -99,9 +99,10 @@ public interface IPhysicsSupportNeighborhood
     /// <summary>Publishes every front-facing element of every selected static whose separation from the probe
     /// may be at most <paramref name="bandMetres"/>, ordered by static handle then element id, and the symmetric
     /// join matrix over them. <paramref name="joins"/> must hold <c>elements.Length * JoinWordsFor(elements.Length)</c>
-    /// words. Membership is decided by the separation's lower bound, so a tie never refuses. CapacityExceeded is
-    /// returned only when the element span or the join matrix for the published element count does not fit.
-    /// Refusal or exception leaves both spans untouched. A complete result commits elements and joins together
+    /// words, and a shorter join span throws <see cref="ArgumentException"/>. Membership is decided by the separation's
+    /// lower bound, so a tie never refuses. CapacityExceeded is returned only when the published element count exceeds
+    /// the element span or <see cref="SupportNeighborhoodResult.MaximumElements"/>. Refusal or exception leaves both
+    /// spans untouched. A complete result commits elements and joins together
     /// and remains usable only under its original lease and query receiver.</summary>
     SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe, Pose pose,
         float bandMetres, Span<SupportElement> elements, Span<ulong> joins, QueryFilter filter = default);

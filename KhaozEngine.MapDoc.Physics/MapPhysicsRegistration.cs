@@ -26,7 +26,8 @@ public sealed class MapPhysicsRegistration : IDisposable
     /// <summary>The caller-owned physics world the statics are installed in.</summary>
     public IPhysicsWorld Physics { get; }
 
-    /// <summary>One handle per static, in <see cref="MapBuiltWorld.Statics"/> order. Empty once disposed.</summary>
+    /// <summary>One handle per static, in <see cref="MapBuiltWorld.Statics"/> order. After a failed
+    /// <see cref="Dispose"/> only the statics still installed remain, and once disposed it is empty.</summary>
     public IReadOnlyList<StaticHandle> Handles => _handles;
 
     MapPhysicsRegistration(MapBuiltWorld world, IPhysicsWorld physics, List<StaticHandle> handles,
@@ -40,17 +41,20 @@ public sealed class MapPhysicsRegistration : IDisposable
 
     /// <summary>Installs every static of <paramref name="world"/> into <paramref name="physics"/> in static order, at
     /// <c>Position - physics.Origin</c>. Throws <see cref="MapDocumentException"/> naming "whole-metre origin" when an
-    /// origin component is not a whole metre, since terrain vertices are exact only against whole-metre anchors. Never
-    /// call this inside a held query read lease: the backend refuses mutation then. Any exception removes every static
-    /// already added, in reverse order, and propagates.</summary>
+    /// origin component is not a whole metre or lies beyond <see cref="MapWorldBuilder.MaxCoordinateMetres"/>, since
+    /// terrain vertices are exact only against whole-metre anchors and every float from 2^23 up is a whole number whose
+    /// offsets can round. Never call this, or mutate the physics world at all, inside a held query read lease: the
+    /// backend refuses mutation then. Any exception removes every static already added, in reverse order, and
+    /// propagates. When a rollback removal also fails, the <see cref="AggregateException"/> carries the original
+    /// exception first and then every removal failure.</summary>
     public static MapPhysicsRegistration Register(MapBuiltWorld world, IPhysicsWorld physics)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(physics);
         Vector3 origin = physics.Origin;
-        if (!float.IsInteger(origin.X) || !float.IsInteger(origin.Y) || !float.IsInteger(origin.Z))
+        if (!WholeMetreWithinWorld(origin.X) || !WholeMetreWithinWorld(origin.Y) || !WholeMetreWithinWorld(origin.Z))
             throw new MapDocumentException(FormattableString.Invariant(
-                $"Registration needs a whole-metre origin, and the physics world's origin is ({origin.X}, {origin.Y}, {origin.Z})."));
+                $"Registration needs a whole-metre origin within 1,000,000 m of the world origin on each axis, and the physics world's origin is ({origin.X}, {origin.Y}, {origin.Z})."));
 
         var handles = new List<StaticHandle>(world.Statics.Count);
         var owners = new Dictionary<StaticHandle, (MapStaticOwner Owner, IReadOnlyList<MapFaceKey> Faces)>(world.Statics.Count);
@@ -73,6 +77,9 @@ public sealed class MapPhysicsRegistration : IDisposable
         }
         return new MapPhysicsRegistration(world, physics, handles, owners);
     }
+
+    static bool WholeMetreWithinWorld(float value) =>
+        float.IsInteger(value) && Math.Abs(value) <= MapWorldBuilder.MaxCoordinateMetres;
 
     /// <summary>The owner of <paramref name="handle"/>, false for a handle this registration did not add.</summary>
     public bool TryOwner(StaticHandle handle, [MaybeNullWhen(false)] out MapStaticOwner owner)
@@ -115,16 +122,32 @@ public sealed class MapPhysicsRegistration : IDisposable
             null, null);
     }
 
-    /// <summary>Removes every static this registration added, in reverse order. Never disposes <see cref="Physics"/>.
-    /// A second call does nothing.</summary>
+    /// <summary>Removes every static this registration added, in reverse order, attempting each even after a failure.
+    /// Never disposes <see cref="Physics"/>. Never call this inside a held query read lease: the backend refuses
+    /// mutation then. When a removal fails, the <see cref="AggregateException"/> carries every removal failure, the
+    /// statics not removed stay in <see cref="Handles"/> with their owners, and the registration stays undisposed so a
+    /// later call retries them. Once every static is removed, further calls do nothing.</summary>
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true;
-        List<Exception>? failures = RemoveAll(Physics, _handles);
-        _handles.Clear();
-        _owners.Clear();
+        List<Exception>? failures = null;
+        for (int i = _handles.Count - 1; i >= 0; i--)
+        {
+            StaticHandle handle = _handles[i];
+            try
+            {
+                Physics.RemoveStatic(handle);
+            }
+            catch (Exception failure)
+            {
+                (failures ??= new()).Add(failure);
+                continue;
+            }
+            _handles.RemoveAt(i);
+            _owners.Remove(handle);
+        }
         if (failures is not null) throw new AggregateException("Registration left statics behind.", failures);
+        _disposed = true;
     }
 
     // Removes every handle in reverse order, attempting each even after a failure. Returns the failures, or null.

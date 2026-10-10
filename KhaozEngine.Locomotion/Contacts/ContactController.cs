@@ -98,6 +98,7 @@ internal static class ContactController
         }
 
         Tick tick;
+        float climbRate, climbRateEwma, stepDeltaY;
         using (IPhysicsQueryLease? lease = leases?.AcquireQueryReadLease())
         {
             var context = new Context(groundHeight, groundNormal, world, lease, t, foot, gate, clampXz);
@@ -115,11 +116,13 @@ internal static class ContactController
                 mode = Mode.Slide;
             tick = Move(context, s, mode, support, feet, commanded, velocity, displacement, intent, dt);
             if (clampXz is not null) tick = Bound(context, tick, clampXz);
+            // Ground signals belong to the move, before a jump consumes its footing at the end of the tick.
+            (climbRate, climbRateEwma, stepDeltaY) = GroundSignals.Resolve(s, tick.StepRise, tick.MoveRise,
+                tick.GroundTravel, tick.Feet, tick.Support,
+                tick.Mode == Mode.Ground && tick.Support.Status == SupportStatus.Walkable,
+                dt, t, foot.FootRadiusFraction * t.CapsuleRadius, MathF.Cos(gate), groundHeight, groundNormal, world,
+                lease);
         }
-
-        // Ground signals belong to the move, before a jump consumes its footing at the end of the tick.
-        float stepDeltaY = tick.Mode == Mode.Ground && tick.Support.Status == SupportStatus.Walkable
-            ? tick.StepRise : 0f;
 
         // The jump, decided last as legacy. The impact and the grant latch first, so a buffered relaunch on the
         // landing tick still reports both.
@@ -150,8 +153,8 @@ internal static class ContactController
             LandingImpactSpeed = landingImpact,
             SupportGranted = supportGranted,
             StepDeltaY = stepDeltaY,
-            ClimbRate = 0f,
-            ClimbRateEwma = 0f,
+            ClimbRate = climbRate,
+            ClimbRateEwma = climbRateEwma,
             FacingYaw = commitmentControlled ? s.FacingYaw
                 : CharacterMovement.ResolveFacing(s.FacingYaw, moveDir, faceYaw, dt, t),
             SpeedScale = state.SpeedScale,

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Locomotion;
+using KhaozEngine.Locomotion.Contacts;
 using Xunit;
 using static KhaozEngine.Tests.Locomotion.Contacts.FootSupportScenes;
 
@@ -68,21 +69,38 @@ public partial class ContactControllerTests
         Assert.InRange(events, 1, maxTicks);
     }
 
+    // A stationary body that still owes a step's climb reports the paid part as a step event.
     [Theory]
-    [InlineData(30, 0.18f, 0f)]
-    [InlineData(60, 0.18f, 0f)]
-    [InlineData(30, 0f, 1f)]
-    [InlineData(60, 0f, 1f)]
-    public void CarriedStepLagReportsItsAppliedRise(int hz, float step, float climb)
+    [InlineData(30)]
+    [InlineData(60)]
+    public void CarriedStepLagReportsItsAppliedRise(int hz)
     {
         using var g = new Ground(null, (_, _) => 0.18f);
-        MoveState state = Standing(new Vector3(0, 0.03f, 0)) with { StepDeltaY = step, ClimbRate = climb };
+        MoveState state = Standing(new Vector3(0, 0.03f, 0)) with { StepDeltaY = 0.18f };
         float dt = 1f / hz;
 
         MoveState result = g.Step(state, Vector2.Zero, 0, false, Tuning, dt);
 
         AssertNear((double)Tuning.MaxStepClimbSpeed * dt, result.StepDeltaY, Skin, Show(result));
         AssertNoClimb(result);
+    }
+
+    // The same lag under a run in progress continues the ascent, so it reports a climb rate seeded from the paid
+    // rise (0.7 of MaxStepClimbSpeed with no carried EWMA) and no step event.
+    [Theory]
+    [InlineData(30)]
+    [InlineData(60)]
+    public void CarriedRunPaysItsLagAsAClimb(int hz)
+    {
+        using var g = new Ground(null, (_, _) => 0.18f);
+        MoveState state = Standing(new Vector3(0, 0.03f, 0)) with { ClimbRate = 1f };
+        float dt = 1f / hz;
+
+        MoveState result = g.Step(state, Vector2.Zero, 0, false, Tuning, dt);
+
+        Assert.Equal(0f, result.StepDeltaY);
+        AssertNear(GroundSignals.SeedFraction * Tuning.MaxStepClimbSpeed, result.ClimbRateEwma, 1e-3f, Show(result));
+        Assert.Equal(result.ClimbRateEwma, result.ClimbRate);
     }
 
     public static IEnumerable<object[]> SmoothSignalRows()
@@ -253,5 +271,309 @@ public partial class ContactControllerTests
         Assert.True(s.Grounded, Show(s));
         Assert.True(s.SupportGranted, Show(s));
         AssertNoSignals(s);
+    }
+
+    [Theory]
+    [MemberData(nameof(SignalRows))]
+    public void StairAscentExportsAContinuousClimbRate(SceneVariant variant, int hz, bool run)
+    {
+        using var g = new Ground(Staircase(variant, 16, 0.18f, 0.28f), Abyss);
+        float dt = 1f / hz;
+        MoveState s = Standing(new Vector3(-0.5f, 0, 0));
+        bool started = false, finished = false;
+        var climb = new List<(float Rate, double Rise)>();
+        for (int tick = 0; tick < 2 * hz && !finished; tick++)
+        {
+            MoveState input = s;
+            s = g.Step(s, Vector2.UnitX, 1, false, Tuning, dt, run);
+            Assert.True(s.Grounded, Show(s));
+            started |= Feet(s).Y > Skin;
+            if (!started) continue;
+            if (!(s.ClimbRate > 0))
+            {
+                float speed = run ? Tuning.RunSpeed : Tuning.WalkSpeed;
+                GroundStepResult core = GroundCore.Step(Feet(input), speed * dt * Vector2.UnitX, dt, Tuning,
+                    Settings, g.Height, g.Normal, g.World, g.Lease, Banded,
+                    stepInProgress: input.StepDeltaY > 0 || input.ClimbRate > 0);
+                Assert.True(s.ClimbRate > 0,
+                    $"tick {tick}, input rate {input.ClimbRate:R}, actual travel {Feet(s) - Feet(input)}, " +
+                    $"core travel {core.Achieved}, rise {core.StepRise:R}, support {core.Support.Height:R}: {Show(s)}");
+            }
+            Assert.InRange(s.ClimbRate, 0f, Tuning.MaxStepClimbSpeed);
+            Assert.Equal(0f, s.StepDeltaY);
+            climb.Add((s.ClimbRate, (double)Feet(s).Y - Feet(input).Y));
+            finished = Feet(s).Y >= 16 * 0.18f - Skin;
+        }
+        Assert.True(started && finished, Show(s));
+        double sum = 0, rise = 0;
+        int first = climb.Count / 2;
+        for (int i = first; i < climb.Count; i++)
+        {
+            sum += climb[i].Rate;
+            rise += climb[i].Rise;
+        }
+        int ticks = climb.Count - first;
+        AssertNear(rise / (ticks * (double)dt), sum / ticks, 0.25, Show(s));
+    }
+
+    [Theory]
+    [MemberData(nameof(SignalRows))]
+    public void StairDescentExportsANegativeClimbRate(SceneVariant variant, int hz, bool run)
+    {
+        using var g = new Ground(Staircase(variant, 8, 0.18f, 0.28f), Abyss);
+        float dt = 1f / hz;
+        MoveState s = Standing(new Vector3(2.5f, 8 * 0.18f, 0));
+        bool started = false, finished = false;
+        for (int tick = 0; tick < 2 * hz && !finished; tick++)
+        {
+            s = g.Step(s, -Vector2.UnitX, 1, false, Tuning, dt, run);
+            Assert.True(s.Grounded, Show(s));
+            started |= Feet(s).Y < 8 * 0.18f - Skin;
+            if (!started) continue;
+            Assert.True(s.ClimbRate < 0, $"tick {tick}, rate {s.ClimbRate:R}: {Show(s)}");
+            Assert.InRange(s.ClimbRate, -6f, 0f);
+            Assert.Equal(0f, s.StepDeltaY);
+            Assert.Equal(0f, s.ClimbRateEwma);
+            finished = Feet(s).Y <= Skin;
+        }
+        Assert.True(started && finished, Show(s));
+    }
+
+    [Theory]
+    [MemberData(nameof(SignalRows))]
+    public void DiagonalAscentStillReadsTheRun(SceneVariant variant, int hz, bool run)
+    {
+        using var g = new Ground(Stairs(variant, 0.28f, 0.18f, 8, halfWidth: 3), Abyss);
+        float dt = 1f / hz;
+        var direction = new Vector2(MathF.Cos(Radians(30)), MathF.Sin(Radians(30)));
+        MoveState s = Standing(new Vector3(-0.5f, 0, 0));
+        bool found = false;
+        for (int tick = 0; tick < hz && Feet(s).Y < 4 * 0.18f; tick++)
+        {
+            s = g.Step(s, direction, 1, false, Tuning, dt, run);
+            if (Feet(s).Y <= Skin) continue;
+            if (s.ClimbRate <= 0) continue;
+            Assert.Equal(0f, s.StepDeltaY);
+            found = true;
+        }
+        Assert.True(found, Show(s));
+    }
+
+    [Theory]
+    [MemberData(nameof(SignalRows))]
+    public void StairsEndingAtAWallExportNothingOnceStopped(SceneVariant variant, int hz, bool run)
+    {
+        using var g = new Ground(Staircase(variant, 8, 0.18f, 0.28f).Wall("wall", 2.6f, 0.2f, 4), Abyss);
+        MoveState s = Standing(new Vector3(-0.5f, 0, 0));
+        bool climbed = false, stopped = false;
+        for (int tick = 0; tick < 2 * hz; tick++)
+        {
+            MoveState input = s;
+            Vector3 previous = Feet(s);
+            s = g.Step(s, Vector2.UnitX, 1, false, Tuning, 1f / hz, run);
+            climbed |= s.ClimbRate > 0;
+            if (previous.X < 2.6f - Tuning.CapsuleRadius - 2 * Skin) continue;
+            if (Feet(s).X != previous.X || Feet(s).Z != previous.Z) continue;
+            if (Math.Abs(previous.Y - 8 * 0.18f) > Skin) continue;
+            Assert.True(s.ClimbRate == 0f && s.ClimbRateEwma == 0f && s.StepDeltaY == 0f,
+                $"tick {tick}, travel {Feet(s) - previous}, step {s.StepDeltaY:R}, " +
+                $"input rate {input.ClimbRate:R}, input step {input.StepDeltaY:R}: {Show(s)}");
+            Assert.True(float.IsFinite(s.ClimbRate) && float.IsFinite(s.ClimbRateEwma) &&
+                float.IsFinite(s.StepDeltaY), Show(s));
+            stopped = true;
+        }
+        Assert.True(climbed && stopped, Show(s));
+    }
+
+    [Theory]
+    [InlineData(30, 1.6f, true)]
+    [InlineData(60, 1.6f, true)]
+    [InlineData(30, 1.2f, false)]
+    [InlineData(60, 1.2f, false)]
+    public void SamplesOnSteepSupportAreSkipped(int hz, float steepFrom, bool enoughWalkable)
+    {
+        float steepGrade = MathF.Tan(Radians(70));
+        Vector3 steepNormal = Vector3.Normalize(new Vector3(-steepGrade, 1, 0));
+        float Height(float x, float z) => x < steepFrom
+            ? 0.18f * (MathF.Floor(x / 0.28f) + 1)
+            : 0.18f * (MathF.Floor(steepFrom / 0.28f) + 1) + steepGrade * (x - steepFrom);
+        Vector3 Normal(float x, float z) => x < steepFrom ? Vector3.UnitY : steepNormal;
+        using var g = new Ground(null, Height, Normal);
+        MoveState input = Standing(new Vector3(0.5f, 0.36f, 0));
+
+        MoveState result = g.Step(input, Vector2.UnitX, 1, false, Tuning, 1f / hz);
+
+        if (enoughWalkable)
+        {
+            Assert.True(result.ClimbRate > 0, Show(result));
+            double rate = (Feet(result).Y - Feet(input).Y) * hz;
+            double expected = 0.7 * rate;
+            AssertNear(expected, result.ClimbRate, 1e-5, Show(result));
+            Assert.Equal(0f, result.StepDeltaY);
+        }
+        else AssertNoClimb(result);
+    }
+
+    [Theory]
+    [MemberData(nameof(SignalRows))]
+    public void DeniedDescentExportsNothing(SceneVariant variant, int hz, bool run)
+    {
+        using var g = new Ground(Staircase(variant, 8, 0.18f, 0.28f).Wall("wall", 2.2f, 0.2f, 4), Abyss);
+        float x = 2.2f + (variant == SceneVariant.Box ? 0.2f : 0f) + Tuning.CapsuleRadius + Skin;
+        MoveState s = Standing(new Vector3(x, 8 * 0.18f, 0)) with { ClimbRate = -3f };
+        bool stopped = false;
+        for (int tick = 0; tick < 4; tick++)
+        {
+            MoveState input = s;
+            Vector3 previous = Feet(s);
+            s = g.Step(s, -Vector2.UnitX, 1, false, Tuning, 1f / hz, run);
+            if (s.ClimbRate != 0f)
+            {
+                float speed = run ? Tuning.RunSpeed : Tuning.WalkSpeed;
+                GroundStepResult core = GroundCore.Step(previous, -speed / hz * Vector2.UnitX, 1f / hz, Tuning,
+                    Settings, g.Height, g.Normal, g.World, g.Lease, Banded,
+                    stepInProgress: input.StepDeltaY > 0 || input.ClimbRate > 0);
+                Assert.True(s.ClimbRate == 0f,
+                    $"tick {tick}, rate {s.ClimbRate:R}, actual travel {Feet(s) - previous}, " +
+                    $"core travel {core.Achieved}, rise {core.StepRise:R}: {Show(s)}");
+            }
+            AssertNoSignals(s);
+            stopped |= Feet(s).X == previous.X;
+        }
+        Assert.True(stopped, Show(s));
+    }
+
+    [Theory]
+    [MemberData(nameof(SignalRows))]
+    public void ReplayFromAQuantizedClimbRateIsIdentical(SceneVariant variant, int hz, bool run)
+    {
+        using var g = new Ground(Staircase(variant, 8, 0.18f, 0.28f), Abyss);
+        MoveState initial = Standing(new Vector3(0.5f, 0.36f, 0)) with
+        {
+            ClimbRate = 35 * 0.05f,
+            ClimbRateEwma = 1.75f,
+        };
+        MoveState live = initial, replay = initial;
+        bool climbed = false;
+        for (int tick = 0; tick < hz; tick++)
+        {
+            live = g.Step(live, Vector2.UnitX, 1, false, Tuning, 1f / hz, run);
+            replay = g.Step(replay, Vector2.UnitX, 1, false, Tuning, 1f / hz, run);
+            AssertSameBits(live, replay, tick);
+            climbed |= live.ClimbRate > 0;
+        }
+        Assert.True(climbed, Show(live));
+    }
+
+    [Theory]
+    [InlineData(SceneVariant.Box, 0f)]
+    [InlineData(SceneVariant.Mesh, 0f)]
+    [InlineData(SceneVariant.Box, HalfSkin)]
+    [InlineData(SceneVariant.Mesh, HalfSkin)]
+    public void SubSkinGroundTravelKeepsAppliedStepsWithoutStartingARun(SceneVariant variant, float travel)
+    {
+        using var g = new Ground(Staircase(variant, 8, 0.18f, 0.28f), Abyss);
+        MoveState initial = Standing(new Vector3(0.5f, 0.36f, 0));
+        SupportSample support = FootSupport.Find(g.Height, g.Normal, g.World, g.Lease,
+            new FootSupportQuery(new Vector2(0.5f, 0), 0.36f, 0.2f, Tuning.StepHeight, Tuning.StepHeight,
+                MathF.Cos(Banded)));
+        foreach (float rise in new[] { 0.1f, -0.1f })
+        {
+            var result = GroundSignals.Resolve(initial, rise, rise, travel * Vector2.UnitX, Feet(initial), support,
+                true, Dt, Tuning,
+                0.2f, MathF.Cos(Banded), g.Height, g.Normal, g.World, g.Lease);
+
+            Assert.Equal((0f, 0f, rise), result);
+        }
+    }
+
+    [Theory]
+    [InlineData(SceneVariant.Box, 0f)]
+    [InlineData(SceneVariant.Mesh, 0f)]
+    [InlineData(SceneVariant.Box, HalfSkin)]
+    [InlineData(SceneVariant.Mesh, HalfSkin)]
+    public void SubSkinGroundTravelContinuesAnAppliedAscent(SceneVariant variant, float travel)
+    {
+        using var g = new Ground(Staircase(variant, 8, 0.18f, 0.28f), Abyss);
+        MoveState input = Standing(new Vector3(0.5f, 0.36f, 0)) with
+        {
+            ClimbRate = 1.75f,
+            ClimbRateEwma = 1.75f,
+        };
+        SupportSample support = FootSupport.Find(g.Height, g.Normal, g.World, g.Lease,
+            new FootSupportQuery(new Vector2(0.5f, 0), 0.36f, 0.2f, Tuning.StepHeight, Tuning.StepHeight,
+                MathF.Cos(Banded)));
+
+        var result = GroundSignals.Resolve(input, 0.1f, 0.1f, travel * Vector2.UnitX, Feet(input), support, true, Dt,
+            Tuning, 0.2f, MathF.Cos(Banded), g.Height, g.Normal, g.World, g.Lease);
+
+        double expected = 1.75 + (1 - Math.Exp(-5.0 * Dt)) * (0.1 / Dt - 1.75);
+        AssertNear(expected, result.ClimbRate, 1e-5, result);
+        Assert.Equal(result.ClimbRate, result.Ewma);
+        Assert.Equal(0f, result.StepDeltaY);
+    }
+
+    [Theory]
+    [InlineData(SceneVariant.Box, 1)]
+    [InlineData(SceneVariant.Mesh, 1)]
+    [InlineData(SceneVariant.Box, -1)]
+    [InlineData(SceneVariant.Mesh, -1)]
+    public void GroundSignalBoundaryEvidence(SceneVariant variant, int direction)
+    {
+        using var g = new Ground(Staircase(variant, 8, 0.18f, 0.28f), Abyss);
+        var feet = direction > 0 ? new Vector3(1.5f, 1.05f, 0) : new Vector3(0.1f, 0.36f, 0);
+        MoveState input = Standing(feet) with { ClimbRate = direction * 3f, ClimbRateEwma = direction > 0 ? 3f : 0f };
+        float rise = direction > 0 ? 3.5f * Dt : -0.18f;
+        Vector2 travel = direction * 0.2f * Vector2.UnitX;
+        float cosGate = MathF.Cos(Banded);
+        Span<float> heights = stackalloc float[4];
+        SupportSample axisSupport = default;
+        for (int k = 0; k < 4; k++)
+        {
+            float distance = k * Tuning.CapsuleRadius;
+            float reach = Tuning.StepHeight + 2 * distance;
+            var axis = new Vector2(feet.X + direction * distance, feet.Z);
+            var support = FootSupport.Find(g.Height, g.Normal, g.World, g.Lease,
+                new FootSupportQuery(axis, feet.Y, 0.2f, reach, reach, cosGate));
+            Assert.Equal(SupportStatus.Walkable, support.Status);
+            heights[k] = support.Height;
+            if (k == 0) axisSupport = support;
+        }
+        // Equal sample spacing gives these closed-form least-squares weights.
+        double grade = (-3.0 * heights[0] - heights[1] + heights[2] + 3.0 * heights[3]) /
+            (10 * (double)Tuning.CapsuleRadius);
+        var result = GroundSignals.Resolve(input, rise, rise, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
+            g.Height, g.Normal, g.World, g.Lease);
+
+        Assert.True(direction * result.ClimbRate > 0,
+            $"feet {feet}, heights [{heights[0]:R}, {heights[1]:R}, {heights[2]:R}, {heights[3]:R}], " +
+            $"grade {grade:R}, rate {result.ClimbRate:R}, event {result.StepDeltaY:R}");
+    }
+
+    [Theory]
+    [InlineData(SceneVariant.Box)]
+    [InlineData(SceneVariant.Mesh)]
+    public void WarmSignalResolveAllocatesNothing(SceneVariant variant)
+    {
+        using var g = new Ground(Staircase(variant, 8, 0.18f, 0.28f), Abyss);
+        var feet = new Vector3(0.5f, 0.36f, 0);
+        MoveState input = Standing(feet) with { ClimbRate = 1.75f, ClimbRateEwma = 1.75f };
+        Vector2 travel = 0.2f * Vector2.UnitX;
+        float cosGate = MathF.Cos(Banded);
+        SupportSample axisSupport = FootSupport.Find(g.Height, g.Normal, g.World, g.Lease,
+            new FootSupportQuery(new Vector2(feet.X, feet.Z), feet.Y, 0.2f, Tuning.StepHeight, Tuning.StepHeight,
+                cosGate));
+        GroundSignals.Resolve(input, 0, 0, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
+            g.Height, g.Normal, g.World, g.Lease);
+        GroundSignals.Resolve(input, 0, 0, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
+            g.Height, g.Normal, g.World, g.Lease);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        var result = GroundSignals.Resolve(input, 0, 0, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
+            g.Height, g.Normal, g.World, g.Lease);
+        long after = GC.GetAllocatedBytesForCurrentThread();
+
+        Assert.Equal(before, after);
+        Assert.True(result.ClimbRate > 0);
     }
 }

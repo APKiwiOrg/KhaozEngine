@@ -123,5 +123,53 @@ internal static partial class NativeWorldFixtures
         }
     }
 
+    /// <summary>The 6 m tree standing at the origin on the flat floor.</summary>
+    internal static MapBuiltWorld BuildTree() => Build(Placed("tree"));
+
+    internal static MapBuiltWorld BuildCrate() => Build(Crate());
+
+    /// <summary>Two crates at the origin, so a ray meets both at one distance. b-crate is authored first.</summary>
+    internal static MapBuiltWorld BuildTwinCrates() => Build(Resolve(FloorSurfaces(),
+        OnFloor("b-crate", "crate", 0f, 0f),
+        OnFloor("a-crate", "crate", 0f, 0f)));
+
+    /// <summary>Crates <c>crate-iii-jjj</c> at (i x spacing, 0, j x spacing), with storage bounds widened to contain
+    /// them.</summary>
+    internal static MapBuiltWorld BuildCrateField(int columns, int rows, float spacingMetres)
+    {
+        NativeFixture f = Crate();
+        f.Document.Bounds = new()
+        {
+            MinX = -64,
+            MinZ = -64,
+            MaxX = (columns - 1) * spacingMetres + 64f,
+            MaxZ = (rows - 1) * spacingMetres + 64f,
+        };
+        f.Document.Placements.Clear();
+        for (int i = 0; i < columns; i++)
+            for (int j = 0; j < rows; j++)
+                f.Document.Placements.Add(OnFloor(FormattableString.Invariant($"crate-{i:000}-{j:000}"), "crate",
+                    i * spacingMetres, j * spacingMetres));
+        return Build(f);
+    }
+
+    /// <summary>The crate moved to (<paramref name="x"/>, <paramref name="y"/>, <paramref name="z"/>), with storage
+    /// bounds widened to contain it.</summary>
+    internal static MapBuiltWorld BuildCrateAt(float x, float y, float z)
+    {
+        NativeFixture f = Crate();
+        f.Document.Bounds = new()
+        {
+            MinX = Math.Min(-64f, x - 64f),
+            MinZ = Math.Min(-64f, z - 64f),
+            MaxX = Math.Max(64f, x + 64f),
+            MaxZ = Math.Max(64f, z + 64f),
+        };
+        f.Document.Placements[0].X = x;
+        f.Document.Placements[0].Y = y;
+        f.Document.Placements[0].Z = z;
+        return Build(f);
+    }
+
     static MapBuiltWorld Build(NativeFixture f) => MapWorldBuilder.Build(f.Document, f.Assets, Options());
 }

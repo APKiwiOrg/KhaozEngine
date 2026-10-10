@@ -14,7 +14,15 @@ internal enum SlideOutcome : byte { Sliding, Wedged, Landed, Airborne }
 /// slide's own vertical speed when airborne. <see cref="ImpactSpeed"/> is the downward vertical speed of a landing,
 /// else zero.</summary>
 internal readonly record struct SlideStepResult(Vector3 Feet, Vector2 HorizontalVelocity, float VerticalVelocity,
-    Vector2 Achieved, SlideOutcome Outcome, SupportSample Support, float ImpactSpeed);
+    Vector2 Achieved, SlideOutcome Outcome, SupportSample Support, float ImpactSpeed)
+{
+    /// <summary>The seconds of the tick left after the slide became airborne, for the air pass to run. Zero
+    /// otherwise.</summary>
+    internal float RemainingTime { get; init; }
+
+    /// <summary>The climb budget left after the slide's move, in metres.</summary>
+    internal double ClimbBudget { get; init; }
+}
 
 /// <summary>Slides a body on certified steep support, analytic terrain and physics statics alike. The dynamics come
 /// from the support's plane and the move runs through <see cref="GroundCore.Slide"/>.</summary>
@@ -53,11 +61,13 @@ internal static class SlideCore
     /// and contour come from the support's plane. The fall-line speed takes gravity along the plane through the
     /// friction ramp at the gate, clamped to <c>MaxFallSpeed / max(sin(slope), sin(gate))</c>, and
     /// <paramref name="steer"/> adds its contour part to the move only. A tick that ends no lower than it started,
-    /// where the fall lines oppose, is wedged.</summary>
+    /// where the fall lines oppose, is wedged. <paramref name="climbBudget"/> is the climb the tick may still pay, in
+    /// metres. Null means a whole tick's <c>MaxStepClimbSpeed * dt</c>.</summary>
     internal static SlideStepResult Step(Vector3 feet, Vector2 carry, float verticalVelocity, Vector2 steer,
         float dt, in MoveTuning tuning, in GroundCoreSettings settings, float tractionSlopeRadians,
         in SupportSample support, Func<float, float, float>? groundHeight,
-        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease)
+        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+        double? climbBudget = null)
     {
         if (!float.IsFinite(feet.X) || !float.IsFinite(feet.Y) || !float.IsFinite(feet.Z))
             throw new ArgumentOutOfRangeException(nameof(feet), "The feet must be finite.");
@@ -96,14 +106,19 @@ internal static class SlideCore
         Vector2 move = (velocity + steerAlong * new Vector2(cx, cz)) * dt;
 
         GroundStepResult step = GroundCore.Slide(feet, move, dt, tuning, settings, groundHeight, groundNormal,
-            world, lease, tractionSlopeRadians);
+            world, lease, tractionSlopeRadians, climbBudget);
         switch (step.Footing)
         {
             case GroundFooting.Walkable:
                 return new(step.Feet, velocity, 0f, step.Achieved, SlideOutcome.Landed, step.Support,
-                    MathF.Max(0f, -vertical));
+                    MathF.Max(0f, -vertical))
+                { ClimbBudget = step.ClimbBudget };
             case GroundFooting.None:
-                return new(step.Feet, velocity, vertical, step.Achieved, SlideOutcome.Airborne, step.Support, 0f);
+                return new(step.Feet, velocity, vertical, step.Achieved, SlideOutcome.Airborne, step.Support, 0f)
+                {
+                    RemainingTime = step.RemainingTime,
+                    ClimbBudget = step.ClimbBudget,
+                };
         }
         float rise = step.Feet.Y - feet.Y;
         if (step.Blocked)
@@ -118,11 +133,15 @@ internal static class SlideCore
         }
         // Support that cannot be certified holds the body where it is, still sliding on what it had.
         if (step.Footing == GroundFooting.Held)
-            return new(step.Feet, velocity, rise / dt, step.Achieved, SlideOutcome.Sliding, support, 0f);
+            return new(step.Feet, velocity, rise / dt, step.Achieved, SlideOutcome.Sliding, support, 0f)
+            {
+                ClimbBudget = step.ClimbBudget,
+            };
         bool wedged = rise >= 0 && Opposed(step.Feet, step.Support, tuning, settings, tractionSlopeRadians,
             groundHeight, groundNormal, world, lease);
         return new(step.Feet, velocity, rise / dt, step.Achieved, wedged ? SlideOutcome.Wedged : SlideOutcome.Sliding,
-            step.Support, 0f);
+            step.Support, 0f)
+        { ClimbBudget = step.ClimbBudget };
     }
 
     static Vector2 Horizontal(float fall, float contour, float tx, float tz, float cx, float cz) =>

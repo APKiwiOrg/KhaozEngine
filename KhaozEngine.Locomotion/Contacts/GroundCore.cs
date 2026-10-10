@@ -20,7 +20,16 @@ internal enum GroundFooting : byte { Walkable, Steep, None, Held }
 /// <see cref="Achieved"/> is the horizontal move that happened. <see cref="Blocked"/> says a wall, cliff, steep
 /// rise or refusal stopped part of the requested move.</summary>
 internal readonly record struct GroundStepResult(Vector3 Feet, GroundFooting Footing, SupportSample Support,
-    float Rise, Vector2 Achieved, bool Blocked);
+    float Rise, Vector2 Achieved, bool Blocked)
+{
+    /// <summary>The seconds of the tick left after the footing changed to <see cref="GroundFooting.Steep"/> or
+    /// <see cref="GroundFooting.None"/>, for the next mode to run. The substep that found the change counts as
+    /// spent. Zero when the footing held or the tick ended for another reason.</summary>
+    internal float RemainingTime { get; init; }
+
+    /// <summary>The climb budget left after the tick's paced climbing, in metres.</summary>
+    internal double ClimbBudget { get; init; }
+}
 
 /// <summary>Resolves one grounded tick: recovery, start support, the lift, then per substep the shell sweep and
 /// the down pass, with pacing of the step part and a clearance check on every new position.</summary>
@@ -34,13 +43,14 @@ internal static class GroundCore
     /// not walkable ends the tick at the start with its own footing. A non-null <paramref name="world"/> follows
     /// the <see cref="FootSupport.Find"/> contract. <paramref name="tractionSlopeRadians"/> is the tick's traction
     /// gate, and every slope decision in the tick uses it. Null means
-    /// <see cref="MoveTuning.MaxSlopeRadians"/>.</summary>
+    /// <see cref="MoveTuning.MaxSlopeRadians"/>. <paramref name="climbBudget"/> is the climb the tick may still pay,
+    /// in metres. Null means a whole tick's <c>MaxStepClimbSpeed * dt</c>.</summary>
     internal static GroundStepResult Step(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
         in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
-        float? tractionSlopeRadians = null) =>
+        float? tractionSlopeRadians = null, double? climbBudget = null) =>
         Move(feet, displacement, dt, tuning, settings, groundHeight, groundNormal, world, lease,
-            tractionSlopeRadians ?? tuning.MaxSlopeRadians, slide: false);
+            tractionSlopeRadians ?? tuning.MaxSlopeRadians, slide: false, climbBudget);
 
     /// <summary>Moves a sliding body as <see cref="Step"/> moves a grounded one, with three differences. A steep
     /// start moves. A steep seat at or below the feet continues the tick instead of ending it, and must clear the
@@ -52,19 +62,22 @@ internal static class GroundCore
     internal static GroundStepResult Slide(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
         in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
-        float tractionSlopeRadians) =>
+        float tractionSlopeRadians, double? climbBudget = null) =>
         Move(feet, displacement, dt, tuning, settings, groundHeight, groundNormal, world, lease,
-            tractionSlopeRadians, slide: true);
+            tractionSlopeRadians, slide: true, climbBudget);
 
     static GroundStepResult Move(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
         in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
-        float tractionSlopeRadians, bool slide)
+        float tractionSlopeRadians, bool slide, double? climbBudget)
     {
         int substeps = Validate(feet, displacement, dt, tuning, settings);
         float gate = tractionSlopeRadians;
         if (!float.IsFinite(gate))
             throw new ArgumentOutOfRangeException(nameof(tractionSlopeRadians), "The traction gate must be finite.");
+        double budget = climbBudget ?? Budget(tuning, dt);
+        if (!(budget >= 0))
+            throw new ArgumentOutOfRangeException(nameof(climbBudget), "The climb budget must not be negative.");
         float footRadius = settings.FootRadiusFraction * tuning.CapsuleRadius;
         float cosMaxSlope = MathF.Cos(gate);
 
@@ -75,11 +88,22 @@ internal static class GroundCore
             new FootSupportQuery(startAxis, start.Y, footRadius, tuning.StepHeight, tuning.StepHeight, cosMaxSlope));
         bool moving = displacement != Vector2.Zero;
         if (support.Status == SupportStatus.Refused)
-            return Result(feet, start, start.Y, GroundFooting.Held, support, Vector2.Zero, moving);
+            return Result(feet, start, start.Y, GroundFooting.Held, support, Vector2.Zero, moving) with
+            {
+                ClimbBudget = budget,
+            };
         bool steepStart = slide && support.Status == SupportStatus.Steep;
         if (!cleared || (support.Status != SupportStatus.Walkable && !steepStart) ||
             (!moving && !Owes(support, start.Y)))
-            return Result(feet, start, start.Y, Footing(support.Status), support, Vector2.Zero, !cleared);
+        {
+            // A start that is steep or unsupported changes the footing before any time is spent.
+            bool changes = cleared && support.Status is SupportStatus.Steep or SupportStatus.None;
+            return Result(feet, start, start.Y, Footing(support.Status), support, Vector2.Zero, !cleared) with
+            {
+                RemainingTime = changes ? dt : 0f,
+                ClimbBudget = budget,
+            };
+        }
         if (steepStart) substeps = Math.Max(substeps, SlideSubsteps(displacement, support.Normal, tuning));
 
         var tick = new Tick(groundHeight, groundNormal, world, lease, tuning, footRadius, cosMaxSlope, start,
@@ -87,11 +111,19 @@ internal static class GroundCore
         if (!moving)
         {
             // A body at rest still climbs onto the tread a paced climb left it below.
-            tick.Settle(dt);
-            return Result(feet, start, tick.FeetY, GroundFooting.Walkable, support, Vector2.Zero, false);
+            tick.Settle(ref budget);
+            return Result(feet, start, tick.FeetY, GroundFooting.Walkable, support, Vector2.Zero, false) with
+            {
+                ClimbBudget = budget,
+            };
         }
-        Vector2 moved = tick.Run(displacement, substeps, dt, out GroundFooting footing, out bool blocked);
-        return Result(feet, start, tick.FeetY, footing, tick.Support, moved, blocked);
+        Vector2 moved = tick.Run(displacement, substeps, ref budget, out GroundFooting footing, out bool blocked,
+            out int unspent);
+        return Result(feet, start, tick.FeetY, footing, tick.Support, moved, blocked) with
+        {
+            RemainingTime = unspent == 0 ? 0f : (float)((double)dt * unspent / substeps),
+            ClimbBudget = budget,
+        };
     }
 
     // The achieved move counts the recovery offset too, which is exactly zero when recovery did nothing. A body
@@ -201,12 +233,13 @@ internal static class GroundCore
 
         readonly Vector2 Axis => _startAxis + _achieved;
 
-        internal Vector2 Run(Vector2 displacement, int substeps, float dt, out GroundFooting footing,
-            out bool blocked)
+        // unspent counts the substeps left after the footing changed to steep or none.
+        internal Vector2 Run(Vector2 displacement, int substeps, ref double budget, out GroundFooting footing,
+            out bool blocked, out int unspent)
         {
-            double budget = Budget(_tuning, dt);
             footing = Support.Status == SupportStatus.Steep ? GroundFooting.Steep : GroundFooting.Walkable;
             blocked = false;
+            unspent = 0;
             PayLag(ref budget);
             // While nothing has deviated from the plan, the achieved move is the planned prefix itself, so free
             // motion is exact however many substeps it takes.
@@ -247,7 +280,11 @@ internal static class GroundCore
                 if (!placement.Valid)
                 {
                     // A slide seat that fails clearance hands the body to the air pass.
-                    if (_slide && seat.Outcome == SeatOutcome.SteepSeated) footing = GroundFooting.None;
+                    if (_slide && seat.Outcome == SeatOutcome.SteepSeated)
+                    {
+                        footing = GroundFooting.None;
+                        unspent = substeps - i - 1;
+                    }
                     blocked = true;
                     break;
                 }
@@ -263,13 +300,15 @@ internal static class GroundCore
                 if (seat.Outcome == SeatOutcome.SteepSeated)
                 {
                     footing = GroundFooting.Steep;
-                    if (!_slide) break;
-                    continue;
+                    if (_slide) continue;
+                    unspent = substeps - i - 1;
+                    break;
                 }
                 footing = GroundFooting.Walkable;
                 if (seat.Outcome == SeatOutcome.Airborne)
                 {
                     footing = GroundFooting.None;
+                    unspent = substeps - i - 1;
                     break;
                 }
             }
@@ -289,11 +328,7 @@ internal static class GroundCore
         }
 
         // A tick without displacement only pays owed climb.
-        internal void Settle(float dt)
-        {
-            double budget = Budget(_tuning, dt);
-            PayLag(ref budget);
-        }
+        internal void Settle(ref double budget) => PayLag(ref budget);
 
         // Clear substeps keep one attempt. Only a shortened sweep or invalid placement needs the standing
         // route. Lift-created obstructions disqualify the lifted route, even if its seat is walkable.

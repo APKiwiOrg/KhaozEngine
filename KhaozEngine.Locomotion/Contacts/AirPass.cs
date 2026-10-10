@@ -15,7 +15,18 @@ internal enum AirOutcome : byte { Airborne, Landed, Sliding }
 /// downward, and zero without one. <see cref="Blocked"/> says a shell contact or a terrain wall removed part of the
 /// move.</summary>
 internal readonly record struct AirStepResult(Vector3 Feet, float VerticalVelocity, Vector2 Achieved,
-    Vector2 Remaining, AirOutcome Outcome, SupportSample Support, float FallSpeedAtContact, bool Blocked);
+    Vector2 Remaining, AirOutcome Outcome, SupportSample Support, float FallSpeedAtContact, bool Blocked)
+{
+    /// <summary>The horizontal velocity after the tick's contacts.</summary>
+    internal Vector2 HorizontalVelocity { get; init; }
+
+    /// <summary>The seconds of the tick after its landing or slide substep, for the next mode to run. Zero without
+    /// one.</summary>
+    internal float RemainingTime { get; init; }
+
+    /// <summary>The climb budget left after a landing's paced rise, in metres.</summary>
+    internal double ClimbBudget { get; init; }
+}
 
 /// <summary>Moves a body without footing for one tick: gravity, the shell's flight in substeps, and landing on
 /// footprint support while descending. Only the shell blocks, and the legs pass ledge edges.</summary>
@@ -37,13 +48,17 @@ internal static class AirPass
     /// slide. Analytic terrain more than <see cref="MoveTuning.StepHeight"/> above the feet at the new axis is
     /// a wall. <paramref name="velocity"/> is the tick's horizontal velocity and <paramref name="verticalVelocity"/>
     /// the carried one before gravity. <paramref name="tractionSlopeRadians"/> is the tick's traction gate. A non-null
-    /// <paramref name="world"/> follows the <see cref="FootSupport.Find"/> contract.</summary>
+    /// <paramref name="world"/> follows the <see cref="FootSupport.Find"/> contract. <paramref name="climbBudget"/> is
+    /// the climb the tick may still pay, in metres. Null means a whole tick's <c>MaxStepClimbSpeed * dt</c>.</summary>
     internal static AirStepResult Step(Vector3 feet, Vector2 velocity, float verticalVelocity, float dt,
         float gravity, in MoveTuning tuning, in GroundCoreSettings settings, float tractionSlopeRadians,
         Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal,
-        IPhysicsWorld? world, IPhysicsQueryLease? lease)
+        IPhysicsWorld? world, IPhysicsQueryLease? lease, double? climbBudget = null)
     {
         Validate(feet, velocity, verticalVelocity, dt, gravity, tuning, settings, tractionSlopeRadians);
+        double budget = climbBudget ?? Budget(tuning, dt);
+        if (!(budget >= 0))
+            throw new ArgumentOutOfRangeException(nameof(climbBudget), "The climb budget must not be negative.");
         float vy = verticalVelocity - gravity * dt;
         if (vy < -tuning.MaxFallSpeed) vy = -tuning.MaxFallSpeed;
         var displacement = new Vector3(velocity.X * dt, vy * dt, velocity.Y * dt);
@@ -55,7 +70,10 @@ internal static class AirPass
         // A shell that cannot be freed does not move or fall, as a held ground tick does not move.
         Vector3 start = ShellMotion.Recover(world, feet, tuning, out bool cleared);
         if (!cleared)
-            return new(feet, 0f, Vector2.Zero, Vector2.Zero, AirOutcome.Airborne, NoSupport, 0f, true);
+            return new(feet, 0f, Vector2.Zero, Vector2.Zero, AirOutcome.Airborne, NoSupport, 0f, true)
+            {
+                ClimbBudget = budget,
+            };
 
         // While nothing has deviated from the plan, the move is the planned prefix itself, so free flight is exact
         // however many substeps it takes. After a contact the rest of the tick flies at the changed velocity.
@@ -103,6 +121,8 @@ internal static class AirPass
                 new FootSupportQuery(axis, high, footRadius, tuning.StepHeight, MathF.Max(0f, high - low),
                     cosMaxSlope));
             var remaining = new Vector2(displacement.X - next.X, displacement.Z - next.Z);
+            float remainingTime = stepTime * (substeps - i - 1);
+            var horizontal = new Vector2(current.X, current.Z);
             if (support.Status == SupportStatus.Walkable)
             {
                 // The seat goes through the ground core's placement, so the feet never seat into a shell overlap and
@@ -114,21 +134,35 @@ internal static class AirPass
                 var seat = new GroundSeatResult(SeatOutcome.Seated, support.Height, support,
                     rise > 0 ? GroundPlacement.NotBelow(rise) : 0f, Vector3.Zero);
                 GroundPlacement placement = GroundPlacement.Try(groundHeight, groundNormal, world, lease, NoSupport,
-                    high, axis, Vector2.Zero, seat, footRadius, tuning, cosMaxSlope, Budget(tuning, dt));
+                    high, axis, Vector2.Zero, seat, footRadius, tuning, cosMaxSlope, budget);
                 if (!placement.Valid) continue;
                 Vector3 push = new(placement.Total.X, 0f, placement.Total.Y);
                 return new(placement.Feet, 0f, Achieved(feet, start, moved + push), remaining, AirOutcome.Landed,
-                    placement.Support, 0f - current.Y, blocked || placement.Pushed);
+                    placement.Support, 0f - current.Y, blocked || placement.Pushed)
+                {
+                    HorizontalVelocity = horizontal,
+                    RemainingTime = remainingTime,
+                    ClimbBudget = placement.Budget,
+                };
             }
             // Steep support never lifts the body: it starts a slide only within the span the feet travelled.
             if (support.Status == SupportStatus.Steep &&
                 (double)support.Height - support.HeightError <= high &&
                 (double)support.Height + support.HeightError >= low)
                 return new(at with { Y = support.Height }, current.Y, Achieved(feet, start, moved), remaining,
-                    AirOutcome.Sliding, support, 0f - current.Y, blocked);
+                    AirOutcome.Sliding, support, 0f - current.Y, blocked)
+                {
+                    HorizontalVelocity = horizontal,
+                    RemainingTime = remainingTime,
+                    ClimbBudget = budget,
+                };
         }
         return new(start + moved, current.Y, Achieved(feet, start, moved), Vector2.Zero, AirOutcome.Airborne,
-            NoSupport, 0f, blocked);
+            NoSupport, 0f, blocked)
+        {
+            HorizontalVelocity = new Vector2(current.X, current.Z),
+            ClimbBudget = budget,
+        };
     }
 
     static double Budget(in MoveTuning tuning, float dt) =>

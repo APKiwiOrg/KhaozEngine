@@ -13,7 +13,7 @@ using static KhaozEngine.Tests.Locomotion.Contacts.FootSupportScenes;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
-public class ContactControllerTests
+public partial class ContactControllerTests
 {
     static readonly MoveTuning Tuning = MoveTuning.Default;
     static readonly GroundCoreSettings Settings = new(FootRadiusFraction: 0.5f);
@@ -33,6 +33,7 @@ public class ContactControllerTests
     {
         internal FootSupportScene? Scene => scene;
         internal IPhysicsWorld? World => scene?.World;
+        internal IPhysicsQueryLease? Lease => scene is null ? null : scene.Lease;
         internal Func<float, float, float> Height => height;
         internal Func<float, float, Vector3>? Normal => normal;
 
@@ -151,8 +152,9 @@ public class ContactControllerTests
 
     // A 2 m ledge over x at most 0. Walking +X at 0.2 a tick from x -0.5, the footprint of radius 0.2 leaves a prop
     // ledge on the tick that ends at x 0.3. Analytic terrain is sampled at the axis, so that walk leaves it at x 0.
-    // Either tick ends airborne at the ledge height with TimeSinceGrounded dt. A press one tick later is inside the
-    // 0.1 s window. A press three ticks later, at 4 dt, is outside it.
+    // Either tick flies the rest of the tick from the ledge height and ends airborne with TimeSinceGrounded dt, at most
+    // a tick's free fall from rest, g dt^2, below the ledge. A press one tick later is inside the 0.1 s window. A
+    // press three ticks later, at 4 dt, is outside it.
     [Theory]
     [MemberData(nameof(Grounds))]
     public void CoyoteJumpInsideTheWindowOnly(string ground)
@@ -166,8 +168,8 @@ public class ContactControllerTests
         for (int tick = 0; tick < 10 && s.Grounded; tick++) s = g.Step(s, east, 1, false, Tuning);
         Assert.False(s.Grounded, Show(s));
         Assert.Equal(Dt, s.TimeSinceGrounded);
-        Assert.Equal(0f, s.VerticalVelocity);
-        AssertNear(Top, Feet(s).Y, HalfSkin, Show(s));
+        Assert.True(s.VerticalVelocity <= 0, Show(s));
+        Assert.InRange(Feet(s).Y, Top - Gravity * Dt * Dt, Top + HalfSkin);
         Assert.True(Feet(s).X > (ground == "terrain" ? -HalfSkin : FootRadiusOf(Tuning)), Show(s));
 
         MoveState inside = g.Step(s, east, 1, true, Tuning);
@@ -430,13 +432,17 @@ public class ContactControllerTests
 
         AssertNear(move.Length() / Dt, result.CommandedVelocity.Length(), 1e-4, Show(result));
         var start = new Vector3(state.Position.X, state.Position.Y - HalfHeight, state.Position.Z);
-        GroundStepResult core = g.Core(start, result.CommandedVelocity * Dt, tuning, Banded);
-        var expected = new Vector3(core.Feet.X, core.Feet.Y + HalfHeight, core.Feet.Z);
-        Assert.True(BitsEqual(expected, result.Position), $"{row}: core {core}, controller {Show(result)}");
+        Vector2 velocity = result.CommandedVelocity;
+        GroundStepResult core = g.Core(start, velocity * Dt, tuning, Banded);
         bool grounded = core.Footing is GroundFooting.Walkable or GroundFooting.Held;
+        (Vector3 end, float verticalVelocity) = (core.Feet, 0f);
+        if (!grounded && core.RemainingTime > 0)
+            (end, verticalVelocity) = Continued(g, core, velocity, tuning);
+        var expected = new Vector3(end.X, end.Y + HalfHeight, end.Z);
+        Assert.True(BitsEqual(expected, result.Position), $"{row}: core {core}, controller {Show(result)}");
         Assert.Equal(grounded, result.Grounded);
         Assert.Equal(grounded, result.SupportGranted);
-        Assert.Equal(0f, result.VerticalVelocity);
+        Assert.Equal(verticalVelocity, result.VerticalVelocity);
         Assert.Equal(0f, result.LandingImpactSpeed);
         Assert.Equal(grounded ? 0 : Dt, result.TimeSinceGrounded);
     }

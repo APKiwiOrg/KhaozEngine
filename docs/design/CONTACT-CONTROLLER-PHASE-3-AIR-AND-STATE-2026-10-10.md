@@ -81,15 +81,18 @@ body, and support comes only from the footprint.
   at most half the capsule radius. Each substep sweeps the shell along the full displacement with slides. Every
   shell contact removes the velocity component into it, vertical included, so a flat ceiling stops a rise and a
   wall leaves the vertical speed alone. There is no separate ceiling rule.
-- **Landing.** After each substep, while descending, `FootSupport` runs the ground core's query at the substep's end
-  feet: reach up `StepHeight`, reach down the substep's travel. Walkable support anywhere in that band lands: the
-  feet seat on it through the ground core's seat clearance, `Grounded` is set, `VerticalVelocity` becomes zero and
-  the remaining horizontal displacement of the tick runs through the ground core. That is the step-up a standing
+- **Landing.** After each substep, while descending, `FootSupport` runs the ground core's query anchored at the
+  substep's start feet (its highest): reach up `StepHeight`, reach down the substep's whole drop. Walkable support
+  anywhere in that band lands: the feet seat on it through the ground core's seat clearance, with the rise paced by
+  `MaxStepClimbSpeed` like a step-up and any unpaid climb carried for the ground core to pay. `Grounded` is set,
+  `VerticalVelocity` becomes zero and the remaining horizontal displacement of the tick runs through the ground
+  core. A seat that fails clearance holds the body at the substep start for the rest of the tick, so the feet never
+  pass below support they reached. That is the step-up a standing
   body at the same feet would take, so a falling body whose knees pass a ledge top lands on it. Steep support
   starts a slide only when it lies within the substep's travel. Analytic terrain more than `StepHeight` above the
   feet at the new axis is a wall, as in the ground core.
 - **Invariant 5 (#468).** A tick without footing never ends on steep ground above its own vertical motion, and it
-  rises only onto walkable support within `StepHeight` of its feet while descending. A steep face therefore can
+  rises only onto walkable support within `StepHeight` above its feet at the substep's start while descending. A steep face therefore can
   never be climbed by jumping, and the #440 bound of ballistic reach plus `StepHeight` holds.
 - **Invariant 7 (#486).** A tick never seats on ground it cannot stand on: steep support starts a slide and never
   grounds the body, and the ground core already treats steep ground above the start feet as a wall.

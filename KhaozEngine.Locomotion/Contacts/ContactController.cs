@@ -88,10 +88,14 @@ internal static class ContactController
             var context = new Context(groundHeight, groundNormal, world, lease, t, foot, gate);
             Mode mode = Mode.Air;
             SupportSample support = default;
+            // An airborne body on steep support slides only while the velocity it moves at this tick, after
+            // gravity, does not separate from the support's plane. A jump stamped last tick separates, so it flies,
+            // and the air pass hands it back to a slide once it descends onto steep support. A slide's own velocity
+            // lies in the plane, so gravity keeps it there however the plane's dot product rounds.
             if (s.Grounded)
                 mode = Mode.Ground;
             else if (!committedFlight && SlideCore.InContact(feet, t, foot, gate, groundHeight, groundNormal,
-                         world, lease, out support))
+                         world, lease, out support) && !Separates(s, support, t.Gravity * dt))
                 mode = Mode.Slide;
             tick = Move(context, s, mode, support, feet, commanded, velocity, displacement, intent, dt);
         }
@@ -156,6 +160,11 @@ internal static class ContactController
         StepDeltaY = 0f,
         Commitment = commitment,
     };
+
+    // True when the carried velocity, after the tick's gravity, leaves the support's plane.
+    static bool Separates(in MoveState s, in SupportSample support, float gravity) =>
+        Vector3.Dot(new Vector3(s.HorizontalVelocity.X, s.VerticalVelocity - gravity, s.HorizontalVelocity.Y),
+            support.Normal) > 0f;
 
     /// <summary>The tick's queries and the knobs every mode reads.</summary>
     readonly record struct Context(Func<float, float, float> GroundHeight, Func<float, float, Vector3>? GroundNormal,

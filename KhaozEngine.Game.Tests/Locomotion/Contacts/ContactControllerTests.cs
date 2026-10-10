@@ -692,6 +692,35 @@ public partial class ContactControllerTests
         }
     }
 
+    // A body at rest on a 50 degree plane rising to +X, whose footing ended this tick, starts sliding inside the coyote
+    // window, and a jump pressed on that tick stamps JumpSpeed after its slide. The jump's velocity separates from the
+    // plane, so the next ticks fly: until the apex the feet rise on the closed form from where the jump left them, and
+    // no tick is grounded.
+    [Theory]
+    [MemberData(nameof(Grounds))]
+    public void CoyoteJumpFromASlideStartRises(string ground)
+    {
+        float grade = MathF.Tan(Radians(50));
+        Vector3 normal = Vector3.Normalize(new Vector3(-grade, 1, 0));
+        using Ground g = Make(ground, v => Slope(v, 50), (x, _) => grade * x, (_, _) => normal);
+        float startY = g.Scene is null ? grade : (float)g.Scene.TopHeightAt("slope", 1, 0);
+        float v0 = Tuning.JumpSpeed;
+
+        MoveState s = g.Step(Falling(new Vector3(1, startY, 0)) with { TimeSinceGrounded = 0 }, Vector2.Zero, 0, true,
+            Tuning);
+        Assert.Equal(v0, s.VerticalVelocity);
+        Assert.False(s.Grounded, Show(s));
+        float launch = Feet(s).Y;
+
+        for (int k = 1; FreeV(v0, k - 1) > 0; k++)
+        {
+            s = g.Step(s, Vector2.Zero, 0, false, Tuning);
+            Assert.False(s.Grounded, $"tick {k}: {Show(s)}");
+            AssertNear(FreeY(launch, v0, k), Feet(s).Y, HalfSkin, $"tick {k}: {Show(s)}");
+            AssertNear(FreeV(v0, k), s.VerticalVelocity, 1e-3, $"tick {k}: {Show(s)}");
+        }
+    }
+
     // Water belongs to phase 4. A dry medium changes nothing.
     [Fact]
     public void WaterMediumIsRejectedUntilPhase4()

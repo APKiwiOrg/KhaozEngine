@@ -31,10 +31,18 @@ public class ContactScenarioTests
     {
         internal bool IsTerrain => scene is null;
 
+        // Every scenario tick holds the terrain floor: no tick ends with its feet more than half a skin below the
+        // analytic terrain at its axis.
         internal MoveState Step(in MoveState state, Vector2 moveDir, bool run, bool jump, float dt,
-            in MoveTuning tuning) =>
-            ContactController.Step(state, moveDir, moveDir == Vector2.Zero ? 0 : 1, run, jump, dt, height, tuning,
-                normal, scene?.World, null, null);
+            in MoveTuning tuning)
+        {
+            MoveState next = ContactController.Step(state, moveDir, moveDir == Vector2.Zero ? 0 : 1, run, jump, dt,
+                height, tuning, normal, scene?.World, null, null);
+            Vector3 feet = next.Position - tuning.CapsuleHalfHeight * Vector3.UnitY;
+            float floor = height(feet.X, feet.Z);
+            Assert.True(feet.Y >= floor - HalfSkin, $"the feet ended below the terrain at {floor}: {Show(next)}");
+            return next;
+        }
 
         public void Dispose() => scene?.Dispose();
     }
@@ -314,6 +322,38 @@ public class ContactScenarioTests
         }
         Assert.True(Feet(s).Y < start.Y - 3 - 1, $"{row}: the lander never slid: {Show(s)}");
         Assert.True(Feet(s).X < ProbeX, $"{row}: the lander slid uphill: {Show(s)}");
+    }
+
+    // The 47 degree bank, inside the band. The walker keeps its footing up the bank and jumps once its feet pass x 0.5.
+    // The jump ungrounds it, so the next tick reads the bare gate and the bank is steep, but the jump's velocity
+    // separates from the bank's plane, so that tick flies instead of sliding: it is not footed, its vertical speed is
+    // the closed form's first tick, JumpSpeed - g dt, and its feet rise at least the closed form's first-tick rise,
+    // JumpSpeed dt - g dt^2, less half a skin.
+    [Theory]
+    [MemberData(nameof(Rates))]
+    public void JumpFromABankInsideTheBandLeavesIt(string ground, int hz)
+    {
+        float grade = MathF.Tan(Radians(47));
+        Vector3 normal = RisingNormal(grade);
+        using Ground g = Make(ground, v => RisingFace(v, 47, 0, 4), (x, _) => x < 0 ? 0 : grade * x,
+            (x, _) => x < 0 ? Vector3.UnitY : normal);
+        float dt = 1f / hz;
+        MoveState s = Standing(new Vector3(-0.2f, 0, 0));
+        for (int tick = 0; tick < 4 * hz && Feet(s).X < 0.5f; tick++)
+        {
+            s = g.Step(s, Vector2.UnitX, false, false, dt, Tuning);
+            Assert.True(s.Grounded, $"tick {tick} lost footing on the bank: {Show(s)}");
+        }
+        s = g.Step(s, Vector2.UnitX, false, true, dt, Tuning);
+        Assert.True(s.VerticalVelocity == Tuning.JumpSpeed, $"the walker did not jump: {Show(s)}");
+        float launch = Feet(s).Y;
+
+        MoveState next = g.Step(s, Vector2.UnitX, false, false, dt, Tuning);
+        Assert.False(Footed(next), $"the jump stayed on the bank: {Show(next)}");
+        Assert.True(Math.Abs(next.VerticalVelocity - (Tuning.JumpSpeed - Tuning.Gravity * dt)) <= 1e-3,
+            $"the jump lost its speed: {Show(next)}");
+        double rise = (double)Tuning.JumpSpeed * dt - (double)Tuning.Gravity * dt * dt;
+        Assert.True(Feet(next).Y - launch >= rise - HalfSkin, $"the jump did not rise {rise}: {Show(next)}");
     }
 
     // ---- #486: walking at a cliff toe ----

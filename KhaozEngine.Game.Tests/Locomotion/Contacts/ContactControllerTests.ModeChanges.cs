@@ -184,4 +184,52 @@ public partial class ContactControllerTests
             Assert.True(Math.Abs(Feet(s).X) <= 0.5 * Tuning.CapsuleRadius + HalfSkin, Show(s));
         }
     }
+
+    // The wedge row's V-gully. Once the body lies still in the crease, holding the jump launches it from every wedged
+    // tick, and the jump's velocity separates from both faces, so the next tick flies instead of sliding. The cycle
+    // must manage at least one jump in two free hops of 2 JumpSpeed / g, every launch must clear the crease by half
+    // the ballistic reach JumpSpeed^2 / 2g, no tick rises past that reach plus StepHeight and a 0.05 margin, and after
+    // the first tenth of the held ticks the second half never peaks 20 mm above the first.
+    [Theory]
+    [MemberData(nameof(Grounds))]
+    public void WedgeJumpClearsTheCrease(string ground)
+    {
+        const int Settle = 60, Ticks = 600, Settled = Ticks / 10, Half = Settled + (Ticks - Settled) / 2;
+        float degrees = ground == "terrain" ? 60 : 55;
+        float angle = Radians(degrees), grade = MathF.Tan(angle);
+        Vector3 left = Vector3.Normalize(new Vector3(grade, 1, 0)), right = Vector3.Normalize(new Vector3(-grade, 1, 0));
+        using Ground g = Make(ground, v => new FootSupportScene(v)
+                .Slab("left", new Vector3(-MathF.Cos(angle), MathF.Sin(angle), 0), -angle, 1, 2)
+                .Slab("right", new Vector3(MathF.Cos(angle), MathF.Sin(angle), 0), angle, 1, 2),
+            (x, _) => MathF.Abs(x) * grade, (x, _) => x <= 0 ? left : right);
+        float startY = g.Scene is null ? 0.6f * grade : (float)g.Scene.TopHeightAt("left", -0.6, 0);
+        MoveState s = Falling(new Vector3(-0.6f, startY, 0));
+        for (int tick = 0; tick < Settle; tick++) s = g.Step(s, Vector2.Zero, 0, false, Tuning);
+        Assert.True(s.Grounded, $"not wedged after {Settle} ticks: {Show(s)}");
+        float crease = Feet(s).Y;
+        double reach = (double)Tuning.JumpSpeed * Tuning.JumpSpeed / (2 * Tuning.Gravity);
+        double ceiling = crease + reach + Tuning.StepHeight + 0.05;
+
+        int jumps = 0;
+        double peak = double.NegativeInfinity, firstMax = double.NegativeInfinity, secondMax = double.NegativeInfinity;
+        for (int tick = 0; tick < Ticks; tick++)
+        {
+            s = g.Step(s, Vector2.Zero, 0, true, Tuning);
+            double y = Feet(s).Y;
+            if (s.VerticalVelocity == Tuning.JumpSpeed)
+            {
+                if (jumps > 0) Assert.True(peak >= crease + reach / 2, $"tick {tick}: the last jump peaked {peak}");
+                jumps++;
+                peak = double.NegativeInfinity;
+            }
+            peak = Math.Max(peak, y);
+            Assert.True(y <= ceiling, $"tick {tick} rose past {ceiling}: {Show(s)}");
+            if (tick < Settled) continue;
+            if (tick < Half) firstMax = Math.Max(firstMax, y);
+            else secondMax = Math.Max(secondMax, y);
+        }
+        double hops = Ticks * Dt * Tuning.Gravity / (2 * Tuning.JumpSpeed);
+        Assert.True(jumps >= hops / 2, $"only {jumps} jumps against {hops:F1} free hops");
+        Assert.True(secondMax <= firstMax + 0.02, $"the cycle ratcheted: first {firstMax}, second {secondMax}");
+    }
 }

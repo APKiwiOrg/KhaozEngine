@@ -21,7 +21,16 @@ public enum QueryMobility
 /// (static / dynamic / both). <see cref="Layers"/> is a per-body layer mask (<c>0</c>, the default, matches every
 /// layer). The <c>default</c> value (and <see cref="All"/>) matches every body, so a query that omits the filter
 /// keeps the "hit everything" behaviour.</summary>
-public readonly record struct QueryFilter(QueryMobility Mobility = QueryMobility.All, uint Layers = 0)
+/// <param name="Mobility">Which body mobilities the query may hit.</param>
+/// <param name="Layers">Per-body layer mask. <c>0</c> matches every layer.</param>
+/// <param name="CullBackFaces">With this set, <see cref="IPhysicsWorld.SweepCapsule"/> skips a mesh triangle whose
+/// world front normal <c>Cross(C - A, B - A)</c> has a positive dot product with the sweep direction, so a probe
+/// passes the back of a one-sided mesh and reaches what lies beyond. A triangle whose normal is perpendicular to
+/// the sweep (dot exactly zero) is kept. Compound children are never culled. Raycasts ignore the flag because a
+/// raycast against a mesh is already one-sided in the backend. <c>ComputePenetration</c> takes no filter and is
+/// unaffected.</param>
+public readonly record struct QueryFilter(QueryMobility Mobility = QueryMobility.All, uint Layers = 0,
+    bool CullBackFaces = false)
 {
     /// <summary>Matches every body (both mobilities, all layers). The default filter.</summary>
     public static readonly QueryFilter All = default;

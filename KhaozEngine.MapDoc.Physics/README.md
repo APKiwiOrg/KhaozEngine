@@ -346,7 +346,7 @@ reports `Unbounded` the same way. Collider height edits size their placements th
 | Live portal and door state | R5 | Portals are authored open |
 | Water medium and walker profiles | R4 and #1299 | `CreateLegacyMoveContext` leaves the medium delegate null |
 | Clearance body model confirmation | Owner, #1344 | Clearance uses the #438 shell through `ContactShell` |
-| Support certification of curved statics, creases and one-sided back faces | #438 phase 2b | Landed. The controller certifies support through `IPhysicsSupportNeighborhood`, and the diagnostics here still predict `IPhysicsCapsuleFeatures` |
+| Support certification of curved statics, creases and one-sided back faces | #438 phase 2b | Landed. The controller's foot-support primitive, not yet used by movement, certifies through `IPhysicsSupportNeighborhood`, and the diagnostics here still predict `IPhysicsCapsuleFeatures` |
 | Editor placement edits reporting old and new placement bounds with Physics, Nav and Residency | R3 | Done, see Editor tooling |
 | GUI native editing: `MapEditorScene`, hosted by Showcase, binds no closure or placement bounds provider yet | R3 follow-up, [#1349](https://github.com/APKiwiOrg/KhaozEngine/issues/1349) | Wiring it needs the provider reachable from that host, in this package or a shared adapter, since Showcase does not reference ke-mapedit |
 | Import-time acceptance of changed targets, distances, occlusion and stances | R11 and G2 | Named differentials at import |

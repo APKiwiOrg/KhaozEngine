@@ -5,6 +5,13 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.30.1
+
+- The PixelLab sheet assembler tool reads palette and interlaced PNGs again (#1345). `PngReader` in
+  `KhaozEngine.Imaging` decodes 1, 2, 4 and 8-bit palette PNGs, with `tRNS` alpha, and Adam7-interlaced images
+  of every supported colour type. A palette decodes to 8-bit RGB, or RGBA when `tRNS` is present. Tile height
+  imports accept the same files.
+
 ## 20.30.0
 
 - The PixelLab sheet assembler tool reads and writes PNG through `KhaozEngine.Imaging` instead of

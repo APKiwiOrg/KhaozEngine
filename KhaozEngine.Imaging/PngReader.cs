@@ -4,7 +4,10 @@ using System.IO.Compression;
 
 namespace KhaozEngine.Imaging;
 
-/// <summary>Dependency-free decoder for noninterlaced 8-bit and 16-bit greyscale, GA, RGB and RGBA PNGs.</summary>
+/// <summary>
+/// Dependency-free decoder for 8-bit and 16-bit greyscale, GA, RGB and RGBA PNGs and for 1, 2, 4 and 8-bit palette
+/// PNGs, noninterlaced or Adam7-interlaced.
+/// </summary>
 public static class PngReader
 {
     /// <summary>Maximum filtered, decoded, or transparency-expanded sample bytes accepted from one image.</summary>
@@ -13,8 +16,9 @@ public static class PngReader
     private static ReadOnlySpan<byte> Signature => new byte[] { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a };
 
     /// <summary>
-    /// Decodes a complete PNG. Output samples are top-to-bottom in PNG channel order. Greyscale and RGB
-    /// transparency chunks add an alpha channel. A 16-bit sample remains two bytes, most-significant byte first.
+    /// Decodes a complete PNG. Output samples are top-to-bottom in PNG channel order, deinterlaced when the image
+    /// is Adam7. Greyscale and RGB transparency chunks add an alpha channel. A palette image expands to 8-bit RGB,
+    /// or to RGBA when it carries a tRNS chunk. A 16-bit sample remains two bytes, most-significant byte first.
     /// </summary>
     public static PngImage Decode(ReadOnlySpan<byte> png)
     {
@@ -27,7 +31,9 @@ public static class PngReader
         bool dataEnded = false;
         bool sawEnd = false;
         bool sawPalette = false;
+        bool sawTransparency = false;
         Header header = default;
+        PngPalette? palette = null;
         PngTransparency? transparency = null;
         using var compressed = new MemoryStream();
 
@@ -71,16 +77,26 @@ public static class PngReader
             }
             else if (IsType(type, "PLTE"))
             {
-                if (!sawHeader || sawPalette || transparency.HasValue || sawData || sawEnd)
+                if (!sawHeader || sawPalette || sawTransparency || sawData || sawEnd)
                     throw new InvalidDataException("PNG PLTE chunk is out of order");
                 sawPalette = true;
+                if (header.ColorType == 3) palette = PngPalette.Parse(data, header.BitDepth);
             }
             else if (IsType(type, "tRNS"))
             {
-                if (!sawHeader || transparency.HasValue || sawData || sawEnd)
+                if (!sawHeader || sawTransparency || sawData || sawEnd)
                     throw new InvalidDataException("PNG tRNS chunk is out of order");
-                transparency = PngTransparency.Parse(
-                    header.ColorType, header.BitDepth, header.Width, header.Height, data);
+                sawTransparency = true;
+                if (header.ColorType == 3)
+                {
+                    if (palette is null) throw new InvalidDataException("PNG tRNS must follow PLTE in a palette image");
+                    palette.SetTransparency(data);
+                }
+                else
+                {
+                    transparency = PngTransparency.Parse(
+                        header.ColorType, header.BitDepth, header.Width, header.Height, data);
+                }
             }
             else if ((type[0] & 0x20) == 0 && !IsType(type, "PLTE"))
             {
@@ -96,7 +112,8 @@ public static class PngReader
         }
 
         if (!sawEnd) throw new InvalidDataException("PNG is missing IEND");
-        return DecodePayload(header, transparency, compressed.ToArray());
+        if (header.ColorType == 3 && palette is null) throw new InvalidDataException("PNG palette image is missing PLTE");
+        return DecodePayload(header, palette, transparency, compressed.ToArray());
     }
 
     private static Header ParseHeader(ReadOnlySpan<byte> data)
@@ -108,30 +125,36 @@ public static class PngReader
             throw new InvalidDataException("PNG dimensions must be positive supported integers");
 
         int bitDepth = data[8];
-        if (bitDepth is not (8 or 16))
-            throw new NotSupportedException($"PNG bit depth {bitDepth} is not supported");
-        int channels = data[9] switch
+        int colorType = data[9];
+        int channels = colorType switch
         {
-            0 => 1,
+            0 or 3 => 1,
             2 => 3,
             4 => 2,
             6 => 4,
-            3 => throw new NotSupportedException("palette PNGs are not supported"),
-            _ => throw new NotSupportedException($"PNG color type {data[9]} is not supported"),
+            _ => throw new NotSupportedException($"PNG color type {colorType} is not supported"),
         };
+        bool supportedDepth = colorType == 3 ? bitDepth is 1 or 2 or 4 or 8 : bitDepth is 8 or 16;
+        if (!supportedDepth)
+            throw new NotSupportedException($"PNG bit depth {bitDepth} is not supported for color type {colorType}");
         if (data[10] != 0 || data[11] != 0)
             throw new NotSupportedException("unsupported PNG compression or filter method");
-        if (data[12] != 0) throw new NotSupportedException("interlaced PNGs are not supported");
+        if (data[12] > 1) throw new NotSupportedException($"PNG interlace method {data[12]} is not supported");
+        bool interlaced = data[12] == 1;
 
-        long stride = (long)width * channels * (bitDepth / 8);
-        long decoded = stride * height;
-        long filtered = decoded + height;
-        if (stride > int.MaxValue || decoded > MaxDecodedBytes || filtered > MaxDecodedBytes)
+        // A palette expands to at most four 8-bit samples per pixel.
+        int bitsPerPixel = channels * bitDepth;
+        long pixels = (long)width * height;
+        long raster = pixels * Math.Max(1, bitsPerPixel / 8);
+        long expanded = colorType == 3 ? pixels * 4 : raster;
+        long filtered = PngInterlace.FilteredLength((int)width, (int)height, bitsPerPixel, interlaced);
+        if (raster > MaxDecodedBytes || expanded > MaxDecodedBytes || filtered > MaxDecodedBytes)
             throw new InvalidDataException($"PNG decoded payload exceeds the {MaxDecodedBytes}-byte allocation cap");
-        return new Header((int)width, (int)height, data[9], channels, bitDepth, (int)stride, (int)filtered);
+        return new Header((int)width, (int)height, colorType, channels, bitDepth, interlaced, (int)filtered);
     }
 
-    private static PngImage DecodePayload(Header header, PngTransparency? transparency, byte[] compressed)
+    private static PngImage DecodePayload(
+        Header header, PngPalette? palette, PngTransparency? transparency, byte[] compressed)
     {
         var filtered = new byte[header.FilteredLength];
         using var input = new MemoryStream(compressed, writable: false);
@@ -146,8 +169,10 @@ public static class PngReader
         if (read != filtered.Length || zlib.ReadByte() != -1)
             throw new InvalidDataException("PNG decoded payload size does not match IHDR");
 
-        byte[] decoded = PngFilters.Unfilter(
-            filtered, header.Stride, header.Height, header.Channels * (header.BitDepth / 8));
+        byte[] decoded = PngInterlace.Reconstruct(
+            filtered, header.Width, header.Height, header.Channels * header.BitDepth, header.Interlaced);
+        if (palette is not null)
+            return new PngImage(header.Width, header.Height, palette.OutputChannels, 8, palette.Expand(decoded));
         if (transparency is not { } transparent)
             return new PngImage(header.Width, header.Height, header.Channels, header.BitDepth, decoded);
 
@@ -169,5 +194,5 @@ public static class PngReader
         ((uint)bytes[offset + 2] << 8) | bytes[offset + 3];
 
     private readonly record struct Header(
-        int Width, int Height, int ColorType, int Channels, int BitDepth, int Stride, int FilteredLength);
+        int Width, int Height, int ColorType, int Channels, int BitDepth, bool Interlaced, int FilteredLength);
 }

@@ -176,14 +176,15 @@ author reading a map needs to tell "there is a wall here" from "there is no worl
 | `height_flatten(x, z, width, height, plane, toCm?)` | Levels every corner to one height, or to the rect's own rounded average when none is given. This is how a building gets flat ground. |
 | `height_smooth(x, z, width, height, plane, iterations = 1)` | An iterated box blur over the corners, blending into the terrain around them. 1 to 64 passes. |
 | `height_get_rect(x, z, width, height, plane)` | Reads the corner heights, north first, in the exact shape `height_set` takes. |
-| `height_import(pgmPath, x, z, width, height, plane, minCm, maxCm)` | Resamples a binary PGM or noninterlaced PNG heightmap onto the corner rect, black to `minCm` and white to `maxCm`. |
+| `height_import(pgmPath, x, z, width, height, plane, minCm, maxCm)` | Resamples a binary PGM or PNG heightmap onto the corner rect, black to `minCm` and white to `maxCm`. |
 
 Every height verb also reports how many corners the rect COVERED against how many actually LANDED. They differ
 where the rect reached space no region holds, which the lattice edge-extends into rather than refusing, so a
 brush overlapping the edge of the world is normal and the two counts are how a client sees how much of it took.
 
-**`height_import` reads PGM and PNG.** Binary PGM (netpbm P5) and noninterlaced PNG may carry 8-bit or 16-bit
-samples. PNG greyscale is read directly, alpha is ignored, and RGB or RGBA input uses the red channel. Write PGM
+**`height_import` reads PGM and PNG.** Binary PGM (netpbm P5) and PNG may carry 8-bit or 16-bit
+samples. PNG greyscale is read directly, alpha is ignored, and RGB, RGBA or palette input uses the red channel.
+Interlaced PNG is accepted. Write PGM
 headers with LF line endings: a header terminated with CRLF spends its CR as the single delimiter byte and leaves
 the LF as sample 0, shifting the whole raster. The image's own row 0 is treated as the NORTH edge of the rect.
 

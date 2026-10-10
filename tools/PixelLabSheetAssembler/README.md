@@ -9,9 +9,10 @@ consuming game loads the PNG itself and slices the grid until one adopts this to
 Not a runtime package (IsPackable=false): it is never NuGet-packed and never published.
 
 PNG load and save go through the engine's own `KhaozEngine.Imaging` (`PngReader`, `PngWriter`), so the
-tool carries no third-party image library. Frames may be noninterlaced 8-bit or 16-bit greyscale,
-greyscale plus alpha, RGB or RGBA, all widened to RGBA8 on load. PixelLab exports are 8-bit RGBA.
-Palette and interlaced PNGs are rejected with exit code `1`. The output sheet is an 8-bit RGBA PNG.
+tool carries no third-party image library. Frames may be 8-bit or 16-bit greyscale,
+greyscale plus alpha, RGB or RGBA, or 1, 2, 4 or 8-bit palette with optional `tRNS` transparency, noninterlaced
+or Adam7-interlaced, all widened to straight-alpha RGBA8 on load. PixelLab exports are 8-bit RGBA. Greyscale
+below 8 bits is rejected with exit code `1`. The output sheet is an 8-bit RGBA PNG.
 
 ## Run
 

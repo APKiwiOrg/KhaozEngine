@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Textures-ON glb re-baking for KhaozEngine prop kits. See README.md.",
   "devEngines": {
-    "packageManager": { "name": "npm", "version": ">=11.16.0", "onFail": "error" }
+    "packageManager": { "name": "npm", "version": ">=11.18.0", "onFail": "error" }
   },
   "scripts": {
     "bake": "node bake.mjs"

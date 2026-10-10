@@ -57,14 +57,15 @@ internal static class GroundCore
     /// in metres. Null means a whole tick's <c>MaxStepClimbSpeed * dt</c>. <paramref name="clampXz"/> is the
     /// play-area clamp. It cuts every substep's move before the move, a wall's tangent included, and every slide of
     /// the shell along a contact, so no substep that starts inside the bound ends outside it. A substep it shortens
-    /// counts as blocked.</summary>
+    /// counts as blocked. <paramref name="stepInProgress"/> identifies carried lag as a paced discrete step,
+    /// rather than deferred continuous ground.</summary>
     internal static GroundStepResult Step(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
         in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
         float? tractionSlopeRadians = null, double? climbBudget = null,
-        Func<float, float, Vector2>? clampXz = null) =>
+        Func<float, float, Vector2>? clampXz = null, bool stepInProgress = false) =>
         Move(feet, displacement, dt, tuning, settings, groundHeight, groundNormal, world, lease,
-            tractionSlopeRadians ?? tuning.MaxSlopeRadians, slide: false, climbBudget, clampXz);
+            tractionSlopeRadians ?? tuning.MaxSlopeRadians, slide: false, climbBudget, clampXz, stepInProgress);
 
     /// <summary>Moves a sliding body as <see cref="Step"/> moves a grounded one, with three differences. A steep
     /// start moves. A steep seat at or below the feet continues the tick instead of ending it, and must clear the
@@ -78,12 +79,13 @@ internal static class GroundCore
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
         float tractionSlopeRadians, double? climbBudget = null, Func<float, float, Vector2>? clampXz = null) =>
         Move(feet, displacement, dt, tuning, settings, groundHeight, groundNormal, world, lease,
-            tractionSlopeRadians, slide: true, climbBudget, clampXz);
+            tractionSlopeRadians, slide: true, climbBudget, clampXz, stepInProgress: false);
 
     static GroundStepResult Move(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
         in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
-        float tractionSlopeRadians, bool slide, double? climbBudget, Func<float, float, Vector2>? clampXz)
+        float tractionSlopeRadians, bool slide, double? climbBudget, Func<float, float, Vector2>? clampXz,
+        bool stepInProgress)
     {
         int substeps = Validate(feet, displacement, dt, tuning, settings);
         float gate = tractionSlopeRadians;
@@ -122,7 +124,7 @@ internal static class GroundCore
         if (steepStart) substeps = Math.Max(substeps, SlideSubsteps(displacement, support.Normal, tuning));
 
         var tick = new Tick(groundHeight, groundNormal, world, lease, tuning, footRadius, cosMaxSlope, start,
-            ShellMotion.Lift(world, start, tuning), support, slide, clampXz);
+            ShellMotion.Lift(world, start, tuning), support, slide, clampXz, stepInProgress);
         if (!moving)
         {
             // A body at rest still climbs onto the tread a paced climb left it below.
@@ -235,7 +237,7 @@ internal static class GroundCore
         internal Tick(Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal,
             IPhysicsWorld? world, IPhysicsQueryLease? lease, in MoveTuning tuning, float footRadius,
             float cosMaxSlope, Vector3 start, float lift, in SupportSample support, bool slide,
-            Func<float, float, Vector2>? clampXz)
+            Func<float, float, Vector2>? clampXz, bool stepInProgress)
         {
             _groundHeight = groundHeight;
             _groundNormal = groundNormal;
@@ -252,7 +254,7 @@ internal static class GroundCore
             FeetY = start.Y;
             Support = support;
             double lag = (double)support.Height - start.Y;
-            _owedDiscrete = support.Status == SupportStatus.Walkable &&
+            _owedDiscrete = stepInProgress && support.Status == SupportStatus.Walkable &&
                 lag > (double)ShellMotion.ContactSkin + support.HeightError ? lag : 0;
         }
 
@@ -335,21 +337,9 @@ internal static class GroundCore
                 }
                 _achieved = placement.Total;
                 _moveRise += (double)placement.Feet.Y - FeetY;
-                if (!_slide && seat.Outcome == SeatOutcome.Seated)
-                {
-                    if (seat.DiscreteStep < 0)
-                    {
-                        _stepRise += seat.DiscreteStep + _owedDiscrete;
-                        _owedDiscrete = 0;
-                    }
-                    else
-                    {
-                        _owedDiscrete += seat.DiscreteStep;
-                        PayDiscrete(placement.Paid);
-                    }
-                }
                 FeetY = placement.Feet.Y;
                 Support = placement.Support;
+                if (!_slide && seat.Outcome == SeatOutcome.Seated) AccountDiscrete(seat.DiscreteStep);
                 if (seat.Outcome == SeatOutcome.SteepSeated)
                 {
                     footing = GroundFooting.Steep;
@@ -380,15 +370,17 @@ internal static class GroundCore
             _moveRise += (double)paidFeetY - FeetY;
             FeetY = paidFeetY;
             budget -= owed;
-            if (!_slide) PayDiscrete(owed);
+            if (!_slide) AccountDiscrete(0);
         }
 
-        // Budget payments settle discrete debt before any continuous residual they also paid.
-        void PayDiscrete(double paid)
+        // Every accepted move keeps only the discrete debt still below its new support. A partial drop erases
+        // only the debt its lower support removes, and continuous lag never adds to that debt.
+        void AccountDiscrete(double discreteStep)
         {
-            double settled = Math.Min(paid, _owedDiscrete);
-            _owedDiscrete -= settled;
-            _stepRise += settled;
+            double pending = _owedDiscrete + discreteStep;
+            double lag = Support.Status == SupportStatus.Walkable ? (double)Support.Height - FeetY : 0;
+            _owedDiscrete = Math.Clamp(lag, 0, Math.Max(pending, 0));
+            _stepRise += pending - _owedDiscrete;
         }
 
         // A tick without displacement only pays owed climb.

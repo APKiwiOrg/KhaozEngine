@@ -40,12 +40,14 @@ public static class MapShapeBounds
             case CylinderShape cy:
                 {
                     // Base-aligned: the axis runs from the pose to pose + Length along local Y. A disc of radius r
-                    // with unit axis a reaches r * sqrt(1 - a_i^2) along world axis i.
+                    // with axis a reaches r * sqrt(1 - a_i^2 / |a|^2) along world axis i. The sum of the other two
+                    // squared components keeps a float orientation's rounding from inflating a near-zero extent.
                     MapDouble3 axis = pose.Rotate(new MapDouble3(0, 1, 0));
                     double r = cy.Radius;
-                    double ex = r * Math.Sqrt(Math.Max(0, 1 - axis.X * axis.X));
-                    double ey = r * Math.Sqrt(Math.Max(0, 1 - axis.Y * axis.Y));
-                    double ez = r * Math.Sqrt(Math.Max(0, 1 - axis.Z * axis.Z));
+                    double xx = axis.X * axis.X, yy = axis.Y * axis.Y, zz = axis.Z * axis.Z, n = xx + yy + zz;
+                    double ex = r * Math.Sqrt((yy + zz) / n);
+                    double ey = r * Math.Sqrt((xx + zz) / n);
+                    double ez = r * Math.Sqrt((xx + yy) / n);
                     box.Add(pose.Position, ex, ey, ez);
                     box.Add(pose.Position.Add(axis.Scale(cy.Length)), ex, ey, ez);
                     break;
@@ -60,7 +62,7 @@ public static class MapShapeBounds
                 foreach (CompoundChild child in co.Children) Accumulate(child.Shape, pose.Compose(child.Local), ref box);
                 break;
             default:
-                throw new NotSupportedException($"MapShapeBounds: unsupported shape type {shape.GetType().Name}.");
+                throw new MapDocumentException($"Shape bounds do not support shape type {shape.GetType().Name}.");
         }
     }
 

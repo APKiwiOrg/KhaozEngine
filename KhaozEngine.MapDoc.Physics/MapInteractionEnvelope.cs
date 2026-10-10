@@ -7,7 +7,9 @@ namespace KhaozEngine.MapDoc.Physics;
 
 /// <summary>The volume a placement is picked and reached through, under <see cref="MapInteractionPolicy"/>. Without
 /// a raise it is the scaled source shape unchanged, so apertures such as a doorway's opening survive. With a raise
-/// every member is swept straight up in world space by <see cref="RaiseMetres"/>.</summary>
+/// every member is swept straight up in world space by <see cref="RaiseMetres"/>. A vertical cylinder is lengthened
+/// from its base. A tilted cylinder becomes the hull of a circumscribed 32-gon at each end cap and the same points
+/// raised. This shapes only the interaction envelope, never physics.</summary>
 public sealed class MapInteractionEnvelope
 {
     /// <summary>The placement this envelope belongs to.</summary>
@@ -39,19 +41,25 @@ public sealed class MapInteractionEnvelope
         DerivedFromCollider = derivedFromCollider;
     }
 
-    // A cylinder whose axis leans further than this from world vertical, relative to the raise, cannot be swept.
+    // A cylinder whose axis leans further than this from world vertical, relative to the raise, is swept as a hull.
     const float VerticalTolerance = 1e-5f;
+
+    // The sides of the regular polygon circumscribing each end cap of a tilted cylinder.
+    const int CapSides = 32;
 
     /// <summary>Builds the envelope of <paramref name="source"/>, already scaled to metres, at
     /// <paramref name="worldPose"/>.</summary>
     internal static MapInteractionEnvelope Build(string placementId, PhysicsShape source, bool derivedFromCollider,
         Pose worldPose)
     {
-        MapBox3 sourceBounds = MapShapeBounds.Of(source, worldPose);
-        double height = sourceBounds.MaxY - sourceBounds.MinY;
+        // Yaw about world Y cannot change world height, so measure it unrotated and keep sine and cosine rounding out
+        // of the raise and the digest.
+        MapBox3 unrotated = MapShapeBounds.Of(source, Pose.At(worldPose.Position));
+        double height = unrotated.MaxY - unrotated.MinY;
         float raise = (float)Math.Max(0d, MapInteractionPolicy.MinimumVerticalReachHeightMetres - height);
         if (raise == 0f)
-            return new MapInteractionEnvelope(placementId, source, worldPose, sourceBounds, 0f, derivedFromCollider);
+            return new MapInteractionEnvelope(placementId, source, worldPose, MapShapeBounds.Of(source, worldPose), 0f,
+                derivedFromCollider);
 
         // World up expressed in the shape's own frame. A yaw-only placement keeps it exactly vertical.
         Vector3 up = Vector3.Transform(new Vector3(0f, raise, 0f), Quaternion.Conjugate(worldPose.Orientation));
@@ -78,8 +86,7 @@ public sealed class MapInteractionEnvelope
                 {
                     float length = raise.Length();
                     if (MathF.Abs(raise.X) > VerticalTolerance * length || MathF.Abs(raise.Z) > VerticalTolerance * length)
-                        throw new MapDocumentException(
-                            $"Placement '{placementId}' interaction envelope cannot sweep a tilted cylinder.");
+                        return (Hull(CircumscribedCaps(c, raise), raise), Vector3.Zero);
                     // The cylinder stands on its base. Pointing up it keeps its base and grows. Pointing down its base
                     // moves up by the raise.
                     return (new CylinderShape(c.Radius, c.Length + length), raise.Y < 0f ? raise : Vector3.Zero);
@@ -109,6 +116,30 @@ public sealed class MapInteractionEnvelope
         new Vector3(-h.X, -h.Y, -h.Z), new Vector3(h.X, -h.Y, -h.Z), new Vector3(-h.X, h.Y, -h.Z), new Vector3(h.X, h.Y, -h.Z),
         new Vector3(-h.X, -h.Y, h.Z), new Vector3(h.X, -h.Y, h.Z), new Vector3(-h.X, h.Y, h.Z), new Vector3(h.X, h.Y, h.Z),
     };
+
+    // A regular polygon circumscribing each end cap of a base-aligned cylinder, in the cylinder's frame, so the hull
+    // of both contains the cylinder. One polygon edge faces world up and one faces world down, which keeps the hull's
+    // world height equal to the cylinder's. Up is the raise direction in the cylinder's frame.
+    static Vector3[] CircumscribedCaps(CylinderShape c, Vector3 up)
+    {
+        // The in-plane basis: u is world up projected onto the cap plane, v completes it around the local Y axis.
+        double ux = up.X, uz = up.Z, norm = Math.Sqrt(ux * ux + uz * uz);
+        ux /= norm;
+        uz /= norm;
+        double vx = uz, vz = -ux;
+        double circumradius = c.Radius / Math.Cos(Math.PI / CapSides);
+        var points = new Vector3[CapSides * 2];
+        for (int k = 0; k < CapSides; k++)
+        {
+            // Vertices sit half a step off the basis, so edge normals fall on multiples of the step, including up.
+            double angle = (k + 0.5) * 2 * Math.PI / CapSides;
+            double a = circumradius * Math.Cos(angle), b = circumradius * Math.Sin(angle);
+            float x = (float)(a * ux + b * vx), z = (float)(a * uz + b * vz);
+            points[k] = new Vector3(x, 0f, z);
+            points[CapSides + k] = new Vector3(x, c.Length, z);
+        }
+        return points;
+    }
 
     static ConvexHullShape Hull(Vector3[] points, Vector3 raise)
     {

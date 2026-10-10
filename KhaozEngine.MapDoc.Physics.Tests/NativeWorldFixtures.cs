@@ -83,6 +83,41 @@ internal static class NativeWorldFixtures
         // Neither a collider nor a selection volume, so it has no interaction source.
         assets.Add(Asset("shapeless-prop", new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.5f, 1f, 0.5f), null, null));
 
+        // A 0.5 m post standing on its base.
+        Solid("short-post", Compound((new CylinderShape(0.2f, 0.5f), Vector3.Zero)),
+            new Vector3(-0.2f, 0f, -0.2f), new Vector3(0.2f, 0.5f, 0.2f));
+
+        // The same post turned upside down: its base is at local y 0.5 and its axis points down to y 0.
+        Solid("hanging-post", new CompoundShape(new[]
+            {
+                new CompoundChild(new CylinderShape(0.2f, 0.5f), new Pose(new Vector3(0f, 0.5f, 0f), new Quaternion(1f, 0f, 0f, 0f))),
+            }),
+            new Vector3(-0.2f, 0f, -0.2f), new Vector3(0.2f, 0.5f, 0.2f));
+
+        // A 0.6 m tall fallen log lying along x from -1 to 1, its axis turned from local Y onto world X.
+        Solid("fallen-log", new CompoundShape(new[]
+            {
+                new CompoundChild(new CylinderShape(0.3f, 2f),
+                    new Pose(new Vector3(-1f, 0.3f, 0f), Quaternion.CreateFromAxisAngle(Vector3.UnitZ, -MathF.PI / 2f))),
+            }),
+            new Vector3(-1f, 0f, -0.3f), new Vector3(1f, 0.6f, 0.3f));
+
+        // A top-level mesh ramp rising from 0 to 0.3 m.
+        Solid("mesh-ramp", MeshRamp, new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.5f, 0.3f, 0.5f));
+
+        // A 100 unit crate authored in centimetres, so it is 1 m across before placement scale.
+        string centimetreId = "centimetre-crate.collider";
+        resources.Add(Resource(source.Add(centimetreId,
+            ColliderBytes(Compound((Box(100f, 100f, 100f), new Vector3(0f, 50f, 0f))))), MapResourceKind.Collider));
+        JsonObject centimetreCrate = Asset("centimetre-crate", new Vector3(-50f, 0f, -50f), new Vector3(50f, 100f, 50f),
+            centimetreId, null);
+        centimetreCrate["sourceUnitsToMetres"] = 0.01f;
+        assets.Add(centimetreCrate);
+
+        // Point sets with nothing in them, refused before any bounds are taken.
+        Solid("empty-hull-collider", new ConvexHullShape(Array.Empty<Vector3>()), -Vector3.One, Vector3.One);
+        Solid("empty-mesh-collider", new TriangleMeshShape(Array.Empty<Vector3>(), Array.Empty<int>()), -Vector3.One, Vector3.One);
+
         // A selection volume and no collider, so the sign can be examined but never blocks.
         string selectionId = "examine-sign.selection";
         resources.Add(Resource(source.Add(selectionId, ColliderBytes(Box(0.8f, 1.2f, 0.1f))), MapResourceKind.Selection));
@@ -134,9 +169,21 @@ internal static class NativeWorldFixtures
     const int SlopeMinCellX = 8;
     const int SlopeRiseTenThousandthsPerCell = 1763;
 
-    /// <summary>The doorway at (0.23, 0, 0.17) on the flat native floor, with the given yaw and scale.</summary>
-    internal static NativeFixture Doorway(float yaw, float scale) =>
-        Resolve(FloorSurfaces(), OnFloor("doorway", "doorway", 0.23f, 0.17f, yaw, scale, numericId: 1));
+    /// <summary>The doorway at (0.23, 0, 0.17) on the flat native floor, with the given yaw, scale and numeric ID.</summary>
+    internal static NativeFixture Doorway(float yaw, float scale, long? numericId = 1) =>
+        Resolve(FloorSurfaces(), OnFloor("doorway", "doorway", 0.23f, 0.17f, yaw, scale, numericId));
+
+    /// <summary>One placement of <paramref name="assetId"/>, with the same ID, at the origin on the flat native
+    /// floor.</summary>
+    internal static NativeFixture Placed(string assetId, float yaw = 0f, float scale = 1f) =>
+        Resolve(FloorSurfaces(), OnFloor(assetId, assetId, 0f, 0f, yaw, scale));
+
+    /// <summary>The mesh-ramp collider: two triangles rising from y 0 at z -0.5 to y 0.3 at z 0.5.</summary>
+    internal static TriangleMeshShape MeshRamp { get; } = new(new[]
+        {
+            new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.5f, 0f, -0.5f),
+            new Vector3(-0.5f, 0.3f, 0.5f), new Vector3(0.5f, 0.3f, 0.5f),
+        }, new[] { 0, 2, 1, 1, 2, 3 });
 
     /// <summary>The 0.2 m tall crate at the origin on the flat native floor.</summary>
     internal static NativeFixture Crate() => Resolve(FloorSurfaces(), OnFloor("crate", "crate", 0f, 0f));

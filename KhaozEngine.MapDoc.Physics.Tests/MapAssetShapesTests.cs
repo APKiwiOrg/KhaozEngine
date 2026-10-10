@@ -38,6 +38,8 @@ public class MapAssetShapesTests
     [InlineData("garbage-collider", "collision payload")]
     [InlineData("trailing-byte-collider", "collision payload")]
     [InlineData("nan-box-collider", "collision payload")]
+    [InlineData("empty-hull-collider", "collision payload")]
+    [InlineData("empty-mesh-collider", "collision payload")]
     [InlineData("mesh-in-compound", "triangle mesh inside a compound")]
     [InlineData("mesh-in-nested-compound", "triangle mesh inside a compound")]
     [InlineData("deck-with-support", "placement-local support surfaces arrive with R5")]

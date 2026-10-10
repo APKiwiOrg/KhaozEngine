@@ -46,7 +46,8 @@ public sealed class MapAssetShapes
     /// <summary>Reads the collider and selection resources of <paramref name="assetId"/>. Throws
     /// <see cref="MapDocumentException"/> for an asset outside the closure, a payload that does not read as exactly one
     /// <see cref="PropCollisionFormat"/> shape, a triangle mesh inside a compound, which the physics backend cannot
-    /// install, and any declared support resource, since placement-local support surfaces are not supported yet.</summary>
+    /// install, a hull or mesh with no points, and any declared support resource, since placement-local support
+    /// surfaces are not supported yet.</summary>
     public static MapAssetShapes Read(MapAssetClosure closure, string assetId)
     {
         ArgumentNullException.ThrowIfNull(closure);
@@ -99,6 +100,10 @@ public sealed class MapAssetShapes
 
     static void RefuseUninstallable(PhysicsShape shape, string assetId, string resourceId)
     {
+        // An empty point set has no extent, so it must never reach bounds or envelope construction.
+        if (shape is ConvexHullShape { Points.Length: 0 } or TriangleMeshShape { Vertices.Length: 0 })
+            throw new MapDocumentException(
+                $"Asset '{assetId}' collision payload '{resourceId}' has a {shape.GetType().Name} with no points.");
         if (shape is not CompoundShape compound) return;
         foreach (CompoundChild child in compound.Children)
         {

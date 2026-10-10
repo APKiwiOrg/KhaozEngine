@@ -8,6 +8,9 @@ using System.Text;
 using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Support;
+using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.Tests.MapDoc.Physics;
@@ -73,6 +76,13 @@ internal static class NativeWorldFixtures
         Solid("parapet-1m", Compound((Box(1f, 1f, 0.2f), new Vector3(0f, 0.5f, 0f))),
             new Vector3(-0.5f, 0f, -0.1f), new Vector3(0.5f, 1f, 0.1f));
 
+        // A 2 m by 2 m by 0.2 m wall standing on its base, seated on the native slope.
+        Solid("slope-wall", Compound((Box(2f, 2f, 0.2f), new Vector3(0f, 1f, 0f))),
+            new Vector3(-1f, 0f, -0.1f), new Vector3(1f, 2f, 0.1f));
+
+        // Neither a collider nor a selection volume, so it has no interaction source.
+        assets.Add(Asset("shapeless-prop", new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.5f, 1f, 0.5f), null, null));
+
         // A selection volume and no collider, so the sign can be examined but never blocks.
         string selectionId = "examine-sign.selection";
         resources.Add(Resource(source.Add(selectionId, ColliderBytes(Box(0.8f, 1.2f, 0.1f))), MapResourceKind.Selection));
@@ -110,6 +120,145 @@ internal static class NativeWorldFixtures
         }.ToJsonString());
         MapAssetRef[] roots = { root };
         return (MapAssetClosure.Load(roots, source), roots);
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // Native documents
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /// <summary>The resolver-2 options every fixture document resolves with.</summary>
+    internal static readonly MapResolveOptions ResolveOptions =
+        new("native-world-fixtures", 1, "native-world-fixture-options", ResolverVersion: 2);
+
+    // The slope rises along +x from its west edge at 0.1763 m per metre, so atan(0.1763) is 10 degrees within 0.002.
+    const int SlopeMinCellX = 8;
+    const int SlopeRiseTenThousandthsPerCell = 1763;
+
+    /// <summary>The doorway at (0.23, 0, 0.17) on the flat native floor, with the given yaw and scale.</summary>
+    internal static NativeFixture Doorway(float yaw, float scale) =>
+        Resolve(FloorSurfaces(), OnFloor("doorway", "doorway", 0.23f, 0.17f, yaw, scale, numericId: 1));
+
+    /// <summary>The 0.2 m tall crate at the origin on the flat native floor.</summary>
+    internal static NativeFixture Crate() => Resolve(FloorSurfaces(), OnFloor("crate", "crate", 0f, 0f));
+
+    /// <summary>A placement of an asset with neither a collider nor a selection volume.</summary>
+    internal static NativeFixture ShapelessProp() =>
+        Resolve(FloorSurfaces(), OnFloor("shapeless-prop", "shapeless-prop", 0f, 0f));
+
+    /// <summary>The slope wall bound to the 10 degree native slope with no authored Y, and the corner wall on the
+    /// flat floor.</summary>
+    internal static SlopeAndCornerWallsFixture SlopeAndCornerWalls()
+    {
+        MapSurfaceSet surfaces = FloorSurfaces();
+        AddSurface(surfaces, "slope", TenThousandthHeights, SlopeMinCellX, 0, 16, 8,
+            (x, _) => (x - SlopeMinCellX) * SlopeRiseTenThousandthsPerCell);
+        const float wallX = 10.5f;
+        var slopeWall = new MapPlacement
+        {
+            Id = "slope-wall",
+            Kind = "wall",
+            AssetId = "slope-wall",
+            X = wallX,
+            Z = 4f,
+            SupportBinding = new(MapSupportBindingKind.Surface, "slope", null, null, null, null),
+        };
+        NativeFixture f = Resolve(surfaces, slopeWall, OnFloor("corner-wall", "corner-wall", -3f, -3f));
+        return new SlopeAndCornerWallsFixture(f.Document, f.Assets, f.Resolved, f.View,
+            (wallX - SlopeMinCellX) * SlopeRiseTenThousandthsPerCell / 10000f);
+    }
+
+    static readonly MapLatticeFrame CentimetreHeights =
+        new(new(1, 1), new(1, 100), MapRowDirection.PositiveZ, MapHeightDatum.WorldY0);
+    static readonly MapLatticeFrame TenThousandthHeights =
+        new(new(1, 1), new(1, 10000), MapRowDirection.PositiveZ, MapHeightDatum.WorldY0);
+
+    /// <summary>The flat native floor at y 0, spanning x and z from -8 to 8 in four patch slots.</summary>
+    static MapSurfaceSet FloorSurfaces()
+    {
+        var set = new MapSurfaceSet();
+        AddSurface(set, "floor", CentimetreHeights, -8, -8, 8, 8, (_, _) => 0);
+        return set;
+    }
+
+    static MapPlacement OnFloor(string id, string assetId, float x, float z, float yaw = 0f, float scale = 1f,
+        long? numericId = null) => new()
+        {
+            Id = id,
+            Kind = "prop",
+            AssetId = assetId,
+            NumericId = numericId,
+            X = x,
+            Y = 0f,
+            Z = z,
+            Yaw = yaw,
+            Scale = scale,
+        };
+
+    /// <summary>A present support floor over whole cells [minX, maxX) by [minZ, maxZ), split into one patch per
+    /// 64-cell slot. <paramref name="height"/> maps a world corner to height units.</summary>
+    static void AddSurface(MapSurfaceSet set, string id, MapLatticeFrame frame, int minX, int minZ, int maxX, int maxZ,
+        Func<int, int, int> height)
+    {
+        const int slot = MapPatchKey.SlotCells;
+        set.Refs.Add(new MapSurfaceRef(id, frame, MapSurfaceRole.SupportFloor, MapPresencePolicy.Native, null, null, ""));
+        for (int slotZ = (int)Math.Floor(minZ / (double)slot); slotZ * slot < maxZ; slotZ++)
+            for (int slotX = (int)Math.Floor(minX / (double)slot); slotX * slot < maxX; slotX++)
+            {
+                int x0 = Math.Max(minX, slotX * slot), x1 = Math.Min(maxX, (slotX + 1) * slot);
+                int z0 = Math.Max(minZ, slotZ * slot), z1 = Math.Min(maxZ, (slotZ + 1) * slot);
+                int width = x1 - x0, depth = z1 - z0;
+                var patch = new MapSurfacePatch
+                {
+                    Key = new(id, slotX, slotZ),
+                    CellMinX = x0 - slotX * slot,
+                    CellMinZ = z0 - slotZ * slot,
+                    Width = width,
+                    Depth = depth,
+                    Heights = new int[(width + 1) * (depth + 1)],
+                    Cells = Enumerable.Repeat(new MapSurfaceCell(1, 0, MapOverlayCut.Full, 0, MapCellFlags.None,
+                        MapCellTopology.Auto), width * depth).ToArray(),
+                    Presence = new ulong[(width * depth + 63) / 64],
+                };
+                for (int z = 0; z <= depth; z++)
+                    for (int x = 0; x <= width; x++)
+                        patch.Heights[z * (width + 1) + x] = height(x0 + x, z0 + z);
+                for (int z = 0; z < depth; z++)
+                    for (int x = 0; x < width; x++)
+                        patch.SetPresent(x, z, true);
+                set.Patches.Add(patch.Key, patch);
+            }
+    }
+
+    /// <summary>Seals the surface digests, builds the resolver-2 document over the shared closure and resolves it
+    /// through <see cref="MapResolverV2"/>.</summary>
+    static NativeFixture Resolve(MapSurfaceSet surfaces, params MapPlacement[] placements)
+    {
+        (MapAssetClosure closure, IReadOnlyList<MapAssetRef> roots) = Assets();
+        var digests = surfaces.Patches.Select(p => new KeyValuePair<MapPatchKey, string>(
+            p.Key, MapSurfaceSemantics.PatchDigest(p.Value))).ToArray();
+        for (int i = 0; i < surfaces.Refs.Count; i++)
+        {
+            MapSurfaceRef surface = surfaces.Refs[i];
+            surfaces.Refs[i] = surface with
+            {
+                SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface, digests.Where(p => p.Key.SurfaceId == surface.Id)),
+            };
+        }
+        var document = new MapDocument
+        {
+            Id = "native-world",
+            ResolverIdentity = new(1, 2),
+            SupportRecipe = MapSupportRecipe.AuthoredBindingsV2,
+            NativeAssets = roots.ToList(),
+            NumericIdHighWaterMark = 100,
+            Bounds = new() { MinX = -64, MinZ = -64, MaxX = 64, MaxZ = 64 },
+            PlayableBounds = new() { MinX = -32, MinZ = -32, MaxX = 32, MaxZ = 32 },
+            Surfaces = surfaces,
+        };
+        document.Placements.AddRange(placements);
+        MapResolvedDocument resolved = MapResolverV2.Resolve(document, closure,
+            MapDocumentSurfaceSource.Capture(document), ResolveOptions).Document;
+        return new NativeFixture(document, closure, resolved, MapScopedSurfaces.CompleteView(document.Surfaces));
     }
 
     // ---------------------------------------------------------------------------------------------------------------
@@ -170,6 +319,17 @@ internal static class NativeWorldFixtures
 
     static JsonArray Ids(string[] ids) => new(ids.Select(id => (JsonNode?)JsonValue.Create(id)).ToArray());
 }
+
+/// <summary>A resolved fixture document with the closure it resolved against and a complete view of its
+/// surfaces.</summary>
+internal record NativeFixture(MapDocument Document, MapAssetClosure Assets, MapResolvedDocument Resolved,
+    MapScopedSurfaces View);
+
+/// <summary><see cref="NativeWorldFixtures.SlopeAndCornerWalls"/>, with the analytic slope height under the slope
+/// wall's origin.</summary>
+internal sealed record SlopeAndCornerWallsFixture(MapDocument Document, MapAssetClosure Assets,
+    MapResolvedDocument Resolved, MapScopedSurfaces View, float SlopeHeightAtWall)
+    : NativeFixture(Document, Assets, Resolved, View);
 
 /// <summary>An in-memory resource source keyed by resource ID. Each added buffer gets its own digest-bearing
 /// reference.</summary>

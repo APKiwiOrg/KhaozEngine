@@ -5,7 +5,6 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
-using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEdit;
 
@@ -53,10 +52,9 @@ public static class NativeDocumentService
         // Local checks first, so a partial or malformed document never reads a resource.
         MapBoundDocumentValidation.ValidateLocal(document, registry);
         MapAssetClosure closure = MapAssetClosure.Load(document.NativeAssets, source);
-        if (options.ResolverVersion == 2)
-            return MapResolverV2.Resolve(document, closure, MapDocumentSurfaceSource.Capture(document), options).Document;
-        TerrainField field = MapRuntime.BuildField(document, registry);
-        return MapResolver.Resolve(document, closure, field.SampleHeight, options);
+        Func<float, float, float>? legacySupportHeight =
+            options.ResolverVersion == 1 ? MapRuntime.BuildField(document, registry).SampleHeight : null;
+        return MapNativeResolution.Resolve(document, closure, options, legacySupportHeight);
     }
 
     /// <summary>Native opt-in is a non-null resolver identity. Legacy analytic documents keep their old path.</summary>

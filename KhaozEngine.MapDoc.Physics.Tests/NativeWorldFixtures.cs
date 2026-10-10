@@ -154,6 +154,8 @@ internal static partial class NativeWorldFixtures
         Solid("deck-with-support", Compound((Box(4f, 0.25f, 4f), new Vector3(0f, -0.125f, 0f))),
             new Vector3(-2f, -0.25f, -2f), new Vector3(2f, 0f, 2f), supportId);
 
+        WorldAssets((id, collider, min, max) => Solid(id, collider, min, max));
+
         MapAssetRef root = source.Add(AssetRootId, new JsonObject
         {
             ["payloadVersion"] = 1,
@@ -163,6 +165,9 @@ internal static partial class NativeWorldFixtures
         MapAssetRef[] roots = { root };
         return (MapAssetClosure.Load(roots, source), roots);
     }
+
+    /// <summary>Adds the world build fixture assets through the closure's solid asset helper.</summary>
+    static partial void WorldAssets(Action<string, PhysicsShape, Vector3, Vector3> solid);
 
     // ---------------------------------------------------------------------------------------------------------------
     // Native documents

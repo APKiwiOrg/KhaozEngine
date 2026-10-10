@@ -104,7 +104,7 @@ internal sealed class MapAuthoredContentDigest
     });
 
     // The { tileX, tileZ, deltas } shape the whole writer emits, members in ordinal order.
-    static string SculptDigest(MapSculptTile tile) => MapCanonical.HashHex(w =>
+    internal static string SculptDigest(MapSculptTile tile) => MapCanonical.HashHex(w =>
     {
         w.WriteStartArray();
         w.WriteStringValue(Domain);

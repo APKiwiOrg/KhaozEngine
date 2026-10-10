@@ -93,6 +93,26 @@ internal static partial class NativeWorldFixtures
     /// block.</summary>
     internal const string CeilingChunkId = "cave-lower-ceiling/0,0/0,0,64";
 
+    /// <summary>The one physics chunk of the stacked cave's lower floor: its 72 faces fit one whole-slot block.</summary>
+    internal const string LowerFloorChunkId = "cave-lower-floor/0,0/0,0,64";
+
+    // Every flat cave cell splits along its south-west to north-east diagonal, so local (0.65, 0.35) lies inside the
+    // cell's south-east triangle, at least 0.21 m from each of its edges.
+
+    /// <summary>A point in the stacked cave's lower room between the floor and the 3 m ceiling, inside one triangle of
+    /// each.</summary>
+    internal static readonly Vector3 InLowerRoom = new(1.65f, 1.5f, 4.35f);
+
+    /// <summary>A point in the stacked cave's shaft between the lower ceiling and the upper floor, under the interior
+    /// of one upper ceiling triangle.</summary>
+    internal static readonly Vector3 InShaftBelowUpperFloor = new(3.65f, 3.25f, 4.35f);
+
+    /// <summary>A lower floor point inside one triangle, at least 0.21 m from each of its edges.</summary>
+    internal static readonly Vector3 InsideOneLowerFloorTriangle = new(1.65f, 0f, 4.35f);
+
+    /// <summary>A lower floor point on the diagonal two triangles of cell (1, 4) share, away from its ends.</summary>
+    internal static readonly Vector3 OnLowerFloorTriangleEdge = new(1.5f, 0f, 4.5f);
+
     /// <summary>An edit that lowers the stacked cave's low ceiling corner from y 1.2 to y 1, reported over the lower
     /// ceiling patch inside storage tile (0, 0).</summary>
     internal static MapNativeEditEffects CeilingEditEffects() => new(

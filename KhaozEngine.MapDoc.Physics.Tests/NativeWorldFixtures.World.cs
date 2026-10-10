@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -68,6 +69,27 @@ internal static partial class NativeWorldFixtures
     }
 
     internal static MapBuiltWorld BuildStackedCave() => Build(StackedCave());
+
+    /// <summary>The bridge deck's top and every parapet's bottom in <see cref="BuildBridge"/>.</summary>
+    const float BridgeDeckY = 2.825f;
+
+    /// <summary>A point on the bridge deck at its centre line, 0.475 m above the deck, under the parapets' tops and
+    /// within the 1 m length of one parapet on the +z edge.</summary>
+    internal static readonly Vector3 OnDeckFacingParapet = new(0.25f, 3.3f, 0f);
+
+    /// <summary>The 18 by 5 m bridge deck at the origin with its top at explicit Y 2.825, so it overhangs the flat
+    /// floor's x -8 to 8 on both ends, and 32 separate 1 m parapets standing on it with explicit Y 2.825, so their tops
+    /// sit at 3.825. <c>parapet-00</c> to <c>parapet-15</c> run along z -2.4 and <c>parapet-16</c> to
+    /// <c>parapet-31</c> along z 2.4, each centred at x -7.5 to 7.5. A fixture, not the shipped bridge.</summary>
+    internal static MapBuiltWorld BuildBridge()
+    {
+        var placements = new List<MapPlacement> { OnFloor("bridge-deck", "bridge-deck", 0f, 0f) };
+        for (int i = 0; i < 32; i++)
+            placements.Add(OnFloor(FormattableString.Invariant($"parapet-{i:00}"), "parapet-1m", -7.5f + i % 16,
+                i < 16 ? -2.4f : 2.4f));
+        foreach (MapPlacement placement in placements) placement.Y = BridgeDeckY;
+        return Build(Resolve(FloorSurfaces(), placements.ToArray()));
+    }
 
     internal static MapBuiltWorld BuildWallPrefixYards() => Build(WallPrefixYards());
 
@@ -251,4 +273,62 @@ internal static partial class NativeWorldFixtures
     }
 
     static MapBuiltWorld Build(NativeFixture f) => MapWorldBuilder.Build(f.Document, f.Assets, Options());
+}
+
+/// <summary>A test <see cref="IPhysicsWorld"/> for registration faults. It counts live statics, reports the given
+/// origin and throws <see cref="InvalidOperationException"/> on the <c>failOnAdd</c>th <see cref="AddStatic"/>, never
+/// when it is 0. Only registration and disposal are supported.</summary>
+internal sealed class NativeRegistrationFaultWorld(int failOnAdd = 0, Vector3 origin = default) : IPhysicsWorld
+{
+    readonly HashSet<int> _live = new();
+    int _adds;
+
+    internal int LiveStaticCount => _live.Count;
+
+    public Vector3 Origin { get; } = origin;
+
+    public StaticHandle AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null)
+    {
+        if (++_adds == failOnAdd) throw new InvalidOperationException("Fault world refused static add " + _adds + ".");
+        _live.Add(_adds);
+        return new StaticHandle(_adds);
+    }
+
+    public void RemoveStatic(StaticHandle handle)
+    {
+        if (!_live.Remove(handle.Value)) throw new InvalidOperationException("Fault world has no static " + handle.Value + ".");
+    }
+
+    public void Dispose() { }
+
+    public DynamicBodyHandle AddDynamic(PhysicsShape shape, Pose pose, DynamicBodyDescription body,
+        PhysicsMaterial? material = null) => throw new NotSupportedException();
+
+    public void RemoveDynamic(DynamicBodyHandle handle) => throw new NotSupportedException();
+
+    public Pose GetDynamicPose(DynamicBodyHandle handle) => throw new NotSupportedException();
+
+    public void GetDynamicVelocity(DynamicBodyHandle handle, out Vector3 linear, out Vector3 angular) =>
+        throw new NotSupportedException();
+
+    public void SetDynamicVelocity(DynamicBodyHandle handle, Vector3 linear, Vector3 angular) =>
+        throw new NotSupportedException();
+
+    public bool IsAwake(DynamicBodyHandle handle) => throw new NotSupportedException();
+
+    public ConstraintHandle AddConstraint(in ConstraintDescription description) => throw new NotSupportedException();
+
+    public void RemoveConstraint(ConstraintHandle handle) => throw new NotSupportedException();
+
+    public void SetConstraintTarget(ConstraintHandle handle, float target) => throw new NotSupportedException();
+
+    public void Step(float dt) => throw new NotSupportedException();
+
+    public bool Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) =>
+        throw new NotSupportedException();
+
+    public bool SweepCapsule(CapsuleShape capsule, Pose pose, Vector3 direction, float maxDistance, out SweepHit hit,
+        QueryFilter filter = default) => throw new NotSupportedException();
+
+    public bool ComputePenetration(CapsuleShape capsule, Pose pose, out Vector3 mtv) => throw new NotSupportedException();
 }

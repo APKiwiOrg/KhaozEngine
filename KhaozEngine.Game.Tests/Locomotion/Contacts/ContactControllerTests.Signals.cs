@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
+using KhaozEngine.NetWorld;
 using Xunit;
 using static KhaozEngine.Tests.Locomotion.Contacts.FootSupportScenes;
 
@@ -448,21 +449,30 @@ public partial class ContactControllerTests
     public void ReplayFromAQuantizedClimbRateIsIdentical(SceneVariant variant, int hz, bool run)
     {
         using var g = new Ground(Staircase(variant, 8, 0.18f, 0.28f), Abyss);
-        MoveState initial = Standing(new Vector3(0.5f, 0.36f, 0)) with
+        // Mid stair a rate between two quanta. On the seventh tread, where the window already sees the landing, a
+        // rate under half a quantum that only continuation could carry.
+        foreach ((Vector3 feet, float rate, bool climbs) in new[]
+                 {
+                     (new Vector3(0.5f, 0.36f, 0), 1.73f, true),
+                     (new Vector3(1.78f, 1.26f, 0), 0.02f, false),
+                 })
         {
-            ClimbRate = 35 * 0.05f,
-            ClimbRateEwma = 1.75f,
-        };
-        MoveState live = initial, replay = initial;
-        bool climbed = false;
-        for (int tick = 0; tick < hz; tick++)
-        {
-            live = g.Step(live, Vector2.UnitX, 1, false, Tuning, 1f / hz, run);
-            replay = g.Step(replay, Vector2.UnitX, 1, false, Tuning, 1f / hz, run);
-            AssertSameBits(live, replay, tick);
-            climbed |= live.ClimbRate > 0;
+            MoveState live = Standing(feet) with { ClimbRate = rate, ClimbRateEwma = rate };
+            bool climbed = false;
+            for (int tick = 0; tick < hz; tick++)
+            {
+                // The replay starts each tick from the live state with its rate rebuilt from the wire.
+                MoveState basis = live with
+                {
+                    ClimbRate = MovementState.DecodeClimbRate(MovementState.QuantizeClimbRate(live.ClimbRate)),
+                };
+                MoveState replay = g.Step(basis, Vector2.UnitX, 1, false, Tuning, 1f / hz, run);
+                live = g.Step(live, Vector2.UnitX, 1, false, Tuning, 1f / hz, run);
+                AssertSameBits(live, replay, tick);
+                climbed |= live.ClimbRate > 0;
+            }
+            Assert.True(climbed == climbs, $"start {feet}, rate {rate}: {Show(live)}");
         }
-        Assert.True(climbed, Show(live));
     }
 
     [Theory]

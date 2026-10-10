@@ -6,7 +6,7 @@ namespace KhaozEngine.Locomotion.Contacts;
 
 /// <summary>The outcome of one horizontal shell substep. <see cref="Achieved"/> is the horizontal move that
 /// happened. <see cref="Blocked"/> says a shell contact removed part of the move.</summary>
-internal readonly record struct ShellSweep(Vector2 Achieved, bool Blocked);
+internal readonly record struct ShellSweep(Vector2 Achieved, bool Blocked, ShellObstructions Obstructions = default);
 
 /// <summary>Moves the shell: recovery out of overlaps, the upward lift and one horizontal substep with wall
 /// slides. Every position is the body's feet. A null world has no statics, so the shell moves freely.</summary>
@@ -48,7 +48,8 @@ internal static class ShellMotion
     {
         float step = tuning.StepHeight;
         if (world is null || !world.SweepCapsule(ShellGeometry.Shape(tuning),
-                Pose.At(ShellGeometry.Centre(feet, tuning)), Vector3.UnitY, step, out SweepHit hit))
+                Pose.At(ShellGeometry.Centre(feet, tuning)), Vector3.UnitY, step, out SweepHit hit,
+                QueryFilter.StaticsOnly))
             return step;
         return MathF.Max(0f, hit.Distance - ContactSkin);
     }
@@ -70,14 +71,15 @@ internal static class ShellMotion
         Vector2 achieved = Vector2.Zero;
         Vector2 remaining = move;
         bool blocked = false;
+        ShellObstructions obstructions = default;
         for (int slide = 0; slide <= MaxSlides; slide++)
         {
-            float length = remaining.Length();
-            if (!(length > 0f))
+            double length = Math.Sqrt((double)remaining.X * remaining.X + (double)remaining.Y * remaining.Y);
+            if (!(length > 0))
                 break;
-            Vector2 direction = remaining / length;
+            Vector2 direction = new((float)(remaining.X / length), (float)(remaining.Y / length));
             if (!world.SweepCapsule(shape, Pose.At(centre + offset), new Vector3(direction.X, 0f, direction.Y),
-                    length, out SweepHit hit))
+                    (float)length, out SweepHit hit, QueryFilter.StaticsOnly))
             {
                 achieved += remaining;
                 remaining = Vector2.Zero;
@@ -98,6 +100,7 @@ internal static class ShellMotion
                 achieved += advance;
                 remaining -= advance;
             }
+            obstructions.Add(hit.Body, ContactClassifier.ClassifyShell(normal, cosMaxSlope));
             if (slide == MaxSlides)
                 break;
             ContactClass contact = ContactClassifier.ClassifyShell(normal, cosMaxSlope);
@@ -114,7 +117,7 @@ internal static class ShellMotion
                 blocked = true;
             }
         }
-        return new ShellSweep(achieved, blocked || remaining != Vector2.Zero);
+        return new ShellSweep(achieved, blocked || remaining != Vector2.Zero, obstructions);
     }
 
     /// <summary>The outward normal of the face a touching shell rests on, from the MTV of the shell grown by the

@@ -99,6 +99,20 @@ public class GroundScenarioTests(ITestOutputHelper output)
         return cause;
     }
 
+    // The same escape for a run that ends Held. A Held tick did not move, so it passes only when the start
+    // support query, replayed through the counting view at that tick's feet and axis, is refused because a
+    // feature query came back Unresolved.
+    static bool HeldByNosingGap(Counted counted, in MoveTuning tuning, in GroundStepResult last, StringBuilder trace)
+    {
+        if (last.Footing != GroundFooting.Held || last.Achieved != Vector2.Zero || last.Rise != 0) return false;
+        int unresolved = counted.View.UnresolvedFeatures;
+        SupportSample support = Support(counted.View, counted.Lease, tuning, Axis(last.Feet), last.Feet.Y);
+        bool cause = support.Status == SupportStatus.Refused && counted.View.UnresolvedFeatures > unresolved;
+        trace.AppendLine($"held at {last.Feet}: start support at axis {Axis(last.Feet)} is {support.Status}, " +
+            $"{counted.View.UnresolvedFeatures - unresolved} feature queries Unresolved, #1342 cause {cause}");
+        return cause;
+    }
+
     // Commands min(remaining, speed * dt) toward the target axis every tick. Returns the tick count on arrival
     // within the ball, else -1 with the trace in the message.
     static int Approach(FootSupportScene scene, in MoveTuning tuning, Vector3 feet, Vector3 target, float speed,
@@ -182,7 +196,9 @@ public class GroundScenarioTests(ITestOutputHelper output)
 
     // A run from the floor up six risers. A tick's step part is its rise less what the tick start support's own
     // plane explains between the start and end axes. The plane is level on a tread, so a lagging body's catch-up
-    // counts as step part too. A run that stalls passes only through the #1342 escape.
+    // counts as step part too. A Held tick reports a NaN HeightError by contract, so it is checked for zero rise and
+    // zero achieved instead, and it ends the run because the same start refuses again. A run that stalls or ends
+    // Held passes only through the #1342 escape.
     [Theory]
     [MemberData(nameof(StairRows))]
     public void StairsClimbEveryRiser(SceneVariant variant, float tread, float riser, float speed)
@@ -210,6 +226,11 @@ public class GroundScenarioTests(ITestOutputHelper output)
             double stepPart = result.Rise - explained;
             trace.AppendLine($"tick {tick}: step part {stepPart:R} -> {result}");
             Assert.True(result.Footing != GroundFooting.None, $"Footing None.\n{trace}");
+            if (result.Footing == GroundFooting.Held)
+            {
+                Assert.True(result.Rise == 0 && result.Achieved == Vector2.Zero, $"Held moved.\n{trace}");
+                break;
+            }
             Assert.True(stepPart <= budget + result.Support.HeightError,
                 $"Step part {stepPart:R} over {budget:R}.\n{trace}");
             maxStepPart = Math.Max(maxStepPart, stepPart);
@@ -217,7 +238,10 @@ public class GroundScenarioTests(ITestOutputHelper output)
             reached = feet.X >= topX + footRadius && Math.Abs(feet.Y - topY) <= result.Support.HeightError;
         }
 
-        if (!reached && StalledByNosingGap(counted, Tuning, results, move, trace))
+        bool held = results[^1].Footing == GroundFooting.Held;
+        if (!reached && (held
+                ? HeldByNosingGap(counted, Tuning, results[^1], trace)
+                : StalledByNosingGap(counted, Tuning, results, move, trace)))
         {
             output.WriteLine($"{variant} {tread} {riser} {speed}: stalled by #1342 at {feet}");
             return;
@@ -301,6 +325,25 @@ public class GroundScenarioTests(ITestOutputHelper output)
         Assert.Contains("is Refused", trace.ToString());
     }
 
+    // The Held escape must not pass a start refused for another cause. A body stood on top of the same sphere is
+    // Held, because its feature query reports Unsupported (#1331), not Unresolved, and the escape refuses it.
+    [Fact]
+    public void NosingEscapeRefusesAnotherHeldStart()
+    {
+        using FootSupportScene scene = Floor(SceneVariant.Box);
+        scene.World.AddStatic(new SphereShape(0.25f), Pose.At(new Vector3(0.3f, 0, 0)));
+        using var counted = new Counted(scene);
+        var trace = new StringBuilder();
+
+        GroundStepResult result = Step(counted.View, counted.Lease, Tuning, new Vector3(0.3f, 0.25f, 0),
+            new Vector2(0.2f, 0));
+
+        Assert.True(result.Footing == GroundFooting.Held && result.Rise == 0 && result.Achieved == Vector2.Zero,
+            $"{result}");
+        Assert.False(HeldByNosingGap(counted, Tuning, result, trace), trace.ToString());
+        Assert.Contains("is Refused", trace.ToString());
+    }
+
     // Six risers of 0.25 on treads 0.35, 10 m wide, with a wall across the landing at x 3.2. The run climbs at
     // varying speed and heading into the wall, slides along it, then walks back down.
     static Vector2 ReplayCommand(int tick)
@@ -367,17 +410,16 @@ public class GroundScenarioTests(ITestOutputHelper output)
             F(s.Witness.Z)];
     }
 
-    // The true worst case per tick for n substeps. Recovery runs up to 1 + MaxRecoveryPasses (5) penetration tests,
-    // the start support two probes, each one sweep and one feature query, and the lift one sweep. A substep resolves
-    // its move and, after a wall outcome, the move's tangent. Each resolve is a lifted attempt plus an unlifted retry
-    // after a refusal, so a substep makes at most 4 attempts. An attempt is up to 1 + MaxSlides (5) shell sweeps,
-    // each with at most one touch normal penetration test, then a down pass of two probes. Seat clearance adds up
-    // to 2 penetration tests per substep. No raycasts.
+    // Recovery is at most five penetration tests. Start support is two probes and the lift one sweep.
+    // A substep resolves its move and optionally its wall tangent, each with lifted and standing attempts.
+    // Each of those four attempts uses at most five shell sweeps with five touch-normal penetration tests,
+    // two down-pass probes, two clearance penetration tests and two probes to certify a pushed placement.
+    // Each probe uses one sweep and at most one feature query. Clear substeps still take one attempt.
     static QueryCounts WorstCase(int substeps) => new(
-        Sweeps: 3 + 4 * (5 + 2) * substeps,
-        Penetrations: 5 + (4 * 5 + 2) * substeps,
+        Sweeps: 3 + 4 * (5 + 2 + 2) * substeps,
+        Penetrations: 5 + 4 * (5 + 2) * substeps,
         Raycasts: 0,
-        Features: 2 + 4 * 2 * substeps);
+        Features: 2 + 4 * (2 + 2) * substeps);
 
     [Theory]
     [InlineData(SceneVariant.Box, "flat")]

@@ -13,8 +13,7 @@ internal enum SeatOutcome : byte { Seated, SteepSeated, Airborne, Wall, Refused 
 internal readonly record struct GroundSeatResult(SeatOutcome Outcome, float FeetY, SupportSample Support,
     float StepPart, Vector3 WallNormal);
 
-/// <summary>Seats a body that reached a new axis on the certified support there, within
-/// <see cref="MoveTuning.StepHeight"/> of the start feet.</summary>
+/// <summary>Seats a body within the legs band above its feet and the drop band below its start support.</summary>
 internal static class GroundSeat
 {
     static readonly SupportSample NoSupport =
@@ -41,8 +40,7 @@ internal static class GroundSeat
             return Wall(startFeetY, NoSupport, normal, moveDirection);
         }
 
-        var query = new FootSupportQuery(axis, startFeetY, footRadius, stepHeight, stepHeight,
-            MathF.Cos(tuning.MaxSlopeRadians));
+        FootSupportQuery query = Query(axis, start, startFeetY, footRadius, tuning);
         SupportSample support = FootSupport.Find(groundHeight, groundNormal, world, lease, query);
         switch (support.Status)
         {
@@ -60,6 +58,15 @@ internal static class GroundSeat
             default:
                 return new(SeatOutcome.Refused, startFeetY, support, 0, Vector3.Zero);
         }
+    }
+
+    // Drops are measured between supports. The upper limit stays at the legs band above the paced feet.
+    internal static FootSupportQuery Query(Vector2 axis, in SupportSample start, float startFeetY,
+        float footRadius, in MoveTuning tuning)
+    {
+        float referenceY = start.Status == SupportStatus.Walkable ? start.Height : startFeetY;
+        float reachDown = (float)((double)startFeetY - referenceY + tuning.StepHeight);
+        return new(axis, startFeetY, footRadius, tuning.StepHeight, reachDown, MathF.Cos(tuning.MaxSlopeRadians));
     }
 
     // The seated height less the start support's plane extrapolated to the new axis. Without a start plane the

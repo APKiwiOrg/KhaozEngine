@@ -1,6 +1,6 @@
 // Every expectation below is derived from the installed geometry, never from a stepper run. The default tuning
 // gives a shell from feet + 0.4 to feet + 1.8 with radius 0.4, substeps of at most 0.2, a footprint radius of 0.2
-// and a band of the substep's start feet plus or minus StepHeight 0.4.
+// and a band from the start support less StepHeight 0.4 to the start feet plus StepHeight.
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -291,13 +291,16 @@ public class GroundCoreTests
     public void LowCeilingBlocksEntry()
     {
         // The ceiling spans x [1, 4] with its underside at 1.5, below the shell top, lifted or not. Its side face
-        // at x 1 stops the shell centre at 0.6 less the skin.
+        // at x 1 meets the standing shell's rounded upper cap, whose centre is at body height less radius.
         using (FootSupportScene low = Floor(SceneVariant.Box).Slab("ceiling", new Vector3(2.5f, 1.7f, 0), 0, 1.5f, 3))
         {
             GroundStepResult result = Step(low, new Vector3(0.39f, 0, 0), new Vector2(0.3f, 0));
             Assert.True(result.Blocked, $"{result}");
             AssertFooting(GroundFooting.Walkable, result);
-            Assert.Equal(1f - 0.4f - ShellMotion.ContactSkin - 0.39f, result.Achieved.X, 1e-5f);
+            float capY = 2 * Tuning.CapsuleHalfHeight - Tuning.CapsuleRadius;
+            float cornerY = 1.5f - capY;
+            float contactX = 1f - MathF.Sqrt(Tuning.CapsuleRadius * Tuning.CapsuleRadius - cornerY * cornerY);
+            Assert.Equal(contactX - ShellMotion.ContactSkin - 0.39f, result.Achieved.X, 1e-5f);
             Assert.Equal(0f, result.Achieved.Y);
         }
 
@@ -383,8 +386,8 @@ public class GroundCoreTests
     // Treads of 0.35 with risers of 0.30. The body stands at x 0.65 with its feet at 0.6, owing 0.3 of climb onto
     // tread 3 at 0.9. It pays MaxStepClimbSpeed * dt of it first, which spends the budget. At x 0.84 its shell,
     // 0.4 above the feet at 0.7167, comes 0.38 from the tread 4 nosing at (1.05, 1.2), inside the 0.4 radius. A
-    // clearance push out of the nosing would raise the body past the spent budget, so the move is blocked at the
-    // start with the shell clear.
+    // clearance push out of the nosing would raise the body past the spent budget. The standing retry advances
+    // only to its analytic nosing contact less skin. Later ticks pay the lag and climb onto the next tread.
     [Theory]
     [InlineData(SceneVariant.Box)]
     [InlineData(SceneVariant.Mesh)]
@@ -398,11 +401,31 @@ public class GroundCoreTests
 
         AssertFooting(GroundFooting.Walkable, result);
         Assert.True(result.Blocked, $"{result}");
-        Assert.Equal(Vector2.Zero, result.Achieved);
+        float capY = result.Feet.Y + Tuning.StepHeight + Tuning.CapsuleRadius;
+        float cornerY = capY - 4 * 0.30f;
+        float contactX = 3 * 0.35f -
+            MathF.Sqrt(Tuning.CapsuleRadius * Tuning.CapsuleRadius - cornerY * cornerY);
+        // The skin absorbs sweep error, so the stop bound is half the skin short of the analytic contact. Contact
+        // less the full skin would pin backend precision.
+        Assert.True(result.Feet.X <= contactX - ShellMotion.ContactSkin / 2, $"{result}");
+        Assert.True(result.Achieved.X >= 0 && result.Achieved.X < 0.19f, $"{result}");
+        Assert.Equal(0f, result.Achieved.Y);
         Assert.True(Math.Abs(result.Rise - budget) <= 1e-6, $"{result}");
         Vector3 centre = ShellGeometry.Centre(result.Feet, Tuning);
         Assert.False(scene.World.ComputePenetration(ShellGeometry.Shape(Tuning), Pose.At(centre), out _),
             $"The shell overlaps at {result}");
+
+        GroundStepResult climbed = result;
+        for (int tick = 0; tick < 20 && climbed.Feet.Y < 4 * 0.30f - climbed.Support.HeightError; tick++)
+        {
+            climbed = Step(scene, climbed.Feet, new Vector2(0.19f, 0));
+            AssertFooting(GroundFooting.Walkable, climbed);
+            Assert.True(climbed.Rise <= budget + climbed.Support.HeightError, $"{climbed}");
+            Assert.False(scene.World.ComputePenetration(ShellGeometry.Shape(Tuning),
+                Pose.At(ShellGeometry.Centre(climbed.Feet, Tuning)), out _), $"{climbed}");
+        }
+        Assert.True(climbed.Feet.X >= 3 * 0.35f && climbed.Feet.Y >= 4 * 0.30f - climbed.Support.HeightError,
+            $"The next tread was not reached: {climbed}");
     }
 
     // The parameterless constructor carries the documented default. The zero default is still rejected.

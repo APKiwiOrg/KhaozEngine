@@ -160,7 +160,7 @@ public sealed class NativeCollisionService(MapEditSession session)
         NativePlacementExtent @new = sizer.Bounds(candidate, edited, context.Registry, affected);
         bool unknown = old.Unknown || @new.Unknown;
         var effects = new MapNativeEditEffects(unknown ? null : old.Bounds, unknown ? null : @new.Bounds,
-            Array.Empty<MapPatchKey>(), Array.Empty<string>(), Array.AsReadOnly(affected), digests.AsReadOnly(),
+            Array.Empty<MapPatchKey>(), Array.Empty<string>(), Array.Empty<string>(), digests.AsReadOnly(),
             unknown ? HeightEditInvalidation | MapNativeInvalidation.Unbounded : HeightEditInvalidation);
         return new HeightPlan(before, after, Array.AsReadOnly(affected), effects, false, colliderId, bytes,
             colliderReference, manifest, Array.AsReadOnly(newRoots), newRoot);

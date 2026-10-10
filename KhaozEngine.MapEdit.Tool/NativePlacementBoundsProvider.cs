@@ -83,8 +83,8 @@ public sealed class NativePlacementBoundsProvider : INativePlacementBounds
         }
     }
 
-    // Resolves the placements together, and one at a time only when that refuses, so one unresolvable placement
-    // leaves the others bounded.
+    // Resolves the placements together. A refusal marks the extent unknown at once, and an unknown extent reports
+    // Unbounded whatever the other placements' bounds are, so none is resolved alone.
     static IReadOnlyList<MapResolvedPlacement> Resolve(MapDocument document, MapAssetClosure assets,
         MapDocRegistry registry, IReadOnlyList<string> ids, ref bool unknown)
     {
@@ -99,19 +99,8 @@ public sealed class NativePlacementBoundsProvider : INativePlacementBounds
         }
         catch (MapDocumentException)
         {
+            unknown = true;
+            return Array.Empty<MapResolvedPlacement>();
         }
-        var resolved = new List<MapResolvedPlacement>(ids.Count);
-        foreach (string id in ids)
-        {
-            try
-            {
-                resolved.AddRange(MapNativeResolution.ResolvePlacements(document, assets, options, new[] { id }, Height));
-            }
-            catch (MapDocumentException)
-            {
-                unknown = true;
-            }
-        }
-        return resolved;
     }
 }

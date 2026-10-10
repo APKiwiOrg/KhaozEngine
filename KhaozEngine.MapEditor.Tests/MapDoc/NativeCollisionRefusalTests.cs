@@ -22,6 +22,24 @@ public class NativeCollisionRefusalTests
     }
 
     [Fact]
+    public void NativeLoader_RefusesAMeshThatNamesAnExternalImage()
+    {
+        var f = NativeEditorAssetFixtures.ExternalImageMeshAsset();
+        string message = Assert.Throws<MapDocumentException>(() => NativeMapAssetLoader.Load(f.Asset, f.Closure)).Message;
+        Assert.Contains("'external-image'", message);
+        Assert.Contains("external image URI 'albedo.png'", message);
+    }
+
+    [Fact]
+    public void NativeLoader_LoadsAMeshWhoseBufferIsAnEmbeddedDataUri()
+    {
+        var f = NativeEditorAssetFixtures.DataBufferMeshAsset();
+        var mesh = NativeMapAssetLoader.Load(f.Asset, f.Closure);
+        Assert.Equal(3, mesh.Vertices.Length);
+        Assert.Equal(2f, NativeEditorAssetFixtures.MaxVertexY(mesh));
+    }
+
+    [Fact]
     public void SlightlyTiltedBox_RefusesHeightEdits()
     {
         using var f = new NativeCollisionToolFixture();

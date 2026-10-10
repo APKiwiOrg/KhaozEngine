@@ -37,17 +37,43 @@ internal static class NativeEditorAssetFixtures
     }
 
     /// <summary>One asset whose verified mesh is a binary glTF that names an external buffer, <c>body.bin</c>.</summary>
-    internal static NativeScaledMeshAsset ExternalBufferMeshAsset()
+    internal static NativeScaledMeshAsset ExternalBufferMeshAsset() => MeshAsset("external",
+        GlbWithJson("""{"asset":{"version":"2.0"},"buffers":[{"uri":"body.bin","byteLength":36}]}"""));
+
+    /// <summary>One asset whose verified mesh is a binary glTF that names an external image, <c>albedo.png</c>.</summary>
+    internal static NativeScaledMeshAsset ExternalImageMeshAsset() => MeshAsset("external-image",
+        GlbWithJson("""{"asset":{"version":"2.0"},"images":[{"uri":"albedo.png"}]}"""));
+
+    /// <summary>One asset whose verified mesh is a binary glTF holding one triangle, (0, 0, 0), (1, 0, 0) and
+    /// (0, 2, 0), in a buffer embedded as a <c>data:</c> URI.</summary>
+    internal static NativeScaledMeshAsset DataBufferMeshAsset()
+    {
+        var data = new byte[42];
+        Buffer.BlockCopy(new[] { 0f, 0f, 0f, 1f, 0f, 0f, 0f, 2f, 0f }, 0, data, 0, 36);
+        Buffer.BlockCopy(new ushort[] { 0, 1, 2 }, 0, data, 36, 6);
+        string uri = "data:application/octet-stream;base64," + Convert.ToBase64String(data);
+        return MeshAsset("embedded", GlbWithJson($$"""
+            {"asset":{"version":"2.0"},"buffers":[{"byteLength":42,"uri":"{{uri}}"}],
+             "bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36,"target":34962},
+              {"buffer":0,"byteOffset":36,"byteLength":6,"target":34963}],
+             "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,2,0]},
+              {"bufferView":1,"componentType":5123,"count":3,"type":"SCALAR"}],
+             "meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1,"mode":4}]}],
+             "nodes":[{"mesh":0}],"scenes":[{"nodes":[0]}],"scene":0}
+            """));
+    }
+
+    // A one-asset closure whose mesh resource holds glb.
+    static NativeScaledMeshAsset MeshAsset(string id, byte[] glb)
     {
         var source = new MemoryAssetSource();
-        MapAssetRef mesh = source.Add("external.mesh", "kit/external-body.glb",
-            GlbWithJson("""{"asset":{"version":"2.0"},"buffers":[{"uri":"body.bin","byteLength":36}]}"""));
+        MapAssetRef mesh = source.Add(id + ".mesh", "kit/" + id + "-body.glb", glb);
         string manifest = Manifest(
-            new[] { Asset("external", "external.mesh", null, 1f, new Vector3(-1, 0, 0), new Vector3(1, 1, 0)) },
+            new[] { Asset(id, id + ".mesh", null, 1f, new Vector3(-1, 0, 0), new Vector3(1, 1, 0)) },
             new[] { Resource(mesh, "Mesh") });
-        MapAssetRef root = source.Add("external-kit", "kit/external.manifest.json", Encoding.UTF8.GetBytes(manifest));
+        MapAssetRef root = source.Add(id + "-kit", "kit/" + id + ".manifest.json", Encoding.UTF8.GetBytes(manifest));
         MapAssetClosure closure = MapAssetClosure.Load(new[] { root }, source);
-        return new NativeScaledMeshAsset(closure.GetAsset("external"), closure);
+        return new NativeScaledMeshAsset(closure.GetAsset(id), closure);
     }
 
     /// <summary>A binary glTF holding only a JSON chunk with <paramref name="json"/>, padded with spaces.</summary>

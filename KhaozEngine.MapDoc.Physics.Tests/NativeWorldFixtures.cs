@@ -182,8 +182,11 @@ internal static partial class NativeWorldFixtures
     const int SlopeRiseTenThousandthsPerCell = 1763;
 
     /// <summary>The doorway at (0.23, 0, 0.17) on the flat native floor, with the given yaw, scale and numeric ID.</summary>
-    internal static NativeFixture Doorway(float yaw, float scale, long? numericId = 1) =>
-        Resolve(FloorSurfaces(), OnFloor("doorway", "doorway", 0.23f, 0.17f, yaw, scale, numericId));
+    internal static DoorwayFixture Doorway(float yaw, float scale, long? numericId = 1)
+    {
+        NativeFixture f = Resolve(FloorSurfaces(), OnFloor("doorway", "doorway", 0.23f, 0.17f, yaw, scale, numericId));
+        return new DoorwayFixture(f.Document, f.Assets, f.Resolved, f.View);
+    }
 
     /// <summary>One placement of <paramref name="assetId"/>, with the same ID, at the origin on the flat native
     /// floor.</summary>
@@ -290,7 +293,12 @@ internal static partial class NativeWorldFixtures
 
     /// <summary>Seals the surface digests, builds the resolver-2 document over the shared closure and resolves it
     /// through <see cref="MapResolverV2"/>.</summary>
-    static NativeFixture Resolve(MapSurfaceSet surfaces, params MapPlacement[] placements)
+    static NativeFixture Resolve(MapSurfaceSet surfaces, params MapPlacement[] placements) =>
+        ResolveAround(0, 0, surfaces, placements);
+
+    /// <summary><see cref="Resolve"/> with the storage bounds reaching 64 m and the playable bounds 32 m from
+    /// (<paramref name="centreX"/>, <paramref name="centreZ"/>) on each axis.</summary>
+    static NativeFixture ResolveAround(int centreX, int centreZ, MapSurfaceSet surfaces, MapPlacement[] placements)
     {
         (MapAssetClosure closure, IReadOnlyList<MapAssetRef> roots) = Assets();
         var digests = surfaces.Patches.Select(p => new KeyValuePair<MapPatchKey, string>(
@@ -312,8 +320,8 @@ internal static partial class NativeWorldFixtures
             SupportRecipe = MapSupportRecipe.AuthoredBindingsV2,
             NativeAssets = roots.ToList(),
             NumericIdHighWaterMark = 100,
-            Bounds = new() { MinX = -64, MinZ = -64, MaxX = 64, MaxZ = 64 },
-            PlayableBounds = new() { MinX = -32, MinZ = -32, MaxX = 32, MaxZ = 32 },
+            Bounds = new() { MinX = centreX - 64, MinZ = centreZ - 64, MaxX = centreX + 64, MaxZ = centreZ + 64 },
+            PlayableBounds = new() { MinX = centreX - 32, MinZ = centreZ - 32, MaxX = centreX + 32, MaxZ = centreZ + 32 },
             Surfaces = surfaces,
         };
         document.Placements.AddRange(placements);

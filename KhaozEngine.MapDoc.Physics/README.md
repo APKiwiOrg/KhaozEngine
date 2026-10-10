@@ -3,10 +3,10 @@
 Physics for a native [KhaozEngine.MapDoc](../KhaozEngine.MapDoc) world. It reads the collision data a verified
 asset closure carries as [KhaozEngine.Physics](../KhaozEngine.Physics) shapes.
 
-It references exactly `KhaozEngine.MapDoc`, `KhaozEngine.Physics` and
-[KhaozEngine.Movement](../KhaozEngine.Movement). It carries no renderer, no physics backend and no TileWorld, so the
-caller picks the `IPhysicsWorld` (add [KhaozEngine.Physics.Bepu](../KhaozEngine.Physics.Bepu) explicitly for the
-shipped one).
+It references exactly `KhaozEngine.MapDoc`, `KhaozEngine.Physics`, [KhaozEngine.Movement](../KhaozEngine.Movement)
+and [KhaozEngine.Locomotion](../KhaozEngine.Locomotion), for the contact shell. It carries no renderer, no physics
+backend and no TileWorld, so the caller picks the `IPhysicsWorld` (add
+[KhaozEngine.Physics.Bepu](../KhaozEngine.Physics.Bepu) explicitly for the shipped one).
 
 The package is opt-in and in no umbrella. Add it explicitly.
 
@@ -52,3 +52,34 @@ built after the edit and names the owners and tiles the edit invalidates from it
 every listed patch, including the chunks of the wall strips recorded in it.
 
 `MapTileResidency` remains the streaming loader keyed by storage tile. This index is the ownership R8 consumes.
+
+## Physical relations
+
+```csharp
+var relations = new MapPhysicalRelations(registration);
+using IPhysicsQueryLease lease = ((IPhysicsQueryLeaseSource)physics).AcquireQueryReadLease();
+MapPhysicalResult sight = relations.LineOfSight(lease, eye, target);
+MapPhysicalResult walk = relations.Clearance(lease, feetPath, tuning);
+```
+
+Both relations run under a held read lease over the registration's own physics world and call `AssertCurrent` first.
+Points convert from their frame to world double, less the lease's origin. Queries see statics only.
+
+Line of sight casts one ray. A hit nearer than the segment length less 0.001 m is `Blocked` and names its owner, a
+placement id or a terrain chunk id. A hit within 0.001 m of the end is `Unknown`, and a miss is `Clear`. Clearance
+places the locomotion `ContactShell` at the first feet point and sweeps it along each segment of a path of 1 to 64
+points. Penetration deeper than 0.001 m, or a sweep hit before a segment's end, is `Blocked`. A point outside the
+document's playable bounds is `Unknown` for either relation. Every result carries the world's `BuildHash` and its
+terrain witness digest.
+
+Terrain chunks are one-sided, so a ray or sweep meeting a face from behind passes through it. Interaction envelopes
+are never installed and never block. A portal is an opening with no faces, so an authored open portal needs no
+extra state.
+
+This departs from R2's planned D5 signature in four ways:
+
+- Invalid input throws rather than returning an `Invalid` status.
+- A stale lease throws through `AssertCurrent` rather than returning `Stale`.
+- There is no `Facts` input. Geometric relation facts stay with `MapSpaceRelations`, and these results add only
+  physical certainty.
+- A single-point clearance path is allowed. D5 required 2 to 64 points, and the 64-point cap stays.

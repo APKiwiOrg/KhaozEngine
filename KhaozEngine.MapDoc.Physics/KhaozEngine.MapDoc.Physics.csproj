@@ -7,11 +7,13 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- MapDoc for the document and the asset closure, Physics for the shapes and the world seam, Movement for the
-         reach and ground contracts later layers compose. Nothing else: no renderer, no physics backend, no TileWorld.
-         ArchitectureTests.MapDocPhysics_ReferencesOnlyMapDocPhysicsAndMovement pins the edges. -->
+         reach and ground contracts later layers compose, Locomotion for the contact shell. Nothing else: no renderer,
+         no physics backend, no TileWorld.
+         ArchitectureTests.MapDocPhysics_ReferencesOnlyMapDocLocomotionMovementAndPhysics pins the edges. -->
     <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
     <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
     <ProjectReference Include="../KhaozEngine.Movement/KhaozEngine.Movement.csproj" />
+    <ProjectReference Include="../KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.MapDoc.Physics.Tests" />

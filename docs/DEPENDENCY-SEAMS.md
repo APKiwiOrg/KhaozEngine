@@ -869,9 +869,10 @@ absence of any package reference, and `TileWorld.Physics` is on the `OptInBacken
 KhaozEngine.MapDoc.Physics -> KhaozEngine.MapDoc      (the document, the verified asset closure and MapDocumentException)
 KhaozEngine.MapDoc.Physics -> KhaozEngine.Physics     (PropCollisionFormat, the shapes it reads and the IPhysicsWorld seam)
 KhaozEngine.MapDoc.Physics -> KhaozEngine.Movement    (the reach and ground contracts the shared world composes)
+KhaozEngine.MapDoc.Physics -> KhaozEngine.Locomotion  (the contact shell that physical clearance sweeps)
 ```
 
-Three forward edges and no backend: the caller picks the `IPhysicsWorld`. It references no renderer, no GPU, no
+Four forward edges and no backend: the caller picks the `IPhysicsWorld`. It references no renderer, no GPU, no
 TileWorld and no game. `Collider` and `Selection` resources carry `PropCollisionFormat` version 1 bytes, read
 through the existing `Physics` seam, so the package adds no format and no third-party package. The nonpackable test
 project references only `MapDoc.Physics`, `Physics.Bepu`, for proofs against the shipped backend, and `Sharding`,

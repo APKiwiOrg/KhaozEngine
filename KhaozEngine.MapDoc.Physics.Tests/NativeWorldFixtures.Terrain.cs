@@ -30,22 +30,30 @@ internal static partial class NativeWorldFixtures
     /// that drops to y 1.2 over corners x and z at most 2, an upper floor at y 3.5 and an upper ceiling at y 6.5.
     /// The shaft cells [3, 5) by [3, 5) are open through the lower ceiling and the upper floor, and four wall strips
     /// join those two edges around the shaft. Spaces: the lower room, the shaft and the upper room, linked through
-    /// the shaft.</summary>
-    internal static StackedCaveFixture StackedCave()
+    /// the shaft. The crate <c>cave-crate</c> stands on the lower floor at (5.5, 0, 0.5).</summary>
+    internal static StackedCaveFixture StackedCave() => StackedCaveAt(0f, 0f);
+
+    /// <summary><see cref="StackedCave"/> moved by whole metres (<paramref name="moveX"/>, 0, <paramref name="moveZ"/>), with
+    /// storage and playable bounds centred on the move. Every coordinate in the stacked cave's description is relative
+    /// to the move.</summary>
+    internal static StackedCaveFixture StackedCaveAt(float moveX, float moveZ)
     {
+        int ox = checked((int)moveX), oz = checked((int)moveZ);
+        if (ox != moveX || oz != moveZ) throw new ArgumentException("the stacked cave moves by whole metres only");
         var set = new MapSurfaceSet();
-        Func<int, int, bool> solid = (x, z) => !(x is >= 3 and < 5 && z is >= 3 and < 5);
+        Func<int, int, bool> solid = (x, z) => !(x - ox is >= 3 and < 5 && z - oz is >= 3 and < 5);
         MapSurfacePatch lowerFloor = AddPatch(set, "cave-lower-floor", MapSurfaceRole.SupportFloor, CentimetreHeights,
-            0, 0, 6, 6, (_, _) => 0);
+            ox, oz, 6, 6, (_, _) => 0);
         MapSurfacePatch lowerCeiling = AddPatch(set, "cave-lower-ceiling", MapSurfaceRole.Ceiling, CentimetreHeights,
-            0, 0, 6, 6, (x, z) => x <= 2 && z <= 2 ? 120 : 300, solid);
+            ox, oz, 6, 6, (x, z) => x - ox <= 2 && z - oz <= 2 ? 120 : 300, solid);
         MapSurfacePatch upperFloor = AddPatch(set, "cave-upper-floor", MapSurfaceRole.SupportFloor, CentimetreHeights,
-            0, 0, 6, 6, (_, _) => 350, solid);
+            ox, oz, 6, 6, (_, _) => 350, solid);
         MapSurfacePatch upperCeiling = AddPatch(set, "cave-upper-ceiling", MapSurfaceRole.Ceiling, CentimetreHeights,
-            0, 0, 6, 6, (_, _) => 650);
-        int[] shaft = { 195, 196, 259, 260 };
-        int[] room = Enumerable.Range(0, 6).SelectMany(z => Enumerable.Range(0, 6).Where(x => solid(x, z))
-            .Select(x => z * 64 + x)).ToArray();
+            ox, oz, 6, 6, (_, _) => 650);
+        int SlotCell(int x, int z) => SlotOffset(oz + z) * MapPatchKey.SlotCells + SlotOffset(ox + x);
+        int[] shaft = { SlotCell(3, 3), SlotCell(4, 3), SlotCell(3, 4), SlotCell(4, 4) };
+        int[] room = Enumerable.Range(0, 6).SelectMany(z => Enumerable.Range(0, 6).Where(x => solid(ox + x, oz + z))
+            .Select(x => SlotCell(x, z))).ToArray();
         MapRecordRef Ref(string id, MapSurfacePatch anchor) => new(id, anchor.Key);
         MapBoundRef Bound(MapBoundKind kind, MapSurfacePatch surface) => new(kind, surface.Key.SurfaceId, null);
         MapBoundRef Opening(MapSurfacePatch anchor) => new(MapBoundKind.HorizontalOpening, null,
@@ -61,8 +69,8 @@ internal static partial class NativeWorldFixtures
         })
         {
             string id = "shaft-" + name;
-            lowerFloor.Records.Add(EdgeChain(id + "-lower", lowerCeiling.Key, x0, z0, x1, z1));
-            lowerFloor.Records.Add(EdgeChain(id + "-upper", upperFloor.Key, x0, z0, x1, z1));
+            lowerFloor.Records.Add(EdgeChain(id + "-lower", lowerCeiling.Key, ox + x0, oz + z0, ox + x1, oz + z1));
+            lowerFloor.Records.Add(EdgeChain(id + "-upper", upperFloor.Key, ox + x0, oz + z0, ox + x1, oz + z1));
             lowerFloor.Records.Add(new MapWallStrip(id, Ref(id + "-lower", lowerFloor), Ref(id + "-upper", lowerFloor), facing, 1));
             walls.Add(new(Ref(id, lowerFloor), facing == MapStripFacing.Front ? MapSide.Front : MapSide.Back));
         }
@@ -84,10 +92,15 @@ internal static partial class NativeWorldFixtures
         upperFloor.Records.Add(new MapSpaceFootprint("upper-room-shaft-cells", Ref("upper-room", upperFloor), upperFloor.Key,
             shaft, Opening(upperFloor), Bound(MapBoundKind.Ceiling, upperCeiling)));
 
-        TerrainFixture f = Terrain(set);
+        TerrainFixture f = Terrain(set, ox, oz, OnFloor("cave-crate", "crate", ox + 5.5f, oz + 0.5f));
+        var move = new Vector3(ox, 0f, oz);
         return new StackedCaveFixture(f.Document, f.Assets, f.Resolved, f.View, f.CompiledFaceCount,
-            new Vector3(1.5f, 0f, 4.5f), new Vector3(0.5f, 1.2f, 0.5f), new Vector3(4f, 3.25f, 4f), new Vector3(1.5f, 3.5f, 4.5f));
+            move + new Vector3(1.5f, 0f, 4.5f), move + new Vector3(0.5f, 1.2f, 0.5f), move + new Vector3(4f, 3.25f, 4f),
+            move + new Vector3(1.5f, 3.5f, 4.5f), ox, oz);
     }
+
+    /// <summary>The whole cell <paramref name="cell"/> counted from the start of its 64-cell slot.</summary>
+    static int SlotOffset(int cell) => cell - (int)Math.Floor(cell / (double)MapPatchKey.SlotCells) * MapPatchKey.SlotCells;
 
     /// <summary>The one physics chunk of the stacked cave's lower ceiling: its 64 faces fit one whole-slot
     /// block.</summary>
@@ -329,14 +342,15 @@ internal static partial class NativeWorldFixtures
         chunk.Shape.Vertices[chunk.Shape.Indices[3 * t]], chunk.Shape.Vertices[chunk.Shape.Indices[3 * t + 1]],
         chunk.Shape.Vertices[chunk.Shape.Indices[3 * t + 2]]);
 
-    /// <summary>Validates the topology references, resolves the document and registers every face R2 compiles from
-    /// its present patches and wall strips.</summary>
-    static TerrainFixture Terrain(MapSurfaceSet set)
+    /// <summary>Validates the topology references, resolves the document with bounds centred on
+    /// (<paramref name="centreX"/>, <paramref name="centreZ"/>) and registers every face R2 compiles from its present
+    /// patches and wall strips.</summary>
+    static TerrainFixture Terrain(MapSurfaceSet set, int centreX = 0, int centreZ = 0, params MapPlacement[] placements)
     {
         IReadOnlyList<string> errors = MapTopologyReferenceValidator.Validate(set.Refs, set.Patches.Values.ToArray());
         if (errors.Count != 0)
             throw new InvalidOperationException("terrain fixture reference validation failed: " + string.Join(", ", errors));
-        NativeFixture f = Resolve(set);
+        NativeFixture f = ResolveAround(centreX, centreZ, set, placements);
         int faces = 0;
         foreach (MapPatchKey key in f.View.Witness.Present.Select(p => p.Key))
         {
@@ -363,19 +377,24 @@ internal static partial class NativeWorldFixtures
         return faces.Count;
     }
 
-    /// <summary>A full rectangle of cells [minX, minX + width) by [minZ, minZ + depth) in slot (0, 0) of a new surface.
+    /// <summary>A full rectangle of cells [minX, minX + width) by [minZ, minZ + depth) in the one slot of a new surface
+    /// that holds it.
     /// <paramref name="height"/> maps a lattice corner to height units and <paramref name="present"/> a cell to its
     /// presence.</summary>
     static MapSurfacePatch AddPatch(MapSurfaceSet set, string id, MapSurfaceRole role, MapLatticeFrame frame, int minX,
         int minZ, int width, int depth, Func<int, int, int> height, Func<int, int, bool>? present = null,
         MapPresencePolicy policy = MapPresencePolicy.Native)
     {
+        const int slot = MapPatchKey.SlotCells;
+        int slotX = (int)Math.Floor(minX / (double)slot), slotZ = (int)Math.Floor(minZ / (double)slot);
+        if (SlotOffset(minX) + width > slot || SlotOffset(minZ) + depth > slot)
+            throw new ArgumentException("patch " + id + " crosses a slot edge");
         set.Refs.Add(new MapSurfaceRef(id, frame, role, policy, null, null, ""));
         var patch = new MapSurfacePatch
         {
-            Key = new(id, 0, 0),
-            CellMinX = minX,
-            CellMinZ = minZ,
+            Key = new(id, slotX, slotZ),
+            CellMinX = minX - slotX * slot,
+            CellMinZ = minZ - slotZ * slot,
             Width = width,
             Depth = depth,
             Heights = new int[(width + 1) * (depth + 1)],
@@ -442,9 +461,3 @@ internal sealed record LegacyFallbackFixture(MapDocument Document, MapAssetClosu
 
     internal bool IsFallbackFace(MapFaceKey key) => key.Patch == Row && FallbackCells.Contains(key.Primitive);
 }
-
-/// <summary><see cref="NativeWorldFixtures.StackedCave"/>, with a point on the lower floor, under the low ceiling,
-/// inside the shaft between the slabs and on the upper floor.</summary>
-internal sealed record StackedCaveFixture(MapDocument Document, MapAssetClosure Assets, MapResolvedDocument Resolved,
-    MapScopedSurfaces View, int CompiledFaceCount, Vector3 LowerFloorPoint, Vector3 LowCeilingPoint, Vector3 ShaftPoint,
-    Vector3 UpperFloorPoint) : TerrainFixture(Document, Assets, Resolved, View, CompiledFaceCount);

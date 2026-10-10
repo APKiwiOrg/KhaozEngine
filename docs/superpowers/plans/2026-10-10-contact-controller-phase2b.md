@@ -21,8 +21,11 @@ Read its "Support neighborhood query", "Certifying support from the neighborhood
 - **Joins are published by the backend.** The join test needs bounded polygon geometry, which lives in
   `KhaozEngine.Physics.Bepu`. The result carries convex join pairs, so it needs no vertex span. Certification
   applies the walkable-only capping policy.
-- **Capacity is 256 elements and 1024 joins per probe**, matching the backend's existing 256 incident-face cap, so a
-  dense mesh fan never meets a capacity refusal the old query would not.
+- **Capacity is 256 elements per probe**, matching the backend's existing 256 incident-face cap, so a dense mesh fan
+  never meets a capacity refusal the old query would not.
+- **Joins are a symmetric bit matrix**, row `i` bit `j` set when elements `i` and `j` are joined, sized
+  `elements * ((elements + 63) / 64)` words. A convex fan of n faces has n(n-1)/2 joins, so a pair list with its own
+  cap would refuse a UV-sphere pole. The matrix is derived from the element capacity and never refuses on its own.
 - Task 7 records both in the spec.
 
 ## Global Constraints
@@ -84,23 +87,20 @@ public readonly record struct SupportElement(StaticHandle Static, SupportElement
     Vector3 Normal, float NormalError, Vector3 Witness, float PositionErrorMetres,
     double SeparationLower, double SeparationUpper);
 
-/// First < Second, indices into the element span. Only polygon pairs.
-public readonly record struct SupportJoin(int First, int Second);
-
 public readonly struct SupportNeighborhoodResult
 {
-    // Status (CapsuleFeatureStatus), Elements, Joins, RequiredElements, RequiredJoins, and the lifecycle
+    // Status (CapsuleFeatureStatus), Elements, RequiredElements, JoinWordsPerRow, and the lifecycle
     // fields CapsuleFeatureResult carries: QueryWorld, SourceWorld, Lease, Origin, GeometryGeneration.
-    public static SupportNeighborhoodResult Refused(CapsuleFeatureStatus status, int requiredElements = 0,
-        int requiredJoins = 0);
+    public static SupportNeighborhoodResult Refused(CapsuleFeatureStatus status, int requiredElements = 0);
     public static SupportNeighborhoodResult Completed(IPhysicsWorld queryWorld, IPhysicsQueryLease lease,
-        int elements, int joins /* lifecycle arguments as CapsuleFeatureResult.Completed takes them */);
+        int elements /* lifecycle arguments as CapsuleFeatureResult.Completed takes them */);
 }
 
 // On IPhysicsCapsuleFeatures:
 SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe, Pose pose,
-    float bandMetres, Span<SupportElement> elements, Span<SupportJoin> joins, QueryFilter filter = default);
-void AssertFeatureCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease);
+    float bandMetres, Span<SupportElement> elements, Span<ulong> joins, QueryFilter filter = default);
+void AssertNeighborhoodCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease);
+// joins must hold elements.Length * ((elements.Length + 63) / 64) words. Row i starts at i * JoinWordsPerRow.
 ```
 
 - Membership: every face of every selected static leaf whose closed-polygon distance to the probe segment, less
@@ -254,7 +254,7 @@ void AssertFeatureCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLeas
 /// result is not Complete or a member fails admissibility. Throws for an expired, foreign or wrong-receiver
 /// result. Vertical members (upward bound reaching zero) write a contribution of kind Refused that callers skip.
 internal static int CertifyNeighborhood(IPhysicsCapsuleFeatures capability, IPhysicsQueryLease lease,
-    in SupportNeighborhoodResult result, ReadOnlySpan<SupportElement> elements, ReadOnlySpan<SupportJoin> joins,
+    in SupportNeighborhoodResult result, ReadOnlySpan<SupportElement> elements, ReadOnlySpan<ulong> joins,
     Vector2 axis, float cosMaxSlope, Span<SupportContribution> contributions);
 ```
 
@@ -266,7 +266,7 @@ internal static int CertifyNeighborhood(IPhysicsCapsuleFeatures capability, IPhy
   at the contact pose with `SupportCertification.ContactBand`, certifies, and offers every non-refused contribution
   with its member's `Static` and `ElementId` (as `FeatureId`). A refused neighborhood is a refused proposal at the
   contact's lowest point. The rule that a contribution wholly above the band refuses stays. Spans:
-  `stackalloc SupportElement[256]`, `SupportJoin[1024]`, `SupportContribution[256]`.
+  `stackalloc SupportElement[256]`, `ulong[256 * 4]`, `SupportContribution[256]`.
 - `FootSupportScenes` gains `Sphere(SceneVariant, ...)`, `UprightCylinder`, `LyingLog`, `PlateauBesideSteepFace`
   (plateau at y `0` over x `[-2, 0]`, separate 70 degree face falling from x `0`), `OverlappingCoplanarFloors`,
   `NonManifoldMesh` and `PartitionedTerrain(int pieces)` (one heightfield mesh with a ridge, a valley, a step and a

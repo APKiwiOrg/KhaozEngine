@@ -114,7 +114,7 @@ Through `Ground.Step` (the existing test helper), box and mesh, 30 and 60 Hz:
 
 - [ ] **Step 3: Implement**
 
-Accumulate the three sums in `Tick` from ground segments only. Set `StepDeltaY = StepRise` on ticks whose final mode is ground with walkable footing, 0 otherwise. Air, slide, wedge, held and fallback ticks export 0 for all three signals and reset the EWMA. Extend `Finite` to `ClimbRate`, `ClimbRateEwma` and `StepDeltaY`. Leave `ClimbRate` and `ClimbRateEwma` at 0 (Task 3).
+Pass `stepInProgress: state.StepDeltaY > 0 || state.ClimbRate > 0` to the tick's walking `GroundCore.Step` calls (slides pass false). Accumulate the three sums in `Tick` from ground segments only. Set `StepDeltaY = StepRise` on ticks whose final mode is ground with walkable footing, 0 otherwise. Air, slide, wedge, held and fallback ticks export 0 for all three signals and reset the EWMA. Extend `Finite` to `ClimbRate`, `ClimbRateEwma` and `StepDeltaY`. Leave `ClimbRate` and `ClimbRateEwma` at 0 (Task 3).
 
 - [ ] **Step 4: Run `Locomotion.Contacts`, expect PASS**
 

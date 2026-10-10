@@ -27,7 +27,7 @@ The owner approved the R3 gate decisions as OA22 on 2026-10-10 and asked for thi
 | OA1 to OA3 | One authoring tool, free placement, full native swap. No TileWorld or Grimhollow reference from any `KhaozEngine.MapDoc*` project |
 | OA22 decision 1 | R3 adds no step limit, ledge rule or support model. Ground support, seating, steps and navigation column sampling belong to #438. Stance candidates are seated by a caller-bound validator |
 | OA22 decision 2 | R3 owns navigation tile partition, capture, profile and link identity, affected-tile invalidation and deterministic seams. Incremental rebake orchestration, cross-tile planning budgets and on-demand loading are the separate #1301 work item |
-| OA22 decision 3 | Terrain faces install as physics meshes of at most 1,024 triangles, the future complete-contact limit, with a triangle to `MapFaceKey` map, seam contact proofs and explicit refusal, never truncation or a silent fallback |
+| OA22 decision 3 | Terrain faces install as physics meshes of at most 1,024 triangles, the future complete-contact limit, and at most 128 m across on every axis around a whole-metre anchor at their centre, because the capsule-feature query refuses any installed vertex more than 64 m from its static's origin. Each chunk keeps a triangle to `MapFaceKey` map, seam contact proofs and explicit refusal, never truncation or a silent fallback |
 | OA22 decisions 4 to 11 | Aligned grids, 1 m minimum reach height applied by vertical sweep before band clipping, collider-derived envelopes only for solid assets, `AuthoredOpen` portals only, the #438 shell for clearance through a public pass-through, physical relations bound to the released `IPhysicsQueryLease`, solidity from the collider resource, R2 canonical faces without retriangulation |
 | Formats | No MapDoc document format change and no authored identity token change. `Collider` and `Selection` resources carry `PropCollisionFormat` version 1 bytes. R1 closure loading already refuses any resource `PayloadVersion` other than 1 |
 | Package | `KhaozEngine.MapDoc.Physics` is opt-in, in no umbrella, references exactly `KhaozEngine.MapDoc`, `KhaozEngine.Physics` and `KhaozEngine.Movement`, and never a physics backend, renderer, GPU, TileWorld or Grimhollow project |
@@ -41,10 +41,10 @@ The owner approved the R3 gate decisions as OA22 on 2026-10-10 and asked for thi
 
 These inputs are the most likely to hurt a user. Each has a named test in its owning task.
 
-1. A compound doorway placed with yaw 0.371, offset (0.23, 0.17) and scale 1.137 must stay open to pick rays, reach, line of sight and stance, while its jambs block (Tasks 2, 5, 6, 9: `NativeDoorway_StaysOpenAfterYawAndScale`).
-2. A cave floor directly above another cave's ceiling must keep the two levels distinct for physics sidedness, line of sight and clearance, while a shaft through both stays open (Tasks 3, 8, 9: `StackedCaveFloorsAndCeilings_PhysicalHalf`).
+1. A compound doorway placed with yaw 0.371, offset (0.23, 0.17) and scale 1.137 must stay open to pick rays, reach, line of sight, clearance and stance, while its jambs block (Task 2 `Collider_ScalesBySourceUnitsAndPlacementScaleOnce`, Task 5 `NativeDoorway_StaysOpenAfterYawAndScale`, Task 6 `RotatedCompound_CandidatesAreDeterministicReachableAndSeatedByTheValidator`, Task 9 `Doorway_JambBlocksWithItsOwner_OpeningIsClear_OutsideIsUnknown`).
+2. A cave floor directly above another cave's ceiling must keep the two levels distinct for physics sidedness, line of sight and clearance, while a shaft through both stays open (Task 3 `StackedCaveFloorsAndCeilings_PhysicalHalf`, Task 8 `StackedCave_SidednessHoldsInTheBackend`, Task 9 `StackedCave_LineOfSightAndClearanceKeepLevelsDistinct`).
 3. A rebased physics world, a non-whole-metre origin or a fault during registration must not leak handles or apply the origin twice (Task 8: `Registration_RebasedOriginAndFaultsLeakNothing`).
-4. A large placement crossing negative storage seams must belong to every tile it touches but be built and registered once (Tasks 7, 8: `LargePlacement_IntersectsEveryTileAndBuildsOnce`).
+4. A large placement crossing negative storage seams must belong to every tile it touches but be built once (Task 7 `LargePlacement_IntersectsEveryTileAndBuildsOnce`).
 5. A dense fine patch whose single slot cell exceeds the chunk cap must refuse with `physics chunk capacity`, never truncate (Task 3: `DenseCell_RefusesWithPhysicsChunkCapacity`).
 
 ---
@@ -101,7 +101,7 @@ Estimates are engineer-day judgments, not measurements, in the same form as R2's
 | 6 Stance candidates | 5 | 1 to 2 |
 | 7 Grids, residency and invalidation | 4 | 2 to 4 |
 | 8 Physics registration and provenance | 4 | 2 to 4 |
-| 9 Physical relations under a lease | 8 | 3 to 5 |
+| 9 Physical relations under a lease | 5, 8 | 3 to 5 |
 | 10 Navigation tile identity | 7, 8 | 3 to 5 |
 | 11 Native asset scale and collider edits | 4 | 3 to 5 |
 | Reviews, release preparation and integration | all | 4 to 6 |
@@ -135,7 +135,7 @@ wa_run tN-agent sh scripts/check-agent-instructions.sh --tree
 wa_run tN-doc-versions bash scripts/check-doc-versions.sh
 ```
 
-Test fixtures live in `KhaozEngine.MapDoc.Physics.Tests/NativeWorldFixtures.cs` and grow task by task. They build closures through `MapAssetClosure.Load(roots, source)` over an in-memory `IMapAssetSource`, collider bytes through `PropCollisionFormat.Write`, and resolver-2 documents, including the spaces `MapSupportQuery` needs, through public R2 APIs only. Every fixture collider sits with its bottom at the placement origin, using a compound child pose where a primitive is centred.
+Test fixtures live in `KhaozEngine.MapDoc.Physics.Tests/NativeWorldFixtures.cs` and grow task by task. They build closures through `MapAssetClosure.Load(roots, source)` over an in-memory `IMapAssetSource`, collider bytes through `PropCollisionFormat.Write`, and resolver-2 documents, including the spaces `MapSupportQuery` needs, through public R2 APIs only. Every fixture collider sits with its bottom at the placement origin, using a compound child pose where a primitive is centred. Document fixtures return `NativeFixture(MapDocument Document, MapAssetClosure Assets, MapResolvedDocument Resolved, MapScopedSurfaces View)`. Fixtures with named points (the stacked cave, the doorway, the bridge) return a record deriving from it that adds those points as `MapFramePoint` or `Vector3` properties. `BuildX()` helpers return the built `MapBuiltWorld` for fixture `X()` with `NativeWorldFixtures.Options()`.
 
 ---
 
@@ -197,6 +197,9 @@ In `ArchitectureTests.MapDocPhysics.cs`, pin the package's direct project refere
 - `crate`: one box 0.6 by 0.2 by 0.6 m as a compound child at local y 0.1.
 - `tree`: one cylinder of radius 0.3 and length 6 as a compound child at local y 3.
 - `large-building`: one box 100 by 10 by 100 m as a compound child at local y 5.
+- `long-wall`: one box 150 by 3 by 0.5 m as a compound child at local y 1.5, whose corners lie 75 m from the origin.
+- `bridge-deck`: one box 18 by 0.25 by 5 m as a compound child at local y -0.125, so its top is at the placement origin.
+- `parapet-1m`: one box 1 by 1 by 0.2 m as a compound child at local y 0.5.
 - `garbage-collider`, `mesh-in-compound` and `deck-with-support` (one `SupportResourceIds` entry).
 
 - [ ] **Step 2: Run red**
@@ -205,7 +208,7 @@ Run: `wa_test t1-red "$MP" "FullyQualifiedName~MapAssetShapesTests"`. Expected: 
 
 - [ ] **Step 3: Implement `MapAssetShapes.Read(MapAssetClosure closure, string assetId)` and the package wiring**
 
-Read each present resource with `PropCollisionFormat.Read` over its bytes after checking its `Kind`. Map every read failure to `MapDocumentException` with "collision payload" and the resource id. Walk compounds recursively and refuse a `TriangleMeshShape` child, which the Bepu backend cannot install. Refuse any non-empty `SupportResourceIds`. The csproj follows `KhaozEngine.TileWorld.Physics.csproj` (PackageId, version knob, README packed, opt-in description). The test csproj follows `KhaozEngine.TileWorld.Physics.Tests.csproj` with `RootNamespace` `KhaozEngine.Tests`.
+The package csproj grants `InternalsVisibleTo` to `KhaozEngine.MapDoc.Physics.Tests`. Read each present resource with `PropCollisionFormat.Read` over its bytes after checking its `Kind`. Map every read failure to `MapDocumentException` with "collision payload" and the resource id. Walk compounds recursively and refuse a `TriangleMeshShape` child, which the Bepu backend cannot install. Refuse any non-empty `SupportResourceIds`. The csproj follows `KhaozEngine.TileWorld.Physics.csproj` (PackageId, version knob, README packed, opt-in description). The test csproj follows `KhaozEngine.TileWorld.Physics.Tests.csproj` with `RootNamespace` `KhaozEngine.Tests`.
 
 - [ ] **Step 4: Run green**
 
@@ -317,12 +320,12 @@ Envelope construction:
 **Interfaces:**
 - Consumes:
   - `MapScopedSurfaces` (`Status`, `Surfaces`, `Witness.Present` for patch keys, `Witness.Records`, `Patch(MapPatchKey)`, `RecordsIn(MapPatchKey)`, `TryRecord(...)`, `ReadWitness`).
-  - `MapSurfaceCompiler.Compile(MapSurfaceRef, MapSurfacePatch) -> MapCompiledPatch` (`Anchor`, `Offsets` relative to `Anchor`, `Faces`, `Role`).
+  - `MapSurfaceCompiler.Compile(MapSurfaceRef, MapSurfacePatch) -> MapCompiledPatch` (`ExactVertices`, `Faces`, `Role`). R2's own `Anchor` and `Offsets` are not reused, because R2 anchors legacy patches at Y 0 and strips at a corner.
   - `MapBoundaryGeometry.ResolveChain(MapBoundaryChain, MapScopedSurfaces) -> MapChainResolution` and `MapWallStripCompiler.Compile(MapWallStrip, MapChainResolution, MapChainResolution) -> MapCompiledStrip`.
   - `MapCompiledFace(Key, Role, A, B, C, Normal)`, where `Normal` is `cross(B - A, C - A)` normalized.
 - Produces:
   - `public sealed record MapTerrainChunkPolicy(int MaxTrianglesPerChunk = 1024)`, valid from 64 to 1,024.
-  - `public sealed class MapTerrainChunk` with `string ChunkId`, `MapSubmissionAnchor Anchor`, `TriangleMeshShape Shape` (vertices are offsets from `Anchor`), `IReadOnlyList<MapFaceKey> TriangleOwners` and `IReadOnlyList<MapFaceRole> TriangleRoles` (index i describes triangle i), `string Digest`.
+  - `public sealed class MapTerrainChunk` with `string ChunkId`, `MapSubmissionAnchor Anchor` (whole metres nearest the chunk's exact bounds centre), `TriangleMeshShape Shape` (vertices are offsets from `Anchor`, each within 64 m on every axis), `IReadOnlyList<MapFaceKey> TriangleOwners` and `IReadOnlyList<MapFaceRole> TriangleRoles` (index i describes triangle i), `string Digest`.
   - `public sealed class MapTerrainChunkSet` with `IReadOnlyList<MapTerrainChunk> Chunks`, `MapReadWitness Witness`, `int LegacyFallbackCellsSkipped`.
   - `public static class MapTerrainPhysics { public static MapTerrainChunkSet Compile(MapScopedSurfaces view, MapTerrainChunkPolicy policy) }`.
 
@@ -369,6 +372,26 @@ public class MapTerrainPhysicsTests
             MapTerrainPhysics.Compile(NativeWorldFixtures.DenseCell().View, new MapTerrainChunkPolicy(64))).Message);
 
     [Fact]
+    public void LongStripsAndHighLegacyTerrain_StayWithinTheFeatureQueryExtent()
+    {
+        foreach (var f in new[] { NativeWorldFixtures.LongWallStrip(lengthMetres: 300f), NativeWorldFixtures.HighLegacyPatch(heightMetres: 180f) })
+        {
+            var set = MapTerrainPhysics.Compile(f.View, new MapTerrainChunkPolicy());
+            Assert.All(set.Chunks, c => Assert.All(c.Shape.Vertices, v => Assert.True(MathF.Abs(v.X) <= 64 && MathF.Abs(v.Y) <= 64 && MathF.Abs(v.Z) <= 64)));
+            Assert.Equal(f.CompiledFaceCount, set.Chunks.Sum(c => c.TriangleOwners.Count));
+        }
+    }
+
+    [Fact]
+    public void TwoSidedStrip_ChunksEachSideSeparately()
+    {
+        var set = MapTerrainPhysics.Compile(NativeWorldFixtures.TwoSidedStrip().View, new MapTerrainChunkPolicy());
+        Assert.All(set.Chunks, c => Assert.Single(c.TriangleOwners.Select(k => k.Side).Distinct()));
+        Assert.Contains(set.Chunks, c => c.ChunkId.EndsWith("/Front", StringComparison.Ordinal));
+        Assert.Contains(set.Chunks, c => c.ChunkId.EndsWith("/Back", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void IncompleteViewAndUnresolvedChain_Refuse()
     {
         Assert.Contains("complete", Assert.Throws<MapDocumentException>(() =>
@@ -380,6 +403,25 @@ public class MapTerrainPhysicsTests
 
 public class MapTerrainSeamTests
 {
+    [Fact]
+    public void FeatureQuery_IsCompleteOnLongStripsHighTerrainAndBothStripSides()
+    {
+        foreach (var f in new[] { NativeWorldFixtures.LongWallStrip(300f), NativeWorldFixtures.HighLegacyPatch(180f), NativeWorldFixtures.TwoSidedStrip() })
+        {
+            var set = MapTerrainPhysics.Compile(f.View, new MapTerrainChunkPolicy());
+            using var physics = new BepuPhysicsWorld();
+            foreach (var c in set.Chunks)
+            {
+                var handle = physics.AddStatic(c.Shape, new Pose(new Vector3(c.Anchor.X, c.Anchor.Y, c.Anchor.Z), Quaternion.Identity));
+                using var lease = ((IPhysicsQueryLeaseSource)physics).AcquireQueryReadLease();
+                Span<CapsuleIncidentFace> faces = stackalloc CapsuleIncidentFace[256];
+                var probe = f.ProbeNear(c);
+                var result = ((IPhysicsCapsuleFeatures)physics).QueryCapsuleFeature(lease, handle, new CapsuleShape(0.2f, 0.4f), probe.Pose, 0.01f, faces);
+                Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
+            }
+        }
+    }
+
     [Fact]
     public void ChunkSeams_HaveCompleteContactWithoutGapsOrDuplicates()
     {
@@ -402,6 +444,7 @@ public class MapTerrainSeamTests
 Fixture facts:
 - `DenseCell()` holds one slot cell subdivided 32 segments per edge, which compiles to 2 x (31 + 31 + 3) = 130 faces, over the cap of 64.
 - `FinePatch()` subdivides several cells 4 per edge so a cap of 64 forces chunk boundaries inside one patch, and lists `SeamProbePoints` exactly on those boundaries, including shared vertices.
+- `LongWallStrip(lengthMetres)` is a straight single-sided strip of that length, `HighLegacyPatch(heightMetres)` a `LegacyTileWorld` patch whose corners sit at that height, and `TwoSidedStrip()` a `TwoSided` strip. Each exposes `CompiledFaceCount` and `ProbeNear(chunk)`, a capsule pose whose bottom sits 0.005 m off one of the chunk's faces on its front side.
 - `StackedCave()` is a resolver-2 document with spaces: a lower floor at y 0, a lower ceiling at y 3 except a low-ceiling region at y 1.2, a shaft opening through the lower ceiling and a matching opening through an upper floor at y 3.5, wall strips joining the ceiling and upper floor around the shaft, and an upper ceiling at y 6.5.
 - `BackendFrontAlongCompiledNormal(chunk, t)` checks that `cross(C - A, B - A)` of the emitted triangle points along the compiled face normal.
 
@@ -411,13 +454,13 @@ Fixture facts:
 
 Refuse unless `view.Status` is `Complete`. Enumerate patch keys from `view.Witness.Present` in key order, read each with `view.Patch(key)`, and compile every `SupportFloor` and `Ceiling` surface's patch. Skip `PaintOverride` surfaces. Enumerate wall strips from the view's records (`RecordsIn` per patch, or `Witness.Records` with `TryRecord`), resolve both chains with `MapBoundaryGeometry.ResolveChain`, refuse any status other than resolved with "unresolved chain" and the strip id, and compile with `MapWallStripCompiler.Compile`.
 
-Faces only come from compiled `Faces`, so legacy fallback cells contribute none, and their count is reported. Faces are used as R2 compiled them, never retriangulated. Group a patch's faces by slot cell (`MapFaceKey.Primitive`), then split the 64 by 64 slot block recursively into quadrants until each chunk has at most the cap. A single slot cell over the cap refuses with "physics chunk capacity", the patch key and the cell. Strips chunk by contiguous primitive ranges under the same cap.
+Faces only come from compiled `Faces`, so legacy fallback cells contribute none, and their count is reported. Faces are used as R2 compiled them, never retriangulated. Group a patch's faces by slot cell (`MapFaceKey.Primitive`), then split the 64 by 64 slot block recursively into quadrants until each chunk has at most the cap and its exact bounds span at most 128 m on every axis. A single slot cell over the triangle cap refuses with "physics chunk capacity", the patch key and the cell. Strips split first by `MapFaceKey.Side`, then by contiguous primitive ranges under the same two limits. Each chunk takes a whole-metre anchor nearest its exact bounds centre, computed from the exact vertices with `MapExactValue` arithmetic, and each vertex offset is the exact difference converted to float once. A single face whose own extent exceeds 128 m on an axis is kept in a chunk of its own and reported by Task 4 as `LocalExtent`.
 
 Emit every triangle as (A, C, B). The Bepu backend's one-sided front is `cross(C - A, B - A)` (see `TileColliderBuilder.Ground.cs`), and R2's normal is `cross(B - A, C - A)`, so the swap makes each mesh face the role's open side.
 
-Chunk ids are `<surfaceId>/<SlotX>,<SlotZ>/<minCellX>,<minCellZ>,<sizeCells>` for patches and `<stripId>/<firstPrimitive>` for strips. Order chunks by ordinal id and triangles by `MapFaceKey` order. `Digest` covers id, anchor, vertex float bits, indices, owners and roles.
+Chunk ids are `<surfaceId>/<SlotX>,<SlotZ>/<minCellX>,<minCellZ>,<sizeCells>` for patches and `<stripId>/<firstPrimitive>/<Side>` for strips. Order chunks by ordinal id and triangles by `MapFaceKey` order. `Digest` covers id, anchor, vertex float bits, indices, owners and roles.
 
-- [ ] **Step 4: Run green** `wa_test t3-green "$MP" "FullyQualifiedName~MapTerrainPhysicsTests|FullyQualifiedName~MapTerrainSeamTests"` (expect 6)
+- [ ] **Step 4: Run green** `wa_test t3-green "$MP" "FullyQualifiedName~MapTerrainPhysicsTests|FullyQualifiedName~MapTerrainSeamTests"` (expect 9)
 
 - [ ] **Step 5: Format, guards and commit** `feat(mapdocphysics): compile R2 faces into bounded physics meshes`
 
@@ -437,7 +480,7 @@ Chunk ids are `<surfaceId>/<SlotX>,<SlotZ>/<minCellX>,<minCellZ>,<sizeCells>` fo
   - `public sealed record MapWorldBuildOptions(MapResolveOptions Resolve, string ConsumerPolicyIdentity, MapTerrainChunkPolicy Chunks, Func<float,float,float>? LegacySupportHeight = null, int BuilderVersion = 1)`.
   - `public enum MapStaticKind { Placement, TerrainChunk }`.
   - `public sealed record MapStaticDescriptor(string OwnerId, MapStaticKind Kind, PhysicsShape Shape, Vector3 Position, Quaternion Orientation, MapBox3 Bounds, string Digest, IReadOnlyList<MapFaceKey> TriangleOwners)`.
-  - `public enum MapFeatureQuerySupport { Supported, LeafCapacity, CurvedUntilPhase2b, MeshTriangleCapacity }` and `public sealed record MapStaticDiagnostic(string OwnerId, MapFeatureQuerySupport Support)`.
+  - `public enum MapFeatureQuerySupport { Supported, LeafCapacity, CurvedUntilPhase2b, MeshTriangleCapacity, LocalExtent }` and `public sealed record MapStaticDiagnostic(string OwnerId, MapFeatureQuerySupport Support)`.
   - `public sealed class MapBuiltWorld` with `MapResolvedDocument Document`, `MapScopedSurfaces Surfaces`, `IReadOnlyList<MapPlacementGeometry> Placements`, `MapTerrainChunkSet Terrain`, `IReadOnlyList<MapStaticDescriptor> Statics`, `IReadOnlyList<MapStaticDiagnostic> Diagnostics`, `MapBox3 Bounds`, `string AuthoredHash`, `string BuildHash`, `bool IsNative` (resolver 2), `Func<float,float,float>? LegacySupportHeight`, `string LegacyTerrainIdentity`.
   - `public static class MapWorldBuilder { public static MapBuiltWorld Build(MapDocument document, MapAssetClosure assets, MapWorldBuildOptions options) }`.
 
@@ -482,17 +525,19 @@ public class MapWorldBuilderTests
         var world = NativeWorldFixtures.BuildTreeAndWideCompound();
         Assert.Contains(new MapStaticDiagnostic("tree", MapFeatureQuerySupport.CurvedUntilPhase2b), world.Diagnostics);
         Assert.Contains(new MapStaticDiagnostic("parapet-70", MapFeatureQuerySupport.LeafCapacity), world.Diagnostics);
+        Assert.Contains(new MapStaticDiagnostic("long-wall", MapFeatureQuerySupport.LocalExtent), world.Diagnostics);
+        Assert.DoesNotContain(world.Diagnostics, d => d.OwnerId == "crate");
     }
 }
 ```
 
-`MapNativeResolutionTests` asserts that identity (1, 1) with resolver-1 options matches `MapResolver.Resolve`, that identity (1, 2) matches `MapResolverV2.Resolve(...).Document`, and that (1, 2) with resolver-1 options refuses with "resolver". The existing `NativeDocumentServiceResolverTests` stay green unchanged.
+`BuildTreeAndWideCompound()` places `tree`, a 70-child compound `parapet-70`, `long-wall` and `crate`. `MapNativeResolutionTests` asserts that identity (1, 1) with resolver-1 options matches `MapResolver.Resolve`, that identity (1, 2) matches `MapResolverV2.Resolve(...).Document`, and that (1, 2) with resolver-1 options refuses with "resolver". The existing `NativeDocumentServiceResolverTests` stay green unchanged.
 
 - [ ] **Step 2: Run red** `wa_test t4-red "$MP" "FullyQualifiedName~MapWorldBuilderTests"` and `wa_test t4-red-mapdoc "$MAPDOC" "FullyQualifiedName~MapNativeResolutionTests"`
 
 - [ ] **Step 3: Implement routing, the builder and the built world**
 
-Refuse a partial window first (`document.Tiles is { IsPartial: true }`). Resolve through `MapNativeResolution`. For resolver 2, take `MapScopedSurfaces.CompleteView(document.Surfaces)` and compile terrain with Task 3. For resolver 1, terrain stays analytic: `Surfaces` is `CompleteView` over an empty `MapSurfaceSet`, the chunk set is empty with that view's witness, `LegacySupportHeight` is kept, and `LegacyTerrainIdentity` is SHA-256 over the document's `Terrain` block and sculpt tiles as R2's content digest serializes them. Statics are placement colliders (non-solid placements have none) then terrain chunks, each in ordinal owner order. A terrain static's `Position` is its anchor in whole metres. Refuse any static position beyond 1,000,000 m on an axis. Diagnostics name compounds over 64 leaves, cylinders and curved shapes, and meshes over 65,536 triangles. `BuildHash` is SHA-256 over the canonical JSON `{ "domain": "kemap/built-world/1", authoredHash, builderVersion, consumerPolicyIdentity, interactionPolicyHash, maxTrianglesPerChunk, legacyTerrainIdentity, placements: [[id, digest]], terrain: [[chunkId, digest]] }`. Change `NativeDocumentService` to call `MapNativeResolution` with no behavior change.
+Refuse a partial window first (`document.Tiles is { IsPartial: true }`). Resolve through `MapNativeResolution`. For resolver 2, take `MapScopedSurfaces.CompleteView(document.Surfaces)` and compile terrain with Task 3. For resolver 1, terrain stays analytic: `Surfaces` is `CompleteView` over an empty `MapSurfaceSet`, the chunk set is empty with that view's witness, `LegacySupportHeight` is kept, and `LegacyTerrainIdentity` is SHA-256 over the document's `Terrain` block and sculpt tiles as R2's content digest serializes them. Statics are placement colliders (non-solid placements have none) then terrain chunks, each in ordinal owner order. A terrain static's `Position` is its anchor in whole metres. Refuse any static position beyond 1,000,000 m on an axis. Diagnostics name compounds over 64 leaves, cylinders and curved shapes, meshes over 65,536 triangles, and any static with an installed vertex more than 64 m from its pose origin (`LocalExtent`). `BuildHash` is SHA-256 over the canonical JSON `{ "domain": "kemap/built-world/1", authoredHash, builderVersion, consumerPolicyIdentity, interactionPolicyHash, maxTrianglesPerChunk, legacyTerrainIdentity, placements: [[id, digest]], terrain: [[chunkId, digest]] }`. Change `NativeDocumentService` to call `MapNativeResolution` with no behavior change.
 
 - [ ] **Step 4: Run green** `wa_test t4-green "$MP" "FullyQualifiedName~MapWorldBuilderTests"` (expect 4), `wa_test t4-green-mapdoc "$MAPDOC" "FullyQualifiedName~MapNativeResolutionTests"` (expect 3), `wa_test t4-regress-editor "$EDITOR" "FullyQualifiedName~NativeDocumentService"`
 
@@ -559,7 +604,7 @@ public class MapWorldQueriesTests
     public void Pick_InspectsABoundedNumberOfEnvelopes()
     {
         var q = new MapWorldQueries(NativeWorldFixtures.BuildCrateField(100, 100, spacingMetres: 4f));
-        Assert.NotNull(q.Pick(new MapPickRay(new Vector3(0.5f, 0.1f, -2f), Vector3.UnitZ, 30f)));
+        Assert.Equal("crate-000-000", q.Pick(new MapPickRay(new Vector3(0f, 0.1f, -2f), Vector3.UnitZ, 30f))!.PlacementId);
         Assert.InRange(q.LastPickInspectedEnvelopes, 1, 64);
     }
 
@@ -575,7 +620,7 @@ public class MapWorldQueriesTests
 }
 ```
 
-`BuildCrate()` places the crate's bottom at the placement origin, y 0. The reach distance in `LowObject_ReachUsesTheOneMetreEnvelope` is from the capsule segment point (y 1.5, z -0.7) to the swept envelope's top edge (y 1.0, z -0.3), which is sqrt(0.25 + 0.16) - 0.2 = 0.44 m.
+`BuildCrate()` places the crate's bottom at the placement origin, y 0. `BuildCrateField(columns, rows, spacingMetres)` places crates `crate-iii-jjj` at (i x spacing, 0, j x spacing). The reach distance in `LowObject_ReachUsesTheOneMetreEnvelope` is from the capsule segment point (y 1.5, z -0.7) to the swept envelope's top edge (y 1.0, z -0.3), which is sqrt(0.25 + 0.16) - 0.2 = 0.44 m.
 
 - [ ] **Step 2: Run red** `wa_test t5-red "$MP" "FullyQualifiedName~MapWorldQueriesTests"`
 
@@ -800,6 +845,7 @@ public class MapPhysicsRegistrationTests
             Span<CapsuleIncidentFace> faces = stackalloc CapsuleIncidentFace[256];
             var result = ((IPhysicsCapsuleFeatures)physics).QueryCapsuleFeature(lease, chunk, new CapsuleShape(0.2f, 0.4f), Pose.At(at + new Vector3(0, 0.405f, 0)), 0.01f, faces);
             Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
+            Assert.Equal(at == NativeWorldFixtures.OnLowerFloorTriangleEdge ? 2 : 1, result.Written);
             for (int i = 0; i < result.Written; i++)
             {
                 Assert.True(r.TryFaceOwner(chunk, faces[i].FaceId, out var face));
@@ -839,7 +885,7 @@ public class MapPhysicsRegistrationTests
 Fixture facts:
 - `NativeRegistrationFaultWorld(int failOnAdd = 0, Vector3 origin = default)` is a test `IPhysicsWorld` that counts live statics, reports the given origin and throws `InvalidOperationException` on the nth `AddStatic`.
 - The capsule poses in `FeatureQueryFaces_MapToCanonicalOwners` put its bottom 0.005 m above the floor, one inside a single triangle and one over a shared triangle edge.
-- `BuildBridge()` places a 16 by 5 m deck asset whose walk surface is at 2.825 m, overhanging local x from -9 to 9, with 32 separate one-edge 1 by 1 m parapet wall placements (`parapet-00` to `parapet-31`) of collision height 3.825 m. These values are a fixture, not a claim about the shipped bridge, which R11 refreezes.
+- `BuildBridge()` places `bridge-deck` (18 by 5 m, so it overhangs local x from -9 to 9) with explicit Y 2.825, and 32 separate `parapet-1m` placements (`parapet-00` to `parapet-31`) with explicit Y 2.825 along both long edges, so their tops sit at 3.825 m. These values are a fixture, not a claim about the shipped bridge, which R11 refreezes.
 
 - [ ] **Step 2: Run red** `wa_test t8-red "$MP" "FullyQualifiedName~MapPhysicsRegistrationTests"`
 
@@ -862,9 +908,9 @@ Refuse an origin with a non-integer component, with "whole-metre origin". Instal
 **Interfaces:**
 - Consumes: Task 8 `MapPhysicsRegistration` (`World`, `Physics`, `TryOwner`), `IPhysicsQueryLease` (`SourceWorld`, `Origin`, `AssertCurrent()`), `IPhysicsWorld.Raycast` and `ComputePenetration`, internal `ShellGeometry` (`Validate`, `Shape`, `Centre`), `MapFramePoint(WorldFrame Frame, Vector3 Local)`, `MapPhysicalCertainty`.
 - Produces:
-  - `public static class ContactShell` in `KhaozEngine.Locomotion` with `Validate(in MoveTuning tuning)`, `Shape(in MoveTuning tuning) -> CapsuleShape` and `Centre(Vector3 feet, in MoveTuning tuning) -> Vector3`, each delegating to `ShellGeometry` so the #438 body model has one implementation.
+  - `public static class ContactShell` in `KhaozEngine.Locomotion.Contacts` with `Validate(in MoveTuning tuning)`, `Shape(in MoveTuning tuning) -> CapsuleShape` and `Centre(Vector3 feet, in MoveTuning tuning) -> Vector3`, each delegating to `ShellGeometry` so the #438 body model has one implementation.
   - `public sealed record MapPhysicalResult(MapPhysicalCertainty Certainty, string? BlockingOwner, float? BlockDistance, string BuildHash, string TerrainWitnessDigest)`.
-  - `public sealed class MapPhysicalRelations(MapPhysicsRegistration registration)` with `LineOfSight(IPhysicsQueryLease lease, MapFramePoint from, MapFramePoint to) -> MapPhysicalResult` and `Clearance(IPhysicsQueryLease lease, IReadOnlyList<MapFramePoint> feetPath, in MoveTuning tuning) -> MapPhysicalResult`.
+  - `public sealed class MapPhysicalRelations(MapPhysicsRegistration registration)` with `LineOfSight(IPhysicsQueryLease lease, MapFramePoint from, MapFramePoint to) -> MapPhysicalResult` and `Clearance(IPhysicsQueryLease lease, IReadOnlyList<MapFramePoint> feetPath, in MoveTuning tuning) -> MapPhysicalResult`, where `feetPath` has at least one point.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -900,6 +946,8 @@ public class MapPhysicalRelationsTests
         Assert.Equal("doorway", blocked.BlockingOwner);
         Assert.Equal(MapPhysicalCertainty.Clear, r.LineOfSight(lease, f.BeforeOpening, f.AfterOpening).Certainty);
         Assert.Equal(MapPhysicalCertainty.Unknown, r.LineOfSight(lease, f.BeforeJamb, f.FarOutsideBounds).Certainty);
+        Assert.Equal(MapPhysicalCertainty.Blocked, r.Clearance(lease, new[] { f.FeetBeforeJamb, f.FeetAfterJamb }, MoveTuning.Default).Certainty);
+        Assert.Equal(MapPhysicalCertainty.Clear, r.Clearance(lease, new[] { f.FeetBeforeOpening, f.FeetAfterOpening }, MoveTuning.Default).Certainty);
     }
 
     [Fact]
@@ -918,6 +966,9 @@ public class MapPhysicalRelationsTests
             var b = new MapPhysicalRelations(server).LineOfSight(sl, point, f.UpperRoom);
             Assert.Equal((a.Certainty, a.BlockingOwner, a.BuildHash, a.TerrainWitnessDigest), (b.Certainty, b.BlockingOwner, b.BuildHash, b.TerrainWitnessDigest));
             Assert.Equal(new MapWorldQueries(client.World).Pick(f.PickRayFrom(point))?.PlacementId, new MapWorldQueries(server.World).Pick(f.PickRayFrom(point))?.PlacementId);
+            var sa = new MapSupportQuery(client.World.Surfaces).Select(f.SupportRequestAt(point));
+            var sb = new MapSupportQuery(server.World.Surfaces).Select(f.SupportRequestAt(point));
+            Assert.Equal((sa.Status, sa.Face, sa.WorldY), (sb.Status, sb.Face, sb.WorldY));
         }
     }
 
@@ -940,7 +991,7 @@ public class MapPhysicalRelationsTests
 
 - [ ] **Step 3: Implement the shell pass-through and relations**
 
-`ContactShell` delegates to `ShellGeometry` without copying any rule. Record this public addition on #438, because that lane owns the body model. Relations require `lease.SourceWorld` to be the registration's world and call `lease.AssertCurrent()`. Points convert from their frame to world double, then subtract `lease.Origin`. Line of sight casts a statics-only ray. A hit nearer than the segment length minus 0.001 m is `Blocked`, a clean miss is `Clear`, and a hit within 0.001 m of the end is `Unknown`. The blocking owner comes from `TryOwner` (a placement id or a terrain chunk id). Clearance tests the `ContactShell` capsule at each feet point with `ComputePenetration`. Penetration deeper than 0.001 m is `Blocked`. A point or segment outside the world's playable bounds is `Unknown`. Results carry `World.BuildHash` and `World.Terrain.Witness.ScopedDigest`. Portals are openings with no faces, so `AuthoredOpen` needs no extra state. Envelopes are never installed, so they never block.
+`ContactShell` delegates to `ShellGeometry` without copying any rule. Record this public addition on #438, because that lane owns the body model. Relations require `lease.SourceWorld` to be the registration's world and call `lease.AssertCurrent()`. Points convert from their frame to world double, then subtract `lease.Origin`. Line of sight casts a statics-only ray. A hit nearer than the segment length minus 0.001 m is `Blocked`, a clean miss is `Clear`, and a hit within 0.001 m of the end is `Unknown`. The blocking owner comes from `TryOwner` (a placement id or a terrain chunk id). Clearance tests the `ContactShell` capsule at the first feet point with `ComputePenetration`, then sweeps it with `SweepCapsule(..., QueryFilter.StaticsOnly)` along each consecutive segment of the path. Penetration deeper than 0.001 m, or a sweep hit before the segment's end, is `Blocked`. A point or segment outside the world's playable bounds is `Unknown`. Results carry `World.BuildHash` and `World.Terrain.Witness.ScopedDigest`. This departs from R2's planned D5 signature in three ways, recorded in the README: invalid input throws rather than returning an `Invalid` status, a stale lease throws through `AssertCurrent` rather than returning `Stale`, and there is no `Facts` input, because geometric relation facts stay with R2's `MapSpaceRelations` and these results add only physical certainty. Portals are openings with no faces, so `AuthoredOpen` needs no extra state. Envelopes are never installed, so they never block.
 
 - [ ] **Step 4: Run green** `wa_test t9-green-loco "$LOCO" "FullyQualifiedName~ContactShellTests"` and `wa_test t9-green "$MP" "FullyQualifiedName~MapPhysicalRelationsTests"` (expect 4)
 
@@ -974,8 +1025,8 @@ public class MapNavTilingTests
     [Fact]
     public void AffectedTileRebake_PreservesUnaffectedDigests()
     {
-        var before = MapNavTiling.Partition(NativeWorldFixtures.BuildTwoTileLegacy(), Grids, Options);
-        var movedWorld = NativeWorldFixtures.BuildTwoTileLegacyWithMovedCrate();
+        var before = MapNavTiling.Partition(NativeWorldFixtures.BuildLegacyStrip(), Grids, Options);
+        var movedWorld = NativeWorldFixtures.BuildLegacyStripWithMovedCrate();
         var after = MapNavTiling.Partition(movedWorld, Grids, Options);
         var affected = MapNavTiling.AffectedTiles(movedWorld, Grids, NativeWorldFixtures.MovedCrateEffects());
         Assert.NotEmpty(affected);
@@ -987,16 +1038,19 @@ public class MapNavTilingTests
     [Fact]
     public void LegacySculptEdit_ChangesOnlyItsTiles()
     {
-        var before = MapNavTiling.Partition(NativeWorldFixtures.BuildTwoTileLegacy(), Grids, Options);
-        var after = MapNavTiling.Partition(NativeWorldFixtures.BuildTwoTileLegacyWithSculptInTileZero(), Grids, Options);
+        var before = MapNavTiling.Partition(NativeWorldFixtures.BuildLegacyStrip(), Grids, Options);
+        var after = MapNavTiling.Partition(NativeWorldFixtures.BuildLegacyStripWithSculptInTileZero(), Grids, Options);
         Assert.NotEqual(before.Single(t => t.Coord == new MapNavTileCoord(0, 0)).CaptureIdentity, after.Single(t => t.Coord == new MapNavTileCoord(0, 0)).CaptureIdentity);
         Assert.Equal(before.Single(t => t.Coord == new MapNavTileCoord(2, 0)).CaptureIdentity, after.Single(t => t.Coord == new MapNavTileCoord(2, 0)).CaptureIdentity);
+        var affected = MapNavTiling.AffectedTiles(NativeWorldFixtures.BuildLegacyStripWithSculptInTileZero(), Grids, NativeWorldFixtures.SculptInTileZeroEffects());
+        Assert.Contains(new MapNavTileCoord(0, 0), affected);
+        Assert.DoesNotContain(new MapNavTileCoord(2, 0), affected);
     }
 
     [Fact]
     public void TiledNav_SeamsAndLinksAreDeterministic()
     {
-        var world = NativeWorldFixtures.BuildTwoTileLegacy();
+        var world = NativeWorldFixtures.BuildLegacyStrip();
         var tiles = MapNavTiling.Partition(world, Grids, Options);
         Assert.Equal(MapNavTiling.Seams(tiles, world, Options), MapNavTiling.Seams(MapNavTiling.Partition(world, Grids, Options), world, Options));
         Assert.True(NativeWorldFixtures.SeamColumnsAgree(world, tiles[0], tiles[1]));
@@ -1008,7 +1062,7 @@ public class MapNavTilingTests
     [Fact]
     public void Partition_CoversTheWorldExactlyOnce_AndIdentityFollowsProfileAndController()
     {
-        var world = NativeWorldFixtures.BuildTwoTileLegacy();
+        var world = NativeWorldFixtures.BuildLegacyStrip();
         var tiles = MapNavTiling.Partition(world, Grids, Options);
         Assert.Equal(tiles.Count, tiles.Select(t => t.Coord).Distinct().Count());
         Assert.True(NativeWorldFixtures.BoundsUnionEquals(tiles.Select(t => t.Bounds), world.Bounds, Grids));
@@ -1018,7 +1072,7 @@ public class MapNavTilingTests
 }
 ```
 
-`BuildTwoTileLegacy()` spans nav tiles (0, 0) to (2, 0) with a crate in tile (0, 0). `SeamColumnsAgree` captures each tile with `PhysicsNavBake.Capture` over its `CaptureBounds` through `CreateLegacyMoveContext`, and asserts identical heights and traversal for every column within the seam margin. `BuildStackedCaveAcrossTiles()` places the shaft's vertical link so its lower and upper apertures fall in different nav tiles.
+`BuildLegacyStrip()` is a resolver-1 world spanning nav tiles (0, 0) to (2, 0) with a crate in tile (0, 0). `SeamColumnsAgree` captures each tile with `PhysicsNavBake.Capture` over its `CaptureBounds` through `CreateLegacyMoveContext`, and asserts identical heights and traversal for every column within the seam margin. `BuildStackedCaveAcrossTiles()` places the shaft's vertical link so its lower and upper apertures fall in different nav tiles.
 
 - [ ] **Step 2: Run red** `wa_test t10-red "$MP" "FullyQualifiedName~MapNavTilingTests"`
 

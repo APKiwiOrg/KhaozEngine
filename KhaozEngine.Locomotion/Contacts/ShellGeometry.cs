@@ -10,7 +10,9 @@ namespace KhaozEngine.Locomotion.Contacts;
 internal static class ShellGeometry
 {
     /// <summary>Throws when the shell span cannot hold its radius or the shell cannot clear its steepest walkable
-    /// plane with the contact skin.</summary>
+    /// plane with the contact skin. A footed body keeps footing to <c>MaxSlopeRadians + TractionHysteresisRadians</c>,
+    /// so that is the steepest walkable plane. A band that is not positive widens nothing, as in the traction
+    /// gate.</summary>
     internal static void Validate(in MoveTuning tuning)
     {
         float span = Span(tuning);
@@ -19,11 +21,14 @@ internal static class ShellGeometry
             throw new ArgumentException(
                 $"The shell span 2 * CapsuleHalfHeight - StepHeight ({span}) must be at least 2 * CapsuleRadius ({diameter}).",
                 nameof(tuning));
-        if (!((tuning.StepHeight + tuning.CapsuleRadius) * MathF.Cos(tuning.MaxSlopeRadians) >=
+        float band = tuning.TractionHysteresisRadians;
+        float steepest = band > 0f ? tuning.MaxSlopeRadians + band : tuning.MaxSlopeRadians;
+        if (!((tuning.StepHeight + tuning.CapsuleRadius) * MathF.Cos(steepest) >=
             tuning.CapsuleRadius + ShellMotion.ContactSkin))
             throw new ArgumentException(
-                $"StepHeight ({tuning.StepHeight}), CapsuleRadius ({tuning.CapsuleRadius}) and MaxSlopeRadians " +
-                $"({tuning.MaxSlopeRadians}) must satisfy (StepHeight + CapsuleRadius) * cos(MaxSlopeRadians) " +
+                $"StepHeight ({tuning.StepHeight}), CapsuleRadius ({tuning.CapsuleRadius}), MaxSlopeRadians " +
+                $"({tuning.MaxSlopeRadians}) and TractionHysteresisRadians ({band}) must satisfy " +
+                "(StepHeight + CapsuleRadius) * cos(MaxSlopeRadians + TractionHysteresisRadians) " +
                 ">= CapsuleRadius + ContactSkin.", nameof(tuning));
     }
 

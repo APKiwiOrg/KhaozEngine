@@ -12,7 +12,7 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
     internal static GroundPlacement Try(Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
         in SupportSample start, float startFeetY, Vector2 startAxis, Vector2 total, in GroundSeatResult seat,
-        float footRadius, in MoveTuning tuning, double budget)
+        float footRadius, in MoveTuning tuning, float cosMaxSlope, double budget)
     {
         float feetY = seat.Outcome switch
         {
@@ -31,7 +31,7 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         // A clearance push proposes a different axis and height. It must earn its own footing, without hovering
         // above it. Feet below a tread remain permitted for paced climbs.
         SupportSample support = FootSupport.Find(groundHeight, groundNormal, world, lease,
-            GroundSeat.Query(new Vector2(placed.X, placed.Z), start, startFeetY, footRadius, tuning));
+            GroundSeat.Query(new Vector2(placed.X, placed.Z), start, startFeetY, footRadius, tuning, cosMaxSlope));
         if (support.Status != SupportStatus.Walkable || (double)placed.Y > (double)support.Height + support.HeightError)
             return default;
         double raised = Math.Max(0, (double)placed.Y - target.Y);

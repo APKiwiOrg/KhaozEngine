@@ -32,14 +32,20 @@ internal static class GroundCore
     /// <summary>Moves a grounded body whose feet are at <paramref name="feet"/>, in the world's local frame, by
     /// the horizontal <paramref name="displacement"/>. Free motion on walkable support is exact. A start that is
     /// not walkable ends the tick at the start with its own footing. A non-null <paramref name="world"/> follows
-    /// the <see cref="FootSupport.Find"/> contract.</summary>
+    /// the <see cref="FootSupport.Find"/> contract. <paramref name="tractionSlopeRadians"/> is the tick's traction
+    /// gate, and every slope decision in the tick uses it. Null means
+    /// <see cref="MoveTuning.MaxSlopeRadians"/>.</summary>
     internal static GroundStepResult Step(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
         in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
-        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease)
+        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+        float? tractionSlopeRadians = null)
     {
         int substeps = Validate(feet, displacement, dt, tuning, settings);
+        float gate = tractionSlopeRadians ?? tuning.MaxSlopeRadians;
+        if (!float.IsFinite(gate))
+            throw new ArgumentOutOfRangeException(nameof(tractionSlopeRadians), "The traction gate must be finite.");
         float footRadius = settings.FootRadiusFraction * tuning.CapsuleRadius;
-        float cosMaxSlope = MathF.Cos(tuning.MaxSlopeRadians);
+        float cosMaxSlope = MathF.Cos(gate);
 
         Vector3 start = ShellMotion.Recover(world, feet, tuning, out bool cleared);
         if (!cleared) start = feet;
@@ -280,10 +286,10 @@ internal static class GroundCore
                 ? prefix
                 : _achieved + sweep.Achieved;
             GroundSeatResult seat = GroundSeat.Resolve(_groundHeight, _groundNormal, _world, _lease, Support, Axis,
-                FeetY, _startAxis + total, Direction(move), _footRadius, _tuning);
+                FeetY, _startAxis + total, Direction(move), _footRadius, _tuning, _cosMaxSlope);
             GroundPlacement placement = seat.Outcome is SeatOutcome.Wall or SeatOutcome.Refused ? default :
                 GroundPlacement.Try(_groundHeight, _groundNormal, _world, _lease, Support, FeetY,
-                    _startAxis, total, seat, _footRadius, _tuning, budget);
+                    _startAxis, total, seat, _footRadius, _tuning, _cosMaxSlope, budget);
             Vector2 achieved = placement.Valid && placement.Pushed
                 ? placement.Total - _achieved
                 : sweep.Achieved;

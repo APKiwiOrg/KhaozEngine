@@ -29,6 +29,6 @@ public static partial class CharacterMovement
     /// <returns><c>-fallSpeed</c> on a landing tick with a downward velocity, 0 otherwise. Never negative, never
     /// non-finite (a pathological tuning that produced an infinite fall reports 0 rather than propagating the infinity
     /// into a consumer's damage curve, matching the step's own defence-in-depth on its other outputs).</returns>
-    private static float LandingImpact(bool wasGrounded, bool groundedNow, float fallSpeed) =>
+    internal static float LandingImpact(bool wasGrounded, bool groundedNow, float fallSpeed) =>
         !wasGrounded && groundedNow && fallSpeed < 0f && float.IsFinite(fallSpeed) ? -fallSpeed : 0f;
 }

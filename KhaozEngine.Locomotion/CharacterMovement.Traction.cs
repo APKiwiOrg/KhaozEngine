@@ -143,7 +143,7 @@ public static partial class CharacterMovement
     /// <param name="ny">The Y of the unit surface plane, already clamped into <c>[0, 1]</c>.</param>
     /// <param name="gate">This tick's traction gate, from <see cref="TractionGate"/>.</param>
     /// <param name="tuning">Carries <see cref="MoveTuning.SlideFrictionRampRadians"/>.</param>
-    private static float SlideFrictionScale(float ny, float gate, in MoveTuning tuning)
+    internal static float SlideFrictionScale(float ny, float gate, in MoveTuning tuning)
     {
         float ramp = tuning.SlideFrictionRampRadians;
         if (!(ramp > 0f)) return 1f;   // negated > so a NaN ramp reads as "no friction" rather than poisoning the scale
@@ -182,7 +182,7 @@ public static partial class CharacterMovement
     /// <param name="accel">Gravity's full-strength fall-line acceleration, <c>Gravity * h</c>.</param>
     /// <param name="scale">The friction scale from <see cref="SlideFrictionScale"/>.</param>
     /// <param name="dt">Timestep in seconds.</param>
-    private static float SlideFallLineStep(float fall, float accel, float scale, float dt)
+    internal static float SlideFallLineStep(float fall, float accel, float scale, float dt)
     {
         // accel <= 0 covers a degenerate or inverted gravity, where there is no downhill half to scale and the plain
         // integrate is what every release before friction did.

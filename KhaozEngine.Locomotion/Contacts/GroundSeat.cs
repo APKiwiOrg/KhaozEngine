@@ -23,12 +23,13 @@ internal static class GroundSeat
     /// above the start feet is a wall. Otherwise walkable support seats, steep support above the start feet is a
     /// wall, steep support at or below seats with steep footing, no support leaves the body airborne at the start
     /// height and a refusal refuses. <paramref name="start"/> is the support at <paramref name="startAxis"/>.
-    /// <paramref name="moveDirection"/> must be finite and non-zero. A non-null <paramref name="world"/> follows
-    /// the <see cref="FootSupport.Find"/> contract.</summary>
+    /// <paramref name="moveDirection"/> must be finite and non-zero. <paramref name="cosMaxSlope"/> is the cosine of
+    /// the tick's traction gate. A non-null <paramref name="world"/> follows the <see cref="FootSupport.Find"/>
+    /// contract.</summary>
     internal static GroundSeatResult Resolve(Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
         in SupportSample start, Vector2 startAxis, float startFeetY, Vector2 axis, Vector2 moveDirection,
-        float footRadius, in MoveTuning tuning)
+        float footRadius, in MoveTuning tuning, float cosMaxSlope)
     {
         if (!float.IsFinite(moveDirection.X) || !float.IsFinite(moveDirection.Y) || moveDirection == Vector2.Zero)
             throw new ArgumentOutOfRangeException(nameof(moveDirection),
@@ -40,7 +41,7 @@ internal static class GroundSeat
             return Wall(startFeetY, NoSupport, normal, moveDirection);
         }
 
-        FootSupportQuery query = Query(axis, start, startFeetY, footRadius, tuning);
+        FootSupportQuery query = Query(axis, start, startFeetY, footRadius, tuning, cosMaxSlope);
         SupportSample support = FootSupport.Find(groundHeight, groundNormal, world, lease, query);
         switch (support.Status)
         {
@@ -62,11 +63,11 @@ internal static class GroundSeat
 
     // Drops are measured between supports. The upper limit stays at the legs band above the paced feet.
     internal static FootSupportQuery Query(Vector2 axis, in SupportSample start, float startFeetY,
-        float footRadius, in MoveTuning tuning)
+        float footRadius, in MoveTuning tuning, float cosMaxSlope)
     {
         float referenceY = start.Status == SupportStatus.Walkable ? start.Height : startFeetY;
         float reachDown = (float)((double)startFeetY - referenceY + tuning.StepHeight);
-        return new(axis, startFeetY, footRadius, tuning.StepHeight, reachDown, MathF.Cos(tuning.MaxSlopeRadians));
+        return new(axis, startFeetY, footRadius, tuning.StepHeight, reachDown, cosMaxSlope);
     }
 
     // The seated height less the start support's plane extrapolated to the new axis. Without a start plane the

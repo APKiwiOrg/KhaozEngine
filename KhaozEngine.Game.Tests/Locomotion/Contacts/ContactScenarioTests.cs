@@ -128,6 +128,55 @@ public class ContactScenarioTests
         Assert.True(secondMax <= firstMax + 0.02, $"the cycle ratcheted: first {firstMax}, second {secondMax}");
     }
 
+    // ---- #438 phase 3: a held run-jump into a prop face below 60 degrees ----
+
+    public static IEnumerable<object[]> PropFaceRows() =>
+        from ground in new[] { "box", "mesh" }
+        from hz in new[] { 30, 60 }
+        select new object[] { ground, hz };
+
+    // A 50 degree prop face rises to +X from its toe at x 0 out of a floor at 0. The body starts where its shell's
+    // lowest hemisphere clears the face plane by the skin, as in the sheer face rows, and holds run and jump into the
+    // face. A jump rises, so it flies along the face with its legs in it, and at the apex the face is above the feet,
+    // so no descending substep finds steep support within its span to start a slide. The body falls along the face
+    // and lands at the toe. A free jump from the floor peaks at JumpSpeed^2 / 2g, and nothing lifts the body past it.
+    // Every footed tick stands on the floor, behind the shell's clearance from the face and within a capsule diameter
+    // of the toe, with its feet within StepHeight of the floor, and no tick dips further below it. Over 1800 ticks,
+    // after the first tenth, the second half never peaks 20 mm above the first: the cycle gains no altitude.
+    [Theory]
+    [MemberData(nameof(PropFaceRows))]
+    public void HeldRunJumpIntoAFiftyDegreePropFaceFallsAlongIt(string ground, int hz)
+    {
+        const float Degrees = 50;
+        float angle = Degrees * MathF.PI / 180;
+        using Ground g = Make(ground, v => RisingFace(v, Degrees, 0, 6), Abyss, (_, _) => Vector3.UnitY);
+        float dt = 1f / hz;
+        float start = ((Tuning.StepHeight + Tuning.CapsuleRadius) * MathF.Cos(angle) - Tuning.CapsuleRadius -
+            ShellMotion.ContactSkin) / MathF.Sin(angle) - HalfSkin;
+        double apex = (double)Tuning.JumpSpeed * Tuning.JumpSpeed / (2 * Tuning.Gravity);
+
+        const int Ticks = 1800, Settled = Ticks / 10, Half = Settled + (Ticks - Settled) / 2;
+        MoveState s = Standing(new Vector3(start, 0, 0));
+        int jumps = 0;
+        double firstMax = double.NegativeInfinity, secondMax = double.NegativeInfinity;
+        for (int tick = 0; tick < Ticks; tick++)
+        {
+            s = g.Step(s, Vector2.UnitX, true, true, dt, Tuning);
+            Vector3 feet = Feet(s);
+            if (s.VerticalVelocity == Tuning.JumpSpeed) jumps++;
+            Assert.True(!Footed(s) || (feet.X <= start + HalfSkin && feet.X >= -2 * Tuning.CapsuleRadius &&
+                feet.Y <= HalfSkin), $"tick {tick} has footing away from the toe: {Show(s)}");
+            Assert.True(feet.Y >= -Tuning.StepHeight, $"tick {tick} dipped past StepHeight: {Show(s)}");
+            Assert.True(feet.Y <= apex, $"tick {tick} rose past a free jump's apex {apex}: {Show(s)}");
+            if (tick < Settled) continue;
+            if (tick < Half) firstMax = Math.Max(firstMax, feet.Y);
+            else secondMax = Math.Max(secondMax, feet.Y);
+        }
+        double hops = Ticks * dt * Tuning.Gravity / (2 * Tuning.JumpSpeed);
+        Assert.True(jumps >= hops / 2, $"only {jumps} jumps against {hops:F1} free hops");
+        Assert.True(secondMax <= firstMax + 0.02, $"the cycle ratcheted: first {firstMax}, second {secondMax}");
+    }
+
     // ---- #470: a lip onto a steep face ----
 
     // The top is level for x at most 0. A 0.15 lip drops onto a face falling to +X at 2:1, 63.4 degrees, through 3 m to

@@ -100,6 +100,10 @@ capsule radius and reaches the head. It is the only volume that blocks walls and
 overlap recovery acts on. Geometry below the knee never pushes the body sideways, which removes the
 measured push at its source. Tuning validation requires the shell to stay a real capsule:
 `2 * CapsuleHalfHeight - StepHeight >= 2 * CapsuleRadius`.
+The shell must also clear its own steepest walkable plane, including the 1 mm contact skin:
+`(StepHeight + CapsuleRadius) * cos(MaxSlopeRadians) >= CapsuleRadius + ContactSkin`.
+Its lower cap centre is `StepHeight + CapsuleRadius` above the feet. The left side is that centre's
+perpendicular distance from the plane. Tuning that violates either constraint is rejected.
 
 **The footprint** is a vertical disc of radius `FootRadiusFraction * CapsuleRadius` at the capsule axis.
 `FootRadiusFraction` is a new `MoveTuning` field, default 0.5. Support comes only from the footprint, by
@@ -225,7 +229,9 @@ receives them. Candidates are proposed by bounded queries and bound to a face on
    The analytic surface is exact at the axis and needs no certificate. It is steep when the normal's Y is
    below `cos(MaxSlopeRadians)`.
 2. **Proposals.** Two downward probe capsules at the axis, each `CapsuleShape(radius, 0.01)` swept against
-   statics from its lowest point at `feetY + reachUp` over `reachUp + reachDown`. The axis probe has radius
+   statics from its lowest point at `feetY + reachUp + BandMargin` over
+   `reachUp + reachDown + 2 * BandMargin`. `BandMargin` is 1 mm and expands proposals only, so surfaces on
+   either inclusive band edge are reached inside the sweep. The axis probe has radius
    0.01, the feature backend's minimum query radius, and proposes the surface under the axis. The leg probe
    has the footprint radius and proposes the first surface the disc meets, which also catches a rail or edge
    the axis probe would miss. A proposal is a hint about which static and where, never a face. A probe that
@@ -241,12 +247,14 @@ receives them. Candidates are proposed by bounded queries and bound to a face on
    proposal at the probe's lowest point. A ray hit, sweep normal or nudged sample never stands in for a
    face. The 2026-10-07 measurements found corner rays missing the edge by 0.03 to 5.08 micrometres.
 
-Contributions whose interval midpoint lies outside `[feetY - reachDown, feetY + reachUp]` are discarded. The
-result is the walkable contribution with the highest midpoint, else the highest steep one, else `None`. Ties
-prefer the witness nearest the axis in XZ, then terrain, then the lower static handle. A refused proposal
-above the selected contribution's upper bound, or a refusal with nothing selected, returns `Refused`, so the
-body never stands under a surface it could not certify. `Height` is the selected midpoint and `HeightError`
-encloses both bounds from it.
+Contributions qualify when their certified interval overlaps the inclusive band
+`[feetY - reachDown, feetY + reachUp]`, even when the midpoint lies outside it. The result is the qualifying
+contribution with the highest midpoint, else `None`. Equal midpoints prefer walkable, then the witness
+nearest the axis in XZ, then terrain, then the lower static handle. A certified contribution wholly above
+the band is a refusal because it can hide lower support. A refusal below the band bottom lies only in the
+proposal margin and is ignored. A remaining refused proposal above the selected contribution's upper bound,
+or a refusal with nothing selected, returns `Refused`, so the body never stands under a surface it could
+not certify. `Height` is the selected midpoint and `HeightError` encloses both bounds from it.
 
 Known limits:
 
@@ -271,7 +279,8 @@ Known limits:
 
 `ShellGeometry.Shape` and `ShellGeometry.Centre(feet)` place a `CapsuleShape` of the capsule radius spanning
 from the knee at `feet + StepHeight` to the head, and `ShellGeometry.Validate` refuses a tuning whose span
-cannot hold one diameter. Sweeps and overlap use the existing `SweepCapsule` and `ComputePenetration`.
+cannot hold one diameter or cannot clear its own steepest walkable plane with the contact skin. Sweeps and
+overlap use the existing `SweepCapsule` and `ComputePenetration`. Shell sweeps use `QueryFilter.StaticsOnly`.
 Phase 1 adds the helper and its validation only. The passes that use it are phase 2.
 
 ### Classifier

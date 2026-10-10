@@ -72,10 +72,13 @@ internal static class GroundCore
    hit, advance to the contact less the skin. A wall, ceiling or rising-support contact removes the move's
    component along the contact's horizontal normal and the rest continues, up to four slides per substep. Free
    motion is never shortened: on open ground `Achieved` equals `displacement` exactly.
-6. **Down pass.** `FootSupport` at the new axis, same band around the start feet. The new axis is the axis the
-   tick reports. While the motion follows its plan that is the start axis plus the planned part of the
-   displacement, so the reported feet are certified at their own axis and not at a summed axis a rounding step
-   away.
+6. **Down pass.** `FootSupport` at the new axis, with an asymmetric band. Its lower bound is the substep's
+   walkable start support height less `StepHeight`, so drops are measured between supports. Its upper bound
+   is the start feet plus `StepHeight`, the legs band, because higher geometry meets the shell. Feet height
+   carries unpaid climb. Without walkable start support, both bounds are measured from the start feet. The new
+   axis is the axis the tick reports. While the motion follows its plan that is the start axis plus the planned
+   part of the displacement, so the reported feet are certified at their own axis and not at a summed axis a
+   rounding step away.
    - **Walkable:** seat on it. The step part of the rise is the rise the start support's own plane does not
      explain: the seated height less that plane extrapolated to the new axis. When `MaxStepClimbSpeed` is
      positive, the tick's owed climb and step part together are capped at `MaxStepClimbSpeed * dt`, so a run up
@@ -89,14 +92,24 @@ internal static class GroundCore
      falls, so the 0.41 m ledge falls for every capsule radius.
    - **Refused:** the move is blocked. The body stays at the last certified position of this tick.
    - **Analytic cliff:** terrain at the new axis more than `StepHeight` above the start feet acts as a wall,
-     with the terrain normal when the delegate gives one, else the reverse of the move.
-7. **Unlifted retry.** If a lifted substep ends on a refusal, repeat that substep once without the lift. A
-   lifted shell can pass over an obstacle taller than `StepHeight` that the probe then refuses, and the
-   unlifted shell meets it as a wall. If the retry also refuses, the substep is blocked.
-8. **Seat clearance.** The shell at the seated feet must not overlap. If it does, recover once along the MTV.
-   If it still overlaps, the move is blocked at the last clear position. A push that raises the body is a climb
-   and is paid from the same budget. When the budget cannot pay it, the move is blocked at the last clear
-   position, so a paced shell that meets the next nosing waits below it.
+     with the terrain normal when the delegate gives one, else the reverse of the move. This rise test stays
+     anchored at the feet, like the band's upper bound, not at the start support.
+7. **Attempt selection.** A lifted attempt is valid only when its seated placement is certified and its sweep
+   was not shortened by an obstruction the standing shell does not meet. A shortened lifted sweep or an
+   invalid placement retries the substep once without lift. This includes a refused down pass, where the
+   unlifted shell can meet the refused obstacle as a wall, and an ahead-only ceiling the standing shell fits
+   under. Choose the valid attempt with greater progress along the move. The lifted attempt wins ties. If
+   neither is valid, block at the last clear position. A standing retry shortened by a wall is an ordinary
+   partial placement with the usual slide. It does not turn that wall into a wall at the substep start.
+   Clear substeps take no retry queries.
+8. **Seat clearance.** The shell at the seated feet must not overlap. An overlap gets one MTV proposal and a
+   clearance check. A push is a new placement proposal, so query `FootSupport` again at the axis the body will
+   report, using the same asymmetric band. Accept only walkable support, feet no higher than its height plus
+   `HeightError`, and any upward push paid from that attempt's remaining climb budget. Feet below the tread
+   remain allowed for pacing.
+   Commit position, support and budget only after selecting a valid attempt. An unaffordable clearance push
+   invalidates only that attempt. A paced shell can still advance along a valid standing route to the next
+   nosing contact less skin, pay the remaining climb in later ticks and reach the next tread.
 
 The contact skin is 1 mm. It backs off a sweep only when the sweep hits something, so it never shortens free
 motion. That is the difference from the legacy pre-sweep clearance push measured in #1270.
@@ -140,6 +153,10 @@ only.
   `GroundFooting` and `GroundStepResult` types.
 - `KhaozEngine.Locomotion/Contacts/ShellMotion.cs`: recovery, the up pass and the side pass with slides.
 - `KhaozEngine.Locomotion/Contacts/GroundSeat.cs`: the down pass, pacing, steep, none, refusal and cliff rules.
+- `KhaozEngine.Locomotion/Contacts/GroundPlacement.cs`: seat clearance as a placement proposal, certified at its
+  reported axis against a copy of the climb budget.
+- `KhaozEngine.Locomotion/Contacts/ShellObstructions.cs`: the statics and contact classes one shell sweep met,
+  which decide whether the lift alone shortened a move.
 - Tests under `KhaozEngine.Game.Tests/Locomotion/Contacts/`, reusing `FootSupportScenes.cs`.
 
 ## Boundaries
@@ -153,5 +170,6 @@ stays the default and stays byte-unchanged. Phase 2 rides the next engine versio
   must still clear the next riser. The stair rows at 6 m/s pin it.
 - **Held bodies.** Until phase 2b, a body placed on a curved prop cannot move. The refusal rows pin the
   behaviour so phase 2b replaces it deliberately.
-- **Query cost.** Each tick runs up to two `FootSupport` queries plus shell sweeps. The cost rows measure it
-  before phase 3 builds on it.
+- **Query cost.** Each tick queries start support, then support per attempt and again for each clearance
+  push. Contact substeps may retry the standing route. The cost rows record the bounded query counts before
+  phase 3 builds on them.

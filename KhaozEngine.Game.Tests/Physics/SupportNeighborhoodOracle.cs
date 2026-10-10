@@ -7,7 +7,10 @@ using KhaozEngine.Physics.Bepu;
 using Xunit;
 using BepuCompound = BepuPhysics.Collidables.Compound;
 using BepuHull = BepuPhysics.Collidables.ConvexHull;
+using BepuMesh = BepuPhysics.Collidables.Mesh;
 using BepuSim = BepuPhysics.Simulation;
+using BepuStaticHandle = BepuPhysics.StaticHandle;
+using BepuTypedIndex = BepuPhysics.Collidables.TypedIndex;
 
 namespace KhaozEngine.Tests.Physics;
 
@@ -101,6 +104,33 @@ internal static class SupportNeighborhoodOracle
                 vertices[i] = OracleVector.Rotate(body.Pose.Orientation, local) + OracleVector.From(body.Pose.Position);
             }
             faces.Add(new OracleFace(owner, face, vertices));
+        }
+        return faces;
+    }
+
+    /// <summary>The triangles of mesh static <paramref name="owner"/>, read from the installed shape and pose. Element
+    /// id is the triangle index. Vertices run A, C, B so the normal is the backend's front, Cross(C - A, B - A).</summary>
+    internal static List<OracleFace> InstalledMesh(BepuPhysicsWorld world, StaticHandle owner)
+    {
+        FieldInfo? simulationField = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
+        FieldInfo? handlesField = typeof(BepuPhysicsWorld).GetField("_handles", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(simulationField);
+        Assert.NotNull(handlesField);
+        BepuSim simulation = Assert.IsType<BepuSim>(simulationField.GetValue(world));
+        var handles = Assert.IsType<Dictionary<int, (BepuStaticHandle Handle, BepuTypedIndex Shape)>>(
+            handlesField.GetValue(world));
+        simulation.Statics.GetDescription(handles[owner.Value].Handle, out var description);
+        Assert.Equal(default(BepuMesh).TypeId, description.Shape.Type);
+        ref BepuMesh mesh = ref simulation.Shapes.GetShape<BepuMesh>(description.Shape.Index);
+        Assert.Equal(Vector3.One, mesh.Scale);
+        OracleVector World(Vector3 local) =>
+            OracleVector.Rotate(description.Pose.Orientation, OracleVector.From(local)) +
+            OracleVector.From(description.Pose.Position);
+        var faces = new List<OracleFace>();
+        for (int i = 0; i < mesh.Triangles.Length; i++)
+        {
+            ref var triangle = ref mesh.Triangles[i];
+            faces.Add(new OracleFace(owner, i, [World(triangle.A), World(triangle.C), World(triangle.B)]));
         }
         return faces;
     }

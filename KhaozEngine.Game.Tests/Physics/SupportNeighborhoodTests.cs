@@ -447,15 +447,16 @@ public class SupportNeighborhoodTests
     }
 
     /// <summary>The upright probe pose whose lowest axis point is (x, y, z), rounded to float.</summary>
-    static Pose Lowest(double x, double y, double z) => Pose.At(new Vector3((float)x, (float)(y + Half), (float)z));
+    internal static Pose Lowest(double x, double y, double z) =>
+        Pose.At(new Vector3((float)x, (float)(y + Half), (float)z));
 
-    static (OracleVector Lower, OracleVector Upper) Segment(Pose pose)
+    internal static (OracleVector Lower, OracleVector Upper) Segment(Pose pose)
     {
         OracleVector center = OracleVector.From(pose.Position);
         return (center - new OracleVector(0, Half, 0), center + new OracleVector(0, Half, 0));
     }
 
-    static OracleVector SurfacePoint(Random random, OracleFace face)
+    internal static OracleVector SurfacePoint(Random random, OracleFace face)
     {
         OracleVector[] v = face.Vertices;
         switch (random.Next(3))
@@ -478,8 +479,8 @@ public class SupportNeighborhoodTests
         }
     }
 
-    static float Signed(Random random) => (float)(random.NextDouble() * 2 - 1);
-    static float Between(Random random, double low, double high) => (float)(low + random.NextDouble() * (high - low));
+    internal static float Signed(Random random) => (float)(random.NextDouble() * 2 - 1);
+    internal static float Between(Random random, double low, double high) => (float)(low + random.NextDouble() * (high - low));
 
     static void AssertRefused(SupportNeighborhoodResult result, CapsuleFeatureStatus status, int elements = 0)
     {
@@ -509,20 +510,20 @@ public class SupportNeighborhoodTests
     }
 
     /// <summary>One join decoded from the matrix, <c>First</c> less than <c>Second</c>.</summary>
-    readonly record struct Join(int First, int Second);
+    internal readonly record struct Join(int First, int Second);
 
-    readonly record struct Query(SupportNeighborhoodResult Result, SupportElement[] Elements, Join[] Joins)
+    internal readonly record struct Query(SupportNeighborhoodResult Result, SupportElement[] Elements, Join[] Joins)
     {
         const int Capacity = SupportNeighborhoodResult.MaximumElements;
 
         internal static Query Run(IPhysicsWorld world, IPhysicsQueryLease lease, Pose pose,
-            QueryFilter filter = default)
+            QueryFilter filter = default, CapsuleShape? probe = null)
         {
             var elements = new SupportElement[Capacity];
             ulong[] joins = JoinSentinels(Capacity * SupportNeighborhoodResult.JoinWordsFor(Capacity));
             ulong[] original = (ulong[])joins.Clone();
             IPhysicsCapsuleFeatures capability = Assert.IsAssignableFrom<IPhysicsCapsuleFeatures>(world);
-            SupportNeighborhoodResult result = capability.QuerySupportNeighborhood(lease, Probe, pose, Band, elements,
+            SupportNeighborhoodResult result = capability.QuerySupportNeighborhood(lease, probe ?? Probe, pose, Band, elements,
                 joins, filter);
             if (result.Status != CapsuleFeatureStatus.Complete) return new(result, [], []);
             capability.AssertNeighborhoodCurrent(result, lease);
@@ -548,7 +549,7 @@ public class SupportNeighborhoodTests
             (joins[row * stride + column / 64] >> (column % 64) & 1) != 0;
     }
 
-    sealed class Scene : IDisposable
+    internal sealed class Scene : IDisposable
     {
         readonly List<IPhysicsWorldQueryView> _views = [];
         IPhysicsQueryLease? _lease;
@@ -564,8 +565,8 @@ public class SupportNeighborhoodTests
             return view;
         }
 
-        internal Query Query(IPhysicsWorld world, Pose pose, QueryFilter filter = default) =>
-            SupportNeighborhoodTests.Query.Run(world, Lease, pose, filter);
+        internal Query Query(IPhysicsWorld world, Pose pose, QueryFilter filter = default,
+            CapsuleShape? probe = null) => SupportNeighborhoodTests.Query.Run(world, Lease, pose, filter, probe);
 
         public void Dispose()
         {

@@ -25,7 +25,9 @@ internal sealed class SupportNeighborhoodCollector
 
     readonly SupportSegmentPolygon _kernel = new();
     readonly List<SupportMember> _members = [];
-    readonly FeaturePoint _start, _direction;
+    readonly List<CapsuleFeaturePolyhedron> _leaves = [];
+    readonly List<SupportPolygon> _polygons = [];
+    readonly FeaturePoint _start, _end, _direction;
     readonly FeatureNumber _radius;
     readonly double _band;
     readonly double[] _low = new double[3], _high = new double[3];
@@ -36,6 +38,7 @@ internal sealed class SupportNeighborhoodCollector
         FeatureNumber half = FeatureNumber.Exact(probe.Length).Multiply(FeatureNumber.Exact(0.5));
         _start = new FeaturePoint(center.X, center.Y.Subtract(half), center.Z);
         FeaturePoint end = new(center.X, center.Y.Add(half), center.Z);
+        _end = end;
         _direction = FeaturePoint.Subtract(end, _start);
         _radius = FeatureNumber.Exact(probe.Radius);
         _band = bandMetres;
@@ -83,6 +86,32 @@ internal sealed class SupportNeighborhoodCollector
 
     static float Up(float centre, GeometryInterval extent) =>
         MathF.BitIncrement((float)GeometryInterval.Exact(centre).Add(GeometryInterval.Exact(extent.Upper)).Upper);
+
+    /// <summary>Considers every element of one selected static: the faces of its box and hull leaves, or the
+    /// triangles of its mesh. A capture refusal is the neighborhood's status, and failed bounded arithmetic in the
+    /// kernel is Unsupported.</summary>
+    internal CapsuleFeatureStatus Collect(Simulation simulation, SeamStaticHandle seam, in StaticDescription description)
+    {
+        _polygons.Clear();
+        CapsuleFeatureStatus captured;
+        if (SupportNeighborhoodMesh.IsMesh(description.Shape))
+        {
+            captured = SupportNeighborhoodMesh.Capture(simulation, description.Shape, description.Pose,
+                out CapsuleFeatureMesh? mesh);
+            if (captured != CapsuleFeatureStatus.Complete) return captured;
+            SupportNeighborhoodMesh.Polygons(seam, mesh!, _start, _end, _radius.Add(FeatureNumber.Exact(_band)),
+                _polygons);
+        }
+        else
+        {
+            captured = SupportNeighborhoodPolyhedra.Capture(simulation, description.Shape, description.Pose, _leaves);
+            if (captured != CapsuleFeatureStatus.Complete) return captured;
+            foreach (CapsuleFeaturePolyhedron leaf in _leaves) SupportNeighborhoodPolyhedra.Polygons(seam, leaf, _polygons);
+        }
+        foreach (SupportPolygon polygon in _polygons)
+            if (Consider(polygon) == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
+        return CapsuleFeatureStatus.Complete;
+    }
 
     /// <summary>Adds the polygon when it is a member. Unresolved means the bounded arithmetic failed.</summary>
     internal GeometrySign Consider(SupportPolygon polygon)

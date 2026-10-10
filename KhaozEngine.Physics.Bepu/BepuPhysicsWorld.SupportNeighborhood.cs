@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Physics;
 
@@ -57,23 +56,12 @@ public sealed partial class BepuPhysicsWorld
 
         // Read the live registry and poses under the authenticated gate. Uncached managed scratch avoids shape
         // removal or reuse and cache lifetime hooks, as the feature query does.
-        var leaves = new List<CapsuleFeaturePolyhedron>();
-        var polygons = new List<SupportPolygon>();
         foreach (var (seam, installed) in SupportNeighborhoodCollector.Candidates(_sim, _reverseHandles, exclusions,
                      probe, pose, bandMetres))
         {
             _sim.Statics.GetDescription(installed, out var description);
-            CapsuleFeatureStatus captured = SupportNeighborhoodPolyhedra.Capture(_sim, description.Shape,
-                description.Pose, leaves);
-            if (captured != CapsuleFeatureStatus.Complete) return SupportNeighborhoodResult.Refused(captured);
-            foreach (CapsuleFeaturePolyhedron leaf in leaves)
-            {
-                polygons.Clear();
-                SupportNeighborhoodPolyhedra.Polygons(seam, leaf, polygons);
-                foreach (SupportPolygon polygon in polygons)
-                    if (collector.Consider(polygon) == GeometrySign.Unresolved)
-                        return SupportNeighborhoodResult.Refused(CapsuleFeatureStatus.Unsupported);
-            }
+            CapsuleFeatureStatus collected = collector.Collect(_sim, seam, description);
+            if (collected != CapsuleFeatureStatus.Complete) return SupportNeighborhoodResult.Refused(collected);
         }
         return collector.Publish(receiver, lease, elements, joins);
     }

@@ -3,8 +3,8 @@
 Date: 2026-10-10. Detailed spec for phase 2b of [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438). The
 program, body model, support rule and invariants are in
 [CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md](CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md). Phase 1 and
-[phase 2](CONTACT-CONTROLLER-PHASE-2-GROUND-CORE-2026-10-10.md) are on main at `b51f4fdf9`. Status: written for
-owner review.
+[phase 2](CONTACT-CONTROLLER-PHASE-2-GROUND-CORE-2026-10-10.md) are on main at `b51f4fdf9`. Status: approved by
+the owner 2026-10-10, plan in `docs/superpowers/plans/2026-10-10-contact-controller-phase2b.md`.
 
 ## Purpose
 

@@ -8,12 +8,12 @@ namespace KhaozEngine.Locomotion.Contacts;
 /// seats them on steep support, which never grounds the body.</summary>
 internal enum AirOutcome : byte { Airborne, Landed, Sliding }
 
-/// <summary>One air tick. <see cref="VerticalVelocity"/> is the speed after gravity and the tick's contacts, and zero
-/// after a landing. <see cref="Achieved"/> is the horizontal move that happened. <see cref="Remaining"/> is the
-/// horizontal displacement the tick planned after its landing substep, left for the ground core, and zero without a
-/// landing or a slide. <see cref="FallSpeedAtContact"/> is the vertical speed at the landing substep, positive
-/// downward, and zero without one. <see cref="Blocked"/> says a shell contact or a terrain wall removed part of the
-/// move.</summary>
+/// <summary>One air tick. <see cref="VerticalVelocity"/> is the speed after gravity and the tick's contacts, zero
+/// after a landing, and on a slide the speed at the hand-off, without the gravity of the time left.
+/// <see cref="Achieved"/> is the horizontal move that happened. <see cref="Remaining"/> is the horizontal displacement
+/// the tick planned after its landing substep, left for the ground core, and zero without a landing or a slide.
+/// <see cref="FallSpeedAtContact"/> is the vertical speed at the landing substep, positive downward, and zero without
+/// one. <see cref="Blocked"/> says a shell contact or a terrain wall removed part of the move.</summary>
 internal readonly record struct AirStepResult(Vector3 Feet, float VerticalVelocity, Vector2 Achieved,
     Vector2 Remaining, AirOutcome Outcome, SupportSample Support, float FallSpeedAtContact, bool Blocked)
 {
@@ -162,12 +162,14 @@ internal static class AirPass
                     ClimbBudget = placement.Budget,
                 };
             }
-            // Steep support never lifts the body: it starts a slide only within the span the feet travelled.
+            // Steep support never lifts the body: it starts a slide only within the span the feet travelled. The
+            // slide integrates its own gravity over the rest of the tick, so the hand-off gives back the gravity this
+            // tick integrated for that time. The substep was descending, so the hand-off never rises.
             if (support.Status == SupportStatus.Steep &&
                 (double)support.Height - support.HeightError <= high &&
                 (double)support.Height + support.HeightError >= low)
-                return new(at with { Y = support.Height }, current.Y, Achieved(feet, start, moved), remaining,
-                    AirOutcome.Sliding, support, 0f - current.Y, blocked)
+                return new(at with { Y = support.Height }, MathF.Min(0f, current.Y + gravity * remainingTime),
+                    Achieved(feet, start, moved), remaining, AirOutcome.Sliding, support, 0f - current.Y, blocked)
                 {
                     HorizontalVelocity = horizontal,
                     RemainingTime = remainingTime,

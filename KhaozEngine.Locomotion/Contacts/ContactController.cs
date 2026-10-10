@@ -179,8 +179,8 @@ internal static class ContactController
             SupportSample support = FootSupport.Find(c.GroundHeight, c.GroundNormal, c.World, c.Lease,
                 new FootSupportQuery(axis, y, c.Settings.FootRadiusFraction * t.CapsuleRadius, t.StepHeight,
                     tick.Supported ? t.StepHeight : 0f, MathF.Cos(c.Gate)));
-            if (support.Status is SupportStatus.Walkable or SupportStatus.Steep && (tick.Supported || support.Height > y))
-                y = support.Height;
+            bool seats = support.Status is SupportStatus.Walkable or SupportStatus.Steep;
+            if (seats && (tick.Supported || support.Height > y)) y = support.Height;
         }
         return tick with { Feet = new Vector3(axis.X, y, axis.Y), Last = last };
     }
@@ -253,14 +253,15 @@ internal static class ContactController
                 Vector2 drive = slide.HorizontalVelocity + slide.Steer;
                 last = new Segment(slide.HorizontalVelocity, drive, slide.Achieved, time);
                 first ??= drive;
-                // A wedge swallows the descent the body carried into it.
-                float entering = vertical;
                 (feet, budget, velocity, vertical) =
                     (slide.Feet, slide.ClimbBudget, slide.HorizontalVelocity, slide.VerticalVelocity);
                 grounded = slide.Outcome is SlideOutcome.Landed or SlideOutcome.Wedged;
                 supported = slide.Outcome != SlideOutcome.Airborne;
                 if (slide.Outcome == SlideOutcome.Landed) (vertical, fallSpeed) = (0f, -slide.ImpactSpeed);
-                if (slide.Outcome == SlideOutcome.Wedged) fallSpeed = entering;
+                // A wedge counts as grounded, so it latches the fall the slide integrated as its landing and holds no
+                // vertical speed, as legacy.
+                if (slide.Outcome == SlideOutcome.Wedged)
+                    (vertical, fallSpeed) = (0f, slide.IntegratedVerticalVelocity);
                 if (slide.Outcome != SlideOutcome.Airborne || !(slide.RemainingTime > 0)) break;
                 time = slide.RemainingTime;
                 mode = Mode.Air;

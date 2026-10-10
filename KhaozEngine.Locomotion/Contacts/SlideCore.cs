@@ -11,7 +11,8 @@ internal enum SlideOutcome : byte { Sliding, Wedged, Landed, Airborne }
 
 /// <summary>One slide tick. <see cref="HorizontalVelocity"/> is the slide's carry, without the steer.
 /// <see cref="VerticalVelocity"/> is the vertical part of the fall-line speed while sliding, wedged or airborne, and
-/// zero after a landing. <see cref="ImpactSpeed"/> is the downward vertical speed of a landing,
+/// zero after a landing. An airborne slide hands on the fall-line speed it had when it left, integrated over the time
+/// it spent. <see cref="ImpactSpeed"/> is the downward vertical speed of a landing,
 /// else zero.</summary>
 internal readonly record struct SlideStepResult(Vector3 Feet, Vector2 HorizontalVelocity, float VerticalVelocity,
     Vector2 Achieved, SlideOutcome Outcome, SupportSample Support, float ImpactSpeed)
@@ -25,6 +26,10 @@ internal readonly record struct SlideStepResult(Vector3 Feet, Vector2 Horizontal
 
     /// <summary>The steer's contour velocity the move applied: zero when a blocked steer was dropped.</summary>
     internal Vector2 Steer { get; init; }
+
+    /// <summary>The vertical part of the fall-line speed the tick integrated, before a block clipped it. A wedge
+    /// latches it as its fall, as legacy.</summary>
+    internal float IntegratedVerticalVelocity { get; init; }
 }
 
 /// <summary>Slides a body on certified steep support, analytic terrain and physics statics alike. The dynamics come
@@ -97,13 +102,16 @@ internal static class SlideCore
         float tx = ny * down.X, ty = -h, tz = ny * down.Y;
         float cx = -down.Y, cz = down.X;
 
-        float fall = carry.X * tx + verticalVelocity * ty + carry.Y * tz;
+        float entering = carry.X * tx + verticalVelocity * ty + carry.Y * tz;
         float contour = carry.X * cx + carry.Y * cz;
-        fall = CharacterMovement.SlideFallLineStep(fall, tuning.Gravity * h,
-            CharacterMovement.SlideFrictionScale(ny, tractionSlopeRadians, tuning), dt);
+        float accel = tuning.Gravity * h;
+        float friction = CharacterMovement.SlideFrictionScale(ny, tractionSlopeRadians, tuning);
         float gate = Math.Clamp(tractionSlopeRadians, MinTerminalGateRadians, MathF.PI / 2);
         float terminal = tuning.MaxFallSpeed / MathF.Max(h, MathF.Sin(gate));
-        fall = Math.Clamp(fall, -terminal, terminal);
+        // The fall-line speed after time, clamped to the terminal.
+        float Fall(float time) =>
+            Math.Clamp(CharacterMovement.SlideFallLineStep(entering, accel, friction, time), -terminal, terminal);
+        float fall = Fall(dt);
 
         Vector2 velocity = Horizontal(fall, contour, tx, tz, cx, cz);
         float vertical = fall * ty;
@@ -139,7 +147,11 @@ internal static class SlideCore
                     MathF.Max(0f, -vertical))
                 { ClimbBudget = step.ClimbBudget, Steer = applied };
             case GroundFooting.None:
-                return new(step.Feet, velocity, vertical, step.Achieved, SlideOutcome.Airborne, step.Support, 0f)
+                // The air pass integrates its own gravity over the time left, so the slide hands on the fall-line
+                // speed integrated over the time it spent.
+                float handed = Fall(dt - step.RemainingTime);
+                return new(step.Feet, Horizontal(handed, contour, tx, tz, cx, cz), handed * ty, step.Achieved,
+                    SlideOutcome.Airborne, step.Support, 0f)
                 {
                     RemainingTime = step.RemainingTime,
                     ClimbBudget = step.ClimbBudget,
@@ -147,6 +159,7 @@ internal static class SlideCore
                 };
         }
         float rise = step.Feet.Y - feet.Y;
+        float integrated = vertical;
         if (step.Blocked || clamped)
         {
             // The slide's state is its fall-line speed, and a block or the play-area bound keeps only the part of it
@@ -165,12 +178,13 @@ internal static class SlideCore
             {
                 ClimbBudget = step.ClimbBudget,
                 Steer = applied,
+                IntegratedVerticalVelocity = integrated,
             };
         bool wedged = rise >= 0 && Opposed(step.Feet, step.Support, tuning, settings, tractionSlopeRadians,
             groundHeight, groundNormal, world, lease);
         return new(step.Feet, velocity, vertical, step.Achieved, wedged ? SlideOutcome.Wedged : SlideOutcome.Sliding,
             step.Support, 0f)
-        { ClimbBudget = step.ClimbBudget, Steer = applied };
+        { ClimbBudget = step.ClimbBudget, Steer = applied, IntegratedVerticalVelocity = integrated };
     }
 
     // Cuts the planned move's end to the play-area clamp, as the controller cuts its first segment's. A clamp that

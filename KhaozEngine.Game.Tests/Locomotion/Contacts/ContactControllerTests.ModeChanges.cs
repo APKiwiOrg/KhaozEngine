@@ -1,5 +1,5 @@
 // Rows for a footing change inside a tick: the rest of the tick runs in the next mode, with the climb budget the
-// tick has left. Expectations come from the installed geometry, the closed forms and the cores themselves.
+// tick has left. Expectations come from the installed geometry and the closed forms, never from re-running the cores.
 using System;
 using System.Numerics;
 using KhaozEngine.Locomotion;
@@ -11,31 +11,6 @@ namespace KhaozEngine.Tests.Locomotion.Contacts;
 
 public partial class ContactControllerTests
 {
-    // The rest of a tick whose ground move changed footing: no support flies, steep support slides, and a slide that
-    // loses its support flies what is left. None of the parity rows lands again within the tick.
-    static (Vector3 Feet, float VerticalVelocity) Continued(Ground g, in GroundStepResult core, Vector2 velocity,
-        in MoveTuning tuning)
-    {
-        (Vector3 feet, Vector2 horizontal, float vertical, float time, double budget) =
-            (core.Feet, velocity, 0f, core.RemainingTime, core.ClimbBudget);
-        if (core.Footing == GroundFooting.Steep)
-        {
-            SlideStepResult slide = SlideCore.Step(feet, velocity, 0, velocity, time, tuning, Settings, Banded,
-                core.Support, g.Height, g.Normal, g.World, g.Lease, budget);
-            if (slide.Outcome != SlideOutcome.Airborne || !(slide.RemainingTime > 0))
-            {
-                Assert.True(slide.Outcome == SlideOutcome.Sliding, $"{slide}");
-                return (slide.Feet, slide.VerticalVelocity);
-            }
-            (feet, horizontal, vertical, time, budget) =
-                (slide.Feet, slide.HorizontalVelocity, slide.VerticalVelocity, slide.RemainingTime, slide.ClimbBudget);
-        }
-        AirStepResult air = AirPass.Step(feet, horizontal, vertical, time, tuning.Gravity, tuning, Settings, Banded,
-            g.Height, g.Normal, g.World, g.Lease, budget);
-        Assert.True(air.Outcome == AirOutcome.Airborne, $"{air}");
-        return (air.Feet, air.VerticalVelocity);
-    }
-
     // A body at the apex of its arc, feet 0.3 below the 0.6 ledge top and 0.3 short of its edge, runs at 12 m/s, so
     // its tick plans 0.4 in three substeps and lands on the ledge before the last one. The rise of 0.3 is more than
     // two budgets of MaxStepClimbSpeed dt = 0.117. The landing tick climbs at most one budget above its start feet,
@@ -118,13 +93,18 @@ public partial class ContactControllerTests
         }
     }
 
-    // A fall at 20 m/s onto a 50 degree plane rising to +X meets it within the tick, with time left. The rest of the
-    // tick is the slide core's from the landing, with the air pass's velocity and budget, so the body slides down the
-    // fall line, -X, past where it met the face.
+    // A fall at 20 m/s onto a 50 degree plane rising to +X through the origin, from feet 0.5 over it. Gravity first
+    // gives vy = -20 - g dt, a drop of 0.694 in four substeps of a quarter tick, and the third ends below the plane, so
+    // the body meets it at the origin with a quarter of the tick left. The rest of the tick slides, without footing,
+    // at the bare gate, whose friction ramp scales gravity along the plane by (50 - 45) / 8. The slide starts from the
+    // vertical speed at the hand-off, vy + g dt / 4, so the tick counts gravity once: the fall-line speed
+    // f = -(vy + g dt / 4) sin(50) + g sin(50) (5 / 8) dt / 4, the feet f cos(50) dt / 4 down the fall line to -X on
+    // the plane, and a vertical speed of -f sin(50).
     [Theory]
     [MemberData(nameof(Grounds))]
     public void LandingOntoSteepKeepsTheRestOfTheTick(string ground)
     {
+        double angle = Radians(50), h = Math.Sin(angle);
         float grade = MathF.Tan(Radians(50));
         Vector3 normal = Vector3.Normalize(new Vector3(-grade, 1, 0));
         using Ground g = Make(ground, v => Slope(v, 50), (x, _) => grade * x, (_, _) => normal);
@@ -132,21 +112,65 @@ public partial class ContactControllerTests
 
         MoveState result = g.Step(state, Vector2.Zero, 0, false, Tuning);
 
-        var start = new Vector3(state.Position.X, state.Position.Y - HalfHeight, state.Position.Z);
-        float gate = Tuning.MaxSlopeRadians;
-        AirStepResult air = AirPass.Step(start, Vector2.Zero, state.VerticalVelocity, Dt, Gravity, Tuning, Settings,
-            gate, g.Height, g.Normal, g.World, g.Lease);
-        Assert.True(air.Outcome == AirOutcome.Sliding && air.RemainingTime > 0, $"{air}");
-        SlideStepResult slide = SlideCore.Step(air.Feet, air.HorizontalVelocity, air.VerticalVelocity, Vector2.Zero,
-            air.RemainingTime, Tuning, Settings, gate, air.Support, g.Height, g.Normal, g.World, g.Lease,
-            air.ClimbBudget);
-        Assert.True(slide.Outcome == SlideOutcome.Sliding, $"{slide}");
+        double vy = -20 - Gravity * (double)Dt, rest = Dt / 4.0;
+        Assert.Equal(4, (int)Math.Ceiling(-vy * Dt / (0.5 * Tuning.CapsuleRadius)));
+        double fall = -(vy + Gravity * rest) * h + Gravity * h * 5 / 8 * rest;
+        double x = -fall * Math.Cos(angle) * rest;
+        Assert.False(result.Grounded, Show(result));
+        AssertNear(x, Feet(result).X, HalfSkin, Show(result));
+        AssertNear(grade * x, Feet(result).Y, HalfSkin, Show(result));
+        AssertNear(-fall * h, result.VerticalVelocity, 1e-3, Show(result));
+    }
 
-        var expected = new Vector3(slide.Feet.X, slide.Feet.Y + HalfHeight, slide.Feet.Z);
-        Assert.True(BitsEqual(expected, result.Position), $"slide {slide}, controller {Show(result)}");
-        Assert.False(result.Grounded);
-        Assert.True(Feet(result).X < air.Feet.X - HalfSkin, $"air {air}, controller {Show(result)}");
-        Assert.True(Feet(result).Y < air.Feet.Y - HalfSkin, $"air {air}, controller {Show(result)}");
+    // A 60 degree terrain face falls to +X from the origin to an edge at x 0.15 over a pit 100 m down. A body on the
+    // face at the origin slides at 20 m/s down the fall line. One tick of gravity along the plane, g sin(60) dt, takes
+    // it to f1 = 20.72, whose move of f1 cos(60) dt = 0.345 runs in three substeps, each dropping at most half
+    // StepHeight along the plane. The second leaves the edge for the pit, so the body flies the last third of the tick
+    // from that substep's start height. It hands on the fall-line speed at the hand-off, 20 + g sin(60) 2 dt / 3, so
+    // the tick counts gravity once, and the flight's gravity first gives the tick's closed-form end and vertical speed.
+    [Fact]
+    public void SlideOffAnEdgeHandsOnItsSpeed()
+    {
+        const float Edge = 0.15f;
+        double angle = Radians(60), h = Math.Sin(angle), c = Math.Cos(angle), a = Gravity * h;
+        float grade = MathF.Tan(Radians(60));
+        Vector3 normal = Vector3.Normalize(new Vector3(grade, 1, 0));
+        using var g = new Ground(null, (x, _) => x <= Edge ? -grade * x : -100, (_, _) => normal);
+        MoveState state = Falling(Vector3.Zero) with
+        {
+            HorizontalVelocity = new Vector2((float)(20 * c), 0),
+            VerticalVelocity = (float)(-20 * h),
+        };
+
+        MoveState result = g.Step(state, Vector2.Zero, 0, false, Tuning);
+
+        double travel = (20 + a * Dt) * c * Dt, substep = 0.5 * Tuning.StepHeight * c / h;
+        Assert.Equal(3, (int)Math.Ceiling(travel / substep));
+        Assert.True(travel / 3 <= Edge && 2 * travel / 3 > Edge, $"the edge is not in the second substep: {travel}");
+        double rest = Dt / 3.0, handed = 20 + a * (Dt - rest), vy = -handed * h - Gravity * rest;
+        Assert.False(result.Grounded, Show(result));
+        AssertNear(2 * travel / 3 + handed * c * rest, Feet(result).X, HalfSkin, Show(result));
+        AssertNear(-grade * travel / 3 + vy * rest, Feet(result).Y, HalfSkin, Show(result));
+        AssertNear(vy, result.VerticalVelocity, 1e-3, Show(result));
+    }
+
+    // A body at rest at the crease of a V-gully of 60 degree terrain faces slides onto the opposing face on its first
+    // tick, stalls and wedges. As legacy, the wedge latches the fall the slide integrated, g sin(60) dt along the fall
+    // line from rest with the ramp at full strength, so the tick reports the landing impact of its vertical part,
+    // g sin(60)^2 dt, and holds no vertical speed while it counts as grounded.
+    [Fact]
+    public void WedgeLatchesTheIntegratedFall()
+    {
+        float grade = MathF.Tan(Radians(60));
+        Vector3 left = Vector3.Normalize(new Vector3(grade, 1, 0)), right = Vector3.Normalize(new Vector3(-grade, 1, 0));
+        using var g = new Ground(null, (x, _) => MathF.Abs(x) * grade, (x, _) => x <= 0 ? left : right);
+
+        MoveState result = g.Step(Falling(Vector3.Zero), Vector2.Zero, 0, false, Tuning);
+
+        double h = Math.Sin(Radians(60));
+        Assert.True(result.Grounded && result.SupportGranted, Show(result));
+        AssertNear(Gravity * h * h * Dt, result.LandingImpactSpeed, 1e-3, Show(result));
+        Assert.Equal(0f, result.VerticalVelocity);
     }
 
     // The slide core's V-gully: 60 degree terrain faces, or 55 degree slabs. A body sliding in from x -0.6 stalls
@@ -160,7 +184,8 @@ public partial class ContactControllerTests
         const int Ticks = 60;
         float degrees = ground == "terrain" ? 60 : 55;
         float angle = Radians(degrees), grade = MathF.Tan(angle);
-        Vector3 left = Vector3.Normalize(new Vector3(grade, 1, 0)), right = Vector3.Normalize(new Vector3(-grade, 1, 0));
+        Vector3 left = Vector3.Normalize(new Vector3(grade, 1, 0));
+        Vector3 right = Vector3.Normalize(new Vector3(-grade, 1, 0));
         using Ground g = Make(ground, v => new FootSupportScene(v)
                 .Slab("left", new Vector3(-MathF.Cos(angle), MathF.Sin(angle), 0), -angle, 1, 2)
                 .Slab("right", new Vector3(MathF.Cos(angle), MathF.Sin(angle), 0), angle, 1, 2),
@@ -197,7 +222,8 @@ public partial class ContactControllerTests
         const int Settle = 60, Ticks = 600, Settled = Ticks / 10, Half = Settled + (Ticks - Settled) / 2;
         float degrees = ground == "terrain" ? 60 : 55;
         float angle = Radians(degrees), grade = MathF.Tan(angle);
-        Vector3 left = Vector3.Normalize(new Vector3(grade, 1, 0)), right = Vector3.Normalize(new Vector3(-grade, 1, 0));
+        Vector3 left = Vector3.Normalize(new Vector3(grade, 1, 0));
+        Vector3 right = Vector3.Normalize(new Vector3(-grade, 1, 0));
         using Ground g = Make(ground, v => new FootSupportScene(v)
                 .Slab("left", new Vector3(-MathF.Cos(angle), MathF.Sin(angle), 0), -angle, 1, 2)
                 .Slab("right", new Vector3(MathF.Cos(angle), MathF.Sin(angle), 0), angle, 1, 2),

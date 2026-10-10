@@ -1,12 +1,14 @@
 {
   "issue": "https://github.com/APKiwiOrg/KhaozEngine/issues/1334",
   "spec": "docs/design/CONTACT-CONTROLLER-PHASE-2B-SUPPORT-NEIGHBORHOOD-2026-10-10.md",
-  "candidate_base": "52cb8ff38",
-  "candidate": "The Task 6 commits carrying this file. The run used that working tree.",
+  "candidate_base": "6387df4fd",
+  "candidate": "The Task 6b commit carrying this revision. The before figures are the Task 6 record of this file.",
   "tests": [
     "KhaozEngine.Game.Tests/Locomotion/Contacts/GroundScenarioTests.cs SupportFindAllocation",
     "KhaozEngine.Game.Tests/Locomotion/Contacts/GroundScenarioTests.cs SupportFindTiming",
-    "KhaozEngine.Game.Tests/Locomotion/Contacts/GroundScenarioTests.cs QueryCostPerTick"
+    "KhaozEngine.Game.Tests/Locomotion/Contacts/GroundScenarioTests.cs QueryCostPerTick",
+    "KhaozEngine.Game.Tests/Locomotion/Contacts/SupportNeighborhoodEquivalenceTests.cs NeighborhoodsAndSupportMatchTheRecordedFixture",
+    "KhaozEngine.Game.Tests/Physics/ExactExpansionTests.cs"
   ],
   "command": "build-slot --label p2b --timeout 120m -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-build --filter \"FullyQualifiedName~KhaozEngine.Tests.Locomotion.Contacts\" --logger \"console;verbosity=detailed\"",
   "exit": 0,
@@ -16,13 +18,13 @@
     "os": "macOS 27.0.1",
     "dotnet_sdk": "10.0.401",
     "configuration": "Release",
-    "note": "One local run. xUnit ran the other Contacts test classes in parallel, so timings include that contention. Hosted x64 was not measured."
+    "note": "One local run of the Contacts filter, as in Task 6. xUnit ran the other Contacts test classes in parallel, so timings include that contention, and the machine also hosts the self-hosted runners. Hosted x64 was not measured."
   },
   "method": {
     "query": "One FootSupport.Find per scene against a real Bepu world under the scene's read lease. Default MoveTuning, foot radius 0.2, reach 0.4 up and down. Each Find runs two probes, the 0.01 axis probe and the 0.2 disc probe, each one sweep and one support neighborhood query.",
-    "allocation": "After one warm Find, GC.GetAllocatedBytesForCurrentThread around one more Find. Recorded, not asserted.",
-    "timing": "After one warm Find, Stopwatch over 200 Find calls in one test run, reported as the mean. Recorded, not asserted.",
-    "stack": "The stackalloc spans per Find, from the 256 element capacity: FootSupport elements, joins and contributions, and SupportCertification planes and kinds."
+    "allocation": "After one warm Find, GC.GetAllocatedBytesForCurrentThread around one more Find. Asserted zero on every scene but the fan, which is recorded. The fan also measures zero.",
+    "timing": "After one warm Find, Find is called for a quarter of a second (at most 2000 calls) so tiered compilation installs optimized code, then a Stopwatch times 200 calls, 10 on the fan. Recorded, not asserted. Task 6 timed 200 calls straight after one warm call, partly in unoptimized tier 0 code, so its figures overstate the steady state somewhat.",
+    "stack": "The stackalloc spans per Find: SupportCertification's planes and kinds, sized by the member count, one probe at a time. The neighborhood element, join and contribution spans are thread-static scratch in FootSupport. The backend's exact predicates take at most 1.6 KB of transient stack without a zero fill."
   },
   "scenes_described": {
     "flat_box": "Box floor at Y 0, axis (0.5, 0.25), feet 0.",
@@ -34,21 +36,25 @@
     "grid_20000": "One flat mesh of 100 by 100 quads of 0.1, 20,000 triangles, axis (0.123, -0.234), feet 0. Lookups go through the backend's tree."
   },
   "per_find": {
-    "flat_box": { "status": "Walkable", "allocated_bytes": 470752, "mean_microseconds": 479.858 },
-    "flat_mesh": { "status": "Walkable", "allocated_bytes": 246328, "mean_microseconds": 227.055 },
-    "stairs_box": { "status": "Walkable", "allocated_bytes": 485832, "mean_microseconds": 452.146 },
-    "stairs_mesh": { "status": "Walkable", "allocated_bytes": 275824, "mean_microseconds": 240.887 },
-    "fan_96": { "status": "Walkable", "allocated_bytes": 278734632, "mean_microseconds": 267076.816 },
-    "sphere": { "status": "Walkable", "allocated_bytes": 85592, "mean_microseconds": 113.827 },
-    "grid_20000": { "status": "Walkable", "allocated_bytes": 411096, "mean_microseconds": 598.221 }
+    "flat_box": { "status": "Walkable", "before_bytes": 470752, "after_bytes": 0, "before_mean_microseconds": 479.858, "after_mean_microseconds": 165.158 },
+    "flat_mesh": { "status": "Walkable", "before_bytes": 246328, "after_bytes": 0, "before_mean_microseconds": 227.055, "after_mean_microseconds": 93.326 },
+    "stairs_box": { "status": "Walkable", "before_bytes": 485832, "after_bytes": 0, "before_mean_microseconds": 452.146, "after_mean_microseconds": 129.167 },
+    "stairs_mesh": { "status": "Walkable", "before_bytes": 275824, "after_bytes": 0, "before_mean_microseconds": 240.887, "after_mean_microseconds": 105.485 },
+    "fan_96": { "status": "Walkable", "before_bytes": 278734632, "after_bytes": 0, "before_mean_microseconds": 267076.816, "after_mean_microseconds": 102297.75 },
+    "sphere": { "status": "Walkable", "before_bytes": 85592, "after_bytes": 0, "before_mean_microseconds": 113.827, "after_mean_microseconds": 55.436 },
+    "grid_20000": { "status": "Walkable", "before_bytes": 411096, "after_bytes": 0, "before_mean_microseconds": 598.221, "after_mean_microseconds": 542.279 }
+  },
+  "targets": {
+    "ordinary_scene_microseconds": 50,
+    "fan_microseconds": 5000,
+    "met": false,
+    "note": "Recorded, not asserted. No scene meets its time target. The fan's 9,120 join tests per Find (4,560 pairs on each probe) cost about 10 microseconds each in the unchanged join test."
   },
   "stack_bytes_per_find": {
-    "total": 43264,
-    "elements": 16384,
-    "joins": 8192,
-    "contributions": 14336,
-    "planes": 4096,
-    "kinds": 256
+    "before_total": 43264,
+    "after_peak_at_member_cap": 4352,
+    "after_planes_at_member_cap": 4096,
+    "after_kinds_at_member_cap": 256
   },
   "query_counts_per_tick": {
     "rule": "QueryCostPerTick, unchanged from docs/verification/2026-10-10-p2-query-cost.json. A neighborhood query counts where a feature query counted.",
@@ -61,11 +67,16 @@
     "wall_box": { "sweeps_mean": 10.167, "penetrations_mean": 2.833, "neighborhood_queries_mean": 5.667, "blocked_ticks": 25 },
     "wall_mesh": { "sweeps_mean": 10.167, "penetrations_mean": 2.833, "neighborhood_queries_mean": 5.667, "blocked_ticks": 25 }
   },
+  "equivalence": {
+    "fixture": "KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/support-equivalence.txt",
+    "rows": 3013,
+    "recorded_from": "6387df4fd plus only the equivalence test, before any production change",
+    "differing_rows": 0
+  },
   "reading": [
-    "Every Find allocates. The neighborhood backend builds lists, polygon objects and a join matrix per query, so allocation is between 86 KB and 486 KB on ordinary ground.",
-    "On ordinary ground one Find takes 0.11 to 0.6 ms. A flat tick makes two Finds, so one grounded body costs about 0.5 to 1 ms of support queries per tick on this machine.",
-    "The 20,000 triangle grid costs about 2.6 times the two triangle mesh floor, so the tree lookup is not the dominant term.",
-    "The 96 triangle fan costs 267 ms and 279 MB per Find. Every pair of members touches the apex, so the join pass in SupportNeighborhoodCollector.Publish tests all 4,560 pairs, and each pair's segment to polygon measure allocates.",
-    "The stack per Find is 43,264 bytes, fine on default thread stacks."
+    "A warm Find allocates nothing on any cost scene, the fan included. The 86 KB to 279 MB per Find came almost entirely from BigInteger work in the exact predicates, which an expansion arithmetic path now does on the stack, and from per-query collections, polygons and polyhedron captures, now reused scratch.",
+    "Ordinary scenes take 55 to 165 microseconds per Find under the parallel suite, 2 to 3.5 times faster than before, and the 20,000 triangle grid 542. None meets the 50 microsecond target.",
+    "The fan takes about 102 ms per Find, 2.6 times faster than before but 20 times its target. All 96 members touch the apex, so no pair is pruned, and the join test itself was to stay unchanged.",
+    "Results are bit-identical: 3,013 recorded neighborhoods, certifications and support samples match the fixture recorded before the change."
   ]
 }

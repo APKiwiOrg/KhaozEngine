@@ -14,17 +14,19 @@ internal static class SupportNeighborhoodPolyhedra
     /// <summary>Element ids are leaf * <see cref="FaceStride"/> + face.</summary>
     internal const int FaceStride = CapsuleFeatureGeometry.MaximumFaces;
 
+    /// <summary>Captures every box and hull leaf of one static into <paramref name="leaves"/>, reusing
+    /// <paramref name="scratch"/>. The leaves stay valid until the scratch is reset.</summary>
     internal static CapsuleFeatureStatus Capture(Simulation simulation, TypedIndex shape, in RigidPose pose,
-        List<CapsuleFeaturePolyhedron> leaves)
+        CapsuleFeatureCaptureScratch scratch, List<CapsuleFeaturePolyhedron> leaves)
     {
         leaves.Clear();
         bool compound = shape.Type == default(Compound).TypeId;
         if (!compound && !Polyhedral(shape)) return CapsuleFeatureStatus.Complete;
-        if (!CapsuleFeatureGeometry.ProveInstalledPose(pose)) return CapsuleFeatureStatus.Unsupported;
         CapsuleFeaturePolyhedron? leaf;
         CapsuleFeatureStatus status;
         if (compound)
         {
+            if (!CapsuleFeatureGeometry.ProveInstalledPose(pose)) return CapsuleFeatureStatus.Unsupported;
             ref Compound installed = ref simulation.Shapes.GetShape<Compound>(shape.Index);
             if (installed.Children.Length is 0 or > CapsuleFeatureGeometry.MaximumLeaves)
                 return CapsuleFeatureStatus.Unsupported;
@@ -38,14 +40,15 @@ internal static class SupportNeighborhoodPolyhedra
                 if (!InstalledPoseOperations.ProveComposition(child.LocalPose, pose, worldPose))
                     return CapsuleFeatureStatus.Unsupported;
                 status = CapsuleFeatureGeometry.CaptureLeaf(simulation, child.ShapeIndex, worldPose, child.LocalPose,
-                    i, out leaf);
+                    i, scratch, out leaf);
                 if (status != CapsuleFeatureStatus.Complete) return Admission(status);
                 leaves.Add(leaf!);
             }
             return CapsuleFeatureStatus.Complete;
         }
+        // CaptureLeaf proves this same pose first and refuses it as Unsupported, which Admission keeps.
         status = CapsuleFeatureGeometry.CaptureLeaf(simulation, shape, pose,
-            new RigidPose(Vector3.Zero, Quaternion.Identity), 0, out leaf);
+            new RigidPose(Vector3.Zero, Quaternion.Identity), 0, scratch, out leaf);
         if (status != CapsuleFeatureStatus.Complete) return Admission(status);
         leaves.Add(leaf!);
         return CapsuleFeatureStatus.Complete;
@@ -53,19 +56,18 @@ internal static class SupportNeighborhoodPolyhedra
 
     /// <summary>Every face of an admitted leaf, with edges and the outward normal from the leaf's common
     /// installed operator rather than from independently rounded world vertices.</summary>
-    internal static void Polygons(StaticHandle owner, CapsuleFeaturePolyhedron leaf, List<SupportPolygon> output)
+    internal static void Polygons(StaticHandle owner, CapsuleFeaturePolyhedron leaf, SupportPolygonPool pool,
+        List<SupportPolygon> output)
     {
         for (int face = 0; face < leaf.Faces.Length; face++)
         {
             int[] indices = leaf.Faces[face];
-            var vertices = new FeaturePoint[indices.Length];
-            var edges = new FeaturePoint[indices.Length];
+            SupportPolygon polygon = pool.Rent();
+            polygon.Begin(owner, leaf.LeafId * FaceStride + face, indices.Length);
             for (int i = 0; i < indices.Length; i++)
-            {
-                vertices[i] = leaf.Vertices[indices[i]];
-                edges[i] = leaf.EdgeDirection(indices[i], indices[(i + 1) % indices.Length]);
-            }
-            output.Add(new SupportPolygon(owner, leaf.LeafId * FaceStride + face, vertices, edges, leaf.Normals[face]));
+                polygon.Set(i, leaf.Vertices[indices[i]], leaf.EdgeDirection(indices[i], indices[(i + 1) % indices.Length]));
+            polygon.Finish(leaf.Normals[face]);
+            output.Add(polygon);
         }
     }
 

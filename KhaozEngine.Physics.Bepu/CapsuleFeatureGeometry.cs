@@ -51,10 +51,18 @@ internal static class CapsuleFeatureGeometry
     }
 
     internal static CapsuleFeatureStatus CaptureLeaf(Simulation simulation, TypedIndex index, in RigidPose pose,
-        in RigidPose localPose, int leafId, out CapsuleFeaturePolyhedron? leaf)
+        in RigidPose localPose, int leafId, out CapsuleFeaturePolyhedron? leaf) =>
+        CaptureLeaf(simulation, index, pose, localPose, leafId, null, out leaf);
+
+    /// <summary>Captures and admits one box or hull leaf. With <paramref name="scratch"/> every array, working
+    /// collection and the leaf itself are reused from it, and the admitted leaf is valid until its next reset.</summary>
+    internal static CapsuleFeatureStatus CaptureLeaf(Simulation simulation, TypedIndex index, in RigidPose pose,
+        in RigidPose localPose, int leafId, CapsuleFeatureCaptureScratch? scratch, out CapsuleFeaturePolyhedron? leaf)
     {
         leaf = null;
-        if (!ProveInstalledPose(pose)) return CapsuleFeatureStatus.Unsupported;
+        // The operator proves the pose here and maps the vertices below. It is a function of the pose alone.
+        if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
+            return CapsuleFeatureStatus.Unsupported;
         Vector3[] local;
         int[][] polygons;
         if (index.Type == default(Box).TypeId)
@@ -62,13 +70,14 @@ internal static class CapsuleFeatureGeometry
             ref Box box = ref simulation.Shapes.GetShape<Box>(index.Index);
             if (!(box.HalfWidth > 0 && box.HalfHeight > 0 && box.HalfLength > 0))
                 return CapsuleFeatureStatus.Unsupported;
-            local = new Vector3[8];
+            local = scratch?.Locals(8) ?? new Vector3[8];
             for (int i = 0; i < local.Length; i++)
                 local[i] = new((i & 1) == 0 ? -box.HalfWidth : box.HalfWidth,
                     (i & 2) == 0 ? -box.HalfHeight : box.HalfHeight,
                     (i & 4) == 0 ? -box.HalfLength : box.HalfLength);
-            polygons = [[0, 4, 6, 2], [1, 3, 7, 5], [0, 1, 5, 4],
-                [2, 6, 7, 3], [0, 2, 3, 1], [4, 5, 7, 6]];
+            // Admission and the consumers only read the faces, so a scratch capture shares one copy.
+            polygons = scratch is null ? [[0, 4, 6, 2], [1, 3, 7, 5], [0, 1, 5, 4],
+                [2, 6, 7, 3], [0, 2, 3, 1], [4, 5, 7, 6]] : BoxFaces;
         }
         else if (index.Type == default(ConvexHull).TypeId)
         {
@@ -77,16 +86,19 @@ internal static class CapsuleFeatureGeometry
             if (count > MaximumFaces || hull.FaceVertexIndices.Length > MaximumFaceEntries)
                 return CapsuleFeatureStatus.CapacityExceeded;
             if (count < 4) return CapsuleFeatureStatus.Unsupported;
-            var vertices = new List<Vector3>();
-            var ids = new Dictionary<int, int>();
-            var positions = new HashSet<Vector3>();
-            polygons = new int[count][];
+            List<Vector3> vertices = scratch?.HullVertices ?? [];
+            Dictionary<int, int> ids = scratch?.HullIds ?? [];
+            HashSet<Vector3> positions = scratch?.Positions ?? [];
+            vertices.Clear();
+            ids.Clear();
+            positions.Clear();
+            polygons = scratch?.Faces(count) ?? new int[count][];
             for (int face = 0; face < count; face++)
             {
                 hull.GetVertexIndicesForFace(face, out var indices);
                 if (indices.Length < 3) return CapsuleFeatureStatus.Unsupported;
                 if (indices.Length > MaximumVertices) return CapsuleFeatureStatus.CapacityExceeded;
-                polygons[face] = new int[indices.Length];
+                polygons[face] = scratch?.Indices(indices.Length) ?? new int[indices.Length];
                 for (int i = 0; i < indices.Length; i++)
                 {
                     HullVertexIndex source = indices[i];
@@ -106,7 +118,8 @@ internal static class CapsuleFeatureGeometry
                     polygons[face][i] = vertex;
                 }
             }
-            local = vertices.ToArray();
+            local = scratch?.Locals(vertices.Count) ?? new Vector3[vertices.Count];
+            vertices.CopyTo(local);
         }
         else
         {
@@ -114,20 +127,31 @@ internal static class CapsuleFeatureGeometry
             return CapsuleFeatureStatus.Unsupported;
         }
 
-        CapsuleFeatureStatus transformed = TransformVertices(local, pose, out FeaturePoint[] world,
-            out InstalledPoseOperator transform);
+        FeaturePoint[] world = scratch?.Points(local.Length) ?? new FeaturePoint[local.Length];
+        CapsuleFeatureStatus transformed = TransformVertices(local, pose, transform, world);
         if (transformed != CapsuleFeatureStatus.Complete) return transformed;
-        var candidate = new CapsuleFeaturePolyhedron(index, localPose, pose, leafId, local, world, polygons, transform);
-        CapsuleFeatureStatus validation = candidate.Validate();
+        CapsuleFeaturePolyhedron candidate = scratch?.Leaf() ?? new CapsuleFeaturePolyhedron();
+        candidate.Reset(index, localPose, pose, leafId, local, world, polygons, transform);
+        CapsuleFeatureStatus validation = candidate.Validate(scratch);
         if (validation == CapsuleFeatureStatus.Complete) leaf = candidate;
         return validation;
     }
+
+    // Box corner i has +X when bit 0 is set, +Y for bit 1 and +Z for bit 2. Faces are -X, +X, -Y, +Y, -Z, +Z.
+    static readonly int[][] BoxFaces = [[0, 4, 6, 2], [1, 3, 7, 5], [0, 1, 5, 4], [2, 6, 7, 3], [0, 2, 3, 1], [4, 5, 7, 6]];
 
     internal static CapsuleFeatureStatus TransformVertices(Vector3[] local, in RigidPose pose, out FeaturePoint[] world,
         out InstalledPoseOperator transform)
     {
         world = new FeaturePoint[local.Length];
         if (!InstalledPoseOperator.TryCreate(pose, out transform)) return CapsuleFeatureStatus.Unsupported;
+        return TransformVertices(local, pose, transform, world);
+    }
+
+    // Every vertex through the operator already created for the pose.
+    static CapsuleFeatureStatus TransformVertices(Vector3[] local, in RigidPose pose,
+        in InstalledPoseOperator transform, FeaturePoint[] world)
+    {
         var seamPose = new Pose(pose.Position, pose.Orientation);
         for (int i = 0; i < local.Length; i++)
         {

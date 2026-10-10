@@ -50,9 +50,10 @@ internal static class SupportCertification
             !float.IsFinite(axis.Y))
             return -1;
 
-        // Each member's own plane at the axis and its first pass kind, read again when it caps a joined member.
-        Span<double> planes = stackalloc double[2 * SupportNeighborhoodResult.MaximumElements];
-        Span<CertifiedSupportKind> kinds = stackalloc CertifiedSupportKind[SupportNeighborhoodResult.MaximumElements];
+        // Each member's own plane at the axis and its first pass kind, read again when it caps a joined member. The
+        // count is at most MaximumElements, so the stack stays bounded and only the members' entries are cleared.
+        Span<double> planes = stackalloc double[2 * count];
+        Span<CertifiedSupportKind> kinds = stackalloc CertifiedSupportKind[count];
         for (int i = 0; i < count; i++)
         {
             SupportElement member = elements[i];

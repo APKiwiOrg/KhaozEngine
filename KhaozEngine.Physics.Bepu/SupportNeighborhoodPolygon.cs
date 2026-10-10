@@ -6,28 +6,55 @@ namespace KhaozEngine.Physics.Bepu;
 
 /// <summary>A planar convex polygon of installed world geometry, as enclosures. Edge i runs from vertex i toward
 /// vertex i + 1. The outward normal has the winding of the source face, so a point of the plane lies inside when
-/// Cross(edge i, point - vertex i) has a positive dot with the normal for every edge.</summary>
+/// Cross(edge i, point - vertex i) has a positive dot with the normal for every edge. An instance is reused from
+/// query to query through <see cref="SupportPolygonPool"/>: <see cref="Begin"/>, one <see cref="Set"/> per vertex,
+/// then <see cref="Finish"/>.</summary>
 internal sealed class SupportPolygon
 {
-    internal SupportPolygon(StaticHandle owner, int elementId, FeaturePoint[] vertices, FeaturePoint[] edges,
-        FeaturePoint normal)
+    FeaturePoint[] _vertices = new FeaturePoint[4], _edges = new FeaturePoint[4];
+    int _count;
+
+    internal StaticHandle Static { get; private set; }
+    internal int ElementId { get; private set; }
+    internal ReadOnlySpan<FeaturePoint> Vertices => _vertices.AsSpan(0, _count);
+    internal ReadOnlySpan<FeaturePoint> Edges => _edges.AsSpan(0, _count);
+    internal FeaturePoint Normal { get; private set; }
+    internal GeometryInterval NormalLength { get; private set; }
+    internal double[] Low { get; } = new double[3];
+    internal double[] High { get; } = new double[3];
+    internal bool IsResolved { get; private set; }
+
+    /// <summary>Starts a polygon of <paramref name="count"/> vertices, growing the reused storage when needed.</summary>
+    internal void Begin(StaticHandle owner, int elementId, int count)
     {
         Static = owner;
         ElementId = elementId;
-        Vertices = vertices;
-        Edges = edges;
+        if (_vertices.Length < count)
+        {
+            _vertices = new FeaturePoint[count];
+            _edges = new FeaturePoint[count];
+        }
+        _count = count;
+    }
+
+    internal void Set(int index, FeaturePoint vertex, FeaturePoint edge)
+    {
+        _vertices[index] = vertex;
+        _edges[index] = edge;
+    }
+
+    /// <summary>Completes the polygon: its normal length, bounds and whether every enclosure resolved.</summary>
+    internal void Finish(FeaturePoint normal)
+    {
         Normal = normal;
         NormalLength = SupportGeometry.Length(normal.Bounds);
-        Low = new double[3];
-        High = new double[3];
-        bool resolved = NormalLength.IsResolved && NormalLength.Lower > 0 && vertices.Length >= 3 &&
-            edges.Length == vertices.Length;
+        bool resolved = NormalLength.IsResolved && NormalLength.Lower > 0 && _count >= 3;
         for (int axis = 0; axis < 3; axis++)
         {
             Low[axis] = double.PositiveInfinity;
             High[axis] = double.NegativeInfinity;
         }
-        foreach (FeaturePoint vertex in vertices)
+        foreach (FeaturePoint vertex in Vertices)
         {
             resolved &= vertex.IsResolved;
             for (int axis = 0; axis < 3; axis++)
@@ -37,19 +64,9 @@ internal sealed class SupportPolygon
                 High[axis] = Math.Max(High[axis], component.Upper);
             }
         }
-        foreach (FeaturePoint edge in edges) resolved &= edge.IsResolved;
+        foreach (FeaturePoint edge in Edges) resolved &= edge.IsResolved;
         IsResolved = resolved;
     }
-
-    internal StaticHandle Static { get; }
-    internal int ElementId { get; }
-    internal FeaturePoint[] Vertices { get; }
-    internal FeaturePoint[] Edges { get; }
-    internal FeaturePoint Normal { get; }
-    internal GeometryInterval NormalLength { get; }
-    internal double[] Low { get; }
-    internal double[] High { get; }
-    internal bool IsResolved { get; }
 
     /// <summary>The signed height of <paramref name="point"/> above this polygon's plane, in metres.</summary>
     internal GeometryInterval Height(FeaturePoint point) =>
@@ -72,6 +89,25 @@ internal sealed class SupportPolygon
 
     internal GeometrySign EdgeSide(FeaturePoint point, int edge) => FeaturePoint.Dot(FeaturePoint.Cross(Edges[edge],
         FeaturePoint.Subtract(point, Vertices[edge])), Normal).Sign;
+}
+
+/// <summary>Polygons reused across queries. Every polygon rented during one query stays valid until the next
+/// <see cref="Reset"/>, so members may hold them through the join pass.</summary>
+internal sealed class SupportPolygonPool
+{
+    readonly List<SupportPolygon> _polygons = [];
+    int _used;
+
+    internal void Reset() => _used = 0;
+
+    internal SupportPolygon Rent()
+    {
+        if (_used == _polygons.Count) _polygons.Add(new SupportPolygon());
+        return _polygons[_used++];
+    }
+
+    /// <summary>Returns the most recently rented polygon, which nothing else references.</summary>
+    internal void ReturnLast() => _used--;
 }
 
 /// <summary>A segment and polygon pair whose points may realize the minimum distance. A valid pair certainly

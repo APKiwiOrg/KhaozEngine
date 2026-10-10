@@ -31,7 +31,8 @@ internal static class SupportNeighborhoodMesh
     /// whose normal cannot be bounded away from zero, has no certifiable surface and is skipped too.</summary>
     internal static CapsuleFeatureStatus Polygons(Simulation simulation, TypedIndex shape, in RigidPose pose,
         StaticHandle owner, FeaturePoint lower, FeaturePoint upper, ReadOnlySpan<double> probeLow,
-        ReadOnlySpan<double> probeHigh, GeometryInterval reach, List<int> candidates, List<SupportPolygon> output)
+        ReadOnlySpan<double> probeHigh, GeometryInterval reach, List<int> candidates, SupportPolygonPool pool,
+        List<SupportPolygon> output)
     {
         if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
             return CapsuleFeatureStatus.Unsupported;
@@ -69,12 +70,20 @@ internal static class SupportNeighborhoodMesh
             // as Cross(ac, ab), as CapsuleFeatureMesh does. Wound A, C, B, the polygon's inside convention carries it.
             FeaturePoint ac = transform.Edge(a, c), ab = transform.Edge(a, b);
             FeaturePoint normal = FeaturePoint.Cross(ac, ab);
-            var polygon = new SupportPolygon(owner, id, [worldA, worldC, worldB],
-                [ac, transform.Edge(c, b), transform.Edge(b, a)], normal);
+            SupportPolygon polygon = pool.Rent();
+            polygon.Begin(owner, id, 3);
+            polygon.Set(0, worldA, ac);
+            polygon.Set(1, worldC, transform.Edge(c, b));
+            polygon.Set(2, worldB, transform.Edge(b, a));
+            polygon.Finish(normal);
             // A sliver keeps its bounded normal. A triangle whose normal cannot be bounded away from zero has no
             // certifiable surface and no area to stand on, and its edges belong to its neighbours, so like an exactly
             // degenerate one it is not a member.
-            if (!polygon.NormalLength.IsResolved || !(polygon.NormalLength.Lower > 0)) continue;
+            if (!polygon.NormalLength.IsResolved || !(polygon.NormalLength.Lower > 0))
+            {
+                pool.ReturnLast();
+                continue;
+            }
             output.Add(polygon);
         }
         return CapsuleFeatureStatus.Complete;

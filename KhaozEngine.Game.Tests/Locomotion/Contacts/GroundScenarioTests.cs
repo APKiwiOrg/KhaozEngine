@@ -448,17 +448,15 @@ public class GroundScenarioTests(ITestOutputHelper output)
         return new FootSupportScene(SceneVariant.Mesh).Mesh("grid", [.. vertices]);
     }
 
-    // The stack FootSupport.Find takes for its neighborhood spans and SupportCertification for its planes and
-    // kinds, from the capacity and the element sizes.
+    // The most stack FootSupport.Find takes for its spans, at the backend's member cap: SupportCertification's planes
+    // and kinds, sized by the member count, for one probe at a time. The neighborhood spans are thread-static scratch.
     static int SupportFindStackBytes()
     {
         const int capacity = SupportNeighborhoodResult.MaximumElements;
-        return capacity * (Unsafe.SizeOf<SupportElement>() +
-            sizeof(ulong) * SupportNeighborhoodResult.JoinWordsFor(capacity) +
-            Unsafe.SizeOf<SupportContribution>() + 2 * sizeof(double) + Unsafe.SizeOf<CertifiedSupportKind>());
+        return capacity * (2 * sizeof(double) + Unsafe.SizeOf<CertifiedSupportKind>());
     }
 
-    // Recorded, not asserted: the bytes one warm Find allocates on this thread.
+    // Asserted on every scene but the fan, which is recorded: one warm Find allocates nothing on this thread.
     [Theory]
     [MemberData(nameof(CostScenes))]
     public void SupportFindAllocation(string name)
@@ -472,24 +470,35 @@ public class GroundScenarioTests(ITestOutputHelper output)
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         output.WriteLine($"ALLOC {name}: {allocated} bytes, status {support.Status} (warm {warm.Status}), " +
-            $"stack {SupportFindStackBytes()} bytes");
+            $"stack at most {SupportFindStackBytes()} bytes");
+        Assert.Equal(warm, support);
+        if (name != "fan 96") Assert.Equal(0, allocated);
     }
 
-    // Recorded, not asserted: the mean time of 200 warm Find calls.
+    // Recorded, not asserted: the mean time of warm Find calls. Tiered compilation first runs every method
+    // unoptimized, so the row calls Find for a quarter of a second, long enough for the optimized code to be
+    // installed, before it times. The fan takes ten timed calls, every other scene 200.
     [Theory]
     [MemberData(nameof(CostScenes))]
     public void SupportFindTiming(string name)
     {
-        const int calls = 200;
+        int calls = name == "fan 96" ? 10 : 200;
         (FootSupportScene built, FootSupportQuery query) = CostScene(name);
         using FootSupportScene scene = built;
         SupportSample support = FootSupport.Find(null, null, scene.World, scene.Lease, query);
+        long warm = Stopwatch.GetTimestamp();
+        int warmCalls = 0;
+        while (Stopwatch.GetElapsedTime(warm).TotalMilliseconds < 250 && warmCalls < 2000)
+        {
+            support = FootSupport.Find(null, null, scene.World, scene.Lease, query);
+            warmCalls++;
+        }
 
         long start = Stopwatch.GetTimestamp();
         for (int i = 0; i < calls; i++) support = FootSupport.Find(null, null, scene.World, scene.Lease, query);
         TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
 
-        output.WriteLine($"TIMING {name}: mean {elapsed.TotalMicroseconds / calls:0.###} us over {calls} calls, " +
-            $"status {support.Status}");
+        output.WriteLine($"TIMING {name}: mean {elapsed.TotalMicroseconds / calls:0.###} us over {calls} calls " +
+            $"after {warmCalls} warm-up calls, status {support.Status}");
     }
 }

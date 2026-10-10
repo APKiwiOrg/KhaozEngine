@@ -6,6 +6,11 @@ namespace KhaozEngine.Physics.Bepu;
 
 public sealed partial class BepuPhysicsWorld
 {
+    // Neighborhood scratch for this world. Every query on the world or one of its views runs under the world's
+    // query monitor, so threads never share it. A query that finds it taken, which only a nested query on the
+    // owning thread could, uses a fresh collector instead.
+    SupportNeighborhoodCollector? _neighborhoodScratch = new();
+
     /// <inheritdoc/>
     public SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe, Pose pose,
         float bandMetres, Span<SupportElement> elements, Span<ulong> joins, QueryFilter filter = default) =>
@@ -49,15 +54,31 @@ public sealed partial class BepuPhysicsWorld
             probe.Radius is < 0.01f or > 2f || probe.Length > 8f || bandMetres > 0.01f ||
             !RepresentedGeometryTransforms.PosePoint(pose, Vector3.Zero).IsResolved)
             return SupportNeighborhoodResult.Refused(CapsuleFeatureStatus.Unsupported);
-        var collector = new SupportNeighborhoodCollector(probe, pose, bandMetres);
+        SupportNeighborhoodCollector collector = _neighborhoodScratch ?? new SupportNeighborhoodCollector();
+        _neighborhoodScratch = null;
+        try
+        {
+            return Collect(collector, receiver, lease, probe, pose, bandMetres, elements, joins, filter, exclusions);
+        }
+        finally
+        {
+            _neighborhoodScratch = collector;
+        }
+    }
+
+    SupportNeighborhoodResult Collect(SupportNeighborhoodCollector collector, IPhysicsWorld receiver,
+        IPhysicsQueryLease lease, CapsuleShape probe, Pose pose, float bandMetres, Span<SupportElement> elements,
+        Span<ulong> joins, QueryFilter filter, StaticQueryExclusions? exclusions)
+    {
+        collector.Begin(probe, pose, bandMetres);
         if (!collector.IsResolved) return SupportNeighborhoodResult.Refused(CapsuleFeatureStatus.Unsupported);
         // A dynamics-only filter selects no static, so its neighborhood is certified empty.
         if (filter.Mobility == QueryMobility.Dynamics) return collector.Publish(receiver, lease, elements, joins);
 
-        // Read the live registry and poses under the authenticated gate. Uncached managed scratch avoids shape
-        // removal or reuse and cache lifetime hooks, as the feature query does.
-        foreach (var (seam, installed) in SupportNeighborhoodCollector.Candidates(_sim, _reverseHandles, exclusions,
-                     probe, pose, bandMetres))
+        // Read the live registry and poses under the authenticated gate. Scratch is reused storage only: every
+        // shape and pose is read again for each query, so no cached geometry outlives a shape removal or reuse.
+        foreach (var (seam, installed) in collector.Candidates(_sim, _reverseHandles, exclusions, probe, pose,
+                     bandMetres))
         {
             _sim.Statics.GetDescription(installed, out var description);
             CapsuleFeatureStatus collected = collector.Collect(_sim, seam, description);

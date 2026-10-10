@@ -39,8 +39,9 @@ internal static class SupportNeighborhoodCurved
         leaves.Clear();
         bool compound = shape.Type == default(Compound).TypeId;
         if (!compound && !Curved(shape)) return CapsuleFeatureStatus.Complete;
-        if (!CapsuleFeatureGeometry.ProveInstalledPose(pose)) return CapsuleFeatureStatus.Unsupported;
+        // Leaf proves this same pose first and refuses it as Unsupported.
         if (!compound) return Leaf(simulation, shape, pose, 0, leaves);
+        if (!CapsuleFeatureGeometry.ProveInstalledPose(pose)) return CapsuleFeatureStatus.Unsupported;
         ref Compound installed = ref simulation.Shapes.GetShape<Compound>(shape.Index);
         if (installed.Children.Length is 0 or > CapsuleFeatureGeometry.MaximumLeaves)
             return CapsuleFeatureStatus.Unsupported;
@@ -131,13 +132,14 @@ internal sealed class SupportTangentKernel
 
     readonly record struct Span(double Low, double High, Sample Sample);
 
-    readonly GeometryInterval _x, _z, _radius;
-    readonly double _low, _high, _certainLow, _certainHigh, _band;
+    GeometryInterval _x, _z, _radius;
+    double _low, _high, _certainLow, _certainHigh, _band;
     List<Span> _spans = [], _next = [];
 
-    /// <summary>The upright axis from <paramref name="start"/> to <paramref name="end"/>. Its height range is enclosed
-    /// by the outer bounds of both ends, and every height between their inner bounds is certainly on it.</summary>
-    internal SupportTangentKernel(FeaturePoint start, FeaturePoint end, GeometryInterval radius, double band)
+    /// <summary>Aims the reused kernel at the upright axis from <paramref name="start"/> to <paramref name="end"/>.
+    /// Its height range is enclosed by the outer bounds of both ends, and every height between their inner bounds is
+    /// certainly on it.</summary>
+    internal void Reset(FeaturePoint start, FeaturePoint end, GeometryInterval radius, double band)
     {
         _x = start.X.Bounds;
         _z = start.Z.Bounds;

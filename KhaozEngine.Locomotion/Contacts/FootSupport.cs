@@ -29,6 +29,13 @@ internal static class FootSupport
     // The probe passes the back faces of one-sided mesh triangles, as the simulation's contacts do.
     static readonly QueryFilter ProbeFilter = QueryFilter.StaticsOnly with { CullBackFaces = true };
 
+    static readonly CapsuleShape AxisProbe = new(AxisProbeRadius, ProbeLength);
+
+    // The neighborhood spans and the foot probe shape, reused by every Find on this thread, so a warm Find allocates
+    // nothing and zero fills nothing. Thread-static storage is never shared between threads. A nested Find on the same
+    // thread, which only a physics world calling back into locomotion could start, takes fresh storage instead.
+    [ThreadStatic] static ProbeScratch? t_scratch;
+
     static readonly SupportSample NoSupport =
         new(SupportStatus.None, float.NaN, float.NaN, Vector3.Zero, null, -1, Vector3.Zero);
     static readonly SupportSample RefusedSupport = NoSupport with { Status = SupportStatus.Refused };
@@ -63,12 +70,18 @@ internal static class FootSupport
         if (groundHeight is not null) selection.Terrain(groundHeight, groundNormal);
         if (world is not null)
         {
-            Span<SupportElement> elements = stackalloc SupportElement[Capacity];
-            Span<ulong> joins = stackalloc ulong[Capacity * SupportNeighborhoodResult.JoinWordsFor(Capacity)];
-            Span<SupportContribution> contributions = stackalloc SupportContribution[Capacity];
-            var scratch = new Scratch(elements, joins, contributions);
-            Probe(world, features!, lease!, query, AxisProbeRadius, scratch, ref selection);
-            Probe(world, features!, lease!, query, query.FootRadius, scratch, ref selection);
+            ProbeScratch scratch = t_scratch ??= new ProbeScratch();
+            if (scratch.InUse) scratch = new ProbeScratch();
+            scratch.InUse = true;
+            try
+            {
+                Probe(world, features!, lease!, query, AxisProbe, scratch, ref selection);
+                Probe(world, features!, lease!, query, scratch.FootProbe(query.FootRadius), scratch, ref selection);
+            }
+            finally
+            {
+                scratch.InUse = false;
+            }
         }
         return selection.Result();
     }
@@ -92,21 +105,28 @@ internal static class FootSupport
             throw new ArgumentOutOfRangeException(nameof(query), "The probe band must be finite.");
     }
 
-    // The caller's spans for one probe's neighborhood, reused by both probes.
-    readonly ref struct Scratch(Span<SupportElement> elements, Span<ulong> joins,
-        Span<SupportContribution> contributions)
+    // One probe's neighborhood storage, reused by both probes of a Find. Each query writes the published prefix
+    // before certification and selection read it, so nothing left from an earlier query is ever read.
+    sealed class ProbeScratch
     {
-        internal readonly Span<SupportElement> Elements = elements;
-        internal readonly Span<ulong> Joins = joins;
-        internal readonly Span<SupportContribution> Contributions = contributions;
+        CapsuleShape? _footProbe;
+
+        internal SupportElement[] Elements { get; } = new SupportElement[Capacity];
+        internal ulong[] Joins { get; } = new ulong[Capacity * SupportNeighborhoodResult.JoinWordsFor(Capacity)];
+        internal SupportContribution[] Contributions { get; } = new SupportContribution[Capacity];
+        internal bool InUse { get; set; }
+
+        // Capsule shapes are immutable, so the last foot probe serves every Find with the same radius.
+        internal CapsuleShape FootProbe(float radius) =>
+            _footProbe is { } probe && probe.Radius == radius ? probe : _footProbe = new CapsuleShape(radius, ProbeLength);
     }
 
     // Sweeps one probe down the band. The hit leaves the probe exactly in contact, which is the pose whose support
     // neighborhood is certified. A neighborhood that cannot be certified is a refused proposal at its lowest point.
     static void Probe(IPhysicsWorld world, IPhysicsCapsuleFeatures features, IPhysicsQueryLease lease,
-        in FootSupportQuery query, float radius, in Scratch scratch, ref Selection selection)
+        in FootSupportQuery query, CapsuleShape capsule, ProbeScratch scratch, ref Selection selection)
     {
-        var capsule = new CapsuleShape(radius, ProbeLength);
+        float radius = capsule.Radius;
         float lowest = query.FeetY + query.ReachUp + BandMargin;
         float centreY = lowest + radius + ProbeLength / 2;
         Pose start = Pose.At(new Vector3(query.Axis.X, centreY, query.Axis.Y));

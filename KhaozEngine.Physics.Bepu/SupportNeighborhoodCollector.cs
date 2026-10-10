@@ -16,7 +16,8 @@ internal readonly record struct SupportMember(SupportPolygon? Polygon, SupportEl
 /// <summary>Collects the support neighborhood of one upright probe. Membership is decided by the lower bound of
 /// each element's separation interval, so an element is included whenever it may lie within the band. Elements
 /// are ordered by static handle then element id. Capacity is checked atomically after every member and join is
-/// known, and nothing reaches the caller's spans before the result is constructed.</summary>
+/// known, and nothing reaches the caller's spans before the result is constructed. One instance is reused by its
+/// owner world for query after query, under the world's query monitor, so a warm query allocates nothing.</summary>
 internal sealed class SupportNeighborhoodCollector
 {
     // Broadphase bounds are binary32 boxes from the backend. This margin keeps every static whose geometry may
@@ -24,19 +25,30 @@ internal sealed class SupportNeighborhoodCollector
     const float BroadphaseMargin = 0.01f;
 
     readonly SupportSegmentPolygon _kernel = new();
-    readonly SupportTangentKernel _tangents;
+    readonly SupportTangentKernel _tangents = new();
+    readonly SupportPolygonPool _pool = new();
+    readonly CapsuleFeatureCaptureScratch _capture = new();
     readonly List<SupportMember> _members = [];
     readonly List<CapsuleFeaturePolyhedron> _leaves = [];
     readonly List<SupportCurvedLeaf> _curved = [];
     readonly List<SupportPolygon> _polygons = [];
     readonly List<int> _triangles = [];
-    readonly FeaturePoint _start, _end, _direction;
-    readonly FeatureNumber _radius;
-    readonly double _band;
+    readonly List<CollidableReference> _found = [];
+    readonly List<(SeamStaticHandle Seam, BepuStaticHandle Installed)> _candidates = [];
+    readonly HashSet<int> _seen = [];
     readonly double[] _low = new double[3], _high = new double[3];
+    ulong[] _matrix = [];
+    FeaturePoint _start, _end, _direction;
+    FeatureNumber _radius;
+    double _band;
 
-    internal SupportNeighborhoodCollector(CapsuleShape probe, Pose pose, float bandMetres)
+    /// <summary>Starts a query for <paramref name="probe"/> at <paramref name="pose"/>, dropping everything the last
+    /// query left behind.</summary>
+    internal void Begin(CapsuleShape probe, Pose pose, float bandMetres)
     {
+        _members.Clear();
+        _pool.Reset();
+        _capture.Reset();
         FeaturePoint center = FeaturePoint.Exact(pose.Position);
         FeatureNumber half = FeatureNumber.Exact(probe.Length).Multiply(FeatureNumber.Exact(0.5));
         _start = new FeaturePoint(center.X, center.Y.Subtract(half), center.Z);
@@ -51,14 +63,15 @@ internal sealed class SupportNeighborhoodCollector
             _high[axis] = Math.Max(SupportGeometry.Component(_start, axis).Upper, SupportGeometry.Component(end, axis).Upper);
         }
         IsResolved = _start.Within(2048) && end.Within(2048) && _direction.IsResolved;
-        _tangents = new SupportTangentKernel(_start, end, _radius.Bounds, _band);
+        _tangents.Reset(_start, end, _radius.Bounds, _band);
     }
 
-    internal bool IsResolved { get; }
+    internal bool IsResolved { get; private set; }
 
     /// <summary>The selected statics whose broadphase bounds reach the probe inflated by the band, in seam handle
-    /// order. Dynamic bodies and statics the view excludes are never candidates.</summary>
-    internal static List<(SeamStaticHandle Seam, BepuStaticHandle Installed)> Candidates(Simulation simulation,
+    /// order. Dynamic bodies and statics the view excludes are never candidates. The list is reused by the next
+    /// query.</summary>
+    internal List<(SeamStaticHandle Seam, BepuStaticHandle Installed)> Candidates(Simulation simulation,
         IReadOnlyDictionary<int, int> reverseHandles, StaticQueryExclusions? exclusions, CapsuleShape probe,
         Pose pose, float bandMetres)
     {
@@ -66,23 +79,23 @@ internal sealed class SupportNeighborhoodCollector
         GeometryInterval reach = GeometryInterval.Exact(probe.Radius).Add(GeometryInterval.Exact(bandMetres))
             .Add(GeometryInterval.Exact(BroadphaseMargin));
         GeometryInterval height = GeometryInterval.Exact(probe.Length * 0.5).Add(reach);
-        var found = new List<CollidableReference>();
-        var collector = new OverlapCollector(found);
+        _found.Clear();
+        _candidates.Clear();
+        _seen.Clear();
+        var collector = new OverlapCollector(_found);
         simulation.BroadPhase.GetOverlaps(
             new Vector3(Down(pose.Position.X, reach), Down(pose.Position.Y, height), Down(pose.Position.Z, reach)),
             new Vector3(Up(pose.Position.X, reach), Up(pose.Position.Y, height), Up(pose.Position.Z, reach)),
             ref collector);
-        var candidates = new List<(SeamStaticHandle Seam, BepuStaticHandle Installed)>();
-        var seen = new HashSet<int>();
-        foreach (CollidableReference collidable in found)
+        foreach (CollidableReference collidable in _found)
         {
             if (collidable.Mobility != CollidableMobility.Static) continue;
             if (exclusions is not null && !exclusions.Allows(collidable)) continue;
-            if (!reverseHandles.TryGetValue(collidable.StaticHandle.Value, out int seam) || !seen.Add(seam)) continue;
-            candidates.Add((new SeamStaticHandle(seam), collidable.StaticHandle));
+            if (!reverseHandles.TryGetValue(collidable.StaticHandle.Value, out int seam) || !_seen.Add(seam)) continue;
+            _candidates.Add((new SeamStaticHandle(seam), collidable.StaticHandle));
         }
-        candidates.Sort((a, b) => a.Seam.Value.CompareTo(b.Seam.Value));
-        return candidates;
+        _candidates.Sort(static (a, b) => a.Seam.Value.CompareTo(b.Seam.Value));
+        return _candidates;
     }
 
     static float Down(float centre, GeometryInterval extent) =>
@@ -103,15 +116,16 @@ internal sealed class SupportNeighborhoodCollector
         if (SupportNeighborhoodMesh.IsMesh(description.Shape))
         {
             captured = SupportNeighborhoodMesh.Polygons(simulation, description.Shape, description.Pose, seam, _start,
-                _end, _low, _high, _radius.Bounds.Add(GeometryInterval.Exact(_band)), _triangles, _polygons);
+                _end, _low, _high, _radius.Bounds.Add(GeometryInterval.Exact(_band)), _triangles, _pool, _polygons);
             if (captured != CapsuleFeatureStatus.Complete) return captured;
         }
         else
         {
-            captured = SupportNeighborhoodPolyhedra.Capture(simulation, description.Shape, description.Pose, _leaves);
+            captured = SupportNeighborhoodPolyhedra.Capture(simulation, description.Shape, description.Pose, _capture,
+                _leaves);
             if (captured != CapsuleFeatureStatus.Complete) return captured;
             foreach (CapsuleFeaturePolyhedron leaf in _leaves)
-                SupportNeighborhoodPolyhedra.Polygons(seam, leaf, _polygons);
+                SupportNeighborhoodPolyhedra.Polygons(seam, leaf, _pool, _polygons);
             captured = SupportNeighborhoodCurved.Capture(simulation, description.Shape, description.Pose, _curved);
             if (captured != CapsuleFeatureStatus.Complete) return captured;
         }
@@ -155,7 +169,7 @@ internal sealed class SupportNeighborhoodCollector
     internal SupportNeighborhoodResult Publish(IPhysicsWorld receiver, IPhysicsQueryLease lease,
         Span<SupportElement> elements, Span<ulong> joins)
     {
-        _members.Sort((a, b) => a.Element.Static.Value != b.Element.Static.Value
+        _members.Sort(static (a, b) => a.Element.Static.Value != b.Element.Static.Value
             ? a.Element.Static.Value.CompareTo(b.Element.Static.Value)
             : a.Element.ElementId.CompareTo(b.Element.ElementId));
         int count = _members.Count;
@@ -163,7 +177,10 @@ internal sealed class SupportNeighborhoodCollector
         if (count > SupportNeighborhoodResult.MaximumElements || elements.Length < count ||
             joins.Length < count * stride)
             return SupportNeighborhoodResult.Refused(CapsuleFeatureStatus.CapacityExceeded, count);
-        var matrix = new ulong[count * stride];
+        if (_matrix.Length < count * stride) _matrix = new ulong[count * stride];
+        Span<ulong> matrix = _matrix.AsSpan(0, count * stride);
+        matrix.Clear();
+        double apart = 2 * _band + Apart;
         for (int first = 0; first < count; first++)
         {
             SupportPolygon? a = _members[first].Polygon;
@@ -171,7 +188,7 @@ internal sealed class SupportNeighborhoodCollector
             for (int second = first + 1; second < count; second++)
             {
                 SupportPolygon? b = _members[second].Polygon;
-                if (b is null) continue;
+                if (b is null || Separated(a, b, apart)) continue;
                 GeometrySign joined = SupportNeighborhoodJoins.Joined(a, b, _band, _kernel);
                 if (joined == GeometrySign.Unresolved)
                     return SupportNeighborhoodResult.Refused(CapsuleFeatureStatus.Unsupported);
@@ -183,7 +200,23 @@ internal sealed class SupportNeighborhoodCollector
         // Construct first: lifecycle or structural failure must not expose a written prefix.
         SupportNeighborhoodResult result = SupportNeighborhoodResult.Completed(receiver, lease, count);
         for (int i = 0; i < count; i++) elements[i] = _members[i].Element;
-        matrix.AsSpan().CopyTo(joins);
+        matrix.CopyTo(joins);
         return result;
+    }
+
+    // Lossless pruning of the join pass. Joined returns Negative at its first test whenever the BoxGap lower bound
+    // of the two polygons' bounds exceeds the band, before any arithmetic that could refuse. When the raw gap on one
+    // axis exceeds twice the band plus 2^-400, that bound does: each of BoxGap's outward steps (the difference, its
+    // square, three sums and the square root) gives up at most one or two units in the last place, a relative loss
+    // far below one half, and the margin keeps every intermediate value normal. A pair is skipped only then.
+    // Certification never reads a pair whose member may face sideways or down, but those joins are part of the
+    // published matrix, so they are still decided.
+    static readonly double Apart = Math.ScaleB(1, -400);
+
+    static bool Separated(SupportPolygon a, SupportPolygon b, double apart)
+    {
+        for (int axis = 0; axis < 3; axis++)
+            if (b.Low[axis] - a.High[axis] > apart || a.Low[axis] - b.High[axis] > apart) return true;
+        return false;
     }
 }

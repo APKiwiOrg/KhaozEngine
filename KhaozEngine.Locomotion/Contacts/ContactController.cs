@@ -56,12 +56,16 @@ internal static class ContactController
 
         float gate = CharacterMovement.TractionGate(s.Grounded, t);
         var feet = new Vector3(s.Position.X, s.Position.Y - halfHeight, s.Position.Z);
-        // An airborne tick never starts below analytic terrain at its axis, which no band, wall or seat would catch
-        // again. Only a defect leaves the feet there, so the tick seats them on the terrain and its footing takes
-        // over, a slide where the terrain is steep. Legacy held the same floor. A grounded start may stand below
-        // walkable terrain by the climb a paced seat left, which the ground core pays from its budget.
+        // An airborne tick never starts where the air pass cannot recover the feet: below steep analytic terrain at
+        // its axis, which the terrain wall treats as a face above them, or below walkable terrain by more than
+        // StepHeight, past the reach of its landing. Only a defect leaves the feet there, so the tick seats them on
+        // the terrain and its footing takes over, a slide where the terrain is steep. Within StepHeight below
+        // walkable terrain the feet are a paced seat's lag, grounded or rising from it on a jump, and the air pass's
+        // paced, clearance-checked landing owns them, as the ground core pays a grounded lag from its budget.
         float terrain = groundHeight(feet.X, feet.Z);
-        if (!s.Grounded && feet.Y < terrain) feet.Y = terrain;
+        if (!s.Grounded && feet.Y < terrain && (terrain - feet.Y > t.StepHeight ||
+                groundNormal?.Invoke(feet.X, feet.Z).Y < MathF.Cos(gate)))
+            feet.Y = terrain;
 
         // Intent, as legacy: the walk or run speed scaled by AirControl in the air and by the entity's scale. Under
         // AirMomentum an airborne tick steers the carried velocity instead, and a committed flight flies its own.

@@ -38,6 +38,49 @@ public partial class ContactControllerTests
         }
     }
 
+    // Terrain steps from 0 to a 0.6 bank top past x 0.8, with no roof. A body stands 0.3 below the bank top at x 0.81,
+    // the lag a failed seat leaves, and its jump has just been stamped. The air pass owns airborne feet within StepHeight
+    // below walkable terrain, so the jump rises from the lag in free flight, exactly the closed form's first tick.
+    // Lifting the feet onto the bank first would launch the jump from the bank top, and under a roof that lift is what
+    // put the shell into the roof and let recovery throw the body off the bank.
+    [Theory]
+    [InlineData(30)]
+    [InlineData(60)]
+    public void JumpFromALagBelowATerrainBankRisesFromTheLag(int hz)
+    {
+        const float Edge = 0.8f, Lag = 0.3f;
+        float dt = 1f / hz;
+        using var g = new Ground(null, (x, _) => x > Edge ? 0.6f : 0);
+        MoveState s = Falling(new Vector3(0.81f, Lag, 0)) with { VerticalVelocity = Tuning.JumpSpeed };
+
+        s = g.Step(s, Vector2.Zero, 0, false, Tuning, dt);
+
+        Assert.False(s.Grounded, Show(s));
+        AssertNear(0.81f, Feet(s).X, 0, Show(s));
+        AssertNear(Lag + (Tuning.JumpSpeed - (double)Gravity * dt) * dt, Feet(s).Y, HalfSkin,
+            $"the jump did not rise from the lag: {Show(s)}");
+    }
+
+    // The same bank and lag with the body falling from rest. The air pass lands it on the bank through the ground core's
+    // placement, which pays the rise from the tick's climb budget. Lifting the feet onto the bank first would climb the
+    // whole 0.3 in one tick.
+    [Theory]
+    [InlineData(30)]
+    [InlineData(60)]
+    public void FallFromALagBelowATerrainBankLandsPaced(int hz)
+    {
+        const float Edge = 0.8f, Lag = 0.3f;
+        float dt = 1f / hz;
+        using var g = new Ground(null, (x, _) => x > Edge ? 0.6f : 0);
+
+        MoveState s = g.Step(Falling(new Vector3(0.81f, Lag, 0)), Vector2.Zero, 0, false, Tuning, dt);
+
+        Assert.True(s.Grounded, Show(s));
+        Assert.True(Feet(s).Y - Lag <= Tuning.MaxStepClimbSpeed * (double)dt + HalfSkin,
+            $"the landing climbed past one budget: {Show(s)}");
+        Assert.True(Feet(s).Y > Lag, $"the landing did not climb: {Show(s)}");
+    }
+
     // A body whose feet start a metre below analytic terrain, deeper than any band reaches, is invalid state that only
     // a defect leaves. The tick seats it on the terrain at its axis before it moves: on level terrain it lands there,
     // and on a 60 degree face rising to +X it slides from the surface and stays on it.

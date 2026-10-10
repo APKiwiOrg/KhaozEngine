@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc.Physics;
 using KhaozEngine.Physics;
@@ -41,6 +42,8 @@ public class MapTerrainSeamTests
             physics.AddStatic(c.Shape, new Pose(new Vector3(c.Anchor.X, c.Anchor.Y, c.Anchor.Z), Quaternion.Identity));
         foreach (var p in f.SeamProbePoints)
         {
+            // A probe inside one chunk would pass without testing a seam.
+            Assert.True(set.Chunks.Count(c => NativeWorldFixtures.CoversXz(c, p)) >= 2, $"probe {p} is not on a chunk boundary");
             Assert.True(physics.Raycast(p + Vector3.UnitY * 5f, -Vector3.UnitY, 10f, out var hit));
             Assert.Equal(f.HeightAt(p.X, p.Z), hit.Point.Y, 4);
             Assert.True(physics.SweepCapsule(new CapsuleShape(0.3f, 0.6f), Pose.At(p + Vector3.UnitY * 3f), -Vector3.UnitY, 5f, out var sweep));

@@ -68,6 +68,57 @@ public class MapTerrainPhysicsTests
     }
 
     [Fact]
+    public void PatchFaceThatFitsNoAnchor_KeepsAChunkOfItsOwnUnderTheSplitGrammar()
+    {
+        var f = NativeWorldFixtures.TallCornerCell();
+        var set = MapTerrainPhysics.Compile(f.View, new MapTerrainChunkPolicy());
+        AssertEveryFaceOnceWithUniqueIds(f, set);
+        Assert.Equal(new[] { "tall-corner/0,0/0,0,1/0.0", "tall-corner/0,0/0,0,1/1.0" }, set.Chunks.Select(c => c.ChunkId));
+        Assert.All(set.Chunks, c =>
+        {
+            Assert.Matches(@"^[^/]+/-?\d+,-?\d+/\d+,\d+,\d+/\d+\.\d+$", c.ChunkId);
+            Assert.Single(c.TriangleOwners);
+            Assert.Contains(c.Shape.Vertices, v => MathF.Abs(v.Y) > 64);
+        });
+    }
+
+    [Fact]
+    public void StripSegmentThatFitsNoAnchor_SplitsByFaceUnderTheStripGrammar()
+    {
+        var f = NativeWorldFixtures.LongSegmentStrip();
+        var set = MapTerrainPhysics.Compile(f.View, new MapTerrainChunkPolicy());
+        AssertEveryFaceOnceWithUniqueIds(f, set);
+        var strip = set.Chunks.Where(c => c.ChunkId.StartsWith("long-segment/", StringComparison.Ordinal)).ToList();
+        Assert.Equal(new[] { "long-segment/0.0/Front", "long-segment/0.1/Front" }, strip.Select(c => c.ChunkId));
+        Assert.All(strip, c =>
+        {
+            Assert.Matches(@"^[^/]+/\d+\.\d+/Front$", c.ChunkId);
+            Assert.Single(c.TriangleOwners);
+            Assert.Contains(c.Shape.Vertices, v => MathF.Abs(v.X) > 64);
+        });
+        Assert.All(set.Chunks.Except(strip), c => Assert.Matches(@"^long-segment-yard/-?\d+,-?\d+/\d+,\d+,\d+$", c.ChunkId));
+    }
+
+    [Theory]
+    [InlineData(63, false)]
+    [InlineData(64, true)]
+    [InlineData(1024, true)]
+    [InlineData(1025, false)]
+    public void PolicyCap_IsValidFrom64To1024(int cap, bool valid)
+    {
+        var view = NativeWorldFixtures.FinePatch().View;
+        if (valid) Assert.NotEmpty(MapTerrainPhysics.Compile(view, new MapTerrainChunkPolicy(cap)).Chunks);
+        else Assert.Throws<ArgumentOutOfRangeException>(() => MapTerrainPhysics.Compile(view, new MapTerrainChunkPolicy(cap)));
+    }
+
+    static void AssertEveryFaceOnceWithUniqueIds(TerrainFixture f, MapTerrainChunkSet set)
+    {
+        Assert.Equal(f.CompiledFaceCount, set.Chunks.Sum(c => c.TriangleOwners.Count));
+        Assert.Equal(f.CompiledFaceCount, set.Chunks.SelectMany(c => c.TriangleOwners).Distinct().Count());
+        Assert.Equal(set.Chunks.Count, set.Chunks.Select(c => c.ChunkId).Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
     public void IncompleteViewAndUnresolvedChain_Refuse()
     {
         Assert.Contains("complete", Assert.Throws<MapDocumentException>(() =>

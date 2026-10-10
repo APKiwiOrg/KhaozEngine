@@ -13,17 +13,22 @@ using KhaozEngine.Physics;
 
 namespace KhaozEngine.MapDoc.Physics;
 
-/// <summary>How terrain faces are grouped into physics meshes. <see cref="MaxTrianglesPerChunk"/> is valid from
-/// <see cref="MapTerrainPhysics.MinTrianglesPerChunk"/> to <see cref="MapTerrainPhysics.MaxTrianglesPerChunk"/>.</summary>
+/// <summary>How terrain faces are grouped into physics meshes. <see cref="MaxTrianglesPerChunk"/> is valid from 64 to
+/// 1,024.</summary>
 public sealed record MapTerrainChunkPolicy(int MaxTrianglesPerChunk = 1024);
 
 /// <summary>One bounded one-sided triangle mesh of compiled terrain faces, installed at <see cref="Anchor"/>.</summary>
 public sealed class MapTerrainChunk
 {
-    /// <summary><c>surfaceId/SlotX,SlotZ/minCellX,minCellZ,sizeCells</c> for a patch block, or
-    /// <c>stripId/firstPrimitive/Side</c> for a wall strip range. A block or strip primitive split by face to meet
-    /// the anchor extent appends the first face's <c>/ParentTriangle.Child</c> to the block, or carries
-    /// <c>primitive.ParentTriangle</c> as the strip's first primitive.</summary>
+    /// <summary>The stable chunk id. Residency and provenance key off it, so the grammar is fixed:
+    /// <list type="bullet">
+    /// <item><c>surfaceId/SlotX,SlotZ/minCellX,minCellZ,sizeCells</c>, a patch block of slot-local cells.</item>
+    /// <item><c>surfaceId/SlotX,SlotZ/minCellX,minCellZ,1/ParentTriangle.Child</c>, a slot cell split by face to meet
+    /// the anchor extent, named by its first face.</item>
+    /// <item><c>stripId/firstPrimitive/Side</c>, a contiguous primitive range of one wall strip side.</item>
+    /// <item><c>stripId/Primitive.ParentTriangle/Side</c>, one strip segment split by face to meet the anchor extent,
+    /// named by its first face.</item>
+    /// </list></summary>
     public string ChunkId { get; }
 
     /// <summary>Whole metres, <c>Floor(centre + 1/2)</c> of the chunk's exact bounds on each axis.</summary>
@@ -77,18 +82,15 @@ public sealed class MapTerrainChunkSet
 /// <summary>Compiles R2's support floors, ceilings and wall strips into bounded physics meshes.</summary>
 public static class MapTerrainPhysics
 {
-    /// <summary>The smallest accepted triangle cap.</summary>
-    public const int MinTrianglesPerChunk = 64;
+    // The accepted triangle cap range.
+    internal const int MinTrianglesPerChunk = 64, MaxTrianglesPerChunk = 1024;
 
-    /// <summary>The largest accepted triangle cap.</summary>
-    public const int MaxTrianglesPerChunk = 1024;
-
-    /// <summary>The capsule feature query refuses installed vertices beyond this many metres on any local axis.</summary>
-    public const int MaxAnchorOffsetMetres = 64;
+    // The capsule feature query refuses installed vertices beyond this many metres on any local axis.
+    internal const int MaxAnchorOffsetMetres = 64;
 
     /// <summary>Chunks every present support floor and ceiling patch of a complete view, quadrant by quadrant within
     /// each 64 by 64 slot block, and every wall strip side by contiguous primitive range, until each chunk holds at
-    /// most the cap and every exact vertex lies within <see cref="MaxAnchorOffsetMetres"/> of its anchor. Faces are
+    /// most the cap and every exact vertex lies within 64 m of its anchor on every axis. Faces are
     /// R2's, never retriangulated. A slot cell is split by face only to meet the extent, and a single face that fits
     /// no anchor keeps a chunk of its own. Throws <see cref="MapDocumentException"/> for a view that is not complete,
     /// a slot cell over the cap ("physics chunk capacity"), a wall strip chain that does not resolve ("unresolved
@@ -106,6 +108,7 @@ public static class MapTerrainPhysics
         var surfaces = view.Surfaces.ToDictionary(s => s.Id, StringComparer.Ordinal);
         var chunker = new Chunker(policy.MaxTrianglesPerChunk);
         int skipped = 0;
+        string owner = "the view";
         try
         {
             foreach (MapPatchKey key in view.Witness.Present.Select(p => p.Key).Order())
@@ -114,6 +117,7 @@ public static class MapTerrainPhysics
                     throw new MapDocumentException($"terrain physics patch '{key}' has no declared surface");
                 if (surface.Role != MapSurfaceRole.PaintOverride)
                 {
+                    owner = $"patch '{key}'";
                     MapSurfacePatch patch = view.Patch(key).Patch ??
                         throw new MapDocumentException($"terrain physics patch '{key}' is unavailable");
                     MapCompiledPatch compiled = MapSurfaceCompiler.Compile(surface, patch);
@@ -122,6 +126,7 @@ public static class MapTerrainPhysics
                 }
                 foreach (MapWallStrip strip in view.RecordsIn(key).OfType<MapWallStrip>())
                 {
+                    owner = $"wall strip '{strip.Id}'";
                     MapCompiledStrip compiled = MapWallStripCompiler.Compile(strip,
                         Chain(view, strip, strip.LowerChain), Chain(view, strip, strip.UpperChain));
                     chunker.AddStrip(strip.Id, compiled.ExactVertices, compiled.Faces);
@@ -130,7 +135,7 @@ public static class MapTerrainPhysics
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
         {
-            throw new MapDocumentException("terrain physics geometry is not representable", error);
+            throw new MapDocumentException($"terrain physics geometry is not representable in {owner}", error);
         }
         return new(chunker.Finish(), view.ReadWitness, skipped);
     }

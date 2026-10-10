@@ -5,7 +5,7 @@ namespace KhaozEngine.Locomotion;
 
 public static partial class CharacterMovement
 {
-    private static bool PrepareCommitmentTick(ref MoveState state, ref MoveTuning tuning, ref Vector2 moveDir,
+    internal static bool PrepareCommitmentTick(ref MoveState state, ref MoveTuning tuning, ref Vector2 moveDir,
         ref float speedFraction, ref bool run, ref bool jump, ref float? faceYaw, float dt,
         out bool committedFlight, out bool launchedThisTick)
     {
@@ -80,7 +80,7 @@ public static partial class CharacterMovement
         return true;
     }
 
-    private static MovementCommitment FinishCommitmentTick(in MovementCommitment movement, bool launchedThisTick,
+    internal static MovementCommitment FinishCommitmentTick(in MovementCommitment movement, bool launchedThisTick,
         bool grounded, in Vector3 start, in Vector3 end, float dt)
     {
         if (movement.Phase != MovementCommitmentPhase.Airborne) return movement;

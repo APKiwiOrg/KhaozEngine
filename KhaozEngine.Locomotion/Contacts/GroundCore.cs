@@ -236,7 +236,7 @@ internal static class GroundCore
             if (!Owes(Support, FeetY)) return;
             double owed = Math.Min(Math.Min((double)Support.Height - FeetY, budget), _lift);
             if (!(owed > 0)) return;
-            FeetY = (float)(FeetY + owed);
+            FeetY = GroundPlacement.NotAbove(FeetY + owed);
             budget -= owed;
         }
 

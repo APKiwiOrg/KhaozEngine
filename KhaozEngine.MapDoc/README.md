@@ -40,7 +40,8 @@ Every API in this section is new in 20.30.0.
 `KhaozEngine.MapDoc.Editing.MapNativeEditEffects` describes an accepted document edit with old and new
 `MapBox3` bounds, patch keys, space and dependency IDs, `MapDigestChange` values and `MapNativeInvalidation`
 flags for Terrain, Physics, Nav, Material, Residency and Placements. `Unbounded` marks a geometry change whose
-bounds are unknown, so consumers treat it as invalidating everything the other flags cover. `Describe()` emits
+bounds are unknown. It is a full reset: discard all prior derived state for this world and rebuild from the
+post-edit world. `Describe()` emits
 compact canonical JSON with fixed field order, sorted patch keys and ordinal IDs, invariant numbers and explicit
 nulls.
 `MapNativeWriteSet` names patch payloads, surface declarations and placement state for publication.

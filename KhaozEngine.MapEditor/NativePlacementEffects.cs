@@ -8,6 +8,11 @@ using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapEditor;
 
+/// <summary>What <see cref="INativePlacementBounds"/> knows about a set of placements. <see cref="Bounds"/> is the union
+/// of the geometry it could compute, or null when there is none. <see cref="Unknown"/> is true when the geometry of at
+/// least one placement could not be computed, so <see cref="Bounds"/> does not limit the set.</summary>
+public readonly record struct NativePlacementExtent(MapBox3? Bounds, bool Unknown);
+
 /// <summary>World bounds of native placements, which a host that resolves placement geometry binds next to the asset
 /// closure through <see cref="EditorHistory.BindNativeAssets"/>. The editor itself holds no physics, so without a
 /// binding a placement edit reports <see cref="MapNativeInvalidation.Unbounded"/>.</summary>
@@ -15,9 +20,13 @@ public interface INativePlacementBounds
 {
     /// <summary>The union, in world metres, of the collider bounds and interaction envelope bounds of every placement
     /// of <paramref name="document"/> named by <paramref name="placementIds"/>, resolved against
-    /// <paramref name="assets"/> and <paramref name="registry"/>, or null when none of them has a collider or a
-    /// selection volume. A placement with neither contributes nothing and is never refused for it.</summary>
-    MapBox3? Bounds(MapDocument document, MapAssetClosure assets, MapDocRegistry registry, IReadOnlyList<string> placementIds);
+    /// <paramref name="assets"/> and <paramref name="registry"/>. A placement with neither a collider nor a selection
+    /// volume contributes nothing. A placement whose geometry cannot be computed, for example because its support does
+    /// not resolve or its asset shapes are refused, marks the extent <see cref="NativePlacementExtent.Unknown"/>
+    /// instead of throwing, so an edit is never refused for its bounds. Programming errors such as an ID the document
+    /// does not hold still throw.</summary>
+    NativePlacementExtent Bounds(MapDocument document, MapAssetClosure assets, MapDocRegistry registry,
+        IReadOnlyList<string> placementIds);
 }
 
 /// <summary>The effects of one native placement edit, from the placements it changed.</summary>
@@ -31,8 +40,9 @@ internal static class NativePlacementEffects
     /// geometry and digest. With no such change the edit reports <see cref="MapNativeInvalidation.Placements"/> only.
     /// With <paramref name="bounds"/> and <paramref name="assets"/> bound it reports the changed placements' bounds
     /// before as the old bounds and after as the new bounds, with Physics, Nav and Residency unless neither side has
-    /// geometry. Without them it reports Physics, Nav, Residency and <see cref="MapNativeInvalidation.Unbounded"/>
-    /// with no bounds, since the editor cannot size the change.</summary>
+    /// geometry. Without them, or when either side is <see cref="NativePlacementExtent.Unknown"/>, it reports Physics,
+    /// Nav, Residency and <see cref="MapNativeInvalidation.Unbounded"/> with no bounds, since the change cannot be
+    /// sized.</summary>
     internal static MapNativeEditEffects Describe(MapDocument before, MapDocument after, MapAssetClosure? assets,
         MapDocRegistry registry, INativePlacementBounds? bounds)
     {
@@ -42,20 +52,22 @@ internal static class NativePlacementEffects
                 !SameGeometry(a, b))
             .ToArray();
         if (changed.Length == 0) return Effects(null, null, MapNativeInvalidation.Placements);
-        if (assets is null || bounds is null)
-            return Effects(null, null, MapNativeInvalidation.Placements | Spatial | MapNativeInvalidation.Unbounded);
+        if (assets is null || bounds is null) return Effects(null, null, Unbounded);
 
-        MapBox3? oldBounds = Union(before, old, changed, assets, registry, bounds);
-        MapBox3? newBounds = Union(after, current, changed, assets, registry, bounds);
-        if (oldBounds is null && newBounds is null) return Effects(null, null, MapNativeInvalidation.Placements);
-        return Effects(oldBounds, newBounds, MapNativeInvalidation.Placements | Spatial);
+        NativePlacementExtent oldExtent = Extent(before, old, changed, assets, registry, bounds);
+        NativePlacementExtent newExtent = Extent(after, current, changed, assets, registry, bounds);
+        if (oldExtent.Unknown || newExtent.Unknown) return Effects(null, null, Unbounded);
+        if (oldExtent.Bounds is null && newExtent.Bounds is null) return Effects(null, null, MapNativeInvalidation.Placements);
+        return Effects(oldExtent.Bounds, newExtent.Bounds, MapNativeInvalidation.Placements | Spatial);
     }
 
-    static MapBox3? Union(MapDocument document, Dictionary<string, MapPlacement> placements, string[] changed,
+    const MapNativeInvalidation Unbounded = MapNativeInvalidation.Placements | Spatial | MapNativeInvalidation.Unbounded;
+
+    static NativePlacementExtent Extent(MapDocument document, Dictionary<string, MapPlacement> placements, string[] changed,
         MapAssetClosure assets, MapDocRegistry registry, INativePlacementBounds bounds)
     {
         string[] present = changed.Where(placements.ContainsKey).ToArray();
-        return present.Length == 0 ? null : bounds.Bounds(document, assets, registry, Array.AsReadOnly(present));
+        return present.Length == 0 ? default : bounds.Bounds(document, assets, registry, Array.AsReadOnly(present));
     }
 
     static Dictionary<string, MapPlacement> ById(MapDocument document)

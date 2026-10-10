@@ -206,9 +206,12 @@ Each static belongs to every storage tile its world bounds reach, minimum inclus
 with no extent belongs to the tile holding its minimum. A placement is keyed by its origin's tile, as
 `MapSpatialIndex` stores it, and a terrain chunk by the tile holding its minimum corner. `Affected` takes the world
 built after the edit and names the owners and tiles the edit invalidates from its old and new bounds and the chunks of
-every listed patch, including the chunks of the wall strips recorded in it. An edit flagged
-`MapNativeInvalidation.Unbounded` changed geometry its bounds do not limit, so every static is an owner and every
-storage tile the world's bounds reach is listed.
+every listed patch, including the chunks of the wall strips recorded in it.
+
+`MapNativeInvalidation.Unbounded` is a full reset: discard all prior derived state for this world and rebuild from
+the post-edit world. `Affected` then lists every static as an owner and every storage tile the post-edit world's
+bounds reach. Pre-edit extents outside the post-edit world cannot be listed, which is why a consumer must reset rather
+than patch.
 
 `MapTileResidency` remains the streaming loader keyed by storage tile. This index is the ownership R8 consumes.
 
@@ -234,8 +237,9 @@ for each R2 cave portal or vertical link whose aperture reaches two navigation t
 the semantic digests of the record and its aperture records, and both tiles. `AffectedTiles` widens the navigation tiles
 `MapResidencyOwnership.Affected` names by the seam margin, so a consumer rebakes only those tiles. A resolver 1 terrain
 edit also widens by the footprint of every sculpt tile position its bounds meet, whether the edit added or removed that
-tile. The result stays inside the edited world's partition. An edit flagged `MapNativeInvalidation.Unbounded` lists
-every tile of that partition, under the same `MaxPartitionTiles` refusal as `Partition`.
+tile. The result stays inside the edited world's partition. An edit flagged `MapNativeInvalidation.Unbounded`, a full
+reset, lists every tile of that partition without listing storage tiles first, under the same `MaxPartitionTiles`
+refusal as `Partition`.
 
 `Partition` refuses a world whose bounds reach more than `MapNavTiling.MaxPartitionTiles` (2^20) navigation tiles, and
 the refusal names the count.
@@ -297,8 +301,9 @@ implements it with `MapPlacementShapes.Bounds` over the session resolve options.
 rotate, scale or asset change then reports `Physics`, `Nav` and `Residency` with the changed placements' bounds
 before as `OldBounds` and after as `NewBounds`. A label change reports `Placements` only, and so does an edit whose
 changed placements have neither a collider nor a selection volume on either side. With no provider or no closure
-bound, a geometry change reports `Unbounded` with the three flags and no bounds. Collider height edits size
-their placements through the same provider.
+bound, a geometry change reports `Unbounded` with the three flags and no bounds. The provider never refuses an edit:
+a placement whose support does not resolve or whose asset shapes are refused marks its side unknown, and the edit
+reports `Unbounded` the same way. Collider height edits size their placements through the same provider.
 
 ## Deferred work
 
@@ -313,3 +318,5 @@ their placements through the same provider.
 | Water medium and walker profiles | R4 and #1299 | `CreateLegacyMoveContext` leaves the medium delegate null |
 | Clearance body model confirmation | Owner, #1344 | Clearance uses the #438 shell through `ContactShell` |
 | Editor placement edits reporting old and new placement bounds with Physics, Nav and Residency (P16) | R3 | Done, see Editor tooling |
+| GUI native editing: `MapEditorScene`, hosted by Showcase, binds no closure or placement bounds provider yet | R3 follow-up | Wiring it needs the provider reachable from that host, in this package or a shared adapter, since Showcase does not reference ke-mapedit |
+| Terrain edits that reseat support-bound placements without widening their tiles | #1348 | `Affected` widens terrain edits by patch extents only |

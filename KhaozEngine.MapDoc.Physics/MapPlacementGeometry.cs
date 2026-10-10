@@ -90,10 +90,8 @@ public static class MapPlacementShapes
                 nameof(shapes));
         if (shapes.Collider is null && shapes.Selection is null) return null;
         MapPlacementGeometry geometry = Build(placement, shapes);
-        MapBox3 e = geometry.Envelope.Bounds;
-        if (geometry.ColliderBounds is not { } c) return e;
-        return new MapBox3(Math.Min(c.MinX, e.MinX), Math.Min(c.MinY, e.MinY), Math.Min(c.MinZ, e.MinZ),
-            Math.Max(c.MaxX, e.MaxX), Math.Max(c.MaxY, e.MaxY), Math.Max(c.MaxZ, e.MaxZ));
+        MapBox3 envelope = geometry.Envelope.Bounds;
+        return geometry.ColliderBounds is { } collider ? collider.Union(envelope) : envelope;
     }
 
     static MapPlacementGeometry Build(MapResolvedPlacement placement, MapAssetShapes shapes)

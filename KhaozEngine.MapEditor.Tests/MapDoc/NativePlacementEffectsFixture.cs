@@ -8,6 +8,7 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Physics;
+using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapEdit;
 using KhaozEngine.MapEditor;
 using KhaozEngine.Physics;
@@ -16,8 +17,10 @@ namespace KhaozEngine.Tests.MapDoc;
 
 /// <summary>A resolver-1 native document over an in-memory closure on 64 m tiles. <c>short-crate</c> is a 1 m square box
 /// 0.5 m tall standing on its origin, so its interaction envelope is raised to 1 m. <c>mesh-only</c> declares no
-/// collider and no selection volume. <c>crate-1</c> stands at (10, 0, 10), and <c>marker-1</c>, a mesh-only placement
-/// at (-10, 0, -10), exists only when asked for, since a world build refuses it.</summary>
+/// collider and no selection volume. <c>supported-crate</c> is the crate declaring a support resource, which
+/// <see cref="MapAssetShapes.Read"/> refuses until R5. <c>crate-1</c> stands at (10, 0, 10). <c>marker-1</c>, a mesh-only
+/// placement at (-10, 0, -10), and <c>supported-1</c>, a <c>supported-crate</c> at (-30, 0, 30), exist only when asked
+/// for, since a world build refuses both.</summary>
 internal sealed class NativePlacementEffectsFixture
 {
     public static readonly MapWorldGrids Grids = new(64f, 1, 4, Vector2.Zero);
@@ -27,7 +30,7 @@ internal sealed class NativePlacementEffectsFixture
     public MapAssetClosure Assets { get; }
     public EditorDocument Editor { get; }
 
-    public NativePlacementEffectsFixture(bool bindProvider, bool withMeshOnly = false)
+    public NativePlacementEffectsFixture(bool bindProvider, bool withMeshOnly = false, bool withSupportAsset = false)
     {
         var source = new MemoryAssetSource();
         var crate = new CompoundShape(new[]
@@ -37,6 +40,7 @@ internal sealed class NativePlacementEffectsFixture
         MapAssetRef crateMesh = source.Add("crate.mesh", "kit/crate.glb", Encoding.UTF8.GetBytes("crate mesh"));
         MapAssetRef crateCollider = source.Add("crate.collider", "kit/crate.coll", Collider(crate));
         MapAssetRef markerMesh = source.Add("marker.mesh", "kit/marker.glb", Encoding.UTF8.GetBytes("marker mesh"));
+        MapAssetRef crateSupport = source.Add("crate.support", "kit/crate.surface", Encoding.UTF8.GetBytes("crate support"));
         string manifest = NativeEditorAssetFixtures.Manifest(
             new[]
             {
@@ -44,12 +48,16 @@ internal sealed class NativePlacementEffectsFixture
                     new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.5f, 0.5f, 0.5f)),
                 NativeEditorAssetFixtures.Asset("mesh-only", "marker.mesh", null, 1f,
                     new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.5f, 2f, 0.5f)),
+                NativeEditorAssetFixtures.Asset("supported-crate", "crate.mesh", "crate.collider", 1f,
+                        new Vector3(-0.5f, 0f, -0.5f), new Vector3(0.5f, 0.5f, 0.5f))
+                    .Replace("\"supportResourceIds\":[]", "\"supportResourceIds\":[\"crate.support\"]", StringComparison.Ordinal),
             },
             new[]
             {
                 NativeEditorAssetFixtures.Resource(crateMesh, "Mesh"),
                 NativeEditorAssetFixtures.Resource(crateCollider, "Collider"),
                 NativeEditorAssetFixtures.Resource(markerMesh, "Mesh"),
+                NativeEditorAssetFixtures.Resource(crateSupport, "Surface"),
             });
         MapAssetRef root = source.Add("kit", "kit/placement-effects.manifest.json", Encoding.UTF8.GetBytes(manifest));
 
@@ -66,11 +74,31 @@ internal sealed class NativePlacementEffectsFixture
         Document.Placements.Add(Crate("crate-1", 10f, 10f));
         if (withMeshOnly)
             Document.Placements.Add(new MapPlacement { Id = "marker-1", Kind = "prop", AssetId = "mesh-only", X = -10, Y = 0, Z = -10 });
+        if (withSupportAsset)
+            Document.Placements.Add(new MapPlacement { Id = "supported-1", Kind = "prop", AssetId = "supported-crate", X = -30, Y = 0, Z = 30 });
         Assets = MapAssetClosure.Load(Document.NativeAssets, source);
         MapBoundDocumentValidation.Validate(Document, Assets);
         Editor = new EditorDocument(Document);
         if (bindProvider) Editor.BindNativeAssets(Assets, NativePlacementBoundsProvider.Instance);
         else Editor.BindNativeAssets(Assets);
+    }
+
+    /// <summary>Moves the document to resolver 2 and binds <c>crate-1</c> to the support floor <c>ground</c>, which has
+    /// no patch payload. Bound validation accepts it, but its support cannot resolve.</summary>
+    public void BindCrateToUnloadedSupport()
+    {
+        Document.ResolverIdentity = new(1, 2);
+        Document.SupportRecipe = MapSupportRecipe.AuthoredBindingsV2;
+        var surface = new MapSurfaceRef("ground", MapLatticeFrame.ImportedMetreCentimetre,
+            MapSurfaceRole.SupportFloor, MapPresencePolicy.Native, null, null, "");
+        Document.Surfaces.Refs.Add(surface with
+        {
+            SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface, Array.Empty<KeyValuePair<MapPatchKey, string>>()),
+        });
+        MapPlacement crate = Document.Placements.Single(p => p.Id == "crate-1");
+        crate.Y = null;
+        crate.SupportBinding = new MapSupportBinding(MapSupportBindingKind.Surface, "ground", null, 0.25f, 1f, 2f);
+        MapBoundDocumentValidation.Validate(Document, Assets);
     }
 
     public static MapPlacement Crate(string id, float x, float z) =>

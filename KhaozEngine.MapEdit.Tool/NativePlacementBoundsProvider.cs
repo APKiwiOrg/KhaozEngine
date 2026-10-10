@@ -14,7 +14,8 @@ namespace KhaozEngine.MapEdit;
 /// <see cref="NativeDocumentService.SessionOptionsV2"/> with authored bindings for resolver 2. It resolves only the
 /// listed placements whose assets declare a collider or a selection volume, and bounds each with
 /// <see cref="MapPlacementShapes.Bounds"/>. A placement whose asset declares neither contributes nothing and is never
-/// resolved. A shaped placement whose support cannot resolve refuses as resolution does. Stateless.</summary>
+/// resolved. A placement whose asset shapes, support or geometry refuse with <see cref="MapDocumentException"/> marks the
+/// extent unknown, so an edit is never refused for its bounds. Stateless.</summary>
 public sealed class NativePlacementBoundsProvider : INativePlacementBounds
 {
     /// <summary>The shared instance.</summary>
@@ -25,42 +26,92 @@ public sealed class NativePlacementBoundsProvider : INativePlacementBounds
     }
 
     /// <inheritdoc/>
-    public MapBox3? Bounds(MapDocument document, MapAssetClosure assets, MapDocRegistry registry, IReadOnlyList<string> placementIds)
+    public NativePlacementExtent Bounds(MapDocument document, MapAssetClosure assets, MapDocRegistry registry,
+        IReadOnlyList<string> placementIds)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(placementIds);
-        if (placementIds.Count == 0) return null;
+        if (placementIds.Count == 0) return default;
         var authored = new Dictionary<string, MapPlacement>(StringComparer.Ordinal);
         foreach (MapPlacement placement in document.Placements) authored.TryAdd(placement.Id, placement);
+        bool unknown = false;
         // Only placements with a collider or a selection volume have bounds, so only they are resolved. A placement
         // without either never reaches support resolution.
-        var shapes = new Dictionary<string, MapAssetShapes>(StringComparer.Ordinal);
+        var shapes = new Dictionary<string, (bool Refused, MapAssetShapes? Shapes)>(StringComparer.Ordinal);
         var shaped = new List<string>(placementIds.Count);
         foreach (string id in placementIds)
         {
             string assetId = (authored.TryGetValue(id, out MapPlacement? placement) ? placement.AssetId : null)
-                ?? throw new MapDocumentException($"No placement with id '{id}' and an asset.");
-            MapResolvedAsset declared = assets.GetAsset(assetId);
-            if (declared.CollisionResourceId is null && declared.SelectionResourceId is null) continue;
-            if (!shapes.ContainsKey(assetId)) shapes.Add(assetId, MapAssetShapes.Read(assets, assetId));
-            shaped.Add(id);
+                ?? throw new ArgumentException($"No placement with id '{id}' and an asset.", nameof(placementIds));
+            if (!shapes.TryGetValue(assetId, out (bool Refused, MapAssetShapes? Shapes) asset))
+                shapes.Add(assetId, asset = ReadShapes(assets, assetId));
+            if (asset.Refused) unknown = true;
+            else if (asset.Shapes is not null) shaped.Add(id);
         }
-        if (shaped.Count == 0) return null;
 
+        MapBox3? union = null;
+        foreach (MapResolvedPlacement placement in Resolve(document, assets, registry, shaped, ref unknown))
+        {
+            try
+            {
+                if (MapPlacementShapes.Bounds(placement, shapes[placement.AssetId].Shapes!) is { } box)
+                    union = union is { } u ? u.Union(box) : box;
+            }
+            catch (MapDocumentException)
+            {
+                unknown = true;
+            }
+        }
+        return new NativePlacementExtent(union, unknown);
+    }
+
+    // The asset's shapes, no shapes when it declares neither a collider nor a selection volume, or refused when the
+    // closure refuses them.
+    static (bool Refused, MapAssetShapes? Shapes) ReadShapes(MapAssetClosure assets, string assetId)
+    {
+        try
+        {
+            MapResolvedAsset declared = assets.GetAsset(assetId);
+            if (declared.CollisionResourceId is null && declared.SelectionResourceId is null) return (false, null);
+            return (false, MapAssetShapes.Read(assets, assetId));
+        }
+        catch (MapDocumentException)
+        {
+            return (true, null);
+        }
+    }
+
+    // Resolves the placements together, and one at a time only when that refuses, so one unresolvable placement
+    // leaves the others bounded.
+    static IReadOnlyList<MapResolvedPlacement> Resolve(MapDocument document, MapAssetClosure assets,
+        MapDocRegistry registry, IReadOnlyList<string> ids, ref bool unknown)
+    {
+        if (ids.Count == 0) return Array.Empty<MapResolvedPlacement>();
         MapResolveOptions options = NativeDocumentService.SessionOptionsFor(document.ResolverIdentity);
         // The analytic field is built only when a resolver-1 placement takes its height from support.
         TerrainField? field = null;
-        IReadOnlyList<MapResolvedPlacement> resolved = MapNativeResolution.ResolvePlacements(document, assets, options,
-            shaped, (x, z) => (field ??= MapRuntime.BuildField(document, registry)).SampleHeight(x, z));
-        MapBox3? union = null;
-        foreach (MapResolvedPlacement placement in resolved)
+        float Height(float x, float z) => (field ??= MapRuntime.BuildField(document, registry)).SampleHeight(x, z);
+        try
         {
-            if (MapPlacementShapes.Bounds(placement, shapes[placement.AssetId]) is not { } box) continue;
-            union = union is not { } u ? box : new MapBox3(Math.Min(u.MinX, box.MinX), Math.Min(u.MinY, box.MinY),
-                Math.Min(u.MinZ, box.MinZ), Math.Max(u.MaxX, box.MaxX), Math.Max(u.MaxY, box.MaxY), Math.Max(u.MaxZ, box.MaxZ));
+            return MapNativeResolution.ResolvePlacements(document, assets, options, ids, Height);
         }
-        return union;
+        catch (MapDocumentException)
+        {
+        }
+        var resolved = new List<MapResolvedPlacement>(ids.Count);
+        foreach (string id in ids)
+        {
+            try
+            {
+                resolved.AddRange(MapNativeResolution.ResolvePlacements(document, assets, options, new[] { id }, Height));
+            }
+            catch (MapDocumentException)
+            {
+                unknown = true;
+            }
+        }
+        return resolved;
     }
 }

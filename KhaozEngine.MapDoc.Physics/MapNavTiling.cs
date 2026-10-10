@@ -185,8 +185,8 @@ public static class MapNavTiling
     /// taken arithmetically from <see cref="TerrainSculpt.TileSize"/> and <see cref="MapBuiltWorld.LegacySculptCellSize"/>
     /// whether or not that tile exists, so a sculpt tile the edit added or removed lists every tile whose geometry
     /// digest it enters or leaves. The result is clipped to the tiles <see cref="Partition"/> lists for
-    /// <paramref name="world"/>. An edit flagged <see cref="MapNativeInvalidation.Unbounded"/> lists every one of
-    /// those tiles.
+    /// <paramref name="world"/>. An edit flagged <see cref="MapNativeInvalidation.Unbounded"/>, a full reset, lists every
+    /// one of those tiles without first listing every storage tile.
     /// <para>Throws as <see cref="MapResidencyOwnership.Affected"/> does, as <see cref="Partition"/> does when an
     /// unbounded edit's world reaches more than <see cref="MaxPartitionTiles"/> tiles, and
     /// <see cref="ArgumentException"/> for invalid options.</para></summary>
@@ -197,6 +197,19 @@ public static class MapNavTiling
         ArgumentNullException.ThrowIfNull(grids);
         ValidateOptions(options);
         ArgumentNullException.ThrowIfNull(effects);
+        const MapNativeInvalidation unbounded = MapNativeInvalidation.Nav | MapNativeInvalidation.Unbounded;
+        if ((effects.Invalidates & unbounded) == unbounded)
+        {
+            // Every partition tile, without enumerating every storage tile through Affected first.
+            grids.Validate(world);
+            (int minX, int maxX, int minZ, int maxZ) = PartitionRange(world, grids);
+            var every = new MapNavTileCoord[RequirePartitionCount(minX, maxX, minZ, maxZ)];
+            int index = 0;
+            for (long z = minZ; z <= maxZ; z++)
+                for (long x = minX; x <= maxX; x++)
+                    every[index++] = new MapNavTileCoord((int)x, (int)z);
+            return every;
+        }
         MapAffectedSet affected = MapResidencyOwnership.Affected(world, grids, effects);
         if ((effects.Invalidates & MapNativeInvalidation.Nav) == 0) return Array.Empty<MapNavTileCoord>();
 
@@ -216,19 +229,10 @@ public static class MapNavTiling
                 widen.Add((minX, minZ, maxX, maxZ));
             }
 
-        (int firstX, int lastX, int firstZ, int lastZ) = PartitionRange(world, grids);
-        if ((effects.Invalidates & MapNativeInvalidation.Unbounded) != 0)
-        {
-            var every = new MapNavTileCoord[RequirePartitionCount(firstX, lastX, firstZ, lastZ)];
-            int index = 0;
-            for (long z = firstZ; z <= lastZ; z++)
-                for (long x = firstX; x <= lastX; x++)
-                    every[index++] = new MapNavTileCoord((int)x, (int)z);
-            return every;
-        }
         var tiles = new SortedSet<MapNavTileCoord>(affected.NavTiles, TileOrder);
         foreach (var (minX, minZ, maxX, maxZ) in widen)
             tiles.UnionWith(CaptureTilesMeeting(minX, minZ, maxX, maxZ, grids, options.SeamMarginMetres));
+        (int firstX, int lastX, int firstZ, int lastZ) = PartitionRange(world, grids);
         return tiles.Where(t => t.X >= firstX && t.X <= lastX && t.Z >= firstZ && t.Z <= lastZ).ToArray();
     }
 

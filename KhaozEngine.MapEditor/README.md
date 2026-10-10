@@ -880,8 +880,8 @@ Placement commands use the same seam with `PlacementsOnly`. Their effects diff p
 after: an add, a removal, or a change of position, yaw, scale, asset, support binding or numeric ID. A host binds
 `INativePlacementBounds` next to the closure with `BindNativeAssets(assets, placementBounds)`, and such an edit then
 reports `Physics`, `Nav` and `Residency` with the changed placements' collider and envelope bounds before and after.
-Without a binding, or on the closure-free direct `Apply` and `Revert` paths, it reports those flags with `Unbounded`
-and no bounds. An edit with no such change, or whose changed placements have no collider and no selection volume,
+Without a binding, on the closure-free direct `Apply` and `Revert` paths, or when the provider marks either side
+unknown, it reports those flags with `Unbounded` and no bounds. The provider never refuses an edit. An edit with no such change, or whose changed placements have no collider and no selection volume,
 reports `Placements` only. The editor takes no physics reference, and ke-mapedit supplies the provider.
 Commands outside this native document transaction protocol are refused on opted-in documents.
 Analytic documents keep their existing command behavior.

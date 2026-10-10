@@ -140,8 +140,10 @@ world collider and interaction envelope bounds and `Physics`, `Nav` and `Residen
 
 `NativePlacementBoundsProvider.Instance` sizes those bounds and every placement edit the session applies. It resolves
 only the listed placements under the session resolve options and bounds each with `MapPlacementShapes.Bounds`, so a
-placement with neither a collider nor a selection volume contributes nothing and is never refused for it. A GUI host
-passes it to `EditorDocument.BindNativeAssets(assets, NativePlacementBoundsProvider.Instance)`.
+placement with neither a collider nor a selection volume contributes nothing. A placement whose support does not
+resolve or whose asset shapes are refused marks its side unknown, and the edit reports `Unbounded` instead of being
+refused. The GUI editor does not bind a provider yet: Showcase, which hosts `MapEditorScene`, does not reference
+this tool, so that wiring is deferred work in the MapDoc.Physics README.
 
 A dry run, the default, computes the new collider bytes, digest and effects over an in-memory overlay and touches no
 file and no session state. Apply writes the new collider and a new root manifest through `MapAssetFileWriter`,

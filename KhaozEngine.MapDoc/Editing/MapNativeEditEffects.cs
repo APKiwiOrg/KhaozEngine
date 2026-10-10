@@ -20,13 +20,18 @@ public enum MapNativeInvalidation
     Residency = 16,
     Placements = 32,
 
-    /// <summary>The edit changed geometry whose bounds are unknown, so the old and new bounds do not limit it. A
-    /// consumer of the other flags treats it as invalidating everything they cover, for example every owner and every
-    /// tile of the world.</summary>
+    /// <summary>The edit changed geometry whose bounds are unknown, so the old and new bounds do not limit it. It is a
+    /// full reset for the other flags: discard all prior derived state for this world and rebuild from the post-edit
+    /// world, since pre-edit extents outside the post-edit world cannot be listed.</summary>
     Unbounded = 64,
 }
 
-public readonly record struct MapBox3(double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ);
+public readonly record struct MapBox3(double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ)
+{
+    /// <summary>The smallest box containing this box and <paramref name="other"/>.</summary>
+    public MapBox3 Union(MapBox3 other) => new(Math.Min(MinX, other.MinX), Math.Min(MinY, other.MinY),
+        Math.Min(MinZ, other.MinZ), Math.Max(MaxX, other.MaxX), Math.Max(MaxY, other.MaxY), Math.Max(MaxZ, other.MaxZ));
+}
 public sealed record MapDigestChange(string Key, string? Before, string? After);
 
 /// <summary>Reported consequences of one accepted native document edit.</summary>

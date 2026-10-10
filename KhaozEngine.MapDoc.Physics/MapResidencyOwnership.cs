@@ -71,12 +71,13 @@ public static class MapResidencyOwnership
     /// <para>Owners are the statics whose bounds meet the old or new edit bounds, plus the chunks of every listed patch:
     /// its own surface chunks and the chunks of every wall strip the world records in it. Storage tiles are those the
     /// old and new edit bounds reach, under the membership rule of <see cref="Build"/>, plus the membership of those
-    /// patch chunks. An owner listed only because its bounds meet an edit box does not widen the tiles: a terrain edit
-    /// does not reseat placements, and a terrain edit reports whole-patch extents, so the changed geometry already lies
-    /// inside the edit bounds.</para>
-    /// <para>An edit flagged <see cref="MapNativeInvalidation.Unbounded"/> changed geometry its bounds do not limit, so
-    /// every static is an owner and every storage tile the world's bounds reach is listed, together with the tiles of
-    /// any edit bounds and listed patches.</para>
+    /// patch chunks. An owner listed only because its bounds meet an edit box does not widen the tiles. A terrain edit
+    /// reports whole-patch extents, so its terrain geometry lies inside the edit bounds, but a placement it reseats
+    /// through surface support is not widened yet (KhaozEngine#1348).</para>
+    /// <para><see cref="MapNativeInvalidation.Unbounded"/> is a full reset: discard all prior derived state for this
+    /// world and rebuild from the post-edit world. Every static is an owner, and every storage tile the post-edit
+    /// world's bounds reach is listed, together with the tiles of any edit bounds and listed patches. Pre-edit extents
+    /// outside the post-edit world cannot be listed.</para>
     /// <para>Throws <see cref="MapDocumentException"/> when the grids do not align with the world or an edit box has a
     /// coordinate beyond <see cref="MapWorldBuilder.MaxCoordinateMetres"/>.</para></summary>
     public static MapAffectedSet Affected(MapBuiltWorld world, MapWorldGrids grids, MapNativeEditEffects effects)

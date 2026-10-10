@@ -98,6 +98,29 @@ public sealed class NativePlacementEffectsTests
     }
 
     [Fact]
+    public void DeletingACrateWhoseSupportCannotResolve_IsAcceptedAndReportsUnbounded()
+    {
+        var f = new NativePlacementEffectsFixture(bindProvider: true);
+        f.BindCrateToUnloadedSupport();
+        f.Editor.Execute(new RemovePlacementCommand("crate-1"));
+        MapNativeEditEffects effects = f.Editor.LastNativeEffects!;
+        Assert.Empty(f.Document.Placements);
+        Assert.Equal((Spatial | MapNativeInvalidation.Unbounded, (MapBox3?)null, (MapBox3?)null),
+            (effects.Invalidates, effects.OldBounds, effects.NewBounds));
+    }
+
+    [Fact]
+    public void DeletingAPlacementOfASupportResourceAsset_IsAcceptedAndReportsUnbounded()
+    {
+        var f = new NativePlacementEffectsFixture(bindProvider: true, withSupportAsset: true);
+        f.Editor.Execute(new RemovePlacementCommand("supported-1"));
+        MapNativeEditEffects effects = f.Editor.LastNativeEffects!;
+        Assert.DoesNotContain(f.Document.Placements, p => p.Id == "supported-1");
+        Assert.Equal((Spatial | MapNativeInvalidation.Unbounded, (MapBox3?)null, (MapBox3?)null),
+            (effects.Invalidates, effects.OldBounds, effects.NewBounds));
+    }
+
+    [Fact]
     public void ColliderHeightEdit_WhoseRaiseChanges_ReportsTheNewEnvelope()
     {
         using var f = new NativeCollisionToolFixture();

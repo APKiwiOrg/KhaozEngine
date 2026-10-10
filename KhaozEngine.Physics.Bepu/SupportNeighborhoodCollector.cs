@@ -24,8 +24,10 @@ internal sealed class SupportNeighborhoodCollector
     const float BroadphaseMargin = 0.01f;
 
     readonly SupportSegmentPolygon _kernel = new();
+    readonly SupportTangentKernel _tangents;
     readonly List<SupportMember> _members = [];
     readonly List<CapsuleFeaturePolyhedron> _leaves = [];
+    readonly List<SupportCurvedLeaf> _curved = [];
     readonly List<SupportPolygon> _polygons = [];
     readonly List<int> _triangles = [];
     readonly FeaturePoint _start, _end, _direction;
@@ -49,6 +51,7 @@ internal sealed class SupportNeighborhoodCollector
             _high[axis] = Math.Max(SupportGeometry.Component(_start, axis).Upper, SupportGeometry.Component(end, axis).Upper);
         }
         IsResolved = _start.Within(2048) && end.Within(2048) && _direction.IsResolved;
+        _tangents = new SupportTangentKernel(_start, end, _radius.Bounds, _band);
     }
 
     internal bool IsResolved { get; }
@@ -88,13 +91,14 @@ internal sealed class SupportNeighborhoodCollector
     static float Up(float centre, GeometryInterval extent) =>
         MathF.BitIncrement((float)GeometryInterval.Exact(centre).Add(GeometryInterval.Exact(extent.Upper)).Upper);
 
-    /// <summary>Considers every element of one selected static: the faces of its box and hull leaves, or the
-    /// triangles of its mesh near the probe. A capture refusal is the neighborhood's status, and failed bounded
-    /// arithmetic in the kernel is Unsupported.</summary>
+    /// <summary>Considers every element of one selected static: the faces of its box and hull leaves and the tangent
+    /// elements of its sphere, capsule and cylinder leaves, or the triangles of its mesh near the probe. A capture
+    /// refusal is the neighborhood's status, and failed bounded arithmetic in a kernel is Unsupported.</summary>
     internal CapsuleFeatureStatus Collect(Simulation simulation, SeamStaticHandle seam,
         in StaticDescription description)
     {
         _polygons.Clear();
+        _curved.Clear();
         CapsuleFeatureStatus captured;
         if (SupportNeighborhoodMesh.IsMesh(description.Shape))
         {
@@ -108,9 +112,21 @@ internal sealed class SupportNeighborhoodCollector
             if (captured != CapsuleFeatureStatus.Complete) return captured;
             foreach (CapsuleFeaturePolyhedron leaf in _leaves)
                 SupportNeighborhoodPolyhedra.Polygons(seam, leaf, _polygons);
+            captured = SupportNeighborhoodCurved.Capture(simulation, description.Shape, description.Pose, _curved);
+            if (captured != CapsuleFeatureStatus.Complete) return captured;
         }
         foreach (SupportPolygon polygon in _polygons)
             if (Consider(polygon) == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
+        foreach (SupportCurvedLeaf leaf in _curved)
+        {
+            for (int part = 0; part < leaf.Parts; part++)
+            {
+                GeometrySign member = _tangents.Measure(seam, leaf, part, out SupportElement element);
+                if (member == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
+                // Tangent elements are never joined, so they carry no polygon.
+                if (member == GeometrySign.Positive) _members.Add(new(null, element));
+            }
+        }
         return CapsuleFeatureStatus.Complete;
     }
 

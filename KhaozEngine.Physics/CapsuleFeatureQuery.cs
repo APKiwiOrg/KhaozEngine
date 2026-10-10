@@ -148,7 +148,7 @@ public enum SupportElementKind : byte { Polygon, Tangent }
 
 /// <summary>One front-facing surface element whose separation from the probe may lie within the band.
 /// <c>ElementId</c> is stable per static: polyhedron leaf * 256 + face, mesh triangle index, or
-/// tangent leaf * 4 + part (0 sphere, capsule or cylinder side, 1 cylinder top cap, 2 cylinder bottom cap).
+/// tangent leaf * 256 + part (0 sphere, capsule or cylinder side, 1 cylinder top cap, 2 cylinder bottom cap).
 /// The normal is the element's outward geometric normal. The witness is the element's closest point to the
 /// probe segment, enclosed by <c>PositionErrorMetres</c>.</summary>
 public readonly record struct SupportElement(StaticHandle Static, SupportElementKind Kind, int ElementId,

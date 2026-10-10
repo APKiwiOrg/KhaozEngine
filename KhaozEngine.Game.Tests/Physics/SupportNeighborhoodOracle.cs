@@ -5,10 +5,14 @@ using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using Xunit;
+using BepuCapsule = BepuPhysics.Collidables.Capsule;
 using BepuCompound = BepuPhysics.Collidables.Compound;
+using BepuCylinder = BepuPhysics.Collidables.Cylinder;
 using BepuHull = BepuPhysics.Collidables.ConvexHull;
 using BepuMesh = BepuPhysics.Collidables.Mesh;
 using BepuSim = BepuPhysics.Simulation;
+using BepuSphere = BepuPhysics.Collidables.Sphere;
+using BepuStaticDescription = BepuPhysics.StaticDescription;
 using BepuStaticHandle = BepuPhysics.StaticHandle;
 using BepuTypedIndex = BepuPhysics.Collidables.TypedIndex;
 
@@ -43,12 +47,57 @@ internal sealed record OracleFace(StaticHandle Static, int ElementId, OracleVect
         OracleVector.Cross(Vertices[1] - Vertices[0], Vertices[2] - Vertices[0]).Unit;
 }
 
+/// <summary>Which surface of a curved leaf an oracle tangent describes. A round surface lies at the radius from a
+/// core segment of the given half length along the axis, so a sphere is a round surface of half length zero.
+/// Cylinder parts are side 0, top cap 1 and bottom cap 2.</summary>
+internal enum OracleSurface { Round, CylinderSide, CylinderTop, CylinderBottom }
+
+/// <summary>A tangent element's closest point to one point, its distance, the outward normal there and the point's
+/// signed height above the tangent plane at the closest point.</summary>
+internal readonly record struct OracleTangentPoint(double Distance, OracleVector Witness, OracleVector Normal,
+    double Height);
+
+/// <summary>One curved surface element of an installed leaf in binary64: the leaf's world centre, the unit direction
+/// of its local Y axis, its radius and its half length.</summary>
+internal sealed record OracleTangent(StaticHandle Static, int ElementId, OracleSurface Surface, OracleVector Centre,
+    OracleVector Axis, double Radius, double HalfLength)
+{
+    /// <summary>The closed form closest point of this element to <paramref name="point"/>.</summary>
+    internal OracleTangentPoint Closest(OracleVector point)
+    {
+        OracleVector offset = point - Centre;
+        double along = OracleVector.Dot(offset, Axis);
+        if (Surface == OracleSurface.Round)
+        {
+            OracleVector core = Centre + Axis * Math.Clamp(along, -HalfLength, HalfLength);
+            OracleVector radial = point - core;
+            double length = radial.Length;
+            OracleVector normal = radial * (1 / length);
+            return new(Math.Abs(length - Radius), core + normal * Radius, normal, length - Radius);
+        }
+        OracleVector across = offset - Axis * along;
+        double distance = across.Length;
+        OracleVector outward = across * (1 / distance);
+        if (Surface == OracleSurface.CylinderSide)
+        {
+            double beyond = Math.Max(Math.Abs(along) - HalfLength, 0), height = distance - Radius;
+            return new(Math.Sqrt(height * height + beyond * beyond),
+                Centre + Axis * Math.Clamp(along, -HalfLength, HalfLength) + outward * Radius, outward, height);
+        }
+        double side = Surface == OracleSurface.CylinderTop ? 1 : -1;
+        double above = side * along - HalfLength, outside = Math.Max(distance - Radius, 0);
+        OracleVector rim = distance > Radius ? outward * Radius : across;
+        return new(Math.Sqrt(above * above + outside * outside), Centre + Axis * (side * HalfLength) + rim,
+            Axis * side, above);
+    }
+}
+
 /// <summary>A face's separation from the probe, the closest probe axis point's height above the face plane, and
 /// the face's closest point.</summary>
 internal readonly record struct OracleContact(double Separation, double Height, OracleVector Witness);
 
-/// <summary>Brute force segment and polygon distances in binary64 over the installed float geometry. Independent of
-/// the backend's bounded arithmetic: it reads only installed shapes, poses and vertices.</summary>
+/// <summary>Brute force segment distances to polygons and curved surfaces in binary64 over the installed float
+/// geometry. Independent of the backend's bounded arithmetic: it reads only installed shapes, poses and vertices.</summary>
 internal static class SupportNeighborhoodOracle
 {
     /// <summary>Tolerance for binary64 evaluation of the installed float geometry against the backend enclosures.</summary>
@@ -112,14 +161,7 @@ internal static class SupportNeighborhoodOracle
     /// id is the triangle index. Vertices run A, C, B so the normal is the backend's front, Cross(C - A, B - A).</summary>
     internal static List<OracleFace> InstalledMesh(BepuPhysicsWorld world, StaticHandle owner)
     {
-        FieldInfo? simulationField = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
-        FieldInfo? handlesField = typeof(BepuPhysicsWorld).GetField("_handles", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(simulationField);
-        Assert.NotNull(handlesField);
-        BepuSim simulation = Assert.IsType<BepuSim>(simulationField.GetValue(world));
-        var handles = Assert.IsType<Dictionary<int, (BepuStaticHandle Handle, BepuTypedIndex Shape)>>(
-            handlesField.GetValue(world));
-        simulation.Statics.GetDescription(handles[owner.Value].Handle, out var description);
+        BepuSim simulation = Installed(world, owner, out BepuStaticDescription description);
         Assert.Equal(default(BepuMesh).TypeId, description.Shape.Type);
         ref BepuMesh mesh = ref simulation.Shapes.GetShape<BepuMesh>(description.Shape.Index);
         Assert.Equal(Vector3.One, mesh.Scale);
@@ -135,6 +177,154 @@ internal static class SupportNeighborhoodOracle
         return faces;
     }
 
+    /// <summary>The curved surface elements of static <paramref name="owner"/>, read from the installed shapes and
+    /// poses: a sphere or capsule static, or every sphere, capsule and cylinder leaf of a compound. A cylinder's leaf
+    /// pose carries the base alignment lift.</summary>
+    internal static List<OracleTangent> InstalledCurved(BepuPhysicsWorld world, StaticHandle owner)
+    {
+        BepuSim simulation = Installed(world, owner, out BepuStaticDescription description);
+        var tangents = new List<OracleTangent>();
+        Quaternion orientation = description.Pose.Orientation;
+        OracleVector position = OracleVector.From(description.Pose.Position);
+        if (description.Shape.Type != default(BepuCompound).TypeId)
+        {
+            AddCurved(simulation, description.Shape, owner, 0, position,
+                OracleVector.Rotate(orientation, new OracleVector(0, 1, 0)).Unit, tangents);
+            return tangents;
+        }
+        ref BepuCompound compound = ref simulation.Shapes.GetShape<BepuCompound>(description.Shape.Index);
+        for (int leaf = 0; leaf < compound.Children.Length; leaf++)
+        {
+            var child = compound.Children[leaf];
+            OracleVector centre = OracleVector.Rotate(orientation, OracleVector.From(child.LocalPose.Position)) + position;
+            OracleVector axis = OracleVector.Rotate(orientation,
+                OracleVector.Rotate(child.LocalPose.Orientation, new OracleVector(0, 1, 0))).Unit;
+            AddCurved(simulation, child.ShapeIndex, owner, leaf, centre, axis, tangents);
+        }
+        return tangents;
+    }
+
+    static void AddCurved(BepuSim simulation, BepuTypedIndex shape, StaticHandle owner, int leaf, OracleVector centre,
+        OracleVector axis, List<OracleTangent> tangents)
+    {
+        int id = leaf * TangentLeafStride;
+        if (shape.Type == default(BepuSphere).TypeId)
+        {
+            float radius = simulation.Shapes.GetShape<BepuSphere>(shape.Index).Radius;
+            tangents.Add(new(owner, id, OracleSurface.Round, centre, axis, radius, 0));
+        }
+        else if (shape.Type == default(BepuCapsule).TypeId)
+        {
+            BepuCapsule capsule = simulation.Shapes.GetShape<BepuCapsule>(shape.Index);
+            tangents.Add(new(owner, id, OracleSurface.Round, centre, axis, capsule.Radius, capsule.HalfLength));
+        }
+        else if (shape.Type == default(BepuCylinder).TypeId)
+        {
+            BepuCylinder cylinder = simulation.Shapes.GetShape<BepuCylinder>(shape.Index);
+            foreach (OracleSurface surface in (ReadOnlySpan<OracleSurface>)[OracleSurface.CylinderSide,
+                         OracleSurface.CylinderTop, OracleSurface.CylinderBottom])
+                tangents.Add(new(owner, id + (int)surface - 1, surface, centre, axis, cylinder.Radius,
+                    cylinder.HalfLength));
+        }
+    }
+
+    /// <summary>Tangent element ids are leaf * 256 + part, the polyhedron face stride.</summary>
+    internal const int TangentLeafStride = 256;
+
+    static BepuSim Installed(BepuPhysicsWorld world, StaticHandle owner, out BepuStaticDescription description)
+    {
+        FieldInfo? simulationField = typeof(BepuPhysicsWorld).GetField("_sim", BindingFlags.Instance | BindingFlags.NonPublic);
+        FieldInfo? handlesField = typeof(BepuPhysicsWorld).GetField("_handles", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(simulationField);
+        Assert.NotNull(handlesField);
+        BepuSim simulation = Assert.IsType<BepuSim>(simulationField.GetValue(world));
+        var handles = Assert.IsType<Dictionary<int, (BepuStaticHandle Handle, BepuTypedIndex Shape)>>(
+            handlesField.GetValue(world));
+        simulation.Statics.GetDescription(handles[owner.Value].Handle, out description);
+        return simulation;
+    }
+
+    /// <summary>The closest point of a tangent element to the probe segment from <paramref name="lower"/> to
+    /// <paramref name="upper"/>. Each point distance is closed form. The segment minimum is a dense scan followed by a
+    /// golden section search around the best sample.</summary>
+    internal static OracleTangentPoint TangentContact(OracleTangent element, OracleVector lower, OracleVector upper)
+    {
+        const int Samples = 1024;
+        OracleVector At(double t) => lower + (upper - lower) * t;
+        double Distance(double t) => element.Closest(At(t)).Distance;
+        int best = 0;
+        double bestDistance = double.PositiveInfinity;
+        for (int i = 0; i <= Samples; i++)
+        {
+            double distance = Distance((double)i / Samples);
+            if (distance < bestDistance) (best, bestDistance) = (i, distance);
+        }
+        double a = Math.Max(0, (best - 1.0) / Samples), b = Math.Min(1, (best + 1.0) / Samples);
+        double ratio = (Math.Sqrt(5) - 1) / 2;
+        for (int i = 0; i < 200 && b - a > 1e-15; i++)
+        {
+            double c = b - (b - a) * ratio, d = a + (b - a) * ratio;
+            if (Distance(c) <= Distance(d)) b = d;
+            else a = c;
+        }
+        double t = (a + b) / 2;
+        return element.Closest(At(Distance(t) <= bestDistance ? t : (double)best / Samples));
+    }
+
+    /// <summary>Every tangent whose oracle separation is inside the band by more than the geometry tolerance, and
+    /// whose closest axis point is in front within the band, is a member. Every member agrees with the oracle within
+    /// its published error bounds.</summary>
+    internal static int AssertTangentsMatch(ReadOnlySpan<SupportElement> elements,
+        IReadOnlyList<OracleTangent> tangents, OracleVector lower, OracleVector upper, double radius, double band)
+    {
+        AssertOrdered(elements);
+        int required = 0;
+        foreach (OracleTangent tangent in tangents)
+        {
+            OracleTangentPoint contact = TangentContact(tangent, lower, upper);
+            double separation = contact.Distance - radius;
+            if (separation > band - Geometry || contact.Height < -band + Geometry) continue;
+            required++;
+            Assert.True(IndexOf(elements, tangent) >= 0,
+                $"Tangent {tangent.ElementId} of static {tangent.Static.Value} at separation {separation} is missing.");
+        }
+        foreach (SupportElement element in elements)
+        {
+            OracleTangent? tangent = null;
+            foreach (OracleTangent candidate in tangents)
+                if (candidate.Static == element.Static && candidate.ElementId == element.ElementId) tangent = candidate;
+            Assert.NotNull(tangent);
+            OracleTangentPoint contact = TangentContact(tangent, lower, upper);
+            double separation = contact.Distance - radius;
+            Assert.Equal(SupportElementKind.Tangent, element.Kind);
+            Assert.True(element.SeparationLower <= band, "A member's separation lower bound reaches the band.");
+            Assert.True(element.SeparationLower <= element.SeparationUpper);
+            Assert.True(separation <= band + element.PositionErrorMetres + Geometry,
+                $"Member {element.ElementId} lies at oracle separation {separation}.");
+            Assert.InRange(separation, element.SeparationLower - Geometry, element.SeparationUpper + Geometry);
+            Assert.True((OracleVector.From(element.Normal) - contact.Normal).Length <= element.NormalError + Geometry,
+                "The published normal error encloses the installed surface normal.");
+            Assert.True((OracleVector.From(element.Witness) - contact.Witness).Length <=
+                element.PositionErrorMetres + Geometry, "The published witness error encloses the closest point.");
+        }
+        return required;
+    }
+
+    internal static int IndexOf(ReadOnlySpan<SupportElement> elements, OracleTangent tangent)
+    {
+        for (int i = 0; i < elements.Length; i++)
+            if (elements[i].Static == tangent.Static && elements[i].ElementId == tangent.ElementId) return i;
+        return -1;
+    }
+
+    static void AssertOrdered(ReadOnlySpan<SupportElement> elements)
+    {
+        for (int i = 1; i < elements.Length; i++)
+            Assert.True(elements[i - 1].Static.Value < elements[i].Static.Value ||
+                (elements[i - 1].Static == elements[i].Static && elements[i - 1].ElementId < elements[i].ElementId),
+                "Elements are ordered by static handle, then element id.");
+    }
+
     internal static OracleContact Contact(OracleFace face, OracleVector lower, OracleVector upper, double radius)
     {
         (double distance, OracleVector axis, OracleVector point) = Closest(lower, upper, face);
@@ -147,10 +337,7 @@ internal static class SupportNeighborhoodOracle
     internal static int AssertMatches(ReadOnlySpan<SupportElement> elements, IReadOnlyList<OracleFace> faces,
         OracleVector lower, OracleVector upper, double radius, double band)
     {
-        for (int i = 1; i < elements.Length; i++)
-            Assert.True(elements[i - 1].Static.Value < elements[i].Static.Value ||
-                (elements[i - 1].Static == elements[i].Static && elements[i - 1].ElementId < elements[i].ElementId),
-                "Elements are ordered by static handle, then element id.");
+        AssertOrdered(elements);
         int required = 0;
         foreach (OracleFace face in faces)
         {

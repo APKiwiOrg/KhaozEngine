@@ -46,8 +46,9 @@ cell are whole blocks of storage tiles counted from an origin on a storage tile 
 Sharding's `CellGrid` for the same size and origin. Grids that do not align refuse with "grid alignment".
 
 Each static belongs to every storage tile its world bounds reach, minimum inclusive and maximum exclusive. An axis
-with no extent belongs to the tile holding its minimum. `Affected` names the owners and tiles an edit invalidates
-from its old and new bounds and the chunks of every listed patch, including the chunks of the wall strips recorded in
-it.
+with no extent belongs to the tile holding its minimum. A placement is keyed by its origin's tile, as
+`MapSpatialIndex` stores it, and a terrain chunk by the tile holding its minimum corner. `Affected` takes the world
+built after the edit and names the owners and tiles the edit invalidates from its old and new bounds and the chunks of
+every listed patch, including the chunks of the wall strips recorded in it.
 
 `MapTileResidency` remains the streaming loader keyed by storage tile. This index is the ownership R8 consumes.

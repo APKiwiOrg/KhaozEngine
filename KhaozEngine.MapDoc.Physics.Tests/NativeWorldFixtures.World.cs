@@ -69,6 +69,8 @@ internal static partial class NativeWorldFixtures
 
     internal static MapBuiltWorld BuildStackedCave() => Build(StackedCave());
 
+    internal static MapBuiltWorld BuildWallPrefixYards() => Build(WallPrefixYards());
+
     /// <summary>The 100 m square building centred on the origin, so it reaches into the four 64 m tiles around
     /// it.</summary>
     internal static MapBuiltWorld BuildLargeBuilding() => Build(Placed("large-building"));

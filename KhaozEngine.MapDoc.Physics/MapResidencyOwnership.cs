@@ -7,9 +7,13 @@ using KhaozEngine.MapDoc.Surfaces;
 namespace KhaozEngine.MapDoc.Physics;
 
 /// <summary>Where one static lives on the aligned grids. <see cref="Membership"/> is every storage tile its world
-/// bounds reach, <see cref="StorageOwner"/> the one holding its minimum corner, and <see cref="NavTiles"/> and
-/// <see cref="Cells"/> the navigation tiles and server cells those storage tiles fall in. Every list is in (Z, X)
-/// order without repeats.</summary>
+/// bounds reach, and <see cref="NavTiles"/> and <see cref="Cells"/> the navigation tiles and server cells those
+/// storage tiles fall in. Every list is in (Z, X) order without repeats.
+/// <para><see cref="StorageOwner"/> is the storage tile the static is keyed by, following how it is stored. A placement
+/// is keyed by the tile of its origin, <see cref="MapTileGrid.CoordOf"/> on the authored X and Z floats, exactly as
+/// <see cref="MapSpatialIndex"/> buckets it, so this index agrees with <see cref="MapTileResidency"/> and tiled
+/// windows. A terrain chunk is stored in surface pages by slot block rather than in document tiles, so it is keyed by
+/// the tile holding its bounds' minimum corner.</para></summary>
 public sealed record MapResidencyEntry(string OwnerId, MapTileCoord StorageOwner, IReadOnlyList<MapTileCoord> Membership,
     IReadOnlyList<MapNavTileCoord> NavTiles, IReadOnlyList<MapServerCellCoord> Cells, MapBox3 WorldBounds);
 
@@ -39,9 +43,13 @@ public static class MapResidencyOwnership
         {
             MapStaticDescriptor descriptor = world.Statics[i];
             MapTileRect tiles = TilesOf(descriptor.Bounds, grids.StorageTileSize);
-            MapNavTileCoord navMin = grids.NavTileOf(tiles.Min), navMax = grids.NavTileOf(tiles.Max);
-            MapServerCellCoord cellMin = grids.ServerCellOf(tiles.Min), cellMax = grids.ServerCellOf(tiles.Max);
-            entries[i] = new(descriptor.OwnerId, tiles.Min, Enumerate(tiles),
+            MapNavTileCoord navMin = grids.AlignedNavTileOf(tiles.Min), navMax = grids.AlignedNavTileOf(tiles.Max);
+            MapServerCellCoord cellMin = grids.AlignedServerCellOf(tiles.Min), cellMax = grids.AlignedServerCellOf(tiles.Max);
+            // A placement static's position is its resolved transform position, whose X and Z are the authored floats.
+            MapTileCoord owner = descriptor.Kind == MapStaticKind.Placement
+                ? MapTileGrid.CoordOf(descriptor.Position.X, descriptor.Position.Z, grids.StorageTileSize)
+                : tiles.Min;
+            entries[i] = new(descriptor.OwnerId, owner, Enumerate(tiles),
                 Rows(navMin.X, navMin.Z, navMax.X, navMax.Z, (x, z) => new MapNavTileCoord(x, z)),
                 Rows(cellMin.X, cellMin.Z, cellMax.X, cellMax.Z, (x, z) => new MapServerCellCoord(x, z)),
                 descriptor.Bounds);
@@ -57,12 +65,17 @@ public static class MapResidencyOwnership
             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
     }
 
-    /// <summary>The owners and tiles <paramref name="effects"/> invalidates in <paramref name="world"/>, empty unless
-    /// it invalidates physics, navigation or residency. Owners are the statics whose bounds meet the old or new edit
-    /// bounds, plus the chunks of every listed patch: its own surface chunks and the chunks of every wall strip the
-    /// world records in it. Storage tiles are those the old and new edit bounds reach, under the membership rule of
-    /// <see cref="Build"/>, plus the membership of those patch chunks. Throws <see cref="MapDocumentException"/> when the
-    /// grids do not align with the world.</summary>
+    /// <summary>The owners and tiles <paramref name="effects"/> invalidates, empty unless it invalidates physics,
+    /// navigation or residency. <paramref name="world"/> is the world built after the edit, so owners are that world's
+    /// statics, while tiles from both the old and the new edit bounds cover any geometry the edit removed.
+    /// <para>Owners are the statics whose bounds meet the old or new edit bounds, plus the chunks of every listed patch:
+    /// its own surface chunks and the chunks of every wall strip the world records in it. Storage tiles are those the
+    /// old and new edit bounds reach, under the membership rule of <see cref="Build"/>, plus the membership of those
+    /// patch chunks. An owner listed only because its bounds meet an edit box does not widen the tiles: a terrain edit
+    /// does not reseat placements, and a terrain edit reports whole-patch extents, so the changed geometry already lies
+    /// inside the edit bounds.</para>
+    /// <para>Throws <see cref="MapDocumentException"/> when the grids do not align with the world or an edit box has a
+    /// coordinate beyond <see cref="MapWorldBuilder.MaxCoordinateMetres"/>.</para></summary>
     public static MapAffectedSet Affected(MapBuiltWorld world, MapWorldGrids grids, MapNativeEditEffects effects)
     {
         ArgumentNullException.ThrowIfNull(world);
@@ -73,6 +86,7 @@ public static class MapResidencyOwnership
             return new(Array.Empty<string>(), Array.Empty<MapTileCoord>(), Array.Empty<MapNavTileCoord>());
 
         MapBox3[] edited = new[] { effects.OldBounds, effects.NewBounds }.Where(b => b.HasValue).Select(b => b!.Value).ToArray();
+        foreach (MapBox3 box in edited) RequireWithinWorld(box);
         string[] prefixes = PatchChunkPrefixes(world, effects.Patches);
         var owners = new SortedSet<string>(StringComparer.Ordinal);
         var tiles = new SortedSet<MapTileCoord>(TileOrder);
@@ -84,7 +98,7 @@ public static class MapResidencyOwnership
             if (patchChunk) tiles.UnionWith(Enumerate(TilesOf(descriptor.Bounds, grids.StorageTileSize)));
             if (patchChunk || edited.Any(box => Meets(box, descriptor.Bounds))) owners.Add(descriptor.OwnerId);
         }
-        MapNavTileCoord[] nav = tiles.Select(grids.NavTileOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray();
+        MapNavTileCoord[] nav = tiles.Select(grids.AlignedNavTileOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray();
         return new(owners.ToArray(), tiles.ToArray(), nav);
     }
 
@@ -94,7 +108,7 @@ public static class MapResidencyOwnership
         var prefixes = new SortedSet<string>(StringComparer.Ordinal);
         foreach (MapPatchKey key in patches)
         {
-            prefixes.Add(FormattableString.Invariant($"{key.SurfaceId}/{key.SlotX},{key.SlotZ}/"));
+            prefixes.Add(MapTerrainPhysics.PatchChunkPrefix(key));
             foreach (MapWallStrip strip in world.Surfaces.RecordsIn(key).OfType<MapWallStrip>())
                 prefixes.Add(strip.Id + "/");
         }
@@ -104,8 +118,19 @@ public static class MapResidencyOwnership
     static readonly Comparer<MapTileCoord> TileOrder =
         Comparer<MapTileCoord>.Create((a, b) => a.Z != b.Z ? a.Z.CompareTo(b.Z) : a.X.CompareTo(b.X));
 
+    static void RequireWithinWorld(MapBox3 box)
+    {
+        const double limit = MapWorldBuilder.MaxCoordinateMetres;
+        foreach (double value in new[] { box.MinX, box.MinY, box.MinZ, box.MaxX, box.MaxY, box.MaxZ })
+            if (!(Math.Abs(value) <= limit))
+                throw new MapDocumentException(FormattableString.Invariant(
+                    $"Edit bounds ({box.MinX}, {box.MinY}, {box.MinZ}) to ({box.MaxX}, {box.MaxY}, {box.MaxZ}) reach beyond 1,000,000 m from the world origin on an axis."));
+    }
+
     /// <summary>The storage tiles a box reaches: minimum inclusive, maximum exclusive, and an axis with no extent in
-    /// the tile holding its minimum.</summary>
+    /// the tile holding its minimum. Spatial membership floors the exact double bounds, while a placement's storage key
+    /// is <see cref="MapTileGrid.CoordOf"/> on its stored floats. Next to a seam the two can differ, and each is right
+    /// for its purpose: membership finds the tiles the geometry reaches, the key finds the tile that stores it.</summary>
     static MapTileRect TilesOf(MapBox3 box, float tileSize)
     {
         (int minX, int maxX) = Axis(box.MinX, box.MaxX, tileSize);

@@ -47,7 +47,7 @@ public sealed record MapWorldGrids(float StorageTileSize, int NavTileStorageTile
     public MapNavTileCoord NavTileOf(MapTileCoord tile)
     {
         RequireAligned();
-        return new(Block(tile.X, Origin.X, NavTileStorageTiles), Block(tile.Z, Origin.Y, NavTileStorageTiles));
+        return AlignedNavTileOf(tile);
     }
 
     /// <summary>The server cell holding storage tile <paramref name="tile"/>. Throws
@@ -55,8 +55,18 @@ public sealed record MapWorldGrids(float StorageTileSize, int NavTileStorageTile
     public MapServerCellCoord ServerCellOf(MapTileCoord tile)
     {
         RequireAligned();
-        return new(Block(tile.X, Origin.X, ServerCellStorageTiles), Block(tile.Z, Origin.Y, ServerCellStorageTiles));
+        return AlignedServerCellOf(tile);
     }
+
+    /// <summary><see cref="NavTileOf"/> without the alignment checks, for callers that have already run
+    /// <see cref="Validate"/>.</summary>
+    internal MapNavTileCoord AlignedNavTileOf(MapTileCoord tile) =>
+        new(Block(tile.X, Origin.X, NavTileStorageTiles), Block(tile.Z, Origin.Y, NavTileStorageTiles));
+
+    /// <summary><see cref="ServerCellOf"/> without the alignment checks, for callers that have already run
+    /// <see cref="Validate"/>.</summary>
+    internal MapServerCellCoord AlignedServerCellOf(MapTileCoord tile) =>
+        new(Block(tile.X, Origin.X, ServerCellStorageTiles), Block(tile.Z, Origin.Y, ServerCellStorageTiles));
 
     // Floor division of the tile offset from the origin's tile, so tiles below the origin floor downward.
     int Block(int tile, float origin, int storageTiles)

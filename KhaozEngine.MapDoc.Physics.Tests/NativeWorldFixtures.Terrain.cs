@@ -157,6 +157,24 @@ internal static partial class NativeWorldFixtures
         return Terrain(set);
     }
 
+    /// <summary>The patch that records wall strip <c>wall-1</c>, and not <c>wall-10</c>.</summary>
+    internal static readonly MapPatchKey WallOneYard = new("wall-one-yard", 0, 0);
+
+    /// <summary>Two front-facing walls 2.5 m tall made of one 4 m segment each: <c>wall-1</c> at z 0.5 recorded in
+    /// <see cref="WallOneYard"/>, and <c>wall-10</c> at z 20.5 recorded in a second yard. Each compiles to the one
+    /// chunk <c>stripId/0/Front</c>.</summary>
+    internal static TerrainFixture WallPrefixYards()
+    {
+        var set = new MapSurfaceSet();
+        MapSurfacePatch one = AddPatch(set, WallOneYard.SurfaceId, MapSurfaceRole.SupportFloor, CentimetreHeights, 0, 2, 2, 2,
+            (_, _) => 0);
+        MapSurfacePatch ten = AddPatch(set, "wall-ten-yard", MapSurfaceRole.SupportFloor, CentimetreHeights, 0, 22, 2, 2,
+            (_, _) => 0);
+        AddStrip(one, "wall-1", new (long, long)[] { (1, 1), (9, 1) }, MapStripFacing.Front);
+        AddStrip(ten, "wall-10", new (long, long)[] { (1, 41), (9, 41) }, MapStripFacing.Front);
+        return Terrain(set);
+    }
+
     /// <summary>A straight front-facing wall 2.5 m tall at z 0.5, from x 0.5 to x 0.5 plus
     /// <paramref name="lengthMetres"/> in 4 m segments with a shorter last one, hosted on a 2 by 2 cell yard
     /// floor.</summary>

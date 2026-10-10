@@ -88,6 +88,11 @@ public static class MapTerrainPhysics
     // The capsule feature query refuses installed vertices beyond this many metres on any local axis.
     internal const int MaxAnchorOffsetMetres = 64;
 
+    /// <summary>The <see cref="MapTerrainChunk.ChunkId"/> prefix shared by every chunk of one patch,
+    /// <c>surfaceId/SlotX,SlotZ/</c>. It ends in its separator, so it never matches a longer surface id.</summary>
+    internal static string PatchChunkPrefix(MapPatchKey key) =>
+        FormattableString.Invariant($"{key.SurfaceId}/{key.SlotX},{key.SlotZ}/");
+
     /// <summary>Chunks every present support floor and ceiling patch of a complete view, quadrant by quadrant within
     /// each 64 by 64 slot block, and every wall strip side by contiguous primitive range, until each chunk holds at
     /// most the cap and every exact vertex lies within 64 m of its anchor on every axis. Faces are
@@ -161,7 +166,7 @@ public static class MapTerrainPhysics
 
         internal void AddPatch(MapPatchKey key, IReadOnlyList<MapExactPoint> exact, IReadOnlyList<MapCompiledFace> faces)
         {
-            string prefix = FormattableString.Invariant($"{key.SurfaceId}/{key.SlotX},{key.SlotZ}/");
+            string prefix = PatchChunkPrefix(key);
             Block(key, prefix, exact, faces.OrderBy(f => f.Key).ToArray(), 0, 0, MapPatchKey.SlotCells);
         }
 

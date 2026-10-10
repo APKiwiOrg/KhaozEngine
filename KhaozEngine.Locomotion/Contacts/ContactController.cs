@@ -13,25 +13,26 @@ internal static class ContactController
 {
     // Below this squared length a slide plane's horizontal normal carries no fall line, as in the slide core.
     const float FlatNormalSquared = 1e-12f;
-    // A bound on one tick's mode changes. Each change after the first spends at least one substep, so this is a guard.
+    // A bound on one tick's mode changes. Every cycle of mode changes passes through the air pass, and each air
+    // segment spends at least one of its substeps before it hands on, so the time left shrinks and the cap is a guard.
     const int MaxSegments = 8;
 
     /// <summary>Advances <paramref name="state"/> one tick. The parameters mean what they mean for the legacy step
     /// core. <see cref="MoveState.Position"/> is the capsule centre, <see cref="MoveTuning.CapsuleHalfHeight"/> above
     /// the feet. A non-null <paramref name="world"/> must offer <see cref="IPhysicsQueryLeaseSource"/> and
     /// <see cref="IPhysicsSupportNeighborhood"/>, and every query of the tick runs under one read lease. A
-    /// <paramref name="medium"/> that reports water throws until swimming moves here. The default
-    /// <paramref name="settings"/> mean <c>new GroundCoreSettings()</c>. A non-finite result returns the input state
-    /// with its per-tick events cleared and the commitment kept.</summary>
+    /// <paramref name="medium"/> that reports water throws until swimming moves here. Omitted
+    /// <paramref name="settings"/> mean <c>new GroundCoreSettings()</c>. <paramref name="clampXz"/> clamps the planned
+    /// move's end before the move, and again after it, as legacy does. A non-finite clamp or result returns the input
+    /// state with its per-tick events cleared and the commitment kept.</summary>
     internal static MoveState Step(in MoveState state, Vector2 moveDir, float speedFraction, bool run, bool jump,
         float dt, Func<float, float, float> groundHeight, in MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world,
         Func<float, float, Vector2>? clampXz, Func<float, float, float, MovementMedium>? medium,
-        float? faceYaw = null, GroundCoreSettings settings = default)
+        float? faceYaw = null, GroundCoreSettings? settings = null)
     {
         ArgumentNullException.ThrowIfNull(groundHeight);
-        // A default parameter cannot call the parameterless constructor, so the zero default stands for it.
-        if (settings == default) settings = new GroundCoreSettings();
+        GroundCoreSettings foot = settings ?? new GroundCoreSettings();
         IPhysicsQueryLeaseSource? leases = null;
         if (world is not null)
         {
@@ -66,18 +67,35 @@ internal static class ContactController
             commanded = CharacterMovement.ResolveAirborneVelocity(s.HorizontalVelocity, moveDir,
                 (run ? t.RunSpeed : t.WalkSpeed) * s.SpeedScale * speedFraction, dt, t);
 
+        // The play-area clamp cuts the planned move's end before the move, as legacy clamps its target. The move
+        // then runs at the velocity that reaches the clamped end. A slide plans its own move, so the clamp after the
+        // move bounds it.
+        Vector2 velocity = commanded, displacement = commanded * dt;
+        if (clampXz is not null)
+        {
+            var from = new Vector2(s.Position.X, s.Position.Z);
+            Vector2 target = from + displacement;
+            Vector2 clamped = clampXz(target.X, target.Y);
+            if (!float.IsFinite(clamped.X) || !float.IsFinite(clamped.Y)) return Held(state, s.Commitment);
+            if (clamped != target)
+            {
+                displacement = clamped - from;
+                velocity = displacement / dt;
+            }
+        }
+
         Tick tick;
         using (IPhysicsQueryLease? lease = leases?.AcquireQueryReadLease())
         {
-            var context = new Context(groundHeight, groundNormal, world, lease, t, settings, gate);
+            var context = new Context(groundHeight, groundNormal, world, lease, t, foot, gate);
             Mode mode = Mode.Air;
             SupportSample support = default;
             if (s.Grounded)
                 mode = Mode.Ground;
-            else if (!committedFlight && SlideCore.InContact(feet, t, settings, gate, groundHeight, groundNormal,
+            else if (!committedFlight && SlideCore.InContact(feet, t, foot, gate, groundHeight, groundNormal,
                          world, lease, out support))
                 mode = Mode.Slide;
-            tick = Move(context, s, mode, support, feet, commanded, intent, dt);
+            tick = Move(context, s, mode, support, feet, commanded, velocity, displacement, intent, dt);
         }
 
         // The jump, decided last as legacy. The impact and the grant latch first, so a buffered relaunch on the
@@ -129,14 +147,17 @@ internal static class ContactController
             Commitment = CharacterMovement.FinishCommitmentTick(s.Commitment, launched, grounded, s.Position, end,
                 dt),
         };
-        return Finite(result) ? result : state with
-        {
-            LandingImpactSpeed = 0f,
-            SupportGranted = false,
-            StepDeltaY = 0f,
-            Commitment = result.Commitment,
-        };
+        return Finite(result) ? result : Held(state, result.Commitment);
     }
+
+    // The input state with the per-tick events cleared and the commitment the tick advanced.
+    static MoveState Held(in MoveState state, in MovementCommitment commitment) => state with
+    {
+        LandingImpactSpeed = 0f,
+        SupportGranted = false,
+        StepDeltaY = 0f,
+        Commitment = commitment,
+    };
 
     /// <summary>The tick's queries and the knobs every mode reads.</summary>
     readonly record struct Context(Func<float, float, float> GroundHeight, Func<float, float, Vector3>? GroundNormal,
@@ -156,13 +177,14 @@ internal static class ContactController
     // Runs the tick's modes in turn. A grounded move that loses its footing flies or slides the time it has left. A
     // grounded start on steep support slides the whole tick with the carried velocity, as a slide start does. A slide
     // that loses its support flies the rest. A flight that lands walks the rest of its planned move, and one that
-    // meets steep support slides the rest. Every mode pays climbing from the budget the earlier modes left.
+    // meets steep support slides the rest. Every mode pays climbing from the budget the earlier modes left. The first
+    // segment moves at the clamped velocity but carries and reports the commanded one, so a clamp sheds carry as a
+    // denial, as legacy does.
     static Tick Move(in Context c, in MoveState s, Mode mode, SupportSample support, Vector3 feet, Vector2 commanded,
-        Vector2 intent, float dt)
+        Vector2 velocity, Vector2 displacement, Vector2 intent, float dt)
     {
         MoveTuning t = c.Tuning;
         double budget = t.MaxStepClimbSpeed > 0 ? (double)t.MaxStepClimbSpeed * dt : double.PositiveInfinity;
-        Vector2 velocity = commanded, displacement = commanded * dt;
         float vertical = s.VerticalVelocity, time = dt, fallSpeed = 0f;
         bool grounded = false;
         Vector2? first = null;
@@ -175,15 +197,16 @@ internal static class ContactController
                     c.GroundNormal, c.World, c.Lease, c.Gate, budget);
                 (feet, budget, vertical) = (step.Feet, step.ClimbBudget, 0f);
                 grounded = step.Footing is GroundFooting.Walkable or GroundFooting.Held;
-                bool steepStart = segment == 0 && step.Footing == GroundFooting.Steep && step.RemainingTime == time;
+                bool steepStart = segment == 0 && step.Footing == GroundFooting.Steep && step.ChangedAtStart;
                 if (steepStart)
                 {
                     (velocity, vertical) = (s.HorizontalVelocity, s.VerticalVelocity);
                 }
                 else
                 {
-                    last = new Segment(velocity, velocity, step.Achieved, time);
-                    first ??= velocity;
+                    Vector2 ask = segment == 0 ? commanded : velocity;
+                    last = new Segment(ask, ask, step.Achieved, time);
+                    first ??= ask;
                 }
                 if (grounded || !(step.RemainingTime > 0)) break;
                 time = step.RemainingTime;
@@ -212,8 +235,9 @@ internal static class ContactController
             }
             AirStepResult air = AirPass.Step(feet, velocity, vertical, time, t.Gravity, t, c.Settings, c.Gate,
                 c.GroundHeight, c.GroundNormal, c.World, c.Lease, budget);
-            last = new Segment(velocity, velocity, air.Achieved, time);
-            first ??= velocity;
+            Vector2 asked = segment == 0 ? commanded : velocity;
+            last = new Segment(asked, asked, air.Achieved, time);
+            first ??= asked;
             (feet, budget, velocity, vertical) = (air.Feet, air.ClimbBudget, air.HorizontalVelocity, air.VerticalVelocity);
             grounded = air.Outcome == AirOutcome.Landed;
             if (grounded) fallSpeed = -air.FallSpeedAtContact;
@@ -221,7 +245,8 @@ internal static class ContactController
             time = air.RemainingTime;
             if (grounded)
             {
-                displacement = air.Remaining;
+                // The rest of the move at the velocity the contacts left, not the planned one.
+                displacement = velocity * time;
                 mode = Mode.Ground;
             }
             else

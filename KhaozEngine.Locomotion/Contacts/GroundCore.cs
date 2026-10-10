@@ -29,6 +29,10 @@ internal readonly record struct GroundStepResult(Vector3 Feet, GroundFooting Foo
 
     /// <summary>The climb budget left after the tick's paced climbing, in metres.</summary>
     internal double ClimbBudget { get; init; }
+
+    /// <summary>True when the start was already steep or unsupported, so the footing changed before any time was
+    /// spent and <see cref="RemainingTime"/> is the whole tick.</summary>
+    internal bool ChangedAtStart { get; init; }
 }
 
 /// <summary>Resolves one grounded tick: recovery, start support, the lift, then per substep the shell sweep and
@@ -102,6 +106,7 @@ internal static class GroundCore
             {
                 RemainingTime = changes ? dt : 0f,
                 ClimbBudget = budget,
+                ChangedAtStart = changes,
             };
         }
         if (steepStart) substeps = Math.Max(substeps, SlideSubsteps(displacement, support.Normal, tuning));

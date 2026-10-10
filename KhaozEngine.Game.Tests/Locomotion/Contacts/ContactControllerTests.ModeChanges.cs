@@ -67,6 +67,30 @@ public partial class ContactControllerTests
         Assert.Equal((int)Math.Ceiling(0.3 / budget), ticks);
     }
 
+    // Flat terrain with a 5 m cliff over x > 1 for z < 0 only, so its face is a wall to the axis and ends at z 0. A
+    // run at 12 m/s along (1, 1) from (0.95, -0.1) with feet 0.07 falling at 3 m/s plans (0.283, -0.128, 0.283) in
+    // three substeps. The first meets the cliff and keeps only its Z part. The second reaches z 0.089, past the
+    // cliff's end, with feet at -0.015, and lands with a third of the tick left. The ground walks that third with the
+    // velocity the contact left, so it never regains the X part the cliff removed: X stays 0.95 and Z covers the
+    // whole tick's 0.283.
+    [Fact]
+    public void GrazeThenLandDoesNotWalkBackIntoTheWall()
+    {
+        static float Height(float x, float z) => x > 1 && z < 0 ? 5 : 0;
+        static Vector3 Normal(float x, float z) => x > 1 && z < 0 ? -Vector3.UnitX : Vector3.UnitY;
+        using var g = new Ground(null, Height, Normal);
+        Vector2 direction = Vector2.Normalize(Vector2.One);
+        MoveState s = Falling(new Vector3(0.95f, 0.07f, -0.1f)) with { VerticalVelocity = -3 };
+
+        MoveState landed = g.Step(s, direction, 1, false, Tuning, run: true);
+
+        Assert.True(landed.Grounded, Show(landed));
+        AssertNear(0.95, Feet(landed).X, HalfSkin, Show(landed));
+        AssertNear(-0.1 + Tuning.RunSpeed * direction.Y * Dt, Feet(landed).Z, HalfSkin, Show(landed));
+        AssertNear(0, Feet(landed).Y, HalfSkin, Show(landed));
+        AssertNear(0, landed.HorizontalVelocity.X, 1e-4, Show(landed));
+    }
+
     // The coyote row's ledges. Walking from x -0.45 at 6 m/s, whose tick move rounds just past 0.2 and so takes two
     // substeps of 0.1, the footprint leaves a prop ledge on the first substep from x 0.15, and the axis leaves the
     // terrain ledge on the first substep from x -0.05. The other half of the tick flies at the walking speed, so the

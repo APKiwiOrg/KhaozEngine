@@ -39,9 +39,9 @@ public partial class ContactControllerTests
 
         internal MoveState Step(in MoveState state, Vector2 moveDir, float fraction, bool jump, in MoveTuning tuning,
             float dt = Dt, bool run = false, float? faceYaw = null,
-            Func<float, float, float, MovementMedium>? medium = null) =>
+            Func<float, float, float, MovementMedium>? medium = null, Func<float, float, Vector2>? clampXz = null) =>
             ContactController.Step(state, moveDir, fraction, run, jump, dt, height, tuning, normal, scene?.World,
-                null, medium, faceYaw);
+                clampXz, medium, faceYaw);
 
         // The ground core's own answer for a grounded body, under the scene's lease once the controller is done.
         internal GroundStepResult Core(Vector3 feet, Vector2 displacement, in MoveTuning tuning, float gate) =>
@@ -430,7 +430,8 @@ public partial class ContactControllerTests
         MoveState result = ContactController.Step(state, moving ? Vector2.Normalize(move) : Vector2.Zero,
             moving ? 1 : 0, false, false, Dt, g.Height, tuning, g.Normal, g.World, null, null);
 
-        AssertNear(move.Length() / Dt, result.CommandedVelocity.Length(), 1e-4, Show(result));
+        AssertNear(move.X / Dt, result.CommandedVelocity.X, 1e-4, Show(result));
+        AssertNear(move.Y / Dt, result.CommandedVelocity.Y, 1e-4, Show(result));
         var start = new Vector3(state.Position.X, state.Position.Y - HalfHeight, state.Position.Z);
         Vector2 velocity = result.CommandedVelocity;
         GroundStepResult core = g.Core(start, velocity * Dt, tuning, Banded);

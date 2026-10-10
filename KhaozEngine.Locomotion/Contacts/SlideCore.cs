@@ -72,7 +72,8 @@ internal static class SlideCore
     /// carry alone, so input never costs the slide its speed. A tick that ends no lower than it started,
     /// where the fall lines oppose, is wedged. <paramref name="climbBudget"/> is the climb the tick may still pay, in
     /// metres. Null means a whole tick's <c>MaxStepClimbSpeed * dt</c>. <paramref name="clampXz"/> clamps the planned
-    /// move's end before the move, and a clamp that shortens it holds the fall-line speed as a block does.</summary>
+    /// move's end before the move, and the ground core clamps each of its substeps. A clamp that shortens the move
+    /// holds the fall-line speed as a block does.</summary>
     internal static SlideStepResult Step(Vector3 feet, Vector2 carry, float verticalVelocity, Vector2 steer,
         float dt, in MoveTuning tuning, in GroundCoreSettings settings, float tractionSlopeRadians,
         in SupportSample support, Func<float, float, float>? groundHeight,
@@ -124,9 +125,10 @@ internal static class SlideCore
             ny > 0f ? Vector2.Dot(result.Achieved, down) : feet.Y - result.Feet.Y;
 
         Vector2 move = (velocity + applied) * dt;
-        bool clamped = Clamp(feet, ref move, clampXz);
+        var axis = new Vector2(feet.X, feet.Z);
+        bool clamped = PlayArea.Clamp(axis, ref move, clampXz);
         GroundStepResult step = GroundCore.Slide(feet, move, dt, tuning, settings, groundHeight, groundNormal, world,
-            lease, tractionSlopeRadians, climbBudget);
+            lease, tractionSlopeRadians, climbBudget, clampXz);
         if (step.Blocked && steerAlong != 0f)
         {
             // The steer's own travel may be what met the block, for example a contour that climbs the real surface
@@ -134,9 +136,9 @@ internal static class SlideCore
             // tick reruns with the carry alone and keeps whichever went further down the fall line, so input never
             // costs the slide its speed.
             Vector2 alone = velocity * dt;
-            bool aloneClamped = Clamp(feet, ref alone, clampXz);
+            bool aloneClamped = PlayArea.Clamp(axis, ref alone, clampXz);
             GroundStepResult carried = GroundCore.Slide(feet, alone, dt, tuning, settings, groundHeight,
-                groundNormal, world, lease, tractionSlopeRadians, climbBudget);
+                groundNormal, world, lease, tractionSlopeRadians, climbBudget, clampXz);
             if (Progress(carried) > Progress(step))
                 (step, steerAlong, applied, clamped) = (carried, 0f, Vector2.Zero, aloneClamped);
         }
@@ -185,19 +187,6 @@ internal static class SlideCore
         return new(step.Feet, velocity, vertical, step.Achieved, wedged ? SlideOutcome.Wedged : SlideOutcome.Sliding,
             step.Support, 0f)
         { ClimbBudget = step.ClimbBudget, Steer = applied, IntegratedVerticalVelocity = integrated };
-    }
-
-    // Cuts the planned move's end to the play-area clamp, as the controller cuts its first segment's. A clamp that
-    // answers a non-finite end leaves the move whole, and the controller's clamp after the move holds the tick.
-    static bool Clamp(Vector3 feet, ref Vector2 move, Func<float, float, Vector2>? clampXz)
-    {
-        if (clampXz is null) return false;
-        var from = new Vector2(feet.X, feet.Z);
-        Vector2 target = from + move;
-        Vector2 clamped = clampXz(target.X, target.Y);
-        if (!float.IsFinite(clamped.X) || !float.IsFinite(clamped.Y) || clamped == target) return false;
-        move = clamped - from;
-        return true;
     }
 
     static Vector2 Horizontal(float fall, float contour, float tx, float tz, float cx, float cz) =>

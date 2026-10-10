@@ -50,11 +50,14 @@ internal static class AirPass
     /// <paramref name="verticalVelocity"/> the carried one before gravity. <paramref name="tractionSlopeRadians"/> is
     /// the tick's traction gate. A non-null <paramref name="world"/> follows the <see cref="FootSupport.Find"/>
     /// contract. <paramref name="climbBudget"/> is the climb the tick may still pay, in metres. Null means a whole
-    /// tick's <c>MaxStepClimbSpeed * dt</c>.</summary>
+    /// tick's <c>MaxStepClimbSpeed * dt</c>. <paramref name="clampXz"/> is the play-area clamp. It cuts every
+    /// substep's horizontal move before the sweep, a terrain wall's rerun included, so no substep ends outside the
+    /// bound. The clamp is not a contact, so it leaves the velocity alone.</summary>
     internal static AirStepResult Step(Vector3 feet, Vector2 velocity, float verticalVelocity, float dt,
         float gravity, in MoveTuning tuning, in GroundCoreSettings settings, float tractionSlopeRadians,
         Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal,
-        IPhysicsWorld? world, IPhysicsQueryLease? lease, double? climbBudget = null)
+        IPhysicsWorld? world, IPhysicsQueryLease? lease, double? climbBudget = null,
+        Func<float, float, Vector2>? clampXz = null)
     {
         Validate(feet, velocity, verticalVelocity, dt, gravity, tuning, settings, tractionSlopeRadians);
         double budget = climbBudget ?? Budget(tuning, dt);
@@ -90,6 +93,8 @@ internal static class AirPass
 
             Vector3 from = start + moved;
             Vector3 before = current;
+            var origin = new Vector2(from.X, from.Z);
+            if (Bounded(origin, ref move, clampXz)) onPlan = false;
             ShellFlight flight = ShellMotion.Fly(world, from, move, ref current, tuning, cosMaxSlope);
             // Analytic terrain has no shell to meet. As in the ground core, terrain at the new axis more than
             // StepHeight above the substep's highest feet is a wall, and so is steep terrain above them, so the axis
@@ -98,6 +103,7 @@ internal static class AirPass
             if (TerrainWall(groundHeight, groundNormal, from, flight, tuning, cosMaxSlope) is Vector2 wall)
             {
                 Vector2 alongMove = Along(new Vector2(move.X, move.Z), wall);
+                PlayArea.Clamp(origin, ref alongMove, clampXz);
                 Vector2 alongVelocity = Along(new Vector2(before.X, before.Z), wall);
                 current = new Vector3(alongVelocity.X, before.Y, alongVelocity.Y);
                 flight = ShellMotion.Fly(world, from, new Vector3(alongMove.X, move.Y, alongMove.Y), ref current,
@@ -182,6 +188,15 @@ internal static class AirPass
             HorizontalVelocity = new Vector2(current.X, current.Z),
             ClimbBudget = budget,
         };
+    }
+
+    // Cuts the substep's horizontal move to the play area. True when the clamp shortened it.
+    static bool Bounded(Vector2 axis, ref Vector3 move, Func<float, float, Vector2>? clampXz)
+    {
+        var horizontal = new Vector2(move.X, move.Z);
+        if (!PlayArea.Clamp(axis, ref horizontal, clampXz)) return false;
+        move = new Vector3(horizontal.X, move.Y, horizontal.Y);
+        return true;
     }
 
     static double Budget(in MoveTuning tuning, float dt) =>

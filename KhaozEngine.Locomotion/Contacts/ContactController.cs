@@ -221,7 +221,7 @@ internal static class ContactController
             if (mode == Mode.Ground)
             {
                 GroundStepResult step = GroundCore.Step(feet, displacement, time, t, c.Settings, c.GroundHeight,
-                    c.GroundNormal, c.World, c.Lease, c.Gate, budget);
+                    c.GroundNormal, c.World, c.Lease, c.Gate, budget, c.ClampXz);
                 (feet, budget, vertical) = (step.Feet, step.ClimbBudget, 0f);
                 grounded = step.Footing is GroundFooting.Walkable or GroundFooting.Held;
                 supported = grounded || step.Footing == GroundFooting.Steep;
@@ -264,7 +264,7 @@ internal static class ContactController
                 continue;
             }
             AirStepResult air = AirPass.Step(feet, velocity, vertical, time, t.Gravity, t, c.Settings, c.Gate,
-                c.GroundHeight, c.GroundNormal, c.World, c.Lease, budget);
+                c.GroundHeight, c.GroundNormal, c.World, c.Lease, budget, c.ClampXz);
             Vector2 asked = segment == 0 ? commanded : velocity;
             last = new Segment(asked, asked, air.Achieved, time);
             first ??= asked;

@@ -59,10 +59,10 @@ public partial class ContactControllerTests
 
     // Level terrain, and wherever x + z > 1 a steep face rising out of it, 3 m per metre of x + z, 77 degrees. A
     // play-area bound holds z at 0 or more, across the face's toe. A walk +X at 6 m/s from x 0.8 on z 0 plans moves the
-    // clamp leaves whole. From the toe each substep meets the face as a wall and slides along the toe toward -Z, past
-    // the bound. The clamp after the move shifts the end back to z 0, onto the face, within StepHeight above where
-    // the slide left the feet. So every tick must seat the feet on the terrain at the clamped axis: for 10 ticks each
-    // tick ends inside the bound and on the terrain to half a skin.
+    // clamp leaves whole. From the toe each substep meets the face as a wall, and its tangent along the toe points
+    // toward -Z, past the bound. Shifting that end back to z 0 after the move would put the axis on the face, above
+    // the feet. The ground core clamps the tangent before it runs, so for 10 ticks each tick ends inside the bound
+    // and on the terrain to half a skin.
     [Fact]
     public void WallSlideAcrossAClampBoundStaysOnTheTerrain()
     {
@@ -76,6 +76,35 @@ public partial class ContactControllerTests
             s = g.Step(s, Vector2.UnitX, 1, false, Tuning, clampXz: Clamp);
             Assert.True(Feet(s).Z >= 0, $"tick {tick}: {Show(s)}");
             AssertNear(Height(Feet(s).X, Feet(s).Z), Feet(s).Y, HalfSkin, $"tick {tick} left the terrain: {Show(s)}");
+        }
+    }
+
+    // The wall slide row's geometry at run speed, held for 600 ticks at 30 and 60 Hz. The run reaches the face's toe
+    // at the bound, where each substep meets the face as a wall and its tangent points past the bound. Every substep's
+    // move is clamped, the tangent included, so no tick ends outside the bound or moves the feet onto the face. Every
+    // tick ends inside the bound, no lower than the terrain at its axis less half a skin, and no more than one climb
+    // budget, MaxStepClimbSpeed dt, above where it started: the level terrain is the only ground to stand on, so any
+    // rise is a step.
+    [Theory]
+    [InlineData(30)]
+    [InlineData(60)]
+    public void RunAlongAClampBoundStaysOnTheTerrain(int hz)
+    {
+        Vector3 face = Vector3.Normalize(new Vector3(-3, 1, -3));
+        static float Height(float x, float z) => x + z > 1 ? 3 * (x + z - 1) : 0;
+        using var g = new Ground(null, Height, (x, z) => x + z > 1 ? face : Vector3.UnitY);
+        static Vector2 Clamp(float x, float z) => new(x, MathF.Max(z, 0));
+        float dt = 1f / hz;
+        double budget = (double)Tuning.MaxStepClimbSpeed * dt;
+        MoveState s = Standing(new Vector3(0.8f, 0, 0));
+        for (int tick = 1; tick <= 600; tick++)
+        {
+            MoveState next = g.Step(s, Vector2.UnitX, 1, false, Tuning, dt, run: true, clampXz: Clamp);
+            Vector3 feet = Feet(next);
+            Assert.True(feet.Z >= 0, $"tick {tick}: {Show(next)}");
+            Assert.True(feet.Y >= Height(feet.X, feet.Z) - HalfSkin, $"tick {tick} ended below the terrain: {Show(next)}");
+            Assert.True(feet.Y - Feet(s).Y <= budget + HalfSkin, $"tick {tick} climbed past one budget: {Show(next)}");
+            s = next;
         }
     }
 

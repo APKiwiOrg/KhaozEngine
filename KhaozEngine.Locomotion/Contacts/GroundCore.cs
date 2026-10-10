@@ -48,13 +48,16 @@ internal static class GroundCore
     /// the <see cref="FootSupport.Find"/> contract. <paramref name="tractionSlopeRadians"/> is the tick's traction
     /// gate, and every slope decision in the tick uses it. Null means
     /// <see cref="MoveTuning.MaxSlopeRadians"/>. <paramref name="climbBudget"/> is the climb the tick may still pay,
-    /// in metres. Null means a whole tick's <c>MaxStepClimbSpeed * dt</c>.</summary>
+    /// in metres. Null means a whole tick's <c>MaxStepClimbSpeed * dt</c>. <paramref name="clampXz"/> is the
+    /// play-area clamp. It cuts every substep's move before the move, a wall's tangent included, so no substep ends
+    /// outside the bound, and a substep it shortens counts as blocked.</summary>
     internal static GroundStepResult Step(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
         in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
-        float? tractionSlopeRadians = null, double? climbBudget = null) =>
+        float? tractionSlopeRadians = null, double? climbBudget = null,
+        Func<float, float, Vector2>? clampXz = null) =>
         Move(feet, displacement, dt, tuning, settings, groundHeight, groundNormal, world, lease,
-            tractionSlopeRadians ?? tuning.MaxSlopeRadians, slide: false, climbBudget);
+            tractionSlopeRadians ?? tuning.MaxSlopeRadians, slide: false, climbBudget, clampXz);
 
     /// <summary>Moves a sliding body as <see cref="Step"/> moves a grounded one, with three differences. A steep
     /// start moves. A steep seat at or below the feet continues the tick instead of ending it, and must clear the
@@ -66,14 +69,14 @@ internal static class GroundCore
     internal static GroundStepResult Slide(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
         in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
-        float tractionSlopeRadians, double? climbBudget = null) =>
+        float tractionSlopeRadians, double? climbBudget = null, Func<float, float, Vector2>? clampXz = null) =>
         Move(feet, displacement, dt, tuning, settings, groundHeight, groundNormal, world, lease,
-            tractionSlopeRadians, slide: true, climbBudget);
+            tractionSlopeRadians, slide: true, climbBudget, clampXz);
 
     static GroundStepResult Move(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
         in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
-        float tractionSlopeRadians, bool slide, double? climbBudget)
+        float tractionSlopeRadians, bool slide, double? climbBudget, Func<float, float, Vector2>? clampXz)
     {
         int substeps = Validate(feet, displacement, dt, tuning, settings);
         float gate = tractionSlopeRadians;
@@ -112,7 +115,7 @@ internal static class GroundCore
         if (steepStart) substeps = Math.Max(substeps, SlideSubsteps(displacement, support.Normal, tuning));
 
         var tick = new Tick(groundHeight, groundNormal, world, lease, tuning, footRadius, cosMaxSlope, start,
-            ShellMotion.Lift(world, start, tuning), support, slide);
+            ShellMotion.Lift(world, start, tuning), support, slide, clampXz);
         if (!moving)
         {
             // A body at rest still climbs onto the tread a paced climb left it below.
@@ -212,11 +215,13 @@ internal static class GroundCore
         readonly float _startY;
         readonly float _lift;
         readonly bool _slide;
+        readonly Func<float, float, Vector2>? _clampXz;
         Vector2 _achieved;
 
         internal Tick(Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal,
             IPhysicsWorld? world, IPhysicsQueryLease? lease, in MoveTuning tuning, float footRadius,
-            float cosMaxSlope, Vector3 start, float lift, in SupportSample support, bool slide)
+            float cosMaxSlope, Vector3 start, float lift, in SupportSample support, bool slide,
+            Func<float, float, Vector2>? clampXz)
         {
             _groundHeight = groundHeight;
             _groundNormal = groundNormal;
@@ -229,6 +234,7 @@ internal static class GroundCore
             _startY = start.Y;
             _lift = lift;
             _slide = slide;
+            _clampXz = clampXz;
             FeetY = start.Y;
             Support = support;
         }
@@ -256,6 +262,14 @@ internal static class GroundCore
                 Vector2 move = next - planned;
                 planned = next;
                 if (move == Vector2.Zero) continue;
+                // A substep off the plan, or one whose prefix leaves a bound that is not convex, ends past the
+                // play area unless the clamp cuts it. A cut substep is a block.
+                if (PlayArea.Clamp(Axis, ref move, _clampXz))
+                {
+                    blocked = true;
+                    onPlan = false;
+                    if (move == Vector2.Zero) break;
+                }
 
                 Attempt attempt = Resolve(move, onPlan ? next : null, budget);
                 if (attempt.Moved && attempt.Seat.Outcome == SeatOutcome.Wall)
@@ -264,6 +278,7 @@ internal static class GroundCore
                     blocked = true;
                     onPlan = false;
                     Vector2 tangent = Tangent(move, attempt.Seat.WallNormal);
+                    PlayArea.Clamp(Axis, ref tangent, _clampXz);
                     if (tangent == Vector2.Zero) break;
                     attempt = Resolve(tangent, null, budget);
                     if (attempt.Moved && attempt.Seat.Outcome == SeatOutcome.Wall) break;

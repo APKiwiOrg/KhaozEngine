@@ -102,8 +102,9 @@ public static class MapResidencyOwnership
         return new(owners.ToArray(), tiles.ToArray(), nav);
     }
 
-    // Each prefix ends in its separator, so "wall-1/" never matches "wall-10/...".
-    static string[] PatchChunkPrefixes(MapBuiltWorld world, IReadOnlyList<MapPatchKey> patches)
+    /// <summary>The chunk id prefixes of every listed patch: its own surface chunks and the chunks of every wall strip
+    /// the world records in it. Each prefix ends in its separator, so "wall-1/" never matches "wall-10/...".</summary>
+    internal static string[] PatchChunkPrefixes(MapBuiltWorld world, IReadOnlyList<MapPatchKey> patches)
     {
         var prefixes = new SortedSet<string>(StringComparer.Ordinal);
         foreach (MapPatchKey key in patches)

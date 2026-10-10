@@ -53,6 +53,33 @@ every listed patch, including the chunks of the wall strips recorded in it.
 
 `MapTileResidency` remains the streaming loader keyed by storage tile. This index is the ownership R8 consumes.
 
+## Navigation tiles
+
+```csharp
+var options = new MapNavTileOptions(SeamMarginMetres: 2f, ProfileIdentity: "profile-a", ControllerIdentity: "legacy-stepper");
+IReadOnlyList<MapNavTile> tiles = MapNavTiling.Partition(world, grids, options);
+IReadOnlyList<MapNavSeam> seams = MapNavTiling.Seams(tiles, world, options);
+IReadOnlyList<MapNavLink> links = MapNavTiling.Links(world, grids);
+IReadOnlyList<MapNavTileCoord> rebake = MapNavTiling.AffectedTiles(editedWorld, grids, options, effects);
+```
+
+`Partition` lists every navigation tile the world's bounds reach, by the residency membership rule. A tile's
+`CaptureBounds` is the tile grown by the seam margin on X and Z, so neighbouring captures overlap at every seam. Its
+`GeometryDigest` covers the digest of every static whose residency bounds meet the capture bounds, in ordinal owner
+order, and for a resolver 1 world the terrain block and every sculpt tile whose footprint meets them. Its
+`CaptureIdentity` adds the profile, the controller, the seam margin and the tile, so a tile keeps its identity until
+something it can see changes.
+
+`Seams` digests each pair of neighbouring tiles over both geometry digests and their shared edge. `Links` lists one link
+for each R2 cave portal or vertical link whose aperture reaches two navigation tiles, with a digest over the record id,
+the semantic digests of the record and its aperture records, and both tiles. `AffectedTiles` widens the navigation tiles
+`MapResidencyOwnership.Affected` names by the seam margin, so a consumer rebakes only those tiles.
+
+Tile and capture bounds are residency extents, not probe windows. A resolver 1 world's bounds exclude its analytic
+terrain height, so a capture picks its own vertical window.
+
+Navigation tiles are columns in X and Z. Vertical layers on native worlds wait for #438 phase 5.
+
 ## Physical relations
 
 ```csharp

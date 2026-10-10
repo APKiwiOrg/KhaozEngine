@@ -4,6 +4,7 @@ using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
 using Xunit;
+using static KhaozEngine.Tests.Locomotion.Contacts.FootSupportScenes;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
@@ -32,6 +33,50 @@ public partial class ContactControllerTests
             Assert.True(Feet(s).X <= bound, $"tick {tick}: {Show(s)}");
         }
         AssertNear(bound, Feet(s).X, HalfSkin, Show(s));
+    }
+
+    // A 60 degree terrain face falls to +X from the origin, and a play-area bound stands at x 2. A body at rest on the
+    // face slides down it, reaching about 9 m/s by the bound. The slide plans its own move, so the clamp cuts that move
+    // before it runs, and for 60 ticks every tick ends on the face, to half a skin, and inside the bound. Shifting the
+    // slide back after the move would leave its feet below the face, where no support or wall ever catches them.
+    [Fact]
+    public void SlideIntoAClampBoundStaysOnTheSurface()
+    {
+        const float Bound = 2;
+        float grade = MathF.Tan(Radians(60));
+        Vector3 normal = Vector3.Normalize(new Vector3(grade, 1, 0));
+        using var g = new Ground(null, (x, _) => -grade * x, (_, _) => normal);
+        Vector2 Clamp(float x, float z) => new(MathF.Min(x, Bound), z);
+        MoveState s = Falling(Vector3.Zero);
+        for (int tick = 1; tick <= 60; tick++)
+        {
+            s = g.Step(s, Vector2.Zero, 0, false, Tuning, clampXz: Clamp);
+            Assert.True(Feet(s).X <= Bound, $"tick {tick}: {Show(s)}");
+            AssertNear(-grade * Feet(s).X, Feet(s).Y, HalfSkin, $"tick {tick} left the face: {Show(s)}");
+        }
+        AssertNear(Bound, Feet(s).X, HalfSkin, Show(s));
+    }
+
+    // Level terrain, and wherever x + z > 1 a steep face rising out of it, 3 m per metre of x + z, 77 degrees. A
+    // play-area bound holds z at 0 or more, across the face's toe. A walk +X at 6 m/s from x 0.8 on z 0 plans moves the
+    // clamp leaves whole. From the toe each substep meets the face as a wall and slides along the toe toward -Z, past
+    // the bound. The clamp after the move shifts the end back to z 0, onto the face, within StepHeight above where
+    // the slide left the feet. So every tick must seat the feet on the terrain at the clamped axis: for 10 ticks each
+    // tick ends inside the bound and on the terrain to half a skin.
+    [Fact]
+    public void WallSlideAcrossAClampBoundStaysOnTheTerrain()
+    {
+        Vector3 face = Vector3.Normalize(new Vector3(-3, 1, -3));
+        static float Height(float x, float z) => x + z > 1 ? 3 * (x + z - 1) : 0;
+        using var g = new Ground(null, Height, (x, z) => x + z > 1 ? face : Vector3.UnitY);
+        static Vector2 Clamp(float x, float z) => new(x, MathF.Max(z, 0));
+        MoveState s = Standing(new Vector3(0.8f, 0, 0));
+        for (int tick = 1; tick <= 10; tick++)
+        {
+            s = g.Step(s, Vector2.UnitX, 1, false, Tuning, clampXz: Clamp);
+            Assert.True(Feet(s).Z >= 0, $"tick {tick}: {Show(s)}");
+            AssertNear(Height(Feet(s).X, Feet(s).Z), Feet(s).Y, HalfSkin, $"tick {tick} left the terrain: {Show(s)}");
+        }
     }
 
     // A clamp that answers NaN poisons the target. The tick returns the input state with its per-tick events

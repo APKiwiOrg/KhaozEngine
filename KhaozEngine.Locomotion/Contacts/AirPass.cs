@@ -137,7 +137,22 @@ internal static class AirPass
                     rise > 0 ? GroundPlacement.NotBelow(rise) : 0f, Vector3.Zero);
                 GroundPlacement placement = GroundPlacement.Try(groundHeight, groundNormal, world, lease, NoSupport,
                     high, axis, Vector2.Zero, seat, footRadius, tuning, cosMaxSlope, budget);
-                if (!placement.Valid) continue;
+                if (!placement.Valid)
+                {
+                    // A seat that fails clearance lands unraised at the substep's end feet while the support is
+                    // still within StepHeight above them. The sweep left the shell clear there, and the ground core
+                    // pays the climb as it pays any lag. Falling on would let the legs pass the support, and analytic
+                    // terrain has no shell to stop them.
+                    double above = (double)support.Height - at.Y;
+                    if (!(above >= -support.HeightError && above <= tuning.StepHeight)) continue;
+                    return new(at, 0f, Achieved(feet, start, moved), remaining, AirOutcome.Landed, support,
+                        0f - current.Y, blocked)
+                    {
+                        HorizontalVelocity = horizontal,
+                        RemainingTime = remainingTime,
+                        ClimbBudget = budget,
+                    };
+                }
                 Vector3 push = new(placement.Total.X, 0f, placement.Total.Y);
                 return new(placement.Feet, 0f, Achieved(feet, start, moved + push), remaining, AirOutcome.Landed,
                     placement.Support, 0f - current.Y, blocked || placement.Pushed)

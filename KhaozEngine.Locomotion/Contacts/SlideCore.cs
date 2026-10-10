@@ -66,12 +66,13 @@ internal static class SlideCore
     /// <paramref name="steer"/> adds its contour part to the move only. A steered move that is blocked reruns with the
     /// carry alone, so input never costs the slide its speed. A tick that ends no lower than it started,
     /// where the fall lines oppose, is wedged. <paramref name="climbBudget"/> is the climb the tick may still pay, in
-    /// metres. Null means a whole tick's <c>MaxStepClimbSpeed * dt</c>.</summary>
+    /// metres. Null means a whole tick's <c>MaxStepClimbSpeed * dt</c>. <paramref name="clampXz"/> clamps the planned
+    /// move's end before the move, and a clamp that shortens it holds the fall-line speed as a block does.</summary>
     internal static SlideStepResult Step(Vector3 feet, Vector2 carry, float verticalVelocity, Vector2 steer,
         float dt, in MoveTuning tuning, in GroundCoreSettings settings, float tractionSlopeRadians,
         in SupportSample support, Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
-        double? climbBudget = null)
+        double? climbBudget = null, Func<float, float, Vector2>? clampXz = null)
     {
         if (!float.IsFinite(feet.X) || !float.IsFinite(feet.Y) || !float.IsFinite(feet.Z))
             throw new ArgumentOutOfRangeException(nameof(feet), "The feet must be finite.");
@@ -114,17 +115,22 @@ internal static class SlideCore
         float Progress(in GroundStepResult result) =>
             ny > 0f ? Vector2.Dot(result.Achieved, down) : feet.Y - result.Feet.Y;
 
-        GroundStepResult step = GroundCore.Slide(feet, (velocity + applied) * dt, dt, tuning, settings, groundHeight,
-            groundNormal, world, lease, tractionSlopeRadians, climbBudget);
+        Vector2 move = (velocity + applied) * dt;
+        bool clamped = Clamp(feet, ref move, clampXz);
+        GroundStepResult step = GroundCore.Slide(feet, move, dt, tuning, settings, groundHeight, groundNormal, world,
+            lease, tractionSlopeRadians, climbBudget);
         if (step.Blocked && steerAlong != 0f)
         {
             // The steer's own travel may be what met the block, for example a contour that climbs the real surface
             // where the support's plane disagrees with it, or it may be what frees a body pinned against a wall. The
             // tick reruns with the carry alone and keeps whichever went further down the fall line, so input never
             // costs the slide its speed.
-            GroundStepResult carried = GroundCore.Slide(feet, velocity * dt, dt, tuning, settings, groundHeight,
+            Vector2 alone = velocity * dt;
+            bool aloneClamped = Clamp(feet, ref alone, clampXz);
+            GroundStepResult carried = GroundCore.Slide(feet, alone, dt, tuning, settings, groundHeight,
                 groundNormal, world, lease, tractionSlopeRadians, climbBudget);
-            if (Progress(carried) > Progress(step)) (step, steerAlong, applied) = (carried, 0f, Vector2.Zero);
+            if (Progress(carried) > Progress(step))
+                (step, steerAlong, applied, clamped) = (carried, 0f, Vector2.Zero, aloneClamped);
         }
         switch (step.Footing)
         {
@@ -141,12 +147,12 @@ internal static class SlideCore
                 };
         }
         float rise = step.Feet.Y - feet.Y;
-        if (step.Blocked)
+        if (step.Blocked || clamped)
         {
-            // The slide's state is its fall-line speed, and a block keeps only the part of it the fall line achieved:
-            // the achieved progress down the fall line over dt, no faster than the integrated speed and in its
-            // direction. The carry's contour part keeps no more than its own share of the achieved contour move. The
-            // steer's contour part never feeds or resets either.
+            // The slide's state is its fall-line speed, and a block or the play-area bound keeps only the part of it
+            // the fall line achieved: the achieved progress down the fall line over dt, no faster than the integrated
+            // speed and in its direction. The carry's contour part keeps no more than its own share of the achieved
+            // contour move. The steer's contour part never feeds or resets either.
             fall = Toward(fall, ny > 0f ? Progress(step) / (ny * dt) : Progress(step) / (h * dt));
             contour = Toward(contour, (step.Achieved.X * cx + step.Achieved.Y * cz) / dt - steerAlong);
             velocity = Horizontal(fall, contour, tx, tz, cx, cz);
@@ -165,6 +171,19 @@ internal static class SlideCore
         return new(step.Feet, velocity, vertical, step.Achieved, wedged ? SlideOutcome.Wedged : SlideOutcome.Sliding,
             step.Support, 0f)
         { ClimbBudget = step.ClimbBudget, Steer = applied };
+    }
+
+    // Cuts the planned move's end to the play-area clamp, as the controller cuts its first segment's. A clamp that
+    // answers a non-finite end leaves the move whole, and the controller's clamp after the move holds the tick.
+    static bool Clamp(Vector3 feet, ref Vector2 move, Func<float, float, Vector2>? clampXz)
+    {
+        if (clampXz is null) return false;
+        var from = new Vector2(feet.X, feet.Z);
+        Vector2 target = from + move;
+        Vector2 clamped = clampXz(target.X, target.Y);
+        if (!float.IsFinite(clamped.X) || !float.IsFinite(clamped.Y) || clamped == target) return false;
+        move = clamped - from;
+        return true;
     }
 
     static Vector2 Horizontal(float fall, float contour, float tx, float tz, float cx, float cz) =>

@@ -47,8 +47,9 @@ public class GroundSeatTests
         Assert.True(Vector3.Distance(expected, actual) <= 1e-6f, $"Expected {expected}, got {actual}");
     }
 
-    static SupportSample Sample(float height, Vector3 normal, float error = 0) =>
-        new(SupportStatus.Walkable, height, error, normal, null, -1, new Vector3(0, height, 0));
+    // The witness lies on the support under the sample's axis, as for a face under the axis.
+    static SupportSample Sample(float height, Vector3 normal, float error = 0, float axisX = 0) =>
+        new(SupportStatus.Walkable, height, error, normal, null, -1, new Vector3(axisX, height, 0));
 
     [Fact]
     public void RiserBetweenLevelTreadsIsItsHeight()
@@ -63,8 +64,10 @@ public class GroundSeatTests
     public void ConvexAndConcaveCurvesAreNotSteps(float sign)
     {
         const float x0 = 0.3f, x1 = 0.4f;
-        SupportSample start = Sample(sign * 0.5f * x0 * x0, Vector3.Normalize(new Vector3(-sign * x0, 1, 0)));
-        SupportSample next = Sample(sign * 0.5f * x1 * x1, Vector3.Normalize(new Vector3(-sign * x1, 1, 0)));
+        SupportSample start = Sample(sign * 0.5f * x0 * x0, Vector3.Normalize(new Vector3(-sign * x0, 1, 0)),
+            axisX: x0);
+        SupportSample next = Sample(sign * 0.5f * x1 * x1, Vector3.Normalize(new Vector3(-sign * x1, 1, 0)),
+            axisX: x1);
         Assert.Equal(0f, GroundSeat.DiscreteStep(start, new Vector2(x0, 0), next, new Vector2(x1, 0)));
     }
 
@@ -74,7 +77,7 @@ public class GroundSeatTests
         float angle = Radians(30);
         Vector3 normal = new(-MathF.Sin(angle), MathF.Cos(angle), 0);
         // The second point is one unit along the tangent, so its float coordinates also define the plane.
-        SupportSample start = Sample(0, normal), next = Sample(-normal.X, normal);
+        SupportSample start = Sample(0, normal), next = Sample(-normal.X, normal, axisX: normal.Y);
         Assert.Equal(0f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(normal.Y, 0)));
     }
 
@@ -90,10 +93,26 @@ public class GroundSeatTests
     {
         float grade = MathF.Tan(Radians(10));
         SupportSample start = Sample(0, Vector3.UnitY);
-        SupportSample next = Sample(0.18f, Vector3.Normalize(new Vector3(-grade, 1, 0)));
+        SupportSample next = Sample(0.18f, Vector3.Normalize(new Vector3(-grade, 1, 0)), axisX: 0.1f);
         float step = GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0));
         // rf is 0.18. rb is 0.18 less the new tread's rise over the 0.1 move.
         Assert.True(step > 0 && Math.Abs(step - 0.18f) <= 0.1 * grade, $"Discrete step {step:R}");
+    }
+
+    // Past a sloped face's top edge the footprint overhangs the edge. The certified height is the edge's, below the
+    // face's plane at the axis, so the height field is level there and walking on is not a step. The edge is at
+    // x 2 on a face rising +X, and the body walks from x 1.95 on the face to x 2.05 past it.
+    [Theory]
+    [InlineData(14f)]
+    [InlineData(30f)]
+    public void OverhungSlopeEdgeIsNotAStep(float degrees)
+    {
+        float grade = MathF.Tan(Radians(degrees)), top = 2 * grade;
+        Vector3 face = Vector3.Normalize(new Vector3(-grade, 1, 0));
+        SupportSample start = Sample(top - 0.05f * grade, face, axisX: 1.95f);
+        SupportSample next = Sample(top, face) with { Witness = new Vector3(2, top, 0) };
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, new Vector2(1.95f, 0), next, new Vector2(2.05f, 0)));
+        Assert.Equal(0f, GroundSeat.DiscreteStep(next, new Vector2(2.05f, 0), next, new Vector2(2.15f, 0)));
     }
 
     [Theory]

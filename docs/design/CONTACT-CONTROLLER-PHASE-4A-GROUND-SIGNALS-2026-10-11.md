@@ -59,6 +59,18 @@ height less the curvature disagreement, which is the part a viewer reads as a st
 A start or new support that is not walkable (steep, none, refused) gives `d = 0`. Steep supports belong to slides,
 which never emit steps.
 
+Each plane is the support's own plane only where its height field follows it. A certified height is the least of
+the support's plane at the axis, its witness height and its joined polygons' planes. When the height lies below the
+plane through the witness with the support's normal, evaluated at the support's axis, by more than the contact skin
+plus the support's certified error, the height came from the witness: an edge or vertex the footprint overhangs,
+such as the top edge of a ramp. The height field there is level, so the classifier extends that support as a level
+plane through its height. Analytic terrain witnesses lie on the axis and never take this rule.
+
+**Ruling 4a-9.** An overhung edge is level ground for the classifier. The final review showed that past a sloped
+face's top edge the support keeps the face's tilted normal over a level edge height, so both residuals picked up the
+face's slope with the same sign and reported a step against the feet's motion (-0.025 m at 14 degrees, -0.058 m at
+30). Cost if wrong: none.
+
 **Ruling 4a-1.** Steps are classified by plane agreement above the contact skin, not by the legacy
 `GroundedEpsilon` dead zone or by `StepPart` alone. `StepPart` alone reports millimetre events on every tick over
 curved terrain, and the step offset smoother freezes the drawn mesh on each event, which would stutter on
@@ -214,13 +226,17 @@ legacy numbers. Box and mesh variants where statics are involved, 30 and 60 Hz, 
   freezes facing (already pinned, kept).
 - **Replay and allocation.** Replay bits include the three floats. A warm `GroundSignals.Resolve` call with
   look-ahead allocates nothing.
+- **Slope edges.** Slab ramps at 14 and 30 degrees, walked up over the top edge onto a floor 0.1 m below it and
+  down off the low end onto a floor 0.1 m below it. Uphill, `StepDeltaY` sums to -0.1 within one skin with no
+  event whose sign differs from that tick's feet change. Downhill, every event's sign matches the feet change, no
+  event is positive and the sum is at most 0.1 plus one skin in magnitude. A classifier row pins the overhung edge.
 - **Steep ramps.** A 20 degree ramp and a planar analytic slope with a carried `ClimbRate` and EWMA report zero.
 - **Scenario harness.** Every scenario tick asserts finite signals and never both `ClimbRate` and `StepDeltaY`
   nonzero.
 
 ## Files
 
-- `GroundSeat.cs`: the backward residual and `d` beside `StepPart`.
+- `GroundSeat.cs`: the backward residual, the overhung edge's level plane and `d` beside `StepPart`.
 - `GroundPlacement.cs`: `Paced` reports what it paid.
 - `GroundCore.cs`: owed discrete rise and `GroundStepResult.StepRise`.
 - New `GroundSignals.cs`: trigger, look-ahead, grade fit and rates, one responsibility.
@@ -233,3 +249,9 @@ legacy numbers. Box and mesh variants where statics are involved, 30 and 60 Hz, 
   as a run and emits isolated steps instead.
 - A staircase whose steps are farther apart than the look-ahead (three capsule radii) reads as isolated steps.
 - A riser on a strongly curved tread reports its height less the curvature disagreement (Ruling 4a-1).
+- A drop off a sloped face's low end can read short, or as a kink with no event, by at most one substep's travel
+  times the slope. The jump at an unknown switch point between two samples lies between `rb` and `rf`, so when they
+  disagree in sign the samples prove no jump, and the classifier reports the smallest jump the samples prove.
+  Locating the switch through the support neighbourhood's joins is
+  [#1354](https://github.com/APKiwiOrg/KhaozEngine/issues/1354). The cost is a few centimetres of unsmoothed drop at
+  ramp feet, presentation only.

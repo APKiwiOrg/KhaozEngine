@@ -94,14 +94,25 @@ internal static class GroundSeat
     {
         if (start.Status != SupportStatus.Walkable || next.Status != SupportStatus.Walkable) return 0;
         double dx = (double)axis.X - startAxis.X, dz = (double)axis.Y - startAxis.Y;
-        double forward = next.Height - (start.Height -
-            ((double)start.Normal.X * dx + (double)start.Normal.Z * dz) / start.Normal.Y);
-        double backward = next.Height +
-            ((double)next.Normal.X * dx + (double)next.Normal.Z * dz) / next.Normal.Y - start.Height;
+        double forward = next.Height - (start.Height - PlaneRise(start, startAxis, dx, dz));
+        double backward = next.Height + PlaneRise(next, axis, dx, dz) - start.Height;
         double error = (double)ShellMotion.ContactSkin + start.HeightError + next.HeightError;
         if (Math.Abs(forward) <= error || Math.Abs(backward) <= error ||
             Math.Sign(forward) != Math.Sign(backward)) return 0;
         return (float)(Math.Sign(forward) * Math.Min(Math.Abs(forward), Math.Abs(backward)));
+    }
+
+    // The rise of a support's plane over (dx, dz). A certified height is the least of the support's own plane at the
+    // axis, its witness height and its joined polygons' planes. A height below its own plane at its axis by more than
+    // the skin plus its error came from the witness, an edge or vertex the footprint overhangs, so the height field
+    // there is level even though the normal is the face's.
+    static double PlaneRise(in SupportSample support, Vector2 supportAxis, double dx, double dz)
+    {
+        Vector3 n = support.Normal, w = support.Witness;
+        double plane = w.Y - ((double)n.X * ((double)supportAxis.X - w.X) +
+            (double)n.Z * ((double)supportAxis.Y - w.Z)) / n.Y;
+        if (plane - support.Height > (double)ShellMotion.ContactSkin + support.HeightError) return 0;
+        return ((double)n.X * dx + (double)n.Z * dz) / n.Y;
     }
 
     // The wall normal is the contact normal made horizontal, or the reverse of the move when it has no

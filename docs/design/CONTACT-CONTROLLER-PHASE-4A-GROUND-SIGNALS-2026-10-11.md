@@ -45,19 +45,25 @@ opposite signs, because each plane misses the other point on its own side of the
 therefore:
 
 - `d = sign(rf) * min(|rf|, |rb|)` when `rf` and `rb` have the same sign
-- `d = 0` when the signs differ, or when either magnitude is within the two supports' certified height error
+- `d = 0` when the signs differ, or when the smaller magnitude is not above `ShellMotion.ContactSkin` plus the two
+  supports' certified height errors
 
-No tuned threshold is used. A planar ramp gives `d = 0` up to float rounding, which the certified error absorbs. A
-step onto a sloped tread gives the riser height less the curvature disagreement, which is the part a viewer reads as
-a step.
+The contact skin (1 mm) is the body model's own resolution, the same distance as the arrival rule and the contact
+gap, so a support jump finer than it is ground the body cannot tell from continuous. It is not a tuned threshold.
+A planar ramp gives `d = 0`, because analytic terrain certifies no height error and leaves float residuals of a few
+nanometres. A smooth curve gives `d = 0` even across an inflection, where both residuals share a sign but are
+cubic in the substep length (about 15 micrometres on the suite's hill). A step onto a sloped tread gives the riser
+height less the curvature disagreement, which is the part a viewer reads as a step.
 
 A start or new support that is not walkable (steep, none, refused) gives `d = 0`. Steep supports belong to slides,
 which never emit steps.
 
-**Ruling 4a-1.** Steps are classified by plane agreement, not by the legacy `GroundedEpsilon` dead zone or by
-`StepPart` alone. `StepPart` alone reports millimetre events on every tick over curved terrain, and the step offset
-smoother freezes the drawn mesh on each event, which would stutter on Grimhollow's hills. Cost if wrong: a riser
-on a strongly curved tread reports a few millimetres less than its height.
+**Ruling 4a-1.** Steps are classified by plane agreement above the contact skin, not by the legacy
+`GroundedEpsilon` dead zone or by `StepPart` alone. `StepPart` alone reports millimetre events on every tick over
+curved terrain, and the step offset smoother freezes the drawn mesh on each event, which would stutter on
+Grimhollow's hills. The skin floor was added in implementation, after the Task 1 implementer showed float residuals
+on analytic planes and same-sign residuals across smooth inflections. Cost if wrong: steps and seams under 1 mm
+emit nothing, and a riser on a strongly curved tread reports a few millimetres less than its height.
 
 ## Applied step rise
 
@@ -65,7 +71,9 @@ Pacing pays rises from the climb budget, so the feet can lag below a tread for a
 the discrete rise that actually happened this tick.
 
 - The tick keeps an owed discrete rise `O`. At the start of a ground segment, `O` is the lag the feet already carry
-  below walkable support (carried lag only comes from pacing).
+  below walkable support when that lag exceeds the contact skin plus the support's certified error. Carried lag only
+  comes from pacing, and a remnant under the skin is treated as continuous, so a paced step's reported total can fall
+  short of its height by less than one skin.
 - A substep with `d > 0` adds `d` to `O`. The budget it pays (`Paced`'s `paid`) first settles `O`, and the settled
   amount is applied discrete rise.
 - Lag paid by `PayLag` settles `O` the same way.
@@ -151,7 +159,7 @@ legacy numbers. Box and mesh variants where statics are involved, 30 and 60 Hz, 
   zero. A planar ramp at 30 degrees gives exactly zero. A drop gives the negative height. A step onto a 10 degree
   tread gives the riser height within the curvature disagreement.
 - **Isolated step.** A doorstep up and down: `ClimbRate` zero every tick, `StepDeltaY` sums to the step height
-  within half a skin, at most two event ticks with pacing.
+  within one skin, on at most `ceil(height / (MaxStepClimbSpeed * dt)) + 1` event ticks.
 - **Stair ascent.** `ClimbRate` positive from the first riser's tick to the top, never negative, no zero tick
   between the first and last riser, `StepDeltaY` zero throughout, the mean rate within 0.25 m/s of the measured
   rise rate and never above `MaxStepClimbSpeed`.

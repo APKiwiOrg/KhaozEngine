@@ -14,7 +14,7 @@
 
 - No public API, wire field or carried state is added. Everything new is `internal`.
 - Run grade 0.3, ascent seed 0.7, smoothing rate 5 per second, descent cap 6 m/s, descent grade clamp 0.3 to 2, look-ahead at k = 1, 2, 3 capsule radii with `ReachUp = ReachDown = StepHeight + 2 * k * CapsuleRadius`.
-- No tuned threshold in the step classifier. Only the two supports' certified height errors.
+- The step classifier's only floor is `ShellMotion.ContactSkin` plus the two supports' certified height errors (spec Ruling 4a-1). The same floor decides whether carried lag counts as owed discrete rise.
 - Signals never feed movement. Replay is bit-identical, signals included. A warm tick allocates nothing.
 - Every local build and test goes through build-slot: `build-slot --label p4a -- <command>`, and `--heavy` for the full build and suite. Exit 75 means nothing ran, so retry. Never loop tests.
 - Focused tests: `dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter FullyQualifiedName~Locomotion.Contacts`.
@@ -62,13 +62,13 @@
 
 - [ ] **Step 3: Implement `DiscreteStep`**
 
-`rf = h1 - plane(S0 at a1)` (the existing `StepPart` formula without the `NotBelow` rounding), `rb = plane(S1 at a0) - h0`. Return `sign(rf) * min(|rf|, |rb|)` when the signs agree and both magnitudes exceed `start.HeightError + next.HeightError`, else 0. Compute in double. Fill `GroundSeatResult.DiscreteStep` for `Seated`.
+`rf = h1 - plane(S0 at a1)` (the existing `StepPart` formula without the `NotBelow` rounding), `rb = plane(S1 at a0) - h0`. Return `sign(rf) * min(|rf|, |rb|)` when the signs agree and the smaller magnitude exceeds `ShellMotion.ContactSkin + start.HeightError + next.HeightError`, else 0. Compute in double. Fill `GroundSeatResult.DiscreteStep` for `Seated`.
 
 - [ ] **Step 4: Write the failing ground core rows in `GroundCoreTests.Steps.cs`**
 
 Through `GroundCore.Step` over successive ticks, box and mesh, 30 and 60 Hz:
-- `DoorstepRiseSumsToItsHeight`: walking +X over `Doorstep(0.18)`, the sum of `StepRise` over the ticks is 0.18 within half a skin, every tick's `StepRise` is at least zero, and at most two ticks are nonzero at walk speed.
-- `DoorstepDropIsItsNegativeHeight`: walking -X off the doorstep, one tick with `StepRise` -0.18 within half a skin.
+- `DoorstepRiseSumsToItsHeight`: walking +X over `Doorstep(0.18)`, the sum of `StepRise` over the ticks is 0.18 within one skin, every tick's `StepRise` is at least zero, and at most `ceil(0.18 / (MaxStepClimbSpeed * dt)) + 1` ticks are nonzero.
+- `DoorstepDropIsItsNegativeHeight`: walking -X off the doorstep, one tick with `StepRise` -0.18 within one skin.
 - `SmoothGroundHasNoStepRise`: flat floor, a 20 degree static ramp, a planar analytic slope and the analytic hill `h = 0.2 sin(x) cos(z)`: `StepRise` is exactly 0 every tick for 60 ticks.
 - `StairsOnAnAnalyticHillCountOnlyTheRisers` (Review Focus): `Staircase(4, 0.18, 0.3)` placed over the analytic hill, the summed `StepRise` equals 4 × 0.18 within one skin.
 - `UnlimitedBudgetAppliesTheStepWhereItIsFound`: `MaxStepClimbSpeed` 0, the doorstep's 0.18 lands in one tick.
@@ -79,7 +79,7 @@ Through `GroundCore.Step` over successive ticks, box and mesh, 30 and 60 Hz:
 
 - [ ] **Step 6: Implement owed discrete rise in `GroundCore`**
 
-`Paced` reports `paid`. Per segment, start `O` at the carried lag below walkable start support. A substep with `DiscreteStep > 0` adds it to `O`, and `min(paid, O)` moves from `O` to applied. `PayLag` payments settle `O` the same way. A substep with `DiscreteStep < 0` applies `DiscreteStep` plus the `O` it erased (`O` resets to zero). `MoveRise` sums accepted placements' feet changes and lag payments.
+`Paced` reports `paid`. Per segment, start `O` at the carried lag below walkable start support when it exceeds `ContactSkin` plus the support's certified error, else 0. A substep with `DiscreteStep > 0` adds it to `O`, and `min(paid, O)` moves from `O` to applied. `PayLag` payments settle `O` the same way. A substep with `DiscreteStep < 0` applies `DiscreteStep` plus the `O` it erased (`O` resets to zero). `MoveRise` sums accepted placements' feet changes and lag payments.
 
 - [ ] **Step 7: Run all of `Locomotion.Contacts`, expect PASS with no existing row changed**
 
@@ -100,12 +100,12 @@ Through `GroundCore.Step` over successive ticks, box and mesh, 30 and 60 Hz:
 - [ ] **Step 1: Write the failing rows**
 
 Through `Ground.Step` (the existing test helper), box and mesh, 30 and 60 Hz:
-- `DoorstepReportsItsHeightAsAStep`: up and down the doorstep, `StepDeltaY` sums to ±0.18 within half a skin, `ClimbRate` and `ClimbRateEwma` stay 0.
+- `DoorstepReportsItsHeightAsAStep`: up and down the doorstep, `StepDeltaY` sums to ±0.18 within one skin, `ClimbRate` and `ClimbRateEwma` stay 0.
 - `SmoothGroundReportsNoSignals`: the four smooth surfaces of Task 1, all three signals exactly 0 every tick.
 - `AirAndSlidesReportNoSignals`: a jump arc over `Staircase(4, 0.18, 0.3)`, a fall from 1 m onto the doorstep's top, a slide down a 60 degree analytic face. All three signals 0 every tick, landing ticks included.
 - `AJumpTickKeepsItsGroundStep`: walking onto the doorstep with jump held, the tick that mounts the step and jumps reports the step.
 - `HeldAndFallbackReportZeros`: a held tick (refused start) and the non-finite clamp fallback export 0 for all three.
-- `PacingOffReportsTheDoorstepInOneTick`: `MaxStepClimbSpeed` 0, one tick with `StepDeltaY` 0.18 within half a skin.
+- `PacingOffReportsTheDoorstepInOneTick`: `MaxStepClimbSpeed` 0, one tick with `StepDeltaY` 0.18 within one skin.
 - `HeldKeepsTheGrant`: a held tick keeps `SupportGranted` true (pins the phase 3 policy).
 
 - [ ] **Step 2: Run, expect failure**

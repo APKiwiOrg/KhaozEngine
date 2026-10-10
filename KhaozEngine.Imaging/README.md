@@ -19,15 +19,17 @@ PngWriter.Save("/tmp/scene.png", rgba, 320, 180);
 
 ## PngReader
 
-`PngReader.Decode(png)` decodes 8-bit and 16-bit greyscale, greyscale plus alpha, RGB and RGBA PNGs and 1, 2,
-4 and 8-bit palette PNGs, either noninterlaced or Adam7-interlaced. It handles all five PNG row filters and
-validates the signature, chunk order, CRCs, dimensions, palette indices and the exact decompressed payload size.
-Greyscale below 8 bits is rejected. Decoded allocation is capped at `PngReader.MaxDecodedBytes`.
+`PngReader.Decode(png)` decodes every PNG colour type and bit depth, either noninterlaced or Adam7-interlaced:
+1, 2, 4, 8 and 16-bit greyscale, 8 and 16-bit greyscale plus alpha, RGB and RGBA, and 1, 2, 4 and 8-bit palette.
+It handles all five PNG row filters and validates the signature, chunk order, CRCs, dimensions, palette indices
+and the exact decompressed payload size. Decoded allocation is capped at `PngReader.MaxDecodedBytes`.
 
 The returned `PngImage.Bytes` is top-to-bottom in the PNG's channel order. Each 16-bit channel sample remains
 two bytes in most-significant-byte-first order, so no precision is discarded. A greyscale or RGB `tRNS`
 chunk promotes the decoded output to GA or RGBA. Matching samples receive zero alpha and all other samples
-receive full alpha, with the full 16-bit value compared when applicable. A palette image expands to 8-bit RGB,
+receive full alpha, with the full 16-bit value compared when applicable. Greyscale at 1, 2 or 4 bits scales to
+8 bits as `value * 255 / (2^depth - 1)`, and its `tRNS` key matches the stored sample before scaling. A palette
+image expands to 8-bit RGB,
 or to RGBA when it carries a `tRNS` chunk. Palette entries past the end of `tRNS` are opaque. An interlaced
 image is returned in ordinary raster order.
 

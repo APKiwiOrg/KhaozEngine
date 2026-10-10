@@ -109,7 +109,7 @@ public class PngReaderPaletteInterlaceTests
         Assert.Throws<InvalidDataException>(() => PngReader.Decode(huge));
     }
 
-    private static byte[] Png(int width, int height, int depth, int color, int interlace, byte[] filtered,
+    internal static byte[] Png(int width, int height, int depth, int color, int interlace, byte[] filtered,
         params byte[][] beforeData)
     {
         byte[] ancillary = Join(beforeData);
@@ -119,7 +119,7 @@ public class PngReaderPaletteInterlaceTests
 
     // Filters every pass row with Up, which restarts at the first row of each pass. Below eight bits the raster
     // holds one index per pixel and rows are packed most-significant bit first. Otherwise it holds whole pixels.
-    private static byte[] Filtered(int width, int height, int bits, byte[] raster, bool interlaced)
+    internal static byte[] Filtered(int width, int height, int bits, byte[] raster, bool interlaced)
     {
         int pixelBytes = Math.Max(1, bits / 8);
         using var output = new MemoryStream();

@@ -11,6 +11,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `KhaozEngine.Imaging` decodes 1, 2, 4 and 8-bit palette PNGs, with `tRNS` alpha, and Adam7-interlaced images
   of every supported colour type. A palette decodes to 8-bit RGB, or RGBA when `tRNS` is present. Tile height
   imports accept the same files.
+- `PngReader` decodes 1, 2 and 4-bit greyscale, scaled to 8 bits, with an optional `tRNS` colour key matched
+  against the stored sample. Every PNG colour type and bit depth now decodes.
 
 ## 20.30.0
 

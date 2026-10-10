@@ -10812,9 +10812,8 @@ referring to it by id keeps resolving.
 around it), `SetHeights`, `Line` (Bresenham, one object per tile, one undo step), `Scatter` (a jittered grid
 whose offsets come from a hash of the point and the seed, so the same arguments always produce the same world),
 `PlacePrefab` and `ImportHeights`. Height imports detect binary PGM (netpbm P5) or PNG by signature.
-`PngReader` in Imaging supports 8/16-bit grayscale, gray-alpha, RGB and RGBA and 1/2/4/8-bit palette PNGs,
-noninterlaced or Adam7, using grayscale or the red channel as height and ignoring alpha. A palette PNG supplies
-the red channel of each entry. Both formats preserve 16-bit sample precision. Write PGM files with LF line endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
+`PngReader` in Imaging supports every PNG colour type and bit depth, noninterlaced or Adam7, using grayscale
+or the red channel as height and ignoring alpha. A palette PNG supplies the red channel of each entry. Both formats preserve 16-bit sample precision. Write PGM files with LF line endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
 the whole raster.
 
 Two limits are worth knowing before leaning on the general case. A `SnapshotRectCommand` owns what was inside

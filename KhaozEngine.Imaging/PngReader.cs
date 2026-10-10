@@ -5,8 +5,8 @@ using System.IO.Compression;
 namespace KhaozEngine.Imaging;
 
 /// <summary>
-/// Dependency-free decoder for 8-bit and 16-bit greyscale, GA, RGB and RGBA PNGs and for 1, 2, 4 and 8-bit palette
-/// PNGs, noninterlaced or Adam7-interlaced.
+/// Dependency-free decoder for every PNG colour type and bit depth, noninterlaced or Adam7-interlaced. Palette and
+/// greyscale images below 8 bits decode to 8-bit samples. All other samples keep their stored depth.
 /// </summary>
 public static class PngReader
 {
@@ -18,7 +18,8 @@ public static class PngReader
     /// <summary>
     /// Decodes a complete PNG. Output samples are top-to-bottom in PNG channel order, deinterlaced when the image
     /// is Adam7. Greyscale and RGB transparency chunks add an alpha channel. A palette image expands to 8-bit RGB,
-    /// or to RGBA when it carries a tRNS chunk. A 16-bit sample remains two bytes, most-significant byte first.
+    /// or to RGBA when it carries a tRNS chunk. Greyscale at 1, 2 or 4 bits scales to 8 bits as
+    /// <c>value * 255 / (2^depth - 1)</c>. A 16-bit sample remains two bytes, most-significant byte first.
     /// </summary>
     public static PngImage Decode(ReadOnlySpan<byte> png)
     {
@@ -134,7 +135,12 @@ public static class PngReader
             6 => 4,
             _ => throw new NotSupportedException($"PNG color type {colorType} is not supported"),
         };
-        bool supportedDepth = colorType == 3 ? bitDepth is 1 or 2 or 4 or 8 : bitDepth is 8 or 16;
+        bool supportedDepth = colorType switch
+        {
+            0 => bitDepth is 1 or 2 or 4 or 8 or 16,
+            3 => bitDepth is 1 or 2 or 4 or 8,
+            _ => bitDepth is 8 or 16,
+        };
         if (!supportedDepth)
             throw new NotSupportedException($"PNG bit depth {bitDepth} is not supported for color type {colorType}");
         if (data[10] != 0 || data[11] != 0)
@@ -173,6 +179,8 @@ public static class PngReader
             filtered, header.Width, header.Height, header.Channels * header.BitDepth, header.Interlaced);
         if (palette is not null)
             return new PngImage(header.Width, header.Height, palette.OutputChannels, 8, palette.Expand(decoded));
+        if (header.BitDepth < 8)
+            return PngLowDepthGrey.Expand(decoded, header.Width, header.Height, header.BitDepth, transparency);
         if (transparency is not { } transparent)
             return new PngImage(header.Width, header.Height, header.Channels, header.BitDepth, decoded);
 

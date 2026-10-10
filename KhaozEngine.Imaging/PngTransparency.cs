@@ -21,10 +21,10 @@ internal readonly record struct PngTransparency(
         int expectedLength = sourceChannels == 1 ? 2 : 6;
         if (data.Length != expectedLength)
             throw new InvalidDataException($"PNG tRNS must contain {expectedLength} bytes for this color type");
-        if (bitDepth == 8 && HasNonzeroHighByte(data))
+        if (bitDepth < 16 && ExceedsDepth(data, bitDepth))
             throw new InvalidDataException("PNG tRNS sample exceeds the image bit depth");
 
-        long expandedLength = (long)width * height * (sourceChannels + 1) * (bitDepth / 8);
+        long expandedLength = (long)width * height * (sourceChannels + 1) * Math.Max(1, bitDepth / 8);
         if (expandedLength > PngReader.MaxDecodedBytes)
             throw new InvalidDataException(
                 $"PNG transparency-expanded payload exceeds the {PngReader.MaxDecodedBytes}-byte allocation cap");
@@ -68,10 +68,10 @@ internal readonly record struct PngTransparency(
     private static ushort Read16(ReadOnlySpan<byte> bytes, int offset) =>
         (ushort)((bytes[offset] << 8) | bytes[offset + 1]);
 
-    private static bool HasNonzeroHighByte(ReadOnlySpan<byte> data)
+    private static bool ExceedsDepth(ReadOnlySpan<byte> data, int bitDepth)
     {
         for (int offset = 0; offset < data.Length; offset += 2)
-            if (data[offset] != 0) return true;
+            if (Read16(data, offset) >= 1 << bitDepth) return true;
         return false;
     }
 }

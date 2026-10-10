@@ -182,8 +182,8 @@ Every height verb also reports how many corners the rect COVERED against how man
 where the rect reached space no region holds, which the lattice edge-extends into rather than refusing, so a
 brush overlapping the edge of the world is normal and the two counts are how a client sees how much of it took.
 
-**`height_import` reads PGM and PNG.** Binary PGM (netpbm P5) and PNG may carry 8-bit or 16-bit
-samples. PNG greyscale is read directly, alpha is ignored, and RGB, RGBA or palette input uses the red channel.
+**`height_import` reads PGM and PNG.** Binary PGM (netpbm P5) may carry 8-bit or 16-bit
+samples. PNG may use any colour type and bit depth. PNG greyscale is read directly, scaled to 8 bits below 8, alpha is ignored, and RGB, RGBA or palette input uses the red channel.
 Interlaced PNG is accepted. Write PGM
 headers with LF line endings: a header terminated with CRLF spends its CR as the single delimiter byte and leaves
 the LF as sample 0, shifting the whole raster. The image's own row 0 is treated as the NORTH edge of the rect.

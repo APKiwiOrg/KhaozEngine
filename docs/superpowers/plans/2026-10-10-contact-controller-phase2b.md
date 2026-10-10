@@ -158,8 +158,9 @@ void AssertNeighborhoodCurrent(in SupportNeighborhoodResult result, IPhysicsQuer
 **Interfaces:**
 - Consumes: Task 1's types, collector and `SupportNeighborhoodJoins`.
 - Produces: mesh triangles as `Polygon` elements with `ElementId` = triangle index. Front is
-  `Cross(C - A, B - A)`, as `CapsuleFeatureMesh` defines. Capture reuses `CapsuleFeatureMesh` topology validation,
-  so a non-manifold mesh refuses `Ambiguous`.
+  `Cross(C - A, B - A)`, as `CapsuleFeatureMesh` defines. No topology is validated: non-manifold edges, duplicates and
+  inconsistent winding are certified triangle by triangle. An exactly degenerate triangle is not a member. Candidate
+  triangles come from Bepu's mesh tree, each with the capture's per-vertex coordinate and finite checks.
 
 - [ ] **Step 1: Write the failing tests:**
   - `ValleyLinePublishesBothFaces`: the symmetric 10 degree V of `FootSupportBoundaryTests`, axis probe
@@ -169,12 +170,14 @@ void AssertNeighborhoodCurrent(in SupportNeighborhoodResult result, IPhysicsQuer
   - `PyramidApexJoinsEveryFace` and `SaddleJoinsOnlyConvexNeighbours`.
   - `BackFaceIsNotAMember`: a down-facing triangle at y `0.1` with the probe above it gives no member for it.
   - `NonManifoldEdgeCertifiesEachTriangle`: three triangles on one edge are three members with geometric joins.
+  - `DuplicateTriangleIsTwoMembers` and `LargeMeshQueryReadsOnlyNearbyTriangles` (20,000 triangles plus one beyond
+    the 64 m local bound, matching the oracle).
   - `DenseFanCertifiesWithinCapacity`: 96 triangles around one vertex, probe on the vertex: completes with 96
     members.
   - `MeshMembershipMatchesBruteForceOracle`: 500 seeded poses over random heightfield meshes, same assertions as
     Task 1's oracle.
 - [ ] **Step 2: Run** `--filter "FullyQualifiedName~SupportNeighborhoodMeshTests"`. Expected: FAIL (meshes skipped).
-- [ ] **Step 3: Implement** triangle membership through the mesh's bounding tree (`CapsuleFeatureMeshBounds`), the
+- [ ] **Step 3: Implement** triangle membership through Bepu's mesh tree over the probe's band-inflated local bounds, the
   same per-triangle distance and witness as Task 1, and joins through `SupportNeighborhoodJoins`.
 - [ ] **Step 4: Run** the filter, then `KhaozEngine.Tests.Physics` once. Expected: all pass.
 - [ ] **Step 5: Commit** `feat(physics): publish mesh triangles in the support neighborhood`.

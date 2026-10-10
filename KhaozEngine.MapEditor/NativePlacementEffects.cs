@@ -14,8 +14,9 @@ namespace KhaozEngine.MapEditor;
 public readonly record struct NativePlacementExtent(MapBox3? Bounds, bool Unknown);
 
 /// <summary>World bounds of native placements, which a host that resolves placement geometry binds next to the asset
-/// closure through <see cref="EditorHistory.BindNativeAssets"/>. The editor itself holds no physics, so without a
-/// binding a placement edit reports <see cref="MapNativeInvalidation.Unbounded"/>.</summary>
+/// closure through <see cref="EditorHistory.BindNativeAssets(MapDocument, MapAssetClosure, INativePlacementBounds)"/>.
+/// The editor itself holds no physics, so without a binding a placement edit reports
+/// <see cref="MapNativeInvalidation.Unbounded"/>.</summary>
 public interface INativePlacementBounds
 {
     /// <summary>The union, in world metres, of the collider bounds and interaction envelope bounds of every placement
@@ -52,16 +53,17 @@ internal static class NativePlacementEffects
                 !SameGeometry(a, b))
             .ToArray();
         if (changed.Length == 0) return Effects(null, null, MapNativeInvalidation.Placements);
-        if (assets is null || bounds is null) return Effects(null, null, Unbounded);
+        if (assets is null || bounds is null) return Effects(null, null, FullReset);
 
         NativePlacementExtent oldExtent = Extent(before, old, changed, assets, registry, bounds);
         NativePlacementExtent newExtent = Extent(after, current, changed, assets, registry, bounds);
-        if (oldExtent.Unknown || newExtent.Unknown) return Effects(null, null, Unbounded);
+        if (oldExtent.Unknown || newExtent.Unknown) return Effects(null, null, FullReset);
         if (oldExtent.Bounds is null && newExtent.Bounds is null) return Effects(null, null, MapNativeInvalidation.Placements);
         return Effects(oldExtent.Bounds, newExtent.Bounds, MapNativeInvalidation.Placements | Spatial);
     }
 
-    const MapNativeInvalidation Unbounded = MapNativeInvalidation.Placements | Spatial | MapNativeInvalidation.Unbounded;
+    // What an edit of unknown extent invalidates: everything, as a full reset.
+    const MapNativeInvalidation FullReset = MapNativeInvalidation.Placements | Spatial | MapNativeInvalidation.Unbounded;
 
     static NativePlacementExtent Extent(MapDocument document, Dictionary<string, MapPlacement> placements, string[] changed,
         MapAssetClosure assets, MapDocRegistry registry, INativePlacementBounds bounds)

@@ -31,6 +31,23 @@ namespace KhaozEngine.Tests.MapEditor
         }
 
         [Fact]
+        public void Apply_keeps_an_emptied_layer_whose_cell_size_is_not_the_default()
+        {
+            MapDocument doc = SampleDoc();
+            doc.TerrainOverrides = new MapTerrainOverrides(1f);
+            doc.TerrainOverrides.SetDelta(5, 5, 3f);
+            doc.TerrainOverrides.TryGetTile(0, 0, out MapSculptTile t0);
+            var tiles = new List<SculptTileClear> { new(0, 0, (float[])t0.Deltas.Clone()) };
+
+            new TerrainSculptClearCommand(1f, tiles, dirty: null).Apply(doc);
+
+            // Save keeps an empty block at a non-default cell size too, so the cell size survives.
+            Assert.NotNull(doc.TerrainOverrides);
+            Assert.True(doc.TerrainOverrides!.IsEmpty);
+            Assert.Equal(1f, doc.TerrainOverrides.CellSize);
+        }
+
+        [Fact]
         public void Apply_leaves_other_tiles_intact()
         {
             MapDocument doc = SampleDoc();

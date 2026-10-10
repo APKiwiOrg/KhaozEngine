@@ -29,8 +29,9 @@ public readonly struct SculptTileClear
 /// <summary>One undoable clear of the document's sculpt tiles (T3, #271): drops the tiles
 /// <see cref="TerrainSculptRegion.SelectClearTiles"/> selected out of <see cref="MapDocument.TerrainOverrides"/>,
 /// restoring the cells they covered to analytic terrain. <see cref="Apply"/> removes each tile and drops the whole
-/// layer back to null once it empties (byte-identical to a document that was never sculpted there, the same
-/// null-when-empty convention <see cref="TerrainSculptStrokeCommand"/> uses for a layer it created).
+/// layer back to null once it empties at the default cell size (byte-identical to a document that was never sculpted
+/// there, the same null-when-empty convention <see cref="TerrainSculptStrokeCommand"/> uses for a layer it created).
+/// An emptied layer with any other cell size is kept, as save keeps it, so the cell size survives.
 /// <see cref="Revert"/> restores each tile's captured prior grid, recreating the layer if <see cref="Apply"/>
 /// nulled it. Affects the streamed world.</summary>
 public sealed class TerrainSculptClearCommand : EditorCommand
@@ -67,7 +68,8 @@ public sealed class TerrainSculptClearCommand : EditorCommand
         MapTerrainOverrides? overrides = doc.TerrainOverrides;
         if (overrides is null) return;
         foreach (SculptTileClear t in _tiles) overrides.RemoveTile(t.TileX, t.TileZ);
-        if (overrides.IsEmpty) doc.TerrainOverrides = null;
+        // As save does, only an empty block at the default cell size is dropped, so a custom cell size survives.
+        if (overrides is { IsEmpty: true, CellSize: MapTerrainOverrides.DefaultCellSize }) doc.TerrainOverrides = null;
     }
 
     /// <inheritdoc/>

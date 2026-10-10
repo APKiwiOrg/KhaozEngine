@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc.Physics;
@@ -33,6 +34,13 @@ public class MapWorldDiagnosticsTests
     }
 
     [Fact]
+    public void HullOverOneHundredThirtyPoints_IsHullCapacity()
+    {
+        Assert.Empty(MapWorldBuilder.Measure(Sphere(130)));
+        Assert.Equal(new[] { MapFeatureQuerySupport.HullCapacity }, MapWorldBuilder.Measure(Sphere(131)));
+    }
+
+    [Fact]
     public void NestedCompoundFlatteningPast64Leaves_IsLeafCapacity()
     {
         Assert.Empty(MapWorldBuilder.Measure(Nested(32, 32)));
@@ -46,6 +54,13 @@ public class MapWorldDiagnosticsTests
     // A box hull from the origin to (length, 1, 1). Every corner lies within 64 m of the origin only when length is.
     static ConvexHullShape Hull(float length) => new(Enumerable.Range(0, 8)
         .Select(i => new Vector3((i & 1) == 0 ? 0f : length, (i & 2) == 0 ? 0f : 1f, (i & 4) == 0 ? 0f : 1f)).ToArray());
+
+    // Points spread over a unit sphere, so every one is a hull vertex and only the count matters.
+    static ConvexHullShape Sphere(int points) => new(Enumerable.Range(0, points).Select(i =>
+    {
+        float y = 1f - 2f * (i + 0.5f) / points, r = MathF.Sqrt(1f - y * y), a = i * 2.39996323f;
+        return new Vector3(r * MathF.Cos(a), y, r * MathF.Sin(a));
+    }).ToArray());
 
     // Two top-level children, each a compound of small boxes.
     static CompoundShape Nested(int first, int second) => NativeWorldFixtures.Compound(

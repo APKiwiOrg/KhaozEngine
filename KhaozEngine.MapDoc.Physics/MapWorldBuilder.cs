@@ -26,6 +26,10 @@ public static class MapWorldBuilder
     const int MaxFeatureLeaves = 64, MaxFeatureMeshTriangles = 65_536;
     const float MaxFeatureLocalExtentMetres = 64f;
 
+    // A hull with at most this many points stays within the backend's 256 faces and 1,524 face entries, since a convex
+    // polyhedron with V vertices has at most 2V - 4 faces and 6V - 12 face entries.
+    const int MaxFeatureHullPoints = 130;
+
     /// <summary>Builds <paramref name="document"/> against the verified <paramref name="assets"/>. Throws
     /// <see cref="MapDocumentException"/> for a partial window, a resolver identity the options or the legacy
     /// support height do not match, every resolution, placement and terrain refusal, a static position beyond
@@ -165,6 +169,7 @@ public static class MapWorldBuilder
                 if (Span(hull.Points) is var span && (span.X > MaxFeatureLocalExtentMetres ||
                     span.Y > MaxFeatureLocalExtentMetres || span.Z > MaxFeatureLocalExtentMetres))
                     found.Add(MapFeatureQuerySupport.LocalExtent);
+                if (hull.Points.Length > MaxFeatureHullPoints) found.Add(MapFeatureQuerySupport.HullCapacity);
                 break;
             case TriangleMeshShape mesh:
                 if (mesh.Indices.Length / 3 > MaxFeatureMeshTriangles) found.Add(MapFeatureQuerySupport.MeshTriangleCapacity);

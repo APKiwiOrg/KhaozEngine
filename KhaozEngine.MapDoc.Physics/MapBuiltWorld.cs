@@ -35,7 +35,9 @@ public sealed record MapStaticDescriptor(string OwnerId, MapStaticKind Kind, Phy
 public enum MapFeatureQuerySupport
 {
     /// <summary>The static meets none of the limits this builder measures: flattened leaf count, curved leaves, mesh
-    /// triangle count and leaf local extent. Hull vertex and face capacity are measured at physics registration.</summary>
+    /// triangle count, leaf local extent and the conservative hull point count of <see cref="HullCapacity"/>. The
+    /// backend checks a hull's actual vertex and face capacity only inside a query, and the conservative point count
+    /// keeps every supported hull within it.</summary>
     Supported,
 
     /// <summary>A compound flattens to more than 64 leaves.</summary>
@@ -49,6 +51,13 @@ public enum MapFeatureQuerySupport
 
     /// <summary>A leaf whose installed geometry reaches more than 64 m from its own origin on an axis.</summary>
     LocalExtent,
+
+    /// <summary>A convex hull leaf with more than 130 points. The backend captures at most 256 faces and 1,524 face
+    /// entries. A convex polyhedron with V vertices has at most 2V - 4 faces and 6V - 12 face entries, and a hull's
+    /// vertices are a subset of its points, so 130 points or fewer keeps every limit. The check is conservative: a
+    /// larger hull may still be captured. A tilted cylinder's interaction envelope hull has 128 points and is not a
+    /// collider, so this check never measures it.</summary>
+    HullCapacity,
 }
 
 /// <summary>One feature query limit a static meets. Limits are reported, never refused, because the static still

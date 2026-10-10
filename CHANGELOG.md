@@ -20,6 +20,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Locomotion gains the internal foot-support primitive, shell geometry and contact classes for the #438
   contact-classification controller. Nothing consumes them yet, so movement, navigation bakes and the wire
   are unchanged.
+- Locomotion gains the internal ground core for phase 2 of the #438 contact-classification controller.
+  Nothing consumes it yet, so movement is unchanged.
 - MapDoc format 5 adds sculpted caves and sparse authored surfaces (World Authoring R2). Surfaces live on
   exact rational lattices with floor, ceiling and paint-override roles, cave spaces sit between
   mixed-resolution bounds, and resolver version 2 resolves placements through height-aware support queries.

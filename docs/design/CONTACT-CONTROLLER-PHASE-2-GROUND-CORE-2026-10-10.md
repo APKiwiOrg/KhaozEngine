@@ -3,7 +3,7 @@
 Date: 2026-10-10. Detailed spec for phase 2 of [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438). The
 program, body model, support rule and invariants are in
 [CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md](CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md), and phase 1
-is on main at `d8a9d45d6`. Status: written for owner review.
+is on main at `d8a9d45d6`. Status: implemented, staged for 20.30.0. Nothing consumes it yet, so movement is unchanged.
 
 ## Scope
 
@@ -136,7 +136,8 @@ only.
 
 ## Files
 
-- `KhaozEngine.Locomotion/Contacts/GroundCore.cs`: the result types and the tick orchestration.
+- `KhaozEngine.Locomotion/Contacts/GroundCore.cs`: `GroundCore` tick orchestration and the `GroundCoreSettings`,
+  `GroundFooting` and `GroundStepResult` types.
 - `KhaozEngine.Locomotion/Contacts/ShellMotion.cs`: recovery, the up pass and the side pass with slides.
 - `KhaozEngine.Locomotion/Contacts/GroundSeat.cs`: the down pass, pacing, steep, none, refusal and cliff rules.
 - Tests under `KhaozEngine.Game.Tests/Locomotion/Contacts/`, reusing `FootSupportScenes.cs`.

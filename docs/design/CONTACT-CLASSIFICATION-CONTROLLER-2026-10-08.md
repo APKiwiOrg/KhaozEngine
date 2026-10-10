@@ -290,6 +290,10 @@ volume. It reads no other state.
   stepper change on that branch stay out.
 - `KhaozEngine.Locomotion/Contacts/FootSupport.cs`, `SupportSample.cs`, `ShellGeometry.cs` and
   `ContactClassifier.cs`. All internal until a consumer needs them.
+- Phase 2 adds `KhaozEngine.Locomotion/Contacts/GroundCore.cs` with `GroundCore`, `GroundCoreSettings`,
+  `GroundFooting` and `GroundStepResult`, plus `ShellMotion.cs` and `GroundSeat.cs`. These types are internal,
+  and nothing consumes them yet. The [phase 2 spec](CONTACT-CONTROLLER-PHASE-2-GROUND-CORE-2026-10-10.md) owns
+  their tick contract.
 - Tests in `KhaozEngine.Game.Tests` under the `KhaozEngine.Tests.Locomotion.Contacts` namespace, next to the
   existing Locomotion suites, following the test-project reference rules.
 

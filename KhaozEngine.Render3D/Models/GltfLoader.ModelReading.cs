@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using SharpGLTF.Schema2;
 
 namespace KhaozEngine.Render3D
@@ -10,15 +11,22 @@ namespace KhaozEngine.Render3D
     {
         static ModelRoot LoadModel(string path) => LoadModel(path, settings => ModelRoot.Load(path, settings));
 
-        // A GLB in memory. Each read opens a fresh seekable stream, so the validation fallback can re-read it.
-        static ModelRoot LoadModel(byte[] glb, string identity) => LoadModel(identity, settings =>
+        // A GLB in memory, read in place when it is array-backed and copied once otherwise. Each read opens a fresh
+        // read-only stream, so the validation fallback can re-read it.
+        static ModelRoot LoadModel(ReadOnlyMemory<byte> glb, string identity)
         {
-            using var stream = new MemoryStream(glb, writable: false);
-            return ModelRoot.ReadGLB(stream, settings);
-        });
+            ArraySegment<byte> bytes = MemoryMarshal.TryGetArray(glb, out ArraySegment<byte> segment)
+                ? segment : new ArraySegment<byte>(glb.ToArray());
+            return LoadModel(identity, settings =>
+            {
+                using var stream = new MemoryStream(bytes.Array!, bytes.Offset, bytes.Count, writable: false);
+                return ModelRoot.ReadGLB(stream, settings);
+            });
+        }
 
-        // read takes null for SharpGLTF's default strict settings, or the fallback's validation-skipping settings.
-        static ModelRoot LoadModel(string path, Func<ReadSettings?, ModelRoot> read)
+        // identity names the asset in errors: a file path, or the caller's identity for bytes. read takes null for
+        // SharpGLTF's default strict settings, or the fallback's validation-skipping settings.
+        static ModelRoot LoadModel(string identity, Func<ReadSettings?, ModelRoot> read)
         {
             try { return read(null); }
             catch (SharpGLTF.Validation.DataException ex)
@@ -35,17 +43,17 @@ namespace KhaozEngine.Render3D
                 catch (Exception uncheckedEx)
                 {
                     throw new InvalidOperationException(
-                        $"glTF asset '{path}' failed validation: {ex.Message}",
+                        $"glTF asset '{identity}' failed validation: {ex.Message}",
                         new AggregateException(ex, uncheckedEx));
                 }
-                ValidatePrimitiveIndices(uncheckedRoot, path);
-                throw new InvalidOperationException($"glTF asset '{path}' failed validation: {ex.Message}", ex);
+                ValidatePrimitiveIndices(uncheckedRoot, identity);
+                throw new InvalidOperationException($"glTF asset '{identity}' failed validation: {ex.Message}", ex);
             }
         }
 
-        static void ValidatePrimitiveIndices(ModelRoot root, string path)
+        static void ValidatePrimitiveIndices(ModelRoot root, string identity)
         {
-            string assetIdentity = $"glTF asset '{path}'";
+            string assetIdentity = $"glTF asset '{identity}'";
             foreach (var mesh in root.LogicalMeshes)
                 foreach (var prim in mesh.Primitives)
                 {

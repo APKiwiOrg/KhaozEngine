@@ -12,6 +12,14 @@ namespace KhaozEngine.Tests.Render3D
     {
         static string WriteMalformedRigidGltf()
         {
+            string path = Path.Combine(Path.GetTempPath(), $"ke_bad_index_{Guid.NewGuid():N}.gltf");
+            File.WriteAllText(path, MalformedRigidGltfJson());
+            return path;
+        }
+
+        /// <summary>A rigid glTF triangle whose third index is 7 over 3 vertices, its buffer embedded as a data URI.</summary>
+        internal static string MalformedRigidGltfJson()
+        {
             var data = new byte[42];
             float[] positions =
             {
@@ -42,12 +50,10 @@ namespace KhaozEngine.Tests.Render3D
                 scenes = new[] { new { nodes = new[] { 0 } } },
                 scene = 0,
             };
-            string path = Path.Combine(Path.GetTempPath(), $"ke_bad_index_{Guid.NewGuid():N}.gltf");
-            File.WriteAllText(path, JsonSerializer.Serialize(document));
-            return path;
+            return JsonSerializer.Serialize(document);
         }
 
-        static void AssertBadIndex(Action load, string identity)
+        internal static void AssertBadIndex(Action load, string identity)
         {
             InvalidOperationException ex = Assert.Throws<InvalidOperationException>(load);
             Assert.Contains(identity, ex.Message);

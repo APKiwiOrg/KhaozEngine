@@ -166,11 +166,12 @@ namespace KhaozEngine.Render3D
         /// <summary><see cref="LoadFlattenedAlbedo(string)"/> over a binary glTF held in memory. Only
         /// <paramref name="glb"/> is parsed: there is no directory to resolve a relative external buffer or image
         /// against, so a caller that must not read outside its bytes refuses external URIs first.
-        /// <paramref name="identity"/> names the asset in error messages where the path overload names the file.</summary>
+        /// <paramref name="identity"/> names the asset in error messages where the path overload names the file.
+        /// Array-backed bytes are read in place without a copy, so they must not change during the call.</summary>
         public static GltfMesh LoadFlattenedAlbedo(ReadOnlyMemory<byte> glb, string identity)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(identity);
-            ModelRoot root = LoadModel(glb.ToArray(), identity);
+            ModelRoot root = LoadModel(glb, identity);
             return BuildRigid(root, identity, MakeAlbedoFlattenResolver());
         }
 

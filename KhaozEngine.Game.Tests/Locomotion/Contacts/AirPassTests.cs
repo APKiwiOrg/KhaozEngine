@@ -37,6 +37,10 @@ public class AirPassTests
             AirPass.Step(feet, velocity, verticalVelocity, Dt, Gravity, Tuning, Settings, Tuning.MaxSlopeRadians,
                 height, normal, scene?.World, scene is null ? null : scene.Lease);
 
+        internal GroundStepResult Rest(Vector3 feet) =>
+            GroundCore.Step(feet, Vector2.Zero, Dt, Tuning, Settings, height, normal, scene?.World,
+                scene is null ? null : scene.Lease);
+
         // Steps until the body lands or slides, at most limit ticks, carrying the feet and vertical speed.
         internal List<AirStepResult> Run(Vector3 feet, Vector2 velocity, float verticalVelocity, int limit)
         {
@@ -87,6 +91,28 @@ public class AirPassTests
         Assert.Equal(0f, result.VerticalVelocity);
     }
 
+    // A landing whose feet may sit below the support by a climb the ground core still owes.
+    static void AssertLandedOn(AirStepResult result, StaticHandle? support)
+    {
+        Assert.True(result.Outcome == AirOutcome.Landed, $"{result}");
+        Assert.Equal(SupportStatus.Walkable, result.Support.Status);
+        Assert.Equal(support, result.Support.Static);
+        Assert.Equal(0f, result.VerticalVelocity);
+    }
+
+    static float Budget => Tuning.MaxStepClimbSpeed * Dt;
+
+    // The landing tick of a 4 m/s run from x 0.6 launched at the given speed: the first descending tick with the axis
+    // over the ledge and its top between the tick's end feet and StepHeight above its start feet. Every tick there is
+    // one substep.
+    static int LedgeLandingTick(double launch)
+    {
+        int k = 1;
+        while (!(FreeV(launch, k) <= 0 && 0.6 + 4.0 * Dt * k > 1 && FreeY(0, launch, k) <= LedgeTop &&
+            LedgeTop <= FreeY(0, launch, k - 1) + Tuning.StepHeight)) k++;
+        return k;
+    }
+
     public static IEnumerable<object[]> Physical() => [["box"], ["mesh"]];
     public static IEnumerable<object[]> Grounds() => [["box"], ["mesh"], ["terrain"]];
 
@@ -115,16 +141,16 @@ public class AirPassTests
     }
 
     [Theory]
-    [InlineData("box", 0.9f, 0f)]
-    [InlineData("mesh", 0.9f, 0f)]
-    [InlineData("terrain", 0.9f, 0f)]
-    [InlineData("box", 0.8f, 6f)]
-    [InlineData("mesh", 0.8f, 6f)]
-    [InlineData("terrain", 0.8f, 6f)]
-    public void FallLandsOnFlatWithTheContactSpeed(string ground, float startY, float vx)
+    [InlineData("box", 0.9f, 0f, 0f)]
+    [InlineData("mesh", 0.9f, 0f, 0f)]
+    [InlineData("terrain", 0.9f, 0f, 0f)]
+    [InlineData("box", 0.8f, 6f, 3f)]
+    [InlineData("mesh", 0.8f, 6f, 3f)]
+    [InlineData("terrain", 0.8f, 6f, 3f)]
+    public void FallLandsOnFlatWithTheContactSpeed(string ground, float startY, float vx, float vz)
     {
         using Ground floor = Make(ground, v => Floor(v), (_, _) => 0);
-        var velocity = new Vector2(vx, 0);
+        var velocity = new Vector2(vx, vz);
         int k = LandingTick(startY, 0, 0);
 
         List<AirStepResult> ticks = floor.Run(new Vector3(0, startY, 0), velocity, 0, k + 1);
@@ -136,14 +162,15 @@ public class AirPassTests
         // The landing substep is the first whose end reaches the floor. The rest of the tick's horizontal
         // displacement is left for the ground core.
         double tickStart = FreeY(startY, 0, k - 1);
-        var displacement = new Vector3(vx * Dt, (float)(FreeV(0, k) * Dt), 0);
+        var displacement = new Vector3(vx * Dt, (float)(FreeV(0, k) * Dt), vz * Dt);
         int substeps = (int)Math.Ceiling(displacement.Length() / (0.5 * Radius));
         int landing = 1;
         while (tickStart + displacement.Y * landing / substeps > 0) landing++;
-        double spent = vx * Dt * landing / substeps;
-        AssertNear(spent, landed.Achieved.X, 1e-5, landed);
-        AssertNear(vx * Dt - spent, landed.Remaining.X, 1e-5, landed);
-        Assert.Equal(0f, landed.Remaining.Y);
+        double fraction = (double)landing / substeps;
+        AssertNear(vx * Dt * fraction, landed.Achieved.X, 1e-5, landed);
+        AssertNear(vz * Dt * fraction, landed.Achieved.Y, 1e-5, landed);
+        AssertNear(vx * Dt * (1 - fraction), landed.Remaining.X, 1e-5, landed);
+        AssertNear(vz * Dt * (1 - fraction), landed.Remaining.Y, 1e-5, landed);
     }
 
     [Theory]
@@ -380,9 +407,7 @@ public class AirPassTests
         // over the ledge and its top within the legs band lands on it.
         const float launch = 4.9f;
         using Ground space = Make(ground, Ledge, (x, _) => x < 1 ? 0 : LedgeTop);
-        int k = 1;
-        while (!(FreeV(launch, k) <= 0 && 0.6 + 4.0 * Dt * k > 1 && FreeY(0, launch, k) <= LedgeTop &&
-            LedgeTop <= FreeY(0, launch, k - 1) + Tuning.StepHeight)) k++;
+        int k = LedgeLandingTick(launch);
 
         List<AirStepResult> ticks = space.Run(new Vector3(0.6f, 0, 0), new Vector2(4, 0), launch, k + 1);
 
@@ -390,8 +415,36 @@ public class AirPassTests
         Assert.All(ticks, t => Assert.False(t.Blocked, $"{t}"));
         Assert.All(ticks[..^1], t => Assert.True(t.Feet.Y < LedgeTop, $"{t}"));
         AirStepResult landed = ticks[^1];
-        AssertLanded(landed, LedgeTop, space["ledge"]);
+        AssertLandedOn(landed, space["ledge"]);
         AssertNear(-FreeV(launch, k), landed.FallSpeedAtContact, 1e-3, landed);
+    }
+
+    [Theory]
+    [MemberData(nameof(Grounds))]
+    public void LedgeLandingIsPaced(string ground)
+    {
+        // The jump above lands from 0.4 onto the 0.6 top, a climb of 0.2 against a budget of 3.5 m/s for one tick.
+        // The landing tick rises at most the budget, and resting ground ticks pay the rest.
+        const float launch = 4.9f;
+        using Ground space = Make(ground, Ledge, (x, _) => x < 1 ? 0 : LedgeTop);
+        int k = LedgeLandingTick(launch);
+        double anchor = FreeY(0, launch, k - 1);
+
+        List<AirStepResult> ticks = space.Run(new Vector3(0.6f, 0, 0), new Vector2(4, 0), launch, k);
+
+        AirStepResult landed = ticks[^1];
+        AssertLandedOn(landed, space["ledge"]);
+        Assert.True(landed.Feet.Y - anchor <= Budget + landed.Support.HeightError + 1e-5, $"{landed} from {anchor}");
+        Assert.True(landed.Feet.Y < LedgeTop - HalfSkin, $"{landed}");
+        Vector3 feet = landed.Feet;
+        int owed = (int)Math.Ceiling((LedgeTop - feet.Y) / Budget);
+        for (int i = 0; i < owed; i++)
+        {
+            GroundStepResult rest = space.Rest(feet);
+            Assert.True(rest.Feet.Y - feet.Y <= Budget + HalfSkin, $"{rest} from {feet}");
+            feet = rest.Feet;
+        }
+        AssertNear(LedgeTop, feet.Y, HalfSkin, feet);
     }
 
     [Theory]
@@ -458,5 +511,91 @@ public class AirPassTests
         AssertNear(0, slid.Feet.Y, HalfSkin, slid);
         AssertNear(Gravity * Dt * k, slid.FallSpeedAtContact, 1e-3, slid);
         Assert.Equal(-slid.FallSpeedAtContact, slid.VerticalVelocity);
+    }
+
+    // A 75 degree face rising from its toe at the origin, 2 m along its slope, over the floor.
+    static FootSupportScene SteepFace(SceneVariant variant)
+    {
+        float angle = Radians(75);
+        return Floor(variant).Slab("face", new Vector3(MathF.Cos(angle), MathF.Sin(angle), 0) * 2, angle, 2, 2);
+    }
+
+    [Theory]
+    [MemberData(nameof(Physical))]
+    public void RunIntoASteepFaceNeverLifts(string ground)
+    {
+        // From x 0 at feet 1.5 the shell's lower cap meets the face within three ticks at 6 m/s. Removing the run's
+        // component into the face would turn it into upward speed, so the vertical speed and the arc stay at most
+        // the free fall's.
+        using Ground space = Make(ground, SteepFace);
+
+        List<AirStepResult> ticks = space.Run(new Vector3(0, 1.5f, 0), new Vector2(6, 0), 0, 6);
+
+        Assert.Equal(6, ticks.Count);
+        Assert.Contains(ticks, t => t.Blocked);
+        for (int i = 0; i < ticks.Count; i++)
+        {
+            Assert.True(ticks[i].VerticalVelocity <= FreeV(0, i + 1) + 1e-4, $"{ticks[i]}");
+            Assert.True(ticks[i].Feet.Y <= FreeY(1.5, 0, i + 1) + HalfSkin, $"{ticks[i]}");
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Physical))]
+    public void RisingOntoAWalkableRampKeepsMoving(string ground)
+    {
+        // The feet start 0.3 under a 30 degree plane at x -1, so the shell's lower cap is 0.433 from it and meets it on
+        // the first tick. Rising at 3 m/s against the plane's 3.46 m/s climb, the run keeps at least its projection
+        // on the plane, 6 cos^2(30) m/s, less a skin per contact.
+        float grade = MathF.Tan(Radians(30));
+        using Ground space = Make(ground, v => Slope(v, 30));
+
+        List<AirStepResult> ticks = space.Run(new Vector3(-1, -grade - 0.3f, 0), new Vector2(6, 0), 3, 3);
+
+        Assert.Equal(3, ticks.Count);
+        Assert.Contains(ticks, t => t.Blocked);
+        double along = 6 * Math.Pow(Math.Cos(Radians(30)), 2) * Dt;
+        Assert.All(ticks, t =>
+        {
+            Assert.True(t.VerticalVelocity > 0, $"{t}");
+            Assert.True(t.Achieved.X >= along - 4 * Skin, $"{t}");
+        });
+    }
+
+    [Theory]
+    [InlineData(2.0f, 3f, false)]
+    [InlineData(2.05f, 3f, true)]
+    [InlineData(2.2f, 0f, false)]
+    [InlineData(2.2f, 3f, true)]
+    public void FootprintMustFitTheStepHeight(float fraction, float bandDegrees, bool rejected)
+    {
+        // The foot probe meets the steepest walkable plane footRadius (1 / cos(gate) - 1) above the plane at the axis,
+        // and the landing band reaches StepHeight 0.4 above the feet. At the banded 48 degree gate the largest
+        // fraction of the 0.4 radius is 2.022, at the bare 45 degree gate 2.414.
+        MoveTuning tuning = Tuning with { TractionHysteresisRadians = Radians(bandDegrees) };
+        var settings = new GroundCoreSettings(fraction);
+        AirStepResult Step() => AirPass.Step(Vector3.Zero, Vector2.Zero, 0, Dt, Gravity, tuning, settings,
+            tuning.MaxSlopeRadians, null, null, null, null);
+
+        if (rejected) Assert.Throws<ArgumentOutOfRangeException>(() => Step());
+        else Assert.Equal(AirOutcome.Airborne, Step().Outcome);
+    }
+
+    [Fact]
+    public void DiagonalRunIntoATerrainCliffKeepsAlongSpeed()
+    {
+        // A 3 m analytic cliff at x 1 whose delegate reports the face normal -X beyond the edge. A run at (6, 6) from
+        // feet 0.5 meets it on the third tick, keeps its whole Z speed and lands on the sixth on the ground below.
+        using Ground space = new(null, (x, _) => x < 1 ? 0 : 3, (x, _) => x < 1 ? Vector3.UnitY : -Vector3.UnitX);
+        int k = LandingTick(0.5, 0, 0);
+
+        List<AirStepResult> ticks = space.Run(new Vector3(0.5f, 0.5f, 0), new Vector2(6, 6), 0, k + 1);
+
+        Assert.Equal(k, ticks.Count);
+        AssertLanded(ticks[^1], 0, null);
+        Assert.Contains(ticks, t => t.Blocked);
+        Assert.All(ticks, t => Assert.True(t.Feet.X < 1, $"{t}"));
+        for (int i = 0; i < ticks.Count - 1; i++)
+            AssertNear(6 * Dt, ticks[i].Achieved.Y, HalfSkin, ticks[i]);
     }
 }

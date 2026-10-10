@@ -14,7 +14,8 @@ internal readonly record struct ShellSweep(Vector2 Achieved, bool Blocked, Shell
 internal readonly record struct ShellFlight(Vector3 Achieved, bool Blocked, float Highest, float Lowest);
 
 /// <summary>Moves the shell: recovery out of overlaps, the upward lift, one horizontal substep with wall slides
-/// and one substep through the air. Every position is the body's feet. A null world has no statics, so the shell moves freely.</summary>
+/// and one substep through the air. Every position is the body's feet. A null world has no statics, so the shell
+/// moves freely.</summary>
 internal static class ShellMotion
 {
     /// <summary>The gap a sweep leaves when it hits something. Free motion is never shortened by it.</summary>
@@ -127,12 +128,12 @@ internal static class ShellMotion
 
     /// <summary>Sweeps the shell along <paramref name="move"/>. A hit advances to the contact less the skin. Every
     /// contact then removes the component into its normal from the rest of the move and from
-    /// <paramref name="velocity"/>, vertical included, at most <see cref="MaxSlides"/> times. So a flat ceiling stops a
-    /// rise and a vertical wall leaves the vertical part alone. A contact never lifts: when that removal would raise a
-    /// vector above its own rise, only its horizontal component into the contact goes. The caller splits a long move
-    /// into substeps.</summary>
+    /// <paramref name="velocity"/>, at most <see cref="MaxSlides"/> times. A ceiling or a walkable face removes it
+    /// whole, vertical included, so a flat ceiling stops a rise. A wall or a face steeper than the gate
+    /// (<paramref name="cosMaxSlope"/>) removes it with horizontal motion alone, so it never lifts the body or slows
+    /// its fall. The caller splits a long move into substeps.</summary>
     internal static ShellFlight Fly(IPhysicsWorld? world, Vector3 feet, Vector3 move, ref Vector3 velocity,
-        in MoveTuning tuning)
+        in MoveTuning tuning, float cosMaxSlope)
     {
         if (world is null)
             return new ShellFlight(move, false, MathF.Max(0f, move.Y), MathF.Min(0f, move.Y));
@@ -178,35 +179,30 @@ internal static class ShellMotion
                 highest = MathF.Max(highest, achieved.Y);
                 lowest = MathF.Min(lowest, achieved.Y);
             }
-            velocity = Slide(velocity, normal);
+            velocity = Slide(velocity, normal, cosMaxSlope);
             if (slide == MaxSlides)
                 break;
-            Vector3 rest = Slide(remaining, normal);
+            Vector3 rest = Slide(remaining, normal, cosMaxSlope);
             blocked |= rest != remaining;
             remaining = rest;
         }
         return new ShellFlight(achieved, blocked || remaining != Vector3.Zero, highest, lowest);
     }
 
-    // The vector less its component into the contact, unless that would raise it above its own rise.
-    static Vector3 Slide(Vector3 vector, Vector3 normal)
+    // The vector less its component into the contact. A wall or steep face keeps the vertical part and leaves the
+    // contact with horizontal motion alone, so its plane cannot turn a run into a climb.
+    static Vector3 Slide(Vector3 vector, Vector3 normal, float cosMaxSlope)
     {
         float into = Vector3.Dot(vector, normal);
         if (!(into < 0f))
             return vector;
-        Vector3 slid = vector - into * normal;
-        return slid.Y > MathF.Max(vector.Y, 0f) ? Across(vector, normal) : slid;
-    }
-
-    // The move less its horizontal component into the contact's horizontal normal. The vertical part is kept.
-    static Vector3 Across(Vector3 move, Vector3 normal)
-    {
-        var across = new Vector2(normal.X, normal.Z);
-        if (!(across.LengthSquared() > 0f))
-            return move;
-        across = Vector2.Normalize(across);
-        float into = move.X * across.X + move.Z * across.Y;
-        return into < 0f ? new Vector3(move.X - into * across.X, move.Y, move.Z - into * across.Y) : move;
+        if (normal.Y < 0f || normal.Y >= cosMaxSlope)
+            return vector - into * normal;
+        float across = normal.X * normal.X + normal.Z * normal.Z;
+        if (!(across > 0f))
+            return vector;
+        float scale = into / across;
+        return new Vector3(vector.X - scale * normal.X, vector.Y, vector.Z - scale * normal.Z);
     }
 
     /// <summary>The outward normal of the face a touching shell rests on, from the MTV of the shell grown by the

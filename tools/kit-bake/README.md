@@ -9,10 +9,11 @@ recipe writeup and provenance. This tool implements that recipe. See also `docs/
 
 ## Requirements
 
-Node.js with npm 11.16 or later (Node 24 or later bundles it). `package.json` declares that floor in
-`devEngines`, so an older npm fails instead of ignoring `.npmrc`, which refuses dependency install scripts
-nobody reviewed, releases younger than a day and git or tarball sources. An urgent fix younger than a day
-goes in `min-release-age-exclude` for that install. Install dependencies once:
+Node.js with npm 11.16 or later (check `npm --version`, current Node 24 and 26 releases bundle it).
+`package.json` declares that floor in `devEngines`, which npm 10.9 and later enforce, so an older npm fails
+instead of ignoring `.npmrc`. `.npmrc` refuses dependency install scripts nobody reviewed, releases younger
+than a day and git or tarball sources. With npm 11.17 or later, an urgent fix younger than a day goes in
+`min-release-age-exclude` for that install. Install dependencies once:
 
 ```
 cd tools/kit-bake

@@ -11,11 +11,12 @@ internal readonly record struct FootSupportQuery(Vector2 Axis, float FeetY, floa
     float ReachUp, float ReachDown, float CosMaxSlope);
 
 /// <summary>Finds the certified support height under a body's axis. Analytic terrain is exact at the axis.
-/// Physics statics are proposed by downward probe capsules and bound to a face only by certification.</summary>
+/// Physics statics are proposed by downward probe capsules and certified from the whole support neighborhood at
+/// each probe's contact.</summary>
 internal static class FootSupport
 {
     /// <summary>The radius of the thin probe capsule that proposes the surface under the axis itself. It is the
-    /// feature backend's minimum query radius (<c>BepuPhysicsWorld.CapsuleFeatures.cs</c>), so every axis
+    /// neighborhood backend's minimum query radius (<c>BepuPhysicsWorld.SupportNeighborhood.cs</c>), so every axis
     /// proposal stays certifiable.</summary>
     internal const float AxisProbeRadius = 0.01f;
 
@@ -24,7 +25,9 @@ internal static class FootSupport
     // The probes start this far above the band and sweep this far past it, so a surface exactly on either band
     // edge is reached by a sweep rather than landing on the sweep's start or end.
     const float BandMargin = 0.001f;
-    const int FaceCapacity = 256;
+    const int Capacity = SupportNeighborhoodResult.MaximumElements;
+    // The probe passes the back faces of one-sided mesh triangles, as the simulation's contacts do.
+    static readonly QueryFilter ProbeFilter = QueryFilter.StaticsOnly with { CullBackFaces = true };
 
     static readonly SupportSample NoSupport =
         new(SupportStatus.None, float.NaN, float.NaN, Vector3.Zero, null, -1, Vector3.Zero);
@@ -32,9 +35,11 @@ internal static class FootSupport
 
     /// <summary>Returns the certified support with the highest midpoint whose interval meets the inclusive reach
     /// band, walkable or steep, carrying its own status, else <see cref="SupportStatus.None"/>. Equal midpoints
-    /// prefer walkable, then the witness nearest the axis, then terrain, then the lower static. A probed surface
-    /// wholly above the band is a refused proposal, and one below the band is ignored. A refused proposal above
-    /// the selected support, or with no support at all, returns <see cref="SupportStatus.Refused"/>. A non-null
+    /// prefer walkable, then the witness nearest the axis, then terrain, then the lower static. Every member of a
+    /// probe's neighborhood offers its own contribution. A contribution wholly above the band is a refused
+    /// proposal, and one below the band is ignored. A refused neighborhood is a refused proposal at the probe's
+    /// lowest point. A refused proposal above the selected support, or with no support at all, returns
+    /// <see cref="SupportStatus.Refused"/>. A non-null
     /// <paramref name="world"/> must offer <see cref="IPhysicsCapsuleFeatures"/> and <paramref name="lease"/>
     /// must be its current read interval.</summary>
     internal static SupportSample Find(Func<float, float, float>? groundHeight,
@@ -58,9 +63,12 @@ internal static class FootSupport
         if (groundHeight is not null) selection.Terrain(groundHeight, groundNormal);
         if (world is not null)
         {
-            Span<CapsuleIncidentFace> faces = stackalloc CapsuleIncidentFace[FaceCapacity];
-            Probe(world, features!, lease!, query, AxisProbeRadius, faces, ref selection);
-            Probe(world, features!, lease!, query, query.FootRadius, faces, ref selection);
+            Span<SupportElement> elements = stackalloc SupportElement[Capacity];
+            Span<ulong> joins = stackalloc ulong[Capacity * SupportNeighborhoodResult.JoinWordsFor(Capacity)];
+            Span<SupportContribution> contributions = stackalloc SupportContribution[Capacity];
+            var scratch = new Scratch(elements, joins, contributions);
+            Probe(world, features!, lease!, query, AxisProbeRadius, scratch, ref selection);
+            Probe(world, features!, lease!, query, query.FootRadius, scratch, ref selection);
         }
         return selection.Result();
     }
@@ -84,17 +92,26 @@ internal static class FootSupport
             throw new ArgumentOutOfRangeException(nameof(query), "The probe band must be finite.");
     }
 
-    // Sweeps one probe down the band. The hit leaves the probe exactly in contact, which is the pose the
-    // feature query certifies. Anything that cannot be certified is a refused proposal at its lowest point.
+    // The caller's spans for one probe's neighborhood, reused by both probes.
+    readonly ref struct Scratch(Span<SupportElement> elements, Span<ulong> joins,
+        Span<SupportContribution> contributions)
+    {
+        internal readonly Span<SupportElement> Elements = elements;
+        internal readonly Span<ulong> Joins = joins;
+        internal readonly Span<SupportContribution> Contributions = contributions;
+    }
+
+    // Sweeps one probe down the band. The hit leaves the probe exactly in contact, which is the pose whose support
+    // neighborhood is certified. A neighborhood that cannot be certified is a refused proposal at its lowest point.
     static void Probe(IPhysicsWorld world, IPhysicsCapsuleFeatures features, IPhysicsQueryLease lease,
-        in FootSupportQuery query, float radius, Span<CapsuleIncidentFace> faces, ref Selection selection)
+        in FootSupportQuery query, float radius, in Scratch scratch, ref Selection selection)
     {
         var capsule = new CapsuleShape(radius, ProbeLength);
         float lowest = query.FeetY + query.ReachUp + BandMargin;
         float centreY = lowest + radius + ProbeLength / 2;
         Pose start = Pose.At(new Vector3(query.Axis.X, centreY, query.Axis.Y));
         if (!world.SweepCapsule(capsule, start, -Vector3.UnitY, query.ReachUp + query.ReachDown + 2 * BandMargin,
-                out SweepHit hit, QueryFilter.StaticsOnly))
+                out SweepHit hit, ProbeFilter))
             return;
         // A sweep that starts inside geometry reports no contact normal. Geometry inside the raised start refuses.
         if (hit.Distance == 0 && hit.Normal == Vector3.Zero)
@@ -103,31 +120,36 @@ internal static class FootSupport
             return;
         }
         double contactLowest = (double)lowest - hit.Distance;
-        if (hit.Body is not StaticHandle target)
+        if (hit.Body is not StaticHandle)
         {
             selection.Refuse(contactLowest);
             return;
         }
         Pose contact = Pose.At(new Vector3(query.Axis.X, centreY - hit.Distance, query.Axis.Y));
-        CapsuleFeatureResult result = features.QueryCapsuleFeature(lease, target, capsule, contact,
-            SupportCertification.ContactBand, faces, QueryFilter.StaticsOnly);
-        SupportContribution contribution = SupportCertification.Certify(features, lease, result,
-            faces[..result.Written], query.Axis, query.CosMaxSlope);
-        if (contribution.Kind == CertifiedSupportKind.Refused)
+        SupportNeighborhoodResult result = features.QuerySupportNeighborhood(lease, capsule, contact,
+            SupportCertification.ContactBand, scratch.Elements, scratch.Joins, QueryFilter.StaticsOnly);
+        int count = SupportCertification.CertifyNeighborhood(features, lease, result, scratch.Elements,
+            scratch.Joins, query.Axis, query.CosMaxSlope, scratch.Contributions);
+        if (count < 0)
         {
             selection.Refuse(contactLowest);
             return;
         }
-        // The sweep stops at the first surface, so support wholly above the band hides anything lower.
-        if (contribution.Lower > (double)query.FeetY + query.ReachUp)
+        for (int i = 0; i < count; i++)
         {
-            selection.Refuse(contribution.Lower);
-            return;
+            SupportContribution contribution = scratch.Contributions[i];
+            if (contribution.Kind == CertifiedSupportKind.Refused) continue;
+            // The sweep stops at the first surface, so support wholly above the band hides anything lower.
+            if (contribution.Lower > (double)query.FeetY + query.ReachUp)
+            {
+                selection.Refuse(contribution.Lower);
+                continue;
+            }
+            selection.Offer(new Candidate(
+                contribution.Kind == CertifiedSupportKind.Walkable ? SupportStatus.Walkable : SupportStatus.Steep,
+                contribution.Lower, contribution.Upper, contribution.Normal, scratch.Elements[i].Static,
+                contribution.FeatureId, contribution.Witness));
         }
-        selection.Offer(new Candidate(
-            contribution.Kind == CertifiedSupportKind.Walkable ? SupportStatus.Walkable : SupportStatus.Steep,
-            contribution.Lower, contribution.Upper, contribution.Normal, target, contribution.FeatureId,
-            contribution.Witness));
     }
 
     readonly record struct Candidate(SupportStatus Status, double Lower, double Upper, Vector3 Normal,

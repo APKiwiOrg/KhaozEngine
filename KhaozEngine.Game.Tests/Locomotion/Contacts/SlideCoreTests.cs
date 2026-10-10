@@ -176,6 +176,28 @@ public class SlideCoreTests
         AssertNear(face.TopAt("slope", result.Feet.X), result.Feet.Y, HalfSkin, result);
     }
 
+    // Terrain whose height field rises to +X at 60 degrees while its normal says 50, as a smoothed normal can. The
+    // slide's plane is the normal's, so one tick from rest gives the 50 degree fall-line speed f = g sin(50) s dt and a
+    // vertical speed of its vertical part, -f sin(50). The seat follows the height field, so the feet drop
+    // tan(60) f cos(50) dt, and a vertical speed read off that drop would be -f cos(50) tan(60), 45 percent faster.
+    [Fact]
+    public void VerticalSpeedIsTheFallLineSpeedsVerticalPart()
+    {
+        float grade = MathF.Tan(Radians(60));
+        Vector3 normal = Vector3.Normalize(new Vector3(-MathF.Tan(Radians(50)), 1, 0));
+        using var face = new Ground(null, (x, _) => grade * x, (_, _) => normal);
+        Vector3 feet = face.Seated("terrain", 1);
+        Assert.True(face.Contact(feet, out SupportSample support), $"{support}");
+
+        SlideStepResult result = face.Step(feet, Vector2.Zero, 0, Vector2.Zero, support);
+
+        Assert.True(result.Outcome == SlideOutcome.Sliding, $"{result}");
+        double fall = Fall(50, 1);
+        AssertNear(-fall * Math.Sin(Rad(50)), result.VerticalVelocity, 1e-3, result);
+        AssertNear(-fall * Math.Cos(Rad(50)) * Dt, result.Achieved.X, HalfSkin, result);
+        AssertNear(grade * result.Feet.X, result.Feet.Y, HalfSkin, result);
+    }
+
     [Theory]
     [MemberData(nameof(Grounds))]
     public void SteerMovesAlongTheContourOnly(string ground)

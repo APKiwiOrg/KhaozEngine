@@ -416,7 +416,8 @@ public partial class ContactControllerTests
     }
 
     // A grounded tick is the ground core's tick at the banded gate, with the default settings' half-radius foot.
-    // Both run in this process, so the feet must agree to the bit.
+    // Both run in this process, so the feet must agree to the bit. No row changes footing with time left, so each is
+    // the ground core's whole tick. The rows of ContactControllerTests.ModeChanges cover the rest of such a tick.
     [Theory]
     [MemberData(nameof(ParityRows))]
     public void GroundParityWithTheGroundCore(string row, SceneVariant variant)
@@ -436,14 +437,12 @@ public partial class ContactControllerTests
         Vector2 velocity = result.CommandedVelocity;
         GroundStepResult core = g.Core(start, velocity * Dt, tuning, Banded);
         bool grounded = core.Footing is GroundFooting.Walkable or GroundFooting.Held;
-        (Vector3 end, float verticalVelocity) = (core.Feet, 0f);
-        if (!grounded && core.RemainingTime > 0)
-            (end, verticalVelocity) = Continued(g, core, velocity, tuning);
-        var expected = new Vector3(end.X, end.Y + HalfHeight, end.Z);
+        Assert.True(grounded || !(core.RemainingTime > 0), $"{row} changes footing with time left: {core}");
+        var expected = new Vector3(core.Feet.X, core.Feet.Y + HalfHeight, core.Feet.Z);
         Assert.True(BitsEqual(expected, result.Position), $"{row}: core {core}, controller {Show(result)}");
         Assert.Equal(grounded, result.Grounded);
         Assert.Equal(grounded, result.SupportGranted);
-        Assert.Equal(verticalVelocity, result.VerticalVelocity);
+        Assert.Equal(0f, result.VerticalVelocity);
         Assert.Equal(0f, result.LandingImpactSpeed);
         Assert.Equal(grounded ? 0 : Dt, result.TimeSinceGrounded);
     }

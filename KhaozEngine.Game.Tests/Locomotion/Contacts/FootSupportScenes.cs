@@ -467,6 +467,79 @@ internal static class FootSupportScenes
         return scene;
     }
 
+    /// <summary>A "floor" at Y 0 over x in [<paramref name="toeX"/> - 8, <paramref name="toeX"/>] and a "face" rising
+    /// to +X by <paramref name="degrees"/> from its toe at (<paramref name="toeX"/>, 0) to <paramref name="height"/>,
+    /// both over z in [-<paramref name="halfWidth"/>, <paramref name="halfWidth"/>]. The box variant's face is a slab
+    /// whose top is the face. The mesh variant is the faces alone.</summary>
+    internal static FootSupportScene RisingFace(SceneVariant variant, float degrees, float toeX, float height,
+        float halfWidth = 4)
+    {
+        float angle = Radians(degrees), half = height / (2 * MathF.Sin(angle));
+        return new FootSupportScene(variant).Flat("floor", toeX - 8, toeX, -halfWidth, halfWidth, 0)
+            .Slab("face", new Vector3(toeX + half * MathF.Cos(angle), half * MathF.Sin(angle), 0), angle, half,
+                halfWidth);
+    }
+
+    /// <summary>A level "top" at Y 0 over x in [<paramref name="edgeX"/> - 8, <paramref name="edgeX"/>], then a
+    /// <paramref name="lip"/> drop at the edge onto a "face" falling to +X by <paramref name="degrees"/> through
+    /// <paramref name="depth"/>, and a level "pit" 20 m long at its toe. Zero degrees is a level "shelf" 8 m long at
+    /// the lip's foot instead. Everything spans z in [-4, 4]. The mesh variant is the faces alone.</summary>
+    internal static FootSupportScene LipOntoFace(SceneVariant variant, float edgeX, float lip, float degrees,
+        float depth)
+    {
+        var scene = new FootSupportScene(variant).Flat("top", edgeX - 8, edgeX, -4, 4, 0);
+        if (degrees == 0) return scene.Flat("shelf", edgeX, edgeX + 8, -4, 4, -lip);
+        float angle = Radians(degrees), half = depth / (2 * MathF.Sin(angle)), run = depth / MathF.Tan(angle);
+        return scene
+            .Slab("face", new Vector3(edgeX + half * MathF.Cos(angle), -lip - half * MathF.Sin(angle), 0), -angle,
+                half, 4)
+            .Flat("pit", edgeX + run, edgeX + run + 20, -4, 4, -lip - depth);
+    }
+
+    /// <summary>The crease spacing of <see cref="CreasedCliffHeight"/>.</summary>
+    internal const float CreaseSpacing = 4f;
+
+    /// <summary>A piecewise planar cliff creased every <see cref="CreaseSpacing"/> along both axes: its x gradient
+    /// alternates 0.5 and 1.5 and its z gradient -4.1 and -2.5 from one crease to the next, so each cell is one of
+    /// four planes of 68.6, 71.1, 76.4 and 77.1 degrees and the cliff rises toward -Z.</summary>
+    internal static float CreasedCliffHeight(float x, float z) => Creased(x, 0.5f, 1.5f) + Creased(z, -4.1f, -2.5f);
+
+    /// <summary>The normal of the plane <see cref="CreasedCliffHeight"/> has at (x, z), the low crease's plane on a
+    /// crease.</summary>
+    internal static Vector3 CreasedCliffNormal(float x, float z) =>
+        Vector3.Normalize(new Vector3(-CreasedGradient(x, 0.5f, 1.5f), 1, -CreasedGradient(z, -4.1f, -2.5f)));
+
+    static float CreasedGradient(float t, float a, float b)
+    {
+        float period = 2 * CreaseSpacing;
+        return t - MathF.Floor(t / period) * period < CreaseSpacing ? a : b;
+    }
+
+    // The integral of a gradient that alternates a and b every crease.
+    static float Creased(float t, float a, float b)
+    {
+        float period = 2 * CreaseSpacing;
+        float k = MathF.Floor(t / period), r = t - k * period;
+        return k * (a + b) * CreaseSpacing + (r < CreaseSpacing ? a * r : a * CreaseSpacing + b * (r - CreaseSpacing));
+    }
+
+    /// <summary>One mesh "cliff" of <see cref="CreasedCliffHeight"/> over x in [-16, 16] and z in [-4, 28], two
+    /// triangles to a cell between creases, so every triangle lies in its cell's plane.</summary>
+    internal static FootSupportScene CreasedCliff()
+    {
+        Vector3 Vertex(int i, int j)
+        {
+            float x = CreaseSpacing * i, z = CreaseSpacing * j;
+            return new Vector3(x, CreasedCliffHeight(x, z), z);
+        }
+        var vertices = new List<Vector3>();
+        for (int i = -4; i < 4; i++)
+            for (int j = -1; j < 7; j++)
+                vertices.AddRange(FootSupportScene.Quad(Vertex(i, j), Vertex(i + 1, j), Vertex(i, j + 1),
+                    Vertex(i + 1, j + 1)));
+        return new FootSupportScene(SceneVariant.Mesh).Mesh("cliff", [.. vertices]);
+    }
+
     internal static float Radians(float degrees) => degrees * MathF.PI / 180f;
 }
 

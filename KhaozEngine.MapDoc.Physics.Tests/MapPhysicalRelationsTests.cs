@@ -165,6 +165,36 @@ public class MapPhysicalRelationsTests
     }
 
     [Fact]
+    public void PathEndingDeeperThanTolerance_IsBlockedHoweverItIsSplit()
+    {
+        using var physics = new BepuPhysicsWorld();
+        using var reg = MapPhysicsRegistration.Register(Wall(), physics);
+        var r = new MapPhysicalRelations(reg);
+        using var lease = ((IPhysicsQueryLeaseSource)physics).AcquireQueryReadLease();
+        // The start is pushed out 0.0015 m, so the sweep never reaches the face, but the end sits 0.0012 m in. Split at
+        // x 0.4, the added point sits 0.00106 m in.
+        var whole = r.Clearance(lease, new[] { Touching, At(0.5f, 0f, 0.4988f) }, MoveTuning.Default);
+        Assert.Equal((MapPhysicalCertainty.Blocked, (string?)null), (whole.Certainty, whole.BlockingOwner));
+        Assert.Equal(0.5f, whole.BlockDistance!.Value, 1e-4f);
+        var split = new[] { Touching, At(0.4f, 0f, 0.49894f), At(0.5f, 0f, 0.4988f) };
+        Assert.Equal(MapPhysicalCertainty.Blocked, r.Clearance(lease, split, MoveTuning.Default).Certainty);
+    }
+
+    [Fact]
+    public void MiddlePointDeeperThanTolerance_BlocksAtTheDistanceTravelledToIt()
+    {
+        using var physics = new BepuPhysicsWorld();
+        using var reg = MapPhysicsRegistration.Register(Wall(), physics);
+        var r = new MapPhysicalRelations(reg);
+        using var lease = ((IPhysicsQueryLeaseSource)physics).AcquireQueryReadLease();
+        // The first sweep stays clear of the face, the middle point sits 0.0012 m in and the path then leaves the wall.
+        var path = new[] { Touching, At(0.5f, 0f, 0.4988f), At(0.5f, 0f, 1.5f) };
+        var deep = r.Clearance(lease, path, MoveTuning.Default);
+        Assert.Equal((MapPhysicalCertainty.Blocked, (string?)null), (deep.Certainty, deep.BlockingOwner));
+        Assert.Equal(0.5f, deep.BlockDistance!.Value, 1e-4f);
+    }
+
+    [Fact]
     public void ClearancePathOutsideOneTo64Points_Throws()
     {
         using var physics = new BepuPhysicsWorld();

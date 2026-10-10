@@ -11,8 +11,9 @@ namespace KhaozEngine.MapDoc.Physics;
 
 /// <summary>One physical relation: its certainty, the owner of the static that blocks it and the distance along the
 /// tested path to the block, both null unless blocked, and the identity of the built world it was evaluated over.
-/// <see cref="BlockingOwner"/> is a placement id or a terrain chunk id. It is null for a block found by penetration at
-/// the first feet point, which names no static, and for a static this registration did not add.</summary>
+/// <see cref="BlockingOwner"/> is a placement id or a terrain chunk id. It is null for a block found by in-place
+/// penetration at any feet point of a clearance path, which names no static, and for a static this registration did not
+/// add.</summary>
 public sealed record MapPhysicalResult(MapPhysicalCertainty Certainty, string? BlockingOwner, float? BlockDistance,
     string BuildHash, string TerrainWitnessDigest);
 
@@ -65,19 +66,22 @@ public sealed class MapPhysicalRelations
     }
 
     /// <summary>Whether the contact shell of <paramref name="tuning"/> can stand at the first feet point and move along
-    /// <paramref name="feetPath"/>. The shell is tested in place at the first point and at every point that starts a
-    /// moving segment, then swept along that segment. Penetration deeper than <see cref="Tolerance"/> at such a point
-    /// is <see cref="MapPhysicalCertainty.Blocked"/> at that point's distance along the path. Contact no deeper than
+    /// <paramref name="feetPath"/>. The shell is tested in place at every path point: the first, every point that
+    /// starts a moving segment and the final point. Penetration deeper than <see cref="Tolerance"/> at a point is
+    /// <see cref="MapPhysicalCertainty.Blocked"/> at that point's distance along the path. Contact no deeper than
     /// <see cref="Tolerance"/> pushes the segment's start out along the minimum translation vector to
     /// <see cref="Tolerance"/> clear of the contact, as the contact controller recovers. Each moving segment is swept
     /// from its pushed-out start, so its sweep ends at its end point plus that push-out, and a sweep hit before the
     /// segment's length is <see cref="MapPhysicalCertainty.Blocked"/> with the distance along the path measured from
-    /// the pushed-out start. A zero-length segment keeps the previous push-out. The verdict therefore does not depend on
-    /// how a path is split: a path sliding along or moving away from a touched surface is clear and a path moving into
-    /// it is blocked. The backend reports a sweep that starts overlapping as a hit at distance 0 with no normal, so the
-    /// push-out, not the hit normal, decides. A contact of exactly zero depth has no push-out direction, so a sweep
-    /// starting exactly tangent is reported as the backend reports it. A point outside the document's playable bounds
-    /// is <see cref="MapPhysicalCertainty.Unknown"/>. Throws <see cref="ArgumentOutOfRangeException"/> for a path of
+    /// the pushed-out start. A zero-length segment keeps the previous push-out. A verdict therefore never hides a point
+    /// that sits deeper than <see cref="Tolerance"/>: a path sliding along or moving away from a touched surface is
+    /// clear and a path moving into it is blocked. Between points, a sweep shifted by its push-out, at most twice
+    /// <see cref="Tolerance"/>, can pass a convex corner where an added point would be tested deeper than
+    /// <see cref="Tolerance"/>, so splitting a path can change the verdict only within that band. The backend reports a
+    /// sweep that starts overlapping as a hit at distance 0 with no normal, so the push-out, not the hit normal,
+    /// decides. A contact of exactly zero depth has no push-out direction, so a sweep starting exactly tangent is
+    /// reported as the backend reports it. A point outside the document's playable bounds is
+    /// <see cref="MapPhysicalCertainty.Unknown"/>. Throws <see cref="ArgumentOutOfRangeException"/> for a path of
     /// other than 1 to <see cref="MaxClearancePoints"/> points, <see cref="ArgumentException"/> for an invalid tuning,
     /// a non-finite point or a lease over another physics world, <see cref="ObjectDisposedException"/> for a disposed
     /// registration, and whatever <see cref="IPhysicsQueryLease.AssertCurrent"/> throws for a stale lease.</summary>
@@ -118,6 +122,8 @@ public sealed class MapPhysicalRelations
             feet = next;
             measured = false;
         }
+        if (!measured && !TryPushOut(physics, shell, feet, tuning, out _))
+            return Result(MapPhysicalCertainty.Blocked, null, travelled);
         return Result(MapPhysicalCertainty.Clear);
     }
 

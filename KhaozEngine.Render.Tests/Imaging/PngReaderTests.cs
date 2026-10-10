@@ -8,7 +8,7 @@ namespace KhaozEngine.Tests.Imaging;
 
 public class PngReaderTests
 {
-    private static readonly byte[] Signature = { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a };
+    internal static readonly byte[] Signature = { 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a };
 
     [Fact]
     public void Writer_output_roundtrips_byte_for_byte()
@@ -212,19 +212,17 @@ public class PngReaderTests
     }
 
     [Fact]
-    public void Palette_interlace_and_oversized_decodes_are_rejected_before_allocation()
+    public void Oversized_decodes_are_rejected_before_allocation()
     {
-        Assert.Throws<NotSupportedException>(() => PngReader.Decode(BuildPng(1, 1, 8, 3, 0, new byte[] { 0, 0 })));
-        Assert.Throws<NotSupportedException>(() => PngReader.Decode(BuildPng(1, 1, 8, 0, 1, new byte[] { 0, 0 })));
         byte[] huge = Join(Signature, Chunk("IHDR", Header(100_000, 100_000, 16, 6, 0)), Chunk("IEND", Array.Empty<byte>()));
         Assert.Throws<InvalidDataException>(() => PngReader.Decode(huge));
     }
 
-    private static byte[] BuildPng(int width, int height, byte depth, byte color, byte interlace, byte[] filtered) =>
+    internal static byte[] BuildPng(int width, int height, byte depth, byte color, byte interlace, byte[] filtered) =>
         Join(Signature, Chunk("IHDR", Header(width, height, depth, color, interlace)),
             Chunk("IDAT", Compress(filtered)), Chunk("IEND", Array.Empty<byte>()));
 
-    private static byte[] Header(int width, int height, byte depth, byte color, byte interlace)
+    internal static byte[] Header(int width, int height, byte depth, byte color, byte interlace)
     {
         var bytes = new byte[13];
         Write32(bytes, 0, (uint)width);
@@ -235,14 +233,14 @@ public class PngReaderTests
         return bytes;
     }
 
-    private static byte[] Compress(byte[] raw)
+    internal static byte[] Compress(byte[] raw)
     {
         using var output = new MemoryStream();
         using (var zlib = new ZLibStream(output, CompressionLevel.SmallestSize, leaveOpen: true)) zlib.Write(raw);
         return output.ToArray();
     }
 
-    private static byte[] Chunk(string type, byte[] data)
+    internal static byte[] Chunk(string type, byte[] data)
     {
         byte[] bytes = new byte[12 + data.Length];
         Write32(bytes, 0, (uint)data.Length);
@@ -252,7 +250,7 @@ public class PngReaderTests
         return bytes;
     }
 
-    private static byte[] Join(params byte[][] parts)
+    internal static byte[] Join(params byte[][] parts)
     {
         using var output = new MemoryStream();
         foreach (byte[] part in parts) output.Write(part);

@@ -7685,7 +7685,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.30.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.30.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -7981,7 +7981,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.30.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.30.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8684,7 +8684,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.30.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.30.1" />
 ```
 
 ```csharp
@@ -10812,9 +10812,8 @@ referring to it by id keeps resolving.
 around it), `SetHeights`, `Line` (Bresenham, one object per tile, one undo step), `Scatter` (a jittered grid
 whose offsets come from a hash of the point and the seed, so the same arguments always produce the same world),
 `PlacePrefab` and `ImportHeights`. Height imports detect binary PGM (netpbm P5) or PNG by signature.
-`PngReader` in Imaging supports non-interlaced 8/16-bit grayscale, gray-alpha, RGB and RGBA, using grayscale
-or the red channel as height and ignoring alpha. Both formats preserve 16-bit sample precision. Palette and
-interlaced PNGs are rejected. Write PGM files with LF line endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
+`PngReader` in Imaging supports every PNG colour type and bit depth, noninterlaced or Adam7, using grayscale
+or the red channel as height and ignoring alpha. A palette PNG supplies the red channel of each entry. Both formats preserve 16-bit sample precision. Write PGM files with LF line endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
 the whole raster.
 
 Two limits are worth knowing before leaning on the general case. A `SnapshotRectCommand` owns what was inside
@@ -10901,7 +10900,7 @@ centre and radius. Every configure, density, paint and remove call is one undo s
 (a headless Metal, D3D11 or Vulkan device, through `TileWorldSnapshot`, the same path the render goldens take),
 and both hand back a text block naming the framing followed by the PNG itself, with an optional `savePath` that
 ALSO writes the file and joins the saved path to that framing line. Everything else runs on a machine with no
-display. `height_import` reads binary PGM (P5) or non-interlaced 8/16-bit PNG. Both formats use the same
+display. `height_import` reads binary PGM (P5) or PNG. Both formats use the same
 undoable height command and north-first row orientation.
 
 A short authoring run:
@@ -15756,7 +15755,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.30.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.30.1" />
 ```
 
 ```csharp
@@ -15792,7 +15791,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.30.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.30.1" />
 ```
 
 ```csharp
@@ -16034,7 +16033,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.30.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.30.1" />
 ```
 
 ```csharp
@@ -20394,7 +20393,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.30.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.30.1" />
 </ItemGroup>
 ```
 

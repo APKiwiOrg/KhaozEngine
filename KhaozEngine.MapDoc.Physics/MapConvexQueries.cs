@@ -26,6 +26,8 @@ internal static class MapConvexQueries
         Span<int> ib = stackalloc int[4];
         int n = 1;
         w[0] = a[0].Subtract(b[0]);
+        ia[0] = 0;
+        ib[0] = 0;
         MapDouble3 v = w[0];
         for (int iteration = 0; iteration < MaxIterations; iteration++)
         {

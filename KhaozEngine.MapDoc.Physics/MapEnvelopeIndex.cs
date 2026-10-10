@@ -53,9 +53,9 @@ internal sealed class MapEnvelopeIndex
         double tEnd)
     {
         if (_cells.Count == 0) yield break;
-        if (!Clip(origin.X, direction.X, _minX, _maxX, ref tStart, ref tEnd) ||
-            !Clip(origin.Y, direction.Y, _minY, _maxY, ref tStart, ref tEnd) ||
-            !Clip(origin.Z, direction.Z, _minZ, _maxZ, ref tStart, ref tEnd))
+        if (!MapShapeQueries.ClipRay(origin.X, direction.X, _minX, _maxX, 0d, ref tStart, ref tEnd) ||
+            !MapShapeQueries.ClipRay(origin.Y, direction.Y, _minY, _maxY, 0d, ref tStart, ref tEnd) ||
+            !MapShapeQueries.ClipRay(origin.Z, direction.Z, _minZ, _maxZ, 0d, ref tStart, ref tEnd))
             yield break;
 
         int x = Cell(origin.X + tStart * direction.X);
@@ -103,14 +103,5 @@ internal sealed class MapEnvelopeIndex
         if (step == 0) return double.PositiveInfinity;
         double face = (step > 0 ? cell + 1 : cell) * CellMetres;
         return (face - origin) / direction;
-    }
-
-    static bool Clip(double origin, double direction, double min, double max, ref double tStart, ref double tEnd)
-    {
-        if (direction == 0d) return origin >= min && origin <= max;
-        double a = (min - origin) / direction, b = (max - origin) / direction;
-        tStart = Math.Max(tStart, Math.Min(a, b));
-        tEnd = Math.Min(tEnd, Math.Max(a, b));
-        return tStart <= tEnd;
     }
 }

@@ -33,6 +33,33 @@ internal static partial class NativeWorldFixtures
                 (Box(1f, 1f, 1f), new Vector3(-50f, 0.5f, 0f)),
                 (Box(1f, 1f, 1f), new Vector3(50f, 0.5f, 0f))),
             new Vector3(-50.5f, 0f, -0.5f), new Vector3(50.5f, 1f, 0.5f));
+
+        // A 1 m tall crate, tall enough that its envelope is its collider with no raise.
+        solid("tall-crate", Compound((Box(0.6f, 1f, 0.6f), new Vector3(0f, 0.5f, 0f))),
+            new Vector3(-0.3f, 0f, -0.3f), new Vector3(0.3f, 1f, 0.3f));
+
+        // The tall crate's box at the same local pose, plus a post 20 m behind it and 2 m to the side, so its envelope
+        // reaches two 16 m cells further back than the tall crate's.
+        solid("tall-crate-with-rear", Compound(
+                (Box(0.6f, 1f, 0.6f), new Vector3(0f, 0.5f, 0f)),
+                (Box(0.2f, 1f, 0.2f), new Vector3(2f, 0.5f, -20f))),
+            new Vector3(-0.3f, 0f, -20.1f), new Vector3(2.1f, 1f, 0.3f));
+
+        // A 2 m by 2 m upright mesh wall in the plane z = 0, spanning x -1 to 1 and y 0 to 2.
+        solid("mesh-wall", new TriangleMeshShape(new[]
+            {
+                new Vector3(-1f, 0f, 0f), new Vector3(1f, 0f, 0f), new Vector3(-1f, 2f, 0f), new Vector3(1f, 2f, 0f),
+            }, new[] { 0, 2, 1, 1, 2, 3 }),
+            new Vector3(-1f, 0f, 0f), new Vector3(1f, 2f, 0f));
+
+        // A 0.1 m radius, 2 m post leaning 45 degrees toward +x, its axis turned from local Y onto (1, 1, 0). Its base
+        // centre is at the placement origin, so the rim of its base dips 0.07 m below it.
+        solid("leaning-post", new CompoundShape(new[]
+            {
+                new CompoundChild(new CylinderShape(0.1f, 2f),
+                    new Pose(Vector3.Zero, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, -MathF.PI / 4f))),
+            }),
+            new Vector3(-0.08f, -0.08f, -0.1f), new Vector3(1.5f, 1.5f, 0.1f));
     }
 
     internal static MapBuiltWorld BuildStackedCave() => Build(StackedCave());
@@ -128,10 +155,18 @@ internal static partial class NativeWorldFixtures
 
     internal static MapBuiltWorld BuildCrate() => Build(Crate());
 
-    /// <summary>Two crates at the origin, so a ray meets both at one distance. b-crate is authored first.</summary>
+    /// <summary>Two tall crates at the origin whose front boxes are bit-identical, so a ray along +z meets both at one
+    /// distance. b-crate also carries a post 20 m behind, so a ray starting there reaches b-crate's envelope in an
+    /// earlier grid cell than a-crate's.</summary>
     internal static MapBuiltWorld BuildTwinCrates() => Build(Resolve(FloorSurfaces(),
-        OnFloor("b-crate", "crate", 0f, 0f),
-        OnFloor("a-crate", "crate", 0f, 0f)));
+        OnFloor("b-crate", "tall-crate-with-rear", 0f, 0f),
+        OnFloor("a-crate", "tall-crate", 0f, 0f)));
+
+    /// <summary>The mesh wall at the origin on the flat floor.</summary>
+    internal static MapBuiltWorld BuildMeshWall() => Build(Placed("mesh-wall"));
+
+    /// <summary>The leaning post at the origin on the flat floor.</summary>
+    internal static MapBuiltWorld BuildLeaningPost() => Build(Placed("leaning-post"));
 
     /// <summary>Crates <c>crate-iii-jjj</c> at (i x spacing, 0, j x spacing), with storage bounds widened to contain
     /// them.</summary>

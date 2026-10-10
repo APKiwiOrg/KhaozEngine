@@ -17,7 +17,9 @@ public sealed record MapPickHit(string PlacementId, long? NumericId, float Dista
 /// client and a server built from one document give identical answers. Pick, <see cref="Distance"/> and
 /// <see cref="Within"/> query interaction envelopes only, clipped to an optional band. <see cref="PhysicalDistance"/>
 /// queries colliders only. A ray that starts inside an envelope member hits it at its start, or where it enters the
-/// band.</summary>
+/// band. A box member turned about world Y alone is measured through <see cref="ReachGeometry"/>, whose yaw sine and
+/// cosine come from the platform math library. Heads on different platforms can then disagree by an ulp exactly at a
+/// range boundary, so consumers that need both heads to agree pass a <c>tolerance</c> to <see cref="Within"/>.</summary>
 public sealed class MapWorldQueries
 {
     readonly IReadOnlyList<MapPlacementGeometry> _placements;
@@ -39,38 +41,24 @@ public sealed class MapWorldQueries
         _index = new MapEnvelopeIndex(bounds);
     }
 
-    /// <summary>How many distinct envelopes the last <see cref="Pick"/> tested exactly. A diagnostic: concurrent picks
-    /// overwrite it.</summary>
-    internal int LastPickInspectedEnvelopes { get; private set; }
-
     /// <summary>The nearest envelope <paramref name="ray"/> enters within its maximum distance and inside
     /// <paramref name="band"/>, or null. Equal distances resolve to the ordinally smallest placement id.</summary>
-    public MapPickHit? Pick(MapPickRay ray, MapInteractionBand? band = null)
+    public MapPickHit? Pick(MapPickRay ray, MapInteractionBand? band = null) => Pick(ray, band, out _);
+
+    /// <summary><see cref="Pick(MapPickRay, Nullable{MapInteractionBand})"/>, also reporting how many distinct envelopes it
+    /// tested exactly.</summary>
+    internal MapPickHit? Pick(MapPickRay ray, MapInteractionBand? band, out int inspected)
     {
         (MapDouble3 origin, MapDouble3 direction) = MapShapeQueries.Validate(ray);
         MapSlab slab = Slab(band);
-        LastPickInspectedEnvelopes = 0;
+        inspected = 0;
 
         // The band clips the ray before any envelope is tested.
         double tStart = 0d, tEnd = ray.MaxDistance;
-        bool bandEntry = false;
-        if (direction.Y == 0d)
-        {
-            if (origin.Y < slab.Min || origin.Y > slab.Max) return null;
-        }
-        else
-        {
-            double a = (slab.Min - origin.Y) / direction.Y, b = (slab.Max - origin.Y) / direction.Y;
-            if (Math.Min(a, b) > tStart)
-            {
-                tStart = Math.Min(a, b);
-                bandEntry = true;
-            }
-            tEnd = Math.Min(tEnd, Math.Max(a, b));
-        }
-        if (tStart > tEnd) return null;
+        if (!MapShapeQueries.ClipRay(origin.Y, direction.Y, slab.Min, slab.Max, 0d, ref tStart, ref tEnd)) return null;
+        bool bandEntry = tStart > 0d;
 
-        int best = -1, inspected = 0;
+        int best = -1;
         double bestT = double.PositiveInfinity;
         MapDouble3 bestNormal = default;
         var seen = new HashSet<int>();
@@ -99,7 +87,6 @@ public sealed class MapWorldQueries
                 bestNormal = normal;
             }
         }
-        LastPickInspectedEnvelopes = inspected;
         if (best < 0) return null;
         MapPlacementGeometry hit = _placements[best];
         MapDouble3 point = origin.Add(direction.Scale(bestT));
@@ -160,18 +147,11 @@ public sealed class MapWorldQueries
     }
 
     // Whether the ray segment meets the bounds, a cheap refusal before the exact test.
-    static bool Touches(MapBox3 box, MapDouble3 origin, MapDouble3 direction, double tStart, double tEnd) =>
-        Slab(origin.X, direction.X, box.MinX, box.MaxX, ref tStart, ref tEnd) &&
-        Slab(origin.Y, direction.Y, box.MinY, box.MaxY, ref tStart, ref tEnd) &&
-        Slab(origin.Z, direction.Z, box.MinZ, box.MaxZ, ref tStart, ref tEnd);
-
-    static bool Slab(double origin, double direction, double min, double max, ref double tStart, ref double tEnd)
+    static bool Touches(MapBox3 box, MapDouble3 origin, MapDouble3 direction, double tStart, double tEnd)
     {
         const double Padding = 1d / 1024d;
-        if (direction == 0d) return origin >= min - Padding && origin <= max + Padding;
-        double a = (min - Padding - origin) / direction, b = (max + Padding - origin) / direction;
-        tStart = Math.Max(tStart, Math.Min(a, b));
-        tEnd = Math.Min(tEnd, Math.Max(a, b));
-        return tStart <= tEnd;
+        return MapShapeQueries.ClipRay(origin.X, direction.X, box.MinX, box.MaxX, Padding, ref tStart, ref tEnd) &&
+            MapShapeQueries.ClipRay(origin.Y, direction.Y, box.MinY, box.MaxY, Padding, ref tStart, ref tEnd) &&
+            MapShapeQueries.ClipRay(origin.Z, direction.Z, box.MinZ, box.MaxZ, Padding, ref tStart, ref tEnd);
     }
 }

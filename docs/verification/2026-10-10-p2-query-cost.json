@@ -1,0 +1,296 @@
+{
+  "issue": "https://github.com/APKiwiOrg/KhaozEngine/issues/1334",
+  "spec": "docs/design/CONTACT-CONTROLLER-PHASE-2-GROUND-CORE-2026-10-10.md",
+  "candidate_base": "4650a8d78",
+  "candidate": "The final fix round commits carrying this file. The run used that working tree.",
+  "test": "KhaozEngine.Game.Tests/Locomotion/Contacts/GroundScenarioTests.cs QueryCostPerTick",
+  "command": "build-slot --label p2-fix -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter \"FullyQualifiedName~KhaozEngine.Tests.Locomotion.Contacts\" --logger \"console;verbosity=detailed\"",
+  "exit": 0,
+  "method": "Every GroundCore.Step call goes through CountingQueryView, a forwarding view over a real Bepu query view with no exclusions, under one read lease taken through the view. Each tick counts the calls the step makes. Default MoveTuning, foot radius fraction 0.5, dt 1/30, each tick fed the previous result's feet.",
+  "scenes_described": {
+    "flat": "Floor, 3 m/s along X from the origin, 30 ticks, one substep a tick.",
+    "run": "Floor, 12 m/s along X from x -3.5, 20 ticks. The 0.40000001 move takes 3 substeps a tick, so the n terms are exercised.",
+    "stairs": "Six risers of 0.25 on treads of 0.35, 3 m/s along X from x -1, 30 ticks. The box run reaches the top tread. The mesh run stalls at the first nosing (#1342).",
+    "wall": "Floor with a wall face at x 1, 4 m/s at 30 degrees off the wall normal from (0, -2), 30 ticks. The shell meets the wall and slides along it on 25 ticks."
+  },
+  "budget": {
+    "rule": "The conservative worst case per tick for n substeps, asserted on every tick. Recovery runs at most five penetration tests. Start support is two probes, each one sweep and at most one feature query, and the lift is one sweep. A substep resolves its move and, after a wall outcome, the move's wall tangent. Each resolve may take a lifted attempt and a standing retry, so a substep makes at most four attempts. An attempt uses at most five shell sweeps with five touch normal penetration tests, a down pass of two probes, two clearance penetration tests and two probes that certify a pushed placement. No raycasts.",
+    "sweep_capsule": "3 + 36 n",
+    "compute_penetration": "5 + 28 n",
+    "raycast": "0",
+    "query_capsule_feature": "2 + 16 n",
+    "nominal": "An unobstructed tick makes 3 + 3 n sweeps, 1 + n penetration tests and 2 + 2 n feature queries."
+  },
+  "scenes": {
+    "flat_box": {
+      "variant": "Box",
+      "ground": "flat",
+      "ticks": 30,
+      "substeps_per_tick": 1,
+      "blocked_ticks": 0,
+      "per_tick": {
+        "sweep_capsule": {
+          "min": 6,
+          "max": 6,
+          "mean": 6,
+          "worst_case": 39
+        },
+        "compute_penetration": {
+          "min": 2,
+          "max": 2,
+          "mean": 2,
+          "worst_case": 33
+        },
+        "raycast": {
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "worst_case": 0
+        },
+        "query_capsule_feature": {
+          "min": 4,
+          "max": 4,
+          "mean": 4,
+          "worst_case": 18
+        }
+      }
+    },
+    "flat_mesh": {
+      "variant": "Mesh",
+      "ground": "flat",
+      "ticks": 30,
+      "substeps_per_tick": 1,
+      "blocked_ticks": 0,
+      "per_tick": {
+        "sweep_capsule": {
+          "min": 6,
+          "max": 6,
+          "mean": 6,
+          "worst_case": 39
+        },
+        "compute_penetration": {
+          "min": 2,
+          "max": 2,
+          "mean": 2,
+          "worst_case": 33
+        },
+        "raycast": {
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "worst_case": 0
+        },
+        "query_capsule_feature": {
+          "min": 4,
+          "max": 4,
+          "mean": 4,
+          "worst_case": 18
+        }
+      }
+    },
+    "run_box": {
+      "variant": "Box",
+      "ground": "run",
+      "ticks": 20,
+      "substeps_per_tick": 3,
+      "blocked_ticks": 0,
+      "per_tick": {
+        "sweep_capsule": {
+          "min": 12,
+          "max": 12,
+          "mean": 12,
+          "worst_case": 111
+        },
+        "compute_penetration": {
+          "min": 4,
+          "max": 4,
+          "mean": 4,
+          "worst_case": 89
+        },
+        "raycast": {
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "worst_case": 0
+        },
+        "query_capsule_feature": {
+          "min": 8,
+          "max": 8,
+          "mean": 8,
+          "worst_case": 50
+        }
+      }
+    },
+    "run_mesh": {
+      "variant": "Mesh",
+      "ground": "run",
+      "ticks": 20,
+      "substeps_per_tick": 3,
+      "blocked_ticks": 0,
+      "per_tick": {
+        "sweep_capsule": {
+          "min": 12,
+          "max": 12,
+          "mean": 12,
+          "worst_case": 111
+        },
+        "compute_penetration": {
+          "min": 4,
+          "max": 4,
+          "mean": 4,
+          "worst_case": 89
+        },
+        "raycast": {
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "worst_case": 0
+        },
+        "query_capsule_feature": {
+          "min": 8,
+          "max": 8,
+          "mean": 8,
+          "worst_case": 50
+        }
+      }
+    },
+    "stairs_box": {
+      "variant": "Box",
+      "ground": "stairs",
+      "ticks": 30,
+      "substeps_per_tick": 1,
+      "blocked_ticks": 0,
+      "per_tick": {
+        "sweep_capsule": {
+          "min": 6,
+          "max": 6,
+          "mean": 6,
+          "worst_case": 39
+        },
+        "compute_penetration": {
+          "min": 2,
+          "max": 2,
+          "mean": 2,
+          "worst_case": 33
+        },
+        "raycast": {
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "worst_case": 0
+        },
+        "query_capsule_feature": {
+          "min": 4,
+          "max": 4,
+          "mean": 4,
+          "worst_case": 18
+        }
+      }
+    },
+    "stairs_mesh": {
+      "variant": "Mesh",
+      "ground": "stairs",
+      "ticks": 30,
+      "substeps_per_tick": 1,
+      "blocked_ticks": 21,
+      "per_tick": {
+        "sweep_capsule": {
+          "min": 6,
+          "max": 9,
+          "mean": 8.1,
+          "worst_case": 39
+        },
+        "compute_penetration": {
+          "min": 1,
+          "max": 2,
+          "mean": 1.3,
+          "worst_case": 33
+        },
+        "raycast": {
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "worst_case": 0
+        },
+        "query_capsule_feature": {
+          "min": 4,
+          "max": 6,
+          "mean": 5.4,
+          "worst_case": 18
+        }
+      },
+      "stalled_by": "https://github.com/APKiwiOrg/KhaozEngine/issues/1342",
+      "note": "The body stalls at x -0.0999998 below the first nosing from tick 11. The test proves the stall cause, a Refused support query with an Unresolved feature query, so these counts describe a stalled tick rather than a climb."
+    },
+    "wall_box": {
+      "variant": "Box",
+      "ground": "wall",
+      "ticks": 30,
+      "substeps_per_tick": 1,
+      "blocked_ticks": 25,
+      "per_tick": {
+        "sweep_capsule": {
+          "min": 6,
+          "max": 11,
+          "mean": 10.167,
+          "worst_case": 39
+        },
+        "compute_penetration": {
+          "min": 2,
+          "max": 3,
+          "mean": 2.833,
+          "worst_case": 33
+        },
+        "raycast": {
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "worst_case": 0
+        },
+        "query_capsule_feature": {
+          "min": 4,
+          "max": 6,
+          "mean": 5.667,
+          "worst_case": 18
+        }
+      }
+    },
+    "wall_mesh": {
+      "variant": "Mesh",
+      "ground": "wall",
+      "ticks": 30,
+      "substeps_per_tick": 1,
+      "blocked_ticks": 25,
+      "per_tick": {
+        "sweep_capsule": {
+          "min": 6,
+          "max": 11,
+          "mean": 10.167,
+          "worst_case": 39
+        },
+        "compute_penetration": {
+          "min": 2,
+          "max": 3,
+          "mean": 2.833,
+          "worst_case": 33
+        },
+        "raycast": {
+          "min": 0,
+          "max": 0,
+          "mean": 0,
+          "worst_case": 0
+        },
+        "query_capsule_feature": {
+          "min": 4,
+          "max": 6,
+          "mean": 5.667,
+          "worst_case": 18
+        }
+      }
+    }
+  },
+  "not_measured": {
+    "time_and_allocation": "Not measured here. #1334 also asks for per down pass time and allocation against the legacy stepper."
+  },
+  "reading": "An unobstructed tick costs 3 + 3 n sweeps, 1 + n penetration tests and 2 + 2 n feature queries, with no raycasts. At one substep that is 6, 2 and 4, and the 3 substep run costs 12, 4 and 8. A wall slide now peaks at 11 sweeps, 3 penetration tests and 6 feature queries. The stalled mesh stair ticks cost up to 9 sweeps and 6 feature queries. No measured tick came near the conservative worst case."
+}

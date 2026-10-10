@@ -860,7 +860,7 @@ now seals between them and lands as two separate undo steps instead of silently 
 because no explicit tool-level boundary (a mode switch, a pointer release elsewhere) happened to fall
 between the two drags.
 
-## Native placement transactions
+## Native document transactions
 
 For a document with `ResolverIdentity`, bind an immutable verified `MapAssetClosure` with
 `EditorDocument.BindNativeAssets` before editing. Direct `EditorHistory` users bind with
@@ -869,9 +869,35 @@ dirty. Missing or mismatched closures refuse edits. Loading assets is the host's
 
 Native add, remove, move, rotate, scale, label and remap commands prepare a detached candidate and validate
 it before publication. The `MapDocument` object stays the same. Rejections preserve command retry state,
-history, allocator, dirty state and notifications. Commands outside this native placement transaction
-protocol are refused on opted-in documents. Analytic documents keep their existing command behavior.
+history, allocator, dirty state, effects and notifications. The shared transaction seam publishes only
+the patch payloads, surface declarations and placement state named by its typed `MapNativeWriteSet`.
+Unwritten payloads and collections keep their object identity. Partial documents, including surfaces-only
+windows, refuse before closure checks or command preparation. Validation checks local or bound native
+validity, patch payloads, seams and corner owners over a complete surface view. Surface writes and record
+or space changes also validate space coverage. `EditorDocument.LastNativeEffects` reports the last
+accepted execute, undo or redo, including invalidation flags and affected patch and dependency IDs.
+Placement commands use the same seam with `PlacementsOnly` and the `Placements` invalidation flag.
+Commands outside this native document transaction protocol are refused on opted-in documents.
+Analytic documents keep their existing command behavior.
 Direct placement `Apply` and `Revert` check document-local native validity only, without asset membership.
+
+`TerrainEditCommand(MapTerrainEdit)`, new in 20.30.0, uses the same transaction seam for native terrain
+edits. It captures exact before and after patch and surface-ref snapshots of the accepted write set.
+Undo and redo replay those snapshots, restoring corner owners, topology records, surface-ref order and
+semantic identity without rerunning smoothing or conversion. Undo reports digest and owner changes from
+new to old. A rejected preparation never captures command state. Both modes validate the published
+surfaces, including space coverage. Direct terrain `Apply` and `Revert` check document-local validity
+only, while bound editor transactions also check the asset closure. `EditorDocument.LastNativeEffects`
+reports the accepted terrain execute, undo or redo. `MutationService.TerrainApply(edit)` runs this same
+command under the service session lock and returns `MapTerrainMutationResult` with identical document
+bytes and effects text. These are programmatic APIs. Terrain MCP verbs are deferred to R10.
+
+The service lifecycle, new in 20.30.0, routes resolver identity `(1, 2)` through
+`NativeDocumentService.SessionOptionsV2` and `MapResolverV2` over captured authored surfaces at every
+open, window replacement, save, validate, summary, conversion and retile. Resolver identity `(1, 1)`
+keeps `SessionOptions` and analytic support. Unknown identities or mismatched resolver options refuse
+before resource reads. See the MapEdit.Tool README for both session build identities.
+
 The scene reports expected native edit refusals in its status strip across tool frames, shortcuts and
 inspector widgets. Rejected actions keep committed document/history and selection, cancel transient
 controller gestures and discard rejected inspector drafts after widget dispatch. Camera and view-only
@@ -1060,7 +1086,7 @@ outcome in the status strip: the placement count plus how many of each collectio
 ## Renaming
 
 The placement ID behavior below applies to analytic documents. Native placements use display labels as
-described under Native placement transactions.
+described under Native document transactions.
 
 The placement, spawn, player spawn, and region inspectors lead with an inline-editable Name row
 (`MapEditorScene.AddNameRow`, shared by all four). Typing a new id or name and moving focus away routes the

@@ -1,0 +1,34 @@
+{
+  "red_commit": "5bf6e8cf241f613152d745ee4a7bc215b83e6348",
+  "sources": {
+    "KhaozEngine.Physics.Bepu/GeometryVectorOperations.cs": "f450b62394ca05ffb80d4d657f0addbdd60cd944604cea91d7619e5e7e88154c",
+    "KhaozEngine.Game.Tests/Physics/GeometryVectorOperationsTests.cs": "3887b2423724e34f806b36a6f3017ae5e803d0a934758c81dad521e941a06aa4"
+  },
+  "red": {
+    "exit": 1,
+    "executed": 14,
+    "failed": 14,
+    "cause": "Nine missing GeometryVectorOperations and five missing GeometryVectorOutput assertions after valid compilation."
+  },
+  "green": {
+    "exit": 0,
+    "passed": 14,
+    "failed": 0,
+    "skipped": 0
+  },
+  "format": {
+    "exit": 0,
+    "changed": 0,
+    "projects": [
+      "KhaozEngine.Game.Tests",
+      "KhaozEngine.Physics.Bepu"
+    ]
+  },
+  "review": "feature-vector-proof-review-20261007-r1 Ready. Numerical argument and independent integer error oracle reviewed.",
+  "logs": {
+    "red": "1660465a24d4b00847b81a8f2f1e97c7765f211f08ae90ae3cad807c07dc8991",
+    "green": "4a7fa506077b626bf5b9be29a09c1d9e3f45f2ea5a0b6c98f076b25bf70e2c2f",
+    "format": "42426e4e98a3c0e052d5d13db9772c4f49775601fdc4dff8766b9a2bd52cfd29"
+  },
+  "limits": "Arithmetic over supplied enclosures only. No installed geometry, eligible normal, physical contact or caller policy ceiling is established."
+}

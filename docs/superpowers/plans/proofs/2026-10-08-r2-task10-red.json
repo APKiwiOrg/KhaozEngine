@@ -1,0 +1,44 @@
+{
+  "task": "10 chains, wall strips, seams and opening planes",
+  "stage": "intended compile-time RED",
+  "base": "7fae485de",
+  "sources": {
+    "KhaozEngine.MapDoc.Tests/Surfaces/BoundaryGeometryTests.cs": "f2dee99d97ed990e5c5abe7ae98ee48695753cc31cafb2b478cc91d40ee12776",
+    "KhaozEngine.MapDoc.Tests/Surfaces/BoundaryFixtures.cs": "17a64ec000d4bfd91f328f069d2798c8532f0d312776365613c7acd29d2cb8bc"
+  },
+  "results": [
+    {
+      "project": "mapdoc",
+      "filter": "FullyQualifiedName~BoundaryGeometryTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 1
+      },
+      "missing_types": {
+        "MapCompiledStrip": 1
+      },
+      "planned_new_cases": 12,
+      "log_sha256": "502f30e150035079106337c73005519c910675e8d714748815eceb440e95ecbc"
+    },
+    {
+      "project": "editor",
+      "filter": "FullyQualifiedName~CompilerBudgetTests (linked BoundaryFixtures compile check)",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0246": 1
+      },
+      "missing_types": {
+        "MapCompiledStrip": 1
+      },
+      "planned_new_cases": 0,
+      "log_sha256": "c535dd240f77ca57c30cc8b2bd1f26c6187f5a28e8e14321e7d85843d3e09439"
+    }
+  ],
+  "classification": "Both projects report only CS0246 on the planned MapCompiledStrip in the linked fixture signature. The compiler stops at signatures, so body references such as MapWallStripCompiler and MapSeamValidator are not claimed. No unrelated errors. A whitespace verify of both files passed before RED.",
+  "rulings": [
+    "T10-1 BoundaryFixtures compiles into MapEditor.Tests through the fixture glob, so RED is paired and GREEN adds an Editor compile check."
+  ],
+  "execution": "Direct and serial under owner OA20 through build-slot, one invocation per project, no retry."
+}

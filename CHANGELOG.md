@@ -5,6 +5,45 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.30.0
+
+- The PixelLab sheet assembler tool reads and writes PNG through `KhaozEngine.Imaging` instead of
+  `SixLabors.ImageSharp` 2.1.13, whose five advisories failed Release restore under NuGet audit (#1326). The
+  central ImageSharp pin is removed. The tool accepts 8 and 16-bit grey, grey with alpha, RGB and RGBA PNGs.
+- `tools/kit-bake` installs under npm's install policy. It needs npm 11.18 or later and refuses unreviewed
+  dependency install scripts, releases younger than a day and git or tarball sources (#1341).
+- Physics: `BepuPhysicsWorld.SweepCapsule` returns the nearest hit across mesh and compound statics. A farther
+  edge-sharing mesh no longer wins over a nearer one, and a sweep shorter than 1 no longer misses a mesh
+  within its distance.
+- Physics adds the optional `IPhysicsCapsuleFeatures` capability. Under a read lease it names the closest
+  finite feature of one static to a capsule and returns every incident face with its geometric normal, or a
+  refusal status. Bepu worlds and their selected query views implement it for boxes, convex hulls, compounds
+  of those and one-sided meshes. A result is valid only under its original receiver and lease.
+- Locomotion gains the internal foot-support primitive, shell geometry and contact classes for the #438
+  contact-classification controller. Nothing consumes them yet, so movement, navigation bakes and the wire
+  are unchanged.
+- Locomotion gains the internal ground core for phase 2 of the #438 contact-classification controller.
+  Nothing consumes it yet, so movement is unchanged.
+- MapDoc format 5 adds sculpted caves and sparse authored surfaces (World Authoring R2). Surfaces live on
+  exact rational lattices with floor, ceiling and paint-override roles, cave spaces sit between
+  mixed-resolution bounds, and resolver version 2 resolves placements through height-aware support queries.
+  Legacy terrain converts exactly into fine patches, and relation and portal facts are canonical. MapEditor
+  and `ke-mapedit` gain atomic terrain edits (`TerrainEditCommand`, `MutationService.TerrainApply`) shared by
+  the GUI and the service. R2 claims no physics, navigation, water or rendering capability.
+- Format-4 documents migrate to format 5 on load. Resolver-1 options and execution are unchanged, but every
+  migrated document's authored identity token changes once, so recompute stored tokens after the first load.
+  Resolver-2 documents use the scheme-2 whole identity, which covers globals, surfaces, placements, spawns,
+  player spawns, sculpt, the asset closure and the resolve options, and agrees across monolithic, tiled and
+  repacked storage.
+- `SaveTiled` refuses every partial save, including a surfaces-only window, with `stale window` when another
+  writer changed the manifest after the window loaded (#1310). Raw partial surface saves refuse a
+  `dependency position` that disagrees or is not representable, an unloaded reverse dependant, and partial
+  edits of surface declarations, patch structure or records.
+- Mixed-resolution bounds refine exactly per footprint cell within published budgets and report `Complete`,
+  `CapacityExceeded`, `NotRepresentable`, `Invalid` or `MissingGeometry`. One validation context holds at
+  most 256 unique bound patches, so a native terrain edit in a world whose complete view needs more refuses
+  with `refinement capacity` until scoped transactions land.
+
 ## 20.29.1
 
 - Catalog publication keeps freeze cleanup scoped to the draft it froze. Concurrent upgrade runners

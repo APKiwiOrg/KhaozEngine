@@ -1,0 +1,57 @@
+{
+  "base": "0374d2810e880c0f7e3bc623abf08e9acc2c7f37",
+  "runs": {
+    "compat": {
+      "exit": 1,
+      "executed": 0,
+      "diagnostics": [
+        {
+          "code": "CS0246",
+          "type": "LegacyOracleWorld",
+          "count": 1
+        },
+        {
+          "code": "CS0103",
+          "type": "LegacyOracleWorld",
+          "count": 1
+        },
+        {
+          "code": "CS0246",
+          "type": "LegacyOracleCase",
+          "count": 1
+        }
+      ],
+      "log_sha256": "17eec2660d8d87f44a58b1d82b35609156d9ae7f9b4148906d90839c549ea21c"
+    },
+    "harness": {
+      "exit": 1,
+      "executed": 0,
+      "diagnostics": [
+        {
+          "code": "CS0103",
+          "type": "PrivateOracleFixtures",
+          "count": 6
+        },
+        {
+          "code": "CS0246",
+          "type": "PrivateOracleInputException",
+          "count": 1
+        },
+        {
+          "code": "CS0103",
+          "type": "PrivateOracleInputs",
+          "count": 1
+        }
+      ],
+      "log_sha256": "8a93ea4c6fcf0c1b71a18759aed9d72e73a7a33b07b295fc07af16f292076bef"
+    }
+  },
+  "private_inputs_accessed": false,
+  "primary_slot_released": true,
+  "source_hashes": {
+    "KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj": "8695f3b5ccde60983cbb00dd322d5ec0671b8e3e406b233cb6f1f972d32a97e3",
+    "KhaozEngine.MapDoc.Compatibility.Tests/LegacyOracleWorldTests.cs": "32b784d85a47804d8c77fc125da916c4405097d2a37be47b87b086d089f5329f",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/PrivateOracleGuardTests.cs": "9192e0733dddf408a01282322ae366d19808ce3db4e008e3216cbcd7032edcb6"
+  },
+  "limitation": "Missing PrivateOracleFixtures prevents binding its lambda bodies, so PrivateOracleEntry/Report/Failure were not separately diagnosed. No runtime assertion or platform-analyzer proof is claimed."
+}

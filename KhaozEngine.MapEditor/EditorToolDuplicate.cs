@@ -49,6 +49,7 @@ public sealed partial class EditorToolController
                         Kind = p.Kind,
                         AssetId = p.AssetId,
                         DisplayName = p.DisplayName,
+                        SupportBinding = p.SupportBinding,
                         X = p.X + DuplicateOffset,
                         Z = p.Z + DuplicateOffset,
                         Y = p.Y,

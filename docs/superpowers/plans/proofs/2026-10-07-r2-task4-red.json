@@ -1,0 +1,17 @@
+{
+  "base": "f8b779c22ecb3992b985f4558c63706977168418",
+  "exit": 1,
+  "executed": 0,
+  "diagnostics": {
+    "CS0234_missing_Surfaces_namespace": 3,
+    "CS0246_missing_MapSurfacePatch": 2
+  },
+  "source_hashes": {
+    "KhaozEngine.MapDoc.Tests/Surfaces/LatticeAddressTests.cs": "a9aa16cb0fd49c80bcb5142330bf21937abf1a951274faf5a1af00404d0b8cbd",
+    "KhaozEngine.MapDoc.Tests/Surfaces/SurfacePatchCodecTests.cs": "0ea570861cfc5e0288830508e70bc90d40e285604c6949fe3f1a93c02b981e6c",
+    "KhaozEngine.MapDoc.Tests/Surfaces/SurfacePatchFixtures.cs": "08f01f442a226a1ef08220572fc6ca73a165340f52343b7a297ecb966fa3736a"
+  },
+  "log_sha256": "d8dfebfe97d7c7333faab5e58c1a1d885f545f9ce7f229c0901618576915f9d9",
+  "limitation": "Missing namespace and fixture return types prevent binding all test bodies. No separate MapExactValue/MapLatticeAddress diagnostic or runtime failure claimed.",
+  "secondary_released": true
+}

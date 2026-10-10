@@ -1,0 +1,78 @@
+{
+  "task": "13 height-aware support query and resolver version 2",
+  "red_commit": "c94653c02f2c41c2231669bf521589a95679e3f8",
+  "commits": [
+    "e82b0a2821eac0cfacc1af9dea976a5b0cf8cb81",
+    "19188f65d78c67ea6bd710073269f41d52798e66"
+  ],
+  "source_sha256": {
+    "KhaozEngine.MapDoc.Tests/Support/ResolverV2Tests.cs": "816e2852409f4683898e5c8c895944b1a52778394eae3e9d5dc22d1210c6e8b1",
+    "KhaozEngine.MapDoc.Tests/Support/SupportFixtures.cs": "c1ae5e58baa4f842507dcb7e39f6b54106d6765f580f873536b99b93657d02df",
+    "KhaozEngine.MapDoc.Tests/Support/SupportQueryTests.cs": "1b938742b90d8fb8b12b60b30f4c78e6de8909287ba94c0b97806c4830c22bd0",
+    "KhaozEngine.MapDoc/MapResolver.cs": "1d82cf0729484f50eae26bd6718c49e6881c6e611c3254d4e8f4dd8c560b8ac3",
+    "KhaozEngine.MapDoc/Spaces/MapSpaceMembership.cs": "932516fad764c98e4a518f7307542d89e9b6a612ff35a2db3b71ab5063868eb4",
+    "KhaozEngine.MapDoc/Support/MapResolverAdoption.cs": "1414190972931ecc5e0e3092568ce1b5ccdc4744539674dfdbaf217414b1534a",
+    "KhaozEngine.MapDoc/Support/MapResolverV2.cs": "faa63cb71fedb2917c95f8fe25b5b2de07b983c4ea7ff5c8ed40b3ebe9c1609d",
+    "KhaozEngine.MapDoc/Support/MapSupportQuery.cs": "0d8dc9d1d4e5e5de765f16d1945ab622453d94fe0c55499205ea93ec584f2073",
+    "KhaozEngine.MapDoc/Support/MapSupportTypes.cs": "36fafc1331cdf3ca443d25a65305b9b0a79a8660bf87763bc6cb8b33332d385d",
+    "KhaozEngine.MapEditor.Tests/MapDoc/SupportWorkTests.cs": "35db4a7000b32d9a45200e7048d91fc15d9481a7e87cf2c0bfd23d7a94e608ac"
+  },
+  "final_runs": [
+    {
+      "name": "t13-green-mapdoc-final",
+      "executed": 64,
+      "passed": 64,
+      "failed": 0,
+      "trx_sha256": "81cc62c9a50f89de60580219d2584f8043606059b3117edae624ec3ee0231123"
+    },
+    {
+      "name": "t13-green-editor",
+      "executed": 3,
+      "passed": 3,
+      "failed": 0,
+      "trx_sha256": "f01007aff609b1acea66e671534b66fbbfbc708207a4f0479daf0ff3b8079d5f"
+    },
+    {
+      "name": "t13-regress-mapdoc",
+      "executed": 178,
+      "passed": 178,
+      "failed": 0,
+      "trx_sha256": "d1da7aa2253be95e08bf9faa66d0e40197fd15dc194b68dacffa3fe9fa511665"
+    },
+    {
+      "name": "t13-regress-editor",
+      "executed": 96,
+      "passed": 96,
+      "failed": 0,
+      "trx_sha256": "e4a8eeb7a50f82e2db3eee016112b7b4333406fc4fbbc4c4151eb31ba6154666"
+    },
+    {
+      "name": "t13-regress-compatibility",
+      "executed": 3,
+      "passed": 3,
+      "failed": 0,
+      "trx_sha256": "c288e8c8447fe57bb5c6bfe946f753c3c81ece51b22257f910edeea5b5538c54"
+    }
+  ],
+  "run_verification": "Delegated worker runs. Parent verified every TRX started after the last product edit and the committed product tree matched the tested tree. 19188f65d is whitespace-only on a test fixture, token stream identical.",
+  "format_and_guards": "parent explicit-file format verify over all ten Task 13 paths exit 0, worker guards exit 0",
+  "reviews": {
+    "review1": "Approved, spec compliant, one Minor (format log workspace-loading warnings undiagnosed)"
+  },
+  "rulings": [
+    "T13-1 SupportFixtures compiles into MapEditor.Tests, paired RED",
+    "T13-2 support is a column query at the queried XZ, never off-axis or footprint support",
+    "T13-3 the equal-slab fixtures pin exactly the coincident-owner coverage finding",
+    "T13-4 the paint variant gives slab-b no footprint",
+    "T13-5 the resolver fixtures declare PlayableBounds",
+    "T13-6 space bindings need reference Y and both search extents, Resolve refuses otherwise",
+    "T13-7 one candidate per surface at shared face boundaries, CurrentSupport face else lowest MapFaceKey",
+    "T13-8 the missing-search regression uses p-space in CaveWithPlacements",
+    "T13-9 whitespace-only formatting of SupportFixtures.cs"
+  ],
+  "notes": [
+    "Owner provenance for installed map statics is KhaozEngine#1327 for R3."
+  ],
+  "frozen_plan_tests_unchanged": true,
+  "scope": "Focused Task 13 proof. Not full-engine integration, candidate or release gates."
+}

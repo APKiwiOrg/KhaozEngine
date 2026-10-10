@@ -1,0 +1,33 @@
+{
+  "task": "14 precision envelope proofs and frame-local meshes",
+  "red_commit": "526d711b485d7567a3d8ca116319cbbeb5307f8b",
+  "commits": [
+    "5a95ef9529ecd2903df6cf5cb2bf2920b1a8053a"
+  ],
+  "source_sha256": {
+    "KhaozEngine.MapDoc.Tests/Precision/PrecisionFixtures.cs": "c14ac1bc11e444e85547b3d5e03328a0535c303338069c7b1cf3678cdec6d1fa",
+    "KhaozEngine.MapDoc.Tests/Precision/SparseFarAndDeepGeometryTests.cs": "ba7566fe6d082b251da11690591905a1199b8759135ba82ada630daa032db55b",
+    "KhaozEngine.MapDoc/Surfaces/MapFrameLocal.cs": "77ab60f605e8a6747769b6bf18abfe085714ea935f58341d84b6972883126a75"
+  },
+  "final_runs": [
+    {
+      "name": "t14-green-mapdoc",
+      "executed": 10,
+      "passed": 10,
+      "failed": 0,
+      "trx_sha256": "d4fa2a877d569c8f41e478fb94c541f823f0aec5b83b33ad67f15635b947a2e9"
+    }
+  ],
+  "run_verification": "Delegated worker run. Parent verified the TRX started after the product edit and the committed product tree matched the tested tree. No earlier product file changed, so no regression run was required.",
+  "format_and_guards": "full explicit-file format verify exit 0 and five guards exit 0. The workspace-loading warning is MSBuildWorkspace reporting the analyzer-only KhaozEngine.Localization.Analyzers reference, pre-existing and benign.",
+  "precision": "Sparse far frames 250 and 251 and depths to 640 m reproduce near-origin local positions and normals exactly. Support heights and composed prefab vertices match independent double references within 0.0001 m. The named vertical risk is recorded, no target relaxed.",
+  "reviews": {
+    "review1": "Approved, spec compliant, one Minor (format warning, diagnosed benign)"
+  },
+  "rulings": [
+    "T14-1 PrecisionFixtures.cs compiles into MapEditor.Tests, paired build at RED",
+    "T14-2 one added strip case for ToFrame(MapCompiledStrip)"
+  ],
+  "frozen_plan_tests_unchanged": true,
+  "scope": "Focused Task 14 proof. Not full-engine integration, candidate or release gates."
+}

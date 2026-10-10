@@ -1,0 +1,83 @@
+{
+  "base": "f6f4c9a3cca35be19db26e0335dfd41b52f12251",
+  "sources": {
+    "KhaozEngine.Game.Tests/Physics/CapsuleFeatureMeshTests.cs": "3264a6094cfdffbcb101724c67cb1cb68005190dea046d238e4b068f9b699541",
+    "KhaozEngine.Game.Tests/Physics/CapsuleFeatureMeshOracle.cs": "049b4c00ac4c4737f16cdc6b814c3dd4521c0dedf820abdc73eaf0a190301621"
+  },
+  "exit": 1,
+  "executed": 16,
+  "failed": 16,
+  "passed": 0,
+  "skipped": 0,
+  "compiler_notices": 0,
+  "classification": "Missing mesh implementation. All sixteen reached feature status assertions after their preceding independent geometry and real installed-view controls. Later assertions, including rebase/selection/teardown paths after first successful query, remain unexecuted.",
+  "rows": [
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.FreshRebaseUsesActualNewPoseAndDoesNotReviveOldOutput",
+      "failure": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.ExactCoplanarSeamReturnsOnePatchWithBothIncidentTriangles",
+      "failure": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.BacksideCapsuleCannotUseTheUpwardOneSidedTriangle",
+      "failure": "Assert.Equal() Failure: Values differ\nExpected: NoFeature\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.SameStaticLowerTopAndUpperRoofCompetingMinimaAreAmbiguous",
+      "failure": "Assert.Equal() Failure: Values differ\nExpected: Ambiguous\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.RemovalAndReaddUseNewInstalledTrianglesWithoutRevivingOldOutput",
+      "failure": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.FiniteTriangleDomainRejectsTheInfinitePlaneFalsePositive",
+      "failure": "Assert.Equal() Failure: Values differ\nExpected: NoFeature\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.DuplicateTriangleNeighborhoodRefusesWithoutPublishingAPrefix",
+      "failure": "Observed invalid topology must refuse. Incomplete topology proof may remain unresolved."
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.InconsistentWindingRefusesTheSharedNeighborhood",
+      "failure": "Observed invalid topology must refuse. Incomplete topology proof may remain unresolved."
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.SingleFaceReturnsTheIsolatedLowerEndpointAndRetainsSelection",
+      "failure": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.ThreeIncidentTrianglesRefuseTheNonmanifoldSharedEdge",
+      "failure": "Observed invalid topology must refuse. Incomplete topology proof may remain unresolved."
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.CallerArrayMutationCannotChangeTheInstalledMeshAuthority",
+      "failure": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.FrontOpenBoundaryReturnsTheSlantedSeparationAndGeometricFaceNormal",
+      "failure": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.OneRepresentableValueCrackNeverBecomesAnInternalSeam",
+      "failure": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.ReversedWindingAcceptsItsActualDownwardFront",
+      "failure": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.SignedZeroVerticesJoinTheExactCoplanarSeam",
+      "failure": "Assert.Equal() Failure: Values differ\nExpected: Complete\nActual:   Unsupported"
+    },
+    {
+      "test": "KhaozEngine.Tests.Physics.CapsuleFeatureMeshTests.DisconnectedCoplanarEqualMinimaAreAmbiguous",
+      "failure": "Assert.Equal() Failure: Values differ\nExpected: Ambiguous\nActual:   Unsupported"
+    }
+  ],
+  "review": "Independent source review found one hidden-view teardown ordering defect. Parent verified and added finally lease release before applying the staged tests. Geometry assertions unchanged.",
+  "log_sha256": "647a3675d83c2f4ff36945c9ccc28ca9beaa6a7fa4a5c101c785637cdc33e2be",
+  "limits": "No mesh geometry, topology, lifecycle or runtime support proof follows from this RED."
+}

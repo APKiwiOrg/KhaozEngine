@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapDoc;
@@ -68,28 +69,13 @@ public static class MapDocumentValidator
         }
 
         var placementIds = new HashSet<string>(StringComparer.Ordinal);
-        foreach (MapPlacement p in doc.Placements)
-        {
-            if (string.IsNullOrWhiteSpace(p.Id)) errors.Add("every placement needs a non-empty id.");
-            else if (!placementIds.Add(p.Id)) errors.Add($"duplicate placement id '{p.Id}'.");
-            if (string.IsNullOrWhiteSpace(p.Kind)) errors.Add($"placement '{p.Id}': kind must be non-empty.");
-            if (p.Scale <= 0f) errors.Add($"placement '{p.Id}': scale must be positive.");
-        }
+        foreach (MapPlacement p in doc.Placements) ValidatePlacement(p, placementIds, errors);
 
         var spawnIds = new HashSet<string>(StringComparer.Ordinal);
-        foreach (MapSpawn s in doc.Spawns)
-        {
-            if (string.IsNullOrWhiteSpace(s.Id)) errors.Add("every spawn needs a non-empty id.");
-            else if (!spawnIds.Add(s.Id)) errors.Add($"duplicate spawn id '{s.Id}'.");
-            if (string.IsNullOrWhiteSpace(s.ArchetypeId)) errors.Add($"spawn '{s.Id}': archetypeId must be non-empty.");
-        }
+        foreach (MapSpawn s in doc.Spawns) ValidateSpawn(s, spawnIds, errors);
 
         var playerSpawnIds = new HashSet<string>(StringComparer.Ordinal);
-        foreach (MapPlayerSpawn s in doc.PlayerSpawns)
-        {
-            if (string.IsNullOrWhiteSpace(s.Id)) errors.Add("every player spawn needs a non-empty id.");
-            else if (!playerSpawnIds.Add(s.Id)) errors.Add($"duplicate player spawn id '{s.Id}'.");
-        }
+        foreach (MapPlayerSpawn s in doc.PlayerSpawns) ValidatePlayerSpawn(s, playerSpawnIds, errors);
 
         var regionNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (MapRegion r in doc.Regions)
@@ -109,6 +95,48 @@ public static class MapDocumentValidator
         }
 
         return errors;
+    }
+
+    /// <summary>The per-entity rules of <see cref="Validate"/> for one slice of a document's content, such as one
+    /// stored tile, in the order <see cref="Validate"/> reports them. <paramref name="globals"/> carries the
+    /// document's globals, already validated, and <paramref name="surfaces"/> its declared surfaces.
+    /// <paramref name="numericIds"/> accumulates numeric IDs across slices. Duplicate string IDs across slices stay
+    /// with the caller.</summary>
+    internal static List<string> ValidateContent(MapDocument globals, IReadOnlyDictionary<string, MapSurfaceRef> surfaces,
+        MapTileContent content, HashSet<long> numericIds)
+    {
+        var errors = new List<string>();
+        foreach (MapPlacement p in content.Placements)
+            MapNativeValidation.ValidateNumericId(p, globals.NumericIdHighWaterMark, numericIds, errors);
+        foreach (MapPlacement p in content.Placements) MapNativeValidation.ValidateSupportBinding(p, surfaces, errors);
+        if (globals.TerrainOverrides is { } overrides)
+            foreach (MapSculptTile tile in content.SculptTiles) ValidateSculptTile(tile, overrides.CellSize, globals.Bounds, errors);
+        foreach (MapPlacement p in content.Placements) ValidatePlacement(p, null, errors);
+        foreach (MapSpawn s in content.Spawns) ValidateSpawn(s, null, errors);
+        foreach (MapPlayerSpawn s in content.PlayerSpawns) ValidatePlayerSpawn(s, null, errors);
+        return errors;
+    }
+
+    // A null ID set skips the duplicate check, for a caller that checks uniqueness another way.
+    static void ValidatePlacement(MapPlacement p, HashSet<string>? ids, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(p.Id)) errors.Add("every placement needs a non-empty id.");
+        else if (ids is not null && !ids.Add(p.Id)) errors.Add($"duplicate placement id '{p.Id}'.");
+        if (string.IsNullOrWhiteSpace(p.Kind)) errors.Add($"placement '{p.Id}': kind must be non-empty.");
+        if (p.Scale <= 0f) errors.Add($"placement '{p.Id}': scale must be positive.");
+    }
+
+    static void ValidateSpawn(MapSpawn s, HashSet<string>? ids, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(s.Id)) errors.Add("every spawn needs a non-empty id.");
+        else if (ids is not null && !ids.Add(s.Id)) errors.Add($"duplicate spawn id '{s.Id}'.");
+        if (string.IsNullOrWhiteSpace(s.ArchetypeId)) errors.Add($"spawn '{s.Id}': archetypeId must be non-empty.");
+    }
+
+    static void ValidatePlayerSpawn(MapPlayerSpawn s, HashSet<string>? ids, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(s.Id)) errors.Add("every player spawn needs a non-empty id.");
+        else if (ids is not null && !ids.Add(s.Id)) errors.Add($"duplicate player spawn id '{s.Id}'.");
     }
 
     /// <summary>A document may declare any positive finite tile size, but never one narrower than a single
@@ -138,16 +166,18 @@ public static class MapDocumentValidator
             errors.Add("terrainOverrides.cellSize must be positive.");
             return;
         }
+        foreach (MapSculptTile tile in overrides.Tiles) ValidateSculptTile(tile, overrides.CellSize, bounds, errors);
+    }
+
+    static void ValidateSculptTile(MapSculptTile tile, float cellSize, MapBounds bounds, List<string> errors)
+    {
         const int last = TerrainSculpt.TileSize - 1;
-        foreach (MapSculptTile tile in overrides.Tiles)
-        {
-            float minX = tile.TileX * TerrainSculpt.TileSize * overrides.CellSize;
-            float minZ = tile.TileZ * TerrainSculpt.TileSize * overrides.CellSize;
-            float maxX = (tile.TileX * TerrainSculpt.TileSize + last) * overrides.CellSize;
-            float maxZ = (tile.TileZ * TerrainSculpt.TileSize + last) * overrides.CellSize;
-            if (minX < bounds.MinX || maxX > bounds.MaxX || minZ < bounds.MinZ || maxZ > bounds.MaxZ)
-                errors.Add($"terrainOverrides tile ({tile.TileX}, {tile.TileZ}) extent [{minX}..{maxX}] x [{minZ}..{maxZ}] leaves the document bounds.");
-        }
+        float minX = tile.TileX * TerrainSculpt.TileSize * cellSize;
+        float minZ = tile.TileZ * TerrainSculpt.TileSize * cellSize;
+        float maxX = (tile.TileX * TerrainSculpt.TileSize + last) * cellSize;
+        float maxZ = (tile.TileZ * TerrainSculpt.TileSize + last) * cellSize;
+        if (minX < bounds.MinX || maxX > bounds.MaxX || minZ < bounds.MinZ || maxZ > bounds.MaxZ)
+            errors.Add($"terrainOverrides tile ({tile.TileX}, {tile.TileZ}) extent [{minX}..{maxX}] x [{minZ}..{maxZ}] leaves the document bounds.");
     }
 
     static void CheckLayerRefs(List<string>? layers, HashSet<string> known, string where, List<string> errors)

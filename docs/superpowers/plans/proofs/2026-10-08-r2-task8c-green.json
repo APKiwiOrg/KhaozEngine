@@ -1,0 +1,128 @@
+{
+  "task": "8C whole scheme-2 identity",
+  "source_commit": "acac9e43865acd84afaf683d2d71c53212a9e442",
+  "red_commit": "e050e87d214f140bb364202a30d3ca4aede1df4c",
+  "source_sha256": {
+    "KhaozEngine.MapDoc/Identity/MapAuthoredIdentityV2.cs": "98ce7506edabd7684679271513abd5ddb7dc908d82fb448afa3c5fd2e80c3424",
+    "KhaozEngine.MapDoc/Identity/MapAuthoredIdentityProjection.cs": "c87bbed03aaab2838c16146216b3d53521d9d951c189e4e5c9b26273bfedeb09",
+    "KhaozEngine.MapDoc/Storage/MapStoredSurfaceSource.Identity.cs": "80b5162ce9a265ee4576881c04b54423b25b198b814debcda58740357bff760a",
+    "KhaozEngine.MapDoc/Storage/MapWholeIdentityWork.cs": "72ff43c2d5ff63fe8a981b1902a18f05d4aa36fce62a3e84e792db293b51e26a",
+    "KhaozEngine.MapDoc/Storage/MapStoredSurfaceSource.cs": "d00a9369662046a97a5423a56dcceec4165fbb9f5e588b84f91f1708a2c0c76d",
+    "KhaozEngine.MapDoc.Tests/SurfaceStorageFixtures.cs": "a56063a4fdb179d74e44933df81a89ce3d0536acd0f18d86af73b95b22a62ea7",
+    "KhaozEngine.MapDoc.Tests/Identity/SchemeTwoIdentityTests.cs": "84b80a68a94c3e19ebbb4b37853f04352e3a23168ba8ce2632937d23ed82267f",
+    "KhaozEngine.MapDoc.Tests/Identity/SchemeTwoEditingIdentityTests.cs": "334d0722d69f8b682b5eb64ada70812b61ddadd3122dd986894c3b1692a173a6",
+    "KhaozEngine.MapEditor.Tests/MapDoc/SchemeTwoRepackTests.cs": "38ff3e5a40eb9b03ab04af5b74e13bacbd46cccc4177574cc80e0a4ce1597fb8",
+    "KhaozEngine.MapEditor.Tests/MapDoc/StoredWholeIdentityTests.cs": "4afe3c8297327a7fae338b87340821f6f09792cb30394df0a3c32020d341e5a1"
+  },
+  "test_runs": [
+    {
+      "name": "t8c-green-mapdoc",
+      "project": "mapdoc",
+      "filter": "FullyQualifiedName~SchemeTwoIdentityTests|FullyQualifiedName~SchemeTwoEditingIdentityTests",
+      "exit_code": 0,
+      "executed": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "log_sha256": "5200e74c2df23bfdebb88aa18ca9526985319e038c8516a72d022172af69fde3",
+      "trx_sha256": "378cb8dc4e089dbe5314ab1bfc155766fd09035e3cae71a72ef6919ace02e8b9"
+    },
+    {
+      "name": "t8c-green-editor",
+      "project": "editor",
+      "filter": "FullyQualifiedName~SchemeTwoRepackTests|FullyQualifiedName~StoredWholeIdentityTests",
+      "exit_code": 0,
+      "executed": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "log_sha256": "d710a47039ba2ef2f27e6ae291cd0174241c04acf1c1ed4a20c3ba13ec4f4e5a",
+      "trx_sha256": "bd08d2257ab939abd4d4dd2e4a91d78350b69f1a33b52777f89268953c8c60a1"
+    },
+    {
+      "name": "t8c-regress-mapdoc",
+      "project": "mapdoc",
+      "filter": "FullyQualifiedName~KhaozEngine.Tests.MapDoc.Storage",
+      "kind": "affected regression",
+      "exit_code": 0,
+      "executed": 36,
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "log_sha256": "ed86604c5b19b85f6f81e3fe607dc1dceb6ba34890759963ad628a7266ac015e",
+      "trx_sha256": "c1ff29fbaa8fa18f209a641c542603eb559e4eb9ca54c5e4c658ff32c882c381"
+    },
+    {
+      "name": "t8c-regress-editor",
+      "project": "editor",
+      "filter": "FullyQualifiedName~KhaozEngine.Tests.MapDoc.Surface|FullyQualifiedName~KhaozEngine.Tests.MapDoc.Scoped",
+      "kind": "affected regression",
+      "exit_code": 0,
+      "executed": 78,
+      "passed": 78,
+      "failed": 0,
+      "skipped": 0,
+      "log_sha256": "9b73287da6aa5b645d88aed809cbfda5572cd684a5a667b055ad6c3d4c42da28",
+      "trx_sha256": "f10b2930ee362197c67725fb314087bfa410ec71925b8aaad80ec3751fd14249"
+    }
+  ],
+  "format_runs": [
+    {
+      "name": "t8c-format",
+      "exit_code": 2,
+      "finding": "28 WHITESPACE diagnostics in SurfaceStorageFixtures.Apply, body byte-identical to RED",
+      "log_sha256": "b22a2eee2d17db871aaa5adb0f1d70fa3d36f0457e0dfa0a10291c0d2d9a7f04"
+    },
+    {
+      "name": "t8c-format-apply",
+      "command": "dotnet format whitespace, SurfaceStorageFixtures.cs only",
+      "exit_code": 0,
+      "log_sha256": "4a01893de33dac1a3c419ef0aca45ee75c937e11ea3d16ce2d2b8d99af849103"
+    },
+    {
+      "name": "t8c-format-r2",
+      "exit_code": 0,
+      "formatted": "0 of 6298",
+      "analyzers": {
+        "KhaozEngine.MapDoc": "5+155",
+        "KhaozEngine.MapDoc.Tests": "5+211",
+        "KhaozEngine.MapEditor.Tests": "5+213"
+      },
+      "workspace_warnings": 0,
+      "log_sha256": "38c83a2476cb3cd1b9799aace45283fae51b618f38c83fe4241e6b7f35d82ccb"
+    }
+  ],
+  "guards": {
+    "check-dashes": 0,
+    "check-prose": 0,
+    "check-file-size": 0,
+    "check-agent-instructions": 0,
+    "check-doc-versions": 0
+  },
+  "review": {
+    "verdict": "Approved",
+    "blocking_findings": 0,
+    "minor": [
+      "Stored identity hashes each verified patch digest twice, no correctness impact, deferred"
+    ]
+  },
+  "corrections": [
+    "C2 indentation-only reformat of the Apply helper after the first format run, git diff -w shows no token change, tests not rerun because no token changed"
+  ],
+  "original_10_cases_byte_identical": true,
+  "task8_acceptance": {
+    "8A": 13,
+    "8B": 33,
+    "8C": 18,
+    "total": 64,
+    "mapdoc_tests": 44,
+    "mapeditor_tests": 20,
+    "proofs": [
+      "2026-10-08-r2-task8a-green.json",
+      "2026-10-08-r2-task8b-green.json",
+      "2026-10-08-r2-task8c-green.json"
+    ]
+  },
+  "scope": "Focused Task 8C proof plus Task 8 combined case closure. Not full-engine integration, candidate or release gates.",
+  "execution": "Direct and serial under owner OA20 through build-slot with immediate admission, each command once."
+}

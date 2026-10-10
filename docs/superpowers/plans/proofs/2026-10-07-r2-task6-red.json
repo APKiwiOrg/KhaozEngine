@@ -1,0 +1,15 @@
+{
+  "base": "5031eae7e8504a28ae5bf8db3eddea3b36455497",
+  "exit": 1,
+  "executed": 0,
+  "diagnostics": {
+    "CS0246_missing_MapSupportRecipe": 2,
+    "CS0103_missing_MapSupportRecipe": 5
+  },
+  "source_hashes": {
+    "KhaozEngine.MapDoc.Tests/FormatAdvanceTests.cs": "860a1b41da684af133ff2a7feb6dcaf59aee867a6459918cf3fa600085c8cf9c"
+  },
+  "log_sha256": "3701046e30ab83d1632818b97220673682280050fc10d330124bbc0eba3a9796",
+  "limitation": "Missing enum in signatures and attributes prevents later body binding. No distinct missing helper/property/type or runtime result is claimed.",
+  "secondary_released": true
+}

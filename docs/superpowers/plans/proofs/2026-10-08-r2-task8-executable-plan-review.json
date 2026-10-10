@@ -1,0 +1,93 @@
+{
+  "kind": "documentation/source review only",
+  "owner_ruling": "OA18",
+  "approved_contract_commit": "86890fe22b340b483eaeed936dfb766b758ea53f",
+  "approved_contract_sha256": "7d61c91e7b07963267f631b62b5b4055656ed21c72df0bcb7fed0953592ab800",
+  "plan": "docs/superpowers/plans/2026-10-08-world-authoring-r2-task8-producer-acquisition.md",
+  "plan_sha256": "b89a2bb41c7e9ab9a0bb2860ffa3472c1076ed9f37938acf97c9ff94c0ceffa9",
+  "plan_approval": "pending owner review",
+  "serial_substeps": [
+    "8A producer sessions",
+    "8B scoped coordination and immutable publication",
+    "8C whole scheme-2 identity"
+  ],
+  "planned_cases": {
+    "original": 22,
+    "additional": 42,
+    "total": 64,
+    "MapDoc": 44,
+    "MapEditor": 20
+  },
+  "parent_self_review": "completed, five writing-plans checks",
+  "independent_review": {
+    "verdict": "Ready",
+    "blocking_findings": 0,
+    "should_fix_findings": 0,
+    "minor_findings": 1,
+    "minor_disposition": "Explicit nonempty mutable space/span tags and valid existing-parent span added before capture"
+  },
+  "prepared_tests_unchanged": {
+    "KhaozEngine.MapDoc.Tests/Identity/SchemeTwoIdentityTests.cs": "84b80a68a94c3e19ebbb4b37853f04352e3a23168ba8ce2632937d23ed82267f",
+    "KhaozEngine.MapDoc.Tests/Storage/ScopedAcquisitionTests.cs": "ab94ab37ce629be2f061257b29f21b630ee78fddf00b5d41e1ee3b1b04273614",
+    "KhaozEngine.MapEditor.Tests/MapDoc/SchemeTwoRepackTests.cs": "38ff3e5a40eb9b03ab04af5b74e13bacbd46cccc4177574cc80e0a4ce1597fb8",
+    "KhaozEngine.MapEditor.Tests/MapDoc/ScopedAcquisitionWorkTests.cs": "53a4cc8706fb34f8f3841f468529935df4c222c22cb9653216802eee3484ed9f"
+  },
+  "runtime_commands_run": [],
+  "documentation_guards": [
+    {
+      "command": [
+        "git",
+        "diff",
+        "--cached",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": [
+        "sh",
+        "scripts/check-dashes.sh",
+        "--tree"
+      ],
+      "exit_code": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": [
+        "sh",
+        "scripts/check-prose.sh",
+        "--tree"
+      ],
+      "exit_code": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": [
+        "sh",
+        "scripts/check-file-size.sh",
+        "--tree"
+      ],
+      "exit_code": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": [
+        "sh",
+        "scripts/check-agent-instructions.sh",
+        "--tree"
+      ],
+      "exit_code": 0,
+      "log_sha256": "679537ce091d060bc73f6b2eb9ff4edaa12c678e4ad855015c3fe5b24a119c8c"
+    },
+    {
+      "command": [
+        "bash",
+        "scripts/check-doc-versions.sh"
+      ],
+      "exit_code": 0,
+      "log_sha256": "fe2f1adac21b0571a5e4211f63bda8a2c823a9274aca5d38939f73f539192de2"
+    }
+  ],
+  "guard_timing": "Whole-tree guards preceded final reviewed fixture clarification and status/proof text. Staged diff/prose/dash and normal commit/push hooks cover the final documentation additions."
+}

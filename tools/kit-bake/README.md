@@ -9,11 +9,15 @@ recipe writeup and provenance. This tool implements that recipe. See also `docs/
 
 ## Requirements
 
-Node.js (tested with node 21, npx 10) and npm. Install dependencies once:
+Node.js with npm 11.18 or later (check `npm --version`, current Node 24 and 26 releases bundle it).
+`package.json` declares that floor in `devEngines`, which npm 10.9 and later enforce, so an older npm fails
+instead of ignoring `.npmrc`. `.npmrc` refuses dependency install scripts nobody reviewed, releases younger
+than a day and git or tarball sources. An urgent fix younger than a day goes in
+`min-release-age-exclude` for that install. Install dependencies once:
 
 ```
 cd tools/kit-bake
-npm install
+npm ci
 ```
 
 `package.json` pins exact versions of `@gltf-transform/core`, `@gltf-transform/extensions`,
@@ -28,8 +32,8 @@ any dependency change:
 npm ls sharp
 ```
 
-It must print a single `sharp@0.35.3`, the `ndarray-pixels` line marked `deduped`, and no nested
-`node_modules/ndarray-pixels/node_modules/sharp`.
+It must print a single `sharp` at the version `package.json` pins, the `ndarray-pixels` line marked
+`deduped`, and no nested `node_modules/ndarray-pixels/node_modules/sharp`.
 
 A second, nested `sharp` is the failure to watch for. `ndarray-pixels` up to 5.0.1 asked for
 `sharp@^0.34.0`, and the 0.34 copy npm installed for it carried GHSA-f88m-g3jw-g9cj (four high-severity

@@ -1,0 +1,17 @@
+{
+  "source_base": "54a1f35842e1ec9c8af3ad87c7f058bf757da04f",
+  "docs_bootstrap": "a9f0c13ea024c6a0aa2162cec3c6260ec9c1febb",
+  "approved_plan": "05e0d6948755e26b590c8fc2fd50c1c471b3f0c3",
+  "approved_plan_sha256": "2ab5ca603b382c237caf70938218115dce51fc1ae3e91e4fa193c7fe3a76280a",
+  "exit": 1,
+  "failed": 1,
+  "passed": 0,
+  "skipped": 0,
+  "expected_failure": "Assert.Throws() Failure: No exception was thrown",
+  "test": "StaleWindow_RefusesAfterAnotherWriterReplacedAnUnloadedTile",
+  "test_sha256": "3d5e199ae85ec7adf9065b09e9963fa74408a820d9ddb92374effaea0ed5dcc3",
+  "log": "/tmp/grimhollow-orch/wa-r2-gate/t1-red.log",
+  "log_sha256": "bcbdb15bfc501a7dcd88de3492143218ea678fd4bb53c7fb1af4cb098e89801f",
+  "primary_slot_released": true,
+  "product_changed": false
+}

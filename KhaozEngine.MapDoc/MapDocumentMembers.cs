@@ -63,7 +63,8 @@ internal static class MapDocumentMembers
         {
             if (TryGetProperty(properties, member.Key, out JsonNode? declared) && declared is JsonObject memberSchema)
             {
-                bool nativeMember = native || ((ReferenceEquals(schema, Schema) || ReferenceEquals(schema, Manifest)) && IsNativeBlock(member.Key));
+                bool nativeMember = native || ((ReferenceEquals(schema, Schema) || ReferenceEquals(schema, Manifest)) && IsNativeBlock(member.Key)) ||
+                    string.Equals(member.Key, "supportBinding", StringComparison.OrdinalIgnoreCase);
                 Check(member.Value, memberSchema, path + "." + member.Key, nativeMember);
             }
             else if (closed)
@@ -113,5 +114,9 @@ internal static class MapDocumentMembers
     static bool IsNativeBlock(string name) =>
         string.Equals(name, "playableBounds", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "nativeAssets", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "resolverIdentity", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "resolverIdentity", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "supportRecipe", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "surfaces", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "surfacePatches", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "surfaceStorage", StringComparison.OrdinalIgnoreCase);
 }

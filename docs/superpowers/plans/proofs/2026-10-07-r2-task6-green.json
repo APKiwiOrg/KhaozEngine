@@ -1,0 +1,158 @@
+{
+  "base": "5158909ac485161bcd86f0dddd32c8543a058a4b",
+  "source_hashes": {
+    "KhaozEngine.MapDoc.Tests/FormatFourFixtures.cs": "dabc919e7c89dcfb47430007cebcc72b7ae9d515369ed0c0d447209d71441025",
+    "KhaozEngine.MapDoc.Tests/FormatFourResolverExpectationTests.cs": "c68ff980550cac4fb133d25e2333b83cba8b377ec2503964aae07ffce0acc18a",
+    "KhaozEngine.MapDoc.Tests/NativeDocumentTests.Validation.cs": "e8a35eee90cb0e32565acbeb2ae4c09bbb0e1ec5db9e3f4b097ae50820c884ae",
+    "KhaozEngine.MapDoc.Tests/NativeDocumentTests.cs": "ac033009139c3d24f0b5de983437c9406cd36f943e1f0d0a6156c305d7841c28",
+    "KhaozEngine.MapDoc.Tests/NativeNumericIdTests.cs": "24d00ed7cce5ef4a80acd431fe6442adab0ea9ad1eb8ebf043c17eb73e55caf7",
+    "KhaozEngine.MapDoc/MapAuthoredIdentity.cs": "921283cf68e555537e810f42cfab642f5e55f7bc722a68c882379271719ff164",
+    "KhaozEngine.MapDoc/MapBoundDocumentValidation.cs": "808c0fcb1fb1ec46513cf86575eca5bdf23037b9708bbf2060dac60d4546f898",
+    "KhaozEngine.MapDoc/MapCanonical.cs": "abe1952f45eb316b8373a9e7ef83a8c6e3303f0e976d513b8b74e0f75458804b",
+    "KhaozEngine.MapDoc/MapDocument.Surfaces.cs": "6689ebdfdddd9fd672c8d3986c5254939902953e69eef6ae360e6ca2fcea6fcd",
+    "KhaozEngine.MapDoc/MapDocumentFile.cs": "95dcb08dfc0c057e4d8463759931932c6150f1466852f5398f91bd70966fdd4a",
+    "KhaozEngine.MapDoc/MapDocumentMembers.cs": "4d4e12713a1bf7a02ab468b6519aa8eaeed3f53e7b3cff20ee3545aced297072",
+    "KhaozEngine.MapDoc/MapDocumentSource.cs": "c3bf70c2c0b3bbedb23829d2d23b961c7e13d15849bf06630ec6276d13e4f649",
+    "KhaozEngine.MapDoc/MapNativeValidation.cs": "f8dbac463438bee44757e076bfbf077e461efd574a585a3f0e10246032150bc4",
+    "KhaozEngine.MapDoc/MapSupportRecipe.cs": "f72309eb74b5fefb7a0f784143eb5a1869219849c54b9968e3655453c2eec659",
+    "KhaozEngine.MapDoc/MapSurfaceMigration.cs": "3cf55d8e85734e6eb837baf3abad21386eaf1a581d8fdada0b17ba6811399620",
+    "KhaozEngine.MapDoc/MapTiledFile.Save.cs": "5a7ca6e1b2ed9339b924070b3bc9a4b45216db6f66535c703a0666ef141c36d7",
+    "KhaozEngine.MapDoc/MapTiledFile.cs": "67a1b6bf947c8ffd82dc3dfb6eded3b29015b7087bc3ef8618d6010366c76290",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfaceJson.cs": "44bb4ec44c01b79a6419b55aa2ed2cce99af4dcaf97411000e2d67e17ab3d314",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfaceSet.cs": "e6496014b84199be99405f23d84996bebdfb451eb629a38dca9fa788e340c414",
+    "KhaozEngine.MapDoc/mapdoc.schema.json": "82d2ac846e9db7bb441b9c65a54e8965c0526e6c9cfb47954b29076a88c4974d",
+    "KhaozEngine.MapEdit.Tool/MutationService.Placements.cs": "277f568927a122c6d039d85a48fe4f1db34bc4990aa75476eb48f9e3e471aeb8",
+    "KhaozEngine.MapEditor.Tests/MapDoc/SupportBindingCopyTests.cs": "b8a124c57de94562ca8c3de6244551ea1e5d85e505318dc1009f4c0a13768784",
+    "KhaozEngine.MapEditor/EditorToolDuplicate.cs": "f2d873f26edaf795924b3b5e514a66e4f74745b854e0ef0f3998a1f1ae5966df",
+    "KhaozEngine.MapEditor/NativeDocumentSnapshot.cs": "824e53d68a9d6b3cc71d9d502bfd0074e2b100ccff7ea3d0d40fd8ff7131ddc2",
+    "KhaozEngine.MapEditor/NativePlacementTransaction.cs": "0ca3dd8f02e1dba62ec0ff50390c055fad9b5bb0c527744e63baacf96a4616f7"
+  },
+  "source_unchanged": true,
+  "primary_released": true,
+  "runs": {
+    "mapdoc": {
+      "exit": 0,
+      "counters": {
+        "total": "275",
+        "executed": "275",
+        "passed": "275",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "required_cases": 14,
+      "skipped": [],
+      "compiler_notices": [],
+      "log_sha256": "69790b997cff6dd9bddfd444347b0a06d96dfcb431fc0057c3891435e6ed6cda",
+      "trx_sha256": "1a7eb8a895ceaa4326fd0b670fe1c3056f9bbb7fd1106907fbe36a461a1a3338"
+    },
+    "editor": {
+      "exit": 0,
+      "counters": {
+        "total": "461",
+        "executed": "455",
+        "passed": "455",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "required_cases": 2,
+      "skipped": [
+        {
+          "test": "KhaozEngine.Tests.MapEditTool.RenderServiceTests.RenderTopDown_OverlaysChangePixels",
+          "message": "set KE_GPU_TESTS=1 (strict) or KE_GPU_TESTS=probe (skip if no device) to run GPU golden tests"
+        },
+        {
+          "test": "KhaozEngine.Tests.MapEditTool.RenderStreamPlanTests.RenderTopDown_WholeDocument_RendersTheFarCornerMarker",
+          "message": "set KE_GPU_TESTS=1 (strict) or KE_GPU_TESTS=probe (skip if no device) to run GPU golden tests"
+        },
+        {
+          "test": "KhaozEngine.Tests.MapEditTool.RenderServiceTests.RenderView_ProducesDecodablePngWithVariance",
+          "message": "set KE_GPU_TESTS=1 (strict) or KE_GPU_TESTS=probe (skip if no device) to run GPU golden tests"
+        },
+        {
+          "test": "KhaozEngine.Tests.MapEditTool.RenderStreamPlanTests.RenderTopDown_OverAHugeDocument_ReportsThatItWasCapped",
+          "message": "set KE_GPU_TESTS=1 (strict) or KE_GPU_TESTS=probe (skip if no device) to run GPU golden tests"
+        },
+        {
+          "test": "KhaozEngine.Tests.MapEditTool.RenderStreamPlanTests.RenderView_FromAFarEye_RendersTheMarkerNearThatEye",
+          "message": "set KE_GPU_TESTS=1 (strict) or KE_GPU_TESTS=probe (skip if no device) to run GPU golden tests"
+        },
+        {
+          "test": "KhaozEngine.Tests.MapEditTool.RenderServiceTests.RenderTopDown_ProducesDecodablePngWithVariance",
+          "message": "set KE_GPU_TESTS=1 (strict) or KE_GPU_TESTS=probe (skip if no device) to run GPU golden tests"
+        }
+      ],
+      "compiler_notices": [],
+      "log_sha256": "5fe50ce5eaf15fb3840b12f1172acff5fbc4794cbd1fa541ea558eaa01aa5cb6",
+      "trx_sha256": "d04edf5033365bc1a303d6a68e60f6c65b12d82f1c90dba483794bd893fa812c",
+      "legacy_hash_controls": [
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.WorldHash_MonolithicEqualsTiled(withSculpt: True)",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.WorldHash_IncludesFormatVersion",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.WorldHash_ChangesOnBoundsChange",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.WorldHash_ChangesOnSculptDelta",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.WorldHash_MatchesGoldenDigest_UnderSwedishCulture",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.WorldHash_ChangesOnPlacementMove",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.MonolithicRoundTripThroughTiled_DropsTheEmptySculptBlock",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.WorldHash_MonolithicEqualsTiled_ForAnEmptySculptBlockToo",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.WorldHash_ReadsFromManifestIndex",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.Compose_ThrowsOnUnorderedEntries",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.TileHash_IsOrderIndependent",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.EmptySculptBlockAtANonDefaultCellSize_SurvivesAMonolithicSave",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.WorldHash_MonolithicEqualsTiled(withSculpt: False)",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.WorldHash_MatchesGoldenDigest",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.WorldHash_UnchangedOnDisplayNameChange",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.WorldHash_ChangesOnRetile",
+        "KhaozEngine.Tests.MapDoc.MapDocumentHashTests.ConvertRoundTrip_PreservesTileSize"
+      ],
+      "skip_disposition": "Six unchanged GpuFact cases explicitly report KE_GPU_TESTS opt-in skip. All required new cases executed. TRX aggregate notExecuted=0 disagrees with six per-result NotExecuted rows, so skips are counted from results."
+    }
+  },
+  "format": {
+    "exit": 0,
+    "command_file": "task-6-format-request.txt",
+    "included_cs_files": 24,
+    "analyzer_projects": [
+      "KhaozEngine.MapDoc",
+      "KhaozEngine.MapDoc.Tests",
+      "KhaozEngine.MapEditor",
+      "KhaozEngine.MapEditor.Tests",
+      "KhaozEngine.MapEdit.Tool"
+    ],
+    "formatted_files": 0,
+    "workspace_files": 6216,
+    "warnings": [],
+    "log_sha256": "e5388fba7a5e88831a9845a81e4ecfea2598274bbc0edcaf42f18f4a496a58f9",
+    "source_unchanged": true,
+    "secondary_released": true
+  },
+  "review": {
+    "verdict": "Ready",
+    "scope": "Full Task 6 25-file source diff, including two duplicate-path field copies",
+    "report_sha256": "983b81e84e0722790f1ee91bc37b33c7b287cd4def5ab92a088ba6116138e5da"
+  },
+  "limits": [
+    "Six unchanged opt-in GPU facts skipped, no GPU claim.",
+    "Focused task proof only. Full engine verification and fresh main reconciliation remain round-end gates."
+  ]
+}

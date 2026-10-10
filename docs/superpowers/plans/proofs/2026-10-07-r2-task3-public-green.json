@@ -1,0 +1,91 @@
+{
+  "base": "e4e15102a4d38387827ea40f1dcf349518d0bea8",
+  "source_hashes": {
+    "KhaozEngine.MapDoc.Compatibility.Tests/LegacyOracleWorld.cs": "fd47c6e84fb89f91c8887b51cfadec3ceedfb20c1c560f4c3858a78e37d5af56",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/PrivateOracleEntry.cs": "622683affd842b194585453c76e4e98631a0865eafc19a1a62f9088567b00889",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/PrivateOracleFixtures.cs": "2c8b4cf5f269afca249490e65abef468292cbdc7a9a5e22cc3ec7a2a7c646dbb",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/PrivateOracleInputs.cs": "f8c34a7e1b8431d529a39fa61750113290a0d666d1061405c91a1b9c7336e200",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/PrivateOracleReport.cs": "e7641c5c95eb318d0e5a1d35ee895134110332ce88396aac637f7aa161ba39b9",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/README.md": "df04e28db7bea1564cbdec489ff442a8db74c7f4f08ab1864efd8ff287f8c200",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/ShippedSourceInventory.cs": "1f6f7c865eb2dea5a25eb8e787ee746b697e0f7a1ad865baa6bcae6b5c077f32",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/ShippedSourceInventoryTests.cs": "c21d67e9538b14281b1fe28eae0fec6b105f17e239aea30a84d3ab79199404d5",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/ShippedSourceProvenance.cs": "17caaf2c9600d66c6666e19e668bba39d7bc207d52e501edc19bce45a587801a",
+    "KhaozEngine.slnx": "1ea68d68b15cd340425b4759a019ae594af240a43ad120f1f86ad531423d4e32",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/PrivateOracleGuardTests.cs": "8125bae41d277665e8433a3a211f2eacc8ca3625ba72fda02a08b9b8d5d89a5d",
+    "KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj": "8695f3b5ccde60983cbb00dd322d5ec0671b8e3e406b233cb6f1f972d32a97e3",
+    "KhaozEngine.MapDoc.Compatibility.Tests/LegacyOracleWorldTests.cs": "32b784d85a47804d8c77fc125da916c4405097d2a37be47b87b086d089f5329f",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/KhaozEngine.MapDoc.OracleHarness.Tests.csproj": "23ce577fd1c352491b13cb0a67feb77a1e82686ac51e467c35e84faeb279cc34"
+  },
+  "tests": {
+    "compat": {
+      "exit": 0,
+      "counters": {
+        "total": "1",
+        "executed": "1",
+        "passed": "1",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "log_sha256": "3fd601042f0fc55ff99bfb9ba1e4dde8a5865029bad22066d85fe7d9baffad4c",
+      "trx_sha256": "73cf19899472a555052e123dfe6be193d2704da94fcb6da0ac7d192d4b754ee5"
+    },
+    "harness": {
+      "exit": 0,
+      "counters": {
+        "total": "23",
+        "executed": "23",
+        "passed": "23",
+        "failed": "0",
+        "error": "0",
+        "timeout": "0",
+        "aborted": "0",
+        "inconclusive": "0",
+        "passedButRunAborted": "0",
+        "notRunnable": "0",
+        "notExecuted": "0",
+        "disconnected": "0",
+        "warning": "0",
+        "completed": "0",
+        "inProgress": "0",
+        "pending": "0"
+      },
+      "log_sha256": "17b21881c877081c2878a5848c95e50d2b07cbc1c700a075caad634a7fda7579",
+      "trx_sha256": "221383016c718c29cbb51ec9aa0ea109e563329ae20d7dd502b51acf0acc2b26"
+    }
+  },
+  "formats": {
+    "harness": {
+      "exit": 0,
+      "log_sha256": "eeea954e8f119e10f61eb98c0df89ad81514e204fd659c6a543dbd1c824ac681",
+      "warnings": [],
+      "coverage": [
+        "Running 8 analyzers on KhaozEngine.MapDoc.OracleHarness.Tests.",
+        "Running 211 analyzers on KhaozEngine.MapDoc.OracleHarness.Tests.",
+        "Formatted 0 of 16 files."
+      ]
+    },
+    "source": {
+      "exit": 0,
+      "log_sha256": "f82071cbce2ae0be33a5f3e3119ec190d40b0870ad2d6fde80d230c8ff976ed8",
+      "warnings": [],
+      "coverage": [
+        "Running 5 analyzers on KhaozEngine.MapDoc.Compatibility.Tests.",
+        "Running 211 analyzers on KhaozEngine.MapDoc.Compatibility.Tests.",
+        "Formatted 0 of 6188 files."
+      ]
+    }
+  },
+  "private_inventory_run": false,
+  "primary_released": true
+}

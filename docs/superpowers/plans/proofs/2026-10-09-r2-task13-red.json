@@ -1,0 +1,59 @@
+{
+  "task": "13 height-aware support query and resolver version 2",
+  "stage": "intended compile-time RED",
+  "base": "ef6b0d82d",
+  "sources": {
+    "KhaozEngine.MapDoc.Tests/Support/SupportQueryTests.cs": "1b938742b90d8fb8b12b60b30f4c78e6de8909287ba94c0b97806c4830c22bd0",
+    "KhaozEngine.MapDoc.Tests/Support/ResolverV2Tests.cs": "816e2852409f4683898e5c8c895944b1a52778394eae3e9d5dc22d1210c6e8b1",
+    "KhaozEngine.MapDoc.Tests/Support/SupportFixtures.cs": "36f1d8608751a78b649956537dba137e04498db897c233c38250807e04db8a97",
+    "KhaozEngine.MapEditor.Tests/MapDoc/SupportWorkTests.cs": "35db4a7000b32d9a45200e7048d91fc15d9481a7e87cf2c0bfd23d7a94e608ac"
+  },
+  "results": [
+    {
+      "project": "mapdoc",
+      "filter": "FullyQualifiedName~SupportQueryTests|FullyQualifiedName~ResolverV2Tests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0234": 3,
+        "CS0246": 6
+      },
+      "missing": {
+        "KhaozEngine.MapDoc.Support": 3,
+        "MapSupportRequest": 4,
+        "MapSupportResult": 2
+      },
+      "planned_new_cases": 13,
+      "log_sha256": "24f1a97b6fa1416e93e8098acaddcfbc682a8d924873f8bb3dac20f3772a68aa"
+    },
+    {
+      "project": "editor",
+      "filter": "FullyQualifiedName~SupportWorkTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0234": 2,
+        "CS0246": 3
+      },
+      "missing": {
+        "KhaozEngine.MapDoc.Support": 2,
+        "MapSupportResult": 1,
+        "MapSupportRequest": 2
+      },
+      "planned_new_cases": 1,
+      "log_sha256": "f37a2f6a13a0b81155d2f7963868393b184de65c10c1fd922a3e009cf7047447"
+    }
+  ],
+  "classification": "Every unique diagnostic names the planned KhaozEngine.MapDoc.Support namespace or a planned Task 13 product type (MapSupportRequest, MapSupportResult). The compiler stops at signatures. No unrelated errors. Whitespace verify of the four files passed before RED.",
+  "rulings": [
+    "T13-1 SupportFixtures compiles into MapEditor.Tests, paired RED.",
+    "T13-2 support is a column query at the queried XZ, never off-axis or footprint support.",
+    "T13-3 EqualSlabs(false) and EqualSlabsWithBinding pin exactly the coincident-owner coverage finding.",
+    "T13-4 the paint variant gives slab-b no footprint.",
+    "T13-5 the resolver fixtures declare PlayableBounds on their own copies.",
+    "T13-6 p-amb searches 1 below and 1 above, and Resolve refuses a space binding without ReferenceY or both extents (one added case).",
+    "T13-7 one candidate per surface at shared face boundaries, the CurrentSupport face when present, else the lowest MapFaceKey (GREEN obligation).",
+    "T13-8 the missing-search regression uses p-space in CaveWithPlacements."
+  ],
+  "execution": "Direct and serial under owner OA20 through build-slot, one invocation per project, no retry."
+}

@@ -114,7 +114,8 @@ internal struct SweepHitHandler : ISweepHitHandler
             HitNormal = hitNormal;
             HitWasStatic = collidable.Mobility == CollidableMobility.Static;
             HitStatic = HitWasStatic ? collidable.StaticHandle : default;
-            maximumT = t; // cull further candidates
+            // maximumT stays put. A lowered bound shrinks a later mesh or compound child search below the
+            // hit it has to beat (see SweepCapsuleCore), so a nearer mesh would be culled.
             DidHit = true;
         }
     }

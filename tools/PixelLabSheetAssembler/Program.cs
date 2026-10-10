@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using KhaozEngine.Imaging;
 
 namespace PixelLabSheetAssembler;
 
@@ -53,18 +52,17 @@ internal static class Program
         }
 
         string? temp = null;
-        CharacterAnimation? charAnim = null;
         try
         {
-            var (loaded, t) = PixelLabExport.Load(input!, anim!);
-            charAnim = loaded;
+            var (charAnim, t) = PixelLabExport.Load(input!, anim!);
             temp = t;
 
             AssemblyResult result = SheetAssembler.Assemble(
                 charAnim, new AssemblyOptions(bottomPad, alphaThreshold, strict, fps));
 
             outPath ??= DefaultOut(input!, anim!);
-            PngWriter.Save(outPath, result.Sheet.Pixels, result.Sheet.Width, result.Sheet.Height);
+            result.Sheet.SaveAsPng(outPath);
+
             Console.WriteLine(
                 $"Wrote {outPath}  ({result.FrameCount}x{DirectionRows.RowCount} cells, " +
                 $"cell {result.CellWidth}x{result.CellHeight}, " +

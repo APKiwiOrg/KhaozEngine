@@ -1,0 +1,37 @@
+{
+  "task": "8C whole scheme-2 identity",
+  "stage": "intended compile-time RED",
+  "base": "77504d9fe",
+  "product_source": "2d75816678c4e7b1ce34b9bdae86e172be3fb3b2",
+  "sources": {
+    "KhaozEngine.MapDoc.Tests/Identity/SchemeTwoIdentityTests.cs": "84b80a68a94c3e19ebbb4b37853f04352e3a23168ba8ce2632937d23ed82267f",
+    "KhaozEngine.MapDoc.Tests/Identity/SchemeTwoEditingIdentityTests.cs": "334d0722d69f8b682b5eb64ada70812b61ddadd3122dd986894c3b1692a173a6",
+    "KhaozEngine.MapDoc.Tests/SurfaceStorageFixtures.cs": "e7a27652924a465176dd75f5c0d1450effdc4ba9a79932c79749a650c05ed7ce",
+    "KhaozEngine.MapEditor.Tests/MapDoc/SchemeTwoRepackTests.cs": "38ff3e5a40eb9b03ab04af5b74e13bacbd46cccc4177574cc80e0a4ce1597fb8",
+    "KhaozEngine.MapEditor.Tests/MapDoc/StoredWholeIdentityTests.cs": "4afe3c8297327a7fae338b87340821f6f09792cb30394df0a3c32020d341e5a1"
+  },
+  "results": [
+    {
+      "project": "mapdoc",
+      "filter": "FullyQualifiedName~SchemeTwoIdentityTests|FullyQualifiedName~SchemeTwoEditingIdentityTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": { "CS0103": 12 },
+      "log_sha256": "79a81625b0082ae23c2185303a2a23ccbc4ffc816f45d4a53fcf89216c959421"
+    },
+    {
+      "project": "editor",
+      "filter": "FullyQualifiedName~SchemeTwoRepackTests|FullyQualifiedName~StoredWholeIdentityTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": { "CS0103": 12, "CS0246": 4, "CS1061": 6 },
+      "log_sha256": "a2d65ec39dd3034061ee7f412481a36e5fb8243959df9a2ebbbcacad33321bf2"
+    }
+  ],
+  "classification": "MapDoc reports only the missing MapAuthoredIdentityV2 at 12 call sites. Editor reports only the missing MapAuthoredIdentityV2, MapWholeIdentityWork and the stored ResolverIdentity/SupportRecipe properties at 22 sites. The canonical Apply helper compiled in both projects, so no fixture absence is counted as product RED. No unrelated errors.",
+  "rulings": [
+    "C1 canonical test-only Apply is prepared before RED, SemanticSnapshot stays unchanged until identity implementation.",
+    "Frozen SchemeTwoIdentityTests and SchemeTwoRepackTests are byte-identical to the original Task 8 preparation drafts."
+  ],
+  "execution": "Direct and serial under owner OA20 through build-slot with immediate admission, one invocation per project, no retry."
+}

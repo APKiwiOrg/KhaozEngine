@@ -1,0 +1,44 @@
+{
+  "base": "36d654c4e0bfeda34759c37ada9a37cec35faf60",
+  "sources": {
+    "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.CapsuleFeatures.cs": "34536341761a933364e376609f51de4d6a3a165d8dc2f4ae0c8500b1751c26ec",
+    "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.QueryView.cs": "2a497adf7ce4ae1213af7a5bd709b56598691530aad288d535239a4b24659801",
+    "KhaozEngine.Game.Tests/Physics/CapsuleFeatureLifetimeTests.cs": "fc60c910c4b992450bdaedba3cf89660ed62000f4e5e006909441ec9159e6f63"
+  },
+  "initial_red": {
+    "exit": 1,
+    "executed": 11,
+    "failed": 11,
+    "cause": "Absent IPhysicsCapsuleFeatures on actual Bepu owner/views. All scene controls passed."
+  },
+  "protocol_green": {
+    "exit": 0,
+    "passed": 38,
+    "failed": 0,
+    "skipped": 0,
+    "new_cases": 11,
+    "existing_lease_cases": 18,
+    "existing_view_cases": 9,
+    "scope": "Before the added upright regression."
+  },
+  "review_red": {
+    "exit": 1,
+    "executed": 1,
+    "failed": 1,
+    "expected": "Unsupported",
+    "actual": "Unresolved",
+    "control": "Live selected view and exactly unit query quaternion, upright query not Unsupported."
+  },
+  "format": {
+    "exit": 2,
+    "diagnostics": 1,
+    "cause": "Thread initializer newline at lifetime test line118. No source autofix."
+  },
+  "logs": {
+    "initial_red": "9d0b0648552be367e760819522a561247e926a03f7c2223f2e2f1fe6c7457721",
+    "protocol_green": "a90321ad440791b7ad49f9312271f95e996bffeb31f6e574e91c87c608fd7be6",
+    "review_red": "6ec097776e56245b12c5fc438c3d86b7e3ddf03d4acde71f4659cea126cec2f8",
+    "format": "6aaa974ba0f022d37ccd7e8b292ac2e672bf4999190f12e77f9f34e29152563b"
+  },
+  "limits": "Protocol only. No geometry implementation or Complete result from the backend. Upright refusal and formatting remain open in this snapshot."
+}

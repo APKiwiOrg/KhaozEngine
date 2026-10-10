@@ -39,4 +39,8 @@
     <!-- PoolWatchHook.cs arms the opt-in thread pool starvation watchdog (#553). -->
     <ProjectReference Include="../KhaozEngine.TestSupport/KhaozEngine.TestSupport.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../KhaozEngine.MapDoc.Tests/**/*Fixtures.cs" Link="MapDocFixtures/%(RecursiveDir)%(Filename)%(Extension)" />
+    <None Include="../KhaozEngine.MapDoc.Tests/Fixtures/**" Link="Fixtures/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

@@ -1,0 +1,43 @@
+{
+  "task": "14 precision envelope proofs and frame-local meshes",
+  "stage": "intended compile-time RED",
+  "base": "13ea0e04d",
+  "sources": {
+    "KhaozEngine.MapDoc.Tests/Precision/SparseFarAndDeepGeometryTests.cs": "ba7566fe6d082b251da11690591905a1199b8759135ba82ada630daa032db55b",
+    "KhaozEngine.MapDoc.Tests/Precision/PrecisionFixtures.cs": "c14ac1bc11e444e85547b3d5e03328a0535c303338069c7b1cf3678cdec6d1fa"
+  },
+  "results": [
+    {
+      "project": "mapdoc",
+      "filter": "FullyQualifiedName~SparseFarAndDeepGeometryTests",
+      "exit_code": 1,
+      "executed": 0,
+      "unique_diagnostics": {
+        "CS0103": 8,
+        "CS0246": 4
+      },
+      "missing": {
+        "MapFrameLocal": 8,
+        "MapFrameMesh": 4
+      },
+      "planned_new_cases": 10,
+      "log_sha256": "5bb58a90133198fc2643ed0b0cbbc3335d26647ee83f56d1a1122c39b2bce9db"
+    },
+    {
+      "project": "editor",
+      "command": "dotnet build (fixture glob compile check)",
+      "exit_code": 0,
+      "executed": 0,
+      "warnings": 0,
+      "errors": 0,
+      "planned_new_cases": 0,
+      "log_sha256": "25572b11d5258da88c97dfc338bb47f9d95460d49bbbf2efb8ab453b4c9c9752"
+    }
+  ],
+  "classification": "Every unique MapDoc diagnostic names a planned Task 14 product type (MapFrameLocal, MapFrameMesh). The shared PrecisionFixtures.cs uses no planned type and compiles cleanly into MapEditor.Tests. Full format verify of both files passed before RED.",
+  "rulings": [
+    "T14-1 PrecisionFixtures.cs compiles into MapEditor.Tests, paired build at RED.",
+    "T14-2 one added strip case for ToFrame(MapCompiledStrip), planned total 10."
+  ],
+  "execution": "Direct and serial under owner OA20 through build-slot, one invocation per project, no retry."
+}

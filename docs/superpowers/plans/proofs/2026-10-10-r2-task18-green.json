@@ -1,0 +1,86 @@
+{
+  "task": "18 compatibility comparison, private exhaustive oracle and living documentation",
+  "red_commit": "3257ed35ad32c502e7aef11dd8c927936512a94d",
+  "commits": [
+    "be00089d0c7836b915700b20b462e1786234e66d",
+    "dad4f8bb13f062727768a562c67fab20bd3453a8"
+  ],
+  "source_sha256": {
+    "KhaozEngine.MapDoc.Compatibility.Tests/LegacyOracleConverter.cs": "7a2601c12066b59fcf45916c61b8cde2e688525e62df72c861daba95ac11ccf3",
+    "KhaozEngine.MapDoc.Compatibility.Tests/LegacyTerrainImportRegressionTests.cs": "97b6bfd35673860c9d8727ee382fabf9101e3fdeb76309ea1dcac1f9c7f3c003",
+    "KhaozEngine.MapDoc.Compatibility.Tests/LegacyTerrainImportTests.cs": "30db5fb285b6ba811717ae7e26fa3c2a8af0a09135ac9033ec28c71f77ead5de",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/KhaozEngine.MapDoc.OracleHarness.Tests.csproj": "7c7c0a715562b7b38ca4d5a8a2cab7e61a609bf3b1f60c9b27b6633d3eb607a4",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/PrivateOracleFixtures.cs": "978dafa1b69f215dd55e7718e5d6fbc5f5002808d3af67d98048ea7e64e88fb5",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/ShippedSourceInventory.cs": "791d403367eaadcae2d4545535eab9ffc27e3971b3be58df3dd5cc091679c284",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/ShippedSourceInventoryTests.cs": "6ef36a97605a39f38c6e2e40a36e383690dc0706598a247a86bf74928078d39e",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/ShippedSpikeOutcomeTests.cs": "a1fd92183652019d31130be875a85bc4d545402bd6ae7fa9af5658aac582374d",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/ShippedTerrainComparison.cs": "1aa3623c11ef7b0a2194d37715b4fb865f5d31954a0227029d816b6c79fc40f0",
+    "KhaozEngine.MapDoc.OracleHarness.Tests/ShippedTerrainComparisonTests.cs": "dfdeb4d81f04c8db67edd6f9adc8210d4023ee0998a91933441f058b4642a0a2"
+  },
+  "final_runs": [
+    {
+      "name": "t18f1-compat-green",
+      "executed": 5,
+      "passed": 5,
+      "failed": 0,
+      "trx_sha256": "442ba9c304fdd7b38dbf4a4feb8e15381c3c9cdaba5e7a27e55bd75314c427d7"
+    },
+    {
+      "name": "t18f1-harness-guards",
+      "executed": 28,
+      "passed": 28,
+      "failed": 0,
+      "trx_sha256": "7eb0b0739f94276b884c8b2f417d32a8a2c1d136de7d25d270a9c839a61638ca"
+    }
+  ],
+  "earlier_runs": [
+    {
+      "name": "t18-green",
+      "executed": 4,
+      "passed": 4,
+      "failed": 0,
+      "trx_sha256": "5b92c5bb7a3f4380a218859194fb20b3d5f36cc5523faf428b2e86f7b715f0db"
+    },
+    {
+      "name": "t18-harness-guards",
+      "executed": 23,
+      "passed": 23,
+      "failed": 0,
+      "trx_sha256": "aa49a0be3d878200ef1dd9e3d90a92d12aa00ced8f6946047a530545040eb256"
+    }
+  ],
+  "fix_round_1_red": [
+    {
+      "name": "t18f1-compat-red",
+      "result": "compile RED, CS1501 on the new SharedCornerMismatches overload only"
+    },
+    {
+      "name": "t18f1-spike-red",
+      "executed": 5,
+      "passed": 1,
+      "failed": 4,
+      "trx_sha256": "a8b62b9ed41ce77599bd8e44985f9dfe0c042aa77daf7388228b17347e46520e"
+    }
+  ],
+  "private_oracle": {
+    "outcome": "passed",
+    "engine_commit": "dad4f8bb13f062727768a562c67fab20bd3453a8",
+    "private_record": "Grimhollow a480c761"
+  },
+  "run_verification": "Delegated worker runs. Parent verified every final TRX postdates the last product edit and the committed tree matched the tested tree. The parent ran the private comparison and inventory itself.",
+  "format_and_guards": "harness format and compatibility format exit 0, check-dashes, check-prose, check-file-size, check-agent-instructions and check-doc-versions exit 0 for every commit",
+  "reviews": {
+    "review1": "Needs fixes, 1 Important (the spike-point check could be skipped silently) and 6 Minors",
+    "fix_round_1": "Important 1 and Minors 1, 3, 4, 5 and 6 addressed, no new breakage, Minor 2 stands, one line-length nit deferred"
+  },
+  "rulings": [
+    "T18-1 GREEN expects the current 23 PrivateOracleGuardTests cases",
+    "T18-2 the region loader is ReadRegions(PrivateOracleInputs), one brief test line changed",
+    "T18-3 the harness links LegacyOracleConverter.cs and calls only assertion-free converter members",
+    "T18-4 the private manifest names the public spike point",
+    "T18-5 the spike point is a required input with exactly one recorded outcome per run",
+    "T18-6 each private entry gets its own report name"
+  ],
+  "frozen_plan_tests_unchanged": "true except the T18-2 line",
+  "scope": "Focused Task 18 proof. Not full-engine integration, candidate or release gates."
+}

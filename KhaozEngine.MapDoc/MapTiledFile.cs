@@ -1,9 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.Serialization;
+using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc;
 
@@ -26,12 +30,13 @@ internal static partial class MapTiledFile
             throw new MapDocumentException(
                 $"{directory}: not a tiled map document (no {ManifestName}). A directory without a manifest has no form.");
 
-        string json;
-        try { json = File.ReadAllText(path); }
+        byte[] manifestBytes;
+        try { manifestBytes = File.ReadAllBytes(path); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             throw new MapDocumentException($"{path}: cannot read map manifest. {ex.Message}", ex);
         }
+        string json = DecodeManifest(manifestBytes);
 
         JsonObject root;
         try
@@ -50,10 +55,12 @@ internal static partial class MapTiledFile
         int schemeVersion = ReadInt(root, "schemeVersion") ?? MapDocumentHash.SchemeVersion;
         float sculptCellSize = ReadFloat(root, "sculptCellSize") ?? MapTerrainOverrides.DefaultCellSize;
         List<MapTileEntry> entries = ReadTileEntries(root, path);
+        IReadOnlyList<MapDirectoryPageRef> surfaces = MapSurfaceTiledStore.ReadDirectory(root);
 
         root.Remove("schemeVersion");
         root.Remove("sculptCellSize");
         root.Remove("tiles");
+        root.Remove("surfaceStorage");
         // $schema is a file-level annotation on the MANIFEST, not document content: the writer emits it and
         // the reader ignores it, exactly as for a tile file. Carrying it onto the document would point a
         // later monolithic save at the manifest's schema.
@@ -82,8 +89,19 @@ internal static partial class MapTiledFile
         if (errors.Count > 0)
             throw new MapDocumentException($"{path}: invalid map manifest:\n  " + string.Join("\n  ", errors));
 
-        index = new MapTileIndex(doc.TileSize, schemeVersion, Normalize(directory), entries);
+        index = new MapTileIndex(doc.TileSize, schemeVersion, Normalize(directory), entries, HashManifest(manifestBytes),
+            new MapSurfaceStorageIndex(surfaces, doc.Surfaces.Refs));
+        doc.Tiles = index;
         return doc;
+    }
+
+    static string HashManifest(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
+
+    static string DecodeManifest(byte[] bytes)
+    {
+        using var stream = new MemoryStream(bytes, writable: false);
+        using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
     }
 
     /// <summary>Loads the manifest plus tiles: every occupied tile when <paramref name="window"/> is null,
@@ -121,7 +139,8 @@ internal static partial class MapTiledFile
             entries.Add(entry with { Loaded = load });
         }
 
-        doc.Tiles = new MapTileIndex(index.TileSize, index.SchemeVersion, Normalize(directory), entries);
+        MapSurfaceTiledStore.Load(directory, doc, index, window);
+        doc.Tiles = new MapTileIndex(index.TileSize, index.SchemeVersion, Normalize(directory), entries, index.ManifestSha256, index.Surfaces);
 
         IReadOnlyList<string> errors = MapDocumentValidator.Validate(doc, options.Registry);
         if (errors.Count > 0)
@@ -173,12 +192,15 @@ internal static partial class MapTiledFile
             CollectIds(content, ids, report);
         }
 
+        MapSurfaceTiledStore.Verify(directory, doc, index, named, report);
         CollectStrays(directory, named, report);
         return report;
     }
 
     /// <summary>A shallow copy of a document carrying only the globals: same references for terrain, layers
-    /// and shapes, with the four point-shaped lists empty and the sculpt block reduced to its header.</summary>
+    /// and shapes, with the four point-shaped lists empty and the sculpt block reduced to its header. Surfaces
+    /// are a metadata-only copy (copied refs, no patches) and native assets a copied list, so a later edit
+    /// published into the document never shows through the copy.</summary>
     internal static MapDocument GlobalsOnly(MapDocument doc) => new()
     {
         Schema = doc.Schema,
@@ -187,9 +209,11 @@ internal static partial class MapTiledFile
         DisplayName = doc.DisplayName,
         Bounds = doc.Bounds,
         PlayableBounds = doc.PlayableBounds,
-        NativeAssets = doc.NativeAssets,
+        NativeAssets = doc.NativeAssets.ToList(),
         NumericIdHighWaterMark = doc.NumericIdHighWaterMark,
         ResolverIdentity = doc.ResolverIdentity,
+        SupportRecipe = doc.SupportRecipe,
+        Surfaces = MetadataOnly(doc.Surfaces),
         TileSize = doc.TileSize,
         Terrain = doc.Terrain,
         ScatterLayers = doc.ScatterLayers,
@@ -199,6 +223,13 @@ internal static partial class MapTiledFile
         Regions = doc.Regions,
         TerrainOverrides = new MapTerrainOverrides(MapCanonical.SculptCellSizeOf(doc)),
     };
+
+    static MapSurfaceSet MetadataOnly(MapSurfaceSet surfaces)
+    {
+        var copy = new MapSurfaceSet();
+        copy.Refs.AddRange(MapSurfaceStorageIndex.CopyRefs(surfaces.Refs));
+        return copy;
+    }
 
     internal static string Normalize(string path) =>
         Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));

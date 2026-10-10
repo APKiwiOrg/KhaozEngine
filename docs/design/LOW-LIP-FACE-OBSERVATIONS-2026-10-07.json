@@ -1,0 +1,108 @@
+{
+  "base": "938cc1ea6d41fcd0e0fdb50afe5b0548d557e578",
+  "source": "KhaozEngine.Movement.Tests/LowLipTraversalTests.Faces.cs",
+  "source_sha256": "ac662572e39b4a97add370a5fb56f7b1f504c6810847aa80e0a78ed91761f6c5",
+  "command": "dotnet test KhaozEngine.Movement.Tests/KhaozEngine.Movement.Tests.csproj -c Release -m:1 --filter FullyQualifiedName~LowLipTraversalTests.ExistingQueriesObserveCornerAndInteriorFaces --logger console;verbosity=detailed",
+  "exit": 0,
+  "passed": 24,
+  "failed": 0,
+  "skipped": 0,
+  "log_sha256": "3c72fb7680360fe4cd566ed41fc1922d435ee973730743b2d34b6dead1cbac29",
+  "gate": "Not established. Contact-point rays at mesh boundaries do not provide a geometric-face correspondence contract. No runtime implementation authorized by this diagnostic.",
+  "rows": [
+    {
+      "sweep": "face shape=box, x=-0.128, excludeFloor=True, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<2.9802322E-08, 0.04250002, 0.125>, normal=<-0.42666677, 0.90440893, 0>, distance=1.4861789, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=True, sameBody=True, point=<2.9802322E-08, 0.04250002, 0.125>, normal=<0, 1, 0>, heightError=0, edgeOffsetX=2.9802322E-08, centreRise=0.013821125, analyticRise=0.013822645, contactNormalY=0.90440893, analyticNormalY=0.90440893, sweepFlat=True"
+    },
+    {
+      "sweep": "face shape=low-box, x=-0.125, excludeFloor=True, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<-1.4901161E-08, 0.025000095, 0.125>, normal=<-0.4166666, 0.9090593, 0>, distance=1.5022823, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=False, sameBody=False, point=<0, 0, 0>, normal=<0, 0, 0>, heightError=Infinity, edgeOffsetX=-1.4901161E-08, centreRise=-0.0022822618, analyticRise=-0.0022822022, contactNormalY=0.9090593, analyticNormalY=0.90905935, sweepFlat=True"
+    },
+    {
+      "sweep": "face shape=mesh, x=-0.135, excludeFloor=False, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<-2.9802322E-08, 0.04250002, 0.125>, normal=<-0.4499999, 0.8930286, 0>, distance=1.4895921, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=False, sameBody=False, point=<0, 0, 0>, normal=<0, 0, 0>, heightError=Infinity, edgeOffsetX=-2.9802322E-08, centreRise=0.010407925, analyticRise=0.0104085505, contactNormalY=0.8930286, analyticNormalY=0.89302856, sweepFlat=False"
+    },
+    {
+      "sweep": "face shape=high-box, x=-0.135, excludeFloor=True, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<-6.109476E-06, 0.2999971, 0.125>, normal=<-0.44997963, 0.8930388, 0>, distance=1.2320913, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=False, sameBody=False, point=<0, 0, 0>, normal=<0, 0, 0>, heightError=Infinity, edgeOffsetX=-6.109476E-06, centreRise=0.2679087, analyticRise=0.26790857, contactNormalY=0.8930388, analyticNormalY=0.89302856, sweepFlat=False"
+    },
+    {
+      "sweep": "face shape=dome, x=-1.2116002, excludeFloor=True, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<-1.0535375, 0.07001734, 0.125>, normal=<-0.52676874, 0.85000867, -0>, distance=1.4750001, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=True, sameBody=True, point=<-1.0535375, 0.0700171, 0.125>, normal=<-0.52676874, 0.8500086, 0>, heightError=2.3841858E-07, edgeOffsetX=-1.0535375, centreRise=0.024999857, analyticRise=NaN, contactNormalY=0.85000867, analyticNormalY=0.85, sweepFlat=False"
+    },
+    {
+      "sweep": "face shape=mesh, x=-0.135, excludeFloor=True, offset=<45, 1.4825, -97.75>, swept=True, body=StaticHandle { Value = 1 }, point=<45, 1.5250001, -97.625>, normal=<-0.44999433, 0.8930314, 0>, distance=1.4895912, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=True, sameBody=True, point=<45, 1.5250001, -97.625>, normal=<0, 1, 0>, heightError=0, edgeOffsetX=0, centreRise=0.010408878, analyticRise=0.010409445, contactNormalY=0.8930314, analyticNormalY=0.89303136, sweepFlat=False"
+    },
+    {
+      "sweep": "face shape=mesh-interior, x=0.5, excludeFloor=True, offset=<1024, 100, -1024>, swept=True, body=StaticHandle { Value = 1 }, point=<1024.5, 100.0425, -1023.875>, normal=<0, 1, -0>, distance=1.4575, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=True, sameBody=True, point=<1024.5, 100.0425, -1023.875>, normal=<0, 1, 0>, heightError=0, edgeOffsetX=0.5, centreRise=0.042503357, analyticRise=NaN, contactNormalY=1, analyticNormalY=1, sweepFlat=True"
+    },
+    {
+      "sweep": "face shape=slope, x=0, excludeFloor=True, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<0.15803479, 0.12294102, 0.125>, normal=<-0.52678263, 0.85, 0>, distance=1.4220588, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=True, sameBody=True, point=<0.15803479, 0.122941256, 0.125>, normal=<-0.52678263, 0.85, 0>, heightError=2.3841858E-07, edgeOffsetX=0.15803479, centreRise=0.07794118, analyticRise=NaN, contactNormalY=0.85, analyticNormalY=0.85, sweepFlat=False"
+    },
+    {
+      "sweep": "face shape=mesh, x=-0.128, excludeFloor=True, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<-3.054738E-06, 0.04249859, 0.125>, normal=<-0.42665648, 0.90441376, 0>, distance=1.4861773, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=False, sameBody=False, point=<0, 0, 0>, normal=<0, 0, 0>, heightError=Infinity, edgeOffsetX=-3.054738E-06, centreRise=0.013822675, analyticRise=0.013822645, contactNormalY=0.90441376, analyticNormalY=0.90440893, sweepFlat=True"
+    },
+    {
+      "sweep": "face shape=box, x=-0.145, excludeFloor=True, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<1.4901161E-08, 0.04249978, 0.125>, normal=<-0.48333335, 0.8754364, 0>, distance=1.494871, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=True, sameBody=True, point=<1.4901161E-08, 0.04250002, 0.125>, normal=<0, 1, 0>, heightError=2.3841858E-07, edgeOffsetX=1.4901161E-08, centreRise=0.0051289797, analyticRise=0.005130887, contactNormalY=0.8754364, analyticNormalY=0.8754364, sweepFlat=False"
+    },
+    {
+      "sweep": "face shape=mesh, x=-0.135, excludeFloor=True, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<-2.9802322E-08, 0.04250002, 0.125>, normal=<-0.4499999, 0.8930286, 0>, distance=1.4895921, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=False, sameBody=False, point=<0, 0, 0>, normal=<0, 0, 0>, heightError=Infinity, edgeOffsetX=-2.9802322E-08, centreRise=0.010407925, analyticRise=0.0104085505, contactNormalY=0.8930286, analyticNormalY=0.89302856, sweepFlat=False"
+    },
+    {
+      "sweep": "face shape=mesh, x=-0.128, excludeFloor=False, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<-3.054738E-06, 0.04249859, 0.125>, normal=<-0.42665648, 0.90441376, 0>, distance=1.4861773, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=False, sameBody=False, point=<0, 0, 0>, normal=<0, 0, 0>, heightError=Infinity, edgeOffsetX=-3.054738E-06, centreRise=0.013822675, analyticRise=0.013822645, contactNormalY=0.90441376, analyticNormalY=0.90440893, sweepFlat=True"
+    },
+    {
+      "sweep": "face shape=mesh-interior, x=0.5, excludeFloor=True, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<0.5, 0.04250002, 0.125>, normal=<0, 1, -0>, distance=1.4575, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=True, sameBody=True, point=<0.5, 0.04250002, 0.125>, normal=<0, 1, 0>, heightError=0, edgeOffsetX=0.5, centreRise=0.04250002, analyticRise=NaN, contactNormalY=1, analyticNormalY=1, sweepFlat=True"
+    },
+    {
+      "sweep": "face shape=mesh, x=-0.145, excludeFloor=False, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<-5.081296E-06, 0.042497158, 0.125>, normal=<-0.48331636, 0.8754458, 0>, distance=1.4948691, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=False, sameBody=False, point=<0, 0, 0>, normal=<0, 0, 0>, heightError=Infinity, edgeOffsetX=-5.081296E-06, centreRise=0.005130887, analyticRise=0.005130887, contactNormalY=0.8754458, analyticNormalY=0.8754364, sweepFlat=False"
+    },
+    {
+      "sweep": "face shape=mesh, x=-0.145, excludeFloor=True, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<-5.081296E-06, 0.042497158, 0.125>, normal=<-0.48331636, 0.8754458, 0>, distance=1.4948691, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=False, sameBody=False, point=<0, 0, 0>, normal=<0, 0, 0>, heightError=Infinity, edgeOffsetX=-5.081296E-06, centreRise=0.005130887, analyticRise=0.005130887, contactNormalY=0.8754458, analyticNormalY=0.8754364, sweepFlat=False"
+    },
+    {
+      "sweep": "face shape=box, x=-0.135, excludeFloor=True, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<1.4901161E-08, 0.04249978, 0.125>, normal=<-0.45000005, 0.89302856, 0>, distance=1.4895916, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=True, sameBody=True, point=<1.4901161E-08, 0.04250002, 0.125>, normal=<0, 1, 0>, heightError=2.3841858E-07, edgeOffsetX=1.4901161E-08, centreRise=0.0104084015, analyticRise=0.0104085505, contactNormalY=0.89302856, analyticNormalY=0.89302856, sweepFlat=False"
+    },
+    {
+      "sweep": "face shape=box, x=-0.145, excludeFloor=False, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<1.4901161E-08, 0.04249978, 0.125>, normal=<-0.48333335, 0.8754364, 0>, distance=1.494871, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=True, sameBody=True, point=<1.4901161E-08, 0.04250002, 0.125>, normal=<0, 1, 0>, heightError=2.3841858E-07, edgeOffsetX=1.4901161E-08, centreRise=0.0051289797, analyticRise=0.005130887, contactNormalY=0.8754364, analyticNormalY=0.8754364, sweepFlat=False"
+    },
+    {
+      "sweep": "face shape=box, x=-0.128, excludeFloor=False, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<2.9802322E-08, 0.04250002, 0.125>, normal=<-0.42666677, 0.90440893, 0>, distance=1.4861789, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=True, sameBody=True, point=<2.9802322E-08, 0.04250002, 0.125>, normal=<0, 1, 0>, heightError=0, edgeOffsetX=2.9802322E-08, centreRise=0.013821125, analyticRise=0.013822645, contactNormalY=0.90440893, analyticNormalY=0.90440893, sweepFlat=True"
+    },
+    {
+      "sweep": "face shape=roof, x=-0.125, excludeFloor=True, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 2 }, point=<0, 0, 0>, normal=<0, 0, 0>, distance=0, target=StaticHandle { Value = 2 }"
+    },
+    {
+      "sweep": "face shape=box-interior, x=0.5, excludeFloor=True, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<0.5, 0.04250002, 0.125>, normal=<0, 1, 0>, distance=1.4575006, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=True, sameBody=True, point=<0.5, 0.04250002, 0.125>, normal=<0, 1, 0>, heightError=0, edgeOffsetX=0.5, centreRise=0.042499423, analyticRise=NaN, contactNormalY=1, analyticNormalY=1, sweepFlat=True"
+    },
+    {
+      "sweep": "face shape=box, x=-0.135, excludeFloor=False, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<1.4901161E-08, 0.04249978, 0.125>, normal=<-0.45000005, 0.89302856, 0>, distance=1.4895916, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=True, sameBody=True, point=<1.4901161E-08, 0.04250002, 0.125>, normal=<0, 1, 0>, heightError=2.3841858E-07, edgeOffsetX=1.4901161E-08, centreRise=0.0104084015, analyticRise=0.0104085505, contactNormalY=0.89302856, analyticNormalY=0.89302856, sweepFlat=False"
+    },
+    {
+      "sweep": "face shape=box, x=-0.135, excludeFloor=True, offset=<1024, 100, -1024>, swept=True, body=StaticHandle { Value = 1 }, point=<1024, 100.042496, -1023.875>, normal=<-0.4500324, 0.8930122, 0>, distance=1.4895986, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=True, sameBody=True, point=<1024, 100.042496, -1023.875>, normal=<0, 1, 0>, heightError=0, edgeOffsetX=0, centreRise=0.010398865, analyticRise=0.010407001, contactNormalY=0.8930122, analyticNormalY=0.89301217, sweepFlat=False"
+    },
+    {
+      "sweep": "face shape=wall, x=-0.145, excludeFloor=True, offset=<0, 0, 0>, swept=True, body=StaticHandle { Value = 1 }, point=<0, 0, 0>, normal=<0, 0, 0>, distance=0, target=StaticHandle { Value = 1 }"
+    },
+    {
+      "sweep": "face shape=box, x=-0.135, excludeFloor=True, offset=<45, 1.4825, -97.75>, swept=True, body=StaticHandle { Value = 1 }, point=<45, 1.5249996, -97.625>, normal=<-0.44999224, 0.89303243, 0>, distance=1.4895909, target=StaticHandle { Value = 1 }",
+      "ray": "ray found=True, sameBody=True, point=<45, 1.5249999, -97.625>, normal=<0, 1, 0>, heightError=2.3841858E-07, edgeOffsetX=0, centreRise=0.010409117, analyticRise=0.010409445, contactNormalY=0.89303243, analyticNormalY=0.89303136, sweepFlat=False"
+    }
+  ]
+}

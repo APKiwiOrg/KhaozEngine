@@ -1,0 +1,131 @@
+{
+  "task": "17 terrain edits, commands and the shared service path",
+  "red_commit": "b92fbcb6ebbee7f97432e2960058c740688a21a3",
+  "commits": [
+    "6273347c402308aaae68eb02899886fd163226c9",
+    "fb26b81ae9d8fa65d5ce9e348d676ac580856a4d"
+  ],
+  "source_sha256": {
+    "KhaozEngine.MapDoc.Tests/Editing/TerrainEditFixtures.cs": "60134bae6fb7b4a25ae5098d278f883df6ded62fa60287bd6c6a0ddccbe6037d",
+    "KhaozEngine.MapDoc.Tests/Editing/TerrainEditRegressionTests.cs": "5f999d0db9fefcef8390f42a751fc6629c29f2432d518f79793a3938470881af",
+    "KhaozEngine.MapDoc.Tests/Editing/TerrainEditsTests.cs": "e6034458a880e77b7fe652b2b15faa330fa12d0dd157eecfa08292f7d9dcf039",
+    "KhaozEngine.MapDoc.Tests/Spaces/CaveFixtures.cs": "8751ff69e153c50055007b7a1bfdd9c7a45eb826b4c66848175db7c31b6da2e4",
+    "KhaozEngine.MapDoc.Tests/Spaces/MixedResolutionFixtures.cs": "033867986cbf5e4250bbff9434525b3544875d3cb33f0453f43723f682468e39",
+    "KhaozEngine.MapDoc/Editing/MapTerrainEditChanges.cs": "06e5734ef2b7d3892d1e52bbb9ee8ae9ea4d441e05c0511d6354f37cf60beb12",
+    "KhaozEngine.MapDoc/Editing/MapTerrainEdits.cs": "ea1da85acdbfffd2de06ce717dd4e08e76af906801d20430055705d4a9cee745",
+    "KhaozEngine.MapDoc/Editing/MapTerrainTopologyEdits.cs": "98ce67ec3008279a0712083117078cd4d8c2427d7b146fd3673f137683926c77",
+    "KhaozEngine.MapEdit.Tool/MutationService.Terrain.cs": "ab3cebd885b53d40be92bd3297a56a5fa29e7bc5055eaeea241a0d6dc314a126",
+    "KhaozEngine.MapEdit.Tool/NativeDocumentService.cs": "17dfce3da17882621deb9de83944d1cb2d529ae1bc84a0497b90a0eec216c941",
+    "KhaozEngine.MapEditor.Tests/MapEditTool/NativeDocumentServiceResolverTests.cs": "a64464db45e0284b48d7d024a1843d4528ec0a3bd26db41812c76807d30a2261",
+    "KhaozEngine.MapEditor.Tests/MapEditTool/TerrainTransactionFixture.cs": "75e4e1e9166a220c16c682c5d5a156b0f03c71bef7c873d8e7805b1560f0545d",
+    "KhaozEngine.MapEditor.Tests/MapEditTool/TerrainTransactionRegressionTests.cs": "6e49a0fa9b4144e4ecd319a4352fe062a5ae8dca3e5589394119950949bafdce",
+    "KhaozEngine.MapEditor.Tests/MapEditTool/TerrainTransactionTests.cs": "721f019975b5c2b724f3788c3d91ff728ad8509174658222be0867da1f1e0363",
+    "KhaozEngine.MapEditor/NativeDocumentSnapshot.cs": "461693db54d2404ac43cfbe6a382e1c63ff8eb76cc1b3129ebe42c46d4893420",
+    "KhaozEngine.MapEditor/NativeTerrainCommands.cs": "4cfb77a862d12b7f4624a743eeead0acb336c4a048ac59bc47ed524bc175ca81"
+  },
+  "final_runs": [
+    {
+      "name": "t17f1-green-mapdoc",
+      "executed": 40,
+      "passed": 40,
+      "failed": 0,
+      "trx_sha256": "f92a4cfe313960cd7dc35cb174a30cb2bba8fa10d61e3e7a8bf4764c80312784"
+    },
+    {
+      "name": "t17f1-green-editor",
+      "executed": 167,
+      "passed": 167,
+      "failed": 0,
+      "trx_sha256": "882e06cd47a31027fd030b50c459881074340182d5927f9a4ce8213fee998a88"
+    },
+    {
+      "name": "t17f1-regress-mapdoc",
+      "executed": 128,
+      "passed": 128,
+      "failed": 0,
+      "trx_sha256": "6d96ec1061d0fd7656b583abdfe3efbb10ca8417c53c9ce29c5be29bee06e021"
+    },
+    {
+      "name": "t17f1-regress-compatibility",
+      "executed": 3,
+      "passed": 3,
+      "failed": 0,
+      "trx_sha256": "dba8f1630ab4d80b3510fae051066591018e5c2b1adc7e8f3f57c668763dc393"
+    },
+    {
+      "name": "t17f1-parent-placement",
+      "executed": 20,
+      "passed": 20,
+      "failed": 0,
+      "trx_sha256": "a894b9da2a6af3c46ddf7c2b15618dc16fc58cdb88291e7d0249217c5c772b51"
+    }
+  ],
+  "earlier_runs": [
+    {
+      "name": "t17c-green-mapdoc",
+      "executed": 13,
+      "passed": 13,
+      "failed": 0,
+      "trx_sha256": "a12bbf9f67dab00ca9b2cf5a371a6bc39dec290dbeccd34550ce4d60e02c2189"
+    },
+    {
+      "name": "t17c-green-editor-final",
+      "executed": 164,
+      "passed": 164,
+      "failed": 0,
+      "trx_sha256": "498bf77090bbdc114b8ae597d3ce12a540a60c0ddf2a74312d81daa326c19394"
+    },
+    {
+      "name": "t17c-regress-mapdoc",
+      "executed": 128,
+      "passed": 128,
+      "failed": 0,
+      "trx_sha256": "fc4f265c7ce297a4a0df162844f848eedc9bd911f56f30ac0f2c5000e9fe2e90"
+    },
+    {
+      "name": "t17c-regress-compatibility",
+      "executed": 3,
+      "passed": 3,
+      "failed": 0,
+      "trx_sha256": "76ee77b2ba1f6a2d003b0db62d15cf4f164576920316d3eb7037676fe15f2e48"
+    }
+  ],
+  "blocked_run": {
+    "name": "t17-green-editor",
+    "executed": 111,
+    "passed": 109,
+    "failed": 2,
+    "trx_sha256": "bd9d0096a85ede368f90c3f4415c31249a6924348428424a762ca6d159f1078d"
+  },
+  "fix_round_1_red": [
+    {
+      "name": "t17f1-red-mapdoc",
+      "executed": 27,
+      "passed": 26,
+      "failed": 1,
+      "trx_sha256": "58c2f3a1c42f7e061f86154c385e1f24620334e473b5de4b746e341a0757781b"
+    },
+    {
+      "name": "t17f1-red-editor",
+      "executed": 3,
+      "passed": 0,
+      "failed": 3,
+      "trx_sha256": "5b7a098291347555b4ac1c5569de200c346d58ac167ef635c1fa53f84ba852e7"
+    }
+  ],
+  "run_verification": "Delegated worker runs plus one parent run (t17f1-parent-placement) over the changed Task 16 publish step. Parent verified every final TRX postdates the last product edit and the committed tree matched the tested tree.",
+  "format_and_guards": "full explicit-file format verify exit 0 and five guards exit 0 for every commit",
+  "reviews": {
+    "review1": "Needs fixes, 1 Important (halo refused consistent shared corners) and 6 Minors",
+    "fix_round_1": "Important 1 and Minors 1, 2, 3, 4, 6 addressed, no new breakage, two nits deferred"
+  },
+  "rulings": [
+    "T17-1 paired RED",
+    "T17-2 CaveFixtures helpers appended, existing content unchanged",
+    "T17-3 MixedResolutionFixtures.Document sets PlayableBounds equal to Bounds",
+    "T17-4 NativeDocumentService routes every session lifecycle boundary by resolver identity, SessionOptionsV2 through MapResolverV2",
+    "T17-5 fix round 1 also took Minors 1, 2, 3, 4 and 6, Minor 5 deferred"
+  ],
+  "frozen_plan_tests_unchanged": true,
+  "scope": "Focused Task 17 proof. Not full-engine integration, candidate or release gates."
+}

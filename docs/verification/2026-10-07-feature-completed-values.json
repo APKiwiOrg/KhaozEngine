@@ -1,0 +1,35 @@
+{
+  "red_commit": "519fe1b451d67406c896e3d540060cd30f6a4fa1",
+  "sources": {
+    "KhaozEngine.Physics/CapsuleFeatureQuery.cs": "f99de9b3cfc1c9c6822e5c6c8909d5c5f6874d6f77e0387db5af8a7c6be4334e",
+    "KhaozEngine.Game.Tests/Physics/CapsuleFeatureCompletedTests.cs": "6f27788f162d3e1ffd511958bb3f9f8714d8df6baa01b9c68cf7610953be8727"
+  },
+  "red": {
+    "exit": 1,
+    "executed": 8,
+    "failed": 8,
+    "reason": "Missing Completed factory after live owner/view acquisition controls. Invalid-input cases wrap the same missing-method assertion."
+  },
+  "green": {
+    "exit": 0,
+    "passed": 18,
+    "failed": 0,
+    "skipped": 0,
+    "new_cases": 8,
+    "affected_contract_cases": 10
+  },
+  "format": {
+    "exit": 0,
+    "changed": 0,
+    "projects": [
+      "KhaozEngine.Game.Tests",
+      "KhaozEngine.Physics"
+    ]
+  },
+  "logs": {
+    "red": "9821e7b3dfc80338831244d8f38fe74b35f739a41c43fc5685d525fff872611c",
+    "green": "35660a50476c1bee39058e1ca32baf0215d1e8b95c758717c87edae0e9b28828",
+    "format": "b716ff9f4cf09933eb419d68763c326755aad19c2e6f9d0d17b1f9d56f5c5e4f"
+  },
+  "limits": "Structural completed values only. Backend owner authentication, exact receiver disposal, numerical ceilings, complete geometry and atomic face publication remain separate obligations."
+}

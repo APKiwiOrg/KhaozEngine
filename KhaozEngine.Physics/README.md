@@ -46,6 +46,20 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   are finite nonnegative metres. `IsComplete` validates Clear/Hit structure only. Consumers still check
   requested extent, accepted error, scope and read currentness. Unsupported orientation, filters or
   numerical/work domains must refuse. Zero displacement requires a complete stationary certificate.
+- **`IPhysicsCapsuleFeatures`** - optional finite-feature certification for one static. Under a read lease
+  from the same receiver, `QueryCapsuleFeature(lease, target, capsule, pose, maximumSeparationMetres, faces)`
+  names the closest feature of `target` to a capsule at `pose` within the capsule radius plus the
+  separation band. A `Complete` `CapsuleFeatureResult` carries the feature `Kind` (`FaceInterior`,
+  `OpenBoundary`, `ConvexCrease`, `ConcaveCrease` or `Vertex`), witness points, separation bounds, error
+  bounds and every incident face written into `faces` together, each with a geometric normal. Every other
+  status is a refusal with no witness and leaves `faces` untouched. `NoFeature` means nothing lies within
+  the band, `Unavailable` that the target is not a live static in this view, `Unsupported` that the shape or
+  pose is outside the backend's certified domain, `Ambiguous` and `Unresolved` that the backend could not
+  decide the closest feature exactly, and `CapacityExceeded` that `faces` is too short (`RequiredCapacity`
+  names the need when known). A result is bound to its receiver and its original lease. Call
+  `AssertFeatureCurrent(result, lease)` before publishing from it, and never consume it after the lease is
+  disposed. A later lease of the same generation cannot revive it. Structural fields alone do not permit
+  movement. Support eligibility is the caller's decision.
 - **Static handle provenance for query views** - the factory rejects invalid, missing and stale handles at
   creation. Handles are numeric identities local to their source world, so equal values from different worlds
   are not interchangeable. Use handles returned by that source, and do not reuse removed exclusions to infer

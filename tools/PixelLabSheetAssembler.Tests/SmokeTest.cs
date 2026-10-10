@@ -1,5 +1,3 @@
-using KhaozEngine.Render2D;
-using static PixelLabSheetAssembler.Tests.ImageFixtures;
 using Xunit;
 
 namespace PixelLabSheetAssembler.Tests;
@@ -7,9 +5,9 @@ namespace PixelLabSheetAssembler.Tests;
 public class SmokeTest
 {
     [Fact]
-    public void Empty_frame_is_transparent()
+    public void RgbaImage_creates_transparent_image()
     {
-        var img = Create(4, 4);
-        Assert.Equal(0, img.AlphaAt(0, 0));
+        var img = new RgbaImage(4, 4);
+        Assert.Equal(0, img[0, 0].A);
     }
 }

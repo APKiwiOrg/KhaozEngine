@@ -3,6 +3,8 @@ using System.IO;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Support;
 using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEdit;
@@ -14,24 +16,45 @@ namespace KhaozEngine.MapEdit;
 /// form's writer owns (<see cref="MapDocumentStorage"/>).</summary>
 public static class NativeDocumentService
 {
-    /// <summary>The session's single build identity. R1 native documents take placement support heights from the
-    /// analytic <see cref="MapRuntime.BuildField"/> field over the default registry. A later round that supplies
-    /// a canonical authored sampler changes this identity rather than falling back silently.</summary>
+    /// <summary>The resolver-v1 session build identity. R1 native documents take placement support heights from
+    /// the analytic <see cref="MapRuntime.BuildField"/> field over the default registry.</summary>
     public static MapResolveOptions SessionOptions { get; } =
         new("khaozengine.mapedit.analytic-support", 1, "mapruntime-buildfield-default-registry-v1");
 
+    /// <summary>The resolver-v2 session build identity for authored support bindings, using
+    /// <see cref="MapResolverV2"/> over a captured document surface source. Never falls back to analytic support.</summary>
+    public static MapResolveOptions SessionOptionsV2 { get; } =
+        new("khaozengine.mapedit.authored-support", 1, "mapdoc-resolver-v2-authored-bindings-v1", ResolverVersion: 2);
+
+    internal static MapResolveOptions SessionOptionsFor(MapResolverIdentityDoc? identity) => identity switch
+    {
+        { PayloadVersion: 1, ResolverVersion: 1 } => SessionOptions,
+        { PayloadVersion: 1, ResolverVersion: 2 } => SessionOptionsV2,
+        _ => throw new MapDocumentException($"Unsupported native resolver identity {DescribeIdentity(identity)}."),
+    };
+
+    static string DescribeIdentity(MapResolverIdentityDoc? identity) => identity is null
+        ? "(missing)" : $"({identity.PayloadVersion}, {identity.ResolverVersion})";
+
     /// <summary>Checks the complete document locally, loads and verifies its whole asset closure from
-    /// <paramref name="source"/>, then resolves it with analytic support heights. Throws
+    /// <paramref name="source"/>, then resolves it with analytic support for resolver 1 or authored bindings for
+    /// resolver 2. Unsupported identities and options with a different resolver version refuse before resource reads. Throws
     /// <see cref="MapDocumentException"/> on a partial, invalid or stale document. Never returns a partial result.</summary>
     public static MapResolvedDocument ValidateComplete(MapDocument document, IMapAssetSource source, MapResolveOptions options)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(options);
+        MapResolveOptions sessionOptions = SessionOptionsFor(document.ResolverIdentity);
+        if (options.ResolverVersion != sessionOptions.ResolverVersion)
+            throw new MapDocumentException($"Native resolver identity {DescribeIdentity(document.ResolverIdentity)} " +
+                $"does not match options resolver version {options.ResolverVersion}.");
         MapDocRegistry registry = MapDocRegistry.CreateDefault();
         // Local checks first, so a partial or malformed document never reads a resource.
         MapBoundDocumentValidation.ValidateLocal(document, registry);
         MapAssetClosure closure = MapAssetClosure.Load(document.NativeAssets, source);
+        if (options.ResolverVersion == 2)
+            return MapResolverV2.Resolve(document, closure, MapDocumentSurfaceSource.Capture(document), options).Document;
         TerrainField field = MapRuntime.BuildField(document, registry);
         return MapResolver.Resolve(document, closure, field.SampleHeight, options);
     }
@@ -51,7 +74,8 @@ public static class NativeDocumentService
                 "yet, so open it whole (raise WholeWorldTileLimit) or move the window over the whole world.");
         try
         {
-            return ValidateComplete(document, new MapStorageGuardedAssetSource(Path.GetFullPath(storagePath), form), SessionOptions);
+            return ValidateComplete(document, new MapStorageGuardedAssetSource(Path.GetFullPath(storagePath), form),
+                SessionOptionsFor(document.ResolverIdentity));
         }
         catch (MapDocumentException ex)
         {

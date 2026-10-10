@@ -61,10 +61,16 @@ failure, so the in-session document is never left invalid.
 
 Native opted-in documents (non-null `ResolverIdentity`) are validated completely at every lifecycle boundary by
 `NativeDocumentService.ValidateComplete(document, source, options)`. It checks the document locally, reloads and
-digest-verifies the whole asset closure, then resolves placements with analytic support heights under the
-stable `NativeDocumentService.SessionOptions` build identity. The resource root is the monolithic file's
-directory or the tiled document's own directory, anchored as an absolute path at open, so later working
-directory changes never move it.
+digest-verifies the whole asset closure, then resolves placements under the document's resolver identity.
+Resolver identity `(1, 1)` keeps analytic support from `MapRuntime.BuildField` and the unchanged
+`NativeDocumentService.SessionOptions` build identity (`khaozengine.mapedit.analytic-support`, builder
+version 1, options hash `mapruntime-buildfield-default-registry-v1`). The resolver identity `(1, 2)`, new in 20.30.0,
+uses `MapResolverV2` over `MapDocumentSurfaceSource.Capture(document)` with `SessionOptionsV2`
+(`khaozengine.mapedit.authored-support`, builder version 1, options hash
+`mapdoc-resolver-v2-authored-bindings-v1`, resolver version 2). Unknown identities and mismatched resolver
+options refuse before resource reads. Authored bindings never fall back to analytic support.
+The resource root is the monolithic file's directory or the tiled document's own directory, anchored as an
+absolute path at open, so later working directory changes never move it.
 
 - Open and SetWindow verify the candidate before it replaces anything, then bind its fresh closure, so editing
   works without a manual bind. A windowed (partial) native load refuses. Failed loads keep the previous
@@ -98,6 +104,13 @@ preserving the public document instance. Native placement commands additionally 
 rejection. `PlacementRename` changes the native display label and returns the unchanged placement ID. The
 explicit service APIs `PlacementLabel` and `PlacementRemapId` distinguish label edits from stable-ID
 remapping. These are service APIs, not additional MCP registrations.
+
+The terrain path, new in 20.30.0, is also a service API. `MutationService.TerrainApply(edit)` runs the GUI's
+`TerrainEditCommand(MapTerrainEdit)` under the session lock, through the same native transaction seam. It
+refuses an analytic document and returns `MapTerrainMutationResult`, holding the `MutationResult` and the
+accepted `MapNativeEditEffects`. A GUI edit and a service edit of the same document produce identical
+document bytes and effects text, which the GUI reports through `EditorDocument.LastNativeEffects`. Terrain
+MCP verbs are deferred to R10.
 
 ## Tiled documents, whole-load vs windowed
 
@@ -219,8 +232,10 @@ share the same id string with no collision.
 a whole document against the document schema, or checks each loaded tile of a windowed document against
 `MapDocumentSchema.GetTileJson()`. Tile errors name their tile coordinate. The result reports `SchemaScope`
 as `document`, `loadedTiles`, or `none`, so a partial check is never presented as whole-world coverage.
-Pass `verifyWholeWorld: true` for a tiled document to run `MapDocumentFile.VerifyTiled` against every tile on
-disk without loading cold tiles into the session. `WholeWorldChecked`, `WholeWorldValid`, and
+Pass `verifyWholeWorld: true` for a tiled document to run `MapDocumentFile.VerifyTiled` against every tile and
+the native surface storage closure without loading cold content into the session. Surface checks include
+byte and semantic integrity, references and incident bookkeeping, not geometry or navigation certification.
+`WholeWorldChecked`, `WholeWorldValid`, and
 `WholeWorldErrors` report that separate pass. `Valid` includes whole-world validity only when the option was
 requested. `bake_region` freezes a scatter layer's procedural output over a world rect
 into authored placements (`baked-<layer>-N`, an explicit ground Y, tagged `baked`) plus a covering

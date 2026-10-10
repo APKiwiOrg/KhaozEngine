@@ -1,0 +1,112 @@
+{
+  "task": "12A exact common refinement and legacy lower-cell classification",
+  "red_commit": "b220388e046dc4ee51e947e4b154ca24805dfe6e",
+  "commits": [
+    "a948ea67485be8d6224dfc506ad66bf8ed9015a3",
+    "33c40d458dd07ff4b0bc46586dc21fd5f5f09147",
+    "f19d169793866bf849561bcf69fcd0ec1fec0225"
+  ],
+  "source_sha256": {
+    "KhaozEngine.MapDoc.Compatibility.Tests/LegacyBilinearOracleTests.cs": "96439c405a6e515f38c80c478e4f75cbf399a6cb688d72d2c75611c512c770c4",
+    "KhaozEngine.MapDoc.Tests/Spaces/BoundFaceContextFixtures.cs": "ee6aff49bb9f4ab09979f4a16ed5bbc2d49f3d051f8253b6fa1a0d901bfab96a",
+    "KhaozEngine.MapDoc.Tests/Spaces/CommonRefinementTests.cs": "f45b868371a25e231c3fd68392ebf7b5cc102495d881e3985b11a0aa22e5b4c2",
+    "KhaozEngine.MapDoc.Tests/Spaces/LegacyExteriorFixtures.cs": "8c6cd7efe535d6ff598474b33434190262dca68fc5a539e960160fcd10df4ef9",
+    "KhaozEngine.MapDoc.Tests/Spaces/LowerCellClassifierTests.cs": "d820005635d7ffe5aafdd6fa774310cbd864c85b68675e954ce3903c53e55094",
+    "KhaozEngine.MapDoc.Tests/Spaces/MixedResolutionFixtures.cs": "94c324e53fa21e259165410565490823ad15788a12e1b90bfb94dc43a61169c5",
+    "KhaozEngine.MapDoc.Tests/Spaces/RefinementFixtures.cs": "5aa32e06982bad973fea7eea632445a9b2821af7b8732c89d6c4d99aa90f4beb",
+    "KhaozEngine.MapDoc/Spaces/MapBoundFaceContext.cs": "81f0bc31a68137519d54d80520e048b4fa2670a82c02951461539395cd49376c",
+    "KhaozEngine.MapDoc/Spaces/MapBoundPreparation.cs": "81fd1c9eaa6da75ceaed6af1e935431aaa0a451d067cb57aed5781590639029a",
+    "KhaozEngine.MapDoc/Spaces/MapCommonRefinement.cs": "61b4d8d241dfe6dc09ea02dbe6b93056ebcda654a22f19813fd5dae24ee49004",
+    "KhaozEngine.MapDoc/Spaces/MapLowerCellClassifier.cs": "2840bb955489a3bb4efa2a1d017df31400b797b399b9ebee699b4006e264213f",
+    "KhaozEngine.MapDoc/Spaces/MapRefinementPolygon.cs": "1d0185a689a7e9f21692d770ae2c694d37b37ee2b99279ac458fc1e6a5cea9de",
+    "KhaozEngine.MapDoc/Spaces/MapRefinementTypes.cs": "e5b3479dd34f671011089b685ffa0846069562ffd06ecac89fdf643fbe9e5f77",
+    "KhaozEngine.MapDoc/Storage/MapAcquiredFacts.cs": "a6c064bd4b6973d408a2a90390d4b58b2f45ae20a844e2f6da13ab7e6c345e2f",
+    "KhaozEngine.MapDoc/Storage/MapScopedSurfaces.cs": "56c2492275c7bf5ad6b0559e3698c25bcfa12b46268f8ab0996500a0fe4713aa",
+    "KhaozEngine.MapDoc/Surfaces/MapLegacyBilinear.cs": "74cefff6f87e32f9c474c6041783bb6a10f7d76399872a5fd36e3c8462f0045e",
+    "KhaozEngine.MapDoc/Surfaces/MapOpeningBoundary.cs": "6b8d12a3eb2cd8f6ec7db395cdf2dd868a89b54607ff49e32177fcdd543b4788",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfaceCompiler.cs": "0a4074bd8482f708117ec8312cc1236057bc9255aa721d659b025046bd255930",
+    "KhaozEngine.MapDoc/Surfaces/MapValidatedSurfacePatch.cs": "ed99e1b0209a6ee01ad2e5e9394a3908e0d0e474103bf45fb708981c24ad4401",
+    "KhaozEngine.MapEditor.Tests/MapDoc/BoundFaceContextDemandTests.cs": "609262dc4f8c58fb6cff56a58e9e222fbfa69b33cab2cf1ee4acac2b13848cd7",
+    "KhaozEngine.MapEditor.Tests/MapDoc/RefinementWorkTests.cs": "58eb49f99153d2e9e7a744618f42f016c9209ccbabe9d69c6719c199f544090b"
+  },
+  "parent_final_runs": [
+    {
+      "name": "t12af2-parent-mapdoc",
+      "executed": 138,
+      "passed": 138,
+      "failed": 0,
+      "trx_sha256": "0e8521c3ae39898e1d18f1bc6e9e2575785cf988ef5637e90f0e91b8070376c8"
+    },
+    {
+      "name": "t12af2-parent-editor",
+      "executed": 96,
+      "passed": 96,
+      "failed": 0,
+      "trx_sha256": "92de2e58b160761ef62bfc2e812aeec1e9d5712542428f453abee6e669546b72"
+    },
+    {
+      "name": "t12af1-parent-compat",
+      "executed": 3,
+      "passed": 3,
+      "failed": 0,
+      "trx_sha256": "d3ed37ca69b1376a3863e5508450263ad25ac2ae8041a6a184dd9c260cac6ba4"
+    }
+  ],
+  "earlier_parent_runs": [
+    {
+      "name": "t12a-parent-mapdoc",
+      "executed": 138,
+      "passed": 138,
+      "failed": 0,
+      "trx_sha256": "03cfbe22176147b852cd32e51ab13a9fdb608e6ea28d2513b4e5cff444ea1884"
+    },
+    {
+      "name": "t12a-parent-editor",
+      "executed": 85,
+      "passed": 85,
+      "failed": 0,
+      "trx_sha256": "13637e7660299a490a5873fcb84b0f6e2cca67d1f1eb42e6720db4bc8d62c637"
+    },
+    {
+      "name": "t12a-parent-compat",
+      "executed": 3,
+      "passed": 3,
+      "failed": 0,
+      "trx_sha256": "bb618552017a057bf79b57c9318c102edbd4930abe5cbe2ba82f0302b6460ec4"
+    },
+    {
+      "name": "t12af1-parent-mapdoc",
+      "executed": 138,
+      "passed": 138,
+      "failed": 0,
+      "trx_sha256": "d51674d47d875101b74a37877cc9158dd83ef78da16ed16db1aa78612dae3ccd"
+    },
+    {
+      "name": "t12af1-parent-editor",
+      "executed": 92,
+      "passed": 92,
+      "failed": 0,
+      "trx_sha256": "e5327331f2f1517559759172df3941f5a127a5d7cdbdc1007e5819a4ac0988af"
+    }
+  ],
+  "format_and_guards": "explicit-file diagnostic format exit 0 and five guards exit 0 for every commit",
+  "reviews": {
+    "review1": "Needs fixes, 2 Important (undemanded opening cell read as empty, whole-patch revalidation per read)",
+    "fix_round_1": "both addressed, one new Important (unbounded validation evidence)",
+    "fix_round_2": "T12A-6, all findings addressed"
+  },
+  "rulings": [
+    "T12A-1 RED and GREEN cover MapDoc, Editor and Compatibility",
+    "T12A-2 synthetic keys carry the index in Primitive",
+    "T12A-3 upper-tag pins two inherent reference findings",
+    "T12A-4 whitespace-only brief lines",
+    "T12A-5 context limits implemented as configurable operational budgets",
+    "T12A-6 MaxContextPatches counts every visited bound patch, face-free included"
+  ],
+  "notes": [
+    "Compatibility oracle unchanged by fix round 2, which touched only Spaces context files and tests",
+    "Tasks 12B and 13 pass opening owner references through PrepareBounds and MapBoundFaceDemand"
+  ],
+  "frozen_plan_tests_unchanged": true,
+  "scope": "Focused Task 12A proof. Not full-engine integration, candidate or release gates."
+}

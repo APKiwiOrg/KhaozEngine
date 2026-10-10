@@ -1,0 +1,86 @@
+{
+  "task": "10 chains, wall strips, seams and opening planes",
+  "source_commit": "ef4993561f805655197989c1502997994e5f4448",
+  "red_commit": "8616e5c6d70039e9fe62ca54550f85706d8d5d54",
+  "source_sha256": {
+    "KhaozEngine.MapDoc.Tests/Surfaces/BoundaryFixtures.cs": "17a64ec000d4bfd91f328f069d2798c8532f0d312776365613c7acd29d2cb8bc",
+    "KhaozEngine.MapDoc.Tests/Surfaces/BoundaryGeometryTests.cs": "f2dee99d97ed990e5c5abe7ae98ee48695753cc31cafb2b478cc91d40ee12776",
+    "KhaozEngine.MapDoc/Surfaces/MapBoundaryGeometry.cs": "9e9c9b63c3c455ced25689e06c864693ee3d82f24882ef680e74ce746f9ee686",
+    "KhaozEngine.MapDoc/Surfaces/MapOpeningBoundary.cs": "a7c8d59de13387ccf1a9a9ba0d98ad1fdb2920a83e0014cec52aaf1f5c2c6761",
+    "KhaozEngine.MapDoc/Surfaces/MapSeamValidator.cs": "9e9acd01c9fcd87db8b6910ddd6ebaa44dbcaacaece7b46943352d1f2937d40a",
+    "KhaozEngine.MapDoc/Surfaces/MapSubmissionGeometry.cs": "31ebe4d7a3c5272310c5500015fd7f3519741639918b5515d61c79c4550c26f7",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfaceCompiler.cs": "88f19d3829739f0c1c6dc4dadaca11a81944f08dfe02c42b025f7095b46fd252",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfaceVertexBuilder.cs": "68fa83975cb995cc8ee23702cff640ff6eb95854d95db0476c04cde57dafd3f1",
+    "KhaozEngine.MapDoc/Surfaces/MapWallStripCompiler.cs": "597ac13445a2e9eb06f38af04609f831725093e2cf3e7ed9e61ddc1f06aefab0"
+  },
+  "test_runs": [
+    {
+      "name": "t10-green-mapdoc",
+      "project": "mapdoc",
+      "filter": "FullyQualifiedName~BoundaryGeometryTests|FullyQualifiedName~SurfaceCompilerTests",
+      "exit_code": 0,
+      "executed": 25,
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0,
+      "log_sha256": "7888f70d6c952ac5e8c237edcaaa6418e9650bf5971972b4fadb5e3a49e7f85c",
+      "trx_sha256": "f3dddd23e5bd161b44cdf6fe4e15028dd4867f99daf1df703015a1eeea13906c"
+    },
+    {
+      "name": "t10-green-editor",
+      "project": "editor",
+      "filter": "FullyQualifiedName~CompilerBudgetTests (linked fixture compile check)",
+      "exit_code": 0,
+      "executed": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "log_sha256": "8469ec789bb059bf1036d9b282978cefc4ec0270753397bc2d0fcf181934273c",
+      "trx_sha256": "fe9003f7a3c8117c6d2f607ef0e8230ce613c3aa46fb43a670283cf0df1019df"
+    },
+    {
+      "name": "t10-green-compat",
+      "project": "compatibility",
+      "filter": "whole project, required by the Task 9 helper extraction",
+      "exit_code": 0,
+      "executed": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "log_sha256": "76407880ece145e94ef705441ba1f03258f017302d265f9e97ae91abc6274603",
+      "trx_sha256": "013da1549722e193f5afb394f311462079ffdafa9fb640282928514457f1d3a8"
+    }
+  ],
+  "format": {
+    "exit_code": 0,
+    "formatted": "0 of 6319",
+    "analyzers": {
+      "KhaozEngine.MapDoc": "5+155",
+      "KhaozEngine.MapDoc.Tests": "5+211",
+      "KhaozEngine.MapEditor.Tests": "5+213"
+    },
+    "workspace_warnings": 0
+  },
+  "guards": {
+    "check-dashes": 0,
+    "check-prose": 0,
+    "check-file-size": 0,
+    "check-agent-instructions": 0,
+    "check-doc-versions": 0
+  },
+  "review": {
+    "verdict": "Approved",
+    "spec": "compliant",
+    "blocking_findings": 0,
+    "minor": [
+      "refusal-path coverage",
+      "ruled-quad vertex sets not asserted"
+    ]
+  },
+  "rulings": [
+    "T10-1 paired RED and Editor compile check for the linked fixture",
+    "T10-2 batched coverage hardening for Task 9 and 10 minors before Task 11"
+  ],
+  "frozen_tests_byte_identical_to_red": true,
+  "scope": "Focused Task 10 proof. Not full-engine integration, candidate or release gates."
+}

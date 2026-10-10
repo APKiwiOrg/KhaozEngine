@@ -122,6 +122,7 @@ public sealed partial class MutationService
                 Kind = source.Kind,
                 AssetId = source.AssetId,
                 DisplayName = source.DisplayName,
+                SupportBinding = source.SupportBinding,
                 X = source.X + DuplicateOffset,
                 Z = source.Z + DuplicateOffset,
                 Y = source.Y,

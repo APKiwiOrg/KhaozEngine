@@ -22,7 +22,8 @@ public sealed partial class BepuPhysicsWorld
         return new QueryView(this, new StaticQueryExclusions(snapshot, _reverseHandles));
     }
 
-    private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts, IPhysicsCapsuleSweep
+    private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts,
+        IPhysicsCapsuleSweep, IPhysicsCapsuleFeatures
     {
         private readonly BepuPhysicsWorld _owner;
         private readonly StaticQueryExclusions _exclusions;
@@ -54,6 +55,23 @@ public sealed partial class BepuPhysicsWorld
         }
 
         public bool CanRebase => false;
+
+        public CapsuleFeatureResult QueryCapsuleFeature(IPhysicsQueryLease lease, SeamStaticHandle target,
+            CapsuleShape capsule, Pose pose, float maximumSeparationMetres, Span<CapsuleIncidentFace> faces,
+            QueryFilter filter = default)
+        {
+            _owner.AuthenticateFeatureLease(lease);
+            ThrowIfDisposed();
+            return _owner.QueryCapsuleFeatureCore(this, lease, target, capsule, pose, maximumSeparationMetres,
+                faces, filter, _exclusions);
+        }
+
+        public void AssertFeatureCurrent(in CapsuleFeatureResult result, IPhysicsQueryLease lease)
+        {
+            _owner.AuthenticateFeatureLease(lease);
+            ThrowIfDisposed();
+            _owner.AssertFeatureCurrentCore(this, result, lease);
+        }
 
         public Vector3 Origin
         {

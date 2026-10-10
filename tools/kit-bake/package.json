@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Textures-ON glb re-baking for KhaozEngine prop kits. See README.md.",
+  "devEngines": {
+    "packageManager": { "name": "npm", "version": ">=11.18.0", "onFail": "error" }
+  },
   "scripts": {
     "bake": "node bake.mjs"
   },
@@ -12,6 +15,6 @@
     "@gltf-transform/extensions": "4.4.1",
     "@gltf-transform/functions": "4.4.1",
     "meshoptimizer": "1.0.1",
-    "sharp": "0.35.4"
+    "sharp": "0.35.5"
   }
 }

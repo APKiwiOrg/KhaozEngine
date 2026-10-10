@@ -1,0 +1,132 @@
+{
+  "task": "8B bounded scoped acquisition",
+  "source_commit": "2d75816678c4e7b1ce34b9bdae86e172be3fb3b2",
+  "red_commit": "49176244bf9945f775fa78c5ceb6b6d99ee44554",
+  "source_sha256": {
+    "KhaozEngine.MapDoc/Storage/MapScopedSurfaces.cs": "15fde3aab82bec617e743cb27516aa9736ac1a37b24edba2dea463fa91e38bd4",
+    "KhaozEngine.MapDoc/Storage/MapScopedAcquisition.cs": "f39663919ce2543e863266c6943874410729a8b6ec1b3854732db5cfaade6fef",
+    "KhaozEngine.MapDoc/Storage/MapBoundAcquisition.cs": "b7bb93e8ea64d2227b24166f70dea0ea7abc6443f0d5182384643b590feb9a97",
+    "KhaozEngine.MapDoc/Storage/MapAcquisitionWork.cs": "ddfc4035f2473986a67059d6883542bbbca2c8d4434c834ee94cf745abc583af",
+    "KhaozEngine.MapDoc/Storage/MapAcquiredFacts.cs": "b14e374fde053b4613d17fc0b4256709e1a525eb588f58c76c4032462c139072",
+    "KhaozEngine.MapDoc/Identity/MapScopedIdentity.cs": "2a5251731f21b4f97dcd4d2bfda60af706a0b433dacd4dce6411eb068d198803",
+    "KhaozEngine.MapDoc/Identity/MapWitnesses.cs": "d2983411e60c030613c956b9953546d36d125ecaaaa7912a60d49830a03846f7",
+    "KhaozEngine.MapDoc/Surfaces/MapLatticeRanges.cs": "70ff5fe5c7b1aa09277955c442f4a17a28b9bcfbca21e38802a08d4b369f874d",
+    "KhaozEngine.MapDoc.Tests/Storage/AnchorFixtures.cs": "791700227ea6ae3720abd6cc3afe637823b1bfdcb890e336d7baf5aea36af664",
+    "KhaozEngine.MapDoc.Tests/Storage/ScopeFixtures.cs": "aa3e5619d4cab4ac48ec08dae920e406fa5b0237986f424d91ffa2630fe17ec3",
+    "KhaozEngine.MapDoc.Tests/Storage/AcquisitionBoundFixtures.cs": "3962e96a7e5a687d83413ca96664c613b5322183ec52c05da74b03e75bbfad66",
+    "KhaozEngine.MapDoc.Tests/Storage/AcquisitionConformanceFixtures.cs": "8657db93732763f562e8a81cd12fe128455f6e7099ed0a246ac073413f5f8f8c",
+    "KhaozEngine.MapDoc.Tests/Storage/ScopedAcquisitionTests.cs": "ab94ab37ce629be2f061257b29f21b630ee78fddf00b5d41e1ee3b1b04273614",
+    "KhaozEngine.MapDoc.Tests/Storage/ScopedProducerConformanceTests.cs": "05c7d7cff4c3f26143a9ec74f49138ca38301d7968ec00821d4c50e6575aa3c6",
+    "KhaozEngine.MapEditor.Tests/MapDoc/ScopedAcquisitionWorkTests.cs": "53a4cc8706fb34f8f3841f468529935df4c222c22cb9653216802eee3484ed9f",
+    "KhaozEngine.MapEditor.Tests/MapDoc/ScopedProducerBoundWorkTests.cs": "d36d25007f825698831768f5a19114199c54f0948f8cf954a3103432d8b2c4d5"
+  },
+  "test_runs": [
+    {
+      "name": "t8b-green-mapdoc",
+      "exit_code": 1,
+      "counts": {
+        "total": 29,
+        "executed": 29,
+        "passed": 27,
+        "failed": 2,
+        "notExecuted": 0
+      },
+      "log_sha256": "1859c22fe81eceeb6ff8eef7d3fa938a7e42b074ff88fe6218c02e8b728880ad",
+      "trx_sha256": "278bb52dd7515b0866c8f8cac90b0ec9819634c19ad57e6fcfbb8205d1b32215"
+    },
+    {
+      "name": "t8b-green-mapdoc-r1",
+      "exit_code": 0,
+      "counts": {
+        "total": 29,
+        "executed": 29,
+        "passed": 29,
+        "failed": 0,
+        "notExecuted": 0
+      },
+      "log_sha256": "5092176d8c52298835d968fddc19b5e0ecd4023e27498129089e24692c30970a",
+      "trx_sha256": "0791698fa35fae8612ca0069bbaf4489ce191bdd9d1234961b17206daa211667"
+    },
+    {
+      "name": "t8b-green-editor",
+      "exit_code": 0,
+      "counts": {
+        "total": 4,
+        "executed": 4,
+        "passed": 4,
+        "failed": 0,
+        "notExecuted": 0
+      },
+      "log_sha256": "535ca7564438e5f10da3e290ae78b5525cca87490a13c2e320ea561374c89ccf",
+      "trx_sha256": "41d0a596b76e3f11d69f90900da669ee22113308ce0e8b42314ed871c898f59e"
+    }
+  ],
+  "format_runs": [
+    {
+      "name": "t8b-format",
+      "exit_code": 2,
+      "log_sha256": "c685f0d32c14ece318470b449b279cde3113902db1ac6f5b123ead68ab27b760"
+    },
+    {
+      "name": "t8b-format-apply",
+      "exit_code": 0,
+      "log_sha256": "0b19dec633b17db8555a327f735b1b60952f3528744a5bbdab2740d0a9f6551b"
+    },
+    {
+      "name": "t8b-format-r1",
+      "exit_code": 0,
+      "log_sha256": "0fca1dcc3e9ed6170c842299f47d6071494d9ac48b765709604183f0e4b9bf1f"
+    }
+  ],
+  "final_format": {
+    "included_cs_files": 16,
+    "changed_files": 0,
+    "workspace_file_count": 6290,
+    "workspace_warnings": 0,
+    "style_analyzers": {
+      "MapDoc": 5,
+      "MapDoc.Tests": 5,
+      "MapEditor.Tests": 5
+    },
+    "reference_analyzers": {
+      "MapDoc": 155,
+      "MapDoc.Tests": 211,
+      "MapEditor.Tests": 213
+    }
+  },
+  "guards": [
+    {
+      "command": "sh scripts/check-dashes.sh --tree",
+      "exitCode": 0
+    },
+    {
+      "command": "sh scripts/check-prose.sh --tree",
+      "exitCode": 0
+    },
+    {
+      "command": "sh scripts/check-file-size.sh --tree",
+      "exitCode": 0
+    },
+    {
+      "command": "sh scripts/check-agent-instructions.sh --tree",
+      "exitCode": 0
+    },
+    {
+      "command": "bash scripts/check-doc-versions.sh",
+      "exitCode": 0
+    }
+  ],
+  "review": {
+    "range": "ee965b1c7..2d7581667",
+    "spec": "Approved",
+    "quality": "Approved",
+    "findings": []
+  },
+  "corrections": [
+    "B3 added the selected room record to the input-copy fixture.",
+    "MutateFirst now distinguishes fixed-size mutable arrays from read-only collections. Initial27pass/2helper failures retained, corrected29case run passed before affected-only follow-up arrived.",
+    "Eleven whitespace findings in three new test/fixture files corrected, no assertion changes or test repeats for format."
+  ],
+  "original_12_cases_byte_identical": true,
+  "scope": "Focused Task8B proof only. No full-round integration/release or native game adoption."
+}

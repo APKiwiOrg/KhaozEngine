@@ -1,10 +1,9 @@
 using System.Collections.Generic;
-using KhaozEngine.Render2D;
 
 namespace PixelLabSheetAssembler;
 
 /// <summary>One loaded frame: its parsed frame_NNN index and pixels.</summary>
-public sealed record FrameEntry(int Index, ImageRgba Image);
+public sealed record FrameEntry(int Index, RgbaImage Image);
 
 /// <summary>A character's single animation: per PixelLab direction name, the present frames (any order).</summary>
 public sealed record CharacterAnimation(
@@ -21,7 +20,7 @@ public sealed record AssemblyOptions(
 
 /// <summary>Result of assembly: the composited sheet plus the values the consumer needs.</summary>
 public sealed record AssemblyResult(
-    ImageRgba Sheet,
+    RgbaImage Sheet,
     int FrameCount,
     float SuggestedFps,
     IReadOnlyList<string> Warnings,

@@ -1,0 +1,95 @@
+{
+  "task": "11 exact fine-patch conversion",
+  "red_commit": "8938176ba1ab941e19c26599490fb6e2abd725b4",
+  "commits": [
+    "9fecbeb3ca92b5ff6510ecbc41855dc3eabf4abb",
+    "cdcd133582c90225808cc7da66317d297ca89d51",
+    "1fe82a391979a80d8b012e4efe00f1c9f93ae8ca"
+  ],
+  "source_sha256": {
+    "KhaozEngine.MapDoc.Tests/Editing/ConversionFixtures.cs": "305275600c0737f2d1f408257d22a85b2da53be7de6a3877a4619a3c554d6789",
+    "KhaozEngine.MapDoc.Tests/Editing/FinePatchConversionRimTests.cs": "e157f7729261dc7b99972c2aba3c7444ee142978870e1c749f4b7bc022415d0d",
+    "KhaozEngine.MapDoc.Tests/Editing/FinePatchConversionSeamSpanTests.cs": "d2c0b8526ae015d8d87c1b739e42dcd50f5ffb9b8649a29fc42632c850ca49a8",
+    "KhaozEngine.MapDoc.Tests/Editing/FinePatchConversionTests.cs": "9884311744432ea9d6eee23a3d280154499dc273d58f72025f23434e1c4741ce",
+    "KhaozEngine.MapDoc.Tests/Surfaces/BoundaryContractTests.cs": "2aeb40fbf322e85b9c14c9c5cf3457c07dfbd52c17f9846182643a9c402fc23c",
+    "KhaozEngine.MapDoc/Editing/MapConversionCellGeometry.cs": "8251e7ad979b523cfb797f185778cdc31d3ffe1977e24c062d6b147d57201f7f",
+    "KhaozEngine.MapDoc/Editing/MapConversionClassifier.cs": "a9fa315188e7de0080b7417158f4bbf263857d7d245e8ddf9eebaaa97a525979",
+    "KhaozEngine.MapDoc/Editing/MapConversionDifferences.cs": "f9ce03ea021520849f70b4456ed6193f9fcf35e7f9b5afd8561a602f4334d5c8",
+    "KhaozEngine.MapDoc/Editing/MapConversionFinePatches.cs": "53b235dccede9a430598c6092f807c667fef6cabe09e35c3c3a7d9f16620a459",
+    "KhaozEngine.MapDoc/Editing/MapConversionFootprints.cs": "ee1a9cdaafee718e4ac705e1aa9ad3e6d15575cc5fab1e15f9960c58a04ee7b4",
+    "KhaozEngine.MapDoc/Editing/MapConversionOwners.cs": "b518b7b62fd0233bd7e6aa17a4a96db60ff1eb5f18646f237defced5d98c7e7a",
+    "KhaozEngine.MapDoc/Editing/MapConversionRim.cs": "9413b1c4ffdaedacc7506aea019384c5ce84ca346606ce250a0ed2fa9f669059",
+    "KhaozEngine.MapDoc/Editing/MapFinePatchConversion.cs": "41c5b71b6bcccaf3ae50a60904e2c0c319f928c034df4f8cca73b260170970e1",
+    "KhaozEngine.MapDoc/Editing/MapNativeWriteSet.cs": "fa35101696373217507f293deb1a83f5f51d1febd8859c298e8c245457cefe05",
+    "KhaozEngine.MapDoc/Surfaces/MapSurfaceVertexBuilder.cs": "06b8221d44d6a86feed03366cc6bbfac9c0b30f9928cb4c05f7ff3cb48b1761e",
+    "KhaozEngine.MapEditor.Tests/MapDoc/CompilerContractInternalTests.cs": "3140135e23ae45df10a85cd0dcc75db534366bd83b3dc042fe1109fa73385512"
+  },
+  "test_runs": [
+    {
+      "name": "t11c-green-mapdoc",
+      "executed": 37,
+      "passed": 37,
+      "failed": 0,
+      "trx_sha256": "96dd3d11d10058a9e56f9e82fa274c101b1f1f19c24df705103d1187a639073a"
+    },
+    {
+      "name": "t11c-green-editor",
+      "executed": 2,
+      "passed": 2,
+      "failed": 0,
+      "trx_sha256": "aae67468613edf039c79cc667e4519cbc2911dfbb622a67e4516810c9ff0f1c5"
+    },
+    {
+      "name": "t11f1-green-mapdoc",
+      "executed": 90,
+      "passed": 90,
+      "failed": 0,
+      "trx_sha256": "3e24af3b3dec80f271054e9fae54a5307e902f3b1fce88d3332e6590536b6be2"
+    },
+    {
+      "name": "t11f1-green-editor",
+      "executed": 4,
+      "passed": 4,
+      "failed": 0,
+      "trx_sha256": "a8adefed69ae9214e8559cc059b8e8c7fb91275f340c9d2b5023a1824a94e4ea"
+    },
+    {
+      "name": "t11f1-green-compat",
+      "executed": 2,
+      "passed": 2,
+      "failed": 0,
+      "trx_sha256": "782bcc3fe45518527010a9cc34ed603befdae1d07a5dbbb7d000a97caf88e2d9"
+    },
+    {
+      "name": "t11f2-mapdoc",
+      "executed": 21,
+      "passed": 21,
+      "failed": 0,
+      "trx_sha256": "d5b494a8f59fc2fe6f6339f31566a1f21a9bfbf3acc776917720025618da5cbe"
+    },
+    {
+      "name": "t11f2-editor",
+      "executed": 2,
+      "passed": 2,
+      "failed": 0,
+      "trx_sha256": "7000bcf1a8f6349e0c86de5ebbcefe60530d3bd26e5c10a85c5cd51ff15f8cca"
+    }
+  ],
+  "format_and_guards": "explicit-file diagnostic format exit 0 and five guards exit 0 for every commit",
+  "reviews": {
+    "review1": "Needs fixes, 2 Important (legacy rim arithmetic, dangling fractional owners)",
+    "fix_round_1": "T11-5 and T11-6, re-review: finding 2 addressed, finding 1 regression not discriminating",
+    "fix_round_2": "discriminating 101/239 midpoint, re-review: all findings addressed"
+  },
+  "rulings": [
+    "T11-1 paired RED and Editor compile check for the linked fixture",
+    "T11-2 Slopes centre cell Auto so crossed fine topology derives from the crease",
+    "T11-3 mixed-porch digest assertion compares with a clone retargeting only porch-cells upper, per D4 in-place retarget",
+    "T11-4 one seam per contiguous fine-patch span across fine slot boundaries",
+    "T11-5 canonical exact geometry for every presence policy, released float arithmetic only in compiled offsets, legacy normals and the D9 bilinear helper",
+    "T11-6 retarget existing fractional owners to exact fine vertices or refuse atomically"
+  ],
+  "frozen_plan_tests": "Task 9 and 10 plan tests unchanged, Task 11 FinePatchConversionTests changed only by T11-3, ConversionFixtures at RED",
+  "compatibility_oracle": "2/2 after T11-5, compiled legacy offsets unchanged",
+  "scope": "Focused Task 11 proof. Not full-engine integration, candidate or release gates."
+}

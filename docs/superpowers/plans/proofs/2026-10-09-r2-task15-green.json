@@ -1,0 +1,56 @@
+{
+  "task": "15 canonical relation and portal facts for F3 and Grimhollow #458",
+  "red_commit": "657d2498349ebbda5c7ecf3def405a7e6e58b8b0",
+  "commits": [
+    "d29d4199beddf2ed26acb7982546371cf0083b8e",
+    "c44b81febc672f646f3029371e201cef97052fb4"
+  ],
+  "source_sha256": {
+    "KhaozEngine.MapDoc.Tests/Spaces/RelationFixtures.cs": "dbaa9d0e1ea3d7b8db007a165ee82050164702cc6a449fa931c9ce454b8107b8",
+    "KhaozEngine.MapDoc.Tests/Spaces/RelationRegressionTests.cs": "1f289d07e85800062a0bfe9313c21b453f027c24c128998ddcbcba42bfddd346",
+    "KhaozEngine.MapDoc.Tests/Spaces/SpaceRelationFactsTests.cs": "bd6b04e3410c810003c649ee73ea60be5a58f8dbd058c1d77fe376c27d46ba26",
+    "KhaozEngine.MapDoc/Spaces/MapRelationApertures.cs": "7dcf59dde6598bb258336d61a9cb335bd0f79a0b854257fa2ad22678ad5a16a1",
+    "KhaozEngine.MapDoc/Spaces/MapRelationFacts.cs": "d3f6850de7461bf8142d51df569c5a2f06b0b1b716f01f485ce7675c0b092624",
+    "KhaozEngine.MapDoc/Spaces/MapSpaceRelations.cs": "cc318458f521165c5dda26cee9406d402ab7c2f48f135e6ff76c5aeb13f137a6"
+  },
+  "final_runs": [
+    {
+      "name": "t15f1-green-mapdoc",
+      "executed": 12,
+      "passed": 12,
+      "failed": 0,
+      "trx_sha256": "bd11dd7b6b99ead8e64a3e42db5ca13ad33960a7d7511a6413a4c01aa6e17539"
+    }
+  ],
+  "earlier_runs": [
+    {
+      "name": "t15-green-mapdoc",
+      "executed": 9,
+      "passed": 9,
+      "failed": 0,
+      "trx_sha256": "b7c3b2c3c83574f6c53b9ed038b200f8f78c3d51564805bbd735be0be1f04412"
+    }
+  ],
+  "fix_round_1_red": {
+    "name": "t15f1-red-mapdoc",
+    "executed": 3,
+    "passed": 2,
+    "failed": 1,
+    "trx_sha256": "4b46a8930b1034cdb41ab3df52f9ddb07512ba53f8fc3246184d3aa85c92e15e"
+  },
+  "run_verification": "Delegated worker runs. Parent verified every TRX started after the last product edit and the committed product tree matched the tested tree. No earlier product file changed.",
+  "format_and_guards": "full explicit-file format verify exit 0 and five guards exit 0 for every commit",
+  "reviews": {
+    "review1": "Needs fixes, 1 Important (opening path published without its acquired link)",
+    "fix_round_1": "addressed, no new breakage"
+  },
+  "rulings": [
+    "T15-1 RelationFixtures.cs compiles into MapEditor.Tests, paired RED",
+    "T15-2 aperture columns follow the resolved band chain vertices, the far door has two columns"
+  ],
+  "notes": [
+    "Occlusion and Clearance are NotEvaluated in R2. No relation fact claims support or clearance, per the owner F3 amendment of 2026-10-09 (#438 owns support). Owner provenance for installed map statics is KhaozEngine#1327 for R3."
+  ],
+  "frozen_plan_tests_unchanged": true,
+  "scope": "Focused Task 15 proof. Not full-engine integration, candidate or release gates."
+}

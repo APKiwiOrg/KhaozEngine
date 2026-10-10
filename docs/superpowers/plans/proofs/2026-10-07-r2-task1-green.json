@@ -1,0 +1,40 @@
+{
+  "exit": 0,
+  "executed": 63,
+  "passed": 63,
+  "failed": 0,
+  "skipped": 0,
+  "new_cases": [
+    "KhaozEngine.Tests.MapDoc.MapTiledStaleWindowTests.StaleWindow_RefusesWhenTheManifestIsUnreadableOrMissing(fault: \"garbage\")",
+    "KhaozEngine.Tests.MapDoc.MapTiledStaleWindowTests.CurrentWindow_SavesAndRefreshesItsGenerationWitness",
+    "KhaozEngine.Tests.MapDoc.MapTiledStaleWindowTests.StaleWindow_RefusesWhenTheManifestIsUnreadableOrMissing(fault: \"missing\")",
+    "KhaozEngine.Tests.MapDoc.MapTiledStaleWindowTests.WholeDocumentAndSaveAsKeepReleasedBehaviour",
+    "KhaozEngine.Tests.MapDoc.MapTiledStaleWindowTests.GenerationWitness_FlowsThroughEveryManifestReaderAndTransactionClone",
+    "KhaozEngine.Tests.MapDoc.MapTiledStaleWindowTests.StaleWindow_RefusesBeforeTouchingTheManifestTemp",
+    "KhaozEngine.Tests.MapDoc.MapTiledStaleWindowTests.StaleWindow_RefusesAfterAnotherWriterReplacedAnUnloadedTile"
+  ],
+  "source_hashes": {
+    "KhaozEngine.MapDoc/MapTileIndex.cs": "f55ac388062d2f73592ebec4c10eb97761e7bd334509a3cccf87deff2b1ec1e2",
+    "KhaozEngine.MapDoc/MapTiledFile.cs": "677516de776a40229c0adb5a8e28c0051728f5bab5b413d011df8e31fb92aa75",
+    "KhaozEngine.MapDoc/MapTiledFile.Save.cs": "a884e71d4353d4686283fd63c27aebffe7bd8cf6a85cd9f1eb1ef56d15d0599e",
+    "KhaozEngine.MapEditor.Tests/MapDoc/MapTiledStaleWindowTests.cs": "a0a5a750fc22e9f887ba4c7750bc69fc77e0f6340a6554054d07d45dbc528c9a"
+  },
+  "trx_sha256": "4f1d11a034a1339f50e4624b17d9e0e3081a6e0510178b801fb0d08f7b9eb576",
+  "log_sha256": "60db8b44107004dd3135944266618a3b32636ac0583cf02876fed079289f82bb",
+  "secondary_slot_released": true,
+  "implementation_base": "ef06f06543b1b380ad8a953fd218fa0a221dfc96",
+  "source_review": {
+    "task": "wa-r2-task1-source-review1-20261007",
+    "product_spec": "pass",
+    "correction": "Added using KhaozEngine.MapEditor for NativeDocumentSnapshot. Other reviewed bytes unchanged.",
+    "verification": "Coordinator accepted import and unchanged product hashes before GREEN."
+  },
+  "format": {
+    "exit": 0,
+    "log_sha256": "239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c",
+    "warning": "Warnings were encountered while loading the workspace. Set the verbosity option to the diagnostic level to log warnings.",
+    "warning_cause": "Not classified by the default-verbosity output. No diagnostic rerun authorized or performed.",
+    "source_hashes_unchanged": true
+  },
+  "scope": "Task 1 only. No full-round, native-surface, release or integration claim."
+}

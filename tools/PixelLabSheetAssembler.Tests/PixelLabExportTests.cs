@@ -3,8 +3,6 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
-using KhaozEngine.Render2D;
-using static PixelLabSheetAssembler.Tests.ImageFixtures;
 using Xunit;
 
 namespace PixelLabSheetAssembler.Tests;
@@ -33,9 +31,9 @@ public class PixelLabExportTests
                 string rel = $"{folder}/animations/walking/{d}/frame_{i:000}.png";
                 string full = Path.Combine(root, rel);
                 Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-                var img = Create(12, 12);
-                SetPixel(img, 6, 11, 255, 255, 255, 255);
-                Save(img, full);
+                var img = new RgbaImage(12, 12);
+                img[6, 11] = new Rgba32(255, 255, 255, 255);
+                img.SaveAsPng(full);
                 paths.Add($"\"{rel}\"");
             }
             dirJson.Add($"\"{d}\": [{string.Join(",", paths)}]");

@@ -1,0 +1,57 @@
+{
+  "AuthoredHashFormatFour": "df611c0912c73932f44b444a42d986a0c988369b43dff0234601fb69d62523a3",
+  "Placements": [
+    {
+      "Id": "a",
+      "Kind": "building_inn",
+      "AssetId": "tree",
+      "NumericId": 11,
+      "XBits": 3253731328,
+      "YBits": 1075838976,
+      "ZBits": 1101004800,
+      "YawBits": 1052636086,
+      "ScaleBits": 1066502455,
+      "Tags": [
+        "first",
+        "second"
+      ]
+    },
+    {
+      "Id": "b",
+      "Kind": "scenery",
+      "AssetId": "tree",
+      "NumericId": 12,
+      "XBits": 1116471296,
+      "YBits": 1075838976,
+      "ZBits": 3263954944,
+      "YawBits": 0,
+      "ScaleBits": 1065353216,
+      "Tags": [
+        "first",
+        "second"
+      ]
+    },
+    {
+      "Id": "c",
+      "Kind": "scenery",
+      "AssetId": "tree",
+      "NumericId": 13,
+      "XBits": 1092616192,
+      "YBits": 1089470464,
+      "ZBits": 1092616192,
+      "YawBits": 0,
+      "ScaleBits": 1065353216,
+      "Tags": []
+    }
+  ],
+  "Calls": [
+    {
+      "XBits": 3253731328,
+      "ZBits": 1101004800
+    },
+    {
+      "XBits": 1092616192,
+      "ZBits": 1092616192
+    }
+  ]
+}

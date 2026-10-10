@@ -1,0 +1,44 @@
+{
+  "base": "25715e31a61d1a51c72ead83607d9e1411de691d",
+  "sources": {
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureGeometry.cs": "a587308e9942d608768ab1b28aa033541d2edd428738b5770979fc079ca81174",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureGeometryNumbers.cs": "1e0670fc8725a3f7e28b4a9dae194467faa009c19f24ca1a00a42289e0040605",
+    "KhaozEngine.Physics.Bepu/CapsuleFeatureGeometryQuery.cs": "3a3612f003f1ebeed5897060346696e6eac51dc47ffb173a92f5791695c4429e",
+    "KhaozEngine.Physics.Bepu/CapsuleFeaturePolyhedra.cs": "e956ce6d142bbd05f8ba360dc1c1ff3e936a6b189e1890a17c7f3e518b05019b",
+    "KhaozEngine.Physics.Bepu/CapsuleFeaturePolyhedraClosest.cs": "2dd114b5165dd3160231b30cfdd952b98bcab88e78edd83d9cfd0f48a08ab1e2",
+    "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.CapsuleFeatures.cs": "bdc673feb8079193ac811cc14ab91c555d4bb50f88307f0ccd888f690c0b610b",
+    "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.QueryView.cs": "ffc05ad403bf414092a8c19886235a4ec432cf6898d2a65b7619cf05e18435f5",
+    "KhaozEngine.Game.Tests/Physics/CapsuleFeaturePolyhedronTests.cs": "b8a5a323f0dcbe3ffff37a7b3005b9ee4e39b1ea4889c33efcfcddde95e935e1",
+    "KhaozEngine.Game.Tests/Physics/CapsuleFeatureLifetimeTests.cs": "e9ba073cd84da2e977098333afa617bffb1d4ed6c653fba806ec8b8d6425e058"
+  },
+  "green": {
+    "exit": 0,
+    "passed": 28,
+    "failed": 0,
+    "skipped": 0,
+    "polyhedron": 16,
+    "lifetime": 12
+  },
+  "format": {
+    "exit": 0,
+    "changed": 0,
+    "selected_files": 8,
+    "target_projects": [
+      "KhaozEngine.Game.Tests",
+      "KhaozEngine.Physics.Bepu"
+    ],
+    "style_and_reference_analyzers_observed": true
+  },
+  "review": "Bounded coordinate correction independently Ready. Separate source diagnosis and parent verification confirmed preserving the installed hull face order.",
+  "prior_failure": "2026-10-07-feature-polyhedron-first-validation.json retains 27 passes and one unexpected hull Ambiguous refusal.",
+  "correction": "One hull index assignment now preserves stored order, with matching source/proof comments. Strict topology, predicates and all tests unchanged.",
+  "limits": "Exact-unit proved rigid box/hull/flattened convex compound subset. Nonexact rotations, meshes and unresolved rational witnesses remain unsupported or unresolved. No LowProp/nav consumer, full-branch verification, release or game bridge fix claimed.",
+  "logs": {
+    "green": {
+      "sha256": "874e9a2547dc5033e25010290d42ef65f15346e76187b014b6529f748525eb99"
+    },
+    "format": {
+      "sha256": "8a3fa3abd34d49d8cdf3744f43be1f549449e731a9fd649fe064f4013197bb5f"
+    }
+  }
+}

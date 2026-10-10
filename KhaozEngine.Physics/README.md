@@ -141,7 +141,9 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   data the same way: a non-finite or non-positive box half extent or cylinder size, a non-finite hull
   point, mesh vertex or compound child pose, a compound child orientation that is not a unit quaternion
   (squared length off 1 by more than 1e-3), a mesh index count that is not a multiple of 3 or an index
-  outside the vertices, a compound with no children, and compound nesting deeper than 16 levels.
+  outside the vertices, a compound with no children, and compound nesting deeper than 16 levels. `Write`
+  refuses the same non-unit compound child orientation with `ArgumentException` before writing anything, so it
+  never produces a payload `Read` would refuse for it.
 
 ## Usage
 

@@ -10172,7 +10172,8 @@ resource, since placement-local support surfaces arrive with R5. It also refuses
 a hull or mesh with no points and a payload with bytes after its shape. The `PropCollisionFormat` reader beneath it
 refuses non-finite or non-positive box and cylinder sizes, non-finite points and poses, a mesh index count that is
 not a multiple of 3 or an index outside the vertices, an empty compound, compound nesting deeper than 16 levels and
-a compound child orientation that is not a unit quaternion.
+a compound child orientation that is not a unit quaternion. `PropCollisionFormat.Write` refuses that orientation
+too, so a writer never produces such a payload.
 
 **Editing colliders.** ke-mapedit's `NativeCollisionService` measures a placement's mesh top against its collider
 and resizes box colliders through content-addressed resources written by `MapAssetFileWriter`. See the

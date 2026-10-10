@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Numerics;
 using KhaozEngine.Physics;
@@ -101,7 +102,8 @@ public class PropCollisionFormatTests
     }
 
     // Malformed shape data is refused at the reader (#1346), in the same InvalidOperationException contract as a bad
-    // magic, version, kind or count. Write does not validate, so it produces each malformed stream directly.
+    // magic, version, kind or count. Write validates only compound child orientations, so it produces every other
+    // malformed stream directly.
     static InvalidOperationException ReadRefusal(PhysicsShape shape) =>
         Assert.Throws<InvalidOperationException>(() => RoundTrip(shape));
 
@@ -200,8 +202,46 @@ public class PropCollisionFormatTests
     [InlineData(0.5f, 0f, 0.5f, 0f)]
     public void Read_NonUnitChildOrientation_Refuses(float x, float y, float z, float w)
     {
-        var ex = ReadRefusal(Wrap(new BoxShape(Vector3.One), new Pose(Vector3.Zero, new Quaternion(x, y, z, w))));
+        // Write refuses this orientation too, so the stream is written with an identity child and patched.
+        byte[] bytes = WithChildOrientation(Wrap(new BoxShape(Vector3.One), Pose.Identity), new Quaternion(x, y, z, w));
+        var ex = Assert.Throws<InvalidOperationException>(() => PropCollisionFormat.Read(new MemoryStream(bytes)));
         Assert.Contains("is not a unit quaternion", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(0f, 0f, 0f, 0f)]
+    [InlineData(0.5f, 0f, 0.5f, 0f)]
+    [InlineData(0f, 0f, 0f, 1.0006f)]
+    public void Write_NonUnitChildOrientation_RefusesWithTheReadersTolerance(float x, float y, float z, float w)
+    {
+        var nested = Wrap(Wrap(new BoxShape(Vector3.One), new Pose(Vector3.Zero, new Quaternion(x, y, z, w))), Pose.Identity);
+        var ex = Assert.Throws<ArgumentException>(() => PropCollisionFormat.Write(nested, new MemoryStream()));
+        Assert.Contains("is not a unit quaternion", ex.Message);
+    }
+
+    [Fact]
+    public void Write_ChildOrientationWithinTheReadersTolerance_RoundTrips()
+    {
+        // A squared length of 1.0008 is within the 1e-3 tolerance.
+        var orientation = new Quaternion(0f, 0f, 0f, 1.0004f);
+        var child = Assert.Single(Assert.IsType<CompoundShape>(RoundTrip(Wrap(new BoxShape(Vector3.One),
+            new Pose(Vector3.Zero, orientation)))).Children);
+        Assert.Equal(orientation, child.Local.Orientation);
+    }
+
+    // The bytes of a top-level one-child compound with the child's orientation replaced. The orientation follows the
+    // magic, version, kind, child count and child position: 4 + 1 + 1 + 4 + 12 bytes.
+    static byte[] WithChildOrientation(CompoundShape shape, Quaternion orientation)
+    {
+        using var stream = new MemoryStream();
+        PropCollisionFormat.Write(shape, stream);
+        byte[] bytes = stream.ToArray();
+        const int offset = 22;
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset), orientation.X);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 4), orientation.Y);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 8), orientation.Z);
+        BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(offset + 12), orientation.W);
+        return bytes;
     }
 
     [Fact]

@@ -29,15 +29,34 @@ public static class PropCollisionFormat
     internal const byte KindCompound = 5;
 
     /// <summary>Serialize <paramref name="shape"/> to <paramref name="stream"/> in the KECL binary format:
-    /// Magic (uint32 LE) + version (byte) + kind (byte) + payload. The stream is left open.</summary>
+    /// Magic (uint32 LE) + version (byte) + kind (byte) + payload. The stream is left open. Throws
+    /// <see cref="ArgumentException"/>, before writing anything, for a compound child orientation that is not a unit
+    /// quaternion under the tolerance <see cref="Read(Stream)"/> applies, since Read would refuse the
+    /// payload.</summary>
     public static void Write(PhysicsShape shape, Stream stream)
     {
         if (shape == null) throw new ArgumentNullException(nameof(shape));
         if (stream == null) throw new ArgumentNullException(nameof(stream));
+        RequireUnitOrientations(shape);
         using var w = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
         w.Write(Magic);
         w.Write(Version);
         WriteShape(w, shape);
+    }
+
+    // Refuses, before any byte is written, a compound child orientation Read would refuse as not a unit quaternion.
+    static void RequireUnitOrientations(PhysicsShape shape)
+    {
+        if (shape is not CompoundShape compound) return;
+        foreach (CompoundChild child in compound.Children)
+        {
+            Quaternion orientation = child.Local.Orientation;
+            if (!IsUnitOrientation(orientation, out float lengthSquared))
+                throw new ArgumentException(
+                    $"PropCollisionFormat.Write: compound child orientation {orientation} is not a unit quaternion " +
+                    $"(squared length {lengthSquared}).", nameof(shape));
+            RequireUnitOrientations(child.Shape);
+        }
     }
 
     // Writes a single shape's kind byte + payload. Recurses for compound children. No magic/version here (the
@@ -80,14 +99,16 @@ public static class PropCollisionFormat
                 }
                 break;
             default:
-                throw new NotSupportedException($"PropCollisionFormat.Write: unsupported shape type {shape.GetType().Name}");
+                throw new NotSupportedException(
+                    $"PropCollisionFormat.Write: unsupported shape type {shape.GetType().Name}");
         }
     }
 
     static void WritePose(BinaryWriter w, Pose pose)
     {
         w.Write(pose.Position.X); w.Write(pose.Position.Y); w.Write(pose.Position.Z);
-        w.Write(pose.Orientation.X); w.Write(pose.Orientation.Y); w.Write(pose.Orientation.Z); w.Write(pose.Orientation.W);
+        w.Write(pose.Orientation.X); w.Write(pose.Orientation.Y);
+        w.Write(pose.Orientation.Z); w.Write(pose.Orientation.W);
     }
 
     /// <summary>Read a single baked shape from <paramref name="stream"/>. Throws
@@ -117,11 +138,12 @@ public static class PropCollisionFormat
         return ReadShape(r, 0);
     }
 
-    /// <summary>The deepest compound nesting <see cref="Read(Stream)"/> accepts. A top-level compound is level 1.</summary>
+    /// <summary>The deepest compound nesting <see cref="Read(Stream)"/> accepts. A top-level compound is level
+    /// 1.</summary>
     internal const int MaxCompoundDepth = 16;
 
     /// <summary>How far a compound child orientation's squared length may differ from 1 before
-    /// <see cref="Read(Stream)"/> refuses it.</summary>
+    /// <see cref="Read(Stream)"/> and <see cref="Write"/> refuse it.</summary>
     internal const float UnitOrientationTolerance = 1e-3f;
 
     // Bytes the smallest possible encoding of one array element occupies, used only as a fallback ceiling when the
@@ -156,7 +178,8 @@ public static class PropCollisionFormat
             long remaining = stream.Length - stream.Position;
             if ((long)count * elementMinBytes > remaining)
                 throw new InvalidOperationException(
-                    $"PropCollisionFormat: {what} count {count} needs at least {(long)count * elementMinBytes} bytes, but only {remaining} remain in the stream.");
+                    $"PropCollisionFormat: {what} count {count} needs at least {(long)count * elementMinBytes} " +
+                    $"bytes, but only {remaining} remain in the stream.");
         }
         else if (count > MaxCountFallback)
         {
@@ -263,11 +286,18 @@ public static class PropCollisionFormat
                 $"PropCollisionFormat: compound child pose ({pos}, {orient}) is not finite.");
         // The tolerance accepts any exporter's float rounding and refuses zero or garbage, which would collapse a
         // rotated axis. A non-unit orientation is refused, never normalized.
-        float lengthSquared = orient.LengthSquared();
-        if (MathF.Abs(lengthSquared - 1f) > UnitOrientationTolerance)
+        if (!IsUnitOrientation(orient, out float lengthSquared))
             throw new InvalidOperationException(
-                $"PropCollisionFormat: compound child orientation {orient} is not a unit quaternion (squared length {lengthSquared}).");
+                $"PropCollisionFormat: compound child orientation {orient} is not a unit quaternion " +
+                $"(squared length {lengthSquared}).");
         return new Pose(pos, orient);
+    }
+
+    // Read and Write share this rule. A NaN squared length passes here, and Read refuses it as not finite first.
+    static bool IsUnitOrientation(Quaternion orientation, out float lengthSquared)
+    {
+        lengthSquared = orientation.LengthSquared();
+        return !(MathF.Abs(lengthSquared - 1f) > UnitOrientationTolerance);
     }
 
     /// <summary>Read a single baked shape from a <c>.coll</c> file path. Convenience over the

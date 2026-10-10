@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -114,12 +115,16 @@ internal static partial class NativeWorldFixtures
         centimetreCrate["sourceUnitsToMetres"] = 0.01f;
         assets.Add(centimetreCrate);
 
-        // A cylinder child whose orientation is not a unit quaternion and would rotate its axis to zero.
-        Solid("degenerate-orientation-collider", new CompoundShape(new[]
-            {
-                new CompoundChild(new CylinderShape(0.2f, 0.5f), new Pose(Vector3.Zero, new Quaternion(0.5f, 0f, 0.5f, 0f))),
-            }),
-            -Vector3.One, Vector3.One);
+        // A cylinder child whose orientation (0.5, 0, 0.5, 0) is not a unit quaternion and would rotate its axis to
+        // zero. Write refuses it, so an identity child is written and its orientation, which follows the magic, version,
+        // kind, child count and child position, is patched in the bytes.
+        byte[] degenerate = ColliderBytes(
+            new CompoundShape(new[] { new CompoundChild(new CylinderShape(0.2f, 0.5f), Pose.Identity) }));
+        foreach ((int at, float value) in new[] { (22, 0.5f), (26, 0f), (30, 0.5f), (34, 0f) })
+            BinaryPrimitives.WriteSingleLittleEndian(degenerate.AsSpan(at), value);
+        resources.Add(Resource(source.Add("degenerate-orientation-collider.collider", degenerate), MapResourceKind.Collider));
+        assets.Add(Asset("degenerate-orientation-collider", -Vector3.One, Vector3.One,
+            "degenerate-orientation-collider.collider", null));
 
         // Point sets with nothing in them, refused before any bounds are taken.
         Solid("empty-hull-collider", new ConvexHullShape(Array.Empty<Vector3>()), -Vector3.One, Vector3.One);

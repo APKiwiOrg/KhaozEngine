@@ -81,15 +81,19 @@ internal static partial class SqliteCatalogSchemaValidation
         if (version == 2)
         {
             // Read HERE rather than reusing the first snapshot, for the reason given below: a version 1 file
-            // this open just migrated, or one another host migrated, has objects the snapshot never saw.
-            ValidateVersionTwoObjects(Read(() => ReadSchemaObjects(connection)));
-            if (mode != ContentAuthoringSchemaMode.AutoCreate)
+            // this open just migrated, or one another host migrated, has objects the snapshot never saw. A host
+            // that migrated in between through 3 to 4 leaves version 4 objects, which is not a refusal (#1353).
+            version = ValidateVersionTwoObjects(connection);
+            if (version == 2)
             {
-                throw Mismatch("at unsupported version '2'");
-            }
+                if (mode != ContentAuthoringSchemaMode.AutoCreate)
+                {
+                    throw Mismatch("at unsupported version '2'");
+                }
 
-            MigrateVersionTwo(connection);
-            version = Read(() => ReadSchemaVersion(connection));
+                MigrateVersionTwo(connection);
+                version = Read(() => ReadSchemaVersion(connection));
+            }
         }
 
         if (version == 3)

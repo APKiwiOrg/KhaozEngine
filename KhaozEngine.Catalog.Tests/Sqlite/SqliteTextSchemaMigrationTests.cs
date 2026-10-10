@@ -168,6 +168,44 @@ public sealed class SqliteTextSchemaMigrationTests
         Assert.Equal(3L, SqliteCatalogSchemaValidation.ValidateVersionThreeObjects(genuine));
     }
 
+    /// <summary>
+    /// The version 2 check an open runs after it read version 2 (#1353). Another host can migrate through 3 to 4
+    /// between that read and this check, so version 4 objects under a version that has since moved to 4 answer 4.
+    /// The same objects under a version still at 2 are a mismatch, and a genuine version 2 answers 2. Version 3
+    /// objects are one of the shapes the version 2 migration passes through, so they pass this check, and the
+    /// migration's own version check under the write lock leaves another host's version 3 alone.
+    /// </summary>
+    [Fact]
+    public async Task The_version_2_check_accepts_a_mismatch_only_when_another_host_already_moved_the_version_past_2()
+    {
+        using var database = new TemporaryCatalogDatabase();
+        using (var store = new SqliteContentAuthoringStore(database.ConnectionString, ThingRegistry()))
+        {
+            await store.InitializeAsync(ContentAuthoringSchemaMode.AutoCreate);
+        }
+
+        using (var migrated = new SqliteConnection(database.ConnectionString + ";Pooling=False"))
+        {
+            migrated.Open();
+            Assert.Equal(4L, SqliteCatalogSchemaValidation.ValidateVersionTwoObjects(migrated));
+        }
+
+        database.Execute("UPDATE catalog_metadata SET schema_version = 2 WHERE metadata_key = 1;");
+        using (var unmoved = new SqliteConnection(database.ConnectionString + ";Pooling=False"))
+        {
+            unmoved.Open();
+            ContentAuthoringException refused = Assert.Throws<ContentAuthoringException>(
+                () => SqliteCatalogSchemaValidation.ValidateVersionTwoObjects(unmoved));
+            Assert.Equal(ContentAuthoringException.SchemaMismatchReason, refused.Reason);
+        }
+
+        using var legacy = new TemporaryCatalogDatabase();
+        WriteLegacy(legacy, 2);
+        using var genuine = new SqliteConnection(legacy.ConnectionString + ";Pooling=False");
+        genuine.Open();
+        Assert.Equal(2L, SqliteCatalogSchemaValidation.ValidateVersionTwoObjects(genuine));
+    }
+
     [Fact]
     public async Task A_migrated_text_free_catalog_publishes_row_only_then_text_and_each_new_version_is_complete()
     {

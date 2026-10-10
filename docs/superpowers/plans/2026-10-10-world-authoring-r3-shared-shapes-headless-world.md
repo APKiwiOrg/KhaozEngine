@@ -18,7 +18,7 @@ This plan replaces `2026-10-05-world-authoring-r3-shared-shapes-headless-builder
 
 ## Approval and execution gate
 
-The owner approved the R3 gate decisions as OA22 on 2026-10-10 and asked for this rewrite. This plan needs the owner's plan approval before any code. Execution is subagent-driven and serial (OA8 method), with direct bounded verification (OA20). Approval of this plan does not authorize releases, game adoption or native G1b acceptance. Only the owner tags.
+The owner approved the R3 gate decisions as OA22 on 2026-10-10 and asked for this rewrite. The owner approved this plan at a12960610 as OA23 on 2026-10-10. Execution is subagent-driven and serial (OA8 method), with direct bounded verification (OA20). Approval of this plan does not authorize releases, game adoption or native G1b acceptance. Only the owner tags.
 
 ## Global Constraints
 

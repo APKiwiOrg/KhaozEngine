@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Physics;
@@ -46,5 +47,21 @@ public class MapWorldBuilderTests
         Assert.Contains(new MapStaticDiagnostic("long-wall", MapFeatureQuerySupport.LocalExtent), world.Diagnostics);
         Assert.DoesNotContain(world.Diagnostics, d => d.OwnerId == "crate");
         Assert.DoesNotContain(world.Diagnostics, d => d.OwnerId == "spread-boxes");
+    }
+
+    [Fact]
+    public void LegacyWorld_KeepsAnalyticTerrainAndIdentifiesItsSculpt()
+    {
+        Func<float, float, float> height = (_, _) => 0f;
+        MapBuiltWorld world = NativeWorldFixtures.BuildLegacyCrateWithSculpt(1.5f, height);
+        Assert.False(world.IsNative);
+        Assert.Empty(world.Terrain.Chunks);
+        Assert.Same(height, world.LegacySupportHeight);
+        // Tile (0, 0) at 0.5 m cells reaches one cell past its first and last cell centres.
+        Assert.Equal(new MapResolvedBounds(-0.5f, -0.5f, 16f, 16f), world.LegacySculptTiles[0].Footprint);
+
+        MapBuiltWorld edited = NativeWorldFixtures.BuildLegacyCrateWithSculpt(2f, height);
+        Assert.NotEqual(world.LegacyTerrainIdentity, edited.LegacyTerrainIdentity);
+        Assert.Equal(world.LegacyTerrainBlockDigest, edited.LegacyTerrainBlockDigest);
     }
 }

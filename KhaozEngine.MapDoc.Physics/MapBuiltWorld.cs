@@ -34,7 +34,8 @@ public sealed record MapStaticDescriptor(string OwnerId, MapStaticKind Kind, Phy
 /// <summary>Whether the backend's capsule feature query can capture a static, and why not.</summary>
 public enum MapFeatureQuerySupport
 {
-    /// <summary>Every installed leaf is capturable.</summary>
+    /// <summary>The static meets none of the limits this builder measures: flattened leaf count, curved leaves, mesh
+    /// triangle count and leaf local extent. Hull vertex and face capacity are measured at physics registration.</summary>
     Supported,
 
     /// <summary>A compound flattens to more than 64 leaves.</summary>
@@ -54,10 +55,11 @@ public enum MapFeatureQuerySupport
 /// collides and blocks.</summary>
 public sealed record MapStaticDiagnostic(string OwnerId, MapFeatureQuerySupport Support);
 
-/// <summary>One resolver-1 sculpt tile: its tile coordinate, the world bounds its deltas can change and its digest.
-/// The bounds reach one sculpt cell past the tile on each horizontal side, since heights interpolate between cell
-/// centres, and span every height the builder accepts.</summary>
-public sealed record MapLegacySculptTile(int TileX, int TileZ, MapBox3 Bounds, string Digest);
+/// <summary>One resolver-1 sculpt tile: its tile coordinate, the world XZ footprint its deltas can change and its
+/// digest. The footprint reaches one sculpt cell past the tile's first and last cell centres on each axis, since heights
+/// interpolate between cell centres. Analytic terrain heights are unknown to the builder, so there is no height
+/// range.</summary>
+public sealed record MapLegacySculptTile(int TileX, int TileZ, MapResolvedBounds Footprint, string Digest);
 
 /// <summary>A complete immutable world built from one native document. Resolver 2 worlds carry compiled terrain
 /// chunks. Resolver 1 worlds keep analytic terrain behind <see cref="LegacySupportHeight"/> and identify it through
@@ -83,7 +85,8 @@ public sealed class MapBuiltWorld
     public IReadOnlyList<MapStaticDiagnostic> Diagnostics { get; }
 
     /// <summary>The union of the storage bounds, every static and every interaction envelope. The storage bounds
-    /// carry no height, so a world with no static and no envelope has a zero height range.</summary>
+    /// carry no height, so a world with no static and no envelope has a zero height range. A resolver-1 world's
+    /// bounds do not include its analytic terrain height.</summary>
     public MapBox3 Bounds { get; }
 
     /// <summary>The resolved document's authored hash.</summary>

@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Physics;
@@ -52,7 +53,7 @@ public static class MapWorldBuilder
         if (!native)
         {
             sculpt = LegacySculpt(document);
-            terrainBlock = MapNativeResolution.LegacyTerrainBlockDigest(document);
+            terrainBlock = MapLegacyTerrainDigest.TerrainBlock(document);
             legacyIdentity = LegacyIdentity(terrainBlock, sculpt);
         }
 
@@ -76,6 +77,8 @@ public static class MapWorldBuilder
             throw new ArgumentException("ConsumerPolicyIdentity must name the consumer policy.", nameof(options));
         if (options.BuilderVersion <= 0)
             throw new ArgumentOutOfRangeException(nameof(options), "BuilderVersion must be positive.");
+        // MapTerrainPhysics.Compile repeats this check, but only after resolution has run. Refusing here keeps an
+        // invalid option from paying for a whole resolution first.
         if (options.Chunks.MaxTrianglesPerChunk is < MapTerrainPhysics.MinTrianglesPerChunk or > MapTerrainPhysics.MaxTrianglesPerChunk)
             throw new ArgumentOutOfRangeException(nameof(options),
                 $"MaxTrianglesPerChunk must be {MapTerrainPhysics.MinTrianglesPerChunk} to {MapTerrainPhysics.MaxTrianglesPerChunk}.");
@@ -119,7 +122,7 @@ public static class MapWorldBuilder
     }
 
     /// <summary>The feature query limits a static meets, measured per installed leaf as the backend measures it.</summary>
-    static IReadOnlyList<MapFeatureQuerySupport> Measure(PhysicsShape shape)
+    internal static IReadOnlyList<MapFeatureQuerySupport> Measure(PhysicsShape shape)
     {
         var found = new SortedSet<MapFeatureQuerySupport>();
         if (shape is CompoundShape compound)
@@ -208,9 +211,9 @@ public static class MapWorldBuilder
         double cell = overrides.CellSize;
         const long size = TerrainSculpt.TileSize;
         return overrides.Tiles.Select(tile => new MapLegacySculptTile(tile.TileX, tile.TileZ,
-            new MapBox3((tile.TileX * size - 1) * cell, -MaxCoordinateMetres, (tile.TileZ * size - 1) * cell,
-                (tile.TileX * size + size) * cell, MaxCoordinateMetres, (tile.TileZ * size + size) * cell),
-            MapNativeResolution.LegacySculptTileDigest(tile))).ToArray();
+            new MapResolvedBounds((float)((tile.TileX * size - 1) * cell), (float)((tile.TileZ * size - 1) * cell),
+                (float)((tile.TileX * size + size) * cell), (float)((tile.TileZ * size + size) * cell)),
+            MapLegacyTerrainDigest.SculptTile(tile))).ToArray();
     }
 
     static string LegacyIdentity(string terrainBlock, IReadOnlyList<MapLegacySculptTile> sculpt) => CanonicalHash(w =>

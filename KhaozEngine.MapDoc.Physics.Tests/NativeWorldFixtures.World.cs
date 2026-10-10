@@ -66,6 +66,19 @@ internal static partial class NativeWorldFixtures
         return MapWorldBuilder.Build(f.Document, f.Assets, Options() with { Resolve = LegacyResolveOptions });
     }
 
+    /// <summary>The legacy crate with one sculpt tile at tile (0, 0), 0.5 m cells, whose cell (0, 0) delta is
+    /// <paramref name="delta"/>, built with resolver-1 options and <paramref name="height"/>.</summary>
+    internal static MapBuiltWorld BuildLegacyCrateWithSculpt(float delta, Func<float, float, float> height)
+    {
+        NativeFixture f = LegacyCrate();
+        f.Document.TerrainOverrides = new MapTerrainOverrides(0.5f);
+        f.Document.TerrainOverrides.SetDelta(0, 0, delta);
+        return MapWorldBuilder.Build(f.Document, f.Assets,
+            Options() with { Resolve = LegacyResolveOptions, LegacySupportHeight = height });
+    }
+
+    internal static MapBuiltWorld BuildTallCornerCell() => Build(TallCornerCell());
+
     /// <summary>The resolver-2 crate built with resolver-1 options.</summary>
     internal static MapBuiltWorld BuildWithResolverMismatch()
     {

@@ -1,7 +1,5 @@
 using System;
-using System.Text.Json;
 using KhaozEngine.MapDoc.Assets;
-using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
 
@@ -24,15 +22,7 @@ public static class MapNativeResolution
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(options);
-        int resolver = document.ResolverIdentity switch
-        {
-            { PayloadVersion: 1, ResolverVersion: 1 } => 1,
-            { PayloadVersion: 1, ResolverVersion: 2 } => 2,
-            _ => throw new MapDocumentException($"Unsupported native resolver identity {Describe(document.ResolverIdentity)}."),
-        };
-        if (options.ResolverVersion != resolver)
-            throw new MapDocumentException($"Native resolver identity {Describe(document.ResolverIdentity)} " +
-                $"does not match options resolver version {options.ResolverVersion}.");
+        int resolver = RequireMatchingOptions(document.ResolverIdentity, options);
         if (resolver == 2)
             return MapResolverV2.Resolve(document, assets, MapDocumentSurfaceSource.Capture(document), options).Document;
         if (legacySupportHeight is null)
@@ -41,32 +31,27 @@ public static class MapNativeResolution
         return MapResolver.Resolve(document, assets, legacySupportHeight, options);
     }
 
-    /// <summary>The lowercase hex SHA-256 of a resolver-1 document's analytic terrain without sculpt: the
-    /// <see cref="MapDocument.Terrain"/> block as the whole writer serializes it, members in ordinal order, and the
-    /// sculpt cell size. Sculpt tiles are digested one by one with <see cref="LegacySculptTileDigest"/>.</summary>
-    public static string LegacyTerrainBlockDigest(MapDocument document)
+    /// <summary>The resolver version a supported native identity selects. Throws <see cref="MapDocumentException"/>
+    /// naming any other identity.</summary>
+    internal static int ResolverVersionOf(MapResolverIdentityDoc? identity) => identity switch
     {
-        ArgumentNullException.ThrowIfNull(document);
-        JsonSerializerOptions options = MapDocumentFile.CreateCompactOptions(MapDocRegistry.CreateDefault());
-        return MapCanonical.HashHex(w =>
-        {
-            w.WriteStartObject();
-            w.WriteString("domain", "kemap/legacy-terrain-block/1");
-            w.WriteNumber("sculptCellSize", MapCanonical.SculptCellSizeOf(document));
-            w.WritePropertyName("terrain");
-            MapSurfaceRootProjection.WriteNormalized(w, JsonSerializer.SerializeToNode(document.Terrain, options));
-            w.WriteEndObject();
-        });
+        { PayloadVersion: 1, ResolverVersion: 1 } => 1,
+        { PayloadVersion: 1, ResolverVersion: 2 } => 2,
+        _ => throw new MapDocumentException($"Unsupported native resolver identity {Describe(identity)}."),
+    };
+
+    /// <summary>The resolver version <paramref name="identity"/> selects, after refusing an unsupported identity and
+    /// then options whose resolver version differs.</summary>
+    internal static int RequireMatchingOptions(MapResolverIdentityDoc? identity, MapResolveOptions options)
+    {
+        int resolver = ResolverVersionOf(identity);
+        if (options.ResolverVersion != resolver)
+            throw new MapDocumentException($"Native resolver identity {Describe(identity)} " +
+                $"does not match options resolver version {options.ResolverVersion}.");
+        return resolver;
     }
 
-    /// <summary>The lowercase hex SHA-256 of one sculpt tile, exactly the entry digest the resolver-2 authored content
-    /// digest takes over it.</summary>
-    public static string LegacySculptTileDigest(MapSculptTile tile)
-    {
-        ArgumentNullException.ThrowIfNull(tile);
-        return MapAuthoredContentDigest.SculptDigest(tile);
-    }
-
-    static string Describe(MapResolverIdentityDoc? identity) => identity is null
+    /// <summary>The identity as "(payload, resolver)", or "(missing)".</summary>
+    internal static string Describe(MapResolverIdentityDoc? identity) => identity is null
         ? "(missing)" : $"({identity.PayloadVersion}, {identity.ResolverVersion})";
 }

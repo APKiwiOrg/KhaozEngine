@@ -50,7 +50,7 @@ internal static class CapsuleFeatureGeometry
         return single;
     }
 
-    static CapsuleFeatureStatus CaptureLeaf(Simulation simulation, TypedIndex index, in RigidPose pose,
+    internal static CapsuleFeatureStatus CaptureLeaf(Simulation simulation, TypedIndex index, in RigidPose pose,
         in RigidPose localPose, int leafId, out CapsuleFeaturePolyhedron? leaf)
     {
         leaf = null;

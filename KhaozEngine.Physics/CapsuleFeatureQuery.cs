@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace KhaozEngine.Physics;
 
@@ -143,6 +144,97 @@ public readonly struct CapsuleFeatureResult
     static bool ValidKind(CapsuleFeatureKind value) => value is > CapsuleFeatureKind.None and <= CapsuleFeatureKind.Vertex;
 }
 
+/// <summary>How a support neighborhood element describes its surface.</summary>
+public enum SupportElementKind : byte { Polygon, Tangent }
+
+/// <summary>One front-facing surface element whose separation from the probe may lie within the band.
+/// <c>ElementId</c> is stable per static: polyhedron leaf * 256 + face, mesh triangle index, or
+/// tangent leaf * 4 + part (0 sphere, capsule or cylinder side, 1 cylinder top cap, 2 cylinder bottom cap).
+/// The normal is the element's outward geometric normal. The witness is the element's closest point to the
+/// probe segment, enclosed by <c>PositionErrorMetres</c>.</summary>
+public readonly record struct SupportElement(StaticHandle Static, SupportElementKind Kind, int ElementId,
+    Vector3 Normal, float NormalError, Vector3 Witness, float PositionErrorMetres,
+    double SeparationLower, double SeparationUpper);
+
+/// <summary>Two polygon elements that meet within the band, each on or below the other's plane within the band.
+/// <c>First</c> is less than <c>Second</c>. Both index the published element span.</summary>
+public readonly record struct SupportJoin(int First, int Second);
+
+/// <summary>Immutable support neighborhood query data. A refusal has no lease and no written prefix.
+/// A complete result names how many elements and joins were committed to the caller's spans.</summary>
+public readonly struct SupportNeighborhoodResult
+{
+    /// <summary>The backend cap on published elements per query.</summary>
+    public const int MaximumElements = 256;
+
+    /// <summary>The backend cap on published joins per query.</summary>
+    public const int MaximumJoins = 1024;
+
+    public CapsuleFeatureStatus Status { get; }
+    public int Elements { get; }
+    public int Joins { get; }
+    public int RequiredElements { get; }
+    public int RequiredJoins { get; }
+    public IPhysicsWorld? QueryWorld { get; }
+    public IPhysicsWorld? SourceWorld { get; }
+    public IPhysicsQueryLease? Lease { get; }
+    public Vector3 Origin { get; }
+    public long GeometryGeneration { get; }
+
+    SupportNeighborhoodResult(CapsuleFeatureStatus status, int requiredElements, int requiredJoins)
+    {
+        this = default;
+        Status = status;
+        RequiredElements = requiredElements;
+        RequiredJoins = requiredJoins;
+    }
+
+    /// <summary>Creates a refusal without usable elements. Known requirements are diagnostic only and may be
+    /// supplied exclusively for <see cref="CapsuleFeatureStatus.CapacityExceeded"/>.</summary>
+    public static SupportNeighborhoodResult Refused(CapsuleFeatureStatus status, int requiredElements = 0,
+        int requiredJoins = 0)
+    {
+        if (status > CapsuleFeatureStatus.CapacityExceeded || status == CapsuleFeatureStatus.Complete)
+            throw new ArgumentOutOfRangeException(nameof(status));
+        if (requiredElements < 0 || requiredJoins < 0 || ((requiredElements != 0 || requiredJoins != 0) &&
+            status != CapsuleFeatureStatus.CapacityExceeded))
+            throw new ArgumentOutOfRangeException(nameof(requiredElements));
+        return new(status, requiredElements, requiredJoins);
+    }
+
+    /// <summary>Publishes element and join counts under their original live interval. This does not
+    /// authenticate a backend or prove completeness. The provider establishes those facts and commits the
+    /// elements and joins to the caller together.</summary>
+    public static SupportNeighborhoodResult Completed(IPhysicsWorld queryWorld, IPhysicsQueryLease lease,
+        int elements, int joins) => new(queryWorld, lease, elements, joins);
+
+    SupportNeighborhoodResult(IPhysicsWorld queryWorld, IPhysicsQueryLease lease, int elements, int joins)
+    {
+        ArgumentNullException.ThrowIfNull(queryWorld);
+        ArgumentNullException.ThrowIfNull(lease);
+        lease.AssertCurrent();
+        if (elements is < 0 or > MaximumElements)
+            throw new ArgumentOutOfRangeException(nameof(elements));
+        if (joins < 0 || joins > MaximumJoins || joins > (long)elements * (elements - 1) / 2)
+            throw new ArgumentOutOfRangeException(nameof(joins));
+        IPhysicsWorld source = lease.SourceWorld;
+        Vector3 origin = lease.Origin;
+        long generation = lease.GeometryGeneration;
+        if (source is null || !float.IsFinite(origin.X) || !float.IsFinite(origin.Y) || !float.IsFinite(origin.Z) ||
+            generation < 0)
+            throw new ArgumentException("Lease metadata must be valid.", nameof(lease));
+        this = default;
+        Status = CapsuleFeatureStatus.Complete;
+        Elements = elements;
+        Joins = joins;
+        QueryWorld = queryWorld;
+        SourceWorld = source;
+        Lease = lease;
+        Origin = origin;
+        GeometryGeneration = generation;
+    }
+}
+
 /// <summary>Optional finite-feature correspondence in the exact selected query view.
 /// A backend must establish its geometry and numerical domain independently before returning Complete.</summary>
 public interface IPhysicsCapsuleFeatures
@@ -155,6 +247,20 @@ public interface IPhysicsCapsuleFeatures
         QueryFilter filter = default);
 
     /// <summary>Rejects another receiver or lease, an expired interval and a wrong thread before entering
-    /// the owner query monitor. A later same-generation lease cannot revive an old result.</summary>
+    /// the owner query monitor. A later same-generation lease cannot revive an old result. An untyped
+    /// <c>default</c> result resolves to this overload, as it did before the neighborhood overload.</summary>
+    [OverloadResolutionPriority(1)]
     void AssertFeatureCurrent(in CapsuleFeatureResult result, IPhysicsQueryLease lease);
+
+    /// <summary>Publishes every front-facing element of every selected static whose separation from the probe
+    /// may be at most <paramref name="bandMetres"/>, ordered by static handle then element id, and the joins
+    /// between its polygons. Membership is decided by the separation's lower bound, so a tie never refuses.
+    /// Refusal or exception leaves both spans untouched. A complete result commits elements and joins together
+    /// and remains usable only under its original lease and query receiver.</summary>
+    SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe, Pose pose,
+        float bandMetres, Span<SupportElement> elements, Span<SupportJoin> joins, QueryFilter filter = default);
+
+    /// <summary>Rejects another receiver or lease, an expired interval and a wrong thread, as the feature
+    /// overload does.</summary>
+    void AssertFeatureCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease);
 }

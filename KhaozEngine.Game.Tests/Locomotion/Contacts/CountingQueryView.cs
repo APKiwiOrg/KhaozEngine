@@ -13,7 +13,7 @@ internal readonly record struct QueryCounts(int Sweeps, int Penetrations, int Ra
 }
 
 /// <summary>A query view that forwards every call to a real selected view and counts the sweeps, penetrations,
-/// raycasts and capsule-feature queries, and how many feature queries came back Unresolved. Leases come from the inner view and <see cref="SourceWorld"/> is the
+/// raycasts and capsule-feature queries, support neighborhood queries included, and how many feature queries came back Unresolved. Leases come from the inner view and <see cref="SourceWorld"/> is the
 /// inner view's, so foot support accepts it as that view. The caller owns the inner view.</summary>
 internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
     : IPhysicsWorldQueryView, IPhysicsCapsuleFeatures, IPhysicsQueryLeaseSource
@@ -62,6 +62,19 @@ internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
     }
 
     public void AssertFeatureCurrent(in CapsuleFeatureResult result, IPhysicsQueryLease lease) =>
+        ((IPhysicsCapsuleFeatures)inner).AssertFeatureCurrent(result, lease);
+
+    public SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe, Pose pose,
+        float bandMetres, Span<SupportElement> elements, Span<SupportJoin> joins, QueryFilter filter = default)
+    {
+        _features++;
+        SupportNeighborhoodResult result = ((IPhysicsCapsuleFeatures)inner).QuerySupportNeighborhood(lease, probe,
+            pose, bandMetres, elements, joins, filter);
+        if (result.Status == CapsuleFeatureStatus.Unresolved) UnresolvedFeatures++;
+        return result;
+    }
+
+    public void AssertFeatureCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease) =>
         ((IPhysicsCapsuleFeatures)inner).AssertFeatureCurrent(result, lease);
 
     public StaticHandle AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) =>

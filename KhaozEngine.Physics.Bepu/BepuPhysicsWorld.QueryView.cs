@@ -72,6 +72,23 @@ public sealed partial class BepuPhysicsWorld
             _owner.AssertFeatureCurrentCore(this, result, lease);
         }
 
+        public SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe,
+            Pose pose, float bandMetres, Span<SupportElement> elements, Span<SupportJoin> joins,
+            QueryFilter filter = default)
+        {
+            _owner.AuthenticateFeatureLease(lease);
+            ThrowIfDisposed();
+            return _owner.QuerySupportNeighborhoodCore(this, lease, probe, pose, bandMetres, elements, joins, filter,
+                _exclusions);
+        }
+
+        public void AssertFeatureCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease)
+        {
+            _owner.AuthenticateFeatureLease(lease);
+            ThrowIfDisposed();
+            _owner.AssertNeighborhoodCurrentCore(this, result, lease);
+        }
+
         public Vector3 Origin
         {
             get

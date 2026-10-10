@@ -181,6 +181,8 @@ Every phase's suite asserts these.
 6. The resolve and the ground clamp read the same surface (#468, round four).
 7. A footed tick may not seat itself on ground it cannot stand on (#486).
 8. Traction keeps a hysteresis band at the slope limit (#475).
+9. Support is independent of how static geometry is partitioned into statics, for surfaces that meet within the
+   contact band (phase 2b).
 
 ## Phases
 
@@ -188,7 +190,8 @@ Every phase's suite asserts these.
 |---|---|---|
 | 1. Contact foundation | Integrated feature query, certified support primitive, contact classifier | Phase 1 suite green, including the swimming bank repro. Legacy stepper byte-unchanged. |
 | 2. Ground core | Up, side, down passes, recovery, slopes, walls, step-up, step-down, ledges ([phase 2 spec](CONTACT-CONTROLLER-PHASE-2-GROUND-CORE-2026-10-10.md)) | Ground suite green, including the shallow-tread runs at 2, 3 and 4 m/s and the 0.41 m ledge. |
-| 2b. Certified support coverage | A complete support neighborhood across statics, certified at concave creases, vertices, curved primitives and through one-sided back faces (#1329 to #1333, #1340, #1342, [phase 2b spec](CONTACT-CONTROLLER-PHASE-2B-SUPPORT-NEIGHBORHOOD-2026-10-10.md)) | Every phase 1 refusal row replaced by a certified result. Must land before any game adopts. |
+| 2b. Certified support coverage | A complete support neighborhood across statics, certified at concave creases, vertices, curved primitives and through one-sided back faces (#1329 to #1333, #1340, #1342, [phase 2b spec](CONTACT-CONTROLLER-PHASE-2B-SUPPORT-NEIGHBORHOOD-2026-10-10.md)) | Every phase 1 refusal row replaced by a certified result. Must land before any game adopts. Implemented, staged for 20.30.1. |
+| Cost gate before adoption | Support query time ([#1334](https://github.com/APKiwiOrg/KhaozEngine/issues/1334)). A `FootSupport.Find` takes 55 to 165 microseconds on ordinary scenes, 542 microseconds on a 20,000-triangle grid and 102 ms on a 96-triangle fan, with zero allocation. Candidate approaches: filtered predicates with an exact fallback, lazy joins tested only where certification reads them, and a per-lease join cache. | Recorded time per `Find` within the #1334 budget on ordinary scenes and dense fans, results unchanged against the recorded equivalence fixture. No game adopts before it passes. |
 | 3. Air and state | Jump, coyote, momentum, landing impact, commitment, steep slide, traction hysteresis | Air and slide suite green with invariants 5 to 8. |
 | 4. Signals and fluids | Climb signals, step delta, support grant, facing, the swimming handoff contract | Signal suite green. Swimming's explicit grounded ticks run on this ground core. |
 | 5. Switch, wire, navigation | `MoveTuning` selector, any wire fields, bake identity, traversal probe and capture on the selected controller | Both controllers selectable. Legacy bakes still load. A new-controller bake round-trips. |
@@ -232,48 +235,59 @@ receives them. Candidates are proposed by bounded queries and bound to a face on
    statics from its lowest point at `feetY + reachUp + BandMargin` over
    `reachUp + reachDown + 2 * BandMargin`. `BandMargin` is 1 mm and expands proposals only, so surfaces on
    either inclusive band edge are reached inside the sweep. The axis probe has radius
-   0.01, the feature backend's minimum query radius, and proposes the surface under the axis. The leg probe
+   0.01, the neighborhood backend's minimum query radius, and proposes the surface under the axis. The leg probe
    has the footprint radius and proposes the first surface the disc meets, which also catches a rail or edge
-   the axis probe would miss. A proposal is a hint about which static and where, never a face. A probe that
-   starts overlapped is a refused proposal at the band top.
-3. **Certification.** Each hit is queried with `QueryCapsuleFeature` under the tick's lease, with the probe
-   capsule at its contact pose and the existing 0.1 mm contact band, then certified at the axis by
-   `SupportCertification`. The walkable threshold is `cos(MaxSlopeRadians)`. Every incident face of a face or
-   open-boundary patch must be walkable. A convex crease is walkable when any side is and contributes its
-   lowest walkable plane at the axis, so a ridge supports its axis side instead of refusing. A walkable
-   contribution is the certified interval of `min(plane at axis, witness height)`. A feature with no walkable
-   face is steep at the witness. Concave creases, vertices and curved primitives the backend reports as
-   `Unresolved`, `Ambiguous` or `Unsupported` refuse, as does any uncertain sign. A refusal is a refused
-   proposal at the probe's lowest point. A ray hit, sweep normal or nudged sample never stands in for a
-   face. The 2026-10-07 measurements found corner rays missing the edge by 0.03 to 5.08 micrometres.
+   the axis probe would miss. The probes sweep with `QueryFilter.CullBackFaces`, so they pass a mesh triangle
+   that does not face against the sweep, vertical ones included, as Bepu's one-sided mesh contacts do. A
+   proposal is a contact pose, never a face. A probe that starts overlapped is a refused proposal at the band
+   top.
+3. **Certification.** Each probe's contact pose is queried with `QuerySupportNeighborhood` under the tick's
+   lease and the existing 0.1 mm contact band. The backend publishes every front-facing element of every
+   selected static that may lie within the band (box and hull faces, mesh triangles and tangent points on
+   spheres, capsules and cylinders) with bounded normals and witnesses, plus a symmetric join matrix. Two
+   polygons are joined when they may meet within the band and each lies on or below the other's plane within
+   it, decided geometrically for every pair, inside one static and across statics. `SupportCertification`
+   then certifies every member at the axis with outward-rounded intervals and no fixed error threshold. A
+   member is walkable when its normal's lower Y bound reaches `cos(MaxSlopeRadians)`. A walkable polygon
+   contributes `min(plane at axis, witness height, plane at axis of every joined walkable polygon)`, so a
+   ridge supports its axis side whether or not it is split across statics, a concave valley gives its crease
+   height and a vertex needs no classification. A steep polygon joined to any walkable polygon contributes
+   nothing. Any other steep member contributes by the phase 1 steep rule over its joined steep polygons. A
+   tangent element contributes `min(tangent plane at axis, witness height)`. A member that may face sideways
+   or down contributes nothing. The neighborhood refuses only for capacity (256 elements) or a domain the
+   backend cannot certify, and a refusal is a refused proposal at the probe's contact. A ray hit, sweep
+   normal or nudged sample never stands in for a face. The 2026-10-07 measurements found corner rays missing
+   the edge by 0.03 to 5.08 micrometres. Phase 1 certified one unique closest feature of the swept static
+   instead and refused concave creases, vertices, curved primitives and ties. The
+   [phase 2b spec](CONTACT-CONTROLLER-PHASE-2B-SUPPORT-NEIGHBORHOOD-2026-10-10.md) owns the neighborhood
+   contract.
 
 Contributions qualify when their certified interval overlaps the inclusive band
 `[feetY - reachDown, feetY + reachUp]`, even when the midpoint lies outside it. The result is the qualifying
 contribution with the highest midpoint, else `None`. Equal midpoints prefer walkable, then the witness
-nearest the axis in XZ, then terrain, then the lower static handle. A certified contribution wholly above
-the band is a refusal because it can hide lower support. A refusal below the band bottom lies only in the
+nearest the axis in XZ, then terrain, then the lower static handle. A member whose contribution lies wholly
+above the band is not a candidate. A probe whose contact lies above the band top, or whose neighborhood has
+no member supporting at or below the band top, is a refused proposal at its contact, because the surface
+that stopped it can hide lower support. A refusal below the band bottom lies only in the
 proposal margin and is ignored. A remaining refused proposal above the selected contribution's upper bound,
 or a refusal with nothing selected, returns `Refused`, so the body never stands under a surface it could
 not certify. `Height` is the selected midpoint and `HeightError` encloses both bounds from it.
 
 Known limits:
 
-- A surface lying under a higher sloped surface inside the same disc is not proposed, because the leg probe
-  stops at the higher one. The phase 1 suite pins the case, and phase 2 decides whether a second proposal
-  below the first is needed.
-- Separate statics cannot form a certified crease. A convex seam between them is supported by whichever face
-  a probe meets first. Where the leg probe reaches the shared edge before the axis-side face, roughly at
-  seams of 30 to 45 degrees, support floats up to `FootRadius tan(theta)` above the axis-side plane. At
-  10 degrees the probe meets the axis-side face first and matches the single-static crease.
 - Before the backend sweep fix in 309c8e861, a capsule sweep could lose a nearer mesh static when another
   mesh static shared its edge. A 0.2 m leg probe over a floor mesh and a descending ramp mesh swept to
   t 0.40000004 on the floor alone and 0.42679498 on the ramp alone, yet returned the ramp with both present.
   The fix returns the nearest hit, and the mesh variants of the descending ramp and two-static ridge cases
   pass. Compound statics share the fix without a dedicated regression test (#1335).
-- At an exact seam between coplanar statics, the owner is the backend's first hit, deterministic for a world
-  built in the same order.
-- Seeing past the back face of a one-sided mesh inside the reach band is deferred to phase 2. A probe that
-  meets a back face refuses until then.
+- At an exact seam between coplanar statics, both statics are members and the owner follows the selection
+  tie order, deterministic for a world built in the same order.
+- A one-sided fin tilted very slightly upward within 1 cm of the axis is still hit by the probe, contributes
+  below the band and hides the floor beneath, giving `None`. An exactly vertical fin is culled.
+- Support query time misses its target and is the cost gate before adoption in the phases table.
+
+Phase 2b closed the phase 1 limits where a lower surface under a higher one inside the disc was not proposed,
+where separate statics could not form a certified crease, and where a probe meeting a back face refused.
 
 ### Shell queries
 
@@ -350,9 +364,9 @@ stay open until phase 6 proves the resting route on the new controller.
 
 - **Presentation below the knee.** Legs may overlap low obstacles up to `CapsuleRadius - FootRadius`
   before stepping. Foot IK can hide it. The playtest decides the default.
-- **Query cost.** The down pass runs two probe sweeps and up to two feature certifications under a
-  lease, against several sweeps in the stepper. Phase 2 measures it with the existing allocation and timing
-  guards before adoption.
+- **Query cost.** The down pass runs two probe sweeps and two support neighborhood queries under a lease,
+  against several sweeps in the stepper. Phase 2b made a warm `Find` allocation-free, and the cost gate in the
+  phases table closes its time before adoption.
 - **Analytic cliffs.** Steep analytic terrain is not in the physics world, so it cannot block the shell.
   Phase 2 blocks it through the down pass, where a rise above `StepHeight` refuses the move. Its suite
   covers a terrain cliff explicitly.

@@ -8588,6 +8588,9 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 - Optional `IPhysicsCapsuleFeatures.QueryCapsuleFeature(lease, target, capsule, pose, maximumSeparationMetres, faces) -> CapsuleFeatureResult`
   certifies the closest finite feature of one static under a read lease. Bepu owners and restricted views
   support it. See [Capsule-feature certification](#capsule-feature-certification-iphysicscapsulefeatures).
+- Optional `IPhysicsCapsuleFeatures.QuerySupportNeighborhood(lease, probe, pose, bandMetres, elements, joins, filter) -> SupportNeighborhoodResult`
+  publishes every front-facing surface element of every selected static within a band of an upright probe,
+  with the symmetric join matrix over them. See [Support neighborhoods](#support-neighborhoods).
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
   `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
   `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,
@@ -8602,7 +8605,8 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   `BoxShape(halfExtents)`, `CylinderShape(radius, length)`, `ConvexHullShape(points)`,
   `TriangleMeshShape(vertices, indices)`, `CompoundShape(children)`. A dynamic body accepts any of these EXCEPT a
   triangle mesh (a mesh has no closed volume, so no mass/inertia); use a convex primitive, hull, or compound of
-  convex leaves. Base-aligned shapes (cylinder/hull) rest base-on-ground exactly as statics do (centroid-safe).
+  convex leaves. Every mesh vertex must be finite. The Bepu backend throws `ArgumentException` at `AddStatic`
+  for a mesh with a non-finite vertex, which would otherwise hide valid triangles from its mesh tree. Base-aligned shapes (cylinder/hull) rest base-on-ground exactly as statics do (centroid-safe).
 - `DynamicBodyDescription(float mass)` / `DynamicBodyDescription.WithMass(mass)`, with optional
   `LinearVelocity`, `AngularVelocity`, `SleepThreshold` (negative = backend default, 0 = never sleep). Mass &lt;= 0
   is an infinite-mass (kinematic) body: gravity and impacts do not move it, but its velocity does.
@@ -8631,7 +8635,12 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   `QueryMobility` is `All` (default), `Statics`, or `Dynamics`. `QueryFilter.All` / default matches every body;
   `QueryFilter.StaticsOnly` / `QueryFilter.DynamicsOnly` restrict by mobility (the Bepu backend applies the gate,
   so e.g. a downward ground probe passing `StaticsOnly` ignores a dynamic crate under the character). The layer
-  mask (`0` = all layers) is reserved.
+  mask (`0` = all layers) is reserved. `CullBackFaces` (default false) makes `SweepCapsule` skip a static mesh
+  triangle that does not face against the sweep, one whose front normal `Cross(C - A, B - A)` has a dot product
+  with the sweep direction of at least zero, so vertical triangles are skipped too. A downward support probe
+  then passes the back of a one-sided mesh and reaches what lies beyond, as Bepu's one-sided mesh contacts do.
+  Compound children are never culled, raycasts are already one-sided and ignore the flag, and
+  `ComputePenetration` takes no filter. Use it as `QueryFilter.StaticsOnly with { CullBackFaces = true }`.
 - `IPhysicsWorld` joint constraints (connect two dynamic bodies, or one dynamic body to a fixed world anchor):
   `AddConstraint(in ConstraintDescription description) -> ConstraintHandle`, `RemoveConstraint(ConstraintHandle handle)`
   (safe mid-step; a double-remove or a handle whose body was already removed is a no-op). Removing a constrained
@@ -8934,6 +8943,54 @@ if (world is IPhysicsCapsuleFeatures features && world is IPhysicsQueryLeaseSour
   never carry it into a later lease. A later lease of the same generation cannot revive it, and
   `AssertFeatureCurrent` throws for another receiver, another lease or an expired interval.
 - The faces describe geometry only. Whether a face is walkable support is the caller's rule.
+
+### Support neighborhoods
+
+`QuerySupportNeighborhood` on the same capability answers a wider question than the closest feature: every
+surface element of every selected static whose separation from an upright probe capsule may be at most
+`bandMetres`. Membership uses the lower bound of each separation interval, so a tie never refuses. Use it where
+support must not depend on which static a sweep reported or on how a scene is split into statics.
+
+```csharp
+// Under the same lease rules as the feature query. Spans can be reused across calls.
+var elements = new SupportElement[SupportNeighborhoodResult.MaximumElements];
+var joins = new ulong[elements.Length * SupportNeighborhoodResult.JoinWordsFor(elements.Length)];
+SupportNeighborhoodResult result = features.QuerySupportNeighborhood(lease, probe, contact,
+    bandMetres: 0.0001f, elements, joins, QueryFilter.StaticsOnly);
+if (result.Status == CapsuleFeatureStatus.Complete)
+{
+    features.AssertNeighborhoodCurrent(result, lease);
+    for (int i = 0; i < result.Elements; i++)
+    {
+        SupportElement element = elements[i];
+        int row = i * result.JoinWordsPerRow;
+        for (int j = 0; j < result.Elements; j++)
+        {
+            bool joined = (joins[row + j / 64] & (1UL << (j % 64))) != 0;
+            // Decide support from element.Normal, element.Witness, their error bounds and the joins.
+        }
+    }
+}
+```
+
+- Each `SupportElement` names its `Static`, a `Kind` and a stable `ElementId`. A `Polygon` is a box or hull face
+  (`leaf * 256 + face`) or one mesh triangle (its triangle index). A `Tangent` is a point on a sphere, capsule or
+  cylinder side (`leaf * 256`) or a cylinder cap (`leaf * 256 + 1` top, `+ 2` bottom). Each carries its outward
+  normal, the witness closest to the probe segment, their error bounds and the separation interval. Elements are
+  ordered by static handle, then element id.
+- Joins are a symmetric bit matrix. Row `i` starts at word `i * JoinWordsPerRow` and bit `j` is set when polygons
+  `i` and `j` may meet within the band and each lies on or below the other's plane within it. Tangent elements are
+  never joined. Index rows with `JoinWordsPerRow`, never with a stride derived from your buffer.
+- Back-facing elements are not members. Mesh triangles are certified one by one, so non-manifold edges,
+  duplicate triangles and inconsistent winding never refuse. Degenerate triangles are not members.
+- A complete result holds at most `MaximumElements` (256). A larger neighborhood returns `CapacityExceeded` with
+  `RequiredElements`. `Unsupported` means the probe, pose or band is outside the backend's certified domain (an
+  upright probe of radius 0.01 to 2, length up to 8 and a band up to 0.01) or a shape it cannot capture.
+  `Ambiguous` means a convex hull whose faces could not be proven convex and manifold. A refusal leaves both
+  spans untouched.
+- A layer filter, a non-finite pose and an invalid probe throw `ArgumentException`.
+- A result belongs to its receiver and original lease. `AssertNeighborhoodCurrent` throws for another receiver,
+  another lease or an expired interval.
 
 ---
 

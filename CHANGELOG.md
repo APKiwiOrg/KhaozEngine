@@ -13,6 +13,16 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   imports accept the same files.
 - `PngReader` decodes 1, 2 and 4-bit greyscale, scaled to 8 bits, with an optional `tRNS` colour key matched
   against the stored sample. Every PNG colour type and bit depth now decodes.
+- Locomotion's internal foot-support primitive certifies the complete support neighborhood across statics for
+  phase 2b of the #438 contact-classification controller. Concave creases, vertices, sphere, capsule and
+  cylinder statics, one-sided back faces, ridges split across statics and stair nosing ties now certify
+  instead of refusing (#1329 to #1333, #1340, #1342). Nothing consumes it yet, so movement is unchanged.
+- Physics adds `QueryFilter.CullBackFaces`, which makes `SweepCapsule` skip mesh triangles that do not face
+  against the sweep, and `IPhysicsCapsuleFeatures.QuerySupportNeighborhood`, which publishes every surface
+  element of every selected static within a band of an upright probe with the joins between them. Bepu worlds
+  and their selected query views implement it for boxes, convex hulls, meshes, spheres, capsules, cylinders and
+  compounds of those.
+- `BepuPhysicsWorld.AddStatic` throws `ArgumentException` for a triangle mesh with a non-finite vertex.
 
 ## 20.30.0
 

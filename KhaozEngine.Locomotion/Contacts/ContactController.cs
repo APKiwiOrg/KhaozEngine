@@ -117,6 +117,10 @@ internal static class ContactController
             if (clampXz is not null) tick = Bound(context, tick, clampXz);
         }
 
+        // Ground signals belong to the move, before a jump consumes its footing at the end of the tick.
+        float stepDeltaY = tick.Mode == Mode.Ground && tick.Support.Status == SupportStatus.Walkable
+            ? tick.StepRise : 0f;
+
         // The jump, decided last as legacy. The impact and the grant latch first, so a buffered relaunch on the
         // landing tick still reports both.
         bool grounded = tick.Grounded;
@@ -145,6 +149,9 @@ internal static class ContactController
             JumpBufferRemaining = jumpBuffer,
             LandingImpactSpeed = landingImpact,
             SupportGranted = supportGranted,
+            StepDeltaY = stepDeltaY,
+            ClimbRate = 0f,
+            ClimbRateEwma = 0f,
             FacingYaw = commitmentControlled ? s.FacingYaw
                 : CharacterMovement.ResolveFacing(s.FacingYaw, moveDir, faceYaw, dt, t),
             SpeedScale = state.SpeedScale,
@@ -165,6 +172,8 @@ internal static class ContactController
         LandingImpactSpeed = 0f,
         SupportGranted = false,
         StepDeltaY = 0f,
+        ClimbRate = 0f,
+        ClimbRateEwma = 0f,
         Commitment = commitment,
     };
 
@@ -222,9 +231,12 @@ internal static class ContactController
     /// <summary>What the move did. <see cref="FallSpeed"/> is the vertical speed the tick's last landing erased,
     /// negative downward, and zero without one. <see cref="Commanded"/> is the first mode's drive.
     /// <see cref="Supported"/> says the tick ended on support, walkable or steep. <see cref="Budget"/> is the climb the
-    /// tick has left, in metres.</summary>
+    /// tick has left, in metres. <see cref="Mode"/> and <see cref="Support"/> keep the final footing.
+    /// <see cref="StepRise"/>, <see cref="MoveRise"/> and <see cref="GroundTravel"/> sum only walking ground
+    /// segments, excluding air, landings and slides.</summary>
     readonly record struct Tick(Vector3 Feet, float VerticalVelocity, bool Grounded, float FallSpeed,
-        Vector2 Commanded, Segment Last, bool Supported, double Budget);
+        Vector2 Commanded, Segment Last, bool Supported, double Budget, Mode Mode, SupportSample Support,
+        float StepRise, float MoveRise, Vector2 GroundTravel);
 
     // Runs the tick's modes in turn. A grounded move that loses its footing flies or slides the time it has left. A
     // grounded start on steep support slides the whole tick with the carried velocity, as a slide start does. A slide
@@ -238,6 +250,8 @@ internal static class ContactController
         MoveTuning t = c.Tuning;
         double budget = t.MaxStepClimbSpeed > 0 ? (double)t.MaxStepClimbSpeed * dt : double.PositiveInfinity;
         float vertical = s.VerticalVelocity, time = dt, fallSpeed = 0f;
+        float stepRise = 0f, moveRise = 0f;
+        Vector2 groundTravel = Vector2.Zero;
         bool grounded = false, supported = false;
         Vector2? first = null;
         Segment last = new(commanded, commanded, Vector2.Zero, dt);
@@ -249,8 +263,13 @@ internal static class ContactController
             if (mode == Mode.Ground)
             {
                 GroundStepResult step = GroundCore.Step(feet, displacement, time, t, c.Settings, c.GroundHeight,
-                    c.GroundNormal, c.World, c.Lease, c.Gate, budget, c.ClampXz);
+                    c.GroundNormal, c.World, c.Lease, c.Gate, budget, c.ClampXz,
+                    stepInProgress: s.StepDeltaY > 0 || s.ClimbRate > 0);
                 (feet, budget, vertical) = (step.Feet, step.ClimbBudget, 0f);
+                support = step.Support;
+                stepRise += step.StepRise;
+                moveRise += step.MoveRise;
+                groundTravel += step.Achieved;
                 grounded = step.Footing is GroundFooting.Walkable or GroundFooting.Held;
                 supported = grounded || step.Footing == GroundFooting.Steep;
                 bool steepStart = segment == 0 && step.Footing == GroundFooting.Steep && step.ChangedAtStart;
@@ -266,7 +285,6 @@ internal static class ContactController
                 }
                 if (grounded || !(step.RemainingTime > 0)) break;
                 time = step.RemainingTime;
-                support = step.Support;
                 mode = step.Footing == GroundFooting.Steep ? Mode.Slide : Mode.Air;
                 continue;
             }
@@ -279,6 +297,7 @@ internal static class ContactController
                 first ??= drive;
                 (feet, budget, velocity, vertical) =
                     (slide.Feet, slide.ClimbBudget, slide.HorizontalVelocity, slide.VerticalVelocity);
+                support = slide.Support;
                 grounded = slide.Outcome is SlideOutcome.Landed or SlideOutcome.Wedged;
                 supported = slide.Outcome != SlideOutcome.Airborne;
                 if (slide.Outcome == SlideOutcome.Landed) (vertical, fallSpeed) = (0f, -slide.ImpactSpeed);
@@ -297,6 +316,7 @@ internal static class ContactController
             last = new Segment(asked, asked, air.Achieved, time);
             first ??= asked;
             (feet, budget, velocity, vertical) = (air.Feet, air.ClimbBudget, air.HorizontalVelocity, air.VerticalVelocity);
+            support = air.Support;
             grounded = air.Outcome == AirOutcome.Landed;
             supported = air.Outcome != AirOutcome.Airborne;
             if (grounded) fallSpeed = -air.FallSpeedAtContact;
@@ -310,15 +330,16 @@ internal static class ContactController
             }
             else
             {
-                support = air.Support;
                 mode = Mode.Slide;
             }
         }
-        return new Tick(feet, vertical, grounded, fallSpeed, first ?? commanded, last, supported, budget);
+        return new Tick(feet, vertical, grounded, fallSpeed, first ?? commanded, last, supported, budget, mode,
+            support, stepRise, moveRise, groundTravel);
     }
 
     static bool Finite(in MoveState s) =>
         float.IsFinite(s.Position.X) && float.IsFinite(s.Position.Y) && float.IsFinite(s.Position.Z) &&
         float.IsFinite(s.VerticalVelocity) && float.IsFinite(s.HorizontalVelocity.X) &&
-        float.IsFinite(s.HorizontalVelocity.Y) && float.IsFinite(s.FacingYaw);
+        float.IsFinite(s.HorizontalVelocity.Y) && float.IsFinite(s.FacingYaw) && float.IsFinite(s.ClimbRate) &&
+        float.IsFinite(s.ClimbRateEwma) && float.IsFinite(s.StepDeltaY);
 }

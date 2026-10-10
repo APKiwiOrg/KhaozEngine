@@ -10,7 +10,7 @@ namespace KhaozEngine.TileWorld;
 /// <summary>A resolver backed by real content: it maps an archetype's <see cref="TileObjectArchetype.MeshRef"/>
 /// and optional <see cref="TileObjectArchetype.LodMeshRef"/> to glbs under a kit root. Drawable parts load
 /// through <see cref="GltfLoader.LoadPartsWithMaterials"/>, while the HLOD source loads through
-/// <see cref="GltfLoader.LoadFlattenedAlbedo"/>. A mesh reference is
+/// <see cref="GltfLoader.LoadFlattenedAlbedo(string)"/>. A mesh reference is
 /// authored with forward slashes and relative to the root (<c>kit/wall.glb</c>), normalized to the platform
 /// separator here, and an already-absolute reference is used as it stands.
 ///

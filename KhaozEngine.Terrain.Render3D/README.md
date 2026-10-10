@@ -292,11 +292,13 @@ Kept separate from the render-free field so a server/sim never drags in `Render3
   is loaded, no collider is fabricated, and collision, light, selection and further LOD references stay in the
   closure. Native source-scale mesh loading is not part of this adapter.
 - **`NativeMapAssetLoader.Load(asset, closure)`** -> **`GltfMesh`** - native source-scale mesh loading. It parses the
-  asset's verified mesh resource, which must be a binary glTF, from the closure's own bytes and multiplies every
-  vertex position by `SourceUnitsToMetres` once. Unlike `PropLoader.LoadProp` it never fits the mesh to a height,
+  asset's verified mesh resource, which must be a self-contained binary glTF, from the closure's own bytes through
+  `GltfLoader.LoadFlattenedAlbedo(glb, identity)`, and multiplies every vertex position by `SourceUnitsToMetres` once.
+  A buffer or image naming an external URI is refused, since its bytes would come from outside the closure. Unlike `PropLoader.LoadProp` it never fits the mesh to a height,
   drops its base or recentres it, so the mesh keeps its authored origin and agrees with the collider
   `KhaozEngine.MapDoc.Physics` reads. The descriptor must be the closure's own, and a descriptor from another
-  closure, a resource that is not a binary glTF or a mesh that does not load throws `MapDocumentException`.
+  closure, a resource that is not a binary glTF, an external URI or a mesh that does not load throws
+  `MapDocumentException`.
 
 ## Usage
 

@@ -10116,8 +10116,8 @@ explicit absolute root, resolves the mesh and first LOD through their resource r
 re-hashes both against the verified digests and computes `HeightMeters` from the render bounds times
 `SourceUnitsToMetres`. Collision, light, selection and further LOD data stay in the closure. It loads no mesh
 and does not provide native source-scale loading. `NativeMapAssetLoader.Load(asset, closure)`, in the same package,
-does: it parses the verified mesh resource, which must be a binary glTF, and multiplies every vertex position by
-`SourceUnitsToMetres` once. It never fits the mesh to a height, drops its base or recentres it, so a native mesh keeps
+does: it parses the verified mesh resource from the closure's bytes, refusing any buffer or image that names an
+external URI, and multiplies every vertex position by `SourceUnitsToMetres` once. It never fits the mesh to a height, drops its base or recentres it, so a native mesh keeps
 its authored origin and agrees with its collider.
 
 ---

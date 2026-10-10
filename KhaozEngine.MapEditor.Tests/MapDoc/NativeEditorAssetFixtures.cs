@@ -36,6 +36,39 @@ internal static class NativeEditorAssetFixtures
         return new NativeScaledMeshAsset(closure.GetAsset("scaled"), closure);
     }
 
+    /// <summary>One asset whose verified mesh is a binary glTF that names an external buffer, <c>body.bin</c>.</summary>
+    internal static NativeScaledMeshAsset ExternalBufferMeshAsset()
+    {
+        var source = new MemoryAssetSource();
+        MapAssetRef mesh = source.Add("external.mesh", "kit/external-body.glb",
+            GlbWithJson("""{"asset":{"version":"2.0"},"buffers":[{"uri":"body.bin","byteLength":36}]}"""));
+        string manifest = Manifest(
+            new[] { Asset("external", "external.mesh", null, 1f, new Vector3(-1, 0, 0), new Vector3(1, 1, 0)) },
+            new[] { Resource(mesh, "Mesh") });
+        MapAssetRef root = source.Add("external-kit", "kit/external.manifest.json", Encoding.UTF8.GetBytes(manifest));
+        MapAssetClosure closure = MapAssetClosure.Load(new[] { root }, source);
+        return new NativeScaledMeshAsset(closure.GetAsset("external"), closure);
+    }
+
+    /// <summary>A binary glTF holding only a JSON chunk with <paramref name="json"/>, padded with spaces.</summary>
+    internal static byte[] GlbWithJson(string json)
+    {
+        byte[] text = Encoding.UTF8.GetBytes(json);
+        int padded = (text.Length + 3) & ~3;
+        using var stream = new MemoryStream();
+        using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write(0x46546C67u);
+            writer.Write(2u);
+            writer.Write((uint)(12 + 8 + padded));
+            writer.Write((uint)padded);
+            writer.Write(0x4E4F534Au);
+            writer.Write(text);
+            for (int i = text.Length; i < padded; i++) writer.Write((byte)' ');
+        }
+        return stream.ToArray();
+    }
+
     /// <summary>The largest vertex Y of <paramref name="mesh"/>.</summary>
     internal static float MaxVertexY(GltfMesh mesh)
     {

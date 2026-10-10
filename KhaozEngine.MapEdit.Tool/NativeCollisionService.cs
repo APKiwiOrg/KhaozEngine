@@ -39,9 +39,9 @@ public sealed class NativeCollisionService(MapEditSession session)
     public const MapNativeInvalidation HeightEditInvalidation =
         MapNativeInvalidation.Physics | MapNativeInvalidation.Nav | MapNativeInvalidation.Residency;
 
-    // How far a compound child's rotated local Y may lean from world vertical before its box cannot be resized
-    // vertically as a box.
-    const float VerticalAxisTolerance = 1e-4f;
+    // The largest horizontal component a compound child's rotated local Y may keep. Any real tilt adds vertical extent
+    // from the box's other axes, which would break the height round trip, so only float rounding is tolerated.
+    const float VerticalAxisTolerance = 1e-6f;
 
     /// <summary>Measures the asset placed as <paramref name="placementId"/>. Throws <see cref="MapDocumentException"/>
     /// for an unknown placement, an asset without a collider, and an unreadable collider or mesh.</summary>
@@ -191,7 +191,7 @@ public sealed class NativeCollisionService(MapEditSession session)
         foreach (CompoundChild child in children)
         {
             Vector3 up = Vector3.Transform(Vector3.UnitY, Quaternion.Normalize(child.Local.Orientation));
-            if (MathF.Abs(MathF.Abs(up.Y) - 1f) > VerticalAxisTolerance)
+            if (MathF.Abs(up.X) > VerticalAxisTolerance || MathF.Abs(up.Z) > VerticalAxisTolerance)
                 throw new MapDocumentException(
                     $"Asset '{assetId}' has a tilted box. Height edits apply only to boxes and compound boxes whose boxes stand upright.");
         }

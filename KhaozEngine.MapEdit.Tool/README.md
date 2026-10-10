@@ -152,7 +152,14 @@ returns a `MapAssetRef` with that relative path, the lowercase digest as its ID 
 share one file, a file is staged and renamed into place, and an existing file is never overwritten: one holding other
 bytes refuses. `WriteManifest(manifest, id)` serializes a `MapAssetManifestDoc` as payload 1 JSON, proves it reads
 back under the strict manifest reader, writes it the same way and returns a reference with `id`, ready to stand as a
-document root. Files a refused edit already wrote stay as unreferenced content-addressed resources.
+document root.
+
+Three cases leave content-addressed files on disk that no document references, and all are harmless, since nothing
+reads an unreferenced resource and equal bytes reuse the same file:
+
+- an edit refused after its writes, such as by the native transaction's validation,
+- an applied edit whose session is never saved, so the saved document keeps its old root,
+- after `Save`, the superseded root manifest and collider the previous root named.
 
 ## Tiled documents, whole-load vs windowed
 

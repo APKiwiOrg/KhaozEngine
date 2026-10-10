@@ -87,50 +87,8 @@ namespace KhaozEngine.Render3D
     /// <see cref="Scene3D.SurfaceMaps"/>. Opt into auto-read with <see cref="LoadWithMaterial"/> /
     /// <see cref="LoadSkinnedWithMaterial"/>, which also return the material's decoded
     /// <see cref="GltfMaterialMaps"/>.</summary>
-    public static class GltfLoader
+    public static partial class GltfLoader
     {
-        static ModelRoot LoadModel(string path)
-        {
-            try { return ModelRoot.Load(path); }
-            catch (SharpGLTF.Validation.DataException ex)
-            {
-                // SharpGLTF's strict diagnostic identifies the accessor SLOT but omits the bad index VALUE. Parse
-                // only after that failure so our index preflight can name the value and vertex count. Valid assets
-                // retain SharpGLTF's full validation and are never parsed twice.
-                ModelRoot uncheckedRoot;
-                try
-                {
-                    var settings = new ReadSettings { Validation = SharpGLTF.Validation.ValidationMode.Skip };
-                    uncheckedRoot = ModelRoot.Load(path, settings);
-                }
-                catch (Exception uncheckedEx)
-                {
-                    throw new InvalidOperationException(
-                        $"glTF asset '{path}' failed validation: {ex.Message}",
-                        new AggregateException(ex, uncheckedEx));
-                }
-                ValidatePrimitiveIndices(uncheckedRoot, path);
-                throw new InvalidOperationException($"glTF asset '{path}' failed validation: {ex.Message}", ex);
-            }
-        }
-
-        static void ValidatePrimitiveIndices(ModelRoot root, string path)
-        {
-            string assetIdentity = $"glTF asset '{path}'";
-            foreach (var mesh in root.LogicalMeshes)
-                foreach (var prim in mesh.Primitives)
-                {
-                    var pos = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
-                    if (pos == null) continue;
-                    foreach (var (a, b, c) in prim.GetTriangleIndices())
-                    {
-                        MeshIndexValidation.Source(a, pos.Count, assetIdentity);
-                        MeshIndexValidation.Source(b, pos.Count, assetIdentity);
-                        MeshIndexValidation.Source(c, pos.Count, assetIdentity);
-                    }
-                }
-        }
-
         public static GltfMesh Load(string path) => BuildRigid(LoadModel(path), path);
 
         /// <summary>Load a rigid glb/glTF as ONE <see cref="GltfMesh"/> per logical node-with-mesh (object),
@@ -203,6 +161,17 @@ namespace KhaozEngine.Render3D
         {
             ModelRoot root = LoadModel(path);
             return BuildRigid(root, path, MakeAlbedoFlattenResolver());
+        }
+
+        /// <summary><see cref="LoadFlattenedAlbedo(string)"/> over a binary glTF held in memory. Only
+        /// <paramref name="glb"/> is parsed: there is no directory to resolve a relative external buffer or image
+        /// against, so a caller that must not read outside its bytes refuses external URIs first.
+        /// <paramref name="identity"/> names the asset in error messages where the path overload names the file.</summary>
+        public static GltfMesh LoadFlattenedAlbedo(ReadOnlyMemory<byte> glb, string identity)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(identity);
+            ModelRoot root = LoadModel(glb.ToArray(), identity);
+            return BuildRigid(root, identity, MakeAlbedoFlattenResolver());
         }
 
         /// <summary>Load a rigid glb/glTF as one welded <see cref="GltfMeshPart"/> per source material, each part
@@ -663,7 +632,7 @@ namespace KhaozEngine.Render3D
         /// baking a textured material down to one flat colour. Texels with alpha &gt;= 0.5 are averaged. When NONE
         /// pass (a fully-transparent / all-cutout image) it falls back to the plain average of every texel's RGB so
         /// the colour is still defined. An empty image yields white (no tint). This is the shared math the flat prop
-        /// loader (<see cref="LoadFlattenedAlbedo"/>) folds into each textured material's vertex colour, exposed so an
+        /// loader (<see cref="LoadFlattenedAlbedo(string)"/>) folds into each textured material's vertex colour, exposed so an
         /// offline baker or a future caller uses the identical rule.
         /// This mean is deliberately computed in gamma space, directly on the raw sRGB byte values, and must not be
         /// linearized. The engine's textured path uploads albedo as UNorm and the shader multiplies it by vertex

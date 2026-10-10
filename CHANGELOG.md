@@ -26,6 +26,52 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   query views implement it for boxes, convex hulls, meshes, spheres, capsules, cylinders and compounds of those.
   `IPhysicsCapsuleFeatures` is unchanged.
 - `BepuPhysicsWorld.AddStatic` throws `ArgumentException` for a triangle mesh with a non-finite vertex.
+- New opt-in package `KhaozEngine.MapDoc.Physics` builds one immutable headless world from a native MapDoc
+  document (World Authoring R3). It is in no umbrella, so add it explicitly, with `KhaozEngine.Physics.Bepu` for
+  the shipped backend. `MapAssetShapes` reads collider and selection shapes from a verified asset closure.
+  `MapPlacementShapes` resolves placement geometry with each placement's `MapInteractionEnvelope`, and
+  `MapTerrainPhysics` compiles native terrain into bounded physics chunks. `MapWorldBuilder` assembles them into a `MapBuiltWorld` with a build
+  identity. `MapWorldQueries` answers pick and reach, and `MapStanceCandidates` proposes stances.
+  `MapWorldGrids` and `MapResidencyOwnership` map storage tiles, navigation tiles and server cells to residency
+  owners. `MapPhysicsRegistration` installs the statics into any `IPhysicsWorld` and names the compiled face of
+  every terrain triangle. `MapPhysicalRelations` answers line of sight and clearance under a held read lease.
+  `MapNavTiling` gives navigation tile identity, seams and links and lists the tiles an edit invalidates.
+- `KhaozEngine.MapDoc.Physics` adds no step limit, ledge rule or support model. Ground support, seating and steps
+  stay with the #438 contact controller, which stands on the statics a native world installs.
+- `MapBuiltWorld.Diagnostics` reports each `IPhysicsCapsuleFeatures` limit a static meets, without refusing the
+  static: `LeafCapacity`, `CurvedLeaf`, `MeshTriangleCapacity`, `LocalExtent` and `HullCapacity`. They predict
+  that capability only. `IPhysicsSupportNeighborhood`, which the contact controller certifies support through,
+  captures curved leaves and has different limits.
+- `MapAssetShapes.Read` throws `MapDocumentException` for an asset that declares a `Surface` (support)
+  resource. Placement-local support surfaces arrive with World Authoring R5.
+- Locomotion exposes the contact controller's shell as the public `ContactShell` in
+  `KhaozEngine.Locomotion.Contacts`. `Validate`, `Shape` and `Centre` delegate to the controller's own shell
+  geometry, so callers outside locomotion share one body model.
+- `PropCollisionFormat.Read` now refuses malformed shape data with `InvalidOperationException`: non-finite or
+  non-positive box and cylinder sizes, non-finite points, vertices and poses, a compound child orientation that
+  is not a unit quaternion, a mesh index count that is not a multiple of 3 or an index outside the vertices, an
+  empty compound and nesting deeper than 16 levels. `Write` refuses a non-unit compound child orientation with
+  `ArgumentException`. A malformed `.coll` file that loaded before now throws.
+- Render3D adds `GltfLoader.LoadFlattenedAlbedo(ReadOnlyMemory<byte>, string)`, which parses a binary glTF
+  already in memory and names the identity in errors.
+- Terrain.Render3D adds `NativeMapAssetLoader.Load(asset, closure)`. It loads a native asset's mesh from the
+  closure's verified bytes with its source units applied once and no height fitting, so the mesh agrees with its
+  collider, and refuses a buffer or image with an external URI.
+- `ke-mapedit` adds `NativeCollisionService`, which measures a placement's mesh top against its collider and
+  resizes box colliders, and `MapAssetFileWriter`, which writes content-addressed resources and root manifests
+  under an explicit asset root.
+- MapDoc adds the non-positional `MapNativeWriteSet.NativeAssets` flag, which makes publication take the
+  candidate's whole native asset root list. The released constructor is unchanged.
+- MapDoc adds `MapNativeInvalidation.Unbounded` for a geometry change whose bounds are unknown. It is a full
+  reset: discard all derived state for the world and rebuild from the post-edit world.
+- MapDoc adds `MapNativeResolution.Resolve`, which routes a native document to its resolver by identity,
+  `MapLegacyTerrainDigest` for a resolver 1 document's analytic terrain, `MapSurfaceSemantics.RecordDigest` and
+  `MapBox3.Union`.
+- MapEditor placement edits now report `Physics`, `Nav` and `Residency` invalidation with the changed placements'
+  old and new bounds, or `Unbounded` with no bounds, where they reported `Placements` only. A host binds an
+  `INativePlacementBounds` provider through the new `BindNativeAssets(assets, placementBounds)` overloads, and
+  ke-mapedit supplies `NativePlacementBoundsProvider`. Both released `BindNativeAssets` overloads are kept.
+- No MapDoc format version or identity token changes in this release.
 
 ## 20.30.0
 

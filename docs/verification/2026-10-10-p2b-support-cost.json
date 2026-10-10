@@ -1,0 +1,71 @@
+{
+  "issue": "https://github.com/APKiwiOrg/KhaozEngine/issues/1334",
+  "spec": "docs/design/CONTACT-CONTROLLER-PHASE-2B-SUPPORT-NEIGHBORHOOD-2026-10-10.md",
+  "candidate_base": "52cb8ff38",
+  "candidate": "The Task 6 commits carrying this file. The run used that working tree.",
+  "tests": [
+    "KhaozEngine.Game.Tests/Locomotion/Contacts/GroundScenarioTests.cs SupportFindAllocation",
+    "KhaozEngine.Game.Tests/Locomotion/Contacts/GroundScenarioTests.cs SupportFindTiming",
+    "KhaozEngine.Game.Tests/Locomotion/Contacts/GroundScenarioTests.cs QueryCostPerTick"
+  ],
+  "command": "build-slot --label p2b --timeout 120m -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --no-build --filter \"FullyQualifiedName~KhaozEngine.Tests.Locomotion.Contacts\" --logger \"console;verbosity=detailed\"",
+  "exit": 0,
+  "machine": {
+    "cpu": "Apple M2 Max",
+    "architecture": "arm64",
+    "os": "macOS 27.0.1",
+    "dotnet_sdk": "10.0.401",
+    "configuration": "Release",
+    "note": "One local run. xUnit ran the other Contacts test classes in parallel, so timings include that contention. Hosted x64 was not measured."
+  },
+  "method": {
+    "query": "One FootSupport.Find per scene against a real Bepu world under the scene's read lease. Default MoveTuning, foot radius 0.2, reach 0.4 up and down. Each Find runs two probes, the 0.01 axis probe and the 0.2 disc probe, each one sweep and one support neighborhood query.",
+    "allocation": "After one warm Find, GC.GetAllocatedBytesForCurrentThread around one more Find. Recorded, not asserted.",
+    "timing": "After one warm Find, Stopwatch over 200 Find calls in one test run, reported as the mean. Recorded, not asserted.",
+    "stack": "The stackalloc spans per Find, from the 256 element capacity: FootSupport elements, joins and contributions, and SupportCertification planes and kinds."
+  },
+  "scenes_described": {
+    "flat_box": "Box floor at Y 0, axis (0.5, 0.25), feet 0.",
+    "flat_mesh": "Two triangle mesh floor at Y 0, axis (0.5, 0.25), feet 0.",
+    "stairs_box": "Six risers of 0.25 on treads of 0.35 as stacked boxes, axis (0.4, 0), feet 0.5. The disc overlaps the tread 2 nosing at x 0.35, the #1342 pose.",
+    "stairs_mesh": "The same stairs as one mesh of tread and riser quads, same axis and feet.",
+    "fan_96": "One flat mesh fan of 96 up-facing triangles meeting at the origin, rim radius 1, axis on the apex, feet 0. Every member touches the apex.",
+    "sphere": "A sphere primitive of radius 0.25 centred at Y -0.25, axis over its top, feet 0.",
+    "grid_20000": "One flat mesh of 100 by 100 quads of 0.1, 20,000 triangles, axis (0.123, -0.234), feet 0. Lookups go through the backend's tree."
+  },
+  "per_find": {
+    "flat_box": { "status": "Walkable", "allocated_bytes": 470752, "mean_microseconds": 479.858 },
+    "flat_mesh": { "status": "Walkable", "allocated_bytes": 246328, "mean_microseconds": 227.055 },
+    "stairs_box": { "status": "Walkable", "allocated_bytes": 485832, "mean_microseconds": 452.146 },
+    "stairs_mesh": { "status": "Walkable", "allocated_bytes": 275824, "mean_microseconds": 240.887 },
+    "fan_96": { "status": "Walkable", "allocated_bytes": 278734632, "mean_microseconds": 267076.816 },
+    "sphere": { "status": "Walkable", "allocated_bytes": 85592, "mean_microseconds": 113.827 },
+    "grid_20000": { "status": "Walkable", "allocated_bytes": 411096, "mean_microseconds": 598.221 }
+  },
+  "stack_bytes_per_find": {
+    "total": 43264,
+    "elements": 16384,
+    "joins": 8192,
+    "contributions": 14336,
+    "planes": 4096,
+    "kinds": 256
+  },
+  "query_counts_per_tick": {
+    "rule": "QueryCostPerTick, unchanged from docs/verification/2026-10-10-p2-query-cost.json. A neighborhood query counts where a feature query counted.",
+    "flat_box": { "sweeps_mean": 6, "penetrations_mean": 2, "neighborhood_queries_mean": 4 },
+    "flat_mesh": { "sweeps_mean": 6, "penetrations_mean": 2, "neighborhood_queries_mean": 4 },
+    "run_box": { "sweeps_mean": 12, "penetrations_mean": 4, "neighborhood_queries_mean": 8 },
+    "run_mesh": { "sweeps_mean": 12, "penetrations_mean": 4, "neighborhood_queries_mean": 8 },
+    "stairs_box": { "sweeps_mean": 6, "penetrations_mean": 2, "neighborhood_queries_mean": 4, "reached_top": true },
+    "stairs_mesh": { "sweeps_mean": 6, "penetrations_mean": 2, "neighborhood_queries_mean": 4, "reached_top": true },
+    "wall_box": { "sweeps_mean": 10.167, "penetrations_mean": 2.833, "neighborhood_queries_mean": 5.667, "blocked_ticks": 25 },
+    "wall_mesh": { "sweeps_mean": 10.167, "penetrations_mean": 2.833, "neighborhood_queries_mean": 5.667, "blocked_ticks": 25 }
+  },
+  "reading": [
+    "Every Find allocates. The neighborhood backend builds lists, polygon objects and a join matrix per query, so allocation is between 86 KB and 486 KB on ordinary ground.",
+    "On ordinary ground one Find takes 0.11 to 0.6 ms. A flat tick makes two Finds, so one grounded body costs about 0.5 to 1 ms of support queries per tick on this machine.",
+    "The 20,000 triangle grid costs about 2.6 times the two triangle mesh floor, so the tree lookup is not the dominant term.",
+    "The 96 triangle fan costs 267 ms and 279 MB per Find. Every pair of members touches the apex, so the join pass in SupportNeighborhoodCollector.Publish tests all 4,560 pairs, and each pair's segment to polygon measure allocates.",
+    "The stack per Find is 43,264 bytes, fine on default thread stacks."
+  ]
+}

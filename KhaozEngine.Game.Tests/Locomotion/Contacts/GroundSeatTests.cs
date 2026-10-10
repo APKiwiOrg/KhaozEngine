@@ -132,17 +132,19 @@ public class GroundSeatTests
         AssertSeatedAt(0, seats);
     }
 
+    // A sphere of radius 0.25 centred on the floor at x 0.3. Its top, 0.25, is under the new axis, within the band
+    // and level there, so the curved prop certifies and seats the body on its top.
     [Fact]
-    public void CurvedPropRefuses()
+    public void CurvedPropSeatsOnItsTop()
     {
         using FootSupportScene scene = new FootSupportScene(SceneVariant.Box).Flat("floor", -4, 6, -5, 5, 0);
-        // A sphere of radius 0.25 centred on the floor at x 0.3. Its top, 0.25, is under the new axis.
-        scene.World.AddStatic(new SphereShape(0.25f), Pose.At(new Vector3(0.3f, 0, 0)));
+        StaticHandle sphere = scene.World.AddStatic(new SphereShape(0.25f), Pose.At(new Vector3(0.3f, 0, 0)));
         GroundSeatResult result = Seat(scene, new Vector2(-0.2f, 0), 0, new Vector2(0.3f, 0), out SupportSample start);
 
         Assert.Equal(SupportStatus.Walkable, start.Status);
-        AssertOutcome(SeatOutcome.Refused, result);
-        Assert.Equal(0f, result.FeetY);
+        AssertOutcome(SeatOutcome.Seated, result);
+        Assert.Equal(sphere, result.Support.Static);
+        AssertSeatedAt(0.25, result);
     }
 
     // An analytic cliff ahead takes the move's reverse as its wall normal when the terrain gives none, so a zero or

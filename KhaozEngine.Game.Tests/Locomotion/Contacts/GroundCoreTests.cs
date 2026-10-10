@@ -253,16 +253,22 @@ public class GroundCoreTests
         AssertNear(new Vector2(0.1f, 0.1f), stops.Achieved);
     }
 
-    // A sphere of radius 0.25 on the floor at x 0.3, its surface from x 0.05. The first substep's disc meets it
-    // with or without the lift, so the move is blocked at the start.
+    // The over-capacity fan, flat at Y 0 with its apex at the origin. Each probe certifies the neighborhood of its
+    // contact, so at x -0.2 the start meets only the few triangles near that point and certifies. The move of 0.2
+    // is one substep onto the apex, where the probes meet all 300 triangles, over the neighborhood capacity. That
+    // refusal stops the lifted and the standing attempt alike, so the move is blocked at the start.
     [Fact]
     public void RefusedTargetBlocks()
     {
-        using FootSupportScene scene = Floor(SceneVariant.Box);
-        scene.World.AddStatic(new SphereShape(0.25f), Pose.At(new Vector3(0.3f, 0, 0)));
+        using FootSupportScene scene = OverCapacityFan();
         var start = new Vector3(-0.2f, 0, 0);
+        var move = new Vector2(0.2f, 0);
+        SupportSample target = FootSupport.Find(null, null, scene.World, scene.Lease, new FootSupportQuery(
+            Vector2.Zero, 0, 0.5f * Tuning.CapsuleRadius, Tuning.StepHeight, Tuning.StepHeight,
+            MathF.Cos(Tuning.MaxSlopeRadians)));
+        Assert.Equal(SupportStatus.Refused, target.Status);
 
-        GroundStepResult result = Step(scene, start, new Vector2(0.5f, 0));
+        GroundStepResult result = Step(scene, start, move);
 
         Assert.True(result.Blocked, $"{result}");
         AssertFooting(GroundFooting.Walkable, result);
@@ -270,12 +276,12 @@ public class GroundCoreTests
         Assert.Equal(Vector2.Zero, result.Achieved);
     }
 
+    // A body standing on the over-capacity fan's apex cannot certify its start, so it is held where it stands.
     [Fact]
     public void RefusedStartHolds()
     {
-        using FootSupportScene scene = Floor(SceneVariant.Box);
-        scene.World.AddStatic(new SphereShape(0.25f), Pose.At(Vector3.Zero));
-        var start = new Vector3(0, 0.25f, 0);
+        using FootSupportScene scene = OverCapacityFan();
+        var start = Vector3.Zero;
 
         GroundStepResult result = Step(scene, start, new Vector2(0.2f, 0));
 

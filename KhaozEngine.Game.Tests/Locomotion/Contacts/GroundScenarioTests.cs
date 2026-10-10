@@ -3,8 +3,10 @@
 // budget of MaxStepClimbSpeed * dt = 3.5 / 30 per tick.
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
@@ -78,40 +80,6 @@ public class GroundScenarioTests(ITestOutputHelper output)
     static int Substeps(Vector2 move, in MoveTuning tuning) =>
         Math.Max(1, (int)Math.Ceiling(Math.Sqrt((double)move.X * move.X + (double)move.Y * move.Y) /
             (0.5 * tuning.CapsuleRadius)));
-
-    // The escape for #1342, which phase 2b removes. A run that ends stalled, the last tick blocked with nothing
-    // achieved from the same feet as the tick before, passes only when the down pass of its first substep is
-    // refused because a feature query came back Unresolved. That support query is replayed through the counting
-    // view at the axis the core plans for the substep, with the stalled feet.
-    static bool StalledByNosingGap(Counted counted, in MoveTuning tuning, IReadOnlyList<GroundStepResult> results,
-        Vector2 move, StringBuilder trace)
-    {
-        if (results.Count < 2) return false;
-        GroundStepResult last = results[^1], previous = results[^2];
-        if (!last.Blocked || last.Achieved != Vector2.Zero || last.Feet != previous.Feet) return false;
-        int substeps = Substeps(move, tuning);
-        Vector2 axis = Axis(last.Feet) + (substeps == 1 ? move : move * (1f / substeps));
-        int unresolved = counted.View.UnresolvedFeatures;
-        SupportSample support = Support(counted.View, counted.Lease, tuning, axis, last.Feet.Y);
-        bool cause = support.Status == SupportStatus.Refused && counted.View.UnresolvedFeatures > unresolved;
-        trace.AppendLine($"stall at {last.Feet}: support at axis {axis} is {support.Status}, " +
-            $"{counted.View.UnresolvedFeatures - unresolved} feature queries Unresolved, #1342 cause {cause}");
-        return cause;
-    }
-
-    // The same escape for a run that ends Held. A Held tick did not move, so it passes only when the start
-    // support query, replayed through the counting view at that tick's feet and axis, is refused because a
-    // feature query came back Unresolved.
-    static bool HeldByNosingGap(Counted counted, in MoveTuning tuning, in GroundStepResult last, StringBuilder trace)
-    {
-        if (last.Footing != GroundFooting.Held || last.Achieved != Vector2.Zero || last.Rise != 0) return false;
-        int unresolved = counted.View.UnresolvedFeatures;
-        SupportSample support = Support(counted.View, counted.Lease, tuning, Axis(last.Feet), last.Feet.Y);
-        bool cause = support.Status == SupportStatus.Refused && counted.View.UnresolvedFeatures > unresolved;
-        trace.AppendLine($"held at {last.Feet}: start support at axis {Axis(last.Feet)} is {support.Status}, " +
-            $"{counted.View.UnresolvedFeatures - unresolved} feature queries Unresolved, #1342 cause {cause}");
-        return cause;
-    }
 
     // Commands min(remaining, speed * dt) toward the target axis every tick. Returns the tick count on arrival
     // within the ball, else -1 with the trace in the message.
@@ -197,29 +165,25 @@ public class GroundScenarioTests(ITestOutputHelper output)
     // A run from the floor up six risers. A tick's step part is its rise less what the tick start support's own
     // plane explains between the start and end axes. The plane is level on a tread, so a lagging body's catch-up
     // counts as step part too. A Held tick reports a NaN HeightError by contract, so it is checked for zero rise and
-    // zero achieved instead, and it ends the run because the same start refuses again. A run that stalls or ends
-    // Held passes only through the #1342 escape.
+    // zero achieved instead, and it ends the run because the same start refuses again. Every run reaches the top.
     [Theory]
     [MemberData(nameof(StairRows))]
     public void StairsClimbEveryRiser(SceneVariant variant, float tread, float riser, float speed)
     {
         using FootSupportScene scene = Stairs(variant, tread, riser, StairRisers);
-        using var counted = new Counted(scene);
         float footRadius = Settings.FootRadiusFraction * Tuning.CapsuleRadius;
         float topX = tread * (StairRisers - 1), topY = riser * StairRisers;
         double budget = (double)Tuning.MaxStepClimbSpeed * Dt;
         var move = new Vector2(speed * Dt, 0);
-        Vector3 feet = Rest(counted.View, counted.Lease, Tuning, new Vector2(-1, 0), 0);
+        Vector3 feet = Rest(scene, Tuning, new Vector2(-1, 0), 0);
         var trace = new StringBuilder();
-        var results = new List<GroundStepResult>();
         double maxStepPart = 0;
 
         bool reached = false;
         for (int tick = 1; tick <= 150 && !reached; tick++)
         {
-            SupportSample start = Support(counted.View, counted.Lease, Tuning, Axis(feet), feet.Y);
-            GroundStepResult result = Step(counted.View, counted.Lease, Tuning, feet, move);
-            results.Add(result);
+            SupportSample start = Support(scene.World, scene.Lease, Tuning, Axis(feet), feet.Y);
+            GroundStepResult result = Step(scene, Tuning, feet, move);
             double explained = start.Status is SupportStatus.Walkable or SupportStatus.Steep
                 ? PlaneAt(start, Axis(feet), Axis(result.Feet)) - start.Height
                 : 0;
@@ -238,14 +202,6 @@ public class GroundScenarioTests(ITestOutputHelper output)
             reached = feet.X >= topX + footRadius && Math.Abs(feet.Y - topY) <= result.Support.HeightError;
         }
 
-        bool held = results[^1].Footing == GroundFooting.Held;
-        if (!reached && (held
-                ? HeldByNosingGap(counted, Tuning, results[^1], trace)
-                : StalledByNosingGap(counted, Tuning, results, move, trace)))
-        {
-            output.WriteLine($"{variant} {tread} {riser} {speed}: stalled by #1342 at {feet}");
-            return;
-        }
         Assert.True(reached, $"The top tread at {topY} from x {topX} was not reached.\n{trace}");
         output.WriteLine($"{variant} {tread} {riser} {speed}: max step part {maxStepPart:R}");
     }
@@ -298,50 +254,6 @@ public class GroundScenarioTests(ITestOutputHelper output)
         Assert.True(result.Feet.X >= 1 - Tuning.CapsuleRadius - ShellMotion.ContactSkin - 1e-5f,
             $"Short of the wall: {result}");
         Assert.True(Math.Abs(result.Feet.Y) <= result.Support.HeightError, $"{result}");
-    }
-
-    // The #1342 escape must not pass any other stall. A sphere of radius 0.25 on the floor at x 0.3 refuses the
-    // down pass ahead, because the feature query reports curved primitives Unsupported (#1331), not Unresolved.
-    // The body stalls with nothing achieved, and the escape refuses it.
-    [Fact]
-    public void NosingEscapeRefusesAnotherStall()
-    {
-        using FootSupportScene scene = Floor(SceneVariant.Box);
-        scene.World.AddStatic(new SphereShape(0.25f), Pose.At(new Vector3(0.3f, 0, 0)));
-        using var counted = new Counted(scene);
-        var move = new Vector2(0.2f, 0);
-        var feet = new Vector3(-0.2f, 0, 0);
-        var results = new List<GroundStepResult>();
-        for (int tick = 0; tick < 3; tick++)
-        {
-            results.Add(Step(counted.View, counted.Lease, Tuning, feet, move));
-            feet = results[^1].Feet;
-        }
-        var trace = new StringBuilder();
-
-        Assert.True(results[^1].Blocked && results[^1].Achieved == Vector2.Zero && results[^1].Feet == results[^2].Feet,
-            $"No stall:\n{string.Join("\n", results)}");
-        Assert.False(StalledByNosingGap(counted, Tuning, results, move, trace), trace.ToString());
-        Assert.Contains("is Refused", trace.ToString());
-    }
-
-    // The Held escape must not pass a start refused for another cause. A body stood on top of the same sphere is
-    // Held, because its feature query reports Unsupported (#1331), not Unresolved, and the escape refuses it.
-    [Fact]
-    public void NosingEscapeRefusesAnotherHeldStart()
-    {
-        using FootSupportScene scene = Floor(SceneVariant.Box);
-        scene.World.AddStatic(new SphereShape(0.25f), Pose.At(new Vector3(0.3f, 0, 0)));
-        using var counted = new Counted(scene);
-        var trace = new StringBuilder();
-
-        GroundStepResult result = Step(counted.View, counted.Lease, Tuning, new Vector3(0.3f, 0.25f, 0),
-            new Vector2(0.2f, 0));
-
-        Assert.True(result.Footing == GroundFooting.Held && result.Rise == 0 && result.Achieved == Vector2.Zero,
-            $"{result}");
-        Assert.False(HeldByNosingGap(counted, Tuning, result, trace), trace.ToString());
-        Assert.Contains("is Refused", trace.ToString());
     }
 
     // Six risers of 0.25 on treads 0.35, 10 m wide, with a wall across the landing at x 3.2. The run climbs at
@@ -453,7 +365,6 @@ public class GroundScenarioTests(ITestOutputHelper output)
         int ticks = ground == "run" ? 20 : 30;
         using var counted = new Counted(scene);
         var perTick = new List<QueryCounts>();
-        var results = new List<GroundStepResult>();
         QueryCounts budget = WorstCase(substeps);
         int blocked = 0;
         var trace = new StringBuilder();
@@ -463,7 +374,6 @@ public class GroundScenarioTests(ITestOutputHelper output)
             GroundStepResult result = Step(counted.View, counted.Lease, Tuning, feet, move);
             QueryCounts used = counted.View.Counts - before;
             perTick.Add(used);
-            results.Add(result);
             trace.AppendLine($"tick {tick}: {used} -> {result}");
             if (result.Blocked) blocked++;
             feet = result.Feet;
@@ -482,15 +392,104 @@ public class GroundScenarioTests(ITestOutputHelper output)
                 $"{used} over {budget}.\n{trace}");
         }
         if (ground == "wall") Assert.True(blocked > 0, $"The wall was never met.\n{trace}");
-        if (ground == "stairs" && !(feet.Y >= 0.25f * StairRisers - 1e-5f))
-        {
-            if (StalledByNosingGap(counted, Tuning, results, move, trace))
-            {
-                output.WriteLine($"COST {variant} stairs stalled by #1342 at {feet}");
-                return;
-            }
-            Assert.Fail($"Not up the stairs.\n{trace}");
-        }
+        if (ground == "stairs")
+            Assert.True(feet.Y >= 0.25f * StairRisers - 1e-5f, $"Not up the stairs.\n{trace}");
         output.WriteLine(trace.ToString());
+    }
+
+    public static IEnumerable<object[]> CostScenes() =>
+        [["flat box"], ["flat mesh"], ["stairs box"], ["stairs mesh"], ["fan 96"], ["sphere"], ["grid 20000"]];
+
+    // One support question per cost scene: flat ground, the #1342 pose 0.05 past the tread 2 nosing of 0.25 risers
+    // on 0.35 treads, a fan of 96 triangles under its apex, a curved prop under its top and a grid mesh of 20,000
+    // triangles, whose lookups go through the backend's tree.
+    static (FootSupportScene Scene, FootSupportQuery Query) CostScene(string name)
+    {
+        float footRadius = Settings.FootRadiusFraction * Tuning.CapsuleRadius;
+        float cosMaxSlope = MathF.Cos(Tuning.MaxSlopeRadians);
+        FootSupportQuery At(float x, float z, float feetY) =>
+            new(new Vector2(x, z), feetY, footRadius, Tuning.StepHeight, Tuning.StepHeight, cosMaxSlope);
+        return name switch
+        {
+            "flat box" => (Floor(SceneVariant.Box), At(0.5f, 0.25f, 0)),
+            "flat mesh" => (Floor(SceneVariant.Mesh), At(0.5f, 0.25f, 0)),
+            "stairs box" => (Stairs(SceneVariant.Box, 0.35f, 0.25f, StairRisers), At(0.4f, 0, 0.5f)),
+            "stairs mesh" => (Stairs(SceneVariant.Mesh, 0.35f, 0.25f, StairRisers), At(0.4f, 0, 0.5f)),
+            "fan 96" => (Fan(96), At(0, 0, 0)),
+            "sphere" => (Sphere(SceneVariant.Box, new Vector3(0, -0.25f, 0), 0.25f), At(0, 0, 0)),
+            _ => (Grid(100), At(0.123f, -0.234f, 0)),
+        };
+    }
+
+    // A flat fan of up-facing triangles meeting at the origin, with a rim of radius 1.
+    static FootSupportScene Fan(int triangles)
+    {
+        Vector3 Rim(int i) => new(MathF.Cos(2 * MathF.PI * (i % triangles) / triangles), 0,
+            MathF.Sin(2 * MathF.PI * (i % triangles) / triangles));
+        var vertices = new Vector3[3 * triangles];
+        for (int i = 0; i < triangles; i++)
+            FootSupportScene.Facing(Vector3.Zero, Rim(i), Rim(i + 1), Vector3.UnitY).CopyTo(vertices, 3 * i);
+        return new FootSupportScene(SceneVariant.Mesh).Mesh("fan", vertices);
+    }
+
+    // One flat mesh of cells by cells quads of 0.1, two triangles each, centred on the origin at Y 0. Neighbouring
+    // quads read the same float coordinates, so they share their edges exactly.
+    static FootSupportScene Grid(int cells)
+    {
+        float Coordinate(int k) => 0.1f * (k - cells / 2);
+        var vertices = new List<Vector3>(6 * cells * cells);
+        for (int i = 0; i < cells; i++)
+            for (int j = 0; j < cells; j++)
+            {
+                float x0 = Coordinate(i), x1 = Coordinate(i + 1), z0 = Coordinate(j), z1 = Coordinate(j + 1);
+                vertices.AddRange(FootSupportScene.Quad(new(x0, 0, z0), new(x1, 0, z0), new(x0, 0, z1),
+                    new(x1, 0, z1)));
+            }
+        return new FootSupportScene(SceneVariant.Mesh).Mesh("grid", [.. vertices]);
+    }
+
+    // The stack FootSupport.Find takes for its neighborhood spans and SupportCertification for its planes and
+    // kinds, from the capacity and the element sizes.
+    static int SupportFindStackBytes()
+    {
+        const int capacity = SupportNeighborhoodResult.MaximumElements;
+        return capacity * (Unsafe.SizeOf<SupportElement>() +
+            sizeof(ulong) * SupportNeighborhoodResult.JoinWordsFor(capacity) +
+            Unsafe.SizeOf<SupportContribution>() + 2 * sizeof(double) + Unsafe.SizeOf<CertifiedSupportKind>());
+    }
+
+    // Recorded, not asserted: the bytes one warm Find allocates on this thread.
+    [Theory]
+    [MemberData(nameof(CostScenes))]
+    public void SupportFindAllocation(string name)
+    {
+        (FootSupportScene built, FootSupportQuery query) = CostScene(name);
+        using FootSupportScene scene = built;
+        SupportSample warm = FootSupport.Find(null, null, scene.World, scene.Lease, query);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        SupportSample support = FootSupport.Find(null, null, scene.World, scene.Lease, query);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        output.WriteLine($"ALLOC {name}: {allocated} bytes, status {support.Status} (warm {warm.Status}), " +
+            $"stack {SupportFindStackBytes()} bytes");
+    }
+
+    // Recorded, not asserted: the mean time of 200 warm Find calls.
+    [Theory]
+    [MemberData(nameof(CostScenes))]
+    public void SupportFindTiming(string name)
+    {
+        const int calls = 200;
+        (FootSupportScene built, FootSupportQuery query) = CostScene(name);
+        using FootSupportScene scene = built;
+        SupportSample support = FootSupport.Find(null, null, scene.World, scene.Lease, query);
+
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < calls; i++) support = FootSupport.Find(null, null, scene.World, scene.Lease, query);
+        TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
+
+        output.WriteLine($"TIMING {name}: mean {elapsed.TotalMicroseconds / calls:0.###} us over {calls} calls, " +
+            $"status {support.Status}");
     }
 }

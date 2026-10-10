@@ -267,7 +267,7 @@ internal static class ContactController
             {
                 GroundStepResult step = GroundCore.Step(feet, displacement, time, t, c.Settings, c.GroundHeight,
                     c.GroundNormal, c.World, c.Lease, c.Gate, budget, c.ClampXz,
-                    stepInProgress: s.StepDeltaY > 0 || s.ClimbRate > 0);
+                    stepInProgress: s.StepDeltaY > 0 || GroundSignals.Ascending(s.ClimbRate));
                 (feet, budget, vertical) = (step.Feet, step.ClimbBudget, 0f);
                 support = step.Support;
                 stepRise += step.StepRise;

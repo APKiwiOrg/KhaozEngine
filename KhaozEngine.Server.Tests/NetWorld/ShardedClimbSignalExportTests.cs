@@ -108,6 +108,57 @@ public class ShardedClimbSignalExportTests
             $"run={run}: sharded vs single-World ClimbRateQ diverged by {maxGapUnits} unit(s) (must stay within one wire quantum; is bit-identical today)");
     }
 
+    // No head runs the contact controller before phase 5, so this pins its input instead. The controller reads the
+    // carried ClimbRate to continue a run and to own a paced riser's lag, so every head must hand it the same value
+    // for the same wire state: the sharded head's rebuilt input equals the client's reconcile basis and the decoded
+    // wire rate, and the single-World head's full-precision rate decides the same run state as that decoded value.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void BothHeadsHandTheStepTheSameCarriedClimbRate(bool run)
+    {
+        MoveTuning t = Tuning();
+        float halfH = t.CapsuleHalfHeight;
+        using IPhysicsWorld world = new BepuPhysicsWorld();
+        AddStairs(world);
+        world.Step(Dt);
+
+        var cmd = new MoveCommand(new Vector2(0f, 1f), run, cameraYaw: 0f, jump: false);
+        var seed = new Vector3(0f, halfH, 1.0f);
+        var sys = new PlayerMovementSystem(Ground, t, Normal, bounds: null, physics: world, medium: null);
+        var ecs = new World();
+        Entity e = ecs.Spawn();
+        ecs.Set(e, new NetId(1));
+        ecs.Set(e, ReplicatedPosition.FromWorld(seed, WorldFrame.Origin));
+        ecs.Set(e, new MovementState());
+        ecs.Set(e, new PendingMove { Command = cmd });
+        var single = new MoveState { Position = seed, Grounded = true };
+
+        const float half = MoveState.ClimbRateQuantum / 2;
+        int ticks = (int)(1.6f * (Tread * Risers + 3f) / (0.5f * (run ? t.RunSpeed : t.WalkSpeed) * Dt));
+        int climbTicks = 0;
+        for (int i = 0; i < ticks; i++)
+        {
+            single = CharacterMovement.Step(single, cmd, Dt, Ground, t, Normal, world);
+            sys.Update(ecs, Dt);
+
+            MovementState ms = ecs.Get<MovementState>(e);
+            ecs.TryGet(e, out MovementOwnerState owner);
+            Vector3 local = ecs.Get<ReplicatedPosition>(e).Local;
+            float sharded = PlayerMovementSystem.CarriedState(local, ms, owner).ClimbRate;
+            float basis = PlayerMoveState.From(local, ms, owner).Move.ClimbRate;
+            float decoded = MovementState.DecodeClimbRate(MovementState.QuantizeClimbRate(single.ClimbRate));
+            string context = $"run={run} tick {i}: single {single.ClimbRate:R}, sharded {sharded:R}, basis {basis:R}";
+
+            Assert.True(BitConverter.SingleToInt32Bits(basis) == BitConverter.SingleToInt32Bits(sharded), context);
+            Assert.True(BitConverter.SingleToInt32Bits(decoded) == BitConverter.SingleToInt32Bits(sharded), context);
+            Assert.True(single.ClimbRate >= half == sharded >= half, context);
+            Assert.True(single.ClimbRate <= -half == sharded <= -half, context);
+            if (sharded != 0f) climbTicks++;
+        }
+        Assert.True(climbTicks > 20, $"run={run}: too few climb ticks ({climbTicks})");
+    }
+
     static bool PosAccessor(World w, Entity e, out float x, out float y)
     {
         if (w.TryGet(e, out ReplicatedPosition p)) { x = p.Value.X; y = p.Value.Z; return true; }

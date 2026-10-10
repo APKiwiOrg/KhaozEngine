@@ -26,7 +26,8 @@ internal static class GroundSignals
             return (0f, 0f, 0f);
         float achieved = groundTravel.Length();
         if (!(achieved >= ShellMotion.ContactSkin)) achieved = 0f;
-        if (!(stepRise != 0f || input.ClimbRate != 0f || input.ClimbRateEwma > 0f))
+        if (!(stepRise != 0f || Ascending(input.ClimbRate) || Descending(input.ClimbRate) ||
+                input.ClimbRateEwma > 0f))
             return (0f, 0f, stepRise);
         if (axisSupport.Status != SupportStatus.Walkable) return (0f, 0f, 0f);
 
@@ -74,8 +75,8 @@ internal static class GroundSignals
         bool descent = hasGrade && grade <= -RunGrade && windowDrop;
         // The landing flattens the fitted grade before the last risers are paid. A carried run ends on step
         // evidence, while a new run needs both a grade and a discrete step in its direction.
-        ascent |= input.ClimbRate > 0f && (stepRise > 0f || windowRise || owedClimb);
-        descent |= input.ClimbRate < 0f && (stepRise < 0f || windowDrop);
+        ascent |= Ascending(input.ClimbRate) && (stepRise > 0f || windowRise || owedClimb);
+        descent |= Descending(input.ClimbRate) && (stepRise < 0f || windowDrop);
         if (ascent)
         {
             float rate = moveRise / dt;
@@ -90,4 +91,12 @@ internal static class GroundSignals
             : 0f;
         return drop > 0f ? (-drop, 0f, 0f) : (0f, 0f, stepRise);
     }
+
+    /// <summary>Whether a carried climb rate shows an ascent run in progress. Every head carries the rate through its
+    /// wire quantum, so only a rate the wire keeps nonzero counts.</summary>
+    internal static bool Ascending(float climbRate) => climbRate >= MoveState.ClimbRateQuantum / 2;
+
+    /// <summary>Whether a carried climb rate shows a descent run in progress, the mirror of
+    /// <see cref="Ascending"/>.</summary>
+    internal static bool Descending(float climbRate) => climbRate <= -MoveState.ClimbRateQuantum / 2;
 }

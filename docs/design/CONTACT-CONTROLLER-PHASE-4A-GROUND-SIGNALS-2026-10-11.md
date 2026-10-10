@@ -17,7 +17,9 @@ explicit grounded ticks onto the ground core and carries the #1299 deep-water ru
 that pin them (see Suite).
 
 Out of scope: water (still `NotSupportedException` until 4b), the `MoveTuning` selector, wire, navigation and bake
-identity (phase 5). No public API, wire field or carried state is added.
+identity (phase 5). No wire field is added. `ClimbRate` is carried state that already rides the wire as
+`ClimbRateQ`, and every head now supplies it to the step decoded from that value. The one public addition is
+`MoveState.ClimbRateQuantum`, the wire's resolution, which the codec now reads from Locomotion.
 
 ## Contracts kept
 
@@ -85,7 +87,7 @@ the discrete rise that actually happened this tick.
 
 - The tick keeps an owed discrete rise `O`. At the start of a ground segment, `O` is the lag the feet already carry
   below walkable support, but only when the input state shows a step in progress (`StepDeltaY > 0` or
-  `ClimbRate > 0`) and the lag exceeds the contact skin plus the support's certified error. Otherwise carried lag is
+  `ClimbRate` at least half the wire quantum) and the lag exceeds the contact skin plus the support's certified error. Otherwise carried lag is
   continuous: pacing also defers curvature residuals, and without a step in progress the lag cannot be a riser.
 - Each accepted substep (and each `PayLag` payment) accounts as one move. With `H = O + d` before the move and
   `L` the lag below the new walkable support after it, the owed rise becomes `O' = clamp(L, 0, max(H, 0))` and the
@@ -109,7 +111,7 @@ look-ahead runs only when the tick's achieved horizontal ground travel is at lea
 a direction, and when at least one of these holds:
 
 - the tick applied a nonzero discrete rise or drop
-- the input state has a nonzero `ClimbRate` (a run in progress)
+- the input state's `ClimbRate` shows a run in progress, its magnitude at least half the wire quantum
 - the input state has a positive `ClimbRateEwma`
 
 Bodies on terrain or ramps never trigger it, so its cost falls only on stairs. Travel below the contact skin is the
@@ -130,13 +132,22 @@ taken between consecutive walkable samples, is positive (or negative) for some p
 holds a step of the same sign. A smooth ramp has no discrete step between its samples, so it never starts a run
 however steep it is. A run in progress continues without the grade test:
 
-- an ascent (input `ClimbRate > 0`) continues while the tick applied a discrete rise, the window holds a rise, or
+- an ascent (input `ClimbRate` at least half the wire quantum) continues while the tick applied a discrete rise, the window holds a rise, or
   the feet still owe climb below their walkable support by more than the contact skin
-- a descent (input `ClimbRate < 0`) continues while the tick applied a discrete drop or the window holds a drop
+- a descent (input `ClimbRate` at most minus half the wire quantum) continues while the tick applied a discrete drop or the window holds a drop
 
 Near the top or bottom of a staircase, the window sees the landing and its fitted grade flattens while the last
 risers are still being climbed or dropped. Continuation carries the run through them and ends it once the steps
 are done. The constants stay named internal constants beside the others.
+
+**Ruling 4a-10.** Every head decides on the replicated climb rate. The final review showed that the sharded head
+rebuilt its step input without `ClimbRate`, so runs never continued there and the two server heads exported
+different `ClimbRateQ` for the same walk, while the client's reconcile basis decoded it from the wire. The sharded
+head now seeds `ClimbRate` from `ClimbRateQ` as `PlayerMoveState.From` does, and the controller treats a carried
+rate as a run in progress only when its magnitude is at least `MoveState.ClimbRateQuantum / 2`, so the single-World
+head's full-precision rate decides as the decoded one. `StepDeltaY` is not replicated, so the step-in-progress test
+from `StepDeltaY` only shapes the unreplicated `StepDeltaY` itself, and continuation stays robust through the
+geometric owed-climb test. Cost if wrong: run tails under 0.025 m/s end one tick sooner on every head.
 
 **Ruling 4a-8.** Travel below the contact skin is no travel, and no travel only empties the look-ahead window. It does
 not silence the signals. The Task 3 implementer showed that paced climbs pay lag in ticks with exactly zero
@@ -224,7 +235,9 @@ legacy numbers. Box and mesh variants where statics are involved, 30 and 60 Hz, 
 - **Pacing off.** With `MaxStepClimbSpeed` zero, the doorstep still reports its height in one tick.
 - **Grant and facing.** The Held-on-refused-support policy keeps the grant (pinned as built), and a commitment
   freezes facing (already pinned, kept).
-- **Replay and allocation.** Replay bits include the three floats. A warm `GroundSignals.Resolve` call with
+- **Replay and allocation.** Replay bits include the three floats. A replay whose basis carries the live rate
+  through the wire quantum is bit-identical to the live run, including a rate under half a quantum on the last
+  tread. Both server heads hand the step the same carried `ClimbRate` for the same wire state over a stair climb. A warm `GroundSignals.Resolve` call with
   look-ahead allocates nothing.
 - **Slope edges.** Slab ramps at 14 and 30 degrees, walked up over the top edge onto a floor 0.1 m below it and
   down off the low end onto a floor 0.1 m below it. Uphill, `StepDeltaY` sums to -0.1 within one skin with no

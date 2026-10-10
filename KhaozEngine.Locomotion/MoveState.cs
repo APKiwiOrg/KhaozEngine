@@ -132,6 +132,12 @@ public struct MoveState
     /// in NetWorld so remotes glide on the same signal the local owner does.</summary>
     public float ClimbRate;
 
+    /// <summary>The replicated resolution of <see cref="ClimbRate"/> in m/s, 0.05. Every head rebuilds a carried
+    /// <see cref="ClimbRate"/> from its wire value, so a step that reads it as input treats a run as in progress only
+    /// when its magnitude is at least half this quantum, the smallest rate the wire keeps nonzero. The NetWorld codec
+    /// quantizes at this scale.</summary>
+    public const float ClimbRateQuantum = 0.05f;
+
     /// <summary>SIM-LOCAL smoothing state (NOT replicated): the exponentially-weighted moving average of the
     /// actually-applied per-tick climb RATE (<c>(pos.Y - prevY) / dt</c>) over a continuous paced stair run, in m/s.
     /// <see cref="ClimbRate"/> is stamped FROM this on a run tick, so the exported signal converges to the sim's own

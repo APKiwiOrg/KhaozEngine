@@ -9,10 +9,13 @@ namespace KhaozEngine.Locomotion.Contacts;
 internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, SupportSample Support,
     double Budget, bool Pushed, Vector2 Total)
 {
+    /// <summary>Places a seat. A steep seat is placed as seated unless <paramref name="clearSteep"/> asks for its
+    /// clearance, which a slide does. A steep seat takes no push, because a push off the face would leave the feet
+    /// above it.</summary>
     internal static GroundPlacement Try(Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
         in SupportSample start, float startFeetY, Vector2 startAxis, Vector2 total, in GroundSeatResult seat,
-        float footRadius, in MoveTuning tuning, float cosMaxSlope, double budget)
+        float footRadius, in MoveTuning tuning, float cosMaxSlope, double budget, bool clearSteep = false)
     {
         float feetY = seat.Outcome switch
         {
@@ -22,9 +25,10 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         };
         Vector2 axis = startAxis + total;
         var target = new Vector3(axis.X, feetY, axis.Y);
-        // Steep placement and its clearance obligation belong to phase 3.
         if (seat.Outcome == SeatOutcome.SteepSeated)
-            return new(true, target, seat.Support, budget, false, total);
+            return clearSteep && Overlaps(world, tuning, target)
+                ? default
+                : new(true, target, seat.Support, budget, false, total);
         if (!Clear(world, tuning, target, startAxis, ref total, out Vector3 placed)) return default;
         if (placed == target) return new(true, target, seat.Support, budget, false, total);
 
@@ -39,11 +43,15 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         return new(true, placed, support, budget - raised, true, total);
     }
 
-    // The step part plus the unpaid lag is paid from this attempt's copy of the tick budget.
+    // The step part plus the unpaid lag is paid from this attempt's copy of the tick budget. A steep start plane
+    // explains no walkable rise, so from a slide the step part is the rise above the start feet.
     static float Paced(in SupportSample start, float startFeetY, in GroundSeatResult seat, ref double budget)
     {
         double lag = start.Status == SupportStatus.Walkable ? Math.Max(0, (double)start.Height - startFeetY) : 0;
-        double wanted = (double)seat.StepPart + lag;
+        double part = start.Status == SupportStatus.Steep
+            ? NotBelow((double)seat.FeetY - startFeetY)
+            : seat.StepPart;
+        double wanted = part + lag;
         if (!(wanted > 0)) return seat.FeetY;
         double paid = Math.Min(wanted, budget);
         budget -= paid;
@@ -65,6 +73,13 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         float rounded = (float)value;
         return rounded < value ? MathF.BitIncrement(rounded) : rounded;
     }
+
+    // A touching shell is clear.
+    static bool Overlaps(IPhysicsWorld? world, in MoveTuning tuning, Vector3 target) =>
+        world is not null &&
+        world.ComputePenetration(ShellGeometry.Shape(tuning), Pose.At(ShellGeometry.Centre(target, tuning)),
+            out Vector3 mtv) &&
+        mtv != Vector3.Zero;
 
     // A touching shell is clear. An overlapping shell gets one MTV proposal and one clearance check.
     static bool Clear(IPhysicsWorld? world, in MoveTuning tuning, Vector3 target, Vector2 startAxis,

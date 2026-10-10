@@ -38,10 +38,31 @@ internal static class GroundCore
     internal static GroundStepResult Step(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
         in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
-        float? tractionSlopeRadians = null)
+        float? tractionSlopeRadians = null) =>
+        Move(feet, displacement, dt, tuning, settings, groundHeight, groundNormal, world, lease,
+            tractionSlopeRadians ?? tuning.MaxSlopeRadians, slide: false);
+
+    /// <summary>Moves a sliding body as <see cref="Step"/> moves a grounded one, with three differences. A steep
+    /// start moves. A steep seat at or below the feet continues the tick instead of ending it, and must clear the
+    /// shell without a push. A steep seat that fails that clearance ends the tick with footing
+    /// <see cref="GroundFooting.None"/> at the last clear position, for the air pass. Steep ground above the feet
+    /// stays a wall, walkable support grounds the body and the rest of the move walks on, and no support gives
+    /// <see cref="GroundFooting.None"/>. Each substep's drop along the start plane stays within half the step
+    /// height, so the seat's reach down holds it.</summary>
+    internal static GroundStepResult Slide(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
+        in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
+        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+        float tractionSlopeRadians) =>
+        Move(feet, displacement, dt, tuning, settings, groundHeight, groundNormal, world, lease,
+            tractionSlopeRadians, slide: true);
+
+    static GroundStepResult Move(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
+        in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
+        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+        float tractionSlopeRadians, bool slide)
     {
         int substeps = Validate(feet, displacement, dt, tuning, settings);
-        float gate = tractionSlopeRadians ?? tuning.MaxSlopeRadians;
+        float gate = tractionSlopeRadians;
         if (!float.IsFinite(gate))
             throw new ArgumentOutOfRangeException(nameof(tractionSlopeRadians), "The traction gate must be finite.");
         float footRadius = settings.FootRadiusFraction * tuning.CapsuleRadius;
@@ -55,11 +76,14 @@ internal static class GroundCore
         bool moving = displacement != Vector2.Zero;
         if (support.Status == SupportStatus.Refused)
             return Result(feet, start, start.Y, GroundFooting.Held, support, Vector2.Zero, moving);
-        if (!cleared || support.Status != SupportStatus.Walkable || (!moving && !Owes(support, start.Y)))
+        bool steepStart = slide && support.Status == SupportStatus.Steep;
+        if (!cleared || (support.Status != SupportStatus.Walkable && !steepStart) ||
+            (!moving && !Owes(support, start.Y)))
             return Result(feet, start, start.Y, Footing(support.Status), support, Vector2.Zero, !cleared);
+        if (steepStart) substeps = Math.Max(substeps, SlideSubsteps(displacement, support.Normal, tuning));
 
         var tick = new Tick(groundHeight, groundNormal, world, lease, tuning, footRadius, cosMaxSlope, start,
-            ShellMotion.Lift(world, start, tuning), support);
+            ShellMotion.Lift(world, start, tuning), support, slide);
         if (!moving)
         {
             // A body at rest still climbs onto the tread a paced climb left it below.
@@ -86,6 +110,17 @@ internal static class GroundCore
     // it.
     static bool Owes(in SupportSample support, float feetY) =>
         support.Status == SupportStatus.Walkable && (double)support.Height - support.HeightError > feetY;
+
+    // Substeps of at most half the capsule radius whose drop along a plane of this normal is at most half the step
+    // height. A plane too steep to bound takes the cap, and the seat then leaves the body airborne.
+    static int SlideSubsteps(Vector2 displacement, Vector3 normal, in MoveTuning tuning)
+    {
+        double ny = Math.Clamp(normal.Y, 0f, 1f), across = Math.Sqrt(Math.Max(0, 1 - ny * ny));
+        double length = 0.5 * tuning.CapsuleRadius;
+        if (across > 0) length = Math.Min(length, 0.5 * tuning.StepHeight * ny / across);
+        double count = Math.Ceiling(Length(displacement) / length);
+        return count < MaxSubsteps ? Math.Max(1, (int)count) : MaxSubsteps;
+    }
 
     static double Budget(in MoveTuning tuning, float dt) =>
         tuning.MaxStepClimbSpeed > 0 ? (double)tuning.MaxStepClimbSpeed * dt : double.PositiveInfinity;
@@ -138,11 +173,12 @@ internal static class GroundCore
         readonly Vector2 _startAxis;
         readonly float _startY;
         readonly float _lift;
+        readonly bool _slide;
         Vector2 _achieved;
 
         internal Tick(Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal,
             IPhysicsWorld? world, IPhysicsQueryLease? lease, in MoveTuning tuning, float footRadius,
-            float cosMaxSlope, Vector3 start, float lift, in SupportSample support)
+            float cosMaxSlope, Vector3 start, float lift, in SupportSample support, bool slide)
         {
             _groundHeight = groundHeight;
             _groundNormal = groundNormal;
@@ -154,6 +190,7 @@ internal static class GroundCore
             _startAxis = new Vector2(start.X, start.Z);
             _startY = start.Y;
             _lift = lift;
+            _slide = slide;
             FeetY = start.Y;
             Support = support;
         }
@@ -167,7 +204,7 @@ internal static class GroundCore
             out bool blocked)
         {
             double budget = Budget(_tuning, dt);
-            footing = GroundFooting.Walkable;
+            footing = Support.Status == SupportStatus.Steep ? GroundFooting.Steep : GroundFooting.Walkable;
             blocked = false;
             PayLag(ref budget);
             // While nothing has deviated from the plan, the achieved move is the planned prefix itself, so free
@@ -208,6 +245,8 @@ internal static class GroundCore
                 GroundPlacement placement = attempt.Placement;
                 if (!placement.Valid)
                 {
+                    // A slide seat that fails clearance hands the body to the air pass.
+                    if (_slide && seat.Outcome == SeatOutcome.SteepSeated) footing = GroundFooting.None;
                     blocked = true;
                     break;
                 }
@@ -223,8 +262,10 @@ internal static class GroundCore
                 if (seat.Outcome == SeatOutcome.SteepSeated)
                 {
                     footing = GroundFooting.Steep;
-                    break;
+                    if (!_slide) break;
+                    continue;
                 }
+                footing = GroundFooting.Walkable;
                 if (seat.Outcome == SeatOutcome.Airborne)
                 {
                     footing = GroundFooting.None;
@@ -265,7 +306,10 @@ internal static class GroundCore
             bool liftedValid = lifted.Placement.Valid &&
                 (!lifted.Blocked || standing.Obstructions.Includes(lifted.Obstructions));
             bool standingValid = standing.Placement.Valid;
-            if (!liftedValid) return standingValid || standing.Seat.Outcome == SeatOutcome.Wall ? standing : default;
+            // A slide seat that fails clearance on both routes is reported, so the tick can hand the body over.
+            if (!liftedValid)
+                return standingValid || standing.Seat.Outcome == SeatOutcome.Wall ||
+                    (_slide && standing.Moved && standing.Seat.Outcome == SeatOutcome.SteepSeated) ? standing : default;
             if (!standingValid) return lifted;
             return Progress(standing.Achieved, move) > Progress(lifted.Achieved, move) ? standing : lifted;
         }
@@ -289,7 +333,7 @@ internal static class GroundCore
                 FeetY, _startAxis + total, Direction(move), _footRadius, _tuning, _cosMaxSlope);
             GroundPlacement placement = seat.Outcome is SeatOutcome.Wall or SeatOutcome.Refused ? default :
                 GroundPlacement.Try(_groundHeight, _groundNormal, _world, _lease, Support, FeetY,
-                    _startAxis, total, seat, _footRadius, _tuning, _cosMaxSlope, budget);
+                    _startAxis, total, seat, _footRadius, _tuning, _cosMaxSlope, budget, _slide);
             Vector2 achieved = placement.Valid && placement.Pushed
                 ? placement.Total - _achieved
                 : sweep.Achieved;

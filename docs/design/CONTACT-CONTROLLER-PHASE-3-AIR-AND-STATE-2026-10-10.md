@@ -108,8 +108,13 @@ alike, because both reach the controller through the same support primitive.
   `SlideFallLineStep` with gravity along the plane and the `SlideFrictionScale` ramp, clamped to the terminal
   `MaxFallSpeed / max(sin(slope), sin(gate))`. Input steers along the contour only, never into the carry, as
   legacy.
-- **Move.** The slide's horizontal displacement runs through the ground core, which keeps steep seats steep and
-  treats steep ground above the start feet as a wall. `VerticalVelocity` is the seated rise over `dt`.
+- **Move.** The slide's horizontal displacement runs through the ground core's slide mode, which keeps steep seats
+  steep and treats steep ground above the start feet as a wall. The slide's state is its fall-line speed. The seat
+  sets the position, and `VerticalVelocity` is the fall-line speed's vertical part, as legacy. The fall-line speed is
+  clipped only when the fall-line part of the move is blocked, so a contour steer never resets the fall.
+- **Blocked steer.** When a steered move is blocked, the slide reruns the tick with its carry alone and keeps
+  whichever made more progress along the fall line, so input never costs a slide its speed and a steer that frees
+  a pinned body is kept.
 - **Wedge.** A sliding tick whose seat ends no lower than it started while its support's fall lines oppose (a
   V-gully) is wedged: it counts as grounded for that tick, may jump, and reports `SupportGranted`.
 - **Leaving.** A slide that reaches walkable support grounds the body and reports the landing impact of its

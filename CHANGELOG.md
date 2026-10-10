@@ -7,6 +7,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.31.1
 
+- A SQLite content catalog opened by several hosts at once no longer refuses a correct database (#1353). A host
+  that read version 2 while another host migrated the file through version 3 to 4 compared the version 4 tables
+  against the version 2 shape and threw `ContentAuthoringException`. It now carries on from the migrated version,
+  as the version 3 check already did.
 - Locomotion's internal contact-classification controller gains its whole tick for phase 3 of #438: the air pass
   with jumps, coyote time and landing, steep slides on terrain and props, traction hysteresis and movement
   commitments. Nothing consumes it yet, so there is no consumer or movement change.

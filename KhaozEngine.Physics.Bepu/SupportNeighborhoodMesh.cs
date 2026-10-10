@@ -27,8 +27,8 @@ internal static class SupportNeighborhoodMesh
     /// triangle order. Only those triangles are read, each with the vertex bounds and finite checks of a captured
     /// mesh. An unproved pose, a scaled mesh or a candidate triangle outside that domain is Unsupported. A triangle
     /// whose world bounds are beyond the reach of the probe bounds <paramref name="probeLow"/> to
-    /// <paramref name="probeHigh"/> is skipped before its area is examined, and an exactly degenerate triangle has no
-    /// surface and is skipped too.</summary>
+    /// <paramref name="probeHigh"/> is skipped before its area is examined. An exactly degenerate triangle, or one
+    /// whose normal cannot be bounded away from zero, has no certifiable surface and is skipped too.</summary>
     internal static CapsuleFeatureStatus Polygons(Simulation simulation, TypedIndex shape, in RigidPose pose,
         StaticHandle owner, FeaturePoint lower, FeaturePoint upper, ReadOnlySpan<double> probeLow,
         ReadOnlySpan<double> probeHigh, GeometryInterval reach, List<int> candidates, List<SupportPolygon> output)
@@ -69,10 +69,13 @@ internal static class SupportNeighborhoodMesh
             // as Cross(ac, ab), as CapsuleFeatureMesh does. Wound A, C, B, the polygon's inside convention carries it.
             FeaturePoint ac = transform.Edge(a, c), ab = transform.Edge(a, b);
             FeaturePoint normal = FeaturePoint.Cross(ac, ab);
-            // A sliver keeps its bounded normal. Only arithmetic that cannot bound it away from zero refuses.
-            if (FeaturePoint.Dot(normal, normal).Sign != GeometrySign.Positive) return CapsuleFeatureStatus.Unsupported;
-            output.Add(new SupportPolygon(owner, id, [worldA, worldC, worldB],
-                [ac, transform.Edge(c, b), transform.Edge(b, a)], normal));
+            var polygon = new SupportPolygon(owner, id, [worldA, worldC, worldB],
+                [ac, transform.Edge(c, b), transform.Edge(b, a)], normal);
+            // A sliver keeps its bounded normal. A triangle whose normal cannot be bounded away from zero has no
+            // certifiable surface and no area to stand on, and its edges belong to its neighbours, so like an exactly
+            // degenerate one it is not a member.
+            if (!polygon.NormalLength.IsResolved || !(polygon.NormalLength.Lower > 0)) continue;
+            output.Add(polygon);
         }
         return CapsuleFeatureStatus.Complete;
     }

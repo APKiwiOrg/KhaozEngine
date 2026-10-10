@@ -232,6 +232,27 @@ public class SupportNeighborhoodMeshTests
         Assert.Equal(0, floor.ElementId);
     }
 
+    [Fact]
+    public void UnboundedSliverNextToTheProbeIsSkipped()
+    {
+        // A level floor triangle (0) and a sliver (1) on its long edge from b to c, which passes through the origin.
+        // The sliver's third vertex is 1e-9 off the edge's midpoint, so its exact area is 2e-9 and nonzero. The mesh
+        // is yawed 30 degrees: the installed operator's certified coefficients are then intervals about 1e-7 wide,
+        // far wider than the sliver's normal, so the normal cannot be bounded away from zero. The probe rests on the
+        // floor straight above the origin, touching both triangles there. Yaw keeps the floor level at y 0.
+        const float offset = 1e-9f;
+        Vector3 a = new(-1, 0, -1), b = new(1, 0, -1), c = new(-1, 0, 1);
+        using var scene = new Scene();
+        StaticHandle mesh = AddMesh(scene, [a, b, c, c, b, new(offset, 0, offset)],
+            new Pose(Vector3.Zero, Quaternion.CreateFromAxisAngle(Vector3.UnitY, FootSupportScenes.Radians(30))));
+        Query query = scene.Query(scene.World, Lowest(0, FootProbe.Radius, 0), probe: FootProbe);
+
+        Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
+        SupportElement floor = Assert.Single(query.Elements);
+        Assert.Equal(mesh, floor.Static);
+        Assert.Equal(0, floor.ElementId);
+    }
+
     [Theory]
     [InlineData(float.NaN)]
     [InlineData(float.PositiveInfinity)]

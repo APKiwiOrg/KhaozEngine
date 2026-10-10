@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.Physics;
 
@@ -45,7 +46,7 @@ public sealed class MapAssetShapes
     /// <summary>Reads the collider and selection resources of <paramref name="assetId"/>. Throws
     /// <see cref="MapDocumentException"/> for an asset outside the closure, a payload that does not read as exactly one
     /// <see cref="PropCollisionFormat"/> shape, a triangle mesh inside a compound, which the physics backend cannot
-    /// install, and any declared support resource, since placement-local support surfaces arrive with R5.</summary>
+    /// install, and any declared support resource, since placement-local support surfaces are not supported yet.</summary>
     public static MapAssetShapes Read(MapAssetClosure closure, string assetId)
     {
         ArgumentNullException.ThrowIfNull(closure);
@@ -71,8 +72,12 @@ public sealed class MapAssetShapes
             throw new MapDocumentException(
                 $"Asset '{assetId}' requires {kind} resource '{resourceId}', which is {resource.Kind}.");
 
+        // Bytes already returns a fresh copy, so read that buffer in place rather than copying it again.
+        ReadOnlyMemory<byte> bytes = resource.Bytes;
+        ArraySegment<byte> segment = MemoryMarshal.TryGetArray(bytes, out ArraySegment<byte> array)
+            ? array : new ArraySegment<byte>(bytes.ToArray());
         PhysicsShape shape;
-        using (var stream = new MemoryStream(resource.Bytes.ToArray(), writable: false))
+        using (var stream = new MemoryStream(segment.Array!, segment.Offset, segment.Count, writable: false))
         {
             try
             {

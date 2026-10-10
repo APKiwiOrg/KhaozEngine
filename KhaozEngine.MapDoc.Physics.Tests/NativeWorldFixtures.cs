@@ -13,8 +13,9 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Tests.MapDoc.Physics;
 
 /// <summary>Shared native world fixtures, built through public MapDoc and Physics APIs only. Every fixture collider
-/// sits with its bottom at the placement origin, using a compound child pose where a primitive is centred, unless a
-/// fixture states otherwise.</summary>
+/// sits with its bottom at the placement origin unless a fixture states otherwise. The physics seam centres a box on
+/// its pose, so a box child is lifted by half its height. A cylinder stands on its base at its pose, at top level and
+/// as a compound child, so a cylinder child sits at local y 0.</summary>
 internal static class NativeWorldFixtures
 {
     // ---------------------------------------------------------------------------------------------------------------
@@ -54,7 +55,8 @@ internal static class NativeWorldFixtures
         Solid("crate", Compound((Box(0.6f, 0.2f, 0.6f), new Vector3(0f, 0.1f, 0f))),
             new Vector3(-0.3f, 0f, -0.3f), new Vector3(0.3f, 0.2f, 0.3f));
 
-        Solid("tree", Compound((new CylinderShape(0.3f, 6f), new Vector3(0f, 3f, 0f))),
+        // Base-aligned, so the trunk spans y 0 to 6 once installed.
+        Solid("tree", Compound((new CylinderShape(0.3f, 6f), Vector3.Zero)),
             new Vector3(-0.3f, 0f, -0.3f), new Vector3(0.3f, 6f, 0.3f));
 
         Solid("large-building", Compound((Box(100f, 10f, 100f), new Vector3(0f, 5f, 0f))),
@@ -82,9 +84,21 @@ internal static class NativeWorldFixtures
 
         var triangle = new TriangleMeshShape(new[] { Vector3.Zero, Vector3.UnitX, Vector3.UnitZ }, new[] { 0, 1, 2 });
         Solid("mesh-in-compound", Compound((triangle, Vector3.Zero)), Vector3.Zero, new Vector3(1f, 0f, 1f));
+        Solid("mesh-in-nested-compound", Compound((Compound((triangle, Vector3.Zero)), Vector3.Zero)),
+            Vector3.Zero, new Vector3(1f, 0f, 1f));
+
+        // A valid box payload followed by one stray byte.
+        byte[] trailing = ColliderBytes(Box(1f, 1f, 1f)).Append((byte)0).ToArray();
+        resources.Add(Resource(source.Add("trailing-byte-collider.collider", trailing), MapResourceKind.Collider));
+        assets.Add(Asset("trailing-byte-collider", -Vector3.One, Vector3.One, "trailing-byte-collider.collider", null));
+
+        // Well-formed bytes carrying a non-finite box, which the collision reader refuses.
+        Solid("nan-box-collider", Compound((new BoxShape(new Vector3(0.5f, float.NaN, 0.5f)), Vector3.Zero)),
+            -Vector3.One, Vector3.One);
 
         string supportId = "deck-with-support.surface";
         resources.Add(Resource(source.Add(supportId, "surface:deck-with-support"), MapResourceKind.Surface));
+        // Its top, not its bottom, is at the placement origin, like bridge-deck.
         Solid("deck-with-support", Compound((Box(4f, 0.25f, 4f), new Vector3(0f, -0.125f, 0f))),
             new Vector3(-2f, -0.25f, -2f), new Vector3(2f, 0f, 2f), supportId);
 

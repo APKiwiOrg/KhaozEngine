@@ -99,4 +99,127 @@ public class PropCollisionFormatTests
         var ex = Assert.Throws<InvalidOperationException>(() => PropCollisionFormat.Read(ms));
         Assert.Contains("remain", ex.Message);
     }
+
+    // Malformed shape data is refused at the reader (#1346), in the same InvalidOperationException contract as a bad
+    // magic, version, kind or count. Write does not validate, so it produces each malformed stream directly.
+    static InvalidOperationException ReadRefusal(PhysicsShape shape) =>
+        Assert.Throws<InvalidOperationException>(() => RoundTrip(shape));
+
+    static CompoundShape Wrap(PhysicsShape child, Pose local) => new(new[] { new CompoundChild(child, local) });
+
+    static CompoundShape Nest(int levels)
+    {
+        CompoundShape shape = Wrap(new BoxShape(Vector3.One), Pose.Identity);
+        for (int level = 1; level < levels; level++) shape = Wrap(shape, Pose.Identity);
+        return shape;
+    }
+
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    public void Read_NonFiniteBoxHalfExtent_Refuses(float value)
+    {
+        var ex = ReadRefusal(new BoxShape(new Vector3(1f, value, 1f)));
+        Assert.Contains("box half extent", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(-1f)]
+    public void Read_NonPositiveBoxHalfExtent_Refuses(float value)
+    {
+        var ex = ReadRefusal(new BoxShape(new Vector3(1f, 1f, value)));
+        Assert.Contains("box half extent", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(float.NaN, 1f)]
+    [InlineData(1f, float.PositiveInfinity)]
+    public void Read_NonFiniteCylinder_Refuses(float radius, float length)
+    {
+        var ex = ReadRefusal(new CylinderShape(radius, length));
+        Assert.Contains("cylinder", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(0f, 1f)]
+    [InlineData(1f, -2f)]
+    public void Read_NonPositiveCylinder_Refuses(float radius, float length)
+    {
+        var ex = ReadRefusal(new CylinderShape(radius, length));
+        Assert.Contains("cylinder", ex.Message);
+    }
+
+    [Fact]
+    public void Read_NonFiniteHullPoint_Refuses()
+    {
+        var ex = ReadRefusal(new ConvexHullShape(new[] { Vector3.Zero, Vector3.UnitX, new Vector3(0f, float.NaN, 0f), Vector3.UnitZ }));
+        Assert.Contains("convex hull point", ex.Message);
+    }
+
+    [Fact]
+    public void Read_NonFiniteMeshVertex_Refuses()
+    {
+        var ex = ReadRefusal(new TriangleMeshShape(new[] { Vector3.Zero, new Vector3(float.PositiveInfinity, 0f, 0f), Vector3.UnitZ }, new[] { 0, 1, 2 }));
+        Assert.Contains("triangle mesh vertex", ex.Message);
+    }
+
+    [Fact]
+    public void Read_MeshIndexCountNotATriple_Refuses()
+    {
+        var ex = ReadRefusal(new TriangleMeshShape(new[] { Vector3.Zero, Vector3.UnitX, Vector3.UnitZ }, new[] { 0, 1, 2, 0 }));
+        Assert.Contains("multiple of 3", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(3)]
+    public void Read_MeshIndexOutsideTheVertices_Refuses(int index)
+    {
+        var ex = ReadRefusal(new TriangleMeshShape(new[] { Vector3.Zero, Vector3.UnitX, Vector3.UnitZ }, new[] { 0, 1, index }));
+        Assert.Contains("triangle mesh index", ex.Message);
+    }
+
+    [Fact]
+    public void Read_NonFiniteChildPosition_Refuses()
+    {
+        var ex = ReadRefusal(Wrap(new BoxShape(Vector3.One), new Pose(new Vector3(0f, float.NaN, 0f), Quaternion.Identity)));
+        Assert.Contains("compound child pose", ex.Message);
+    }
+
+    [Fact]
+    public void Read_NonFiniteChildOrientation_Refuses()
+    {
+        var ex = ReadRefusal(Wrap(new BoxShape(Vector3.One), new Pose(Vector3.Zero, new Quaternion(0f, 0f, 0f, float.NaN))));
+        Assert.Contains("compound child pose", ex.Message);
+    }
+
+    [Fact]
+    public void Read_CompoundWithoutChildren_Refuses()
+    {
+        var ex = ReadRefusal(new CompoundShape(Array.Empty<CompoundChild>()));
+        Assert.Contains("no children", ex.Message);
+    }
+
+    [Fact]
+    public void Read_CompoundNestedSixteenLevels_Reads()
+    {
+        PhysicsShape shape = RoundTrip(Nest(16));
+        int levels = 0;
+        while (shape is CompoundShape compound)
+        {
+            levels++;
+            shape = Assert.Single(compound.Children).Shape;
+        }
+        Assert.Equal(16, levels);
+        Assert.IsType<BoxShape>(shape);
+    }
+
+    [Fact]
+    public void Read_CompoundNestedDeeperThanSixteenLevels_Refuses()
+    {
+        var ex = ReadRefusal(Nest(17));
+        Assert.Contains("nesting", ex.Message);
+    }
 }

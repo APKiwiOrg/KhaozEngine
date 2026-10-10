@@ -23,14 +23,23 @@ public class MapAssetShapesTests
     [Fact]
     public void SelectionOnlyAsset_IsNotSolid()
     {
-        var shapes = MapAssetShapes.Read(NativeWorldFixtures.Assets().Closure, "examine-sign");
+        var f = NativeWorldFixtures.Assets();
+        var shapes = MapAssetShapes.Read(f.Closure, "examine-sign");
         Assert.False(shapes.IsSolid);
+        Assert.Null(shapes.Collider);
+        Assert.Null(shapes.ColliderSha256);
         Assert.IsType<BoxShape>(shapes.Selection);
+        Assert.Equal(f.Closure.GetResource("examine-sign.selection").Reference.Sha256, shapes.SelectionSha256);
+        Assert.Equal("examine-sign", shapes.AssetId);
+        Assert.Equal(1f, shapes.SourceUnitsToMetres);
     }
 
     [Theory]
     [InlineData("garbage-collider", "collision payload")]
+    [InlineData("trailing-byte-collider", "collision payload")]
+    [InlineData("nan-box-collider", "collision payload")]
     [InlineData("mesh-in-compound", "triangle mesh inside a compound")]
+    [InlineData("mesh-in-nested-compound", "triangle mesh inside a compound")]
     [InlineData("deck-with-support", "placement-local support surfaces arrive with R5")]
     public void UnsupportedShapeData_Refuses(string assetId, string message)
     {

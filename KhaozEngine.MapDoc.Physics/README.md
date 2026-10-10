@@ -28,6 +28,6 @@ blocking.
 
 `Read` throws `MapDocumentException` when:
 
-- a collision payload does not read as exactly one shape,
+- a collision payload does not read as exactly one well-formed shape,
 - a compound holds a triangle mesh, which the physics backend cannot install,
-- the asset declares a support resource, because placement-local support surfaces arrive with R5.
+- the asset declares a support resource, because placement-local support surfaces are not supported yet.

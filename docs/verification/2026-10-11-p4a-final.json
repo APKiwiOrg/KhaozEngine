@@ -1,0 +1,18 @@
+{
+  "task": "Contact controller phase 4a (KhaozEngine #438): StepDeltaY, ClimbRate and ClimbRateEwma from certified support, Tasks 1 to 4",
+  "candidate_base": "91e19fc0e660ba24b37f7e05cd1d10a672fc7757",
+  "candidate": "9684ba57244a2266572c99793f8d2081e156f597 plus the Task 4 commit carrying this file. Only the scenario assertion, docs and this record changed after the verified tree.",
+  "source_branch": "feature/contact-controller-phase4a",
+  "origin_main": "91e19fc0e660ba24b37f7e05cd1d10a672fc7757",
+  "contains_origin_main": true,
+  "version": "20.31.1",
+  "newest_tag": "v20.31.0",
+  "version_decision": "Ride the staged 20.31.1, untagged.",
+  "verification": {
+    "release_build": { "command": "dotnet build KhaozEngine.slnx -c Release", "exit": 0, "warnings": 0, "errors": 0 },
+    "full_tests": { "command": "dotnet test KhaozEngine.slnx -c Release --no-build --filter \"Category!=LiveSocket\"", "exit": 0, "assemblies": 32, "passed": 27621, "failed": 0, "skipped": 1329, "total": 28950 },
+    "format": { "command": "dotnet format KhaozEngine.slnx --verify-no-changes --no-restore", "exit": 0, "note": "the known generic workspace-loading warning" },
+    "guards": { "check-dashes": 0, "check-prose": 0, "check-file-size": 0, "check-agent-instructions": 0, "check-doc-versions": 0 }
+  },
+  "lane": "every build and test through build-slot, heavy lane for the build, suite and format"
+}

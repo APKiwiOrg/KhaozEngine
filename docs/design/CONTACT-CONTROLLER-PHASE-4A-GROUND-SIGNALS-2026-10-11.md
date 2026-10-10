@@ -3,8 +3,9 @@
 Date: 2026-10-11. Detailed spec for the first half of phase 4 of
 [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438). The program, body model, support rule and invariants are
 in [CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md](CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md). Phase 3 (air
-and state) is on main at `de9d1ef19`. Status: written under the owner's 2026-10-10 instruction to continue the
-program to completion, with every decision recorded as a ruling for review.
+and state) is on main at `de9d1ef19`. Status: implemented, staged for 20.31.1. Written under the owner's
+2026-10-10 instruction to continue the program to completion, with every decision recorded as a ruling for review,
+including the rulings made during implementation.
 
 ## Scope
 

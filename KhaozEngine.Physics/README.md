@@ -139,7 +139,8 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   not possibly fit in what remains of the stream (a truncated or corrupted file), rather than risking
   an `OverflowException`/`OutOfMemoryException` from an unchecked allocation. It refuses malformed shape
   data the same way: a non-finite or non-positive box half extent or cylinder size, a non-finite hull
-  point, mesh vertex or compound child pose, a mesh index count that is not a multiple of 3 or an index
+  point, mesh vertex or compound child pose, a compound child orientation that is not a unit quaternion
+  (squared length off 1 by more than 1e-3), a mesh index count that is not a multiple of 3 or an index
   outside the vertices, a compound with no children, and compound nesting deeper than 16 levels.
 
 ## Usage

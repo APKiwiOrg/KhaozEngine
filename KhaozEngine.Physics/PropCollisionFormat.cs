@@ -95,8 +95,8 @@ public static class PropCollisionFormat
     /// array-count field that is negative or could not possibly fit in what remains of the stream (a truncated
     /// or corrupted file) - never <see cref="OverflowException"/> or <see cref="OutOfMemoryException"/> from an
     /// unchecked allocation. Malformed shape data throws the same way: a non-finite or non-positive box half
-    /// extent or cylinder size, a non-finite hull point, mesh vertex or compound child pose, a mesh index count
-    /// that is not a multiple of 3 or an index outside the vertices, a compound with no children, and compound
+    /// extent or cylinder size, a non-finite hull point, mesh vertex or compound child pose, a compound child
+    /// orientation that is not a unit quaternion, a mesh index count that is not a multiple of 3 or an index outside the vertices, a compound with no children, and compound
     /// nesting deeper than 16 levels, which bounds the reader's recursion. The stream
     /// is left open.</summary>
     public static PhysicsShape Read(Stream stream)
@@ -119,6 +119,10 @@ public static class PropCollisionFormat
 
     /// <summary>The deepest compound nesting <see cref="Read(Stream)"/> accepts. A top-level compound is level 1.</summary>
     internal const int MaxCompoundDepth = 16;
+
+    /// <summary>How far a compound child orientation's squared length may differ from 1 before
+    /// <see cref="Read(Stream)"/> refuses it.</summary>
+    internal const float UnitOrientationTolerance = 1e-3f;
 
     // Bytes the smallest possible encoding of one array element occupies, used only as a fallback ceiling when the
     // stream can't report a remaining length (see ReadCount). A Vector3 is 3 floats, an int index is 4 bytes, and a
@@ -257,6 +261,12 @@ public static class PropCollisionFormat
             !float.IsFinite(orient.X) || !float.IsFinite(orient.Y) || !float.IsFinite(orient.Z) || !float.IsFinite(orient.W))
             throw new InvalidOperationException(
                 $"PropCollisionFormat: compound child pose ({pos}, {orient}) is not finite.");
+        // The tolerance accepts any exporter's float rounding and refuses zero or garbage, which would collapse a
+        // rotated axis. A non-unit orientation is refused, never normalized.
+        float lengthSquared = orient.LengthSquared();
+        if (MathF.Abs(lengthSquared - 1f) > UnitOrientationTolerance)
+            throw new InvalidOperationException(
+                $"PropCollisionFormat: compound child orientation {orient} is not a unit quaternion (squared length {lengthSquared}).");
         return new Pose(pos, orient);
     }
 

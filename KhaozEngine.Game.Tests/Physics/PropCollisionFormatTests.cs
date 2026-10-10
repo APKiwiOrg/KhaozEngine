@@ -195,6 +195,15 @@ public class PropCollisionFormatTests
         Assert.Contains("compound child pose", ex.Message);
     }
 
+    [Theory]
+    [InlineData(0f, 0f, 0f, 0f)]
+    [InlineData(0.5f, 0f, 0.5f, 0f)]
+    public void Read_NonUnitChildOrientation_Refuses(float x, float y, float z, float w)
+    {
+        var ex = ReadRefusal(Wrap(new BoxShape(Vector3.One), new Pose(Vector3.Zero, new Quaternion(x, y, z, w))));
+        Assert.Contains("is not a unit quaternion", ex.Message);
+    }
+
     [Fact]
     public void Read_CompoundWithoutChildren_Refuses()
     {

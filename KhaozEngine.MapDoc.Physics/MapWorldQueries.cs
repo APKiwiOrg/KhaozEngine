@@ -22,22 +22,18 @@ public sealed record MapPickHit(string PlacementId, long? NumericId, float Dista
 /// range boundary, so consumers that need both heads to agree pass a <c>tolerance</c> to <see cref="Within"/>.</summary>
 public sealed class MapWorldQueries
 {
+    readonly MapBuiltWorld _world;
     readonly IReadOnlyList<MapPlacementGeometry> _placements;
-    readonly Dictionary<string, int> _byId;
     readonly MapEnvelopeIndex _index;
 
     /// <summary>Indexes the envelopes of <paramref name="world"/>.</summary>
     public MapWorldQueries(MapBuiltWorld world)
     {
         ArgumentNullException.ThrowIfNull(world);
+        _world = world;
         _placements = world.Placements;
-        _byId = new Dictionary<string, int>(_placements.Count, StringComparer.Ordinal);
         var bounds = new MapBox3[_placements.Count];
-        for (int i = 0; i < _placements.Count; i++)
-        {
-            _byId.Add(_placements[i].PlacementId, i);
-            bounds[i] = _placements[i].Envelope.Bounds;
-        }
+        for (int i = 0; i < _placements.Count; i++) bounds[i] = _placements[i].Envelope.Bounds;
         _index = new MapEnvelopeIndex(bounds);
     }
 
@@ -115,13 +111,14 @@ public sealed class MapWorldQueries
     }
 
     /// <summary>Throws unless <paramref name="range"/> and <paramref name="tolerance"/> are finite and
-    /// nonnegative.</summary>
-    internal static void CheckReach(float range, float tolerance)
+    /// nonnegative, naming <paramref name="parameter"/> when given, otherwise the failing argument.</summary>
+    internal static void CheckReach(float range, float tolerance, string? parameter = null)
     {
         if (!float.IsFinite(range) || range < 0f)
-            throw new ArgumentOutOfRangeException(nameof(range), "Range must be finite and nonnegative.");
+            throw new ArgumentOutOfRangeException(parameter ?? nameof(range), "Range must be finite and nonnegative.");
         if (!float.IsFinite(tolerance) || tolerance < 0f)
-            throw new ArgumentOutOfRangeException(nameof(tolerance), "Tolerance must be finite and nonnegative.");
+            throw new ArgumentOutOfRangeException(parameter ?? nameof(tolerance),
+                "Tolerance must be finite and nonnegative.");
     }
 
     /// <summary>The reach test behind <see cref="Within"/>, for range and tolerance already checked.</summary>
@@ -143,19 +140,16 @@ public sealed class MapWorldQueries
             MapDoublePose.From(placement.WorldPose), MapSlab.All, default);
     }
 
-    MapPlacementGeometry Placement(string placementId)
-    {
-        ArgumentNullException.ThrowIfNull(placementId);
-        if (!_byId.TryGetValue(placementId, out int index))
-            throw new ArgumentException($"The world has no placement '{placementId}'.", nameof(placementId));
-        return _placements[index];
-    }
+    MapPlacementGeometry Placement(string placementId) => _world.Placement(placementId);
 
-    internal static MapSlab Slab(MapInteractionBand? band)
+    /// <summary>The world height range of <paramref name="band"/>, unbounded without one. Throws for a band that is not
+    /// finite or is inverted, naming <paramref name="parameter"/> when given, otherwise the band.</summary>
+    internal static MapSlab Slab(MapInteractionBand? band, string? parameter = null)
     {
         if (band is not { } b) return MapSlab.All;
         if (!float.IsFinite(b.MinY) || !float.IsFinite(b.MaxY) || b.MinY > b.MaxY)
-            throw new ArgumentOutOfRangeException(nameof(band), "A band needs finite heights with MinY at most MaxY.");
+            throw new ArgumentOutOfRangeException(parameter ?? nameof(band),
+                "A band needs finite heights with MinY at most MaxY.");
         return new MapSlab(b.MinY, b.MaxY);
     }
 

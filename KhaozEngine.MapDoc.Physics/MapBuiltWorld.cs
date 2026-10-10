@@ -112,6 +112,8 @@ public sealed class MapBuiltWorld
     /// world.</summary>
     public string LegacyTerrainIdentity { get; }
 
+    readonly Dictionary<string, MapPlacementGeometry> _byId;
+
     internal MapBuiltWorld(MapResolvedDocument document, MapScopedSurfaces surfaces,
         IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain, IReadOnlyList<MapStaticDescriptor> statics,
         IReadOnlyList<MapStaticDiagnostic> diagnostics, MapBox3 bounds, string buildHash, bool isNative,
@@ -132,5 +134,17 @@ public sealed class MapBuiltWorld
         LegacySculptTiles = legacySculptTiles;
         LegacyTerrainBlockDigest = legacyTerrainBlockDigest;
         LegacyTerrainIdentity = legacyTerrainIdentity;
+        _byId = new Dictionary<string, MapPlacementGeometry>(placements.Count, StringComparer.Ordinal);
+        foreach (MapPlacementGeometry placement in placements) _byId.Add(placement.PlacementId, placement);
+    }
+
+    /// <summary>The geometry of <paramref name="placementId"/>. Throws <see cref="ArgumentException"/> naming
+    /// <c>placementId</c> when the world has no such placement.</summary>
+    internal MapPlacementGeometry Placement(string placementId)
+    {
+        ArgumentNullException.ThrowIfNull(placementId);
+        if (!_byId.TryGetValue(placementId, out MapPlacementGeometry? placement))
+            throw new ArgumentException($"The world has no placement '{placementId}'.", nameof(placementId));
+        return placement;
     }
 }

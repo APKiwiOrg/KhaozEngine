@@ -24,16 +24,18 @@ public sealed record MapStanceOptions(float Spacing, float Range, float Toleranc
 /// platform sine and cosine, so heads on different platforms can differ by an ulp in a proposal.</summary>
 public static class MapStanceCandidates
 {
-    // The vertices of the regular polygon circumscribing each end cap of a cylinder member.
-    const int CapSides = 32;
+    // The vertices of the regular polygon circumscribing each end cap of a cylinder member, as the envelope sweep uses.
+    const int CapSides = MapInteractionEnvelope.CapSides;
 
-    // A walk that would propose more points than this along one member's outline is refused as too fine.
-    const int MaximumProposalsPerMember = 1 << 20;
+    // A walk that would propose more points than this over all of one call's members is refused as too fine.
+    const int MaximumProposals = 1 << 20;
 
     /// <summary>The distinct seated feet positions the validator accepts within reach of
     /// <paramref name="placementId"/>'s envelope, ordered by distance to <paramref name="actorFeet"/>, then X, Z and
-    /// Y. Proposals outside the document's playable bounds are dropped before the validator sees them. The capsule is
-    /// <paramref name="tuning"/>'s radius and half height, standing on the seated feet.</summary>
+    /// Y. Proposals outside the document's inclusive playable bounds are dropped before the validator sees them, and
+    /// seats outside them are dropped after it. The capsule is <paramref name="tuning"/>'s radius and half height,
+    /// standing on the seated feet. Invalid options, including a spacing that would propose more than 2^20 points,
+    /// throw <see cref="ArgumentOutOfRangeException"/> naming <paramref name="options"/>.</summary>
     public static IReadOnlyList<Vector3> Find(MapBuiltWorld world, string placementId, Vector3 actorFeet,
         in MoveTuning tuning, MapStanceOptions options, MapStanceValidator validate)
     {
@@ -45,8 +47,8 @@ public static class MapStanceCandidates
             throw new ArgumentOutOfRangeException(nameof(actorFeet), "Actor feet must be finite.");
         if (!float.IsFinite(options.Spacing) || options.Spacing <= 0f)
             throw new ArgumentOutOfRangeException(nameof(options), "Spacing must be finite and positive.");
-        MapWorldQueries.CheckReach(options.Range, options.Tolerance);
-        _ = MapWorldQueries.Slab(options.Band);
+        MapWorldQueries.CheckReach(options.Range, options.Tolerance, nameof(options));
+        _ = MapWorldQueries.Slab(options.Band, nameof(options));
         float radius = tuning.CapsuleRadius, halfHeight = tuning.CapsuleHalfHeight;
         if (!float.IsFinite(radius) || radius <= 0f || !float.IsFinite(halfHeight) || halfHeight < radius)
             throw new ArgumentOutOfRangeException(nameof(tuning),
@@ -54,28 +56,35 @@ public static class MapStanceCandidates
         Func<float, float, float>? legacyHeight = world.IsNative ? null : world.LegacySupportHeight ??
             throw new InvalidOperationException("A resolver-1 world needs a legacy support height.");
 
-        MapInteractionEnvelope envelope = Placement(world, placementId).Envelope;
+        MapInteractionEnvelope envelope = world.Placement(placementId).Envelope;
         float baseY = (float)envelope.Bounds.MinY;
         MapResolvedBounds playable = world.Document.PlayableBounds;
         var footprints = new List<List<(double X, double Z)>>();
         Footprints(envelope.Shape, MapDoublePose.From(envelope.WorldPose), footprints);
 
-        var seated = new List<Vector3>();
+        // Every outline is walked before the validator runs, so a refused walk never calls it.
+        var proposals = new List<(double X, double Z)>();
         foreach (List<(double X, double Z)> footprint in footprints)
-            foreach ((double px, double pz) in Outline(Hull(footprint), radius, options.Spacing))
-            {
-                float x = (float)px, z = (float)pz;
-                if (!(x >= playable.MinX && x <= playable.MaxX && z >= playable.MinZ && z <= playable.MaxZ)) continue;
-                float y = legacyHeight is null ? baseY : legacyHeight(x, z);
-                if (!float.IsFinite(y))
-                    throw new InvalidOperationException("The legacy support height is not finite at a proposal.");
-                if (!validate(new Vector3(x, y, z), out Vector3 feet)) continue;
-                if (!IsFinite(feet))
-                    throw new InvalidOperationException("The stance validator seated a proposal at a nonfinite position.");
-                var body = new MovementBody(feet + Vector3.UnitY * halfHeight, radius, halfHeight);
-                if (MapWorldQueries.Reaches(envelope, body, options.Range, options.Tolerance, options.Band))
-                    seated.Add(feet);
-            }
+            if (!Outline(Hull(footprint), radius, options.Spacing, proposals))
+                throw new ArgumentOutOfRangeException(nameof(options),
+                    $"Spacing proposes more than {MaximumProposals} points around the envelope.");
+
+        var seated = new List<Vector3>();
+        foreach ((double px, double pz) in proposals)
+        {
+            float x = (float)px, z = (float)pz;
+            if (!Playable(playable, x, z)) continue;
+            float y = legacyHeight is null ? baseY : legacyHeight(x, z);
+            if (!float.IsFinite(y))
+                throw new InvalidOperationException("The legacy support height is not finite at a proposal.");
+            if (!validate(new Vector3(x, y, z), out Vector3 feet)) continue;
+            if (!IsFinite(feet))
+                throw new InvalidOperationException("The stance validator seated a proposal at a nonfinite position.");
+            if (!Playable(playable, feet.X, feet.Z)) continue;
+            var body = new MovementBody(feet + Vector3.UnitY * halfHeight, radius, halfHeight);
+            if (MapWorldQueries.Reaches(envelope, body, options.Range, options.Tolerance, options.Band))
+                seated.Add(feet);
+        }
 
         seated.Sort((a, b) => Compare(a, b, actorFeet));
         var distinct = new List<Vector3>(seated.Count);
@@ -84,12 +93,8 @@ public static class MapStanceCandidates
         return distinct.AsReadOnly();
     }
 
-    static MapPlacementGeometry Placement(MapBuiltWorld world, string placementId)
-    {
-        foreach (MapPlacementGeometry placement in world.Placements)
-            if (string.Equals(placement.PlacementId, placementId, StringComparison.Ordinal)) return placement;
-        throw new ArgumentException($"The world has no placement '{placementId}'.", nameof(placementId));
-    }
+    static bool Playable(MapResolvedBounds playable, float x, float z) =>
+        x >= playable.MinX && x <= playable.MaxX && z >= playable.MinZ && z <= playable.MaxZ;
 
     static int Compare(Vector3 a, Vector3 b, Vector3 actor)
     {
@@ -191,13 +196,13 @@ public static class MapStanceCandidates
     static double Cross((double X, double Z) o, (double X, double Z) a, (double X, double Z) b) =>
         (a.X - o.X) * (b.Z - o.Z) - (a.Z - o.Z) * (b.X - o.X);
 
-    // Points along the hull's outline outset by radius, evenly spaced by at most spacing. The outline is an arc about
-    // each hull vertex followed by the outset edge to the next vertex, starting on the first vertex's arc.
-    static List<(double X, double Z)> Outline(List<(double X, double Z)> hull, double radius, double spacing)
+    // Appends points along the hull's outline outset by radius, evenly spaced by at most spacing. The outline is an arc
+    // about each hull vertex followed by the outset edge to the next vertex, starting on the first vertex's arc. False,
+    // appending nothing, when the points would take the result past MaximumProposals.
+    static bool Outline(List<(double X, double Z)> hull, double radius, double spacing, List<(double X, double Z)> result)
     {
-        var result = new List<(double X, double Z)>();
         int n = hull.Count;
-        if (n == 0) return result;
+        if (n == 0) return true;
 
         // The outward unit normal of each edge from vertex i to vertex i + 1, and each vertex's arc from the normal of
         // the edge before it to the normal of the edge after it.
@@ -231,9 +236,7 @@ public static class MapStanceCandidates
         double total = 0d;
         for (int i = 0; i < n; i++) total += sweeps[i] * radius + lengths[i];
         double count = Math.Ceiling(total / spacing);
-        if (!(count <= MaximumProposalsPerMember))
-            throw new ArgumentOutOfRangeException(nameof(spacing),
-                $"Spacing proposes more than {MaximumProposalsPerMember} points along one envelope member.");
+        if (!(count <= MaximumProposals - result.Count)) return false;
         int steps = Math.Max(1, (int)count);
         double step = total / steps, offset = 0d;
         int k = 0;
@@ -256,6 +259,6 @@ public static class MapStanceCandidates
             }
             offset += lengths[i];
         }
-        return result;
+        return true;
     }
 }

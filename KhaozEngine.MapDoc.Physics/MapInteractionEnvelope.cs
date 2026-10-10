@@ -44,8 +44,8 @@ public sealed class MapInteractionEnvelope
     // A cylinder whose axis leans further than this from world vertical, relative to the raise, is swept as a hull.
     const float VerticalTolerance = 1e-5f;
 
-    // The sides of the regular polygon circumscribing each end cap of a tilted cylinder.
-    const int CapSides = 32;
+    // The sides of the regular polygon circumscribing each end cap of a tilted cylinder, shared with the stance walk.
+    internal const int CapSides = 32;
 
     /// <summary>Builds the envelope of <paramref name="source"/>, already scaled to metres, at
     /// <paramref name="worldPose"/>.</summary>

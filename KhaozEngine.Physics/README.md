@@ -45,6 +45,18 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   `AssertFeatureCurrent(result, lease)` before publishing from it, and never consume it after the lease is
   disposed. A later lease of the same generation cannot revive it. Structural fields alone do not permit
   movement. Support eligibility is the caller's decision.
+- **`IPhysicsSupportNeighborhood`** - optional support neighborhood capability, separate from
+  `IPhysicsCapsuleFeatures` and bound to leases and receivers the same way.
+  `QuerySupportNeighborhood(lease, probe, pose, bandMetres, elements, joins, filter)` publishes every front-facing element of every selected static whose separation from an upright probe may be
+  at most `bandMetres`, ordered by static handle then element id. A `SupportElement` is a `Polygon` (a box or
+  hull face, or one mesh triangle) or a `Tangent` (a point on a sphere, capsule or cylinder side, or a cylinder
+  cap), with its normal, witness, error bounds and separation interval. `joins` receives a symmetric bit matrix:
+  row `i` starts at word `i * JoinWordsPerRow` of the `SupportNeighborhoodResult`, and bit `j` is set when
+  polygons `i` and `j` meet within the band and each lies on or below the other's plane. Size the spans with
+  `SupportNeighborhoodResult.MaximumElements` (256) and `JoinWordsFor`. Mesh triangles certify one by one, so
+  mesh topology never refuses. Refusals are `CapacityExceeded` with `RequiredElements`, `Unsupported` outside
+  the certified probe, pose, band or shape domain, and `Ambiguous` for a hull not proven convex. A layer filter
+  and a join span shorter than `elements.Length * JoinWordsFor(elements.Length)` throw `ArgumentException`. Check a complete result with `AssertNeighborhoodCurrent(result, lease)`.
 - **Static handle provenance for query views** - the factory rejects invalid, missing and stale handles at
   creation. Handles are numeric identities local to their source world, so equal values from different worlds
   are not interchangeable. Use handles returned by that source, and do not reuse removed exclusions to infer
@@ -86,8 +98,9 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   batch: a servo-driven platform moves but a rider does NOT inherit its velocity (no character-carrying yet).
 - **Shapes** - `SphereShape`, `CapsuleShape` (upright, local Y), `BoxShape` (half-extents),
   `CylinderShape`, `ConvexHullShape` (solid props), `TriangleMeshShape` (non-convex buildings/interiors,
-  static only), and `CompoundShape` (`CompoundChild[]`, disjoint children each at a local `Pose`). A dynamic
-  body takes any of these except a triangle mesh. Base-aligned cylinder/hull shapes rest base-on-ground.
+  static only, every vertex finite, or the Bepu backend throws `ArgumentException` at `AddStatic`), and
+  `CompoundShape` (`CompoundChild[]`, disjoint children each at a local `Pose`). A dynamic body takes any of these
+  except a triangle mesh. Base-aligned cylinder/hull shapes rest base-on-ground.
 - **`DynamicBodyDescription`** - the mass/inertia + initial-motion knobs for `AddDynamic`:
   `WithMass(mass)`, plus optional `LinearVelocity`/`AngularVelocity`/`SleepThreshold`. Mass &lt;= 0 = an
   infinite-mass (kinematic) body: unmoved by gravity/impacts, moved only by its velocity.
@@ -126,7 +139,11 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
 - **`QueryFilter`** - which bodies a raycast/sweep may hit: a `QueryMobility` (statics / dynamics / both) plus a
   layer mask. Default (`QueryFilter.All`) matches every body; `QueryFilter.StaticsOnly` /
   `QueryFilter.DynamicsOnly` restrict by mobility (the Bepu backend honours the mobility gate, so a statics-only
-  ground probe ignores dynamic bodies).
+  ground probe ignores dynamic bodies). The init-only `CullBackFaces` property (set it with
+  `with { CullBackFaces = true }`) makes `SweepCapsule` skip a static mesh triangle that
+  does not face against the sweep (front normal `Cross(C - A, B - A)` dotted with the sweep direction at least
+  zero, vertical triangles included), so a support probe passes one-sided back faces as Bepu's contacts do.
+  Compound children are never culled and raycasts ignore the flag.
 - **`StaticHandle`**, **`DynamicBodyHandle`**, **`RayHit`**, **`SweepHit`** - opaque body handles and the query result structs.
 - **`PhysicsShapeScale.Uniform(shape, scale)`** - a new shape with all geometry scaled uniformly
   (compound child poses included). For per-placement scatter scale before `AddStatic`.

@@ -47,6 +47,30 @@ public class GroundSeatTests
         Assert.True(Vector3.Distance(expected, actual) <= 1e-6f, $"Expected {expected}, got {actual}");
     }
 
+    // The step part is charged against the climb budget, so it rounds up, never to nearest. Feet at -2^-28 seated
+    // on terrain at 0.25 + 2^-25 rise 0.25 + 2^-25 + 2^-28, which lies between floats and rounds to nearest below
+    // itself. Both the level reference and a start plane read the same rise.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StepPartNeverUnderstatesTheRise(bool startPlane)
+    {
+        float startFeetY = -MathF.ScaleB(1f, -28);
+        float height = 0.25f + MathF.ScaleB(1f, -25);
+        double rise = (double)height - startFeetY;
+        Assert.True((double)(float)rise < rise, $"The rise {rise:R} must round to nearest below itself.");
+        SupportSample start = startPlane
+            ? new(SupportStatus.Walkable, startFeetY, 0, Vector3.UnitY, null, -1, new Vector3(0, startFeetY, 0))
+            : new(SupportStatus.None, float.NaN, float.NaN, Vector3.Zero, null, -1, Vector3.Zero);
+
+        GroundSeatResult result = GroundSeat.Resolve((_, _) => height, null, null, null, start, Vector2.Zero,
+            startFeetY, new Vector2(0.1f, 0), PlusX, FootRadius, Tuning);
+
+        AssertOutcome(SeatOutcome.Seated, result);
+        Assert.True(result.StepPart >= rise, $"StepPart {result.StepPart:R} below the rise {rise:R}");
+        Assert.Equal(MathF.BitIncrement((float)rise), result.StepPart);
+    }
+
     [Theory]
     [InlineData(SceneVariant.Box)]
     [InlineData(SceneVariant.Mesh)]
@@ -132,17 +156,19 @@ public class GroundSeatTests
         AssertSeatedAt(0, seats);
     }
 
+    // A sphere of radius 0.25 centred on the floor at x 0.3. Its top, 0.25, is under the new axis, within the band
+    // and level there, so the curved prop certifies and seats the body on its top.
     [Fact]
-    public void CurvedPropRefuses()
+    public void CurvedPropSeatsOnItsTop()
     {
         using FootSupportScene scene = new FootSupportScene(SceneVariant.Box).Flat("floor", -4, 6, -5, 5, 0);
-        // A sphere of radius 0.25 centred on the floor at x 0.3. Its top, 0.25, is under the new axis.
-        scene.World.AddStatic(new SphereShape(0.25f), Pose.At(new Vector3(0.3f, 0, 0)));
+        StaticHandle sphere = scene.World.AddStatic(new SphereShape(0.25f), Pose.At(new Vector3(0.3f, 0, 0)));
         GroundSeatResult result = Seat(scene, new Vector2(-0.2f, 0), 0, new Vector2(0.3f, 0), out SupportSample start);
 
         Assert.Equal(SupportStatus.Walkable, start.Status);
-        AssertOutcome(SeatOutcome.Refused, result);
-        Assert.Equal(0f, result.FeetY);
+        AssertOutcome(SeatOutcome.Seated, result);
+        Assert.Equal(sphere, result.Support.Static);
+        AssertSeatedAt(0.25, result);
     }
 
     // An analytic cliff ahead takes the move's reverse as its wall normal when the terrain gives none, so a zero or

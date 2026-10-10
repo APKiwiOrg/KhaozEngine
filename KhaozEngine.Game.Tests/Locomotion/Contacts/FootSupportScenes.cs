@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
+using KhaozEngine.Tests.Physics;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
@@ -16,6 +17,8 @@ internal sealed class FootSupportScene : IDisposable
     readonly SceneVariant _variant;
     readonly Dictionary<string, StaticHandle> _statics = [];
     readonly Dictionary<string, Point[]> _tops = [];
+    readonly Dictionary<string, Pose> _poses = [];
+    readonly Dictionary<string, Func<List<OracleFace>>> _faces = [];
     IPhysicsQueryLease? _lease;
 
     /// <summary>A scene whose world is expressed against <paramref name="origin"/> before any static is added, so
@@ -49,7 +52,9 @@ internal sealed class FootSupportScene : IDisposable
         {
             Vector3 centre = top + Vector3.Transform(new Vector3(0, -thickness / 2, 0), tilt);
             var half = new Vector3(halfLength, thickness / 2, halfWidth);
-            _statics.Add(name, World.AddStatic(new BoxShape(half), new Pose(centre, tilt)));
+            StaticHandle box = World.AddStatic(new BoxShape(half), new Pose(centre, tilt));
+            _statics.Add(name, box);
+            _faces.Add(name, () => SupportNeighborhoodOracle.Box(box, half, new Pose(centre, tilt)));
             // The installed top face, from the float pose and half extents, evaluated in double.
             Point BoxCorner(float x, float z) => Point.Rotate(tilt, x * half.X, half.Y, z * half.Z) + centre;
             _tops.Add(name, [BoxCorner(1, -1), BoxCorner(1, 1), BoxCorner(-1, 1)]);
@@ -109,15 +114,40 @@ internal sealed class FootSupportScene : IDisposable
     {
         int[] indices = new int[vertices.Length];
         for (int i = 0; i < indices.Length; i++) indices[i] = i;
-        _statics.Add(name, World.AddStatic(new TriangleMeshShape(vertices, indices), Pose.Identity));
+        StaticHandle mesh = World.AddStatic(new TriangleMeshShape(vertices, indices), Pose.Identity);
+        _statics.Add(name, mesh);
+        _faces.Add(name, () => SupportNeighborhoodOracle.InstalledMesh(World, mesh));
         return this;
     }
 
     internal FootSupportScene Hull(string name, Vector3[] points)
     {
-        _statics.Add(name, World.AddStatic(new ConvexHullShape(points), Pose.Identity));
+        StaticHandle hull = World.AddStatic(new ConvexHullShape(points), Pose.Identity);
+        _statics.Add(name, hull);
+        _faces.Add(name, () => SupportNeighborhoodOracle.InstalledHull(World, hull));
         return this;
     }
+
+    /// <summary>The faces of static <paramref name="name"/> read in binary64 from what was installed: a slab box from
+    /// its float half extents and pose, a mesh or a hull from the backend's shape. A hull must be the only
+    /// static.</summary>
+    internal List<OracleFace> InstalledFaces(string name) => _faces[name]();
+
+    /// <summary>Any shape installed at <paramref name="pose"/>. The pose is kept for <see cref="PoseOf"/>.</summary>
+    internal FootSupportScene Add(string name, PhysicsShape shape, Pose pose)
+    {
+        _statics.Add(name, World.AddStatic(shape, pose));
+        _poses.Add(name, pose);
+        return this;
+    }
+
+    /// <summary>The float pose static <paramref name="name"/> was installed with through <see cref="Add"/>.</summary>
+    internal Pose PoseOf(string name) => _poses[name];
+
+    /// <summary>The triangle <paramref name="a"/>, <paramref name="b"/>, <paramref name="c"/> wound so its front
+    /// <c>Cross(C - A, B - A)</c> has a positive dot with <paramref name="outward"/>.</summary>
+    internal static Vector3[] Facing(Vector3 a, Vector3 b, Vector3 c, Vector3 outward) =>
+        Vector3.Dot(Vector3.Cross(c - a, b - a), outward) > 0 ? [a, b, c] : [a, c, b];
 
     public void Dispose()
     {
@@ -258,6 +288,138 @@ internal static class FootSupportScenes
     internal static FootSupportScene Wall(this FootSupportScene scene, string name, float x, float thickness,
         float height = 3, float halfWidth = 5) =>
         scene.Slab(name, new Vector3(x, height / 2, 0), MathF.PI / 2, height / 2, halfWidth, thickness);
+
+    /// <summary>A sphere "sphere" of <paramref name="radius"/> at <paramref name="centre"/>. The box variant is the
+    /// curved primitive. The mesh variant is a UV sphere of 8 rings and 16 segments wound outward, with a pole
+    /// vertex at exactly <c>centre + (0, radius, 0)</c>.</summary>
+    internal static FootSupportScene Sphere(SceneVariant variant, Vector3 centre, float radius)
+    {
+        var scene = new FootSupportScene(variant);
+        if (variant == SceneVariant.Box) return scene.Add("sphere", new SphereShape(radius), Pose.At(centre));
+        const int rings = 8, segments = 16;
+        Vector3 Ring(int ring, int segment)
+        {
+            if (ring == 0) return centre + new Vector3(0, radius, 0);
+            if (ring == rings) return centre - new Vector3(0, radius, 0);
+            float polar = MathF.PI * ring / rings, azimuth = 2 * MathF.PI * (segment % segments) / segments;
+            return centre + new Vector3(radius * MathF.Sin(polar) * MathF.Cos(azimuth), radius * MathF.Cos(polar),
+                radius * MathF.Sin(polar) * MathF.Sin(azimuth));
+        }
+        var vertices = new List<Vector3>();
+        void Triangle(Vector3 a, Vector3 b, Vector3 c) =>
+            vertices.AddRange(FootSupportScene.Facing(a, b, c, (a + b + c) / 3 - centre));
+        for (int ring = 0; ring < rings; ring++)
+            for (int segment = 0; segment < segments; segment++)
+            {
+                Vector3 a = Ring(ring, segment), b = Ring(ring, segment + 1);
+                Vector3 c = Ring(ring + 1, segment), d = Ring(ring + 1, segment + 1);
+                if (ring > 0) Triangle(a, b, c);
+                if (ring < rings - 1) Triangle(b, d, c);
+            }
+        return scene.Mesh("sphere", [.. vertices]);
+    }
+
+    /// <summary>A cylinder "cylinder" standing on its base at <paramref name="basePoint"/>, leaning
+    /// <paramref name="leanDegrees"/> about Z. Lean 0 stands it upright, so its cap is at
+    /// <c>basePoint.Y + length</c>.</summary>
+    internal static FootSupportScene UprightCylinder(Vector3 basePoint, float radius, float length,
+        float leanDegrees = 0)
+    {
+        Quaternion lean = leanDegrees == 0
+            ? Quaternion.Identity : Quaternion.CreateFromAxisAngle(Vector3.UnitZ, Radians(leanDegrees));
+        return new FootSupportScene(SceneVariant.Box)
+            .Add("cylinder", new CylinderShape(radius, length), new Pose(basePoint, lean));
+    }
+
+    /// <summary>A cylinder "log" lying along X with its middle at <paramref name="centre"/>: rotated 90 degrees about
+    /// Z, so its base, half a length along +X from the middle, carries the pose.</summary>
+    internal static FootSupportScene LyingLog(Vector3 centre, float radius, float length) =>
+        new FootSupportScene(SceneVariant.Box).Add("log", new CylinderShape(radius, length),
+            new Pose(centre + new Vector3(length / 2, 0, 0),
+                Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2)));
+
+    /// <summary>A walkable "plateau" at Y 0 over x in [-2, 0] and a separate static "face" falling at 70 degrees from
+    /// the plateau's edge at x 0 to Y -1. The box variant's face is a wedge hull whose back is the vertical plane x 0.
+    /// The mesh variant's face is one quad.</summary>
+    internal static FootSupportScene PlateauBesideSteepFace(SceneVariant variant)
+    {
+        var scene = new FootSupportScene(variant).Flat("plateau", -2, 0, -2, 2, 0);
+        float foot = 1 / MathF.Tan(Radians(70));
+        if (variant == SceneVariant.Mesh)
+            return scene.Mesh("face", FootSupportScene.Quad(new(0, 0, -2), new(foot, -1, -2), new(0, 0, 2),
+                new(foot, -1, 2)));
+        return scene.Hull("face", [new(0, 0, -2), new(0, 0, 2), new(foot, -1, -2), new(foot, -1, 2),
+            new(0, -1, -2), new(0, -1, 2)]);
+    }
+
+    /// <summary>Two coplanar floors at Y 0 that overlap over x in [-1, 1]: "west" over x in [-2, 1] and "east" over
+    /// x in [-1, 2]. <paramref name="eastFirst"/> installs them in the other order.</summary>
+    internal static FootSupportScene OverlappingCoplanarFloors(SceneVariant variant, bool eastFirst = false)
+    {
+        var scene = new FootSupportScene(variant);
+        void West() => scene.Flat("west", -2, 1, -2, 2, 0);
+        void East() => scene.Flat("east", -1, 2, -2, 2, 0);
+        if (eastFirst) { East(); West(); }
+        else { West(); East(); }
+        return scene;
+    }
+
+    /// <summary>The number of triangles in <see cref="OverCapacityFan"/>, over the backend's 256 element cap.</summary>
+    internal const int FanTriangles = 300;
+
+    /// <summary>One flat mesh "fan" of <see cref="FanTriangles"/> up-facing triangles meeting at
+    /// <paramref name="apex"/>, with a rim of radius 1. A probe touching the apex meets every triangle.</summary>
+    internal static FootSupportScene OverCapacityFan(Vector3 apex = default)
+    {
+        Vector3 Rim(int i) => apex + new Vector3(MathF.Cos(2 * MathF.PI * (i % FanTriangles) / FanTriangles), 0,
+            MathF.Sin(2 * MathF.PI * (i % FanTriangles) / FanTriangles));
+        var vertices = new Vector3[3 * FanTriangles];
+        for (int i = 0; i < FanTriangles; i++)
+            FootSupportScene.Facing(apex, Rim(i), Rim(i + 1), Vector3.UnitY).CopyTo(vertices, 3 * i);
+        return new FootSupportScene(SceneVariant.Mesh).Mesh("fan", vertices);
+    }
+
+    /// <summary>The number of triangles in <see cref="PartitionedTerrain"/>.</summary>
+    internal const int TerrainTriangles = 128;
+
+    /// <summary>The height of the <see cref="PartitionedTerrain"/> grid vertex at (x, z): a convex ridge along
+    /// x -0.5, a concave valley along z 0.5, a 0.35 step rising across x in [0.25, 0.5] at about 50 degrees,
+    /// and a 0.1 spike at (0.75, -0.5) where six triangles fan out.</summary>
+    internal static float TerrainHeight(float x, float z) =>
+        0.1f - 0.2f * MathF.Abs(x + 0.5f) + 0.2f * MathF.Abs(z - 0.5f) + (x >= 0.5f ? 0.35f : 0) +
+        (x == 0.75f && z == -0.5f ? 0.1f : 0);
+
+    /// <summary>One heightfield of <see cref="TerrainTriangles"/> up-facing triangles over x and z in [-1, 1] on a
+    /// 0.25 grid, split into <paramref name="pieces"/> mesh statics "piece0", "piece1" and so on by triangle order.
+    /// Every piece reads the same float vertices, so pieces share their boundary vertices exactly.
+    /// <see cref="TerrainTriangles"/> pieces give one static per triangle.</summary>
+    internal static FootSupportScene PartitionedTerrain(int pieces)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(pieces, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(pieces, TerrainTriangles);
+        var grid = new Vector3[9, 9];
+        for (int i = 0; i < 9; i++)
+            for (int j = 0; j < 9; j++)
+            {
+                float x = -1 + 0.25f * i, z = -1 + 0.25f * j;
+                grid[i, j] = new Vector3(x, TerrainHeight(x, z), z);
+            }
+        var triangles = new List<Vector3>(3 * TerrainTriangles);
+        for (int j = 0; j < 8; j++)
+            for (int i = 0; i < 8; i++)
+                triangles.AddRange(
+                    FootSupportScene.Quad(grid[i, j], grid[i + 1, j], grid[i, j + 1], grid[i + 1, j + 1]));
+        var scene = new FootSupportScene(SceneVariant.Mesh);
+        var piece = new List<Vector3>();
+        for (int p = 0, t = 0; p < pieces; p++)
+        {
+            piece.Clear();
+            for (int end = (p + 1) * TerrainTriangles / pieces; t < end; t++)
+                piece.AddRange(triangles.GetRange(3 * t, 3));
+            scene.Mesh($"piece{p}", [.. piece]);
+        }
+        return scene;
+    }
 
     internal static float Radians(float degrees) => degrees * MathF.PI / 180f;
 }

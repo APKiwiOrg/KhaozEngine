@@ -47,7 +47,23 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         if (!(wanted > 0)) return seat.FeetY;
         double paid = Math.Min(wanted, budget);
         budget -= paid;
-        return paid < wanted ? (float)((double)seat.FeetY - (wanted - paid)) : seat.FeetY;
+        return paid < wanted ? NotAbove((double)seat.FeetY - (wanted - paid)) : seat.FeetY;
+    }
+
+    /// <summary>The largest float not above <paramref name="value"/>. Paced feet round down, so a climb paid from
+    /// a budget that is not a float never exceeds it.</summary>
+    internal static float NotAbove(double value)
+    {
+        float rounded = (float)value;
+        return rounded > value ? MathF.BitDecrement(rounded) : rounded;
+    }
+
+    /// <summary>The smallest float not below <paramref name="value"/>, the mirror of <see cref="NotAbove"/>. A step
+    /// part rounds up, so the climb it charges is never less than the rise.</summary>
+    internal static float NotBelow(double value)
+    {
+        float rounded = (float)value;
+        return rounded < value ? MathF.BitIncrement(rounded) : rounded;
     }
 
     // A touching shell is clear. An overlapping shell gets one MTV proposal and one clearance check.

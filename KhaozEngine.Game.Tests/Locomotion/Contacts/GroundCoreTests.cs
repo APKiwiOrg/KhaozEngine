@@ -253,16 +253,22 @@ public class GroundCoreTests
         AssertNear(new Vector2(0.1f, 0.1f), stops.Achieved);
     }
 
-    // A sphere of radius 0.25 on the floor at x 0.3, its surface from x 0.05. The first substep's disc meets it
-    // with or without the lift, so the move is blocked at the start.
+    // The over-capacity fan, flat at Y 0 with its apex at the origin. Each probe certifies the neighborhood of its
+    // contact, so at x -0.2 the start meets only the few triangles near that point and certifies. The move of 0.2
+    // is one substep onto the apex, where the probes meet all 300 triangles, over the neighborhood capacity. That
+    // refusal stops the lifted and the standing attempt alike, so the move is blocked at the start.
     [Fact]
     public void RefusedTargetBlocks()
     {
-        using FootSupportScene scene = Floor(SceneVariant.Box);
-        scene.World.AddStatic(new SphereShape(0.25f), Pose.At(new Vector3(0.3f, 0, 0)));
+        using FootSupportScene scene = OverCapacityFan();
         var start = new Vector3(-0.2f, 0, 0);
+        var move = new Vector2(0.2f, 0);
+        SupportSample target = FootSupport.Find(null, null, scene.World, scene.Lease, new FootSupportQuery(
+            Vector2.Zero, 0, 0.5f * Tuning.CapsuleRadius, Tuning.StepHeight, Tuning.StepHeight,
+            MathF.Cos(Tuning.MaxSlopeRadians)));
+        Assert.Equal(SupportStatus.Refused, target.Status);
 
-        GroundStepResult result = Step(scene, start, new Vector2(0.5f, 0));
+        GroundStepResult result = Step(scene, start, move);
 
         Assert.True(result.Blocked, $"{result}");
         AssertFooting(GroundFooting.Walkable, result);
@@ -270,12 +276,12 @@ public class GroundCoreTests
         Assert.Equal(Vector2.Zero, result.Achieved);
     }
 
+    // A body standing on the over-capacity fan's apex cannot certify its start, so it is held where it stands.
     [Fact]
     public void RefusedStartHolds()
     {
-        using FootSupportScene scene = Floor(SceneVariant.Box);
-        scene.World.AddStatic(new SphereShape(0.25f), Pose.At(Vector3.Zero));
-        var start = new Vector3(0, 0.25f, 0);
+        using FootSupportScene scene = OverCapacityFan();
+        var start = Vector3.Zero;
 
         GroundStepResult result = Step(scene, start, new Vector2(0.2f, 0));
 
@@ -381,6 +387,32 @@ public class GroundCoreTests
 
         Assert.Equal(crate["crate"], result.Support.Static);
         AssertFeetY(CrateTop, result);
+    }
+
+    // The 0.3 crate rise is more than one tick's budget MaxStepClimbSpeed * dt, so the tick climbs exactly the
+    // budget. That budget is not a float and the nearest float lies above it, so feet rounded to the nearest float
+    // would climb past it. Moving onto the crate pays the step part. Resting beside it with the feet 0.3 below the
+    // top pays the owed climb.
+    [Theory]
+    [InlineData(SceneVariant.Box, true)]
+    [InlineData(SceneVariant.Mesh, true)]
+    [InlineData(SceneVariant.Box, false)]
+    [InlineData(SceneVariant.Mesh, false)]
+    public void PacedClimbNeverExceedsTheBudget(SceneVariant variant, bool moving)
+    {
+        using FootSupportScene crate = Crate(variant);
+        double budget = (double)Tuning.MaxStepClimbSpeed * Dt;
+        Assert.True((double)(float)budget > budget, $"The budget {budget:R} rounds down to a float.");
+
+        GroundStepResult result = moving
+            ? Step(crate, new Vector3(-0.3f, 0, 0), new Vector2(0.2f, 0))
+            : Step(crate, new Vector3(0.5f, 0, 0.25f), Vector2.Zero);
+
+        AssertFooting(GroundFooting.Walkable, result);
+        Assert.Equal(crate["crate"], result.Support.Static);
+        Assert.True(result.Rise <= budget + result.Support.HeightError,
+            $"Rise {result.Rise:R} over the budget {budget:R}: {result}");
+        Assert.True(result.Rise >= budget - 1e-6, $"Rise {result.Rise:R} short of the budget {budget:R}: {result}");
     }
 
     // Treads of 0.35 with risers of 0.30. The body stands at x 0.65 with its feet at 0.6, owing 0.3 of climb onto

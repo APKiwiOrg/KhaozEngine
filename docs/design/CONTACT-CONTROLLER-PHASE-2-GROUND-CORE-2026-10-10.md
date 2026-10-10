@@ -3,7 +3,7 @@
 Date: 2026-10-10. Detailed spec for phase 2 of [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438). The
 program, body model, support rule and invariants are in
 [CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md](CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md), and phase 1
-is on main at `d8a9d45d6`. Status: implemented, staged for 20.30.0. Nothing consumes it yet, so movement is unchanged.
+is on main at `d8a9d45d6`. Status: implemented, released in 20.30.0. Nothing consumes it yet, so movement is unchanged.
 
 ## Scope
 
@@ -17,7 +17,8 @@ Out of scope: airborne ticks, landing, sliding on steep ground, signals, wire, n
 support gaps. Those gaps (#1329 concave creases, #1330 vertices, #1331 curved primitives, #1332 one-sided back
 faces, #1340 one static proposed per probe at a shared edge, #1342 an unresolved feature query at a convex nosing)
 close in a separate phase 2b that must land before any game adopts the controller (owner ruling,
-2026-10-10).
+2026-10-10). The [phase 2b spec](CONTACT-CONTROLLER-PHASE-2B-SUPPORT-NEIGHBORHOOD-2026-10-10.md) closes them,
+staged for 20.31.0.
 
 ## Interface
 
@@ -44,8 +45,10 @@ internal static class GroundCore
 - `Rise` is the change in feet height this tick. Positive climbs, negative descends.
 - `Achieved` is the horizontal move that actually happened. `Blocked` says a wall, cliff, steep rise or refusal
   stopped part of it.
-- `Held` means the support at the start could not be certified. The body holds its position (phase 2b removes
-  the cases that cause it).
+- `Held` means the support at the start could not be certified. The body holds its position. Since phase 2b it
+  has four causes: a support neighborhood refusal (capacity or a domain the backend cannot certify), a probe
+  stopped above the reach band, a probe whose neighborhood supports nothing at or below the band top, and a probe
+  that starts overlapped.
 - The foot disc radius comes from `settings` until phase 5 moves it into `MoveTuning` together with the
   navigation bake identity, so bakes change once.
 - Input is validated like `FootSupport`: non-finite values, a non-positive `dt` and an invalid shell
@@ -84,7 +87,8 @@ internal static class GroundCore
      positive, the tick's owed climb and step part together are capped at `MaxStepClimbSpeed * dt`, so a run up
      stairs paces its climb as the knob always meant, while a continuous slope is followed exactly and never
      throttled. A paced body stays `Walkable` with its feet below the tread for a tick or two. That is legs-band
-     overlap, which the body model allows.
+     overlap, which the body model allows. Paced feet round down to the largest float not above the paced
+     height, for the owed climb and the step part alike, so a paid climb never exceeds the budget.
    - **Steep above the start feet:** a footed tick never climbs ground it cannot stand on (#486). The steep
      face acts as a wall: undo the substep and slide along its horizontal tangent.
    - **Steep at or below the start feet:** seat on it with `Steep` footing. Phase 3 slides from there.
@@ -143,7 +147,8 @@ only.
 | Ceilings | A ceiling lower than the shell top blocks entry. A ceiling within the lift limits the lift and still allows a flat move. |
 | Steep | A 60 degree face rising ahead blocks and slides. Walking off onto a 60 degree face gives `Steep`. |
 | Analytic cliff | Terrain rising 0.5 m within one substep blocks and slides along the cliff. |
-| Refusal | A sphere prop under the target blocks the move. A body started on a sphere gives `Held`. Both are pinned until phase 2b. |
+| Refusal | An over-capacity fan, 300 mesh triangles meeting at one vertex, under the target blocks the move. A body started on its apex gives `Held`. A curved prop seats the body on its top since phase 2b. |
+| Paced climb | A crate rise above one tick's budget climbs at most the budget, moving onto it and resting beside it, box and mesh. |
 | Determinism | Two identical steps are bit-identical. A 256-tick sequence replayed from a copied state matches tick for tick. |
 | Cost | Queries per tick on flat ground, stairs and walls, recorded for #1334. |
 
@@ -168,8 +173,8 @@ stays the default and stays byte-unchanged. Phase 2 rides the next engine versio
 
 - **Pacing and the shell.** A paced body lags its tread. The legs overlap it, which is allowed, but the shell
   must still clear the next riser. The stair rows at 6 m/s pin it.
-- **Held bodies.** Until phase 2b, a body placed on a curved prop cannot move. The refusal rows pin the
-  behaviour so phase 2b replaces it deliberately.
+- **Held bodies.** Since phase 2b a body on a curved prop seats and moves. A body is held only on a capacity or
+  domain refusal, which the refusal rows pin on the over-capacity fan.
 - **Query cost.** Each tick queries start support, then support per attempt and again for each clearance
   push. Contact substeps may retry the standing route. The cost rows record the bounded query counts before
   phase 3 builds on them.

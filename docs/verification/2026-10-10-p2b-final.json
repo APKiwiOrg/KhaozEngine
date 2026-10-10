@@ -1,0 +1,305 @@
+{
+  "task": "Contact controller phase 2b, final fix wave",
+  "candidate_base": "7ba5f19f9df375fc1cd413e0e891409ffea7af1d",
+  "candidate": "The candidate base plus the commit carrying this file. The verified working tree held the candidate base and differs from the committed tree only by this evidence file.",
+  "source_branch": "feature/contact-controller-phase2b",
+  "origin_main": "5d357d1ed2113eb574ffa0dede0ae2028175ef0d",
+  "origin_main_contained": true,
+  "version": "20.31.0",
+  "newest_tag": "v20.30.0",
+  "version_decision": "Promote the staged 20.30.1 to 20.31.0 because IPhysicsSupportNeighborhood and QueryFilter.CullBackFaces are additive public API. Neither v20.30.1 nor v20.31.0 is tagged. The PNG fixes ride in it.",
+  "dotnet_sdk": "10.0.401",
+  "machine": "Apple M2 Max, arm64, local. Hosted x64 CI is the controller's step.",
+  "changed_files": [
+    "CHANGELOG.md",
+    "Directory.Build.props",
+    "KhaozEngine.Game.Tests/Locomotion/Contacts/CountingQueryView.cs",
+    "KhaozEngine.Game.Tests/Locomotion/Contacts/Fixtures/support-equivalence.txt",
+    "KhaozEngine.Game.Tests/Locomotion/Contacts/FootSupportBoundaryTests.cs",
+    "KhaozEngine.Game.Tests/Locomotion/Contacts/GroundSeatTests.cs",
+    "KhaozEngine.Game.Tests/Locomotion/Contacts/SupportNeighborhoodEquivalenceTests.cs",
+    "KhaozEngine.Game.Tests/Physics/CapsuleFeatureContractTests.cs",
+    "KhaozEngine.Game.Tests/Physics/SupportNeighborhoodTests.cs",
+    "KhaozEngine.Locomotion/Contacts/FootSupport.cs",
+    "KhaozEngine.Locomotion/Contacts/GroundPlacement.cs",
+    "KhaozEngine.Locomotion/Contacts/GroundSeat.cs",
+    "KhaozEngine.Locomotion/Contacts/SupportCertification.cs",
+    "KhaozEngine.Movement.Tests/CornerFeatureControlScene.cs",
+    "KhaozEngine.Movement.Tests/SupportCertificationTests.cs",
+    "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.QueryView.cs",
+    "KhaozEngine.Physics.Bepu/BepuPhysicsWorld.SupportNeighborhood.cs",
+    "KhaozEngine.Physics.Bepu/README.md",
+    "KhaozEngine.Physics.Bepu/SupportNeighborhoodPolygon.cs",
+    "KhaozEngine.Physics/CapsuleFeatureQuery.cs",
+    "KhaozEngine.Physics/QueryFilter.cs",
+    "KhaozEngine.Physics/README.md",
+    "KhaozEngine.Physics/SupportNeighborhoodQuery.cs",
+    "README.md",
+    "docs/INDEX.md",
+    "docs/USING-KHAOZENGINE.md",
+    "docs/design/CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md",
+    "docs/design/CONTACT-CONTROLLER-PHASE-2-GROUND-CORE-2026-10-10.md",
+    "docs/design/CONTACT-CONTROLLER-PHASE-2B-SUPPORT-NEIGHBORHOOD-2026-10-10.md",
+    "docs/verification/2026-10-10-p2b-final.json"
+  ],
+  "build": {
+    "command": "build-slot --heavy --label p2b-fix --timeout 120m -- dotnet build KhaozEngine.slnx -c Release",
+    "exit": 0,
+    "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2b/logs/p2b-fix-build.log",
+    "log_sha256": "e6c8b0dd432f8a86900bc12433c1df06052f5b5da66f00172f3158cc7356aa77",
+    "warnings": 0,
+    "errors": 0
+  },
+  "tests": {
+    "command": "build-slot --heavy --label p2b-fix --timeout 120m -- dotnet test KhaozEngine.slnx -c Release --no-build --filter \"Category!=LiveSocket\"",
+    "exit": 0,
+    "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2b/logs/p2b-fix-tests.log",
+    "log_sha256": "fd2a2f6b0ded6ef334c608a1fdf2105a1388dd0adb730efe32bd9f88147628a6",
+    "assemblies": 31,
+    "totals": {
+      "failed": 0,
+      "passed": 26875,
+      "skipped": 1329,
+      "total": 28204
+    },
+    "failures": [],
+    "per_assembly": {
+      "KeDungeon.Tests": {
+        "failed": 0,
+        "passed": 13,
+        "skipped": 0,
+        "total": 13
+      },
+      "KhaozEngine.Accounts.Tests": {
+        "failed": 0,
+        "passed": 286,
+        "skipped": 46,
+        "total": 332
+      },
+      "KhaozEngine.Audio.Tests": {
+        "failed": 0,
+        "passed": 206,
+        "skipped": 3,
+        "total": 209
+      },
+      "KhaozEngine.Automation.Tests": {
+        "failed": 0,
+        "passed": 106,
+        "skipped": 0,
+        "total": 106
+      },
+      "KhaozEngine.Catalog.AzureBlob.Tests": {
+        "failed": 0,
+        "passed": 25,
+        "skipped": 7,
+        "total": 32
+      },
+      "KhaozEngine.Catalog.Tests": {
+        "failed": 0,
+        "passed": 1513,
+        "skipped": 0,
+        "total": 1513
+      },
+      "KhaozEngine.CodeHealth.Analyzers.Tests": {
+        "failed": 0,
+        "passed": 51,
+        "skipped": 0,
+        "total": 51
+      },
+      "KhaozEngine.Foundation.Tests": {
+        "failed": 0,
+        "passed": 1404,
+        "skipped": 0,
+        "total": 1404
+      },
+      "KhaozEngine.Game.Tests": {
+        "failed": 0,
+        "passed": 2813,
+        "skipped": 1,
+        "total": 2814
+      },
+      "KhaozEngine.Gui.Tests": {
+        "failed": 0,
+        "passed": 1276,
+        "skipped": 0,
+        "total": 1276
+      },
+      "KhaozEngine.Identity.Exchange.Tests": {
+        "failed": 0,
+        "passed": 177,
+        "skipped": 0,
+        "total": 177
+      },
+      "KhaozEngine.ItemInstances.Tests": {
+        "failed": 0,
+        "passed": 888,
+        "skipped": 0,
+        "total": 888
+      },
+      "KhaozEngine.Localization.Analyzers.Tests": {
+        "failed": 0,
+        "passed": 46,
+        "skipped": 0,
+        "total": 46
+      },
+      "KhaozEngine.MapDoc.Compatibility.Tests": {
+        "failed": 0,
+        "passed": 5,
+        "skipped": 0,
+        "total": 5
+      },
+      "KhaozEngine.MapDoc.Tests": {
+        "failed": 0,
+        "passed": 553,
+        "skipped": 0,
+        "total": 553
+      },
+      "KhaozEngine.MapEditor.Tests": {
+        "failed": 0,
+        "passed": 1350,
+        "skipped": 9,
+        "total": 1359
+      },
+      "KhaozEngine.Movement.Tests": {
+        "failed": 0,
+        "passed": 661,
+        "skipped": 3,
+        "total": 664
+      },
+      "KhaozEngine.Netcode.Abstractions.DecouplingTests": {
+        "failed": 0,
+        "passed": 4,
+        "skipped": 0,
+        "total": 4
+      },
+      "KhaozEngine.Netcode.DecouplingTests": {
+        "failed": 0,
+        "passed": 4,
+        "skipped": 0,
+        "total": 4
+      },
+      "KhaozEngine.Particles.Tests": {
+        "failed": 0,
+        "passed": 106,
+        "skipped": 0,
+        "total": 106
+      },
+      "KhaozEngine.Physics.HeadlessLoaderTests": {
+        "failed": 0,
+        "passed": 5,
+        "skipped": 0,
+        "total": 5
+      },
+      "KhaozEngine.Render.Tests": {
+        "failed": 0,
+        "passed": 8981,
+        "skipped": 936,
+        "total": 9917
+      },
+      "KhaozEngine.Server.Tests": {
+        "failed": 0,
+        "passed": 3846,
+        "skipped": 317,
+        "total": 4163
+      },
+      "KhaozEngine.Showcase.Tests": {
+        "failed": 0,
+        "passed": 83,
+        "skipped": 0,
+        "total": 83
+      },
+      "KhaozEngine.Simulation.Tests": {
+        "failed": 0,
+        "passed": 302,
+        "skipped": 0,
+        "total": 302
+      },
+      "KhaozEngine.Tests": {
+        "failed": 0,
+        "passed": 57,
+        "skipped": 0,
+        "total": 57
+      },
+      "KhaozEngine.TileEdit.Tests": {
+        "failed": 0,
+        "passed": 97,
+        "skipped": 7,
+        "total": 104
+      },
+      "KhaozEngine.TileWorld.Netcode.Tests": {
+        "failed": 0,
+        "passed": 1382,
+        "skipped": 0,
+        "total": 1382
+      },
+      "KhaozEngine.TileWorld.Physics.Tests": {
+        "failed": 0,
+        "passed": 89,
+        "skipped": 0,
+        "total": 89
+      },
+      "KhaozEngine.TileWorld.Tests": {
+        "failed": 0,
+        "passed": 514,
+        "skipped": 0,
+        "total": 514
+      },
+      "PixelLabSheetAssembler.Tests": {
+        "failed": 0,
+        "passed": 32,
+        "skipped": 0,
+        "total": 32
+      }
+    }
+  },
+  "format": {
+    "command": "build-slot --heavy --label p2b-fix --timeout 120m -- dotnet format KhaozEngine.slnx --verify-no-changes --no-restore",
+    "exit": 0,
+    "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2b/logs/p2b-fix-format.log",
+    "log_sha256": "239c224f01960886368326d9ef5ebdcce071dcd0996d157bef6a963fc1eaa49c",
+    "workspace_warnings": [
+      "Warnings were encountered while loading the workspace. Set the verbosity option to the 'diagnostic' level to log warnings."
+    ],
+    "changes": 0
+  },
+  "guards": {
+    "dashes": {
+      "command": "sh scripts/check-dashes.sh --tree",
+      "exit": 0,
+      "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2b/logs/p2b-fix-dashes.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "prose": {
+      "command": "sh scripts/check-prose.sh --tree",
+      "exit": 0,
+      "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2b/logs/p2b-fix-prose.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "file-size": {
+      "command": "sh scripts/check-file-size.sh --tree",
+      "exit": 0,
+      "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2b/logs/p2b-fix-file-size.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "agent-instructions": {
+      "command": "sh scripts/check-agent-instructions.sh --tree",
+      "exit": 0,
+      "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2b/logs/p2b-fix-agent-instructions.log",
+      "log_sha256": "679537ce091d060bc73f6b2eb9ff4edaa12c678e4ad855015c3fe5b24a119c8c",
+      "bytes": 7653,
+      "limit_bytes": 16384
+    },
+    "doc-versions": {
+      "command": "bash scripts/check-doc-versions.sh",
+      "exit": 0,
+      "log": ".superpowers/sdd/2026-10-10-contact-controller-phase2b/logs/p2b-fix-doc-versions.log",
+      "log_sha256": "e1897607eeacad6f3aa2308401d8273195f7fb84d0ae2b3c2facdc7d7fa85418"
+    }
+  },
+  "concerns": [
+    "The format command exited 0 with the generic workspace-load warning earlier finishes recorded.",
+    "Support query time misses its targets and remains the #1334 cost gate before adoption.",
+    "Support hidden under a sloped first contact remains the #1347 gate before navigation capture and adoption."
+  ],
+  "limits": "The full build, the full test run and the format check each ran once. LiveSocket was excluded by the recorded filter. The guards ran directly, outside build-slot. Hosted x64 CI, the merge of origin/main, main integration and pack are the controller's step. No tag."
+}

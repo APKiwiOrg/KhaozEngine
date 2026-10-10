@@ -23,6 +23,14 @@ public enum QueryMobility
 /// keeps the "hit everything" behaviour.</summary>
 public readonly record struct QueryFilter(QueryMobility Mobility = QueryMobility.All, uint Layers = 0)
 {
+    /// <summary>With this set, <see cref="IPhysicsWorld.SweepCapsule"/> skips a mesh triangle that does not face
+    /// against the sweep: one whose world front normal <c>Cross(C - A, B - A)</c> has a dot product with the sweep
+    /// direction of at least zero. A probe passes the back of a one-sided mesh and a triangle perpendicular to the
+    /// sweep, and reaches what lies beyond. Compound children are never culled. Raycasts ignore the flag because a
+    /// raycast against a mesh is already one-sided in the backend. <c>ComputePenetration</c> takes no filter and is
+    /// unaffected. Set it with <c>with { CullBackFaces = true }</c>. The default is false.</summary>
+    public bool CullBackFaces { get; init; }
+
     /// <summary>Matches every body (both mobilities, all layers). The default filter.</summary>
     public static readonly QueryFilter All = default;
 

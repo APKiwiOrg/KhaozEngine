@@ -35,6 +35,9 @@
          The clean inn/single-riser fixtures have a clear path behind the step so they do not cover this. -->
     <None Include="Physics/Fixtures/house_1_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Physics/Fixtures/house_2_proxy.coll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- One digest per support neighborhood and FootSupport question, recorded before the neighborhood was made
+         allocation free. SupportNeighborhoodEquivalenceTests proves every result is still bit-identical. -->
+    <None Include="Locomotion/Contacts/Fixtures/support-equivalence.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.App/KhaozEngine.App.csproj" />

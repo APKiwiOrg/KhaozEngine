@@ -4,80 +4,122 @@ using KhaozEngine.Physics;
 
 namespace KhaozEngine.Locomotion.Contacts;
 
-/// <summary>How one certified finite feature may support a body.</summary>
+/// <summary>How one certified neighborhood member may support a body. <see cref="Refused"/> marks a member that
+/// contributes nothing.</summary>
 internal enum CertifiedSupportKind : byte { Refused, Walkable, Steep }
 
-/// <summary>One feature's support at the body axis. <see cref="Lower"/> and <see cref="Upper"/> enclose the
-/// contribution height, the minimum of the faces' planes at the axis and the witness height. A
-/// <see cref="CertifiedSupportKind.Walkable"/> contribution takes that minimum over its walkable faces. A
-/// <see cref="CertifiedSupportKind.Steep"/> one has no walkable face and takes it over every face with a
-/// positive upward bound. <see cref="Normal"/> is the face that wins the minimum. A refusal carries no usable
-/// values.</summary>
+/// <summary>One neighborhood member's support at the body axis. <see cref="Lower"/> and <see cref="Upper"/> enclose
+/// the contribution height: the minimum of the member's plane at the axis, its witness height and the planes at the
+/// axis of the joined members that cap it. <see cref="Normal"/> is the member whose plane wins that minimum,
+/// <see cref="Witness"/> the member's own witness and <see cref="FeatureId"/> its element id. A
+/// <see cref="CertifiedSupportKind.Refused"/> contribution carries no usable values.</summary>
 internal readonly record struct SupportContribution(CertifiedSupportKind Kind, double Lower, double Upper,
     Vector3 Normal, Vector3 Witness, int FeatureId);
 
-/// <summary>Turns a complete capsule-feature result into a certified support contribution at an axis.</summary>
+/// <summary>Turns a complete support neighborhood into certified support contributions at an axis.</summary>
 internal static class SupportCertification
 {
     // The represented query band is slightly inside the exact 0.1 mm limit. It never widens contact.
     internal const float ContactBand = 0.0001f;
 
-    static readonly SupportContribution Refusal = default;
-
-    /// <summary>Certifies <paramref name="result"/> under its original <paramref name="lease"/> and receiver.
-    /// An expired, foreign or wrong-receiver result throws rather than refusing.</summary>
-    internal static SupportContribution Certify(IPhysicsCapsuleFeatures capability, IPhysicsQueryLease lease,
-        in CapsuleFeatureResult result, ReadOnlySpan<CapsuleIncidentFace> faces, Vector2 axis, float cosMaxSlope)
+    /// <summary>Writes one contribution per member, in element order, and returns the count. Refuses (returns -1)
+    /// when the result is not Complete, the axis or slope limit is out of domain, or a member's contribution is not
+    /// finite. Throws for an expired, foreign or wrong-receiver result, and for spans shorter than the published
+    /// elements and join rows. A member whose normal's upward lower bound reaches zero writes a contribution of
+    /// kind Refused that callers skip.</summary>
+    /// <remarks>Every member's errors propagate into its interval through outward-rounded arithmetic, so there is no
+    /// fixed error threshold. A member is walkable when its normal's upward lower bound reaches
+    /// <paramref name="cosMaxSlope"/>, so a normal straddling the limit is steep. A walkable polygon contributes
+    /// <c>min(plane at the axis, witness height, plane at the axis of every walkable polygon joined to it)</c>. A
+    /// steep polygon joined to any walkable polygon contributes nothing, as a phase 1 feature with a walkable face
+    /// ignored its steep faces. Any other steep polygon follows the phase 1 steep rule over its joined set: the
+    /// minimum with the plane at the axis of every joined steep polygon. A tangent element is never joined and
+    /// contributes <c>min(tangent plane at the axis, witness height)</c>.</remarks>
+    internal static int CertifyNeighborhood(IPhysicsSupportNeighborhood capability, IPhysicsQueryLease lease,
+        in SupportNeighborhoodResult result, ReadOnlySpan<SupportElement> elements, ReadOnlySpan<ulong> joins,
+        Vector2 axis, float cosMaxSlope, Span<SupportContribution> contributions)
     {
         ArgumentNullException.ThrowIfNull(capability);
         ArgumentNullException.ThrowIfNull(lease);
-        if (result.Status != CapsuleFeatureStatus.Complete) return Refusal;
-        capability.AssertFeatureCurrent(result, lease);
-        if (!Admissible(result, faces, axis, cosMaxSlope)) return Refusal;
+        if (result.Status != CapsuleFeatureStatus.Complete) return -1;
+        capability.AssertNeighborhoodCurrent(result, lease);
+        int count = result.Elements, stride = result.JoinWordsPerRow;
+        if (elements.Length < count || contributions.Length < count || joins.Length < count * stride)
+            throw new ArgumentException("The spans must hold every published element, join row and contribution.");
+        if (!float.IsFinite(cosMaxSlope) || cosMaxSlope < 0 || cosMaxSlope > 1 || !float.IsFinite(axis.X) ||
+            !float.IsFinite(axis.Y))
+            return -1;
 
-        int walkable = 0;
-        PlaneMinimum walkablePlanes = PlaneMinimum.Empty, risingPlanes = PlaneMinimum.Empty;
-        for (int i = 0; i < faces.Length; i++)
+        // Each member's own plane at the axis and its first pass kind, read again when it caps a joined member. The
+        // count is at most MaximumElements, so the stack stays bounded and only the members' entries are cleared.
+        Span<double> planes = stackalloc double[2 * count];
+        Span<CertifiedSupportKind> kinds = stackalloc CertifiedSupportKind[count];
+        for (int i = 0; i < count; i++)
         {
-            CapsuleIncidentFace face = faces[i];
-            if (face.Incidence != result.Kind || !ErrorWithin(face.NormalError, 100000)) return Refusal;
-            double upward = LowerBound(face.Normal.Y, face.NormalError);
-            // A face that may lean back over the witness cannot be part of an upward support neighborhood.
-            if (!(upward >= 0)) return Refusal;
-            bool isWalkable = upward >= cosMaxSlope;
-            if (isWalkable) walkable++;
-            // A face whose upward bound is zero has no bounded plane at the axis. Only a walkable one refuses.
+            SupportElement member = elements[i];
+            if (!Finite(member)) return -1;
+            double upward = LowerBound(member.Normal.Y, member.NormalError);
+            // A member that may face sideways or down has no bounded plane at the axis and supports nothing.
             if (!(upward > 0))
             {
-                if (isWalkable) return Refusal;
+                contributions[i] = default;
+                kinds[i] = CertifiedSupportKind.Refused;
                 continue;
             }
-            if (!PlaneAtAxis(result, face, upward, axis, out double faceLower, out double faceUpper))
-                return Refusal;
-            risingPlanes.Offer(i, faceLower, faceUpper);
-            if (isWalkable) walkablePlanes.Offer(i, faceLower, faceUpper);
+            if (!PlaneAtAxis(member.Witness, member.PositionErrorMetres, member.Normal, member.NormalError, upward,
+                    axis, out planes[2 * i], out planes[2 * i + 1]))
+                return -1;
+            CertifiedSupportKind kind =
+                upward >= cosMaxSlope ? CertifiedSupportKind.Walkable : CertifiedSupportKind.Steep;
+            contributions[i] = new(kind, 0, 0, member.Normal, member.Witness, member.ElementId);
+            kinds[i] = kind;
         }
 
-        CertifiedSupportKind kind;
-        PlaneMinimum planes;
-        if (walkable > 0)
+        for (int i = 0; i < count; i++)
         {
-            // Raw coplanar triangles of one face or open-boundary patch must agree. A convex crease is
-            // supported by any walkable side because its other sides fall away below the shared edge.
-            if (result.Kind != CapsuleFeatureKind.ConvexCrease && walkable != faces.Length) return Refusal;
-            (kind, planes) = (CertifiedSupportKind.Walkable, walkablePlanes);
+            SupportContribution own = contributions[i];
+            if (own.Kind == CertifiedSupportKind.Refused) continue;
+            PlaneMinimum minimum = PlaneMinimum.Empty;
+            minimum.Offer(i, planes[2 * i], planes[2 * i + 1]);
+            bool beside = false;
+            if (elements[i].Kind == SupportElementKind.Polygon)
+            {
+                ReadOnlySpan<ulong> row = joins.Slice(i * stride, stride);
+                for (int j = 0; j < count; j++)
+                {
+                    if (j == i || (row[j / 64] & (1UL << (j % 64))) == 0) continue;
+                    if (elements[j].Kind != SupportElementKind.Polygon) continue;
+                    // A member is capped by joined members of its own kind. A steep member joined to a walkable one
+                    // is the steep side of a walkable crease and contributes nothing.
+                    if (kinds[j] == CertifiedSupportKind.Walkable && own.Kind == CertifiedSupportKind.Steep)
+                    {
+                        beside = true;
+                        break;
+                    }
+                    if (kinds[j] == own.Kind) minimum.Offer(j, planes[2 * j], planes[2 * j + 1]);
+                }
+            }
+            if (beside)
+            {
+                contributions[i] = default;
+                continue;
+            }
+            SupportElement member = elements[i];
+            double lower = Math.Min(minimum.Lower, LowerBound(member.Witness.Y, member.PositionErrorMetres));
+            double upper = Math.Min(minimum.Upper, UpperBound(member.Witness.Y, member.PositionErrorMetres));
+            if (!double.IsFinite(lower) || !double.IsFinite(upper) || lower > upper) return -1;
+            contributions[i] = own with { Lower = lower, Upper = upper, Normal = elements[minimum.Winner].Normal };
         }
-        else if (risingPlanes.Winner >= 0)
-            (kind, planes) = (CertifiedSupportKind.Steep, risingPlanes);
-        else
-            return Refusal;
-        double lower = Math.Min(planes.Lower, LowerBound(result.GeometryPoint.Y, result.PositionErrorMetres));
-        double upper = Math.Min(planes.Upper, UpperBound(result.GeometryPoint.Y, result.PositionErrorMetres));
-        if (!double.IsFinite(lower) || !double.IsFinite(upper) || lower > upper) return Refusal;
-        return new(kind, lower, upper, faces[planes.Winner].Normal, result.GeometryPoint, result.FeatureId);
+        return count;
     }
 
-    // The running minimum of face plane enclosures at the axis. The face with the lowest enclosure wins. Equal
+    static bool Finite(in SupportElement member) =>
+        float.IsFinite(member.Normal.X) && float.IsFinite(member.Normal.Y) && float.IsFinite(member.Normal.Z) &&
+        float.IsFinite(member.Witness.X) && float.IsFinite(member.Witness.Y) && float.IsFinite(member.Witness.Z) &&
+        float.IsFinite(member.NormalError) && member.NormalError >= 0 &&
+        float.IsFinite(member.PositionErrorMetres) && member.PositionErrorMetres >= 0;
+
+    // The running minimum of member plane enclosures at the axis. The member with the lowest enclosure wins. Equal
     // lower bounds prefer the lower upper bound.
     struct PlaneMinimum
     {
@@ -94,54 +136,33 @@ internal static class SupportCertification
             _winnerUpper = double.PositiveInfinity,
         };
 
-        internal void Offer(int face, double lower, double upper)
+        internal void Offer(int member, double lower, double upper)
         {
             if (lower < _winnerLower || (lower == _winnerLower && upper < _winnerUpper))
-                (Winner, _winnerLower, _winnerUpper) = (face, lower, upper);
+                (Winner, _winnerLower, _winnerUpper) = (member, lower, upper);
             Lower = Math.Min(Lower, lower);
             Upper = Math.Min(Upper, upper);
         }
     }
 
-    static bool Admissible(in CapsuleFeatureResult result, ReadOnlySpan<CapsuleIncidentFace> faces, Vector2 axis,
-        float cosMaxSlope)
-    {
-        if (faces.Length != result.Written || faces.IsEmpty || !float.IsFinite(cosMaxSlope) ||
-            cosMaxSlope < 0 || cosMaxSlope > 1 || !float.IsFinite(axis.X) || !float.IsFinite(axis.Y) ||
-            !ErrorWithin(result.PositionErrorMetres, 4000) ||
-            !ErrorWithin(result.NormalError, 100000) ||
-            !double.IsFinite(result.SeparationLower) || !double.IsFinite(result.SeparationUpper) ||
-            result.SeparationLower > result.SeparationUpper ||
-            result.SeparationLower < -(double)ContactBand ||
-            result.SeparationUpper > ContactBand ||
-            Math.BitIncrement(result.SeparationUpper - result.SeparationLower) > ContactBand)
-            return false;
-        if (result.Kind is not (CapsuleFeatureKind.FaceInterior or CapsuleFeatureKind.OpenBoundary or
-            CapsuleFeatureKind.ConvexCrease)) return false;
-        // For a proved closest upright segment/geometry pair, positive upward separation implies
-        // the lower endpoint. A higher axis point could move downward and reduce that same distance.
-        return LowerBound(result.SeparationNormal.Y, result.NormalError) > 0;
-    }
-
-    // Encloses w.y + (n.x (w.x - axis.X) + n.z (w.z - axis.Y)) / n.y over the witness box and the face
-    // normal box. Every binary64 operation is rounded outward by one step.
-    static bool PlaneAtAxis(in CapsuleFeatureResult result, in CapsuleIncidentFace face, double upwardLower,
+    // Encloses w.y + (n.x (w.x - axis.X) + n.z (w.z - axis.Y)) / n.y over the witness box and the normal box.
+    // Every binary64 operation is rounded outward by one step.
+    static bool PlaneAtAxis(Vector3 witness, float position, Vector3 normal, float normalError, double upwardLower,
         Vector2 axis, out double lower, out double upper)
     {
         lower = upper = 0;
         // The quotient needs a strictly positive divisor to stay bounded.
         if (!(upwardLower > 0)) return false;
-        float position = result.PositionErrorMetres, normal = face.NormalError;
-        (double Lo, double Hi) dx = Difference(result.GeometryPoint.X, position, axis.X);
-        (double Lo, double Hi) dz = Difference(result.GeometryPoint.Z, position, axis.Y);
-        (double Lo, double Hi) nx = (LowerBound(face.Normal.X, normal), UpperBound(face.Normal.X, normal));
-        (double Lo, double Hi) nz = (LowerBound(face.Normal.Z, normal), UpperBound(face.Normal.Z, normal));
-        (double Lo, double Hi) ny = (upwardLower, UpperBound(face.Normal.Y, normal));
+        (double Lo, double Hi) dx = Difference(witness.X, position, axis.X);
+        (double Lo, double Hi) dz = Difference(witness.Z, position, axis.Y);
+        (double Lo, double Hi) nx = (LowerBound(normal.X, normalError), UpperBound(normal.X, normalError));
+        (double Lo, double Hi) nz = (LowerBound(normal.Z, normalError), UpperBound(normal.Z, normalError));
+        (double Lo, double Hi) ny = (upwardLower, UpperBound(normal.Y, normalError));
         (double Lo, double Hi) px = Product(nx, dx), pz = Product(nz, dz);
         (double Lo, double Hi) rise = (Math.BitDecrement(px.Lo + pz.Lo), Math.BitIncrement(px.Hi + pz.Hi));
         (double Lo, double Hi) offset = Quotient(rise, ny);
-        lower = Math.BitDecrement(LowerBound(result.GeometryPoint.Y, position) + offset.Lo);
-        upper = Math.BitIncrement(UpperBound(result.GeometryPoint.Y, position) + offset.Hi);
+        lower = Math.BitDecrement(LowerBound(witness.Y, position) + offset.Lo);
+        upper = Math.BitIncrement(UpperBound(witness.Y, position) + offset.Hi);
         return double.IsFinite(lower) && double.IsFinite(upper) && lower <= upper;
     }
 
@@ -176,9 +197,4 @@ internal static class SupportCertification
         if (!float.IsFinite(component)) return double.PositiveInfinity;
         return error == 0 ? component : Math.BitIncrement((double)component + error);
     }
-
-    static bool ErrorWithin(float error, double denominator) =>
-        // Both denominators are small positive integers. Multiplication of a binary32 value by
-        // either needs at most 41 significand bits, so the binary64 comparison is exact.
-        float.IsFinite(error) && error >= 0 && (double)error * denominator <= 1;
 }

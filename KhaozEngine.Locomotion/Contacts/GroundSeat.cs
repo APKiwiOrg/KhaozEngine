@@ -70,15 +70,16 @@ internal static class GroundSeat
     }
 
     // The seated height less the start support's plane extrapolated to the new axis. Without a start plane the
-    // reference is level at the start feet.
+    // reference is level at the start feet. The part is charged against the climb budget, so it rounds up and a
+    // paid climb never exceeds the budget.
     static float StepPart(float height, in SupportSample start, Vector2 startAxis, float startFeetY, Vector2 axis)
     {
         Vector3 n = start.Normal;
         bool hasPlane = start.Status is SupportStatus.Walkable or SupportStatus.Steep && n.Y > 0;
-        if (!hasPlane) return (float)((double)height - startFeetY);
+        if (!hasPlane) return GroundPlacement.NotBelow((double)height - startFeetY);
         double plane = start.Height + ((double)n.X * ((double)startAxis.X - axis.X) +
             (double)n.Z * ((double)startAxis.Y - axis.Y)) / n.Y;
-        return (float)(height - plane);
+        return GroundPlacement.NotBelow(height - plane);
     }
 
     // The wall normal is the contact normal made horizontal, or the reverse of the move when it has no

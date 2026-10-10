@@ -62,7 +62,8 @@ public sealed partial class BepuPhysicsWorld
         // beat. Bepu t then spans [0, 1] and scales back to distance.
         float scale = maxDistance > 0f && float.IsFinite(maxDistance) ? maxDistance : 1f;
         var velocity = new BodyVelocity(direction * scale);
-        var handler = new SweepHitHandler(filter.Mobility, exclusions);
+        var handler = new SweepHitHandler(filter.Mobility, exclusions,
+            filter.CullBackFaces ? _sim : null, direction);
 
         _sim.Sweep(bepuCapsule, rigidPose, velocity, maxDistance / scale, _pool, ref handler);
 

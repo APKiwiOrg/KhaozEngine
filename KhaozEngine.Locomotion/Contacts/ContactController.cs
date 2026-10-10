@@ -15,14 +15,18 @@ internal static class ContactController
     // segment spends at least one of its substeps before it hands on, so the time left shrinks and the cap is a guard.
     const int MaxSegments = 8;
 
+    static readonly SupportSample NoSupport =
+        new(SupportStatus.None, float.NaN, float.NaN, Vector3.Zero, null, -1, Vector3.Zero);
+
     /// <summary>Advances <paramref name="state"/> one tick. The parameters mean what they mean for the legacy step
     /// core. <see cref="MoveState.Position"/> is the capsule centre, <see cref="MoveTuning.CapsuleHalfHeight"/> above
     /// the feet. A non-null <paramref name="world"/> must offer <see cref="IPhysicsQueryLeaseSource"/> and
     /// <see cref="IPhysicsSupportNeighborhood"/>, and every query of the tick runs under one read lease. A
     /// <paramref name="medium"/> that reports water throws until swimming moves here. Omitted
     /// <paramref name="settings"/> mean <c>new GroundCoreSettings()</c>. <paramref name="clampXz"/> clamps the planned
-    /// move's end before the move, and again after it, as legacy does. A non-finite clamp or result returns the input
-    /// state with its per-tick events cleared and the commitment kept.</summary>
+    /// move's end before the move and every substep's move in every mode, and again after the move as a backstop, as
+    /// legacy clamps. A non-finite clamp or result returns the input state with its per-tick events cleared and the
+    /// commitment kept.</summary>
     internal static MoveState Step(in MoveState state, Vector2 moveDir, float speedFraction, bool run, bool jump,
         float dt, Func<float, float, float> groundHeight, in MoveTuning tuning,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world,
@@ -54,7 +58,8 @@ internal static class ContactController
         var feet = new Vector3(s.Position.X, s.Position.Y - halfHeight, s.Position.Z);
         // An airborne tick never starts below analytic terrain at its axis, which no band, wall or seat would catch
         // again. Only a defect leaves the feet there, so the tick seats them on the terrain and its footing takes
-        // over, a slide where the terrain is steep. Legacy held the same floor.
+        // over, a slide where the terrain is steep. Legacy held the same floor. A grounded start may stand below
+        // walkable terrain by the climb a paced seat left, which the ground core pays from its budget.
         float terrain = groundHeight(feet.X, feet.Z);
         if (!s.Grounded && feet.Y < terrain) feet.Y = terrain;
 
@@ -72,7 +77,7 @@ internal static class ContactController
 
         // The play-area clamp cuts the planned move's end before the move, as legacy clamps its target. The move
         // then runs at the velocity that reaches the clamped end. A slide plans its own move and clamps it the same
-        // way, and the clamp after the move bounds whatever else a later mode planned.
+        // way, and every mode clamps each of its substeps, so the clamp after the move is only a backstop.
         Vector2 velocity = commanded, displacement = commanded * dt;
         if (clampXz is not null)
         {
@@ -158,26 +163,42 @@ internal static class ContactController
         Commitment = commitment,
     };
 
-    // The clamp after the move bounds what a later mode planned past the play area. A shifted end that stood on
-    // support is seated on the support at the clamped axis, and no shifted end is left below support it can reach, so
-    // the shift never sinks the feet into a surface or leaves them hovering over one. A non-finite clamp poisons the
-    // end, which holds the tick.
+    // The clamp after the move is a backstop. Every mode clamps each substep's move, so only a clearance push or a
+    // recovery can still end past the play area. A shifted end is placed at the clamped axis through the ground
+    // core's placement, which pays a rise from the climb budget the tick has left and clears the shell. An end that
+    // stood on support takes walkable support within StepHeight above or below it, and steep support at or below it.
+    // An airborne end takes only walkable support above it, never steep. A placement the shell can clear only by a
+    // push leaves the feet where they were, because the push would move the axis again. Whatever the placement, the
+    // feet never end below analytic terrain at the axis. A non-finite clamp poisons the end, which holds the tick.
     static Tick Bound(in Context c, in Tick tick, Func<float, float, Vector2> clampXz)
     {
         Vector3 feet = tick.Feet;
         Vector2 axis = clampXz(feet.X, feet.Z);
         if (axis.X == feet.X && axis.Y == feet.Z) return tick;
         Segment last = tick.Last with { Achieved = tick.Last.Achieved + new Vector2(axis.X - feet.X, axis.Y - feet.Z) };
-        float y = feet.Y;
-        if (float.IsFinite(axis.X) && float.IsFinite(axis.Y))
+        if (!float.IsFinite(axis.X) || !float.IsFinite(axis.Y))
+            return tick with { Feet = new Vector3(axis.X, feet.Y, axis.Y), Last = last };
+
+        MoveTuning t = c.Tuning;
+        float y = feet.Y, footRadius = c.Settings.FootRadiusFraction * t.CapsuleRadius, cosGate = MathF.Cos(c.Gate);
+        SupportSample support = FootSupport.Find(c.GroundHeight, c.GroundNormal, c.World, c.Lease,
+            new FootSupportQuery(axis, y, footRadius, t.StepHeight, tick.Supported ? t.StepHeight : 0f, cosGate));
+        GroundSeatResult seat = support.Status switch
         {
-            MoveTuning t = c.Tuning;
-            SupportSample support = FootSupport.Find(c.GroundHeight, c.GroundNormal, c.World, c.Lease,
-                new FootSupportQuery(axis, y, c.Settings.FootRadiusFraction * t.CapsuleRadius, t.StepHeight,
-                    tick.Supported ? t.StepHeight : 0f, MathF.Cos(c.Gate)));
-            bool seats = support.Status is SupportStatus.Walkable or SupportStatus.Steep;
-            if (seats && (tick.Supported || support.Height > y)) y = support.Height;
+            SupportStatus.Walkable when tick.Supported || support.Height > y => new(SeatOutcome.Seated,
+                support.Height, support, MathF.Max(0f, GroundPlacement.NotBelow((double)support.Height - y)),
+                Vector3.Zero),
+            SupportStatus.Steep when tick.Supported && support.Height <= y => new(SeatOutcome.SteepSeated,
+                support.Height, support, 0f, Vector3.Zero),
+            _ => new(SeatOutcome.Airborne, y, support, 0f, Vector3.Zero),
+        };
+        if (seat.Outcome is SeatOutcome.Seated or SeatOutcome.SteepSeated)
+        {
+            GroundPlacement placement = GroundPlacement.Try(c.GroundHeight, c.GroundNormal, c.World, c.Lease,
+                NoSupport, y, axis, Vector2.Zero, seat, footRadius, t, cosGate, tick.Budget, clearSteep: true);
+            if (placement.Valid && !placement.Pushed) y = placement.Feet.Y;
         }
+        y = MathF.Max(y, c.GroundHeight(axis.X, axis.Y));
         return tick with { Feet = new Vector3(axis.X, y, axis.Y), Last = last };
     }
 
@@ -194,9 +215,10 @@ internal static class ContactController
 
     /// <summary>What the move did. <see cref="FallSpeed"/> is the vertical speed the tick's last landing erased,
     /// negative downward, and zero without one. <see cref="Commanded"/> is the first mode's drive.
-    /// <see cref="Supported"/> says the tick ended on support, walkable or steep.</summary>
+    /// <see cref="Supported"/> says the tick ended on support, walkable or steep. <see cref="Budget"/> is the climb the
+    /// tick has left, in metres.</summary>
     readonly record struct Tick(Vector3 Feet, float VerticalVelocity, bool Grounded, float FallSpeed,
-        Vector2 Commanded, Segment Last, bool Supported);
+        Vector2 Commanded, Segment Last, bool Supported, double Budget);
 
     // Runs the tick's modes in turn. A grounded move that loses its footing flies or slides the time it has left. A
     // grounded start on steep support slides the whole tick with the carried velocity, as a slide start does. A slide
@@ -286,7 +308,7 @@ internal static class ContactController
                 mode = Mode.Slide;
             }
         }
-        return new Tick(feet, vertical, grounded, fallSpeed, first ?? commanded, last, supported);
+        return new Tick(feet, vertical, grounded, fallSpeed, first ?? commanded, last, supported, budget);
     }
 
     static bool Finite(in MoveState s) =>

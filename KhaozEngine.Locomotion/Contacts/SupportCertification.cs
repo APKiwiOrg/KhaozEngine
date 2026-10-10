@@ -31,9 +31,10 @@ internal static class SupportCertification
     /// fixed error threshold. A member is walkable when its normal's upward lower bound reaches
     /// <paramref name="cosMaxSlope"/>, so a normal straddling the limit is steep. A walkable polygon contributes
     /// <c>min(plane at the axis, witness height, plane at the axis of every walkable polygon joined to it)</c>. A
-    /// steep polygon follows the phase 1 steep rule over its joined set: the minimum with the plane at the axis of
-    /// every joined polygon whose upward bound is positive. A tangent element is never joined and contributes
-    /// <c>min(tangent plane at the axis, witness height)</c>.</remarks>
+    /// steep polygon joined to any walkable polygon contributes nothing, as a phase 1 feature with a walkable face
+    /// ignored its steep faces. Any other steep polygon follows the phase 1 steep rule over its joined set: the
+    /// minimum with the plane at the axis of every joined steep polygon. A tangent element is never joined and
+    /// contributes <c>min(tangent plane at the axis, witness height)</c>.</remarks>
     internal static int CertifyNeighborhood(IPhysicsCapsuleFeatures capability, IPhysicsQueryLease lease,
         in SupportNeighborhoodResult result, ReadOnlySpan<SupportElement> elements, ReadOnlySpan<ulong> joins,
         Vector2 axis, float cosMaxSlope, Span<SupportContribution> contributions)
@@ -49,8 +50,9 @@ internal static class SupportCertification
             !float.IsFinite(axis.Y))
             return -1;
 
-        // Each member's own plane at the axis, read again when it caps a joined member.
+        // Each member's own plane at the axis and its first pass kind, read again when it caps a joined member.
         Span<double> planes = stackalloc double[2 * SupportNeighborhoodResult.MaximumElements];
+        Span<CertifiedSupportKind> kinds = stackalloc CertifiedSupportKind[SupportNeighborhoodResult.MaximumElements];
         for (int i = 0; i < count; i++)
         {
             SupportElement member = elements[i];
@@ -60,6 +62,7 @@ internal static class SupportCertification
             if (!(upward > 0))
             {
                 contributions[i] = default;
+                kinds[i] = CertifiedSupportKind.Refused;
                 continue;
             }
             if (!PlaneAtAxis(member.Witness, member.PositionErrorMetres, member.Normal, member.NormalError, upward,
@@ -68,6 +71,7 @@ internal static class SupportCertification
             CertifiedSupportKind kind =
                 upward >= cosMaxSlope ? CertifiedSupportKind.Walkable : CertifiedSupportKind.Steep;
             contributions[i] = new(kind, 0, 0, member.Normal, member.Witness, member.ElementId);
+            kinds[i] = kind;
         }
 
         for (int i = 0; i < count; i++)
@@ -76,6 +80,7 @@ internal static class SupportCertification
             if (own.Kind == CertifiedSupportKind.Refused) continue;
             PlaneMinimum minimum = PlaneMinimum.Empty;
             minimum.Offer(i, planes[2 * i], planes[2 * i + 1]);
+            bool beside = false;
             if (elements[i].Kind == SupportElementKind.Polygon)
             {
                 ReadOnlySpan<ulong> row = joins.Slice(i * stride, stride);
@@ -83,13 +88,20 @@ internal static class SupportCertification
                 {
                     if (j == i || (row[j / 64] & (1UL << (j % 64))) == 0) continue;
                     if (elements[j].Kind != SupportElementKind.Polygon) continue;
-                    CertifiedSupportKind joined = contributions[j].Kind;
-                    // A walkable member is capped by walkable joins only, a steep one by every rising join.
-                    if (joined == CertifiedSupportKind.Refused ||
-                        (own.Kind == CertifiedSupportKind.Walkable && joined != CertifiedSupportKind.Walkable))
-                        continue;
-                    minimum.Offer(j, planes[2 * j], planes[2 * j + 1]);
+                    // A member is capped by joined members of its own kind. A steep member joined to a walkable one
+                    // is the steep side of a walkable crease and contributes nothing.
+                    if (kinds[j] == CertifiedSupportKind.Walkable && own.Kind == CertifiedSupportKind.Steep)
+                    {
+                        beside = true;
+                        break;
+                    }
+                    if (kinds[j] == own.Kind) minimum.Offer(j, planes[2 * j], planes[2 * j + 1]);
                 }
+            }
+            if (beside)
+            {
+                contributions[i] = default;
+                continue;
             }
             SupportElement member = elements[i];
             double lower = Math.Min(minimum.Lower, LowerBound(member.Witness.Y, member.PositionErrorMetres));

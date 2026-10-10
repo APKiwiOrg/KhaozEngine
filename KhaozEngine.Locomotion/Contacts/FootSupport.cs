@@ -36,10 +36,10 @@ internal static class FootSupport
     /// <summary>Returns the certified support with the highest midpoint whose interval meets the inclusive reach
     /// band, walkable or steep, carrying its own status, else <see cref="SupportStatus.None"/>. Equal midpoints
     /// prefer walkable, then the witness nearest the axis, then terrain, then the lower static. Every member of a
-    /// probe's neighborhood offers its own contribution. A contribution wholly above the band is a refused
-    /// proposal, and one below the band is ignored. A refused neighborhood is a refused proposal at the probe's
-    /// lowest point. A refused proposal above the selected support, or with no support at all, returns
-    /// <see cref="SupportStatus.Refused"/>. A non-null
+    /// probe's neighborhood offers its own contribution, and one wholly outside the band is not a candidate. A probe
+    /// whose contact lies above the band, a refused neighborhood, or a neighborhood with no member that supports at
+    /// or below the band top is a refused proposal at the probe's lowest point. A refused proposal above the selected
+    /// support, or with no support at all, returns <see cref="SupportStatus.Refused"/>. A non-null
     /// <paramref name="world"/> must offer <see cref="IPhysicsCapsuleFeatures"/> and <paramref name="lease"/>
     /// must be its current read interval.</summary>
     internal static SupportSample Find(Func<float, float, float>? groundHeight,
@@ -130,26 +130,29 @@ internal static class FootSupport
             SupportCertification.ContactBand, scratch.Elements, scratch.Joins, QueryFilter.StaticsOnly);
         int count = SupportCertification.CertifyNeighborhood(features, lease, result, scratch.Elements,
             scratch.Joins, query.Axis, query.CosMaxSlope, scratch.Contributions);
-        if (count < 0)
+        double bandTop = (double)query.FeetY + query.ReachUp;
+        // The sweep stops at the first surface, so a contact above the band hides anything lower.
+        if (count < 0 || contactLowest > bandTop)
         {
             selection.Refuse(contactLowest);
             return;
         }
+        bool reached = false;
         for (int i = 0; i < count; i++)
         {
             SupportContribution contribution = scratch.Contributions[i];
-            if (contribution.Kind == CertifiedSupportKind.Refused) continue;
-            // The sweep stops at the first surface, so support wholly above the band hides anything lower.
-            if (contribution.Lower > (double)query.FeetY + query.ReachUp)
-            {
-                selection.Refuse(contribution.Lower);
-                continue;
-            }
+            // A member wholly above the band is not a candidate. When another member reaches the band, that member
+            // is what stopped the probe in the band.
+            if (contribution.Kind == CertifiedSupportKind.Refused || contribution.Lower > bandTop) continue;
+            reached = true;
             selection.Offer(new Candidate(
                 contribution.Kind == CertifiedSupportKind.Walkable ? SupportStatus.Walkable : SupportStatus.Steep,
                 contribution.Lower, contribution.Upper, contribution.Normal, scratch.Elements[i].Static,
                 contribution.FeatureId, contribution.Witness));
         }
+        // A surface that stopped the probe but supports nothing in reach, such as a ledge edge above the band
+        // beside the axis, could hide support under the rest of the disc.
+        if (!reached) selection.Refuse(contactLowest);
     }
 
     readonly record struct Candidate(SupportStatus Status, double Lower, double Upper, Vector3 Normal,

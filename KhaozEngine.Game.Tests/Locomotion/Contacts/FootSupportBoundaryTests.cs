@@ -269,4 +269,16 @@ public class FootSupportBoundaryTests
         using FootSupportScene scene = Sphere(variant, centre, 0.25f);
         AssertWalkable((double)centre.Y + 0.25f, scene["sphere"], Find(scene, Query(0)));
     }
+
+    // An upright capsule prop of radius 0.15 and length 0.3 centred at Y -0.3. Both probes meet its top, a tangent
+    // element of the upper cap with an upward normal, at centre.Y + length / 2 + radius.
+    [Fact]
+    public void CapsulePrimitiveSupportsItsTop()
+    {
+        const float radius = 0.15f, length = 0.3f;
+        var centre = new Vector3(0, -0.3f, 0);
+        using FootSupportScene scene = new FootSupportScene(SceneVariant.Box)
+            .Add("capsule", new CapsuleShape(radius, length), Pose.At(centre));
+        AssertWalkable((double)centre.Y + length / 2.0 + radius, scene["capsule"], Find(scene, Query(0)));
+    }
 }

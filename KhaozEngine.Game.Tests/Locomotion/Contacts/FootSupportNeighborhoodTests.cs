@@ -138,6 +138,90 @@ public class FootSupportNeighborhoodTests
         Assert.Equal(scene["crest"], sample.Static);
     }
 
+    // A walkable 30 degree slope W2 rises to an edge at the origin, an 8 mm bevel W rises at 15 degrees, and a steep
+    // 60 degree face S falls beyond it. The axis is 47.8 mm over W2, where the disc rests on the bevel 4 mm from each
+    // of its edges, about 40 micrometres from W2 and S. All three are members. W joins both, but W2 and S are 8 mm
+    // apart and not joined. S is joined to a walkable polygon, so it contributes nothing, and the support is W2's
+    // plane at the axis rather than W's.
+    [Theory]
+    [InlineData(SceneVariant.Box)]
+    [InlineData(SceneVariant.Mesh)]
+    public void NarrowBevelDoesNotLiftToTheSteepFace(SceneVariant variant)
+    {
+        float slope = Radians(30), bevel = Radians(15), steep = Radians(60);
+        const float width = 0.008f, foot = 0.2f;
+        float x = -(foot * MathF.Sin(bevel) - width / 2);
+        Vector3 Point(float px, float py, float pz) => new(px, py, pz);
+        float bevelY = width * MathF.Tan(bevel), footX = width + 0.4f, footY = bevelY - 0.4f * MathF.Tan(steep);
+        float eaveY = -MathF.Tan(slope);
+        using var scene = new FootSupportScene(variant);
+        if (variant == SceneVariant.Mesh)
+            scene.Mesh("bevel", [
+                .. FootSupportScene.Quad(Point(-1, eaveY, -2), Point(0, 0, -2), Point(-1, eaveY, 2), Point(0, 0, 2)),
+                .. FootSupportScene.Quad(Point(0, 0, -2), Point(width, bevelY, -2), Point(0, 0, 2),
+                    Point(width, bevelY, 2)),
+                .. FootSupportScene.Quad(Point(width, bevelY, -2), Point(footX, footY, -2), Point(width, bevelY, 2),
+                    Point(footX, footY, 2)),
+            ]);
+        else
+            scene.Hull("bevel", [Point(-1, eaveY, -2), Point(-1, eaveY, 2), Point(0, 0, -2), Point(0, 0, 2),
+                Point(width, bevelY, -2), Point(width, bevelY, 2), Point(footX, footY, -2), Point(footX, footY, 2),
+                Point(-1, -1, -2), Point(-1, -1, 2), Point(footX, -1, -2), Point(footX, -1, 2)]);
+        var side = new OracleVector(-Math.Sin(slope), Math.Cos(slope), 0);
+        (double Lo, double Hi) planes = AxisSidePlanes(scene, ["bevel"], side, x);
+        SupportSample sample = Find(scene, Query(x, 0, (float)planes.Lo, foot));
+        Assert.True(sample.Status == SupportStatus.Walkable, $"Expected Walkable, got {sample}");
+        AssertWithin(planes, sample);
+        Assert.Equal(scene["bevel"], sample.Static);
+    }
+
+    // A one-sided vertical mesh fin in the plane x 0.005 spans Y 0.1 to 0.3 over a floor at 0, its top edge 5 mm
+    // from the axis, wound toward the axis or away from it. The probes do not stop on a triangle that does not face
+    // against the sweep, so they pass the fin and certify the floor.
+    [Theory]
+    [InlineData(SceneVariant.Box, true)]
+    [InlineData(SceneVariant.Box, false)]
+    [InlineData(SceneVariant.Mesh, true)]
+    [InlineData(SceneVariant.Mesh, false)]
+    public void VerticalFinOverTheAxisSeesTheFloor(SceneVariant variant, bool facesAxis)
+    {
+        Vector3 outward = facesAxis ? -Vector3.UnitX : Vector3.UnitX;
+        Vector3 a = new(0.005f, 0.1f, -2), b = new(0.005f, 0.3f, -2);
+        Vector3 c = new(0.005f, 0.1f, 2), d = new(0.005f, 0.3f, 2);
+        using FootSupportScene scene = new FootSupportScene(variant).Flat("floor", -4, 6, -5, 5, 0)
+            .Mesh("fin", [.. FootSupportScene.Facing(a, b, c, outward), .. FootSupportScene.Facing(b, d, c, outward)]);
+        AssertSupport(SupportStatus.Walkable, 0, scene["floor"], Find(scene, Query(0)));
+    }
+
+    // The leg probe rests on a tread at Y 0, inside a band reaching 0.1 up, while its lower cap passes 50 micrometres
+    // from the nosing of a step whose top at 0.15 lies wholly above the band. The probe's contact is in the band, so
+    // the step's member is not a candidate and hides nothing, and the tread is the support.
+    [Theory]
+    [InlineData(SceneVariant.Box)]
+    [InlineData(SceneVariant.Mesh)]
+    public void NosingBesideAnInBandTreadIsIgnored(SceneVariant variant)
+    {
+        // The nosing (x, 0.15) lies 0.2 + 5e-5 from the lower cap centre (0, 0.2) of the probe resting at Y 0.
+        float nosing = (float)Math.Sqrt(0.20005 * 0.20005 - 0.05 * 0.05);
+        using FootSupportScene scene = new FootSupportScene(variant)
+            .Flat("tread", -2, 2, -2, 2, 0).Flat("step", nosing, 2, -2, 2, 0.15f);
+        var query = new FootSupportQuery(Vector2.Zero, 0, 0.2f, 0.1f, 0.4f, CosMaxSlope);
+        AssertSupport(SupportStatus.Walkable, 0, scene["tread"], Find(scene, query));
+    }
+
+    // A shelf at Y 0.4007 lies in the 1 mm sweep margin above the band top at 0.4 and stops both probes. Their
+    // contacts are above the band, so the floor under the shelf is hidden and the support refuses.
+    [Theory]
+    [InlineData(SceneVariant.Box)]
+    [InlineData(SceneVariant.Mesh)]
+    public void ContactAboveTheBandRefuses(SceneVariant variant)
+    {
+        using FootSupportScene scene = new FootSupportScene(variant)
+            .Flat("floor", -4, 6, -5, 5, 0).Flat("shelf", -1, 1, -1, 1, 0.4007f);
+        SupportSample sample = Find(scene, Query(0));
+        Assert.True(sample.Status == SupportStatus.Refused, $"Expected Refused, got {sample}");
+    }
+
     // A four-sided apex at (0, 0.5, 0) whose faces fall 10 degrees. The axis is over the +X face, and the disc
     // reaches the apex, where every face meets every other. The convex joins cap each face at the lowest plane.
     [Theory]

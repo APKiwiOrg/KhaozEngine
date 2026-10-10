@@ -6,8 +6,8 @@ using Xunit;
 namespace KhaozEngine.Tests.Physics;
 
 // A support probe sweeps down through one-sided mesh geometry (#1332). With CullBackFaces a triangle whose front
-// normal Cross(C - A, B - A) points along the sweep is skipped, so the probe reaches the floor under a
-// down-facing triangle. Every vertex is exactly representable in binary32.
+// normal Cross(C - A, B - A) does not face against the sweep is skipped, so the probe reaches the floor under a
+// down-facing or vertical triangle. Every vertex is exactly representable in binary32.
 public class SweepBackFaceCullingTests
 {
     // The capsule's lower sphere starts at Y 0.605f - 0.005f = 0.4. The floor at Y 0 is met after 0.4 of travel
@@ -64,22 +64,22 @@ public class SweepBackFaceCullingTests
     }
 
     // A wall triangle in the plane z 0 with its top edge at Y 0.1 straight under the capsule axis. Its normal is
-    // along Z either way it is wound, so its dot with the down sweep is exactly zero and it is kept. The lowest
-    // capsule point (0, 0.4, 0) meets the edge point (0, 0.1, 0) after 0.3, before the floor.
+    // along Z either way it is wound, so its dot with the down sweep is exactly zero. A triangle that does not face
+    // against the sweep is culled, so the probe passes the edge and meets the floor after 0.4.
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void VerticalTriangleIsKeptWithCulling(bool towardPlusZ)
+    public void VerticalTriangleIsCulledWithCulling(bool towardPlusZ)
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);
-        world.AddStatic(new TriangleMeshShape(Quad(0f, facesUp: true), Indices), Pose.Identity);
+        StaticHandle floor = world.AddStatic(new TriangleMeshShape(Quad(0f, facesUp: true), Indices), Pose.Identity);
         Vector3 a = new(-1, 0.1f, 0), b = new(1, 0.1f, 0), c = new(0, -1, 0);
         Vector3[] wall = towardPlusZ ? [a, b, c] : [a, c, b];
-        StaticHandle wallHandle = world.AddStatic(new TriangleMeshShape(wall, [0, 1, 2]), Pose.Identity);
+        world.AddStatic(new TriangleMeshShape(wall, [0, 1, 2]), Pose.Identity);
 
         Assert.True(world.SweepCapsule(Capsule, Pose.At(new Vector3(0, 0.605f, 0)), -Vector3.UnitY, Distance,
             out SweepHit hit, Culling));
-        AssertHitAt(hit, wallHandle, UpperT);
+        AssertHitAt(hit, floor, FloorT);
     }
 
     [Fact]

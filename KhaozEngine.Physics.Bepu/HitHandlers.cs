@@ -113,7 +113,8 @@ internal struct SweepHitHandler : ISweepHitHandler
         => AllowTest(collidable) && (_cullSimulation is null || !IsMeshBackFace(collidable, childIndex));
 
     // True when the mesh triangle's world front normal Cross(C - A, B - A), the convention of Bepu 2.4
-    // Triangle.RayTest and CapsuleFeatureMesh, points along the sweep. A normal perpendicular to the sweep is kept.
+    // Triangle.RayTest and CapsuleFeatureMesh, does not face against the sweep. A normal perpendicular to the sweep
+    // is culled too, so a support probe passes a vertical one-sided fin.
     private readonly bool IsMeshBackFace(CollidableReference collidable, int childIndex)
     {
         if (collidable.Mobility != CollidableMobility.Static) return false;
@@ -124,7 +125,7 @@ internal struct SweepHitHandler : ISweepHitHandler
         // Mesh.GetLocalChild scales each vertex, so the scaled winding is the one Bepu collides with.
         Vector3 a = triangle.A * mesh.Scale, b = triangle.B * mesh.Scale, c = triangle.C * mesh.Scale;
         Vector3 front = Vector3.Transform(Vector3.Cross(c - a, b - a), target.Pose.Orientation);
-        return Vector3.Dot(front, _cullDirection) > 0f;
+        return Vector3.Dot(front, _cullDirection) >= 0f;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

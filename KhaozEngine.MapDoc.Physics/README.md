@@ -69,9 +69,12 @@ double, less the lease's origin. Queries see statics only.
 Line of sight casts one ray. A hit nearer than the segment length less 0.001 m is `Blocked` and names its owner, a
 placement id or a terrain chunk id. A hit within 0.001 m of the end is `Unknown`, and a miss is `Clear`. Clearance
 places the locomotion `ContactShell` at the first feet point and sweeps it along each segment of a path of 1 to 64
-points. Penetration deeper than 0.001 m, or a sweep hit before a segment's end, is `Blocked`. A shell that starts in
-contact no deeper than that sweeps its first segment from 0.001 m clear of the contact along the minimum translation
-vector, so a path may leave a wall it starts touching but not enter it. A point outside the
+points. The shell is tested in place at every point that starts a moving segment. Penetration deeper than 0.001 m
+there is `Blocked` at that point. Contact no deeper than that pushes the segment's start 0.001 m clear of the contact
+along the minimum translation vector, and a zero-length segment keeps the previous push-out. Each moving segment is
+swept from its pushed-out start, so its sweep ends at its end point plus that push-out, and a block distance is
+measured from there. A sweep hit before the segment's length is `Blocked`. A path may slide along or leave a wall it
+touches but not enter it, however the path is split. A point outside the
 document's playable bounds is `Unknown` for either relation. Every result carries the world's `BuildHash` and its
 terrain witness digest.
 

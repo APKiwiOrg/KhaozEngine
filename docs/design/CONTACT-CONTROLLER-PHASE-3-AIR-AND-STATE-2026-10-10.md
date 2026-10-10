@@ -78,21 +78,23 @@ body, and support comes only from the footprint.
 
 - **Gravity.** `VerticalVelocity = max(VerticalVelocity - Gravity * dt, -MaxFallSpeed)` before the move, as legacy.
 - **Move.** The tick's displacement `(velocity.X * dt, VerticalVelocity * dt, velocity.Z * dt)` runs in substeps of
-  at most half the capsule radius. Each substep sweeps the shell along the full displacement with slides, using
-  `ShellMotion`'s contact classes.
-  - A **ceiling** contact removes the upward component and sets `VerticalVelocity = min(VerticalVelocity, 0)`, so
-    a ceiling bounds a jump.
-  - A **wall** or **rising support** contact removes the component into the contact and the rest continues.
-- **Landing.** After each substep, `FootSupport` at the new axis with the band from the substep's lowest feet to
-  its highest feet, raised by `max(0, VerticalVelocity * dt)` (the #468 no-footing reach) and widened by nothing
-  else. A walkable result with the feet at or below its height while descending lands: the feet seat on it,
-  `Grounded` is set, `VerticalVelocity` becomes zero and the remaining horizontal displacement of the tick runs
-  through the ground core. A steep result while descending starts a slide. Landing is only possible while
-  `VerticalVelocity <= 0`.
-- **Invariant 5 (#468).** A tick without footing ends no higher than its own vertical motion allows: the landing
-  band never reaches above the start feet plus `max(0, VerticalVelocity * dt)`.
+  at most half the capsule radius. Each substep sweeps the shell along the full displacement with slides. Every
+  shell contact removes the velocity component into it, vertical included, so a flat ceiling stops a rise and a
+  wall leaves the vertical speed alone. There is no separate ceiling rule.
+- **Landing.** After each substep, while descending, `FootSupport` runs the ground core's query at the substep's end
+  feet: reach up `StepHeight`, reach down the substep's travel. Walkable support anywhere in that band lands: the
+  feet seat on it through the ground core's seat clearance, `Grounded` is set, `VerticalVelocity` becomes zero and
+  the remaining horizontal displacement of the tick runs through the ground core. That is the step-up a standing
+  body at the same feet would take, so a falling body whose knees pass a ledge top lands on it. Steep support
+  starts a slide only when it lies within the substep's travel. Analytic terrain more than `StepHeight` above the
+  feet at the new axis is a wall, as in the ground core.
+- **Invariant 5 (#468).** A tick without footing never ends on steep ground above its own vertical motion, and it
+  rises only onto walkable support within `StepHeight` of its feet while descending. A steep face therefore can
+  never be climbed by jumping, and the #440 bound of ballistic reach plus `StepHeight` holds.
 - **Invariant 7 (#486).** A tick never seats on ground it cannot stand on: steep support starts a slide and never
   grounds the body, and the ground core already treats steep ground above the start feet as a wall.
+- **Faces at 60 degrees and steeper.** The shell meets such a face before the footprint does, so a body falling
+  beside it slides down along it, airborne, and lands at its toe. It is never seated mid-face.
 
 ## Slides
 
@@ -126,9 +128,9 @@ are mined for geometry only.
 |---|---|
 | Vertical | Gravity accelerates to `MaxFallSpeed`. A fall lands on flat ground with the impact equal to the speed at contact. A jump stamps `JumpSpeed`, rises from the next tick and reaches the sampled apex. No double jump at the apex. A coyote jump inside the window, none after it. A buffered jump fires on landing and keeps the impact. Determinism over 256 ticks. |
 | Air control | `AirControl` 0.5 halves air travel with momentum off. With momentum on, release keeps speed, `AirControl` 0 is ballistic, and a wall clips the carry. |
-| Ceilings | A jump under a slab stops rising at the slab with `VerticalVelocity` zeroed, then falls. A run-jump under an eave never wedges. |
+| Ceilings | A jump under a slab stops rising at the slab with its upward speed removed, then falls. A run-jump under an eave never wedges. A run-jump along a vertical wall keeps its vertical speed. |
 | Walls in the air | A run-jump into a wall slides along it and never tunnels at 50 m/s falls. An inner corner stops both components. |
-| Landing | Falling onto a crate top seats on it, not sunk. Jumping onto a ledge lands when descending with the legs passing the edge. Landing on a 0.32 m lower shelf seats in one tick. |
+| Landing | Falling onto a crate top seats on it, not sunk. Jumping onto a ledge lands when descending with the knees passing the top. A 0.9 m drop onto a 30 degree slope lands on it. Landing on a 0.32 m lower shelf seats in one tick. |
 | Slides | Walking off onto a 60 degree face slides to the toe and lands with one impact. A 46 degree face slides gently, a 75 degree face fast, each by the friction ramp. Input steers along the contour only. A V-gully wedges and allows a jump. A slide on a physics prop works like terrain. |
 | Hysteresis | A bank at 46 degrees: a walker keeps footing inside the band, a lander does not. 49 degrees refuses both. Traction knobs at zero reproduce the bare gate. |
 | #440 | A held jump against a 78.7 degree face never grounds on it and never ratchets (second half maximum within 20 mm of the first). |

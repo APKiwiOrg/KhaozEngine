@@ -136,12 +136,13 @@ Pass `stepInProgress: state.StepDeltaY > 0 || state.ClimbRate > 0` to the tick's
 - [ ] **Step 1: Write the failing rows**
 
 Scene `Staircase(8, 0.18, 0.28)`, box and mesh, 30 and 60 Hz, walk and run:
-- `StairAscentExportsAContinuousClimbRate`: from the first riser's tick to the last, `ClimbRate > 0` every tick, never negative, `StepDeltaY` 0 every tick it is nonzero, the mean `ClimbRate` over the run within 0.25 m/s of (8 × 0.18) / run duration, and no tick above `MaxStepClimbSpeed`.
+- `StairAscentExportsAContinuousClimbRate` (scene `Staircase(16, 0.18, 0.28)`): from the first riser's tick to the last, `ClimbRate > 0` every tick (pacing pauses with zero travel included), never negative, `StepDeltaY` 0 every tick it is nonzero, no tick above `MaxStepClimbSpeed`, and over the second half of the climb ticks the mean `ClimbRate` within 0.25 m/s of the feet's measured rise over those ticks divided by their duration.
 - `StairDescentExportsANegativeClimbRate`: walking -X from the landing, `ClimbRate < 0` and at least -6 through the run, `StepDeltaY` 0 throughout, `ClimbRateEwma` 0.
 - `DiagonalAscentStillReadsTheRun` (Review Focus): moving at 30 degrees off +X, the run registers.
-- `StairsEndingAtAWallExportNothingOnceStopped` (Review Focus): a wall on the landing, once achieved travel is 0 all three signals are 0 and finite.
-- `SamplesOnSteepSupportAreSkipped` (Review Focus): a staircase whose look-ahead samples fall on a 70 degree face beside it, the run grade uses only walkable samples, and with fewer than two walkable ahead no run is reported.
-- `DeniedDescentExportsNothing`: pressing into a wall at the top of the descending stair, `ClimbRate` 0.
+- `StairsEndingAtAWallExportNothingOnceStopped` (Review Focus): a wall on the landing, once the body is stopped at the wall and its feet have caught up with their support, all three signals are 0 and finite.
+- `SamplesOnSteepSupportAreSkipped` (Review Focus): a staircase whose look-ahead samples fall on a 70 degree face beside it, the run grade uses only walkable samples, and with fewer than two walkable ahead no fresh run starts (input `ClimbRate` and EWMA 0). A run already in progress continues on its applied rise, as the spec's continuation rule says.
+- `DeniedDescentExportsNothing`: pressing into a wall at the top of the descending stair, `ClimbRate` exactly 0 (travel below the contact skin is no travel, spec Ruling 4a-8).
+- `CarriedStepLagReportsItsAppliedRise` (existing, Task 2) must keep passing unchanged: a stationary tick paying a step's lag reports it.
 - `ReplayFromAQuantizedClimbRateIsIdentical` (Review Focus): an input with `ClimbRate = 35 * 0.05f` and `ClimbRateEwma = 1.75f` mid-stair, two runs give bit-identical outputs.
 - Extend `ReplayIsBitIdentical` so a stair run is in its sequence.
 - `WarmSignalResolveAllocatesNothing`: under one acquired lease, after two warm-up calls, `GC.GetAllocatedBytesForCurrentThread()` is unchanged across a `GroundSignals.Resolve` call that runs the look-ahead on the staircase. (A whole tick allocates the backend read lease, which is #1334's.)

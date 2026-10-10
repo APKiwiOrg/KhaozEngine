@@ -91,14 +91,19 @@ backstop contribute nothing.
 `ClimbRate` reports a continuous run of steps. It needs to know what lies ahead, so the controller samples the
 support ahead of the axis, as legacy samples its grade fan.
 
-**Trigger.** The look-ahead runs only at the end of a tick whose final mode is ground with walkable footing and
-nonzero achieved horizontal travel, and when at least one of these holds:
+**Trigger.** Signals are computed at the end of a tick whose final mode is ground with walkable footing. The
+look-ahead runs only when the tick's achieved horizontal ground travel is at least the contact skin, which gives it
+a direction, and when at least one of these holds:
 
 - the tick applied a nonzero discrete rise or drop
 - the input state has a nonzero `ClimbRate` (a run in progress)
 - the input state has a positive `ClimbRateEwma`
 
-Bodies on terrain or ramps never trigger it, so its cost falls only on stairs.
+Bodies on terrain or ramps never trigger it, so its cost falls only on stairs. Travel below the contact skin is the
+body model's contact jitter, for example a body pressed into a wall, so it counts as no travel. A tick without
+travel has an empty window: it cannot start a run, but its applied steps still count and a run in progress still
+continues on them. A paced climb pays its lag in ticks whose horizontal travel is zero, so these ticks keep their
+signals.
 
 **Samples.** Sample 0 is the tick's final certified support at the axis, passed in, so it costs no query. Along
 the unit direction of the tick's achieved horizontal travel, at distances `k * CapsuleRadius` for k = 1, 2, 3, the
@@ -119,6 +124,12 @@ however steep it is. A run in progress continues without the grade test:
 Near the top or bottom of a staircase, the window sees the landing and its fitted grade flattens while the last
 risers are still being climbed or dropped. Continuation carries the run through them and ends it once the steps
 are done. The constants stay named internal constants beside the others.
+
+**Ruling 4a-8.** Travel below the contact skin is no travel, and no travel only empties the look-ahead window. It does
+not silence the signals. The Task 3 implementer showed that paced climbs pay lag in ticks with exactly zero
+horizontal travel, that a stationary body paying a step's lag must still report it, and that a body pressed into
+a wall still reports about a micrometre of travel per tick. This replaces the earlier ruling that zero travel
+zeroes the signals. Cost if wrong: a walker slower than the skin per tick (0.03 m/s at 30 Hz) never starts a run.
 
 **Ruling 4a-7.** Runs need a discrete step, and runs in progress continue on step evidence rather than on the
 fitted grade. The Task 3 implementer showed that a grade-only test turns a steep ramp into a run whenever a rate is
@@ -146,8 +157,8 @@ required the body to stand on a prop. The stair glide animator composes either w
   `0.7 * rate` when the carried value is exactly zero, otherwise `previous + (1 - exp(-5 * dt)) * (rate -
   previous)`. `ClimbRate = max(0, ClimbRateEwma)`.
 - **Descent** (a descent run): `ClimbRate = -min(achieved / dt * clamp(-grade, 0.3, 2), 6)`, where `achieved` is
-  the length of the tick's achieved horizontal ground travel and `grade` is the fitted grade, or -0.3 when fewer
-  than two samples ahead are walkable. `ClimbRateEwma` is zero.
+  the length of the tick's achieved horizontal ground travel (zero below the contact skin) and `grade` is the
+  fitted grade, or -0.3 when fewer than two samples ahead are walkable. `ClimbRateEwma` is zero.
 - **Otherwise** both are zero.
 
 **Ruling 4a-4.** Descent uses achieved travel, not commanded travel, so a wall or bound that stops the body cannot
@@ -185,9 +196,11 @@ legacy numbers. Box and mesh variants where statics are involved, 30 and 60 Hz, 
   tread gives the riser height within the curvature disagreement.
 - **Isolated step.** A doorstep up and down: `ClimbRate` zero every tick, `StepDeltaY` sums to the step height
   within one skin, on at most `ceil(height / (MaxStepClimbSpeed * dt)) + 1` event ticks.
-- **Stair ascent.** `ClimbRate` positive from the first riser's tick to the top, never negative, no zero tick
-  between the first and last riser, `StepDeltaY` zero throughout, the mean rate within 0.25 m/s of the measured
-  rise rate and never above `MaxStepClimbSpeed`.
+- **Stair ascent.** On a 16-step staircase, `ClimbRate` positive from the first riser's tick to the top, pacing
+  pauses included, never negative, `StepDeltaY` zero throughout, never above `MaxStepClimbSpeed`, and converged:
+  over the second half of the climb, after the EWMA's warm-up, the mean rate is within 0.25 m/s of the measured rise
+  rate over the same ticks. The mean over the whole climb includes the 0.7 seed's warm-up, which on a short
+  staircase alone exceeds 0.25 m/s, so it is not the convergence test.
 - **Stair descent.** `ClimbRate` negative and at least -6 through the run, `StepDeltaY` zero throughout.
 - **Smooth ground.** Flat ground, a static ramp, a planar analytic slope and a curved analytic hill: all three
   signals exactly zero every tick.

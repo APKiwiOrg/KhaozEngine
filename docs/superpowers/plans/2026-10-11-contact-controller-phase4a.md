@@ -73,13 +73,15 @@ Through `GroundCore.Step` over successive ticks, box and mesh, 30 and 60 Hz:
 - `StairsOnAnAnalyticHillCountOnlyTheRisers` (Review Focus): `Staircase(4, 0.18, 0.3)` placed over the analytic hill, the summed `StepRise` equals 4 × 0.18 within one skin.
 - `UnlimitedBudgetAppliesTheStepWhereItIsFound`: `MaxStepClimbSpeed` 0, the doorstep's 0.18 lands in one tick.
 - `DropWhileLaggingReportsTheFeetChange`: a 0.3 riser then an immediate 0.3 drop within the lag, `StepRise` on the drop tick equals that tick's feet change from the drop within half a skin.
+- `PartialDropKeepsTheRestOwed`: analytic level support 0 before x -0.15, 0.3 to x 0, 0.2 after, default tuning at 60 Hz, from (-0.3, 0, 0) two +0.2 m ticks: the second tick's `StepRise` equals its feet change within half a skin, and later ticks report the remaining rise to 0.2 as it is paid, so the run's total `StepRise` equals the final feet height within one skin.
+- `PacedHillLagStaysContinuous`: the hill `0.2 sin(x) cos(z)` with true normals, `MaxStepClimbSpeed` 0.001, 60 Hz, +0.1 m per tick from (-1, z 0.4) for 30 ticks with `stepInProgress` false: `StepRise` exactly 0 every tick.
 - `MoveRiseExcludesRecovery`: a start overlapping a box edge, `MoveRise` excludes the recovery push (compare to `Rise`).
 
 - [ ] **Step 5: Run them, expect failure**
 
 - [ ] **Step 6: Implement owed discrete rise in `GroundCore`**
 
-`Paced` reports `paid`. Per segment, start `O` at the carried lag below walkable start support when it exceeds `ContactSkin` plus the support's certified error, else 0. A substep with `DiscreteStep > 0` adds it to `O`, and `min(paid, O)` moves from `O` to applied. `PayLag` payments settle `O` the same way. A substep with `DiscreteStep < 0` applies `DiscreteStep` plus the `O` it erased (`O` resets to zero). `MoveRise` sums accepted placements' feet changes and lag payments.
+`Paced` reports `paid`. `GroundCore.Step` takes a new optional `bool stepInProgress = false` (the controller passes input `StepDeltaY > 0 || ClimbRate > 0`). Per segment, start `O` at the carried lag below walkable start support only when `stepInProgress` and the lag exceeds `ContactSkin` plus the support's certified error, else 0. Each accepted substep and each `PayLag` payment accounts as one move: `H = O + DiscreteStep` (0 for `PayLag`), `L` = lag below the new walkable support after the move, `O' = clamp(L, 0, max(H, 0))`, applied `= H - O'`. `MoveRise` sums accepted placements' feet changes and lag payments.
 
 - [ ] **Step 7: Run all of `Locomotion.Contacts`, expect PASS with no existing row changed**
 

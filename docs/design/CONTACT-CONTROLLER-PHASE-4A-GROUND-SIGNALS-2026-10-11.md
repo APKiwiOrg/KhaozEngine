@@ -71,15 +71,16 @@ Pacing pays rises from the climb budget, so the feet can lag below a tread for a
 the discrete rise that actually happened this tick.
 
 - The tick keeps an owed discrete rise `O`. At the start of a ground segment, `O` is the lag the feet already carry
-  below walkable support when that lag exceeds the contact skin plus the support's certified error. Carried lag only
-  comes from pacing, and a remnant under the skin is treated as continuous, so a paced step's reported total can fall
-  short of its height by less than one skin.
-- A substep with `d > 0` adds `d` to `O`. The budget it pays (`Paced`'s `paid`) first settles `O`, and the settled
-  amount is applied discrete rise.
-- Lag paid by `PayLag` settles `O` the same way.
-- A substep with `d < 0` applies `d` plus whatever of `O` the drop erased, so a body that drops while still lagging
-  reports the drop its feet actually made.
-- Plane following and curvature residuals are never discrete, even when the budget pays them.
+  below walkable support, but only when the input state shows a step in progress (`StepDeltaY > 0` or
+  `ClimbRate > 0`) and the lag exceeds the contact skin plus the support's certified error. Otherwise carried lag is
+  continuous: pacing also defers curvature residuals, and without a step in progress the lag cannot be a riser.
+- Each accepted substep (and each `PayLag` payment) accounts as one move. With `H = O + d` before the move and
+  `L` the lag below the new walkable support after it, the owed rise becomes `O' = clamp(L, 0, max(H, 0))` and the
+  applied discrete rise is `H - O'`. A rise settles `O` as the budget pays it. A drop erases only the owed rise its
+  new support no longer stands above, so a partial drop keeps the rest owed, and the applied amount always equals the
+  discrete part of the feet's actual change.
+- Plane following and curvature residuals are never discrete, even when the budget pays them, because they never
+  enter `H`.
 
 `StepRise` (new on `GroundStepResult`) is the tick's applied discrete rise for that ground segment. The controller
 sums `StepRise` over the tick's ground segments. Air segments, landings, slides, recovery pushes and the play-area
@@ -107,6 +108,12 @@ over the walkable samples, and it needs sample 0 plus at least two ahead.
 
 **Run.** A run is a grade whose magnitude is at least 0.3, the legacy run grade. The constant stays a named
 internal constant beside the others.
+
+**Ruling 4a-6.** Carried lag counts as an owed step only while the input state shows a step in progress. The
+controller carries no new state, and a reviewer probe showed that lag left by pacing a smooth hill otherwise surfaced
+as a step on the next tick. A replay from a server state whose `StepDeltaY` was not replicated may classify one tick
+of lag as continuous, which only changes presentation, and client prediction never adds replayed events. Cost if
+wrong: a paced riser whose first tick paid nothing (its budget spent earlier in the tick) reports nothing.
 
 **Ruling 4a-2.** Look-ahead uses the certified support primitive, gated by the trigger, rather than an uncertified
 ray fan every tick. The signal stays on the engine's single support truth, and the cost stays off the common
@@ -145,8 +152,8 @@ disables pacing now sees step events it did not see before.
 ## Invariants
 
 - Every output is finite. The non-finite check covers the three floats.
-- The signals never feed movement. No branch of the tick reads `ClimbRate`, `ClimbRateEwma` or `StepDeltaY` except
-  the trigger and the EWMA update.
+- The signals never feed movement. Only the signal computation reads the input `ClimbRate`, `ClimbRateEwma` and
+  `StepDeltaY`: the trigger, the EWMA update and the carried-lag test.
 - Replay is bit-identical (invariant 1), signals included.
 - A warm tick allocates nothing, look-ahead included.
 

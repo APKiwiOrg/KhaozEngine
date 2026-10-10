@@ -73,7 +73,7 @@ public sealed partial class BepuPhysicsWorld
         }
 
         public SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe,
-            Pose pose, float bandMetres, Span<SupportElement> elements, Span<SupportJoin> joins,
+            Pose pose, float bandMetres, Span<SupportElement> elements, Span<ulong> joins,
             QueryFilter filter = default)
         {
             _owner.AuthenticateFeatureLease(lease);
@@ -82,7 +82,7 @@ public sealed partial class BepuPhysicsWorld
                 _exclusions);
         }
 
-        public void AssertFeatureCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease)
+        public void AssertNeighborhoodCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease)
         {
             _owner.AuthenticateFeatureLease(lease);
             ThrowIfDisposed();

@@ -74,9 +74,7 @@ public class CapsuleFeatureContractTests
             typeof(Span<>).MakeGenericType(face), typeof(QueryFilter) },
             query.GetParameters().Select(p => p.ParameterType).ToArray());
         Assert.True(query.GetParameters()[^1].HasDefaultValue);
-        // The support neighborhood adds its own AssertFeatureCurrent overload. This one consumes feature results.
-        MethodInfo current = Assert.Single(capability.GetMethods(), m => m.Name == "AssertFeatureCurrent" &&
-            m.GetParameters()[0].ParameterType == result.MakeByRefType());
+        MethodInfo current = Assert.Single(capability.GetMethods(), m => m.Name == "AssertFeatureCurrent");
         Assert.Equal(typeof(void), current.ReturnType);
         Assert.Equal(new[] { result.MakeByRefType(), lease }, current.GetParameters().Select(p => p.ParameterType));
     }

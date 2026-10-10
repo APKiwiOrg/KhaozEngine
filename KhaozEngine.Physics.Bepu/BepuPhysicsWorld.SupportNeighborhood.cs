@@ -9,11 +9,11 @@ public sealed partial class BepuPhysicsWorld
 {
     /// <inheritdoc/>
     public SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe, Pose pose,
-        float bandMetres, Span<SupportElement> elements, Span<SupportJoin> joins, QueryFilter filter = default) =>
+        float bandMetres, Span<SupportElement> elements, Span<ulong> joins, QueryFilter filter = default) =>
         QuerySupportNeighborhoodCore(this, lease, probe, pose, bandMetres, elements, joins, filter, null);
 
     /// <inheritdoc/>
-    public void AssertFeatureCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease) =>
+    public void AssertNeighborhoodCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease) =>
         AssertNeighborhoodCurrentCore(this, result, lease);
 
     void AssertNeighborhoodCurrentCore(IPhysicsWorld receiver, in SupportNeighborhoodResult result,
@@ -29,7 +29,7 @@ public sealed partial class BepuPhysicsWorld
     }
 
     SupportNeighborhoodResult QuerySupportNeighborhoodCore(IPhysicsWorld receiver, IPhysicsQueryLease lease,
-        CapsuleShape probe, Pose pose, float bandMetres, Span<SupportElement> elements, Span<SupportJoin> joins,
+        CapsuleShape probe, Pose pose, float bandMetres, Span<SupportElement> elements, Span<ulong> joins,
         QueryFilter filter, StaticQueryExclusions? exclusions)
     {
         AuthenticateFeatureLease(lease);
@@ -43,10 +43,10 @@ public sealed partial class BepuPhysicsWorld
             throw new ArgumentException("The probe must have a positive finite radius and nonnegative finite length.", nameof(probe));
         if (!float.IsFinite(bandMetres) || bandMetres < 0)
             throw new ArgumentOutOfRangeException(nameof(bandMetres));
-        if (filter.Mobility is < QueryMobility.All or > QueryMobility.Dynamics)
+        if (filter.Mobility is < QueryMobility.All or > QueryMobility.Dynamics || filter.Layers != 0)
             throw new ArgumentException("The neighborhood query does not support this filter value.", nameof(filter));
         // The same proven domain as the feature query: an upright probe of bounded size and a bounded band.
-        if (filter.Layers != 0 || pose.Orientation.X != 0f || pose.Orientation.Z != 0f ||
+        if (pose.Orientation.X != 0f || pose.Orientation.Z != 0f ||
             probe.Radius is < 0.01f or > 2f || probe.Length > 8f || bandMetres > 0.01f ||
             !RepresentedGeometryTransforms.PosePoint(pose, Vector3.Zero).IsResolved)
             return SupportNeighborhoodResult.Refused(CapsuleFeatureStatus.Unsupported);

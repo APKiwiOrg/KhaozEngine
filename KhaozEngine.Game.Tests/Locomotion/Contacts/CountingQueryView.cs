@@ -65,7 +65,7 @@ internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
         ((IPhysicsCapsuleFeatures)inner).AssertFeatureCurrent(result, lease);
 
     public SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe, Pose pose,
-        float bandMetres, Span<SupportElement> elements, Span<SupportJoin> joins, QueryFilter filter = default)
+        float bandMetres, Span<SupportElement> elements, Span<ulong> joins, QueryFilter filter = default)
     {
         _features++;
         SupportNeighborhoodResult result = ((IPhysicsCapsuleFeatures)inner).QuerySupportNeighborhood(lease, probe,
@@ -74,8 +74,8 @@ internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
         return result;
     }
 
-    public void AssertFeatureCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease) =>
-        ((IPhysicsCapsuleFeatures)inner).AssertFeatureCurrent(result, lease);
+    public void AssertNeighborhoodCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease) =>
+        ((IPhysicsCapsuleFeatures)inner).AssertNeighborhoodCurrent(result, lease);
 
     public StaticHandle AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) =>
         inner.AddStatic(shape, pose, material);

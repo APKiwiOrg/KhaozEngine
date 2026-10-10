@@ -191,15 +191,35 @@ internal sealed class SupportSegmentPolygon
             return;
         }
         // Nearly parallel and undecided. An interior minimizer's edge parameter is the projection of a segment
-        // point, so it lies between the projections of the two segment endpoints. Keep that whole range.
+        // point, so it lies between the projections of the two segment endpoints. Keep that whole range as the
+        // witness enclosure.
         FeatureNumber first = FeaturePoint.Dot(FeaturePoint.Subtract(_start, origin), edge).Divide(squared);
         FeatureNumber second = FeaturePoint.Dot(FeaturePoint.Subtract(_end, origin), edge).Divide(squared);
         if (!first.IsResolved || !second.IsResolved) { _failed = true; return; }
         double low = Math.Max(0, Math.Min(first.Bounds.Lower, second.Bounds.Lower));
         double high = Math.Min(1, Math.Max(first.Bounds.Upper, second.Bounds.Upper));
         if (low > high) return;
-        Add(Along(_start, _direction, UnitRange),
-            Along(origin, edge, FeatureNumber.Enclosed(GeometryInterval.Enclose(low, high))), false);
+        FeaturePoint axis = Along(_start, _direction, UnitRange);
+        FeaturePoint geometry = Along(origin, edge, FeatureNumber.Enclosed(GeometryInterval.Enclose(low, high)));
+        GeometryInterval boxes = SupportGeometry.Length(FeaturePoint.Subtract(axis, geometry).Bounds);
+        GeometryInterval lines = LineDistance(offset, edge);
+        if (!axis.IsResolved || !geometry.IsResolved || !boxes.IsResolved || !lines.IsResolved)
+        { _failed = true; return; }
+        // Whole-edge boxes bridge any crack between yawed edges, so the distance between the lines bounds it too.
+        double lower = Math.Max(boxes.Lower, lines.Lower);
+        _candidates.Add(new(axis, geometry, false, GeometryInterval.Enclose(lower, Math.Max(lower, boxes.Upper))));
+    }
+
+    // Every segment point lies within |d x e| / |e| of the start's distance to the edge line, because
+    // |(s + t d - o) x e| differs from |(s - o) x e| by at most t |d x e|. The lower end is clamped at zero.
+    GeometryInterval LineDistance(FeaturePoint offset, FeaturePoint edge)
+    {
+        GeometryInterval length = SupportGeometry.Length(edge.Bounds);
+        GeometryInterval start = SupportGeometry.Length(GeometryVectorOperations.Cross(offset.Bounds, edge.Bounds));
+        GeometryInterval drift = SupportGeometry.Length(GeometryVectorOperations.Cross(_direction.Bounds, edge.Bounds));
+        if (!length.IsResolved || length.Lower <= 0 || !start.IsResolved || !drift.IsResolved) return default;
+        GeometryInterval bound = start.Subtract(drift).Divide(length);
+        return bound.IsResolved ? GeometryInterval.Enclose(Math.Max(0, bound.Lower), Math.Max(0, bound.Upper)) : default;
     }
 
     void EdgeEndpoint(FeaturePoint origin, FeaturePoint edge, FeatureNumber squared, FeaturePoint axis)

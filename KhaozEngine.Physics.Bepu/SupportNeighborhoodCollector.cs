@@ -55,11 +55,16 @@ internal sealed class SupportNeighborhoodCollector
         IReadOnlyDictionary<int, int> reverseHandles, StaticQueryExclusions? exclusions, CapsuleShape probe,
         Pose pose, float bandMetres)
     {
-        float reach = probe.Radius + bandMetres + BroadphaseMargin;
-        var extent = new Vector3(reach, probe.Length * 0.5f + reach, reach);
+        // Every bound is summed outward in binary64 and rounded outward to binary32.
+        GeometryInterval reach = GeometryInterval.Exact(probe.Radius).Add(GeometryInterval.Exact(bandMetres))
+            .Add(GeometryInterval.Exact(BroadphaseMargin));
+        GeometryInterval height = GeometryInterval.Exact(probe.Length * 0.5).Add(reach);
         var found = new List<CollidableReference>();
         var collector = new OverlapCollector(found);
-        simulation.BroadPhase.GetOverlaps(pose.Position - extent, pose.Position + extent, ref collector);
+        simulation.BroadPhase.GetOverlaps(
+            new Vector3(Down(pose.Position.X, reach), Down(pose.Position.Y, height), Down(pose.Position.Z, reach)),
+            new Vector3(Up(pose.Position.X, reach), Up(pose.Position.Y, height), Up(pose.Position.Z, reach)),
+            ref collector);
         var candidates = new List<(SeamStaticHandle Seam, BepuStaticHandle Installed)>();
         var seen = new HashSet<int>();
         foreach (CollidableReference collidable in found)
@@ -73,10 +78,16 @@ internal sealed class SupportNeighborhoodCollector
         return candidates;
     }
 
+    static float Down(float centre, GeometryInterval extent) =>
+        MathF.BitDecrement((float)GeometryInterval.Exact(centre).Subtract(GeometryInterval.Exact(extent.Upper)).Lower);
+
+    static float Up(float centre, GeometryInterval extent) =>
+        MathF.BitIncrement((float)GeometryInterval.Exact(centre).Add(GeometryInterval.Exact(extent.Upper)).Upper);
+
     /// <summary>Adds the polygon when it is a member. Unresolved means the bounded arithmetic failed.</summary>
     internal GeometrySign Consider(SupportPolygon polygon)
     {
-        double reach = _radius.Bounds.Upper + _band;
+        double reach = _radius.Bounds.Add(GeometryInterval.Exact(_band)).Upper;
         if (SupportGeometry.BoxGap(_low, _high, polygon.Low, polygon.High) > reach) return GeometrySign.Negative;
         SupportDistance distance = _kernel.Measure(_start, _direction, polygon, _band);
         if (!distance.IsResolved) return GeometrySign.Unresolved;
@@ -93,17 +104,20 @@ internal sealed class SupportNeighborhoodCollector
         return GeometrySign.Positive;
     }
 
-    /// <summary>Orders the members, decides every join and commits both spans together, or refuses atomically.</summary>
+    /// <summary>Orders the members, decides every join into the symmetric bit matrix and commits both spans
+    /// together, or refuses atomically when the element span or the matrix for the member count does not fit.</summary>
     internal SupportNeighborhoodResult Publish(IPhysicsWorld receiver, IPhysicsQueryLease lease,
-        Span<SupportElement> elements, Span<SupportJoin> joins)
+        Span<SupportElement> elements, Span<ulong> joins)
     {
         _members.Sort((a, b) => a.Element.Static.Value != b.Element.Static.Value
             ? a.Element.Static.Value.CompareTo(b.Element.Static.Value)
             : a.Element.ElementId.CompareTo(b.Element.ElementId));
         int count = _members.Count;
-        if (count > SupportNeighborhoodResult.MaximumElements)
+        int stride = SupportNeighborhoodResult.JoinWordsFor(count);
+        if (count > SupportNeighborhoodResult.MaximumElements || elements.Length < count ||
+            joins.Length < count * stride)
             return SupportNeighborhoodResult.Refused(CapsuleFeatureStatus.CapacityExceeded, count);
-        var pairs = new List<SupportJoin>();
+        var matrix = new ulong[count * stride];
         for (int first = 0; first < count; first++)
         {
             SupportPolygon? a = _members[first].Polygon;
@@ -115,15 +129,15 @@ internal sealed class SupportNeighborhoodCollector
                 GeometrySign joined = SupportNeighborhoodJoins.Joined(a, b, _band, _kernel);
                 if (joined == GeometrySign.Unresolved)
                     return SupportNeighborhoodResult.Refused(CapsuleFeatureStatus.Unsupported);
-                if (joined == GeometrySign.Positive) pairs.Add(new(first, second));
+                if (joined != GeometrySign.Positive) continue;
+                matrix[first * stride + second / 64] |= 1UL << (second % 64);
+                matrix[second * stride + first / 64] |= 1UL << (first % 64);
             }
         }
-        if (pairs.Count > SupportNeighborhoodResult.MaximumJoins || elements.Length < count || joins.Length < pairs.Count)
-            return SupportNeighborhoodResult.Refused(CapsuleFeatureStatus.CapacityExceeded, count, pairs.Count);
         // Construct first: lifecycle or structural failure must not expose a written prefix.
-        SupportNeighborhoodResult result = SupportNeighborhoodResult.Completed(receiver, lease, count, pairs.Count);
+        SupportNeighborhoodResult result = SupportNeighborhoodResult.Completed(receiver, lease, count);
         for (int i = 0; i < count; i++) elements[i] = _members[i].Element;
-        for (int i = 0; i < pairs.Count; i++) joins[i] = pairs[i];
+        matrix.AsSpan().CopyTo(joins);
         return result;
     }
 }

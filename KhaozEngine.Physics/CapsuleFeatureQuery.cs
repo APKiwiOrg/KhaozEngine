@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 
 namespace KhaozEngine.Physics;
 
@@ -156,67 +155,63 @@ public readonly record struct SupportElement(StaticHandle Static, SupportElement
     Vector3 Normal, float NormalError, Vector3 Witness, float PositionErrorMetres,
     double SeparationLower, double SeparationUpper);
 
-/// <summary>Two polygon elements that meet within the band, each on or below the other's plane within the band.
-/// <c>First</c> is less than <c>Second</c>. Both index the published element span.</summary>
-public readonly record struct SupportJoin(int First, int Second);
-
-/// <summary>Immutable support neighborhood query data. A refusal has no lease and no written prefix.
-/// A complete result names how many elements and joins were committed to the caller's spans.</summary>
+/// <summary>Immutable support neighborhood query data. A refusal has no lease and no written prefix. A complete
+/// result names how many elements were committed and the row stride of the join matrix committed with them.
+/// Joins form a symmetric bit matrix over the published elements: row <c>i</c> starts at word
+/// <c>i * JoinWordsPerRow</c> and bit <c>j</c> of that row (word <c>j / 64</c>, bit <c>j % 64</c>) is set when
+/// elements <c>i</c> and <c>j</c> are joined. Two polygon elements are joined when they meet within the band and
+/// each lies on or below the other's plane within the band.</summary>
 public readonly struct SupportNeighborhoodResult
 {
     /// <summary>The backend cap on published elements per query.</summary>
     public const int MaximumElements = 256;
 
-    /// <summary>The backend cap on published joins per query.</summary>
-    public const int MaximumJoins = 1024;
-
     public CapsuleFeatureStatus Status { get; }
     public int Elements { get; }
-    public int Joins { get; }
     public int RequiredElements { get; }
-    public int RequiredJoins { get; }
+    public int JoinWordsPerRow { get; }
     public IPhysicsWorld? QueryWorld { get; }
     public IPhysicsWorld? SourceWorld { get; }
     public IPhysicsQueryLease? Lease { get; }
     public Vector3 Origin { get; }
     public long GeometryGeneration { get; }
 
-    SupportNeighborhoodResult(CapsuleFeatureStatus status, int requiredElements, int requiredJoins)
+    SupportNeighborhoodResult(CapsuleFeatureStatus status, int requiredElements)
     {
         this = default;
         Status = status;
         RequiredElements = requiredElements;
-        RequiredJoins = requiredJoins;
     }
 
-    /// <summary>Creates a refusal without usable elements. Known requirements are diagnostic only and may be
-    /// supplied exclusively for <see cref="CapsuleFeatureStatus.CapacityExceeded"/>.</summary>
-    public static SupportNeighborhoodResult Refused(CapsuleFeatureStatus status, int requiredElements = 0,
-        int requiredJoins = 0)
+    /// <summary>The 64 bit words one join matrix row needs for <paramref name="elements"/> elements.</summary>
+    public static int JoinWordsFor(int elements) => elements < 0
+        ? throw new ArgumentOutOfRangeException(nameof(elements)) : (elements + 63) / 64;
+
+    /// <summary>Creates a refusal without usable elements. A known element requirement is diagnostic only and
+    /// may be supplied exclusively for <see cref="CapsuleFeatureStatus.CapacityExceeded"/>. The join span it
+    /// needs is <c>requiredElements * JoinWordsFor(requiredElements)</c> words.</summary>
+    public static SupportNeighborhoodResult Refused(CapsuleFeatureStatus status, int requiredElements = 0)
     {
         if (status > CapsuleFeatureStatus.CapacityExceeded || status == CapsuleFeatureStatus.Complete)
             throw new ArgumentOutOfRangeException(nameof(status));
-        if (requiredElements < 0 || requiredJoins < 0 || ((requiredElements != 0 || requiredJoins != 0) &&
-            status != CapsuleFeatureStatus.CapacityExceeded))
+        if (requiredElements < 0 || (requiredElements != 0 && status != CapsuleFeatureStatus.CapacityExceeded))
             throw new ArgumentOutOfRangeException(nameof(requiredElements));
-        return new(status, requiredElements, requiredJoins);
+        return new(status, requiredElements);
     }
 
-    /// <summary>Publishes element and join counts under their original live interval. This does not
+    /// <summary>Publishes the element count and join stride under their original live interval. This does not
     /// authenticate a backend or prove completeness. The provider establishes those facts and commits the
-    /// elements and joins to the caller together.</summary>
+    /// elements and the join matrix to the caller together.</summary>
     public static SupportNeighborhoodResult Completed(IPhysicsWorld queryWorld, IPhysicsQueryLease lease,
-        int elements, int joins) => new(queryWorld, lease, elements, joins);
+        int elements) => new(queryWorld, lease, elements);
 
-    SupportNeighborhoodResult(IPhysicsWorld queryWorld, IPhysicsQueryLease lease, int elements, int joins)
+    SupportNeighborhoodResult(IPhysicsWorld queryWorld, IPhysicsQueryLease lease, int elements)
     {
         ArgumentNullException.ThrowIfNull(queryWorld);
         ArgumentNullException.ThrowIfNull(lease);
         lease.AssertCurrent();
         if (elements is < 0 or > MaximumElements)
             throw new ArgumentOutOfRangeException(nameof(elements));
-        if (joins < 0 || joins > MaximumJoins || joins > (long)elements * (elements - 1) / 2)
-            throw new ArgumentOutOfRangeException(nameof(joins));
         IPhysicsWorld source = lease.SourceWorld;
         Vector3 origin = lease.Origin;
         long generation = lease.GeometryGeneration;
@@ -226,7 +221,7 @@ public readonly struct SupportNeighborhoodResult
         this = default;
         Status = CapsuleFeatureStatus.Complete;
         Elements = elements;
-        Joins = joins;
+        JoinWordsPerRow = JoinWordsFor(elements);
         QueryWorld = queryWorld;
         SourceWorld = source;
         Lease = lease;
@@ -247,20 +242,20 @@ public interface IPhysicsCapsuleFeatures
         QueryFilter filter = default);
 
     /// <summary>Rejects another receiver or lease, an expired interval and a wrong thread before entering
-    /// the owner query monitor. A later same-generation lease cannot revive an old result. An untyped
-    /// <c>default</c> result resolves to this overload, as it did before the neighborhood overload.</summary>
-    [OverloadResolutionPriority(1)]
+    /// the owner query monitor. A later same-generation lease cannot revive an old result.</summary>
     void AssertFeatureCurrent(in CapsuleFeatureResult result, IPhysicsQueryLease lease);
 
     /// <summary>Publishes every front-facing element of every selected static whose separation from the probe
-    /// may be at most <paramref name="bandMetres"/>, ordered by static handle then element id, and the joins
-    /// between its polygons. Membership is decided by the separation's lower bound, so a tie never refuses.
+    /// may be at most <paramref name="bandMetres"/>, ordered by static handle then element id, and the symmetric
+    /// join matrix over them. <paramref name="joins"/> must hold <c>elements.Length * JoinWordsFor(elements.Length)</c>
+    /// words. Membership is decided by the separation's lower bound, so a tie never refuses. CapacityExceeded is
+    /// returned only when the element span or the join matrix for the published element count does not fit.
     /// Refusal or exception leaves both spans untouched. A complete result commits elements and joins together
     /// and remains usable only under its original lease and query receiver.</summary>
     SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe, Pose pose,
-        float bandMetres, Span<SupportElement> elements, Span<SupportJoin> joins, QueryFilter filter = default);
+        float bandMetres, Span<SupportElement> elements, Span<ulong> joins, QueryFilter filter = default);
 
-    /// <summary>Rejects another receiver or lease, an expired interval and a wrong thread, as the feature
-    /// overload does.</summary>
-    void AssertFeatureCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease);
+    /// <summary>Rejects another receiver or lease, an expired interval and a wrong thread, as
+    /// <see cref="AssertFeatureCurrent"/> does for feature results.</summary>
+    void AssertNeighborhoodCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease);
 }

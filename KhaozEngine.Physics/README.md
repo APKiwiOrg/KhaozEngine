@@ -45,8 +45,9 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   `AssertFeatureCurrent(result, lease)` before publishing from it, and never consume it after the lease is
   disposed. A later lease of the same generation cannot revive it. Structural fields alone do not permit
   movement. Support eligibility is the caller's decision.
-  `QuerySupportNeighborhood(lease, probe, pose, bandMetres, elements, joins, filter)` on the same capability
-  publishes every front-facing element of every selected static whose separation from an upright probe may be
+- **`IPhysicsSupportNeighborhood`** - optional support neighborhood capability, separate from
+  `IPhysicsCapsuleFeatures` and bound to leases and receivers the same way.
+  `QuerySupportNeighborhood(lease, probe, pose, bandMetres, elements, joins, filter)` publishes every front-facing element of every selected static whose separation from an upright probe may be
   at most `bandMetres`, ordered by static handle then element id. A `SupportElement` is a `Polygon` (a box or
   hull face, or one mesh triangle) or a `Tangent` (a point on a sphere, capsule or cylinder side, or a cylinder
   cap), with its normal, witness, error bounds and separation interval. `joins` receives a symmetric bit matrix:
@@ -138,7 +139,8 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
 - **`QueryFilter`** - which bodies a raycast/sweep may hit: a `QueryMobility` (statics / dynamics / both) plus a
   layer mask. Default (`QueryFilter.All`) matches every body; `QueryFilter.StaticsOnly` /
   `QueryFilter.DynamicsOnly` restrict by mobility (the Bepu backend honours the mobility gate, so a statics-only
-  ground probe ignores dynamic bodies). `CullBackFaces` makes `SweepCapsule` skip a static mesh triangle that
+  ground probe ignores dynamic bodies). The init-only `CullBackFaces` property (set it with
+  `with { CullBackFaces = true }`) makes `SweepCapsule` skip a static mesh triangle that
   does not face against the sweep (front normal `Cross(C - A, B - A)` dotted with the sweep direction at least
   zero, vertical triangles included), so a support probe passes one-sided back faces as Bepu's contacts do.
   Compound children are never culled and raycasts ignore the flag.

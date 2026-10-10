@@ -207,7 +207,8 @@ optional-interface pattern. A probe sweep leaves the probe capsule exactly in co
 feature query certifies, so a cylinder or general convex sweep would add a public API with no remaining use.
 `IPhysicsWorld` itself is unchanged. `FootSupport` throws `NotSupportedException` for a non-null world without
 `IPhysicsCapsuleFeatures`, and phase 5 makes a context selecting the new controller check it at creation. The
-controller never silently degrades.
+controller never silently degrades. Phase 2b moves certification to the separate optional capability
+`IPhysicsSupportNeighborhood`, so `FootSupport` now requires that one instead.
 
 ### Support primitive
 
@@ -338,7 +339,8 @@ equivalent triangle mesh, and must give the same answer within float rounding.
 - A selected query view with an excluded static. The excluded static never contributes.
 - A rebased world origin. Results equal the unrebased world after translation.
 - Determinism. Two identical queries return bit-identical samples.
-- A world without `IPhysicsCapsuleFeatures`. `FootSupport` throws.
+- A world without the certification capability (`IPhysicsSupportNeighborhood` since phase 2b). `FootSupport`
+  throws.
 - The swimming repro: a 0.25 m bank at X 1, radius 0.25, half-height 0.75, walking at 4 m/s and 30 Hz.
   At X 0.881 the disc touches the bank top, the certified crease names the top face, and support is 0.25
   at the axis with feet XZ equal to the body's.

@@ -292,7 +292,7 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
     static (SupportNeighborhoodResult, int) Query(IPhysicsWorld world, IPhysicsQueryLease lease, CapsuleShape probe,
         Pose pose, Vector2 axis, float cosMaxSlope, Digest digest)
     {
-        var features = (IPhysicsCapsuleFeatures)world;
+        var features = (IPhysicsSupportNeighborhood)world;
         var elements = new SupportElement[Capacity];
         var joins = new ulong[Capacity * SupportNeighborhoodResult.JoinWordsFor(Capacity)];
         var contributions = new SupportContribution[Capacity];

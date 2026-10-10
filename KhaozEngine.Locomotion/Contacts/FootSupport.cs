@@ -47,19 +47,19 @@ internal static class FootSupport
     /// whose contact lies above the band, a refused neighborhood, or a neighborhood with no member that supports at
     /// or below the band top is a refused proposal at the probe's lowest point. A refused proposal above the selected
     /// support, or with no support at all, returns <see cref="SupportStatus.Refused"/>. A non-null
-    /// <paramref name="world"/> must offer <see cref="IPhysicsCapsuleFeatures"/> and <paramref name="lease"/>
+    /// <paramref name="world"/> must offer <see cref="IPhysicsSupportNeighborhood"/> and <paramref name="lease"/>
     /// must be its current read interval.</summary>
     internal static SupportSample Find(Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
         in FootSupportQuery query)
     {
         Validate(query);
-        IPhysicsCapsuleFeatures? features = null;
+        IPhysicsSupportNeighborhood? features = null;
         if (world is not null)
         {
             ArgumentNullException.ThrowIfNull(lease);
-            features = world as IPhysicsCapsuleFeatures ?? throw new NotSupportedException(
-                "Foot support needs a physics world that offers capsule-feature queries.");
+            features = world as IPhysicsSupportNeighborhood ?? throw new NotSupportedException(
+                "Foot support needs a physics world that offers support neighborhood queries.");
             lease.AssertCurrent();
             IPhysicsWorld source = world is IPhysicsWorldQueryView view ? view.SourceWorld : world;
             if (!ReferenceEquals(lease.SourceWorld, source) || lease.Origin != world.Origin)
@@ -123,7 +123,7 @@ internal static class FootSupport
 
     // Sweeps one probe down the band. The hit leaves the probe exactly in contact, which is the pose whose support
     // neighborhood is certified. A neighborhood that cannot be certified is a refused proposal at its lowest point.
-    static void Probe(IPhysicsWorld world, IPhysicsCapsuleFeatures features, IPhysicsQueryLease lease,
+    static void Probe(IPhysicsWorld world, IPhysicsSupportNeighborhood features, IPhysicsQueryLease lease,
         in FootSupportQuery query, CapsuleShape capsule, ProbeScratch scratch, ref Selection selection)
     {
         float radius = capsule.Radius;

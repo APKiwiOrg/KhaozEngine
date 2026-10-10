@@ -19,7 +19,7 @@ public class SupportCertificationTests
 
     static Vector2 Axis(Pose pose) => new(pose.Position.X, pose.Position.Z);
 
-    static Neighborhood Query(IPhysicsCapsuleFeatures features, IPhysicsQueryLease lease, CapsuleShape probe,
+    static Neighborhood Query(IPhysicsSupportNeighborhood features, IPhysicsQueryLease lease, CapsuleShape probe,
         Pose pose)
     {
         var elements = new SupportElement[Capacity];
@@ -31,9 +31,9 @@ public class SupportCertificationTests
     }
 
     static Neighborhood Query(CornerFeatureControlScene scene) =>
-        Query(scene.Features, scene.Lease, scene.Capsule, scene.Candidate);
+        Query(scene.Neighborhoods, scene.Lease, scene.Capsule, scene.Candidate);
 
-    static SupportContribution[] Certify(CornerFeatureControlScene scene, IPhysicsCapsuleFeatures capability,
+    static SupportContribution[] Certify(CornerFeatureControlScene scene, IPhysicsSupportNeighborhood capability,
         Neighborhood neighborhood, SupportElement[]? elements = null)
     {
         var contributions = new SupportContribution[Capacity];
@@ -58,7 +58,7 @@ public class SupportCertificationTests
     {
         using var scene = new CornerFeatureControlScene("convex");
         Neighborhood neighborhood = Query(scene);
-        SupportContribution[] original = Certify(scene, scene.Features, neighborhood);
+        SupportContribution[] original = Certify(scene, scene.Neighborhoods, neighborhood);
         int top = IndexOfTop(neighborhood.Elements);
         Assert.Equal(CertifiedSupportKind.Walkable, original[top].Kind);
         SupportElement[] copy = (SupportElement[])neighborhood.Elements.Clone();
@@ -71,7 +71,7 @@ public class SupportCertificationTests
                 _ => copy[i].Normal.Y == 0 ? copy[i] with { NormalError = 0.000001f } : copy[i],
             };
         // Only enclosure widths changed. No invented geometry or scripted provider establishes correspondence.
-        SupportContribution[] widened = Certify(scene, scene.Features, neighborhood, copy);
+        SupportContribution[] widened = Certify(scene, scene.Neighborhoods, neighborhood, copy);
         switch (wider)
         {
             case "position":
@@ -98,7 +98,7 @@ public class SupportCertificationTests
         Neighborhood neighborhood = Query(scene);
         SupportElement[] copy = (SupportElement[])neighborhood.Elements.Clone();
         copy[0] = copy[0] with { Witness = new Vector3(float.NaN, 0, 0) };
-        Assert.Equal(-1, SupportCertification.CertifyNeighborhood(scene.Features, scene.Lease, neighborhood.Result,
+        Assert.Equal(-1, SupportCertification.CertifyNeighborhood(scene.Neighborhoods, scene.Lease, neighborhood.Result,
             copy, neighborhood.Joins, Axis(scene.Candidate), CosMaxSlope, new SupportContribution[Capacity]));
     }
 
@@ -108,7 +108,7 @@ public class SupportCertificationTests
         using var scene = new CornerFeatureControlScene("convex");
         Neighborhood neighborhood = Query(scene);
         Assert.True(neighborhood.Result.Elements > 1);
-        Assert.Throws<ArgumentException>(() => SupportCertification.CertifyNeighborhood(scene.Features, scene.Lease,
+        Assert.Throws<ArgumentException>(() => SupportCertification.CertifyNeighborhood(scene.Neighborhoods, scene.Lease,
             neighborhood.Result, neighborhood.Elements, neighborhood.Joins, Axis(scene.Candidate), CosMaxSlope,
             new SupportContribution[1]));
     }
@@ -118,9 +118,9 @@ public class SupportCertificationTests
     {
         using var scene = new CornerFeatureControlScene("open");
         Neighborhood neighborhood = Query(scene);
-        Assert.Equal(CertifiedSupportKind.Walkable, Certify(scene, scene.Features, neighborhood)[0].Kind);
+        Assert.Equal(CertifiedSupportKind.Walkable, Certify(scene, scene.Neighborhoods, neighborhood)[0].Kind);
         scene.Lease.Dispose();
-        Assert.Throws<ObjectDisposedException>(() => Certify(scene, scene.Features, neighborhood));
+        Assert.Throws<ObjectDisposedException>(() => Certify(scene, scene.Neighborhoods, neighborhood));
     }
 
     [Fact]
@@ -149,7 +149,7 @@ public class SupportCertificationTests
             [V(0, 1, 0), V(0, 1, 0)]);
         // The probe touches the shared diagonal, so both raw triangles are members and both support Y 0.
         Neighborhood neighborhood = Query(scene);
-        SupportContribution[] contributions = Certify(scene, scene.Features, neighborhood);
+        SupportContribution[] contributions = Certify(scene, scene.Neighborhoods, neighborhood);
         Assert.Equal(2, contributions.Length);
         Assert.All(contributions, c => Assert.Equal(CertifiedSupportKind.Walkable, c.Kind));
         Assert.All(contributions, c => Assert.True(Encloses(c, 0), $"{c}"));
@@ -167,7 +167,7 @@ public class SupportCertificationTests
         Assert.Equal(2, neighborhood.Result.Elements);
         // The two tops meet at the convex ridge, so they are joined.
         Assert.NotEqual(0UL, neighborhood.Joins[0] & 2UL);
-        SupportContribution[] contributions = Certify(scene, scene.Features, neighborhood);
+        SupportContribution[] contributions = Certify(scene, scene.Neighborhoods, neighborhood);
         for (int i = 0; i < contributions.Length; i++)
         {
             Assert.Equal(CertifiedSupportKind.Walkable, contributions[i].Kind);
@@ -182,7 +182,7 @@ public class SupportCertificationTests
     {
         using var scene = new CornerFeatureControlScene("convex");
         Neighborhood neighborhood = Query(scene);
-        SupportContribution[] contributions = Certify(scene, scene.Features, neighborhood);
+        SupportContribution[] contributions = Certify(scene, scene.Neighborhoods, neighborhood);
         int top = IndexOfTop(neighborhood.Elements);
         SupportContribution contribution = contributions[top];
         Assert.Equal(CertifiedSupportKind.Walkable, contribution.Kind);

@@ -233,7 +233,7 @@ public class SupportNeighborhoodTests
     {
         using var scene = new Scene();
         scene.World.AddStatic(new BoxShape(new Vector3(0.5f)), Pose.Identity);
-        IPhysicsCapsuleFeatures capability = scene.Capability(scene.World);
+        IPhysicsSupportNeighborhood capability = scene.Capability(scene.World);
         // The corner has three members, so its join matrix is three rows of one word.
         SupportElement[] elements = ElementSentinels(1), originalElements = (SupportElement[])elements.Clone();
         ulong[] joins = JoinSentinels(8), originalJoins = (ulong[])joins.Clone();
@@ -269,8 +269,8 @@ public class SupportNeighborhoodTests
         StaticHandle box = scene.World.AddStatic(new BoxShape(new Vector3(0.5f)), Pose.Identity);
         using IPhysicsWorldQueryView view = scene.World.CreateQueryViewExcludingStatics([]);
         using IPhysicsWorldQueryView excluded = scene.World.CreateQueryViewExcludingStatics([box]);
-        IPhysicsCapsuleFeatures owner = scene.Capability(scene.World), selected = scene.Capability(view);
-        IPhysicsCapsuleFeatures other = scene.Capability(excluded);
+        IPhysicsSupportNeighborhood owner = scene.Capability(scene.World), selected = scene.Capability(view);
+        IPhysicsSupportNeighborhood other = scene.Capability(excluded);
         Pose pose = Lowest(0, 0.5 + Radius, 0);
 
         SupportNeighborhoodResult own = scene.Query(scene.World, pose).Result;
@@ -312,7 +312,7 @@ public class SupportNeighborhoodTests
     {
         using var scene = new Scene();
         scene.World.AddStatic(new BoxShape(new Vector3(0.5f)), Pose.Identity);
-        IPhysicsCapsuleFeatures capability = scene.Capability(scene.World);
+        IPhysicsSupportNeighborhood capability = scene.Capability(scene.World);
         Pose upright = Lowest(0, 0.5 + Radius, 0);
         var tilted = new Pose(upright.Position, new Quaternion(0.5f, 0.5f, 0.5f, 0.5f));
         SupportElement[] elements = ElementSentinels(4), original = (SupportElement[])elements.Clone();
@@ -526,7 +526,7 @@ public class SupportNeighborhoodTests
             var elements = new SupportElement[Capacity];
             ulong[] joins = JoinSentinels(Capacity * SupportNeighborhoodResult.JoinWordsFor(Capacity));
             ulong[] original = (ulong[])joins.Clone();
-            IPhysicsCapsuleFeatures capability = Assert.IsAssignableFrom<IPhysicsCapsuleFeatures>(world);
+            IPhysicsSupportNeighborhood capability = Assert.IsAssignableFrom<IPhysicsSupportNeighborhood>(world);
             SupportNeighborhoodResult result = capability.QuerySupportNeighborhood(lease, probe ?? Probe, pose, Band, elements,
                 joins, filter);
             if (result.Status != CapsuleFeatureStatus.Complete) return new(result, [], []);
@@ -559,8 +559,8 @@ public class SupportNeighborhoodTests
         IPhysicsQueryLease? _lease;
         internal BepuPhysicsWorld World { get; } = new(Vector3.Zero);
         internal IPhysicsQueryLease Lease => _lease ??= World.AcquireQueryReadLease();
-        internal IPhysicsCapsuleFeatures Capability(IPhysicsWorld world) =>
-            Assert.IsAssignableFrom<IPhysicsCapsuleFeatures>(world);
+        internal IPhysicsSupportNeighborhood Capability(IPhysicsWorld world) =>
+            Assert.IsAssignableFrom<IPhysicsSupportNeighborhood>(world);
         /// <summary>A view excluding <paramref name="excluded"/>, released after the scene's lease.</summary>
         internal IPhysicsWorldQueryView View(params StaticHandle[] excluded)
         {

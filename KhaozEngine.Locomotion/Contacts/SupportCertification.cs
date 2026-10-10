@@ -35,7 +35,7 @@ internal static class SupportCertification
     /// ignored its steep faces. Any other steep polygon follows the phase 1 steep rule over its joined set: the
     /// minimum with the plane at the axis of every joined steep polygon. A tangent element is never joined and
     /// contributes <c>min(tangent plane at the axis, witness height)</c>.</remarks>
-    internal static int CertifyNeighborhood(IPhysicsCapsuleFeatures capability, IPhysicsQueryLease lease,
+    internal static int CertifyNeighborhood(IPhysicsSupportNeighborhood capability, IPhysicsQueryLease lease,
         in SupportNeighborhoodResult result, ReadOnlySpan<SupportElement> elements, ReadOnlySpan<ulong> joins,
         Vector2 axis, float cosMaxSlope, Span<SupportContribution> contributions)
     {

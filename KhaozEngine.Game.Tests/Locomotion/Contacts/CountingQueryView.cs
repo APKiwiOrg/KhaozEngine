@@ -17,7 +17,7 @@ internal readonly record struct QueryCounts(int Sweeps, int Penetrations, int Ra
 /// <see cref="SourceWorld"/> is the inner view's, so foot support accepts it as that view. The caller owns the inner
 /// view.</summary>
 internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
-    : IPhysicsWorldQueryView, IPhysicsCapsuleFeatures, IPhysicsQueryLeaseSource
+    : IPhysicsWorldQueryView, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood, IPhysicsQueryLeaseSource
 {
     int _sweeps, _penetrations, _raycasts, _features;
 
@@ -65,12 +65,12 @@ internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
         float bandMetres, Span<SupportElement> elements, Span<ulong> joins, QueryFilter filter = default)
     {
         _features++;
-        return ((IPhysicsCapsuleFeatures)inner).QuerySupportNeighborhood(lease, probe, pose, bandMetres, elements,
+        return ((IPhysicsSupportNeighborhood)inner).QuerySupportNeighborhood(lease, probe, pose, bandMetres, elements,
             joins, filter);
     }
 
     public void AssertNeighborhoodCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease) =>
-        ((IPhysicsCapsuleFeatures)inner).AssertNeighborhoodCurrent(result, lease);
+        ((IPhysicsSupportNeighborhood)inner).AssertNeighborhoodCurrent(result, lease);
 
     public StaticHandle AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) =>
         inner.AddStatic(shape, pose, material);

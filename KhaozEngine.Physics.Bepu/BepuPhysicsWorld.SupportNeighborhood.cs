@@ -4,7 +4,7 @@ using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
 
-public sealed partial class BepuPhysicsWorld
+public sealed partial class BepuPhysicsWorld : IPhysicsSupportNeighborhood
 {
     // Neighborhood scratch for this world. Every query on the world or one of its views runs under the world's
     // query monitor, so threads never share it. A query that finds it taken, which only a nested query on the

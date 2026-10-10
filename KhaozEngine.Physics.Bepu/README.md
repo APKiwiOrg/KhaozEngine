@@ -67,7 +67,9 @@ either value shifts the bit-exact result legitimately.
   capsules, a radius outside 0.01 to 2, a length over 8 and a band over 0.01 m return `Unsupported`. A
   static excluded by a view, removed, or filtered out by a dynamics-only `QueryFilter` returns
   `Unavailable`. A probe that meets only the back face of a mesh returns `NoFeature`. A result from a view
-  is valid only through that view and its original lease.
+  is valid only through that view and its original lease. The owner and its views also implement
+  `IPhysicsSupportNeighborhood` for boxes, convex hulls, meshes, spheres, capsules, cylinders and compounds of
+  those, under the same lease and receiver rules.
 - **`Origin`/`CanRebase`/`Rebase(newOrigin)`** (floating origin) - `CanRebase` is true here. A rebase is a bulk of
   direct pose writes plus broadphase refits, NOT a remove-and-re-add: `BodyReference.Pose` and
   `StaticReference.Pose` are ref-returning in Bepu 2.4 and `UpdateBounds` refits the broadphase for the new pose

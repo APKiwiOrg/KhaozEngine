@@ -8588,7 +8588,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 - Optional `IPhysicsCapsuleFeatures.QueryCapsuleFeature(lease, target, capsule, pose, maximumSeparationMetres, faces) -> CapsuleFeatureResult`
   certifies the closest finite feature of one static under a read lease. Bepu owners and restricted views
   support it. See [Capsule-feature certification](#capsule-feature-certification-iphysicscapsulefeatures).
-- Optional `IPhysicsCapsuleFeatures.QuerySupportNeighborhood(lease, probe, pose, bandMetres, elements, joins, filter) -> SupportNeighborhoodResult`
+- Optional `IPhysicsSupportNeighborhood.QuerySupportNeighborhood(lease, probe, pose, bandMetres, elements, joins, filter) -> SupportNeighborhoodResult`
   publishes every front-facing surface element of every selected static within a band of an upright probe,
   with the symmetric join matrix over them. See [Support neighborhoods](#support-neighborhoods).
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
@@ -8635,7 +8635,8 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   `QueryMobility` is `All` (default), `Statics`, or `Dynamics`. `QueryFilter.All` / default matches every body;
   `QueryFilter.StaticsOnly` / `QueryFilter.DynamicsOnly` restrict by mobility (the Bepu backend applies the gate,
   so e.g. a downward ground probe passing `StaticsOnly` ignores a dynamic crate under the character). The layer
-  mask (`0` = all layers) is reserved. `CullBackFaces` (default false) makes `SweepCapsule` skip a static mesh
+  mask (`0` = all layers) is reserved. The init-only `CullBackFaces` property (default false, outside the
+  positional parameters) makes `SweepCapsule` skip a static mesh
   triangle that does not face against the sweep, one whose front normal `Cross(C - A, B - A)` has a dot product
   with the sweep direction of at least zero, so vertical triangles are skipped too. A downward support probe
   then passes the back of a one-sided mesh and reaches what lies beyond, as Bepu's one-sided mesh contacts do.
@@ -8946,20 +8947,22 @@ if (world is IPhysicsCapsuleFeatures features && world is IPhysicsQueryLeaseSour
 
 ### Support neighborhoods
 
-`QuerySupportNeighborhood` on the same capability answers a wider question than the closest feature: every
+The optional `IPhysicsSupportNeighborhood` capability answers a wider question than the closest feature: every
 surface element of every selected static whose separation from an upright probe capsule may be at most
 `bandMetres`. Membership uses the lower bound of each separation interval, so a tie never refuses. Use it where
-support must not depend on which static a sweep reported or on how a scene is split into statics.
+support must not depend on which static a sweep reported or on how a scene is split into statics. It is separate
+from `IPhysicsCapsuleFeatures`, so test for it on its own. Bepu owners and restricted views offer both.
 
 ```csharp
 // Under the same lease rules as the feature query. Spans can be reused across calls.
+if (world is not IPhysicsSupportNeighborhood neighborhoods) return;
 var elements = new SupportElement[SupportNeighborhoodResult.MaximumElements];
 var joins = new ulong[elements.Length * SupportNeighborhoodResult.JoinWordsFor(elements.Length)];
-SupportNeighborhoodResult result = features.QuerySupportNeighborhood(lease, probe, contact,
+SupportNeighborhoodResult result = neighborhoods.QuerySupportNeighborhood(lease, probe, contact,
     bandMetres: 0.0001f, elements, joins, QueryFilter.StaticsOnly);
 if (result.Status == CapsuleFeatureStatus.Complete)
 {
-    features.AssertNeighborhoodCurrent(result, lease);
+    neighborhoods.AssertNeighborhoodCurrent(result, lease);
     for (int i = 0; i < result.Elements; i++)
     {
         SupportElement element = elements[i];

@@ -43,7 +43,9 @@ the probe's contact, and completeness replaces uniqueness as the property the ba
 
 ## Support neighborhood query
 
-A method on the existing optional capability `IPhysicsCapsuleFeatures`:
+A new optional capability `IPhysicsSupportNeighborhood`, beside `IPhysicsCapsuleFeatures` in the same
+optional-interface pattern. `IPhysicsCapsuleFeatures` keeps its released members, so the addition is additive and
+an outside implementer of the feature query is unaffected. Bepu owners and their restricted views implement both.
 
 ```csharp
 namespace KhaozEngine.Physics;
@@ -65,10 +67,13 @@ public readonly struct SupportNeighborhoodResult
     // Lease metadata as on CapsuleFeatureResult.
 }
 
-SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe, Pose pose,
-    float bandMetres, Span<SupportElement> elements, Span<ulong> joins, QueryFilter filter = default);
+public interface IPhysicsSupportNeighborhood
+{
+    SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe, Pose pose,
+        float bandMetres, Span<SupportElement> elements, Span<ulong> joins, QueryFilter filter = default);
 
-void AssertNeighborhoodCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease);
+    void AssertNeighborhoodCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease);
+}
 ```
 
 The contract:
@@ -176,7 +181,8 @@ disc bridges it on its rims as the program table already says.
 `FootSupport` keeps its two probes, the axis probe and the leg probe, each one sweep. A probe hands its contact
 pose to the neighborhood query instead of naming a single static.
 
-- **Back faces.** `QueryFilter` gains `CullBackFaces`. With it, `SweepCapsule` skips a static mesh triangle that
+- **Back faces.** `QueryFilter` gains the init-only property `CullBackFaces`, outside its positional parameters so
+  its constructor and `Deconstruct` keep their released signatures. With it, `SweepCapsule` skips a static mesh triangle that
   does not face against the sweep, one whose front normal has a dot product with the sweep direction of at least
   zero, through the backend's per-child sweep filter. Vertical triangles are culled too. A vertical triangle can
   never support, and its upper edge belongs to an upward neighbour in a closed mesh. Compound children are never
@@ -258,8 +264,8 @@ contact skin, and no test depends on a micrometre sweep result.
 
 ## Files
 
-- `KhaozEngine.Physics/CapsuleFeatureQuery.cs`: the element, result and methods on `IPhysicsCapsuleFeatures`.
-- `KhaozEngine.Physics/QueryFilter.cs`: `CullBackFaces`.
+- `KhaozEngine.Physics/SupportNeighborhoodQuery.cs`: the element, the result and `IPhysicsSupportNeighborhood`.
+- `KhaozEngine.Physics/QueryFilter.cs`: the `CullBackFaces` property.
 - `KhaozEngine.Physics.Bepu/`: the collector, polygon publication for boxes, hulls and meshes, tangent publication
   for spheres, capsules and cylinders, the join test, the per-child back-face filter in the sweep handler, the
   install guard for non-finite mesh vertices, and the reusable capture scratch and expansion arithmetic that make a

@@ -13,6 +13,7 @@ internal sealed class CornerFeatureControlScene : IDisposable
     internal BepuPhysicsWorld World { get; } = new(Vector3.Zero);
     internal IPhysicsWorldQueryView View { get; private set; } = null!;
     internal IPhysicsCapsuleFeatures Features { get; private set; } = null!;
+    internal IPhysicsSupportNeighborhood Neighborhoods { get; private set; } = null!;
     internal IPhysicsQueryLease Lease { get; private set; } = null!;
     internal StaticHandle Target { get; private set; }
     internal CapsuleShape Capsule { get; private set; } = new(13f / 32, 0.5f);
@@ -149,6 +150,7 @@ internal sealed class CornerFeatureControlScene : IDisposable
             Target = World.AddStatic(shape, Pose.Identity);
             View = World.CreateQueryViewExcludingStatics([]);
             Features = Assert.IsAssignableFrom<IPhysicsCapsuleFeatures>(View);
+            Neighborhoods = Assert.IsAssignableFrom<IPhysicsSupportNeighborhood>(View);
             Lease = Assert.IsAssignableFrom<IPhysicsQueryLeaseSource>(View).AcquireQueryReadLease();
             Lease.AssertCurrent();
             Assert.Same(World, Lease.SourceWorld);

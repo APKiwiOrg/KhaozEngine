@@ -22,7 +22,8 @@ public sealed partial class BepuPhysicsWorld
         return new QueryView(this, new StaticQueryExclusions(snapshot, _reverseHandles));
     }
 
-    private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsCapsuleFeatures
+    private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsCapsuleFeatures,
+        IPhysicsSupportNeighborhood
     {
         private readonly BepuPhysicsWorld _owner;
         private readonly StaticQueryExclusions _exclusions;

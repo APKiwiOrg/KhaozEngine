@@ -18,7 +18,7 @@ support gaps. Those gaps (#1329 concave creases, #1330 vertices, #1331 curved pr
 faces, #1340 one static proposed per probe at a shared edge, #1342 an unresolved feature query at a convex nosing)
 close in a separate phase 2b that must land before any game adopts the controller (owner ruling,
 2026-10-10). The [phase 2b spec](CONTACT-CONTROLLER-PHASE-2B-SUPPORT-NEIGHBORHOOD-2026-10-10.md) closes them,
-staged for 20.31.0.
+released in 20.31.0.
 
 ## Interface
 

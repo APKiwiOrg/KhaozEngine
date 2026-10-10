@@ -5,6 +5,12 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.31.1
+
+- Locomotion's internal contact-classification controller gains its whole tick for phase 3 of #438: the air pass
+  with jumps, coyote time and landing, steep slides on terrain and props, traction hysteresis and movement
+  commitments. Nothing consumes it yet, so there is no consumer or movement change.
+
 ## 20.31.0
 
 - The PixelLab sheet assembler tool reads palette and interlaced PNGs again (#1345). `PngReader` in
@@ -75,9 +81,6 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   `INativePlacementBounds` provider through the new `BindNativeAssets(assets, placementBounds)` overloads, and
   ke-mapedit supplies `NativePlacementBoundsProvider`. Both released `BindNativeAssets` overloads are kept.
 - No MapDoc format version or identity token changes in this release.
-- Locomotion's internal contact-classification controller gains its whole tick for phase 3 of #438: the air pass
-  with jumps, coyote time and landing, steep slides on terrain and props, traction hysteresis and movement
-  commitments. Nothing consumes it yet, so there is no consumer or movement change.
 
 ## 20.30.0
 

@@ -3,7 +3,7 @@
 Date: 2026-10-10. Detailed spec for phase 3 of [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438). The
 program, body model, support rule and invariants are in
 [CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md](CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md). Phase 2 (ground
-core) and phase 2b (support neighborhood) are on main at `39f93b6b9`. Status: implemented, staged for 20.31.0.
+core) and phase 2b (support neighborhood) are on main at `39f93b6b9`. Status: implemented, staged for 20.31.1.
 Nothing consumes the controller yet, so no consumer or movement changes. Written under the owner's 2026-10-10
 instruction to continue the program to completion, with decisions recorded for review. This text describes what
 was built, including every ruling made during implementation.
@@ -313,7 +313,7 @@ contact skin, and no committed bit digest passes through a sweep.
 ## Boundaries
 
 No `MoveTuning`, wire, navigation or consumer change. The legacy stepper's behaviour is unchanged. Phase 3 rides the
-staged 20.31.0 under the release ritual.
+staged 20.31.1 under the release ritual.
 
 ## Risks
 

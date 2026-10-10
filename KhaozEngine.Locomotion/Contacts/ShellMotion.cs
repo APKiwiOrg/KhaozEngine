@@ -8,8 +8,13 @@ namespace KhaozEngine.Locomotion.Contacts;
 /// happened. <see cref="Blocked"/> says a shell contact removed part of the move.</summary>
 internal readonly record struct ShellSweep(Vector2 Achieved, bool Blocked, ShellObstructions Obstructions = default);
 
-/// <summary>Moves the shell: recovery out of overlaps, the upward lift and one horizontal substep with wall
-/// slides. Every position is the body's feet. A null world has no statics, so the shell moves freely.</summary>
+/// <summary>The outcome of one shell substep through the air. <see cref="Achieved"/> is the move that happened.
+/// <see cref="Highest"/> and <see cref="Lowest"/> bound the feet's vertical offset from the start along the way.
+/// <see cref="Blocked"/> says a contact removed part of the move.</summary>
+internal readonly record struct ShellFlight(Vector3 Achieved, bool Blocked, float Highest, float Lowest);
+
+/// <summary>Moves the shell: recovery out of overlaps, the upward lift, one horizontal substep with wall slides
+/// and one substep through the air. Every position is the body's feet. A null world has no statics, so the shell moves freely.</summary>
 internal static class ShellMotion
 {
     /// <summary>The gap a sweep leaves when it hits something. Free motion is never shortened by it.</summary>
@@ -118,6 +123,90 @@ internal static class ShellMotion
             }
         }
         return new ShellSweep(achieved, blocked || remaining != Vector2.Zero, obstructions);
+    }
+
+    /// <summary>Sweeps the shell along <paramref name="move"/>. A hit advances to the contact less the skin. Every
+    /// contact then removes the component into its normal from the rest of the move and from
+    /// <paramref name="velocity"/>, vertical included, at most <see cref="MaxSlides"/> times. So a flat ceiling stops a
+    /// rise and a vertical wall leaves the vertical part alone. A contact never lifts: when that removal would raise a
+    /// vector above its own rise, only its horizontal component into the contact goes. The caller splits a long move
+    /// into substeps.</summary>
+    internal static ShellFlight Fly(IPhysicsWorld? world, Vector3 feet, Vector3 move, ref Vector3 velocity,
+        in MoveTuning tuning)
+    {
+        if (world is null)
+            return new ShellFlight(move, false, MathF.Max(0f, move.Y), MathF.Min(0f, move.Y));
+        CapsuleShape shape = ShellGeometry.Shape(tuning);
+        Vector3 centre = ShellGeometry.Centre(feet, tuning);
+        // As in Sweep, a touching start sweeps from an offset off the face that the shell itself does not take.
+        Vector3 offset = Vector3.Zero;
+        Vector3 achieved = Vector3.Zero;
+        Vector3 remaining = move;
+        bool blocked = false;
+        float highest = 0f, lowest = 0f;
+        for (int slide = 0; slide <= MaxSlides; slide++)
+        {
+            double length = Math.Sqrt((double)remaining.X * remaining.X + (double)remaining.Y * remaining.Y +
+                (double)remaining.Z * remaining.Z);
+            if (!(length > 0))
+                break;
+            var direction = new Vector3((float)(remaining.X / length), (float)(remaining.Y / length),
+                (float)(remaining.Z / length));
+            if (!world.SweepCapsule(shape, Pose.At(centre + offset), direction, (float)length, out SweepHit hit,
+                    QueryFilter.StaticsOnly))
+            {
+                achieved += remaining;
+                remaining = Vector3.Zero;
+                highest = MathF.Max(highest, achieved.Y);
+                lowest = MathF.Min(lowest, achieved.Y);
+                break;
+            }
+            Vector3 normal = hit.Normal;
+            if (normal == Vector3.Zero)
+            {
+                if (!TouchNormal(world, shape, centre + offset, out normal))
+                    break;
+                offset += normal * ContactSkin;
+            }
+            else
+            {
+                normal = Vector3.Normalize(normal);
+                Vector3 advance = direction * MathF.Max(0f, hit.Distance - ContactSkin);
+                centre += advance;
+                achieved += advance;
+                remaining -= advance;
+                highest = MathF.Max(highest, achieved.Y);
+                lowest = MathF.Min(lowest, achieved.Y);
+            }
+            velocity = Slide(velocity, normal);
+            if (slide == MaxSlides)
+                break;
+            Vector3 rest = Slide(remaining, normal);
+            blocked |= rest != remaining;
+            remaining = rest;
+        }
+        return new ShellFlight(achieved, blocked || remaining != Vector3.Zero, highest, lowest);
+    }
+
+    // The vector less its component into the contact, unless that would raise it above its own rise.
+    static Vector3 Slide(Vector3 vector, Vector3 normal)
+    {
+        float into = Vector3.Dot(vector, normal);
+        if (!(into < 0f))
+            return vector;
+        Vector3 slid = vector - into * normal;
+        return slid.Y > MathF.Max(vector.Y, 0f) ? Across(vector, normal) : slid;
+    }
+
+    // The move less its horizontal component into the contact's horizontal normal. The vertical part is kept.
+    static Vector3 Across(Vector3 move, Vector3 normal)
+    {
+        var across = new Vector2(normal.X, normal.Z);
+        if (!(across.LengthSquared() > 0f))
+            return move;
+        across = Vector2.Normalize(across);
+        float into = move.X * across.X + move.Z * across.Y;
+        return into < 0f ? new Vector3(move.X - into * across.X, move.Y, move.Z - into * across.Y) : move;
     }
 
     /// <summary>The outward normal of the face a touching shell rests on, from the MTV of the shell grown by the

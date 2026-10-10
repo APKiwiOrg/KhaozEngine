@@ -243,6 +243,52 @@ internal static class FootSupportScenes
     internal static FootSupportScene Bank(SceneVariant variant) =>
         Floor(variant).Flat("bank", 1, 5, -4, 4, BankTop);
 
+    internal const float LedgeTop = 0.6f;
+    internal const float EaveUnderside = 2.3f;
+
+    /// <summary>A floor and a "ledge" over x in [1, 5] and z in [-2, 2] whose top at <see cref="LedgeTop"/> is above
+    /// the step height. The mesh variant is the top face alone.</summary>
+    internal static FootSupportScene Ledge(SceneVariant variant) =>
+        Floor(variant).Flat("ledge", 1, 5, -2, 2, LedgeTop);
+
+    /// <summary>A 0.05 m thick "slab" over x and z in [-3, 3] with its top at Y 0. The mesh variant is the top face
+    /// alone.</summary>
+    internal static FootSupportScene ThinSlab(SceneVariant variant) =>
+        new FootSupportScene(variant).Slab("slab", Vector3.Zero, 0, 3, 3, 0.05f);
+
+    /// <summary>A slab whose downward face is centred on <paramref name="underside"/> and rises to +X by
+    /// <paramref name="degrees"/>. The box variant is <paramref name="thickness"/> thick above that face. The mesh
+    /// variant is the face alone, facing down.</summary>
+    internal static FootSupportScene Ceiling(this FootSupportScene scene, string name, Vector3 underside,
+        float halfLength, float halfWidth, float degrees = 0, float thickness = 0.2f) =>
+        scene.Slab(name, underside, MathF.PI + Radians(degrees), halfLength, halfWidth, thickness);
+
+    /// <summary>A floor, a 4 m "wall" whose face stands at x 2, and an "eave" over the run to it: a ceiling 2 m
+    /// long across x whose underside is centred at (1, <see cref="EaveUnderside"/>, 0) and rises toward the wall by
+    /// <paramref name="degrees"/>.</summary>
+    internal static FootSupportScene Eave(SceneVariant variant, float degrees) =>
+        Floor(variant).Wall("wall", 2, 0.3f, 4).Ceiling("eave", new Vector3(1, EaveUnderside, 0), 1, 2, degrees);
+
+    /// <summary>A floor and two 3 m walls meeting in a right angle: "wallX" with its face on the plane x 1 facing -X
+    /// and "wallZ" with its face on the plane z 1 facing -Z. The box variant is solid boxes, the mesh variant each
+    /// face alone.</summary>
+    internal static FootSupportScene InnerCorner(SceneVariant variant)
+    {
+        FootSupportScene scene = Floor(variant);
+        if (variant == SceneVariant.Box)
+            return scene.Flat("wallX", 1, 2, -5, 2, 3).Flat("wallZ", -4, 2, 1, 2, 3);
+        return scene.Mesh("wallX", Face(new(1, 0, -5), new(1, 0, 1), 3, -Vector3.UnitX))
+            .Mesh("wallZ", Face(new(-4, 0, 1), new(1, 0, 1), 3, -Vector3.UnitZ));
+    }
+
+    // A vertical quad from the base edge a to b, rising by height, facing outward.
+    static Vector3[] Face(Vector3 a, Vector3 b, float height, Vector3 outward)
+    {
+        var up = new Vector3(0, height, 0);
+        return [.. FootSupportScene.Facing(a, b, a + up, outward),
+            .. FootSupportScene.Facing(b, b + up, a + up, outward)];
+    }
+
     /// <summary>A floor for x at most 0, then <paramref name="risers"/> risers of <paramref name="riser"/> with
     /// treads <paramref name="tread"/> deep. Riser k, counted from 1, stands at x <c>tread (k - 1)</c> and its
     /// tread tops out at <c>riser k</c>. The top tread is a 2 m landing. The box variant stacks solid boxes on

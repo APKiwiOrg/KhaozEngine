@@ -98,19 +98,31 @@ axis, and the landing band must hold that contact.
    Grounded ticks carry the commanded velocity.
 5. **Clamp before the move.** `clampXz` clamps the planned move's end before the move, as legacy clamps its target,
    and the move runs at the velocity that reaches the clamped end. The commanded velocity is still the one carried
-   and reported, so a clamp sheds carry as a denial, as legacy does. The legacy re-clamp of the final position after
-   the move is kept, which bounds a slide that planned its own move.
-6. **Move.** The tick starts in the mode its footing calls for: the ground core when grounded, a slide when an
-   airborne tick (not a committed flight) has steep support within 1 mm of its feet, else the air pass. One climb
-   budget of `MaxStepClimbSpeed * dt` is shared by the whole tick, and every mode pays climbing from what the earlier
-   modes left. A footing change part way through runs the rest of the tick in the next mode, so the tick's motion
-   never depends on where a substep boundary fell:
+   and reported, so a clamp sheds carry as a denial, as legacy does. A slide plans its own move, so every slide
+   segment clamps its planned move the same way, and a clamp that shortens it holds the fall-line speed as a block
+   does. The legacy re-clamp of the final position after the move is kept for whatever a later mode planned past the
+   bound. An end it shifts that stood on support is seated on the support at the clamped axis, through
+   `FootSupport`, and no end it shifts is left below support within `StepHeight` above it.
+6. **Move.** An airborne tick whose feet start below analytic terrain at the axis is first seated on it. No path
+   leaves the feet there, but a defect that did would otherwise fall under the world, because no band, wall or seat
+   reaches the terrain again. Legacy held the same floor. The tick then starts in the mode its footing calls for:
+   the ground core when grounded, a slide when an airborne tick (not a committed flight) has steep support within
+   1 mm of its feet and its velocity does not separate from the support's plane, else the air pass. The velocity
+   tested is the carry and the vertical speed after the tick's gravity, `(carry.X, VerticalVelocity - Gravity * dt,
+   carry.Y)`, the velocity the tick would move at, and it separates when its dot product with the support's normal
+   is positive. A slide's own velocity lies in its plane, so gravity keeps it sliding however that product rounds.
+   One climb budget of `MaxStepClimbSpeed * dt` is shared by the whole tick, and every mode pays climbing from what
+   the earlier modes left. A footing change part way through runs the rest of the tick in the next mode, so the
+   tick's motion never depends on where a substep boundary fell:
    - a ground move that loses its footing flies the time it has left, or slides it on steep support,
    - a grounded start whose certified support is steep slides the whole tick with the carried velocity in the same
      tick, so a wedge reports `Wedged` and stays grounded instead of alternating,
    - a slide that loses its support, or whose seat fails clearance, flies the rest,
    - a flight that lands walks the rest at the velocity its contacts left, and a flight that meets steep support
      slides the rest.
+   Each hand-off passes on the speed at the hand-off, so the tick counts gravity once: the air pass gives back the
+   gravity it integrated for the time left, never rising past zero, and a slide hands on its fall-line speed
+   integrated over the time it spent.
    A committed flight never starts sliding, but its air pass may meet steep support and slide mid-tick. A cap of
    eight mode segments per tick guards the loop, and every cycle of mode changes spends air time, so the time
    left shrinks.
@@ -119,7 +131,10 @@ axis, and the landing band must hold that contact.
    `VerticalVelocity = JumpSpeed`, clears grounded, sets `TimeSinceGrounded` past the coyote window and clears the
    buffer. The rise starts on the next tick. `LandingImpactSpeed` and `SupportGranted` are latched before the
    jump, so a buffered relaunch on the landing tick still reports both. A slide has no footing, so a sliding body
-   jumps only when wedged or within `CoyoteTime` of its last footing, as legacy.
+   jumps only when wedged or within `CoyoteTime` of its last footing, as legacy. A jump's velocity separates from
+   the steep support it left, so the next tick flies on the closed form instead of sliding, and the air pass hands it
+   back to a slide once it descends onto steep support. The jump has spent the coyote window, so it cannot relaunch
+   from the face.
 8. **State.** `TimeSinceGrounded`, `JumpBufferRemaining`, `HorizontalVelocity` (through `ClipCarryToAchieved`,
    against the last mode's own carry, drive, achieved move and time), `CommandedVelocity` (the first mode's drive),
    `FacingYaw` (through `ResolveFacing`, frozen under a commitment) and the commitment (`FinishCommitmentTick`), in
@@ -144,17 +159,19 @@ body, and support comes only from the footprint.
   normal made horizontal, else the reverse of the move), then without its horizontal part if the wall still stops
   it. The along-wall speed is kept.
 - **Landing.** After each substep that ends descending, `FootSupport` runs the ground core's query anchored at the
-  substep's start feet, its highest point: reach up `StepHeight`, reach down the substep's whole drop. Walkable
+  substep's highest feet: reach up `StepHeight`, reach down the substep's whole drop. Walkable
   support anywhere in that band lands. The feet seat on it through the ground core's placement and seat clearance,
   the step-up a standing body at the same feet would take, so a falling body whose knees pass a ledge top lands on
   it. The rise above the substep's start feet is paced by `MaxStepClimbSpeed` like a step-up, and the ground core
   pays any unpaid climb. The paced feet never lag the support by `StepHeight` or more, so the next ground tick's band
   still holds it. `Grounded` is set, `VerticalVelocity` becomes zero and the rest of the tick runs through the ground
   core with the budget the landing left.
-- **Failed seat.** A landing seat that fails clearance continues the fall. Statics bound the feet through the shell,
-  which meets a support once the feet are `StepHeight` past it.
+- **Failed seat.** A landing seat that fails clearance lands unraised at the substep's end feet while the support is
+  still within `StepHeight` above them. The sweep left the shell clear there, and the ground core pays the climb as
+  it pays any lag. Otherwise the fall continues. Falling on past a support within reach would let the legs pass it,
+  and analytic terrain has no shell to stop them.
 - **Steep support.** Steep support never lifts the body. It starts a slide only when it lies within the substep's
-  travel, and the slide runs the rest of the tick.
+  travel, and the slide runs the rest of the tick from the vertical speed at the hand-off.
 - **Invariant 5 (#468).** A tick without footing never ends on steep ground above its own vertical motion. It rises
   only onto walkable support within `StepHeight` above its feet at the substep's start while descending, or along
   the projection of a walkable face its shell runs into. A steep face therefore can never be climbed by jumping, and
@@ -183,11 +200,13 @@ alike, because both reach the controller through the same support primitive.
   whichever made more progress along the fall line, so input never costs a slide its speed and a steer that frees
   a pinned body is kept. The steer the move applied is reported, so the tick clips the carry against the real drive.
 - **Wedge.** A sliding tick whose seat ends no lower than it started while its support's fall lines oppose (a
-  V-gully) is wedged: it counts as grounded for that tick, may jump, and reports `SupportGranted`.
+  V-gully) is wedged: it counts as grounded for that tick, may jump, and reports `SupportGranted`. As legacy, it
+  latches the fall the slide integrated, before a block clipped it, as its landing impact, and holds no vertical
+  speed. The jump separates from both faces, so it leaves the crease on the closed form and falls back into it.
 - **Held.** Support that cannot be certified holds the body where it is, still sliding on what it had.
 - **Leaving.** A slide that reaches walkable support grounds the body as a drop, not a climb, and reports the landing
   impact of its vertical speed. A slide whose support turns `None`, or whose seat fails the shell clearance, becomes
-  airborne with its velocity and the air pass runs the rest of the tick.
+  airborne with its fall-line speed integrated over the time it spent, and the air pass runs the rest of the tick.
 - **Steep prop faces.** The shell's clearance to a slide face is `(StepHeight + CapsuleRadius) cos(slope)`, so at
   the default tuning the shell overlaps a prop face from about 60 degrees. There the slide seat fails clearance and
   the body falls along the face through the air pass. Analytic terrain has no shell to meet, so terrain slides at
@@ -199,6 +218,11 @@ From the program list: 5 (#468), 6 (one surface for the resolve and the clamp, w
 because every decision reads `FootSupport`), 7 (#486 and #470) and 8 (#475). Determinism (1) holds for every
 path, including commitments and slides.
 
+The terrain floor holds as well: no tick ends with its feet more than half a contact skin below analytic terrain at
+the axis. The scenario suite asserts it on every tick it runs. Legacy held it with `max(pos.Y, groundY)`, and here
+it holds because every path that could breach it is closed (the slide clamp, the re-seat after the final clamp and
+the failed air seat) and an airborne tick that starts below terrain is seated on it.
+
 ## Suite
 
 First-principles expectations, box and mesh variants where the geometry allows, all through
@@ -207,20 +231,21 @@ First-principles expectations, box and mesh variants where the geometry allows, 
 
 | Group | Cases |
 |---|---|
-| Vertical | Gravity accelerates to `MaxFallSpeed`. A fall lands on flat ground with the impact equal to the speed at contact, and a terminal fall lands on a thin slab. A jump stamps `JumpSpeed`, rises from the next tick and reaches the sampled apex. No double jump at the apex. A coyote jump inside the window, none after it. A buffered jump fires on landing and keeps the impact. Replay is bit-identical. |
+| Vertical | Gravity accelerates to `MaxFallSpeed`. A fall lands on flat ground with the impact equal to the speed at contact, and a terminal fall lands on a thin slab. A jump stamps `JumpSpeed`, rises from the next tick and reaches the sampled apex. No double jump at the apex. A coyote jump inside the window, none after it. A coyote jump from a slide start rises on the closed form. A buffered jump fires on landing and keeps the impact. Replay is bit-identical. |
 | Air control | `AirControl` 0.5 halves air travel with momentum off. With momentum on, release keeps speed, `AirControl` 0 is ballistic, and a wall clips the carry. |
 | Ceilings | A jump under a slab stops rising at the slab with its upward speed removed, then falls. A jump under a low ceiling stays down. A run-jump under an eave never wedges. A run-jump along a vertical wall keeps its vertical speed. |
 | Walls in the air | A run-jump into a wall slides along it. An inner corner stops both components. A run into a steep face never lifts. A jump into a steep terrain face never sinks into it, and a diagonal run into a terrain cliff keeps its along speed. A rise onto a walkable ramp keeps moving. |
 | Landing | Falling onto a crate top seats on it, not sunk. Jumping onto a ledge lands when descending with the knees passing the top, and a jump peaking under a ledge top lands on it. Ledge landings are paced and stay within the next ground tick's band. Landing never rises above the reach. A 0.9 m drop onto a 30 degree slope lands on it. A fall onto a 50 degree face starts a slide, and a fall beside a 75 degree face lands at the toe. |
-| Mode changes | A walk-off keeps the tick's speed. A landing tick climbs within one budget. A landing onto steep support keeps the rest of the tick. A graze then a landing does not walk back into the wall. A landing mid-tick keeps the horizontal move. A wedge stays grounded every tick. A clamp at a ledge edge never hovers or sinks. |
-| Slides | A 60 degree face slides to the toe and lands with one impact. The friction ramp sets the slide rate. Input steers along the contour only. A V-gully wedges. A slide on a prop matches terrain, a slide onto a prop top grounds and a fast slide lands on a prop top unsunk. A slide off an edge goes airborne. A steep prop face hands over to the air pass. A blocked slide keeps only its achieved speed, and a blocked steer never costs the slide its speed. A slide carries its own speed, not the input. 60 and 75 degree rows run on analytic terrain, 46, 49 and 53 degree rows on terrain, box and mesh. |
-| Hysteresis | A bank at 47 degrees: a walker keeps footing inside the band, a lander does not. 49 degrees refuses the walker. Traction knobs at zero reproduce the bare gate. A cliff toe never flips footing. |
+| Mode changes | A walk-off keeps the tick's speed. A landing tick climbs within one budget. A landing onto steep support keeps the rest of the tick on the closed form, counting gravity once, and so does a slide off an edge. A graze then a landing does not walk back into the wall. A landing mid-tick keeps the horizontal move. A wedge stays grounded every tick, latches the fall the slide integrated, and a held jump clears its crease without ratcheting. A clamp at a ledge edge never hovers or sinks. A 60 degree slide into a clamp bound stays on the face, and a wall slide carried across a bound is seated on the terrain at the clamped axis. |
+| Slides | A 60 degree face slides to the toe and lands with one impact. The friction ramp sets the slide rate. Where the normal disagrees with the height field, the vertical speed is the fall-line speed's vertical part. Input steers along the contour only. A V-gully wedges. A slide on a prop matches terrain, a slide onto a prop top grounds and a fast slide lands on a prop top unsunk. A slide off an edge goes airborne. A steep prop face hands over to the air pass. A blocked slide keeps only its achieved speed, and a blocked steer never costs the slide its speed. A slide carries its own speed, not the input. 60 and 75 degree rows run on analytic terrain, 46, 49 and 53 degree rows on terrain, box and mesh. |
+| Hysteresis | A bank at 47 degrees: a walker keeps footing inside the band, a lander does not, and a jump from inside the band leaves the bank. 49 degrees refuses the walker. Traction knobs at zero reproduce the bare gate. A cliff toe never flips footing. |
 | #440 | A held jump against a sheer face never grounds on it and never ratchets. |
 | #470 | A lip onto a 63.4 degree face never grounds or grants support on the crossing tick, and no launch from it. A drop onto a level shelf seats in one tick. |
 | #468 | A held run-jump across a creased cliff never ratchets up it, including the variant whose delegate normal is smoothed over 5 m. |
 | Commitment | Preparation roots then launches. A wall blocks and the commitment lands. A launch blocked at the start aborts. Timeout aborts. The authored 8 m arc with apex 2 lands within one step of its authored landing. |
 | Inputs | Non-finite inputs name their parameter. A non-finite clamp returns the input state. A zero step height, an explicit zero foot radius and a footprint the step height cannot hold are rejected. A water medium is rejected until phase 4. |
-| Ground parity | Every phase 2 ground row run through `ContactController.Step` with a grounded state gives the ground core's result. |
+| Ground parity | Every phase 2 ground row run through `ContactController.Step` with a grounded state gives the ground core's result. No parity row changes footing with time left, so each is the ground core's whole tick. |
+| Terrain floor | Every scenario tick ends with its feet no more than half a skin below analytic terrain. A failed seat over a terrain bank under a static roof lands. Feet that start a metre below level or steep terrain are seated on it. |
 
 Every round runs on arm64 locally and on hosted x64. No expectation pins a contact position finer than half the
 contact skin, and no committed bit digest passes through a sweep.
@@ -230,8 +255,8 @@ contact skin, and no committed bit digest passes through a sweep.
 - `KhaozEngine.Locomotion/Contacts/ContactController.cs`: the tick and the mode changes within it.
 - `KhaozEngine.Locomotion/Contacts/AirPass.cs`: gravity, the shell flight, analytic walls, landing and the hand-off
   to a slide, with the footprint validation.
-- `KhaozEngine.Locomotion/Contacts/SlideCore.cs`: slide contact, the fall-line dynamics, the blocked-steer rerun
-  and the wedge.
+- `KhaozEngine.Locomotion/Contacts/SlideCore.cs`: slide contact, the fall-line dynamics, the clamp of its own
+  planned move, the blocked-steer rerun and the wedge.
 - `KhaozEngine.Locomotion/Contacts/GroundCore.cs`: the traction gate and climb budget arguments, the reported
   remaining time, budget and `ChangedAtStart`, and the internal slide mode.
 - `KhaozEngine.Locomotion/Contacts/GroundSeat.cs`: the gate's cosine, and the step part from a steep start.
@@ -263,11 +288,15 @@ staged 20.31.0 under the release ritual.
 
 - **Carry cap.** The legacy 127 m/s carry cap is not ported. Terminal speed stays below it at every shipped tuning,
   so it is unneeded.
-- **Play-area bound.** The final re-clamp shifts a slide sideways without re-seating it, so a slide at a play-area
-  bound can hover or sink for a tick.
+- **Play-area bound.** A slide clamps its own planned move, and the final re-clamp seats an end it shifts on the
+  support at the clamped axis. That seat is not paced, so a shift that the clamp makes into rising ground lifts the
+  feet onto it within `StepHeight` without charging the climb budget. Only moves a later mode planned past the bound
+  reach it, so the lift is at most the slope over a corner's overshoot. The seat runs no shell clearance, and the
+  next tick's recovery frees a shell it left overlapping a static.
 - **Low roof.** Under a roof too low to stand beneath, a landed body keeps its legs sunk up to `StepHeight` into the
   ledge, because the shell cannot rise to pay the climb.
-- **Failed seat over terrain.** A landing seat that fails clearance over analytic terrain under a static overhang
-  could sink further before it lands.
+- **Failed seat.** A landing seat that fails clearance lands unraised, with its legs below the support by up to
+  `StepHeight`, and the ground core pays the climb from its budget. Under a roof the shell cannot rise past, the legs
+  stay sunk, as in the low roof limit.
 - **Inconsistent terrain normals.** On terrain whose delegate normals disagree with the height field, a contour
   steer may be dropped for a tick by the blocked-steer rerun.

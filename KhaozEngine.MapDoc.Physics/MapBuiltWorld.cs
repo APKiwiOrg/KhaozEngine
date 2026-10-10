@@ -117,6 +117,10 @@ public sealed class MapBuiltWorld
     /// <summary>The resolver-1 sculpt tiles in (TileZ, TileX) order, empty for a native world.</summary>
     public IReadOnlyList<MapLegacySculptTile> LegacySculptTiles { get; }
 
+    /// <summary>The resolver-1 sculpt cell edge in metres: the document's sculpt block's, or
+    /// <see cref="MapTerrainOverrides.DefaultCellSize"/> when it has none. Zero for a native world.</summary>
+    public float LegacySculptCellSize { get; }
+
     /// <summary>The digest of the resolver-1 analytic terrain block without sculpt, empty for a native world.</summary>
     public string LegacyTerrainBlockDigest { get; }
 
@@ -130,7 +134,7 @@ public sealed class MapBuiltWorld
         IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain, IReadOnlyList<MapStaticDescriptor> statics,
         IReadOnlyList<MapStaticDiagnostic> diagnostics, MapBox3 bounds, float tileSize, string buildHash, bool isNative,
         Func<float, float, float>? legacySupportHeight, IReadOnlyList<MapLegacySculptTile> legacySculptTiles,
-        string legacyTerrainBlockDigest, string legacyTerrainIdentity)
+        float legacySculptCellSize, string legacyTerrainBlockDigest, string legacyTerrainIdentity)
     {
         Document = document;
         Surfaces = surfaces;
@@ -145,6 +149,7 @@ public sealed class MapBuiltWorld
         IsNative = isNative;
         LegacySupportHeight = legacySupportHeight;
         LegacySculptTiles = legacySculptTiles;
+        LegacySculptCellSize = legacySculptCellSize;
         LegacyTerrainBlockDigest = legacyTerrainBlockDigest;
         LegacyTerrainIdentity = legacyTerrainIdentity;
         _byId = new Dictionary<string, MapPlacementGeometry>(placements.Count, StringComparer.Ordinal);

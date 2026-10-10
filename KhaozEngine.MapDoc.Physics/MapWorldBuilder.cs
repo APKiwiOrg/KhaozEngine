@@ -54,8 +54,10 @@ public static class MapWorldBuilder
 
         IReadOnlyList<MapLegacySculptTile> sculpt = Array.Empty<MapLegacySculptTile>();
         string terrainBlock = "", legacyIdentity = "";
+        float sculptCellSize = 0f;
         if (!native)
         {
+            sculptCellSize = document.TerrainOverrides?.CellSize ?? MapTerrainOverrides.DefaultCellSize;
             sculpt = LegacySculpt(document);
             terrainBlock = MapLegacyTerrainDigest.TerrainBlock(document);
             legacyIdentity = LegacyIdentity(terrainBlock, sculpt);
@@ -70,7 +72,7 @@ public static class MapWorldBuilder
         string buildHash = BuildHash(resolved.AuthoredHash, options, legacyIdentity, placements, terrain);
         return new MapBuiltWorld(resolved, surfaces, placements, terrain, statics, diagnostics.AsReadOnly(),
             WorldBounds(document.Bounds, statics, placements), document.TileSize, buildHash, native,
-            native ? null : options.LegacySupportHeight, sculpt, terrainBlock, legacyIdentity);
+            native ? null : options.LegacySupportHeight, sculpt, sculptCellSize, terrainBlock, legacyIdentity);
     }
 
     static void ValidateOptions(MapWorldBuildOptions options)
@@ -214,11 +216,22 @@ public static class MapWorldBuilder
     {
         if (document.TerrainOverrides is not { } overrides) return Array.Empty<MapLegacySculptTile>();
         double cell = overrides.CellSize;
+        return overrides.Tiles.Select(tile =>
+        {
+            (float minX, float maxX) = SculptFootprintAxis(tile.TileX, cell);
+            (float minZ, float maxZ) = SculptFootprintAxis(tile.TileZ, cell);
+            return new MapLegacySculptTile(tile.TileX, tile.TileZ, new MapResolvedBounds(minX, minZ, maxX, maxZ),
+                MapLegacyTerrainDigest.SculptTile(tile));
+        }).ToArray();
+    }
+
+    /// <summary>The extent along one axis that resolver-1 sculpt tile index <paramref name="tile"/> can change at sculpt
+    /// cell edge <paramref name="cell"/>: one cell past its first and last cell centres, since heights interpolate
+    /// between cell centres.</summary>
+    internal static (float Min, float Max) SculptFootprintAxis(long tile, double cell)
+    {
         const long size = TerrainSculpt.TileSize;
-        return overrides.Tiles.Select(tile => new MapLegacySculptTile(tile.TileX, tile.TileZ,
-            new MapResolvedBounds((float)((tile.TileX * size - 1) * cell), (float)((tile.TileZ * size - 1) * cell),
-                (float)((tile.TileX * size + size) * cell), (float)((tile.TileZ * size + size) * cell)),
-            MapLegacyTerrainDigest.SculptTile(tile))).ToArray();
+        return ((float)((tile * size - 1) * cell), (float)((tile * size + size) * cell));
     }
 
     static string LegacyIdentity(string terrainBlock, IReadOnlyList<MapLegacySculptTile> sculpt) => CanonicalHash(w =>

@@ -48,6 +48,25 @@ public static class MapSurfaceSemantics
         return Convert.ToHexStringLower(hash.GetHashAndReset());
     }
 
+    /// <summary>A topology record's semantic digest: the <see cref="PatchDigest"/> of a fixed one-cell envelope at
+    /// <paramref name="anchor"/> that holds only <paramref name="record"/>. It covers the record's canonical bytes and
+    /// its anchor and nothing of the anchor patch's terrain. Edit effects report record digests in this form.</summary>
+    public static string RecordDigest(MapPatchKey anchor, MapTopologyRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        var envelope = new MapSurfacePatch
+        {
+            Key = anchor,
+            Width = 1,
+            Depth = 1,
+            Heights = new int[4],
+            Cells = new MapSurfaceCell[1],
+            Presence = new[] { 1UL },
+        };
+        envelope.Records.Add(record);
+        return PatchDigest(envelope);
+    }
+
     public static string SurfaceDigest(MapSurfaceRef surface, IEnumerable<KeyValuePair<MapPatchKey, string>> patches)
     {
         ArgumentNullException.ThrowIfNull(surface);

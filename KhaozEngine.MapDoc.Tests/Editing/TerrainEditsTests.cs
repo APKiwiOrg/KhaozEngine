@@ -65,4 +65,20 @@ public sealed class TerrainEditsTests
         Assert.Empty(MapTopologyReferenceValidator.Validate(r.Candidate.Refs, r.Candidate.Patches.Values));
         Assert.True(r.Effects.Invalidates.HasFlag(MapNativeInvalidation.Residency));
     }
+    [Fact]
+    public void RecordDigest_IsTheEnvelopeDigestEditEffectsReport()
+    {
+        MapSurfaceSet set = TerrainEditFixtures.WithFarAnchors();
+        var farWest = new MapPatchKey("far", -300, 0);
+        var farEast = new MapPatchKey("far", 300, 0);
+        MapBoundaryChain chain = set.Patches[farWest].Records.OfType<MapBoundaryChain>().Single(c => c.Id == "far-chain");
+        // The one-cell envelope holding only the record, the form record digests have always taken.
+        var envelope = new MapSurfacePatch { Key = farWest, Width = 1, Depth = 1, Heights = new int[4], Cells = new MapSurfaceCell[1], Presence = new[] { 1UL } };
+        envelope.Records.Add(chain);
+        Assert.Equal(MapSurfaceSemantics.PatchDigest(envelope), MapSurfaceSemantics.RecordDigest(farWest, chain));
+        MapTerrainEditResult r = Prepare(set, new MapReanchorRecords(new[] { new MapRecordAnchorMove("far-chain", farWest, farEast) }));
+        MapDigestChange change = Assert.Single(r.Effects.DigestChanges, c => c.Key == "record/far-chain");
+        Assert.Equal(MapSurfaceSemantics.RecordDigest(farWest, chain), change.Before);
+        Assert.Equal(MapSurfaceSemantics.RecordDigest(farEast, chain), change.After);
+    }
 }

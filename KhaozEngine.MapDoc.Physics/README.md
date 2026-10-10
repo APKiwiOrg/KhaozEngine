@@ -73,7 +73,12 @@ something it can see changes.
 `Seams` digests each pair of neighbouring tiles over both geometry digests and their shared edge. `Links` lists one link
 for each R2 cave portal or vertical link whose aperture reaches two navigation tiles, with a digest over the record id,
 the semantic digests of the record and its aperture records, and both tiles. `AffectedTiles` widens the navigation tiles
-`MapResidencyOwnership.Affected` names by the seam margin, so a consumer rebakes only those tiles.
+`MapResidencyOwnership.Affected` names by the seam margin, so a consumer rebakes only those tiles. A resolver 1 terrain
+edit also widens by the footprint of every sculpt tile position its bounds meet, whether the edit added or removed that
+tile. The result stays inside the edited world's partition.
+
+`Partition` refuses a world whose bounds reach more than `MapNavTiling.MaxPartitionTiles` (2^20) navigation tiles, and
+the refusal names the count.
 
 Tile and capture bounds are residency extents, not probe windows. A resolver 1 world's bounds exclude its analytic
 terrain height, so a capture picks its own vertical window.

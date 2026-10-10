@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -7,6 +8,7 @@ using System.Text.Json;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapDoc.Physics;
 
@@ -38,6 +40,10 @@ public sealed record MapNavLink(string RecordId, MapNavTileCoord From, MapNavTil
 /// Vertical layers on native worlds wait for #438 phase 5.</summary>
 public static class MapNavTiling
 {
+    /// <summary>The most navigation tiles <see cref="Partition"/> lists, 2^20. At 64 m tiles that is, for example, a
+    /// square world about 65 km on a side.</summary>
+    public const int MaxPartitionTiles = 1 << 20;
+
     static readonly Comparer<MapNavTileCoord> TileOrder =
         Comparer<MapNavTileCoord>.Create((a, b) => a.Z != b.Z ? a.Z.CompareTo(b.Z) : a.X.CompareTo(b.X));
 
@@ -50,7 +56,8 @@ public static class MapNavTiling
     /// excludes one. <see cref="MapNavTile.CaptureIdentity"/> is the SHA-256 over the geometry digest, profile,
     /// controller, seam margin, tile coordinate and tile bounds.</para>
     /// <para>Throws <see cref="MapDocumentException"/> naming the grid alignment when the grids do not align with the
-    /// world, and <see cref="ArgumentException"/> for invalid options.</para></summary>
+    /// world, naming the tile count when the world's bounds reach more than <see cref="MaxPartitionTiles"/> tiles, and
+    /// <see cref="ArgumentException"/> for invalid options.</para></summary>
     public static IReadOnlyList<MapNavTile> Partition(MapBuiltWorld world, MapWorldGrids grids, MapNavTileOptions options)
     {
         ArgumentNullException.ThrowIfNull(world);
@@ -60,8 +67,12 @@ public static class MapNavTiling
         var digests = new Dictionary<string, string>(world.Statics.Count, StringComparer.Ordinal);
         foreach (MapStaticDescriptor descriptor in world.Statics) digests.Add(descriptor.OwnerId, descriptor.Digest);
 
-        (int minX, int maxX) = TileAxis(world.Bounds.MinX, world.Bounds.MaxX, grids.Origin.X, grids.NavTileSize);
-        (int minZ, int maxZ) = TileAxis(world.Bounds.MinZ, world.Bounds.MaxZ, grids.Origin.Y, grids.NavTileSize);
+        (int minX, int maxX, int minZ, int maxZ) = PartitionRange(world, grids);
+        long count = ((long)maxX - minX + 1) * ((long)maxZ - minZ + 1);
+        if (count > MaxPartitionTiles)
+            throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
+                "The world's bounds reach {0:N0} navigation tiles, more than the {1:N0} a partition allows.", count,
+                MaxPartitionTiles));
         var statics = new Dictionary<MapNavTileCoord, List<MapResidencyEntry>>();
         foreach (MapResidencyEntry entry in entries)
             foreach (MapNavTileCoord tile in CaptureTilesMeeting(entry.WorldBounds.MinX, entry.WorldBounds.MinZ,
@@ -75,7 +86,7 @@ public static class MapNavTiling
                 if (coord.X >= minX && coord.X <= maxX && coord.Z >= minZ && coord.Z <= maxZ)
                     Bucket(sculpt, coord).Add(tile);
 
-        var tiles = new List<MapNavTile>(checked((maxX - minX + 1) * (maxZ - minZ + 1)));
+        var tiles = new List<MapNavTile>((int)count);
         for (long z = minZ; z <= maxZ; z++)
             for (long x = minX; x <= maxX; x++)
             {
@@ -114,9 +125,9 @@ public static class MapNavTiling
         foreach (MapNavTile a in byCoord.Values.OrderBy(t => t.Coord, TileOrder))
         {
             if (byCoord.TryGetValue(new MapNavTileCoord(a.Coord.X + 1, a.Coord.Z), out MapNavTile? east))
-                seams.Add(Seam(a, east, alongX: false, options.SeamMarginMetres));
+                seams.Add(Seam(a, east, edgeAlongX: false, options.SeamMarginMetres));
             if (byCoord.TryGetValue(new MapNavTileCoord(a.Coord.X, a.Coord.Z + 1), out MapNavTile? north))
-                seams.Add(Seam(a, north, alongX: true, options.SeamMarginMetres));
+                seams.Add(Seam(a, north, edgeAlongX: true, options.SeamMarginMetres));
         }
         return seams.OrderBy(s => s.A, TileOrder).ThenBy(s => s.B, TileOrder).ToArray();
     }
@@ -150,17 +161,17 @@ public static class MapNavTiling
                 {
                     MapHorizontalOpening found = Record<MapHorizontalOpening>(view, opening);
                     AddOpening(view, found, grids, tiles);
-                    apertures[found.Id] = RecordDigest(opening, found);
+                    apertures[found.Id] = MapSurfaceSemantics.RecordDigest(opening.Anchor, found);
                 }
                 foreach (MapRecordRef portalRef in link.Portals)
                 {
                     MapCavePortal found = Record<MapCavePortal>(view, portalRef);
                     AddPortal(view, found, grids, tiles);
-                    apertures[found.Id] = RecordDigest(portalRef, found);
+                    apertures[found.Id] = MapSurfaceSemantics.RecordDigest(portalRef.Anchor, found);
                 }
             }
             if (tiles.Count < 2) continue;
-            string semantic = RecordDigest(reference, record);
+            string semantic = MapSurfaceSemantics.RecordDigest(reference.Anchor, record);
             MapNavTileCoord[] reached = tiles.ToArray();
             for (int i = 0; i < reached.Length; i++)
                 for (int j = i + 1; j < reached.Length; j++)
@@ -174,9 +185,11 @@ public static class MapNavTiling
     /// navigation. <paramref name="world"/> is the world built after the edit, as for
     /// <see cref="MapResidencyOwnership.Affected"/>, whose navigation tiles this widens by the seam margin: every tile
     /// whose capture bounds meet, on X and Z, the old or new edit bounds or the bounds of a chunk of a listed patch. For a
-    /// resolver-1 terrain edit it also widens by the footprint of every sculpt tile of <paramref name="world"/> that
-    /// meets the edit bounds, so each tile whose geometry digest a sculpt tile enters is listed. A sculpt tile the edit
-    /// removed is covered through the edit bounds only.
+    /// resolver-1 terrain edit it also widens each edit box by the footprint of every sculpt tile position the box meets,
+    /// taken arithmetically from <see cref="TerrainSculpt.TileSize"/> and <see cref="MapBuiltWorld.LegacySculptCellSize"/>
+    /// whether or not that tile exists, so a sculpt tile the edit added or removed lists every tile whose geometry
+    /// digest it enters or leaves. The result is clipped to the tiles <see cref="Partition"/> lists for
+    /// <paramref name="world"/>.
     /// <para>Throws as <see cref="MapResidencyOwnership.Affected"/> does, and <see cref="ArgumentException"/> for
     /// invalid options.</para></summary>
     public static IReadOnlyList<MapNavTileCoord> AffectedTiles(MapBuiltWorld world, MapWorldGrids grids,
@@ -198,17 +211,40 @@ public static class MapNavTiling
                 prefixes.Any(p => descriptor.OwnerId.StartsWith(p, StringComparison.Ordinal)))
                 widen.Add((descriptor.Bounds.MinX, descriptor.Bounds.MinZ, descriptor.Bounds.MaxX, descriptor.Bounds.MaxZ));
         if (!world.IsNative && (effects.Invalidates & MapNativeInvalidation.Terrain) != 0)
-            foreach (MapLegacySculptTile tile in world.LegacySculptTiles)
+            foreach (MapBox3 box in edited)
             {
-                MapResolvedBounds f = tile.Footprint;
-                if (edited.Any(box => MeetsXz(box.MinX, box.MinZ, box.MaxX, box.MaxZ, f.MinX, f.MinZ, f.MaxX, f.MaxZ)))
-                    widen.Add((f.MinX, f.MinZ, f.MaxX, f.MaxZ));
+                (double minX, double maxX) = SculptSpan(box.MinX, box.MaxX, world.LegacySculptCellSize);
+                (double minZ, double maxZ) = SculptSpan(box.MinZ, box.MaxZ, world.LegacySculptCellSize);
+                widen.Add((minX, minZ, maxX, maxZ));
             }
 
         var tiles = new SortedSet<MapNavTileCoord>(affected.NavTiles, TileOrder);
         foreach (var (minX, minZ, maxX, maxZ) in widen)
             tiles.UnionWith(CaptureTilesMeeting(minX, minZ, maxX, maxZ, grids, options.SeamMarginMetres));
-        return tiles.ToArray();
+        (int firstX, int lastX, int firstZ, int lastZ) = PartitionRange(world, grids);
+        return tiles.Where(t => t.X >= firstX && t.X <= lastX && t.Z >= firstZ && t.Z <= lastZ).ToArray();
+    }
+
+    /// <summary>The tile range <see cref="Partition"/> lists for <paramref name="world"/>.</summary>
+    static (int MinX, int MaxX, int MinZ, int MaxZ) PartitionRange(MapBuiltWorld world, MapWorldGrids grids)
+    {
+        (int minX, int maxX) = TileAxis(world.Bounds.MinX, world.Bounds.MaxX, grids.Origin.X, grids.NavTileSize);
+        (int minZ, int maxZ) = TileAxis(world.Bounds.MinZ, world.Bounds.MaxZ, grids.Origin.Y, grids.NavTileSize);
+        return (minX, maxX, minZ, maxZ);
+    }
+
+    /// <summary>The union along one axis of the footprints of every sculpt tile position whose footprint meets
+    /// [<paramref name="min"/>, <paramref name="max"/>], edges included. Neighbouring footprints overlap by a cell, so
+    /// the union is one span. The candidate range is one tile wider on each side than the arithmetic needs and is then
+    /// narrowed against <see cref="MapWorldBuilder.SculptFootprintAxis"/>, so it matches the footprints the builder
+    /// records exactly.</summary>
+    static (double Min, double Max) SculptSpan(double min, double max, double cell)
+    {
+        double width = TerrainSculpt.TileSize * cell;
+        long first = checked((long)Math.Floor(min / width) - 1), last = checked((long)Math.Floor(max / width) + 1);
+        while (MapWorldBuilder.SculptFootprintAxis(first, cell).Max < min) first++;
+        while (MapWorldBuilder.SculptFootprintAxis(last, cell).Min > max) last--;
+        return (MapWorldBuilder.SculptFootprintAxis(first, cell).Min, MapWorldBuilder.SculptFootprintAxis(last, cell).Max);
     }
 
     static void ValidateOptions(MapNavTileOptions options)
@@ -320,11 +356,12 @@ public static class MapNavTiling
             w.WriteEndObject();
         });
 
-    static MapNavSeam Seam(MapNavTile a, MapNavTile b, bool alongX, float margin)
+    static MapNavSeam Seam(MapNavTile a, MapNavTile b, bool edgeAlongX, float margin)
     {
-        // Neighbours along X share the vertical edge x = a.MaxX, neighbours along Z the edge z = a.MaxZ.
+        // An edge along X joins a tile to its north neighbour at z = a.MaxZ. Otherwise the edge runs along Z and joins a
+        // tile to its east neighbour at x = a.MaxX.
         double x0, z0, x1, z1;
-        if (alongX)
+        if (edgeAlongX)
         {
             if (a.Bounds.MaxZ != b.Bounds.MinZ) throw new ArgumentException($"Tiles {a.Coord} and {b.Coord} do not meet at one edge.");
             (x0, x1, z0, z1) = (Math.Max(a.Bounds.MinX, b.Bounds.MinX), Math.Min(a.Bounds.MaxX, b.Bounds.MaxX), a.Bounds.MaxZ, a.Bounds.MaxZ);
@@ -424,24 +461,6 @@ public static class MapNavTiling
         if (!view.TryRecord(reference, out MapTopologyRecord? record, out MapPatchStatus status) || record is not T typed)
             throw new MapDocumentException($"missing geometry: record '{reference.Id}' {reference.Anchor} ({status})");
         return typed;
-    }
-
-    /// <summary>A record's semantic digest: the patch digest of a fixed one-cell envelope at the record's anchor that
-    /// holds only the record, the form R2 edit effects report record digests in. It covers the record's canonical
-    /// bytes and its anchor and nothing of the anchor patch's terrain.</summary>
-    static string RecordDigest(MapRecordRef reference, MapTopologyRecord record)
-    {
-        var envelope = new MapSurfacePatch
-        {
-            Key = reference.Anchor,
-            Width = 1,
-            Depth = 1,
-            Heights = new int[4],
-            Cells = new MapSurfaceCell[1],
-            Presence = new[] { 1UL },
-        };
-        envelope.Records.Add(record);
-        return MapSurfaceSemantics.PatchDigest(envelope);
     }
 
     // Compact canonical JSON, hashed as written.

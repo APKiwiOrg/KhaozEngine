@@ -46,12 +46,21 @@ internal static partial class NativeWorldFixtures
     /// that seam see one physical surface.</summary>
     internal static MapBuiltWorld BuildLegacyStrip() => BuildLegacyStripWith(16f, null);
 
+    /// <summary><see cref="BuildLegacyStrip"/> with the crate moved to (63, 0, 16), still in tile (0, 0) but within
+    /// the 2 m seam margin of x 64.</summary>
+    internal static MapBuiltWorld BuildLegacyStripWithCrateAtSeam() => BuildLegacyStripWith(63f, null);
+
+    /// <summary><see cref="BuildLegacyStrip"/> with one 0.25 m sculpt delta at 0.5 m cell (112, 40), at world (56, 20)
+    /// in sculpt tile (3, 1). That tile's cells span x 48 to 64 and its footprint x 47.5 to 64, so it reaches the
+    /// capture of navigation tile (1, 0), which starts at x 62.</summary>
+    internal static MapBuiltWorld BuildLegacyStripWithSeamSculpt() => BuildLegacyStripWith(16f, (112, 40));
+
     /// <summary><see cref="BuildLegacyStrip"/> with the crate moved 8 m east to (24, 0, 16), still in tile (0, 0).</summary>
     internal static MapBuiltWorld BuildLegacyStripWithMovedCrate() => BuildLegacyStripWith(24f, null);
 
     /// <summary><see cref="BuildLegacyStrip"/> with one 0.25 m sculpt delta at 0.5 m cell (20, 20), at world (10, 10)
     /// in sculpt tile (0, 0), whose footprint spans x and z -0.5 to 16 inside navigation tile (0, 0).</summary>
-    internal static MapBuiltWorld BuildLegacyStripWithSculptInTileZero() => BuildLegacyStripWith(16f, 0.25f);
+    internal static MapBuiltWorld BuildLegacyStripWithSculptInTileZero() => BuildLegacyStripWith(16f, (20, 20));
 
     /// <summary>The crate's move from x 16 to x 24, bounded by a 2 m box around each collider, inside tile (0, 0) and
     /// more than the seam margin from its edges.</summary>
@@ -67,7 +76,22 @@ internal static partial class NativeWorldFixtures
         Array.Empty<MapPatchKey>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<MapDigestChange>(),
         MapNativeInvalidation.Terrain | MapNativeInvalidation.Nav);
 
-    static MapBuiltWorld BuildLegacyStripWith(float crateX, float? sculptDelta)
+    /// <summary>The crate's move from x 16 to x 63, bounded by a box around each collider. The new box lies inside
+    /// tile (0, 0) but within the seam margin of x 64, so only the margin widening reaches tile (1, 0).</summary>
+    internal static MapNativeEditEffects CrateToSeamEffects() => new(
+        new MapBox3(15, 0, 15, 17, 1, 17), new MapBox3(62.5, 0, 15, 63.5, 1, 17),
+        Array.Empty<MapPatchKey>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<MapDigestChange>(),
+        MapNativeInvalidation.Placements | MapNativeInvalidation.Physics | MapNativeInvalidation.Nav);
+
+    /// <summary>The removal of <see cref="BuildLegacyStripWithSeamSculpt"/>'s only sculpt tile, as undoing the stroke
+    /// that created it reports it. Its brush bounds span x 55 to 57, more than the seam margin from tile (1, 0), and
+    /// the world built after it has no sculpt left.</summary>
+    internal static MapNativeEditEffects RemovedSeamSculptEffects() => new(
+        new MapBox3(55, -1, 19.5, 57, 1, 21), new MapBox3(55, -1, 19.5, 57, 1, 21),
+        Array.Empty<MapPatchKey>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<MapDigestChange>(),
+        MapNativeInvalidation.Terrain | MapNativeInvalidation.Nav);
+
+    static MapBuiltWorld BuildLegacyStripWith(float crateX, (int X, int Z)? sculptCell)
     {
         NativeFixture f = Crate();
         MapDocument document = f.Document;
@@ -81,10 +105,10 @@ internal static partial class NativeWorldFixtures
         MapPlacement deck = OnFloor("seam-deck", "bridge-deck", 64f, 32f);
         deck.Y = LegacyStripDeckTopY;
         document.Placements.Add(deck);
-        if (sculptDelta is { } delta)
+        if (sculptCell is { } cell)
         {
             document.TerrainOverrides = new MapTerrainOverrides(0.5f);
-            document.TerrainOverrides.SetDelta(20, 20, delta);
+            document.TerrainOverrides.SetDelta(cell.X, cell.Z, 0.25f);
         }
         return MapWorldBuilder.Build(document, f.Assets,
             Options() with { Resolve = LegacyResolveOptions, LegacySupportHeight = (_, _) => LegacyStripGroundY });
@@ -169,29 +193,32 @@ internal static partial class NativeWorldFixtures
         return found.OrderBy(s => s.Height).ThenBy(s => s.Passable).ToArray();
     }
 
-    /// <summary>A stacked shaft at 2 m cells, so one patch slot spans 128 m and the shaft can straddle the x 64 tile
+    /// <summary>A stacked shaft at 2 m cells, so one patch slot spans 128 m and the cave can straddle the x 64 tile
     /// seam: a lower floor at y 0, a lower ceiling at y 3, an upper floor at y 3.5 and an upper ceiling at y 6.5 over x
-    /// 56 to 68 and z 0 to 12. The shaft at x 62 to 66 and z 4 to 8 is open through the lower ceiling and the upper
-    /// floor, and <see cref="ShaftLinkRecordId"/> joins the lower and upper rooms through both openings. Each opening
-    /// reaches navigation tiles (0, 0) and (1, 0) of a 64 m grid at the origin. The shaft has no walls, since only its
-    /// apertures matter here.</summary>
+    /// 56 to 68 and z 0 to 12. The lower ceiling is open over x 60 to 64 and the upper floor over x 64 to 68, both at z
+    /// 4 to 8, and <see cref="ShaftLinkRecordId"/> joins the lower and upper rooms through both openings. The openings
+    /// are offset: the lower one spans x 60 to 64 in navigation tile (0, 0) and the upper one x 64 to 68 in tile
+    /// (1, 0) of a 64 m grid at the origin, so a link reaches both tiles only through both openings. The shaft has no
+    /// walls, since only its apertures matter here.</summary>
     internal static MapBuiltWorld BuildStackedCaveAcrossTiles()
     {
         const int ox = 28, oz = 0;
         var set = new MapSurfaceSet();
-        Func<int, int, bool> solid = (x, z) => !(x - ox is >= 3 and < 5 && z - oz is >= 2 and < 4);
+        Func<int, int, bool> lowerSolid = (x, z) => !(x - ox is >= 2 and < 4 && z - oz is >= 2 and < 4);
+        Func<int, int, bool> upperSolid = (x, z) => !(x - ox is >= 4 and < 6 && z - oz is >= 2 and < 4);
         MapSurfacePatch lowerFloor = AddPatch(set, "seam-cave-lower-floor", MapSurfaceRole.SupportFloor, TwoMetreCells,
             ox, oz, 6, 6, (_, _) => 0);
         MapSurfacePatch lowerCeiling = AddPatch(set, "seam-cave-lower-ceiling", MapSurfaceRole.Ceiling, TwoMetreCells,
-            ox, oz, 6, 6, (_, _) => 300, solid);
+            ox, oz, 6, 6, (_, _) => 300, lowerSolid);
         MapSurfacePatch upperFloor = AddPatch(set, "seam-cave-upper-floor", MapSurfaceRole.SupportFloor, TwoMetreCells,
-            ox, oz, 6, 6, (_, _) => 350, solid);
+            ox, oz, 6, 6, (_, _) => 350, upperSolid);
         AddPatch(set, "seam-cave-upper-ceiling", MapSurfaceRole.Ceiling, TwoMetreCells, ox, oz, 6, 6, (_, _) => 650);
         int SlotCell(int x, int z) => SlotOffset(oz + z) * MapPatchKey.SlotCells + SlotOffset(ox + x);
-        int[] shaft = { SlotCell(3, 2), SlotCell(4, 2), SlotCell(3, 3), SlotCell(4, 3) };
+        int[] lower = { SlotCell(2, 2), SlotCell(3, 2), SlotCell(2, 3), SlotCell(3, 3) };
+        int[] upper = { SlotCell(4, 2), SlotCell(5, 2), SlotCell(4, 3), SlotCell(5, 3) };
 
-        lowerCeiling.Records.Add(new MapHorizontalOpening("seam-lower-opening", lowerCeiling.Key, shaft));
-        upperFloor.Records.Add(new MapHorizontalOpening("seam-upper-opening", upperFloor.Key, shaft));
+        lowerCeiling.Records.Add(new MapHorizontalOpening("seam-lower-opening", lowerCeiling.Key, lower));
+        upperFloor.Records.Add(new MapHorizontalOpening("seam-upper-opening", upperFloor.Key, upper));
         MapRecordRef[] link = { new(ShaftLinkRecordId, lowerFloor.Key) };
         lowerFloor.Records.Add(CaveSpace("seam-lower-room", Array.Empty<MapBoundaryRef>(), link));
         upperFloor.Records.Add(CaveSpace("seam-upper-room", Array.Empty<MapBoundaryRef>(), link));

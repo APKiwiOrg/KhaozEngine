@@ -243,6 +243,52 @@ internal static class FootSupportScenes
     internal static FootSupportScene Bank(SceneVariant variant) =>
         Floor(variant).Flat("bank", 1, 5, -4, 4, BankTop);
 
+    internal const float LedgeTop = 0.6f;
+    internal const float EaveUnderside = 2.3f;
+
+    /// <summary>A floor and a "ledge" over x in [1, 5] and z in [-2, 2] whose top at <see cref="LedgeTop"/> is above
+    /// the step height. The mesh variant is the top face alone.</summary>
+    internal static FootSupportScene Ledge(SceneVariant variant) =>
+        Floor(variant).Flat("ledge", 1, 5, -2, 2, LedgeTop);
+
+    /// <summary>A 0.05 m thick "slab" over x and z in [-3, 3] with its top at Y 0. The mesh variant is the top face
+    /// alone.</summary>
+    internal static FootSupportScene ThinSlab(SceneVariant variant) =>
+        new FootSupportScene(variant).Slab("slab", Vector3.Zero, 0, 3, 3, 0.05f);
+
+    /// <summary>A slab whose downward face is centred on <paramref name="underside"/> and rises to +X by
+    /// <paramref name="degrees"/>. The box variant is <paramref name="thickness"/> thick above that face. The mesh
+    /// variant is the face alone, facing down.</summary>
+    internal static FootSupportScene Ceiling(this FootSupportScene scene, string name, Vector3 underside,
+        float halfLength, float halfWidth, float degrees = 0, float thickness = 0.2f) =>
+        scene.Slab(name, underside, MathF.PI + Radians(degrees), halfLength, halfWidth, thickness);
+
+    /// <summary>A floor, a 4 m "wall" whose face stands at x 2, and an "eave" over the run to it: a ceiling 2 m
+    /// long across x whose underside is centred at (1, <see cref="EaveUnderside"/>, 0) and rises toward the wall by
+    /// <paramref name="degrees"/>.</summary>
+    internal static FootSupportScene Eave(SceneVariant variant, float degrees) =>
+        Floor(variant).Wall("wall", 2, 0.3f, 4).Ceiling("eave", new Vector3(1, EaveUnderside, 0), 1, 2, degrees);
+
+    /// <summary>A floor and two 3 m walls meeting in a right angle: "wallX" with its face on the plane x 1 facing -X
+    /// and "wallZ" with its face on the plane z 1 facing -Z. The box variant is solid boxes, the mesh variant each
+    /// face alone.</summary>
+    internal static FootSupportScene InnerCorner(SceneVariant variant)
+    {
+        FootSupportScene scene = Floor(variant);
+        if (variant == SceneVariant.Box)
+            return scene.Flat("wallX", 1, 2, -5, 2, 3).Flat("wallZ", -4, 2, 1, 2, 3);
+        return scene.Mesh("wallX", Face(new(1, 0, -5), new(1, 0, 1), 3, -Vector3.UnitX))
+            .Mesh("wallZ", Face(new(-4, 0, 1), new(1, 0, 1), 3, -Vector3.UnitZ));
+    }
+
+    // A vertical quad from the base edge a to b, rising by height, facing outward.
+    static Vector3[] Face(Vector3 a, Vector3 b, float height, Vector3 outward)
+    {
+        var up = new Vector3(0, height, 0);
+        return [.. FootSupportScene.Facing(a, b, a + up, outward),
+            .. FootSupportScene.Facing(b, b + up, a + up, outward)];
+    }
+
     /// <summary>A floor for x at most 0, then <paramref name="risers"/> risers of <paramref name="riser"/> with
     /// treads <paramref name="tread"/> deep. Riser k, counted from 1, stands at x <c>tread (k - 1)</c> and its
     /// tread tops out at <c>riser k</c>. The top tread is a 2 m landing. The box variant stacks solid boxes on
@@ -419,6 +465,79 @@ internal static class FootSupportScenes
             scene.Mesh($"piece{p}", [.. piece]);
         }
         return scene;
+    }
+
+    /// <summary>A "floor" at Y 0 over x in [<paramref name="toeX"/> - 8, <paramref name="toeX"/>] and a "face" rising
+    /// to +X by <paramref name="degrees"/> from its toe at (<paramref name="toeX"/>, 0) to <paramref name="height"/>,
+    /// both over z in [-<paramref name="halfWidth"/>, <paramref name="halfWidth"/>]. The box variant's face is a slab
+    /// whose top is the face. The mesh variant is the faces alone.</summary>
+    internal static FootSupportScene RisingFace(SceneVariant variant, float degrees, float toeX, float height,
+        float halfWidth = 4)
+    {
+        float angle = Radians(degrees), half = height / (2 * MathF.Sin(angle));
+        return new FootSupportScene(variant).Flat("floor", toeX - 8, toeX, -halfWidth, halfWidth, 0)
+            .Slab("face", new Vector3(toeX + half * MathF.Cos(angle), half * MathF.Sin(angle), 0), angle, half,
+                halfWidth);
+    }
+
+    /// <summary>A level "top" at Y 0 over x in [<paramref name="edgeX"/> - 8, <paramref name="edgeX"/>], then a
+    /// <paramref name="lip"/> drop at the edge onto a "face" falling to +X by <paramref name="degrees"/> through
+    /// <paramref name="depth"/>, and a level "pit" 20 m long at its toe. Zero degrees is a level "shelf" 8 m long at
+    /// the lip's foot instead. Everything spans z in [-4, 4]. The mesh variant is the faces alone.</summary>
+    internal static FootSupportScene LipOntoFace(SceneVariant variant, float edgeX, float lip, float degrees,
+        float depth)
+    {
+        var scene = new FootSupportScene(variant).Flat("top", edgeX - 8, edgeX, -4, 4, 0);
+        if (degrees == 0) return scene.Flat("shelf", edgeX, edgeX + 8, -4, 4, -lip);
+        float angle = Radians(degrees), half = depth / (2 * MathF.Sin(angle)), run = depth / MathF.Tan(angle);
+        return scene
+            .Slab("face", new Vector3(edgeX + half * MathF.Cos(angle), -lip - half * MathF.Sin(angle), 0), -angle,
+                half, 4)
+            .Flat("pit", edgeX + run, edgeX + run + 20, -4, 4, -lip - depth);
+    }
+
+    /// <summary>The crease spacing of <see cref="CreasedCliffHeight"/>.</summary>
+    internal const float CreaseSpacing = 4f;
+
+    /// <summary>A piecewise planar cliff creased every <see cref="CreaseSpacing"/> along both axes: its x gradient
+    /// alternates 0.5 and 1.5 and its z gradient -4.1 and -2.5 from one crease to the next, so each cell is one of
+    /// four planes of 68.6, 71.1, 76.4 and 77.1 degrees and the cliff rises toward -Z.</summary>
+    internal static float CreasedCliffHeight(float x, float z) => Creased(x, 0.5f, 1.5f) + Creased(z, -4.1f, -2.5f);
+
+    /// <summary>The normal of the plane <see cref="CreasedCliffHeight"/> has at (x, z), the low crease's plane on a
+    /// crease.</summary>
+    internal static Vector3 CreasedCliffNormal(float x, float z) =>
+        Vector3.Normalize(new Vector3(-CreasedGradient(x, 0.5f, 1.5f), 1, -CreasedGradient(z, -4.1f, -2.5f)));
+
+    static float CreasedGradient(float t, float a, float b)
+    {
+        float period = 2 * CreaseSpacing;
+        return t - MathF.Floor(t / period) * period < CreaseSpacing ? a : b;
+    }
+
+    // The integral of a gradient that alternates a and b every crease.
+    static float Creased(float t, float a, float b)
+    {
+        float period = 2 * CreaseSpacing;
+        float k = MathF.Floor(t / period), r = t - k * period;
+        return k * (a + b) * CreaseSpacing + (r < CreaseSpacing ? a * r : a * CreaseSpacing + b * (r - CreaseSpacing));
+    }
+
+    /// <summary>One mesh "cliff" of <see cref="CreasedCliffHeight"/> over x in [-16, 16] and z in [-4, 28], two
+    /// triangles to a cell between creases, so every triangle lies in its cell's plane.</summary>
+    internal static FootSupportScene CreasedCliff()
+    {
+        Vector3 Vertex(int i, int j)
+        {
+            float x = CreaseSpacing * i, z = CreaseSpacing * j;
+            return new Vector3(x, CreasedCliffHeight(x, z), z);
+        }
+        var vertices = new List<Vector3>();
+        for (int i = -4; i < 4; i++)
+            for (int j = -1; j < 7; j++)
+                vertices.AddRange(FootSupportScene.Quad(Vertex(i, j), Vertex(i + 1, j), Vertex(i, j + 1),
+                    Vertex(i + 1, j + 1)));
+        return new FootSupportScene(SceneVariant.Mesh).Mesh("cliff", [.. vertices]);
     }
 
     internal static float Radians(float degrees) => degrees * MathF.PI / 180f;

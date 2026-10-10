@@ -230,6 +230,44 @@ public class GroundCoreTests
         Assert.False(result.Blocked, $"{result}");
     }
 
+    // A 46 degree bank lies past the 45 degree MaxSlope and inside the 3 degree traction band. Judged at the banded
+    // 48 degree gate a footed body walks 0.3 up it on the bank's own plane, so the step part is zero and the shell's
+    // lower cap centre stays 0.8 * cos(46) = 0.556 from the plane, clear of radius plus skin. Judged at the bare gate
+    // the start support is steep, so the tick ends at the start with steep footing. Null means the bare gate.
+    [Theory]
+    [InlineData("slope", SceneVariant.Box)]
+    [InlineData("slope", SceneVariant.Mesh)]
+    [InlineData("terrain", SceneVariant.Box)]
+    public void BandedGateKeepsFootingOnTheBank(string ground, SceneVariant variant)
+    {
+        const float Tolerance = ShellMotion.ContactSkin / 2;
+        float banded = Tuning.MaxSlopeRadians + Tuning.TractionHysteresisRadians;
+        var move = new Vector2(0.3f, 0);
+        float grade = MathF.Tan(Radians(46f));
+        Vector3 normal = Vector3.Normalize(new Vector3(-grade, 1, 0));
+        using FootSupportScene? scene = ground == "slope" ? Slope(variant, 46f) : null;
+        var feet = new Vector3(0, scene is null ? 0 : (float)scene.TopHeightAt("slope", 0, 0), 0);
+        double expectedY = scene is null ? grade * (double)move.X : scene.TopHeightAt("slope", move.X, 0);
+
+        GroundStepResult Gated(float? gate) => scene is null
+            ? GroundCore.Step(feet, move, Dt, Tuning, Settings, (x, _) => grade * x, (_, _) => normal, null, null, gate)
+            : GroundCore.Step(feet, move, Dt, Tuning, Settings, null, null, scene.World, scene.Lease, gate);
+
+        GroundStepResult kept = Gated(banded);
+        AssertFooting(GroundFooting.Walkable, kept);
+        Assert.False(kept.Blocked, $"{kept}");
+        Assert.True(Vector2.Distance(move, kept.Achieved) <= Tolerance, $"{kept}");
+        Assert.True(Math.Abs(kept.Feet.Y - expectedY) <= Tolerance, $"Expected feet {expectedY:R}, got {kept}");
+
+        foreach (float? bare in new float?[] { null, Tuning.MaxSlopeRadians })
+        {
+            GroundStepResult lost = Gated(bare);
+            AssertFooting(GroundFooting.Steep, lost);
+            Assert.True(lost.Achieved.Length() <= Tolerance, $"{lost}");
+            Assert.True(Vector3.Distance(feet, lost.Feet) <= Tolerance, $"{lost}");
+        }
+    }
+
     // Flat until x 0.1, then rising 5 in 1. The first substep reaches (0.1, 0.1) on the flat. The second reaches
     // x 0.2, where the terrain is 0.5, so it slides along the cliff to (0.1, 0.2). Without a normal the wall faces
     // back along the move, which leaves no tangent to slide on.

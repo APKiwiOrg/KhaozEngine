@@ -8,8 +8,14 @@ namespace KhaozEngine.Locomotion.Contacts;
 /// happened. <see cref="Blocked"/> says a shell contact removed part of the move.</summary>
 internal readonly record struct ShellSweep(Vector2 Achieved, bool Blocked, ShellObstructions Obstructions = default);
 
-/// <summary>Moves the shell: recovery out of overlaps, the upward lift and one horizontal substep with wall
-/// slides. Every position is the body's feet. A null world has no statics, so the shell moves freely.</summary>
+/// <summary>The outcome of one shell substep through the air. <see cref="Achieved"/> is the move that happened.
+/// <see cref="Highest"/> and <see cref="Lowest"/> bound the feet's vertical offset from the start along the way.
+/// <see cref="Blocked"/> says a contact removed part of the move.</summary>
+internal readonly record struct ShellFlight(Vector3 Achieved, bool Blocked, float Highest, float Lowest);
+
+/// <summary>Moves the shell: recovery out of overlaps, the upward lift, one horizontal substep with wall slides
+/// and one substep through the air. Every position is the body's feet. A null world has no statics, so the shell
+/// moves freely.</summary>
 internal static class ShellMotion
 {
     /// <summary>The gap a sweep leaves when it hits something. Free motion is never shortened by it.</summary>
@@ -57,9 +63,11 @@ internal static class ShellMotion
     /// <summary>Sweeps the shell, raised by <paramref name="lift"/>, horizontally by <paramref name="move"/>. A
     /// hit advances to the contact less the skin. A wall, ceiling or rising-support contact then removes the
     /// rest of the move's component along the contact's horizontal normal, at most <see cref="MaxSlides"/>
-    /// times. The caller splits a long move into substeps.</summary>
+    /// times. <paramref name="clampXz"/> is the play-area clamp, which cuts each slide along a contact to the bound
+    /// as <see cref="BoundSlide"/> describes. The caller clamps the move itself and splits a long move into
+    /// substeps.</summary>
     internal static ShellSweep Sweep(IPhysicsWorld? world, Vector3 feet, float lift, Vector2 move,
-        in MoveTuning tuning, float cosMaxSlope)
+        in MoveTuning tuning, float cosMaxSlope, Func<float, float, Vector2>? clampXz = null)
     {
         if (world is null)
             return new ShellSweep(move, false);
@@ -115,9 +123,115 @@ internal static class ShellMotion
             {
                 remaining -= into * across;
                 blocked = true;
+                BoundSlide(new Vector2(feet.X, feet.Z) + achieved, ref remaining, across, clampXz);
             }
         }
         return new ShellSweep(achieved, blocked || remaining != Vector2.Zero, obstructions);
+    }
+
+    /// <summary>Sweeps the shell along <paramref name="move"/>. A hit advances to the contact less the skin. Every
+    /// contact then removes the component into its normal from the rest of the move and from
+    /// <paramref name="velocity"/>, at most <see cref="MaxSlides"/> times. A ceiling or a walkable face removes it
+    /// whole, vertical included, so a flat ceiling stops a rise. A wall or a face steeper than the gate
+    /// (<paramref name="cosMaxSlope"/>) removes it with horizontal motion alone, so it never lifts the body or slows
+    /// its fall. <paramref name="clampXz"/> is the play-area clamp, which cuts the horizontal part of each slide
+    /// along a contact to the bound as <see cref="BoundSlide"/> describes and leaves the velocity alone, because the
+    /// bound is not a contact. The caller clamps the move itself and splits a long move into substeps.</summary>
+    internal static ShellFlight Fly(IPhysicsWorld? world, Vector3 feet, Vector3 move, ref Vector3 velocity,
+        in MoveTuning tuning, float cosMaxSlope, Func<float, float, Vector2>? clampXz = null)
+    {
+        if (world is null)
+            return new ShellFlight(move, false, MathF.Max(0f, move.Y), MathF.Min(0f, move.Y));
+        CapsuleShape shape = ShellGeometry.Shape(tuning);
+        Vector3 centre = ShellGeometry.Centre(feet, tuning);
+        // As in Sweep, a touching start sweeps from an offset off the face that the shell itself does not take.
+        Vector3 offset = Vector3.Zero;
+        Vector3 achieved = Vector3.Zero;
+        Vector3 remaining = move;
+        bool blocked = false;
+        float highest = 0f, lowest = 0f;
+        for (int slide = 0; slide <= MaxSlides; slide++)
+        {
+            double length = Math.Sqrt((double)remaining.X * remaining.X + (double)remaining.Y * remaining.Y +
+                (double)remaining.Z * remaining.Z);
+            if (!(length > 0))
+                break;
+            var direction = new Vector3((float)(remaining.X / length), (float)(remaining.Y / length),
+                (float)(remaining.Z / length));
+            if (!world.SweepCapsule(shape, Pose.At(centre + offset), direction, (float)length, out SweepHit hit,
+                    QueryFilter.StaticsOnly))
+            {
+                achieved += remaining;
+                remaining = Vector3.Zero;
+                highest = MathF.Max(highest, achieved.Y);
+                lowest = MathF.Min(lowest, achieved.Y);
+                break;
+            }
+            Vector3 normal = hit.Normal;
+            if (normal == Vector3.Zero)
+            {
+                if (!TouchNormal(world, shape, centre + offset, out normal))
+                    break;
+                offset += normal * ContactSkin;
+            }
+            else
+            {
+                normal = Vector3.Normalize(normal);
+                Vector3 advance = direction * MathF.Max(0f, hit.Distance - ContactSkin);
+                centre += advance;
+                achieved += advance;
+                remaining -= advance;
+                highest = MathF.Max(highest, achieved.Y);
+                lowest = MathF.Min(lowest, achieved.Y);
+            }
+            velocity = Slide(velocity, normal, cosMaxSlope);
+            if (slide == MaxSlides)
+                break;
+            Vector3 rest = Slide(remaining, normal, cosMaxSlope);
+            if (rest != remaining)
+            {
+                blocked = true;
+                var along = new Vector2(rest.X, rest.Z);
+                if (BoundSlide(new Vector2(feet.X + achieved.X, feet.Z + achieved.Z), ref along,
+                        new Vector2(normal.X, normal.Z), clampXz))
+                    rest = new Vector3(along.X, rest.Y, along.Y);
+            }
+            remaining = rest;
+        }
+        return new ShellFlight(achieved, blocked || remaining != Vector3.Zero, highest, lowest);
+    }
+
+    /// <summary>Cuts a slide along a contact, <paramref name="remaining"/> from <paramref name="axis"/>, to the play
+    /// area, because the contact can turn a move that ended inside the bound toward it. True when the clamp cut it. A
+    /// clamped end that would press into the contact, whose horizontal normal is <paramref name="across"/>, means the
+    /// slide runs into the corner of the contact and the bound, so the slide keeps its own direction up to where it
+    /// meets the bound and stops in that corner as it would in the corner of two walls.</summary>
+    static bool BoundSlide(Vector2 axis, ref Vector2 remaining, Vector2 across, Func<float, float, Vector2>? clampXz)
+    {
+        Vector2 slide = remaining;
+        if (!PlayArea.Clamp(axis, ref remaining, clampXz)) return false;
+        if (Vector2.Dot(remaining, across) < 0f)
+        {
+            remaining = slide * PlayArea.Reach(axis, slide, axis + remaining);
+            PlayArea.Clamp(axis, ref remaining, clampXz);
+        }
+        return true;
+    }
+
+    // The vector less its component into the contact. A wall or steep face keeps the vertical part and leaves the
+    // contact with horizontal motion alone, so its plane cannot turn a run into a climb.
+    static Vector3 Slide(Vector3 vector, Vector3 normal, float cosMaxSlope)
+    {
+        float into = Vector3.Dot(vector, normal);
+        if (!(into < 0f))
+            return vector;
+        if (normal.Y < 0f || normal.Y >= cosMaxSlope)
+            return vector - into * normal;
+        float across = normal.X * normal.X + normal.Z * normal.Z;
+        if (!(across > 0f))
+            return vector;
+        float scale = into / across;
+        return new Vector3(vector.X - scale * normal.X, vector.Y, vector.Z - scale * normal.Z);
     }
 
     /// <summary>The outward normal of the face a touching shell rests on, from the MTV of the shell grown by the

@@ -189,6 +189,9 @@ internal static class ContactController
         bool grounded = false;
         Vector2? first = null;
         Segment last = new(commanded, commanded, Vector2.Zero, dt);
+        // A tick that starts sliding slides its own carry. The input only steers along the contour, so it never enters
+        // the carry, as legacy.
+        if (mode == Mode.Slide) velocity = s.HorizontalVelocity;
         for (int segment = 0; segment < MaxSegments; segment++)
         {
             if (mode == Mode.Ground)

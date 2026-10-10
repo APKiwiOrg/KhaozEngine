@@ -663,6 +663,35 @@ public partial class ContactControllerTests
         s.ClimbRate, s.ClimbRateEwma, s.StepDeltaY, s.LandingImpactSpeed, s.FacingYaw,
     ];
 
+    // A body at rest on a 50 degree plane rising to +X, without footing, slides from its first tick. At the bare gate
+    // the friction ramp scales gravity along the plane by (50 - 45) / 8, so tick k ends with the fall-line speed
+    // k a dt, a = g sin(50) (5 / 8), a vertical speed of that times -sin(50), and feet a sin(50) dt^2 k (k + 1) / 2
+    // lower. A run held up the fall line changes nothing: input steers along the contour only and never enters the
+    // carry, so a slide cannot be held on its face by pushing into it.
+    [Theory]
+    [MemberData(nameof(Grounds))]
+    public void SlideCarriesItsOwnSpeedAndNotTheInput(string ground)
+    {
+        const int Ticks = 6;
+        float angle = Radians(50), grade = MathF.Tan(angle);
+        Vector3 normal = Vector3.Normalize(new Vector3(-grade, 1, 0));
+        using Ground g = Make(ground, v => Slope(v, 50), (x, _) => grade * x, (_, _) => normal);
+        float startY = g.Scene is null ? grade : (float)g.Scene.TopHeightAt("slope", 1, 0);
+        double h = Math.Sin(angle), a = Gravity * h * 5 / 8;
+        foreach (bool push in new[] { false, true })
+        {
+            MoveState s = Falling(new Vector3(1, startY, 0));
+            for (int k = 1; k <= Ticks; k++)
+            {
+                s = g.Step(s, push ? Vector2.UnitX : Vector2.Zero, push ? 1 : 0, false, Tuning, run: push);
+                string context = $"push {push}, tick {k}: {Show(s)}";
+                Assert.False(s.Grounded, context);
+                AssertNear(-k * a * Dt * h, s.VerticalVelocity, 1e-3, context);
+                AssertNear(startY - a * h * Dt * Dt * k * (k + 1) / 2, Feet(s).Y, HalfSkin, context);
+            }
+        }
+    }
+
     // Water belongs to phase 4. A dry medium changes nothing.
     [Fact]
     public void WaterMediumIsRejectedUntilPhase4()

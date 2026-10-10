@@ -40,8 +40,15 @@ public sealed class EditorDocument
         History.Registry = Registry;
     }
 
-    /// <summary>Binds verified native assets without changing dirty state or history.</summary>
-    public void BindNativeAssets(MapAssetClosure assets) => History.BindNativeAssets(Doc, assets);
+    /// <summary>Binds verified native assets without placement bounds, and without changing dirty state or history.
+    /// See <see cref="EditorHistory.BindNativeAssets(MapDocument, MapAssetClosure)"/>.</summary>
+    public void BindNativeAssets(MapAssetClosure assets) => History.BindNativeAssets(Doc, assets, null);
+
+    /// <summary>Binds verified native assets and the placement bounds that size placement edits, without changing dirty
+    /// state or history. See
+    /// <see cref="EditorHistory.BindNativeAssets(MapDocument, MapAssetClosure, INativePlacementBounds)"/>.</summary>
+    public void BindNativeAssets(MapAssetClosure assets, INativePlacementBounds? placementBounds) =>
+        History.BindNativeAssets(Doc, assets, placementBounds);
 
     /// <summary>The document being edited.</summary>
     public MapDocument Doc { get; }

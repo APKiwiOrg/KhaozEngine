@@ -5,7 +5,6 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
-using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEdit;
 
@@ -26,15 +25,8 @@ public static class NativeDocumentService
     public static MapResolveOptions SessionOptionsV2 { get; } =
         new("khaozengine.mapedit.authored-support", 1, "mapdoc-resolver-v2-authored-bindings-v1", ResolverVersion: 2);
 
-    internal static MapResolveOptions SessionOptionsFor(MapResolverIdentityDoc? identity) => identity switch
-    {
-        { PayloadVersion: 1, ResolverVersion: 1 } => SessionOptions,
-        { PayloadVersion: 1, ResolverVersion: 2 } => SessionOptionsV2,
-        _ => throw new MapDocumentException($"Unsupported native resolver identity {DescribeIdentity(identity)}."),
-    };
-
-    static string DescribeIdentity(MapResolverIdentityDoc? identity) => identity is null
-        ? "(missing)" : $"({identity.PayloadVersion}, {identity.ResolverVersion})";
+    internal static MapResolveOptions SessionOptionsFor(MapResolverIdentityDoc? identity) =>
+        MapNativeResolution.ResolverVersionOf(identity) == 1 ? SessionOptions : SessionOptionsV2;
 
     /// <summary>Checks the complete document locally, loads and verifies its whole asset closure from
     /// <paramref name="source"/>, then resolves it with analytic support for resolver 1 or authored bindings for
@@ -45,18 +37,14 @@ public static class NativeDocumentService
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(options);
-        MapResolveOptions sessionOptions = SessionOptionsFor(document.ResolverIdentity);
-        if (options.ResolverVersion != sessionOptions.ResolverVersion)
-            throw new MapDocumentException($"Native resolver identity {DescribeIdentity(document.ResolverIdentity)} " +
-                $"does not match options resolver version {options.ResolverVersion}.");
+        MapNativeResolution.RequireMatchingOptions(document.ResolverIdentity, options);
         MapDocRegistry registry = MapDocRegistry.CreateDefault();
         // Local checks first, so a partial or malformed document never reads a resource.
         MapBoundDocumentValidation.ValidateLocal(document, registry);
         MapAssetClosure closure = MapAssetClosure.Load(document.NativeAssets, source);
-        if (options.ResolverVersion == 2)
-            return MapResolverV2.Resolve(document, closure, MapDocumentSurfaceSource.Capture(document), options).Document;
-        TerrainField field = MapRuntime.BuildField(document, registry);
-        return MapResolver.Resolve(document, closure, field.SampleHeight, options);
+        Func<float, float, float>? legacySupportHeight =
+            options.ResolverVersion == 1 ? MapRuntime.BuildField(document, registry).SampleHeight : null;
+        return MapNativeResolution.Resolve(document, closure, options, legacySupportHeight);
     }
 
     /// <summary>Native opt-in is a non-null resolver identity. Legacy analytic documents keep their old path.</summary>

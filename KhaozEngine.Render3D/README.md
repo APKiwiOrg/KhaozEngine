@@ -994,6 +994,9 @@ in the `KhaozEngine.Render3D.Ecs` arm under the same namespace, so a render-only
     deterministic, asset-free mossy-stone albedo + derived tangent-space normal (raw RGBA, no PNG encoder, no
     asset file) for samples and tests, mirroring `TerrainMaterialPresets.Procedural`.
 - Load-time flatten: `GltfLoader.LoadFlattenedAlbedo(path) -> GltfMesh` is what `PropLoader.LoadProp` calls.
+  `LoadFlattenedAlbedo(glb, identity)` parses a binary glTF already in memory the same way, naming `identity` in
+  errors. It has no directory to resolve a relative external URI against, so a caller that must read nothing beyond
+  its bytes, like `NativeMapAssetLoader`, refuses external URIs first.
   When a source material carries a `baseColorTexture`, it decodes the texture and folds
   `GltfLoader.AverageAlbedo`'s alpha-weighted average colour (texels with alpha >= 0.5, falling back to a
   plain average when fully transparent) into that material's flattened `baseColorFactor`, so a textures-ON

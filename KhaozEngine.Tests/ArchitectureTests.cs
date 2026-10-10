@@ -51,6 +51,8 @@ public partial class ArchitectureTests
         "TileWorld.Physics",
         // Body reach composes the movement seams only when a consumer explicitly requests it.
         "Movement",
+        // Native map physics is for a game that wants colliders under a MapDoc world, which no umbrella implies.
+        "MapDoc.Physics",
         // THE THREE NATIVE GPU BACKENDS ARE NOT ON THIS LIST ANY MORE, and their absence is asserted rather than
         // assumed: NativeGpuBackends_AreCarriedByEveryUmbrellaThatCarriesGpu below requires the opposite of what
         // this list would have meant. They were opt-in from decisions P1 / V-P1 / M-P1, on pay-for-what-you-use

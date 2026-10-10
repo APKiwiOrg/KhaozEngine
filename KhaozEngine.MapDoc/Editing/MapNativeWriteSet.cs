@@ -11,6 +11,10 @@ public sealed record MapNativeWriteSet(IReadOnlyList<MapPatchKey> Patches, IRead
     IReadOnlyList<string> RecordIds, IReadOnlyList<string> SpaceIds, IReadOnlyList<MapCornerOwnerChange> OwnerChanges,
     IReadOnlyList<ushort> Materials, bool Placements)
 {
+    /// <summary>True when the edit replaces the document's native asset roots. Publication then takes the candidate's
+    /// whole root list. Not positional, so the released constructor is unchanged.</summary>
+    public bool NativeAssets { get; init; }
+
     public static MapNativeWriteSet PlacementsOnly { get; } = new(Array.Empty<MapPatchKey>(),
         Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<MapCornerOwnerChange>(),
         Array.Empty<ushort>(), true);

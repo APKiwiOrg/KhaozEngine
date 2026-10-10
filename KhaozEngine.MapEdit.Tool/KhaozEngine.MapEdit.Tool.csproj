@@ -11,6 +11,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
+    <!-- NativeCollisionService reads and measures native colliders through MapAssetShapes and MapPlacementShapes. -->
+    <ProjectReference Include="../KhaozEngine.MapDoc.Physics/KhaozEngine.MapDoc.Physics.csproj" />
     <ProjectReference Include="../KhaozEngine.MapEditor/KhaozEngine.MapEditor.csproj" />
     <ProjectReference Include="../KhaozEngine.Imaging/KhaozEngine.Imaging.csproj" />
     <PackageReference Include="ModelContextProtocol" />

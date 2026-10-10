@@ -112,6 +112,48 @@ accepted `MapNativeEditEffects`. A GUI edit and a service edit of the same docum
 document bytes and effects text, which the GUI reports through `EditorDocument.LastNativeEffects`. Terrain
 MCP verbs are deferred to R10.
 
+## Native colliders
+
+`NativeCollisionService(session)` measures and edits the colliders of the open native document. It is a service
+API, not an MCP registration.
+
+```csharp
+var collisions = new NativeCollisionService(session);
+NativeCollisionMeasurement m = collisions.Measure("wall-1");
+NativeCollisionEditResult preview = collisions.SetHeights("wall-variant", bottom: 0.1f, top: 2.4f);
+NativeCollisionEditResult applied = collisions.SetHeights("wall-variant", 0.1f, 2.4f, dryRun: false);
+session.Save();
+```
+
+`Measure(placementId)` returns a `NativeCollisionMeasurement` in asset-local metres, with source units applied and
+the placement transform not applied. `RawMeshMaxY` is the highest mesh vertex as `NativeMapAssetLoader` loads it,
+with no height normalization. `EffectiveBottom` and `EffectiveTop` are the collider's vertical extent under the
+physics seam's conventions (boxes centred, cylinders base-aligned). `ColliderSha256` is the verified collider
+digest.
+
+`SetHeights(assetId, bottom, top, dryRun = true)` resizes a box collider or a compound of upright boxes to span
+`bottom` to `top` in asset-local metres. Every box keeps its X and Z, and its centre and half height map linearly
+from the collider's current vertical extent onto the requested one. A lone box becomes a one-child compound. Any
+other collider refuses with "compound boxes". The `NativeCollisionEditResult` carries the collider digests before
+and after, every placement of the asset in ordinal order and `MapNativeEditEffects` with the placements' old and new
+world collider bounds and `Physics`, `Nav` and `Residency` invalidation.
+
+A dry run, the default, computes the new collider bytes, digest and effects over an in-memory overlay and touches no
+file and no session state. Apply writes the new collider and a new root manifest through `MapAssetFileWriter`,
+reloads and verifies the closure from disk, then swaps the root reference in one native transaction whose
+`MapNativeWriteSet.NativeAssets` flag publishes the roots. It binds the new closure and marks the session dirty, and
+`Save` persists the document. The mesh resource and every placement transform stay unchanged. The asset and its
+collider must be declared in one root manifest, and no other asset may share the collider resource. An edit that
+leaves the collider bytes unchanged reports `Applied` false with no invalidation.
+
+`MapAssetFileWriter(assetRoot)` writes resources under an explicit absolute asset root, the root the document's
+resource references resolve against. `WriteResource(bytes, extension)` writes `assets/<sha256>.<extension>` and
+returns a `MapAssetRef` with that relative path, the lowercase digest as its ID and payload version 1. Equal bytes
+share one file, a file is staged and renamed into place, and an existing file is never overwritten: one holding other
+bytes refuses. `WriteManifest(manifest, id)` serializes a `MapAssetManifestDoc` as payload 1 JSON, proves it reads
+back under the strict manifest reader, writes it the same way and returns a reference with `id`, ready to stand as a
+document root. Files a refused edit already wrote stay as unreferenced content-addressed resources.
+
 ## Tiled documents, whole-load vs windowed
 
 `map_open` and `map_save` are form-aware, matching the GUI editor: `map_open` dispatches on

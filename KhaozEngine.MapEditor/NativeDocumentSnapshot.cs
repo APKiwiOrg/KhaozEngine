@@ -73,6 +73,7 @@ internal static class NativeDocumentSnapshot
             target.Placements = candidate.Placements;
             target.NumericIdHighWaterMark = candidate.NumericIdHighWaterMark;
         }
+        if (writeSet.NativeAssets) target.NativeAssets = new List<MapAssetRef>(candidate.NativeAssets);
     }
 
     /// <summary>Replaces a ref in place, or inserts it before the first existing ref that follows it in

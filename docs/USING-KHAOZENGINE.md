@@ -54,6 +54,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Textured props](#textured-props)
 - [Ground-cover scatter and understory companions](#ground-cover-scatter-and-understory-companions)
 - [Map documents (`KhaozEngine.MapDoc`)](#map-documents-khaozenginemapdoc)
+- [Physics for a native map document (`KhaozEngine.MapDoc.Physics`)](#physics-for-a-native-map-document-khaozenginemapdocphysics)
 - [Tile world (`KhaozEngine.TileWorld`)](#tile-world-khaozenginetileworld)
 - [Physics for a tile world (`KhaozEngine.TileWorld.Physics`)](#physics-for-a-tile-world-khaozenginetileworldphysics)
 - [Tile world rendering (`KhaozEngine.TileWorld.Render3D`)](#tile-world-rendering-khaozenginetileworldrender3d)
@@ -10114,7 +10115,68 @@ resourceRoot)` in `KhaozEngine.Terrain.Render3D` adapts one native asset to a re
 explicit absolute root, resolves the mesh and first LOD through their resource references (never from IDs),
 re-hashes both against the verified digests and computes `HeightMeters` from the render bounds times
 `SourceUnitsToMetres`. Collision, light, selection and further LOD data stay in the closure. It loads no mesh
-and does not provide native source-scale loading.
+and does not provide native source-scale loading. `NativeMapAssetLoader.Load(asset, closure)`, in the same package,
+does: it parses the verified mesh resource, which must be a binary glTF, and multiplies every vertex position by
+`SourceUnitsToMetres` once. It never fits the mesh to a height, drops its base or recentres it, so a native mesh keeps
+its authored origin and agrees with its collider.
+
+---
+
+## Physics for a native map document (`KhaozEngine.MapDoc.Physics`)
+
+`KhaozEngine.MapDoc.Physics` builds one immutable headless world from a complete native document and its verified
+asset closure. It is opt-in, in no umbrella, and references only `MapDoc`, `Physics`, `Movement` and `Locomotion`,
+so the caller picks the `IPhysicsWorld`. The [package reference](../KhaozEngine.MapDoc.Physics/README.md) lists every
+type.
+
+```csharp
+MapBuiltWorld world = MapWorldBuilder.Build(document, closure,
+    new MapWorldBuildOptions(resolveOptions, "my-game/rules/1", new MapTerrainChunkPolicy(), legacyHeight));
+using MapPhysicsRegistration registration = MapPhysicsRegistration.Register(world, physics);
+var queries = new MapWorldQueries(world);
+var relations = new MapPhysicalRelations(registration);
+```
+
+What it produces:
+
+- **Asset shapes.** `MapAssetShapes.Read` reads each asset's `Collider` and `Selection` resources as `PhysicsShape`
+  values in source units. An asset is solid exactly when it declares a collider.
+- **Placement geometry and envelopes.** `MapPlacementShapes` scales each collider once by source units times
+  placement scale. `MapInteractionEnvelope` is the pick and reach volume under `kemap/interaction-envelope/1`, swept
+  up to at least 1 m and never installed.
+- **Terrain physics.** `MapTerrainPhysics.Compile` turns a resolver 2 document's compiled R2 faces into bounded
+  one-sided meshes on whole-metre anchors, each triangle mapped to its canonical face.
+- **The built world.** `MapBuiltWorld` holds the resolved document, placement geometry, terrain chunks, installable
+  statics, feature query diagnostics, bounds and a `BuildHash`.
+- **Registration and queries.** `MapPhysicsRegistration` installs the statics and maps handles and incident faces
+  back to owners. `MapWorldQueries` answers pick, envelope reach and collider distance without a backend.
+  `MapStanceCandidates` proposes walk-up stances for a game-bound validator to seat. `MapPhysicalRelations` answers
+  line of sight and clearance against the registered world under a held read lease.
+- **Residency and navigation identity.** `MapResidencyOwnership` and `MapNavTiling` name the owners, storage tiles
+  and navigation tiles an edit invalidates.
+
+**Ownership boundary.** The package adds no step limit, ledge rule or support model. Ground support, seating, steps
+and navigation column sampling stay with the #438 contact controller, which stands on the statics a native world
+installs. A resolver 1 world keeps analytic ground behind `LegacySupportHeight` and installs no terrain statics.
+Vertical-layer navigation on native worlds waits for #438 phase 5.
+
+**Feature query diagnostics.** `MapBuiltWorld.Diagnostics` reports each limit of the backend's capsule feature query
+a static meets, without refusing the static, which still collides and blocks: `LeafCapacity` (a compound of more
+than 64 leaves), `CurvedUntilPhase2b` (a sphere, capsule or cylinder leaf), `MeshTriangleCapacity` (a mesh over
+65,536 triangles), `LocalExtent` (a leaf reaching more than 64 m from its origin) and `HullCapacity`. `HullCapacity`
+is conservative: any convex hull over 130 points is flagged, because 130 points always fit the backend's 256 faces
+and 1,524 face entries, even though a larger hull may still be captured.
+
+**Refusals.** `MapAssetShapes.Read` throws `MapDocumentException` for an asset that declares a `Surface` (support)
+resource, since placement-local support surfaces arrive with R5. It also refuses a compound holding a triangle mesh,
+a hull or mesh with no points and a payload with bytes after its shape. The `PropCollisionFormat` reader beneath it
+refuses non-finite or non-positive box and cylinder sizes, non-finite points and poses, a mesh index count that is
+not a multiple of 3 or an index outside the vertices, an empty compound, compound nesting deeper than 16 levels and
+a compound child orientation that is not a unit quaternion.
+
+**Editing colliders.** ke-mapedit's `NativeCollisionService` measures a placement's mesh top against its collider
+and resizes box colliders through content-addressed resources written by `MapAssetFileWriter`. See the
+[ke-mapedit README](../KhaozEngine.MapEdit.Tool/README.md#native-colliders).
 
 ---
 

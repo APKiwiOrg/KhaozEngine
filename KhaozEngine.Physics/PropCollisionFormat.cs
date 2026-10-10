@@ -96,9 +96,9 @@ public static class PropCollisionFormat
     /// or corrupted file) - never <see cref="OverflowException"/> or <see cref="OutOfMemoryException"/> from an
     /// unchecked allocation. Malformed shape data throws the same way: a non-finite or non-positive box half
     /// extent or cylinder size, a non-finite hull point, mesh vertex or compound child pose, a compound child
-    /// orientation that is not a unit quaternion, a mesh index count that is not a multiple of 3 or an index outside the vertices, a compound with no children, and compound
-    /// nesting deeper than 16 levels, which bounds the reader's recursion. The stream
-    /// is left open.</summary>
+    /// orientation that is not a unit quaternion, a mesh index count that is not a multiple of 3 or an index
+    /// outside the vertices, a compound with no children, and compound nesting deeper than 16 levels, which
+    /// bounds the reader's recursion. The stream is left open.</summary>
     public static PhysicsShape Read(Stream stream)
     {
         if (stream == null) throw new ArgumentNullException(nameof(stream));

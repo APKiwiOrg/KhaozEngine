@@ -3,7 +3,7 @@
     <PackageId>KhaozEngine.MapDoc.Physics</PackageId>
     <Version>$(KhaozEngineVersion)</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>Physics for a native KhaozEngine.MapDoc world. MapAssetShapes reads the Collider and Selection resources of a verified MapAssetClosure as KhaozEngine.Physics shapes in asset source units, with explicit refusal of unreadable payloads and shapes the backend cannot install. GPU-free and backend-free: the caller picks the IPhysicsWorld. Opt-in: in NO umbrella.</Description>
+    <Description>Physics for a native KhaozEngine.MapDoc world. MapAssetShapes reads the Collider and Selection resources of a verified MapAssetClosure as KhaozEngine.Physics shapes, refusing unreadable payloads, shapes the backend cannot install and Surface resources until R5. MapWorldBuilder builds one immutable headless world: placement geometry, interaction envelopes, terrain physics chunks with face provenance, feature query diagnostics and a build hash. MapPhysicsRegistration installs it into any IPhysicsWorld, MapWorldQueries and MapStanceCandidates answer pick, reach and walk-up stances, MapPhysicalRelations answers line of sight and clearance under a read lease, and MapResidencyOwnership and MapNavTiling name residency owners and navigation tiles. Ground support stays with the contact controller. GPU-free and backend-free: the caller picks the IPhysicsWorld. Opt-in: in NO umbrella.</Description>
   </PropertyGroup>
   <ItemGroup>
     <!-- MapDoc for the document and the asset closure, Physics for the shapes and the world seam, Movement for the

@@ -880,6 +880,14 @@ for grid equivalence. `ArchitectureTests.MapDocPhysics.cs` pins both project-ref
 package reference and the package's absence from every umbrella closure, and `MapDoc.Physics` is on the
 `OptInBackends` list.
 
+One dev tool references it:
+
+```
+KhaozEngine.MapEdit.Tool -> KhaozEngine.MapDoc.Physics  (NativeCollisionService reads and measures native colliders)
+```
+
+`ke-mapedit` is in no umbrella, so the edge carries the package into no shipped game.
+
 ## Content catalog package edges
 
 The family is seven packages, and every edge is forward and acyclic. `KhaozEngine.Catalog`, the read side, adds

@@ -506,6 +506,10 @@ decision. **A null provider never engages swim.** The swim flag replicates via N
   facing: `Forward` / `Strafe` / `Reverse`. Returned by `CharacterMovement.Sector(cmd)`, and what the directional
   speed scales are charged by while `MoveCommand.FaceCamera` is held. Public so presentation (which locomotion
   animation to play) reads the same answer the movement did rather than a hand-copied predicate.
+- **`ContactShell`** (`KhaozEngine.Locomotion.Contacts`) - the contact controller's shell for callers outside
+  locomotion: the upright capsule from `feet + StepHeight` to `feet + 2 * CapsuleHalfHeight` that blocks walls and
+  ceilings. `Validate(tuning)`, `Shape(tuning)` and `Centre(feet, tuning)` delegate to the controller's own shell
+  geometry, so the body model has one implementation. `KhaozEngine.MapDoc.Physics` sweeps it for physical clearance.
 
 ## Jump apex at a fixed step
 

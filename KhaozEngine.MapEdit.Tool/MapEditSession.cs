@@ -11,6 +11,10 @@ using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapEdit;
 
+/// <summary>The open native document under the session lock, for <see cref="MapEditSession.WithNativeAssets{T}"/>.</summary>
+internal sealed record NativeAssetContext(MapDocument Document, MapAssetClosure Assets, string ResourceRoot,
+    IMapAssetSource Source, MapDocRegistry Registry);
+
 /// <summary>Holds the one open document. All members lock internally.</summary>
 /// <remarks>The single stateful object behind the ke-mapedit MCP server: the current document, its path, the
 /// manifest paths, a shared default registry, a dirty flag, and a cached <see cref="TerrainField"/> rebuilt
@@ -48,6 +52,40 @@ public sealed class MapEditSession
 
     internal MapNativeEditEffects ApplyNative(EditorCommand command, MapDocument document, MapDocRegistry registry) =>
         NativeDocumentTransaction.Run(document, command, false, _nativeAssets, registry);
+
+    /// <summary>Runs <paramref name="fn"/> under the session lock with the open native document, its bound closure, its
+    /// resource root and a source that reads under that root and refuses writer-owned storage. Throws
+    /// <see cref="MapDocumentException"/> when no native document with a bound closure is open.</summary>
+    internal T WithNativeAssets<T>(Func<NativeAssetContext, T> fn)
+    {
+        ArgumentNullException.ThrowIfNull(fn);
+        lock (_lock)
+        {
+            RequireDocumentLocked();
+            if (!NativeDocumentService.IsNative(_doc!) || _nativeAssets is null || _storagePath is null)
+                throw new MapDocumentException("Native asset editing requires an open native document with a bound asset closure.");
+            string storagePath = Path.GetFullPath(_storagePath);
+            return fn(new NativeAssetContext(_doc!, _nativeAssets, MapDocumentStorage.ResourceRoot(storagePath, _storageForm),
+                new MapStorageGuardedAssetSource(storagePath, _storageForm), _registry));
+        }
+    }
+
+    /// <summary>Publishes <paramref name="command"/>, which replaces native asset roots, through one native transaction
+    /// validated against <paramref name="assets"/>, then binds that closure and marks the session dirty. A refused
+    /// transaction changes nothing.</summary>
+    internal MapNativeEditEffects ApplyNativeAssets(IEditorCommand command, MapAssetClosure assets)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(assets);
+        lock (_lock)
+        {
+            RequireDocumentLocked();
+            MapNativeEditEffects effects = NativeDocumentTransaction.Run(_doc!, command, false, assets, _registry);
+            _nativeAssets = assets;
+            _dirty = true;
+            return effects;
+        }
+    }
 
     /// <summary>Occupied-tile ceiling below which <see cref="Open"/> loads a tiled document whole, mirroring
     /// <c>MapEditorOptions.WholeWorldTileLimit</c> so the GUI editor and this MCP session agree on when a

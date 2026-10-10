@@ -14,8 +14,17 @@ finite transforms. `ValidateLocal(document, registry)` checks document-local val
 validate builder/hash options. Editing callers
 need no synthetic builder options and never resolve relative resource paths implicitly.
 `MapResolver.Resolve` publishes an immutable `MapResolvedDocument`. Its `AssetClosure` is the exact verified
-closure passed in, for binding and resource lookup without a second load. This package loads no meshes and has
-no render dependency. `KhaozEngine.Terrain.Render3D` owns the one-way `MapAssetManifestAdapter`.
+closure passed in, for binding and resource lookup without a second load. `MapNativeResolution.Resolve(document,
+assets, options, legacySupportHeight)` routes a native document to its resolver by identity: `(1, 1)` resolves with
+`MapResolver` over the caller's legacy support height and `(1, 2)` with `MapResolverV2` over the document's own
+surfaces. Options with a different resolver version refuse. This package loads no meshes and has no render
+dependency. `KhaozEngine.Terrain.Render3D` owns the one-way `MapAssetManifestAdapter` and `NativeMapAssetLoader`,
+which loads a native mesh with its source units applied once.
+
+`KhaozEngine.MapDoc.Identity.MapLegacyTerrainDigest` identifies a resolver 1 document's analytic terrain in two
+parts: `TerrainBlock(document)` over the terrain block and sculpt cell size, and `SculptTile(tile)` per sculpt tile,
+the same digest the resolver 2 content digest uses for that tile. Both are persisted identities, so a change to
+either canonical form is an identity migration.
 
 Native identity and resolution use the default registry only. Complete-document `MapAuthoredIdentityV2.Compute`,
 `MapAuthoredIdentity.Compute` and
@@ -52,6 +61,14 @@ Preparation validates references, seams and owners and refreshes affected surfac
 Heights, smoothing, presence and ownership invalidate Terrain, Physics, Nav and Residency. Topology and
 conversion also invalidate Material. Cell material-ID changes alone invalidate Terrain and Material,
 other cell fields invalidate all five, and re-anchoring alone invalidates Residency.
+
+## Native asset roots and record digests
+
+`MapNativeWriteSet` also carries a non-positional `NativeAssets` flag, so its released constructor is unchanged. When
+set, publication takes the candidate's whole native asset root list. ke-mapedit's collider edits use it to swap a
+rewritten root manifest in one native transaction. `MapSurfaceSemantics.RecordDigest(anchor, record)` is the record
+digest edit effects report. It covers the record's canonical bytes and its anchor and nothing of the anchor patch's
+terrain.
 
 ## Whole authored surface identity
 

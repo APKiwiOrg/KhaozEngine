@@ -27,6 +27,7 @@ internal sealed class SupportNeighborhoodCollector
     readonly List<SupportMember> _members = [];
     readonly List<CapsuleFeaturePolyhedron> _leaves = [];
     readonly List<SupportPolygon> _polygons = [];
+    readonly List<int> _triangles = [];
     readonly FeaturePoint _start, _end, _direction;
     readonly FeatureNumber _radius;
     readonly double _band;
@@ -88,7 +89,7 @@ internal sealed class SupportNeighborhoodCollector
         MathF.BitIncrement((float)GeometryInterval.Exact(centre).Add(GeometryInterval.Exact(extent.Upper)).Upper);
 
     /// <summary>Considers every element of one selected static: the faces of its box and hull leaves, or the
-    /// triangles of its mesh. A capture refusal is the neighborhood's status, and failed bounded arithmetic in the
+    /// triangles of its mesh near the probe. A capture refusal is the neighborhood's status, and failed bounded arithmetic in the
     /// kernel is Unsupported.</summary>
     internal CapsuleFeatureStatus Collect(Simulation simulation, SeamStaticHandle seam, in StaticDescription description)
     {
@@ -96,11 +97,9 @@ internal sealed class SupportNeighborhoodCollector
         CapsuleFeatureStatus captured;
         if (SupportNeighborhoodMesh.IsMesh(description.Shape))
         {
-            captured = SupportNeighborhoodMesh.Capture(simulation, description.Shape, description.Pose,
-                out CapsuleFeatureMesh? mesh);
+            captured = SupportNeighborhoodMesh.Polygons(simulation, description.Shape, description.Pose, seam, _start,
+                _end, _radius.Bounds.Add(GeometryInterval.Exact(_band)), _triangles, _polygons);
             if (captured != CapsuleFeatureStatus.Complete) return captured;
-            SupportNeighborhoodMesh.Polygons(seam, mesh!, _start, _end, _radius.Add(FeatureNumber.Exact(_band)),
-                _polygons);
         }
         else
         {

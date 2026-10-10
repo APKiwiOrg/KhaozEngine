@@ -131,17 +131,27 @@ internal static class CapsuleFeatureGeometry
         var seamPose = new Pose(pose.Position, pose.Orientation);
         for (int i = 0; i < local.Length; i++)
         {
-            Vector3 point = local[i];
-            if (!Within(point, 64)) return CapsuleFeatureStatus.Unsupported;
-            GeometryVector enclosure = RepresentedGeometryTransforms.PosePoint(seamPose, point);
-            if (!enclosure.IsResolved) return CapsuleFeatureStatus.Unsupported;
-            // PosePoint is an operation correspondence record only. The common certified affine
-            // operator below contains real and actual represented coefficients through every
-            // witness expression. Independently rounded point outputs never define topology.
-            world[i] = transform.Point(point);
-            if (!world[i].IsResolved) return CapsuleFeatureStatus.Unresolved;
-            if (!world[i].Within(2048)) return CapsuleFeatureStatus.Unsupported;
+            CapsuleFeatureStatus status = TransformVertex(local[i], seamPose, transform, out world[i]);
+            if (status != CapsuleFeatureStatus.Complete) return status;
         }
+        return CapsuleFeatureStatus.Complete;
+    }
+
+    /// <summary>One local vertex through a proved installed pose, with the coordinate bounds and finite checks every
+    /// captured vertex passes.</summary>
+    internal static CapsuleFeatureStatus TransformVertex(Vector3 point, in Pose seamPose,
+        in InstalledPoseOperator transform, out FeaturePoint world)
+    {
+        world = default;
+        if (!Within(point, 64)) return CapsuleFeatureStatus.Unsupported;
+        GeometryVector enclosure = RepresentedGeometryTransforms.PosePoint(seamPose, point);
+        if (!enclosure.IsResolved) return CapsuleFeatureStatus.Unsupported;
+        // PosePoint is an operation correspondence record only. The common certified affine
+        // operator below contains real and actual represented coefficients through every
+        // witness expression. Independently rounded point outputs never define topology.
+        world = transform.Point(point);
+        if (!world.IsResolved) return CapsuleFeatureStatus.Unresolved;
+        if (!world.Within(2048)) return CapsuleFeatureStatus.Unsupported;
         return CapsuleFeatureStatus.Complete;
     }
 

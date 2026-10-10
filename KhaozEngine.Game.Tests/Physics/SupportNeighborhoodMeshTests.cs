@@ -134,24 +134,64 @@ public class SupportNeighborhoodMeshTests
     }
 
     [Fact]
-    public void NonManifoldEdgeRefusesAmbiguous()
+    public void NonManifoldEdgeCertifiesEachTriangle()
     {
-        // Two triangles share the edge from p to q in opposite directions. A third on the same edge is non-manifold.
+        // Three triangles on the edge from p to q along Z: level toward +X (0), level toward -X (1), and a fin falling
+        // 45 degrees toward -X under triangle 1 whose front faces up and toward -X (2). The probe rests on the edge,
+        // which is the nearest point of each, so all three are members. 0 and 1 are coplanar. The fin lies below 0's
+        // plane and 0 below the fin's. Triangle 1's far vertex lies above the fin's plane, so 1 and 2 do not join.
         Vector3 p = new(0, 0, -1), q = new(0, 0, 1);
-        Vector3[] manifold = [p, q, new(1, 0, 0), q, p, new(-1, 0, 0)];
+        using var scene = new Scene();
+        StaticHandle mesh = AddMesh(scene, [p, new(1, 0, 0), q, q, new(-1, 0, 0), p, q, new(-1, -1, 0), p]);
         Pose pose = Lowest(0, FootProbe.Radius, 0);
-        using (var scene = new Scene())
+        Query query = scene.Query(scene.World, pose, probe: FootProbe);
+
+        Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
+        Assert.Equal(new[] { 0, 1, 2 }, query.Elements.Select(e => e.ElementId));
+        Assert.Equal(new Join[] { new(0, 1), new(0, 2) }, query.Joins);
+        AssertOracle(scene, mesh, query, pose, FootProbe);
+    }
+
+    [Fact]
+    public void DuplicateTriangleIsTwoMembers()
+    {
+        // The same up-facing triangle twice under the probe. Each copy is a member, and the coplanar copies join.
+        Vector3 a = new(-1, 0, -1), b = new(1, 0, -1), c = new(-1, 0, 1);
+        using var scene = new Scene();
+        StaticHandle mesh = AddMesh(scene, [a, b, c, a, b, c]);
+        Pose pose = Lowest(-0.5, FootProbe.Radius, -0.5);
+        Query query = scene.Query(scene.World, pose, probe: FootProbe);
+
+        Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
+        Assert.Equal(new[] { 0, 1 }, query.Elements.Select(e => e.ElementId));
+        Assert.Equal(new Join[] { new(0, 1) }, query.Joins);
+        AssertOracle(scene, mesh, query, pose, FootProbe);
+    }
+
+    [Fact]
+    public void LargeMeshQueryReadsOnlyNearbyTriangles()
+    {
+        // A 100 by 100 cell grid, 20,000 triangles over 20 m, plus one triangle 100 m out. That triangle lies past the
+        // 64 m local coordinate bound, so reading it would refuse the query. Read only near the probe, the mesh
+        // certifies, and its members match the oracle over every triangle.
+        var random = new Random(4438);
+        var vertices = new List<Vector3>(Heightfield(random, 100, 0.2f, 0.05f, flat: false));
+        Assert.Equal(60_000, vertices.Count);
+        vertices.AddRange([new(100, 0, 0), new(101, 0, 0), new(100, 0, 1)]);
+        using var scene = new Scene();
+        StaticHandle mesh = AddMesh(scene, [.. vertices]);
+        List<OracleFace> faces = SupportNeighborhoodOracle.InstalledMesh(scene.World, mesh);
+        for (int sample = 0; sample < 6; sample++)
         {
-            AddMesh(scene, manifold);
-            Assert.Equal(CapsuleFeatureStatus.Complete, scene.Query(scene.World, pose, probe: FootProbe).Result.Status);
-        }
-        using (var scene = new Scene())
-        {
-            AddMesh(scene, [.. manifold, q, p, new(0, -1, 0)]);
-            Query query = scene.Query(scene.World, pose, probe: FootProbe);
-            Assert.Equal(CapsuleFeatureStatus.Ambiguous, query.Result.Status);
-            Assert.Equal(0, query.Result.Elements);
-            Assert.Empty(query.Elements);
+            CapsuleShape probe = sample % 2 == 0 ? AxisProbe : FootProbe;
+            OracleFace face = faces[random.Next(20_000)];
+            Pose pose = Against(random, face, probe);
+            Query query = scene.Query(scene.World, pose, probe: probe);
+            Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
+            (OracleVector lower, OracleVector upper) = Segment(pose);
+            SupportNeighborhoodOracle.AssertMatches(query.Elements, faces, lower, upper, probe.Radius, Band);
+            Assert.True(SupportNeighborhoodOracle.IndexOf(query.Elements, face) >= 0,
+                $"Sample {sample}: the face the probe was placed against is a member.");
         }
     }
 
@@ -199,16 +239,7 @@ public class SupportNeighborhoodMeshTests
             {
                 CapsuleShape probe = sample % 2 == 0 ? AxisProbe : FootProbe;
                 OracleFace face = faces[random.Next(faces.Count)];
-                OracleVector target = SurfacePoint(random, face);
-                // Outward from the chosen face, tilted at random, at a separation inside the band.
-                OracleVector tilt = new OracleVector(Signed(random), Signed(random), Signed(random)) * 0.7;
-                OracleVector outward = (face.Normal + tilt).Unit;
-                if (OracleVector.Dot(outward, face.Normal) < 0.2) outward = face.Normal;
-                OracleVector anchor = target + outward * (probe.Radius + Between(random, -5e-5, 5e-5));
-                // The axis end nearer the face's plane takes the anchor, so the whole axis lies in front of the face.
-                // A short probe under a down-facing face would otherwise reach behind its plane.
-                Pose pose = face.Normal.Y >= 0 ? Lowest(anchor.X, anchor.Y, anchor.Z)
-                    : Lowest(anchor.X, anchor.Y - probe.Length, anchor.Z);
+                Pose pose = Against(random, face, probe);
                 Query query = scene.Query(scene.World, pose, probe: probe);
                 Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
                 (OracleVector lower, OracleVector upper) = Segment(pose);
@@ -233,12 +264,33 @@ public class SupportNeighborhoodMeshTests
         return [.. vertices];
     }
 
-    // An up-facing cells by cells grid of quads centred on the origin, with random heights within +-amplitude.
-    static Vector3[] Heightfield(Random random, int cells, float spacing, float amplitude)
+    // The probe placed against a random point of the face: outward, tilted at random, at a separation inside the
+    // band. The axis end nearer the face's plane takes that point, so the whole axis lies in front of the face. A
+    // short probe under a down-facing face would otherwise reach behind its plane.
+    static Pose Against(Random random, OracleFace face, CapsuleShape probe)
+    {
+        OracleVector target = SurfacePoint(random, face);
+        OracleVector tilt = new OracleVector(Signed(random), Signed(random), Signed(random)) * 0.7;
+        OracleVector outward = (face.Normal + tilt).Unit;
+        if (OracleVector.Dot(outward, face.Normal) < 0.2) outward = face.Normal;
+        OracleVector anchor = target + outward * (probe.Radius + Between(random, -5e-5, 5e-5));
+        return face.Normal.Y >= 0 ? Lowest(anchor.X, anchor.Y, anchor.Z)
+            : Lowest(anchor.X, anchor.Y - probe.Length, anchor.Z);
+    }
+
+    // An up-facing cells by cells grid of quads centred on the origin, with random heights within +-amplitude. With
+    // flat set, a random 2 by 2 cell block is level, so its eight triangles are exactly coplanar neighbours.
+    static Vector3[] Heightfield(Random random, int cells, float spacing, float amplitude, bool flat = true)
     {
         var heights = new float[cells + 1, cells + 1];
         for (int i = 0; i <= cells; i++)
             for (int j = 0; j <= cells; j++) heights[i, j] = amplitude * Signed(random);
+        if (flat)
+        {
+            int i0 = random.Next(cells - 1), j0 = random.Next(cells - 1);
+            for (int i = i0; i <= i0 + 2; i++)
+                for (int j = j0; j <= j0 + 2; j++) heights[i, j] = heights[i0, j0];
+        }
         Vector3 Corner(int i, int j) => new((i - cells / 2f) * spacing, heights[i, j], (j - cells / 2f) * spacing);
         var vertices = new List<Vector3>();
         for (int i = 0; i < cells; i++)

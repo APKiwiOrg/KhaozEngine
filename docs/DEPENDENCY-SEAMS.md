@@ -860,6 +860,25 @@ quarter-turn basis its drawn model uses.
 `ArchitectureTests.TileWorldPhysics_ReferencesOnlyTileWorldPhysicsAndLocomotion` pins the three edges and the
 absence of any package reference, and `TileWorld.Physics` is on the `OptInBackends` list.
 
+## Map document physics package edges
+
+`KhaozEngine.MapDoc.Physics` is the physics arm of the native map document, opt-in and in NO umbrella, split off so
+`KhaozEngine.MapDoc` stays physics-free for a tool or an editor that never needs a collider:
+
+```
+KhaozEngine.MapDoc.Physics -> KhaozEngine.MapDoc      (the document, the verified asset closure and MapDocumentException)
+KhaozEngine.MapDoc.Physics -> KhaozEngine.Physics     (PropCollisionFormat, the shapes it reads and the IPhysicsWorld seam)
+KhaozEngine.MapDoc.Physics -> KhaozEngine.Movement    (the reach and ground contracts the shared world composes)
+```
+
+Three forward edges and no backend: the caller picks the `IPhysicsWorld`. It references no renderer, no GPU, no
+TileWorld and no game. `Collider` and `Selection` resources carry `PropCollisionFormat` version 1 bytes, read
+through the existing `Physics` seam, so the package adds no format and no third-party package. The nonpackable test
+project references only `MapDoc.Physics`, `Physics.Bepu`, for proofs against the shipped backend, and `Sharding`,
+for grid equivalence. `ArchitectureTests.MapDocPhysics.cs` pins both project-reference sets, the absence of any
+package reference and the package's absence from every umbrella closure, and `MapDoc.Physics` is on the
+`OptInBackends` list.
+
 ## Content catalog package edges
 
 The family is seven packages, and every edge is forward and acyclic. `KhaozEngine.Catalog`, the read side, adds

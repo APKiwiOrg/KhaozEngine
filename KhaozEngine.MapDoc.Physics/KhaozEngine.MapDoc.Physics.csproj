@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>KhaozEngine.MapDoc.Physics</PackageId>
+    <Version>$(KhaozEngineVersion)</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Physics for a native KhaozEngine.MapDoc world. MapAssetShapes reads the Collider and Selection resources of a verified MapAssetClosure as KhaozEngine.Physics shapes in asset source units, with explicit refusal of unreadable payloads and shapes the backend cannot install. GPU-free and backend-free: the caller picks the IPhysicsWorld. Opt-in: in NO umbrella.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- MapDoc for the document and the asset closure, Physics for the shapes and the world seam, Movement for the
+         reach and ground contracts later layers compose. Nothing else: no renderer, no physics backend, no TileWorld.
+         ArchitectureTests.MapDocPhysics_ReferencesOnlyMapDocPhysicsAndMovement pins the edges. -->
+    <ProjectReference Include="../KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
+    <ProjectReference Include="../KhaozEngine.Physics/KhaozEngine.Physics.csproj" />
+    <ProjectReference Include="../KhaozEngine.Movement/KhaozEngine.Movement.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="KhaozEngine.MapDoc.Physics.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

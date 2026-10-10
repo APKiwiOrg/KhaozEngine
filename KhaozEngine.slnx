@@ -52,6 +52,8 @@
   <Project Path="KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj" />
   <Project Path="KhaozEngine.MapDoc.Tests/KhaozEngine.MapDoc.Tests.csproj" />
   <Project Path="KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj" />
+  <Project Path="KhaozEngine.MapDoc.Physics/KhaozEngine.MapDoc.Physics.csproj" />
+  <Project Path="KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj" />
   <Project Path="KhaozEngine.MapEditor/KhaozEngine.MapEditor.csproj" />
   <Project Path="KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
   <Project Path="KhaozEngine.Navigation/KhaozEngine.Navigation.csproj" />

@@ -71,12 +71,15 @@ internal static class GroundSeat
     }
 
     // The seated height less the start support's plane extrapolated to the new axis. Without a start plane the
-    // reference is level at the start feet. The part is charged against the climb budget, so it rounds up and a
-    // paid climb never exceeds the budget.
+    // reference is level at the start feet. A steep start, which only a slide moves from, explains no walkable rise,
+    // so the part is the rise above the start feet and a drop charges nothing. The part is charged against the
+    // climb budget, so it rounds up and a paid climb never exceeds the budget.
     static float StepPart(float height, in SupportSample start, Vector2 startAxis, float startFeetY, Vector2 axis)
     {
+        if (start.Status == SupportStatus.Steep)
+            return MathF.Max(0f, GroundPlacement.NotBelow((double)height - startFeetY));
         Vector3 n = start.Normal;
-        bool hasPlane = start.Status is SupportStatus.Walkable or SupportStatus.Steep && n.Y > 0;
+        bool hasPlane = start.Status == SupportStatus.Walkable && n.Y > 0;
         if (!hasPlane) return GroundPlacement.NotBelow((double)height - startFeetY);
         double plane = start.Height + ((double)n.X * ((double)startAxis.X - axis.X) +
             (double)n.Z * ((double)startAxis.Y - axis.Y)) / n.Y;

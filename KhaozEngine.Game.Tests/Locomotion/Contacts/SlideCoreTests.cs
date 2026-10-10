@@ -222,9 +222,11 @@ public class SlideCoreTests
         SlideStepResult wedged = ticks[^1];
         Assert.True(wedged.Outcome == SlideOutcome.Wedged, $"{wedged}");
         Assert.Equal(SupportStatus.Steep, wedged.Support.Status);
-        float before = ticks.Count > 1 ? ticks[^2].Feet.Y : gully.Seated("left", -0.6f).Y;
-        Assert.True(wedged.Feet.Y >= before, $"{wedged} after {before}");
         double reach = 0.5 * Tuning.CapsuleRadius;
+        // It cannot wedge before it is within reach of the crease, so it has come down at least (0.6 - reach) tan
+        // from its seated start.
+        Vector3 start = gully.Seated("left", -0.6f);
+        Assert.True(start.Y - wedged.Feet.Y >= (0.6 - reach) * grade - HalfSkin, $"{wedged} from {start}");
         Assert.True(Math.Abs(wedged.Feet.X) <= reach + HalfSkin, $"{wedged}");
         Assert.True(wedged.Feet.Y <= reach * grade + HalfSkin, $"{wedged}");
     }
@@ -286,6 +288,107 @@ public class SlideCoreTests
         AssertNear(CrateTop, landed.Feet.Y, HalfSkin, landed);
         Assert.Equal(0f, landed.VerticalVelocity);
         AssertNear(Fall(50, landing) * Math.Sin(angle), landed.ImpactSpeed, 1e-3, landed);
+    }
+
+    [Theory]
+    [InlineData(SceneVariant.Box)]
+    [InlineData(SceneVariant.Mesh)]
+    public void BlockedSlideKeepsOnlyAchievedSpeed(SceneVariant variant)
+    {
+        // A 50 degree face rising to +X and a crate whose vertical uphill side stands at x -0.3 over z in [-0.3, 0.3].
+        // From x 1 the shell (radius 0.4) meets that side once the axis reaches x 0.1, after about 14 ticks of
+        // closed-form fall (5.6 m/s down the fall line). A steer along +Z then carries it past the side's edge, and it
+        // slides on. Every tick keeps a carry no faster than the move it achieved, so a blocked tick sheds the speed
+        // it could not spend and the body leaves the crate slower than it met it.
+        float angle = Radians(50);
+        FootSupportScene scene = Slope(variant, 50);
+        if (variant == SceneVariant.Box)
+            scene.Slab("crate", new Vector3(-0.6f, 2, 0), 0, 0.3f, 0.3f, 4);
+        else
+        {
+            Vector3 a = new(-0.3f, -2, -0.3f), b = new(-0.3f, -2, 0.3f), up = new(0, 4, 0);
+            scene.Mesh("crate", [.. FootSupportScene.Facing(a, b, a + up, Vector3.UnitX),
+                .. FootSupportScene.Facing(b, b + up, a + up, Vector3.UnitX)]);
+        }
+        using var ground = new Ground(scene);
+        Vector3 feet = ground.Seated("slope", 1);
+        Vector2 carry = Vector2.Zero;
+        float verticalVelocity = 0;
+        double before = 0;
+        int blockedTicks = 0, freeAfter = 0;
+        var trace = new System.Text.StringBuilder();
+        // Ninety ticks is a guard only.
+        for (int tick = 1; tick <= 90 && freeAfter < 3; tick++)
+        {
+            Assert.True(ground.Contact(feet, out SupportSample support), $"tick {tick}: {support}\n{trace}");
+            // A tick starting with the shell against the side, within two skins of x 0.1 and short of its edge at
+            // z 0.3 + R, is pressed, and steers from then on. Once past the edge the body is free again.
+            bool pressed = feet.X < 0.1f + 2 * ShellMotion.ContactSkin && feet.Z < 0.3f + Tuning.CapsuleRadius;
+            Vector2 steer = pressed || blockedTicks > 0 ? new Vector2(0, 4) : Vector2.Zero;
+            SlideStepResult result = ground.Step(feet, carry, verticalVelocity, steer, support);
+            trace.AppendLine($"tick {tick}: {result}");
+            Assert.True(result.Outcome == SlideOutcome.Sliding, $"{trace}");
+
+            double fallLine = -result.HorizontalVelocity.X / Math.Cos(angle);
+            double contour = result.HorizontalVelocity.Y;
+            double kept = Math.Sqrt(fallLine * fallLine + contour * contour);
+            double rise = (double)result.Feet.Y - feet.Y;
+            double achieved = Math.Sqrt((double)result.Achieved.X * result.Achieved.X +
+                (double)result.Achieved.Y * result.Achieved.Y + rise * rise) / Dt;
+            Assert.True(kept <= achieved + 1e-3, $"kept {kept:R} over achieved {achieved:R}\n{trace}");
+
+            if (blockedTicks == 0 && !pressed) before = Math.Max(before, fallLine);
+            if (pressed) blockedTicks++;
+            else if (blockedTicks > 0) freeAfter++;
+            feet = result.Feet;
+            carry = result.HorizontalVelocity;
+            verticalVelocity = result.VerticalVelocity;
+        }
+        Assert.True(blockedTicks > 0 && freeAfter == 3, $"{trace}");
+        Assert.True(feet.Z > 0.7f, $"{trace}");
+        double leaving = -carry.X / Math.Cos(angle);
+        Assert.True(before > 5 && leaving < before, $"leaving {leaving:R} against {before:R}\n{trace}");
+    }
+
+    [Theory]
+    [InlineData("feet")]
+    [InlineData("carry")]
+    [InlineData("verticalVelocity")]
+    [InlineData("steer")]
+    [InlineData("dt")]
+    [InlineData("tractionSlopeRadians")]
+    public void NonFiniteInputsNameTheirParameter(string name)
+    {
+        using Ground face = Plane("terrain", 50);
+        Vector3 feet = face.Seated("slope", 0.5f);
+        Assert.True(face.Contact(feet, out SupportSample support), $"{support}");
+        float grade = MathF.Tan(Radians(50));
+        Vector3 normal = Vector3.Normalize(new Vector3(-grade, 1, 0));
+        float nan = float.NaN;
+
+        ArgumentException thrown = Assert.ThrowsAny<ArgumentException>(() => SlideCore.Step(
+            name == "feet" ? feet with { Y = nan } : feet,
+            name == "carry" ? new Vector2(nan, 0) : Vector2.Zero,
+            name == "verticalVelocity" ? nan : 0,
+            name == "steer" ? new Vector2(0, nan) : Vector2.Zero,
+            name == "dt" ? nan : Dt, Tuning, Settings,
+            name == "tractionSlopeRadians" ? nan : Gate, support, (x, _) => grade * x, (_, _) => normal, null, null));
+
+        Assert.Equal(name, thrown.ParamName);
+    }
+
+    [Fact]
+    public void ZeroStepHeightIsRejected()
+    {
+        // A slide's substeps keep the drop along the face within half the step height, which needs a positive step
+        // height. A zero step height is rejected before any substep is counted, because the shell could not clear
+        // its walkable plane: (0 + R) cos(45) is under R.
+        MoveTuning flat = Tuning with { StepHeight = 0 };
+        float grade = MathF.Tan(Radians(50));
+        Vector3 normal = Vector3.Normalize(new Vector3(-grade, 1, 0));
+
+        Assert.Throws<ArgumentException>(() => GroundCore.Slide(new Vector3(0.5f, 0.5f * grade, 0),
+            new Vector2(-0.1f, 0), Dt, flat, Settings, (x, _) => grade * x, (_, _) => normal, null, null, Gate));
     }
 
     // A crate top at 0.3 over x in [-1.5, 0] and a 50 degree face rising from its edge.

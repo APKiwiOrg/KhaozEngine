@@ -43,15 +43,11 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         return new(true, placed, support, budget - raised, true, total);
     }
 
-    // The step part plus the unpaid lag is paid from this attempt's copy of the tick budget. A steep start plane
-    // explains no walkable rise, so from a slide the step part is the rise above the start feet.
+    // The step part plus the unpaid lag is paid from this attempt's copy of the tick budget.
     static float Paced(in SupportSample start, float startFeetY, in GroundSeatResult seat, ref double budget)
     {
         double lag = start.Status == SupportStatus.Walkable ? Math.Max(0, (double)start.Height - startFeetY) : 0;
-        double part = start.Status == SupportStatus.Steep
-            ? NotBelow((double)seat.FeetY - startFeetY)
-            : seat.StepPart;
-        double wanted = part + lag;
+        double wanted = (double)seat.StepPart + lag;
         if (!(wanted > 0)) return seat.FeetY;
         double paid = Math.Min(wanted, budget);
         budget -= paid;

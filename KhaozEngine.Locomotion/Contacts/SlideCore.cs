@@ -59,9 +59,16 @@ internal static class SlideCore
         in SupportSample support, Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease)
     {
-        if (!float.IsFinite(carry.X) || !float.IsFinite(carry.Y) || !float.IsFinite(verticalVelocity) ||
-            !float.IsFinite(steer.X) || !float.IsFinite(steer.Y))
-            throw new ArgumentOutOfRangeException(nameof(carry), "The velocities must be finite.");
+        if (!float.IsFinite(feet.X) || !float.IsFinite(feet.Y) || !float.IsFinite(feet.Z))
+            throw new ArgumentOutOfRangeException(nameof(feet), "The feet must be finite.");
+        if (!float.IsFinite(carry.X) || !float.IsFinite(carry.Y))
+            throw new ArgumentOutOfRangeException(nameof(carry), "The carry must be finite.");
+        if (!float.IsFinite(verticalVelocity))
+            throw new ArgumentOutOfRangeException(nameof(verticalVelocity), "The vertical velocity must be finite.");
+        if (!float.IsFinite(steer.X) || !float.IsFinite(steer.Y))
+            throw new ArgumentOutOfRangeException(nameof(steer), "The steer must be finite.");
+        if (!float.IsFinite(dt) || dt <= 0)
+            throw new ArgumentOutOfRangeException(nameof(dt), "dt must be positive and finite.");
         if (!float.IsFinite(tractionSlopeRadians))
             throw new ArgumentOutOfRangeException(nameof(tractionSlopeRadians), "The traction gate must be finite.");
         if (support.Status != SupportStatus.Steep)
@@ -83,7 +90,7 @@ internal static class SlideCore
         float terminal = tuning.MaxFallSpeed / MathF.Max(h, MathF.Sin(gate));
         fall = Math.Clamp(fall, -terminal, terminal);
 
-        var velocity = new Vector2(fall * tx + contour * cx, fall * tz + contour * cz);
+        Vector2 velocity = Horizontal(fall, contour, tx, tz, cx, cz);
         float vertical = fall * ty;
         float steerAlong = steer.X * cx + steer.Y * cz;
         Vector2 move = (velocity + steerAlong * new Vector2(cx, cz)) * dt;
@@ -97,16 +104,37 @@ internal static class SlideCore
                     MathF.Max(0f, -vertical));
             case GroundFooting.None:
                 return new(step.Feet, velocity, vertical, step.Achieved, SlideOutcome.Airborne, step.Support, 0f);
-            case GroundFooting.Held:
-                // Support that cannot be certified holds the body where it is, still sliding on what it had.
-                return new(step.Feet, velocity, 0f, step.Achieved, SlideOutcome.Sliding, support, 0f);
         }
         float rise = step.Feet.Y - feet.Y;
+        if (step.Blocked)
+        {
+            // A blocked slide keeps only the velocity its move achieved: the achieved move over dt with the seated
+            // rise, split on the plane. Each part keeps the integrated part's direction and no more than its size,
+            // and the steer's contour part never enters the carry.
+            float ax = step.Achieved.X / dt, ay = rise / dt, az = step.Achieved.Y / dt;
+            fall = Toward(fall, ax * tx + ay * ty + az * tz);
+            contour = Toward(contour, ax * cx + az * cz - steerAlong);
+            velocity = Horizontal(fall, contour, tx, tz, cx, cz);
+        }
+        // Support that cannot be certified holds the body where it is, still sliding on what it had.
+        if (step.Footing == GroundFooting.Held)
+            return new(step.Feet, velocity, rise / dt, step.Achieved, SlideOutcome.Sliding, support, 0f);
         bool wedged = rise >= 0 && Opposed(step.Feet, step.Support, tuning, settings, tractionSlopeRadians,
             groundHeight, groundNormal, world, lease);
         return new(step.Feet, velocity, rise / dt, step.Achieved, wedged ? SlideOutcome.Wedged : SlideOutcome.Sliding,
             step.Support, 0f);
     }
+
+    static Vector2 Horizontal(float fall, float contour, float tx, float tz, float cx, float cz) =>
+        new(fall * tx + contour * cx, fall * tz + contour * cz);
+
+    // The achieved component, limited to the integrated one's direction and size.
+    static float Toward(float integrated, float achieved) => integrated switch
+    {
+        > 0f => Math.Clamp(achieved, 0f, integrated),
+        < 0f => Math.Clamp(achieved, integrated, 0f),
+        _ => 0f,
+    };
 
     // The unit horizontal direction down the plane, or zero for a level or degenerate normal.
     static Vector2 FallLine(Vector3 normal)
@@ -117,8 +145,10 @@ internal static class SlideCore
     }
 
     // True when steep support half a capsule radius down the fall line, a stall's farthest distance from a crease,
-    // falls back against it. The probe reaches up as far as a plane of the support's own slope rises over the probe's
-    // footprint, capped at the body's height.
+    // falls back against it. The probe reaches up to where it would meet an opposing face as steep as the support
+    // rising from the feet: the face's rise over the probe distance, d tan(slope), plus the foot probe's contact
+    // above the plane at its axis, r (1 / cos(slope) - 1), plus the contact skin for rounding. It is capped at the
+    // body's height.
     static bool Opposed(Vector3 feet, in SupportSample support, in MoveTuning tuning, in GroundCoreSettings settings,
         float tractionSlopeRadians, Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease)
@@ -128,8 +158,11 @@ internal static class SlideCore
         float distance = 0.5f * tuning.CapsuleRadius;
         float footRadius = settings.FootRadiusFraction * tuning.CapsuleRadius;
         float height = 2f * tuning.CapsuleHalfHeight;
-        float ny = support.Normal.Y;
-        float reachUp = ny > 0f ? MathF.Min((distance + footRadius) / ny, height) : height;
+        float ny = Math.Clamp(support.Normal.Y, 0f, 1f);
+        float across = MathF.Sqrt(MathF.Max(0f, 1f - ny * ny));
+        float reachUp = ny > 0f
+            ? MathF.Min(distance * across / ny + footRadius * (1f / ny - 1f) + ShellMotion.ContactSkin, height)
+            : height;
         if (!(reachUp >= 0f)) reachUp = height;
         Vector2 axis = new Vector2(feet.X, feet.Z) + distance * down;
         SupportSample beyond = FootSupport.Find(groundHeight, groundNormal, world, lease,

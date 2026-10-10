@@ -112,7 +112,8 @@ internal static class GroundCore
         support.Status == SupportStatus.Walkable && (double)support.Height - support.HeightError > feetY;
 
     // Substeps of at most half the capsule radius whose drop along a plane of this normal is at most half the step
-    // height. A plane too steep to bound takes the cap, and the seat then leaves the body airborne.
+    // height. Validation has already rejected a step height that is not positive, because the shell could not clear
+    // its walkable plane. A plane too steep to bound takes the cap, and the seat then leaves the body airborne.
     static int SlideSubsteps(Vector2 displacement, Vector3 normal, in MoveTuning tuning)
     {
         double ny = Math.Clamp(normal.Y, 0f, 1f), across = Math.Sqrt(Math.Max(0, 1 - ny * ny));

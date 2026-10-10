@@ -168,7 +168,7 @@ void AssertNeighborhoodCurrent(in SupportNeighborhoodResult result, IPhysicsQuer
     includes the tread triangle(s).
   - `PyramidApexJoinsEveryFace` and `SaddleJoinsOnlyConvexNeighbours`.
   - `BackFaceIsNotAMember`: a down-facing triangle at y `0.1` with the probe above it gives no member for it.
-  - `NonManifoldEdgeRefusesAmbiguous`: three triangles on one edge.
+  - `NonManifoldEdgeCertifiesEachTriangle`: three triangles on one edge are three members with geometric joins.
   - `DenseFanCertifiesWithinCapacity`: 96 triangles around one vertex, probe on the vertex: completes with 96
     members.
   - `MeshMembershipMatchesBruteForceOracle`: 500 seeded poses over random heightfield meshes, same assertions as
@@ -269,7 +269,7 @@ internal static int CertifyNeighborhood(IPhysicsCapsuleFeatures capability, IPhy
   `stackalloc SupportElement[256]`, `ulong[256 * 4]`, `SupportContribution[256]`.
 - `FootSupportScenes` gains `Sphere(SceneVariant, ...)`, `UprightCylinder`, `LyingLog`, `PlateauBesideSteepFace`
   (plateau at y `0` over x `[-2, 0]`, separate 70 degree face falling from x `0`), `OverlappingCoplanarFloors`,
-  `NonManifoldMesh` and `PartitionedTerrain(int pieces)` (one heightfield mesh with a ridge, a valley, a step and a
+  `OverCapacityFan` (300 triangles meeting at one vertex, which exceeds the 256-element capacity) and `PartitionedTerrain(int pieces)` (one heightfield mesh with a ridge, a valley, a step and a
   fan, built whole or split into `pieces` statics that share boundary vertices exactly).
 
 - [ ] **Step 1: Write the failing tests.**
@@ -284,7 +284,9 @@ internal static int CertifyNeighborhood(IPhysicsCapsuleFeatures capability, IPhy
   - `ConvexApexGivesTheMinimumPlane`, `SaddleGivesEachFacesPlane`, `SunkRampTakesTheHigherSurface`.
   - `CylinderCapIsWalkableAndSideIsSteep`, `LyingLogSupportsItsTopLine`, `SphereFlankBeyondTheSlopeLimitIsSteep`.
   - `OverlappingCoplanarStaticsAgree`: Walkable `0`, identical on repeat and when rebuilt in the other order.
-  - `NonManifoldMeshRefuses`: `Refused`.
+  - `OverCapacityFanRefuses`: `Refused`.
+  - `NonManifoldMeshCertifiesPerTriangle`: three triangles on one edge and a duplicate triangle give the walkable
+    support of their surfaces.
   - The phase 1 row that pins the hidden lower surface limit keeps its expectation or moves to the certified one.
     Say which in the report, with the geometric reason.
   - `SupportIsIndependentOfPartition`: `PartitionedTerrain(1)`, `(4)` and one static per triangle, over a grid of
@@ -316,7 +318,7 @@ internal static int CertifyNeighborhood(IPhysicsCapsuleFeatures capability, IPhy
   - Delete `StalledByNosingGap`, `HeldByNosingGap`, `NosingEscapeRefusesAnotherStall`,
     `NosingEscapeRefusesAnotherHeldStart` and every escape call. `StairsClimbEveryRiser` and `QueryCostPerTick`
     assert their full expectations on all 32 and all cost rows.
-  - `RefusedStartHolds` and `RefusedTargetBlocks` run on `NonManifoldMesh`. `GroundSeatTests.CurvedPropRefuses`
+  - `RefusedStartHolds` and `RefusedTargetBlocks` run on `OverCapacityFan`. `GroundSeatTests.CurvedPropRefuses`
     becomes `CurvedPropSeatsOnItsTop` (Seated at the sphere top).
   - Add `SupportFindAllocatesNothing`: after one warm call, `GC.GetAllocatedBytesForCurrentThread()` around one
     `FootSupport.Find` on flat ground, stairs, a 96-triangle fan and a sphere is `0`.

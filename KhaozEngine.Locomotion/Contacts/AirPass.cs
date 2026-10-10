@@ -106,7 +106,10 @@ internal static class AirPass
             if (support.Status == SupportStatus.Walkable)
             {
                 // The seat goes through the ground core's placement, so the feet never seat into a shell overlap and
-                // a rise above the substep's start feet is paced like a step up. The ground core pays the rest.
+                // a rise above the substep's start feet is paced like a step up. The ground core pays the rest. The
+                // paced feet are min(support, start feet + budget), never below the start feet, so the lag stays
+                // under StepHeight less the budget and the next ground tick's band still holds the support. A
+                // clearance push can only lower them until the shell clears, which keeps them over the support.
                 double rise = (double)support.Height - high;
                 var seat = new GroundSeatResult(SeatOutcome.Seated, support.Height, support,
                     rise > 0 ? GroundPlacement.NotBelow(rise) : 0f, Vector3.Zero);

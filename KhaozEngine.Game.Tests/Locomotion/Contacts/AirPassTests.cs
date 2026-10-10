@@ -513,6 +513,39 @@ public class AirPassTests
         Assert.Equal(-slid.FallSpeedAtContact, slid.VerticalVelocity);
     }
 
+    [Theory]
+    [InlineData(SceneVariant.Box, false)]
+    [InlineData(SceneVariant.Mesh, false)]
+    [InlineData(SceneVariant.Box, true)]
+    [InlineData(SceneVariant.Mesh, true)]
+    public void PacedLandingStaysWithinTheGroundBand(SceneVariant variant, bool roof)
+    {
+        // The feet start two skins above StepHeight below the ledge top, the lowest start whose shell clears the top
+        // and whose band reaches it, so the paced seat leaves the largest lag, StepHeight less the budget less two
+        // skins. A roof 1.5 above the top pushes the seat down until the shell clears it, at most to the shell's
+        // lowest clear height over the top, so the lag stays under StepHeight. Either way one resting ground tick
+        // still finds the top in its band.
+        FootSupportScene built = Ledge(variant);
+        if (roof) built.Ceiling("roof", new Vector3(2.5f, LedgeTop + 1.5f, 0), 1.5f, 2);
+        using Ground space = new(built);
+        var feet = new Vector3(1.5f, LedgeTop - Tuning.StepHeight + 2 * Skin, 0);
+
+        AirStepResult landed = space.Step(feet, Vector2.Zero, 0);
+
+        AssertLandedOn(landed, space["ledge"]);
+        double lag = LedgeTop - landed.Feet.Y;
+        if (roof)
+            AssertNear(LedgeTop + 1.5 - Height - Skin, landed.Feet.Y, HalfSkin, landed);
+        else
+            AssertNear(Tuning.StepHeight - Budget - 2 * Skin, lag, HalfSkin, landed);
+        Assert.True(lag < Tuning.StepHeight, $"{landed}");
+        GroundStepResult rest = space.Rest(landed.Feet);
+        Assert.Equal(GroundFooting.Walkable, rest.Footing);
+        Assert.Equal(space["ledge"], rest.Support.Static);
+        // Without the roof the climb is paid from the budget. Under it the shell has no room to rise.
+        AssertNear(roof ? 0 : Budget, rest.Rise, HalfSkin, rest);
+    }
+
     // A 75 degree face rising from its toe at the origin, 2 m along its slope, over the floor.
     static FootSupportScene SteepFace(SceneVariant variant)
     {

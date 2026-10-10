@@ -68,11 +68,13 @@ public sealed class MapPhysicalRelations
     /// <paramref name="feetPath"/>. The shell is tested in place at the first point, then swept along each segment
     /// between consecutive points. Penetration deeper than <see cref="Tolerance"/>, or a sweep hit before a segment's
     /// end, is <see cref="MapPhysicalCertainty.Blocked"/>, with the distance along the path. A shell that starts in
-    /// contact no deeper than <see cref="Tolerance"/> sweeps its first segment from a start pushed out along the
-    /// minimum translation vector to <see cref="Tolerance"/> clear of the contact, as the contact controller recovers.
-    /// The backend reports a sweep that starts overlapping as a hit at distance 0 with no normal, so the push-out, not
-    /// the hit normal, decides: a path moving away from the touched surface is clear and a path moving into it is
-    /// blocked. The shell's later segments start from the path points themselves. A point outside the document's
+    /// contact no deeper than <see cref="Tolerance"/> sweeps its first segment that moves from a start pushed out along
+    /// the minimum translation vector to <see cref="Tolerance"/> clear of the contact, as the contact controller
+    /// recovers. Leading zero-length segments keep the push-out. The backend reports a sweep that starts overlapping
+    /// as a hit at distance 0 with no normal, so the push-out, not the hit normal, decides: a path moving away from the
+    /// touched surface is clear and a path moving into it is blocked. A start contact of exactly zero depth has no
+    /// push-out direction, so a sweep starting exactly tangent is reported as the backend reports it. Segments after
+    /// the first that moves start from the path points themselves. A point outside the document's
     /// playable bounds is <see cref="MapPhysicalCertainty.Unknown"/>. Throws <see cref="ArgumentOutOfRangeException"/>
     /// for a path of other than 1 to <see cref="MaxClearancePoints"/> points, <see cref="ArgumentException"/> for an
     /// invalid tuning, a non-finite point or a lease over another physics world, <see cref="ObjectDisposedException"/>
@@ -93,7 +95,7 @@ public sealed class MapPhysicalRelations
         IPhysicsWorld physics = _registration.Physics;
         CapsuleShape shell = ContactShell.Shape(tuning);
         Vector3 feet = Local(lease, feetPath[0]);
-        // The first sweep starts here: the shell pushed out of a tolerated contact to Tolerance clear of it.
+        // The first sweep that moves starts here: the shell pushed out of a tolerated contact to Tolerance clear of it.
         Vector3 pushOut = Vector3.Zero;
         if (physics.ComputePenetration(shell, Pose.At(ContactShell.Centre(feet, tuning)), out Vector3 mtv))
         {
@@ -115,7 +117,7 @@ public sealed class MapPhysicalRelations
                 return Result(MapPhysicalCertainty.Blocked, Owner(hit.Body), travelled + hit.Distance);
             travelled += length;
             feet = next;
-            pushOut = Vector3.Zero;
+            if (length > 0f) pushOut = Vector3.Zero;
         }
         return Result(MapPhysicalCertainty.Clear);
     }

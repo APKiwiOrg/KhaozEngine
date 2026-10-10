@@ -121,6 +121,17 @@ public class MapPhysicalRelationsTests
     }
 
     [Fact]
+    public void PathStartingInToleratedContact_MayLeaveTheWallAfterAZeroLengthStep()
+    {
+        using var physics = new BepuPhysicsWorld();
+        using var reg = MapPhysicsRegistration.Register(Wall(), physics);
+        var r = new MapPhysicalRelations(reg);
+        using var lease = ((IPhysicsQueryLeaseSource)physics).AcquireQueryReadLease();
+        var path = new[] { Touching, Touching, At(0f, 0f, 1.5f) };
+        Assert.Equal(MapPhysicalCertainty.Clear, r.Clearance(lease, path, MoveTuning.Default).Certainty);
+    }
+
+    [Fact]
     public void PathStartingInToleratedContact_MayNotEnterTheWall()
     {
         using var physics = new BepuPhysicsWorld();

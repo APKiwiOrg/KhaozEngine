@@ -45,11 +45,12 @@ internal static class AirPass
     /// feet to <see cref="MoveTuning.StepHeight"/> above its highest. Walkable support in it lands the body through the
     /// ground core's placement, the step up a standing body would take, with the rise above the substep's start feet
     /// paced by <see cref="MoveTuning.MaxStepClimbSpeed"/>. Steep support within the travelled span starts a
-    /// slide. Analytic terrain more than <see cref="MoveTuning.StepHeight"/> above the feet at the new axis is
-    /// a wall. <paramref name="velocity"/> is the tick's horizontal velocity and <paramref name="verticalVelocity"/>
-    /// the carried one before gravity. <paramref name="tractionSlopeRadians"/> is the tick's traction gate. A non-null
-    /// <paramref name="world"/> follows the <see cref="FootSupport.Find"/> contract. <paramref name="climbBudget"/> is
-    /// the climb the tick may still pay, in metres. Null means a whole tick's <c>MaxStepClimbSpeed * dt</c>.</summary>
+    /// slide. Analytic terrain at the new axis more than <see cref="MoveTuning.StepHeight"/> above the feet, or steep
+    /// and above them, is a wall. <paramref name="velocity"/> is the tick's horizontal velocity and
+    /// <paramref name="verticalVelocity"/> the carried one before gravity. <paramref name="tractionSlopeRadians"/> is
+    /// the tick's traction gate. A non-null <paramref name="world"/> follows the <see cref="FootSupport.Find"/>
+    /// contract. <paramref name="climbBudget"/> is the climb the tick may still pay, in metres. Null means a whole
+    /// tick's <c>MaxStepClimbSpeed * dt</c>.</summary>
     internal static AirStepResult Step(Vector3 feet, Vector2 velocity, float verticalVelocity, float dt,
         float gravity, in MoveTuning tuning, in GroundCoreSettings settings, float tractionSlopeRadians,
         Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal,
@@ -90,17 +91,18 @@ internal static class AirPass
             Vector3 from = start + moved;
             Vector3 before = current;
             ShellFlight flight = ShellMotion.Fly(world, from, move, ref current, tuning, cosMaxSlope);
-            // Analytic terrain has no shell to meet. As in the ground core, terrain more than StepHeight above the
-            // feet at the new axis is a wall. The substep reruns without its component into the wall, then without
-            // its horizontal part if the wall still stops it.
-            if (TerrainWall(groundHeight, groundNormal, from, flight, tuning) is Vector2 wall)
+            // Analytic terrain has no shell to meet. As in the ground core, terrain at the new axis more than
+            // StepHeight above the substep's highest feet is a wall, and so is steep terrain above them, so the axis
+            // never sinks into a face it cannot stand on. The substep reruns without its component into the wall,
+            // then without its horizontal part if the wall still stops it.
+            if (TerrainWall(groundHeight, groundNormal, from, flight, tuning, cosMaxSlope) is Vector2 wall)
             {
                 Vector2 alongMove = Along(new Vector2(move.X, move.Z), wall);
                 Vector2 alongVelocity = Along(new Vector2(before.X, before.Z), wall);
                 current = new Vector3(alongVelocity.X, before.Y, alongVelocity.Y);
                 flight = ShellMotion.Fly(world, from, new Vector3(alongMove.X, move.Y, alongMove.Y), ref current,
                     tuning, cosMaxSlope);
-                if (TerrainWall(groundHeight, groundNormal, from, flight, tuning) is not null)
+                if (TerrainWall(groundHeight, groundNormal, from, flight, tuning, cosMaxSlope) is not null)
                 {
                     current = new Vector3(0f, before.Y, 0f);
                     flight = ShellMotion.Fly(world, from, new Vector3(0f, move.Y, 0f), ref current, tuning,
@@ -168,16 +170,20 @@ internal static class AirPass
     static double Budget(in MoveTuning tuning, float dt) =>
         tuning.MaxStepClimbSpeed > 0 ? (double)tuning.MaxStepClimbSpeed * dt : double.PositiveInfinity;
 
-    // The horizontal wall normal of analytic terrain more than StepHeight above the substep's highest feet at the
-    // flight's new axis: the delegate's normal made horizontal, else the reverse of the flight's horizontal move.
-    // Null without a wall.
+    // The horizontal wall normal of analytic terrain at the flight's new axis that is more than StepHeight above the
+    // substep's highest feet, or steep by the tick's gate and above them: the delegate's normal made horizontal, else
+    // the reverse of the flight's horizontal move. Null without a wall. Steep is the foot support's analytic test.
     static Vector2? TerrainWall(Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal,
-        Vector3 from, in ShellFlight flight, in MoveTuning tuning)
+        Vector3 from, in ShellFlight flight, in MoveTuning tuning, float cosMaxSlope)
     {
         if (groundHeight is null || (flight.Achieved.X == 0f && flight.Achieved.Z == 0f)) return null;
         float x = from.X + flight.Achieved.X, z = from.Z + flight.Achieved.Z;
-        if (!(groundHeight(x, z) > from.Y + flight.Highest + tuning.StepHeight)) return null;
-        Vector3 normal = groundNormal?.Invoke(x, z) ?? Vector3.Zero;
+        float height = groundHeight(x, z), highest = from.Y + flight.Highest;
+        if (!(height > highest)) return null;
+        Vector3? delegated = groundNormal?.Invoke(x, z);
+        bool steep = delegated is Vector3 n && n.Y < cosMaxSlope;
+        if (!steep && !(height > highest + tuning.StepHeight)) return null;
+        Vector3 normal = delegated ?? Vector3.Zero;
         var across = new Vector2(normal.X, normal.Z);
         float length = across.Length();
         if (length > 0f && float.IsFinite(length)) return across / length;

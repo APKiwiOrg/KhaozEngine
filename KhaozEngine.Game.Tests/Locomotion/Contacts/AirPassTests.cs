@@ -615,6 +615,24 @@ public class AirPassTests
     }
 
     [Fact]
+    public void JumpIntoASteepTerrainFaceNeverSinksIntoIt()
+    {
+        // A 5:1 analytic face, 78.7 degrees, rises to +X from x 0 with its own normal. A jump at JumpSpeed running at
+        // 6 m/s from 0.05 short of the toe rises along the face. Steep terrain above the feet is a wall, so no tick
+        // ends with the face above the feet at the axis. The descent meets the face within its travel and slides.
+        const float Grade = 5;
+        Vector3 normal = Vector3.Normalize(new Vector3(-Grade, 1, 0));
+        float Face(float x, float z) => x < 0 ? 0 : Grade * x;
+        using Ground space = new(null, Face, (x, _) => x < 0 ? Vector3.UnitY : normal);
+
+        List<AirStepResult> ticks = space.Run(new Vector3(-0.05f, 0, 0), new Vector2(6, 0), Tuning.JumpSpeed, 60);
+
+        Assert.All(ticks, t => Assert.True(Face(t.Feet.X, t.Feet.Z) <= t.Feet.Y + HalfSkin, $"{t}"));
+        Assert.Equal(AirOutcome.Sliding, ticks[^1].Outcome);
+        Assert.True(ticks[^1].Feet.X > 0, $"{ticks[^1]}");
+    }
+
+    [Fact]
     public void DiagonalRunIntoATerrainCliffKeepsAlongSpeed()
     {
         // A 3 m analytic cliff at x 1 whose delegate reports the face normal -X beyond the edge. A run at (6, 6) from

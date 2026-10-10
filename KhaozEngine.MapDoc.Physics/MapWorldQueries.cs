@@ -110,11 +110,24 @@ public sealed class MapWorldQueries
     public bool Within(in MovementBody body, string placementId, float range, float tolerance = 0f,
         MapInteractionBand? band = null)
     {
+        CheckReach(range, tolerance);
+        return Reaches(Placement(placementId).Envelope, body, range, tolerance, band);
+    }
+
+    /// <summary>Throws unless <paramref name="range"/> and <paramref name="tolerance"/> are finite and
+    /// nonnegative.</summary>
+    internal static void CheckReach(float range, float tolerance)
+    {
         if (!float.IsFinite(range) || range < 0f)
             throw new ArgumentOutOfRangeException(nameof(range), "Range must be finite and nonnegative.");
         if (!float.IsFinite(tolerance) || tolerance < 0f)
             throw new ArgumentOutOfRangeException(nameof(tolerance), "Tolerance must be finite and nonnegative.");
-        MapInteractionEnvelope envelope = Placement(placementId).Envelope;
+    }
+
+    /// <summary>The reach test behind <see cref="Within"/>, for range and tolerance already checked.</summary>
+    internal static bool Reaches(MapInteractionEnvelope envelope, in MovementBody body, float range, float tolerance,
+        MapInteractionBand? band)
+    {
         double distance = MapShapeQueries.Measure(MapProbe.Of(body), envelope.Shape,
             MapDoublePose.From(envelope.WorldPose), Slab(band), new MapReachTest(true, range, tolerance));
         return distance <= (double)range + tolerance;
@@ -138,7 +151,7 @@ public sealed class MapWorldQueries
         return _placements[index];
     }
 
-    static MapSlab Slab(MapInteractionBand? band)
+    internal static MapSlab Slab(MapInteractionBand? band)
     {
         if (band is not { } b) return MapSlab.All;
         if (!float.IsFinite(b.MinY) || !float.IsFinite(b.MaxY) || b.MinY > b.MaxY)

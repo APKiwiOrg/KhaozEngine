@@ -104,6 +104,19 @@ internal static partial class NativeWorldFixtures
             Options() with { Resolve = LegacyResolveOptions, LegacySupportHeight = height });
     }
 
+    /// <summary>The analytic resolver-1 slope <see cref="BuildLegacySlope"/> stands on, rising along both +x and
+    /// +z.</summary>
+    internal static float LegacySlopeHeight(float x, float z) => 0.25f + 0.1763f * x + 0.0875f * z;
+
+    /// <summary>The legacy crate built with resolver-1 options over <see cref="LegacySlopeHeight"/>. The crate keeps
+    /// its authored y 0.</summary>
+    internal static MapBuiltWorld BuildLegacySlope()
+    {
+        NativeFixture f = LegacyCrate();
+        return MapWorldBuilder.Build(f.Document, f.Assets,
+            Options() with { Resolve = LegacyResolveOptions, LegacySupportHeight = LegacySlopeHeight });
+    }
+
     internal static MapBuiltWorld BuildTallCornerCell() => Build(TallCornerCell());
 
     /// <summary>The resolver-2 crate built with resolver-1 options.</summary>

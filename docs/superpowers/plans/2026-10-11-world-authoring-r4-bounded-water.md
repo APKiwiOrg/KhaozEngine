@@ -36,8 +36,9 @@ The owner approved the R4 gate decisions as OA27 on 2026-10-11 and asked for thi
 | SM1 and SM1a | One body id names one level. Every fact for a body carries the same `NominalSurfaceY`, its stored float. Adjacent equal-level bodies are passable by exact float equality of their `SurfaceY` |
 | Native requirement | A water section requires `ResolverIdentity` with payload 1 and resolver 2 and `SupportRecipe` `AuthoredBindingsV2`. Resolver-1 documents, including native resolver-1 documents, keep legacy global water |
 | Format | `MapDocumentFile.CurrentFormatVersion` becomes 6 through a pure 5 to 6 migration that adds nothing. The `water` member is optional, closed by schema, and written only when present by one canonical codec, media by key and bodies by id. `MapLatticeAddress` gains a closed JSON converter that reads through `MapLatticeAddress.Create`. A present section, even with no bodies, means bounded water and a dry world wherever no body covers |
-| Identity | Water enters `MapDocumentHash` through `MapCanonical.WriteGlobals`, and through it the tiled manifest, the native root digest and the resolver-2 authored identity. It enters the built-world hash only when present. Navigation capture identity changes only for tiles that water meets |
-| Precision | Domain vertices are lattice addresses in a declared `MapLatticeFrame`. Every water predicate, intersection, area and orientation is evaluated in one internal `BigInteger` rational kernel and narrowed to `MapExactValue` only when stored or emitted, and a value that cannot narrow is `NotRepresentable`, never a float fallback. `SurfaceY` must convert through `MapExactValue.FromSingle`. Floats appear only in stored `SurfaceY`, in placement transforms and in sample outputs, where a wet interval whose float bounds collapse is `NotRepresentable` |
+| Identity | Water enters `MapDocumentHash` through `MapCanonical.WriteGlobals`, and through it the tiled manifest, the native root digest and the resolver-2 authored identity. It enters the built-world hash only when present. A compiled body's digest covers its own definition, its medium, and exactly the patches it read, so an edit elsewhere changes no other body. Navigation capture identity changes only for tiles that water meets |
+| Validation placement | Document-level water rules and the render material closure run on both identity paths, in memory and stored. Containment is geometric and runs where R2 runs its space coverage validation, at editor publication, and inside every compile and build (ruling R4-P1) |
+| Precision | Domain vertices are lattice addresses in a declared `MapLatticeFrame`. Every water predicate, intersection, area and orientation is evaluated in one internal `BigInteger` rational kernel and narrowed to `MapExactValue` only when stored or emitted, and a value that cannot narrow is `NotRepresentable`, never a float fallback. Bound read failures keep their own status (`CapacityExceeded`, `NotRepresentable`, `Invalid`, `MissingGeometry`). `SurfaceY` must convert through `MapExactValue.FromSingle`. Floats appear only in stored `SurfaceY`, in placement transforms and in sample outputs, where a wet interval whose float bounds collapse is `NotRepresentable` |
 | Immutability | A query, a compile and a built world capture a deep copy of the water set and its digest at construction. Later mutation of the caller's set never changes their results |
 | Repository | Warnings are errors. New behavior gets a headless test in the matching test project under `KhaozEngine.Tests.*` namespaces. New files stay under 800 lines with no `.filesize-baseline` growth. No dash glyphs and no prose semicolons in Markdown. The released 20.31.0 public API changes only additively |
 | Verification | Every local build or test runs through `build-slot`, serially, once per step. No GPU tests, windows, stress or repeated runs. Full suites run once at the candidate gate |
@@ -107,7 +108,7 @@ Estimates are engineer-day judgments, not measurements, in the same form as R2's
 | 2 Exact kernel and domains | 1 | 4 to 6 |
 | 3 Space intervals and the water query | 2 | 4 to 6 |
 | 4 Containment and closure validation | 3 | 2 to 4 |
-| 5 Region compiler | 4 | 5 to 8 |
+| 5 Region compiler | 4 | 6 to 9 |
 | 6 Built world, residency, nav identity and invalidation | 5 | 3 to 5 |
 | 7 Legacy medium and the interface proof | 6 | 1 to 2 |
 | 8 Water edits and editor commands | 4, 6 | 3 to 5 |
@@ -115,7 +116,7 @@ Estimates are engineer-day judgments, not measurements, in the same form as R2's
 | 10 Synthetic legacy oracle | 5 | 2 to 4 |
 | 11 Private shipped comparison | 10 | 1 to 2 |
 | Reviews, release preparation and integration | all | 4 to 6 |
-| Total | | 33 to 54 |
+| Total | | 34 to 55 |
 
 ## Dispatch contract
 
@@ -158,7 +159,8 @@ MapDoc water fixtures live in `KhaozEngine.MapDoc.Tests/Water/WaterFixtures.cs` 
 
 - `WaterFixtures.Surface(MapSurfaceSet set, string id, MapSurfaceRole role, MapLatticeFrame frame, long cellMinX, long cellMinZ, long cellMaxX, long cellMaxZ, Func<long, long, int> heightUnits)` adds a surface ref and every patch the lattice cell range touches, splitting the range across 64-cell slots, with heights in the frame's height units at lattice corners.
 - `WaterFixtures.Footprints(MapSurfaceSet set, string spaceId, MapSpaceKind kind, MapLatticeFrame frame, long cellMinX, long cellMinZ, long cellMaxX, long cellMaxZ, MapBoundRef lower, MapBoundRef upper, MapPatchKey anchor)` adds the `MapSpaceDoc` once, anchored at `anchor`, and one `MapSpaceFootprint` per touched slot with that slot's cells.
-- `WaterFixtures.Document(MapSurfaceSet set, MapWaterSet? water)` seals refs and digests the way `CaveFixtures.Document` does, sets `ResolverIdentity` to payload 1 and resolver 2 and `SupportRecipe` to `AuthoredBindingsV2`, and attaches the water set.
+- `WaterFixtures.Document(MapSurfaceSet set, MapWaterSet? water)` seals refs and digests the way `CaveFixtures.Document` does, sets `ResolverIdentity` to payload 1 and resolver 2 and `SupportRecipe` to `AuthoredBindingsV2`, attaches the water set, and sets `NativeAssets` to the roots of `WaterFixtures.Assets()`, a closure built from the same fixture asset source plus the water material resources, so document roots and closure always match. Fixture domain collections are arrays.
+- `WaterFixtures.ViewWithUnloaded(MapDocument doc, string surfaceId)` acquires `doc` through `FilteredSurfaceSource` over its stored source with that surface's patch keys unloaded. `WaterFixtures.StoredSource(MapDocument doc)` saves `doc` tiled to a temporary directory and opens its `MapStoredSurfaceSource` the way `NativeStorageFixture` does. `WaterFixtures.ResolveOptions()` is the resolver-2 options the native resolver tests use.
 - `WaterFixtures.Point(float x, float y, float z)` returns the `MapFramePoint` for world metres. `WaterFixtures.Query(MapDocument doc)` returns `new MapWaterQuery(CaveFixtures.View(doc), doc.Water!)`. `WaterFixtures.Broken(string variant)` grows with each task's named variants. `WaterFixtures.TempDirectory()` returns a fresh temporary directory.
 - `WaterFixtures.LowerSeabedAt(float x, float z, float metres)` returns a `MapTerrainEdit` built from `MapSetCornerHeights` that lowers the four `seabed` corners of the cell holding world (x, z), converting world Z to the negative lattice row and supplying the patch-local 2 by 2 corner block.
 
@@ -186,6 +188,10 @@ All XZ in world metres. Lattice row r covers world z from -(r + 1) to -r.
 
 Every body's `RenderMaterial` is `water-material`. `WaterFixtures.Assets()` returns the closure holding it.
 
+### `WaterFixtures.SeaConnectedCave(float? portalBottomY)` and `GrottoPoint(float y)`
+
+An exterior space `sea` over a floor at -10 m for x 0 to 8 and a cave `grotto` for x 8 to 12 with floor -10 m and roof +5 m, joined at x 8 by a wall portal whose band runs from `portalBottomY` to +3 m. A null `portalBottomY` omits the portal and closes the wall. Body `ocean` has `SurfaceY` 0, a rectangle over x 0 to 12, and covers `sea` and `grotto`. `GrottoPoint(y)` is (10, y, -2).
+
 ---
 
 ### Task 1: Format 6 records, persistence and validation
@@ -197,7 +203,7 @@ Every body's `RenderMaterial` is `water-material`. `WaterFixtures.Assets()` retu
 - Test: `KhaozEngine.MapDoc.Tests/Water/MapWaterFormatTests.cs`, `KhaozEngine.MapDoc.Tests/Water/WaterFixtures.cs`
 
 **Interfaces:**
-- Consumes: `MapLatticeFrame`, `MapLatticeAddress.Create`, `MapRecordRef`, `MapNumericIdJsonConverter`, `MapDocumentFile.LoadText`, `SaveText`, `SaveTiled`, `LoadTiled`, `MapDocumentHash.OfWorld`, `MapSurfaceSemantics.RootDigest` (internal, visible to the MapDoc tests), `MapDocumentLoadOptions.RegisterMigration`.
+- Consumes: `MapLatticeFrame`, `MapLatticeAddress.Create`, `MapRecordRef`, the signed coordinate grammar in `KhaozEngine.MapDoc/Surfaces/MapSurfacePatchCodec.Records.cs` (written at line 168, read at line 175), `MapDocumentFile.LoadText`, `SaveText`, `SaveTiled`, `LoadTiled`, `MapDocumentHash.OfWorld`, `MapSurfaceSemantics.RootDigest` (internal, visible to the MapDoc tests), `MapDocumentLoadOptions.RegisterMigration`.
 - Produces, in namespace `KhaozEngine.MapDoc.Water`:
   - `public enum MapWaterMediumKind : byte { Water }`
   - `public sealed record MapWaterMediumDoc(string Key, MapWaterMediumKind Kind, float WadeSpeedScale)`
@@ -206,7 +212,7 @@ Every body's `RenderMaterial` is `water-material`. `WaterFixtures.Assets()` retu
   - `public sealed record MapWaterDomainDoc(MapLatticeFrame Frame, IReadOnlyList<MapWaterRect> Rects, IReadOnlyList<MapWaterRing> Rings)`
   - `public sealed record MapWaterBodyDoc(string Id, float SurfaceY, string Medium, string RenderMaterial, MapWaterDomainDoc Domain, IReadOnlyList<MapRecordRef> Covers, string? DisplayName = null)`. `RenderMaterial` names a `Material` resource in the document's asset closure, checked in Task 4.
   - `public sealed class MapWaterSet` with `List<MapWaterMediumDoc> Media`, `List<MapWaterBodyDoc> Bodies`, `MapWaterSet Clone()` (a deep copy whose nested lists are fresh arrays), `string Digest()` (SHA-256 hex of `kemap/water-set/1` and the codec's canonical bytes), `static string BodyDigest(MapWaterBodyDoc body)` (`kemap/water-body-doc/1`) and `static string MediumDigest(MapWaterMediumDoc medium)` (`kemap/water-medium/1`).
-  - `public sealed class MapWaterSetJsonConverter : JsonConverter<MapWaterSet>` and `internal static class MapWaterJson` with `void Write(Utf8JsonWriter w, MapWaterSet water)`, the one canonical writer: media by key and bodies by id (ordinal), each body's fields in a fixed order, rects, rings and covers in stored order. Lattice addresses are objects `{ "x", "z", "d" }` whose `x` and `z` use the `MapNumericIdJsonConverter` representation of int64, read back through `MapLatticeAddress.Create`, so a missing, unknown or duplicate member or an invalid denominator refuses. Rect bounds use the same int64 representation.
+  - `public sealed class MapWaterSetJsonConverter : JsonConverter<MapWaterSet>` and `internal static class MapWaterJson` with `void Write(Utf8JsonWriter w, MapWaterSet water)`, the one canonical writer: media by key and bodies by id (ordinal), each body's fields in a fixed order, rects, rings and covers in stored order. Lattice addresses are objects `{ "x", "z", "d" }` whose `x` and `z` are JSON strings holding a signed invariant int64 decimal: an optional leading minus, no plus sign, no leading zeros and no negative zero, over the full signed range. That is the grammar the topology codec already uses, extracted into one internal helper `MapSignedDecimal` with `string Format(long value)` and `bool TryParse(string text, out long value)` that both codecs call. Addresses read back through `MapLatticeAddress.Create`, so a missing, unknown or duplicate member or an invalid denominator refuses. Rect bounds use the same grammar. Numeric identities keep `MapNumericIdJsonConverter`, which stays non-negative.
   - `public static class MapWaterMigration` with `JsonObject Upgrade(JsonObject source)`.
   - `internal static class MapWaterValidation` with `Validate(MapDocument doc, List<string> errors)`.
 - Produces on `MapDocument`: `public MapWaterSet? Water { get; set; }`, serialized through `MapWaterSetJsonConverter`, null by default and omitted when null.
@@ -243,7 +249,7 @@ public class MapWaterFormatTests
     [Fact]
     public void Rings_RoundTripExactly_MonolithicAndTiled()
     {
-        MapDocument doc = WaterFixtures.WithRingBody(MapLatticeAddress.Create(-1, 1, 2), MapLatticeAddress.Create(704, 64, 64),
+        MapDocument doc = WaterFixtures.WithRingBody(MapLatticeAddress.Create(-1, -1, 2), MapLatticeAddress.Create(704, 64, 64),
             MapLatticeAddress.Create(11, 3, 1), MapLatticeAddress.Create(1, 10, 3));
         MapWaterRing ring = doc.Water!.Bodies.Single(b => b.Id == "ring").Domain.Rings.Single();
         MapDocument loaded = MapDocumentFile.LoadText(MapDocumentFile.SaveText(doc));
@@ -256,9 +262,29 @@ public class MapWaterFormatTests
     [Theory]
     [InlineData("address-missing-d")]
     [InlineData("address-unknown-member")]
+    [InlineData("address-duplicate-member")]
+    [InlineData("address-leading-zero")]
     [InlineData("address-denominator-128")]
     public void LatticeAddressJson_RefusesBadMembers(string variant) =>
         Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(WaterFixtures.CorruptAddressJson(variant)));
+
+    [Theory]
+    [InlineData(long.MinValue)]
+    [InlineData(-1L)]
+    [InlineData(0L)]
+    [InlineData(long.MaxValue)]
+    public void SignedDecimal_RoundTripsTheSignedRange(long value)
+    {
+        Assert.True(MapSignedDecimal.TryParse(MapSignedDecimal.Format(value), out long back));
+        Assert.Equal(value, back);
+    }
+
+    [Theory]
+    [InlineData("-0")]
+    [InlineData("+1")]
+    [InlineData("01")]
+    [InlineData("")]
+    public void SignedDecimal_RefusesNonCanonicalText(string text) => Assert.False(MapSignedDecimal.TryParse(text, out _));
 
     [Fact]
     public void UnknownWaterMember_Refuses()
@@ -280,6 +306,7 @@ public class MapWaterFormatTests
     [InlineData("empty-material", "water body 'ocean': renderMaterial must be non-empty")]
     [InlineData("empty-domain", "water body 'ocean': domain is empty")]
     [InlineData("empty-rect", "water body 'ocean': rect 0 is empty")]
+    [InlineData("far-rect", "water body 'ocean': domain exceeds 1000000 m")]
     [InlineData("short-ring", "water body 'ocean': ring 0 needs at least 3 vertices")]
     [InlineData("no-cover", "water body 'ocean': covers no space")]
     [InlineData("repeated-cover", "water body 'ocean': cover 'sea' is repeated")]
@@ -322,7 +349,7 @@ public class MapWaterFormatTests
 }
 ```
 
-`FormatFiveNativeJson()` is the smallest valid format-5 resolver-2 document text. `WithRingBody(...)` is `OceanOverCaves()` plus body `ring` whose domain is one convex ring of the given addresses covering `dry-cave`, so it overlaps no other body in its space. `CorruptAddressJson(variant)` is the saved text of that document with the first ring address damaged as named. `Broken(variant)` applies the named defect to `OceanOverCaves()`: `legacy-document` clears `ResolverIdentity`, `native-resolver-one` sets it to payload 1 and resolver 1, and `tiny-level` sets `SurfaceY` to `1e-20f`, which `MapExactValue.FromSingle` refuses. Build `OceanOverCaves()` now as the shared fixture contract describes, so later tasks only add queries and variants.
+`FormatFiveNativeJson()` is the smallest valid format-5 resolver-2 document text. `WithRingBody(...)` is `OceanOverCaves()` plus body `ring` whose domain is one convex ring of the given addresses, with negative X and Z and fractional denominators, covering `dry-cave`, so it overlaps no other body in its space. `CorruptAddressJson(variant)` is the saved text of that document with the first ring address damaged as named. `Broken(variant)` applies the named defect to `OceanOverCaves()`: `legacy-document` clears `ResolverIdentity`, `native-resolver-one` sets it to payload 1 and resolver 1, `tiny-level` sets `SurfaceY` to `1e-20f`, which `MapExactValue.FromSingle` refuses, and `far-rect` moves a rect bound beyond 1,000,000 m in world units. Build `OceanOverCaves()` now as the shared fixture contract describes, so later tasks only add queries and variants.
 
 - [ ] **Step 2: Run red** `wa_test t1-red "$MAPDOC" "FullyQualifiedName~MapWaterFormatTests"`
 
@@ -330,11 +357,11 @@ public class MapWaterFormatTests
 
 `CurrentFormatVersion` becomes 6 and the doc comment adds "v6 adds bounded water". `MapDocumentLoadOptions` registers `RegisterMigration(5, MapWaterMigration.Upgrade)`, which accepts only format 5 or 6 input like `MapSurfaceMigration` and adds no member. `MapCanonical.WriteGlobals` ends by writing `water` through `MapWaterJson.Write` when `doc.Water` is not null. Because `MapDocumentHash.OfManifest`, the tiled manifest and `MapSurfaceRootProjection` all call `WriteGlobals`, water enters the world hash, the manifest and the native root digest once each, and no other native global joins the legacy manifest hash. The monolithic file uses the same codec through the property converter. `GlobalsOnly` copies `Water`, and the tiled root reader restores it. The schema closes every water object, and `IsNativeBlock` lists `water`.
 
-`MapWaterValidation.Validate` runs from `MapDocumentValidator.Validate` after `MapNativeValidation.Validate` and produces exactly the messages in the test. A present section requires `ResolverIdentity` payload 1 and resolver 2 and `SupportRecipe` `AuthoredBindingsV2`. A medium key is non-empty and unique, its kind is defined, and `WadeSpeedScale` is finite with `0 < s <= 1`. A body id is non-empty and unique, `SurfaceY` is finite with absolute value at most 1,000,000 and converts through `MapExactValue.FromSingle`, `Medium` names a medium, `RenderMaterial` is non-empty, the domain has at least one rect or ring, a rect has `MinX < MaxX` and `MinZ < MaxZ`, a ring has at least 3 vertices, the frame is valid, covers are non-empty and distinct by id. Geometry rules arrive in Task 2, containment and the material closure in Task 4.
+`MapWaterValidation.Validate` runs from `MapDocumentValidator.Validate` after `MapNativeValidation.Validate` and produces exactly the messages in the test. A present section requires `ResolverIdentity` payload 1 and resolver 2 and `SupportRecipe` `AuthoredBindingsV2`. A medium key is non-empty and unique, its kind is defined, and `WadeSpeedScale` is finite with `0 < s <= 1`. A body id is non-empty and unique, `SurfaceY` is finite with absolute value at most 1,000,000 and converts through `MapExactValue.FromSingle`, `Medium` names a medium, `RenderMaterial` is non-empty, the domain has at least one rect or ring, a rect has `MinX < MaxX` and `MinZ < MaxZ`, a ring has at least 3 vertices, every domain corner lies within 1,000,000 m of the origin in world units, the frame is valid, covers are non-empty and distinct by id. Geometry rules arrive in Task 2, containment and the material closure in Task 4.
 
 Update the three existing test files so their current-format and saved-output assertions read `MapDocumentFile.CurrentFormatVersion`, and add nothing else to them.
 
-- [ ] **Step 4: Run green** `wa_test t1-green "$MAPDOC" "FullyQualifiedName~MapWaterFormatTests"` (expect 24), then `wa_test t1-regress "$MAPDOC" "FullyQualifiedName~FormatAdvance|FullyQualifiedName~NativeDocumentTests|FullyQualifiedName~NativeNumericId|FullyQualifiedName~Tiled|FullyQualifiedName~Hash"`.
+- [ ] **Step 4: Run green** `wa_test t1-green "$MAPDOC" "FullyQualifiedName~MapWaterFormatTests"` (expect 35), then `wa_test t1-regress "$MAPDOC" "FullyQualifiedName~FormatAdvance|FullyQualifiedName~NativeDocumentTests|FullyQualifiedName~NativeNumericId|FullyQualifiedName~Tiled|FullyQualifiedName~Hash"`.
 
 - [ ] **Step 5: Format, guards and commit** `feat(mapdoc): add format 6 bounded water records`
 
@@ -499,7 +526,7 @@ The split case is the review's counterexample: its first origin-relative product
 - Consumes: `MapSpaceMembership.QueryCore` internals, `MapSpacePointBounds.Height`, Task 1 and Task 2 types, `MapScopedSurfaces.ReadWitness`.
 - Produces:
   - `public sealed record MapSpaceInterval(MapMembershipStatus Status, string? SpaceId, MapExactValue Lower, MapExactValue? Upper, string? LowerBoundaryId, string? UpperBoundaryId, string? Detail, MapReadWitness Witness)`. `Upper` is null for an open top. A boundary id is the bound's `SurfaceId`, else its opening record id, else `open-top`. A point resolved inside a portal band reports the band bottom and top with the band chain record ids.
-  - `public static class MapSpaceIntervals` with `MapSpaceInterval At(MapScopedSurfaces view, MapFramePoint point)` and `IReadOnlyList<MapSpaceInterval> Column(MapScopedSurfaces view, MapFramePoint point)`, the second listing every footprint interval at the point's XZ in ascending `Lower`, or one failure entry.
+  - `public static class MapSpaceIntervals` with `MapSpaceInterval At(MapScopedSurfaces view, MapFramePoint point)` and `IReadOnlyList<MapSpaceInterval> Column(MapScopedSurfaces view, MapFramePoint point)`. The column applies point membership's rules to every height at once: owners are alias-normalized and deduplicated, a portal band on the point's XZ replaces the part of the column it covers exactly as point membership gives it priority, and intervals in ascending `Lower` are returned. Overlapping intervals of distinct owners make the whole column one `Ambiguous` entry, and any other failure is one entry with that status.
   - `public enum MapWaterStatus { Dry, Wet, MissingGeometry, Ambiguous, CapacityExceeded, NotRepresentable, Invalid }`
   - `public sealed record MapWaterSample(MapWaterStatus Status, MapFramePoint Point, string? BodyId, string? SpaceId, string? Medium, float LowerY, float UpperY, float NominalSurfaceY, bool UpperIsFreeSurface, string? LowerBoundaryId, string? UpperBoundaryId, string? Detail, MapReadWitness Witness, string WaterDigest)`
   - `public sealed class MapWaterQuery` with `MapWaterQuery(MapScopedSurfaces scoped, MapWaterSet water)`, which deep-copies `water` and fixes its digest at construction, `string WaterDigest`, `MapWaterSample Sample(MapFramePoint point)` and `IReadOnlyList<MapWaterSample> Column(MapFramePoint point)`.
@@ -613,12 +640,24 @@ public class MapWaterQueryTests
         MapScopedSurfaces view = CaveFixtures.View(doc);
         var query = new MapWaterQuery(view, doc.Water!);
         string digest = doc.Water!.Digest();
-        doc.Water.Bodies[0] = doc.Water.Bodies[0] with { SurfaceY = -39f };
-        doc.Water.Bodies.RemoveAt(2);
+        int lake = doc.Water.Bodies.FindIndex(b => b.Id == "cave-lake");
+        var rects = (MapWaterRect[])doc.Water.Bodies[lake].Domain.Rects;
+        rects[0] = new MapWaterRect(100, 0, 106, 4);
+        doc.Water.Bodies[lake] = doc.Water.Bodies[lake] with { SurfaceY = -39f };
+        doc.Water.Media[0] = doc.Water.Media[0] with { WadeSpeedScale = 0.25f };
         MapWaterSample s = query.Sample(WaterFixtures.Point(5, -35, -2));
         Assert.Same(view.ReadWitness, s.Witness);
         Assert.Equal((digest, digest), (query.WaterDigest, s.WaterDigest));
-        Assert.Equal((MapWaterStatus.Wet, -34f), (s.Status, s.NominalSurfaceY));
+        Assert.Equal((MapWaterStatus.Wet, "cave-lake", -34f), (s.Status, s.BodyId, s.NominalSurfaceY));
+    }
+
+    [Fact]
+    public void CollapsedFloatInterval_IsNotRepresentable()
+    {
+        MapDocument doc = WaterFixtures.HairlineCave();
+        MapWaterQuery query = WaterFixtures.Query(doc);
+        Assert.Equal(MapWaterStatus.NotRepresentable, query.Sample(WaterFixtures.Point(1, -1, -1)).Status);
+        Assert.Equal(MapWaterStatus.NotRepresentable, Assert.Single(query.Column(WaterFixtures.Point(1, 0, -1))).Status);
     }
 }
 
@@ -644,6 +683,30 @@ public class MapSpaceIntervalTests
     }
 
     [Fact]
+    public void Column_NormalizesAliasesAndRefusesOverlappingOwners()
+    {
+        MapDocument peers = CaveFixtures.WithPeerChamber(null), alias = CaveFixtures.WithPeerChamber(WaterFixtures.PeerAliasTarget);
+        Assert.Equal(MapMembershipStatus.Ambiguous, Assert.Single(MapSpaceIntervals.Column(CaveFixtures.View(peers), WaterFixtures.PeerPoint())).Status);
+        Assert.Single(MapSpaceIntervals.Column(CaveFixtures.View(alias), WaterFixtures.PeerPoint()));
+    }
+
+    [Fact]
+    public void Column_AgreesWithPointMembership_IncludingPortalSeams()
+    {
+        foreach (MapDocument doc in new[] { WaterFixtures.OceanOverCaves(), WaterFixtures.SeaConnectedCave(portalBottomY: -5f) })
+        {
+            MapScopedSurfaces view = CaveFixtures.View(doc);
+            foreach (MapFramePoint p in WaterFixtures.ProbeGrid(doc))
+            {
+                IReadOnlyList<MapSpaceInterval> column = MapSpaceIntervals.Column(view, p);
+                MapSpaceInterval at = MapSpaceIntervals.At(view, p);
+                if (at.SpaceId is null) continue;
+                Assert.Contains(column, c => c.SpaceId == at.SpaceId && c.Lower.CompareTo(p.ExactY()) <= 0 && (c.Upper is null || p.ExactY().CompareTo(c.Upper.Value) < 0));
+            }
+        }
+    }
+
+    [Fact]
     public void Interval_AgreesWithMembershipEverywhere()
     {
         MapDocument doc = WaterFixtures.OceanOverCaves();
@@ -654,15 +717,15 @@ public class MapSpaceIntervalTests
 }
 ```
 
-`ProbeGrid(doc)` returns points every 0.5 m in x and z inside the fixture and every 1 m in y from -62 to 4, plus each body's surface height and one float step below it. `PeerChambersWithWater()` is `CaveFixtures.WithPeerChamber(null)` with resolver-2 identity, one medium and a body covering the chamber. `PeerPoint()` is a point in the shared column that membership reports as ambiguous. `CaveFixtures.View` acquires whole 64-cell slots, so x 40 is inside the acquisition and outside every footprint, while x 80 is outside the acquisition. At x 2 the lake roof is exactly -34, the tie the contour test pins. Subnormal heights such as `MathF.BitDecrement(0f)` are outside `MapExactValue.FromSingle` and are not test inputs.
+`ProbeGrid(doc)` returns points every 0.5 m in x and z inside the fixture and every 1 m in y from -62 to 4, plus each body's surface height and one float step below it. `PeerChambersWithWater()` is `CaveFixtures.WithPeerChamber(null)` with resolver-2 identity, one medium and a body covering the chamber. `PeerAliasTarget` is the chamber id that `WithPeerChamber` aliases. `HairlineCave()` is a cave on a lattice frame of 1 m cells and height unit 1/2,000,000,000 m, floor at -2,000,000,000 units (-1 m) and a flat roof at -1,999,999,999 units, covered by a body with `SurfaceY` 0, so a point at y -1 is exactly wet while both float bounds round to -1. `SeaConnectedCave` is the Task 4 fixture, built here first. `PeerPoint()` is a point in the shared column that membership reports as ambiguous. `CaveFixtures.View` acquires whole 64-cell slots, so x 40 is inside the acquisition and outside every footprint, while x 80 is outside the acquisition. At x 2 the lake roof is exactly -34, the tie the contour test pins. Subnormal heights such as `MathF.BitDecrement(0f)` are outside `MapExactValue.FromSingle` and are not test inputs.
 
 - [ ] **Step 2: Run red** `wa_test t3-red "$MAPDOC" "FullyQualifiedName~MapWaterQueryTests|FullyQualifiedName~MapSpaceIntervalTests"`
 
 - [ ] **Step 3: Implement intervals and the query**
 
-`MapSpaceMembership` gains one internal method that runs the existing `QueryCore` and also returns the selected candidate's exact lower and upper heights and bound refs, so membership and intervals cannot drift. `MapSpaceIntervals.Column` evaluates every candidate footprint at the XZ without the Y filter and sorts by `Lower`. The query's constructor clones the set, compiles each body's domain once, and fixes the digest. `Sample` maps a membership failure to the same-named water status, `Outside` to `Dry`, then finds the bodies covering the resolved space id whose domain contains the XZ. None gives `Dry`, more than one gives `Ambiguous` with detail "ambiguous water bodies". For the one body, `top = min(FromSingle(SurfaceY), Upper)`, wet when `Lower <= y < top`, free when `Upper` is null or `FromSingle(SurfaceY) < Upper`, `UpperY` the surface when free and `Upper` otherwise. Floats come from `ToSingle`, and a wet sample whose float `LowerY >= UpperY` becomes `NotRepresentable` with detail "wet interval below float resolution". `Column` emits one wet sample per space interval whose body has water above its floor, with `Point.Y` set to that floor.
+`MapSpaceMembership` gains one internal method that runs the existing `QueryCore` and also returns the selected candidate's exact lower and upper heights and bound refs, so membership and intervals cannot drift. `MapSpaceIntervals.Column` evaluates every candidate footprint at the XZ without the Y filter and sorts by `Lower`. The query's constructor clones the set, compiles each body's domain once, and fixes the digest. `Sample` maps a membership failure to the same-named water status, `Outside` to `Dry`, then finds the bodies covering the resolved space id whose domain contains the XZ. None gives `Dry`, more than one gives `Ambiguous` with detail "ambiguous water bodies". For the one body, `top = min(FromSingle(SurfaceY), Upper)`, wet when `Lower <= y < top`, free when `Upper` is null or `FromSingle(SurfaceY) < Upper`, `UpperY` the surface when free and `Upper` otherwise. Floats come from `ToSingle`, and a wet sample whose float `LowerY >= UpperY` becomes `NotRepresentable` with detail "wet interval below float resolution". `Column` emits one wet sample per space interval whose body has water above its floor, with `Point.Y` set to that floor, and the same float-collapse refusal. The query pairs its water snapshot with the acquisition it was given, and every sample carries both the acquisition's read witness and the water digest.
 
-- [ ] **Step 4: Run green** `wa_test t3-green "$MAPDOC" "FullyQualifiedName~MapWaterQueryTests|FullyQualifiedName~MapSpaceIntervalTests"` (expect 14), then `wa_test t3-spaces "$MAPDOC" "FullyQualifiedName~Spaces|FullyQualifiedName~Support"` to show membership and support are unchanged.
+- [ ] **Step 4: Run green** `wa_test t3-green "$MAPDOC" "FullyQualifiedName~MapWaterQueryTests|FullyQualifiedName~MapSpaceIntervalTests"` (expect 17), then `wa_test t3-spaces "$MAPDOC" "FullyQualifiedName~Spaces|FullyQualifiedName~Support"` to show membership and support are unchanged.
 
 - [ ] **Step 5: Format, guards and commit** `feat(mapdoc): sample contained water against occupied spaces`
 
@@ -672,17 +735,17 @@ public class MapSpaceIntervalTests
 
 **Files:**
 - Create: `KhaozEngine.MapDoc/Water/MapWaterContainment.cs`, `KhaozEngine.MapDoc/Water/MapWaterFootprints.cs`
-- Modify: `KhaozEngine.MapDoc/MapBoundDocumentValidation.cs`, `KhaozEngine.MapDoc/Spaces/MapRelationApertures.cs` (an exact minimum aperture bottom)
+- Modify: `KhaozEngine.MapDoc/MapBoundDocumentValidation.cs` (the material closure check), `KhaozEngine.MapDoc/Storage/MapStoredSurfaceSource.Identity.cs` (the same check on the stored identity path), `KhaozEngine.MapDoc/Spaces/MapRelationApertures.cs` (exact aperture bottoms)
 - Test: `KhaozEngine.MapDoc.Tests/Water/MapWaterContainmentTests.cs`
 
 **Interfaces:**
-- Consumes: Tasks 1 to 3, `MapSpaceFootprint`, `MapCavePortal`, `MapVerticalLink`, `MapRelationApertures.Compile`, `MapApertureGeometry.Columns` (exact `Bottom` points), `MapAssetClosure.GetResource`, `MapResourceKind.Material`, `MapBoundDocumentValidation.Validate` and `ValidateLocal`, the test type `FilteredSurfaceSource(IMapSurfaceSource inner, params MapPatchKey[] unloaded)`.
+- Consumes: Tasks 1 to 3, `MapSpaceFootprint`, `MapCavePortal`, `MapVerticalLink`, `MapRelationApertures.Compile`, `MapApertureGeometry` (`Kind`, `Columns` with exact `Bottom`, `PlaneTriangles`), `MapAssetClosure.GetResource`, `MapResourceKind.Material`, `MapBoundDocumentValidation.Validate` and `RequireRoots`, `MapStoredSurfaceSource.RequireIdentityManifest`, `MapAuthoredIdentityV2.Compute` (both overloads), the test type `FilteredSurfaceSource(IMapSurfaceSource inner, params MapPatchKey[] unloaded)`.
 - Produces:
   - `public sealed record MapWaterContainmentReport(bool Complete, IReadOnlyList<string> Errors)`
-  - `public static class MapWaterContainment` with `MapWaterContainmentReport Validate(MapScopedSurfaces view, MapWaterSet water)`.
-  - `internal static MapExactValue BottomOf(MapPortalFact fact)` on `MapRelationApertures`, the exact minimum of the fact's column bottoms, never the rounded `Summary.BottomY`.
-  - `internal sealed record MapWaterFootprintRect(string SpaceId, MapSpaceFootprint Footprint, MapLatticeFrame Frame, long CellMinX, long CellMinZ, long CellMaxX, long CellMaxZ, MapExactXz Min, MapExactXz Max, MapBoundRef Lower, MapBoundRef Upper)` and `internal static class MapWaterFootprints` with `IReadOnlyList<MapWaterFootprintRect> Of(MapScopedSurfaces view, string spaceId, out bool complete, out int cellsInspected)`. Task 5 compiles against these rectangles. `Footprint` is one representative record of the merged group, used for bound face reads.
-  - `MapBoundDocumentValidation.Validate(document, assets)` additionally requires each body's `RenderMaterial` to resolve through `assets.GetResource` to a `Material` resource. `ValidateLocal` checks containment only, as it does not bind assets.
+  - `public static class MapWaterContainment` with `MapWaterContainmentReport Validate(MapScopedSurfaces view, MapWaterSet water)`. It is geometric validation and runs where R2 runs its space coverage validation, at editor publication (Task 8), and inside every compile (Task 5) and therefore every build. Identity paths stay geometry-free on both the in-memory and the stored route, as they are for R2 coverage.
+  - `internal static MapExactValue BottomOf(MapPortalFact fact)` on `MapRelationApertures`. For a wall portal it is the exact minimum of the column `Bottom` heights, for a horizontal opening the exact minimum Y over `PlaneTriangles`, and missing or empty geometry throws `MapDocumentException` with "missing geometry: aperture". It never uses the rounded `Summary.BottomY`.
+  - `internal static void RequireWaterMaterials(MapWaterSet? water, MapAssetClosure assets)` on `MapBoundDocumentValidation`, called from `Validate(document, assets)` and from `MapStoredSurfaceSource.RequireIdentityManifest`, so both identity paths refuse an unresolved render material identically.
+  - `internal sealed record MapWaterFootprintRect(string SpaceId, MapSpaceFootprint Footprint, MapLatticeFrame Frame, long CellMinX, long CellMinZ, long CellMaxX, long CellMaxZ, MapExactXz Min, MapExactXz Max, MapBoundRef Lower, MapBoundRef Upper)` and `internal static class MapWaterFootprints` with `IReadOnlyList<MapWaterFootprintRect> Of(MapScopedSurfaces view, string spaceId, MapExactXz windowMin, MapExactXz windowMax, out bool complete, out int cellsInspected, out IReadOnlyList<MapPatchKey> patchesRead)`, which reads only the footprints whose slot meets the window, so a body never reads footprints far from its domain. Task 5 compiles against these rectangles. `Footprint` is one representative record of the merged group, used for bound face reads.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -715,6 +778,25 @@ public class MapWaterContainmentTests
             e => e.Contains("water body 'ocean': covered spaces are not connected below its surface", StringComparison.Ordinal));
 
     [Theory]
+    [InlineData(-10f, true)]
+    [InlineData(0f, false)]
+    [InlineData(1f, false)]
+    public void Sinkhole_ConnectsOnlyBelowTheSurface(float openingY, bool connected)
+    {
+        IReadOnlyList<string> errors = Check(WaterFixtures.SinkholeCave(openingY)).Errors;
+        Assert.Equal(!connected, errors.Any(e => e.Contains("water body 'ocean': covered spaces are not connected below its surface", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void Sinkhole_WithUnavailableOpening_IsUnverified()
+    {
+        MapWaterContainmentReport report = MapWaterContainment.Validate(WaterFixtures.ViewWithUnloaded(WaterFixtures.SinkholeCave(-10f), "sink-floor"),
+            WaterFixtures.SinkholeCave(-10f).Water!);
+        Assert.False(report.Complete);
+        Assert.Contains(report.Errors, e => e.Contains("water body 'ocean': unverified", StringComparison.Ordinal));
+    }
+
+    [Theory]
     [InlineData("domain-off-footprint", "water body 'ocean' covers no space footprint")]
     [InlineData("missing-cover", "water body 'ocean': cover 'nowhere' is not a space")]
     [InlineData("alias-cover", "water body 'ocean': cover 'sea-alias' is an alias")]
@@ -724,38 +806,35 @@ public class MapWaterContainmentTests
     [Fact]
     public void IncompleteView_IsUnverified_NotValid()
     {
-        MapWaterContainmentReport report = MapWaterContainment.Validate(WaterFixtures.ViewWithUnloaded("lake-floor"), WaterFixtures.OceanOverCaves().Water!);
+        MapWaterContainmentReport report = MapWaterContainment.Validate(WaterFixtures.ViewWithUnloaded(WaterFixtures.OceanOverCaves(), "lake-floor"),
+            WaterFixtures.OceanOverCaves().Water!);
         Assert.False(report.Complete);
         Assert.Contains(report.Errors, e => e.Contains("water body 'cave-lake': unverified", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void BoundValidation_RunsContainmentOnBoundedDocuments()
+    public void MaterialClosure_IsCheckedOnBothIdentityPaths()
     {
-        var error = Assert.Throws<MapDocumentException>(() => MapBoundDocumentValidation.ValidateLocal(WaterFixtures.Broken("domain-off-footprint")));
-        Assert.Contains("covers no space footprint", error.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void UnresolvedRenderMaterial_Refuses()
-    {
-        MapBoundDocumentValidation.Validate(WaterFixtures.OceanOverCaves(), WaterFixtures.Assets());
-        var error = Assert.Throws<MapDocumentException>(() =>
-            MapBoundDocumentValidation.Validate(WaterFixtures.Broken("unknown-material"), WaterFixtures.Assets()));
-        Assert.Contains("water body 'ocean': render material 'no-such-material' is not a Material resource", error.Message, StringComparison.Ordinal);
+        MapDocument doc = WaterFixtures.OceanOverCaves();
+        Assert.Equal(MapAuthoredIdentityV2.Compute(doc, WaterFixtures.Assets(), WaterFixtures.ResolveOptions()),
+            MapAuthoredIdentityV2.Compute(WaterFixtures.StoredSource(doc), WaterFixtures.Assets(), WaterFixtures.ResolveOptions()));
+        MapDocument bad = WaterFixtures.Broken("unknown-material");
+        const string message = "water body 'ocean': render material 'no-such-material' is not a Material resource";
+        Assert.Contains(message, Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(bad, WaterFixtures.Assets(), WaterFixtures.ResolveOptions())).Message, StringComparison.Ordinal);
+        Assert.Contains(message, Assert.Throws<MapDocumentException>(() => MapAuthoredIdentityV2.Compute(WaterFixtures.StoredSource(bad), WaterFixtures.Assets(), WaterFixtures.ResolveOptions())).Message, StringComparison.Ordinal);
     }
 }
 ```
 
-`SeaConnectedCave(portalBottomY)` is an exterior space `sea` over a floor at -10 m for x 0 to 8 and a cave `grotto` for x 8 to 12 with floor -10 m and roof +5 m, joined at x 8 by a wall portal whose band runs from `portalBottomY` to +3 m. A null `portalBottomY` omits the portal and closes the wall. Body `ocean` has `SurfaceY` 0, a rectangle over x 0 to 12, and covers `sea` and `grotto`. `GrottoPoint(y)` is (10, y, -2). `ViewWithUnloaded(surfaceId)` acquires `OceanOverCaves()` through `FilteredSurfaceSource` over its stored source, with that surface's patch keys unloaded. `Broken("alias-cover")` adds space `sea-alias` with `AliasOf` pointing at `sea` and covers it. `Broken("unknown-material")` sets the ocean's `RenderMaterial` to `no-such-material`.
+`SeaConnectedCave` and its points are in the shared fixture contract. `SinkholeCave(openingY)` is an exterior space `sea` over a floor at -10 m for x 0 to 8 whose cells x 4 to 6 are a horizontal opening at height `openingY` into a cave `sink` below, floor `sink-floor` at -30 m and its roof the opening plane, joined by one `MapVerticalLink`, with body `ocean` at `SurfaceY` 0 over x 0 to 8 covering `sea` and `sink`. A tie closes the connection, because water at exactly the opening's bottom does not pass it. `ViewWithUnloaded(doc, surfaceId)` acquires `doc` through `FilteredSurfaceSource` over its stored source with that surface's patch keys unloaded. `StoredSource(doc)` saves `doc` tiled to a temporary directory and opens its `MapStoredSurfaceSource` the way `NativeStorageFixture` does. `ResolveOptions()` is the resolver-2 options the native resolver tests use. `Broken("alias-cover")` adds space `sea-alias` with `AliasOf` pointing at `sea` and covers it. `Broken("unknown-material")` changes only the ocean's `RenderMaterial` to `no-such-material` and keeps the matching closure and roots.
 
 - [ ] **Step 2: Run red** `wa_test t4-red "$MAPDOC" "FullyQualifiedName~MapWaterContainmentTests"`
 
 - [ ] **Step 3: Implement footprints, containment and the closure check**
 
-`MapWaterFootprints.Of` gathers the space's acquired footprints, groups their slot cells by (lattice frame, lower bound, upper bound) and merges each group into maximal row-run rectangles in cell coordinates across slots, rows by ascending Z then X, the same greedy rule as `TileWaterBodies.Rectangles`. It converts each rectangle to an exact world rectangle through the frame, reports the slot cells it read, and clears `complete` when a footprint, its patch or its space record is unavailable. `Validate` checks, per body: every cover resolves to an acquired `MapSpaceDoc` that is not an alias. The domain meets at least one footprint rectangle of a covered space with positive area. When a body covers several spaces, they form one connected set through `MapCavePortal` and `MapVerticalLink` records joining covered spaces, counting only connections whose exact aperture bottom from `MapRelationApertures.BottomOf` is below `FromSingle(SurfaceY)`. A check that needs unavailable records adds "water body '{id}': unverified" and clears `Complete`. `MapBoundDocumentValidation.Validate` and `ValidateLocal` run containment over `MapScopedSurfaces.CompleteView(document.Surfaces)` when `Water` is not null and throw `MapDocumentException` with the first error, and `Validate` also runs the material check. A whole document always yields a complete view, so the builder and the editor never see `unverified`.
+`MapWaterFootprints.Of` gathers the space's acquired footprints whose slot meets the window, groups their slot cells by (lattice frame, lower bound, upper bound) and merges each group into maximal row-run rectangles in cell coordinates across slots, rows by ascending Z then X, the same greedy rule as `TileWaterBodies.Rectangles`. It converts each rectangle to an exact world rectangle through the frame, reports the slot cells it read, and clears `complete` when a footprint, its patch or its space record is unavailable. `Validate` checks, per body: every cover resolves to an acquired `MapSpaceDoc` that is not an alias. The domain meets at least one footprint rectangle of a covered space with positive area. When a body covers several spaces, they form one connected set over graph edges, one per `MapCavePortal` and one per opening of each `MapVerticalLink`, each joining two covered spaces, counting an edge only when its exact `BottomOf` is strictly below `FromSingle(SurfaceY)`. A check that needs unavailable records or apertures adds "water body '{id}': unverified" and clears `Complete`. `RequireWaterMaterials` requires each body's `RenderMaterial` to resolve through `assets.GetResource` to a `Material` resource and runs on both identity paths.
 
-- [ ] **Step 4: Run green** `wa_test t4-green "$MAPDOC" "FullyQualifiedName~MapWaterContainmentTests"` (expect 10), then `wa_test t4-relations "$MAPDOC" "FullyQualifiedName~Relation"`.
+- [ ] **Step 4: Run green** `wa_test t4-green "$MAPDOC" "FullyQualifiedName~MapWaterContainmentTests"` (expect 13), then `wa_test t4-relations "$MAPDOC" "FullyQualifiedName~Relation|FullyQualifiedName~Identity|FullyQualifiedName~Storage"`.
 
 - [ ] **Step 5: Format, guards and commit** `feat(mapdoc): validate water containment and its render material`
 
@@ -764,20 +843,21 @@ public class MapWaterContainmentTests
 ### Task 5: Region compiler
 
 **Files:**
-- Create: `KhaozEngine.MapDoc/Water/MapCompiledWaterBody.cs`, `KhaozEngine.MapDoc/Water/MapWaterCompiler.cs`, `KhaozEngine.MapDoc.Tests/Water/WaterOpticsScenes.cs`
+- Create: `KhaozEngine.MapDoc/Water/MapCompiledWaterBody.cs`, `KhaozEngine.MapDoc/Water/MapWaterCompiler.cs`, `KhaozEngine.MapDoc/Water/MapWaterBoundReads.cs`, `KhaozEngine.MapDoc.Tests/Water/WaterOpticsScenes.cs`
 - Modify: `KhaozEngine.MapDoc/Water/MapWaterPolygons.cs` (convex clipping against a convex polygon)
 - Test: `KhaozEngine.MapDoc.Tests/Water/MapWaterCompilerTests.cs`, `KhaozEngine.MapDoc.Tests/Water/WaterOpticsSceneTests.cs`
 
 **Interfaces:**
-- Consumes: Task 2 kernel, triangulation, `ClipToRect` and `SplitAtHeight`, Task 4 `MapWaterFootprints`, `MapCommonRefinement.BoundFaces(MapScopedSurfaces view, MapSpaceFootprint footprint, MapBoundRef bound, MapExactXz min, MapExactXz max, MapRefinementLimits limits)` returning `MapBoundFaceSet(Status, Faces, Compatibility, Detail)`, `MapBoundFace`, `MapExactTriangle`, `MapBox3`.
+- Consumes: Task 2 kernel, triangulation, `ClipToRect` and `SplitAtHeight`, Task 4 `MapWaterFootprints` and `MapWaterContainment`, `MapCommonRefinement.BoundFaces(MapScopedSurfaces view, MapSpaceFootprint footprint, MapBoundRef bound, MapExactXz min, MapExactXz max, MapRefinementLimits limits)` returning `MapBoundFaceSet(Status, Faces, Compatibility, Detail)`, `MapRefinementLimits` defaults (16,384 source faces per bound), `MapBoundFace`, `MapExactTriangle`, `MapBox3`, `MapScopedSurfaces.Witness.Present` (patch semantic digests).
 - Produces:
   - `internal static IReadOnlyList<IReadOnlyList<MapWideXz>> ClipToConvex(IReadOnlyList<MapWideXz> subject, IReadOnlyList<MapWideXz> clip)` on `MapWaterPolygons`.
+  - `internal static class MapWaterBoundReads`, which reads one bound over a world rectangle in chunks: chunks are cut in the bound surface's own lattice, sized by a preflight of 2 times subdivision squared faces per source cell so each `BoundFaces` call stays within the default per-bound and context limits, and a single source cell above the limit refuses as `CapacityExceeded`. It returns the faces and compatibility tags, the patch keys it read, and a typed status that keeps `CapacityExceeded`, `NotRepresentable`, `Invalid` and `MissingGeometry` apart.
   - `public enum MapWaterRegionKind : byte { FreeSurface, Closed, Unresolved }`
-  - `public sealed record MapWaterRegion(string SpaceId, MapWaterRegionKind Kind, IReadOnlyList<MapExactTriangle> Triangles)`. Every triangle lies at `Y = FromSingle(SurfaceY)` and faces up, meaning `cross(B - A, C - A).Y > 0`. Regions are closed point sets for drawing and certification, and a point's own classification always comes from `MapWaterQuery`, which closes a tie.
-  - `public enum MapWaterCompileStatus { Complete, Incomplete, CapacityExceeded, NotRepresentable }`
-  - `public sealed record MapWaterWork(int Pieces, int FootprintRects, int FootprintCells, int UpperFaces, int LowerFaces, int Triangles)`
-  - `public sealed record MapWaterCompileLimits(int MaxFootprintCells = 4_194_304, int MaxBoundFaces = 1_048_576, int MaxTriangles = 1_048_576)`
-  - `public sealed record MapCompiledWaterBody(string BodyId, float SurfaceY, MapWaterMediumDoc Medium, string RenderMaterial, IReadOnlyList<MapWaterRegion> Regions, float DeepestBedY, MapBox3 Bounds, MapWaterCompileStatus Status, string? Detail, MapWaterWork Work, string Digest)`
+  - `public sealed record MapWaterRegion(string SpaceId, MapWaterRegionKind Kind, IReadOnlyList<MapExactTriangle> Triangles)`. Every triangle lies at `Y = FromSingle(SurfaceY)` and faces up, meaning `cross(B - A, C - A).Y > 0`. Region triangles are closed drawing geometry and may share boundaries.
+  - `public enum MapWaterCompileStatus { Complete, Incomplete, CapacityExceeded, NotRepresentable, Invalid }`
+  - `public sealed record MapWaterWork(int Pieces, int PieceVertices, int FootprintRects, int FootprintCells, int UpperFaces, int LowerFaces, int PairChecks, int Triangles)`
+  - `public sealed record MapWaterCompileLimits(int MaxPieces = 65_536, int MaxPieceVertices = 262_144, int MaxFootprintCells = 4_194_304, int MaxBoundFaces = 1_048_576, int MaxPairChecks = 16_777_216, int MaxTriangles = 1_048_576)`
+  - `public sealed record MapCompiledWaterBody(string BodyId, float SurfaceY, MapWaterMediumDoc Medium, string RenderMaterial, IReadOnlyList<MapWaterRegion> Regions, float? DeepestBedY, MapBox3? Bounds, MapWaterCompileStatus Status, string? Detail, MapWaterWork Work, string Digest)` with `MapWaterRegionKind? Classify(MapExactXz point)`. `Classify` is the semantic owner of every point: it returns `Closed` when any closed triangle contains the point, boundaries included, else `FreeSurface`, else `Unresolved`, else null outside the body, so a contour tie is closed exactly as `MapWaterQuery` closes it. `DeepestBedY` and `Bounds` are null when no lower area resolved.
   - `public static class MapWaterCompiler` with `IReadOnlyList<MapCompiledWaterBody> Compile(MapScopedSurfaces view, MapWaterSet water, MapWaterCompileLimits? limits = null)`, bodies in id order, working on a deep copy of `water`.
   - `internal static class WaterOpticsScenes` with `MapDocument Build(string scene)` for the five DG9.5 scenes, which R8 links.
 
@@ -791,6 +871,7 @@ public class MapWaterCompilerTests
     static IEnumerable<MapExactTriangle> Of(MapCompiledWaterBody b, MapWaterRegionKind kind) =>
         b.Regions.Where(r => r.Kind == kind).SelectMany(r => r.Triangles);
     static HashSet<MapExactPoint> Points(IEnumerable<MapExactTriangle> t) => t.SelectMany(x => new[] { x.A, x.B, x.C }).ToHashSet();
+    static MapExactXz Xz(float x, float z) => new(MapExactValue.FromSingle(x), MapExactValue.FromSingle(z));
 
     [Theory]
     [InlineData(512f)]
@@ -824,11 +905,27 @@ public class MapWaterCompilerTests
     }
 
     [Fact]
-    public void MixedLattices_SplitAtTheSameContour()
+    public void ContourPoints_ClassifyClosed_AsTheQueryDoes()
     {
-        MapCompiledWaterBody lake = Body(WaterFixtures.OceanOverCavesWithThirdMetreRoof(), "cave-lake");
+        MapDocument doc = WaterFixtures.OceanOverCaves();
+        MapCompiledWaterBody lake = Body(doc, "cave-lake");
+        Assert.Equal(MapWaterRegionKind.Closed, lake.Classify(Xz(2, -1)));
+        Assert.Equal(MapWaterRegionKind.Closed, lake.Classify(Xz(1, -1)));
+        Assert.Equal(MapWaterRegionKind.FreeSurface, lake.Classify(Xz(2.5f, -1)));
+        Assert.Null(lake.Classify(Xz(7, -1)));
+        foreach (float x in new[] { 1f, 2f, 2.5f })
+            Assert.Equal(lake.Classify(Xz(x, -1)) == MapWaterRegionKind.FreeSurface,
+                WaterFixtures.Query(doc).Sample(WaterFixtures.Point(x, -38, -1)).UpperIsFreeSurface);
+    }
+
+    [Fact]
+    public void DiagonalContour_SplitsExactly()
+    {
+        MapCompiledWaterBody lake = Body(WaterFixtures.Broken("diagonal-roof"), "cave-lake");
         Assert.Equal(new MapExactValue(16, 1), WaterFixtures.Area(Of(lake, MapWaterRegionKind.FreeSurface)));
         Assert.Equal(new MapExactValue(8, 1), WaterFixtures.Area(Of(lake, MapWaterRegionKind.Closed)));
+        Assert.Equal(MapWaterRegionKind.Closed, lake.Classify(Xz(2, -2)));
+        Assert.Equal(MapWaterRegionKind.FreeSurface, lake.Classify(Xz(2.5f, -2)));
     }
 
     [Fact]
@@ -848,20 +945,91 @@ public class MapWaterCompilerTests
     }
 
     [Fact]
+    public void MixedLattices_SplitAtTheSameContour()
+    {
+        MapCompiledWaterBody lake = Body(WaterFixtures.OceanOverCavesWithThirdMetreRoof(), "cave-lake");
+        Assert.Equal(new MapExactValue(16, 1), WaterFixtures.Area(Of(lake, MapWaterRegionKind.FreeSurface)));
+        Assert.Equal(new MapExactValue(8, 1), WaterFixtures.Area(Of(lake, MapWaterRegionKind.Closed)));
+        Assert.Equal(MapWaterCompileStatus.Complete, lake.Status);
+    }
+
+    [Fact]
+    public void SubdividedCeiling_CompilesWithinReadLimits()
+    {
+        MapCompiledWaterBody lake = Body(WaterFixtures.Broken("fine-roof"), "cave-lake");
+        Assert.Equal(MapWaterCompileStatus.Complete, lake.Status);
+        Assert.Equal(new MapExactValue(8, 1), WaterFixtures.Area(Of(lake, MapWaterRegionKind.Closed)));
+    }
+
+    [Fact]
+    public void OversubdividedCell_RefusesWithCapacityExceeded() =>
+        Assert.Equal(MapWaterCompileStatus.CapacityExceeded, Body(WaterFixtures.Broken("ultra-fine-roof"), "cave-lake").Status);
+
+    [Fact]
+    public void HorizontalOpeningAboveWater_ActsAsACeiling()
+    {
+        MapCompiledWaterBody ocean = Body(WaterFixtures.SinkholeCave(-10f), "ocean");
+        MapWaterRegion[] sink = ocean.Regions.Where(r => r.SpaceId == "sink").ToArray();
+        Assert.All(sink, r => Assert.Equal(MapWaterRegionKind.Closed, r.Kind));
+        Assert.Equal(new MapExactValue(8, 1), WaterFixtures.Area(sink.SelectMany(r => r.Triangles)));
+    }
+
+    [Fact]
+    public void SignedSeam_CompilesAcrossSlots()
+    {
+        MapCompiledWaterBody sea = Body(WaterFixtures.SeaAcrossTheOrigin(), "sea");
+        Assert.Equal(MapWaterCompileStatus.Complete, sea.Status);
+        Assert.Equal(new MapExactValue(256, 1), WaterFixtures.Area(Of(sea, MapWaterRegionKind.FreeSurface)));
+    }
+
+    [Theory]
+    [InlineData("lake-roof-known-empty", 24)]
+    [InlineData("lake-roof-missing-cell", 1)]
+    [InlineData("lake-roof-partial", 6)]
+    public void UncoveredCeiling_IsUnresolved_NotDropped(string variant, int unresolvedArea)
+    {
+        MapCompiledWaterBody lake = Body(WaterFixtures.Broken(variant), "cave-lake");
+        Assert.Equal(MapWaterCompileStatus.Incomplete, lake.Status);
+        Assert.Equal(new MapExactValue(unresolvedArea, 1), WaterFixtures.Area(Of(lake, MapWaterRegionKind.Unresolved)));
+        Assert.Equal(new MapExactValue(24, 1), WaterFixtures.Area(lake.Regions.SelectMany(r => r.Triangles)));
+    }
+
+    [Fact]
+    public void LowerHole_LeavesItsAreaUnresolved()
+    {
+        MapCompiledWaterBody ocean = Body(WaterFixtures.Broken("seabed-hole"), "ocean");
+        Assert.Equal(MapWaterCompileStatus.Incomplete, ocean.Status);
+        Assert.Equal(new MapExactValue(1, 1), WaterFixtures.Area(Of(ocean, MapWaterRegionKind.Unresolved)));
+        Assert.Equal(-20f, ocean.DeepestBedY);
+    }
+
+    [Fact]
     public void MissingCeilingGeometry_IsUnresolved()
     {
         MapDocument doc = WaterFixtures.OceanOverCaves();
-        MapCompiledWaterBody lake = MapWaterCompiler.Compile(WaterFixtures.ViewWithUnloaded("lake-roof"), doc.Water!).Single(b => b.BodyId == "cave-lake");
+        MapCompiledWaterBody lake = MapWaterCompiler.Compile(WaterFixtures.ViewWithUnloaded(doc, "lake-roof"), doc.Water!).Single(b => b.BodyId == "cave-lake");
         Assert.Equal(MapWaterCompileStatus.Incomplete, lake.Status);
         Assert.Contains(lake.Regions, r => r.Kind == MapWaterRegionKind.Unresolved);
     }
 
-    [Fact]
-    public void CompileLimits_RefuseOversizedWork()
+    [Theory]
+    [InlineData(10, 65_536, 16_777_216, "water footprint cells")]
+    [InlineData(4_194_304, 0, 16_777_216, "water pieces")]
+    [InlineData(4_194_304, 65_536, 1, "water pair checks")]
+    public void CompileLimits_RefuseOversizedWork(int cells, int pieces, int pairs, string detail)
     {
-        MapCompiledWaterBody ocean = Body(WaterFixtures.OceanOverCaves(), "ocean", new MapWaterCompileLimits(MaxFootprintCells: 10));
-        Assert.Equal((MapWaterCompileStatus.CapacityExceeded, "water footprint cells"), (ocean.Status, ocean.Detail));
+        var limits = new MapWaterCompileLimits(MaxPieces: pieces, MaxFootprintCells: cells, MaxPairChecks: pairs);
+        MapCompiledWaterBody ocean = Body(WaterFixtures.OceanOverCaves(), "ocean", limits);
+        Assert.Equal((MapWaterCompileStatus.CapacityExceeded, detail), (ocean.Status, ocean.Detail));
         Assert.Empty(ocean.Regions);
+    }
+
+    [Fact]
+    public void UncontainedBody_IsInvalid()
+    {
+        MapDocument doc = WaterFixtures.Broken("domain-off-footprint");
+        MapCompiledWaterBody ocean = Body(doc, "ocean");
+        Assert.Equal((MapWaterCompileStatus.Invalid, "water body 'ocean' covers no space footprint"), (ocean.Status, ocean.Detail));
     }
 
     [Fact]
@@ -873,6 +1041,16 @@ public class MapWaterCompilerTests
         MapDocument loaded = MapDocumentFile.LoadTiled(dir);
         Assert.Equal(MapWaterCompiler.Compile(CaveFixtures.View(doc), doc.Water!).Select(b => b.Digest),
             MapWaterCompiler.Compile(CaveFixtures.View(loaded), loaded.Water!).Select(b => b.Digest));
+    }
+
+    [Fact]
+    public void Digest_FollowsOnlyWhatTheBodyRead()
+    {
+        MapDocument before = WaterFixtures.OceanOverCaves(), after = WaterFixtures.Broken("flood-floor-lowered");
+        string Digest(MapDocument d, string id) => Body(d, id).Digest;
+        Assert.NotEqual(Digest(before, "flooded"), Digest(after, "flooded"));
+        Assert.Equal(Digest(before, "cave-lake"), Digest(after, "cave-lake"));
+        Assert.Equal(Digest(before, "ocean"), Digest(after, "ocean"));
     }
 
     [Fact]
@@ -891,7 +1069,7 @@ public class MapWaterCompilerTests
     {
         MapCompiledWaterBody ocean = Body(WaterFixtures.OceanOverCaves(), "ocean");
         Assert.Equal(-20f, ocean.DeepestBedY);
-        Assert.Equal((-20d, 0d), (ocean.Bounds.MinY, ocean.Bounds.MaxY));
+        Assert.Equal((-20d, 0d), (ocean.Bounds!.Value.MinY, ocean.Bounds.Value.MaxY));
     }
 
     [Fact]
@@ -915,15 +1093,17 @@ public class WaterOpticsSceneTests
     {
         MapDocument doc = WaterOpticsScenes.Build(scene);
         Assert.Empty(MapDocumentValidator.Validate(doc, MapDocRegistry.CreateDefault()));
-        Assert.Empty(MapWaterContainment.Validate(CaveFixtures.View(doc), doc.Water!).Errors);
         MapCompiledWaterBody[] bodies = MapWaterCompiler.Compile(CaveFixtures.View(doc), doc.Water!).ToArray();
+        Assert.All(bodies, b => Assert.Equal(MapWaterCompileStatus.Complete, b.Status));
         Assert.Equal(deepestBed, bodies.Min(b => b.DeepestBedY));
         Assert.Contains(bodies.SelectMany(b => b.Regions), r => r.Kind == MapWaterRegionKind.FreeSurface && r.Triangles.Count > 0);
     }
 }
 ```
 
-`OpenSea(size)` uses a lattice frame of 8 m cells and centimetre heights with rows toward negative Z, a flat floor at -10 m covering a square of the given size from the origin across as many slots as it needs, one exterior space `open` whose footprints cover every cell, and body `sea` with `SurfaceY` 0 and one rectangle over the whole square. `ManyRectRiver()` is a 64 m flat exterior floor at -2 m and body `river` with 46 one-row rectangles `(i, i, i + 8, i + 1)` for i from 0 to 45. `OceanOverCavesWithThirdMetreRoof()` builds `lake-roof` on a frame of one-third metre cells and 1/300 m height units with the same heights, so the footprint lattice and the ceiling lattice differ. `Broken("flat-roof-at-surface")` sets every `lake-roof` corner to -34 m. `Area` sums exact triangle areas and `NormalY` returns the exact `cross(B - A, C - A).Y`.
+Fixtures named here: `OpenSea(size)` uses a lattice frame of 8 m cells and centimetre heights with rows toward negative Z, a flat floor at -10 m over a square of the given size from the origin across as many slots as it needs, one exterior space `open` over every cell, and body `sea` with `SurfaceY` 0 and one rectangle over the whole square. `ManyRectRiver()` is a 64 m flat exterior floor at -2 m with body `river` made of 46 one-row rectangles `(i, i, i + 8, i + 1)` for i from 0 to 45. `OceanOverCavesWithThirdMetreRoof()` builds `lake-roof` on a frame of one-third metre cells and 1/300 m height units with the same heights. `SeaAcrossTheOrigin()` is a flat exterior floor at -2 m over x -8 to 8 and z -8 to 8, so it spans four slots around the origin, with body `sea` over all of it (256 square metres). `SinkholeCave` is the Task 4 fixture.
+
+`Broken` variants: `diagonal-roof` sets the lake roof to -36 m plus half of (x + lattice row), so the -34 m contour is the diagonal x + row = 4 and the closed area is the triangle of area 8. `fine-roof` makes `lake-roof` a fine patch with subdivision 8 and the same heights. `ultra-fine-roof` subdivides one roof cell by 128, a valid patch whose one cell exceeds the 16,384-face read limit. `lake-roof-known-empty` makes the roof patch `KnownEmpty`, `lake-roof-missing-cell` clears presence on one roof cell, and `lake-roof-partial` clears presence on the six roof cells of one lattice row. `seabed-hole` clears presence on one seabed cell under the ocean at x 9. `flood-floor-lowered` lowers `flood-floor` by 1 m. `flat-roof-at-surface` sets every `lake-roof` corner to -34 m. `Area` sums exact triangle areas and `NormalY` returns the exact `cross(B - A, C - A).Y`.
 
 The five DG9.5 scenes: `ledge` is a floor at -0.3 m for x 0 to 4 beside -2 m for x 4 to 8. `river` is a 2 m deep channel with 0 m banks. `shelf` uses 8 m cells, a -30 m shelf for x 0 to 256 and -100 m ocean for x 256 to 512. `cross-region` is one body crossing the slot seam at x 64 over a -2 m floor. Those four have `SurfaceY` 0 over an exterior floor. `cave-lake` is `OceanOverCaves()`'s cave lake alone, a cave with an enclosing roof, at its own `SurfaceY` -34.
 
@@ -931,9 +1111,20 @@ The five DG9.5 scenes: `ledge` is a floor at -0.3 m for x 0 to 4 beside -2 m for
 
 - [ ] **Step 3: Implement the compiler**
 
-For each body: refuse with `CapacityExceeded` and detail `water footprint cells` when the covered footprints hold more cells than the limit, before reading geometry. Compile the domain (Task 2), triangulate each piece, and clip every triangle against every footprint rectangle of every covered space. A rectangle whose upper bound is `OpenTop` gives `FreeSurface`. For a ceiling or a horizontal opening, read the upper bound's canonical faces with `MapCommonRefinement.BoundFaces` over the clipped area, one storage slot at a time so each read stays within the default `MapRefinementLimits`. Clip each piece against each face's XZ projection with `ClipToConvex`, lift the result onto the face plane, and split it with `SplitAtHeight` at `FromSingle(SurfaceY)`. The strictly-above part is `FreeSurface` and the rest is `Closed`, so the split follows the exact contour on any lattice. A read that is not `Complete` yields an `Unresolved` region over that area and the status `Incomplete`, and any piece area outside the view scope does the same. The lower bound never clips the surface, so terrain above the water occludes it as in TileWorld. `DeepestBedY` reads the lower bound's faces the same slot-by-slot way and takes the `ToSingle` of the exact minimum vertex height over the clipped area, using legacy corner heights for compatibility-tagged cells. Counters record every footprint cell, upper and lower face and emitted triangle, and crossing `MaxBoundFaces` or `MaxTriangles` refuses with `CapacityExceeded`. A value that cannot narrow gives `NotRepresentable`. `Bounds` spans the region triangles in XZ and `[DeepestBedY, SurfaceY]` in Y. `Digest` is the canonical SHA-256 of `kemap/water-body/1`, `MapWaterSet.BodyDigest`, `MapWaterSet.MediumDigest` of its medium, the view's `Identity.Digest`, and the regions in order with exact coordinates as strings.
+For each body, in order, refusing at the first limit with `CapacityExceeded` and the limit's detail (`water pieces`, `water piece vertices`, `water footprint cells`, `water bound faces`, `water pair checks`, `water triangles`) and empty regions:
 
-- [ ] **Step 4: Run green** `wa_test t5-green "$MAPDOC" "FullyQualifiedName~MapWaterCompilerTests|FullyQualifiedName~WaterOpticsSceneTests"` (expect 18)
+1. Run `MapWaterContainment` for the body over the view. An error with a complete report makes the body `Invalid` with that error as detail. An incomplete report continues and leaves the status at most `Incomplete`.
+2. Preflight pieces and piece vertices, then compile the domain (Task 2) and triangulate each piece.
+3. Preflight the covered footprint cells through `MapWaterFootprints` over the domain's bounds, then clip every domain triangle against every footprint rectangle, charging each triangle and rectangle pair as one pair check.
+4. A rectangle whose upper bound is `OpenTop` gives `FreeSurface`. For a ceiling or a horizontal opening, read the upper bound with `MapWaterBoundReads` over the clipped area. Clip each piece against each face's XZ projection with `ClipToConvex`, charging pair checks, lift the result onto the face plane, and split it with `SplitAtHeight` at `FromSingle(SurfaceY)`. The strictly-above part is `FreeSurface` and the rest is `Closed`.
+5. Prove coverage: the exact area the returned faces and compatibility tags cover must equal each clipped area. Any uncovered part, including a `KnownEmpty` patch, a cell without presence or a missing read, becomes an `Unresolved` region and makes the status `Incomplete`, so no area is silently dropped. A typed read failure keeps its own status: `CapacityExceeded`, `NotRepresentable` or `Invalid` with the read's detail.
+6. Read the lower bound the same way for `DeepestBedY`, the `ToSingle` of the exact minimum vertex height over the covered lower area, with compatibility-tagged cells contributing their legacy corner heights. Uncovered lower area is `Unresolved` too. The lower bound never clips the surface, so terrain above the water occludes it as in TileWorld.
+7. Emit triangles in up-facing order. `Bounds` spans the region triangles in XZ and `[DeepestBedY, SurfaceY]` in Y.
+8. `Digest` is the canonical SHA-256 of `kemap/water-body/1`, `MapWaterSet.BodyDigest`, `MapWaterSet.MediumDigest` of its medium, the sorted `[patchKey, semanticDigest]` pairs of exactly the patches the body read (footprint, space, aperture and bound patches, digests from `view.Witness.Present`), and the regions in order with exact coordinates as strings. An edit to a patch the body never read leaves its digest unchanged.
+
+A value that cannot narrow from the wide kernel makes the body `NotRepresentable`.
+
+- [ ] **Step 4: Run green** `wa_test t5-green "$MAPDOC" "FullyQualifiedName~MapWaterCompilerTests|FullyQualifiedName~WaterOpticsSceneTests"` (expect 32)
 
 - [ ] **Step 5: Format, guards and commit** `feat(mapdoc): compile free and closed water regions`
 
@@ -953,7 +1144,7 @@ For each body: refuse with `CapacityExceeded` and detail `water footprint cells`
   - On `MapBuiltWorld`: `IReadOnlyList<MapCompiledWaterBody> Water` (empty without a section), `IReadOnlyList<MapWaterMediumDoc> WaterMedia` (the section's media in key order), `string WaterDigest` (empty without a section, else `MapWaterSet.Digest()`), `float? LegacyWaterLevel` (`Terrain.WaterLevel` for a resolver-1 world, null for a native one).
   - `public static IReadOnlyList<MapResidencyEntry> BuildWater(MapBuiltWorld world, MapWorldGrids grids)` on `MapResidencyOwnership`.
   - On `MapNavTile` the init-only `public string MediumDigest { get; init; } = "";`.
-  - Fixtures in `NativeWorldFixtures.Water.cs`: `internal sealed record WaterWorldFixture(MapDocument Document, MapAssetClosure Assets, MapResolvedDocument Resolved, MapScopedSurfaces View) : NativeFixture(Document, Assets, Resolved, View)` with `MapFramePoint Point(float x, float y, float z)`. `internal static WaterWorldFixture BridgeOverRiver()`, `BuildBridgeOverRiver()`, `LRiver(float wadeSpeedScale = 1f)`, `BuildLRiver()`, `BuildDryTwinOfLRiver()`, `internal static WaterWorldFixture Reresolve(WaterWorldFixture fixture)`, `internal static MapNativeEditEffects RiverLevelEditEffects()` and `internal static MapStaticOwner DownwardHit(MapPhysicsRegistration registration, IPhysicsQueryLease lease, Vector3 from)`.
+  - Fixtures in `NativeWorldFixtures.Water.cs`: `internal sealed record WaterWorldFixture(MapDocument Document, MapAssetClosure Assets, MapResolvedDocument Resolved, MapScopedSurfaces View) : NativeFixture(Document, Assets, Resolved, View)` with `MapFramePoint Point(float x, float y, float z)`. `internal static WaterWorldFixture BridgeOverRiver()`, `internal static WaterWorldFixture LRiver(float wadeSpeedScale = 1f, bool withPond = false, bool pondFloorLowered = false)`, `internal static MapBuiltWorld BuildBridgeOverRiver()`, `internal static MapBuiltWorld BuildLRiver()`, `internal static MapBuiltWorld BuildDryTwinOfLRiver()`, `internal static WaterWorldFixture Reresolve(WaterWorldFixture fixture)`, `internal static MapNativeEditEffects RiverLevelEditEffects()`, `internal static MapNativeEditEffects PondFloorEditEffects()` and `internal static MapStaticOwner DownwardHit(MapPhysicsRegistration registration, IPhysicsQueryLease lease, Vector3 from)`. `Build(NativeFixture)` keeps returning `MapBuiltWorld`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1022,6 +1213,21 @@ public class MapWaterWorldTests
     }
 
     [Fact]
+    public void RemoteFloorEdit_ChangesNoUnrelatedIdentity_AndReportsEveryChangedTile()
+    {
+        MapBuiltWorld before = NativeWorldFixtures.Build(NativeWorldFixtures.LRiver(withPond: true));
+        MapBuiltWorld after = NativeWorldFixtures.Build(NativeWorldFixtures.LRiver(withPond: true, pondFloorLowered: true));
+        Assert.Equal(before.Water.Single(b => b.BodyId == "river").Digest, after.Water.Single(b => b.BodyId == "river").Digest);
+        Assert.NotEqual(before.Water.Single(b => b.BodyId == "pond").Digest, after.Water.Single(b => b.BodyId == "pond").Digest);
+        var a = MapNavTiling.Partition(before, Grids, Nav).ToDictionary(t => t.Coord);
+        var b = MapNavTiling.Partition(after, Grids, Nav).ToDictionary(t => t.Coord);
+        var affected = MapNavTiling.AffectedTiles(before, Grids, Nav, NativeWorldFixtures.PondFloorEditEffects()).ToHashSet();
+        foreach (var (coord, tile) in a)
+            if (tile.CaptureIdentity != b[coord].CaptureIdentity) Assert.Contains(coord, affected);
+        foreach (MapNavTileCoord coord in Wet) Assert.Equal(a[coord].MediumDigest, b[coord].MediumDigest);
+    }
+
+    [Fact]
     public void WaterEdits_InvalidateExactlyTheirTiles()
     {
         MapBuiltWorld world = NativeWorldFixtures.BuildLRiver();
@@ -1047,7 +1253,7 @@ public class MapWaterEffectsTests
 }
 ```
 
-`BridgeOverRiver()` keeps `BuildBridge()`'s deck and parapets at their explicit heights over a new floor surface from x -8 to 8 and z -8 to 8 whose channel x -4 to 4 sits at -1.3 m with banks at 0 m beyond x 5 and linear slopes between. It adds an exterior space `bank-exterior` with one footprint per floor patch over every cell, lower the floor and upper `OpenTop`, medium `river-water`, material resource `river-material`, and body `river` with `SurfaceY` -0.37, one rectangle over the channel and cover `bank-exterior`, then reseals digests and resolves. `LRiver(wadeSpeedScale)` is a document with `TileSize` 64, storage and playable bounds x 0 to 256 and z -64 to 64, a flat floor at -2 m with an exterior space over every cell, medium `river-water` with the given scale, and body `river` made of the world rectangles x 8 to 24 by z -48 to 48 and x 24 to 104 by z 8 to 24. It meets storage tiles (0, -1), (0, 0) and (1, 0) and navigation tiles (0, -1) and (0, 0), while navigation tiles (1, -1) and (1, 0) stay dry. `BuildDryTwinOfLRiver()` is the same document with an empty bounded water set. `RiverLevelEditEffects()` is the effects of raising `river` by 0.1 m with `WaterBodyIds` ["river"], both bounds the river's XZ at its surface, and `Invalidates` `Medium | Residency | Nav`. `DownwardHit` casts a ray straight down under the lease and returns the hit's `MapStaticOwner`.
+`BridgeOverRiver()` keeps `BuildBridge()`'s deck and parapets at their explicit heights over a new floor surface from x -8 to 8 and z -8 to 8 whose channel x -4 to 4 sits at -1.3 m with banks at 0 m beyond x 5 and linear slopes between. It adds an exterior space `bank-exterior` with one footprint per floor patch over every cell, lower the floor and upper `OpenTop`, medium `river-water`, material resource `river-material`, and body `river` with `SurfaceY` -0.37, one rectangle over the channel and cover `bank-exterior`, then reseals digests and resolves. `LRiver(wadeSpeedScale)` is a document with `TileSize` 64, storage and playable bounds x 0 to 256 and z -64 to 64, a flat floor at -2 m with an exterior space over every cell, medium `river-water` with the given scale, and body `river` made of the world rectangles x 8 to 24 by z -48 to 48 and x 24 to 104 by z 8 to 24. It meets storage tiles (0, -1), (0, 0) and (1, 0) and navigation tiles (0, -1) and (0, 0), while navigation tiles (1, -1) and (1, 0) stay dry. `BuildDryTwinOfLRiver()` is the same document with an empty bounded water set. `withPond` adds body `pond` with `SurfaceY` -0.5 over x 160 to 200 and z -40 to -20, in navigation tile (1, -1), covering the same exterior space, and `pondFloorLowered` lowers the floor cells under the pond by 1 m. `PondFloorEditEffects()` is `MapTerrainEdits.Prepare` of that lowering, with `WaterBodyIds` ["pond", "river"] and `Medium` added, as `NameAffectedBodies` reports it in Task 8, since both bodies cover the edited space. With the pond present, navigation tile (1, -1) is wet too, so the dry-tile assertions in the other tests use the pond-free fixture. `RiverLevelEditEffects()` is the effects of raising `river` by 0.1 m with `WaterBodyIds` ["river"], both bounds the river's XZ at its surface, and `Invalidates` `Medium | Residency | Nav`. `DownwardHit` casts a ray straight down under the lease and returns the hit's `MapStaticOwner`.
 
 - [ ] **Step 2: Run red** `wa_test t6-red "$MP" "FullyQualifiedName~MapWaterWorldTests"` and `wa_test t6-red-doc "$MAPDOC" "FullyQualifiedName~MapWaterEffectsTests"`
 
@@ -1055,7 +1261,7 @@ public class MapWaterEffectsTests
 
 The builder keeps its whole-document contract. For a native document with a water section, the resolver's authored identity already ran `MapBoundDocumentValidation`, so containment and the material closure are verified. It compiles with `MapWaterCompiler` over its complete view and throws `MapDocumentException` with "water: " and the detail when any body's status is not `Complete`. `BuildHash` gains `waterDigest` and a `water` array of `[bodyId, digest]` pairs after `terrain`, written only when the section is present. `BuildWater` gives one entry per compiled body, owner id the body id, membership the storage tiles any region triangle's XZ bounds reaches under the existing minimum-inclusive rule, storage owner the tile holding the body's minimum bounds corner, nav tiles and cells derived from the membership tiles. `Affected` treats `Medium` like `Residency`, adds `WaterBodyIds` to its owners and their current and reported bounds to its tiles. `Partition` places each water body in every capture tile any of its region triangles meets, `MediumDigest` is the canonical SHA-256 of `kemap/nav-tile-medium/1` over the sorted `[bodyId, digest]` pairs of the bodies meeting the tile, and `CaptureIdentity` writes `mediumDigest` after `geometryDigest` only when it is non-empty. `AffectedTiles` adds the tiles the reported water bounds meet when `Medium` is set. The README replaces the deferred row "Water medium and walker profiles" with a short Water section: water is built-world data and never a static, its media travel with the built world, nav identity carries a medium digest, and movement in water arrives with #438 phase 4.
 
-- [ ] **Step 4: Run green** `wa_test t6-green "$MP" "FullyQualifiedName~MapWaterWorldTests"` (expect 6) and `wa_test t6-green-doc "$MAPDOC" "FullyQualifiedName~MapWaterEffectsTests"` (expect 1), then `wa_test t6-physics "$MP" "FullyQualifiedName~Residency|FullyQualifiedName~NavTiling|FullyQualifiedName~WorldBuilder"`.
+- [ ] **Step 4: Run green** `wa_test t6-green "$MP" "FullyQualifiedName~MapWaterWorldTests"` (expect 7) and `wa_test t6-green-doc "$MAPDOC" "FullyQualifiedName~MapWaterEffectsTests"` (expect 1), then `wa_test t6-physics "$MP" "FullyQualifiedName~Residency|FullyQualifiedName~NavTiling|FullyQualifiedName~WorldBuilder"`.
 
 - [ ] **Step 5: Format, guards and commit** `feat(mapdocphysics): carry bounded water as built-world data`
 
@@ -1137,7 +1343,7 @@ The builder sets `LegacyWaterLevel` from `document.Terrain.WaterLevel` for resol
 
 **Files:**
 - Create: `KhaozEngine.MapDoc/Editing/MapWaterEdits.cs`, `KhaozEngine.MapEditor/NativeWaterCommands.cs`
-- Modify: `KhaozEngine.MapDoc/Editing/MapNativeWriteSet.cs`, `KhaozEngine.MapEditor/NativeDocumentSnapshot.cs` (`Clone`, `Publish` and `PublishWriteSet`), `KhaozEngine.MapEditor/NativeTerrainCommands.cs`, `KhaozEngine.MapEditor/ViewportWorld.cs`
+- Modify: `KhaozEngine.MapDoc/Editing/MapNativeWriteSet.cs`, `KhaozEngine.MapEditor/NativeDocumentSnapshot.cs` (`Clone`, `Publish` and `PublishWriteSet`), `KhaozEngine.MapEditor/NativeDocumentTransaction.cs` (containment at publication), `KhaozEngine.MapEditor/NativeTerrainCommands.cs`, `KhaozEngine.MapEditor/ViewportWorld.cs`
 - Test: `KhaozEngine.MapDoc.Tests/Editing/MapWaterEditTests.cs`, `KhaozEngine.MapEditor.Tests/MapDoc/NativeWaterCommandTests.cs`. The editor test project's existing `../KhaozEngine.MapDoc.Tests/**/*Fixtures.cs` glob already compiles `WaterFixtures.cs` and its dependencies, so its project file does not change.
 
 **Interfaces:**
@@ -1257,6 +1463,20 @@ public sealed class NativeWaterCommandTests
     }
 
     [Fact]
+    public void UncontainedBody_IsRefusedAtPublication()
+    {
+        MapDocument doc = WaterFixtures.OceanOverCaves();
+        string before = MapDocumentFile.SaveText(doc);
+        MapWaterBodyDoc stray = doc.Water!.Bodies.Single(b => b.Id == "ocean") with
+        {
+            Domain = new MapWaterDomainDoc(MapLatticeFrame.ImportedMetreCentimetre, new[] { new MapWaterRect(30, 0, 34, 4) }, Array.Empty<MapWaterRing>()),
+        };
+        var error = Assert.Throws<MapDocumentException>(() => new WaterEditCommand(new MapUpsertWaterBody(stray)).Apply(doc));
+        Assert.Contains("water body 'ocean' covers no space footprint", error.Message, StringComparison.Ordinal);
+        Assert.Equal(before, MapDocumentFile.SaveText(doc));
+    }
+
+    [Fact]
     public void BoundedDocument_HidesTheLegacyPlane()
     {
         MapDocument bounded = WaterFixtures.OceanOverCaves();
@@ -1285,9 +1505,9 @@ public sealed class NativeWaterCommandTests
 
 `Prepare` never mutates its input. An upsert replaces the body with the same id or appends it. A body edit reports old and new bounds as the domain's XZ bounds at the old and new `SurfaceY`, `WaterBodyIds` the body id, `SpaceIds` the union of old and new cover ids, a `water:{id}` digest change from `MapWaterSet.BodyDigest`, and `Medium | Residency | Nav`, plus `Material` when the body is added, removed or changes `RenderMaterial`. A medium edit names every body that uses the key. Switching to bounded water creates an empty section and requires a resolver-2 native document, switching back requires no bodies, and both report `Medium | Unbounded`. The write set is empty except `Water = true`. `NameAffectedBodies` adds every body whose covers meet `effects.SpaceIds` and sets `Medium`.
 
-`NativeDocumentSnapshot.Clone` copies `Water.Clone()` onto the clone after its round trip, `Publish` copies the candidate's water for a whole-document publication, and `PublishWriteSet` copies it when the write set has `Water`. Every copy is deep. `WaterEditCommand` mirrors `TerrainEditCommand`: `Apply` and `Revert` run `NativeDocumentTransaction.Run` with `localOnly: true`, and `Prepare` keeps the set before and after the first application so undo restores it exactly, with old and new bounds swapped. `TerrainEditCommand` passes its effects through `NameAffectedBodies` with the candidate's water. `ViewportWorld` draws the camera-centred plane only when `LegacyWaterLevel` returns a value.
+`NativeDocumentSnapshot.Clone` copies `Water.Clone()` onto the clone after its round trip, `Publish` copies the candidate's water for a whole-document publication, and `PublishWriteSet` copies it when the write set has `Water`. Every copy is deep. `WaterEditCommand` mirrors `TerrainEditCommand`: `Apply` and `Revert` run `NativeDocumentTransaction.Run` with `localOnly: true`, and `Prepare` keeps the set before and after the first application so undo restores it exactly, with old and new bounds swapped. `NativeDocumentTransaction` runs `MapWaterContainment.Validate` over the publication's complete view, next to its existing `MapSpaceCoverageValidator` call, for every body when the write set has `Water` and otherwise for the bodies the effects name after `NameAffectedBodies`, so a placement-only edit validates no water, and refuses with the first error, so every water, terrain or space edit that would leave a body uncontained is rejected atomically. `TerrainEditCommand` passes its effects through `NameAffectedBodies` with the candidate's water. `ViewportWorld` draws the camera-centred plane only when `LegacyWaterLevel` returns a value.
 
-- [ ] **Step 4: Run green** `wa_test t8-green-doc "$MAPDOC" "FullyQualifiedName~MapWaterEditTests"` (expect 8) and `wa_test t8-green "$EDITOR" "FullyQualifiedName~NativeWaterCommandTests"` (expect 7), then `wa_test t8-editor "$EDITOR" "FullyQualifiedName~NativeDocumentTransaction|FullyQualifiedName~Terrain|FullyQualifiedName~Placement"`.
+- [ ] **Step 4: Run green** `wa_test t8-green-doc "$MAPDOC" "FullyQualifiedName~MapWaterEditTests"` (expect 8) and `wa_test t8-green "$EDITOR" "FullyQualifiedName~NativeWaterCommandTests"` (expect 8), then `wa_test t8-editor "$EDITOR" "FullyQualifiedName~NativeDocumentTransaction|FullyQualifiedName~Terrain|FullyQualifiedName~Placement"`.
 
 - [ ] **Step 5: Format, guards and commit** `feat(mapeditor): edit bounded water through native transactions`
 
@@ -1368,16 +1588,15 @@ public sealed class WaterServiceTests
 ### Task 10: Synthetic legacy oracle
 
 **Files:**
-- Create: `KhaozEngine.MapDoc.Compatibility.Tests/LegacyWaterOracleWorld.cs`, `LegacyWaterConverter.cs`, `LegacyWaterComparison.cs`, `LegacyWaterOracleTests.cs`
+- Create in `KhaozEngine.MapDoc.Compatibility.Tests/`: `LegacyWaterConverter.cs` and `LegacyWaterComparison.cs`, which hold everything the private harness also needs and depend on nothing else in this project, plus `LegacyWaterOracleWorld.cs` and `LegacyWaterOracleTests.cs`, which are synthetic-only.
 - Test: `KhaozEngine.MapDoc.Compatibility.Tests/LegacyWaterOracleTests.cs`
 
 **Interfaces:**
-- Consumes: `TileWaterBodies.Collect`, `TileWaterBody`, `TileRect`, `LegacyOracleConverter.ToNative` and `RegionPlanes`, `MapLegacyExteriorRecipe`, Tasks 1 to 5.
+- Consumes: `TileWaterBodies.Collect`, `TileWaterBody`, `TileRect`, `LegacyOracleConverter.ToNative` and `RegionPlanes` (already linked into the private harness), `MapLegacyExteriorRecipe`, Tasks 1 to 5.
 - Produces:
-  - `internal sealed class LegacyWaterOracleWorld` with `TileWorldDocument Document`, `TileWorldCatalogs Catalogs`, `static LegacyWaterOracleWorld Create()`, `static bool IsRiver(LegacyWaterSource source)`, `static bool IsShoal(LegacyWaterSource source)`, `static IEnumerable<MapExactXz> SeamSamples()` and `static IEnumerable<MapFramePoint> CellCentres(LegacyWaterSource source, float y)`.
-  - `internal sealed record LegacyWaterSource(string BodyId, RegionCoord Region, int Plane, int Index, TileWaterBody Body)`.
-  - `internal static class LegacyWaterConverter` with `(MapDocument Document, IReadOnlyList<LegacyWaterSource> Sources) ToNative(TileWorldDocument document, TileWorldCatalogs catalogs)` and `string BodyId(RegionCoord region, int plane, int index)` giving `legacy-water/{rx}/{rz}/{plane}/{index}` from the region's coordinates.
-  - `internal enum LegacyWaterDifferenceKind { BoundaryOwner, FloorAboveSurface }`, `internal sealed record LegacyWaterDifference(LegacyWaterDifferenceKind Kind, string BodyId, MapExactXz Point, bool Legacy, bool Native)`, `internal sealed record LegacyWaterReport(int Bodies, int Rects, int Cells, int BoundarySamples, IReadOnlyList<LegacyWaterDifference> Differences, IReadOnlyList<string> Failures)` and `internal static class LegacyWaterComparison` with `LegacyWaterReport Compare(MapDocument native, IReadOnlyList<LegacyWaterSource> sources)`.
+  - In `LegacyWaterConverter.cs`: `internal sealed record LegacyWaterSource(string BodyId, RegionCoord Region, int Plane, int Index, TileWaterBody Body)` and `internal static class LegacyWaterConverter` with `(MapDocument Document, IReadOnlyList<LegacyWaterSource> Sources) ToNative(TileWorldDocument document, TileWorldCatalogs catalogs)` and `string BodyId(RegionCoord region, int plane, int index)` giving `legacy-water/{rx}/{rz}/{plane}/{index}`. Water on any plane other than 0 refuses with `MapDocumentException` "water on plane {n} is outside the R4 comparison", since every shipped body is plane 0 and R11 owns multi-plane import.
+  - In `LegacyWaterComparison.cs`: `internal enum LegacyWaterDifferenceKind { BoundaryOwner, FloorAboveSurface }`, `internal sealed record LegacyWaterDifference(LegacyWaterDifferenceKind Kind, string BodyId, MapExactXz Point, bool Legacy, bool Native)`, `internal sealed record LegacyWaterReport(int Bodies, int Rects, int Cells, int BoundarySamples, IReadOnlyList<LegacyWaterDifference> Differences, IReadOnlyList<string> Failures)`, and `internal static class LegacyWaterComparison` with `LegacyWaterReport Compare(MapDocument native, IReadOnlyList<LegacyWaterSource> sources)`, `IEnumerable<MapFramePoint> CellCentres(LegacyWaterSource source, float y)` and `IEnumerable<MapExactXz> BoundarySamples(LegacyWaterSource source)`.
+  - In `LegacyWaterOracleWorld.cs`: `internal sealed class LegacyWaterOracleWorld` with `TileWorldDocument Document`, `TileWorldCatalogs Catalogs`, `static LegacyWaterOracleWorld Create()`, `static LegacyWaterOracleWorld WithPlaneOneWater()`, `static bool IsRiver(LegacyWaterSource source)`, `IsShoal`, `IsPuddle` and `static IEnumerable<MapExactXz> SeamSamples()`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1387,11 +1606,12 @@ public class LegacyWaterOracleTests
     static readonly LegacyWaterOracleWorld World = LegacyWaterOracleWorld.Create();
     static readonly (MapDocument Document, IReadOnlyList<LegacyWaterSource> Sources) Native = LegacyWaterConverter.ToNative(World.Document, World.Catalogs);
     static readonly LegacyWaterReport Report = LegacyWaterComparison.Compare(Native.Document, Native.Sources);
+    static MapWaterQuery Query() => new(MapScopedSurfaces.CompleteView(Native.Document.Surfaces), Native.Document.Water!);
 
     [Fact]
     public void RegionPieces_KeepOneBodyEach_AndEveryLevelExactly()
     {
-        Assert.Equal(4, Native.Sources.Count);
+        Assert.Equal(5, Native.Sources.Count);
         foreach (LegacyWaterSource source in Native.Sources)
             Assert.Equal(source.Body.SurfaceY, Native.Document.Water!.Bodies.Single(b => b.Id == source.BodyId).SurfaceY);
         float river = Assert.Single(Native.Sources.Where(LegacyWaterOracleWorld.IsRiver).Select(s => s.Body.SurfaceY).Distinct());
@@ -1400,7 +1620,7 @@ public class LegacyWaterOracleTests
     }
 
     [Fact]
-    public void EveryCellCentre_IsWetInItsOwnBody_ExceptTheShoalCorners()
+    public void EveryCellCentre_HasWaterInItsOwnBody_ExceptTheShoalCorners()
     {
         Assert.Empty(Report.Failures);
         Assert.Equal(Native.Sources.Sum(s => s.Body.Rects.Sum(r => r.Width * r.Height)), Report.Cells);
@@ -1408,6 +1628,16 @@ public class LegacyWaterOracleTests
         Assert.Equal(4, dry.Length);
         string shoal = Native.Sources.Single(LegacyWaterOracleWorld.IsShoal).BodyId;
         Assert.All(dry, d => Assert.Equal((shoal, true, false), (d.BodyId, d.Legacy, d.Native)));
+    }
+
+    [Fact]
+    public void ShallowPuddle_IsWetByFiveMillimetres()
+    {
+        LegacyWaterSource puddle = Native.Sources.Single(LegacyWaterOracleWorld.IsPuddle);
+        MapFramePoint centre = LegacyWaterComparison.CellCentres(puddle, y: 0f).Single();
+        MapWaterSample s = Assert.Single(Query().Column(centre));
+        Assert.Equal((MapWaterStatus.Wet, puddle.BodyId, 0.075f, puddle.Body.SurfaceY), (s.Status, s.BodyId, s.LowerY, s.UpperY));
+        Assert.True(s.UpperY - s.LowerY < 0.006f);
     }
 
     [Fact]
@@ -1427,11 +1657,10 @@ public class LegacyWaterOracleTests
         MapWaterBodyDoc[] pieces = Native.Sources.Where(LegacyWaterOracleWorld.IsRiver)
             .Select(s => Native.Document.Water!.Bodies.Single(b => b.Id == s.BodyId)).ToArray();
         Assert.Equal(pieces[0].SurfaceY, pieces[1].SurfaceY);
-        var query = new MapWaterQuery(MapScopedSurfaces.CompleteView(Native.Document.Surfaces), Native.Document.Water!);
         foreach (MapExactXz p in LegacyWaterOracleWorld.SeamSamples())
         {
             Assert.Equal(1, pieces.Count(b => MapWaterDomain.Compile(b.Domain).Contains(p)));
-            MapWaterSample s = query.Sample(new MapFramePoint(default, new Vector3(p.X.ToSingle(), pieces[0].SurfaceY - 0.01f, p.Z.ToSingle())));
+            MapWaterSample s = Query().Sample(new MapFramePoint(default, new Vector3(p.X.ToSingle(), pieces[0].SurfaceY - 0.01f, p.Z.ToSingle())));
             Assert.Equal(MapWaterStatus.Wet, s.Status);
         }
     }
@@ -1439,37 +1668,47 @@ public class LegacyWaterOracleTests
     [Fact]
     public void SurfaceFeet_StayDry()
     {
-        var query = new MapWaterQuery(MapScopedSurfaces.CompleteView(Native.Document.Surfaces), Native.Document.Water!);
         foreach (LegacyWaterSource source in Native.Sources)
-            foreach (MapFramePoint p in LegacyWaterOracleWorld.CellCentres(source, y: source.Body.SurfaceY))
-                Assert.Equal(MapWaterStatus.Dry, query.Sample(p).Status);
+            foreach (MapFramePoint p in LegacyWaterComparison.CellCentres(source, y: source.Body.SurfaceY))
+                Assert.Equal(MapWaterStatus.Dry, Query().Sample(p).Status);
     }
 
     [Fact]
-    public void ConvertedWater_PassesContainment_AndEmitsTwoTrianglesPerRect()
+    public void ConvertedWater_IsContained_AndEmitsTwoTrianglesPerRect()
     {
         MapScopedSurfaces view = MapScopedSurfaces.CompleteView(Native.Document.Surfaces);
         MapWaterContainmentReport containment = MapWaterContainment.Validate(view, Native.Document.Water!);
         Assert.Equal((true, 0), (containment.Complete, containment.Errors.Count));
         Assert.Equal(2 * Native.Sources.Sum(s => s.Body.Rects.Count), MapWaterCompiler.Compile(view, Native.Document.Water!).Sum(b => b.Work.Triangles));
     }
+
+    [Fact]
+    public void WaterOffPlaneZero_Refuses()
+    {
+        LegacyWaterOracleWorld world = LegacyWaterOracleWorld.WithPlaneOneWater();
+        var error = Assert.Throws<MapDocumentException>(() => LegacyWaterConverter.ToNative(world.Document, world.Catalogs));
+        Assert.Contains("water on plane 1 is outside the R4 comparison", error.Message, StringComparison.Ordinal);
+    }
 }
 ```
 
-`LegacyWaterOracleWorld.Create()` is a synthetic TileWorld document `public-legacy-water-oracle` with two regions side by side along X on plane 0 and a catalog whose material 1 is `GroundMaterialKind.Water`. It holds four bodies after region clipping:
+`LegacyWaterOracleWorld.Create()` is a synthetic TileWorld document `public-legacy-water-oracle` with two regions side by side along X on plane 0 and a catalog whose material 1 is `GroundMaterialKind.Water`. It holds five bodies after region clipping:
 
-- A river four cells wide crosses the region seam at tile x 64 and bends, so it is two region pieces at one level.
-- An eight by eight cell pond in region 1 has a rim 0.4 m higher than the river's.
-- River and pond use the basin recipe: exactly one boundary corner of each body sits at its rim, every other corner of its water cells sits at -50 cm or lower, so with the converter's `Auto` topology every cell centre lies at -50 cm or lower, below `SurfaceY - 0.01`.
-- A three by three cell shoal in region 0 is the control. Its twelve boundary corners sit at its rim and its four interior corners at -130 cm, so `Auto` puts each corner cell's centre on a rim-to-rim diagonal at the rim, above its surface, while its edge and centre cells are wet. Its four corner cells are the only `FloorAboveSurface` differences.
+- A river four cells wide crosses the region seam at tile x 64 and bends, so it is two region pieces at one level, rim 0 cm.
+- An eight by eight cell pond in region 1 has its rim at 40 cm.
+- River and pond use the basin recipe: exactly one boundary corner of each body sits at its rim, every other corner of its water cells sits 50 cm or more below the rim, so with the converter's `Auto` topology every cell centre lies at least 25 cm below the rim.
+- A three by three cell shoal in region 0, rim 20 cm, is the floor control. Its twelve boundary corners sit at its rim and its four interior corners at -130 cm, so `Auto` puts each corner cell's centre on a rim-to-rim diagonal at the rim, above its surface, while its edge and centre cells are wet. Its four corner cells are the only `FloorAboveSurface` differences.
+- A one-cell puddle in region 0 has corners 10, 8, 7 and 8 cm in the order (x, z), (x + 1, z), (x, z + 1), (x + 1, z + 1). `Auto` takes the 8 to 7 diagonal, so the centre floor is 7.5 cm under a surface of about 8 cm (the float of the 10 cm rim minus 0.02 m), a valid wet interval about 5 mm deep.
 
-`IsRiver` and `IsShoal` identify those sources. `SeamSamples()` returns points every 0.25 m on tile x 64 strictly inside the river. `CellCentres(source, y)` returns each cell centre of the source's rects at height y. The converter takes surfaces from `LegacyOracleConverter.ToNative` for every region-plane, adds one exterior space `legacy-world` with `LegacyExteriorV1` lower and `OpenTop` upper footprints over every cell, one medium `legacy` of kind `Water` and wade scale 1, one material resource `legacy-water`, and one body per collected `TileWaterBody` with frame `ImportedMetreCentimetre`, one `MapWaterRect` per `TileRect` in stored order, the legacy float as `SurfaceY`, and the exterior space as its cover. The comparison runs the actual `MapWaterQuery`, never domain containment alone. Each cell centre is sampled at `SurfaceY - 0.01` and must be `Wet` in exactly its own body, or is recorded as `FloorAboveSurface` when the floor at the centre is at or above the surface. Each rect corner and edge midpoint is checked for ownership, meaning membership resolves the covered space at the point and the body's domain contains it, the same two tests the query applies before height, and compared with the legacy rule (tile x in `[X, X + Width)`, tile z in `[Z, Z + Height)`). Every disagreement there is a `BoundaryOwner` difference, so floor height never masks or mimics an ownership change. Any other disagreement, a level mismatch or a piece count mismatch is a failure.
+`WithPlaneOneWater()` is the same world with one water cell on plane 1. `IsRiver`, `IsShoal` and `IsPuddle` identify those sources, and `SeamSamples()` returns points every 0.25 m on tile x 64 strictly inside the river. The converter takes surfaces from `LegacyOracleConverter.ToNative` for every region-plane, adds one exterior space `legacy-world` with `LegacyExteriorV1` lower and `OpenTop` upper footprints over every plane-0 cell, one medium `legacy` of kind `Water` and wade scale 1, one material resource `legacy-water` with the document's roots set from the same closure, and one body per collected plane-0 `TileWaterBody` with frame `ImportedMetreCentimetre`, one `MapWaterRect` per `TileRect` in stored order, the legacy float as `SurfaceY`, and the exterior space as its cover.
+
+The comparison uses the actual query, never domain containment alone. For each cell centre it reads `Column` at that XZ: the source body must have a positive wet interval there, which counts as wet however shallow, and a missing interval is `FloorAboveSurface` when the floor at the centre is at or above the surface. Where the interval's float midpoint lies strictly inside it, `Sample` at that midpoint must also be `Wet` in the same body. Each rect corner and edge midpoint from `BoundarySamples` is checked for ownership, meaning membership resolves the covered space at the point and the body's domain contains it, the same two tests the query applies before height, against the legacy rule (tile x in `[X, X + Width)`, tile z in `[Z, Z + Height)`). Every disagreement there is a `BoundaryOwner` difference, so floor height never masks or mimics an ownership change. Any other disagreement, a level mismatch or a piece count mismatch is a failure.
 
 - [ ] **Step 2: Run red** `wa_test t10-red "$COMPAT" "FullyQualifiedName~LegacyWaterOracleTests"`
 
-- [ ] **Step 3: Implement the world, converter and comparison** as described above, in test code only.
+- [ ] **Step 3: Implement the world, converter and comparison** as described above, in test code only, keeping the converter and comparison files free of any dependency on `LegacyWaterOracleWorld`.
 
-- [ ] **Step 4: Run green** `wa_test t10-green "$COMPAT" "FullyQualifiedName~LegacyWaterOracleTests"` (expect 6)
+- [ ] **Step 4: Run green** `wa_test t10-green "$COMPAT" "FullyQualifiedName~LegacyWaterOracleTests"` (expect 8)
 
 - [ ] **Step 5: Format, guards and commit** `test(mapdoc): prove bounded water against a synthetic TileWorld oracle`
 
@@ -1483,7 +1722,7 @@ public class LegacyWaterOracleTests
 
 **Interfaces:**
 - Consumes: Task 10, `PrivateOracleEntry.Run`, `PrivateOracleInputs`, `PrivateOracleReport.Record` and `Check`, `ShippedSourceInventory`.
-- Produces: `[UnsupportedOSPlatform("windows")] public sealed class ShippedWaterComparisonTests` with `[Fact] ShippedWater_IsExpressibleWithBoundedBodies()`.
+- Produces: `[UnsupportedOSPlatform("windows")] public sealed class ShippedWaterComparisonTests` with `[Fact] ShippedWater_IsExpressibleWithBoundedBodies()`, and on `ShippedSourceInventory` `internal static (TileWorldDocument Document, TileWorldCatalogs Catalogs) ReadWorld(PrivateOracleInputs inputs)` over the verified source root. The linked converter and comparison files carry every water type and probe the test uses, so the harness builds without the synthetic world.
 
 - [ ] **Step 1: Write the test**
 
@@ -1504,7 +1743,7 @@ public sealed class ShippedWaterComparisonTests
             boundaryOwner = water.Differences.Count(d => d.Kind == LegacyWaterDifferenceKind.BoundaryOwner),
             floorAboveSurface = water.Differences.Count(d => d.Kind == LegacyWaterDifferenceKind.FloorAboveSurface),
         }));
-        report.Check(water.Failures.Count == 0, "water comparison failures");   // only report.Check and report.Record, never Assert on source values
+        report.Check("water", water.Failures.Count == 0, JsonSerializer.Serialize(new { failures = water.Failures }));   // only report.Check and report.Record, never Assert on source values
     });
 }
 ```
@@ -1515,7 +1754,7 @@ public sealed class ShippedWaterComparisonTests
 
 The README gains a water section: the test reads the same private inputs as the terrain comparison, records only counts, and runs once per pinned source. The controller runs it at the candidate gate against two sources with their own provenance, the historical game commit 74f57ee2 and current game main, and records provenance SHA-256s, report SHA-256s and counts in the private Grimhollow program folder as `R4-WATER-ORACLE.md`. Counts and paths never enter this repository.
 
-- [ ] **Step 4: Run the harness guards** `wa_test t11-guards "$ORACLE" "FullyQualifiedName~PrivateOracleGuardTests"` (expect 17), then format the project with the command in Verification conventions.
+- [ ] **Step 4: Run the harness guards** `wa_test t11-guards "$ORACLE" "FullyQualifiedName~PrivateOracleGuardTests"` (expect 23), then format the project with the command in Verification conventions.
 
 - [ ] **Step 5: Commit** `test(mapdoc): compare shipped water in the private harness`
 
@@ -1529,8 +1768,8 @@ The README gains a water section: the test reads the same private inputs as the 
    - If main already stages an unreleased minor above 20.31.0, ride it and append to its entry. Otherwise set the next minor, 20.32.0 at the time of writing, and add its entry.
    - Update every declaration `scripts/check-doc-versions.sh` guards, including the root README and `docs/USING-KHAOZENGINE.md` package examples, to that one version.
    - Run the documentation sweep `docs/CONTRIBUTOR-RULES.md` requires over every Markdown file, public API comment and behaviour note the round touched. That includes the MapDoc README water section, the MapDoc.Physics README water section from Task 6, C4 and DG9.2 and the R4 rows and plan links in `docs/design/WORLD-AUTHORING-MIGRATION-DESIGN-2026-10-05.md` (including the exit row near line 346), and the R4 row in `docs/design/WORLD-AUTHORING-R2-CAVES-SCALE-2026-10-06.md`, all updated to OA27 to OA29.
-3. Candidate gates, each once: `build-slot --heavy --label wa-r4-gate-build -- dotnet build KhaozEngine.slnx -c Release` with zero warnings, `build-slot --heavy --label wa-r4-gate-suite -- dotnet test KhaozEngine.slnx -c Release`, the guards, hosted CI on the pushed branch, and the controller's two private water runs with their reports recorded in Grimhollow `R4-WATER-ORACLE.md`.
-4. Integration: merge current `main` into the branch, rerun the focused water tests and, if main moved, the full suite once. Fast-forward `main`, push, and pack the shared feed from `main` with `build-slot --heavy --label release-pack -- sh scripts/pack-local-feed.sh`. The tag follows OA25: a KhaozEngine-rooted thread re-reads version and tags on current main and runs `scripts/tag-release.sh` when the program needs the release.
+3. Candidate gates, each once: `build-slot --heavy --label wa-r4-gate-build -- dotnet build KhaozEngine.slnx -c Release` with zero warnings, `build-slot --heavy --label wa-r4-gate-suite -- dotnet test KhaozEngine.slnx -c Release --no-build --filter "Category!=LiveSocket"`, the repository's prescribed headless suite, the guards, hosted CI on the pushed branch, and the controller's two private water runs with their reports recorded in Grimhollow `R4-WATER-ORACLE.md`.
+4. Integration: merge current `main` into the branch, rerun the focused water tests and, if main moved, the Release build and the same filtered suite once. Fast-forward `main`, push, and pack the shared feed from `main` with `build-slot --heavy --label release-pack -- sh scripts/pack-local-feed.sh`. The tag follows OA25: a KhaozEngine-rooted thread re-reads version and tags on current main and runs `scripts/tag-release.sh` when the program needs the release.
 5. Grimhollow `PROGRAM.md`, `DECISIONS.md` and project memory record the integrated commit, the gates, the private oracle reports and the release.
 
 ## Outcome and proof ledger

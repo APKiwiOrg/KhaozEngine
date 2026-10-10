@@ -325,13 +325,24 @@ public class ContactScenarioTests
     }
 
     // The 47 degree bank, inside the band. The walker keeps its footing up the bank and jumps once its feet pass x 0.5.
-    // The jump ungrounds it, so the next tick reads the bare gate and the bank is steep, but the jump's velocity
-    // separates from the bank's plane, so that tick flies instead of sliding: it is not footed, its vertical speed is
+    // The jump ungrounds it, so the next tick reads the bare gate and the bank is steep, but the jump still rises
+    // after the tick's gravity, so that tick flies instead of sliding: it is not footed, its vertical speed is
     // the closed form's first tick, JumpSpeed - g dt, and its feet rise at least the closed form's first-tick rise,
     // JumpSpeed dt - g dt^2, less half a skin.
     [Theory]
     [MemberData(nameof(Rates))]
-    public void JumpFromABankInsideTheBandLeavesIt(string ground, int hz)
+    public void JumpFromABankInsideTheBandLeavesIt(string ground, int hz) => JumpFromTheBand(ground, hz, run: false);
+
+    // The same bank and jump at run speed. Running uphill carries RunSpeed sin(47) into the bank's plane, more than
+    // the jump's JumpSpeed - g dt carries out of it at either rate, so the jump's velocity still points into the bank.
+    // The tick decides on its vertical speed after gravity, which a jump always has positive, so the run leaves the
+    // bank on the same closed form.
+    [Theory]
+    [MemberData(nameof(Rates))]
+    public void RunningJumpFromABankInsideTheBandLeavesIt(string ground, int hz) =>
+        JumpFromTheBand(ground, hz, run: true);
+
+    static void JumpFromTheBand(string ground, int hz, bool run)
     {
         float grade = MathF.Tan(Radians(47));
         Vector3 normal = RisingNormal(grade);
@@ -341,14 +352,14 @@ public class ContactScenarioTests
         MoveState s = Standing(new Vector3(-0.2f, 0, 0));
         for (int tick = 0; tick < 4 * hz && Feet(s).X < 0.5f; tick++)
         {
-            s = g.Step(s, Vector2.UnitX, false, false, dt, Tuning);
+            s = g.Step(s, Vector2.UnitX, run, false, dt, Tuning);
             Assert.True(s.Grounded, $"tick {tick} lost footing on the bank: {Show(s)}");
         }
-        s = g.Step(s, Vector2.UnitX, false, true, dt, Tuning);
+        s = g.Step(s, Vector2.UnitX, run, true, dt, Tuning);
         Assert.True(s.VerticalVelocity == Tuning.JumpSpeed, $"the walker did not jump: {Show(s)}");
         float launch = Feet(s).Y;
 
-        MoveState next = g.Step(s, Vector2.UnitX, false, false, dt, Tuning);
+        MoveState next = g.Step(s, Vector2.UnitX, run, false, dt, Tuning);
         Assert.False(Footed(next), $"the jump stayed on the bank: {Show(next)}");
         Assert.True(Math.Abs(next.VerticalVelocity - (Tuning.JumpSpeed - Tuning.Gravity * dt)) <= 1e-3,
             $"the jump lost its speed: {Show(next)}");

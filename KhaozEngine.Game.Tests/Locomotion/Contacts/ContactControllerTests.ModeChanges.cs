@@ -211,7 +211,7 @@ public partial class ContactControllerTests
     }
 
     // The wedge row's V-gully. Once the body lies still in the crease, holding the jump launches it from every wedged
-    // tick, and the jump's velocity separates from both faces, so the next tick flies instead of sliding. The cycle
+    // tick, and the jump still rises after the next tick's gravity, so that tick flies instead of sliding. The cycle
     // must manage at least one jump in two free hops of 2 JumpSpeed / g, every launch must clear the crease by half
     // the ballistic reach JumpSpeed^2 / 2g, no tick rises past that reach plus StepHeight and a 0.05 margin, and after
     // the first tenth of the held ticks the second half never peaks 20 mm above the first.
@@ -257,5 +257,36 @@ public partial class ContactControllerTests
         double hops = Ticks * Dt * Tuning.Gravity / (2 * Tuning.JumpSpeed);
         Assert.True(jumps >= hops / 2, $"only {jumps} jumps against {hops:F1} free hops");
         Assert.True(secondMax <= firstMax + 0.02, $"the cycle ratcheted: first {firstMax}, second {secondMax}");
+    }
+
+    // Terrain falls to +X at 50 degrees to a convex break at x 1.5, then at 60 degrees. A body at rest at the origin
+    // slides down and over the break. A slide descends, so its vertical speed after the tick's gravity never rises
+    // and every tick stays a slide on the surface, to half a skin. Its speed only grows, except where the fall-line
+    // speed moves from the 50 degree plane onto the 60 degree one, which keeps cos(10) of it. So no tick's speed falls
+    // below cos(10) of the tick before. A tick that flew the input instead would keep only the vertical part.
+    [Theory]
+    [InlineData(30)]
+    [InlineData(60)]
+    public void SlideOverAConvexBreakKeepsItsSpeed(int hz)
+    {
+        const float Break = 1.5f, End = 4;
+        float shallow = MathF.Tan(Radians(50)), steep = MathF.Tan(Radians(60));
+        Vector3 upper = Vector3.Normalize(new Vector3(shallow, 1, 0));
+        Vector3 lower = Vector3.Normalize(new Vector3(steep, 1, 0));
+        float Height(float x, float z) => x <= Break ? -shallow * x : -shallow * Break - steep * (x - Break);
+        using var g = new Ground(null, Height, (x, _) => x <= Break ? upper : lower);
+        float dt = 1f / hz;
+        double keep = Math.Cos(Radians(10)), speed = 0;
+        MoveState s = Falling(Vector3.Zero);
+        for (int tick = 1; tick <= 3 * hz && Feet(s).X < End; tick++)
+        {
+            s = g.Step(s, Vector2.Zero, 0, false, Tuning, dt);
+            Assert.False(s.Grounded, $"tick {tick}: {Show(s)}");
+            AssertNear(Height(Feet(s).X, Feet(s).Z), Feet(s).Y, HalfSkin, $"tick {tick} left the slope: {Show(s)}");
+            double next = Math.Sqrt(s.HorizontalVelocity.LengthSquared() + (double)s.VerticalVelocity * s.VerticalVelocity);
+            Assert.True(next >= speed * keep - 1e-3, $"tick {tick} fell from {speed} to {next}: {Show(s)}");
+            speed = next;
+        }
+        Assert.True(Feet(s).X >= End, $"the slide never passed the break: {Show(s)}");
     }
 }

@@ -93,14 +93,15 @@ internal static class ContactController
             var context = new Context(groundHeight, groundNormal, world, lease, t, foot, gate, clampXz);
             Mode mode = Mode.Air;
             SupportSample support = default;
-            // An airborne body on steep support slides only while the velocity it moves at this tick, after
-            // gravity, does not separate from the support's plane. A jump stamped last tick separates, so it flies,
-            // and the air pass hands it back to a slide once it descends onto steep support. A slide's own velocity
-            // lies in the plane, so gravity keeps it there however the plane's dot product rounds.
+            // An airborne body on steep support slides only while its vertical speed after the tick's gravity does
+            // not rise. A jump always rises, so it flies, and the air pass hands it back to a slide once it descends
+            // onto steep support. A slide's vertical speed is its descending fall-line speed's vertical part, never
+            // positive, so a slide stays a slide whatever its carry. A rising body pressed into a steep face flies,
+            // and the air pass's terrain wall and shell contacts take away the horizontal part, so it cannot climb.
             if (s.Grounded)
                 mode = Mode.Ground;
-            else if (!committedFlight && SlideCore.InContact(feet, t, foot, gate, groundHeight, groundNormal,
-                         world, lease, out support) && !Separates(s, support, t.Gravity * dt))
+            else if (!committedFlight && !(s.VerticalVelocity - t.Gravity * dt > 0f) && SlideCore.InContact(feet,
+                         t, foot, gate, groundHeight, groundNormal, world, lease, out support))
                 mode = Mode.Slide;
             tick = Move(context, s, mode, support, feet, commanded, velocity, displacement, intent, dt);
             if (clampXz is not null) tick = Bound(context, tick, clampXz);
@@ -156,11 +157,6 @@ internal static class ContactController
         StepDeltaY = 0f,
         Commitment = commitment,
     };
-
-    // True when the carried velocity, after the tick's gravity, leaves the support's plane.
-    static bool Separates(in MoveState s, in SupportSample support, float gravity) =>
-        Vector3.Dot(new Vector3(s.HorizontalVelocity.X, s.VerticalVelocity - gravity, s.HorizontalVelocity.Y),
-            support.Normal) > 0f;
 
     // The clamp after the move bounds what a later mode planned past the play area. A shifted end that stood on
     // support is seated on the support at the clamped axis, and no shifted end is left below support it can reach, so

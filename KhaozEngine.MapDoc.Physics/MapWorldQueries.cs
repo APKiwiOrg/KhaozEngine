@@ -17,9 +17,12 @@ public sealed record MapPickHit(string PlacementId, long? NumericId, float Dista
 /// client and a server built from one document give identical answers. Pick, <see cref="Distance"/> and
 /// <see cref="Within"/> query interaction envelopes only, clipped to an optional band. <see cref="PhysicalDistance"/>
 /// queries colliders only. A ray that starts inside an envelope member hits it at its start, or where it enters the
-/// band. A box member turned about world Y alone is measured through <see cref="ReachGeometry"/>, whose yaw sine and
-/// cosine come from the platform math library. Heads on different platforms can then disagree by an ulp exactly at a
-/// range boundary, so consumers that need both heads to agree pass a <c>tolerance</c> to <see cref="Within"/>.</summary>
+/// band. Heads agree except for one residual dependency on the platform's double sine and cosine. Placement poses take
+/// the sine and cosine of half the yaw in double, rounded to float once, so a last-bit difference shows only when it
+/// rounds across a float boundary. A box member turned about world Y alone is measured through
+/// <see cref="ReachGeometry"/>, which also takes its yaw's sine and cosine in double, so a difference there shows only
+/// exactly at a range boundary. Consumers that need both heads to agree pass a <c>tolerance</c> to
+/// <see cref="Within"/>.</summary>
 public sealed class MapWorldQueries
 {
     readonly MapBuiltWorld _world;

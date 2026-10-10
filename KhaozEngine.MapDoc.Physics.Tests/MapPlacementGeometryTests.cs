@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using System.Linq;
 using System.Numerics;
@@ -20,9 +21,26 @@ public class MapPlacementGeometryTests
         var g = MapPlacementShapes.Resolve(f.Resolved).Single(p => p.PlacementId == "doorway");
         var jamb = ((CompoundShape)g.Collider!).Children[0];
         Assert.Equal(new Vector3(0.15f, 1.2f, 0.15f) * 1.137f, ((BoxShape)jamb.Shape).HalfExtents);
-        Assert.Equal(Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.371f), g.WorldPose.Orientation);
+        AssertYaw(g.WorldPose.Orientation, 0x3e3cdd4fu, 0x3f7b9badu);
         Assert.Equal(new Vector3(0.23f, 0f, 0.17f), g.WorldPose.Position);
     }
+
+    [Theory]
+    [InlineData(0x3ebdf3b6u, 0x3e3cdd4fu, 0x3f7b9badu)]
+    [InlineData(0xc0c6249bu, 0xbd3abf54u, 0xbf7fbbdau)]
+    public void Yaw_IsTheDoubleHalfAngleSineAndCosineRoundedOnce(uint yawBits, uint sinBits, uint cosBits)
+    {
+        // The sine and cosine of half the yaw were taken in double outside the engine and rounded to float once. The
+        // second yaw's half-angle sine is negative, so X and Z must still be positive zero.
+        float yaw = BitConverter.UInt32BitsToSingle(yawBits);
+        var g = MapPlacementShapes.Resolve(NativeWorldFixtures.Doorway(yaw, 1f).Resolved).Single(p => p.PlacementId == "doorway");
+        AssertYaw(g.WorldPose.Orientation, sinBits, cosBits);
+    }
+
+    static void AssertYaw(Quaternion orientation, uint sinBits, uint cosBits) =>
+        Assert.Equal((0u, sinBits, 0u, cosBits), (BitConverter.SingleToUInt32Bits(orientation.X),
+            BitConverter.SingleToUInt32Bits(orientation.Y), BitConverter.SingleToUInt32Bits(orientation.Z),
+            BitConverter.SingleToUInt32Bits(orientation.W)));
 
     [Fact]
     public void LowObject_EnvelopeIsSweptToOneMetreWhilePhysicalBoundsStay()

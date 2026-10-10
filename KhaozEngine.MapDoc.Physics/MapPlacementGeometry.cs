@@ -27,7 +27,8 @@ public sealed class MapPlacementGeometry
     /// <summary>The scaled blocking shape, or null when the asset is not solid.</summary>
     public PhysicsShape? Collider { get; }
 
-    /// <summary>The placement position with its yaw about world Y.</summary>
+    /// <summary>The placement position with its yaw about world Y. The orientation is (0, sin, 0, cos) of half the yaw,
+    /// each taken in double and rounded to float once.</summary>
     public Pose WorldPose { get; }
 
     /// <summary>The world bounds of <see cref="Collider"/> at <see cref="WorldPose"/>, or null without a collider.</summary>
@@ -105,7 +106,7 @@ public static class MapPlacementShapes
             !float.IsFinite(transform.Position.Z) || !float.IsFinite(transform.YawRadians))
             throw new MapDocumentException($"Placement '{placement.PlacementId}' has a nonfinite position or yaw.");
 
-        var worldPose = new Pose(transform.Position, Quaternion.CreateFromAxisAngle(Vector3.UnitY, transform.YawRadians));
+        var worldPose = new Pose(transform.Position, YawOrientation(transform.YawRadians));
         PhysicsShape? collider = shapes.Collider is null ? null : PhysicsShapeScale.Uniform(shapes.Collider, scale);
         PhysicsShape? selection = shapes.Selection is null ? null : PhysicsShapeScale.Uniform(shapes.Selection, scale);
         PhysicsShape source = selection ?? collider ?? throw new MapDocumentException(
@@ -117,6 +118,15 @@ public static class MapPlacementShapes
         string digest = Digest(placement, shapes, scale, envelope.RaiseMetres);
         return new MapPlacementGeometry(placement.PlacementId, placement.NumericId, shapes.AssetId, collider, worldPose,
             colliderBounds, envelope, digest);
+    }
+
+    /// <summary>The rotation by <paramref name="yaw"/> radians about world Y, (0, sin, 0, cos) of half the yaw. The
+    /// half-angle sine and cosine are taken in double and rounded to float once, so the pose does not depend on the
+    /// platform's float sine and cosine.</summary>
+    internal static Quaternion YawOrientation(float yaw)
+    {
+        (double sin, double cos) = Math.SinCos(yaw * 0.5d);
+        return new Quaternion(0f, (float)sin, 0f, (float)cos);
     }
 
     static string Digest(MapResolvedPlacement placement, MapAssetShapes shapes, float scale, float raise)

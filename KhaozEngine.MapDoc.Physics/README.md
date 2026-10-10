@@ -160,9 +160,14 @@ IReadOnlyList<Vector3> stances = MapStanceCandidates.Find(world, "door-1", actor
 `MapWorldQueries` runs in scalar double with no physics backend, so a client and a server built from one document
 agree. `Pick`, `Distance` and `Within` query interaction envelopes only, clipped to an optional absolute
 `MapInteractionBand`. `PhysicalDistance` queries colliders only. Equal pick distances resolve to the ordinally
-smallest placement id. A box turned about world Y alone is measured through `ReachGeometry`, whose sine and cosine
-come from the platform math library, so heads that must agree pass a `tolerance` to `Within`. `MapShapeQueries`
-holds the same point, capsule and ray tests for one shape at a pose.
+smallest placement id. `MapShapeQueries` holds the same point, capsule and ray tests for one shape at a pose.
+
+Heads agree except for one residual dependency on the platform's double sine and cosine. A placement's world pose
+takes the sine and cosine of half its yaw in double and rounds each to float once, so no float trigonometry enters
+bounds, residency, navigation tile contents or pick. A last-bit difference in the double result shows only when it
+rounds across a float boundary. A box turned about world Y alone is measured through `ReachGeometry`, which also
+takes its yaw's sine and cosine in double, so a difference there shows only exactly at a range boundary. Heads that
+must agree pass a `tolerance` to `Within`.
 
 `MapStanceCandidates.Find` walks each envelope member's XZ outline, outset by the capsule radius, at `Spacing` and
 proposes walk-up positions: at the envelope's base for a native world, at the legacy support height for resolver 1.

@@ -26,6 +26,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   query views implement it for boxes, convex hulls, meshes, spheres, capsules, cylinders and compounds of those.
   `IPhysicsCapsuleFeatures` is unchanged.
 - `BepuPhysicsWorld.AddStatic` throws `ArgumentException` for a triangle mesh with a non-finite vertex.
+- Locomotion's internal contact-classification controller gains its whole tick for phase 3 of #438: the air pass
+  with jumps, coyote time and landing, steep slides on terrain and props, traction hysteresis and movement
+  commitments. Nothing consumes it yet, so there is no consumer or movement change.
 
 ## 20.30.0
 

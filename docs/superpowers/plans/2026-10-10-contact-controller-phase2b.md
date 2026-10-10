@@ -81,7 +81,7 @@ Read its "Support neighborhood query", "Certifying support from the neighborhood
 ```csharp
 public enum SupportElementKind : byte { Polygon, Tangent }
 
-/// ElementId is stable per static: polyhedron leaf * 256 + face, mesh triangle index, tangent leaf * 4 + part
+/// ElementId is stable per static: polyhedron leaf * 256 + face, mesh triangle index, tangent leaf * 256 + part
 /// (0 sphere, capsule or cylinder side, 1 cylinder top cap, 2 cylinder bottom cap).
 public readonly record struct SupportElement(StaticHandle Static, SupportElementKind Kind, int ElementId,
     Vector3 Normal, float NormalError, Vector3 Witness, float PositionErrorMetres,

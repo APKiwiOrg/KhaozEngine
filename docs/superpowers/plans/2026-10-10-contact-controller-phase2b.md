@@ -333,6 +333,38 @@ internal static int CertifyNeighborhood(IPhysicsCapsuleFeatures capability, IPhy
 - [ ] **Step 4: Commit** `test(locomotion): run the ground core on certified neighborhoods`, then comment the
   measured cost on #1334 (plain prose, no colons, dashes or semicolons).
 
+### Task 6b: Neighborhood cost
+
+Added by controller ruling after Task 6 measured one `FootSupport.Find` at 0.11 to 0.6 ms and 86 to 486 KB on
+ordinary ground, and 267 ms and 279 MB on a 96-triangle fan (`docs/verification/2026-10-10-p2b-support-cost.json`).
+
+**Files:**
+- Modify: `KhaozEngine.Physics.Bepu/SupportNeighborhood*.cs` and the bounded types they allocate through
+- Modify: `KhaozEngine.Locomotion/Contacts/FootSupport.cs`, `SupportCertification.cs` (scratch spans)
+- Modify: `KhaozEngine.Game.Tests/Locomotion/Contacts/GroundScenarioTests.cs` (`SupportFindAllocation`,
+  `SupportFindTiming`), `docs/verification/2026-10-10-p2b-support-cost.json`
+
+**Interfaces:** no public contract change. Results, membership, joins and contributions stay bit-identical.
+
+- [ ] **Step 1: Profile** one warm `Find` per cost scene and list every allocation site and the hot loops, with
+  numbers, in the report before changing code.
+- [ ] **Step 2: Make warm queries allocation-free.** No heap allocation per polygon, per pair or per call on a warm
+  path: reusable scratch owned by the world or the query view (not shared across threads without a guard), structs
+  instead of arrays for fixed-size geometry, and no LINQ or closures on the path. Move the large `stackalloc`
+  spans in `FootSupport.Find` to that scratch if it removes the per-call zero fill.
+- [ ] **Step 3: Prune the join pass.** Test a pair only when both members' band-inflated bounds overlap, and skip
+  pairs where either member's upward normal bound reaches zero, because certification never reads their joins.
+  Keep the join test itself unchanged.
+- [ ] **Step 4: Prove nothing changed.** Every neighborhood, FootSupport and ground row passes unchanged, and an
+  equivalence row compares the members, joins and contributions before and after on the oracle poses (capture the
+  pre-change results as a committed fixture or by running the old and new paths side by side in the test).
+- [ ] **Step 5: Assert and record.** `SupportFindAllocation` asserts zero bytes per warm `Find` on flat ground,
+  stairs, the sphere and the 20,000-triangle mesh, and records the fan. `SupportFindTiming` records all scenes,
+  with fewer calls on the fan so the row runs in under two seconds. Targets, recorded not asserted: under 50
+  microseconds per `Find` on ordinary scenes and under 5 ms on the fan. Update the cost JSON and comment the
+  before and after numbers on #1334.
+- [ ] **Step 6: Commit** `perf(physics): make support neighborhoods allocation-free and prune joins`, push.
+
 ### Task 7: Finish phase 2b
 
 **Files:** `CHANGELOG.md`, `docs/INDEX.md`, the phase 2b spec (status, the two plan decisions, the capacity),

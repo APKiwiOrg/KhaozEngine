@@ -194,6 +194,11 @@ internal static class ShapeFactory
 
     private static TypedIndex AddTriangleMesh(BepuSim sim, BufferPool pool, TriangleMeshShape tm)
     {
+        // A non-finite vertex would poison the mesh tree's bounds and silently prune valid triangles from every
+        // tree query, so it is refused before anything is installed.
+        foreach (Vector3 v in tm.Vertices)
+            if (!float.IsFinite(v.X) || !float.IsFinite(v.Y) || !float.IsFinite(v.Z))
+                throw new ArgumentException("A TriangleMeshShape vertex is not finite.", nameof(tm));
         // Mesh takes OWNERSHIP of the triangle buffer (its Triangles field; Mesh.Dispose(pool) returns it).
         // Do NOT return the buffer here - the mesh owns it and RecursivelyRemoveAndDispose will return it
         // when the shape is later removed. Returning it here would cause a double-return and use-after-free.

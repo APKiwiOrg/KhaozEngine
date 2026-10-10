@@ -196,6 +196,60 @@ public class SupportNeighborhoodMeshTests
     }
 
     [Fact]
+    public void DegenerateTriangleIsNotAMember()
+    {
+        // A level floor triangle (0) and a zero-area triangle (1) whose three collinear points lie on the floor right
+        // under the probe. The probe rests on the floor, so the zero-area triangle is in reach but has no surface.
+        using var scene = new Scene();
+        StaticHandle mesh = AddMesh(scene, [new(-1, 0, -1), new(1, 0, -1), new(-1, 0, 1),
+            new(-0.5f, 0, -0.8f), new(-0.5f, 0, -0.2f), new(-0.5f, 0, -0.5f)]);
+        Query query = scene.Query(scene.World, Lowest(-0.5, FootProbe.Radius, -0.5), probe: FootProbe);
+
+        Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
+        SupportElement floor = Assert.Single(query.Elements);
+        Assert.Equal(mesh, floor.Static);
+        Assert.Equal(0, floor.ElementId);
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(1e-6f)]
+    public void FarSliverDoesNotRefuse(float width)
+    {
+        // A level floor triangle (0) under the probe, and a triangle (1) along the line x + z = 0.3 sqrt 2 at the
+        // height of the probe's sphere centre, 0.3 from the axis. Its bounds overlap the probe's, so it is read. Width
+        // 0 makes it collinear, a positive width a sliver toward the axis. Either way it is 0.1 beyond the 0.2 probe.
+        float span = (float)(0.3 * Math.Sqrt(2));
+        float y = FootProbe.Radius;
+        using var scene = new Scene();
+        StaticHandle mesh = AddMesh(scene, [new(-1, 0, -1), new(1, 0, -1), new(-1, 0, 1),
+            new(span, y, 0), new(0, y, span), new(span / 2 - width, y, span / 2 - width)]);
+        Query query = scene.Query(scene.World, Lowest(0, FootProbe.Radius, 0), probe: FootProbe);
+
+        Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
+        SupportElement floor = Assert.Single(query.Elements);
+        Assert.Equal(mesh, floor.Static);
+        Assert.Equal(0, floor.ElementId);
+    }
+
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    public void NonFiniteMeshVertexIsRejectedAtInstall(float value)
+    {
+        // A non-finite vertex would poison the mesh tree's bounds and could prune valid triangles from queries.
+        using var scene = new Scene();
+        Vector3[] vertices = [new(-1, 0, -1), new(1, 0, -1), new(-1, 0, 1), new(1, 0, 1), new(value, 0, 1), new(1, 0, -1)];
+        Assert.Throws<ArgumentException>(() => AddMesh(scene, vertices));
+        // Nothing was installed: a finite floor installs and certifies alone.
+        StaticHandle floor = AddMesh(scene, [new(-1, 0, -1), new(1, 0, -1), new(-1, 0, 1)]);
+        Query query = scene.Query(scene.World, Lowest(-0.5, FootProbe.Radius, -0.5), probe: FootProbe);
+        Assert.Equal(CapsuleFeatureStatus.Complete, query.Result.Status);
+        Assert.Equal(floor, Assert.Single(query.Elements).Static);
+    }
+
+    [Fact]
     public void DenseFanCertifiesWithinCapacity()
     {
         // 96 level triangles around one vertex. The probe rests on the vertex, which every triangle holds, so every

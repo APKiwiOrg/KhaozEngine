@@ -11,7 +11,8 @@ namespace KhaozEngine.Physics.Bepu;
 /// <summary>The triangles of one installed mesh static near the probe, read through the mesh's own bounding tree.
 /// Each triangle is its own polygon, with element id equal to its triangle index. Membership, front facing and
 /// joins are decided per triangle by geometry, so the mesh's topology is never validated: non-manifold edges,
-/// duplicate triangles and inconsistent winding certify triangle by triangle. Coplanar triangles are not merged.</summary>
+/// duplicate triangles and inconsistent winding certify triangle by triangle. Coplanar triangles are not
+/// merged.</summary>
 internal static class SupportNeighborhoodMesh
 {
     // The local query box is the interval preimage of the probe segment under the installed operator, inflated by
@@ -24,10 +25,13 @@ internal static class SupportNeighborhoodMesh
 
     /// <summary>Every triangle whose tree bounds may reach the probe segment within <paramref name="reach"/>, in
     /// triangle order. Only those triangles are read, each with the vertex bounds and finite checks of a captured
-    /// mesh. An unproved pose, a scaled mesh or a candidate triangle outside that domain is Unsupported.</summary>
+    /// mesh. An unproved pose, a scaled mesh or a candidate triangle outside that domain is Unsupported. A triangle
+    /// whose world bounds are beyond the reach of the probe bounds <paramref name="probeLow"/> to
+    /// <paramref name="probeHigh"/> is skipped before its area is examined, and an exactly degenerate triangle has no
+    /// surface and is skipped too.</summary>
     internal static CapsuleFeatureStatus Polygons(Simulation simulation, TypedIndex shape, in RigidPose pose,
-        StaticHandle owner, FeaturePoint lower, FeaturePoint upper, GeometryInterval reach, List<int> candidates,
-        List<SupportPolygon> output)
+        StaticHandle owner, FeaturePoint lower, FeaturePoint upper, ReadOnlySpan<double> probeLow,
+        ReadOnlySpan<double> probeHigh, GeometryInterval reach, List<int> candidates, List<SupportPolygon> output)
     {
         if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
             return CapsuleFeatureStatus.Unsupported;
@@ -40,6 +44,7 @@ internal static class SupportNeighborhoodMesh
         mesh.Tree.GetOverlaps(min, max, ref overlaps);
         candidates.Sort();
         var seamPose = new Pose(pose.Position, pose.Orientation);
+        Span<double> low = stackalloc double[3], high = stackalloc double[3];
         foreach (int id in candidates)
         {
             ref Triangle triangle = ref mesh.Triangles[id];
@@ -51,11 +56,20 @@ internal static class SupportNeighborhoodMesh
                 CapsuleFeatureGeometry.TransformVertex(c, seamPose, transform, out FeaturePoint worldC) !=
                     CapsuleFeatureStatus.Complete)
                 return CapsuleFeatureStatus.Unsupported;
+            for (int axis = 0; axis < 3; axis++)
+            {
+                GeometryInterval x = SupportGeometry.Component(worldA, axis);
+                GeometryInterval y = SupportGeometry.Component(worldB, axis);
+                GeometryInterval z = SupportGeometry.Component(worldC, axis);
+                low[axis] = Math.Min(x.Lower, Math.Min(y.Lower, z.Lower));
+                high[axis] = Math.Max(x.Upper, Math.Max(y.Upper, z.Upper));
+            }
+            if (SupportGeometry.BoxGap(probeLow, probeHigh, low, high) > reach.Upper || Degenerate(a, b, c)) continue;
             // Edges and normal come from the common installed operator. Bepu 2.4 Triangle.RayTest defines the front
             // as Cross(ac, ab), as CapsuleFeatureMesh does. Wound A, C, B, the polygon's inside convention carries it.
             FeaturePoint ac = transform.Edge(a, c), ab = transform.Edge(a, b);
             FeaturePoint normal = FeaturePoint.Cross(ac, ab);
-            // A triangle with no certain area has no front.
+            // A sliver keeps its bounded normal. Only arithmetic that cannot bound it away from zero refuses.
             if (FeaturePoint.Dot(normal, normal).Sign != GeometrySign.Positive) return CapsuleFeatureStatus.Unsupported;
             output.Add(new SupportPolygon(owner, id, [worldA, worldC, worldB],
                 [ac, transform.Edge(c, b), transform.Edge(b, a)], normal));
@@ -72,11 +86,12 @@ internal static class SupportNeighborhoodMesh
         GeometryInterval inflation = reach.Add(GeometryInterval.Exact(Margin));
         if (!inflation.IsResolved) return false;
         Span<float> low = stackalloc float[3], high = stackalloc float[3];
-        FeaturePoint[] rows = [transform.InverseTransposeX, transform.InverseTransposeY, transform.InverseTransposeZ];
         for (int axis = 0; axis < 3; axis++)
         {
-            GeometryInterval first = FeaturePoint.Dot(rows[axis], FeaturePoint.Subtract(lower, transform.Translation)).Bounds;
-            GeometryInterval second = FeaturePoint.Dot(rows[axis], FeaturePoint.Subtract(upper, transform.Translation)).Bounds;
+            FeaturePoint row = axis == 0 ? transform.InverseTransposeX
+                : axis == 1 ? transform.InverseTransposeY : transform.InverseTransposeZ;
+            GeometryInterval first = FeaturePoint.Dot(row, FeaturePoint.Subtract(lower, transform.Translation)).Bounds;
+            GeometryInterval second = FeaturePoint.Dot(row, FeaturePoint.Subtract(upper, transform.Translation)).Bounds;
             GeometryInterval below = GeometryInterval.Exact(Math.Min(first.Lower, second.Lower)).Subtract(inflation);
             GeometryInterval above = GeometryInterval.Exact(Math.Max(first.Upper, second.Upper)).Add(inflation);
             if (!first.IsResolved || !second.IsResolved || !below.IsResolved || !above.IsResolved) return false;
@@ -88,6 +103,14 @@ internal static class SupportNeighborhoodMesh
         max = new Vector3(high[0], high[1], high[2]);
         return true;
     }
+
+    // The local cross product is zero exactly when the triangle's orientation is zero in all three coordinate
+    // projections, decided by the exact predicate on the float vertices. An undecided projection is not degenerate.
+    // The installed operator is invertible, so the world triangle is degenerate exactly when the local one is.
+    static bool Degenerate(Vector3 a, Vector3 b, Vector3 c) =>
+        BoundedGeometryArithmetic.Orient2D(a.X, a.Y, b.X, b.Y, c.X, c.Y) == GeometrySign.Zero &&
+        BoundedGeometryArithmetic.Orient2D(a.Y, a.Z, b.Y, b.Z, c.Y, c.Z) == GeometrySign.Zero &&
+        BoundedGeometryArithmetic.Orient2D(a.Z, a.X, b.Z, b.X, c.Z, c.X) == GeometrySign.Zero;
 
     struct TriangleOverlaps(List<int> found) : IBreakableForEach<int>
     {

@@ -89,23 +89,25 @@ internal sealed class SupportNeighborhoodCollector
         MathF.BitIncrement((float)GeometryInterval.Exact(centre).Add(GeometryInterval.Exact(extent.Upper)).Upper);
 
     /// <summary>Considers every element of one selected static: the faces of its box and hull leaves, or the
-    /// triangles of its mesh near the probe. A capture refusal is the neighborhood's status, and failed bounded arithmetic in the
-    /// kernel is Unsupported.</summary>
-    internal CapsuleFeatureStatus Collect(Simulation simulation, SeamStaticHandle seam, in StaticDescription description)
+    /// triangles of its mesh near the probe. A capture refusal is the neighborhood's status, and failed bounded
+    /// arithmetic in the kernel is Unsupported.</summary>
+    internal CapsuleFeatureStatus Collect(Simulation simulation, SeamStaticHandle seam,
+        in StaticDescription description)
     {
         _polygons.Clear();
         CapsuleFeatureStatus captured;
         if (SupportNeighborhoodMesh.IsMesh(description.Shape))
         {
             captured = SupportNeighborhoodMesh.Polygons(simulation, description.Shape, description.Pose, seam, _start,
-                _end, _radius.Bounds.Add(GeometryInterval.Exact(_band)), _triangles, _polygons);
+                _end, _low, _high, _radius.Bounds.Add(GeometryInterval.Exact(_band)), _triangles, _polygons);
             if (captured != CapsuleFeatureStatus.Complete) return captured;
         }
         else
         {
             captured = SupportNeighborhoodPolyhedra.Capture(simulation, description.Shape, description.Pose, _leaves);
             if (captured != CapsuleFeatureStatus.Complete) return captured;
-            foreach (CapsuleFeaturePolyhedron leaf in _leaves) SupportNeighborhoodPolyhedra.Polygons(seam, leaf, _polygons);
+            foreach (CapsuleFeaturePolyhedron leaf in _leaves)
+                SupportNeighborhoodPolyhedra.Polygons(seam, leaf, _polygons);
         }
         foreach (SupportPolygon polygon in _polygons)
             if (Consider(polygon) == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;

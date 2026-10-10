@@ -1,23 +1,24 @@
-// The neighborhood cost task's equivalence proof. The fixture was recorded from the code before the support
-// neighborhood was made allocation free and its join pass pruned. It holds one digest per question: the
-// neighborhood status, every element field bit for bit, the whole join matrix and the certified contributions, or
-// for a FootSupport row the whole SupportSample and both probes' neighborhoods. A changed bit anywhere changes the
+// The neighborhood cost task's equivalence proof. The neighborhood rows were recorded from the code before the
+// support neighborhood was made allocation free and its join pass pruned. Each row holds one digest per question:
+// the neighborhood status, every element field bit for bit, the whole join matrix and the certified contributions, or
+// for a feature row the whole closest-feature result and its incident faces. A changed bit anywhere changes the
 // digest. Poses follow the brute force oracle rows: random boxes, hulls, meshes and curved solids under random
-// rotations with the probe placed against a surface point, then FootSupport over the scene catalogue.
+// rotations with the probe placed against a surface point, then dense fans and closest-feature queries.
+// Every row is platform independent. No input passes through a Bepu sweep, whose contact distances differ in the last
+// bits between x64 and arm64, or through MathF trigonometry, which differs between platform maths libraries. Scene
+// coordinates come from exact arithmetic, and the slope limit is a literal.
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
-using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
 using KhaozEngine.Tests.Physics;
 using Xunit;
 using Xunit.Abstractions;
-using static KhaozEngine.Tests.Locomotion.Contacts.FootSupportScenes;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
@@ -28,8 +29,8 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
     // Names a file to write the recorded digests to instead of comparing. Used once, on the code before the change.
     const string CaptureVariable = "KHAOZENGINE_SUPPORT_EQUIVALENCE_CAPTURE";
     static readonly CapsuleShape[] Probes = [new(0.01f, 0.01f), new(0.2f, 0.01f)];
-    static readonly MoveTuning Tuning = MoveTuning.Default;
-    static readonly float CosMaxSlope = MathF.Cos(Tuning.MaxSlopeRadians);
+    // The float nearest cos(MoveTuning.Default.MaxSlopeRadians), the default 45 degree slope limit, bits 0x3F3504F3.
+    const float CosMaxSlope = 0.70710677f;
 
     [Fact]
     public void NeighborhoodsAndSupportMatchTheRecordedFixture()
@@ -38,7 +39,8 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
         Polyhedra(lines);
         Meshes(lines);
         Curved(lines);
-        Support(lines);
+        Fans(lines);
+        Features(lines);
         string? capture = Environment.GetEnvironmentVariable(CaptureVariable);
         if (!string.IsNullOrEmpty(capture))
         {
@@ -167,114 +169,121 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
         }
     }
 
-    // FootSupport over the scene catalogue at a grid of axes and feet heights. Each row digests the sample and both
-    // probes' neighborhoods and contributions, recomputed exactly as FootSupport proposes them.
-    static void Support(List<string> lines)
+    // Flat fans of up-facing triangles meeting at the origin, with a square rim of half size 1. A probe at the apex
+    // meets every triangle, which is the join pass's worst case below capacity and a capacity refusal above it.
+    static void Fans(List<string> lines)
     {
-        foreach ((string name, Func<FootSupportScene> build, (float X, float Z, float Feet)[] poses) in SupportScenes())
+        foreach (int triangles in new[] { 96, 300 })
         {
-            using FootSupportScene scene = build();
-            foreach ((float x, float z, float feet) in poses)
+            using var world = new BepuPhysicsWorld(Vector3.Zero);
+            world.AddStatic(new TriangleMeshShape(Fan(triangles), [.. Enumerable.Range(0, 3 * triangles)]),
+                Pose.Identity);
+            using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
+            foreach (CapsuleShape probe in Probes)
             {
-                float footRadius = new GroundCoreSettings().FootRadiusFraction * Tuning.CapsuleRadius;
-                var query = new FootSupportQuery(new Vector2(x, z), feet, footRadius, Tuning.StepHeight,
-                    Tuning.StepHeight, CosMaxSlope);
-                SupportSample sample = FootSupport.Find(null, null, scene.World, scene.Lease, query);
-                var digest = new Digest();
-                digest.Sample(sample);
-                foreach (float radius in new[] { FootSupport.AxisProbeRadius, footRadius })
-                    Probe(scene.World, scene.Lease, query, radius, digest);
-                lines.Add($"foot/{name}/{x}/{z}/{feet} {sample.Status} {digest.Hex()}");
+                lines.Add(Neighborhood($"fan/{triangles}/apex/{probe.Radius}", world, lease, probe,
+                    new OracleVector(0, 0, 0)));
+                lines.Add(Neighborhood($"fan/{triangles}/side/{probe.Radius}", world, lease, probe,
+                    new OracleVector(0.5, 0, 0.25)));
             }
         }
     }
 
-    static IEnumerable<(string, Func<FootSupportScene>, (float, float, float)[])> SupportScenes()
+    // The rim walks the square from +X towards +Z in steps of 2 / (triangles / 4), so every coordinate is a correctly
+    // rounded quotient. Triangle (origin, rim i, rim i + 1) has the front normal Cross(C - A, B - A) = +Y.
+    static Vector3[] Fan(int triangles)
     {
-        (float, float, float)[] Grid(float low, float high, params float[] feet)
+        int side = triangles / 4;
+        Vector3 Rim(int i)
         {
-            var poses = new List<(float, float, float)>();
-            for (float x = low; x <= high + 1e-4f; x += 0.15f)
-                foreach (float z in new[] { -0.25f, 0.1f })
-                    foreach (float f in feet) poses.Add((x, z, f));
-            return [.. poses];
+            i %= triangles;
+            float u = (float)(-1 + 2.0 * (i % side) / side);
+            return (i / side) switch
+            {
+                0 => new Vector3(1, 0, u),
+                1 => new Vector3(-u, 0, 1),
+                2 => new Vector3(-1, 0, -u),
+                _ => new Vector3(u, 0, -1),
+            };
         }
-        foreach (SceneVariant v in new[] { SceneVariant.Box, SceneVariant.Mesh })
-        {
-            yield return ($"floor-{v}", () => Floor(v), Grid(-0.3f, 0.6f, 0, 0.2f));
-            yield return ($"slope30-{v}", () => Slope(v, 30), Grid(-0.6f, 0.6f, -0.3f, 0, 0.3f));
-            yield return ($"slope50-{v}", () => Slope(v, 50), Grid(-0.6f, 0.6f, -0.3f, 0, 0.3f));
-            yield return ($"lip-{v}", () => Lip(v), Grid(-0.45f, 0.3f, 0, LipTop));
-            yield return ($"crate-{v}", () => Crate(v), Grid(-0.45f, 0.3f, 0, CrateTop));
-            yield return ($"treads-{v}", () => Treads(v), Grid(-0.3f, 0.9f, 0.25f, 0.5f));
-            yield return ($"ramp-{v}", () => Ramp(v, 0.5f), Grid(-0.45f, 0.45f, 0, 0.1f));
-            yield return ($"ridge-{v}", () => Ridge(v, 30), Grid(-0.45f, 0.45f, 0.3f, 0.5f));
-            yield return ($"tworidge-{v}", () => TwoStaticRidge(v, 30), Grid(-0.45f, 0.45f, 0.3f, 0.5f));
-            yield return ($"bank-{v}", () => Bank(v), Grid(0.6f, 1.2f, 0, BankTop));
-            yield return ($"stairs-{v}", () => Stairs(v, 0.35f, 0.25f, 6), Grid(-0.3f, 1.2f, 0.25f, 0.5f, 0.75f));
-            yield return ($"sphere-{v}", () => Sphere(v, new Vector3(0, -0.25f, 0), 0.25f), Grid(-0.3f, 0.3f, -0.1f, 0));
-            yield return ($"plateau-{v}", () => PlateauBesideSteepFace(v), Grid(-0.45f, 0.45f, -0.3f, 0));
-            yield return ($"overlap-{v}", () => OverlappingCoplanarFloors(v), Grid(-1.2f, 1.2f, 0));
-        }
-        yield return ("incline", () => Incline(20), Grid(-0.6f, 0.6f, -0.2f, 0, 0.2f));
-        yield return ("cylinder", () => UprightCylinder(Vector3.Zero, 0.3f, 0.5f), Grid(-0.45f, 0.45f, 0.5f));
-        yield return ("leaning", () => UprightCylinder(Vector3.Zero, 0.3f, 0.5f, 20), Grid(-0.45f, 0.45f, 0.4f, 0.5f));
-        yield return ("log", () => LyingLog(new Vector3(0, 0.3f, 0), 0.3f, 2), Grid(-0.45f, 0.45f, 0.5f, 0.6f));
-        yield return ("terrain1", () => PartitionedTerrain(1), Grid(-0.9f, 0.9f, 0, 0.2f));
-        yield return ("terrain16", () => PartitionedTerrain(16), Grid(-0.9f, 0.9f, 0, 0.2f));
-        yield return ("overfan", () => OverCapacityFan(), [(0, 0, 0), (0.5f, 0.1f, 0)]);
-        yield return ("compound", Compound, Grid(-0.6f, 0.6f, 0.3f, 0.5f));
-        yield return ("fan96", () => Fan(96), [(0, 0, 0)]);
-        yield return ("grid20000", () => Grid20000(), [(0.123f, -0.234f, 0), (0.05f, 0.05f, 0)]);
-    }
-
-    // A box with a cylinder standing on it, one compound static over a box floor.
-    static FootSupportScene Compound() => Floor(SceneVariant.Box).Add("compound", new CompoundShape([
-            new(new BoxShape(new Vector3(0.4f, 0.15f, 0.4f)), Pose.At(new Vector3(0, 0.15f, 0))),
-            new(new CylinderShape(0.2f, 0.3f), Pose.At(new Vector3(0.2f, 0.3f, 0)))]),
-        Pose.At(new Vector3(0.1f, 0, 0)));
-
-    // A flat fan of up-facing triangles meeting at the origin, with a rim of radius 1.
-    static FootSupportScene Fan(int triangles)
-    {
-        Vector3 Rim(int i) => new(MathF.Cos(2 * MathF.PI * (i % triangles) / triangles), 0,
-            MathF.Sin(2 * MathF.PI * (i % triangles) / triangles));
         var vertices = new Vector3[3 * triangles];
         for (int i = 0; i < triangles; i++)
-            FootSupportScene.Facing(Vector3.Zero, Rim(i), Rim(i + 1), Vector3.UnitY).CopyTo(vertices, 3 * i);
-        return new FootSupportScene(SceneVariant.Mesh).Mesh("fan", vertices);
+        {
+            vertices[3 * i] = Vector3.Zero;
+            vertices[3 * i + 1] = Rim(i);
+            vertices[3 * i + 2] = Rim(i + 1);
+        }
+        return vertices;
     }
 
-    // One flat mesh of 100 by 100 quads of 0.1 centred on the origin at Y 0.
-    static FootSupportScene Grid20000()
+    // The closest-feature query over random boxes, hulls and heightfields, unrotated or under random rotations, each
+    // probe placed within the band of a random face point.
+    static void Features(List<string> lines)
     {
-        const int cells = 100;
-        float Coordinate(int k) => 0.1f * (k - cells / 2);
-        var vertices = new List<Vector3>(6 * cells * cells);
-        for (int i = 0; i < cells; i++)
-            for (int j = 0; j < cells; j++)
-                vertices.AddRange(FootSupportScene.Quad(new(Coordinate(i), 0, Coordinate(j)),
-                    new(Coordinate(i + 1), 0, Coordinate(j)), new(Coordinate(i), 0, Coordinate(j + 1)),
-                    new(Coordinate(i + 1), 0, Coordinate(j + 1))));
-        return new FootSupportScene(SceneVariant.Mesh).Mesh("grid", [.. vertices]);
+        var random = new Random(9438);
+        for (int solid = 0; solid < 18; solid++)
+        {
+            using var world = new BepuPhysicsWorld(Vector3.Zero);
+            // Every other triple is unrotated, where most closest features are decided exactly.
+            Quaternion rotation = solid / 3 % 2 == 0 ? Quaternion.Identity : RandomRotation(random);
+            var position = new Vector3(Signed(random), Signed(random), Signed(random));
+            var pose = new Pose(position, rotation);
+            StaticHandle target;
+            List<OracleFace> faces;
+            switch (solid % 3)
+            {
+                case 0:
+                    var half = new Vector3(Between(random, 0.15, 0.8), Between(random, 0.15, 0.8),
+                        Between(random, 0.15, 0.8));
+                    target = world.AddStatic(new BoxShape(half), pose);
+                    faces = SupportNeighborhoodOracle.Box(target, half, pose);
+                    break;
+                case 1:
+                    var points = new Vector3[10];
+                    float scale = Between(random, 0.3, 0.8);
+                    for (int i = 0; i < points.Length; i++)
+                    {
+                        OracleVector direction = new OracleVector(Signed(random), Signed(random), Signed(random)).Unit;
+                        points[i] = new Vector3((float)direction.X, (float)direction.Y, (float)direction.Z) * scale;
+                    }
+                    target = world.AddStatic(new ConvexHullShape(points), pose);
+                    faces = SupportNeighborhoodOracle.InstalledHull(world, target);
+                    break;
+                default:
+                    Vector3[] vertices = Heightfield(random, 4, Between(random, 0.2, 0.5), Between(random, 0.05, 0.3));
+                    target = world.AddStatic(new TriangleMeshShape(vertices, [.. Enumerable.Range(0, vertices.Length)]),
+                        pose);
+                    faces = SupportNeighborhoodOracle.InstalledMesh(world, target);
+                    break;
+            }
+            using IPhysicsQueryLease lease = world.AcquireQueryReadLease();
+            for (int sample = 0; sample < 4; sample++)
+            {
+                OracleFace face = faces[random.Next(faces.Count)];
+                // Within the band, where the closest feature is decided rather than absent.
+                OracleVector anchor = Outward(random, SupportNeighborhoodTests.SurfacePoint(random, face), face.Normal,
+                    0, Band);
+                foreach (CapsuleShape probe in Probes)
+                {
+                    OracleVector lowest = anchor + face.Normal * probe.Radius;
+                    if (face.Normal.Y < 0) lowest -= new OracleVector(0, probe.Length, 0);
+                    lines.Add(Feature($"feature/{solid}/{sample}/{probe.Radius}", world, lease, target, probe, lowest));
+                }
+            }
+        }
     }
 
-    // FootSupport's probe: the same sweep, contact pose, neighborhood and certification.
-    static void Probe(IPhysicsWorld world, IPhysicsQueryLease lease, in FootSupportQuery query, float radius,
-        Digest digest)
+    static string Feature(string label, IPhysicsWorld world, IPhysicsQueryLease lease, StaticHandle target,
+        CapsuleShape probe, OracleVector lowest)
     {
-        const float probeLength = 0.01f, bandMargin = 0.001f;
-        var capsule = new CapsuleShape(radius, probeLength);
-        float lowest = query.FeetY + query.ReachUp + bandMargin;
-        float centreY = lowest + radius + probeLength / 2;
-        Pose start = Pose.At(new Vector3(query.Axis.X, centreY, query.Axis.Y));
-        bool hit = world.SweepCapsule(capsule, start, -Vector3.UnitY, query.ReachUp + query.ReachDown + 2 * bandMargin,
-            out SweepHit sweep, QueryFilter.StaticsOnly with { CullBackFaces = true });
-        digest.Int(hit ? 1 : 0);
-        if (!hit || sweep.Body is not StaticHandle) return;
-        digest.Float(sweep.Distance);
-        Pose contact = Pose.At(new Vector3(query.Axis.X, centreY - sweep.Distance, query.Axis.Y));
-        Query(world, lease, capsule, contact, query.Axis, query.CosMaxSlope, digest);
+        Pose pose = SupportNeighborhoodTests.Lowest(lowest.X, lowest.Y, lowest.Z);
+        var faces = new CapsuleIncidentFace[Capacity];
+        CapsuleFeatureResult result = ((IPhysicsCapsuleFeatures)world).QueryCapsuleFeature(lease, target, probe, pose,
+            Band, faces, QueryFilter.StaticsOnly);
+        var digest = new Digest();
+        digest.Feature(result);
+        for (int i = 0; i < result.Written; i++) digest.Face(faces[i]);
+        return $"{label} {result.Status} {result.Kind} {result.Written} {digest.Hex()}";
     }
 
     static string Neighborhood(string label, IPhysicsWorld world, IPhysicsQueryLease lease, CapsuleShape probe,
@@ -317,11 +326,13 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
     }
 
     // Offset from a surface point along its outward normal, tilted at random, by a gap from one band inside to
-    // three bands out, so both edges of the band are crossed. The caller adds the probe radius along the normal.
-    static OracleVector Outward(Random random, OracleVector target, OracleVector normal)
+    // three bands out by default, so both edges of the band are crossed. The caller adds the probe radius along the
+    // normal.
+    static OracleVector Outward(Random random, OracleVector target, OracleVector normal, double low = -Band,
+        double high = 3 * Band)
     {
         OracleVector tilt = new OracleVector(Signed(random), Signed(random), Signed(random)) * 0.2;
-        double gap = Between(random, -Band, 3 * Band);
+        double gap = Between(random, low, high);
         return target + tilt * Band + normal * gap;
     }
 
@@ -392,15 +403,30 @@ public class SupportNeighborhoodEquivalenceTests(ITestOutputHelper output)
             Int(contribution.FeatureId);
         }
 
-        internal void Sample(in SupportSample sample)
+        internal void Feature(in CapsuleFeatureResult result)
         {
-            Int((int)sample.Status);
-            Float(sample.Height);
-            Float(sample.HeightError);
-            Vector(sample.Normal);
-            Int(sample.Static?.Value ?? -1);
-            Int(sample.FeatureId);
-            Vector(sample.Witness);
+            Int((int)result.Status);
+            Int(result.Written);
+            Int(result.RequiredCapacity);
+            Int(result.Target.Value);
+            Int(result.LeafId);
+            Int(result.FeatureId);
+            Int((int)result.Kind);
+            Vector(result.AxisPoint);
+            Vector(result.GeometryPoint);
+            Vector(result.SeparationNormal);
+            Double(result.SeparationLower);
+            Double(result.SeparationUpper);
+            Float(result.PositionErrorMetres);
+            Float(result.NormalError);
+        }
+
+        internal void Face(in CapsuleIncidentFace face)
+        {
+            Int(face.FaceId);
+            Vector(face.Normal);
+            Float(face.NormalError);
+            Int((int)face.Incidence);
         }
 
         internal string Hex()

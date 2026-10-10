@@ -212,7 +212,9 @@ so `GroundCore`'s asserted query counts do not change. A neighborhood query does
 query. Phase 2b measured time and allocation per `FootSupport.Find` and records them in
 `docs/verification/2026-10-10-p2b-support-cost.json` for [#1334](https://github.com/APKiwiOrg/KhaozEngine/issues/1334).
 The figures are one local arm64 run under the parallel suite. Before is the first neighborhood implementation,
-after is the allocation-free pass that kept every result bit-identical over a 3,013-row recorded fixture.
+after is the allocation-free pass that kept every result bit-identical over a 3,013-row recorded fixture on arm64.
+Its 1,213 `FootSupport` rows passed through Bepu sweeps and differed in the last bits on hosted x64, so they left
+the committed fixture, as the Suite table describes.
 
 | Scene | Bytes before | Bytes after | Microseconds before | Microseconds after |
 |---|---|---|---|---|
@@ -257,7 +259,8 @@ the geometry allows. Tests live in `KhaozEngine.Game.Tests` under `KhaozEngine.T
 | Probe filter | `CullBackFaces` passes a down-facing and a vertical triangle and still hits an up-facing one. Shell sweeps still hit back faces. |
 | Band | A nosing beside an in-band tread is ignored. A contact above the band refuses, and so does a step just above it. |
 | Ground | The #1342 escapes in `GroundScenarioTests` are removed. All 32 stair rows and the cost rows pass their full expectations. `Held` and refused-target rows run on the over-capacity fan. A curved prop seats the body on its top. |
-| Cost | Time and allocation per `Find` recorded in `docs/verification/`. Zero allocation asserted on ordinary scenes, after asserting walkable support. Results pinned bit for bit by the equivalence fixture. |
+| Cost | Time and allocation per `Find` recorded in `docs/verification/`. Zero allocation asserted on ordinary scenes, after asserting walkable support. |
+| Equivalence | A recorded fixture pins direct neighborhood queries, their certification at two slope limits and closest-feature queries bit for bit, at analytic poses over random boxes, hulls, meshes, curved solids and exact square-rim fans of 96 and 300 triangles. It is platform stable because no row passes through a Bepu sweep, whose contact distance differs in the last bits between x64 and arm64, or through MathF trigonometry. `FootSupport` results, which depend on sweep contacts, are covered by the behaviour rows above and not by digests. |
 
 Every round runs on arm64 locally and on hosted x64 CI. No assertion pins a contact position finer than half the
 contact skin, and no test depends on a micrometre sweep result.

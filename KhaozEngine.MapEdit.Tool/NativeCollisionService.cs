@@ -35,7 +35,8 @@ public sealed record NativeCollisionEditResult(bool Applied, string BeforeSha256
 public sealed class NativeCollisionService(MapEditSession session)
 {
     /// <summary>What a height edit invalidates: every placement of the asset changes its physics, navigation and
-    /// residency bounds.</summary>
+    /// residency bounds. The old and new bounds are the placements' collider and interaction envelope bounds from
+    /// <see cref="NativePlacementBoundsProvider"/>, as placement edits report them.</summary>
     public const MapNativeInvalidation HeightEditInvalidation =
         MapNativeInvalidation.Physics | MapNativeInvalidation.Nav | MapNativeInvalidation.Residency;
 
@@ -154,8 +155,8 @@ public sealed class NativeCollisionService(MapEditSession session)
             new($"root/{newRoot.Id}", oldRoots[rootIndex].Sha256, newRoot.Sha256),
         };
         var effects = new MapNativeEditEffects(
-            ColliderBounds(context.Document, closure, context.Registry, affected),
-            ColliderBounds(candidate, edited, context.Registry, affected),
+            NativePlacementBoundsProvider.Instance.Bounds(context.Document, closure, context.Registry, affected),
+            NativePlacementBoundsProvider.Instance.Bounds(candidate, edited, context.Registry, affected),
             Array.Empty<MapPatchKey>(), Array.Empty<string>(), Array.AsReadOnly(affected), digests.AsReadOnly(),
             HeightEditInvalidation);
         return new HeightPlan(before, after, Array.AsReadOnly(affected), effects, false, colliderId, bytes,
@@ -231,24 +232,6 @@ public sealed class NativeCollisionService(MapEditSession session)
         using var stream = new MemoryStream();
         PropCollisionFormat.Write(shape, stream);
         return stream.ToArray();
-    }
-
-    // The union of the listed placements' world collider bounds, or null when none of them has a collider.
-    static MapBox3? ColliderBounds(MapDocument document, MapAssetClosure assets, MapDocRegistry registry, IReadOnlyList<string> placementIds)
-    {
-        if (placementIds.Count == 0) return null;
-        MapResolveOptions options = NativeDocumentService.SessionOptionsFor(document.ResolverIdentity);
-        Func<float, float, float>? legacy = options.ResolverVersion == 1 ? MapRuntime.BuildField(document, registry).SampleHeight : null;
-        MapResolvedDocument resolved = MapNativeResolution.Resolve(document, assets, options, legacy);
-        var ids = new HashSet<string>(placementIds, StringComparer.Ordinal);
-        MapBox3? union = null;
-        foreach (MapPlacementGeometry geometry in MapPlacementShapes.Resolve(resolved))
-        {
-            if (!ids.Contains(geometry.PlacementId) || geometry.ColliderBounds is not { } box) continue;
-            union = union is not { } u ? box : new MapBox3(Math.Min(u.MinX, box.MinX), Math.Min(u.MinY, box.MinY),
-                Math.Min(u.MinZ, box.MinZ), Math.Max(u.MaxX, box.MaxX), Math.Max(u.MaxY, box.MaxY), Math.Max(u.MaxZ, box.MaxZ));
-        }
-        return union;
     }
 
     // Serves the planned resources from memory by path and every other reference from the session's source.

@@ -69,6 +69,7 @@ is not a unit quaternion. `Read` reports each as a payload that cannot be read.
 
 ```csharp
 IReadOnlyList<MapPlacementGeometry> placements = MapPlacementShapes.Resolve(resolvedDocument);
+MapBox3? placementBounds = MapPlacementShapes.Bounds(resolvedPlacement, MapAssetShapes.Read(closure, assetId));
 MapBox3 bounds = MapShapeBounds.Of(shape, pose);
 ```
 
@@ -78,6 +79,11 @@ placement position with its yaw. `ColliderBounds` is its world bounds, null for 
 covers the placement and asset identities, both resource digests, the float bits of position, yaw, combined scale and
 raise, and `MapInteractionPolicy.Hash`. A combined scale that is not finite and positive, an asset with neither a selection
 volume nor a collider and an envelope that cannot be swept refuse with `MapDocumentException`.
+
+`MapPlacementShapes.Bounds` bounds one resolved placement: the union of its collider bounds and its interaction
+envelope bounds, computed as `Resolve` computes them. It returns null instead of refusing when the asset declares
+neither a collider nor a selection volume, so an editor can size an edit of such a placement. World builds keep
+refusing it.
 
 `MapShapeBounds.Of` computes tight world bounds in scalar double under the physics seam's conventions: boxes,
 spheres and capsules are centred on their pose, a cylinder stands on its base and spans `Length` along its local Y,
@@ -200,7 +206,9 @@ Each static belongs to every storage tile its world bounds reach, minimum inclus
 with no extent belongs to the tile holding its minimum. A placement is keyed by its origin's tile, as
 `MapSpatialIndex` stores it, and a terrain chunk by the tile holding its minimum corner. `Affected` takes the world
 built after the edit and names the owners and tiles the edit invalidates from its old and new bounds and the chunks of
-every listed patch, including the chunks of the wall strips recorded in it.
+every listed patch, including the chunks of the wall strips recorded in it. An edit flagged
+`MapNativeInvalidation.Unbounded` changed geometry its bounds do not limit, so every static is an owner and every
+storage tile the world's bounds reach is listed.
 
 `MapTileResidency` remains the streaming loader keyed by storage tile. This index is the ownership R8 consumes.
 
@@ -226,7 +234,8 @@ for each R2 cave portal or vertical link whose aperture reaches two navigation t
 the semantic digests of the record and its aperture records, and both tiles. `AffectedTiles` widens the navigation tiles
 `MapResidencyOwnership.Affected` names by the seam margin, so a consumer rebakes only those tiles. A resolver 1 terrain
 edit also widens by the footprint of every sculpt tile position its bounds meet, whether the edit added or removed that
-tile. The result stays inside the edited world's partition.
+tile. The result stays inside the edited world's partition. An edit flagged `MapNativeInvalidation.Unbounded` lists
+every tile of that partition, under the same `MaxPartitionTiles` refusal as `Partition`.
 
 `Partition` refuses a world whose bounds reach more than `MapNavTiling.MaxPartitionTiles` (2^20) navigation tiles, and
 the refusal names the count.
@@ -282,6 +291,15 @@ loads a native asset's verified mesh with its source units applied once and no h
 agrees with the collider this package reads. The [ke-mapedit](../KhaozEngine.MapEdit.Tool) `NativeCollisionService`
 measures a placement's mesh top against its collider and resizes box colliders through content-addressed resources.
 
+Editor placement edits report what they invalidate (P16). `KhaozEngine.MapEditor` takes no reference to this package.
+It defines `INativePlacementBounds`, bound next to the asset closure, and ke-mapedit's `NativePlacementBoundsProvider`
+implements it with `MapPlacementShapes.Bounds` over the session resolve options. A placement add, remove, move,
+rotate, scale or asset change then reports `Physics`, `Nav` and `Residency` with the changed placements' bounds
+before as `OldBounds` and after as `NewBounds`. A label change reports `Placements` only, and so does an edit whose
+changed placements have neither a collider nor a selection volume on either side. With no provider or no closure
+bound, a geometry change reports `Unbounded` with the three flags and no bounds. Collider height edits size
+their placements through the same provider.
+
 ## Deferred work
 
 | Item | Owner | Status here |
@@ -294,4 +312,4 @@ measures a placement's mesh top against its collider and resizes box colliders t
 | Live portal and door state | R5 | Portals are authored open |
 | Water medium and walker profiles | R4 and #1299 | `CreateLegacyMoveContext` leaves the medium delegate null |
 | Clearance body model confirmation | Owner, #1344 | Clearance uses the #438 shell through `ContactShell` |
-| Editor placement edits reporting old and new placement bounds with Physics, Nav and Residency (P16) | R3 follow-up | Placement commands report `Placements` only for now |
+| Editor placement edits reporting old and new placement bounds with Physics, Nav and Residency (P16) | R3 | Done, see Editor tooling |

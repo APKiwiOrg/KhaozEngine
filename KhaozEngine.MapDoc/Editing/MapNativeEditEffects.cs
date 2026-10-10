@@ -19,6 +19,11 @@ public enum MapNativeInvalidation
     Material = 8,
     Residency = 16,
     Placements = 32,
+
+    /// <summary>The edit changed geometry whose bounds are unknown, so the old and new bounds do not limit it. A
+    /// consumer of the other flags treats it as invalidating everything they cover, for example every owner and every
+    /// tile of the world.</summary>
+    Unbounded = 64,
 }
 
 public readonly record struct MapBox3(double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ);

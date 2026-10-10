@@ -17,20 +17,26 @@ public sealed class EditorHistory
     readonly List<IEditorCommand> _redo = new();
     bool _mergeBarrier;
     MapAssetClosure? _nativeAssets;
+    INativePlacementBounds? _placementBounds;
     internal MapDocRegistry Registry { get; set; } = MapDocRegistry.CreateDefault();
     internal MapNativeEditEffects? LastNativeEffects { get; private set; }
 
-    /// <summary>Binds a verified closure without changing history. Rebinding validates before replacing it.</summary>
-    public void BindNativeAssets(MapDocument document, MapAssetClosure assets)
+    /// <summary>Binds a verified closure without changing history. Rebinding validates before replacing it.
+    /// <paramref name="placementBounds"/> sizes placement edits against that closure. Binding without it, the
+    /// default, makes every placement edit that changes geometry report
+    /// <see cref="MapNativeInvalidation.Unbounded"/>.</summary>
+    public void BindNativeAssets(MapDocument document, MapAssetClosure assets, INativePlacementBounds? placementBounds = null)
     {
         MapBoundDocumentValidation.Validate(document, assets, Registry);
         _nativeAssets = assets;
+        _placementBounds = placementBounds;
     }
 
     void Apply(MapDocument doc, IEditorCommand command, bool undo)
     {
         if (doc.ResolverIdentity is not null)
-            LastNativeEffects = NativeDocumentTransaction.Run(doc, command, undo, _nativeAssets, Registry);
+            LastNativeEffects = NativeDocumentTransaction.Run(doc, command, undo, _nativeAssets, Registry,
+                placementBounds: _placementBounds);
         else if (undo) command.Revert(doc);
         else command.Apply(doc);
     }

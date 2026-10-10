@@ -74,6 +74,28 @@ public static class MapPlacementShapes
         return result.AsReadOnly();
     }
 
+    /// <summary>The world bounds of one resolved placement: the union of its collider bounds and its interaction
+    /// envelope bounds, as <see cref="Resolve"/> computes them, or null when <paramref name="shapes"/> declares neither
+    /// a collider nor a selection volume. Unlike <see cref="Resolve"/> it never refuses a missing interaction source,
+    /// so an editor can report an edit of such a placement. Throws <see cref="ArgumentException"/> when
+    /// <paramref name="shapes"/> belongs to another asset, and <see cref="MapDocumentException"/> as
+    /// <see cref="Resolve"/> does for the scale, the transform and the envelope.</summary>
+    public static MapBox3? Bounds(MapResolvedPlacement placement, MapAssetShapes shapes)
+    {
+        ArgumentNullException.ThrowIfNull(placement);
+        ArgumentNullException.ThrowIfNull(shapes);
+        if (!string.Equals(placement.AssetId, shapes.AssetId, StringComparison.Ordinal))
+            throw new ArgumentException(
+                $"Shapes of asset '{shapes.AssetId}' cannot bound placement '{placement.PlacementId}' of asset '{placement.AssetId}'.",
+                nameof(shapes));
+        if (shapes.Collider is null && shapes.Selection is null) return null;
+        MapPlacementGeometry geometry = Build(placement, shapes);
+        MapBox3 e = geometry.Envelope.Bounds;
+        if (geometry.ColliderBounds is not { } c) return e;
+        return new MapBox3(Math.Min(c.MinX, e.MinX), Math.Min(c.MinY, e.MinY), Math.Min(c.MinZ, e.MinZ),
+            Math.Max(c.MaxX, e.MaxX), Math.Max(c.MaxY, e.MaxY), Math.Max(c.MaxZ, e.MaxZ));
+    }
+
     static MapPlacementGeometry Build(MapResolvedPlacement placement, MapAssetShapes shapes)
     {
         MapTransform transform = placement.Transform;

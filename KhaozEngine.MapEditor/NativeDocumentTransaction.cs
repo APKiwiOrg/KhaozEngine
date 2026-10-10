@@ -21,8 +21,15 @@ internal sealed record NativeDocumentPreparation(MapNativeWriteSet WriteSet, Map
 /// <summary>Validates and publishes exactly one native document write set.</summary>
 internal static class NativeDocumentTransaction
 {
+    /// <summary>Runs <paramref name="command"/> as one native transaction and returns its effects. A placement
+    /// command's effects come from <see cref="NativePlacementEffects.Describe"/> over the document before and the
+    /// validated publication after. They carry old and new bounds from <paramref name="placementBounds"/> when both it
+    /// and <paramref name="assets"/> are given. Otherwise, as on the local-only direct Apply and Revert paths, which
+    /// have no closure, a placement edit that changes geometry reports
+    /// <see cref="MapNativeInvalidation.Unbounded"/> rather than claiming bounds it cannot compute.</summary>
     internal static MapNativeEditEffects Run(MapDocument document, IEditorCommand command, bool undo,
-        MapAssetClosure? assets, MapDocRegistry? registry = null, bool localOnly = false)
+        MapAssetClosure? assets, MapDocRegistry? registry = null, bool localOnly = false,
+        INativePlacementBounds? placementBounds = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         if (document.Tiles is { IsPartial: true })
@@ -44,9 +51,13 @@ internal static class NativeDocumentTransaction
         if (localOnly) MapBoundDocumentValidation.ValidateLocal(publication, registry);
         else MapBoundDocumentValidation.Validate(publication, assets!, registry);
         ValidateSurfaces(publication.Surfaces, preparation.WriteSet);
+        // Placement effects need the document before publication and the validated state after it.
+        MapNativeEditEffects effects = native is PlacementAdapter
+            ? NativePlacementEffects.Describe(document, publication, assets, registry, placementBounds)
+            : preparation.Effects;
         NativeDocumentSnapshot.PublishWriteSet(document, publication, preparation.WriteSet);
         preparation.Accept();
-        return preparation.Effects;
+        return effects;
     }
 
     static void ValidateSurfaces(MapSurfaceSet surfaces, MapNativeWriteSet writeSet)
@@ -70,6 +81,7 @@ internal static class NativeDocumentTransaction
         if (findings.Count != 0) throw new MapDocumentException(string.Join("\n", findings));
     }
 
+    // Run replaces the placeholder effects with the placement diff once the publication has validated.
     sealed class PlacementAdapter(INativePlacementCommand command) : INativeDocumentCommand
     {
         public NativeDocumentPreparation Prepare(MapDocument candidate, bool undo)

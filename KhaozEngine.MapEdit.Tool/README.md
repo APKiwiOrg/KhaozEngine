@@ -136,7 +136,12 @@ digest.
 from the collider's current vertical extent onto the requested one. A lone box becomes a one-child compound. Any
 other collider refuses with "compound boxes". The `NativeCollisionEditResult` carries the collider digests before
 and after, every placement of the asset in ordinal order and `MapNativeEditEffects` with the placements' old and new
-world collider bounds and `Physics`, `Nav` and `Residency` invalidation.
+world collider and interaction envelope bounds and `Physics`, `Nav` and `Residency` invalidation.
+
+`NativePlacementBoundsProvider.Instance` sizes those bounds and every placement edit the session applies. It resolves
+only the listed placements under the session resolve options and bounds each with `MapPlacementShapes.Bounds`, so a
+placement with neither a collider nor a selection volume contributes nothing and is never refused for it. A GUI host
+passes it to `EditorDocument.BindNativeAssets(assets, NativePlacementBoundsProvider.Instance)`.
 
 A dry run, the default, computes the new collider bytes, digest and effects over an in-memory overlay and touches no
 file and no session state. Apply writes the new collider and a new root manifest through `MapAssetFileWriter`,

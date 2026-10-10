@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
@@ -29,6 +31,33 @@ public static class MapNativeResolution
             throw new MapDocumentException(
                 "Native resolver identity (1, 1) places unbound placements on the analytic terrain and requires a legacy support height.");
         return MapResolver.Resolve(document, assets, legacySupportHeight, options);
+    }
+
+    /// <summary>Resolves only the placements of <paramref name="document"/> named by <paramref name="placementIds"/>, in
+    /// ordinal ID order, each exactly as <see cref="Resolve"/> resolves it, without the authored hash and without
+    /// resolving any other placement. Refuses as <see cref="Resolve"/> does for the identity, the options and the
+    /// legacy support height, and throws <see cref="MapDocumentException"/> for an ID the document does not hold.</summary>
+    internal static IReadOnlyList<MapResolvedPlacement> ResolvePlacements(MapDocument document, MapAssetClosure assets,
+        MapResolveOptions options, IEnumerable<string> placementIds, Func<float, float, float>? legacySupportHeight = null)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(assets);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(placementIds);
+        int resolver = RequireMatchingOptions(document.ResolverIdentity, options);
+        var ids = new SortedSet<string>(placementIds, StringComparer.Ordinal);
+        var byId = new Dictionary<string, MapPlacement>(StringComparer.Ordinal);
+        foreach (MapPlacement placement in document.Placements)
+            if (ids.Contains(placement.Id)) byId.TryAdd(placement.Id, placement);
+        var selected = new List<MapPlacement>(ids.Count);
+        foreach (string id in ids)
+            selected.Add(byId.TryGetValue(id, out MapPlacement? placement)
+                ? placement : throw new MapDocumentException($"No placement with id '{id}'."));
+        if (resolver == 2) return MapResolverV2.ResolvePlacements(document, assets, selected);
+        if (legacySupportHeight is null)
+            throw new MapDocumentException(
+                "Native resolver identity (1, 1) places unbound placements on the analytic terrain and requires a legacy support height.");
+        return Array.AsReadOnly(selected.Select(p => MapResolver.ResolveOne(p, (_, x, z) => legacySupportHeight(x, z))).ToArray());
     }
 
     /// <summary>The resolver version a supported native identity selects. Throws <see cref="MapDocumentException"/>

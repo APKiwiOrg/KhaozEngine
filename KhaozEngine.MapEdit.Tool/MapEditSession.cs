@@ -50,8 +50,10 @@ public sealed class MapEditSession
         }
     }
 
+    // Every native transaction here sizes placement edits through the session's placement bounds.
     internal MapNativeEditEffects ApplyNative(EditorCommand command, MapDocument document, MapDocRegistry registry) =>
-        NativeDocumentTransaction.Run(document, command, false, _nativeAssets, registry);
+        NativeDocumentTransaction.Run(document, command, false, _nativeAssets, registry,
+            placementBounds: NativePlacementBoundsProvider.Instance);
 
     /// <summary>Runs <paramref name="fn"/> under the session lock with the open native document, its bound closure, its
     /// resource root and a source that reads under that root and refuses writer-owned storage. Throws
@@ -80,7 +82,8 @@ public sealed class MapEditSession
         lock (_lock)
         {
             RequireDocumentLocked();
-            MapNativeEditEffects effects = NativeDocumentTransaction.Run(_doc!, command, false, assets, _registry);
+            MapNativeEditEffects effects = NativeDocumentTransaction.Run(_doc!, command, false, assets, _registry,
+                placementBounds: NativePlacementBoundsProvider.Instance);
             _nativeAssets = assets;
             _dirty = true;
             return effects;

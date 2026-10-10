@@ -14,7 +14,10 @@ public sealed class NativeDocumentTransactionTests
     {
         using var f = new NativePlacementHistoryFixture();
         f.Editor.Execute(new AddPlacementCommand(f.NewProp("seam-check")));
-        Assert.Equal((11L, MapNativeInvalidation.Placements), (f.Document.Placements.Single(p => p.Id == "seam-check").NumericId, f.Editor.LastNativeEffects!.Invalidates));
+        // The editor binds no placement bounds, so the add cannot be sized and invalidates everything.
+        const MapNativeInvalidation unbounded = MapNativeInvalidation.Placements | MapNativeInvalidation.Physics |
+            MapNativeInvalidation.Nav | MapNativeInvalidation.Residency | MapNativeInvalidation.Unbounded;
+        Assert.Equal((11L, unbounded), (f.Document.Placements.Single(p => p.Id == "seam-check").NumericId, f.Editor.LastNativeEffects!.Invalidates));
         Assert.True(f.Editor.Undo());
         Assert.DoesNotContain(f.Document.Placements, p => p.Id == "seam-check");
         Assert.True(f.Editor.Redo());

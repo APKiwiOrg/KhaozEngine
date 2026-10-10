@@ -68,11 +68,7 @@ public static class MapNavTiling
         foreach (MapStaticDescriptor descriptor in world.Statics) digests.Add(descriptor.OwnerId, descriptor.Digest);
 
         (int minX, int maxX, int minZ, int maxZ) = PartitionRange(world, grids);
-        long count = ((long)maxX - minX + 1) * ((long)maxZ - minZ + 1);
-        if (count > MaxPartitionTiles)
-            throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
-                "The world's bounds reach {0:N0} navigation tiles, more than the {1:N0} a partition allows.", count,
-                MaxPartitionTiles));
+        long count = RequirePartitionCount(minX, maxX, minZ, maxZ);
         var statics = new Dictionary<MapNavTileCoord, List<MapResidencyEntry>>();
         foreach (MapResidencyEntry entry in entries)
             foreach (MapNavTileCoord tile in CaptureTilesMeeting(entry.WorldBounds.MinX, entry.WorldBounds.MinZ,
@@ -189,9 +185,11 @@ public static class MapNavTiling
     /// taken arithmetically from <see cref="TerrainSculpt.TileSize"/> and <see cref="MapBuiltWorld.LegacySculptCellSize"/>
     /// whether or not that tile exists, so a sculpt tile the edit added or removed lists every tile whose geometry
     /// digest it enters or leaves. The result is clipped to the tiles <see cref="Partition"/> lists for
-    /// <paramref name="world"/>.
-    /// <para>Throws as <see cref="MapResidencyOwnership.Affected"/> does, and <see cref="ArgumentException"/> for
-    /// invalid options.</para></summary>
+    /// <paramref name="world"/>. An edit flagged <see cref="MapNativeInvalidation.Unbounded"/> lists every one of
+    /// those tiles.
+    /// <para>Throws as <see cref="MapResidencyOwnership.Affected"/> does, as <see cref="Partition"/> does when an
+    /// unbounded edit's world reaches more than <see cref="MaxPartitionTiles"/> tiles, and
+    /// <see cref="ArgumentException"/> for invalid options.</para></summary>
     public static IReadOnlyList<MapNavTileCoord> AffectedTiles(MapBuiltWorld world, MapWorldGrids grids,
         MapNavTileOptions options, MapNativeEditEffects effects)
     {
@@ -218,11 +216,32 @@ public static class MapNavTiling
                 widen.Add((minX, minZ, maxX, maxZ));
             }
 
+        (int firstX, int lastX, int firstZ, int lastZ) = PartitionRange(world, grids);
+        if ((effects.Invalidates & MapNativeInvalidation.Unbounded) != 0)
+        {
+            var every = new MapNavTileCoord[RequirePartitionCount(firstX, lastX, firstZ, lastZ)];
+            int index = 0;
+            for (long z = firstZ; z <= lastZ; z++)
+                for (long x = firstX; x <= lastX; x++)
+                    every[index++] = new MapNavTileCoord((int)x, (int)z);
+            return every;
+        }
         var tiles = new SortedSet<MapNavTileCoord>(affected.NavTiles, TileOrder);
         foreach (var (minX, minZ, maxX, maxZ) in widen)
             tiles.UnionWith(CaptureTilesMeeting(minX, minZ, maxX, maxZ, grids, options.SeamMarginMetres));
-        (int firstX, int lastX, int firstZ, int lastZ) = PartitionRange(world, grids);
         return tiles.Where(t => t.X >= firstX && t.X <= lastX && t.Z >= firstZ && t.Z <= lastZ).ToArray();
+    }
+
+    /// <summary>The number of tiles in a partition range, after refusing a range beyond
+    /// <see cref="MaxPartitionTiles"/>.</summary>
+    static long RequirePartitionCount(int minX, int maxX, int minZ, int maxZ)
+    {
+        long count = ((long)maxX - minX + 1) * ((long)maxZ - minZ + 1);
+        if (count > MaxPartitionTiles)
+            throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
+                "The world's bounds reach {0:N0} navigation tiles, more than the {1:N0} a partition allows.", count,
+                MaxPartitionTiles));
+        return count;
     }
 
     /// <summary>The tile range <see cref="Partition"/> lists for <paramref name="world"/>.</summary>

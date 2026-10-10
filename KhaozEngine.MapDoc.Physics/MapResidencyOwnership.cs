@@ -74,6 +74,9 @@ public static class MapResidencyOwnership
     /// patch chunks. An owner listed only because its bounds meet an edit box does not widen the tiles: a terrain edit
     /// does not reseat placements, and a terrain edit reports whole-patch extents, so the changed geometry already lies
     /// inside the edit bounds.</para>
+    /// <para>An edit flagged <see cref="MapNativeInvalidation.Unbounded"/> changed geometry its bounds do not limit, so
+    /// every static is an owner and every storage tile the world's bounds reach is listed, together with the tiles of
+    /// any edit bounds and listed patches.</para>
     /// <para>Throws <see cref="MapDocumentException"/> when the grids do not align with the world or an edit box has a
     /// coordinate beyond <see cref="MapWorldBuilder.MaxCoordinateMetres"/>.</para></summary>
     public static MapAffectedSet Affected(MapBuiltWorld world, MapWorldGrids grids, MapNativeEditEffects effects)
@@ -90,13 +93,15 @@ public static class MapResidencyOwnership
         string[] prefixes = PatchChunkPrefixes(world, effects.Patches);
         var owners = new SortedSet<string>(StringComparer.Ordinal);
         var tiles = new SortedSet<MapTileCoord>(TileOrder);
+        bool unbounded = (effects.Invalidates & MapNativeInvalidation.Unbounded) != 0;
         foreach (MapBox3 box in edited) tiles.UnionWith(Enumerate(TilesOf(box, grids.StorageTileSize)));
+        if (unbounded) tiles.UnionWith(Enumerate(TilesOf(world.Bounds, grids.StorageTileSize)));
         foreach (MapStaticDescriptor descriptor in world.Statics)
         {
             bool patchChunk = descriptor.Kind == MapStaticKind.TerrainChunk &&
                 prefixes.Any(p => descriptor.OwnerId.StartsWith(p, StringComparison.Ordinal));
             if (patchChunk) tiles.UnionWith(Enumerate(TilesOf(descriptor.Bounds, grids.StorageTileSize)));
-            if (patchChunk || edited.Any(box => Meets(box, descriptor.Bounds))) owners.Add(descriptor.OwnerId);
+            if (unbounded || patchChunk || edited.Any(box => Meets(box, descriptor.Bounds))) owners.Add(descriptor.OwnerId);
         }
         MapNavTileCoord[] nav = tiles.Select(grids.AlignedNavTileOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray();
         return new(owners.ToArray(), tiles.ToArray(), nav);

@@ -18,7 +18,7 @@ This plan replaces `2026-10-05-world-authoring-r4-bounded-water-medium.md` on `f
 
 ## Approval and execution gate
 
-The owner approved the R4 gate decisions as OA27 on 2026-10-11 and asked for this rewrite. After plan review 1 the owner ruled OA28 (water covers authored spaces only, superseding OA27 decision 4) and OA29 (the G1b adapter certifies SM1 A3 and SM2). Execution needs the owner's approval of this plan. Execution is then subagent-driven and serial (OA8 method), with direct bounded verification (OA20). Approval of this plan does not authorize game adoption or native G1b acceptance. Engine releases follow OA25 through a KhaozEngine-rooted thread.
+The owner approved the R4 gate decisions as OA27 on 2026-10-11 and asked for this rewrite. After plan review 1 the owner ruled OA28 (water covers authored spaces only, superseding OA27 decision 4) and OA29 (the G1b adapter certifies SM1 A3 and SM2). The owner approved this plan at dda6e5bde as OA30 on 2026-10-11, with controller rulings R4-P1 to R4-P4. Execution is subagent-driven and serial (OA8 method), with direct bounded verification (OA20). Approval of this plan does not authorize game adoption or native G1b acceptance. Engine releases follow OA25 through a KhaozEngine-rooted thread.
 
 ## Global Constraints
 

@@ -31,3 +31,23 @@ blocking.
 - a collision payload does not read as exactly one well-formed shape,
 - a compound holds a triangle mesh, which the physics backend cannot install,
 - the asset declares a support resource, because placement-local support surfaces are not supported yet.
+
+## Residency ownership
+
+```csharp
+var grids = new MapWorldGrids(StorageTileSize: 64f, NavTileStorageTiles: 2, ServerCellStorageTiles: 4, Vector2.Zero);
+IReadOnlyList<MapResidencyEntry> entries = MapResidencyOwnership.Build(world, grids);
+IReadOnlyList<string> owners = MapResidencyOwnership.InWindow(entries, window);
+MapAffectedSet affected = MapResidencyOwnership.Affected(world, grids, effects);
+```
+
+`MapWorldGrids` aligns three grids. The storage tile is the document's own tile. A navigation tile and a server
+cell are whole blocks of storage tiles counted from an origin on a storage tile seam, and a server cell matches
+Sharding's `CellGrid` for the same size and origin. Grids that do not align refuse with "grid alignment".
+
+Each static belongs to every storage tile its world bounds reach, minimum inclusive and maximum exclusive. An axis
+with no extent belongs to the tile holding its minimum. `Affected` names the owners and tiles an edit invalidates
+from its old and new bounds and the chunks of every listed patch, including the chunks of the wall strips recorded in
+it.
+
+`MapTileResidency` remains the streaming loader keyed by storage tile. This index is the ownership R8 consumes.

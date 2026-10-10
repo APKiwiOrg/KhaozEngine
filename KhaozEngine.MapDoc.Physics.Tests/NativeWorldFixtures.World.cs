@@ -60,9 +60,38 @@ internal static partial class NativeWorldFixtures
                     new Pose(Vector3.Zero, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, -MathF.PI / 4f))),
             }),
             new Vector3(-0.08f, -0.08f, -0.1f), new Vector3(1.5f, 1.5f, 0.1f));
+
+        // A 64 m square slab 1 m tall whose minimum corner is at the placement origin, so placed on a seam it fills
+        // exactly one 64 m storage tile.
+        solid("seam-box", Compound((Box(64f, 1f, 64f), new Vector3(32f, 0.5f, 32f))),
+            Vector3.Zero, new Vector3(64f, 1f, 64f));
     }
 
     internal static MapBuiltWorld BuildStackedCave() => Build(StackedCave());
+
+    /// <summary>The 100 m square building centred on the origin, so it reaches into the four 64 m tiles around
+    /// it.</summary>
+    internal static MapBuiltWorld BuildLargeBuilding() => Build(Placed("large-building"));
+
+    /// <summary>The flat floor, whose patch slots end on the x 0 and z 0 seams, the crate straddling those seams at
+    /// the origin and the seam box filling storage tile (1, -1) from its minimum corner at (64, -64). Storage bounds
+    /// span tiles -2 to 1 on both axes.</summary>
+    internal static MapBuiltWorld BuildSeamAligned()
+    {
+        NativeFixture f = Resolve(FloorSurfaces(),
+            OnFloor("crate", "crate", 0f, 0f),
+            OnFloor("seam-box", "seam-box", 64f, -64f));
+        f.Document.Bounds = new() { MinX = -128, MinZ = -128, MaxX = 128, MaxZ = 128 };
+        return Build(f);
+    }
+
+    /// <summary>Four 2 by 2 tile windows that together cover tiles -2 to 1 on both axes of
+    /// <see cref="BuildSeamAligned"/>, overlapping nowhere.</summary>
+    internal static MapTileRect[] TilingWindows() => new MapTileRect[]
+    {
+        new(new(-2, -2), new(-1, -1)), new(new(0, -2), new(1, -1)),
+        new(new(-2, 0), new(-1, 1)), new(new(0, 0), new(1, 1)),
+    };
 
     /// <summary>The tree, a 70 leaf parapet, the 150 m long wall, the crate and the spread boxes on the flat
     /// floor.</summary>

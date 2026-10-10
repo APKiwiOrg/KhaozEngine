@@ -92,6 +92,9 @@ public sealed class MapBuiltWorld
     /// <summary>The resolved document's authored hash.</summary>
     public string AuthoredHash { get; }
 
+    /// <summary>The document's storage tile edge in metres, <see cref="MapDocument.TileSize"/>.</summary>
+    public float TileSize { get; }
+
     /// <summary>The lowercase hex SHA-256 of the built world's identity: the authored hash, builder version, consumer
     /// policy, interaction policy, chunk policy, legacy terrain identity and every placement and chunk digest.</summary>
     public string BuildHash { get; }
@@ -116,7 +119,7 @@ public sealed class MapBuiltWorld
 
     internal MapBuiltWorld(MapResolvedDocument document, MapScopedSurfaces surfaces,
         IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain, IReadOnlyList<MapStaticDescriptor> statics,
-        IReadOnlyList<MapStaticDiagnostic> diagnostics, MapBox3 bounds, string buildHash, bool isNative,
+        IReadOnlyList<MapStaticDiagnostic> diagnostics, MapBox3 bounds, float tileSize, string buildHash, bool isNative,
         Func<float, float, float>? legacySupportHeight, IReadOnlyList<MapLegacySculptTile> legacySculptTiles,
         string legacyTerrainBlockDigest, string legacyTerrainIdentity)
     {
@@ -128,6 +131,7 @@ public sealed class MapBuiltWorld
         Diagnostics = diagnostics;
         Bounds = bounds;
         AuthoredHash = document.AuthoredHash;
+        TileSize = tileSize;
         BuildHash = buildHash;
         IsNative = isNative;
         LegacySupportHeight = legacySupportHeight;

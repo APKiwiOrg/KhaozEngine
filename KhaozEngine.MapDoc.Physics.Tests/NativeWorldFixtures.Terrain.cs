@@ -5,6 +5,7 @@ using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Physics;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
@@ -87,6 +88,17 @@ internal static partial class NativeWorldFixtures
         return new StackedCaveFixture(f.Document, f.Assets, f.Resolved, f.View, f.CompiledFaceCount,
             new Vector3(1.5f, 0f, 4.5f), new Vector3(0.5f, 1.2f, 0.5f), new Vector3(4f, 3.25f, 4f), new Vector3(1.5f, 3.5f, 4.5f));
     }
+
+    /// <summary>The one physics chunk of the stacked cave's lower ceiling: its 64 faces fit one whole-slot
+    /// block.</summary>
+    internal const string CeilingChunkId = "cave-lower-ceiling/0,0/0,0,64";
+
+    /// <summary>An edit that lowers the stacked cave's low ceiling corner from y 1.2 to y 1, reported over the lower
+    /// ceiling patch inside storage tile (0, 0).</summary>
+    internal static MapNativeEditEffects CeilingEditEffects() => new(
+        new MapBox3(0, 1.2, 0, 6, 3, 6), new MapBox3(0, 1, 0, 6, 3, 6),
+        new[] { new MapPatchKey("cave-lower-ceiling", 0, 0) }, Array.Empty<string>(), Array.Empty<string>(),
+        Array.Empty<MapDigestChange>(), MapNativeInvalidation.Terrain | MapNativeInvalidation.Physics | MapNativeInvalidation.Nav);
 
     /// <summary>One 8 by 8 metre-cell floor rising 0.02 m per metre along x from y 1.2, with every patch-boundary
     /// cell edge subdivided into 4 segments. Under a cap of 64 each 4 by 4 quadrant is over the cap, so the chunks

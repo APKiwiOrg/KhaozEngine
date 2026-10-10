@@ -306,6 +306,8 @@ internal static partial class NativeWorldFixtures
         var document = new MapDocument
         {
             Id = "native-world",
+            // The 64 m storage tile the residency tests align their grids to.
+            TileSize = 64f,
             ResolverIdentity = new(1, 2),
             SupportRecipe = MapSupportRecipe.AuthoredBindingsV2,
             NativeAssets = roots.ToList(),

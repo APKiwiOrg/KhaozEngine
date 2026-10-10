@@ -65,8 +65,8 @@ public static class MapWorldBuilder
 
         string buildHash = BuildHash(resolved.AuthoredHash, options, legacyIdentity, placements, terrain);
         return new MapBuiltWorld(resolved, surfaces, placements, terrain, statics, diagnostics.AsReadOnly(),
-            WorldBounds(document.Bounds, statics, placements), buildHash, native, native ? null : options.LegacySupportHeight,
-            sculpt, terrainBlock, legacyIdentity);
+            WorldBounds(document.Bounds, statics, placements), document.TileSize, buildHash, native,
+            native ? null : options.LegacySupportHeight, sculpt, terrainBlock, legacyIdentity);
     }
 
     static void ValidateOptions(MapWorldBuildOptions options)

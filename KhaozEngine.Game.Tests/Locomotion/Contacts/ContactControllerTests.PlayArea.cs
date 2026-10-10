@@ -73,6 +73,29 @@ public partial class ContactControllerTests
         }
     }
 
+    // A body that meets the diagonal wall inside the bound slides along it toward -Z. The slide that reaches the bound is
+    // cut along its own direction where it meets it, so the body reaches the corner of the wall and the bound as it
+    // reaches the corner of two walls. Clamping the slide's end onto the bound would turn it into the wall and lose the
+    // whole slide, which held the body a few centimetres up the wall.
+    [Theory]
+    [InlineData("box", 30, false, 0.02f)]
+    [InlineData("box", 30, true, 0.1f)]
+    [InlineData("box", 60, true, 0.2f)]
+    [InlineData("mesh", 30, false, 0.02f)]
+    [InlineData("mesh", 30, true, 0.1f)]
+    [InlineData("mesh", 60, true, 0.2f)]
+    public void SlideAlongAWallReachesTheCornerWithTheBound(string ground, int hz, bool run, float z0)
+    {
+        using var g = new Ground(DiagonalWall(ground == "box" ? SceneVariant.Box : SceneVariant.Mesh), RisingOutside,
+            RisingOutsideNormal);
+        float dt = 1f / hz;
+        MoveState s = Standing(new Vector3(0.8f, 0, z0));
+        for (int tick = 1; tick <= 300; tick++)
+            s = g.Step(s, Vector2.UnitX, 1, false, Tuning, dt, run, clampXz: KeepZ);
+        Vector3 feet = Feet(s);
+        Assert.True(feet.Z >= 0 && feet.Z <= Skin, $"held short of the corner: {Show(s)}");
+    }
+
     // The ground core alone, from feet 0.46 off the diagonal wall at z 0, walking a 30 Hz tick +X. The sweep meets the
     // wall after about 0.08 and slides the rest along it toward -Z. The slide is cut to the bound, so the move ends
     // inside it, blocked.

@@ -203,12 +203,18 @@ internal static class ShellMotion
 
     /// <summary>Cuts a slide along a contact, <paramref name="remaining"/> from <paramref name="axis"/>, to the play
     /// area, because the contact can turn a move that ended inside the bound toward it. True when the clamp cut it. A
-    /// cut slide that still presses into the contact, whose horizontal normal is <paramref name="across"/>, stands in
-    /// the corner of the contact and the bound, which holds it as any inner corner does, so it is dropped.</summary>
+    /// clamped end that would press into the contact, whose horizontal normal is <paramref name="across"/>, means the
+    /// slide runs into the corner of the contact and the bound, so the slide keeps its own direction up to where it
+    /// meets the bound and stops in that corner as it would in the corner of two walls.</summary>
     static bool BoundSlide(Vector2 axis, ref Vector2 remaining, Vector2 across, Func<float, float, Vector2>? clampXz)
     {
+        Vector2 slide = remaining;
         if (!PlayArea.Clamp(axis, ref remaining, clampXz)) return false;
-        if (Vector2.Dot(remaining, across) < 0f) remaining = Vector2.Zero;
+        if (Vector2.Dot(remaining, across) < 0f)
+        {
+            remaining = slide * PlayArea.Reach(axis, slide, axis + remaining);
+            PlayArea.Clamp(axis, ref remaining, clampXz);
+        }
         return true;
     }
 

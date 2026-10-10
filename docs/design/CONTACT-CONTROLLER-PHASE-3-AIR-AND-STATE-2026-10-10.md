@@ -102,11 +102,12 @@ axis, and the landing band must hold that contact.
    clamps its planned move the same way, and a clamp that shortens it holds the fall-line speed as a block does. Every
    mode also clamps each substep's move before it runs: the ground core's substeps and wall tangents, and the air pass's
    substeps and terrain wall reruns, including the air remainder after a slide. The shell's own collide-and-slide
-   (`ShellMotion.Sweep` and `Fly`) then cuts each slide along a contact to the bound from the shell's axis, and a cut
-   slide that still presses into the contact is dropped, so the shell stops in the corner of the contact and the bound
-   as in any inner corner. A ground substep the clamp shortens counts as blocked, and so does a cut slide. The air pass
-   leaves its velocity alone, because the bound is not a contact. Every substep's end is then the clamp's answer or a
-   point on a straight move toward one, so for a convex bound no substep that starts inside it ends outside. Three
+   (`ShellMotion.Sweep` and `Fly`) then cuts each slide along a contact to the bound from the shell's axis. When the
+   clamp's answer would press into the contact, the slide keeps its own direction up to where it meets the bound, so
+   the shell reaches the corner of the contact and the bound as it reaches any inner corner. A ground substep the
+   clamp shortens counts as blocked, and so does a cut slide. The air pass leaves its velocity alone, because the
+   bound is not a contact. Every substep's end is then the clamp's answer, a point on a straight move toward one, or
+   the point where a slide meets the bound, so for a convex bound no substep that starts inside it ends outside. Three
    things can still cross it: recovery out of an overlap at the start of a mode, and the clearance push of a ground or
    landing placement. A body one of them leaves outside has its next substeps clamped back toward the bound. The legacy
    re-clamp of the final position after the move is kept as the backstop for them. An end it shifts is placed at the

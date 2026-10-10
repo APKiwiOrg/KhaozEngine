@@ -169,8 +169,9 @@ internal static class ContactController
     };
 
     // The clamp after the move is a backstop. Every mode clamps each substep's move and every slide of the shell
-    // along a contact, so only a clearance push or a recovery can still end past the play area. A shifted end is placed at the clamped axis through the ground
-    // core's placement, which pays a rise from the climb budget the tick has left and clears the shell. An end that
+    // along a contact, so only a clearance push or a recovery can still end past the play area. A shifted end is
+    // placed at the clamped axis through the ground core's placement, which pays a rise from the climb budget the tick
+    // has left and clears the shell. An end that
     // stood on support takes walkable support within StepHeight above or below it, and steep support at or below it.
     // An airborne end takes only walkable support above it, never steep. A placement the shell can clear only by a
     // push leaves the feet where they were, because the push would move the axis again. Whatever the placement, the

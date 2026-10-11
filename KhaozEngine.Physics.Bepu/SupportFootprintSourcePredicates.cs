@@ -80,6 +80,23 @@ internal sealed class SupportFootprintSourcePredicates
         return _work.Sign(projected ? Dot(normal, normal) : Dot3(normal, normal));
     }
 
+    internal bool HorizontalPlaneHeight(SupportPolygon polygon, out GeometryInterval height)
+    {
+        height = default;
+        if (!polygon.HasSource) return false;
+        Vector3 first = polygon.SourceVertices[0];
+        // Equal source heights make every polygon point horizontal over the whole coefficient box.
+        // Reset per vertex so the fixed expression capacity is independent of the polygon's size.
+        for (int i = 1; i < polygon.SourceVertices.Length; i++)
+        {
+            if (!Begin(polygon) || _work.Sign(Component(polygon.SourceVertices[i], first, 1)) != GeometrySign.Zero)
+                return false;
+        }
+        if (!Begin(polygon)) return false;
+        height = _work.Bounds(Component(first, default, 1, polygon.SourceMap.Translation.Y));
+        return height.IsResolved;
+    }
+
     internal GeometrySign EdgeLength(SupportPolygon polygon, int index)
     {
         if (!Begin(polygon)) return GeometrySign.Unresolved;

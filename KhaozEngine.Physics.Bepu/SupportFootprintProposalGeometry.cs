@@ -11,7 +11,7 @@ internal static class SupportFootprintProposalGeometry
     static readonly FeatureNumber Zero = FeatureNumber.Exact(0), One = FeatureNumber.Exact(1);
 
     internal static GeometrySign Lowest(SupportPolygon polygon, in SupportFootprintProposal proposal,
-        out GeometryInterval lowest)
+        out GeometryInterval lowest, bool sourceHeight = false)
     {
         lowest = default;
         GeometrySign upward = SupportFootprintPolygon.Orientation(polygon);
@@ -48,6 +48,14 @@ internal static class SupportFootprintProposalGeometry
         }
         if (!range.HasUpper) return GeometrySign.Negative;
         if (!range.HasLower) return GeometrySign.Unresolved;
+        if (sourceHeight && polygon.HasSource && polygon.SourcePredicates.HorizontalPlaneHeight(polygon, out var horizontal))
+        {
+            // Every sphere-contact stratum is at most the horizontal plane height. The interior
+            // attains it only when its membership is certified, including a closed boundary.
+            range.Upper = Math.Min(range.Upper, horizontal.Upper);
+            if (inside is GeometrySign.Positive or GeometrySign.Zero)
+                range.Lower = Math.Max(range.Lower, horizontal.Lower);
+        }
         lowest = GeometryInterval.Enclose(range.Lower, range.Upper);
         return lowest.IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved;
     }

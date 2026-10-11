@@ -113,12 +113,19 @@ internal sealed class SupportSourcePolynomialWorkspace
             else variableTerms |= !value.Values[i].IsZero;
         }
         if (!variableTerms) return constant < 0 ? GeometrySign.Zero : value.Values[constant].Sign;
-        bool zero = true;
+        GeometryInterval total = Bounds(value);
+        return !total.IsResolved ? GeometrySign.Unresolved :
+            total.Lower > 0 ? GeometrySign.Positive : total.Upper < 0 ? GeometrySign.Negative : GeometrySign.Unresolved;
+    }
+
+    internal GeometryInterval Bounds(SupportSourcePolynomial value)
+    {
+        if (!IsResolved || !value.IsResolved) return default;
         GeometryInterval total = GeometryInterval.Exact(0);
+        bool hasTerm = false;
         for (int i = 0; i < value.Count; i++)
         {
             if (value.Values[i].IsZero) continue;
-            zero = false;
             GeometryInterval term = value.Values[i].Bounds;
             ulong key = value.Keys[i];
             for (int variable = 0; variable < _variableCount; variable++, key >>= 4)
@@ -126,10 +133,10 @@ internal sealed class SupportSourcePolynomialWorkspace
                 int power = (int)(key & 15);
                 for (int p = 0; p < power; p++) term = term.Multiply(_variables[variable]);
             }
-            total = total.Add(term);
+            total = hasTerm ? total.Add(term) : term;
+            hasTerm = true;
         }
-        return zero ? GeometrySign.Zero : !total.IsResolved ? GeometrySign.Unresolved :
-            total.Lower > 0 ? GeometrySign.Positive : total.Upper < 0 ? GeometrySign.Negative : GeometrySign.Unresolved;
+        return total;
     }
 
     SupportSourcePolynomial Rent(int degree)

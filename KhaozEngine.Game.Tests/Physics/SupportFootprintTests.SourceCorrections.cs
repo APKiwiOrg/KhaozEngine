@@ -19,19 +19,7 @@ public partial class SupportFootprintTests
     {
         using var diagnostics = new SourceDiagnosticScope();
         using var scene = new SupportFootprintScene();
-        Quaternion rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.65f);
-        Vector3[] corners = [new(-0.25f, -0.125f, -0.25f), new(0.25f, -0.125f, -0.25f),
-            new(-0.25f, 0.125f, -0.25f), new(0.25f, 0.125f, -0.25f), new(-0.25f, -0.125f, 0.25f),
-            new(0.25f, -0.125f, 0.25f), new(-0.25f, 0.125f, 0.25f), new(0.25f, 0.125f, 0.25f)];
-        PhysicsShape shape = partition switch
-        {
-            FootprintPartition.Boxes => new BoxShape(new(0.25f, 0.125f, 0.25f)),
-            FootprintPartition.Hulls => new ConvexHullShape(corners),
-            // The wall's first triangle has horizontal and diagonal edges from vertex A.
-            _ => new TriangleMeshShape(corners, [2, 3, 7, 2, 7, 6, 0, 4, 6, 0, 6, 2]),
-        };
-        scene.Install(shape, new(new(0, 0.125f, 0), rotation));
-        Vector3 axis = Vector3.Transform(new Vector3(-0.2f, 0, 0), rotation);
+        Vector3 axis = InstallYawCrate(scene, partition);
         var request = Request(x: axis.X, z: axis.Z);
         using var lease = scene.World.AcquireQueryReadLease();
         var members = new SupportFootprintMember[256];

@@ -138,10 +138,10 @@ internal sealed class SupportFootprintCollector
         return separation.Lower <= _request.ContactBand && distance.Front ? GeometrySign.Positive : GeometrySign.Negative;
     }
 
-    bool ContactHeight(SupportPolygon polygon, int index)
+    bool ContactHeight(SupportPolygon polygon, int index, bool sourceHeight = false)
     {
         SupportFootprintProposal proposal = index == 0 ? _request.AxisProposal : _request.FootProposal;
-        GeometrySign height = SupportFootprintProposalGeometry.Lowest(polygon, proposal, out GeometryInterval bounds);
+        GeometrySign height = SupportFootprintProposalGeometry.Lowest(polygon, proposal, out GeometryInterval bounds, sourceHeight);
         if (height == GeometrySign.Unresolved) return false;
         if (height != GeometrySign.Positive) return true;
         _contactLow[index] = _hasContactGeometry[index] ? Math.Max(_contactLow[index], bounds.Lower) : bounds.Lower;
@@ -164,9 +164,18 @@ internal sealed class SupportFootprintCollector
             if (_verdicts[index].Status != SupportProposalStatus.Contact) continue;
             if (_targets[index] is null || !_hasContactGeometry[index]) return Refused(CapsuleFeatureStatus.Unsupported);
             double low = _contactLow[index], high = _contactHigh[index];
+            if (BandUncertain(low, high))
+            {
+                _hasContactGeometry[index] = false;
+                for (int member = 0; member < _count; member++)
+                    if ((_members[member].Value.ProposalMask & (1 << index)) != 0 &&
+                        !ContactHeight(_members[member].Polygon, index, sourceHeight: true))
+                        return Refused(CapsuleFeatureStatus.Unsupported);
+                if (!_hasContactGeometry[index]) return Refused(CapsuleFeatureStatus.Unsupported);
+                low = _contactLow[index]; high = _contactHigh[index];
+            }
             // An uncertain side of either inclusive band boundary is a refusal, never a rounded sweep sign.
-            if ((low < _request.BandLower && high >= _request.BandLower) ||
-                (low <= _request.BandUpper && high > _request.BandUpper)) return Refused(CapsuleFeatureStatus.Unsupported);
+            if (BandUncertain(low, high)) return Refused(CapsuleFeatureStatus.Unsupported);
             _verdicts[index] = new(SupportProposalStatus.Contact, low, high);
         }
         _members.AsSpan(0, _count).Sort(static (a, b) => a.Value.Static != b.Value.Static
@@ -198,4 +207,8 @@ internal sealed class SupportFootprintCollector
         matrix.CopyTo(joins);
         return result;
     }
+
+    bool BandUncertain(double low, double high) =>
+        (low < _request.BandLower && high >= _request.BandLower) ||
+        (low <= _request.BandUpper && high > _request.BandUpper);
 }

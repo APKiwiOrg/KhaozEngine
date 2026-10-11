@@ -41,7 +41,7 @@ internal sealed class SupportSourceCoefficient
                 if (!double.IsFinite(value)) return default;
                 GeometryInterval term = part.Exponent >= -1022 ? GeometryInterval.Exact(value) :
                     GeometryInterval.Enclose(Math.BitDecrement(value), Math.BitIncrement(value));
-                result = result.Add(term);
+                result = i == 0 ? term : result.Add(term);
             }
             return result;
         }

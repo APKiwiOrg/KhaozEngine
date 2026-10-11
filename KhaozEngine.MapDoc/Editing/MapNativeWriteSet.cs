@@ -15,6 +15,9 @@ public sealed record MapNativeWriteSet(IReadOnlyList<MapPatchKey> Patches, IRead
     /// whole root list. Not positional, so the released constructor is unchanged.</summary>
     public bool NativeAssets { get; init; }
 
+    /// <summary>True when publication replaces the complete bounded water set, including a null legacy section.</summary>
+    public bool Water { get; init; }
+
     public static MapNativeWriteSet PlacementsOnly { get; } = new(Array.Empty<MapPatchKey>(),
         Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), Array.Empty<MapCornerOwnerChange>(),
         Array.Empty<ushort>(), true);

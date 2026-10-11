@@ -47,6 +47,7 @@ internal static class NativeDocumentSnapshot
         var candidate = MapDocumentFile.LoadText(MapDocumentFile.SaveText(root, registry),
             new MapDocumentLoadOptions { Registry = registry });
         candidate.Surfaces = document.Surfaces.Clone();
+        candidate.Water = document.Water?.Clone();
         candidate.Tiles = document.Tiles;
         return candidate;
     }
@@ -74,6 +75,7 @@ internal static class NativeDocumentSnapshot
             target.NumericIdHighWaterMark = candidate.NumericIdHighWaterMark;
         }
         if (writeSet.NativeAssets) target.NativeAssets = new List<MapAssetRef>(candidate.NativeAssets);
+        if (writeSet.Water) target.Water = candidate.Water?.Clone();
     }
 
     /// <summary>Replaces a ref in place, or inserts it before the first existing ref that follows it in
@@ -124,5 +126,6 @@ internal static class NativeDocumentSnapshot
         target.ResolverIdentity = candidate.ResolverIdentity;
         target.SupportRecipe = candidate.SupportRecipe;
         target.Surfaces = candidate.Surfaces;
+        target.Water = candidate.Water?.Clone();
     }
 }

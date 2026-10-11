@@ -35,7 +35,7 @@ public sealed class TerrainEditCommand : EditorCommand, INativeDocumentCommand
                 NewBounds = accepted.OldBounds,
                 DigestChanges = Array.AsReadOnly(accepted.DigestChanges.Select(c => new MapDigestChange(c.Key, c.After, c.Before)).ToArray()),
             } : accepted;
-            return new(undo ? _undoWriteSet! : writes, effects, () => { });
+            return new(undo ? _undoWriteSet! : writes, MapWaterEdits.NameAffectedBodies(candidate.Water, effects), () => { });
         }
         if (undo) throw new InvalidOperationException("Revert called before Apply.");
         MapTerrainEditResult prepared = MapTerrainEdits.Prepare(candidate.Surfaces, _edit);
@@ -45,7 +45,8 @@ public sealed class TerrainEditCommand : EditorCommand, INativeDocumentCommand
             OwnerChanges = Array.AsReadOnly(prepared.WriteSet.OwnerChanges.Select(c => Invert(c, before.Set, after.Set)).ToArray()),
         };
         candidate.Surfaces = prepared.Candidate;
-        return new(prepared.WriteSet, prepared.Effects, () =>
+        MapNativeEditEffects named = MapWaterEdits.NameAffectedBodies(candidate.Water, prepared.Effects);
+        return new(prepared.WriteSet, named, () =>
         {
             _before = before;
             _after = after;

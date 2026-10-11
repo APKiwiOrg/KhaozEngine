@@ -10,8 +10,11 @@ questions, the orchestrator review and the independent spec review. No build, te
 
 ## Contract and remedy
 
-**Ruling SG-1. Keep the body, support rule and all nine invariants.** This work repairs candidate
-completeness and pays for certification. It does not change which ground the character may stand on.
+**Ruling SG-1. Keep the body, planar support rule and all nine invariants, with named exceptions.**
+This work repairs candidate completeness and pays for certification. It changes which ground the
+character may stand on only through the result classes SG-23 lists, chief among them SG-19's curved
+witness, which is the primary contract here, with a per-leaf virtual probe contact as the reviewed
+fallback. Everything else below is unchanged.
 The canonical contracts are the [program](CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md),
 [phase 2b](CONTACT-CONTROLLER-PHASE-2B-SUPPORT-NEIGHBORHOOD-2026-10-10.md),
 [phase 4a](CONTACT-CONTROLLER-PHASE-4A-GROUND-SIGNALS-2026-10-11.md) and
@@ -64,12 +67,21 @@ contact band and `B = [L, U]` for the inclusive contribution band (`L = FeetY - 
 outward. For `c = 0` no finite expansion exists and the query returns Unsupported. Never substitute a
 chosen maximum slope. Every shell-valid tuning has `c > 0`.
 
+The query requires `r >= AxisProbeRadius` (0.01 m, `FootSupport.cs:21`), which is also the backend's
+proven minimum probe radius (`BepuPhysicsWorld.SupportNeighborhood.cs:57`). Below it, today's foot probe
+neighborhood already refuses whenever the probe touches anything, so a smaller footprint has no working
+released behavior to keep. `FootSupportQuery` validation and the ground and shell tuning validators
+reject `FootRadiusFraction * CapsuleRadius < 0.01` at configuration, not mid-tick. With that bound the
+axis probe lies inside the foot probe's column, so one column encloses both probes.
+
 The admission volume is the vertical column `V` over `D` expanded by `e`, from
 `Vbottom = L - max(r*T, BandMargin) - e` to `Vtop = S + e`. `S` is the highest point of the foot probe
 at its start pose, `U + BandMargin + 2*r + ProbeLength` in `FootSupport.cs:129`, so `V` contains the
 whole region either retained probe can sweep (the sweep ends at `L - BandMargin`). A face is a member
 iff it has a certified point in `V`. This expands search bounds, not the disc or reach used for
-acceptance.
+acceptance. A member with no certified point in the closed disc `D` itself, one that reaches only the
+`e` ring, is a context member: it joins, caps and feeds the proposal guards, and publishes no
+contribution, because it has no footprint maximum `m`.
 
 Nothing above `S` was ever admitted: both probes start below it and sweep down, so the released
 neighborhood can only hold faces within `e` of a probe pose inside `V`. Every released member is
@@ -103,7 +115,8 @@ allowed. Fast paths in SG-14 must reproduce this verdict exactly.
 
 **Ruling SG-4. Certify membership and the height maximum independently of a sweep witness.**
 For boxes, hull faces and mesh triangles, project the captured convex polygon into XZ and intersect
-it with `D`. Membership is a certified nonempty intersection. A height maximum on this compact set
+it with `D`. Membership is SG-3 admission, not this test. After admission, a certified nonempty
+intersection with `D` is the domain of `m`. A height maximum on this compact set
 occurs at a polygon vertex inside `D`, an edge/disc intersection, or the disc's uphill extremum
 when that point lies inside the polygon. Enumerate all these cases with outward arithmetic and
 exact sign fallback. A flat polygon uses its constant plane height and a deterministic valid witness.
@@ -505,7 +518,7 @@ at boundaries using represented values on each side, not random decimal nudges.
 | 7 | Exact reach endpoints, radial rim tangency, one represented value inside/outside and slope-gate uncertainty. Inclusion, exclusion or refusal follows certified bounds, never a widened tolerance |
 | 8 | Hidden sphere, upright/lying capsule and cylinder side/caps under the wedge. Off-axis sphere and log rows, including the axis column missing the solid, the sphere flank row re-derived per SG-19, and every admitted tilted pose. Derive expectations independently. Keep axis, edge, tangency and cap/side tie rows. The oracle also reports the per-point supremum |
 | 9 | 96/256/257/300 raw-element fans, stacked clusters and 256/257 raw curved parts with both witness slots. 256 completes if supported. Above cap refuses atomically with sentinel spans unchanged. Refused members cannot leave a lower accepted support |
-| 9a | Admission bounds. The review's steep sliver above `S` is ignored, and the same sliver lowered to straddle `S` is admitted. A rim floor near `L` that the rounded probe never touched is found. A below-band refused fan stays irrelevant (`RefusedSurfaceBelowTheBandIsIgnored`) |
+| 9a | Admission bounds. The review's steep sliver above `S` is ignored, and the same sliver lowered to straddle `S` is admitted. A rim floor near `L` that the rounded probe never touched is found. A below-band refused fan stays irrelevant (`RefusedSurfaceBelowTheBandIsIgnored`). A face reaching only the 0.1 mm ring beyond `D` caps a joined member and publishes nothing. A footprint below 0.01 m, such as the review's 0.005 m patch case, is rejected by `FootSupportQuery`, ground and shell validation |
 | 10 | Same geometry in one mesh, compounds and split statics. Height/status agree within certified errors. Identical installed inputs replay bit-identically with cold, warm and interleaved scratch |
 | 11 | Excluded winning crate, wrong lease/view/source/thread, disposed and reacquired same-generation lease, removal/reuse and rebase. No excluded or stale support/owner is published |
 | 12 | Borrowed explicit initial support, grounded motion, pushed seat, landing, all three look-ahead samples, rounded-axis binding and medium retry. One interval, scope checked before calls, unchanged raw provenance and canonical binding |
@@ -579,7 +592,7 @@ Cost if wrong: simultaneous geometry, movement and cost edits hide a broken boun
 
 **Ruling SG-18. Keep both adoption gates closed until their separate proof obligations pass.**
 The admission volume can admit many more raw members than a contact ball. The 256 cap remains a known
-content limit. Curved boundary completeness, rotated/sliver arithmetic and localized cap equivalence
+content limit. Curved boundary completeness, rotated/sliver arithmetic and the membership-dependent caps of the whole-polygon join predicate
 are the principal geometric risks. Wider look-ahead and explicit scopes are the principal integration
 risks. Dense pair work, cold scratch growth and actor multiplication are the principal cost risks.
 
@@ -591,7 +604,7 @@ No local stress, release, tag, engine pin, game edit or navigation capture is pa
 Cost if wrong: a partially proven primitive is adopted and phase 5 bakes its hidden error into navigation.
 
 **Ruling SG-23. Every released result this gate changes is named, derived and reviewable.** Applying
-the stated footprint rule completely changes five classes of released results, each pinned by oracle
+the stated footprint rule completely changes six classes of released results, each pinned by oracle
 rows and none by a snapshot:
 
 1. Support hidden under a first hit is found (#1347, row 1).
@@ -601,6 +614,9 @@ rows and none by a snapshot:
 4. Curved witnesses follow SG-19. The sphere flank row becomes Walkable at -0.2.
 5. A larger member set admits more released-predicate joins, so a cap can come from a face the probe
    never touched.
+6. Support reach ends at the closed disc. A face that reaches only the 0.1 mm ring beyond `D`, which
+   today's probe witness could still publish, is a context member (SG-3). Footprints below 0.01 m are
+   rejected at configuration.
 
 An existing row's expectation changes only by geometric derivation, recorded in its task report and
 the changelog. Phase 5 bakes navigation from the complete rule. Cost if wrong: the owner disagrees
@@ -612,8 +628,10 @@ repository's stress caller (`.github/workflows/stress-test.yml`) cannot yet set
 upload them. A bounded task adds that, and changes the pinned shared workflow in its own repository if
 it cannot forward them. Hosted runners differ from the M2 Max, so hosted acceptance is normalized by
 the legacy controller measured in the same invocation: `k = legacy hosted / legacy M2 Max` on the flat
-box whole tick, and every absolute SG-12 ceiling scales by `k` there. The legacy-relative row needs no
-scaling. Iterations and duration are named in an explicit owner approval before dispatch, requested at
+box whole tick, and every absolute SG-12 ceiling scales by `k` there. The legacy-relative row becomes
+`candidate_hosted <= legacy_hosted + max(k * 100 us, 0.25 * legacy_hosted)`, since its additive term is
+in M2 Max units and its ratio is not. Task 10 checks the verdict code on a faster and a slower host
+example without dispatching a run. Iterations and duration are named in an explicit owner approval before dispatch, requested at
 the phase 6 stop. Until the approved run passes, #1334 stays open with the local evidence linked. Cost
 if wrong: the legacy controller is a noisy yardstick, and a borderline row needs a second approved run.
 

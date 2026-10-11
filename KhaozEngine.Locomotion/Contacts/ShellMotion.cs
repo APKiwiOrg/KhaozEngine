@@ -16,7 +16,7 @@ internal readonly record struct ShellFlight(Vector3 Achieved, bool Blocked, floa
 /// <summary>Moves the shell: recovery out of overlaps, the upward lift, one horizontal substep with wall slides
 /// and one substep through the air. Every position is the body's feet. A null world has no statics, so the shell
 /// moves freely.</summary>
-internal static class ShellMotion
+internal static partial class ShellMotion
 {
     /// <summary>The gap a sweep leaves when it hits something. Free motion is never shortened by it.</summary>
     internal const float ContactSkin = 0.001f;
@@ -27,15 +27,15 @@ internal static class ShellMotion
     /// <summary>Pushes the shell out of any static it overlaps along the true MTV plus the skin, at most
     /// <see cref="MaxRecoveryPasses"/> passes. <paramref name="cleared"/> is false when the shell still overlaps
     /// after the last pass. The returned feet are always finite.</summary>
-    internal static Vector3 Recover(IPhysicsWorld? world, Vector3 feet, in MoveTuning tuning, out bool cleared)
+    internal static Vector3 RecoverWithQueries(ContactQueryContext queries, Vector3 feet, in MoveTuning tuning, out bool cleared)
     {
         cleared = true;
-        if (world is null)
+        if (!queries.HasShell)
             return feet;
         CapsuleShape shape = ShellGeometry.Shape(tuning);
         for (int pass = 0; ; pass++)
         {
-            if (!world.ComputePenetration(shape, Pose.At(ShellGeometry.Centre(feet, tuning)), out Vector3 mtv))
+            if (!queries.PenetrationShell(shape, ShellGeometry.Centre(feet, tuning), out Vector3 mtv))
                 return feet;
             float depth = mtv.Length();
             if (pass == MaxRecoveryPasses || !(depth > 0f) || !float.IsFinite(depth))
@@ -50,11 +50,11 @@ internal static class ShellMotion
 
     /// <summary>How far the shell can rise, up to <see cref="MoveTuning.StepHeight"/>. A hit gives the clear
     /// distance less the skin, never negative.</summary>
-    internal static float Lift(IPhysicsWorld? world, Vector3 feet, in MoveTuning tuning)
+    internal static float LiftWithQueries(ContactQueryContext queries, Vector3 feet, in MoveTuning tuning)
     {
         float step = tuning.StepHeight;
-        if (world is null || !world.SweepCapsule(ShellGeometry.Shape(tuning),
-                Pose.At(ShellGeometry.Centre(feet, tuning)), Vector3.UnitY, step, out SweepHit hit,
+        if (!queries.HasShell || !queries.SweepShell(ShellGeometry.Shape(tuning),
+                ShellGeometry.Centre(feet, tuning), Vector3.UnitY, step, out SweepHit hit,
                 QueryFilter.StaticsOnly))
             return step;
         return MathF.Max(0f, hit.Distance - ContactSkin);
@@ -66,10 +66,10 @@ internal static class ShellMotion
     /// times. <paramref name="clampXz"/> is the play-area clamp, which cuts each slide along a contact to the bound
     /// as <see cref="BoundSlide"/> describes. The caller clamps the move itself and splits a long move into
     /// substeps.</summary>
-    internal static ShellSweep Sweep(IPhysicsWorld? world, Vector3 feet, float lift, Vector2 move,
+    internal static ShellSweep SweepWithQueries(ContactQueryContext queries, Vector3 feet, float lift, Vector2 move,
         in MoveTuning tuning, float cosMaxSlope, Func<float, float, Vector2>? clampXz = null)
     {
-        if (world is null)
+        if (!queries.HasShell)
             return new ShellSweep(move, false);
         CapsuleShape shape = ShellGeometry.Shape(tuning);
         Vector3 centre = ShellGeometry.Centre(feet, tuning) + new Vector3(0f, lift, 0f);
@@ -86,7 +86,7 @@ internal static class ShellMotion
             if (!(length > 0))
                 break;
             Vector2 direction = new((float)(remaining.X / length), (float)(remaining.Y / length));
-            if (!world.SweepCapsule(shape, Pose.At(centre + offset), new Vector3(direction.X, 0f, direction.Y),
+            if (!queries.SweepShell(shape, centre + offset, new Vector3(direction.X, 0f, direction.Y),
                     (float)length, out SweepHit hit, QueryFilter.StaticsOnly))
             {
                 achieved += remaining;
@@ -97,7 +97,7 @@ internal static class ShellMotion
             if (normal == Vector3.Zero)
             {
                 // A touching start reports distance 0 with no normal. The face is read from an inflated shell.
-                if (!TouchNormal(world, shape, centre + offset, out normal))
+                if (!TouchNormal(queries, shape, centre + offset, out normal))
                     break;
                 offset += normal * ContactSkin;
             }
@@ -137,10 +137,10 @@ internal static class ShellMotion
     /// its fall. <paramref name="clampXz"/> is the play-area clamp, which cuts the horizontal part of each slide
     /// along a contact to the bound as <see cref="BoundSlide"/> describes and leaves the velocity alone, because the
     /// bound is not a contact. The caller clamps the move itself and splits a long move into substeps.</summary>
-    internal static ShellFlight Fly(IPhysicsWorld? world, Vector3 feet, Vector3 move, ref Vector3 velocity,
+    internal static ShellFlight FlyWithQueries(ContactQueryContext queries, Vector3 feet, Vector3 move, ref Vector3 velocity,
         in MoveTuning tuning, float cosMaxSlope, Func<float, float, Vector2>? clampXz = null)
     {
-        if (world is null)
+        if (!queries.HasShell)
             return new ShellFlight(move, false, MathF.Max(0f, move.Y), MathF.Min(0f, move.Y));
         CapsuleShape shape = ShellGeometry.Shape(tuning);
         Vector3 centre = ShellGeometry.Centre(feet, tuning);
@@ -158,7 +158,7 @@ internal static class ShellMotion
                 break;
             var direction = new Vector3((float)(remaining.X / length), (float)(remaining.Y / length),
                 (float)(remaining.Z / length));
-            if (!world.SweepCapsule(shape, Pose.At(centre + offset), direction, (float)length, out SweepHit hit,
+            if (!queries.SweepShell(shape, centre + offset, direction, (float)length, out SweepHit hit,
                     QueryFilter.StaticsOnly))
             {
                 achieved += remaining;
@@ -170,7 +170,7 @@ internal static class ShellMotion
             Vector3 normal = hit.Normal;
             if (normal == Vector3.Zero)
             {
-                if (!TouchNormal(world, shape, centre + offset, out normal))
+                if (!TouchNormal(queries, shape, centre + offset, out normal))
                     break;
                 offset += normal * ContactSkin;
             }
@@ -236,10 +236,10 @@ internal static class ShellMotion
 
     /// <summary>The outward normal of the face a touching shell rests on, from the MTV of the shell grown by the
     /// skin. False when even the grown shell overlaps nothing.</summary>
-    static bool TouchNormal(IPhysicsWorld world, CapsuleShape shape, Vector3 centre, out Vector3 normal)
+    static bool TouchNormal(ContactQueryContext queries, CapsuleShape shape, Vector3 centre, out Vector3 normal)
     {
         var grown = new CapsuleShape(shape.Radius + ContactSkin, shape.Length);
-        if (world.ComputePenetration(grown, Pose.At(centre), out Vector3 mtv) && mtv.LengthSquared() > 0f)
+        if (queries.PenetrationShell(grown, centre, out Vector3 mtv) && mtv.LengthSquared() > 0f)
         {
             normal = Vector3.Normalize(mtv);
             return true;

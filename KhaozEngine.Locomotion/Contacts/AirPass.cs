@@ -30,7 +30,7 @@ internal readonly record struct AirStepResult(Vector3 Feet, float VerticalVeloci
 
 /// <summary>Moves a body without footing for one tick: gravity, the shell's flight in substeps, and landing on
 /// footprint support while descending. Only the shell blocks, and the legs pass ledge edges.</summary>
-internal static class AirPass
+internal static partial class AirPass
 {
     // A bound on one tick's substeps, so a huge displacement throws rather than running unbounded.
     const int MaxSubsteps = 1024;
@@ -48,7 +48,7 @@ internal static class AirPass
     /// slide. Analytic terrain at the new axis more than <see cref="MoveTuning.StepHeight"/> above the feet, or steep
     /// and above them, is a wall. <paramref name="velocity"/> is the tick's horizontal velocity and
     /// <paramref name="verticalVelocity"/> the carried one before gravity. <paramref name="tractionSlopeRadians"/> is
-    /// the tick's traction gate. A non-null <paramref name="world"/> follows the <see cref="FootSupport.Find"/>
+    /// the tick's traction gate. The <paramref name="queries"/> context enforces the <see cref="FootSupport.Find"/>
     /// contract. <paramref name="climbBudget"/> is the climb the tick may still pay, in metres. Null means a whole
     /// tick's <c>MaxStepClimbSpeed * dt</c>. <paramref name="clampXz"/> is the play-area clamp. It cuts every
     /// substep's horizontal move before the sweep, a terrain wall's rerun included, and every slide of the shell
@@ -56,8 +56,7 @@ internal static class AirPass
     /// leaves the velocity alone.</summary>
     internal static AirStepResult Step(Vector3 feet, Vector2 velocity, float verticalVelocity, float dt,
         float gravity, in MoveTuning tuning, in GroundCoreSettings settings, float tractionSlopeRadians,
-        Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal,
-        IPhysicsWorld? world, IPhysicsQueryLease? lease, double? climbBudget = null,
+        ContactQueryContext queries, double? climbBudget = null,
         Func<float, float, Vector2>? clampXz = null)
     {
         Validate(feet, velocity, verticalVelocity, dt, gravity, tuning, settings, tractionSlopeRadians);
@@ -73,7 +72,7 @@ internal static class AirPass
         float cosMaxSlope = MathF.Cos(tractionSlopeRadians);
 
         // A shell that cannot be freed does not move or fall, as a held ground tick does not move.
-        Vector3 start = ShellMotion.Recover(world, feet, tuning, out bool cleared);
+        Vector3 start = ShellMotion.RecoverWithQueries(queries, feet, tuning, out bool cleared);
         if (!cleared)
             return new(feet, 0f, Vector2.Zero, Vector2.Zero, AirOutcome.Airborne, NoSupport, 0f, true)
             {
@@ -96,23 +95,23 @@ internal static class AirPass
             Vector3 before = current;
             var origin = new Vector2(from.X, from.Z);
             if (Bounded(origin, ref move, clampXz)) onPlan = false;
-            ShellFlight flight = ShellMotion.Fly(world, from, move, ref current, tuning, cosMaxSlope, clampXz);
+            ShellFlight flight = ShellMotion.FlyWithQueries(queries, from, move, ref current, tuning, cosMaxSlope, clampXz);
             // Analytic terrain has no shell to meet. As in the ground core, terrain at the new axis more than
             // StepHeight above the substep's highest feet is a wall, and so is steep terrain above them, so the axis
             // never sinks into a face it cannot stand on. The substep reruns without its component into the wall,
             // then without its horizontal part if the wall still stops it.
-            if (TerrainWall(groundHeight, groundNormal, from, flight, tuning, cosMaxSlope) is Vector2 wall)
+            if (TerrainWall(queries, from, flight, tuning, cosMaxSlope) is Vector2 wall)
             {
                 Vector2 alongMove = Along(new Vector2(move.X, move.Z), wall);
                 PlayArea.Clamp(origin, ref alongMove, clampXz);
                 Vector2 alongVelocity = Along(new Vector2(before.X, before.Z), wall);
                 current = new Vector3(alongVelocity.X, before.Y, alongVelocity.Y);
-                flight = ShellMotion.Fly(world, from, new Vector3(alongMove.X, move.Y, alongMove.Y), ref current,
+                flight = ShellMotion.FlyWithQueries(queries, from, new Vector3(alongMove.X, move.Y, alongMove.Y), ref current,
                     tuning, cosMaxSlope, clampXz);
-                if (TerrainWall(groundHeight, groundNormal, from, flight, tuning, cosMaxSlope) is not null)
+                if (TerrainWall(queries, from, flight, tuning, cosMaxSlope) is not null)
                 {
                     current = new Vector3(0f, before.Y, 0f);
-                    flight = ShellMotion.Fly(world, from, new Vector3(0f, move.Y, 0f), ref current, tuning,
+                    flight = ShellMotion.FlyWithQueries(queries, from, new Vector3(0f, move.Y, 0f), ref current, tuning,
                         cosMaxSlope, clampXz);
                 }
                 blocked = true;
@@ -126,7 +125,7 @@ internal static class AirPass
             float high = MathF.Max(from.Y + flight.Highest, at.Y);
             float low = MathF.Min(from.Y + flight.Lowest, at.Y);
             var axis = new Vector2(at.X, at.Z);
-            SupportSample support = FootSupport.Find(groundHeight, groundNormal, world, lease,
+            SupportSample support = queries.FindSupport(
                 new FootSupportQuery(axis, high, footRadius, tuning.StepHeight, MathF.Max(0f, high - low),
                     cosMaxSlope));
             var remaining = new Vector2(displacement.X - next.X, displacement.Z - next.Z);
@@ -142,7 +141,7 @@ internal static class AirPass
                 double rise = (double)support.Height - high;
                 var seat = new GroundSeatResult(SeatOutcome.Seated, support.Height, support,
                     rise > 0 ? GroundPlacement.NotBelow(rise) : 0f, Vector3.Zero);
-                GroundPlacement placement = GroundPlacement.Try(groundHeight, groundNormal, world, lease, NoSupport,
+                GroundPlacement placement = GroundPlacement.Try(queries, NoSupport,
                     high, axis, Vector2.Zero, seat, footRadius, tuning, cosMaxSlope, budget);
                 if (!placement.Valid)
                 {
@@ -206,14 +205,14 @@ internal static class AirPass
     // The horizontal wall normal of analytic terrain at the flight's new axis that is more than StepHeight above the
     // substep's highest feet, or steep by the tick's gate and above them: the delegate's normal made horizontal, else
     // the reverse of the flight's horizontal move. Null without a wall. Steep is the foot support's analytic test.
-    static Vector2? TerrainWall(Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal,
+    static Vector2? TerrainWall(ContactQueryContext queries,
         Vector3 from, in ShellFlight flight, in MoveTuning tuning, float cosMaxSlope)
     {
-        if (groundHeight is null || (flight.Achieved.X == 0f && flight.Achieved.Z == 0f)) return null;
+        if (flight.Achieved.X == 0f && flight.Achieved.Z == 0f) return null;
         float x = from.X + flight.Achieved.X, z = from.Z + flight.Achieved.Z;
-        float height = groundHeight(x, z), highest = from.Y + flight.Highest;
+        float height = queries.HeightAt(new(x, from.Y + flight.Highest, z)), highest = from.Y + flight.Highest;
         if (!(height > highest)) return null;
-        Vector3? delegated = groundNormal?.Invoke(x, z);
+        Vector3? delegated = queries.NormalAt(new(x, from.Y + flight.Highest, z));
         bool steep = delegated is Vector3 n && n.Y < cosMaxSlope;
         if (!steep && !(height > highest + tuning.StepHeight)) return null;
         Vector3 normal = delegated ?? Vector3.Zero;

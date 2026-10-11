@@ -33,8 +33,8 @@ internal readonly record struct SlideStepResult(Vector3 Feet, Vector2 Horizontal
 }
 
 /// <summary>Slides a body on certified steep support, analytic terrain and physics statics alike. The dynamics come
-/// from the support's plane and the move runs through <see cref="GroundCore.Slide"/>.</summary>
-internal static class SlideCore
+/// from the support's plane and the move runs through <c>GroundCore.Slide</c>.</summary>
+internal static partial class SlideCore
 {
     // How far from the feet steep support counts as contact.
     const float ContactReach = 0.001f;
@@ -49,8 +49,7 @@ internal static class SlideCore
     /// The query reaches <see cref="MoveTuning.StepHeight"/> up, as every footing query does, because a foot probe
     /// meets a sloped plane above the plane at its axis. Contact needs the support itself within 1 mm.</summary>
     internal static bool InContact(Vector3 feet, in MoveTuning tuning, in GroundCoreSettings settings,
-        float tractionSlopeRadians, Func<float, float, float>? groundHeight,
-        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+        float tractionSlopeRadians, ContactQueryContext queries,
         out SupportSample support)
     {
         if (!float.IsFinite(feet.X) || !float.IsFinite(feet.Y) || !float.IsFinite(feet.Z))
@@ -58,7 +57,7 @@ internal static class SlideCore
         if (!float.IsFinite(tractionSlopeRadians))
             throw new ArgumentOutOfRangeException(nameof(tractionSlopeRadians), "The traction gate must be finite.");
         float footRadius = settings.FootRadiusFraction * tuning.CapsuleRadius;
-        support = FootSupport.Find(groundHeight, groundNormal, world, lease,
+        support = queries.FindSupport(
             new FootSupportQuery(new Vector2(feet.X, feet.Z), feet.Y, footRadius, tuning.StepHeight, ContactReach,
                 MathF.Cos(tractionSlopeRadians)));
         return support.Status == SupportStatus.Steep &&
@@ -76,8 +75,7 @@ internal static class SlideCore
     /// holds the fall-line speed as a block does.</summary>
     internal static SlideStepResult Step(Vector3 feet, Vector2 carry, float verticalVelocity, Vector2 steer,
         float dt, in MoveTuning tuning, in GroundCoreSettings settings, float tractionSlopeRadians,
-        in SupportSample support, Func<float, float, float>? groundHeight,
-        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+        in SupportSample support, ContactQueryContext queries,
         double? climbBudget = null, Func<float, float, Vector2>? clampXz = null)
     {
         if (!float.IsFinite(feet.X) || !float.IsFinite(feet.Y) || !float.IsFinite(feet.Z))
@@ -127,8 +125,7 @@ internal static class SlideCore
         Vector2 move = (velocity + applied) * dt;
         var axis = new Vector2(feet.X, feet.Z);
         bool clamped = PlayArea.Clamp(axis, ref move, clampXz);
-        GroundStepResult step = GroundCore.Slide(feet, move, dt, tuning, settings, groundHeight, groundNormal, world,
-            lease, tractionSlopeRadians, climbBudget, clampXz);
+        GroundStepResult step = GroundCore.Slide(feet, move, dt, tuning, settings, queries, tractionSlopeRadians, climbBudget, clampXz);
         if (step.Blocked && steerAlong != 0f)
         {
             // The steer's own travel may be what met the block, for example a contour that climbs the real surface
@@ -137,8 +134,7 @@ internal static class SlideCore
             // costs the slide its speed.
             Vector2 alone = velocity * dt;
             bool aloneClamped = PlayArea.Clamp(axis, ref alone, clampXz);
-            GroundStepResult carried = GroundCore.Slide(feet, alone, dt, tuning, settings, groundHeight,
-                groundNormal, world, lease, tractionSlopeRadians, climbBudget, clampXz);
+            GroundStepResult carried = GroundCore.Slide(feet, alone, dt, tuning, settings, queries, tractionSlopeRadians, climbBudget, clampXz);
             if (Progress(carried) > Progress(step))
                 (step, steerAlong, applied, clamped) = (carried, 0f, Vector2.Zero, aloneClamped);
         }
@@ -183,7 +179,7 @@ internal static class SlideCore
                 IntegratedVerticalVelocity = integrated,
             };
         bool wedged = rise >= 0 && Opposed(step.Feet, step.Support, tuning, settings, tractionSlopeRadians,
-            groundHeight, groundNormal, world, lease);
+            queries);
         return new(step.Feet, velocity, vertical, step.Achieved, wedged ? SlideOutcome.Wedged : SlideOutcome.Sliding,
             step.Support, 0f)
         { ClimbBudget = step.ClimbBudget, Steer = applied, IntegratedVerticalVelocity = integrated };
@@ -214,8 +210,7 @@ internal static class SlideCore
     // above the plane at its axis, r (1 / cos(slope) - 1), plus the contact skin for rounding. It is capped at the
     // body's height.
     static bool Opposed(Vector3 feet, in SupportSample support, in MoveTuning tuning, in GroundCoreSettings settings,
-        float tractionSlopeRadians, Func<float, float, float>? groundHeight,
-        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease)
+        float tractionSlopeRadians, ContactQueryContext queries)
     {
         Vector2 down = FallLine(support.Normal);
         if (down == Vector2.Zero) return false;
@@ -229,7 +224,7 @@ internal static class SlideCore
             : height;
         if (!(reachUp >= 0f)) reachUp = height;
         Vector2 axis = new Vector2(feet.X, feet.Z) + distance * down;
-        SupportSample beyond = FootSupport.Find(groundHeight, groundNormal, world, lease,
+        SupportSample beyond = queries.FindSupport(
             new FootSupportQuery(axis, feet.Y, footRadius, reachUp, tuning.StepHeight,
                 MathF.Cos(tractionSlopeRadians)));
         return beyond.Status == SupportStatus.Steep && Vector2.Dot(FallLine(beyond.Normal), down) < OpposingCos;

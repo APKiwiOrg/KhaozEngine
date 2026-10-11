@@ -9,7 +9,10 @@ public sealed partial class MovementQueryLease
     /// <summary>Accepts sweep data for this complete request under the current read interval.
     /// Known validates the backend's declared result, not its geometric proof or a safe placement.</summary>
     internal MovementAvailability QuerySolidSweep(in MovementBodyQuery body, Vector3 displacement,
-        out CapsuleSweepResult result)
+        out CapsuleSweepResult result) => QuerySolidSweepFiltered(body, displacement, out result, default);
+
+    internal MovementAvailability QuerySolidSweepFiltered(in MovementBodyQuery body, Vector3 displacement,
+        out CapsuleSweepResult result, QueryFilter filter)
     {
         result = default;
         AssertUsable();
@@ -30,7 +33,7 @@ public sealed partial class MovementQueryLease
         {
             AssertCurrent();
             var capsule = new CapsuleShape(body.Radius, 2f * (body.HalfHeight - body.Radius));
-            CapsuleSweepResult query = sweep.SweepCapsuleCertified(capsule, Pose.At(body.Centre), displacement);
+            CapsuleSweepResult query = sweep.SweepCapsuleCertified(capsule, Pose.At(body.Centre), displacement, filter);
             AssertCurrent();
             if (!query.IsValid) return MovementAvailability.Invalid;
             if (!query.IsComplete || query.CertifiedErrorMetres > CoverageSkinMetres)

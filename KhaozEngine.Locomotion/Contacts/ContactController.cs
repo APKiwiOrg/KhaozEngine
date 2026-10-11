@@ -9,7 +9,7 @@ namespace KhaozEngine.Locomotion.Contacts;
 /// the tick ended with, and the carried state. The move starts in the mode the tick's footing calls for (the ground
 /// core, a slide, or the air pass), and a footing change part way through runs the rest of the tick in the next mode,
 /// with one climb budget shared by the whole tick.</summary>
-internal static class ContactController
+internal static partial class ContactController
 {
     // A bound on one tick's mode changes. Every cycle of mode changes passes through the air pass, and each air
     // segment spends at least one of its substeps before it hands on, so the time left shrinks and the cap is a guard.
@@ -45,26 +45,35 @@ internal static class ContactController
                     "The contact controller needs a physics world that offers IPhysicsSupportNeighborhood.");
         }
 
+        using IPhysicsQueryLease? lease = leases?.AcquireQueryReadLease();
+        var queries = new DryContactQueryContext(groundHeight, groundNormal, world, lease, tuning, medium);
+        return StepWithQueries(state, moveDir, speedFraction, run, jump, dt, tuning, queries, clampXz,
+            faceYaw, foot);
+    }
+
+    internal static MoveState StepWithQueries(in MoveState state, Vector2 moveDir, float speedFraction, bool run,
+        bool jump, float dt, in MoveTuning tuning, ContactQueryContext queries,
+        Func<float, float, Vector2>? clampXz = null,
+        float? faceYaw = null, GroundCoreSettings? settings = null)
+    {
+        GroundCoreSettings foot = settings ?? new GroundCoreSettings();
         MoveState s = state;
         MoveTuning t = tuning;
         bool commitmentControlled = CharacterMovement.PrepareCommitmentTick(ref s, ref t, ref moveDir,
             ref speedFraction, ref run, ref jump, ref faceYaw, dt, out bool committedFlight, out bool launched);
 
-        float halfHeight = t.CapsuleHalfHeight;
-        if (medium is not null && medium(s.Position.X, s.Position.Z, s.Position.Y - halfHeight).InWater)
-            throw new NotSupportedException("The contact controller does not swim yet. Water arrives in phase 4.");
-
+        Vector3 feet = queries.KernelFeet(s.Position, t);
+        queries.CheckDryMedium(feet);
         float gate = CharacterMovement.TractionGate(s.Grounded, t);
-        var feet = new Vector3(s.Position.X, s.Position.Y - halfHeight, s.Position.Z);
         // An airborne tick never starts where the air pass cannot recover the feet: below steep analytic terrain at
         // its axis, which the terrain wall treats as a face above them, or below walkable terrain by more than
         // StepHeight, past the reach of its landing. Only a defect leaves the feet there, so the tick seats them on
         // the terrain and its footing takes over, a slide where the terrain is steep. Within StepHeight below
         // walkable terrain the feet are a paced seat's lag, grounded or rising from it on a jump, and the air pass's
         // paced, clearance-checked landing owns them, as the ground core pays a grounded lag from its budget.
-        float terrain = groundHeight(feet.X, feet.Z);
+        float terrain = queries.HeightAt(feet);
         if (!s.Grounded && feet.Y < terrain && (terrain - feet.Y > t.StepHeight ||
-                groundNormal?.Invoke(feet.X, feet.Z).Y < MathF.Cos(gate)))
+                queries.NormalAt(feet)?.Y < MathF.Cos(gate)))
             feet.Y = terrain;
 
         // Intent, as legacy: the walk or run speed scaled by AirControl in the air and by the entity's scale. Under
@@ -99,9 +108,8 @@ internal static class ContactController
 
         Tick tick;
         float climbRate, climbRateEwma, stepDeltaY;
-        using (IPhysicsQueryLease? lease = leases?.AcquireQueryReadLease())
         {
-            var context = new Context(groundHeight, groundNormal, world, lease, t, foot, gate, clampXz);
+            var context = new Context(queries, t, foot, gate, clampXz);
             Mode mode = Mode.Air;
             SupportSample support = default;
             // An airborne body on steep support slides only while its vertical speed after the tick's gravity does
@@ -112,7 +120,7 @@ internal static class ContactController
             if (s.Grounded)
                 mode = Mode.Ground;
             else if (!committedFlight && !(s.VerticalVelocity - t.Gravity * dt > 0f) && SlideCore.InContact(feet,
-                         t, foot, gate, groundHeight, groundNormal, world, lease, out support))
+                         t, foot, gate, queries, out support))
                 mode = Mode.Slide;
             tick = Move(context, s, mode, support, feet, commanded, velocity, displacement, intent, dt);
             bool corrected = false;
@@ -128,8 +136,7 @@ internal static class ContactController
                 tick.StepRise, tick.MoveRise, tick.RiseSeen, tick.DropSeen, tick.CarriedLag, tick.GroundTravel,
                 tick.Feet, tick.Support,
                 tick.Mode == Mode.Ground && tick.Support.Status == SupportStatus.Walkable,
-                dt, t, foot.FootRadiusFraction * t.CapsuleRadius, MathF.Cos(gate), groundHeight, groundNormal, world,
-                lease);
+                dt, t, foot.FootRadiusFraction * t.CapsuleRadius, MathF.Cos(gate), queries);
         }
 
         // The jump, decided last as legacy. The impact and the grant latch first, so a buffered relaunch on the
@@ -149,7 +156,7 @@ internal static class ContactController
             jumpBuffer = 0f;
         }
 
-        var end = new Vector3(tick.Feet.X, tick.Feet.Y + halfHeight, tick.Feet.Z);
+        Vector3 end = queries.BodyCentre(tick.Feet);
 
         var result = new MoveState
         {
@@ -207,7 +214,7 @@ internal static class ContactController
 
         MoveTuning t = c.Tuning;
         float y = feet.Y, footRadius = c.Settings.FootRadiusFraction * t.CapsuleRadius, cosGate = MathF.Cos(c.Gate);
-        SupportSample support = FootSupport.Find(c.GroundHeight, c.GroundNormal, c.World, c.Lease,
+        SupportSample support = c.Queries.FindSupport(
             new FootSupportQuery(axis, y, footRadius, t.StepHeight, tick.Supported ? t.StepHeight : 0f, cosGate));
         GroundSeatResult seat = support.Status switch
         {
@@ -220,17 +227,16 @@ internal static class ContactController
         };
         if (seat.Outcome is SeatOutcome.Seated or SeatOutcome.SteepSeated)
         {
-            GroundPlacement placement = GroundPlacement.Try(c.GroundHeight, c.GroundNormal, c.World, c.Lease,
+            GroundPlacement placement = GroundPlacement.Try(c.Queries,
                 NoSupport, y, axis, Vector2.Zero, seat, footRadius, t, cosGate, tick.Budget, clearSteep: true);
             if (placement.Valid && !placement.Pushed) y = placement.Feet.Y;
         }
-        y = MathF.Max(y, c.GroundHeight(axis.X, axis.Y));
+        if (c.Queries.TryHeightAt(new(axis.X, y, axis.Y), out float terrain)) y = MathF.Max(y, terrain);
         return tick with { Feet = new Vector3(axis.X, y, axis.Y), Last = last };
     }
 
     /// <summary>The tick's queries and the knobs every mode reads.</summary>
-    readonly record struct Context(Func<float, float, float> GroundHeight, Func<float, float, Vector3>? GroundNormal,
-        IPhysicsWorld? World, IPhysicsQueryLease? Lease, MoveTuning Tuning, GroundCoreSettings Settings, float Gate,
+    readonly record struct Context(ContactQueryContext Queries, MoveTuning Tuning, GroundCoreSettings Settings, float Gate,
         Func<float, float, Vector2>? ClampXz);
 
     enum Mode : byte { Ground, Slide, Air }
@@ -277,8 +283,7 @@ internal static class ContactController
         {
             if (mode == Mode.Ground)
             {
-                GroundStepResult step = GroundCore.Step(feet, displacement, time, t, c.Settings, c.GroundHeight,
-                    c.GroundNormal, c.World, c.Lease, c.Gate, budget, c.ClampXz,
+                GroundStepResult step = GroundCore.Step(feet, displacement, time, t, c.Settings, c.Queries, c.Gate, budget, c.ClampXz,
                     stepInProgress: s.StepDeltaY > 0 || GroundSignals.Ascending(s.ClimbRate));
                 (feet, budget, vertical) = (step.Feet, step.ClimbBudget, 0f);
                 support = step.Support;
@@ -309,7 +314,7 @@ internal static class ContactController
             if (mode == Mode.Slide)
             {
                 SlideStepResult slide = SlideCore.Step(feet, velocity, vertical, intent, time, t, c.Settings, c.Gate,
-                    support, c.GroundHeight, c.GroundNormal, c.World, c.Lease, budget, c.ClampXz);
+                    support, c.Queries, budget, c.ClampXz);
                 Vector2 drive = slide.HorizontalVelocity + slide.Steer;
                 last = new Segment(slide.HorizontalVelocity, drive, slide.Achieved, time);
                 first ??= drive;
@@ -329,7 +334,7 @@ internal static class ContactController
                 continue;
             }
             AirStepResult air = AirPass.Step(feet, velocity, vertical, time, t.Gravity, t, c.Settings, c.Gate,
-                c.GroundHeight, c.GroundNormal, c.World, c.Lease, budget, c.ClampXz);
+                c.Queries, budget, c.ClampXz);
             Vector2 asked = segment == 0 ? commanded : velocity;
             last = new Segment(asked, asked, air.Achieved, time);
             first ??= asked;

@@ -6,7 +6,7 @@ namespace KhaozEngine.Locomotion.Contacts;
 
 /// <summary>Classifies a grounded move as a continuous stair run or an isolated step. These signals describe the
 /// accepted move and never feed it.</summary>
-internal static class GroundSignals
+internal static partial class GroundSignals
 {
     internal const float RunGrade = 0.3f;
     internal const float SeedFraction = 0.7f;
@@ -22,8 +22,7 @@ internal static class GroundSignals
     /// event.</summary>
     internal static (float ClimbRate, float Ewma, float StepDeltaY) Resolve(in MoveState input, float stepRise,
         float moveRise, bool riseSeen, bool dropSeen, float carriedLag, Vector2 groundTravel, Vector3 feet, in SupportSample axisSupport, bool walkableGround,
-        float dt, in MoveTuning tuning, float footRadius, float cosMaxSlope, Func<float, float, float>? groundHeight,
-        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease)
+        float dt, in MoveTuning tuning, float footRadius, float cosMaxSlope, ContactQueryContext queries)
     {
         if (!walkableGround || !float.IsFinite(feet.X) || !float.IsFinite(feet.Y) || !float.IsFinite(feet.Z))
             return (0f, 0f, 0f);
@@ -49,7 +48,7 @@ internal static class GroundSignals
             float distance = k * tuning.CapsuleRadius;
             float reach = tuning.StepHeight + 2 * distance;
             Vector2 sampleAxis = axis + distance * direction;
-            SupportSample support = FootSupport.Find(groundHeight, groundNormal, world, lease,
+            SupportSample support = queries.FindSupport(
                 new FootSupportQuery(sampleAxis, feet.Y, footRadius, reach, reach, cosMaxSlope));
             if (support.Status != SupportStatus.Walkable) continue;
             float step = GroundSeat.DiscreteStep(supports[count - 1], axis + samples[count - 1].X * direction,

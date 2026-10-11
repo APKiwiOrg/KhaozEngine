@@ -53,14 +53,14 @@ internal readonly record struct GroundStepResult(Vector3 Feet, GroundFooting Foo
 
 /// <summary>Resolves one grounded tick: recovery, start support, the lift, then per substep the shell sweep and
 /// the down pass, with pacing of the step part and a clearance check on every new position.</summary>
-internal static class GroundCore
+internal static partial class GroundCore
 {
     // A bound on one tick's substeps, so a huge displacement throws rather than running unbounded.
     const int MaxSubsteps = 1024;
 
     /// <summary>Moves a grounded body whose feet are at <paramref name="feet"/>, in the world's local frame, by
     /// the horizontal <paramref name="displacement"/>. Free motion on walkable support is exact. A start that is
-    /// not walkable ends the tick at the start with its own footing. A non-null <paramref name="world"/> follows
+    /// not walkable ends the tick at the start with its own footing. The <paramref name="queries"/> context enforces
     /// the <see cref="FootSupport.Find"/> contract. <paramref name="tractionSlopeRadians"/> is the tick's traction
     /// gate, and every slope decision in the tick uses it. Null means
     /// <see cref="MoveTuning.MaxSlopeRadians"/>. <paramref name="climbBudget"/> is the climb the tick may still pay,
@@ -70,14 +70,13 @@ internal static class GroundCore
     /// counts as blocked. <paramref name="stepInProgress"/> identifies carried lag as a paced discrete step,
     /// rather than deferred continuous ground.</summary>
     internal static GroundStepResult Step(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
-        in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
-        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+        in GroundCoreSettings settings, ContactQueryContext queries,
         float? tractionSlopeRadians = null, double? climbBudget = null,
         Func<float, float, Vector2>? clampXz = null, bool stepInProgress = false) =>
-        Move(feet, displacement, dt, tuning, settings, groundHeight, groundNormal, world, lease,
+        Move(feet, displacement, dt, tuning, settings, queries,
             tractionSlopeRadians ?? tuning.MaxSlopeRadians, slide: false, climbBudget, clampXz, stepInProgress);
 
-    /// <summary>Moves a sliding body as <see cref="Step"/> moves a grounded one, with three differences. A steep
+    /// <summary>Moves a sliding body as <c>Step</c> moves a grounded one, with three differences. A steep
     /// start moves. A steep seat at or below the feet continues the tick instead of ending it, and must clear the
     /// shell without a push. A steep seat that fails that clearance ends the tick with footing
     /// <see cref="GroundFooting.None"/> at the last clear position, for the air pass. Steep ground above the feet
@@ -85,15 +84,13 @@ internal static class GroundCore
     /// <see cref="GroundFooting.None"/>. Each substep's drop along the start plane stays within half the step
     /// height, so the seat's reach down holds it.</summary>
     internal static GroundStepResult Slide(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
-        in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
-        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+        in GroundCoreSettings settings, ContactQueryContext queries,
         float tractionSlopeRadians, double? climbBudget = null, Func<float, float, Vector2>? clampXz = null) =>
-        Move(feet, displacement, dt, tuning, settings, groundHeight, groundNormal, world, lease,
+        Move(feet, displacement, dt, tuning, settings, queries,
             tractionSlopeRadians, slide: true, climbBudget, clampXz, stepInProgress: false);
 
     static GroundStepResult Move(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
-        in GroundCoreSettings settings, Func<float, float, float>? groundHeight,
-        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+        in GroundCoreSettings settings, ContactQueryContext queries,
         float tractionSlopeRadians, bool slide, double? climbBudget, Func<float, float, Vector2>? clampXz,
         bool stepInProgress)
     {
@@ -107,10 +104,10 @@ internal static class GroundCore
         float footRadius = settings.FootRadiusFraction * tuning.CapsuleRadius;
         float cosMaxSlope = MathF.Cos(gate);
 
-        Vector3 start = ShellMotion.Recover(world, feet, tuning, out bool cleared);
+        Vector3 start = ShellMotion.RecoverWithQueries(queries, feet, tuning, out bool cleared);
         if (!cleared) start = feet;
         var startAxis = new Vector2(start.X, start.Z);
-        SupportSample support = FootSupport.Find(groundHeight, groundNormal, world, lease,
+        SupportSample support = queries.FindSupport(
             new FootSupportQuery(startAxis, start.Y, footRadius, tuning.StepHeight, tuning.StepHeight, cosMaxSlope));
         bool moving = displacement != Vector2.Zero;
         if (support.Status == SupportStatus.Refused)
@@ -134,8 +131,8 @@ internal static class GroundCore
         }
         if (steepStart) substeps = Math.Max(substeps, SlideSubsteps(displacement, support.Normal, tuning));
 
-        var tick = new Tick(groundHeight, groundNormal, world, lease, tuning, footRadius, cosMaxSlope, start,
-            ShellMotion.Lift(world, start, tuning), support, slide, clampXz, stepInProgress ? carriedLag : 0);
+        var tick = new Tick(queries, tuning, footRadius, cosMaxSlope, start,
+            ShellMotion.LiftWithQueries(queries, start, tuning), support, slide, clampXz, stepInProgress ? carriedLag : 0);
         if (!moving)
         {
             // A body at rest still climbs onto the tread a paced climb left it below.
@@ -240,10 +237,7 @@ internal static class GroundCore
     /// move.</summary>
     struct Tick
     {
-        readonly Func<float, float, float>? _groundHeight;
-        readonly Func<float, float, Vector3>? _groundNormal;
-        readonly IPhysicsWorld? _world;
-        readonly IPhysicsQueryLease? _lease;
+        readonly ContactQueryContext _queries;
         readonly MoveTuning _tuning;
         readonly float _footRadius;
         readonly float _cosMaxSlope;
@@ -257,15 +251,11 @@ internal static class GroundCore
         double _stepRise;
         double _moveRise;
 
-        internal Tick(Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal,
-            IPhysicsWorld? world, IPhysicsQueryLease? lease, in MoveTuning tuning, float footRadius,
+        internal Tick(ContactQueryContext queries, in MoveTuning tuning, float footRadius,
             float cosMaxSlope, Vector3 start, float lift, in SupportSample support, bool slide,
             Func<float, float, Vector2>? clampXz, double owedDiscrete)
         {
-            _groundHeight = groundHeight;
-            _groundNormal = groundNormal;
-            _world = world;
-            _lease = lease;
+            _queries = queries;
             _tuning = tuning;
             _footRadius = footRadius;
             _cosMaxSlope = cosMaxSlope;
@@ -443,16 +433,16 @@ internal static class GroundCore
         readonly Attempt Try(Vector2 move, float lift, Vector2? planned, double budget)
         {
             var feet = new Vector3(Axis.X, FeetY, Axis.Y);
-            ShellSweep sweep = ShellMotion.Sweep(_world, feet, lift, move, _tuning, _cosMaxSlope, _clampXz);
+            ShellSweep sweep = ShellMotion.SweepWithQueries(_queries, feet, lift, move, _tuning, _cosMaxSlope, _clampXz);
             if (sweep.Achieved == Vector2.Zero)
                 return new Attempt(false, Vector2.Zero, sweep.Blocked, default, _achieved, default, sweep.Obstructions);
             Vector2 total = planned is Vector2 prefix && !sweep.Blocked && sweep.Achieved == move
                 ? prefix
                 : _achieved + sweep.Achieved;
-            GroundSeatResult seat = GroundSeat.Resolve(_groundHeight, _groundNormal, _world, _lease, Support, Axis,
+            GroundSeatResult seat = GroundSeat.Resolve(_queries, Support, Axis,
                 FeetY, _startAxis + total, Direction(move), _footRadius, _tuning, _cosMaxSlope);
             GroundPlacement placement = seat.Outcome is SeatOutcome.Wall or SeatOutcome.Refused ? default :
-                GroundPlacement.Try(_groundHeight, _groundNormal, _world, _lease, Support, FeetY,
+                GroundPlacement.Try(_queries, Support, FeetY,
                     _startAxis, total, seat, _footRadius, _tuning, _cosMaxSlope, budget, _slide);
             Vector2 achieved = placement.Valid && placement.Pushed
                 ? placement.Total - _achieved

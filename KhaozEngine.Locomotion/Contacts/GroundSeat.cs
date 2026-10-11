@@ -14,7 +14,7 @@ internal readonly record struct GroundSeatResult(SeatOutcome Outcome, float Feet
     float StepPart, Vector3 WallNormal, float DiscreteStep = 0);
 
 /// <summary>Seats a body within the legs band above its feet and the drop band below its start support.</summary>
-internal static class GroundSeat
+internal static partial class GroundSeat
 {
     static readonly SupportSample NoSupport =
         new(SupportStatus.None, float.NaN, float.NaN, Vector3.Zero, null, -1, Vector3.Zero);
@@ -24,10 +24,9 @@ internal static class GroundSeat
     /// wall, steep support at or below seats with steep footing, no support leaves the body airborne at the start
     /// height and a refusal refuses. <paramref name="start"/> is the support at <paramref name="startAxis"/>.
     /// <paramref name="moveDirection"/> must be finite and non-zero. <paramref name="cosMaxSlope"/> is the cosine of
-    /// the tick's traction gate. A non-null <paramref name="world"/> follows the <see cref="FootSupport.Find"/>
+    /// the tick's traction gate. The <paramref name="queries"/> context enforces the <see cref="FootSupport.Find"/>
     /// contract.</summary>
-    internal static GroundSeatResult Resolve(Func<float, float, float>? groundHeight,
-        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+    internal static GroundSeatResult Resolve(ContactQueryContext queries,
         in SupportSample start, Vector2 startAxis, float startFeetY, Vector2 axis, Vector2 moveDirection,
         float footRadius, in MoveTuning tuning, float cosMaxSlope)
     {
@@ -35,14 +34,14 @@ internal static class GroundSeat
             throw new ArgumentOutOfRangeException(nameof(moveDirection),
                 "The move direction must be finite and non-zero.");
         float stepHeight = tuning.StepHeight;
-        if (groundHeight is not null && groundHeight(axis.X, axis.Y) > startFeetY + stepHeight)
+        if (queries.HeightAt(new(axis.X, startFeetY, axis.Y)) > startFeetY + stepHeight)
         {
-            Vector3 normal = groundNormal?.Invoke(axis.X, axis.Y) ?? Vector3.Zero;
+            Vector3 normal = queries.NormalAt(new(axis.X, startFeetY, axis.Y)) ?? Vector3.Zero;
             return Wall(startFeetY, NoSupport, normal, moveDirection);
         }
 
         FootSupportQuery query = Query(axis, start, startFeetY, footRadius, tuning, cosMaxSlope);
-        SupportSample support = FootSupport.Find(groundHeight, groundNormal, world, lease, query);
+        SupportSample support = queries.FindSupport(query);
         switch (support.Status)
         {
             case SupportStatus.Walkable:

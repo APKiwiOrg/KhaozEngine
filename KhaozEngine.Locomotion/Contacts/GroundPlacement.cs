@@ -6,14 +6,13 @@ namespace KhaozEngine.Locomotion.Contacts;
 
 /// <summary>A seated placement proposal with its certified support and remaining climb budget. Only a valid
 /// proposal commits the budget or changes the tick's position.</summary>
-internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, SupportSample Support,
+internal readonly partial record struct GroundPlacement(bool Valid, Vector3 Feet, SupportSample Support,
     double Budget, bool Pushed, Vector2 Total)
 {
     /// <summary>Places a seat. A steep seat is placed as seated unless <paramref name="clearSteep"/> asks for its
     /// clearance, which a slide does. A steep seat takes no push, because a push off the face would leave the feet
     /// above it.</summary>
-    internal static GroundPlacement Try(Func<float, float, float>? groundHeight,
-        Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
+    internal static GroundPlacement Try(ContactQueryContext queries,
         in SupportSample start, float startFeetY, Vector2 startAxis, Vector2 total, in GroundSeatResult seat,
         float footRadius, in MoveTuning tuning, float cosMaxSlope, double budget, bool clearSteep = false)
     {
@@ -26,15 +25,15 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         Vector2 axis = startAxis + total;
         var target = new Vector3(axis.X, feetY, axis.Y);
         if (seat.Outcome == SeatOutcome.SteepSeated)
-            return clearSteep && Overlaps(world, tuning, target)
+            return clearSteep && Overlaps(queries, tuning, target)
                 ? default
                 : new(true, target, seat.Support, budget, false, total);
-        if (!Clear(world, tuning, target, startAxis, ref total, out Vector3 placed)) return default;
+        if (!Clear(queries, tuning, target, startAxis, ref total, out Vector3 placed)) return default;
         if (placed == target) return new(true, target, seat.Support, budget, false, total);
 
         // A clearance push proposes a different axis and height. It must earn its own footing, without hovering
         // above it. Feet below a tread remain permitted for paced climbs.
-        SupportSample support = FootSupport.Find(groundHeight, groundNormal, world, lease,
+        SupportSample support = queries.FindSupport(
             GroundSeat.Query(new Vector2(placed.X, placed.Z), start, startFeetY, footRadius, tuning, cosMaxSlope));
         if (support.Status != SupportStatus.Walkable || (double)placed.Y > (double)support.Height + support.HeightError)
             return default;
@@ -71,20 +70,20 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
     }
 
     // A touching shell is clear.
-    static bool Overlaps(IPhysicsWorld? world, in MoveTuning tuning, Vector3 target) =>
-        world is not null &&
-        world.ComputePenetration(ShellGeometry.Shape(tuning), Pose.At(ShellGeometry.Centre(target, tuning)),
+    static bool Overlaps(ContactQueryContext queries, in MoveTuning tuning, Vector3 target) =>
+        queries.HasShell &&
+        queries.PenetrationShell(ShellGeometry.Shape(tuning), ShellGeometry.Centre(target, tuning),
             out Vector3 mtv) &&
         mtv != Vector3.Zero;
 
     // A touching shell is clear. An overlapping shell gets one MTV proposal and one clearance check.
-    static bool Clear(IPhysicsWorld? world, in MoveTuning tuning, Vector3 target, Vector2 startAxis,
+    static bool Clear(ContactQueryContext queries, in MoveTuning tuning, Vector3 target, Vector2 startAxis,
         ref Vector2 total, out Vector3 placed)
     {
         placed = target;
-        if (world is null) return true;
+        if (!queries.HasShell) return true;
         CapsuleShape shape = ShellGeometry.Shape(tuning);
-        if (!world.ComputePenetration(shape, Pose.At(ShellGeometry.Centre(target, tuning)), out Vector3 mtv))
+        if (!queries.PenetrationShell(shape, ShellGeometry.Centre(target, tuning), out Vector3 mtv))
             return true;
         float depth = mtv.Length();
         if (depth == 0) return true;
@@ -94,7 +93,7 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         total += new Vector2(pushed.X - target.X, pushed.Z - target.Z);
         Vector2 reported = startAxis + total;
         pushed = new Vector3(reported.X, pushed.Y, reported.Y);
-        if (world.ComputePenetration(shape, Pose.At(ShellGeometry.Centre(pushed, tuning)), out Vector3 again) &&
+        if (queries.PenetrationShell(shape, ShellGeometry.Centre(pushed, tuning), out Vector3 again) &&
             again != Vector3.Zero)
             return false;
         placed = pushed;

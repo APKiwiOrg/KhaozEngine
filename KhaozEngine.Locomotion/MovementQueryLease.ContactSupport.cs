@@ -49,7 +49,14 @@ public sealed partial class MovementQueryLease
     }
 
     internal MovementAvailability BindContactSupport(in MovementSupportRequest request, in SupportSample sample,
-        out MovementContactSupportBinding binding)
+        out MovementContactSupportBinding binding) => BindContactSupportCore(request, sample, out binding, null);
+
+    internal MovementAvailability BindContactSupportAtKernel(in MovementSupportRequest request, in SupportSample sample,
+        float kernelFeetY, out MovementContactSupportBinding binding) =>
+        BindContactSupportCore(request, sample, out binding, kernelFeetY);
+
+    MovementAvailability BindContactSupportCore(in MovementSupportRequest request, in SupportSample sample,
+        out MovementContactSupportBinding binding, float? kernelFeetY)
     {
         binding = default;
         AssertUsable();
@@ -62,7 +69,12 @@ public sealed partial class MovementQueryLease
             var boundRequest = new MovementContactSupportRequest(request.Body, request.Transition,
                 new(request.Body.Centre.X, request.Body.Centre.Z), sample.Height, sample.HeightError,
                 sample.Normal, sample.Witness, sample.Static, sample.FeatureId);
-            double feet = (double)request.Body.Centre.Y - request.Body.HalfHeight;
+            double actualFeet = (double)request.Body.Centre.Y - request.Body.HalfHeight;
+            double feet = kernelFeetY is { } reference ? reference : actualFeet;
+            // The explicit body's published feet include its vertical skin and float conversion. Its geometric
+            // support band still belongs to the unchanged kernel feet, while the producer receives the real body.
+            if (!double.IsFinite(feet) || Math.Abs(actualFeet - feet) > 2d * CoverageSkinMetres)
+                return MovementAvailability.Invalid;
             if ((double)sample.Height - sample.HeightError > feet + request.MaxRise + CoverageSkinMetres ||
                 (double)sample.Height + sample.HeightError < feet - request.MaxDrop - CoverageSkinMetres)
                 return MovementAvailability.Invalid;

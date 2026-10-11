@@ -36,7 +36,7 @@ internal readonly record struct SlideStepResult(Vector3 Feet, Vector2 Horizontal
 
 /// <summary>Slides a body on certified steep support, analytic terrain and physics statics alike. The dynamics come
 /// from the support's plane and the move runs through <c>GroundCore.Slide</c>.</summary>
-internal static partial class SlideCore
+internal static class SlideCore
 {
     // How far from the feet steep support counts as contact.
     const float ContactReach = 0.001f;

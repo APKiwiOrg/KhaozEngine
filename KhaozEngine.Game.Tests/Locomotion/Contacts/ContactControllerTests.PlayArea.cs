@@ -106,8 +106,8 @@ public partial class ContactControllerTests
     {
         using var g = new Ground(DiagonalWall(ground == "box" ? SceneVariant.Box : SceneVariant.Mesh), RisingOutside,
             RisingOutsideNormal);
-        GroundStepResult step = GroundCore.Step(new Vector3(1.35f, 0, 0), new Vector2(Tuning.WalkSpeed * Dt, 0), Dt,
-            Tuning, Settings, g.Height, g.Normal, g.World, g.Lease, climbBudget: null, clampXz: KeepZ);
+        GroundStepResult step = GroundCore.Step(new Vector3(1.35f, 0, 0), new Vector2(Tuning.WalkSpeed * Dt, 0), Dt, Tuning,
+            Settings, DryQueries.For(g.Height, g.Normal, g.World, g.Lease, Tuning), climbBudget: null, clampXz: KeepZ);
         Assert.True(step.Feet.Z >= 0, $"ended past the bound: {step}");
         Assert.True(step.Feet.X > 1.35f, $"never reached the wall: {step}");
         Assert.True(step.Blocked, $"not blocked: {step}");
@@ -122,8 +122,8 @@ public partial class ContactControllerTests
     {
         using var g = new Ground(DiagonalWall(ground == "box" ? SceneVariant.Box : SceneVariant.Mesh), RisingOutside,
             RisingOutsideNormal);
-        AirStepResult air = AirPass.Step(new Vector3(1.35f, 0.5f, 0), new Vector2(Tuning.RunSpeed, 0), 0, Dt, Gravity,
-            Tuning, Settings, Tuning.MaxSlopeRadians, g.Height, g.Normal, g.World, g.Lease, clampXz: KeepZ);
+        AirStepResult air = AirPass.Step(new Vector3(1.35f, 0.5f, 0), new Vector2(Tuning.RunSpeed, 0), 0, Dt, Gravity, Tuning,
+            Settings, Tuning.MaxSlopeRadians, DryQueries.For(g.Height, g.Normal, g.World, g.Lease, Tuning), clampXz: KeepZ);
         Assert.True(air.Feet.Z >= 0, $"ended past the bound: {air}");
         Assert.True(air.Feet.X > 1.35f, $"never reached the wall: {air}");
     }
@@ -139,7 +139,8 @@ public partial class ContactControllerTests
     {
         using var g = new Ground(new FootSupportScene(SceneVariant.Box).Flat("plank", -2, 2, 0.185f, 3, 0.3f)
             .Flat("block", -2, 2, 0.25f, 3, 0.55f), Flat);
-        Vector3 recovered = ShellMotion.Recover(g.World, Vector3.Zero, Tuning, out bool cleared);
+        Vector3 recovered = ShellMotion.RecoverWithQueries(DryQueries.For(null, null, g.World, null, Tuning), Vector3.Zero,
+            Tuning, out bool cleared);
         Assert.True(cleared && recovered.Z < 0 && recovered.Z + FootRadiusOf(Tuning) < 0.185f,
             $"recovery did not cross the bound clear of the plank: {recovered}");
         double budget = (double)Tuning.MaxStepClimbSpeed * Dt;
@@ -170,7 +171,8 @@ public partial class ContactControllerTests
             .Slab("wall", new Vector3(0, 3, 1.3f), 0, 2, 1, 3)
             .Add("face", new BoxShape(new Vector3(Half, 0.1f, 2)), new Pose(centre, tilt)), Abyss);
         var start = new Vector3(0, 1, 0);
-        Vector3 recovered = ShellMotion.Recover(g.World, start, Tuning, out bool cleared);
+        Vector3 recovered = ShellMotion.RecoverWithQueries(DryQueries.For(null, null, g.World, null, Tuning), start, Tuning,
+            out bool cleared);
         Assert.True(cleared && recovered.Z + FootRadiusOf(Tuning) < Toe,
             $"recovery did not cross the bound clear of the face: {recovered}");
 
@@ -194,7 +196,8 @@ public partial class ContactControllerTests
         using var g = new Ground(new FootSupportScene(SceneVariant.Box)
             .Slab("wall", new Vector3(0, 3, 1.3f), 0, 2, 1, 3), Height);
         Vector3 start = new(0, 0, 0.1f);
-        Vector3 recovered = ShellMotion.Recover(g.World, start, Tuning, out bool cleared);
+        Vector3 recovered = ShellMotion.RecoverWithQueries(DryQueries.For(null, null, g.World, null, Tuning), start, Tuning,
+            out bool cleared);
         Assert.True(cleared && recovered.Z < -0.05f, $"recovery did not cross the ridge: {recovered}");
 
         MoveState s = g.Step(Standing(start), Vector2.Zero, 0, false, Tuning, clampXz: KeepZ);
@@ -232,7 +235,8 @@ public partial class ContactControllerTests
         for (int tick = 0; tick < hz; tick++)
         {
             Vector3 before = Feet(s);
-            Vector3 recovered = ShellMotion.Recover(g.World, before, Tuning, out _);
+            Vector3 recovered = ShellMotion.RecoverWithQueries(DryQueries.For(null, null, g.World, null, Tuning), before,
+                Tuning, out _);
             s = g.Step(s, Vector2.Zero, 0, false, Tuning, 1f / hz, clampXz: KeepZ);
             string context = $"tick {tick}, feet {before.Y:R} to {Feet(s).Y:R}, step {s.StepDeltaY:R}, " +
                 $"climb {s.ClimbRate:R}: {Show(s)}";

@@ -28,7 +28,7 @@ public partial class ContactLeasedQueryTests
         SupportSample support = queries.FindSupport(Query(feet), out var binding);
         GroundStepResult result = GroundCore.Step(feet, Vector2.Zero, 1f / 30, Tuning, Settings, queries);
         GroundStepResult dry = GroundCore.Step(feet, Vector2.Zero, 1f / 30, Tuning, Settings,
-            (x, z) => 0.25f + MathF.Tan(angle) * x, (x, z) => normal, null, null);
+            DryQueries.For((x, z) => 0.25f + MathF.Tan(angle) * x, (x, z) => normal, null, null, Tuning));
 
         Assert.Equal(0.25f, support.Height);
         Assert.Equal(new MovementSupportKey("world", "floor"), binding!.Value.Owner);
@@ -52,7 +52,8 @@ public partial class ContactLeasedQueryTests
             for (int tick = 0; tick < hz; tick++)
             {
                 drySteps[tick] = GroundCore.Step(dryFeet, new Vector2(2 * dt, 0), dt, Tuning, Settings,
-                    null, null, geometry.World, lease, stepInProgress: dryFeet.Y > 0 && dryFeet.Y < 0.25f);
+                    DryQueries.For(null, null, geometry.World, lease, Tuning),
+                    stepInProgress: dryFeet.Y > 0 && dryFeet.Y < 0.25f);
                 dryFeet = drySteps[tick].Feet;
             }
         using var scene = new QueryScene(geometry);

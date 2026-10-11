@@ -28,8 +28,8 @@ public class GroundSeatTests
         out SupportSample start)
     {
         start = Start(null, null, scene.World, scene.Lease, startAxis, startFeetY);
-        return GroundSeat.Resolve(null, null, scene.World, scene.Lease, start, startAxis, startFeetY, axis,
-            Vector2.Normalize(axis - startAxis), FootRadius, Tuning, CosMaxSlope);
+        return GroundSeat.Resolve(DryQueries.For(null, null, scene.World, scene.Lease, Tuning), start, startAxis, startFeetY,
+            axis, Vector2.Normalize(axis - startAxis), FootRadius, Tuning, CosMaxSlope);
     }
 
     static void AssertOutcome(SeatOutcome expected, GroundSeatResult result) =>
@@ -177,8 +177,8 @@ public class GroundSeatTests
             ? new(SupportStatus.Walkable, startFeetY, 0, Vector3.UnitY, null, -1, new Vector3(0, startFeetY, 0))
             : new(SupportStatus.None, float.NaN, float.NaN, Vector3.Zero, null, -1, Vector3.Zero);
 
-        GroundSeatResult result = GroundSeat.Resolve((_, _) => height, null, null, null, start, Vector2.Zero,
-            startFeetY, new Vector2(0.1f, 0), PlusX, FootRadius, Tuning, CosMaxSlope);
+        GroundSeatResult result = GroundSeat.Resolve(DryQueries.For((_, _) => height, null, null, null, Tuning), start,
+            Vector2.Zero, startFeetY, new Vector2(0.1f, 0), PlusX, FootRadius, Tuning, CosMaxSlope);
 
         AssertOutcome(SeatOutcome.Seated, result);
         Assert.True(result.StepPart >= rise, $"StepPart {result.StepPart:R} below the rise {rise:R}");
@@ -294,8 +294,9 @@ public class GroundSeatTests
         SupportSample start = Start(Height, null, null, null, Vector2.Zero, 0);
         Vector2[] directions = [Vector2.Zero, new(float.NaN, 0), new(0, float.PositiveInfinity)];
         foreach (Vector2 direction in directions)
-            Assert.Throws<ArgumentOutOfRangeException>(() => GroundSeat.Resolve(Height, null, null, null, start,
-                Vector2.Zero, 0, new Vector2(0.2f, 0), direction, FootRadius, Tuning, CosMaxSlope));
+            Assert.Throws<ArgumentOutOfRangeException>(() => GroundSeat.Resolve(
+                DryQueries.For(Height, null, null, null, Tuning), start, Vector2.Zero, 0, new Vector2(0.2f, 0), direction,
+                FootRadius, Tuning, CosMaxSlope));
     }
 
     // Flat until x 0.1, then rising 5 in 1, so the terrain is 0.5 at x 0.2, above the start feet plus StepHeight.
@@ -310,15 +311,15 @@ public class GroundSeatTests
         Vector2 direction = Vector2.Normalize(axis - startAxis);
 
         SupportSample start = Start(Height, Normal, null, null, startAxis, 0);
-        GroundSeatResult withNormal = GroundSeat.Resolve(Height, Normal, null, null, start, startAxis, 0, axis,
-            direction, FootRadius, Tuning, CosMaxSlope);
+        GroundSeatResult withNormal = GroundSeat.Resolve(DryQueries.For(Height, Normal, null, null, Tuning), start, startAxis,
+            0, axis, direction, FootRadius, Tuning, CosMaxSlope);
         AssertOutcome(SeatOutcome.Wall, withNormal);
         AssertHorizontalUnit(-Vector3.UnitX, withNormal.WallNormal);
         Assert.Equal(0f, withNormal.FeetY);
 
         SupportSample bare = Start(Height, null, null, null, startAxis, 0);
-        GroundSeatResult withoutNormal = GroundSeat.Resolve(Height, null, null, null, bare, startAxis, 0, axis,
-            direction, FootRadius, Tuning, CosMaxSlope);
+        GroundSeatResult withoutNormal = GroundSeat.Resolve(DryQueries.For(Height, null, null, null, Tuning), bare, startAxis,
+            0, axis, direction, FootRadius, Tuning, CosMaxSlope);
         AssertOutcome(SeatOutcome.Wall, withoutNormal);
         AssertHorizontalUnit(new Vector3(-direction.X, 0, -direction.Y), withoutNormal.WallNormal);
     }

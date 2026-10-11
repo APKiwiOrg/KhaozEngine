@@ -45,8 +45,8 @@ public partial class ContactControllerTests
 
         // The ground core's own answer for a grounded body, under the scene's lease once the controller is done.
         internal GroundStepResult Core(Vector3 feet, Vector2 displacement, in MoveTuning tuning, float gate) =>
-            GroundCore.Step(feet, displacement, Dt, tuning, Settings, height, normal, scene?.World,
-                scene is null ? null : scene.Lease, gate);
+            GroundCore.Step(feet, displacement, Dt, tuning, Settings,
+                DryQueries.For(height, normal, scene?.World, scene is null ? null : scene.Lease, tuning), gate);
 
         public void Dispose() => scene?.Dispose();
     }
@@ -663,8 +663,8 @@ public partial class ContactControllerTests
     static bool InContact(Ground g, in MoveState s)
     {
         using IPhysicsQueryLease lease = g.Scene!.World.AcquireQueryReadLease();
-        return SlideCore.InContact(Feet(s), Tuning, Settings, Tuning.MaxSlopeRadians, g.Height, g.Normal, g.World,
-            lease, out _);
+        return SlideCore.InContact(Feet(s), Tuning, Settings, Tuning.MaxSlopeRadians,
+            DryQueries.For(g.Height, g.Normal, g.World, lease, Tuning), out _);
     }
 
     static void AssertSameBits(in MoveState expected, in MoveState actual, int tick)

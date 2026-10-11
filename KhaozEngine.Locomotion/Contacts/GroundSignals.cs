@@ -6,7 +6,7 @@ namespace KhaozEngine.Locomotion.Contacts;
 
 /// <summary>Classifies a grounded move as a continuous stair run or an isolated step. These signals describe the
 /// accepted move and never feed it.</summary>
-internal static partial class GroundSignals
+internal static class GroundSignals
 {
     internal const float RunGrade = 0.3f;
     internal const float SeedFraction = 0.7f;

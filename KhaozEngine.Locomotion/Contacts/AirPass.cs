@@ -34,7 +34,7 @@ internal readonly record struct AirStepResult(Vector3 Feet, float VerticalVeloci
 
 /// <summary>Moves a body without footing for one tick: gravity, the shell's flight in substeps, and landing on
 /// footprint support while descending. Only the shell blocks, and the legs pass ledge edges.</summary>
-internal static partial class AirPass
+internal static class AirPass
 {
     // A bound on one tick's substeps, so a huge displacement throws rather than running unbounded.
     const int MaxSubsteps = 1024;

@@ -40,16 +40,17 @@ public class SlideCoreTests
         internal Vector3 Seated(string name, float x) => new(x, (float)TopAt(name, x), 0);
 
         internal bool Contact(Vector3 feet, out SupportSample support) =>
-            SlideCore.InContact(feet, Tuning, Settings, Gate, height, normal, World, Lease, out support);
+            SlideCore.InContact(feet, Tuning, Settings, Gate, DryQueries.For(height, normal, World, Lease, Tuning),
+                out support);
 
         internal SlideStepResult Step(Vector3 feet, Vector2 carry, float verticalVelocity, Vector2 steer,
             in SupportSample support) =>
-            SlideCore.Step(feet, carry, verticalVelocity, steer, Dt, Tuning, Settings, Gate, support, height, normal,
-                World, Lease);
+            SlideCore.Step(feet, carry, verticalVelocity, steer, Dt, Tuning, Settings, Gate, support,
+                DryQueries.For(height, normal, World, Lease, Tuning));
 
         internal AirStepResult Air(Vector3 feet, Vector2 velocity, float verticalVelocity) =>
-            AirPass.Step(feet, velocity, verticalVelocity, Dt, Gravity, Tuning, Settings, Gate, height, normal, World,
-                Lease);
+            AirPass.Step(feet, velocity, verticalVelocity, Dt, Gravity, Tuning, Settings, Gate,
+                DryQueries.For(height, normal, World, Lease, Tuning));
 
         // Slides from rest at feet until a tick does not end sliding, at most limit ticks. Every tick starts in
         // contact and carries the last tick's velocity, as the controller does.
@@ -389,12 +390,10 @@ public class SlideCoreTests
         float nan = float.NaN;
 
         ArgumentException thrown = Assert.ThrowsAny<ArgumentException>(() => SlideCore.Step(
-            name == "feet" ? feet with { Y = nan } : feet,
-            name == "carry" ? new Vector2(nan, 0) : Vector2.Zero,
-            name == "verticalVelocity" ? nan : 0,
-            name == "steer" ? new Vector2(0, nan) : Vector2.Zero,
-            name == "dt" ? nan : Dt, Tuning, Settings,
-            name == "tractionSlopeRadians" ? nan : Gate, support, (x, _) => grade * x, (_, _) => normal, null, null));
+            name == "feet" ? feet with { Y = nan } : feet, name == "carry" ? new Vector2(nan, 0) : Vector2.Zero,
+            name == "verticalVelocity" ? nan : 0, name == "steer" ? new Vector2(0, nan) : Vector2.Zero,
+            name == "dt" ? nan : Dt, Tuning, Settings, name == "tractionSlopeRadians" ? nan : Gate, support,
+            DryQueries.For((x, _) => grade * x, (_, _) => normal, null, null, Tuning)));
 
         Assert.Equal(name, thrown.ParamName);
     }
@@ -409,8 +408,8 @@ public class SlideCoreTests
         float grade = MathF.Tan(Radians(50));
         Vector3 normal = Vector3.Normalize(new Vector3(-grade, 1, 0));
 
-        Assert.Throws<ArgumentException>(() => GroundCore.Slide(new Vector3(0.5f, 0.5f * grade, 0),
-            new Vector2(-0.1f, 0), Dt, flat, Settings, (x, _) => grade * x, (_, _) => normal, null, null, Gate));
+        Assert.Throws<ArgumentException>(() => GroundCore.Slide(new Vector3(0.5f, 0.5f * grade, 0), new Vector2(-0.1f, 0), Dt,
+            flat, Settings, DryQueries.For((x, _) => grade * x, (_, _) => normal, null, null, flat), Gate));
     }
 
     // A crate top at 0.3 over x in [-1.5, 0] and a 50 degree face rising from its edge.

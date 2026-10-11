@@ -22,7 +22,7 @@ public class ShellMotionTests
     static FootSupportScene Wall() => Floor().Flat("wall", 1, 2, -5, 5, 3);
 
     static ShellSweep Sweep(IPhysicsWorld? world, Vector3 feet, Vector2 move, float lift = 0f) =>
-        ShellMotion.Sweep(world, feet, lift, move, Tuning, CosMaxSlope);
+        ShellMotion.SweepWithQueries(DryQueries.For(null, null, world, null, Tuning), feet, lift, move, Tuning, CosMaxSlope);
 
     static bool Overlaps(IPhysicsWorld world, Vector3 feet) =>
         world.ComputePenetration(ShellGeometry.Shape(Tuning), Pose.At(ShellGeometry.Centre(feet, Tuning)), out _);
@@ -34,7 +34,7 @@ public class ShellMotionTests
         Vector3 feet = Vector3.Zero;
         Vector2 move = new(0.15f, 0.05f);
 
-        float lift = ShellMotion.Lift(scene.World, feet, Tuning);
+        float lift = ShellMotion.LiftWithQueries(DryQueries.For(null, null, scene.World, null, Tuning), feet, Tuning);
         ShellSweep sweep = Sweep(scene.World, feet, move, lift);
 
         Assert.Equal(Tuning.StepHeight, lift);
@@ -120,7 +120,7 @@ public class ShellMotionTests
         // The ceiling underside is 0.1 above the shell top at 1.8.
         using FootSupportScene scene = Floor().Slab("ceiling", new Vector3(0, 2.1f, 0), 0, 3, 3, 0.2f);
 
-        float lift = ShellMotion.Lift(scene.World, Vector3.Zero, Tuning);
+        float lift = ShellMotion.LiftWithQueries(DryQueries.For(null, null, scene.World, null, Tuning), Vector3.Zero, Tuning);
 
         Assert.Equal(0.1f - Skin, lift, 1e-5f);
     }
@@ -132,7 +132,8 @@ public class ShellMotionTests
         using FootSupportScene scene = Floor().Flat("box", 0.35f, 1.35f, -1, 1, 3);
         Assert.True(Overlaps(scene.World, Vector3.Zero));
 
-        Vector3 feet = ShellMotion.Recover(scene.World, Vector3.Zero, Tuning, out bool cleared);
+        Vector3 feet = ShellMotion.RecoverWithQueries(DryQueries.For(null, null, scene.World, null, Tuning), Vector3.Zero,
+            Tuning, out bool cleared);
 
         Assert.True(cleared);
         Assert.False(Overlaps(scene.World, feet));
@@ -148,7 +149,8 @@ public class ShellMotionTests
         // into the other: an overlap of 0.1, then 0.201 on alternating sides for every later pass.
         using FootSupportScene scene = Floor().Flat("left", -2, -0.3f, -1, 1, 3).Flat("right", 0.3f, 2, -1, 1, 3);
 
-        Vector3 feet = ShellMotion.Recover(scene.World, Vector3.Zero, Tuning, out bool cleared);
+        Vector3 feet = ShellMotion.RecoverWithQueries(DryQueries.For(null, null, scene.World, null, Tuning), Vector3.Zero,
+            Tuning, out bool cleared);
 
         Assert.False(cleared, $"Recovered to {feet}");
         Assert.True(float.IsFinite(feet.X) && float.IsFinite(feet.Y) && float.IsFinite(feet.Z), $"{feet}");
@@ -160,7 +162,8 @@ public class ShellMotionTests
         // The block encloses the whole shell. Its true MTV is the 1.4 m exit through a side face.
         using FootSupportScene scene = Floor().Flat("block", -1, 1, -1, 1, 3);
 
-        Vector3 feet = ShellMotion.Recover(scene.World, Vector3.Zero, Tuning, out bool cleared);
+        Vector3 feet = ShellMotion.RecoverWithQueries(DryQueries.For(null, null, scene.World, null, Tuning), Vector3.Zero,
+            Tuning, out bool cleared);
 
         Assert.True(cleared, $"Recovered to {feet}");
         Assert.True(float.IsFinite(feet.X) && float.IsFinite(feet.Y) && float.IsFinite(feet.Z), $"{feet}");
@@ -175,11 +178,13 @@ public class ShellMotionTests
         Vector2 move = new(0.15f, -0.05f);
 
         ShellSweep sweep = Sweep(null, feet, move, Tuning.StepHeight);
-        Vector3 recovered = ShellMotion.Recover(null, feet, Tuning, out bool cleared);
+        Vector3 recovered = ShellMotion.RecoverWithQueries(DryQueries.For(null, null, null, null, Tuning), feet, Tuning,
+            out bool cleared);
 
         Assert.Equal(move, sweep.Achieved);
         Assert.False(sweep.Blocked);
-        Assert.Equal(Tuning.StepHeight, ShellMotion.Lift(null, feet, Tuning));
+        Assert.Equal(Tuning.StepHeight, ShellMotion.LiftWithQueries(DryQueries.For(null, null, null, null, Tuning), feet,
+            Tuning));
         Assert.Equal(feet, recovered);
         Assert.True(cleared);
     }

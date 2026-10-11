@@ -14,7 +14,7 @@ internal readonly record struct GroundSeatResult(SeatOutcome Outcome, float Feet
     float StepPart, Vector3 WallNormal, float DiscreteStep = 0);
 
 /// <summary>Seats a body within the legs band above its feet and the drop band below its start support.</summary>
-internal static partial class GroundSeat
+internal static class GroundSeat
 {
     static readonly SupportSample NoSupport =
         new(SupportStatus.None, float.NaN, float.NaN, Vector3.Zero, null, -1, Vector3.Zero);

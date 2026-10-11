@@ -16,7 +16,7 @@ public class GroundReviewRegressionTests
 
     static GroundStepResult Step(FootSupportScene? scene, Vector3 feet, Vector2 move,
         Func<float, float, float>? height = null, Func<float, float, Vector3>? normal = null) =>
-        GroundCore.Step(feet, move, Dt, Tuning, Settings, height, normal, scene?.World, scene?.Lease);
+        GroundCore.Step(feet, move, Dt, Tuning, Settings, DryQueries.For(height, normal, scene?.World, scene?.Lease, Tuning));
 
     [Theory]
     [InlineData(false, 0f, false)]

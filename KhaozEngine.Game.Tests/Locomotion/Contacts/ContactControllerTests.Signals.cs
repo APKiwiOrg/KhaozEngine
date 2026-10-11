@@ -293,8 +293,8 @@ public partial class ContactControllerTests
             if (!(s.ClimbRate > 0))
             {
                 float speed = run ? Tuning.RunSpeed : Tuning.WalkSpeed;
-                GroundStepResult core = GroundCore.Step(Feet(input), speed * dt * Vector2.UnitX, dt, Tuning,
-                    Settings, g.Height, g.Normal, g.World, g.Lease, Banded,
+                GroundStepResult core = GroundCore.Step(Feet(input), speed * dt * Vector2.UnitX, dt, Tuning, Settings,
+                    DryQueries.For(g.Height, g.Normal, g.World, g.Lease, Tuning), Banded,
                     stepInProgress: input.StepDeltaY > 0 || input.ClimbRate > 0);
                 Assert.True(s.ClimbRate > 0,
                     $"tick {tick}, input rate {input.ClimbRate:R}, actual travel {Feet(s) - Feet(input)}, " +
@@ -431,8 +431,8 @@ public partial class ContactControllerTests
             if (s.ClimbRate != 0f)
             {
                 float speed = run ? Tuning.RunSpeed : Tuning.WalkSpeed;
-                GroundStepResult core = GroundCore.Step(previous, -speed / hz * Vector2.UnitX, 1f / hz, Tuning,
-                    Settings, g.Height, g.Normal, g.World, g.Lease, Banded,
+                GroundStepResult core = GroundCore.Step(previous, -speed / hz * Vector2.UnitX, 1f / hz, Tuning, Settings,
+                    DryQueries.For(g.Height, g.Normal, g.World, g.Lease, Tuning), Banded,
                     stepInProgress: input.StepDeltaY > 0 || input.ClimbRate > 0);
                 Assert.True(s.ClimbRate == 0f,
                     $"tick {tick}, rate {s.ClimbRate:R}, actual travel {Feet(s) - previous}, " +
@@ -568,8 +568,8 @@ public partial class ContactControllerTests
         foreach (float rise in new[] { 0.1f, -0.1f })
         {
             var result = GroundSignals.Resolve(initial, rise, rise, rise > 0, rise < 0, 0f, travel * Vector2.UnitX,
-                Feet(initial), support, true, Dt, Tuning,
-                0.2f, MathF.Cos(Banded), g.Height, g.Normal, g.World, g.Lease);
+                Feet(initial), support, true, Dt, Tuning, 0.2f, MathF.Cos(Banded),
+                DryQueries.For(g.Height, g.Normal, g.World, g.Lease, Tuning));
 
             Assert.Equal((0f, 0f, rise), result);
         }
@@ -592,8 +592,8 @@ public partial class ContactControllerTests
             new FootSupportQuery(new Vector2(0.5f, 0), 0.36f, 0.2f, Tuning.StepHeight, Tuning.StepHeight,
                 MathF.Cos(Banded)));
 
-        var result = GroundSignals.Resolve(input, 0.1f, 0.1f, true, false, 0f, travel * Vector2.UnitX, Feet(input),
-            support, true, Dt, Tuning, 0.2f, MathF.Cos(Banded), g.Height, g.Normal, g.World, g.Lease);
+        var result = GroundSignals.Resolve(input, 0.1f, 0.1f, true, false, 0f, travel * Vector2.UnitX, Feet(input), support,
+            true, Dt, Tuning, 0.2f, MathF.Cos(Banded), DryQueries.For(g.Height, g.Normal, g.World, g.Lease, Tuning));
 
         double expected = 1.75 + (1 - Math.Exp(-5.0 * Dt)) * (0.1 / Dt - 1.75);
         AssertNear(expected, result.ClimbRate, 1e-5, result);
@@ -630,8 +630,8 @@ public partial class ContactControllerTests
         // Equal sample spacing gives these closed-form least-squares weights.
         double grade = (-3.0 * heights[0] - heights[1] + heights[2] + 3.0 * heights[3]) /
             (10 * (double)Tuning.CapsuleRadius);
-        var result = GroundSignals.Resolve(input, rise, rise, rise > 0, rise < 0, 0f, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
-            g.Height, g.Normal, g.World, g.Lease);
+        var result = GroundSignals.Resolve(input, rise, rise, rise > 0, rise < 0, 0f, travel, feet, axisSupport, true, Dt,
+            Tuning, 0.2f, cosGate, DryQueries.For(g.Height, g.Normal, g.World, g.Lease, Tuning));
 
         Assert.True(direction * result.ClimbRate > 0,
             $"feet {feet}, heights [{heights[0]:R}, {heights[1]:R}, {heights[2]:R}, {heights[3]:R}], " +
@@ -652,13 +652,13 @@ public partial class ContactControllerTests
             new FootSupportQuery(new Vector2(feet.X, feet.Z), feet.Y, 0.2f, Tuning.StepHeight, Tuning.StepHeight,
                 cosGate));
         GroundSignals.Resolve(input, 0, 0, false, false, 0f, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
-            g.Height, g.Normal, g.World, g.Lease);
+            DryQueries.For(g.Height, g.Normal, g.World, g.Lease, Tuning));
         GroundSignals.Resolve(input, 0, 0, false, false, 0f, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
-            g.Height, g.Normal, g.World, g.Lease);
+            DryQueries.For(g.Height, g.Normal, g.World, g.Lease, Tuning));
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        var result = GroundSignals.Resolve(input, 0, 0, false, false, 0f, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
-            g.Height, g.Normal, g.World, g.Lease);
+        var result = GroundSignals.Resolve(input, 0, 0, false, false, 0f, travel, feet, axisSupport, true, Dt, Tuning, 0.2f,
+            cosGate, DryQueries.For(g.Height, g.Normal, g.World, g.Lease, Tuning));
         long after = GC.GetAllocatedBytesForCurrentThread();
 
         Assert.Equal(before, after);

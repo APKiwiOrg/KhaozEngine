@@ -6,7 +6,7 @@ namespace KhaozEngine.Locomotion.Contacts;
 
 /// <summary>A seated placement proposal with its certified support and remaining climb budget. Only a valid
 /// proposal commits the budget or changes the tick's position.</summary>
-internal readonly partial record struct GroundPlacement(bool Valid, Vector3 Feet, SupportSample Support,
+internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, SupportSample Support,
     double Budget, bool Pushed, Vector2 Total)
 {
     /// <summary>Places a seat. A steep seat is placed as seated unless <paramref name="clearSteep"/> asks for its

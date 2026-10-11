@@ -16,7 +16,7 @@ internal readonly record struct ShellFlight(Vector3 Achieved, bool Blocked, floa
 /// <summary>Moves the shell: recovery out of overlaps, the upward lift, one horizontal substep with wall slides
 /// and one substep through the air. Every position is the body's feet. A null world has no statics, so the shell
 /// moves freely.</summary>
-internal static partial class ShellMotion
+internal static class ShellMotion
 {
     /// <summary>The gap a sweep leaves when it hits something. Free motion is never shortened by it.</summary>
     internal const float ContactSkin = 0.001f;

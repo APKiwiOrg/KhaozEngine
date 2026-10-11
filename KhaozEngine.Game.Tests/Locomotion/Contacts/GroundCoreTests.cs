@@ -22,11 +22,11 @@ public class GroundCoreTests
         Step(scene, feet, displacement, Tuning);
 
     static GroundStepResult Step(FootSupportScene scene, Vector3 feet, Vector2 displacement, MoveTuning tuning) =>
-        GroundCore.Step(feet, displacement, Dt, tuning, Settings, null, null, scene.World, scene.Lease);
+        GroundCore.Step(feet, displacement, Dt, tuning, Settings, DryQueries.For(null, null, scene.World, scene.Lease, tuning));
 
     static GroundStepResult Step(Func<float, float, float> height, Func<float, float, Vector3>? normal,
         Vector3 feet, Vector2 displacement) =>
-        GroundCore.Step(feet, displacement, Dt, Tuning, Settings, height, normal, null, null);
+        GroundCore.Step(feet, displacement, Dt, Tuning, Settings, DryQueries.For(height, normal, null, null, Tuning));
 
     static FootSupportScene Floor(SceneVariant variant) =>
         new FootSupportScene(variant).Flat("floor", -4, 6, -5, 5, 0);
@@ -249,9 +249,9 @@ public class GroundCoreTests
         var feet = new Vector3(0, scene is null ? 0 : (float)scene.TopHeightAt("slope", 0, 0), 0);
         double expectedY = scene is null ? grade * (double)move.X : scene.TopHeightAt("slope", move.X, 0);
 
-        GroundStepResult Gated(float? gate) => scene is null
-            ? GroundCore.Step(feet, move, Dt, Tuning, Settings, (x, _) => grade * x, (_, _) => normal, null, null, gate)
-            : GroundCore.Step(feet, move, Dt, Tuning, Settings, null, null, scene.World, scene.Lease, gate);
+        var queries = DryQueries.For(scene is null ? (x, _) => grade * x : null,
+            scene is null ? (_, _) => normal : null, scene?.World, scene?.Lease, Tuning);
+        GroundStepResult Gated(float? gate) => GroundCore.Step(feet, move, Dt, Tuning, Settings, queries, gate);
 
         GroundStepResult kept = Gated(banded);
         AssertFooting(GroundFooting.Walkable, kept);
@@ -504,8 +504,8 @@ public class GroundCoreTests
     {
         Assert.Equal(0.5f, new GroundCoreSettings().FootRadiusFraction);
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            GroundCore.Step(Vector3.Zero, Vector2.UnitX, Dt, Tuning, default(GroundCoreSettings), (_, _) => 0, null,
-                null, null));
+            GroundCore.Step(Vector3.Zero, Vector2.UnitX, Dt, Tuning, default(GroundCoreSettings),
+                DryQueries.For((_, _) => 0, null, null, null, Tuning)));
     }
 
     [Fact]
@@ -515,7 +515,7 @@ public class GroundCoreTests
         MoveTuning tuning = Tuning;
         GroundCoreSettings settings = Settings;
         GroundStepResult Run(Vector3 feet, Vector2 move, float dt) =>
-            GroundCore.Step(feet, move, dt, tuning, settings, Flat, null, null, null);
+            GroundCore.Step(feet, move, dt, tuning, settings, DryQueries.For(Flat, null, null, null, tuning));
 
         Assert.Throws<ArgumentOutOfRangeException>(() => Run(new Vector3(float.NaN, 0, 0), Vector2.UnitX, Dt));
         Assert.Throws<ArgumentOutOfRangeException>(() => Run(Vector3.Zero, new Vector2(float.PositiveInfinity, 0), Dt));

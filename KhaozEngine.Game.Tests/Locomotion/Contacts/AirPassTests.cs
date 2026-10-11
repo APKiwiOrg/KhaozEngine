@@ -35,11 +35,11 @@ public class AirPassTests
 
         internal AirStepResult Step(Vector3 feet, Vector2 velocity, float verticalVelocity) =>
             AirPass.Step(feet, velocity, verticalVelocity, Dt, Gravity, Tuning, Settings, Tuning.MaxSlopeRadians,
-                height, normal, scene?.World, scene is null ? null : scene.Lease);
+                DryQueries.For(height, normal, scene?.World, scene is null ? null : scene.Lease, Tuning));
 
         internal GroundStepResult Rest(Vector3 feet) =>
-            GroundCore.Step(feet, Vector2.Zero, Dt, Tuning, Settings, height, normal, scene?.World,
-                scene is null ? null : scene.Lease);
+            GroundCore.Step(feet, Vector2.Zero, Dt, Tuning, Settings,
+                DryQueries.For(height, normal, scene?.World, scene is null ? null : scene.Lease, Tuning));
 
         // Steps until the body lands or slides, at most limit ticks, carrying the feet and vertical speed.
         internal List<AirStepResult> Run(Vector3 feet, Vector2 velocity, float verticalVelocity, int limit)
@@ -608,7 +608,7 @@ public class AirPassTests
         MoveTuning tuning = Tuning with { TractionHysteresisRadians = Radians(bandDegrees) };
         var settings = new GroundCoreSettings(fraction);
         AirStepResult Step() => AirPass.Step(Vector3.Zero, Vector2.Zero, 0, Dt, Gravity, tuning, settings,
-            tuning.MaxSlopeRadians, null, null, null, null);
+            tuning.MaxSlopeRadians, DryQueries.For(null, null, null, null, tuning));
 
         if (rejected) Assert.Throws<ArgumentOutOfRangeException>(() => Step());
         else Assert.Equal(AirOutcome.Airborne, Step().Outcome);

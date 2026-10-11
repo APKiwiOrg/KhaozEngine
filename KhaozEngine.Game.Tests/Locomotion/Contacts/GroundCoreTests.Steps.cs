@@ -23,8 +23,9 @@ public class GroundCoreStepTests
     static GroundStepResult Step(FootSupportScene? scene, Vector3 feet, Vector2 move, int hz,
         MoveTuning? tuning = null, Func<float, float, float>? height = null,
         Func<float, float, Vector3>? normal = null, double? budget = null, bool stepInProgress = false) =>
-        GroundCore.Step(feet, move, 1f / hz, tuning ?? Tuning, Settings, height, normal,
-            scene?.World, scene?.Lease, climbBudget: budget, stepInProgress: stepInProgress);
+        GroundCore.Step(feet, move, 1f / hz, tuning ?? Tuning, Settings,
+            DryQueries.For(height, normal, scene?.World, scene?.Lease, tuning ?? Tuning), climbBudget: budget,
+            stepInProgress: stepInProgress);
 
     static float Hill(float x, float z) => 0.2f * MathF.Sin(x) * MathF.Cos(z);
 

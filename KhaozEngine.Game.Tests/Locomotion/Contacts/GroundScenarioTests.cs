@@ -28,7 +28,7 @@ public class GroundScenarioTests(ITestOutputHelper output)
 
     static GroundStepResult Step(IPhysicsWorld world, IPhysicsQueryLease lease, in MoveTuning tuning, Vector3 feet,
         Vector2 displacement) =>
-        GroundCore.Step(feet, displacement, Dt, tuning, Settings, null, null, world, lease);
+        GroundCore.Step(feet, displacement, Dt, tuning, Settings, DryQueries.For(null, null, world, lease, tuning));
 
     static GroundStepResult Step(FootSupportScene scene, in MoveTuning tuning, Vector3 feet, Vector2 displacement) =>
         Step(scene.World, scene.Lease, tuning, feet, displacement);

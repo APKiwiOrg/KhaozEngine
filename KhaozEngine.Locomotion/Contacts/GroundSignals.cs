@@ -87,8 +87,10 @@ internal static class GroundSignals
             float previous = input.ClimbRateEwma;
             float ewma = previous == 0f ? SeedFraction * rate
                 : previous + (1f - MathF.Exp(-SmoothingRate * dt)) * (rate - previous);
-            float climb = MathF.Max(0f, ewma);
-            return (climb, ewma, climb != 0f ? 0f : stepRise);
+            // An ascent the wire cannot show (below half a quantum) ends here with its EWMA, so no head carries a
+            // run that a basis rebuilt from the wire would not.
+            if (!(ewma > MoveState.ClimbRateQuantum / 2)) return (0f, 0f, stepRise);
+            return (ewma, ewma, 0f);
         }
         // A descent without travel has no rate, so it reports as no run rather than a negative zero.
         float drop = descent ? MathF.Min(achieved / dt * Math.Clamp(-grade, RunGrade, MaxDescentGrade), MaxDescentRate)
@@ -98,9 +100,9 @@ internal static class GroundSignals
 
     /// <summary>Whether a carried climb rate shows an ascent run in progress. Every head carries the rate through its
     /// wire quantum, so only a rate the wire keeps nonzero counts.</summary>
-    internal static bool Ascending(float climbRate) => climbRate >= MoveState.ClimbRateQuantum / 2;
+    internal static bool Ascending(float climbRate) => climbRate > MoveState.ClimbRateQuantum / 2;
 
     /// <summary>Whether a carried climb rate shows a descent run in progress, the mirror of
     /// <see cref="Ascending"/>.</summary>
-    internal static bool Descending(float climbRate) => climbRate <= -MoveState.ClimbRateQuantum / 2;
+    internal static bool Descending(float climbRate) => climbRate < -MoveState.ClimbRateQuantum / 2;
 }

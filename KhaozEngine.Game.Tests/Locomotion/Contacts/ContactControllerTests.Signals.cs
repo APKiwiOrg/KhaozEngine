@@ -510,6 +510,49 @@ public partial class ContactControllerTests
         static bool Same(float a, float b) => BitConverter.SingleToInt32Bits(a) == BitConverter.SingleToInt32Bits(b);
     }
 
+    // A run is in progress only when the wire keeps its rate nonzero. QuantizeClimbRate rounds exact halves to even,
+    // so half a quantum is not a run on any head.
+    [Fact]
+    public void RunInProgressMatchesTheWireQuantum()
+    {
+        float half = MoveState.ClimbRateQuantum / 2;
+        foreach (float rate in new[] { half, MathF.BitDecrement(half), MathF.BitIncrement(half), 3 * half,
+            MoveState.ClimbRateQuantum, 0f })
+        {
+            Assert.Equal(MovementState.QuantizeClimbRate(rate) > 0, GroundSignals.Ascending(rate));
+            Assert.Equal(MovementState.QuantizeClimbRate(-rate) < 0, GroundSignals.Descending(-rate));
+        }
+    }
+
+    // A slow climb whose smoothed rate falls below half a quantum ends its run and its EWMA, so no head carries a run
+    // that a basis rebuilt from the wire (rate decoded, EWMA seeded from it, no step event) would not. The rebuilt EWMA
+    // is the quantized rate, so the two can still straddle the half-quantum threshold, by at most one quantum, the
+    // continuation gap the sharded handoff already accepts.
+    [Theory]
+    [InlineData(SceneVariant.Box, 60)]
+    [InlineData(SceneVariant.Mesh, 60)]
+    [InlineData(SceneVariant.Box, 30)]
+    [InlineData(SceneVariant.Mesh, 30)]
+    public void SlowStairClimbCarriesNoRunTheWireCannotShow(SceneVariant variant, int hz)
+    {
+        using var g = new Ground(Staircase(variant, 16, 0.18f, 0.28f), Abyss);
+        float dt = 1f / hz, half = MoveState.ClimbRateQuantum / 2;
+        MoveState live = Standing(new Vector3(-0.5f, 0, 0));
+        int worst = 0;
+        for (int tick = 0; tick < 20 * hz; tick++)
+        {
+            float decoded = MovementState.DecodeClimbRate(MovementState.QuantizeClimbRate(live.ClimbRate));
+            MoveState basis = live with { ClimbRate = decoded, ClimbRateEwma = MathF.Max(0f, decoded), StepDeltaY = 0f };
+            MoveState next = g.Step(live, Vector2.UnitX, 0.05f, false, Tuning, dt);
+            MoveState fromWire = g.Step(basis, Vector2.UnitX, 0.05f, false, Tuning, dt);
+            Assert.True(next.ClimbRateEwma == 0f || next.ClimbRateEwma > half, $"tick {tick}: {Show(next)}");
+            worst = Math.Max(worst, Math.Abs(MovementState.QuantizeClimbRate(next.ClimbRate) -
+                MovementState.QuantizeClimbRate(fromWire.ClimbRate)));
+            live = next;
+        }
+        Assert.True(worst <= 1, $"the live and wire-rebuilt climb rates differ by {worst} quanta");
+    }
+
     [Theory]
     [InlineData(SceneVariant.Box, 0f)]
     [InlineData(SceneVariant.Mesh, 0f)]

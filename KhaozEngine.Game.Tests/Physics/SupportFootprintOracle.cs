@@ -206,6 +206,12 @@ internal static class SupportFootprintOracle
             return result;
         }
         if (slope > u) return result;
+        if (ay == 0)
+        {
+            if (SupportFootprintHorizontalSideOracle.Maximum(part, x, z, r, slope) is { } point)
+                result.Add(new(point.Position, point.Normal));
+            return result;
+        }
         OracleVector horizontal = new(axis.X / u, 0, axis.Z / u);
         OracleVector across = new(-horizontal.Z, 0, horizontal.X);
         OracleVector up = new(-ay * horizontal.X, u, -ay * horizontal.Z);
@@ -710,6 +716,7 @@ internal static class SupportFootprintOracle
         OracleVector axis = part.Axis.Y < 0 ? part.Axis * -1 : part.Axis;
         double u = Math.Sqrt(axis.X * axis.X + axis.Z * axis.Z), ay = axis.Y, radius = part.Radius, r = query.Radius;
         if (u == 0) return (double.NegativeInfinity, double.NegativeInfinity);
+        if (ay == 0) return SupportFootprintHorizontalSideOracle.PerPointSupremum(part, query);
         OracleVector parallel = new(axis.X / u, 0, axis.Z / u), across = new(-axis.Z / u, 0, axis.X / u);
         OracleVector delta = part.Centre - new OracleVector(query.Axis.X, part.Centre.Y, query.Axis.Y);
         double dp = OracleVector.Dot(delta, parallel), dv = OracleVector.Dot(delta, across);
@@ -759,7 +766,7 @@ internal static class SupportFootprintOracle
         return (lower, queue.TryPeek(out var last, out _) ? Math.Max(lower, last.Upper) : lower);
     }
 
-    readonly record struct Range(double Low, double High)
+    internal readonly record struct Range(double Low, double High)
     {
         internal double Middle => Low + (High - Low) / 2;
         internal Range Square => new(Low <= 0 && High >= 0 ? 0 : Math.BitDecrement(Math.Min(Low * Low, High * High)),

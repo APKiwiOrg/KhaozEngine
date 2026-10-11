@@ -4,6 +4,8 @@ using System.Numerics;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
 using Xunit;
+using Bounds = KhaozEngine.Tests.Physics.SupportFootprintExactOracle.Bounds;
+using Point = KhaozEngine.Tests.Physics.SupportFootprintExactOracle.Point;
 using R = KhaozEngine.Tests.Physics.InstalledPoseOracle.R;
 using Proof = KhaozEngine.Tests.Physics.SupportFootprintCurvedProofOracle;
 
@@ -141,18 +143,62 @@ public partial class SupportFootprintTests
         Assert.True(member.WitnessInsideClosedDisc);
         Assert.Equal(SupportWitnessRole.Footprint, member.Witnesses[0].Role);
         Assert.InRange(part.Tangent.Closest(member.Witnesses[0].Position).Distance, 0, 1e-12);
-        var reading = SupportFootprintOracle.PerPointSupremum(part.Tangent, request);
-        Assert.True(double.IsFinite(reading.Lower));
-        Assert.True(reading.Lower <= reading.Upper);
-        Assert.True(reading.Upper - reading.Lower <= 1e-7);
+        Proof.Reading exact;
         if (!beyondEnd)
         {
-            Proof.Reading exact = Proof.Sphere(R.Zero, part.Radius, R.From(request.Axis.X),
+            exact = Proof.Sphere(R.Zero, part.Radius, R.From(request.Axis.X),
                 R.From(request.Radius), R.From(request.CosMaxSlope).Square());
             exact = exact with { Witness = exact.Witness with { Z = part.Centre.Z } };
-            CompareCurvedReadings(part.Tangent, member, request, exact);
         }
-        else _output.WriteLine($"Horizontal end boundary geometric={member.Witnesses[0].Position.Y:R} perPoint=[{reading.Lower:R}, {reading.Upper:R}]");
+        else exact = Proof.Crest(part, request);
+        CompareCurvedReadings(part.Tangent, member, request, exact);
+    }
+
+    [Fact]
+    public void CurvedOracleHorizontalCylinderFiniteEndAndDiscBoundaryConstrainTheMaximum()
+    {
+        using var scene = new SupportFootprintScene();
+        StaticHandle owner = scene.Install(new CylinderShape(0.25f, 1),
+            new(Vector3.Zero, new Quaternion(0.5f, 0.5f, 0.5f, 0.5f)));
+        Proof.InstalledPart part = Proof.Installed(scene.World, owner).First();
+        Assert.Equal(OracleSurface.CylinderSide, part.Tangent.Surface);
+        Assert.Equal(new Point(R.Zero, R.Zero, R.One), part.Axis);
+        Assert.Equal(new R(1, 2), part.Half);
+        SupportFootprintRequest request = Request(x: (float)part.Tangent.Centre.X + 0.35f,
+            z: (float)part.Tangent.Centre.Z + 0.75f, radius: 0.3f);
+        R axisX = R.From(request.Axis.X), axisZ = R.From(request.Axis.Y);
+        R centreX = part.Centre.X.Lower, centreY = part.Centre.Y.Lower, centreZ = part.Centre.Z.Lower;
+        R endZ = centreZ + part.Half, delta = axisZ - endZ, offset = axisX - centreX;
+        R discSquare = R.From(request.Radius).Square();
+        Assert.Equal(new R(1, 4), delta);
+        Bounds available = Bounds.Root(discSquare - delta.Square());
+        Assert.True(available.Upper < offset);
+        Bounds lateral = (Bounds)offset - available;
+        Bounds heightSquare = (Bounds)part.Radius.Square() - lateral * lateral;
+        Bounds height = new(Bounds.Root(heightSquare.Lower).Lower, Bounds.Root(heightSquare.Upper).Upper);
+        var point = new Point((Bounds)centreX + lateral, (Bounds)centreY + height, endZ);
+        var normal = new Point(lateral / (Bounds)part.Radius, height / (Bounds)part.Radius, R.Zero);
+        Bounds tangent = point.Y + normal.X * (point.X - (Bounds)axisX) / normal.Y;
+        Assert.True(tangent.Upper < point.Y.Lower);
+        Assert.True(height.Upper < part.Radius);
+        Assert.True(normal.Y.Upper < R.From(request.CosMaxSlope));
+
+        // Height and tangent decrease with lateral distance. The finite end leaves sqrt(r*r-delta*delta)
+        // of disc width, so the nearest feasible lateral point attains both maxima. The tangent wins min.
+        Bounds perPoint = (Bounds)centreY + ((Bounds)part.Radius.Square() - (Bounds)offset * lateral) / height;
+        var exact = new Proof.Reading(point, normal, tangent, perPoint, SupportStatus.Steep, false);
+        FootprintOracleMember member = SupportFootprintOracle.Curved(part.Tangent, request)!;
+        Assert.NotNull(member);
+        FootprintOracleWitness witness = Assert.Single(member.Witnesses);
+        Assert.Equal(SupportWitnessRole.Footprint, witness.Role);
+        Assert.Equal(SupportFootprintExactOracle.AsDouble(endZ), witness.Position.Z);
+        Assert.True(member.WitnessInsideClosedDisc);
+        double dx = witness.Position.X - request.Axis.X, dz = witness.Position.Z - request.Axis.Y;
+        double distanceSquare = dx * dx + dz * dz;
+        Assert.True(distanceSquare <= (double)request.Radius * request.Radius);
+        Assert.InRange(Math.Abs(distanceSquare - (double)request.Radius * request.Radius), 0, 1e-12);
+        CompareCurvedReadings(part.Tangent, member, request, exact);
+        Assert.Equal(exact.Status, SupportFootprintOracle.Select([member], request).Status);
     }
 
     [Theory]

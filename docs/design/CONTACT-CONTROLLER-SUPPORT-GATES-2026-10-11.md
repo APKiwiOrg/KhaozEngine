@@ -4,7 +4,7 @@ Draft for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438),
 [#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347) and
 [#1334](https://github.com/APKiwiOrg/KhaozEngine/issues/1334).
 Source baseline: `06b734c5722bc2cc95cea459255d6ec93e9236c7`, phases 1 through 4b.
-Status: orchestrator-approved under the owner's standing instruction to carry #438 to the release gate.
+Status: approved after three independent review rounds, under the owner's standing instruction to carry #438 to the release gate.
 Every choice is a recorded ruling for the owner's review. Rulings SG-19 to SG-24 settle the draft's open
 questions, the orchestrator review and the independent spec review. No build, test, timing run or stress run was performed for this spec.
 
@@ -68,9 +68,10 @@ outward. For `c = 0` no finite expansion exists and the query returns Unsupporte
 chosen maximum slope. Every shell-valid tuning has `c > 0`.
 
 The query requires `r >= AxisProbeRadius` (0.01 m, `FootSupport.cs:21`), which is also the backend's
-proven minimum probe radius (`BepuPhysicsWorld.SupportNeighborhood.cs:57`). Below it, today's foot probe
-neighborhood already refuses whenever the probe touches anything, so a smaller footprint has no working
-released behavior to keep. `FootSupportQuery` validation and the ground and shell tuning validators
+proven minimum probe radius (`BepuPhysicsWorld.SupportNeighborhood.cs:57`). Below it, the backend cannot
+certify the foot probe's neighborhood whenever that neighborhood is requested. Some smaller queries work
+today, those on analytic terrain alone and those whose foot sweep misses everything, and this design
+deliberately rejects them too, as SG-23 class 6 records. `FootSupportQuery` validation and the ground and shell tuning validators
 reject `FootRadiusFraction * CapsuleRadius < 0.01` at configuration, not mid-tick. With that bound the
 axis probe lies inside the foot probe's column, so one column encloses both probes.
 

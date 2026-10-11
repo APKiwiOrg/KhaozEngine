@@ -80,13 +80,15 @@ internal sealed class SupportFootprintScene : IDisposable
             {
                 hull.GetVertexIndicesForFace(face, out var indices);
                 var vertices = new OracleVector[indices.Length];
+                var local = new Vector3[indices.Length];
                 for (int i = 0; i < indices.Length; i++)
                 {
                     hull.GetPoint(indices[i], out Vector3 point);
+                    local[i] = point;
                     vertices[i] = OracleVector.Rotate(pose.Orientation, OracleVector.From(point)) +
                         OracleVector.From(pose.Position);
                 }
-                Faces.Add(new(owner, leaf * 256 + face, vertices));
+                Faces.Add(new(owner, leaf * 256 + face, vertices) { ExactVertices = SupportFootprintExactOracle.Transform(local, pose) });
             }
         }
     }

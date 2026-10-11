@@ -156,7 +156,8 @@ public partial class SupportFootprintTests
             captured.Set(i, installed.Point(local[i]), installed.Edge(local[i], local[(i + 1) % local.Length]));
         captured.Finish(FeaturePoint.Cross(installed.Edge(local[0], local[1]), installed.Edge(local[0], local[2])));
         OracleFace capturedFace = new(new StaticHandle(42), 7, local.Select(v =>
-            OracleVector.Rotate(pose.Orientation, OracleVector.From(v)) + OracleVector.From(pose.Position)).ToArray());
+            OracleVector.Rotate(pose.Orientation, OracleVector.From(v)) + OracleVector.From(pose.Position)).ToArray())
+        { ExactVertices = SupportFootprintExactOracle.Transform(local, pose) };
         CheckMaximum(Measure(captured, request), SupportFootprintOracle.Polygon(capturedFace, request)!);
 
         SupportPolygon zero = Polygon([Vector3.Zero, Vector3.UnitX, 2 * Vector3.UnitX], out _);
@@ -197,8 +198,11 @@ public partial class SupportFootprintTests
     static void CheckMaximum(SupportFootprintMember member, FootprintOracleMember oracle)
     {
         Assert.True(member.HasDiscMaximum);
-        Assert.True(member.DiscHeightLower <= oracle.Maximum, $"{member.DiscHeightLower:R} > {oracle.Maximum:R}");
-        Assert.True(member.DiscHeightUpper >= oracle.Maximum, $"{member.DiscHeightUpper:R} < {oracle.Maximum:R}");
+        var reference = oracle.MaximumBounds!.Value;
+        Assert.True(InstalledPoseOracle.R.From(member.DiscHeightLower) <= reference.Lower,
+            $"{member.DiscHeightLower:R} exceeds exact reference lower {reference.Lower}");
+        Assert.True(InstalledPoseOracle.R.From(member.DiscHeightUpper) >= reference.Upper,
+            $"{member.DiscHeightUpper:R} is below exact reference upper {reference.Upper}");
         Assert.True(oracle.WitnessInsideClosedDisc);
         Assert.Equal(1, member.WitnessCount);
         Assert.Equal(SupportWitnessRole.Footprint, member.First.Role);

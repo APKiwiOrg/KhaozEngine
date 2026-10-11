@@ -14,12 +14,14 @@ internal sealed record FootprintOracleMember(StaticHandle Static, int ElementId,
     IReadOnlyList<FootprintOracleWitness> Witnesses, bool WitnessInsideClosedDisc)
 {
     internal OracleFace? Face { get; init; }
+    internal SupportFootprintExactOracle.Bounds? PlaneBounds { get; init; }
+    internal SupportFootprintExactOracle.Bounds? MaximumBounds { get; init; }
 }
 
 internal readonly record struct FootprintOracleSupport(SupportStatus Status, double Height, double HeightLower,
     double HeightUpper, OracleVector Normal, OracleVector Witness, StaticHandle? Static, int ElementId);
 
-/// <summary>Independent binary64 geometry over installed floats. No production clipping, joining, extremum or
+/// <summary>Independent rational polygon geometry and binary64 curved geometry over installed floats. No production clipping, joining, extremum or
 /// support selection is used. Curved extrema enumerate spherical ends, finite side patches and planar caps.</summary>
 internal static class SupportFootprintOracle
 {
@@ -46,23 +48,20 @@ internal static class SupportFootprintOracle
 
     internal static FootprintOracleMember? Polygon(OracleFace face, in SupportFootprintRequest request)
     {
-        double axisX = request.Axis.X, axisZ = request.Axis.Y;
         (double bottom, double top) = Volume(request);
-        List<OracleVector> clipped = ClipY(ClipY([.. face.Vertices], bottom, true), top, false);
-        if (DiscPoints(clipped, face.Normal, request.Axis.X, request.Axis.Y,
-                (double)request.Radius + request.ContactBand).Count == 0) return null;
-        List<OracleVector> points = DiscPoints([.. face.Vertices], face.Normal,
-            request.Axis.X, request.Axis.Y, request.Radius);
-        OracleVector normal = face.Normal;
-        bool maximum = points.Count != 0;
-        OracleVector witness = maximum ? points.OrderByDescending(p => p.Y)
-            .ThenBy(p => DistanceSquared(p, axisX, axisZ)).ThenBy(p => p.X).ThenBy(p => p.Z).First()
-            : default;
-        double plane = normal.Y > 0 ? Plane(face.Vertices[0], normal, request.Axis.X, request.Axis.Y) : double.NaN;
-        return new(face.Static, face.ElementId, true, maximum, plane, maximum ? witness.Y : double.NaN, normal,
-            maximum ? [new(SupportWitnessRole.Footprint, witness, normal)] : [],
-            maximum && InDisc(witness, axisX, axisZ, request.Radius))
-        { Face = face };
+        var expanded = SupportFootprintExactOracle.Disc(face, request.Axis.X, request.Axis.Y,
+            InstalledPoseOracle.R.From(request.Radius) + InstalledPoseOracle.R.From(request.ContactBand));
+        if (expanded is not { } column || column.Minimum.Lower > InstalledPoseOracle.R.From(top) ||
+            column.Maximum.Upper < InstalledPoseOracle.R.From(bottom)) return null;
+        var disc = SupportFootprintExactOracle.Disc(face, request.Axis.X, request.Axis.Y,
+            InstalledPoseOracle.R.From(request.Radius));
+        var plane = face.Normal.Y > 0 ? SupportFootprintExactOracle.Plane(face, request.Axis.X, request.Axis.Y)
+            : (SupportFootprintExactOracle.Bounds?)null;
+        OracleVector witness = disc?.Witness.Middle ?? default;
+        return new(face.Static, face.ElementId, true, disc is not null, plane?.Middle ?? double.NaN,
+            disc?.Maximum.Middle ?? double.NaN, face.Normal,
+            disc is not null ? [new(SupportWitnessRole.Footprint, witness, face.Normal)] : [], disc is not null)
+        { Face = face, PlaneBounds = plane, MaximumBounds = disc?.Maximum };
     }
 
     internal static FootprintOracleMember? Curved(OracleTangent part, in SupportFootprintRequest request)
@@ -158,69 +157,6 @@ internal static class SupportFootprintOracle
     static double DistanceSquared(OracleVector p, double x, double z) =>
         (p.X - x) * (p.X - x) + (p.Z - z) * (p.Z - z);
     static bool InDisc(OracleVector p, double x, double z, double r) => DistanceSquared(p, x, z) <= r * r;
-
-    static List<OracleVector> ClipY(List<OracleVector> polygon, double y, bool above)
-    {
-        var result = new List<OracleVector>();
-        for (int i = 0; i < polygon.Count; i++)
-        {
-            OracleVector a = polygon[i], b = polygon[(i + 1) % polygon.Count];
-            bool insideA = above ? a.Y >= y : a.Y <= y, insideB = above ? b.Y >= y : b.Y <= y;
-            if (insideA) result.Add(a);
-            if (insideA != insideB) result.Add(a + (b - a) * ((y - a.Y) / (b.Y - a.Y)));
-        }
-        return result;
-    }
-
-    static List<OracleVector> DiscPoints(List<OracleVector> polygon, OracleVector normal, double x, double z, double r)
-    {
-        var result = new List<OracleVector>();
-        if (polygon.Count == 0) return result;
-        foreach (OracleVector point in polygon) if (InDisc(point, x, z, r)) result.Add(point);
-        for (int i = 0; i < polygon.Count; i++)
-        {
-            OracleVector a = polygon[i], b = polygon[(i + 1) % polygon.Count], d = b - a;
-            double aa = d.X * d.X + d.Z * d.Z;
-            if (aa == 0) continue;
-            double bb = 2 * ((a.X - x) * d.X + (a.Z - z) * d.Z);
-            double cc = DistanceSquared(a, x, z) - r * r, discriminant = bb * bb - 4 * aa * cc;
-            double closest = Math.Clamp(-bb / (2 * aa), 0, 1);
-            OracleVector nearest = a + d * closest;
-            if (InDisc(nearest, x, z, r)) result.Add(nearest);
-            if (discriminant < 0) continue;
-            double root = Math.Sqrt(discriminant);
-            foreach (double t in new[] { (-bb - root) / (2 * aa), (-bb + root) / (2 * aa) })
-                if (t >= 0 && t <= 1) result.Add(a + d * t);
-        }
-        if (normal.Y == 0) return result;
-        double area = 0;
-        for (int i = 0; i < polygon.Count; i++)
-            area += polygon[i].X * polygon[(i + 1) % polygon.Count].Z - polygon[i].Z * polygon[(i + 1) % polygon.Count].X;
-        if (area == 0) return result;
-        void Interior(double px, double pz)
-        {
-            OracleVector point = new(px, Plane(polygon[0], normal, px, pz), pz);
-            if (InsideXZ(polygon, px, pz)) result.Add(point);
-        }
-        Interior(x, z);
-        double nx = -normal.X / normal.Y, nz = -normal.Z / normal.Y, length = Math.Sqrt(nx * nx + nz * nz);
-        if (length > 0) Interior(x + r * nx / length, z + r * nz / length);
-        return result;
-    }
-
-    static bool InsideXZ(List<OracleVector> polygon, double x, double z)
-    {
-        double orientation = 0;
-        for (int i = 0; i < polygon.Count; i++)
-        {
-            OracleVector a = polygon[i], b = polygon[(i + 1) % polygon.Count];
-            double cross = (b.X - a.X) * (z - a.Z) - (b.Z - a.Z) * (x - a.X);
-            if (cross == 0) continue;
-            if (orientation != 0 && Math.Sign(cross) != Math.Sign(orientation)) return false;
-            orientation = cross;
-        }
-        return orientation != 0 || polygon.Count >= 3;
-    }
 
     readonly record struct SurfacePoint(OracleVector Position, OracleVector Normal);
 

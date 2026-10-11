@@ -14,6 +14,7 @@ public class WaterFixtureTests
     [InlineData("sea-connected-cave")]
     [InlineData("sea-connected-cave-dry-portal")]
     [InlineData("sea-closed-cave")]
+    [InlineData("sea-connected-cave-alias-endpoints")]
     [InlineData("sinkhole-below-surface")]
     [InlineData("sinkhole-at-surface")]
     [InlineData("sinkhole-above-surface")]
@@ -26,6 +27,7 @@ public class WaterFixtureTests
         "sea-connected-cave" => WaterFixtures.SeaConnectedCave(portalBottomY: -5f),
         "sea-connected-cave-dry-portal" => WaterFixtures.SeaConnectedCave(portalBottomY: 1f),
         "sea-closed-cave" => WaterFixtures.SeaConnectedCave(portalBottomY: null),
+        "sea-connected-cave-alias-endpoints" => WaterFixtures.SeaConnectedCaveThroughAliases("sea", "grotto"),
         "sinkhole-below-surface" => WaterFixtures.SinkholeCave(openingY: -10f),
         "sinkhole-at-surface" => WaterFixtures.SinkholeCave(openingY: 0f),
         "sinkhole-above-surface" => WaterFixtures.SinkholeCave(openingY: 1f),

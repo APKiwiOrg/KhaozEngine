@@ -71,6 +71,9 @@ internal static partial class WaterFixtures
                 break;
             case "domain-off-footprint": body = body with { Domain = domain with { Rects = new[] { Rect(20, 0, 24, 4) } } }; break;
             case "missing-cover": body = body with { Covers = new[] { new MapRecordRef("nowhere", cover.Anchor) } }; break;
+            case "absent-cover-patch":
+                body = body with { Covers = new[] { new MapRecordRef("nowhere", new MapPatchKey("no-such-surface", 0, 0)) } };
+                break;
             case "alias-cover":
                 doc.Surfaces.Patches[cover.Anchor].Records.Add(new MapSpaceDoc("sea-alias", MapSpaceKind.Exterior, null, cover,
                     Array.Empty<string>(), Array.Empty<MapBoundaryRef>(), Array.Empty<MapBoundaryRef>(), Array.Empty<MapRecordRef>()));

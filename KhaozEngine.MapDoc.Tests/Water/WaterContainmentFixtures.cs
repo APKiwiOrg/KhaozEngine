@@ -59,6 +59,45 @@ internal static partial class WaterFixtures
             Array.Empty<string>(), Array.Empty<MapBoundaryRef>(), Array.Empty<MapBoundaryRef>(), new[] { link });
     }
 
+    /// <summary>An exterior <c>shallows</c> over <c>pond-floor</c> at -1 m for x 0 to 4 and world z -4 to 0, under body
+    /// <c>pond</c> at <c>SurfaceY</c> 0. Far away in slot (10, 0) of <c>far-floor</c>, <c>shallows</c> has a second
+    /// footprint <c>shallows-far-cells-10-0</c>, and <c>ghost-cells</c> is the footprint of a space <c>ghost</c>
+    /// anchored in a patch the document does not hold, so its space record is unavailable. Unvalidated.</summary>
+    internal static MapDocument PondWithFarFootprints()
+    {
+        var set = new MapSurfaceSet();
+        Surface(set, "pond-floor", MapSurfaceRole.SupportFloor, Frame, 0, 0, 4, 4, (_, _) => -100);
+        Surface(set, "far-floor", MapSurfaceRole.SupportFloor, Frame, 640, 0, 644, 4, (_, _) => -100);
+        Footprints(set, "shallows", MapSpaceKind.Exterior, Frame, 0, 0, 4, 4, Floor("pond-floor"), OpenTop, Slot0("pond-floor"));
+        FootprintCells(set, "shallows", "shallows-far", 640, 0, 644, 4, Floor("far-floor"), OpenTop, Slot0("pond-floor"));
+        var water = new MapWaterSet();
+        water.Media.Add(new MapWaterMediumDoc(Medium, MapWaterMediumKind.Water, 1f));
+        water.Bodies.Add(Body("pond", 0f, Rect(0, 0, 4, 4), Cover("shallows", "pond-floor")));
+        MapDocument doc = Document(set, water);
+
+        var far = new MapPatchKey("far-floor", 10, 0);
+        MapSpaceFootprint shallows = doc.Surfaces.Patches[far].Records.OfType<MapSpaceFootprint>().Single();
+        doc.Surfaces.Patches[far].Records.Add(shallows with { Id = "ghost-cells", Space = GhostSpace });
+        return doc;
+    }
+
+    /// <summary>The unavailable space of <see cref="PondWithFarFootprints"/>'s far ghost footprint.</summary>
+    internal static MapRecordRef GhostSpace => new("ghost", new MapPatchKey("ghost-floor", 10, 0));
+
+    /// <summary>An exterior <c>straddle</c> whose cells cross the 64-cell slot boundaries in both X and Z on a
+    /// negative-Z lattice: x 60 to 68 over rows 62 to 66, then x 60 to 64 and x 66 to 68 over rows 66 to 68. Its
+    /// footprints are split per slot and per region. Unvalidated.</summary>
+    internal static MapDocument SlotStraddlingSpace()
+    {
+        var set = new MapSurfaceSet();
+        Surface(set, "straddle-floor", MapSurfaceRole.SupportFloor, Frame, 60, 62, 68, 68, (_, _) => -100);
+        var anchor = new MapPatchKey("straddle-floor", 0, 0);
+        Footprints(set, "straddle", MapSpaceKind.Exterior, Frame, 60, 62, 68, 66, Floor("straddle-floor"), OpenTop, anchor);
+        FootprintCells(set, "straddle", "straddle-west", 60, 66, 64, 68, Floor("straddle-floor"), OpenTop, anchor);
+        FootprintCells(set, "straddle", "straddle-east", 66, 66, 68, 68, Floor("straddle-floor"), OpenTop, anchor);
+        return CaveFixtures.Document(set);
+    }
+
     /// <summary>The record refs of <see cref="SinkholeCave"/>'s spaces, their footprints over the opening, the link
     /// and the opening, plus the patch that owns the opening's geometry.</summary>
     internal static (MapRecordRef Sea, MapRecordRef Sink, MapRecordRef SeaFootprint, MapRecordRef SinkFootprint, MapRecordRef Link,

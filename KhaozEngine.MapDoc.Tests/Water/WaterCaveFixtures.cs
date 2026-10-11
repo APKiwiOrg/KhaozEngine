@@ -15,17 +15,53 @@ internal static partial class WaterFixtures
     /// to +3 m. A null <paramref name="portalBottomY"/> omits the portal and closes the wall. The sea continues over
     /// the grotto's roof on <c>cliff-top</c>, so its side of the shared wall is covered to the open sky. Body
     /// <c>ocean</c> at <c>SurfaceY</c> 0 spans x 0 to 12 and covers <c>sea</c> and <c>grotto</c>.</summary>
-    internal static MapDocument SeaConnectedCave(float? portalBottomY)
+    internal static MapDocument SeaConnectedCave(float? portalBottomY) =>
+        SeaConnectedCave(Frame, 100, portalBottomY is { } y ? (int)MathF.Round(y * 100) : null, 0f, Array.Empty<string>());
+
+    /// <summary>Height units per metre of <see cref="FineSeaConnectedCave"/>, fine enough that a height one unit
+    /// below 2 m rounds to 2 m in binary32.</summary>
+    internal const int FineUnitsPerMetre = 1 << 26;
+
+    /// <summary><see cref="SeaConnectedCave(float?)"/> on a lattice of 2^-26 m height units, with the portal bottom
+    /// at <paramref name="portalBottomUnits"/> and the body at <paramref name="surfaceY"/>.</summary>
+    internal static MapDocument FineSeaConnectedCave(int portalBottomUnits, float surfaceY) => SeaConnectedCave(
+        new MapLatticeFrame(new(1, 1), new(1, FineUnitsPerMetre), MapRowDirection.NegativeZ, MapHeightDatum.WorldY0),
+        FineUnitsPerMetre, portalBottomUnits, surfaceY, Array.Empty<string>());
+
+    /// <summary><see cref="SeaConnectedCave(float?)"/> with the portal bottom at -5 m, where each of
+    /// <paramref name="owners"/> keeps only its bare record and its alias <c>{owner}-alias</c> holds its footprints,
+    /// walls and portal list, so the portal names the alias as its endpoint.</summary>
+    internal static MapDocument SeaConnectedCaveThroughAliases(params string[] owners) =>
+        SeaConnectedCave(Frame, 100, -500, 0f, owners);
+
+    /// <summary><see cref="SeaConnectedCave(float?)"/> at a -5 m portal bottom whose bottom chain is an authored chain
+    /// with one vertex missing its height, so the portal aperture is invalid. Unvalidated.</summary>
+    internal static MapDocument SeaConnectedCaveWithInvalidPortalChain()
+    {
+        MapDocument doc = SeaConnectedCave(-5f);
+        List<MapTopologyRecord> records = doc.Surfaces.Patches[Slot0("grotto-floor")].Records;
+        int at = records.FindIndex(r => r.Id == "grotto-mouth-bottom");
+        var chain = (MapBoundaryChain)records[at];
+        records[at] = chain with { Vertices = chain.Vertices.Select((v, i) => i == 0 ? v with { HeightUnits = null } : v).ToArray() };
+        return doc;
+    }
+
+    /// <summary>The record refs of the portal and both spaces of <see cref="SeaConnectedCave(float?)"/>.</summary>
+    internal static (MapRecordRef Portal, MapRecordRef Grotto, MapRecordRef Sea) SeaCaveRefs(MapDocument doc) =>
+        (RecordRef(doc, "grotto-mouth"), RecordRef(doc, "grotto"), RecordRef(doc, "sea"));
+
+    static MapDocument SeaConnectedCave(MapLatticeFrame frame, int unitsPerMetre, int? portalBottomUnits, float surfaceY,
+        IReadOnlyCollection<string> aliasedEndpoints)
     {
         var set = new MapSurfaceSet();
-        Surface(set, "sea-floor", MapSurfaceRole.SupportFloor, Frame, 0, 0, 8, 4, (_, _) => -1000);
-        Surface(set, "grotto-floor", MapSurfaceRole.SupportFloor, Frame, 8, 0, 12, 4, (_, _) => -1000);
-        Surface(set, "grotto-roof", MapSurfaceRole.Ceiling, Frame, 8, 0, 12, 4, (_, _) => 500);
-        Surface(set, "cliff-top", MapSurfaceRole.SupportFloor, Frame, 8, 0, 12, 4, (_, _) => 500);
+        Surface(set, "sea-floor", MapSurfaceRole.SupportFloor, frame, 0, 0, 8, 4, (_, _) => -10 * unitsPerMetre);
+        Surface(set, "grotto-floor", MapSurfaceRole.SupportFloor, frame, 8, 0, 12, 4, (_, _) => -10 * unitsPerMetre);
+        Surface(set, "grotto-roof", MapSurfaceRole.Ceiling, frame, 8, 0, 12, 4, (_, _) => 5 * unitsPerMetre);
+        Surface(set, "cliff-top", MapSurfaceRole.SupportFloor, frame, 8, 0, 12, 4, (_, _) => 5 * unitsPerMetre);
 
-        Footprints(set, "sea", MapSpaceKind.Exterior, Frame, 0, 0, 8, 4, Floor("sea-floor"), OpenTop, Slot0("sea-floor"));
+        Footprints(set, "sea", MapSpaceKind.Exterior, frame, 0, 0, 8, 4, Floor("sea-floor"), OpenTop, Slot0("sea-floor"));
         FootprintCells(set, "sea", "sea-cliff", 8, 0, 12, 4, Floor("cliff-top"), OpenTop, Slot0("sea-floor"));
-        Footprints(set, "grotto", MapSpaceKind.Cave, Frame, 8, 0, 12, 4, Floor("grotto-floor"), Ceiling("grotto-roof"), Slot0("grotto-floor"));
+        Footprints(set, "grotto", MapSpaceKind.Cave, frame, 8, 0, 12, 4, Floor("grotto-floor"), Ceiling("grotto-roof"), Slot0("grotto-floor"));
         CloseWalls(set, "grotto", "grotto-floor", "grotto-roof", 8, 0, 12, 4, west: false);
 
         // The west wall runs along lattice x 8, whose front normal points away from the grotto, so the sea owns the
@@ -38,15 +74,15 @@ internal static partial class WaterFixtures
         MapBoundaryChain roofEdge = Edge("grotto-west-roof", "grotto-roof", 8, 0, 8, 4);
         anchor.Records.Add(floorEdge);
         anchor.Records.Add(roofEdge);
-        if (portalBottomY is not { } bottomY)
+        if (portalBottomUnits is not { } bottomUnits)
             AddWestStrip("grotto-west", floorEdge, roofEdge);
         else
         {
-            MapBoundaryChain bottom = Authored("grotto-mouth-bottom", "grotto-floor", 8, 0, 8, 4, (int)MathF.Round(bottomY * 100));
-            MapBoundaryChain top = Authored("grotto-mouth-top", "grotto-floor", 8, 0, 8, 4, 300);
+            MapBoundaryChain bottom = Authored("grotto-mouth-bottom", "grotto-floor", 8, 0, 8, 4, bottomUnits);
+            MapBoundaryChain top = Authored("grotto-mouth-top", "grotto-floor", 8, 0, 8, 4, 3 * unitsPerMetre);
             anchor.Records.Add(bottom);
             anchor.Records.Add(top);
-            if (bottomY > -10f) AddWestStrip("grotto-riser", floorEdge, bottom);
+            if (bottomUnits > -10 * unitsPerMetre) AddWestStrip("grotto-riser", floorEdge, bottom);
             AddWestStrip("grotto-header", top, roofEdge);
             anchor.Records.Add(new MapCavePortal("grotto-mouth", new("grotto", anchor.Key), new("sea", Slot0("sea-floor")),
                 Enumerable.Range(0, 5).Select(z => new MapLatticeVertex("grotto-floor", MapLatticeAddress.Corner(8, z))).ToArray(),
@@ -56,11 +92,12 @@ internal static partial class WaterFixtures
         }
         UpdateSpace(set, Slot0("grotto-floor"), "grotto", s => s with { Walls = s.Walls.Concat(grottoWalls).ToArray(), Portals = grottoPortals });
         UpdateSpace(set, Slot0("sea-floor"), "sea", s => s with { Walls = seaWalls.ToArray(), Portals = seaPortals });
+        foreach (string owner in aliasedEndpoints) MoveToAlias(set, owner);
 
         var water = new MapWaterSet();
         water.Media.Add(new MapWaterMediumDoc(Medium, MapWaterMediumKind.Water, 1f));
-        water.Bodies.Add(new MapWaterBodyDoc("ocean", 0f, Medium, Material,
-            new MapWaterDomainDoc(Frame, new[] { Rect(0, 0, 12, 4) }, Array.Empty<MapWaterRing>()),
+        water.Bodies.Add(new MapWaterBodyDoc("ocean", surfaceY, Medium, Material,
+            new MapWaterDomainDoc(frame, new[] { Rect(0, 0, 12, 4) }, Array.Empty<MapWaterRing>()),
             new[] { Cover("sea", "sea-floor"), Cover("grotto", "grotto-floor") }));
         return Document(set, water);
 
@@ -97,6 +134,29 @@ internal static partial class WaterFixtures
         int steps = Math.Max(Math.Abs(x1 - x0), Math.Abs(z1 - z0));
         return new(id, MapChainKind.Authored, null, Enumerable.Range(0, steps + 1).Select(i => new MapChainVertex(new MapLatticeVertex(
             surface, MapLatticeAddress.Corner(x0 + Math.Sign(x1 - x0) * i, z0 + Math.Sign(z1 - z0) * i)), heightUnits)).ToArray());
+    }
+
+    /// <summary>Adds <c>{owner}-alias</c> beside the space <paramref name="ownerId"/> and hands it the owner's
+    /// footprints, walls, portals and portal endpoints, since R2 closes each footprint column with its own space's
+    /// boundary list and lists a portal only on the record it names.</summary>
+    static void MoveToAlias(MapSurfaceSet set, string ownerId)
+    {
+        MapSurfacePatch anchor = set.Patches.Values.Single(p => p.Records.Any(r => r.Id == ownerId));
+        var owner = new MapRecordRef(ownerId, anchor.Key);
+        var alias = new MapRecordRef(ownerId + "-alias", anchor.Key);
+        int at = anchor.Records.FindIndex(r => r.Id == ownerId);
+        var space = (MapSpaceDoc)anchor.Records[at];
+        anchor.Records[at] = space with { Walls = Array.Empty<MapBoundaryRef>(), Portals = Array.Empty<MapBoundaryRef>() };
+        anchor.Records.Add(space with { Id = alias.Id, AliasOf = owner });
+        foreach (MapSurfacePatch patch in set.Patches.Values)
+            for (int i = 0; i < patch.Records.Count; i++)
+                patch.Records[i] = patch.Records[i] switch
+                {
+                    MapSpaceFootprint footprint when footprint.Space == owner => footprint with { Space = alias },
+                    MapCavePortal portal when portal.FromSpace == owner => portal with { FromSpace = alias },
+                    MapCavePortal portal when portal.ToSpace == owner => portal with { ToSpace = alias },
+                    var record => record,
+                };
     }
 
     static void UpdateSpace(MapSurfaceSet set, MapPatchKey anchor, string spaceId, Func<MapSpaceDoc, MapSpaceDoc> change)

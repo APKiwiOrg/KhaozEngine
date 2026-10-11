@@ -23,7 +23,12 @@ internal static class MapWaterFootprints
     /// and each group merges across slots by the greedy row-run rule: rows in ascending Z, each row's maximal X runs
     /// extend the rectangle opened on the row before when its X span is identical, else open a new one.
     /// <paramref name="complete"/> is false when the view cannot prove it holds every footprint the window could
-    /// meet, or a footprint's space record or lattice surface is unavailable.</summary>
+    /// meet, or when a footprint whose slot meets the window has an unavailable space record or lattice surface.
+    /// Proving the window held needs a <see cref="MapAcquireStatus.Complete"/> acquisition with a complete witness,
+    /// every surface role, no height filter, no space filter that excludes <paramref name="spaceId"/>, and a scope
+    /// rectangle that holds the window, so one unloaded patch anywhere in the scope leaves every window incomplete.
+    /// Compile views must be acquired to match. A footprint whose slot misses the window is never resolved, so its
+    /// space record is neither read nor able to clear <paramref name="complete"/>.</summary>
     internal static IReadOnlyList<MapWaterFootprintRect> Of(MapScopedSurfaces view, string spaceId, MapExactXz windowMin,
         MapExactXz windowMax, out bool complete, out int cellsInspected, out IReadOnlyList<MapPatchKey> patchesRead)
     {
@@ -37,14 +42,21 @@ internal static class MapWaterFootprints
         foreach (MapSpaceFootprint footprint in MapSpaceGeometry.Records(view).OfType<MapSpaceFootprint>()
             .OrderBy(f => f.Id, StringComparer.Ordinal))
         {
-            string? owner = Owner(footprint.Space);
+            // A footprint whose lattice surface is unknown cannot be placed, so it may meet the window.
             MapSurfaceRef? lattice = view.Surfaces.FirstOrDefault(s => s.Id == footprint.Lattice.SurfaceId);
-            if (owner is null || lattice is null)
+            if (lattice is null)
             {
                 complete = false;
                 continue;
             }
-            if (owner != spaceId || !SlotMeets(lattice.Frame, footprint.Lattice, windowMin, windowMax)) continue;
+            if (!SlotMeets(lattice.Frame, footprint.Lattice, windowMin, windowMax)) continue;
+            string? owner = Owner(footprint.Space);
+            if (owner is null)
+            {
+                complete = false;
+                continue;
+            }
+            if (owner != spaceId) continue;
             cellsInspected = checked(cellsInspected + footprint.SlotCells.Count);
             read.Add(footprint.Lattice);
             Group? group = groups.FirstOrDefault(g => g.Frame == lattice.Frame && g.Lower == footprint.Lower && g.Upper == footprint.Upper);
@@ -126,12 +138,32 @@ internal static class MapWaterFootprints
 
     /// <summary>True when the acquisition is complete with no height, role or space filter that could hide a
     /// footprint of <paramref name="spaceId"/>, and its scope holds the window.</summary>
-    static bool HoldsWindow(MapScopedSurfaces view, string spaceId, MapExactXz windowMin, MapExactXz windowMax)
+    static bool HoldsWindow(MapScopedSurfaces view, string spaceId, MapExactXz windowMin, MapExactXz windowMax) =>
+        HoldsEverything(view) && (view.Scope.SpaceIds is not { } ids || ids.Contains(spaceId)) && ScopeHolds(view, windowMin, windowMax);
+
+    /// <summary>True when the view proves that no patch exists at <paramref name="key"/>: the acquisition holds every
+    /// patch of its scope with no filter, and the key's surface is undeclared or its slot lies inside the scope.</summary>
+    internal static bool ProvesAbsent(MapScopedSurfaces view, MapPatchKey key)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        if (!HoldsEverything(view) || view.Scope.SpaceIds is not null) return false;
+        if (view.Surfaces.FirstOrDefault(s => s.Id == key.SurfaceId) is not { } surface) return true;
+        long x = checked(key.SlotX * MapPatchKey.SlotCells), z = checked(key.SlotZ * MapPatchKey.SlotCells);
+        var (min, max) = World(surface.Frame, x, z, checked(x + MapPatchKey.SlotCells), checked(z + MapPatchKey.SlotCells));
+        return ScopeHolds(view, min, max);
+    }
+
+    /// <summary>True when the acquisition is complete with a complete witness, every surface role and no height filter.</summary>
+    static bool HoldsEverything(MapScopedSurfaces view)
     {
         MapSurfaceScope scope = view.Scope;
-        if (view.Status != MapAcquireStatus.Complete || !view.Witness.Complete || scope.MinY is not null || scope.MaxY is not null ||
-            (scope.SpaceIds is { } ids && !ids.Contains(spaceId)) || Enum.GetValues<MapSurfaceRole>().Any(r => !scope.Roles.Contains(r)))
-            return false;
+        return view.Status == MapAcquireStatus.Complete && view.Witness.Complete && scope.MinY is null && scope.MaxY is null &&
+            Enum.GetValues<MapSurfaceRole>().All(scope.Roles.Contains);
+    }
+
+    static bool ScopeHolds(MapScopedSurfaces view, MapExactXz windowMin, MapExactXz windowMax)
+    {
+        MapSurfaceScope scope = view.Scope;
         MapExactXz min = new MapFramePoint(scope.Frame, new Vector3(scope.LocalMin.X, 0, scope.LocalMin.Y)).ExactWorldXz();
         MapExactXz max = new MapFramePoint(scope.Frame, new Vector3(scope.LocalMax.X, 0, scope.LocalMax.Y)).ExactWorldXz();
         return min.X.CompareTo(windowMin.X) <= 0 && min.Z.CompareTo(windowMin.Z) <= 0 &&

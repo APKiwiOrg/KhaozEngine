@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Primitives;
+using KhaozEngine.Tests.MapDoc.Storage;
 
 namespace KhaozEngine.Tests.MapDoc.Water;
 
@@ -13,6 +15,11 @@ internal static partial class WaterFixtures
     internal static MapFramePoint Point(float x, float y, float z) => new(WorldFrame.Origin, new(x, y, z));
 
     internal static MapWaterQuery Query(MapDocument doc) => new(CaveFixtures.View(doc), doc.Water!);
+
+    /// <summary>Acquires all of <paramref name="doc"/> with the scope's height filter set to
+    /// [<paramref name="minY"/>, <paramref name="maxY"/>], so patches wholly outside those heights are never read.</summary>
+    internal static MapScopedSurfaces ViewBetween(MapDocument doc, float minY, float maxY) =>
+        ScopeFixtures.Acquire(MapDocumentSurfaceSource.Capture(doc), ScopeFixtures.Whole(doc) with { MinY = minY, MaxY = maxY });
 
     /// <summary>The released peer probe of <c>SpaceMembershipTests</c>, where the alias-normalized column is
     /// <c>chamber</c> [5, 9) and <c>outside</c> [10, open).</summary>

@@ -96,13 +96,22 @@ public sealed class MapWaterQuery
 
     static CompiledBody Compile(MapWaterBodyDoc body)
     {
+        MapExactValue surface;
         try
         {
-            return new(body, MapWaterDomain.Compile(body.Domain), MapExactValue.FromSingle(body.SurfaceY), default, null);
+            surface = MapExactValue.FromSingle(body.SurfaceY);
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException or ArgumentException)
         {
             return new(body, null, default, MapWaterStatus.NotRepresentable, "surface not representable");
+        }
+        try
+        {
+            return new(body, MapWaterDomain.Compile(body.Domain), surface, default, null);
+        }
+        catch (Exception error) when (error is MapExactOverflowException or OverflowException)
+        {
+            return new(body, null, default, MapWaterStatus.NotRepresentable, "domain not representable");
         }
         catch (MapDocumentException error)
         {

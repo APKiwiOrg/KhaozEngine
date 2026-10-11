@@ -39,8 +39,9 @@ public static class MapSpaceIntervals
     /// point membership's rules for every height at once. Owners are alias-normalized and deduplicated, and a portal
     /// band on the XZ replaces the part of the column it covers, earlier bands first, as membership gives bands
     /// priority. Overlapping intervals of distinct owners make the whole column one
-    /// <see cref="MapMembershipStatus.Ambiguous"/> entry, and any other failure is one entry with that status. A
-    /// column outside every space is empty.</summary>
+    /// <see cref="MapMembershipStatus.Ambiguous"/> entry, and any other failure is one entry with that status. A column
+    /// covers every height, so over an acquisition bounded in height it is one
+    /// <see cref="MapMembershipStatus.MissingGeometry"/> entry. A column outside every space is empty.</summary>
     public static IReadOnlyList<MapSpaceInterval> Column(MapScopedSurfaces view, MapFramePoint point)
     {
         ArgumentNullException.ThrowIfNull(view);

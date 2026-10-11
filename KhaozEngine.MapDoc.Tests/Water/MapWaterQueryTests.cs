@@ -127,6 +127,28 @@ public class MapWaterQueryTests
     }
 
     [Fact]
+    public void Column_OverAVerticallyBoundedAcquisition_IsMissing()
+    {
+        MapDocument doc = WaterFixtures.OceanOverCaves();
+        var query = new MapWaterQuery(WaterFixtures.ViewBetween(doc, -45f, 10f), doc.Water!);
+        MapWaterSample refused = Assert.Single(query.Column(WaterFixtures.Point(5, 0, -2)));
+        Assert.Equal((MapWaterStatus.MissingGeometry, "column outside acquired vertical scope"), (refused.Status, refused.Detail));
+        MapWaterSample inside = query.Sample(WaterFixtures.Point(5, -35, -2));
+        Assert.Equal((MapWaterStatus.Wet, "cave-lake"), (inside.Status, inside.BodyId));
+    }
+
+    [Fact]
+    public void UnrepresentableLevel_IsReportedForItsSpaces()
+    {
+        MapDocument doc = WaterFixtures.OceanOverCaves();
+        int lake = doc.Water!.Bodies.FindIndex(b => b.Id == "cave-lake");
+        doc.Water.Bodies[lake] = doc.Water.Bodies[lake] with { SurfaceY = 1e30f };
+        MapWaterSample s = WaterFixtures.Query(doc).Sample(WaterFixtures.Point(5, -35, -2));
+        Assert.Equal((MapWaterStatus.NotRepresentable, "water body 'cave-lake': surface not representable"), (s.Status, s.Detail));
+        Assert.Equal(MapWaterStatus.Wet, WaterFixtures.Query(doc).Sample(WaterFixtures.Point(4, -1, -2)).Status);
+    }
+
+    [Fact]
     public void CollapsedFloatInterval_IsNotRepresentable()
     {
         MapDocument doc = WaterFixtures.HairlineCave();

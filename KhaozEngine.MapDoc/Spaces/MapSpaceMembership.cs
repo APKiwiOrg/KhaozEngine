@@ -64,7 +64,8 @@ public sealed class MapSpaceMembership
     }
 
     /// <summary>Evaluates every candidate footprint and incident portal band at the point's XZ without the Y filter.
-    /// A failure any height of the column would meet is returned with no parts, and an empty column is
+    /// A failure any height of the column would meet is returned with no parts, an acquisition bounded in height is
+    /// <see cref="MapMembershipStatus.MissingGeometry"/>, and an empty column is
     /// <see cref="MapMembershipStatus.Outside"/>.</summary>
     internal MapMembershipResult Column(MapFramePoint point, out IReadOnlyList<MapSpaceBoundsPart> parts)
     {
@@ -93,6 +94,9 @@ public sealed class MapSpaceMembership
                 point.Local.Z < scope.LocalMin.Y || point.Local.Z > scope.LocalMax.Y ||
                 (!column && (point.Local.Y < scope.MinY || point.Local.Y > scope.MaxY)))
                 return Failure(MapMembershipStatus.MissingGeometry, "outside acquired scope");
+            // A column covers every height, so any height bound on the acquisition leaves part of it unread.
+            if (column && (scope.MinY is not null || scope.MaxY is not null))
+                return Failure(MapMembershipStatus.MissingGeometry, "column outside acquired vertical scope");
             if (_view.Status == MapAcquireStatus.CapacityExceeded) return Failure(MapMembershipStatus.CapacityExceeded, _view.Detail);
             if (_view.Status == MapAcquireStatus.NotRepresentable) return Failure(MapMembershipStatus.NotRepresentable, _view.Detail);
             MapQueryLimits budgets = scope.Limits;

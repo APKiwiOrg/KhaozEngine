@@ -48,10 +48,56 @@ public class MapSpaceIntervalTests
             {
                 IReadOnlyList<MapSpaceInterval> column = MapSpaceIntervals.Column(view, p);
                 MapSpaceInterval at = MapSpaceIntervals.At(view, p);
+                // Every height inside a column interval resolves through point membership to that interval's space.
+                foreach (MapSpaceInterval c in column.Where(c => Holds(c, p)))
+                    Assert.Equal((c.SpaceId, MapMembershipStatus.Resolved), (at.SpaceId, at.Status));
                 if (at.SpaceId is null) continue;
-                Assert.Contains(column, c => c.SpaceId == at.SpaceId && c.Lower.CompareTo(p.ExactY()) <= 0 && (c.Upper is null || p.ExactY().CompareTo(c.Upper.Value) < 0));
+                Assert.Contains(column, c => c.SpaceId == at.SpaceId && Holds(c, p));
             }
         }
+    }
+
+    static bool Holds(MapSpaceInterval c, MapFramePoint p) =>
+        c.Status == MapMembershipStatus.Resolved && c.Lower.CompareTo(p.ExactY()) <= 0 && (c.Upper is null || p.ExactY().CompareTo(c.Upper.Value) < 0);
+
+    [Fact]
+    public void Column_ThroughAPortal_TakesTheBandAndItsChainIds()
+    {
+        // The grotto mouth on lattice x 8 owns [-5, 3) for the sea, so the grotto keeps the pieces below and above it,
+        // each cut end named by the band chain that cut it, and the sea resumes over the cliff top at +5.
+        MapScopedSurfaces view = CaveFixtures.View(WaterFixtures.SeaConnectedCave(portalBottomY: -5f));
+        MapSpaceInterval[] column = MapSpaceIntervals.Column(view, WaterFixtures.Point(8, 0, -2)).ToArray();
+        Assert.Equal(new (string?, MapExactValue, MapExactValue?, string?, string?)[]
+        {
+            ("grotto", new(-10, 1), new MapExactValue(-5, 1), "grotto-floor", "grotto-mouth-bottom"),
+            ("sea", new(-5, 1), new MapExactValue(3, 1), "grotto-mouth-bottom", "grotto-mouth-top"),
+            ("grotto", new(3, 1), new MapExactValue(5, 1), "grotto-mouth-top", "grotto-roof"),
+            ("sea", new(5, 1), null, "cliff-top", MapSpaceInterval.OpenTop),
+        }, column.Select(c => (c.SpaceId, c.Lower, c.Upper, c.LowerBoundaryId, c.UpperBoundaryId)));
+        MapSpaceInterval band = MapSpaceIntervals.At(view, WaterFixtures.Point(8, 0, -2));
+        Assert.Equal(("sea", new MapExactValue(-5, 1), (MapExactValue?)new MapExactValue(3, 1), "grotto-mouth-bottom", "grotto-mouth-top"),
+            (band.SpaceId, band.Lower, band.Upper, band.LowerBoundaryId, band.UpperBoundaryId));
+    }
+
+    [Fact]
+    public void Column_MergesOverlappingIntervalsOfOneOwner()
+    {
+        // The aliased peer chamber overlaps the chamber over [5, 9), so the two footprints merge into one interval.
+        MapScopedSurfaces view = CaveFixtures.View(CaveFixtures.WithPeerChamber("chamber"));
+        Assert.Equal(new (string?, MapExactValue, MapExactValue?)[] { ("chamber", new(5, 1), new MapExactValue(9, 1)), ("outside", new(10, 1), null) },
+            MapSpaceIntervals.Column(view, WaterFixtures.PeerPoint()).Select(c => (c.SpaceId, c.Lower, c.Upper)));
+    }
+
+    [Fact]
+    public void Column_RefusesAVerticallyBoundedAcquisition()
+    {
+        // A source may leave out every patch outside the acquired heights, so a column, which covers every height,
+        // cannot answer from such a view whatever this source returned. A point inside those heights still resolves.
+        MapScopedSurfaces view = WaterFixtures.ViewBetween(WaterFixtures.OceanOverCaves(), -45f, 10f);
+        MapSpaceInterval refused = Assert.Single(MapSpaceIntervals.Column(view, WaterFixtures.Point(3, 0, -2)));
+        Assert.Equal((MapMembershipStatus.MissingGeometry, "column outside acquired vertical scope", (string?)null),
+            (refused.Status, refused.Detail, refused.SpaceId));
+        Assert.Equal("lake-cave", MapSpaceIntervals.At(view, WaterFixtures.Point(3, -38, -2)).SpaceId);
     }
 
     [Fact]

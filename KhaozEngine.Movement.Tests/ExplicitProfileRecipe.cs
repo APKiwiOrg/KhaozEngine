@@ -10,7 +10,8 @@ namespace KhaozEngine.Tests.Movement;
 // independent writer so missing recipe inputs cannot also disappear from the expected hash.
 internal static class ExplicitProfileRecipe
 {
-    internal static string Fingerprint(ExplicitMovementProfile profile, NavBakeSources sources, bool contact)
+    internal static string Fingerprint(ExplicitMovementProfile profile, NavBakeSources sources, bool contact,
+        float footprintFraction = 0.5f, float placementOffset = 0.001f)
     {
         using var bytes = new MemoryStream();
         using var writer = new BinaryWriter(bytes, Encoding.UTF8, leaveOpen: true);
@@ -18,8 +19,8 @@ internal static class ExplicitProfileRecipe
         LongString(contact ? "contact-shell-footprint-swim-v1" : "f3-full-capsule-v1");
         if (contact)
         {
-            writer.Write(0.5f);
-            writer.Write(0.001f);
+            writer.Write(footprintFraction);
+            writer.Write(placementOffset);
             writer.Write(1u); // Within-tick ownership handoff recipe.
             writer.Write(1u); // Shell, footprint and complete medium-route proof recipe.
         }

@@ -16,8 +16,24 @@ public static class MovementSupportResolver
     public static MovementAvailability Select(in MovementSupportRequest request, MovementQueryLease queries,
         out MovementSupportPlacement? placement)
     {
+        MoveTuning tuning = MoveTuning.Default with
+        {
+            CapsuleRadius = request.Body.Radius,
+            CapsuleHalfHeight = request.Body.HalfHeight,
+            MaxSlopeRadians = request.MaxSlopeRadians,
+        };
+        return Select(request, tuning, queries, out placement);
+    }
+
+    /// <summary>Selects using the caller's shell profile, including its step height and traction band.
+    /// Body dimensions and slope must match the support request.</summary>
+    public static MovementAvailability Select(in MovementSupportRequest request, in MoveTuning tuning,
+        MovementQueryLease queries, out MovementSupportPlacement? placement)
+    {
         placement = null;
         ArgumentNullException.ThrowIfNull(queries);
+        if (tuning.CapsuleRadius != request.Body.Radius || tuning.CapsuleHalfHeight != request.Body.HalfHeight ||
+            tuning.MaxSlopeRadians != request.MaxSlopeRadians) return MovementAvailability.Invalid;
         MovementSupportCandidate[] candidates = ArrayPool<MovementSupportCandidate>.Shared.Rent(MovementQueryLease.MaxSupportCandidates);
         try
         {
@@ -41,7 +57,7 @@ public static class MovementSupportResolver
                 if (candidate.Feet.Y < minimumY || candidate.Feet.Y > maximumY ||
                     normal.Y <= 0f || normal.Y < minimumNormalY) continue;
 
-                MovementAvailability status = ClearPlacement(request, candidate, normal, queries,
+                MovementAvailability status = ClearPlacement(request, candidate, normal, tuning, queries,
                     out MovementSupportPlacement? cleared);
                 if (status != MovementAvailability.Known) return status;
                 if (cleared is not { } eligible) continue;
@@ -72,18 +88,10 @@ public static class MovementSupportResolver
     }
 
     static MovementAvailability ClearPlacement(in MovementSupportRequest request, in MovementSupportCandidate candidate,
-        Vector3 normal, MovementQueryLease queries,
+        Vector3 normal, in MoveTuning tuning, MovementQueryLease queries,
         out MovementSupportPlacement? placement)
     {
         placement = null;
-        // This compatibility door has no tuning argument. Its body and slope specialize the default
-        // contact placement profile. Canonical candidate guards run before these geometric queries.
-        MoveTuning tuning = MoveTuning.Default with
-        {
-            CapsuleRadius = request.Body.Radius,
-            CapsuleHalfHeight = request.Body.HalfHeight,
-            MaxSlopeRadians = request.MaxSlopeRadians,
-        };
         ContactShell.Validate(tuning);
         var contact = new LeasedContactQueryContext(queries, tuning,
             new(candidate.Space, candidate.Owner, queries.Identity), request.Transition);

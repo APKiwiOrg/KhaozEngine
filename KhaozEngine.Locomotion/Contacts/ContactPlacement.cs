@@ -16,7 +16,7 @@ internal static class ContactPlacement
 
     internal static SupportSample Find(ContactQueryContext queries, Vector3 feet, in MoveTuning tuning,
         float rise, float drop, out MovementContactSupportBinding? binding) =>
-        queries.FindSupport(new(new(feet.X, feet.Z), feet.Y, 0.5f * tuning.CapsuleRadius,
+        queries.FindSupport(new(new(feet.X, feet.Z), feet.Y, new GroundCoreSettings().FootRadiusFraction * tuning.CapsuleRadius,
             rise, drop, MathF.Cos(tuning.MaxSlopeRadians)), out binding);
 
     internal static bool TrySeat(ContactQueryContext queries, Vector3 feet, in SupportSample support,
@@ -29,7 +29,8 @@ internal static class ContactPlacement
         var route = new ContactMotionRoute(queries, feet);
         var seat = new GroundSeatResult(SeatOutcome.Seated, support.Height, support, 0, Vector3.Zero);
         GroundPlacement placement = GroundPlacement.Try(queries, default, feet.Y, new(feet.X, feet.Z),
-            Vector2.Zero, seat, 0.5f * tuning.CapsuleRadius, tuning, MathF.Cos(tuning.MaxSlopeRadians),
+            Vector2.Zero, seat, new GroundCoreSettings().FootRadiusFraction * tuning.CapsuleRadius,
+            tuning, MathF.Cos(tuning.MaxSlopeRadians),
             double.PositiveInfinity, ref route);
         if (!placement.Valid || !Approach(queries, target, placement.Feet, tuning)) return false;
         placed = placement.Feet;

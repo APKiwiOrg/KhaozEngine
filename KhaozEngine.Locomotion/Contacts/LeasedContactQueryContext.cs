@@ -44,7 +44,8 @@ internal sealed partial class LeasedContactQueryContext
 
     MovementAnalyticGround? Analytic(Vector3 feet)
     {
-        var query = new FootSupportQuery(new(feet.X, feet.Z), feet.Y, 0.5f * _tuning.CapsuleRadius,
+        var query = new FootSupportQuery(new(feet.X, feet.Z), feet.Y,
+            new GroundCoreSettings().FootRadiusFraction * _tuning.CapsuleRadius,
             _tuning.StepHeight, _tuning.StepHeight, MathF.Cos(_tuning.MaxSlopeRadians));
         MovementSupportRequest request = Request(query);
         Require(_lease.CheckContactSupportQuery(request, query));

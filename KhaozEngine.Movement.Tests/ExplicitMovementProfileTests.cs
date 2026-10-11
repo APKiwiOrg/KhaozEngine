@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using KhaozEngine.Locomotion;
+using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Movement;
 using Xunit;
 
@@ -17,6 +18,15 @@ public class ExplicitMovementProfileTests
     static ExplicitMovementProfile Profile(MoveTuning? tuning = null, WaterTraversalPolicy? water = null,
         NavBakeSources? sources = null, NavAreaFilter areas = default, float dt = 1f / 30, int steps = 64, string boundary = "") =>
         new("fixture", tuning ?? Tuning, water ?? new(WaterTraversalMode.SurfaceSwimmer, 7), sources ?? Sources(), areas, dt, steps, boundary);
+
+    [Fact]
+    public void RuntimeContactGeometryParticipatesInTheProfileRecipe()
+    {
+        var sources = Sources();
+        var profile = Profile(sources: sources);
+        Assert.Equal(ExplicitProfileRecipe.Fingerprint(profile, sources, contact: true,
+            new GroundCoreSettings().FootRadiusFraction, LeasedContactQueryContext.PlacementSkin), profile.Fingerprint);
+    }
 
     [Fact]
     public void SemanticSourcesAreCanonicalAndSnapshotAtProfileConstruction()

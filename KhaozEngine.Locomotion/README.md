@@ -431,10 +431,12 @@ registration and generation. Local handles never become canonical owner IDs.
 Internal lease wrappers guard the support envelope, proposal probe margins and transition origin
 before producer access, check currentness around the call, and validate world, identity and legal
 transition evidence before publication. Missing capabilities or registrations refuse explicitly.
-Repeated facts cannot change analytic height/normal or map one finite feature to a different owner.
-Analytic bindings must agree with the certified analytic fact. Each interval remembers at most
-`MaxSupportCandidates` distinct analytic room/axis facts and finite feature bindings, then returns
-CapacityExceeded. These capabilities do not change movement or the compatibility support resolver.
+Repeated facts cannot change analytic height/normal within a tick or map one finite feature to a
+different owner within the borrowed interval. Analytic bindings must agree with the certified analytic
+fact. Each contact tick remembers at most `MaxSupportCandidates` distinct analytic room/axis facts.
+Each interval remembers at most that many finite feature bindings. Either cap returns CapacityExceeded.
+A replay batch resets its analytic facts at each tick while borrowing the same pinned interval.
+These capabilities do not change movement or the compatibility support resolver.
 
 `MovementMediumSweepQuery`, `MovementCoverageSpan`, `MovementDomainContact` and
 `MovementCoverageResult` describe bounded complete-path coverage, including simultaneous wet and dry
@@ -490,7 +492,10 @@ the same height are ambiguous, even when one was current. Canonical seam aliases
 `MovementSupportPlacement.Candidate` retains the original surface point and provenance while
 `Centre` is the verified contact-shell pose at geometric support height plus the full half-height and
 the fixed 0.001 m vertical placement skin. Its compatibility profile specializes `MoveTuning.Default`
-with the request's body dimensions and slope gate. Known with null placement means no candidate is
+with the request's body dimensions and slope gate. Call
+`Select(request, tuning, queries, out placement)` for a custom shell profile, including a small body's
+step height and traction band. The tuning's body dimensions and slope must match the request.
+Known with null placement means no candidate is
 eligible. Missing physical support, contradictory binding and unsupported backend coverage refuse
 instead of returning a usable pose. Solid-contact scratch is bounded at 16384 contacts. These limits
 and tolerances belong in profile/query policy identity. Selection proves a placement only, not the
@@ -521,7 +526,8 @@ jump buffer. Cold state rebuilds canonical selection through the existing null-h
 Land support stays geometric. The published body uses one vertical 0.001 m placement offset,
 proved before shell and full-body medium queries. Accepted contact routes prove every lift, side
 segment, seat and correction under the same lease. Ground signals come from accepted walking
-segments only. A land jump stamps its speed after the move and rises next tick, retaining the
+segments only. A final air landing, slide landing or wedge has no walking remainder and clears all
+three ground signals. A land jump stamps its speed after the move and rises next tick, retaining the
 pre-jump support grant and any landing impact. No local query state enters the wire.
 
 SurfaceSwimmer admits overlapping free-water regions at one exact nominal level per coverage span.
@@ -534,8 +540,9 @@ wading-bank transition all use the same combined resolver. Bed contact alone doe
 swim-exit policy or grant footing. DryOnly and WadeOnly use the contact controller for thin channels,
 shore sliding, simultaneous solid/water constraints and body-relative depth thresholds. Positive
 forbidden starting overlap refuses placement. Every corrected segment is fully re-proved.
-When a walkable descent reaches WadeOnly's enter-depth line, its forbidden seat constrains the
-horizontal proposal and keeps the feasible along-shore component. The retry runs the same shell,
+When a walkable descent reaches WadeOnly's enter-depth line or DryOnly's water boundary, its forbidden
+seat constrains the horizontal proposal and keeps the feasible along-shore component. Flat steps
+query component seats to locate the height discontinuity. The retry runs the same shell,
 support and placement passes under the original pin and climb budget. Coverage uses the full body.
 Scripted movement commitments use the shared preparation, ballistic seed, timeout and recovery lifecycle.
 They suppress player steering and buffered jumps, retain their carried collision-clipped velocity,

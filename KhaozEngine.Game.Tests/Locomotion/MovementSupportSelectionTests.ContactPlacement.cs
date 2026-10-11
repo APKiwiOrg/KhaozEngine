@@ -11,6 +11,30 @@ public partial class MovementSupportSelectionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void PublicSelectUsesTheSmallCallersShellAndStepHeight(bool kneeWall)
+    {
+        using var scene = new Scene();
+        scene.Floor(0);
+        if (kneeWall)
+            scene.World.AddStatic(new BoxShape(new(0.05f, 0.04f, 2)), Pose.At(new(0.25f, 0.35f, 0)));
+        scene.Candidates = [Candidate(Low, 0)];
+        var tuning = MoveTuning.Default with
+        { CapsuleRadius = 0.25f, CapsuleHalfHeight = 0.4f, StepHeight = 0.25f };
+
+        Capture result = scene.Select(tuning: tuning);
+
+        Assert.Equal(MovementAvailability.Known, result.Availability);
+        if (kneeWall) Assert.Null(result.Candidate);
+        else
+        {
+            Assert.Equal(Low, result.Candidate!.Value.Owner);
+            Assert.InRange(result.Centre.Y, 0.4009f, 0.4011f);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void PublicSelectUsesTheHigherFootprintWithinTheLegsBandInEitherCandidateOrder(bool reverse)
     {
         using var scene = new Scene();

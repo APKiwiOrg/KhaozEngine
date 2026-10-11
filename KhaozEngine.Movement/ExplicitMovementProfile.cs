@@ -2,6 +2,7 @@ using System;
 using System.Security.Cryptography;
 using System.Text;
 using KhaozEngine.Locomotion;
+using KhaozEngine.Locomotion.Contacts;
 
 namespace KhaozEngine.Movement;
 
@@ -51,8 +52,8 @@ public sealed class ExplicitMovementProfile
         writer.WriteUInt16(1);
         writer.WriteLongString(utf8.GetBytes(ControllerModel));
         // Fixed explicit body mapping and phase 4b recipes. Phase 5 owns selectable tuning/bakes.
-        writer.WriteSingle(0.5f); // Footprint radius as a fraction of the body radius.
-        writer.WriteSingle(0.001f); // Vertical placement offset, separate from medium contact skin.
+        writer.WriteSingle(new GroundCoreSettings().FootRadiusFraction);
+        writer.WriteSingle(LeasedContactQueryContext.PlacementSkin);
         writer.WriteUInt32(HandoffRecipeVersion);
         writer.WriteUInt32(RouteProofRecipeVersion);
         writer.WriteLongString(utf8.GetBytes(NavBakeIdentity.CurrentEngineVersion));

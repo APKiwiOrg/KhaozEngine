@@ -183,7 +183,7 @@ public partial class MovementSupportSelectionTests
         public BepuPhysicsWorld World { get; } = new(Vector3.Zero);
         public MovementSupportCandidate[] Candidates = [];
         public void Floor(float y) => World.AddStatic(new BoxShape(new Vector3(3f, 0.05f, 3f)), Pose.At(new Vector3(0f, y - 0.05f, 0f)));
-        public Capture Select(float rise = 0.5f, MovementSupportKey? current = null)
+        public Capture Select(float rise = 0.5f, MovementSupportKey? current = null, MoveTuning? tuning = null)
         {
             using var view = World.CreateQueryViewExcludingStatics([]);
             var identity = new MovementQueryIdentity("closure", 1u, "scope");
@@ -210,10 +210,14 @@ public partial class MovementSupportSelectionTests
             };
             var acquired = environment.Acquire();
             using var lease = Assert.IsType<MovementQueryLease>(acquired.Lease);
-            var body = new MovementBodyQuery(new Vector3(0f, 0.75f, 0f), 0.3f, 0.75f, Room, current);
+            float halfHeight = tuning?.CapsuleHalfHeight ?? 0.75f;
+            var body = new MovementBodyQuery(new Vector3(0f, halfHeight, 0f),
+                tuning?.CapsuleRadius ?? 0.3f, halfHeight, Room, current);
             var request = new MovementSupportRequest(body, rise, 2f, MathF.PI / 4f,
                 new MovementTransitionContext(Room, body.Feet));
-            return SelectSupport(request, lease);
+            if (tuning is not { } profile) return SelectSupport(request, lease);
+            MovementAvailability status = MovementSupportResolver.Select(request, profile, lease, out var placement);
+            return new Capture(status, placement?.Candidate, placement?.Centre ?? default);
         }
         public void Dispose() => World.Dispose();
     }

@@ -31,42 +31,76 @@ public static class MapWaterContainment
         bool complete = true;
         MapWaterConnectivity? graph = null;
         foreach (MapWaterBodyDoc body in snapshot.Bodies.Where(b => b is not null).OrderBy(b => b.Id, StringComparer.Ordinal))
-        {
-            string? unverified;
-            try { unverified = ValidateBody(view, body, errors, ref graph); }
-            catch (Exception error) when (error is MapExactOverflowException or OverflowException) { unverified = "not representable"; }
-            catch (MapDocumentException error) when (Invalid(error))
-            {
-                errors.Add($"water body '{body.Id}': {error.Message}");
-                continue;
-            }
-            catch (MapDocumentException error) { unverified = error.Message; }
-            if (unverified is null) continue;
-            complete = false;
-            errors.Add($"water body '{body.Id}': unverified ({unverified})");
-        }
+            complete &= Check(view, body, null, errors, ref graph);
         reads = graph?.Reads ?? default;
         return new(complete, errors.AsReadOnly());
     }
 
+    /// <summary>The footprint rectangles of one covered space near the body's domain, and whether the view proves it
+    /// holds all of them.</summary>
+    internal delegate IReadOnlyList<MapWaterFootprintRect> FootprintSource(string spaceId, out bool complete);
+
+    /// <summary>A body the compile has already prepared: its exact level and compiled domain, the footprints it
+    /// gathered once under its work meter, the compile budget that every overlap test charges, and the set that
+    /// collects the anchors of the relation records connectivity evaluated.</summary>
+    internal sealed record Prepared(MapExactValue Surface, MapWaterDomain Domain, FootprintSource Footprints, MapWaterWorkBudget Pairs,
+        ISet<MapPatchKey> Read);
+
+    /// <summary>The compile's per-body entry: the same rules as <see cref="Validate(MapScopedSurfaces, MapWaterSet)"/>
+    /// for one prepared body, sharing <paramref name="graph"/> with every other body of the compile. Work past a compile
+    /// limit throws <see cref="MapWaterCapacityException"/> rather than reporting the body unverified.</summary>
+    internal static MapWaterContainmentReport ValidateBody(MapScopedSurfaces view, MapWaterBodyDoc body, Prepared prepared,
+        ref MapWaterConnectivity? graph)
+    {
+        var errors = new List<string>();
+        bool complete = Check(view, body, prepared, errors, ref graph);
+        return new(complete, errors.AsReadOnly());
+    }
+
+    /// <summary>Validates one body into <paramref name="errors"/> and returns false when it could not be verified.</summary>
+    static bool Check(MapScopedSurfaces view, MapWaterBodyDoc body, Prepared? prepared, List<string> errors, ref MapWaterConnectivity? graph)
+    {
+        string? unverified;
+        try { unverified = ValidateBody(view, body, prepared, errors, ref graph); }
+        catch (Exception error) when (error is MapExactOverflowException or OverflowException) { unverified = "not representable"; }
+        catch (MapDocumentException error) when (Invalid(error))
+        {
+            errors.Add($"water body '{body.Id}': {error.Message}");
+            return true;
+        }
+        catch (MapDocumentException error) { unverified = error.Message; }
+        if (unverified is null) return true;
+        errors.Add($"water body '{body.Id}': unverified ({unverified})");
+        return false;
+    }
+
     /// <summary>Adds the body's definite refusals to <paramref name="errors"/> and returns why it could not be
     /// verified, or null when every check ran on available data.</summary>
-    static string? ValidateBody(MapScopedSurfaces view, MapWaterBodyDoc body, List<string> errors, ref MapWaterConnectivity? graph)
+    static string? ValidateBody(MapScopedSurfaces view, MapWaterBodyDoc body, Prepared? prepared, List<string> errors,
+        ref MapWaterConnectivity? graph)
     {
         string label = $"water body '{body.Id}'";
         MapExactValue surface;
-        try { surface = MapExactValue.FromSingle(body.SurfaceY); }
-        catch (Exception error) when (error is MapExactOverflowException or OverflowException or ArgumentException)
-        {
-            errors.Add($"{label}: surfaceY is not representable");
-            return null;
-        }
         MapWaterDomain domain;
-        try { domain = MapWaterDomain.Compile(body.Domain); }
-        catch (MapDocumentException error)
+        if (prepared is not null)
         {
-            errors.Add($"{label}: {error.Message}");
-            return null;
+            surface = prepared.Surface;
+            domain = prepared.Domain;
+        }
+        else
+        {
+            try { surface = MapExactValue.FromSingle(body.SurfaceY); }
+            catch (Exception error) when (error is MapExactOverflowException or OverflowException or ArgumentException)
+            {
+                errors.Add($"{label}: surfaceY is not representable");
+                return null;
+            }
+            try { domain = MapWaterDomain.Compile(body.Domain); }
+            catch (MapDocumentException error)
+            {
+                errors.Add($"{label}: {error.Message}");
+                return null;
+            }
         }
 
         var covered = new List<string>();
@@ -90,14 +124,14 @@ public static class MapWaterContainment
         }
         if (unavailable is not null) return unavailable;
         if (covered.Count == 0) return null;
-        if (!MeetsFootprint(view, domain, covered, out bool footprintsComplete))
+        if (!MeetsFootprint(view, domain, covered, prepared, out bool footprintsComplete))
         {
             if (!footprintsComplete) return "covered footprints are unavailable";
             errors.Add($"{label} covers no space footprint");
         }
         if (covered.Count == 1) return null;
         graph ??= new MapWaterConnectivity(view);
-        string? unknown = graph.Join(label, surface, covered, errors, out bool connected);
+        string? unknown = graph.Join(label, surface, covered, errors, out bool connected, prepared?.Read);
         if (connected) return null;
         if (unknown is not null) return unknown;
         // Scoped acquisition never follows a space's relation lists, so only a view of the whole document proves that
@@ -107,20 +141,25 @@ public static class MapWaterContainment
         return null;
     }
 
-    /// <summary>True when the domain shares positive area with a footprint rectangle of a covered space.</summary>
-    static bool MeetsFootprint(MapScopedSurfaces view, MapWaterDomain domain, IReadOnlyList<string> covered, out bool complete)
+    /// <summary>True when the domain shares positive area with a footprint rectangle of a covered space. A prepared body
+    /// reads its gathered footprints and charges its compile budget.</summary>
+    static bool MeetsFootprint(MapScopedSurfaces view, MapWaterDomain domain, IReadOnlyList<string> covered, Prepared? prepared,
+        out bool complete)
     {
         complete = true;
         foreach (string space in covered)
         {
-            IReadOnlyList<MapWaterFootprintRect> rects = MapWaterFootprints.Of(view, space, domain.Min, domain.Max,
-                out bool spaceComplete, out _, out _);
+            bool spaceComplete;
+            IReadOnlyList<MapWaterFootprintRect> rects = prepared is not null ? prepared.Footprints(space, out spaceComplete)
+                : MapWaterFootprints.Of(view, space, domain.Min, domain.Max, out spaceComplete, out _, out _);
             complete &= spaceComplete;
             foreach (MapWaterFootprintRect rect in rects)
             {
                 var cells = new MapWaterDomainDoc(rect.Frame,
                     new[] { new MapWaterRect(rect.CellMinX, rect.CellMinZ, rect.CellMaxX, rect.CellMaxZ) }, Array.Empty<MapWaterRing>());
-                if (MapWaterDomain.OverlapsPositively(domain, MapWaterDomain.Compile(cells))) return true;
+                MapWaterDomain footprint = MapWaterDomain.Compile(cells);
+                if (prepared is not null ? MapWaterDomain.OverlapsPositively(domain, footprint, prepared.Pairs)
+                    : MapWaterDomain.OverlapsPositively(domain, footprint)) return true;
             }
         }
         return false;

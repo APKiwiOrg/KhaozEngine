@@ -159,7 +159,7 @@ internal static class MapWaterJson
             body.TryGetProperty("displayName", out JsonElement name) ? Text(name) : null);
     }
 
-    static void WriteFrame(Utf8JsonWriter w, MapLatticeFrame frame)
+    internal static void WriteFrame(Utf8JsonWriter w, MapLatticeFrame frame)
     {
         w.WriteStartObject();
         WriteRational(w, "cellUnitMetres", frame.CellUnitMetres);

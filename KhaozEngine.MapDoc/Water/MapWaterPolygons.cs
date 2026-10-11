@@ -181,6 +181,62 @@ internal static class MapWaterPolygons
         return current.Count >= 3 && SignedArea(current).Sign != 0 ? current : Array.Empty<MapWideXz>();
     }
 
+    /// <summary>The positive-area intersection of the convex counter-clockwise <paramref name="subject"/> with the convex
+    /// <paramref name="clip"/>, given in either orientation: empty, or one convex counter-clockwise polygon. Shared edges
+    /// and vertices alone give nothing.</summary>
+    internal static IReadOnlyList<IReadOnlyList<MapWideXz>> ClipToConvex(IReadOnlyList<MapWideXz> subject, IReadOnlyList<MapWideXz> clip)
+    {
+        IReadOnlyList<MapWideXz> part = ClipConvex(subject, CounterClockwise(clip));
+        return part.Count >= 3 && SignedArea(part).Sign > 0 ? new[] { part } : Array.Empty<IReadOnlyList<MapWideXz>>();
+    }
+
+    /// <summary>The part of the convex counter-clockwise <paramref name="subject"/> outside the convex
+    /// <paramref name="hole"/>, given in either orientation, as disjoint convex counter-clockwise polygons of positive
+    /// area. Each hole edge in turn splits off the part beyond it. A hole that shares no positive area with the subject
+    /// leaves it whole.</summary>
+    internal static IReadOnlyList<IReadOnlyList<MapWideXz>> Subtract(IReadOnlyList<MapWideXz> subject, IReadOnlyList<MapWideXz> hole)
+    {
+        IReadOnlyList<MapWideXz> ccw = CounterClockwise(hole);
+        if (!Bounds.Of(subject).OverlapsOpen(Bounds.Of(ccw)) || SignedArea(ClipConvex(subject, ccw)).Sign <= 0)
+            return new[] { subject };
+        var pieces = new List<IReadOnlyList<MapWideXz>>();
+        IReadOnlyList<MapWideXz> rest = subject;
+        for (int i = 0; i < ccw.Count; i++)
+        {
+            MapWideXz a = ccw[i], b = ccw[(i + 1) % ccw.Count];
+            if (a == b) continue;
+            IReadOnlyList<MapWideXz> beyond = ClipHalfPlane(rest, p => Cross(a, b, p).Negate());
+            if (beyond.Count >= 3 && SignedArea(beyond).Sign > 0) pieces.Add(beyond);
+            rest = ClipHalfPlane(rest, p => Cross(a, b, p));
+            if (rest.Count < 3 || SignedArea(rest).Sign <= 0) break;
+        }
+        return pieces;
+    }
+
+    /// <summary>The X interval where the convex <paramref name="convex"/> meets the line at <paramref name="z"/>, its
+    /// boundary included, or null when the polygon does not reach that line.</summary>
+    internal static (MapWideRational Min, MapWideRational Max)? ChordAt(IReadOnlyList<MapWideXz> convex, MapWideRational z)
+    {
+        MapWideRational? min = null, max = null;
+        for (int i = 0; i < convex.Count; i++)
+        {
+            MapWideXz a = convex[i], b = convex[(i + 1) % convex.Count];
+            int sa = a.Z.CompareTo(z), sb = b.Z.CompareTo(z);
+            if (sa == 0) Include(a.X);
+            if (sa * sb < 0) Include(a.X.Add(z.Subtract(a.Z).Multiply(b.X.Subtract(a.X)).Divide(b.Z.Subtract(a.Z))));
+        }
+        return min is { } low && max is { } high ? (low, high) : null;
+
+        void Include(MapWideRational x)
+        {
+            min = min is { } m ? MapWideRational.Min(m, x) : x;
+            max = max is { } n ? MapWideRational.Max(n, x) : x;
+        }
+    }
+
+    static IReadOnlyList<MapWideXz> CounterClockwise(IReadOnlyList<MapWideXz> ring) =>
+        SignedArea(ring).Sign < 0 ? ring.Reverse().ToArray() : ring;
+
     /// <summary>Splits a planar convex polygon at height <paramref name="y"/>. <c>Above</c> is the closure of the part
     /// strictly above, <c>AtOrBelow</c> the closure of the rest, each empty or one convex polygon in the input's vertex
     /// order, so a crossing polygon puts its points at <paramref name="y"/> on both sides. A polygon with no vertex

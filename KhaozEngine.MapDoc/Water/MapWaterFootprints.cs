@@ -30,7 +30,14 @@ internal static class MapWaterFootprints
     /// Compile views must be acquired to match. A footprint whose slot misses the window is never resolved, so its
     /// space record is neither read nor able to clear <paramref name="complete"/>.</summary>
     internal static IReadOnlyList<MapWaterFootprintRect> Of(MapScopedSurfaces view, string spaceId, MapExactXz windowMin,
-        MapExactXz windowMax, out bool complete, out int cellsInspected, out IReadOnlyList<MapPatchKey> patchesRead)
+        MapExactXz windowMax, out bool complete, out int cellsInspected, out IReadOnlyList<MapPatchKey> patchesRead) =>
+        Of(view, spaceId, windowMin, windowMax, out complete, out cellsInspected, out patchesRead, null);
+
+    /// <summary><see cref="Of(MapScopedSurfaces, string, MapExactXz, MapExactXz, out bool, out int, out IReadOnlyList{MapPatchKey})"/>
+    /// charging each matching footprint's cells to <paramref name="meter"/> before they are merged.</summary>
+    internal static IReadOnlyList<MapWaterFootprintRect> Of(MapScopedSurfaces view, string spaceId, MapExactXz windowMin,
+        MapExactXz windowMax, out bool complete, out int cellsInspected, out IReadOnlyList<MapPatchKey> patchesRead,
+        MapWaterWorkMeter? meter)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(spaceId);
@@ -57,6 +64,7 @@ internal static class MapWaterFootprints
                 continue;
             }
             if (owner != spaceId) continue;
+            meter?.ChargeFootprintCells(footprint.SlotCells.Count);
             cellsInspected = checked(cellsInspected + footprint.SlotCells.Count);
             read.Add(footprint.Lattice);
             Group? group = groups.FirstOrDefault(g => g.Frame == lattice.Frame && g.Lower == footprint.Lower && g.Upper == footprint.Upper);

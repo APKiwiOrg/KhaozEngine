@@ -151,7 +151,10 @@ public sealed class MapWaterDomain
 
     /// <summary>True when the domains share positive area. Shared edges and vertices alone are not overlap. Throws
     /// <see cref="MapDocumentException"/> when the checks pass <see cref="MaxPairChecks"/>.</summary>
-    public static bool OverlapsPositively(MapWaterDomain a, MapWaterDomain b)
+    public static bool OverlapsPositively(MapWaterDomain a, MapWaterDomain b) => OverlapsPositively(a, b, new MapWaterWorkBudget());
+
+    /// <summary><see cref="OverlapsPositively(MapWaterDomain, MapWaterDomain)"/> charging <paramref name="budget"/>.</summary>
+    internal static bool OverlapsPositively(MapWaterDomain a, MapWaterDomain b, MapWaterWorkBudget budget)
     {
         ArgumentNullException.ThrowIfNull(a);
         ArgumentNullException.ThrowIfNull(b);
@@ -160,7 +163,7 @@ public sealed class MapWaterDomain
         for (int i = 0; i < a._rings.Length; i++) pieces.Add((a, i));
         for (int i = 0; i < b._rings.Length; i++) pieces.Add((b, i));
         int split = a._rings.Length;
-        return OverlappingPairs(pieces, (x, y) => x < split != y < split, new MapWaterWorkBudget()).Any();
+        return OverlappingPairs(pieces, (x, y) => x < split != y < split, budget).Any();
     }
 
     /// <summary>The source of a piece, such as "rect 2" or "ring 0", for error messages.</summary>
@@ -186,7 +189,7 @@ public sealed class MapWaterDomain
 
     /// <summary>The piece as convex counter-clockwise parts: itself when convex, else its triangles, computed once.
     /// Throws <see cref="MapDocumentException"/> naming the piece when it cannot be triangulated.</summary>
-    IReadOnlyList<IReadOnlyList<MapWideXz>> ConvexParts(int piece, MapWaterWorkBudget budget)
+    internal IReadOnlyList<IReadOnlyList<MapWideXz>> ConvexParts(int piece, MapWaterWorkBudget budget)
     {
         if (_convexParts[piece] is { } cached) return cached;
         IReadOnlyList<IReadOnlyList<MapWideXz>> parts = MapWaterPolygons.IsConvex(_rings[piece])

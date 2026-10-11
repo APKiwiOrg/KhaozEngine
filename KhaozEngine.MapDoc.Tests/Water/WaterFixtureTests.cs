@@ -18,6 +18,17 @@ public class WaterFixtureTests
     [InlineData("sinkhole-below-surface")]
     [InlineData("sinkhole-at-surface")]
     [InlineData("sinkhole-above-surface")]
+    [InlineData("ocean-over-caves-third-metre-roof")]
+    [InlineData("open-sea")]
+    [InlineData("many-rect-river")]
+    [InlineData("sea-across-the-origin")]
+    [InlineData("big-cave-lake")]
+    [InlineData("unrepresentable-contour-cave")]
+    [InlineData("optics-ledge")]
+    [InlineData("optics-river")]
+    [InlineData("optics-shelf")]
+    [InlineData("optics-cave-lake")]
+    [InlineData("optics-cross-region")]
     public void SharedFixtures_PassR2Coverage(string world) =>
         Assert.Empty(MapSpaceCoverageValidator.Validate(MapScopedSurfaces.CompleteView(SharedWorld(world).Surfaces)));
 
@@ -31,6 +42,14 @@ public class WaterFixtureTests
         "sinkhole-below-surface" => WaterFixtures.SinkholeCave(openingY: -10f),
         "sinkhole-at-surface" => WaterFixtures.SinkholeCave(openingY: 0f),
         "sinkhole-above-surface" => WaterFixtures.SinkholeCave(openingY: 1f),
+        "ocean-over-caves-third-metre-roof" => WaterFixtures.OceanOverCavesWithThirdMetreRoof(),
+        // The 4096 m sea reads more faces than one default refinement context holds, so the smaller size stands in.
+        "open-sea" => WaterFixtures.OpenSea(512f),
+        "many-rect-river" => WaterFixtures.ManyRectRiver(),
+        "sea-across-the-origin" => WaterFixtures.SeaAcrossTheOrigin(),
+        "big-cave-lake" => WaterFixtures.BigCaveLake(),
+        "unrepresentable-contour-cave" => WaterFixtures.UnrepresentableContourCave(),
+        _ when world.StartsWith("optics-", StringComparison.Ordinal) => WaterOpticsScenes.Build(world["optics-".Length..]),
         _ => throw new ArgumentException("unknown shared water world", nameof(world)),
     };
 }

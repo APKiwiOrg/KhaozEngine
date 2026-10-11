@@ -22,22 +22,39 @@ internal static partial class WaterFixtures
 
     /// <summary>Seabed under an open sea, with a dry cave, a cave lake and a flooded cave below it, each cave closed by
     /// walls so the world passes R2 coverage.</summary>
-    internal static MapDocument OceanOverCaves()
+    internal static MapDocument OceanOverCaves() => BuildOceanOverCaves(thirdMetreRoof: false);
+
+    /// <summary><see cref="OceanOverCaves"/> with <c>lake-roof</c> on a lattice of one-third metre cells and 1/300 m
+    /// height units carrying the same heights, so the lake splits at the same contour across mixed lattices.</summary>
+    internal static MapDocument OceanOverCavesWithThirdMetreRoof() => BuildOceanOverCaves(thirdMetreRoof: true);
+
+    /// <summary>The cave lake of <see cref="OceanOverCaves"/> alone: <c>lake-cave</c> under its sloped roof with body
+    /// <c>cave-lake</c> at <c>SurfaceY</c> -34.</summary>
+    internal static MapDocument CaveLakeAlone()
+    {
+        var set = new MapSurfaceSet();
+        AddCaveLakeSurfaces(set, thirdMetreRoof: false);
+        AddCaveLakeSpace(set, thirdMetreRoof: false);
+        var water = new MapWaterSet();
+        water.Media.Add(new MapWaterMediumDoc(Medium, MapWaterMediumKind.Water, 1f));
+        water.Bodies.Add(Body("cave-lake", -34f, Rect(0, 0, 6, 4), Cover("lake-cave", "lake-floor")));
+        return Document(set, water);
+    }
+
+    static MapDocument BuildOceanOverCaves(bool thirdMetreRoof)
     {
         var set = new MapSurfaceSet();
         Surface(set, "seabed", MapSurfaceRole.SupportFloor, Frame, 0, 0, 12, 4, (x, _) => SeabedHeight(x));
         Surface(set, "dry-floor", MapSurfaceRole.SupportFloor, Frame, 0, 0, 6, 4, (_, _) => -6000);
         Surface(set, "dry-roof", MapSurfaceRole.Ceiling, Frame, 0, 0, 6, 4, (_, _) => -5000);
-        Surface(set, "lake-floor", MapSurfaceRole.SupportFloor, Frame, 0, 0, 6, 4, (_, _) => -4000);
-        Surface(set, "lake-roof", MapSurfaceRole.Ceiling, Frame, 0, 0, 6, 4, (x, _) => -3600 + 100 * (int)Math.Min(x, 4));
+        AddCaveLakeSurfaces(set, thirdMetreRoof);
         Surface(set, "flood-floor", MapSurfaceRole.SupportFloor, Frame, 6, 0, 8, 4, (_, _) => -4000);
         Surface(set, "flood-roof", MapSurfaceRole.Ceiling, Frame, 6, 0, 8, 4, (_, _) => -2500);
 
         Footprints(set, "sea", MapSpaceKind.Exterior, Frame, 0, 0, 12, 4, Floor("seabed"), OpenTop, Slot0("seabed"));
         Footprints(set, "dry-cave", MapSpaceKind.Cave, Frame, 0, 0, 6, 4, Floor("dry-floor"), Ceiling("dry-roof"), Slot0("dry-floor"));
         CloseWalls(set, "dry-cave", "dry-floor", "dry-roof", 0, 0, 6, 4);
-        Footprints(set, "lake-cave", MapSpaceKind.Cave, Frame, 0, 0, 6, 4, Floor("lake-floor"), Ceiling("lake-roof"), Slot0("lake-floor"));
-        CloseWalls(set, "lake-cave", "lake-floor", "lake-roof", 0, 0, 6, 4);
+        AddCaveLakeSpace(set, thirdMetreRoof);
         Footprints(set, "flooded-cave", MapSpaceKind.Cave, Frame, 6, 0, 8, 4, Floor("flood-floor"), Ceiling("flood-roof"), Slot0("flood-floor"));
         CloseWalls(set, "flooded-cave", "flood-floor", "flood-roof", 6, 0, 8, 4);
 
@@ -48,6 +65,32 @@ internal static partial class WaterFixtures
         water.Bodies.Add(Body("flooded", -20f, Rect(6, 0, 8, 4), Cover("flooded-cave", "flood-floor")));
         return Document(set, water);
     }
+
+    /// <summary>Adds the surfaces of <c>lake-cave</c>: a -40 m floor under a roof rising 1 m per metre from -36 m at
+    /// x 0 to -32 m at x 4, then flat to x 6.</summary>
+    static void AddCaveLakeSurfaces(MapSurfaceSet set, bool thirdMetreRoof)
+    {
+        Surface(set, "lake-floor", MapSurfaceRole.SupportFloor, Frame, 0, 0, 6, 4, (_, _) => -4000);
+        if (thirdMetreRoof)
+            Surface(set, "lake-roof", MapSurfaceRole.Ceiling, ThirdMetreFrame, 0, 0, 18, 12, (x, _) => -10800 + (int)Math.Min(100 * x, 1200));
+        else Surface(set, "lake-roof", MapSurfaceRole.Ceiling, Frame, 0, 0, 6, 4, LakeRoofHeight);
+    }
+
+    /// <summary>Adds the space <c>lake-cave</c> and its walls. A third-metre roof closes the walls with authored chains
+    /// at the roof's heights on the floor lattice, since the roof's own edges lie on another lattice.</summary>
+    static void AddCaveLakeSpace(MapSurfaceSet set, bool thirdMetreRoof)
+    {
+        Footprints(set, "lake-cave", MapSpaceKind.Cave, Frame, 0, 0, 6, 4, Floor("lake-floor"), Ceiling("lake-roof"), Slot0("lake-floor"));
+        if (thirdMetreRoof)
+            CloseWalls(set, "lake-cave", "lake-floor", (id, x0, z0, x1, z1) => AuthoredAlong(id, "lake-floor", x0, z0, x1, z1, LakeRoofHeight),
+                0, 0, 6, 4);
+        else CloseWalls(set, "lake-cave", "lake-floor", "lake-roof", 0, 0, 6, 4);
+    }
+
+    static int LakeRoofHeight(long x, long z) => -3600 + 100 * (int)Math.Min(x, 4);
+
+    /// <summary>One-third metre cells and 1/300 m height units, rows toward negative Z.</summary>
+    static MapLatticeFrame ThirdMetreFrame => new(new(1, 3), new(1, 300), MapRowDirection.NegativeZ, MapHeightDatum.WorldY0);
 
     /// <summary><see cref="OceanOverCaves"/> plus body <c>ring</c>, one ring domain over the given addresses that
     /// covers <c>dry-cave</c>.</summary>

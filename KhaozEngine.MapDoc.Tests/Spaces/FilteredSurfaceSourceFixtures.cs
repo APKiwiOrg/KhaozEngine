@@ -12,12 +12,21 @@ internal sealed class FilteredSurfaceSource : IMapSurfaceAcquisitionSource
 {
     readonly IMapSurfaceAcquisitionSource _inner;
     readonly HashSet<MapPatchKey> _unloaded;
+    readonly HashSet<MapPatchKey> _knownEmpty;
 
     internal FilteredSurfaceSource(IMapSurfaceSource inner, params MapPatchKey[] unloaded)
+        : this(inner, unloaded, Array.Empty<MapPatchKey>())
+    {
+    }
+
+    /// <summary>Unloads <paramref name="unloaded"/> and certifies each of <paramref name="knownEmpty"/> as a known-empty
+    /// slot, as a source that proves no patch exists there would.</summary>
+    internal FilteredSurfaceSource(IMapSurfaceSource inner, IReadOnlyCollection<MapPatchKey> unloaded, IReadOnlyCollection<MapPatchKey> knownEmpty)
     {
         _inner = inner as IMapSurfaceAcquisitionSource
             ?? throw new ArgumentException("filtered fixture source requires bounded acquisition", nameof(inner));
         _unloaded = unloaded.ToHashSet();
+        _knownEmpty = knownEmpty.ToHashSet();
     }
 
     public string SnapshotId => _inner.SnapshotId;
@@ -62,11 +71,14 @@ internal sealed class FilteredSurfaceSource : IMapSurfaceAcquisitionSource
             int before = inner.PagesRead;
             MapPatchFindResult found = inner.FindPatches();
             if (found.Status == MapFindStatus.CapacityExceeded) return found;
-            MapPatchRead[] reads = found.Patches.Select(source.Filter).ToArray();
+            MapPatchRead[] reads = found.Patches.Where(p => !source._knownEmpty.Contains(p.Key)).Select(source.Filter).ToArray();
             var unavailable = new SortedDictionary<MapPatchKey, MapPatchRead>();
             foreach (MapPatchRead read in found.Unavailable.Select(source.Filter).Concat(reads.Where(p => p.Status == MapPatchStatus.Unloaded)))
                 unavailable[read.Key] = read;
             var empty = found.KnownEmpty.ToList();
+            foreach (MapPatchRead certified in found.Patches.Where(p => source._knownEmpty.Contains(p.Key)))
+                empty.Add(new(certified.Key.SurfaceId, new(certified.Key.SlotX, certified.Key.SlotZ,
+                    checked(certified.Key.SlotX + 1), checked(certified.Key.SlotZ + 1))));
             try
             {
                 foreach (MapPatchKey key in source._unloaded.Order())

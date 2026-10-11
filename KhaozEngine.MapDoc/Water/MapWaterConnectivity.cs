@@ -50,9 +50,11 @@ internal sealed class MapWaterConnectivity
 
     /// <summary>Whether <paramref name="covered"/> forms one set over the edges joining two of its spaces whose exact
     /// aperture bottom is strictly below <paramref name="surface"/>. An edge with one endpoint outside the set is
-    /// skipped. An edge whose geometry is definitely invalid adds an error under <paramref name="label"/> and joins
-    /// nothing. Returns why an edge that could join the set could not be evaluated, or null.</summary>
-    internal string? Join(string label, MapExactValue surface, IReadOnlyList<string> covered, List<string> errors, out bool connected)
+    /// skipped, and <paramref name="read"/> collects the record anchors of every edge evaluated. An edge whose geometry
+    /// is definitely invalid adds an error under <paramref name="label"/> and joins nothing. Returns why an edge that
+    /// could join the set could not be evaluated, or null.</summary>
+    internal string? Join(string label, MapExactValue surface, IReadOnlyList<string> covered, List<string> errors, out bool connected,
+        ISet<MapPatchKey>? read = null)
     {
         var adjacency = covered.ToDictionary(id => id, _ => new List<string>(), StringComparer.Ordinal);
         var candidates = new SortedSet<int>(_unresolved);
@@ -73,6 +75,8 @@ internal sealed class MapWaterConnectivity
         {
             string? a = edge.From.Owner?.Id, b = edge.To.Owner?.Id;
             if ((a is not null && !adjacency.ContainsKey(a)) || (b is not null && !adjacency.ContainsKey(b))) return;
+            read?.Add(edge.Aperture.Anchor);
+            if (edge.Link is { } link) read?.Add(link.Anchor);
             if (edge.From.Error is { } fromError && edge.To.Error is not null)
             {
                 // With both endpoints unresolved the edge may join any spaces, so it leaves every disconnected body unknown.

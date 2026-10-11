@@ -89,7 +89,8 @@ public static class MapWorldBuilder
         return new MapBuiltWorld(resolved, surfaces, placements, terrain, statics, diagnostics.AsReadOnly(),
             WorldBounds(document.Bounds, statics, placements), document.TileSize, buildHash, native,
             native ? null : options.LegacySupportHeight, sculpt, sculptCellSize, terrainBlock, legacyIdentity,
-            bodies, Array.AsReadOnly(media), waterDigest, legacyWaterLevel: null);
+            bodies, Array.AsReadOnly(media), waterDigest,
+            legacyWaterLevel: !native && document.Water is null ? document.Terrain.WaterLevel : null);
     }
 
     /// <summary>The compiled bodies of <paramref name="water"/>, after refusing any body that is not complete.</summary>

@@ -44,6 +44,24 @@ internal static partial class NativeWorldFixtures
 
     internal static MapBuiltWorld BuildBridgeOverRiver() => Build(BridgeOverRiver());
 
+    /// <summary>The resolver-1 strip with its global water level set to <paramref name="level"/> and no bounded
+    /// water section.</summary>
+    internal static MapBuiltWorld BuildLegacyStripWithWaterLevel(float level)
+    {
+        NativeFixture fixture = LegacyCrate();
+        MapDocument document = fixture.Document;
+        document.Bounds = new() { MinX = 0, MinZ = 0, MaxX = 192, MaxZ = 64 };
+        document.PlayableBounds = new() { MinX = 0, MinZ = 0, MaxX = 192, MaxZ = 64 };
+        document.Placements[0].X = 16f;
+        document.Placements[0].Z = 16f;
+        MapPlacement deck = OnFloor("seam-deck", "bridge-deck", 64f, 32f);
+        deck.Y = LegacyStripDeckTopY;
+        document.Placements.Add(deck);
+        document.Terrain.WaterLevel = level;
+        return MapWorldBuilder.Build(document, fixture.Assets,
+            Options() with { Resolve = LegacyResolveOptions, LegacySupportHeight = (_, _) => LegacyStripGroundY });
+    }
+
     /// <summary>A 256 by 128 m world of 64 m tiles, x 0 to 256 and z -64 to 64, over a flat floor at -2 m with one
     /// exterior space over every cell. Body <c>river</c> at <c>SurfaceY</c> -1 is the L of world rectangles x 8 to 24
     /// by z -48 to 48 and x 24 to 104 by z 8 to 24, reaching storage tiles (0, -1), (0, 0) and (1, 0) and navigation

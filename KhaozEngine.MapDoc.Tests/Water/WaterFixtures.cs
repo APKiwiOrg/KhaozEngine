@@ -20,7 +20,8 @@ internal static partial class WaterFixtures
     const string Medium = "sea-water";
     const string Material = "water-material";
 
-    /// <summary>Seabed under an open sea, with a dry cave, a cave lake and a flooded cave below it.</summary>
+    /// <summary>Seabed under an open sea, with a dry cave, a cave lake and a flooded cave below it, each cave closed by
+    /// walls so the world passes R2 coverage.</summary>
     internal static MapDocument OceanOverCaves()
     {
         var set = new MapSurfaceSet();
@@ -36,7 +37,9 @@ internal static partial class WaterFixtures
         Footprints(set, "dry-cave", MapSpaceKind.Cave, Frame, 0, 0, 6, 4, Floor("dry-floor"), Ceiling("dry-roof"), Slot0("dry-floor"));
         CloseWalls(set, "dry-cave", "dry-floor", "dry-roof", 0, 0, 6, 4);
         Footprints(set, "lake-cave", MapSpaceKind.Cave, Frame, 0, 0, 6, 4, Floor("lake-floor"), Ceiling("lake-roof"), Slot0("lake-floor"));
+        CloseWalls(set, "lake-cave", "lake-floor", "lake-roof", 0, 0, 6, 4);
         Footprints(set, "flooded-cave", MapSpaceKind.Cave, Frame, 6, 0, 8, 4, Floor("flood-floor"), Ceiling("flood-roof"), Slot0("flood-floor"));
+        CloseWalls(set, "flooded-cave", "flood-floor", "flood-roof", 6, 0, 8, 4);
 
         var water = new MapWaterSet();
         water.Media.Add(new MapWaterMediumDoc(Medium, MapWaterMediumKind.Water, 1f));

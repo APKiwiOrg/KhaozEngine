@@ -259,12 +259,13 @@ covered spaces.
 One canonical codec (`MapWaterSetJsonConverter` over `MapWaterJson`) writes the section in the monolithic file,
 the tiled manifest and every identity. It writes media by key and bodies by id in ordinal order, each record's
 members in a fixed order, and rects, rings and covers in stored order, so reordering media or bodies changes
-neither bytes nor hash. Every water object is closed. Lattice addresses are `{ "x", "z", "d" }` objects whose
-coordinates, like rect bounds and cover slots, are canonical signed int64 decimal strings (`MapSignedDecimal`,
-the grammar the topology codec uses), and they read back through `MapLatticeAddress.Create`. The section enters
-`MapDocumentHash` and the native root digest through the manifest globals only when present, so a document
-without water keeps its released identity. `MapWaterSet.Digest`, `BodyDigest` and `MediumDigest` hash the same
-canonical bytes under their own domain strings.
+neither bytes nor hash. A `surfaceY` of negative zero writes as zero, so one level has one identity. Every water
+object is closed, and a null medium or body refuses as a document error. Lattice addresses are `{ "x", "z", "d" }`
+objects whose coordinates, like rect bounds and cover slots, are canonical signed int64 decimal strings
+(`MapSignedDecimal`, the grammar the topology codec uses), and they read back through `MapLatticeAddress.Create`.
+The section enters `MapDocumentHash` and the native root digest through the manifest globals only when present, so
+a document without water keeps its released identity. `MapWaterSet.Digest`, `BodyDigest` and `MediumDigest` hash
+the same canonical bytes under their own domain strings.
 
 ## Storage ownership
 

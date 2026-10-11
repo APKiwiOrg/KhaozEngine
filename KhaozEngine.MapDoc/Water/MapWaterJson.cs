@@ -37,6 +37,9 @@ internal static class MapWaterJson
 {
     internal static void Write(Utf8JsonWriter w, MapWaterSet water)
     {
+        // Null entries refuse before ordering reads their keys.
+        foreach (MapWaterMediumDoc medium in water.Media) Require(medium, "water medium");
+        foreach (MapWaterBodyDoc body in water.Bodies) Require(body, "water body");
         w.WriteStartObject();
         w.WriteStartArray("media");
         foreach (MapWaterMediumDoc medium in water.Media.OrderBy(m => m.Key, StringComparer.Ordinal)) WriteMedium(w, medium);
@@ -64,7 +67,8 @@ internal static class MapWaterJson
         MapWaterDomainDoc domain = Require(body.Domain, label + " domain");
         w.WriteStartObject();
         w.WriteString("id", body.Id);
-        w.WriteNumber("surfaceY", body.SurfaceY);
+        // Negative zero is the same level as zero, so it writes as zero and shares one identity.
+        w.WriteNumber("surfaceY", body.SurfaceY == 0f ? 0f : body.SurfaceY);
         w.WriteString("medium", body.Medium);
         w.WriteString("renderMaterial", body.RenderMaterial);
         w.WriteStartObject("domain");

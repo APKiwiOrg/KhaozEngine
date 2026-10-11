@@ -72,9 +72,56 @@ public class MapWaterContainmentTests
     [Theory]
     [InlineData(1f)]
     [InlineData(null)]
-    public void SeaConnectedCave_RefusesWhenTheConnectionIsDryOrAbsent(float? portalBottomY) =>
-        Assert.Contains(Check(WaterFixtures.SeaConnectedCave(portalBottomY)).Errors,
-            e => e.Contains("water body 'ocean': covered spaces are not connected below its surface", StringComparison.Ordinal));
+    public void SeaConnectedCave_RefusesWhenTheConnectionIsDryOrAbsent(float? portalBottomY)
+    {
+        MapWaterContainmentReport report = Check(WaterFixtures.SeaConnectedCave(portalBottomY));
+        Assert.True(report.Complete);
+        Assert.Contains(report.Errors, e => e.Contains("water body 'ocean': covered spaces are not connected below its surface", StringComparison.Ordinal));
+    }
+
+    // Scoped acquisition never follows a space's relation lists, so a view without the portal cannot prove the covered
+    // spaces apart, whether the portal is listed on the covers or only on their aliases.
+    [Theory]
+    [InlineData("")]
+    [InlineData("sea,grotto")]
+    public void RelationOutsideTheView_IsUnverified_NotDisconnected(string aliased)
+    {
+        string[] owners = aliased.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        MapDocument doc = WaterFixtures.SeaConnectedCaveWithPortalOnRoof(owners);
+        Assert.Equal((true, 0), (Check(doc).Complete, Check(doc).Errors.Count));
+        var refs = WaterFixtures.SeaCaveRefs(doc);
+        Assert.Equal("grotto-roof", refs.Portal.Anchor.SurfaceId);
+        MapScopedSurfaces view = WaterFixtures.ViewWithUnloaded(doc, "grotto-roof");
+        MapRecordRef[] spaces = new[] { refs.Sea, refs.Grotto }
+            .Concat(owners.Select(o => o == "sea" ? refs.Sea : refs.Grotto).Select(r => new MapRecordRef(r.Id + "-alias", r.Anchor))).ToArray();
+        Assert.True(WaterFixtures.RecordsAcquired(view, spaces));
+        Assert.DoesNotContain(refs.Portal, view.Witness.Records);
+
+        MapWaterContainmentReport report = MapWaterContainment.Validate(view, doc.Water!);
+        Assert.False(report.Complete);
+        Assert.Equal(new[] { "water body 'ocean': unverified (covered spaces not proven connected in this view)" }, report.Errors);
+    }
+
+    // Every body filters one graph built from the view's relations, so splitting the ocean into three bodies over the
+    // same portal reads the portal and each distinct endpoint once, as one body does.
+    [Fact]
+    public void SeveralBodiesOverOnePortal_ShareOneGraph()
+    {
+        MapDocument doc = WaterFixtures.SeaConnectedCave(portalBottomY: -5f);
+        MapScopedSurfaces view = CaveFixtures.View(doc);
+        MapWaterContainmentReport one = MapWaterContainment.Validate(view, doc.Water!, out MapWaterConnectivityReads oneReads);
+        MapWaterBodyDoc ocean = doc.Water!.Bodies.Single();
+        MapWaterSet split = doc.Water.Clone();
+        split.Bodies.Clear();
+        for (int i = 0; i < 3; i++)
+            split.Bodies.Add(ocean with { Id = $"ocean-{i}", Domain = ocean.Domain with { Rects = new[] { new MapWaterRect(4 * i, 0, 4 * i + 4, 4) } } });
+        MapWaterContainmentReport three = MapWaterContainment.Validate(view, split, out MapWaterConnectivityReads threeReads);
+
+        Assert.Equal((true, 0), (one.Complete, one.Errors.Count));
+        Assert.Equal((true, 0), (three.Complete, three.Errors.Count));
+        Assert.Equal(new MapWaterConnectivityReads(Relations: 1, Endpoints: 2), oneReads);
+        Assert.Equal(oneReads, threeReads);
+    }
 
     [Theory]
     [InlineData(-10f, true)]

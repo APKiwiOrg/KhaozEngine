@@ -34,6 +34,12 @@ internal static partial class WaterFixtures
     internal static MapDocument SeaConnectedCaveThroughAliases(params string[] owners) =>
         SeaConnectedCave(Frame, 100, -500, 0f, owners);
 
+    /// <summary><see cref="SeaConnectedCaveThroughAliases"/> with the portal record anchored in <c>grotto-roof</c>
+    /// instead of beside the grotto, so a view that unloads the roof holds both covers and their aliases but not the
+    /// portal.</summary>
+    internal static MapDocument SeaConnectedCaveWithPortalOnRoof(params string[] owners) =>
+        SeaConnectedCave(Frame, 100, -500, 0f, owners, Slot0("grotto-roof"));
+
     /// <summary><see cref="SeaConnectedCave(float?)"/> at a -5 m portal bottom whose bottom chain is an authored chain
     /// with one vertex missing its height, so the portal aperture is invalid. Unvalidated.</summary>
     internal static MapDocument SeaConnectedCaveWithInvalidPortalChain()
@@ -51,7 +57,7 @@ internal static partial class WaterFixtures
         (RecordRef(doc, "grotto-mouth"), RecordRef(doc, "grotto"), RecordRef(doc, "sea"));
 
     static MapDocument SeaConnectedCave(MapLatticeFrame frame, int unitsPerMetre, int? portalBottomUnits, float surfaceY,
-        IReadOnlyCollection<string> aliasedEndpoints)
+        IReadOnlyCollection<string> aliasedEndpoints, MapPatchKey? portalAnchor = null)
     {
         var set = new MapSurfaceSet();
         Surface(set, "sea-floor", MapSurfaceRole.SupportFloor, frame, 0, 0, 8, 4, (_, _) => -10 * unitsPerMetre);
@@ -84,11 +90,12 @@ internal static partial class WaterFixtures
             anchor.Records.Add(top);
             if (bottomUnits > -10 * unitsPerMetre) AddWestStrip("grotto-riser", floorEdge, bottom);
             AddWestStrip("grotto-header", top, roofEdge);
-            anchor.Records.Add(new MapCavePortal("grotto-mouth", new("grotto", anchor.Key), new("sea", Slot0("sea-floor")),
+            MapPatchKey portalKey = portalAnchor ?? anchor.Key;
+            set.Patches[portalKey].Records.Add(new MapCavePortal("grotto-mouth", new("grotto", anchor.Key), new("sea", Slot0("sea-floor")),
                 Enumerable.Range(0, 5).Select(z => new MapLatticeVertex("grotto-floor", MapLatticeAddress.Corner(8, z))).ToArray(),
                 new(bottom.Id, anchor.Key), new(top.Id, anchor.Key)));
-            grottoPortals = new[] { new MapBoundaryRef(new("grotto-mouth", anchor.Key), MapSide.Front) };
-            seaPortals = new[] { new MapBoundaryRef(new("grotto-mouth", anchor.Key), MapSide.Back) };
+            grottoPortals = new[] { new MapBoundaryRef(new("grotto-mouth", portalKey), MapSide.Front) };
+            seaPortals = new[] { new MapBoundaryRef(new("grotto-mouth", portalKey), MapSide.Back) };
         }
         UpdateSpace(set, Slot0("grotto-floor"), "grotto", s => s with { Walls = s.Walls.Concat(grottoWalls).ToArray(), Portals = grottoPortals });
         UpdateSpace(set, Slot0("sea-floor"), "sea", s => s with { Walls = seaWalls.ToArray(), Portals = seaPortals });

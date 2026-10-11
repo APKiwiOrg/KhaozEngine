@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Locomotion.Contacts;
 
 namespace KhaozEngine.Locomotion;
 
@@ -13,8 +14,8 @@ public static partial class ExplicitCharacterMovement
         if (!float.IsFinite(command.Move.X) || !float.IsFinite(command.Move.Y) || !float.IsFinite(command.CameraYaw))
             return Hold(state, MovementStepOutcome.EnvironmentInvalid);
         var (direction, fraction, run) = CharacterMovement.ResolveCameraCommand(command, tuning);
-        return StepCore(state, direction, fraction, run, command.Jump,
-            command.FaceCamera ? command.CameraYaw : null, deltaSeconds, tuning, water, queries, boundary);
+        return ContactController.StepLeased(state, direction, fraction, run, command.Jump,
+            deltaSeconds, tuning, water, queries, boundary, command.FaceCamera ? command.CameraYaw : null);
     }
 
     public static MovementStepResult StepTowards(in FramedMovementState state, Vector2 direction, bool run,
@@ -23,10 +24,10 @@ public static partial class ExplicitCharacterMovement
         if (!float.IsFinite(direction.X) || !float.IsFinite(direction.Y))
             return Hold(state, MovementStepOutcome.EnvironmentInvalid);
         var (resolved, fraction) = CharacterMovement.ResolveWorldDir(direction, preserveSmallMagnitude: true);
-        return StepCore(state, resolved, fraction, run, false, null, deltaSeconds, tuning, water, queries, boundary);
+        return ContactController.StepLeased(state, resolved, fraction, run, false, deltaSeconds, tuning, water, queries, boundary);
     }
 
-    static MovementStepResult StepCore(in FramedMovementState input, Vector2 direction, float fraction,
+    internal static MovementStepResult StepFluid(in FramedMovementState input, Vector2 direction, float fraction,
         bool run, bool jump, float? facing, float dt, in MoveTuning requestedTuning, in WaterTraversalPolicy water,
         MovementQueryLease queries, MovementBoundary? boundary = null)
     {

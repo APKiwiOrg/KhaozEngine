@@ -496,24 +496,24 @@ swept movement or water transitions required to reach it.
 ### Explicit movement development status
 
 The [2026-10-09 owner amendment](../docs/design/SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md)
-assigns all ground movement to #438, including this explicit path. Its phase 4 handoff will replace
-land support selection and ground passes with the shared knee-height shell and certified footprint
-core. Swimming retains medium proofs, water motion/policies and leased admission/transport.
-The code described below is the pre-handoff implementation. The bank-step RED remains open.
+assigns all ground movement to #438, including this explicit path. Explicit land ticks now use the
+shared contact controller's ground, slide and air passes, knee-height shell and certified footprint
+support. Swimming retains medium proofs, water motion/policies and leased admission/transport.
+The unchanged bank-step regression passes. Within-tick swimming handoffs and contact-owned
+admission/continuation remain later parts of phase 4b.
 
 `ExplicitCharacterMovement.Step` and `StepTowards` use a caller-owned `MovementQueryLease` and
 return `MovementStepResult`. Publish its pure framed state before disposing the lease. Camera and
-world commands share the existing direction and facing rules and the same capsule resolver.
+world commands share the existing direction and facing rules and one internal leased entry.
 `Advanced` and `Blocked` are distinct from unresolved/invalid environment, placement refusal and
 frame mismatch. A refusal holds the recorded pose/frame, clears per-tick effects and consumes the
 jump buffer. Cold state rebuilds canonical selection through the existing null-hint witness.
 
-The combined resolver checks medium coverage on every accepted solid prefix and correction using
-the same outward capsule enclosure. Certified dry paths can move, collide, settle onto proved
-support and land-jump. Water-origin flight over certified dry space retains swim pace and direction
-scaling, then clears its excursion on proved footing. Step-up selects an eligible support, traces
-the actual rise and then its horizontal approach, and grants footing only after both paths pass.
-No local query state enters the wire.
+Land support stays geometric. The published body uses one vertical 0.001 m placement offset,
+proved before shell and full-body medium queries. Accepted contact routes prove every lift, side
+segment, seat and correction under the same lease. Ground signals come from accepted walking
+segments only. A land jump stamps its speed after the move and rises next tick, retaining the
+pre-jump support grant and any landing impact. No local query state enters the wire.
 
 SurfaceSwimmer admits overlapping free-water regions at one exact nominal level per coverage span.
 Distinct equal-level domain keys are allowed. Sequential separated levels are not simultaneous ambiguity.
@@ -522,17 +522,18 @@ free levels remain Unresolved until a transition policy is defined. SM2-certifie
 with a closed region does not invent positive wet overlap. A local bed/ceiling column is never extrapolated into a whole-region permission.
 Buoyancy, independent surface jumps, ceiling/wall collision, descent back into water and a proved
 wading-bank transition all use the same combined resolver. Bed contact alone does not override the
-swim-exit policy or grant footing. DryOnly and WadeOnly use the same resolver for thin channels,
+swim-exit policy or grant footing. DryOnly and WadeOnly use the contact controller for thin channels,
 shore sliding, simultaneous solid/water constraints and body-relative depth thresholds. Positive
 forbidden starting overlap refuses placement. Every corrected segment is fully re-proved.
 Scripted movement commitments use the shared preparation, ballistic seed, timeout and recovery lifecycle.
 They suppress player steering and buffered jumps, retain their carried collision-clipped velocity,
-and use the same solid/medium resolver. Surface entry aborts the commitment. An environment refusal
+and use the same leased contact tick on land. Surface entry aborts the commitment. An environment refusal
 preserves its original lifecycle and pose while consuming the player press. Sharded integration,
 generic nav proof and native acceptance remain in development.
 Dry explicit motion uses carried coyote/buffer timers and the existing pure air-momentum law.
 Collision denial clips the carried horizontal velocity while keeping the unconstrained command for
-anomaly measurement. Unsupported wet presses cannot borrow the dry coyote/buffer path. Nonfinite
+anomaly measurement. Unsupported SurfaceSwimmer wet presses cannot borrow the dry coyote/buffer path.
+WadeOnly airborne shallows use the land coyote/buffer rules and discard stale swimming history. Nonfinite
 carried motion is refused before placement or movement. An unsupported, non-rising cold pose in the
 certified surface-contact band derives swimming without first sinking below the entry threshold.
 `ReclassifyContinuation` rebuilds current footing/water facts without advancing a live transferred

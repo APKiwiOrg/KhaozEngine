@@ -15,7 +15,7 @@ public partial class ExplicitCharacterMovementTests
     {
         using var scene = new Scene(floor: true, waterRegions:
             [new Water("channel", "room", new(new(1, 0, -8), new(1.05f, surface, 8)), surface)]);
-        var tuning = Tuning with { CapsuleHalfHeight = halfHeight };
+        var tuning = Tuning with { CapsuleHalfHeight = halfHeight, StepHeight = halfHeight == 0.4f ? 0.25f : Tuning.StepHeight };
         var start = scene.State(new(0, halfHeight + 0.002f, 0), grounded: true);
         var result = ExplicitCharacterMovement.StepTowards(start, Vector2.UnitX, false, 1, tuning, new(mode), scene.Lease);
         Assert.Equal(MovementStepOutcome.Blocked, result.Outcome);
@@ -82,7 +82,7 @@ public partial class ExplicitCharacterMovementTests
     public void WadeOnlyStopsAtItsOwnBodyDepthThresholdDuringDescent(float halfHeight)
     {
         using var scene = new Scene(wet: true);
-        var tuning = Tuning with { CapsuleHalfHeight = halfHeight };
+        var tuning = Tuning with { CapsuleHalfHeight = halfHeight, StepHeight = halfHeight == 0.4f ? 0.25f : Tuning.StepHeight };
         float boundary = 1 + halfHeight * (1 - 2 * tuning.SwimEnterDepthFraction);
         var result = ExplicitCharacterMovement.StepTowards(scene.State(new(0, boundary + 0.2f, 0)),
             Vector2.UnitX, false, 0.2f, tuning, new(WaterTraversalMode.WadeOnly), scene.Lease);

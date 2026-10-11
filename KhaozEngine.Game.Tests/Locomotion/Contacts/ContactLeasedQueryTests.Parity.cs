@@ -96,11 +96,11 @@ public partial class ContactLeasedQueryTests
         static Vector3 queriesFeet(MoveState state) => state.Position - new Vector3(0, 0.75f, 0);
     }
 
-    static void AssertBits(object expected, object actual)
+    static void AssertBits(object expected, object actual, string path = "state")
     {
         Assert.Equal(expected.GetType(), actual.GetType());
         if (expected is float f)
-        { Assert.Equal(BitConverter.SingleToInt32Bits(f), BitConverter.SingleToInt32Bits((float)actual)); return; }
+        { Assert.True(BitConverter.SingleToInt32Bits(f) == BitConverter.SingleToInt32Bits((float)actual), $"{path}: expected {f:R}, actual {actual}"); return; }
         if (expected is double d)
         { Assert.Equal(BitConverter.DoubleToInt64Bits(d), BitConverter.DoubleToInt64Bits((double)actual)); return; }
         Type type = expected.GetType();
@@ -109,7 +109,7 @@ public partial class ContactLeasedQueryTests
         {
             object? left = field.GetValue(expected), right = field.GetValue(actual);
             if (left is null) Assert.Null(right);
-            else { Assert.IsType(left.GetType(), right); AssertBits(left, right!); }
+            else { Assert.IsType(left.GetType(), right); AssertBits(left, right!, path + "." + field.Name); }
         }
     }
 }

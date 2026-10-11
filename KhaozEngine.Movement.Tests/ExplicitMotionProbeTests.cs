@@ -180,10 +180,11 @@ public class ExplicitMotionProbeTests
         {
             Environment = new([new Room("room", new(new(-16), new(16)))], wet
                 ? [new Water("lake", "room", new(new(-8, -4, -8), new(8, 1, 8)), 1)] : []);
-            Environment.Physics.AddStatic(new BoxShape(new(8, 0.1f, 8)), Pose.At(origin + new Vector3(0, (wet ? -4 : 0) - 0.1f, 0)));
+            var floor = Environment.Physics.AddStatic(new BoxShape(new(8, 0.1f, 8)), Pose.At(origin + new Vector3(0, (wet ? -4 : 0) - 0.1f, 0)));
+            Environment.RegisterBoxSupport(floor, "floor", "room");
             if (wall) Environment.Physics.AddStatic(new BoxShape(new(0.03125f, 4, 8)), Pose.At(origin + new Vector3(2, 0, 0)));
             if (origin != Vector3.Zero) Environment.Physics.Rebase(origin);
-            Lease = Environment.Acquire(null, 1, 4, WorldFrame.Nearest(origin));
+            Lease = Environment.Acquire(null, 4, 4, WorldFrame.Nearest(origin));
             Environment.Acquisition.OnSupport = (in MovementSupportRequest request, Span<MovementSupportCandidate> candidates) =>
             {
                 float y = wet ? -4 : 0;

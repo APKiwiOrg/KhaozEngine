@@ -100,8 +100,9 @@ public partial class ExplicitCharacterMovementTests
         Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
         Assert.False(result.State.State.Grounded);
         Assert.Null(result.State.Selection!.Value.Support);
-        Assert.InRange(result.State.State.VerticalVelocity, 4.9999f, 5.0001f);
-        Assert.InRange(result.State.State.Position.Y, 1.2509f, 1.2521f);
+        Assert.Equal(7, result.State.State.VerticalVelocity);
+        Assert.Equal(state.State.Position, result.State.State.Position);
+        Assert.True(result.State.State.SupportGranted);
         Assert.Equal(0, result.State.State.JumpBufferRemaining);
     }
 
@@ -229,7 +230,7 @@ public partial class ExplicitCharacterMovementTests
             if (ceiling is { } top) Environment.Physics.AddStatic(new BoxShape(new(8, 0.125f, 8)),
                 Pose.At(origin + new Vector3(0, top + 0.125f, 0)));
             if (origin != Vector3.Zero) Environment.Physics.Rebase(origin);
-            Lease = Environment.Acquire(cold ? null : "room", 1, 4, KhaozEngine.Primitives.WorldFrame.Nearest(origin));
+            Lease = Environment.Acquire(cold ? null : "room", 4, 4, KhaozEngine.Primitives.WorldFrame.Nearest(origin));
             Environment.Acquisition.OnSupport = (in MovementSupportRequest request, Span<MovementSupportCandidate> candidates) =>
             {
                 int count = 0;

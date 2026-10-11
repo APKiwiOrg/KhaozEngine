@@ -18,7 +18,7 @@ public partial class ExplicitCharacterMovementTests
         var result = ExplicitCharacterMovement.Step(new(move, input.Frame, input.Selection),
             new(Vector2.Zero, false, 0, jump: jump), 1f / 30, Tuning, Policy, scene.Lease);
         Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
-        Assert.Equal(4, result.State.State.LandingImpactSpeed);
+        Assert.Equal(4 + Tuning.Gravity * (1f / 30), result.State.State.LandingImpactSpeed);
         Assert.Equal(!jump, result.State.State.Grounded);
         var next = ExplicitCharacterMovement.Step(result.State, MoveCommand.Idle, 1f / 30, Tuning, Policy, scene.Lease);
         Assert.Equal(0, next.State.State.LandingImpactSpeed);

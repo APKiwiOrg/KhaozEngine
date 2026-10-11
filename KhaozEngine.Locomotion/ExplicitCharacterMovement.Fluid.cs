@@ -4,7 +4,7 @@ namespace KhaozEngine.Locomotion;
 
 public static partial class ExplicitCharacterMovement
 {
-    static bool FootingAllowed(in MovementWaterPoint point, bool wasSwimming, float centreY,
+    internal static bool FootingAllowed(in MovementWaterPoint point, bool wasSwimming, float centreY,
         in MoveTuning tuning, in WaterTraversalPolicy water)
     {
         if (!point.InWater) return true;
@@ -21,7 +21,7 @@ public static partial class ExplicitCharacterMovement
         point.Interval!.Value.UpperY + (double)tuning.CapsuleHalfHeight *
             (1d - 2d * tuning.SwimSurfaceSubmersionFraction);
 
-    static void ClassifyWater(ref MoveState state, in MovementWaterPoint point, bool footing,
+    internal static void ClassifyWater(ref MoveState state, in MovementWaterPoint point, bool footing,
         bool wasSwimming, in MoveTuning tuning, in WaterTraversalPolicy water, bool descending)
     {
         if (footing)
@@ -42,7 +42,7 @@ public static partial class ExplicitCharacterMovement
             state.WaterExcursion = WaterExcursionState.AirborneFromWater;
     }
 
-    static float MediumSpeed(in MovementWaterPoint point, float centreY, bool swimmingOrWaterFlight, in MoveTuning tuning)
+    internal static float MediumSpeed(in MovementWaterPoint point, float centreY, bool swimmingOrWaterFlight, in MoveTuning tuning)
     {
         if (!point.InWater) return 1;
         if (swimmingOrWaterFlight) return point.SpeedScale;

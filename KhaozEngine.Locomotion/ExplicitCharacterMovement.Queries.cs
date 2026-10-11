@@ -15,7 +15,7 @@ public static partial class ExplicitCharacterMovement
         return status;
     }
 
-    static MovementStepOutcome WaterPlacement(in MovementBodyQuery body, in MoveTuning tuning,
+    internal static MovementStepOutcome WaterPlacement(in MovementBodyQuery body, in MoveTuning tuning,
         in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary)
     {
         if (boundary is not null)
@@ -56,7 +56,7 @@ public static partial class ExplicitCharacterMovement
     static MovementBodyQuery Body(Vector3 position, in MoveTuning tuning, in MovementSelection selection) =>
         new(position, tuning.CapsuleRadius, tuning.CapsuleHalfHeight, selection.Space, selection.Support);
 
-    static MovementStepResult Hold(in FramedMovementState state, MovementStepOutcome outcome)
+    internal static MovementStepResult Hold(in FramedMovementState state, MovementStepOutcome outcome)
     {
         if (!state.IsValid) return new(state, outcome);
         MoveState held = MovementStepResult.HoldState(state.State);
@@ -64,16 +64,16 @@ public static partial class ExplicitCharacterMovement
         return new(new(held, state.Frame, null), outcome);
     }
 
-    static MovementStepOutcome Outcome(MovementAvailability status) => status == MovementAvailability.Invalid
+    internal static MovementStepOutcome Outcome(MovementAvailability status) => status == MovementAvailability.Invalid
         ? MovementStepOutcome.EnvironmentInvalid : MovementStepOutcome.EnvironmentUnresolved;
 
-    static bool ValidCarriedState(in MoveState state) =>
+    internal static bool ValidCarriedState(in MoveState state) =>
         Nonnegative(state.TimeSinceGrounded) && Nonnegative(state.JumpBufferRemaining) &&
         ValidCommitment(state.Commitment) && Nonnegative(state.ClimbRateEwma) && Nonnegative(state.SpeedScale) && float.IsFinite(state.FacingYaw) &&
         float.IsFinite(state.HorizontalVelocity.X) && float.IsFinite(state.HorizontalVelocity.Y) &&
         state.WaterExcursion is >= WaterExcursionState.None and <= WaterExcursionState.AirborneFromWater;
 
-    static bool Valid(in MoveTuning tuning) =>
+    internal static bool Valid(in MoveTuning tuning) =>
         Positive(tuning.CapsuleRadius) && Positive(tuning.CapsuleHalfHeight) &&
         tuning.CapsuleHalfHeight >= tuning.CapsuleRadius && Positive(tuning.Gravity) && Positive(tuning.MaxFallSpeed) &&
         Nonnegative(tuning.WalkSpeed) && Nonnegative(tuning.RunSpeed) && Nonnegative(tuning.SwimSpeed) &&

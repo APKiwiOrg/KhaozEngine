@@ -1,0 +1,296 @@
+using System;
+using KhaozEngine.Physics;
+
+namespace KhaozEngine.Physics.Bepu;
+
+/// <summary>Complete convex polygon/disc extrema. Admission uses the connected height interval over the expanded
+/// disc, then support measures the original disc on the whole polygon. No clipping or sweep witness is used.</summary>
+internal static class SupportFootprintPolygon
+{
+    static readonly FeatureNumber Zero = FeatureNumber.Exact(0), One = FeatureNumber.Exact(1);
+
+    internal static GeometrySign Measure(SupportPolygon polygon, in SupportFootprintRequest request,
+        out SupportFootprintMember member)
+    {
+        member = default;
+        SupportQueryDiagnostics.Record(SupportQueryCounter.Polygons);
+        if (!SupportFootprintBounds.TryCreate(request, out var bounds) ||
+            !SupportFootprintBounds.TryColumn(request, out double bottom, out double top)) return GeometrySign.Unresolved;
+        GeometrySign area = FeaturePoint.Dot(polygon.Normal, polygon.Normal).Sign;
+        if (area == GeometrySign.Zero) return GeometrySign.Negative;
+        if (!polygon.IsResolved || area != GeometrySign.Positive) return GeometrySign.Unresolved;
+        if (polygon.High[0] < bounds.Minimum.X || polygon.Low[0] > bounds.Maximum.X ||
+            polygon.High[1] < bottom || polygon.Low[1] > top ||
+            polygon.High[2] < bounds.Minimum.Z || polygon.Low[2] > bounds.Maximum.Z) return GeometrySign.Negative;
+        FeatureNumber expanded = FeatureNumber.Exact(request.Radius).Add(FeatureNumber.Exact(request.ContactBand));
+        GeometrySign admission = Extrema(polygon, request, expanded, out Range column);
+        if (admission != GeometrySign.Positive) return admission;
+        if (column.Minimum.Lower > top || column.Maximum.Upper < bottom) return GeometrySign.Negative;
+        if (column.Minimum.Upper > top || column.Maximum.Lower < bottom) return GeometrySign.Unresolved;
+        GeometryVectorOutput normal = GeometryVectorOperations.Publish(GeometryVectorOperations.Normalize(polygon.Normal.Bounds));
+        GeometryVectorOutput plane = GeometryVectorOperations.Publish(polygon.Vertices[0].Bounds);
+        if (!normal.IsResolved || !plane.IsResolved) return GeometrySign.Unresolved;
+        Range disc = default;
+        GeometrySign orientation = polygon.Normal.Y.Sign;
+        if (orientation == GeometrySign.Unresolved) return GeometrySign.Unresolved;
+        bool supports = orientation == GeometrySign.Positive;
+        if (supports)
+        {
+            GeometrySign footprint = Extrema(polygon, request, FeatureNumber.Exact(request.Radius), out disc);
+            if (footprint == GeometrySign.Unresolved) return footprint;
+            supports = footprint == GeometrySign.Positive;
+        }
+        GeometryVectorOutput witness = supports ? GeometryVectorOperations.Publish(disc.Witness) : default;
+        if (supports && !witness.IsResolved) return GeometrySign.Unresolved;
+        member = new(polygon.Static, SupportElementKind.Polygon, polygon.ElementId, plane.Value, plane.Error,
+            normal.Value, normal.Error, supports, supports ? disc.Maximum.Lower : 0,
+            supports ? disc.Maximum.Upper : 0, 0, supports ? (byte)1 : (byte)0,
+            supports ? new(SupportWitnessRole.Footprint, witness.Value, witness.Error, normal.Value, normal.Error) : default,
+            default);
+        return GeometrySign.Positive;
+    }
+
+    struct Range
+    {
+        internal GeometryInterval Minimum, Maximum;
+        internal GeometryVector Witness;
+        internal bool HasPoint;
+
+        internal void Add(FeaturePoint point)
+        {
+            SupportQueryDiagnostics.Record(SupportQueryCounter.Extrema);
+            GeometryInterval y = point.Y.Bounds;
+            if (!HasPoint)
+            {
+                Minimum = Maximum = y;
+                Witness = point.Bounds;
+                HasPoint = true;
+                return;
+            }
+            Minimum = GeometryInterval.Enclose(Math.Min(Minimum.Lower, y.Lower), Math.Min(Minimum.Upper, y.Upper));
+            if (y.Lower > Maximum.Upper) Witness = point.Bounds;
+            else if (y.Upper >= Maximum.Lower && !(y.Lower == y.Upper &&
+                Maximum.Lower == Maximum.Upper && y.Lower == Maximum.Lower))
+                Witness = Union(Witness, point.Bounds);
+            Maximum = GeometryInterval.Enclose(Math.Max(Maximum.Lower, y.Lower), Math.Max(Maximum.Upper, y.Upper));
+        }
+    }
+
+    static GeometryVector Union(GeometryVector a, GeometryVector b) => new(
+        GeometryInterval.Enclose(Math.Min(a.X.Lower, b.X.Lower), Math.Max(a.X.Upper, b.X.Upper)),
+        GeometryInterval.Enclose(Math.Min(a.Y.Lower, b.Y.Lower), Math.Max(a.Y.Upper, b.Y.Upper)),
+        GeometryInterval.Enclose(Math.Min(a.Z.Lower, b.Z.Lower), Math.Max(a.Z.Upper, b.Z.Upper)));
+
+    static GeometrySign Extrema(SupportPolygon polygon, in SupportFootprintRequest request, FeatureNumber radius,
+        out Range range)
+    {
+        range = default;
+        FeaturePoint axis = new(FeatureNumber.Exact(request.Axis.X), Zero, FeatureNumber.Exact(request.Axis.Y));
+        GeometrySign orientation = polygon.Normal.Y.Sign;
+        if (orientation == GeometrySign.Unresolved) return orientation;
+        if (orientation != GeometrySign.Zero)
+        {
+            FeaturePoint centre = OnPlane(polygon, axis);
+            GeometrySign inside = Interior(polygon, axis, new(Zero, Zero, Zero), radius, One, One);
+            if (inside == GeometrySign.Unresolved) return inside;
+            if (inside != GeometrySign.Negative) range.Add(centre);
+        }
+        foreach (FeaturePoint vertex in polygon.Vertices)
+        {
+            GeometrySign sign = InDisc(vertex, axis, radius);
+            if (sign == GeometrySign.Unresolved) return sign;
+            if (sign != GeometrySign.Positive) range.Add(vertex);
+        }
+        for (int i = 0; i < polygon.Edges.Length; i++)
+            if (!Edge(polygon.Vertices[i], polygon.Edges[i], axis, radius, ref range)) return GeometrySign.Unresolved;
+        if (orientation != GeometrySign.Zero)
+        {
+            FeatureNumber direction = FeatureNumber.Exact(orientation == GeometrySign.Positive ? -1 : 1);
+            FeaturePoint uphill = new(polygon.Normal.X.Multiply(direction), Zero, polygon.Normal.Z.Multiply(direction));
+            FeatureNumber squared = DotXZ(uphill, uphill);
+            GeometrySign gradient = squared.Sign;
+            if (gradient == GeometrySign.Unresolved) return gradient;
+            if (gradient == GeometrySign.Positive)
+                for (int sign = 1; sign >= -1; sign -= 2)
+                {
+                    FeaturePoint directionPoint = FeaturePoint.Scale(uphill, FeatureNumber.Exact(sign));
+                    FeatureNumber root = Sqrt(squared);
+                    FeaturePoint point = OnPlane(polygon, FeaturePoint.Add(axis,
+                        FeaturePoint.Scale(directionPoint, radius.Divide(root))));
+                    if (!point.IsResolved) return GeometrySign.Unresolved;
+                    GeometrySign inside = Interior(polygon, axis, directionPoint, radius, squared, root);
+                    if (inside == GeometrySign.Unresolved) return inside;
+                    if (inside != GeometrySign.Negative) range.Add(point);
+                }
+        }
+        return range.HasPoint ? GeometrySign.Positive : GeometrySign.Negative;
+    }
+
+    static FeaturePoint OnPlane(SupportPolygon polygon, FeaturePoint point)
+    {
+        FeaturePoint first = polygon.Vertices[0];
+        if (polygon.Normal.X.IsExact && polygon.Normal.X.Value == 0 &&
+            polygon.Normal.Z.IsExact && polygon.Normal.Z.Value == 0) return new(point.X, first.Y, point.Z);
+        FeatureNumber height = first.Y.Add(polygon.Normal.X.Multiply(first.X.Subtract(point.X))
+            .Add(polygon.Normal.Z.Multiply(first.Z.Subtract(point.Z))).Divide(polygon.Normal.Y));
+        return new(point.X, height, point.Z);
+    }
+
+    static FeatureNumber DotXZ(FeaturePoint a, FeaturePoint b) => a.X.Multiply(b.X).Add(a.Z.Multiply(b.Z));
+
+    static GeometrySign InDisc(FeaturePoint point, FeaturePoint axis, FeatureNumber radius)
+    {
+        FeaturePoint delta = FeaturePoint.Subtract(point, axis);
+        FeatureNumber squared = delta.X.Multiply(delta.X).Add(delta.Z.Multiply(delta.Z));
+        GeometrySign sign = squared.Compare(radius.Multiply(radius));
+        if (sign != GeometrySign.Unresolved || !point.X.IsExact || !point.Z.IsExact || !radius.IsExact) return sign;
+        SupportQueryDiagnostics.Record(SupportQueryCounter.ExactFallbacks);
+        return BoundedGeometryArithmetic.CompareSquaredDistances([point.X.Value, point.Z.Value],
+            [axis.X.Value, axis.Z.Value], [radius.Value], [0d]);
+    }
+
+    static bool Edge(FeaturePoint vertex, FeaturePoint edge, FeaturePoint axis, FeatureNumber radius, ref Range range)
+    {
+        FeatureNumber a = DotXZ(edge, edge);
+        GeometrySign length = a.Sign;
+        if (length == GeometrySign.Zero) return true;
+        if (length != GeometrySign.Positive) return false;
+        FeaturePoint delta = FeaturePoint.Subtract(vertex, axis);
+        FeatureNumber dot = DotXZ(delta, edge);
+        // An attained endpoint on the circle makes one root exactly 0 or 1. Factor that root before taking a
+        // square root, so independently rounded enclosures cannot obscure a closed endpoint equality.
+        if (InDisc(vertex, axis, radius) == GeometrySign.Zero)
+            return Parameter(vertex, edge, dot.Multiply(FeatureNumber.Exact(-2)).Divide(a), ref range);
+        if (InDisc(FeaturePoint.Add(vertex, edge), axis, radius) == GeometrySign.Zero)
+            return Parameter(vertex, edge, dot.Multiply(FeatureNumber.Exact(-2)).Divide(a).Subtract(One), ref range);
+        FeatureNumber cross = delta.X.Multiply(edge.Z).Subtract(delta.Z.Multiply(edge.X));
+        FeatureNumber discriminant = a.Multiply(radius.Multiply(radius)).Subtract(cross.Multiply(cross));
+        GeometrySign sign = discriminant.Sign;
+        if (sign == GeometrySign.Unresolved)
+        {
+            sign = ExactDiscriminant(delta, edge, radius);
+            if (sign == GeometrySign.Zero) discriminant = Zero;
+            else if (sign == GeometrySign.Positive && discriminant.IsResolved)
+                discriminant = FeatureNumber.Enclosed(GeometryInterval.Enclose(Math.Max(0, discriminant.Bounds.Lower),
+                    discriminant.Bounds.Upper));
+        }
+        if (sign == GeometrySign.Negative) return true;
+        if (sign == GeometrySign.Unresolved) return false;
+        FeatureNumber root = Sqrt(discriminant);
+        if (!root.IsResolved) return false;
+        for (int direction = -1; direction <= 1; direction += 2)
+        {
+            FeatureNumber factor = FeatureNumber.Exact(direction);
+            GeometrySign low = RadicalSign(dot.Negate(), factor, discriminant, root);
+            GeometrySign high = RadicalSign(a.Add(dot), factor.Negate(), discriminant, root);
+            if (low == GeometrySign.Negative || high == GeometrySign.Negative) continue;
+            if (low == GeometrySign.Unresolved || high == GeometrySign.Unresolved) return false;
+            FeatureNumber t = low == GeometrySign.Zero ? Zero : high == GeometrySign.Zero ? One :
+                dot.Negate().Add(root.Multiply(factor)).Divide(a);
+            FeaturePoint point = EdgePoint(vertex, edge, t);
+            if (!point.IsResolved) return false;
+            range.Add(point);
+            if (sign == GeometrySign.Zero) break;
+        }
+        return true;
+    }
+
+    static bool Parameter(FeaturePoint vertex, FeaturePoint edge, FeatureNumber t, ref Range range)
+    {
+        GeometrySign low = t.Sign, high = One.Subtract(t).Sign;
+        if (low == GeometrySign.Negative || high == GeometrySign.Negative) return true;
+        if (low == GeometrySign.Unresolved || high == GeometrySign.Unresolved) return false;
+        FeaturePoint point = EdgePoint(vertex, edge, t);
+        if (!point.IsResolved) return false;
+        range.Add(point);
+        return true;
+    }
+
+    static FeaturePoint EdgePoint(FeaturePoint vertex, FeaturePoint edge, FeatureNumber t)
+    {
+        FeaturePoint point = FeaturePoint.Add(vertex, FeaturePoint.Scale(edge, t));
+        // A horizontal edge has constant height even when the circle root is not representable.
+        return edge.Y.IsExact && edge.Y.Value == 0 ? new(point.X, vertex.Y, point.Z) : point;
+    }
+
+    // Expand (ex*ex + ez*ez)*r*r - (dx*ez - dz*ex)^2 over the original exact operands.
+    // Every operand is in the expansion domain, so four factors have a 2^-1008 quantum and stay finite.
+    static GeometrySign ExactDiscriminant(FeaturePoint delta, FeaturePoint edge, FeatureNumber radius)
+    {
+        if (!delta.X.IsExact || !delta.Z.IsExact || !edge.X.IsExact || !edge.Z.IsExact || !radius.IsExact)
+            return GeometrySign.Unresolved;
+        double dx = delta.X.Value, dz = delta.Z.Value, ex = edge.X.Value, ez = edge.Z.Value, r = radius.Value;
+        if (!ExactExpansion.InRange(dx) || !ExactExpansion.InRange(dz) || !ExactExpansion.InRange(ex) ||
+            !ExactExpansion.InRange(ez) || !ExactExpansion.InRange(r)) return GeometrySign.Unresolved;
+        SupportQueryDiagnostics.Record(SupportQueryCounter.ExactFallbacks);
+        var exact = new ExactExpansion(stackalloc double[41]);
+        AddFour(ref exact, ex, ex, r, r, 1);
+        AddFour(ref exact, ez, ez, r, r, 1);
+        AddFour(ref exact, dx, ez, dx, ez, -1);
+        AddFour(ref exact, dz, ex, dz, ex, -1);
+        AddFour(ref exact, dx, ez, dz, ex, 2);
+        return exact.Sign;
+    }
+
+    static void AddFour(ref ExactExpansion exact, double a, double b, double c, double d, double sign)
+    {
+        double left = a * b, leftError = Math.FusedMultiplyAdd(a, b, -left);
+        double right = c * d, rightError = Math.FusedMultiplyAdd(c, d, -right);
+        exact.AddProduct(sign * left, right);
+        exact.AddProduct(sign * left, rightError);
+        exact.AddProduct(sign * leftError, right);
+        exact.AddProduct(sign * leftError, rightError);
+    }
+
+    static GeometrySign Interior(SupportPolygon polygon, FeaturePoint axis, FeaturePoint direction,
+        FeatureNumber radius, FeatureNumber squared, FeatureNumber root)
+    {
+        bool boundary = false;
+        for (int i = 0; i < polygon.Edges.Length; i++)
+        {
+            FeaturePoint edge = polygon.Edges[i], delta = FeaturePoint.Subtract(axis, polygon.Vertices[i]);
+            FeatureNumber k = edge.Z.Multiply(delta.X).Subtract(edge.X.Multiply(delta.Z));
+            FeatureNumber l = edge.Z.Multiply(direction.X).Subtract(edge.X.Multiply(direction.Z)).Multiply(radius);
+            GeometrySign side = RadicalSign(l, k, squared, root);
+            if (polygon.Normal.Y.Sign == GeometrySign.Negative)
+                side = side == GeometrySign.Positive ? GeometrySign.Negative :
+                    side == GeometrySign.Negative ? GeometrySign.Positive : side;
+            if (side is GeometrySign.Negative or GeometrySign.Unresolved) return side;
+            boundary |= side == GeometrySign.Zero;
+        }
+        return boundary ? GeometrySign.Zero : GeometrySign.Positive;
+    }
+
+    static FeatureNumber Sqrt(FeatureNumber value)
+    {
+        if (value.IsExact)
+        {
+            double proposed = Math.Sqrt(value.Value);
+            if (BoundedGeometryArithmetic.CompareProducts(proposed, proposed, value.Value, 1) == GeometrySign.Zero)
+                return FeatureNumber.Exact(proposed);
+        }
+        return FeatureNumber.Enclosed(value.Bounds.Sqrt());
+    }
+
+    // Exact sign of k + l*sqrt(d). Opposite signs reduce to k*k - l*l*d without a rounded radical.
+    static GeometrySign RadicalSign(FeatureNumber k, FeatureNumber l, FeatureNumber d, FeatureNumber root)
+    {
+        GeometrySign direct = k.Add(l.Multiply(root)).Sign;
+        if (direct != GeometrySign.Unresolved) return direct;
+        GeometrySign ks = k.Sign, ls = l.Sign;
+        if (ls == GeometrySign.Zero || d.Sign == GeometrySign.Zero) return ks;
+        if (ks == GeometrySign.Zero) return ls;
+        if (ks == ls) return ks;
+        if (!k.IsExact || !l.IsExact || !d.IsExact || !ExactExpansion.InRange(k.Value) ||
+            !ExactExpansion.InRange(l.Value) || !ExactExpansion.InRange(d.Value)) return GeometrySign.Unresolved;
+        SupportQueryDiagnostics.Record(SupportQueryCounter.ExactFallbacks);
+        double square = l.Value * l.Value, error = Math.FusedMultiplyAdd(l.Value, l.Value, -square);
+        if (!ExactExpansion.InRange(square) || !ExactExpansion.InRange(error)) return GeometrySign.Unresolved;
+        var exact = new ExactExpansion(stackalloc double[7]);
+        exact.AddProduct(k.Value, k.Value);
+        exact.AddProduct(-square, d.Value);
+        exact.AddProduct(-error, d.Value);
+        GeometrySign comparison = exact.Sign;
+        return comparison == GeometrySign.Zero ? comparison : comparison == GeometrySign.Positive ? ks : ls;
+    }
+}

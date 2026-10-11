@@ -5,12 +5,232 @@ using System.Numerics;
 using System.Reflection;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
+using KhaozEngine.Physics.Bepu;
 using Xunit;
 
 namespace KhaozEngine.Tests.Physics;
 
+[Collection("AllocSensitive")]
 public class SupportFootprintTests
 {
+    [Fact]
+    public void PolygonMaximumUsesVertexEdgeAndDiscExtrema()
+    {
+        SupportFootprintRequest request = Request();
+        Vector3[][] rows =
+        [
+            [new(0.05f, 0.05f, 0), new(0.1f, 0.1f, 0), new(0.05f, 0.05f, 0.05f)],
+            [new(-0.3f, -0.3f, 0.1f), new(0.3f, 0.3f, 0.1f), new(-0.3f, -0.3f, 0.3f)],
+            [new(-0.3f, -0.3f, -0.3f), new(0.3f, 0.3f, -0.3f),
+                new(0.3f, 0.3f, 0.3f), new(-0.3f, -0.3f, 0.3f)],
+            [new(-0.3f, 0.1f, -0.3f), new(0.3f, 0.1f, -0.3f),
+                new(0.3f, 0.1f, 0.3f), new(-0.3f, 0.1f, 0.3f)],
+        ];
+        double[] expected = [0.1f, Math.Sqrt((double)request.Radius * request.Radius - (double)0.1f * 0.1f),
+            request.Radius, 0.1f];
+        for (int i = 0; i < rows.Length; i++)
+        {
+            SupportPolygon polygon = Polygon(rows[i], out OracleFace face);
+            FootprintOracleMember oracle = SupportFootprintOracle.Polygon(face, request)!;
+            Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out var member));
+            CheckMaximum(member, oracle);
+            Assert.True(member.DiscHeightLower <= expected[i]);
+            Assert.True(member.DiscHeightUpper >= expected[i]);
+            Assert.Equal(member, Measure(polygon, request));
+        }
+        SupportPolygon flatCut = Polygon([new(-0.3f, 0.1f, -0.3f), new(0.3f, 0.1f, -0.3f),
+            new(-0.3f, 0.1f, 0.3f)], out OracleFace flatFace);
+        SupportFootprintMember flat = Measure(flatCut, request);
+        CheckMaximum(flat, SupportFootprintOracle.Polygon(flatFace, request)!);
+        Assert.Equal(new Vector3(0, 0.1f, 0), flat.First.Position);
+        Assert.Equal(0, flat.First.PositionErrorMetres);
+
+        // A represented tangent vertex and the next float on either side keep closed-disc membership.
+        request = Request(radius: 0.25f, cosine: 1);
+        foreach (float x in new[] { MathF.BitDecrement(0.25f), 0.25f, MathF.BitIncrement(0.25f) })
+        {
+            SupportPolygon polygon = Polygon([new(x, 0.1f, 0), new(x + 0.05f, 0.1f, -0.05f),
+                new(x + 0.05f, 0.1f, 0.05f)], out OracleFace face);
+            FootprintOracleMember oracle = SupportFootprintOracle.Polygon(face, request)!;
+            SupportFootprintMember member = Measure(polygon, request);
+            Assert.Equal(x <= 0.25f, member.HasDiscMaximum);
+            if (member.HasDiscMaximum) CheckMaximum(member, oracle);
+            else Assert.Equal(0, member.WitnessCount);
+        }
+        // Tangency in an edge interior exercises the zero discriminant fallback.
+        SupportPolygon tangent = Polygon([new(0.25f, 0.1f, -0.5f), new(0.25f, 0.1f, 0.5f),
+            new(0.5f, 0.1f, 0.5f)], out OracleFace tangentFace);
+        CheckMaximum(Measure(tangent, request), SupportFootprintOracle.Polygon(tangentFace, request)!);
+        // The warmed kernel has no per-query storage, including with predicate counters enabled.
+        SupportQueryDiagnostics.Enable(true);
+        try
+        {
+            Measure(tangent, request);
+            SupportQueryDiagnostics.Reset();
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            GeometrySign measured = SupportFootprintPolygon.Measure(tangent, request, out _);
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.Equal(GeometrySign.Positive, measured);
+            Assert.Equal(0, allocated);
+            SupportQueryCounts counts = SupportQueryDiagnostics.Snapshot();
+            Assert.Equal(1, counts.Polygons);
+            Assert.True(counts.Extrema > 0);
+        }
+        finally { SupportQueryDiagnostics.Enable(false); }
+        long disabledBefore = GC.GetAllocatedBytesForCurrentThread();
+        SupportFootprintPolygon.Measure(tangent, request, out _);
+        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - disabledBefore);
+    }
+
+    [Fact]
+    public void AdmissionKeepsFullPolygonAndContextRing()
+    {
+        SupportFootprintRequest request = Request(upper: 0.125);
+        SupportPolygon fragment = Polygon([new(0.199f, 0.1f + 0.199f, -0.001f),
+            new(0.201f, 0.1f + 0.201f, -0.001f), new(0.201f, 0.1f + 0.201f, 0.001f),
+            new(0.199f, 0.1f + 0.199f, 0.001f)], out OracleFace face);
+        FootprintOracleMember oracle = SupportFootprintOracle.Polygon(face, request)!;
+        Assert.True(oracle.Maximum > request.BandUpper);
+        CheckMaximum(Measure(fragment, request), oracle);
+        SupportPolygon ring = Polygon([new(0.20005f, 0.1f, -0.001f), new(0.20009f, 0.1f, -0.001f),
+            new(0.20009f, 0.1f, 0.001f), new(0.20005f, 0.1f, 0.001f)], out OracleFace ringFace);
+        Assert.False(SupportFootprintOracle.Polygon(ringFace, request)!.HasDiscMaximum);
+        SupportFootprintMember context = Measure(ring, request);
+        Assert.False(context.HasDiscMaximum);
+        Assert.Equal(0, context.WitnessCount);
+
+        // With axis -e the expanded disc's represented rightmost coordinate is exactly 0.25.
+        SupportFootprintRequest radial = Request(x: -0.0001f, radius: 0.25f, cosine: 1);
+        foreach (float x in new[] { MathF.BitDecrement(0.25f), 0.25f, MathF.BitIncrement(0.25f) })
+        {
+            SupportPolygon polygon = Polygon([new(x, 0.1f, 0), new(x + 0.05f, 0.1f, -0.05f),
+                new(x + 0.05f, 0.1f, 0.05f)], out _);
+            Assert.Equal(x <= 0.25f ? GeometrySign.Positive : GeometrySign.Negative,
+                SupportFootprintPolygon.Measure(polygon, radial, out _));
+        }
+        SupportPolygon ringTangent = Polygon([new(0.25f, 0.1f, -0.5f), new(0.25f, 0.1f, 0.5f),
+            new(0.5f, 0.1f, 0.5f)], out _);
+        SupportQueryDiagnostics.Enable(true);
+        try
+        {
+            SupportQueryDiagnostics.Reset();
+            Assert.False(Measure(ringTangent, radial).HasDiscMaximum);
+            Assert.True(SupportQueryDiagnostics.Snapshot().ExactFallbacks > 0);
+        }
+        finally { SupportQueryDiagnostics.Enable(false); }
+
+        Assert.True(SupportFootprintBounds.TryCreate(request, out var bounds));
+        Assert.True(SupportFootprintVolume.TryBounds(request, out var minimum, out var maximum));
+        (double bottom, double top) = SupportFootprintOracle.Volume(request);
+        Assert.True(bounds.Minimum.Y <= bottom);
+        Assert.True(bounds.Maximum.Y >= top);
+        Assert.Equal(bounds.Minimum.Y, minimum.Y.Lower);
+        Assert.Equal(bounds.Maximum.Y, maximum.Y.Upper);
+        Assert.True(bounds.Minimum.X <= -(double)request.Radius - request.ContactBand);
+        Assert.True(bounds.Maximum.X >= (double)request.Radius + request.ContactBand);
+        foreach (float height in new[] { (float)bottom, MathF.BitDecrement((float)bottom),
+            MathF.BitIncrement((float)bottom), (float)top, MathF.BitDecrement((float)top), MathF.BitIncrement((float)top) })
+        {
+            SupportPolygon polygon = Polygon([new(-0.1f, height, -0.1f), new(0.1f, height, -0.1f),
+                new(0.1f, height, 0.1f), new(-0.1f, height, 0.1f)], out OracleFace row);
+            bool admitted = SupportFootprintOracle.Polygon(row, request) is not null;
+            GeometrySign sign = SupportFootprintPolygon.Measure(polygon, request, out _);
+            Assert.True(sign == (admitted ? GeometrySign.Positive : GeometrySign.Negative),
+                $"height {height:R}, oracle column [{bottom:R}, {top:R}], verdict {sign}, admitted {admitted}");
+        }
+        // Rotate a narrow, ordinary triangle in the installed float frame.
+        Quaternion rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.37f);
+        Vector3[] sliver = [new(-0.3f, 0.05f, 0), new(0.3f, 0.05f, 0), new(0.3f, 0.05001f, 0.00002f)];
+        sliver = sliver.Select(v => Vector3.Transform(v, rotation)).ToArray();
+        SupportPolygon narrow = Polygon(sliver, out OracleFace narrowFace);
+        CheckMaximum(Measure(narrow, request), SupportFootprintOracle.Polygon(narrowFace, request)!);
+        Vector3[] local = [new(-0.3f, 0.05f, -0.000007f), new(0.3f, 0.05f, -0.000007f),
+            new(0.3f, 0.05001f, 0.000013f)];
+        if (Vector3.Cross(local[1] - local[0], local[2] - local[0]).Y < 0) Array.Reverse(local);
+        var pose = new Pose(new(0.01f, 0, 0), rotation);
+        Assert.True(InstalledPoseOperator.TryCreate(new BepuPhysics.RigidPose(pose.Position, pose.Orientation),
+            out var installed));
+        var captured = new SupportPolygon();
+        captured.Begin(new StaticHandle(42), 7, local.Length);
+        for (int i = 0; i < local.Length; i++)
+            captured.Set(i, installed.Point(local[i]), installed.Edge(local[i], local[(i + 1) % local.Length]));
+        captured.Finish(FeaturePoint.Cross(installed.Edge(local[0], local[1]), installed.Edge(local[0], local[2])));
+        OracleFace capturedFace = new(new StaticHandle(42), 7, local.Select(v =>
+            OracleVector.Rotate(pose.Orientation, OracleVector.From(v)) + OracleVector.From(pose.Position)).ToArray());
+        CheckMaximum(Measure(captured, request), SupportFootprintOracle.Polygon(capturedFace, request)!);
+
+        SupportPolygon zero = Polygon([Vector3.Zero, Vector3.UnitX, 2 * Vector3.UnitX], out _);
+        Assert.Equal(GeometrySign.Negative, SupportFootprintPolygon.Measure(zero, request, out _));
+        Assert.Equal(GeometrySign.Unresolved, SupportFootprintPolygon.Measure(new SupportPolygon(),
+            Request(x: 10, z: 10), out var unresolved));
+        Assert.Equal(default, unresolved);
+        SupportPolygon back = Polygon([new(-0.1f, 0, -0.1f), new(0.1f, 0, -0.1f),
+            new(0, 0, 0.1f)], out _, upward: false);
+        SupportFootprintMember underside = Measure(back, request);
+        Assert.False(underside.HasDiscMaximum);
+        Assert.Equal(0, underside.WitnessCount);
+        SupportPolygon vertical = Polygon([new(0, -0.1f, -0.1f), new(0, 0.1f, -0.1f),
+            new(0, 0.1f, 0.1f), new(0, -0.1f, 0.1f)], out _);
+        Assert.False(Measure(vertical, request).HasDiscMaximum);
+        Assert.False(SupportFootprintBounds.TryCreate(request with { CosMaxSlope = 0 }, out _));
+        Assert.False(SupportFootprintBounds.TryCreate(request with { BandUpper = double.MaxValue }, out _));
+        Assert.False(SupportFootprintBounds.TryCreate(request with { Radius = 0.009f }, out _));
+        // Bounds include both real and represented centre/end arithmetic of the retained paths.
+        var displaced = request with
+        {
+            FootProposal = request.FootProposal with
+            { Start = Pose.At(new(0, 1000, 0)), Distance = 1000.3f }
+        };
+        Assert.True(SupportFootprintBounds.TryCreate(displaced, out var paths));
+        float representedEnd = displaced.FootProposal.Start.Position.Y - displaced.FootProposal.Distance;
+        float half = displaced.FootProposal.Probe.Radius + displaced.FootProposal.Probe.Length / 2;
+        Assert.True(paths.Minimum.Y <= representedEnd - half - displaced.ContactBand);
+        Assert.True(paths.Maximum.Y >= displaced.FootProposal.Start.Position.Y + half + displaced.ContactBand);
+    }
+
+    static SupportFootprintMember Measure(SupportPolygon polygon, SupportFootprintRequest request)
+    {
+        Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out var member));
+        return member;
+    }
+
+    static void CheckMaximum(SupportFootprintMember member, FootprintOracleMember oracle)
+    {
+        Assert.True(member.HasDiscMaximum);
+        Assert.True(member.DiscHeightLower <= oracle.Maximum, $"{member.DiscHeightLower:R} > {oracle.Maximum:R}");
+        Assert.True(member.DiscHeightUpper >= oracle.Maximum, $"{member.DiscHeightUpper:R} < {oracle.Maximum:R}");
+        Assert.True(oracle.WitnessInsideClosedDisc);
+        Assert.Equal(1, member.WitnessCount);
+        Assert.Equal(SupportWitnessRole.Footprint, member.First.Role);
+        Assert.Equal(oracle.Static, member.Static);
+        Assert.Equal(oracle.ElementId, member.ElementId);
+        double distance = (member.First.Position.X - oracle.Witnesses[0].Position.X) *
+            (member.First.Position.X - oracle.Witnesses[0].Position.X) +
+            (member.First.Position.Y - oracle.Maximum) * (member.First.Position.Y - oracle.Maximum) +
+            (member.First.Position.Z - oracle.Witnesses[0].Position.Z) *
+            (member.First.Position.Z - oracle.Witnesses[0].Position.Z);
+        // Flat faces have many attained maxima, so their deterministic tie may differ from the oracle's tie.
+        if (oracle.Normal.X != 0 || oracle.Normal.Z != 0)
+            Assert.True(distance <= (double)member.First.PositionErrorMetres * member.First.PositionErrorMetres);
+    }
+
+    static SupportPolygon Polygon(Vector3[] vertices, out OracleFace face, bool upward = true)
+    {
+        Vector3 normal = Vector3.Cross(vertices[1] - vertices[0], vertices[2] - vertices[0]);
+        if ((upward && normal.Y < 0) || (!upward && normal.Y > 0)) Array.Reverse(vertices);
+        face = new(new StaticHandle(42), 7, vertices.Select(v => new OracleVector(v.X, v.Y, v.Z)).ToArray());
+        var polygon = new SupportPolygon();
+        polygon.Begin(face.Static, face.ElementId, vertices.Length);
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            FeaturePoint a = FeaturePoint.Exact(vertices[i]);
+            polygon.Set(i, a, FeaturePoint.Subtract(FeaturePoint.Exact(vertices[(i + 1) % vertices.Length]), a));
+        }
+        polygon.Finish(FeaturePoint.Cross(polygon.Edges[0], FeaturePoint.Subtract(
+            polygon.Vertices[2], polygon.Vertices[0])));
+        return polygon;
+    }
+
     [Fact]
     public void FootprintCapabilityIsSeparateAndSlotsKeepRawIds()
     {

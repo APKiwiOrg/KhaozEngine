@@ -35,6 +35,11 @@ internal static class SupportFootprintOracle
             double half = (double)proposal.Probe.Radius + (double)proposal.Probe.Length / 2;
             bottom = Math.Min(bottom, Math.BitDecrement(proposal.Start.Position.Y - proposal.Distance - half - e));
             top = Math.Max(top, Math.BitIncrement(proposal.Start.Position.Y + half + e));
+            // SG-3 encloses the represented proposal arithmetic as well as the real capsule path.
+            float installedHalf = proposal.Probe.Radius + proposal.Probe.Length / 2;
+            float installedEnd = proposal.Start.Position.Y - proposal.Distance;
+            bottom = Math.Min(bottom, Math.BitDecrement((double)(installedEnd - installedHalf - request.ContactBand)));
+            top = Math.Max(top, Math.BitIncrement((double)(proposal.Start.Position.Y + installedHalf + request.ContactBand)));
         }
         return (bottom, top);
     }

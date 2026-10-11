@@ -109,8 +109,10 @@ public partial class SupportFootprintTests
         Assert.Equal(Enumerable.Range(0, 8), polygons.Select(p => p.ElementId));
     }
 
-    [Fact]
-    public void RotatedMeshFootprintMatchesExactOracle()
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(0.05f)]
+    public void RotatedMeshFootprintMatchesExactOracle(float x)
     {
         using var scene = new SupportFootprintScene();
         scene.Install(new TriangleMeshShape([new(-2, 0, -2), new(2, 0, -2), new(2, 0, 2), new(-2, 0, 2)],
@@ -118,7 +120,7 @@ public partial class SupportFootprintTests
         using var lease = scene.World.AcquireQueryReadLease();
         var members = new SupportFootprintMember[256];
         var joins = new ulong[1024];
-        var request = Request(x: 0.05f);
+        var request = Request(x: x);
         CheckQueryOracle(scene, request, Capability(scene.World).QuerySupportFootprint(lease, request, members, joins), members, joins);
     }
 

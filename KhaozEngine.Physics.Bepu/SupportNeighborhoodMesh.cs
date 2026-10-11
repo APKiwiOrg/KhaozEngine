@@ -115,6 +115,10 @@ internal static class SupportNeighborhoodMesh
             FeaturePoint normal = FeaturePoint.Cross(ac, ab, exactZeroProducts);
             SupportPolygon polygon = pool.Rent();
             polygon.Begin(owner, id, 3);
+            polygon.BeginSource(transform);
+            polygon.SetSource(0, a);
+            polygon.SetSource(1, c);
+            polygon.SetSource(2, b);
             polygon.Set(0, worldA, ac);
             polygon.Set(1, worldC, transform.Edge(c, b, exactZeroProducts));
             polygon.Set(2, worldB, transform.Edge(b, a, exactZeroProducts));

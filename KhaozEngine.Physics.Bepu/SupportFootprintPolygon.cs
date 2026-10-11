@@ -95,14 +95,17 @@ internal static class SupportFootprintPolygon
             if (inside == GeometrySign.Unresolved) return inside;
             if (inside != GeometrySign.Negative) range.Add(centre);
         }
-        foreach (FeaturePoint vertex in polygon.Vertices)
+        for (int i = 0; i < polygon.Vertices.Length; i++)
         {
+            FeaturePoint vertex = polygon.Vertices[i];
             GeometrySign sign = InDisc(vertex, axis, radius);
+            if (sign == GeometrySign.Unresolved && polygon.HasSource)
+                sign = polygon.SourcePredicates.VertexDisc(polygon, i, axis, radius);
             if (sign == GeometrySign.Unresolved) return sign;
             if (sign != GeometrySign.Positive) range.Add(vertex);
         }
         for (int i = 0; i < polygon.Edges.Length; i++)
-            if (!Edge(polygon.Vertices[i], polygon.Edges[i], axis, radius, ref range)) return GeometrySign.Unresolved;
+            if (!Edge(polygon, i, axis, radius, ref range)) return GeometrySign.Unresolved;
         if (orientation != GeometrySign.Zero)
         {
             FeatureNumber direction = FeatureNumber.Exact(orientation == GeometrySign.Positive ? -1 : 1);
@@ -124,7 +127,8 @@ internal static class SupportFootprintPolygon
                     FeaturePoint point = OnPlane(polygon, FeaturePoint.Add(axis,
                         FeaturePoint.Scale(directionPoint, radius.Divide(root), exactZeroProducts: true)));
                     if (!point.IsResolved) return GeometrySign.Unresolved;
-                    GeometrySign inside = Interior(polygon, axis, directionPoint, radius, squared, root);
+                    GeometrySign inside = Interior(polygon, axis, directionPoint, radius, squared, root,
+                        sign * (orientation == GeometrySign.Positive ? -1 : 1));
                     if (inside == GeometrySign.Unresolved) return inside;
                     if (inside != GeometrySign.Negative) range.Add(point);
                 }
@@ -155,8 +159,9 @@ internal static class SupportFootprintPolygon
             [axis.X.Value, axis.Z.Value], [radius.Value], [0d]);
     }
 
-    static bool Edge(FeaturePoint vertex, FeaturePoint edge, FeaturePoint axis, FeatureNumber radius, ref Range range)
+    static bool Edge(SupportPolygon polygon, int index, FeaturePoint axis, FeatureNumber radius, ref Range range)
     {
+        FeaturePoint vertex = polygon.Vertices[index], edge = polygon.Edges[index];
         FeatureNumber a = DotXZ(edge, edge);
         GeometrySign length = a.Sign;
         if (length == GeometrySign.Zero) return true;
@@ -166,9 +171,9 @@ internal static class SupportFootprintPolygon
         // An attained endpoint on the circle makes one root exactly 0 or 1. Factor that root before taking a
         // square root, so independently rounded enclosures cannot obscure a closed endpoint equality.
         if (InDisc(vertex, axis, radius) == GeometrySign.Zero)
-            return Parameter(vertex, edge, dot.Multiply(FeatureNumber.Exact(-2), exactZeroProducts: true).Divide(a), ref range);
+            return Parameter(polygon, index, axis, dot.Multiply(FeatureNumber.Exact(-2), exactZeroProducts: true).Divide(a), false, ref range);
         if (InDisc(FeaturePoint.Add(vertex, edge), axis, radius) == GeometrySign.Zero)
-            return Parameter(vertex, edge, dot.Multiply(FeatureNumber.Exact(-2), exactZeroProducts: true).Divide(a).Subtract(One), ref range);
+            return Parameter(polygon, index, axis, dot.Multiply(FeatureNumber.Exact(-2), exactZeroProducts: true).Divide(a).Subtract(One), true, ref range);
         FeatureNumber cross = delta.X.Multiply(edge.Z, exactZeroProducts: true).Subtract(delta.Z.Multiply(edge.X, exactZeroProducts: true));
         // Parallel projected edges factor the discriminant. This proves closed tangency
         // for every coefficient in the installed operator, without subtracting correlated intervals.
@@ -181,6 +186,8 @@ internal static class SupportFootprintPolygon
         if (sign == GeometrySign.Unresolved)
         {
             sign = ExactDiscriminant(delta, edge, radius);
+            if (sign == GeometrySign.Unresolved && polygon.HasSource)
+                sign = polygon.SourcePredicates.EdgeDiscriminant(polygon, index, axis, radius);
             if (sign == GeometrySign.Zero) discriminant = Zero;
             else if (sign == GeometrySign.Positive && discriminant.IsResolved)
                 discriminant = FeatureNumber.Enclosed(GeometryInterval.Enclose(Math.Max(0, discriminant.Bounds.Lower),
@@ -195,6 +202,13 @@ internal static class SupportFootprintPolygon
             FeatureNumber factor = FeatureNumber.Exact(direction);
             GeometrySign low = RadicalSign(dot.Negate(), factor, discriminant, root);
             GeometrySign high = RadicalSign(a.Add(dot), factor.Negate(), discriminant, root);
+            if (polygon.HasSource)
+            {
+                if (low == GeometrySign.Unresolved)
+                    low = polygon.SourcePredicates.EdgeRoot(polygon, index, axis, radius, direction, high: false);
+                if (high == GeometrySign.Unresolved)
+                    high = polygon.SourcePredicates.EdgeRoot(polygon, index, axis, radius, direction, high: true);
+            }
             if (low == GeometrySign.Negative || high == GeometrySign.Negative) continue;
             if (low == GeometrySign.Unresolved || high == GeometrySign.Unresolved) return false;
             FeatureNumber t = low == GeometrySign.Zero ? Zero : high == GeometrySign.Zero ? One :
@@ -207,9 +221,17 @@ internal static class SupportFootprintPolygon
         return true;
     }
 
-    static bool Parameter(FeaturePoint vertex, FeaturePoint edge, FeatureNumber t, ref Range range)
+    static bool Parameter(SupportPolygon polygon, int index, FeaturePoint axis, FeatureNumber t, bool endpoint, ref Range range)
     {
+        FeaturePoint vertex = polygon.Vertices[index], edge = polygon.Edges[index];
         GeometrySign low = t.Sign, high = One.Subtract(t).Sign;
+        if (polygon.HasSource)
+        {
+            if (low == GeometrySign.Unresolved)
+                low = polygon.SourcePredicates.EdgeOtherRoot(polygon, index, axis, endpoint, high: false);
+            if (high == GeometrySign.Unresolved)
+                high = polygon.SourcePredicates.EdgeOtherRoot(polygon, index, axis, endpoint, high: true);
+        }
         if (low == GeometrySign.Negative || high == GeometrySign.Negative) return true;
         if (low == GeometrySign.Unresolved || high == GeometrySign.Unresolved) return false;
         FeaturePoint point = EdgePoint(vertex, edge, t);
@@ -255,7 +277,7 @@ internal static class SupportFootprintPolygon
     }
 
     static GeometrySign Interior(SupportPolygon polygon, FeaturePoint axis, FeaturePoint direction,
-        FeatureNumber radius, FeatureNumber squared, FeatureNumber root)
+        FeatureNumber radius, FeatureNumber squared, FeatureNumber root, int sourceDirection = 0)
     {
         bool boundary = false;
         for (int i = 0; i < polygon.Edges.Length; i++)
@@ -264,6 +286,8 @@ internal static class SupportFootprintPolygon
             FeatureNumber k = edge.Z.Multiply(delta.X, exactZeroProducts: true).Subtract(edge.X.Multiply(delta.Z, exactZeroProducts: true));
             FeatureNumber l = edge.Z.Multiply(direction.X, exactZeroProducts: true).Subtract(edge.X.Multiply(direction.Z, exactZeroProducts: true)).Multiply(radius, exactZeroProducts: true);
             GeometrySign side = RadicalSign(l, k, squared, root);
+            if (side == GeometrySign.Unresolved && polygon.HasSource)
+                side = polygon.SourcePredicates.Interior(polygon, i, axis, radius, sourceDirection);
             if (polygon.Normal.Y.Sign == GeometrySign.Negative)
                 side = side == GeometrySign.Positive ? GeometrySign.Negative :
                     side == GeometrySign.Negative ? GeometrySign.Positive : side;

@@ -21,10 +21,10 @@ internal static class SupportFootprintProposalGeometry
         FeaturePoint axis = new(FeatureNumber.Exact(proposal.Start.Position.X), Zero,
             FeatureNumber.Exact(proposal.Start.Position.Z));
         var range = new Maximum();
-        foreach (FeaturePoint vertex in polygon.Vertices)
-            if (!range.Add(vertex, axis, radius, true)) return GeometrySign.Unresolved;
+        for (int i = 0; i < polygon.Vertices.Length; i++)
+            if (!range.Add(polygon, i, axis, radius)) return GeometrySign.Unresolved;
         for (int i = 0; i < polygon.Edges.Length; i++)
-            if (!Edge(polygon.Vertices[i], polygon.Edges[i], axis, radius, ref range)) return GeometrySign.Unresolved;
+            if (!Edge(polygon, i, axis, radius, ref range)) return GeometrySign.Unresolved;
 
         FeatureNumber length = Root(FeaturePoint.Dot(polygon.Normal, polygon.Normal));
         FeatureNumber scale = radius.Divide(length);
@@ -35,6 +35,8 @@ internal static class SupportFootprintProposalGeometry
             .Add(polygon.Normal.Z.Multiply(first.Z.Subtract(z), exactZeroProducts: true)).Divide(polygon.Normal.Y));
         var point = new FeaturePoint(x, y, z);
         GeometrySign inside = polygon.Inside(point);
+        if (inside == GeometrySign.Unresolved && polygon.HasSource)
+            inside = polygon.SourcePredicates.ProposalInterior(polygon, axis, radius);
         if (inside != GeometrySign.Negative)
         {
             // Evaluate the plane stratum without subtracting nearly equal horizontal squares at steep slopes.
@@ -62,22 +64,31 @@ internal static class SupportFootprintProposalGeometry
             HasUpper = true;
         }
 
-        internal bool Add(FeaturePoint point, FeaturePoint axis, FeatureNumber radius, bool attained)
+        internal bool Add(SupportPolygon polygon, int index, FeaturePoint axis, FeatureNumber radius)
         {
+            FeaturePoint point = polygon.Vertices[index];
             FeatureNumber dx = point.X.Subtract(axis.X), dz = point.Z.Subtract(axis.Z);
             FeatureNumber radicand = radius.Multiply(radius, exactZeroProducts: true).Subtract(dx.Multiply(dx, exactZeroProducts: true).Add(dz.Multiply(dz, exactZeroProducts: true)));
             GeometrySign sign = radicand.Sign;
+            if (sign == GeometrySign.Unresolved && polygon.HasSource)
+            {
+                GeometrySign disc = polygon.SourcePredicates.VertexDisc(polygon, index, axis, radius);
+                sign = disc == GeometrySign.Positive ? GeometrySign.Negative :
+                    disc == GeometrySign.Negative ? GeometrySign.Positive : disc;
+                if (sign == GeometrySign.Zero) radicand = Zero;
+            }
             if (sign == GeometrySign.Negative) return true;
             if (sign == GeometrySign.Unresolved) return false;
             FeatureNumber height = point.Y.Add(Root(radicand)).Subtract(radius);
             if (!height.IsResolved) return false;
-            Add(height.Bounds, attained);
+            Add(height.Bounds, true);
             return true;
         }
     }
 
-    static bool Edge(FeaturePoint vertex, FeaturePoint edge, FeaturePoint axis, FeatureNumber radius, ref Maximum range)
+    static bool Edge(SupportPolygon polygon, int index, FeaturePoint axis, FeatureNumber radius, ref Maximum range)
     {
+        FeaturePoint vertex = polygon.Vertices[index], edge = polygon.Edges[index];
         FeatureNumber a = edge.X.Multiply(edge.X, exactZeroProducts: true).Add(edge.Z.Multiply(edge.Z, exactZeroProducts: true));
         GeometrySign length = a.Sign;
         if (length == GeometrySign.Zero) return true;
@@ -92,14 +103,28 @@ internal static class SupportFootprintProposalGeometry
                 ? radius.Multiply(radius, exactZeroProducts: true).Subtract(dx.Multiply(dx, exactZeroProducts: true))
                 : radius.Multiply(radius, exactZeroProducts: true).Subtract(cross.Multiply(cross, exactZeroProducts: true).Divide(a));
         GeometrySign sign = k.Sign;
+        if (sign == GeometrySign.Unresolved && polygon.HasSource)
+        {
+            sign = polygon.SourcePredicates.EdgeDiscriminant(polygon, index, axis, radius);
+            if (sign == GeometrySign.Zero) k = Zero;
+            else if (sign == GeometrySign.Positive && k.IsResolved)
+                k = FeatureNumber.Enclosed(GeometryInterval.Enclose(Math.Max(0, k.Bounds.Lower), k.Bounds.Upper));
+        }
         if (sign == GeometrySign.Negative) return true;
         if (sign == GeometrySign.Unresolved) return false;
         FeatureNumber centre = b.Negate().Divide(a), root = Root(k.Divide(a));
         // Closed circle endpoints attain height q.Y - r, including a tangent edge.
-        if (!Parameter(vertex, edge, centre.Subtract(root), radius, ref range) ||
-            !Parameter(vertex, edge, centre.Add(root), radius, ref range)) return false;
+        if (!Parameter(polygon, index, axis, centre.Subtract(root), radius, -1, ref range) ||
+            !Parameter(polygon, index, axis, centre.Add(root), radius, 1, ref range)) return false;
         FeatureNumber t = centre.Add(edge.Y.Multiply(Root(k.Divide(a.Multiply(a.Add(edge.Y.Multiply(edge.Y, exactZeroProducts: true)), exactZeroProducts: true))), exactZeroProducts: true));
         GeometrySign low = t.Sign, high = One.Subtract(t).Sign;
+        if (polygon.HasSource)
+        {
+            if (low == GeometrySign.Unresolved)
+                low = polygon.SourcePredicates.EdgeStationary(polygon, index, axis, radius, high: false);
+            if (high == GeometrySign.Unresolved)
+                high = polygon.SourcePredicates.EdgeStationary(polygon, index, axis, radius, high: true);
+        }
         if (low == GeometrySign.Negative || high == GeometrySign.Negative) return true;
         if (!t.IsResolved) return false;
         // At the stationary point, combine the axial rise and spherical height symbolically.
@@ -111,10 +136,18 @@ internal static class SupportFootprintProposalGeometry
         return true;
     }
 
-    static bool Parameter(FeaturePoint vertex, FeaturePoint edge, FeatureNumber t,
-        FeatureNumber radius, ref Maximum range)
+    static bool Parameter(SupportPolygon polygon, int index, FeaturePoint axis, FeatureNumber t,
+        FeatureNumber radius, int direction, ref Maximum range)
     {
+        FeaturePoint vertex = polygon.Vertices[index], edge = polygon.Edges[index];
         GeometrySign low = t.Sign, high = One.Subtract(t).Sign;
+        if (polygon.HasSource)
+        {
+            if (low == GeometrySign.Unresolved)
+                low = polygon.SourcePredicates.EdgeRoot(polygon, index, axis, radius, direction, high: false);
+            if (high == GeometrySign.Unresolved)
+                high = polygon.SourcePredicates.EdgeRoot(polygon, index, axis, radius, direction, high: true);
+        }
         if (low == GeometrySign.Negative || high == GeometrySign.Negative) return true;
         if (!t.IsResolved) return false;
         bool attained = low != GeometrySign.Unresolved && high != GeometrySign.Unresolved;

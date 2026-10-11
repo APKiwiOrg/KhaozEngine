@@ -123,9 +123,13 @@ internal static class SupportNeighborhoodPolyhedra
             int[] indices = leaf.Faces[face];
             SupportPolygon polygon = pool.Rent();
             polygon.Begin(owner, leaf.LeafId * FaceStride + face, indices.Length);
+            polygon.BeginSource(leaf.SourceMap);
             for (int i = 0; i < indices.Length; i++)
+            {
+                polygon.SetSource(i, leaf.LocalVertices[indices[i]]);
                 polygon.Set(i, footprint ? leaf.FootprintVertex(indices[i]) : leaf.Vertices[indices[i]],
                     leaf.EdgeDirection(indices[i], indices[(i + 1) % indices.Length], footprint));
+            }
             polygon.Finish(footprint ? FeaturePoint.Cross(leaf.EdgeDirection(indices[0], indices[1], true),
                 leaf.EdgeDirection(indices[0], indices[2], true), exactZeroProducts: true) : leaf.Normals[face]);
             output.Add(polygon);

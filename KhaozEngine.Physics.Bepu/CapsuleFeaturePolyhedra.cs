@@ -45,6 +45,7 @@ internal sealed class CapsuleFeaturePolyhedron
     internal RigidPose InstalledWorldPose { get; private set; }
     internal int LeafId { get; private set; }
     internal Vector3[] LocalVertices { get; private set; } = [];
+    internal InstalledPoseOperator SourceMap => _transform;
     internal FeaturePoint[] Vertices { get; private set; } = [];
     internal int[][] Faces { get; private set; } = [];
     internal CapsuleFeaturePolyhedronEdge[] Edges { get; private set; } = [];

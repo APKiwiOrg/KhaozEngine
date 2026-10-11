@@ -253,7 +253,6 @@ legacy numbers. Box and mesh variants where statics are involved, 30 and 60 Hz, 
 ## Files
 
 - `GroundSeat.cs`: the backward residual, the overhung edge's level plane and `d` beside `StepPart`.
-- `GroundPlacement.cs`: `Paced` reports what it paid.
 - `GroundCore.cs`: owed discrete rise and `GroundStepResult.StepRise`.
 - New `GroundSignals.cs`: trigger, look-ahead, grade fit and rates, one responsibility.
 - `ContactController.cs`: sums `StepRise`, calls `GroundSignals`, zeroes signals on the listed ticks, finite check.

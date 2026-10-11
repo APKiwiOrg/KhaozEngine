@@ -300,6 +300,48 @@ public class SupportFootprintTests
     }
 
     [Fact]
+    public void HorizontalCylinderAxisTangencyRetainsEquatorialWitness()
+    {
+        using var scene = new SupportFootprintScene();
+        scene.Install(new CylinderShape(0.25f, 1f), new(Vector3.Zero, new Quaternion(0.5f, 0.5f, 0.5f, 0.5f)));
+        OracleTangent side = scene.Curves.Single(c => c.Surface == OracleSurface.CylinderSide);
+        Assert.Equal(new OracleVector(0, 0, 1), side.Axis);
+        Assert.Equal(0.5, side.HalfLength);
+        FootprintOracleMember member = SupportFootprintOracle.Curved(side, Request(x: 0.25f))!;
+        Assert.NotNull(member);
+        Assert.True(member.HasDiscMaximum);
+        Assert.True(member.WitnessInsideClosedDisc);
+        Assert.Equal(2, member.Witnesses.Count);
+        FootprintOracleWitness axis = member.Witnesses[0];
+        Assert.Equal(SupportWitnessRole.Axis, axis.Role);
+        Assert.Equal(new OracleVector(0.25, 0, 0), axis.Position);
+        Assert.Equal(new OracleVector(1, 0, 0), axis.Normal);
+        Assert.Equal(SupportWitnessRole.Footprint, member.Witnesses[1].Role);
+        Assert.True(member.Witnesses[1].Normal.Y > 0);
+    }
+
+    [Fact]
+    public void HorizontalCylinderFootprintTangencyHasNoSupportOrPerPointReading()
+    {
+        using var scene = new SupportFootprintScene();
+        scene.Install(new CylinderShape(0.25f, 1f), new(Vector3.Zero, new Quaternion(0.5f, 0.5f, 0.5f, 0.5f)));
+        OracleTangent side = scene.Curves.Single(c => c.Surface == OracleSurface.CylinderSide);
+        SupportFootprintRequest request = Request(x: 0.5f, radius: 0.25f);
+        FootprintOracleMember member = SupportFootprintOracle.Curved(side, request)!;
+        Assert.NotNull(member);
+        Assert.True(member.HasDiscMaximum);
+        Assert.True(member.WitnessInsideClosedDisc);
+        Assert.Equal(0, member.Maximum);
+        FootprintOracleWitness footprint = Assert.Single(member.Witnesses);
+        Assert.Equal(SupportWitnessRole.Footprint, footprint.Role);
+        Assert.Equal(new OracleVector(0.25, 0, 0), footprint.Position);
+        Assert.Equal(new OracleVector(1, 0, 0), footprint.Normal);
+        Assert.Equal(SupportStatus.None, SupportFootprintOracle.Select([member], request).Status);
+        Assert.Equal((double.NegativeInfinity, double.NegativeInfinity),
+            SupportFootprintOracle.PerPointSupremum(side, request));
+    }
+
+    [Fact]
     public void VolumeTangencyAtOneRemoteVertexCannotAdmitAnEmptyDiscIntersection()
     {
         SupportFootprintRequest request = Request();

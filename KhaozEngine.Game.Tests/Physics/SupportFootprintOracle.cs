@@ -278,7 +278,7 @@ internal static class SupportFootprintOracle
         {
             double cosine = Math.Sqrt(Math.Max(0, 1 - s * s));
             OracleVector normal = up * cosine + across * s;
-            if (!(normal.Y > 0) || normal.Y < slope) return null;
+            if (!(normal.Y >= 0) || normal.Y < slope) return null;
             double perp = perpendicular + radius * s, square = r * r - perp * perp;
             if (square < 0) return null;
             double centre = -(parallel - radius * ay * cosine) / u, span = Math.Sqrt(square) / u;
@@ -445,7 +445,7 @@ internal static class SupportFootprintOracle
             {
                 double y = (-b + Math.Sqrt(discriminant)) / (2 * a), t = horizontalDot + ay * y;
                 OracleVector normal = (new OracleVector(dx, y, dz) - part.Axis * t) * (1 / part.Radius);
-                if (Math.Abs(t) <= part.HalfLength && normal.Y > 0)
+                if (Math.Abs(t) <= part.HalfLength && normal.Y >= 0)
                     candidates.Add(new(new(x, part.Centre.Y + y, z), normal));
             }
         }
@@ -715,10 +715,11 @@ internal static class SupportFootprintOracle
         OracleVector delta = part.Centre - new OracleVector(query.Axis.X, part.Centre.Y, query.Axis.Y);
         double dp = OracleVector.Dot(delta, parallel), dv = OracleVector.Dot(delta, across);
         double low = Math.Max(-1, (-r - dv) / radius), high = Math.Min(1, (r - dv) / radius);
-        if (low > high) return (double.NegativeInfinity, double.NegativeInfinity);
+        if (low > high || low >= 1 || high <= -1) return (double.NegativeInfinity, double.NegativeInfinity);
         double lower = double.NegativeInfinity;
         SurfacePoint? maximum = Maximum(part, query.Axis.X, query.Axis.Y, r, 0);
-        if (maximum is { } m) lower = Math.BitDecrement(Math.Min(m.Position.Y, Plane(m.Position, m.Normal, query.Axis.X, query.Axis.Y)));
+        if (maximum is { } m && m.Normal.Y > 0)
+            lower = Math.BitDecrement(Math.Min(m.Position.Y, Plane(m.Position, m.Normal, query.Axis.X, query.Axis.Y)));
         var queue = new PriorityQueue<(Range S, double Upper), double>();
         void Add(Range s)
         {
@@ -749,9 +750,12 @@ internal static class SupportFootprintOracle
         Add(new(low, high));
         while (queue.TryPeek(out var next, out _) && next.Upper - lower > 1e-7)
         {
+            double middle = next.S.Middle;
+            // Keep the outward upper bound when no interior midpoint is representable.
+            if (!(next.S.Low < middle && middle < next.S.High)) break;
             queue.Dequeue();
-            Add(new(next.S.Low, next.S.Middle));
-            Add(new(next.S.Middle, next.S.High));
+            Add(new(next.S.Low, middle));
+            Add(new(middle, next.S.High));
         }
         return (lower, queue.TryPeek(out var last, out _) ? Math.Max(lower, last.Upper) : lower);
     }

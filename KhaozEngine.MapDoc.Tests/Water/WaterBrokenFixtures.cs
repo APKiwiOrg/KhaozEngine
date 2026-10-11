@@ -47,6 +47,10 @@ internal static partial class WaterFixtures
             case "bow-tie": body = OnlyRing(body, (0, 0), (4, 4), (4, 0), (0, 4)); break;
             case "collinear": body = OnlyRing(body, (0, 0), (2, 0), (4, 0)); break;
             case "overlapping-pieces": body = body with { Domain = domain with { Rects = new[] { Rect(0, 0, 8, 4), Rect(6, 0, 12, 4) } } }; break;
+            case "overlapping-ring":
+                body = OnlyRing(body, (6, 0), (12, 0), (12, 4), (10, 4), (10, 2), (6, 2));
+                body = body with { Domain = body.Domain with { Rects = new[] { Rect(0, 0, 8, 4) } } };
+                break;
             case "overlapping-bodies":
                 water.Bodies.Add(Body("second-lake", -35f, Rect(4, 0, 6, 4), Cover("lake-cave", "lake-floor")));
                 break;
@@ -54,6 +58,14 @@ internal static partial class WaterFixtures
                 body = body with
                 {
                     Domain = domain with { Rects = Enumerable.Range(0, 65_537).Select(i => Rect(i % 256, i / 256, i % 256 + 1, i / 256 + 1)).ToArray() },
+                };
+                break;
+            case "too-many-vertices":
+                // 65,535 rects count 262,140 vertices, and a five-vertex ring takes the domain one past the limit.
+                body = OnlyRing(body, (0, 300), (2, 300), (3, 301), (2, 302), (0, 302));
+                body = body with
+                {
+                    Domain = body.Domain with { Rects = Enumerable.Range(0, 65_535).Select(i => Rect(i % 256, i / 256, i % 256 + 1, i / 256 + 1)).ToArray() },
                 };
                 break;
             default: throw new ArgumentException("unknown broken water variant", nameof(variant));

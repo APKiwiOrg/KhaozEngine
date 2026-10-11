@@ -15,8 +15,10 @@ public class MapWaterDomainTests
     static MapExactXz Xz(float x, float z) => new(MapExactValue.FromSingle(x), MapExactValue.FromSingle(z));
     static MapWaterDomain Rects(MapLatticeFrame frame, params MapWaterRect[] rects) =>
         MapWaterDomain.Compile(new(frame, rects, Array.Empty<MapWaterRing>()));
-    static MapWaterDomain Ring(params (long X, long Z)[] points) => MapWaterDomain.Compile(new(Up, Array.Empty<MapWaterRect>(),
-        new[] { new MapWaterRing(points.Select(p => MapLatticeAddress.Corner(p.X, p.Z)).ToArray()) }));
+    static MapWaterRing Lattice(params (long X, long Z)[] points) =>
+        new(points.Select(p => MapLatticeAddress.Corner(p.X, p.Z)).ToArray());
+    static MapWaterDomain Ring(params (long X, long Z)[] points) =>
+        MapWaterDomain.Compile(new(Up, Array.Empty<MapWaterRect>(), new[] { Lattice(points) }));
 
     [Fact]
     public void Rect_OwnsMinimumAndExcludesMaximum_IncludingNegativeZ()
@@ -56,6 +58,56 @@ public class MapWaterDomainTests
     }
 
     [Fact]
+    public void ReflexCorner_IsOwnedOnceByAnLAndTheSquareInItsNotch()
+    {
+        MapWaterDomain l = Ring((0, 0), (4, 0), (4, 4), (2, 4), (2, 2), (0, 2));
+        MapWaterDomain notch = Rects(Up, new MapWaterRect(0, 2, 2, 4));
+        Assert.True(l.Contains(Xz(2, 2)));
+        Assert.False(notch.Contains(Xz(2, 2)));
+    }
+
+    [Fact]
+    public void Tiling_OwnsEveryLatticePointOnce_IncludingReflexCornersAndTJunctions()
+    {
+        // Three L rings, each with the rect that fills its notch, put reflex corners whose incoming edge owns, whose
+        // outgoing edge owns, and where neither does. The rects at x 4 to 8 meet L2's west edge at (8, 2) and L1's east
+        // edge at (4, 2), two T-junctions. Together they tile x [0, 16) by z [0, 4).
+        MapWaterDomain d = MapWaterDomain.Compile(new(Up,
+            new[] { new MapWaterRect(0, 2, 2, 4), new MapWaterRect(4, 0, 8, 2), new MapWaterRect(4, 2, 8, 4), new MapWaterRect(10, 2, 12, 4), new MapWaterRect(14, 0, 16, 2) },
+            new[]
+            {
+                Lattice((0, 0), (4, 0), (4, 4), (2, 4), (2, 2), (0, 2)),
+                Lattice((8, 0), (12, 0), (12, 2), (10, 2), (10, 4), (8, 4)),
+                Lattice((12, 0), (14, 0), (14, 2), (16, 2), (16, 4), (12, 4)),
+            }));
+        Assert.Empty(d.OverlappingPieces(new MapWaterWorkBudget()));
+        for (int qx = -4; qx <= 68; qx++)
+            for (int qz = -4; qz <= 20; qz++)
+            {
+                MapExactXz p = Xz(qx / 4f, qz / 4f);
+                int owners = Enumerable.Range(0, d.Pieces.Count).Count(i => d.PieceContains(i, p));
+                Assert.Equal(qx >= 0 && qx < 64 && qz >= 0 && qz < 16 ? 1 : 0, owners);
+            }
+    }
+
+    [Fact]
+    public void PieceContains_RangeChecksThePiece()
+    {
+        MapWaterDomain d = Rects(Up, new MapWaterRect(0, 0, 1, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => d.PieceContains(1, Xz(0, 0)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => d.PieceContains(-1, Xz(0, 0)));
+    }
+
+    [Fact]
+    public void Overlap_NonConvexRing_TestsItsTriangles()
+    {
+        MapWaterDomain l = Ring((0, 0), (4, 0), (4, 4), (2, 4), (2, 2), (0, 2));
+        Assert.False(MapWaterDomain.OverlapsPositively(l, Rects(Up, new MapWaterRect(0, 2, 2, 4))));
+        Assert.True(MapWaterDomain.OverlapsPositively(l, Rects(Up, new MapWaterRect(1, 1, 3, 3))));
+        Assert.True(MapWaterDomain.OverlapsPositively(Rects(Up, new MapWaterRect(1, 2, 3, 4)), l));
+    }
+
+    [Fact]
     public void Overlap_RefusesPositiveAreaAndAllowsTouching()
     {
         MapWaterDomain a = Rects(Up, new MapWaterRect(0, 0, 4, 4));
@@ -84,12 +136,14 @@ public class MapWaterDomainTests
         Assert.Equal(5f + 1.137f * 0.5f, placement.SurfaceY(0.5f));
     }
 
-    [Fact]
-    public void Placement_WithUnrepresentableCorners_Refuses()
+    [Theory]
+    [InlineData(0.371f, 1e-20f)]
+    [InlineData(0f, 3e38f)]
+    public void Placement_WithUnrepresentableCorners_Refuses(float yaw, float scale)
     {
-        var tiny = new MapWaterPlacement(Vector3.Zero, 0.371f, 1e-20f);
+        var placement = new MapWaterPlacement(Vector3.Zero, yaw, scale);
         var error = Assert.Throws<MapDocumentException>(() =>
-            MapWaterDomain.Compile(new(Up, new[] { new MapWaterRect(0, 0, 2, 1) }, Array.Empty<MapWaterRing>()), tiny));
+            MapWaterDomain.Compile(new(Up, new[] { new MapWaterRect(0, 0, 2, 1) }, Array.Empty<MapWaterRing>()), placement));
         Assert.Contains("not representable", error.Message, StringComparison.Ordinal);
     }
 
@@ -110,16 +164,58 @@ public class MapWaterDomainTests
     [Theory]
     [InlineData("bow-tie", "water body 'ocean': ring 0 self-intersects")]
     [InlineData("collinear", "water body 'ocean': ring 0 has zero area")]
-    [InlineData("overlapping-pieces", "water body 'ocean': pieces 0 and 1 overlap")]
+    [InlineData("overlapping-pieces", "water body 'ocean': rect 0 and rect 1 overlap")]
+    [InlineData("overlapping-ring", "water body 'ocean': rect 0 and ring 0 overlap")]
     [InlineData("overlapping-bodies", "water bodies 'cave-lake' and 'second-lake' overlap in space 'lake-cave'")]
     [InlineData("too-many-pieces", "water body 'ocean': domain exceeds 65536 pieces")]
+    [InlineData("too-many-vertices", "water body 'ocean': domain exceeds 262144 vertices")]
     public void Validation_RefusesBadGeometry(string variant, string message)
     {
         IReadOnlyList<string> errors = MapDocumentValidator.Validate(WaterFixtures.Broken(variant), MapDocRegistry.CreateDefault());
         Assert.Contains(errors, e => e.Contains(message, StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Validation_ColumnOfOneCellRects_ChargesLinearWork(bool descending)
+    {
+        var budget = new MapWaterWorkBudget();
+        var errors = new List<string>();
+        MapWaterValidation.Validate(WithOceanColumn(4096, descending), errors, budget);
+        Assert.Empty(errors);
+        Assert.InRange(budget.Charged, 0, 4 * 4096);
+    }
+
+    [Fact]
+    public void Validation_OverBudget_RefusesNamingTheBody()
+    {
+        var errors = new List<string>();
+        MapWaterValidation.Validate(WithOceanColumn(64, descending: true), errors, new MapWaterWorkBudget(8));
+        Assert.Equal(new[] { "water body 'ocean': domain work exceeds 8 pair checks." }, errors);
+    }
+
+    [Fact]
+    public void Budget_DefaultsToTheNamedPairCheckLimit()
+    {
+        Assert.Equal(16_777_216L, MapWaterDomain.MaxPairChecks);
+        Assert.Equal(MapWaterDomain.MaxPairChecks, new MapWaterWorkBudget().Limit);
+    }
+
     [Fact]
     public void BodiesInDifferentSpaces_MayShareXz() =>
         Assert.Empty(MapDocumentValidator.Validate(WaterFixtures.OceanOverCaves(), MapDocRegistry.CreateDefault()));
+
+    /// <summary>The ocean as a column of one-cell rects. Its frame runs rows toward negative Z, so in descending row
+    /// order each rect touches the one swept before it, which the sweep examines and charges.</summary>
+    static MapDocument WithOceanColumn(int cells, bool descending)
+    {
+        MapDocument doc = WaterFixtures.OceanOverCaves();
+        List<MapWaterBodyDoc> bodies = doc.Water!.Bodies;
+        int ocean = bodies.FindIndex(b => b.Id == "ocean");
+        MapWaterRect[] column = Enumerable.Range(0, cells).Select(i => descending ? cells - 1 - i : i)
+            .Select(z => new MapWaterRect(0, z, 1, z + 1)).ToArray();
+        bodies[ocean] = bodies[ocean] with { Domain = bodies[ocean].Domain with { Rects = column } };
+        return doc;
+    }
 }

@@ -6,14 +6,19 @@ namespace KhaozEngine.MapDoc.Water;
 
 /// <summary>Document-level water rules shared by loading, editing and saving, including exact domain geometry:
 /// simple rings, no overlap between the pieces of one body, and no overlap between bodies that cover the same
-/// space. Containment in the covered spaces is checked elsewhere.</summary>
+/// space. Containment in the covered spaces is checked elsewhere. All geometry work in one call shares one
+/// <see cref="MapWaterWorkBudget"/>, so validation stays bounded.</summary>
 internal static class MapWaterValidation
 {
     const int MaxMetres = 1_000_000;
     static readonly MapExactValue MaxExtent = new(MaxMetres, 1);
     static readonly MapExactValue MinExtent = new(-MaxMetres, 1);
 
-    internal static void Validate(MapDocument doc, List<string> errors)
+    internal static void Validate(MapDocument doc, List<string> errors) => Validate(doc, errors, new MapWaterWorkBudget());
+
+    /// <summary>Validates against <paramref name="budget"/>. Once it is spent the call reports the body or space that
+    /// passed it and skips the remaining geometry checks.</summary>
+    internal static void Validate(MapDocument doc, List<string> errors, MapWaterWorkBudget budget)
     {
         if (doc.Water is not { } water) return;
         if (doc.ResolverIdentity is not { PayloadVersion: 1, ResolverVersion: 2 } ||
@@ -25,8 +30,8 @@ internal static class MapWaterValidation
         var bodies = new HashSet<string>(StringComparer.Ordinal);
         var compiled = new List<(MapWaterBodyDoc Body, MapWaterDomain Domain)>();
         foreach (MapWaterBodyDoc body in water.Bodies)
-            if (ValidateBody(body, media, bodies, errors) is { } domain) compiled.Add((body, domain));
-        ValidateSharedSpaces(compiled, errors);
+            if (ValidateBody(body, media, bodies, errors, budget) is { } domain) compiled.Add((body, domain));
+        ValidateSharedSpaces(compiled, errors, budget);
     }
 
     static void ValidateMedium(MapWaterMediumDoc medium, HashSet<string> keys, List<string> errors)
@@ -44,7 +49,8 @@ internal static class MapWaterValidation
     }
 
     /// <summary>Returns the compiled domain when the body's geometry is valid and its id is unique.</summary>
-    static MapWaterDomain? ValidateBody(MapWaterBodyDoc body, HashSet<string> media, HashSet<string> ids, List<string> errors)
+    static MapWaterDomain? ValidateBody(MapWaterBodyDoc body, HashSet<string> media, HashSet<string> ids, List<string> errors,
+        MapWaterWorkBudget budget)
     {
         if (body is null || string.IsNullOrWhiteSpace(body.Id))
         {
@@ -63,12 +69,12 @@ internal static class MapWaterValidation
         }
         if (body.Medium is null || !media.Contains(body.Medium)) errors.Add($"{label}: unknown medium '{body.Medium}'.");
         if (string.IsNullOrWhiteSpace(body.RenderMaterial)) errors.Add($"{label}: renderMaterial must be non-empty.");
-        MapWaterDomain? domain = ValidateDomain(body.Domain, label, errors);
+        MapWaterDomain? domain = ValidateDomain(body.Domain, label, errors, budget);
         bool covers = ValidateCovers(body.Covers, label, errors);
         return unique && covers ? domain : null;
     }
 
-    static MapWaterDomain? ValidateDomain(MapWaterDomainDoc domain, string label, List<string> errors)
+    static MapWaterDomain? ValidateDomain(MapWaterDomainDoc domain, string label, List<string> errors, MapWaterWorkBudget budget)
     {
         if (domain?.Rects is null || domain.Rings is null)
         {
@@ -112,24 +118,32 @@ internal static class MapWaterValidation
             }
         }
         if (far) errors.Add($"{label}: domain exceeds {MaxMetres} m.");
-        if (errors.Count != before) return null;
+        if (errors.Count != before || budget.Exhausted) return null;
 
         var geometry = new List<string>();
-        MapWaterDomain? compiled = MapWaterDomain.TryCompile(domain, null, geometry);
+        MapWaterDomain? compiled = MapWaterDomain.TryCompile(domain, null, geometry, budget);
         foreach (string error in geometry) errors.Add($"{label}: {error}.");
         if (compiled is null) return null;
-        bool overlap = false;
-        foreach ((int a, int b) in compiled.OverlappingPieces())
+        var overlaps = new List<(int A, int B)>();
+        try
         {
-            errors.Add($"{label}: pieces {a} and {b} overlap.");
-            overlap = true;
+            overlaps.AddRange(compiled.OverlappingPieces(budget));
         }
-        return overlap ? null : compiled;
+        catch (MapDocumentException e)
+        {
+            errors.Add($"{label}: {e.Message}.");
+            return null;
+        }
+        overlaps.Sort();
+        foreach ((int a, int b) in overlaps) errors.Add($"{label}: {compiled.PieceName(a)} and {compiled.PieceName(b)} overlap.");
+        return overlaps.Count == 0 ? compiled : null;
     }
 
     /// <summary>Refuses positive-area overlap between bodies that cover the same space. Pieces of every body in one
-    /// space meet through a sorted bounds sweep, so only overlapping bounds reach the exact test.</summary>
-    static void ValidateSharedSpaces(List<(MapWaterBodyDoc Body, MapWaterDomain Domain)> compiled, List<string> errors)
+    /// space meet through one bounds sweep. Pairs within one body, already checked, and pairs of bodies already
+    /// reported skip the exact test.</summary>
+    static void ValidateSharedSpaces(List<(MapWaterBodyDoc Body, MapWaterDomain Domain)> compiled, List<string> errors,
+        MapWaterWorkBudget budget)
     {
         var bySpace = new SortedDictionary<string, List<int>>(StringComparer.Ordinal);
         for (int i = 0; i < compiled.Count; i++)
@@ -141,6 +155,7 @@ internal static class MapWaterValidation
         foreach ((string space, List<int> bodies) in bySpace)
         {
             if (bodies.Count < 2) continue;
+            if (budget.Exhausted) return;
             var pieces = new List<(MapWaterDomain Domain, int Piece)>();
             var owners = new List<int>();
             foreach (int body in bodies)
@@ -150,14 +165,27 @@ internal static class MapWaterValidation
                     owners.Add(body);
                 }
             var reported = new HashSet<(int, int)>();
-            foreach ((int a, int b) in MapWaterDomain.OverlappingPairs(pieces))
+            (int, int) BodyPair(int a, int b) => (Math.Min(owners[a], owners[b]), Math.Max(owners[a], owners[b]));
+            try
             {
-                int first = Math.Min(owners[a], owners[b]), second = Math.Max(owners[a], owners[b]);
-                if (first == second || !reported.Add((first, second))) continue;
+                foreach ((int a, int b) in MapWaterDomain.OverlappingPairs(pieces,
+                    (a, b) => owners[a] != owners[b] && !reported.Contains(BodyPair(a, b)), budget))
+                    reported.Add(BodyPair(a, b));
+            }
+            catch (MapDocumentException e)
+            {
+                errors.Add($"water bodies covering space '{space}': {e.Message}.");
+                return;
+            }
+            var messages = new List<string>();
+            foreach ((int first, int second) in reported)
+            {
                 string[] ids = { compiled[first].Body.Id, compiled[second].Body.Id };
                 Array.Sort(ids, StringComparer.Ordinal);
-                errors.Add($"water bodies '{ids[0]}' and '{ids[1]}' overlap in space '{space}'.");
+                messages.Add($"water bodies '{ids[0]}' and '{ids[1]}' overlap in space '{space}'.");
             }
+            messages.Sort(StringComparer.Ordinal);
+            errors.AddRange(messages);
         }
     }
 

@@ -291,24 +291,26 @@ internal static class FootSupportScenes
 
     /// <summary>A floor for x at most 0, then <paramref name="risers"/> risers of <paramref name="riser"/> with
     /// treads <paramref name="tread"/> deep. Riser k, counted from 1, stands at x <c>tread (k - 1)</c> and its
-    /// tread tops out at <c>riser k</c>. The top tread is a 2 m landing. The box variant stacks solid boxes on
+    /// tread tops out at <c>riser k</c>. The top tread is a 2 m landing. A <paramref name="firstTread"/> deepens the
+    /// first tread alone and moves every later riser along by the difference. The box variant stacks solid boxes on
     /// Y 0, so every nosing belongs to one static. The mesh variant is one static of tread and riser quads.</summary>
     internal static FootSupportScene Stairs(SceneVariant variant, float tread, float riser, int risers,
-        float halfWidth = 1)
+        float halfWidth = 1, float? firstTread = null)
     {
-        float landingEnd = tread * (risers - 1) + 2;
+        float RiserX(int k) => k == 1 ? 0 : (firstTread ?? tread) + tread * (k - 2);
+        float landingEnd = RiserX(risers) + 2;
         if (variant == SceneVariant.Box)
         {
             var boxes = new FootSupportScene(variant).Flat("floor", -4, 0, -5, 5, 0);
             for (int k = 1; k <= risers; k++)
-                boxes.Flat($"step{k}", tread * (k - 1), landingEnd, -halfWidth, halfWidth, riser * k);
+                boxes.Flat($"step{k}", RiserX(k), landingEnd, -halfWidth, halfWidth, riser * k);
             return boxes;
         }
         var vertices = new List<Vector3>(FootSupportScene.Quad(new(-4, 0, -5), new(0, 0, -5), new(-4, 0, 5),
             new(0, 0, 5)));
         for (int k = 1; k <= risers; k++)
         {
-            float x0 = tread * (k - 1), x1 = k == risers ? landingEnd : tread * k;
+            float x0 = RiserX(k), x1 = k == risers ? landingEnd : RiserX(k + 1);
             float y0 = riser * (k - 1), y1 = riser * k;
             // The riser quad's low Y edge plays the low X edge, so it faces -X toward the climb.
             vertices.AddRange(FootSupportScene.Quad(new(x0, y0, -halfWidth), new(x0, y1, -halfWidth),

@@ -39,6 +39,16 @@ internal readonly record struct GroundStepResult(Vector3 Feet, GroundFooting Foo
 
     /// <summary>The feet change from accepted placements and lag payments, excluding start recovery.</summary>
     internal float MoveRise { get; init; }
+
+    /// <summary>True when an accepted walking substep seated across a discrete rise.</summary>
+    internal bool RiseSeen { get; init; }
+
+    /// <summary>True when an accepted walking substep seated across a discrete drop.</summary>
+    internal bool DropSeen { get; init; }
+
+    /// <summary>How far the start lay certainly below its walkable support, beyond the contact skin and the support's
+    /// certified error, whether or not a step was in progress. Zero otherwise.</summary>
+    internal float CarriedLag { get; init; }
 }
 
 /// <summary>Resolves one grounded tick: recovery, start support, the lift, then per substep the shell sweep and
@@ -108,6 +118,7 @@ internal static class GroundCore
             {
                 ClimbBudget = budget,
             };
+        double carriedLag = CarriedLag(support, start.Y);
         bool steepStart = slide && support.Status == SupportStatus.Steep;
         if (!cleared || (support.Status != SupportStatus.Walkable && !steepStart) ||
             (!moving && !Owes(support, start.Y)))
@@ -124,7 +135,7 @@ internal static class GroundCore
         if (steepStart) substeps = Math.Max(substeps, SlideSubsteps(displacement, support.Normal, tuning));
 
         var tick = new Tick(groundHeight, groundNormal, world, lease, tuning, footRadius, cosMaxSlope, start,
-            ShellMotion.Lift(world, start, tuning), support, slide, clampXz, stepInProgress);
+            ShellMotion.Lift(world, start, tuning), support, slide, clampXz, stepInProgress ? carriedLag : 0);
         if (!moving)
         {
             // A body at rest still climbs onto the tread a paced climb left it below.
@@ -134,6 +145,7 @@ internal static class GroundCore
                 ClimbBudget = budget,
                 StepRise = tick.StepRise,
                 MoveRise = tick.MoveRise,
+                CarriedLag = (float)carriedLag,
             };
         }
         Vector2 moved = tick.Run(displacement, substeps, ref budget, out GroundFooting footing, out bool blocked,
@@ -144,6 +156,9 @@ internal static class GroundCore
             ClimbBudget = budget,
             StepRise = tick.StepRise,
             MoveRise = tick.MoveRise,
+            RiseSeen = tick.RiseSeen,
+            DropSeen = tick.DropSeen,
+            CarriedLag = (float)carriedLag,
         };
     }
 
@@ -157,6 +172,14 @@ internal static class GroundCore
             : new Vector3(start.X + moved.X, feetY, start.Z + moved.Y);
         Vector2 achieved = new Vector2(start.X - input.X, start.Z - input.Z) + moved;
         return new(final, footing, support, feetY - input.Y, achieved, blocked);
+    }
+
+    // The lag a start carries below its walkable support, when it exceeds the contact skin and the support's error.
+    static double CarriedLag(in SupportSample support, float feetY)
+    {
+        double lag = (double)support.Height - feetY;
+        return support.Status == SupportStatus.Walkable && lag > (double)ShellMotion.ContactSkin + support.HeightError
+            ? lag : 0;
     }
 
     // Feet certainly below their walkable support owe that climb. Feet within the support's error already stand on
@@ -237,7 +260,7 @@ internal static class GroundCore
         internal Tick(Func<float, float, float>? groundHeight, Func<float, float, Vector3>? groundNormal,
             IPhysicsWorld? world, IPhysicsQueryLease? lease, in MoveTuning tuning, float footRadius,
             float cosMaxSlope, Vector3 start, float lift, in SupportSample support, bool slide,
-            Func<float, float, Vector2>? clampXz, bool stepInProgress)
+            Func<float, float, Vector2>? clampXz, double owedDiscrete)
         {
             _groundHeight = groundHeight;
             _groundNormal = groundNormal;
@@ -253,15 +276,15 @@ internal static class GroundCore
             _clampXz = clampXz;
             FeetY = start.Y;
             Support = support;
-            double lag = (double)support.Height - start.Y;
-            _owedDiscrete = stepInProgress && support.Status == SupportStatus.Walkable &&
-                lag > (double)ShellMotion.ContactSkin + support.HeightError ? lag : 0;
+            _owedDiscrete = owedDiscrete;
         }
 
         internal float FeetY { get; private set; }
         internal SupportSample Support { get; private set; }
         internal readonly float StepRise => (float)_stepRise;
         internal readonly float MoveRise => (float)_moveRise;
+        internal bool RiseSeen { get; private set; }
+        internal bool DropSeen { get; private set; }
 
         readonly Vector2 Axis => _startAxis + _achieved;
 
@@ -339,7 +362,12 @@ internal static class GroundCore
                 _moveRise += (double)placement.Feet.Y - FeetY;
                 FeetY = placement.Feet.Y;
                 Support = placement.Support;
-                if (!_slide && seat.Outcome == SeatOutcome.Seated) AccountDiscrete(seat.DiscreteStep);
+                if (!_slide && seat.Outcome == SeatOutcome.Seated)
+                {
+                    AccountDiscrete(seat.DiscreteStep);
+                    RiseSeen |= seat.DiscreteStep > 0;
+                    DropSeen |= seat.DiscreteStep < 0;
+                }
                 if (seat.Outcome == SeatOutcome.SteepSeated)
                 {
                     footing = GroundFooting.Steep;

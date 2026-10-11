@@ -110,7 +110,8 @@ support ahead of the axis, as legacy samples its grade fan.
 look-ahead runs only when the tick's achieved horizontal ground travel is at least the contact skin, which gives it
 a direction, and when at least one of these holds:
 
-- the tick applied a nonzero discrete rise or drop
+- a walking substep seated across a discrete rise or drop, or the tick lifted the feet while its first ground
+  segment started below walkable support by more than the contact skin and the support's error
 - the input state's `ClimbRate` shows a run in progress, its magnitude at least half the wire quantum
 - the input state has a positive `ClimbRateEwma`
 
@@ -132,13 +133,16 @@ taken between consecutive walkable samples, is positive (or negative) for some p
 holds a step of the same sign. A smooth ramp has no discrete step between its samples, so it never starts a run
 however steep it is. A run in progress continues without the grade test:
 
-- an ascent (input `ClimbRate` at least half the wire quantum) continues while the tick applied a discrete rise, the window holds a rise, or
-  the feet still owe climb below their walkable support by more than the contact skin
-- a descent (input `ClimbRate` at most minus half the wire quantum) continues while the tick applied a discrete drop or the window holds a drop
+- an ascent (input `ClimbRate` at least half the wire quantum) continues while a substep seated across a discrete
+  rise, the tick lifted the feet over carried lag, the window holds a rise, or the feet still owe climb below their
+  walkable support by more than the contact skin
+- a descent (input `ClimbRate` at most minus half the wire quantum) continues while a substep seated across a
+  discrete drop or the window holds a drop
 
 Near the top or bottom of a staircase, the window sees the landing and its fitted grade flattens while the last
 risers are still being climbed or dropped. Continuation carries the run through them and ends it once the steps
-are done. The constants stay named internal constants beside the others.
+are done. The constants stay named internal constants beside the others. Every climb-rate decision reads only facts
+every head carries, and the unreplicated `StepDeltaY` shapes only itself.
 
 **Ruling 4a-10.** Every head decides on the replicated climb rate. The final review showed that the sharded head
 rebuilt its step input without `ClimbRate`, so runs never continued there and the two server heads exported

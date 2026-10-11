@@ -1,7 +1,7 @@
 {
-  "task": "Contact controller phase 4a (KhaozEngine #438): StepDeltaY, ClimbRate and ClimbRateEwma from certified support, Tasks 1 to 4 and the final review fix wave (I1, I2, M1, M2, M3)",
+  "task": "Contact controller phase 4a (KhaozEngine #438): StepDeltaY, ClimbRate and ClimbRateEwma from certified support, Tasks 1 to 4 and the final review fix wave (I1, I2, M1, M2, M3) and its second part (head-independent climb decisions)",
   "candidate_base": "91e19fc0e660ba24b37f7e05cd1d10a672fc7757",
-  "candidate": "6a4f1cd9fbe31fb54707b17a2958a68f1cfc4ca4 plus the commit carrying this file. Only this record changed after the verified tree.",
+  "candidate": "The commit carrying this file, on 2363a256e. This record changed with the verified tree and holds its totals.",
   "source_branch": "feature/contact-controller-phase4a",
   "origin_main": "91e19fc0e660ba24b37f7e05cd1d10a672fc7757",
   "contains_origin_main": true,
@@ -10,7 +10,7 @@
   "version_decision": "Ride the staged 20.31.1, untagged.",
   "verification": {
     "release_build": { "command": "dotnet build KhaozEngine.slnx -c Release", "exit": 0, "warnings": 0, "errors": 0 },
-    "full_tests": { "command": "dotnet test KhaozEngine.slnx -c Release --no-build --filter \"Category!=LiveSocket\"", "exit": 0, "assemblies": 32, "passed": 27665, "failed": 0, "skipped": 1329, "total": 28994 },
+    "full_tests": { "command": "dotnet test KhaozEngine.slnx -c Release --no-build --filter \"Category!=LiveSocket\"", "exit": 0, "assemblies": 32, "passed": 27673, "failed": 0, "skipped": 1329, "total": 29002 },
     "format": { "command": "dotnet format KhaozEngine.slnx --verify-no-changes --no-restore", "exit": 0, "note": "the known generic workspace-loading warning" },
     "guards": { "check-dashes": 0, "check-prose": 0, "check-file-size": 0, "check-agent-instructions": 0, "check-doc-versions": 0 }
   },

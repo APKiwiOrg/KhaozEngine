@@ -125,7 +125,8 @@ internal static class ContactController
             // Ground signals belong to the move, before a jump consumes its footing at the end of the tick. The
             // backstop is a correction, not motion, so a tick it shifts reports none.
             (climbRate, climbRateEwma, stepDeltaY) = corrected ? (0f, 0f, 0f) : GroundSignals.Resolve(s,
-                tick.StepRise, tick.MoveRise, tick.GroundTravel, tick.Feet, tick.Support,
+                tick.StepRise, tick.MoveRise, tick.RiseSeen, tick.DropSeen, tick.CarriedLag, tick.GroundTravel,
+                tick.Feet, tick.Support,
                 tick.Mode == Mode.Ground && tick.Support.Status == SupportStatus.Walkable,
                 dt, t, foot.FootRadiusFraction * t.CapsuleRadius, MathF.Cos(gate), groundHeight, groundNormal, world,
                 lease);
@@ -243,10 +244,12 @@ internal static class ContactController
     /// <see cref="Supported"/> says the tick ended on support, walkable or steep. <see cref="Budget"/> is the climb the
     /// tick has left, in metres. <see cref="Mode"/> and <see cref="Support"/> keep the final footing.
     /// <see cref="StepRise"/>, <see cref="MoveRise"/> and <see cref="GroundTravel"/> sum only walking ground
-    /// segments, excluding air, landings and slides.</summary>
+    /// segments, excluding air, landings and slides. <see cref="RiseSeen"/> and <see cref="DropSeen"/> say whether any
+    /// of them seated across a discrete rise or drop, and <see cref="CarriedLag"/> is the first one's start
+    /// lag.</summary>
     readonly record struct Tick(Vector3 Feet, float VerticalVelocity, bool Grounded, float FallSpeed,
         Vector2 Commanded, Segment Last, bool Supported, double Budget, Mode Mode, SupportSample Support,
-        float StepRise, float MoveRise, Vector2 GroundTravel);
+        float StepRise, float MoveRise, Vector2 GroundTravel, bool RiseSeen, bool DropSeen, float CarriedLag);
 
     // Runs the tick's modes in turn. A grounded move that loses its footing flies or slides the time it has left. A
     // grounded start on steep support slides the whole tick with the carried velocity, as a slide start does. A slide
@@ -261,6 +264,8 @@ internal static class ContactController
         double budget = t.MaxStepClimbSpeed > 0 ? (double)t.MaxStepClimbSpeed * dt : double.PositiveInfinity;
         float vertical = s.VerticalVelocity, time = dt, fallSpeed = 0f;
         float stepRise = 0f, moveRise = 0f;
+        bool riseSeen = false, dropSeen = false;
+        float? carriedLag = null;
         Vector2 groundTravel = Vector2.Zero;
         bool grounded = false, supported = false;
         Vector2? first = null;
@@ -279,6 +284,9 @@ internal static class ContactController
                 support = step.Support;
                 stepRise += step.StepRise;
                 moveRise += step.MoveRise;
+                riseSeen |= step.RiseSeen;
+                dropSeen |= step.DropSeen;
+                carriedLag ??= step.CarriedLag;
                 groundTravel += step.Achieved;
                 grounded = step.Footing is GroundFooting.Walkable or GroundFooting.Held;
                 supported = grounded || step.Footing == GroundFooting.Steep;
@@ -344,7 +352,7 @@ internal static class ContactController
             }
         }
         return new Tick(feet, vertical, grounded, fallSpeed, first ?? commanded, last, supported, budget, mode,
-            support, stepRise, moveRise, groundTravel);
+            support, stepRise, moveRise, groundTravel, riseSeen, dropSeen, carriedLag ?? 0f);
     }
 
     static bool Finite(in MoveState s) =>

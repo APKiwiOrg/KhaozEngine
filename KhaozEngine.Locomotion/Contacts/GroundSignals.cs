@@ -16,9 +16,12 @@ internal static class GroundSignals
     internal const int Samples = 3;
 
     /// <summary>Resolves the move's ground signals before a jump consumes its footing. Look-ahead uses the tick's
-    /// support queries and lease only when a discrete step or a carried run triggers it.</summary>
+    /// support queries and lease only when a discrete step, a lift over carried lag or a carried run triggers it.
+    /// Every climb rate decision reads only facts every head carries: the move's own steps and lag, the replicated
+    /// rate and its average. The unreplicated <paramref name="stepRise"/> shapes only the returned step
+    /// event.</summary>
     internal static (float ClimbRate, float Ewma, float StepDeltaY) Resolve(in MoveState input, float stepRise,
-        float moveRise, Vector2 groundTravel, Vector3 feet, in SupportSample axisSupport, bool walkableGround,
+        float moveRise, bool riseSeen, bool dropSeen, float carriedLag, Vector2 groundTravel, Vector3 feet, in SupportSample axisSupport, bool walkableGround,
         float dt, in MoveTuning tuning, float footRadius, float cosMaxSlope, Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease)
     {
@@ -26,7 +29,8 @@ internal static class GroundSignals
             return (0f, 0f, 0f);
         float achieved = groundTravel.Length();
         if (!(achieved >= ShellMotion.ContactSkin)) achieved = 0f;
-        if (!(stepRise != 0f || Ascending(input.ClimbRate) || Descending(input.ClimbRate) ||
+        bool liftedOverLag = carriedLag > 0f && moveRise > 0f;
+        if (!(riseSeen || dropSeen || liftedOverLag || Ascending(input.ClimbRate) || Descending(input.ClimbRate) ||
                 input.ClimbRateEwma > 0f))
             return (0f, 0f, stepRise);
         if (axisSupport.Status != SupportStatus.Walkable) return (0f, 0f, 0f);
@@ -75,8 +79,8 @@ internal static class GroundSignals
         bool descent = hasGrade && grade <= -RunGrade && windowDrop;
         // The landing flattens the fitted grade before the last risers are paid. A carried run ends on step
         // evidence, while a new run needs both a grade and a discrete step in its direction.
-        ascent |= Ascending(input.ClimbRate) && (stepRise > 0f || windowRise || owedClimb);
-        descent |= Descending(input.ClimbRate) && (stepRise < 0f || windowDrop);
+        ascent |= Ascending(input.ClimbRate) && (riseSeen || liftedOverLag || windowRise || owedClimb);
+        descent |= Descending(input.ClimbRate) && (dropSeen || windowDrop);
         if (ascent)
         {
             float rate = moveRise / dt;

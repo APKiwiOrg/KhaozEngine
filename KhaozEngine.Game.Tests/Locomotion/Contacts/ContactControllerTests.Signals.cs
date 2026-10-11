@@ -476,6 +476,41 @@ public partial class ContactControllerTests
     }
 
     [Theory]
+    [MemberData(nameof(SignalRows))]
+    public void ClimbRateDoesNotDependOnTheUnreplicatedStepEvent(SceneVariant variant, int hz, bool run)
+    {
+        float dt = 1f / hz;
+        // An even stair starts its run on the first riser. A 1 m first tread makes that riser a lone step whose paced
+        // lag is still being paid when the window reaches the stair.
+        foreach (float? firstTread in new float?[] { null, 1f })
+        {
+            using var g = new Ground(Stairs(variant, 0.28f, 0.18f, 16, firstTread: firstTread), Abyss);
+            // The single-World head passes each output on whole. The sharded head rebuilds it without the step event.
+            MoveState carried = Standing(new Vector3(-0.5f, 0, 0)), rebuilt = carried;
+            bool top = false, bottom = false, ascended = false, descended = false;
+            for (int tick = 0; tick < 8 * hz && !bottom; tick++)
+            {
+                Vector2 direction = top ? -Vector2.UnitX : Vector2.UnitX;
+                carried = g.Step(carried, direction, 1, false, Tuning, dt, run);
+                rebuilt = g.Step(rebuilt with { StepDeltaY = 0f }, direction, 1, false, Tuning, dt, run);
+                string context = $"first tread {firstTread}, tick {tick}: {Show(carried)} against {Show(rebuilt)}";
+                Assert.True(Same(carried.ClimbRate, rebuilt.ClimbRate) &&
+                    Same(carried.ClimbRateEwma, rebuilt.ClimbRateEwma), context);
+                Assert.True(Same(carried.Position.X, rebuilt.Position.X) &&
+                    Same(carried.Position.Y, rebuilt.Position.Y) && Same(carried.Position.Z, rebuilt.Position.Z),
+                    context);
+                ascended |= carried.ClimbRate > 0;
+                descended |= carried.ClimbRate < 0;
+                top |= Feet(carried).Y >= 16 * 0.18f - Skin;
+                bottom = top && Feet(carried).Y <= Skin;
+            }
+            Assert.True(bottom && ascended && descended, $"first tread {firstTread}: {Show(carried)}");
+        }
+
+        static bool Same(float a, float b) => BitConverter.SingleToInt32Bits(a) == BitConverter.SingleToInt32Bits(b);
+    }
+
+    [Theory]
     [InlineData(SceneVariant.Box, 0f)]
     [InlineData(SceneVariant.Mesh, 0f)]
     [InlineData(SceneVariant.Box, HalfSkin)]
@@ -489,8 +524,8 @@ public partial class ContactControllerTests
                 MathF.Cos(Banded)));
         foreach (float rise in new[] { 0.1f, -0.1f })
         {
-            var result = GroundSignals.Resolve(initial, rise, rise, travel * Vector2.UnitX, Feet(initial), support,
-                true, Dt, Tuning,
+            var result = GroundSignals.Resolve(initial, rise, rise, rise > 0, rise < 0, 0f, travel * Vector2.UnitX,
+                Feet(initial), support, true, Dt, Tuning,
                 0.2f, MathF.Cos(Banded), g.Height, g.Normal, g.World, g.Lease);
 
             Assert.Equal((0f, 0f, rise), result);
@@ -514,8 +549,8 @@ public partial class ContactControllerTests
             new FootSupportQuery(new Vector2(0.5f, 0), 0.36f, 0.2f, Tuning.StepHeight, Tuning.StepHeight,
                 MathF.Cos(Banded)));
 
-        var result = GroundSignals.Resolve(input, 0.1f, 0.1f, travel * Vector2.UnitX, Feet(input), support, true, Dt,
-            Tuning, 0.2f, MathF.Cos(Banded), g.Height, g.Normal, g.World, g.Lease);
+        var result = GroundSignals.Resolve(input, 0.1f, 0.1f, true, false, 0f, travel * Vector2.UnitX, Feet(input),
+            support, true, Dt, Tuning, 0.2f, MathF.Cos(Banded), g.Height, g.Normal, g.World, g.Lease);
 
         double expected = 1.75 + (1 - Math.Exp(-5.0 * Dt)) * (0.1 / Dt - 1.75);
         AssertNear(expected, result.ClimbRate, 1e-5, result);
@@ -552,7 +587,7 @@ public partial class ContactControllerTests
         // Equal sample spacing gives these closed-form least-squares weights.
         double grade = (-3.0 * heights[0] - heights[1] + heights[2] + 3.0 * heights[3]) /
             (10 * (double)Tuning.CapsuleRadius);
-        var result = GroundSignals.Resolve(input, rise, rise, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
+        var result = GroundSignals.Resolve(input, rise, rise, rise > 0, rise < 0, 0f, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
             g.Height, g.Normal, g.World, g.Lease);
 
         Assert.True(direction * result.ClimbRate > 0,
@@ -573,13 +608,13 @@ public partial class ContactControllerTests
         SupportSample axisSupport = FootSupport.Find(g.Height, g.Normal, g.World, g.Lease,
             new FootSupportQuery(new Vector2(feet.X, feet.Z), feet.Y, 0.2f, Tuning.StepHeight, Tuning.StepHeight,
                 cosGate));
-        GroundSignals.Resolve(input, 0, 0, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
+        GroundSignals.Resolve(input, 0, 0, false, false, 0f, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
             g.Height, g.Normal, g.World, g.Lease);
-        GroundSignals.Resolve(input, 0, 0, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
+        GroundSignals.Resolve(input, 0, 0, false, false, 0f, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
             g.Height, g.Normal, g.World, g.Lease);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        var result = GroundSignals.Resolve(input, 0, 0, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
+        var result = GroundSignals.Resolve(input, 0, 0, false, false, 0f, travel, feet, axisSupport, true, Dt, Tuning, 0.2f, cosGate,
             g.Height, g.Normal, g.World, g.Lease);
         long after = GC.GetAllocatedBytesForCurrentThread();
 

@@ -110,7 +110,7 @@ public class MapWaterWorldTests
     {
         MapBuiltWorld world = NativeWorldFixtures.BuildLRiver();
         MapNativeEditEffects effects = NativeWorldFixtures.RiverLevelEditEffects();
-        Assert.Contains("river", MapResidencyOwnership.Affected(world, Grids, effects).Owners);
+        Assert.Contains("water:river", MapResidencyOwnership.Affected(world, Grids, effects).Owners);
         Assert.Equal(Wet, MapNavTiling.AffectedTiles(world, Grids, Nav, effects).OrderBy(c => c.X).ThenBy(c => c.Z));
     }
 }

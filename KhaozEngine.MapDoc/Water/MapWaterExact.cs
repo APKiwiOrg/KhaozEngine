@@ -26,6 +26,23 @@ internal readonly struct MapWideRational : IEquatable<MapWideRational>, ICompara
     public static MapWideRational From(MapExactValue value) => new(value.Numerator, value.Denominator);
     public static MapWideRational From(long value) => new(value, BigInteger.One);
 
+    /// <summary>Captures a finite binary64 grid bound exactly, without narrowing its numerator or denominator.</summary>
+    public static MapWideRational FromDouble(double value)
+    {
+        if (!double.IsFinite(value)) throw new ArgumentException("value must be finite", nameof(value));
+        ulong bits = unchecked((ulong)BitConverter.DoubleToInt64Bits(value));
+        ulong fraction = bits & 0x000fffffffffffffUL;
+        int encodedExponent = (int)((bits >> 52) & 2047);
+        ulong significand = encodedExponent == 0 ? fraction : fraction | 0x0010000000000000UL;
+        if (significand == 0) return default;
+        int exponent = encodedExponent == 0 ? -1074 : encodedExponent - 1023 - 52;
+        BigInteger numerator = significand, denominator = BigInteger.One;
+        if (exponent >= 0) numerator <<= exponent;
+        else denominator <<= -exponent;
+        if ((bits & 0x8000000000000000UL) != 0) numerator = -numerator;
+        return Normalize(numerator, denominator);
+    }
+
     static MapWideRational Normalize(BigInteger numerator, BigInteger denominator)
     {
         if (denominator.IsZero) throw new DivideByZeroException("wide rational denominator is zero");

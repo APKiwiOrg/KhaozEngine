@@ -282,13 +282,17 @@ Bounded water is built-world data and never a static, so it registers nothing wi
 capsule. `MapWorldBuilder` compiles a native document's water section over its whole-document view and refuses, with
 "water: " and the detail, any body that does not compile complete. `MapBuiltWorld.Water` carries the compiled bodies
 and `WaterMedia` the section's media, so the media travel with the built world. `WaterDigest` and every body digest
-enter the build hash only when the section is present, so a dry world keeps its hash.
+enter the build hash only when the section is present.
 
-`MapResidencyOwnership.BuildWater` gives each body its own residency entry over the storage tiles its region triangles
-reach. A navigation tile that water meets carries a `MediumDigest` over the digests of those bodies, which enters its
-capture identity, while its geometry digest is unchanged. An edit flagged `MapNativeInvalidation.Medium` names its
-bodies in `WaterBodyIds`, and `Affected` and `AffectedTiles` invalidate their owners and tiles. Each body digest covers
-only what that body read, so an edit elsewhere leaves its tiles alone. Movement in water arrives with #438 phase 4.
+`MapResidencyOwnership.BuildWater` gives each body a `water:{bodyId}` residency owner over the storage tiles its
+region triangles reach. A placement and a body may share an id, but the builder refuses any static owner matching
+that body's water owner. A complete body with regions but no bounds is refused too. A navigation capture carries a
+`MediumDigest` only when a water triangle meets it with positive XZ area. Exact clipping excludes bounding-box
+overreach and edge-only contact. The digest enters its capture identity, while its geometry digest is unchanged.
+An edit flagged `MapNativeInvalidation.Medium` names bodies in `WaterBodyIds`, and `Affected` maps those ids to water
+owners while `AffectedTiles` invalidates their capture tiles. Body ids alone do not invalidate water residency.
+Each body digest covers only what that body read, so an edit elsewhere leaves its tiles alone.
+Movement in water arrives with #438 phase 4.
 
 ## Physical relations
 

@@ -68,6 +68,7 @@ internal static partial class NativeWorldFixtures
     /// <summary><paramref name="fixture"/>'s document resolved again, after a test changed it.</summary>
     internal static WaterWorldFixture Reresolve(WaterWorldFixture fixture)
     {
+        Seal(fixture.Document.Surfaces);
         MapResolvedDocument resolved = MapResolverV2.Resolve(fixture.Document, fixture.Assets,
             MapDocumentSurfaceSource.Capture(fixture.Document), ResolveOptions).Document;
         return new WaterWorldFixture(fixture.Document, fixture.Assets, resolved, MapScopedSurfaces.CompleteView(fixture.Document.Surfaces));

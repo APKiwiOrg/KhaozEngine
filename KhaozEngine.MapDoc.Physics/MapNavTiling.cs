@@ -61,7 +61,8 @@ public static class MapNavTiling
     /// resolver-1 world it also covers <see cref="MapBuiltWorld.LegacyTerrainBlockDigest"/> and every sculpt tile whose
     /// footprint meets the capture bounds on X and Z. Every static lies within the world's vertical bounds, so Y never
     /// excludes one. <see cref="MapNavTile.MediumDigest"/> covers, in ordinal body id order, the id and digest of every
-    /// water body any of whose region triangles' XZ bounds meets the capture bounds, edges included. Water is never a
+    /// water body any of whose region triangles meets the capture bounds with positive XZ area. Edge-only contact
+    /// carries no water, matching half-open tile ownership. Water is never a
     /// static, so it leaves the geometry digest unchanged. <see cref="MapNavTile.CaptureIdentity"/> is the SHA-256 over
     /// the geometry digest, the medium digest when present, profile, controller, seam margin, tile coordinate and tile
     /// bounds.</para>
@@ -413,15 +414,24 @@ public static class MapNavTiling
         w.WriteEndObject();
     });
 
-    /// <summary>The tiles whose capture bounds meet the XZ bounds of any region triangle of
-    /// <paramref name="body"/>.</summary>
+    /// <summary>The tiles whose capture bounds meet any region triangle of <paramref name="body"/> with positive
+    /// XZ area. Triangle bounds select candidates only, then the shared exact water kernel clips each intersection.</summary>
     static IEnumerable<MapNavTileCoord> WaterCaptureTiles(MapCompiledWaterBody body, MapWorldGrids grids, double margin)
     {
         var tiles = new SortedSet<MapNavTileCoord>(TileOrder);
         foreach (MapExactTriangle triangle in body.Regions.SelectMany(r => r.Triangles))
         {
             MapBox3 box = MapResidencyOwnership.XzBounds(triangle);
-            tiles.UnionWith(CaptureTilesMeeting(box.MinX, box.MinZ, box.MaxX, box.MaxZ, grids, margin));
+            var polygon = new[] { triangle.A, triangle.B, triangle.C }
+                .Select(p => new MapWideXz(MapWideRational.From(p.X), MapWideRational.From(p.Z))).ToArray();
+            foreach (MapNavTileCoord tile in CaptureTilesMeeting(box.MinX, box.MinZ, box.MaxX, box.MaxZ, grids, margin))
+            {
+                if (tiles.Contains(tile)) continue;
+                MapBox3 capture = Grow(TileBounds(tile, grids, 0, 0), margin);
+                var min = new MapWideXz(MapWideRational.FromDouble(capture.MinX), MapWideRational.FromDouble(capture.MinZ));
+                var max = new MapWideXz(MapWideRational.FromDouble(capture.MaxX), MapWideRational.FromDouble(capture.MaxZ));
+                if (MapWaterPolygons.ClipToRect(polygon, min, max).Count > 0) tiles.Add(tile);
+            }
         }
         return tiles;
     }

@@ -67,7 +67,8 @@ internal static class MapCanonical
         JsonSerializer.Serialize(w, doc.ScatterOverrides, options);
         w.WritePropertyName("regions");
         JsonSerializer.Serialize(w, doc.Regions, options);
-        // Water is written only when present, so every document without it keeps its released identity.
+        // Water is written only when present, so documents without it keep their released document hash.
+        // The native root digest and resolver-2 authored identity include the format version and moved once at format 6.
         if (doc.Water is not null)
         {
             w.WritePropertyName("water");

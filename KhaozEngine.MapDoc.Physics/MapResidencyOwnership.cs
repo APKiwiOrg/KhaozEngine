@@ -68,11 +68,12 @@ public static class MapResidencyOwnership
     }
 
     /// <summary>One entry per compiled water body of <paramref name="world"/>, in body id order. A body's owner id is
-    /// its body id, and it belongs to every storage tile any of its region triangles' XZ bounds reaches, under the
+    /// <c>water:{bodyId}</c>, and it belongs to every storage tile any of its region triangles' XZ bounds reaches, under the
     /// membership rule of <see cref="Build"/>, so an L-shaped body does not claim the tiles inside its corner. Its
     /// storage owner is the tile holding its bounds' minimum corner, and its navigation tiles and server cells are
     /// those its storage tiles fall in. A body with no region claims no tile and has no entry. Throws as
-    /// <see cref="Build"/> does, naming the body when its tiles exceed <see cref="MaxStorageTiles"/>.</summary>
+    /// <see cref="Build"/> does, naming the body when its tiles exceed <see cref="MaxStorageTiles"/>, and refuses a
+    /// body that is not complete or has regions but no bounds.</summary>
     public static IReadOnlyList<MapResidencyEntry> BuildWater(MapBuiltWorld world, MapWorldGrids grids)
     {
         ArgumentNullException.ThrowIfNull(world);
@@ -81,15 +82,18 @@ public static class MapResidencyOwnership
         var entries = new List<MapResidencyEntry>(world.Water.Count);
         foreach (MapCompiledWaterBody body in world.Water)
         {
+            MapWorldBuilder.RequireWaterBody(body);
             MapTileCoord[] membership = WaterTiles(body, grids);
             if (membership.Length == 0 || body.Bounds is not { } bounds) continue;
-            entries.Add(new(body.BodyId, TilesOf(bounds, grids.StorageTileSize).Min, membership,
+            entries.Add(new(WaterOwnerId(body.BodyId), TilesOf(bounds, grids.StorageTileSize).Min, membership,
                 membership.Select(grids.AlignedNavTileOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray(),
                 membership.Select(grids.AlignedServerCellOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray(),
                 bounds));
         }
         return entries.AsReadOnly();
     }
+
+    internal static string WaterOwnerId(string bodyId) => "water:" + bodyId;
 
     /// <summary>The storage tiles in (Z, X) order that any region triangle of <paramref name="body"/> reaches with its
     /// XZ bounds, under the membership rule of <see cref="Build"/>.</summary>
@@ -128,7 +132,8 @@ public static class MapResidencyOwnership
     /// <summary>The owners and tiles <paramref name="effects"/> invalidates, empty unless it invalidates physics,
     /// navigation, residency or water medium. <paramref name="world"/> is the world built after the edit, so owners are
     /// that world's statics, while tiles from both the old and the new edit bounds cover any geometry the edit removed.
-    /// <para>Every body named in <see cref="MapNativeEditEffects.WaterBodyIds"/> is an owner, and the storage tiles of
+    /// <para>When <see cref="MapNativeInvalidation.Medium"/> is flagged, every body named in
+    /// <see cref="MapNativeEditEffects.WaterBodyIds"/> is a <c>water:{bodyId}</c> owner, and the storage tiles of
     /// each one <paramref name="world"/> holds, under the rule of <see cref="BuildWater"/>, join the tiles of the
     /// reported edit bounds.</para>
     /// <para>Owners are the statics whose bounds meet the old or new edit bounds, plus the chunks of every listed patch:
@@ -168,12 +173,13 @@ public static class MapResidencyOwnership
             if (patchChunk) tiles.UnionWith(StorageTiles(descriptor.Bounds, grids, $"Chunk '{descriptor.OwnerId}'"));
             if (unbounded || patchChunk || edited.Any(box => Meets(box, descriptor.Bounds))) owners.Add(descriptor.OwnerId);
         }
-        owners.UnionWith(effects.WaterBodyIds);
-        var named = new HashSet<string>(effects.WaterBodyIds, StringComparer.Ordinal);
+        bool medium = (effects.Invalidates & MapNativeInvalidation.Medium) != 0;
+        var named = new HashSet<string>(medium ? effects.WaterBodyIds : Array.Empty<string>(), StringComparer.Ordinal);
+        owners.UnionWith(named.Select(WaterOwnerId));
         foreach (MapCompiledWaterBody body in world.Water)
             if (unbounded || named.Contains(body.BodyId))
             {
-                owners.Add(body.BodyId);
+                owners.Add(WaterOwnerId(body.BodyId));
                 tiles.UnionWith(WaterTiles(body, grids));
             }
         MapNavTileCoord[] nav = tiles.Select(grids.AlignedNavTileOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray();

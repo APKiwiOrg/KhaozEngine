@@ -70,6 +70,13 @@ public static class MapWorldBuilder
         }
 
         IReadOnlyList<MapStaticDescriptor> statics = Statics(placements, terrain);
+        var staticOwners = new HashSet<string>(statics.Select(s => s.OwnerId), StringComparer.Ordinal);
+        foreach (MapCompiledWaterBody body in bodies)
+        {
+            string owner = MapResidencyOwnership.WaterOwnerId(body.BodyId);
+            if (staticOwners.Contains(owner))
+                throw new MapDocumentException($"water: static owner '{owner}' conflicts with body '{body.BodyId}'");
+        }
         var diagnostics = new List<MapStaticDiagnostic>();
         foreach (MapStaticDescriptor descriptor in statics)
             foreach (MapFeatureQuerySupport support in Measure(descriptor.Shape))
@@ -90,9 +97,16 @@ public static class MapWorldBuilder
     {
         IReadOnlyList<MapCompiledWaterBody> bodies = MapWaterCompiler.Compile(surfaces, water);
         foreach (MapCompiledWaterBody body in bodies)
-            if (body.Status != MapWaterCompileStatus.Complete)
-                throw new MapDocumentException($"water: {body.Detail ?? $"water body '{body.BodyId}': {body.Status}"}");
+            RequireWaterBody(body);
         return bodies;
+    }
+
+    internal static void RequireWaterBody(MapCompiledWaterBody body)
+    {
+        if (body.Status != MapWaterCompileStatus.Complete)
+            throw new MapDocumentException($"water: {body.Detail ?? $"water body '{body.BodyId}': {body.Status}"}");
+        if (body.Regions.Count > 0 && body.Bounds is null)
+            throw new MapDocumentException($"water: body '{body.BodyId}' has regions but no bounds");
     }
 
     static void ValidateOptions(MapWorldBuildOptions options)
@@ -272,8 +286,7 @@ public static class MapWorldBuilder
         w.WriteEndObject();
     });
 
-    // The water digest and bodies are written only for a world with a water section, so every dry world keeps its
-    // hash.
+    // Water adds hash members only when a section is present. The authored hash already includes the native format.
     static string BuildHash(string authoredHash, MapWorldBuildOptions options, string legacyIdentity,
         IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain,
         (string Digest, IReadOnlyList<MapCompiledWaterBody> Bodies)? water) => CanonicalHash(w =>

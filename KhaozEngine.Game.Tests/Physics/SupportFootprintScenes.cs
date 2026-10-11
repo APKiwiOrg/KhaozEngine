@@ -96,10 +96,10 @@ internal sealed class SupportFootprintScene : IDisposable
 
 internal static class SupportFootprintScenes
 {
-    internal static SupportFootprintScene HiddenCrate(FootprintPartition partition, bool reverse = false)
+    internal static SupportFootprintScene HiddenCrate(FootprintPartition partition, bool reverse = false, float slope = 60)
     {
         var scene = new SupportFootprintScene();
-        float angle = MathF.PI / 3;
+        float angle = slope * MathF.PI / 180;
         Quaternion tilt = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, angle);
         Vector3 top = new(0.2f, 0.25f, 0);
         var shapes = new (PhysicsShape Shape, Pose Pose)[3];

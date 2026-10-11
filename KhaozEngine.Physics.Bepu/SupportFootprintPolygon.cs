@@ -107,6 +107,12 @@ internal static class SupportFootprintPolygon
         {
             FeatureNumber direction = FeatureNumber.Exact(orientation == GeometrySign.Positive ? -1 : 1);
             FeaturePoint uphill = new(polygon.Normal.X.Multiply(direction), Zero, polygon.Normal.Z.Multiply(direction));
+            // For an axis-aligned gradient the normalized direction is exact even when the
+            // installed coefficient is enclosed. Retain that identity before forming a radical.
+            if (uphill.Z.IsExact && uphill.Z.Value == 0 && uphill.X.Sign is GeometrySign.Positive or GeometrySign.Negative)
+                uphill = new(FeatureNumber.Exact(uphill.X.Sign == GeometrySign.Positive ? 1 : -1), Zero, Zero);
+            else if (uphill.X.IsExact && uphill.X.Value == 0 && uphill.Z.Sign is GeometrySign.Positive or GeometrySign.Negative)
+                uphill = new(Zero, Zero, FeatureNumber.Exact(uphill.Z.Sign == GeometrySign.Positive ? 1 : -1));
             FeatureNumber squared = DotXZ(uphill, uphill);
             GeometrySign gradient = squared.Sign;
             if (gradient == GeometrySign.Unresolved) return gradient;
@@ -164,7 +170,13 @@ internal static class SupportFootprintPolygon
         if (InDisc(FeaturePoint.Add(vertex, edge), axis, radius) == GeometrySign.Zero)
             return Parameter(vertex, edge, dot.Multiply(FeatureNumber.Exact(-2)).Divide(a).Subtract(One), ref range);
         FeatureNumber cross = delta.X.Multiply(edge.Z).Subtract(delta.Z.Multiply(edge.X));
-        FeatureNumber discriminant = a.Multiply(radius.Multiply(radius)).Subtract(cross.Multiply(cross));
+        // Parallel projected edges factor the discriminant. This proves closed tangency
+        // for every coefficient in the installed operator, without subtracting correlated intervals.
+        FeatureNumber discriminant = edge.Z.IsExact && edge.Z.Value == 0
+            ? a.Multiply(radius.Multiply(radius).Subtract(delta.Z.Multiply(delta.Z)))
+            : edge.X.IsExact && edge.X.Value == 0
+                ? a.Multiply(radius.Multiply(radius).Subtract(delta.X.Multiply(delta.X)))
+                : a.Multiply(radius.Multiply(radius)).Subtract(cross.Multiply(cross));
         GeometrySign sign = discriminant.Sign;
         if (sign == GeometrySign.Unresolved)
         {

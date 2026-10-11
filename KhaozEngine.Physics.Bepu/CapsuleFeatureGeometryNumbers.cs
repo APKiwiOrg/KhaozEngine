@@ -53,6 +53,9 @@ internal readonly struct FeatureNumber
 
     internal FeatureNumber Multiply(FeatureNumber other)
     {
+        // A resolved zero operand annihilates every value of the other enclosure.
+        if (IsResolved && other.IsResolved && ((IsExact && Value == 0) || (other.IsExact && other.Value == 0)))
+            return Exact(0);
         if (IsExact && other.IsExact && ExactExpansion.InRange(Value) && ExactExpansion.InRange(other.Value))
         {
             double exactProduct = Value * other.Value;

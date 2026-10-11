@@ -11,7 +11,7 @@ using Xunit;
 namespace KhaozEngine.Tests.Physics;
 
 [Collection("AllocSensitive")]
-public class SupportFootprintTests
+public partial class SupportFootprintTests
 {
     [Fact]
     public void PolygonMaximumUsesVertexEdgeAndDiscExtrema()

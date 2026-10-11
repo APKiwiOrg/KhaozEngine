@@ -6,7 +6,7 @@ namespace KhaozEngine.Locomotion.Contacts;
 
 /// <summary>Borrows one composed interval. Support stays geometric. Shell and medium queries see the actual
 /// body, with the fixed vertical placement skin included before scope and clearance checks.</summary>
-internal sealed class LeasedContactQueryContext
+internal sealed partial class LeasedContactQueryContext
 {
     internal const float PlacementSkin = 0.001f;
     readonly MovementQueryLease _lease;
@@ -17,7 +17,8 @@ internal sealed class LeasedContactQueryContext
 
     // Zero is the internal parity profile. Production explicit composition uses the default fixed skin.
     internal LeasedContactQueryContext(MovementQueryLease lease, MoveTuning tuning, MovementSelection selection,
-        MovementTransitionContext transition, float placementOffset = PlacementSkin)
+        MovementTransitionContext transition, float placementOffset = PlacementSkin,
+        WaterTraversalMode waterMode = WaterTraversalMode.DryOnly, MovementBoundary? boundary = null)
     {
         ArgumentNullException.ThrowIfNull(lease);
         if (placementOffset != 0 && placementOffset != PlacementSkin)
@@ -28,6 +29,7 @@ internal sealed class LeasedContactQueryContext
             transition.OriginSpace.WorldId != selection.Space.WorldId)
             throw new ContactQueryFailure(MovementAvailability.Invalid);
         (_lease, _tuning, _selection, _transition, _offset) = (lease, tuning, selection, transition, placementOffset);
+        (_waterMode, _boundary) = (waterMode, boundary);
     }
 
     internal bool HasShell => true;
@@ -76,9 +78,6 @@ internal sealed class LeasedContactQueryContext
         Require(_lease.QuerySolidContactsFiltered(ShellBody(shape, centre), 0, contacts, out var result, QueryFilter.StaticsOnly));
         return result;
     }
-
-    internal void AcceptSegment(Vector3 from, Vector3 to) =>
-        Require(_lease.CheckContactBodyPath(Body(from), to - from));
 
     internal MovementWaterPoint? SampleMedium(Vector3 feet)
     {

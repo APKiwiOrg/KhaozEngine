@@ -105,6 +105,8 @@ internal static partial class GroundCore
         float cosMaxSlope = MathF.Cos(gate);
 
         Vector3 start = ShellMotion.RecoverWithQueries(queries, feet, tuning, out bool cleared);
+        if (!cleared && queries.HasMediumProof)
+            return new(feet, GroundFooting.Held, default, 0, Vector2.Zero, true) { ClimbBudget = budget };
         if (!cleared) start = feet;
         var startAxis = new Vector2(start.X, start.Z);
         SupportSample support = queries.FindSupport(
@@ -136,8 +138,8 @@ internal static partial class GroundCore
         if (!moving)
         {
             // A body at rest still climbs onto the tread a paced climb left it below.
-            tick.Settle(ref budget);
-            return Result(feet, start, tick.FeetY, GroundFooting.Walkable, support, Vector2.Zero, false) with
+            bool settled = tick.Settle(ref budget);
+            return Result(feet, start, tick.FeetY, GroundFooting.Walkable, support, Vector2.Zero, !settled) with
             {
                 ClimbBudget = budget,
                 StepRise = tick.StepRise,
@@ -285,7 +287,7 @@ internal static partial class GroundCore
             footing = Support.Status == SupportStatus.Steep ? GroundFooting.Steep : GroundFooting.Walkable;
             blocked = false;
             unspent = 0;
-            PayLag(ref budget);
+            if (!PayLag(ref budget)) { blocked = true; return _achieved; }
             // While nothing has deviated from the plan, the achieved move is the planned prefix itself, so free
             // motion is exact however many substeps it takes.
             bool onPlan = true;
@@ -379,16 +381,19 @@ internal static partial class GroundCore
         // A body certainly below its walkable support, left there by an earlier tick's pacing, pays that owed
         // climb first from the tick's budget, within the lift the up pass proved clear. Paid after a refusal
         // instead, it would never be paid, because the refusal repeats from the same feet every tick.
-        void PayLag(ref double budget)
+        bool PayLag(ref double budget)
         {
-            if (!Owes(Support, FeetY)) return;
+            if (!Owes(Support, FeetY)) return true;
             double owed = Math.Min(Math.Min((double)Support.Height - FeetY, budget), _lift);
-            if (!(owed > 0)) return;
+            if (!(owed > 0)) return true;
             float paidFeetY = GroundPlacement.NotAbove(FeetY + owed);
+            var route = new ContactMotionRoute(_queries, new(Axis.X, FeetY, Axis.Y));
+            if (!route.Append(new(Axis.X, paidFeetY, Axis.Y))) return false;
             _moveRise += (double)paidFeetY - FeetY;
             FeetY = paidFeetY;
             budget -= owed;
             if (!_slide) AccountDiscrete(0);
+            return true;
         }
 
         // Every accepted move keeps only the discrete debt still below its new support. A partial drop erases
@@ -402,7 +407,7 @@ internal static partial class GroundCore
         }
 
         // A tick without displacement only pays owed climb.
-        internal void Settle(ref double budget) => PayLag(ref budget);
+        internal bool Settle(ref double budget) => PayLag(ref budget);
 
         // Clear substeps keep one attempt. Only a shortened sweep or invalid placement needs the standing
         // route. Lift-created obstructions disqualify the lifted route, even if its seat is walkable.
@@ -433,7 +438,10 @@ internal static partial class GroundCore
         readonly Attempt Try(Vector2 move, float lift, Vector2? planned, double budget)
         {
             var feet = new Vector3(Axis.X, FeetY, Axis.Y);
-            ShellSweep sweep = ShellMotion.SweepWithQueries(_queries, feet, lift, move, _tuning, _cosMaxSlope, _clampXz);
+            var route = new ContactMotionRoute(_queries, feet);
+            ShellSweep sweep = ShellMotion.SweepWithQueries(_queries, feet, lift, move, _tuning, _cosMaxSlope,
+                ref route, _clampXz);
+            if (route.Denied) return default;
             if (sweep.Achieved == Vector2.Zero)
                 return new Attempt(false, Vector2.Zero, sweep.Blocked, default, _achieved, default, sweep.Obstructions);
             Vector2 total = planned is Vector2 prefix && !sweep.Blocked && sweep.Achieved == move
@@ -443,7 +451,7 @@ internal static partial class GroundCore
                 FeetY, _startAxis + total, Direction(move), _footRadius, _tuning, _cosMaxSlope);
             GroundPlacement placement = seat.Outcome is SeatOutcome.Wall or SeatOutcome.Refused ? default :
                 GroundPlacement.Try(_queries, Support, FeetY,
-                    _startAxis, total, seat, _footRadius, _tuning, _cosMaxSlope, budget, _slide);
+                    _startAxis, total, seat, _footRadius, _tuning, _cosMaxSlope, budget, ref route, _slide);
             Vector2 achieved = placement.Valid && placement.Pushed
                 ? placement.Total - _achieved
                 : sweep.Achieved;

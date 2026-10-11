@@ -16,25 +16,33 @@ internal static class MovementCapsuleResolver
 
     internal static MovementAvailability TryResolveSolids(in MovementBodyQuery body, Vector3 displacement,
         MovementQueryLease queries, Span<Vector3> destination, out int written, out bool blocked) =>
-        ResolveCore(body, displacement, queries, false, WaterTraversalMode.Legacy, 0, null, destination, out written, out blocked);
+        ResolveCore(body, body, displacement, queries, false, WaterTraversalMode.Legacy, 0, null, default, destination, out written, out blocked, default);
 
     internal static MovementAvailability TryResolve(in MovementBodyQuery body, Vector3 displacement,
         MovementQueryLease queries, Span<Vector3> destination, out int written, out bool blocked) =>
-        ResolveCore(body, displacement, queries, true, WaterTraversalMode.Legacy, 0, null, destination, out written, out blocked);
+        ResolveCore(body, body, displacement, queries, true, WaterTraversalMode.Legacy, 0, null, default, destination, out written, out blocked, default);
 
     internal static MovementAvailability TryResolvePolicy(in MovementBodyQuery body, Vector3 displacement,
         MovementQueryLease queries, WaterTraversalMode mode, float enterFraction, MovementBoundary? boundary, Span<Vector3> destination, out int written, out bool blocked) =>
-        ResolveCore(body, displacement, queries, true, mode, enterFraction, boundary, destination, out written, out blocked);
+        ResolveCore(body, body, displacement, queries, true, mode, enterFraction, boundary, default, destination, out written, out blocked, default);
 
-    static MovementAvailability ResolveCore(in MovementBodyQuery body, Vector3 displacement,
-        MovementQueryLease queries, bool proveMedium, WaterTraversalMode mode, float enterFraction, MovementBoundary? boundary,
-        Span<Vector3> destination, out int written, out bool blocked)
+    internal static MovementAvailability TryResolveContact(in MovementBodyQuery solid, in MovementBodyQuery body,
+        Vector3 displacement, MovementQueryLease queries, WaterTraversalMode mode, float enterFraction,
+        MovementBoundary? boundary, Span<Vector3> destination, out int written, out bool blocked,
+        Span<Vector3> velocity = default, bool horizontal = false) =>
+        ResolveCore(solid, body, displacement, queries, true, mode, enterFraction, boundary, QueryFilter.StaticsOnly,
+            destination, out written, out blocked, velocity, horizontal);
+
+    static MovementAvailability ResolveCore(in MovementBodyQuery solid, in MovementBodyQuery body, Vector3 displacement,
+        MovementQueryLease queries, bool proveMedium, WaterTraversalMode mode, float enterFraction, MovementBoundary? boundary, QueryFilter filter,
+        Span<Vector3> destination, out int written, out bool blocked, Span<Vector3> velocity, bool horizontal = false)
     {
         written = 0;
         blocked = false;
         ArgumentNullException.ThrowIfNull(queries);
-        if (!body.IsValid || !MovementEnvironmentValidation.Finite(displacement)) return MovementAvailability.Invalid;
+        if (!solid.IsValid || !body.IsValid || !MovementEnvironmentValidation.Finite(displacement)) return MovementAvailability.Invalid;
         if (destination.IsEmpty) return MovementAvailability.CapacityExceeded;
+        Vector3 projectedVelocity = velocity.IsEmpty ? default : velocity[0];
         CapsuleContact[] contacts = ArrayPool<CapsuleContact>.Shared.Rent(MovementQueryLease.MaxSolidContacts);
         Vector3[] normals = ArrayPool<Vector3>.Shared.Rent(MovementConstraintProjection.MaximumInputNormals);
         try
@@ -43,12 +51,12 @@ internal static class MovementCapsuleResolver
             Span<Vector3> normalBuffer = normals.AsSpan(0, MovementConstraintProjection.MaximumInputNormals);
             Span<Vector3> waterNormals = stackalloc Vector3[MovementQueryLease.MaxDomainContacts];
             Span<Vector3> path = stackalloc Vector3[MaximumEndpoints];
-            MovementAvailability status = Trace(body, Vector3.Zero, queries, proveMedium, mode, enterFraction, boundary, waterNormals, out _, out MovementWaterBoundary.Hit initialWater,
+            MovementAvailability status = MovementSegmentProof.Trace(solid, body, Vector3.Zero, queries, proveMedium, mode, enterFraction, boundary, filter, waterNormals, out _, out MovementWaterBoundary.Hit initialWater,
                 out CapsuleSweepResult initial, out _, out _);
             if (status != MovementAvailability.Known) return status;
             // A closed zero-time Hit is neither a safe starting pose nor a recovery certificate.
             if (initial.Status != CapsuleSweepStatus.Clear || initialWater.Blocked) return MovementAvailability.Unresolved;
-            status = ClearPlacement(body, queries, contactBuffer);
+            status = ClearPlacement(solid, queries, contactBuffer, filter);
             if (status != MovementAvailability.Known) return status;
 
             MovementBodyQuery current = body;
@@ -65,15 +73,16 @@ internal static class MovementCapsuleResolver
                     obstructed |= constrained != remaining;
                     remaining = constrained;
                 }
-                status = Trace(current, remaining, queries, proveMedium, mode, enterFraction, boundary, waterNormals, out int waterCount, out MovementWaterBoundary.Hit waterHit,
+                status = MovementSegmentProof.Trace(SolidAt(solid, body, current.Centre), current, remaining, queries, proveMedium, mode, enterFraction, boundary, filter, waterNormals, out int waterCount, out MovementWaterBoundary.Hit waterHit,
                     out CapsuleSweepResult sweep, out Vector3 requestedEnd, out double inflation);
                 if (status != MovementAvailability.Known) return status;
                 if (sweep.Status == CapsuleSweepStatus.Clear && !waterHit.Blocked)
                 {
-                    status = ClearPlacement(At(current, requestedEnd), queries, contactBuffer);
+                    status = ClearPlacement(SolidAt(solid, body, requestedEnd), queries, contactBuffer, filter);
                     if (status != MovementAvailability.Known) return status;
                     path[count++] = requestedEnd;
-                    return Publish(path[..count], obstructed, queries, destination, out written, out blocked);
+                    return Publish(path[..count], obstructed, queries, destination, out written, out blocked,
+                        velocity, projectedVelocity);
                 }
                 if (correction == MaximumCorrections || remaining == Vector3.Zero)
                     return MovementAvailability.Unresolved;
@@ -89,7 +98,7 @@ internal static class MovementCapsuleResolver
                     solidFirst && solidDistance - sweep.ClearThroughDistance + poseError + inflation > margin)
                     return MovementAvailability.Unresolved;
                 contactBuffer.Clear();
-                status = queries.QuerySolidContacts(At(current, impact), margin, contactBuffer, out CapsuleContactResult set);
+                status = queries.QuerySolidContactsFiltered(SolidAt(solid, body, impact), margin, contactBuffer, out CapsuleContactResult set, filter);
                 if (status != MovementAvailability.Known) return status;
                 int normalCount = set.Written;
                 for (int i = 0; i < set.Written; i++) normalBuffer[i] = contactBuffer[i].Normal;
@@ -116,6 +125,14 @@ internal static class MovementCapsuleResolver
                     }
                 }
                 if (normalCount == 0) return MovementAvailability.Unresolved;
+                if (horizontal)
+                {
+                    // A ground side route stays at its clearance height. Medium projection cannot create
+                    // an unpaid vertical detour, even when a certified boundary has a tilted normal.
+                    if (normalCount + 2 > normalBuffer.Length) return MovementAvailability.CapacityExceeded;
+                    normalBuffer[normalCount++] = Vector3.UnitY;
+                    normalBuffer[normalCount++] = -Vector3.UnitY;
+                }
                 double retreat = 0;
                 bool inward = false;
                 for (int i = 0; i < normalCount; i++)
@@ -134,24 +151,27 @@ internal static class MovementCapsuleResolver
                 if (advance > 0)
                 {
                     Vector3 prefix = remaining * (float)(advance / length);
-                    status = Trace(current, prefix, queries, proveMedium, mode, enterFraction, boundary, waterNormals, out _, out MovementWaterBoundary.Hit prefixWater,
+                    status = MovementSegmentProof.Trace(SolidAt(solid, body, current.Centre), current, prefix, queries, proveMedium, mode, enterFraction, boundary, filter, waterNormals, out _, out MovementWaterBoundary.Hit prefixWater,
                         out CapsuleSweepResult prefixSweep, out Vector3 prefixEnd, out _);
                     if (status != MovementAvailability.Known) return status;
                     if (prefixSweep.Status != CapsuleSweepStatus.Clear || prefixWater.Blocked) return MovementAvailability.Unresolved;
-                    status = ClearPlacement(At(current, prefixEnd), queries, contactBuffer);
+                    status = ClearPlacement(SolidAt(solid, body, prefixEnd), queries, contactBuffer, filter);
                     if (status != MovementAvailability.Known) return status;
                     path[count++] = prefixEnd;
                     current = At(current, prefixEnd);
                 }
                 Vector3 desired = requestedEnd - current.Centre;
-                status = MovementConstraintProjection.TryProject(desired, normalBuffer[..normalCount], out Vector3 projected);
+                status = MovementSegmentProof.Project(desired, normalBuffer[..normalCount], out Vector3 projected);
+                if (status == MovementAvailability.Known && !velocity.IsEmpty)
+                    status = MovementSegmentProof.Project(projectedVelocity, normalBuffer[..normalCount], out projectedVelocity);
                 if (status != MovementAvailability.Known) return status;
                 if (projected == desired) return MovementAvailability.Unresolved;
                 obstructed = true;
                 if (projected == Vector3.Zero)
                 {
                     if (count == 0) path[count++] = current.Centre;
-                    return Publish(path[..count], true, queries, destination, out written, out blocked);
+                    return Publish(path[..count], true, queries, destination, out written, out blocked,
+                        velocity, projectedVelocity);
                 }
                 remaining = projected;
             }
@@ -164,35 +184,11 @@ internal static class MovementCapsuleResolver
         }
     }
 
-    static MovementAvailability Trace(in MovementBodyQuery body, Vector3 delta, MovementQueryLease queries,
-        bool proveMedium, WaterTraversalMode mode, float enterFraction, MovementBoundary? boundary, Span<Vector3> waterNormals,
-        out int waterCount, out MovementWaterBoundary.Hit waterHit, out CapsuleSweepResult result, out Vector3 end, out double inflation)
-    {
-        result = default;
-        waterCount = 0;
-        waterHit = default;
-        if (!MovementCapsuleRounding.TryEnclose(body, delta, out MovementBodyQuery enclosure, out end, out inflation))
-            return MovementAvailability.Unresolved;
-        if (boundary is not null)
-        {
-            MovementAvailability proof = boundary.ProveSegment(body.Centre, delta, end, out bool admitted);
-            if (proof != MovementAvailability.Known) return proof;
-            if (!admitted) return MovementAvailability.Unresolved;
-        }
-        MovementAvailability status = queries.QuerySolidSweep(enclosure, delta, out result);
-        if (status != MovementAvailability.Known || !proveMedium) return status;
-        if (mode is WaterTraversalMode.SurfaceSwimmer or WaterTraversalMode.WadeOnly or WaterTraversalMode.DryOnly)
-            return MovementWaterBoundary.Find(enclosure, delta, body.HalfHeight, enterFraction, mode, queries,
-                waterNormals, out waterCount, out waterHit);
-        return result.Status == CapsuleSweepStatus.Clear
-            ? MovementWaterPathProof.Check(enclosure, delta, queries, mode) : status;
-    }
-
     static MovementAvailability ClearPlacement(in MovementBodyQuery body, MovementQueryLease queries,
-        Span<CapsuleContact> contacts)
+        Span<CapsuleContact> contacts, QueryFilter filter)
     {
         contacts.Clear();
-        MovementAvailability status = queries.QuerySolidContacts(body, contacts, out CapsuleContactResult result);
+        MovementAvailability status = queries.QuerySolidContactsFiltered(body, 0, contacts, out CapsuleContactResult result, filter);
         if (status != MovementAvailability.Known) return status;
         foreach (CapsuleContact contact in contacts[..result.Written])
             if (contact.Separation - result.CertifiedErrorMetres < 0) return MovementAvailability.Unresolved;
@@ -200,7 +196,7 @@ internal static class MovementCapsuleResolver
     }
 
     static MovementAvailability Publish(ReadOnlySpan<Vector3> path, bool obstructed, MovementQueryLease queries,
-        Span<Vector3> destination, out int written, out bool blocked)
+        Span<Vector3> destination, out int written, out bool blocked, Span<Vector3> velocity, Vector3 projectedVelocity)
     {
         written = 0;
         blocked = false;
@@ -210,11 +206,14 @@ internal static class MovementCapsuleResolver
         path.CopyTo(destination);
         written = path.Length;
         blocked = obstructed;
+        if (!velocity.IsEmpty) velocity[0] = projectedVelocity;
         return MovementAvailability.Known;
     }
 
     static MovementBodyQuery At(in MovementBodyQuery body, Vector3 centre) =>
         new(centre, body.Radius, body.HalfHeight, body.CurrentSpace, body.CurrentSupport);
+    static MovementBodyQuery SolidAt(in MovementBodyQuery solid, in MovementBodyQuery body, Vector3 centre) =>
+        At(solid, solid.Centre == body.Centre ? centre : solid.Centre + (centre - body.Centre));
     static double Length(Vector3 value) => Math.Sqrt((double)value.X * value.X +
         (double)value.Y * value.Y + (double)value.Z * value.Z);
 }

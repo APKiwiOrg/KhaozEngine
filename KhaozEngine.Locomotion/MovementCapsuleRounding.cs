@@ -10,10 +10,14 @@ internal static class MovementCapsuleRounding
     const double Skin = MovementQueryLease.CoverageSkinMetres;
 
     internal static bool TryEnclose(in MovementBodyQuery body, Vector3 delta, out MovementBodyQuery enclosed,
-        out Vector3 endpoint, out double inflation)
+        out Vector3 endpoint, out double inflation) =>
+        TryEncloseStored(body, delta, out enclosed, out endpoint, out inflation, body.Centre + delta);
+
+    internal static bool TryEncloseStored(in MovementBodyQuery body, Vector3 delta, out MovementBodyQuery enclosed,
+        out Vector3 endpoint, out double inflation, Vector3 storedEnd)
     {
         enclosed = default;
-        endpoint = body.Centre + delta;
+        endpoint = storedEnd;
         inflation = default;
         if (!body.IsValid || !MovementEnvironmentValidation.Finite(delta) ||
             !MovementEnvironmentValidation.Finite(endpoint)) return false;
@@ -74,7 +78,7 @@ internal static class MovementCapsuleRounding
 
     static double SumError(float a, float b, float stored)
     {
-        if (a == 0 || b == 0) return 0;
+        if (a == 0 || b == 0) return Math.Abs((double)a + b - stored);
         double sum = (double)a + b;
         // Two binary32 significands within 24 exponent steps fit exactly in binary64, including
         // cancellation. Only return zero when that exact sum is also the stored binary32 value.

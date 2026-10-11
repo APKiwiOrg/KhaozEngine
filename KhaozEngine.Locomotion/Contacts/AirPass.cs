@@ -73,6 +73,7 @@ internal static partial class AirPass
 
         // A shell that cannot be freed does not move or fall, as a held ground tick does not move.
         Vector3 start = ShellMotion.RecoverWithQueries(queries, feet, tuning, out bool cleared);
+        queries.RequireRecoveryAccepted();
         if (!cleared)
             return new(feet, 0f, Vector2.Zero, Vector2.Zero, AirOutcome.Airborne, NoSupport, 0f, true)
             {
@@ -122,6 +123,9 @@ internal static partial class AirPass
             if (current.Y > 0f) continue;
 
             Vector3 at = start + moved;
+            var route = new ContactMotionRoute(queries, from + flight.Achieved);
+            if (!route.Append(at))
+                throw new ContactQueryFailure(MovementAvailability.Known, MovementStepOutcome.Blocked);
             float high = MathF.Max(from.Y + flight.Highest, at.Y);
             float low = MathF.Min(from.Y + flight.Lowest, at.Y);
             var axis = new Vector2(at.X, at.Z);
@@ -142,7 +146,7 @@ internal static partial class AirPass
                 var seat = new GroundSeatResult(SeatOutcome.Seated, support.Height, support,
                     rise > 0 ? GroundPlacement.NotBelow(rise) : 0f, Vector3.Zero);
                 GroundPlacement placement = GroundPlacement.Try(queries, NoSupport,
-                    high, axis, Vector2.Zero, seat, footRadius, tuning, cosMaxSlope, budget);
+                    high, axis, Vector2.Zero, seat, footRadius, tuning, cosMaxSlope, budget, ref route);
                 if (!placement.Valid)
                 {
                     // A seat that fails clearance lands unraised at the substep's end feet while the support is
@@ -174,6 +178,9 @@ internal static partial class AirPass
             if (support.Status == SupportStatus.Steep &&
                 (double)support.Height - support.HeightError <= high &&
                 (double)support.Height + support.HeightError >= low)
+            {
+                if (!route.Append(at with { Y = support.Height }))
+                    throw new ContactQueryFailure(MovementAvailability.Known, MovementStepOutcome.Blocked);
                 return new(at with { Y = support.Height }, MathF.Min(0f, current.Y + gravity * remainingTime),
                     Achieved(feet, start, moved), remaining, AirOutcome.Sliding, support, 0f - current.Y, blocked)
                 {
@@ -181,6 +188,7 @@ internal static partial class AirPass
                     RemainingTime = remainingTime,
                     ClimbBudget = budget,
                 };
+            }
         }
         return new(start + moved, current.Y, Achieved(feet, start, moved), Vector2.Zero, AirOutcome.Airborne,
             NoSupport, 0f, blocked)

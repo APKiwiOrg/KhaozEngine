@@ -16,6 +16,7 @@ internal readonly struct ContactQueryContext
     public static implicit operator ContactQueryContext(LeasedContactQueryContext leased) => new(leased);
 
     internal bool HasShell => _leased is not null || _dry.HasShell;
+    internal bool HasMediumProof => _leased is not null;
     internal Vector3 KernelFeet(Vector3 centre, in MoveTuning tuning) => _leased is { } leased
         ? leased.KernelFeet(centre, tuning) : _dry.KernelFeet(centre, tuning);
     internal Vector3 BodyCentre(Vector3 feet) => _leased is { } leased ? leased.BodyCentre(feet) : _dry.BodyCentre(feet);
@@ -42,7 +43,24 @@ internal readonly struct ContactQueryContext
         ? leased.PenetrationShell(shape, centre, out mtv) : _dry.PenetrationShell(shape, centre, out mtv);
     internal CapsuleContactResult QueryShellContacts(CapsuleShape shape, Vector3 centre, Span<CapsuleContact> contacts) =>
         _leased is { } leased ? leased.QueryShellContacts(shape, centre, contacts) : _dry.QueryShellContacts(shape, centre, contacts);
-    internal void AcceptSegment(Vector3 from, Vector3 to) => _leased?.AcceptSegment(from, to);
+    internal bool AcceptSegment(Vector3 from, Vector3 to) => _leased?.AcceptSegment(from, to) ?? true;
+    internal void ValidatePlacement(Vector3 feet) => _leased?.ValidatePlacement(feet);
+    internal void Refuse(ContactQueryFailure failure) => _leased?.Refuse(failure);
+    internal void RefuseRecovery() => _leased?.RefuseRecovery();
+    internal void AcceptRoute(bool blocked) => _leased?.AcceptRoute(blocked);
+    internal void RequireRecoveryAccepted()
+    {
+        if (_leased?.RecoveryDenied == true)
+            throw new ContactQueryFailure(MovementAvailability.Known, MovementStepOutcome.Blocked);
+    }
+    internal bool ResolveSegment(Vector3 from, Vector3 to, Span<Vector3> path, out int written, out bool blocked,
+        Span<Vector3> velocity = default)
+    {
+        if (_leased is not null) return _leased.ResolveSegment(from, to, path, out written, out blocked, velocity);
+        path[0] = to;
+        (written, blocked) = (1, false);
+        return true;
+    }
     internal MovementWaterPoint? SampleMedium(Vector3 feet) => _leased?.SampleMedium(feet);
     internal MovementCoverageResult TraceMedium(Vector3 feet, Vector3 delta,
         Span<MovementCoverageSpan> spans, Span<MovementDomainContact> contacts) => _leased is { } leased
@@ -96,7 +114,10 @@ internal readonly struct DryContactQueryContext(Func<float, float, float>? heigh
 
 /// <summary>A query refusal, distinct from known absent support or a proved obstruction. The borrowed tick's
 /// caller maps availability to its whole-tick hold result.</summary>
-internal sealed class ContactQueryFailure(MovementAvailability availability) : Exception("Contact query evidence is unavailable.")
+internal sealed class ContactQueryFailure(MovementAvailability availability,
+    MovementStepOutcome? outcome = null) : Exception("Contact query evidence is unavailable.")
 {
     internal MovementAvailability Availability { get; } = availability;
+    internal MovementStepOutcome Outcome { get; } = outcome ?? (availability == MovementAvailability.Invalid
+        ? MovementStepOutcome.EnvironmentInvalid : MovementStepOutcome.EnvironmentUnresolved);
 }

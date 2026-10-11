@@ -56,6 +56,21 @@ internal static partial class ContactController
         Func<float, float, Vector2>? clampXz = null,
         float? faceYaw = null, GroundCoreSettings? settings = null)
     {
+        try
+        {
+            return StepCore(state, moveDir, speedFraction, run, jump, dt, tuning, queries, clampXz, faceYaw, settings);
+        }
+        catch (ContactQueryFailure failure)
+        {
+            queries.Refuse(failure);
+            return MovementStepResult.HoldState(state) with { ClimbRateEwma = 0 };
+        }
+    }
+
+    static MoveState StepCore(in MoveState state, Vector2 moveDir, float speedFraction, bool run,
+        bool jump, float dt, in MoveTuning tuning, ContactQueryContext queries,
+        Func<float, float, Vector2>? clampXz, float? faceYaw, GroundCoreSettings? settings)
+    {
         GroundCoreSettings foot = settings ?? new GroundCoreSettings();
         MoveState s = state;
         MoveTuning t = tuning;
@@ -64,6 +79,7 @@ internal static partial class ContactController
 
         Vector3 feet = queries.KernelFeet(s.Position, t);
         queries.CheckDryMedium(feet);
+        queries.ValidatePlacement(feet);
         float gate = CharacterMovement.TractionGate(s.Grounded, t);
         // An airborne tick never starts where the air pass cannot recover the feet: below steep analytic terrain at
         // its axis, which the terrain wall treats as a face above them, or below walkable terrain by more than
@@ -74,7 +90,12 @@ internal static partial class ContactController
         float terrain = queries.HeightAt(feet);
         if (!s.Grounded && feet.Y < terrain && (terrain - feet.Y > t.StepHeight ||
                 queries.NormalAt(feet)?.Y < MathF.Cos(gate)))
+        {
+            var route = new ContactMotionRoute(queries, feet);
+            if (!route.Append(feet with { Y = terrain }))
+                throw new ContactQueryFailure(MovementAvailability.Known, MovementStepOutcome.Blocked);
             feet.Y = terrain;
+        }
 
         // Intent, as legacy: the walk or run speed scaled by AirControl in the air and by the entity's scale. Under
         // AirMomentum an airborne tick steers the carried velocity instead, and a committed flight flies its own.
@@ -212,6 +233,9 @@ internal static partial class ContactController
         if (!float.IsFinite(axis.X) || !float.IsFinite(axis.Y))
             return tick with { Feet = new Vector3(axis.X, feet.Y, axis.Y), Last = last };
 
+        var route = new ContactMotionRoute(c.Queries, feet);
+        if (!route.Append(new(axis.X, feet.Y, axis.Y)))
+            throw new ContactQueryFailure(MovementAvailability.Known, MovementStepOutcome.Blocked);
         MoveTuning t = c.Tuning;
         float y = feet.Y, footRadius = c.Settings.FootRadiusFraction * t.CapsuleRadius, cosGate = MathF.Cos(c.Gate);
         SupportSample support = c.Queries.FindSupport(
@@ -228,10 +252,12 @@ internal static partial class ContactController
         if (seat.Outcome is SeatOutcome.Seated or SeatOutcome.SteepSeated)
         {
             GroundPlacement placement = GroundPlacement.Try(c.Queries,
-                NoSupport, y, axis, Vector2.Zero, seat, footRadius, t, cosGate, tick.Budget, clearSteep: true);
+                NoSupport, y, axis, Vector2.Zero, seat, footRadius, t, cosGate, tick.Budget, ref route, clearSteep: true);
             if (placement.Valid && !placement.Pushed) y = placement.Feet.Y;
         }
         if (c.Queries.TryHeightAt(new(axis.X, y, axis.Y), out float terrain)) y = MathF.Max(y, terrain);
+        if (!route.Append(new(axis.X, y, axis.Y)))
+            throw new ContactQueryFailure(MovementAvailability.Known, MovementStepOutcome.Blocked);
         return tick with { Feet = new Vector3(axis.X, y, axis.Y), Last = last };
     }
 
@@ -285,6 +311,8 @@ internal static partial class ContactController
             {
                 GroundStepResult step = GroundCore.Step(feet, displacement, time, t, c.Settings, c.Queries, c.Gate, budget, c.ClampXz,
                     stepInProgress: s.StepDeltaY > 0 || GroundSignals.Ascending(s.ClimbRate));
+                c.Queries.RequireRecoveryAccepted();
+                c.Queries.AcceptRoute(step.Blocked);
                 (feet, budget, vertical) = (step.Feet, step.ClimbBudget, 0f);
                 support = step.Support;
                 stepRise += step.StepRise;
@@ -335,6 +363,7 @@ internal static partial class ContactController
             }
             AirStepResult air = AirPass.Step(feet, velocity, vertical, time, t.Gravity, t, c.Settings, c.Gate,
                 c.Queries, budget, c.ClampXz);
+            c.Queries.AcceptRoute(air.Blocked);
             Vector2 asked = segment == 0 ? commanded : velocity;
             last = new Segment(asked, asked, air.Achieved, time);
             first ??= asked;

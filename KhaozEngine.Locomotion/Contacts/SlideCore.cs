@@ -126,6 +126,7 @@ internal static partial class SlideCore
         var axis = new Vector2(feet.X, feet.Z);
         bool clamped = PlayArea.Clamp(axis, ref move, clampXz);
         GroundStepResult step = GroundCore.Slide(feet, move, dt, tuning, settings, queries, tractionSlopeRadians, climbBudget, clampXz);
+        queries.RequireRecoveryAccepted();
         if (step.Blocked && steerAlong != 0f)
         {
             // The steer's own travel may be what met the block, for example a contour that climbs the real surface
@@ -135,9 +136,11 @@ internal static partial class SlideCore
             Vector2 alone = velocity * dt;
             bool aloneClamped = PlayArea.Clamp(axis, ref alone, clampXz);
             GroundStepResult carried = GroundCore.Slide(feet, alone, dt, tuning, settings, queries, tractionSlopeRadians, climbBudget, clampXz);
+            queries.RequireRecoveryAccepted();
             if (Progress(carried) > Progress(step))
                 (step, steerAlong, applied, clamped) = (carried, 0f, Vector2.Zero, aloneClamped);
         }
+        queries.AcceptRoute(step.Blocked || clamped);
         switch (step.Footing)
         {
             case GroundFooting.Walkable:

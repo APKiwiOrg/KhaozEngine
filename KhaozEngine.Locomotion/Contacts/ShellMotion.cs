@@ -32,6 +32,9 @@ internal static partial class ShellMotion
         cleared = true;
         if (!queries.HasShell)
             return feet;
+        Vector3 input = feet;
+        var route = new ContactMotionRoute(queries, feet);
+        queries.ValidatePlacement(feet);
         CapsuleShape shape = ShellGeometry.Shape(tuning);
         for (int pass = 0; ; pass++)
         {
@@ -40,11 +43,19 @@ internal static partial class ShellMotion
             float depth = mtv.Length();
             if (pass == MaxRecoveryPasses || !(depth > 0f) || !float.IsFinite(depth))
             {
+                if (queries.HasMediumProof) throw new ContactQueryFailure(MovementAvailability.Unresolved);
                 cleared = false;
                 return feet;
             }
             // The skin on top of the MTV keeps a recovered shell from resting exactly tangent.
-            feet += mtv * ((depth + ContactSkin) / depth);
+            Vector3 pushed = feet + mtv * ((depth + ContactSkin) / depth);
+            if (!route.Append(pushed))
+            {
+                queries.RefuseRecovery();
+                cleared = false;
+                return input;
+            }
+            feet = pushed;
         }
     }
 
@@ -69,6 +80,15 @@ internal static partial class ShellMotion
     internal static ShellSweep SweepWithQueries(ContactQueryContext queries, Vector3 feet, float lift, Vector2 move,
         in MoveTuning tuning, float cosMaxSlope, Func<float, float, Vector2>? clampXz = null)
     {
+        var route = new ContactMotionRoute(queries, feet);
+        return SweepWithQueries(queries, feet, lift, move, tuning, cosMaxSlope, ref route, clampXz);
+    }
+
+    internal static ShellSweep SweepWithQueries(ContactQueryContext queries, Vector3 feet, float lift, Vector2 move,
+        in MoveTuning tuning, float cosMaxSlope, ref ContactMotionRoute route,
+        Func<float, float, Vector2>? clampXz = null)
+    {
+        if (!route.Append(feet + new Vector3(0, lift, 0))) return new(Vector2.Zero, true);
         if (!queries.HasShell)
             return new ShellSweep(move, false);
         CapsuleShape shape = ShellGeometry.Shape(tuning);
@@ -89,6 +109,11 @@ internal static partial class ShellMotion
             if (!queries.SweepShell(shape, centre + offset, new Vector3(direction.X, 0f, direction.Y),
                     (float)length, out SweepHit hit, QueryFilter.StaticsOnly))
             {
+                Vector2 target = achieved + remaining;
+                if (!route.Move(feet + new Vector3(target.X, lift, target.Y), out bool constrained))
+                    return new(achieved, true, obstructions);
+                if (constrained)
+                    return new(new(route.Current.X - feet.X, route.Current.Z - feet.Z), true, obstructions);
                 achieved += remaining;
                 remaining = Vector2.Zero;
                 break;
@@ -107,6 +132,10 @@ internal static partial class ShellMotion
                 centre += new Vector3(advance.X, 0f, advance.Y);
                 achieved += advance;
                 remaining -= advance;
+                if (!route.Move(feet + new Vector3(achieved.X, lift, achieved.Y), out bool constrained))
+                    return new(achieved - advance, true, obstructions);
+                if (constrained)
+                    return new(new(route.Current.X - feet.X, route.Current.Z - feet.Z), true, obstructions);
             }
             obstructions.Add(hit.Body, ContactClassifier.ClassifyShell(normal, cosMaxSlope));
             if (slide == MaxSlides)
@@ -142,12 +171,14 @@ internal static partial class ShellMotion
     {
         if (!queries.HasShell)
             return new ShellFlight(move, false, MathF.Max(0f, move.Y), MathF.Min(0f, move.Y));
+        var route = new ContactMotionRoute(queries, feet);
         CapsuleShape shape = ShellGeometry.Shape(tuning);
         Vector3 centre = ShellGeometry.Centre(feet, tuning);
         // As in Sweep, a touching start sweeps from an offset off the face that the shell itself does not take.
         Vector3 offset = Vector3.Zero;
         Vector3 achieved = Vector3.Zero;
         Vector3 remaining = move;
+        Span<Vector3> carried = stackalloc Vector3[1];
         bool blocked = false;
         float highest = 0f, lowest = 0f;
         for (int slide = 0; slide <= MaxSlides; slide++)
@@ -161,6 +192,15 @@ internal static partial class ShellMotion
             if (!queries.SweepShell(shape, centre + offset, direction, (float)length, out SweepHit hit,
                     QueryFilter.StaticsOnly))
             {
+                carried[0] = velocity;
+                if (!route.Move(feet + achieved + remaining, out bool constrained, carried))
+                    return new(achieved, true, highest, lowest);
+                if (constrained)
+                {
+                    achieved = route.Current - feet;
+                    velocity = carried[0];
+                    return new(achieved, true, MathF.Max(highest, route.Highest), MathF.Min(lowest, route.Lowest));
+                }
                 achieved += remaining;
                 remaining = Vector3.Zero;
                 highest = MathF.Max(highest, achieved.Y);
@@ -183,6 +223,15 @@ internal static partial class ShellMotion
                 remaining -= advance;
                 highest = MathF.Max(highest, achieved.Y);
                 lowest = MathF.Min(lowest, achieved.Y);
+                carried[0] = velocity;
+                if (!route.Move(feet + achieved, out bool constrained, carried))
+                    return new(achieved - advance, true, highest, lowest);
+                if (constrained)
+                {
+                    achieved = route.Current - feet;
+                    velocity = carried[0];
+                    return new(achieved, true, MathF.Max(highest, route.Highest), MathF.Min(lowest, route.Lowest));
+                }
             }
             velocity = Slide(velocity, normal, cosMaxSlope);
             if (slide == MaxSlides)

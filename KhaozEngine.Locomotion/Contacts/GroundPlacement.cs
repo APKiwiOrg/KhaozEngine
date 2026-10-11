@@ -16,6 +16,17 @@ internal readonly partial record struct GroundPlacement(bool Valid, Vector3 Feet
         in SupportSample start, float startFeetY, Vector2 startAxis, Vector2 total, in GroundSeatResult seat,
         float footRadius, in MoveTuning tuning, float cosMaxSlope, double budget, bool clearSteep = false)
     {
+        Vector2 axis = startAxis + total;
+        var route = new ContactMotionRoute(queries, new(axis.X, startFeetY, axis.Y));
+        return Try(queries, start, startFeetY, startAxis, total, seat, footRadius, tuning, cosMaxSlope,
+            budget, ref route, clearSteep);
+    }
+
+    internal static GroundPlacement Try(ContactQueryContext queries,
+        in SupportSample start, float startFeetY, Vector2 startAxis, Vector2 total, in GroundSeatResult seat,
+        float footRadius, in MoveTuning tuning, float cosMaxSlope, double budget, ref ContactMotionRoute route,
+        bool clearSteep = false)
+    {
         float feetY = seat.Outcome switch
         {
             SeatOutcome.Seated => Paced(start, startFeetY, seat, ref budget),
@@ -24,11 +35,12 @@ internal readonly partial record struct GroundPlacement(bool Valid, Vector3 Feet
         };
         Vector2 axis = startAxis + total;
         var target = new Vector3(axis.X, feetY, axis.Y);
+        if (!route.Append(target)) return default;
         if (seat.Outcome == SeatOutcome.SteepSeated)
             return clearSteep && Overlaps(queries, tuning, target)
                 ? default
                 : new(true, target, seat.Support, budget, false, total);
-        if (!Clear(queries, tuning, target, startAxis, ref total, out Vector3 placed)) return default;
+        if (!Clear(queries, tuning, target, startAxis, ref total, ref route, out Vector3 placed)) return default;
         if (placed == target) return new(true, target, seat.Support, budget, false, total);
 
         // A clearance push proposes a different axis and height. It must earn its own footing, without hovering
@@ -78,7 +90,7 @@ internal readonly partial record struct GroundPlacement(bool Valid, Vector3 Feet
 
     // A touching shell is clear. An overlapping shell gets one MTV proposal and one clearance check.
     static bool Clear(ContactQueryContext queries, in MoveTuning tuning, Vector3 target, Vector2 startAxis,
-        ref Vector2 total, out Vector3 placed)
+        ref Vector2 total, ref ContactMotionRoute route, out Vector3 placed)
     {
         placed = target;
         if (!queries.HasShell) return true;
@@ -96,6 +108,7 @@ internal readonly partial record struct GroundPlacement(bool Valid, Vector3 Feet
         if (queries.PenetrationShell(shape, ShellGeometry.Centre(pushed, tuning), out Vector3 again) &&
             again != Vector3.Zero)
             return false;
+        if (!route.Append(pushed)) return false;
         placed = pushed;
         return true;
     }

@@ -2,6 +2,7 @@
 // backstop after the move, reached only through a recovery push that crosses the bound. Expectations come from the
 // installed geometry and the closed forms.
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
@@ -200,5 +201,46 @@ public partial class ContactControllerTests
 
         Assert.True(Feet(s).Z == 0, $"the backstop did not shift the end: {Show(s)}");
         AssertNear(Ridge, Feet(s).Y, HalfSkin, $"the shift was not floored on the terrain: {Show(s)}");
+    }
+
+    public static IEnumerable<object[]> BackstopSignalRows()
+    {
+        foreach (SceneVariant variant in new[] { SceneVariant.Box, SceneVariant.Mesh })
+            foreach (int hz in new[] { 30, 60 })
+                foreach (bool carriedRun in new[] { false, true }) yield return [variant, hz, carriedRun];
+    }
+
+    // A staircase rising +X under the z >= 0 bound, beside a wall box over z from 0.3. A body stands on the first
+    // tread at z 0.1 with its shell 0.2 into the wall, 0.12 below the tread, with a step or a run in progress. A
+    // moving tick cuts every substep to the bound, so only a standing tick leaves recovery's end past it. Recovery
+    // pushes the body across the bound, the tick pays owed climb there, and the backstop shifts the end back to z 0.
+    // The backstop is a correction, not motion, so a tick it shifts reports no signals.
+    [Theory]
+    [MemberData(nameof(BackstopSignalRows))]
+    public void BackstopShiftReportsNoSignals(SceneVariant variant, int hz, bool carriedRun)
+    {
+        // The wall is a solid box in both variants, so recovery has a volume to push out of.
+        using var g = new Ground(Staircase(variant, 4, 0.18f, 0.6f).Add("wall", new BoxShape(new Vector3(2, 1.5f, 1)),
+            Pose.At(new Vector3(0, 1.5f, 1.3f))), Abyss);
+        MoveState s = Standing(new Vector3(0.05f, 0.06f, 0.1f)) with
+        {
+            StepDeltaY = carriedRun ? 0 : 0.06f,
+            ClimbRate = carriedRun ? 1 : 0,
+            ClimbRateEwma = carriedRun ? 1 : 0,
+        };
+        int paidShifts = 0;
+        for (int tick = 0; tick < hz; tick++)
+        {
+            Vector3 before = Feet(s);
+            Vector3 recovered = ShellMotion.Recover(g.World, before, Tuning, out _);
+            s = g.Step(s, Vector2.Zero, 0, false, Tuning, 1f / hz, clampXz: KeepZ);
+            string context = $"tick {tick}, feet {before.Y:R} to {Feet(s).Y:R}, step {s.StepDeltaY:R}, " +
+                $"climb {s.ClimbRate:R}: {Show(s)}";
+            Assert.True(s.Grounded && recovered.Z < 0 && Feet(s).Z == 0, context);
+            AssertNoSignals(s);
+            if (Feet(s).Y - before.Y > Skin) paidShifts++;
+        }
+        Assert.True(paidShifts > 0, $"no shifted tick paid owed climb: {Show(s)}");
+        AssertNear(0.18f, Feet(s).Y, Skin, Show(s));
     }
 }

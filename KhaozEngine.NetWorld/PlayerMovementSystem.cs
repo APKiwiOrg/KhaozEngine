@@ -152,44 +152,7 @@ public sealed class PlayerMovementSystem : ISystem
             // The feel timers ride their own owner-only component. Carried IN and written back OUT like every other
             // carried field, so the coyote window and the jump buffer count across ticks.
             bool hasOwner = world.TryGet(e, out MovementOwnerState owner);
-            var state = new MoveState
-            {
-                Position = pos.Local,
-                VerticalVelocity = ms.VerticalVelocity,
-                Grounded = ms.Grounded,
-                TimeSinceGrounded = owner.TimeSinceGrounded,
-                JumpBufferRemaining = owner.JumpBufferRemaining,
-                Swimming = ms.Swimming,   // carry the swim flag IN so the enter/exit hysteresis band works across ticks
-                // Carry the full sim-local average during ordinary ticks. A shard handoff reconstructs the component
-                // through its observer-safe codec, which intentionally omits that float but preserves ClimbRateQ.
-                // Seed only that zero slot from the decoded ascent signal, matching PlayerMoveState.From's reconcile
-                // seed. The next stair step then continues within one wire quantum instead of warming from zero.
-                ClimbRateEwma = ms.ClimbRateEwma != 0f
-                    ? ms.ClimbRateEwma
-                    : MathF.Max(0f, MovementState.DecodeClimbRate(ms.ClimbRateQ)),
-                // Carry the server-authored haste/slow multiplier IN. It is a movement INPUT, so unlike the fields
-                // below it is never written back OUT: the step does not derive it, SetSpeedScale is its only author,
-                // and re-quantizing an already-quantized value every tick would only invite drift.
-                SpeedScale = MovementState.DecodeSpeedScale(ms.SpeedScaleQ),
-                // Carry the airborne arc IN. Unlike SpeedScale this one is a step OUTPUT as well, so it round-trips
-                // through the wire quantum every tick on this head where the single-World WorldServer keeps it at full
-                // float precision in its own PlayerMoveState. That costs at most half a quantum (0.002 m/s) of rounding
-                // per tick, which is the same resolution the client already reconciles against, and it buys the arc
-                // surviving a cell handoff: the component is what migrates, so a full-precision copy parked beside it
-                // would be a second source of truth that silently loses to this one at the border.
-                HorizontalVelocity = new Vector2(
-                    MovementState.DecodeHorizontalVelocity(ms.HorizontalVelocityXQ),
-                    MovementState.DecodeHorizontalVelocity(ms.HorizontalVelocityZQ)),
-                // Carry the heading IN for the same reason as the arc above, and it is not optional even at the
-                // snapping default: with a finite MoveTuning.FacingTurnSpeed the step turns FROM this value, so a
-                // heading re-derived from 0 every tick would never get anywhere at all on this head. It costs the
-                // same per-tick round trip through the wire quantum, and a heading mid-turn is an INTEGRATOR (this
-                // tick's value is the last one plus a fixed step), so unlike the arc the remainder rounds the same
-                // way every tick and accumulates - bounded by half a quantum per turning tick, a fraction of a
-                // degree over any real turn, and it unwinds the moment the turn lands exactly on its target.
-                FacingYaw = MovementState.DecodeFacingYaw(ms.FacingYawQ),
-                Commitment = ms.Commitment,
-            };
+            MoveState state = CarriedState(pos.Local, ms, owner);
             state = CharacterMovement.Step(state, move.Command, dt, ground, tuning, normal, physics, clampXz, fluid);
 
             pos = pos.WithLocal(state.Position);   // frame preserved by construction, never re-derived
@@ -230,4 +193,50 @@ public sealed class PlayerMovementSystem : ISystem
         if (unseeded is null) return;
         foreach ((Entity e, MovementOwnerState owner) in unseeded) world.Set(e, owner);
     }
+
+    /// <summary>The <see cref="MoveState"/> this head steps from: the carried components around the cell-local
+    /// <paramref name="local"/> position.</summary>
+    internal static MoveState CarriedState(Vector3 local, in MovementState ms, in MovementOwnerState owner) =>
+        new()
+        {
+            Position = local,
+            VerticalVelocity = ms.VerticalVelocity,
+            Grounded = ms.Grounded,
+            TimeSinceGrounded = owner.TimeSinceGrounded,
+            JumpBufferRemaining = owner.JumpBufferRemaining,
+            Swimming = ms.Swimming,   // carry the swim flag IN so the enter/exit hysteresis band works across ticks
+            // Carry the replicated climb rate IN, as PlayerMoveState.From rebuilds the reconcile basis. A step that
+            // reads it as input decides on the wire value, so this head decides as the single-World head and the
+            // client do.
+            ClimbRate = MovementState.DecodeClimbRate(ms.ClimbRateQ),
+            // Carry the full sim-local average during ordinary ticks. A shard handoff reconstructs the component
+            // through its observer-safe codec, which intentionally omits that float but preserves ClimbRateQ.
+            // Seed only that zero slot from the decoded ascent signal, matching PlayerMoveState.From's reconcile
+            // seed. The next stair step then continues within one wire quantum instead of warming from zero.
+            ClimbRateEwma = ms.ClimbRateEwma != 0f
+                ? ms.ClimbRateEwma
+                : MathF.Max(0f, MovementState.DecodeClimbRate(ms.ClimbRateQ)),
+            // Carry the server-authored haste/slow multiplier IN. It is a movement INPUT, so unlike the fields
+            // below it is never written back OUT: the step does not derive it, SetSpeedScale is its only author,
+            // and re-quantizing an already-quantized value every tick would only invite drift.
+            SpeedScale = MovementState.DecodeSpeedScale(ms.SpeedScaleQ),
+            // Carry the airborne arc IN. Unlike SpeedScale this one is a step OUTPUT as well, so it round-trips
+            // through the wire quantum every tick on this head where the single-World WorldServer keeps it at full
+            // float precision in its own PlayerMoveState. That costs at most half a quantum (0.002 m/s) of rounding
+            // per tick, which is the same resolution the client already reconciles against, and it buys the arc
+            // surviving a cell handoff: the component is what migrates, so a full-precision copy parked beside it
+            // would be a second source of truth that silently loses to this one at the border.
+            HorizontalVelocity = new Vector2(
+                MovementState.DecodeHorizontalVelocity(ms.HorizontalVelocityXQ),
+                MovementState.DecodeHorizontalVelocity(ms.HorizontalVelocityZQ)),
+            // Carry the heading IN for the same reason as the arc above, and it is not optional even at the
+            // snapping default: with a finite MoveTuning.FacingTurnSpeed the step turns FROM this value, so a
+            // heading re-derived from 0 every tick would never get anywhere at all on this head. It costs the
+            // same per-tick round trip through the wire quantum, and a heading mid-turn is an INTEGRATOR (this
+            // tick's value is the last one plus a fixed step), so unlike the arc the remainder rounds the same
+            // way every tick and accumulates - bounded by half a quantum per turning tick, a fraction of a
+            // degree over any real turn, and it unwinds the moment the turn lands exactly on its target.
+            FacingYaw = MovementState.DecodeFacingYaw(ms.FacingYawQ),
+            Commitment = ms.Commitment,
+        };
 }

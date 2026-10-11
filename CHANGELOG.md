@@ -14,6 +14,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - Locomotion's internal contact-classification controller gains its whole tick for phase 3 of #438: the air pass
   with jumps, coyote time and landing, steep slides on terrain and props, traction hysteresis and movement
   commitments. Nothing consumes it yet, so there is no consumer or movement change.
+- The same controller now exports `StepDeltaY`, `ClimbRate` and `ClimbRateEwma` for phase 4a of #438. Steps are
+  support jumps both sides agree on, above the 1 mm contact skin, and stair runs are read from certified support
+  ahead. Still no consumer or movement change.
 
 ## 20.31.0
 

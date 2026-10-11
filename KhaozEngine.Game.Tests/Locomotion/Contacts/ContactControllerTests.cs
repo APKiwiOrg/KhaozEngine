@@ -589,7 +589,7 @@ public partial class ContactControllerTests
     // 256 scripted ticks over a floor at 0 for x at most 0, a 50 degree face falling from x 0 to (2, -2 tan 50) and a
     // pit floor at the toe: a walk and a jump, the walk off onto the face, the slide and its landing, a commitment,
     // runs and jumps back into the face, and a figure of eight. A replay from a copy of the first state, with the
-    // same inputs, reaches every state to the bit.
+    // same inputs, reaches every state to the bit. A stair ascent and descent follow with the same bit checks.
     [Fact]
     public void ReplayIsBitIdentical()
     {
@@ -633,6 +633,30 @@ public partial class ContactControllerTests
             (Vector2 dir, float fraction, bool jump) = Input(i);
             replay = g.Step(replay, dir, fraction, jump, Tuning);
             AssertSameBits(states[i], replay, i);
+        }
+
+        using var stairs = new Ground(Staircase(SceneVariant.Box, 8, 0.18f, 0.28f), Abyss);
+        Vector2 StairInput(int i) => i < 18 ? Vector2.UnitX : i < 36 ? -Vector2.UnitX : Vector2.Zero;
+        initial = Standing(new Vector3(-0.5f, 0, 0));
+        live = initial;
+        states.Clear();
+        bool climbed = false, descended = false;
+        for (int i = 0; i < 48; i++)
+        {
+            Vector2 dir = StairInput(i);
+            live = stairs.Step(live, dir, dir == Vector2.Zero ? 0 : 1, false, Tuning);
+            states.Add(live);
+            climbed |= live.ClimbRate > 0;
+            descended |= live.ClimbRate < 0;
+        }
+        Assert.True(climbed && descended, Show(live));
+
+        replay = initial;
+        for (int i = 0; i < states.Count; i++)
+        {
+            Vector2 dir = StairInput(i);
+            replay = stairs.Step(replay, dir, dir == Vector2.Zero ? 0 : 1, false, Tuning);
+            AssertSameBits(states[i], replay, 256 + i);
         }
     }
 

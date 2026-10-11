@@ -11,7 +11,7 @@ internal enum SeatOutcome : byte { Seated, SteepSeated, Airborne, Wall, Refused 
 /// not seated. <see cref="StepPart"/> is the part of a walkable rise the start support's plane does not explain.
 /// <see cref="WallNormal"/> is a horizontal unit vector for <see cref="SeatOutcome.Wall"/>, else zero.</summary>
 internal readonly record struct GroundSeatResult(SeatOutcome Outcome, float FeetY, SupportSample Support,
-    float StepPart, Vector3 WallNormal);
+    float StepPart, Vector3 WallNormal, float DiscreteStep = 0);
 
 /// <summary>Seats a body within the legs band above its feet and the drop band below its start support.</summary>
 internal static class GroundSeat
@@ -47,7 +47,8 @@ internal static class GroundSeat
         {
             case SupportStatus.Walkable:
                 return new(SeatOutcome.Seated, support.Height, support,
-                    StepPart(support.Height, start, startAxis, startFeetY, axis), Vector3.Zero);
+                    StepPart(support.Height, start, startAxis, startFeetY, axis), Vector3.Zero,
+                    DiscreteStep(start, startAxis, support, axis));
             case SupportStatus.Steep:
                 // A footed body never climbs ground it cannot stand on, so a face that may rise above the start
                 // feet is a wall.
@@ -84,6 +85,34 @@ internal static class GroundSeat
         double plane = start.Height + ((double)n.X * ((double)startAxis.X - axis.X) +
             (double)n.Z * ((double)startAxis.Y - axis.Y)) / n.Y;
         return GroundPlacement.NotBelow(height - plane);
+    }
+
+    // A height jump belongs to a step only when both support planes agree on its direction and clear the
+    // contact skin plus certified height errors. Opposite signs identify continuous ground.
+    internal static float DiscreteStep(in SupportSample start, Vector2 startAxis, in SupportSample next,
+        Vector2 axis)
+    {
+        if (start.Status != SupportStatus.Walkable || next.Status != SupportStatus.Walkable) return 0;
+        double dx = (double)axis.X - startAxis.X, dz = (double)axis.Y - startAxis.Y;
+        double forward = next.Height - (start.Height - PlaneRise(start, startAxis, dx, dz));
+        double backward = next.Height + PlaneRise(next, axis, dx, dz) - start.Height;
+        double error = (double)ShellMotion.ContactSkin + start.HeightError + next.HeightError;
+        if (Math.Abs(forward) <= error || Math.Abs(backward) <= error ||
+            Math.Sign(forward) != Math.Sign(backward)) return 0;
+        return (float)(Math.Sign(forward) * Math.Min(Math.Abs(forward), Math.Abs(backward)));
+    }
+
+    // The rise of a support's plane over (dx, dz). A certified height is the least of the support's own plane at the
+    // axis, its witness height and its joined polygons' planes. A height below its own plane at its axis by more than
+    // the skin plus its error came from the witness, an edge or vertex the footprint overhangs, so the height field
+    // there is level even though the normal is the face's.
+    static double PlaneRise(in SupportSample support, Vector2 supportAxis, double dx, double dz)
+    {
+        Vector3 n = support.Normal, w = support.Witness;
+        double plane = w.Y - ((double)n.X * ((double)supportAxis.X - w.X) +
+            (double)n.Z * ((double)supportAxis.Y - w.Z)) / n.Y;
+        if (plane - support.Height > (double)ShellMotion.ContactSkin + support.HeightError) return 0;
+        return ((double)n.X * dx + (double)n.Z * dz) / n.Y;
     }
 
     // The wall normal is the contact normal made horizontal, or the reverse of the move when it has no

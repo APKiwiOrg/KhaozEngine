@@ -2,7 +2,7 @@
 
 Date: 2026-10-08, revised 2026-10-09 for ground ownership. Specifies [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438), the phase 2
 direction chosen in [PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md](PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md).
-Status: phases 1 and 2 are implemented and released in 20.30.0, phase 2b is released in 20.31.0, and phase 3 is
+Status: phases 1 and 2 are implemented and released in 20.30.0, phase 2b is released in 20.31.0, and phases 3 and 4a are
 implemented and staged for 20.31.1. Nothing consumes the controller yet. Phases 4 to 6 are specified at the level of contracts and exit
 criteria, and each gets its own detailed spec before implementation. No game adopts before the two gates in the
 phases table pass.
@@ -197,7 +197,7 @@ Every phase's suite asserts these.
 | Cost gate before adoption | Support query time ([#1334](https://github.com/APKiwiOrg/KhaozEngine/issues/1334)). A `FootSupport.Find` takes 55 to 165 microseconds on ordinary scenes, 542 microseconds on a 20,000-triangle grid and 102 ms on a 96-triangle fan, with zero allocation. Candidate approaches: filtered predicates with an exact fallback, lazy joins tested only where certification reads them, and a per-lease join cache. | Recorded time per `Find` within the #1334 budget on ordinary scenes and dense fans, results unchanged against the recorded equivalence fixture. No game adopts before it passes. |
 | Hidden support gate before adoption | Support hidden under a sloped first contact ([#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347)). `FootSupport` certifies only the neighborhood at each probe's first sweep contact, so a sloped surface that stops the leg probe can hide a lower walkable surface inside the disc. Candidate approaches: a neighborhood over the whole foot cylinder, or a second proposal below the first contact. | The wedge and crate case in the known limits gives the crate top's 0.1. Navigation capture and adoption wait for it. |
 | 3. Air and state | Jump, coyote, momentum, landing impact, commitment, steep slide, traction hysteresis ([phase 3 spec](CONTACT-CONTROLLER-PHASE-3-AIR-AND-STATE-2026-10-10.md)) | Air and slide suite green with invariants 5 to 8. Implemented, staged for 20.31.1. |
-| 4. Signals and fluids | Climb signals, step delta, support grant, facing, the swimming handoff contract | Signal suite green. Swimming's explicit grounded ticks run on this ground core. |
+| 4. Signals and fluids | Climb signals, step delta, support grant, facing, the swimming handoff contract | Signal suite green. Swimming's explicit grounded ticks run on this ground core. Split into 4a, ground signals ([phase 4a spec](CONTACT-CONTROLLER-PHASE-4A-GROUND-SIGNALS-2026-10-11.md), implemented, staged for 20.31.1), and 4b, the swimming handoff and #1299 (to be specified). |
 | 5. Switch, wire, navigation | `MoveTuning` selector, any wire fields, bake identity, traversal probe and capture on the selected controller | Both controllers selectable. Legacy bakes still load. A new-controller bake round-trips. |
 | 6. Grimhollow adoption | Grimhollow opt-in, #1270 resting route, bridge Complete and 600-step proof | Engine release, game pin and playtest, each separately authorized. |
 

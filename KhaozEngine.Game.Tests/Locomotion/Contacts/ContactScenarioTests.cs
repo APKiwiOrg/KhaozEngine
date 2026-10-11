@@ -32,7 +32,8 @@ public class ContactScenarioTests
         internal bool IsTerrain => scene is null;
 
         // Every scenario tick holds the terrain floor: no tick ends with its feet more than half a skin below the
-        // analytic terrain at its axis.
+        // analytic terrain at its axis. Its ground signals are finite, and a continuous climb never also reports
+        // an isolated step.
         internal MoveState Step(in MoveState state, Vector2 moveDir, bool run, bool jump, float dt,
             in MoveTuning tuning)
         {
@@ -41,6 +42,10 @@ public class ContactScenarioTests
             Vector3 feet = next.Position - tuning.CapsuleHalfHeight * Vector3.UnitY;
             float floor = height(feet.X, feet.Z);
             Assert.True(feet.Y >= floor - HalfSkin, $"the feet ended below the terrain at {floor}: {Show(next)}");
+            Assert.True(float.IsFinite(next.ClimbRate) && float.IsFinite(next.ClimbRateEwma) &&
+                float.IsFinite(next.StepDeltaY), $"a ground signal is not finite: {Show(next)}");
+            Assert.False(next.ClimbRate != 0f && next.StepDeltaY != 0f,
+                $"a climb rate and a step event on one tick: {next.ClimbRate}, {next.StepDeltaY}");
             return next;
         }
 

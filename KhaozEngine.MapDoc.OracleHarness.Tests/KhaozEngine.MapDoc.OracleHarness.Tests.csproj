@@ -19,5 +19,7 @@
     <Compile Include="../KhaozEngine.MapDoc.Tests/FormatFourFixtures.cs" Link="FormatFourFixtures.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Tests/AssertFixtures.cs" Link="AssertFixtures.cs" />
     <Compile Include="../KhaozEngine.MapDoc.Compatibility.Tests/LegacyOracleConverter.cs" Link="LegacyOracleConverter.cs" />
+    <Compile Include="../KhaozEngine.MapDoc.Compatibility.Tests/LegacyWaterConverter.cs" Link="LegacyWaterConverter.cs" />
+    <Compile Include="../KhaozEngine.MapDoc.Compatibility.Tests/LegacyWaterComparison.cs" Link="LegacyWaterComparison.cs" />
   </ItemGroup>
 </Project>

@@ -27,6 +27,18 @@ internal sealed record ShippedSourceInventory(IReadOnlyList<InventoryRegion> Reg
     internal static IReadOnlyList<ShippedRegion> ReadRegions(PrivateOracleInputs inputs)
         => ShippedRegion.All(TileWorldFile.Load(WorldRoot(inputs)), inputs.Provenance.Comparison);
 
+    internal static (TileWorldDocument Document, TileWorldCatalogs Catalogs) ReadWorld(PrivateOracleInputs inputs)
+    {
+        string root = WorldRoot(inputs);
+        TileWorldDocument document = TileWorldFile.Load(root);
+        string[] catalogs = document.CatalogPaths
+            .Select(path => PrivateOraclePaths.Canonical(Path.Combine(root, path))).ToArray();
+        foreach (string path in catalogs)
+            if (!inputs.Provenance.Paths.Any(p => Path.GetFullPath(Path.Combine(inputs.SourceRoot, p.Path)) == path))
+                throw new PrivateOracleInputException("source verification failed: 1 files");
+        return (document, TileWorldCatalogs.Load(catalogs));
+    }
+
     internal static ShippedSourceInventory Build(string root)
     {
         TileWorldDocument document = TileWorldFile.Load(root);

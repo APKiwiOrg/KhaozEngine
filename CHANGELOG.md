@@ -5,7 +5,30 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.31.1
+## 20.32.0
+
+- Locomotion gains explicit character movement for environments that certify their own water and support:
+  `ExplicitCharacterMovement` steps a body under one `MovementQueryLease`, acquired from an
+  `IMovementEnvironmentProvider` together with a physics read lease, and publishes inside it. Water follows a
+  `WaterTraversalPolicy` (`SurfaceSwimmer`, `WadeOnly` or `DryOnly`), with surface swimming, an independent surface
+  jump speed and water-origin flight (`SurfaceWaterMotion`, `WaterExcursionState`). `ExplicitMovementProfile` gives
+  the motion a portable identity for probes and bakes.
+- Physics adds the optional `IPhysicsCapsuleContacts` (every relevant constraint with certified normals and errors)
+  and `IPhysicsCapsuleSweep` (a complete closed-path clear or bounded hit, refusing geometry it cannot prove).
+  Bepu query views implement both beside `IPhysicsCapsuleFeatures` and `IPhysicsSupportNeighborhood`. The certified
+  sweep proves identity-oriented boxes only so far (#1355).
+- NetWorld moves to wire generation 14: `MovementState` carries the water excursion byte. Persisted movement
+  payloads from generations 12 and 13 migrate on load with no excursion. Mixed-generation peers are refused at
+  connect, as before.
+- Explicit land movement now runs on the #438 contact controller (phase 4b): every grounded, wading and land-origin
+  airborne tick uses the controller's ground, slide and air passes, with support owners bound through the new
+  optional `IMovementContactSupportPin`, every accepted segment proven against the medium and the play boundary, the
+  knee-height shell for solids and the full body for water. Explicit bodies rest 1 mm above certified support.
+  Ground and water hand over within one tick on a shared time and climb budget.
+- `WadeOnly` walkers treat water deeper than their swim-enter depth as a wall and slide along its edge (#1299,
+  runtime half. Navigation bakes follow in phase 5).
+- The explicit profile identity is now `contact-shell-footprint-swim-v1`, so a motion proof made with the old
+  full-capsule model cannot certify the new behaviour.
 
 - A SQLite content catalog opened by several hosts at once no longer refuses a correct database (#1353). A host
   that read version 2 while another host migrated the file through version 3 to 4 compared the version 4 tables

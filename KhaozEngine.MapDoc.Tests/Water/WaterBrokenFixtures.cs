@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
 
@@ -68,6 +69,14 @@ internal static partial class WaterFixtures
                     Domain = body.Domain with { Rects = Enumerable.Range(0, 65_535).Select(i => Rect(i % 256, i / 256, i % 256 + 1, i / 256 + 1)).ToArray() },
                 };
                 break;
+            case "domain-off-footprint": body = body with { Domain = domain with { Rects = new[] { Rect(20, 0, 24, 4) } } }; break;
+            case "missing-cover": body = body with { Covers = new[] { new MapRecordRef("nowhere", cover.Anchor) } }; break;
+            case "alias-cover":
+                doc.Surfaces.Patches[cover.Anchor].Records.Add(new MapSpaceDoc("sea-alias", MapSpaceKind.Exterior, null, cover,
+                    Array.Empty<string>(), Array.Empty<MapBoundaryRef>(), Array.Empty<MapBoundaryRef>(), Array.Empty<MapRecordRef>()));
+                body = body with { Covers = new[] { cover, new MapRecordRef("sea-alias", cover.Anchor) } };
+                break;
+            case "unknown-material": body = body with { RenderMaterial = "no-such-material" }; break;
             default: throw new ArgumentException("unknown broken water variant", nameof(variant));
         }
         water.Bodies[ocean] = body;

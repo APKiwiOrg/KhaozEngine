@@ -14,6 +14,9 @@ public class WaterFixtureTests
     [InlineData("sea-connected-cave")]
     [InlineData("sea-connected-cave-dry-portal")]
     [InlineData("sea-closed-cave")]
+    [InlineData("sinkhole-below-surface")]
+    [InlineData("sinkhole-at-surface")]
+    [InlineData("sinkhole-above-surface")]
     public void SharedFixtures_PassR2Coverage(string world) =>
         Assert.Empty(MapSpaceCoverageValidator.Validate(MapScopedSurfaces.CompleteView(SharedWorld(world).Surfaces)));
 
@@ -23,6 +26,9 @@ public class WaterFixtureTests
         "sea-connected-cave" => WaterFixtures.SeaConnectedCave(portalBottomY: -5f),
         "sea-connected-cave-dry-portal" => WaterFixtures.SeaConnectedCave(portalBottomY: 1f),
         "sea-closed-cave" => WaterFixtures.SeaConnectedCave(portalBottomY: null),
+        "sinkhole-below-surface" => WaterFixtures.SinkholeCave(openingY: -10f),
+        "sinkhole-at-surface" => WaterFixtures.SinkholeCave(openingY: 0f),
+        "sinkhole-above-surface" => WaterFixtures.SinkholeCave(openingY: 1f),
         _ => throw new ArgumentException("unknown shared water world", nameof(world)),
     };
 }

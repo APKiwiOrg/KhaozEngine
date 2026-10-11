@@ -35,6 +35,13 @@ public sealed class MapAssetClosure
     public MapResolvedResource GetResource(string resourceId) => _resources.TryGetValue(resourceId, out var resource)
         ? resource : throw new MapDocumentException($"Native resource '{resourceId}' is not in the verified closure.");
 
+    /// <summary>Looks up a resource without throwing. A null id is never in the closure.</summary>
+    internal bool TryGetResource(string? resourceId, out MapResolvedResource? resource)
+    {
+        resource = null;
+        return resourceId is not null && _resources.TryGetValue(resourceId, out resource);
+    }
+
     /// <summary>Loads all roots and declared resources. Nothing is published until every check succeeds.</summary>
     public static MapAssetClosure Load(IReadOnlyList<MapAssetRef> roots, IMapAssetSource source)
     {

@@ -229,7 +229,13 @@ internal static partial class WaterFixtures
     /// open when <paramref name="west"/> is false. Each strip faces the interior, so its front side follows the
     /// frame's row direction.</summary>
     static void CloseWalls(MapSurfaceSet set, string spaceId, string floor, string roof, int minX, int minZ, int maxX, int maxZ,
-        bool west = true)
+        bool west = true) =>
+        CloseWalls(set, spaceId, floor, (id, x0, z0, x1, z1) => Edge(id, roof, x0, z0, x1, z1), minX, minZ, maxX, maxZ, west);
+
+    /// <summary>Closes a slot-0 cave rectangle as above, with each strip's upper chain built by
+    /// <paramref name="roofChain"/> from its id and lattice end corners.</summary>
+    static void CloseWalls(MapSurfaceSet set, string spaceId, string floor, Func<string, int, int, int, int, MapBoundaryChain> roofChain,
+        int minX, int minZ, int maxX, int maxZ, bool west = true)
     {
         if (minX < 0 || minZ < 0 || maxX > MapPatchKey.SlotCells || maxZ > MapPatchKey.SlotCells)
             throw new InvalidOperationException("fixture walls are limited to slot 0");
@@ -245,7 +251,7 @@ internal static partial class WaterFixtures
             if (!west && name == "west") continue;
             string id = $"{spaceId}-{name}";
             anchor.Records.Add(Edge(id + "-lower", floor, x0, z0, x1, z1));
-            anchor.Records.Add(Edge(id + "-upper", roof, x0, z0, x1, z1));
+            anchor.Records.Add(roofChain(id + "-upper", x0, z0, x1, z1));
             // The front normal is (dz, 0, -dx) in world XZ, and world Z is lattice Z times the row sign.
             bool front = rows * (Math.Sign(z1 - z0) * inX - Math.Sign(x1 - x0) * inZ) > 0;
             anchor.Records.Add(new MapWallStrip(id, new(id + "-lower", anchor.Key), new(id + "-upper", anchor.Key),

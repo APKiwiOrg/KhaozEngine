@@ -6,7 +6,7 @@ namespace KhaozEngine.Locomotion.Contacts;
 internal static partial class ContactController
 {
     /// <summary>Borrows the caller's composed interval. Land uses the shared whole tick, with geometric feet
-    /// and the explicit placement profile. Swimming keeps its existing mode until its continuation is adopted.</summary>
+    /// and the explicit placement profile. Swimming hands off accepted substeps within the same tick.</summary>
     internal static MovementStepResult StepLeased(in FramedMovementState state, Vector2 moveDir,
         float speedFraction, bool run, bool jump, float dt, in MoveTuning tuning, in WaterTraversalPolicy water,
         MovementQueryLease queries, MovementBoundary? boundary = null, float? faceYaw = null,
@@ -69,43 +69,32 @@ internal static partial class ContactController
             MoveState start = state.State;
             ExplicitCharacterMovement.ClassifyWater(ref start, point, supported, wasSwimming,
                 tuning, water, start.VerticalVelocity < 0);
-            if (water.Mode == WaterTraversalMode.SurfaceSwimmer &&
-                (start.Swimming || start.WaterExcursion == WaterExcursionState.AirborneFromWater ||
-                    point.InWater && initial.Status != SupportStatus.Walkable))
-                return ExplicitCharacterMovement.StepFluid(state, moveDir, speedFraction, run, jump,
-                    faceYaw, dt, tuning, water, queries, boundary);
-            start.Swimming = false;
-            start.WaterExcursion = WaterExcursionState.None;
             if (supported && state.State.Swimming)
             {
                 start.Grounded = true;
                 start.VerticalVelocity = 0;
             }
-            if (start.Commitment.IsActive) start.JumpBufferRemaining = 0;
-            float mediumSpeed = ExplicitCharacterMovement.MediumSpeed(point, start.Position.Y, false, tuning);
-            MoveTuning drive = tuning with
+            if (water.Mode != WaterTraversalMode.SurfaceSwimmer)
             {
-                WalkSpeed = tuning.WalkSpeed * mediumSpeed,
-                RunSpeed = tuning.RunSpeed * mediumSpeed,
-            };
-            MoveState next = StepWithQueries(start, moveDir, speedFraction, run, jump, dt, drive,
-                leased, faceYaw: faceYaw, settings: foot);
+                start.Swimming = false;
+                start.WaterExcursion = WaterExcursionState.None;
+            }
+            if (start.Commitment.IsActive) start.JumpBufferRemaining = 0;
+            var modes = new ExplicitContactModes(leased, start, tuning, water, jump);
+            MoveState next = StepWithQueries(start, moveDir, speedFraction, run, jump, dt, tuning,
+                leased, out ContactTickContinuation continuation, faceYaw: faceYaw, settings: foot, fluid: modes);
             if (leased.Outcome is not (MovementStepOutcome.Advanced or MovementStepOutcome.Blocked) || leased.RecoveryDenied)
                 return HoldLeased(state, leased.Outcome);
             Vector3 endFeet = leased.KernelFeet(next.Position, tuning);
             MovementWaterPoint destination = leased.SampleMedium(endFeet)!.Value;
-            MovementContactSupportBinding? binding = null;
+            MovementContactSupportBinding? binding = continuation.Binding;
             if (next.Grounded)
             {
-                SupportSample support = leased.FindSupport(new(new(endFeet.X, endFeet.Z), endFeet.Y,
-                    foot.FootRadiusFraction * tuning.CapsuleRadius, tuning.StepHeight, tuning.StepHeight,
-                    MathF.Cos(gate)), out binding);
+                SupportSample support = continuation.Support;
                 if (support.Status is not (SupportStatus.Walkable or SupportStatus.Steep) || binding is null ||
                     binding.Value.Space != destination.Space)
                     throw new ContactQueryFailure(MovementAvailability.Unresolved);
             }
-            ExplicitCharacterMovement.ClassifyWater(ref next, destination, next.Grounded, wasSwimming,
-                tuning, water, next.VerticalVelocity < 0);
             if (next.Swimming || next.WaterExcursion == WaterExcursionState.AirborneFromWater)
             {
                 next.JumpBufferRemaining = 0;

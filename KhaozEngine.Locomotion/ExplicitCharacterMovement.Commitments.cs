@@ -5,7 +5,7 @@ namespace KhaozEngine.Locomotion;
 
 public static partial class ExplicitCharacterMovement
 {
-    static bool PrepareCommitment(ref MoveState state, ref MoveTuning tuning, ref Vector2 direction,
+    internal static bool PrepareCommitment(ref MoveState state, ref MoveTuning tuning, ref Vector2 direction,
         ref float fraction, ref bool run, ref bool jump, ref float? facing, float dt,
         out bool flight, out bool launch)
     {
@@ -24,7 +24,7 @@ public static partial class ExplicitCharacterMovement
             ref run, ref jump, ref facing, dt, out flight, out launch);
     }
 
-    static MovementCommitment WaterAborted(in MovementCommitment movement) => movement with
+    internal static MovementCommitment WaterAborted(in MovementCommitment movement) => movement with
     {
         Phase = MovementCommitmentPhase.Aborted,
         EndReason = MovementCommitmentEndReason.EnteredWater

@@ -54,11 +54,20 @@ internal static partial class ContactController
     internal static MoveState StepWithQueries(in MoveState state, Vector2 moveDir, float speedFraction, bool run,
         bool jump, float dt, in MoveTuning tuning, ContactQueryContext queries,
         Func<float, float, Vector2>? clampXz = null,
-        float? faceYaw = null, GroundCoreSettings? settings = null)
+        float? faceYaw = null, GroundCoreSettings? settings = null, ExplicitContactModes? fluid = null)
+        => StepWithQueries(state, moveDir, speedFraction, run, jump, dt, tuning, queries, out _,
+            clampXz, faceYaw, settings, fluid);
+
+    internal static MoveState StepWithQueries(in MoveState state, Vector2 moveDir, float speedFraction, bool run,
+        bool jump, float dt, in MoveTuning tuning, ContactQueryContext queries, out ContactTickContinuation continuation,
+        Func<float, float, Vector2>? clampXz = null,
+        float? faceYaw = null, GroundCoreSettings? settings = null, ExplicitContactModes? fluid = null)
     {
+        continuation = default;
         try
         {
-            return StepCore(state, moveDir, speedFraction, run, jump, dt, tuning, queries, clampXz, faceYaw, settings);
+            return StepCore(state, moveDir, speedFraction, run, jump, dt, tuning, queries, clampXz, faceYaw, settings, fluid,
+                out continuation);
         }
         catch (ContactQueryFailure failure)
         {
@@ -69,14 +78,21 @@ internal static partial class ContactController
 
     static MoveState StepCore(in MoveState state, Vector2 moveDir, float speedFraction, bool run,
         bool jump, float dt, in MoveTuning tuning, ContactQueryContext queries,
-        Func<float, float, Vector2>? clampXz, float? faceYaw, GroundCoreSettings? settings)
+        Func<float, float, Vector2>? clampXz, float? faceYaw, GroundCoreSettings? settings, ExplicitContactModes? fluid,
+        out ContactTickContinuation continuation)
     {
+        continuation = default;
         GroundCoreSettings foot = settings ?? new GroundCoreSettings();
         MoveState s = state;
         MoveTuning t = tuning;
-        bool commitmentControlled = CharacterMovement.PrepareCommitmentTick(ref s, ref t, ref moveDir,
-            ref speedFraction, ref run, ref jump, ref faceYaw, dt, out bool committedFlight, out bool launched);
+        bool committedFlight, launched;
+        bool commitmentControlled = fluid is null
+            ? CharacterMovement.PrepareCommitmentTick(ref s, ref t, ref moveDir, ref speedFraction,
+                ref run, ref jump, ref faceYaw, dt, out committedFlight, out launched)
+            : ExplicitCharacterMovement.PrepareCommitment(ref s, ref t, ref moveDir, ref speedFraction,
+                ref run, ref jump, ref faceYaw, dt, out committedFlight, out launched);
 
+        fluid?.ResolvePress(jump);
         Vector3 feet = queries.KernelFeet(s.Position, t);
         queries.CheckDryMedium(feet);
         queries.ValidatePlacement(feet);
@@ -99,7 +115,8 @@ internal static partial class ContactController
 
         // Intent, as legacy: the walk or run speed scaled by AirControl in the air and by the entity's scale. Under
         // AirMomentum an airborne tick steers the carried velocity instead, and a committed flight flies its own.
-        float speedScale = (s.Grounded ? 1f : t.AirControl) * s.SpeedScale;
+        float landScale = fluid?.LandScale(feet) ?? 1;
+        float speedScale = (s.Grounded ? 1f : t.AirControl) * s.SpeedScale * landScale;
         float speed = speedFraction > 0f ? (run ? t.RunSpeed : t.WalkSpeed) * speedScale * speedFraction : 0f;
         Vector2 intent = moveDir * speed;
         Vector2 commanded = intent;
@@ -107,7 +124,10 @@ internal static partial class ContactController
             commanded = s.HorizontalVelocity;
         else if (t.AirMomentum && !s.Grounded)
             commanded = CharacterMovement.ResolveAirborneVelocity(s.HorizontalVelocity, moveDir,
-                (run ? t.RunSpeed : t.WalkSpeed) * s.SpeedScale * speedFraction, dt, t);
+                (run ? t.RunSpeed : t.WalkSpeed) * s.SpeedScale * speedFraction * landScale, dt, t);
+
+        if (fluid?.IsFluid == true)
+            commanded = fluid.Drive(feet, moveDir, speedFraction, s.SpeedScale);
 
         // The play-area clamp cuts the planned move's end before the move, as legacy clamps its target. The move
         // then runs at the velocity that reaches the clamped end. A slide plans its own move and clamps it the same
@@ -127,10 +147,11 @@ internal static partial class ContactController
             }
         }
 
-        Tick tick;
+        ContactTickContinuation tick;
         float climbRate, climbRateEwma, stepDeltaY;
         {
-            var context = new Context(queries, t, foot, gate, clampXz);
+            var context = new Context(queries, t, foot, gate, clampXz, fluid,
+                committedFlight ? s.Commitment.Direction : moveDir, committedFlight ? 1 : speedFraction);
             Mode mode = Mode.Air;
             SupportSample support = default;
             // An airborne body on steep support slides only while its vertical speed after the tick's gravity does
@@ -138,7 +159,9 @@ internal static partial class ContactController
             // onto steep support. A slide's vertical speed is its descending fall-line speed's vertical part, never
             // positive, so a slide stays a slide whatever its carry. A rising body pressed into a steep face flies,
             // and the air pass's terrain wall and shell contacts take away the horizontal part, so it cannot climb.
-            if (s.Grounded)
+            if (fluid?.IsFluid == true)
+                mode = Mode.Water;
+            else if (s.Grounded)
                 mode = Mode.Ground;
             else if (!committedFlight && !(s.VerticalVelocity - t.Gravity * dt > 0f) && SlideCore.InContact(feet,
                          t, foot, gate, queries, out support))
@@ -147,7 +170,7 @@ internal static partial class ContactController
             bool corrected = false;
             if (clampXz is not null)
             {
-                Tick bounded = Bound(context, tick, clampXz);
+                ContactTickContinuation bounded = Bound(context, tick, clampXz);
                 corrected = bounded.Feet != tick.Feet;
                 tick = bounded;
             }
@@ -165,8 +188,9 @@ internal static partial class ContactController
         bool grounded = tick.Grounded;
         float verticalVelocity = tick.VerticalVelocity;
         float sinceGrounded = grounded ? 0f : s.TimeSinceGrounded + dt;
-        bool jumpRequested = jump || s.JumpBufferRemaining > 0f;
-        float jumpBuffer = jump ? t.JumpBuffer : MathF.Max(0f, s.JumpBufferRemaining - dt);
+        bool jumpRequested = fluid?.PressConsumed != true && (jump || s.JumpBufferRemaining > 0f);
+        float jumpBuffer = fluid?.PressConsumed == true ? 0 :
+            jump ? t.JumpBuffer : MathF.Max(0f, s.JumpBufferRemaining - dt);
         float landingImpact = CharacterMovement.LandingImpact(s.Grounded, grounded, tick.FallSpeed);
         bool supportGranted = grounded;
         if (jumpRequested && (grounded || sinceGrounded <= t.CoyoteTime))
@@ -177,7 +201,8 @@ internal static partial class ContactController
             jumpBuffer = 0f;
         }
 
-        Vector3 end = queries.BodyCentre(tick.Feet);
+        continuation = tick;
+        Vector3 end = tick.PublishedCentre;
 
         var result = new MoveState
         {
@@ -199,8 +224,11 @@ internal static partial class ContactController
             // sheds nor keeps speed for the part of the tick another mode moved.
             HorizontalVelocity = CharacterMovement.ClipCarryToAchieved(tick.Last.Carry, tick.Last.Drive,
                 tick.Last.Achieved, tick.Last.Time),
-            Commitment = CharacterMovement.FinishCommitmentTick(s.Commitment, launched, grounded, s.Position, end,
-                dt),
+            Swimming = tick.Swimming,
+            WaterExcursion = tick.Excursion,
+            Commitment = fluid?.EnteredWater == true && s.Commitment.IsActive
+                ? ExplicitCharacterMovement.WaterAborted(s.Commitment)
+                : CharacterMovement.FinishCommitmentTick(s.Commitment, launched, grounded, s.Position, end, dt),
         };
         return Finite(result) ? result : Held(state, result.Commitment);
     }
@@ -224,7 +252,7 @@ internal static partial class ContactController
     // An airborne end takes only walkable support above it, never steep. A placement the shell can clear only by a
     // push leaves the feet where they were, because the push would move the axis again. Whatever the placement, the
     // feet never end below analytic terrain at the axis. A non-finite clamp poisons the end, which holds the tick.
-    static Tick Bound(in Context c, in Tick tick, Func<float, float, Vector2> clampXz)
+    static ContactTickContinuation Bound(in Context c, in ContactTickContinuation tick, Func<float, float, Vector2> clampXz)
     {
         Vector3 feet = tick.Feet;
         Vector2 axis = clampXz(feet.X, feet.Z);
@@ -263,131 +291,13 @@ internal static partial class ContactController
 
     /// <summary>The tick's queries and the knobs every mode reads.</summary>
     readonly record struct Context(ContactQueryContext Queries, MoveTuning Tuning, GroundCoreSettings Settings, float Gate,
-        Func<float, float, Vector2>? ClampXz);
+        Func<float, float, Vector2>? ClampXz, ExplicitContactModes? Fluid, Vector2 Direction, float Fraction);
 
-    enum Mode : byte { Ground, Slide, Air }
+    internal enum Mode : byte { Ground, Slide, Air, Water }
 
     /// <summary>One mode's part of the tick: the velocity it carries on, the velocity that drove its move, the move it
     /// achieved and its time.</summary>
-    readonly record struct Segment(Vector2 Carry, Vector2 Drive, Vector2 Achieved, float Time);
-
-    /// <summary>What the move did. <see cref="FallSpeed"/> is the vertical speed the tick's last landing erased,
-    /// negative downward, and zero without one. <see cref="Commanded"/> is the first mode's drive.
-    /// <see cref="Supported"/> says the tick ended on support, walkable or steep. <see cref="Budget"/> is the climb the
-    /// tick has left, in metres. <see cref="Mode"/> and <see cref="Support"/> keep the final footing.
-    /// <see cref="StepRise"/>, <see cref="MoveRise"/> and <see cref="GroundTravel"/> sum only walking ground
-    /// segments, excluding air, landings and slides. <see cref="RiseSeen"/> and <see cref="DropSeen"/> say whether any
-    /// of them seated across a discrete rise or drop, and <see cref="CarriedLag"/> is the first one's start
-    /// lag.</summary>
-    readonly record struct Tick(Vector3 Feet, float VerticalVelocity, bool Grounded, float FallSpeed,
-        Vector2 Commanded, Segment Last, bool Supported, double Budget, Mode Mode, SupportSample Support,
-        float StepRise, float MoveRise, Vector2 GroundTravel, bool RiseSeen, bool DropSeen, float CarriedLag);
-
-    // Runs the tick's modes in turn. A grounded move that loses its footing flies or slides the time it has left. A
-    // grounded start on steep support slides the whole tick with the carried velocity, as a slide start does. A slide
-    // that loses its support flies the rest. A flight that lands walks the rest of its planned move, and one that
-    // meets steep support slides the rest. Every mode pays climbing from the budget the earlier modes left. The first
-    // segment moves at the clamped velocity but carries and reports the commanded one, so a clamp sheds carry as a
-    // denial, as legacy does.
-    static Tick Move(in Context c, in MoveState s, Mode mode, SupportSample support, Vector3 feet, Vector2 commanded,
-        Vector2 velocity, Vector2 displacement, Vector2 intent, float dt)
-    {
-        MoveTuning t = c.Tuning;
-        double budget = t.MaxStepClimbSpeed > 0 ? (double)t.MaxStepClimbSpeed * dt : double.PositiveInfinity;
-        float vertical = s.VerticalVelocity, time = dt, fallSpeed = 0f;
-        float stepRise = 0f, moveRise = 0f;
-        bool riseSeen = false, dropSeen = false;
-        float? carriedLag = null;
-        Vector2 groundTravel = Vector2.Zero;
-        bool grounded = false, supported = false;
-        Vector2? first = null;
-        Segment last = new(commanded, commanded, Vector2.Zero, dt);
-        // A tick that starts sliding slides its own carry. The input only steers along the contour, so it never enters
-        // the carry, as legacy.
-        if (mode == Mode.Slide) velocity = s.HorizontalVelocity;
-        for (int segment = 0; segment < MaxSegments; segment++)
-        {
-            if (mode == Mode.Ground)
-            {
-                GroundStepResult step = GroundCore.Step(feet, displacement, time, t, c.Settings, c.Queries, c.Gate, budget, c.ClampXz,
-                    stepInProgress: s.StepDeltaY > 0 || GroundSignals.Ascending(s.ClimbRate));
-                c.Queries.RequireRecoveryAccepted();
-                c.Queries.AcceptRoute(step.Blocked);
-                (feet, budget, vertical) = (step.Feet, step.ClimbBudget, 0f);
-                support = step.Support;
-                stepRise += step.StepRise;
-                moveRise += step.MoveRise;
-                riseSeen |= step.RiseSeen;
-                dropSeen |= step.DropSeen;
-                carriedLag ??= step.CarriedLag;
-                groundTravel += step.Achieved;
-                grounded = step.Footing is GroundFooting.Walkable or GroundFooting.Held;
-                supported = grounded || step.Footing == GroundFooting.Steep;
-                bool steepStart = segment == 0 && step.Footing == GroundFooting.Steep && step.ChangedAtStart;
-                if (steepStart)
-                {
-                    (velocity, vertical) = (s.HorizontalVelocity, s.VerticalVelocity);
-                }
-                else
-                {
-                    Vector2 ask = segment == 0 ? commanded : velocity;
-                    last = new Segment(ask, ask, step.Achieved, time);
-                    first ??= ask;
-                }
-                if (grounded || !(step.RemainingTime > 0)) break;
-                time = step.RemainingTime;
-                mode = step.Footing == GroundFooting.Steep ? Mode.Slide : Mode.Air;
-                continue;
-            }
-            if (mode == Mode.Slide)
-            {
-                SlideStepResult slide = SlideCore.Step(feet, velocity, vertical, intent, time, t, c.Settings, c.Gate,
-                    support, c.Queries, budget, c.ClampXz);
-                Vector2 drive = slide.HorizontalVelocity + slide.Steer;
-                last = new Segment(slide.HorizontalVelocity, drive, slide.Achieved, time);
-                first ??= drive;
-                (feet, budget, velocity, vertical) =
-                    (slide.Feet, slide.ClimbBudget, slide.HorizontalVelocity, slide.VerticalVelocity);
-                support = slide.Support;
-                grounded = slide.Outcome is SlideOutcome.Landed or SlideOutcome.Wedged;
-                supported = slide.Outcome != SlideOutcome.Airborne;
-                if (slide.Outcome == SlideOutcome.Landed) (vertical, fallSpeed) = (0f, -slide.ImpactSpeed);
-                // A wedge counts as grounded, so it latches the fall the slide integrated as its landing and holds no
-                // vertical speed, as legacy.
-                if (slide.Outcome == SlideOutcome.Wedged)
-                    (vertical, fallSpeed) = (0f, slide.IntegratedVerticalVelocity);
-                if (slide.Outcome != SlideOutcome.Airborne || !(slide.RemainingTime > 0)) break;
-                time = slide.RemainingTime;
-                mode = Mode.Air;
-                continue;
-            }
-            AirStepResult air = AirPass.Step(feet, velocity, vertical, time, t.Gravity, t, c.Settings, c.Gate,
-                c.Queries, budget, c.ClampXz);
-            c.Queries.AcceptRoute(air.Blocked);
-            Vector2 asked = segment == 0 ? commanded : velocity;
-            last = new Segment(asked, asked, air.Achieved, time);
-            first ??= asked;
-            (feet, budget, velocity, vertical) = (air.Feet, air.ClimbBudget, air.HorizontalVelocity, air.VerticalVelocity);
-            support = air.Support;
-            grounded = air.Outcome == AirOutcome.Landed;
-            supported = air.Outcome != AirOutcome.Airborne;
-            if (grounded) fallSpeed = -air.FallSpeedAtContact;
-            if (air.Outcome == AirOutcome.Airborne || !(air.RemainingTime > 0)) break;
-            time = air.RemainingTime;
-            if (grounded)
-            {
-                // The rest of the move at the velocity the contacts left, not the planned one.
-                displacement = velocity * time;
-                mode = Mode.Ground;
-            }
-            else
-            {
-                mode = Mode.Slide;
-            }
-        }
-        return new Tick(feet, vertical, grounded, fallSpeed, first ?? commanded, last, supported, budget, mode,
-            support, stepRise, moveRise, groundTravel, riseSeen, dropSeen, carriedLag ?? 0f);
-    }
+    internal readonly record struct Segment(Vector2 Carry, Vector2 Drive, Vector2 Achieved, float Time);
 
     static bool Finite(in MoveState s) =>
         float.IsFinite(s.Position.X) && float.IsFinite(s.Position.Y) && float.IsFinite(s.Position.Z) &&

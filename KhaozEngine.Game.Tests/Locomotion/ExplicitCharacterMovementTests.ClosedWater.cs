@@ -41,12 +41,23 @@ public partial class ExplicitCharacterMovementTests
         var input = Swimmer(scene);
         var move = input.State;
         move.Position.X = -1;
-        var crossed = ExplicitCharacterMovement.StepTowards(new(move, input.Frame, input.Selection),
-            Vector2.UnitX, false, 1, Tuning, Policy, scene.Lease);
+        var crossed = ExplicitCharacterMovement.Step(new(move, input.Frame, input.Selection),
+            new(Vector2.UnitX, false, 0, jump: true), 0.1f, Tuning, Policy, scene.Lease);
         Assert.Equal(MovementStepOutcome.Advanced, crossed.Outcome);
-        Assert.Equal(2, crossed.State.State.Position.X);
         Assert.Equal(WaterExcursionState.AirborneFromWater, crossed.State.State.WaterExcursion);
-        var descended = ExplicitCharacterMovement.Step(crossed.State, MoveCommand.Idle, 0.2f, Tuning, Policy, scene.Lease);
+        // Five short flight ticks cross the 1.5 m gap. The launch follows vy 5, 3, 1, -1, -3, -5.
+        for (int tick = 0; tick < 5; tick++)
+        {
+            crossed = ExplicitCharacterMovement.StepTowards(crossed.State, Vector2.UnitX,
+                false, 0.1f, Tuning, Policy, scene.Lease);
+            Assert.Equal(MovementStepOutcome.Advanced, crossed.Outcome);
+            Assert.Equal(WaterExcursionState.AirborneFromWater, crossed.State.State.WaterExcursion);
+            Assert.False(crossed.State.State.Swimming);
+        }
+        // Six separately rounded 3 * 0.1 s advances from X -1 give this binary32 endpoint.
+        Assert.Equal(0.8000001f, crossed.State.State.Position.X);
+        var descended = ExplicitCharacterMovement.StepTowards(crossed.State, Vector2.UnitX,
+            false, 0.1f, Tuning, Policy, scene.Lease);
         Assert.Equal(MovementStepOutcome.Advanced, descended.Outcome);
         Assert.True(descended.State.State.Swimming);
         var point = scene.Lease.SampleCentreWater(new(descended.State.State.Position, 0.25f, 0.75f,

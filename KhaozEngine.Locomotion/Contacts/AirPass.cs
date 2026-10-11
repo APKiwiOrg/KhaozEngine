@@ -24,6 +24,10 @@ internal readonly record struct AirStepResult(Vector3 Feet, float VerticalVeloci
     /// one.</summary>
     internal float RemainingTime { get; init; }
 
+    internal bool MediumHandoff { get; init; }
+    internal bool HorizontalPlanPreserved { get; init; }
+    internal bool DescendingAtContact { get; init; }
+
     /// <summary>The climb budget left after a landing's paced rise, in metres.</summary>
     internal double ClimbBudget { get; init; }
 }
@@ -56,16 +60,24 @@ internal static partial class AirPass
     /// leaves the velocity alone.</summary>
     internal static AirStepResult Step(Vector3 feet, Vector2 velocity, float verticalVelocity, float dt,
         float gravity, in MoveTuning tuning, in GroundCoreSettings settings, float tractionSlopeRadians,
+        ContactQueryContext queries, double? climbBudget = null, Func<float, float, Vector2>? clampXz = null) =>
+        StepWithMedium(feet, velocity, verticalVelocity, dt, gravity, tuning, settings, tractionSlopeRadians,
+            queries, climbBudget, clampXz);
+
+    internal static AirStepResult StepWithMedium(Vector3 feet, Vector2 velocity, float verticalVelocity, float dt,
+        float gravity, in MoveTuning tuning, in GroundCoreSettings settings, float tractionSlopeRadians,
         ContactQueryContext queries, double? climbBudget = null,
-        Func<float, float, Vector2>? clampXz = null)
+        Func<float, float, Vector2>? clampXz = null, ContactMediumPolicy? medium = null,
+        float? verticalDisplacement = null)
     {
         Validate(feet, velocity, verticalVelocity, dt, gravity, tuning, settings, tractionSlopeRadians);
         double budget = climbBudget ?? Budget(tuning, dt);
         if (!(budget >= 0))
             throw new ArgumentOutOfRangeException(nameof(climbBudget), "The climb budget must not be negative.");
+        float maxFallSpeed = tuning.MaxFallSpeed;
         float vy = verticalVelocity - gravity * dt;
         if (vy < -tuning.MaxFallSpeed) vy = -tuning.MaxFallSpeed;
-        var displacement = new Vector3(velocity.X * dt, vy * dt, velocity.Y * dt);
+        var displacement = new Vector3(velocity.X * dt, verticalDisplacement ?? vy * dt, velocity.Y * dt);
         int substeps = Substeps(displacement, tuning);
         float stepTime = dt / substeps;
         float footRadius = settings.FootRadiusFraction * tuning.CapsuleRadius;
@@ -120,7 +132,13 @@ internal static partial class AirPass
             if (flight.Blocked || flight.Achieved != move || current != before) onPlan = false;
             blocked |= flight.Blocked;
             moved = onPlan ? next : moved + flight.Achieved;
-            if (current.Y > 0f) continue;
+            float remainingTime = stepTime * (substeps - i - 1);
+            if (current.Y > 0f)
+            {
+                if (medium?.ChangesOwner(start + moved, current.Y, NoSupport, false) == true)
+                    return Handoff(start + moved, NoSupport, AirOutcome.Airborne, remainingTime);
+                continue;
+            }
 
             Vector3 at = start + moved;
             var route = new ContactMotionRoute(queries, from + flight.Achieved);
@@ -133,9 +151,29 @@ internal static partial class AirPass
                 new FootSupportQuery(axis, high, footRadius, tuning.StepHeight, MathF.Max(0f, high - low),
                     cosMaxSlope));
             var remaining = new Vector2(displacement.X - next.X, displacement.Z - next.Z);
-            float remainingTime = stepTime * (substeps - i - 1);
             var horizontal = new Vector2(current.X, current.Z);
-            if (support.Status == SupportStatus.Walkable)
+            if (support.Status == SupportStatus.Walkable && medium?.AllowsFooting(at, support) == false &&
+                support.Height - support.HeightError <= high && support.Height + support.HeightError >= low)
+            {
+                // A submerged bed clips descent through the same proved placement as a landing. It grants no
+                // land footing. Buoyancy spends the remainder from the contact-clipped carry.
+                // Keep the fluid contact outside the bed after centre mapping rounds. This is one representable
+                // clearance ordinate, not a climb or a second placement skin, and earns the placement proof.
+                var seat = new GroundSeatResult(SeatOutcome.Seated, MathF.BitIncrement(support.Height), support, 0, Vector3.Zero);
+                GroundPlacement bed = GroundPlacement.Try(queries, NoSupport, high, axis, Vector2.Zero,
+                    seat, footRadius, tuning, cosMaxSlope, budget, ref route);
+                if (bed.Valid)
+                    return new(bed.Feet, 0, Achieved(feet, start, moved + new Vector3(bed.Total.X, 0, bed.Total.Y)),
+                        remaining, AirOutcome.Airborne, NoSupport, 0, blocked || bed.Pushed)
+                    {
+                        HorizontalVelocity = horizontal,
+                        RemainingTime = remainingTime,
+                        ClimbBudget = bed.Budget,
+                        MediumHandoff = true,
+                        DescendingAtContact = true,
+                    };
+            }
+            if (support.Status == SupportStatus.Walkable && medium?.AllowsFooting(at, support) != false)
             {
                 // The seat goes through the ground core's placement, so the feet never seat into a shell overlap and
                 // a rise above the substep's start feet is paced like a step up. The ground core pays the rest. The
@@ -160,6 +198,8 @@ internal static partial class AirPass
                     {
                         HorizontalVelocity = horizontal,
                         RemainingTime = remainingTime,
+                        MediumHandoff = medium?.ChangesOwner(at, 0, support, true) == true,
+                        HorizontalPlanPreserved = onPlan && start.X == feet.X && start.Z == feet.Z,
                         ClimbBudget = budget,
                     };
                 }
@@ -169,13 +209,15 @@ internal static partial class AirPass
                 {
                     HorizontalVelocity = horizontal,
                     RemainingTime = remainingTime,
+                    MediumHandoff = medium?.ChangesOwner(placement.Feet, 0, placement.Support, true) == true,
+                    HorizontalPlanPreserved = onPlan && !placement.Pushed && start.X == feet.X && start.Z == feet.Z,
                     ClimbBudget = placement.Budget,
                 };
             }
             // Steep support never lifts the body: it starts a slide only within the span the feet travelled. The
             // slide integrates its own gravity over the rest of the tick, so the hand-off gives back the gravity this
             // tick integrated for that time. The substep was descending, so the hand-off never rises.
-            if (support.Status == SupportStatus.Steep &&
+            if (support.Status == SupportStatus.Steep && medium?.AllowsFooting(at, support) != false &&
                 (double)support.Height - support.HeightError <= high &&
                 (double)support.Height + support.HeightError >= low)
             {
@@ -186,16 +228,34 @@ internal static partial class AirPass
                 {
                     HorizontalVelocity = horizontal,
                     RemainingTime = remainingTime,
+                    MediumHandoff = medium?.ChangesOwner(at with { Y = support.Height },
+                        MathF.Min(0f, current.Y + gravity * remainingTime), support, false) == true,
+                    HorizontalPlanPreserved = onPlan && start.X == feet.X && start.Z == feet.Z,
                     ClimbBudget = budget,
                 };
             }
+            if (medium?.ChangesOwner(at, current.Y, NoSupport, false) == true)
+                return Handoff(at, NoSupport, AirOutcome.Airborne, remainingTime);
         }
         return new(start + moved, current.Y, Achieved(feet, start, moved), Vector2.Zero, AirOutcome.Airborne,
             NoSupport, 0f, blocked)
         {
             HorizontalVelocity = new Vector2(current.X, current.Z),
+            HorizontalPlanPreserved = onPlan && start.X == feet.X && start.Z == feet.Z,
             ClimbBudget = budget,
         };
+
+        AirStepResult Handoff(Vector3 at, SupportSample support, AirOutcome outcome, float remaining) =>
+            new(at, current.Y == vy
+                    ? MathF.Max(-maxFallSpeed, verticalVelocity - gravity * (dt - remaining)) : current.Y,
+                Achieved(feet, start, moved), Vector2.Zero, outcome, support, 0, blocked)
+            {
+                HorizontalVelocity = new(current.X, current.Z),
+                RemainingTime = remaining,
+                HorizontalPlanPreserved = onPlan && start.X == feet.X && start.Z == feet.Z,
+                ClimbBudget = budget,
+                MediumHandoff = true,
+            };
     }
 
     // Cuts the substep's horizontal move to the play area. True when the clamp shortened it.

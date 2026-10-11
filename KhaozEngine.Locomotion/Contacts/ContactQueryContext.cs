@@ -35,6 +35,8 @@ internal readonly struct ContactQueryContext
     internal SupportSample FindSupport(in FootSupportQuery query) => FindSupport(query, out _);
     internal SupportSample FindSupport(in FootSupportQuery query, out MovementContactSupportBinding? binding) =>
         _leased is { } leased ? leased.FindSupport(query, out binding) : _dry.FindSupport(query, out binding);
+    internal MovementContactSupportBinding? BindSupport(Vector3 feet, in SupportSample support, float radius, float gate) =>
+        _leased?.BindSupport(feet, support, radius, gate);
     internal bool SweepShell(CapsuleShape shape, Vector3 centre, Vector3 direction, float distance,
         out SweepHit hit, QueryFilter filter = default) => _leased is { } leased
         ? leased.SweepShell(shape, centre, direction, distance, out hit, filter)

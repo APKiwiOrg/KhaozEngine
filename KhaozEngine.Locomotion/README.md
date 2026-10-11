@@ -550,8 +550,12 @@ waterline. The independent launch speed uses the existing gravity-first `JumpSpe
 Bed depth does not gate a launch. An airborne arc uses gravity without buoyancy recapture or a
 second launch. Rejected submerged presses do not affect the candidate and never create a buffer.
 
-This helper does not publish state or certify movement. The explicit mover consumes its proposal,
-proves every solid/medium segment and classifies endpoint entry or footing before publication.
+This helper does not publish state or certify movement. Explicit ticks run through the shared contact
+controller. Accepted timed substeps hand the remaining time, climb budget, carry and canonical support
+binding between land, swimming and water-origin flight. Swimming supplies vertical dynamics, while
+shared shell motion and footprint placement prove travel and landings. Commitments, facing, ground
+signals and land jumps resolve once for the whole tick. An exhausted eight-segment guard holds the
+whole input. Submerged bed contacts clip descent without granting land footing.
 The existing legacy swimming path is unchanged. The generic fixtures do not establish native
 producer acceptance or a playable consumer feature.
 

@@ -21,6 +21,8 @@ internal readonly record struct SlideStepResult(Vector3 Feet, Vector2 Horizontal
     /// otherwise.</summary>
     internal float RemainingTime { get; init; }
 
+    internal bool MediumHandoff { get; init; }
+
     /// <summary>The climb budget left after the slide's move, in metres.</summary>
     internal double ClimbBudget { get; init; }
 
@@ -76,7 +78,7 @@ internal static partial class SlideCore
     internal static SlideStepResult Step(Vector3 feet, Vector2 carry, float verticalVelocity, Vector2 steer,
         float dt, in MoveTuning tuning, in GroundCoreSettings settings, float tractionSlopeRadians,
         in SupportSample support, ContactQueryContext queries,
-        double? climbBudget = null, Func<float, float, Vector2>? clampXz = null)
+        double? climbBudget = null, Func<float, float, Vector2>? clampXz = null, ContactMediumPolicy? medium = null)
     {
         if (!float.IsFinite(feet.X) || !float.IsFinite(feet.Y) || !float.IsFinite(feet.Z))
             throw new ArgumentOutOfRangeException(nameof(feet), "The feet must be finite.");
@@ -125,7 +127,7 @@ internal static partial class SlideCore
         Vector2 move = (velocity + applied) * dt;
         var axis = new Vector2(feet.X, feet.Z);
         bool clamped = PlayArea.Clamp(axis, ref move, clampXz);
-        GroundStepResult step = GroundCore.Slide(feet, move, dt, tuning, settings, queries, tractionSlopeRadians, climbBudget, clampXz);
+        GroundStepResult step = GroundCore.Slide(feet, move, dt, tuning, settings, queries, tractionSlopeRadians, climbBudget, clampXz, medium);
         queries.RequireRecoveryAccepted();
         if (step.Blocked && steerAlong != 0f)
         {
@@ -135,12 +137,25 @@ internal static partial class SlideCore
             // costs the slide its speed.
             Vector2 alone = velocity * dt;
             bool aloneClamped = PlayArea.Clamp(axis, ref alone, clampXz);
-            GroundStepResult carried = GroundCore.Slide(feet, alone, dt, tuning, settings, queries, tractionSlopeRadians, climbBudget, clampXz);
+            GroundStepResult carried = GroundCore.Slide(feet, alone, dt, tuning, settings, queries, tractionSlopeRadians, climbBudget, clampXz, medium);
             queries.RequireRecoveryAccepted();
             if (Progress(carried) > Progress(step))
                 (step, steerAlong, applied, clamped) = (carried, 0f, Vector2.Zero, aloneClamped);
         }
         queries.AcceptRoute(step.Blocked || clamped);
+        if (step.MediumHandoff)
+        {
+            float handed = Fall(dt - step.RemainingTime);
+            return new(step.Feet, Horizontal(handed, contour, tx, tz, cx, cz), handed * ty,
+                step.Achieved, step.Footing == GroundFooting.Walkable ? SlideOutcome.Landed : SlideOutcome.Airborne,
+                step.Support, step.Footing == GroundFooting.Walkable ? MathF.Max(0, -handed * ty) : 0)
+            {
+                RemainingTime = step.RemainingTime,
+                ClimbBudget = step.ClimbBudget,
+                Steer = applied,
+                MediumHandoff = true,
+            };
+        }
         switch (step.Footing)
         {
             case GroundFooting.Walkable:

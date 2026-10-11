@@ -59,6 +59,14 @@ internal sealed partial class LeasedContactQueryContext
         return support;
     }
 
+    internal MovementContactSupportBinding BindSupport(Vector3 feet, in SupportSample support, float radius, float gate)
+    {
+        var query = new FootSupportQuery(new(feet.X, feet.Z), feet.Y, radius,
+            _tuning.StepHeight, _tuning.StepHeight, MathF.Cos(gate));
+        Require(_lease.BindContactSupportAtKernel(Request(query), support, feet.Y, out var binding));
+        return binding;
+    }
+
     internal bool SweepShell(CapsuleShape shape, Vector3 centre, Vector3 direction, float distance,
         out SweepHit hit, QueryFilter filter = default)
     {

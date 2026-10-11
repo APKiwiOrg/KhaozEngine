@@ -27,6 +27,9 @@ internal readonly record struct GroundStepResult(Vector3 Feet, GroundFooting Foo
     /// spent. Zero when the footing held or the tick ended for another reason.</summary>
     internal float RemainingTime { get; init; }
 
+    internal bool MediumHandoff { get; init; }
+    internal bool HorizontalPlanPreserved { get; init; }
+
     /// <summary>The climb budget left after the tick's paced climbing, in metres.</summary>
     internal double ClimbBudget { get; init; }
 
@@ -72,9 +75,9 @@ internal static partial class GroundCore
     internal static GroundStepResult Step(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
         in GroundCoreSettings settings, ContactQueryContext queries,
         float? tractionSlopeRadians = null, double? climbBudget = null,
-        Func<float, float, Vector2>? clampXz = null, bool stepInProgress = false) =>
+        Func<float, float, Vector2>? clampXz = null, bool stepInProgress = false, ContactMediumPolicy? medium = null) =>
         Move(feet, displacement, dt, tuning, settings, queries,
-            tractionSlopeRadians ?? tuning.MaxSlopeRadians, slide: false, climbBudget, clampXz, stepInProgress);
+            tractionSlopeRadians ?? tuning.MaxSlopeRadians, slide: false, climbBudget, clampXz, stepInProgress, medium);
 
     /// <summary>Moves a sliding body as <c>Step</c> moves a grounded one, with three differences. A steep
     /// start moves. A steep seat at or below the feet continues the tick instead of ending it, and must clear the
@@ -85,14 +88,14 @@ internal static partial class GroundCore
     /// height, so the seat's reach down holds it.</summary>
     internal static GroundStepResult Slide(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
         in GroundCoreSettings settings, ContactQueryContext queries,
-        float tractionSlopeRadians, double? climbBudget = null, Func<float, float, Vector2>? clampXz = null) =>
+        float tractionSlopeRadians, double? climbBudget = null, Func<float, float, Vector2>? clampXz = null, ContactMediumPolicy? medium = null) =>
         Move(feet, displacement, dt, tuning, settings, queries,
-            tractionSlopeRadians, slide: true, climbBudget, clampXz, stepInProgress: false);
+            tractionSlopeRadians, slide: true, climbBudget, clampXz, stepInProgress: false, medium);
 
     static GroundStepResult Move(Vector3 feet, Vector2 displacement, float dt, in MoveTuning tuning,
         in GroundCoreSettings settings, ContactQueryContext queries,
         float tractionSlopeRadians, bool slide, double? climbBudget, Func<float, float, Vector2>? clampXz,
-        bool stepInProgress)
+        bool stepInProgress, ContactMediumPolicy? medium)
     {
         int substeps = Validate(feet, displacement, dt, tuning, settings);
         float gate = tractionSlopeRadians;
@@ -148,9 +151,11 @@ internal static partial class GroundCore
             };
         }
         Vector2 moved = tick.Run(displacement, substeps, ref budget, out GroundFooting footing, out bool blocked,
-            out int unspent);
+            out int unspent, medium, out bool handoff);
         return Result(feet, start, tick.FeetY, footing, tick.Support, moved, blocked) with
         {
+            MediumHandoff = handoff,
+            HorizontalPlanPreserved = tick.OnPlan && start.X == feet.X && start.Z == feet.Z,
             RemainingTime = unspent == 0 ? 0f : (float)((double)dt * unspent / substeps),
             ClimbBudget = budget,
             StepRise = tick.StepRise,
@@ -277,16 +282,18 @@ internal static partial class GroundCore
         internal readonly float MoveRise => (float)_moveRise;
         internal bool RiseSeen { get; private set; }
         internal bool DropSeen { get; private set; }
+        internal bool OnPlan { get; private set; }
 
         readonly Vector2 Axis => _startAxis + _achieved;
 
         // unspent counts the substeps left after the footing changed to steep or none.
         internal Vector2 Run(Vector2 displacement, int substeps, ref double budget, out GroundFooting footing,
-            out bool blocked, out int unspent)
+            out bool blocked, out int unspent, ContactMediumPolicy? medium, out bool handoff)
         {
             footing = Support.Status == SupportStatus.Steep ? GroundFooting.Steep : GroundFooting.Walkable;
             blocked = false;
             unspent = 0;
+            handoff = false;
             if (!PayLag(ref budget)) { blocked = true; return _achieved; }
             // While nothing has deviated from the plan, the achieved move is the planned prefix itself, so free
             // motion is exact however many substeps it takes.
@@ -360,6 +367,14 @@ internal static partial class GroundCore
                     RiseSeen |= seat.DiscreteStep > 0;
                     DropSeen |= seat.DiscreteStep < 0;
                 }
+                footing = Footing(Support.Status);
+                if (medium?.ChangesOwner(new(Axis.X, FeetY, Axis.Y), 0, Support,
+                        footing == GroundFooting.Walkable) == true)
+                {
+                    handoff = true;
+                    unspent = substeps - i - 1;
+                    break;
+                }
                 if (seat.Outcome == SeatOutcome.SteepSeated)
                 {
                     footing = GroundFooting.Steep;
@@ -375,6 +390,7 @@ internal static partial class GroundCore
                     break;
                 }
             }
+            OnPlan = onPlan;
             return _achieved;
         }
 

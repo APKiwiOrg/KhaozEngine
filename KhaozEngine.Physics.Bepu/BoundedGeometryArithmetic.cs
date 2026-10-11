@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace KhaozEngine.Physics.Bepu;
 
@@ -17,8 +18,10 @@ internal readonly struct GeometryInterval
         IsResolved = true;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static GeometryInterval Exact(double value) => Enclose(value, value);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static GeometryInterval Enclose(double lower, double upper) =>
         double.IsFinite(lower) && double.IsFinite(upper) && lower <= upper ? new(lower, upper) : default;
 
@@ -32,13 +35,16 @@ internal readonly struct GeometryInterval
         return Enclose(Math.Min(Lower, MathF.BitDecrement(lower)), Math.Max(Upper, MathF.BitIncrement(upper)));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static GeometryInterval Rounded(double lower, double upper) =>
         double.IsFinite(lower) && double.IsFinite(upper)
             ? Enclose(Math.BitDecrement(lower), Math.BitIncrement(upper)) : default;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public GeometryInterval Add(GeometryInterval other) => IsResolved && other.IsResolved
         ? Rounded(Lower + other.Lower, Upper + other.Upper) : default;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public GeometryInterval Subtract(GeometryInterval other) => IsResolved && other.IsResolved
         ? Rounded(Lower - other.Upper, Upper - other.Lower) : default;
 
@@ -87,13 +93,53 @@ internal readonly struct GeometryInterval
 
 internal enum GeometrySign : byte { Unresolved, Negative, Zero, Positive }
 
-/// <summary>Exact, bounded arithmetic over represented binary64 operands. No shape or sweep certificate.</summary>
+/// <summary>Exact, bounded arithmetic over represented binary64 operands. No shape or sweep certificate. Operands
+/// inside the <see cref="ExactExpansion"/> domain take its allocation-free path, which returns the exact sign the
+/// dyadic path returns there. Every other operand takes the dyadic path and its 4096 bit refusal.</summary>
+[SkipLocalsInit]
 internal static class BoundedGeometryArithmetic
 {
     internal const int MaximumPredicateBits = 4096;
 
     /// <summary>Sign of a*b-c*d without rounding either product. Refuses work beyond the fixed bit cap.</summary>
     internal static GeometrySign CompareProducts(double a, double b, double c, double d)
+    {
+        if (!double.IsFinite(a) || !double.IsFinite(b) || !double.IsFinite(c) || !double.IsFinite(d))
+            return GeometrySign.Unresolved;
+        if (ExactExpansion.InRange(a) && ExactExpansion.InRange(b) && ExactExpansion.InRange(c) &&
+            ExactExpansion.InRange(d))
+        {
+            // c*1 is c exactly, and fma rounds a*b-c once. Every operand is a multiple of 2^-252 below 2^200, so a
+            // nonzero a*b-c is at least 2^-504 and keeps its sign through that rounding.
+            if (d == 1) return Sign(Math.FusedMultiplyAdd(a, b, -c));
+            var sum = new ExactExpansion(stackalloc double[5]);
+            sum.AddProduct(a, b);
+            sum.AddProduct(-c, d);
+            return sum.Sign;
+        }
+        // A zero product leaves the sign of the other. The dyadic path aligns a zero at exponent 0, at most 2148
+        // bits from any product of finite operands, so it never refuses that comparison.
+        if (a == 0 || b == 0 || c == 0 || d == 0)
+            return Sign((a == 0 || b == 0 ? 0 : Math.Sign(a) * Math.Sign(b)) -
+                (c == 0 || d == 0 ? 0 : Math.Sign(c) * Math.Sign(d)));
+        // Scaling by powers of two is exact for finite operands, subnormal ones included, and keeps the sign. Each
+        // operand is brought to [1, 2) and the products' exponent difference, at most 100, is moved onto d, so all
+        // four land in the expansion domain. Their dyadic products then lie within about 300 bits of each other,
+        // far inside the cap, so both paths decide the same exact sign.
+        int left = Math.ILogB(a) + Math.ILogB(b), right = Math.ILogB(c) + Math.ILogB(d);
+        if (Math.Abs(right - left) <= 100)
+        {
+            var scaled = new ExactExpansion(stackalloc double[5]);
+            scaled.AddProduct(Math.ScaleB(a, -Math.ILogB(a)), Math.ScaleB(b, -Math.ILogB(b)));
+            scaled.AddProduct(-Math.ScaleB(c, -Math.ILogB(c)), Math.ScaleB(d, right - left - Math.ILogB(d)));
+            return scaled.Sign;
+        }
+        return CompareProductsDyadic(a, b, c, d);
+    }
+
+    /// <summary>The dyadic path of <see cref="CompareProducts"/>, the reference its expansion path is proved
+    /// against.</summary>
+    internal static GeometrySign CompareProductsDyadic(double a, double b, double c, double d)
     {
         if (!double.IsFinite(a) || !double.IsFinite(b) || !double.IsFinite(c) || !double.IsFinite(d))
             return GeometrySign.Unresolved;
@@ -105,14 +151,75 @@ internal static class BoundedGeometryArithmetic
     internal static GeometrySign CompareSquaredDistances(ReadOnlySpan<double> a, ReadOnlySpan<double> b,
         ReadOnlySpan<double> c, ReadOnlySpan<double> d)
     {
+        if (a.Length is < 1 or > 3 || a.Length != b.Length || c.Length is < 1 or > 3 || c.Length != d.Length)
+            return GeometrySign.Unresolved;
+        if (InRange(a) && InRange(b) && InRange(c) && InRange(d))
+        {
+            // Eight terms per coordinate, at most three coordinates on each side.
+            var sum = new ExactExpansion(stackalloc double[49]);
+            AddSquaredDistance(ref sum, a, b, 1);
+            AddSquaredDistance(ref sum, c, d, -1);
+            return sum.Sign;
+        }
+        return CompareSquaredDistancesDyadic(a, b, c, d);
+    }
+
+    /// <summary>The dyadic path of <see cref="CompareSquaredDistances"/>, the reference its expansion path is
+    /// proved against.</summary>
+    internal static GeometrySign CompareSquaredDistancesDyadic(ReadOnlySpan<double> a, ReadOnlySpan<double> b,
+        ReadOnlySpan<double> c, ReadOnlySpan<double> d)
+    {
         if (!TrySquaredDistance(a, b, out Dyadic left) || !TrySquaredDistance(c, d, out Dyadic right))
             return GeometrySign.Unresolved;
         return Compare(left, right);
     }
 
+    // Each coordinate difference is s + t exactly by Two-Sum, and its square is s*s + 2*s*t + t*t.
+    static void AddSquaredDistance(ref ExactExpansion sum, ReadOnlySpan<double> a, ReadOnlySpan<double> b,
+        double sign)
+    {
+        for (int i = 0; i < a.Length; i++)
+        {
+            ExactExpansion.TwoSum(a[i], -b[i], out double s, out double t);
+            sum.AddProduct(sign * s, s);
+            sum.AddProduct(sign * s, t);
+            sum.AddProduct(sign * s, t);
+            sum.AddProduct(sign * t, t);
+        }
+    }
+
+    // Finite, and zero or a magnitude in [2^-200, 2^200).
+    static bool InRange(ReadOnlySpan<double> values)
+    {
+        foreach (double value in values)
+            if (!double.IsFinite(value) || !ExactExpansion.InRange(value)) return false;
+        return true;
+    }
+
     /// <summary>Exact sign of x*x+y*y+z*z+w*w-expected. This fixed four-component
     /// operation does not extend the one-to-three-coordinate distance contract.</summary>
     internal static GeometrySign CompareSumOfFourSquares(double x, double y, double z, double w, double expected)
+    {
+        if (!double.IsFinite(x) || !double.IsFinite(y) || !double.IsFinite(z) ||
+            !double.IsFinite(w) || !double.IsFinite(expected)) return GeometrySign.Unresolved;
+        if (ExactExpansion.InRange(x) && ExactExpansion.InRange(y) && ExactExpansion.InRange(z) &&
+            ExactExpansion.InRange(w) && ExactExpansion.InRange(expected))
+        {
+            var exact = new ExactExpansion(stackalloc double[10]);
+            exact.AddProduct(x, x);
+            exact.AddProduct(y, y);
+            exact.AddProduct(z, z);
+            exact.AddProduct(w, w);
+            exact.Add(-expected);
+            return exact.Sign;
+        }
+        return CompareSumOfFourSquaresDyadic(x, y, z, w, expected);
+    }
+
+    /// <summary>The dyadic path of <see cref="CompareSumOfFourSquares"/>, the reference its expansion path is
+    /// proved against.</summary>
+    internal static GeometrySign CompareSumOfFourSquaresDyadic(double x, double y, double z, double w,
+        double expected)
     {
         if (!double.IsFinite(x) || !double.IsFinite(y) || !double.IsFinite(z) ||
             !double.IsFinite(w) || !double.IsFinite(expected)) return GeometrySign.Unresolved;
@@ -128,8 +235,25 @@ internal static class BoundedGeometryArithmetic
         return Compare(sum, Split(expected));
     }
 
-    /// <summary>Exact oriented area sign for three supplied binary32 points.</summary>
+    /// <summary>Exact oriented area sign for three supplied binary32 points. Finite binary32 values lie in the
+    /// <see cref="ExactExpansion"/> domain, and the dyadic path never refuses them.</summary>
     internal static GeometrySign Orient2D(float ax, float ay, float bx, float by, float cx, float cy)
+    {
+        if (!float.IsFinite(ax) || !float.IsFinite(ay) || !float.IsFinite(bx) ||
+            !float.IsFinite(by) || !float.IsFinite(cx) || !float.IsFinite(cy))
+            return GeometrySign.Unresolved;
+        var area = new ExactExpansion(stackalloc double[17]);
+        ExactExpansion.TwoSum(bx, -(double)ax, out double x1, out double x1Error);
+        ExactExpansion.TwoSum(cy, -(double)ay, out double y2, out double y2Error);
+        ExactExpansion.TwoSum(by, -(double)ay, out double y1, out double y1Error);
+        ExactExpansion.TwoSum(cx, -(double)ax, out double x2, out double x2Error);
+        AddProduct(ref area, x1, x1Error, y2, y2Error, 1);
+        AddProduct(ref area, y1, y1Error, x2, x2Error, -1);
+        return area.Sign;
+    }
+
+    /// <summary>The dyadic path of <see cref="Orient2D"/>, the reference its expansion path is proved against.</summary>
+    internal static GeometrySign Orient2DDyadic(float ax, float ay, float bx, float by, float cx, float cy)
     {
         if (!float.IsFinite(ax) || !float.IsFinite(ay) || !float.IsFinite(bx) ||
             !float.IsFinite(by) || !float.IsFinite(cx) || !float.IsFinite(cy) ||
@@ -140,8 +264,28 @@ internal static class BoundedGeometryArithmetic
         return Sign(area);
     }
 
-    /// <summary>Exact sign of ((b-a) cross (c-a)) dot (point-a), with no rounded differences.</summary>
+    /// <summary>Exact sign of ((b-a) cross (c-a)) dot (point-a), with no rounded differences. Finite binary32 values
+    /// lie in the <see cref="ExactExpansion"/> domain, and the dyadic path never refuses them.</summary>
     internal static GeometrySign Orient3D(Vector3 a, Vector3 b, Vector3 c, Vector3 point)
+    {
+        if (!Finite(a) || !Finite(b) || !Finite(c) || !Finite(point)) return GeometrySign.Unresolved;
+        Span<double> ab = stackalloc double[6], ac = stackalloc double[6], ap = stackalloc double[6];
+        Differences(b, a, ab);
+        Differences(c, a, ac);
+        Differences(point, a, ap);
+        // Six signed triple products of two-term differences: at most 6 * 32 terms.
+        var volume = new ExactExpansion(stackalloc double[193]);
+        for (int axis = 0; axis < 3; axis++)
+        {
+            int next = (axis + 1) % 3, last = (axis + 2) % 3;
+            AddTriple(ref volume, ab, next, ac, last, ap, axis, 1);
+            AddTriple(ref volume, ab, last, ac, next, ap, axis, -1);
+        }
+        return volume.Sign;
+    }
+
+    /// <summary>The dyadic path of <see cref="Orient3D"/>, the reference its expansion path is proved against.</summary>
+    internal static GeometrySign Orient3DDyadic(Vector3 a, Vector3 b, Vector3 c, Vector3 point)
     {
         if (!Finite(a) || !Finite(b) || !Finite(c) || !Finite(point) ||
             !TryDifference(b, a, out DyadicVector ab) || !TryDifference(c, a, out DyadicVector ac) ||
@@ -157,6 +301,52 @@ internal static class BoundedGeometryArithmetic
     }
 
     readonly record struct DyadicVector(Dyadic X, Dyadic Y, Dyadic Z);
+
+    static GeometrySign Sign(double value) =>
+        value > 0 ? GeometrySign.Positive : value < 0 ? GeometrySign.Negative : GeometrySign.Zero;
+
+    // (a + aError)(b + bError) times sign, as four exact products.
+    static void AddProduct(ref ExactExpansion sum, double a, double aError, double b, double bError, double sign)
+    {
+        sum.AddProduct(sign * a, b);
+        sum.AddProduct(sign * a, bError);
+        sum.AddProduct(sign * aError, b);
+        sum.AddProduct(sign * aError, bError);
+    }
+
+    // Each coordinate difference of two binary32 points as a value and its exact Two-Sum error.
+    static void Differences(Vector3 to, Vector3 from, Span<double> output)
+    {
+        ExactExpansion.TwoSum(to.X, -(double)from.X, out output[0], out output[1]);
+        ExactExpansion.TwoSum(to.Y, -(double)from.Y, out output[2], out output[3]);
+        ExactExpansion.TwoSum(to.Z, -(double)from.Z, out output[4], out output[5]);
+    }
+
+    // sign * u[i] * v[j] * w[k] over the two terms of each difference. Each pairwise product is split into its
+    // rounded value and error, and each of those times a w term is added exactly.
+    static void AddTriple(ref ExactExpansion sum, ReadOnlySpan<double> u, int i, ReadOnlySpan<double> v, int j,
+        ReadOnlySpan<double> w, int k, double sign)
+    {
+        for (int p = 0; p < 2; p++)
+        {
+            double up = u[2 * i + p];
+            if (up == 0) continue;
+            for (int q = 0; q < 2; q++)
+            {
+                double vq = v[2 * j + q];
+                if (vq == 0) continue;
+                double product = sign * up * vq;
+                double error = Math.FusedMultiplyAdd(sign * up, vq, -product);
+                for (int r = 0; r < 2; r++)
+                {
+                    double wr = w[2 * k + r];
+                    if (wr == 0) continue;
+                    sum.AddProduct(product, wr);
+                    sum.AddProduct(error, wr);
+                }
+            }
+        }
+    }
 
     static bool Finite(Vector3 value) => float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
     static GeometrySign Sign(Dyadic value) => value.Mantissa.Sign switch

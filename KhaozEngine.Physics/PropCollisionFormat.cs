@@ -29,15 +29,34 @@ public static class PropCollisionFormat
     internal const byte KindCompound = 5;
 
     /// <summary>Serialize <paramref name="shape"/> to <paramref name="stream"/> in the KECL binary format:
-    /// Magic (uint32 LE) + version (byte) + kind (byte) + payload. The stream is left open.</summary>
+    /// Magic (uint32 LE) + version (byte) + kind (byte) + payload. The stream is left open. Throws
+    /// <see cref="ArgumentException"/>, before writing anything, for a compound child orientation that is not a unit
+    /// quaternion under the tolerance <see cref="Read(Stream)"/> applies, since Read would refuse the
+    /// payload.</summary>
     public static void Write(PhysicsShape shape, Stream stream)
     {
         if (shape == null) throw new ArgumentNullException(nameof(shape));
         if (stream == null) throw new ArgumentNullException(nameof(stream));
+        RequireUnitOrientations(shape);
         using var w = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
         w.Write(Magic);
         w.Write(Version);
         WriteShape(w, shape);
+    }
+
+    // Refuses, before any byte is written, a compound child orientation Read would refuse as not a unit quaternion.
+    static void RequireUnitOrientations(PhysicsShape shape)
+    {
+        if (shape is not CompoundShape compound) return;
+        foreach (CompoundChild child in compound.Children)
+        {
+            Quaternion orientation = child.Local.Orientation;
+            if (!IsUnitOrientation(orientation, out float lengthSquared))
+                throw new ArgumentException(
+                    $"PropCollisionFormat.Write: compound child orientation {orientation} is not a unit quaternion " +
+                    $"(squared length {lengthSquared}).", nameof(shape));
+            RequireUnitOrientations(child.Shape);
+        }
     }
 
     // Writes a single shape's kind byte + payload. Recurses for compound children. No magic/version here (the
@@ -80,21 +99,27 @@ public static class PropCollisionFormat
                 }
                 break;
             default:
-                throw new NotSupportedException($"PropCollisionFormat.Write: unsupported shape type {shape.GetType().Name}");
+                throw new NotSupportedException(
+                    $"PropCollisionFormat.Write: unsupported shape type {shape.GetType().Name}");
         }
     }
 
     static void WritePose(BinaryWriter w, Pose pose)
     {
         w.Write(pose.Position.X); w.Write(pose.Position.Y); w.Write(pose.Position.Z);
-        w.Write(pose.Orientation.X); w.Write(pose.Orientation.Y); w.Write(pose.Orientation.Z); w.Write(pose.Orientation.W);
+        w.Write(pose.Orientation.X); w.Write(pose.Orientation.Y);
+        w.Write(pose.Orientation.Z); w.Write(pose.Orientation.W);
     }
 
     /// <summary>Read a single baked shape from <paramref name="stream"/>. Throws
     /// <see cref="InvalidOperationException"/> on a bad magic, unsupported version, unknown kind, or an
     /// array-count field that is negative or could not possibly fit in what remains of the stream (a truncated
     /// or corrupted file) - never <see cref="OverflowException"/> or <see cref="OutOfMemoryException"/> from an
-    /// unchecked allocation. The stream is left open.</summary>
+    /// unchecked allocation. Malformed shape data throws the same way: a non-finite or non-positive box half
+    /// extent or cylinder size, a non-finite hull point, mesh vertex or compound child pose, a compound child
+    /// orientation that is not a unit quaternion, a mesh index count that is not a multiple of 3 or an index
+    /// outside the vertices, a compound with no children, and compound nesting deeper than 16 levels, which
+    /// bounds the reader's recursion. The stream is left open.</summary>
     public static PhysicsShape Read(Stream stream)
     {
         if (stream == null) throw new ArgumentNullException(nameof(stream));
@@ -110,8 +135,16 @@ public static class PropCollisionFormat
             throw new InvalidOperationException(
                 $"PropCollisionFormat: unsupported version {version} (expected {Version}).");
 
-        return ReadShape(r);
+        return ReadShape(r, 0);
     }
+
+    /// <summary>The deepest compound nesting <see cref="Read(Stream)"/> accepts. A top-level compound is level
+    /// 1.</summary>
+    internal const int MaxCompoundDepth = 16;
+
+    /// <summary>How far a compound child orientation's squared length may differ from 1 before
+    /// <see cref="Read(Stream)"/> and <see cref="Write"/> refuse it.</summary>
+    internal const float UnitOrientationTolerance = 1e-3f;
 
     // Bytes the smallest possible encoding of one array element occupies, used only as a fallback ceiling when the
     // stream can't report a remaining length (see ReadCount). A Vector3 is 3 floats, an int index is 4 bytes, and a
@@ -145,7 +178,8 @@ public static class PropCollisionFormat
             long remaining = stream.Length - stream.Position;
             if ((long)count * elementMinBytes > remaining)
                 throw new InvalidOperationException(
-                    $"PropCollisionFormat: {what} count {count} needs at least {(long)count * elementMinBytes} bytes, but only {remaining} remain in the stream.");
+                    $"PropCollisionFormat: {what} count {count} needs at least {(long)count * elementMinBytes} " +
+                    $"bytes, but only {remaining} remain in the stream.");
         }
         else if (count > MaxCountFallback)
         {
@@ -156,7 +190,8 @@ public static class PropCollisionFormat
         return count;
     }
 
-    static PhysicsShape ReadShape(BinaryReader r)
+    // compoundDepth counts the compounds enclosing the shape being read, so a top-level compound reads at level 1.
+    static PhysicsShape ReadShape(BinaryReader r, int compoundDepth)
     {
         byte kind = r.ReadByte();
         switch (kind)
@@ -166,13 +201,16 @@ public static class PropCollisionFormat
                     int count = ReadCount(r, "convex hull point", Vector3Bytes);
                     var points = new Vector3[count];
                     for (int i = 0; i < count; i++)
-                        points[i] = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+                        points[i] = ReadFiniteVector(r, "convex hull point");
                     return new ConvexHullShape(points);
                 }
             case KindCylinder:
                 {
                     float radius = r.ReadSingle();
                     float length = r.ReadSingle();
+                    if (!IsFinitePositive(radius) || !IsFinitePositive(length))
+                        throw new InvalidOperationException(
+                            $"PropCollisionFormat: cylinder radius {radius} and length {length} must be finite and positive.");
                     return new CylinderShape(radius, length);
                 }
             case KindTriangleMesh:
@@ -180,26 +218,44 @@ public static class PropCollisionFormat
                     int vCount = ReadCount(r, "triangle mesh vertex", Vector3Bytes);
                     var verts = new Vector3[vCount];
                     for (int i = 0; i < vCount; i++)
-                        verts[i] = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+                        verts[i] = ReadFiniteVector(r, "triangle mesh vertex");
                     int iCount = ReadCount(r, "triangle mesh index", Int32Bytes);
+                    if (iCount % 3 != 0)
+                        throw new InvalidOperationException(
+                            $"PropCollisionFormat: triangle mesh index count {iCount} is not a multiple of 3.");
                     var indices = new int[iCount];
                     for (int i = 0; i < iCount; i++)
-                        indices[i] = r.ReadInt32();
+                    {
+                        int index = r.ReadInt32();
+                        if ((uint)index >= (uint)vCount)
+                            throw new InvalidOperationException(
+                                $"PropCollisionFormat: triangle mesh index {index} is outside the {vCount} vertices.");
+                        indices[i] = index;
+                    }
                     return new TriangleMeshShape(verts, indices);
                 }
             case KindBox:
                 {
                     float hx = r.ReadSingle(), hy = r.ReadSingle(), hz = r.ReadSingle();
+                    if (!IsFinitePositive(hx) || !IsFinitePositive(hy) || !IsFinitePositive(hz))
+                        throw new InvalidOperationException(
+                            $"PropCollisionFormat: box half extent ({hx}, {hy}, {hz}) must be finite and positive.");
                     return new BoxShape(new Vector3(hx, hy, hz));
                 }
             case KindCompound:
                 {
+                    int level = compoundDepth + 1;
+                    if (level > MaxCompoundDepth)
+                        throw new InvalidOperationException(
+                            $"PropCollisionFormat: compound nesting exceeds {MaxCompoundDepth} levels.");
                     int childCount = ReadCount(r, "compound child", MinCompoundChildBytes);
+                    if (childCount == 0)
+                        throw new InvalidOperationException("PropCollisionFormat: compound has no children.");
                     var children = new CompoundChild[childCount];
                     for (int i = 0; i < childCount; i++)
                     {
                         Pose local = ReadPose(r);
-                        PhysicsShape child = ReadShape(r);
+                        PhysicsShape child = ReadShape(r, level);
                         children[i] = new CompoundChild(child, local);
                     }
                     return new CompoundShape(children);
@@ -210,11 +266,38 @@ public static class PropCollisionFormat
         }
     }
 
+    static bool IsFinitePositive(float value) => float.IsFinite(value) && value > 0f;
+
+    static Vector3 ReadFiniteVector(BinaryReader r, string what)
+    {
+        var v = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+        if (!float.IsFinite(v.X) || !float.IsFinite(v.Y) || !float.IsFinite(v.Z))
+            throw new InvalidOperationException($"PropCollisionFormat: {what} {v} is not finite.");
+        return v;
+    }
+
     static Pose ReadPose(BinaryReader r)
     {
         var pos = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
         var orient = new Quaternion(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+        if (!float.IsFinite(pos.X) || !float.IsFinite(pos.Y) || !float.IsFinite(pos.Z) ||
+            !float.IsFinite(orient.X) || !float.IsFinite(orient.Y) || !float.IsFinite(orient.Z) || !float.IsFinite(orient.W))
+            throw new InvalidOperationException(
+                $"PropCollisionFormat: compound child pose ({pos}, {orient}) is not finite.");
+        // The tolerance accepts any exporter's float rounding and refuses zero or garbage, which would collapse a
+        // rotated axis. A non-unit orientation is refused, never normalized.
+        if (!IsUnitOrientation(orient, out float lengthSquared))
+            throw new InvalidOperationException(
+                $"PropCollisionFormat: compound child orientation {orient} is not a unit quaternion " +
+                $"(squared length {lengthSquared}).");
         return new Pose(pos, orient);
+    }
+
+    // Read and Write share this rule. A NaN squared length passes here, and Read refuses it as not finite first.
+    static bool IsUnitOrientation(Quaternion orientation, out float lengthSquared)
+    {
+        lengthSquared = orientation.LengthSquared();
+        return !(MathF.Abs(lengthSquared - 1f) > UnitOrientationTolerance);
     }
 
     /// <summary>Read a single baked shape from a <c>.coll</c> file path. Convenience over the

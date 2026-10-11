@@ -29,7 +29,7 @@ public class GroundSeatTests
     {
         start = Start(null, null, scene.World, scene.Lease, startAxis, startFeetY);
         return GroundSeat.Resolve(null, null, scene.World, scene.Lease, start, startAxis, startFeetY, axis,
-            Vector2.Normalize(axis - startAxis), FootRadius, Tuning);
+            Vector2.Normalize(axis - startAxis), FootRadius, Tuning, CosMaxSlope);
     }
 
     static void AssertOutcome(SeatOutcome expected, GroundSeatResult result) =>
@@ -45,6 +45,144 @@ public class GroundSeatTests
     {
         Assert.Equal(0f, actual.Y);
         Assert.True(Vector3.Distance(expected, actual) <= 1e-6f, $"Expected {expected}, got {actual}");
+    }
+
+    // The witness lies on the support under the sample's axis, as for a face under the axis.
+    static SupportSample Sample(float height, Vector3 normal, float error = 0, float axisX = 0) =>
+        new(SupportStatus.Walkable, height, error, normal, null, -1, new Vector3(axisX, height, 0));
+
+    [Fact]
+    public void RiserBetweenLevelTreadsIsItsHeight()
+    {
+        SupportSample start = Sample(0, Vector3.UnitY), next = Sample(0.18f, Vector3.UnitY);
+        Assert.Equal(0.18f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+    }
+
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(-1f)]
+    public void ConvexAndConcaveCurvesAreNotSteps(float sign)
+    {
+        const float x0 = 0.3f, x1 = 0.4f;
+        SupportSample start = Sample(sign * 0.5f * x0 * x0, Vector3.Normalize(new Vector3(-sign * x0, 1, 0)),
+            axisX: x0);
+        SupportSample next = Sample(sign * 0.5f * x1 * x1, Vector3.Normalize(new Vector3(-sign * x1, 1, 0)),
+            axisX: x1);
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, new Vector2(x0, 0), next, new Vector2(x1, 0)));
+    }
+
+    [Fact]
+    public void PlanarRampIsExactlyZero()
+    {
+        float angle = Radians(30);
+        Vector3 normal = new(-MathF.Sin(angle), MathF.Cos(angle), 0);
+        // The second point is one unit along the tangent, so its float coordinates also define the plane.
+        SupportSample start = Sample(0, normal), next = Sample(-normal.X, normal, axisX: normal.Y);
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(normal.Y, 0)));
+    }
+
+    [Fact]
+    public void DropIsTheNegativeHeight()
+    {
+        SupportSample start = Sample(0.18f, Vector3.UnitY), next = Sample(0, Vector3.UnitY);
+        Assert.Equal(-0.18f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+    }
+
+    [Fact]
+    public void StepOntoASlopedTreadIsTheRiser()
+    {
+        float grade = MathF.Tan(Radians(10));
+        SupportSample start = Sample(0, Vector3.UnitY);
+        SupportSample next = Sample(0.18f, Vector3.Normalize(new Vector3(-grade, 1, 0)), axisX: 0.1f);
+        float step = GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0));
+        // rf is 0.18. rb is 0.18 less the new tread's rise over the 0.1 move.
+        Assert.True(step > 0 && Math.Abs(step - 0.18f) <= 0.1 * grade, $"Discrete step {step:R}");
+    }
+
+    // Past a sloped face's top edge the footprint overhangs the edge. The certified height is the edge's, below the
+    // face's plane at the axis, so the height field is level there and walking on is not a step. The edge is at
+    // x 2 on a face rising +X, and the body walks from x 1.95 on the face to x 2.05 past it.
+    [Theory]
+    [InlineData(14f)]
+    [InlineData(30f)]
+    public void OverhungSlopeEdgeIsNotAStep(float degrees)
+    {
+        float grade = MathF.Tan(Radians(degrees)), top = 2 * grade;
+        Vector3 face = Vector3.Normalize(new Vector3(-grade, 1, 0));
+        SupportSample start = Sample(top - 0.05f * grade, face, axisX: 1.95f);
+        SupportSample next = Sample(top, face) with { Witness = new Vector3(2, top, 0) };
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, new Vector2(1.95f, 0), next, new Vector2(2.05f, 0)));
+        Assert.Equal(0f, GroundSeat.DiscreteStep(next, new Vector2(2.05f, 0), next, new Vector2(2.15f, 0)));
+    }
+
+    [Theory]
+    [InlineData((int)SupportStatus.Steep, false)]
+    [InlineData((int)SupportStatus.Steep, true)]
+    [InlineData((int)SupportStatus.None, false)]
+    [InlineData((int)SupportStatus.None, true)]
+    [InlineData((int)SupportStatus.Refused, false)]
+    [InlineData((int)SupportStatus.Refused, true)]
+    public void NonWalkableEitherSideIsZero(int status, bool atStart)
+    {
+        SupportSample start = Sample(0, Vector3.UnitY), next = Sample(0.18f, Vector3.UnitY);
+        if (atStart) start = start with { Status = (SupportStatus)status };
+        else next = next with { Status = (SupportStatus)status };
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+    }
+
+    [Theory]
+    [InlineData(0.18f)]
+    [InlineData(-0.18f)]
+    public void CertifiedHeightErrorAbsorbsTheResidual(float height)
+    {
+        SupportSample start = Sample(0, Vector3.UnitY, MathF.Abs(height) / 2);
+        SupportSample next = Sample(height, Vector3.UnitY, MathF.Abs(height) / 2);
+        Assert.Equal(0f, GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+    }
+
+    [Theory]
+    [InlineData(1f, false, false)]
+    [InlineData(-1f, false, false)]
+    [InlineData(1f, true, false)]
+    [InlineData(-1f, true, false)]
+    [InlineData(1f, false, true)]
+    [InlineData(-1f, false, true)]
+    [InlineData(1f, true, true)]
+    [InlineData(-1f, true, true)]
+    public void ContactSkinAndErrorsBoundTheSmallestStep(float sign, bool withErrors, bool above)
+    {
+        float error = withErrors ? ShellMotion.ContactSkin / 2 : 0;
+        float height = withErrors ? 2 * ShellMotion.ContactSkin : ShellMotion.ContactSkin;
+        if (above) height = MathF.BitIncrement(height);
+        height *= sign;
+        SupportSample start = Sample(0, Vector3.UnitY, error), next = Sample(height, Vector3.UnitY, error);
+
+        Assert.Equal(above ? height : 0f,
+            GroundSeat.DiscreteStep(start, Vector2.Zero, next, new Vector2(0.1f, 0)));
+    }
+
+    // The step part is charged against the climb budget, so it rounds up, never to nearest. Feet at -2^-28 seated
+    // on terrain at 0.25 + 2^-25 rise 0.25 + 2^-25 + 2^-28, which lies between floats and rounds to nearest below
+    // itself. Both the level reference and a start plane read the same rise.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StepPartNeverUnderstatesTheRise(bool startPlane)
+    {
+        float startFeetY = -MathF.ScaleB(1f, -28);
+        float height = 0.25f + MathF.ScaleB(1f, -25);
+        double rise = (double)height - startFeetY;
+        Assert.True((double)(float)rise < rise, $"The rise {rise:R} must round to nearest below itself.");
+        SupportSample start = startPlane
+            ? new(SupportStatus.Walkable, startFeetY, 0, Vector3.UnitY, null, -1, new Vector3(0, startFeetY, 0))
+            : new(SupportStatus.None, float.NaN, float.NaN, Vector3.Zero, null, -1, Vector3.Zero);
+
+        GroundSeatResult result = GroundSeat.Resolve((_, _) => height, null, null, null, start, Vector2.Zero,
+            startFeetY, new Vector2(0.1f, 0), PlusX, FootRadius, Tuning, CosMaxSlope);
+
+        AssertOutcome(SeatOutcome.Seated, result);
+        Assert.True(result.StepPart >= rise, $"StepPart {result.StepPart:R} below the rise {rise:R}");
+        Assert.Equal(MathF.BitIncrement((float)rise), result.StepPart);
     }
 
     [Theory]
@@ -132,17 +270,19 @@ public class GroundSeatTests
         AssertSeatedAt(0, seats);
     }
 
+    // A sphere of radius 0.25 centred on the floor at x 0.3. Its top, 0.25, is under the new axis, within the band
+    // and level there, so the curved prop certifies and seats the body on its top.
     [Fact]
-    public void CurvedPropRefuses()
+    public void CurvedPropSeatsOnItsTop()
     {
         using FootSupportScene scene = new FootSupportScene(SceneVariant.Box).Flat("floor", -4, 6, -5, 5, 0);
-        // A sphere of radius 0.25 centred on the floor at x 0.3. Its top, 0.25, is under the new axis.
-        scene.World.AddStatic(new SphereShape(0.25f), Pose.At(new Vector3(0.3f, 0, 0)));
+        StaticHandle sphere = scene.World.AddStatic(new SphereShape(0.25f), Pose.At(new Vector3(0.3f, 0, 0)));
         GroundSeatResult result = Seat(scene, new Vector2(-0.2f, 0), 0, new Vector2(0.3f, 0), out SupportSample start);
 
         Assert.Equal(SupportStatus.Walkable, start.Status);
-        AssertOutcome(SeatOutcome.Refused, result);
-        Assert.Equal(0f, result.FeetY);
+        AssertOutcome(SeatOutcome.Seated, result);
+        Assert.Equal(sphere, result.Support.Static);
+        AssertSeatedAt(0.25, result);
     }
 
     // An analytic cliff ahead takes the move's reverse as its wall normal when the terrain gives none, so a zero or
@@ -155,7 +295,7 @@ public class GroundSeatTests
         Vector2[] directions = [Vector2.Zero, new(float.NaN, 0), new(0, float.PositiveInfinity)];
         foreach (Vector2 direction in directions)
             Assert.Throws<ArgumentOutOfRangeException>(() => GroundSeat.Resolve(Height, null, null, null, start,
-                Vector2.Zero, 0, new Vector2(0.2f, 0), direction, FootRadius, Tuning));
+                Vector2.Zero, 0, new Vector2(0.2f, 0), direction, FootRadius, Tuning, CosMaxSlope));
     }
 
     // Flat until x 0.1, then rising 5 in 1, so the terrain is 0.5 at x 0.2, above the start feet plus StepHeight.
@@ -171,14 +311,14 @@ public class GroundSeatTests
 
         SupportSample start = Start(Height, Normal, null, null, startAxis, 0);
         GroundSeatResult withNormal = GroundSeat.Resolve(Height, Normal, null, null, start, startAxis, 0, axis,
-            direction, FootRadius, Tuning);
+            direction, FootRadius, Tuning, CosMaxSlope);
         AssertOutcome(SeatOutcome.Wall, withNormal);
         AssertHorizontalUnit(-Vector3.UnitX, withNormal.WallNormal);
         Assert.Equal(0f, withNormal.FeetY);
 
         SupportSample bare = Start(Height, null, null, null, startAxis, 0);
         GroundSeatResult withoutNormal = GroundSeat.Resolve(Height, null, null, null, bare, startAxis, 0, axis,
-            direction, FootRadius, Tuning);
+            direction, FootRadius, Tuning, CosMaxSlope);
         AssertOutcome(SeatOutcome.Wall, withoutNormal);
         AssertHorizontalUnit(new Vector3(-direction.X, 0, -direction.Y), withoutNormal.WallNormal);
     }

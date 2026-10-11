@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using KhaozEngine.Catalog.Authoring;
 using Microsoft.Data.Sqlite;
 
 namespace KhaozEngine.Catalog.Sqlite;
@@ -10,6 +11,29 @@ namespace KhaozEngine.Catalog.Sqlite;
 /// </summary>
 internal static partial class SqliteCatalogSchemaValidation
 {
+    /// <summary>
+    /// Validates a version 2 catalog against the shapes its migration passes through and answers the version it
+    /// stands at. When the objects do not match and the version has moved past 2 since it was read, another host
+    /// migrated in between, through 3 to 4, which is answered with the moved version rather than refused.
+    /// Otherwise the mismatch is refused.
+    /// </summary>
+    /// <param name="connection">The held connection.</param>
+    /// <returns>2 when the database is still a valid version 2, or the version another host migrated it to.</returns>
+    /// <remarks>Internal rather than private so a test can drive the migrated-in-between branch directly.</remarks>
+    internal static long ValidateVersionTwoObjects(SqliteConnection connection)
+    {
+        long moved = 2;
+        try
+        {
+            ValidateVersionTwoObjects(Read(() => ReadSchemaObjects(connection)));
+            return 2;
+        }
+        catch (ContentAuthoringException) when ((moved = Read(() => ReadSchemaVersion(connection))) > 2)
+        {
+            return moved;
+        }
+    }
+
     /// <summary>
     /// A version 2 catalog whose every object matches a shape the migration passes through. A table may
     /// already carry some of its version 3 columns when the column adds were applied without the version move,

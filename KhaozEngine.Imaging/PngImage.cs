@@ -3,9 +3,10 @@ using System;
 namespace KhaozEngine.Imaging;
 
 /// <summary>
-/// Decoded, top-to-bottom PNG samples. <see cref="Bytes"/> keeps the PNG channel order. Greyscale and RGB images
-/// with a <c>tRNS</c> chunk are expanded to GA and RGBA. Each 16-bit sample is stored most-significant byte first,
-/// matching the PNG wire format and preserving all 16 bits.
+/// Decoded, top-to-bottom PNG samples in raster order. <see cref="Bytes"/> keeps the PNG channel order. Greyscale
+/// and RGB images with a <c>tRNS</c> chunk are expanded to GA and RGBA. A palette image is expanded to 8-bit RGB, or
+/// RGBA with a <c>tRNS</c> chunk. Each 16-bit sample is stored most-significant byte first, matching the PNG wire
+/// format and preserving all 16 bits.
 /// </summary>
 public readonly record struct PngImage(int Width, int Height, int Channels, int BitDepth, byte[] Bytes)
 {

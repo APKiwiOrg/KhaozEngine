@@ -174,7 +174,7 @@ public static partial class CharacterMovement
     /// (<see cref="MoveState.CommandedVelocity"/>).</param>
     /// <param name="achievedDelta">The horizontal displacement the collision resolve actually committed.</param>
     /// <param name="dt">Timestep in seconds. A non-positive dt has no velocity to measure, so nothing is carried.</param>
-    private static Vector2 ClipCarryToAchieved(Vector2 carry, Vector2 drive, Vector2 achievedDelta, float dt)
+    internal static Vector2 ClipCarryToAchieved(Vector2 carry, Vector2 drive, Vector2 achievedDelta, float dt)
     {
         Vector2 steer = drive - carry;
         if (steer == Vector2.Zero) return ClipToAchieved(carry, achievedDelta, dt);

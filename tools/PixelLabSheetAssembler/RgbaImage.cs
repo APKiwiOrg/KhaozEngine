@@ -50,8 +50,9 @@ public sealed class RgbaImage
     /// <summary>Encodes this image as an RGBA8 PNG at <paramref name="path"/>.</summary>
     public void SaveAsPng(string path) => PngWriter.Save(path, _pixels, Width, Height);
 
-    // Expands any PngReader layout (grey, grey+alpha, RGB, RGBA at 8 or 16 bits) to RGBA8. Grey is
-    // replicated into R, G and B, a missing alpha is opaque, and a 16-bit sample rounds to the nearest 8-bit value.
+    // Expands any PngReader layout (grey, grey+alpha, RGB, RGBA at 8 or 16 bits, with palettes already expanded to
+    // RGB or RGBA) to RGBA8. Grey is replicated into R, G and B, a missing alpha is opaque, and a 16-bit sample
+    // rounds to the nearest 8-bit value.
     internal static RgbaImage FromPng(PngImage png)
     {
         var img = new RgbaImage(png.Width, png.Height);

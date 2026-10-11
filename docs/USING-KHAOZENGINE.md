@@ -54,6 +54,7 @@ or grep it: every section is an `##` heading named after the package or feature 
 - [Textured props](#textured-props)
 - [Ground-cover scatter and understory companions](#ground-cover-scatter-and-understory-companions)
 - [Map documents (`KhaozEngine.MapDoc`)](#map-documents-khaozenginemapdoc)
+- [Physics for a native map document (`KhaozEngine.MapDoc.Physics`)](#physics-for-a-native-map-document-khaozenginemapdocphysics)
 - [Tile world (`KhaozEngine.TileWorld`)](#tile-world-khaozenginetileworld)
 - [Physics for a tile world (`KhaozEngine.TileWorld.Physics`)](#physics-for-a-tile-world-khaozenginetileworldphysics)
 - [Tile world rendering (`KhaozEngine.TileWorld.Render3D`)](#tile-world-rendering-khaozenginetileworldrender3d)
@@ -7685,7 +7686,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.30.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.31.1" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -7981,7 +7982,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.30.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.31.1" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8607,6 +8608,9 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 - Optional `IPhysicsCapsuleFeatures.QueryCapsuleFeature(lease, target, capsule, pose, maximumSeparationMetres, faces) -> CapsuleFeatureResult`
   certifies the closest finite feature of one static under a read lease. Bepu owners and restricted views
   support it. See [Capsule-feature certification](#capsule-feature-certification-iphysicscapsulefeatures).
+- Optional `IPhysicsSupportNeighborhood.QuerySupportNeighborhood(lease, probe, pose, bandMetres, elements, joins, filter) -> SupportNeighborhoodResult`
+  publishes every front-facing surface element of every selected static within a band of an upright probe,
+  with the symmetric join matrix over them. See [Support neighborhoods](#support-neighborhoods).
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
   `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
   `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,
@@ -8621,7 +8625,8 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   `BoxShape(halfExtents)`, `CylinderShape(radius, length)`, `ConvexHullShape(points)`,
   `TriangleMeshShape(vertices, indices)`, `CompoundShape(children)`. A dynamic body accepts any of these EXCEPT a
   triangle mesh (a mesh has no closed volume, so no mass/inertia); use a convex primitive, hull, or compound of
-  convex leaves. Base-aligned shapes (cylinder/hull) rest base-on-ground exactly as statics do (centroid-safe).
+  convex leaves. Every mesh vertex must be finite. The Bepu backend throws `ArgumentException` at `AddStatic`
+  for a mesh with a non-finite vertex, which would otherwise hide valid triangles from its mesh tree. Base-aligned shapes (cylinder/hull) rest base-on-ground exactly as statics do (centroid-safe).
 - `DynamicBodyDescription(float mass)` / `DynamicBodyDescription.WithMass(mass)`, with optional
   `LinearVelocity`, `AngularVelocity`, `SleepThreshold` (negative = backend default, 0 = never sleep). Mass &lt;= 0
   is an infinite-mass (kinematic) body: gravity and impacts do not move it, but its velocity does.
@@ -8650,7 +8655,13 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   `QueryMobility` is `All` (default), `Statics`, or `Dynamics`. `QueryFilter.All` / default matches every body;
   `QueryFilter.StaticsOnly` / `QueryFilter.DynamicsOnly` restrict by mobility (the Bepu backend applies the gate,
   so e.g. a downward ground probe passing `StaticsOnly` ignores a dynamic crate under the character). The layer
-  mask (`0` = all layers) is reserved.
+  mask (`0` = all layers) is reserved. The init-only `CullBackFaces` property (default false, outside the
+  positional parameters) makes `SweepCapsule` skip a static mesh
+  triangle that does not face against the sweep, one whose front normal `Cross(C - A, B - A)` has a dot product
+  with the sweep direction of at least zero, so vertical triangles are skipped too. A downward support probe
+  then passes the back of a one-sided mesh and reaches what lies beyond, as Bepu's one-sided mesh contacts do.
+  Compound children are never culled, raycasts are already one-sided and ignore the flag, and
+  `ComputePenetration` takes no filter. Use it as `QueryFilter.StaticsOnly with { CullBackFaces = true }`.
 - `IPhysicsWorld` joint constraints (connect two dynamic bodies, or one dynamic body to a fixed world anchor):
   `AddConstraint(in ConstraintDescription description) -> ConstraintHandle`, `RemoveConstraint(ConstraintHandle handle)`
   (safe mid-step; a double-remove or a handle whose body was already removed is a no-op). Removing a constrained
@@ -8703,7 +8714,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.30.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.31.1" />
 ```
 
 ```csharp
@@ -8953,6 +8964,57 @@ if (world is IPhysicsCapsuleFeatures features && world is IPhysicsQueryLeaseSour
   never carry it into a later lease. A later lease of the same generation cannot revive it, and
   `AssertFeatureCurrent` throws for another receiver, another lease or an expired interval.
 - The faces describe geometry only. Whether a face is walkable support is the caller's rule.
+
+### Support neighborhoods
+
+The optional `IPhysicsSupportNeighborhood` capability answers a wider question than the closest feature: every
+surface element of every selected static whose separation from an upright probe capsule may be at most
+`bandMetres`. Membership uses the lower bound of each separation interval, so a tie never refuses. Use it where
+support must not depend on which static a sweep reported or on how a scene is split into statics. It is separate
+from `IPhysicsCapsuleFeatures`, so test for it on its own. Bepu owners and restricted views offer both.
+
+```csharp
+// Under the same lease rules as the feature query. Spans can be reused across calls.
+if (world is not IPhysicsSupportNeighborhood neighborhoods) return;
+var elements = new SupportElement[SupportNeighborhoodResult.MaximumElements];
+var joins = new ulong[elements.Length * SupportNeighborhoodResult.JoinWordsFor(elements.Length)];
+SupportNeighborhoodResult result = neighborhoods.QuerySupportNeighborhood(lease, probe, contact,
+    bandMetres: 0.0001f, elements, joins, QueryFilter.StaticsOnly);
+if (result.Status == CapsuleFeatureStatus.Complete)
+{
+    neighborhoods.AssertNeighborhoodCurrent(result, lease);
+    for (int i = 0; i < result.Elements; i++)
+    {
+        SupportElement element = elements[i];
+        int row = i * result.JoinWordsPerRow;
+        for (int j = 0; j < result.Elements; j++)
+        {
+            bool joined = (joins[row + j / 64] & (1UL << (j % 64))) != 0;
+            // Decide support from element.Normal, element.Witness, their error bounds and the joins.
+        }
+    }
+}
+```
+
+- Each `SupportElement` names its `Static`, a `Kind` and a stable `ElementId`. A `Polygon` is a box or hull face
+  (`leaf * 256 + face`) or one mesh triangle (its triangle index). A `Tangent` is a point on a sphere, capsule or
+  cylinder side (`leaf * 256`) or a cylinder cap (`leaf * 256 + 1` top, `+ 2` bottom). Each carries its outward
+  normal, the witness closest to the probe segment, their error bounds and the separation interval. Elements are
+  ordered by static handle, then element id.
+- Joins are a symmetric bit matrix. Row `i` starts at word `i * JoinWordsPerRow` and bit `j` is set when polygons
+  `i` and `j` may meet within the band and each lies on or below the other's plane within it. Tangent elements are
+  never joined. Index rows with `JoinWordsPerRow`, never with a stride derived from your buffer.
+- Back-facing elements are not members. Mesh triangles are certified one by one, so non-manifold edges,
+  duplicate triangles and inconsistent winding never refuse. Degenerate triangles are not members.
+- A complete result holds at most `MaximumElements` (256). A larger neighborhood returns `CapacityExceeded` with
+  `RequiredElements`. `Unsupported` means the probe, pose or band is outside the backend's certified domain (an
+  upright probe of radius 0.01 to 2, length up to 8 and a band up to 0.01) or a shape it cannot capture.
+  `Ambiguous` means a convex hull whose faces could not be proven convex and manifold. A refusal leaves both
+  spans untouched.
+- A layer filter, a non-finite pose, an invalid probe and a join span shorter than
+  `elements.Length * JoinWordsFor(elements.Length)` throw `ArgumentException`.
+- A result belongs to its receiver and original lease. `AssertNeighborhoodCurrent` throws for another receiver,
+  another lease or an expired interval.
 
 ---
 
@@ -10133,7 +10195,75 @@ resourceRoot)` in `KhaozEngine.Terrain.Render3D` adapts one native asset to a re
 explicit absolute root, resolves the mesh and first LOD through their resource references (never from IDs),
 re-hashes both against the verified digests and computes `HeightMeters` from the render bounds times
 `SourceUnitsToMetres`. Collision, light, selection and further LOD data stay in the closure. It loads no mesh
-and does not provide native source-scale loading.
+and does not provide native source-scale loading. `NativeMapAssetLoader.Load(asset, closure)`, in the same package,
+does: it parses the verified mesh resource from the closure's bytes, refusing any buffer or image that names an
+external URI, and multiplies every vertex position by `SourceUnitsToMetres` once. It never fits the mesh to a height, drops its base or recentres it, so a native mesh keeps
+its authored origin and agrees with its collider.
+
+---
+
+## Physics for a native map document (`KhaozEngine.MapDoc.Physics`)
+
+`KhaozEngine.MapDoc.Physics` builds one immutable headless world from a complete native document and its verified
+asset closure. It is opt-in, in no umbrella, and references only `MapDoc`, `Physics`, `Movement` and `Locomotion`,
+so the caller picks the `IPhysicsWorld`. The [package reference](../KhaozEngine.MapDoc.Physics/README.md) lists every
+type.
+
+```csharp
+MapBuiltWorld world = MapWorldBuilder.Build(document, closure,
+    new MapWorldBuildOptions(resolveOptions, "my-game/rules/1", new MapTerrainChunkPolicy(), legacyHeight));
+using MapPhysicsRegistration registration = MapPhysicsRegistration.Register(world, physics);
+var queries = new MapWorldQueries(world);
+var relations = new MapPhysicalRelations(registration);
+```
+
+What it produces:
+
+- **Asset shapes.** `MapAssetShapes.Read` reads each asset's `Collider` and `Selection` resources as `PhysicsShape`
+  values in source units. An asset is solid exactly when it declares a collider.
+- **Placement geometry and envelopes.** `MapPlacementShapes` scales each collider once by source units times
+  placement scale. `MapInteractionEnvelope` is the pick and reach volume under `kemap/interaction-envelope/1`, swept
+  up to at least 1 m and never installed.
+- **Terrain physics.** `MapTerrainPhysics.Compile` turns a resolver 2 document's compiled R2 faces into bounded
+  one-sided meshes on whole-metre anchors, each triangle mapped to its canonical face.
+- **The built world.** `MapBuiltWorld` holds the resolved document, placement geometry, terrain chunks, installable
+  statics, feature query diagnostics, bounds and a `BuildHash`.
+- **Registration and queries.** `MapPhysicsRegistration` installs the statics and maps handles and incident faces
+  back to owners. `MapWorldQueries` answers pick, envelope reach and collider distance without a backend.
+  `MapStanceCandidates` proposes walk-up stances for a game-bound validator to seat. `MapPhysicalRelations` answers
+  line of sight and clearance against the registered world under a held read lease.
+- **Residency and navigation identity.** `MapResidencyOwnership` and `MapNavTiling` name the owners, storage tiles
+  and navigation tiles an edit invalidates.
+
+**Ownership boundary.** The package adds no step limit, ledge rule or support model. Ground support, seating, steps
+and navigation column sampling stay with the #438 contact controller, which will stand on the statics a native world
+installs. A resolver 1 world keeps analytic ground behind `LegacySupportHeight` and installs no terrain statics.
+Vertical-layer navigation on native worlds waits for #438 phase 5.
+
+**Feature query diagnostics.** `MapBuiltWorld.Diagnostics` reports each limit of the backend's capsule feature query
+(`IPhysicsCapsuleFeatures`) a static meets, without refusing the static, which still collides and blocks:
+`LeafCapacity` (a compound of more than 64 leaves), `CurvedLeaf` (a sphere, capsule or cylinder leaf, which that query
+does not capture), `MeshTriangleCapacity` (a mesh over 65,536 triangles), `LocalExtent` (a leaf reaching more than
+64 m from its origin) and `HullCapacity`. `HullCapacity` is conservative: any convex hull over 130 points is flagged,
+because 130 points always fit the backend's 256 faces and 1,524 face entries, even though a larger hull may still be
+captured. Every diagnostic predicts `IPhysicsCapsuleFeatures` capture only. The #438 contact controller's
+foot-support primitive, not yet used by movement, certifies through `IPhysicsSupportNeighborhood`, which has different
+limits: it captures curved leaves, reads only the mesh triangles near its probe and caps one query at 256 elements,
+while it shares the 64 leaf and hull face limits. It applies its own 64 m local bound to curved leaf sizes and to the
+mesh triangles near its probe, which `LocalExtent` does not predict, and one unsupported static near a probe refuses
+the whole neighborhood query.
+
+**Refusals.** `MapAssetShapes.Read` throws `MapDocumentException` for an asset that declares a `Surface` (support)
+resource, since placement-local support surfaces arrive with R5. It also refuses a compound holding a triangle mesh,
+a hull or mesh with no points and a payload with bytes after its shape. The `PropCollisionFormat` reader beneath it
+refuses non-finite or non-positive box and cylinder sizes, non-finite points and poses, a mesh index count that is
+not a multiple of 3 or an index outside the vertices, an empty compound, compound nesting deeper than 16 levels and
+a compound child orientation that is not a unit quaternion. `PropCollisionFormat.Write` refuses that orientation
+too, so a writer never produces such a payload.
+
+**Editing colliders.** ke-mapedit's `NativeCollisionService` measures a placement's mesh top against its collider
+and resizes box colliders through content-addressed resources written by `MapAssetFileWriter`. See the
+[ke-mapedit README](../KhaozEngine.MapEdit.Tool/README.md#native-colliders).
 
 ---
 
@@ -10831,9 +10961,8 @@ referring to it by id keeps resolving.
 around it), `SetHeights`, `Line` (Bresenham, one object per tile, one undo step), `Scatter` (a jittered grid
 whose offsets come from a hash of the point and the seed, so the same arguments always produce the same world),
 `PlacePrefab` and `ImportHeights`. Height imports detect binary PGM (netpbm P5) or PNG by signature.
-`PngReader` in Imaging supports non-interlaced 8/16-bit grayscale, gray-alpha, RGB and RGBA, using grayscale
-or the red channel as height and ignoring alpha. Both formats preserve 16-bit sample precision. Palette and
-interlaced PNGs are rejected. Write PGM files with LF line endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
+`PngReader` in Imaging supports every PNG colour type and bit depth, noninterlaced or Adam7, using grayscale
+or the red channel as height and ignoring alpha. A palette PNG supplies the red channel of each entry. Both formats preserve 16-bit sample precision. Write PGM files with LF line endings: a CRLF header spends its CR as the single delimiter byte and leaves the LF as sample 0, which shifts
 the whole raster.
 
 Two limits are worth knowing before leaning on the general case. A `SnapshotRectCommand` owns what was inside
@@ -10920,7 +11049,7 @@ centre and radius. Every configure, density, paint and remove call is one undo s
 (a headless Metal, D3D11 or Vulkan device, through `TileWorldSnapshot`, the same path the render goldens take),
 and both hand back a text block naming the framing followed by the PNG itself, with an optional `savePath` that
 ALSO writes the file and joins the saved path to that framing line. Everything else runs on a machine with no
-display. `height_import` reads binary PGM (P5) or non-interlaced 8/16-bit PNG. Both formats use the same
+display. `height_import` reads binary PGM (P5) or PNG. Both formats use the same
 undoable height command and north-first row orientation.
 
 A short authoring run:
@@ -15775,7 +15904,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.30.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.31.1" />
 ```
 
 ```csharp
@@ -15811,7 +15940,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.30.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.31.1" />
 ```
 
 ```csharp
@@ -16053,7 +16182,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.30.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.31.1" />
 ```
 
 ```csharp
@@ -20413,7 +20542,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.30.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.31.1" />
 </ItemGroup>
 ```
 

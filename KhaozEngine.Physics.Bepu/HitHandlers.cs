@@ -73,7 +73,7 @@ internal struct RayHitHandler : IRayHitHandler
 }
 
 /// <summary>Records the nearest sweep hit for <see cref="BepuPhysicsWorld.SweepCapsule"/>, gated by
-/// query mobility and static selection.</summary>
+/// query mobility, static selection and, with <see cref="QueryFilter.CullBackFaces"/>, mesh back faces.</summary>
 internal struct SweepHitHandler : ISweepHitHandler
 {
     public float HitT;
@@ -84,8 +84,12 @@ internal struct SweepHitHandler : ISweepHitHandler
     public bool HitWasStatic; // the recorded nearest hit was a static (HitStatic is meaningful); false = dynamic
     public KhaozEngine.Physics.QueryMobility Mobility;
     private readonly StaticQueryExclusions? _exclusions;
+    // Set only when the filter asks for back-face culling. The sweep direction it is tested against.
+    private readonly Simulation? _cullSimulation;
+    private readonly Vector3 _cullDirection;
 
-    public SweepHitHandler(KhaozEngine.Physics.QueryMobility mobility, StaticQueryExclusions? exclusions = null)
+    public SweepHitHandler(KhaozEngine.Physics.QueryMobility mobility, StaticQueryExclusions? exclusions = null,
+        Simulation? cullSimulation = null, Vector3 cullDirection = default)
     {
         HitT = float.MaxValue;
         HitLocation = default;
@@ -95,14 +99,34 @@ internal struct SweepHitHandler : ISweepHitHandler
         HitWasStatic = false;
         Mobility = mobility;
         _exclusions = exclusions;
+        _cullSimulation = cullSimulation;
+        _cullDirection = cullDirection;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool AllowTest(CollidableReference collidable)
         => QueryMobilityGate.Allows(Mobility, collidable) && (_exclusions?.Allows(collidable) ?? true);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool AllowTest(CollidableReference collidable, int childIndex) => AllowTest(collidable);
+    // Bepu asks per child of a mesh or compound target. For a mesh the child is the triangle index. Meshes are
+    // statics only, and compound children are never culled.
+    public bool AllowTest(CollidableReference collidable, int childIndex)
+        => AllowTest(collidable) && (_cullSimulation is null || !IsMeshBackFace(collidable, childIndex));
+
+    // True when the mesh triangle's world front normal Cross(C - A, B - A), the convention of Bepu 2.4
+    // Triangle.RayTest and CapsuleFeatureMesh, does not face against the sweep. A normal perpendicular to the sweep
+    // is culled too, so a support probe passes a vertical one-sided fin.
+    private readonly bool IsMeshBackFace(CollidableReference collidable, int childIndex)
+    {
+        if (collidable.Mobility != CollidableMobility.Static) return false;
+        ref Static target = ref _cullSimulation!.Statics.GetDirectReference(collidable.StaticHandle);
+        if (target.Shape.Type != default(Mesh).TypeId) return false;
+        ref Mesh mesh = ref _cullSimulation.Shapes.GetShape<Mesh>(target.Shape.Index);
+        ref Triangle triangle = ref mesh.Triangles[childIndex];
+        // Mesh.GetLocalChild scales each vertex, so the scaled winding is the one Bepu collides with.
+        Vector3 a = triangle.A * mesh.Scale, b = triangle.B * mesh.Scale, c = triangle.C * mesh.Scale;
+        Vector3 front = Vector3.Transform(Vector3.Cross(c - a, b - a), target.Pose.Orientation);
+        return Vector3.Dot(front, _cullDirection) >= 0f;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void OnHit(ref float maximumT, float t, in Vector3 hitLocation, in Vector3 hitNormal, CollidableReference collidable)

@@ -23,7 +23,7 @@ public sealed partial class BepuPhysicsWorld
     }
 
     private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts,
-        IPhysicsCapsuleSweep, IPhysicsCapsuleFeatures
+        IPhysicsCapsuleSweep, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood
     {
         private readonly BepuPhysicsWorld _owner;
         private readonly StaticQueryExclusions _exclusions;
@@ -71,6 +71,23 @@ public sealed partial class BepuPhysicsWorld
             _owner.AuthenticateFeatureLease(lease);
             ThrowIfDisposed();
             _owner.AssertFeatureCurrentCore(this, result, lease);
+        }
+
+        public SupportNeighborhoodResult QuerySupportNeighborhood(IPhysicsQueryLease lease, CapsuleShape probe,
+            Pose pose, float bandMetres, Span<SupportElement> elements, Span<ulong> joins,
+            QueryFilter filter = default)
+        {
+            _owner.AuthenticateFeatureLease(lease);
+            ThrowIfDisposed();
+            return _owner.QuerySupportNeighborhoodCore(this, lease, probe, pose, bandMetres, elements, joins, filter,
+                _exclusions);
+        }
+
+        public void AssertNeighborhoodCurrent(in SupportNeighborhoodResult result, IPhysicsQueryLease lease)
+        {
+            _owner.AuthenticateFeatureLease(lease);
+            ThrowIfDisposed();
+            _owner.AssertNeighborhoodCurrentCore(this, result, lease);
         }
 
         public Vector3 Origin

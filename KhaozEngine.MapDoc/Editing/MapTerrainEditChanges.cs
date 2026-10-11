@@ -127,20 +127,7 @@ internal static class MapTerrainEditChanges
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (MapSurfacePatch patch in set.Patches.Values)
             foreach (MapTopologyRecord record in patch.Records)
-            {
-                // A fixed valid envelope isolates a record's canonical bytes and its anchor from terrain changes.
-                var envelope = new MapSurfacePatch
-                {
-                    Key = patch.Key,
-                    Width = 1,
-                    Depth = 1,
-                    Heights = new int[4],
-                    Cells = new MapSurfaceCell[1],
-                    Presence = new[] { 1UL },
-                };
-                envelope.Records.Add(record);
-                result.Add(record.Id, MapSurfaceSemantics.PatchDigest(envelope));
-            }
+                result.Add(record.Id, MapSurfaceSemantics.RecordDigest(patch.Key, record));
         return result;
     }
 

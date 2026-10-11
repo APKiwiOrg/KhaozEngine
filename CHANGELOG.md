@@ -5,6 +5,90 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.31.1
+
+- A SQLite content catalog opened by several hosts at once no longer refuses a correct database (#1353). A host
+  that read version 2 while another host migrated the file through version 3 to 4 compared the version 4 tables
+  against the version 2 shape and threw `ContentAuthoringException`. It now carries on from the migrated version,
+  as the version 3 check already did.
+- Locomotion's internal contact-classification controller gains its whole tick for phase 3 of #438: the air pass
+  with jumps, coyote time and landing, steep slides on terrain and props, traction hysteresis and movement
+  commitments. Nothing consumes it yet, so there is no consumer or movement change.
+- The same controller now exports `StepDeltaY`, `ClimbRate` and `ClimbRateEwma` for phase 4a of #438. Steps are
+  support jumps both sides agree on, above the 1 mm contact skin, and stair runs are read from certified support
+  ahead. Still no consumer or movement change.
+
+## 20.31.0
+
+- The PixelLab sheet assembler tool reads palette and interlaced PNGs again (#1345). `PngReader` in
+  `KhaozEngine.Imaging` decodes 1, 2, 4 and 8-bit palette PNGs, with `tRNS` alpha, and Adam7-interlaced images
+  of every supported colour type. A palette decodes to 8-bit RGB, or RGBA when `tRNS` is present. Tile height
+  imports accept the same files.
+- `PngReader` decodes 1, 2 and 4-bit greyscale, scaled to 8 bits, with an optional `tRNS` colour key matched
+  against the stored sample. Every PNG colour type and bit depth now decodes.
+- Locomotion's internal foot-support primitive certifies the complete support neighborhood across statics for
+  phase 2b of the #438 contact-classification controller. Concave creases, vertices, sphere, capsule and
+  cylinder statics, one-sided back faces, ridges split across statics and stair nosing ties now certify
+  instead of refusing (#1329 to #1333, #1340, #1342). Nothing consumes it yet, so movement is unchanged.
+- Physics adds the init-only `QueryFilter.CullBackFaces` property, which makes `SweepCapsule` skip mesh triangles
+  that do not face against the sweep. The positional constructor and `Deconstruct` are unchanged.
+- Physics adds the optional `IPhysicsSupportNeighborhood` capability. `QuerySupportNeighborhood` publishes every
+  surface element of every selected static within a band of an upright probe with the joins between them, and
+  `AssertNeighborhoodCurrent` binds a result to its receiver and lease. A join span shorter than
+  `elements.Length * JoinWordsFor(elements.Length)` throws `ArgumentException`. Bepu worlds and their selected
+  query views implement it for boxes, convex hulls, meshes, spheres, capsules, cylinders and compounds of those.
+  `IPhysicsCapsuleFeatures` is unchanged.
+- `BepuPhysicsWorld.AddStatic` throws `ArgumentException` for a triangle mesh with a non-finite vertex.
+- New opt-in package `KhaozEngine.MapDoc.Physics` builds one immutable headless world from a native MapDoc
+  document (World Authoring R3). It is in no umbrella, so add it explicitly, with `KhaozEngine.Physics.Bepu` for
+  the shipped backend. `MapAssetShapes` reads collider and selection shapes from a verified asset closure.
+  `MapPlacementShapes` resolves placement geometry with each placement's `MapInteractionEnvelope`, and
+  `MapTerrainPhysics` compiles native terrain into bounded physics chunks. `MapWorldBuilder` assembles them into a
+  `MapBuiltWorld` with a build identity. `MapWorldQueries` answers pick and reach, and `MapStanceCandidates` proposes
+  stances.
+  `MapWorldGrids` and `MapResidencyOwnership` map storage tiles, navigation tiles and server cells to residency
+  owners. `MapPhysicsRegistration` installs the statics into any `IPhysicsWorld` and names the compiled face of
+  every terrain triangle. `MapPhysicalRelations` answers line of sight and clearance under a held read lease.
+  `MapNavTiling` gives navigation tile identity, seams and links and lists the tiles an edit invalidates.
+- `KhaozEngine.MapDoc.Physics` adds no step limit, ledge rule or support model. Ground support, seating and steps
+  stay with the #438 contact controller, which will stand on the statics a native world installs.
+- `MapBuiltWorld.Diagnostics` reports each `IPhysicsCapsuleFeatures` limit a static meets, without refusing the
+  static: `LeafCapacity`, `CurvedLeaf`, `MeshTriangleCapacity`, `LocalExtent` and `HullCapacity`. They predict
+  that capability only. The contact controller's foot-support primitive, not yet used by movement, certifies through
+  `IPhysicsSupportNeighborhood`. It captures curved leaves and applies its own 64 m local bound to curved leaf sizes
+  and to the mesh triangles near its probe, which `LocalExtent` does not predict. One unsupported static near a probe
+  refuses the whole neighborhood query.
+- `MapAssetShapes.Read` throws `MapDocumentException` for an asset that declares a `Surface` (support)
+  resource. Placement-local support surfaces arrive with World Authoring R5.
+- Locomotion exposes the contact controller's shell as the public `ContactShell` in
+  `KhaozEngine.Locomotion.Contacts`. `Validate`, `Shape` and `Centre` delegate to the controller's own shell
+  geometry, so callers outside locomotion share one body model.
+- `PropCollisionFormat.Read` now refuses malformed shape data with `InvalidOperationException`: non-finite or
+  non-positive box and cylinder sizes, non-finite points, vertices and poses, a compound child orientation that
+  is not a unit quaternion, a mesh index count that is not a multiple of 3 or an index outside the vertices, an
+  empty compound and nesting deeper than 16 levels. `Write` refuses a non-unit compound child orientation with
+  `ArgumentException`. A malformed `.coll` file that loaded before now throws.
+- Render3D adds `GltfLoader.LoadFlattenedAlbedo(ReadOnlyMemory<byte>, string)`, which parses a binary glTF
+  already in memory and names the identity in errors.
+- Terrain.Render3D adds `NativeMapAssetLoader.Load(asset, closure)`. It loads a native asset's mesh from the
+  closure's verified bytes with its source units applied once and no height fitting, so the mesh agrees with its
+  collider, and refuses a buffer or image with an external URI.
+- `ke-mapedit` adds `NativeCollisionService`, which measures a placement's mesh top against its collider and
+  resizes box colliders, and `MapAssetFileWriter`, which writes content-addressed resources and root manifests
+  under an explicit asset root.
+- MapDoc adds the non-positional `MapNativeWriteSet.NativeAssets` flag, which makes publication take the
+  candidate's whole native asset root list. The released constructor is unchanged.
+- MapDoc adds `MapNativeInvalidation.Unbounded` for a geometry change whose bounds are unknown. It is a full
+  reset: discard all derived state for the world and rebuild from the post-edit world.
+- MapDoc adds `MapNativeResolution.Resolve`, which routes a native document to its resolver by identity,
+  `MapLegacyTerrainDigest` for a resolver 1 document's analytic terrain, `MapSurfaceSemantics.RecordDigest` and
+  `MapBox3.Union`.
+- MapEditor placement edits now report `Physics`, `Nav` and `Residency` invalidation with the changed placements'
+  old and new bounds, or `Unbounded` with no bounds, where they reported `Placements` only. A host binds an
+  `INativePlacementBounds` provider through the new `BindNativeAssets(assets, placementBounds)` overloads, and
+  ke-mapedit supplies `NativePlacementBoundsProvider`. Both released `BindNativeAssets` overloads are kept.
+- No MapDoc format version or identity token changes in this release.
+
 ## 20.30.0
 
 - The PixelLab sheet assembler tool reads and writes PNG through `KhaozEngine.Imaging` instead of

@@ -860,6 +860,34 @@ quarter-turn basis its drawn model uses.
 `ArchitectureTests.TileWorldPhysics_ReferencesOnlyTileWorldPhysicsAndLocomotion` pins the three edges and the
 absence of any package reference, and `TileWorld.Physics` is on the `OptInBackends` list.
 
+## Map document physics package edges
+
+`KhaozEngine.MapDoc.Physics` is the physics arm of the native map document, opt-in and in NO umbrella, split off so
+`KhaozEngine.MapDoc` stays physics-free for a tool or an editor that never needs a collider:
+
+```
+KhaozEngine.MapDoc.Physics -> KhaozEngine.MapDoc      (the document, the verified asset closure and MapDocumentException)
+KhaozEngine.MapDoc.Physics -> KhaozEngine.Physics     (PropCollisionFormat, the shapes it reads and the IPhysicsWorld seam)
+KhaozEngine.MapDoc.Physics -> KhaozEngine.Movement    (the reach and ground contracts the shared world composes)
+KhaozEngine.MapDoc.Physics -> KhaozEngine.Locomotion  (the contact shell that physical clearance sweeps)
+```
+
+Four forward edges and no backend: the caller picks the `IPhysicsWorld`. It references no renderer, no GPU, no
+TileWorld and no game. `Collider` and `Selection` resources carry `PropCollisionFormat` version 1 bytes, read
+through the existing `Physics` seam, so the package adds no format and no third-party package. The nonpackable test
+project references only `MapDoc.Physics`, `Physics.Bepu`, for proofs against the shipped backend, and `Sharding`,
+for grid equivalence. `ArchitectureTests.MapDocPhysics.cs` pins both project-reference sets, the absence of any
+package reference and the package's absence from every umbrella closure, and `MapDoc.Physics` is on the
+`OptInBackends` list.
+
+One dev tool references it:
+
+```
+KhaozEngine.MapEdit.Tool -> KhaozEngine.MapDoc.Physics  (NativeCollisionService reads and measures native colliders)
+```
+
+`ke-mapedit` is in no umbrella, so the edge carries the package into no shipped game.
+
 ## Content catalog package edges
 
 The family is seven packages, and every edge is forward and acyclic. `KhaozEngine.Catalog`, the read side, adds
@@ -2056,6 +2084,7 @@ To swap or add a backend for a seam that already has the separate-package split:
 | Player persistence core | `../KhaozEngine.WorldStore/IPersistenceHost.cs`, `PersistenceBinding.cs`, `PersistenceCoreConfig.cs`, `PositionHintCache.cs` | `StatePersistence.cs` (+ `.Load.cs` / `.Save.cs`), bound by `../KhaozEngine.NetWorld/WorldPersistence.cs` and `../KhaozEngine.TileWorld.Netcode/TileWorldPersistence.cs` |
 | Tile-world movement | `../KhaozEngine.TileWorld.Netcode/TileMoveState.cs`, `TileRoute.cs`, `TileCommand.cs`, `TileStepTicks.cs`, `TileMoveOptions.cs`, `TileActorTraversalProfile.cs`, `ITileTargets.cs`, `ITileGroundHeight.cs`, `TileProtocol*.cs`, `TileServerReason.cs`, `TileCells.cs` | `TileMoveSimulator.cs`, `TileReach.cs`, `TileActionQueue.cs`, `TileMovementSystem.cs`, `TileActorTraversalRegistry.cs`, `TileDocumentTargets.cs`, `TileDocumentGroundHeight.cs`, `TileWorldServer*.cs`, `TileWorldClient*.cs`, `TilePresenter.cs`, `TileDrawPriority.cs`, `TileDrawPriority.Footprints.cs`, `TileWorldPersistence.cs`, `TilePlayerRecord.cs`, plus `../KhaozEngine.TileWorld/TileCollisionBaker.cs` for alternate ground topology baking |
 | Tile world physics | `../KhaozEngine.TileWorld.Physics/TileWorldColliders.cs`, `TileColliderRegistration.cs`, `TileColliderOptions.cs`, registered through `../KhaozEngine.Physics/IPhysicsWorld.cs` | any `IPhysicsWorld`, `../KhaozEngine.Physics.Bepu/BepuPhysicsWorld.cs` in its tests |
+| Map document physics | `../KhaozEngine.MapDoc.Physics/MapAssetShapes.cs`, reading `../KhaozEngine.Physics/PropCollisionFormat.cs` resources from `../KhaozEngine.MapDoc/Assets/MapAssetClosure.cs` | any `IPhysicsWorld`, `../KhaozEngine.Physics.Bepu/BepuPhysicsWorld.cs` in its tests |
 | Server ban list | `../KhaozEngine.Netcode/IBanStore.cs`, `InMemoryBanStore.cs` (forwarded from `../KhaozEngine.NetWorld/TypeForwards.cs`) | `../KhaozEngine.NetWorld/WorldStoreBanStore.cs`, `../KhaozEngine.Accounts/AccountBanStore.cs` |
 | Admin HTTP endpoint | `../KhaozEngine.Netcode/IAdminControllable.cs` (seam, forwarded from `../KhaozEngine.NetWorld/TypeForwards.cs`) | `../KhaozEngine.Server.Admin/` (Kestrel, ASP.NET Core), over `ServerAdmin` and any head: `WorldServer`, `ShardedWorldServer`, `../KhaozEngine.TileWorld.Netcode/TileWorldServer.Admin.cs` |
 | Audio | `../KhaozEngine.Audio/IMusicBackend.cs`, `ISfxBackend.cs`, `Null*Backend.cs` | `../KhaozEngine.Audio/OpenAl*Backend.cs` |

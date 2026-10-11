@@ -12,37 +12,71 @@ internal readonly record struct CapsuleFeaturePolyhedronEdge(int A, int B, int F
 /// <summary>A strictly convex, closed, consistently wound finite solid. Admission checks all faces,
 /// all source vertices and the complete edge/vertex neighborhoods before any closest query.
 /// The common positive-determinant affine map preserves topology without rounded world vertices.</summary>
-internal sealed class CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose localPose, RigidPose worldPose,
-    int leafId, Vector3[] localVertices, FeaturePoint[] vertices, int[][] faces, InstalledPoseOperator transform)
+internal sealed class CapsuleFeaturePolyhedron
 {
-    internal TypedIndex InstalledShape { get; } = shape;
-    internal RigidPose InstalledLocalPose { get; } = localPose;
-    internal RigidPose InstalledWorldPose { get; } = worldPose;
-    internal int LeafId { get; } = leafId;
-    internal Vector3[] LocalVertices { get; } = localVertices;
-    internal FeaturePoint[] Vertices { get; } = vertices;
-    internal int[][] Faces { get; } = faces;
+    InstalledPoseOperator _transform;
+
+    internal CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose localPose, RigidPose worldPose, int leafId,
+        Vector3[] localVertices, FeaturePoint[] vertices, int[][] faces, InstalledPoseOperator transform) =>
+        Reset(shape, localPose, worldPose, leafId, localVertices, vertices, faces, transform);
+
+    /// <summary>An empty leaf that a <see cref="CapsuleFeatureCaptureScratch"/> reuses through
+    /// <see cref="Reset"/>.</summary>
+    internal CapsuleFeaturePolyhedron() { }
+
+    internal void Reset(TypedIndex shape, RigidPose localPose, RigidPose worldPose, int leafId,
+        Vector3[] localVertices, FeaturePoint[] vertices, int[][] faces, InstalledPoseOperator transform)
+    {
+        InstalledShape = shape;
+        InstalledLocalPose = localPose;
+        InstalledWorldPose = worldPose;
+        LeafId = leafId;
+        LocalVertices = localVertices;
+        Vertices = vertices;
+        Faces = faces;
+        _transform = transform;
+        Edges = [];
+        Normals = [];
+        VertexFaces = [];
+    }
+
+    internal TypedIndex InstalledShape { get; private set; }
+    internal RigidPose InstalledLocalPose { get; private set; }
+    internal RigidPose InstalledWorldPose { get; private set; }
+    internal int LeafId { get; private set; }
+    internal Vector3[] LocalVertices { get; private set; } = [];
+    internal FeaturePoint[] Vertices { get; private set; } = [];
+    internal int[][] Faces { get; private set; } = [];
     internal CapsuleFeaturePolyhedronEdge[] Edges { get; private set; } = [];
     internal FeaturePoint[] Normals { get; private set; } = [];
     internal int[][] VertexFaces { get; private set; } = [];
-    internal FeaturePoint EdgeDirection(int a, int b) => transform.Edge(LocalVertices[a], LocalVertices[b]);
+    internal FeaturePoint EdgeDirection(int a, int b) => _transform.Edge(LocalVertices[a], LocalVertices[b]);
 
-    internal CapsuleFeatureStatus Validate()
+    /// <summary>Admits the leaf. With <paramref name="scratch"/> every working collection and the normals come from
+    /// it, and the edge and vertex incidence arrays are not published. The decision is the same either way.</summary>
+    internal CapsuleFeatureStatus Validate(CapsuleFeatureCaptureScratch? scratch = null)
     {
         if (Vertices.Length < 4 || Faces.Length < 4 || LocalVertices.Length != Vertices.Length)
             return CapsuleFeatureStatus.Unsupported;
         if (Faces.Length > CapsuleFeatureGeometry.MaximumFaces || Vertices.Length > CapsuleFeatureGeometry.MaximumVertices)
             return CapsuleFeatureStatus.CapacityExceeded;
-        if (new HashSet<Vector3>(LocalVertices).Count != Vertices.Length) return CapsuleFeatureStatus.Ambiguous;
-        var edges = new List<CapsuleFeaturePolyhedronEdge>();
-        var edgeIds = new Dictionary<(int, int), int>();
-        var incidence = new List<int>[Vertices.Length];
-        for (int i = 0; i < incidence.Length; i++) incidence[i] = [];
-        var normals = new FeaturePoint[Faces.Length];
+        if (Distinct(LocalVertices, scratch) != Vertices.Length) return CapsuleFeatureStatus.Ambiguous;
+        List<CapsuleFeaturePolyhedronEdge> edges = scratch?.Edges ?? [];
+        Dictionary<(int, int), int> edgeIds = scratch?.EdgeIds ?? [];
+        edges.Clear();
+        edgeIds.Clear();
+        var incidence = scratch is null ? new List<int>[Vertices.Length] : null;
+        for (int i = 0; i < Vertices.Length; i++)
+        {
+            if (incidence is not null) incidence[i] = [];
+            else scratch!.ClearedIncidence(i);
+        }
+        List<int> Incident(int vertex) => incidence is not null ? incidence[vertex] : scratch!.Incidence[vertex];
+        FeaturePoint[] normals = scratch?.Points(Faces.Length) ?? new FeaturePoint[Faces.Length];
         for (int faceId = 0; faceId < Faces.Length; faceId++)
         {
             int[] face = Faces[faceId];
-            if (face.Length < 3 || new HashSet<int>(face).Count != face.Length)
+            if (face.Length < 3 || Distinct(face, scratch) != face.Length)
                 return CapsuleFeatureStatus.Ambiguous;
             for (int i = 0; i < face.Length; i++)
                 if ((uint)face[i] >= (uint)Vertices.Length) return CapsuleFeatureStatus.Unsupported;
@@ -83,7 +117,7 @@ internal sealed class CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose local
                     edgeIds.Add(key, edges.Count);
                     edges.Add(new(first, second, faceId, -1));
                 }
-                incidence[first].Add(faceId);
+                Incident(first).Add(faceId);
             }
             FeaturePoint ab = EdgeDirection(face[0], face[1]);
             FeaturePoint ac = EdgeDirection(face[0], face[2]);
@@ -95,25 +129,48 @@ internal sealed class CapsuleFeaturePolyhedron(TypedIndex shape, RigidPose local
         foreach (CapsuleFeaturePolyhedronEdge edge in edges)
             if (edge.SecondFace < 0) return CapsuleFeatureStatus.Ambiguous;
         // A complete cyclic vertex link is required, not just two faces per edge.
+        HashSet<int> reached = scratch?.Reached ?? [];
+        Queue<int> queue = scratch?.Pending ?? new();
         for (int vertex = 0; vertex < Vertices.Length; vertex++)
         {
-            if (incidence[vertex].Count < 3) return CapsuleFeatureStatus.Ambiguous;
-            if (!Connected(incidence[vertex], edges, vertex)) return CapsuleFeatureStatus.Ambiguous;
+            if (Incident(vertex).Count < 3) return CapsuleFeatureStatus.Ambiguous;
+            if (!Connected(Incident(vertex), edges, vertex, reached, queue)) return CapsuleFeatureStatus.Ambiguous;
         }
-        var all = new List<int>();
+        List<int> all = scratch?.AllFaces ?? [];
+        all.Clear();
         for (int i = 0; i < Faces.Length; i++) all.Add(i);
-        if (!Connected(all, edges, -1)) return CapsuleFeatureStatus.Ambiguous;
-        Edges = edges.ToArray();
+        if (!Connected(all, edges, -1, reached, queue)) return CapsuleFeatureStatus.Ambiguous;
         Normals = normals;
+        if (incidence is null) return CapsuleFeatureStatus.Complete;
+        Edges = edges.ToArray();
         VertexFaces = new int[Vertices.Length][];
         for (int i = 0; i < incidence.Length; i++) VertexFaces[i] = incidence[i].ToArray();
         return CapsuleFeatureStatus.Complete;
     }
 
-    static bool Connected(List<int> faces, List<CapsuleFeaturePolyhedronEdge> edges, int vertex)
+    // The number of distinct values, as a HashSet built from them counts them.
+    static int Distinct(Vector3[] values, CapsuleFeatureCaptureScratch? scratch)
     {
-        var reached = new HashSet<int> { faces[0] };
-        var queue = new Queue<int>();
+        if (scratch is null) return new HashSet<Vector3>(values).Count;
+        scratch.Positions.Clear();
+        foreach (Vector3 value in values) scratch.Positions.Add(value);
+        return scratch.Positions.Count;
+    }
+
+    static int Distinct(int[] values, CapsuleFeatureCaptureScratch? scratch)
+    {
+        if (scratch is null) return new HashSet<int>(values).Count;
+        scratch.FaceVertices.Clear();
+        foreach (int value in values) scratch.FaceVertices.Add(value);
+        return scratch.FaceVertices.Count;
+    }
+
+    static bool Connected(List<int> faces, List<CapsuleFeaturePolyhedronEdge> edges, int vertex,
+        HashSet<int> reached, Queue<int> queue)
+    {
+        reached.Clear();
+        queue.Clear();
+        reached.Add(faces[0]);
         queue.Enqueue(faces[0]);
         while (queue.TryDequeue(out int face))
         {

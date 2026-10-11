@@ -39,7 +39,8 @@ public sealed class ConvexHullShape(Vector3[] points) : PhysicsShape
     public Vector3[] Points { get; } = points;
 }
 
-/// <summary>A static triangle mesh (non-convex: buildings, interiors). Indices are triples.</summary>
+/// <summary>A static triangle mesh (non-convex: buildings, interiors). Indices are triples. Every vertex must be
+/// finite. The Bepu backend refuses a non-finite vertex with <see cref="System.ArgumentException"/> at install.</summary>
 public sealed class TriangleMeshShape(Vector3[] vertices, int[] indices) : PhysicsShape
 {
     public Vector3[] Vertices { get; } = vertices;

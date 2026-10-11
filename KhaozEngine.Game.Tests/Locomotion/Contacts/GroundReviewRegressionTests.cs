@@ -131,7 +131,14 @@ public class GroundReviewRegressionTests
 
         Assert.Equal(GroundFooting.Walkable, result.Footing);
         if (isStatic) Assert.True(result.Rise < 0.05f, $"{result}");
-        else Assert.Equal((float)((double)Tuning.MaxStepClimbSpeed * Dt), result.Rise);
+        else Assert.Equal(FloatNotAbove((double)Tuning.MaxStepClimbSpeed * Dt), result.Rise);
+    }
+
+    // The paced climb never exceeds its budget, so a budget that is not a float rounds down.
+    static float FloatNotAbove(double value)
+    {
+        float nearest = (float)value;
+        return nearest > value ? MathF.BitDecrement(nearest) : nearest;
     }
 
     [Fact]

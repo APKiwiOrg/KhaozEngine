@@ -9,10 +9,13 @@ namespace KhaozEngine.Locomotion.Contacts;
 internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, SupportSample Support,
     double Budget, bool Pushed, Vector2 Total)
 {
+    /// <summary>Places a seat. A steep seat is placed as seated unless <paramref name="clearSteep"/> asks for its
+    /// clearance, which a slide does. A steep seat takes no push, because a push off the face would leave the feet
+    /// above it.</summary>
     internal static GroundPlacement Try(Func<float, float, float>? groundHeight,
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
         in SupportSample start, float startFeetY, Vector2 startAxis, Vector2 total, in GroundSeatResult seat,
-        float footRadius, in MoveTuning tuning, double budget)
+        float footRadius, in MoveTuning tuning, float cosMaxSlope, double budget, bool clearSteep = false)
     {
         float feetY = seat.Outcome switch
         {
@@ -22,16 +25,17 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         };
         Vector2 axis = startAxis + total;
         var target = new Vector3(axis.X, feetY, axis.Y);
-        // Steep placement and its clearance obligation belong to phase 3.
         if (seat.Outcome == SeatOutcome.SteepSeated)
-            return new(true, target, seat.Support, budget, false, total);
+            return clearSteep && Overlaps(world, tuning, target)
+                ? default
+                : new(true, target, seat.Support, budget, false, total);
         if (!Clear(world, tuning, target, startAxis, ref total, out Vector3 placed)) return default;
         if (placed == target) return new(true, target, seat.Support, budget, false, total);
 
         // A clearance push proposes a different axis and height. It must earn its own footing, without hovering
         // above it. Feet below a tread remain permitted for paced climbs.
         SupportSample support = FootSupport.Find(groundHeight, groundNormal, world, lease,
-            GroundSeat.Query(new Vector2(placed.X, placed.Z), start, startFeetY, footRadius, tuning));
+            GroundSeat.Query(new Vector2(placed.X, placed.Z), start, startFeetY, footRadius, tuning, cosMaxSlope));
         if (support.Status != SupportStatus.Walkable || (double)placed.Y > (double)support.Height + support.HeightError)
             return default;
         double raised = Math.Max(0, (double)placed.Y - target.Y);
@@ -47,8 +51,31 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         if (!(wanted > 0)) return seat.FeetY;
         double paid = Math.Min(wanted, budget);
         budget -= paid;
-        return paid < wanted ? (float)((double)seat.FeetY - (wanted - paid)) : seat.FeetY;
+        return paid < wanted ? NotAbove((double)seat.FeetY - (wanted - paid)) : seat.FeetY;
     }
+
+    /// <summary>The largest float not above <paramref name="value"/>. Paced feet round down, so a climb paid from
+    /// a budget that is not a float never exceeds it.</summary>
+    internal static float NotAbove(double value)
+    {
+        float rounded = (float)value;
+        return rounded > value ? MathF.BitDecrement(rounded) : rounded;
+    }
+
+    /// <summary>The smallest float not below <paramref name="value"/>, the mirror of <see cref="NotAbove"/>. A step
+    /// part rounds up, so the climb it charges is never less than the rise.</summary>
+    internal static float NotBelow(double value)
+    {
+        float rounded = (float)value;
+        return rounded < value ? MathF.BitIncrement(rounded) : rounded;
+    }
+
+    // A touching shell is clear.
+    static bool Overlaps(IPhysicsWorld? world, in MoveTuning tuning, Vector3 target) =>
+        world is not null &&
+        world.ComputePenetration(ShellGeometry.Shape(tuning), Pose.At(ShellGeometry.Centre(target, tuning)),
+            out Vector3 mtv) &&
+        mtv != Vector3.Zero;
 
     // A touching shell is clear. An overlapping shell gets one MTV proposal and one clearance check.
     static bool Clear(IPhysicsWorld? world, in MoveTuning tuning, Vector3 target, Vector2 startAxis,

@@ -21,8 +21,22 @@ internal readonly struct FeatureNumber
     internal static FeatureNumber Exact(double value) => new(GeometryInterval.Exact(value), true, value);
     internal static FeatureNumber Enclosed(GeometryInterval bounds) => new(bounds);
 
+    // Exact operands in the ExactExpansion domain take a short path. Their outward bounds are one step either side
+    // of a finite result, so they always resolve, and an exact result replaces them. The bounds are only computed
+    // when the result is not exact.
     internal FeatureNumber Add(FeatureNumber other)
     {
+        if (IsExact && other.IsExact)
+        {
+            double exactSum = Value + other.Value;
+            if (ExactExpansion.InRange(Value) && ExactExpansion.InRange(other.Value) && ExactExpansion.InRange(exactSum))
+            {
+                // Two-Sum's error is exactly a+b-sum. The test below holds exactly when that is zero, and inside this
+                // domain its comparator never refuses, so both decide the same.
+                ExactExpansion.TwoSum(Value, other.Value, out _, out double error);
+                return error == 0 ? Exact(exactSum) : new(Bounds.Add(other.Bounds));
+            }
+        }
         GeometryInterval bounds = Bounds.Add(other.Bounds);
         if (!bounds.IsResolved || !IsExact || !other.IsExact) return new(bounds);
         double sum = Value + other.Value;
@@ -39,6 +53,12 @@ internal readonly struct FeatureNumber
 
     internal FeatureNumber Multiply(FeatureNumber other)
     {
+        if (IsExact && other.IsExact && ExactExpansion.InRange(Value) && ExactExpansion.InRange(other.Value))
+        {
+            double exactProduct = Value * other.Value;
+            return BoundedGeometryArithmetic.CompareProducts(Value, other.Value, exactProduct, 1) == GeometrySign.Zero
+                ? Exact(exactProduct) : new(Bounds.Multiply(other.Bounds));
+        }
         GeometryInterval bounds = Bounds.Multiply(other.Bounds);
         if (!bounds.IsResolved || !IsExact || !other.IsExact) return new(bounds);
         double product = Value * other.Value;
@@ -48,6 +68,13 @@ internal readonly struct FeatureNumber
 
     internal FeatureNumber Divide(FeatureNumber other)
     {
+        if (IsExact && other.IsExact && other.Value != 0 && ExactExpansion.InRange(Value) &&
+            ExactExpansion.InRange(other.Value))
+        {
+            double exactQuotient = Value / other.Value;
+            return BoundedGeometryArithmetic.CompareProducts(exactQuotient, other.Value, Value, 1) == GeometrySign.Zero
+                ? Exact(exactQuotient) : new(Bounds.Divide(other.Bounds));
+        }
         GeometryInterval bounds = Bounds.Divide(other.Bounds);
         if (!bounds.IsResolved || !IsExact || !other.IsExact || other.Value == 0) return new(bounds);
         double quotient = Value / other.Value;
@@ -88,6 +115,7 @@ internal readonly record struct FeaturePoint(FeatureNumber X, FeatureNumber Y, F
         FeatureNumber x = a.Y.Multiply(b.Z).Subtract(a.Z.Multiply(b.Y));
         FeatureNumber y = a.Z.Multiply(b.X).Subtract(a.X.Multiply(b.Z));
         FeatureNumber z = a.X.Multiply(b.Y).Subtract(a.Y.Multiply(b.X));
+        if (x.IsExact && y.IsExact && z.IsExact) return new(x, y, z);
         GeometryVector bounds = GeometryVectorOperations.Cross(a.Bounds, b.Bounds);
         return new(x.IsExact ? x : FeatureNumber.Enclosed(bounds.X),
             y.IsExact ? y : FeatureNumber.Enclosed(bounds.Y), z.IsExact ? z : FeatureNumber.Enclosed(bounds.Z));

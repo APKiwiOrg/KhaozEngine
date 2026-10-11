@@ -32,6 +32,14 @@ internal static partial class NativeWorldFixtures
     /// <summary>One verified closure holding every fixture asset, loaded from an in-memory source.</summary>
     internal static (MapAssetClosure Closure, IReadOnlyList<MapAssetRef> Roots) Assets()
     {
+        (MapAssetRef[] roots, NativeWorldAssetSource source) = AssetInputs();
+        return (MapAssetClosure.Load(roots, source), roots);
+    }
+
+    /// <summary>The roots of <see cref="Assets"/> and the source that holds them, so a fixture can add a root of its
+    /// own before loading the closure.</summary>
+    static (MapAssetRef[] Roots, NativeWorldAssetSource Source) AssetInputs()
+    {
         var source = new NativeWorldAssetSource();
         var assets = new JsonArray();
         var resources = new JsonArray { Resource(source.Add(SharedMeshId, "mesh:native-world"), MapResourceKind.Mesh) };
@@ -167,8 +175,7 @@ internal static partial class NativeWorldFixtures
             ["assets"] = assets,
             ["resources"] = resources
         }.ToJsonString());
-        MapAssetRef[] roots = { root };
-        return (MapAssetClosure.Load(roots, source), roots);
+        return (new[] { root }, source);
     }
 
     /// <summary>Adds the world build fixture assets through the closure's solid asset helper.</summary>
@@ -306,16 +313,7 @@ internal static partial class NativeWorldFixtures
     static NativeFixture ResolveAround(int centreX, int centreZ, MapSurfaceSet surfaces, MapPlacement[] placements)
     {
         (MapAssetClosure closure, IReadOnlyList<MapAssetRef> roots) = Assets();
-        var digests = surfaces.Patches.Select(p => new KeyValuePair<MapPatchKey, string>(
-            p.Key, MapSurfaceSemantics.PatchDigest(p.Value))).ToArray();
-        for (int i = 0; i < surfaces.Refs.Count; i++)
-        {
-            MapSurfaceRef surface = surfaces.Refs[i];
-            surfaces.Refs[i] = surface with
-            {
-                SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface, digests.Where(p => p.Key.SurfaceId == surface.Id)),
-            };
-        }
+        Seal(surfaces);
         var document = new MapDocument
         {
             Id = "native-world",
@@ -333,6 +331,21 @@ internal static partial class NativeWorldFixtures
         MapResolvedDocument resolved = MapResolverV2.Resolve(document, closure,
             MapDocumentSurfaceSource.Capture(document), ResolveOptions).Document;
         return new NativeFixture(document, closure, resolved, MapScopedSurfaces.CompleteView(document.Surfaces));
+    }
+
+    /// <summary>Seals every surface ref's semantic digest over its patches.</summary>
+    static void Seal(MapSurfaceSet surfaces)
+    {
+        var digests = surfaces.Patches.Select(p => new KeyValuePair<MapPatchKey, string>(
+            p.Key, MapSurfaceSemantics.PatchDigest(p.Value))).ToArray();
+        for (int i = 0; i < surfaces.Refs.Count; i++)
+        {
+            MapSurfaceRef surface = surfaces.Refs[i];
+            surfaces.Refs[i] = surface with
+            {
+                SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface, digests.Where(p => p.Key.SurfaceId == surface.Id)),
+            };
+        }
     }
 
     // ---------------------------------------------------------------------------------------------------------------

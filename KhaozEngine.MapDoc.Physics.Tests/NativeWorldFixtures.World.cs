@@ -81,14 +81,17 @@ internal static partial class NativeWorldFixtures
     /// floor's x -8 to 8 on both ends, and 32 separate 1 m parapets standing on it with explicit Y 2.825, so their tops
     /// sit at 3.825. <c>parapet-00</c> to <c>parapet-15</c> run along z -2.4 and <c>parapet-16</c> to
     /// <c>parapet-31</c> along z 2.4, each centred at x -7.5 to 7.5. A fixture, not the shipped bridge.</summary>
-    internal static MapBuiltWorld BuildBridge()
+    internal static MapBuiltWorld BuildBridge() => Build(Resolve(FloorSurfaces(), BridgePlacements()));
+
+    /// <summary>The deck and parapets of <see cref="BuildBridge"/> at their explicit heights.</summary>
+    static MapPlacement[] BridgePlacements()
     {
         var placements = new List<MapPlacement> { OnFloor("bridge-deck", "bridge-deck", 0f, 0f) };
         for (int i = 0; i < 32; i++)
             placements.Add(OnFloor(FormattableString.Invariant($"parapet-{i:00}"), "parapet-1m", -7.5f + i % 16,
                 i < 16 ? -2.4f : 2.4f));
         foreach (MapPlacement placement in placements) placement.Y = BridgeDeckY;
-        return Build(Resolve(FloorSurfaces(), placements.ToArray()));
+        return placements.ToArray();
     }
 
     internal static MapBuiltWorld BuildWallPrefixYards() => Build(WallPrefixYards());
@@ -272,5 +275,5 @@ internal static partial class NativeWorldFixtures
         return Build(f);
     }
 
-    static MapBuiltWorld Build(NativeFixture f) => MapWorldBuilder.Build(f.Document, f.Assets, Options());
+    internal static MapBuiltWorld Build(NativeFixture f) => MapWorldBuilder.Build(f.Document, f.Assets, Options());
 }

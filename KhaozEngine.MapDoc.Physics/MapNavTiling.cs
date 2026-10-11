@@ -8,6 +8,7 @@ using System.Text.Json;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapDoc.Physics;
@@ -24,7 +25,13 @@ public sealed record MapNavTileOptions(float SeamMarginMetres, string ProfileIde
 /// picks its own vertical window. <see cref="GeometryDigest"/> names the geometry a capture over
 /// <see cref="CaptureBounds"/> can see, and <see cref="CaptureIdentity"/> names that capture.</summary>
 public sealed record MapNavTile(MapNavTileCoord Coord, MapBox3 Bounds, MapBox3 CaptureBounds, string GeometryDigest,
-    string CaptureIdentity);
+    string CaptureIdentity)
+{
+    /// <summary>The digest of every water body whose regions meet <see cref="CaptureBounds"/>, empty where no water
+    /// meets the tile. It enters <see cref="CaptureIdentity"/> only when present, so a dry tile's identity is the same
+    /// with or without a water section.</summary>
+    public string MediumDigest { get; init; } = "";
+}
 
 /// <summary>The shared edge of two neighbouring navigation tiles, <see cref="A"/> before <see cref="B"/> in (Z, X)
 /// order. <see cref="Digest"/> covers both tiles' geometry digests, the edge and the seam margin.</summary>
@@ -53,8 +60,11 @@ public static class MapNavTiling
     /// static whose residency bounds meet <see cref="MapNavTile.CaptureBounds"/> on X and Z, edges included. For a
     /// resolver-1 world it also covers <see cref="MapBuiltWorld.LegacyTerrainBlockDigest"/> and every sculpt tile whose
     /// footprint meets the capture bounds on X and Z. Every static lies within the world's vertical bounds, so Y never
-    /// excludes one. <see cref="MapNavTile.CaptureIdentity"/> is the SHA-256 over the geometry digest, profile,
-    /// controller, seam margin, tile coordinate and tile bounds.</para>
+    /// excludes one. <see cref="MapNavTile.MediumDigest"/> covers, in ordinal body id order, the id and digest of every
+    /// water body any of whose region triangles' XZ bounds meets the capture bounds, edges included. Water is never a
+    /// static, so it leaves the geometry digest unchanged. <see cref="MapNavTile.CaptureIdentity"/> is the SHA-256 over
+    /// the geometry digest, the medium digest when present, profile, controller, seam margin, tile coordinate and tile
+    /// bounds.</para>
     /// <para>Throws <see cref="MapDocumentException"/> naming the grid alignment when the grids do not align with the
     /// world, including an origin so far from the world that a navigation tile or server cell index of its bounds
     /// leaves the int range, naming the tile range when a seam margin carries a capture outside the int range, naming
@@ -85,6 +95,11 @@ public static class MapNavTiling
                 tile.Footprint.MaxX, tile.Footprint.MaxZ, grids, options.SeamMarginMetres))
                 if (coord.X >= minX && coord.X <= maxX && coord.Z >= minZ && coord.Z <= maxZ)
                     Bucket(sculpt, coord).Add(tile);
+        var water = new Dictionary<MapNavTileCoord, List<MapCompiledWaterBody>>();
+        foreach (MapCompiledWaterBody body in world.Water)
+            foreach (MapNavTileCoord coord in WaterCaptureTiles(body, grids, options.SeamMarginMetres))
+                if (coord.X >= minX && coord.X <= maxX && coord.Z >= minZ && coord.Z <= maxZ)
+                    Bucket(water, coord).Add(body);
 
         var tiles = new List<MapNavTile>((int)count);
         for (long z = minZ; z <= maxZ; z++)
@@ -98,7 +113,11 @@ public static class MapNavTiling
                 MapLegacySculptTile[] touched = sculpt.TryGetValue(coord, out List<MapLegacySculptTile>? cells)
                     ? cells.ToArray() : Array.Empty<MapLegacySculptTile>();
                 string geometry = GeometryDigest(world, seen, digests, touched);
-                tiles.Add(new MapNavTile(coord, bounds, capture, geometry, CaptureIdentity(coord, bounds, geometry, options)));
+                string medium = water.TryGetValue(coord, out List<MapCompiledWaterBody>? wet) ? MediumDigest(wet) : "";
+                tiles.Add(new MapNavTile(coord, bounds, capture, geometry, CaptureIdentity(coord, bounds, geometry, medium, options))
+                {
+                    MediumDigest = medium,
+                });
             }
         return tiles.AsReadOnly();
     }
@@ -183,7 +202,7 @@ public static class MapNavTiling
     }
 
     /// <summary>The navigation tiles <paramref name="effects"/> invalidates in (Z, X) order, empty unless it invalidates
-    /// navigation. <paramref name="world"/> is the world built after the edit, as for
+    /// navigation or water medium. <paramref name="world"/> is the world built after the edit, as for
     /// <see cref="MapResidencyOwnership.Affected"/>, whose navigation tiles this widens by the seam margin: every tile
     /// whose capture bounds meet, on X and Z, the old or new edit bounds or the bounds of a chunk of a listed patch. For a
     /// resolver-1 terrain edit it also widens each edit box by the footprint of every sculpt tile position the box meets,
@@ -192,6 +211,10 @@ public static class MapNavTiling
     /// digest it enters or leaves. The result is clipped to the tiles <see cref="Partition"/> lists for
     /// <paramref name="world"/>. An edit flagged <see cref="MapNativeInvalidation.Unbounded"/>, a full reset, lists every
     /// one of those tiles without first listing every storage tile.
+    /// <para>An edit flagged <see cref="MapNativeInvalidation.Medium"/> invalidates navigation too, since the medium
+    /// digest enters every wet tile's capture identity. Its edit bounds widen as above, and so does every region triangle
+    /// of each body <see cref="MapNativeEditEffects.WaterBodyIds"/> names that <paramref name="world"/> holds, under the
+    /// rule of <see cref="MapNavTile.MediumDigest"/>.</para>
     /// <para>A tile that leaves the partition, because the edit shrank the world's bounds, is never listed, since the
     /// result is clipped to the post-edit partition. A consumer that keeps derived state per tile diffs the old and new
     /// partitions to find removed tiles.</para>
@@ -205,8 +228,9 @@ public static class MapNavTiling
         ArgumentNullException.ThrowIfNull(grids);
         ValidateOptions(options);
         ArgumentNullException.ThrowIfNull(effects);
-        const MapNativeInvalidation unbounded = MapNativeInvalidation.Nav | MapNativeInvalidation.Unbounded;
-        if ((effects.Invalidates & unbounded) == unbounded)
+        const MapNativeInvalidation navigation = MapNativeInvalidation.Nav | MapNativeInvalidation.Medium;
+        bool navigates = (effects.Invalidates & navigation) != 0;
+        if (navigates && (effects.Invalidates & MapNativeInvalidation.Unbounded) != 0)
         {
             // Every partition tile, without enumerating every storage tile through Affected first. The edit boxes are
             // still checked, as Affected checks them.
@@ -222,7 +246,7 @@ public static class MapNavTiling
             return every;
         }
         MapAffectedSet affected = MapResidencyOwnership.Affected(world, grids, effects);
-        if ((effects.Invalidates & MapNativeInvalidation.Nav) == 0) return Array.Empty<MapNavTileCoord>();
+        if (!navigates) return Array.Empty<MapNavTileCoord>();
 
         MapBox3[] edited = new[] { effects.OldBounds, effects.NewBounds }.Where(b => b.HasValue).Select(b => b!.Value).ToArray();
         var widen = new List<(double MinX, double MinZ, double MaxX, double MaxZ)>();
@@ -243,6 +267,12 @@ public static class MapNavTiling
         var tiles = new SortedSet<MapNavTileCoord>(affected.NavTiles, TileOrder);
         foreach (var (minX, minZ, maxX, maxZ) in widen)
             tiles.UnionWith(CaptureTilesMeeting(minX, minZ, maxX, maxZ, grids, options.SeamMarginMetres));
+        if ((effects.Invalidates & MapNativeInvalidation.Medium) != 0)
+        {
+            var named = new HashSet<string>(effects.WaterBodyIds, StringComparer.Ordinal);
+            foreach (MapCompiledWaterBody body in world.Water.Where(b => named.Contains(b.BodyId)))
+                tiles.UnionWith(WaterCaptureTiles(body, grids, options.SeamMarginMetres));
+        }
         (int firstX, int lastX, int firstZ, int lastZ) = PartitionRange(world, grids);
         return tiles.Where(t => t.X >= firstX && t.X <= lastX && t.Z >= firstZ && t.Z <= lastZ).ToArray();
     }
@@ -383,12 +413,46 @@ public static class MapNavTiling
         w.WriteEndObject();
     });
 
-    static string CaptureIdentity(MapNavTileCoord coord, MapBox3 bounds, string geometry, MapNavTileOptions options) =>
+    /// <summary>The tiles whose capture bounds meet the XZ bounds of any region triangle of
+    /// <paramref name="body"/>.</summary>
+    static IEnumerable<MapNavTileCoord> WaterCaptureTiles(MapCompiledWaterBody body, MapWorldGrids grids, double margin)
+    {
+        var tiles = new SortedSet<MapNavTileCoord>(TileOrder);
+        foreach (MapExactTriangle triangle in body.Regions.SelectMany(r => r.Triangles))
+        {
+            MapBox3 box = MapResidencyOwnership.XzBounds(triangle);
+            tiles.UnionWith(CaptureTilesMeeting(box.MinX, box.MinZ, box.MaxX, box.MaxZ, grids, margin));
+        }
+        return tiles;
+    }
+
+    // The bodies meeting one tile, by ordinal id. Each body digest already covers its definition, medium and every
+    // patch it read, so an edit that reaches no body leaves the digest unchanged.
+    static string MediumDigest(IReadOnlyList<MapCompiledWaterBody> bodies) => CanonicalHash(w =>
+    {
+        w.WriteStartObject();
+        w.WriteString("domain", "kemap/nav-tile-medium/1");
+        w.WriteStartArray("bodies");
+        foreach (MapCompiledWaterBody body in bodies.OrderBy(b => b.BodyId, StringComparer.Ordinal))
+        {
+            w.WriteStartArray();
+            w.WriteStringValue(body.BodyId);
+            w.WriteStringValue(body.Digest);
+            w.WriteEndArray();
+        }
+        w.WriteEndArray();
+        w.WriteEndObject();
+    });
+
+    static string CaptureIdentity(MapNavTileCoord coord, MapBox3 bounds, string geometry, string medium,
+        MapNavTileOptions options) =>
         CanonicalHash(w =>
         {
             w.WriteStartObject();
             w.WriteString("domain", "kemap/nav-tile-capture/1");
             w.WriteString("geometryDigest", geometry);
+            // Written only for a wet tile, so every dry tile keeps its identity.
+            if (medium.Length != 0) w.WriteString("mediumDigest", medium);
             w.WriteString("profile", options.ProfileIdentity);
             w.WriteString("controller", options.ControllerIdentity);
             w.WriteNumber("seamMarginMetres", options.SeamMarginMetres);

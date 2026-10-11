@@ -24,6 +24,11 @@ public enum MapNativeInvalidation
     /// full reset for the other flags: discard all prior derived state for this world and rebuild from the post-edit
     /// world, since pre-edit extents outside the post-edit world cannot be listed.</summary>
     Unbounded = 64,
+
+    /// <summary>The edit changed water: a body's level, domain, covers or medium, or a bound a body reads. The bodies
+    /// are named in <see cref="MapNativeEditEffects.WaterBodyIds"/>, and their residency and navigation medium
+    /// identity follow.</summary>
+    Medium = 128,
 }
 
 public readonly record struct MapBox3(double MinX, double MinY, double MinZ, double MaxX, double MaxY, double MaxZ)
@@ -39,7 +44,11 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
     IReadOnlyList<MapPatchKey> Patches, IReadOnlyList<string> SpaceIds, IReadOnlyList<string> DependencyIds,
     IReadOnlyList<MapDigestChange> DigestChanges, MapNativeInvalidation Invalidates)
 {
-    /// <summary>Compact canonical JSON with fixed field order, ordinal IDs and invariant numbers.</summary>
+    /// <summary>The water bodies the edit changes, empty when it changes none.</summary>
+    public IReadOnlyList<string> WaterBodyIds { get; init; } = Array.Empty<string>();
+
+    /// <summary>Compact canonical JSON with fixed field order, ordinal IDs and invariant numbers. <c>waterBodyIds</c>
+    /// follows <c>dependencyIds</c> only when <see cref="WaterBodyIds"/> is not empty.</summary>
     public string Describe()
     {
         using var output = new MemoryStream();
@@ -60,6 +69,8 @@ public sealed record MapNativeEditEffects(MapBox3? OldBounds, MapBox3? NewBounds
             writer.WriteEndArray();
             WriteIds(writer, "spaceIds", SpaceIds);
             WriteIds(writer, "dependencyIds", DependencyIds);
+            // Written only when present, so every description without water keeps its bytes.
+            if (WaterBodyIds.Count != 0) WriteIds(writer, "waterBodyIds", WaterBodyIds);
             writer.WriteStartArray("digestChanges");
             foreach (MapDigestChange change in DigestChanges.OrderBy(c => c.Key, StringComparer.Ordinal)
                 .ThenBy(c => c.Before, StringComparer.Ordinal).ThenBy(c => c.After, StringComparer.Ordinal))

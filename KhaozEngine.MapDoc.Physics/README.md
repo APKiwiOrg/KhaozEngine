@@ -276,6 +276,20 @@ terrain height, so a capture picks its own vertical window.
 
 Navigation tiles are columns in X and Z. Vertical layers on native worlds wait for #438 phase 5.
 
+## Water
+
+Bounded water is built-world data and never a static, so it registers nothing with physics and never blocks a ray or a
+capsule. `MapWorldBuilder` compiles a native document's water section over its whole-document view and refuses, with
+"water: " and the detail, any body that does not compile complete. `MapBuiltWorld.Water` carries the compiled bodies
+and `WaterMedia` the section's media, so the media travel with the built world. `WaterDigest` and every body digest
+enter the build hash only when the section is present, so a dry world keeps its hash.
+
+`MapResidencyOwnership.BuildWater` gives each body its own residency entry over the storage tiles its region triangles
+reach. A navigation tile that water meets carries a `MediumDigest` over the digests of those bodies, which enters its
+capture identity, while its geometry digest is unchanged. An edit flagged `MapNativeInvalidation.Medium` names its
+bodies in `WaterBodyIds`, and `Affected` and `AffectedTiles` invalidate their owners and tiles. Each body digest covers
+only what that body read, so an edit elsewhere leaves its tiles alone. Movement in water arrives with #438 phase 4.
+
 ## Physical relations
 
 ```csharp
@@ -344,7 +358,6 @@ reports `Unbounded` the same way. Collider height edits size their placements th
 | Multi-cell ghost handoff proof | R8 and G3 | `MapWorldGrids` and `MapResidencyOwnership` provide grid mapping and ownership |
 | Placement-local support surfaces (`Surface` resources) | R5 | `MapAssetShapes.Read` refuses them |
 | Live portal and door state | R5 | Portals are authored open |
-| Water medium and walker profiles | R4 and #1299 | `CreateLegacyMoveContext` leaves the medium delegate null |
 | Clearance body model confirmation | Owner, #1344 | Clearance uses the #438 shell through `ContactShell` |
 | Support certification of curved statics, creases and one-sided back faces | #438 phase 2b | Landed. The controller's foot-support primitive, not yet used by movement, certifies through `IPhysicsSupportNeighborhood`, and the diagnostics here still predict `IPhysicsCapsuleFeatures` |
 | Editor placement edits reporting old and new placement bounds with Physics, Nav and Residency | R3 | Done, see Editor tooling |

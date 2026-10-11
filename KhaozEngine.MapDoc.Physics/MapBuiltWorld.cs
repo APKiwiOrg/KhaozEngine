@@ -4,6 +4,7 @@ using System.Numerics;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.MapDoc.Physics;
@@ -74,8 +75,8 @@ public sealed record MapStaticDiagnostic(string OwnerId, MapFeatureQuerySupport 
 public sealed record MapLegacySculptTile(int TileX, int TileZ, MapResolvedBounds Footprint, string Digest);
 
 /// <summary>A complete immutable world built from one native document. Resolver 2 worlds carry compiled terrain
-/// chunks. Resolver 1 worlds keep analytic terrain behind <see cref="LegacySupportHeight"/> and identify it through
-/// <see cref="LegacyTerrainIdentity"/>.</summary>
+/// chunks and any bounded water. Resolver 1 worlds keep analytic terrain behind <see cref="LegacySupportHeight"/> and
+/// identify it through <see cref="LegacyTerrainIdentity"/>. Water is built-world data, never a static.</summary>
 public sealed class MapBuiltWorld
 {
     /// <summary>The resolved document.</summary>
@@ -108,7 +109,8 @@ public sealed class MapBuiltWorld
     public float TileSize { get; }
 
     /// <summary>The lowercase hex SHA-256 of the built world's identity: the authored hash, builder version, consumer
-    /// policy, interaction policy, chunk policy, legacy terrain identity and every placement and chunk digest.</summary>
+    /// policy, interaction policy, chunk policy, legacy terrain identity and every placement and chunk digest, and for a
+    /// world with a water section the water digest and every compiled body digest.</summary>
     public string BuildHash { get; }
 
     /// <summary>True for resolver 2, whose terrain is compiled from authored surfaces.</summary>
@@ -131,13 +133,29 @@ public sealed class MapBuiltWorld
     /// world.</summary>
     public string LegacyTerrainIdentity { get; }
 
+    /// <summary>Every bounded water body compiled against <see cref="Surfaces"/>, in id order, empty without a water
+    /// section. Each is <see cref="MapWaterCompileStatus.Complete"/>.</summary>
+    public IReadOnlyList<MapCompiledWaterBody> Water { get; }
+
+    /// <summary>The water section's media in key order, empty without a section.</summary>
+    public IReadOnlyList<MapWaterMediumDoc> WaterMedia { get; }
+
+    /// <summary><see cref="MapWaterSet.Digest"/> of the water section the world was built from, empty without a
+    /// section.</summary>
+    public string WaterDigest { get; }
+
+    /// <summary>The resolver-1 global water level, null for a native world.</summary>
+    public float? LegacyWaterLevel { get; }
+
     readonly Dictionary<string, MapPlacementGeometry> _byId;
 
     internal MapBuiltWorld(MapResolvedDocument document, MapScopedSurfaces surfaces,
         IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain, IReadOnlyList<MapStaticDescriptor> statics,
         IReadOnlyList<MapStaticDiagnostic> diagnostics, MapBox3 bounds, float tileSize, string buildHash, bool isNative,
         Func<float, float, float>? legacySupportHeight, IReadOnlyList<MapLegacySculptTile> legacySculptTiles,
-        float legacySculptCellSize, string legacyTerrainBlockDigest, string legacyTerrainIdentity)
+        float legacySculptCellSize, string legacyTerrainBlockDigest, string legacyTerrainIdentity,
+        IReadOnlyList<MapCompiledWaterBody> water, IReadOnlyList<MapWaterMediumDoc> waterMedia, string waterDigest,
+        float? legacyWaterLevel)
     {
         Document = document;
         Surfaces = surfaces;
@@ -155,6 +173,10 @@ public sealed class MapBuiltWorld
         LegacySculptCellSize = legacySculptCellSize;
         LegacyTerrainBlockDigest = legacyTerrainBlockDigest;
         LegacyTerrainIdentity = legacyTerrainIdentity;
+        Water = water;
+        WaterMedia = waterMedia;
+        WaterDigest = waterDigest;
+        LegacyWaterLevel = legacyWaterLevel;
         _byId = new Dictionary<string, MapPlacementGeometry>(placements.Count, StringComparer.Ordinal);
         foreach (MapPlacementGeometry placement in placements) _byId.Add(placement.PlacementId, placement);
     }

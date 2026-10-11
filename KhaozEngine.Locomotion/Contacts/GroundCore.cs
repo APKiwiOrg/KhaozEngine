@@ -242,7 +242,7 @@ internal static partial class GroundCore
 
     /// <summary>The state of one tick's substeps. The body's axis is always the start axis plus the achieved
     /// move.</summary>
-    struct Tick
+    partial struct Tick
     {
         readonly ContactQueryContext _queries;
         readonly MoveTuning _tuning;
@@ -427,7 +427,7 @@ internal static partial class GroundCore
 
         // Clear substeps keep one attempt. Only a shortened sweep or invalid placement needs the standing
         // route. Lift-created obstructions disqualify the lifted route, even if its seat is walkable.
-        readonly Attempt Resolve(Vector2 move, Vector2? planned, double budget)
+        readonly Attempt ResolveUnconstrained(Vector2 move, Vector2? planned, double budget)
         {
             float lift = FeetY == _startY ? _lift : (float)Math.Clamp((double)_startY + _lift - FeetY, 0, _lift);
             Attempt lifted = Try(move, lift, planned, budget);
@@ -440,7 +440,7 @@ internal static partial class GroundCore
             // A slide seat that fails clearance on both routes is reported, so the tick can hand the body over.
             if (!liftedValid)
                 return standingValid || standing.Seat.Outcome == SeatOutcome.Wall ||
-                    (_slide && standing.Moved && standing.Seat.Outcome == SeatOutcome.SteepSeated) ? standing : default;
+                    (_slide && standing.Moved && standing.Seat.Outcome == SeatOutcome.SteepSeated) ? standing : DeniedMediumSeat(lifted, standing);
             if (!standingValid) return lifted;
             return Progress(standing.Achieved, move) > Progress(lifted.Achieved, move) ? standing : lifted;
         }

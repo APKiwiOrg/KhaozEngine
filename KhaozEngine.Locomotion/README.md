@@ -528,6 +528,9 @@ wading-bank transition all use the same combined resolver. Bed contact alone doe
 swim-exit policy or grant footing. DryOnly and WadeOnly use the contact controller for thin channels,
 shore sliding, simultaneous solid/water constraints and body-relative depth thresholds. Positive
 forbidden starting overlap refuses placement. Every corrected segment is fully re-proved.
+When a walkable descent reaches WadeOnly's enter-depth line, its forbidden seat constrains the
+horizontal proposal and keeps the feasible along-shore component. The retry runs the same shell,
+support and placement passes under the original pin and climb budget. Coverage uses the full body.
 Scripted movement commitments use the shared preparation, ballistic seed, timeout and recovery lifecycle.
 They suppress player steering and buffered jumps, retain their carried collision-clipped velocity,
 and use the same leased contact tick on land. Surface entry aborts the commitment. An environment refusal

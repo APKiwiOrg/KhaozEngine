@@ -1,9 +1,9 @@
 {
-  "phase": "KhaozEngine #438 phase 4b, Task 8",
-  "verifiedAt": "2026-10-11T06:01:44.124506+00:00",
+  "phase": "KhaozEngine #438 phase 4b final fix wave",
+  "verifiedAt": "2026-10-11T08:03:03.833154+00:00",
   "branch": "feature/swimming-contract",
-  "taskBase": "47519e90c292f839056eed8e2437a8117fc1648f",
-  "engineVersion": "20.31.1",
+  "taskBase": "dc4e30fb53e7dd884ea56a65ef34ae15848ac2d3",
+  "engineVersion": "20.32.0",
   "newestReleaseTag": "v20.31.0",
   "controllerModel": "contact-shell-footprint-swim-v1",
   "wireGeneration": 14,
@@ -14,19 +14,19 @@
     "routeProofVersion": 1
   },
   "build": {
-    "command": "build-slot --label p4b --heavy -- dotnet build KhaozEngine.slnx -c Release",
+    "command": "dotnet build KhaozEngine.slnx -c Release",
     "exitCode": 0,
     "warnings": 0,
     "errors": 0
   },
   "tests": {
-    "command": "build-slot --label p4b --heavy -- dotnet test KhaozEngine.slnx -c Release --no-build --filter 'Category!=LiveSocket'",
+    "command": "dotnet test KhaozEngine.slnx -c Release --no-build --filter 'Category!=LiveSocket'",
     "exitCode": 0,
-    "projects": 32,
-    "passed": 28746,
+    "passed": 28760,
     "failed": 0,
     "skipped": 1329,
-    "total": 30075,
+    "total": 30089,
+    "projects": 32,
     "projectTotals": [
       {
         "project": "KhaozEngine.Catalog.AzureBlob.Tests",
@@ -43,6 +43,13 @@
         "total": 209
       },
       {
+        "project": "KhaozEngine.CodeHealth.Analyzers.Tests",
+        "passed": 51,
+        "failed": 0,
+        "skipped": 0,
+        "total": 51
+      },
+      {
         "project": "KhaozEngine.Gui.Tests",
         "passed": 1276,
         "failed": 0,
@@ -50,11 +57,11 @@
         "total": 1276
       },
       {
-        "project": "KhaozEngine.CodeHealth.Analyzers.Tests",
-        "passed": 51,
+        "project": "KhaozEngine.Automation.Tests",
+        "passed": 106,
         "failed": 0,
         "skipped": 0,
-        "total": 51
+        "total": 106
       },
       {
         "project": "KhaozEngine.MapDoc.Compatibility.Tests",
@@ -64,11 +71,11 @@
         "total": 5
       },
       {
-        "project": "KhaozEngine.Automation.Tests",
-        "passed": 106,
+        "project": "KhaozEngine.Identity.Exchange.Tests",
+        "passed": 177,
         "failed": 0,
         "skipped": 0,
-        "total": 106
+        "total": 177
       },
       {
         "project": "KhaozEngine.Accounts.Tests",
@@ -83,13 +90,6 @@
         "failed": 0,
         "skipped": 0,
         "total": 46
-      },
-      {
-        "project": "KhaozEngine.Identity.Exchange.Tests",
-        "passed": 177,
-        "failed": 0,
-        "skipped": 0,
-        "total": 177
       },
       {
         "project": "KhaozEngine.Netcode.Abstractions.DecouplingTests",
@@ -162,32 +162,11 @@
         "total": 104
       },
       {
-        "project": "KhaozEngine.MapDoc.Tests",
-        "passed": 560,
+        "project": "KhaozEngine.Tests",
+        "passed": 61,
         "failed": 0,
         "skipped": 0,
-        "total": 560
-      },
-      {
-        "project": "KhaozEngine.TileWorld.Netcode.Tests",
-        "passed": 1382,
-        "failed": 0,
-        "skipped": 0,
-        "total": 1382
-      },
-      {
-        "project": "KhaozEngine.TileWorld.Physics.Tests",
-        "passed": 89,
-        "failed": 0,
-        "skipped": 0,
-        "total": 89
-      },
-      {
-        "project": "KeDungeon.Tests",
-        "passed": 13,
-        "failed": 0,
-        "skipped": 0,
-        "total": 13
+        "total": 61
       },
       {
         "project": "KhaozEngine.TileWorld.Tests",
@@ -197,13 +176,6 @@
         "total": 514
       },
       {
-        "project": "KhaozEngine.Movement.Tests",
-        "passed": 708,
-        "failed": 0,
-        "skipped": 3,
-        "total": 711
-      },
-      {
         "project": "PixelLabSheetAssembler.Tests",
         "passed": 32,
         "failed": 0,
@@ -211,11 +183,11 @@
         "total": 32
       },
       {
-        "project": "KhaozEngine.Tests",
-        "passed": 61,
+        "project": "KeDungeon.Tests",
+        "passed": 13,
         "failed": 0,
         "skipped": 0,
-        "total": 61
+        "total": 13
       },
       {
         "project": "KhaozEngine.Catalog.Tests",
@@ -225,11 +197,32 @@
         "total": 1514
       },
       {
-        "project": "KhaozEngine.Game.Tests",
-        "passed": 4380,
+        "project": "KhaozEngine.TileWorld.Physics.Tests",
+        "passed": 89,
         "failed": 0,
-        "skipped": 1,
-        "total": 4381
+        "skipped": 0,
+        "total": 89
+      },
+      {
+        "project": "KhaozEngine.TileWorld.Netcode.Tests",
+        "passed": 1382,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1382
+      },
+      {
+        "project": "KhaozEngine.MapDoc.Tests",
+        "passed": 560,
+        "failed": 0,
+        "skipped": 0,
+        "total": 560
+      },
+      {
+        "project": "KhaozEngine.Movement.Tests",
+        "passed": 709,
+        "failed": 0,
+        "skipped": 3,
+        "total": 712
       },
       {
         "project": "KhaozEngine.Render.Tests",
@@ -246,6 +239,13 @@
         "total": 1386
       },
       {
+        "project": "KhaozEngine.Game.Tests",
+        "passed": 4393,
+        "failed": 0,
+        "skipped": 1,
+        "total": 4394
+      },
+      {
         "project": "KhaozEngine.Server.Tests",
         "passed": 3927,
         "failed": 0,
@@ -255,40 +255,54 @@
     ]
   },
   "format": {
-    "command": "build-slot --label p4b --heavy -- dotnet format KhaozEngine.slnx --verify-no-changes --no-restore",
+    "command": "dotnet format KhaozEngine.slnx --verify-no-changes --no-restore",
     "exitCode": 0,
     "acceptedWarning": "Generic workspace-loading warning"
   },
   "guards": [
     {
-      "command": "build-slot --label p4b -- sh scripts/check-dashes.sh --tree",
+      "command": "sh scripts/check-dashes.sh --tree",
       "exitCode": 0
     },
     {
-      "command": "build-slot --label p4b -- sh scripts/check-prose.sh --tree",
+      "command": "sh scripts/check-prose.sh --tree",
       "exitCode": 0
     },
     {
-      "command": "build-slot --label p4b -- sh scripts/check-file-size.sh --tree",
+      "command": "sh scripts/check-file-size.sh --tree",
       "exitCode": 0
     },
     {
-      "command": "build-slot --label p4b -- sh scripts/check-agent-instructions.sh --tree",
+      "command": "sh scripts/check-agent-instructions.sh --tree",
       "exitCode": 0
     },
     {
-      "command": "build-slot --label p4b -- sh scripts/check-local-feed.sh",
+      "command": "sh scripts/check-local-feed.sh",
       "exitCode": 0
     },
     {
-      "command": "build-slot --label p4b -- bash scripts/check-doc-versions.sh",
+      "command": "bash scripts/check-doc-versions.sh",
       "exitCode": 0
     }
   ],
   "newRows": [
     "I1RuntimeAndProbeCannotCertifyTheContactRecipeWithAnOldProfile(wet: false)",
     "I1RuntimeAndProbeCannotCertifyTheContactRecipeWithAnOldProfile(wet: true)",
-    "R1BothServerHeadsAndCorrectionReplayAgreeAcrossGroundWaterAndAStep"
+    "R1BothServerHeadsAndCorrectionReplayAgreeAcrossGroundWaterAndAStep",
+    "LastSubstepAirLandingWithACarriedRunEmitsNoGroundSignals",
+    "SlideLandingAfterAWalkingRiseEmitsNoGroundSignals",
+    "DryWedgeWithACarriedRunEmitsNoGroundSignals",
+    "ProvedSteepHandoffObstructionFromGroundReportsBlockedAndHoldsTheWholeTick",
+    "ProvedReseatObstructionHoldsTheOriginalClassificationAndClearsSelection",
+    "NonfiniteFinalCorrectionReturnsNoContinuationEvidence",
+    "RejectedSubmergedBedSeatClipsDescentAtTheUnraisedSubstep",
+    "LongAnalyticReplayUnderOneLeaseDoesNotExhaustPriorTickFacts",
+    "ForbiddenDescendingBanksAndFlatStepsKeepTheAlongShoreComponent(mode: DryOnly, stepped: false)",
+    "ForbiddenDescendingBanksAndFlatStepsKeepTheAlongShoreComponent(mode: DryOnly, stepped: true)",
+    "ForbiddenDescendingBanksAndFlatStepsKeepTheAlongShoreComponent(mode: WadeOnly, stepped: true)",
+    "PublicSelectUsesTheSmallCallersShellAndStepHeight(kneeWall: false)",
+    "PublicSelectUsesTheSmallCallersShellAndStepHeight(kneeWall: true)",
+    "RuntimeContactGeometryParticipatesInTheProfileRecipe"
   ],
   "existingRowsChanged": [],
   "adoptionBlockers": [
@@ -304,8 +318,7 @@
     "#1299 navigation acceptance"
   ],
   "concerns": [
-    "CHANGELOG.md was left unchanged because the dispatch Rules prohibit its edit despite the task brief naming a line. Orchestrator owns reconciliation.",
-    "The informational local-feed audit reports historical drift already recorded by issue #1211. No pack or feed change was made."
+    "The informational feed audit still reports the same nine historical drifted versions recorded by issue #1211. No packages were packed or changed."
   ],
   "historicalFeedDrift": {
     "versions": [
@@ -320,5 +333,72 @@
       "20.0.0"
     ],
     "issue": "https://github.com/APKiwiOrg/KhaozEngine/issues/1211"
+  },
+  "verifiedSourceCommit": "b66cec2096af8f67ddf443c58bad5ee25acccbcd",
+  "admission": {
+    "command": "build-slot --label p4b --heavy -- python3 .superpowers/sdd/2026-10-11-contact-controller-phase4b/run-final-verification.py",
+    "label": "p4b",
+    "heavy": true,
+    "mode": "All commands ran sequentially under one admitted heavy slot."
+  },
+  "finalFixWave": {
+    "status": "DONE_WITH_CONCERNS",
+    "findingsResolved": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "commits": [
+      {
+        "commit": "069e5252eac2f51269fa6ea8c1250d46696da1c8",
+        "subject": "fix(locomotion): correct signals, holds and shore descent"
+      },
+      {
+        "commit": "a7cdd9ce54b2f0618267f54befea5f89983d0f09",
+        "subject": "fix(movement): derive contact identity and honor support tuning"
+      },
+      {
+        "commit": "b66cec2096af8f67ddf443c58bad5ee25acccbcd",
+        "subject": "test(locomotion): move dry query adapters into fixtures"
+      }
+    ],
+    "rowsAdded": [
+      "LastSubstepAirLandingWithACarriedRunEmitsNoGroundSignals",
+      "SlideLandingAfterAWalkingRiseEmitsNoGroundSignals",
+      "DryWedgeWithACarriedRunEmitsNoGroundSignals",
+      "ProvedSteepHandoffObstructionFromGroundReportsBlockedAndHoldsTheWholeTick",
+      "ProvedReseatObstructionHoldsTheOriginalClassificationAndClearsSelection",
+      "NonfiniteFinalCorrectionReturnsNoContinuationEvidence",
+      "RejectedSubmergedBedSeatClipsDescentAtTheUnraisedSubstep",
+      "LongAnalyticReplayUnderOneLeaseDoesNotExhaustPriorTickFacts",
+      "ForbiddenDescendingBanksAndFlatStepsKeepTheAlongShoreComponent(mode: DryOnly, stepped: false)",
+      "ForbiddenDescendingBanksAndFlatStepsKeepTheAlongShoreComponent(mode: DryOnly, stepped: true)",
+      "ForbiddenDescendingBanksAndFlatStepsKeepTheAlongShoreComponent(mode: WadeOnly, stepped: true)",
+      "PublicSelectUsesTheSmallCallersShellAndStepHeight(kneeWall: false)",
+      "PublicSelectUsesTheSmallCallersShellAndStepHeight(kneeWall: true)",
+      "RuntimeContactGeometryParticipatesInTheProfileRecipe"
+    ],
+    "existingExpectationsChanged": [],
+    "dryWrapperCallsMigrated": 48,
+    "dryWrapperTestFiles": 12,
+    "runtimeIdentityMutation": {
+      "footprintFraction": 0.625,
+      "placementOffsetMetres": 0.00125,
+      "hardcodedWriterExitCode": 1,
+      "derivedWriterExitCode": 0,
+      "runtimeDefaultsRestored": true
+    },
+    "groundedHoldMutation": {
+      "restoredOldPublicationExitCode": 1,
+      "expected": "Blocked",
+      "oldActual": "EnvironmentUnresolved"
+    },
+    "newDryWedgeRowFailedFirst": false,
+    "newDryWedgeRowRole": "Already-passing negative control."
   }
 }

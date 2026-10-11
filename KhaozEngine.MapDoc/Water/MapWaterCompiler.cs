@@ -20,12 +20,15 @@ namespace KhaozEngine.MapDoc.Water;
 public static class MapWaterCompiler
 {
     /// <summary>The compiled bodies of a deep copy of <paramref name="water"/>, in id order.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">A compile limit or nested read limit is negative. The parameter
+    /// name identifies the limit, with <c>Reads.</c> before a nested read limit's name.</exception>
     public static IReadOnlyList<MapCompiledWaterBody> Compile(MapScopedSurfaces view, MapWaterSet water, MapWaterCompileLimits? limits = null)
     {
         ArgumentNullException.ThrowIfNull(view);
         ArgumentNullException.ThrowIfNull(water);
-        MapWaterSet snapshot = water.Clone();
         limits ??= new MapWaterCompileLimits();
+        limits.Validate();
+        MapWaterSet snapshot = water.Clone();
         MapWaterConnectivity? graph = null;
         var bodies = new List<MapCompiledWaterBody>();
         foreach (MapWaterBodyDoc body in snapshot.Bodies.Where(b => b is not null).OrderBy(b => b.Id, StringComparer.Ordinal))
@@ -48,6 +51,7 @@ public static class MapWaterCompiler
         readonly string _label = $"water body '{body.Id}'";
         MapWaterDomain? _domain;
         IReadOnlyList<MapWaterRegion> _regions = Array.Empty<MapWaterRegion>();
+        IReadOnlyList<MapWaterClosedContour> _closedContours = Array.Empty<MapWaterClosedContour>();
         MapWideRational? _deepest;
 
         internal MapCompiledWaterBody Run(ref MapWaterConnectivity? graph)
@@ -68,6 +72,7 @@ public static class MapWaterCompiler
             if (status is not (MapWaterCompileStatus.Complete or MapWaterCompileStatus.Incomplete))
             {
                 _regions = Array.Empty<MapWaterRegion>();
+                _closedContours = Array.Empty<MapWaterClosedContour>();
                 _deepest = null;
             }
             float? deepest = null;
@@ -85,6 +90,7 @@ public static class MapWaterCompiler
             {
                 Domain = _domain,
                 Footprints = _footprints.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
+                ClosedContours = _closedContours,
             };
         }
 
@@ -127,6 +133,7 @@ public static class MapWaterCompiler
                     }
             Absorb(builder);
             _regions = builder.Emit(level);
+            _closedContours = builder.ClosedContours.AsReadOnly();
             _deepest = builder.DeepestBed;
             incomplete ??= builder.Unresolved is { } gap ? $"{_label}: {gap}" : null;
             return incomplete is null ? (MapWaterCompileStatus.Complete, null) : (MapWaterCompileStatus.Incomplete, incomplete);
@@ -157,7 +164,7 @@ public static class MapWaterCompiler
         {
             var points = _regions.SelectMany(r => r.Triangles).SelectMany(t => new[] { t.A, t.B, t.C }).ToArray();
             if (points.Length == 0) return null;
-            double low = Math.Min(deepest, body.SurfaceY), high = Math.Max(deepest, body.SurfaceY);
+            double low = CanonicalZero(Math.Min(deepest, body.SurfaceY)), high = CanonicalZero(Math.Max(deepest, body.SurfaceY));
             return new MapBox3(points.Min(p => p.X.ToDouble()), low, points.Min(p => p.Z.ToDouble()),
                 points.Max(p => p.X.ToDouble()), high, points.Max(p => p.Z.ToDouble()));
         }
@@ -199,13 +206,13 @@ public static class MapWaterCompiler
                 w.WriteEndArray();
                 w.WriteString("status", status.ToString());
                 w.WriteString("detail", detail);
-                if (deepest is { } bed) w.WriteNumber("deepestBedBits", BitConverter.SingleToInt32Bits(bed));
+                if (deepest is { } bed) w.WriteNumber("deepestBedBits", BitConverter.SingleToInt32Bits(bed == 0f ? 0f : bed));
                 else w.WriteNull("deepestBedBits");
                 if (bounds is { } box)
                 {
                     w.WriteStartArray("bounds");
                     foreach (double value in new[] { box.MinX, box.MinY, box.MinZ, box.MaxX, box.MaxY, box.MaxZ })
-                        w.WriteStringValue(BitConverter.DoubleToInt64Bits(value).ToString(CultureInfo.InvariantCulture));
+                        w.WriteStringValue(BitConverter.DoubleToInt64Bits(CanonicalZero(value)).ToString(CultureInfo.InvariantCulture));
                     w.WriteEndArray();
                 }
                 else w.WriteNull("bounds");
@@ -227,8 +234,22 @@ public static class MapWaterCompiler
                     w.WriteEndObject();
                 }
                 w.WriteEndArray();
+                w.WriteStartArray("closedContours");
+                foreach (MapWaterClosedContour contour in _closedContours)
+                {
+                    w.WriteStartArray();
+                    w.WriteStringValue(contour.SpaceId);
+                    w.WriteStringValue(contour.A.X.ToString());
+                    w.WriteStringValue(contour.A.Z.ToString());
+                    w.WriteStringValue(contour.B.X.ToString());
+                    w.WriteStringValue(contour.B.Z.ToString());
+                    w.WriteEndArray();
+                }
+                w.WriteEndArray();
                 w.WriteEndObject();
             });
         }
+
+        static double CanonicalZero(double value) => value == 0d ? 0d : value;
     }
 }

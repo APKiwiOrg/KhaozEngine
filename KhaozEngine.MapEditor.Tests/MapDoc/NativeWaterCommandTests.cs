@@ -59,6 +59,31 @@ public sealed class NativeWaterCommandTests
     }
 
     [Fact]
+    public void TerrainEditThroughAnAlias_NamesTheBody_OnApplyUndoAndRedo()
+    {
+        MapDocument doc = WaterFixtures.SeaConnectedCaveThroughAliases("grotto");
+        string before = Assert.Single(MapWaterCompiler.Compile(CaveFixtures.View(doc), doc.Water!)).Digest;
+        var command = new TerrainEditCommand(new MapSetCornerHeights(new("grotto-roof", 0, 0), 2, 2, 1, 1, new[] { 490 }));
+        MapNativeEditEffects apply = NativeDocumentTransaction.Run(doc, command, false, null, localOnly: true);
+        string after = Assert.Single(MapWaterCompiler.Compile(CaveFixtures.View(doc), doc.Water!)).Digest;
+        Assert.NotEqual(before, after);
+        Assert.Equal(new[] { "grotto-alias" }, apply.SpaceIds);
+        AssertNamed(apply);
+        MapNativeEditEffects undo = NativeDocumentTransaction.Run(doc, command, true, null, localOnly: true);
+        Assert.Equal(before, Assert.Single(MapWaterCompiler.Compile(CaveFixtures.View(doc), doc.Water!)).Digest);
+        AssertNamed(undo);
+        MapNativeEditEffects redo = NativeDocumentTransaction.Run(doc, command, false, null, localOnly: true);
+        Assert.Equal(after, Assert.Single(MapWaterCompiler.Compile(CaveFixtures.View(doc), doc.Water!)).Digest);
+        AssertNamed(redo);
+
+        static void AssertNamed(MapNativeEditEffects effects)
+        {
+            Assert.Equal(new[] { "ocean" }, effects.WaterBodyIds);
+            Assert.True(effects.Invalidates.HasFlag(MapNativeInvalidation.Medium));
+        }
+    }
+
+    [Fact]
     public void UnrelatedTransactions_KeepTheExactWaterSet()
     {
         MapDocument doc = WaterFixtures.OceanOverCaves();

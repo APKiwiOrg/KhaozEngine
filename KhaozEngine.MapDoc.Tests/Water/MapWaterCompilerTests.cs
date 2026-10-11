@@ -273,6 +273,28 @@ public class MapWaterCompilerTests
     }
 
     [Fact]
+    public void Digest_FollowsOnlyConsumedMetadata_WhenGeometryAndPatchDigestsStayTheSame()
+    {
+        MapDocument before = WaterFixtures.ExteriorWater("flat", "sea", MapLatticeFrame.ImportedMetreCentimetre,
+            0, 0, 2, 2, (_, _) => 0);
+        before.Water!.Bodies[0] = before.Water.Bodies[0] with { SurfaceY = 1f };
+        MapSurfaceSet surfaces = before.Surfaces.Clone();
+        surfaces.Refs[0] = surfaces.Refs[0] with
+        {
+            Frame = surfaces.Refs[0].Frame with { HeightUnitMetres = new(1, 200) },
+        };
+        MapDocument after = WaterFixtures.Document(surfaces, before.Water.Clone());
+        MapCompiledWaterBody a = Body(before, "sea"), b = Body(after, "sea");
+        Assert.Equal((MapWaterCompileStatus.Complete, MapWaterCompileStatus.Complete), (a.Status, b.Status));
+        Assert.Equal(a.Regions.SelectMany(r => r.Triangles), b.Regions.SelectMany(r => r.Triangles));
+        Assert.Equal(a.DeepestBedY, b.DeepestBedY);
+        Assert.Equal(a.Bounds, b.Bounds);
+        Assert.Equal(before.Surfaces.Patches.Select(p => (p.Key, MapSurfaceSemantics.PatchDigest(p.Value))),
+            after.Surfaces.Patches.Select(p => (p.Key, MapSurfaceSemantics.PatchDigest(p.Value))));
+        Assert.NotEqual(a.Digest, b.Digest);
+    }
+
+    [Fact]
     public void MediumDefinition_EntersTheDigest()
     {
         MapDocument doc = WaterFixtures.OceanOverCaves();

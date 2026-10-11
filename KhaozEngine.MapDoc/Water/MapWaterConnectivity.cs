@@ -9,7 +9,21 @@ namespace KhaozEngine.MapDoc.Water;
 
 /// <summary>The reads one containment run spent on connectivity: relation records visited and distinct relation
 /// endpoints resolved to their alias owners.</summary>
-internal readonly record struct MapWaterConnectivityReads(int Relations, int Endpoints);
+internal readonly record struct MapWaterConnectivityReads(int Relations, int Endpoints)
+{
+    internal int Constructions { get; init; }
+}
+
+/// <summary>Cumulative graph construction and read work owned by one whole containment call.</summary>
+internal sealed class MapWaterConnectivityWork
+{
+    internal MapWaterConnectivityReads Reads { get; private set; }
+
+    internal void Add(int relations, int endpoints) => Reads = new(Reads.Relations + relations, Reads.Endpoints + endpoints)
+    {
+        Constructions = Reads.Constructions + 1,
+    };
+}
 
 /// <summary>The portal and vertical link edges of one view, built in one pass over its acquired relation records and
 /// shared by every body of a containment run. An edge is one portal or one opening of a link. Each endpoint is
@@ -25,7 +39,7 @@ internal sealed class MapWaterConnectivity
     readonly Dictionary<MapRecordRef, Endpoint> _endpoints = new();
     int _relations;
 
-    internal MapWaterConnectivity(MapScopedSurfaces view)
+    internal MapWaterConnectivity(MapScopedSurfaces view, MapWaterConnectivityWork? work = null)
     {
         _view = view;
         foreach (MapRecordRef reference in view.Witness.Records.OrderBy(r => r.Id, StringComparer.Ordinal).ThenBy(r => r.Anchor))
@@ -44,9 +58,8 @@ internal sealed class MapWaterConnectivity
                         Add(opening, link.UpperSpace, link.LowerSpace, reference, $"link '{reference.Id}' opening '{opening.Id}'");
             }
         }
+        work?.Add(_relations, _endpoints.Count);
     }
-
-    internal MapWaterConnectivityReads Reads => new(_relations, _endpoints.Count);
 
     /// <summary>Whether <paramref name="covered"/> forms one set over the edges joining two of its spaces whose exact
     /// aperture bottom is strictly below <paramref name="surface"/>. An edge with one endpoint outside the set is

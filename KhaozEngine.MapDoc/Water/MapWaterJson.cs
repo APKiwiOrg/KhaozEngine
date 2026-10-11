@@ -56,7 +56,7 @@ internal static class MapWaterJson
         w.WriteStartObject();
         w.WriteString("key", medium.Key);
         w.WriteString("kind", medium.Kind.ToString());
-        w.WriteNumber("wadeSpeedScale", medium.WadeSpeedScale);
+        w.WriteNumber("wadeSpeedScale", medium.WadeSpeedScale == 0f ? 0f : medium.WadeSpeedScale);
         w.WriteEndObject();
     }
 

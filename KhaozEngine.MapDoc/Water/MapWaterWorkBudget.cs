@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 
 namespace KhaozEngine.MapDoc.Water;
 
@@ -48,11 +49,13 @@ internal sealed class MapWaterWorkMeter
     internal const string PieceVertices = "water piece vertices";
     internal const string FootprintCells = "water footprint cells";
     internal const string BoundFaces = "water bound faces";
+    internal const string BoundCells = "water bound cells";
     internal const string PairChecks = "water pair checks";
     internal const string Triangles = "water triangles";
 
     readonly MapWaterCompileLimits _limits;
     long _boundFaces;
+    BigInteger _boundSlots, _boundCells;
 
     internal MapWaterWorkMeter(MapWaterCompileLimits limits)
     {
@@ -71,7 +74,11 @@ internal sealed class MapWaterWorkMeter
     internal int TriangleCount { get; private set; }
 
     internal MapWaterWork Work => new(PieceCount, VertexCount, FootprintRects, CellCount, BoundReads, UpperFaces, LowerFaces,
-        (int)Math.Min(Pairs.Charged, int.MaxValue), TriangleCount);
+        (int)Math.Min(Pairs.Charged, int.MaxValue), TriangleCount)
+    {
+        BoundSlots = (int)BigInteger.Min(_boundSlots, int.MaxValue),
+        BoundCells = (int)BigInteger.Min(_boundCells, int.MaxValue),
+    };
 
     /// <summary>Counts the domain's pieces and ring vertices from the document, before any geometry.</summary>
     internal void ChargeDomain(MapWaterDomainDoc domain)
@@ -88,6 +95,15 @@ internal sealed class MapWaterWorkMeter
     internal void ChargeFootprintCells(int cells) => CellCount = Charge(CellCount, cells, _limits.MaxFootprintCells, FootprintCells);
 
     internal void CountFootprintRects(int rects) => FootprintRects = checked(FootprintRects + rects);
+
+    /// <summary>Charges an entire bound-lattice candidate range arithmetically before its slot or cell loop starts.
+    /// Wide counts make even ranges whose area exceeds Int64 refuse as capacity, without traversing them.</summary>
+    internal void ChargeBoundTraversal(BigInteger slots, BigInteger cells)
+    {
+        _boundSlots += slots;
+        _boundCells += cells;
+        if (_boundSlots + _boundCells > _limits.MaxBoundCells) throw new MapWaterCapacityException(BoundCells);
+    }
 
     /// <summary>Charges one bound read and the faces its preflight counted, before the read runs.</summary>
     internal void ChargeRead(long faces)

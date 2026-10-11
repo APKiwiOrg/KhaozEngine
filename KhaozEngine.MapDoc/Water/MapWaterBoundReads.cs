@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -47,6 +48,13 @@ internal static class MapWaterBoundReads
         var read = new List<MapPatchKey>();
         string? gap = null;
         MapCellRect range = MapLatticeRanges.CellRange(surface.Frame, min, max);
+        if (range.MaxXExclusive > range.MinX && range.MaxZExclusive > range.MinZ)
+        {
+            BigInteger slots = ((BigInteger)SlotOf(range.MaxXExclusive - 1) - SlotOf(range.MinX) + 1) *
+                ((BigInteger)SlotOf(range.MaxZExclusive - 1) - SlotOf(range.MinZ) + 1);
+            BigInteger cells = ((BigInteger)range.MaxXExclusive - range.MinX) * ((BigInteger)range.MaxZExclusive - range.MinZ);
+            meter.ChargeBoundTraversal(slots, cells);
+        }
         int limit = limits.MaxSourceFacesPerBound;
         for (long sz = SlotOf(range.MinZ); sz <= SlotOf(range.MaxZExclusive - 1) && range.MaxZExclusive > range.MinZ; sz++)
             for (long sx = SlotOf(range.MinX); sx <= SlotOf(range.MaxXExclusive - 1) && range.MaxXExclusive > range.MinX; sx++)

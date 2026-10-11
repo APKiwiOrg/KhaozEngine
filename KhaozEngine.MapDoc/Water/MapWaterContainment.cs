@@ -30,9 +30,10 @@ public static class MapWaterContainment
         var errors = new List<string>();
         bool complete = true;
         MapWaterConnectivity? graph = null;
+        var work = new MapWaterConnectivityWork();
         foreach (MapWaterBodyDoc body in snapshot.Bodies.Where(b => b is not null).OrderBy(b => b.Id, StringComparer.Ordinal))
-            complete &= Check(view, body, null, errors, ref graph);
-        reads = graph?.Reads ?? default;
+            complete &= Check(view, body, null, errors, ref graph, work);
+        reads = work.Reads;
         return new(complete, errors.AsReadOnly());
     }
 
@@ -58,10 +59,11 @@ public static class MapWaterContainment
     }
 
     /// <summary>Validates one body into <paramref name="errors"/> and returns false when it could not be verified.</summary>
-    static bool Check(MapScopedSurfaces view, MapWaterBodyDoc body, Prepared? prepared, List<string> errors, ref MapWaterConnectivity? graph)
+    static bool Check(MapScopedSurfaces view, MapWaterBodyDoc body, Prepared? prepared, List<string> errors,
+        ref MapWaterConnectivity? graph, MapWaterConnectivityWork? work = null)
     {
         string? unverified;
-        try { unverified = ValidateBody(view, body, prepared, errors, ref graph); }
+        try { unverified = ValidateBody(view, body, prepared, errors, ref graph, work); }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException) { unverified = "not representable"; }
         catch (MapDocumentException error) when (Invalid(error))
         {
@@ -77,7 +79,7 @@ public static class MapWaterContainment
     /// <summary>Adds the body's definite refusals to <paramref name="errors"/> and returns why it could not be
     /// verified, or null when every check ran on available data.</summary>
     static string? ValidateBody(MapScopedSurfaces view, MapWaterBodyDoc body, Prepared? prepared, List<string> errors,
-        ref MapWaterConnectivity? graph)
+        ref MapWaterConnectivity? graph, MapWaterConnectivityWork? work)
     {
         string label = $"water body '{body.Id}'";
         MapExactValue surface;
@@ -130,7 +132,7 @@ public static class MapWaterContainment
             errors.Add($"{label} covers no space footprint");
         }
         if (covered.Count == 1) return null;
-        graph ??= new MapWaterConnectivity(view);
+        graph ??= new MapWaterConnectivity(view, work);
         string? unknown = graph.Join(label, surface, covered, errors, out bool connected, prepared?.Read);
         if (connected) return null;
         if (unknown is not null) return unknown;

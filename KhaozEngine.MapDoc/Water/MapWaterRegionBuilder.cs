@@ -56,6 +56,8 @@ internal sealed class MapWaterRegionBuilder
     /// <summary>Every surface a bound read looked up.</summary>
     internal SortedSet<string> SurfacesRead { get; } = new(StringComparer.Ordinal);
 
+    internal List<MapWaterClosedContour> ClosedContours { get; } = new();
+
     /// <summary>Why the first unresolved area could not be resolved, or null while every area is resolved.</summary>
     internal string? Unresolved { get; private set; }
 
@@ -153,6 +155,12 @@ internal sealed class MapWaterRegionBuilder
             {
                 IReadOnlyList<MapWidePoint> lifted = whole ? face.Points : piece.Select(v => new MapWidePoint(v.X, face.Lift(v), v.Z)).ToArray();
                 var (above, rest) = MapWaterPolygons.SplitAtHeight(lifted, _level);
+                if (rest.Count == 0)
+                {
+                    MapWideXz[] ties = lifted.Where(p => p.Y.CompareTo(_level) == 0).Select(p => p.Xz)
+                        .OrderBy(p => p.X).ThenBy(p => p.Z).ToArray();
+                    if (ties.Length != 0) ClosedContours.Add(new(spaceId, Narrow(ties[0]), Narrow(ties[^1])));
+                }
                 free.AddRange(above.Select(Flatten));
                 closed.AddRange(rest.Select(Flatten));
             }, _ => { });
@@ -181,6 +189,8 @@ internal sealed class MapWaterRegionBuilder
         }
         MapWaterPolygons.Bounds bounds = MapWaterPolygons.Bounds.Of(part);
         var (row0, row1) = cells.Rows(bounds.Min.Z, bounds.Max.Z);
+        var (firstCol, endCol) = cells.Columns(bounds.Min.X, bounds.Max.X);
+        _meter.ChargeBoundTraversal(BigInteger.Zero, ((BigInteger)row1 - row0) * ((BigInteger)endCol - firstCol));
         for (long row = row0; row < row1; row++)
         {
             var (zLo, zHi) = cells.RowBand(row);

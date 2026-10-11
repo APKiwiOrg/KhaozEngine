@@ -4,6 +4,7 @@ using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Physics;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
 using Xunit;
@@ -60,6 +61,64 @@ public class MapWaterWorldFixTests
             MapNavTiling.AffectedTiles(world, Grids, Nav, MediumEdit("river")));
         Assert.Equal(new[] { new MapNavTileCoord(1, -1) },
             MapNavTiling.AffectedTiles(world, Grids, Nav, MediumEdit("pond")));
+    }
+
+    [Fact]
+    public void TerrainEditThroughAnAlias_ReportsEveryChangedMediumCaptureTile()
+    {
+        WaterWorldFixture fixture = NativeWorldFixtures.LRiver();
+        MapWaterBodyDoc river = fixture.Document.Water!.Bodies[0];
+        fixture.Document.Water.Bodies[0] = river with
+        {
+            Domain = river.Domain with { Rects = new[] { new MapWaterRect(8, -48, 24, 48), new MapWaterRect(24, 8, 240, 24) } },
+        };
+        var patchKey = new MapPatchKey("floor", 0, -1);
+        MapSurfacePatch patch = fixture.Document.Surfaces.Patches[patchKey];
+        var alias = new MapRecordRef("exterior-alias", patchKey);
+        patch.Records.Add(new MapSpaceDoc(alias.Id, MapSpaceKind.Exterior, null,
+            new("exterior", new("floor", 0, 0)), Array.Empty<string>(), Array.Empty<MapBoundaryRef>(),
+            Array.Empty<MapBoundaryRef>(), Array.Empty<MapRecordRef>()));
+        foreach (MapSurfacePatch floorPatch in fixture.Document.Surfaces.Patches.Values)
+            for (int i = 0; i < floorPatch.Records.Count; i++)
+                if (floorPatch.Records[i] is MapSpaceFootprint footprint)
+                    floorPatch.Records[i] = footprint with { Space = alias };
+        fixture = NativeWorldFixtures.Reresolve(fixture);
+        MapBuiltWorld before = NativeWorldFixtures.Build(fixture);
+        MapTerrainEditResult edit = MapTerrainEdits.Prepare(fixture.Document.Surfaces,
+            new MapSetCornerHeights(patchKey, 16, 32, 1, 1, new[] { -210 }));
+        Assert.Equal(new[] { "exterior-alias" }, edit.Effects.SpaceIds);
+        MapNativeEditEffects effects = MapWaterEdits.NameAffectedBodies(fixture.Document.Water, edit.Effects, edit.Candidate);
+        fixture.Document.Surfaces = edit.Candidate;
+        MapBuiltWorld after = NativeWorldFixtures.Build(NativeWorldFixtures.Reresolve(fixture));
+        var beforeTiles = MapNavTiling.Partition(before, Grids, Nav).ToDictionary(t => t.Coord);
+        MapNavTileCoord[] changed = MapNavTiling.Partition(after, Grids, Nav)
+            .Where(t => t.MediumDigest != beforeTiles[t.Coord].MediumDigest).Select(t => t.Coord).ToArray();
+        Assert.Equal(new[] { new MapNavTileCoord(0, -1), new MapNavTileCoord(0, 0), new MapNavTileCoord(1, 0) }, changed);
+        MapNavTileCoord[] reported = MapNavTiling.AffectedTiles(after, Grids, Nav, effects).ToArray();
+        Assert.All(changed, tile => Assert.Contains(tile, reported));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CanonicalZeroLevel_HasTheSameWorldAndWetNavigationIdentity(bool navigation)
+    {
+        WaterWorldFixture fixture = NativeWorldFixtures.BridgeOverRiver();
+        MapWaterBodyDoc body = fixture.Document.Water!.Bodies[0];
+        fixture.Document.Water.Bodies[0] = body with { SurfaceY = 0f };
+        MapBuiltWorld positive = NativeWorldFixtures.Build(NativeWorldFixtures.Reresolve(fixture));
+        fixture.Document.Water.Bodies[0] = body with { SurfaceY = BitConverter.Int32BitsToSingle(int.MinValue) };
+        MapBuiltWorld negative = NativeWorldFixtures.Build(NativeWorldFixtures.Reresolve(fixture));
+        Assert.Equal(positive.WaterDigest, negative.WaterDigest);
+        if (!navigation) Assert.Equal(positive.BuildHash, negative.BuildHash);
+        else
+        {
+            var wetPositive = MapNavTiling.Partition(positive, Grids, Nav).Where(t => t.MediumDigest.Length != 0).ToArray();
+            var wetNegative = MapNavTiling.Partition(negative, Grids, Nav).Where(t => t.MediumDigest.Length != 0).ToArray();
+            Assert.NotEmpty(wetPositive);
+            Assert.Equal(wetPositive.Select(t => (t.Coord, t.MediumDigest, t.CaptureIdentity)),
+                wetNegative.Select(t => (t.Coord, t.MediumDigest, t.CaptureIdentity)));
+        }
     }
 
     [Fact]

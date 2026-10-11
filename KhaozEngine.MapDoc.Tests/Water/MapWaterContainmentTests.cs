@@ -119,7 +119,8 @@ public class MapWaterContainmentTests
 
         Assert.Equal((true, 0), (one.Complete, one.Errors.Count));
         Assert.Equal((true, 0), (three.Complete, three.Errors.Count));
-        Assert.Equal(new MapWaterConnectivityReads(Relations: 1, Endpoints: 2), oneReads);
+        Assert.Equal(new MapWaterConnectivityReads(Relations: 1, Endpoints: 2) { Constructions = 1 }, oneReads);
+        Assert.Equal(1, threeReads.Constructions);
         Assert.Equal(oneReads, threeReads);
     }
 

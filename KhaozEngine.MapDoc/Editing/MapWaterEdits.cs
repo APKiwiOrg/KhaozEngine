@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
 
@@ -88,12 +90,18 @@ public static class MapWaterEdits
         return new(after, writes, effects);
     }
 
-    /// <summary>Adds the water bodies whose covered spaces meet the effects, preserving all other consequences.</summary>
-    public static MapNativeEditEffects NameAffectedBodies(MapWaterSet? water, MapNativeEditEffects effects)
+    /// <summary>Adds the water bodies whose covered spaces meet the effects, resolving affected aliases through
+    /// <paramref name="surfaces"/> to their owners and preserving all other consequences.</summary>
+    public static MapNativeEditEffects NameAffectedBodies(MapWaterSet? water, MapNativeEditEffects effects, MapSurfaceSet surfaces)
     {
         ArgumentNullException.ThrowIfNull(effects);
+        ArgumentNullException.ThrowIfNull(surfaces);
         if (water is null) return effects;
-        string[] affected = water.Bodies.Where(b => b.Covers.Any(c => effects.SpaceIds.Contains(c.Id, StringComparer.Ordinal)))
+        var owners = new HashSet<string>(effects.SpaceIds, StringComparer.Ordinal);
+        MapScopedSurfaces view = MapScopedSurfaces.CompleteView(surfaces);
+        foreach (MapSpaceDoc space in surfaces.AllRecords().OfType<MapSpaceDoc>().Where(s => owners.Contains(s.Id)).ToArray())
+            owners.Add(MapSpaceGeometry.Owner(view, space));
+        string[] affected = water.Bodies.Where(b => b.Covers.Any(c => owners.Contains(c.Id)))
             .Select(b => b.Id).ToArray();
         if (affected.Length == 0) return effects;
         return effects with

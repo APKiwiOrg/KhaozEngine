@@ -47,7 +47,7 @@ public class MapWaterEditTests
     {
         MapDocument doc = WaterFixtures.OceanOverCaves();
         MapNativeEditEffects terrain = MapTerrainEdits.Prepare(doc.Surfaces, WaterFixtures.LowerSeabedAt(2, -2, metres: 1f)).Effects;
-        MapNativeEditEffects named = MapWaterEdits.NameAffectedBodies(doc.Water, terrain);
+        MapNativeEditEffects named = MapWaterEdits.NameAffectedBodies(doc.Water, terrain, doc.Surfaces);
         Assert.Contains("ocean", named.WaterBodyIds);
         Assert.DoesNotContain("cave-lake", named.WaterBodyIds);
         Assert.True(named.Invalidates.HasFlag(MapNativeInvalidation.Medium));
@@ -173,9 +173,10 @@ public sealed class WaterEditEffectsTests
         {
             WaterBodyIds = new[] { "ocean", "previous" },
         };
-        MapNativeEditEffects named = MapWaterEdits.NameAffectedBodies(WaterFixtures.OceanOverCaves().Water, effects);
+        MapDocument doc = WaterFixtures.OceanOverCaves();
+        MapNativeEditEffects named = MapWaterEdits.NameAffectedBodies(doc.Water, effects, doc.Surfaces);
         Assert.Equal(new[] { "ocean", "previous" }, named.WaterBodyIds);
         Assert.Equal(MapNativeInvalidation.Terrain | MapNativeInvalidation.Medium, named.Invalidates);
-        Assert.Equal(effects, MapWaterEdits.NameAffectedBodies(null, effects));
+        Assert.Equal(effects, MapWaterEdits.NameAffectedBodies(null, effects, doc.Surfaces));
     }
 }

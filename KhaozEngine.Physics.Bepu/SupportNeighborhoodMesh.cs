@@ -32,7 +32,7 @@ internal static class SupportNeighborhoodMesh
     internal static CapsuleFeatureStatus Polygons(Simulation simulation, TypedIndex shape, in RigidPose pose,
         StaticHandle owner, FeaturePoint lower, FeaturePoint upper, ReadOnlySpan<double> probeLow,
         ReadOnlySpan<double> probeHigh, GeometryInterval reach, List<int> candidates, SupportPolygonPool pool,
-        List<SupportPolygon> output)
+        List<SupportPolygon> output, bool exactZeroProducts = false)
     {
         if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
             return CapsuleFeatureStatus.Unsupported;
@@ -40,6 +40,48 @@ internal static class SupportNeighborhoodMesh
         if (mesh.Scale != Vector3.One) return CapsuleFeatureStatus.Unsupported;
         if (!LocalBounds(transform, lower, upper, reach, out Vector3 min, out Vector3 max))
             return CapsuleFeatureStatus.Unsupported;
+        return Capture(simulation, shape, pose, owner, transform, min, max, probeLow, probeHigh, reach,
+            candidates, pool, output, exactZeroProducts);
+    }
+
+    /// <summary>Traverses the installed tree over the complete volume. Interval inverse rows evaluate the
+    /// whole world AABB, enclosing all eight transformed corners even for a rotated mesh.</summary>
+    internal static CapsuleFeatureStatus Polygons(Simulation simulation, TypedIndex shape, in RigidPose pose,
+        StaticHandle owner, in SupportFootprintBounds bounds, List<int> candidates, SupportPolygonPool pool,
+        List<SupportPolygon> output)
+    {
+        if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
+            return CapsuleFeatureStatus.Unsupported;
+        ref Mesh mesh = ref simulation.Shapes.GetShape<Mesh>(shape.Index);
+        if (mesh.Scale != Vector3.One) return CapsuleFeatureStatus.Unsupported;
+        var world = new GeometryVector(GeometryInterval.Enclose(bounds.Minimum.X, bounds.Maximum.X),
+            GeometryInterval.Enclose(bounds.Minimum.Y, bounds.Maximum.Y),
+            GeometryInterval.Enclose(bounds.Minimum.Z, bounds.Maximum.Z));
+        GeometryVector translation = transform.Translation.Bounds;
+        GeometryVector offset = new(world.X.Subtract(translation.X), world.Y.Subtract(translation.Y),
+            world.Z.Subtract(translation.Z));
+        GeometryInterval x = GeometryVectorOperations.Dot(transform.InverseTransposeX.Bounds, offset);
+        GeometryInterval y = GeometryVectorOperations.Dot(transform.InverseTransposeY.Bounds, offset);
+        GeometryInterval z = GeometryVectorOperations.Dot(transform.InverseTransposeZ.Bounds, offset);
+        if (!x.IsResolved || !y.IsResolved || !z.IsResolved) return CapsuleFeatureStatus.Unsupported;
+        Vector3 min = new(MathF.BitDecrement((float)x.Lower), MathF.BitDecrement((float)y.Lower),
+            MathF.BitDecrement((float)z.Lower));
+        Vector3 max = new(MathF.BitIncrement((float)x.Upper), MathF.BitIncrement((float)y.Upper),
+            MathF.BitIncrement((float)z.Upper));
+        if (!float.IsFinite(min.X) || !float.IsFinite(min.Y) || !float.IsFinite(min.Z) ||
+            !float.IsFinite(max.X) || !float.IsFinite(max.Y) || !float.IsFinite(max.Z))
+            return CapsuleFeatureStatus.Unsupported;
+        return Capture(simulation, shape, pose, owner, transform, min, max,
+            [bounds.Minimum.X, bounds.Minimum.Y, bounds.Minimum.Z],
+            [bounds.Maximum.X, bounds.Maximum.Y, bounds.Maximum.Z], GeometryInterval.Exact(0), candidates, pool, output, exactZeroProducts: true);
+    }
+
+    static CapsuleFeatureStatus Capture(Simulation simulation, TypedIndex shape, in RigidPose pose,
+        StaticHandle owner, in InstalledPoseOperator transform, Vector3 min, Vector3 max,
+        ReadOnlySpan<double> probeLow, ReadOnlySpan<double> probeHigh, GeometryInterval reach,
+        List<int> candidates, SupportPolygonPool pool, List<SupportPolygon> output, bool exactZeroProducts)
+    {
+        ref Mesh mesh = ref simulation.Shapes.GetShape<Mesh>(shape.Index);
         candidates.Clear();
         var overlaps = new TriangleOverlaps(candidates);
         mesh.Tree.GetOverlaps(min, max, ref overlaps);
@@ -51,11 +93,11 @@ internal static class SupportNeighborhoodMesh
         {
             ref Triangle triangle = ref mesh.Triangles[id];
             Vector3 a = triangle.A, b = triangle.B, c = triangle.C;
-            if (CapsuleFeatureGeometry.TransformVertex(a, seamPose, transform, out FeaturePoint worldA) !=
+            if (CapsuleFeatureGeometry.TransformVertex(a, seamPose, transform, out FeaturePoint worldA, exactZeroProducts) !=
                     CapsuleFeatureStatus.Complete ||
-                CapsuleFeatureGeometry.TransformVertex(b, seamPose, transform, out FeaturePoint worldB) !=
+                CapsuleFeatureGeometry.TransformVertex(b, seamPose, transform, out FeaturePoint worldB, exactZeroProducts) !=
                     CapsuleFeatureStatus.Complete ||
-                CapsuleFeatureGeometry.TransformVertex(c, seamPose, transform, out FeaturePoint worldC) !=
+                CapsuleFeatureGeometry.TransformVertex(c, seamPose, transform, out FeaturePoint worldC, exactZeroProducts) !=
                     CapsuleFeatureStatus.Complete)
                 return CapsuleFeatureStatus.Unsupported;
             for (int axis = 0; axis < 3; axis++)
@@ -69,13 +111,13 @@ internal static class SupportNeighborhoodMesh
             if (SupportGeometry.BoxGap(probeLow, probeHigh, low, high) > reach.Upper || Degenerate(a, b, c)) continue;
             // Edges and normal come from the common installed operator. Bepu 2.4 Triangle.RayTest defines the front
             // as Cross(ac, ab), as CapsuleFeatureMesh does. Wound A, C, B, the polygon's inside convention carries it.
-            FeaturePoint ac = transform.Edge(a, c), ab = transform.Edge(a, b);
-            FeaturePoint normal = FeaturePoint.Cross(ac, ab);
+            FeaturePoint ac = transform.Edge(a, c, exactZeroProducts), ab = transform.Edge(a, b, exactZeroProducts);
+            FeaturePoint normal = FeaturePoint.Cross(ac, ab, exactZeroProducts);
             SupportPolygon polygon = pool.Rent();
             polygon.Begin(owner, id, 3);
             polygon.Set(0, worldA, ac);
-            polygon.Set(1, worldC, transform.Edge(c, b));
-            polygon.Set(2, worldB, transform.Edge(b, a));
+            polygon.Set(1, worldC, transform.Edge(c, b, exactZeroProducts));
+            polygon.Set(2, worldB, transform.Edge(b, a, exactZeroProducts));
             polygon.Finish(normal);
             // A sliver keeps its bounded normal. A triangle whose normal cannot be bounded away from zero has no
             // certifiable surface and no area to stand on, and its edges belong to its neighbours, so like an exactly

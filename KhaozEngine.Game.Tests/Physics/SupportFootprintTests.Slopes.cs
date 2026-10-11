@@ -54,13 +54,13 @@ public partial class SupportFootprintTests
                     description.Shape, description.Pose, new StaticHandle(owner), FeaturePoint.Exact(new Vector3(0, bounds.Minimum.Y, 0)),
                     FeaturePoint.Exact(new Vector3(0, bounds.Maximum.Y, 0)),
                     [bounds.Minimum.X, bounds.Minimum.Y, bounds.Minimum.Z],
-                    [bounds.Maximum.X, bounds.Maximum.Y, bounds.Maximum.Z], GeometryInterval.Exact(1), [], pool, polygons));
+                    [bounds.Maximum.X, bounds.Maximum.Y, bounds.Maximum.Z], GeometryInterval.Exact(1), [], pool, polygons, exactZeroProducts: true));
             else
             {
                 scratch.Reset();
                 Assert.Equal(CapsuleFeatureStatus.Complete, SupportNeighborhoodPolyhedra.Capture(simulation,
                     description.Shape, description.Pose, scratch, leaves));
-                foreach (var leaf in leaves) SupportNeighborhoodPolyhedra.Polygons(new StaticHandle(owner), leaf, pool, polygons);
+                foreach (var leaf in leaves) SupportNeighborhoodPolyhedra.Polygons(new StaticHandle(owner), leaf, pool, polygons, footprint: true);
             }
         }
         return polygons;

@@ -50,7 +50,9 @@ internal sealed class CapsuleFeaturePolyhedron
     internal CapsuleFeaturePolyhedronEdge[] Edges { get; private set; } = [];
     internal FeaturePoint[] Normals { get; private set; } = [];
     internal int[][] VertexFaces { get; private set; } = [];
-    internal FeaturePoint EdgeDirection(int a, int b) => _transform.Edge(LocalVertices[a], LocalVertices[b]);
+    internal FeaturePoint EdgeDirection(int a, int b, bool exactZeroProducts = false) =>
+        _transform.Edge(LocalVertices[a], LocalVertices[b], exactZeroProducts);
+    internal FeaturePoint FootprintVertex(int vertex) => _transform.Point(LocalVertices[vertex], exactZeroProducts: true);
 
     /// <summary>Admits the leaf. With <paramref name="scratch"/> every working collection and the normals come from
     /// it, and the edge and vertex incidence arrays are not published. The decision is the same either way.</summary>

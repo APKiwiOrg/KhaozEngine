@@ -106,7 +106,7 @@ internal static class SupportFootprintPolygon
         if (orientation != GeometrySign.Zero)
         {
             FeatureNumber direction = FeatureNumber.Exact(orientation == GeometrySign.Positive ? -1 : 1);
-            FeaturePoint uphill = new(polygon.Normal.X.Multiply(direction), Zero, polygon.Normal.Z.Multiply(direction));
+            FeaturePoint uphill = new(polygon.Normal.X.Multiply(direction, exactZeroProducts: true), Zero, polygon.Normal.Z.Multiply(direction, exactZeroProducts: true));
             // For an axis-aligned gradient the normalized direction is exact even when the
             // installed coefficient is enclosed. Retain that identity before forming a radical.
             if (uphill.Z.IsExact && uphill.Z.Value == 0 && uphill.X.Sign is GeometrySign.Positive or GeometrySign.Negative)
@@ -119,10 +119,10 @@ internal static class SupportFootprintPolygon
             if (gradient == GeometrySign.Positive)
                 for (int sign = 1; sign >= -1; sign -= 2)
                 {
-                    FeaturePoint directionPoint = FeaturePoint.Scale(uphill, FeatureNumber.Exact(sign));
+                    FeaturePoint directionPoint = FeaturePoint.Scale(uphill, FeatureNumber.Exact(sign), exactZeroProducts: true);
                     FeatureNumber root = Sqrt(squared);
                     FeaturePoint point = OnPlane(polygon, FeaturePoint.Add(axis,
-                        FeaturePoint.Scale(directionPoint, radius.Divide(root))));
+                        FeaturePoint.Scale(directionPoint, radius.Divide(root), exactZeroProducts: true)));
                     if (!point.IsResolved) return GeometrySign.Unresolved;
                     GeometrySign inside = Interior(polygon, axis, directionPoint, radius, squared, root);
                     if (inside == GeometrySign.Unresolved) return inside;
@@ -137,18 +137,18 @@ internal static class SupportFootprintPolygon
         FeaturePoint first = polygon.Vertices[0];
         if (polygon.Normal.X.IsExact && polygon.Normal.X.Value == 0 &&
             polygon.Normal.Z.IsExact && polygon.Normal.Z.Value == 0) return new(point.X, first.Y, point.Z);
-        FeatureNumber height = first.Y.Add(polygon.Normal.X.Multiply(first.X.Subtract(point.X))
-            .Add(polygon.Normal.Z.Multiply(first.Z.Subtract(point.Z))).Divide(polygon.Normal.Y));
+        FeatureNumber height = first.Y.Add(polygon.Normal.X.Multiply(first.X.Subtract(point.X), exactZeroProducts: true)
+            .Add(polygon.Normal.Z.Multiply(first.Z.Subtract(point.Z), exactZeroProducts: true)).Divide(polygon.Normal.Y));
         return new(point.X, height, point.Z);
     }
 
-    static FeatureNumber DotXZ(FeaturePoint a, FeaturePoint b) => a.X.Multiply(b.X).Add(a.Z.Multiply(b.Z));
+    static FeatureNumber DotXZ(FeaturePoint a, FeaturePoint b) => a.X.Multiply(b.X, exactZeroProducts: true).Add(a.Z.Multiply(b.Z, exactZeroProducts: true));
 
     static GeometrySign InDisc(FeaturePoint point, FeaturePoint axis, FeatureNumber radius)
     {
         FeaturePoint delta = FeaturePoint.Subtract(point, axis);
-        FeatureNumber squared = delta.X.Multiply(delta.X).Add(delta.Z.Multiply(delta.Z));
-        GeometrySign sign = squared.Compare(radius.Multiply(radius));
+        FeatureNumber squared = delta.X.Multiply(delta.X, exactZeroProducts: true).Add(delta.Z.Multiply(delta.Z, exactZeroProducts: true));
+        GeometrySign sign = squared.Compare(radius.Multiply(radius, exactZeroProducts: true));
         if (sign != GeometrySign.Unresolved || !point.X.IsExact || !point.Z.IsExact || !radius.IsExact) return sign;
         SupportQueryDiagnostics.Record(SupportQueryCounter.ExactFallbacks);
         return BoundedGeometryArithmetic.CompareSquaredDistances([point.X.Value, point.Z.Value],
@@ -166,17 +166,17 @@ internal static class SupportFootprintPolygon
         // An attained endpoint on the circle makes one root exactly 0 or 1. Factor that root before taking a
         // square root, so independently rounded enclosures cannot obscure a closed endpoint equality.
         if (InDisc(vertex, axis, radius) == GeometrySign.Zero)
-            return Parameter(vertex, edge, dot.Multiply(FeatureNumber.Exact(-2)).Divide(a), ref range);
+            return Parameter(vertex, edge, dot.Multiply(FeatureNumber.Exact(-2), exactZeroProducts: true).Divide(a), ref range);
         if (InDisc(FeaturePoint.Add(vertex, edge), axis, radius) == GeometrySign.Zero)
-            return Parameter(vertex, edge, dot.Multiply(FeatureNumber.Exact(-2)).Divide(a).Subtract(One), ref range);
-        FeatureNumber cross = delta.X.Multiply(edge.Z).Subtract(delta.Z.Multiply(edge.X));
+            return Parameter(vertex, edge, dot.Multiply(FeatureNumber.Exact(-2), exactZeroProducts: true).Divide(a).Subtract(One), ref range);
+        FeatureNumber cross = delta.X.Multiply(edge.Z, exactZeroProducts: true).Subtract(delta.Z.Multiply(edge.X, exactZeroProducts: true));
         // Parallel projected edges factor the discriminant. This proves closed tangency
         // for every coefficient in the installed operator, without subtracting correlated intervals.
         FeatureNumber discriminant = edge.Z.IsExact && edge.Z.Value == 0
-            ? a.Multiply(radius.Multiply(radius).Subtract(delta.Z.Multiply(delta.Z)))
+            ? a.Multiply(radius.Multiply(radius, exactZeroProducts: true).Subtract(delta.Z.Multiply(delta.Z, exactZeroProducts: true)), exactZeroProducts: true)
             : edge.X.IsExact && edge.X.Value == 0
-                ? a.Multiply(radius.Multiply(radius).Subtract(delta.X.Multiply(delta.X)))
-                : a.Multiply(radius.Multiply(radius)).Subtract(cross.Multiply(cross));
+                ? a.Multiply(radius.Multiply(radius, exactZeroProducts: true).Subtract(delta.X.Multiply(delta.X, exactZeroProducts: true)), exactZeroProducts: true)
+                : a.Multiply(radius.Multiply(radius, exactZeroProducts: true), exactZeroProducts: true).Subtract(cross.Multiply(cross, exactZeroProducts: true));
         GeometrySign sign = discriminant.Sign;
         if (sign == GeometrySign.Unresolved)
         {
@@ -198,7 +198,7 @@ internal static class SupportFootprintPolygon
             if (low == GeometrySign.Negative || high == GeometrySign.Negative) continue;
             if (low == GeometrySign.Unresolved || high == GeometrySign.Unresolved) return false;
             FeatureNumber t = low == GeometrySign.Zero ? Zero : high == GeometrySign.Zero ? One :
-                dot.Negate().Add(root.Multiply(factor)).Divide(a);
+                dot.Negate().Add(root.Multiply(factor, exactZeroProducts: true)).Divide(a);
             FeaturePoint point = EdgePoint(vertex, edge, t);
             if (!point.IsResolved) return false;
             range.Add(point);
@@ -220,7 +220,7 @@ internal static class SupportFootprintPolygon
 
     static FeaturePoint EdgePoint(FeaturePoint vertex, FeaturePoint edge, FeatureNumber t)
     {
-        FeaturePoint point = FeaturePoint.Add(vertex, FeaturePoint.Scale(edge, t));
+        FeaturePoint point = FeaturePoint.Add(vertex, FeaturePoint.Scale(edge, t, exactZeroProducts: true));
         // A horizontal edge has constant height even when the circle root is not representable.
         return edge.Y.IsExact && edge.Y.Value == 0 ? new(point.X, vertex.Y, point.Z) : point;
     }
@@ -261,8 +261,8 @@ internal static class SupportFootprintPolygon
         for (int i = 0; i < polygon.Edges.Length; i++)
         {
             FeaturePoint edge = polygon.Edges[i], delta = FeaturePoint.Subtract(axis, polygon.Vertices[i]);
-            FeatureNumber k = edge.Z.Multiply(delta.X).Subtract(edge.X.Multiply(delta.Z));
-            FeatureNumber l = edge.Z.Multiply(direction.X).Subtract(edge.X.Multiply(direction.Z)).Multiply(radius);
+            FeatureNumber k = edge.Z.Multiply(delta.X, exactZeroProducts: true).Subtract(edge.X.Multiply(delta.Z, exactZeroProducts: true));
+            FeatureNumber l = edge.Z.Multiply(direction.X, exactZeroProducts: true).Subtract(edge.X.Multiply(direction.Z, exactZeroProducts: true)).Multiply(radius, exactZeroProducts: true);
             GeometrySign side = RadicalSign(l, k, squared, root);
             if (polygon.Normal.Y.Sign == GeometrySign.Negative)
                 side = side == GeometrySign.Positive ? GeometrySign.Negative :
@@ -287,7 +287,7 @@ internal static class SupportFootprintPolygon
     // Exact sign of k + l*sqrt(d). Opposite signs reduce to k*k - l*l*d without a rounded radical.
     static GeometrySign RadicalSign(FeatureNumber k, FeatureNumber l, FeatureNumber d, FeatureNumber root)
     {
-        GeometrySign direct = k.Add(l.Multiply(root)).Sign;
+        GeometrySign direct = k.Add(l.Multiply(root, exactZeroProducts: true)).Sign;
         if (direct != GeometrySign.Unresolved) return direct;
         GeometrySign ks = k.Sign, ls = l.Sign;
         if (ls == GeometrySign.Zero || d.Sign == GeometrySign.Zero) return ks;

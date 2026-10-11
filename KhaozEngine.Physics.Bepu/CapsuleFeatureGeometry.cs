@@ -164,7 +164,7 @@ internal static class CapsuleFeatureGeometry
     /// <summary>One local vertex through a proved installed pose, with the coordinate bounds and finite checks every
     /// captured vertex passes.</summary>
     internal static CapsuleFeatureStatus TransformVertex(Vector3 point, in Pose seamPose,
-        in InstalledPoseOperator transform, out FeaturePoint world)
+        in InstalledPoseOperator transform, out FeaturePoint world, bool exactZeroProducts = false)
     {
         world = default;
         if (!Within(point, 64)) return CapsuleFeatureStatus.Unsupported;
@@ -173,7 +173,7 @@ internal static class CapsuleFeatureGeometry
         // PosePoint is an operation correspondence record only. The common certified affine
         // operator below contains real and actual represented coefficients through every
         // witness expression. Independently rounded point outputs never define topology.
-        world = transform.Point(point);
+        world = transform.Point(point, exactZeroProducts);
         if (!world.IsResolved) return CapsuleFeatureStatus.Unresolved;
         if (!world.Within(2048)) return CapsuleFeatureStatus.Unsupported;
         return CapsuleFeatureStatus.Complete;

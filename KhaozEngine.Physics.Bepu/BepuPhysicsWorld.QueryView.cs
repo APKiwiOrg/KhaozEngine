@@ -23,7 +23,7 @@ public sealed partial class BepuPhysicsWorld
     }
 
     private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts,
-        IPhysicsCapsuleSweep, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood
+        IPhysicsCapsuleSweep, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood, IPhysicsSupportFootprint
     {
         private readonly BepuPhysicsWorld _owner;
         private readonly StaticQueryExclusions _exclusions;
@@ -88,6 +88,21 @@ public sealed partial class BepuPhysicsWorld
             _owner.AuthenticateFeatureLease(lease);
             ThrowIfDisposed();
             _owner.AssertNeighborhoodCurrentCore(this, result, lease);
+        }
+
+        public SupportFootprintResult QuerySupportFootprint(IPhysicsQueryLease lease, in SupportFootprintRequest request,
+            Span<SupportFootprintMember> members, Span<ulong> joins, QueryFilter filter = default)
+        {
+            _owner.AuthenticateFeatureLease(lease);
+            ThrowIfDisposed();
+            return _owner.QuerySupportFootprintCore(this, lease, request, members, joins, filter, _exclusions);
+        }
+
+        public void AssertFootprintCurrent(in SupportFootprintResult result, IPhysicsQueryLease lease)
+        {
+            _owner.AuthenticateFeatureLease(lease);
+            ThrowIfDisposed();
+            _owner.AssertFootprintCurrentCore(this, result, lease);
         }
 
         public Vector3 Origin

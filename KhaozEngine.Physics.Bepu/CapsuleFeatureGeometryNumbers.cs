@@ -51,11 +51,11 @@ internal readonly struct FeatureNumber
         : new(GeometryInterval.Enclose(-Bounds.Upper, -Bounds.Lower));
     internal FeatureNumber Subtract(FeatureNumber other) => Add(other.Negate());
 
-    internal FeatureNumber Multiply(FeatureNumber other)
+    internal FeatureNumber Multiply(FeatureNumber other, bool exactZeroProducts = false)
     {
-        // A resolved zero operand annihilates every value of the other enclosure.
-        if (IsResolved && other.IsResolved && ((IsExact && Value == 0) || (other.IsExact && other.Value == 0)))
-            return Exact(0);
+        // Footprint capture retains zero identities. The released query keeps its recorded enclosures.
+        if (exactZeroProducts && IsResolved && other.IsResolved &&
+            ((IsExact && Value == 0) || (other.IsExact && other.Value == 0))) return Exact(0);
         if (IsExact && other.IsExact && ExactExpansion.InRange(Value) && ExactExpansion.InRange(other.Value))
         {
             double exactProduct = Value * other.Value;
@@ -113,19 +113,20 @@ internal readonly record struct FeaturePoint(FeatureNumber X, FeatureNumber Y, F
     internal static FeaturePoint Add(FeaturePoint a, FeaturePoint b) => new(a.X.Add(b.X), a.Y.Add(b.Y), a.Z.Add(b.Z));
     internal static FeaturePoint Subtract(FeaturePoint a, FeaturePoint b) =>
         new(a.X.Subtract(b.X), a.Y.Subtract(b.Y), a.Z.Subtract(b.Z));
-    internal static FeaturePoint Scale(FeaturePoint value, FeatureNumber scale) =>
-        new(value.X.Multiply(scale), value.Y.Multiply(scale), value.Z.Multiply(scale));
+    internal static FeaturePoint Scale(FeaturePoint value, FeatureNumber scale, bool exactZeroProducts = false) =>
+        new(value.X.Multiply(scale, exactZeroProducts), value.Y.Multiply(scale, exactZeroProducts),
+            value.Z.Multiply(scale, exactZeroProducts));
     internal static FeatureNumber Dot(FeaturePoint a, FeaturePoint b)
     {
         FeatureNumber proposed = a.X.Multiply(b.X).Add(a.Y.Multiply(b.Y)).Add(a.Z.Multiply(b.Z));
         return proposed.IsExact ? proposed : FeatureNumber.Enclosed(GeometryVectorOperations.Dot(a.Bounds, b.Bounds));
     }
 
-    internal static FeaturePoint Cross(FeaturePoint a, FeaturePoint b)
+    internal static FeaturePoint Cross(FeaturePoint a, FeaturePoint b, bool exactZeroProducts = false)
     {
-        FeatureNumber x = a.Y.Multiply(b.Z).Subtract(a.Z.Multiply(b.Y));
-        FeatureNumber y = a.Z.Multiply(b.X).Subtract(a.X.Multiply(b.Z));
-        FeatureNumber z = a.X.Multiply(b.Y).Subtract(a.Y.Multiply(b.X));
+        FeatureNumber x = a.Y.Multiply(b.Z, exactZeroProducts).Subtract(a.Z.Multiply(b.Y, exactZeroProducts));
+        FeatureNumber y = a.Z.Multiply(b.X, exactZeroProducts).Subtract(a.X.Multiply(b.Z, exactZeroProducts));
+        FeatureNumber z = a.X.Multiply(b.Y, exactZeroProducts).Subtract(a.Y.Multiply(b.X, exactZeroProducts));
         if (x.IsExact && y.IsExact && z.IsExact) return new(x, y, z);
         GeometryVector bounds = GeometryVectorOperations.Cross(a.Bounds, b.Bounds);
         return new(x.IsExact ? x : FeatureNumber.Enclosed(bounds.X),

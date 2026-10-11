@@ -312,14 +312,14 @@ public sealed partial class ViewportWorld : IDisposable
         ArgumentNullException.ThrowIfNull(visibility);
 
         // One water plane per frame, camera-centred at the live water level so its rim stays outside the frustum
-        // (see BuildWaterPlane). Always submitted while the Water group is on, with no "skip when dry" guard: the
+        // (see BuildWaterPlane). Submitted for legacy water while the Water group is on: the
         // water pass is depth-tested against the terrain and its shore-fade drives the alpha to zero at the
         // waterline, so a level below all terrain renders nothing at negligible cost (a fixed-budget grid, one
         // draw). Deriving the plane live from the document means a water-level edit shows up without a rebuild. The
         // wholesale rebuild an EditTerrainCommand triggers is for scatter (which skips underwater candidates), not
         // for the surface.
-        if (visibility.GetGroup(VisibilityGroup.Water))
-            _scene.DrawWater(BuildWaterPlane(viewPos, _doc!.Terrain.WaterLevel, _renderDistance.OceanHalfExtent));
+        if (visibility.GetGroup(VisibilityGroup.Water) && LegacyWaterLevel(_doc!) is { } waterLevel)
+            _scene.DrawWater(BuildWaterPlane(viewPos, waterLevel, _renderDistance.OceanHalfExtent));
 
         _authoredGroupVisible = visibility.GetGroup(VisibilityGroup.Placements);
         _lastDrawFocus = viewPos;
@@ -606,6 +606,8 @@ public sealed partial class ViewportWorld : IDisposable
     }
 
     // ---- headless surface -------------------------------------------------------------------------------
+
+    internal static float? LegacyWaterLevel(MapDocument doc) => doc.Water is null ? doc.Terrain.WaterLevel : null;
 
     /// <summary>Derives the editor's single water plane: a square footprint of <paramref name="halfExtent"/> either
     /// side, centred on <paramref name="viewPos"/> in XZ at surface height <paramref name="level"/>. Pure (no GPU,

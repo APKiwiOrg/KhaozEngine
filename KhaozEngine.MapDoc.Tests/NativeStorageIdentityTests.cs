@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using KhaozEngine.MapDoc;
 using Xunit;
@@ -129,5 +130,21 @@ public sealed class NativeStorageIdentityTests
         modified["unknownNativeMember"] = 17;
         File.WriteAllText(path, root.ToJsonString());
         Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadTiled(storage.TiledPath));
+    }
+
+    [Theory]
+    [InlineData("manifest")]
+    [InlineData("tile")]
+    public void NativeStorage_LoadRefusesDuplicateMembers(string target)
+    {
+        using var storage = new NativeStorageFixture();
+        string path = target == "manifest" ? Path.Combine(storage.TiledPath, "map.json") :
+            Directory.GetFiles(storage.TiledPath, "t_*.json", SearchOption.AllDirectories)[0];
+        var root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        var (name, value) = root.First();
+        string compact = root.ToJsonString();
+        File.WriteAllText(path, $"{{{JsonSerializer.Serialize(name)}:{value!.ToJsonString()},{compact[1..]}");
+        var ex = Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadTiled(storage.TiledPath));
+        Assert.Contains("duplicate property", ex.Message, StringComparison.Ordinal);
     }
 }

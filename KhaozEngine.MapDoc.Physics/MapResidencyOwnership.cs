@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc.Physics;
 
@@ -23,8 +24,8 @@ public sealed record MapResidencyEntry(string OwnerId, MapTileCoord StorageOwner
 public sealed record MapAffectedSet(IReadOnlyList<string> Owners, IReadOnlyList<MapTileCoord> StorageTiles,
     IReadOnlyList<MapNavTileCoord> NavTiles);
 
-/// <summary>Deterministic ownership of a built world's statics on aligned storage, navigation and server cell grids,
-/// and the owners and tiles an edit invalidates.</summary>
+/// <summary>Deterministic ownership of a built world's statics and water bodies on aligned storage, navigation and
+/// server cell grids, and the owners and tiles an edit invalidates.</summary>
 public static class MapResidencyOwnership
 {
     /// <summary>The most storage tiles one list here holds, 2^20: a static's
@@ -33,8 +34,8 @@ public static class MapResidencyOwnership
     /// about 65 km on a side.</summary>
     public const int MaxStorageTiles = 1 << 20;
 
-    const MapNativeInvalidation Spatial =
-        MapNativeInvalidation.Physics | MapNativeInvalidation.Nav | MapNativeInvalidation.Residency;
+    const MapNativeInvalidation Spatial = MapNativeInvalidation.Physics | MapNativeInvalidation.Nav |
+        MapNativeInvalidation.Residency | MapNativeInvalidation.Medium;
 
     /// <summary>One entry per static of <paramref name="world"/>, in static order. A static belongs to every storage
     /// tile its bounds reach, minimum inclusive and maximum exclusive on each axis. An axis with no extent belongs to
@@ -66,6 +67,60 @@ public static class MapResidencyOwnership
         return Array.AsReadOnly(entries);
     }
 
+    /// <summary>One entry per compiled water body of <paramref name="world"/>, in body id order. A body's owner id is
+    /// <c>water:{bodyId}</c>, and it belongs to every storage tile any of its region triangles' XZ bounds reaches, under the
+    /// membership rule of <see cref="Build"/>, so an L-shaped body does not claim the tiles inside its corner. Its
+    /// storage owner is the tile holding its bounds' minimum corner, and its navigation tiles and server cells are
+    /// those its storage tiles fall in. A body with no region claims no tile and has no entry. Throws as
+    /// <see cref="Build"/> does, naming the body when its tiles exceed <see cref="MaxStorageTiles"/>, and refuses a
+    /// body that is not complete or has regions but no bounds.</summary>
+    public static IReadOnlyList<MapResidencyEntry> BuildWater(MapBuiltWorld world, MapWorldGrids grids)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        ArgumentNullException.ThrowIfNull(grids);
+        grids.Validate(world);
+        var entries = new List<MapResidencyEntry>(world.Water.Count);
+        foreach (MapCompiledWaterBody body in world.Water)
+        {
+            MapWorldBuilder.RequireWaterBody(body);
+            MapTileCoord[] membership = WaterTiles(body, grids);
+            if (membership.Length == 0 || body.Bounds is not { } bounds) continue;
+            entries.Add(new(WaterOwnerId(body.BodyId), TilesOf(bounds, grids.StorageTileSize).Min, membership,
+                membership.Select(grids.AlignedNavTileOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray(),
+                membership.Select(grids.AlignedServerCellOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray(),
+                bounds));
+        }
+        return entries.AsReadOnly();
+    }
+
+    internal static string WaterOwnerId(string bodyId) => "water:" + bodyId;
+
+    /// <summary>The storage tiles in (Z, X) order that any region triangle of <paramref name="body"/> reaches with its
+    /// XZ bounds, under the membership rule of <see cref="Build"/>.</summary>
+    internal static MapTileCoord[] WaterTiles(MapCompiledWaterBody body, MapWorldGrids grids)
+    {
+        string what = $"Water body '{body.BodyId}'";
+        var tiles = new SortedSet<MapTileCoord>(TileOrder);
+        foreach (MapExactTriangle triangle in body.Regions.SelectMany(r => r.Triangles))
+        {
+            MapTileRect rect = TilesOf(XzBounds(triangle), grids.StorageTileSize);
+            RequireStorageTiles(rect, what);
+            tiles.UnionWith(Enumerate(rect));
+            if (tiles.Count > MaxStorageTiles)
+                throw new MapDocumentException(string.Format(CultureInfo.InvariantCulture,
+                    "{0} reaches more than the {1:N0} storage tiles one list allows.", what, MaxStorageTiles));
+        }
+        return tiles.ToArray();
+    }
+
+    /// <summary>The XZ bounds of a region triangle, with no height.</summary>
+    internal static MapBox3 XzBounds(MapExactTriangle triangle)
+    {
+        double[] xs = { triangle.A.X.ToDouble(), triangle.B.X.ToDouble(), triangle.C.X.ToDouble() };
+        double[] zs = { triangle.A.Z.ToDouble(), triangle.B.Z.ToDouble(), triangle.C.Z.ToDouble() };
+        return new MapBox3(xs.Min(), 0, zs.Min(), xs.Max(), 0, zs.Max());
+    }
+
     /// <summary>The owners with at least one storage tile inside <paramref name="window"/>, in ordinal order.</summary>
     public static IReadOnlyList<string> InWindow(IReadOnlyList<MapResidencyEntry> entries, MapTileRect window)
     {
@@ -75,8 +130,12 @@ public static class MapResidencyOwnership
     }
 
     /// <summary>The owners and tiles <paramref name="effects"/> invalidates, empty unless it invalidates physics,
-    /// navigation or residency. <paramref name="world"/> is the world built after the edit, so owners are that world's
-    /// statics, while tiles from both the old and the new edit bounds cover any geometry the edit removed.
+    /// navigation, residency or water medium. <paramref name="world"/> is the world built after the edit, so owners are
+    /// that world's statics, while tiles from both the old and the new edit bounds cover any geometry the edit removed.
+    /// <para>When <see cref="MapNativeInvalidation.Medium"/> is flagged, every body named in
+    /// <see cref="MapNativeEditEffects.WaterBodyIds"/> is a <c>water:{bodyId}</c> owner, and the storage tiles of
+    /// each one <paramref name="world"/> holds, under the rule of <see cref="BuildWater"/>, join the tiles of the
+    /// reported edit bounds.</para>
     /// <para>Owners are the statics whose bounds meet the old or new edit bounds, plus the chunks of every listed patch:
     /// its own surface chunks and the chunks of every wall strip the world records in it. Storage tiles are those the
     /// old and new edit bounds reach, under the membership rule of <see cref="Build"/>, plus the membership of those
@@ -84,9 +143,9 @@ public static class MapResidencyOwnership
     /// reports whole-patch extents, so its terrain geometry lies inside the edit bounds, but a placement it reseats
     /// through surface support is not widened yet (KhaozEngine#1348).</para>
     /// <para><see cref="MapNativeInvalidation.Unbounded"/> is a full reset: discard all prior derived state for this
-    /// world and rebuild from the post-edit world. Every static is an owner, and every storage tile the post-edit
-    /// world's bounds reach is listed, together with the tiles of any edit bounds and listed patches. Pre-edit extents
-    /// outside the post-edit world cannot be listed.</para>
+    /// world and rebuild from the post-edit world. Every static and water body is an owner, and every storage tile the
+    /// post-edit world's bounds reach is listed, together with the tiles of any edit bounds, listed patches and water
+    /// bodies. Pre-edit extents outside the post-edit world cannot be listed.</para>
     /// <para>Throws <see cref="MapDocumentException"/> when the grids do not align with the world or an edit box has a
     /// coordinate beyond <see cref="MapWorldBuilder.MaxCoordinateMetres"/>, and naming the tile count, before listing
     /// them, when one extent reaches more than <see cref="MaxStorageTiles"/> storage tiles.</para></summary>
@@ -114,6 +173,15 @@ public static class MapResidencyOwnership
             if (patchChunk) tiles.UnionWith(StorageTiles(descriptor.Bounds, grids, $"Chunk '{descriptor.OwnerId}'"));
             if (unbounded || patchChunk || edited.Any(box => Meets(box, descriptor.Bounds))) owners.Add(descriptor.OwnerId);
         }
+        bool medium = (effects.Invalidates & MapNativeInvalidation.Medium) != 0;
+        var named = new HashSet<string>(medium ? effects.WaterBodyIds : Array.Empty<string>(), StringComparer.Ordinal);
+        owners.UnionWith(named.Select(WaterOwnerId));
+        foreach (MapCompiledWaterBody body in world.Water)
+            if (unbounded || named.Contains(body.BodyId))
+            {
+                owners.Add(WaterOwnerId(body.BodyId));
+                tiles.UnionWith(WaterTiles(body, grids));
+            }
         MapNavTileCoord[] nav = tiles.Select(grids.AlignedNavTileOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray();
         return new(owners.ToArray(), tiles.ToArray(), nav);
     }

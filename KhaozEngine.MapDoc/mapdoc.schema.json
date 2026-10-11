@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
-    "formatVersion": { "type": "integer", "const": 5 },
+    "formatVersion": { "type": "integer", "const": 6 },
     "supportRecipe": { "type": "string", "enum": ["LegacyXzCallbackV1", "AuthoredBindingsV2"] },
     "surfaces": { "type": "array", "items": { "$ref": "#/$defs/surface" } },
     "surfacePatches": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/surfacePatch" } },
@@ -47,6 +47,7 @@
         "resolverVersion": { "type": "integer", "minimum": 1 }
       }
     },
+    "water": { "$ref": "#/$defs/water" },
     "terrain": {
       "type": "object",
       "additionalProperties": false,
@@ -228,6 +229,70 @@
         "surfaceId": { "type": "string", "minLength": 1 },
         "slotX": { "$ref": "#/$defs/signedInt64Decimal" },
         "slotZ": { "$ref": "#/$defs/signedInt64Decimal" }
+      }
+    },
+    "water": {
+      "type": "object",
+      "description": "Bounded native water. Present, even empty, means a dry world wherever no body covers. Requires resolver 2.",
+      "required": ["media", "bodies"],
+      "additionalProperties": false,
+      "properties": {
+        "media": { "type": "array", "items": { "$ref": "#/$defs/waterMedium" } },
+        "bodies": { "type": "array", "items": { "$ref": "#/$defs/waterBody" } }
+      }
+    },
+    "waterMedium": {
+      "type": "object",
+      "required": ["key", "kind", "wadeSpeedScale"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["Water"] },
+        "wadeSpeedScale": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+      }
+    },
+    "waterBody": {
+      "type": "object",
+      "required": ["id", "surfaceY", "medium", "renderMaterial", "domain", "covers"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "surfaceY": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+        "medium": { "type": "string", "minLength": 1 },
+        "renderMaterial": { "type": "string", "minLength": 1 },
+        "domain": { "$ref": "#/$defs/waterDomain" },
+        "covers": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/recordRef" } },
+        "displayName": { "type": "string" }
+      }
+    },
+    "waterDomain": {
+      "type": "object",
+      "required": ["frame", "rects", "rings"],
+      "additionalProperties": false,
+      "properties": {
+        "frame": { "$ref": "#/$defs/latticeFrame" },
+        "rects": { "type": "array", "items": { "$ref": "#/$defs/waterRect" } },
+        "rings": { "type": "array", "items": { "$ref": "#/$defs/waterRing" } }
+      }
+    },
+    "waterRect": {
+      "type": "object",
+      "description": "Lattice cell bounds, minimum included and maximum excluded.",
+      "required": ["minX", "minZ", "maxX", "maxZ"],
+      "additionalProperties": false,
+      "properties": {
+        "minX": { "$ref": "#/$defs/signedInt64Decimal" },
+        "minZ": { "$ref": "#/$defs/signedInt64Decimal" },
+        "maxX": { "$ref": "#/$defs/signedInt64Decimal" },
+        "maxZ": { "$ref": "#/$defs/signedInt64Decimal" }
+      }
+    },
+    "waterRing": {
+      "type": "object",
+      "required": ["vertices"],
+      "additionalProperties": false,
+      "properties": {
+        "vertices": { "type": "array", "minItems": 3, "items": { "$ref": "#/$defs/surfaceAddress" } }
       }
     },
     "recordRef": {

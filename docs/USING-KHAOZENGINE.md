@@ -7686,7 +7686,7 @@ outside every umbrella and carries no physics backend, input or
 rendering dependency:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.32.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.33.0" />
 ```
 
 The package composes `KhaozEngine.Locomotion`, `KhaozEngine.Navigation` and `KhaozEngine.Physics`. It does not
@@ -7982,7 +7982,7 @@ On the dev Mac a 36,864-column flat world wrote 664,689 bytes and loaded in abou
 Round 2 D adds the driver layer in the same opt-in package. Keep the package reference explicit:
 
 ```xml
-<PackageReference Include="KhaozEngine.Movement" Version="20.32.0" />
+<PackageReference Include="KhaozEngine.Movement" Version="20.33.0" />
 ```
 
 `MoveToRange` consumes a `GroundNavigation` profile or an equivalent guarded `IRegionPathPlanner` composition.
@@ -8714,7 +8714,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
 **Backend (`KhaozEngine.Physics.Bepu`)** - add this package to your game head / server:
 
 ```xml
-<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.32.0" />
+<PackageReference Include="KhaozEngine.Physics.Bepu" Version="20.33.0" />
 ```
 
 ```csharp
@@ -9892,15 +9892,47 @@ behind `MapDocumentFile.CurrentFormatVersion`. Migrations must form a contiguous
 version or the load fails. The engine's own steps are pre-registered: v1 to v2 dropped the reserved
 `terrainOverrides` placeholder, v2 to v3 stamps `tileSize` with `MapDocumentFile.DefaultTileSize`
 (512 m), v3 to v4 adds `playableBounds` from `bounds` when it is absent, and v4 to v5 stamps the
-`LegacyXzCallbackV1` support recipe. `MapDocumentFile.CurrentFormatVersion` is 5, and saving always writes
-it. Version and layout are independent axes, so a monolithic file at the current version is legal. Format 5
-and the v4 to v5 step are new in 20.30.0. Releases up to 20.29.1 write format 4.
+`LegacyXzCallbackV1` support recipe. The v5 to v6 step (`MapWaterMigration.Upgrade`) adds no member.
+`MapDocumentFile.CurrentFormatVersion` is 6, and saving always writes it. Version and layout are independent
+axes, so a monolithic file at the current version is legal. Format 5 and the v4 to v5 step arrived in
+20.30.0. Format 6 adds optional bounded water in 20.32.0. Releases up to 20.29.1 write format 4.
+
+Format 6 moves every native root digest and every resolver-2 authored identity once, including documents
+without water. Rebuild caches and navigation captures keyed on them. Documents without water keep their
+document hash. Loading now refuses a repeated or case-variant JSON member anywhere in a document, manifest
+or tile, including open feature payloads, where the last value previously won.
 
 From 20.30.0, a format-4 document migrates on load with no action from the game. Its authored
 identity token changes exactly once at that format advance, with no continuity to the old token, so
 recompute any stored token after the first load. That token change arrives with 20.30.0 too. Resolver-v1
 options, including the caller's `OptionsHash`, and resolver-v1 execution are unchanged. The authored-surface
 resolver version 2 is new in 20.30.0 and is opt-in through a document's resolver identity.
+
+### Bounded water
+
+A resolver-2 native document with `AuthoredBindingsV2` can carry an optional `MapDocument.Water` set.
+Each body has one level, exact half-open lattice rectangle or polygon domains, explicit covered authored
+spaces, a medium from the document's table and a render material from its verified asset closure.
+A present empty section selects bounded mode and is dry everywhere. Resolver-1 documents keep global water.
+
+`MapWaterQuery(view, document.Water)` captures the water set and digest. `Sample(point)` returns a wet
+interval only when the point's occupied space is covered, its XZ is in the body domain and
+`lowerY <= y < min(surfaceY, upperY)` in exact arithmetic. `Column(point)` returns wet intervals at that
+XZ in ascending order. Samples name body, space, medium and boundary ids and distinguish a free surface
+from a closed ceiling, with ceiling ties closed. Missing, ambiguous, over-budget and unrepresentable
+geometry keep their failure status rather than becoming dry.
+
+`MapWaterCompiler.Compile(view, water, limits)` emits exact free, closed and unresolved region triangles
+with per-body digests and counted work. `MapWaterCompileLimits.MaxBoundCells` counts bound-lattice slot
+and cell candidates before reads and sweeps, including absent and skipped candidates. Every compile,
+build and editor publication with water checks containment. Document rules and render material closure
+also run on both in-memory and stored native identity paths.
+
+MapEditor's undoable `WaterEditCommand` edits bodies, media and bounded mode. ke-mapedit's typed
+`WaterService.List/Get/Sample` reads and `MutationService.WaterApply` use the same validation and command
+path. Water GUI brushes and MCP registrations remain with R9/R10. R4 supplies data and queries, with
+native movement left to G1b after #438 phase 4 and rendering/optical algorithms to R8.
+See the [MapDoc water reference](../KhaozEngine.MapDoc/README.md#bounded-water) for boundary and compile rules.
 
 ### The tiled form: a directory instead of a file
 
@@ -10228,17 +10260,24 @@ What it produces:
   one-sided meshes on whole-metre anchors, each triangle mapped to its canonical face.
 - **The built world.** `MapBuiltWorld` holds the resolved document, placement geometry, terrain chunks, installable
   statics, feature query diagnostics, bounds and a `BuildHash`.
+- **Bounded water.** The built world carries compiled `Water`, `WaterMedia` and `WaterDigest` as immutable
+  data. Water registers no physics static. Builds validate containment and material closure and refuse
+  incomplete or over-budget compiles.
 - **Registration and queries.** `MapPhysicsRegistration` installs the statics and maps handles and incident faces
   back to owners. `MapWorldQueries` answers pick, envelope reach and collider distance without a backend.
   `MapStanceCandidates` proposes walk-up stances for a game-bound validator to seat. `MapPhysicalRelations` answers
   line of sight and clearance against the registered world under a held read lease.
 - **Residency and navigation identity.** `MapResidencyOwnership` and `MapNavTiling` name the owners, storage tiles
-  and navigation tiles an edit invalidates.
+  and navigation tiles an edit invalidates. `BuildWater` gives water its own residency owners.
+  Navigation captures include a `MediumDigest` where exact water geometry meets the capture, and
+  `MapNativeInvalidation.Medium` invalidates affected water residency and capture tiles.
 
 **Ownership boundary.** The package adds no step limit, ledge rule or support model. Ground support, seating, steps
 and navigation column sampling stay with the #438 contact controller, which will stand on the statics a native world
 installs. A resolver 1 world keeps analytic ground behind `LegacySupportHeight` and installs no terrain statics.
-Vertical-layer navigation on native worlds waits for #438 phase 5.
+Vertical-layer navigation on native worlds waits for #438 phase 5. Resolver-1 consumers opt into global
+water with `registration.CreateLegacyMoveContext(legacyGlobalWater: true)`. The parameterless overload
+supplies no medium, and native worlds refuse either legacy move context.
 
 **Feature query diagnostics.** `MapBuiltWorld.Diagnostics` reports each limit of the backend's capsule feature query
 (`IPhysicsCapsuleFeatures`) a static meets, without refusing the static, which still collides and blocks:
@@ -15904,7 +15943,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.32.0" />
+<PackageReference Include="KhaozEngine.Gpu.D3D11" Version="20.33.0" />
 ```
 
 ```csharp
@@ -15940,7 +15979,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.32.0" />
+<PackageReference Include="KhaozEngine.Gpu.Vulkan" Version="20.33.0" />
 ```
 
 ```csharp
@@ -16182,7 +16221,7 @@ Carried by the `KhaozEngine.Game2D` and `KhaozEngine.Game3D` umbrellas since 18.
 already has it. Reference it explicitly only where the umbrellas are not used:
 
 ```xml
-<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.32.0" />
+<PackageReference Include="KhaozEngine.Gpu.Metal" Version="20.33.0" />
 ```
 
 ```csharp
@@ -20542,7 +20581,7 @@ socket a shipping build does not contain. It is in NO umbrella, and a game head 
 
 ```xml
 <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-  <PackageReference Include="KhaozEngine.Automation" Version="20.32.0" />
+  <PackageReference Include="KhaozEngine.Automation" Version="20.33.0" />
 </ItemGroup>
 ```
 

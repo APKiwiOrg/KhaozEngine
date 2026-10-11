@@ -10,13 +10,14 @@ using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Physics;
 using KhaozEngine.Terrain;
 
 namespace KhaozEngine.MapDoc.Physics;
 
 /// <summary>Builds the complete immutable world of one native document: resolution, placement geometry, terrain
-/// chunks, statics, feature query diagnostics, bounds and identity.</summary>
+/// chunks, bounded water, statics, feature query diagnostics, bounds and identity.</summary>
 public static class MapWorldBuilder
 {
     /// <summary>The largest static position, in metres from the world origin on any axis.</summary>
@@ -33,8 +34,9 @@ public static class MapWorldBuilder
     /// <summary>Builds <paramref name="document"/> against the verified <paramref name="assets"/>. Throws
     /// <see cref="MapDocumentException"/> for a partial window, a resolver identity the options or the legacy
     /// support height do not match, every resolution, placement and terrain refusal, a static position beyond
-    /// 1,000,000 m on an axis and two statics with one owner id. Throws <see cref="ArgumentException"/> for
-    /// invalid options.</summary>
+    /// 1,000,000 m on an axis, two statics with one owner id, and naming the water body, with "water: " and its
+    /// detail, when a body of the water section does not compile <see cref="MapWaterCompileStatus.Complete"/>.
+    /// Throws <see cref="ArgumentException"/> for invalid options.</summary>
     public static MapBuiltWorld Build(MapDocument document, MapAssetClosure assets, MapWorldBuildOptions options)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -51,6 +53,10 @@ public static class MapWorldBuilder
         MapScopedSurfaces surfaces = MapScopedSurfaces.CompleteView(native ? document.Surfaces.Clone() : new MapSurfaceSet());
         MapTerrainChunkSet terrain = MapTerrainPhysics.Compile(surfaces, options.Chunks);
         IReadOnlyList<MapPlacementGeometry> placements = MapPlacementShapes.Resolve(resolved);
+        // The resolver's authored identity verified the document-level water rules and the material closure. The compile
+        // verifies containment over the whole-document view, so a built world never carries unverified water.
+        MapWaterSet? water = native ? document.Water?.Clone() : null;
+        IReadOnlyList<MapCompiledWaterBody> bodies = water is null ? Array.Empty<MapCompiledWaterBody>() : CompileWater(surfaces, water);
 
         IReadOnlyList<MapLegacySculptTile> sculpt = Array.Empty<MapLegacySculptTile>();
         string terrainBlock = "", legacyIdentity = "";
@@ -64,15 +70,44 @@ public static class MapWorldBuilder
         }
 
         IReadOnlyList<MapStaticDescriptor> statics = Statics(placements, terrain);
+        var staticOwners = new HashSet<string>(statics.Select(s => s.OwnerId), StringComparer.Ordinal);
+        foreach (MapCompiledWaterBody body in bodies)
+        {
+            string owner = MapResidencyOwnership.WaterOwnerId(body.BodyId);
+            if (staticOwners.Contains(owner))
+                throw new MapDocumentException($"water: static owner '{owner}' conflicts with body '{body.BodyId}'");
+        }
         var diagnostics = new List<MapStaticDiagnostic>();
         foreach (MapStaticDescriptor descriptor in statics)
             foreach (MapFeatureQuerySupport support in Measure(descriptor.Shape))
                 diagnostics.Add(new(descriptor.OwnerId, support));
 
-        string buildHash = BuildHash(resolved.AuthoredHash, options, legacyIdentity, placements, terrain);
+        string waterDigest = water?.Digest() ?? "";
+        string buildHash = BuildHash(resolved.AuthoredHash, options, legacyIdentity, placements, terrain,
+            water is null ? null : (waterDigest, bodies));
+        MapWaterMediumDoc[] media = water?.Media.OrderBy(m => m.Key, StringComparer.Ordinal).ToArray() ?? Array.Empty<MapWaterMediumDoc>();
         return new MapBuiltWorld(resolved, surfaces, placements, terrain, statics, diagnostics.AsReadOnly(),
             WorldBounds(document.Bounds, statics, placements), document.TileSize, buildHash, native,
-            native ? null : options.LegacySupportHeight, sculpt, sculptCellSize, terrainBlock, legacyIdentity);
+            native ? null : options.LegacySupportHeight, sculpt, sculptCellSize, terrainBlock, legacyIdentity,
+            bodies, Array.AsReadOnly(media), waterDigest,
+            legacyWaterLevel: !native && document.Water is null ? document.Terrain.WaterLevel : null);
+    }
+
+    /// <summary>The compiled bodies of <paramref name="water"/>, after refusing any body that is not complete.</summary>
+    static IReadOnlyList<MapCompiledWaterBody> CompileWater(MapScopedSurfaces surfaces, MapWaterSet water)
+    {
+        IReadOnlyList<MapCompiledWaterBody> bodies = MapWaterCompiler.Compile(surfaces, water);
+        foreach (MapCompiledWaterBody body in bodies)
+            RequireWaterBody(body);
+        return bodies;
+    }
+
+    internal static void RequireWaterBody(MapCompiledWaterBody body)
+    {
+        if (body.Status != MapWaterCompileStatus.Complete)
+            throw new MapDocumentException($"water: {body.Detail ?? $"water body '{body.BodyId}': {body.Status}"}");
+        if (body.Regions.Count > 0 && body.Bounds is null)
+            throw new MapDocumentException($"water: body '{body.BodyId}' has regions but no bounds");
     }
 
     static void ValidateOptions(MapWorldBuildOptions options)
@@ -252,8 +287,10 @@ public static class MapWorldBuilder
         w.WriteEndObject();
     });
 
+    // Water adds hash members only when a section is present. The authored hash already includes the native format.
     static string BuildHash(string authoredHash, MapWorldBuildOptions options, string legacyIdentity,
-        IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain) => CanonicalHash(w =>
+        IReadOnlyList<MapPlacementGeometry> placements, MapTerrainChunkSet terrain,
+        (string Digest, IReadOnlyList<MapCompiledWaterBody> Bodies)? water) => CanonicalHash(w =>
     {
         w.WriteStartObject();
         w.WriteString("domain", "kemap/built-world/1");
@@ -269,6 +306,13 @@ public static class MapWorldBuilder
         w.WriteStartArray("terrain");
         foreach (MapTerrainChunk chunk in terrain.Chunks) Pair(w, chunk.ChunkId, chunk.Digest);
         w.WriteEndArray();
+        if (water is { } section)
+        {
+            w.WriteString("waterDigest", section.Digest);
+            w.WriteStartArray("water");
+            foreach (MapCompiledWaterBody body in section.Bodies) Pair(w, body.BodyId, body.Digest);
+            w.WriteEndArray();
+        }
         w.WriteEndObject();
     });
 

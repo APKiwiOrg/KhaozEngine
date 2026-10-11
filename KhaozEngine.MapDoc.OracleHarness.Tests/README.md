@@ -100,6 +100,24 @@ equal the legacy plane-0 movement triangle within 0.00001 m. A world with no reg
 Per-plane counts and maximum errors are recorded only in the private report. An exceedance is a reported
 failure carried privately, never a tolerance change.
 
+## Bounded water comparison
+
+`ShippedWaterComparisonTests.ShippedWater_IsExpressibleWithBoundedBodies` reads the same private inputs as
+the terrain comparison through `PrivateOracleEntry.Run`. `ShippedSourceInventory.ReadWorld` loads the
+attested world and its catalogs. Catalog entries resolve against the world directory and must name files
+in the verified provenance. Missing or unverified inputs fail through the existing private entry boundary.
+The harness links `LegacyWaterConverter` and `LegacyWaterComparison` without the synthetic oracle world.
+
+The test records only counts through `report.Record`, covering bodies, rectangles, cells, boundary samples,
+boundary ownership changes and floors above the water surface. Comparison failures are checked only through
+`report.Check`, with their details confined to the private report.
+
+Run once per pinned source. The controller runs the comparison at the candidate gate against the historical
+game commit `74f57ee2` and current game main, each with its own provenance. The controller records provenance
+SHA-256s, report SHA-256s and counts in `R4-WATER-ORACLE.md` in the private Grimhollow program folder.
+Private counts, source paths and digests never enter this repository. Implementers build this test and run
+only the synthetic harness guards, leaving the shipped comparison to the controller.
+
 The harness requires its own explicit build, test and format verification because the solution
 does not include it. An unfiltered harness run is not a substitute for the separately gated
 recorder, synthetic guard and private inventory runs.

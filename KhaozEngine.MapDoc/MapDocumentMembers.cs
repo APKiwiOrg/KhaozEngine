@@ -18,7 +18,24 @@ internal static class MapDocumentMembers
 
     internal static void Validate(JsonObject root, string where) => Check(root, Schema, where, native: false);
 
-    // Match the serializer's case-insensitive, last-value-wins property lookup without rewriting input.
+    /// <summary>A parsed <see cref="JsonObject"/> builds its case-insensitive member dictionary lazily and throws
+    /// <see cref="ArgumentException"/> on a repeated name. Building every dictionary right after parsing makes a
+    /// duplicate member refuse as a document error before any reader touches it.</summary>
+    internal static void RequireUniqueMembers(JsonNode? node, string where)
+    {
+        try { BuildMembers(node); }
+        catch (ArgumentException ex) { throw new MapDocumentException($"{where}: duplicate property. {ex.Message}", ex); }
+    }
+
+    static void BuildMembers(JsonNode? node)
+    {
+        if (node is JsonObject obj)
+            foreach (KeyValuePair<string, JsonNode?> member in obj) BuildMembers(member.Value);
+        else if (node is JsonArray array)
+            foreach (JsonNode? item in array) BuildMembers(item);
+    }
+
+    // Match the serializer's case-insensitive lookup without rewriting input. Parsed documents have unique names.
     internal static bool TryGetProperty(JsonObject obj, string name, out JsonNode? value)
     {
         bool found = false;
@@ -118,5 +135,6 @@ internal static class MapDocumentMembers
         string.Equals(name, "supportRecipe", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "surfaces", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "surfacePatches", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "surfaceStorage", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "surfaceStorage", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "water", StringComparison.OrdinalIgnoreCase);
 }

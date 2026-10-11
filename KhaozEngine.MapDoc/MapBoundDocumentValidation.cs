@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc;
 
@@ -15,6 +16,7 @@ public static class MapBoundDocumentValidation
         ArgumentNullException.ThrowIfNull(assets);
         ValidateLocal(document, registry);
         RequireRoots(document.NativeAssets, assets);
+        RequireWaterMaterials(document.Water, assets);
         foreach (MapPlacement placement in document.Placements) RequireClosureAsset(placement, assets);
     }
 
@@ -50,6 +52,20 @@ public static class MapBoundDocumentValidation
         var roots = new HashSet<MapAssetRef>(nativeAssets);
         if (roots.Count != nativeAssets.Count || roots.Count != assets.Roots.Count || !roots.SetEquals(assets.Roots))
             throw new MapDocumentException("Native document roots do not match the verified asset closure.");
+    }
+
+    /// <summary>Requires every water body's render material to be a <see cref="MapResourceKind.Material"/> resource in
+    /// the verified closure. Bodies are checked in id order and every failure is reported, so the in-memory and
+    /// stored identity paths refuse with the same message whatever order the set was built in.</summary>
+    internal static void RequireWaterMaterials(MapWaterSet? water, MapAssetClosure assets)
+    {
+        ArgumentNullException.ThrowIfNull(assets);
+        if (water is null) return;
+        var errors = new List<string>();
+        foreach (MapWaterBodyDoc body in water.Bodies.OrderBy(b => b.Id, StringComparer.Ordinal))
+            if (!assets.TryGetResource(body.RenderMaterial, out MapResolvedResource? resource) || resource!.Kind != MapResourceKind.Material)
+                errors.Add($"water body '{body.Id}': render material '{body.RenderMaterial}' is not a Material resource");
+        Require(errors);
     }
 
     static void Require(IReadOnlyList<string> errors)

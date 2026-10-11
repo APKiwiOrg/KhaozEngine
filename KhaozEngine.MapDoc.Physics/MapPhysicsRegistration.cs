@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
+using KhaozEngine.Locomotion;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Movement;
 using KhaozEngine.Physics;
@@ -111,15 +112,24 @@ public sealed class MapPhysicsRegistration : IDisposable
     /// <summary>A ground move context over a resolver-1 world: its analytic support height, this registration's physics
     /// world and a clamp to the document's playable bounds, with no ground normal, no medium and no query selection.
     /// Throws <see cref="MapDocumentException"/> for a native world, which moves on the contact controller.</summary>
-    public GroundMoveContext CreateLegacyMoveContext()
+    public GroundMoveContext CreateLegacyMoveContext() => CreateLegacyMoveContext(legacyGlobalWater: false);
+
+    /// <summary>A ground move context over a resolver-1 world, with its global water medium only when
+    /// <paramref name="legacyGlobalWater"/> is true. Feet strictly below <see cref="MapBuiltWorld.LegacyWaterLevel"/>
+    /// are in water. Keeps the analytic support height, physics world, playable clamp, no ground normal and no query
+    /// selection. Throws <see cref="MapDocumentException"/> for a native world.</summary>
+    public GroundMoveContext CreateLegacyMoveContext(bool legacyGlobalWater)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (World.IsNative || World.LegacySupportHeight is not { } height)
             throw new MapDocumentException("Native worlds move on the contact controller (#438 phase 5), not a legacy move context.");
         MapResolvedBounds playable = World.Document.PlayableBounds;
+        Func<float, float, float, MovementMedium>? medium = null;
+        if (legacyGlobalWater && World.LegacyWaterLevel is { } level)
+            medium = (_, _, feetY) => feetY < level ? new MovementMedium(level, true) : MovementMedium.Dry;
         return new GroundMoveContext(height, null, Physics,
             (x, z) => new Vector2(Math.Clamp(x, playable.MinX, playable.MaxX), Math.Clamp(z, playable.MinZ, playable.MaxZ)),
-            null, null);
+            medium, null);
     }
 
     /// <summary>Throws <see cref="ObjectDisposedException"/> once every static has been removed.</summary>

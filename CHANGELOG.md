@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.32.0
+## 20.33.0
 
 - Locomotion gains explicit character movement for environments that certify their own water and support:
   `ExplicitCharacterMovement` steps a body under one `MovementQueryLease`, acquired from an
@@ -30,6 +30,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - The explicit profile identity is now `contact-shell-footprint-swim-v1`, so a motion proof made with the old
   full-capsule model cannot certify the new behaviour.
 
+## 20.32.0
+
 - A SQLite content catalog opened by several hosts at once no longer refuses a correct database (#1353). A host
   that read version 2 while another host migrated the file through version 3 to 4 compared the version 4 tables
   against the version 2 shape and threw `ContentAuthoringException`. It now carries on from the migrated version,
@@ -40,6 +42,30 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - The same controller now exports `StepDeltaY`, `ClimbRate` and `ClimbRateEwma` for phase 4a of #438. Steps are
   support jumps both sides agree on, above the 1 mm contact skin, and stair runs are read from certified support
   ahead. Still no consumer or movement change.
+- Native MapDoc format 6 adds an optional root `water` section for resolver-2 documents with
+  `AuthoredBindingsV2`. Each bounded body has one level, exact half-open lattice rectangle or polygon domains,
+  covered authored spaces, a medium from the document's table and a render material from its asset closure.
+  A present section, even an empty one, selects bounded water. Outside its bodies the world is dry.
+- `MapWaterQuery.Sample` and `Column` read contained wet intervals with body, space and boundary ids, the nominal
+  level and whether the top is a free surface. A ceiling tie closes the top. Missing, ambiguous, over-budget or
+  unrepresentable geometry reports its failure rather than a dry answer.
+- Water containment is validated at editor publication and inside every compile and world build. Document-level
+  water rules and render material closure are checked on both in-memory and stored native identity paths.
+  `MapWaterCompiler` splits free-surface, closed and unresolved regions exactly and reports counted work under
+  `MapWaterCompileLimits`, including `MaxBoundCells` for bound-lattice slot and cell candidates.
+- `MapBuiltWorld` carries compiled water, its media and digests as world data. Water is never a physics static.
+  `MapResidencyOwnership.BuildWater` names water owners, navigation tiles carry a `MediumDigest` where water
+  meets their capture, and `MapNativeInvalidation.Medium` invalidates affected water residency and capture tiles.
+  Native movement integration remains separate. Resolver-1 consumers can opt into global water with
+  `CreateLegacyMoveContext(legacyGlobalWater: true)`. The parameterless overload still supplies no medium.
+- MapEditor adds undoable `WaterEditCommand` operations for bodies, media and bounded mode.
+  ke-mapedit adds typed `WaterService.List`, `Get` and `Sample` services and `MutationService.WaterApply` through
+  the same command and validation path. Water MCP verbs and GUI brushes remain later authoring work.
+- Format 6 changes every native document's root digest and every resolver-2 authored identity once, including
+  documents without water. Rebuild caches and navigation captures keyed on those identities. Documents without
+  water keep their document hash.
+- Loading refuses a repeated or case-variant JSON member anywhere in a document, manifest or tile, including
+  open feature payloads. Earlier engines let the last value win. Remove repeated members before loading.
 
 ## 20.31.0
 

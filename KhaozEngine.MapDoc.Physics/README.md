@@ -199,7 +199,8 @@ registration.TryFaceOwner(feature.Target, incident.FaceId, out MapFaceKey canoni
 feature query's incident face id on a terrain chunk to its canonical `MapFaceKey`. A feature id is not a triangle
 index, since edges and vertices number after faces. `CreateLegacyMoveContext` gives a resolver 1 world a ground move
 context over its analytic support height and playable bounds. A native world refuses it, since it moves on the
-contact controller.
+contact controller. The parameterless overload supplies no medium. Opt into resolver-1 global water with
+`CreateLegacyMoveContext(legacyGlobalWater: true)`: feet strictly below `MapBuiltWorld.LegacyWaterLevel` are wet.
 
 Any failure during `Register` removes what it added, in reverse order. `Dispose` removes every static in reverse
 order, never disposes the physics world, and leaves the statics a failed removal kept in `Handles` so a later call
@@ -276,6 +277,29 @@ terrain height, so a capture picks its own vertical window.
 
 Navigation tiles are columns in X and Z. Vertical layers on native worlds wait for #438 phase 5.
 
+## Water
+
+Bounded water is built-world data and never a static, so it registers nothing with physics and never blocks a ray or a
+capsule. `MapWorldBuilder` compiles a native document's water section over its whole-document view and refuses, with
+"water: " and the detail, any body that does not compile complete. `MapBuiltWorld.Water` carries the compiled bodies
+and `WaterMedia` the section's media, so the media travel with the built world. `WaterDigest` and every body digest
+enter the build hash only when the section is present.
+The build captures the water set and its digests, checks render material closure and containment, and refuses
+incomplete geometry or a counted compile limit, including `MapWaterCompileLimits.MaxBoundCells`. Later edits to the
+caller's set cannot change the built world.
+
+`MapResidencyOwnership.BuildWater` gives each body a `water:{bodyId}` residency owner over the storage tiles its
+region triangles reach. A placement and a body may share an id, but the builder refuses any static owner matching
+that body's water owner. A complete body with regions but no bounds is refused too. A navigation capture carries a
+`MediumDigest` only when a water triangle meets it with positive XZ area. Exact clipping excludes bounding-box
+overreach and edge-only contact. The digest enters its capture identity, while its geometry digest is unchanged.
+An edit flagged `MapNativeInvalidation.Medium` names bodies in `WaterBodyIds`, and `Affected` maps those ids to water
+owners while `AffectedTiles` invalidates their capture tiles. Body ids alone do not invalidate water residency.
+Each body digest covers only what that body read, so an edit elsewhere leaves its tiles alone.
+R4 supplies data and queries only. Native movement uses the G1b adapter after #438 phase 4. Rendering and optical
+algorithms remain with R8. Format 6 moves native root digests and resolver-2 authored identities once even without
+water, so navigation captures and caches keyed on them rebuild once.
+
 ## Physical relations
 
 ```csharp
@@ -344,7 +368,6 @@ reports `Unbounded` the same way. Collider height edits size their placements th
 | Multi-cell ghost handoff proof | R8 and G3 | `MapWorldGrids` and `MapResidencyOwnership` provide grid mapping and ownership |
 | Placement-local support surfaces (`Surface` resources) | R5 | `MapAssetShapes.Read` refuses them |
 | Live portal and door state | R5 | Portals are authored open |
-| Water medium and walker profiles | R4 and #1299 | `CreateLegacyMoveContext` leaves the medium delegate null |
 | Clearance body model confirmation | Owner, #1344 | Clearance uses the #438 shell through `ContactShell` |
 | Support certification of curved statics, creases and one-sided back faces | #438 phase 2b | Landed. The controller's foot-support primitive, not yet used by movement, certifies through `IPhysicsSupportNeighborhood`, and the diagnostics here still predict `IPhysicsCapsuleFeatures` |
 | Editor placement edits reporting old and new placement bounds with Physics, Nav and Residency | R3 | Done, see Editor tooling |

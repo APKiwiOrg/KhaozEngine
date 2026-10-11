@@ -71,7 +71,7 @@ public sealed partial class NativeDocumentTests
         root["formatVersion"] = version;
         if (version < 3) root.Remove("tileSize");
         var doc = MapDocumentFile.LoadText(root.ToJsonString());
-        Assert.Equal(5, doc.FormatVersion);
+        Assert.Equal(MapDocumentFile.CurrentFormatVersion, doc.FormatVersion);
         Assert.Equal(version < 3 ? 512f : 64f, doc.TileSize);
         Assert.Equal(-100f, doc.PlayableBounds!.MinX);
         Assert.Equal(100f, doc.PlayableBounds.MaxZ);

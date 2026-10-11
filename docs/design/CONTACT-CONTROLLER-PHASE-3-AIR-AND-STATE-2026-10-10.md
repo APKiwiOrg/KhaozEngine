@@ -3,7 +3,7 @@
 Date: 2026-10-10. Detailed spec for phase 3 of [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438). The
 program, body model, support rule and invariants are in
 [CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md](CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md). Phase 2 (ground
-core) and phase 2b (support neighborhood) are on main at `39f93b6b9`. Status: implemented, staged for 20.32.0.
+core) and phase 2b (support neighborhood) are on main at `39f93b6b9`. Status: implemented, released in 20.32.0.
 Phase 3 introduced no consumer or movement changes. The later
 [phase 4b handoff](CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md) now runs opt-in
 explicit land ticks through this core. Native adoption remains gated. Written under the owner's 2026-10-10
@@ -315,8 +315,8 @@ contact skin, and no committed bit digest passes through a sweep.
 
 ## Boundaries
 
-No `MoveTuning`, wire, navigation or consumer change. The legacy stepper's behaviour is unchanged. Phase 3 rides the
-staged 20.32.0 under the release ritual.
+No `MoveTuning`, wire, navigation or consumer change. The legacy stepper's behaviour is unchanged. Phase 3 shipped in
+20.32.0.
 
 ## Risks
 

@@ -1,7 +1,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -137,11 +136,10 @@ public static partial class MapSurfacePatchCodec
         }
     }
 
-    static string Decimal(long value) => value.ToString(CultureInfo.InvariantCulture);
+    static string Decimal(long value) => MapSignedDecimal.Format(value);
     static long Long(JsonElement value)
     {
-        string? text = value.GetString();
-        if (!long.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long result) || text != Decimal(result))
+        if (!MapSignedDecimal.TryParse(value.GetString(), out long result))
             throw new MapDocumentException("invalid decimal int64 string");
         return result;
     }

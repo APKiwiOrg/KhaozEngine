@@ -900,6 +900,15 @@ reports the accepted terrain execute, undo or redo. `MutationService.TerrainAppl
 command under the service session lock and returns `MapTerrainMutationResult` with identical document
 bytes and effects text. These are programmatic APIs. Terrain MCP verbs are deferred to R10.
 
+`WaterEditCommand(MapWaterEdit)`, new in 20.32.0, uses the same atomic transaction seam for resolver-2 documents.
+`MapUpsertWaterBody`, `MapRemoveWaterBody`, `MapUpsertWaterMedium`, `MapRemoveWaterMedium` and `MapSetBoundedWater`
+prepare detached water sets. Undo and redo restore accepted snapshots and effects rather than recomputing edits.
+Every publication with water validates the complete set's containment, and bound transactions check its render
+materials against the asset closure. Rejections preserve history, retry state, dirty state and notifications.
+Body and medium edits name affected `WaterBodyIds` and report `Medium`, `Residency` and `Nav` invalidation.
+A changed render material also reports `Material`. A bounded-mode change reports `Medium` with `Unbounded`.
+These are programmatic commands. Water brushes and inspector controls remain with R9.
+
 The service lifecycle, new in 20.30.0, routes resolver identity `(1, 2)` through
 `NativeDocumentService.SessionOptionsV2` and `MapResolverV2` over captured authored surfaces at every
 open, window replacement, save, validate, summary, conversion and retile. Resolver identity `(1, 1)`

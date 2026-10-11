@@ -121,13 +121,15 @@ internal static partial class NativeWorldFixtures
             Options() with { Resolve = LegacyResolveOptions, LegacySupportHeight = (_, _) => 0f });
     }
 
-    static MapBuiltWorld BuildLegacyStripWith(float crateX, (int X, int Z)? sculptCell)
+    static MapBuiltWorld BuildLegacyStripWith(float crateX, (int X, int Z)? sculptCell, float? waterLevel = null)
     {
         NativeFixture f = Crate();
         MapDocument document = f.Document;
         document.ResolverIdentity = new(1, 1);
         document.SupportRecipe = MapSupportRecipe.LegacyXzCallbackV1;
         document.Surfaces = new MapSurfaceSet();
+        if (waterLevel is { } level)
+            document.Terrain.WaterLevel = level;
         document.Bounds = new() { MinX = 0, MinZ = 0, MaxX = 192, MaxZ = 64 };
         document.PlayableBounds = new() { MinX = 0, MinZ = 0, MaxX = 192, MaxZ = 64 };
         document.Placements[0].X = crateX;

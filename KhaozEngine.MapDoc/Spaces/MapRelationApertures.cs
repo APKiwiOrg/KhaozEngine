@@ -91,4 +91,21 @@ internal static class MapRelationApertures
             return resolved.Points;
         }
     }
+
+    /// <summary>The exact lowest point of an aperture: the least column bottom of a wall portal, or the least vertex
+    /// height of a horizontal opening's plane. The rounded <see cref="MapApertureSummary.BottomY"/> is never used.</summary>
+    internal static MapExactValue BottomOf(MapPortalFact fact)
+    {
+        ArgumentNullException.ThrowIfNull(fact);
+        IEnumerable<MapExactValue> heights = fact.Geometry?.Kind switch
+        {
+            MapPortalKind.WallPortal => fact.Geometry.Columns?.Select(c => c.Bottom.Y) ?? Enumerable.Empty<MapExactValue>(),
+            MapPortalKind.HorizontalOpening => fact.Geometry.PlaneTriangles?.SelectMany(t => new[] { t.A.Y, t.B.Y, t.C.Y })
+                ?? Enumerable.Empty<MapExactValue>(),
+            _ => Enumerable.Empty<MapExactValue>(),
+        };
+        MapExactValue? bottom = null;
+        foreach (MapExactValue height in heights) bottom = bottom is { } least ? MapSpaceGeometry.Min(least, height) : height;
+        return bottom ?? throw new MapDocumentException($"missing geometry: aperture '{fact.Record.Id}'");
+    }
 }

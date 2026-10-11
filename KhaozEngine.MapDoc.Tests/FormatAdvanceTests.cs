@@ -17,7 +17,7 @@ public sealed class FormatAdvanceTests
     public void FormatAdvance_PreservesResolverV1Execution_Monolithic()
     {
         MapDocument doc = Migrated();
-        Assert.Equal((5, MapSupportRecipe.LegacyXzCallbackV1), (doc.FormatVersion, doc.SupportRecipe));
+        Assert.Equal((MapDocumentFile.CurrentFormatVersion, MapSupportRecipe.LegacyXzCallbackV1), (doc.FormatVersion, doc.SupportRecipe));
         MapResolvedDocument r = FormatFourFixtures.ResolveRecording(doc, out var calls);
         FormatFourFixtures.AssertMatchesExpectations(r, calls);
     }
@@ -33,7 +33,7 @@ public sealed class FormatAdvanceTests
             Assert.DoesNotContain(window.Placements, p => p.Id == "a");
             MapDocumentFile.SaveTiled(window, dir);
             string manifest = File.ReadAllText(Path.Combine(dir, "map.json"));
-            Assert.Contains("\"formatVersion\": 5", manifest);
+            Assert.Contains($"\"formatVersion\": {MapDocumentFile.CurrentFormatVersion}", manifest);
             Assert.Contains("\"supportRecipe\": \"LegacyXzCallbackV1\"", manifest);
             Assert.Equal(tiles, FormatFourFixtures.TileFileDigests(dir));
             MapResolvedDocument r = FormatFourFixtures.ResolveRecording(MapDocumentFile.LoadTiled(dir), out var calls);
@@ -62,7 +62,7 @@ public sealed class FormatAdvanceTests
         MapDocument doc = Migrated();
         doc.FormatVersion = 4;
         Assert.Contains(MapDocumentValidator.Validate(doc, MapDocRegistry.CreateDefault()),
-            e => e.Contains("formatVersion is 4, expected 5"));
+            e => e.Contains($"formatVersion is 4, expected {MapDocumentFile.CurrentFormatVersion}"));
     }
 
     [Fact]
@@ -98,7 +98,7 @@ public sealed class FormatAdvanceTests
     public void AnalyticFormatFour_MigratesWithoutNativeAdditions()
     {
         string text = MapDocumentFile.SaveText(MapDocumentFile.LoadText(NativeFixtures.AnalyticV3Json()));
-        Assert.Contains("\"formatVersion\": 5", text);
+        Assert.Contains($"\"formatVersion\": {MapDocumentFile.CurrentFormatVersion}", text);
         Assert.Contains("\"supportRecipe\": \"LegacyXzCallbackV1\"", text);
         Assert.Contains("\"surfaces\": []", text);
         Assert.DoesNotContain("supportBinding", text);

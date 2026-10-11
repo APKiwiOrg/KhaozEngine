@@ -240,6 +240,60 @@ queries in local space. R8 owns bounded surface and asset residency, lighting, o
 adapters and backend water captures. Each must keep legacy fallback cells non-capture and emit no physics,
 nav or water faces for them. R2 claims no physics, nav, water or rendering capability.
 
+## Bounded water
+
+The optional root `water` section (format 6, `MapDocument.Water`, a `MapWaterSet`) holds named media and water
+bodies. A body has one `surfaceY`, a medium, a render material, an XZ domain of lattice rects and rings in one
+`MapLatticeFrame`, and the authored spaces it covers. A present section, even one with no bodies, means bounded
+water: the world is dry wherever no body covers. An absent section preserves `MapTerrain.WaterLevel` for
+resolver-1 legacy global water.
+
+A water section requires a native resolver-2 document, meaning `ResolverIdentity` payload 1 and resolver 2 with
+`SupportRecipe` `AuthoredBindingsV2`. Resolver-1 documents, native or analytic, keep legacy global water.
+Document validation also requires unique non-empty medium keys with `wadeSpeedScale` in (0, 1], unique body ids,
+a finite `surfaceY` within 1,000,000 m that converts exactly through `MapExactValue.FromSingle`, a known medium,
+a non-empty render material, a non-empty domain whose rects are non-empty, whose rings have at least 3 vertices
+and whose corners lie within 1,000,000 m of the origin on each world axis, and a non-empty list of distinct
+covered spaces.
+
+One canonical codec (`MapWaterSetJsonConverter` over `MapWaterJson`) writes the section in the monolithic file,
+the tiled manifest and every identity. It writes media by key and bodies by id in ordinal order, each record's
+members in a fixed order, and rects, rings and covers in stored order, so reordering media or bodies changes
+neither bytes nor hash. A `surfaceY` of negative zero writes as zero, so one level has one identity. Every water
+object is closed, and a null medium or body refuses as a document error. Lattice addresses are `{ "x", "z", "d" }`
+objects whose coordinates, like rect bounds and cover slots, are canonical signed int64 decimal strings
+(`MapSignedDecimal`, the grammar the topology codec uses), and they read back through `MapLatticeAddress.Create`.
+The section enters `MapDocumentHash` through the manifest globals only when present, so documents without water keep
+their document hash. Format 6 moves every native root digest and every resolver-2 authored identity once, including
+documents without water. Rebuild caches and navigation captures keyed on them. `MapWaterSet.Digest`, `BodyDigest`
+and `MediumDigest` hash the same canonical bytes under their own domain strings.
+
+Rectangles include minimum X/Z and exclude maximum X/Z in world coordinates, including negative Z. Rings normalize
+to counter-clockwise XZ winding. An edge owns its boundary when its direction has negative Z, or zero Z and positive
+X. At a vertex, +X with an infinitesimal +Z tilt must point into the interior angle: both incident edges own a convex
+vertex, either one owns a reflex vertex. Where a domain edge meets a space boundary, R2 space ownership governs.
+
+`MapWaterQuery(view, water)` captures a deep copy and digest of the set. `Sample(point)` is wet only when the point's
+occupied space is covered, its XZ lies in the body domain and `lowerY <= y < min(surfaceY, upperY)` in exact arithmetic.
+`Column(point)` returns wet intervals at the XZ in ascending order, each sampled at its floor. `MapWaterSample` names
+the body, space, medium and lower/upper boundary ids, carries the nominal level and says whether the upper boundary
+is a free surface. A level strictly below the ceiling, or an open top, is free. A ceiling tie closes the top.
+Missing geometry, ambiguity, capacity and narrowing failures keep their typed status, never become dry.
+
+`MapWaterContainment.Validate(view, water)` checks authored spaces only, requires positive-area contact with a
+covered footprint and connects multiple covered spaces through portal or vertical-link openings whose exact bottom
+lies strictly below the body's level. No implicit exterior is added. Every editor publication with water validates
+the complete set, including terrain and unrelated placement edits, and every compile and build checks containment.
+Document-level water rules and render material closure run on both in-memory and stored native identity paths.
+
+`MapWaterCompiler.Compile(view, water, limits)` captures the set and emits `MapCompiledWaterBody` values in id order,
+with exact up-facing region triangles split into `FreeSurface`, `Closed` and `Unresolved` at every ceiling transition,
+ties closed. Each body reports its deepest bed, bounds, status, `MapWaterWork` and a digest covering its definition,
+medium and the patches it read. `MapWaterCompileLimits` bounds pieces, vertices, footprint cells, bound faces, pair
+checks and triangles. `MaxBoundCells` caps the cumulative bound-lattice slot and cell candidates before reads and
+sweeps, including absent, empty, skipped and face-free candidates. Negative limits throw at compile entry.
+Incomplete geometry remains explicit, and a capacity refusal keeps its counted work and no regions.
+
 ## Storage ownership
 
 `MapDocumentStorage.ResourceRoot(storagePath, form)` is a monolithic file's directory or a tiled document's own
@@ -468,8 +522,9 @@ touched tiles are stored, and an absent or empty block leaves terrain byte-ident
 
 ## Format versioning
 
-`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes (currently 5,
-which adds the support recipe and surface metadata, after version 4 added native metadata). Loading a document with an
+`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes (currently 6,
+which adds bounded water, after version 5 added the support recipe and surface metadata and version 4 added
+native metadata). Loading a document with an
 older `formatVersion` runs migrations
 (`MapDocumentLoadOptions.RegisterMigration`, each a pure `JsonObject -> JsonObject` step from N to N+1)
 until it reaches the current version. The engine's own steps are pre-registered by the
@@ -479,6 +534,10 @@ v3 -> v4 (`MapNativeMigration.Upgrade`) adds `playableBounds` from `bounds` when
 v4 -> v5 (`MapSurfaceMigration.Upgrade`) stamps `LegacyXzCallbackV1` without changing resolver-v1
 execution. The format advance changes authored identity once. It does not preserve the old token.
 `MapSurfaceMigration.Upgrade` clones its input and leaves a format-5 input semantically unchanged.
+v5 -> v6 (`MapWaterMigration.Upgrade`) adds no member, so a migrated document has no `water` section and keeps
+legacy global water. It accepts only format 5 or 6 input.
+The format-6 advance moves native root digests and resolver-2 authored identities once even without water, while
+documents without water keep their document hash.
 
 `MapDocument.SupportRecipe` pairs resolver 1 with `LegacyXzCallbackV1` and resolver 2 with
 `AuthoredBindingsV2`. Resolver 1 refuses authored surfaces and placement support bindings. A placement
@@ -758,9 +817,11 @@ directory, the tile coordinate and the file.
 Loading also enforces the schema's closed structures, in every format version. After migration,
 `MapDocumentFile.Load` and `LoadText`, the tiled manifest read (`LoadTiled`, `MapDocumentSource.OpenTiled` and
 `Refresh`) and every tile file read refuse a member that a closed structure does not declare, and the error
-names it. Member names match case-insensitively, as the serializer reads them. Earlier engines silently
-dropped such members, so a legacy file carrying one (a root `notes` field, say) now fails to load until the
-member is removed. `terrain.features` items stay open, so a registered feature type keeps its own fields.
+names it. Member names match case-insensitively, as the serializer reads them. Before migration, a repeated or
+case-variant member anywhere in a document, manifest or tile refuses as a document error, including open feature
+payloads. Earlier engines let the last repeated value win. Unknown members of closed structures were previously
+dropped, so a legacy file carrying one (a root `notes` field, say) now fails to load until the member is removed.
+`terrain.features` items stay open, so a registered feature type keeps its own fields.
 
 Depends on `KhaozEngine.Primitives`, `KhaozEngine.Serialization`, `KhaozEngine.Content`, and
 `KhaozEngine.Terrain`. GPU-free. In the `Foundation` umbrella. The GUI editor (`KhaozEngine.MapEditor`)

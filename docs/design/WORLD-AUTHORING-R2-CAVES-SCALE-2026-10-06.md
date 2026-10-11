@@ -586,8 +586,8 @@ quantization. A missing/ambiguous shared halo refuses before mutation.
 | Owner | Contract/exit responsibility after this candidate is approved |
 | --- | --- |
 | R2 / C2 | Bounded terrain encoding and writer-owned surface storage, canonical floor/ceiling/wall-strip/portal/aperture geometry, space membership and coverage, height-aware query/resolver contract, whole-metre submission anchors, migrations/identity and atomic terrain mutations. Proves geometry inputs and compatibility, not complete cave runtime |
-| [R3 / C3](../superpowers/plans/2026-10-05-world-authoring-r3-shared-shapes-headless-builders.md) | Physics sidedness, floor support and ceiling/wall headroom, picking/LOS, placement supports and movement integration. Owns tiled/incremental nav capture/profile/link identities under [#1301](https://github.com/APKiwiOrg/KhaozEngine/issues/1301). Must allocate that implementation explicitly within R3 or a named prerequisite before plan approval |
-| [R4 / C4](../superpowers/plans/2026-10-05-world-authoring-r4-bounded-water-medium.md) | Explicit flooded/dry containment and bed/surface semantics using space geometry, OA7 XZ edges and variable vertical coverage. Water overlap is checked within actual wet domains, not rejected from XZ alone. Owns data/geometry dependencies for [#1300](https://github.com/APKiwiOrg/KhaozEngine/issues/1300), [#1297](https://github.com/APKiwiOrg/KhaozEngine/issues/1297) and walker policy [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299) with R3 |
+| [R3 / C3](../superpowers/plans/2026-10-10-world-authoring-r3-shared-shapes-headless-world.md) | Physics sidedness, floor support and ceiling/wall headroom, picking/LOS, placement supports and movement integration. Owns tiled/incremental nav capture/profile/link identities under [#1301](https://github.com/APKiwiOrg/KhaozEngine/issues/1301). Must allocate that implementation explicitly within R3 or a named prerequisite before plan approval |
+| [R4 / C4](../superpowers/plans/2026-10-11-world-authoring-r4-bounded-water.md) | Implemented under OA27 to OA30. Explicit authored-space containment, exact point/column wet intervals and free/closed region compilation use R2 geometry and OA7 XZ edges. One-level bodies may cover connected spaces, with ceiling ties closed and counted compile limits including MaxBoundCells. Supplies [#1300](https://github.com/APKiwiOrg/KhaozEngine/issues/1300) and [#1297](https://github.com/APKiwiOrg/KhaozEngine/issues/1297) data and headless scene inputs. R8 owns optical algorithms/captures, and G1b after #438 phase 4 owns capsule certificates and walker integration for [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299) |
 | [R5 / C5](../superpowers/plans/2026-10-05-world-authoring-r5-free-buildings-prefabs-interiors.md) | Free prefab transforms, native local support/paint, parent-space/interior domains and roof links. Uses the R2 compiler/query in local space. No duplicate floor owner, new cave model, nesting or foundation generation |
 | [R8 / C8](../superpowers/plans/2026-10-05-world-authoring-r8-native-rendering-residency-captures.md) | Bounded surface/index/asset residency, scope validation, lighting, camera occlusion, HLOD and RenderOrigin adapters. Physical ceilings remain when view rules hide geometry. Sky/lighting follows occupied space. Owns backend water captures and scoped capture completeness |
 | R3/R8 and game G3 | Per-cell geometry coverage independent of camera windows, correct frame/sampler mapping, multi-cell ghost/handoff continuity and on-demand nav. Use released PhysicsWorldFactory coverage/pose rules [E8]. Required OA9 work, not an optional extension |
@@ -597,15 +597,15 @@ quantization. A missing/ambiguous shared halo refuses before mutation.
 R6 marker support and R7 foliage/exclusions consume the same selected support/space keys. Their
 gameplay/distribution policies remain in their owning rounds.
 
-An ocean cannot wet a dry cave just because feet are below its SurfaceY. R4 must expose a contained
-feet sample and a separately defined optical-bed query. Each result names its water body and space
-coverage. Water can be limited by variable floor/ceiling geometry and explicit boundaries, with
-dry interiors as deliberate exclusions. Missing containment geometry refuses a complete medium
-result. R2 supplies geometric membership, not a new water simulation or approved optical algorithm.
+An ocean cannot wet a dry cave just because feet are below its SurfaceY. The implemented R4 query
+returns body/space/boundary ids and wet intervals limited by covered floors, ceilings and the body domain.
+A dry interior remains dry unless explicitly covered. Missing containment geometry remains unresolved.
+R2 supplies geometric membership. R4 supplies the deepest bed and exact region inputs for optics, without
+selecting an optical algorithm.
 
-Preserve the option of an explicitly sea-connected cave: a body may later cover a declared connected
-set of spaces/portals under an approved C4 rule. It must not be hard-coded to exactly one layer.
-Whether/how water crosses that connection remains the C4 approval gate. No swimming is introduced.
+OA27 to OA30 approve and implement sea-connected water over an explicit set of authored spaces.
+A body has one level and crosses portal or vertical-link openings only when their exact bottom lies
+strictly below that level. No implicit exterior, native movement delegate or swimming is introduced.
 The mandatory water captures remain the submerged 0.3 m ledge, 2 m river, 30 m shelf to 100 m ocean,
 enclosed cave lake and cross-region body, with no pale band, terrace band or seam step. Their depth
 examples are not universal ocean depth limits.
@@ -744,8 +744,9 @@ It is coherent only if keyed to physical triangle IDs and kept independent of ov
 topology. It is **not selected** here and would be its own owner decision with schema and topology
 tests. The continuous sculpting choice itself stays settled.
 
-C4 sea-connected-water details and any larger nav storage/distribution remain their later explicit
-owner gates. They are not prerequisites for writing the R2 plan and are not silently decided here.
+C4 sea-connected-water details were settled by OA27 to OA30 and implemented in the linked R4 plan.
+Any larger nav storage/distribution still requires its own owner gate. Neither changes the approved R2
+geometry or its membership/support results.
 After this draft is approved, reconcile the base C2/DG contracts and affected plans under the
 controller, then write/review the full executable R2 plan against the released APIs. **Draft approval
 permits planning. Execution still requires that plan's approval and released prerequisite checks.**

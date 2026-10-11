@@ -7,6 +7,7 @@ using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapEditor;
 
@@ -50,7 +51,7 @@ internal static class NativeDocumentTransaction
         NativeDocumentSnapshot.PublishWriteSet(publication, candidate, preparation.WriteSet);
         if (localOnly) MapBoundDocumentValidation.ValidateLocal(publication, registry);
         else MapBoundDocumentValidation.Validate(publication, assets!, registry);
-        ValidateSurfaces(publication.Surfaces, preparation.WriteSet);
+        ValidateSurfaces(publication, preparation.WriteSet);
         // Placement effects need the document before publication and the validated state after it.
         MapNativeEditEffects effects = native is PlacementAdapter
             ? NativePlacementEffects.Describe(document, publication, assets, registry, placementBounds)
@@ -60,8 +61,9 @@ internal static class NativeDocumentTransaction
         return effects;
     }
 
-    static void ValidateSurfaces(MapSurfaceSet surfaces, MapNativeWriteSet writeSet)
+    static void ValidateSurfaces(MapDocument publication, MapNativeWriteSet writeSet)
     {
+        MapSurfaceSet surfaces = publication.Surfaces;
         foreach (MapPatchKey key in writeSet.Patches)
             if (surfaces.Patches.TryGetValue(key, out MapSurfacePatch? patch)) RequireValid(patch.ValidateLocal());
         MapScopedSurfaces view = MapScopedSurfaces.CompleteView(surfaces);
@@ -74,6 +76,13 @@ internal static class NativeDocumentTransaction
         if (writeSet.Patches.Count != 0 || writeSet.SurfaceIds.Count != 0 ||
             writeSet.RecordIds.Count != 0 || writeSet.SpaceIds.Count != 0)
             RequireValid(MapSpaceCoverageValidator.Validate(view));
+        // A loaded document carries no containment certificate, so even placement-only publications recheck water.
+        if (publication.Water is { } water)
+        {
+            MapWaterContainmentReport containment = MapWaterContainment.Validate(view, water);
+            if (containment.Errors.Count != 0) throw new MapDocumentException(containment.Errors[0]);
+            if (!containment.Complete) throw new MapDocumentException("water containment is unverified");
+        }
     }
 
     static void RequireValid(IReadOnlyList<string> findings)

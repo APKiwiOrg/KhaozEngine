@@ -10,6 +10,7 @@ public sealed partial class MapStoredSurfaceSource
     {
         MapBoundDocumentValidation.ValidateLocal(_globals);
         MapBoundDocumentValidation.RequireRoots(_nativeAssets, assets);
+        MapBoundDocumentValidation.RequireWaterMaterials(_globals.Water, assets);
     }
 
     internal IEnumerable<MapSurfaceIndexEntry> EnumeratePinnedEntries(MapWholeIdentityWork? work)

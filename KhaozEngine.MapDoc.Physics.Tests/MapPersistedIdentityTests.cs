@@ -59,10 +59,10 @@ public class MapPersistedIdentityTests
     public void StackedCaveBuildHash_IsPinned()
     {
         // The canonical composition, the crate's placement digest and the upper ceiling chunk digest were derived outside
-        // the engine. The authored hash and the other seven chunk digests are inputs read from the engine once, so this
-        // pin guards the composition and catches drift in every input.
+        // the engine. The authored hash was re-read at format 6. It and the other seven chunk digests are inputs read
+        // from the engine once, so this pin guards the composition and catches drift in every input.
         var world = NativeWorldFixtures.BuildStackedCave();
-        Assert.Equal("2da51aa2076566e84e80dcf1b7b5edfa67a572b576d8fa7f0e3b66f9626e7ccd", world.AuthoredHash);
-        Assert.Equal("dd60fcdfec6b014115f46c6d7766b0ab1d8c22fc1e0f51545d8d12f3c574c057", world.BuildHash);
+        Assert.Equal("436a2731a92851e05bc667b3d02bb89e2980922d894348a704f950df55b78235", world.AuthoredHash);
+        Assert.Equal("655026f34e7bc1dd9a93157d406c28547b8b3d832fec1dc041a7e87ad1b0efc3", world.BuildHash);
     }
 }

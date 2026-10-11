@@ -300,6 +300,39 @@ public class SupportFootprintTests
     }
 
     [Fact]
+    public void HorizontalCapsuleEquatorAxisRetainsWitnessAndFinitePerPointEnclosure()
+    {
+        using var scene = new SupportFootprintScene();
+        scene.Install(new CapsuleShape(0.25f, 1f), new(Vector3.Zero, new Quaternion(0.5f, 0.5f, 0.5f, 0.5f)));
+        OracleTangent capsule = Assert.Single(scene.Curves);
+        Assert.Equal(OracleSurface.Round, capsule.Surface);
+        Assert.Equal(new OracleVector(0, 0, 1), capsule.Axis);
+        Assert.Equal(0.25, capsule.Radius);
+        Assert.Equal(0.5, capsule.HalfLength);
+        SupportFootprintRequest request = Request(x: 0.25f);
+        FootprintOracleMember member = SupportFootprintOracle.Curved(capsule, request)!;
+        Assert.NotNull(member);
+        Assert.True(member.HasDiscMaximum);
+        Assert.True(member.WitnessInsideClosedDisc);
+        Assert.Equal(2, member.Witnesses.Count);
+        FootprintOracleWitness axis = member.Witnesses[0];
+        Assert.Equal(SupportWitnessRole.Axis, axis.Role);
+        Assert.Equal(new OracleVector(0.25, 0, 0), axis.Position);
+        Assert.Equal(new OracleVector(1, 0, 0), axis.Normal);
+        Assert.Equal(SupportWitnessRole.Footprint, member.Witnesses[1].Role);
+        Assert.True(member.Witnesses[1].Normal.Y > 0);
+        (double lower, double upper) = SupportFootprintOracle.PerPointSupremum(capsule, request);
+        Assert.True(double.IsFinite(lower));
+        Assert.True(double.IsFinite(upper));
+        Assert.True(lower <= upper);
+        Assert.True(upper - lower <= 1e-7);
+        // The ends miss D. At x = 0.25 - (double)0.2f, the side tangent attains this reading.
+        Assert.InRange(0.20412414776667051, lower, upper);
+        Assert.Equal(SupportFootprintOracle.PerPointSupremum(capsule with { Surface = OracleSurface.CylinderSide }, request),
+            (lower, upper));
+    }
+
+    [Fact]
     public void HorizontalCylinderAxisTangencyRetainsEquatorialWitness()
     {
         using var scene = new SupportFootprintScene();

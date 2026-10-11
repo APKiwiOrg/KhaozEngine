@@ -81,7 +81,7 @@ internal static class SupportFootprintOracle
         }
         SurfacePoint? own = witnesses.Count == 0 ? null : new(witnesses[^1].Position, witnesses[^1].Normal);
         return new(part.Static, part.ElementId, true, highest is not null,
-            own is { } p ? Plane(p.Position, p.Normal, request.Axis.X, request.Axis.Y) : double.NaN,
+            own is { } p && p.Normal.Y > 0 ? Plane(p.Position, p.Normal, request.Axis.X, request.Axis.Y) : double.NaN,
             highest?.Position.Y ?? double.NaN, own?.Normal ?? default, witnesses,
             witnesses.All(w => InDisc(w.Position, axisX, axisZ, discRadius)));
     }
@@ -623,7 +623,8 @@ internal static class SupportFootprintOracle
         double lower = side.Lower;
         void Sample(double x, double z)
         {
-            if (!InDisc(new(x, 0, z), query.Axis.X, query.Axis.Y, query.Radius) || UpperAt(part, x, z) is not { } p) return;
+            if (!InDisc(new(x, 0, z), query.Axis.X, query.Axis.Y, query.Radius) ||
+                UpperAt(part, x, z) is not { } p || !(p.Normal.Y > 0)) return;
             lower = Math.Max(lower, Math.BitDecrement(Math.Min(p.Position.Y,
                 Plane(p.Position, p.Normal, query.Axis.X, query.Axis.Y))));
         }
@@ -631,6 +632,7 @@ internal static class SupportFootprintOracle
         Sample(query.Axis.X, query.Axis.Y);
         if (part.Surface is OracleSurface.CylinderTop or OracleSurface.CylinderBottom)
         {
+            if (!(maximum.Value.Normal.Y > 0)) return (double.NegativeInfinity, double.NegativeInfinity);
             double height = Math.Min(maximum.Value.Position.Y,
                 Plane(maximum.Value.Position, maximum.Value.Normal, query.Axis.X, query.Axis.Y));
             return (Math.BitDecrement(height), Math.BitIncrement(height));

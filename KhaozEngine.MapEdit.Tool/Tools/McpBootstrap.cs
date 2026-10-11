@@ -9,13 +9,14 @@ namespace KhaozEngine.MapEdit.Tools;
 /// which verbs the server exposes.</summary>
 public static class McpBootstrap
 {
-    /// <summary>Registers the session and the query, mutation, and render services as singletons. The tool classes
+    /// <summary>Registers the session and the query, water, mutation, and render services as singletons. The tool classes
     /// take these through their constructors, so the MCP server resolves one shared session for the whole
     /// process.</summary>
     public static IServiceCollection AddMapEditServices(this IServiceCollection services)
     {
         services.AddSingleton<MapEditSession>();
         services.AddSingleton<QueryService>();
+        services.AddSingleton<WaterService>();
         services.AddSingleton<MutationService>();
         services.AddSingleton<RenderService>();
         return services;

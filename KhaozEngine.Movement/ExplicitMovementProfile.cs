@@ -5,12 +5,14 @@ using KhaozEngine.Locomotion;
 
 namespace KhaozEngine.Movement;
 
-/// <summary>Portable identity for the F3 explicit motion model. Semantic inputs must include the
+/// <summary>Portable identity for explicit contact-shell and swimming motion. Semantic inputs must include the
 /// query/clearance recipe, shore rules and actual route-cost inputs. They exclude local lease IDs,
 /// handles and frame epochs. Areas remain navigation admission, separate from the motion proof.</summary>
 public sealed class ExplicitMovementProfile
 {
-    public const string ControllerModel = "f3-full-capsule-v1";
+    public const string ControllerModel = "contact-shell-footprint-swim-v1";
+    const uint HandoffRecipeVersion = 1;
+    const uint RouteProofRecipeVersion = 1;
     public const int MaximumProbeSteps = 65536;
     public string Name { get; }
     public MoveTuning Tuning { get; }
@@ -48,6 +50,11 @@ public sealed class ExplicitMovementProfile
         var writer = new NavBakeWriter();
         writer.WriteUInt16(1);
         writer.WriteLongString(utf8.GetBytes(ControllerModel));
+        // Fixed explicit body mapping and phase 4b recipes. Phase 5 owns selectable tuning/bakes.
+        writer.WriteSingle(0.5f); // Footprint radius as a fraction of the body radius.
+        writer.WriteSingle(0.001f); // Vertical placement offset, separate from medium contact skin.
+        writer.WriteUInt32(HandoffRecipeVersion);
+        writer.WriteUInt32(RouteProofRecipeVersion);
         writer.WriteLongString(utf8.GetBytes(NavBakeIdentity.CurrentEngineVersion));
         writer.WriteShortString(utf8.GetBytes(name));
         writer.WriteUInt32(areas.Required);

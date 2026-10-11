@@ -1,13 +1,16 @@
 # Explicit motion profiles and generic proof
 
-The current profile identifies the implemented F3 full-capsule controller. The
-[2026-10-09 owner amendment](SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md) assigns ground movement
-to #438 and supersedes this body model with shell solids plus certified footprint support.
-The current identity remains accurate for the pre-handoff code. Change it when the phase 4
-handoff changes runtime and probe together, so earlier proofs cannot be reused for the new model.
+The current profile identifies `contact-shell-footprint-swim-v1`. The
+[phase 4b handoff](CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md) implements the
+[2026-10-09 owner amendment](SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md) with #438 shell solids,
+certified footprint support and swimming's full-body medium proofs. Runtime and probe use the
+same kernel. Earlier `f3-full-capsule-v1` fingerprints cannot certify the new behavior.
 The profile remains independent of local query leases and frame epochs.
 
 ## Identity
+
+The fixed contact recipe includes footprint radius fraction 0.5, vertical placement offset
+0.001 m, handoff recipe version 1 and route-proof recipe version 1.
 
 The encoding reuses the existing canonical MoveTuning field writer, then includes the actual walk
 speed, run speed and air-momentum setting that the legacy unit probe omits. It also includes water
@@ -37,4 +40,6 @@ Generic fixtures prove dry/surface parity, a live wall, view and boundary mismat
 finite budget handling, every tuning input, semantic digest snapshot/order and equivalent motion
 across two adjacent synthetic physics frames. The tests link the existing bounded analytic environment
 fixtures rather than creating a native sampler. Native tiled navigation, real seams, area coverage,
-engine release and game adoption remain separate gates. The short-step support dependency remains open.
+engine release and game adoption remain separate gates. The unchanged short-step regression passes.
+Adoption remains blocked by #1355 certified sweep shapes, #1334 cost, #1347 hidden support and #1344
+small bodies. Phase 5 still owns the public selector and navigation bake identity.

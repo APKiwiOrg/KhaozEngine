@@ -44,6 +44,29 @@ public class ExplicitMotionProbeTests
         Assert.Equal(profile.Fingerprint, proof.ProfileFingerprint);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void I1RuntimeAndProbeCannotCertifyTheContactRecipeWithAnOldProfile(bool wet)
+    {
+        using var fixture = new Scene(wet);
+        var profile = Profile();
+        var direct = ExplicitCharacterMovement.StepTowards(fixture.State, Vector2.UnitX, false,
+            profile.StepSeconds, profile.Tuning, profile.Water, fixture.Lease);
+        var runtime = fixture.Context.StepExplicit(fixture.State, Vector2.UnitX, false, profile, fixture.Lease);
+        Assert.Equal(direct, runtime);
+        var proof = fixture.Context.ProbeExplicitMotion(fixture.State,
+            fixture.State.State.Position + Vector3.UnitX, wet, profile, fixture.Lease);
+        Assert.Equal(ExplicitMotionProofStatus.Proven, proof.Status);
+        Assert.Equal(wet, proof.End!.Value.State.Swimming);
+        Assert.Equal(!wet, proof.End.Value.State.Grounded);
+        Assert.InRange(proof.End.Value.State.Position.X, 0.999f, 1.001f);
+        Assert.Equal(profile.Fingerprint, proof.ProfileFingerprint);
+        var sources = new NavBakeSources().AddHashOf("query-policy", new byte[] { 1 });
+        Assert.NotEqual(ExplicitProfileRecipe.Fingerprint(profile, sources, contact: false), proof.ProfileFingerprint);
+        Assert.Equal(ExplicitProfileRecipe.Fingerprint(profile, sources, contact: true), proof.ProfileFingerprint);
+    }
+
     [Fact]
     public void RuntimeAndProbeSeeTheSameRealWall()
     {

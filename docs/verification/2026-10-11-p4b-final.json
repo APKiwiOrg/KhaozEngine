@@ -1,0 +1,324 @@
+{
+  "phase": "KhaozEngine #438 phase 4b, Task 8",
+  "verifiedAt": "2026-10-11T06:01:44.124506+00:00",
+  "branch": "feature/swimming-contract",
+  "taskBase": "47519e90c292f839056eed8e2437a8117fc1648f",
+  "engineVersion": "20.31.1",
+  "newestReleaseTag": "v20.31.0",
+  "controllerModel": "contact-shell-footprint-swim-v1",
+  "wireGeneration": 14,
+  "profileRecipe": {
+    "footprintRadiusFraction": 0.5,
+    "placementOffsetMetres": 0.001,
+    "handoffVersion": 1,
+    "routeProofVersion": 1
+  },
+  "build": {
+    "command": "build-slot --label p4b --heavy -- dotnet build KhaozEngine.slnx -c Release",
+    "exitCode": 0,
+    "warnings": 0,
+    "errors": 0
+  },
+  "tests": {
+    "command": "build-slot --label p4b --heavy -- dotnet test KhaozEngine.slnx -c Release --no-build --filter 'Category!=LiveSocket'",
+    "exitCode": 0,
+    "projects": 32,
+    "passed": 28746,
+    "failed": 0,
+    "skipped": 1329,
+    "total": 30075,
+    "projectTotals": [
+      {
+        "project": "KhaozEngine.Catalog.AzureBlob.Tests",
+        "passed": 25,
+        "failed": 0,
+        "skipped": 7,
+        "total": 32
+      },
+      {
+        "project": "KhaozEngine.Audio.Tests",
+        "passed": 206,
+        "failed": 0,
+        "skipped": 3,
+        "total": 209
+      },
+      {
+        "project": "KhaozEngine.Gui.Tests",
+        "passed": 1276,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1276
+      },
+      {
+        "project": "KhaozEngine.CodeHealth.Analyzers.Tests",
+        "passed": 51,
+        "failed": 0,
+        "skipped": 0,
+        "total": 51
+      },
+      {
+        "project": "KhaozEngine.MapDoc.Compatibility.Tests",
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0,
+        "total": 5
+      },
+      {
+        "project": "KhaozEngine.Automation.Tests",
+        "passed": 106,
+        "failed": 0,
+        "skipped": 0,
+        "total": 106
+      },
+      {
+        "project": "KhaozEngine.Accounts.Tests",
+        "passed": 286,
+        "failed": 0,
+        "skipped": 46,
+        "total": 332
+      },
+      {
+        "project": "KhaozEngine.Localization.Analyzers.Tests",
+        "passed": 46,
+        "failed": 0,
+        "skipped": 0,
+        "total": 46
+      },
+      {
+        "project": "KhaozEngine.Identity.Exchange.Tests",
+        "passed": 177,
+        "failed": 0,
+        "skipped": 0,
+        "total": 177
+      },
+      {
+        "project": "KhaozEngine.Netcode.Abstractions.DecouplingTests",
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "total": 4
+      },
+      {
+        "project": "KhaozEngine.Foundation.Tests",
+        "passed": 1404,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1404
+      },
+      {
+        "project": "KhaozEngine.Netcode.DecouplingTests",
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "total": 4
+      },
+      {
+        "project": "KhaozEngine.Particles.Tests",
+        "passed": 106,
+        "failed": 0,
+        "skipped": 0,
+        "total": 106
+      },
+      {
+        "project": "KhaozEngine.Physics.HeadlessLoaderTests",
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0,
+        "total": 5
+      },
+      {
+        "project": "KhaozEngine.Showcase.Tests",
+        "passed": 83,
+        "failed": 0,
+        "skipped": 0,
+        "total": 83
+      },
+      {
+        "project": "KhaozEngine.Simulation.Tests",
+        "passed": 302,
+        "failed": 0,
+        "skipped": 0,
+        "total": 302
+      },
+      {
+        "project": "KhaozEngine.MapDoc.Physics.Tests",
+        "passed": 134,
+        "failed": 0,
+        "skipped": 0,
+        "total": 134
+      },
+      {
+        "project": "KhaozEngine.ItemInstances.Tests",
+        "passed": 888,
+        "failed": 0,
+        "skipped": 0,
+        "total": 888
+      },
+      {
+        "project": "KhaozEngine.TileEdit.Tests",
+        "passed": 97,
+        "failed": 0,
+        "skipped": 7,
+        "total": 104
+      },
+      {
+        "project": "KhaozEngine.MapDoc.Tests",
+        "passed": 560,
+        "failed": 0,
+        "skipped": 0,
+        "total": 560
+      },
+      {
+        "project": "KhaozEngine.TileWorld.Netcode.Tests",
+        "passed": 1382,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1382
+      },
+      {
+        "project": "KhaozEngine.TileWorld.Physics.Tests",
+        "passed": 89,
+        "failed": 0,
+        "skipped": 0,
+        "total": 89
+      },
+      {
+        "project": "KeDungeon.Tests",
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0,
+        "total": 13
+      },
+      {
+        "project": "KhaozEngine.TileWorld.Tests",
+        "passed": 514,
+        "failed": 0,
+        "skipped": 0,
+        "total": 514
+      },
+      {
+        "project": "KhaozEngine.Movement.Tests",
+        "passed": 708,
+        "failed": 0,
+        "skipped": 3,
+        "total": 711
+      },
+      {
+        "project": "PixelLabSheetAssembler.Tests",
+        "passed": 32,
+        "failed": 0,
+        "skipped": 0,
+        "total": 32
+      },
+      {
+        "project": "KhaozEngine.Tests",
+        "passed": 61,
+        "failed": 0,
+        "skipped": 0,
+        "total": 61
+      },
+      {
+        "project": "KhaozEngine.Catalog.Tests",
+        "passed": 1514,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1514
+      },
+      {
+        "project": "KhaozEngine.Game.Tests",
+        "passed": 4380,
+        "failed": 0,
+        "skipped": 1,
+        "total": 4381
+      },
+      {
+        "project": "KhaozEngine.Render.Tests",
+        "passed": 8984,
+        "failed": 0,
+        "skipped": 936,
+        "total": 9920
+      },
+      {
+        "project": "KhaozEngine.MapEditor.Tests",
+        "passed": 1377,
+        "failed": 0,
+        "skipped": 9,
+        "total": 1386
+      },
+      {
+        "project": "KhaozEngine.Server.Tests",
+        "passed": 3927,
+        "failed": 0,
+        "skipped": 317,
+        "total": 4244
+      }
+    ]
+  },
+  "format": {
+    "command": "build-slot --label p4b --heavy -- dotnet format KhaozEngine.slnx --verify-no-changes --no-restore",
+    "exitCode": 0,
+    "acceptedWarning": "Generic workspace-loading warning"
+  },
+  "guards": [
+    {
+      "command": "build-slot --label p4b -- sh scripts/check-dashes.sh --tree",
+      "exitCode": 0
+    },
+    {
+      "command": "build-slot --label p4b -- sh scripts/check-prose.sh --tree",
+      "exitCode": 0
+    },
+    {
+      "command": "build-slot --label p4b -- sh scripts/check-file-size.sh --tree",
+      "exitCode": 0
+    },
+    {
+      "command": "build-slot --label p4b -- sh scripts/check-agent-instructions.sh --tree",
+      "exitCode": 0
+    },
+    {
+      "command": "build-slot --label p4b -- sh scripts/check-local-feed.sh",
+      "exitCode": 0
+    },
+    {
+      "command": "build-slot --label p4b -- bash scripts/check-doc-versions.sh",
+      "exitCode": 0
+    }
+  ],
+  "newRows": [
+    "I1RuntimeAndProbeCannotCertifyTheContactRecipeWithAnOldProfile(wet: false)",
+    "I1RuntimeAndProbeCannotCertifyTheContactRecipeWithAnOldProfile(wet: true)",
+    "R1BothServerHeadsAndCorrectionReplayAgreeAcrossGroundWaterAndAStep"
+  ],
+  "existingRowsChanged": [],
+  "adoptionBlockers": [
+    "#1355 certified sweep shapes",
+    "#1334 support cost",
+    "#1347 hidden support",
+    "#1344 small bodies"
+  ],
+  "nativeAcceptance": false,
+  "remainingPhase5": [
+    "MoveTuning selector",
+    "navigation capture and bake identity",
+    "#1299 navigation acceptance"
+  ],
+  "concerns": [
+    "CHANGELOG.md was left unchanged because the dispatch Rules prohibit its edit despite the task brief naming a line. Orchestrator owns reconciliation.",
+    "The informational local-feed audit reports historical drift already recorded by issue #1211. No pack or feed change was made."
+  ],
+  "historicalFeedDrift": {
+    "versions": [
+      "20.6.3",
+      "20.6.1",
+      "20.6.0",
+      "20.5.1",
+      "20.5.0",
+      "20.3.0",
+      "20.2.0",
+      "20.1.0",
+      "20.0.0"
+    ],
+    "issue": "https://github.com/APKiwiOrg/KhaozEngine/issues/1211"
+  }
+}

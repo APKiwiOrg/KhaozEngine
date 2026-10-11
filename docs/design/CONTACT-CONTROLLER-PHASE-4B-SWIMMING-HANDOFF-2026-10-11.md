@@ -1,7 +1,7 @@
 # Contact controller phase 4b: swimming handoff and deep-water walkers
 
-Date: 2026-10-11. Draft for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438), phase 4b, and the runtime
-part of [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299). Status: specified, not yet implemented.
+Date: 2026-10-11. Implementation specification for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438), phase 4b, and the runtime
+part of [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299). Status: implemented on `feature/swimming-contract`, staged for 20.31.1.
 Written under the owner's 2026-10-10 instruction to continue the program to completion, with every decision
 recorded as a ruling for review. Source baseline: `feature/swimming-contract` at `3feec2aed`, which carries main
 through phase 4a.
@@ -9,7 +9,7 @@ through phase 4a.
 The [program](CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md),
 [phase 3](CONTACT-CONTROLLER-PHASE-3-AIR-AND-STATE-2026-10-10.md),
 [phase 4a](CONTACT-CONTROLLER-PHASE-4A-GROUND-SIGNALS-2026-10-11.md) and
-[swimming owner amendment](SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md) remain binding. This draft follows the
+[swimming owner amendment](SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md) remain binding. This specification follows the
 owner's 2026-10-09 ground ownership decision and 2026-10-10 instruction to integrate the swimming branch.
 Every choice below is a numbered ruling with its cost if wrong.
 
@@ -27,14 +27,14 @@ tick, every selected path has shell, support and medium evidence, and WadeOnly s
 The branch already includes phases 2 to 4a. The merge conflict described in the earlier research digest is
 historical and is not an implementation prerequisite at this baseline.
 
-The current explicit core still calls `Settle`, its own gravity/jump path and `TryStepUp`
+At the source baseline, the explicit core called `Settle`, its own gravity/jump path and `TryStepUp`
 (`KhaozEngine.Locomotion/ExplicitCharacterMovement.cs:71`, `:107`, `:129`). Its three land-selection sites are
 `ExplicitCharacterMovement.Queries.cs:43`, `ExplicitCharacterMovement.Steps.cs:23` and
 `ExplicitCharacterMovement.Continuation.cs:31`, all under `KhaozEngine.Locomotion/`.
 The old resolver's slope-dependent centre offset includes a 1 mm skin
 (`KhaozEngine.Locomotion/MovementSupportResolver.cs:79`). A mere candidate substitution leaves that body model.
 
-The existing controller acquires its own physics lease and rejects water
+At that baseline, the dry controller acquired its own physics lease and rejected water
 (`KhaozEngine.Locomotion/Contacts/ContactController.cs:54`, `:102`). Its mode loop, remaining climb budget and
 signal accumulation already exist (`:260`, `:280`, `:331`). Those algorithms are the implementation to share.
 
@@ -463,9 +463,12 @@ lease token. After the integrated behavior passes its suite, change the explicit
 recipe versions. Cost if wrong: explicit portable fingerprints change, intentionally preventing an old motion
 proof from certifying a new controller.
 
-Generation 14 is `KhaozEngine.NetWorld/MoveProtocol.cs:70`. The old profile identity is
-`KhaozEngine.Movement/ExplicitMovementProfile.cs:13`, and its input recipe starts at `:49`.
-Do not change that identity as part of drafting or before behavior is proved. Phase 5 still owns the public
+Generation 14 remains in `KhaozEngine.NetWorld/MoveProtocol.cs`. The verified profile in
+`KhaozEngine.Movement/ExplicitMovementProfile.cs` is `contact-shell-footprint-swim-v1`, with footprint
+radius fraction 0.5, placement offset 0.001 m, handoff recipe version 1 and route-proof recipe version 1.
+I1 rejects the old F3 certificate and matches an independently encoded recipe for dry and wet motion.
+R1 compares both server heads and their clients on the same wire basis, then corrects and replays a
+cross-medium stream through an isolated 0.25 m step without counting its local impulse twice. Phase 5 still owns the public
 selector, canonical bake/tuning identity and any later transport amendment. Runtime and explicit motion probe
 continue to use the same explicit kernel and captured query view.
 
@@ -492,7 +495,8 @@ height or providing off-axis feet would conceal the missing seam.
 
 Use real Bepu boxes and meshes where solids are involved, with 30 and 60 Hz rows. Expectations use geometry and
 the certified enclosure, normally no finer than half the contact skin. Exact predicate boundary fixtures use
-certified synthetic facts. These are planned tests, none were run while drafting.
+certified synthetic facts. These rows were planned while drafting and are now implemented. Final verification is recorded in
+[`2026-10-11-p4b-final.json`](../verification/2026-10-11-p4b-final.json).
 
 | ID | Geometry/input | Required expectation |
 | --- | --- | --- |
@@ -628,13 +632,16 @@ The fixed skin makes the explicit and dry placement profiles distinct. Their sup
 but raw centres, very tight roof clearance and the depth threshold cannot all be byte-identical. Parity tests
 must state the offset, rather than hide it inside a loose tolerance.
 
-Owner binding has no current producer API. The generic fixtures can implement registration-backed binding, but
-this is not evidence a native producer has supplied it. Equal geometry across frames must map to canonical
+The leased `IMovementContactSupportPin` now supplies owner binding. The generic fixtures implement
+registration-backed binding, but this is not evidence a native producer has supplied it. Equal geometry across frames must map to canonical
 owners through producer identity, never equality of local handle numbers. FootSupport's existing local tie order
 does not establish insertion-order-independent canonical ownership for coincident distinct semantic owners.
 Such ambiguous semantic registrations refuse until the producer supplies one authoritative owner.
 
-The support cost gate #1334 and hidden-support gate #1347 remain adoption blockers. Signal look-ahead increases
+Adoption blockers remain #1355 certified sweep shapes, #1334 support cost, #1347 hidden support and
+#1344 small bodies. W1 proves the descending bank through certified analytic ground. A tilted Bepu
+box was refused by the certified shell sweep, so this is no native tilted-bank completeness claim.
+The support cost gate #1334 and hidden-support gate #1347 remain open. Signal look-ahead increases
 scope and query cost. The latter gate still blocks navigation capture. Phase 4a's short staircase horizon,
 overhung-ramp step classifier and #1354 limits remain. This phase does not repair them or claim they disappeared.
 
@@ -642,6 +649,21 @@ An ownership change uses bounded substep time, as phase 3 does. Surface motion p
 recipe within each scheduled piece, but a mixed tick can differ from the old whole-tick explicit motion. Freeze
 pure-water regression outputs and derive mixed-tick expectations from consumed pieces. Do not claim a new exact
 continuous-time entry solver.
+
+## Implementation rulings
+
+The task ledger records the authorized migrations made after drafting. Ruling 4b-21 allows
+old explicit land jump/settle/step expectations to follow the shared controller's closed forms,
+with every change and its geometric derivation in the task reports. B1/B2 and water, policy,
+transport, lease and admission contracts stay protected.
+
+Ruling 4b-22 permits a fixture-only StepHeight of 0.25 for the small-body policy rows, preserving
+their radius, half-height, water geometry and Blocked expectations. Real small bodies remain #1344.
+Ruling 4b-23 passes certified support statuses through unchanged and skips unavailable signal
+look-ahead without vetoing movement. Availability failures still refuse the whole tick.
+Ruling 4b-24 retains the dry low-roof behavior, with X 1.6 and centre Y 0.849 derived from the
+command and roof geometry. Ruling 4b-25 gives the separated-water-level row shorter physical
+arc ticks so it keeps sequential ownership without a simultaneous-level ambiguity.
 
 ## Questions for the owning lanes
 

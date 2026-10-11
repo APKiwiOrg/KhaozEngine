@@ -1,6 +1,8 @@
 # Short-step support dependency and owner amendment
 
-Status: ownership and body model ruled on 2026-10-09. Implementation handoff pending.
+Status: ownership and body model ruled on 2026-10-09. The generic
+[phase 4b handoff](CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md) is implemented
+on `feature/swimming-contract`, staged for 20.31.1. The unchanged bank regression passes.
 
 ## Owner ruling
 
@@ -18,13 +20,13 @@ This owner ruling amends the original F3 full-capsule solid proof to shell solid
 certified footprint support plus medium proof. The original accepted F3 file and hash are retained
 as the historical baseline. They do not override this amendment.
 
-Explicit grounded ticks will call the #438 ground core through its phase 4 handoff.
-`MovementSupportResolver` land selection will be replaced by the #438 support primitive.
-The current implementation and `f3-full-capsule-v1` profile identity still describe the old code.
-Do not relabel them as the new model before that handoff is implemented and verified.
+Explicit land ticks and `MovementSupportResolver` land placement now use the shared #438
+contact controller and support primitive. The verified profile identity is
+`contact-shell-footprint-swim-v1`, including its fixed body mapping and handoff/proof recipes.
+The old `f3-full-capsule-v1` identity is retained only as a compatibility test fixture.
 
-The #438 specification still awaits owner review before its implementation plan. This ruling is
-not authorization for this lane to build a ground resolver or implement the adjacent controller.
+Native producer certification, phase 5 navigation and game adoption remain separate gates.
+Known blockers are #1355 certified sweep shapes, #1334 cost, #1347 hidden support and #1344 small bodies.
 
 ## Reproduction retained as RED evidence
 

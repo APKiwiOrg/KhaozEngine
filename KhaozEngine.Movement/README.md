@@ -842,11 +842,12 @@ The driver has no wall following or local avoidance. It walks straight and repor
 
 ## Explicit framed motion and profile identity
 
-`ExplicitMovementProfile` currently describes the implemented F3 full-capsule motion model.
-The [owner amendment](../docs/design/SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md) supersedes that ground
-model with #438 shell solids and certified footprint support. The identity must change with the
-phase 4 implementation handoff, not before the runtime and probe actually use the new core.
-Its fingerprint includes all
+`ExplicitMovementProfile` identifies `contact-shell-footprint-swim-v1`. The
+[phase 4b handoff](../docs/design/CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md)
+uses #438 shell solids and certified footprint support for explicit land motion, with swimming's
+full-body medium and route proofs. The fingerprint includes the fixed footprint radius fraction
+0.5, vertical placement offset 0.001 m, handoff recipe version 1 and route-proof recipe version 1.
+Earlier `f3-full-capsule-v1` proofs cannot certify this behavior. It also includes all
 MoveTuning inputs, water capability and launch tuning, area masks, captured boundary identity,
 probe cadence and budget, finite resolver limits and versions, engine version, and ordinal-sorted
 semantic source digests. Supply every query/clearance, shore-policy and actual route-cost dependency
@@ -862,6 +863,10 @@ through pure state publication. Legacy terrain and medium delegates are not cons
 has an End state. Blocked is a local edge result, not globally unreachable. Query refusal, a changed
 frame and budget exhaustion retain their own outcomes and expose no state prefix. Area permission,
 complete search scope and native bake/seam certification remain the navigation producer's work.
-This API adds no native sampler, tiled bake or legacy bake-format change. Generic tests cover dry and
+This API adds no native sampler, tiled bake or legacy bake-format change. Adoption still waits on
+[#1355](https://github.com/APKiwiOrg/KhaozEngine/issues/1355) certified sweep shapes,
+[#1334](https://github.com/APKiwiOrg/KhaozEngine/issues/1334) support cost,
+[#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347) hidden support and
+[#1344](https://github.com/APKiwiOrg/KhaozEngine/issues/1344) small bodies. Generic tests cover dry and
 surface motion, a live wall, exact-view matching, refusal after earlier steps, all tuning inputs,
 semantic-source order and synthetic adjacent-frame equivalence. Real native adoption remains G1b.

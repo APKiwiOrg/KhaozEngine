@@ -502,8 +502,14 @@ The [2026-10-09 owner amendment](../docs/design/SWIM-STEP-SUPPORT-DEPENDENCY-202
 assigns all ground movement to #438, including this explicit path. Explicit land ticks now use the
 shared contact controller's ground, slide and air passes, knee-height shell and certified footprint
 support. Swimming retains medium proofs, water motion/policies and leased admission/transport.
-The unchanged bank-step regression passes. Within-tick swimming handoffs and contact-owned
-admission/continuation remain later parts of phase 4b.
+The unchanged bank-step regression passes. The
+[phase 4b handoff](../docs/design/CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md)
+also shares remaining time, climb budget, facing and signals across land/water ownership changes.
+Placement and continuation use the same contact shell and footprint. Both server heads and
+correction replay agree from the same generation-14 wire basis. Local step impulses are counted
+once on prediction, never again on replay. Legacy movement remains on its existing path.
+Native adoption still waits on #1355 certified sweep shapes, #1334 support cost, #1347 hidden
+support and #1344 small bodies.
 
 `ExplicitCharacterMovement.Step` and `StepTowards` use a caller-owned `MovementQueryLease` and
 return `MovementStepResult`. Publish its pure framed state before disposing the lease. Camera and

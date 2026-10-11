@@ -4,7 +4,9 @@ Date: 2026-10-10. Detailed spec for phase 3 of [#438](https://github.com/APKiwiO
 program, body model, support rule and invariants are in
 [CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md](CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md). Phase 2 (ground
 core) and phase 2b (support neighborhood) are on main at `39f93b6b9`. Status: implemented, staged for 20.31.1.
-Nothing consumes the controller yet, so no consumer or movement changes. Written under the owner's 2026-10-10
+Phase 3 introduced no consumer or movement changes. The later
+[phase 4b handoff](CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md) now runs opt-in
+explicit land ticks through this core. Native adoption remains gated. Written under the owner's 2026-10-10
 instruction to continue the program to completion, with decisions recorded for review. This text describes what
 was built, including every ruling made during implementation.
 

@@ -129,12 +129,21 @@ internal static partial class WaterFixtures
             throw new InvalidOperationException($"footprint lattice '{lattice}' is not in the requested frame");
         set.Patches[anchor].Records.Add(new MapSpaceDoc(spaceId, kind, null, null, Array.Empty<string>(),
             Array.Empty<MapBoundaryRef>(), Array.Empty<MapBoundaryRef>(), Array.Empty<MapRecordRef>()));
+        FootprintCells(set, spaceId, spaceId, cellMinX, cellMinZ, cellMaxX, cellMaxZ, lower, upper, anchor);
+    }
+
+    /// <summary>Adds one footprint per touched slot for an existing space, named from <paramref name="prefix"/>, so
+    /// one space can own cells over more than one lower bound.</summary>
+    static void FootprintCells(MapSurfaceSet set, string spaceId, string prefix, long cellMinX, long cellMinZ,
+        long cellMaxX, long cellMaxZ, MapBoundRef lower, MapBoundRef upper, MapPatchKey anchor)
+    {
+        string lattice = lower.SurfaceId ?? anchor.SurfaceId;
         foreach (SlotRange slot in Slots(cellMinX, cellMinZ, cellMaxX, cellMaxZ))
         {
             var key = new MapPatchKey(lattice, slot.SlotX, slot.SlotZ);
             int[] cells = Enumerable.Range(slot.MinZ, slot.Depth)
                 .SelectMany(z => Enumerable.Range(slot.MinX, slot.Width).Select(x => z * MapPatchKey.SlotCells + x)).ToArray();
-            set.Patches[key].Records.Add(new MapSpaceFootprint($"{spaceId}-cells-{slot.SlotX}-{slot.SlotZ}",
+            set.Patches[key].Records.Add(new MapSpaceFootprint($"{prefix}-cells-{slot.SlotX}-{slot.SlotZ}",
                 new MapRecordRef(spaceId, anchor), key, cells, lower, upper));
         }
     }
@@ -216,9 +225,11 @@ internal static partial class WaterFixtures
     static MapBoundRef Ceiling(string surfaceId) => new(MapBoundKind.Ceiling, surfaceId, null);
     static MapBoundRef OpenTop => new(MapBoundKind.OpenTop, null, null);
 
-    /// <summary>Closes a slot-0 cave rectangle with four wall strips between floor and roof edges. Each strip faces
-    /// the interior, so its front side follows the frame's row direction.</summary>
-    static void CloseWalls(MapSurfaceSet set, string spaceId, string floor, string roof, int minX, int minZ, int maxX, int maxZ)
+    /// <summary>Closes a slot-0 cave rectangle with wall strips between floor and roof edges, leaving the west edge
+    /// open when <paramref name="west"/> is false. Each strip faces the interior, so its front side follows the
+    /// frame's row direction.</summary>
+    static void CloseWalls(MapSurfaceSet set, string spaceId, string floor, string roof, int minX, int minZ, int maxX, int maxZ,
+        bool west = true)
     {
         if (minX < 0 || minZ < 0 || maxX > MapPatchKey.SlotCells || maxZ > MapPatchKey.SlotCells)
             throw new InvalidOperationException("fixture walls are limited to slot 0");
@@ -231,6 +242,7 @@ internal static partial class WaterFixtures
             ("south", minX, minZ, maxX, minZ, 0, 1), ("north", minX, maxZ, maxX, maxZ, 0, -1),
         })
         {
+            if (!west && name == "west") continue;
             string id = $"{spaceId}-{name}";
             anchor.Records.Add(Edge(id + "-lower", floor, x0, z0, x1, z1));
             anchor.Records.Add(Edge(id + "-upper", roof, x0, z0, x1, z1));

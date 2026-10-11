@@ -426,7 +426,7 @@ public partial class SupportFootprintTests
     }
 
     [Fact]
-    public void SphereFlankUsesGeometricFootprintWitnessAndSlopeEqualityIsWalkable()
+    public void CurvedOracleSphereFlankUsesGeometricFootprintWitnessAndSlopeEqualityIsWalkable()
     {
         using var scene = new SupportFootprintScene();
         scene.Install(new SphereShape(0.25f), Pose.At(new(0, -0.25f, 0)));
@@ -453,14 +453,16 @@ public partial class SupportFootprintTests
     [InlineData(true, 0)]
     [InlineData(true, 45)]
     [InlineData(true, 90)]
-    public void CurvedInstalledUprightTiltedAndLyingPosesHaveAttainedRoles(bool cylinder, float degrees)
+    public void CurvedOracleInstalledUprightTiltedAndLyingPosesHaveAttainedRoles(bool cylinder, float degrees)
     {
         using var scene = new SupportFootprintScene();
         Quaternion orientation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, degrees * MathF.PI / 180);
-        scene.Install(cylinder ? new CylinderShape(0.25f, 0.5f) : new CapsuleShape(0.25f, 0.5f),
+        StaticHandle owner = scene.Install(cylinder ? new CylinderShape(0.25f, 0.5f) : new CapsuleShape(0.25f, 0.5f),
             new(new(0, -0.25f, 0), orientation));
         SupportFootprintRequest request = Request();
-        List<FootprintOracleMember> members = Members(scene, request);
+        var curves = SupportFootprintCurvedProofOracle.Installed(scene.World, owner).Select(p => p.Tangent).ToArray();
+        List<FootprintOracleMember> members = curves.Select(p => SupportFootprintOracle.Curved(p, request))
+            .OfType<FootprintOracleMember>().ToList();
         Assert.NotEmpty(members);
         Assert.Contains(members, m => m.Witnesses.Count > 0);
         foreach (FootprintOracleMember member in members)
@@ -469,7 +471,7 @@ public partial class SupportFootprintTests
             Assert.True(member.WitnessInsideClosedDisc, $"Outside disc: {member}");
             foreach (FootprintOracleWitness witness in member.Witnesses)
             {
-                OracleTangent part = scene.Curves.Single(c => c.ElementId == member.ElementId);
+                OracleTangent part = curves.Single(c => c.ElementId == member.ElementId);
                 Assert.InRange(part.Closest(witness.Position).Distance, 0, 1e-7);
                 Assert.True(witness.Normal.Y > 0);
                 (double lower, double upper) = SupportFootprintOracle.PerPointSupremum(part, request);
@@ -478,12 +480,13 @@ public partial class SupportFootprintTests
                 Assert.True(lower <= upper);
                 Assert.True(upper - lower <= 1e-7);
                 Assert.True(Math.Min(tangent, witness.Position.Y) <= upper + 1e-12);
+                _output.WriteLine($"Installed cylinder={cylinder} degrees={degrees} part={member.ElementId} role={witness.Role} geometric={Math.Min(tangent, witness.Position.Y):R} perPoint=[{lower:R}, {upper:R}]");
             }
         }
     }
 
     [Fact]
-    public void RawCapAdmissionDoesNotMoveItsSurfaceWhenReversingTheNormal()
+    public void CurvedOracleRawCapAdmissionDoesNotMoveItsSurfaceWhenReversingTheNormal()
     {
         var cap = new OracleTangent(new StaticHandle(0), 2, OracleSurface.CylinderBottom,
             new(0, 1.25, 0), new(0, 1, 0), 0.25, 0.25);
@@ -491,7 +494,7 @@ public partial class SupportFootprintTests
     }
 
     [Fact]
-    public void TiltedSideChoosesTheHighestWalkablePointWhenItsMaximumIsSteep()
+    public void CurvedOracleTiltedSideChoosesTheHighestWalkablePointWhenItsMaximumIsSteep()
     {
         var side = new OracleTangent(new StaticHandle(0), 0, OracleSurface.CylinderSide,
             new(0, 0, 0), new OracleVector(Math.Sqrt(3) / 2, 0.5, 0), 0.25, 0.5);
@@ -506,7 +509,7 @@ public partial class SupportFootprintTests
     }
 
     [Fact]
-    public void ClosedDiscTangencyKeepsAxisAndFootprintRolesWithoutInventingSupport()
+    public void CurvedOracleClosedDiscTangencyKeepsAxisAndFootprintRolesWithoutInventingSupport()
     {
         var sphere = new OracleTangent(new StaticHandle(0), 0, OracleSurface.Round,
             new(0, 0, 0), new(0, 1, 0), 0.25, 0);
@@ -524,7 +527,7 @@ public partial class SupportFootprintTests
     }
 
     [Fact]
-    public void HorizontalCapsuleEquatorAxisRetainsWitnessAndFinitePerPointEnclosure()
+    public void CurvedOracleHorizontalCapsuleEquatorAxisRetainsWitnessAndFinitePerPointEnclosure()
     {
         using var scene = new SupportFootprintScene();
         scene.Install(new CapsuleShape(0.25f, 1f), new(Vector3.Zero, new Quaternion(0.5f, 0.5f, 0.5f, 0.5f)));
@@ -557,7 +560,7 @@ public partial class SupportFootprintTests
     }
 
     [Fact]
-    public void HorizontalCylinderAxisTangencyRetainsEquatorialWitness()
+    public void CurvedOracleHorizontalCylinderAxisTangencyRetainsEquatorialWitness()
     {
         using var scene = new SupportFootprintScene();
         scene.Install(new CylinderShape(0.25f, 1f), new(Vector3.Zero, new Quaternion(0.5f, 0.5f, 0.5f, 0.5f)));
@@ -578,7 +581,7 @@ public partial class SupportFootprintTests
     }
 
     [Fact]
-    public void HorizontalCylinderFootprintTangencyHasNoSupportOrPerPointReading()
+    public void CurvedOracleHorizontalCylinderFootprintTangencyHasNoSupportOrPerPointReading()
     {
         using var scene = new SupportFootprintScene();
         scene.Install(new CylinderShape(0.25f, 1f), new(Vector3.Zero, new Quaternion(0.5f, 0.5f, 0.5f, 0.5f)));

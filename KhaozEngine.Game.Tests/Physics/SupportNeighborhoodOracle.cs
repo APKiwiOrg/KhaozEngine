@@ -63,6 +63,8 @@ internal readonly record struct OracleTangentPoint(double Distance, OracleVector
 internal sealed record OracleTangent(StaticHandle Static, int ElementId, OracleSurface Surface, OracleVector Centre,
     OracleVector Axis, double Radius, double HalfLength)
 {
+    internal SupportFootprintExactOracle.Point? ExactAxis { get; init; }
+
     /// <summary>The closed form closest point of this element to <paramref name="point"/>.</summary>
     internal OracleTangentPoint Closest(OracleVector point)
     {
@@ -178,8 +180,10 @@ internal static class SupportNeighborhoodOracle
         {
             ref var triangle = ref mesh.Triangles[i];
             faces.Add(new OracleFace(owner, i, [World(triangle.A), World(triangle.C), World(triangle.B)])
-            { ExactVertices = SupportFootprintExactOracle.Transform([triangle.A, triangle.C, triangle.B],
-                new Pose(description.Pose.Position, description.Pose.Orientation)) });
+            {
+                ExactVertices = SupportFootprintExactOracle.Transform([triangle.A, triangle.C, triangle.B],
+                new Pose(description.Pose.Position, description.Pose.Orientation))
+            });
         }
         return faces;
     }

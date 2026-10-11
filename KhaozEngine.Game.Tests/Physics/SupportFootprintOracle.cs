@@ -195,7 +195,17 @@ internal static class SupportFootprintOracle
         var result = new List<SurfacePoint>();
         OracleVector axis = part.Axis.Y < 0 ? part.Axis * -1 : part.Axis;
         double u = Math.Sqrt(axis.X * axis.X + axis.Z * axis.Z), ay = axis.Y, radius = part.Radius;
-        if (u == 0 || slope > u) return result;
+        if (u == 0)
+        {
+            if (slope > 0) return result;
+            double dx = x - part.Centre.X, dz = z - part.Centre.Z;
+            double distance = Math.Sqrt(dx * dx + dz * dz);
+            if (Math.Abs(distance - radius) > r) return result;
+            OracleVector normal = distance == 0 ? new(1, 0, 0) : new(dx / distance, 0, dz / distance);
+            result.Add(new(part.Centre + axis * part.HalfLength + normal * radius, normal));
+            return result;
+        }
+        if (slope > u) return result;
         OracleVector horizontal = new(axis.X / u, 0, axis.Z / u);
         OracleVector across = new(-horizontal.Z, 0, horizontal.X);
         OracleVector up = new(-ay * horizontal.X, u, -ay * horizontal.Z);
@@ -253,6 +263,22 @@ internal static class SupportFootprintOracle
         var result = new List<SurfacePoint>();
         double side = part.Surface == OracleSurface.CylinderTop ? 1 : -1;
         OracleVector normal = part.Axis * side, centre = part.Centre + part.Axis * (side * part.HalfLength);
+        if (normal.Y == 0 && slope == 0)
+        {
+            OracleVector capAcross = new(-normal.Z, 0, normal.X), delta = centre - new OracleVector(x, centre.Y, z);
+            double along = OracleVector.Dot(delta, capAcross), offset = OracleVector.Dot(delta, normal);
+            double square = r * r - offset * offset;
+            if (square < 0) return result;
+            double low = Math.Max(-part.Radius, -along - Math.Sqrt(square));
+            double high = Math.Min(part.Radius, -along + Math.Sqrt(square));
+            if (low <= high)
+            {
+                double nearest = Math.Clamp(0, low, high);
+                result.Add(new(centre + capAcross * nearest + new OracleVector(0,
+                    Math.Sqrt(part.Radius * part.Radius - nearest * nearest), 0), normal));
+            }
+            return result;
+        }
         if (!(normal.Y > 0) || normal.Y < slope) return result;
         double horizontal = Math.Sqrt(normal.X * normal.X + normal.Z * normal.Z);
         OracleVector up = horizontal == 0 ? new(1, 0, 0) :
@@ -282,15 +308,35 @@ internal static class SupportFootprintOracle
         polynomial[2] -= 2 * r * r;
         polynomial[4] -= r * r;
         double bound = RootBound(polynomial);
-        foreach (double root in Roots(polynomial, -bound, bound))
+        OracleVector At(double angle) => centre + (up * Math.Cos(angle) + across * Math.Sin(angle)) * part.Radius;
+        double[] angles = Roots(polynomial, -bound, bound).Select(root => 2 * Math.Atan(root))
+            .Append(Math.PI).Order().ToArray();
+        foreach (double theta in angles)
         {
-            double theta = 2 * Math.Atan(root);
-            OracleVector At(double angle) => centre +
-                (up * Math.Cos(angle) + across * Math.Sin(angle)) * part.Radius;
             Add(At(theta));
-            // Adjacent representable angles approach a boundary from the closed feasible side.
             Add(At(Math.BitDecrement(theta)));
             Add(At(Math.BitIncrement(theta)));
+        }
+        // The root polynomial and the final trigonometric map round differently. Approach every boundary
+        // from each feasible arc, rather than losing its maximum when three rounded endpoints lie outside D.
+        for (int i = 0; i < angles.Length; i++)
+        {
+            double a = angles[i], b = i + 1 < angles.Length ? angles[i + 1] : angles[0] + 2 * Math.PI;
+            double middle = (a + b) / 2;
+            if (!InDisc(At(middle), x, z, r)) continue;
+            Add(At(middle));
+            foreach (double boundary in new[] { a, b })
+            {
+                double inside = middle, outside = boundary;
+                while (!InDisc(At(outside), x, z, r))
+                {
+                    double next = inside + (outside - inside) / 2;
+                    if (next == inside || next == outside) break;
+                    if (InDisc(At(next), x, z, r)) inside = next;
+                    else outside = next;
+                }
+                Add(At(InDisc(At(outside), x, z, r) ? outside : inside));
+            }
         }
         Add(centre - up * part.Radius);
         return result;
@@ -382,6 +428,9 @@ internal static class SupportFootprintOracle
             double horizontalDot = dx * part.Axis.X + dz * part.Axis.Z;
             double b = -2 * ay * horizontalDot, c = dx * dx + dz * dz - horizontalDot * horizontalDot - part.Radius * part.Radius;
             double discriminant = b * b - 4 * a * c;
+            if (a == 0 && c == 0)
+                candidates.Add(new(new(x, part.Centre.Y + part.HalfLength, z),
+                    new(dx / part.Radius, 0, dz / part.Radius)));
             if (a > 0 && discriminant >= 0)
             {
                 double y = (-b + Math.Sqrt(discriminant)) / (2 * a), t = horizontalDot + ay * y;
@@ -394,6 +443,13 @@ internal static class SupportFootprintOracle
         {
             double side = part.Surface == OracleSurface.CylinderTop ? 1 : -1;
             OracleVector normal = part.Axis * side, centre = part.Centre + part.Axis * (side * part.HalfLength);
+            if (normal.Y == 0)
+            {
+                OracleVector delta = new OracleVector(x, centre.Y, z) - centre;
+                double along = OracleVector.Dot(delta, new OracleVector(-normal.Z, 0, normal.X));
+                if (OracleVector.Dot(delta, normal) == 0 && Math.Abs(along) <= part.Radius)
+                    candidates.Add(new(new(x, centre.Y + Math.Sqrt(part.Radius * part.Radius - along * along), z), normal));
+            }
             if (normal.Y > 0)
             {
                 OracleVector point = new(x, Plane(centre, normal, x, z), z);
@@ -566,14 +622,14 @@ internal static class SupportFootprintOracle
         {
             if (!InDisc(new(x, 0, z), query.Axis.X, query.Axis.Y, query.Radius) ||
                 UpperAt(part, x, z) is not { } p || !(p.Normal.Y > 0)) return;
-            lower = Math.Max(lower, Math.BitDecrement(Math.Min(p.Position.Y,
-                Plane(p.Position, p.Normal, query.Axis.X, query.Axis.Y))));
+            lower = Math.Max(lower, SupportFootprintCurvedProofOracle.RoundSampleLower(part, x, z, query));
         }
         Sample(maximum.Value.Position.X, maximum.Value.Position.Z);
         Sample(query.Axis.X, query.Axis.Y);
         if (part.Surface is OracleSurface.CylinderTop or OracleSurface.CylinderBottom)
         {
             if (!(maximum.Value.Normal.Y > 0)) return (double.NegativeInfinity, double.NegativeInfinity);
+            if (SupportFootprintCurvedProofOracle.CapReading(part, query) is { } certified) return certified;
             double height = Math.Min(maximum.Value.Position.Y,
                 Plane(maximum.Value.Position, maximum.Value.Normal, query.Axis.X, query.Axis.Y));
             return (Math.BitDecrement(height), Math.BitIncrement(height));

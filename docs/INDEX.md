@@ -44,6 +44,7 @@ not deleted: the reasoning behind a shipped decision is the thing that is expens
 
 | Doc | The program | Status |
 |---|---|---|
+| [CONTACT-CONTROLLER-SUPPORT-CURVED-PROOFS-2026-10-11.md](design/CONTACT-CONTROLLER-SUPPORT-CURVED-PROOFS-2026-10-11.md) | Attained sphere, capsule and cylinder support witnesses, arbitrary admitted poses, exact finite extremum strata and arithmetic bounds for #438 support gates Task 5 | Task 5 proof certificate. Production implementation and cost gates remain separate tasks. |
 | [SWIM-ENVIRONMENT-FACADE-F3-2026-10-06.md](design/SWIM-ENVIRONMENT-FACADE-F3-2026-10-06.md) | Storage-independent water query/traversal facade, leased physics reads, complete contacts, surface jump and generic/native gate split for #1299 | F3 accepted by migration. Ground model superseded by the [2026-10-09 owner amendment](design/SWIM-STEP-SUPPORT-DEPENDENCY-2026-10-09.md). Generic G1a approved. Native G1b remains closed. [F1 history](design/SWIM-ENVIRONMENT-FACADE-2026-10-06.md) |
 | [SWIM-MEDIUM-FACTS-SM1-2026-10-08.md](design/SWIM-MEDIUM-FACTS-SM1-2026-10-08.md) | Level-body consistency, certified free-top partitions and required overlap classification | SM1 and SM1a accepted by migration, native G1b remains closed |
 | [SWIM-MEDIUM-FACTS-SM2-2026-10-09.md](design/SWIM-MEDIUM-FACTS-SM2-2026-10-09.md) | Whole-span overlap certificates and shared non-swimmer boundary resolution | SM2 accepted by migration, native G1b remains closed |

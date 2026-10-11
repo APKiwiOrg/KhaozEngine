@@ -115,10 +115,17 @@ internal static class ContactController
                          t, foot, gate, groundHeight, groundNormal, world, lease, out support))
                 mode = Mode.Slide;
             tick = Move(context, s, mode, support, feet, commanded, velocity, displacement, intent, dt);
-            if (clampXz is not null) tick = Bound(context, tick, clampXz);
-            // Ground signals belong to the move, before a jump consumes its footing at the end of the tick.
-            (climbRate, climbRateEwma, stepDeltaY) = GroundSignals.Resolve(s, tick.StepRise, tick.MoveRise,
-                tick.GroundTravel, tick.Feet, tick.Support,
+            bool corrected = false;
+            if (clampXz is not null)
+            {
+                Tick bounded = Bound(context, tick, clampXz);
+                corrected = bounded.Feet != tick.Feet;
+                tick = bounded;
+            }
+            // Ground signals belong to the move, before a jump consumes its footing at the end of the tick. The
+            // backstop is a correction, not motion, so a tick it shifts reports none.
+            (climbRate, climbRateEwma, stepDeltaY) = corrected ? (0f, 0f, 0f) : GroundSignals.Resolve(s,
+                tick.StepRise, tick.MoveRise, tick.GroundTravel, tick.Feet, tick.Support,
                 tick.Mode == Mode.Ground && tick.Support.Status == SupportStatus.Walkable,
                 dt, t, foot.FootRadiusFraction * t.CapsuleRadius, MathF.Cos(gate), groundHeight, groundNormal, world,
                 lease);

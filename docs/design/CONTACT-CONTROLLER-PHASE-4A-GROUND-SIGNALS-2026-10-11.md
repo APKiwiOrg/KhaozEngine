@@ -193,7 +193,8 @@ When `ClimbRate` is nonzero, `StepDeltaY` is zero. Otherwise `StepDeltaY` is the
 ## Ticks that emit nothing
 
 All three signals are zero, and the EWMA resets, on a tick that ends airborne, sliding, wedged, held on refused
-support, swimming (4b) or through the non-finite fallback. A jump decided at the end of a grounded tick does not
+support, swimming (4b) or through the non-finite fallback, and on a tick whose end the play-area backstop shifts. The
+backstop is a correction, not motion, and its placement keeps no footing the signals could read. A jump decided at the end of a grounded tick does not
 clear the ground segment's signals, as in legacy, where jump consumption follows the signal stamp.
 
 **Ruling 4a-5.** Signals do not depend on `MaxStepClimbSpeed`. Legacy computed its up event and run only inside
@@ -232,6 +233,8 @@ legacy numbers. Box and mesh variants where statics are involved, 30 and 60 Hz, 
   zero.
 - **Denied descent.** A body pressing into a wall at the top of a descending stair exports no descent.
 - **Held and fallback.** A held tick and the non-finite fallback export zeros.
+- **Backstop.** A body standing on a riser with owed climb and a step or a run in progress, pushed across the bound
+  by recovery from a wall, pays its climb and is shifted back by the backstop, and every such tick exports zeros.
 - **Pacing off.** With `MaxStepClimbSpeed` zero, the doorstep still reports its height in one tick.
 - **Grant and facing.** The Held-on-refused-support policy keeps the grant (pinned as built), and a commitment
   freezes facing (already pinned, kept).

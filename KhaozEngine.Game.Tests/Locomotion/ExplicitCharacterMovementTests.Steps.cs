@@ -16,16 +16,6 @@ public partial class ExplicitCharacterMovementTests
         using var scene = new Scene(floor: true, bankHeight: 0.2f, ceiling: ceiling);
         var state = scene.State(new(0, 0.752f, 0), grounded: true);
         var result = ExplicitCharacterMovement.StepTowards(state, Vector2.UnitX, false, 0.4f, Tuning, Policy, scene.Lease);
-        if (ceiling.HasValue)
-        {
-            // The second signal probe spans Y 1.601 to 1.861 and starts inside the roof at Y 1.75.
-            // Its uncertified support cannot authorize a partial tick.
-            Assert.Equal(MovementStepOutcome.EnvironmentUnresolved, result.Outcome);
-            Assert.Equal(state.State.Position, result.State.State.Position);
-            Assert.Equal(0, result.State.State.StepDeltaY);
-            Assert.Null(result.State.Selection);
-            return;
-        }
         Assert.Equal(MovementStepOutcome.Advanced, result.Outcome);
         Assert.True(result.State.State.Grounded);
         Assert.InRange(result.State.State.Position.X, 1.5999f, 1.6001f);
@@ -38,28 +28,32 @@ public partial class ExplicitCharacterMovementTests
     public void ATooHighBankCannotBecomeAnImplicitTeleport()
     {
         using var scene = new Scene(floor: true, bankHeight: 0.6f);
-        var state = scene.State(new(0, 0.752f, 0), grounded: true);
-        var result = ExplicitCharacterMovement.StepTowards(state,
+        var result = ExplicitCharacterMovement.StepTowards(scene.State(new(0, 0.752f, 0), grounded: true),
             Vector2.UnitX, false, 0.4f, Tuning, Policy, scene.Lease);
-        // The radius-0.125 probe reaches the bank while its raised bottom is below the 0.6 top.
-        // An overlapping probe start refuses support instead of proving an unreachable destination.
-        Assert.Equal(MovementStepOutcome.EnvironmentUnresolved, result.Outcome);
-        Assert.Equal(state.State.Position, result.State.State.Position);
+        Assert.Equal(MovementStepOutcome.Blocked, result.Outcome);
+        Assert.True(result.State.State.Position.X < 1);
         Assert.Equal(0, result.State.State.StepDeltaY);
+        Assert.NotEqual(new MovementSupportKey("world", "bank"), result.State.Selection!.Value.Support);
     }
 
+    // Under a roof whose underside is 1.6, the body's feet can rise only to 1.6 - 2 * 0.75 = 0.1, less the 0.001 contact
+    // skin. The 0.2 bank stays below the shell, which starts at feet + StepHeight, so the walk reaches X 1.6
+    // (4 m/s over 0.4 s) on the bank with its legs sunk below the tread, as the shared body model allows. The
+    // clearance push blocks the rise, and the unpaid climb stays owed below the bank.
     [Fact]
-    public void ABlockedRiseCannotGrantTheFarSideSupport()
+    public void ALowRoofKeepsTheBankUnderTheLegsWhileTheShellPasses()
     {
         using var scene = new Scene(floor: true, bankHeight: 0.2f, ceiling: 1.6f);
-        var state = scene.State(new(0, 0.752f, 0), grounded: true);
-        var result = ExplicitCharacterMovement.StepTowards(state,
+        var result = ExplicitCharacterMovement.StepTowards(scene.State(new(0, 0.752f, 0), grounded: true),
             Vector2.UnitX, false, 0.4f, Tuning, Policy, scene.Lease);
-        // A signal probe from the roof-limited lag starts inside the roof and cannot certify support.
-        Assert.Equal(MovementStepOutcome.EnvironmentUnresolved, result.Outcome);
-        Assert.Equal(state.State.Position, result.State.State.Position);
-        Assert.Equal(0, result.State.State.StepDeltaY);
-        Assert.Null(result.State.Selection);
+        Vector3 centre = result.State.State.Position;
+        string context = $"{centre}, support {result.State.Selection?.Support}, step {result.State.State.StepDeltaY}";
+        Assert.Equal(MovementStepOutcome.Blocked, result.Outcome);
+        Assert.InRange(centre.X, 1.6f - 0.0005f, 1.6f + 0.0005f);
+        Assert.InRange(centre.Y, 0.849f - 0.0005f, 0.849f + 0.0005f);
+        Assert.True(result.State.State.Grounded, context);
+        Assert.Equal(new MovementSupportKey("world", "bank"), result.State.Selection!.Value.Support);
+        Assert.True(centre.Y - 0.75f < 0.2f, $"the legs should stay below the bank top: {context}");
     }
 
     [Fact]

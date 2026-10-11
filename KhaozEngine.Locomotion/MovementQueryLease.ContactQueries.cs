@@ -54,7 +54,6 @@ public sealed partial class MovementQueryLease
             SupportSample found = FootSupport.Find(ground is { } field ? (x, z) => field.Height : null,
                 ground is { } plane ? (x, z) => plane.Normal : null, _view, _physics, query);
             AssertCurrent();
-            if (found.Status == SupportStatus.Refused) return MovementAvailability.Unresolved;
             if (found.Status is SupportStatus.Walkable or SupportStatus.Steep)
             {
                 allowed = BindContactSupportAtKernel(request, found, query.FeetY, out var owner);

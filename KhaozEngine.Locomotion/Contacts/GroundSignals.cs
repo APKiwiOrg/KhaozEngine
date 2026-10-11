@@ -48,8 +48,14 @@ internal static partial class GroundSignals
             float distance = k * tuning.CapsuleRadius;
             float reach = tuning.StepHeight + 2 * distance;
             Vector2 sampleAxis = axis + distance * direction;
-            SupportSample support = queries.FindSupport(
-                new FootSupportQuery(sampleAxis, feet.Y, footRadius, reach, reach, cosMaxSlope));
+            SupportSample support;
+            try
+            {
+                support = queries.FindSupport(
+                    new FootSupportQuery(sampleAxis, feet.Y, footRadius, reach, reach, cosMaxSlope));
+            }
+            // Optional presentation evidence cannot veto the accepted move.
+            catch (ContactQueryFailure) { continue; }
             if (support.Status != SupportStatus.Walkable) continue;
             float step = GroundSeat.DiscreteStep(supports[count - 1], axis + samples[count - 1].X * direction,
                 support, sampleAxis);

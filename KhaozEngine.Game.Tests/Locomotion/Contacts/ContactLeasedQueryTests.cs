@@ -112,7 +112,6 @@ public partial class ContactLeasedQueryTests
     [InlineData("drop")]
     [InlineData("probe-margin")]
     [InlineData("custom-footprint")]
-    [InlineData("signal-horizon")]
     [InlineData("pushed-route")]
     [InlineData("mapped-head")]
     public void Q2OutOfScopeQueryRefusesBeforePhysicsOrProducer(string fault)
@@ -127,15 +126,33 @@ public partial class ContactLeasedQueryTests
             "drop" => () => queries.FindSupport(query with { ReachDown = 0.31f }),
             "probe-margin" => () => queries.FindSupport(query with { Axis = new(0.75f, 0), FootRadius = 0.2495f }),
             "custom-footprint" => () => queries.FindSupport(query with { FootRadius = 1.1f }),
-            "signal-horizon" => () => GroundSignals.Resolve(new MoveState { ClimbRate = 1 }, 0, 0, true,
-                false, 0, Vector2.UnitX, feet, new(SupportStatus.Walkable, 0, 0, Vector3.UnitY,
-                    null, -1, Vector3.Zero), true, 1f / 30, Tuning, 0.125f,
-                MathF.Cos(Tuning.MaxSlopeRadians), queries),
             "pushed-route" => () => queries.AcceptSegment(feet, new Vector3(1, 0, 0)),
             _ => () => queries.PenetrationShell(ShellGeometry.Shape(Tuning), new Vector3(0, 1.725f, 0), out _)
         };
         ContactQueryFailure failure = Assert.Throws<ContactQueryFailure>(request);
         Assert.Equal(MovementAvailability.Unresolved, failure.Availability);
+        Assert.Equal(0, scene.View.Calls);
+        Assert.Equal(0, scene.Environment.AnalyticGroundCalls);
+        Assert.Equal(0, scene.Environment.ContactSupportCalls);
+        Assert.Equal(0, scene.Environment.SampleCalls);
+        Assert.Equal(0, scene.Environment.CoverageCalls);
+    }
+
+    [Fact]
+    public void Q2OutOfScopeSignalSampleIsRefusedBeforeAccessAndSkipped()
+    {
+        using var scene = new QueryScene(scopeMax: new Vector3(1, 2, 1), maxRise: 0.3f, maxDrop: 0.3f);
+        var queries = scene.Queries();
+        // The first look-ahead is 0.25 m ahead with reach 0.3 + 2 * 0.25 = 0.8 m.
+        ContactQueryFailure failure = Assert.Throws<ContactQueryFailure>(() => queries.FindSupport(
+            Query(Vector3.Zero) with { Axis = new(0.25f, 0), ReachUp = 0.8f, ReachDown = 0.8f }));
+        Assert.Equal(MovementAvailability.Unresolved, failure.Availability);
+        var signals = GroundSignals.Resolve(new MoveState { ClimbRate = 1 }, 0, 0, true,
+            false, 0, Vector2.UnitX, Vector3.Zero, new(SupportStatus.Walkable, 0, 0, Vector3.UnitY,
+                null, -1, Vector3.Zero), true, 1f / 30, Tuning, 0.125f,
+            MathF.Cos(Tuning.MaxSlopeRadians), queries);
+
+        Assert.Equal((0f, 0f, 0f), signals);
         Assert.Equal(0, scene.View.Calls);
         Assert.Equal(0, scene.Environment.AnalyticGroundCalls);
         Assert.Equal(0, scene.Environment.ContactSupportCalls);

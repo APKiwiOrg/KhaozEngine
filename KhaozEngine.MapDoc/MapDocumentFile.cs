@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Storage;
+using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Serialization;
 
 namespace KhaozEngine.MapDoc;
@@ -36,6 +37,7 @@ public sealed class MapDocumentLoadOptions
         RegisterMigration(2, MigrateV2ToV3);
         RegisterMigration(3, MapNativeMigration.Upgrade);
         RegisterMigration(4, MapSurfaceMigration.Upgrade);
+        RegisterMigration(5, MapWaterMigration.Upgrade);
     }
 
     /// <summary>Registers the transform from <paramref name="fromVersion"/> to fromVersion + 1. The step does
@@ -85,8 +87,8 @@ public static class MapDocumentFile
     /// <see cref="MapDocument.TileSize"/>, which per-tile hashing needs even for a monolithic document or a
     /// monolithic and a tiled copy of the same world would hash differently. Version and layout are
     /// independent axes. v4 adds native metadata and separate playable bounds. v5 adds the support recipe
-    /// and authored surface metadata.</summary>
-    public const int CurrentFormatVersion = 5;
+    /// and authored surface metadata. v6 adds bounded water.</summary>
+    public const int CurrentFormatVersion = 6;
 
     /// <summary>The document tile edge, in world meters, a document gets when it does not declare one (and
     /// what the v2 to v3 migration stamps). At a heavily authored density a fully authored 512 m tile is
@@ -143,6 +145,7 @@ public static class MapDocumentFile
             JsonNode? node = Jsonc.ParseNode(json);
             root = node as JsonObject
                 ?? throw new MapDocumentException($"{where}: document root must be a JSON object.");
+            MapDocumentMembers.RequireUniqueMembers(root, where);
         }
         catch (JsonException ex)
         {

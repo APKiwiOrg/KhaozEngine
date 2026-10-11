@@ -78,6 +78,7 @@ internal static class MapTileFile
             JsonNode? node = Jsonc.ParseNode(json);
             if (node is not JsonObject root)
                 throw new MapDocumentException($"{where}: tile ({coord.X}, {coord.Z}) root must be a JSON object.");
+            MapDocumentMembers.RequireUniqueMembers(root, where);
             MapDocumentMembers.ValidateTile(root, where);
             dto = node.Deserialize<MapTileFileDoc>(MapDocumentFile.CreateOptions(registry, write: false))
                 ?? throw new MapDocumentException($"{where}: tile ({coord.X}, {coord.Z}) deserialized to null.");

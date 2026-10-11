@@ -43,6 +43,7 @@ internal static partial class MapTiledFile
         {
             root = Jsonc.ParseNode(json) as JsonObject
                 ?? throw new MapDocumentException($"{path}: manifest root must be a JSON object.");
+            MapDocumentMembers.RequireUniqueMembers(root, path);
         }
         catch (JsonException ex)
         {
@@ -199,8 +200,8 @@ internal static partial class MapTiledFile
 
     /// <summary>A shallow copy of a document carrying only the globals: same references for terrain, layers
     /// and shapes, with the four point-shaped lists empty and the sculpt block reduced to its header. Surfaces
-    /// are a metadata-only copy (copied refs, no patches) and native assets a copied list, so a later edit
-    /// published into the document never shows through the copy.</summary>
+    /// are a metadata-only copy (copied refs, no patches), and native assets and water are copies, so a later
+    /// edit published into the document never shows through the copy.</summary>
     internal static MapDocument GlobalsOnly(MapDocument doc) => new()
     {
         Schema = doc.Schema,
@@ -221,6 +222,7 @@ internal static partial class MapTiledFile
         Exclusions = doc.Exclusions,
         ScatterOverrides = doc.ScatterOverrides,
         Regions = doc.Regions,
+        Water = doc.Water?.Clone(),
         TerrainOverrides = new MapTerrainOverrides(MapCanonical.SculptCellSizeOf(doc)),
     };
 

@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text.Json;
+using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc;
 
@@ -66,6 +67,12 @@ internal static class MapCanonical
         JsonSerializer.Serialize(w, doc.ScatterOverrides, options);
         w.WritePropertyName("regions");
         JsonSerializer.Serialize(w, doc.Regions, options);
+        // Water is written only when present, so every document without it keeps its released identity.
+        if (doc.Water is not null)
+        {
+            w.WritePropertyName("water");
+            MapWaterJson.Write(w, doc.Water);
+        }
     }
 
     /// <summary>Native persistence metadata. Kept separate from the legacy analytic hash globals.</summary>

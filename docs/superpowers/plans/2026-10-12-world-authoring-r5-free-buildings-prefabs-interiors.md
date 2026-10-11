@@ -45,11 +45,11 @@ OA33 authorizes this rewrite only. Independent plan reviews and the owner's appr
 
 ## Review Focus
 
-1. An asset removes and later restores a non-placement child. Its reserved identity survives redo and reload, and unpack cannot leave a live duplicate (Task 2 `EveryChildKind_RetainsReservationsAndTransfersOnce`, Task 9 `Unpack_PreservesAllTypedReferencesAndIds`).
-2. A transformed room crosses a storage seam while its anchor, parent or prefab bytes are unavailable. Membership, water and roof policy must report incomplete data, never exterior, dry or hidden (Tasks 3, 4 and 8 `ScopedChildren_RequireTheirFullWitness`, `MissingParentOrPrism_IsMissingGeometry`, `UnresolvedObserver_KeepsRoofsVisibleWithStatus`).
-3. Two free-yaw rooms share an edge or reflex corner, or two storeys share a height. Exactly one owns each boundary while a genuine overlap refuses (Task 4 `SharedEdgesReflexCornersAndStoreys_HaveOneOwner`).
-4. Local paint on a slope and a dry nested room below exterior water must not create another floor or disagree with the effective water compiler (Tasks 6 and 7 `PartialPaint_LeavesFacesAndSupportByteIdentical`, `ParentWater_ExcludesAnUncoveredNestedRoom`).
-5. A floor edit reseats a long supported leaf into neighboring tiles, or an asset publication fails after immutable bytes are written. Effects cover old/new geometry and the accepted map/history/closure remain atomic (Task 9 `FloorReseat_InvalidatesEveryChangedNeighborTile`, `AssetPublicationFailure_LeavesSessionAndOtherMapsUntouched`).
+1. Equivalent geometry uses a direct vertex or an offset child/support origin at a far site. It must freeze identically and survive real sloped R2 queries without intermediate overflow (Task 3 `DecomposedOrigin_EqualsDirectGeometryAtNearAndFarSites`, `PlacedSlope_SupportMembershipAndBoundsSucceedWithWideIntermediates`).
+2. A transformed room crosses a seam with its prism, parent bound or remote anchor unavailable. Exact witnesses keep membership/water/roofs conservative. Missing prefab bytes before capture refuse expansion, captured bytes are never reread (Tasks 3, 4, 7 and 8 per-fact theories, with complete controls and nonempty roof IDs).
+3. A parent space recurs below and above a dry room while water level 4 lies above the room. Distinct fragments must give lower Closed, room Dry and upper FreeSurface, with stable provenance and reload digests (Tasks 4 and 7 `Column_PartitionsParentAroundNestedStoreys`, `ParentWater_ExcludesAnUncoveredNestedRoom`). Shared free-yaw/reflex edges and storeys keep one owner.
+4. A same-text local/world reference or embedded support record is removed/restored/unpacked. Scope, stable IDs and standalone storey Name/ownership must survive without duplicate leaves or influence from a later asset version (Tasks 2, 9 and 10 `SameTextLocalAndWorldReferences_RemapOnlyTheLocalOccurrence`, `StoreyUnpack_ReloadKeepsIdNameAndRoomOwner`, `StoreyUnpackUndoRedo_ReloadRetainsIdName`).
+5. A floor reseats a long leaf across tiles, immutable publication fails, or a mixed history crosses a collider asset root change. Every old/new tile is invalidated and document/closure/history accept together (Task 10 `FloorReseat_InvalidatesEveryChangedNeighborTile`, Task 11 `AssetPublicationFailure_LeavesSessionAndOtherMapsUntouched`, `MixedNativeHistory_RestoresRootsClosureEffectsAndDirty`).
 
 ---
 
@@ -66,7 +66,7 @@ OA33 authorizes this rewrite only. Independent plan reviews and the owner's appr
 | GUI closure/bounds binding, prefab mode and real input | R9 and #1349. R5 adds no GUI host |
 | Whole verb-map wire parity | R10. R5 registers its specified prefab/interior wire verbs and supplies their shared services |
 | General marker registry and spawn projection | R6 consumes payload-1 local marker fields |
-| Private lossless importer and actual source freeze | R11/G2. Task 11 is a comparison procedure, not accepted game adoption |
+| Private lossless importer and actual source freeze | R11/G2. Task 13 is a comparison procedure, not accepted game adoption |
 | Water indexing, huge exterior coverage and medium-aware seam capture | #1358 to #1362. Keep explicit refusals and no per-frame performance claim |
 
 ## Proposed controller rulings
@@ -77,21 +77,21 @@ Each judgment not fixed by OA33 is named here. Selecting the gate's approved opt
 | --- | --- | --- |
 | R5-P1 | Keep resolver identity (1, 2) and AuthoredBindingsV2. Version prefab expansion as 1 and transformed query policy as 2. Include them only for effective resources, preserving resolver-1 routing | A later resolver 3 requires an explicit migration and API adapter |
 | R5-P2 | Store instances, bindings, overrides, transfers and world building intent in native root globals, once. Local geometry stays in immutable prefab resources. No tile instance copies | Large instance registries need an indexed root extension in R8 |
-| R5-P3 | Use MapTransform.Compose once, including its released float composition. Evaluate in double, quantize placed coordinates to 1/1,048,576 m with ties to even, then round world Y once to binary32 for the released height seam. Freeze XZ/Y as exact rationals and subtract XZ anchors before adapter rounding. This avoids binary64 denominators breaking R2 arithmetic | At most half a quantum of added coordinate rounding, plus documented far-Y float quantization. Policy/cache identities change once |
-| R5-P4 | Local child identity is (kind, ordinal key). Persist world IDs, using percent-escaped UTF-8 path segments for new bindings, with optional positive int64 only on placement leaves. Import may supply original world IDs | Changing the grammar later needs explicit remap. It adds retained nonnumeric reservations |
-| R5-P5 | Rooms select the deepest containing descendant and subtract their owned interval from parent occupancy. The effective room interval is its prism intersected with canonical parent bounds. Parent geometry stays unchanged | If whole-prism containment is later preferred, uneven sites need an explicit conversion |
+| R5-P3 | REVISED. Preserve released public Compose. Effective origins, yaw and scale compose in binary64 until one point freeze, including implicit support resources. Freeze XZ to dyadic quantum, Y to the released binary32 seam, and declare a separate backend pose approximation | Composition and adapter error bounds are explicit. Wider predicates and output narrowing cost additional query work |
+| R5-P4 | REVISED. Every prefab-only reference occurrence carries a closed typed scope slot. Child keys map to declared payload IDs and anchors. Explicit Surface children forbid embedded records. Support-resource embedded records receive declared implicit Record bindings | Slot grammar and retained reservations are versioned. Extraction must emit complete slots |
+| R5-P5 | REVISED. Deepest room occupancy carves ancestors into stable identified fragments with lower/upper boundary provenance. Effective intervals intersect canonical parent bounds, and repeated parent intervals retain different fragment IDs | Fragment propagation affects support, water contours, bounds and classification |
 | R5-P6 | A prism domain is a new topology record referencing an existing MapSpaceDoc, not a second classifier. It carries parent, storey, lower/upper heights and instance ownership, with no mandatory physical wall at every semantic edge | A later sealed-room rule adds coverage checks, without changing membership authority |
 | R5-P7 | Positive-volume peer overlap refuses publication and returns Ambiguous in readable diagnostic views. Roof groups are explicit room sets, not transitive portal flood fill | Authors must maintain concealment sets when redesigning connections |
-| R5-P8 | Uneven-site seating is a diagnostic, not automatic ground deformation. Coincident independent physical floors refuse. A local floor can sit above an exterior floor | A future foundation tool is separate and needs owner design |
+| R5-P8 | REVISED. Uneven-site seating stays diagnostic. Pure support-resource installation belongs to MapDoc before support sampling. Physics consumes the installed descriptors. Coincident independent floors refuse | A future foundation tool remains separate. Stage order is now a cross-package contract |
 | R5-P9 | Overlapping material regions require an explicit integer priority, then ordinal paint ID. Equal-priority positive-area conflicting paint refuses. Render subdivisions retain parent face keys | A future blend system needs a new paint policy |
-| R5-P10 | Full local-water compilation uses effective domain/bound adapters into R4, retaining local records and transforms instead of serializing rotated vertices back onto a lattice | Additional adapter code, but no lossy resampling or new water semantics |
-| R5-P11 | Roof groups expand to explicit linked room IDs. Auto hides only links above the observer. Unresolved membership returns its status and conservatively visible roof intent | Incomplete previews show roofs until acquisition completes |
+| R5-P10 | REVISED. R4 compiles effective occupied fragments with their identities and boundary provenance. Add a fragment classifier. Legacy space/XZ classification returns Unresolved for differing fragment answers and preserves single-interval behavior | Consumers requiring vertical distinction use the additive API. No lattice resampling |
+| R5-P11 | REVISED. Roofs have an explicit inventory. Each link names its attached groups. Only those groups expand its room set, and Auto hides above links. Unresolved membership keeps the full inventory visible | Authors maintain explicit inventory and attachments. Group overlap does not create transitive closure |
 | R5-P12 | Publish digest-addressed immutable prefab and manifest bytes first, then accept one map/closure switch. Failed switches may leave unreachable immutable bytes, never changed roots. Undo restores the old closure | Unreferenced immutable files need later explicit cleanup, not automatic deletion |
-| R5-P13 | Expansion defaults to 65,536 instances, 1,048,576 effective children and 262,144 reference edges, charged before allocation. Reuse query/water budgets downstream | Very large valid documents may need explicit larger limits or R8 indexing |
-| R5-P14 | Use 11 serial tasks, synthetic guard red/green for the private harness, and one private current-source comparison at the candidate gate. Private provenance carries expected inventory, not public test constants | A newly frozen source needs a new private expectation manifest and owner acceptance |
-| R5-P15 | Unpack persists a standalone resource-transform registry and transfers identities, keeping authored local lattices instead of resampling world geometry | Another root field and future editor coordinate adapters |
-| R5-P16 | Instances bind an explicit ParentSpace. A typed local $parent slot resolves to that authored record, and unused prefab local editing requires a supplied parent context | Reusable assets require explicit parent selection at authoring time |
-| R5-P17 | R5 registers its prefab/interior verbs now and shares EditorHistory with native tool undo/redo. R10 retains the remaining parity map | Session history hooks require focused regressions for existing native edits |
+| R5-P13 | REVISED. Preflight caps instances, children, references, expanded patches/records/geometry and all retained binding/override/transfer state before copying or remapping. Shared immutable payloads do not waive per-instance expansion charges | Larger valid maps need explicit limits or later R8 indexing |
+| R5-P14 | REVISED. Use 13 serial tasks with independent acceptance/review gates, splitting pure edits, commands/effects and asset/history/tools. Keep one private comparison at the candidate gate | More review transitions, with bounded ownership and clearer rejection gates |
+| R5-P15 | REVISED. Unpack transfers all ten kinds to explicit standalone homes, including a versioned storey collection. Persist precise standalone effective transforms and retained reservations | New root fields and coordinate adapters require loaded/stored identity and snapshot support |
+| R5-P16 | REVISED. ParentSpace is nullable. Require it only for $parent, rooms, water or other resources requiring authored context. Roomless rigid prefabs work in spaceless maps under OA28 | Parent-dependent local editing needs explicit context. No inferred exterior |
+| R5-P17 | REVISED. Share accepted native history across every session publication path. Stage command and history acceptance until outer validation/publication succeeds. Collider root swaps carry reversible before/after roots and matching closures | Snapshot-backed legacy native mutations and storage/rebinding boundaries need focused regressions |
 | R5-P18 | Light payload 1 uses position, linear colour, intensity, radius and caster intent. Marker payload 1 uses XYZ/yaw/name/role/enabled/tags, with no gameplay profile or spawn projection | Future light profiles or marker metadata need a versioned extension |
 | R5-P19 | A remove override retains the previous typed override. Restore reinstates it and its reservation, so removal does not discard customization | Retained override data and its restore dependencies enlarge the root/closure |
 | R5-P20 | A missing-Y prefab leaf transforms its typed support request, samples the effective world floor once through R2 and installs that world Y directly. No rescaling of the sampled height | Another internal resolver entry point and a focused support-binding regression |
@@ -104,13 +104,13 @@ All paths are repository-relative. New files below are created by the owning tas
 | --- | --- |
 | Prefab payload | MapDoc `MapDocument.Prefabs.cs`, `Prefabs/MapPrefabRecords.cs`, `MapPrefabChildren.cs`, `MapPrefabOverrides.cs`, `MapPrefabJson.cs`, `MapPrefabFile.cs`, `MapPrefabMigration.cs`, `MapPrefabValidation.cs` |
 | Stable bindings and identity | MapDoc `Prefabs/MapPrefabBindings.cs`, `Identity/MapPrefabIdentity.cs`, `Prefabs/MapPrefabReferences.cs`. Extend root persistence, bound validation and both identity paths |
-| One effective view | MapDoc `Prefabs/MapPrefabResolver.cs`, `MapEffectiveResources.cs`, `MapResourceTransform.cs`, `Storage/MapEffectiveSurfaceSource.cs`, `MapEffectiveAcquisition.cs`, `Surfaces/MapEffectiveGeometry.cs` |
+| One effective view | MapDoc `Prefabs/MapPrefabResolver.cs`, `MapEffectiveResources.cs`, `MapResourceTransform.cs`, `MapEffectiveTransform.cs`, `MapPrefabPreflight.cs`, `Storage/MapEffectiveSurfaceSource.cs`, `MapEffectiveAcquisition.cs`, `Surfaces/MapEffectiveGeometry.cs` |
 | Rooms in R2 | MapDoc `Spaces/MapPrismDomain.cs`, `MapPrismGeometry.cs`, `MapOccupiedPartitions.cs`, `MapPrismCoverage.cs`. Extend membership, intervals, support and topology codecs |
-| Local support and statics | MapDoc `Surfaces/MapSupportResource.cs`, MapDoc.Physics `MapPrefabSupport.cs`. Extend terrain/placement builder, residency and nav paths |
+| Local support and statics | MapDoc `Surfaces/MapSupportResource.cs`, MapDoc `Prefabs/MapEffectiveSupport.cs`, MapDoc.Physics `MapPrefabSupportBounds.cs` and `MapBackendPoseAdapter.cs`. Extend terrain/placement builder, residency and nav paths |
 | Paint | MapDoc `Surfaces/MapPaintRegions.cs`, `MapPartialPaintCompiler.cs`. Preserve physical triangles and publish draw-only regions |
 | Local water | MapDoc `Water/MapEffectiveWater.cs`, `MapWaterOccupiedPieces.cs`. Adapt R4 compile, query, containment, bound reads and digests |
 | View intent | MapDoc `Interiors/MapRoofIntent.cs`, `MapRoofPolicy.cs`, `Prefabs/MapLightFile.cs`, `MapEffectiveAnnotations.cs` |
-| Authoring | MapDoc `Editing/MapPrefabEdits.cs`, `MapPrefabEditPreparation.cs`, `MapInteriorEdits.cs`, `MapPrefabExtraction.cs`. Focused MapEditor `NativePrefabCommands.cs` and `NativeInteriorCommands.cs` |
+| Authoring | MapDoc `Editing/MapPrefabEdits.cs`, `MapPrefabEditPreparation.cs`, `MapInteriorEdits.cs`, `MapPrefabExtraction.cs`. Standalone `Interiors/MapStoreyRecords.cs`. Focused MapEditor commands, snapshots and effects in Task 10 |
 | ke-mapedit | MapEdit.Tool `PrefabService.cs`, `PrefabAssetPublisher.cs`, `MutationService.Prefabs.cs`, `Tools/PrefabTools.cs`, `Tools/InteriorTools.cs` |
 | Public proofs | MapDoc.Tests `Prefabs/`, `Spaces/`, MapDoc.Physics.Tests `MapPrefab*.cs`, MapEditor.Tests `MapDoc/NativePrefab*.cs`, `MapEditTool/Prefab*.cs` |
 | Private comparison | OracleHarness.Tests `ShippedBuildingInputs.cs`, `ShippedBuildingComparison.cs`, `ShippedBuildingComparisonTests.cs`, synthetic guards and README |
@@ -121,28 +121,32 @@ Prefixes mean the existing `KhaozEngine.<prefix>/` projects. Each task expands i
 
 | Task | Deliverable | Depends on | Engineer-days |
 | --- | --- | --- | --- |
-| 1 | Format 7, prefab payload and closure | released base | 4 to 6 |
-| 2 | Persisted bindings, references and identity | 1 | 3 to 5 |
-| 3 | One transformed effective resource view | 2 | 5 to 8 |
-| 4 | Prism rooms in R2 membership and coverage | 3 | 7 to 10 |
-| 5 | Local support, shapes, bounds and tile consequences | 4 | 5 to 8 |
-| 6 | Partial-face paint | 3, 5 | 3 to 5 |
-| 7 | Full prefab-local water | 4, 5 | 4 to 6 |
-| 8 | Roof intent, lights and local markers | 4, 7 | 3 to 5 |
-| 9 | Atomic commands, asset publication and tools | 2 to 8 | 5 to 7 |
-| 10 | Public synthetic village and two-head acceptance | 9 | 2 to 3 |
-| 11 | Private closure comparison and its guard tests | 10 | 1 to 2 |
-| | Task subtotal | | 42 to 65 |
-| | Reviews, release preparation and integration | all | 3 to 5 |
-| | Total | | 45 to 70 |
+| 1 | Format 7, closed scoped payload, storeys and closure | released base | 5 to 7 |
+| 2 | Bindings, references, identity and native pin migration | 1 | 4 to 6 |
+| 3 | Precise effective view, wide queries and bounded preflight | 2 | 7 to 11 |
+| 4 | Prism rooms and identified occupied fragments | 3 | 8 to 12 |
+| 5 | Pure support installation, shapes, bounds and tiles | 4 | 5 to 8 |
+| 6 | Partial-face paint and publication refusal | 3, 5 | 3 to 5 |
+| 7 | Fragment-aware transformed local water | 4, 5 | 6 to 9 |
+| 8 | Explicit roof inventory, groups, lights and markers | 4, 7 | 4 to 6 |
+| 9 | Pure edits, extraction and unpack | 2 to 8 | 3 to 4 |
+| 10 | Native commands, snapshots and effects | 9 | 3 to 5 |
+| 11 | Asset session, publication, complete native history and tools | 10 | 5 to 8 |
+| 12 | Public synthetic village and two-head acceptance | 11 | 2 to 3 |
+| 13 | Private closure comparison and guard tests | 12 | 1 to 2 |
+| | Task subtotal | | 56 to 86 |
+| | Reviews, release preparation and integration | all | 4 to 6 |
+| | Total | | 60 to 92 |
 
-These are scope judgments, not measured person-hours. R3 took about 14 h and R4 about 9 h from approval to tag. Forecast R5 at 12 to 24 h elapsed agent time after plan approval, plus roughly half a day for plan writing/review. Owner response, subscription resets, private input preparation, concurrent-main reconciliation and release CI can extend calendar time. Neither engineer-days nor Git artifact spans are wall-clock telemetry. At R5 exit refresh the remaining R6 to R11 forecast, currently 3 to 6 calendar weeks, and G1 to G5, currently another 1 to 2 weeks plus owner playtest.
+Revision 2 raises the indicative gate estimate of 45 to 70 engineer-days to 60 to 92. The accepted corrections add precise composition and wide-query integration, fragment-aware water, complete retained-state preflight and reversible native publication history. The gate's behavior and later proof boundaries are unchanged. These are scope judgments, not measured person-hours.
+
+R3 took about 14 h and R4 about 9 h from approval to tag. Forecast revised R5 at 16 to 30 h elapsed agent time after plan approval, plus plan review time. Owner response, subscription resets, private inputs, concurrent-main reconciliation and release CI extend calendar time. Engineer-days and Git spans are not wall-clock telemetry. At R5 exit refresh R6 to R11, currently 3 to 6 calendar weeks, and G1 to G5, another 1 to 2 weeks plus owner playtest.
 
 ## Dispatch and verification conventions
 
-The controller copies Global Constraints, proposed rulings as accepted or corrected, this block, the shared fixture contract and consumed Interfaces blocks into every bounded worker brief. Supply the approved gate and relevant ledger rulings. Execute serially with a fresh reviewer per task, following the session's Gauge placement rules. No helper is authorized by this plan-writing brief.
+The controller copies Global Constraints, proposed rulings as accepted or corrected, this block, the shared fixture contract and consumed Interfaces blocks into every bounded worker brief. Supply the approved gate and relevant ledger rulings. Execute serially with a fresh reviewer per task, following the session's Gauge placement rules. The plan-writing brief authorizes no helper. Execution tasks have serial independent review gates: Task 9 pure preparation, Task 10 publication/effects and Task 11 session/history/publication each must pass before the next is dispatched.
 
-Execution workers start at the assigned accepted commit in this worktree and branch. The controller pins that commit in the brief. The plan writer's starting guard is HEAD exactly `06b734c57`.
+Execution workers start at the assigned accepted commit in this worktree and branch. The controller pins that commit in the brief. The initial writer guard was HEAD `06b734c57`. Revision 2 starts at `c04bbc905` on the same branch and adds a new docs-only commit. Released signatures still refer to `06b734c57`.
 
 ```bash
 cd /Users/antonio/KhaozEngine/.worktrees/wa-r5-free-buildings
@@ -177,7 +181,7 @@ wa_finish() {
     do
         case "$path" in *.cs) cs_paths+=("$path") ;; esac
     done
-    if [ "$n" = t11 ]
+    if [ "$n" = t13 ]
     then
         wa_run "$n-oracle-format" dotnet format "$ORACLE" --verify-no-changes --no-restore || return $?
     fi
@@ -193,18 +197,18 @@ wa_finish() {
 
 Create the worktree's empty local-feed before restore if nuget.config requires it. Red needs named assertions failing for the stated reason, or compile errors exclusively for new task-owned APIs. A malformed fixture, missing released signature or unrelated compilation failure is not red evidence. Green needs exit 0, zero failures and a nonzero matching count from the TRX/log. Zero matches fails. Run each command once, never poll tests. Exit 75 means build-slot ran nothing, so retry later. Product changes or a genuine new failure justify another focused check, not a full suite loop.
 
-Every task ends with its explicit path array and wa_finish below, which selects C# paths for format. Add any fix-round paths explicitly before staging. Repair formatting through wa_run and dotnet format on that same explicit C# list, then verify. Task 11 also formats its outside-solution project. Guard exit 0 and git diff --check precede each explicit-path commit. Plan-writing verification is limited to the four doc guards in its dispatch contract and never runs this execution block.
+Every task ends with its explicit path array and wa_finish below, which selects C# paths for format. Add any fix-round paths explicitly before staging. Repair formatting through wa_run and dotnet format on that same explicit C# list, then verify. Task 13 also formats its outside-solution project. Guard exit 0 and git diff --check precede each explicit-path commit. Plan-writing verification is limited to the four doc guards in its dispatch contract and never runs this execution block.
 
 ## Shared fixture contract
 
-Create `KhaozEngine.MapDoc.Tests/Prefabs/PrefabFixtures.cs` as `internal static partial class PrefabFixtures`. Extend by concern in files ending Fixtures.cs, which MapEditor.Tests already links. Editor-only helpers stay in MapEditor.Tests. Physics helpers stay in MapDoc.Physics.Tests without a project reference to MapDoc.Tests. Task 10 links public fixture source explicitly.
+Create `KhaozEngine.MapDoc.Tests/Prefabs/PrefabFixtures.cs` as `internal static partial class PrefabFixtures`. Extend by concern in files ending Fixtures.cs, which MapEditor.Tests already links. Editor-only helpers stay in MapEditor.Tests. Physics helpers stay in MapDoc.Physics.Tests without a project reference to MapDoc.Tests. Task 5 links public fixture source explicitly for Physics.Tests. Task 12 consumes those links.
 
 - Task 1 creates `internal sealed record PrefabFixture(MapDocument Document, MapAssetClosure Assets)`, `PrefabFixture Create(string variant = "basic")`, `MapResolveOptions Options()` returning builder public-prefab-fixture, version 1, options hash fixture-options/1, resolver 2, and `string TempDirectory()`.
 - Task 1 creates `string FormatSixJson(bool analytic)`, valid without R5 fields, `byte[] AssetBytes(string variant)` for payload failures and `MapAssetClosure LoadAssets(byte[] prefabBytes, bool refreshDigest)`. Changed bytes without refresh fail closure verification.
 - Task 2 creates `MapStoredSurfaceSource Stored(MapDocument document)`, repeating the save/open pattern locally, and `IReadOnlyList<MapPrefabBinding> LiveBindings(MapDocument document)`.
 - Task 3 creates `MapEffectiveResources Effective(PrefabFixture fixture)`, `MapFramePoint Point(MapEffectiveResources resources, float x, float y, float z)` in the acquired frame, and `PrefabFixture Transformed(float yaw, float scale, Vector3 position)`. Transformed uses the all-resources variant, including the pool and a room/floor/water shared corner.
 - Task 4 adds `PrefabFixture Cave(string variant)`: stacked, transformed, dry-flooded, missing-parent, peer-overlap, adjacent, uneven-parent and reflex-storeys. Query actual membership and intervals, never a fixture classifier.
-- Task 9 creates editor-only `PrefabEditorFixtures.Session(PrefabFixture fixture) -> MapEditSession`, `Document(MapEditSession session) -> MapDocument`, `History(MapDocument document, MapAssetClosure assets) -> EditorHistory` and `FaultPublisher(MapEditSession session, string checkpoint) -> PrefabAssetPublisher`, exercising actual session/history entry points and injected bounds.
+- Task 10 creates editor-only `PrefabEditorFixtures.History(MapDocument document, MapAssetClosure assets) -> EditorHistory` and SupportReseat with actual commands/injected bounds. Task 11 extends it with `Session(PrefabFixture fixture) -> MapEditSession`, `Document(MapEditSession session) -> MapDocument` and fault publication/state snapshots using actual session/history entry points.
 
 The basic synthetic prefab is hut, instance a, on an explicitly authored 16 by 16 m exterior at y -2 with negative-Z rows. It has an elevated 4 by 4 m support floor at y 0, ceiling at y 3, a doorway compound with 1.2 m clear width, a selectable item 0.2 m high, room room, storey lower, light lamp, marker entry, roof roof and a roof link. Variant pool is a separate room with floor -1, ceiling 3 and local water level 0.5. Covers, portal records and material closure are explicit. Non-placement bindings have no numeric ID. Placement IDs are supplied by fixtures, reserved above high-water mark 100.
 
@@ -215,7 +219,7 @@ The far transform is (30000.25, -450, -29999.75), yaw 0.371 and scale 1.2. Near 
 ### Task 1: Format 7, payload 1 and verified prefab closure
 
 **Files:**
-- Create: `KhaozEngine.MapDoc/MapDocument.Prefabs.cs`, and `Prefabs/MapPrefabRecords.cs`, `MapPrefabChildren.cs`, `MapPrefabOverrides.cs`, `MapPrefabJson.cs`, `MapPrefabFile.cs`, `MapPrefabMigration.cs`, `MapPrefabValidation.cs` under `KhaozEngine.MapDoc/`.
+- Create: `KhaozEngine.MapDoc/Prefabs/MapEffectiveTransform.cs`, `KhaozEngine.MapDoc/Interiors/MapStoreyRecords.cs`, `KhaozEngine.MapDoc/MapDocument.Prefabs.cs`, and `Prefabs/MapPrefabRecords.cs`, `MapPrefabChildren.cs`, `MapPrefabOverrides.cs`, `MapPrefabJson.cs`, `MapPrefabFile.cs`, `MapPrefabMigration.cs`, `MapPrefabValidation.cs` under `KhaozEngine.MapDoc/`.
 - Modify: `KhaozEngine.MapDoc/MapDocumentFile.cs:34-46` and `:85-95`, `MapCanonical.cs:51-108`, `MapTiledFile.cs:54-89` and `:205-226`, `MapDocumentMembers.cs:19-65`, `MapDocumentSchema.cs:1-35`, `mapdoc.schema.json`, `Assets/MapAssetManifestReader.cs:78-85`, `Assets/MapAssetClosure.cs:75-98`, `MapDocumentValidator.cs`, `README.md`.
 - Test: `KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabFormatTests.cs`, `MapPrefabClosureTests.cs`, `PrefabFixtures.cs` in that directory. Update `NativeAssetClosureTests.cs:149` to test unsupported prefab payload rather than the reserved role. Current-format assertions in `FormatAdvanceTests.cs` and `NativeDocumentTests.cs` use CurrentFormatVersion, preserving historical input bytes.
 
@@ -223,15 +227,18 @@ The far transform is (30000.25, -450, -29999.75), yaw 0.371 and scale 1.2. Near 
 - Consumes released `MapDocumentFile.LoadText(string json, MapDocumentLoadOptions? options = null, string? sourcePath = null)`, `SaveText(MapDocument doc, MapDocRegistry? registry = null)`, `SaveTiled(MapDocument doc, string directory, MapDocRegistry? registry = null, MapDocumentSaveOptions? save = null)`, `LoadTiled(string directory, MapDocumentLoadOptions? options = null)`, and `MapDocumentLoadOptions.RegisterMigration(int fromVersion, Func<JsonObject, JsonObject> step)`.
 - Consumes `MapAssetClosure.Load(IReadOnlyList<MapAssetRef> roots, IMapAssetSource source)` at Assets/MapAssetClosure.cs:46 and `MapAssetRef(string Id, string Path, string Sha256, int PayloadVersion)` at MapNativeDocument.cs:39. MapResourceKind.Prefab already exists.
 - Produces in MapDoc.Prefabs `MapPrefabSet(int PayloadVersion, int ExpansionVersion, IReadOnlyList<MapPrefabInstance> Instances, IReadOnlyList<MapPrefabBindingTransfer> Transfers)`, with deep `Clone() -> MapPrefabSet` and canonical `Digest() -> string`.
-- Produces `MapPrefabInstance(string Id, string ResourceId, string ResourceSha256, MapTransform Transform, MapRecordRef ParentSpace, MapPrefabBindings Bindings, IReadOnlyList<MapPrefabOverride> Overrides)`, with init-only bool Removed default false, and `MapPrefabAsset(int PayloadVersion, string Id, IReadOnlyList<MapPrefabChild> Children)`.
+- Produces `MapPrefabInstance(string Id, string ResourceId, string ResourceSha256, MapTransform Transform, MapRecordRef? ParentSpace, MapPrefabBindings Bindings, IReadOnlyList<MapPrefabOverride> Overrides)`, with init-only bool Removed default false, and `MapPrefabAsset(int PayloadVersion, string Id, IReadOnlyList<MapPrefabChild> Children)`. Asset adds init-only `Roofs: IReadOnlyList<MapPrefabReference>`, default empty, explicitly inventorying local or world roof placements. No extra child kind or ID reservation is implied by an inventory entry.
 - Produces `MapPrefabChildKey(MapPrefabChildKind Kind, string Key)`, enum kinds `Placement, Surface, Record, Storey, WaterMedium, WaterBody, Light, Marker, RoofLink, RoofGroup`, and abstract `MapPrefabChild(MapPrefabChildKey Key)`.
-- Closed derived child constructors take Key followed by these arguments: `MapPrefabPlacementChild(MapPlacement Value)`, `MapPrefabSurfaceChild(MapSurfaceRef Surface, IReadOnlyList<MapSurfacePatch> Patches)`, `MapPrefabRecordChild(MapTopologyRecord Value, MapPatchKey Anchor)`, `MapPrefabStoreyChild(string Name)`, `MapPrefabMediumChild(MapWaterMediumDoc Value)`, `MapPrefabWaterChild(MapWaterBodyDoc Value)`, `MapPrefabLightChild(MapLocalLightDoc Value)`, `MapPrefabMarkerChild(MapLocalMarkerDoc Value)`, `MapPrefabRoofChild(MapRoofLinkDoc Value)`, `MapPrefabRoofGroupChild(MapRoofGroupDoc Value)`. The constructor includes Key as its first parameter in every case. The base child adds init-only `MapTransform LocalTransform`, default identity. Placement children must leave it identity and use MapPlacement's own transform, avoiding double application.
+- Closed derived child constructors take Key followed by these arguments: `MapPrefabPlacementChild(MapPlacement Value)`, `MapPrefabSurfaceChild(MapSurfaceRef Surface, IReadOnlyList<MapSurfacePatch> Patches)`, `MapPrefabRecordChild(MapTopologyRecord Value, MapPatchKey Anchor)`, `MapPrefabStoreyChild(string Name)`, `MapPrefabMediumChild(MapWaterMediumDoc Value)`, `MapPrefabWaterChild(MapWaterBodyDoc Value)`, `MapPrefabLightChild(MapLocalLightDoc Value)`, `MapPrefabMarkerChild(MapLocalMarkerDoc Value)`, `MapPrefabRoofChild(MapRoofLinkDoc Value)`, `MapPrefabRoofGroupChild(MapRoofGroupDoc Value)`. The constructor includes Key as its first parameter in every case. The base child adds init-only `MapTransform LocalTransform`, default identity, and `IReadOnlyList<MapPrefabReferenceSlot> References`, default empty. Placement children must leave it identity and use MapPlacement's own transform, avoiding double application.
 - Produces `MapPrefabBinding(MapPrefabChildKey Child, string WorldId, long? NumericId, bool Removed)`, `MapPrefabBindings(IReadOnlyList<MapPrefabBinding> Entries)`, `MapPrefabBindingTransfer(string InstanceId, MapPrefabBinding Binding)`.
 - Produces abstract `MapPrefabOverride(MapPrefabChildKey Child)` and variants `MapPrefabRemoveOverride(Child, MapPrefabOverride? Previous = null)`, `MapPrefabReplaceOverride(Child, MapPrefabChild Value)`, `MapPrefabPlacementOverride(Child, MapTransform? Transform, string? AssetId, IReadOnlyList<string>? Tags)`, `MapPrefabTransformOverride(Child, MapTransform Transform)`, `MapPrefabAddOverride(Child, MapPrefabChild Value)`. Child means MapPrefabChildKey in every signature. A transform override updates LocalTransform, or MapPlacement's transform for a placement child. Previous cannot itself be a remove override. Restore reinstates Previous if present and retains the binding. There is one effective override per child key.
-- Produces typed `MapPrefabReference(MapPrefabReferenceScope Scope, MapPrefabChildKind Kind, string Id)`, scopes Local and World. R2 MapRecordRef, MapPatchKey and support bindings keep their types and join the Task 2 visitor.
-- Produces `MapLocalLightDoc(int PayloadVersion, string Id, MapPrefabReference? Owner, Vector3 Position, Vector3 Colour, float Intensity, float Radius, bool CastShadows)`, `MapLocalMarkerDoc(int PayloadVersion, string Id, string Name, Vector3 Position, float YawRadians, string Role, bool Enabled, IReadOnlyList<string> Tags)`, `MapRoofLinkDoc(string Id, MapPrefabReference Roof, IReadOnlyList<MapPrefabReference> Rooms, float AboveY)`, `MapRoofGroupDoc(string Id, IReadOnlyList<MapPrefabReference> Rooms)`.
-- Produces `MapBuildingIntent(int PayloadVersion, IReadOnlyList<MapRoofLinkDoc> RoofLinks, IReadOnlyList<MapRoofGroupDoc> RoofGroups, IReadOnlyList<MapLocalLightDoc> Lights, IReadOnlyList<MapLocalMarkerDoc> Markers)`, deep `Clone() -> MapBuildingIntent` and canonical `Digest() -> string`.
-- Produces `MapStandaloneResourceTransform(MapPrefabChildKind Kind, string OwnerId, MapTransform Transform, string SourceDigest)`. MapDocument gains nullable `MapPrefabSet? Prefabs`, `MapBuildingIntent? BuildingIntent` and `IReadOnlyList<MapStandaloneResourceTransform>? NativeResourceTransforms`, omitted when absent. The transform registry supports unpacked surfaces, topology, water and annotations without a prefab instance.
+- Produces typed `MapPrefabReference(MapPrefabReferenceScope Scope, MapPrefabChildKind Kind, string Id)`, scopes Local and World. Produces `MapPrefabReferenceSlot(string Path, MapPrefabReference Target)`. This prefab-only metadata scopes every R2 reference position. Released standalone MapRecordRef, MapPatchKey and support DTOs keep their semantics. Task 2 pins the complete closed occurrence grammar and remapping.
+- Produces `MapLocalLightDoc(int PayloadVersion, string Id, MapPrefabReference? Owner, Vector3 Position, Vector3 Colour, float Intensity, float Radius, bool CastShadows)`, `MapLocalMarkerDoc(int PayloadVersion, string Id, string Name, Vector3 Position, float YawRadians, string Role, bool Enabled, IReadOnlyList<string> Tags)`, `MapRoofLinkDoc(string Id, MapPrefabReference Roof, IReadOnlyList<MapPrefabReference> Rooms, IReadOnlyList<MapPrefabReference> Groups, float AboveY)`, `MapRoofGroupDoc(string Id, IReadOnlyList<MapPrefabReference> Rooms)`.
+- Produces `MapBuildingIntent(int PayloadVersion, IReadOnlyList<MapRoofLinkDoc> RoofLinks, IReadOnlyList<MapRoofGroupDoc> RoofGroups, IReadOnlyList<MapLocalLightDoc> Lights, IReadOnlyList<MapLocalMarkerDoc> Markers)`, deep `Clone() -> MapBuildingIntent` and canonical `Digest() -> string`. It adds init-only `Roofs: IReadOnlyList<MapPrefabReference>` and `Storeys: IReadOnlyList<MapStoreyDoc>`, default empty. Roof inventory is independent of concealment links.
+- Produces `MapPrefabExpansionLimits(int MaxInstances = 65536, int MaxChildren = 1048576, int MaxReferenceEdges = 262144, int MaxPatches = 1048576, int MaxRecords = 4194304, int MaxGeometryElements = 16777216, int MaxBindings = 2097152, int MaxOverrides = 1048576, int MaxTransfers = 1048576, long MaxPayloadBytes = 268435456)`. Task 1 codecs use these finite collection ceilings before materialization, Task 3 charges aggregate effective expansion.
+- Produces the persistence DTO `MapEffectiveTransform(double X, double Y, double Z, double YawRadians, double Scale)` in Prefabs/MapEffectiveTransform.cs. Task 3 adds composition methods and geometric policy.
+- Produces `MapStandaloneResourceTransform(MapPrefabChildKind Kind, string OwnerId, MapEffectiveTransform Transform, string SourceDigest)`. MapDocument gains nullable `MapPrefabSet? Prefabs`, `MapBuildingIntent? BuildingIntent` and `IReadOnlyList<MapStandaloneResourceTransform>? NativeResourceTransforms`, omitted when absent. The transform registry supports unpacked surfaces, topology, water and annotations without a prefab instance.
+- Produces in new `Interiors/MapStoreyRecords.cs` `MapStoreyDoc(int PayloadVersion, string Id, string Name, string? InstanceId)`, payload 1. Standalone BuildingIntent.Storeys owns unpacked storey IDs/names. Room StoreyId must resolve to one storey with matching instance ownership, or to a standalone storey after unpack. Persist, clone and hash the collection on both loaded/stored paths.
 - Produces `MapPrefabFile.Read(ReadOnlyMemory<byte> bytes, string resourceId) -> MapPrefabAsset`, `Write(MapPrefabAsset asset) -> byte[]`, `MapPrefabMigration.Upgrade(JsonObject source) -> JsonObject`, `MapPrefabValidation.Validate(MapDocument document, MapAssetClosure? assets) -> IReadOnlyList<string>`.
 
 - [ ] **Step 1: Write failing tests with these assertions.**
@@ -280,17 +287,21 @@ Add `FormatEight_Refuses`, `AnalyticResolution_MatchesRecordedFormatFourBits` ag
 
 Register 6 to 7 after MapWaterMigration. Upgrade clones input, changes formatVersion only and handles already-upgraded input as existing migration helpers do. Closed prefab/annotation objects refuse missing, duplicate, case-variant and unknown fields, undefined enum strings, nonfinite transforms and nonpositive scale. Nested instances refuse. Manifest Prefab resources require payload 1. They are resources, not mesh-bearing MapAssetDoc variants. NativeAssets stays manifest roots.
 
-Load verifies bytes once, validates the graph, decodes verified Prefab snapshots and validates all leaf references through the closure. Payload resource edges must appear in declared dependencies. Missing/wrong-kind references refuse before build. A prefab has no mesh of its own. Material/collider/LOD/light dependencies stay on leaves.
+Load verifies bytes once, validates the graph, decodes bounded verified immutable Prefab snapshots and validates all leaf references through the closure. Payload resource edges must appear in declared dependencies. Missing/wrong-kind references refuse before build. A prefab has no mesh of its own. Material/collider/LOD/light dependencies stay on leaves.
+
+The Surface child Patches must have empty Records. Every authored topology record is a separate Record child with a declared local anchor. If a Record has its own LocalTransform, all referenced local geometry must use that same effective transform or an explicit World reference. Refuse inconsistent local anchor/geometry poses rather than silently selecting one. Support-resource payload records are the only embedded exception and get implicit bindings in Task 2. Reject unscoped or duplicate reference slots, unsupported paths and payload ID/key inconsistencies. Scope never follows text matching.
 
 Present Prefabs, BuildingIntent or NativeResourceTransforms requires resolver identity (1,2) and AuthoredBindingsV2. Add `PrefabSections_RefuseResolverOneBeforeAnyCallback`. Absent sections keep analytic and resolver-1 behavior. Binding and light IDs use the released decimal-string converters wherever a numeric ID is present.
 
-MapCanonical.WriteGlobals writes nonnull Prefabs, BuildingIntent and NativeResourceTransforms once through canonical codecs, so both OfWorld and native root identity cover them. WriteNativeGlobals must not write them again. Tiled root reading and GlobalsOnly preserve all three. Instances, bindings, transforms and overrides sort ordinal by typed owner/key, preserving tag order. Never persist expanded duplicates in placements or tile copies. Structural validation accepts complete supplied bindings and never allocates. Task 2 strengthens identity/reservations. Update format documentation, not the engine version.
+MapCanonical.WriteGlobals writes nonnull Prefabs, BuildingIntent and NativeResourceTransforms once through canonical codecs, so both OfWorld and native root identity cover them. WriteNativeGlobals must not write them again. Tiled root reading and GlobalsOnly preserve all three. Instances, bindings, transforms and overrides sort ordinal by typed owner/key, preserving tag order. Never persist expanded duplicates in placements or tile copies. ParentSpace is nullable and may be omitted in JSON for a parent-independent instance. Add `RoomlessParentNull_RoundTripsAndRoomParentNullRefuses`: valid roomless payload round-trips monolithic/tiled with no manufactured space, while a room/$parent-bearing instance fails context validation. Structural validation accepts complete supplied bindings and never allocates. Task 2 strengthens identity/reservations. Update format documentation, not the engine version.
 
 - [ ] **Step 4: Run green** with Step 2's filter as `t1-green`, then `wa_test t1-regress "$MAPDOC" "FullyQualifiedName~FormatAdvance|FullyQualifiedName~FormatFour|FullyQualifiedName~NativeDocument|FullyQualifiedName~NativeAssetClosure|FullyQualifiedName~Tiled"`. Expect all cases passing and the same recorded analytic transforms/callbacks.
 - [ ] **Step 5: Format, guards and commit these explicit paths.**
 
 ```bash
 wa_r5_t1_paths=(
+    KhaozEngine.MapDoc/Prefabs/MapEffectiveTransform.cs
+    KhaozEngine.MapDoc/Interiors/MapStoreyRecords.cs
     KhaozEngine.MapDoc/MapDocument.Prefabs.cs
     KhaozEngine.MapDoc/MapDocumentFile.cs
     KhaozEngine.MapDoc/MapCanonical.cs
@@ -324,15 +335,16 @@ git commit --only -m "feat(mapdoc): add format 7 prefab payloads and verified cl
 ### Task 2: Bindings, typed references and both identity paths
 
 **Files:**
-- Create: `KhaozEngine.MapDoc/Prefabs/MapPrefabBindings.cs`, `MapPrefabReferences.cs`, `KhaozEngine.MapDoc/Identity/MapPrefabIdentity.cs`.
+- Create: `KhaozEngine.MapDoc/Surfaces/MapSupportResource.cs`, `Prefabs/MapEffectiveSupport.cs`, `KhaozEngine.MapDoc/Prefabs/MapPrefabBindings.cs`, `MapPrefabReferences.cs`, `KhaozEngine.MapDoc/Identity/MapPrefabIdentity.cs`.
 - Modify: `KhaozEngine.MapDoc/MapNativeValidation.cs:117-144`, `MapBoundDocumentValidation.cs:14-74`, `Identity/MapAuthoredIdentityV2.cs:16-48`, `Storage/MapStoredSurfaceSource.Identity.cs:9-14`, `Storage/MapStoredSurfaceSource.Content.cs:17-70`, Task 1's MapPrefabValidation.cs and MapPrefabJson.cs.
-- Test: `KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabBindingTests.cs`, `MapPrefabIdentityTests.cs`, `PrefabIdentityFixtures.cs`. No editor reference.
+- Test: `KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabBindingTests.cs`, `MapPrefabIdentityTests.cs`, `PrefabIdentityFixtures.cs`. No editor reference. Modify `KhaozEngine.MapDoc.Physics.Tests/MapPersistedIdentityTests.cs:59-66` for the deliberate native format transition.
 
 **Interfaces:**
 - Consumes `MapNumericIds.Reserve(MapDocument document, IEnumerable<long> ids)` and `Allocate(MapDocument document) -> long` at MapNumericIds.cs:12 and :31. They mutate only a detached preparation candidate.
 - Consumes `MapAuthoredIdentityV2.Compute(MapDocument document, MapAssetClosure assets, MapResolveOptions options) -> string` and `Compute(MapStoredSurfaceSource source, MapAssetClosure assets, MapResolveOptions options) -> string` at :16 and :31. RootDigest includes FormatVersion.
 - Produces `MapPrefabBindingPlan(MapPrefabBindings Bindings, long HighWaterMark)`, `MapPrefabBindingPlanner.Plan(MapDocument document, MapPrefabAsset asset, MapAssetClosure assets, string instanceId, MapPrefabBindings existing, bool allocateNumericPlacements = true) -> MapPrefabBindingPlan`, pure.
-- Produces `MapPrefabReferences.Remap(MapPrefabAsset asset, IReadOnlyDictionary<MapPrefabChildKey, string> bindings, MapRecordRef parentSpace) -> MapPrefabAsset`, `RemapWorld(MapDocument document, MapPrefabChildKind kind, string oldId, string newId) -> MapDocument`, pure, and `References(MapPrefabAsset asset) -> IReadOnlyList<MapPrefabReference>`.
+- Produces `MapPrefabReferences.Remap(MapPrefabAsset asset, IReadOnlyDictionary<MapPrefabChildKey, string> bindings, MapRecordRef? parentSpace) -> MapPrefabAsset`, `RemapWorld(MapDocument document, MapPrefabChildKind kind, string oldId, string newId) -> MapDocument`, pure, and `References(MapPrefabAsset asset) -> IReadOnlyList<MapPrefabReference>`.
+- Produces `MapSupportResource(int PayloadVersion, MapSurfaceSet Surfaces, MapRecordRef? Space, IReadOnlyList<MapPrefabReferenceSlot> References)`, `MapSupportResourceFile.Read(ReadOnlyMemory<byte> bytes, string resourceId) -> MapSupportResource`, `Write(MapSupportResource resource) -> byte[]`, in Surfaces/MapSupportResource.cs. Explicit scopes cover every embedded reference. Produces internal `MapEffectiveSupport.Enumerate(MapAssetClosure assets, IReadOnlyList<MapPrefabChild> children) -> IReadOnlyList<MapPrefabChild>` in Prefabs/MapEffectiveSupport.cs. This pure codec/enumeration is ready before the binding planner runs. Task 3 installs its remapped descriptors and Task 5 adds statics.
 - Produces internal `MapPrefabIdentity.Require(MapDocument document, MapAssetClosure assets) -> void`, `RequireStored(MapStoredSurfaceSource source, MapAssetClosure assets) -> void`. Both run identical schema, closure, pin, binding, override and reservation checks without geometric containment.
 - Produces internal `MapPrefabIdentity.ChildDigest(MapPrefabChild child) -> string`, the canonical semantic digest of one effective child. Dependency consumers use child/patch digests, not the containing prefab SHA, while whole authored identity includes the verified complete closure.
 
@@ -377,24 +389,45 @@ public void EveryAuthoredChange_MovesLoadedAndStoredIdentityTogether(string vari
 }
 ```
 
-This task adds `WithChildRemoved(MapPrefabAsset asset, MapPrefabChildKind kind) -> MapPrefabAsset` and `FormatSixRootDigest(MapDocument document) -> string` in PrefabIdentityFixtures.cs. The latter computes the released root projection with format 6 from a detached copy, not an updated golden copied from product output. Add tests `MissingOrDuplicateBindings_RefuseOnBothPaths`, `ReorderingAndRepacking_PreserveIdentity`, `NumericExhaustion_PublishesNothing` and `TypedRemap_DoesNotTouchTagsAssetIdsOrNames`. Transfers are validated here and exercised through unpack in Task 9.
+This task adds `WithChildRemoved(MapPrefabAsset asset, MapPrefabChildKind kind) -> MapPrefabAsset` and `FormatSixRootDigest(MapDocument document) -> string` in PrefabIdentityFixtures.cs. The latter computes the released root projection with format 6 from a detached copy, not an updated golden copied from product output. Add tests `MissingOrDuplicateBindings_RefuseOnBothPaths`, `ReorderingAndRepacking_PreserveIdentity`, `NumericExhaustion_PublishesNothing` and `TypedRemap_DoesNotTouchTagsAssetIdsOrNames`. Transfers are validated here and exercised through unpack in Task 9. Add `SameTextLocalAndWorldReferences_RemapOnlyTheLocalOccurrence`: local Surface ground and world Surface ground coexist, with paint and bound references using explicit different slots. Assert local IDs/anchors remap and world ones remain ground. Add `EmbeddedSupportRecord_RemoveRestoreHasOneBinding` and `ExplicitSurfaceEmbeddedRecords_Refuse`.
+
+Task 2 owns `StackedCaveBuildHash_IsPinned` in MapPersistedIdentityTests.cs. Reproduce format-6 authored `436a2731a92851e05bc667b3d02bb89e2980922d894348a704f950df55b78235` and build `655026f34e7bc1dd9a93157d406c28547b8b3d832fec1dc041a7e87ad1b0efc3` using a detached format-6 root projection. Independently derive the new format-7 root/authored/build composite from canonical bytes, declared policies and recorded independent chunk inputs. Never paste hashes printed by the changed product. Explain the single format-field change beside the new pins, as R4 did. Existing analytic build pins remain byte-identical.
 
 - [ ] **Step 2: Run red** `wa_test t2-red "$MAPDOC" "FullyQualifiedName~MapPrefabBindingTests|FullyQualifiedName~MapPrefabIdentityTests"`. Expect missing planner/visitor, incomplete reservation checks or identity omissions.
 - [ ] **Step 3: Implement the planner, visitor and shared validation.**
 
 Plan on a detached reservation candidate in sorted (kind,key) order. Existing keys reuse bindings. Missing asset keys become Removed and remain reserved. Restore reactivates that reservation. New placement leaves allocate above imported numeric IDs and retained high-water mark. Other child types reserve string IDs only. New world IDs are `prefab/<escaped-instance>/<kind>/<escaped-key>`, with percent escaping of every UTF-8 byte outside ASCII letters/digits/hyphen/underscore and uppercase hex. Imported IDs are accepted exactly. Refuse collisions before publishing any allocation.
 
-Every local surface ID, patch key, vertex owner, seam, chain, strip, portal, opening, link, space parent/alias, bound, indoor span, support binding, water cover/medium, roof/group, light owner and marker reference passes through one typed visitor. World references remain world references and are closure-validated. Plain tags, display names, resource IDs, asset IDs and Kind are never string-replaced.
+The closed slot grammar is the canonical JSON pointer emitted by a typed field visitor, never an arbitrary pointer evaluator. Its permitted positions are PaintTargetSurfaceId and IndoorSpan.ParentSpace, patch keys and vertex owners, seam/chain/strip owners and anchors, portal/opening From/To/boundary references, space Parent/AliasOf/Walls/Portals/Links, bounds and indoor spans, placement support owner/surface/space, water covers/medium and roof/group/light references. Repeated positions use decimal array indices without leading zeros. The codec derives the complete occurrence set from the concrete DTO type and requires exactly one slot per reference occurrence, including anchor SurfaceId. Unknown or unused slots refuse. Definition IDs and display fields are not occurrences. Existing annotation MapPrefabReferences carry scope directly and do not get duplicate slots.
+
+Only these DTO paths and their recursively typed leaves are permitted. JSON path segments use codec camelCase names, child roots value/surface/patches/anchor and indexed lists. Every MapRecordRef consumes slots for id and anchor/surfaceId, with matching scope and the declared anchor. Every MapPatchKey and MapLatticeVertex consumes its surfaceId slot. Definition IDs and lattice numeric coordinates are not reference slots.
+
+| DTO position | Scoped reference occurrences |
+| --- | --- |
+| MapSurfaceRef/MapSurfacePatch | PaintTargetSurfaceId, IndoorSpan.ParentSpace, patch Key and CornerDependencies.Owner.Patch |
+| Seam/chain/strip | First/Second edge Patch/From/To, Pairs vertex owners, SourcePatch, Vertices.Vertex, LowerChain/UpperChain |
+| CavePortal/opening/link | FromSpace/ToSpace, Interval vertex owners, BandBottom/BandTop, opening Patch, UpperSpace/LowerSpace, Openings/Portals/GeometryOwners |
+| Space/footprint | Parent/AliasOf, Walls/Portals.Record, Links, Space, Lattice, Lower/Upper.SurfaceId or Opening |
+| Placement support | SupportBinding.SurfaceId/SpaceId, with reference kind selected by MapSupportBinding.Kind |
+| Water | Medium string is kind WaterMedium, Covers are Record references |
+| Prism | Space/Parent Record references and StoreyId kind Storey. InstanceId is derived instance ownership, never author-guessed |
+| New annotations | Owner, Roof, Rooms, Groups and roof inventory already carry MapPrefabReference scope directly |
+
+For every explicit kind, Key.Key equals its payload definition ID (Surface.Id, Record.Id, WaterMedium.Key, WaterBody.Id, light/marker/link/group Id). Placement uses its MapPlacement.Id. Storey has no embedded ID and uses Key.Key directly. A Record's Anchor names a declared Surface child ID and existing local patch coordinates. Local record references must name that key and exactly its declared anchor. Local surface/owner references name the matching typed child, with local patch coordinates preserved. World references preserve their supplied ID and world anchor exactly. Local $parent is valid only for a Record parent/space reference and substitutes the supplied ParentSpace. A missing required parent refuses before allocation. Same text never chooses a scope.
+
+Implicit support Surface keys are `<placement-key>/<resource-id>/<surface-id>`. Embedded support Record keys are `<placement-key>/<resource-id>/<record-id>` in kind Record, with their declared resource-local anchors remapped to the corresponding Surface key. These unescaped local compound keys are escaped once by the world-ID grammar. They reserve identities, survive remove/restore and transfer on unpack exactly like explicit children. Their resource payload scopes are validated by the same typed visitor in the owning placement context. Plain tags, names and asset IDs are never replaced.
 
 Binding validation spans standalone records, live children, removed reservations and transfers. An unpack transfer points to exactly one standalone record of the matching kind and identity, and relinquishes instance ownership. Count one logical leaf once. Numeric transfers match the standalone numeric ID rather than adding a second reservation. Missing bindings refuse on load/resolve without raising the mark.
 
 Root globals already hash all prefab state, once, on both identity paths. Do not add duplicate instance entries to MapAuthoredContentDigest. Stored validation checks root bindings against every verified content slice using the same shared identity registry. No geometry is loaded merely to hash identity. ExpansionVersion 1 and transformed policy identity become root/effective identity inputs. No-prefab analytic routing remains unchanged.
 
-- [ ] **Step 4: Run green** with Step 2's filter as `t2-green`, then `wa_test t2-regress "$MAPDOC" "FullyQualifiedName~NativeNumericId|FullyQualifiedName~Identity|FullyQualifiedName~StoredSurface|FullyQualifiedName~FormatFour"`. Expect complete equality for monolithic/tiled/repacked forms and changed identities for each semantic mutation.
+- [ ] **Step 4: Run green** with Step 2's filter as `t2-green`, then `wa_test t2-regress "$MAPDOC" "FullyQualifiedName~NativeNumericId|FullyQualifiedName~Identity|FullyQualifiedName~StoredSurface|FullyQualifiedName~FormatFour"`. Expect complete equality for monolithic/tiled/repacked forms and changed identities for each semantic mutation. Run `wa_test t2-pins "$MP" "FullyQualifiedName~MapPersistedIdentityTests"`, including unchanged analytic pins and independently derived format-7 native pins.
 - [ ] **Step 5: Format, guards and commit these explicit paths.**
 
 ```bash
 wa_r5_t2_paths=(
+    KhaozEngine.MapDoc/Surfaces/MapSupportResource.cs
+    KhaozEngine.MapDoc/Prefabs/MapEffectiveSupport.cs
     KhaozEngine.MapDoc/Prefabs/MapPrefabBindings.cs
     KhaozEngine.MapDoc/Prefabs/MapPrefabReferences.cs
     KhaozEngine.MapDoc/Prefabs/MapPrefabValidation.cs
@@ -408,6 +441,7 @@ wa_r5_t2_paths=(
     KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabBindingTests.cs
     KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabIdentityTests.cs
     KhaozEngine.MapDoc.Tests/Prefabs/PrefabIdentityFixtures.cs
+    KhaozEngine.MapDoc.Physics.Tests/MapPersistedIdentityTests.cs
 )
 wa_finish t2 "${wa_r5_t2_paths[@]}" &&
 git add -- "${wa_r5_t2_paths[@]}" &&
@@ -417,21 +451,26 @@ git commit --only -m "feat(mapdoc): persist prefab child reservations and typed 
 ### Task 3: One transformed effective resource view
 
 **Files:**
-- Create: `KhaozEngine.MapDoc/Prefabs/MapPrefabResolver.cs`, `MapEffectiveResources.cs`, `MapResourceTransform.cs` in Prefabs, `KhaozEngine.MapDoc/Storage/MapEffectiveSurfaceSource.cs`, `MapEffectiveAcquisition.cs`, `KhaozEngine.MapDoc/Surfaces/MapEffectiveGeometry.cs`.
-- Modify: `KhaozEngine.MapDoc/Support/MapResolverV2.cs:16-46`, `MapNativeResolution.cs:21-60`, `MapResolvedDocument.cs:54-73`, `Storage/MapScopedSurfaces.cs:17-100`, `Storage/MapAcquiredFacts.cs:79-97`, `Surfaces/MapFrameLocal.cs:39-78`, `Spaces/MapBoundFaceContext.cs:133-157`, `Spaces/MapBoundPreparation.cs:47-97`, `Spaces/MapCommonRefinement.cs`, `Spaces/MapSpaceGeometry.cs:13-100`, `Surfaces/MapBoundaryGeometry.cs`.
+- Create: `KhaozEngine.MapDoc/Prefabs/MapPrefabResolver.cs`, `MapEffectiveResources.cs`, `MapResourceTransform.cs`, `MapPrefabPreflight.cs` in Prefabs, `KhaozEngine.MapDoc/Storage/MapEffectiveSurfaceSource.cs`, `MapEffectiveAcquisition.cs`, `KhaozEngine.MapDoc/Surfaces/MapEffectiveGeometry.cs`. Extend Task 1's MapEffectiveTransform.cs and Task 2's MapEffectiveSupport.cs.
+- Modify: `KhaozEngine.MapDoc/Support/MapResolverV2.cs:16-46`, `MapNativeResolution.cs:21-60`, `MapResolvedDocument.cs:54-73`, `Storage/MapScopedSurfaces.cs:17-100`, `Storage/MapAcquiredFacts.cs:79-97`, `Surfaces/MapFrameLocal.cs:39-78`, `Spaces/MapBoundFaceContext.cs:133-157`, `Spaces/MapBoundPreparation.cs:47-97`, `Spaces/MapCommonRefinement.cs`, `Spaces/MapSpaceGeometry.cs:13-100`, `Surfaces/MapBoundaryGeometry.cs`, `Surfaces/MapSubdividedTriangle.cs:83-101`, `Water/MapWaterExact.cs:11-125`, `Assets/MapAssetClosure.cs:75-98` for bounded borrowed-byte access.
+- Modify also: `KhaozEngine.MapDoc/Support/MapSupportQuery.cs:24-145`, `Spaces/MapSpaceMembership.cs:46-250`, `MapSpaceInterval.cs:26-100` for the shared exact-query entry points.
 - Test: `KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabExpansionTests.cs`, `MapPrefabTransformTests.cs`, `PrefabTransformFixtures.cs`.
 
 **Interfaces:**
-- Consumes `MapTransform.Compose(MapTransform parent, MapTransform local) -> MapTransform` at MapResolvedDocument.cs:18. Keep its signature and formula as the sole parent/local composition.
+- Preserves released `MapTransform.Compose(MapTransform parent, MapTransform local) -> MapTransform` at MapResolvedDocument.cs:18 for existing callers. Its float absolute-origin composition must never feed effective geometry. New effective transforms compose independently until the single freeze.
 - Consumes `MapResolverV2.Resolve(MapDocument document, MapAssetClosure assets, IMapSurfaceSource surfaces, MapResolveOptions options) -> MapSupportedResolution` at Support/MapResolverV2.cs:16, `MapScopedSurfaces.Acquire(IMapSurfaceSource source, MapSurfaceScope scope, IReadOnlyList<string> assetSha256, int queryPolicyVersion = 1, int buildPolicyVersion = 1)`, and `CompleteView(MapSurfaceSet set)` at Storage/MapScopedSurfaces.cs:48 and :73.
-- Produces `MapPrefabExpansionLimits(int MaxInstances = 65536, int MaxChildren = 1048576, int MaxReferenceEdges = 262144)`, `MapPrefabResolver.Expand(MapDocument document, MapAssetClosure assets, MapPrefabExpansionLimits? limits = null) -> MapEffectiveResources`.
-- Produces internal `MapResolverV2.ResolveEffectivePlacements(MapDocument authored, MapAssetClosure assets, IReadOnlyList<MapPlacement> effective, IMapSurfaceSource surfaces, out IReadOnlyList<MapPlacementSupport> supports) -> IReadOnlyList<MapResolvedPlacement>`, a non-expanding entry into the existing R2 support core. MapEffectiveResources adds `PlacementSupports: IReadOnlyList<MapPlacementSupport>`, the released support record type.
-- Produces immutable `MapEffectiveResources`: `Placements: IReadOnlyList<MapResolvedPlacement>`, `Surfaces: MapSurfaceSet` returned as a defensive clone, `Transforms: IReadOnlyDictionary<string, MapTransform>`, `Water: MapWaterSet?` defensive clone, `BuildingIntent: MapBuildingIntent` defensive clone, `Digest: string`, `SurfaceSource: IMapSurfaceSource`, `CompleteView() -> MapScopedSurfaces`, `Acquire(MapSurfaceScope scope) -> MapScopedSurfaces`.
-- Produces `MapResourceTransform(MapTransform Transform)` with `Point(MapExactPoint local) -> MapExactPoint`, `Height(MapExactValue local) -> MapExactValue`, `ToFrame(MapExactPoint world, WorldFrame frame) -> Vector3`, and `Normal(Vector3 local) -> Vector3`.
+- Consumes Task 1's MapPrefabExpansionLimits. Produces `MapPrefabResolver.Expand(MapDocument document, MapAssetClosure assets, MapPrefabExpansionLimits? limits = null) -> MapEffectiveResources`.
+- Produces internal `MapResolverV2.ResolveEffectivePlacements(MapDocument authored, MapAssetClosure assets, IReadOnlyList<MapPlacement> effective, IReadOnlyDictionary<string, MapEffectiveTransform> transforms, IMapSurfaceSource surfaces, out IReadOnlyList<MapPlacementSupport> supports) -> IReadOnlyList<MapResolvedPlacement>`, a non-expanding entry into the existing R2 support core. MapEffectiveResources adds `PlacementSupports: IReadOnlyList<MapPlacementSupport>`, the released support record type.
+- Produces immutable `MapEffectiveResources`: `Placements: IReadOnlyList<MapResolvedPlacement>`, `Surfaces: MapSurfaceSet` returned as a defensive clone, `Transforms: IReadOnlyDictionary<string, MapEffectiveTransform>`, `Water: MapWaterSet?` defensive clone, `BuildingIntent: MapBuildingIntent` defensive clone, `Digest: string`, `SurfaceSource: IMapSurfaceSource`, `CompleteView() -> MapScopedSurfaces`, `Acquire(MapSurfaceScope scope) -> MapScopedSurfaces`.
+- Produces `MapResourceTransform(MapEffectiveTransform Transform)` with `Point(MapExactPoint local) -> MapExactPoint`, `Height(MapExactValue local) -> MapExactValue`, `ToFrame(MapExactPoint world, WorldFrame frame) -> Vector3`, and `Normal(Vector3 local) -> Vector3`.
+- Extends Task 1's MapEffectiveTransform DTO with `From(MapTransform authored) -> MapEffectiveTransform`, `Compose(MapEffectiveTransform parent, MapTransform local) -> MapEffectiveTransform`. Standalone registry values persist these finite binary64 components losslessly. They are mathematical poses before freezing, not rounded MapResolvedPlacement presentation poses.
+- Produces internal `MapSupportQuery.SampleSurfaceExact(MapExactPoint world, string surfaceId) -> MapSupportResult` and `SelectExact(MapSupportRequest request, MapExactPoint world) -> MapSupportResult`, sharing the released support core. Released float frame points are presentation only for these entries. Adds shared `MapSpaceMembership.QueryExact(MapExactPoint world) -> MapMembershipResult`, `MapSpaceIntervals.AtExact(MapScopedSurfaces view, MapExactPoint world) -> MapSpaceInterval` and get-only membership ExactPoint. Task 4 extends these exact entries with prism occupancy.
+- Produces internal `MapPrefabPreflight.Count(MapDocument document, MapAssetClosure assets, MapPrefabExpansionLimits limits) -> MapPrefabExpansionWork`, with long counters Instances, Children, ReferenceEdges, Patches, Records, GeometryElements, Bindings, Overrides, Transfers and PayloadBytes. Produce internal `MapPrefabExpansionObserver(Action<string> EnterStage)` injectable through an internal Expand overload. It observes Copies, Remaps, Sorts and ExpandedGeometry only after their preflight, without changing public Expand. Invalid limits throw ArgumentOutOfRangeException. Count overflow or limit exhaustion refuses before the guarded operation.
+- Extends Task 2's pure MapEffectiveSupport with `Install(MapAssetClosure assets, IReadOnlyList<MapPrefabChild> children, IReadOnlyDictionary<string, MapEffectiveTransform> transforms) -> MapSurfaceSet`. Install occurs before effective source capture and support sampling.
 - Produces internal `MapEffectiveGeometry.Patch(MapScopedSurfaces view, MapPatchKey key) -> MapCompiledPatch` and `Strip(MapScopedSurfaces view, MapWallStrip strip) -> MapCompiledStrip`, preserving remapped face keys and canonical topology.
 - Produces internal `CellCandidates(MapScopedSurfaces view, string surfaceId, MapExactXz world) -> IReadOnlyList<(long X, long Z)>` and `CellPolygon(MapScopedSurfaces view, MapPatchKey key, int slotCell) -> IReadOnlyList<MapExactXz>` on MapEffectiveGeometry. Existing bound/refinement APIs keep their signatures and use these effective world polygons internally.
 - Adds nullable get-only `MapResolvedDocument.EffectiveResources: MapEffectiveResources?` through an internal constructor overload. Existing signatures remain. Scoped view owns an immutable effective context and its transform/resource witness.
-- Standalone NativeResourceTransforms enter that same context. Their SourceDigest and owner bindings enter loaded/stored root identity, scoped witnesses and effective geometry digests.
+- Standalone NativeResourceTransforms enter that same context, including placement poses which override only the effective pose and keep released authored placement fields as presentation values. Their SourceDigest and owner bindings enter loaded/stored root identity, scoped witnesses and effective geometry digests.
 
 - [ ] **Step 1: Write failing tests.**
 
@@ -441,7 +480,7 @@ public void AllChildResources_UseOneTransformAndSharedEdge(float scale, float up
 {
     var f = PrefabFixtures.Transformed(0.371f, scale, new(10.25f, 5, -3.125f));
     var effective = PrefabFixtures.Effective(f);
-    var composed = MapTransform.Compose(f.Document.Prefabs!.Instances.Single().Transform,
+    var composed = MapEffectiveTransform.Compose(MapEffectiveTransform.From(f.Document.Prefabs!.Instances.Single().Transform),
         new MapTransform(Vector3.Zero, 0, 1));
     var transform = new MapResourceTransform(composed);
     var point = new MapExactPoint(new(4, 1), new(3, 1), new(-4, 1));
@@ -451,6 +490,18 @@ public void AllChildResources_UseOneTransformAndSharedEdge(float scale, float up
         Assert.Equal((expected.X, expected.Z), (corner.X, corner.Z));
     Assert.Equal(transform.Height(new(3, 1)), PrefabFixtures.StoreyUpper(effective));
     Assert.Equal(upperY, PrefabFixtures.StoreyUpper(effective).ToSingle());
+}
+[Theory] [InlineData(false)] [InlineData(true)]
+public void DecomposedOrigin_EqualsDirectGeometryAtNearAndFarSites(bool far)
+{
+    var f = PrefabFixtures.Decomposed(far);
+    var (direct, offset) = PrefabFixtures.DecomposedCorners(PrefabFixtures.Effective(f));
+    Assert.Equal(direct, offset);
+    if (far)
+    {
+        Assert.Equal(new MapExactValue(31460408117, 1048576), direct.X);
+        Assert.Equal(new MapExactValue(-31463533353, 1048576), direct.Z);
+    }
 }
 [Fact] public void ResolveAndReload_NeverAllocateOrMutate()
 {
@@ -462,48 +513,50 @@ public void AllChildResources_UseOneTransformAndSharedEdge(float scale, float up
     Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
     Assert.Throws<MapDocumentException>(() => PrefabFixtures.Effective(PrefabFixtures.Create("missing-binding")));
 }
-[Fact] public void ScopedChildren_RequireTheirFullWitness()
+[Theory]
+[InlineData("room-domain")] [InlineData("parent-floor")] [InlineData("remote-anchor")]
+public void ScopedChildren_RequireTheirFullWitness(string fact)
 {
-    var f = PrefabFixtures.Create("seam-instance");
-    var resources = PrefabFixtures.Effective(f);
-    var missing = PrefabFixtures.AcquireWithout(resources, "parent-floor");
+    var r = PrefabFixtures.Effective(PrefabFixtures.Create("seam-instance"));
+    Assert.Equal(MapAcquireStatus.Complete, PrefabFixtures.AcquireAll(r).Status);
+    var missing = PrefabFixtures.AcquireWithout(r, fact);
     Assert.Equal(MapAcquireStatus.Incomplete, missing.Status);
     Assert.False(missing.ReadWitness.Complete);
-    Assert.NotEmpty(missing.Witness.Unavailable);
+    Assert.Contains(fact, PrefabFixtures.UnavailableIds(missing));
+    Assert.True(PrefabFixtures.UnrelatedFactsRemainReadable(missing));
 }
 ```
 
-Task 3's fixture file declares `SharedFloorCorner/SharedRoomCorner/SharedWaterCorner(MapEffectiveResources resources) -> MapExactPoint`, `StoreyUpper(MapEffectiveResources resources) -> MapExactValue`, and `AcquireWithout(MapEffectiveResources resources, string dependencyId) -> MapScopedSurfaces`. These expose transformed data from the actual context, not independent arithmetic. Before Task 4 they inspect the pending room record's geometry, not membership. Add `FarFrame_SharedEdgesAgreeWithoutAbsoluteFloatRoundTrip`, `ExpansionBudget_RefusesBeforePublishingChildren`, `ScopedDigest_FollowsTransformAssetAndBindings`, and `LaterCallerMutation_CannotChangeEffectiveView`.
+Task 3's fixture file declares `SharedFloorCorner/SharedRoomCorner/SharedWaterCorner(MapEffectiveResources resources) -> MapExactPoint`, `StoreyUpper(MapEffectiveResources resources) -> MapExactValue`, and `AcquireWithout(MapEffectiveResources resources, string dependencyId) -> MapScopedSurfaces`. These expose transformed data from the actual context, not independent arithmetic. Add `AcquireAll(MapEffectiveResources resources) -> MapScopedSurfaces`, `UnavailableIds(MapScopedSurfaces view) -> IReadOnlyList<string>` mapping the released witness to exact fixture IDs, and `UnrelatedFactsRemainReadable(MapScopedSurfaces view) -> bool`. Use released `MapUnavailable(string What, MapPatchKey Key, MapPatchStatus Status)` from Identity/MapWitnesses.cs:11. Assert What, Key and Status against the fixture table, including record versus missing anchor, rather than only an aggregate incomplete bit. AcquireWithout wraps an IMapSurfaceAcquisitionSource that refuses precisely the selected fact after discovery, retaining unrelated records. Before Task 4 the room-domain theory targets the existing lattice room/footprint record. Task 4 replaces that case with the prism record and exercises membership. Remote-anchor faults keep the record discovered but refuse its anchor read. Add `FarFrame_SharedEdgesAgreeWithoutAbsoluteFloatRoundTrip`, `ExpansionPreflight_StopsEveryGuardedOperation`, `ScopedDigest_FollowsTransformAssetAndBindings`, and `LaterCallerMutation_CannotChangeEffectiveView`.
 
-Add `MissingYChild_IsSeatedOnceOnTheEffectiveFloor`. Variant support-bound-child has parent transform (10.25,5,-3.125), yaw 0.371, scale 1.2, low-item with null local Y and a surface binding to local floor at 0. Assert resolved world Y exactly 5, equal to MapSupportQuery.SampleSurface on the effective floor, and unchanged allocator/document bytes. A second parent transform of Y -450 proves no parent-height addition or scale after sampling.
+Add `Decomposed(bool far) -> PrefabFixture` and `DecomposedCorners(MapEffectiveResources resources) -> (MapExactPoint Direct, MapExactPoint OffsetSupport)` to Task 3 fixtures. Represent local (4,0,-4) both as a direct floor/room/water vertex and as a placement support-resource origin with a zero vertex. Near and far outputs must equal after one freeze, without consulting Compose for the oracle. At the far transform the independently computed frozen X is 30002.983204841614 and Z is -30005.963662147522. The early float Compose results 30002.982421875 and -30005.962890625 must differ. Independently check frozen ticks and maximum composition/quantum/Y/backend errors, not rounded decimal display alone.
+
+Add `PlacedSlope_SupportMembershipAndBoundsSucceedWithWideIntermediates`: an invented floor rising from local Y 0 to 1 over X 0 to 4, at yaw 0.371/scales 0.8 and 1.2 at both sites. A sloped transformed floor at both sites resolves nonempty support, room bounds and membership with independent exact barycentric heights. Exercise MapSubdividedTriangle.Height/Cross, bound refinement and normal derivation. A separate rational query whose independently reduced denominator exceeds long.MaxValue must return MapSupportStatus.NotRepresentable and MapMembershipStatus.NotRepresentable, not throw from an intermediate Multiply or float fallback.
+
+Add finite preflight boundary theories with small custom limits, one over-limit and one exact-limit positive case per counter. No million-element fixture or local load test is needed. Place one huge Surface child under many instances, retain removed bindings, Previous overrides, tombstones and transfers, and include embedded support records. A test-only stage observer records Copies, Remaps, Sorts and ExpandedGeometry. Each exceeded counter refuses with all four zero. Check negative limits and checked multiplication/addition overflow. Verify within-budget controls do nonzero guarded work.
+
+Add `MissingYChild_IsSeatedOnceOnTheEffectiveFloor`. Variant support-resource-bound-child has parent transform (10.25,5,-3.125), yaw 0.371, scale 1.2, low-item with null local Y and a surface binding specifically to deck/deck-support/floor at local 0, supplied only by a placement SupportResourceIds entry, with no explicit floor child. Assert resolved world Y exactly 5, equal to MapSupportQuery.SampleSurface on the effective floor, and unchanged allocator/document bytes. A second parent transform of Y -450 proves no parent-height addition or scale after sampling. Task 3 proves direct MapDoc resolution. Task 5 proves MapWorldBuilder returns the same Y after Physics installation.
 
 - [ ] **Step 2: Run red** `wa_test t3-red "$MAPDOC" "FullyQualifiedName~MapPrefabExpansionTests|FullyQualifiedName~MapPrefabTransformTests"`. Expect absent expansion/context or current independent transform paths disagreeing.
 - [ ] **Step 3: Implement expansion, exact transformation and acquisition.**
 
-Validate, snapshot closure bytes/records, apply overrides by typed key, remap persisted IDs and compose each child transform once. Native standalone placements remain in the same snapshot. A root container is not a replacement placement. Expand all kinds, keeping local geometry and the composed MapTransform beside it. Missing bindings refuse. No allocations, tags-based inference or repeated expansion in the builder.
+Preflight counts before any effective snapshot materialization, retained-state copy, sort or remap. Then validate, snapshot closure bytes/records, apply overrides by typed key, remap persisted IDs and compose each child transform once. Native standalone placements remain in the same snapshot. A root container is not a replacement placement. Expand all kinds, keeping local geometry and the unfrozen MapEffectiveTransform beside it. Every geometric child origin, including placement-attached support children, uses the same double composition. Released resolved-placement transforms are presentation/backend values only. Missing bindings refuse. No allocations, tags-based inference or repeated expansion in the builder.
 
-Build the effective geometry/source before resolving missing-Y leaves. Transform a child's support ReferenceY and local search extents into world units, remap its surface/space owner, and sample through the non-expanding R2 entry point. Install the returned world Y directly. Explicit-Y children compose normally. ResolveEffectivePlacements also handles standalone placements against that source. Public resolver 2 computes authored identity from the original document, then constructs its resolved snapshot and support list from the one expansion. It never hashes a derived expanded document or recursively expands while sampling.
+Build the effective geometry/source before resolving missing-Y leaves. Transform a child's support ReferenceY and local search extents into world units, remap its surface/space owner, and sample through the non-expanding R2 entry point. Install the returned world Y directly. Explicit-Y children compose normally. ResolveEffectivePlacements also handles standalone placements against that source. Its precise transform dictionary supplies exact support XZ before any MapPlacement/MapResolvedPlacement float presentation. MapSupportQuery.SelectExact/SampleSurfaceExact use effective CellCandidates and exact membership/barycentric geometry. Existing Compute must not infer rotated cells from the raw local lattice frame or round the support point through a Vector3. Public resolver 2 computes authored identity from the original document, then constructs its resolved snapshot and support list from the one expansion. It never hashes a derived expanded document or recursively expands while sampling.
 
-Point evaluation uses double c/s from Math.SinCos, authored rational coordinates converted to double, and the composed float transform promoted exactly to double. Quantize each placed world coordinate with `ticks = checked((long)Math.Round(value * 1048576d, MidpointRounding.ToEven))`, giving exact `new MapExactValue(ticks, 1048576)`. World Y then rounds once through ToSingle and freezes through FromSingle. Apply this to every placed floor vertex, room bound, water level, light and marker. Height delegates to Point's Y rule. This preserves level ties, limits geometric rounding to 0.000000476837158203125 m and avoids the long-denominator refusal that freezing binary64 trigonometric coordinates would cause in MapExactValue.Multiply/Divide (MapExactValue.cs:49-58).
+Compose binary64 origins without an absolute Vector3: parent origin plus double rotation of (local origin times parent scale), sum yaw in double and multiply scales in double. Convert authored floats exactly to double. Apply all parent/child/support-resource transforms before any coordinate freeze. Point evaluation then uses Math.SinCos, rational coordinates converted to double and the composed double pose. Freeze once with checked ties-even ticks at quantum 1/1048576 m. Freeze XZ as MapExactValue(ticks,1048576). Y takes that value through ToSingle/FromSingle once for the released height seam. Height uses the identical Y rule. Raw unplaced lattice vertices remain exact.
 
-This is a significant proposed choice under R5-P3. Scores are engineering judgments from 1 to 10, weighted to 100. Absolute floats are cheap but lose far-origin geometry. Full binary64 freezing requires a broader exact-arithmetic representation and query rewrite. The fixed dyadic quantum retains sub-micrometre XZ precision with bounded released rational values.
+Keep four error sources separate. Binary64 arithmetic has the standard gamma(n) sum-of-magnitudes bound for the fixed operation count, evaluated per pose, plus the separately reported Math.SinCos deviation from the independent golden. This is not a cross-platform libm guarantee. At the near/far fixtures require pre-freeze composition error below 1e-9 m against the independent high-precision golden. Quantum adds at most 0.000000476837158203125 m per axis. Y output adds at most half the binary32 ULP at quantized world Y (up to 0.03125 m within the installed 1,000,000 m limit). Backend pose rounding is a fourth approximation, never an input to semantic geometry. Task 5 reports its origin half-ULP plus local-coordinate rounding and radius times measured scale/rotation error in metres.
 
-| Criterion | Weight | Absolute binary32 | Binary64 freeze and wider R2 representation | Dyadic quantum and float height seam |
-| --- | ---: | ---: | ---: | ---: |
-| Shared-edge agreement | 25 | 10 | 10 | 10 |
-| Released R2 arithmetic fit | 30 | 8 | 5 | 9 |
-| Far-origin precision | 20 | 3 | 10 | 9 |
-| Consumer compatibility | 15 | 6 | 5 | 8 |
-| Scoped effort | 10 | 9 | 3 | 8 |
-| Weighted total | 100 | 73 | 70.5 | 90 |
+Normalize negative zero and refuse collapsed/nonfinite heights or unrepresentable final outputs. Frame output subtracts exact XZ anchors before ToSingle. Never round world points back into a lattice. Extend the released R4 MapWideRational/MapWidePoint kernel from Water/MapWaterExact.cs into effective triangle determinant, barycentric height, normal cross products and common-refinement operations. Specifically MapSubdividedTriangle.Cross/Height at :83-101 must avoid int64 narrowing between multiply/divide stages. Preserve public signatures with narrow-at-result wrappers, and use wide internal paths for transformed queries. Narrow only externally emitted values, map refusal to existing statuses, and keep old unplaced answers pinned. A dyadic input quantum alone does not guarantee later rational arithmetic fits.
 
-Recommend the dyadic policy. Its cost is explicit coordinate rounding and rejection when geometry collapses or still cannot narrow. It does not promise exact mathematical trigonometry or unrestricted sub-quantum content.
-
-Normalize negative zero. Refuse collapsed/nonfinite heights and exact outputs that cannot narrow. Frame output subtracts XZ integer anchors exactly before ToSingle. Never first form an absolute XZ Vector3 or round rotated points into MapLatticeAddress. Preserve raw unplaced lattice geometry. Shapes retain source-unit conversion once and the documented backend float-pose adapter. Exact predicates/refinement on effective geometry use the R4 wide kernel until emitted values narrow, so intermediate arithmetic never becomes a silent float fallback. The far-height test reports the binary32 height error bound instead of claiming sub-quantization precision. Pin quantum/tie rule in effective policy identity and in an independent transform golden.
+R5-P3 chooses double composition with one dyadic freeze and wider predicates over early float composition. The independent decomposition golden proves why: early float origins lose about 0.8 mm at the far fixture before the precise kernel can run. Full binary64 rational storage would greatly enlarge every denominator. This policy adds explicit sub-micrometre coordinate rounding and final narrowing refusals while retaining released output types.
 
 MapFrameLocal.CompileInFrame delegates to this point kernel. Placed R4 water converges in Task 7, using the same frozen vertices, not quaternion float math. Unit transforms on existing unplaced lattice geometry retain their exact vertices. Policy `kemap/effective-resources/1` names expansion and transform rules, query policy 2 names transformed spatial reads. These enter effective/scoped/build identities. Same-process independent heads agree. Residual Math.SinCos platform dependence remains documented.
 
-MapEffectiveSurfaceSource implements IMapSurfaceAcquisitionSource, including OpenAcquisition and incident-record reads. Index remapped local patch world bounds, including every transformed corner, and request local patches by conservative inverse bounds. Local slot coordinates remain local, never masquerade as world slots. World scopes and whole-column completeness use world bounds. Charge discovery, records and dependency expansion before work under existing budgets. Snapshots include parent/domain/transform/binding/resource facts even when their anchors lie outside the requested XZ. An unavailable dependency prevents a complete witness. KnownEmpty remains distinct from unloaded/missing.
+MapPrefabPreflight traverses the closure's once-decoded immutable payload metadata without constructing new child/patch arrays. Task 1's prefab decoder caps an individual payload at 268435456 bytes and streams element counts under the Task 1 limits before materializing its collection. Task 2 support payloads use the same bounded scan. Task 3 then charges the aggregate per-instance work before any effective copy/remap/sort. Add internal `MapAssetClosure.ResourceByteLength(string resourceId) -> int` and `BorrowVerifiedResourceBytes(string resourceId) -> ReadOnlyMemory<byte>` backed by the captured immutable resource, so preflight checks size without the released Bytes copy. The borrowed memory never escapes the internal reader or becomes mutable. Copy only after acceptance of the relevant count. Charge unique payload bytes once, then instances and every per-instance effective child, patch, topology record and geometry element (vertices, faces, cell slots, polygon/chain/strip/opening points). Charge live and removed binding entries, every override including Previous and replacement geometry, tombstoned instances and transfer entries. MaxReferenceEdges counts each typed reference occurrence and each consumed resource dependency edge, including restore state. Shared decoded bytes do not exempt per-instance copied/expanded geometry. Checked long sums/products refuse overflow. Decoder scans and context-copy operations consume this same accepted budget. No R8 streaming/indexing work enters R5.
+
+MapEffectiveSurfaceSource implements IMapSurfaceAcquisitionSource, including OpenAcquisition and incident-record reads. Index remapped local patch world bounds, including every transformed corner, and request local patches by conservative inverse bounds. Local slot coordinates remain local, never masquerade as world slots. World scopes and whole-column completeness use world bounds. Charge discovery, records and dependency expansion before work under existing budgets. Snapshots include parent/domain/transform/binding/resource facts even when their anchors lie outside the requested XZ. Add `MissingPrefabBytes_RefusesBeforeCaptureAndCapturedBytesAreNeverReread`. A valid byte source first completes closure loading/expansion. A fresh source missing only the named prefab refuses closure capture with its exact ResourceId and expected digest, before an effective view is returned. The already captured closure and effective view still expand/query successfully after that source is armed to throw on further prefab reads. After capture, expansion/acquisition reads only the immutable captured payload and never the byte source again. A source that later throws on prefab reads must not affect captured queries. An unavailable geometric dependency prevents a complete witness. KnownEmpty remains distinct from unloaded/missing.
 
 MapScopedSurfaces snapshots this effective context with its acquired facts. Both CompleteView and scoped paths use the same geometry evaluator. Resolver 2 attaches one effective snapshot and resolves support bindings against its source, including selected expanded placement IDs in ResolvePlacements. Resolver 1 rejects prefab sections before callbacks and retains its released path. R8 still owns runtime eviction and large-world scheduler proofs.
 
@@ -514,9 +567,18 @@ MapBoundFaceContext transforms its compiled canonical bound faces and opening pl
 
 ```bash
 wa_r5_t3_paths=(
+    KhaozEngine.MapDoc/Assets/MapAssetClosure.cs
+    KhaozEngine.MapDoc/Support/MapSupportQuery.cs
+    KhaozEngine.MapDoc/Spaces/MapSpaceMembership.cs
+    KhaozEngine.MapDoc/Spaces/MapSpaceInterval.cs
+    KhaozEngine.MapDoc/Prefabs/MapEffectiveSupport.cs
     KhaozEngine.MapDoc/Prefabs/MapPrefabResolver.cs
     KhaozEngine.MapDoc/Prefabs/MapEffectiveResources.cs
     KhaozEngine.MapDoc/Prefabs/MapResourceTransform.cs
+    KhaozEngine.MapDoc/Prefabs/MapEffectiveTransform.cs
+    KhaozEngine.MapDoc/Prefabs/MapPrefabPreflight.cs
+    KhaozEngine.MapDoc/Surfaces/MapSubdividedTriangle.cs
+    KhaozEngine.MapDoc/Water/MapWaterExact.cs
     KhaozEngine.MapDoc/Storage/MapEffectiveSurfaceSource.cs
     KhaozEngine.MapDoc/Storage/MapEffectiveAcquisition.cs
     KhaozEngine.MapDoc/Storage/MapScopedSurfaces.cs
@@ -554,9 +616,10 @@ git commit --only -m "feat(mapdoc): expand prefabs through one transformed resou
 - Consumes `MapSpaceCoverageValidator.Validate(MapScopedSurfaces view) -> IReadOnlyList<string>`, canonical parent bound refinement and Task 3 context. MapSpaceKind adds Room after Cave and Exterior, preserving existing numeric values.
 - Produces `MapPrismDomain(string Id, int PayloadVersion, MapRecordRef Space, MapRecordRef Parent, string InstanceId, string StoreyId, MapWaterDomainDoc Footprint, float LowerY, float UpperY) : MapTopologyRecord(Id)`, payload version exactly 1. It is a Record child, anchored in a declared local surface patch and remapped with every other record. Space names an existing Room MapSpaceDoc whose Parent must equal this Parent. After unpack InstanceId is empty with a validated transfer.
 - Produces `MapPrismGeometry.Compile(MapScopedSurfaces view, MapPrismDomain domain) -> MapWaterDomain` and `Bounds(MapScopedSurfaces view, MapPrismDomain domain) -> MapBox3`, sharing R4 polygon ownership and Task 3 transform.
-- Produces internal `MapOccupiedPiece(string SpaceId, IReadOnlyList<MapExactXz> Polygon, IReadOnlyList<MapBoundFace> LowerFaces, IReadOnlyList<MapBoundFace>? UpperFaces, MapExactValue? LowerPlane, MapExactValue? UpperPlane)`, `MapOccupiedPartitions.Pieces(MapScopedSurfaces view, string spaceId, MapExactXz min, MapExactXz max, MapRefinementLimits limits) -> IReadOnlyList<MapOccupiedPiece>`.
+- Produces internal `MapOccupiedPiece(string SpaceId, string FragmentId, MapOccupiedBoundary LowerBoundary, MapOccupiedBoundary UpperBoundary, IReadOnlyList<MapExactXz> Polygon, IReadOnlyList<MapBoundFace> LowerFaces, IReadOnlyList<MapBoundFace>? UpperFaces, MapExactValue? LowerPlane, MapExactValue? UpperPlane)`, `MapOccupiedPartitions.Pieces(MapScopedSurfaces view, string spaceId, MapExactXz min, MapExactXz max, MapRefinementLimits limits) -> IReadOnlyList<MapOccupiedPiece>`.
+- Produces `MapOccupiedBoundary(string OwnerId, string Role, string SemanticDigest)` and `MapOccupiedFragment(string Id, string SpaceId, MapOccupiedBoundary Lower, MapOccupiedBoundary Upper)`. Role is the closed set canonical-floor, canonical-ceiling, prism-lower, prism-upper and open-top. `MapSpaceInterval.Fragment: MapOccupiedFragment?` and `MapMembershipResult.Fragment: MapOccupiedFragment?` are additive get-only properties. A resolved R5 interval always carries one.
 - Produces `MapPrismCoverage.Validate(MapScopedSurfaces view, MapRefinementLimits limits) -> IReadOnlyList<string>`, called by the existing coverage validator. Adds immutable `MapMembershipResult.ParentSpaceIds: IReadOnlyList<string>` without removing its constructor/signatures.
-- Produces `MapSpaceMembership.QueryExact(MapExactPoint world) -> MapMembershipResult` and `MapSpaceIntervals.AtExact(MapScopedSurfaces view, MapExactPoint world) -> MapSpaceInterval`. They share QueryCore with the released frame-point APIs, passing exact coordinates without a float round trip. MapMembershipResult gains get-only ExactPoint. Point remains its rounded frame-point presentation.
+- Consumes and extends Task 3's QueryExact/AtExact and membership ExactPoint. They share QueryCore with released frame-point APIs, passing exact coordinates without a float round trip. Point remains its rounded presentation.
 
 - [ ] **Step 1: Write failing membership/coverage tests.**
 
@@ -592,10 +655,15 @@ git commit --only -m "feat(mapdoc): expand prefabs through one transformed resou
     Assert.Contains(MapSpaceCoverageValidator.Validate(r.CompleteView()),
         e => e.Contains("peer occupied overlap", StringComparison.Ordinal));
 }
-[Fact] public void MissingParentOrPrism_IsMissingGeometry()
+[Theory]
+[InlineData("prism")] [InlineData("parent-floor")] [InlineData("remote-anchor")]
+public void MissingParentOrPrism_IsMissingGeometry(string fact)
 {
-    var r = PrefabFixtures.Effective(PrefabFixtures.Cave("missing-parent"));
-    var view = PrefabFixtures.AcquireWithout(r, "parent-floor");
+    var r = PrefabFixtures.Effective(PrefabFixtures.Cave("transformed"));
+    Assert.Equal(MapAcquireStatus.Complete, PrefabFixtures.AcquireAll(r).Status);
+    var view = PrefabFixtures.AcquireWithout(r, fact);
+    Assert.Contains(fact, PrefabFixtures.UnavailableIds(view));
+    Assert.True(PrefabFixtures.UnrelatedFactsRemainReadable(view));
     Assert.Equal(MapMembershipStatus.MissingGeometry,
         new MapSpaceMembership(view).Query(PrefabFixtures.Point(r, 2, 1, -2)).Status);
 }
@@ -610,11 +678,11 @@ Add named `SelectedCaveModel_ComposesFloorsCeilingsAndVolumes`: two variable-bou
 
 A room uses a MapSpaceDoc and one MapPrismDomain. Persist local polygons/heights and the instance owner. Compile its footprint through the same exact transformed domain path as water. Normalize world XZ winding. R4-P28 ownership uses the world direction (1, infinitesimal +Z), including the convex/reflex/collinear vertex distinction. Do not apply the edge rule in local coordinates after rotation.
 
-At a point, acquire the room, parent chain, footprint and canonical bounds before choosing. Intersect the prism [lower,upper) with its parent's actual interval. Choose the deepest containing descendant. Remove containing ancestors from the competing-owner set and return them separately in ParentSpaceIds/DomainKeys. Two incomparable descendants remain Ambiguous. A parent's remaining occupied volume excludes all descendants. Columns split into disjoint intervals, including repeated parent IDs in separate intervals, and use identical tie rules.
+At a point, acquire the room, parent chain, footprint and canonical bounds before choosing. Intersect the prism [lower,upper) with its parent's actual interval. Choose the deepest containing descendant. Remove containing ancestors from the competing-owner set and return them separately in ParentSpaceIds/DomainKeys. Two incomparable descendants remain Ambiguous. A parent's remaining occupied volume excludes all descendants. Columns split into disjoint intervals, including repeated parent IDs in separate intervals, and use identical tie rules. Each fragment ID is the canonical digest of SpaceId, the lower/upper authored boundary owner IDs and roles, and the ordered ancestor-carving boundary path. It does not depend on clipping order, tile packing, query rectangle or float endpoints. Boundary SemanticDigest affects geometry/digests without reallocating the logical fragment ID. Common-refinement triangles in the same logical vertical slab share the fragment. Point membership and columns return that same ID and provenance. Reload/repacking preserves it, while different lower and upper parent slabs have different IDs. Task 7 carries it into regions, contours, bounds and classifiers.
 
 Lattice-only portals retain released R2 ToSpace exact-plane ownership. A portal incident to a new prism room uses the prism's R4-P28 world-edge owner for occupied membership, consistently in point, column and water partition paths. Its authored From/To normal remains a relation fact, not a competing owner rule. Add `RoomPortalPlane_UsesPrismOwnershipAfterYaw` and `LatticePortalPlane_KeepsReleasedToSpaceOwnership`, including a portal whose ToSpace points against world +X. This implements Decision 2 without changing old cave outcomes.
 
-Coverage validates nonempty simple polygons, positive effective separation over common refinements, complete horizontal coverage by the declared parent footprint, ancestry without cycles and room/storey ownership. Use shared polygon clipping and R2 bound faces to check every refinement vertex, not corner samples or a bounding box. Rooms are semantic spaces, so their boundary need not fabricate a physical wall. Existing Cave enclosure rules still require walls/ceilings/apertures. Preserve aliases and distinguish semantic nesting from peer overlap. No implicit exterior.
+Coverage validates nonempty simple polygons, positive effective separation over common refinements, complete horizontal coverage by the declared parent footprint, ancestry without cycles and room/storey ownership, including required storey existence and matching instance ownership. Standalone rooms reference standalone Storeys, not a removed instance. Add `StandaloneStorey_RoundTripsNameAndRoomOwnership` with exact ID/name and invalid ownership cases. Use shared polygon clipping and R2 bound faces to check every refinement vertex, not corner samples or a bounding box. Rooms are semantic spaces, so their boundary need not fabricate a physical wall. Existing Cave enclosure rules still require walls/ceilings/apertures. Preserve aliases and distinguish semantic nesting from peer overlap. No implicit exterior.
 
 MapOccupiedPartitions exposes this same partition to water and support. It uses transformed polygons and canonical variable bound faces, with explicit constant prism planes, not new support triangles. Query candidate counting shares existing patch/record/face limits. An unavailable prism/parent dependency returns MissingGeometry, overflow CapacityExceeded and exact narrowing NotRepresentable. Whole columns still refuse incomplete or height-bounded acquisitions under R4-P30. Reference codec and defensive record clone support the new record type. Update the R2 topic's historical separate-domain wording to the approved one-space model, preserving variable cave semantics.
 
@@ -654,7 +722,7 @@ git commit --only -m "feat(mapdoc): nest transformed prism rooms in canonical sp
 ### Task 5: Local support, doorway shapes, bounds and tile ownership
 
 **Files:**
-- Create: `KhaozEngine.MapDoc/Surfaces/MapSupportResource.cs`, `KhaozEngine.MapDoc.Physics/MapPrefabSupport.cs`.
+- Create: `KhaozEngine.MapDoc.Physics/MapPrefabSupportBounds.cs`, `MapBackendPoseAdapter.cs`. Consume and harden Tasks 2/3's MapSupportResource codec and MapEffectiveSupport installation with direct missing-Y proofs.
 - Modify: `KhaozEngine.MapDoc.Physics/MapAssetShapes.cs:46-64`, `MapTerrainPhysics.cs:107-146` and chunk inputs, `MapPlacementGeometry.cs:64-126`, `MapWorldBuilder.cs:50-93`, `MapBuiltWorld.cs:80-158`, `MapResidencyOwnership.cs:45-96` and `:152-205`, `MapNavTiling.cs:75-128` and `:225-270`, `MapPhysicsRegistration.cs:101-112`, `README.md`.
 - Modify: Task 2's binding planner and Task 3's expansion/geometry for SupportResourceIds. `KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj` links self-contained public Prefabs/*Fixtures.cs source files, without a test-project reference or TileWorld edge. `KhaozEngine.MapDoc/KhaozEngine.MapDoc.csproj:15-18` adds InternalsVisibleTo for KhaozEngine.MapDoc.Physics.Tests, so linked identity/geometry fixture helpers compile.
 - Test: `KhaozEngine.MapDoc.Tests/Prefabs/MapSupportResourceTests.cs`, `KhaozEngine.MapDoc.Physics.Tests/MapPrefabSupportTests.cs`, `MapPrefabDoorwayTests.cs`, `MapPrefabResidencyTests.cs`, `PrefabPhysicsFixtures.cs`.
@@ -664,8 +732,8 @@ git commit --only -m "feat(mapdoc): nest transformed prism rooms in canonical sp
 - Consumes `MapWorldBuilder.Build(MapDocument document, MapAssetClosure assets, MapWorldBuildOptions options) -> MapBuiltWorld` at :40, `MapPlacementShapes.Resolve(MapResolvedDocument document)` at MapPlacementGeometry.cs:64, `MapPhysicsRegistration.TryFaceOwner(StaticHandle handle, int faceId, out MapFaceKey face) -> bool` at :101.
 - Consumes `MapPhysicalRelations.Clearance(IPhysicsQueryLease lease, IReadOnlyList<MapFramePoint> feetPath, in MoveTuning tuning) -> MapPhysicalResult` at :88, using ContactShell and the controller's released sweep filter.
 - Consumes `MapResidencyOwnership.Build(MapBuiltWorld world, MapWorldGrids grids)`, `Affected(MapBuiltWorld world, MapWorldGrids grids, MapNativeEditEffects effects)`, and `MapNavTiling.AffectedTiles(MapBuiltWorld world, MapWorldGrids grids, MapNavTileOptions options, MapNativeEditEffects effects)`.
-- Produces `MapSupportResource(int PayloadVersion, MapSurfaceSet Surfaces, MapRecordRef? Space)`, `MapSupportResourceFile.Read(ReadOnlyMemory<byte> bytes, string resourceId) -> MapSupportResource`, `Write(MapSupportResource resource) -> byte[]`, in MapSupportResource.cs.
-- Produces `MapPrefabSupport.Install(MapEffectiveResources resources) -> MapEffectiveResources`, pure, and `Bounds(MapEffectiveResources resources) -> MapBox3`. Adds get-only `MapAssetShapes.SupportResources: IReadOnlyList<MapSupportResource>` without removing released constructors.
+- Consumes Task 2's MapSupportResource/File and Enumerate, and Task 3's MapEffectiveSupport.Install. No new pure installer lives in Physics.
+- Consumes the shared implicit descriptors as the planner/visitor/expansion source. Physics produces `MapPrefabSupportBounds.Bounds(MapEffectiveResources resources) -> MapBox3` and `MapBackendPoseAdapter.Pose(MapEffectiveTransform transform, WorldFrame frame) -> Pose`, with `ErrorMetres(MapEffectiveTransform transform, WorldFrame frame, double sourceRadius) -> double`. Adds get-only `MapAssetShapes.SupportResources: IReadOnlyList<MapSupportResource>` without removing released constructors.
 - Fixture produces `PrefabPhysicsFixtures.Build(PrefabFixture fixture) -> MapBuiltWorld`, `Options() -> MapWorldBuildOptions`, and `DoorPath(MapBuiltWorld world, bool throughJamb) -> IReadOnlyList<MapFramePoint>`.
 
 - [ ] **Step 1: Write failing physics and codec tests.**
@@ -708,18 +776,18 @@ Add `TransformedCavePrefabOrLayer_PreservesCollisionNavAndMembership`: a cave-lo
 
 Support-resource variant replaces the explicit floor child with placement deck's resource deck-support containing local surface floor. Its binding key is deck/deck-support/floor. The asset has a selection volume and no duplicate collider floor. Room records explicitly anchor/reference that implicit surface key.
 
-Add `CoincidentSupportOwners_Refuse`, `PaintAddsNoPhysicsFaces`, `ScaledLowItem_StillHasOneMetreReachMinimum`, `LocalChunks_Keep1024TrianglesAnd64MetreOffsets`, `RotatedBounds_NameEveryCrossedTileOnce`, `RemovedInstance_InvalidatesOldTiles` and `TerrainSupportReseat_HasAReachableNeighborCounterexample`. The latter constructs the #1348 lead, with a 150 m leaf support-bound to an edited floor at a 64 m tile seam, showing that geometry outside the edited patch really changes. Task 9 proves the transaction emits the required widening.
+Add `CoincidentSupportOwners_Refuse`, `PaintAddsNoPhysicsFaces`, `ScaledLowItem_StillHasOneMetreReachMinimum`, `LocalChunks_Keep1024TrianglesAnd64MetreOffsets`, `RotatedBounds_NameEveryCrossedTileOnce`, `RemovedInstance_InvalidatesOldTiles` and `TerrainSupportReseat_HasAReachableNeighborCounterexample`. The latter constructs the #1348 lead, with a 150 m leaf support-bound to an edited floor at a 64 m tile seam, showing that geometry outside the edited patch really changes. Task 10 proves the transaction emits the required widening.
 
 - [ ] **Step 2: Run red** `wa_test t5-red-doc "$MAPDOC" "FullyQualifiedName~MapSupportResourceTests"`, then `wa_test t5-red "$MP" "FullyQualifiedName~MapPrefabSupportTests|FullyQualifiedName~MapPrefabDoorwayTests|FullyQualifiedName~MapPrefabResidencyTests"`. Expect the released placement-local support refusal, missing provenance or wrong transformed bounds.
 - [ ] **Step 3: Implement support resource installation and existing builder consumers.**
 
-Surface resource payload 1 embeds the existing surface ref/patch codec and its exact units, topology and space reference. It declares no analytic terrain. Validate role, bound owner and reference closure. SupportResourceIds decode through MapDoc's codec. Remove MapAssetShapes' unconditional refusal only when those resources validate. Floor geometry is installed through MapTerrainPhysics, not a second collider mesh.
+Surface resource payload 1 embeds the existing surface ref/patch codec and its exact units, topology and space reference. It declares no analytic terrain. Validate role, bound owner and reference closure. The exact order is closure verification and preflight, MapDoc support decoding/enumeration, bindings/override/remap, precise effective surface/topology installation, effective source capture, R2 missing-Y support resolution, then Physics meshes/statics/bounds. MapDoc resolver calls the Task 3 installer directly after Task 2 enumeration, without a Physics back-edge. Physics consumes those same installed descriptors and never reinserts a surface or independently decodes geometry. SupportResourceIds decode through MapDoc's codec. Remove MapAssetShapes' unconditional refusal only when those resources validate. The pure surface descriptor is installed in MapDoc before sampling. MapTerrainPhysics later makes its canonical faces into statics. Add `ImplicitSupportMissingY_ResolvesInMapDocBeforePhysics` and `ImplicitSupportMissingY_BuilderMatchesResolver` for Task 3's bound-child fixture at near/far sites. Assert installed surface ID, nonempty support result, exact world Y 5 or -450, identical builder pose Y and no allocation.
 
 Support frames declare metres through MapLatticeFrame's units. Source-unit conversion is already encoded there and is not applied again. Collider/render bounds still use the asset's SourceUnitsToMetres once. Add `SourceUnitsAreEncodedInSupportFrames_AndNotAppliedAgain` with source units 0.01, 100 source units per metre, instance scale 1.2 and expected 1.2 m support/collider edge agreement.
 
 Every prefab-attached support resource enumerates implicit child keys under its placement key, resource ID and local surface/record ID. The binding planner and expansion enumerate the same closure children and persist their bindings. Standalone support-bearing placements use deterministic derived string IDs from their stable placement ID and resource-local key, with no numeric allocation. Their support owner never equals a collider's unrelated face. Refuse independently authored coincident support faces, including a baked collider floor duplicated by a support resource. Do not claim arbitrary primitive edges/vertices map to floor faces.
 
-MapWorldBuilder consumes resolved.EffectiveResources once. Terrain/strip compilation uses effective exact geometry, preserves face keys/roles and selects whole-metre chunk anchors after transform. Keep existing chunk ID grammar, sidedness, triangle and local-extent limits. Placement compounds retain jambs, lintel and offsets with source-unit/instance scale applied once. Interaction raising happens after scale, in world metres. No whole-building box.
+MapWorldBuilder consumes resolved.EffectiveResources once. Terrain/strip compilation uses effective exact geometry, preserves face keys/roles and selects whole-metre chunk anchors after transform. Keep existing chunk ID grammar, sidedness, triangle and local-extent limits. BackendPoseAdapter alone approximates the precise pose as float frame-local origin/quaternion/scale. ErrorMetres reports origin half-ULP plus source radius times scale error and 2*sin(angular error/2), plus local-coordinate half-ULP. Test near/far adapters against independently transformed vertices and keep semantic support untouched. Placement compounds retain jambs, lintel and offsets with source-unit/instance scale applied once. Interaction raising happens after scale, in world metres. No whole-building box.
 
 Before constructing a complete prefab/unpacked world, run MapSpaceCoverageValidator over its effective complete view and refuse every finding, even without water. Expand remains a structural/diagnostic snapshot operation, so tests can inspect Ambiguous membership, but a complete build never certifies that ambiguity. This does not retroactively alter source geometry for old documents without R5 sections.
 
@@ -735,7 +803,9 @@ wa_r5_t5_paths=(
     KhaozEngine.MapDoc/Prefabs/MapPrefabBindings.cs
     KhaozEngine.MapDoc/Prefabs/MapPrefabResolver.cs
     KhaozEngine.MapDoc/Surfaces/MapEffectiveGeometry.cs
-    KhaozEngine.MapDoc.Physics/MapPrefabSupport.cs
+    KhaozEngine.MapDoc/Prefabs/MapEffectiveSupport.cs
+    KhaozEngine.MapDoc.Physics/MapPrefabSupportBounds.cs
+    KhaozEngine.MapDoc.Physics/MapBackendPoseAdapter.cs
     KhaozEngine.MapDoc.Physics/MapAssetShapes.cs
     KhaozEngine.MapDoc.Physics/MapTerrainPhysics.cs
     KhaozEngine.MapDoc.Physics/MapPlacementGeometry.cs
@@ -794,12 +864,17 @@ git commit --only -m "feat(mapdocphysics): install transformed prefab support an
 }
 [Fact] public void PaintConflict_RequiresExplicitPriority()
 {
-    var conflict = PrefabFixtures.Effective(PrefabFixtures.Create("equal-priority-paint"));
-    Assert.Throws<MapDocumentException>(() => MapPartialPaintCompiler.Compile(conflict.CompleteView(), "ground"));
+    Assert.Throws<MapDocumentException>(() =>
+        PrefabFixtures.Effective(PrefabFixtures.Create("equal-priority-paint")));
     var ordered = PrefabFixtures.Effective(PrefabFixtures.Create("prioritized-paint"));
-    Assert.NotEmpty(MapPartialPaintCompiler.Compile(ordered.CompleteView(), "ground").Regions);
+    var regions = ordered.PaintRegions["ground"].Regions;
+    Assert.NotEmpty(regions);
+    Assert.Equal(new[] { "priority-high", "priority-low" }, regions.Select(x => x.PaintId).Distinct().Order());
+    Assert.True(PrefabFixtures.HighPriorityOwnsOverlap(ordered));
 }
 ```
+
+Prioritized-paint authors world paint IDs priority-high and priority-low with different materials, integer priorities 2 and 1, and a positive-area overlap. Both retain nonempty uncovered regions. Equal-priority-paint changes only priority 2 to 1 and fails at expansion.
 
 Uneven-painted is a 2 by 2 m local paint rectangle at non-grid position, yaw 0.371 and scale 1 over a sloping 1 m world lattice. Its ideal area is 4 square metres, with the explicit 0.000004 square-metre rounding bound above. Clipping must conserve the quantized footprint's exact area. Assertions compare physical inputs independent of paint digest. Add `MoveUndoReload_DoesNotWriteWorldMaterialArrays`, `PaintAbsentNotch_LeavesUnderlyingMaterialVisible`, `RenderSubdivisions_LieOnTheirParentTriangle` and `PaintBudgetAndUnrepresentableIntersection_Refuse`.
 
@@ -807,6 +882,8 @@ Uneven-painted is a 2 by 2 m local paint rectangle at non-grid position, yaw 0.3
 - [ ] **Step 3: Implement exact clipped material regions and compatibility adapter.**
 
 Clip transformed paint polygons in XZ against each unchanged canonical target triangle using the shared wide rational kernel, then lift each intersection back onto that triangle's plane. Emit only material coverage and parent face keys. Do not copy paint height into target geometry. Subtract higher-priority regions and retain uncovered base material. Equal-priority positive-area conflicting materials refuse, identical coverage coalesces in ordinal ID order. Half-open semantic ownership follows R4-P28, while draw polygons may share closed edges. All emitted polygon points narrow exactly or fail.
+
+Expansion eagerly compiles PaintRegions after effective view construction and refuses invalid conflict before returning resources. Public build and command publication use that same strict boundary. The failure assertion therefore surrounds expansion itself. `HighPriorityOwnsOverlap(MapEffectiveResources resources) -> bool` probes the exact overlap against the independent fixture region expectation, not the compiler priority algorithm.
 
 Retain the whole-face ApplyPaintOverride signature and its released behavior where one material covers a whole face. Its old refusal becomes a diagnostic directing partial consumers to MapPaintRegionSet rather than inventing one material for a split face. Effective view and R8 receive the region set. Physics/support/nav geometry consumes only original faces. Invalidation sets Material/Residency, never Physics solely for paint. Moving/removing paint changes instance state and derived regions, not world cell arrays. R8 owns tessellation and pixels.
 
@@ -839,7 +916,7 @@ git commit --only -m "feat(mapdoc): clip prefab paint within canonical physical 
 
 **Files:**
 - Create: `KhaozEngine.MapDoc/Water/MapEffectiveWater.cs`, `MapWaterOccupiedPieces.cs`.
-- Modify: `KhaozEngine.MapDoc/Water/MapWaterDomain.cs:12-16` and `:59-130`, `MapWaterCompiler.cs:25-120` and digest composition, `MapWaterContainment.cs:23-110`, `MapWaterFootprints.cs:32-95`, `MapWaterBoundReads.cs`, `MapWaterQuery.cs:66-140`, `MapCompiledWaterBody.cs`, `KhaozEngine.MapDoc/MapBoundDocumentValidation.cs:14-74`, Task 3's effective context.
+- Modify: `KhaozEngine.MapDoc/Water/MapWaterDomain.cs:12-16` and `:59-130`, `MapWaterCompiler.cs:25-120` and digest composition, `MapWaterContainment.cs:23-110`, `MapWaterFootprints.cs:32-95`, `MapWaterBoundReads.cs`, `MapWaterQuery.cs:66-140`, `MapCompiledWaterBody.cs`, `MapWaterSample.cs:14-16`, `MapWaterClosedContour.cs:7-20`, `MapWaterRegionBuilder.cs` for fragment propagation, `KhaozEngine.MapDoc/MapBoundDocumentValidation.cs:14-74`, Task 3's effective context.
 - Modify: `KhaozEngine.MapDoc.Physics/MapWorldBuilder.cs:58-93`, `MapResidencyOwnership.cs:77-123`, `MapNavTiling.cs` medium digest inputs.
 - Test: `KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabWaterTests.cs`, `PrefabWaterFixtures.cs`, `KhaozEngine.MapDoc.Physics.Tests/MapPrefabWaterWorldTests.cs`.
 
@@ -848,7 +925,8 @@ git commit --only -m "feat(mapdoc): clip prefab paint within canonical physical 
 - Consumes `MapWaterQuery(MapScopedSurfaces scoped, MapWaterSet water)`, `Sample(MapFramePoint point) -> MapWaterSample`, `Column(MapFramePoint point) -> IReadOnlyList<MapWaterSample>`, Task 4 occupied partitions and Task 3 immutable transform context.
 - Produces internal `MapEffectiveWaterBody(MapWaterBodyDoc Source, MapWaterDomain Domain, MapExactValue SurfaceY, string BodyId, IReadOnlyList<MapRecordRef> Covers, string TransformDigest)`, `MapEffectiveWater.Resolve(MapScopedSurfaces view, MapWaterBodyDoc body) -> MapEffectiveWaterBody`.
 - Produces internal `MapWaterOccupiedPieces.Of(MapScopedSurfaces view, string spaceId, MapExactXz min, MapExactXz max, MapRefinementLimits limits) -> IReadOnlyList<MapOccupiedPiece>`, delegating to Task 4.
-- Existing public query/compiler signatures remain. They discover transforms from the view and snapshot them alongside water. Compiled/sample nominal heights are world heights and every BodyId/Covers is already binding-remapped.
+- Existing public query/compiler signatures remain. Add init-only `MapWaterRegion.Fragment: MapOccupiedFragment?`, `MapWaterSample.Fragment: MapOccupiedFragment?`, internal contour FragmentId and footprint/bound data keyed by FragmentId. Effective R5 regions/samples carry nonnull fragments. Produce `MapWaterFragmentBounds(MapOccupiedFragment Fragment, MapBox3 Bounds)` and `MapCompiledWaterBody.FragmentBounds: IReadOnlyList<MapWaterFragmentBounds>`. They discover transforms from the view and snapshot them alongside water. Compiled/sample nominal heights are world heights and every BodyId/Covers is already binding-remapped.
+- Produces additive `MapCompiledWaterBody.ClassifyFragment(string fragmentId, MapExactXz point) -> MapWaterRegionKind?`. Released Classify(spaceId,point) keeps single-interval behavior. With several owned fragments it returns their unanimous kind, or Unresolved when kinds differ. Never use Closed precedence across fragments. Queries choose the membership/column fragment before classification.
 - Produces `MapWaterQuery.SampleExact(MapExactPoint world) -> MapWaterSample`, sharing the same sample core and exact membership path. Add init-only nullable ExactPoint on MapWaterSample, preserving its positional constructor. Shared transformed boundary tests use exact points, not rounded coordinates claimed to lie on a boundary.
 
 - [ ] **Step 1: Write failing full-path tests.**
@@ -876,7 +954,14 @@ public void LocalLevelCoversContourAndBounds_TransformOnce(float scale, float su
     Assert.Equal(MapWaterStatus.Dry, water.Sample(point).Status);
     Assert.Equal("prefab/a/Record/room", water.Sample(point).SpaceId);
     var body = MapWaterCompiler.Compile(r.CompleteView(), r.Water!).Single();
-    Assert.NotEqual(MapWaterRegionKind.FreeSurface, body.Classify("outside", point.ExactWorldXz()));
+    Assert.Equal(MapWaterRegionKind.Unresolved, body.Classify("outside", point.ExactWorldXz()));
+    var parents = MapSpaceIntervals.Column(r.CompleteView(), point).Where(x => x.SpaceId == "outside").ToArray();
+    Assert.Equal(2, parents.Length);
+    Assert.NotEqual(parents[0].Fragment!.Id, parents[1].Fragment!.Id);
+    Assert.Equal(MapWaterRegionKind.Closed, body.ClassifyFragment(parents[0].Fragment!.Id, point.ExactWorldXz()));
+    Assert.Equal(MapWaterRegionKind.FreeSurface, body.ClassifyFragment(parents[1].Fragment!.Id, point.ExactWorldXz()));
+    Assert.Equal(MapWaterStatus.Wet, water.Sample(PrefabFixtures.Point(r, 2, -1, -2)).Status);
+    Assert.Equal(MapWaterStatus.Wet, water.Sample(PrefabFixtures.Point(r, 2, 3.5f, -2)).Status);
 }
 [Fact] public void DryAndFloodedCaveVolumes_DoNotLeakWaterOrIndoorState()
 {
@@ -889,26 +974,31 @@ public void LocalLevelCoversContourAndBounds_TransformOnce(float scale, float su
 }
 ```
 
-Declare `PoolProbe/DryCavePoint/FloodedCavePoint(MapEffectiveResources resources) -> MapFramePoint` here. Cave floors at -60 and -40, ceilings -50 and -30, exterior ocean 0 and separate local lake -35 are explicit. The dry room is not a cover. Exterior-water-dry-room uses exterior level 2 and room [0,3), so the parent water below the room can be Closed but emits no free surface through it. Add `SharedFloorWaterAndRoomEdge_AgreeExactly`, `CeilingTie_RemainsClosedAfterTransform`, `MissingLocalCoverOrParent_IsUnverifiedNeverDry`, `LocalWaterNeverBecomesAStatic`, `MoveChangesOnlyIntersectedMediumTiles`, `UnrelatedAssetChildEdit_KeepsBodyDigest`, `UnavailableAperture_PreventsCompleteContainment`, and `ExistingCompileLimits_ChargeRotatedAndAbsentBoundWork`. These invoke the full compiler/query/builder, never only a transformed clip helper.
+Declare `PoolProbe/DryCavePoint/FloodedCavePoint(MapEffectiveResources resources) -> MapFramePoint` here. Cave floors at -60 and -40, ceilings -50 and -30, exterior ocean 0 and separate local lake -35 are explicit. The dry room is not a cover. Exterior-water-dry-room uses parent floor -2, dry room [0,3), and exterior water level 4. Assert lower parent wet [-2,0) Closed, room dry [0,3), upper parent wet [3,4) FreeSurface, two different parent fragment IDs in Column and the room as owner at y 1. Exact boundaries 0 and 3 follow [lower,upper). Assert nonempty exact region/fragment sets, contour and FragmentBounds provenance, stable IDs and digest across reload/repacking. Legacy Classify returns Unresolved at that XZ. Separate single-interval R4 controls retain released Closed/free/tangent answers. Add `SharedFloorWaterAndRoomEdge_AgreeExactly`, `CeilingTie_RemainsClosedAfterTransform`, `MissingLocalCoverOrParent_IsUnverifiedNeverDry`, `LocalWaterNeverBecomesAStatic`, `MoveChangesOnlyIntersectedMediumTiles`, `UnrelatedAssetChildEdit_KeepsBodyDigest`, `UnavailableAperture_PreventsCompleteContainment`, and `ExistingCompileLimits_ChargeRotatedAndAbsentBoundWork`. These invoke the full compiler/query/builder, never only a transformed clip helper. Missing-fact theories separately remove the local cover record, prism domain, parent bound and remote anchor from an otherwise valid acquired source. Each valid control first gives Complete compilation and Wet at the selected covered probe. The finite theory uses fault strings local-cover, prism, parent-floor and remote-anchor, asserts expected What/Key/MapPatchStatus from the fixture witness table and the specific compiler Detail/query Detail. Faults must yield the precise MapWaterStatus.MissingGeometry/MapWaterCompileStatus.Incomplete result and exact unavailable witness while unrelated covers resolve. Missing bytes before capture tests expansion refusal, not an acquired-water status.
+
+`UnavailableAperture_PreventsCompleteContainment` acquires both covers, footprints and the portal/link records successfully. Inject failure only when reading the aperture geometry at its declared anchor. Assert that specific read occurred, the compiler Detail and containment findings name that aperture, MapWaterCompileStatus is Incomplete and the acquired view witness names its exact anchor/status, and unrelated cover/footprint/link reads succeed. A missing parent or generic early discovery refusal cannot satisfy the test.
 
 - [ ] **Step 2: Run red** `wa_test t7-red-doc "$MAPDOC" "FullyQualifiedName~MapPrefabWaterTests"`, then `wa_test t7-red "$MP" "FullyQualifiedName~MapPrefabWaterWorldTests"`. Expect untransformed full-body data, parent water leaking through a room partition or absent effective containment.
 - [ ] **Step 3: Implement R4 adapters and the shared transform convergence.**
 
 MapWaterPlacement's public fields/signature remain, but its placed path delegates to MapResourceTransform. Preserve exact unplaced lattice geometry. Resolve a local body to its remapped covers, transformed polygon, transformed nominal level and transform digest. Apply the same path in validation, query, full compilation, containment and bounds. Never round rotated vertices back into a saved lattice frame.
 
-Water covers occupied partitions, not raw parent footprints. Subtract uncovered descendants from parent regions, and clip a room's body against its canonical parent/prism intersection. Virtual parent fragments with no positive wet interval at the body's level emit no free surface. Fragments ending below the level are Closed. This adapter uses the existing interval and height-split kernel. Preserve unplaced R4 terrain-above-water drawing behavior. Explicit multi-space coverage still needs R4 portal/link connectivity below the level, with ties closed. Parentage alone is not a hydraulic connection and covering a parent does not cover a child. Closed/free contour splitting, exact bound reads, bed depths and work limits remain R4 algorithms.
+Water covers occupied partitions, not raw parent footprints. Subtract uncovered descendants from parent regions, and clip a room's body against its canonical parent/prism intersection. Virtual parent fragments with no positive wet interval at the body's level emit no free surface. Fragments ending below the level are Closed. Preserve FragmentId and both bound owners through clipping, contour emission, wet bounds and digest composition. Geometric refinements never merge two vertical fragments solely because their SpaceId matches. ClassifyFragment filters all footprint/region/contour data by fragment, while legacy classification aggregates explicitly as specified above. This adapter uses the existing interval and height-split kernel. Preserve unplaced R4 terrain-above-water drawing behavior. Explicit multi-space coverage still needs R4 portal/link connectivity below the level, with ties closed. Parentage alone is not a hydraulic connection and covering a parent does not cover a child. Closed/free contour splitting, exact bound reads, bed depths and work limits remain R4 algorithms.
 
 Compile lower and upper canonical effective faces using Task 3 geometry and Task 4 bounds. Preserve R4's MissingGeometry, Incomplete, CapacityExceeded, NotRepresentable and Invalid distinctions and every before-work charge. Digest includes consumed definition, medium, remapped covers, effective transform/policy, consumed geometry metadata and compiled outcome. A local edit outside the body's dependencies leaves its digest unchanged. World water unrelated to the prefab remains unchanged.
 
 TransformDigest and NativeResourceTransforms.SourceDigest use per-child semantic inputs. Never feed the containing prefab SHA, closure hash or whole scoped digest into a compiled body digest. A marker-only asset version change moves whole authored identity but leaves an unrelated local body's digest and wet-tile medium identities unchanged.
 
-Built-world water uses effective data and remains absent from statics. Bounds/residency and nav medium digests use actual effective regions. Owner IDs stay `water:<bound-body-id>`, with the released static collision check. Every editor publication of a water document checks all effective bodies, even when the accepted change is only a prefab, placement or roof edit. Task 9 wires that publication. R5 adds no movement adapter, capsule classifier or optical algorithm.
+Built-world water uses effective data and remains absent from statics. Bounds/residency and nav medium digests use actual effective regions. Owner IDs stay `water:<bound-body-id>`, with the released static collision check. Every editor publication of a water document checks all effective bodies, even when the accepted change is only a prefab, placement or roof edit. Tasks 10 and 11 wire that publication. R5 adds no movement adapter, capsule classifier or optical algorithm.
 
 - [ ] **Step 4: Run green** with both Step 2 filters as `t7-green-doc` and `t7-green`, then `wa_test t7-regress "$MAPDOC" "FullyQualifiedName~Water|FullyQualifiedName~SpaceInterval"` and `wa_test t7-world-regress "$MP" "FullyQualifiedName~WaterWorld|FullyQualifiedName~WaterMovementInputs"`. Expect exact region/query agreement, unaffected R4 fixtures and explicit scoped refusals.
 - [ ] **Step 5: Format, guards and commit these explicit paths.**
 
 ```bash
 wa_r5_t7_paths=(
+    KhaozEngine.MapDoc/Water/MapWaterSample.cs
+    KhaozEngine.MapDoc/Water/MapWaterClosedContour.cs
+    KhaozEngine.MapDoc/Water/MapWaterRegionBuilder.cs
     KhaozEngine.MapDoc/Water/MapEffectiveWater.cs
     KhaozEngine.MapDoc/Water/MapWaterOccupiedPieces.cs
     KhaozEngine.MapDoc/Water/MapWaterDomain.cs
@@ -975,23 +1065,33 @@ git commit --only -m "feat(mapdoc): compile prefab water against effective occup
     Assert.Equal(new[] { "first", "second" }, marker.Tags);
     Assert.Equal(new MapResourceTransform(r.Transforms[marker.Id]).Point(new(new(0, 1), new(1, 1), new(0, 1))), marker.Position);
 }
-[Fact] public void UnresolvedObserver_KeepsRoofsVisibleWithStatus()
+[Theory]
+[InlineData("prism")] [InlineData("parent-floor")] [InlineData("remote-anchor")]
+public void UnresolvedObserver_KeepsRoofsVisibleWithStatus(string fact)
 {
     var r = PrefabFixtures.Effective(PrefabFixtures.Create("linked-buildings"));
-    var view = PrefabFixtures.AcquireWithout(r, "parent-floor");
-    var result = MapRoofPolicy.Evaluate(r, view, PrefabFixtures.LinkedRoomPoint(r), MapRoofMode.Auto);
+    var p = PrefabFixtures.LinkedRoomPoint(r);
+    var complete = MapRoofPolicy.Evaluate(r, r.CompleteView(), p, MapRoofMode.Auto);
+    Assert.Equal(new[] { "roof-a", "roof-b", "shelter-roof" }, complete.Roofs.Select(x => x.RoofPlacementId).Order());
+    Assert.False(complete.Roofs.Single(x => x.RoofPlacementId == "roof-a").ColourVisible);
+    var view = PrefabFixtures.AcquireWithout(r, fact);
+    var result = MapRoofPolicy.Evaluate(r, view, p, MapRoofMode.Auto);
     Assert.Equal(MapMembershipStatus.MissingGeometry, result.Status);
-    Assert.All(result.Roofs, roof => Assert.True(roof.ColourVisible));
+    Assert.Equal(new[] { "roof-a", "roof-b", "shelter-roof" }, result.Roofs.Select(x => x.RoofPlacementId).Order());
+    Assert.All(result.Roofs, roof => Assert.True(roof.ColourVisible && roof.CastShadows && roof.CameraBoomBlocks && roof.SkyPickingBlocks));
+    Assert.Contains(fact, PrefabFixtures.UnavailableIds(view));
     Assert.False(result.Witness.Complete);
 }
 ```
 
-Declare `LinkedRoomPoint(MapEffectiveResources resources) -> MapFramePoint` here. Add `UnresolvedObserver_KeepsRoofsVisibleWithStatus`, `ObserverAtUpperStorey_HidesOnlyAboveLinks`, `AlwaysModes_PreserveShadowAndSkyIntent`, `HidingNeverChangesStaticsOrInteractionGeometry`, `LightBoundsIncludeScaledRadiusAndOwnerOffsetOnce`, and `UnknownRoofRoomOrLightOwner_Refuses`. Roof-static proof compares full descriptor digests and registration handle counts before/after every mode. No pixel assertion is implied.
+Declare `LinkedRoomPoint(MapEffectiveResources resources) -> MapFramePoint` here. The fixture payload explicitly sets the world/asset inventories that expand to [roof-a, roof-b, shelter-roof], group shared with rooms [room-a, room-b], unrelated group other with [room-c], and links a/b with Roof roof-a/roof-b, empty direct Rooms, Groups [shared], AboveY 3. The shelter has no link. The fixture supplies imported stable world IDs rather than default generated bindings for these records. Show these values in the fixture, not tags. Test observer room-a hides exactly roof-a/roof-b, room-c hides none, overlapping attached groups deduplicate, and every mode emits exactly all three IDs. AlwaysHidden hides the shelter too. Auto keeps it visible. Nonempty statics and registration counts remain identical in every mode. Add `UnresolvedObserver_KeepsRoofsVisibleWithStatus`, `ObserverAtUpperStorey_HidesOnlyAboveLinks`, `AlwaysModes_PreserveShadowAndSkyIntent`, `HidingNeverChangesStaticsOrInteractionGeometry`, `LightBoundsIncludeScaledRadiusAndOwnerOffsetOnce`, and `UnknownRoofRoomOrGroupOrLightOwner_Refuses`. Roof-static proof compares full descriptor digests and registration handle counts before/after every mode. No pixel assertion is implied.
 
 - [ ] **Step 2: Run red** `wa_test t8-red-doc "$MAPDOC" "FullyQualifiedName~MapPrefabAnnotationTests"`, then `wa_test t8-red "$MP" "FullyQualifiedName~MapPrefabRoofStaticTests"`. Expect missing intent/data or linked-room policy.
 - [ ] **Step 3: Implement intent and effective annotations.**
 
-Resolve groups into explicit room sets, including rooms in different instances. A link hides its roof in Auto when the resolved observer room belongs to the link/group and observer world Y is below the transformed AboveY. A parent key alone does not hide every descendant roof. Do not infer groups from portals or flood fill. An unlinked open shelter stays visible. AlwaysHidden hides roofs deliberately, AlwaysVisible shows them. Missing/ambiguous observer membership carries that status and conservatively visible Auto intent.
+Expansion remaps each active asset's explicit Roofs inventory and merges it with standalone BuildingIntent.Roofs, deduplicating the same typed placement ID. Removed children leave no live inventory entry. BuildingIntent.Roofs in the effective view explicitly lists every roof placement, including unlinked roofs. Validate unique entries of kind Placement and require every RoofLink.Roof to occur there. No roof tags or asset-kind guessing. Always modes enumerate that inventory even when there are no links.
+
+RoofLink.Groups contains typed RoofGroup references. Expand its effective room set as the union of its direct Rooms and the Rooms of exactly those attached groups. Groups contain Room references only, never another group. Multiple groups may overlap and deduplicate IDs. Unrelated groups never widen a link. If several links target one inventoried roof, Auto hides when any eligible attached link matches the observer and height. Otherwise it stays visible. Resolve groups into explicit room sets, including rooms in different instances. A link hides its roof in Auto when the resolved observer room belongs to the link/group and observer world Y is below the transformed AboveY. A parent key alone does not hide every descendant roof. Do not infer groups from portals or flood fill. An unlinked open shelter stays visible. AlwaysHidden hides roofs deliberately, AlwaysVisible shows them. Missing/ambiguous observer membership carries that status and conservatively visible Auto intent.
 
 For hidden roofs set colour false, caster true, boom false and sky true. Visible roofs set all four true. Geometry, collision and interaction arrays remain unchanged for every mode. These flags are intent for R8's separate consumers, not a universal hide predicate.
 
@@ -1023,104 +1123,131 @@ git add -- "${wa_r5_t8_paths[@]}" &&
 git commit --only -m "feat(mapdoc): publish linked roof light and marker intent" -- "${wa_r5_t8_paths[@]}"
 ```
 
-### Task 9: Atomic commands, immutable asset publication and ke-mapedit
+### Task 9: Pure prefab edits, extraction and lossless unpack
 
 **Files:**
 - Create: `KhaozEngine.MapDoc/Editing/MapPrefabEdits.cs`, `MapPrefabEditPreparation.cs`, `MapInteriorEdits.cs`, `MapPrefabExtraction.cs`, `MapPrefabAssetEdits.cs`.
-- Create: `KhaozEngine.MapEditor/NativePrefabCommands.cs`, `NativeInteriorCommands.cs`, `NativePrefabAssetCommands.cs`, `MapPrefabLocalSession.cs`.
-- Create: `KhaozEngine.MapEdit.Tool/PrefabService.cs`, `PrefabAssetPublisher.cs`, `MapEditSession.NativeHistory.cs`, `MutationService.Prefabs.cs`, `Tools/PrefabTools.cs`, `Tools/InteriorTools.cs`.
-- Modify: `KhaozEngine.MapDoc/Editing/MapNativeWriteSet.cs:10-23`, `MapNativeEditEffects.cs:43-85`, Task 1's root codec/schema, `KhaozEngine.MapEditor/NativeDocumentSnapshot.cs:13-78` and `:104-130`, `NativeDocumentTransaction.cs:31-85`, `NativePlacementReferences.cs:9-16`, `NativePlacementEffects.cs`, `NativeTerrainCommands.cs`, `EditorHistory.cs:27-112`.
-- Modify: `KhaozEngine.MapEdit.Tool/MapEditSession.cs:23-93` and open/replacement points, `NativePlacementBoundsProvider.cs:29-60`, `Tools/McpBootstrap.cs:15-35`, MapDoc/MapEditor/MapEdit.Tool README. MapEditSession becomes partial without changing public signatures.
-- Test: `KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabEditTests.cs`, `MapPrefabExtractionTests.cs`, `KhaozEngine.MapEditor.Tests/MapDoc/NativePrefabCommandTests.cs`, `NativePrefabAssetCommandTests.cs`, `PrefabEditorFixtures.cs`, `KhaozEngine.MapEditor.Tests/MapEditTool/PrefabServiceTests.cs`, `PrefabWireTests.cs`.
+- Modify: Task 1 root validation/codec/schema and standalone storey validation, `KhaozEngine.MapDoc/README.md`.
+- Test: `KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabEditTests.cs`, `MapPrefabExtractionTests.cs`, `PrefabEditFixtures.cs`. No editor or tool dependency.
 
 **Interfaces:**
-- Consumes internal `INativeDocumentCommand.Prepare(MapDocument candidate, bool undo) -> NativeDocumentPreparation` and `NativeDocumentTransaction.Run(MapDocument document, IEditorCommand command, bool undo, MapAssetClosure? assets, MapDocRegistry? registry = null, bool localOnly = false, INativePlacementBounds? placementBounds = null)` at NativeDocumentTransaction.cs:15-33.
-- Consumes `EditorHistory.Execute(MapDocument doc, IEditorCommand command)`, `Undo(MapDocument doc) -> bool`, `Redo(MapDocument doc) -> bool`, `BindNativeAssets(MapDocument document, MapAssetClosure assets, INativePlacementBounds? placementBounds)` at :79, :89, :102, :32.
-- Consumes `INativePlacementBounds.Bounds(MapDocument document, MapAssetClosure assets, MapDocRegistry registry, IReadOnlyList<string> placementIds) -> NativePlacementExtent` at NativePlacementEffects.cs:29, `MapEditSession.Mutate<T>(Func<MapDocument, MapDocRegistry, T> fn, bool worldChanged)` at :526, `ApplyNativeAssets(IEditorCommand command, MapAssetClosure assets)` at :78, and WaterApply at MutationService.Water.cs:13.
-- Produces abstract `MapPrefabEdit(string Label)` and sealed edits `MapPlacePrefab(string InstanceId, string ResourceId, MapTransform Transform, MapRecordRef ParentSpace, bool NumericLeaves = true)`, `MapMovePrefab(string InstanceId, MapTransform Transform)`, `MapSetPrefabOverride(string InstanceId, MapPrefabOverride Override)`, `MapRestorePrefabChild(string InstanceId, MapPrefabChildKey Child)`, `MapRemovePrefab(string InstanceId)`, `MapUnpackPrefab(string InstanceId)`, `MapUpdatePrefabAsset(string ResourceId, string OldSha256, string NewResourceId, string NewSha256)`.
-- Produces `MapPrefabEditResult(MapDocument After, MapNativeWriteSet WriteSet, MapNativeEditEffects Effects)`, `MapPrefabEdits.Prepare(MapDocument document, MapAssetClosure assets, MapPrefabEdit edit) -> MapPrefabEditResult`, pure. Bounds consequences are completed by the injected editor seam on validated before/after snapshots.
-- Produces `MapInteriorEdit(string Label)` and sealed `MapSetInterior(MapPrismDomain Domain)`, `MapRemoveInterior(string SpaceId)`, `MapSetRoofLink(MapRoofLinkDoc Link)`, `MapSetRoofGroup(MapRoofGroupDoc Group)`, and `MapInteriorEdits.Prepare(MapDocument document, MapAssetClosure assets, MapInteriorEdit edit) -> MapPrefabEditResult`.
-- Produces `MapPrefabExtraction.Extract(MapDocument document, MapAssetClosure assets, IReadOnlyList<MapPrefabReference> selected, MapTransform origin, string assetId) -> MapPrefabAsset`. Partial required record/floor/roof selection refuses. External parent/paint targets remain explicit typed world references.
-- Produces `MapPrefabAssetEdits.Replace(MapPrefabAsset asset, MapPrefabChild child, bool remove = false) -> MapPrefabAsset`, pure and strict about existing/add/remove keys. Produces `MapPrefabLocalSession(MapPrefabAsset asset, MapAssetClosure assets, MapDocument authoringContext, MapRecordRef parentSpace)`, `Apply(IEditorCommand command) -> MapNativeEditEffects`, `Undo() -> bool`, `Redo() -> bool`, `Export() -> MapPrefabAsset`, `Cancel() -> void`, using EditorDocument/EditorHistory without a window.
-- Produces `PrefabEditCommand(MapPrefabEdit edit)`, `InteriorEditCommand(MapInteriorEdit edit)`, both EditorCommand and INativeDocumentCommand, and `PrefabAssetEditCommand(MapPrefabEdit edit, MapAssetClosure before, MapAssetClosure after)`. New internal `INativeAssetClosureCommand.Closure(bool undo) -> MapAssetClosure` supplies the correct closure for undo/redo.
-- Produces `MapNativeWriteSet.Prefabs: bool`, `BuildingIntent: bool`, `NativeResourceTransforms: bool`, `NumericReservations: bool` as init properties, and effects `InstanceIds, ChildIds, RoofIds, LightIds, MarkerIds: IReadOnlyList<string>`, omitted in Describe when empty. Existing positional constructors remain unchanged.
-- Produces `MapPrefabMutationResult(MutationResult Mutation, MapNativeEditEffects Effects)`, `MutationService.PrefabApply(MapPrefabEdit edit)` and `InteriorApply(MapInteriorEdit edit)`, returning that result under the native mutation lock.
-- Produces `MapPrefabAssetInfo(string ResourceId, string Sha256, int PayloadVersion, int Children)`, `MapPrefabPublishResult(MapAssetRef Resource, MapPrefabMutationResult? Mutation)`, and `PrefabService(MapEditSession session)` with `List() -> IReadOnlyList<MapPrefabAssetInfo>`, `Open(string resourceId, MapRecordRef? parentSpace = null) -> MapPrefabAsset`, `Edit(MapPrefabChild child, bool remove = false) -> MapPrefabAsset`, `Cancel() -> void`, `Save(string resourceId, string relativeDirectory, bool updateOpenMap = true) -> MapPrefabPublishResult`, `Extract(IReadOnlyList<MapPrefabReference> selected, MapTransform origin, string assetId) -> MapPrefabAsset`. A missing parent may use an already-bound referring instance's parent in ordinal instance order. An unused asset requires an explicit parent, never an inferred exterior.
-- Produces `IMapPrefabPublicationFiles.PublishNew(string path, ReadOnlyMemory<byte> bytes) -> void` and `Checkpoint(string name) -> void` in PrefabAssetPublisher.cs. Produces `PrefabAssetPublisher(MapEditSession session, IMapPrefabPublicationFiles? files = null)` and `Publish(MapPrefabAsset asset, string resourceId, string relativeDirectory, bool updateOpenMap) -> MapPrefabPublishResult`. The default seam exclusively publishes absent files or verifies identical existing bytes, with no-op checkpoints. It uses digest-addressed paths under the guarded session resource root.
-- Produces `MapEditSession.UndoNative() -> MapNativeEditEffects?` and `RedoNative() -> MapNativeEditEffects?`, delegating to one EditorHistory stack, not reimplementing commands.
+- Consumes Tasks 1 to 8's verified closure, typed visitor, binding planner and effective geometry/occupied fragments.
+- Produces abstract `MapPrefabEdit(string Label)` and sealed edits `MapPlacePrefab(string InstanceId, string ResourceId, MapTransform Transform, MapRecordRef? ParentSpace = null, bool NumericLeaves = true)`, `MapMovePrefab(string InstanceId, MapTransform Transform)`, `MapSetPrefabOverride(string InstanceId, MapPrefabOverride Override)`, `MapRestorePrefabChild(string InstanceId, MapPrefabChildKey Child)`, `MapRemovePrefab(string InstanceId)`, `MapUnpackPrefab(string InstanceId)`, `MapUpdatePrefabAsset(string ResourceId, string OldSha256, string NewResourceId, string NewSha256)`.
+- Produces `MapPrefabEditResult(MapDocument After, MapNativeWriteSet WriteSet, MapNativeEditEffects Effects)`, `MapPrefabEdits.Prepare(MapDocument document, MapAssetClosure assets, MapPrefabEdit edit) -> MapPrefabEditResult`, pure. It creates candidate reservations, published only if the later command accepts.
+- Produces abstract `MapInteriorEdit(string Label)` and sealed `MapSetInterior(MapPrismDomain Domain)`, `MapRemoveInterior(string SpaceId)`, `MapSetRoofLink(MapRoofLinkDoc Link)`, `MapSetRoofGroup(MapRoofGroupDoc Group)`. `MapInteriorEdits.Prepare(MapDocument document, MapAssetClosure assets, MapInteriorEdit edit) -> MapPrefabEditResult` is pure.
+- Produces `MapPrefabExtraction.Extract(MapDocument document, MapAssetClosure assets, IReadOnlyList<MapPrefabReference> selected, MapTransform origin, string assetId) -> MapPrefabAsset`. Required partial room/floor/roof selections refuse. External references get explicit World slots, internal selected references Local slots.
+- Produces `MapPrefabAssetEdits.Replace(MapPrefabAsset asset, MapPrefabChild child, bool remove = false) -> MapPrefabAsset`, pure. Add/remove/replace keys are strict. Restore keeps Previous and its dependency closure.
+- Produces init-only `MapNativeWriteSet.Prefabs`, `BuildingIntent`, `NativeResourceTransforms`, `NumericReservations` booleans, and effects `InstanceIds, ChildIds, RoofIds, LightIds, MarkerIds: IReadOnlyList<string>`, omitted from Describe when empty. Preserve positional constructors. Task 10 completes physical bounds consequences.
 
-- [ ] **Step 1: Write failing pure-edit, command and wire tests.**
+- [ ] **Step 1: Write failing pure-edit tests.**
 
 ```csharp
-[Fact] public void PrefabPlace_UndoRedoRestoresAllocation()
-{
-    var f = PrefabFixtures.Create("empty-map");
-    var history = PrefabEditorFixtures.History(f.Document, f.Assets);
-    var command = new PrefabEditCommand(new MapPlacePrefab("new", "hut",
-        new MapTransform(new(10.25f, 5, -3.125f), 0.371f, 1.2f), PrefabFixtures.ParentRef(f)));
-    history.Execute(f.Document, command);
-    var accepted = PrefabFixtures.LiveBindings(f.Document).ToArray();
-    long mark = f.Document.NumericIdHighWaterMark;
-    Assert.True(history.Undo(f.Document));
-    Assert.Equal(mark, f.Document.NumericIdHighWaterMark);
-    Assert.True(history.Redo(f.Document));
-    Assert.Equal(accepted, PrefabFixtures.LiveBindings(f.Document));
-    Assert.Equal(mark, f.Document.NumericIdHighWaterMark);
-}
 [Fact] public void Unpack_PreservesAllTypedReferencesAndIds()
 {
     var f = PrefabFixtures.Create("all-kinds");
     var before = PrefabFixtures.Effective(f);
     var result = MapPrefabEdits.Prepare(f.Document, f.Assets, new MapUnpackPrefab("a"));
     var after = MapPrefabResolver.Expand(result.After, f.Assets);
-    Assert.Equal(before.Placements.Select(p => (p.PlacementId, p.NumericId, p.Transform)),
-        after.Placements.Select(p => (p.PlacementId, p.NumericId, p.Transform)));
+    Assert.Equal(before.Placements.Select(x => (x.PlacementId, x.NumericId)),
+        after.Placements.Select(x => (x.PlacementId, x.NumericId)));
     Assert.Equal(before.Water!.Digest(), after.Water!.Digest());
-    Assert.Equal(before.BuildingIntent.Digest(), after.BuildingIntent.Digest());
+    Assert.Equal(PrefabFixtures.SemanticIntent(before), PrefabFixtures.SemanticIntent(after));
     Assert.Equal(before.Surfaces.AllRecords().Select(x => x.Id).Order(),
         after.Surfaces.AllRecords().Select(x => x.Id).Order());
+    Assert.Equal(before.BuildingIntent.Storeys.Select(x => (x.Id, x.Name)),
+        after.BuildingIntent.Storeys.Select(x => (x.Id, x.Name)));
     Assert.Equal(before.Placements.Count, after.Placements.Count);
 }
-[Fact] public void RejectedOrCancelledEdit_LeavesHistoryIdentityAndDirtyUntouched()
+[Fact] public void RoomlessPrefab_PlacesInSpacelessMap()
 {
-    var session = PrefabEditorFixtures.Session(PrefabFixtures.Create());
-    var before = MapDocumentFile.SaveText(PrefabEditorFixtures.Document(session));
-    bool dirty = session.IsDirty;
-    var service = new PrefabService(session);
-    service.Open("hut");
-    service.Cancel();
-    Assert.Equal(before, MapDocumentFile.SaveText(PrefabEditorFixtures.Document(session)));
-    Assert.Equal(dirty, session.IsDirty);
-    Assert.Throws<MapDocumentException>(() => new MutationService(session).PrefabApply(
-        new MapSetPrefabOverride("a", new MapPrefabRemoveOverride(new(MapPrefabChildKind.Record, "missing")))));
-    Assert.Equal(before, MapDocumentFile.SaveText(PrefabEditorFixtures.Document(session)));
+    var f = PrefabFixtures.Create("spaceless-roomless");
+    var result = MapPrefabEdits.Prepare(f.Document, f.Assets,
+        new MapPlacePrefab("canopy", "roomless-canopy", new MapTransform(Vector3.Zero, 0, 1)));
+    Assert.Null(result.After.Prefabs!.Instances.Single().ParentSpace);
+    Assert.NotEmpty(MapPrefabResolver.Expand(result.After, f.Assets).Placements);
+    Assert.Throws<MapDocumentException>(() => MapPrefabEdits.Prepare(f.Document, f.Assets,
+        new MapPlacePrefab("room", "room-bearing", new MapTransform(Vector3.Zero, 0, 1))));
 }
 ```
 
-Declare `ParentRef(PrefabFixture fixture) -> MapRecordRef` in the shared fixture. Add `AssetPublicationFailure_LeavesSessionAndOtherMapsUntouched` at checkpoints before bytes, after prefab bytes, after manifest bytes, before root switch and validation rejection. Assert unchanged root pin, bindings, dirty flag, history/event counts, identity and the second unopened map's bytes. Successful save updates two open-map instances in one command and leaves that other map pinned.
+Use a floor-only map with no MapSpaceDoc and a roomless shelter/furniture asset without parent-dependent references. The room-bearing refusal names the missing parent before reservations change. Add `SameTextReferences_ExtractAndUnpackRetainScope`, `StoreyUnpack_ReloadKeepsIdNameAndRoomOwner`, `EmbeddedSupportRecord_UnpacksOnce`, `RemovedPreviousOverride_RestoreKeepsCustomization`, `Extract_RefusesPartialRoomOrDanglingRoof`, and `PrepareReject_DoesNotMutateInputOrAllocator`. A later update to the former prefab must leave unpacked storey/children unchanged. `SemanticIntent(MapEffectiveResources resources) -> string` is a test-only canonical value projection of exact effective roofs/links/groups/lights/markers/storey ID and Name. It excludes instance provenance which deliberately transfers. It never reuses the product intent digest. Compare storey ownership separately against the null standalone owner.
 
-Add `FloorReseat_InvalidatesEveryChangedNeighborTile` using Task 5's reachable #1348 fixture. Compare pre/post native resolved placements and nav Partition dictionaries. Require at least one changed tile outside the edited patch, and every changed/deleted tile in effects-driven AffectedTiles. Fix the reachable cause in the native transaction's before/after resolved-placement diff, including alias-backed support, rather than forcing a full rebuild. Unknown shapes alone still yield Unbounded.
+- [ ] **Step 2: Run red** `wa_test t9-red "$MAPDOC" "FullyQualifiedName~MapPrefabEditTests|FullyQualifiedName~MapPrefabExtractionTests"`. Expect missing preparation/unpack homes or lost IDs, not malformed geometry.
+- [ ] **Step 3: Implement detached preparation, extraction and each standalone home.**
 
-The two Review Focus 5 tests include these direct assertions, with helper return types pinned here:
+ParentSpace is optional for assets whose resources need no authored context. Require a valid authored parent only for $parent, prism rooms, water covers or other explicit parent-dependent resources. No tags, implicit exterior or caller-dependent scope guessing. An unused roomless local editing context needs no parent. The planner enumerates implicit support children identically to expansion. Retain Removed instance tombstones and all reservations. Extraction and unpack preserve the explicit roof inventories, remapping local entries to world placement IDs. Undo of first placement in Task 10 retains the high-water mark and accepted bindings, redo reuses them.
+
+| Child kind | Exact unpack home and identity |
+| --- | --- |
+| Placement | Placements, original PlacementId/NumericId and exact effective pose registry binding |
+| Surface | Surfaces.Refs/Patches with original remapped ID and NativeResourceTransforms entry |
+| Record | Owning standalone surface patch Records at remapped anchor, original ID and transform registry entry |
+| Storey | BuildingIntent.Storeys, MapStoreyDoc payload 1, original reserved ID/Name, InstanceId null |
+| WaterMedium | Water.Media, original ID |
+| WaterBody | Water.Bodies, original ID/remapped covers and transform registry entry |
+| Light | BuildingIntent.Lights, original ID/remapped owner and transform registry entry |
+| Marker | BuildingIntent.Markers, original ID/fields and transform registry entry |
+| RoofLink | BuildingIntent.RoofLinks, original ID/remapped Roof/Rooms/Groups and transform registry entry |
+| RoofGroup | BuildingIntent.RoofGroups, original ID/remapped Rooms |
+
+Materialize each effective child exactly once, including implicit support Surface/Record children. Rewrite prism InstanceId to empty and room StoreyId to its transferred standalone ID. Transfer live binding ownership, keep removed reservations on the tombstone and refuse any duplicate. No rotated lattice resampling. Registry binary64 poses preserve the pre-freeze composition and per-child SourceDigest, so unpack's semantic geometry/water/intent matches before. The authored source-provenance identity may change as ownership transfers. Only required references are remapped. Never duplicate expanded data in a live instance and standalone home simultaneously.
+
+- [ ] **Step 4: Run green** with Step 2's filter as `t9-green`, then `wa_test t9-regress "$MAPDOC" "FullyQualifiedName~Identity|FullyQualifiedName~Binding|FullyQualifiedName~Water|FullyQualifiedName~Prism"`. Expect exact typed IDs/fields, single ownership, valid storeys and input immutability.
+- [ ] **Step 5: Format, guards and commit these explicit paths.**
+
+```bash
+wa_r5_t9_paths=(
+    KhaozEngine.MapDoc/Editing/MapPrefabEdits.cs
+    KhaozEngine.MapDoc/Editing/MapPrefabEditPreparation.cs
+    KhaozEngine.MapDoc/Editing/MapInteriorEdits.cs
+    KhaozEngine.MapDoc/Editing/MapPrefabExtraction.cs
+    KhaozEngine.MapDoc/Editing/MapPrefabAssetEdits.cs
+    KhaozEngine.MapDoc/Editing/MapNativeWriteSet.cs
+    KhaozEngine.MapDoc/Editing/MapNativeEditEffects.cs
+    KhaozEngine.MapDoc/Interiors/MapStoreyRecords.cs
+    KhaozEngine.MapDoc/Prefabs/MapPrefabValidation.cs
+    KhaozEngine.MapDoc/Prefabs/MapPrefabJson.cs
+    KhaozEngine.MapDoc/mapdoc.schema.json
+    KhaozEngine.MapDoc/README.md
+    KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabEditTests.cs
+    KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabExtractionTests.cs
+    KhaozEngine.MapDoc.Tests/Prefabs/PrefabEditFixtures.cs
+)
+wa_finish t9 "${wa_r5_t9_paths[@]}" &&
+git add -- "${wa_r5_t9_paths[@]}" &&
+git commit --only -m "feat(mapdoc): prepare prefab edits extraction and unpack" -- "${wa_r5_t9_paths[@]}"
+```
+
+### Task 10: Native commands, root snapshots and effects
+
+**Files:**
+- Create: `KhaozEngine.MapEditor/NativePrefabCommands.cs`, `NativeInteriorCommands.cs`.
+- Modify: `NativeDocumentSnapshot.cs:13-78,104-130`, `NativeDocumentTransaction.cs:31-85`, `NativePlacementReferences.cs:9-16`, `NativePlacementEffects.cs`, `NativeTerrainCommands.cs`, MapEditor README.
+- Test: `KhaozEngine.MapEditor.Tests/MapDoc/NativePrefabCommandTests.cs`, `PrefabEditorFixtures.cs`. Modify `KhaozEngine.MapEditor.Tests/MapDoc/NativeDocumentTransactionTests.cs` for deferred acceptance without adding a tool publication path yet.
+
+**Interfaces:**
+- Consumes released `INativeDocumentCommand.Prepare(MapDocument candidate, bool undo) -> NativeDocumentPreparation`, whose Accept action mutates command state, and `NativeDocumentTransaction.Run(MapDocument document, IEditorCommand command, bool undo, MapAssetClosure? assets, MapDocRegistry? registry = null, bool localOnly = false, INativePlacementBounds? placementBounds = null)` at :15-33.
+- Consumes `EditorHistory.Execute(MapDocument doc, IEditorCommand command)`, `Undo(MapDocument doc) -> bool`, `Redo(MapDocument doc) -> bool`, `BindNativeAssets(MapDocument document, MapAssetClosure assets, INativePlacementBounds? placementBounds)` at :79,89,102,32. Preserve all public signatures.
+- Consumes `INativePlacementBounds.Bounds(MapDocument document, MapAssetClosure assets, MapDocRegistry registry, IReadOnlyList<string> placementIds) -> NativePlacementExtent` at NativePlacementEffects.cs:29.
+- Produces `PrefabEditCommand(MapPrefabEdit edit)` and `InteriorEditCommand(MapInteriorEdit edit)`, EditorCommand/INativeDocumentCommand, using Task 9 pure preparation and accepted before/after snapshots.
+- Produces internal `NativeStagedPublication(MapDocument Candidate, MapNativeWriteSet WriteSet, MapNativeEditEffects Effects, Action Accept)` and `NativeDocumentTransaction.Stage(MapDocument document, IEditorCommand command, bool undo, MapAssetClosure assets, MapDocRegistry? registry = null, bool localOnly = false, INativePlacementBounds? placementBounds = null) -> NativeStagedPublication`. Stage validates detached state and computes effects without publishing or calling Accept. Released Run wraps Stage, publication and Accept for direct callers.
+- Extends NativeDocumentSnapshot Clone/Publish/PublishWriteSet to carry Prefabs, BuildingIntent including Storeys/Roofs, NativeResourceTransforms and numeric reservations. No unlisted writes leak. Missing bounds preserve Unbounded.
+
+- [ ] **Step 1: Write failing command and effect tests.**
 
 ```csharp
-[Theory]
-[InlineData("before-bytes")] [InlineData("after-prefab")]
-[InlineData("after-manifest")] [InlineData("before-root-switch")]
-public void AssetPublicationFailure_LeavesSessionAndOtherMapsUntouched(string checkpoint)
+[Fact] public void PrefabPlace_UndoRedoRestoresAllocation()
 {
-    var f = PrefabFixtures.Create("two-instances");
-    var session = PrefabEditorFixtures.Session(f);
-    string before = MapDocumentFile.SaveText(PrefabEditorFixtures.Document(session));
-    bool dirty = session.IsDirty;
-    var publisher = PrefabEditorFixtures.FaultPublisher(session, checkpoint);
-    var asset = MapPrefabFile.Read(f.Assets.GetResource("hut").Bytes, "hut");
-    var marker = (MapPrefabMarkerChild)asset.Children.Single(c => c.Key.Kind == MapPrefabChildKind.Marker);
-    var changed = MapPrefabAssetEdits.Replace(asset, marker with { Value = marker.Value with { Position = new(0, 2, 0) } });
-    Assert.Throws<MapDocumentException>(() => publisher.Publish(changed, "hut", "prefabs", true));
-    Assert.Equal(before, MapDocumentFile.SaveText(PrefabEditorFixtures.Document(session)));
-    Assert.Equal(dirty, session.IsDirty);
-    Assert.Equal(PrefabEditorFixtures.OtherMapBefore(session), PrefabEditorFixtures.OtherMapNow(session));
+    var f = PrefabFixtures.Create("empty-map");
+    var history = PrefabEditorFixtures.History(f.Document, f.Assets);
+    history.Execute(f.Document, new PrefabEditCommand(new MapPlacePrefab("new", "hut",
+        new MapTransform(new(10.25f, 5, -3.125f), 0.371f, 1.2f), PrefabFixtures.ParentRef(f))));
+    var accepted = PrefabFixtures.LiveBindings(f.Document).ToArray();
+    long mark = f.Document.NumericIdHighWaterMark;
+    Assert.True(history.Undo(f.Document));
+    Assert.Equal(mark, f.Document.NumericIdHighWaterMark);
+    Assert.True(history.Redo(f.Document));
+    Assert.Equal(accepted, PrefabFixtures.LiveBindings(f.Document));
 }
 [Fact] public void FloorReseat_InvalidatesEveryChangedNeighborTile()
 {
@@ -1143,71 +1270,143 @@ public void AssetPublicationFailure_LeavesSessionAndOtherMapsUntouched(string ch
 }
 ```
 
-Declare `PrefabEditorFixtures.FaultPublisher(MapEditSession session, string checkpoint) -> PrefabAssetPublisher`, `OtherMapBefore/OtherMapNow(MapEditSession session) -> string` and `SupportReseat() -> (PrefabFixture Fixture, MapTerrainEdit Edit)`. The other map is a separately saved, unopened fixture map. SupportReseat raises a world floor by 0.5 m at storage tile (0,0), reseating a 150 m leaf across 64 m tile boundaries. These helpers construct inputs and expose bytes, never compute expected invalidation through the implementation being tested.
+PrefabEditorFixtures creates `History(MapDocument document, MapAssetClosure assets) -> EditorHistory`, binds actual NativePlacementBoundsProvider, and `SupportReseat() -> (PrefabFixture Fixture, MapTerrainEdit Edit)`. SupportReseat raises a world floor by 0.5 m at storage tile (0,0), reseating a 150 m alias-backed leaf across 64 m tile seams. It constructs inputs, never computes expected invalidation. Add `StageDoesNotAcceptBeforeOuterPublication`, `EveryChildKind_RemoveRestoreUndoReloadKeepsId`, `StoreyUnpackUndoRedo_ReloadRetainsIdName`, `UnpackUndo_ReclaimsTransferredBindings`, `OtherNativeEdits_PreservePrefabAndIntentRoots`, and `SnapshotWriteSet_OmitsUnlistedRootChanges`. Test payloads reload after each undo/redo, with exactly one live owner per transferred ID.
 
-Add `EveryChildKind_RemoveRestoreUndoReloadKeepsId`, `UnpackUndo_ReclaimsTransferredBindings`, `Extract_RefusesPartialRoomOrDanglingRoof`, `LocalWaterEdit_UsesTheNativeWaterCommand`, `AssetUndoRedo_RebindsMatchingClosure`, `OtherNativeEdits_PreservePrefabAndIntentRoots`, and `GuiServiceAndWire_HaveIdenticalDocumentsEffectsAndRejection`. Test every wire verb below, declared units and int64 strings. A zero-match tool filter is a failure.
+- [ ] **Step 2: Run red** `wa_test t10-red "$EDITOR" "FullyQualifiedName~NativePrefabCommandTests|FullyQualifiedName~NativeDocumentTransaction"`. Expect omitted root snapshots, premature acceptance or missing neighbor effects.
+- [ ] **Step 3: Implement focused commands, snapshot closure and precise effects.**
 
-- [ ] **Step 2: Run red** `wa_test t9-red-doc "$MAPDOC" "FullyQualifiedName~MapPrefabEditTests|FullyQualifiedName~MapPrefabExtractionTests"`, then `wa_test t9-red "$EDITOR" "FullyQualifiedName~NativePrefabCommandTests|FullyQualifiedName~NativePrefabAssetCommandTests|FullyQualifiedName~PrefabServiceTests|FullyQualifiedName~PrefabWireTests"`. Expect absent commands/verbs or missing snapshot/publication fields, not invalid fixture enclosure.
-- [ ] **Step 3: Implement pure preparation, focused commands and root publication.**
+Accept allocation only with validated publication. Failed Stage leaves retry state and source bytes untouched. Snapshots retain tombstones/high-water marks, storeys, transforms and typed slots. NativePlacementReferences.Remap delegates to the shared typed visitor. Coverage and full effective water containment run on every accepted publication affecting R5 roots. R4 full water checks remain on every water-document publication.
 
-The planner accepts the closure, so it enumerates explicit children and asset support-resource children identically to expansion. Place requires a typed authored ParentSpace. Persist it on the instance. Local room parents may use the reserved typed MapRecordRef ID `$parent`, which the visitor substitutes with that ParentSpace. The reserved reference is permitted only inside prefab bytes, never an effective/world record. Nested local rooms can instead name a local room parent. No lookup by tags or implicit exterior is allowed.
+Compute old/new resolved leaves including support-bound placements reseated by terrain edits. Add typed instance/child/space/water/roof/light/marker effects and every changed bound. Fix #1348's reachable pre/post resolved-placement diff, including aliases, instead of forcing full rebuilds. Unknown geometry alone yields Unbounded and cannot block repair/deletion. MapEditor keeps no Physics reference. Each command is independently rejectable and usable directly with EditorHistory before Task 11 adds session lifecycle.
 
-Preparation deep-copies the complete input and creates a named write set. Accepted place/new-child/asset-update preparations allocate once. Removed instances remain as root tombstones with init-only `MapPrefabInstance.Removed: bool`, default false, retaining every binding. Undo of first placement tombstones it instead of lowering the mark. Redo replays the accepted IDs. Unpack materializes each effective child once, transfers live identities to standalone records and retains removed reservations. Undo restores the instance and removes standalone transfers. Non-grid transformed local geometry remains a persisted effective-transform binding on standalone records after unpack, never a rounded world lattice or a procedural recreation.
-
-Snapshot clone, whole publication and PublishWriteSet carry Prefabs, BuildingIntent, numeric reservations and standalone effective transforms. A prefab command cannot leak unlisted candidate writes. Run coverage and complete effective water containment on every accepted publication that changes these roots, plus R4's complete water check on every water-document publication. Compute old/new resolved leaves, including support-bound placements reseated by terrain changes. Add named instance/child/space/water/roof/light/marker effects, all relevant flags and bounds. Missing geometry reports unknown bounds with Unbounded, never a repair/deletion refusal solely for sizing.
-
-NativePlacementReferences.Remap delegates to the pure typed visitor and publishes the remapped candidate. Keep NativePlacementEffects' existing seam and extend it to effective leaf/support changes. MapEditor gains no physics reference. NativePlacementBoundsProvider in the tool resolves requested effective placement IDs. History detects INativeAssetClosureCommand, validates with its matching closure and rebinds only after acceptance. Failed preparation/validation leaves command retry state, history, dirty state and events unchanged.
-
-- [ ] **Step 4: Implement recoverable asset/local editing and thin wire adapters.**
-
-Open creates a detached local asset editing context with the open map's explicit parent/reference closure. Existing placement, TerrainEditCommand and WaterEditCommand edit that context in local space. Child/marker/light edits use the same typed replacement preparation. Local undo/redo replays accepted values. Cancel discards the context without world history or file writes. A file-only Save publishes a verified immutable version with no world undo entry.
-
-Publish canonical prefab bytes to an absent digest-addressed file with resource ID `prefab/<escaped-logical-asset-id>/<sha256>`, then publish the replacement manifest to an absent digest-addressed file. Retain shared leaf resource declarations without duplicate IDs across roots. Verify the new closure before preparing every instance referring to the old resource ID, including tombstoned instances whose reservations must survive. MapUpdatePrefabAsset switches both ResourceId and ResourceSha256. Accept one roots/instances/bindings/closure switch through PrefabAssetEditCommand. Existing files with different bytes refuse. Failures never overwrite old resources or other maps. Unreachable immutable files can remain after rejection and are not deleted automatically. Reopening an old map loads its pinned old digest. Save of the map remains the existing atomic document save.
-
-PrefabService executes commands through the session's bound EditorHistory. Session replacement resets its stack and native edits use the same history as GUI commands. UndoNative/RedoNative return effects and preserve closure, dirty/event semantics. Add service registration and tool registration through McpBootstrap, not a second command path. No GUI host or renderer is created.
-
-| Wire verb | Exact adapter signature, parameters in metres/radians | Service/command |
-| --- | --- | --- |
-| prefab_open | `PrefabOpen(string resourceId, string? parentRefJson = null) -> MapPrefabAsset` | Open with an explicit or already-bound parent |
-| prefab_edit | `PrefabEdit(string childJson, bool remove = false) -> MapPrefabAsset` | Strict closed child JSON to Edit |
-| prefab_save | `PrefabSave(string resourceId, string relativeDirectory, bool updateOpenMap = true) -> MapPrefabPublishResult` | Save |
-| prefab_extract | `PrefabExtract(string selectedJson, float x, float y, float z, float yaw, float scale, string assetId) -> MapPrefabAsset` | Typed selected refs to Extract |
-| prefab_place | `PrefabPlace(string instanceId, string resourceId, string parentRefJson, float x, float y, float z, float yaw, float scale, bool numericLeaves = true) -> MapPrefabMutationResult` | MapPlacePrefab |
-| prefab_list | `PrefabList() -> IReadOnlyList<MapPrefabAssetInfo>` | List |
-| prefab_override | `PrefabOverride(string instanceId, string overrideJson) -> MapPrefabMutationResult` | Strict override codec to MapSetPrefabOverride |
-| prefab_unpack | `PrefabUnpack(string instanceId) -> MapPrefabMutationResult` | MapUnpackPrefab |
-| interior_volume_add/set | `InteriorVolumeAdd(string domainJson)`, `InteriorVolumeSet(string domainJson)`, both returning MapPrefabMutationResult | MapSetInterior, add refuses existing ID and set refuses absent ID |
-| interior_volume_remove | `InteriorVolumeRemove(string spaceId) -> MapPrefabMutationResult` | MapRemoveInterior |
-| roof_link_set | `RoofLinkSet(string linkJson) -> MapPrefabMutationResult` | MapSetRoofLink |
-| prefab_undo/redo | `PrefabUndo() -> MapNativeEditEffects?`, `PrefabRedo() -> MapNativeEditEffects?` | Session native history, labelled as whole native history |
-
-Tools use ToolGuard.Guard and explicit raw diagnostics. JSON parsing is closed through MapPrefabJson, adding `ReadChild(string json) -> MapPrefabChild`, `ReadOverride(string json) -> MapPrefabOverride` and typed reference/domain/link readers. No arbitrary JSON string replacement or numeric-double IDs. Optional snap is an author-time transform choice, not runtime seating. R10 keeps responsibility for the rest of the verb map.
-
-- [ ] **Step 5: Run green** with both Step 2 filters as `t9-green-doc` and `t9-green`, then `wa_test t9-regress "$EDITOR" "FullyQualifiedName~NativeDocumentTransaction|FullyQualifiedName~NativeWater|FullyQualifiedName~NativePlacement|FullyQualifiedName~NativeTerrain|FullyQualifiedName~NativeDocumentService"`. Expect identical GUI/service/wire outcomes and atomic rejection/undo/redo.
-- [ ] **Step 6: Format, guards and commit these explicit paths.**
+- [ ] **Step 4: Run green** with Step 2's filter as `t10-green`, then `wa_test t10-regress "$EDITOR" "FullyQualifiedName~NativeWater|FullyQualifiedName~NativeTerrain|FullyQualifiedName~NativePlacement"`. Expect unchanged direct command APIs, explicit roots and complete tile effects.
+- [ ] **Step 5: Format, guards and commit these explicit paths.**
 
 ```bash
-wa_r5_t9_paths=(
-    KhaozEngine.MapDoc/Editing/MapPrefabEdits.cs
-    KhaozEngine.MapDoc/Editing/MapPrefabEditPreparation.cs
-    KhaozEngine.MapDoc/Editing/MapInteriorEdits.cs
-    KhaozEngine.MapDoc/Editing/MapPrefabExtraction.cs
-    KhaozEngine.MapDoc/Editing/MapPrefabAssetEdits.cs
-    KhaozEngine.MapDoc/Editing/MapNativeWriteSet.cs
-    KhaozEngine.MapDoc/Editing/MapNativeEditEffects.cs
-    KhaozEngine.MapDoc/Prefabs/MapPrefabRecords.cs
-    KhaozEngine.MapDoc/Prefabs/MapPrefabJson.cs
-    KhaozEngine.MapDoc/mapdoc.schema.json
-    KhaozEngine.MapDoc/README.md
+wa_r5_t10_paths=(
     KhaozEngine.MapEditor/NativePrefabCommands.cs
     KhaozEngine.MapEditor/NativeInteriorCommands.cs
-    KhaozEngine.MapEditor/NativePrefabAssetCommands.cs
-    KhaozEngine.MapEditor/MapPrefabLocalSession.cs
     KhaozEngine.MapEditor/NativeDocumentSnapshot.cs
     KhaozEngine.MapEditor/NativeDocumentTransaction.cs
     KhaozEngine.MapEditor/NativePlacementReferences.cs
     KhaozEngine.MapEditor/NativePlacementEffects.cs
     KhaozEngine.MapEditor/NativeTerrainCommands.cs
+    KhaozEngine.MapEditor/README.md
+    KhaozEngine.MapEditor.Tests/MapDoc/NativePrefabCommandTests.cs
+    KhaozEngine.MapEditor.Tests/MapDoc/PrefabEditorFixtures.cs
+    KhaozEngine.MapEditor.Tests/MapDoc/NativeDocumentTransactionTests.cs
+)
+wa_finish t10 "${wa_r5_t10_paths[@]}" &&
+git add -- "${wa_r5_t10_paths[@]}" &&
+git commit --only -m "feat(mapeditor): publish prefab snapshots and native effects" -- "${wa_r5_t10_paths[@]}"
+```
+
+### Task 11: Local asset sessions, publication, native history and tools
+
+**Files:**
+- Create: `KhaozEngine.MapEditor/NativePrefabAssetCommands.cs`, `NativeSessionSnapshotCommands.cs`, `MapPrefabLocalSession.cs`, `EditorHistory.NativeStaging.cs`.
+- Create: `KhaozEngine.MapEdit.Tool/PrefabService.cs`, `PrefabAssetPublisher.cs`, `MapEditSession.NativeHistory.cs`, `MutationService.Prefabs.cs`, `Tools/PrefabTools.cs`, `Tools/InteriorTools.cs`.
+- Modify: `EditorHistory.cs:27-112`, `MapEditSession.cs:23-93,123-256,295-412,526-546`, `NativeCollisionService.cs:92-99,251-273`, `MutationService.cs` shared/native callback seams, `MutationService.Terrain.cs`, `MutationService.Water.cs`, `NativePlacementBoundsProvider.cs:29-60`, `Tools/McpBootstrap.cs:15-35`, Task 1's strict JSON readers and MapEditor/MapEdit.Tool README. MapEditSession and EditorHistory become partial without changing public signatures. Use partial files for new concerns and preserve baselined size caps.
+- Test: `KhaozEngine.MapEditor.Tests/MapDoc/NativePrefabAssetCommandTests.cs`, `MapEditTool/PrefabServiceTests.cs`, `PrefabWireTests.cs`, `NativeSessionHistoryTests.cs`. Modify existing `MapDoc/NativeCollisionServiceTests.cs:12-75` and extend PrefabEditorFixtures.
+
+**Interfaces:**
+- Consumes released `MapEditSession.Mutate<T>(Func<MapDocument, MapDocRegistry, T> fn, bool worldChanged)` at :526, `ApplyNativeAssets(IEditorCommand command, MapAssetClosure assets)` at :78, and WaterApply at MutationService.Water.cs:13. Preserve existing callers.
+- Produces `PrefabAssetEditCommand(MapPrefabEdit edit, MapAssetClosure before, MapAssetClosure after)` and internal `INativeAssetClosureCommand.Closure(bool undo) -> MapAssetClosure`. Collider root commands implement the same closure seam.
+- Produces internal `NativeSessionSnapshotCommand(string label, MapDocument before, MapDocument after, MapAssetClosure beforeAssets, MapAssetClosure afterAssets, MapNativeEditEffects effects)` for accepted native callbacks lacking a typed command. Its write set comes from the complete before/after diff.
+- Produces internal `EditorHistory.StageExecute(MapDocument document, IEditorCommand command) -> NativeStagedPublication`, `StageUndo(MapDocument document) -> NativeStagedPublication?`, `StageRedo(MapDocument document) -> NativeStagedPublication?`. Their Accept closes over command acceptance and stack movement but does neither until the session has published. Partial EditorHistory.NativeStaging owns this addition.
+- Produces `MapPrefabLocalSession(MapPrefabAsset asset, MapAssetClosure assets, MapDocument authoringContext, MapRecordRef? parentSpace = null)`, `Apply(IEditorCommand command) -> MapNativeEditEffects`, `Undo() -> bool`, `Redo() -> bool`, `Export() -> MapPrefabAsset`, `Cancel() -> void`, using a detached native local document and EditorHistory.
+- Produces `MapPrefabMutationResult(MutationResult Mutation, MapNativeEditEffects Effects)`, `MutationService.PrefabApply(MapPrefabEdit edit)` and `InteriorApply(MapInteriorEdit edit)`, returning that result under the session lock.
+- Produces `MapPrefabAssetInfo(string ResourceId, string Sha256, int PayloadVersion, int Children)`, `MapPrefabPublishResult(MapAssetRef Resource, MapPrefabMutationResult? Mutation)` and `PrefabService(MapEditSession session)` with `List() -> IReadOnlyList<MapPrefabAssetInfo>`, `Open(string resourceId, MapRecordRef? parentSpace = null) -> MapPrefabAsset`, `Edit(MapPrefabChild child, bool remove = false) -> MapPrefabAsset`, `Cancel() -> void`, `Save(string resourceId, string relativeDirectory, bool updateOpenMap = true) -> MapPrefabPublishResult`, `Extract(IReadOnlyList<MapPrefabReference> selected, MapTransform origin, string assetId) -> MapPrefabAsset`. Require context only for parent-dependent assets. A referring instance may supply its explicit parent in ordinal order, never an implicit exterior.
+- Produces `IMapPrefabPublicationFiles.PublishNew(string path, ReadOnlyMemory<byte> bytes) -> void`, `Checkpoint(string name) -> void`, `PrefabAssetPublisher(MapEditSession session, IMapPrefabPublicationFiles? files = null)` and `Publish(MapPrefabAsset asset, string resourceId, string relativeDirectory, bool updateOpenMap) -> MapPrefabPublishResult`. Files are absent digest-addressed files or verified identical existing bytes under the guarded resource root.
+- Produces `MapEditSession.UndoNative() -> MapNativeEditEffects?`, `RedoNative() -> MapNativeEditEffects?`, one whole native history stack. Expose internal history/closure/event-count snapshots for tests, without a second public mutation path.
+
+- [ ] **Step 1: Write failing session, asset, mixed-history and wire tests.**
+
+```csharp
+[Theory]
+[InlineData("before-bytes")] [InlineData("after-prefab")] [InlineData("after-manifest")]
+[InlineData("before-root-switch")] [InlineData("outer-validation")]
+public void AssetPublicationFailure_LeavesSessionAndOtherMapsUntouched(string checkpoint)
+{
+    var session = PrefabEditorFixtures.Session(PrefabFixtures.Create("two-instances"));
+    var before = PrefabEditorFixtures.State(session);
+    Assert.Throws<MapDocumentException>(() => PrefabEditorFixtures.PublishMarkerChange(session, checkpoint));
+    Assert.Equal(before, PrefabEditorFixtures.State(session));
+    Assert.Equal(PrefabEditorFixtures.OtherMapBefore(session), PrefabEditorFixtures.OtherMapNow(session));
+}
+[Fact] public void MixedNativeHistory_RestoresRootsClosureEffectsAndDirty()
+{
+    var session = PrefabEditorFixtures.Session(PrefabFixtures.Create("mixed-history"));
+    var states = PrefabEditorFixtures.ApplyMixedHistory(session);
+    Assert.Equal(4, states.Count);
+    for (int i = 2; i >= 0; i--)
+    {
+        Assert.NotNull(session.UndoNative());
+        PrefabEditorFixtures.AssertPublishedState(session, states[i]);
+    }
+    for (int i = 1; i < 4; i++)
+    {
+        Assert.NotNull(session.RedoNative());
+        PrefabEditorFixtures.AssertPublishedState(session, states[i]);
+    }
+}
+```
+
+State returns an immutable value record of canonical document bytes/identity, root pins, bindings, closure hash, history cursor/depth, event count and dirty state. ApplyMixedHistory captures initial plus three accepted states: prefab marker edit, native terrain edit with local-water consequences, collider-height asset change via actual NativeCollisionService.SetHeights. AssertPublishedState compares roots/closure/document and rebuilds effective water, and compares the operation's effects with the expected reverse/forward owner set. Every accepted undo/redo marks dirty true, including return to the initial saved geometry. It is not expected to restore a historical clean flag. Explicitly verify emitted event count advances once and history depth/cursor moves once. A separate variant uses WaterApply as the middle command. Do not let a helper swallow missing collider undo.
+
+Declare `State(MapEditSession session) -> PrefabSessionState`, `ApplyMixedHistory(MapEditSession session) -> IReadOnlyList<PrefabSessionState>`, `AssertPublishedState(MapEditSession session, PrefabSessionState expected) -> void`, `PublishMarkerChange(MapEditSession session, string checkpoint) -> void`, `OtherMapBefore/OtherMapNow(MapEditSession session) -> string`. State comparisons for rejection include counters exactly. Accepted-history comparisons explicitly account for new events/dirty rather than equating historic snapshots wholesale. Add `OuterValidationReject_DoesNotAcceptCommandOrMoveHistory`, `AssetUndoRedo_RebindsMatchingClosure`, `RejectedOrCancelledEdit_LeavesHistoryIdentityAndDirtyUntouched`, `LocalWaterEdit_UsesTheNativeWaterCommand`, `StorageBoundary_ResetsHistoryOnlyAfterSuccess`, and `GuiServiceAndWire_HaveIdenticalDocumentsEffectsAndRejection` for every verb below.
+
+- [ ] **Step 2: Run red** `wa_test t11-red "$EDITOR" "FullyQualifiedName~NativePrefabAssetCommandTests|FullyQualifiedName~PrefabServiceTests|FullyQualifiedName~PrefabWireTests|FullyQualifiedName~NativeSessionHistoryTests|FullyQualifiedName~NativeCollisionServiceTests"`. Expect forward-only collider undo, premature acceptance or absent wire adapters.
+- [ ] **Step 3: Implement every native publication path's history behavior and atomic acceptance.**
+
+| Released entry point at 06b734c57 | Accepted history behavior |
+| --- | --- |
+| MutationService.Apply command and factory overloads, session.ApplyNative | Stage the typed command. Existing native placement allocation/label/remap and supported placement edits share one entry |
+| TerrainApply and WaterApply | Stage their existing terrain/water commands, with matching effects |
+| Other native Mutate callbacks, including TerrainEdit, ScatterOverrideEdit, BakeRegion, sculpt and FreezeZone | Capture one validated complete before/after snapshot command, or reject if native validation rejects the operation. Multi-command callbacks yield one entry |
+| ApplyNativeAssets, currently NativeCollisionService.SetHeights | Reversible accepted before/after roots, document snapshots, effects and old/new verified closures. Never retain the forward-only command |
+| BindNativeAssets | Same roots/hash rebind preserves history. Different accepted closure binding is an explicit history barrier after validation |
+| Open, Create and SetWindow | Reset history only after complete replacement/verification succeeds |
+| Save | Same semantic document/closure preserves history, clears dirty on success. Failed save leaves everything intact |
+| ConvertToTiled, ConvertToSingle and Retile | Successful storage publication is an explicit barrier clearing both stacks. Failed storage publication leaves stacks/closure/dirty unchanged |
+| Direct MapEditor EditorHistory Execute/Undo/Redo and NativeDocumentTransaction.Run | Preserve released direct semantics, using Stage then publication then Accept. GUI host binding remains R9 |
+
+Native MapEditSession.Mutate must not call EditorHistory.Execute inside its callback. Under the lock capture before, produce candidate and staged preparation, run outer MapBoundDocumentValidation including effective coverage/water against the candidate's matching closure, then publish document/root and bind closure. Only after that successful publication invoke nonthrowing command Accept and history stack movement, mark dirty/cache and emit one effect event. A thrown callback, Stage or outer validation discards the stage, leaving command retry state and both history stacks untouched. Undo/redo uses the same order and its captured matching closure. Preallocate stack entry/state before publication so final acceptance cannot fail. Generic accepted native callbacks use a snapshot command instead of silently bypassing history. Session replacement/barriers occur only after successful publication.
+
+Convert NativeCollisionService.NativeAssetRootsCommand into accepted before/after roots and matching closure snapshots. Remove its undo NotSupportedException. Publish immutable collider resources first as already released, then stage the reversible command through the same session history. NativePlacementBoundsProvider resolves effective placement IDs and computes old/new effects using their respective closures. This is required before registering whole-native-history undo verbs.
+
+- [ ] **Step 4: Implement detached local asset editing, immutable publication and thin wire adapters.**
+
+Existing placement, TerrainEditCommand and WaterEditCommand edit the detached local context. Export preserves keys, scoped slots and local geometry. Local undo/redo replays accepted values. Cancel performs no world edit/file write. File-only Save writes a verified immutable version with no world history entry.
+
+Publish canonical prefab bytes to absent `prefab/<escaped-logical-asset-id>/<sha256>` resource/path, then a digest-addressed replacement manifest. Retain shared leaf declarations without duplicate root IDs. Verify the new complete closure before updating every referring open-map instance, including tombstoned bindings. MapUpdatePrefabAsset switches ResourceId and ResourceSha256 in one PrefabAssetEditCommand. Other maps remain pinned to old bytes. Existing different bytes refuse. Failed switches may leave unreachable immutable files, never overwritten old resources. No cleanup is automatic. Map save remains the existing atomic save.
+
+| Wire verb | Exact adapter signature, metres/radians | Service/command |
+| --- | --- | --- |
+| prefab_open | `PrefabOpen(string resourceId, string? parentRefJson = null) -> MapPrefabAsset` | Open |
+| prefab_edit | `PrefabEdit(string childJson, bool remove = false) -> MapPrefabAsset` | Edit |
+| prefab_save | `PrefabSave(string resourceId, string relativeDirectory, bool updateOpenMap = true) -> MapPrefabPublishResult` | Save |
+| prefab_extract | `PrefabExtract(string selectedJson, float x, float y, float z, float yaw, float scale, string assetId) -> MapPrefabAsset` | Extract |
+| prefab_place | `PrefabPlace(string instanceId, string resourceId, float x, float y, float z, float yaw, float scale, string? parentRefJson = null, bool numericLeaves = true) -> MapPrefabMutationResult` | MapPlacePrefab |
+| prefab_list | `PrefabList() -> IReadOnlyList<MapPrefabAssetInfo>` | List |
+| prefab_override | `PrefabOverride(string instanceId, string overrideJson) -> MapPrefabMutationResult` | MapSetPrefabOverride |
+| prefab_unpack | `PrefabUnpack(string instanceId) -> MapPrefabMutationResult` | MapUnpackPrefab |
+| interior_volume_add/set | `InteriorVolumeAdd(string domainJson)`, `InteriorVolumeSet(string domainJson) -> MapPrefabMutationResult` | MapSetInterior, add requires absent ID, set requires present ID |
+| interior_volume_remove | `InteriorVolumeRemove(string spaceId) -> MapPrefabMutationResult` | MapRemoveInterior |
+| roof_link_set | `RoofLinkSet(string linkJson) -> MapPrefabMutationResult` | MapSetRoofLink |
+| prefab_undo/redo | `PrefabUndo()`, `PrefabRedo() -> MapNativeEditEffects?` | Whole native session history |
+
+Tools use ToolGuard.Guard, explicit raw diagnostics and McpBootstrap registration. MapPrefabJson adds closed `ReadChild(string json) -> MapPrefabChild`, `ReadOverride(string json) -> MapPrefabOverride`, `ReadReferences(string json) -> IReadOnlyList<MapPrefabReference>`, `ReadRecordRef(string json) -> MapRecordRef`, `ReadDomain(string json) -> MapPrismDomain`, `ReadRoofLink(string json) -> MapRoofLinkDoc`. int64 IDs remain strings. GUI/service/wire use the same commands. Optional snap changes the authored transform only. R10 owns remaining parity, R9 the GUI host.
+
+- [ ] **Step 5: Run green** with Step 2's filter as `t11-green`, then `wa_test t11-regress "$EDITOR" "FullyQualifiedName~NativeDocumentTransaction|FullyQualifiedName~NativeDocumentService|FullyQualifiedName~NativeWater|FullyQualifiedName~NativePlacement|FullyQualifiedName~NativeTerrain|FullyQualifiedName~NativeCollision"`. Expect all mixed undo/redo closures valid, no rejection acceptance, identical wire outcomes and immutable old-map pins.
+- [ ] **Step 6: Format, guards and commit these explicit paths.**
+
+```bash
+wa_r5_t11_paths=(
+    KhaozEngine.MapEditor/NativePrefabAssetCommands.cs
+    KhaozEngine.MapEditor/NativeSessionSnapshotCommands.cs
+    KhaozEngine.MapEditor/MapPrefabLocalSession.cs
+    KhaozEngine.MapEditor/EditorHistory.NativeStaging.cs
     KhaozEngine.MapEditor/EditorHistory.cs
     KhaozEngine.MapEditor/README.md
     KhaozEngine.MapEdit.Tool/PrefabService.cs
@@ -1215,25 +1414,29 @@ wa_r5_t9_paths=(
     KhaozEngine.MapEdit.Tool/MapEditSession.NativeHistory.cs
     KhaozEngine.MapEdit.Tool/MutationService.Prefabs.cs
     KhaozEngine.MapEdit.Tool/MapEditSession.cs
+    KhaozEngine.MapEdit.Tool/MutationService.cs
+    KhaozEngine.MapEdit.Tool/MutationService.Terrain.cs
+    KhaozEngine.MapEdit.Tool/MutationService.Water.cs
+    KhaozEngine.MapEdit.Tool/NativeCollisionService.cs
     KhaozEngine.MapEdit.Tool/NativePlacementBoundsProvider.cs
     KhaozEngine.MapEdit.Tool/README.md
     KhaozEngine.MapEdit.Tool/Tools/PrefabTools.cs
     KhaozEngine.MapEdit.Tool/Tools/InteriorTools.cs
     KhaozEngine.MapEdit.Tool/Tools/McpBootstrap.cs
-    KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabEditTests.cs
-    KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabExtractionTests.cs
-    KhaozEngine.MapEditor.Tests/MapDoc/NativePrefabCommandTests.cs
+    KhaozEngine.MapDoc/Prefabs/MapPrefabJson.cs
     KhaozEngine.MapEditor.Tests/MapDoc/NativePrefabAssetCommandTests.cs
     KhaozEngine.MapEditor.Tests/MapDoc/PrefabEditorFixtures.cs
     KhaozEngine.MapEditor.Tests/MapEditTool/PrefabServiceTests.cs
     KhaozEngine.MapEditor.Tests/MapEditTool/PrefabWireTests.cs
+    KhaozEngine.MapEditor.Tests/MapEditTool/NativeSessionHistoryTests.cs
+    KhaozEngine.MapEditor.Tests/MapDoc/NativeCollisionServiceTests.cs
 )
-wa_finish t9 "${wa_r5_t9_paths[@]}" &&
-git add -- "${wa_r5_t9_paths[@]}" &&
-git commit --only -m "feat(mapeditor): edit and publish immutable prefabs through native commands" -- "${wa_r5_t9_paths[@]}"
+wa_finish t11 "${wa_r5_t11_paths[@]}" &&
+git add -- "${wa_r5_t11_paths[@]}" &&
+git commit --only -m "feat(mapedit): publish prefab assets with complete native history" -- "${wa_r5_t11_paths[@]}"
 ```
 
-### Task 10: Public synthetic village and independent heads
+### Task 12: Public synthetic village and independent heads
 
 **Files:**
 - Create: `KhaozEngine.MapDoc.Tests/Prefabs/PrefabVillageFixtures.cs`, `MapPrefabVillageTests.cs`, `KhaozEngine.MapDoc.Physics.Tests/MapPrefabVillageAcceptanceTests.cs`, `KhaozEngine.MapEditor.Tests/MapEditTool/PrefabVillageWorkflowTests.cs`.
@@ -1241,8 +1444,8 @@ git commit --only -m "feat(mapeditor): edit and publish immutable prefabs throug
 - Create test: `KhaozEngine.Tests/ArchitectureTests.Prefabs.cs`, a partial ArchitectureTests class containing the prefab runtime dependency non-edge assertion. Run the existing `KhaozEngine.MapEditor.Tests/MapDoc/NativeManifestAdapterTests.cs` as a regression without modifying it.
 
 **Interfaces:**
-- Consumes Tasks 1 to 9, including actual tool commands, effective view and builder. No TileWorld oracle or game input is used.
-- Produces `PrefabFixtures.Village() -> PrefabFixture`: three invented definitions (hut, tower, bath), four instances (two huts, tower, bath) and one unlinked standalone canopy. Two storeys, cross-instance roof group, optional local water, one explicit extra-furniture override, an unpainted notch, support-resource floor, light and marker fields all participate.
+- Consumes Tasks 1 to 11, including actual tool commands, effective view and builder. No TileWorld oracle or game input is used.
+- Produces `PrefabFixtures.Village() -> PrefabFixture`: four invented definitions (hut, tower, bath, canopy), five instances (two huts, tower, bath, roomless canopy) with an inventoried unlinked canopy roof. Two storeys, cross-instance roof group, optional local water, one explicit extra-furniture override, an unpainted notch, support-resource floor, light and marker fields all participate.
 - Produces `PrefabFixtures.VillageProbes(MapEffectiveResources resources) -> IReadOnlyList<MapFramePoint>`, a fixed list of room edges, storey planes, cave/parent points, paint boundaries and wet/dry probes. No generated exhaustive whole-world scan.
 
 - [ ] **Step 1: Write failing acceptance tests.**
@@ -1283,16 +1486,16 @@ git commit --only -m "feat(mapeditor): edit and publish immutable prefabs throug
 
 Add `WholeBuildingMoveOverrideUndoRedoSaveReload_UsesSharedCommands`, `CanopyHasNoRoomAndAutoKeepsItVisible`, `TwoStoreysAndCrossBuildingConcealment_StayDistinct`, `ScopedVillageMatchesComplete_WhenWitnessIsComplete`, `MissingClosureFailsBothHeadsBeforeStaticInstall`, and `NativeBuildingRuntime_HasNoTileWorldOrGpuEdge`. Workflow includes 0.371 yaw, non-grid XYZ and scales 0.8/1.2, local water/paint/marker edits, unpack undo and immutable asset update. Compare value sequences explicitly rather than record equality over list references.
 
-- [ ] **Step 2: Run red** `wa_test t10-red-doc "$MAPDOC" "FullyQualifiedName~MapPrefabVillageTests"`, then `wa_test t10-red "$MP" "FullyQualifiedName~MapPrefabVillageAcceptanceTests"` and `wa_test t10-red-editor "$EDITOR" "FullyQualifiedName~PrefabVillageWorkflowTests"`. A new test that already passes records that fact, then the named missing interaction scenario must fail before any fix. Never alter an expected result to manufacture red.
+- [ ] **Step 2: Run red** `wa_test t12-red-doc "$MAPDOC" "FullyQualifiedName~MapPrefabVillageTests"`, then `wa_test t12-red "$MP" "FullyQualifiedName~MapPrefabVillageAcceptanceTests"` and `wa_test t12-red-editor "$EDITOR" "FullyQualifiedName~PrefabVillageWorkflowTests"`. A new test that already passes records that fact, then the named missing interaction scenario must fail before any fix. Never alter an expected result to manufacture red.
 - [ ] **Step 3: Build the synthetic fixture, close only cross-task contract gaps and document consumption.**
 
 Exercise public resources from a fresh byte source and separately loaded documents, not shared mutable snapshots. Fix reachable R5 interface failures in their owning modules with a focused regression. Preserve private-data exclusion and no new runtime dependency edges. Document format-7 identity movement, strict closure, local-support ownership, partial paint, room parenting, explicit AuthoredOpen doors, bound query completeness, roof flags, marker/light payloads and typed command responses. R6 to R11 handoffs name every remaining proof.
 
-- [ ] **Step 4: Run green** with all Step 2 filters as `t10-green-doc`, `t10-green`, `t10-green-editor`, then `wa_test t10-architecture "$RUMP" "FullyQualifiedName~ArchitectureTests"`. Expect identical independent heads and native dependency non-edges. No complete navigation route or pixels are claimed.
+- [ ] **Step 4: Run green** with all Step 2 filters as `t12-green-doc`, `t12-green`, `t12-green-editor`, then `wa_test t12-architecture "$RUMP" "FullyQualifiedName~ArchitectureTests"`. Expect identical independent heads and native dependency non-edges. No complete navigation route or pixels are claimed.
 - [ ] **Step 5: Format, guards and commit these explicit paths.**
 
 ```bash
-wa_r5_t10_paths=(
+wa_r5_t12_paths=(
     KhaozEngine.MapDoc.Tests/Prefabs/PrefabVillageFixtures.cs
     KhaozEngine.MapDoc.Tests/Prefabs/MapPrefabVillageTests.cs
     KhaozEngine.MapDoc.Physics.Tests/MapPrefabVillageAcceptanceTests.cs
@@ -1304,12 +1507,12 @@ wa_r5_t10_paths=(
     docs/DEPENDENCY-SEAMS.md
     KhaozEngine.Tests/ArchitectureTests.Prefabs.cs
 )
-wa_finish t10 "${wa_r5_t10_paths[@]}" &&
-git add -- "${wa_r5_t10_paths[@]}" &&
-git commit --only -m "test(mapdoc): prove free prefab village on both headless heads" -- "${wa_r5_t10_paths[@]}"
+wa_finish t12 "${wa_r5_t12_paths[@]}" &&
+git add -- "${wa_r5_t12_paths[@]}" &&
+git commit --only -m "test(mapdoc): prove free prefab village on both headless heads" -- "${wa_r5_t12_paths[@]}"
 ```
 
-### Task 11: Private shipped-building comparison with complete input closure
+### Task 13: Private shipped-building comparison with complete input closure
 
 **Files:**
 - Create: `KhaozEngine.MapDoc.OracleHarness.Tests/ShippedBuildingInputs.cs`, `ShippedBuildingComparison.cs`, `ShippedBuildingComparisonTests.cs`, `ShippedBuildingInputGuardTests.cs`.
@@ -1364,7 +1567,7 @@ public void PrivateBuildingClosure_RefusesMissingOrUnverifiedInput(string varian
 
 Create `ShippedBuildingGuardFixtures` in ShippedBuildingInputGuardTests.cs with public invented source/mesh/prefab bytes, `Create(string variant)` returning an object with `Environment: IReadOnlyDictionary<string,string?>` and a synthetic PublicSecretMarker. Its valid case also checks report file modes and complete input closure. No private reads occur at discovery, construction or static initialization.
 
-- [ ] **Step 2: Run synthetic red only** `wa_test t11-red "$ORACLE" "FullyQualifiedName~ShippedBuildingInputGuardTests"`. Expect missing comparison/closure checks. The implementer never runs the shipped test or fetches private content.
+- [ ] **Step 2: Run synthetic red only** `wa_test t13-red "$ORACLE" "FullyQualifiedName~ShippedBuildingInputGuardTests"`. Expect missing comparison/closure checks. The implementer never runs the shipped test or fetches private content.
 - [ ] **Step 3: Implement the complete comparison inside the private boundary.**
 
 Use the checked membership manifest, never a nominal restamp or guessed envelope grouping. Convert only the comparison's selected building data in test code, preserving each original numeric leaf once and recording new parents separately. Reuse R2's linked LegacyOracleConverter for floor data and the R5 native asset/instance APIs for free building representation. Refuse ambiguous/unassigned membership and incomplete reference closure. This is not a production importer.
@@ -1377,11 +1580,11 @@ For every checked doorway, compare the source opening and native compound shell 
 
 All body failures use report.Check/Record, never Assert, console or ITestOutputHelper on private values. Detailed source IDs, geometry, paths, inventory, provenance and reports stay in the private extraction/report area. The public repository/CI/logs receive only sanitized pass/fail and the private record reference. Missing private input fails acceptance and never skips. Preserve the existing four environment variables and the 0700 directory/0600 exclusive report rules.
 
-- [ ] **Step 4: Run synthetic green** `wa_test t11-green "$ORACLE" "FullyQualifiedName~ShippedBuildingInputGuardTests|FullyQualifiedName~PrivateOracleGuardTests"`. Expect all synthetic guards passing, missing input still refused and no secret marker in public failure text.
+- [ ] **Step 4: Run synthetic green** `wa_test t13-green "$ORACLE" "FullyQualifiedName~ShippedBuildingInputGuardTests|FullyQualifiedName~PrivateOracleGuardTests"`. Expect all synthetic guards passing, missing input still refused and no secret marker in public failure text.
 - [ ] **Step 5: Format, guards and commit these explicit paths.**
 
 ```bash
-wa_r5_t11_paths=(
+wa_r5_t13_paths=(
     KhaozEngine.MapDoc.OracleHarness.Tests/ShippedBuildingInputs.cs
     KhaozEngine.MapDoc.OracleHarness.Tests/ShippedBuildingComparison.cs
     KhaozEngine.MapDoc.OracleHarness.Tests/ShippedBuildingComparisonTests.cs
@@ -1390,16 +1593,16 @@ wa_r5_t11_paths=(
     KhaozEngine.MapDoc.OracleHarness.Tests/README.md
     KhaozEngine.Tests/ArchitectureTests.MapDoc.cs
 )
-wa_finish t11 "${wa_r5_t11_paths[@]}" &&
-git add -- "${wa_r5_t11_paths[@]}" &&
-git commit --only -m "test(mapdoc): compare shipped prefab buildings through the private oracle" -- "${wa_r5_t11_paths[@]}"
+wa_finish t13 "${wa_r5_t13_paths[@]}" &&
+git add -- "${wa_r5_t13_paths[@]}" &&
+git commit --only -m "test(mapdoc): compare shipped prefab buildings through the private oracle" -- "${wa_r5_t13_paths[@]}"
 ```
 
 ## Self-review and execution handoff
 
-Writer self-review mapped all 19 gate decisions and the three OA9 proof names to tasks, checked borrowed source signatures against 06b734c57 and pinned all new cross-task interfaces. It also corrected RayHit/MapFaceKey provenance usage, linked-fixture visibility, exact boundary query inputs, immutable version IDs, unpack transform persistence and the arithmetic rounding policy. No gate item was omitted. Compilation, test execution and runtime claims remain execution evidence, not evidence from this document-writing turn.
+Revision 2 resolves all 13 accepted review-1 findings against the controller adjudication. It maps all 19 gate decisions and the three OA9 proof names to 13 serial tasks, preserves released signatures at 06b734c57 and pins revised cross-task interfaces. Corrections include precise hierarchy composition/wide queries, occupied fragments, complete reference scopes, standalone storeys, atomic mixed native history and explicit support/roof/budget contracts. No gate item was omitted. Compilation, test execution and runtime claims remain execution evidence, not evidence from this document-writing turn.
 
-- [ ] Check OA33 Decisions 1 to 19 against Tasks 1 to 11. Format/closure is Task 1, bindings/identity Task 2, transforms/completeness Task 3, rooms Task 4, local support/doors/bounds Task 5, paint Task 6, full water Task 7, roof/light/marker intent Task 8, edits/tools Task 9, synthetic acceptance Task 10, private acceptance Task 11 and release below.
+- [ ] Check OA33 Decisions 1 to 19 against Tasks 1 to 13. Format/closure is Task 1, bindings/identity Task 2, transforms/completeness Task 3, rooms Task 4, local support/doors/bounds Task 5, paint Task 6, full water Task 7, roof/light/marker intent Task 8, pure edits Task 9, commands/snapshots/effects Task 10, asset/history/tools Task 11, synthetic acceptance Task 12, private acceptance Task 13 and release below.
 - [ ] Check every consumed signature against 06b734c57 and every new type/property against its producing task. Carry interface adjustments into later briefs before dispatch.
 - [ ] Check every test fixture is valid for coverage and containment before interpreting red, each failure is falsifiable, each focused filter matches tests and all five Review Focus concerns have named assertions.
 - [ ] Check all source paths, old line ranges, constructor overload preservation, 800-line caps, linked fixture boundaries and explicit commit path lists. No baselined-file growth is approved.
@@ -1432,7 +1635,7 @@ git diff --check
 
 Expect exit 0, zero warnings and zero failed tests, with nonzero suite counts. Keep logs and exact candidate SHA. Push the candidate branch through the controller and require hosted CI. Do not run stress, GPU or consumer clients. A later main/code change invalidates this candidate and justifies the appropriate renewed focused/full verification once.
 
-6. Controller-only private comparison. Freeze current game main into a new attested extraction with the complete Task 11 closure. Set the four variables to that extraction, its private provenance/digest and an absent report path under an existing 0700 directory outside git. Run once:
+6. Controller-only private comparison. Freeze current game main into a new attested extraction with the complete Task 13 closure. Set the four variables to that extraction, its private provenance/digest and an absent report path under an existing 0700 directory outside git. Run once:
 
 ```bash
 wa_run gate-oracle-build dotnet build "$ORACLE" -c Release -m:1

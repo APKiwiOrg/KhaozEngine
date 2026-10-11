@@ -156,6 +156,25 @@ internal static partial class WaterFixtures
         return MapAssetClosure.Load(roots, source);
     }
 
+    /// <summary>The exact XZ area of a triangle or of a set of polygons, by the shoelace sum in wide arithmetic.</summary>
+    internal static MapWideRational WideArea(params MapWidePoint[] triangle) => WideArea(new IReadOnlyList<MapWidePoint>[] { triangle });
+
+    internal static MapWideRational WideArea(IReadOnlyList<IReadOnlyList<MapWidePoint>> polygons)
+    {
+        MapWideRational total = default;
+        foreach (IReadOnlyList<MapWidePoint> polygon in polygons)
+        {
+            MapWideRational twice = default;
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                MapWidePoint a = polygon[i], b = polygon[(i + 1) % polygon.Count];
+                twice = twice.Add(a.X.Multiply(b.Z)).Subtract(b.X.Multiply(a.Z));
+            }
+            total = total.Add(twice.Sign < 0 ? default(MapWideRational).Subtract(twice) : twice);
+        }
+        return total.Divide(MapWideRational.From(new MapExactValue(2, 1)));
+    }
+
     internal static string TempDirectory()
     {
         string path = Path.Combine(Path.GetTempPath(), "mapdoc-water-" + Guid.NewGuid().ToString("N"));

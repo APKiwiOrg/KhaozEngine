@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -43,9 +44,30 @@ internal static partial class WaterFixtures
                 break;
             case "no-cover": body = body with { Covers = Array.Empty<MapRecordRef>() }; break;
             case "repeated-cover": body = body with { Covers = new[] { cover, cover } }; break;
+            case "bow-tie": body = OnlyRing(body, (0, 0), (4, 4), (4, 0), (0, 4)); break;
+            case "collinear": body = OnlyRing(body, (0, 0), (2, 0), (4, 0)); break;
+            case "overlapping-pieces": body = body with { Domain = domain with { Rects = new[] { Rect(0, 0, 8, 4), Rect(6, 0, 12, 4) } } }; break;
+            case "overlapping-bodies":
+                water.Bodies.Add(Body("second-lake", -35f, Rect(4, 0, 6, 4), Cover("lake-cave", "lake-floor")));
+                break;
+            case "too-many-pieces":
+                body = body with
+                {
+                    Domain = domain with { Rects = Enumerable.Range(0, 65_537).Select(i => Rect(i % 256, i / 256, i % 256 + 1, i / 256 + 1)).ToArray() },
+                };
+                break;
             default: throw new ArgumentException("unknown broken water variant", nameof(variant));
         }
         water.Bodies[ocean] = body;
         return doc;
     }
+
+    static MapWaterBodyDoc OnlyRing(MapWaterBodyDoc body, params (long X, long Z)[] corners) => body with
+    {
+        Domain = body.Domain with
+        {
+            Rects = Array.Empty<MapWaterRect>(),
+            Rings = new[] { new MapWaterRing(corners.Select(c => MapLatticeAddress.Corner(c.X, c.Z)).ToArray()) },
+        },
+    };
 }

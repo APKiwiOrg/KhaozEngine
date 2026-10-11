@@ -41,6 +41,9 @@ public sealed class MapScopedSurfaces
     public int PagesRead { get; }
     public int RecordReads { get; }
     internal int PatchClones { get; private set; }
+    /// <summary>True only for <see cref="CompleteView"/>, whose <see cref="Surfaces"/> lists every surface its set
+    /// declares. A scoped acquisition lists only the surfaces it captured, so a surface it does not list may exist.</summary>
+    internal bool ListsEverySurface { get; private init; }
 
     public static MapScopedSurfaces Acquire(IMapSurfaceSource source, MapSurfaceScope scope, IReadOnlyList<string> assetSha256,
         int queryPolicyVersion = 1, int buildPolicyVersion = 1) =>
@@ -91,7 +94,10 @@ public sealed class MapScopedSurfaces
             }
             w.WriteEndArray();
         });
-        return new(new(MapAcquireStatus.Complete, null, facts, snapshot, rootSha256, 0, 0), scope, Array.Empty<string>(), 1, 1);
+        return new(new(MapAcquireStatus.Complete, null, facts, snapshot, rootSha256, 0, 0), scope, Array.Empty<string>(), 1, 1)
+        {
+            ListsEverySurface = true,
+        };
     }
     static MapSurfaceScope ResidentScope(MapAcquiredFacts facts)
     {

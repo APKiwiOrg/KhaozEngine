@@ -116,49 +116,36 @@ public static class MapWaterContainment
         return false;
     }
 
-    /// <summary>Whether the covered spaces form one set over edges from the portals and link openings listed on them
-    /// or on their aliases, counting an edge only when its exact aperture bottom is strictly below
-    /// <paramref name="surface"/>. Every endpoint is normalized to its alias owner, as R2 relations are. A relation
-    /// whose geometry is definitely invalid adds an error and joins nothing. Returns why an edge could not be read, or
-    /// null when every edge was evaluated.</summary>
+    /// <summary>Whether the covered spaces form one set over edges from portals and link openings, counting an edge
+    /// only when its exact aperture bottom is strictly below <paramref name="surface"/>. The candidates are the
+    /// relations a covered space lists and every acquired portal and link, since R2 lists a relation on the endpoint
+    /// record it names, which may be an alias of a covered space. Each endpoint is normalized to its alias owner, as R2
+    /// relations are, and read only while its edge can still join two covered spaces. An endpoint whose owner is not
+    /// covered settles its edge, so a relation that reaches an uncovered space never leaves the result unknown, and no
+    /// space record is read beyond the relations' endpoints. A relation whose geometry is definitely invalid adds an
+    /// error and joins nothing. Returns why an edge could not be read, or null when every edge was evaluated.</summary>
     static string? Connected(MapScopedSurfaces view, string label, MapExactValue surface,
         IReadOnlyList<(MapRecordRef Ref, MapSpaceDoc Space)> covered, List<string> errors, out bool connected)
     {
         var adjacency = covered.ToDictionary(c => c.Space.Id, _ => new List<string>(), StringComparer.Ordinal);
         var refs = covered.ToDictionary(c => c.Space.Id, c => c.Ref, StringComparer.Ordinal);
-        var owners = new Dictionary<MapRecordRef, string?>();
+        var owners = new Dictionary<MapRecordRef, (string? Owner, MapDocumentException? Error)>();
         var visited = new HashSet<MapRecordRef>();
         string? unknown = null;
-        // R2 lists a relation on the endpoint record it names, which may be an alias of a covered space.
-        var listing = covered.Select(c => c.Space).ToList();
-        foreach (MapSpaceDoc alias in MapSpaceGeometry.Records(view).OfType<MapSpaceDoc>().Where(s => s.AliasOf is not null)
-            .OrderBy(s => s.Id, StringComparer.Ordinal))
-        {
-            // An alias whose owner cannot be resolved may belong to any space, so it can only leave the result unknown.
-            string? owner;
-            try { owner = MapSpaceGeometry.Owner(view, alias); }
-            catch (MapDocumentException error)
-            {
-                unknown ??= $"space '{alias.Id}' ({error.Message})";
-                continue;
-            }
-            if (adjacency.ContainsKey(owner)) listing.Add(alias);
-        }
-        foreach (MapSpaceDoc space in listing)
+        foreach (var (_, space) in covered)
         {
             foreach (MapBoundaryRef side in space.Portals ?? Array.Empty<MapBoundaryRef>())
-            {
-                if (side?.Record is not { } reference || !visited.Add(reference)) continue;
-                if (Read<MapCavePortal>(reference) is { } portal)
-                    Edge(reference, portal.FromSpace, portal.ToSpace, null, $"portal '{reference.Id}'");
-            }
+                if (side?.Record is { } reference && !visited.Contains(reference) && Read<MapCavePortal>(reference) is { } portal)
+                    Portal(reference, portal);
             foreach (MapRecordRef reference in space.Links ?? Array.Empty<MapRecordRef>())
-            {
-                if (reference is null || !visited.Add(reference) || Read<MapVerticalLink>(reference) is not { } link) continue;
-                foreach (MapRecordRef opening in link.Openings ?? Array.Empty<MapRecordRef>())
-                    if (opening is not null)
-                        Edge(opening, link.UpperSpace, link.LowerSpace, reference, $"link '{reference.Id}' opening '{opening.Id}'");
-            }
+                if (reference is not null && !visited.Contains(reference) && Read<MapVerticalLink>(reference) is { } link)
+                    Link(reference, link);
+        }
+        foreach (MapRecordRef reference in view.Witness.Records.OrderBy(r => r.Id, StringComparer.Ordinal))
+        {
+            if (!view.TryRecord(reference, out MapTopologyRecord? record, out _, borrow: true)) continue;
+            if (record is MapCavePortal portal) Portal(reference, portal);
+            else if (record is MapVerticalLink link) Link(reference, link);
         }
 
         var reached = new HashSet<string>(StringComparer.Ordinal) { covered[0].Space.Id };
@@ -177,28 +164,52 @@ public static class MapWaterContainment
             return null;
         }
 
-        string? Owner(MapRecordRef endpoint)
+        void Portal(MapRecordRef reference, MapCavePortal portal)
         {
-            if (adjacency.ContainsKey(endpoint.Id)) return endpoint.Id;
-            if (owners.TryGetValue(endpoint, out string? known)) return known;
-            string? owner = null;
-            try { owner = MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, endpoint)); }
-            catch (MapDocumentException error) { Fail($"space '{endpoint.Id}'", error); }
-            owners.Add(endpoint, owner);
-            return owner;
+            if (visited.Add(reference)) Edge(reference, portal.FromSpace, portal.ToSpace, null, $"portal '{reference.Id}'");
         }
 
-        void Edge(MapRecordRef aperture, MapRecordRef from, MapRecordRef to, MapRecordRef? link, string relation)
+        void Link(MapRecordRef reference, MapVerticalLink link)
         {
-            if (from is null || to is null || Owner(from) is not { } a || Owner(to) is not { } b || a == b ||
-                !adjacency.TryGetValue(a, out List<string>? fromEdges) || !adjacency.TryGetValue(b, out List<string>? toEdges))
+            if (!visited.Add(reference)) return;
+            foreach (MapRecordRef opening in link.Openings ?? Array.Empty<MapRecordRef>())
+                if (opening is not null)
+                    Edge(opening, link.UpperSpace, link.LowerSpace, reference, $"link '{reference.Id}' opening '{opening.Id}'");
+        }
+
+        (string? Owner, MapDocumentException? Error) Owner(MapRecordRef endpoint)
+        {
+            if (adjacency.ContainsKey(endpoint.Id)) return (endpoint.Id, null);
+            if (owners.TryGetValue(endpoint, out var known)) return known;
+            (string?, MapDocumentException?) result;
+            try { result = (MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, endpoint)), null); }
+            catch (MapDocumentException error) { result = (null, error); }
+            owners.Add(endpoint, result);
+            return result;
+        }
+
+        void Edge(MapRecordRef aperture, MapRecordRef? from, MapRecordRef? to, MapRecordRef? link, string relation)
+        {
+            if (from is null || to is null) return;
+            // An endpoint whose owner is not covered settles the edge, so the other endpoint is never read.
+            (string? a, MapDocumentException? fromError) = Owner(from);
+            if (a is not null && !adjacency.ContainsKey(a)) return;
+            (string? b, MapDocumentException? toError) = Owner(to);
+            if (b is not null && !adjacency.ContainsKey(b)) return;
+            if (fromError is not null || toError is not null)
+            {
+                // With both endpoints unresolved the edge may join other spaces, so only one known endpoint is definite.
+                if (fromError is not null && toError is not null) unknown ??= $"{relation} (space '{from.Id}' {fromError.Message})";
+                else Fail($"space '{(fromError is null ? to : from).Id}'", fromError ?? toError!);
                 return;
+            }
+            if (a is null || b is null || a == b) return;
             try
             {
                 MapPortalFact fact = MapRelationApertures.Compile(view, aperture, refs[a], refs[b], link);
                 if (MapRelationApertures.BottomOf(fact).CompareTo(surface) >= 0) return;
-                fromEdges.Add(b);
-                toEdges.Add(a);
+                adjacency[a].Add(b);
+                adjacency[b].Add(a);
             }
             catch (Exception error) when (error is MapExactOverflowException or OverflowException)
             {

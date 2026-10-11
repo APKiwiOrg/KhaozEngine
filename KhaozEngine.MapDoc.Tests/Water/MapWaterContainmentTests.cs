@@ -107,13 +107,50 @@ public class MapWaterContainmentTests
     public void BadCovers_Refuse(string variant, string message) =>
         Assert.Contains(Check(WaterFixtures.Broken(variant)).Errors, e => e.Contains(message, StringComparison.Ordinal));
 
-    // A complete acquisition holds every patch of every declared surface, so an anchor on an undeclared surface is absent.
+    // A view built from the whole document lists every declared surface, so an anchor on an undeclared surface is absent.
     [Fact]
     public void CoverOnAnAbsentPatch_IsNotASpace()
     {
         MapWaterContainmentReport report = Check(WaterFixtures.Broken("absent-cover-patch"));
         Assert.True(report.Complete);
         Assert.Contains(report.Errors, e => e.Contains("water body 'ocean': cover 'nowhere' is not a space", StringComparison.Ordinal));
+    }
+
+    // A scoped view lists only the surfaces it captured, so a valid cover anchored outside its scope stays unverified.
+    [Fact]
+    public void CoverOutsideAScopedView_IsUnverified_NotAbsent()
+    {
+        MapDocument doc = WaterFixtures.PondsApart();
+        Assert.True(CaveFixtures.View(doc).TryRecord(WaterFixtures.FarPond, out MapTopologyRecord? far, out _) && far is MapSpaceDoc);
+        MapScopedSurfaces view = WaterFixtures.NearPondView(doc);
+        Assert.Equal(MapAcquireStatus.Complete, view.Status);
+        Assert.True(view.Witness.Complete);
+        Assert.DoesNotContain(view.Surfaces, s => s.Id == WaterFixtures.FarPond.Anchor.SurfaceId);
+        Assert.False(view.TryRecord(WaterFixtures.FarPond, out _, out MapPatchStatus status));
+        Assert.Equal(MapPatchStatus.Unloaded, status);
+
+        MapWaterContainmentReport report = MapWaterContainment.Validate(view, doc.Water!);
+        Assert.False(report.Complete);
+        Assert.DoesNotContain(report.Errors, e => e.Contains("is not a space", StringComparison.Ordinal));
+        Assert.Contains(report.Errors, e => e.Contains("water body 'ponds': unverified (cover 'far' is Unloaded)", StringComparison.Ordinal));
+    }
+
+    // Connectivity reads only relation endpoints, so a far alias of an unavailable space with a portal to an uncovered
+    // space neither unverifies a connected body nor turns a definite refusal into an unverified one.
+    [Theory]
+    [InlineData(-5f)]
+    [InlineData(null)]
+    public void StrayRelationsElsewhere_DoNotUnverifyConnectivity(float? portalBottomY)
+    {
+        MapDocument doc = WaterFixtures.WithStrayRelations(WaterFixtures.SeaConnectedCave(portalBottomY));
+        MapScopedSurfaces view = CaveFixtures.View(doc);
+        Assert.True(WaterFixtures.RecordsAcquired(view, WaterFixtures.StrayAlias, WaterFixtures.StrayPortal));
+        Assert.False(view.TryRecord(WaterFixtures.StrayOwner, out _, out _));
+
+        MapWaterContainmentReport report = MapWaterContainment.Validate(view, doc.Water!);
+        Assert.True(report.Complete);
+        Assert.Equal(portalBottomY is null ? new[] { "water body 'ocean': covered spaces are not connected below its surface" } : Array.Empty<string>(),
+            report.Errors);
     }
 
     [Fact]

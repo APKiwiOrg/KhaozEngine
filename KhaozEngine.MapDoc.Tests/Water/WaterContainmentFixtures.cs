@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
+using KhaozEngine.Primitives;
 using KhaozEngine.Tests.MapDoc.Storage;
 
 namespace KhaozEngine.Tests.MapDoc.Water;
@@ -83,6 +86,64 @@ internal static partial class WaterFixtures
 
     /// <summary>The unavailable space of <see cref="PondWithFarFootprints"/>'s far ghost footprint.</summary>
     internal static MapRecordRef GhostSpace => new("ghost", new MapPatchKey("ghost-floor", 10, 0));
+
+    /// <summary>Two exterior spaces under body <c>ponds</c> at <c>SurfaceY</c> 0 over x 10 to 14 and world z -14 to
+    /// -10: <c>near</c> on <c>near-floor</c> at -1 m there, and <see cref="FarPond"/> on <c>far-floor</c> for x 40 to 44
+    /// and world z -4 to 0, anchored there. Both floors hold one patch in slot (0, 0), so a scope over the near pond
+    /// meets only that slot and finds the far patch in it but not among its cells, and no record near the first pond
+    /// names <c>far-floor</c>. No relation joins the two. Unvalidated.</summary>
+    internal static MapDocument PondsApart()
+    {
+        var set = new MapSurfaceSet();
+        Surface(set, "near-floor", MapSurfaceRole.SupportFloor, Frame, 10, 10, 14, 14, (_, _) => -100);
+        Surface(set, "far-floor", MapSurfaceRole.SupportFloor, Frame, 40, 0, 44, 4, (_, _) => -100);
+        Footprints(set, "near", MapSpaceKind.Exterior, Frame, 10, 10, 14, 14, Floor("near-floor"), OpenTop, Slot0("near-floor"));
+        Footprints(set, FarPond.Id, MapSpaceKind.Exterior, Frame, 40, 0, 44, 4, Floor("far-floor"), OpenTop, FarPond.Anchor);
+        var water = new MapWaterSet();
+        water.Media.Add(new MapWaterMediumDoc(Medium, MapWaterMediumKind.Water, 1f));
+        water.Bodies.Add(Body("ponds", 0f, Rect(10, 10, 14, 14), Cover("near", "near-floor")) with
+        {
+            Covers = new[] { Cover("near", "near-floor"), FarPond },
+        });
+        return Document(set, water);
+    }
+
+    /// <summary>The far space of <see cref="PondsApart"/>.</summary>
+    internal static MapRecordRef FarPond => new("far", Slot0("far-floor"));
+
+    /// <summary>Acquires <paramref name="doc"/> from its stored copy over only the near pond of
+    /// <see cref="PondsApart"/>, x 10 to 14 and world z -14 to -10, with every role and no filter.</summary>
+    internal static MapScopedSurfaces NearPondView(MapDocument doc) => ScopeFixtures.Acquire(StoredSource(doc),
+        new MapSurfaceScope(WorldFrame.Origin, new Vector2(10, -14), new Vector2(14, -10), null, null, ScopeFixtures.AllRoles, null,
+            new MapQueryLimits()));
+
+    /// <summary>Adds to <paramref name="doc"/>, far away in slot (10, 0) of a new surface <c>stray-floor</c>, an
+    /// uncovered space <c>stray</c>, an alias <see cref="StrayAlias"/> of <see cref="StrayOwner"/>, a space anchored in a
+    /// patch the document does not hold, and a portal <see cref="StrayPortal"/> from the alias to <c>stray</c>. The
+    /// portal carries records only, no geometry. Unvalidated.</summary>
+    internal static MapDocument WithStrayRelations(MapDocument doc)
+    {
+        Surface(doc.Surfaces, StrayPatch.SurfaceId, MapSurfaceRole.SupportFloor, Frame, 640, 0, 644, 4, (_, _) => -100);
+        List<MapTopologyRecord> records = doc.Surfaces.Patches[StrayPatch].Records;
+        records.Add(new MapSpaceDoc("stray", MapSpaceKind.Exterior, null, null, Array.Empty<string>(),
+            Array.Empty<MapBoundaryRef>(), Array.Empty<MapBoundaryRef>(), Array.Empty<MapRecordRef>()));
+        records.Add(new MapSpaceDoc(StrayAlias.Id, MapSpaceKind.Exterior, null, StrayOwner, Array.Empty<string>(),
+            Array.Empty<MapBoundaryRef>(), new[] { new MapBoundaryRef(StrayPortal, MapSide.Front) }, Array.Empty<MapRecordRef>()));
+        records.Add(new MapCavePortal(StrayPortal.Id, StrayAlias, new("stray", StrayPatch), Array.Empty<MapLatticeVertex>(),
+            new MapRecordRef("stray-bottom", StrayPatch), null));
+        return doc;
+    }
+
+    /// <summary>The alias of <see cref="WithStrayRelations"/>, whose owner is unavailable.</summary>
+    internal static MapRecordRef StrayAlias => new("stray-alias", StrayPatch);
+
+    /// <summary>The portal of <see cref="WithStrayRelations"/>, from the stray alias to an uncovered space.</summary>
+    internal static MapRecordRef StrayPortal => new("stray-portal", StrayPatch);
+
+    /// <summary>The unavailable owner of <see cref="StrayAlias"/>.</summary>
+    internal static MapRecordRef StrayOwner => new("stray-owner", new MapPatchKey("ghost-floor", 10, 0));
+
+    static MapPatchKey StrayPatch => new("stray-floor", 10, 0);
 
     /// <summary>An exterior <c>straddle</c> whose cells cross the 64-cell slot boundaries in both X and Z on a
     /// negative-Z lattice: x 60 to 68 over rows 62 to 66, then x 60 to 64 and x 66 to 68 over rows 66 to 68. Its

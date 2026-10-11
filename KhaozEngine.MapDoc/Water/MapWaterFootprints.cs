@@ -142,12 +142,14 @@ internal static class MapWaterFootprints
         HoldsEverything(view) && (view.Scope.SpaceIds is not { } ids || ids.Contains(spaceId)) && ScopeHolds(view, windowMin, windowMax);
 
     /// <summary>True when the view proves that no patch exists at <paramref name="key"/>: the acquisition holds every
-    /// patch of its scope with no filter, and the key's surface is undeclared or its slot lies inside the scope.</summary>
+    /// patch of its scope with no filter, and either the key's surface is listed and its slot lies inside the scope,
+    /// or the surface is unlisted in a view that lists every declared surface. A scoped acquisition lists only the
+    /// surfaces it captured, so there an unlisted surface proves nothing.</summary>
     internal static bool ProvesAbsent(MapScopedSurfaces view, MapPatchKey key)
     {
         ArgumentNullException.ThrowIfNull(view);
         if (!HoldsEverything(view) || view.Scope.SpaceIds is not null) return false;
-        if (view.Surfaces.FirstOrDefault(s => s.Id == key.SurfaceId) is not { } surface) return true;
+        if (view.Surfaces.FirstOrDefault(s => s.Id == key.SurfaceId) is not { } surface) return view.ListsEverySurface;
         long x = checked(key.SlotX * MapPatchKey.SlotCells), z = checked(key.SlotZ * MapPatchKey.SlotCells);
         var (min, max) = World(surface.Frame, x, z, checked(x + MapPatchKey.SlotCells), checked(z + MapPatchKey.SlotCells));
         return ScopeHolds(view, min, max);

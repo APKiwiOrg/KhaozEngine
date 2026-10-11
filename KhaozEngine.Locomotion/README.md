@@ -420,6 +420,22 @@ hashing use source reference identity, never a backend's overridden value equali
 and after the producer call. Unknown remains unknown, and known data from another world is refused.
 It queries centre-feet membership, not full capsule coverage. `MovementSupportRequest` and
 `MovementSupportCandidate` retain legal-transition context and canonical owner provenance.
+An acquired pin may also implement `IMovementContactSupportPin`. `SampleAnalyticGround` supplies a
+`MovementAnalyticGround` at the exact body axis, with canonical owner/space, legal-link evidence and
+query identity. Known with null certifies analytic absence in that room. This is a scoped fact,
+not a global terrain callback. `BindContactSupport` accepts a `MovementContactSupportRequest` carrying
+the full body, transition origin, exact axis, certified height/error/normal/witness and installed
+static/feature provenance. It returns `MovementContactSupportBinding` from the producer's captured
+registration and generation. Local handles never become canonical owner IDs.
+
+Internal lease wrappers guard the support envelope, proposal probe margins and transition origin
+before producer access, check currentness around the call, and validate world, identity and legal
+transition evidence before publication. Missing capabilities or registrations refuse explicitly.
+Repeated facts cannot change analytic height/normal or map one finite feature to a different owner.
+Analytic bindings must agree with the certified analytic fact. Each interval remembers at most
+`MaxSupportCandidates` distinct analytic room/axis facts and finite feature bindings, then returns
+CapacityExceeded. These capabilities do not change movement or the compatibility support resolver.
+
 `MovementMediumSweepQuery`, `MovementCoverageSpan`, `MovementDomainContact` and
 `MovementCoverageResult` describe bounded complete-path coverage, including simultaneous wet and dry
 portions. Their constructors reject invalid geometry/counts and cannot make a refusal expose a prefix.

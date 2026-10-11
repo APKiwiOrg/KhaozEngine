@@ -18,6 +18,7 @@ internal sealed partial class ExplicitPlayerEnvironment : IMovementEnvironmentPr
     public MovementQueryIdentity Identity { get; }
     public float? SurfaceY { get; }
     public float FloorY { get; }
+    public StaticHandle FloorHandle { get; }
     public string WorldId => "world";
     public MovementAvailability Availability = MovementAvailability.Known;
     public readonly List<Vector3> RebuiltPositions = [];
@@ -47,7 +48,7 @@ internal sealed partial class ExplicitPlayerEnvironment : IMovementEnvironmentPr
         SurfaceY = surfaceY;
         FloorY = surfaceY.HasValue ? surfaceY.Value - 8 : 0;
         Identity = new("explicit-player-fixture", 1, surfaceY?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "dry-room");
-        Physics.AddStatic(new BoxShape(new(8, 0.125f, 8)), Pose.At(origin + new Vector3(0, FloorY - 0.125f, 0)));
+        FloorHandle = Physics.AddStatic(new BoxShape(new(8, 0.125f, 8)), Pose.At(origin + new Vector3(0, FloorY - 0.125f, 0)));
         if (origin != Vector3.Zero) Physics.Rebase(origin);
         View = Physics.CreateQueryViewExcludingStatics([]);
         Context = new(View, this, Identity);
@@ -68,7 +69,7 @@ internal sealed partial class ExplicitPlayerEnvironment : IMovementEnvironmentPr
         return MovementAvailability.Known;
     }
 
-    sealed class Pin : IMovementEnvironmentPin
+    sealed partial class Pin : IMovementEnvironmentPin
     {
         readonly ExplicitPlayerEnvironment owner;
         readonly IPhysicsQueryLease physics;

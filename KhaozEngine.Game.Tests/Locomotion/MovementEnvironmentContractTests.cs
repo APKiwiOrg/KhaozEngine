@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Locomotion;
+using KhaozEngine.Physics;
 using Xunit;
 
 namespace KhaozEngine.Tests.Locomotion;
@@ -123,6 +124,51 @@ public class MovementEnvironmentContractTests
         MovementWaterInterval interval = new MovementWaterInterval(-4f, 0f, 0f, true, "bed", "surface");
         Assert.ThrowsAny<ArgumentException>(() =>
             new MovementWaterPoint(known, space, domain, true, 1f, interval));
+    }
+
+    [Theory]
+    [InlineData(float.NaN, 0)]
+    [InlineData(0.25f, -0.001f)]
+    [InlineData(0.25f, float.PositiveInfinity)]
+    public void ContactSupportRejectsNonfiniteHeightOrInvalidError(float height, float error)
+    {
+        var space = new MovementSpaceKey("world", "room");
+        var body = new MovementBodyQuery(new(0, 0.75f, 0), 0.25f, 0.75f, space, null);
+        Assert.ThrowsAny<ArgumentException>(() => new MovementContactSupportRequest(body, new(space, body.Feet),
+            Vector2.Zero, height, error, Vector3.UnitY, new(0, 0.25f, 0), new StaticHandle(1), 3));
+    }
+
+    [Theory]
+    [InlineData(true, -1)]
+    [InlineData(false, 3)]
+    public void ContactSupportRequiresInstalledFeatureOrExplicitAnalyticProvenance(bool finite, int feature)
+    {
+        var space = new MovementSpaceKey("world", "room");
+        var body = new MovementBodyQuery(new(0, 0.75f, 0), 0.25f, 0.75f, space, null);
+        Assert.ThrowsAny<ArgumentException>(() => new MovementContactSupportRequest(body, new(space, body.Feet),
+            Vector2.Zero, 0.25f, 0, Vector3.UnitY, new(0, 0.25f, 0), finite ? new StaticHandle(1) : null, feature));
+    }
+
+    [Fact]
+    public void ContactSupportCannotReplaceTheKernelAxisWithItsWitness()
+    {
+        var space = new MovementSpaceKey("world", "room");
+        var body = new MovementBodyQuery(new(0.9f, 0.75f, 0), 0.25f, 0.75f, space, null);
+        Assert.ThrowsAny<ArgumentException>(() => new MovementContactSupportRequest(body, new(space, body.Feet),
+            new(1, 0), 0.25f, 0, Vector3.UnitY, new(1, 0.25f, 0), new StaticHandle(1), 3));
+    }
+
+    [Fact]
+    public void AnalyticGroundAndBindingRejectMixedWorldOrMissingIdentity()
+    {
+        var space = new MovementSpaceKey("world", "room");
+        var foreign = new MovementSupportKey("other-world", "floor");
+        var owner = new MovementSupportKey("world", "floor");
+        var identity = new MovementQueryIdentity("closure", 1, "scope");
+        Assert.ThrowsAny<ArgumentException>(() => new MovementAnalyticGround(Vector2.Zero, 0,
+            Vector3.UnitY, foreign, space, null, identity));
+        Assert.ThrowsAny<ArgumentException>(() => new MovementContactSupportBinding(foreign, space, null, identity));
+        Assert.ThrowsAny<ArgumentException>(() => new MovementContactSupportBinding(owner, space, null, default));
     }
 
     static object Key(string type, string world, string local) => type switch

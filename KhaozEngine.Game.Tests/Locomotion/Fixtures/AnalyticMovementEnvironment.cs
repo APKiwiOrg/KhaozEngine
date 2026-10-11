@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Locomotion.Fixtures;
 
 // Finite test producer only. The geometry family is clipped axis-aligned boxes, bounded unions
 // and explicitly declared connections. Uncertifiable coverage refuses instead of inventing dry space.
-internal sealed class AnalyticMovementEnvironment : IDisposable
+internal sealed partial class AnalyticMovementEnvironment : IDisposable
 {
     internal readonly record struct Room(string Id, AnalyticBox Bounds);
     internal readonly record struct Water(string Domain, string Room, AnalyticBox Bounds, float SurfaceY);
@@ -61,10 +61,12 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
             .ThenBy(w => w.Bounds.Min.X).ThenBy(w => w.Bounds.Min.Y).ToArray();
     }
 
-    public MovementQueryLease Acquire(string? room, float maxRise = 0f, float maxDrop = 0f, WorldFrame? worldFrame = null)
+    public MovementQueryLease Acquire(string? room, float maxRise = 0f, float maxDrop = 0f, WorldFrame? worldFrame = null,
+        StaticHandle[]? excludedStatics = null)
     {
         Assert.Null(_view);
-        _view = Physics.CreateQueryViewExcludingStatics([]);
+        _excludedSupports = new(excludedStatics ?? []);
+        _view = Physics.CreateQueryViewExcludingStatics(excludedStatics ?? []);
         var frame = new MovementFrameDescriptor(worldFrame ?? WorldFrame.Origin, Physics.Origin, 1ul);
         var scope = new MovementQueryScope(new Vector3(-32f), new Vector3(32f), maxRise, maxDrop,
             "world", room is null ? null : Space(room), Identity, frame);
@@ -73,15 +75,23 @@ internal sealed class AnalyticMovementEnvironment : IDisposable
             Resources = BackingIds,
             OnBodySample = Sample,
             OnCoverage = Trace,
-            OnRebuild = Rebuild
+            OnRebuild = Rebuild,
+            ContactSupportEnabled = true,
+            OnAnalyticGround = SampleAnalyticGround,
+            OnContactSupport = BindContactSupport
         };
         var acquired = Acquisition.Acquire();
         Assert.Equal(MovementAvailability.Known, acquired.Status);
         return Assert.IsType<MovementQueryLease>(acquired.Lease);
     }
 
-    public void Slab(float top, float halfThickness = 0.1f) => Physics.AddStatic(
-        new BoxShape(new Vector3(8f, halfThickness, 8f)), Pose.At(new Vector3(0f, top - halfThickness, 0f)));
+    public void Slab(float top, float halfThickness = 0.1f)
+    {
+        StaticHandle handle = Physics.AddStatic(new BoxShape(new Vector3(8f, halfThickness, 8f)),
+            Pose.At(new Vector3(0f, top - halfThickness, 0f)));
+        Room[] rooms = _rooms.Where(room => room.Bounds.ContainsPoint(new(0, top, 0))).ToArray();
+        if (rooms.Length == 1) RegisterBoxSupport(handle, "floor/" + _supportRegistrations.Count, rooms[0].Id);
+    }
 
     MovementAvailability Rebuild(in FramedMovementState state, out MovementSelection selection)
     {

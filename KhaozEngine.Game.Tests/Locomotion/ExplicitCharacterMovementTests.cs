@@ -214,10 +214,18 @@ public partial class ExplicitCharacterMovementTests
             float roomBottom = Math.Min(-16, Math.Min(floorY - 1, -waterDepth));
             Environment = new([new Room("room", new(new(-16, roomBottom, -16), new(16)))], waterRegions ?? (wet
                 ? [new Water("lake", "room", new(new(-8, 1 - waterDepth, -8), new(8, closedWet ? 0.5f : 1, 8)), 1)] : []));
-            if (floor) Environment.Physics.AddStatic(new BoxShape(new(8, 0.125f, 8)), Pose.At(origin + new Vector3(0, floorY - 0.125f, 0)));
+            if (floor)
+            {
+                var floorHandle = Environment.Physics.AddStatic(new BoxShape(new(8, 0.125f, 8)), Pose.At(origin + new Vector3(0, floorY - 0.125f, 0)));
+                Environment.RegisterBoxSupport(floorHandle, "floor", "room");
+            }
             if (wall) Environment.Physics.AddStatic(new BoxShape(new(0.03125f, 8, 8)), Pose.At(origin + new Vector3(2, 0, 0)));
-            if (bankHeight is { } height) Environment.Physics.AddStatic(new BoxShape(new(2, height / 2, 4)),
-                Pose.At(origin + new Vector3(3, height / 2, 0)));
+            if (bankHeight is { } height)
+            {
+                var bankHandle = Environment.Physics.AddStatic(new BoxShape(new(2, height / 2, 4)),
+                    Pose.At(origin + new Vector3(3, height / 2, 0)));
+                Environment.RegisterBoxSupport(bankHandle, "bank", "room");
+            }
             if (ceiling is { } top) Environment.Physics.AddStatic(new BoxShape(new(8, 0.125f, 8)),
                 Pose.At(origin + new Vector3(0, top + 0.125f, 0)));
             if (origin != Vector3.Zero) Environment.Physics.Rebase(origin);

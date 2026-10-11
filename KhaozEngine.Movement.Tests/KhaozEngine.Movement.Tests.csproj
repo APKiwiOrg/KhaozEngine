@@ -15,8 +15,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.cs" Link="Fixtures/AnalyticMovementEnvironment.cs" />
+    <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticMovementEnvironment.ContactSupport.cs" Link="Fixtures/AnalyticMovementEnvironment.ContactSupport.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticCapsuleVolume.cs" Link="Fixtures/AnalyticCapsuleVolume.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/AnalyticBoxComplement.cs" Link="Fixtures/AnalyticBoxComplement.cs" />
     <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/EnvironmentAcquisitionFixture.cs" Link="Fixtures/EnvironmentAcquisitionFixture.cs" />
+    <Compile Include="../KhaozEngine.Game.Tests/Locomotion/Fixtures/EnvironmentAcquisitionFixture.ContactSupport.cs" Link="Fixtures/EnvironmentAcquisitionFixture.ContactSupport.cs" />
   </ItemGroup>
 </Project>

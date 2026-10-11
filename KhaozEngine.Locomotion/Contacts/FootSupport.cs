@@ -21,10 +21,10 @@ internal static class FootSupport
     internal const float AxisProbeRadius = 0.01f;
 
     // The probes' cylindrical segment. Its lower cap holds the probe's lowest point.
-    const float ProbeLength = 0.01f;
+    internal const float ProbeLength = 0.01f;
     // The probes start this far above the band and sweep this far past it, so a surface exactly on either band
     // edge is reached by a sweep rather than landing on the sweep's start or end.
-    const float BandMargin = 0.001f;
+    internal const float BandMargin = 0.001f;
     const int Capacity = SupportNeighborhoodResult.MaximumElements;
     // The probe passes the back faces of one-sided mesh triangles, as the simulation's contacts do.
     static readonly QueryFilter ProbeFilter = QueryFilter.StaticsOnly with { CullBackFaces = true };

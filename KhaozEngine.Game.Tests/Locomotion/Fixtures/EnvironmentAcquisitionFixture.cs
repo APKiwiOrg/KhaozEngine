@@ -8,7 +8,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Locomotion.Fixtures;
 
-public sealed class EnvironmentAcquisitionFixture : IMovementEnvironmentProvider
+public sealed partial class EnvironmentAcquisitionFixture : IMovementEnvironmentProvider
 {
     readonly IPhysicsWorldQueryView _view;
     readonly MovementQueryIdentity _identity = new("closure", 1u, "scope");
@@ -75,11 +75,11 @@ public sealed class EnvironmentAcquisitionFixture : IMovementEnvironmentProvider
     {
         Pinned = true;
         OnPin?.Invoke();
-        pin = new Pin(this, physicsLease);
+        pin = ContactSupportEnabled ? new ContactPin(this, physicsLease) : new Pin(this, physicsLease);
         return PinAvailability;
     }
 
-    sealed class Pin(EnvironmentAcquisitionFixture owner, IPhysicsQueryLease physics) : IMovementEnvironmentPin
+    class Pin(EnvironmentAcquisitionFixture owner, IPhysicsQueryLease physics) : IMovementEnvironmentPin
     {
         public IPhysicsWorldQueryView PhysicsView => owner.PinView ?? owner._view;
         public long GeometryGeneration => physics.GeometryGeneration + (owner.Fault == "geometry-generation" ? 1 : 0);

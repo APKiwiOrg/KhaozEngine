@@ -542,7 +542,8 @@ shore sliding, simultaneous solid/water constraints and body-relative depth thre
 forbidden starting overlap refuses placement. Every corrected segment is fully re-proved.
 When a walkable descent reaches WadeOnly's enter-depth line or DryOnly's water boundary, its forbidden
 seat constrains the horizontal proposal and keeps the feasible along-shore component. Flat steps
-query component seats to locate the height discontinuity. The retry runs the same shell,
+sample the crossed tread along the actual proposal and use bounded axis cuts to locate its boundary.
+The retry runs the same shell,
 support and placement passes under the original pin and climb budget. Coverage uses the full body.
 Scripted movement commitments use the shared preparation, ballistic seed, timeout and recovery lifecycle.
 They suppress player steering and buffered jumps, retain their carried collision-clipped velocity,
@@ -579,7 +580,9 @@ controller. Accepted timed substeps hand the remaining time, climb budget, carry
 binding between land, swimming and water-origin flight. Swimming supplies vertical dynamics, while
 shared shell motion and footprint placement prove travel and landings. Commitments, facing, ground
 signals and land jumps resolve once for the whole tick. An exhausted eight-segment guard holds the
-whole input. Submerged bed contacts clip descent without granting land footing.
+whole input. Submerged bed contacts clip descent without granting land footing. Certified walkable
+or steep support at the axis remains a floor for later water segments that start at or below it,
+including an unraised rejected seat. Those segments clip downward velocity without sinking farther.
 The existing legacy swimming path is unchanged. The generic fixtures do not establish native
 producer acceptance or a playable consumer feature.
 

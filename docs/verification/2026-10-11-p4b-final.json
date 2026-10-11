@@ -1,10 +1,10 @@
 {
-  "phase": "KhaozEngine #438 phase 4b final fix wave",
-  "verifiedAt": "2026-10-11T08:03:03.833154+00:00",
+  "phase": "KhaozEngine #438 phase 4b final fix wave 2",
+  "verifiedAt": "2026-10-11T08:47:08.061940+00:00",
   "branch": "feature/swimming-contract",
-  "taskBase": "dc4e30fb53e7dd884ea56a65ef34ae15848ac2d3",
+  "taskBase": "62475b9767c57f273f0c31eda8cbe215c601cc51",
   "engineVersion": "20.32.0",
-  "newestReleaseTag": "v20.31.0",
+  "newestReleaseTag": "v20.32.0",
   "controllerModel": "contact-shell-footprint-swim-v1",
   "wireGeneration": 14,
   "profileRecipe": {
@@ -22,10 +22,10 @@
   "tests": {
     "command": "dotnet test KhaozEngine.slnx -c Release --no-build --filter 'Category!=LiveSocket'",
     "exitCode": 0,
-    "passed": 28760,
+    "passed": 28773,
     "failed": 0,
     "skipped": 1329,
-    "total": 30089,
+    "total": 30102,
     "projects": 32,
     "projectTotals": [
       {
@@ -71,13 +71,6 @@
         "total": 5
       },
       {
-        "project": "KhaozEngine.Identity.Exchange.Tests",
-        "passed": 177,
-        "failed": 0,
-        "skipped": 0,
-        "total": 177
-      },
-      {
         "project": "KhaozEngine.Accounts.Tests",
         "passed": 286,
         "failed": 0,
@@ -90,6 +83,13 @@
         "failed": 0,
         "skipped": 0,
         "total": 46
+      },
+      {
+        "project": "KhaozEngine.Identity.Exchange.Tests",
+        "passed": 177,
+        "failed": 0,
+        "skipped": 0,
+        "total": 177
       },
       {
         "project": "KhaozEngine.Netcode.Abstractions.DecouplingTests",
@@ -148,13 +148,6 @@
         "total": 134
       },
       {
-        "project": "KhaozEngine.ItemInstances.Tests",
-        "passed": 888,
-        "failed": 0,
-        "skipped": 0,
-        "total": 888
-      },
-      {
         "project": "KhaozEngine.TileEdit.Tests",
         "passed": 97,
         "failed": 0,
@@ -162,39 +155,11 @@
         "total": 104
       },
       {
-        "project": "KhaozEngine.Tests",
-        "passed": 61,
+        "project": "KhaozEngine.ItemInstances.Tests",
+        "passed": 888,
         "failed": 0,
         "skipped": 0,
-        "total": 61
-      },
-      {
-        "project": "KhaozEngine.TileWorld.Tests",
-        "passed": 514,
-        "failed": 0,
-        "skipped": 0,
-        "total": 514
-      },
-      {
-        "project": "PixelLabSheetAssembler.Tests",
-        "passed": 32,
-        "failed": 0,
-        "skipped": 0,
-        "total": 32
-      },
-      {
-        "project": "KeDungeon.Tests",
-        "passed": 13,
-        "failed": 0,
-        "skipped": 0,
-        "total": 13
-      },
-      {
-        "project": "KhaozEngine.Catalog.Tests",
-        "passed": 1514,
-        "failed": 0,
-        "skipped": 0,
-        "total": 1514
+        "total": 888
       },
       {
         "project": "KhaozEngine.TileWorld.Physics.Tests",
@@ -204,6 +169,13 @@
         "total": 89
       },
       {
+        "project": "KhaozEngine.MapDoc.Tests",
+        "passed": 560,
+        "failed": 0,
+        "skipped": 0,
+        "total": 560
+      },
+      {
         "project": "KhaozEngine.TileWorld.Netcode.Tests",
         "passed": 1382,
         "failed": 0,
@@ -211,11 +183,18 @@
         "total": 1382
       },
       {
-        "project": "KhaozEngine.MapDoc.Tests",
-        "passed": 560,
+        "project": "KeDungeon.Tests",
+        "passed": 13,
         "failed": 0,
         "skipped": 0,
-        "total": 560
+        "total": 13
+      },
+      {
+        "project": "KhaozEngine.TileWorld.Tests",
+        "passed": 514,
+        "failed": 0,
+        "skipped": 0,
+        "total": 514
       },
       {
         "project": "KhaozEngine.Movement.Tests",
@@ -225,6 +204,27 @@
         "total": 712
       },
       {
+        "project": "PixelLabSheetAssembler.Tests",
+        "passed": 32,
+        "failed": 0,
+        "skipped": 0,
+        "total": 32
+      },
+      {
+        "project": "KhaozEngine.Tests",
+        "passed": 61,
+        "failed": 0,
+        "skipped": 0,
+        "total": 61
+      },
+      {
+        "project": "KhaozEngine.Catalog.Tests",
+        "passed": 1514,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1514
+      },
+      {
         "project": "KhaozEngine.Render.Tests",
         "passed": 8984,
         "failed": 0,
@@ -232,18 +232,18 @@
         "total": 9920
       },
       {
+        "project": "KhaozEngine.Game.Tests",
+        "passed": 4406,
+        "failed": 0,
+        "skipped": 1,
+        "total": 4407
+      },
+      {
         "project": "KhaozEngine.MapEditor.Tests",
         "passed": 1377,
         "failed": 0,
         "skipped": 9,
         "total": 1386
-      },
-      {
-        "project": "KhaozEngine.Game.Tests",
-        "passed": 4393,
-        "failed": 0,
-        "skipped": 1,
-        "total": 4394
       },
       {
         "project": "KhaozEngine.Server.Tests",
@@ -302,7 +302,20 @@
     "ForbiddenDescendingBanksAndFlatStepsKeepTheAlongShoreComponent(mode: WadeOnly, stepped: true)",
     "PublicSelectUsesTheSmallCallersShellAndStepHeight(kneeWall: false)",
     "PublicSelectUsesTheSmallCallersShellAndStepHeight(kneeWall: true)",
-    "RuntimeContactGeometryParticipatesInTheProfileRecipe"
+    "RuntimeContactGeometryParticipatesInTheProfileRecipe",
+    "RejectedBedSeatRetainsTheWaterFloorForTenFollowingTicks(hz: 10)",
+    "RejectedBedSeatRetainsTheWaterFloorForTenFollowingTicks(hz: 30)",
+    "RejectedBedSeatRetainsTheWaterFloorForTenFollowingTicks(hz: 60)",
+    "WaterDescentAtOrBelowCertifiedWalkableOrSteepSupportClipsItsVelocity(steep: false, excursion: Surface)",
+    "WaterDescentAtOrBelowCertifiedWalkableOrSteepSupportClipsItsVelocity(steep: false, excursion: AirborneFromWater)",
+    "WaterDescentAtOrBelowCertifiedWalkableOrSteepSupportClipsItsVelocity(steep: true, excursion: Surface)",
+    "WaterDescentAtOrBelowCertifiedWalkableOrSteepSupportClipsItsVelocity(steep: true, excursion: AirborneFromWater)",
+    "SwimmingAboveTheBedKeepsTheUnobstructedWaterMotion(hz: 30)",
+    "SwimmingAboveTheBedKeepsTheUnobstructedWaterMotion(hz: 60)",
+    "ObliqueFlatDescentKeepsItsFeasibleShoreTangent(zWeight: 1, sign: 1)",
+    "ObliqueFlatDescentKeepsItsFeasibleShoreTangent(zWeight: 2, sign: 1)",
+    "ObliqueFlatDescentKeepsItsFeasibleShoreTangent(zWeight: 1, sign: -1)",
+    "ObliqueFlatDescentKeepsItsFeasibleShoreTangent(zWeight: 2, sign: -1)"
   ],
   "existingRowsChanged": [],
   "adoptionBlockers": [
@@ -318,7 +331,8 @@
     "#1299 navigation acceptance"
   ],
   "concerns": [
-    "The informational feed audit still reports the same nine historical drifted versions recorded by issue #1211. No packages were packed or changed."
+    "The informational feed audit still reports the same nine historical drifted versions recorded by issue #1211. No packages were packed or changed.",
+    "Concurrent work released v20.32.0 while this branch still uses 20.32.0. The owning orchestrator must select an unreleased version before integration and packaging. This dispatch forbids version and changelog changes."
   ],
   "historicalFeedDrift": {
     "versions": [
@@ -334,9 +348,9 @@
     ],
     "issue": "https://github.com/APKiwiOrg/KhaozEngine/issues/1211"
   },
-  "verifiedSourceCommit": "b66cec2096af8f67ddf443c58bad5ee25acccbcd",
+  "verifiedSourceCommit": "f0309a4f97efec3d01faadd6c112c146685f5f4e",
   "admission": {
-    "command": "build-slot --label p4b --heavy -- python3 .superpowers/sdd/2026-10-11-contact-controller-phase4b/run-final-verification.py",
+    "command": "build-slot --label p4b --heavy -- python3 .superpowers/sdd/2026-10-11-contact-controller-phase4b/run-final-fix2-verification.py",
     "label": "p4b",
     "heavy": true,
     "mode": "All commands ran sequentially under one admitted heavy slot."
@@ -400,5 +414,111 @@
     },
     "newDryWedgeRowFailedFirst": false,
     "newDryWedgeRowRole": "Already-passing negative control."
+  },
+  "previousVerification": {
+    "phase": "KhaozEngine #438 phase 4b final fix wave",
+    "verifiedAt": "2026-10-11T08:03:03.833154+00:00",
+    "verifiedSourceCommit": "b66cec2096af8f67ddf443c58bad5ee25acccbcd"
+  },
+  "finalFixWave2": {
+    "status": "DONE_WITH_CONCERNS",
+    "taskBase": "62475b9767c57f273f0c31eda8cbe215c601cc51",
+    "commits": [
+      {
+        "commit": "caf35c492ba30e0ce83e3647215d4eb5617ddbb5",
+        "subject": "fix(locomotion): retain certified water floors after rejected seats"
+      },
+      {
+        "commit": "f0309a4f97efec3d01faadd6c112c146685f5f4e",
+        "subject": "fix(locomotion): preserve oblique flat shore tangents"
+      }
+    ],
+    "findingsResolved": [
+      3,
+      5
+    ],
+    "rowsAdded": [
+      "RejectedBedSeatRetainsTheWaterFloorForTenFollowingTicks(hz: 10)",
+      "RejectedBedSeatRetainsTheWaterFloorForTenFollowingTicks(hz: 30)",
+      "RejectedBedSeatRetainsTheWaterFloorForTenFollowingTicks(hz: 60)",
+      "WaterDescentAtOrBelowCertifiedWalkableOrSteepSupportClipsItsVelocity(steep: false, excursion: Surface)",
+      "WaterDescentAtOrBelowCertifiedWalkableOrSteepSupportClipsItsVelocity(steep: false, excursion: AirborneFromWater)",
+      "WaterDescentAtOrBelowCertifiedWalkableOrSteepSupportClipsItsVelocity(steep: true, excursion: Surface)",
+      "WaterDescentAtOrBelowCertifiedWalkableOrSteepSupportClipsItsVelocity(steep: true, excursion: AirborneFromWater)",
+      "SwimmingAboveTheBedKeepsTheUnobstructedWaterMotion(hz: 30)",
+      "SwimmingAboveTheBedKeepsTheUnobstructedWaterMotion(hz: 60)",
+      "ObliqueFlatDescentKeepsItsFeasibleShoreTangent(zWeight: 1, sign: 1)",
+      "ObliqueFlatDescentKeepsItsFeasibleShoreTangent(zWeight: 2, sign: 1)",
+      "ObliqueFlatDescentKeepsItsFeasibleShoreTangent(zWeight: 1, sign: -1)",
+      "ObliqueFlatDescentKeepsItsFeasibleShoreTangent(zWeight: 2, sign: -1)"
+    ],
+    "existingExpectationsChanged": [],
+    "alreadyPassingControls": [
+      "SwimmingAboveTheBedKeepsTheUnobstructedWaterMotion(hz: 30)",
+      "SwimmingAboveTheBedKeepsTheUnobstructedWaterMotion(hz: 60)"
+    ],
+    "fixtureRefinements": "The first above-bed control entered the existing swim-exit band. Its pose and carry were corrected before implementation. The incoming-excursion floor fixture uses GroundedEpsilon 0.02 to keep initial legal land selection out of this water-mode assertion.",
+    "intermediateRegression": "The initial edge localization exhausted the 256 analytic facts on the two existing longer axis-aligned step rows. Bounded localization only for oblique cuts restored all 11 focused descent rows. No cap or proof tolerance changed.",
+    "versionCollision": "Concurrent work released v20.32.0 while this branch still uses 20.32.0. The owning orchestrator must select an unreleased version before integration and packaging. This dispatch forbids version and changelog changes.",
+    "commandResults": {
+      "build": {
+        "command": "dotnet build KhaozEngine.slnx -c Release",
+        "exitCode": 0,
+        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-build.log"
+      },
+      "tests": {
+        "command": "dotnet test KhaozEngine.slnx -c Release --no-build --filter 'Category!=LiveSocket'",
+        "exitCode": 0,
+        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-tests.log"
+      },
+      "format": {
+        "command": "dotnet format KhaozEngine.slnx --verify-no-changes --no-restore",
+        "exitCode": 0,
+        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-format.log"
+      },
+      "dashes": {
+        "command": "sh scripts/check-dashes.sh --tree",
+        "exitCode": 0,
+        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-dashes.log"
+      },
+      "prose": {
+        "command": "sh scripts/check-prose.sh --tree",
+        "exitCode": 0,
+        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-prose.log"
+      },
+      "size": {
+        "command": "sh scripts/check-file-size.sh --tree",
+        "exitCode": 0,
+        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-size.log"
+      },
+      "instructions": {
+        "command": "sh scripts/check-agent-instructions.sh --tree",
+        "exitCode": 0,
+        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-instructions.log"
+      },
+      "feed": {
+        "command": "sh scripts/check-local-feed.sh",
+        "exitCode": 0,
+        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-feed.log"
+      },
+      "docVersions": {
+        "command": "bash scripts/check-doc-versions.sh",
+        "exitCode": 0,
+        "log": ".superpowers/sdd/2026-10-11-contact-controller-phase4b/final-fix2-docVersions.log"
+      }
+    },
+    "initialRowsFailedBeforeImplementation": [
+      "RejectedBedSeatRetainsTheWaterFloorForTenFollowingTicks(hz: 10)",
+      "RejectedBedSeatRetainsTheWaterFloorForTenFollowingTicks(hz: 30)",
+      "RejectedBedSeatRetainsTheWaterFloorForTenFollowingTicks(hz: 60)",
+      "WaterDescentAtOrBelowCertifiedWalkableOrSteepSupportClipsItsVelocity(steep: false, excursion: Surface)",
+      "WaterDescentAtOrBelowCertifiedWalkableOrSteepSupportClipsItsVelocity(steep: false, excursion: AirborneFromWater)",
+      "WaterDescentAtOrBelowCertifiedWalkableOrSteepSupportClipsItsVelocity(steep: true, excursion: Surface)",
+      "WaterDescentAtOrBelowCertifiedWalkableOrSteepSupportClipsItsVelocity(steep: true, excursion: AirborneFromWater)",
+      "ObliqueFlatDescentKeepsItsFeasibleShoreTangent(zWeight: 1, sign: 1)",
+      "ObliqueFlatDescentKeepsItsFeasibleShoreTangent(zWeight: 2, sign: 1)",
+      "ObliqueFlatDescentKeepsItsFeasibleShoreTangent(zWeight: 1, sign: -1)",
+      "ObliqueFlatDescentKeepsItsFeasibleShoreTangent(zWeight: 2, sign: -1)"
+    ]
   }
 }

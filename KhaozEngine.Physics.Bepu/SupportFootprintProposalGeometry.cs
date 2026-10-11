@@ -14,7 +14,7 @@ internal static class SupportFootprintProposalGeometry
         out GeometryInterval lowest)
     {
         lowest = default;
-        GeometrySign upward = polygon.Normal.Y.Sign;
+        GeometrySign upward = SupportFootprintPolygon.Orientation(polygon);
         if (upward is GeometrySign.Negative or GeometrySign.Zero) return GeometrySign.Negative;
         if (upward != GeometrySign.Positive) return GeometrySign.Unresolved;
         FeatureNumber radius = FeatureNumber.Exact(proposal.Probe.Radius);
@@ -36,7 +36,7 @@ internal static class SupportFootprintProposalGeometry
         var point = new FeaturePoint(x, y, z);
         GeometrySign inside = polygon.Inside(point);
         if (inside == GeometrySign.Unresolved && polygon.HasSource)
-            inside = polygon.SourcePredicates.ProposalInterior(polygon, axis, radius);
+            inside = polygon.SourcePredicates.ProposalInterior(polygon, point, axis, radius);
         if (inside != GeometrySign.Negative)
         {
             // Evaluate the plane stratum without subtracting nearly equal horizontal squares at steep slopes.
@@ -91,6 +91,8 @@ internal static class SupportFootprintProposalGeometry
         FeaturePoint vertex = polygon.Vertices[index], edge = polygon.Edges[index];
         FeatureNumber a = edge.X.Multiply(edge.X, exactZeroProducts: true).Add(edge.Z.Multiply(edge.Z, exactZeroProducts: true));
         GeometrySign length = a.Sign;
+        if (length == GeometrySign.Unresolved && polygon.HasSource)
+            length = polygon.SourcePredicates.EdgeLength(polygon, index);
         if (length == GeometrySign.Zero) return true;
         if (length != GeometrySign.Positive) return false;
         FeatureNumber dx = vertex.X.Subtract(axis.X), dz = vertex.Z.Subtract(axis.Z);

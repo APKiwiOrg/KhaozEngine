@@ -66,6 +66,27 @@ internal sealed class SupportFootprintSourcePredicates
     SupportSourcePolynomial Cross(Point a, Point b) => Sub(Product(a.X, b.Z), Product(a.Z, b.X));
     SupportSourcePolynomial Square(SupportSourcePolynomial value) => Product(value, value);
 
+    internal GeometrySign NormalComponent(SupportPolygon polygon, int axis, int direction = 1)
+    {
+        if (!Begin(polygon)) return GeometrySign.Unresolved;
+        Point normal = Normal();
+        return _work.Sign(_work.Scale(axis == 0 ? normal.X : axis == 1 ? normal.Y : normal.Z, direction));
+    }
+
+    internal GeometrySign NormalSquared(SupportPolygon polygon, bool projected = false)
+    {
+        if (!Begin(polygon)) return GeometrySign.Unresolved;
+        Point normal = Normal();
+        return _work.Sign(projected ? Dot(normal, normal) : Dot3(normal, normal));
+    }
+
+    internal GeometrySign EdgeLength(SupportPolygon polygon, int index)
+    {
+        if (!Begin(polygon)) return GeometrySign.Unresolved;
+        Point edge = Edge(index);
+        return _work.Sign(Dot(edge, edge));
+    }
+
     internal GeometrySign VertexDisc(SupportPolygon polygon, int vertex, FeaturePoint axis, FeatureNumber radius)
     {
         if (!radius.IsExact || !Begin(polygon)) return GeometrySign.Unresolved;
@@ -114,12 +135,13 @@ internal sealed class SupportFootprintSourcePredicates
         return Radical(l, k, spatial ? Dot3(normal, normal) : Dot(normal, normal));
     }
 
-    internal GeometrySign ProposalInterior(SupportPolygon polygon, FeaturePoint axis, FeatureNumber radius)
+    internal GeometrySign ProposalInterior(SupportPolygon polygon, FeaturePoint point, FeaturePoint axis, FeatureNumber radius)
     {
         bool boundary = false, unknown = false;
         for (int i = 0; i < polygon.Edges.Length; i++)
         {
-            GeometrySign side = Interior(polygon, i, axis, radius, -1, spatial: true);
+            GeometrySign side = polygon.EdgeSide(point, i);
+            if (side == GeometrySign.Unresolved) side = Interior(polygon, i, axis, radius, -1, spatial: true);
             if (side == GeometrySign.Negative) return side;
             boundary |= side == GeometrySign.Zero;
             unknown |= side == GeometrySign.Unresolved;

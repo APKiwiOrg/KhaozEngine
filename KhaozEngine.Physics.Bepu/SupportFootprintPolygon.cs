@@ -17,6 +17,7 @@ internal static class SupportFootprintPolygon
         if (!SupportFootprintBounds.TryCreate(request, out var bounds) ||
             !SupportFootprintBounds.TryColumn(request, out double bottom, out double top)) return GeometrySign.Unresolved;
         GeometrySign area = FeaturePoint.Dot(polygon.Normal, polygon.Normal).Sign;
+        if (area == GeometrySign.Unresolved && polygon.HasSource) area = polygon.SourcePredicates.NormalSquared(polygon);
         if (area == GeometrySign.Zero) return GeometrySign.Negative;
         if (!polygon.IsResolved || area != GeometrySign.Positive) return GeometrySign.Unresolved;
         if (polygon.High[0] < bounds.Minimum.X || polygon.Low[0] > bounds.Maximum.X ||
@@ -31,7 +32,7 @@ internal static class SupportFootprintPolygon
         GeometryVectorOutput plane = GeometryVectorOperations.Publish(polygon.Vertices[0].Bounds);
         if (!normal.IsResolved || !plane.IsResolved) return GeometrySign.Unresolved;
         Range disc = default;
-        GeometrySign orientation = polygon.Normal.Y.Sign;
+        GeometrySign orientation = Orientation(polygon);
         if (orientation == GeometrySign.Unresolved) return GeometrySign.Unresolved;
         bool supports = orientation == GeometrySign.Positive;
         if (supports)
@@ -86,21 +87,19 @@ internal static class SupportFootprintPolygon
     {
         range = default;
         FeaturePoint axis = new(FeatureNumber.Exact(request.Axis.X), Zero, FeatureNumber.Exact(request.Axis.Y));
-        GeometrySign orientation = polygon.Normal.Y.Sign;
+        GeometrySign orientation = Orientation(polygon);
         if (orientation == GeometrySign.Unresolved) return orientation;
         if (orientation != GeometrySign.Zero)
         {
             FeaturePoint centre = OnPlane(polygon, axis);
-            GeometrySign inside = Interior(polygon, axis, new(Zero, Zero, Zero), radius, One, One);
+            GeometrySign inside = Interior(polygon, axis, new(Zero, Zero, Zero), radius, One, One, orientation);
             if (inside == GeometrySign.Unresolved) return inside;
             if (inside != GeometrySign.Negative) range.Add(centre);
         }
         for (int i = 0; i < polygon.Vertices.Length; i++)
         {
             FeaturePoint vertex = polygon.Vertices[i];
-            GeometrySign sign = InDisc(vertex, axis, radius);
-            if (sign == GeometrySign.Unresolved && polygon.HasSource)
-                sign = polygon.SourcePredicates.VertexDisc(polygon, i, axis, radius);
+            GeometrySign sign = InDisc(polygon, i, vertex, axis, radius);
             if (sign == GeometrySign.Unresolved) return sign;
             if (sign != GeometrySign.Positive) range.Add(vertex);
         }
@@ -108,16 +107,31 @@ internal static class SupportFootprintPolygon
             if (!Edge(polygon, i, axis, radius, ref range)) return GeometrySign.Unresolved;
         if (orientation != GeometrySign.Zero)
         {
-            FeatureNumber direction = FeatureNumber.Exact(orientation == GeometrySign.Positive ? -1 : 1);
+            int sourceDirection = orientation == GeometrySign.Positive ? -1 : 1;
+            FeatureNumber direction = FeatureNumber.Exact(sourceDirection);
             FeaturePoint uphill = new(polygon.Normal.X.Multiply(direction, exactZeroProducts: true), Zero, polygon.Normal.Z.Multiply(direction, exactZeroProducts: true));
             // For an axis-aligned gradient the normalized direction is exact even when the
             // installed coefficient is enclosed. Retain that identity before forming a radical.
-            if (uphill.Z.IsExact && uphill.Z.Value == 0 && uphill.X.Sign is GeometrySign.Positive or GeometrySign.Negative)
-                uphill = new(FeatureNumber.Exact(uphill.X.Sign == GeometrySign.Positive ? 1 : -1), Zero, Zero);
-            else if (uphill.X.IsExact && uphill.X.Value == 0 && uphill.Z.Sign is GeometrySign.Positive or GeometrySign.Negative)
-                uphill = new(Zero, Zero, FeatureNumber.Exact(uphill.Z.Sign == GeometrySign.Positive ? 1 : -1));
+            if (uphill.Z.IsExact && uphill.Z.Value == 0)
+            {
+                GeometrySign xSign = uphill.X.Sign;
+                if (xSign == GeometrySign.Unresolved && polygon.HasSource)
+                    xSign = polygon.SourcePredicates.NormalComponent(polygon, 0, sourceDirection);
+                if (xSign is GeometrySign.Positive or GeometrySign.Negative)
+                    uphill = new(FeatureNumber.Exact(xSign == GeometrySign.Positive ? 1 : -1), Zero, Zero);
+            }
+            else if (uphill.X.IsExact && uphill.X.Value == 0)
+            {
+                GeometrySign zSign = uphill.Z.Sign;
+                if (zSign == GeometrySign.Unresolved && polygon.HasSource)
+                    zSign = polygon.SourcePredicates.NormalComponent(polygon, 2, sourceDirection);
+                if (zSign is GeometrySign.Positive or GeometrySign.Negative)
+                    uphill = new(Zero, Zero, FeatureNumber.Exact(zSign == GeometrySign.Positive ? 1 : -1));
+            }
             FeatureNumber squared = DotXZ(uphill, uphill);
             GeometrySign gradient = squared.Sign;
+            if (gradient == GeometrySign.Unresolved && polygon.HasSource)
+                gradient = polygon.SourcePredicates.NormalSquared(polygon, projected: true);
             if (gradient == GeometrySign.Unresolved) return gradient;
             if (gradient == GeometrySign.Positive)
                 for (int sign = 1; sign >= -1; sign -= 2)
@@ -127,7 +141,7 @@ internal static class SupportFootprintPolygon
                     FeaturePoint point = OnPlane(polygon, FeaturePoint.Add(axis,
                         FeaturePoint.Scale(directionPoint, radius.Divide(root), exactZeroProducts: true)));
                     if (!point.IsResolved) return GeometrySign.Unresolved;
-                    GeometrySign inside = Interior(polygon, axis, directionPoint, radius, squared, root,
+                    GeometrySign inside = Interior(polygon, axis, directionPoint, radius, squared, root, orientation,
                         sign * (orientation == GeometrySign.Positive ? -1 : 1));
                     if (inside == GeometrySign.Unresolved) return inside;
                     if (inside != GeometrySign.Negative) range.Add(point);
@@ -148,6 +162,18 @@ internal static class SupportFootprintPolygon
 
     static FeatureNumber DotXZ(FeaturePoint a, FeaturePoint b) => a.X.Multiply(b.X, exactZeroProducts: true).Add(a.Z.Multiply(b.Z, exactZeroProducts: true));
 
+    internal static GeometrySign Orientation(SupportPolygon polygon)
+    {
+        GeometrySign sign = polygon.Normal.Y.Sign;
+        return sign == GeometrySign.Unresolved && polygon.HasSource ? polygon.SourcePredicates.NormalComponent(polygon, 1) : sign;
+    }
+
+    static GeometrySign InDisc(SupportPolygon polygon, int index, FeaturePoint point, FeaturePoint axis, FeatureNumber radius)
+    {
+        GeometrySign sign = InDisc(point, axis, radius);
+        return sign == GeometrySign.Unresolved && polygon.HasSource ? polygon.SourcePredicates.VertexDisc(polygon, index, axis, radius) : sign;
+    }
+
     static GeometrySign InDisc(FeaturePoint point, FeaturePoint axis, FeatureNumber radius)
     {
         FeaturePoint delta = FeaturePoint.Subtract(point, axis);
@@ -164,15 +190,17 @@ internal static class SupportFootprintPolygon
         FeaturePoint vertex = polygon.Vertices[index], edge = polygon.Edges[index];
         FeatureNumber a = DotXZ(edge, edge);
         GeometrySign length = a.Sign;
+        if (length == GeometrySign.Unresolved && polygon.HasSource)
+            length = polygon.SourcePredicates.EdgeLength(polygon, index);
         if (length == GeometrySign.Zero) return true;
         if (length != GeometrySign.Positive) return false;
         FeaturePoint delta = FeaturePoint.Subtract(vertex, axis);
         FeatureNumber dot = DotXZ(delta, edge);
         // An attained endpoint on the circle makes one root exactly 0 or 1. Factor that root before taking a
         // square root, so independently rounded enclosures cannot obscure a closed endpoint equality.
-        if (InDisc(vertex, axis, radius) == GeometrySign.Zero)
+        if (InDisc(polygon, index, vertex, axis, radius) == GeometrySign.Zero)
             return Parameter(polygon, index, axis, dot.Multiply(FeatureNumber.Exact(-2), exactZeroProducts: true).Divide(a), false, ref range);
-        if (InDisc(FeaturePoint.Add(vertex, edge), axis, radius) == GeometrySign.Zero)
+        if (InDisc(polygon, (index + 1) % polygon.Vertices.Length, FeaturePoint.Add(vertex, edge), axis, radius) == GeometrySign.Zero)
             return Parameter(polygon, index, axis, dot.Multiply(FeatureNumber.Exact(-2), exactZeroProducts: true).Divide(a).Subtract(One), true, ref range);
         FeatureNumber cross = delta.X.Multiply(edge.Z, exactZeroProducts: true).Subtract(delta.Z.Multiply(edge.X, exactZeroProducts: true));
         // Parallel projected edges factor the discriminant. This proves closed tangency
@@ -277,7 +305,7 @@ internal static class SupportFootprintPolygon
     }
 
     static GeometrySign Interior(SupportPolygon polygon, FeaturePoint axis, FeaturePoint direction,
-        FeatureNumber radius, FeatureNumber squared, FeatureNumber root, int sourceDirection = 0)
+        FeatureNumber radius, FeatureNumber squared, FeatureNumber root, GeometrySign orientation, int sourceDirection = 0)
     {
         bool boundary = false;
         for (int i = 0; i < polygon.Edges.Length; i++)
@@ -288,7 +316,7 @@ internal static class SupportFootprintPolygon
             GeometrySign side = RadicalSign(l, k, squared, root);
             if (side == GeometrySign.Unresolved && polygon.HasSource)
                 side = polygon.SourcePredicates.Interior(polygon, i, axis, radius, sourceDirection);
-            if (polygon.Normal.Y.Sign == GeometrySign.Negative)
+            if (orientation == GeometrySign.Negative)
                 side = side == GeometrySign.Positive ? GeometrySign.Negative :
                     side == GeometrySign.Negative ? GeometrySign.Positive : side;
             if (side is GeometrySign.Negative or GeometrySign.Unresolved) return side;

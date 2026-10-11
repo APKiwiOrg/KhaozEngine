@@ -21,9 +21,11 @@ public partial class SupportFootprintTests
         square.Reset();
         square.AddProduct(value, value);
         value = square;
+        square = new SupportSourceCoefficient();
         square.Reset();
         square.AddProduct(value, value);
         value = square;
+        square = new SupportSourceCoefficient();
         square.Reset();
         square.AddProduct(value, value);
         value = square;
@@ -43,6 +45,7 @@ public partial class SupportFootprintTests
     [InlineData(FootprintPartition.Hulls)]
     public void RotatedPolyhedronFootprintMatchesExactOracle(FootprintPartition partition)
     {
+        using var diagnostics = new SourceDiagnosticScope();
         using var scene = new SupportFootprintScene();
         Vector3 half = new(2, 0.125f, 2);
         PhysicsShape shape = partition == FootprintPartition.Boxes ? new BoxShape(half) :
@@ -53,7 +56,14 @@ public partial class SupportFootprintTests
         var members = new SupportFootprintMember[256];
         var joins = new ulong[1024];
         var request = Request();
+        foreach (SupportPolygon polygon in CapturedPolygons(scene, request))
+        {
+            double y = scene.Faces.Single(f => f.ElementId == polygon.ElementId).Normal.Y;
+            Assert.Equal(y > 0 ? GeometrySign.Positive : y < 0 ? GeometrySign.Negative : GeometrySign.Zero,
+                polygon.SourcePredicates.NormalComponent(polygon, 1));
+        }
         CheckQueryOracle(scene, request, Capability(scene.World).QuerySupportFootprint(lease, request, members, joins), members, joins);
+        AssertSourceFallbacks();
     }
 
     [Theory]
@@ -61,24 +71,28 @@ public partial class SupportFootprintTests
     [InlineData(0.05f)]
     public void RotatedObliqueEdgeCrossesDiscRim(float x)
     {
+        using var diagnostics = new SourceDiagnosticScope();
         using var scene = new SupportFootprintScene();
-        scene.Install(new TriangleMeshShape([new(-0.125f, 0, -0.25f), new(0.375f, 0, 0.25f), new(0.375f, 0, -0.25f)],
-            [0, 2, 1]), new(new(0, 0.125f, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.65f)));
+        scene.Install(new TriangleMeshShape([new(-0.375f, 0, -0.25f), new(0.375f, 0, 0.25f), new(0.375f, 0, -0.25f)],
+            [0, 2, 1]), new(new(x, 0.125f, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.65f)));
         var request = Request(x: x);
         foreach (SupportPolygon polygon in CapturedMesh(scene, request))
         {
             OracleFace face = scene.Faces.Single(f => f.ElementId == polygon.ElementId);
             CheckMaximum(Measure(polygon, request), SupportFootprintOracle.Polygon(face, request)!);
         }
+        SupportQueryDiagnostics.Reset();
         using var lease = scene.World.AcquireQueryReadLease();
         var members = new SupportFootprintMember[256];
         var joins = new ulong[1024];
         CheckQueryOracle(scene, request, Capability(scene.World).QuerySupportFootprint(lease, request, members, joins), members, joins);
+        AssertSourceFallbacks();
     }
 
     [Fact]
     public void RotatedUphillPointOnObliqueEdgeMatchesExactOracle()
     {
+        using var diagnostics = new SourceDiagnosticScope();
         // The gradient (3,4) points at (3s,4s) on the radius-5s disc. The same closed edge
         // holds that maximum. Exact source expansion must retain the radical equality.
         float s = 262145f / 1048576f;
@@ -89,11 +103,13 @@ public partial class SupportFootprintTests
         var request = Request(radius: 5 * s, upper: 7);
         var polygon = Assert.Single(CapturedMesh(scene, request));
         CheckMaximum(Measure(polygon, request), SupportFootprintOracle.Polygon(Assert.Single(scene.Faces), request)!);
+        AssertSourceFallbacks();
     }
 
     [Fact]
     public void GeneralInstalledRotationKeepsSharedDiagonalCorrelation()
     {
+        using var diagnostics = new SourceDiagnosticScope();
         using var scene = new SupportFootprintScene();
         scene.Install(new TriangleMeshShape([new(-2, 0, -2), new(2, 0, -2), new(2, 0, 2), new(-2, 0, 2)],
             [0, 1, 2, 0, 2, 3]), new(new(0, 0.125f, 0), Quaternion.CreateFromYawPitchRoll(0.3f, 0.2f, 0.65f)));
@@ -102,11 +118,13 @@ public partial class SupportFootprintTests
         var joins = new ulong[1024];
         var request = Request();
         CheckQueryOracle(scene, request, Capability(scene.World).QuerySupportFootprint(lease, request, members, joins), members, joins);
+        AssertSourceFallbacks();
     }
 
     [Fact]
     public void RotatedObliqueTangentRetainsClosedDiscWitness()
     {
+        using var diagnostics = new SourceDiagnosticScope();
         // The tangent point (3s,4s) has radius 5s. The edge direction (-4s,3s) is perpendicular.
         // This binary32 s makes every installed vertex and the radius exact, while the fourth-degree
         // discriminant needs more than binary64 precision. The pose cycles local axes exactly.
@@ -123,11 +141,13 @@ public partial class SupportFootprintTests
         CheckMaximum(Measure(polygon, request), SupportFootprintOracle.Polygon(Assert.Single(scene.Faces), request)!);
         Assert.Equal(GeometrySign.Positive, SupportFootprintProposalGeometry.Lowest(polygon, request.FootProposal, out var lowest));
         ContainsReference(lowest, SupportFootprintExactOracle.Contact(Assert.Single(scene.Faces), request.FootProposal)!.Value);
+        AssertSourceFallbacks();
     }
 
     [Fact]
     public void RotatedCircleEndpointsKeepBothClosedRootOrders()
     {
+        using var diagnostics = new SourceDiagnosticScope();
         float s = 1048577f / 4194304f;
         using var scene = new SupportFootprintScene();
         Vector3 Local(float x, float z) => new(0, z, x);
@@ -142,11 +162,13 @@ public partial class SupportFootprintTests
         Assert.Equal(GeometrySign.Positive, polygon.SourcePredicates.EdgeOtherRoot(polygon, 2, axis, false, high: false));
         Assert.Equal(GeometrySign.Zero, polygon.SourcePredicates.EdgeOtherRoot(polygon, 2, axis, false, high: true));
         CheckMaximum(Measure(polygon, request), SupportFootprintOracle.Polygon(Assert.Single(scene.Faces), request)!);
+        AssertSourceFallbacks();
     }
 
     [Fact]
     public void InstalledCoefficientBoundaryRefusesAtomically()
     {
+        using var diagnostics = new SourceDiagnosticScope();
         Quaternion rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.65f);
         Assert.True(InstalledPoseOperator.TryCreate(new RigidPose(Vector3.Zero, rotation), out var map));
         float radius = (float)map.RepresentedX.X.Value;
@@ -164,14 +186,20 @@ public partial class SupportFootprintTests
             Capability(scene.World).QuerySupportFootprint(lease, request, members, joins).Status);
         Assert.Equal(before, members);
         Assert.All(joins, word => Assert.Equal(73UL, word));
+        AssertSourceFallbacks();
     }
 
-    [Fact]
-    public void WarmRotatedSourceFallbackAllocatesNothing()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WarmRotatedSourceFallbackAllocatesNothing(bool general)
     {
         using var scene = new SupportFootprintScene();
-        scene.Install(new TriangleMeshShape([new(-2, 0, -2), new(2, 0, -2), new(2, 0, 2), new(-2, 0, 2)],
-            [0, 1, 2, 0, 2, 3]), new(new(0, 0.125f, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.65f)));
+        Vector3 Local(float x, float z) => new(x, general ? 0.25f * x + 0.125f * z : 0, z);
+        Quaternion rotation = general ? Quaternion.CreateFromYawPitchRoll(0.3f, 0.2f, 0.65f) :
+            Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.65f);
+        scene.Install(new TriangleMeshShape([Local(-2, -2), Local(2, -2), Local(2, 2), Local(-2, 2)],
+            [0, 1, 2, 0, 2, 3]), new(new(0, 0.125f, 0), rotation));
         using var lease = scene.World.AcquireQueryReadLease();
         var members = new SupportFootprintMember[256];
         var joins = new ulong[1024];
@@ -195,7 +223,7 @@ public partial class SupportFootprintTests
             long payload = (long)typeof(KhaozEngine.Tests.Locomotion.Contacts.SupportCostScratch)
                 .GetMethod("Visit", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
                 .Invoke(null, [scratch, new HashSet<object>(ReferenceEqualityComparer.Instance)])!;
-            _output.WriteLine($"Rotated source fallback coldBytes={coldBytes} warmBytes={bytes} scratchPayloadBytes={payload} exactFallbacks={SupportQueryDiagnostics.Snapshot().ExactFallbacks}");
+            _output.WriteLine($"Rotated source fallback general={general} coldBytes={coldBytes} warmBytes={bytes} scratchPayloadBytes={payload} exactFallbacks={SupportQueryDiagnostics.Snapshot().ExactFallbacks}");
         }
         finally { SupportQueryDiagnostics.Enable(false); }
     }
@@ -203,6 +231,7 @@ public partial class SupportFootprintTests
     [Fact]
     public void WarmSourceStrataAllocateNothing()
     {
+        using var diagnostics = new SourceDiagnosticScope();
         float s = 262145f / 1048576f;
         using var scene = new SupportFootprintScene();
         Vector3 Local(float x, float z) => new(3 * x + 4 * z, z, x);
@@ -212,6 +241,7 @@ public partial class SupportFootprintTests
         var polygon = Assert.Single(CapturedMesh(scene, request));
         Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out _));
         Assert.Equal(GeometrySign.Positive, SupportFootprintProposalGeometry.Lowest(polygon, request.FootProposal, out _));
+        SupportQueryDiagnostics.Reset();
         long before = GC.GetAllocatedBytesForCurrentThread();
         var footprint = SupportFootprintPolygon.Measure(polygon, request, out _);
         var contact = SupportFootprintProposalGeometry.Lowest(polygon, request.FootProposal, out _);
@@ -220,6 +250,7 @@ public partial class SupportFootprintTests
         Assert.Equal(GeometrySign.Positive, contact);
         Assert.Equal(0, bytes);
         _output.WriteLine($"Point-map source strata warmBytes={bytes}");
+        AssertSourceFallbacks();
     }
 
     static List<SupportPolygon> CapturedMesh(SupportFootprintScene scene, SupportFootprintRequest request)

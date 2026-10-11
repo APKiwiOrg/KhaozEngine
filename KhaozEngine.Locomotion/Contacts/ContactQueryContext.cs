@@ -91,7 +91,12 @@ internal readonly struct DryContactQueryContext(Func<float, float, float>? heigh
         if (medium is not null && medium(feet.X, feet.Z, feet.Y).InWater)
             throw new NotSupportedException("The contact controller does not swim yet. Water arrives in phase 4.");
     }
-    internal float HeightAt(Vector3 feet) => height?.Invoke(feet.X, feet.Z) ?? float.NaN;
+    internal float HeightAt(Vector3 feet)
+    {
+        if (height is null) return float.NaN;
+        SupportQueryDiagnostics.Record(SupportQueryCounter.AnalyticSamples);
+        return height(feet.X, feet.Z);
+    }
     internal bool TryHeightAt(Vector3 feet, out float value)
     {
         value = HeightAt(feet);

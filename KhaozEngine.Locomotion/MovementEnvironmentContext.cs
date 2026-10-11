@@ -57,6 +57,7 @@ public sealed class MovementEnvironmentContext
                 !ReferenceEquals(_physics.SourceWorld, _source) || physicsLease.Origin != scope.Frame.PhysicsOrigin)
                 return MovementAvailability.Invalid;
 
+            SupportQueryDiagnostics.Record(SupportQueryCounter.ProducerPins);
             MovementAvailability availability = _provider.TryPinPrepared(scope, physicsLease, out pin);
             if (!MovementEnvironmentValidation.Availability(availability)) return MovementAvailability.Invalid;
             if (availability != MovementAvailability.Known) return availability;
@@ -78,6 +79,7 @@ public sealed class MovementEnvironmentContext
             try { pin.AssertCurrent(); }
             catch (InvalidOperationException) { return MovementAvailability.Stale; }
             physicsLease.AssertCurrent();
+            SupportQueryDiagnostics.Record(SupportQueryCounter.MovementLeases);
             lease = new MovementQueryLease(_physics, physicsLease, pin, witness, scope.Frame, environmentGeneration, Release);
             transferred = true;
             return MovementAvailability.Known;

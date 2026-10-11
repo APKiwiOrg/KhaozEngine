@@ -1,4 +1,5 @@
 using System.Numerics;
+using KhaozEngine.Physics;
 
 namespace KhaozEngine.Locomotion.Contacts;
 
@@ -19,6 +20,7 @@ internal static partial class GroundCore
         {
             Attempt attempt = ResolveUnconstrained(move, planned, budget);
             if (!_queries.HasMediumProof) return attempt;
+            SupportQueryDiagnostics.Route(SupportQueryRoute.MediumResolve);
             bool constrained = false;
             for (int retry = 0; retry < MovementCapsuleResolver.MaximumCorrections; retry++)
             {
@@ -30,6 +32,8 @@ internal static partial class GroundCore
                 if (!_queries.ConstrainGroundDescent(from, to, attempt.Seat.Support.Normal,
                         _footRadius, _cosMaxSlope, out Vector2 feasible))
                     break;
+                SupportQueryDiagnostics.Record(SupportQueryCounter.MediumRetries);
+                SupportQueryDiagnostics.MediumRetryMaximum(retry + 1);
                 constrained = true;
                 attempt = ResolveUnconstrained(feasible, null, budget);
             }

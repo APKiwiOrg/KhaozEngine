@@ -17,11 +17,13 @@ internal readonly record struct QueryCounts(int Sweeps, int Penetrations, int Ra
 /// <see cref="SourceWorld"/> is the inner view's, so foot support accepts it as that view. The caller owns the inner
 /// view.</summary>
 internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
-    : IPhysicsWorldQueryView, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood, IPhysicsQueryLeaseSource
+    : IPhysicsWorldQueryView, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts, IPhysicsCapsuleSweep
 {
     int _sweeps, _penetrations, _raycasts, _features;
 
     internal QueryCounts Counts => new(_sweeps, _penetrations, _raycasts, _features);
+
+    internal void Reset() => _sweeps = _penetrations = _raycasts = _features = 0;
 
     public IPhysicsWorld SourceWorld => inner.SourceWorld;
     public Vector3 Origin => inner.Origin;
@@ -56,6 +58,20 @@ internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
         _features++;
         return ((IPhysicsCapsuleFeatures)inner).QueryCapsuleFeature(lease, target, capsule, pose,
             maximumSeparationMetres, faces, filter);
+    }
+
+    public CapsuleSweepResult SweepCapsuleCertified(CapsuleShape shape, Pose pose, Vector3 delta,
+        QueryFilter filter = default)
+    {
+        _sweeps++;
+        return ((IPhysicsCapsuleSweep)inner).SweepCapsuleCertified(shape, pose, delta, filter);
+    }
+
+    public CapsuleContactResult QueryCapsuleContacts(CapsuleShape shape, Pose pose, float margin,
+        Span<CapsuleContact> contacts, QueryFilter filter = default)
+    {
+        _penetrations++;
+        return ((IPhysicsCapsuleContacts)inner).QueryCapsuleContacts(shape, pose, margin, contacts, filter);
     }
 
     public void AssertFeatureCurrent(in CapsuleFeatureResult result, IPhysicsQueryLease lease) =>

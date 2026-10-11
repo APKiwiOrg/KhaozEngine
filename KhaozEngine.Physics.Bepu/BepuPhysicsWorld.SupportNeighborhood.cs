@@ -61,7 +61,9 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportNeighborhood
         _neighborhoodScratch = null;
         try
         {
-            return Collect(collector, receiver, lease, probe, pose, bandMetres, elements, joins, filter, exclusions);
+            SupportNeighborhoodResult result = Collect(collector, receiver, lease, probe, pose, bandMetres, elements, joins, filter, exclusions);
+            if (result.Status != CapsuleFeatureStatus.CapacityExceeded) SupportQueryDiagnostics.Refusal(result.Status);
+            return result;
         }
         finally
         {

@@ -155,6 +155,7 @@ internal sealed class SupportTangentKernel
     /// when the bounded arithmetic failed.</summary>
     internal GeometrySign Measure(StaticHandle owner, in SupportCurvedLeaf leaf, int part, out SupportElement element)
     {
+        SupportQueryDiagnostics.Record(SupportQueryCounter.Extrema);
         element = default;
         double upper = double.PositiveInfinity;
         if (_certainLow <= _certainHigh &&

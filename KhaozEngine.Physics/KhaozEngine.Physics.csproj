@@ -7,6 +7,9 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="KhaozEngine.Render.Tests" />
+    <InternalsVisibleTo Include="KhaozEngine.Physics.Bepu" />
+    <InternalsVisibleTo Include="KhaozEngine.Locomotion" />
+    <InternalsVisibleTo Include="KhaozEngine.Game.Tests" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

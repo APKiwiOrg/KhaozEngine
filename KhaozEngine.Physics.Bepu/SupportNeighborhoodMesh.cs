@@ -43,6 +43,7 @@ internal static class SupportNeighborhoodMesh
         candidates.Clear();
         var overlaps = new TriangleOverlaps(candidates);
         mesh.Tree.GetOverlaps(min, max, ref overlaps);
+        SupportQueryDiagnostics.Record(SupportQueryCounter.MeshLeaves, candidates.Count);
         candidates.Sort();
         var seamPose = new Pose(pose.Position, pose.Orientation);
         Span<double> low = stackalloc double[3], high = stackalloc double[3];

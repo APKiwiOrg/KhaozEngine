@@ -53,6 +53,7 @@ internal static class FootSupport
         Func<float, float, Vector3>? groundNormal, IPhysicsWorld? world, IPhysicsQueryLease? lease,
         in FootSupportQuery query)
     {
+        SupportQueryDiagnostics.Record(SupportQueryCounter.Find);
         Validate(query);
         IPhysicsSupportNeighborhood? features = null;
         if (world is not null)
@@ -83,7 +84,10 @@ internal static class FootSupport
                 scratch.InUse = false;
             }
         }
-        return selection.Result();
+        SupportSample result = selection.Result();
+        SupportQueryDiagnostics.ObserveFind(new(query.Axis, query.FeetY, query.FootRadius,
+            query.ReachUp, query.ReachDown, query.CosMaxSlope, (byte)result.Status, result.Height, result.HeightError));
+        return result;
     }
 
     static void Validate(in FootSupportQuery query)
@@ -126,6 +130,7 @@ internal static class FootSupport
     static void Probe(IPhysicsWorld world, IPhysicsSupportNeighborhood features, IPhysicsQueryLease lease,
         in FootSupportQuery query, CapsuleShape capsule, ProbeScratch scratch, ref Selection selection)
     {
+        SupportQueryDiagnostics.Record(SupportQueryCounter.Proposals);
         float radius = capsule.Radius;
         float lowest = query.FeetY + query.ReachUp + BandMargin;
         float centreY = lowest + radius + ProbeLength / 2;
@@ -192,6 +197,7 @@ internal static class FootSupport
         // Analytic terrain is exact at the axis and needs no certificate.
         internal void Terrain(Func<float, float, float> groundHeight, Func<float, float, Vector3>? groundNormal)
         {
+            SupportQueryDiagnostics.Record(SupportQueryCounter.AnalyticSamples);
             float height = groundHeight(_query.Axis.X, _query.Axis.Y);
             Vector3 normal = groundNormal?.Invoke(_query.Axis.X, _query.Axis.Y) ?? Vector3.UnitY;
             SupportStatus status = normal.Y < _query.CosMaxSlope ? SupportStatus.Steep : SupportStatus.Walkable;

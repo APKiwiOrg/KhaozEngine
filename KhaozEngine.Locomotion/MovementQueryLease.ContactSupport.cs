@@ -30,6 +30,7 @@ public sealed partial class MovementQueryLease
         try
         {
             AssertCurrent();
+            SupportQueryDiagnostics.Record(SupportQueryCounter.AnalyticSamples);
             MovementAvailability availability = support.SampleAnalyticGround(request, out MovementAnalyticGround? fact);
             AssertCurrent();
             if (!MovementEnvironmentValidation.Availability(availability)) return MovementAvailability.Invalid;
@@ -91,6 +92,7 @@ public sealed partial class MovementQueryLease
                 !AxisInside(sample.Height, 0, sample.HeightError, Witness.Scope.EnvelopeMin.Y, Witness.Scope.EnvelopeMax.Y))
                 return MovementAvailability.Unresolved;
             AssertCurrent();
+            SupportQueryDiagnostics.Record(SupportQueryCounter.Bindings);
             MovementAvailability availability = support.BindContactSupport(boundRequest, out MovementContactSupportBinding result);
             AssertCurrent();
             if (!MovementEnvironmentValidation.Availability(availability)) return MovementAvailability.Invalid;

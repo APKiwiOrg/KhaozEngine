@@ -82,10 +82,18 @@ internal readonly struct FeatureNumber
             ? Exact(quotient) : new(bounds);
     }
 
-    internal GeometrySign Sign => !IsResolved ? GeometrySign.Unresolved
-        : IsExact ? Value < 0 ? GeometrySign.Negative : Value > 0 ? GeometrySign.Positive : GeometrySign.Zero
-        : Bounds.Lower > 0 ? GeometrySign.Positive : Bounds.Upper < 0 ? GeometrySign.Negative
-        : GeometrySign.Unresolved;
+    internal GeometrySign Sign
+    {
+        get
+        {
+            if (!IsResolved) return GeometrySign.Unresolved;
+            if (IsExact) return Value < 0 ? GeometrySign.Negative : Value > 0 ? GeometrySign.Positive : GeometrySign.Zero;
+            if (Bounds.Lower > 0) return GeometrySign.Positive;
+            if (Bounds.Upper < 0) return GeometrySign.Negative;
+            SupportQueryDiagnostics.Record(SupportQueryCounter.IntervalFallbacks);
+            return GeometrySign.Unresolved;
+        }
+    }
 
     internal GeometrySign Compare(FeatureNumber other) => Subtract(other).Sign;
 }

@@ -87,6 +87,18 @@ internal sealed class ExplicitContactModes : ContactMediumPolicy
         MovementAvailability status = SurfaceWaterMotion.TryPropose(from, !from.Swimming, press, point,
             time, tuning, _water.SurfaceJumpSpeed, out Vector2 proposed, out bool launched);
         if (status != MovementAvailability.Known) throw new ContactQueryFailure(status);
+        bool bedClipped = false;
+        if (proposed.X < from.Position.Y)
+        {
+            // A rejected seat can leave the feet below the bed within StepHeight. Water motion still treats
+            // certified axis support as a floor, without retaining land footing or waiting for another crossing.
+            SupportSample bed = _queries.FindSupport(new(new(feet.X, feet.Z), feet.Y,
+                settings.FootRadiusFraction * tuning.CapsuleRadius, tuning.StepHeight, 0,
+                MathF.Cos(continuation.TractionGate)));
+            bedClipped = bed.Status is SupportStatus.Walkable or SupportStatus.Steep &&
+                (double)bed.Height + bed.HeightError >= feet.Y;
+            if (bedClipped) proposed = new(from.Position.Y, MathF.Max(0, proposed.Y));
+        }
         if (launched)
         {
             _state.Swimming = false;
@@ -101,6 +113,7 @@ internal sealed class ExplicitContactModes : ContactMediumPolicy
             status = SurfaceWaterMotion.TryPropose(from, !from.Swimming, press, point,
                 time - step.RemainingTime, tuning, _water.SurfaceJumpSpeed, out Vector2 consumed, out _);
             if (status != MovementAvailability.Known) throw new ContactQueryFailure(status);
+            if (bedClipped) consumed.Y = MathF.Max(0, consumed.Y);
             step = step with
             {
                 VerticalVelocity = step.VerticalVelocity == proposed.Y ? consumed.Y : step.VerticalVelocity,

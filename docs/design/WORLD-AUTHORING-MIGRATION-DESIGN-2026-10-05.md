@@ -61,9 +61,22 @@ author new content or change the shipped height datum.
 
 R2 pins selected geometry/ownership interfaces, R3 proves floor/ceiling collision, vertically correct support/picking and nav, and R5 proves transformed cave volumes/prefabs as relevant. R6 underground markers, R7 layer-aware vegetation/exclusions, R8 lighting/camera occlusion/residency and R9/R10 workflows consume the selected contract. Their named proofs live in the linked round plans.
 
-### DG9.2 Vertical water containment, before R4 approval
+### DG9.2 Vertical water containment, approved for R4
 
-**Design gate, not final design.** The current flat C4 proposal rejects all positive-area XZ overlap and samples any feet below SurfaceY without cave containment. That cannot disambiguate a surface ocean from a vertically separated cave lake or dry cave below it. R4 refinement must present volume/layer/bed semantics, validation and sampling interfaces against DG9.1 for approval before R4 execution. Preserve dry caves under water, contained flooded cave domains and independent vertically separated bodies. No unbounded ocean fills every depth. OA7's half-open XZ boundary rule remains approved within the selected domain, while old/new import samples still need named acceptance. Flat fixture examples below are not a selected vertical model.
+**Approved and implemented.** OA27 on 2026-10-11 selects one level, an XZ domain and explicit covered spaces per body.
+A point is wet only when R2 membership resolves a covered space, the body's domain owns its XZ and
+`lowerY <= y < min(SurfaceY, upperY)` in exact arithmetic. An open top or a level strictly below the ceiling is a
+free surface, and a ceiling tie closes the top. Missing, ambiguous or unrepresentable membership remains a refusal,
+never dry. This preserves dry caves under oceans and independent vertically separated bodies.
+
+OA28 restricts bodies to authored spaces, with no implicit exterior or changed membership/support result.
+Containment requires positive-area contact with a covered footprint. Multiple covered spaces connect through
+portal or vertical-link openings whose exact bottom lies strictly below the level. OA29 assigns capsule overlap
+classification and the SM2 span certificate to G1b. R4 supplies exact samples, region triangles and explicit
+unresolved outcomes, with no native movement delegate or optical algorithm. OA30 approves the
+[implemented R4 plan](../superpowers/plans/2026-10-11-world-authoring-r4-bounded-water.md).
+OA7's half-open XZ rule remains operative, with space ownership governing coincident boundaries.
+Actual old/new import boundary differences still need named acceptance.
 
 ### DG9.3 Navigation and server scale, before R3/R8 approval
 
@@ -91,6 +104,11 @@ The 8 MiB game nav-bake budget remains unchanged until a separate storage/distri
 - [KhaozEngine #1300](https://github.com/APKiwiOrg/KhaozEngine/issues/1300) gates C4/R4 data and C8/R8 rendering. Current first-background-surface optical depth causes pale bands from near-surface geometry. Bed-based depth or another optical algorithm is a proposal, not chosen. R4/R8 refinement pins data dependency ownership and approved rendering scope. R8's future fixed-camera/backend captures must cover a ledge 0.3 m under water, a 2 m river, a 30 m shelf to 100 m ocean, an enclosed cave lake and a region-crossing body, without a pale/terrace band or seam step. These test depths do not certify unlimited depth.
 - [KhaozEngine #1297](https://github.com/APKiwiOrg/KhaozEngine/issues/1297) gates bounded-domain geometry/render integration in R4/R8. Cost scales with body area, not a full water grid per row-run, and authored bends survive. Pin bounded geometry/work counters and capture assertions at refinement, without huge unapproved local benchmarks.
 - [KhaozEngine #1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299) gates R3/R4 movement/nav integration. Deep water blocks walkers, shallow wading remains unchanged, client/server/nav profiles match, and opted-out consumers keep legacy behavior. Record dependency ownership and opt-in/profile identity before approval. Swimming remains [Grimhollow #455](https://github.com/APKiwiOrg/Grimhollow/issues/455), outside this program.
+
+The implemented R4 split under OA27 to OA30 supplies exact bounded regions, contained samples and the five DG9.5
+headless scene fixtures. Compile work is counted and capped, including bound-lattice slot and cell candidates through
+`MaxBoundCells`. R8 owns optical algorithms and backend captures for #1300/#1297, and G1b after #438 phase 4 owns
+native movement and walker integration for #1299. R4 claims their data dependencies, not their runtime acceptance.
 
 ### DG9.6 Storage and estimate checkpoints
 
@@ -190,19 +208,43 @@ The consumer registers a complete static world for capture and a movement query 
 
 ### C4 Bounded water and medium
 
-**Data.** Format 6 adds stable-ID water bodies with bounded rect/polygon domains, explicit SurfaceY, medium key/parameters and render material reference. Import copies all seven region-clipped bodies, 113 rectangles and their exact heights as independent records. It may associate equal-height records for editing but cannot merge away source identity in the ledger. Terrain height edits no longer silently change a body's level. Analytic maps may retain their old global-water mode, while an authored map selects bounded mode and cannot accidentally render both [E1, E11, E17, E18, S1].
+**Data, implemented in R4.** Format 6 adds an optional root `water` section for resolver-2 native documents using
+`AuthoredBindingsV2`. Stable-ID bodies carry one SurfaceY, bounded lattice rect/ring domains, explicit covered spaces,
+a medium key from the document's table and a render material from the verified asset closure. A present empty section
+selects bounded mode and is dry everywhere. The pure 5 to 6 migration adds nothing, preserving resolver-1 global
+water. Import preserves source body identity and exact levels in its ledger. Terrain edits never recompute a body's
+level [E1, E11, E17, E18, S1].
 
-**Runtime.** The shared builder supplies clipped water draw polygons and feet-aware medium samples. The flat-domain overlap/sample proposal is subject to [DG9.2](#dg92-vertical-water-containment-before-r4-approval). Approved vertical semantics must distinguish surface water and cave domains before R4 approval. Within the approved water domain, foot height at or above the surface is dry, preserving decks over water. Being below SurfaceY alone is insufficient to make a dry cave wet. Body edges use one documented half-open domain rule for rendering/query/capture. Neither camera position nor an old region rim recomputes the surface [E11, E17, E18].
+**Runtime, implemented in R4.** `MapWaterQuery.Sample` and `Column` apply the approved
+[DG9.2 containment](#dg92-vertical-water-containment-approved-for-r4) and return wet intervals with body, space and
+boundary ids, the nominal level and free/closed top. `MapWaterCompiler` splits exact up-facing triangles into free,
+closed and unresolved regions at ceiling transitions, with ties closed and bounded counted work. Every publication
+with water and every compile/build validates containment. Document rules and material closure run on both identity
+paths. `MapBuiltWorld` carries water and media as immutable data, never physics statics, with residency owners,
+navigation tile medium digests and `Medium` invalidation. R4 supplies data and queries only. G1b owns native movement
+after #438 phase 4, and R8 owns rendering and optical algorithms. Resolver-1 consumers opt into their global medium
+with `CreateLegacyMoveContext(legacyGlobalWater: true)` [E11, E17, E18].
 
-Native rectangles include minimum X/Z and exclude maximum X/Z in world coordinates, including negative Z. Simple polygon rings normalize to counter-clockwise XZ winding. An edge owns a boundary point when its direction has negative Z, or has zero Z and positive X. A ring owns a vertex exactly when the ownership direction, +X with an infinitesimal +Z tilt, points into its interior angle there, so a convex vertex needs both incident edges to own it and a reflex vertex needs either one. At a straight vertex the shared line decides. Shared-edge tessellation uses the same rule. In the historical flat fixture, positive-area XZ overlaps are rejected even at equal levels and media, while touching edges are allowed. Native vertical overlap validation is pending DG9.2 and must replace a blanket XZ rejection for separated domains. The importer explicitly normalizes legacy negative-Z domains and records exact-boundary sampling differences in its differential report rather than claiming legacy boundary ownership is unchanged.
+Native rectangles include minimum X/Z and exclude maximum X/Z in world coordinates, including negative Z. Simple polygon rings normalize to counter-clockwise XZ winding. An edge owns a boundary point when its direction has negative Z, or has zero Z and positive X. A ring owns a vertex exactly when the ownership direction, +X with an infinitesimal +Z tilt, points into its interior angle there, so a convex vertex needs both incident edges to own it and a reflex vertex needs either one. At a straight vertex the shared line decides. Shared-edge tessellation uses the same rule. Within a body, domain pieces cannot overlap with positive area. Between bodies, positive-area overlap refuses when they cover the same space, while vertically separated covered spaces may share XZ. Where a domain edge coincides with a space boundary, R2 space ownership governs. The importer explicitly normalizes legacy negative-Z domains and records exact-boundary sampling differences in its differential report rather than claiming legacy boundary ownership is unchanged.
 
-**Editor/tool.** Body create/read/list/set/remove, boundary brush and level/medium inspector share undoable commands. Preview water alongside terrain, bridges and medium query readouts. Validate finite levels, nonempty/non-self-intersecting domains, overlap/containment under the approved DG9.2 semantics and valid media/material IDs [E4, E11, E16 to E18].
+**Editor/tool.** Undoable `WaterEditCommand` operations edit bodies, media and bounded mode atomically.
+`WaterService.List/Get/Sample` and `MutationService.WaterApply` share the native command/validation path as typed
+services. GUI brushes and inspector controls stay with R9, and MCP registrations with R10. Publication validates
+levels, exact domain geometry, containment and media/material references [E4, E11, E16 to E18].
 
-**Proof.** Exact body domain/height/media ledger, seams, negative Z edges, dry bridge feet, submerged river bed, multiple independent levels and no global ocean outside the bounded bodies. Compare render/capture/medium domain samples before and after import [E11, E18, E25, G4, S1].
+**Proof.** The implemented plan covers a synthetic legacy-water oracle, negative-Z and polygon boundaries, dry caves,
+contained lakes, flooded and connected spaces, missing geometry, exact ceiling transitions, counted limits,
+immutable identities, build/residency/nav invalidation and editor/service parity. The private oracle harness keeps
+shipped-source comparison details outside this repository. R8 owns the five DG9.5 backend captures, G1b owns capsule
+certificates and movement acceptance, and R11/game import owns named source differences [E11, E18, E25, G4, S1].
+
+Format 6 moves every native root digest and every resolver-2 authored identity once, including documents without
+water, so caches and navigation captures keyed on them rebuild once. Documents without water keep their document
+hash. Loading also refuses repeated or case-variant JSON members anywhere, where the last value previously won.
 
 ### C5 Prefabs, buildings, interior volumes and roofs
 
-**Data.** Format 7 adds version 1 native prefab assets and free-transform instances. A prefab has stable local child keys, placements, native local floor surfaces/paint, lights, markers, interior volumes and optional prefab-local C4 water bodies. The optional local water uses the R4 bounded-domain/medium contract, including containment semantics once approved at DG9.2, and one parent/local transform, resolving J5.1 without a new water algorithm. Instance overrides address those keys for transforms, tags, asset variants, additions/removals, floor paint and volume/roof membership. A persisted child binding map gives resolved children stable world placement/numeric IDs. The approved rigid prefab v1 boundary includes free transforms, stable children, overrides, local floors/volumes and optional snapping. No nested prefab references, generated stairs/foundations or architectural CAD in v1. A building needs no world tile footprint or plane [E1, E3, E13, E21].
+**Data.** Format 7 adds version 1 native prefab assets and free-transform instances. A prefab has stable local child keys, placements, native local floor surfaces/paint, lights, markers, interior volumes and optional prefab-local C4 water bodies. The optional local water uses the R4 bounded-domain/medium contract, including the containment semantics approved at DG9.2, and one parent/local transform, resolving J5.1 without a new water algorithm. Instance overrides address those keys for transforms, tags, asset variants, additions/removals, floor paint and volume/roof membership. A persisted child binding map gives resolved children stable world placement/numeric IDs. The approved rigid prefab v1 boundary includes free transforms, stable children, overrides, local floors/volumes and optional snapping. No nested prefab references, generated stairs/foundations or architectural CAD in v1. A building needs no world tile footprint or plane [E1, E3, E13, E21].
 
 Interior volumes are local polygon prisms with explicit lower/upper Y and stable storey/volume keys. Roof child keys attach to the volumes they conceal. Hidden roofs still cast shadows. AlwaysVisible/AlwaysHidden remain view modes. Auto hides only linked roofs above the observer's occupied volume, not all roofs on a global plane. Roof-aware camera blockers and indoor lighting use that same membership result. An open pasture shelter has no indoor volume and stays visible in Auto [E13, G3].
 
@@ -323,7 +365,7 @@ This table closes every row of the baseline matrix. A supported free transform s
 | Indoor and hiding | C2/C5/C8, R5/R8 |
 | Underlay/overlay/cuts/feathers | C2/C8, R2/R8 |
 | Corner heights/upper derivation | C2, R2 |
-| Bounded water | C4, R4 |
+| Bounded water | C4, R4 data/queries implemented. R8 rendering and G1b movement remain separate |
 | Decks/rails/dry feet | C3/C4, R3/R4 |
 | Foliage density/exclusions | C7, R7 |
 | Player/NPC/general markers | C6, R6 |
@@ -343,7 +385,7 @@ Each round below is one separately reviewed implementation plan and one independ
 | R1 Native document and identity | C1, format 4 and render-free asset seam | Approved R1 plan and reconciled released CellOrigin main | Old analytic maps unchanged, immutable resolver, int64/redo/closure/hash tests |
 | R2 Exact authored terrain | C2, format 5, shared triangle compiler and surface commands | R1, DG9.1 cave choice and DG9.4 precision contract | Exact legacy terrain/paint plus selected cave geometry and layer ownership proofs |
 | R3 Shared shape and headless world | C3, asset collision payload 1 and GPU-free MapDoc.Physics | R1/R2 | Identical two-head statics/pick/reach/stance, doorway/bridge and cave floor/ceiling proofs, tiled nav/multi-cell evidence under the approved DG9.3 dependency split and DG9.4 |
-| R4 Bounded water | C4, format 6 and medium/level tools | R2/R3 | Historical seven-body fidelity, DG9.2 vertical containment, walker profile and DG9.5 dependency proofs |
+| [R4 Bounded water](../superpowers/plans/2026-10-11-world-authoring-r4-bounded-water.md) | C4, format 6, exact contained point/column queries, counted region compiler and undoable typed tools, implemented for 20.32.0 | R2/R3, OA27 to OA30 | Synthetic water oracle, approved vertical containment and ceiling ties, counted limits including MaxBoundCells, immutable build/residency/nav identity, editor/service parity and five DG9.5 headless scenes. Private source comparison stays outside this repository. G1b walker/capsule acceptance and R8 optical captures remain downstream |
 | R5 Free buildings and interiors | C5, format 7 and prefab payload 1 | R1 to R4 | Actual interiors preserved, free building transform and stable children, volume/roof/shadow/door proof |
 | R6 General markers | C6, format 8, typed spawn projections | R1/R2/R5 | 38 exact fixture markers, elevated/local/free markers and no fake region discs |
 | R7 Native foliage | C7, format 9 and deterministic density commands | R2/R3/R5/R6 | Every density byte and generated sample, rotated building/door exclusions and reload stability |
@@ -354,7 +396,11 @@ Each round below is one separately reviewed implementation plan and one independ
 
 Engine exit tests run synchronously in the owning plan's area projects. Rendering follows repository backend CI/golden policy. Build/verification is serialized through the shared slot, no stress loops or parallel local builds. This documents-only revision runs document guards, not production builds or full suites [E29, E31, G15].
 
-R1 to R4 execution plans are [native document and identity](../superpowers/plans/2026-10-05-world-authoring-r1-native-document-identity-assets.md), [authored terrain and paint](../superpowers/plans/2026-10-05-world-authoring-r2-authored-terrain-paint.md), [shared shapes and headless builders](../superpowers/plans/2026-10-05-world-authoring-r3-shared-shapes-headless-builders.md) and [bounded water and medium](../superpowers/plans/2026-10-05-world-authoring-r4-bounded-water-medium.md). OA8 approves R1 and the controller owns active R1 execution. This branch holds its planning copy only. R2 to R4 are existing full plans needing OA9 refinement before owner approval. R5 to R11 remain drafts refined at their rounds. Specs and C4 boundary policy remain approved. R2 onward, R3 geometry/query detail and OA9 pending choices are not execution-approved. Each plan has an OA9 checkpoint and Outcome link.
+R1 to R4 execution plans are [native document and identity](../superpowers/plans/2026-10-05-world-authoring-r1-native-document-identity-assets.md), [authored terrain and paint](../superpowers/plans/2026-10-05-world-authoring-r2-authored-terrain-paint.md), [shared shapes and headless world](../superpowers/plans/2026-10-10-world-authoring-r3-shared-shapes-headless-world.md) and [bounded water](../superpowers/plans/2026-10-11-world-authoring-r4-bounded-water.md).
+R1 to R3 are released prerequisites. OA27 to OA29 settle R4's containment, authored-space and downstream adapter
+contracts, and OA30 approves its executable plan. All eleven R4 tasks and the whole-branch fix wave are implemented
+and reviewed, with release preparation staging 20.32.0. R5 to R11 remain drafts refined and approved at their rounds.
+Game adoption, native G1b acceptance and R8 optical captures are separate gates.
 
 ## Risks, mitigations and estimate
 
@@ -381,7 +427,12 @@ The owner answer supplied by the controller on 2026-10-05 is exactly "Approve". 
 
 Approval IDs are OA4 specs, OA5 revised T4, OA6 prefab/estimate and OA7 water boundary in game DECISIONS. The 1 m allowance preserves `MinimumObjectReachHeight`, a minimum vertical target reach-envelope height. It does not define a 1 m action distance. Action range remains existing game policy.
 
-OA8 R1 plan approval persists and the controller owns its active execution. This docs lane changes only the R1 planning copy. R2 onward remain unapproved. R2 to R4 reconcile their released prerequisites and OA9 gates before review, with the cave representation chosen before R2 approval, vertical water semantics before R4 approval and explicit R3 interaction geometry/query refinement. R5 to R11 are drafts refined at their rounds. No next engine version is reserved. Start R1 only from reconciled released CellOrigin main, not by merging the historical docs branch.
+OA8 R1 plan approval persists, and R1 to R3 have released. On 2026-10-11, OA27 approves R4's water gate decisions,
+OA28 limits water to authored spaces and supersedes OA27 decision 4, OA29 assigns capsule classification and the span
+certificate to G1b, and OA30 approves the revised R4 plan at dda6e5bde with controller rulings R4-P1 to R4-P4.
+R4 implementation and review are complete, and 20.32.0 release preparation is staged. Approval does not authorize
+game adoption or native G1b acceptance. R5 to R11 retain their own approval gates, and release integration and tags
+remain with the owning controller under OA25.
 
 Policy approval does not waive actual import differences. Each changed target, distance, occlusion, stance and exact water-boundary sample needs a named old/new case and acceptance reference at R11/game import. Physical collider parity is separate and cannot be traded for green reach tests. No manual playtest is needed for this documentation revision.
 

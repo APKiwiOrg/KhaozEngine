@@ -35,7 +35,7 @@ internal static class MapDocumentMembers
             foreach (JsonNode? item in array) BuildMembers(item);
     }
 
-    // Match the serializer's case-insensitive, last-value-wins property lookup without rewriting input.
+    // Match the serializer's case-insensitive lookup without rewriting input. Parsed documents have unique names.
     internal static bool TryGetProperty(JsonObject obj, string name, out JsonNode? value)
     {
         bool found = false;

@@ -199,7 +199,8 @@ registration.TryFaceOwner(feature.Target, incident.FaceId, out MapFaceKey canoni
 feature query's incident face id on a terrain chunk to its canonical `MapFaceKey`. A feature id is not a triangle
 index, since edges and vertices number after faces. `CreateLegacyMoveContext` gives a resolver 1 world a ground move
 context over its analytic support height and playable bounds. A native world refuses it, since it moves on the
-contact controller.
+contact controller. The parameterless overload supplies no medium. Opt into resolver-1 global water with
+`CreateLegacyMoveContext(legacyGlobalWater: true)`: feet strictly below `MapBuiltWorld.LegacyWaterLevel` are wet.
 
 Any failure during `Register` removes what it added, in reverse order. `Dispose` removes every static in reverse
 order, never disposes the physics world, and leaves the statics a failed removal kept in `Handles` so a later call
@@ -283,6 +284,9 @@ capsule. `MapWorldBuilder` compiles a native document's water section over its w
 "water: " and the detail, any body that does not compile complete. `MapBuiltWorld.Water` carries the compiled bodies
 and `WaterMedia` the section's media, so the media travel with the built world. `WaterDigest` and every body digest
 enter the build hash only when the section is present.
+The build captures the water set and its digests, checks render material closure and containment, and refuses
+incomplete geometry or a counted compile limit, including `MapWaterCompileLimits.MaxBoundCells`. Later edits to the
+caller's set cannot change the built world.
 
 `MapResidencyOwnership.BuildWater` gives each body a `water:{bodyId}` residency owner over the storage tiles its
 region triangles reach. A placement and a body may share an id, but the builder refuses any static owner matching
@@ -292,7 +296,9 @@ overreach and edge-only contact. The digest enters its capture identity, while i
 An edit flagged `MapNativeInvalidation.Medium` names bodies in `WaterBodyIds`, and `Affected` maps those ids to water
 owners while `AffectedTiles` invalidates their capture tiles. Body ids alone do not invalidate water residency.
 Each body digest covers only what that body read, so an edit elsewhere leaves its tiles alone.
-Movement in water arrives with #438 phase 4.
+R4 supplies data and queries only. Native movement uses the G1b adapter after #438 phase 4. Rendering and optical
+algorithms remain with R8. Format 6 moves native root digests and resolver-2 authored identities once even without
+water, so navigation captures and caches keyed on them rebuild once.
 
 ## Physical relations
 

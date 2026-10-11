@@ -112,6 +112,20 @@ accepted `MapNativeEditEffects`. A GUI edit and a service edit of the same docum
 document bytes and effects text, which the GUI reports through `EditorDocument.LastNativeEffects`. Terrain
 MCP verbs are deferred to R10.
 
+## Bounded water services
+
+The typed water service APIs, new in 20.32.0, use the same resolver-2 document and commands as MapEditor.
+`WaterService.List()` returns detached bodies in ordinal id order, `Get(id)` returns a detached body by exact id
+and refuses an unknown id, and `Sample(x, y, z)` samples world metres through `MapWaterQuery`. An absent section
+returns no bodies and a dry sample. `MapWaterSampleInfo` carries status, body and space ids, interval bounds,
+the nominal level, whether the upper boundary is free and any refusal detail.
+
+`MutationService.WaterApply(MapWaterEdit)` runs `WaterEditCommand` under the session's native mutation lock.
+It returns `MapWaterMutationResult` with the mutation and accepted effects, and produces the same document bytes
+and effects as the editor command. Publication checks the complete water set's containment and bound material
+closure before changing the session. Analytic and resolver-1 documents refuse water edits.
+These are service APIs. Water MCP registrations remain with R10, so the registered verb count is unchanged.
+
 ## Native colliders
 
 `NativeCollisionService(session)` measures and edits the colliders of the open native document. It is a service

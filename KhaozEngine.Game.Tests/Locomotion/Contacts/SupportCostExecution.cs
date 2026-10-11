@@ -210,13 +210,7 @@ internal sealed class SupportCostExecution : IDisposable
             binding = new(new("world", "floor"), Room, null, identity);
             return MovementAvailability.Known;
         };
-        producer.OnBodySample = (in MovementBodyQuery body) =>
-        {
-            bool wet = Wet(body.Centre.X);
-            return new(MovementAvailability.Known, Room,
-                wet ? new MovementDomainKey("world", "water") : null, wet, 1,
-                wet ? new MovementWaterInterval(-10, row.WaterSurface, row.WaterSurface, true, "bottom", "top") : null);
-        };
+        producer.OnBodySample = SampleBody;
         producer.OnCoverage = (in MovementMediumSweepQuery query, Span<MovementCoverageSpan> spans,
             Span<MovementDomainContact> contacts) =>
         {
@@ -249,7 +243,15 @@ internal sealed class SupportCostExecution : IDisposable
         return producer;
     }
 
-    bool Wet(float x) => !float.IsNaN(row.WaterSurface) && x >= row.WaterMinX;
+    internal MovementWaterPoint SampleBody(in MovementBodyQuery body)
+    {
+        Vector3 feet = body.Feet;
+        bool wet = !float.IsNaN(row.WaterSurface) && feet.X >= row.WaterMinX &&
+            feet.Y >= -10 && feet.Y <= row.WaterSurface;
+        return new(MovementAvailability.Known, Room,
+            wet ? new MovementDomainKey("world", "water") : null, wet, 1,
+            wet ? new MovementWaterInterval(-10, row.WaterSurface, row.WaterSurface, true, "bottom", "top") : null);
+    }
 
     static bool Clip(double start, double delta, double min, double max, Vector3 inward,
         ref double enter, ref double exit, ref Vector3 normal)

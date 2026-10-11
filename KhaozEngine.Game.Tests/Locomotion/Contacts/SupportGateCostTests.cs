@@ -21,6 +21,34 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
     public static IEnumerable<object[]> CostRows() => SupportGateCostScenes.Rows().Select(r => new object[] { ((SupportCostRow)r[0]).Name });
     static SupportCostRow Row(string name) => SupportGateCostScenes.Rows().Select(r => (SupportCostRow)r[0]).Single(r => r.Name == name);
 
+    [Theory]
+    [InlineData(0, 0.401f, false)]
+    [InlineData(0.149f, 0.252f, false)]
+    [InlineData(0, 0.25f, true)]
+    [InlineData(0, -10, true)]
+    [InlineData(0, -10.001f, false)]
+    public void BodyWaterPointUsesCanonicalFeetMembership(float x, float feetY, bool wet)
+    {
+        using var execution = new SupportCostExecution(Row("explicit medium descent retry"), "ExplicitTick");
+        var body = new MovementBodyQuery(new(x, feetY + 0.9f, 0), 0.4f, 0.9f, new("world", "room"), null);
+        MovementWaterPoint point = execution.SampleBody(body);
+        Assert.Equal(wet, point.InWater);
+        Assert.Equal(wet, point.Domain.HasValue);
+        Assert.Equal(wet, point.Interval.HasValue);
+    }
+
+    [Fact]
+    public void ChangedAxisRoundingEarnsItsOwnSupportRead()
+    {
+        SupportQueryDiagnostics.Enable(true);
+        SupportCostRow row = Row("explicit changed-axis rounding");
+        SupportCostSample sample = new SupportCostSampler(false).Measure(row, "ExplicitTick")[0];
+        output.WriteLine($"End {sample.EndState}, routes {sample.Routes}");
+        foreach (SupportFindObservation read in sample.SupportReads) output.WriteLine($"Find {read}");
+        AssertNamedRoute(row, sample);
+        Assert.True(sample.GeometryPassed);
+    }
+
     [Fact]
     public void DiagnosticsAreAnOptInThreadLocalObserver()
     {
@@ -182,8 +210,19 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         if (row.Name == "explicit rounding handoff")
         {
             Assert.True(sample.Routes.WaterSegments > 0 && sample.Routes.GroundSegments > 0);
+            Assert.Equal(0, sample.Routes.RoundedReads);
             int supportedReads = sample.SupportReads.Count(q => (SupportStatus)q.Status is SupportStatus.Walkable or SupportStatus.Steep);
             Assert.True(sample.Counts.Bindings > supportedReads);
+        }
+        if (row.Name == "explicit changed-axis rounding")
+        {
+            Assert.True(sample.Routes.WaterSegments >= 2);
+            Assert.True(sample.Routes.RoundedReads > 0, $"{sample.Routes}");
+            Assert.Equal(-256.08334f, sample.EndState!.Value.Position.X);
+            Assert.Contains(sample.SupportReads, q => q.Axis.X == -256.08334f &&
+                (SupportStatus)q.Status == SupportStatus.Walkable);
+            Assert.Contains(sample.SupportReads, q => q.Axis.X == -256.08331f &&
+                (SupportStatus)q.Status == SupportStatus.Walkable);
         }
         if (row.Name == "explicit dry swim handoff")
         {
@@ -202,7 +241,19 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
             Assert.True(sample.AchievedMotion.X < 0);
             Assert.Equal(0.19f, sample.SupportReads[^1].Axis.X);
         }
-        if (row.Name == "explicit medium descent retry") Assert.True(sample.Counts.MediumRetries > 0);
+        if (row.Name == "explicit medium descent retry")
+        {
+            Assert.True(sample.Counts.MediumRetries > 0);
+            Assert.True(sample.GeometryPassed);
+            Assert.True(sample.GeometryMatchesOracle);
+            using var execution = new SupportCostExecution(row, "ExplicitTick");
+            foreach (MoveState state in new[] { row.Input, sample.ColdEndState!.Value, sample.EndState!.Value })
+            {
+                Assert.True(state.Grounded);
+                var body = new MovementBodyQuery(state.Position, 0.4f, 0.9f, new("world", "room"), null);
+                Assert.False(execution.SampleBody(body).InWater);
+            }
+        }
     }
 
     [Fact]

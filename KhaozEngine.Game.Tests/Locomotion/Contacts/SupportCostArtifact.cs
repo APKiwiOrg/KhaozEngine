@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using KhaozEngine.Physics;
 using KhaozEngine.Locomotion;
 
@@ -19,6 +20,7 @@ internal sealed record SupportCostSample(string Operation, string Scene, bool Ge
     public QueryCounts Queries { get; init; }
     public QueryCounts ColdQueries { get; init; }
     public SupportQueryCounts ColdCounts { get; init; }
+    [JsonIgnore]
     public SupportCostRow? Input { get; init; }
     public bool Comparable { get; init; } = true;
     public bool Dense { get; init; }
@@ -79,6 +81,13 @@ internal static class SupportCostArtifact
         string candidateSha, string command)
     {
         if (samples.Count == 0) throw new ArgumentException("A cost artifact needs samples.", nameof(samples));
+        var scenes = new Dictionary<string, SupportCostRow?>();
+        foreach (SupportCostSample sample in samples)
+        {
+            if (scenes.TryGetValue(sample.Scene, out SupportCostRow? input) && input != sample.Input)
+                throw new ArgumentException("A scene must have one immutable input across its samples.", nameof(samples));
+            scenes[sample.Scene] = sample.Input;
+        }
         var options = new JsonSerializerOptions
         {
             WriteIndented = true,
@@ -130,9 +139,10 @@ internal static class SupportCostArtifact
             Observers = "Opt-in counters and preallocated Find/substep callbacks are enabled inside samples. Oracle checks, callback installation, scratch inspection, delegate construction and serialization are outside sample windows.",
             Geometry = "Every captured Find is checked against the independent installed-geometry oracle after both sample windows. Correct None and capacity refusals cannot pass a support cost gate. Tick geometry requires matching support reads and a finite advancing state.",
             ProcessExitStatus = (int?)null,
+            Scenes = scenes,
             Samples = compared,
         }, options);
-        root["schemaVersion"] = 1;
+        root["schemaVersion"] = 2;
         root["pendingFinalization"] = JsonSerializer.SerializeToNode(new { Section = section, RunId = runId });
         string? directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);

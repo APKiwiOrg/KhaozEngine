@@ -22,6 +22,7 @@ internal sealed record SupportCostRow(string Name, bool Dense = false, bool Expl
         "wall retry" => MathF.Max(0, 2 * (x - 0.05f)),
         "slide opposing face" => 2 * MathF.Abs(x),
         "explicit rounding handoff" => x < 128.02f ? -5 : 2.1f,
+        "explicit changed-axis rounding" => x < -256.02f ? 1.6f : -5,
         _ => TerrainHeight + TerrainSlope * x,
     };
     internal Vector3 NormalAt(float x) => Name switch
@@ -94,13 +95,17 @@ internal static class SupportGateCostScenes
         yield return [new SupportCostRow("explicit entry", Explicit: true) { Analytic = true, TerrainHeight = 0 }];
         yield return [new SupportCostRow("explicit rounding handoff", Explicit: true) { Analytic = true,
             TerrainHeight = -5, Feet = new(128, 2.3f, 0), Grounded = false, Swimming = true, VerticalVelocity = -15, WaterSurface = 3, MustPass = false }];
+        // Leave the shore before landing so water-origin continuation retains the unrounded integral.
+        yield return [new SupportCostRow("explicit changed-axis rounding", Explicit: true) { Analytic = true,
+            TerrainHeight = -5, Feet = new(-256, 1.92f, 0), Direction = -Vector2.UnitX, Grounded = false,
+            Swimming = true, VerticalVelocity = -15, WaterSurface = 3, WaterMinX = -256.02f }];
         yield return [new SupportCostRow("explicit wade", Explicit: true) { Analytic = true, TerrainHeight = 0,
             WaterSurface = 0.4f }];
         yield return [new SupportCostRow("explicit swim", Explicit: true) { Analytic = true, TerrainHeight = -5,
             WaterSurface = 3, Feet = new(0, 1.92f, 0), Grounded = false, Swimming = true, MustPass = false }];
         yield return [new SupportCostRow("explicit medium descent retry", Explicit: true) { Analytic = true,
             TerrainHeight = 0.4f, TerrainSlope = -1, Normal = Vector3.Normalize(new(1, 1, 0)),
-            Feet = new(0, 0.4f, 0), WaterSurface = 0.25f, WaterMode = WaterTraversalMode.DryOnly, MustPass = false }];
+            Feet = new(0, 0.4f, 0), WaterSurface = 0.25f, WaterMode = WaterTraversalMode.DryOnly }];
         yield return [new SupportCostRow("explicit dry swim handoff", Explicit: true) { Analytic = true,
             TerrainHeight = 0, WaterSurface = 3, WaterMinX = 0.1f, MustPass = false }];
         yield return [new SupportCostRow("explicit dry wade handoff", Explicit: true) { Analytic = true,
@@ -135,7 +140,7 @@ internal static class SupportGateCostScenes
             return oneMesh;
         }
         var scene = new SupportFootprintScene();
-        if (row.Name is "analytic only" or "explicit entry" or "explicit rounding handoff" or
+        if (row.Name is "analytic only" or "explicit entry" or "explicit rounding handoff" or "explicit changed-axis rounding" or
             "explicit wade" or "explicit swim" or "explicit medium descent retry" or "explicit dry swim handoff" or
             "explicit dry wade handoff" or "slide opposing face" or "wall retry")
             return scene;

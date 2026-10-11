@@ -53,17 +53,45 @@ public sealed class SupportCostArtifactTests
                 ColdHeight = 2,
                 Height = 1
             };
-            SupportCostArtifact.Write(path, [sample], "base", "candidate", "command");
+            SupportCostArtifact.Write(path, [sample, sample with { Operation = "DryTick", Height = 3 }], "base", "candidate", "command");
             Assert.Equal(0, Finalize(path, 0, true));
-            JsonNode record = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!["Samples"]![0]!;
-            Assert.Equal(1, record["Input"]!["InputState"]!["Position"]!["X"]!.GetValue<float>());
-            Assert.Equal(2.9f, record["Input"]!["InputState"]!["Position"]!["Y"]!.GetValue<float>());
+            JsonNode root = JsonNode.Parse(File.ReadAllText(path))!;
+            Assert.Equal(2, root["schemaVersion"]!.GetValue<int>());
+            JsonNode section = root["baseline"]!;
+            JsonNode input = section["Scenes"]!["fixture"]!;
+            Assert.Single(section["Scenes"]!.AsObject());
+            Assert.Equal(1, input["InputState"]!["Position"]!["X"]!.GetValue<float>());
+            Assert.Equal(2.9f, input["InputState"]!["Position"]!["Y"]!.GetValue<float>());
+            JsonNode record = section["Samples"]![0]!;
+            Assert.Null(record["Input"]);
+            Assert.Equal("fixture", record["Scene"]!.GetValue<string>());
+            Assert.Equal("fixture", section["Samples"]![1]!["Scene"]!.GetValue<string>());
+            Assert.Equal(3, section["Samples"]![1]!["Height"]!.GetValue<double>());
+            Assert.Equal(2, section["Samples"]!.AsArray().Count);
+            Assert.Equal(16, record["ColdBytes"]!.GetValue<long>());
+            Assert.Equal(0, record["WarmBytes"]!.GetValue<long>());
+            Assert.Equal(1, record["ColdMicroseconds"]!.GetValue<double>());
+            Assert.Equal(2, record["WarmMicroseconds"]!.GetValue<double>());
             Assert.Equal(1, record["EndState"]!["Position"]!["X"]!.GetValue<float>());
             Assert.Equal(4, record["ColdEndState"]!["Position"]!["Z"]!.GetValue<float>());
             Assert.Equal(2, record["ColdHeight"]!.GetValue<double>());
             Assert.Equal(1, record["Height"]!.GetValue<double>());
         }
         finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public void ArtifactRejectsConflictingSceneInputsWithoutWriting()
+    {
+        string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json");
+        SupportCostSample first = Sample() with { Input = new("fixture") { Feet = Vector3.Zero } };
+        SupportCostSample second = Sample() with { Input = new("fixture") { Feet = Vector3.One } };
+        try
+        {
+            Assert.Throws<ArgumentException>(() => SupportCostArtifact.Write(path, [first, second], "base", "candidate", "command"));
+            Assert.False(File.Exists(path));
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
     }
 
     [Theory]

@@ -6,6 +6,7 @@ using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
+using KhaozEngine.TileWorld;
 using Xunit;
 
 namespace KhaozEngine.Tests.MapDocCompatibility;
@@ -38,6 +39,31 @@ public sealed class LegacyWaterOracleTests
         Assert.Equal(4, dry.Length);
         string shoal = Native.Sources.Single(LegacyWaterOracleWorld.IsShoal).BodyId;
         Assert.All(dry, d => Assert.Equal((shoal, true, false), (d.BodyId, d.Legacy, d.Native)));
+    }
+
+    [Fact]
+    public void UnrepresentableCellCentres_ReportFailuresInsteadOfCheckingRoundedPoints()
+    {
+        var source = new LegacyWaterSource("far-water", RegionCoord.Of(8_388_609, 0), 0, 0,
+            new TileWaterBody(new[] { new TileRect(8_388_609, 0, 2, 1) }, 0f));
+        MapWaterBodyDoc template = Native.Document.Water!.Bodies[0];
+        var water = new MapWaterSet();
+        water.Media.AddRange(Native.Document.Water.Media);
+        water.Bodies.Add(template with
+        {
+            Id = source.BodyId,
+            SurfaceY = source.Body.SurfaceY,
+            Domain = new(MapLatticeFrame.ImportedMetreCentimetre,
+                new[] { new MapWaterRect(8_388_609, 0, 8_388_611, 1) }, Array.Empty<MapWaterRing>()),
+        });
+        var document = new MapDocument { Surfaces = Native.Document.Surfaces, Water = water };
+
+        LegacyWaterReport report = LegacyWaterComparison.Compare(document, new[] { source });
+
+        Assert.Contains(report.Failures, f => f.Contains("far-water: cell centre for cell (8388609, 0) is not representable", StringComparison.Ordinal));
+        Assert.Contains(report.Failures, f => f.Contains("far-water: cell centre for cell (8388610, 0) is not representable", StringComparison.Ordinal));
+        Assert.Equal(0, report.Cells);
+        Assert.Throws<MapDocumentException>(() => LegacyWaterComparison.CellCentres(source, 0f).ToArray());
     }
 
     [Fact]

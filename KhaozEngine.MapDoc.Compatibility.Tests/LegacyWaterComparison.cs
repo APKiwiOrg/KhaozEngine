@@ -23,7 +23,7 @@ internal static class LegacyWaterComparison
         var differences = new List<LegacyWaterDifference>();
         var failures = new List<string>();
         int rects = sources.Sum(s => s.Body.Rects.Count);
-        int cells = sources.Sum(s => s.Body.Rects.Sum(r => checked(r.Width * r.Height)));
+        int cells = 0;
         int boundarySamples = 0;
         if (native.Water is not { } water)
         {
@@ -49,7 +49,11 @@ internal static class LegacyWaterComparison
             if (body.Domain.Frame != MapLatticeFrame.ImportedMetreCentimetre || body.Domain.Rings.Count != 0 ||
                 !body.Domain.Rects.SequenceEqual(expectedRects)) failures.Add($"{source.BodyId}: rectangle pieces differ");
             MapWaterDomain domain = MapWaterDomain.Compile(body.Domain);
-            foreach (MapFramePoint point in CellCentres(source, 0f)) CompareCell(source, body, domain, point);
+            foreach (MapFramePoint point in CellCentres(source, 0f, failures))
+            {
+                cells++;
+                CompareCell(source, body, domain, point);
+            }
             foreach (MapExactXz point in BoundarySamples(source))
             {
                 boundarySamples++;
@@ -126,12 +130,25 @@ internal static class LegacyWaterComparison
     }
 
     internal static IEnumerable<MapFramePoint> CellCentres(LegacyWaterSource source, float y)
+        => CellCentres(source, y, null);
+
+    static IEnumerable<MapFramePoint> CellCentres(LegacyWaterSource source, float y, ICollection<string>? failures)
     {
         foreach (var rect in source.Body.Rects)
             for (long z = rect.Z; z < (long)rect.Z + rect.Height; z++)
                 for (long x = rect.X; x < (long)rect.X + rect.Width; x++)
-                    yield return new(default, new Vector3(new MapExactValue(2 * x + 1, 2).ToSingle(), y,
-                        new MapExactValue(-(2 * z + 1), 2).ToSingle()));
+                {
+                    MapExactXz centre = new(new(2 * x + 1, 2), new(-(2 * z + 1), 2));
+                    MapFramePoint point = new(default, new Vector3(centre.X.ToSingle(), y, centre.Z.ToSingle()));
+                    if (point.ExactWorldXz() != centre)
+                    {
+                        string failure = $"{source.BodyId}: cell centre for cell ({x}, {z}) is not representable as a query input";
+                        if (failures is null) throw new MapDocumentException(failure);
+                        failures.Add(failure);
+                        continue;
+                    }
+                    yield return point;
+                }
     }
 
     internal static IEnumerable<MapExactXz> BoundarySamples(LegacyWaterSource source)

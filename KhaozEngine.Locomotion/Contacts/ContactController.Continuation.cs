@@ -19,6 +19,8 @@ internal static partial class ContactController
         internal WaterExcursionState Excursion { get; init; }
         internal bool FluidVisited { get; init; }
         internal bool DescendingAtContact { get; init; }
+        internal bool LastWasWalking { get; init; }
+        internal bool Completed { get; init; }
         internal double UnroundedX { get; init; }
         internal double UnroundedZ { get; init; }
         internal Vector3 PublishedCentre => Queries.BodyCentre(Feet);
@@ -81,6 +83,7 @@ internal static partial class ContactController
                     GroundTravel = tick.GroundTravel + step.Achieved,
                     Mode = grounded ? Mode.Ground : step.Footing == GroundFooting.Steep ? Mode.Slide : Mode.Air,
                     DescendingAtContact = false,
+                    LastWasWalking = step.Footing == GroundFooting.Walkable,
                 };
                 lagRecorded = true;
                 remaining = step.RemainingTime;
@@ -110,6 +113,7 @@ internal static partial class ContactController
                         slide.Outcome == SlideOutcome.Wedged ? slide.IntegratedVerticalVelocity : tick.FallSpeed,
                     Mode = grounded ? Mode.Ground : slide.Outcome == SlideOutcome.Airborne ? Mode.Air : Mode.Slide,
                     DescendingAtContact = false,
+                    LastWasWalking = false,
                 };
                 firstRecorded = true;
                 remaining = slide.RemainingTime;
@@ -143,6 +147,7 @@ internal static partial class ContactController
                     FallSpeed = grounded ? -air.FallSpeedAtContact : tick.FallSpeed,
                     Mode = grounded ? Mode.Ground : air.Outcome == AirOutcome.Sliding ? Mode.Slide : Mode.Air,
                     DescendingAtContact = air.DescendingAtContact,
+                    LastWasWalking = false,
                 };
                 firstRecorded = true;
                 remaining = air.RemainingTime;

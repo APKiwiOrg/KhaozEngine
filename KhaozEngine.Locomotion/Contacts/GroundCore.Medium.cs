@@ -27,7 +27,8 @@ internal static partial class GroundCore
                 Vector2 axis = _startAxis + attempt.Total;
                 var from = new Vector3(Axis.X, FeetY, Axis.Y);
                 var to = new Vector3(axis.X, attempt.Seat.FeetY, axis.Y);
-                if (!_queries.ConstrainGroundDescent(from, to, attempt.Seat.Support.Normal, out Vector2 feasible))
+                if (!_queries.ConstrainGroundDescent(from, to, attempt.Seat.Support.Normal,
+                        _footRadius, _cosMaxSlope, out Vector2 feasible))
                     break;
                 constrained = true;
                 attempt = ResolveUnconstrained(feasible, null, budget);

@@ -27,6 +27,7 @@ internal static partial class ContactController
         try
         {
             queries.AssertCurrent();
+            queries.BeginContactTick();
             ContactShell.Validate(tuning);
             GroundCoreSettings foot = settings ?? new GroundCoreSettings();
             if (!float.IsFinite(foot.FootRadiusFraction) || foot.FootRadiusFraction <= 0)
@@ -83,6 +84,9 @@ internal static partial class ContactController
             var modes = new ExplicitContactModes(leased, start, tuning, water, jump);
             MoveState next = StepWithQueries(start, moveDir, speedFraction, run, jump, dt, tuning,
                 leased, out ContactTickContinuation continuation, faceYaw: faceYaw, settings: foot, fluid: modes);
+            if (!continuation.Completed)
+                return HoldLeased(state, leased.Outcome == MovementStepOutcome.Advanced
+                    ? MovementStepOutcome.EnvironmentUnresolved : leased.Outcome);
             if (leased.Outcome is not (MovementStepOutcome.Advanced or MovementStepOutcome.Blocked) || leased.RecoveryDenied)
                 return HoldLeased(state, leased.Outcome);
             Vector3 endFeet = leased.KernelFeet(next.Position, tuning);

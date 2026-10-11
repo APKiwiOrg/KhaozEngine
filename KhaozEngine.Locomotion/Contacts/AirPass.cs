@@ -162,16 +162,18 @@ internal static partial class AirPass
                 var seat = new GroundSeatResult(SeatOutcome.Seated, MathF.BitIncrement(support.Height), support, 0, Vector3.Zero);
                 GroundPlacement bed = GroundPlacement.Try(queries, NoSupport, high, axis, Vector2.Zero,
                     seat, footRadius, tuning, cosMaxSlope, budget, ref route);
-                if (bed.Valid)
-                    return new(bed.Feet, 0, Achieved(feet, start, moved + new Vector3(bed.Total.X, 0, bed.Total.Y)),
-                        remaining, AirOutcome.Airborne, NoSupport, 0, blocked || bed.Pushed)
-                    {
-                        HorizontalVelocity = horizontal,
-                        RemainingTime = remainingTime,
-                        ClimbBudget = bed.Budget,
-                        MediumHandoff = true,
-                        DescendingAtContact = true,
-                    };
+                // A refused seat clips at the clear unraised substep, as a land landing does.
+                // Continuing the descent would let the legs pass through an analytic bed.
+                return new(bed.Valid ? bed.Feet : at, 0,
+                    Achieved(feet, start, moved + (bed.Valid ? new Vector3(bed.Total.X, 0, bed.Total.Y) : Vector3.Zero)),
+                    remaining, AirOutcome.Airborne, NoSupport, 0, blocked || bed.Valid && bed.Pushed)
+                {
+                    HorizontalVelocity = horizontal,
+                    RemainingTime = remainingTime,
+                    ClimbBudget = bed.Valid ? bed.Budget : budget,
+                    MediumHandoff = true,
+                    DescendingAtContact = true,
+                };
             }
             if (support.Status == SupportStatus.Walkable && medium?.AllowsFooting(at, support) != false)
             {

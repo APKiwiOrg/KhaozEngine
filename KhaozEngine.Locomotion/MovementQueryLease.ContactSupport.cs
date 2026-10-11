@@ -11,6 +11,15 @@ public sealed partial class MovementQueryLease
     Dictionary<(MovementSpaceKey Space, Vector2 Axis), MovementAnalyticGround?>? _analyticGround;
     Dictionary<(StaticHandle Static, int Feature), MovementContactSupportBinding>? _contactOwners;
 
+    // A replay batch borrows one pin for many ticks. Analytic room/axis facts and their
+    // bounded capacity belong to one tick. Finite owner bindings retain interval consistency.
+    internal void BeginContactTick()
+    {
+        AssertUsable();
+        AssertCurrent();
+        _analyticGround?.Clear();
+    }
+
     internal MovementAvailability SampleAnalyticGround(in MovementSupportRequest request, out MovementAnalyticGround? ground)
     {
         ground = null;

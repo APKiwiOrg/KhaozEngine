@@ -179,7 +179,7 @@ internal static partial class ContactController
             (climbRate, climbRateEwma, stepDeltaY) = corrected ? (0f, 0f, 0f) : GroundSignals.Resolve(s,
                 tick.StepRise, tick.MoveRise, tick.RiseSeen, tick.DropSeen, tick.CarriedLag, tick.GroundTravel,
                 tick.Feet, tick.Support,
-                tick.Mode == Mode.Ground && tick.Support.Status == SupportStatus.Walkable,
+                tick.LastWasWalking && tick.Mode == Mode.Ground && tick.Support.Status == SupportStatus.Walkable,
                 dt, t, foot.FootRadiusFraction * t.CapsuleRadius, MathF.Cos(gate), queries);
         }
 
@@ -201,7 +201,6 @@ internal static partial class ContactController
             jumpBuffer = 0f;
         }
 
-        continuation = tick;
         Vector3 end = tick.PublishedCentre;
 
         var result = new MoveState
@@ -230,7 +229,9 @@ internal static partial class ContactController
                 ? ExplicitCharacterMovement.WaterAborted(s.Commitment)
                 : CharacterMovement.FinishCommitmentTick(s.Commitment, launched, grounded, s.Position, end, dt),
         };
-        return Finite(result) ? result : Held(state, result.Commitment);
+        if (!Finite(result)) return Held(state, result.Commitment);
+        continuation = tick with { Completed = true };
+        return result;
     }
 
     // The input state with the per-tick events cleared and the commitment the tick advanced.

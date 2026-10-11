@@ -1,5 +1,5 @@
 using System;
-using System.Numerics;
+using KhaozEngine.Locomotion.Contacts;
 
 namespace KhaozEngine.Locomotion;
 
@@ -17,25 +17,23 @@ public static partial class ExplicitCharacterMovement
         {
             MoveState carried = state.State;
             MovementSelection selection = validated.State.Selection!.Value;
-            MovementBodyQuery body = Body(carried.Position, tuning, selection);
-            MovementWaterPoint point = queries.SampleCentreWater(body);
-            if (point.Availability != MovementAvailability.Known) return Hold(state, Outcome(point.Availability));
+            var contact = PlacementQueries(carried, tuning, water, queries, selection, boundary);
+            var feet = contact.KernelFeet(carried.Position, tuning);
+            MovementWaterPoint point = contact.SampleMedium(feet)!.Value;
             bool wasSwimming = carried.Swimming || carried.WaterExcursion == WaterExcursionState.Surface;
             bool footing = false;
             MovementSupportKey? owner = null;
             if ((carried.Grounded || carried.VerticalVelocity <= 0) &&
                 FootingAllowed(point, wasSwimming, carried.Position.Y, tuning, water))
             {
-                var request = new MovementSupportRequest(body, 0, tuning.GroundedEpsilon, tuning.MaxSlopeRadians,
-                    new(selection.Space, body.Feet));
-                MovementAvailability status = MovementSupportResolver.Select(request, queries, out var support);
-                if (status != MovementAvailability.Known) return Hold(state, Outcome(status));
-                if (support is { } candidate)
+                SupportSample support = ContactPlacement.Find(contact, feet, tuning,
+                    carried.Grounded ? tuning.StepHeight : tuning.GroundedEpsilon, tuning.GroundedEpsilon, out var binding);
+                footing = support.Status == SupportStatus.Walkable;
+                if (footing)
                 {
-                    status = Move(body, candidate.Centre - body.Centre, queries, water, tuning, boundary, out Vector3 end, out _);
-                    if (status != MovementAvailability.Known) return Hold(state, Outcome(status));
-                    footing = end == candidate.Centre;
-                    if (footing) owner = candidate.Candidate.Owner;
+                    if (binding is null || binding.Value.Space != point.Space)
+                        return Hold(state, MovementStepOutcome.EnvironmentUnresolved);
+                    owner = binding.Value.Owner;
                 }
             }
             carried.Grounded = footing;
@@ -43,8 +41,9 @@ public static partial class ExplicitCharacterMovement
             if (carried.Swimming || carried.WaterExcursion == WaterExcursionState.AirborneFromWater || point.InWater && !footing)
                 carried.JumpBufferRemaining = 0;
             queries.AssertCurrent();
-            return new(new(carried, state.Frame, new(selection.Space, owner, queries.Identity)), MovementStepOutcome.Advanced);
+            return new(new(carried, state.Frame, new(point.Space, owner, queries.Identity)), MovementStepOutcome.Advanced);
         }
+        catch (ContactQueryFailure failure) { return Hold(state, failure.Outcome); }
         catch (InvalidOperationException) { return Hold(state, MovementStepOutcome.EnvironmentUnresolved); }
         catch (ArgumentException) { return Hold(state, MovementStepOutcome.EnvironmentInvalid); }
     }

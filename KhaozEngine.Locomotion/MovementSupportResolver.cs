@@ -1,14 +1,14 @@
 using System;
 using System.Buffers;
 using System.Numerics;
-using KhaozEngine.Physics;
+using KhaozEngine.Locomotion.Contacts;
 
 namespace KhaozEngine.Locomotion;
 
-/// <summary>Canonical support provenance and the separately cleared upright-capsule pose.</summary>
+/// <summary>Canonical support provenance and the separately cleared contact-shell pose.</summary>
 public readonly record struct MovementSupportPlacement(MovementSupportCandidate Candidate, Vector3 Centre);
 
-/// <summary>Composes canonical support candidates with complete leased physics clearance.</summary>
+/// <summary>Composes canonical candidates with shared footprint and shell placement under one lease.</summary>
 public static class MovementSupportResolver
 {
     /// <summary>Filters legal candidates before choosing the highest. Known with null means none are eligible.
@@ -19,15 +19,12 @@ public static class MovementSupportResolver
         placement = null;
         ArgumentNullException.ThrowIfNull(queries);
         MovementSupportCandidate[] candidates = ArrayPool<MovementSupportCandidate>.Shared.Rent(MovementQueryLease.MaxSupportCandidates);
-        CapsuleContact[]? contacts = null;
         try
         {
             Span<MovementSupportCandidate> buffer = candidates.AsSpan(0, MovementQueryLease.MaxSupportCandidates);
             buffer.Clear();
             MovementSupportSet set = queries.EnumerateSupport(request, buffer);
             if (set.Availability != MovementAvailability.Known) return set.Availability;
-            contacts = ArrayPool<CapsuleContact>.Shared.Rent(MovementQueryLease.MaxSolidContacts);
-            Span<CapsuleContact> scratch = contacts.AsSpan(0, MovementQueryLease.MaxSolidContacts);
             MovementSupportPlacement? best = null;
             bool ambiguous = false;
             float minimumY = request.Body.Feet.Y - request.MaxDrop;
@@ -44,7 +41,7 @@ public static class MovementSupportResolver
                 if (candidate.Feet.Y < minimumY || candidate.Feet.Y > maximumY ||
                     normal.Y <= 0f || normal.Y < minimumNormalY) continue;
 
-                MovementAvailability status = ClearPlacement(request.Body, candidate, normal, queries, scratch,
+                MovementAvailability status = ClearPlacement(request, candidate, normal, queries,
                     out MovementSupportPlacement? cleared);
                 if (status != MovementAvailability.Known) return status;
                 if (cleared is not { } eligible) continue;
@@ -64,41 +61,46 @@ public static class MovementSupportResolver
             placement = best;
             return MovementAvailability.Known;
         }
+        catch (ContactQueryFailure failure) { return failure.Availability; }
+        catch (ObjectDisposedException) { throw; }
+        catch (InvalidOperationException) { return MovementAvailability.Stale; }
+        catch (ArgumentException) { return MovementAvailability.Invalid; }
         finally
         {
-            if (contacts is not null) ArrayPool<CapsuleContact>.Shared.Return(contacts, clearArray: true);
             ArrayPool<MovementSupportCandidate>.Shared.Return(candidates, clearArray: true);
         }
     }
 
-    static MovementAvailability ClearPlacement(in MovementBodyQuery profile, in MovementSupportCandidate candidate,
-        Vector3 normal, MovementQueryLease queries, Span<CapsuleContact> scratch,
+    static MovementAvailability ClearPlacement(in MovementSupportRequest request, in MovementSupportCandidate candidate,
+        Vector3 normal, MovementQueryLease queries,
         out MovementSupportPlacement? placement)
     {
         placement = null;
-        // A slope's canonical point is not the bottom of the upright capsule. Retain that point and
-        // offset the lower sphere centre to the tangent plane, then verify against every real contact.
-        float offset = profile.HalfHeight - profile.Radius +
-            (profile.Radius + MovementQueryLease.CoverageSkinMetres) / normal.Y;
-        Vector3 centre = candidate.Feet + Vector3.UnitY * offset;
-        if (!MovementEnvironmentValidation.Finite(centre)) return MovementAvailability.Unresolved;
-        var body = new MovementBodyQuery(centre, profile.Radius, profile.HalfHeight, candidate.Space, candidate.Owner);
-        scratch.Clear();
-        MovementAvailability status = queries.QuerySolidContacts(body, scratch, out CapsuleContactResult result);
-        if (status != MovementAvailability.Known) return status;
-        bool supported = false;
-        bool uncertainClearance = false;
-        foreach (CapsuleContact contact in scratch[..result.Written])
+        // This compatibility door has no tuning argument. Its body and slope specialize the default
+        // contact placement profile. Canonical candidate guards run before these geometric queries.
+        MoveTuning tuning = MoveTuning.Default with
         {
-            // A definite penetration excludes this placement. An uncertain sign cannot prove clearance.
-            if (contact.Separation + result.CertifiedErrorMetres < 0f) return MovementAvailability.Known;
-            if (contact.Separation - result.CertifiedErrorMetres < 0f) uncertainClearance = true;
-            if (Vector3.Dot(contact.Normal, normal) >= 0.9999f &&
-                contact.Separation <= MovementQueryLease.CoverageSkinMetres + result.CertifiedErrorMetres)
-                supported = true;
-        }
-        if (!supported || uncertainClearance) return MovementAvailability.Unresolved;
-        placement = new MovementSupportPlacement(candidate, centre);
+            CapsuleRadius = request.Body.Radius,
+            CapsuleHalfHeight = request.Body.HalfHeight,
+            MaxSlopeRadians = request.MaxSlopeRadians,
+        };
+        ContactShell.Validate(tuning);
+        var contact = new LeasedContactQueryContext(queries, tuning,
+            new(candidate.Space, candidate.Owner, queries.Identity), request.Transition);
+        SupportSample support = ContactPlacement.Find(contact, candidate.Feet, tuning,
+            tuning.StepHeight, tuning.GroundedEpsilon, out var binding);
+        if (support.Status != SupportStatus.Walkable || binding is null) return MovementAvailability.Unresolved;
+        // A higher footprint in the legs band makes this lower candidate ineligible. Its binding
+        // belongs to that higher source, so it is not a contradiction of this candidate's owner.
+        if (Math.Abs((double)support.Height - candidate.Feet.Y) > support.HeightError)
+            return MovementAvailability.Known;
+        if (binding.Value.Owner != candidate.Owner || binding.Value.Space != candidate.Space ||
+            binding.Value.TraversedLinkId != candidate.TraversedLinkId && candidate.Space != request.Body.CurrentSpace)
+            return MovementAvailability.Invalid;
+        if (Vector3.Dot(support.Normal, normal) < 0.9999f) return MovementAvailability.Invalid;
+        Vector3 feet = candidate.Feet with { Y = support.Height };
+        if (!ContactPlacement.Clear(contact, feet, tuning)) return MovementAvailability.Known;
+        placement = new MovementSupportPlacement(candidate, contact.BodyCentre(feet));
         return MovementAvailability.Known;
     }
 

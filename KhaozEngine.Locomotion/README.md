@@ -483,12 +483,15 @@ rounding cannot authorize a query beyond the witness. These guards do not implem
 or choose a standing support.
 
 `MovementSupportResolver.Select(request, queries, out placement)` composes the producer's canonical
-candidates with complete physics clearance under the same lease. It filters legal-link provenance,
-rise/drop, slope and clearance before choosing the highest eligible support. Independent owners at
+candidates with the shared contact footprint, canonical source binding and shell clearance under the
+same lease. It filters legal-link provenance, exact candidate XZ, rise/drop, slope and clearance before
+choosing the highest eligible support. Independent owners at
 the same height are ambiguous, even when one was current. Canonical seam aliases share an owner.
 `MovementSupportPlacement.Candidate` retains the original surface point and provenance while
-`Centre` is the separately verified upright-capsule pose. Known with null placement means no candidate
-is eligible. Missing physical support, uncertain clearance and unsupported backend coverage refuse
+`Centre` is the verified contact-shell pose at geometric support height plus the full half-height and
+the fixed 0.001 m vertical placement skin. Its compatibility profile specializes `MoveTuning.Default`
+with the request's body dimensions and slope gate. Known with null placement means no candidate is
+eligible. Missing physical support, contradictory binding and unsupported backend coverage refuse
 instead of returning a usable pose. Solid-contact scratch is bounded at 16384 contacts. These limits
 and tolerances belong in profile/query policy identity. Selection proves a placement only, not the
 swept movement or water transitions required to reach it.
@@ -536,8 +539,13 @@ anomaly measurement. Unsupported SurfaceSwimmer wet presses cannot borrow the dr
 WadeOnly airborne shallows use the land coyote/buffer rules and discard stale swimming history. Nonfinite
 carried motion is refused before placement or movement. An unsupported, non-rising cold pose in the
 certified surface-contact band derives swimming without first sinking below the entry threshold.
-`ReclassifyContinuation` rebuilds current footing/water facts without advancing a live transferred
-pose or consuming its accepted dry jump buffer. Cold placement uses `SettlePlacement`.
+`ValidatePlacement`, `SettlePlacement` and `ReclassifyContinuation` share contact footprint and shell
+placement, with full-body medium proofs under the captured lease. Exact correction keeps its carried
+state and pose. Cold settlement may approach a nearby eligible seat without running a tick, then
+rebinds support at the published axis. Live continuation rebuilds destination footing/water facts
+without seating, advancing timers or consuming an accepted land jump buffer. Water reclassification
+still clears an ineligible land buffer. Below-knee solid overlap belongs to the footprint, while a
+shell overlap refuses exact admission. Late proof failure holds the complete input pose.
 Legacy entry points and unconfigured callers retain their existing behavior.
 
 ### Explicit surface motion development status

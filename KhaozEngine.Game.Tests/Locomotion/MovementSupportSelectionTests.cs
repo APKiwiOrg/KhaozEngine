@@ -9,7 +9,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Locomotion;
 
-public class MovementSupportSelectionTests
+public partial class MovementSupportSelectionTests
 {
     static readonly MovementSpaceKey Room = new("world", "room");
     static readonly MovementSupportKey Low = new("world", "low");
@@ -105,7 +105,7 @@ public class MovementSupportSelectionTests
     }
 
     [Fact]
-    public void TiltedSupportUsesTheUprightCapsuleInsteadOfPlacingItThroughThePlane()
+    public void TiltedSupportUsesTheShellAndVerticalPlacementSkin()
     {
         using var scene = new Scene();
         Quaternion rotation = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 6f);
@@ -115,7 +115,7 @@ public class MovementSupportSelectionTests
         Capture result = scene.Select();
         Assert.Equal(MovementAvailability.Known, result.Availability);
         Assert.Equal(Low, result.Candidate!.Value.Owner);
-        Assert.InRange(result.Centre.Y, 0.797f, 0.799f);
+        Assert.InRange(result.Centre.Y, 0.7509f, 0.7511f);
         Assert.Equal(Vector3.Zero, result.Candidate.Value.Feet);
     }
 
@@ -189,7 +189,18 @@ public class MovementSupportSelectionTests
             var identity = new MovementQueryIdentity("closure", 1u, "scope");
             var frame = new MovementFrameDescriptor(WorldFrame.Origin, Vector3.Zero, 1ul);
             var scope = new MovementQueryScope(new Vector3(-8f), new Vector3(8f), 3f, 2f, Room, identity, frame);
-            var environment = new EnvironmentAcquisitionFixture(view, scope);
+            var environment = new EnvironmentAcquisitionFixture(view, scope) { ContactSupportEnabled = true };
+            environment.OnContactSupport = (in MovementContactSupportRequest request, out MovementContactSupportBinding binding) =>
+            {
+                binding = default;
+                foreach (MovementSupportCandidate candidate in Candidates)
+                {
+                    if (Math.Abs((double)candidate.Feet.Y - request.Height) > request.HeightError) continue;
+                    binding = new(candidate.Owner, candidate.Space, candidate.TraversedLinkId, identity);
+                    return MovementAvailability.Known;
+                }
+                return MovementAvailability.Unresolved;
+            };
             environment.OnSupport = (in MovementSupportRequest _, Span<MovementSupportCandidate> output) =>
             {
                 if (Candidates.Length > output.Length)

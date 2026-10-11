@@ -5,16 +5,6 @@ namespace KhaozEngine.Locomotion;
 
 public static partial class ExplicitCharacterMovement
 {
-    static MovementAvailability Move(in MovementBodyQuery body, Vector3 delta, MovementQueryLease queries,
-        in WaterTraversalPolicy water, in MoveTuning tuning, MovementBoundary? boundary, out Vector3 position, out bool blocked)
-    {
-        position = body.Centre;
-        Span<Vector3> path = stackalloc Vector3[MovementCapsuleResolver.MaximumEndpoints];
-        MovementAvailability status = MovementCapsuleResolver.TryResolvePolicy(body, delta, queries, water.Mode, tuning.SwimEnterDepthFraction, boundary, path, out int count, out blocked);
-        if (status == MovementAvailability.Known) position = path[count - 1];
-        return status;
-    }
-
     internal static MovementStepOutcome WaterPlacement(in MovementBodyQuery body, in MoveTuning tuning,
         in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary)
     {
@@ -31,26 +21,6 @@ public static partial class ExplicitCharacterMovement
             tuning.SwimEnterDepthFraction, water.Mode, queries, normals, out _, out var hit);
         return status != MovementAvailability.Known ? Outcome(status)
             : hit.InitialOverlap ? MovementStepOutcome.PlacementRefused : MovementStepOutcome.Advanced;
-    }
-
-    static MovementAvailability Settle(ref MoveState state, ref MovementSelection selection, float drop,
-        in MoveTuning tuning, in WaterTraversalPolicy water, MovementQueryLease queries, MovementBoundary? boundary, out bool supported)
-    {
-        supported = false;
-        MovementBodyQuery body = Body(state.Position, tuning, selection);
-        var request = new MovementSupportRequest(body, 0, drop, tuning.MaxSlopeRadians,
-            new(selection.Space, body.Feet));
-        MovementAvailability status = MovementSupportResolver.Select(request, queries, out var placement);
-        if (status != MovementAvailability.Known || placement is null) return status;
-        MovementSupportPlacement support = placement.Value;
-        status = Move(body, support.Centre - body.Centre, queries, water, tuning, boundary, out Vector3 position, out _);
-        if (status != MovementAvailability.Known) return status;
-        // A cleared endpoint is not permission to skip a blocked approach to that endpoint.
-        if (position != support.Centre) return MovementAvailability.Known;
-        state.Position = position;
-        selection = new(support.Candidate.Space, support.Candidate.Owner, queries.Identity);
-        supported = true;
-        return MovementAvailability.Known;
     }
 
     static MovementBodyQuery Body(Vector3 position, in MoveTuning tuning, in MovementSelection selection) =>

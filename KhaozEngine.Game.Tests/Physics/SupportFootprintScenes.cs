@@ -161,8 +161,8 @@ internal static class SupportFootprintScenes
         for (int i = 0; i < count; i++)
         {
             indices[3 * i] = 3 * i;
-            indices[3 * i + 1] = 3 * i + 2;
-            indices[3 * i + 2] = 3 * i + 1;
+            indices[3 * i + 1] = 3 * i + 1;
+            indices[3 * i + 2] = 3 * i + 2;
         }
         scene.Install(new TriangleMeshShape(vertices, indices), Pose.Identity);
         Assert.Equal(count, scene.Faces.Count);

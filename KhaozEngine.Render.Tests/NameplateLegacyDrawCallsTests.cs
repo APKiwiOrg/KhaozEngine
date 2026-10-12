@@ -66,7 +66,7 @@ public sealed class NameplateLegacyDrawCallsTests
         var plate = new Nameplate { Title = title, TitleColor = Color.White, Bars = bars };
         NameplatePlacementState placementState = default;
         for (int draw = 0; draw < drawCount; draw++)
-            Assert.True(NameplateRenderer.DrawAt(canvas, anchor ?? new Vector2(500f, 500f), plate, style,
+            Assert.True(NameplateRenderer.DrawAt(ref canvas, anchor ?? new Vector2(500f, 500f), plate, style,
                 1000, 1000, ref placementState));
 
         output.AppendLine($"case {name}");

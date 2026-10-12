@@ -133,7 +133,8 @@ namespace KhaozEngine.Render3D
             if (ShouldCull(worldPos, cullOrigin, maxDistance)) return false;
             if (!NameplateAnchorProjection.Project(camera, worldPos, offset, viewportWidth, viewportHeight, out Vector2 pixel)) return false;
 
-            return DrawAt(new SpriteBatchNameplateCanvas(batch, font, white), pixel, plate, style, viewportWidth, viewportHeight, ref placementState);
+            var canvas = new SpriteBatchNameplateCanvas(batch, font, white);
+            return DrawAt(ref canvas, pixel, plate, style, viewportWidth, viewportHeight, ref placementState);
         }
 
         /// <summary>
@@ -206,7 +207,8 @@ namespace KhaozEngine.Render3D
             if (ShouldCull(worldPos, cullOrigin, maxDistance)) return false;
             if (!NameplateAnchorProjection.Project(camera, worldPos, offset, designViewport, out Vector2 pixel)) return false;
 
-            return DrawAt(new SpriteBatchNameplateCanvas(batch, font, white), pixel, plate, style, designViewport.Width, designViewport.Height, ref placementState);
+            var canvas = new SpriteBatchNameplateCanvas(batch, font, white);
+            return DrawAt(ref canvas, pixel, plate, style, designViewport.Width, designViewport.Height, ref placementState);
         }
 
         // Shared draw body for every Draw overload once the anchor pixel and the viewport dims it places against
@@ -214,9 +216,10 @@ namespace KhaozEngine.Render3D
         // panel rect (NameplatePlacement.Place, including the optional edge clamp/deflect), then draws the panel,
         // title, and bars. Returns false when the plate measures to nothing (e.g. an empty title with no bars,
         // since Nameplate.IsEmpty already filtered the fully-empty case before this runs).
-        internal static bool DrawAt(
-            INameplateCanvas canvas, Vector2 pixel, in Nameplate plate, in NameplateStyle style,
+        internal static bool DrawAt<TCanvas>(
+            ref TCanvas canvas, Vector2 pixel, in Nameplate plate, in NameplateStyle style,
             int viewportWidth, int viewportHeight, ref NameplatePlacementState placementState)
+            where TCanvas : INameplateCanvas
         {
             ITextMeasurer font = canvas.Font;
             Vector2 size = NameplateLayout.Measure(font, plate, style);

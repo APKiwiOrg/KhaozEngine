@@ -13,7 +13,7 @@ internal interface INameplateCanvas
     void OutlinedText(string text, Vector2 position, Color color, Color outline, float thickness, float scale);
 }
 
-internal sealed class SpriteBatchNameplateCanvas(SpriteBatch batch, SpriteFont font, Texture2D white) : INameplateCanvas
+internal readonly struct SpriteBatchNameplateCanvas(SpriteBatch batch, SpriteFont font, Texture2D white) : INameplateCanvas
 {
     public ITextMeasurer Font => font;
 

@@ -57,6 +57,10 @@ namespace KhaozEngine.Render3D
         /// <see cref="UseSmoothPreset"/> and shadows).</summary>
         public SkySettings Sky = new();
 
+        /// <summary>Physical atmosphere settings. Default disabled, so the existing sky and lighting path is
+        /// unchanged. See <see cref="AtmosphereSettings"/> for the Earth preset, world height mapping and art controls.</summary>
+        public AtmosphereSettings Atmosphere = new();
+
         /// <summary>LDR threshold + separable-blur bloom (beams, emissive materials, bright billboards read as a
         /// glow instead of flat). Default disabled, so the post chain runs no extra passes and existing scenes are
         /// byte-stable; set <c>Bloom.Enabled = true</c> to turn it on. See <see cref="BloomSettings"/> for the knobs

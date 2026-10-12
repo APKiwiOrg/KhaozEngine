@@ -75,11 +75,12 @@ internal static partial class PrefabFixtures
     internal static MapLocalLightDoc GlowLight() => new(1, "glow",
         new(MapPrefabReferenceScope.Local, MapPrefabChildKind.Placement, "$owner"), new(0, 2, 0), Vector3.One, 1, 3, false);
 
-    /// <summary>A leaf support resource with one 2 by 2 m floor at 0.5 m and one embedded authored chain.</summary>
-    internal static MapSupportResource DeckSupport()
+    /// <summary>A leaf support resource with one 2 by 2 m floor at 0.5 m and one embedded authored chain. A
+    /// <paramref name="worldSource"/> gives the chain a World-scoped source patch.</summary>
+    internal static MapSupportResource DeckSupport(MapPatchKey? worldSource = null)
     {
         var top = Patch("top", 2, 2, 50);
-        top.Records.Add(new MapBoundaryChain("top-edge", MapChainKind.Authored, null, new[]
+        top.Records.Add(new MapBoundaryChain("top-edge", MapChainKind.Authored, worldSource, new[]
         {
             new MapChainVertex(new("top", MapLatticeAddress.Corner(0, 0)), 50),
             new MapChainVertex(new("top", MapLatticeAddress.Corner(2, 0)), 50),
@@ -87,12 +88,14 @@ internal static partial class PrefabFixtures
         var surfaces = new MapSurfaceSet();
         surfaces.Refs.Add(Surface("top", MapSurfaceRole.SupportFloor));
         surfaces.Patches.Add(top.Key, top);
-        return new(1, surfaces, null, new[]
+        var slots = new List<MapPrefabReferenceSlot>
         {
             Surf("/patches/0/key/surfaceId", "top"),
             Surf("/patches/0/records/0/vertices/0/vertex/surfaceId", "top"),
             Surf("/patches/0/records/0/vertices/1/vertex/surfaceId", "top"),
-        });
+        };
+        if (worldSource is { } source) slots.Add(Surf("/patches/0/records/0/sourcePatch/surfaceId", source.SurfaceId, MapPrefabReferenceScope.World));
+        return new(1, surfaces, null, slots);
     }
 
     /// <summary>The deck's support and light, captured as explicit asset children with their materialized rows.</summary>
@@ -143,6 +146,8 @@ internal static partial class PrefabFixtures
         fixture = variant switch
         {
             "all-kinds" => Create("all-resources"),
+            _ when variant.StartsWith("unpacked-", StringComparison.Ordinal) => Unpacked(Create("all-resources"), variant["unpacked-".Length..]),
+            _ when variant.StartsWith("attachment", StringComparison.Ordinal) => Attachment(Create(), variant),
             "native-without-prefabs" => WithoutPrefabs(Create()),
             "transform" or "override" or "binding" or "reservation" or "roof-group" or "missing-binding" or "duplicate-world-id" or
                 "standalone-collision" or "dangling-transfer" or "retired-live" or "numeric-duplicate" or "active-transfer" => Changed(Create(), variant),
@@ -208,6 +213,100 @@ internal static partial class PrefabFixtures
                 break;
         }
         d.Prefabs = new(1, 1, new[] { instance }, transfers);
+        return f;
+    }
+
+    /// <summary>Instance a is a tombstone whose first child of a kind moved to a transfer from source instance a. Kinds
+    /// with a standalone home get an active transfer and that owner, the others a retired reservation. Variant
+    /// kept also leaves the binding on the tombstone, and lost drops it without a transfer.</summary>
+    static PrefabFixture Unpacked(PrefabFixture f, string variant)
+    {
+        MapDocument d = f.Document;
+        MapPrefabInstance instance = d.Prefabs!.Instances.Single();
+        var kind = variant is "kept" or "lost" ? MapPrefabChildKind.Placement : Enum.Parse<MapPrefabChildKind>(variant);
+        MapPrefabBinding moved = instance.Bindings.Entries.Where(b => b.Child.Kind == kind).OrderBy(b => b.Child.Key, StringComparer.Ordinal).First();
+        bool active = kind is MapPrefabChildKind.Placement or MapPrefabChildKind.Surface or MapPrefabChildKind.Light or MapPrefabChildKind.Marker or
+            MapPrefabChildKind.Storey or MapPrefabChildKind.RoofGroup;
+        string id = moved.WorldId;
+        var intent = d.BuildingIntent ?? new MapBuildingIntent(1, [], [], [], []);
+        switch (active ? kind : (MapPrefabChildKind?)null)
+        {
+            case MapPrefabChildKind.Placement: d.Placements.Add(Standalone(id, moved.NumericId)); break;
+            case MapPrefabChildKind.Surface: AddStandaloneSurface(d, id, null); break;
+            case MapPrefabChildKind.Light: intent = With(intent, lights: new MapLocalLightDoc(1, id, null, Vector3.One, Vector3.One, 1, 2, false)); break;
+            case MapPrefabChildKind.Marker: intent = With(intent, markers: new MapLocalMarkerDoc(1, id, "Entry", Vector3.Zero, 0, "entrance", true, [])); break;
+            case MapPrefabChildKind.Storey: intent = With(intent, storeys: new KhaozEngine.MapDoc.Interiors.MapStoreyDoc(1, id, "Lower", null)); break;
+            case MapPrefabChildKind.RoofGroup:
+                intent = With(intent, groups: new MapRoofGroupDoc(id, new[] { new MapPrefabReference(MapPrefabReferenceScope.World, MapPrefabChildKind.Record, "exterior") }));
+                break;
+        }
+        if (intent.RoofGroups.Count + intent.Lights.Count + intent.Markers.Count + intent.Storeys.Count > 0) d.BuildingIntent = intent;
+        var kept = variant == "kept" ? instance.Bindings.Entries : instance.Bindings.Entries.Where(b => b != moved).ToArray();
+        IReadOnlyList<MapPrefabBindingTransfer> transfers = variant == "lost" ? [] : new[] { new MapPrefabBindingTransfer("a", moved with { Removed = false }) { Retired = !active } };
+        d.Prefabs = new(1, 1, new[] { instance with { Removed = true, Bindings = new(kept.ToArray()) } }, transfers);
+        return f;
+    }
+
+    static MapBuildingIntent With(MapBuildingIntent intent, MapLocalLightDoc? lights = null, MapLocalMarkerDoc? markers = null,
+        KhaozEngine.MapDoc.Interiors.MapStoreyDoc? storeys = null, MapRoofGroupDoc? groups = null) =>
+        new(1, intent.RoofLinks, groups is null ? intent.RoofGroups : intent.RoofGroups.Append(groups).ToArray(),
+            lights is null ? intent.Lights : intent.Lights.Append(lights).ToArray(), markers is null ? intent.Markers : intent.Markers.Append(markers).ToArray())
+        { Roofs = intent.Roofs, Storeys = storeys is null ? intent.Storeys : intent.Storeys.Append(storeys).ToArray() };
+
+    static void AddStandaloneSurface(MapDocument d, string id, MapTopologyRecord? record)
+    {
+        var patch = Patch(id, 2, 2, 0);
+        if (record is not null) patch.Records.Add(record);
+        d.Surfaces.Patches.Add(patch.Key, patch);
+        var surface = Surface(id, MapSurfaceRole.SupportFloor);
+        d.Surfaces.Refs.Add(surface with
+        {
+            SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface,
+                new[] { new KeyValuePair<MapPatchKey, string>(patch.Key, MapSurfaceSemantics.PatchDigest(patch)) }),
+        });
+    }
+
+    /// <summary>An unpacked deck: a standalone placement, its transferred support surface and embedded chain, their
+    /// precise descriptor pins and one active attachment row. Fault variants remove a pin, change a digest or drop
+    /// the record anchor.</summary>
+    static PrefabFixture Attachment(PrefabFixture f, string variant)
+    {
+        MapDocument d = f.Document;
+        long numeric = ++d.NumericIdHighWaterMark;
+        d.Placements.Add(new MapPlacement { Id = "unpacked-deck", Kind = "deck", AssetId = "deck", X = 3, Y = -2, Z = -3, Scale = 1, NumericId = numeric });
+        var anchor = new MapPatchKey("unpacked-top", 0, 0);
+        AddStandaloneSurface(d, "unpacked-top", new MapBoundaryChain("unpacked-edge", MapChainKind.Authored, null, new[]
+        {
+            new MapChainVertex(new("unpacked-top", MapLatticeAddress.Corner(0, 0)), 0),
+            new MapChainVertex(new("unpacked-top", MapLatticeAddress.Corner(2, 0)), 0),
+        }));
+        var surfaceKey = new MapPrefabChildKey(MapPrefabChildKind.Surface, "deck/deck-support/top");
+        var recordKey = new MapPrefabChildKey(MapPrefabChildKind.Record, "deck/deck-support/top-edge");
+        var pose = new MapEffectiveTransform(3, -2, -3, 0, 1);
+        string surfaceDigest = new('b', 64), recordDigest = new('c', 64);
+        var poses = new List<MapStandaloneResourceTransform>
+        {
+            new(MapPrefabChildKind.Surface, "unpacked-top", pose, surfaceDigest),
+            new(MapPrefabChildKind.Record, "unpacked-edge", pose, recordDigest),
+        };
+        if (variant == "attachment-missing-pin") poses.RemoveAt(0);
+        d.NativeResourceTransforms = poses;
+        var children = new[]
+        {
+            new MapPrefabAttachedChild(surfaceKey, "unpacked-top", null, new(0, 0, 0, 0, 1), variant == "attachment-digest" ? new string('d', 64) : surfaceDigest),
+            new MapPrefabAttachedChild(recordKey, "unpacked-edge", variant == "attachment-missing-anchor" ? null : anchor, new(0, 0, 0, 0, 1), recordDigest),
+        };
+        var transfers = new[]
+        {
+            new MapPrefabBindingTransfer("unpacked", new(new(MapPrefabChildKind.Placement, "deck"), "unpacked-deck", numeric, false)),
+            new MapPrefabBindingTransfer("unpacked", new(surfaceKey, "unpacked-top", null, false)),
+            new MapPrefabBindingTransfer("unpacked", new(recordKey, "unpacked-edge", null, false)),
+        };
+        d.Prefabs = new(1, 1, d.Prefabs!.Instances, transfers)
+        {
+            Attachments = new[] { new MapPrefabAttachmentTransfer("unpacked-deck", "deck-support", ResourceSha("deck-support"),
+                MapPrefabAttachmentKind.Support, children, false) },
+        };
         return f;
     }
 

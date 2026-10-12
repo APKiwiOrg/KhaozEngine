@@ -103,7 +103,7 @@ public sealed class MapPrefabBindingTests
     [Fact]
     public void NumericExhaustion_PublishesNothing()
     {
-        var f = PrefabFixtures.Create();
+        var f = PrefabFixtures.Create("roomless");
         f.Document.NumericIdHighWaterMark = long.MaxValue;
         string before = MapDocumentFile.SaveText(f.Document);
         var asset = f.Assets.GetPrefab("hut");
@@ -113,6 +113,110 @@ public sealed class MapPrefabBindingTests
         var unnumbered = MapPrefabBindingPlanner.Plan(f.Document, asset, f.Assets, "b", new([]), allocateNumericPlacements: false);
         Assert.All(unnumbered.Bindings.Entries, b => Assert.Null(b.NumericId));
         Assert.Equal(long.MaxValue, unnumbered.HighWaterMark);
+    }
+
+    [Fact]
+    public void NewParentDependentInstance_RefusesBeforeAllocation()
+    {
+        var f = PrefabFixtures.Create();
+        f.Document.NumericIdHighWaterMark = long.MaxValue;
+        string before = MapDocumentFile.SaveText(f.Document);
+        var error = Assert.Throws<MapDocumentException>(() => MapPrefabBindingPlanner.Plan(f.Document, f.Assets.GetPrefab("hut"), f.Assets, "b", new([])));
+        Assert.Contains("ParentSpace", error.Message);
+        Assert.DoesNotContain("exhaust", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+    }
+
+    [Fact]
+    public void ReusedBindings_RefuseWorldAndNumericCollisions()
+    {
+        var f = PrefabFixtures.Create("roomless");
+        f.Document.Placements.Add(new MapPlacement { Id = "keeper", Kind = "item", AssetId = "item", X = 2, Y = 0, Z = -2, Scale = 1, NumericId = 50 });
+        string before = MapDocumentFile.SaveText(f.Document);
+        var asset = f.Assets.GetPrefab("hut");
+        var own = f.Document.Prefabs!.Instances.Single().Bindings;
+        var item = new MapPrefabChildKey(MapPrefabChildKind.Placement, "item");
+        foreach (var reused in new[]
+        {
+            own,
+            new MapPrefabBindings(new[] { new MapPrefabBinding(item, "b/item", 50, false) }),
+            new MapPrefabBindings(new[] { new MapPrefabBinding(item, "keeper", null, false) }),
+            new MapPrefabBindings(new[] { new MapPrefabBinding(item, "b/item", own.Entries.Single().NumericId, false) }),
+        })
+        {
+            string supplied = System.Text.Json.JsonSerializer.Serialize(reused.Entries.Select(b => (b.Child.Key, b.WorldId, b.NumericId)).ToArray());
+            Assert.Throws<MapDocumentException>(() => MapPrefabBindingPlanner.Plan(f.Document, asset, f.Assets, "b", reused));
+            Assert.Equal(supplied, System.Text.Json.JsonSerializer.Serialize(reused.Entries.Select(b => (b.Child.Key, b.WorldId, b.NumericId)).ToArray()));
+        }
+        Assert.Equal(before, MapDocumentFile.SaveText(f.Document));
+        Assert.Equal(own.Entries, MapPrefabBindingPlanner.Plan(f.Document, asset, f.Assets, "a", own).Bindings.Entries);
+    }
+
+    [Theory]
+    [InlineData(MapPrefabChildKind.Placement)]
+    [InlineData(MapPrefabChildKind.Surface)]
+    [InlineData(MapPrefabChildKind.Record)]
+    [InlineData(MapPrefabChildKind.Storey)]
+    [InlineData(MapPrefabChildKind.WaterMedium)]
+    [InlineData(MapPrefabChildKind.WaterBody)]
+    [InlineData(MapPrefabChildKind.Light)]
+    [InlineData(MapPrefabChildKind.Marker)]
+    [InlineData(MapPrefabChildKind.RoofLink)]
+    [InlineData(MapPrefabChildKind.RoofGroup)]
+    public void UnpackTransfer_RelinquishesSourceOwnershipOnBothPaths(MapPrefabChildKind kind)
+    {
+        var f = PrefabFixtures.Create("unpacked-" + kind);
+        Assert.Equal("a", f.Document.Prefabs!.Transfers.Single().InstanceId);
+        Assert.Equal(Identity(f), StoredIdentity(f));
+    }
+
+    [Theory]
+    [InlineData("unpacked-kept")]
+    [InlineData("unpacked-lost")]
+    public void UnpackTransfer_RefusesDoubleOrMissingOwnershipOnBothPaths(string variant)
+    {
+        var f = PrefabFixtures.Create(variant);
+        Assert.Throws<MapDocumentException>(() => Identity(f));
+        Assert.Throws<MapDocumentException>(() => StoredIdentity(f));
+    }
+
+    [Fact]
+    public void ActiveAttachment_WithPinsAndAnchorsMatchesOnBothPaths()
+    {
+        var f = PrefabFixtures.Create("attachment");
+        Assert.Equal(Identity(f), StoredIdentity(f));
+    }
+
+    [Theory]
+    [InlineData("attachment-missing-pin")]
+    [InlineData("attachment-digest")]
+    [InlineData("attachment-missing-anchor")]
+    public void ActiveAttachment_RequiresDescriptorPinsAndRecordAnchorsOnBothPaths(string variant)
+    {
+        var f = PrefabFixtures.Create(variant);
+        var loaded = Assert.Throws<MapDocumentException>(() => Identity(f));
+        var stored = Assert.Throws<MapDocumentException>(() => StoredIdentity(f));
+        Assert.Equal(loaded.Message, stored.Message);
+    }
+
+    [Fact]
+    public void SupportWorldReference_KeepsItsScopeWhenTextMatchesALocalKey()
+    {
+        var source = new MapPatchKey("deck/deck-support/top", 0, 0);
+        var resource = MapSupportResourceFile.Read(MapSupportResourceFile.Write(PrefabFixtures.DeckSupport(source)), "deck-support");
+        var produced = MapEffectiveSupport.Children("deck", "deck-support", resource).ToArray();
+        var chain = Assert.IsType<MapPrefabRecordChild>(produced.Single(c => c.Key.Kind == MapPrefabChildKind.Record));
+        var slots = chain.References.ToDictionary(r => r.Path);
+        Assert.Equal(new MapPrefabReference(MapPrefabReferenceScope.World, MapPrefabChildKind.Surface, "deck/deck-support/top"), slots["/value/sourcePatch/surfaceId"].Target);
+        Assert.Equal(new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Surface, "deck/deck-support/top"), slots["/value/vertices/0/vertex/surfaceId"].Target);
+        Assert.Equal(MapPrefabReferenceScope.Local, slots["/anchor/surfaceId"].Target.Scope);
+        var deck = new MapPrefabPlacementChild(new(MapPrefabChildKind.Placement, "deck"),
+            new MapPlacement { Id = "deck", Kind = "deck", AssetId = "deck", Y = 0, Scale = 1 });
+        var asset = MapPrefabFile.Read(MapPrefabFile.Write(new MapPrefabAsset(1, "hut", produced.Prepend(deck).ToArray())), "hut");
+        var remapped = MapPrefabReferences.Remap(asset, asset.Children.ToDictionary(c => c.Key, c => "bound:" + c.Key.Key), null);
+        var bound = (MapBoundaryChain)remapped.Children.OfType<MapPrefabRecordChild>().Single().Value;
+        Assert.Equal(source, bound.SourcePatch);
+        Assert.All(bound.Vertices, v => Assert.Equal("bound:deck/deck-support/top", v.Vertex.SurfaceId));
     }
 
     [Fact]

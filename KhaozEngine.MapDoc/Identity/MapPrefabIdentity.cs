@@ -9,15 +9,23 @@ using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.MapDoc.Identity;
 
-/// <summary>Prefab identity checks shared by the loaded and stored identity paths: schema, closure, pins, complete
-/// bindings, overrides and reservations, without geometric containment. Root globals already hash all prefab
-/// state once, so nothing here adds identity inputs.</summary>
+/// <summary>Prefab identity checks shared by the loaded and stored identity paths: schema, document roots against the
+/// closure, numeric reservations and high-water mark, pins, complete bindings, overrides and the ownership
+/// registry, without geometric containment. Each entry point runs exactly the checks its whole identity path runs.
+/// Root globals already hash all prefab state once, so nothing here adds identity inputs.</summary>
 internal static class MapPrefabIdentity
 {
+    /// <summary>The complete loaded-document validation the loaded identity path runs.</summary>
     internal static void Require(MapDocument document, MapAssetClosure assets)
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(assets);
+        MapBoundDocumentValidation.Validate(document, assets);
+    }
+
+    /// <summary>The ownership registry over a whole loaded document, after its prefab structure and closure checks.</summary>
+    internal static void RequireOwnership(MapDocument document, MapAssetClosure assets)
+    {
         MapPrefabValidation.RequireDocument(document, assets);
         var registry = new MapPrefabIdentityRegistry(document);
         registry.AddSurfaces(document.Surfaces.Refs.Select(s => s.Id));
@@ -26,6 +34,7 @@ internal static class MapPrefabIdentity
         registry.Finish();
     }
 
+    /// <summary>The complete pinned-storage validation the stored identity path runs.</summary>
     internal static void RequireStored(MapStoredSurfaceSource source, MapAssetClosure assets)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -137,10 +146,13 @@ internal sealed class MapPrefabIdentityRegistry
                 if (!_transfers.TryGetValue(key, out var transfer) || transfer.Binding.Child != child.LocalChild || transfer.Retired != row.Retired)
                     Fail($"Attached child '{child.WorldId}' must match one {(row.Retired ? "retired" : "active")} transfer.");
                 if (row.Retired) continue;
-                if (child.LocalChild.Kind == MapPrefabChildKind.Record && child.Anchor is { } anchor && _anchors.GetValueOrDefault(child.WorldId) != anchor)
-                    Fail($"Attached record '{child.WorldId}' is not anchored where it declares.");
-                if (_poses.FirstOrDefault(p => p.Kind == child.LocalChild.Kind && p.OwnerId == child.WorldId) is { } pose && pose.SourceDigest != child.SourceDigest)
-                    Fail($"Attached child '{child.WorldId}' descriptor digest differs from its standalone transform.");
+                if (child.LocalChild.Kind == MapPrefabChildKind.Record &&
+                    (child.Anchor is not { } anchor || !_anchors.TryGetValue(child.WorldId, out MapPatchKey actual) || actual != anchor))
+                    Fail($"Attached record '{child.WorldId}' must declare the anchor of its standalone record.");
+                MapStandaloneResourceTransform? pose = _poses.FirstOrDefault(p => p.Kind == child.LocalChild.Kind && p.OwnerId == child.WorldId);
+                if (pose is null) Fail($"Attached child '{child.WorldId}' has no standalone descriptor pin.");
+                if (pose.SourceDigest != child.SourceDigest)
+                    Fail($"Attached child '{child.WorldId}' descriptor digest differs from its standalone pin.");
             }
         }
     }

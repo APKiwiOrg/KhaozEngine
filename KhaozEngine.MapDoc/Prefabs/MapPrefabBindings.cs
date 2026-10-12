@@ -26,7 +26,8 @@ public static class MapPrefabBindingPlanner
         MapPrefabLocalMaterializations.Validate(asset, assets);
         MapPrefabInstance? instance = document.Prefabs?.Instances.FirstOrDefault(i => i.Id == instanceId);
         MapPrefabChildSet children = MapPrefabChildSet.Compute(asset, assets, instance?.Overrides ?? []);
-        if (instance is { ParentSpace: null } && children.NeedsParent)
+        // A new parent-dependent instance must first be placed in the detached candidate with its ParentSpace.
+        if (children.NeedsParent && instance?.ParentSpace is null)
             throw new MapDocumentException($"Prefab instance '{instanceId}' needs a ParentSpace for its rooms or $parent references.");
         var previous = new Dictionary<MapPrefabChildKey, MapPrefabBinding>();
         foreach (MapPrefabBinding binding in existing.Entries ?? throw new MapDocumentException("Existing bindings must not be null."))
@@ -35,21 +36,22 @@ public static class MapPrefabBindingPlanner
         var keys = children.Known.Concat(children.Live.Keys).Concat(previous.Keys).Distinct()
             .OrderBy(k => k.Kind.ToString(), StringComparer.Ordinal).ThenBy(k => k.Key, StringComparer.Ordinal).ToArray();
         var used = UsedWorldIds(document, instanceId);
+        var usedNumbers = UsedNumericIds(document, instanceId);
         var entries = new List<MapPrefabBinding>(keys.Length);
         var numbered = new List<int>();
         foreach (MapPrefabChildKey key in keys)
         {
             bool live = children.Live.ContainsKey(key);
-            if (previous.TryGetValue(key, out MapPrefabBinding? kept))
-            {
-                entries.Add(kept with { Removed = !live });
-                continue;
-            }
-            string worldId = WorldId(instanceId, key);
-            if (used.Contains((key.Kind, worldId)))
-                throw new MapDocumentException($"New prefab world ID '{worldId}' collides with an existing {key.Kind} identity.");
-            if (key.Kind == MapPrefabChildKind.Placement && allocateNumericPlacements) numbered.Add(entries.Count);
-            entries.Add(new(key, worldId, null, !live));
+            // Retained and imported bindings are accepted exactly, but only when no other owner holds their identities.
+            MapPrefabBinding binding = previous.TryGetValue(key, out MapPrefabBinding? kept)
+                ? kept with { Removed = !live }
+                : new(key, WorldId(instanceId, key), null, !live);
+            if (used.Contains((key.Kind, binding.WorldId)))
+                throw new MapDocumentException($"Prefab world ID '{binding.WorldId}' collides with an existing {key.Kind} identity.");
+            if (binding.NumericId is { } number && usedNumbers.Contains(number))
+                throw new MapDocumentException($"Prefab numeric ID '{number}' for '{binding.WorldId}' is already reserved by another owner.");
+            if (kept is null && key.Kind == MapPrefabChildKind.Placement && allocateNumericPlacements) numbered.Add(entries.Count);
+            entries.Add(binding);
         }
         var duplicate = entries.GroupBy(b => (b.Child.Kind, b.WorldId)).FirstOrDefault(g => g.Count() > 1);
         if (duplicate is not null) throw new MapDocumentException($"Prefab world ID '{duplicate.Key.WorldId}' is bound more than once.");
@@ -88,7 +90,20 @@ public static class MapPrefabBindingPlanner
         return result.ToString();
     }
 
-    // Every identity a new binding must avoid, except the planned instance's own bindings.
+    // Every numeric ID another owner reserves: standalone placements, other instances' bindings and transfers.
+    static HashSet<long> UsedNumericIds(MapDocument document, string instanceId)
+    {
+        var used = document.Placements.Where(p => p.NumericId is not null).Select(p => p.NumericId!.Value).ToHashSet();
+        if (document.Prefabs is { } set)
+        {
+            foreach (MapPrefabInstance other in set.Instances.Where(i => i.Id != instanceId))
+                foreach (MapPrefabBinding binding in other.Bindings.Entries) if (binding.NumericId is { } id) used.Add(id);
+            foreach (MapPrefabBindingTransfer transfer in set.Transfers) if (transfer.Binding.NumericId is { } id) used.Add(id);
+        }
+        return used;
+    }
+
+    // Every identity a binding must avoid, except the planned instance's own bindings.
     static HashSet<(MapPrefabChildKind, string)> UsedWorldIds(MapDocument document, string instanceId)
     {
         var used = new HashSet<(MapPrefabChildKind, string)>();

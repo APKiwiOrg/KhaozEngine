@@ -18,7 +18,7 @@ public static class MapBoundDocumentValidation
         ArgumentNullException.ThrowIfNull(assets);
         ValidateLocal(document, registry);
         RequireRoots(document.NativeAssets, assets);
-        MapPrefabIdentity.Require(document, assets);
+        MapPrefabIdentity.RequireOwnership(document, assets);
         RequireWaterMaterials(document.Water, assets);
         foreach (MapPlacement placement in document.Placements) RequireClosureAsset(placement, assets);
     }

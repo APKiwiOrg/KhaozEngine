@@ -61,7 +61,7 @@ public static class MapPrefabValidation
                     if (!keys.Add(add.Child)) Fail("Add override duplicates a declared child.");
                 foreach (MapPrefabOverride value in instance.Overrides)
                     if (!keys.Contains(value.Child)) Fail("Override names an undeclared child.");
-                RequireBindings(instance, MapPrefabChildSet.Compute(asset, assets, instance.Overrides));
+                RequireBindings(instance, MapPrefabChildSet.Compute(asset, assets, instance.Overrides), set.Transfers);
                 var effective = asset.Children.ToDictionary(c => c.Key);
                 foreach (MapPrefabOverride value in Intents(instance.Overrides))
                 {
@@ -226,12 +226,16 @@ public static class MapPrefabValidation
     }
 
     // Every key in the effective child set has a binding, live keys are not Removed and every other binding is.
-    // A removed instance keeps its reservations without a live child set.
-    static void RequireBindings(MapPrefabInstance instance, MapPrefabChildSet children)
+    // A removed instance keeps its reservations without a live child set. On that tombstone a key may instead be
+    // covered by a transfer from this source instance, which then owns the identity alone.
+    static void RequireBindings(MapPrefabInstance instance, MapPrefabChildSet children, IReadOnlyList<MapPrefabBindingTransfer> transfers)
     {
         var bindings = instance.Bindings.Entries.ToDictionary(b => b.Child);
+        var transferred = instance.Removed
+            ? transfers.Where(t => t.InstanceId == instance.Id).Select(t => t.Binding.Child).ToHashSet()
+            : new HashSet<MapPrefabChildKey>();
         foreach (MapPrefabChildKey key in children.Known.Concat(children.Live.Keys))
-            if (!bindings.ContainsKey(key)) Fail("Prefab bindings must completely describe every child.");
+            if (!bindings.ContainsKey(key) && !transferred.Contains(key)) Fail("Prefab bindings must completely describe every child.");
         if (instance.Removed) return;
         foreach (MapPrefabBinding binding in instance.Bindings.Entries)
             if (binding.Removed == children.Live.ContainsKey(binding.Child))

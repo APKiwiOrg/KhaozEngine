@@ -37,55 +37,73 @@ internal static class MapEffectiveSupport
     internal static HashSet<(string Placement, string Resource)> Suppressed(IReadOnlyList<MapPrefabLocalMaterialization>? rows, MapPrefabAttachmentKind kind) =>
         (rows ?? []).Where(r => r.Kind == kind).Select(r => (r.Placement.Id, r.ResourceId)).ToHashSet();
 
-    static IEnumerable<MapPrefabChild> Children(string placementKey, string resourceId, MapSupportResource resource)
+    // Each child is walked from its resource parts. Its pointers translate to the resource pointers, so every
+    // occurrence takes the scope of its own resource slot. The record anchor is the resource patch key slot.
+    internal static IEnumerable<MapPrefabChild> Children(string placementKey, string resourceId, MapSupportResource resource)
     {
-        var produced = new HashSet<(MapPrefabChildKind, string)>();
-        foreach (MapSurfaceRef surface in resource.Surfaces.Refs) produced.Add((MapPrefabChildKind.Surface, Key(placementKey, resourceId, surface.Id)));
-        foreach (MapTopologyRecord record in resource.Surfaces.Patches.Values.SelectMany(p => p.Records))
-            produced.Add((MapPrefabChildKind.Record, Key(placementKey, resourceId, record.Id)));
-        var (mapped, occurrences) = MapPrefabReferenceWalker.Resource(resource, new ToLocalKeys(resource.References, placementKey, resourceId));
-        // Scope follows the slot, never the text. A World reference spelling a produced key would be ambiguous here.
-        foreach (MapPrefabOccurrence occurrence in occurrences)
-            if (occurrence.Scope == MapPrefabReferenceScope.World && produced.Contains((occurrence.Kind, occurrence.Id)))
-                throw new MapDocumentException($"Support resource '{resourceId}' has a World reference that spells local key '{occurrence.Id}'.");
-        MapPrefabChild Scoped(MapPrefabChild child)
+        MapSurfaceRef[] surfaces = resource.Surfaces.Refs.OrderBy(s => s.Id, StringComparer.Ordinal).ToArray();
+        MapSurfacePatch[] patches = resource.Surfaces.Patches.Values.OrderBy(p => p.Key).ToArray();
+        for (int j = 0; j < surfaces.Length; j++)
         {
-            var (_, found) = MapPrefabReferenceWalker.Child(child, MapPrefabReferenceMap.Identity);
-            return child with
+            int[] owned = Enumerable.Range(0, patches.Length).Where(i => patches[i].Key.SurfaceId == surfaces[j].Id).ToArray();
+            var local = new MapPrefabSurfaceChild(new(MapPrefabChildKind.Surface, surfaces[j].Id), surfaces[j], owned.Select(i =>
             {
-                References = MapPrefabReferences.Slots(found.Select(o => o with
-                {
-                    Scope = o.Id == MapPrefabReferences.Parent || produced.Contains((o.Kind, o.Id)) ? MapPrefabReferenceScope.Local : MapPrefabReferenceScope.World,
-                })),
-            };
-        }
-        // Definition IDs are not occurrences, so each child takes its compound key here. Patch keys are Local slots.
-        foreach (MapSurfaceRef surface in mapped.Surfaces.Refs.OrderBy(s => s.Id, StringComparer.Ordinal))
-        {
-            string key = Key(placementKey, resourceId, surface.Id);
-            var patches = mapped.Surfaces.Patches.Values.Where(p => p.Key.SurfaceId == key).Select(p =>
-            {
-                MapSurfacePatch copy = p.Clone();
+                MapSurfacePatch copy = patches[i].Clone();
                 copy.Records.Clear();
                 return copy;
-            }).ToArray();
-            yield return Scoped(new MapPrefabSurfaceChild(new(MapPrefabChildKind.Surface, key), surface with { Id = key }, patches));
+            }).ToArray());
+            string surface = "/surfaces/" + j;
+            yield return Split(local, placementKey, resourceId, resource.References, path => path.StartsWith("/surface/", StringComparison.Ordinal)
+                ? surface + path["/surface".Length..]
+                : Patch(path, owned));
         }
-        foreach (MapSurfacePatch patch in mapped.Surfaces.Patches.Values)
-            foreach (MapTopologyRecord record in patch.Records.OrderBy(r => r.Id, StringComparer.Ordinal))
+        for (int i = 0; i < patches.Length; i++)
+        {
+            MapTopologyRecord[] records = patches[i].Records.OrderBy(r => r.Id, StringComparer.Ordinal).ToArray();
+            for (int k = 0; k < records.Length; k++)
             {
-                string key = Key(placementKey, resourceId, record.Id);
-                yield return Scoped(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, key), record with { Id = key }, patch.Key));
+                var local = new MapPrefabRecordChild(new(MapPrefabChildKind.Record, records[k].Id), records[k], patches[i].Key);
+                string patch = "/patches/" + i, record = patch + "/records/" + k;
+                yield return Split(local, placementKey, resourceId, resource.References, path => path == "/anchor/surfaceId"
+                    ? patch + "/key/surfaceId"
+                    : record + path["/value".Length..]);
             }
+        }
     }
 
-    sealed class ToLocalKeys(IReadOnlyList<MapPrefabReferenceSlot> slots, string placementKey, string resourceId) : MapPrefabReferenceMap
+    // A child patch pointer /patches/{n}/rest names the resource patch owned[n].
+    static string Patch(string path, int[] owned)
+    {
+        int start = "/patches/".Length, end = path.IndexOf('/', start);
+        int n = int.Parse(path.AsSpan(start, (end < 0 ? path.Length : end) - start), System.Globalization.CultureInfo.InvariantCulture);
+        return "/patches/" + owned[n] + (end < 0 ? "" : path[end..]);
+    }
+
+    static MapPrefabChild Split(MapPrefabChild local, string placementKey, string resourceId, IReadOnlyList<MapPrefabReferenceSlot> slots,
+        Func<string, string> resourcePath)
+    {
+        var (walked, occurrences) = MapPrefabReferenceWalker.Child(local, new ToLocalKeys(slots, placementKey, resourceId, resourcePath));
+        string key = Key(placementKey, resourceId, local.Key.Key);
+        // Definition IDs are not occurrences, so each child takes its compound key here.
+        MapPrefabChild defined = walked switch
+        {
+            MapPrefabSurfaceChild s => s with { Key = new(MapPrefabChildKind.Surface, key), Surface = s.Surface with { Id = key } },
+            MapPrefabRecordChild r => r with { Key = new(MapPrefabChildKind.Record, key), Value = r.Value with { Id = key } },
+            _ => throw new MapDocumentException("Support resources produce only Surface and Record children."),
+        };
+        return defined with { References = MapPrefabReferences.Slots(occurrences) };
+    }
+
+    sealed class ToLocalKeys(IReadOnlyList<MapPrefabReferenceSlot> slots, string placementKey, string resourceId, Func<string, string> resourcePath)
+        : MapPrefabReferenceMap
     {
         readonly Dictionary<string, MapPrefabReferenceSlot> _slots = slots.ToDictionary(s => s.Path, StringComparer.Ordinal);
 
         internal override (string Id, MapPrefabReferenceScope? Scope) Text(string path, MapPrefabChildKind kind, string id, bool space)
         {
-            MapPrefabReferenceScope scope = _slots[path].Target.Scope;
+            if (!_slots.TryGetValue(resourcePath(path), out MapPrefabReferenceSlot? slot))
+                throw new MapDocumentException($"Support resource '{resourceId}' has no slot for '{resourcePath(path)}'.");
+            MapPrefabReferenceScope scope = slot.Target.Scope;
             return scope == MapPrefabReferenceScope.Local && id != MapPrefabReferences.Parent ? (Key(placementKey, resourceId, id), scope) : (id, scope);
         }
     }

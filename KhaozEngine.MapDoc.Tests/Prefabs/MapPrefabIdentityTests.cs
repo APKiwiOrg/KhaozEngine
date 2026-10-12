@@ -49,6 +49,28 @@ public sealed class MapPrefabIdentityTests
     }
 
     [Fact]
+    public void BothEntryPoints_RefuseNumericHighWaterAndClosureFaults()
+    {
+        var lowered = PrefabFixtures.Create();
+        lowered.Document.NumericIdHighWaterMark = 100;
+        Refuses(lowered, lowered.Assets, "exceeds numericIdHighWaterMark");
+        var duplicate = PrefabFixtures.Create("numeric-duplicate");
+        Refuses(duplicate, duplicate.Assets, "duplicate numericId");
+        var f = PrefabFixtures.Create();
+        var other = PrefabFixtures.Create("asset-version").Assets;
+        var loaded = Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.Require(f.Document, other));
+        var stored = Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.RequireStored(PrefabFixtures.Stored(f.Document), other));
+        Assert.Equal(loaded.Message, stored.Message);
+    }
+
+    // A document the stored writer itself refuses cannot reach RequireStored, so its refusal names the same fault.
+    static void Refuses(PrefabFixture f, KhaozEngine.MapDoc.Assets.MapAssetClosure assets, string fault)
+    {
+        Assert.Contains(fault, Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.Require(f.Document, assets)).Message);
+        Assert.Contains(fault, Assert.Throws<MapDocumentException>(() => MapPrefabIdentity.RequireStored(PrefabFixtures.Stored(f.Document), assets)).Message);
+    }
+
+    [Fact]
     public void ChildDigest_IsCanonicalAndCoversScope()
     {
         var asset = PrefabFixtures.Create().Assets.GetPrefab("hut");

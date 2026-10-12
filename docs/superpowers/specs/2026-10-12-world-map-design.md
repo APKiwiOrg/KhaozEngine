@@ -1,7 +1,7 @@
 # World map: design
 
 - **Date:** 2026-10-12
-- **Status:** design approved in conversation, written spec awaiting owner review
+- **Status:** design approved, engine round awaiting final review
 - **First consumer:** Grimhollow, whose game-side spec is `docs/superpowers/specs/2026-10-12-world-map-design.md` on its
   `feature/world-map` branch
 - **Related:** Grimhollow #456 (much larger worlds, caves, deep oceans), Grimhollow #441 (Hollowmere moves to MapDoc)
@@ -81,22 +81,23 @@ public interface IWorldMapSource
   cell a ground colour (`Color.Transparent` for void), a surface height (NaN for void) and a water surface height
   (NaN where dry). The grid covers at least the requested area and is aligned to the source lattice, with its origin
   at the south-west corner of cell (0, 0). Rows run from south to north. Samples sit at cell centres. The
-  source picks its native spacing (one metre for TileWorld, whatever the terrain resolves to for MapDoc). The
+  source picks its native spacing (`TileSize` for TileWorld, whatever the terrain resolves to for MapDoc). The
   rasterizer resamples it, so the source never knows about pixels.
 - **`SurfaceCellSize`** exposes the native source lattice spacing in metres.
 - **`CollectFootprints`** appends every surface object's oriented rectangle whose shape intersects the area: id,
   archetype key, centre, local half extents, rotation, tags, `IsRoof` and `Collision` (`None`, `Solid` or `Wall`).
   `Blocking` derives from collision being other than `None`. Rotation is radians clockwise from local +x on the
-  north-up map, and half extents are measured before rotation. Shapes are oriented rectangles only. MapDoc polygons
-  arrive with the MapDoc adapter if its buildings need them. Top height and level are omitted because the source
-  already filters to the mapped surface.
+  north-up map, and half extents are measured before rotation. Shapes are oriented rectangles only. The MapDoc
+  adapter will derive those rectangles from resolved placement shapes. Top height and level are omitted because the
+  source already filters to the mapped surface.
 - **`CollectMarkers`** appends surface markers whose positions the half-open area contains: name, map position and tags.
 - **`Revision` and `Changed`** carry dynamism. A source whose data changes raises `Changed` with the touched area on the
   thread that owns the data and increments `Revision`. A static source never raises it.
-- **Thread safety:** the rasterizer reads a source from a worker thread. A source must allow concurrent reads. It may
-  change only on its owner thread, and results computed against an older revision are discarded by the cache.
-- **Levels:** this round maps the surface. The TileWorld adapter yields plane 0 terrain, plane 0 objects and roofs on
-  any plane. A later level parameter selects caves or upper floors without changing the rest of the contract.
+- **Thread safety:** the rasterizer reads a source from a worker thread. A source must allow concurrent reads and
+  change only on its owner thread. Images carry the revision captured before sampling. `Changed` invalidates cache
+  generations, so an invalidation during a build leaves its result stale until a replacement is built and uploaded.
+- **Levels:** this round maps one surface. The TileWorld adapter's `surfacePlane` defaults to 0 and selects terrain,
+  objects and markers. Roofs on any plane are included. General cave and upper-floor view selection is deferred.
 - **`ToMap` and `ToMapHeading`** let a game place live markers (the player arrow) from world poses. The heading takes
   a world forward vector, returns radians clockwise from map north and returns zero for a zero vector. No world yaw
   convention leaks into the contract.
@@ -105,15 +106,17 @@ public interface IWorldMapSource
 
 `TileWorldMapSource` wraps a `TileWorldDocument` and its `TileWorldCatalogs`.
 
-- One surface cell per tile. Colour is the underlay material colour, with the overlay material colour over it where an
-  overlay is set. Height is the mean of the four corner heights. A tile whose underlay material has
-  `GroundMaterialKind.Water` reports the water surface of the body that covers it.
-- Footprints come from `TileObject` plus its archetype: `TileFootprint` gives the rotated size, `IsRoof` and
-  `CollisionKind` give the roof and blocking flags, and archetype tags pass through unchanged.
+- One surface cell per tile at the document's `TileSize`. A missing region or unresolved underlay is void. A resolved
+  non-zero overlay replaces the underlay colour for the whole tile, ignoring overlay shapes. Height is the mean of the
+  four corner heights on `surfacePlane`. `TileWaterBodies.IsWater` selects water tiles, which report the covering
+  body's `SurfaceY` in metres. Dry cells have NaN water height, and void cells have NaN surface and water heights.
+- Footprints come from `TileObject` plus its archetype. `TileFootprint.Of` supplies the centre, half extents use the
+  unrotated archetype size, and object quarter turns supply rotation. `IsRoof` and `CollisionKind` give the roof and
+  collision roles. Archetype tags and object tags combine with ordinal duplicates removed in their original order.
 - Markers come from `TileMarker` with their tags.
 - Bounds are the union of loaded region extents.
-- The document is static in a game client today, so the adapter raises no `Changed`. An editing host can raise it from
-  its edit events later. The contract does not change for that.
+- Keep the document and catalogs unchanged for the adapter's lifetime. `Revision` stays zero and `Changed` is never
+  raised. Create a new source and map pipeline after edits or changes to loaded regions.
 
 ## Style
 
@@ -135,56 +138,73 @@ public interface IWorldMapSource
 
 ## Rasterizer and chunk cache
 
-`WorldMapRasterizer.Rasterize(source, style, chunk)` is pure and returns a `WorldMapChunk` with its coordinate, size,
-RGBA bytes and the source revision it was drawn from. Per chunk:
+`WorldMapRasterizer.Rasterize(source, style, chunk)` returns a `WorldMapChunkImage` with `Coord`, `Size`, `Rgba` and
+the `Revision` captured before sampling. Per chunk:
 
-1. Sample the surface over the chunk plus a one-cell margin, so blending and shading match across chunk borders.
-2. Resample ground colour with bilinear blending between cell centres, so one-metre tiles do not read as a checkerboard
-   at full zoom.
-3. Apply hillshade from the height gradient, with extra darkening above the steepness threshold.
+1. Sample the chunk with the surface reach, two source cells plus the shoreline width converted to metres. Collect
+   footprints with the footprint reach, the building shadow offset length, half the wall width and one raster pixel
+   converted to metres. Both reaches are defined once in `WorldMapRasterReach` and preserve chunk-border continuity.
+2. Resample ground colours and heights with bilinear blending between cell centres, dropping void contributions and
+   renormalizing the remaining weights. Pixels whose nearest cell is void keep `VoidColor`.
+3. Apply hillshade to dry ground from the height gradient, with extra darkening above the steepness threshold.
 4. Tint water by depth between the shallow and deep colours, then draw the shoreline.
-5. Draw footprints in fixed symbol order: bridges, obstacles, walls, buildings, trees. Buildings draw their rotated roof
-   footprint with a one-pixel outline and a short shadow toward the south-east. Trees draw a canopy disc sized to the
-   footprint. Shapes are clipped to the chunk and edge pixels use a fixed supersampling pattern, so rotated outlines are
-   clean and the output stays deterministic.
+5. Draw all building shadows first, then footprints in fixed symbol order, bridges, obstacles, walls, buildings and
+   trees, ordered by ascending footprint `Id` within each kind. Buildings and bridges draw oriented rectangles with
+   the configured outline, one pixel by default. Trees and obstacles draw inscribed ellipses. Walls follow the longer
+   local axis with the configured width and no outline. Shapes are clipped to the chunk and use fixed four by four
+   subsampling with disjoint fill and outline coverage.
 
-The same source revision and style always produce identical bytes. Colour math follows the texture colour convention
-`Render2D` uses for UI textures, confirmed in the implementation plan.
+The same source data, revision and style produce identical bytes on one machine. Colour math uses the stored channel
+values directly, matching `Render2D` UI texture uploads without sRGB decoding. Cross-platform goldens allow two byte
+values per channel for floating-point differences.
 
-`WorldMapChunkCache` holds chunks by coordinate and revision. `Invalidate(MapRect)` marks every chunk the area
-touches, widened by the sampling margin, as stale. Feature anchors (icons and labels) are collected per chunk with the
-same keys and invalidation, so they scale with world size like the imagery.
+`WorldMapChunkCache` holds generation-tagged `WorldMapChunk` results containing `Image`, `Features` and `Generation`.
+`Invalidate(area)` widens the touched area by the sum of the surface and footprint reaches from `WorldMapRasterReach`,
+marks previously requested chunks stale and clears failed generations for retry. `TryGet(chunk, out built)` retains
+the last successful result during a rebuild. `BuildNext()` attempts the lowest-priority pending chunk outside the
+bookkeeping lock. A source failure quarantines that generation without stopping `WorldMapChunkWorker`.
+
+`WorldMapFeatureCollector.Collect(source, style, chunk)` collects icon and label anchors owned by the chunk containing
+the footprint centre or marker position. Half-open ownership prevents duplicates at chunk borders. Anchors share the
+imagery's cache generation and invalidation, so they scale with world size like the imagery.
 
 ## Map view
 
 `WorldMapView` in `KhaozEngine.WorldMap.Gui` composes `PannableCanvas`.
 
 - **Navigation:** drag pans, the wheel zooms around the cursor, and pan is clamped so the world cannot leave the
-  viewport. Zoom runs from whole-world fit to twice the raster resolution, 8 screen pixels per metre by default.
-  `CenterOn`, `Focus` and zoom-step calls back the game's buttons.
+  viewport. Zoom runs from whole-world fit to `MaxPixelsPerMetre`, 8 screen pixels per metre by default, independently
+  of raster resolution. `CenterOn(mapPosition)`, `FitWorld()` and `ZoomBy(factor)` back the game's buttons. The first
+  usable viewport fits the world unless explicit positioning came first.
 - **Streaming:** only chunks that intersect the view are requested, nearest to the view centre first. One background
   worker rasterizes, and finished chunks upload on the frame thread under a per-frame budget (default 4). A chunk not
   yet ready draws in a placeholder colour. A stale chunk keeps drawing its old texture until its replacement uploads.
   Textures are created through an internal factory over `Render2DSurface.CreateTexture`, which the tests replace with a
   GPU-free fake. The view disposes every texture it created.
-- **Overlays:** drawn at fixed screen size in this order: labels, icons, then live markers. Icon sprites, label text and
-  the label font come from the game through callbacks, so the engine holds no game strings or art. Decluttering is a
-  per-frame greedy pass in screen space: icons with the same key inside the merge radius collapse into one, a
+- **Drawing:** `Draw(batch)` uses the caller's already-open UI batch, without beginning, ending or changing its scissor.
+  `Viewport`, the pointer and the batch use the same coordinates. Chunk quads and UVs clip to the viewport.
+- **Overlays:** drawn at fixed screen size in this order: labels, icons, then live markers. `IconSprites` resolves borrowed
+  `WorldMapSprite` values, `LabelText` resolves localized text, and `LabelFont` borrows the game's `SpriteFont`.
+  Null sprites or text hide that overlay, and no font hides labels. Decluttering is a per-frame greedy pass in screen
+  space: icons with the same key inside the merge radius collapse into one, a
   higher-priority icon hides a lower one it overlaps, and higher-tier labels win collisions. Tiers also set the zoom
   range in which a label shows.
 - **Live markers:** `SetMarker(id, mapPosition, heading, sprite)` and `RemoveMarker(id)`. A minimap is a second view
   over the same chunk cache and marker calls.
 - **Hover:** `Hovered` reports the icon or label under the pointer so the game can show a localized tooltip.
-- **Input:** `Update(Pointer, wheelDelta)` takes the pointer and wheel delta the game passes, like every engine widget.
+- **Input:** `Update(pointer, wheelDelta)` takes the pointer and wheel delta the game passes, like every engine widget.
   It blocks pointer input from reaching the world behind it. Nothing reads raw device input.
+- **Lifetime:** create, update, draw and dispose views on the surface's frame thread. Dispose views, then the worker,
+  then the cache before releasing source data or the surface. Icon and marker textures and the label font remain
+  caller-owned. A worker and cache can serve several views, each with its own uploads and budget.
 
 ## Testing
 
-All proofs are CPU tests run synchronously through the build slot. No GPU backend run is needed because no GPU code is
-added.
+All proofs are CPU tests run synchronously through the build slot. Headless view tests replace texture creation and
+disposal with fakes. The wrapper reuses the existing Render2D upload and draw APIs and adds no backend implementation.
 
 - **Rasterizer, with a small synthetic source:** ground colour at cell centres, smooth blending between cells, water
-  depth tint and shoreline, a building footprint rotated 90 degrees, tree discs, `Hidden` footprints absent, the
+  depth tint and shoreline, a building footprint rotated 90 degrees, tree ellipses, `Hidden` footprints absent, the
   blocking fallback, symbol draw order, chunk borders identical to one large raster pixel for pixel, a determinism
   digest, invalidation marking only touched chunks plus the margin, and one reference PNG of the fixture.
 - **TileWorld adapter, with a fixture document:** an object at greater tile z draws higher on the map and one at greater

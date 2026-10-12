@@ -29,6 +29,15 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   runtime half. Navigation bakes follow in phase 5).
 - The explicit profile identity is now `contact-shell-footprint-swim-v1`, so a motion proof made with the old
   full-capsule model cannot certify the new behaviour.
+- The opt-in `KhaozEngine.WorldMap` package adds `IWorldMapSource`, `WorldMapStyle`, `WorldMapRasterizer` and
+  `WorldMapChunkImage` for GPU-free north-up maps, plus feature anchors, `WorldMapChunkCache` and `WorldMapChunkWorker`.
+  Ground relief, depth-tinted water and footprint symbols come from authored data and game-owned style rules.
+- The opt-in `KhaozEngine.TileWorld.WorldMap` package adds `TileWorldMapSource` over a static `TileWorldDocument`
+  and its catalogs, mapping ground colours, corner heights, water bodies, oriented object footprints and markers
+  into east/north metres, with `ToMap` and `ToMapHeading` for live world poses.
+- The opt-in `KhaozEngine.WorldMap.Gui` package adds `WorldMapView` over the shared cache and `PannableCanvas`,
+  with pan, cursor-anchored zoom and budgeted texture uploads in the caller's open UI batch. `WorldMapSprite`
+  supplies borrowed icons and live markers, while localized labels and `WorldMapHover` remain game-resolved.
 
 ## 20.32.0
 

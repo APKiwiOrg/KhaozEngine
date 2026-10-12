@@ -1322,7 +1322,6 @@ sealed class HudScreen : Screen
     public override void LoadContent()
     {
         _components.Add(new HealthBarComponent(_font, _white));
-        _components.Add(new MinimapComponent(_white));
         _components.Add(new ChatComponent(_font, _white));   // added last, so on top and offered input first
     }
 
@@ -1335,6 +1334,8 @@ sealed class HudScreen : Screen
         _components.Draw(batch, _viewport.WindowBounds);
 }
 ```
+
+For a map component, use the real source, cache and view flow in [World map](#world-map).
 
 Four lines of wiring for N components, and none of them grows when N does. Points worth knowing:
 
@@ -1727,6 +1728,126 @@ DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
 What stays in the GAME: the palette values it assigns to `GuiTheme`, the metric numbers if the default shape is
 wrong for it, which taps it swallows through `BlockRegion`, each window's natural-bounds rule, the grip rect,
 and whatever fills the strip, content and footer bands.
+
+---
+
+## World map
+
+The world map packages are opt-in and outside every umbrella. A TileWorld client adds
+`KhaozEngine.TileWorld.WorldMap` and `KhaozEngine.WorldMap.Gui` explicitly, which bring
+`KhaozEngine.WorldMap` transitively. Headless tools can reference the core alone and call
+`WorldMapRasterizer.Rasterize(source, style, chunk)` for a `WorldMapChunkImage` without a GPU.
+
+Map positions are metres with x east and y north. `MapRect` has a south-west origin and half-open bounds.
+Use the source's `ToMap` and `ToMapHeading` for live world poses. Headings are radians clockwise from north,
+and marker artwork points north at zero heading. The view handles the screen's downward y axis.
+
+Keep the `TileWorldDocument` and `TileWorldCatalogs` unchanged while a `TileWorldMapSource` is in use. Its
+`Revision` stays zero and it never raises `Changed`. After edits or loaded-region changes, stop and dispose
+the old map pipeline and create a new source, cache, worker and view. `surfacePlane` selects terrain, objects
+and markers, while roofs on all planes are included.
+
+This example borrows the game's loaded document, catalogs, `Render2DSurface`, icon textures and `SpriteFont`.
+`resolveLocalizedMarkerName` is a game-supplied `Func<string, string?>` that maps an authored marker name to
+localized text and returns null for an unknown name. Tags and icon keys are game-owned tokens. Call
+`UpdateMap` each frame with the current `InputState` and an already-updated `Pointer`, call `DrawUi` from the
+game's UI pass, and call `CloseMap` when closing the map.
+
+```csharp
+using System.Numerics;
+using KhaozEngine.Primitives;
+using KhaozEngine.Render2D;
+using KhaozEngine.TileWorld.WorldMap;
+using KhaozEngine.Windowing;
+using KhaozEngine.WorldMap;
+using KhaozEngine.WorldMap.Gui;
+
+var source = new TileWorldMapSource(document, catalogs, surfacePlane: 0);
+var style = new WorldMapStyle
+{
+    SymbolRules = new[]
+    {
+        new WorldMapSymbolRule(
+            new WorldMapFootprintMatch(IsRoof: true),
+            new WorldMapSymbol(WorldMapSymbolKind.Building,
+                Color.FromHex("#b49773"), Color.FromHex("#554536")))
+    },
+    IconRules = new[]
+    {
+        new WorldMapIconRule(WorldMapFeatureSource.Footprint,
+            new[] { "service:bank" }, "bank", Priority: 100, MergeRadiusPixels: 24f)
+    },
+    Labels = new WorldMapLabelRules("map-label", new[]
+    {
+        new WorldMapLabelTier("place:town", Rank: 10,
+            MinPixelsPerMetre: 0f, MaxPixelsPerMetre: float.PositiveInfinity, TextScale: 1f)
+    })
+};
+var bankSprite = new WorldMapSprite(bankTexture,
+    new Vector4(0f, 0f, 1f, 1f), new Vector2(20f, 20f));
+var playerSprite = new WorldMapSprite(playerTexture,
+    new Vector4(0f, 0f, 1f, 1f), new Vector2(16f, 16f));
+var cache = new WorldMapChunkCache(source, style);
+var worker = new WorldMapChunkWorker(cache);
+var view = new WorldMapView(cache, surface)
+{
+    IconSprites = key => key == "bank" ? bankSprite : (WorldMapSprite?)null,
+    LabelText = resolveLocalizedMarkerName,
+    LabelFont = labelFont
+};
+
+// Each frame, after the game updates its pointer in UI pixel coordinates.
+void UpdateMap(Pointer pointer, InputState input, Rect viewport,
+    Vector3 playerPosition, Vector3 playerForward)
+{
+    view.Viewport = viewport;
+    view.SetMarker("player", source.ToMap(playerPosition), source.ToMapHeading(playerForward), playerSprite);
+    view.Update(pointer, input.ScrollDelta);
+}
+
+// The game owns this UI pass and opens its batch before drawing the view.
+void DrawUi(SpriteBatch batch)
+{
+    batch.Begin();
+    view.Draw(batch);
+    // Draw the game's remaining UI here, in the same open batch.
+    batch.End();
+}
+
+// On the surface's frame thread, before disposing the borrowed surface or art.
+void CloseMap()
+{
+    view.Dispose();
+    worker.Dispose();
+    cache.Dispose();
+}
+```
+
+The first usable viewport fits the whole world unless `CenterOn` or `ZoomBy` positioned it first. Drag pans
+and the wheel zooms toward the cursor. `FitWorld()` restores the whole-world view. `MaxPixelsPerMetre`
+defaults to 8 and `UploadBudgetPerFrame` to 4. The worker builds imagery and feature anchors off the frame
+thread, while `Update` requests visible chunks, uploads ready textures and lays out overlays on the frame
+thread. Missing chunks use `PlaceholderColor`, and stale textures remain visible until their replacements
+upload. `Update` blocks the viewport through `Pointer.BlockRegion`.
+
+`Viewport`, the pointer and the open batch must use the same coordinates. The example uses UI pixels. A
+design-space host instead opens its own batch with `Begin(IDesignViewport)` and passes a pointer and bounds
+in that design space. `Draw` neither begins nor ends the batch and does not change its scissor. Chunks are
+clipped to the viewport, icons and labels must fit fully inside it, and live markers draw when their centres
+are inside it.
+
+Symbol and icon rules use first-match order and ordinal, all-of tag matching. An unmatched blocking
+footprint uses `FallbackBlocking`, while an unmatched non-blocking footprint is hidden. Icons stay fixed in
+screen size, merge by key and radius, and declutter by priority. Labels require `Labels`, `LabelText` and
+`LabelFont`, use the first matching tier, and show from that tier's inclusive minimum zoom to its exclusive
+maximum. `Hovered` returns the accepted icon or label for a game-resolved tooltip. Live markers draw last,
+skip decluttering and hover, and can be removed with `RemoveMarker(id)`.
+
+Create, update, draw and dispose views on the surface's frame thread. A cache and worker may serve several
+views, each with its own uploaded textures. Dispose all views first, then stop the worker, then dispose the
+cache before releasing its source data. Icon and marker textures, the label font and the surface remain
+caller-owned. A custom `IWorldMapSource` must allow concurrent reads, increment `Revision` and raise `Changed`
+on its owner thread for touched map areas so the cache can invalidate them.
 
 ---
 

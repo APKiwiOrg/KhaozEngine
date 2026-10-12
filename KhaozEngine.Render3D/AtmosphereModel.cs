@@ -18,14 +18,25 @@ public sealed partial class AtmosphereModel
     }
 
     /// <summary>Validates the incoming values and replaces the retained snapshot only when they differ.
-    /// Returns true when the snapshot changed. Later edits to the caller's settings cannot affect it.</summary>
+    /// Returns true when the snapshot changed. Only physical changes invalidate the static tables.
+    /// Later edits to the caller's settings cannot affect it.</summary>
     public bool UpdateSettings(AtmosphereSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
         settings.Validate();
         if (_settings.ValueEquals(settings)) return false;
+        bool physicalChanged = !_settings.PhysicalValueEquals(settings);
+        bool rebuildLighting = physicalChanged && _lightingCache is not null;
         _settings = settings.Clone();
-        _tables = null;
+        _hasLighting = false;
+        if (physicalChanged)
+        {
+            _tables = null;
+            _lightingCache = null;
+        }
+        // Once lighting is in use, settings updates complete its replacement tables immediately.
+        // Transport-only callers retain the existing lazy-build contract.
+        if (rebuildLighting) _ = LightingCache;
         return true;
     }
 

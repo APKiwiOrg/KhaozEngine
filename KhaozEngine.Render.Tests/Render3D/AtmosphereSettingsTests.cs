@@ -235,4 +235,52 @@ public sealed class AtmosphereSettingsTests
         foreach (var property in typeof(AtmosphereSettings).GetProperties())
             yield return new object[] { property.Name };
     }
+
+    [Theory]
+    [InlineData(nameof(AtmosphereSettings.PlanetRadiusKm), false)]
+    [InlineData(nameof(AtmosphereSettings.AtmosphereHeightKm), false)]
+    [InlineData(nameof(AtmosphereSettings.RayleighScatteringPerKm), false)]
+    [InlineData(nameof(AtmosphereSettings.RayleighScaleHeightKm), false)]
+    [InlineData(nameof(AtmosphereSettings.MieScatteringPerKm), false)]
+    [InlineData(nameof(AtmosphereSettings.MieExtinctionPerKm), false)]
+    [InlineData(nameof(AtmosphereSettings.MieScaleHeightKm), false)]
+    [InlineData(nameof(AtmosphereSettings.MieAnisotropy), false)]
+    [InlineData(nameof(AtmosphereSettings.OzoneAbsorptionPerKm), false)]
+    [InlineData(nameof(AtmosphereSettings.OzoneCenterKm), false)]
+    [InlineData(nameof(AtmosphereSettings.OzoneWidthKm), false)]
+    [InlineData(nameof(AtmosphereSettings.GroundAlbedo), false)]
+    [InlineData(nameof(AtmosphereSettings.Enabled), true)]
+    [InlineData(nameof(AtmosphereSettings.SunIlluminance), true)]
+    [InlineData(nameof(AtmosphereSettings.MoonIlluminanceFraction), true)]
+    [InlineData(nameof(AtmosphereSettings.SunAngularRadiusRadians), true)]
+    [InlineData(nameof(AtmosphereSettings.WorldUnitsPerKilometre), true)]
+    [InlineData(nameof(AtmosphereSettings.AerialDistanceScale), true)]
+    [InlineData(nameof(AtmosphereSettings.AmbientScale), true)]
+    [InlineData(nameof(AtmosphereSettings.FillScale), true)]
+    [InlineData(nameof(AtmosphereSettings.NightAmbientFloor), true)]
+    [InlineData(nameof(AtmosphereSettings.NightSkyFloor), true)]
+    [InlineData(nameof(AtmosphereSettings.HazeDensityPerKm), true)]
+    [InlineData(nameof(AtmosphereSettings.HazeScaleHeightKm), true)]
+    [InlineData(nameof(AtmosphereSettings.DayTint), true)]
+    [InlineData(nameof(AtmosphereSettings.DuskTint), true)]
+    [InlineData(nameof(AtmosphereSettings.NightTint), true)]
+    public void PhysicalValueEquals_DetectsOnlyStaticTableInputs(string propertyName, bool equal)
+    {
+        var s = AtmosphereSettings.Earth();
+        var copy = s.Clone();
+        Assert.True(s.PhysicalValueEquals(copy));
+        Assert.False(s.PhysicalValueEquals(null));
+        var property = typeof(AtmosphereSettings).GetProperty(propertyName)!;
+        object changed = property.GetValue(s) switch
+        {
+            bool value => !value,
+            float value => value + .01f,
+            Vector3 value => value + new Vector3(.01f),
+            _ => throw new InvalidOperationException("Unknown atmosphere property type."),
+        };
+        property.SetValue(s, changed);
+        Assert.Equal(equal, s.PhysicalValueEquals(copy));
+        Assert.Equal(equal, copy.PhysicalValueEquals(s));
+        Assert.True(s.PhysicalValueEquals(s.Clone()));
+    }
 }

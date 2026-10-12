@@ -105,6 +105,22 @@ public sealed class AtmosphereSettings
         && DuskTint.Equals(other.DuskTint)
         && NightTint.Equals(other.NightTint);
 
+    /// <summary>Compares exactly the physical inputs shared by static transport and unit-source lighting
+    /// tables. Source brightness, art controls, enablement and world mapping do not affect these tables.</summary>
+    internal bool PhysicalValueEquals(AtmosphereSettings? other) => other is not null
+        && PlanetRadiusKm.Equals(other.PlanetRadiusKm)
+        && AtmosphereHeightKm.Equals(other.AtmosphereHeightKm)
+        && RayleighScatteringPerKm.Equals(other.RayleighScatteringPerKm)
+        && RayleighScaleHeightKm.Equals(other.RayleighScaleHeightKm)
+        && MieScatteringPerKm.Equals(other.MieScatteringPerKm)
+        && MieExtinctionPerKm.Equals(other.MieExtinctionPerKm)
+        && MieScaleHeightKm.Equals(other.MieScaleHeightKm)
+        && MieAnisotropy.Equals(other.MieAnisotropy)
+        && OzoneAbsorptionPerKm.Equals(other.OzoneAbsorptionPerKm)
+        && OzoneCenterKm.Equals(other.OzoneCenterKm)
+        && OzoneWidthKm.Equals(other.OzoneWidthKm)
+        && GroundAlbedo.Equals(other.GroundAlbedo);
+
     /// <summary>Rejects non-finite values, invalid physical lengths, negative coefficients or art controls,
     /// extinction below scattering, and out-of-range anisotropy, albedo or solar radius.</summary>
     public void Validate()

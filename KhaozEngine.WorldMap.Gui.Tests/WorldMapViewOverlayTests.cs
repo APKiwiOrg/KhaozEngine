@@ -158,6 +158,63 @@ public sealed class WorldMapViewOverlayTests
         Assert.Empty(view.Markers);
     }
 
+    /// <summary>An edge anchor belongs to one chunk and leaves the view when only that owner leaves.</summary>
+    [Fact]
+    public void BorderAnchor_DrawnOnce_AndLeavesWithItsOwner()
+    {
+        var source = new FlatTestSource();
+        source.Markers.Add(new WorldMapMarker("border", new Vector2(64f, 96f), ["bank"]));
+        using var cache = new WorldMapChunkCache(source, Style());
+        using var view = View(cache);
+        view.CenterOn(new Vector2(64f, 96f));
+        view.ZoomBy(2f);
+        int resolved = 0;
+        view.IconSizes = _ => { resolved++; return new Vector2(12f, 16f); };
+        var input = new TestInput();
+        view.Update(input.At(Vector2.Zero), 0f);
+        Assert.Equal(2, view.DrawList.Count);
+        Assert.True(cache.BuildNext());
+        Assert.True(cache.BuildNext());
+        Assert.False(cache.BuildNext());
+        view.Update(input.At(Vector2.Zero), 0f);
+
+        Assert.Equal(1, resolved);
+        Assert.Equal(new Vector2(300f, 200f), Assert.Single(view.OverlayPlacement.Icons).Position);
+        Assert.True(cache.TryGet(new(0, 1), out var west));
+        Assert.Empty(west.Features.Icons);
+        Assert.True(cache.TryGet(new(1, 1), out var east));
+        Assert.Single(east.Features.Icons);
+
+        view.CenterOn(new Vector2(32f, 96f));
+        view.Update(input.At(Vector2.Zero), 0f);
+
+        Assert.Single(view.DrawList);
+        Assert.Empty(view.OverlayPlacement.Icons);
+        Assert.Equal(1, resolved);
+    }
+
+    /// <summary>Fallback imagery does not contribute anchors from a different pyramid level.</summary>
+    [Fact]
+    public void CoarserFallback_UsesOnlyCurrentLevelAnchors()
+    {
+        using var cache = new WorldMapChunkCache(Source(), Style());
+        cache.Request(new(0, 0, 1), 0f);
+        Assert.True(cache.BuildNext());
+        using var view = View(cache);
+        view.IconSizes = _ => new Vector2(12f, 16f);
+        view.ZoomBy(0.5f);
+        var input = new TestInput();
+        view.Update(input.At(Vector2.Zero), 0f);
+        Assert.Single(view.OverlayPlacement.Icons);
+        view.UploadBudgetPerFrame = 0;
+        view.ZoomBy(2f);
+
+        view.Update(input.At(Vector2.Zero), 0f);
+
+        Assert.Contains(view.DrawList, item => item.Texture is not null);
+        Assert.Empty(view.OverlayPlacement.Icons);
+    }
+
     static FlatTestSource Source()
     {
         var source = new FlatTestSource();

@@ -16,6 +16,37 @@ public sealed class AllocSensitiveCollection { }
 [Collection("AllocSensitive")]
 public sealed class WorldMapOverlayAllocationTests
 {
+    /// <summary>Warmed level selection and both native and coarser sampling allocate no frame storage.</summary>
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, false)]
+    [InlineData(0, true)]
+    public void LevelSelectionAndFallback_WarmedUpdateAllocatesNothing(int level, bool fallback)
+    {
+        using var cache = new WorldMapChunkCache(new FlatTestSource(), new WorldMapStyle());
+        cache.Request(fallback || level == 1 ? new(0, 0, 1) : new(1, 1), 0f);
+        Assert.True(cache.BuildNext());
+        var textures = new FakeTextures();
+        using var view = new WorldMapViewCore<FakeTexture>(cache, textures.Create, static texture => texture.Dispose())
+        { Viewport = new Rect(100f, 50f, 400f, 300f) };
+        view.CenterOn(new Vector2(96f, 96f));
+        if (fallback || level == 1) view.ZoomBy(0.5f);
+        Pointer pointer = new TestInput().At(new Vector2(300f, 200f));
+        view.Update(pointer, 0f);
+        view.UploadBudgetPerFrame = 0;
+        if (fallback) view.ZoomBy(2f);
+        view.Update(pointer, 0f);
+        view.Update(pointer, 0f);
+        Assert.Contains(view.DrawList, item => item.Texture is not null);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        view.Update(pointer, 0f);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(0L, allocated);
+        Assert.Equal(level, view.CurrentLevel);
+    }
+
     /// <summary>Four built feature chunks and a hovered icon produce no allocations in the overlay pass.</summary>
     [Fact]
     public void OverlayPass_AfterTwoUpdates_AllocatesNothing()
@@ -55,7 +86,7 @@ public sealed class WorldMapOverlayAllocationTests
         Assert.Single(view.Markers);
         Assert.Equal(new WorldMapHover(WorldMapHoverKind.Icon, "bank", new Vector2(60f, 60f)), view.Hovered);
 
-        // Update also allocates the chunk traversal iterator. Measure only its production overlay entry point.
+        // Isolate the overlay entry point. Whole-frame streaming is covered by the allocation test above.
         long before = GC.GetAllocatedBytesForCurrentThread();
         view.RebuildOverlays(pointer.Position);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;

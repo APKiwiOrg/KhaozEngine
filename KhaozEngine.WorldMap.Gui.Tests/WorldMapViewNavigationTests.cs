@@ -142,6 +142,48 @@ public sealed class WorldMapViewNavigationTests
         Assert.Equal(1.5625f, zoomed.PixelsPerMetre);
     }
 
+    /// <summary>A small offset world stays centred at capped fit zoom and clips imagery to its authored bounds.</summary>
+    [Fact]
+    public void SmallWorld_FitCappedAtMax_CentredAndClipped()
+    {
+        using var cache = new WorldMapChunkCache(new FlatTestSource(new(16f, 24f, 32f, 16f)), new WorldMapStyle());
+        using var view = View(cache);
+        var input = new TestInput();
+
+        view.Update(input.At(new Vector2(300f, 200f)), 0f);
+
+        Assert.Equal(8f, view.PixelsPerMetre);
+        Assert.Equal(new Vector2(300f, 200f), view.MapToScreen(new Vector2(32f, 32f)));
+        Assert.Equal(new Vector2(172f, 136f), view.MapToScreen(new Vector2(16f, 40f)));
+        Assert.True(cache.BuildNext());
+        Assert.False(cache.BuildNext());
+        view.Update(input.At(new Vector2(300f, 200f)), 0f);
+        var item = Assert.Single(view.DrawList);
+        Assert.NotNull(item.Texture);
+        Assert.Equal(new Rect(172f, 136f, 256f, 128f), item.Destination);
+        Assert.Equal(new Vector4(0.25f, 0.375f, 0.75f, 0.625f), item.SourceUv);
+    }
+
+    /// <summary>Empty authored bounds allow navigation without queuing work or drawing chunks.</summary>
+    [Fact]
+    public void EmptyWorld_NoRequestsNoThrow()
+    {
+        using var cache = new WorldMapChunkCache(new FlatTestSource(new(16f, 24f, 0f, 0f)), new WorldMapStyle());
+        using var view = View(cache);
+        var input = new TestInput();
+
+        view.Update(input.At(new Vector2(300f, 200f)), 0f);
+        view.FitWorld();
+        view.CenterOn(new Vector2(16f, 24f));
+        view.ZoomBy(2f);
+        view.Update(input.At(new Vector2(300f, 200f)), 1f);
+
+        Assert.False(cache.BuildNext());
+        Assert.Empty(view.DrawList);
+        Assert.True(float.IsFinite(view.PixelsPerMetre));
+        Assert.Equal(0, view.CurrentLevel);
+    }
+
     static WorldMapViewCore<FakeTexture> View(WorldMapChunkCache cache) =>
         new(cache, (rgba, width, height) => new FakeTexture(rgba, width, height), texture => texture.Dispose())
         { Viewport = Viewport };

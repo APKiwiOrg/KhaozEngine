@@ -23,6 +23,8 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
     readonly WorldMapOverlayBuffers _overlayBuffers = new();
     float _maxPixelsPerMetre = 8f;
     int _uploadBudgetPerFrame = 4;
+    int _maxTextures = 192;
+    int _maxLevel;
     bool _positioned;
     bool _disposed;
 
@@ -65,6 +67,16 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
     }
 
     internal Color PlaceholderColor { get; set; }
+    internal int MaxTextures
+    {
+        get => _maxTextures;
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1);
+            _maxTextures = value;
+        }
+    }
+    internal int CurrentLevel { get; private set; }
     internal float PixelsPerMetre => _canvas.Camera.Zoom;
     internal IReadOnlyList<WorldMapDrawItem<TTexture>> DrawList { get; }
     internal Func<string, Vector2?>? IconSizes { get; set; }
@@ -134,9 +146,12 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
         ConfigureCanvas();
         if (!_positioned) FitWorld();
         _canvas.Update(pointer, wheelDelta);
+        SelectLevel();
         RequestVisibleChunks();
+        _textures.BeginFrame();
         UploadVisibleChunks();
         RebuildDrawList();
+        _textures.Evict(MaxTextures);
         RebuildOverlays(pointer.Position);
     }
 
@@ -154,6 +169,15 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
         _canvas.Camera.Zoom = Math.Clamp(_canvas.Camera.Zoom, _canvas.MinZoom, _canvas.MaxZoom);
     }
 
+    void SelectLevel()
+    {
+        _maxLevel = WorldMapChunking.MaxLevel(_cache.Source.Bounds, _cache.Style.ChunkMetres);
+        int level = 0;
+        while (level < _maxLevel && MathF.ScaleB(_cache.Style.EffectivePixelsPerMetre, -(level + 1)) >= PixelsPerMetre)
+            level++;
+        CurrentLevel = level;
+    }
+
     void RequestVisibleChunks()
     {
         _visibleChunks.Clear();
@@ -165,13 +189,22 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
         float bottom = MathF.Max(southEast.Y, bounds.Y);
         var visible = new MapRect(left, bottom,
             MathF.Min(southEast.X, bounds.Right) - left, MathF.Min(northWest.Y, bounds.Top) - bottom);
+        if (visible.Width <= 0f || visible.Height <= 0f) return;
         Vector2 center = ToCanvas(_canvas.Camera.Position);
-        foreach (WorldMapChunkCoord coord in WorldMapChunking.ChunksTouching(visible, _cache.Style.ChunkMetres))
+        WorldMapChunkCoord first = WorldMapChunking.ChunkAt(new Vector2(visible.X, visible.Y), _cache.Style.ChunkMetres, CurrentLevel);
+        WorldMapChunkCoord last = WorldMapChunking.ChunkAt(
+            new Vector2(MathF.BitDecrement(visible.Right), MathF.BitDecrement(visible.Top)), _cache.Style.ChunkMetres, CurrentLevel);
+        // Enumerate canonical half-open edges without allocating the core's traversal iterator each frame.
+        for (long y = first.Y; y <= last.Y; y++)
         {
-            MapRect chunk = WorldMapChunking.ChunkRect(coord, _cache.Style.ChunkMetres);
-            float priority = Vector2.Distance(chunk.Center, center);
-            _cache.Request(coord, priority);
-            _visibleChunks.Add(new VisibleChunk(coord, priority));
+            for (long x = first.X; x <= last.X; x++)
+            {
+                var coord = new WorldMapChunkCoord((int)x, (int)y, CurrentLevel);
+                MapRect chunk = WorldMapChunking.ChunkRect(coord, _cache.Style.ChunkMetres);
+                float priority = Vector2.Distance(chunk.Center, center);
+                _cache.Request(coord, priority);
+                _visibleChunks.Add(new VisibleChunk(coord, priority));
+            }
         }
         _visibleChunks.Sort(static (a, b) =>
         {
@@ -190,19 +223,60 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
             if (uploaded >= UploadBudgetPerFrame) break;
             if (_cache.TryGet(visible.Coord, out WorldMapChunk? built) && _textures.Upload(built)) uploaded++;
         }
+        // Current-level imagery consumes the budget first. Only ready fallback ancestors use what remains.
+        foreach (VisibleChunk visible in _visibleChunks)
+        {
+            if (uploaded >= UploadBudgetPerFrame) break;
+            if (_textures.Get(visible.Coord) is not null) continue;
+            MapRect chunk = WorldMapChunking.ChunkRect(visible.Coord, _cache.Style.ChunkMetres);
+            for (int level = CurrentLevel + 1; level <= _maxLevel; level++)
+            {
+                WorldMapChunkCoord parent = WorldMapChunking.ChunkAt(chunk.Center, _cache.Style.ChunkMetres, level);
+                if (_cache.TryGet(parent, out WorldMapChunk? built) && _textures.Upload(built)) uploaded++;
+                if (_textures.Get(parent) is not null) break;
+            }
+        }
     }
 
     void RebuildDrawList()
     {
         _drawList.Clear();
+        MapRect bounds = _cache.Source.Bounds;
+        Vector2 worldTopLeft = MapToScreen(new Vector2(bounds.X, bounds.Top));
+        var world = new Rect(worldTopLeft.X, worldTopLeft.Y, bounds.Width * PixelsPerMetre, bounds.Height * PixelsPerMetre);
+        float left = MathF.Max(world.X, Viewport.X);
+        float top = MathF.Max(world.Y, Viewport.Y);
+        var clip = new Rect(left, top, MathF.Min(world.Right, Viewport.Right) - left, MathF.Min(world.Bottom, Viewport.Bottom) - top);
         foreach (VisibleChunk visible in _visibleChunks)
         {
             MapRect chunk = WorldMapChunking.ChunkRect(visible.Coord, _cache.Style.ChunkMetres);
             Vector2 topLeft = MapToScreen(new Vector2(chunk.X, chunk.Top));
             var destination = new Rect(topLeft.X, topLeft.Y, chunk.Width * PixelsPerMetre, chunk.Height * PixelsPerMetre);
-            if (WorldMapDrawList.TryClip(_textures.Get(visible.Coord), destination, Viewport, out var item))
+            TTexture? texture = DrawableTexture(visible.Coord, chunk, out WorldMapChunkCoord textureCoord, out Vector4 uv);
+            if (WorldMapDrawList.TryClip(texture, destination, uv, clip, out var item))
+            {
                 _drawList.Add(item);
+                if (texture is not null) _textures.MarkDrawn(textureCoord);
+            }
         }
+    }
+
+    TTexture? DrawableTexture(WorldMapChunkCoord coord, MapRect chunk, out WorldMapChunkCoord textureCoord, out Vector4 uv)
+    {
+        textureCoord = coord;
+        uv = new Vector4(0f, 0f, 1f, 1f);
+        if (_textures.Get(coord) is TTexture texture) return texture;
+        for (int level = CurrentLevel + 1; level <= _maxLevel; level++)
+        {
+            WorldMapChunkCoord parent = WorldMapChunking.ChunkAt(chunk.Center, _cache.Style.ChunkMetres, level);
+            if (_textures.Get(parent) is not TTexture fallback) continue;
+            MapRect parentRect = WorldMapChunking.ChunkRect(parent, _cache.Style.ChunkMetres);
+            textureCoord = parent;
+            uv = new Vector4((chunk.X - parentRect.X) / parentRect.Width, (parentRect.Top - chunk.Top) / parentRect.Height,
+                (chunk.Right - parentRect.X) / parentRect.Width, (parentRect.Top - chunk.Y) / parentRect.Height);
+            return fallback;
+        }
+        return null;
     }
 
     internal void RebuildOverlays(Vector2 pointer)

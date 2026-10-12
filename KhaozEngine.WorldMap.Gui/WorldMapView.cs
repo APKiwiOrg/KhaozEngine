@@ -39,6 +39,14 @@ public sealed class WorldMapView : IDisposable
     /// <summary>The maximum chunk uploads per update. Defaults to four. Zero pauses uploads.</summary>
     public int UploadBudgetPerFrame { get => _core.UploadBudgetPerFrame; set => _core.UploadBudgetPerFrame = value; }
 
+    /// <summary>The positive texture retention cap, defaulting to 192. Textures drawn this frame remain protected.</summary>
+    /// <remarks>Eviction runs during Update on the frame thread. Active draws can temporarily exceed the cap.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is below one.</exception>
+    public int MaxTextures { get => _core.MaxTextures; set => _core.MaxTextures = value; }
+
+    /// <summary>The pyramid level selected by the last update with a usable viewport. Zero is native resolution.</summary>
+    public int CurrentLevel => _core.CurrentLevel;
+
     /// <summary>The colour used for chunks without uploaded imagery. Defaults to the cache style's void colour.</summary>
     public Color PlaceholderColor { get => _core.PlaceholderColor; set => _core.PlaceholderColor = value; }
 

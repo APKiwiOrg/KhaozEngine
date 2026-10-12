@@ -38,6 +38,8 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 - The opt-in `KhaozEngine.WorldMap.Gui` package adds `WorldMapView` over the shared cache and `PannableCanvas`,
   with pan, cursor-anchored zoom and budgeted texture uploads in the caller's open UI batch. `WorldMapSprite`
   supplies borrowed icons and live markers, while localized labels and `WorldMapHover` remain game-resolved.
+- World map views select level of detail by zoom, sample uploaded coarser chunks while finer imagery builds,
+  and bound retained textures with `MaxTextures` (192 by default). `CurrentLevel` exposes the selected level.
 
 ## 20.32.0
 

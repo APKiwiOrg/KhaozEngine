@@ -1827,14 +1827,27 @@ The first usable viewport fits the whole world unless `CenterOn` or `ZoomBy` pos
 and the wheel zooms toward the cursor. `FitWorld()` restores the whole-world view. `MaxPixelsPerMetre`
 defaults to 8 and `UploadBudgetPerFrame` to 4. The worker builds imagery and feature anchors off the frame
 thread, while `Update` requests visible chunks, uploads ready textures and lays out overlays on the frame
-thread. Missing chunks use `PlaceholderColor`, and stale textures remain visible until their replacements
-upload. `Update` blocks the viewport through `Pointer.BlockRegion`.
+thread. `CurrentLevel` reports the level chosen by the last usable update. It is the largest level up to
+`WorldMapChunking.MaxLevel` with `EffectivePixelsPerMetre / 2^level >= PixelsPerMetre`, or zero at native
+raster zoom and above. Only visible chunks of that level are requested, prioritized by distance to the view
+centre. Their uploads take the budget first. Ready coarser ancestors can use the remaining budget without
+additional requests. Missing chunks sample the matching UV sub-rectangle of the nearest uploaded coarser
+ancestor, or use `PlaceholderColor` if none exists. Stale textures remain visible until their replacements
+upload. Overlay anchors come only from visible built chunks of `CurrentLevel`. `Update` blocks the viewport
+through `Pointer.BlockRegion`.
+
+`MaxTextures` defaults to 192 and values below one throw `ArgumentOutOfRangeException`. After uploads and
+draw-list construction, `Update` disposes the least recently drawn textures that are absent from this
+frame's draws until the cap is met. Fallback textures count as drawn. Active draws stay protected and can
+temporarily exceed a smaller cap. The default retained chunk payload is 48 MiB per view for 192 textures
+of 256 by 256 RGBA pixels, excluding GPU overhead and temporary active-draw excess. Changing the cap takes
+effect on the next usable `Update`, with all texture disposal on the frame thread.
 
 `Viewport`, the pointer and the open batch must use the same coordinates. The example uses UI pixels. A
 design-space host instead opens its own batch with `Begin(IDesignViewport)` and passes a pointer and bounds
 in that design space. `Draw` neither begins nor ends the batch and does not change its scissor. Chunks are
-clipped to the viewport, icons and labels must fit fully inside it, and live markers draw when their centres
-are inside it.
+clipped to the viewport and authored world bounds. Icons and labels must fit fully inside the viewport,
+and live markers draw when their centres are inside it.
 
 Symbol and icon rules use first-match order and ordinal, all-of tag matching. An unmatched blocking
 footprint uses `FallbackBlocking`, while an unmatched non-blocking footprint is hidden. Icons stay fixed in

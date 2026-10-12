@@ -25,7 +25,8 @@ Dispose the views before their surface, and stop the worker before disposing the
 
 `Draw` uses the caller's open batch in `Viewport` coordinates. It does not open or close a batch or
 change its scissor. Chunk destination rectangles are clipped to the viewport on the CPU, and their
-source UV endpoints shrink by the same fractions. The caller can keep drawing other UI in that batch.
+source UV endpoints shrink by the same fractions. Quads also clip to the authored world bounds, including
+letterboxed small worlds. The caller can keep drawing other UI in that batch.
 
 ## Navigation
 
@@ -47,20 +48,33 @@ up and east is right. `MapToScreen` and `ScreenToMap` include the viewport offse
 
 ## Streaming and uploads
 
-Each update requests chunks intersecting both the visible map area and source bounds, with distance
-from the chunk centre to the view centre as the build priority. Completed visible chunks upload
-nearest first on the frame thread. `UploadBudgetPerFrame` defaults to 4. Zero pauses uploads, and
-negative budgets are refused. Rasterization stays with `WorldMapChunkCache` and its worker.
+`CurrentLevel` reports the pyramid level chosen by the last update with a usable viewport. The view
+chooses the largest level up to `WorldMapChunking.MaxLevel` whose
+`EffectivePixelsPerMetre / 2^level` is at least the screen's `PixelsPerMetre`. At or above the native
+raster scale it chooses level zero. Coarser chunks keep the same raster dimensions and cover more metres.
+
+Each update requests only chunks of `CurrentLevel` intersecting both the visible map area and source
+bounds, with distance from the chunk centre to the view centre as the build priority. Completed visible
+chunks upload nearest first on the frame thread. Ready coarser ancestors can use the remaining budget
+for fallback imagery, without additional requests. `UploadBudgetPerFrame` defaults to 4. Zero pauses
+uploads, and negative budgets are refused. Rasterization stays with `WorldMapChunkCache` and its worker.
 
 Each upload records the cache's `long` generation. Cache-wide monotonically increasing generations
 ensure that re-requesting an evicted chunk replaces any surviving upload. An unchanged generation
 never uploads again. A stale chunk keeps its old texture until a newly built generation uploads,
-including while the upload budget is
-exhausted. Replacing a texture disposes the previous one. Uploaded textures remain available after
-panning away and are all disposed with the view.
+including while the upload budget is exhausted. Replacing a texture disposes the previous one.
 
-A chunk with no uploaded texture draws a filled rectangle in `PlaceholderColor`, which defaults to
-`cache.Style.VoidColor`. Uploaded chunks draw with `Color.White` to preserve their authored colours.
+`MaxTextures` defaults to 192 and rejects values below one with `ArgumentOutOfRangeException`. After
+building the draw list, `Update` evicts the least recently drawn texture that is absent from this frame's
+draws until retention reaches the cap. Textures used for fallback count as drawn. If active draws alone
+exceed the cap, they remain protected until a later update can evict them. Setting the cap does not dispose
+textures until `Update`. Default retained chunk imagery is 48 MiB per view, for 192 textures of
+256 by 256 RGBA pixels, excluding GPU overhead and any temporary active-draw excess. Every remaining
+texture is disposed with the view. Eviction and disposal stay on the frame thread.
+
+A chunk with no uploaded texture samples the matching north-up UV sub-rectangle of its nearest uploaded
+coarser ancestor. With no uploaded ancestor it draws a filled rectangle in `PlaceholderColor`, which
+defaults to `cache.Style.VoidColor`. Uploaded chunks draw with `Color.White` to preserve their authored colours.
 
 The internal `WorldMapViewCore<TTexture>` separates navigation, requests, uploads and clipped draw
 items from the GPU wrapper. Its texture factory and disposal callback allow headless lifecycle and
@@ -70,7 +84,8 @@ core's overlay pass.
 The core retains overlay candidates, sorting scratch, accepted rectangles and placement views across
 updates. Marker identities stay in ordinal draw order as markers are added and removed. With unchanged
 visible features, allocation-free callbacks and the same hover target, the warmed overlay pass allocates
-no working storage.
+no working storage. Warmed level selection, visible traversal and fallback sampling also allocate no frame
+storage when chunks and uploads are unchanged.
 
 ## Icons, labels, markers and hover
 
@@ -89,7 +104,8 @@ Icons are selected by descending priority, ordinal key, then screen x and y. Sam
 within their screen-pixel merge radius collapse, and overlapping icons lose to an already accepted
 icon. Labels select descending tier rank, ordinal marker name, then screen x and y, and declutter
 against other labels. Icon and label rectangles must fit fully inside the viewport. Touching edges
-are allowed. Cached anchors can appear before their chunk's texture uploads.
+are allowed. Only visible built chunks of `CurrentLevel` supply anchors, even when imagery uses a coarser
+fallback. Cached anchors can appear before their chunk's texture uploads.
 
 `SetMarker(id, mapPosition, heading, sprite)` adds or updates a live marker. Call it before `Update`
 to place its latest pose. Its artwork points north at zero heading, with heading in clockwise radians.

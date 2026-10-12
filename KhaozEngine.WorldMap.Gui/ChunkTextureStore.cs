@@ -9,6 +9,7 @@ internal sealed class ChunkTextureStore<TTexture> : IDisposable where TTexture :
     readonly Func<byte[], int, int, TTexture> _createTexture;
     readonly Action<TTexture> _disposeTexture;
     readonly Dictionary<WorldMapChunkCoord, UploadedChunk> _textures = [];
+    long _frame;
 
     internal ChunkTextureStore(Func<byte[], int, int, TTexture> createTexture, Action<TTexture> disposeTexture)
     {
@@ -20,6 +21,34 @@ internal sealed class ChunkTextureStore<TTexture> : IDisposable where TTexture :
 
     internal TTexture? Get(WorldMapChunkCoord coord) =>
         _textures.TryGetValue(coord, out UploadedChunk? uploaded) ? uploaded.Texture : null;
+
+    internal void BeginFrame() => _frame++;
+
+    internal void MarkDrawn(WorldMapChunkCoord coord)
+    {
+        if (_textures.TryGetValue(coord, out UploadedChunk? uploaded)) uploaded.LastDrawnFrame = _frame;
+    }
+
+    internal void Evict(int maxTextures)
+    {
+        while (_textures.Count > maxTextures)
+        {
+            WorldMapChunkCoord oldestCoord = default;
+            UploadedChunk? oldest = null;
+            foreach (var pair in _textures)
+            {
+                UploadedChunk uploaded = pair.Value;
+                if (uploaded.LastDrawnFrame == _frame) continue;
+                if (oldest is not null && uploaded.LastDrawnFrame >= oldest.LastDrawnFrame) continue;
+                oldestCoord = pair.Key;
+                oldest = uploaded;
+            }
+            // Draw items still borrow this frame's textures. Revisit the cap when they leave the view.
+            if (oldest is null) break;
+            _textures.Remove(oldestCoord);
+            _disposeTexture(oldest.Texture);
+        }
+    }
 
     internal bool Upload(WorldMapChunk built)
     {
@@ -40,5 +69,8 @@ internal sealed class ChunkTextureStore<TTexture> : IDisposable where TTexture :
         _textures.Clear();
     }
 
-    sealed record UploadedChunk(TTexture Texture, long Generation);
+    sealed record UploadedChunk(TTexture Texture, long Generation)
+    {
+        internal long LastDrawnFrame { get; set; }
+    }
 }

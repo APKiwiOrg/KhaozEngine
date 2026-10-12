@@ -44,6 +44,8 @@ public sealed class WorldMapViewChunkTests
         using var cache = new WorldMapChunkCache(new FlatTestSource(), new WorldMapStyle());
         var textures = new FakeTextures();
         using var view = View(cache, textures);
+        view.CenterOn(new Vector2(128f, 96f));
+        view.ZoomBy(2.1f / view.PixelsPerMetre);
         var input = new TestInput();
         view.Update(input.At(ScreenCenter), 0f);
         Assert.Equal(12, view.DrawList.Count);
@@ -172,7 +174,7 @@ public sealed class WorldMapViewChunkTests
         using var view = View(cache, new FakeTextures());
         view.Update(new TestInput().At(ScreenCenter), 0f);
 
-        Assert.Equal(12, view.DrawList.Count);
+        Assert.Equal(4, view.DrawList.Count);
         Assert.All(view.DrawList, item => Assert.Null(item.Texture));
         Assert.Equal(style.VoidColor, view.PlaceholderColor);
     }
@@ -184,6 +186,8 @@ public sealed class WorldMapViewChunkTests
         using var cache = new WorldMapChunkCache(new FlatTestSource(), new WorldMapStyle());
         var textures = new FakeTextures();
         using var view = View(cache, textures);
+        view.CenterOn(new Vector2(128f, 96f));
+        view.ZoomBy(2.1f / view.PixelsPerMetre);
         var input = new TestInput();
         view.Update(input.At(ScreenCenter), 0f);
         Build(cache, 12);

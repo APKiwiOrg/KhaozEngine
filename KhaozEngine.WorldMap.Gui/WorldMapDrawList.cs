@@ -10,7 +10,7 @@ internal readonly record struct WorldMapDrawItem<TTexture>(TTexture? Texture, Re
 /// <summary>Clips chunk geometry and matching north-up texture coordinates without changing batch state.</summary>
 internal static class WorldMapDrawList
 {
-    internal static bool TryClip<TTexture>(TTexture? texture, Rect destination, Rect viewport,
+    internal static bool TryClip<TTexture>(TTexture? texture, Rect destination, Vector4 sourceUv, Rect viewport,
         out WorldMapDrawItem<TTexture> item) where TTexture : class
     {
         float left = MathF.Max(destination.X, viewport.X);
@@ -24,11 +24,13 @@ internal static class WorldMapDrawList
         }
 
         var clipped = new Rect(left, top, right - left, bottom - top);
+        float uvWidth = sourceUv.Z - sourceUv.X;
+        float uvHeight = sourceUv.W - sourceUv.Y;
         var uv = new Vector4(
-            (left - destination.X) / destination.Width,
-            (top - destination.Y) / destination.Height,
-            (right - destination.X) / destination.Width,
-            (bottom - destination.Y) / destination.Height);
+            sourceUv.X + (left - destination.X) / destination.Width * uvWidth,
+            sourceUv.Y + (top - destination.Y) / destination.Height * uvHeight,
+            sourceUv.X + (right - destination.X) / destination.Width * uvWidth,
+            sourceUv.Y + (bottom - destination.Y) / destination.Height * uvHeight);
         item = new WorldMapDrawItem<TTexture>(texture, clipped, uv);
         return true;
     }

@@ -125,7 +125,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             var clipVp = GpuClip.Correct(viewProj, _gd.Capabilities);
             cl.UpdateBuffer(_ubo, 0, in clipVp);
-            cl.UpdateBuffer(_ubo, FrameSlotBytes, in clipVp);
+            if (_atmosphere.Enabled) cl.UpdateBuffer(_ubo, FrameSlotBytes, in clipVp);
         }
 
         /// <summary>Draw <paramref name="verts"/> (a run of one texture's quads) into <paramref name="target"/>
@@ -141,7 +141,7 @@ namespace KhaozEngine.Render3D.Rendering
 
             cl.SetFramebuffer(target);
             cl.SetPipeline(_pipelines[additive ? AdditivePipeline : AlphaPipeline]);
-            cl.SetGraphicsResourceSet(0, textureSet, additive ? FrameSlotBytes : 0u);
+            cl.SetGraphicsResourceSet(0, textureSet, additive && _atmosphere.Enabled ? FrameSlotBytes : 0u);
             cl.SetVertexBuffer(0, _vb!);
             cl.Draw((uint)verts.Length, 1, 0, 0);
         }

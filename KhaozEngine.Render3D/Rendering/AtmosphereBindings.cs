@@ -17,6 +17,8 @@ internal sealed class AtmosphereBindings : IDisposable
     internal IGpuBuffer Uniforms { get; }
     internal IGpuTexture SkyView { get; }
     internal IGpuSampler SkySampler { get; }
+    /// <summary>Enabled flag in the most recently recorded UBO. Disabled effects share their alpha matrix lane.</summary>
+    internal bool Enabled { get; set; }
 
     internal AtmosphereBindings(IGpuDevice gd)
     {

@@ -120,7 +120,7 @@ namespace KhaozEngine.Render3D.Rendering
         {
             var matrix = GpuClip.Correct(viewProj, _gd.Capabilities);
             cl.UpdateBuffer(_ubo, 0, in matrix);
-            cl.UpdateBuffer(_additiveUbo, 0, in matrix);
+            if (_atmosphere.Enabled) cl.UpdateBuffer(_additiveUbo, 0, in matrix);
         }
 
         /// <summary>Draw <paramref name="verts"/> (all trails of one blend) into <paramref name="target"/> (the model
@@ -135,7 +135,7 @@ namespace KhaozEngine.Render3D.Rendering
 
             cl.SetFramebuffer(target);
             cl.SetPipeline(blend == TrailBlend.Alpha ? _alpha : _additive);
-            cl.SetGraphicsResourceSet(0, blend == TrailBlend.Alpha ? _set : _additiveSet);
+            cl.SetGraphicsResourceSet(0, blend == TrailBlend.Alpha || !_atmosphere.Enabled ? _set : _additiveSet);
             cl.SetVertexBuffer(0, _vb!);
             cl.Draw((uint)verts.Length, 1, 0, 0);
         }

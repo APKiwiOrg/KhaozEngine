@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.Render3D;
-using KhaozEngine.Terrain;
 using KhaozEngine.TileWorld;
 using Xunit;
 
@@ -21,7 +20,7 @@ public sealed class TileWorldLargeWorldTests
         using var tmp = new TempDir();
         TileWorldSource source = OpenForest(tmp, out TileWorldCatalogs catalogs);
         var scene = new RecordingTileWorldScene();
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var options = new TileWorldViewOptions { PropLayers = new[] { TreeLayer() } };
         using var view = new TileWorldView(scene, source.Document, catalogs, new ForestResolver(), options,
             new TileWorldBuildQueueOptions
@@ -94,7 +93,7 @@ public sealed class TileWorldLargeWorldTests
         document.AddObject("tree", 10, 10, 0, 0);
         document.AddObject("bush", 20, 20, 0, 0);
         var scene = new RecordingTileWorldScene();
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var options = new TileWorldViewOptions
         {
             PropLayers = new[]
@@ -147,7 +146,7 @@ public sealed class TileWorldLargeWorldTests
                 }
                 """, "stump-test"));
         var scene = new RecordingTileWorldScene();
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         TilePropLayerDefinition trees = TreeLayer() with
         {
             ArchetypeIds = new HashSet<string>(StringComparer.Ordinal) { "tree", "stump" },
@@ -217,7 +216,7 @@ public sealed class TileWorldLargeWorldTests
         0f,
         -(region.OriginZ + TileRegion.Size * 0.5f));
 
-    static void Settle(TileWorldView view, RecordingTileWorldScene scene, ManualDispatcher dispatcher,
+    static void Settle(TileWorldView view, RecordingTileWorldScene scene, ManualTileBuildDispatcher dispatcher,
                        Vector3 focus)
     {
         for (int iteration = 0; iteration < 512; iteration++)
@@ -241,26 +240,5 @@ public sealed class TileWorldLargeWorldTests
         public IReadOnlyList<GltfMeshPart>? ResolveLod(TileObjectArchetype archetype) =>
             new[] { new GltfMeshPart(_tree, default) };
         public GltfMesh? ResolveFlatForHlod(TileObjectArchetype archetype) => _tree;
-    }
-
-    sealed class ManualDispatcher : IChunkBuildDispatcher
-    {
-        readonly List<Action> _pending = new();
-        public int PendingCount => _pending.Count;
-        public void Schedule(Action build) => _pending.Add(build);
-        public void RunAt(int index)
-        {
-            Action build = _pending[index];
-            _pending.RemoveAt(index);
-            build();
-        }
-        public void RunAll()
-        {
-            while (_pending.Count > 0)
-            {
-                RunAt(0);
-            }
-        }
-        public void Drain() => RunAll();
     }
 }

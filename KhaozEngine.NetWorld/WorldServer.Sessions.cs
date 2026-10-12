@@ -97,6 +97,8 @@ public sealed partial class WorldServer
             tickedSlots.Remove(slot);
             replication.Left(slot);   // no longer pending a writer restart, stream dropped
             commands.Forget(slot);
+            heldMovementSlots.Remove(slot);
+            CountSeatTurnover(slot);
         }
     }
 }

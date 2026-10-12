@@ -228,6 +228,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
             maxSlots: Math.Max(64, this.config.MaxPlayers),
             catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
+        seatTurnoverBySlot = new int[Math.Max(0, this.config.MaxPlayers)];
         // A framed step queries the island's physics world in the island's space, so that world has to be able to
         // follow the frame. Refuse the combination at construction rather than serve queries from another space:
         // the failure that would produce is a character standing on nothing, not a rounding artifact.
@@ -531,6 +532,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         {
             MoveCommand cmd = commands.Dequeue(slot, out int ack);
             lastAckBySlot[slot] = ack;
+            if (heldMovementSlots.Contains(slot)) cmd = MoveCommand.Idle;   // acknowledged, never acted on
             // Everything this island owns is stepped in the island's frame. Unframed (the default) that frame is
             // WorldFrame.Origin, whose anchor is exactly zero, so every line below is byte-identical to the
             // pre-frame server: a state converted from Origin to Origin is the same state, and InFrame(Origin, p)
@@ -692,6 +694,10 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
                 break;
             case AdminCommandKind.AbortMovementCommitment:
                 ApplyAbortMovementCommitment(cmd.Target, cmd.Sequence, MovementCommitmentEndReason.Aborted);
+                break;
+            case AdminCommandKind.HoldMovement:
+            case AdminCommandKind.ReleaseMovement:
+                ApplyMovementHold(cmd);
                 break;
             case AdminCommandKind.Kick:
                 {

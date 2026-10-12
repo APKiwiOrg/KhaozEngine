@@ -860,6 +860,26 @@ quarter-turn basis its drawn model uses.
 `ArchitectureTests.TileWorldPhysics_ReferencesOnlyTileWorldPhysicsAndLocomotion` pins the three edges and the
 absence of any package reference, and `TileWorld.Physics` is on the `OptInBackends` list.
 
+## World map package edges
+
+The world map family has three package boundaries, each pinned by the architecture tests:
+
+```
+KhaozEngine.WorldMap -> KhaozEngine.Primitives
+KhaozEngine.TileWorld.WorldMap -> KhaozEngine.WorldMap, KhaozEngine.TileWorld
+KhaozEngine.WorldMap.Gui -> KhaozEngine.WorldMap, KhaozEngine.Gui
+```
+
+The core owns `IWorldMapSource`, styles, CPU rasterization, feature anchors and the chunk cache and worker.
+Its only edge is the foundation leaf, so a headless tool can produce imagery without TileWorld or a GPU.
+The TileWorld adapter adds document reads without pulling in rendering. The Gui arm adds `WorldMapView`
+over the existing UI stack, with frame-thread texture uploads and game-supplied icons, text and fonts.
+
+All three are opt-in and outside every umbrella. The core is optional for consumers without maps, the
+adapter is optional for worlds using another format, and the view is optional for headless consumers or
+games with another presentation. No third-party package is added. `ArchitectureTests.WorldMap.cs` pins the
+exact project references and the opt-in exclusions. See [World map](USING-KHAOZENGINE.md#world-map) for wiring.
+
 ## Map document physics package edges
 
 `KhaozEngine.MapDoc.Physics` is the physics arm of the native map document, opt-in and in NO umbrella, split off so

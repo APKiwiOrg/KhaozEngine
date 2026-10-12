@@ -12,7 +12,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.NetWorld;
 
-public class ExplicitShardedHeadsTests
+public partial class ExplicitShardedHeadsTests
 {
     [Fact]
     public void ShardedJoinAndTickUseTheCellEnvironmentAndPublishBeforeRelease()

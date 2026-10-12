@@ -574,7 +574,8 @@ namespace KhaozEngine.Render3D
         /// <summary>Applies lighting and sky, returning the applied state. With physical atmosphere enabled,
         /// requires <see cref="Evaluate"/>, ignores all palette colours and moon colours, and uses absolute camera
         /// Y through <see cref="AtmosphereSettings.HeightKm"/>. The primary disc remains the true sun and the moon
-        /// is an extra disc. Key direction, source handover, fades and the caller's fill direction are preserved.
+        /// is an extra disc. The sun stays opaque until its upper limb crosses the camera's geometric horizon.
+        /// Key direction, source handover, key and moon fades and the caller's fill direction are preserved.
         /// Copy the returned <see cref="SunCycleState.HorizonColor"/> to <see cref="WaterSettings.HorizonColor"/>.
         /// With atmosphere disabled, writes the legacy palette state unchanged and returns it.</summary>
         /// <exception cref="InvalidOperationException">Physical atmosphere is enabled and the state was not
@@ -591,16 +592,19 @@ namespace KhaozEngine.Render3D
                 var lighting = model.EvaluateLighting(heightKm, frame);
                 var skyBands = model.EvaluateSkyBands(heightKm, frame);
                 float radius = post.Atmosphere.SunAngularRadiusRadians;
+                float planetRadius = post.Atmosphere.PlanetRadiusKm;
+                float horizonDip = MathF.Acos(planetRadius / (planetRadius + MathF.Max(heightKm, 0f)));
+                float sunOpacity = state.SunElevationDegrees * Deg2Rad > -radius - horizonDip ? 1f : 0f;
                 float sinRadius = MathF.Sin(radius);
                 float discScale = post.Atmosphere.SunIlluminance / (sinRadius * sinRadius);
-                var sun = PhysicalColor(lighting.SunTransmittance * discScale * frame.Tint, frame.SunOpacity);
+                var sun = PhysicalColor(lighting.SunTransmittance * discScale * frame.Tint, sunOpacity);
                 SunCycleDisc? moon = frame.MoonOpacity > 0 && frame.MoonFraction > 0
                     ? new SunCycleDisc(frame.MoonDirection, PhysicalColor(
                         lighting.MoonTransmittance * (discScale * frame.MoonFraction) * frame.Tint, frame.MoonOpacity))
                     : null;
                 var physical = new SunCycleState(state.LightDirection, state.SunElevationDegrees,
                     PhysicalColor(lighting.Horizon), PhysicalColor(skyBands.Zenith),
-                    sun, frame.SunOpacity > 0, PhysicalColor(lighting.Key), PhysicalColor(lighting.Ambient),
+                    sun, sunOpacity > 0, PhysicalColor(lighting.Key), PhysicalColor(lighting.Ambient),
                     PhysicalColor(lighting.Fill), state.MoonElevationDegrees, state.MoonDirection, state.ActiveSource,
                     frame.SunDirection, PhysicalColor(skyBands.Ground), moon)
                     .WithAtmosphereSample(sample);

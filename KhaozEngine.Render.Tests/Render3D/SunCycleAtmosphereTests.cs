@@ -101,6 +101,65 @@ public sealed class SunCycleAtmosphereTests
     }
 
     [Fact]
+    public void SunDiscValue_ClipsInsideThePlanetToleranceBandAtSurface()
+    {
+        var post = VacuumPost();
+        post.Atmosphere.SunAngularRadiusRadians = .02f;
+        var model = post.ResolveAtmosphereModel();
+        var frame = new AtmosphereFrame(Vector3.UnitX, -Vector3.UnitX, 0, Vector3.One);
+        float angle = .02865f * MathF.PI / 180;
+        var upper = new Vector3(MathF.Cos(angle), MathF.Sin(angle), 0);
+        var lower = new Vector3(upper.X, -upper.Y, 0);
+        Assert.Equal(Vector3.Zero, model.SunDiscValue(0, lower, frame));
+        Assert.True(model.SunDiscValue(0, upper, frame).X > 0);
+    }
+
+    [Theory]
+    [InlineData(.7803962f, 0f, true)]
+    [InlineData(.7814696f, 0f, false)]
+    [InlineData(.7836206f, 1000f, true)]
+    [InlineData(.7850579f, 1000f, false)]
+    [InlineData(.7803962f, -10f, true)]
+    public void ApplyPhysical_DefaultCycleKeepsFullDiscOpacityUntilTheLimbSets(
+        float time, float cameraHeight, bool limbVisible)
+    {
+        // Default latitude and declination put these evening centres at -0.1, -0.4, -1 and -1.4 degrees.
+        // At 1 km the horizon dips about 1.016 degrees, extending visibility beyond the surface limb set.
+        var raw = SunCycle.Evaluate(time, new SunCycleSettings());
+        Assert.True(raw.SunElevationDegrees < 0);
+        Assert.False(raw.SunEnabled);
+        Assert.Equal(0, raw.SunColor.A);
+        var camera = new Vector3(0, cameraHeight, 0);
+        var view = Matrix4x4.CreateLookAt(camera, camera + raw.AtmosphereSample!.Value.SunDirection, Vector3.UnitY);
+        var projection = Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 3, 1.5f, .1f, 100);
+        var post = VacuumPost();
+        var applied = SunCycle.Apply(raw, post, camera);
+        var packed = SkyRenderer.PackUbo(post.Sky, view, projection, post.LightDirection, 480, 320, true);
+        Assert.Equal(limbVisible, applied.SunEnabled);
+        Assert.Equal(limbVisible, post.Sky.SunEnabled);
+        Assert.Equal(limbVisible ? 1f : 0f, post.Sky.SunColor.A);
+        Assert.Equal(limbVisible ? 1f : 0f, packed.Res.W);
+        if (limbVisible)
+        {
+            Assert.Equal(1, packed.DiscHalo[0].Y);
+            Assert.Equal(1, packed.DiscColor[0].W);
+            var model = post.ResolveAtmosphereModel();
+            var frame = AtmosphereRenderer.ResolveFrame(post, model);
+            var lighting = model.EvaluateLighting(post.Atmosphere.HeightKm(cameraHeight), frame);
+            var atmosphere = AtmosphereRenderer.PackUbo(post.Atmosphere, frame, lighting, camera,
+                Vector3.Zero, view, projection, 480, 320, post.Hdr);
+            Assert.Equal(1, atmosphere.SunT.W);
+        }
+
+        post.Atmosphere.Enabled = false;
+        Assert.Equal(raw, SunCycle.Apply(raw, post, camera));
+        var legacy = SkyRenderer.PackUbo(post.Sky, view, projection, post.LightDirection, 480, 320);
+        Assert.False(post.Sky.SunEnabled);
+        Assert.Equal(raw.SunColor, post.Sky.SunColor);
+        Assert.Equal(0, legacy.Res.W);
+    }
+
+    [Fact]
     public void SunDiscValue_UpperLimbStaysRedAfterCentreSets()
     {
         var model = new AtmosphereModel(AtmosphereSettings.Earth());
@@ -263,8 +322,8 @@ public sealed class SunCycleAtmosphereTests
 
         state = SunCycle.Evaluate(EveningTime(-3), cycle);
         SunCycle.Apply(state, post, new Vector3(0, 2, 0));
-        Assert.True(post.Sky.SunEnabled);
-        Assert.Equal(.84375f, post.Sky.SunColor.A, 4);
+        Assert.False(post.Sky.SunEnabled);
+        Assert.Equal(0, post.Sky.SunColor.A);
         Assert.Equal(state.AtmosphereSample!.Value.SunDirection, post.Sky.SunDirectionOverride);
         Assert.Single(post.Sky.ExtraDiscs);
 

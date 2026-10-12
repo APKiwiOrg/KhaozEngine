@@ -110,6 +110,16 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.SkyVert, ShaderSources.SkyFrag, "Sky");
 
         [Fact]
+        public void Sky_SolarClippingMirrorsCpuHorizonCosine()
+        {
+            Assert.Contains("float planetRatio = Atmo.Planet.x / cameraRadius;", ShaderSources.AtmosphereSkyConsumersGlsl);
+            Assert.Contains("float horizonCosine = -sqrt(max(0.0, 1.0 - planetRatio * planetRatio));",
+                ShaderSources.AtmosphereSkyConsumersGlsl);
+            Assert.Contains("edge <= 0.0 || d.y <= horizonCosine", ShaderSources.AtmosphereSkyConsumersGlsl);
+            Assert.DoesNotContain("AtmoPlanetOccludes", ShaderSources.AtmosphereSkyConsumersGlsl);
+        }
+
+        [Fact]
         public void Sky_ReflectsDenseUsedAtmosphereSuffix()
         {
             var pair = SpirvCrossCompile.GlslPairToHlsl(ShaderSources.SkyVert, ShaderSources.SkyFrag);

@@ -230,8 +230,11 @@ vec3 atmosphereSunDisc(vec3 direction) {
     float angle = atan(length(cross(d, sun)), clamp(dot(d, sun), -1.0, 1.0));
     float radius = Atmo.Res.w, feather = max(fwidth(angle), 1e-6);
     float edge = 1.0 - smoothstep(radius - feather * 0.5, radius + feather * 0.5, angle);
-    vec3 p = vec3(0.0, Atmo.Planet.x + max(Atmo.Camera.w, 0.0), 0.0);
-    if (edge <= 0.0 || AtmoPlanetOccludes(p, d)) return vec3(0.0);
+    float cameraRadius = Atmo.Planet.x + max(Atmo.Camera.w, 0.0);
+    float planetRatio = Atmo.Planet.x / cameraRadius;
+    float horizonCosine = -sqrt(max(0.0, 1.0 - planetRatio * planetRatio));
+    if (edge <= 0.0 || d.y <= horizonCosine) return vec3(0.0);
+    vec3 p = vec3(0.0, cameraRadius, 0.0);
     float relative = angle / radius;
     float limb = (0.4 + 0.6 * sqrt(max(0.0, 1.0 - relative * relative))) / 0.8;
     float discScale = Atmo.Sun.w / (sin(radius) * sin(radius));

@@ -28,7 +28,8 @@ public sealed partial class AtmosphereModel
 
     /// <summary>Builds a physical frame from <see cref="SunCycle.Evaluate"/>, retaining the true sun
     /// independently of the active key. The legacy anti-solar key uses an opposite-sun moon source.
-    /// Keyless nights disable moon illumination. Palette colours do not enter the frame.</summary>
+    /// Keyless nights disable moon illumination. Palette colours do not enter the frame.
+    /// The physical sun stays opaque. Each disc ray supplies its own horizon clip and extinction.</summary>
     /// <exception cref="InvalidOperationException">The state was not produced by SunCycle.Evaluate.</exception>
     public AtmosphereFrame CreateFrame(in SunCycleState state)
     {
@@ -39,7 +40,7 @@ public sealed partial class AtmosphereModel
         float moonFraction = sample.NightKey == NightKeyMode.None ? 0 : _settings.MoonIlluminanceFraction;
         var source = antiSolar && state.SunElevationDegrees <= 0 ? KeyLightSource.Moon : state.ActiveSource;
         return new AtmosphereFrame(sample.SunDirection, moonDirection, moonFraction, Tint(sample.PaletteWeights),
-            source, sample.KeyVisibility, sample.SunOpacity, sample.MoonOpacity);
+            source, sample.KeyVisibility, 1f, sample.MoonOpacity);
     }
 
     /// <summary>Evaluates both bodies in engine Lambert units, with floors before a single tint.
@@ -94,7 +95,7 @@ public sealed partial class AtmosphereModel
     }
 
     /// <summary>Solar disc radiance with a normalized limb-darkening profile, per-view-ray transmission,
-    /// opacity and one tint. Planet intersection clips each view ray. GPU consumers feather the edge.
+    /// opacity and one tint. The geometric horizon clips each view ray. GPU consumers feather the edge.
     /// Moon discs retain cached centre transmission through SkySettings.ExtraDiscs.</summary>
     internal Vector3 SunDiscValue(float cameraHeightKm, Vector3 direction, in AtmosphereFrame frame)
     {
@@ -105,7 +106,10 @@ public sealed partial class AtmosphereModel
         float radius = _settings.SunAngularRadiusRadians;
         if (angle > radius) return Vector3.Zero;
         var position = new Vector3(0, _settings.PlanetRadiusKm + MathF.Max(cameraHeightKm, 0), 0);
-        if (AtmosphereShaderMath.PlanetOccludes(position, view, _settings.PlanetRadiusKm)) return Vector3.Zero;
+        // Mirror atmosphereSunDisc's horizon cosine without a radius-squared intersection tolerance.
+        float planetRatio = _settings.PlanetRadiusKm / position.Y;
+        float horizonCosine = -MathF.Sqrt(MathF.Max(0f, 1f - planetRatio * planetRatio));
+        if (view.Y <= horizonCosine) return Vector3.Zero;
         float relative = angle / radius;
         float limb = (.4f + .6f * MathF.Sqrt(MathF.Max(0, 1 - relative * relative))) / .8f;
         float scale = _settings.SunIlluminance / MathF.Pow(MathF.Sin(radius), 2);

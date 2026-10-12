@@ -3,7 +3,7 @@
 Date: 2026-10-08, revised 2026-10-09 for ground ownership. Specifies [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438), the phase 2
 direction chosen in [PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md](PHYSICS-LOCOMOTION-DESIGN-2026-08-02.md).
 Status: phases 1 and 2 are implemented and released in 20.30.0, phase 2b is released in 20.31.0, phases 3 and 4a are released in
-20.32.0, and phase 4b is implemented and staged for 20.33.0. Opt-in explicit locomotion uses the shared contact controller
+20.32.0, phase 4b is released in 20.33.0, and complete footprint support is staged for 20.34.0. Opt-in explicit locomotion uses the shared contact controller
 for land and placement, composed with swimming's medium proofs. Legacy movement is unchanged.
 Phases 5 and 6 retain separate selector, navigation and game adoption gates. No game adopts before
 #1355 certified sweep shapes, #1334 cost, #1347 hidden support and #1344 small bodies are resolved.
@@ -198,7 +198,7 @@ Every phase's suite asserts these.
 | Cost gate before adoption | [#1334](https://github.com/APKiwiOrg/KhaozEngine/issues/1334), governed by the [support gates](CONTACT-CONTROLLER-SUPPORT-GATES-2026-10-11.md). Two retained proposals and one complete footprint certification, lossless incidence and installed-geometry caching. Harness-corrected evidence retains 96 time rejections and zero warm allocation rejections. | SG-12 limits remain unchanged. Normalized hosted repeat-time proof needs owner approval at the phase 6 stop. One-shot plumbing passed and does not close the cost gate. |
 | Hidden support gate before adoption | [#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347). Complete footprint-volume discovery now includes polygons and every admitted sphere/capsule/cylinder pose, independently of first contact. Seven result classes and final evidence are in the [support gates](CONTACT-CONTROLLER-SUPPORT-GATES-2026-10-11.md). | All shape, partition, refusal, boundary and adequately scoped explicit rows must pass, then the orchestrator must push the verified commit before closure. The wedge/crate row selects the crate top at 0.1. Navigation capture and adoption remain separate. |
 | 3. Air and state | Jump, coyote, momentum, landing impact, commitment, steep slide, traction hysteresis ([phase 3 spec](CONTACT-CONTROLLER-PHASE-3-AIR-AND-STATE-2026-10-10.md)) | Air and slide suite green with invariants 5 to 8. Released in 20.32.0. |
-| 4. Signals and fluids | Climb signals, step delta, support grant, facing, the swimming handoff contract | Signal suite green. Swimming's explicit grounded ticks run on this ground core. Split into 4a, ground signals ([phase 4a spec](CONTACT-CONTROLLER-PHASE-4A-GROUND-SIGNALS-2026-10-11.md), released in 20.32.0), and 4b, the swimming handoff and #1299 ([phase 4b spec](CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md), implemented, staged for 20.33.0). Explicit land and placement share the core, with generation 14, two-head replay parity and body-relative deep-water enforcement. #1299 navigation acceptance remains phase 5. Adoption still waits on #1355, #1334, #1347 and #1344. Note the explicit resting feet are h + 0.001 m. Phase 5 capture must distinguish that profile. |
+| 4. Signals and fluids | Climb signals, step delta, support grant, facing, the swimming handoff contract | Signal suite green. Swimming's explicit grounded ticks run on this ground core. Split into 4a, ground signals ([phase 4a spec](CONTACT-CONTROLLER-PHASE-4A-GROUND-SIGNALS-2026-10-11.md), released in 20.32.0), and 4b, the swimming handoff and #1299 ([phase 4b spec](CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md), released in 20.33.0). Explicit land and placement share the core, with generation 14, two-head replay parity and body-relative deep-water enforcement. #1299 navigation acceptance remains phase 5. Adoption still waits on #1355, #1334, #1347 and #1344. Note the explicit resting feet are h + 0.001 m. Phase 5 capture must distinguish that profile. |
 | 5. Switch, wire, navigation | `MoveTuning` selector, any wire fields, bake identity, traversal probe and capture on the selected controller | Both controllers selectable. Legacy bakes still load. A new-controller bake round-trips. |
 | 6. Grimhollow adoption | Grimhollow opt-in, #1270 resting route, bridge Complete and 600-step proof | Engine release, game pin and playtest, each separately authorized. |
 
@@ -302,7 +302,7 @@ Known limits:
 
 Phase 2b closed the phase 1 limits where separate statics could not form a certified crease and where a probe
 meeting a back face refused. Complete footprint discovery supersedes its first-contact coverage in staged
-20.33.0. Planar contributions remain `min(p, m, j...)`, with `m` over the whole closed disc, and SG-19
+20.34.0. Planar contributions remain `min(p, m, j...)`, with `m` over the whole closed disc, and SG-19
 curved witnesses use certified upward bounds. Ring-only members provide context. A foot radius below
 0.01 m is rejected, including analytic-only configurations.
 

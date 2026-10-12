@@ -2,7 +2,7 @@
 
 Status: ownership and body model ruled on 2026-10-09. The generic
 [phase 4b handoff](CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md) is implemented
-on `feature/swimming-contract`, staged for 20.33.0. The unchanged bank regression passes.
+and released in 20.33.0. The unchanged bank regression passes.
 
 ## Owner ruling
 

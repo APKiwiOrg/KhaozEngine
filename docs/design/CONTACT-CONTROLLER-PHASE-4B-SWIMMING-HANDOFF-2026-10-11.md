@@ -1,7 +1,7 @@
 # Contact controller phase 4b: swimming handoff and deep-water walkers
 
 Date: 2026-10-11. Implementation specification for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438), phase 4b, and the runtime
-part of [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299). Status: implemented on `feature/swimming-contract`, staged for 20.33.0.
+part of [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299). Status: implemented and released in 20.33.0.
 Written under the owner's 2026-10-10 instruction to continue the program to completion, with every decision
 recorded as a ruling for review. Source baseline: `feature/swimming-contract` at `3feec2aed`, which carries main
 through phase 4a.

@@ -5,7 +5,7 @@ Design for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438),
 [#1334](https://github.com/APKiwiOrg/KhaozEngine/issues/1334).
 Source baseline: `06b734c5722bc2cc95cea459255d6ec93e9236c7`, phases 1 through 4b.
 Status: Tasks 1 to 10 implemented, with Task 11 final verification recorded in
-[the gate record](../verification/2026-10-11-support-gates-final.json), staged for 20.33.0.
+[the gate record](../verification/2026-10-11-support-gates-final.json), staged for 20.34.0.
 Geometry and cost have separate dispositions. #1347 requires every shape completeness row and an
 orchestrator-pushed verified commit. #1334 remains open with 96 harness-corrected time rejections,
 awaiting the owner-approved normalized hosted repeat proof at the phase 6 stop.

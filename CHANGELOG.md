@@ -5,7 +5,7 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
-## 20.33.0
+## 20.34.0
 
 - Physics adds the optional `IPhysicsSupportFootprint` capability, `SupportFootprintRequest`, raw members with
   axis/footprint witness roles and `SupportFootprintBounds`. Bepu owners and selected views certify the entire
@@ -30,6 +30,9 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
   on .NET 10 arm64. SG-12 retains its time limits, with 96 local time rejections and #1334 open pending an
   owner-approved normalized hosted repeat proof. The hosted one-shot plumbing check passed. Phase 5 navigation
   and phase 6 adoption remain separate gates.
+
+## 20.33.0
+
 - Locomotion gains explicit character movement for environments that certify their own water and support:
   `ExplicitCharacterMovement` steps a body under one `MovementQueryLease`, acquired from an
   `IMovementEnvironmentProvider` together with a physics read lease, and publishes inside it. Water follows a

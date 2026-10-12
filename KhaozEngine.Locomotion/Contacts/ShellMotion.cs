@@ -35,7 +35,7 @@ internal static class ShellMotion
         Vector3 input = feet;
         var route = new ContactMotionRoute(queries, feet);
         queries.ValidatePlacement(feet);
-        CapsuleShape shape = ShellGeometry.Shape(tuning);
+        CapsuleShape shape = ShellGeometry.Shape(tuning, queries.Shapes);
         for (int pass = 0; ; pass++)
         {
             if (!queries.PenetrationShell(shape, ShellGeometry.Centre(feet, tuning), out Vector3 mtv))
@@ -64,7 +64,7 @@ internal static class ShellMotion
     internal static float LiftWithQueries(ContactQueryContext queries, Vector3 feet, in MoveTuning tuning)
     {
         float step = tuning.StepHeight;
-        if (!queries.HasShell || !queries.SweepShell(ShellGeometry.Shape(tuning),
+        if (!queries.HasShell || !queries.SweepShell(ShellGeometry.Shape(tuning, queries.Shapes),
                 ShellGeometry.Centre(feet, tuning), Vector3.UnitY, step, out SweepHit hit,
                 QueryFilter.StaticsOnly))
             return step;
@@ -91,7 +91,7 @@ internal static class ShellMotion
         if (!route.Append(feet + new Vector3(0, lift, 0))) return new(Vector2.Zero, true);
         if (!queries.HasShell)
             return new ShellSweep(move, false);
-        CapsuleShape shape = ShellGeometry.Shape(tuning);
+        CapsuleShape shape = ShellGeometry.Shape(tuning, queries.Shapes);
         Vector3 centre = ShellGeometry.Centre(feet, tuning) + new Vector3(0f, lift, 0f);
         // A shell that starts touching a face sweeps from this offset off the face, so a sweep along the face
         // does not report the touch again. The shell itself does not move by it.
@@ -172,7 +172,7 @@ internal static class ShellMotion
         if (!queries.HasShell)
             return new ShellFlight(move, false, MathF.Max(0f, move.Y), MathF.Min(0f, move.Y));
         var route = new ContactMotionRoute(queries, feet);
-        CapsuleShape shape = ShellGeometry.Shape(tuning);
+        CapsuleShape shape = ShellGeometry.Shape(tuning, queries.Shapes);
         Vector3 centre = ShellGeometry.Centre(feet, tuning);
         // As in Sweep, a touching start sweeps from an offset off the face that the shell itself does not take.
         Vector3 offset = Vector3.Zero;
@@ -287,7 +287,7 @@ internal static class ShellMotion
     /// skin. False when even the grown shell overlaps nothing.</summary>
     static bool TouchNormal(ContactQueryContext queries, CapsuleShape shape, Vector3 centre, out Vector3 normal)
     {
-        var grown = new CapsuleShape(shape.Radius + ContactSkin, shape.Length);
+        var grown = queries.Shapes.Get(ContactCapsuleRole.Shell, shape.Radius + ContactSkin, shape.Length);
         if (queries.PenetrationShell(grown, centre, out Vector3 mtv) && mtv.LengthSquared() > 0f)
         {
             normal = Vector3.Normalize(mtv);

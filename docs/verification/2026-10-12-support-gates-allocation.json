@@ -1,0 +1,158 @@
+{
+  "task": 8,
+  "runtime": ".NET 10.0.12",
+  "architecture": "Arm64",
+  "configuration": "Release",
+  "tieredCompilation": "default",
+  "timingRecorded": false,
+  "sourceBase": "cbe05126d",
+  "tokens": {
+    "MovementQueryLeaseWithReleaseBinding": 192,
+    "PhysicsReadLease": 64,
+    "ProducerContactPin": 56
+  },
+  "warmExplicitTickCeilingBytes": 312,
+  "warmBorrowedSampleAndBindingBytes": 0,
+  "warmDryTickBytes": 64,
+  "dryFindCounts": [
+    1,
+    3,
+    7,
+    6
+  ],
+  "storage": {
+    "analyticEntriesPerTick": 256,
+    "finiteOwnerEntriesPerInterval": 256,
+    "waterDomainsPerInterval": 256,
+    "exactShapeSlotsPerRole": 24,
+    "shapeRoles": 4
+  },
+  "rows": [
+    {
+      "scene": "stationary",
+      "coldBytes": 27960,
+      "warmBytes": 312,
+      "findCount": 2,
+      "outcome": "Advanced",
+      "borrowedWarmTickBytes": 0,
+      "coldWarmStateEqual": true,
+      "retainedShapePairs": {
+        "Body": 0,
+        "Shell": 1,
+        "RoundedSweep": 1,
+        "RoundedContact": 1
+      }
+    },
+    {
+      "scene": "flat box",
+      "coldBytes": 27984,
+      "warmBytes": 312,
+      "findCount": 4,
+      "outcome": "Advanced",
+      "borrowedWarmTickBytes": 0,
+      "coldWarmStateEqual": true,
+      "retainedShapePairs": {
+        "Body": 0,
+        "Shell": 1,
+        "RoundedSweep": 2,
+        "RoundedContact": 1
+      }
+    },
+    {
+      "scene": "pushed seat",
+      "coldBytes": 55360,
+      "warmBytes": 312,
+      "findCount": 8,
+      "outcome": "Blocked",
+      "borrowedWarmTickBytes": 0,
+      "coldWarmStateEqual": true,
+      "retainedShapePairs": {
+        "Body": 0,
+        "Shell": 1,
+        "RoundedSweep": 2,
+        "RoundedContact": 1
+      }
+    },
+    {
+      "scene": "stairs box",
+      "coldBytes": 54768,
+      "warmBytes": 312,
+      "findCount": 7,
+      "outcome": "Advanced",
+      "borrowedWarmTickBytes": 0,
+      "coldWarmStateEqual": true,
+      "retainedShapePairs": {
+        "Body": 0,
+        "Shell": 1,
+        "RoundedSweep": 2,
+        "RoundedContact": 1
+      }
+    },
+    {
+      "scene": "explicit rounding handoff",
+      "coldBytes": 1272,
+      "warmBytes": 312,
+      "findCount": 6,
+      "outcome": "Advanced",
+      "borrowedWarmTickBytes": 0,
+      "coldWarmStateEqual": true,
+      "retainedShapePairs": {
+        "Body": 0,
+        "Shell": 1,
+        "RoundedSweep": 3,
+        "RoundedContact": 1
+      }
+    },
+    {
+      "scene": "explicit changed-axis rounding",
+      "coldBytes": 1272,
+      "warmBytes": 312,
+      "findCount": 7,
+      "outcome": "Advanced",
+      "borrowedWarmTickBytes": 0,
+      "coldWarmStateEqual": true,
+      "retainedShapePairs": {
+        "Body": 0,
+        "Shell": 1,
+        "RoundedSweep": 3,
+        "RoundedContact": 1
+      }
+    },
+    {
+      "scene": "explicit medium descent retry",
+      "coldBytes": 1272,
+      "warmBytes": 312,
+      "findCount": 6,
+      "outcome": "Blocked",
+      "borrowedWarmTickBytes": 0,
+      "coldWarmStateEqual": true,
+      "retainedShapePairs": {
+        "Body": 0,
+        "Shell": 1,
+        "RoundedSweep": 3,
+        "RoundedContact": 1
+      }
+    },
+    {
+      "scene": "explicit dry swim handoff",
+      "coldBytes": 1272,
+      "warmBytes": 312,
+      "findCount": 3,
+      "outcome": "Advanced",
+      "borrowedWarmTickBytes": 0,
+      "coldWarmStateEqual": true,
+      "retainedShapePairs": {
+        "Body": 0,
+        "Shell": 1,
+        "RoundedSweep": 3,
+        "RoundedContact": 1
+      }
+    }
+  ],
+  "limits": [
+    "Managed bytes on the recorded runtime only. Other runtimes require a fresh named token inventory.",
+    "First-use dimensions and exact-dimension cache misses are cold work. The cache never refuses geometry or quantizes dimensions.",
+    "Two earlier diagnostic invocations observed additional one-shot warm allocations under default tiering. No retry loop or relaxed assertion was used. Final covering invocations passed the exact ceiling.",
+    "No timing or hosted stability proof was run. Task 9 owns the cost artifact and Task 11 owns full-suite verification."
+  ]
+}

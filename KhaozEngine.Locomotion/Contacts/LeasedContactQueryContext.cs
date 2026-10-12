@@ -9,17 +9,39 @@ namespace KhaozEngine.Locomotion.Contacts;
 internal sealed partial class LeasedContactQueryContext
 {
     internal const float PlacementSkin = 0.001f;
-    readonly MovementQueryLease _lease;
-    readonly MoveTuning _tuning;
-    readonly MovementSelection _selection;
-    readonly MovementTransitionContext _transition;
-    readonly float _offset;
+    MovementQueryLease _lease = null!;
+    internal ContactCapsuleShapes Shapes => _lease.Workspace.Shapes;
+    MoveTuning _tuning;
+    MovementSelection _selection;
+    MovementTransitionContext _transition;
+    float _offset;
 
     // Zero is the internal parity profile. Production explicit composition uses the default fixed skin.
     internal LeasedContactQueryContext(MovementQueryLease lease, MoveTuning tuning, MovementSelection selection,
         MovementTransitionContext transition, float placementOffset = PlacementSkin,
         WaterTraversalMode waterMode = WaterTraversalMode.DryOnly, MovementBoundary? boundary = null)
+        => Initialize(lease, tuning, selection, transition, placementOffset, waterMode, boundary);
+
+    internal LeasedContactQueryContext() { }
+
+    internal void Reset()
     {
+        _lease = null!;
+        _tuning = default;
+        _selection = default;
+        _transition = default;
+        _offset = default;
+        _waterMode = default;
+        _boundary = null;
+        Outcome = MovementStepOutcome.Advanced;
+        RecoveryDenied = false;
+    }
+
+    internal void Initialize(MovementQueryLease lease, MoveTuning tuning, MovementSelection selection,
+        MovementTransitionContext transition, float placementOffset = PlacementSkin,
+        WaterTraversalMode waterMode = WaterTraversalMode.DryOnly, MovementBoundary? boundary = null)
+    {
+        Reset();
         ArgumentNullException.ThrowIfNull(lease);
         if (placementOffset != 0 && placementOffset != PlacementSkin)
             throw new ArgumentOutOfRangeException(nameof(placementOffset));

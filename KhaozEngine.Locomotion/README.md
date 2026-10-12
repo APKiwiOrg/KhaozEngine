@@ -416,6 +416,16 @@ and is thread-affine. Dispose it before physical writes. Pin disposal precedes p
 with finally-based release even if producer cleanup throws. Local `MovementQueryLeaseId` equality and
 hashing use source reference identity, never a backend's overridden value equality or portable hashing.
 
+Each context provisions bounded private consistency storage and reuses it across fresh leases.
+Serial explicit ticks clear analytic room/axis facts and borrowed context/mode references at tick end.
+Finite owner bindings and water-level facts retain consistency until interval disposal, including when
+producer cleanup throws. Capsule shapes are immutable and cached by exact radius/length bits in separate
+role slots. First-use shape dimensions and backend scratch are cold work. A prepared warm route allocates
+only its fresh composed lease with release binding, physics read lease and producer pin. New dimensions
+can miss the bounded shape cache without changing their geometry or refusing gameplay. Producers prepare
+immutable witnesses once and capture them in each fresh one-use pin. Disposed public tokens remain expired
+across reacquisition, even when world generations have not changed.
+
 `MovementQueryLease.SampleCentreWater` validates the body, certified scope and current pin before
 and after the producer call. Unknown remains unknown, and known data from another world is refused.
 It queries centre-feet membership, not full capsule coverage. `MovementSupportRequest` and

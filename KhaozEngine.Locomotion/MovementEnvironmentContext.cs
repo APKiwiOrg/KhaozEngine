@@ -12,6 +12,7 @@ public sealed class MovementEnvironmentContext
     readonly IMovementEnvironmentProvider _provider;
     readonly MovementQueryIdentity _identity;
     readonly string _worldId;
+    readonly ContactTickWorkspace _workspace = new();
     int _inUse;
 
     public MovementEnvironmentContext(IPhysicsWorldQueryView physics, IMovementEnvironmentProvider provider,
@@ -80,7 +81,8 @@ public sealed class MovementEnvironmentContext
             catch (InvalidOperationException) { return MovementAvailability.Stale; }
             physicsLease.AssertCurrent();
             SupportQueryDiagnostics.Record(SupportQueryCounter.MovementLeases);
-            lease = new MovementQueryLease(_physics, physicsLease, pin, witness, scope.Frame, environmentGeneration, Release);
+            lease = new MovementQueryLease(_physics, physicsLease, pin, witness, scope.Frame, environmentGeneration, Release, _workspace);
+            _workspace.Enter(lease);
             transferred = true;
             return MovementAvailability.Known;
         }
@@ -98,5 +100,9 @@ public sealed class MovementEnvironmentContext
         }
     }
 
-    void Release() => Interlocked.Exchange(ref _inUse, 0);
+    void Release()
+    {
+        _workspace.EndInterval();
+        Interlocked.Exchange(ref _inUse, 0);
+    }
 }

@@ -15,10 +15,10 @@ public sealed partial class MovementQueryLease
 
     internal MovementAvailability QuerySolidContacts(in MovementBodyQuery body, float margin,
         Span<CapsuleContact> scratch, out CapsuleContactResult result) =>
-        QuerySolidContactsFiltered(body, margin, scratch, out result, default);
+        QuerySolidContactsFiltered(body, margin, scratch, out result, default, ContactCapsuleRole.Body);
 
     internal MovementAvailability QuerySolidContactsFiltered(in MovementBodyQuery body, float margin,
-        Span<CapsuleContact> scratch, out CapsuleContactResult result, QueryFilter filter)
+        Span<CapsuleContact> scratch, out CapsuleContactResult result, QueryFilter filter, ContactCapsuleRole role = ContactCapsuleRole.RoundedContact)
     {
         result = default;
         AssertUsable();
@@ -38,7 +38,7 @@ public sealed partial class MovementQueryLease
         try
         {
             AssertCurrent();
-            var capsule = new CapsuleShape(body.Radius, 2f * (body.HalfHeight - body.Radius));
+            var capsule = Workspace.Shapes.Get(role, body.Radius, 2f * (body.HalfHeight - body.Radius));
             CapsuleContactResult query = contacts.QueryCapsuleContacts(capsule, Pose.At(body.Centre),
                 margin, scratch[..Math.Min(scratch.Length, MaxSolidContacts)], filter);
             AssertCurrent();

@@ -15,6 +15,7 @@ internal readonly struct ContactQueryContext
     public static implicit operator ContactQueryContext(DryContactQueryContext dry) => new(dry);
     public static implicit operator ContactQueryContext(LeasedContactQueryContext leased) => new(leased);
 
+    internal ContactCapsuleShapes Shapes => _leased?.Shapes ?? ContactCapsuleShapes.ForThread;
     internal bool HasShell => _leased is not null || _dry.HasShell;
     internal bool HasMediumProof => _leased is not null;
     internal Vector3 KernelFeet(Vector3 centre, in MoveTuning tuning) => _leased is { } leased

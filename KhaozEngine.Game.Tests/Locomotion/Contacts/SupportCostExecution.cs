@@ -27,6 +27,7 @@ internal sealed class SupportCostExecution : IDisposable
     readonly string operation;
     readonly SupportFootprintScene scene;
     readonly IPhysicsQueryLease? borrowed;
+    readonly MovementQueryLease? movementBorrowed;
     readonly CapsuleShape capsule;
     readonly IPhysicsWorldQueryView inner;
     readonly FootprintOracleSupport expected;
@@ -36,6 +37,8 @@ internal sealed class SupportCostExecution : IDisposable
     readonly EnvironmentAcquisitionFixture? environment;
     readonly MovementBoundary? boundary;
     static readonly MovementSpaceKey Room = new("world", "room");
+    internal MovementQueryLease? LastMovementLease { get; private set; }
+    internal EnvironmentAcquisitionFixture Producer => environment!;
     internal CountingQueryView View { get; }
     internal Func<SupportCostOutput> Invoke { get; }
     internal FootprintOracleSupport Expected => expected;
@@ -63,6 +66,7 @@ internal sealed class SupportCostExecution : IDisposable
             boundary = MovementBoundary.Rectangle(-1500, -10, maximum, 10);
         }
         if (row.Explicit) environment = Environment();
+        if (operation == "ExplicitTickBorrowed") movementBorrowed = (MovementQueryLease)environment!.Acquire().Lease!;
         Invoke = Execute;
     }
 
@@ -120,23 +124,31 @@ internal sealed class SupportCostExecution : IDisposable
                     return new(false, "AcquisitionRefused", double.NaN, double.NaN, Vector3.Zero, true);
                 using (MovementQueryLease lease = (MovementQueryLease)acquired.Lease!)
                 {
-                    var state = new FramedMovementState(input, lease.Frame, new(Room, null, lease.Identity));
-                    MovementStepResult result = ExplicitCharacterMovement.StepTowards(state, row.Direction, false,
-                        row.Dt, tuning, new(row.WaterMode), lease, boundary);
-                    SupportCostOutput output = TickOutput(result.State.State);
-                    return output with
-                    {
-                        Outcome = result.Outcome == MovementStepOutcome.Advanced ? "Advanced" : result.Outcome == MovementStepOutcome.Blocked ? "Blocked" : "ExplicitRefused",
-                        GeometryPassed = output.GeometryPassed && result.Outcome is MovementStepOutcome.Advanced or MovementStepOutcome.Blocked,
-                        Refused = result.Outcome is not (MovementStepOutcome.Advanced or MovementStepOutcome.Blocked),
-                        StepOutcome = result.Outcome
-                    };
+                    return ExplicitTick(lease);
                 }
+            case "ExplicitTickBorrowed":
+                return ExplicitTick(movementBorrowed!);
             case "Lease":
                 using (IPhysicsQueryLease lease = View.AcquireQueryReadLease())
                     return new(true, "Acquired", 0, 0, Vector3.Zero, false);
             default: throw new InvalidOperationException(operation);
         }
+    }
+
+    SupportCostOutput ExplicitTick(MovementQueryLease lease)
+    {
+        LastMovementLease = lease;
+        var state = new FramedMovementState(row.Input, lease.Frame, new(Room, null, lease.Identity));
+        MovementStepResult result = ExplicitCharacterMovement.StepTowards(state, row.Direction, false,
+            row.Dt, SupportGateCostScenes.Tuning, new(row.WaterMode), lease, boundary);
+        SupportCostOutput output = TickOutput(result.State.State);
+        return output with
+        {
+            Outcome = result.Outcome == MovementStepOutcome.Advanced ? "Advanced" : result.Outcome == MovementStepOutcome.Blocked ? "Blocked" : "ExplicitRefused",
+            GeometryPassed = output.GeometryPassed && result.Outcome is MovementStepOutcome.Advanced or MovementStepOutcome.Blocked,
+            Refused = result.Outcome is not (MovementStepOutcome.Advanced or MovementStepOutcome.Blocked),
+            StepOutcome = result.Outcome
+        };
     }
 
     SupportCostOutput TickOutput(MoveState next)
@@ -279,5 +291,5 @@ internal sealed class SupportCostExecution : IDisposable
         GroundFooting.Held => "Held",
         _ => "None",
     };
-    public void Dispose() { borrowed?.Dispose(); inner.Dispose(); scene.Dispose(); }
+    public void Dispose() { movementBorrowed?.Dispose(); borrowed?.Dispose(); inner.Dispose(); scene.Dispose(); }
 }

@@ -38,6 +38,7 @@ public sealed partial class MovementQueryLease : IDisposable
     readonly IPhysicsQueryLease _physics;
     readonly IMovementEnvironmentPin _pin;
     readonly Action _releaseContext;
+    internal ContactTickWorkspace Workspace { get; }
     readonly int _thread = Environment.CurrentManagedThreadId;
     bool _disposed;
     bool _selectionReady;
@@ -49,7 +50,7 @@ public sealed partial class MovementQueryLease : IDisposable
 
     internal MovementQueryLease(IPhysicsWorldQueryView view, IPhysicsQueryLease physics,
         IMovementEnvironmentPin pin, MovementScopeWitness witness, MovementFrameDescriptor frame,
-        long environmentGeneration, Action releaseContext)
+        long environmentGeneration, Action releaseContext, ContactTickWorkspace workspace)
     {
         _view = view;
         _physics = physics;
@@ -57,6 +58,7 @@ public sealed partial class MovementQueryLease : IDisposable
         Witness = witness;
         Frame = frame;
         _releaseContext = releaseContext;
+        Workspace = workspace;
         _selectionReady = witness.Scope.CurrentSpace.HasValue;
         Id = new MovementQueryLeaseId(physics.SourceWorld, physics.GeometryGeneration, environmentGeneration, frame.Epoch);
     }

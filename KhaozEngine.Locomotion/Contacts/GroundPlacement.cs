@@ -84,7 +84,7 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
     // A touching shell is clear.
     static bool Overlaps(ContactQueryContext queries, in MoveTuning tuning, Vector3 target) =>
         queries.HasShell &&
-        queries.PenetrationShell(ShellGeometry.Shape(tuning), ShellGeometry.Centre(target, tuning),
+        queries.PenetrationShell(ShellGeometry.Shape(tuning, queries.Shapes), ShellGeometry.Centre(target, tuning),
             out Vector3 mtv) &&
         mtv != Vector3.Zero;
 
@@ -94,7 +94,7 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
     {
         placed = target;
         if (!queries.HasShell) return true;
-        CapsuleShape shape = ShellGeometry.Shape(tuning);
+        CapsuleShape shape = ShellGeometry.Shape(tuning, queries.Shapes);
         if (!queries.PenetrationShell(shape, ShellGeometry.Centre(target, tuning), out Vector3 mtv))
             return true;
         float depth = mtv.Length();

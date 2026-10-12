@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
@@ -8,16 +7,16 @@ namespace KhaozEngine.Locomotion;
 
 public sealed partial class MovementQueryLease
 {
-    Dictionary<(MovementSpaceKey Space, Vector2 Axis), MovementAnalyticGround?>? _analyticGround;
-    Dictionary<(StaticHandle Static, int Feature), MovementContactSupportBinding>? _contactOwners;
-
-    // A replay batch borrows one pin for many ticks. Analytic room/axis facts and their
-    // bounded capacity belong to one tick. Finite owner bindings retain interval consistency.
     internal void BeginContactTick()
     {
         AssertUsable();
         AssertCurrent();
-        _analyticGround?.Clear();
+        Workspace.BeginTick(this);
+    }
+
+    internal void EndContactTick()
+    {
+        if (Workspace.Owns(this)) Workspace.EndTick();
     }
 
     internal MovementAvailability SampleAnalyticGround(in MovementSupportRequest request, out MovementAnalyticGround? ground)
@@ -40,16 +39,8 @@ public sealed partial class MovementQueryLease
                 !LegalContactSpace(value.Space, value.TraversedLinkId, request.Transition) ||
                 !Witness.Scope.ContainsBounds(new(axis.X, value.Height, axis.Y), new(axis.X, value.Height, axis.Y))))
                 return MovementAvailability.Invalid;
-            var key = (request.Body.CurrentSpace, axis);
-            if (_analyticGround is { } previous && previous.TryGetValue(key, out var remembered))
-            {
-                if (!SameAnalyticField(remembered, fact)) return MovementAvailability.Invalid;
-            }
-            else
-            {
-                if (_analyticGround?.Count == MaxSupportCandidates) return MovementAvailability.CapacityExceeded;
-                (_analyticGround ??= new()).Add(key, fact);
-            }
+            MovementAvailability consistency = Workspace.RememberAnalytic(request.Body.CurrentSpace, axis, fact);
+            if (consistency != MovementAvailability.Known) return consistency;
             ground = fact;
             return MovementAvailability.Known;
         }
@@ -102,22 +93,12 @@ public sealed partial class MovementQueryLease
                 return MovementAvailability.Invalid;
             if (sample.Static is { } installed)
             {
-                var key = (installed, sample.FeatureId);
-                if (_contactOwners is { } previous && previous.TryGetValue(key, out var remembered))
-                {
-                    if (remembered.Owner != result.Owner || remembered.Space != result.Space)
-                        return MovementAvailability.Invalid;
-                }
-                else
-                {
-                    if (_contactOwners?.Count == MaxSupportCandidates) return MovementAvailability.CapacityExceeded;
-                    (_contactOwners ??= new()).Add(key, result);
-                }
+                MovementAvailability consistency = Workspace.RememberOwner(installed, sample.FeatureId, result);
+                if (consistency != MovementAvailability.Known) return consistency;
             }
             else
             {
-                var key = (request.Body.CurrentSpace, boundRequest.Axis);
-                if (_analyticGround is null || !_analyticGround.TryGetValue(key, out var fact) || fact is null)
+                if (!Workspace.TryGetAnalytic(request.Body.CurrentSpace, boundRequest.Axis, out var fact) || fact is null)
                     return MovementAvailability.Unresolved;
                 MovementAnalyticGround value = fact.Value;
                 if (value.Owner != result.Owner || value.Space != result.Space || value.Normal != sample.Normal ||
@@ -134,12 +115,6 @@ public sealed partial class MovementQueryLease
 
     bool LegalContactSpace(MovementSpaceKey space, string? link, in MovementTransitionContext transition) =>
         SameWorld(space) && (space == transition.OriginSpace || link is not null);
-
-    static bool SameAnalyticField(MovementAnalyticGround? first, MovementAnalyticGround? second) =>
-        first is { } a && second is { } b
-            ? a.Axis == b.Axis && a.Height == b.Height && a.Normal == b.Normal && a.Owner == b.Owner &&
-                a.Space == b.Space && a.Identity == b.Identity
-            : first.HasValue == second.HasValue;
 
     MovementAvailability ContactSupportScope(in MovementSupportRequest request)
     {

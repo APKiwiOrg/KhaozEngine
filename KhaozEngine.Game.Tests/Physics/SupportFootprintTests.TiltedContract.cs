@@ -37,6 +37,10 @@ public partial class SupportFootprintTests
         var joins = new ulong[1024];
         var result = Capability(scene.World).QuerySupportFootprint(lease, request, members, joins);
         Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
+        var actual = members.Take(result.Members).Where(m => m.Static == owner).OrderBy(m => m.ElementId).ToArray();
+        Assert.Equal(expected.Length, actual.Length);
+        for (int i = 0; i < actual.Length; i++) CheckTiltedMember(actual[i], expected[i]);
+        _output.WriteLine(TiltedStatistics(scene.World));
     }
 
     [Fact]

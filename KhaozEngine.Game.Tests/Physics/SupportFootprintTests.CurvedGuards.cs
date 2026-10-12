@@ -51,17 +51,20 @@ public partial class SupportFootprintTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void TiltedFiniteStrataRefuseAtomicallyUntilTask6b(bool capsule)
+    public void TiltedFiniteStrataPublishIndependentRoles(bool capsule)
     {
         using var scene = new SupportFootprintScene();
-        scene.Install(capsule ? new CapsuleShape(0.25f, 1) : new CylinderShape(0.25f, 1),
+        var owner = scene.Install(capsule ? new CapsuleShape(0.25f, 1) : new CylinderShape(0.25f, 1),
             new(new(0, -0.25f, 0), Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 6)));
         using var lease = scene.World.AcquireQueryReadLease();
-        var members = MemberSentinels(256); var before = (SupportFootprintMember[])members.Clone();
+        var members = MemberSentinels(256);
         var joins = Enumerable.Repeat(73UL, 1024).ToArray();
         var result = Capability(scene.World).QuerySupportFootprint(lease, Request(), members, joins);
-        Assert.Equal(CapsuleFeatureStatus.Unsupported, result.Status);
-        Assert.Equal(before, members);
-        Assert.All(joins, word => Assert.Equal(73UL, word));
+        Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
+        var expected = SupportFootprintCurvedProofOracle.Installed(scene.World, owner)
+            .Select(p => SupportFootprintOracle.Curved(p.Tangent, Request())).OfType<FootprintOracleMember>().ToArray();
+        var actual = members.Take(result.Members).Where(m => m.Static == owner).ToArray();
+        Assert.Equal(expected.Length, actual.Length);
+        for (int i = 0; i < actual.Length; i++) CheckTiltedMember(actual[i], expected[i]);
     }
 }

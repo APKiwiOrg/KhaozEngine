@@ -4,11 +4,12 @@ using Number = KhaozEngine.Physics.Bepu.SupportCurvedSourceArithmetic.Number;
 
 namespace KhaozEngine.Physics.Bepu;
 
-/// <summary>Independent attained SG-19 roles for closed-form curved strata. Tilted finite strata remain
-/// an explicit refusal until their interval optimization owner supplies its certificate.</summary>
+/// <summary>Independent attained SG-19 roles for curved strata. Tilted parts use certified regions.</summary>
 internal sealed partial class SupportFootprintCurved
 {
     readonly SupportCurvedSourceArithmetic _arithmetic = new();
+    readonly SupportTiltedCurved _tilted = new();
+    internal void ResetStatistics() => _tilted.ResetStatistics();
     readonly record struct Point(Number X, Number Y, Number Z)
     {
         internal GeometryVector Bounds(SupportCurvedSourceArithmetic arithmetic) =>
@@ -74,7 +75,7 @@ internal sealed partial class SupportFootprintCurved
             leaf.Centre.Z.Subtract(reach).Lower > z.Add(expanded).Upper ||
             leaf.Centre.Z.Add(reach).Upper < z.Subtract(expanded).Lower ||
             leaf.Centre.Y.Subtract(reach).Lower > top || leaf.Centre.Y.Add(reach).Upper < bottom) return GeometrySign.Negative;
-        if (!Begin(leaf, request.Axis.X, request.Axis.Y)) return GeometrySign.Unresolved;
+        if (!Begin(leaf, request.Axis.X, request.Axis.Y)) return _tilted.Measure(owner, leaf, part, request, out member);
         GeometrySign admitted = Admission(leaf, part, Add(C(request.Radius), C(request.ContactBand)), C(bottom), C(top));
         if (admitted != GeometrySign.Positive) return admitted;
         GeometrySign axis = Maximum(leaf, part, request.Axis.X, request.Axis.Y, C(0), out Witness axisPoint);

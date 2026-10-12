@@ -41,6 +41,7 @@ internal sealed class SupportFootprintCollector
     {
         _request = request;
         _count = 0;
+        _curvedKernel.ResetStatistics();
         _pool.Reset();
         _capture.Reset();
         Array.Clear(_verdicts);

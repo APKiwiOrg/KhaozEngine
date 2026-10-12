@@ -27,6 +27,13 @@ internal sealed class SupportCurvedSourceArithmetic
     internal Number Y { get; private set; }
     internal Number Z { get; private set; }
 
+    internal int Checkpoint => _count;
+    internal void Restore(int checkpoint)
+    {
+        _count = checkpoint;
+        _resolved = true;
+    }
+
     internal void Reset(FeaturePoint source)
     {
         _count = 0; _resolved = true;

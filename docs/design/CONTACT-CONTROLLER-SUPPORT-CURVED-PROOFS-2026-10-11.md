@@ -295,8 +295,69 @@ retained scratch, stack and warm cost under SG-12 and SG-20.
 For each witness, enclose Y and `T_x(a)` from the same source and prove positive normal Y before
 division. Downstream contribution remains their enclosed minimum. A proposal-guard sign that is
 still undecided after the source-polynomial fallback refuses atomically. Keep every admitted pose
-covered once the tilted owner lands. Task 6a explicitly refuses relevant tilted strata until
-Task 6b supplies those certificates. Neither a virtual probe nor incomplete support is a fallback.
+covered by the tilted owner. Task 6b supplies the region certificates below. Neither a virtual
+probe nor incomplete support is a fallback.
+
+### Task 6b region implementation
+
+`SupportTiltedCurvedGeometry` orients the same unnormalized installed column upward. Its finite
+side keeps the full parameter range, the original disc endpoints and the closed slope endpoints.
+The stationary equation is solved only between zero and `-Q/R`. The unsquared derivative requires
+z and `Q+R*z` to have opposite signs, so the squared equation's other roots cannot be stationary
+points of the original branch. The displayed strictly negative second derivative proves uniqueness
+of a disc-branch stationary maximum on its smooth domain. Source-uniform endpoint signs and a
+nonzero derivative enclosure certify existence and coverage of each retained root region.
+
+End and cap crossings use the original function `A+B*z+J*z*z-K*sqrt(1-z*z)`, with the rim sign
+included in K. This avoids manufacturing a pair of almost coincident roots by squaring a small K.
+Interval Newton contracts a certified region without removing any source's root. If a derivative
+is unbounded at a pole, a one-sided derivative sign and continuity still prove monotonicity.
+Certified midpoint signs can contract such a region before Newton becomes available. Every
+polynomial sign which remains uncertain takes the existing source workspace, with positive
+denominators and the original radical sign guards retained.
+
+The objective's attained lower bound prunes an entire finite end when even its unconstrained
+height upper bound is smaller. When Q is exactly zero and z=0 is certainly feasible, both height
+branches decrease away from zero for every source. That point is a certified global maximum
+even when the projected feasible set has multiple components. Otherwise the candidate list
+retains every end crossing, stationary region, disc endpoint and slope endpoint. A possible
+candidate cannot establish the attained lower bound. All candidates which can attain or tie it
+remain in the published hull. The original maximum and the walkable replacement are separate.
+The member's maximum bounds the unrestricted height. The footprint role carries the replacement
+when the certified walkable region is nonempty, retaining an exact normal Y at the slope boundary.
+
+Caps enumerate their crest, the disc uphill point and both signed rim crossings. Capsule ends
+keep the sphere's nearest-point solve and its original hemisphere predicate. The finite barrel
+covers the seams. Axis parameters clear the common normalization denominator before testing the
+finite ends, rather than expanding two dependent normalized quotients.
+
+Raw admission covers both side semicircles, each full cap disc and both capsule hemispheres.
+Two-dimensional parameter cells enclose complete surfaces. Only outward absence bounds discard
+a cell. An attained point with certified disc, surface and Y-band membership proves presence.
+Uncertain source predicates retain their cells and take the source-polynomial fallback.
+
+Proposal heights solve the exact distance-to-part objective along the lower sphere centre.
+The finite side uses axial-end distance and distance from the circular radius, a cap uses its
+plane distance and exterior radial distance, and a capsule uses distance to its finite core
+with the probe radius added. These have three clamp branches with at most four scalar roots
+per branch, hence at most twelve retained contact roots. The highest root is the first downward
+contact. Subtracting the existing probe radius gives the body's lowest position. The proof
+interval extends one additional probe radius beyond the raw surface envelope. Its endpoints
+are at least two probe radii from the surface and have strictly positive objectives. This is
+proof slack, not a new probe, a reach extension or a geometric error threshold. A source-backed
+band equality is tested before any undecided proposal boundary is refused.
+
+The root owner preprovisions two 1024-cell frontiers and twelve terminal records. Boundary
+polynomials retain at most four regions, while contact functions retain at most twelve.
+The admission owner preprovisions two more 1024-cell frontiers. Each parameter cut is an interior
+binary64 point in a finite interval. Thus subdivision is finite without a refinement count.
+An unproved certificate refuses before a frontier would exceed its fixed storage. Processed
+absence and monotonicity certificates stream out instead of occupying terminal storage.
+The simultaneous cell storage bound is 4096 live records plus twelve retained root regions.
+The side candidate bound is eighteen, and the cap candidate bound is fourteen in this enumeration.
+Their common preprovisioned 32-record array therefore covers both. Neither cell storage nor
+candidate storage grows during a query. Source expressions retain the existing 4096-node arena
+and degree-eight, nine-variable, 64-polynomial workspace. Warm reuse allocates zero bytes.
 
 ## Independent readings and oracle strata
 

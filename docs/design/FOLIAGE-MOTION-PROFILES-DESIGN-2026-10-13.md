@@ -1,7 +1,7 @@
 # Foliage motion profiles, movement-driven shiver and animated foliage shadows
 
-Date 2026-10-13. Issue [#1377](https://github.com/APKiwiOrg/KhaozEngine/issues/1377). Status: proposal awaiting
-owner review. Target: rides staged 20.34.0. First consumer: Grimhollow's four bush archetypes, after the owner chose
+Date 2026-10-13. Issue [#1377](https://github.com/APKiwiOrg/KhaozEngine/issues/1377). Status: approved by the
+owner on 2026-10-13. Target: rides staged 20.34.0. First consumer: Grimhollow's four bush archetypes, after the owner chose
 an engine feature over a game-only opt-in (Grimhollow ruling B1, 2026-10-13).
 
 ## Problem

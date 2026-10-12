@@ -391,13 +391,11 @@ namespace KhaozEngine.Render3D
             // drain everywhere else, valve sized off the backend's frames-in-flight knob. See Create (#424, #661).
             _retired = GpuRetireQueue.Create(gd, maxSealedBatches: GpuRetireQueue.SealedBatchCapFor(gd));
             _targetOutput = targetOutput;
-            // Construction seam (issue #27): the shadow atlas is sized ONCE here (resolution x cascade count), and its
-            // handle is bound into every material set, so those knobs can only be honoured if supplied BEFORE this
-            // point. A caller seeds them by passing an initialShadows through the
-            // Render3DSurface/Render3DPreview/Render3DSnapshot ctor. After the atlas is built we commit the settings, so
-            // a later write to a construction-time knob throws instead of silently no-opping (the old inert behaviour).
+            // Construction seam (#27): surface/preview/snapshot callers seed atlas resolution and cascade count here.
+            // Material sets retain its handles. CommitAtlas makes later construction-time edits throw.
             if (initialShadows != null) Post.Quality.Shadows = initialShadows;
             _res = new RenderResources(gd, Post.RenderWidth, Post.RenderHeight, Post.Hdr.Enabled);
+            _atmosphere = new AtmosphereRenderer(gd);
             ShadowSettings shadow0 = Post.Quality.Shadows;
             _model = new ModelRenderer(gd, _res.ModelFB.Outputs,
                 shadow0.ShadowMapResolution, shadow0.ResolvedCascadeCount, _retired);
@@ -1448,6 +1446,7 @@ namespace KhaozEngine.Render3D
             Matrix4x4 vp = _currentFrameView.JitteredViewProjection, absVp = _currentFrameView.AbsoluteViewProjection;
             Matrix4x4 displayVp = _currentFrameView.ViewProjection;
             Vector3 eye = ToRender(ActiveCamera.Eye);
+            RecordAtmosphere(cl, eye);
             FrustumPlanes camFrustum = FrustumCulling ? FrustumPlanes.Extract(absVp) : default;
 
             // GPU instancing: group queued instances by mesh into a flat instance array (ordered by mesh) + a
@@ -2140,6 +2139,7 @@ namespace KhaozEngine.Render3D
             _overlayMeshes.Dispose();
             _silhouettes.Dispose();
             _targetOutlines.Dispose();
+            _atmosphere.Dispose();
             _res.Dispose();
             foreach (var m in _meshes)
                 if (m is { } mesh)

@@ -106,6 +106,18 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.SkyVert, ShaderSources.SkyFrag, "Sky");
 
         [Fact]
+        public void AtmosphereTransmittance()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.AtmosphereTransmittanceFrag, "AtmosphereTransmittance");
+
+        [Fact]
+        public void AtmosphereMultiScattering()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.AtmosphereMultiScatteringFrag, "AtmosphereMultiScattering");
+
+        [Fact]
+        public void AtmosphereSkyView()
+            => ShaderValidation.ValidatePair(ShaderSources.FullscreenVert, ShaderSources.AtmosphereSkyViewFrag, "AtmosphereSkyView");
+
+        [Fact]
         public void Starfield()
             => ShaderValidation.ValidatePair(ShaderSources.StarfieldVert, ShaderSources.StarfieldFrag, "Starfield");
 

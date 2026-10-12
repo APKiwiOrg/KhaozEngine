@@ -19,6 +19,10 @@ namespace KhaozEngine.Tests.Render3D
     public class UboLayoutTests
     {
         [Fact]
+        public void AtmosphereUbo_Is304BytesAndAllOffsetsMatch()
+            => AtmosphereRendererTests.VerifyUboLayout();
+
+        [Fact]
         public void Skinned_target_outline_vertex_has_contiguous_inputs_outputs_and_palette()
         {
             string source = ShaderSources.TargetOutlineSkinnedMaskVert;

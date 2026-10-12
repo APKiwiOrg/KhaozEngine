@@ -38,18 +38,24 @@ on:
         options:
           - Release
           - Debug
+      support-cost:
+        description: Record fixed-compilation support cost artifacts, requires Release and load=0
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 jobs:
   stress:
-    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@fc4a188e74c1177bef17343d4e6a70cc4a403595 # main 2026-09-29
+    uses: APKiwiOrg/ci-workflows/.github/workflows/stress-test.yml@14dba4a61d87676a87e089d001e223671e4894a1 # support cost artifacts
     with:
       project: ${{ inputs.project }}
       filter: ${{ inputs.filter }}
       iterations: ${{ inputs.iterations }}
       load: ${{ inputs.load }}
       configuration: ${{ inputs.configuration }}
+      support-cost: ${{ inputs.support-cost }}
     secrets:
       packages-token: ${{ secrets.GITHUB_TOKEN }}

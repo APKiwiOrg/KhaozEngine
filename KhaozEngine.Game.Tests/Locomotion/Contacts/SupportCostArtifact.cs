@@ -51,6 +51,79 @@ internal sealed record SupportCostSample(string Operation, string Scene, bool Ge
 
 internal static class SupportCostVerdict
 {
+    internal static bool TryHostedScale(JsonObject? m2MaxBaseline, JsonObject? hosted, out double scale)
+    {
+        scale = 0;
+        try
+        {
+            if (!ValidMetadata(m2MaxBaseline) || !ValidMetadata(hosted) ||
+                m2MaxBaseline!["Hardware"]!.GetValue<string>() != "Apple M2 Max" ||
+                m2MaxBaseline["Architecture"]!.GetValue<string>() != "Arm64" ||
+                m2MaxBaseline["ProcessExitStatus"]?.GetValue<int>() != 0 ||
+                hosted!["ProcessExitStatus"] is { } exit && exit.GetValue<int>() != 0 ||
+                !SameSceneInputs(m2MaxBaseline!["Scenes"], hosted!["Scenes"]) ||
+                m2MaxBaseline["Tuning"] is null || !JsonNode.DeepEquals(m2MaxBaseline["Tuning"], hosted["Tuning"]))
+                return false;
+            SupportCostSample? reference = CalibrationTick(m2MaxBaseline);
+            SupportCostSample? current = CalibrationTick(hosted);
+            if (!ValidCalibration(reference) || !ValidCalibration(current)) return false;
+            double ratio = current!.WarmMicroseconds / reference!.WarmMicroseconds;
+            if (!(ratio > 0) || !double.IsFinite(ratio * 4000)) return false;
+            scale = ratio;
+            return true;
+        }
+        catch (Exception error) when (error is JsonException or InvalidOperationException or ArgumentException or OverflowException)
+        {
+            return false;
+        }
+    }
+
+    static bool ValidMetadata(JsonObject? section) => section is not null &&
+        new[] { "Hardware", "Architecture", "Runtime", "OperatingSystem", "Compilation" }
+            .All(key => !string.IsNullOrWhiteSpace(section[key]?.GetValue<string>())) &&
+        Enum.TryParse(section["Architecture"]!.GetValue<string>(), out Architecture architecture) && Enum.IsDefined(architecture) &&
+        section["Runtime"]!.GetValue<string>().StartsWith(".NET ", StringComparison.Ordinal) &&
+        section["TieredCompilation"]?.GetValue<string>() == "0" &&
+        section["Compilation"]!.GetValue<string>().StartsWith("Release,", StringComparison.Ordinal);
+
+    static bool SameSceneInputs(JsonNode? reference, JsonNode? hosted)
+    {
+        if (reference is not JsonObject original || hosted is not JsonObject current ||
+            original.Count == 0 || original["flat box"] is not JsonObject || original.Count != current.Count) return false;
+        foreach (var scene in original)
+        {
+            if (scene.Value is not JsonObject || current[scene.Key] is not JsonObject) return false;
+            JsonObject a = scene.Value.DeepClone().AsObject(), b = current[scene.Key]!.DeepClone().AsObject();
+            // Correctness dispositions change after a repair. The physical input must still match.
+            foreach (string key in new[] { "KnownIncomplete", "ExpectedRefusal", "MustPass" })
+            {
+                a.Remove(key);
+                b.Remove(key);
+            }
+            if (!JsonNode.DeepEquals(a, b)) return false;
+        }
+        return true;
+    }
+
+    static SupportCostSample? CalibrationTick(JsonObject section)
+    {
+        if (section["Samples"] is not JsonArray samples) return null;
+        JsonNode[] ticks = samples.Where(sample => sample is JsonObject &&
+            sample["Scene"]?.GetValue<string>() == "flat box" && sample["Operation"]?.GetValue<string>() == "LegacyTick")
+            .Select(sample => sample!).ToArray();
+        return ticks.Length == 1 ? ticks[0].Deserialize<SupportCostSample>(new JsonSerializerOptions
+        { IncludeFields = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals }) : null;
+    }
+
+    static bool ValidCalibration(SupportCostSample? sample) => sample is not null &&
+        sample.GeometryPassed && sample.ColdGeometryPassed && sample.GeometryMatchesOracle && !sample.Refusal &&
+        sample.Outcome == "Grounded" && sample.ColdOutcome == "Grounded" &&
+        sample.Comparable && !sample.Dense && sample.WarmMicroseconds > 0 && double.IsFinite(sample.WarmMicroseconds) &&
+        Advances(sample.AchievedMotion) && Advances(sample.ColdAchievedMotion);
+
+    static bool Advances(Vector3 motion) => float.IsFinite(motion.X) && float.IsFinite(motion.Y) &&
+        float.IsFinite(motion.Z) && (motion.X != 0 || motion.Z != 0);
+
     internal static bool Evaluate(in SupportCostSample candidate, in SupportCostSample legacy, bool dense,
         double hostScale = 1, long explicitLifetimeBytes = 0)
     {
@@ -79,7 +152,7 @@ internal static class SupportCostVerdict
 internal static class SupportCostArtifact
 {
     internal static void Write(string path, IReadOnlyList<SupportCostSample> samples, string baseSha,
-        string candidateSha, string command)
+        string candidateSha, string command, string? m2MaxArtifactPath = null)
     {
         if (samples.Count == 0) throw new ArgumentException("A cost artifact needs samples.", nameof(samples));
         var scenes = new Dictionary<string, SupportCostRow?>();
@@ -105,20 +178,6 @@ internal static class SupportCostArtifact
         if (root[section] is not null) throw new InvalidOperationException("This cost section is already recorded.");
         var lifetime = ContactLifetimeAllocationTests.Inventory();
         string runId = Guid.NewGuid().ToString("N");
-        var compared = samples.Select(sample =>
-        {
-            if (sample.Operation is not ("Find" or "DryTick" or "ExplicitTick" or "GroundTickBorrowed") &&
-                !sample.Operation.StartsWith("GroundSubstep", StringComparison.Ordinal)) return sample;
-            string legacyOperation = sample.Operation == "Find" ? "LegacyDownPass" : "LegacyTick";
-            SupportCostSample? legacy = samples.FirstOrDefault(s => s.Scene == sample.Scene && s.Operation == legacyOperation);
-            return legacy is null ? sample : sample with
-            {
-                CandidateLegacyRatio = sample.Operation is "Find" or "DryTick" or "ExplicitTick" && legacy.WarmMicroseconds > 0 ? sample.WarmMicroseconds / legacy.WarmMicroseconds : null,
-                WholeTickDeltaMicroseconds = sample.Operation is "DryTick" or "ExplicitTick" ? sample.WarmMicroseconds - legacy.WarmMicroseconds : null,
-                GatePassed = SupportCostVerdict.Evaluate(sample, legacy, sample.Dense,
-                    explicitLifetimeBytes: lifetime.Movement + lifetime.Physics + lifetime.Pin),
-            };
-        }).ToArray();
         root[section] = JsonSerializer.SerializeToNode(new
         {
             RunId = runId,
@@ -158,8 +217,37 @@ internal static class SupportCostArtifact
             Geometry = "Every captured Find is checked against the independent installed-geometry oracle after both sample windows. Correct None and capacity refusals cannot pass a support cost gate. Tick geometry requires matching support reads and a finite advancing state.",
             ProcessExitStatus = (int?)null,
             Scenes = scenes,
-            Samples = compared,
+            Samples = samples,
         }, options);
+        JsonObject recording = root[section]!.AsObject();
+        double hostScale = 1;
+        bool normalizationPassed = m2MaxArtifactPath is null ||
+            SupportCostVerdict.TryHostedScale(ReadBaseline(m2MaxArtifactPath), recording, out hostScale);
+        if (m2MaxArtifactPath is not null)
+        {
+            recording["HostScale"] = normalizationPassed ? JsonValue.Create(hostScale) : null;
+            recording["HostedNormalizationPassed"] = normalizationPassed;
+            recording["RecordingLabel"] = "hosted-support-cost";
+            recording["MeasuredBeforeHarnessCommit"] = false;
+            recording["Normalization"] = "Legacy flat-box whole tick from this invocation divided by the finalized M2 Max baseline. Only absolute time ceilings scale.";
+        }
+        var compared = samples.Select(sample =>
+        {
+            if (sample.Operation is not ("Find" or "DryTick" or "ExplicitTick" or "GroundTickBorrowed") &&
+                !sample.Operation.StartsWith("GroundSubstep", StringComparison.Ordinal)) return sample;
+            string legacyOperation = sample.Operation == "Find" ? "LegacyDownPass" : "LegacyTick";
+            SupportCostSample? legacy = samples.FirstOrDefault(s => s.Scene == sample.Scene && s.Operation == legacyOperation);
+            if (legacy is null) return m2MaxArtifactPath is null ? sample : sample with { GatePassed = false };
+            return sample with
+            {
+                CandidateLegacyRatio = sample.Operation is "Find" or "DryTick" or "ExplicitTick" && legacy.WarmMicroseconds > 0 ? sample.WarmMicroseconds / legacy.WarmMicroseconds : null,
+                WholeTickDeltaMicroseconds = sample.Operation is "DryTick" or "ExplicitTick" ? sample.WarmMicroseconds - legacy.WarmMicroseconds : null,
+                GatePassed = normalizationPassed && (m2MaxArtifactPath is null || sample.ColdGeometryPassed && sample.GeometryMatchesOracle) &&
+                    SupportCostVerdict.Evaluate(sample, legacy, sample.Dense, hostScale,
+                        explicitLifetimeBytes: lifetime.Movement + lifetime.Physics + lifetime.Pin),
+            };
+        }).ToArray();
+        recording["Samples"] = JsonSerializer.SerializeToNode(compared, options);
         root["schemaVersion"] = 2;
         root["pendingFinalization"] = JsonSerializer.SerializeToNode(new { Section = section, RunId = runId });
         string? directory = Path.GetDirectoryName(path);
@@ -171,11 +259,30 @@ internal static class SupportCostArtifact
 
     static string Hardware()
     {
+        if (OperatingSystem.IsLinux() && File.Exists("/proc/cpuinfo"))
+        {
+            string? model = File.ReadLines("/proc/cpuinfo").FirstOrDefault(line => line.StartsWith("model name", StringComparison.Ordinal));
+            if (model is not null) return model[(model.IndexOf(':') + 1)..].Trim();
+        }
         if (!OperatingSystem.IsMacOS()) return RuntimeInformation.OSDescription;
         using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("sysctl", "-n machdep.cpu.brand_string")
         { RedirectStandardOutput = true, UseShellExecute = false });
         string hardware = process!.StandardOutput.ReadToEnd().Trim();
         process.WaitForExit();
         return hardware;
+    }
+
+    static JsonObject? ReadBaseline(string path)
+    {
+        try
+        {
+            JsonNode? root = JsonNode.Parse(File.ReadAllText(path));
+            return root is JsonObject && root["schemaVersion"]?.GetValue<int>() == 2 && root["pendingFinalization"] is null
+                ? root["baseline"] as JsonObject : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 }

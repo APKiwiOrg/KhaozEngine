@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Numerics;
 using System.Text.Json.Nodes;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Xunit;
 using KhaozEngine.Locomotion;
 
@@ -208,6 +210,82 @@ public sealed class SupportCostArtifactTests
     static SupportCostSample Sample() => new("Find", "fixture", false, "Refused", double.NaN,
         double.NaN, Vector3.Zero, 0, default, 16, 0, 1, 2, 128, 4352)
     { Refusal = true };
+
+    [Theory]
+    [InlineData(200, 25, true)]
+    [InlineData(200, 26, false)]
+    [InlineData(800, 100, true)]
+    [InlineData(800, 101, false)]
+    [InlineData(0, 1, false)]
+    public void HostedArtifactUsesReadOnlyCalibration(double hostedTime, double findTime, bool expected)
+    {
+        string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string referencePath = Path.Combine(directory, "reference.json");
+        string path = Path.Combine(directory, "support-cost", "run-1.json");
+        var options = new JsonSerializerOptions { IncludeFields = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals };
+        var input = new SupportCostRow("flat box");
+        JsonObject reference = SupportGateCostTests.HostedSection(400, true);
+        reference["Tuning"] = JsonSerializer.SerializeToNode(SupportGateCostScenes.Tuning, options);
+        File.WriteAllText(referencePath, new JsonObject { ["schemaVersion"] = 2, ["baseline"] = reference }.ToJsonString());
+        string before = File.ReadAllText(referencePath);
+        SupportCostSample legacy = SupportGateCostTests.HostedSection(hostedTime)["Samples"]![0]!.Deserialize<SupportCostSample>(options)! with { Input = input };
+        SupportCostSample candidate = legacy with { Operation = "Find", WarmMicroseconds = findTime };
+        string? tiered = Environment.GetEnvironmentVariable("DOTNET_TieredCompilation");
+        try
+        {
+            Environment.SetEnvironmentVariable("DOTNET_TieredCompilation", "0");
+            SupportCostArtifact.Write(path, [candidate, legacy, legacy with { Operation = "LegacyDownPass" }], "base", "candidate", "command", referencePath);
+            JsonNode section = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!;
+            if (hostedTime > 0) Assert.True(section["HostedNormalizationPassed"]!.GetValue<bool>(),
+                "The matching hosted record must calibrate.");
+            Assert.Equal(expected, section["Samples"]![0]!["GatePassed"]!.GetValue<bool>());
+            if (hostedTime > 0) Assert.Equal(hostedTime / 400, section["HostScale"]!.GetValue<double>());
+            else Assert.Null(section["HostScale"]);
+            Assert.Equal(before, File.ReadAllText(referencePath));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DOTNET_TieredCompilation", tiered);
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("malformed")]
+    [InlineData("pending")]
+    [InlineData("schema")]
+    public void HostedArtifactCannotPassWithoutFinalizedReference(string fault)
+    {
+        string directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string referencePath = Path.Combine(directory, "reference.json"), path = Path.Combine(directory, "run-1.json");
+        var options = new JsonSerializerOptions { IncludeFields = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals };
+        SupportCostSample legacy = SupportGateCostTests.HostedSection(200)["Samples"]![0]!.Deserialize<SupportCostSample>(options)! with { Input = new("flat box") };
+        string? tiered = Environment.GetEnvironmentVariable("DOTNET_TieredCompilation");
+        try
+        {
+            Environment.SetEnvironmentVariable("DOTNET_TieredCompilation", "0");
+            if (fault == "malformed") File.WriteAllText(referencePath, "{");
+            if (fault is "pending" or "schema")
+            {
+                var root = new JsonObject { ["schemaVersion"] = fault == "schema" ? 1 : 2, ["baseline"] = SupportGateCostTests.HostedSection(400, true) };
+                if (fault == "pending") root["pendingFinalization"] = new JsonObject();
+                File.WriteAllText(referencePath, root.ToJsonString());
+            }
+            SupportCostArtifact.Write(path, [legacy with { Operation = "Find", WarmMicroseconds = 1 }, legacy,
+                legacy with { Operation = "LegacyDownPass" }], "base", "candidate", "command", referencePath);
+            JsonNode section = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!;
+            Assert.False(section["Samples"]![0]!["GatePassed"]!.GetValue<bool>());
+            Assert.Null(section["HostScale"]);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DOTNET_TieredCompilation", tiered);
+            Directory.Delete(directory, true);
+        }
+    }
 
     static int Finalize(string artifact, int status, bool expectedSuccess = false)
     {

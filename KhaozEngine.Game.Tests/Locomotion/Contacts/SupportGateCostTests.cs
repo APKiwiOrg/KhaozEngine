@@ -5,6 +5,9 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using KhaozEngine.Locomotion;
 using KhaozEngine.Locomotion.Contacts;
 using KhaozEngine.Physics;
@@ -305,18 +308,27 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
             if (row.Name.StartsWith("stairs ", StringComparison.Ordinal))
                 samples.AddRange(sampler.Measure(row, "LegacyTreadDownPass"));
         }
+        bool hosted = Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true";
         string label = File.Exists(path) ? "sg9-cost" : "sg2-baseline";
         string command = "DOTNET_TieredCompilation=0 KHAOZ_SUPPORT_COST_ARTIFACT=" + path +
-            " build-slot --label " + label + " -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter \"FullyQualifiedName~SupportGateCostTests.OneShotCostArtifact\"";
-        SupportCostArtifact.Write(path, samples, BaseSha, sha, command);
+            (hosted ? " dotnet test " + Environment.GetEnvironmentVariable("PROJECT") + " -c Release --no-build --filter \"" +
+                Environment.GetEnvironmentVariable("FILTER") + "\" --logger \"trx;LogFileName=" + Path.GetFileNameWithoutExtension(path) +
+                ".trx\" --results-directory \"" + Path.GetDirectoryName(Path.GetDirectoryName(path)) + "\""
+                : " build-slot --label " + label + " -- dotnet test KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj -c Release --filter \"FullyQualifiedName~SupportGateCostTests.OneShotCostArtifact\"");
+        string? reference = hosted ? Path.Combine(GitOutput("rev-parse --show-toplevel"), "docs", "verification", "2026-10-11-support-gates-cost.json") : null;
+        SupportCostArtifact.Write(path, samples, BaseSha, sha, command, reference);
         Assert.True(File.Exists(path));
+        if (hosted) Assert.True(JsonNode.Parse(File.ReadAllText(path))!["baseline"]!["HostedNormalizationPassed"]!.GetValue<bool>(),
+            "Hosted calibration needs matching scenes, fixed compilation metadata and a valid moving legacy flat-box tick.");
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
         output.WriteLine($"Recorded {samples.Count} first-use/warm operation pairs at {sha}.");
     }
 
-    static string GitSha()
+    static string GitSha() => GitOutput("rev-parse HEAD");
+
+    static string GitOutput(string arguments)
     {
-        using var process = Process.Start(new ProcessStartInfo("git", "rev-parse HEAD")
+        using var process = Process.Start(new ProcessStartInfo("git", arguments)
         { RedirectStandardOutput = true, UseShellExecute = false });
         string sha = process!.StandardOutput.ReadToEnd().Trim();
         process.WaitForExit();
@@ -350,6 +362,163 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
 
     static SupportCostSample Synthetic(string operation, double time) => new(operation, "synthetic", true,
         "Grounded", 0, 0, Vector3.UnitX, 1, default, 0, 0, 0, time, 0, 4352);
+
+    [Theory]
+    [InlineData(200, 0.5, 25, 100, 500, 250, 500, 2000, 250)]
+    [InlineData(800, 2, 100, 400, 2000, 1000, 2000, 8000, 1000)]
+    public void HostedNormalizationScalesFasterAndSlowerHosts(double hostedLegacy, double expectedScale,
+        double ordinaryFind, double ordinarySubstep, double ordinaryTick, double denseFind,
+        double denseSubstep, double denseTick, double relativeTick)
+    {
+        Assert.True(SupportCostVerdict.TryHostedScale(HostedSection(400, true), HostedSection(hostedLegacy), out double scale));
+        Assert.Equal(expectedScale, scale);
+        foreach (var row in new[] { ("Find", false, ordinaryFind), ("GroundSubstep", false, ordinarySubstep),
+            ("DryTick", false, ordinaryTick), ("Find", true, denseFind),
+            ("GroundSubstep", true, denseSubstep), ("DryTick", true, denseTick) })
+        {
+            SupportCostSample candidate = Synthetic(row.Item1, row.Item3) with { WarmBytes = row.Item1 == "DryTick" ? 208 : 0 };
+            SupportCostSample legacy = Synthetic("LegacyTick", 10000);
+            Assert.True(SupportCostVerdict.Evaluate(candidate, legacy, row.Item2, scale));
+            Assert.False(SupportCostVerdict.Evaluate(candidate with { WarmMicroseconds = Math.BitIncrement(row.Item3) }, legacy, row.Item2, scale));
+            Assert.False(SupportCostVerdict.Evaluate(candidate with { WarmBytes = candidate.WarmBytes + 1 }, legacy, row.Item2, scale));
+        }
+        SupportCostSample tick = Synthetic("DryTick", relativeTick);
+        SupportCostSample hosted = Synthetic("LegacyTick", hostedLegacy);
+        Assert.True(SupportCostVerdict.Evaluate(tick, hosted, false, scale));
+        Assert.False(SupportCostVerdict.Evaluate(tick with { WarmMicroseconds = Math.BitIncrement(relativeTick) }, hosted, false, scale));
+        Assert.False(SupportCostVerdict.Evaluate(tick with { Substeps = 4 }, hosted, false, scale));
+        Assert.True(SupportCostVerdict.Evaluate(tick with { Operation = "ExplicitTick", WarmBytes = 624 }, hosted, false, scale, 624));
+        Assert.False(SupportCostVerdict.Evaluate(tick with { Operation = "ExplicitTick", WarmBytes = 625 }, hosted, false, scale, 624));
+    }
+
+    [Theory]
+    [InlineData("missing artifact")]
+    [InlineData("missing hosted")]
+    [InlineData("zero")]
+    [InlineData("negative")]
+    [InlineData("nan")]
+    [InlineData("infinity")]
+    [InlineData("hosted zero")]
+    [InlineData("hosted negative")]
+    [InlineData("hosted nan")]
+    [InlineData("hosted infinity")]
+    [InlineData("geometry")]
+    [InlineData("cold geometry")]
+    [InlineData("oracle")]
+    [InlineData("refusal")]
+    [InlineData("stationary")]
+    [InlineData("cold stationary")]
+    [InlineData("nonfinite motion")]
+    [InlineData("fallback")]
+    [InlineData("failed outcome")]
+    [InlineData("failed cold outcome")]
+    [InlineData("scale underflow")]
+    [InlineData("scale overflow")]
+    [InlineData("ceiling overflow")]
+    [InlineData("missing row")]
+    [InlineData("duplicate row")]
+    [InlineData("missing scene")]
+    [InlineData("mismatched scene")]
+    [InlineData("mismatched tuning")]
+    [InlineData("missing hardware")]
+    [InlineData("wrong reference hardware")]
+    [InlineData("missing architecture")]
+    [InlineData("missing runtime")]
+    [InlineData("missing OS")]
+    [InlineData("tiered")]
+    [InlineData("debug")]
+    [InlineData("reference exit")]
+    public void InvalidHostedBaselineCannotPass(string fault)
+    {
+        JsonObject? reference = HostedSection(400, true);
+        JsonObject? hosted = HostedSection(200);
+        JsonNode baseline = reference["Samples"]![0]!;
+        JsonNode row = hosted["Samples"]![0]!;
+        switch (fault)
+        {
+            case "missing artifact": reference = null; break;
+            case "missing hosted": hosted = null; break;
+            case "zero": baseline["WarmMicroseconds"] = 0; break;
+            case "negative": baseline["WarmMicroseconds"] = -1; break;
+            case "nan": baseline["WarmMicroseconds"] = "NaN"; break;
+            case "infinity": baseline["WarmMicroseconds"] = "Infinity"; break;
+            case "hosted zero": row["WarmMicroseconds"] = 0; break;
+            case "hosted negative": row["WarmMicroseconds"] = -1; break;
+            case "hosted nan": row["WarmMicroseconds"] = "NaN"; break;
+            case "hosted infinity": row["WarmMicroseconds"] = "Infinity"; break;
+            case "geometry": row["GeometryPassed"] = false; break;
+            case "cold geometry": row["ColdGeometryPassed"] = false; break;
+            case "oracle": row["GeometryMatchesOracle"] = false; break;
+            case "refusal": row["Refusal"] = true; break;
+            case "stationary": row["AchievedMotion"] = JsonSerializer.SerializeToNode(Vector3.Zero, HostedOptions); break;
+            case "cold stationary": row["ColdAchievedMotion"] = JsonSerializer.SerializeToNode(Vector3.Zero, HostedOptions); break;
+            case "nonfinite motion": row["AchievedMotion"]!["X"] = "NaN"; break;
+            case "fallback": row["Comparable"] = false; break;
+            case "failed outcome": row["Outcome"] = "Refused"; break;
+            case "failed cold outcome": row["ColdOutcome"] = "Refused"; break;
+            case "scale underflow": baseline["WarmMicroseconds"] = double.MaxValue; row["WarmMicroseconds"] = double.Epsilon; break;
+            case "scale overflow": baseline["WarmMicroseconds"] = double.Epsilon; row["WarmMicroseconds"] = double.MaxValue; break;
+            case "ceiling overflow": baseline["WarmMicroseconds"] = 1; row["WarmMicroseconds"] = double.MaxValue; break;
+            case "missing row": hosted["Samples"] = new JsonArray(); break;
+            case "duplicate row": hosted["Samples"]!.AsArray().Add(row.DeepClone()); break;
+            case "missing scene": hosted["Scenes"] = new JsonObject(); break;
+            case "mismatched scene": hosted["Scenes"]!["flat box"]!["Feet"]!["X"] = 1; break;
+            case "mismatched tuning": hosted["Tuning"]!["Speed"] = 7; break;
+            case "missing hardware": hosted.Remove("Hardware"); break;
+            case "wrong reference hardware": reference["Hardware"] = "Other CPU"; break;
+            case "missing architecture": hosted.Remove("Architecture"); break;
+            case "missing runtime": hosted.Remove("Runtime"); break;
+            case "missing OS": hosted.Remove("OperatingSystem"); break;
+            case "tiered": hosted["TieredCompilation"] = "1"; break;
+            case "debug": hosted["Compilation"] = "Debug"; break;
+            case "reference exit": reference["ProcessExitStatus"] = 1; break;
+        }
+        Assert.False(SupportCostVerdict.TryHostedScale(reference, hosted, out double scale));
+        Assert.Equal(0, scale);
+    }
+
+    [Fact]
+    public void HostedNormalizationMatchesCommittedPhysicalInputs()
+    {
+        string path = Path.Combine(GitOutput("rev-parse --show-toplevel"), "docs", "verification", "2026-10-11-support-gates-cost.json");
+        JsonObject baseline = JsonNode.Parse(File.ReadAllText(path))!["baseline"]!.AsObject();
+        JsonNode flat = baseline["Samples"]!.AsArray().Single(sample =>
+            sample!["Operation"]!.GetValue<string>() == "LegacyTick" && sample["Scene"]!.GetValue<string>() == "flat box")!;
+        JsonObject hosted = HostedSection(flat["WarmMicroseconds"]!.GetValue<double>() / 2);
+        var inputs = SupportGateCostScenes.Rows().Select(row => (SupportCostRow)row[0]).ToDictionary(row => row.Name);
+        hosted["Scenes"] = JsonSerializer.SerializeToNode(inputs, HostedOptions);
+        hosted["Tuning"] = JsonSerializer.SerializeToNode(SupportGateCostScenes.Tuning, HostedOptions);
+        Assert.True(SupportCostVerdict.TryHostedScale(baseline, hosted, out double scale));
+        Assert.Equal(0.5, scale);
+    }
+
+    static readonly JsonSerializerOptions HostedOptions = new()
+    { IncludeFields = true, NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals };
+
+    internal static JsonObject HostedSection(double time, bool reference = false)
+    {
+        SupportCostSample legacy = Synthetic("LegacyTick", time) with
+        {
+            Scene = "flat box",
+            GeometryMatchesOracle = true,
+            ColdGeometryPassed = true,
+            ColdAchievedMotion = Vector3.UnitX,
+            ColdOutcome = "Grounded"
+        };
+        return new JsonObject
+        {
+            ["Hardware"] = reference ? "Apple M2 Max" : "Hosted x64 CPU",
+            ["Architecture"] = reference ? "Arm64" : "X64",
+            ["Runtime"] = ".NET 10.0.12",
+            ["OperatingSystem"] = reference ? "macOS" : "Linux",
+            ["TieredCompilation"] = "0",
+            ["Compilation"] = "Release, tiering disabled",
+            ["ProcessExitStatus"] = reference ? JsonValue.Create(0) : null,
+            ["Tuning"] = new JsonObject { ["Speed"] = 6 },
+            ["Scenes"] = new JsonObject { ["flat box"] = JsonSerializer.SerializeToNode(new SupportCostRow("flat box"), HostedOptions) },
+            ["Samples"] = new JsonArray(JsonSerializer.SerializeToNode(legacy, HostedOptions))
+        };
+    }
 
     public void Dispose()
     {

@@ -26,6 +26,7 @@
 - Ride the unreleased version at merge. At plan time the pin and top changelog heading are 20.33.0, newest local release tag v20.32.0. Re-check current main and tags before integrating.
 - Every local build, test, render, bake or pack uses `build-slot --label <label> -- <command>`. Full suites, GPU runs and packaging also use `--heavy`.
 - No repeated test runs, local stress or CPU burners. Run each task's failing and passing test once, then the full suite once at the finish.
+- Every task that edits a shader source (Tasks 6, 7, 8, 10 and 11) regenerates the emission tables before its commit, once, with `build-slot --heavy --label atmo-shader-tables -- env KE_UPDATE_HLSL_HASHES=1 KE_UPDATE_MSL_HASHES=1 KE_UPDATE_SPIRV_HASHES=1 KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~D3D11HlslByteEquality|FullyQualifiedName~MetalMslByteEquality|FullyQualifiedName~VulkanSpirvByteEquality|FullyQualifiedName~ShaderCorpusTests"`, checks that only the programs it edited moved, and adds `KhaozEngine.Render.Tests/Gpu/hlsl-hashes/d3d11-hlsl.sha256.txt`, `msl-hashes/metal-msl.sha256.txt`, `spirv-hashes/vulkan-spirv.sha256.txt` and `shader-corpus/corpus.txt` to that task's commit, so every commit leaves the byte-equality tests green.
 - GPU facts require `KE_GPU_TESTS=1`. New golden grids come from the owning hosted CI legs, never a dev-Mac rebake substituted for another backend.
 - Work only in `/Users/antonio/KhaozEngine/.worktrees/physical-atmosphere`, branch `feature/physical-atmosphere`. Delegated implementers commit and stop. The owning orchestrator handles current-main reconciliation, push, package production and issue updates. No automatic release tag.
 
@@ -586,7 +587,7 @@ Implement Scene3D.RecordAtmosphere(IGpuCommandList cl,Vector3 eye)->void and int
 
 `build-slot --label atmo-luts-green -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~AtmosphereRendererTests|FullyQualifiedName~UboLayoutTests|FullyQualifiedName~ShaderSourceValidationTests"`
 
-Expected: layout/policy facts pass, GLSL compiles to SPIR-V, HLSL and MSL. Add the three producer pairs to ShippedShaderPrograms.GraphicsPrograms with names AtmosphereTransmittance, AtmosphereMultiScattering and AtmosphereSkyView. Update the D3D11 program-count assertion 79 to 82 and the Vulkan stage count 166 to 172. Rebuild the emitted hash/corpus tables once in Task 12 after all source edits. Runtime texel and lifetime tests also arrive there.
+Expected: layout/policy facts pass, GLSL compiles to SPIR-V, HLSL and MSL. Add the three producer pairs to ShippedShaderPrograms.GraphicsPrograms with names AtmosphereTransmittance, AtmosphereMultiScattering and AtmosphereSkyView. Update the D3D11 program-count assertion 79 to 82 and the Vulkan stage count 166 to 172. Regenerate the emission tables per Global Constraints. Runtime texel and lifetime tests arrive in Task 12.
 
 - [ ] **Step 5: Commit**
 
@@ -615,7 +616,7 @@ git commit -m "feat(atmosphere): add fragment LUT passes and shared bindings" --
 - Create: `KhaozEngine.Render.Tests/Gpu/AtmosphereGoldenScene.cs`, `KhaozEngine.Render.Tests/Gpu/AtmosphereSkyGoldenTests.cs`
 - Modify: `KhaozEngine.Render3D/Rendering/SkyRenderer.cs:25-145`, `KhaozEngine.Render3D/Internal/ShaderSources.Sky.cs:80-132`, `KhaozEngine.Render3D/SkySettings.cs:7-20,75-98`, `KhaozEngine.Render3D/PixelPostProcessSettings.cs:148-165`, `KhaozEngine.Render3D/Scene3D.TemporalResolve.cs:194-218`, `KhaozEngine.Render3D/Scene3D.cs:434`
 - Modify: `KhaozEngine.Render3D/AtmosphereModel.Lighting.cs` (Task 4, SunDiscValue), `KhaozEngine.Render3D/Internal/ShaderSources.Atmosphere.cs` (Task 6, sky/disc consumers)
-- Test: `KhaozEngine.Render.Tests/Render3D/UboLayoutTests.cs:623-644`, `KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs:104-108`, `KhaozEngine.Render.Tests/Gpu/AtmosphereSkyGoldenTests.cs`
+- Test: `KhaozEngine.Render.Tests/Render3D/SunCycleAtmosphereTests.cs` (`PhysicalSky_OverridesBackgroundAndAnchor`), `KhaozEngine.Render.Tests/Render3D/UboLayoutTests.cs:623-644` (`SkyUbo_AppendsDirectionsAt480`), `KhaozEngine.Render.Tests/Gpu/ShaderSourceValidationTests.cs:104-108`, `KhaozEngine.Render.Tests/Gpu/AtmosphereSkyGoldenTests.cs`
 
 **Interfaces:**
 - Consumes: AtmosphereBindings, frame UBO, Task 2 SkyUv, Task 4 SkyValue.
@@ -670,6 +671,7 @@ atmo_commit_paths=(
   KhaozEngine.Render3D/PixelPostProcessSettings.cs
   KhaozEngine.Render3D/Scene3D.TemporalResolve.cs
   KhaozEngine.Render3D/Scene3D.cs
+  KhaozEngine.Render.Tests/Render3D/SunCycleAtmosphereTests.cs
   KhaozEngine.Render.Tests/Render3D/UboLayoutTests.cs
   KhaozEngine.Render.Tests/Gpu/AtmosphereGoldenScene.cs
   KhaozEngine.Render.Tests/Gpu/AtmosphereSkyGoldenTests.cs
@@ -992,11 +994,7 @@ CaptureReceiver tests rigid/dissolve/GPU-skinned/CPU-skinned/splat/tile/foliage,
 
 Expected: missing new grids and any unwired receiver assertion fail, zero skipped selected GPU facts. Inspect `.got.png` evidence before baking. Fix a disproved producer/consumer in its owning task, never bless its output by baking.
 
-- [ ] **Step 3: Implement** `AtmosphereGoldenScene.CaptureFog(Vector3 origin = default) -> byte[]` and `MeasureSingleFrame(bool enabled) -> double` in `KhaozEngine.Render.Tests/Gpu/AtmosphereGoldenScene.cs`. Rebuild current emission tables once, inspect changed rows against edited pairs. Line/Distortion/shadows and historical corpus files stay unchanged.
-
-```bash
-build-slot --heavy --label atmo-shader-tables -- env KE_UPDATE_HLSL_HASHES=1 KE_UPDATE_MSL_HASHES=1 KE_UPDATE_SPIRV_HASHES=1 KE_WRITE_SHADER_CORPUS=1 dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~D3D11HlslByteEquality|FullyQualifiedName~MetalMslByteEquality|FullyQualifiedName~VulkanSpirvByteEquality|FullyQualifiedName~ShaderCorpusTests"
-```
+- [ ] **Step 3: Implement** `AtmosphereGoldenScene.CaptureFog(Vector3 origin = default) -> byte[]` and `MeasureSingleFrame(bool enabled) -> double` in `KhaozEngine.Render.Tests/Gpu/AtmosphereGoldenScene.cs`. The emission tables were regenerated by each shader task. Run the byte-equality filter from Global Constraints once without the update variables and expect it green. Line/Distortion/shadows and historical corpus files stay unchanged.
 
 Reuse one lazy scene/class, NativeDeviceLifecycle collection. Pin fresh parity after mutation/toggle. Readback stays test-only.
 

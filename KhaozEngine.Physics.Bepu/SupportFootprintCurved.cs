@@ -136,16 +136,31 @@ internal sealed partial class SupportFootprintCurved
         {
             Number t = CoreParameter();
             core = Add(core, Scale(_e, t));
-            dx = Sub(C(x), core.X); dz = Sub(C(z), core.Z);
-            distanceSquared = Add(Sq(_q), Sq(Sub(_p, t)));
+            Number gap = Sub(_p, t);
+            Point offset = Add(Scale(_e, gap), Scale(_f, _q));
+            dx = offset.X; dz = offset.Z;
+            distanceSquared = Add(Sq(_q), Sq(gap));
         }
-        Number distance = Root(distanceSquared), nearest = Max(Sub(distance, disc), C(0));
+        bool axis = Sign(disc) == GeometrySign.Zero;
+        Number distance = Root(distanceSquared), nearest = axis ? distance : Max(Sub(distance, disc), C(0));
         GeometrySign exists = Sign(Sub(_radius, nearest));
         if (exists == GeometrySign.Negative) return exists;
         if (exists == GeometrySign.Unresolved) return exists;
         Number dy = Root(Sub(Sq(_radius), Sq(nearest)));
-        Number factor = Sign(distance) == GeometrySign.Zero ? C(0) : Div(nearest, distance);
-        Number rx = Mul(dx, factor), rz = Mul(dz, factor);
+        Number rx, rz;
+        if (axis)
+        {
+            // The axis keeps its signed source offset even when the core-distance box contains zero.
+            rx = dx; rz = dz;
+        }
+        else if (Sign(nearest) == GeometrySign.Zero)
+            rx = rz = C(0);
+        else
+        {
+            // Inside the disc the numerator is zero. Its positive radius bounds the divisor at the seam.
+            Number factor = Div(nearest, Max(distance, disc));
+            rx = Mul(dx, factor); rz = Mul(dz, factor);
+        }
         var radial = new Point(rx, dy, rz);
         witness = new(Add(core, radial), Scale(radial, Div(C(1), _radius)));
         return witness.Position.Bounds(_arithmetic).IsResolved && witness.Normal.Bounds(_arithmetic).IsResolved ? GeometrySign.Positive : GeometrySign.Unresolved;

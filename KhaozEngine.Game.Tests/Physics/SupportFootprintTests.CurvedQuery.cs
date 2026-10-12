@@ -25,6 +25,7 @@ public partial class SupportFootprintTests
     [InlineData("capsule-inverted")]
     [InlineData("capsule-end")]
     [InlineData("capsule-seam")]
+    [InlineData("capsule-core-line")]
     [InlineData("capsule-axis-tangent")]
     [InlineData("capsule-compound")]
     [InlineData("cylinder-upright")]
@@ -210,6 +211,12 @@ public partial class SupportFootprintTests
         if (name.EndsWith("disc-tangent", StringComparison.Ordinal)) request = Request(x: 0.5f, radius: 0.25f);
         if (name is "capsule-end") request = Request(z: 0.85f);
         if (name is "capsule-seam") request = Request(z: 0.5f);
+        if (name is "capsule-core-line")
+        {
+            shape = new CapsuleShape(0.25f, 1.625f);
+            pose = new(new(0, -0.25f, 0), new(0.5f, 0.2692306339740753f, 0.5f, 0.6538458466529846f));
+            request = Request(x: -0.3125f, z: 0.75f, lower: -2, upper: 2);
+        }
         if (name is "cylinder-finite-end") request = Request(x: 0.35f, z: 1.25f, radius: 0.3f);
         if (name is "cylinder-cap-tangent")
             request = Request(x: 0.5f, radius: 0.25f, cosine: 1);

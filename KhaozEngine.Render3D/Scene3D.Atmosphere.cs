@@ -16,21 +16,16 @@ public sealed partial class Scene3D
     {
         if (Post.Atmosphere.Enabled)
         {
-            if (Post.AtmosphereCycle is { } cycle)
-            {
-                var applied = SunCycle.Apply(cycle, Post, eye + _frameOrigin);
-                Post.Water.HorizonColor = applied.HorizonColor;
-            }
-            else
-            {
-                var model = Post.ResolveAtmosphereModel();
-                var frame = AtmosphereRenderer.ResolveFrame(Post, model);
-                var lighting = model.EvaluateLighting(Post.Atmosphere.HeightKm(eye.Y + _frameOrigin.Y), frame);
-                Post.LightColor = AtmosphereColor(lighting.Key);
-                Post.AmbientColor = AtmosphereColor(lighting.Ambient);
-                Post.FillLightColor = AtmosphereColor(lighting.Fill);
-                Post.Water.HorizonColor = AtmosphereColor(lighting.Horizon);
-            }
+            var model = Post.ResolveAtmosphereModel();
+            var frame = AtmosphereRenderer.ResolveFrame(Post, model);
+            var lighting = model.EvaluateLighting(Post.Atmosphere.HeightKm(eye.Y + _frameOrigin.Y), frame);
+            // Refresh only the atmosphere-owned LightColor, AmbientColor, FillLightColor and Water.HorizonColor
+            // so surface lighting and water agree with this altitude's LUT. Apply owns cycle geometry, while
+            // callers can override directions and sky fields, including ExtraDiscs, after Apply.
+            Post.LightColor = AtmosphereColor(lighting.Key);
+            Post.AmbientColor = AtmosphereColor(lighting.Ambient);
+            Post.FillLightColor = AtmosphereColor(lighting.Fill);
+            Post.Water.HorizonColor = AtmosphereColor(lighting.Horizon);
         }
         _atmosphere.Record(cl, Post, eye, _frameOrigin, _currentFrameView.View,
             _currentFrameView.JitteredProjection, _res.Width, _res.Height);

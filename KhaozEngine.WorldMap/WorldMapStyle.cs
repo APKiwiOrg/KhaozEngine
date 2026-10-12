@@ -28,14 +28,20 @@ public sealed record WorldMapStyle
     /// <summary>The requested raster resolution in pixels per map metre. Defaults to four.</summary>
     public float PixelsPerMetre { get; init; } = 4f;
 
-    /// <summary>The square chunk edge length in map metres. Defaults to 64.</summary>
+    /// <summary>The level-zero square chunk edge length in map metres. Defaults to 64.</summary>
     public float ChunkMetres { get; init; } = 64f;
 
-    /// <summary>The rounded chunk edge length in raster pixels.</summary>
+    /// <summary>The rounded chunk edge length in raster pixels, shared by every pyramid level.</summary>
     public int ChunkPixels => (int)MathF.Round(ChunkMetres * PixelsPerMetre);
 
-    /// <summary>The scale in pixels per map metre that the rasterizer actually uses after rounding the chunk dimensions.</summary>
+    /// <summary>The level-zero raster scale after rounding. Each pyramid step halves this scale.</summary>
     public float EffectivePixelsPerMetre => ChunkPixels / ChunkMetres;
+
+    internal float LevelPixelsPerMetre(int level)
+    {
+        _ = WorldMapChunking.LevelMetres(ChunkMetres, level);
+        return MathF.ScaleB(EffectivePixelsPerMetre, -level);
+    }
 
     /// <summary>The colour outside the authored surface.</summary>
     public Color VoidColor { get; init; } = Color.FromHex("#d9cba6");

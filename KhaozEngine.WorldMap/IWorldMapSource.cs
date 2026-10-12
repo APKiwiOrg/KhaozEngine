@@ -24,7 +24,13 @@ public interface IWorldMapSource
     event Action<MapRect>? Changed;
 
     /// <summary>Samples at cell centres on the source lattice, covering at least the requested area.</summary>
-    WorldMapSurfaceGrid SampleSurface(MapRect area);
+    /// <param name="area">The map-space area to cover.</param>
+    /// <param name="maxCellSize">The cell-size budget in metres.</param>
+    /// <remarks>
+    /// The returned cell size is the coarsest multiple of <see cref="SurfaceCellSize"/> no larger than
+    /// the greater of <paramref name="maxCellSize"/> and <see cref="SurfaceCellSize"/>.
+    /// </remarks>
+    WorldMapSurfaceGrid SampleSurface(MapRect area, float maxCellSize);
 
     /// <summary>Appends every surface footprint whose oriented rectangular shape intersects the area.</summary>
     void CollectFootprints(MapRect area, List<WorldMapFootprint> into);

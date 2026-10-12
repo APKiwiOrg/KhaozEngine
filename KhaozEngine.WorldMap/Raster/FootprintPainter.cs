@@ -13,6 +13,8 @@ internal sealed class FootprintPainter(RasterCanvas canvas, WorldMapStyle style)
         var resolved = new List<(WorldMapFootprint Footprint, WorldMapSymbol Symbol)>(footprints.Count);
         foreach (WorldMapFootprint footprint in footprints)
         {
+            if (2f * MathF.Max(footprint.HalfExtents.X, footprint.HalfExtents.Y) * canvas.EffectivePixelsPerMetre < 0.5f)
+                continue;
             WorldMapSymbol symbol = WorldMapSymbolResolver.SymbolFor(style, footprint);
             if (symbol.Kind != WorldMapSymbolKind.Hidden) resolved.Add((footprint, symbol));
         }

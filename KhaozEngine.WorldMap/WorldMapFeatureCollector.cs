@@ -23,14 +23,14 @@ public static class WorldMapFeatureCollector
         var footprints = new List<WorldMapFootprint>();
         source.CollectFootprints(area, footprints);
         foreach (WorldMapFootprint footprint in footprints)
-            if (WorldMapChunking.ChunkAt(footprint.Center, style.ChunkMetres) == chunk)
+            if (WorldMapChunking.ChunkAt(footprint.Center, style.ChunkMetres, chunk.Level) == chunk)
                 AddIcon(style.IconRules, WorldMapFeatureSource.Footprint, footprint.Tags, footprint.Center, icons);
 
         var markers = new List<WorldMapMarker>();
         source.CollectMarkers(area, markers);
         foreach (WorldMapMarker marker in markers)
         {
-            if (WorldMapChunking.ChunkAt(marker.Position, style.ChunkMetres) != chunk) continue;
+            if (WorldMapChunking.ChunkAt(marker.Position, style.ChunkMetres, chunk.Level) != chunk) continue;
             AddIcon(style.IconRules, WorldMapFeatureSource.Marker, marker.Tags, marker.Position, icons);
             if (style.Labels is { } rules) AddLabel(rules, marker, labels);
         }

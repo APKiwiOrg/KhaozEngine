@@ -11,19 +11,25 @@ public sealed class WorldMapChunkCache : IDisposable
 {
     readonly object _gate = new();
     readonly Dictionary<WorldMapChunkCoord, Entry> _chunks = [];
+    long _requestSequence;
+    int _retainedCount;
     bool _disposed;
 
     /// <summary>Creates a cache and subscribes to source changes for automatic invalidation.</summary>
     /// <param name="source">The authored world, permitting concurrent reads during builds.</param>
     /// <param name="style">The immutable raster and feature style used for every chunk.</param>
+    /// <param name="maxRetainedChunks">The positive cap on retained built chunks, defaulting to 256.</param>
     /// <exception cref="ArgumentException">A style property is outside its supported finite range.</exception>
-    public WorldMapChunkCache(IWorldMapSource source, WorldMapStyle style)
+    /// <exception cref="ArgumentOutOfRangeException">The retention cap is less than one.</exception>
+    public WorldMapChunkCache(IWorldMapSource source, WorldMapStyle style, int maxRetainedChunks = 256)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(style);
         WorldMapStyleValidation.Validate(style);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxRetainedChunks, 1);
         Source = source;
         Style = style;
+        MaxRetainedChunks = maxRetainedChunks;
         Source.Changed += Invalidate;
     }
 
@@ -33,10 +39,22 @@ public sealed class WorldMapChunkCache : IDisposable
     /// <summary>The raster resolution, appearance and feature rules used by this cache.</summary>
     public WorldMapStyle Style { get; }
 
+    /// <summary>The maximum number of retained built chunks when eligible images can be evicted.</summary>
+    public int MaxRetainedChunks { get; }
+
+    /// <summary>The number of retained images, including stale images during pending or active rebuilds.</summary>
+    public int RetainedCount
+    {
+        get { lock (_gate) return _retainedCount; }
+    }
+
     internal event Action? WorkQueued;
 
     /// <summary>Queues an overlapping chunk, replacing its priority with the latest request.</summary>
-    /// <remarks>Lower priorities build first. Current, failed, outside-bounds and disposed requests are ignored.</remarks>
+    /// <remarks>
+    /// Lower priorities build first. Every accepted request refreshes retention age.
+    /// Current and failed chunks are not queued. Outside-bounds and disposed requests are ignored.
+    /// </remarks>
     /// <param name="chunk">The map-space chunk address.</param>
     /// <param name="priority">The caller's current build priority.</param>
     public void Request(WorldMapChunkCoord chunk, float priority)
@@ -48,6 +66,7 @@ public sealed class WorldMapChunkCache : IDisposable
             if (_disposed) return;
             if (!_chunks.TryGetValue(chunk, out Entry? entry))
                 _chunks.Add(chunk, entry = new Entry());
+            entry.RequestSequence = ++_requestSequence;
             if (entry.Failed || entry.Built?.Generation == entry.Generation) return;
             entry.Priority = priority;
             entry.Pending = true;
@@ -86,23 +105,31 @@ public sealed class WorldMapChunkCache : IDisposable
     }
 
     /// <summary>Advances touched generations, clears their failures and queues requested chunks again.</summary>
-    /// <remarks>The change area includes the shared surface and footprint raster reaches.</remarks>
+    /// <remarks>The change area includes each cached level's shared surface and footprint raster reaches.</remarks>
     /// <param name="area">The map-space area affected by an authored change.</param>
     public void Invalidate(MapRect area)
     {
-        float margin = WorldMapRasterReach.SurfaceMetres(Style, Source.SurfaceCellSize) +
-            WorldMapRasterReach.FootprintMetres(Style);
         Action? wake;
         lock (_gate)
         {
             if (_disposed) return;
-            foreach (WorldMapChunkCoord chunk in WorldMapChunking.ChunksTouching(area.Expand(margin), Style.ChunkMetres))
+            var levels = new HashSet<int>();
+            foreach (WorldMapChunkCoord chunk in _chunks.Keys) levels.Add(chunk.Level);
+            foreach (int level in levels)
             {
-                // Unrequested chunks have no result or active generation to invalidate.
-                if (!_chunks.TryGetValue(chunk, out Entry? entry)) continue;
-                entry.Generation++;
-                entry.Failed = false;
-                entry.Pending = true;
+                float cellSize = WorldMapRasterReach.SampleCellSize(Source.SurfaceCellSize, 2f / Style.LevelPixelsPerMetre(level));
+                float margin = WorldMapRasterReach.SurfaceMetres(Style, cellSize, level) +
+                    WorldMapRasterReach.FootprintMetres(Style, level);
+                MapRect affected = area.Expand(margin);
+                // Visit requested entries rather than every possible chunk in a large change rectangle.
+                foreach (var pair in _chunks)
+                {
+                    if (pair.Key.Level != level || !WorldMapChunking.ChunkRect(pair.Key, Style.ChunkMetres).Intersects(affected)) continue;
+                    Entry entry = pair.Value;
+                    entry.Generation++;
+                    entry.Failed = false;
+                    entry.Pending = true;
+                }
             }
             wake = WorkQueued;
         }
@@ -156,7 +183,11 @@ public sealed class WorldMapChunkCache : IDisposable
             selected.Building = false;
             if (!_disposed)
             {
-                if (built is not null) selected.Built = built;
+                if (built is not null)
+                {
+                    if (selected.Built is null) _retainedCount++;
+                    selected.Built = built;
+                }
                 if (selected.Generation == generation)
                 {
                     selected.Failed = failure is not null;
@@ -164,12 +195,33 @@ public sealed class WorldMapChunkCache : IDisposable
                 }
                 // An earlier wake may have been consumed while this chunk was still building.
                 if (selected.Pending) wake = WorkQueued;
+                if (built is not null) EvictOldest();
             }
         }
         if (failure is not null)
             Trace.TraceError("World map chunk ({0}, {1}) failed: {2}", chunk.X, chunk.Y, failure);
         wake?.Invoke();
         return true;
+    }
+
+    void EvictOldest()
+    {
+        while (_retainedCount > MaxRetainedChunks)
+        {
+            WorldMapChunkCoord oldestChunk = default;
+            Entry? oldest = null;
+            foreach (var pair in _chunks)
+            {
+                Entry entry = pair.Value;
+                if (entry.Built is null || entry.Pending || entry.Building) continue;
+                if (oldest is not null && entry.RequestSequence >= oldest.RequestSequence) continue;
+                oldestChunk = pair.Key;
+                oldest = entry;
+            }
+            if (oldest is null) break;
+            _chunks.Remove(oldestChunk);
+            _retainedCount--;
+        }
     }
 
     /// <summary>Unsubscribes from source changes and stops accepting work, preserving readable built chunks.</summary>
@@ -187,6 +239,7 @@ public sealed class WorldMapChunkCache : IDisposable
     {
         public int Generation;
         public float Priority;
+        public long RequestSequence;
         public WorldMapChunk? Built;
         public bool Pending;
         public bool Building;

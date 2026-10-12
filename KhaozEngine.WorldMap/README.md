@@ -21,14 +21,23 @@ including negative positions. `ChunkRect` returns the south-west origin and squa
 and excludes chunks that only touch an area's north or east boundary. Chunk sizes must be finite
 and positive.
 
+`WorldMapChunkCoord(X, Y, Level = 0)` addresses a level-of-detail pyramid. `LevelMetres(chunkMetres,
+level)` is `chunkMetres * 2^level`, and levels must be non-negative. `ChunkAt` and `ChunksTouching`
+accept an optional level, and `ChunkRect` honours the coordinate's level using the same canonical
+edges. `MaxLevel(bounds, chunkMetres)` returns the smallest level spanning the bounds' larger side,
+or zero for empty bounds. Each level retains the same pixel dimensions while covering twice as
+many metres per axis as the preceding level.
+
 ## Source contract
 
 Implement `IWorldMapSource` to adapt an authored world:
 
 - `Bounds` describes the surface in map metres. `SurfaceCellSize` exposes the native sampling spacing.
-- `SampleSurface(area)` returns a `WorldMapSurfaceGrid` covering at least the area and aligned to the
+- `SampleSurface(area, maxCellSize)` returns a `WorldMapSurfaceGrid` covering at least the area and aligned to the
   source lattice. `Origin` is the south-west corner of cell (0, 0), and samples sit at cell centres.
   `Index(column, row)` addresses `row * Width + column`, with row zero to the south.
+  `CellSize` is the coarsest multiple of `SurfaceCellSize` no larger than
+  `max(maxCellSize, SurfaceCellSize)`. A hint below native spacing keeps native spacing.
 - Grid arrays start void and dry. `Ground` uses `Color.Transparent` for void,
   `SurfaceHeight` uses NaN for void, and `WaterSurface` uses NaN where dry. Heights are metres.
   Fill the three arrays at matching indices. Cell sizes must be finite and positive, dimensions
@@ -80,8 +89,10 @@ Both shadow offset components must be finite.
 opaque RGBA8 bytes. Raster row zero is north, and column zero is west. `Revision` is captured before
 sampling, so a consumer can discard an image when the source changes during the read.
 
-The rasterizer samples the source once over the chunk plus a margin of
-`2 * SurfaceCellSize + Water.ShorelinePixels / EffectivePixelsPerMetre` metres. It blends ground colours and
+At level `L`, the rasterizer uses `levelPpm = EffectivePixelsPerMetre / 2^L` and requests
+`SampleSurface(area, maxCellSize: 2f / levelPpm)`. It samples once over the chunk plus a margin of
+`2 * returnedCellSize + Water.ShorelinePixels / levelPpm` metres. The resolution contract determines
+the returned cell size before sampling, so the margin covers coarse relief samples too. It blends ground colours and
 heights between source cell centres, dropping void contributions and renormalizing the remaining
 weights. Pixels whose nearest cell is void retain `VoidColor`. Dry ground receives normalized
 hillshade and the configured steep-slope multiplier. Water blends the depth palette without relief,
@@ -94,6 +105,8 @@ shared internal `WorldMapRasterReach` margins. `WorldMapSymbolResolver.Matches` 
 rule field with ordinal archetype and all-of tag matching. `SymbolFor` selects the first matching rule,
 then the blocking fallback or hidden symbol. All building shadows draw first. Symbols then draw by kind in declaration
 order and ascending footprint `Id` within each kind.
+Footprints whose larger extent times `levelPpm` is below half a pixel are skipped, including their
+building shadows. Footprint reach converts its extra pixel at `levelPpm`.
 
 Buildings and bridges use oriented rectangles. Trees and obstacles use inscribed ellipses. Walls
 follow the longer local axis, choosing local x on a tie, with the configured wall width and no outline.
@@ -105,7 +118,7 @@ Colour calculations use the stored channel values directly. Quantization clamps 
 zero through one, rounds to the nearest byte, and sets alpha to 255. Matching source data, revision
 and style produce identical bytes on one machine. `PixelsPerMetre` is the requested scale.
 `EffectivePixelsPerMetre` is `ChunkPixels / ChunkMetres`, and all raster geometry uses that rounded
-scale so the image fills its chunk rectangle. Chunk images match the corresponding pixels of a
+scale, divided by `2^Level`, so the image fills its chunk rectangle. Chunk images match the corresponding pixels of a
 larger raster with the same effective pixels per metre and aligned pixel centres. Increasing chunk
 size at the same requested scale can round to a different effective scale.
 
@@ -114,7 +127,8 @@ size at the same requested scale can round to a different effective scale.
 Call `WorldMapFeatureCollector.Collect(source, style, chunk)` to produce `WorldMapChunkFeatures`.
 The collector queries footprints and markers over the chunk rectangle. A footprint icon belongs to
 the chunk containing its `Center`, and a marker's icon and label belong to the chunk containing its
-`Position`. Half-open ownership keeps anchors unique when a footprint crosses a chunk border.
+`Position`. Ownership uses `ChunkAt(anchor, style.ChunkMetres, chunk.Level) == chunk`, so each
+anchor belongs to one chunk per pyramid level, including when a footprint crosses a chunk border.
 
 Each feature takes the first `IconRules` entry whose `Source` matches its kind and whose `AllTags`
 are all present. Tag matching is ordinal and case-sensitive. An empty requirement matches any tags.
@@ -127,6 +141,23 @@ Null label rules disable labels. A marker can produce both an icon and a label.
 Both collections sort by descending `Position.Y`, ascending `Position.X`, then ordinal `IconKey`
 or `MarkerName`. Collected lists are read-only. `WorldMapChunkFeatures.Empty` contains no anchors.
 Screen-space merging, label placement and localized text resolution belong to the view and game.
+
+## Chunk cache and retention
+
+`WorldMapChunkCache(source, style, maxRetainedChunks: 256)` builds generation-tagged imagery and
+feature anchors together. The cap must be at least one. `MaxRetainedChunks` exposes the cap, and
+`RetainedCount` includes both current images and stale images retained during rebuilds.
+`Request` refreshes a chunk's request sequence even when its image is already current.
+After publication, excess images are evicted in oldest-request order. Pending and building chunks
+are protected. Once work drains, 256 default chunks of 256 by 256 RGBA pixels have a 64 MiB image
+payload bound, excluding feature metadata and temporary build allocations. Protected rebuilds can
+temporarily exceed the cap.
+
+Eviction drops the image and generation entry. `TryGet` and `IsCurrent` return false afterward,
+and requesting the chunk again rebuilds it. `Invalidate(area)` expands the edit separately for
+each cached level using that level's surface cell size and footprint reach. Builds run outside
+the bookkeeping lock. An invalidation during a build leaves its result stale, and a failed source
+read quarantines only that generation until invalidation permits a retry.
 
 The [world-map design](../docs/superpowers/specs/2026-10-12-world-map-design.md) describes the broader
 engine round and the consumers of these contracts.

@@ -56,7 +56,7 @@ place handedness is handled. Every other package works in map space only.
 
 `MapRect` is an axis-aligned, half-open rectangle with a south-west origin. South and west edges are included,
 north and east edges are excluded, and zero-area rectangles intersect nothing. A chunk is a square of `ChunkMetres`
-aligned to the map-space origin and addressed by integer `(cx, cy)`.
+aligned to the map-space origin and addressed by integer `(cx, cy, level)`, with level zero as the default.
 
 ## Source contract
 
@@ -68,7 +68,7 @@ public interface IWorldMapSource
     long Revision { get; }
     event Action<MapRect>? Changed;
 
-    WorldMapSurfaceGrid SampleSurface(MapRect area);
+    WorldMapSurfaceGrid SampleSurface(MapRect area, float maxCellSize);
     void CollectFootprints(MapRect area, List<WorldMapFootprint> into);
     void CollectMarkers(MapRect area, List<WorldMapMarker> into);
 
@@ -81,8 +81,10 @@ public interface IWorldMapSource
   cell a ground colour (`Color.Transparent` for void), a surface height (NaN for void) and a water surface height
   (NaN where dry). The grid covers at least the requested area and is aligned to the source lattice, with its origin
   at the south-west corner of cell (0, 0). Rows run from south to north. Samples sit at cell centres. The
-  source picks its native spacing (`TileSize` for TileWorld, whatever the terrain resolves to for MapDoc). The
-  rasterizer resamples it, so the source never knows about pixels.
+  source exposes its native spacing (`TileSize` for TileWorld, whatever the terrain resolves to for MapDoc).
+  The returned cell size is the coarsest multiple of that spacing no larger than
+  `max(maxCellSize, SurfaceCellSize)`. The rasterizer supplies a budget in metres and resamples the grid,
+  so the source never knows about pixels.
 - **`SurfaceCellSize`** exposes the native source lattice spacing in metres.
 - **`CollectFootprints`** appends every surface object's oriented rectangle whose shape intersects the area: id,
   archetype key, centre, local half extents, rotation, tags, `IsRoof` and `Collision` (`None`, `Solid` or `Wall`).
@@ -106,7 +108,9 @@ public interface IWorldMapSource
 
 `TileWorldMapSource` wraps a `TileWorldDocument` and its `TileWorldCatalogs`.
 
-- One surface cell per tile at the document's `TileSize`. A missing region or unresolved underlay is void. A resolved
+- Surface cells use stride `n = max(1, floor(maxCellSize / TileSize))`, aligned to multiples of `n` tiles.
+  Each cell point-samples the tile at `blockStart + n / 2` on both axes using integer division.
+  Stride one preserves native sampling byte for byte. A missing region or unresolved underlay is void. A resolved
   non-zero overlay replaces the underlay colour for the whole tile, ignoring overlay shapes. Height is the mean of the
   four corner heights on `surfacePlane`. `TileWaterBodies.IsWater` selects water tiles, which report the covering
   body's `SurfaceY` in metres. Dry cells have NaN water height, and void cells have NaN surface and water heights.
@@ -139,11 +143,19 @@ public interface IWorldMapSource
 ## Rasterizer and chunk cache
 
 `WorldMapRasterizer.Rasterize(source, style, chunk)` returns a `WorldMapChunkImage` with `Coord`, `Size`, `Rgba` and
-the `Revision` captured before sampling. Per chunk:
+the `Revision` captured before sampling. `WorldMapChunkCoord(X, Y, Level = 0)` forms a pyramid with
+`LevelMetres(chunkMetres, L) = chunkMetres * 2^L`. Chunk edges remain canonical at every level.
+`ChunkAt` and `ChunksTouching` accept an optional level, and `ChunkRect` honours `chunk.Level`.
+`MaxLevel(bounds, chunkMetres)` is the smallest level spanning the larger bounds extent, or zero for empty bounds.
+Every level uses the same `ChunkPixels` dimensions and `levelPpm = EffectivePixelsPerMetre / 2^Level`.
+Per chunk:
 
-1. Sample the chunk with the surface reach, two source cells plus the shoreline width converted to metres. Collect
+1. Request `SampleSurface(area, maxCellSize: 2f / levelPpm)`. Sample the chunk with the surface reach,
+   two returned grid cells plus the shoreline width converted to metres at `levelPpm`. The resolution contract
+   fixes that cell size before sampling. Collect
    footprints with the footprint reach, the building shadow offset length, half the wall width and one raster pixel
-   converted to metres. Both reaches are defined once in `WorldMapRasterReach` and preserve chunk-border continuity.
+   converted to metres at `levelPpm`. Both reaches are defined once in `WorldMapRasterReach`, with level-aware
+   overloads and unchanged level-zero values, and preserve chunk-border continuity.
 2. Resample ground colours and heights with bilinear blending between cell centres, dropping void contributions and
    renormalizing the remaining weights. Pixels whose nearest cell is void keep `VoidColor`.
 3. Apply hillshade to dry ground from the height gradient, with extra darkening above the steepness threshold.
@@ -152,20 +164,30 @@ the `Revision` captured before sampling. Per chunk:
    trees, ordered by ascending footprint `Id` within each kind. Buildings and bridges draw oriented rectangles with
    the configured outline, one pixel by default. Trees and obstacles draw inscribed ellipses. Walls follow the longer
    local axis with the configured width and no outline. Shapes are clipped to the chunk and use fixed four by four
-   subsampling with disjoint fill and outline coverage.
+   subsampling with disjoint fill and outline coverage. Skip any footprint whose larger extent times `levelPpm`
+   is below half a pixel, including its building shadow.
 
 The same source data, revision and style produce identical bytes on one machine. Colour math uses the stored channel
 values directly, matching `Render2D` UI texture uploads without sRGB decoding. Cross-platform goldens allow two byte
 values per channel for floating-point differences.
 
 `WorldMapChunkCache` holds generation-tagged `WorldMapChunk` results containing `Image`, `Features` and `Generation`.
-`Invalidate(area)` widens the touched area by the sum of the surface and footprint reaches from `WorldMapRasterReach`,
+`Invalidate(area)` widens the touched area separately for every cached level by the sum of that level's surface
+and footprint reaches from `WorldMapRasterReach`,
 marks previously requested chunks stale and clears failed generations for retry. `TryGet(chunk, out built)` retains
 the last successful result during a rebuild. `BuildNext()` attempts the lowest-priority pending chunk outside the
 bookkeeping lock. A source failure quarantines that generation without stopping `WorldMapChunkWorker`.
 
+The cache constructor accepts `maxRetainedChunks = 256`, requiring at least one. `MaxRetainedChunks` exposes the cap
+and `RetainedCount` counts built images, including stale images. Every `Request` refreshes that chunk's request sequence.
+After a build publishes, the cache evicts built chunks in oldest-request order until the cap is met or all remaining
+chunks are pending or building. Protected rebuilds can temporarily exceed the cap. Once work drains, the default cap
+of 256 chunks of 256 by 256 RGBA pixels bounds image payload to 64 MiB, excluding feature metadata and temporary
+allocations. Eviction drops the generation entry too. `TryGet` and `IsCurrent` return false, and a new request rebuilds.
+
 `WorldMapFeatureCollector.Collect(source, style, chunk)` collects icon and label anchors owned by the chunk containing
-the footprint centre or marker position. Half-open ownership prevents duplicates at chunk borders. Anchors share the
+the footprint centre or marker position through `ChunkAt(anchor, chunkMetres, chunk.Level) == chunk`.
+Half-open ownership prevents duplicates at chunk borders independently per level. Anchors share the
 imagery's cache generation and invalidation, so they scale with world size like the imagery.
 
 ## Map view

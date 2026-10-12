@@ -24,9 +24,13 @@ public static class WorldMapRasterizer
         MapRect rect = WorldMapChunking.ChunkRect(chunk, style.ChunkMetres);
         int size = style.ChunkPixels;
         long revision = source.Revision;
-        float margin = WorldMapRasterReach.SurfaceMetres(style, source.SurfaceCellSize);
-        var sampler = new SurfaceSampler(source.SampleSurface(rect.Expand(margin)));
-        var canvas = new RasterCanvas(size, rect, style.EffectivePixelsPerMetre);
+        float levelPpm = style.LevelPixelsPerMetre(chunk.Level);
+        float maxCellSize = 2f / levelPpm;
+        // The resolution contract fixes the returned cell size before allocating the expanded grid.
+        float cellSize = WorldMapRasterReach.SampleCellSize(source.SurfaceCellSize, maxCellSize);
+        float margin = WorldMapRasterReach.SurfaceMetres(style, cellSize, chunk.Level);
+        var sampler = new SurfaceSampler(source.SampleSurface(rect.Expand(margin), maxCellSize: maxCellSize));
+        var canvas = new RasterCanvas(size, rect, levelPpm);
         var relief = new ReliefShader(style.Relief);
         var water = new WaterPainter(sampler, canvas, style.Water);
 
@@ -42,7 +46,7 @@ public static class WorldMapRasterizer
             }
 
         var footprints = new List<WorldMapFootprint>();
-        float footprintMargin = WorldMapRasterReach.FootprintMetres(style);
+        float footprintMargin = WorldMapRasterReach.FootprintMetres(style, chunk.Level);
         source.CollectFootprints(rect.Expand(footprintMargin), footprints);
         new FootprintPainter(canvas, style).Paint(footprints);
 

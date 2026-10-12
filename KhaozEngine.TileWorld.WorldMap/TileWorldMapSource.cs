@@ -62,8 +62,11 @@ public sealed class TileWorldMapSource : IWorldMapSource
         remove { }
     }
 
-    /// <summary>Samples a tile-aligned grid covering the area, ordered south to north.</summary>
-    public WorldMapSurfaceGrid SampleSurface(MapRect area) => _surface.Sample(area);
+    /// <summary>Point-samples a stride-aligned grid covering the area, ordered south to north.</summary>
+    /// <param name="area">The map-space area to cover.</param>
+    /// <param name="maxCellSize">The cell-size budget in metres. Hints below one tile use native spacing.</param>
+    /// <remarks>Each cell samples the tile at its block start plus half the integer tile stride.</remarks>
+    public WorldMapSurfaceGrid SampleSurface(MapRect area, float maxCellSize) => _surface.Sample(area, maxCellSize);
 
     /// <summary>Appends intersecting surface objects and roofs, including anchors outside the area.</summary>
     public void CollectFootprints(MapRect area, List<WorldMapFootprint> into) => _footprints.Collect(area, into);

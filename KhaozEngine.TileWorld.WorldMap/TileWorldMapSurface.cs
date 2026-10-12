@@ -24,15 +24,22 @@ internal sealed class TileWorldMapSurface
         _tileSize = tileSize;
     }
 
-    internal WorldMapSurfaceGrid Sample(MapRect area)
+    internal WorldMapSurfaceGrid Sample(MapRect area, float maxCellSize)
     {
+        if (!float.IsFinite(maxCellSize)) throw new ArgumentOutOfRangeException(nameof(maxCellSize));
+        int stride = checked((int)MathF.Max(1f, MathF.Floor(maxCellSize / _tileSize)));
         TileRect rect = TileWorldMapSource.TilesCovering(area, _tileSize);
-        var grid = new WorldMapSurfaceGrid(new Vector2(rect.X * _tileSize, rect.Z * _tileSize),
-            _tileSize, rect.Width, rect.Height);
-        for (int row = 0; row < rect.Height; row++)
-            for (int column = 0; column < rect.Width; column++)
+        int left = checked((int)Math.Floor((double)rect.X / stride));
+        int bottom = checked((int)Math.Floor((double)rect.Z / stride));
+        int width = rect.Width <= 0 ? 0 : checked((int)Math.Ceiling((double)rect.X1 / stride) - left);
+        int height = rect.Height <= 0 ? 0 : checked((int)Math.Ceiling((double)rect.Z1 / stride) - bottom);
+        var grid = new WorldMapSurfaceGrid(new Vector2(checked(left * stride) * _tileSize, checked(bottom * stride) * _tileSize),
+            stride * _tileSize, width, height);
+        for (int row = 0; row < grid.Height; row++)
+            for (int column = 0; column < grid.Width; column++)
             {
-                int x = rect.X + column, z = rect.Z + row;
+                int x = checked((left + column) * stride + stride / 2);
+                int z = checked((bottom + row) * stride + stride / 2);
                 ushort underlay = _document.GetUnderlay(x, z, _plane);
                 if (_catalogs.Material(underlay) is null) continue;
                 ushort overlay = _document.GetOverlay(x, z, _plane);

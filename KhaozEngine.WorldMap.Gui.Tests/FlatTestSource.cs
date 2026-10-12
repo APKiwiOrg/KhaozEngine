@@ -16,7 +16,7 @@ internal sealed class FlatTestSource : IWorldMapSource
     public long Revision { get; private set; }
     public event Action<MapRect>? Changed;
 
-    public WorldMapSurfaceGrid SampleSurface(MapRect area)
+    public WorldMapSurfaceGrid SampleSurface(MapRect area, float maxCellSize)
     {
         float left = MathF.Floor(area.X / SurfaceCellSize) * SurfaceCellSize;
         float bottom = MathF.Floor(area.Y / SurfaceCellSize) * SurfaceCellSize;

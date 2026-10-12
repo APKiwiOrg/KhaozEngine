@@ -33,7 +33,7 @@ public sealed class TileWorldMapSourceTests
         doc.SetOverlay(3, 0, 0, 2);
         doc.SetUnderlay(4, 0, 0, 65535);
         var source = new TileWorldMapSource(doc, Catalogs());
-        WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(-1, 0, 6, 1));
+        WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(-1, 0, 6, 1), source.SurfaceCellSize);
 
         Assert.Equal(new Vector2(-1, 0), grid.Origin);
         Assert.Equal(6, grid.Width);
@@ -60,7 +60,7 @@ public sealed class TileWorldMapSourceTests
         doc.SetCornerHeightCm(10, 21, 0, 300);
         doc.SetCornerHeightCm(11, 21, 0, 600);
         var source = new TileWorldMapSource(doc, Catalogs());
-        WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(10, 20, 1, 1));
+        WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(10, 20, 1, 1), source.SurfaceCellSize);
         Assert.Equal(3f, grid.SurfaceHeight[0]);
         Assert.True(float.IsNaN(grid.WaterSurface[0]));
     }
@@ -75,7 +75,7 @@ public sealed class TileWorldMapSourceTests
         doc.SetCornerHeightCm(12, 21, 0, 250);
         doc.SetOverlay(12, 20, 0, 4);
         var source = new TileWorldMapSource(doc, Catalogs());
-        WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(20, 40, 6, 2));
+        WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(20, 40, 6, 2), source.SurfaceCellSize);
         Assert.Equal(2.48f, grid.WaterSurface[0], 5);
         Assert.Equal(2.48f, grid.WaterSurface[1], 5);
         Assert.True(float.IsNaN(grid.WaterSurface[2]));
@@ -91,7 +91,7 @@ public sealed class TileWorldMapSourceTests
         doc.SetCornerHeightCm(-1, 0, 0, 100);
         doc.SetCornerHeightCm(1, 1, 0, 300);
         var source = new TileWorldMapSource(doc, Catalogs());
-        WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(-1, 0, 2, 1));
+        WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(-1, 0, 2, 1), source.SurfaceCellSize);
         Assert.Equal(0.98f, grid.WaterSurface[0], 5);
         Assert.Equal(2.98f, grid.WaterSurface[1], 5);
     }
@@ -103,7 +103,7 @@ public sealed class TileWorldMapSourceTests
         TileWorldDocument doc = FlatWorld(2f, new(-1, -1), new(-1, 0));
         doc.SetOverlay(-1, 0, 0, 2);
         var source = new TileWorldMapSource(doc, Catalogs());
-        WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(-1.5f, -0.5f, 1f, 1f));
+        WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(-1.5f, -0.5f, 1f, 1f), source.SurfaceCellSize);
         Assert.Equal(new Vector2(-2, -2), grid.Origin);
         Assert.Equal(2f, grid.CellSize);
         Assert.Equal(1, grid.Width);
@@ -229,7 +229,7 @@ public sealed class TileWorldMapSourceTests
         doc.SetMarker("ground", 0, 0, 0);
         doc.SetMarker("upper", 0, 0, 1);
         var source = new TileWorldMapSource(doc, Catalogs(), 1);
-        WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(0, 0, 1, 1));
+        WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(0, 0, 1, 1), source.SurfaceCellSize);
         Assert.Equal(Color.FromHex("#8a6a3a"), grid.Ground[0]);
         Assert.Equal(3f, grid.SurfaceHeight[0]);
         var footprints = new List<WorldMapFootprint>();
@@ -247,7 +247,7 @@ public sealed class TileWorldMapSourceTests
         var source = new TileWorldMapSource(new TileWorldDocument { Id = "w", DisplayName = "W" }, Catalogs());
         Assert.Equal(default, source.Bounds);
         Assert.Equal(0, source.Revision);
-        WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(1, 1, 0, 5));
+        WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(1, 1, 0, 5), source.SurfaceCellSize);
         Assert.Empty(grid.Ground);
         var footprints = new List<WorldMapFootprint>();
         source.CollectFootprints(new MapRect(1, 1, 0, 5), footprints);

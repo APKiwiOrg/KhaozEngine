@@ -24,7 +24,14 @@ A zero forward vector returns zero. World minus Z is north and world plus X is e
 
 ## Surface sampling
 
-`SampleSurface` rounds the requested map rectangle outward to the tile lattice. Its grid origin is
+`SampleSurface(area, maxCellSize)` uses stride `n = max(1, floor(maxCellSize / TileSize))`.
+Its cell size is the coarsest native multiple no larger than `max(maxCellSize, TileSize)`.
+Cells cover `n` by `n` tiles, aligned to multiples of `n` tiles, including negative coordinates.
+Each cell point-samples the tile at `blockStart + n / 2` using integer division for both axes.
+Colour, mean corner height and water surface all come from that tile. A stride of one preserves
+native sampling byte for byte.
+
+Sampling rounds the requested map rectangle outward to this stride lattice. Its grid origin is
 the south-west corner of cell `(0, 0)`, and row zero is the south row. Raster images reverse this row
 order to put north at the top.
 
@@ -39,6 +46,15 @@ order to put north at the top.
 
 Parsed colours are cached per material id. Water bodies are collected lazily per region and expanded
 into a cached tile-to-surface lookup in a `ConcurrentDictionary`.
+
+The core pyramid uses `WorldMapChunkCoord(X, Y, Level = 0)` and chunk lengths
+`ChunkMetres * 2^Level`, with fixed image dimensions. Raster resolution is
+`EffectivePixelsPerMetre / 2^Level`, and the rasterizer requests `maxCellSize: 2f / levelPpm`.
+The adapter's stride therefore grows as coarse chunks cover more of the world.
+`WorldMapChunkCache` defaults to retaining 256 built chunks, a 64 MiB RGBA image payload bound for
+256 by 256 default chunks once pending work drains. It evicts the oldest requested eligible chunk,
+protecting pending and building chunks. Protected rebuilds can temporarily exceed the cap, and
+feature metadata and build allocations are additional memory.
 
 ## Footprints and markers
 

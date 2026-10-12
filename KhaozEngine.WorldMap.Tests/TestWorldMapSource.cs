@@ -26,6 +26,7 @@ internal sealed class TestWorldMapSource : IWorldMapSource
     public List<WorldMapMarker> Markers { get; } = [];
     public Action<MapRect>? BeforeSample { get; set; }
     public int SampleCalls { get; private set; }
+    public float LastMaxCellSize { get; private set; }
 
     public void SetCell(int column, int row, Color ground, float height, float water = float.NaN)
     {
@@ -35,9 +36,10 @@ internal sealed class TestWorldMapSource : IWorldMapSource
         _surface.WaterSurface[index] = water;
     }
 
-    public WorldMapSurfaceGrid SampleSurface(MapRect area)
+    public WorldMapSurfaceGrid SampleSurface(MapRect area, float maxCellSize)
     {
         SampleCalls++;
+        LastMaxCellSize = maxCellSize;
         BeforeSample?.Invoke(area);
         int left = Math.Clamp((int)MathF.Floor((area.X - Bounds.X) / SurfaceCellSize), 0, _surface.Width);
         int bottom = Math.Clamp((int)MathF.Floor((area.Y - Bounds.Y) / SurfaceCellSize), 0, _surface.Height);

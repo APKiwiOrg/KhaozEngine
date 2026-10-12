@@ -3,9 +3,9 @@
   "runtime": ".NET 10.0.12",
   "architecture": "Arm64",
   "configuration": "Release",
-  "tieredCompilation": "default",
+  "tieredCompilation": "0, configured before testhost startup by KhaozEngine.Game.Tests/allocation.runsettings",
   "timingRecorded": false,
-  "sourceBase": "cbe05126d",
+  "sourceBase": "28b131b56",
   "tokens": {
     "MovementQueryLeaseWithReleaseBinding": 192,
     "PhysicsReadLease": 64,
@@ -30,7 +30,7 @@
   "rows": [
     {
       "scene": "stationary",
-      "coldBytes": 27960,
+      "coldBytes": 27816,
       "warmBytes": 312,
       "findCount": 2,
       "outcome": "Advanced",
@@ -39,13 +39,13 @@
       "retainedShapePairs": {
         "Body": 0,
         "Shell": 1,
-        "RoundedSweep": 1,
-        "RoundedContact": 1
+        "RoundedSweep": 0,
+        "RoundedContact": 0
       }
     },
     {
       "scene": "flat box",
-      "coldBytes": 27984,
+      "coldBytes": 27816,
       "warmBytes": 312,
       "findCount": 4,
       "outcome": "Advanced",
@@ -54,13 +54,13 @@
       "retainedShapePairs": {
         "Body": 0,
         "Shell": 1,
-        "RoundedSweep": 2,
-        "RoundedContact": 1
+        "RoundedSweep": 0,
+        "RoundedContact": 0
       }
     },
     {
       "scene": "pushed seat",
-      "coldBytes": 55360,
+      "coldBytes": 55192,
       "warmBytes": 312,
       "findCount": 8,
       "outcome": "Blocked",
@@ -69,13 +69,13 @@
       "retainedShapePairs": {
         "Body": 0,
         "Shell": 1,
-        "RoundedSweep": 2,
-        "RoundedContact": 1
+        "RoundedSweep": 0,
+        "RoundedContact": 0
       }
     },
     {
       "scene": "stairs box",
-      "coldBytes": 54768,
+      "coldBytes": 54600,
       "warmBytes": 312,
       "findCount": 7,
       "outcome": "Advanced",
@@ -84,13 +84,13 @@
       "retainedShapePairs": {
         "Body": 0,
         "Shell": 1,
-        "RoundedSweep": 2,
-        "RoundedContact": 1
+        "RoundedSweep": 0,
+        "RoundedContact": 0
       }
     },
     {
       "scene": "explicit rounding handoff",
-      "coldBytes": 1272,
+      "coldBytes": 1080,
       "warmBytes": 312,
       "findCount": 6,
       "outcome": "Advanced",
@@ -99,13 +99,13 @@
       "retainedShapePairs": {
         "Body": 0,
         "Shell": 1,
-        "RoundedSweep": 3,
-        "RoundedContact": 1
+        "RoundedSweep": 0,
+        "RoundedContact": 0
       }
     },
     {
       "scene": "explicit changed-axis rounding",
-      "coldBytes": 1272,
+      "coldBytes": 1080,
       "warmBytes": 312,
       "findCount": 7,
       "outcome": "Advanced",
@@ -114,13 +114,13 @@
       "retainedShapePairs": {
         "Body": 0,
         "Shell": 1,
-        "RoundedSweep": 3,
-        "RoundedContact": 1
+        "RoundedSweep": 0,
+        "RoundedContact": 0
       }
     },
     {
       "scene": "explicit medium descent retry",
-      "coldBytes": 1272,
+      "coldBytes": 1080,
       "warmBytes": 312,
       "findCount": 6,
       "outcome": "Blocked",
@@ -129,13 +129,13 @@
       "retainedShapePairs": {
         "Body": 0,
         "Shell": 1,
-        "RoundedSweep": 3,
-        "RoundedContact": 1
+        "RoundedSweep": 0,
+        "RoundedContact": 0
       }
     },
     {
       "scene": "explicit dry swim handoff",
-      "coldBytes": 1272,
+      "coldBytes": 1080,
       "warmBytes": 312,
       "findCount": 3,
       "outcome": "Advanced",
@@ -144,15 +144,449 @@
       "retainedShapePairs": {
         "Body": 0,
         "Shell": 1,
-        "RoundedSweep": 3,
-        "RoundedContact": 1
+        "RoundedSweep": 0,
+        "RoundedContact": 0
       }
     }
   ],
   "limits": [
-    "Managed bytes on the recorded runtime only. Other runtimes require a fresh named token inventory.",
-    "First-use dimensions and exact-dimension cache misses are cold work. The cache never refuses geometry or quantizes dimensions.",
-    "Two earlier diagnostic invocations observed additional one-shot warm allocations under default tiering. No retry loop or relaxed assertion was used. Final covering invocations passed the exact ceiling.",
-    "No timing or hosted stability proof was run. Task 9 owns the cost artifact and Task 11 owns full-suite verification."
-  ]
+    "Named bytes are measured on .NET 10.0.12 arm64. Other runtimes require a fresh inventory.",
+    "Bepu value-input geometry queries avoid continuously varying shape construction. Backends without that optional capability retain the legacy shape route and do not inherit this varying-dimension allocation proof.",
+    "The exact allocation gate uses fixed optimized compilation and checked no-GC windows. Raw historical large counter spikes were not object-profiled.",
+    "No timing, hosted stability or full-suite proof was run. Task 9 owns cost and Task 11 owns the full suite."
+  ],
+  "fixRound": 1,
+  "measurement": {
+    "coldInvocationsPerRow": 1,
+    "warmInvocationsPerRow": 1,
+    "acquisitionAndDisposalIncluded": true,
+    "noGcRegionReserveBytes": 4194304,
+    "noGcRegionCovers": "Cold and warm gameplay operations only, before oracle and output allocation.",
+    "regionFailurePolicy": "Unavailable, interrupted or exhausted regions fail. No retry or discarded sample.",
+    "positiveFreshShapeControlBytes": 24,
+    "timingSamplerIsolationDefault": false,
+    "namedTokenCeilingUnchanged": true
+  },
+  "phaseAttribution": {
+    "rowOrder": [
+      "explicit rounding handoff",
+      "stationary"
+    ],
+    "exclusivePhases": {
+      "Route": [
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "Acquisition": [
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "ControllerEntry": [
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "SupportRead": [
+        {
+          "bytes": 0,
+          "calls": 6,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 0,
+          "calls": 2,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "ShellSweep": [
+        {
+          "bytes": 0,
+          "calls": 8,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 0,
+          "calls": 2,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "Placement": [
+        {
+          "bytes": 0,
+          "calls": 3,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "RoundingHandoff": [
+        {
+          "bytes": 0,
+          "calls": 2,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "FinalClamp": [
+        {
+          "bytes": 0,
+          "calls": 0,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 0,
+          "calls": 0,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "Binding": [
+        {
+          "bytes": 0,
+          "calls": 5,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 0,
+          "calls": 3,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "Disposal": [
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "ShapeConstruction": [
+        {
+          "bytes": 0,
+          "calls": 0,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 0,
+          "calls": 0,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "AcquisitionBody": [
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "Preparation": [
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "PhysicsLease": [
+        {
+          "bytes": 64,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 64,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "ProducerPin": [
+        {
+          "bytes": 56,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 56,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "MovementLease": [
+        {
+          "bytes": 192,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 192,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "FixtureWitnessComparison": [
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "bytes": 0,
+          "calls": 1,
+          "gcCollections": [
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    "tieredControl": {
+      "row": "explicit rounding handoff",
+      "warmBytes": 952,
+      "namedTokenBytes": 312,
+      "extraPhase": "FixtureWitnessComparison",
+      "extraBytes": 640,
+      "gameplayPhaseExtraBytes": 0,
+      "sameFinalBinaryAndNoGcRegion": true,
+      "controlSetting": "DOTNET_TieredCompilation=1"
+    }
+  },
+  "allocatingSites": [
+    {
+      "site": "MovementQueryLease.QuerySolidSweepFiltered -> ContactCapsuleShapes.Get -> new CapsuleShape",
+      "cause": "The rounding enclosure radius varies with endpoint sum error. Exact cache misses construct shapes.",
+      "correction": "The Bepu selected view accepts exact CapsuleQueryDimensions values through the same certified core."
+    },
+    {
+      "site": "MovementQueryLease.QuerySolidContactsFiltered -> ContactCapsuleShapes.Get -> new CapsuleShape",
+      "cause": "The contact enclosure has the same continuously varying dimension problem.",
+      "correction": "The Bepu selected view accepts exact value dimensions through the existing complete-contact core."
+    },
+    {
+      "site": "EnvironmentAcquisitionFixture.PrepareWitness, prepared.Scope == scope",
+      "cause": "Runtime first-use work in the fixture record equality/comparer path, outside gameplay. Exact internal object attribution is an inference.",
+      "evidence": "Final binary, same no-GC region and route. Tiering enabled reports 640 B here. Tiering disabled reports 0 B here."
+    }
+  ],
+  "changingDimensionRegression": {
+    "firstRadius": 0.40000004,
+    "nextRadius": 0.40000007,
+    "oldSweepAndContactBytes": 48,
+    "fixedSweepAndContactBytes": 0,
+    "realSelectedView": true,
+    "shapeDimensionsQuantized": false,
+    "shapeCacheMissesExempted": false
+  },
+  "counterStability": {
+    "unisolatedObservedExtraBytes": [
+      80,
+      1648,
+      4264,
+      4920,
+      6032,
+      6048,
+      7040,
+      7816,
+      7992
+    ],
+    "tieringDisabledAloneWasInsufficient": true,
+    "readyToRunDisabledControlAlsoFailed": true,
+    "historicalLargeSpikeObjectAttribution": "Not established. They were not classified as harmless JIT work.",
+    "upstreamRelatedReport": "https://github.com/dotnet/runtime/issues/134724",
+    "inference": "Moving phase charges, the related macOS arm64 report and the checked no-GC results support allocation-context reconciliation as a measurement concern. CollectionCount alone did not establish the cause of an individual spike.",
+    "gateCorrection": "Checked no-GC windows preserve all gameplay allocation, acquisition and disposal. Positive control still reports a new capsule as 24 B."
+  },
+  "verification": {
+    "requiredSelection": {
+      "passed": 145,
+      "failed": 0
+    },
+    "ContactLifetimeAllocationTests": {
+      "passed": 7,
+      "failed": 0
+    },
+    "affectedGeometryAndAllocationSelection": {
+      "passed": 68,
+      "failed": 0
+    },
+    "tieredControl": {
+      "passed": 1,
+      "failed": 1,
+      "expectedFailure": true
+    }
+  }
 }

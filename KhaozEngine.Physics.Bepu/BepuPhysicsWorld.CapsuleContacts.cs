@@ -9,7 +9,7 @@ using KhaozEngine.Physics;
 
 namespace KhaozEngine.Physics.Bepu;
 
-public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleContacts
+public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleContacts, IPhysicsCapsuleGeometryQueries
 {
     // Work exhaustion is an incomplete query, never a usable prefix. This backend-policy limit is
     // separate from the caller's output capacity and must travel with a bake's backend/policy identity.
@@ -23,12 +23,29 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleContacts
         Span<CapsuleContact> destination, QueryFilter filter = default) =>
         QueryCapsuleContactsCore(capsule, pose, maxSeparationMetres, destination, filter, null);
 
-    unsafe CapsuleContactResult QueryCapsuleContactsCore(CapsuleShape capsule, Pose pose,
+    /// <inheritdoc/>
+    public CapsuleContactResult QueryCapsuleContacts(in CapsuleQueryDimensions capsule, Pose pose, float maxSeparationMetres,
+        Span<CapsuleContact> destination, QueryFilter filter = default) =>
+        QueryCapsuleContactsCore(capsule, pose, maxSeparationMetres, destination, filter, null);
+
+    CapsuleContactResult QueryCapsuleContactsCore(CapsuleShape capsule, Pose pose,
+        float maxSeparationMetres, Span<CapsuleContact> destination, QueryFilter filter,
+        StaticQueryExclusions? exclusions)
+    {
+        if (capsule is null)
+        {
+            using QueryOperation scope = EnterQuery();
+            ArgumentNullException.ThrowIfNull(capsule);
+        }
+        return QueryCapsuleContactsCore(new CapsuleQueryDimensions(capsule.Radius, capsule.Length),
+            pose, maxSeparationMetres, destination, filter, exclusions);
+    }
+
+    unsafe CapsuleContactResult QueryCapsuleContactsCore(in CapsuleQueryDimensions capsule, Pose pose,
         float maxSeparationMetres, Span<CapsuleContact> destination, QueryFilter filter,
         StaticQueryExclusions? exclusions)
     {
         using QueryOperation scope = EnterQuery();
-        ArgumentNullException.ThrowIfNull(capsule);
         if (!float.IsFinite(capsule.Radius) || capsule.Radius <= 0f ||
             !float.IsFinite(capsule.Length) || capsule.Length < 0f)
             throw new ArgumentOutOfRangeException(nameof(capsule));

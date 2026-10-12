@@ -32,8 +32,13 @@ public sealed partial class MovementQueryLease
         try
         {
             AssertCurrent();
-            var capsule = Workspace.Shapes.Get(role, body.Radius, 2f * (body.HalfHeight - body.Radius));
-            CapsuleSweepResult query = sweep.SweepCapsuleCertified(capsule, Pose.At(body.Centre), displacement, filter);
+            var dimensions = new CapsuleQueryDimensions(body.Radius, 2f * (body.HalfHeight - body.Radius));
+            // Endpoint rounding can change the enclosing dimensions on every tick. Geometric queries
+            // retain those exact values without constructing a persistent shape for each variation.
+            CapsuleSweepResult query = sweep is IPhysicsCapsuleGeometryQueries geometry
+                ? geometry.SweepCapsuleCertified(dimensions, Pose.At(body.Centre), displacement, filter)
+                : sweep.SweepCapsuleCertified(Workspace.Shapes.Get(role, dimensions.Radius, dimensions.Length),
+                    Pose.At(body.Centre), displacement, filter);
             AssertCurrent();
             if (!query.IsValid) return MovementAvailability.Invalid;
             if (!query.IsComplete || query.CertifiedErrorMetres > CoverageSkinMetres)

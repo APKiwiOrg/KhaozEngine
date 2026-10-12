@@ -46,6 +46,11 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   are finite nonnegative metres. `IsComplete` validates Clear/Hit structure only. Consumers still check
   requested extent, accepted error, scope and read currentness. Unsupported orientation, filters or
   numerical/work domains must refuse. Zero displacement requires a complete stationary certificate.
+- **`CapsuleQueryDimensions` / `IPhysicsCapsuleGeometryQueries`** - optional value-input sweep and
+  contact queries. Radius and cylindrical length retain their exact represented values. This avoids
+  constructing a persistent capsule shape for an enclosure whose dimensions vary with endpoint rounding.
+  Geometry, filters, completeness, validation, selected-view restrictions and lifetime rules match the
+  shape-input capabilities. Bepu owners and restricted views implement both routes through the same core.
 - **`IPhysicsCapsuleFeatures`** - optional finite-feature certification for one static. Under a read lease
   from the same receiver, `QueryCapsuleFeature(lease, target, capsule, pose, maximumSeparationMetres, faces)`
   names the closest feature of `target` to a capsule at `pose` within the capsule radius plus the

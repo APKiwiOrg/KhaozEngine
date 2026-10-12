@@ -199,6 +199,11 @@ The shape factory papers over three Bepu behaviours so seam shapes act like thei
 
 ## Certified sweep development status
 
+The owner and restricted views also implement `IPhysicsCapsuleGeometryQueries`. Its
+`CapsuleQueryDimensions` value inputs share the shape-input sweep and contact cores with exact represented
+dimensions, identical restrictions and validation. Changing an endpoint-rounding enclosure does not
+allocate a persistent shape.
+
 The owner and restricted query views implement `IPhysicsCapsuleSweep` for an initial identity-box
 geometry domain. This development implementation is not ready for consumer adoption: numerical-domain
 acceptance, affected regressions, general geometry and final backend verification remain pending.

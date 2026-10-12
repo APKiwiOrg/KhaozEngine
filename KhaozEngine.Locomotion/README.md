@@ -420,11 +420,22 @@ Each context provisions bounded private consistency storage and reuses it across
 Serial explicit ticks clear analytic room/axis facts and borrowed context/mode references at tick end.
 Finite owner bindings and water-level facts retain consistency until interval disposal, including when
 producer cleanup throws. Capsule shapes are immutable and cached by exact radius/length bits in separate
-role slots. First-use shape dimensions and backend scratch are cold work. A prepared warm route allocates
-only its fresh composed lease with release binding, physics read lease and producer pin. New dimensions
-can miss the bounded shape cache without changing their geometry or refusing gameplay. Producers prepare
+role slots. Certified sweeps and contact collection prefer `IPhysicsCapsuleGeometryQueries`, which takes
+exact `CapsuleQueryDimensions` values. Bepu and its selected views implement this path, so continuously
+varying endpoint-rounding enclosures do not construct shapes or churn the cache. Other backends retain
+the immutable shape route and must implement the value capability to meet the varying-dimension allocation
+gate. First-use stable shell shapes and backend scratch are cold work. A prepared warm Bepu route allocates
+only its fresh composed lease with release binding, physics read lease and producer pin. Producers prepare
 immutable witnesses once and capture them in each fresh one-use pin. Disposed public tokens remain expired
 across reacquisition, even when world generations have not changed.
+
+`KhaozEngine.Game.Tests/allocation.runsettings` disables tiering before testhost starts. The allocation
+fixture brackets one cold operation and one warm operation in a checked 4 MiB no-GC region. This keeps
+runtime allocation-context reconciliation out of the counter window. Acquisition, controller execution
+and disposal remain measured. Region setup and exit are outside the window. The reserve is not a byte
+allowance, and an unavailable, exhausted or interrupted region fails without retry. Exact named-token
+and zero borrowed-allocation assertions remain, with a positive fresh-shape allocation control. Cost
+sampling does not use this region unless explicitly selected for allocation assertions.
 
 `MovementQueryLease.SampleCentreWater` validates the body, certified scope and current pin before
 and after the producer call. Unknown remains unknown, and known data from another world is refused.

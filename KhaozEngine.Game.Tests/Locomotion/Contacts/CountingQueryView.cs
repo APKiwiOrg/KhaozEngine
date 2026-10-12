@@ -17,7 +17,7 @@ internal readonly record struct QueryCounts(int Sweeps, int Penetrations, int Ra
 /// <see cref="SourceWorld"/> is the inner view's, so foot support accepts it as that view. The caller owns the inner
 /// view.</summary>
 internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
-    : IPhysicsWorldQueryView, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood, IPhysicsSupportFootprint, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts, IPhysicsCapsuleSweep
+    : IPhysicsWorldQueryView, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood, IPhysicsSupportFootprint, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts, IPhysicsCapsuleSweep, IPhysicsCapsuleGeometryQueries
 {
     int _sweeps, _penetrations, _raycasts, _features;
 
@@ -72,6 +72,20 @@ internal sealed class CountingQueryView(IPhysicsWorldQueryView inner)
     {
         _penetrations++;
         return ((IPhysicsCapsuleContacts)inner).QueryCapsuleContacts(shape, pose, margin, contacts, filter);
+    }
+
+    public CapsuleSweepResult SweepCapsuleCertified(in CapsuleQueryDimensions shape, Pose pose, Vector3 delta,
+        QueryFilter filter = default)
+    {
+        _sweeps++;
+        return ((IPhysicsCapsuleGeometryQueries)inner).SweepCapsuleCertified(shape, pose, delta, filter);
+    }
+
+    public CapsuleContactResult QueryCapsuleContacts(in CapsuleQueryDimensions shape, Pose pose, float margin,
+        Span<CapsuleContact> contacts, QueryFilter filter = default)
+    {
+        _penetrations++;
+        return ((IPhysicsCapsuleGeometryQueries)inner).QueryCapsuleContacts(shape, pose, margin, contacts, filter);
     }
 
     public void AssertFeatureCurrent(in CapsuleFeatureResult result, IPhysicsQueryLease lease) =>

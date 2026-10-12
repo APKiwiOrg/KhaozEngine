@@ -256,6 +256,7 @@ internal static partial class ContactController
     // feet never end below analytic terrain at the axis. A non-finite clamp poisons the end, which holds the tick.
     static ContactTickContinuation Bound(in Context c, in ContactTickContinuation tick, Func<float, float, Vector2> clampXz)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.FinalClamp);
         Vector3 feet = tick.Feet;
         Vector2 axis = clampXz(feet.X, feet.Z);
         if (axis.X == feet.X && axis.Y == feet.Z) return tick;

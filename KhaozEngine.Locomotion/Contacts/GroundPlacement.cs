@@ -27,6 +27,7 @@ internal readonly record struct GroundPlacement(bool Valid, Vector3 Feet, Suppor
         float footRadius, in MoveTuning tuning, float cosMaxSlope, double budget, ref ContactMotionRoute route,
         bool clearSteep = false)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Placement);
         float feetY = seat.Outcome switch
         {
             SeatOutcome.Seated => Paced(start, startFeetY, seat, ref budget),

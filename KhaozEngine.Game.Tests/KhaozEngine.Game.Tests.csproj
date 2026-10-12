@@ -3,6 +3,12 @@
     <IsPackable>false</IsPackable>
     <OutputType>Library</OutputType>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Allocation gates use one cold and one warm operation. Default tiering defers runtime
+         comparer initialization into fixture witness comparison (640 B on .NET 10 arm64).
+         Fixed optimized compilation removes that residue. The allocation fixture also isolates
+         its cold/warm pair from GC allocation-context reconciliation without retries or excluded acquisition.
+         Phase attribution is in docs/verification/2026-10-12-support-gates-allocation.json. -->
+    <RunSettingsFilePath>$(MSBuildProjectDirectory)/allocation.runsettings</RunSettingsFilePath>
     <!-- Pinned so moved files keep their KhaozEngine.Tests.* namespaces, consistent with every other split
          test project. -->
     <RootNamespace>KhaozEngine.Tests</RootNamespace>

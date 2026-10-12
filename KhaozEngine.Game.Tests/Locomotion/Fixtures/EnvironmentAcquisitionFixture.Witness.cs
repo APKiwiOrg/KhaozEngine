@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Locomotion;
+using KhaozEngine.Physics;
 using Xunit;
 
 namespace KhaozEngine.Tests.Locomotion.Fixtures;
@@ -15,8 +16,11 @@ public sealed partial class EnvironmentAcquisitionFixture
                 Fault == "scope" ? _scope.Max - Vector3.UnitX : _scope.Max,
                 Fault == "support-envelope" ? 0f : _scope.MaxRise, _scope.MaxDrop,
                 _scope.WorldId, _scope.CurrentSpace, identity, _scope.Frame) : _scope);
-        if (_preparedWitness is { } prepared && prepared.Scope == scope && prepared.Identity == identity &&
-            SameResources(prepared)) return;
+        if (_preparedWitness is { } prepared)
+        {
+            using var comparison = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.FixtureWitnessComparison);
+            if (prepared.Scope == scope && prepared.Identity == identity && SameResources(prepared)) return;
+        }
         Assert.Equal(MovementAvailability.Known,
             MovementScopeWitness.TryCreate(scope, identity, Resources, true, out _preparedWitness));
     }

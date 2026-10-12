@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KhaozEngine.Physics;
 
 namespace KhaozEngine.Locomotion.Contacts;
 
@@ -12,6 +13,7 @@ internal static partial class ContactController
         MovementQueryLease queries, MovementBoundary? boundary = null, float? faceYaw = null,
         GroundCoreSettings? settings = null)
     {
+        using var entry = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ControllerEntry);
         ArgumentNullException.ThrowIfNull(queries);
         if (!state.IsValid || !ExplicitCharacterMovement.Valid(tuning) ||
             !ExplicitCharacterMovement.ValidCarriedState(state.State) || !water.IsValid ||
@@ -50,7 +52,9 @@ internal static partial class ContactController
 
             var body = new MovementBodyQuery(state.State.Position, tuning.CapsuleRadius,
                 tuning.CapsuleHalfHeight, selection.Space, selection.Support);
-            MovementStepOutcome placement = ExplicitCharacterMovement.WaterPlacement(body, tuning, water, queries, boundary);
+            MovementStepOutcome placement;
+            using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Placement))
+                placement = ExplicitCharacterMovement.WaterPlacement(body, tuning, water, queries, boundary);
             if (placement != MovementStepOutcome.Advanced) return HoldLeased(state, placement);
             var leased = queries.Workspace.Queries;
             leased.Initialize(queries, tuning, selection,

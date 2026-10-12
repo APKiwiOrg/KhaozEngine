@@ -32,6 +32,7 @@ public sealed class MovementEnvironmentContext
     /// <summary>Enter outside other physics leases. Success retains both gates until the returned lease is disposed.</summary>
     public MovementAvailability TryAcquire(in MovementQueryScope scope, out MovementQueryLease? lease)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.AcquisitionBody);
         lease = null;
         if (!scope.IsValid || scope.Identity != _identity ||
             !string.Equals(scope.WorldId, _worldId, StringComparison.Ordinal) ||
@@ -45,13 +46,14 @@ public sealed class MovementEnvironmentContext
         bool transferred = false;
         try
         {
-            MovementPreparationResult prepared = _provider.Prepare(scope);
+            MovementPreparationResult prepared;
+            using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Preparation)) prepared = _provider.Prepare(scope);
             if (!MovementEnvironmentValidation.Availability(prepared.Availability)) return MovementAvailability.Invalid;
             if (prepared.Availability != MovementAvailability.Known) return prepared.Availability;
             if (prepared.Identity != _identity || !string.Equals(_provider.WorldId, _worldId, StringComparison.Ordinal))
                 return MovementAvailability.Invalid;
 
-            physicsLease = leaseSource.AcquireQueryReadLease();
+            using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.PhysicsLease)) physicsLease = leaseSource.AcquireQueryReadLease();
             if (physicsLease is null) return MovementAvailability.Invalid;
             physicsLease.AssertCurrent();
             if (!ReferenceEquals(physicsLease.SourceWorld, _source) ||
@@ -59,7 +61,8 @@ public sealed class MovementEnvironmentContext
                 return MovementAvailability.Invalid;
 
             SupportQueryDiagnostics.Record(SupportQueryCounter.ProducerPins);
-            MovementAvailability availability = _provider.TryPinPrepared(scope, physicsLease, out pin);
+            MovementAvailability availability;
+            using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ProducerPin)) availability = _provider.TryPinPrepared(scope, physicsLease, out pin);
             if (!MovementEnvironmentValidation.Availability(availability)) return MovementAvailability.Invalid;
             if (availability != MovementAvailability.Known) return availability;
             if (pin is null) return MovementAvailability.Invalid;
@@ -81,7 +84,8 @@ public sealed class MovementEnvironmentContext
             catch (InvalidOperationException) { return MovementAvailability.Stale; }
             physicsLease.AssertCurrent();
             SupportQueryDiagnostics.Record(SupportQueryCounter.MovementLeases);
-            lease = new MovementQueryLease(_physics, physicsLease, pin, witness, scope.Frame, environmentGeneration, Release, _workspace);
+            using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.MovementLease))
+                lease = new MovementQueryLease(_physics, physicsLease, pin, witness, scope.Frame, environmentGeneration, Release, _workspace);
             _workspace.Enter(lease);
             transferred = true;
             return MovementAvailability.Known;

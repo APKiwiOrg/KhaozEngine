@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using KhaozEngine.Physics;
+using KhaozEngine.Locomotion;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
@@ -54,21 +55,25 @@ internal sealed class SupportCostSampler
             SupportQueryDiagnostics.Ground.Feet - stepFeet, view!.Counts - stepQueries, stepFindStart, findCount);
     }
 
+    internal Action? BeforeWarm { get; init; }
+    internal bool IsolateAllocations { get; init; }
+
     internal IReadOnlyList<SupportCostSample> Measure(SupportCostRow row, string operation)
     {
         using var execution = new SupportCostExecution(row, operation);
         view = execution.View;
-        SupportQueryDiagnostics.SetGroundSubstepObserver(begin, end);
-        SupportQueryDiagnostics.SetFindObserver(observeFind);
+        using var observers = new ObserverScope(begin, end, observeFind);
         finds = coldFinds;
         findCount = 0;
         steps = coldSteps;
         stepCount = 0;
         execution.View.Reset();
         SupportQueryDiagnostics.Reset();
+        using var allocationRegion = SupportAllocationRegion.Start(IsolateAllocations);
         long before = GC.GetAllocatedBytesForCurrentThread();
         long start = timing ? Stopwatch.GetTimestamp() : 0;
-        SupportCostOutput cold = execution.Invoke();
+        SupportCostOutput cold;
+        using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Route)) cold = execution.Invoke();
         long coldTicks = timing ? Stopwatch.GetTimestamp() - start : 0;
         long coldBytes = GC.GetAllocatedBytesForCurrentThread() - before;
         SupportQueryCounts coldCounts = SupportQueryDiagnostics.Snapshot();
@@ -83,11 +88,14 @@ internal sealed class SupportCostSampler
         stepCount = 0;
         execution.View.Reset();
         SupportQueryDiagnostics.Reset();
+        BeforeWarm?.Invoke();
         before = GC.GetAllocatedBytesForCurrentThread();
         start = timing ? Stopwatch.GetTimestamp() : 0;
-        SupportCostOutput warm = execution.Invoke();
+        SupportCostOutput warm;
+        using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Route)) warm = execution.Invoke();
         long warmTicks = timing ? Stopwatch.GetTimestamp() - start : 0;
         long warmBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        allocationRegion.Dispose();
         SupportQueryCounts counts = SupportQueryDiagnostics.Snapshot();
         QueryCounts queries = execution.View.Counts;
         int warmStepCount = stepCount;
@@ -116,7 +124,7 @@ internal sealed class SupportCostSampler
                     : "Row.Input is reused unchanged for first use and warm execution in this operation's separate selected scene.",
                 Notes = warmBytes == 0 ? [] : operation == "Find"
                     ? ["Warm Find allocated. Preserve measured bytes for Task 8 or 9. This row cannot pass the allocation gate."]
-                    : ["Total route allocation is baseline evidence. ShellMotion.TouchNormal constructs a grown capsule per call. Explicit allocation also includes contexts, dictionaries, captured analytic callbacks, witness copies and one-use tokens. Attribution is incomplete."],
+                    : ["Whole acquisition-through-disposal allocation includes fresh lifetime tokens. Compare with the named runtime inventory. Any excess requires phase attribution."],
                 ColdGeometryPassed = cold.GeometryPassed, ColdOutcome = cold.StepOutcome?.ToString() ?? cold.Outcome,
                 ColdHeight = cold.Height, ColdHeightError = cold.Error, ColdAchievedMotion = cold.Motion,
                 EndState = warm.State, ColdEndState = cold.State,
@@ -145,7 +153,7 @@ internal sealed class SupportCostSampler
                     ColdCounts = c.Counts,
                     SupportReads = warmFinds.AsSpan(w.FindStart, w.FindEnd - w.FindStart).ToArray(),
                     ColdSupportReads = coldFinds.AsSpan(c.FindStart, c.FindEnd - c.FindStart).ToArray(),
-                    Notes = w.Bytes > 0 ? ["Whole actual shell/seat/placement substep allocation. ShellMotion.TouchNormal constructs a grown capsule per call. Not attributed entirely to support."] : [],
+                    Notes = w.Bytes > 0 ? ["Whole actual shell/seat/placement substep allocation. Unexpected warm bytes require phase attribution beyond support."] : [],
                     ColdGeometryPassed = cold.GeometryPassed && c.Ground.Supported,
                     ColdOutcome = c.Ground.Supported ? "SupportedSubstep" : "UnsupportedSubstep",
                     ColdHeight = c.Ground.Height,
@@ -154,6 +162,21 @@ internal sealed class SupportCostSampler
                 });
             }
         return samples;
+    }
+
+    readonly struct ObserverScope : IDisposable
+    {
+        internal ObserverScope(Action begin, Action end, Action<SupportFindObservation> find)
+        {
+            SupportQueryDiagnostics.SetGroundSubstepObserver(begin, end);
+            SupportQueryDiagnostics.SetFindObserver(find);
+        }
+
+        public void Dispose()
+        {
+            SupportQueryDiagnostics.SetGroundSubstepObserver(null, null);
+            SupportQueryDiagnostics.SetFindObserver(null);
+        }
     }
 
     static bool CheckReads(SupportCostExecution execution, ReadOnlySpan<SupportFindObservation> observations)

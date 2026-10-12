@@ -165,6 +165,7 @@ internal static partial class ContactController
             }
             if (c.Fluid is { } fluid)
             {
+                using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.RoundingHandoff);
                 bool grounded = fluid.Accept(tick.Feet, tick.VerticalVelocity, tick.Support, tick.Grounded, tick.DescendingAtContact);
                 tick = tick with
                 {

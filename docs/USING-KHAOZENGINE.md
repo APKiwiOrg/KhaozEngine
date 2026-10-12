@@ -8605,6 +8605,10 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   `Unresolved` without a usable prefix. `IsComplete` reports structural Clear/Hit status, not proof of
   the backend certificate. Validate the whole request extent, error budget, scope and read lifetime.
   Closed endpoints and stationary requests are included. Hit bounds do not authorize placement.
+- Optional `IPhysicsCapsuleGeometryQueries` offers the same complete sweep and contact queries with
+  `CapsuleQueryDimensions` value inputs. Exact represented radius and cylindrical length reach the same
+  Bepu query core without constructing a shape. Restricted views retain their exclusions and read gates.
+  Use this capability for continuously varying geometric enclosures, including endpoint rounding.
 - Optional `IPhysicsCapsuleFeatures.QueryCapsuleFeature(lease, target, capsule, pose, maximumSeparationMetres, faces) -> CapsuleFeatureResult`
   certifies the closest finite feature of one static under a read lease. Bepu owners and restricted views
   support it. See [Capsule-feature certification](#capsule-feature-certification-iphysicscapsulefeatures).

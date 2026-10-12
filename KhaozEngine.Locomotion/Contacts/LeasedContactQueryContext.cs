@@ -78,6 +78,7 @@ internal sealed partial class LeasedContactQueryContext
     internal SupportSample FindSupport(in FootSupportQuery query) => FindSupport(query, out _);
     internal SupportSample FindSupport(in FootSupportQuery query, out MovementContactSupportBinding? binding)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportRead);
         Require(_lease.FindContactSupport(Request(query), query, out SupportSample support, out binding));
         return support;
     }
@@ -93,12 +94,14 @@ internal sealed partial class LeasedContactQueryContext
     internal bool SweepShell(CapsuleShape shape, Vector3 centre, Vector3 direction, float distance,
         out SweepHit hit, QueryFilter filter = default)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ShellSweep);
         Require(_lease.SweepContactShell(ShellBody(shape, centre), shape, direction, distance, filter, out bool blocked, out hit));
         return blocked;
     }
 
     internal bool PenetrationShell(CapsuleShape shape, Vector3 centre, out Vector3 mtv)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ShellSweep);
         Require(_lease.PenetrateContactShell(ShellBody(shape, centre), shape, out bool overlapping, out mtv));
         return overlapping;
     }
@@ -106,6 +109,7 @@ internal sealed partial class LeasedContactQueryContext
     internal CapsuleContactResult QueryShellContacts(CapsuleShape shape, Vector3 centre,
         Span<CapsuleContact> contacts)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ShellSweep);
         Require(_lease.QuerySolidContactsFiltered(ShellBody(shape, centre), 0, contacts, out var result, QueryFilter.StaticsOnly));
         return result;
     }

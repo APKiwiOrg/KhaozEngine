@@ -59,6 +59,7 @@ public sealed partial class MovementQueryLease
     MovementAvailability BindContactSupportCore(in MovementSupportRequest request, in SupportSample sample,
         out MovementContactSupportBinding binding, float? kernelFeetY)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Binding);
         binding = default;
         AssertUsable();
         MovementAvailability allowed = ContactSupportScope(request);

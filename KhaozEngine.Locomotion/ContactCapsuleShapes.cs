@@ -10,7 +10,8 @@ internal sealed class ContactCapsuleShapes
 {
     // The route inventory needs up to three exact dimension pairs in one role. Retain that
     // allowance for each of the controller's eight mode segments. This bounds retained storage,
-    // not query count. A new dimension is cold work, never a refusal or a changed geometry.
+    // not query count. Stable primitive roles use these slots. Continuously varying certification
+    // dimensions use the backend's value query capability instead of constructing cached shapes.
     internal const int SlotsPerRole = 8 * 3;
     readonly CapsuleShape?[] _slots = new CapsuleShape?[4 * SlotsPerRole];
     readonly int[] _next = new int[4];
@@ -27,6 +28,7 @@ internal sealed class ContactCapsuleShapes
             if (shape is not null && BitConverter.SingleToInt32Bits(shape.Radius) == radiusBits &&
                 BitConverter.SingleToInt32Bits(shape.Length) == lengthBits) return shape;
         }
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.ShapeConstruction);
         var created = new CapsuleShape(radius, length);
         int slot = _next[(int)role];
         _slots[first + slot] = created;

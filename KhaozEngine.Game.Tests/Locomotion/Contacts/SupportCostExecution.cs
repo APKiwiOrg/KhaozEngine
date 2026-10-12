@@ -119,12 +119,17 @@ internal sealed class SupportCostExecution : IDisposable
                 return TickOutput(ContactController.Step(input, row.Direction, row.Direction == Vector2.Zero ? 0 : 1,
                     false, false, row.Dt, height, tuning, normal, View, clamp, null));
             case "ExplicitTick":
-                var acquired = environment!.Acquire();
+                (MovementAvailability Status, IDisposable? Lease) acquired;
+                using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Acquisition))
+                    acquired = environment!.Acquire();
                 if (acquired.Status != MovementAvailability.Known)
                     return new(false, "AcquisitionRefused", double.NaN, double.NaN, Vector3.Zero, true);
-                using (MovementQueryLease lease = (MovementQueryLease)acquired.Lease!)
+                MovementQueryLease acquiredLease = (MovementQueryLease)acquired.Lease!;
+                try { return ExplicitTick(acquiredLease); }
+                finally
                 {
-                    return ExplicitTick(lease);
+                    using var disposal = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Disposal);
+                    acquiredLease.Dispose();
                 }
             case "ExplicitTickBorrowed":
                 return ExplicitTick(movementBorrowed!);

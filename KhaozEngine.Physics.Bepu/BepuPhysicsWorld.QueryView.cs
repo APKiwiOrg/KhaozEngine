@@ -23,7 +23,7 @@ public sealed partial class BepuPhysicsWorld
     }
 
     private sealed class QueryView : IPhysicsWorldQueryView, IPhysicsQueryLeaseSource, IPhysicsCapsuleContacts,
-        IPhysicsCapsuleSweep, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood, IPhysicsSupportFootprint
+        IPhysicsCapsuleSweep, IPhysicsCapsuleGeometryQueries, IPhysicsCapsuleFeatures, IPhysicsSupportNeighborhood, IPhysicsSupportFootprint
     {
         private readonly BepuPhysicsWorld _owner;
         private readonly StaticQueryExclusions _exclusions;
@@ -147,6 +147,22 @@ public sealed partial class BepuPhysicsWorld
         }
 
         public CapsuleSweepResult SweepCapsuleCertified(CapsuleShape capsule, Pose pose, Vector3 displacement,
+            QueryFilter filter = default)
+        {
+            using QueryOperation scope = _owner.EnterQuery();
+            ThrowIfDisposed();
+            return _owner.SweepCapsuleCertifiedCore(capsule, pose, displacement, filter, _exclusions);
+        }
+
+        public CapsuleContactResult QueryCapsuleContacts(in CapsuleQueryDimensions capsule, Pose pose, float maxSeparationMetres,
+            Span<CapsuleContact> destination, QueryFilter filter = default)
+        {
+            using QueryOperation scope = _owner.EnterQuery();
+            ThrowIfDisposed();
+            return _owner.QueryCapsuleContactsCore(capsule, pose, maxSeparationMetres, destination, filter, _exclusions);
+        }
+
+        public CapsuleSweepResult SweepCapsuleCertified(in CapsuleQueryDimensions capsule, Pose pose, Vector3 displacement,
             QueryFilter filter = default)
         {
             using QueryOperation scope = _owner.EnterQuery();

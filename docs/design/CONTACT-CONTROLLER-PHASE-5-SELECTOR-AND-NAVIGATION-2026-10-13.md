@@ -2,7 +2,7 @@
 
 Design for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438) phase 5 and the navigation half of
 [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299). Source baseline: `ec20a2b61` on `main`, staged 20.34.0,
-phases 1 to 4b and the support gates. Status: revision 4 after independent review rounds 1 to 3 (each REVISE). Written
+phases 1 to 4b and the support gates. Status: revision 5 after independent review rounds 1 to 4 (each REVISE). Written
 under the owner's instruction to continue the program to completion, so every choice below is a recorded ruling for
 the owner's review.
 
@@ -154,27 +154,39 @@ analytic ground delegates, a `MovementBoundary` and an optional `IMovementWaterF
 - **Coordinates.** Existing explicit frame rules apply. The pin converts physics-local queries to the field's absolute
   coordinates and converts intervals, surfaces and `IntervalColumnXZ` back, including a nonzero physics Y origin.
 
-**P5A-5. Scope planner.** The engine plans each read scope from the basis state and the commands it will run, over a
-horizon of N ticks, with conservative bounds over every supported drive:
+**P5A-5. Scope planner and scope-miss retry.** Scope size is an authorization, not an input. Every ordinary
+environment fact is the same at a point whatever scope admitted the query, because physics, the registration and the
+water field are immutable for their generations, and an analytic answer outside the region only concerns queries
+outside it. So a step's result does not depend on its scope, provided no query leaves it. The engine uses that in two
+parts.
 
-- **Horizontal speed.** The bound is the largest of the carried horizontal speed, any commitment launch or carry speed
-  that is active, preparing or requested by a command in the horizon, and
-  `max(WalkSpeed, RunSpeed, SwimSpeed) * max(1, StrafeSpeedScale, BackpedalSpeedScale) * max(1, SpeedScale)
-  * max(1, field.MaxSpeedScale)`, plus slide acceleration `Gravity * dt` per tick for contour steering and fall-line
-  carry.
-- **Vertical speed.** Upward is the largest of carried upward velocity, `JumpSpeed`, the water policy's
-  `SurfaceJumpSpeed` and any commitment vertical launch. Downward is the larger of carried downward velocity and
-  `MaxFallSpeed`.
-- **Envelope.** The centre path box over N ticks is expanded by the capsule, the foot disc, the support reach band, the
-  `GroundSignals` look-ahead of three capsule radii with reach `StepHeight + 2 * distance`, and the lease's own probe
-  and footprint admission bounds, computed with the existing `SupportFootprintBounds` calculation rather than a
-  nominal margin.
+**First estimate.** Each read scope is planned from the basis state and the commands it will run, over a horizon of N
+ticks:
+
+- **Horizontal.** Per tick, the bound is the sum, not the maximum, of the carried 3D speed (slides project carried
+  vertical velocity into the fall line), the drive bound, and slide acceleration `Gravity * dt`. The drive bound is
+  the largest of any commitment launch or carry speed that is active, preparing or requested by a command in the
+  horizon, and `max(WalkSpeed, RunSpeed, SwimSpeed) * max(1, StrafeSpeedScale, BackpedalSpeedScale)
+  * max(1, SpeedScale) * max(1, field.MaxSpeedScale)`. The sum covers `SlideCore` moving by carried contour component
+  plus contour steer.
+- **Vertical.** Upward is the largest of carried upward velocity, `JumpSpeed`, the water policy's `SurfaceJumpSpeed`
+  and any commitment vertical launch. Downward is the larger of carried downward velocity and `MaxFallSpeed`. When
+  the field reports water at the basis (sampled directly from the field before preparation), the range also covers
+  the buoyancy target `SurfaceWaterMotion` settles towards.
+- **Envelope.** The centre path box over N ticks is expanded by the capsule, the foot disc, the support reach band,
+  the `GroundSignals` look-ahead of three capsule radii with reach `StepHeight + 2 * distance`, and the lease's own
+  probe and footprint admission bounds, computed with the existing `SupportFootprintBounds` calculation rather than
+  a nominal margin.
 
 N is 1 for server and cell ticks. The client read API takes the pending replay batch itself, so commitment launches
 inside a reconcile are planned before preparation. A water field must declare a finite `MaxSpeedScale`, and a field
-without one is refused at configuration. Every margin is one the lease already checks, not a widened tolerance. A query
-outside the scope still refuses, so a planner miss shows up as a held step or a skipped signal in A2 and A7, not as
-unchecked motion.
+without one is refused at configuration.
+
+**Retry.** The lease records a scope miss when a query fails its witness envelope, or when analytic ground lies above
+the region. A tick or replay with a scope miss is discarded before publication and rerun from the same input under a
+scope enlarged to cover every refused query envelope plus the same margins, at most four times. Scope-invariance
+makes the rerun's result the result. A fifth miss holds with a distinct `ScopeExhausted` outcome, which every
+acceptance row treats as a failure. No lease check or geometric tolerance changes. The retry only re-authorizes.
 
 **P5A-6. The water field.** A public `IMovementWaterField` in `KhaozEngine.Locomotion` has `SemanticIdentity`,
 `Generation` (constant for immutable water, advanced on change), `MaxSpeedScale` (a finite bound on every
@@ -299,6 +311,11 @@ corrected.
   - A slide accelerating down a fall line, and a high airborne body over analytic terrain.
   - A footprint at the scope edge, and a centre exactly on a playable edge, with acquisition succeeding and the
     exterior queries covered.
+  - An ungrounded body on a 60 degree analytic slope with 100 m/s contour carry and a run command along the contour
+    (RunSpeed 100, Gravity 10, dt 0.1), and a swimmer at centre Y 0 under a Level surface at Y 100. Both advance
+    under the ordinary composition, and the dry slide matches the direct contact path.
+  - Scope invariance: one tick run under its planned scope, under a forced minimal scope that needs retries, and
+    under a very large scope gives bit-equal results, with the retry count recorded.
 
   A water field without a finite `MaxSpeedScale` is refused at configuration, and the A2 matrix holds no step for a
   planner miss.
@@ -349,8 +366,13 @@ corrected.
 
 ## Review response
 
-Round 1 (REVISE, F1 to F13), round 2 (REVISE, F1 to F27) and round 3 (REVISE, F1 to F31) reports are in the phase 5
-ledger.
+Round 1 (REVISE, F1 to F13), round 2 (REVISE, F1 to F27), round 3 (REVISE, F1 to F31) and round 4 (REVISE, F29
+partial only) reports are in the phase 5 ledger.
+
+Round 4 resolved F28, F30, F31 and F14, with no new findings. For the remaining F29 (and with it F1 and F17),
+revision 5 adds the summed slide bound and the buoyancy target to the first estimate, and makes a planner miss
+non-fatal: P5A-5's scope-miss retry reruns a discarded step under an enlarged scope, which is exact because results
+are scope-invariant. A7 adds the slide and deep buoyancy counterexamples and a scope-invariance row.
 
 Round 3 resolved F15, F16, F18, F26 and F27 and confirmed every navigation finding carried. Revision 4 answers the
 rest:

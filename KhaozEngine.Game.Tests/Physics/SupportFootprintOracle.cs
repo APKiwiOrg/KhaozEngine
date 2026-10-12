@@ -7,7 +7,7 @@ using KhaozEngine.Physics;
 namespace KhaozEngine.Tests.Physics;
 
 internal readonly record struct FootprintOracleWitness(SupportWitnessRole Role, OracleVector Position,
-    OracleVector Normal);
+    OracleVector Normal, double UpwardLower);
 
 internal sealed record FootprintOracleMember(StaticHandle Static, int ElementId, bool Admitted,
     bool HasDiscMaximum, double Plane, double Maximum, OracleVector Normal,
@@ -16,6 +16,7 @@ internal sealed record FootprintOracleMember(StaticHandle Static, int ElementId,
     internal OracleFace? Face { get; init; }
     internal SupportFootprintExactOracle.Bounds? PlaneBounds { get; init; }
     internal SupportFootprintExactOracle.Bounds? MaximumBounds { get; init; }
+    internal double UpwardLower => Normal.Y;
 }
 
 internal readonly record struct FootprintOracleSupport(SupportStatus Status, double Height, double HeightLower,
@@ -60,7 +61,7 @@ internal static class SupportFootprintOracle
         OracleVector witness = disc?.Witness.Middle ?? default;
         return new(face.Static, face.ElementId, true, disc is not null, plane?.Middle ?? double.NaN,
             disc?.Maximum.Middle ?? double.NaN, face.Normal,
-            disc is not null ? [new(SupportWitnessRole.Footprint, witness, face.Normal)] : [], disc is not null)
+            disc is not null ? [new(SupportWitnessRole.Footprint, witness, face.Normal, face.Normal.Y)] : [], disc is not null)
         { Face = face, PlaneBounds = plane, MaximumBounds = disc?.Maximum };
     }
 
@@ -73,7 +74,7 @@ internal static class SupportFootprintOracle
         if (!SurfaceMeetsVolume(part, request.Axis.X, request.Axis.Y, radius, bottom, top)) return null;
         var witnesses = new List<FootprintOracleWitness>();
         SurfacePoint? axis = UpperAt(part, request.Axis.X, request.Axis.Y);
-        if (axis is { } a) witnesses.Add(new(SupportWitnessRole.Axis, a.Position, a.Normal));
+        if (axis is { } a) witnesses.Add(new(SupportWitnessRole.Axis, a.Position, a.Normal, a.Normal.Y));
         SurfacePoint? highest = Maximum(part, request.Axis.X, request.Axis.Y, request.Radius, 0);
         if (highest is { } h)
         {
@@ -81,7 +82,7 @@ internal static class SupportFootprintOracle
             if (h.Normal.Y < request.CosMaxSlope &&
                 Maximum(part, request.Axis.X, request.Axis.Y, request.Radius, request.CosMaxSlope) is { } walkable)
                 selected = walkable;
-            witnesses.Add(new(SupportWitnessRole.Footprint, selected.Position, selected.Normal));
+            witnesses.Add(new(SupportWitnessRole.Footprint, selected.Position, selected.Normal, selected.Normal.Y));
         }
         SurfacePoint? own = witnesses.Count == 0 ? null : new(witnesses[^1].Position, witnesses[^1].Normal);
         return new(part.Static, part.ElementId, true, highest is not null,
@@ -102,7 +103,7 @@ internal static class SupportFootprintOracle
             foreach (FootprintOracleWitness witness in member.Witnesses)
             {
                 if (!(witness.Normal.Y > 0)) continue;
-                bool walkable = witness.Normal.Y >= request.CosMaxSlope;
+                bool walkable = witness.UpwardLower >= request.CosMaxSlope;
                 double plane = Plane(witness.Position, witness.Normal, request.Axis.X, request.Axis.Y);
                 OracleVector normal = witness.Normal;
                 bool suppressed = false;

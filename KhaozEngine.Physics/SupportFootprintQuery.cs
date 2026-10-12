@@ -30,19 +30,22 @@ public readonly record struct SupportProposalVerdict(SupportProposalStatus Statu
 /// <summary>An attained surface point and outward unit normal, with absolute position and componentwise normal
 /// errors. Polygon witnesses attain the full closed-disc maximum. Each raw curved part publishes the upper
 /// surface above the axis when present, then the highest point in the disc if walkable, otherwise the highest
-/// walkable point in the disc when one exists, otherwise the steep maximum. Slope equality is walkable.</summary>
+/// walkable point in the disc when one exists, otherwise the steep maximum. UpwardLower certifies the normal's
+/// Y component independently of NormalError, preserving exact slope equality. Slope equality is walkable.</summary>
 public readonly record struct SupportFootprintWitness(SupportWitnessRole Role, Vector3 Position,
-    float PositionErrorMetres, Vector3 Normal, float NormalError);
+    float PositionErrorMetres, Vector3 Normal, float NormalError, double UpwardLower);
 
 /// <summary>One admitted raw static/element pair. ElementId keeps the released face or curved part convention.
 /// PlanePoint and Normal describe the polygon plane. HasDiscMaximum and its bounds describe the maximum on the
-/// whole polygon intersected with the original closed disc, independently of proposal contact. A polygon has
+/// whole polygon intersected with the original closed disc, independently of proposal contact. UpwardLower
+/// certifies Normal.Y independently of NormalError. A curved member carries its first occupied slot's normal,
+/// or the exact zero vector when it has no witnesses. A polygon has
 /// one Footprint witness in First, or zero for a context-only member. Curved parts have up to two fixed slots,
 /// ordered Axis then Footprint, and never join. ProposalMask bits 0 and 1 name the certified axis and foot
 /// contact neighborhoods independently of disc eligibility. Context-only polygons still join, cap and feed
 /// proposal guards. Joins use the released whole-polygon meeting and mutual-below predicate over admitted pairs.</summary>
 public readonly record struct SupportFootprintMember(StaticHandle Static, SupportElementKind Kind, int ElementId,
-    Vector3 PlanePoint, float PlanePointErrorMetres, Vector3 Normal, float NormalError, bool HasDiscMaximum,
+    Vector3 PlanePoint, float PlanePointErrorMetres, Vector3 Normal, float NormalError, double UpwardLower, bool HasDiscMaximum,
     double DiscHeightLower, double DiscHeightUpper, byte ProposalMask, byte WitnessCount,
     SupportFootprintWitness First, SupportFootprintWitness Second);
 

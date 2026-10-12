@@ -80,6 +80,13 @@ internal sealed class SupportFootprintSourcePredicates
         return _work.Sign(projected ? Dot(normal, normal) : Dot3(normal, normal));
     }
 
+    internal GeometrySign NormalSlope(SupportPolygon polygon, double cosine)
+    {
+        if (!Begin(polygon)) return GeometrySign.Unresolved;
+        Point normal = Normal();
+        return _work.Sign(Sub(Square(normal.Y), Product(Square(_work.Constant(cosine)), Dot3(normal, normal))));
+    }
+
     internal bool HorizontalPlaneHeight(SupportPolygon polygon, out GeometryInterval height)
     {
         height = default;

@@ -84,29 +84,31 @@ internal sealed partial class SupportFootprintCurved
         SupportFootprintWitness first = default, second = default;
         if (axis == GeometrySign.Positive)
         {
-            if (!Publish(axisPoint, SupportWitnessRole.Axis, out first)) return GeometrySign.Unresolved;
+            if (!Publish(axisPoint, SupportWitnessRole.Axis, request.CosMaxSlope, out first)) return GeometrySign.Unresolved;
             count++;
         }
         if (footprint == GeometrySign.Positive)
         {
-            if (!Publish(point, SupportWitnessRole.Footprint, out var witness)) return GeometrySign.Unresolved;
+            if (!Publish(point, SupportWitnessRole.Footprint, request.CosMaxSlope, out var witness)) return GeometrySign.Unresolved;
             if (count == 0) first = witness; else second = witness;
             count++;
         }
         GeometryInterval height = Bounds(point.Position.Y);
         member = new(owner, SupportElementKind.Tangent, leaf.LeafId * SupportNeighborhoodPolyhedra.FaceStride + part,
-            default, 0, default, 0, footprint == GeometrySign.Positive,
+            default, 0, first.Normal, first.NormalError, first.UpwardLower, footprint == GeometrySign.Positive,
             footprint == GeometrySign.Positive ? height.Lower : 0, footprint == GeometrySign.Positive ? height.Upper : 0,
             0, count, first, second);
         return GeometrySign.Positive;
     }
 
-    bool Publish(Witness point, SupportWitnessRole role, out SupportFootprintWitness witness)
+    bool Publish(Witness point, SupportWitnessRole role, double cosine, out SupportFootprintWitness witness)
     {
-        GeometryVectorOutput p = GeometryVectorOperations.Publish(point.Position.Bounds(_arithmetic));
-        GeometryVectorOutput n = GeometryVectorOperations.Publish(point.Normal.Bounds(_arithmetic));
-        witness = new(role, p.Value, p.Error, n.Value, n.Error);
-        return p.IsResolved && n.IsResolved;
+        GeometryVector normal = point.Normal.Bounds(_arithmetic);
+        if (normal.IsResolved && normal.Y.Lower < cosine && normal.Y.Upper >= cosine &&
+            Sign(Sub(point.Normal.Y, C(cosine))) == GeometrySign.Zero)
+            normal = new(normal.X, GeometryInterval.Exact(cosine), normal.Z);
+        return SupportFootprintPublication.TryWitness(role, point.Position.Bounds(_arithmetic),
+            normal, out witness);
     }
 
     GeometrySign Maximum(in SupportCurvedLeaf leaf, int part, double x, double z, Number disc, out Witness witness)

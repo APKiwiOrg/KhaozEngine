@@ -28,7 +28,12 @@ internal static class SupportFootprintPolygon
         if (admission != GeometrySign.Positive) return admission;
         if (column.Minimum.Lower > top || column.Maximum.Upper < bottom) return GeometrySign.Negative;
         if (column.Minimum.Upper > top || column.Maximum.Lower < bottom) return GeometrySign.Unresolved;
-        GeometryVectorOutput normal = GeometryVectorOperations.Publish(GeometryVectorOperations.Normalize(polygon.Normal.Bounds));
+        GeometryVector normalBounds = GeometryVectorOperations.Normalize(polygon.Normal.Bounds);
+        if (normalBounds.IsResolved && normalBounds.Y.Lower < request.CosMaxSlope &&
+            normalBounds.Y.Upper >= request.CosMaxSlope && Orientation(polygon) == GeometrySign.Positive &&
+            polygon.HasSource && polygon.SourcePredicates.NormalSlope(polygon, request.CosMaxSlope) == GeometrySign.Zero)
+            normalBounds = new(normalBounds.X, GeometryInterval.Exact(request.CosMaxSlope), normalBounds.Z);
+        GeometryVectorOutput normal = GeometryVectorOperations.Publish(normalBounds);
         GeometryVectorOutput plane = GeometryVectorOperations.Publish(polygon.Vertices[0].Bounds);
         if (!normal.IsResolved || !plane.IsResolved) return GeometrySign.Unresolved;
         Range disc = default;
@@ -44,9 +49,10 @@ internal static class SupportFootprintPolygon
         GeometryVectorOutput witness = supports ? GeometryVectorOperations.Publish(disc.Witness) : default;
         if (supports && !witness.IsResolved) return GeometrySign.Unresolved;
         member = new(polygon.Static, SupportElementKind.Polygon, polygon.ElementId, plane.Value, plane.Error,
-            normal.Value, normal.Error, supports, supports ? disc.Maximum.Lower : 0,
+            normal.Value, normal.Error, normalBounds.Y.Lower, supports, supports ? disc.Maximum.Lower : 0,
             supports ? disc.Maximum.Upper : 0, 0, supports ? (byte)1 : (byte)0,
-            supports ? new(SupportWitnessRole.Footprint, witness.Value, witness.Error, normal.Value, normal.Error) : default,
+            supports ? new(SupportWitnessRole.Footprint, witness.Value, witness.Error, normal.Value, normal.Error,
+                normalBounds.Y.Lower) : default,
             default);
         return GeometrySign.Positive;
     }

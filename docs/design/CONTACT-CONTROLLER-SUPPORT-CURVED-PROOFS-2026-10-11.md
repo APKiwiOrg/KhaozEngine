@@ -234,7 +234,12 @@ Finite arithmetic certifies enclosures of the installed source, rather than exac
 records or exact ordering of irrational candidate heights. The geometric domains, attainment,
 hemisphere restrictions and witness obligations above are unchanged. Selection downstream compares
 enclosure midpoints. Inclusive band overlap and walkability consume the certified bounds, with
-walkability established by the normal's lower bound. Arithmetic error never expands reach or D.
+walkability established by the normal's Y-component lower bound. `SupportFootprintWitness.UpwardLower`
+and `SupportFootprintMember.UpwardLower` carry that bound independently of the scalar normal error.
+Source-backed or walkable-boundary certificates preserve exact equality with the request cosine.
+The scalar normal error continues to enclose the complete vector for tangent arithmetic.
+Released `SupportElement` and neighborhood classification keep their existing contracts.
+Arithmetic error never expands reach or D.
 
 Closed-form strata are spheres, upright and horizontal capsule ends and barrels, upright and
 horizontal finite cylinder sides, and their horizontal or vertical caps. Evaluate their rational

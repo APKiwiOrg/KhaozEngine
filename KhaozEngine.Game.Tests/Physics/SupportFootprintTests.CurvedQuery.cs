@@ -93,6 +93,7 @@ public partial class SupportFootprintTests
                 Assert.Equal(attained.Role, witness.Role);
                 ContainsCurvedVector(witness.Position, witness.PositionErrorMetres, attained.Position);
                 ContainsCurvedVector(witness.Normal, witness.NormalError, attained.Normal);
+                Assert.True(R.From(witness.UpwardLower) <= attained.Normal.Y.Lower);
                 if (attained.Contribution is { } contribution)
                     ContainsCurvedContribution(witness, request, contribution);
             }

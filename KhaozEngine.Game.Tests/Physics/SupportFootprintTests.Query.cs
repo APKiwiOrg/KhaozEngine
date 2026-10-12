@@ -203,7 +203,7 @@ public partial class SupportFootprintTests
 
     static SupportFootprintMember[] MemberSentinels(int count) => Enumerable.Repeat(new SupportFootprintMember(
         new StaticHandle(987), SupportElementKind.Polygon, 654, Vector3.One, 0, Vector3.UnitY, 0,
-        true, 321, 321, 3, 0, default, default), count).ToArray();
+        1, true, 321, 321, 3, 0, default, default), count).ToArray();
 
     static void CheckQueryOracle(SupportFootprintScene scene, SupportFootprintRequest request,
         SupportFootprintResult result, SupportFootprintMember[] members, ulong[] joins)

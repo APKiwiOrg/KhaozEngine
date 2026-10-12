@@ -265,6 +265,10 @@ public partial class SupportFootprintTests
         Type witness = Required("SupportFootprintWitness"), role = Required("SupportWitnessRole");
         Assert.Equal(["Axis", "Footprint"], Enum.GetNames(role));
         Assert.Equal(role, witness.GetProperty("Role")!.PropertyType);
+        Assert.NotNull(witness.GetProperty("UpwardLower"));
+        Assert.NotNull(member.GetProperty("UpwardLower"));
+        Assert.Equal(typeof(double), witness.GetProperty("UpwardLower")!.PropertyType);
+        Assert.Equal(typeof(double), member.GetProperty("UpwardLower")!.PropertyType);
         Assert.Equal(typeof(int), member.GetProperty("ElementId")!.PropertyType);
         Assert.Equal(witness, member.GetProperty("First")!.PropertyType);
         Assert.Equal(witness, member.GetProperty("Second")!.PropertyType);

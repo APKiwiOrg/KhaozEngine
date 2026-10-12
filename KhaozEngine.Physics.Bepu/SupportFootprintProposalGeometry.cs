@@ -13,6 +13,17 @@ internal static class SupportFootprintProposalGeometry
     internal static GeometrySign Lowest(SupportPolygon polygon, in SupportFootprintProposal proposal,
         out GeometryInterval lowest, bool sourceHeight = false)
     {
+        if (SupportPlanarProposal.Lowest(polygon, proposal, sourceHeight, out lowest))
+        {
+            using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportPlanarHeight);
+            return GeometrySign.Positive;
+        }
+        return LowestExhaustive(polygon, proposal, out lowest, sourceHeight);
+    }
+
+    internal static GeometrySign LowestExhaustive(SupportPolygon polygon, in SupportFootprintProposal proposal,
+        out GeometryInterval lowest, bool sourceHeight = false)
+    {
         lowest = default;
         GeometrySign upward = SupportFootprintPolygon.Orientation(polygon);
         if (upward is GeometrySign.Negative or GeometrySign.Zero) return GeometrySign.Negative;

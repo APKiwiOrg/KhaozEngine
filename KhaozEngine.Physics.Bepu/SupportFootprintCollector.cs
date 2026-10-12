@@ -126,6 +126,12 @@ internal sealed partial class SupportFootprintCollector
     GeometrySign ContactMember(SupportPolygon polygon, int index)
     {
         SupportFootprintProposal proposal = index == 0 ? _request.AxisProposal : _request.FootProposal;
+        if (SupportPlanarProposal.Contact(polygon, _contactStarts[index], _contactDirections[index],
+            proposal.Probe.Radius, _request.ContactBand))
+        {
+            using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportPlanarContact);
+            return GeometrySign.Positive;
+        }
         SupportDistance distance = _kernel.MeasureFootprintContact(_contactStarts[index], _contactDirections[index],
             polygon, _request.ContactBand);
         if (!distance.IsResolved) return GeometrySign.Unresolved;

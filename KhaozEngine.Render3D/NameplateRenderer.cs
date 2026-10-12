@@ -133,7 +133,7 @@ namespace KhaozEngine.Render3D
             if (ShouldCull(worldPos, cullOrigin, maxDistance)) return false;
             if (!NameplateAnchorProjection.Project(camera, worldPos, offset, viewportWidth, viewportHeight, out Vector2 pixel)) return false;
 
-            return DrawAt(batch, font, white, pixel, plate, style, viewportWidth, viewportHeight, ref placementState);
+            return DrawAt(new SpriteBatchNameplateCanvas(batch, font, white), pixel, plate, style, viewportWidth, viewportHeight, ref placementState);
         }
 
         /// <summary>
@@ -206,7 +206,7 @@ namespace KhaozEngine.Render3D
             if (ShouldCull(worldPos, cullOrigin, maxDistance)) return false;
             if (!NameplateAnchorProjection.Project(camera, worldPos, offset, designViewport, out Vector2 pixel)) return false;
 
-            return DrawAt(batch, font, white, pixel, plate, style, designViewport.Width, designViewport.Height, ref placementState);
+            return DrawAt(new SpriteBatchNameplateCanvas(batch, font, white), pixel, plate, style, designViewport.Width, designViewport.Height, ref placementState);
         }
 
         // Shared draw body for every Draw overload once the anchor pixel and the viewport dims it places against
@@ -214,11 +214,11 @@ namespace KhaozEngine.Render3D
         // panel rect (NameplatePlacement.Place, including the optional edge clamp/deflect), then draws the panel,
         // title, and bars. Returns false when the plate measures to nothing (e.g. an empty title with no bars,
         // since Nameplate.IsEmpty already filtered the fully-empty case before this runs).
-        static bool DrawAt(
-            SpriteBatch batch, SpriteFont font, Texture2D white,
-            Vector2 pixel, in Nameplate plate, in NameplateStyle style,
+        internal static bool DrawAt(
+            INameplateCanvas canvas, Vector2 pixel, in Nameplate plate, in NameplateStyle style,
             int viewportWidth, int viewportHeight, ref NameplatePlacementState placementState)
         {
+            ITextMeasurer font = canvas.Font;
             Vector2 size = NameplateLayout.Measure(font, plate, style);
             if (size.X <= 0f || size.Y <= 0f) return false;
 
@@ -230,9 +230,9 @@ namespace KhaozEngine.Render3D
 
             // Panel fill (skip when transparent -> panel-less look) then optional border.
             if (style.PanelFill.A > 0f)
-                batch.DrawRounded(white, panelRect, style.PanelFill, style.CornerRadius);
+                canvas.FillRounded(panelRect, style.PanelFill, style.CornerRadius);
             if (style.PanelBorderThickness > 0f && style.PanelBorder.A > 0f)
-                batch.DrawRounded(white, panelRect, style.PanelBorder, style.CornerRadius, 0f, style.PanelBorderThickness);
+                canvas.StrokeRounded(panelRect, style.PanelBorder, style.CornerRadius, style.PanelBorderThickness);
 
             float innerLeft = left + style.PadX;
             float innerTop = top + style.PadY;
@@ -249,10 +249,10 @@ namespace KhaozEngine.Render3D
                 titleH = tm.Y;
                 float titleX = innerLeft + (innerW - tm.X) * 0.5f;
                 if (style.TitleShadow is Color shadow)
-                    batch.DrawString(font, title,
+                    canvas.Text(title,
                         new Vector2(titleX + style.TitleShadowOffset.X, innerTop + style.TitleShadowOffset.Y),
                         shadow, style.FontScale);
-                batch.DrawString(font, title, new Vector2(titleX, innerTop), plate.TitleColor, style.FontScale);
+                canvas.Text(title, new Vector2(titleX, innerTop), plate.TitleColor, style.FontScale);
             }
 
             // Bars stacked full inner width below the title. Compute each rect in the loop (no per-frame list alloc).
@@ -264,10 +264,10 @@ namespace KhaozEngine.Render3D
                 {
                     if (contentAbove) y += style.BarSpacing;
                     NameplateBar bar = bars[i];
-                    batch.DrawRounded(white, new Vector4(innerLeft, y, innerW, style.BarHeight), bar.Track, style.BarCornerRadius);
+                    canvas.FillRounded(new Vector4(innerLeft, y, innerW, style.BarHeight), bar.Track, style.BarCornerRadius);
                     float f = bar.ClampedFraction;
                     if (f > 0f)
-                        batch.DrawRounded(white, new Vector4(innerLeft, y, innerW * f, style.BarHeight), bar.Fill, style.BarCornerRadius);
+                        canvas.FillRounded(new Vector4(innerLeft, y, innerW * f, style.BarHeight), bar.Fill, style.BarCornerRadius);
                     y += style.BarHeight;
                     contentAbove = true;
                 }

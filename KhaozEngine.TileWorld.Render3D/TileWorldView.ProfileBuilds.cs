@@ -39,7 +39,24 @@ public sealed partial class TileWorldView
     /// <summary>Profile ground and cover builds still queued, running or awaiting their frame apply.</summary>
     internal int TrackedProfileBuilds => _profileBuilds.TrackedCount;
 
+    /// <summary>Ground ring and material captures taken on the frame thread for profile builds.</summary>
+    internal int GroundCaptures { get; private set; }
+
+    internal int MaterialCaptures { get; private set; }
+
     long NextProfileGeneration() => ++_profileGeneration;
+
+    TileWorldDocument CaptureGround(RegionCoord region)
+    {
+        GroundCaptures++;
+        return TileWorldBuildSnapshot.CaptureGround(_doc, region);
+    }
+
+    TileWorldCatalogs CaptureMaterials()
+    {
+        MaterialCaptures++;
+        return TileWorldBuildSnapshot.CaptureMaterials(_catalogs);
+    }
 
     // Runs on a worker, or inline only for an explicit prime. Reads nothing but the detached input.
     TileProfileBuildOutput BuildProfileCpu(TileWorldBuildRequest<TileProfileBuildInput> request)

@@ -215,7 +215,7 @@ public sealed class TileGroundLodTests
     {
         TileWorldDocument doc = FlatWorld(Origin);
         var scene = new RecordingTileWorldScene();
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         using TileWorldView view = View(scene, doc, dispatcher);
 
         view.LoadRegion(Origin, TileRegionResidencyState.Decor);
@@ -235,7 +235,7 @@ public sealed class TileGroundLodTests
     {
         TileWorldDocument doc = FlatWorld(Origin);
         var scene = new RecordingTileWorldScene();
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         using TileWorldView view = View(scene, doc, dispatcher);
         view.LoadRegion(Origin, TileRegionResidencyState.Decor);
         dispatcher.RunAll();
@@ -261,7 +261,7 @@ public sealed class TileGroundLodTests
     {
         TileWorldDocument doc = FlatWorld(Origin);
         var scene = new RecordingTileWorldScene();
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         using TileWorldView view = View(scene, doc, dispatcher, maxConcurrency: 2);
 
         view.LoadRegion(Origin, TileRegionResidencyState.Decor);
@@ -279,7 +279,7 @@ public sealed class TileGroundLodTests
     {
         TileWorldDocument doc = FlatWorld(Origin);
         var scene = new RecordingTileWorldScene();
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         using TileWorldView view = View(scene, doc, dispatcher);
         view.LoadRegion(Origin, TileRegionResidencyState.Decor);
         dispatcher.RunAll();
@@ -299,7 +299,7 @@ public sealed class TileGroundLodTests
         TileWorldDocument doc = FlatWorld(Origin);
         doc.SetUnderlay(1, 1, 0, TileRenderTestData.Water);
         var scene = new RecordingTileWorldScene();
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         using TileWorldView view = View(scene, doc, dispatcher);
         view.LoadRegion(Origin, TileRegionResidencyState.Decor);
         dispatcher.RunAll();
@@ -445,36 +445,4 @@ public sealed class TileGroundLodTests
 
     readonly record struct VertexSignature(
         Vector3 Position, Vector3 Normal, Vector4 Weights, Vector2 Slots01, Vector4 Slots23AndJitter);
-
-    sealed class ManualDispatcher : IChunkBuildDispatcher
-    {
-        readonly List<Action> _pending = new();
-
-        public int PendingCount => _pending.Count;
-
-        public void Schedule(Action build) => _pending.Add(build);
-
-        public void RunAll()
-        {
-            while (_pending.Count > 0)
-            {
-                Action build = _pending[0];
-                _pending.RemoveAt(0);
-                build();
-            }
-        }
-
-        public void RunReverse()
-        {
-            while (_pending.Count > 0)
-            {
-                int index = _pending.Count - 1;
-                Action build = _pending[index];
-                _pending.RemoveAt(index);
-                build();
-            }
-        }
-
-        public void Drain() => RunAll();
-    }
 }

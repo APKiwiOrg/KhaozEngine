@@ -10,14 +10,23 @@ namespace KhaozEngine.TileWorld;
 public sealed partial class TileWorldView
 {
     // Solid, roof and door footprints by region, so a capture queries its neighbourhood without walking the world.
-    readonly TileCoverObjectIndex _coverObjects;
+    // Null until the first cover request in a world with a foliage layer, so a legacy or cover-free view never
+    // scans its objects.
+    TileCoverObjectIndex? _coverObjects;
     // Anchor regions whose objects changed or streamed since the last capture. Refreshed at capture rather than
     // at the notification, because a region that streams out is unloaded from the source after it is announced.
+    // Recorded only while the index exists, because creating it scans the current document.
     readonly HashSet<RegionCoord> _coverObjectsStale = new();
 
-    /// <summary>Queues one gameplay region's cover against its current terrain, materials and exclusions. A
-    /// world with no foliage layer has no cover to build, so the region's cover is simply cleared.</summary>
-    void RequestCover(RegionCoord region, RegionHandles handles)
+    internal bool HasCoverObjectIndex => _coverObjects is not null;
+
+    internal int StaleCoverObjectRegions => _coverObjectsStale.Count;
+
+    /// <summary>Queues one gameplay region's cover against the ground ring and materials captured for its ground
+    /// request, which are read-only once captured, and its current exclusions. A world with no foliage layer has
+    /// no cover to build, so the region's cover is simply cleared.</summary>
+    void RequestCover(RegionCoord region, RegionHandles handles, TileWorldDocument ground,
+                      TileWorldCatalogs materials)
     {
         if (_doc.FoliageLayers.Count == 0)
         {
@@ -25,11 +34,11 @@ public sealed partial class TileWorldView
             ReplaceCover(handles, Array.Empty<GroundCoverInstance>());
             return;
         }
-        RefreshCoverObjects();
+        TileCoverObjectIndex objects = CoverObjects();
         long generation = NextProfileGeneration();
         handles.CoverGeneration = generation;
-        TileCoverBuildInput input = TileCoverBuildInput.Capture(_doc, _catalogs, region, _mesher.SmoothNormals,
-            _coverObjects);
+        TileCoverBuildInput input = TileCoverBuildInput.Capture(_doc.FoliageLayers, ground, materials, region,
+            _mesher.SmoothNormals, objects);
         _profileBuilds.Request(new TileWorldBuildRequest<TileProfileBuildInput>(CoverKey(region), generation, input));
     }
 
@@ -60,8 +69,14 @@ public sealed partial class TileWorldView
         handles.Cover = cover;
     }
 
+    void MarkCoverObjectsStale(RegionCoord region)
+    {
+        if (_coverObjects is not null) _coverObjectsStale.Add(region);
+    }
+
     void MarkCoverObjectsStale(TileRect worldRect)
     {
+        if (_coverObjects is null) return;
         RegionCoord min = RegionCoord.Of(worldRect.X, worldRect.Z);
         RegionCoord max = RegionCoord.Of(worldRect.X1 - 1, worldRect.Z1 - 1);
         for (int rz = min.Rz; rz <= max.Rz; rz++)
@@ -69,12 +84,19 @@ public sealed partial class TileWorldView
                 _coverObjectsStale.Add(new RegionCoord(rx, rz));
     }
 
-    void RefreshCoverObjects()
+    // Creation scans the current document, so nothing recorded before it can be stale.
+    TileCoverObjectIndex CoverObjects()
     {
-        if (_coverObjectsStale.Count == 0) return;
+        if (_coverObjects is null)
+        {
+            _coverObjects = new TileCoverObjectIndex(_doc, _catalogs);
+            _coverObjectsStale.Clear();
+            return _coverObjects;
+        }
         foreach (RegionCoord region in _coverObjectsStale) _coverObjects.Refresh(region);
         _coverObjectsStale.Clear();
+        return _coverObjects;
     }
 
-    static TileWorldBuildKey CoverKey(RegionCoord region) => new(region, 0, TileWorldBuildKind.Cover);
+    static TileWorldBuildKey CoverKey(RegionCoord region) => new(region, -1, TileWorldBuildKind.Cover);
 }

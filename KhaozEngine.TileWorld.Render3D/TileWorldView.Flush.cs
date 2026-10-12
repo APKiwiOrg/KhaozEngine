@@ -11,7 +11,7 @@ public sealed partial class TileWorldView
 {
     // Regions whose cover this drain already requested, so one region's planes share one cover build.
     readonly HashSet<RegionCoord> _flushCover = new();
-    // This drain's ground snapshots by region, so a region's planes share one capture.
+    // This drain's ground snapshots by region, so a region's planes and its cover share one capture.
     readonly Dictionary<RegionCoord, TileWorldDocument> _flushSnapshots = new();
     TileWorldCatalogs? _flushMaterials;
     // The regions a profile prime settles on the calling thread. Reused across primes.
@@ -102,10 +102,10 @@ public sealed partial class TileWorldView
     {
         if (!_flushSnapshots.TryGetValue(region, out TileWorldDocument? snapshot))
         {
-            snapshot = TileWorldBuildSnapshot.CaptureGround(_doc, region);
+            snapshot = CaptureGround(region);
             _flushSnapshots.Add(region, snapshot);
         }
-        _flushMaterials ??= TileWorldBuildSnapshot.CaptureMaterials(_catalogs);
+        _flushMaterials ??= CaptureMaterials();
         if (handles.Residency == TileRegionResidencyState.Decor)
         {
             RequestGroundPlane(region, handles, plane, TileGroundLod.Coarse4, snapshot, _flushMaterials);
@@ -115,7 +115,7 @@ public sealed partial class TileWorldView
         handles.Props[plane] = _propClusters.Build(_doc, region, plane, OverrideLookup());
         _propClusters.Request(handles.Props[plane]);
         ReleaseAnimatedFoliage(handles, plane);
-        if (_flushCover.Add(region)) RequestCover(region, handles);
+        if (_flushCover.Add(region)) RequestCover(region, handles, snapshot, _flushMaterials);
     }
 
     /// <summary>Finishes a profile prime once every source load is complete. Every dirty mark is submitted

@@ -31,11 +31,22 @@ internal sealed record TileCoverBuildInput : TileProfileBuildInput
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(catalogs);
+        return Capture(document.FoliageLayers, TileWorldBuildSnapshot.CaptureGround(document, region),
+            TileWorldBuildSnapshot.CaptureMaterials(catalogs), region, smoothNormals, objects);
+    }
+
+    /// <summary>Captures against a ground ring and material set already captured for the same region, which are
+    /// read-only once captured and so can be shared with that region's ground builds.</summary>
+    internal static TileCoverBuildInput Capture(IReadOnlyList<TileFoliageLayer> layers, TileWorldDocument ground,
+        TileWorldCatalogs materials, RegionCoord region, bool smoothNormals, TileCoverObjectIndex objects)
+    {
+        ArgumentNullException.ThrowIfNull(layers);
+        ArgumentNullException.ThrowIfNull(ground);
+        ArgumentNullException.ThrowIfNull(materials);
         ArgumentNullException.ThrowIfNull(objects);
-        TileFoliageLayer[] layers = document.FoliageLayers.ToArray();
-        return new TileCoverBuildInput(TileWorldBuildSnapshot.CaptureGround(document, region),
-            TileWorldBuildSnapshot.CaptureMaterials(catalogs), layers, objects.Query(region, layers).ToArray(),
-            region, smoothNormals);
+        TileFoliageLayer[] copy = layers.ToArray();
+        return new TileCoverBuildInput(ground, materials, copy, objects.Query(region, copy).ToArray(), region,
+            smoothNormals);
     }
 
     internal IReadOnlyList<GroundCoverInstance> Build() => Generate(_document, _catalogs, _region,

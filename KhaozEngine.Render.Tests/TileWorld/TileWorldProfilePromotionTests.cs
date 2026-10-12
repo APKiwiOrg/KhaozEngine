@@ -34,13 +34,14 @@ public sealed class TileWorldProfilePromotionTests
         int clusterUnloadsBefore = scene.ClusterMeshUnloads.Count;
         Assert.All(promotedRegions, r => Assert.Equal(TileRegionResidencyState.Decor, view.ResidencyOf(r)));
         Assert.All(promotedRegions, r => Assert.True(clusters.ContainsKey(r)));
+        Dictionary<RegionCoord, TileRegionResidencyState> residencyBefore = fixture.Residencies();
         fixture.Witness.Clear();
         int primeThread = Environment.CurrentManagedThreadId;
         int pendingBefore = fixture.Dispatcher.PendingCount;
 
         fixture.Residency.PrimeAround(TileRenderTestData.CentreOf(new RegionCoord(2, 1)));
 
-        Assert.Equal(5, promotedRegions.Length);
+        fixture.AssertOnlyPromoted(residencyBefore, promotedRegions);
         Assert.Empty(fixture.Witness.Builds); // dispatcher is paused throughout PrimeAround or Update
         Assert.True(fixture.Dispatcher.PendingCount > pendingBefore);
         Assert.Equal(meshLoadsBefore, scene.MeshLoads.Count);
@@ -114,11 +115,12 @@ public sealed class TileWorldProfilePromotionTests
         int meshLoadsBefore = scene.MeshLoads.Count;
         int coverCountBefore = view.GeneratedCoverCount;
         int clusterLoadsBefore = scene.ClusterMeshLoads.Count;
+        Dictionary<RegionCoord, TileRegionResidencyState> residencyBefore = fixture.Residencies();
         fixture.Witness.Clear();
 
         fixture.Residency.Update(TileRenderTestData.CentreOf(new RegionCoord(4, 1)));
 
-        Assert.Equal(5, promotedRegions.Length);
+        fixture.AssertOnlyPromoted(residencyBefore, promotedRegions);
         Assert.Empty(fixture.Witness.Builds); // dispatcher is paused throughout PrimeAround or Update
         Assert.Equal(meshLoadsBefore, scene.MeshLoads.Count);
         Assert.Equal(coverCountBefore, view.GeneratedCoverCount);
@@ -250,6 +252,26 @@ internal sealed class ProfileFixture : IDisposable
         HlodCrossfadeWidth = 32f,
         HlodWeldCell = 1.5f,
     };
+
+    /// <summary>The residency of every loaded region.</summary>
+    public Dictionary<RegionCoord, TileRegionResidencyState> Residencies() =>
+        View.LoadedRegions.ToDictionary(r => r, View.ResidencyOf);
+
+    /// <summary>Asserts that no region arrived or departed since <paramref name="before"/>, that exactly
+    /// <paramref name="expected"/> moved from Decor to Gameplay, and that every other region kept its residency.</summary>
+    public void AssertOnlyPromoted(Dictionary<RegionCoord, TileRegionResidencyState> before,
+                                   IEnumerable<RegionCoord> expected)
+    {
+        Dictionary<RegionCoord, TileRegionResidencyState> after = Residencies();
+        Assert.Equal(Sorted(before.Keys), Sorted(after.Keys));
+        RegionCoord[] promoted = before.Keys.Where(r => before[r] == TileRegionResidencyState.Decor &&
+                                                        after[r] == TileRegionResidencyState.Gameplay).ToArray();
+        Assert.Equal(Sorted(expected), Sorted(promoted));
+        Assert.All(before.Keys.Except(promoted), r => Assert.Equal(before[r], after[r]));
+    }
+
+    static RegionCoord[] Sorted(IEnumerable<RegionCoord> regions) =>
+        regions.OrderBy(r => r.Rz).ThenBy(r => r.Rx).ToArray();
 
     public static RegionCoord[] Column(int rx, int regionsZ) =>
         Enumerable.Range(0, regionsZ).Select(rz => new RegionCoord(rx, rz)).ToArray();

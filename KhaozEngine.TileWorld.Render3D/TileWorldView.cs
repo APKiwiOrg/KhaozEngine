@@ -181,7 +181,6 @@ public sealed partial class TileWorldView : IDisposable
         _terrainPickFilter = IsRenderedTerrain;
         _walkSurfacePickFilter = IsGameplayObject;
         _onCpuBuild = onCpuBuild;
-        _coverObjects = new TileCoverObjectIndex(doc, catalogs);
         _profileBuilds = new TileWorldBuildQueue<TileProfileBuildInput, TileProfileBuildOutput>(
             BuildProfileCpu, ApplyProfileBuild, buildQueueOptions, dispatcher);
 
@@ -431,7 +430,7 @@ public sealed partial class TileWorldView : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (plane < 0 || plane >= _planes) return;
         MarkInteriorDirty(region.Rect, plane);
-        _coverObjectsStale.Add(region);
+        MarkCoverObjectsStale(region);
         Queue(region, plane);
     }
 

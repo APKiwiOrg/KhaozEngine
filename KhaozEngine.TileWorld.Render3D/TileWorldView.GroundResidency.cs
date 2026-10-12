@@ -17,11 +17,10 @@ public sealed partial class TileWorldView
         var handles = new RegionHandles(new MeshHandle?[_planes], props, Array.Empty<GroundCoverInstance>(),
             residency, profileManaged: true);
         _loaded[region] = handles;
-        _coverObjectsStale.Add(region);
+        MarkCoverObjectsStale(region);
         RequestPropClusters(props);
-        RequestGround(region, handles,
-            residency == TileRegionResidencyState.Gameplay ? TileGroundLod.Full : TileGroundLod.Coarse4);
-        if (residency == TileRegionResidencyState.Gameplay) RequestCover(region, handles);
+        if (residency == TileRegionResidencyState.Gameplay) RequestGameplay(region, handles);
+        else RequestGround(region, handles, TileGroundLod.Coarse4);
     }
 
     // Retains the accepted meshes, props and clusters, and any coarse build still pending, until full ground
@@ -30,8 +29,16 @@ public sealed partial class TileWorldView
     {
         handles.ProfileManaged = true;
         handles.Residency = TileRegionResidencyState.Gameplay;
-        RequestGround(region, handles, TileGroundLod.Full);
-        RequestCover(region, handles);
+        RequestGameplay(region, handles);
+    }
+
+    // Full ground and cover from one capture of the region's ground ring and materials.
+    void RequestGameplay(RegionCoord region, RegionHandles handles)
+    {
+        TileWorldDocument snapshot = CaptureGround(region);
+        TileWorldCatalogs materials = CaptureMaterials();
+        RequestGround(region, handles, TileGroundLod.Full, snapshot, materials);
+        RequestCover(region, handles, snapshot, materials);
     }
 
     void DemoteToDecor(RegionCoord region, RegionHandles handles)
@@ -45,10 +52,12 @@ public sealed partial class TileWorldView
         RequestGround(region, handles, TileGroundLod.Coarse4);
     }
 
-    void RequestGround(RegionCoord region, RegionHandles handles, TileGroundLod lod)
+    void RequestGround(RegionCoord region, RegionHandles handles, TileGroundLod lod) =>
+        RequestGround(region, handles, lod, CaptureGround(region), CaptureMaterials());
+
+    void RequestGround(RegionCoord region, RegionHandles handles, TileGroundLod lod, TileWorldDocument snapshot,
+                       TileWorldCatalogs materials)
     {
-        TileWorldDocument snapshot = TileWorldBuildSnapshot.CaptureGround(_doc, region);
-        TileWorldCatalogs materials = TileWorldBuildSnapshot.CaptureMaterials(_catalogs);
         for (int plane = 0; plane < _planes; plane++)
             RequestGroundPlane(region, handles, plane, lod, snapshot, materials);
     }

@@ -113,7 +113,8 @@ public partial class SupportFootprintTests
                 R.From(map.X.Z.Lower) * R.From(x) + R.From(map.Z.Z.Lower) * R.From(z));
             V[] exact = [Transform(-2, -2), Transform(-2, 2), Transform(2, 2), Transform(2, -2)];
             return new(default, 0, exact.Select(v => new OracleVector(SupportFootprintExactOracle.AsDouble(v.X),
-                SupportFootprintExactOracle.AsDouble(v.Y), SupportFootprintExactOracle.AsDouble(v.Z))).ToArray()) { ExactVertices = exact };
+                SupportFootprintExactOracle.AsDouble(v.Y), SupportFootprintExactOracle.AsDouble(v.Z))).ToArray())
+            { ExactVertices = exact };
         }
         var low = SupportFootprintExactOracle.Contact(Sample(map.X.Y.Lower), Request().FootProposal)!.Value;
         var high = SupportFootprintExactOracle.Contact(Sample(map.X.Y.Upper), Request().FootProposal)!.Value;

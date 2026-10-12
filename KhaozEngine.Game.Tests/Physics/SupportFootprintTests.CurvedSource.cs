@@ -132,7 +132,8 @@ public partial class SupportFootprintTests
         OracleSurface surface = shape != SupportCurvedShape.Cylinder ? OracleSurface.Round :
             part == SupportNeighborhoodCurved.Side ? OracleSurface.CylinderSide : OracleSurface.CylinderTop;
         var exactPart = new SupportFootprintCurvedProofOracle.InstalledPart(new(default, part, surface,
-            centre.Middle, exactAxis.Middle, 0.25, half) { ExactAxis = exactAxis }, centre, exactAxis,
+            centre.Middle, exactAxis.Middle, 0.25, half)
+        { ExactAxis = exactAxis }, centre, exactAxis,
             R.From(0.25), R.From(half));
         var exact = SupportFootprintClosedFormOracle.Measure(exactPart, request);
         var kernel = new SupportFootprintCurved();

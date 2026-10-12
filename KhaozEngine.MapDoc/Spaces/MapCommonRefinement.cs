@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc.Spaces;
 
@@ -25,6 +26,10 @@ public static class MapCommonRefinement
         if (min.X.CompareTo(max.X) >= 0 || min.Z.CompareTo(max.Z) >= 0) return Failure(MapRefinementStatus.Invalid, "cell");
         return MapEffectiveGeometry.RefinePolygon(lower, upper, new[] { min, new(min.X, max.Z), max, new(max.X, min.Z) }, limits, work);
     }
+
+    internal static MapWideCellRefinement RefineWide(IReadOnlyList<MapBoundFace> lower, IReadOnlyList<MapBoundFace>? upper,
+        IReadOnlyList<MapWideXz> polygon, MapRefinementLimits limits, MapRefinementWork? work = null) =>
+        MapEffectiveGeometry.RefinePolygonWide(lower, upper, polygon, limits, work);
 
     public static MapExactValue Area(MapRefinementFace face) => MapEffectiveGeometry.Area(face.Polygon);
 
@@ -153,20 +158,25 @@ public static class MapCommonRefinement
     }
 
     internal static MapCellRefinement RefineFootprintCell(MapBoundFaceContext context, MapSpaceFootprint footprint,
+        int slotCell, MapRefinementLimits limits) => RefineFootprintCellWide(context, footprint, slotCell, limits).Narrow();
+
+    internal static MapWideCellRefinement RefineFootprintCellWide(MapBoundFaceContext context, MapSpaceFootprint footprint,
         int slotCell, MapRefinementLimits limits)
     {
         try
         {
             MapExactXz[] rect = new MapBoundPreparation(context, limits).Rectangle(footprint, slotCell);
             MapBoundFaceSet lower = BoundFaces(context, footprint, footprint.Lower, rect[0], rect[1], limits);
-            if (lower.Status != MapRefinementStatus.Complete) return Failure(lower.Status, lower.Detail);
+            if (lower.Status != MapRefinementStatus.Complete) return MapWideCellRefinement.Failure(lower.Status, lower.Detail);
             MapBoundFaceSet? upper = footprint.Upper.Kind == MapBoundKind.OpenTop ? null
                 : BoundFaces(context, footprint, footprint.Upper, rect[0], rect[1], limits);
-            if (upper is not null && upper.Status != MapRefinementStatus.Complete) return Failure(upper.Status, upper.Detail);
-            MapCellRefinement result = context.View.EffectiveContext is null ? Refine(lower.Faces, upper?.Faces, rect[0], rect[1], limits)
-                : MapEffectiveGeometry.RefinePolygon(lower.Faces, upper?.Faces, MapEffectiveGeometry.CellPolygon(context.View, footprint.Lattice, slotCell), limits);
+            if (upper is not null && upper.Status != MapRefinementStatus.Complete) return MapWideCellRefinement.Failure(upper.Status, upper.Detail);
+            IReadOnlyList<MapWideXz> polygon = context.View.EffectiveContext is null
+                ? new[] { MapWideXz.From(rect[0]), MapWideXz.From(new(rect[0].X, rect[1].Z)), MapWideXz.From(rect[1]), MapWideXz.From(new(rect[1].X, rect[0].Z)) }
+                : MapEffectiveGeometry.CellPolygon(context.View, footprint.Lattice, slotCell).Select(MapWideXz.From).ToArray();
+            var result = RefineWide(lower.Faces, upper?.Faces, polygon, limits);
             if (result.Status != MapRefinementStatus.Complete) return result;
-            MapExactValue compatibilityArea = default;
+            MapWideRational compatibilityArea = default;
             foreach (MapLegacyCellTag tag in lower.Compatibility)
             {
                 MapSurfaceRef surface = context.View.Surfaces.Single(s => s.Id == tag.Patch.SurfaceId);
@@ -174,14 +184,14 @@ public static class MapCommonRefinement
                 MapExactValue minX = Max(rect[0].X, cell[0].X), minZ = Max(rect[0].Z, cell[0].Z);
                 MapExactValue maxX = Min(rect[1].X, cell[1].X), maxZ = Min(rect[1].Z, cell[1].Z);
                 if (minX.CompareTo(maxX) < 0 && minZ.CompareTo(maxZ) < 0)
-                    compatibilityArea = compatibilityArea.Add(maxX.Subtract(minX).Multiply(maxZ.Subtract(minZ)));
+                    compatibilityArea = compatibilityArea.Add(MapWideRational.From(maxX).Subtract(MapWideRational.From(minX)).Multiply(MapWideRational.From(maxZ).Subtract(MapWideRational.From(minZ))));
             }
             return result with { CompatibilityArea = compatibilityArea, CompatibilityCells = lower.Compatibility };
         }
-        catch (MapExactOverflowException) { return Failure(MapRefinementStatus.NotRepresentable, "overflow"); }
+        catch (MapExactOverflowException) { return MapWideCellRefinement.Failure(MapRefinementStatus.NotRepresentable, "overflow"); }
         catch (MapDocumentException error)
         {
-            return Failure(NotRepresentable(error) ? MapRefinementStatus.NotRepresentable : MapRefinementStatus.Invalid,
+            return MapWideCellRefinement.Failure(NotRepresentable(error) ? MapRefinementStatus.NotRepresentable : MapRefinementStatus.Invalid,
                 NotRepresentable(error) ? "overflow: " + error.Message : error.Message);
         }
     }

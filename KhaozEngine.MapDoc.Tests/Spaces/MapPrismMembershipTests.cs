@@ -240,7 +240,7 @@ public sealed class MapPrismMembershipTests
         var m = new MapSpaceMembership(view).QueryExact(point);
         Assert.Equal(role, m.Fragment!.Lower.Role);
         var pieces = MapOccupiedPartitions.Pieces(view, "a/room", new(new(0, 1), new(-4, 1)), new(new(4, 1), new(0, 1)), new());
-        var containing = pieces.Where(p => MapWaterPolygons.RingContains(p.Polygon.Select(MapWideXz.From).ToArray(), MapWideXz.From(new(point.X, point.Z)))).ToArray();
+        var containing = pieces.Where(p => MapWaterPolygons.RingContains(p.Polygon, MapWideXz.From(new(point.X, point.Z)))).ToArray();
         Assert.Single(containing);
         Assert.Equal(m.Fragment.Id, containing[0].FragmentId);
     }
@@ -259,8 +259,8 @@ public sealed class MapPrismMembershipTests
         foreach (var y in new[] { -1f, 0.5f, 1.5f, 2.5f, 4f })
         {
             var height = MapExactValue.FromSingle(y);
-            var at = pieces.Where(p => MapWaterPolygons.RingContains(p.Polygon.Select(MapWideXz.From).ToArray(), MapWideXz.From(xz)) &&
-                height.CompareTo(p.Bottom(xz)) >= 0 && (p.Top(xz) is not { } top || height.CompareTo(top) < 0)).ToArray();
+            var at = pieces.Where(p => MapWaterPolygons.RingContains(p.Polygon, MapWideXz.From(xz)) &&
+                MapWideRational.From(height).CompareTo(p.Bottom(MapWideXz.From(xz))) >= 0 && (p.Top(MapWideXz.From(xz)) is not { } top || MapWideRational.From(height).CompareTo(top) < 0)).ToArray();
             Assert.Single(at);
             Assert.Equal(MapSpaceIntervals.At(view, PrefabFixtures.Point(r, 2, y, -2)).Fragment!.Id, at[0].FragmentId);
         }

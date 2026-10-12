@@ -42,26 +42,30 @@ public static class MapPrismCoverage
         {
             var min = new MapExactXz(domains.Values.Min(d => d.Min.X), domains.Values.Min(d => d.Min.Z));
             var max = new MapExactXz(domains.Values.Max(d => d.Max.X), domains.Values.Max(d => d.Max.Z));
-            var raw = MapOccupiedPartitions.Build(view, min, max, limits, carve: false);
+            var partition = MapOccupiedPartitions.BuildWide(view, min, max, limits, carve: false);
+            if (partition.Status != MapRefinementStatus.Complete) throw MapOccupiedPartitions.Refusal(partition.Status, partition.Detail);
+            var raw = partition.Pieces;
             var work = new MapWaterWorkBudget(limits.MaxPairChecks);
             foreach (var prism in prisms)
             {
                 var domain = domains[prism.Id];
-                var parents = raw.Where(p => p.SpaceId == prism.Parent.Id).ToArray();
-                var (lo, hi) = MapPrismGeometry.Heights(view, prism);
+                string parentOwner = MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Parent));
+                var parents = raw.Where(p => p.SpaceId == parentOwner).ToArray();
+                var heights = MapPrismGeometry.Heights(view, prism);
+                var lo = MapWideRational.From(heights.Lower); var hi = MapWideRational.From(heights.Upper);
                 for (int i = 0; i < domain.Pieces.Count; i++)
                     foreach (var convex in domain.ConvexParts(i, work))
                     {
-                        var polygon = convex.Select(p => p.TryNarrow(out var point) ? point : throw new MapExactOverflowException()).ToArray();
-                        var uncovered = new List<IReadOnlyList<MapExactXz>> { polygon };
+                        var polygon = convex;
+                        var uncovered = new List<IReadOnlyList<MapWideXz>> { polygon };
                         foreach (var parent in parents)
                         {
                             work.Charge(1);
                             var clip = MapOccupiedPartitions.Intersect(polygon, parent.Polygon);
                             if (!MapOccupiedPartitions.Positive(clip)) continue;
-                            if (clip.Any(p => MapSpaceGeometry.Min(parent.Top(p) ?? hi, hi).CompareTo(MapSpaceGeometry.Max(parent.Bottom(p), lo)) <= 0))
+                            if (clip.Any(p => MapWideRational.Min(parent.Top(p) ?? hi, hi).CompareTo(MapWideRational.Max(parent.Bottom(p), lo)) <= 0))
                                 errors.Add($"prism '{prism.Id}': effective separation over parent refinement");
-                            var next = new List<IReadOnlyList<MapExactXz>>();
+                            var next = new List<IReadOnlyList<MapWideXz>>();
                             foreach (var remaining in uncovered)
                                 next.AddRange(MapOccupiedPartitions.Difference(remaining, parent.Polygon));
                             uncovered = next;

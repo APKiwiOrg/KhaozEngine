@@ -32,6 +32,7 @@ internal sealed record MapSpaceBoundsPart(string SpaceId, string Owner, MapExact
     internal MapOccupiedFragment? Fragment { get; init; }
     internal IReadOnlyList<MapBoundFace> LowerFaces { get; init; } = Array.Empty<MapBoundFace>();
     internal IReadOnlyList<MapBoundFace> UpperFaces { get; init; } = Array.Empty<MapBoundFace>();
+    internal MapRecordRef? AuthoredParent { get; init; }
     internal IReadOnlyList<string> Path { get; init; } = Array.Empty<string>();
 }
 

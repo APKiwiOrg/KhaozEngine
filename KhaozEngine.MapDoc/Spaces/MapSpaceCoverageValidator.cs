@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc.Spaces;
 
@@ -38,8 +39,8 @@ public static class MapSpaceCoverageValidator
             bool contextFinding = false;
             foreach (int cell in footprint.SlotCells.Order())
             {
-                MapCellRefinement refinement;
-                if (prepared.CellOutcomes.TryGetValue((footprint.Id, cell), out MapCellRefinement? outcome)) refinement = outcome;
+                MapWideCellRefinement refinement;
+                if (prepared.CellOutcomes.TryGetValue((footprint.Id, cell), out MapCellRefinement? outcome)) refinement = MapWideCellRefinement.FromBounded(outcome);
                 else if (prepared.Context is null)
                 {
                     if (!contextFinding)
@@ -49,7 +50,7 @@ public static class MapSpaceCoverageValidator
                     }
                     continue;
                 }
-                else refinement = MapCommonRefinement.RefineFootprintCell(prepared.Context, footprint, cell, limits);
+                else refinement = MapCommonRefinement.RefineFootprintCellWide(prepared.Context, footprint, cell, limits);
                 string label = $"footprint '{footprint.Id}' cell {cell}";
                 if (refinement.Status != MapRefinementStatus.Complete)
                 {
@@ -65,8 +66,8 @@ public static class MapSpaceCoverageValidator
                     Add(footprint.Id, cell, $"{kind}: {label}{detail}");
                     continue;
                 }
-                if (refinement.LowerArea.Add(refinement.CompatibilityArea) != refinement.CellArea ||
-                    (refinement.UpperArea is { } upperArea && upperArea != refinement.CellArea))
+                if (!refinement.LowerArea.Add(refinement.CompatibilityArea).Equals(refinement.CellArea) ||
+                    (refinement.UpperArea is { } upperArea && !upperArea.Equals(refinement.CellArea)))
                 {
                     Add(footprint.Id, cell, $"missing bound: {label}");
                     continue;
@@ -80,11 +81,14 @@ public static class MapSpaceCoverageValidator
                         MapCommonRefinement.BoundFaces(context, footprint, footprint.Upper, rect[0], rect[1], limits);
                     if (refinement.MinSeparation is { Sign: <= 0 })
                     {
-                        MapExactXz vertex = FirstSeparation(refinement, lower.Faces, upper!.Faces);
+                        MapWideXz vertex = FirstSeparation(refinement, lower.Faces, upper!.Faces);
                         Add(footprint.Id, cell, $"separation: {label} at ({vertex.X}, {vertex.Z})");
                     }
                     MapSpaceDoc space = MapSpaceGeometry.Record<MapSpaceDoc>(view, footprint.Space);
-                    columns.Add(new(footprint, cell, space, rect[0], rect[1], lower.Faces, upper?.Faces, refinement));
+                    var lowerKeys = refinement.Faces.Select(f => f.Lower).ToHashSet();
+                    var upperKeys = refinement.Faces.Where(f => f.Upper is not null).Select(f => f.Upper!.Value).ToHashSet();
+                    columns.Add(new(footprint, cell, space, rect[0], rect[1], lower.Faces.Where(f => lowerKeys.Contains(f.Key)).ToArray(),
+                        upper?.Faces.Where(f => upperKeys.Contains(f.Key)).ToArray(), refinement, MapEffectiveGeometry.CellPolygon(view, footprint.Lattice, cell).Select(MapWideXz.From).ToArray()));
                 }
                 catch (MapExactOverflowException) { Add(footprint.Id, cell, $"not representable: {label}"); }
                 catch (MapDocumentException error) { Add(footprint.Id, cell, $"missing geometry: {label} ({error.Message})"); }
@@ -100,16 +104,16 @@ public static class MapSpaceCoverageValidator
         string OwnerOf(string finding) => records.FirstOrDefault(r => finding.Contains($"'{r.Id}'", StringComparison.Ordinal))?.Id ?? "";
     }
 
-    static MapExactXz FirstSeparation(MapCellRefinement refinement, IReadOnlyList<MapBoundFace> lower, IReadOnlyList<MapBoundFace> upper)
+    static MapWideXz FirstSeparation(MapWideCellRefinement refinement, IReadOnlyList<MapBoundFace> lower, IReadOnlyList<MapBoundFace> upper)
     {
         var lo = lower.ToDictionary(f => f.Key, f => f.Triangle);
         var hi = upper.ToDictionary(f => f.Key, f => f.Triangle);
-        foreach (MapExactXz vertex in refinement.Vertices)
-            foreach (MapRefinementFace face in refinement.Faces)
+        foreach (MapWideXz vertex in refinement.Vertices)
+            foreach (MapWideRefinementFace face in refinement.Faces)
             {
                 if (!face.Polygon.Contains(vertex) || face.Upper is not { } top) continue;
-                MapExactValue bottomHeight = MapSubdividedTriangle.Height(lo[face.Lower], vertex.X, vertex.Z)!.Value;
-                MapExactValue topHeight = MapSubdividedTriangle.Height(hi[top], vertex.X, vertex.Z)!.Value;
+                MapWideRational bottomHeight = MapEffectiveGeometry.HeightWide(lo[face.Lower], vertex);
+                MapWideRational topHeight = MapEffectiveGeometry.HeightWide(hi[top], vertex);
                 if (topHeight.Subtract(bottomHeight).Sign <= 0) return vertex;
             }
         throw new InvalidOperationException("separation witness was not found");
@@ -118,8 +122,9 @@ public static class MapSpaceCoverageValidator
 
 internal sealed record MapSpaceColumn(MapSpaceFootprint Footprint, int Cell, MapSpaceDoc Space,
     MapExactXz Min, MapExactXz Max, IReadOnlyList<MapBoundFace> Lower, IReadOnlyList<MapBoundFace>? Upper,
-    MapCellRefinement Refinement)
+    MapWideCellRefinement Refinement, IReadOnlyList<MapWideXz> Polygon)
 {
-    internal MapExactValue? Bottom(MapExactXz point) => MapSpaceGeometry.Height(Lower, point);
-    internal MapExactValue? Top(MapExactXz point) => Upper is null ? null : MapSpaceGeometry.Height(Upper, point);
+    internal MapWaterPolygons.Bounds WideBounds { get; } = MapWaterPolygons.Bounds.Of(Polygon);
+    internal MapWideRational? Bottom(MapWideXz point) => MapSpaceGeometry.HeightWide(Lower, point);
+    internal MapWideRational? Top(MapWideXz point) => Upper is null ? null : MapSpaceGeometry.HeightWide(Upper, point);
 }

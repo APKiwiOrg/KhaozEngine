@@ -192,21 +192,25 @@ internal static class MapEffectiveGeometry
     }
 
     internal static MapCellRefinement RefinePolygon(IReadOnlyList<MapBoundFace> lower, IReadOnlyList<MapBoundFace>? upper,
-        IReadOnlyList<MapExactXz> boundary, MapRefinementLimits limits, MapRefinementWork? work = null)
+        IReadOnlyList<MapExactXz> boundary, MapRefinementLimits limits, MapRefinementWork? work = null) =>
+        RefinePolygonWide(lower, upper, boundary.Select(MapWideXz.From).ToArray(), limits, work).Narrow();
+
+    internal static MapWideCellRefinement RefinePolygonWide(IReadOnlyList<MapBoundFace> lower, IReadOnlyList<MapBoundFace>? upper,
+        IReadOnlyList<MapWideXz> boundary, MapRefinementLimits limits, MapRefinementWork? work = null)
     {
         try
         {
             if (lower.Count > limits.MaxSourceFacesPerBound || upper?.Count > limits.MaxSourceFacesPerBound)
-                return MapCommonRefinement.Failure(MapRefinementStatus.CapacityExceeded, "source faces");
-            var clip = boundary.Select(MapWideXz.From).ToList();
-            if (AreaWide(clip).Sign == 0) return MapCommonRefinement.Failure(MapRefinementStatus.Invalid, "cell");
+                return MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "source faces");
+            var clip = boundary.ToList();
+            if (AreaWide(clip).Sign == 0) return MapWideCellRefinement.Failure(MapRefinementStatus.Invalid, "cell");
             if (AreaWide(clip).Sign < 0) clip.Reverse();
             var bottom = ClipFaces(lower); var top = upper is null ? new List<WideFace>() : ClipFaces(upper);
             long pairs = upper is null ? 0 : checked((long)bottom.Count * top.Count);
             if (work is not null) work.ChargedPairs = pairs;
-            if (pairs > limits.MaxPairChecks) return MapCommonRefinement.Failure(MapRefinementStatus.CapacityExceeded, "pair checks");
-            var vertices = new SortedSet<MapExactXz>();
-            var faces = new List<MapRefinementFace>();
+            if (pairs > limits.MaxPairChecks) return MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "pair checks");
+            var vertices = new SortedSet<MapWideXz>();
+            var faces = new List<MapWideRefinementFace>();
             MapWideRational? separation = null;
             foreach (var lo in bottom)
                 if (upper is null) { if (!Emit(lo, null, lo.Polygon)) return Capacity(); }
@@ -221,8 +225,8 @@ internal static class MapEffectiveGeometry
                     if (!Emit(lo, hi, intersection)) return Capacity();
                 }
             return new(MapRefinementStatus.Complete, Array.AsReadOnly(vertices.ToArray()), faces.AsReadOnly(),
-                Narrow(AreaWide(clip)), Narrow(Sum(bottom)), default, Array.Empty<MapLegacyCellTag>(), upper is null ? null : Narrow(Sum(top)),
-                separation is { } gap ? Narrow(gap) : null, (int)pairs, null);
+                AreaWide(clip), Sum(bottom), default, Array.Empty<MapLegacyCellTag>(), upper is null ? null : Sum(top),
+                separation, (int)pairs, null);
 
             List<WideFace> ClipFaces(IReadOnlyList<MapBoundFace> source)
             {
@@ -241,11 +245,11 @@ internal static class MapEffectiveGeometry
             bool Emit(WideFace lo, WideFace? hi, IReadOnlyList<MapWideXz> polygon)
             {
                 if (faces.Count >= limits.MaxRefinementFaces) return false;
-                var points = new List<MapExactXz>();
+                var points = new List<MapWideXz>();
                 MapWideRational? faceSeparation = null;
                 foreach (var wide in polygon)
                 {
-                    if (!wide.TryNarrow(out var point)) throw new MapExactOverflowException();
+                    var point = wide;
                     if (!vertices.Contains(point) && vertices.Count >= limits.MaxRefinementVertices) return false;
                     vertices.Add(point); points.Add(point);
                     if (hi is not null)
@@ -255,14 +259,14 @@ internal static class MapEffectiveGeometry
                         separation = separation is { } total ? MapWideRational.Min(total, delta) : delta;
                     }
                 }
-                faces.Add(new(lo.Face.Key, hi?.Face.Key, Normalize(points), faceSeparation is { } gap ? Narrow(gap) : null));
+                faces.Add(new(lo.Face.Key, hi?.Face.Key, MapWideRefinementGeometry.Normalize(points), faceSeparation));
                 return true;
             }
-            MapCellRefinement Capacity() => MapCommonRefinement.Failure(MapRefinementStatus.CapacityExceeded, "refinement faces or vertices");
+            MapWideCellRefinement Capacity() => MapWideCellRefinement.Failure(MapRefinementStatus.CapacityExceeded, "refinement faces or vertices");
         }
         catch (Exception error) when (error is MapExactOverflowException or OverflowException)
-        { return MapCommonRefinement.Failure(MapRefinementStatus.NotRepresentable, "overflow"); }
-        catch (MapDocumentException error) { return MapCommonRefinement.Failure(MapRefinementStatus.Invalid, error.Message); }
+        { return MapWideCellRefinement.Failure(MapRefinementStatus.NotRepresentable, "overflow"); }
+        catch (MapDocumentException error) { return MapWideCellRefinement.Failure(MapRefinementStatus.Invalid, error.Message); }
     }
     sealed record WideFace(MapBoundFace Face, IReadOnlyList<MapWideXz> Polygon);
     static MapWideRational Sum(IEnumerable<WideFace> faces) => faces.Aggregate(default(MapWideRational), (sum, f) => sum.Add(AreaWide(f.Polygon)));
@@ -279,7 +283,7 @@ internal static class MapEffectiveGeometry
     }
     static MapWideRational Cross(MapWideXz a, MapWideXz b, MapWideXz c) =>
         b.X.Subtract(a.X).Multiply(c.Z.Subtract(a.Z)).Subtract(b.Z.Subtract(a.Z).Multiply(c.X.Subtract(a.X)));
-    static MapWideRational HeightWide(MapExactTriangle t, MapWideXz p)
+    internal static MapWideRational HeightWide(MapExactTriangle t, MapWideXz p)
     {
         var a = new MapWideXz(W(t.A.X), W(t.A.Z)); var b = new MapWideXz(W(t.B.X), W(t.B.Z)); var c = new MapWideXz(W(t.C.X), W(t.C.Z));
         var area = Cross(a, b, c);

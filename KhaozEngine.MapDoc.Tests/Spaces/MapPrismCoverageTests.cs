@@ -10,7 +10,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.MapDoc.Spaces;
 
-public sealed class MapPrismCoverageTests
+public sealed partial class MapPrismCoverageTests
 {
     [Theory]
     [InlineData("basic")]
@@ -63,33 +63,4 @@ public sealed class MapPrismCoverageTests
         { Children = asset.Children.Where(c => c.Key.Kind != MapPrefabChildKind.Storey).ToArray() }));
     }
 
-    [Theory]
-    [InlineData(0.8f, false)]
-    [InlineData(1.2f, true)]
-    public void TransformedCanonicalPartition_FinalNarrowingRefusesConservatively(float scale, bool far)
-    {
-        var r = PrefabFixtures.Effective(PrefabFixtures.Sloped(far, scale));
-        var view = r.CompleteView();
-        var prism = view.RecordsIn(new("a/floor", 0, 0)).OfType<MapPrismDomain>().Single();
-        var ring = MapPrismGeometry.Compile(view, prism).Pieces.Single().Ring.Select(MapWideXz.From).ToArray();
-        int zeroAreaRefusals = 0, positiveAreaRefusals = 0;
-        foreach (var key in view.Witness.Present.Select(patch => patch.Key).Where(key => key.SurfaceId == "exterior"))
-        {
-            var compiled = MapEffectiveGeometry.Patch(view, key);
-            foreach (var face in compiled.Faces)
-            {
-                var polygon = MapRefinementPolygon.Triangle(compiled.ExactTriangle(face)).Select(MapWideXz.From).ToArray();
-                var intersection = MapEffectiveGeometry.Intersect(polygon, ring);
-                if (!intersection.Any(point => !point.TryNarrow(out _))) continue;
-                if (MapEffectiveGeometry.AreaWide(intersection).Sign == 0) zeroAreaRefusals++;
-                else positiveAreaRefusals++;
-            }
-        }
-        Assert.True(positiveAreaRefusals > 0);
-        Assert.Equal(0, zeroAreaRefusals);
-        var p = PrefabFixtures.SharedFloorCorner(r);
-        Assert.Throws<MapExactOverflowException>(() => MapOccupiedPartitions.Build(view, new(p.X.Subtract(new(10, 1)), p.Z.Subtract(new(10, 1))),
-            new(p.X.Add(new(10, 1)), p.Z.Add(new(10, 1))), new(), false));
-        Assert.Contains(MapPrismCoverage.Validate(view, new()), e => e.Contains("not representable", StringComparison.Ordinal));
-    }
 }

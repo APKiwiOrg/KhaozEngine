@@ -73,6 +73,36 @@ internal static class MapSpaceGeometry
         return null;
     }
 
+    internal static bool OnSegmentWide(MapWideXz point, MapWideXz a, MapWideXz b) => a != b &&
+        MapWaterPolygons.Cross(a, b, point).Sign == 0 &&
+        point.X.CompareTo(MapWideRational.Min(a.X, b.X)) >= 0 && point.X.CompareTo(MapWideRational.Max(a.X, b.X)) <= 0 &&
+        point.Z.CompareTo(MapWideRational.Min(a.Z, b.Z)) >= 0 && point.Z.CompareTo(MapWideRational.Max(a.Z, b.Z)) <= 0;
+
+    internal static MapWideRational? ChainHeightWide(IReadOnlyList<MapWidePoint> points, MapWideXz point)
+    {
+        for (int i = 0; i + 1 < points.Count; i++)
+        {
+            var a = points[i]; var b = points[i + 1];
+            if (!OnSegmentWide(point, a.Xz, b.Xz)) continue;
+            var t = !a.X.Equals(b.X) ? point.X.Subtract(a.X).Divide(b.X.Subtract(a.X)) : point.Z.Subtract(a.Z).Divide(b.Z.Subtract(a.Z));
+            return a.Y.Add(b.Y.Subtract(a.Y).Multiply(t));
+        }
+        return null;
+    }
+
+    internal static MapWideRational? HeightWide(IReadOnlyList<MapBoundFace> faces, MapWideXz point)
+    {
+        foreach (var face in faces)
+        {
+            var t = face.Triangle;
+            var a = MapWideXz.From(new(t.A.X, t.A.Z)); var b = MapWideXz.From(new(t.B.X, t.B.Z)); var c = MapWideXz.From(new(t.C.X, t.C.Z));
+            int ab = MapWaterPolygons.Cross(a, b, point).Sign, bc = MapWaterPolygons.Cross(b, c, point).Sign, ca = MapWaterPolygons.Cross(c, a, point).Sign;
+            if (ab >= 0 && bc >= 0 && ca >= 0 || ab <= 0 && bc <= 0 && ca <= 0)
+                return MapEffectiveGeometry.HeightWide(t, point);
+        }
+        return null;
+    }
+
     /// <summary>The lexicographic derivative in the R4 world direction (1, infinitesimal +Z).</summary>
     internal static int Direction(IReadOnlyList<MapBoundFace> faces, MapExactXz point)
     {

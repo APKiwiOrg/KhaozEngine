@@ -267,9 +267,17 @@ same fragment identity, lower/upper boundary provenance and ordered ancestor-car
 fragment IDs exclude semantic digests, float endpoints, clipping order and tile packing. A geometry
 change updates the boundary semantic digest without reallocating the logical fragment ID. Roof,
 water and support consumers use these occupied facts. Prism planes create no support triangles.
-Incomplete acquisition remains MissingGeometry. Work beyond the configured budgets is
-CapacityExceeded, and an exact final value beyond the bounded rational representation is
-NotRepresentable. None of these refusals certifies exterior, dry water or hidden roofs.
+Generated common-refinement vertices, occupied polygons, areas and canonical plane evaluations
+remain exact-wide internally. Ordinary free-yaw rooms can publish even when a generated intersection
+cannot fit an int64 rational. Canonical wide ordering preserves geometry through clipping and reload.
+A declared alias parent resolves to its occupancy owner for partition lookup. Its authored reference
+remains in fragment provenance and the ancestor-carving path.
+
+Incomplete acquisition remains MissingGeometry and work beyond the configured budgets is
+CapacityExceeded. Explicit bounded adapters and released scalar APIs retain NotRepresentable when
+a requested value cannot fit their representation. That adapter refusal does not reject wide
+internal topology. None of these refusals certifies exterior, dry water or hidden roofs. Task 7
+consumes the wide semantic fragments through its own classification and digest path.
 
 ## Physical holes, paint and imported fallback
 

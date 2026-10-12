@@ -9,14 +9,17 @@ using KhaozEngine.MapDoc.Water;
 namespace KhaozEngine.MapDoc.Spaces;
 
 internal sealed record MapOccupiedPiece(string SpaceId, string FragmentId, MapOccupiedBoundary LowerBoundary,
-    MapOccupiedBoundary UpperBoundary, IReadOnlyList<MapExactXz> Polygon, IReadOnlyList<MapBoundFace> LowerFaces,
+    MapOccupiedBoundary UpperBoundary, IReadOnlyList<MapWideXz> Polygon, IReadOnlyList<MapBoundFace> LowerFaces,
     IReadOnlyList<MapBoundFace>? UpperFaces, MapExactValue? LowerPlane, MapExactValue? UpperPlane)
 {
     internal IReadOnlyList<string> Path { get; init; } = Array.Empty<string>();
-    internal MapExactValue Bottom(MapExactXz p) => LowerPlane ?? MapSpaceGeometry.Height(LowerFaces, p)
-        ?? throw new MapDocumentException("missing geometry: occupied lower bound");
-    internal MapExactValue? Top(MapExactXz p) => UpperPlane ?? (UpperFaces is null ? null : MapSpaceGeometry.Height(UpperFaces, p)
-        ?? throw new MapDocumentException("missing geometry: occupied upper bound"));
+    internal MapRecordRef? AuthoredParent { get; init; }
+    internal MapWideRational Bottom(MapWideXz p) => LowerPlane is { } plane ? MapWideRational.From(plane) :
+        MapSpaceGeometry.HeightWide(LowerFaces, p) ?? throw new MapDocumentException("missing geometry: occupied lower bound");
+    internal MapWideRational? Top(MapWideXz p) => UpperPlane is { } plane ? MapWideRational.From(plane) : UpperFaces is null ? null :
+        MapSpaceGeometry.HeightWide(UpperFaces, p) ?? throw new MapDocumentException("missing geometry: occupied upper bound");
+    internal MapWidePoint Lift(MapWideXz p, bool upper) => new(p.X, upper ? Top(p)
+        ?? throw new MapDocumentException("open top has no plane") : Bottom(p), p.Z);
 }
 
 /// <summary>One identified partition shared by membership, columns and downstream water geometry. Planes never
@@ -77,13 +80,13 @@ internal static class MapOccupiedPartitions
             if (!visiting.Add(prism.Id)) throw new MapDocumentException("invalid prism parent cycle");
             MapPrismCoverage.RequireStorey(view, prism);
             var space = MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Space);
-            _ = MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Parent);
+            string parentOwner = MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Parent));
             if (space.Kind != MapSpaceKind.Room || space.Parent != prism.Parent) throw new MapDocumentException("missing geometry: prism parent mismatch");
-            foreach (var parent in prisms.Where(p => p.Space.Id == prism.Parent.Id)) Add(parent, depth + 1);
+            foreach (var parent in prisms.Where(p => MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, p.Space)) == parentOwner)) Add(parent, depth + 1);
             var polygon = MapPrismGeometry.Compile(view, prism);
             if (polygon.Contains(xz))
             {
-                var parents = raw.Where(p => p.SpaceId == prism.Parent.Id || p.Owner == prism.Parent.Id).ToArray();
+                var parents = raw.Where(p => p.Owner == parentOwner).ToArray();
                 if (parents.Length == 0) throw new MapDocumentException("missing geometry: prism parent footprint");
                 var (low, high) = MapPrismGeometry.Heights(view, prism);
                 foreach (var parent in parents)
@@ -102,7 +105,8 @@ internal static class MapOccupiedPartitions
                         UpperBoundary = hi,
                         LowerFaces = parentLow ? parent.LowerFaces : Array.Empty<MapBoundFace>(),
                         UpperFaces = parentHigh ? parent.UpperFaces : Array.Empty<MapBoundFace>(),
-                        Path = Extend(parent.Path, parent.SpaceId, parent.LowerBoundary!, parent.UpperBoundary!)
+                        AuthoredParent = prism.Parent,
+                        Path = Extend(parent.Path, prism.Parent.Id, parent.LowerBoundary!, parent.UpperBoundary!)
                     };
                     raw.Add(Identify(view, part));
                 }
@@ -153,6 +157,27 @@ internal static class MapOccupiedPartitions
     internal static IReadOnlyList<MapOccupiedPiece> Build(MapScopedSurfaces view, MapExactXz min, MapExactXz max,
         MapRefinementLimits limits, bool carve)
     {
+        var result = BuildWide(view, min, max, limits, carve);
+        if (result.Status != MapRefinementStatus.Complete) throw Refusal(result.Status, result.Detail);
+        return result.Pieces;
+    }
+
+    internal static MapOccupiedPartitionResult BuildWide(MapScopedSurfaces view, MapExactXz min, MapExactXz max,
+        MapRefinementLimits limits, bool carve)
+    {
+        try { return new(MapRefinementStatus.Complete, BuildCore(view, min, max, limits, carve), null, view.ReadWitness); }
+        catch (Exception error) when (error is MapDocumentException or MapExactOverflowException or OverflowException)
+        {
+            var status = error.Message.Contains("capacity exceeded", StringComparison.Ordinal) || error.Message.Contains("domain work exceeds", StringComparison.Ordinal)
+                ? MapRefinementStatus.CapacityExceeded : MapCommonRefinement.NotRepresentable(error) || error.Message.Contains("not representable", StringComparison.OrdinalIgnoreCase)
+                    ? MapRefinementStatus.NotRepresentable : MapRefinementStatus.MissingGeometry;
+            return new(status, [], error.Message, view.ReadWitness);
+        }
+    }
+
+    static IReadOnlyList<MapOccupiedPiece> BuildCore(MapScopedSurfaces view, MapExactXz min, MapExactXz max,
+        MapRefinementLimits limits, bool carve)
+    {
         if (!view.Witness.Complete) throw new MapDocumentException("missing geometry: occupied partition acquisition");
         var records = MapSpaceGeometry.Records(view).ToArray();
         var domains = records.OfType<MapPrismDomain>().ToArray();
@@ -169,19 +194,19 @@ internal static class MapOccupiedPartitions
             var space = MapSpaceGeometry.Record<MapSpaceDoc>(view, footprint.Space);
             foreach (int cell in footprint.SlotCells)
             {
-                var polygon = MapEffectiveGeometry.CellPolygon(view, footprint.Lattice, cell).ToList();
-                polygon = MapRefinementPolygon.Normalize(polygon).ToList();
-                var extent = MapEffectiveGeometry.Bounds(polygon);
+                var authored = MapEffectiveGeometry.CellPolygon(view, footprint.Lattice, cell);
+                var polygon = MapWideRefinementGeometry.Normalize(authored.Select(MapWideXz.From));
+                var extent = MapEffectiveGeometry.Bounds(authored);
                 if (extent.MaxX.CompareTo(min.X) <= 0 || extent.MinX.CompareTo(max.X) >= 0 ||
                     extent.MaxZ.CompareTo(min.Z) <= 0 || extent.MinZ.CompareTo(max.Z) >= 0) continue;
-                var rect = MapEffectiveGeometry.Bounds(polygon);
+                var rect = extent;
                 var lower = MapCommonRefinement.BoundFaces(context, footprint, footprint.Lower, new(rect.MinX, rect.MinZ), new(rect.MaxX, rect.MaxZ), limits);
                 var upper = footprint.Upper.Kind == MapBoundKind.OpenTop ? null :
                     MapCommonRefinement.BoundFaces(context, footprint, footprint.Upper, new(rect.MinX, rect.MinZ), new(rect.MaxX, rect.MaxZ), limits);
                 Require(lower); if (upper is not null) Require(upper);
-                var refined = MapEffectiveGeometry.RefinePolygon(lower.Faces, upper?.Faces, polygon, limits);
+                var refined = MapCommonRefinement.RefineWide(lower.Faces, upper?.Faces, polygon, limits);
                 if (refined.Status != MapRefinementStatus.Complete) throw Refusal(refined.Status, refined.Detail);
-                if (refined.LowerArea != refined.CellArea || upper is not null && refined.UpperArea != refined.CellArea)
+                if (!refined.LowerArea.Equals(refined.CellArea) || upper is not null && !refined.UpperArea!.Value.Equals(refined.CellArea))
                     throw new MapDocumentException("missing geometry: canonical occupied bounds");
                 foreach (var face in refined.Faces)
                 {
@@ -198,11 +223,20 @@ internal static class MapOccupiedPartitions
         var visiting = new HashSet<string>(StringComparer.Ordinal);
         foreach (var prism in prisms.OrderBy(p => p.Id, StringComparer.Ordinal)) Room(prism, 0);
         if (!carve) return raw.AsReadOnly();
-        var result = new List<MapOccupiedPiece>();
-        foreach (var part in raw)
+        var children = new Dictionary<int, List<MapOccupiedPiece>>();
+        var ancestry = new Dictionary<(string, string), bool>();
+        foreach (var (a, b) in MapWaterBoundsSweep.Pairs(raw.Select(p => MapWaterPolygons.Bounds.Of(p.Polygon)).ToArray(), false, work))
         {
+            if (raw[a].SpaceId == raw[b].SpaceId) continue;
+            if (IsAncestor(raw[a].SpaceId, raw[b].SpaceId)) Candidate(a, raw[b]);
+            if (IsAncestor(raw[b].SpaceId, raw[a].SpaceId)) Candidate(b, raw[a]);
+        }
+        var result = new List<MapOccupiedPiece>();
+        for (int index = 0; index < raw.Count; index++)
+        {
+            var part = raw[index];
             var pieces = new List<MapOccupiedPiece> { part };
-            foreach (var child in raw.Where(c => c.SpaceId != part.SpaceId && Ancestor(view, part.SpaceId, c.SpaceId)))
+            foreach (var child in (children.GetValueOrDefault(index) ?? []).OrderBy(p => p.SpaceId, StringComparer.Ordinal).ThenBy(p => p.Polygon[0]))
             {
                 var next = new List<MapOccupiedPiece>();
                 foreach (var piece in pieces)
@@ -221,13 +255,15 @@ internal static class MapOccupiedPartitions
                     foreach (var outside in Difference(piece.Polygon, inside)) Add(next, piece with { Polygon = outside });
                     var below = Clip(inside, p => Height(child, p, false).Subtract(Height(piece, p, false)));
                     if (Positive(below) && below.Any(p => Height(child, p, false).CompareTo(Height(piece, p, false)) > 0)) Add(next, Make(piece.SpaceId, piece.LowerBoundary, child.LowerBoundary, below,
-                        piece.LowerFaces, child.LowerFaces, piece.LowerPlane, child.LowerPlane, piece.Path));
+                        piece.LowerFaces, child.LowerFaces, piece.LowerPlane, child.LowerPlane, piece.Path) with
+                    { AuthoredParent = piece.AuthoredParent });
                     if (child.UpperFaces is not null || child.UpperPlane is not null)
                     {
                         var above = piece.UpperFaces is null && piece.UpperPlane is null ? inside :
                             Clip(inside, p => Height(piece, p, true).Subtract(Height(child, p, true)));
                         if (Positive(above) && (piece.UpperFaces is null && piece.UpperPlane is null || above.Any(p => Height(piece, p, true).CompareTo(Height(child, p, true)) > 0))) Add(next, Make(piece.SpaceId, child.UpperBoundary, piece.UpperBoundary, above,
-                            child.UpperFaces ?? [], piece.UpperFaces, child.UpperPlane, piece.UpperPlane, piece.Path));
+                            child.UpperFaces ?? [], piece.UpperFaces, child.UpperPlane, piece.UpperPlane, piece.Path) with
+                        { AuthoredParent = piece.AuthoredParent });
                     }
                 }
                 pieces = next;
@@ -236,15 +272,26 @@ internal static class MapOccupiedPartitions
         }
         return result.Select(piece =>
         {
-            var polygon = Clip(piece.Polygon, p => W(p.X).Subtract(W(min.X)));
-            polygon = Clip(polygon, p => W(max.X).Subtract(W(p.X)));
-            polygon = Clip(polygon, p => W(p.Z).Subtract(W(min.Z)));
-            polygon = Clip(polygon, p => W(max.Z).Subtract(W(p.Z)));
-            return piece with { Polygon = polygon };
+            var polygon = Clip(piece.Polygon, p => p.X.Subtract(W(min.X)));
+            polygon = Clip(polygon, p => W(max.X).Subtract(p.X));
+            polygon = Clip(polygon, p => p.Z.Subtract(W(min.Z)));
+            polygon = Clip(polygon, p => W(max.Z).Subtract(p.Z));
+            return piece with { Polygon = MapWideRefinementGeometry.Normalize(polygon) };
         }).Where(p => Positive(p.Polygon)).ToArray();
 
+        bool IsAncestor(string parent, string child)
+        {
+            if (!ancestry.TryGetValue((parent, child), out bool result)) ancestry[(parent, child)] = result = Ancestor(view, parent, child);
+            return result;
+        }
+        void Candidate(int index, MapOccupiedPiece piece)
+        {
+            if (!children.TryGetValue(index, out var candidates)) children[index] = candidates = new();
+            candidates.Add(piece);
+        }
         void Add(List<MapOccupiedPiece> target, MapOccupiedPiece piece)
         {
+            piece = piece with { Polygon = MapWideRefinementGeometry.Normalize(piece.Polygon) };
             long count = vertices.GetValueOrDefault(target) + piece.Polygon.Count;
             if (target.Count >= limits.MaxRefinementFaces || count > limits.MaxRefinementVertices)
                 throw new MapDocumentException("capacity exceeded: occupied pieces");
@@ -258,18 +305,18 @@ internal static class MapOccupiedPartitions
             if (!visiting.Add(prism.Id)) throw new MapDocumentException("invalid prism parent cycle");
             MapPrismCoverage.RequireStorey(view, prism);
             var space = MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Space);
-            _ = MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Parent);
+            string parentOwner = MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, prism.Parent));
             if (space.Kind != MapSpaceKind.Room || space.Parent != prism.Parent) throw new MapDocumentException("missing geometry: prism parent mismatch");
-            foreach (var parent in prisms.Where(p => p.Space.Id == prism.Parent.Id)) Room(parent, depth + 1);
+            foreach (var parent in prisms.Where(p => MapSpaceGeometry.Owner(view, MapSpaceGeometry.Record<MapSpaceDoc>(view, p.Space)) == parentOwner)) Room(parent, depth + 1);
             var domain = MapPrismGeometry.Compile(view, prism);
             var (lower, upper) = MapPrismGeometry.Heights(view, prism);
             var lo = Boundary(view, prism.Id, "prism-lower"); var hi = Boundary(view, prism.Id, "prism-upper");
-            foreach (var parent in raw.Where(p => p.SpaceId == prism.Parent.Id).ToArray())
+            foreach (var parent in raw.Where(p => p.SpaceId == parentOwner).ToArray())
                 for (int i = 0; i < domain.Pieces.Count; i++)
                     foreach (var convex in domain.ConvexParts(i, work))
                     {
                         work.Charge(1);
-                        var polygon = Intersect(parent.Polygon, convex.Select(Narrow).ToArray());
+                        var polygon = Intersect(parent.Polygon, convex);
                         if (!Positive(polygon)) continue;
                         foreach (bool parentLow in new[] { true, false })
                         {
@@ -286,7 +333,8 @@ internal static class MapOccupiedPartitions
                                 var piece = Make(MapSpaceGeometry.Owner(view, space), parentLow ? parent.LowerBoundary : lo, parentHigh ? parent.UpperBoundary : hi,
                                     clipped, parentLow ? parent.LowerFaces : [], parentHigh ? parent.UpperFaces : null,
                                     parentLow ? parent.LowerPlane : lower, parentHigh ? parent.UpperPlane : upper,
-                                    Extend(parent.Path, parent.SpaceId, parent.LowerBoundary, parent.UpperBoundary));
+                                    Extend(parent.Path, prism.Parent.Id, parent.LowerBoundary, parent.UpperBoundary)) with
+                                { AuthoredParent = prism.Parent };
                                 clipped = Clip(clipped, p => Height(piece, p, true).Subtract(Height(piece, p, false)));
                                 if (Positive(clipped) && clipped.Any(p => Height(piece, p, true).CompareTo(Height(piece, p, false)) > 0)) Add(raw, piece with { Polygon = clipped });
                             }
@@ -296,17 +344,17 @@ internal static class MapOccupiedPartitions
         }
     }
 
-    static MapOccupiedPiece Make(string space, MapOccupiedBoundary lower, MapOccupiedBoundary upper, IReadOnlyList<MapExactXz> polygon,
+    static MapOccupiedPiece Make(string space, MapOccupiedBoundary lower, MapOccupiedBoundary upper, IReadOnlyList<MapWideXz> polygon,
         IReadOnlyList<MapBoundFace> lowerFaces, IReadOnlyList<MapBoundFace>? upperFaces, MapExactValue? lowerPlane, MapExactValue? upperPlane,
         IReadOnlyList<string> path) => new(space, Fragment(space, lower, upper, path).Id, lower, upper,
-            polygon, lowerFaces, upperFaces, lowerPlane, upperPlane)
+            MapWideRefinementGeometry.Normalize(polygon), lowerFaces, upperFaces, lowerPlane, upperPlane)
         { Path = path };
-    internal static bool Positive(IReadOnlyList<MapExactXz> polygon) => polygon.Count >= 3 && MapEffectiveGeometry.AreaWide(polygon.Select(MapWideXz.From).ToArray()).Sign != 0;
-    internal static MapWideRational Height(MapOccupiedPiece piece, MapExactXz point, bool upper) => W(upper ? piece.Top(point)
-        ?? throw new MapDocumentException("open top has no plane") : piece.Bottom(point));
-    internal static List<MapExactXz> Clip(IReadOnlyList<MapExactXz> polygon, Func<MapExactXz, MapWideRational> distance)
+    internal static bool Positive(IReadOnlyList<MapWideXz> polygon) => polygon.Count >= 3 && MapEffectiveGeometry.AreaWide(polygon).Sign != 0;
+    internal static MapWideRational Height(MapOccupiedPiece piece, MapWideXz point, bool upper) => upper ? piece.Top(point)
+        ?? throw new MapDocumentException("open top has no plane") : piece.Bottom(point);
+    internal static List<MapWideXz> Clip(IReadOnlyList<MapWideXz> polygon, Func<MapWideXz, MapWideRational> distance)
     {
-        var result = new List<MapExactXz>();
+        var result = new List<MapWideXz>();
         if (polygon.Count == 0) return result;
         var previous = polygon[^1]; var before = distance(previous);
         foreach (var current in polygon)
@@ -315,25 +363,25 @@ internal static class MapOccupiedPartitions
             if ((before.Sign < 0) != (after.Sign < 0))
             {
                 var t = before.Divide(before.Subtract(after));
-                result.Add(new(MapSubdividedTriangle.Narrow(W(previous.X).Add(W(current.X).Subtract(W(previous.X)).Multiply(t))),
-                    MapSubdividedTriangle.Narrow(W(previous.Z).Add(W(current.Z).Subtract(W(previous.Z)).Multiply(t)))));
+                result.Add(new(previous.X.Add(current.X.Subtract(previous.X).Multiply(t)),
+                    previous.Z.Add(current.Z.Subtract(previous.Z).Multiply(t))));
             }
             if (after.Sign >= 0) result.Add(current);
             previous = current; before = after;
         }
         return result.Distinct().ToList();
     }
-    internal static List<MapExactXz> Intersect(IReadOnlyList<MapExactXz> a, IReadOnlyList<MapExactXz> b) =>
-        MapEffectiveGeometry.Intersect(a.Select(MapWideXz.From).ToArray(), b.Select(MapWideXz.From).ToArray()).Select(Narrow).ToList();
-    internal static IEnumerable<IReadOnlyList<MapExactXz>> Difference(IReadOnlyList<MapExactXz> polygon, IReadOnlyList<MapExactXz> clip)
+    internal static List<MapWideXz> Intersect(IReadOnlyList<MapWideXz> a, IReadOnlyList<MapWideXz> b) =>
+        MapEffectiveGeometry.Intersect(a, b);
+    internal static IEnumerable<IReadOnlyList<MapWideXz>> Difference(IReadOnlyList<MapWideXz> polygon, IReadOnlyList<MapWideXz> clip)
     {
         var remaining = polygon.ToList();
         for (int i = 0; i < clip.Count && remaining.Count != 0; i++)
         {
-            var a = MapWideXz.From(clip[i]); var b = MapWideXz.From(clip[(i + 1) % clip.Count]);
-            var outside = Clip(remaining, p => MapWaterPolygons.Cross(a, b, MapWideXz.From(p)).Negate());
+            var a = clip[i]; var b = clip[(i + 1) % clip.Count];
+            var outside = Clip(remaining, p => MapWaterPolygons.Cross(a, b, p).Negate());
             if (Positive(outside)) yield return outside;
-            remaining = Clip(remaining, p => MapWaterPolygons.Cross(a, b, MapWideXz.From(p)));
+            remaining = Clip(remaining, p => MapWaterPolygons.Cross(a, b, p));
         }
     }
     internal static MapDocumentException Refusal(MapRefinementStatus status, string? detail) => new(status switch
@@ -344,5 +392,4 @@ internal static class MapOccupiedPartitions
     });
     static void Require(MapBoundFaceSet bound) { if (bound.Status != MapRefinementStatus.Complete) throw Refusal(bound.Status, bound.Detail); }
     static MapWideRational W(MapExactValue value) => MapWideRational.From(value);
-    static MapExactXz Narrow(MapWideXz p) => p.TryNarrow(out var exact) ? exact : throw new MapExactOverflowException();
 }

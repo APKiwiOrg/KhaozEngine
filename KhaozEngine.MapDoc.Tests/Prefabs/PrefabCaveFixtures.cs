@@ -168,6 +168,34 @@ internal static partial class PrefabFixtures
         return f;
     }
 
+    internal static PrefabFixture AliasParent(bool roomAlias)
+    {
+        var f = roomAlias ? Cave("nested") : Create();
+        if (!roomAlias)
+        {
+            var anchor = new MapPatchKey("exterior", 0, 0);
+            f.Document.Surfaces.Patches[anchor].Records.Add(new MapSpaceDoc("exterior-alias", MapSpaceKind.Exterior,
+                null, new("exterior", anchor), [], [], [], []));
+            var instance = f.Document.Prefabs!.Instances.Single() with { ParentSpace = new("exterior-alias", anchor) };
+            f.Document.Prefabs = new(1, 1, new[] { instance }, []);
+            return f;
+        }
+        var asset = f.Assets.GetPrefab("hut");
+        var floor = new MapPatchKey("floor", 0, 0);
+        var alias = new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "room-alias"), new MapSpaceDoc("room-alias", MapSpaceKind.Room,
+            new("$parent", new("$parent", 0, 0)), new("room", floor), [], [], [], []), floor)
+        { References = Slots(Anchor("floor"), Ref("/value/parent", "$parent", "$parent"), Ref("/value/aliasOf", "room", "floor")) };
+        var children = asset.Children.Select(c => c switch
+        {
+            MapPrefabRecordChild { Value: MapSpaceDoc { Id: "inner-room" } space } child => child with
+            { Value = space with { Parent = new("room-alias", floor) }, References = child.References.Select(s => s.Path == "/value/parent/id" ? s with { Target = s.Target with { Id = "room-alias" } } : s).ToArray() },
+            MapPrefabRecordChild { Value: MapPrismDomain { Id: "inner-room-domain" } prism } child => child with
+            { Value = prism with { Parent = new("room-alias", floor) }, References = child.References.Select(s => s.Path == "/value/parent/id" ? s with { Target = s.Target with { Id = "room-alias" } } : s).ToArray() },
+            _ => c,
+        }).Append(alias).ToArray();
+        return Reasset(f, asset with { Children = children });
+    }
+
     internal static PrefabFixture AdjacentInstances(float scale, bool far)
     {
         var f = PlacedPrisms("dry-flooded", scale, far);
@@ -197,6 +225,11 @@ internal static partial class PrefabFixtures
             var patch = Patch("exterior", 16, 16, source.Heights[0]);
             patch.Key = new("exterior", x, z);
             patch.CellMinX = x < 0 ? 48 : 0; patch.CellMinZ = z < 0 ? 48 : 0;
+            int dx = source.Heights[1] - source.Heights[0], dz = source.Heights[source.Width + 1] - source.Heights[0];
+            for (int row = 0; row <= patch.Depth; row++)
+                for (int col = 0; col <= patch.Width; col++)
+                    patch.Heights[row * (patch.Width + 1) + col] = checked(source.Heights[0] +
+                        (int)(x * 64 + patch.CellMinX + col) * dx + (int)(z * 64 + patch.CellMinZ + row) * dz);
             patch.Records.Add(new MapSpaceFootprint($"exterior-domain-{x}-{z}", new("exterior", anchor), patch.Key,
                 Enumerable.Range(patch.CellMinZ, 16).SelectMany(row => Enumerable.Range(patch.CellMinX, 16).Select(col => row * 64 + col)).ToArray(),
                 new(MapBoundKind.SupportFloor, "exterior", null), new(MapBoundKind.OpenTop, null, null)));

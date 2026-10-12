@@ -43,7 +43,8 @@ public sealed partial class AtmosphereModel
             source, sample.KeyVisibility, 1f, sample.MoonOpacity);
     }
 
-    /// <summary>Evaluates both bodies in engine Lambert units, with floors before a single tint.
+    /// <summary>Evaluates both bodies in engine Lambert units, tinting source light once and
+    /// applying night-tinted floors independently of the current time of day.
     /// Memoizes the most recent frame and altitude so scene application and GPU packing share the
     /// two source transmittance integrals. Negative camera altitude clamps to the planet surface.</summary>
     public AtmosphereLighting EvaluateLighting(float cameraHeightKm, in AtmosphereFrame frame)
@@ -72,9 +73,9 @@ public sealed partial class AtmosphereModel
             _ => Vector3.Zero,
         };
         _lighting = new AtmosphereLighting(key * frame.KeyVisibility * frame.Tint,
-            Vector3.Max(irradiance * _settings.AmbientScale, new Vector3(_settings.NightAmbientFloor)) * frame.Tint,
+            Vector3.Max(irradiance * _settings.AmbientScale * frame.Tint, _settings.NightAmbientFloor * _settings.NightTint),
             (direct * _settings.GroundAlbedo + bounce) * _settings.FillScale * frame.Tint,
-            Vector3.Max(horizon, new Vector3(_settings.NightSkyFloor)) * frame.Tint,
+            Vector3.Max(horizon * frame.Tint, _settings.NightSkyFloor * _settings.NightTint),
             sunTransmittance, moonTransmittance);
         _lightingHeightKm = height;
         _lightingFrame = frame;
@@ -83,7 +84,8 @@ public sealed partial class AtmosphereModel
     }
 
     /// <summary>Directional sky radiance from independent sun and moon sources, converted with pi
-    /// into engine Lambert units. The untinted sky floor precedes tint. Lighting scales do not apply.</summary>
+    /// into engine Lambert units. Source tint precedes the independent night-tinted floor.
+    /// Lighting scales do not apply.</summary>
     public Vector3 SkyValue(float cameraHeightKm, Vector3 direction, in AtmosphereFrame frame)
     {
         ValidateLightingInputs(cameraHeightKm, frame);
@@ -125,7 +127,7 @@ public sealed partial class AtmosphereModel
     }
 
     /// <summary>Zenith and ground sky values from the physical-settings lighting table. Both bodies
-    /// interpolate by elevation and altitude before source brightness, sky floor and tint are applied.</summary>
+    /// interpolate by elevation and altitude before source brightness, tint and the night-tinted floor.</summary>
     internal (Vector3 Zenith, Vector3 Ground) EvaluateSkyBands(float cameraHeightKm, in AtmosphereFrame frame)
     {
         ValidateLightingInputs(cameraHeightKm, frame);
@@ -136,8 +138,8 @@ public sealed partial class AtmosphereModel
     }
 
     Vector3 ApplySkyControls(Vector3 radiance, Vector3 tint)
-        => Vector3.Max(radiance * (_settings.SunIlluminance * MathF.PI),
-            new Vector3(_settings.NightSkyFloor)) * tint;
+        => Vector3.Max(radiance * (_settings.SunIlluminance * MathF.PI) * tint,
+            _settings.NightSkyFloor * _settings.NightTint);
 
     /// <summary>Blends the atmosphere art tints using SunCycle's day, dusk and night elevation weights.</summary>
     internal Vector3 Tint(Vector3 dayDuskNightWeights)

@@ -51,11 +51,12 @@ public sealed class AtmosphereSettings
     public float AmbientScale { get; set; } = 1f;
     /// <summary>Non-negative multiplier on fill lighting only.</summary>
     public float FillScale { get; set; } = 1f;
-    /// <summary>Non-negative ambient lighting floor at night. The 0.05 default keeps unlit
-    /// receivers legible at exposure 1 without competing with the moon key.</summary>
+    /// <summary>Non-negative ambient lighting floor carrying NightTint at every time of day.
+    /// The 0.05 default keeps unlit receivers legible at exposure 1 without competing with the moon key.</summary>
     public float NightAmbientFloor { get; set; } = .05f;
-    /// <summary>Non-negative sky brightness floor at night. The 0.09 default exposes a dark blue
-    /// sky above display black at exposure 1 with ACES, including moonless directions.</summary>
+    /// <summary>Non-negative sky brightness floor carrying NightTint at every time of day.
+    /// The 0.09 default exposes a dark blue sky above display black at exposure 1 with ACES,
+    /// including moonless directions.</summary>
     public float NightSkyFloor { get; set; } = .09f;
     /// <summary>Additional non-negative haze density per kilometre. Zero keeps mist opt-in.</summary>
     public float HazeDensityPerKm { get; set; }

@@ -212,8 +212,13 @@ public sealed class AtmosphereSkyGoldenTests : IClassFixture<AtmosphereGoldenSce
         Console.WriteLine($"ATMOSPHERE_BRIGHTNESS {name} upper_centre={upper} floor={floor}");
         if (time == .5f) Assert.InRange(upper.Z, 150, 210);
         if (time == 0) Assert.InRange(upper.Z, 15, 40);
-        if (time == .747f) Assert.True(floor.X > 0 && floor.Y > 0 && floor.Z > 0,
-            "The sunset fixture must contain a lit floor receiver above display black.");
+        if (time == .747f)
+        {
+            Assert.True(upper.Z > upper.X && upper.Z > upper.Y,
+                "The twilight sky above the sunset glow must retain the blue night floor.");
+            Assert.True(floor.X > 0 && floor.Y > 0 && floor.Z > 0,
+                "The sunset fixture must contain a lit floor receiver above display black.");
+        }
         GoldenCompare.AssertOrUpdate(name, rgba, AtmosphereGoldenScene.Width, AtmosphereGoldenScene.Height);
     }
 }

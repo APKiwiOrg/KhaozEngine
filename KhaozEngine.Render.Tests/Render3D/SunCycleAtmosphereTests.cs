@@ -389,9 +389,11 @@ public sealed class SunCycleAtmosphereTests
 
         post.Atmosphere.SunIlluminance = 0;
         post.Atmosphere.NightSkyFloor = .125f;
+        post.Atmosphere.NightTint = new Vector3(.45f, .65f, 1f);
         var floored = SunCycle.Apply(next, post, new Vector3(0, 2000, 0));
-        Assert.Equal(new Vector3(.0625f), Rgb(floored.ZenithColor));
-        Assert.Equal(new Vector3(.0625f), Rgb(floored.GroundColor));
+        Assert.Equal(new Vector3(.05625f, .08125f, .125f), Rgb(floored.ZenithColor));
+        Assert.Equal(new Vector3(.05625f, .08125f, .125f), Rgb(floored.GroundColor));
+        Assert.Equal(new Vector3(.05625f, .08125f, .125f), Rgb(floored.HorizonColor));
         Assert.Equal(scattering, model.ScatteringIntegrationCount);
         Assert.Equal(tables, model.BuildCount);
         Assert.Equal(lightingTables, model.LightingBuildCount);

@@ -283,3 +283,46 @@ contact sheets are retained under
 `.superpowers/sdd/2026-10-12-physical-atmosphere-phase-1/task-12-evidence/calibration`.
 No golden update variable was set. No grid, shader source, emission table, engine
 version or release file changed in this calibration.
+
+## R14 night floor hue correction
+
+The calibrated scalar floors previously replaced dim twilight scattering with
+neutral grey before the dusk tint. Floors now carry `NightTint` at every time of
+day and are not tinted again. The CPU lighting, horizon, directional sky and
+cached zenith/ground paths use the same per-channel formulas as the GPU sky
+consumer:
+
+```text
+Sky = max(S * pi * L * Tint, NightSkyFloor * NightTint)
+Ambient = max(S * E * AmbientScale * Tint, NightAmbientFloor * NightTint)
+```
+
+The GPU atmosphere uniform block appends `NightTint`, growing from 304 to 320
+bytes without moving existing members or resource bindings. All four emission
+tables were regenerated. Only the 30 atmosphere producer/consumer fragment
+programs moved. Layouts, vertex stages and unrelated programs remain identical.
+
+Defaults stay S 2.7, moon fraction 0.04, ambient floor 0.05, sky floor 0.09 and
+night tint `(0.45,0.65,1)`. The real Metal captures were inspected individually.
+The sunset sky above the glow is dark blue-violet rather than neutral grey.
+Physical sunset scattering can keep red above green while blue remains dominant.
+Moonlit night retains its previous measured pixels.
+
+| Capture | Upper centre `(240,24)` sRGB bytes | Lower centre `(240,240)` sRGB bytes |
+| --- | --- | --- |
+| Sunset before R14 | `(28,28,28)` | `(15,13,13)` |
+| Sunset after R14 | `(23,19,26)` | `(9,8,12)` |
+| Moonlit after R14 | `(9,14,23)` | `(9,12,18)` |
+
+The selected capture bodies ran once. Shared/fresh parity and the seven fog
+checks passed. Moonlit and fog failed only for absent grids. Sunset reached an
+initial overstrict hue assertion requiring green above red. The final assertion
+checks blue above both red and green, which the saved capture satisfies. No GPU
+capture was repeated after that test-only correction. Full final GPU execution
+and the three-family grid bake remain controller work.
+
+CPU floor, cache, uniform layout and binding checks are covered by the focused
+R14 runs. Emission-table regeneration and verification without update variables
+each passed 9/9. Logs, the GPU TRX, pixel values and before/after PNGs are in
+`.superpowers/sdd/2026-10-12-physical-atmosphere-phase-1/task-12-evidence/r14`.
+No golden update variable, local grid bake or new frame timing was used.

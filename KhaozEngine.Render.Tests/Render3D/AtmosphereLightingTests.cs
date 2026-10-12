@@ -163,9 +163,9 @@ public sealed class AtmosphereLightingTests : IClassFixture<AtmosphereLightingFi
         var m = new AtmosphereModel(s);
         var night = new AtmosphereFrame(-Vector3.UnitY, -Vector3.UnitY, 0, s.NightTint, KeyLightSource.None);
         var l = m.EvaluateLighting(.002f, night);
-        Assert.Equal(s.NightAmbientFloor * night.Tint, l.Ambient);
-        Assert.Equal(s.NightSkyFloor * night.Tint, l.Horizon);
-        Assert.Equal(s.NightSkyFloor * night.Tint, m.SkyValue(.002f, Vector3.UnitY, night));
+        Assert.Equal(s.NightAmbientFloor * s.NightTint, l.Ambient);
+        Assert.Equal(s.NightSkyFloor * s.NightTint, l.Horizon);
+        Assert.Equal(s.NightSkyFloor * s.NightTint, m.SkyValue(.002f, Vector3.UnitY, night));
         Assert.Equal(Vector3.Zero, l.Fill);
 
         var before = new AtmosphereFrame(Direction(.001f), Direction(20, .4f), .08f, Vector3.One);
@@ -174,6 +174,32 @@ public sealed class AtmosphereLightingTests : IClassFixture<AtmosphereLightingFi
             _earth.EvaluateLighting(.002f, after).Horizon, .005f);
         Assert.Equal(_earth.EvaluateLighting(.002f, before).Horizon,
             _earth.EvaluateLighting(.002f, before with { KeySource = KeyLightSource.Moon }).Horizon);
+    }
+
+    [Theory]
+    [InlineData(1f, 1f, 1f)]
+    [InlineData(2f, .5f, .25f)]
+    public void DuskFloors_KeepNightHueWithoutRetinting(float red, float green, float blue)
+    {
+        var s = Vacuum();
+        s.NightAmbientFloor = .05f;
+        s.NightSkyFloor = .09f;
+        s.NightTint = new Vector3(.45f, .65f, 1f);
+        s.DuskTint = new Vector3(red, green, blue);
+        var m = new AtmosphereModel(s);
+        var dusk = new AtmosphereFrame(Vector3.UnitX, -Vector3.UnitY, 0,
+            m.Tint(new Vector3(0, 1, 0)));
+        Assert.Equal(Vector3.Zero, m.SkyRadiance(.002f, Vector3.UnitY, dusk.SunDirection));
+        var skyFloor = new Vector3(.0405f, .0585f, .09f);
+        var lighting = m.EvaluateLighting(.002f, dusk);
+        Close(new Vector3(.0225f, .0325f, .05f), lighting.Ambient);
+        Close(skyFloor, lighting.Horizon);
+        var sky = m.SkyValue(.002f, Vector3.UnitY, dusk);
+        Close(skyFloor, sky);
+        Assert.True(sky.Z > sky.Y && sky.Y > sky.X);
+        var bands = m.EvaluateSkyBands(.002f, dusk);
+        Close(skyFloor, bands.Zenith);
+        Close(skyFloor, bands.Ground);
     }
 
     [Fact]
@@ -262,13 +288,17 @@ public sealed class AtmosphereLightingTests : IClassFixture<AtmosphereLightingFi
         s.Enabled = true;
         s.WorldUnitsPerKilometre = 2000;
         Assert.True(m.UpdateSettings(s));
-        Assert.Equal(new Vector3(2), m.EvaluateLighting(.002f, f).Ambient);
-        Assert.Equal(new Vector3(3), m.EvaluateLighting(.002f, f).Horizon);
-        Assert.Equal(new Vector3(3), m.SkyValue(.002f, Vector3.UnitY, f));
+        Assert.Equal(new Vector3(.5f, 1, 2), m.EvaluateLighting(.002f, f).Ambient);
+        // Red and green remain above their night-tinted floors while blue reaches its floor.
+        Assert.True(original.Horizon.X * 2 > .75f && original.Horizon.Y * 2 > 1.5f
+            && original.Horizon.Z * 2 < 3);
+        Close(new Vector3(original.Horizon.X * 2, original.Horizon.Y * 2, 3),
+            m.EvaluateLighting(.002f, f).Horizon);
+        Assert.Equal(new Vector3(.75f, 1.5f, 3), m.SkyValue(.002f, Vector3.UnitY, f));
         Assert.Equal(tables, m.BuildCount);
         Assert.Equal(lighting, m.LightingBuildCount);
         s.NightSkyFloor = 4;
-        Assert.Equal(new Vector3(3), m.SkyValue(.002f, Vector3.UnitY, f));
+        Assert.Equal(new Vector3(.75f, 1.5f, 3), m.SkyValue(.002f, Vector3.UnitY, f));
 
         s.MieScatteringPerKm *= .5f;
         Assert.True(m.UpdateSettings(s));
@@ -276,7 +306,7 @@ public sealed class AtmosphereLightingTests : IClassFixture<AtmosphereLightingFi
         _ = m.EvaluateLighting(.002f, f);
         Assert.Equal(tables + 1, m.BuildCount);
         Assert.Equal(lighting + 1, m.LightingBuildCount);
-        Assert.Equal(new Vector3(4), m.SkyValue(.002f, Vector3.UnitY, f));
+        Assert.Equal(new Vector3(1, 2, 4), m.SkyValue(.002f, Vector3.UnitY, f));
         s.MieAnisotropy = 1;
         Assert.Throws<ArgumentOutOfRangeException>(() => m.UpdateSettings(s));
         Assert.Equal(tables + 1, m.BuildCount);

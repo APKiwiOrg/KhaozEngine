@@ -12,7 +12,7 @@ namespace KhaozEngine.Render3D.Rendering;
 /// Targets and consumer bindings remain stable across physical settings changes and enable toggles.</summary>
 internal sealed class AtmosphereRenderer : IDisposable
 {
-    internal const uint UboBytes = 304;
+    internal const uint UboBytes = 320;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct AtmosphereUbo
@@ -36,6 +36,7 @@ internal sealed class AtmosphereRenderer : IDisposable
         public Vector4 Ray;
         public Vector4 Res;
         public Vector4 Tone;
+        public Vector4 NightTint;
     }
 
     readonly IGpuDevice _gd;
@@ -182,6 +183,7 @@ internal sealed class AtmosphereRenderer : IDisposable
                 SkyHorizonMath.IsPerspective(projection) ? 0f : 1f, settings.SunAngularRadiusRadians),
             Tone = new(hdr.Enabled ? 1f : 0f, MathF.Max(hdr.Exposure, 0f), (float)hdr.Operator,
                 Math.Clamp(hdr.ChromaPreservation, 0f, 1f)),
+            NightTint = new(settings.NightTint, 0f),
         };
 
     public void Dispose()

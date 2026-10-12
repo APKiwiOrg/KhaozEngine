@@ -19,7 +19,7 @@ namespace KhaozEngine.Tests.Render3D
     public class UboLayoutTests
     {
         [Fact]
-        public void AtmosphereUbo_Is304BytesAndAllOffsetsMatch()
+        public void AtmosphereUbo_Is320BytesAndAllOffsetsMatch()
             => AtmosphereRendererTests.VerifyUboLayout();
 
         [Fact]

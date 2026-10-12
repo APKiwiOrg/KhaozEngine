@@ -23,6 +23,7 @@ internal static partial class ShaderSources
     vec4 Ray;
     vec4 Res;
     vec4 Tone;
+    vec4 NightTint;
 } Atmo;
 ";
 
@@ -235,7 +236,7 @@ bool AtmoScatteringInterval(vec3 p, vec3 d, out float start, out float end, out 
 vec3 atmosphereSkyValue(vec3 direction) {
     float radius = Atmo.Planet.x + max(Atmo.Camera.w, 0.0);
     vec3 radiance = textureLod(sampler2D(AtmoSkyView, AtmoSkySampler), AtmoSkyUv(direction, radius), 0.0).rgb;
-    return max(radiance * (Atmo.Sun.w * ATMO_PI), vec3(Atmo.Floors.w)) * Atmo.Tint.rgb;
+    return max(radiance * (Atmo.Sun.w * ATMO_PI) * Atmo.Tint.rgb, Atmo.Floors.w * Atmo.NightTint.rgb);
 }
 // Mirrors AtmosphereModel.SunDiscValue, with an additional one-pixel edge feather.
 vec3 atmosphereSunDisc(vec3 direction) {

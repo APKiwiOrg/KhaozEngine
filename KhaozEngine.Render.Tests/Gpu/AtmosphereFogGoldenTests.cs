@@ -77,15 +77,15 @@ public sealed class AtmosphereFogGoldenTests : IClassFixture<AtmosphereGoldenSce
     [GpuFact]
     public void Golden_AdditiveEffectsAttenuateWithoutHaze()
     {
-        byte[] horizon = _fixture.CaptureEffects(FogControls, _ => { });
-        byte[] black = _fixture.CaptureEffects(FogControls, scene => Effects(scene, Color.Black));
-        Assert.Equal(horizon, black);
-        byte[] fogged = _fixture.CaptureEffects(FogControls, scene => Effects(scene, Color.White));
+        byte[] receiver = _fixture.CaptureEffects(FogControls, _ => { }, opaqueReceiver: true);
+        byte[] black = _fixture.CaptureEffects(FogControls, scene => Effects(scene, Color.Black), opaqueReceiver: true);
+        Assert.Equal(receiver, black);
+        byte[] fogged = _fixture.CaptureEffects(FogControls, scene => Effects(scene, Color.White), opaqueReceiver: true);
         byte[] transmitted = _fixture.CaptureEffects(scene =>
         {
             FogControls(scene);
             scene.Post.Atmosphere.AerialDistanceScale = 0;
-        }, scene => Effects(scene, Color.White));
+        }, scene => Effects(scene, Color.White), opaqueReceiver: true);
         for (int x = 150; x <= 330; x += 90)
         {
             float energy = Patch(transmitted, x, AtmosphereGoldenScene.Height / 2).Length();
@@ -95,6 +95,48 @@ public sealed class AtmosphereFogGoldenTests : IClassFixture<AtmosphereGoldenSce
         // The golden carries visible no-fog controls. The numerical comparison above proves fog attenuation.
         GoldenCompare.AssertOrUpdate("scene3d_atmosphere_additive_fog_controls", transmitted,
             AtmosphereGoldenScene.Width, AtmosphereGoldenScene.Height);
+    }
+
+    [GpuFact]
+    public void Golden_SharedFixtureMatchesFreshEffectsScene()
+    {
+        _fixture.CaptureEffects(scene =>
+        {
+            FogControls(scene);
+            scene.Post.Hdr.Enabled = false;
+            scene.Post.Atmosphere.Enabled = false;
+        }, scene => Effects(scene, Color.White), opaqueReceiver: true);
+        _fixture.CaptureEffects(scene =>
+        {
+            FogControls(scene);
+            scene.Post.Hdr.Exposure = .5f;
+            scene.Post.Hdr.Operator = TonemapOperator.Reinhard;
+            scene.Post.Atmosphere.HazeDensityPerKm = .2f;
+            scene.Post.Atmosphere.AerialDistanceScale = .1f;
+        }, scene => Effects(scene, Color.White), opaqueReceiver: true);
+        _fixture.CaptureEffects(scene =>
+        {
+            FogControls(scene);
+            scene.Post.Hdr.Exposure = 3;
+            scene.Post.Hdr.ChromaPreservation = 0;
+            scene.Post.Atmosphere.HazeDensityPerKm = 6;
+            scene.Post.Atmosphere.DayTint = new Vector3(.4f, .2f, .1f);
+        }, scene => Effects(scene, Color.White), opaqueReceiver: true);
+
+        static void Configure(Scene3D scene)
+        {
+            FogControls(scene);
+            scene.Post.Hdr.Exposure = 1.7f;
+            scene.Post.Hdr.ChromaPreservation = .75f;
+            scene.Post.Atmosphere.HazeDensityPerKm = 1.1f;
+            scene.Post.Atmosphere.AerialDistanceScale = .8f;
+        }
+        byte[] fresh = _fixture.CaptureFresh(Configure, scene => Effects(scene, Color.White), opaqueReceiver: true);
+        byte[] shared = _fixture.CaptureEffects(Configure, scene => Effects(scene, Color.White), opaqueReceiver: true);
+        var expected = GoldenCompare.Downsample(fresh, AtmosphereGoldenScene.Width, AtmosphereGoldenScene.Height);
+        var actual = GoldenCompare.Downsample(shared, AtmosphereGoldenScene.Width, AtmosphereGoldenScene.Height);
+        for (int i = 0; i < expected.Length; i++)
+            Assert.InRange(MathF.Abs(expected[i] - actual[i]), 0, GoldenCompare.InSessionTolerance);
     }
 
     static void FogControls(Scene3D scene)

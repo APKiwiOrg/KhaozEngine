@@ -50,9 +50,16 @@ public sealed class AtmosphereGoldenScene : IDisposable
     public byte[] CaptureWater(Action<Scene3D> configure)
         => Capture(configure, water: true);
 
-    /// <summary>Capture only the submitted effect controls, without the default floor or box.</summary>
-    public byte[] CaptureEffects(Action<Scene3D> configure, Action<Scene3D> draw)
-        => Capture(configure, water: false, draw);
+    /// <summary>Capture submitted effects, optionally over an opaque receiver instead of the sky.</summary>
+    public byte[] CaptureEffects(Action<Scene3D> configure, Action<Scene3D> draw, bool opaqueReceiver = false)
+        => Capture(configure, water: false, scene =>
+        {
+            // Beams and trails precede the sky without writing depth. Keep #1153 outside this fixture.
+            if (opaqueReceiver)
+                scene.Draw(_box, Matrix4x4.CreateScale(26000, 22000, 1000)
+                    * Matrix4x4.CreateTranslation(0, 0, 22000), Color.Black);
+            draw(scene);
+        });
 
     byte[] Capture(Action<Scene3D> configure, bool water, Action<Scene3D>? draw = null)
     {
@@ -91,6 +98,13 @@ public sealed class AtmosphereGoldenScene : IDisposable
     {
         using var fresh = new AtmosphereGoldenScene();
         return fresh.Capture(timeOfDay, atmosphere, origin);
+    }
+
+    /// <summary>The same effect controls and receiver on a new scene without retained HDR or fog state.</summary>
+    public byte[] CaptureFresh(Action<Scene3D> configure, Action<Scene3D> draw, bool opaqueReceiver = false)
+    {
+        using var fresh = new AtmosphereGoldenScene();
+        return fresh.CaptureEffects(configure, draw, opaqueReceiver);
     }
 
     void Reset(Scene3D scene)

@@ -142,6 +142,7 @@ public partial class SupportFootprintTests
         var leaf = new SupportCurvedLeaf(0, SupportCurvedShape.Cylinder, FeaturePoint.Exact(Vector3.Zero).Bounds,
             default, 0.25, 0.5, default, default, default, source);
         double x = signed ? -0.5 : -0.5 / Math.Sqrt(1.25);
+        var request = Request(x: (float)x, z: 0.1f, lower: -2, upper: 2);
         var kernel = new SupportTiltedCurvedGeometry();
         Assert.True(kernel.Begin(leaf, x, 0.1, 0.2));
         Assert.Equal(GeometrySign.Positive, kernel.Cap(SupportNeighborhoodCurved.BottomCap, false, out var witness, out var maximum));
@@ -149,6 +150,11 @@ public partial class SupportFootprintTests
         {
             B length = B.Root(R.One + R.From(sy).Square());
             P axis = new((B)R.One / length, (B)R.From(sy) / length, R.Zero);
+            P centre = new(R.Zero, R.Zero, R.Zero);
+            var tangent = new OracleTangent(new KhaozEngine.Physics.StaticHandle(1), 1, OracleSurface.CylinderBottom,
+                centre.Middle, axis.Middle, 0.25, 0.5)
+            { ExactAxis = axis };
+            var part = new SupportFootprintCurvedProofOracle.InstalledPart(tangent, centre, axis, R.From(0.25), R.From(0.5));
             B u = (B)R.One / length, k = axis.Y;
             P normal = new(-axis.X, -axis.Y, -axis.Z);
             P point = new(-axis.X * (B)R.From(0.5) - k * (B)R.From(0.25),
@@ -158,6 +164,7 @@ public partial class SupportFootprintTests
             ContainsCurvedBounds(witness.Normal.X.Lower, witness.Normal.X.Upper, normal.X);
             ContainsCurvedBounds(witness.Normal.Y.Lower, witness.Normal.Y.Upper, normal.Y);
             ContainsCurvedBounds(maximum.Lower, maximum.Upper, point.Y);
+            CheckTiltedPerPointEnclosure(true, CurvedPoint(witness.Position), CurvedPoint(witness.Normal), part, request);
         }
     }
 
@@ -193,6 +200,7 @@ public partial class SupportFootprintTests
             ContainsCurvedBounds(witness.Normal.Y.Lower, witness.Normal.Y.Upper, exact.Normal.Y);
             ContainsCurvedBounds(witness.Normal.Z.Lower, witness.Normal.Z.Upper, exact.Normal.Z);
             ContainsCurvedBounds(maximum.Lower, maximum.Upper, exact.Position.Y);
+            CheckTiltedPerPointEnclosure(true, CurvedPoint(witness.Position), CurvedPoint(witness.Normal), part, request);
         }
     }
 
@@ -227,8 +235,13 @@ public partial class SupportFootprintTests
         ContainsCurvedBounds(witness.Normal.Y.Lower, witness.Normal.Y.Upper, exact.Normal.Y);
         ContainsCurvedBounds(witness.Normal.Z.Lower, witness.Normal.Z.Upper, exact.Normal.Z);
         ContainsCurvedBounds(maximum.Lower, maximum.Upper, exact.Position.Y);
+        CheckTiltedPerPointEnclosure(true, CurvedPoint(witness.Position), CurvedPoint(witness.Normal), installed, request);
         _output.WriteLine($"maximum=[{maximum.Lower:R},{maximum.Upper:R}]");
     }
+
+    static P CurvedPoint(GeometryVector value) => new(CurvedBounds(value.X), CurvedBounds(value.Y), CurvedBounds(value.Z));
+
+    static B CurvedBounds(GeometryInterval value) => new(R.From(value.Lower), R.From(value.Upper));
 
     [Fact]
     public void CurvedRootRegionsCoverEverySourceWithoutScalarExhaustion()

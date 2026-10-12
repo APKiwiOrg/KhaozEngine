@@ -5,6 +5,7 @@ using System.Reflection;
 using KhaozEngine.Physics;
 using Xunit;
 using B = KhaozEngine.Tests.Physics.SupportFootprintExactOracle.Bounds;
+using P = KhaozEngine.Tests.Physics.SupportFootprintExactOracle.Point;
 using R = KhaozEngine.Tests.Physics.InstalledPoseOracle.R;
 
 namespace KhaozEngine.Tests.Physics;
@@ -162,10 +163,20 @@ public partial class SupportFootprintTests
             if (expected.Role == member.First.Role)
                 Assert.Equal(witness.UpwardLower, member.UpwardLower);
         }
-        CheckTiltedPerPointEnclosure(member, source, request);
+        var selected = member.First.Role == SupportWitnessRole.Footprint ? member.First : member.Second;
+        B Component(float value, float error) => new(R.From(value) - R.From(error), R.From(value) + R.From(error));
+        CheckTiltedPerPointEnclosure(member.HasDiscMaximum,
+            new P(Component(selected.Position.X, selected.PositionErrorMetres),
+                Component(selected.Position.Y, selected.PositionErrorMetres),
+                Component(selected.Position.Z, selected.PositionErrorMetres)),
+            new P(Component(selected.Normal.X, selected.NormalError),
+                Component(selected.Normal.Y, selected.NormalError),
+                Component(selected.Normal.Z, selected.NormalError)),
+            source, request);
     }
 
-    static void CheckTiltedPerPointEnclosure(SupportFootprintMember member, SupportFootprintCurvedProofOracle.InstalledPart source,
+    static void CheckTiltedPerPointEnclosure(bool hasDiscMaximum, P position, P normal,
+        SupportFootprintCurvedProofOracle.InstalledPart source,
         in SupportFootprintRequest request)
     {
         var part = source.Tangent;
@@ -175,13 +186,11 @@ public partial class SupportFootprintTests
             Assert.Equal(double.NegativeInfinity, reading.Lower);
             return;
         }
-        Assert.True(member.HasDiscMaximum);
+        Assert.True(hasDiscMaximum);
         // A per-point supremum differs from SG-19's selected tangent. The attained tangent
         // bounds it below, and the independent unit-axis solid bounds every point above.
         R upper = R.From(part.Centre.Y) + R.From(part.HalfLength) + R.From(part.Radius);
-        var witness = member.First.Role == SupportWitnessRole.Footprint ? member.First : member.Second;
-        B Component(float value, float error) => new(R.From(value) - R.From(error), R.From(value) + R.From(error));
-        B ny = Component(witness.Normal.Y, witness.NormalError);
+        B ny = normal.Y;
         if (ny.Lower <= R.Zero)
         {
             var reference = SupportFootprintOracle.Curved(part, request)!;
@@ -189,9 +198,7 @@ public partial class SupportFootprintTests
             ny = SupportFootprintTiltedOracle.Enclose(source, locator, request).Normal.Y;
             Assert.True(ny.Lower > R.Zero);
         }
-        B px = Component(witness.Position.X, witness.PositionErrorMetres), py = Component(witness.Position.Y, witness.PositionErrorMetres);
-        B pz = Component(witness.Position.Z, witness.PositionErrorMetres), nx = Component(witness.Normal.X, witness.NormalError);
-        B nz = Component(witness.Normal.Z, witness.NormalError);
+        B px = position.X, py = position.Y, pz = position.Z, nx = normal.X, nz = normal.Z;
         B plane = py + (nx * (px - (B)R.From(request.Axis.X)) + nz * (pz - (B)R.From(request.Axis.Y))) / ny;
         R lower = py.Lower < plane.Lower ? py.Lower : plane.Lower;
         ContainsCurvedBounds(SupportFootprintCurvedProofOracle.Publish(new(lower, upper)).Lower,

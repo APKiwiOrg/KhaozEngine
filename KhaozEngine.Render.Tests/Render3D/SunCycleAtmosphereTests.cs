@@ -379,7 +379,7 @@ public sealed class SunCycleAtmosphereTests
         Assert.Equal(tables, model.BuildCount);
         Assert.Equal(lightingTables, model.LightingBuildCount);
 
-        post.Atmosphere.SunIlluminance = 3;
+        post.Atmosphere.SunIlluminance *= 3;
         post.Atmosphere.DayTint = post.Atmosphere.DuskTint = post.Atmosphere.NightTint = new Vector3(.5f);
         post.Atmosphere.AmbientScale = post.Atmosphere.FillScale = 0;
         var scaled = SunCycle.Apply(next, post, new Vector3(0, 2000, 0));

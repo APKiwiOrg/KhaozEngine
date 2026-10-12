@@ -56,7 +56,7 @@ The complete absolute capture paths and local test logs are in the Task 12 repor
 at `.superpowers/sdd/2026-10-12-physical-atmosphere-phase-1/task-12-report.md`.
 These captures are inspection evidence, not committed reference grids.
 
-## One completed-frame measurement
+## One completed-frame measurement before calibration
 
 | Field | Value |
 | --- | --- |
@@ -89,3 +89,197 @@ The controller owns the hosted Metal, Direct3D 11 and Vulkan bake, inspection of
 the twelve new grids and their bake PNGs, recording the exact head and workflow
 run ID, and the subsequent non-bake native/FXC/Vulkan validation run. Local Metal
 success does not establish those hosted results. The full suite belongs to Task 13.
+
+## Brightness investigation before ruling R13
+
+This section preserves the initial investigation. R13 resolved its model question,
+and the calibration below supersedes its blocked status and initial defaults.
+
+The controller rejected the absolute brightness of the Task 12 captures. The
+earlier visual descriptions above do not approve these images for a golden bake.
+This investigation ran against `7326863b098b92f58813a5b3f981b485cf2e5fca`.
+No production source, default, shader or reference grid was changed.
+
+The three requested CPU physical checks are now pinned in
+`AtmosphereLightingTests`, with the Earth preset, solar elevation 60 degrees,
+camera altitude 0.002 km, unit solar illuminance and no moon contribution.
+Rec. 709 weights are `(0.2126, 0.7152, 0.0722)`.
+
+| Check | Observed result |
+| --- | --- |
+| Zenith divided by sunlit white luminance | 0.05848644, fails the required 0.06 to 0.20 interval |
+| Zenith sky luminance | 0.04844365 |
+| Horizon at elevation 2 degrees, azimuth 90 degrees from sun | 0.25615588, brighter than zenith |
+| Single-scattered zenith radiance luminance | 0.010281946 |
+| Single plus multiple-scattered zenith radiance luminance | 0.015420092, greater than single scattering |
+
+The RGB zenith value is `(0.024287932, 0.04929854, 0.111104146)`.
+The white receiver value `Key * cos(30 degrees) + Ambient` is
+`(0.8867151, 0.8151537, 0.78635734)`.
+
+Diagnostic isolation removed the night ambient floor without changing transport.
+The ratio rose only to 0.059451744. Refining the view integral from 32 to 128
+segments, also without that floor, produced 0.059600525. Neither passes the
+specified lower bound. These were separate focused diagnostic runs, not a test
+loop. The temporary diagnostic code was removed after recording its results.
+
+The unit conversion is present once in CPU `ApplySkyControls` and GLSL
+`atmosphereSkyValue`. The GPU UBO receives the configured solar illuminance.
+Both view integrals add the multiple-scattering source times scattering, and the
+GPU sky-view producer defines `ATMO_MULTI_SCATTERING`. The hemisphere quadrature
+uses `mu * dmu * dphi`, without an extra Lambert divisor. The sky fragment writes
+its physical value into HDR before the existing ACES pass. There is no evidenced
+missing or doubled pi, source-unit mismatch, missing multiple-scattering term or
+extra sky tonemap in these paths. Increasing the art scale cannot repair a
+unit-source sky-to-white ratio.
+
+The ground boundary in both CPU `DirectGroundBounce` and GLSL
+`AtmoDirectGroundBounce` reflects direct source illumination only. It does not
+include diffuse sky irradiation. The geometric-series response also contains
+volume scattering only. This matches the relevant portions of the
+[Hillaire reference ray marcher](https://github.com/sebh/UnrealEngineSkyAtmosphere/blob/master/Resources/RenderSkyRayMarching.hlsl)
+already used by Task 3, whose inspected source SHA-256 is
+`023871e742842d8b347967331e72d78036bd3750884d3d94707f6db3c971673e`.
+The sunset background floor therefore does not receive the ambient term used by
+scene receivers. The chosen approximation needs a controller ruling before a
+diffuse ground boundary or its feedback is added to the transport. This omission
+has not been demonstrated to account for the complete noon ratio shortfall.
+An additional pi or arbitrary scattering gain would violate the declared units.
+
+All four existing PNGs were inspected individually. Pixel coordinates below have
+an upper-left origin and were measured from the existing 480 by 320 captures.
+These are original Task 12 captures, not refreshed proof.
+
+| Capture | Upper centre `(240,24)` RGB bytes | Lower centre `(240,240)` RGB bytes |
+| --- | --- | --- |
+| Noon | `(17,26,49)` | `(6,15,37)` |
+| Moonlit | `(1,2,3)` | `(1,2,2)` |
+| Sunset | `(5,4,5)` | `(3,3,3)` |
+| Fog | `(11,26,60)` | `(107,99,87)` |
+
+No calibration value was chosen. Existing values remain `SunIlluminance = 1`,
+`MoonIlluminanceFraction = 0.08`, `NightAmbientFloor = 0.08`,
+`NightSkyFloor = 0.02`, and `NightTint = (0.65,0.8,1)`.
+The required GPU rerun and new one-shot measurement were not executed because
+the physical acceptance gate remains red. The earlier measurement above is
+historical evidence only. Status is `NEEDS_CONTEXT`, with goldens still blocked.
+
+## Brightness calibration under ruling R13
+
+The physical model stands. R13 accepts clear-sky zenith to sunlit-white luminance
+ratios of roughly 0.04 to 0.20, depending on turbidity and solar elevation. The
+original 0.06 lower bound was a rough estimate. The unit-source test now documents
+that reason and accepts 0.05848644. Its solar scale and original floors are pinned
+explicitly so art calibration cannot change the recorded physical measurement.
+The horizon remains about 5.29 times the zenith, and multiple scattering increases
+zenith radiance. CPU and GPU still apply `S * pi` once.
+
+The old noon upper-centre pixel is reproduced by CPU transport and the existing
+ACES pass as `(17.383,26.102,48.913)`. CPU candidate solar scales 1, 2, 3 and 4 give
+blue values 48.9, 115.3, 169.3 and 210.0 at exposure 1. Interpolating with the same
+tonemap arithmetic selects S 2.7, predicting blue 154.65. Only this solar scale was
+rendered. No extra gamma transform or scattering gain was added.
+
+| Default | Before | Calibrated | Reason and evidence |
+| --- | --- | --- | --- |
+| `SunIlluminance` | 1 | 2.7 | Noon upper-centre blue 155, within 150 to 210. Existing per-channel ACES white probes are `(240,240,239)`, below 250. |
+| `MoonIlluminanceFraction` | 0.08 | 0.04 | Moon source scale is 0.108 after solar calibration. The moon remains visible, both reflected bodies pass, and the independent moon control passes without raising night to daylight. |
+| `NightAmbientFloor` | 0.08 | 0.05 | Night receivers remain visible. The moonlit floor is `(9,12,18)`, distinct from the sky at `(9,14,23)`. |
+| `NightSkyFloor` | 0.02 | 0.09 | CPU moonlit zenith blue 23.264 and captured upper-centre blue 23, within 15 to 40. Moonless directions stay above black. |
+| `NightTint` | `(0.65,0.8,1)` | `(0.45,0.65,1)` | Captured night sky `(9,14,23)` reads dark blue with the same tint applied once to sky, fog and lighting. |
+
+Every changed default has an XML reason in `AtmosphereSettings`, and the Task 1
+exact-default tests cover all five values. A CPU exposure test and GPU capture
+assertions pin the requested brightness bands. The white probe retains its
+existing `ChromaPreservation = 0`, matching the CPU fog oracle. The named sky and
+fog captures retain the engine default chroma preservation of 0.75. Both use the
+engine's ACES pass at exposure 1. The white value does not assert a universal
+ceiling for all surface orientations and chroma settings.
+
+The original 8-unit floor with grey tint missed most of the downward sunset
+view. The fixture now draws an 80-unit white floor, exposing actual surface
+lighting instead of treating the direct-only background ground boundary as a
+receiver. Its sampled sunset floor is `(15,13,13)`, above pure black. The same
+floor and box draws are used in both timed configurations. The independent moon
+assertion now captures only sky, preventing a bright floor in the downward
+opposite-sun control from masking celestial direction. Its 0.1 threshold and the
+0.01 seam tolerance are unchanged.
+
+Final self-review preserves the floor's original height by scaling only X and Z
+with `(10,1,10)`. Uniform scaling had also thickened the floor and obscured the
+box. A focused final capture run refreshes sunset and moonlit night, and checks
+shared/fresh parity and disabled/toggle parity. Both parity checks pass, and only
+the two expected missing grids fail. The tabulated capture pixels are unchanged.
+
+The four refreshed 480 by 320 captures were inspected individually, followed by
+five contact sheets covering 52 refreshed captures. The sky is visibly blue at
+noon, night is dark blue, sunset retains a warm horizon and visible floor, and
+terrain and all receiver families fade toward the physical fog colour. The old
+unsuffixed display-billboard RED capture is excluded from this current evidence.
+Coordinates below use an upper-left origin.
+
+| Capture | Upper centre `(240,24)` RGB bytes | Lower centre `(240,240)` RGB bytes |
+| --- | --- | --- |
+| Noon | `(62,90,155)` | `(32,60,134)` |
+| Moonlit | `(9,14,23)` | `(9,12,18)` |
+| Sunset | `(28,28,28)` | `(15,13,13)` |
+| Fog | `(41,90,186)` | `(195,182,163)` |
+
+The specified complete local atmosphere filter ran once. All 22 GPU facts
+executed, zero skipped. Of 71 tests, 66 passed and five failed. Four failures are
+the expected absent grids. The fifth exposed the floor contamination of the
+moon-direction control described above. After isolating that control, its single
+focused GPU test passed. The complete set was not repeated and no tolerance was
+loosened. Hosted grids and cross-backend validation still belong to the controller.
+
+The CPU settings, lighting, cycle and sky filter executed 287 checks. 286 passed,
+and one cycle scaling test retained an implicit S 1 baseline. Changing its
+operation to triple the current solar scale preserved its 1.5 output multiplier
+and cache assertions. Its focused rerun passed. The three original unit-source
+physics checks and the new exposure check pass. All nine shader-emission and
+corpus parity checks pass without update variables.
+
+## Phase 1 limitations retained by R13
+
+- The ground boundary reflects direct source illumination only. Diffuse sky
+  irradiation of that boundary and its feedback into the multi-scattering source
+  remain omitted, matching Hillaire's reference simplification. R13 explicitly
+  retains this model. Scene surfaces still receive the separate ambient term.
+- The aerial perspective volume remains deferred to
+  [#1364](https://github.com/APKiwiOrg/KhaozEngine/issues/1364). Phase 1 uses its
+  existing local-fog approximation. Brightness calibration does not extend it.
+
+## One completed-frame measurement after calibration
+
+The opted-in measurement ran exactly once after `build-slot status` showed no
+atmosphere heavy job running. One unrelated quick format command was active.
+No local shader-parity verification overlapped the measurement.
+
+This measurement precedes the final fixture height correction. It used uniform
+floor scale 10 in both configurations. The final fixture uses `(10,1,10)` to keep
+the box above the ground. Atmosphere defaults are identical. The recorded times
+are evidence for the earlier fixture geometry, not a measurement of the final
+geometry, and the requested one-shot limit was preserved.
+
+| Field | Value |
+| --- | --- |
+| Adapter/backend | Apple M2 Max, `metal-native` |
+| OS | macOS 27.0.1, build 26A434 |
+| Tested HEAD | `7326863b098b92f58813a5b3f981b485cf2e5fca` plus this calibration working tree |
+| Build/target | Release, 1600 by 900, AA off, identical floor and box draws |
+| Atmosphere off | 8.225700 ms |
+| Atmosphere on | 4.473500 ms |
+| On minus off | -3.752200 ms |
+| Cold enabled frame | 463.707700 ms |
+| Samples | One prime, one off frame, one on frame |
+
+The negative single-sample delta is inconclusive. It does not show that atmosphere
+improves performance or establish the 0.3 ms target. The timing boundary remains
+`RenderInternal` through `Submit` and `WaitForIdle`, excluding construction,
+preparation and readback. No retry or stress run was performed.
+
+CPU, GPU, shader-parity, formatting logs, the GPU TRX, measured pixels and five
+contact sheets are retained under
+`.superpowers/sdd/2026-10-12-physical-atmosphere-phase-1/task-12-evidence/calibration`.
+No golden update variable was set. No grid, shader source, emission table, engine
+version or release file changed in this calibration.

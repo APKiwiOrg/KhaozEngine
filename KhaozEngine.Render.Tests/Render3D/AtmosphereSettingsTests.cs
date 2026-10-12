@@ -27,20 +27,20 @@ public sealed class AtmosphereSettingsTests
         Assert.Equal(25f, s.OzoneCenterKm);
         Assert.Equal(30f, s.OzoneWidthKm);
         Assert.Equal(.3f, s.GroundAlbedo);
-        Assert.Equal(1f, s.SunIlluminance);
-        Assert.Equal(.08f, s.MoonIlluminanceFraction);
+        Assert.Equal(2.7f, s.SunIlluminance);
+        Assert.Equal(.04f, s.MoonIlluminanceFraction);
         Assert.Equal(.004675f, s.SunAngularRadiusRadians);
         Assert.Equal(1000f, s.WorldUnitsPerKilometre);
         Assert.Equal(20f, s.AerialDistanceScale);
         Assert.Equal(1f, s.AmbientScale);
         Assert.Equal(1f, s.FillScale);
-        Assert.Equal(.08f, s.NightAmbientFloor);
-        Assert.Equal(.02f, s.NightSkyFloor);
+        Assert.Equal(.05f, s.NightAmbientFloor);
+        Assert.Equal(.09f, s.NightSkyFloor);
         Assert.Equal(0f, s.HazeDensityPerKm);
         Assert.Equal(.25f, s.HazeScaleHeightKm);
         Assert.Equal(Vector3.One, s.DayTint);
         Assert.Equal(Vector3.One, s.DuskTint);
-        Assert.Equal(new Vector3(.65f, .8f, 1f), s.NightTint);
+        Assert.Equal(new Vector3(.45f, .65f, 1f), s.NightTint);
         Assert.Equal(1f, s.HeightKm(1000f));
         s.Validate();
 
@@ -54,7 +54,7 @@ public sealed class AtmosphereSettingsTests
         var first = new PixelPostProcessSettings();
         var second = new PixelPostProcessSettings();
         first.Atmosphere.SunIlluminance = 2f;
-        Assert.Equal(1f, second.Atmosphere.SunIlluminance);
+        Assert.Equal(2.7f, second.Atmosphere.SunIlluminance);
 
         var earth = AtmosphereSettings.Earth();
         earth.PlanetRadiusKm = 5000f;
@@ -202,9 +202,9 @@ public sealed class AtmosphereSettingsTests
         Assert.False(s.ValueEquals(null));
 
         s.SunIlluminance = 2f;
-        Assert.Equal(1f, copy.SunIlluminance);
+        Assert.Equal(2.7f, copy.SunIlluminance);
         Assert.False(s.ValueEquals(copy));
-        s.SunIlluminance = 1f;
+        s.SunIlluminance = 2.7f;
         Assert.True(s.ValueEquals(copy));
     }
 

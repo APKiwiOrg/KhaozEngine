@@ -3,14 +3,101 @@ using System.Numerics;
 using KhaozEngine.Render3D;
 using KhaozEngine.Render3D.Internal;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace KhaozEngine.Tests.Render3D;
 
 public sealed class AtmosphereLightingTests : IClassFixture<AtmosphereLightingFixture>
 {
     readonly AtmosphereModel _earth;
+    readonly ITestOutputHelper _output;
 
-    public AtmosphereLightingTests(AtmosphereLightingFixture fixture) => _earth = fixture.Earth;
+    public AtmosphereLightingTests(AtmosphereLightingFixture fixture, ITestOutputHelper output)
+        => (_earth, _output) = (fixture.Earth, output);
+
+    [Fact]
+    public void ClearNoon_ZenithHasPhysicalLuminanceRelativeToSunlitWhite()
+    {
+        var model = UnitEarth();
+        var frame = new AtmosphereFrame(Direction(60), -Vector3.UnitY, 0, Vector3.One);
+        var lighting = model.EvaluateLighting(.002f, frame);
+        var zenith = model.SkyValue(.002f, Vector3.UnitY, frame);
+        var white = lighting.Key * MathF.Cos(MathF.PI / 6) + lighting.Ambient;
+        float ratio = Luminance(zenith) / Luminance(white);
+        _output.WriteLine($"Unit noon zenith={zenith}, white={white}, luminance ratio={ratio}");
+        // Clear-sky ratios span roughly 0.04 to 0.20 with turbidity and sun elevation.
+        // The original 0.06 lower bound was an estimate, not a transport normalization requirement.
+        Assert.InRange(ratio, .04f, .20f);
+    }
+
+    [Fact]
+    public void ClearNoon_HorizonAwayFromSunIsBrighterThanZenith()
+    {
+        var model = UnitEarth();
+        var frame = new AtmosphereFrame(Direction(60), -Vector3.UnitY, 0, Vector3.One);
+        float zenith = Luminance(model.SkyValue(.002f, Vector3.UnitY, frame));
+        float horizon = Luminance(model.SkyValue(.002f, Direction(2, MathF.PI / 2), frame));
+        _output.WriteLine($"Unit noon zenith luminance={zenith}, horizon luminance={horizon}");
+        Assert.True(horizon > zenith, $"Horizon {horizon} must exceed zenith {zenith}.");
+    }
+
+    [Fact]
+    public void ClearNoon_MultipleScatteringRaisesZenithRadiance()
+    {
+        var model = UnitEarth();
+        var sun = Direction(60);
+        float single = Luminance(model.SingleScattering(new Vector3(0, 6360.002f, 0), Vector3.UnitY, sun));
+        float multiple = Luminance(model.SkyRadiance(.002f, Vector3.UnitY, sun));
+        _output.WriteLine($"Unit noon single-scattering luminance={single}, total luminance={multiple}");
+        Assert.True(multiple > single, $"Total {multiple} must exceed single scattering {single}.");
+    }
+
+    [Fact]
+    public void EarthDefaults_KeepNoonAndMoonlitSkyWithinExposureBands()
+    {
+        var settings = AtmosphereSettings.Earth();
+        var model = new AtmosphereModel(settings);
+        var cycle = new SunCycleSettings
+        {
+            LatitudeDegrees = 0,
+            SolarDeclinationDegrees = 0,
+            MoonDeclinationDegrees = 0,
+            MoonHourOffset = 12,
+            NightKey = NightKeyMode.Moon,
+        };
+        var camera = new FlyCamera3D
+        {
+            Position = new Vector3(0, 2, 9),
+            Yaw = -MathF.PI / 2,
+            Pitch = 1.25f,
+            AspectRatio = 1.5f,
+        };
+        var noon = model.CreateFrame(SunCycle.Evaluate(.5f, cycle));
+        Vector3 view = camera.ScreenToRay(new Vector2(240.5f, 24.5f), 480, 320).Direction;
+        var noonSky = model.SkyValue(.002f, view, noon);
+        var lighting = model.EvaluateLighting(.002f, noon);
+        var white = lighting.Key + lighting.Ambient;
+        // Match the existing white receiver probe, which uses per-channel ACES for its fog oracle.
+        var whiteDisplay = Display(white, chroma: 0);
+        _output.WriteLine($"Default noon upper-centre HDR={noonSky}, display={Display(noonSky)}, white={whiteDisplay}");
+        Assert.InRange(Display(noonSky).Z, 150, 210);
+        Assert.True(MathF.Max(whiteDisplay.X, MathF.Max(whiteDisplay.Y, whiteDisplay.Z)) < 250);
+
+        cycle.MoonHourOffset = 7.5f;
+        var night = model.CreateFrame(SunCycle.Evaluate(0, cycle));
+        camera.Yaw = MathF.PI / 2;
+        camera.Pitch = -.08f;
+        view = camera.ScreenToRay(new Vector2(240.5f, 24.5f), 480, 320).Direction;
+        _output.WriteLine($"Default night upper-centre={Display(model.SkyValue(.002f, view, night))}, zenith={Display(model.SkyValue(.002f, Vector3.UnitY, night))}");
+        Assert.InRange(Display(model.SkyValue(.002f, view, night)).Z, 15, 40);
+        Assert.InRange(Display(model.SkyValue(.002f, Vector3.UnitY, night)).Z, 15, 40);
+    }
+
+    static Vector3 Display(Vector3 hdr, float chroma = .75f)
+    {
+        var mapped = TonemapMath.Map(hdr.X, hdr.Y, hdr.Z, 1, 0, chroma);
+        return new Vector3(mapped.R, mapped.G, mapped.B) * 255;
+    }
 
     [Fact]
     public void Lighting_UsesLambertUnitsAndTintOnce()
@@ -19,7 +106,7 @@ public sealed class AtmosphereLightingTests : IClassFixture<AtmosphereLightingFi
         var f = new AtmosphereFrame(Vector3.UnitY, -Vector3.UnitY, 0, Vector3.One);
         var l = _earth.EvaluateLighting(.002f, f);
         Close(l.SunTransmittance * s.SunIlluminance, l.Key);
-        Close(_earth.SkyRadiance(.002f, Vector3.UnitY, f.SunDirection) * MathF.PI,
+        Close(_earth.SkyRadiance(.002f, Vector3.UnitY, f.SunDirection) * (MathF.PI * s.SunIlluminance),
             _earth.SkyValue(.002f, Vector3.UnitY, f));
 
         var tinted = f with { Tint = new Vector3(2, 1, .5f) };
@@ -64,7 +151,7 @@ public sealed class AtmosphereLightingTests : IClassFixture<AtmosphereLightingFi
         var f = new AtmosphereFrame(-Vector3.UnitY, Direction(20, .7f), .08f,
             new Vector3(.65f, .8f, 1), KeyLightSource.Moon, .4f);
         var l = _earth.EvaluateLighting(.002f, f);
-        Close(l.MoonTransmittance * .08f * .4f * f.Tint, l.Key);
+        Close(l.MoonTransmittance * (.08f * .4f * AtmosphereSettings.Earth().SunIlluminance) * f.Tint, l.Key);
         Assert.Equal(Vector3.Zero, l.SunTransmittance);
         Assert.Equal(Vector3.Zero, _earth.EvaluateLighting(.002f, f with { KeyVisibility = 0 }).Key);
     }
@@ -109,13 +196,13 @@ public sealed class AtmosphereLightingTests : IClassFixture<AtmosphereLightingFi
 
         var view = both.MoonDirection;
         var expected = (m.SkyRadiance(.002f, view, both.SunDirection)
-            + m.SkyRadiance(.002f, view, both.MoonDirection) * .08f) * MathF.PI;
+            + m.SkyRadiance(.002f, view, both.MoonDirection) * .08f) * (MathF.PI * s.SunIlluminance);
         Close(expected, m.SkyValue(.002f, view, both));
         Assert.True(m.SkyValue(.002f, view, moon).Length()
             > m.SkyValue(.002f, Direction(20), moon).Length());
 
-        var direct = bothLighting.SunTransmittance * both.SunDirection.Y
-            + bothLighting.MoonTransmittance * (both.MoonFraction * both.MoonDirection.Y);
+        var direct = (bothLighting.SunTransmittance * both.SunDirection.Y
+            + bothLighting.MoonTransmittance * (both.MoonFraction * both.MoonDirection.Y)) * s.SunIlluminance;
         Close((direct + bothLighting.Ambient) * s.GroundAlbedo, bothLighting.Fill);
     }
 
@@ -162,7 +249,7 @@ public sealed class AtmosphereLightingTests : IClassFixture<AtmosphereLightingFi
         s.FillScale = 2;
         Assert.True(m.UpdateSettings(s));
         Close(original.Fill * 2, m.EvaluateLighting(.002f, f).Fill);
-        s.SunIlluminance = 2;
+        s.SunIlluminance *= 2;
         Assert.True(m.UpdateSettings(s));
         Close(original.Key * 2, m.EvaluateLighting(.002f, f).Key);
         Close(sky * 2, m.SkyValue(.002f, Vector3.UnitY, f));
@@ -239,6 +326,17 @@ public sealed class AtmosphereLightingTests : IClassFixture<AtmosphereLightingFi
         s.MieScatteringPerKm = s.MieExtinctionPerKm = s.GroundAlbedo = 0;
         return s;
     }
+
+    static AtmosphereModel UnitEarth()
+    {
+        var settings = AtmosphereSettings.Earth();
+        settings.SunIlluminance = 1;
+        settings.NightAmbientFloor = .08f;
+        settings.NightSkyFloor = .02f;
+        return new AtmosphereModel(settings);
+    }
+
+    static float Luminance(Vector3 value) => Vector3.Dot(value, new Vector3(.2126f, .7152f, .0722f));
 
     static void Close(Vector3 expected, Vector3 actual, float tolerance = 1e-6f)
         => Assert.InRange(Vector3.Distance(expected, actual), 0, tolerance);

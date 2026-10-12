@@ -157,7 +157,7 @@ public sealed class AtmosphereGoldenScene : IDisposable
         scene.Post.Atmosphere.Enabled = enabled;
         SunCycle.Apply(SunCycle.Evaluate(.5f, Cycle), scene.Post, scene.CameraOverride!.Eye);
         scene.Begin();
-        scene.Draw(_floor, Matrix4x4.CreateTranslation(0, -.1f, 0), new Color(.3f, .3f, .3f));
+        scene.Draw(_floor, Matrix4x4.CreateScale(10, 1, 10) * Matrix4x4.CreateTranslation(0, -.1f, 0), Color.White);
         scene.Draw(_box, Matrix4x4.CreateTranslation(-3, .5f, 7), Color.White);
         scene.PrepareFrame();
     }
@@ -298,7 +298,8 @@ public sealed class AtmosphereGoldenScene : IDisposable
             }
             else
             {
-                scene.Draw(_floor, Matrix4x4.CreateTranslation(0, -.1f, 0), new Color(.3f, .3f, .3f));
+                // Cover the downward sunset view with a lit receiver rather than the direct-only sky ground boundary.
+                scene.Draw(_floor, Matrix4x4.CreateScale(10, 1, 10) * Matrix4x4.CreateTranslation(0, -.1f, 0), Color.White);
                 scene.Draw(_box, Matrix4x4.CreateTranslation(-3, .5f, 7), Color.White);
             }
             scene.PrepareFrame();

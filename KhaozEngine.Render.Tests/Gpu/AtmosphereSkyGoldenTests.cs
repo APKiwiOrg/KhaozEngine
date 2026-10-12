@@ -152,7 +152,8 @@ public sealed class AtmosphereSkyGoldenTests : IClassFixture<AtmosphereGoldenSce
         return sum / count;
     }
 
-    byte[] MoonCapture(bool mirrored) => _fixture.Capture(scene =>
+    // Compare celestial directions without a lit ground receiver in the below-horizon control view.
+    byte[] MoonCapture(bool mirrored) => _fixture.CaptureEffects(scene =>
     {
         _fixture.TimeOfDay = .4f;
         _fixture.Cycle.MoonHourOffset = 6;
@@ -162,7 +163,7 @@ public sealed class AtmosphereSkyGoldenTests : IClassFixture<AtmosphereGoldenSce
         var actual = -state.MoonDirection;
         var oppositeSun = state.LightDirection;
         Aim((FlyCamera3D)scene.CameraOverride!, mirrored ? oppositeSun : actual);
-    });
+    }, _ => { });
 
     byte[] SeamCapture(float azimuth) => _fixture.Capture(scene =>
     {
@@ -203,5 +204,16 @@ public sealed class AtmosphereSkyGoldenTests : IClassFixture<AtmosphereGoldenSce
     }
 
     void Golden(string name, float time)
-        => GoldenCompare.AssertOrUpdate(name, _fixture.Capture(time), AtmosphereGoldenScene.Width, AtmosphereGoldenScene.Height);
+    {
+        byte[] rgba = _fixture.Capture(time);
+        AtmosphereGoldenScene.WriteCapture(name, rgba);
+        var upper = AveragePatch(rgba, 240, 24, 0) * 255;
+        var floor = AveragePatch(rgba, 240, 240, 0) * 255;
+        Console.WriteLine($"ATMOSPHERE_BRIGHTNESS {name} upper_centre={upper} floor={floor}");
+        if (time == .5f) Assert.InRange(upper.Z, 150, 210);
+        if (time == 0) Assert.InRange(upper.Z, 15, 40);
+        if (time == .747f) Assert.True(floor.X > 0 && floor.Y > 0 && floor.Z > 0,
+            "The sunset fixture must contain a lit floor receiver above display black.");
+        GoldenCompare.AssertOrUpdate(name, rgba, AtmosphereGoldenScene.Width, AtmosphereGoldenScene.Height);
+    }
 }

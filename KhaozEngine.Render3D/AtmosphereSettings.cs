@@ -34,10 +34,12 @@ public sealed class AtmosphereSettings
     public float OzoneWidthKm { get; set; } = 30f;
     /// <summary>Ground reflection fraction from 0 through 1.</summary>
     public float GroundAlbedo { get; set; } = .3f;
-    /// <summary>Non-negative solar illuminance in the engine's normalized noon lighting scale.</summary>
-    public float SunIlluminance { get; set; } = 1f;
-    /// <summary>Non-negative moon illuminance as a fraction of solar illuminance.</summary>
-    public float MoonIlluminanceFraction { get; set; } = .08f;
+    /// <summary>Non-negative solar illuminance in engine Lambert units. The 2.7 art scale exposes
+    /// the clear noon sky at exposure 1 with ACES while retaining headroom on white receivers.</summary>
+    public float SunIlluminance { get; set; } = 2.7f;
+    /// <summary>Non-negative moon illuminance as a fraction of solar illuminance. The 0.04 default
+    /// retains a visible moon key without lifting the calibrated night sky into daylight.</summary>
+    public float MoonIlluminanceFraction { get; set; } = .04f;
     /// <summary>Solar disc angular radius in radians, greater than zero and at most .1.</summary>
     public float SunAngularRadiusRadians { get; set; } = .004675f;
 
@@ -49,10 +51,12 @@ public sealed class AtmosphereSettings
     public float AmbientScale { get; set; } = 1f;
     /// <summary>Non-negative multiplier on fill lighting only.</summary>
     public float FillScale { get; set; } = 1f;
-    /// <summary>Non-negative ambient lighting floor at night.</summary>
-    public float NightAmbientFloor { get; set; } = .08f;
-    /// <summary>Non-negative sky brightness floor at night.</summary>
-    public float NightSkyFloor { get; set; } = .02f;
+    /// <summary>Non-negative ambient lighting floor at night. The 0.05 default keeps unlit
+    /// receivers legible at exposure 1 without competing with the moon key.</summary>
+    public float NightAmbientFloor { get; set; } = .05f;
+    /// <summary>Non-negative sky brightness floor at night. The 0.09 default exposes a dark blue
+    /// sky above display black at exposure 1 with ACES, including moonless directions.</summary>
+    public float NightSkyFloor { get; set; } = .09f;
     /// <summary>Additional non-negative haze density per kilometre. Zero keeps mist opt-in.</summary>
     public float HazeDensityPerKm { get; set; }
     /// <summary>Haze exponential density scale height in kilometres.</summary>
@@ -61,8 +65,9 @@ public sealed class AtmosphereSettings
     public Vector3 DayTint { get; set; } = Vector3.One;
     /// <summary>Non-negative RGB tint shared by the dusk sky, fog and lighting.</summary>
     public Vector3 DuskTint { get; set; } = Vector3.One;
-    /// <summary>Non-negative RGB tint shared by the night sky, fog and lighting.</summary>
-    public Vector3 NightTint { get; set; } = new(.65f, .8f, 1f);
+    /// <summary>Non-negative RGB tint shared by the night sky, fog and lighting. The (0.45,0.65,1)
+    /// default gives the calibrated night floor a dark blue hue without a separate sky multiplier.</summary>
+    public Vector3 NightTint { get; set; } = new(.45f, .65f, 1f);
 
     /// <summary>Creates independent Earth settings with physical atmosphere rendering disabled.</summary>
     public static AtmosphereSettings Earth() => new();

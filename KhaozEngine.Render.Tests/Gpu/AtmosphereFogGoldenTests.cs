@@ -48,6 +48,13 @@ public sealed class AtmosphereFogGoldenTests : IClassFixture<AtmosphereGoldenSce
                 foreach ((int x, float distance) in new[] { (151, 100f), (329, 1000f) })
                 {
                     var unfogged = TonemapMath.Map(lit.X, lit.Y, lit.Z, 1, 0, 0);
+                    if (receiver == "rigid" && !temporal)
+                    {
+                        Vector3 white = Patch(clear, x, 160) * 255;
+                        Console.WriteLine($"ATMOSPHERE_WHITE x={x} display={white} chroma=0");
+                        Assert.True(MathF.Max(white.X, MathF.Max(white.Y, white.Z)) < 250,
+                            "The sunlit white receiver must retain display headroom at exposure 1 with ACES.");
+                    }
                     Assert.True(Vector3.Distance(Patch(clear, x, 160), new(unfogged.R, unfogged.G, unfogged.B)) <= .03f,
                         $"{receiver}, temporal={temporal}, x={x} must contain the white receiver. "
                         + $"GPU {Patch(clear, x, 160)}, CPU {unfogged}, lighting {lit}, key direction {scene.Post.LightDirection}");

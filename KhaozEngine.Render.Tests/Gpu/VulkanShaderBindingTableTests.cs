@@ -176,6 +176,23 @@ namespace KhaozEngine.Tests.Gpu
             Assert.True(problems.Count == 0, Report(problems));
         }
 
+        [Fact]
+        public void WaterAndClipmap_AppendAtmosphereAfterTheDynamicWaterUniform()
+        {
+            var elements = VulkanDescriptorLimitTests.ShippedLayouts["Water"].Elements!;
+            Assert.Equal(10, elements.Length);
+            Assert.Equal("Water", elements[6].Name);
+            Assert.True(elements[6].Dynamic);
+            Declaration[] atmosphere =
+            [
+                new(0, 7, GpuResourceKind.UniformBuffer, "Atmosphere"),
+                new(0, 8, GpuResourceKind.TextureReadOnly, "AtmoSkyView"),
+                new(0, 9, GpuResourceKind.Sampler, "AtmoSkySampler"),
+            ];
+            foreach (var program in ShippedShaderPrograms.GraphicsPrograms().Where(p => p.Name is "Water" or "WaterClipmap"))
+                Assert.Equal(atmosphere, Parse(program.FragmentGlsl).Where(d => d.Set == 0 && d.Binding >= 7).ToArray());
+        }
+
         /// <summary>The compute half, over all four cascade resolutions of both ocean kernels.</summary>
         [Fact]
         public void EveryShippedComputeKernel_DeclaresSetAndBindingAtTheArrayIndices()

@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Render3D;
+using KhaozEngine.Render3D.Internal;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
@@ -58,6 +59,71 @@ public sealed class AtmosphereSkyGoldenTests : IClassFixture<AtmosphereGoldenSce
         _fixture.Capture(0);
         _fixture.Capture(.747f);
         AssertGridsClose(_fixture.CaptureFresh(.5f), _fixture.Capture(.5f), GoldenCompare.InSessionTolerance);
+    }
+
+    [GpuFact]
+    public void Golden_PhysicalSkyReflectsBothBodies()
+    {
+        FlyCamera3D camera = null!;
+        Vector3 sun = default, moon = default;
+        byte[] rgba = _fixture.CaptureWater(scene =>
+        {
+            _fixture.TimeOfDay = .7f;
+            _fixture.Cycle.SolarDeclinationDegrees = -15;
+            _fixture.Cycle.MoonDeclinationDegrees = 15;
+            _fixture.Cycle.MoonHourOffset = .5f;
+            // Face both bodies into the authored sea footprint rather than past its near edge.
+            _fixture.Cycle.HeadingDegrees = 90;
+            var state = SunCycle.Evaluate(_fixture.TimeOfDay, _fixture.Cycle);
+            sun = -state.LightDirection;
+            moon = -state.MoonDirection;
+            Assert.True(sun.Y > 0 && moon.Y > 0, "Both physical bodies must be above the horizon.");
+            camera = (FlyCamera3D)scene.CameraOverride!;
+            camera.Position = new Vector3(0, 1.6f, 9);
+            Aim(camera, new Vector3(sun.X + moon.X, -.1f, sun.Z + moon.Z));
+            // Enlarge the angular discs so the seven-pixel patches lie inside them on every backend.
+            scene.Post.Atmosphere.SunAngularRadiusRadians = .075f;
+            scene.Post.Sky.SunRadius = .075f;
+            WaterSceneTuning.ApplyCalmMirror(scene.Post.Water);
+        });
+
+        foreach ((Vector3 direction, string name) in new[] { (sun, "sun"), (moon, "moon") })
+        {
+            var sky = Pixel(camera, direction);
+            var sea = Pixel(camera, new Vector3(direction.X, -direction.Y, direction.Z));
+            Assert.True(sea.y > sky.y, $"The {name} reflection must lie below its sky disc.");
+            Vector3 inSky = AveragePatch(rgba, sky.x, sky.y, 3);
+            Vector3 skyControl = AveragePatch(rgba, AtmosphereGoldenScene.Width / 2, sky.y, 3);
+            Assert.True(Vector3.Distance(inSky, skyControl) > .2f, $"The physical {name} disc must be visible.");
+            Vector3 inSea = AveragePatch(rgba, sea.x, sea.y, 3);
+            Vector3 control = AveragePatch(rgba, AtmosphereGoldenScene.Width / 2, sea.y, 3);
+            Assert.True(Vector3.Distance(inSea, inSky) < Vector3.Distance(control, inSky) * .85f,
+                $"The {name} reflection at ({sea.x},{sea.y}) must be at least 15 percent closer to its sky colour than open water.");
+        }
+    }
+
+    static (int x, int y) Pixel(FlyCamera3D camera, Vector3 direction)
+    {
+        Assert.True(SkyMath.ProjectSunWorldToNdc(camera.View, camera.Projection, direction, out Vector2 ndc));
+        Assert.InRange(ndc.X, -.98f, .98f);
+        Assert.InRange(ndc.Y, -.98f, .98f);
+        return ((int)((ndc.X * .5f + .5f) * AtmosphereGoldenScene.Width),
+            (int)((.5f - ndc.Y * .5f) * AtmosphereGoldenScene.Height));
+    }
+
+    // Same top-origin, seven-pixel patches as SkyWorldHorizonGoldenTests, without a new golden grid.
+    static Vector3 AveragePatch(byte[] rgba, int cx, int cy, int half)
+    {
+        Vector3 sum = Vector3.Zero;
+        int count = 0;
+        for (int y = Math.Max(0, cy - half); y <= Math.Min(AtmosphereGoldenScene.Height - 1, cy + half); y++)
+            for (int x = Math.Max(0, cx - half); x <= Math.Min(AtmosphereGoldenScene.Width - 1, cx + half); x++)
+            {
+                int i = (y * AtmosphereGoldenScene.Width + x) * 4;
+                sum += new Vector3(rgba[i], rgba[i + 1], rgba[i + 2]) / 255;
+                count++;
+            }
+        return sum / count;
     }
 
     byte[] MoonCapture(bool mirrored) => _fixture.Capture(scene =>

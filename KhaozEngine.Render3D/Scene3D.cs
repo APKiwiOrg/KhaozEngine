@@ -436,7 +436,7 @@ namespace KhaozEngine.Render3D
             _starfield = new Rendering.StarfieldRenderer(gd, _res.ColorDepthFB.Outputs);
             // Animated water draws into the same ColorDepthFB, AFTER the sky + decals (see RenderInternal). Default
             // off (no DrawWater request queued == the pass never runs, existing scenes byte-stable).
-            _water = new Rendering.WaterRenderer(gd, _res.ColorDepthFB.Outputs, _retired);
+            _water = new Rendering.WaterRenderer(gd, _res.ColorDepthFB.Outputs, _retired, _atmosphere.Bindings);
             // Depth-tested debug wire volumes draw into the same ColorDepthFB (lit colour + read-only scene depth)
             // after the water pass, before the post chain, so scene geometry occludes their buried parts.
             _depthLines = new Rendering.DepthLineRenderer(gd, _res.ColorDepthFB.Outputs);
@@ -1768,7 +1768,7 @@ namespace KhaozEngine.Render3D
             if (_waterPlanes.Count > 0)
             {
                 _water.Draw(cl, _res, RelativeWaterPlanes(), vp, displayVp,
-                    Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin);
+                    Post.LightDirection, Post.LightColor, eye, Post.Water, Post.Sky, EffectTimeSeconds, _frameOrigin, Post.Atmosphere.Enabled);
                 _frameStats.DrawCalls++;
                 // The ocean FFT's remaining GPU drain (the one a frame pays to PRIME its cascades, since #398
                 // ping-ponged the per-frame one away) is a Submit+WaitForIdle stall, not draw-call encode cost, so

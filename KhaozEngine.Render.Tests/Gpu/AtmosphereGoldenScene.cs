@@ -44,6 +44,13 @@ public sealed class AtmosphereGoldenScene : IDisposable
 
     /// <summary>Configure a reset scene, apply its cycle at the absolute camera position, then capture.</summary>
     public byte[] Capture(Action<Scene3D> configure)
+        => Capture(configure, water: false);
+
+    /// <summary>Capture a Y=0 sea above a submerged floor, with the same reset and cycle as sky captures.</summary>
+    public byte[] CaptureWater(Action<Scene3D> configure)
+        => Capture(configure, water: true);
+
+    byte[] Capture(Action<Scene3D> configure, bool water)
     {
         ArgumentNullException.ThrowIfNull(configure);
         var gd = Device();
@@ -54,8 +61,17 @@ public sealed class AtmosphereGoldenScene : IDisposable
         for (int i = 0; i < Frames; i++)
         {
             scene.Begin();
-            scene.Draw(_floor, Matrix4x4.CreateTranslation(0, -.1f, 0), new Color(.3f, .3f, .3f));
-            scene.Draw(_box, Matrix4x4.CreateTranslation(-3, .5f, 7), Color.White);
+            if (water)
+            {
+                scene.Draw(_floor, Matrix4x4.CreateScale(7.5f) * Matrix4x4.CreateTranslation(0, -6, -20),
+                    new Color(.1f, .12f, .14f));
+                scene.DrawWater(new WaterPlane(0, 0, -20, 30));
+            }
+            else
+            {
+                scene.Draw(_floor, Matrix4x4.CreateTranslation(0, -.1f, 0), new Color(.3f, .3f, .3f));
+                scene.Draw(_box, Matrix4x4.CreateTranslation(-3, .5f, 7), Color.White);
+            }
             scene.PrepareFrame();
             using (GpuRecording.Open(gd, _commands!, "AtmosphereGoldenScene.Capture"))
                 scene.RenderInternal(_commands!, Width, Height, _framebuffer!);

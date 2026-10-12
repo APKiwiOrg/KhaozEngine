@@ -203,7 +203,8 @@ namespace KhaozEngine.Tests.Gpu
 
                 // Render3D/Rendering/WaterRenderer.cs:188
                 ["Water"] = L(T("BathyTex", VF), S("BathySamp", VF), T("OceanMap", VF), S("OceanSamp", VF),
-                    T("DepthTex"), S("Samp"), U("Water", VF, dynamic: true)),
+                    T("DepthTex"), S("Samp"), U("Water", VF, dynamic: true),
+                    U("Atmosphere", F), T("AtmoSkyView"), S("AtmoSkySampler")),
             };
 
         /// <summary>

@@ -39,7 +39,7 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 DetailParams;  // x=warpStrength, y=detailFadeDistance, z=distantDetailScale, w=shallowDepth
             public Vector4 SkyHorizon;    // rgb, the reflected sky's horizon colour
             public Vector4 SkyZenith;     // rgb, the reflected sky's zenith colour
-            public Vector4 SkyParams;     // x = reflected disc count, yzw unused
+            public Vector4 SkyParams;     // x = reflected disc count, y = physical atmosphere enabled
             public Vector4 ReflectGlint;  // x=skyReflStrength, y=skyReflSunStrength, z=glintRoughness, w=glintDistantRoughness
             public Vector4 SwellParams;   // x=amplitude, y=wavelength, z=directionRadians, w=spreadRadians
             public Vector4 SwellShape;    // x=steepness, y=speedScale, z=componentCount, w=seed
@@ -64,7 +64,7 @@ namespace KhaozEngine.Render3D.Rendering
             public Vector4 SkyGround;         // rgb = the reflected sky's ground band, a = blend depth (negative = no ground)
             public SkyDiscVec4s SkyDiscColor; // per reflected disc: rgb colour, a = opacity
             public SkyDiscVec4s SkyDiscDir;   // xyz = unit direction TO the body, w = radius
-            public SkyDiscVec4s SkyDiscHalo;  // x = halo strength, y = halo falloff
+            public SkyDiscVec4s SkyDiscHalo;  // x = halo strength, y = halo falloff, z = physical primary marker
         }
 
         /// <summary>Byte size of <see cref="WaterUbo"/>, i.e. how much each slot actually uploads.
@@ -95,6 +95,8 @@ namespace KhaozEngine.Render3D.Rendering
         readonly IGpuDevice _gd;
         readonly IGpuShaderSet _shaders;
         readonly IGpuResourceLayout _layout;
+        readonly AtmosphereBindings _atmosphere;
+        readonly bool _ownsAtmosphere;
         IGpuPipeline _pipe;   // rebuilt by SetOutputs when the MRT sample count (MSAA) changes
         GpuOutputDescription _outputs;
         // The clipmap grid's own shader set + pipeline, built on FIRST USE and kept. It needs its own because the
@@ -185,14 +187,17 @@ namespace KhaozEngine.Render3D.Rendering
             _ownsRetired = true;
         }
 
-        public WaterRenderer(IGpuDevice gd, GpuOutputDescription colorOutput, GpuRetireQueue retired)
+        public WaterRenderer(IGpuDevice gd, GpuOutputDescription colorOutput, GpuRetireQueue retired,
+            AtmosphereBindings? atmosphere = null)
         {
             _gd = gd;
             _retired = retired;
+            _atmosphere = atmosphere ?? new AtmosphereBindings(gd);
+            _ownsAtmosphere = atmosphere is null;
             _outputs = colorOutput;
             var f = gd.Factory;
             _shaders = f.CreateShadersFromSpirv(ShaderSources.WaterVert, ShaderSources.WaterFrag);
-            _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(
+            _layout = f.CreateResourceLayout(new GpuResourceLayoutDescription(AtmosphereBindings.AppendLayout(
                 // ORDER WAS LOAD-BEARING, and not for the usual reason. Veldrid numbered a backend's resource slots
                 // with one counter PER KIND over this whole list, binding each element to the stages in its mask,
                 // while the cross-compiler numbered each stage DENSELY over only the bindings that stage declares.
@@ -218,7 +223,7 @@ namespace KhaozEngine.Render3D.Rendering
                 new GpuResourceLayoutElement("Samp", GpuResourceKind.Sampler, GpuShaderStages.Fragment),
                 // Dynamic-offset UBO read by BOTH stages (the vertex shader only needs ViewProj, folded into the
                 // same buffer under the one-UBO-per-set rule #604 retired, and left folded).
-                new GpuResourceLayoutElement("Water", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true)));
+                new GpuResourceLayoutElement("Water", GpuResourceKind.UniformBuffer, GpuShaderStages.Vertex | GpuShaderStages.Fragment, dynamic: true))));
             _ocean = new OceanFftProducer(gd);
             _bathymetry = new WaterBathymetryMap(gd);
             _pipe = Pipe(f, colorOutput, _shaders, false);
@@ -282,9 +287,9 @@ namespace KhaozEngine.Render3D.Rendering
             if (_set != null && ReferenceEquals(_bound, res) && res.Generation == _boundGen
                 && ReferenceEquals(_boundMap, map) && ReferenceEquals(_boundBathy, bathy)) return;
             _set?.Dispose();
-            _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout,
+            _set = _gd.Factory.CreateResourceSet(new GpuResourceSetDescription(_layout, _atmosphere.AppendResources(
                 bathy, _bathymetry.Sampler, map, _ocean.Sampler, res.DepthColorTex, _gd.PointSampler,
-                new GpuBufferRange(_ubo!, 0, SlotBytes)));
+                new GpuBufferRange(_ubo!, 0, SlotBytes))));
             _bound = res; _boundGen = res.Generation;
             _boundMap = map;
             _boundBathy = bathy;
@@ -330,7 +335,7 @@ namespace KhaozEngine.Render3D.Rendering
         public static WaterUbo PackUbo(Matrix4x4 clipViewProj, Matrix4x4 rawViewProj, Vector3 lightDirection,
             Color lightColor, Vector3 cameraPos, WaterSettings settings, SkySettings sky, float timeSeconds,
             in OceanMaps ocean, Vector3 renderOrigin = default, ShoreMaps shore = default,
-            float planeSurfaceY = 0f)
+            float planeSurfaceY = 0f, bool atmosphereEnabled = false)
         {
             Matrix4x4.Invert(rawViewProj, out var inv);
             Vector4 deep = settings.DeepColor;
@@ -342,6 +347,8 @@ namespace KhaozEngine.Render3D.Rendering
             // Every disc the sky draws, each along its OWN direction: the sea reflects the sky the camera sees.
             int discCount = SkyDiscs.PackForWater(sky, lightDirection,
                 out SkyDiscVec4s discColor, out SkyDiscVec4s discDir, out SkyDiscVec4s discHalo);
+            // The solar disc uses the same per-ray transmission and limb profile as the sky pass.
+            if (atmosphereEnabled && sky.SunEnabled) discHalo[0].Z = 1f;
             // The sea reflects the sky the camera sees, ground band included, or a sun that has set would still
             // show whole in the water.
             SkyGround ground = SkyHorizonMath.ResolveGround(sky, rawViewProj);
@@ -374,7 +381,7 @@ namespace KhaozEngine.Render3D.Rendering
                     settings.DistantDetailScale, settings.ShallowDepth),
                 SkyHorizon = skyHorizon,
                 SkyZenith = skyZenith,
-                SkyParams = new Vector4(discCount, 0f, 0f, 0f),
+                SkyParams = new Vector4(discCount, atmosphereEnabled ? 1f : 0f, 0f, 0f),
                 ReflectGlint = new Vector4(settings.SkyReflectionStrength, settings.SkyReflectionSunStrength,
                     settings.GlintRoughness, settings.GlintDistantRoughness),
                 SwellParams = new Vector4(settings.SwellAmplitude, settings.SwellWavelength,
@@ -565,7 +572,8 @@ namespace KhaozEngine.Render3D.Rendering
         /// </para></summary>
         public void Draw(IGpuCommandList cl, RenderResources res, ReadOnlySpan<WaterPlane> planes,
             Matrix4x4 viewProj, Matrix4x4 cullViewProj, Vector3 lightDirection, Color lightColor, Vector3 cameraPos,
-            WaterSettings settings, SkySettings sky, float timeSeconds, Vector3 renderOrigin = default)
+            WaterSettings settings, SkySettings sky, float timeSeconds, Vector3 renderOrigin = default,
+            bool atmosphereEnabled = false)
         {
             if (planes.Length == 0) return;
             LastClipmapRebuilds = 0;
@@ -622,7 +630,7 @@ namespace KhaozEngine.Render3D.Rendering
                 // lake loses them without needing a flag of its own.
                 OceanMaps planeMaps = effective.WaveSource == WaterWaveSource.FftOcean ? oceanMaps : default;
                 var u = PackUbo(clipVp, viewProj, lightDirection, lightColor, cameraPos, effective, sky, timeSeconds,
-                    planeMaps, renderOrigin, shore, planes[i].SurfaceY);
+                    planeMaps, renderOrigin, shore, planes[i].SurfaceY, atmosphereEnabled);
                 PackSlot(i, in u);
             }
             // ONE whole-buffer write for every plane's slot, ahead of every draw that binds one. A per-plane write
@@ -705,6 +713,7 @@ namespace KhaozEngine.Render3D.Rendering
             _ocean.Dispose();
             _bathymetry.Dispose();
             _set?.Dispose();
+            if (_ownsAtmosphere) _atmosphere.Dispose();
             _clipPipe?.Dispose();
             _pipe.Dispose();
             _layout.Dispose();

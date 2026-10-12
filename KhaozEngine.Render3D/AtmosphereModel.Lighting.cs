@@ -106,15 +106,22 @@ public sealed partial class AtmosphereModel
         float radius = _settings.SunAngularRadiusRadians;
         if (angle > radius) return Vector3.Zero;
         var position = new Vector3(0, _settings.PlanetRadiusKm + MathF.Max(cameraHeightKm, 0), 0);
-        // Mirror atmosphereSunDisc's horizon cosine without a radius-squared intersection tolerance.
-        float planetRatio = _settings.PlanetRadiusKm / position.Y;
-        float horizonCosine = -MathF.Sqrt(MathF.Max(0f, 1f - planetRatio * planetRatio));
-        if (view.Y <= horizonCosine) return Vector3.Zero;
+        if (!IsSkyDirectionVisible(cameraHeightKm, view)) return Vector3.Zero;
         float relative = angle / radius;
         float limb = (.4f + .6f * MathF.Sqrt(MathF.Max(0, 1 - relative * relative))) / .8f;
         float scale = _settings.SunIlluminance / MathF.Pow(MathF.Sin(radius), 2);
         return Transmittance(position, view) * frame.Tint
             * (scale * limb * Math.Clamp(frame.SunOpacity, 0, 1));
+    }
+
+    /// <summary>Whether a unit view direction clears the geometric planet horizon at the camera altitude.
+    /// Mirrors atmosphereSunDisc's horizon cosine without a radius-squared intersection tolerance.</summary>
+    internal bool IsSkyDirectionVisible(float cameraHeightKm, Vector3 unitDirection)
+    {
+        float cameraRadius = _settings.PlanetRadiusKm + MathF.Max(cameraHeightKm, 0);
+        float planetRatio = _settings.PlanetRadiusKm / cameraRadius;
+        float horizonCosine = -MathF.Sqrt(MathF.Max(0f, 1f - planetRatio * planetRatio));
+        return unitDirection.Y > horizonCosine;
     }
 
     /// <summary>Zenith and ground sky values from the physical-settings lighting table. Both bodies

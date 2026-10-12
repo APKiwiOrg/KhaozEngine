@@ -22,8 +22,8 @@ internal static partial class ContactController
     /// core. <see cref="MoveState.Position"/> is the capsule centre, <see cref="MoveTuning.CapsuleHalfHeight"/> above
     /// the feet. A non-null <paramref name="world"/> must offer <see cref="IPhysicsQueryLeaseSource"/> and
     /// <see cref="IPhysicsSupportFootprint"/>, and every query of the tick runs under one read lease. A
-    /// <paramref name="medium"/> that reports water throws until swimming moves here. Omitted
-    /// <paramref name="settings"/> mean <c>new GroundCoreSettings()</c>. <paramref name="clampXz"/> clamps the planned
+    /// <paramref name="medium"/> that reports water throws because point samples cannot certify contact movement.
+    /// Omitted <paramref name="settings"/> use <see cref="MoveTuning.FootRadiusFraction"/>. <paramref name="clampXz"/> clamps the planned
     /// move's end before the move and every substep's move in every mode, and again after the move as a backstop, as
     /// legacy clamps. A non-finite clamp or result returns the input state with its per-tick events cleared and the
     /// commitment kept.</summary>
@@ -34,17 +34,9 @@ internal static partial class ContactController
         float? faceYaw = null, GroundCoreSettings? settings = null)
     {
         ArgumentNullException.ThrowIfNull(groundHeight);
-        GroundCoreSettings foot = settings ?? new GroundCoreSettings();
-        ShellGeometry.Validate(tuning, foot);
-        IPhysicsQueryLeaseSource? leases = null;
-        if (world is not null)
-        {
-            leases = world as IPhysicsQueryLeaseSource ?? throw new NotSupportedException(
-                "The contact controller needs a physics world that offers IPhysicsQueryLeaseSource.");
-            if (world is not IPhysicsSupportFootprint)
-                throw new NotSupportedException(
-                    "The contact controller needs a physics world that offers IPhysicsSupportFootprint.");
-        }
+        GroundCoreSettings foot = settings ?? new GroundCoreSettings(tuning.FootRadiusFraction);
+        MovementConfigurationValidation.ValidateDryDirect(tuning with { FootRadiusFraction = foot.FootRadiusFraction }, world);
+        IPhysicsQueryLeaseSource? leases = world as IPhysicsQueryLeaseSource;
 
         using IPhysicsQueryLease? lease = leases?.AcquireQueryReadLease();
         var queries = new DryContactQueryContext(groundHeight, groundNormal, world, lease, tuning, medium);

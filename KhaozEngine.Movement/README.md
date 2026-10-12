@@ -194,6 +194,8 @@ public sealed class GroundNavigation
 ```
 
 The two-argument `BuildProfile` builds a ground profile and equals the overload with `GroundProfileOptions.Default`.
+Both overloads and `GroundNavigationBake.Create` refuse Contact profiles with `NotSupportedException` naming
+phase 5b. Bake creation checks every profile before identity encoding. Legacy v1 bytes remain unchanged.
 
 `AgentRadius` and `AgentHeight` are the baked radius and full capsule height. Profile geometry must match
 `CapsuleRadius`, `CapsuleHalfHeight`, `MaxSlopeRadians` and `StepHeight` exactly when a context validates a
@@ -845,14 +847,19 @@ The driver has no wall following or local avoidance. It walks straight and repor
 `ExplicitMovementProfile` identifies `contact-shell-footprint-swim-v1`. The
 [phase 4b handoff](../docs/design/CONTACT-CONTROLLER-PHASE-4B-SWIMMING-HANDOFF-2026-10-11.md)
 uses #438 shell solids and certified footprint support for explicit land motion, with swimming's
-full-body medium and route proofs. The fingerprint includes the fixed footprint radius fraction
-0.5, vertical placement offset 0.001 m, handoff recipe version 1 and route-proof recipe version 1.
+full-body medium and route proofs. The fingerprint includes `MoveTuning.FootRadiusFraction` (default 0.5),
+vertical placement offset 0.001 m, handoff recipe version 1 and route-proof recipe version 1.
 Earlier `f3-full-capsule-v1` proofs cannot certify this behavior. It also includes all
-MoveTuning inputs, water capability and launch tuning, area masks, captured boundary identity,
+positional MoveTuning inputs, water capability and launch tuning, area masks, captured boundary identity,
 probe cadence and budget, finite resolver limits and versions, engine version, and ordinal-sorted
 semantic source digests. Supply every query/clearance, shore-policy and actual route-cost dependency
 through NavBakeSources. No new route-cost control is added. Profile construction snapshots those
 inputs. Local leases, physics handles and frame epochs never enter the fingerprint.
+
+The profile's supplied water policy governs. `MoveTuning.Water` must be default or identical to that policy.
+Both defined `Controller` values produce the same explicit fingerprint. Undefined selectors refuse.
+Construction validates the selected foot geometry and every explicit kernel requirement, including positive
+gravity, maximum fall speed and swim-enter depth fraction. Default foot and water inputs retain their fingerprints.
 
 `GroundMoveContext.StepExplicit` uses that profile's actual cadence and tuning with the existing
 explicit locomotion kernel. The context must name the exact captured movement query view. A second

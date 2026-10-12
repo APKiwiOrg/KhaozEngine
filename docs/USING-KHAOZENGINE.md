@@ -7983,6 +7983,9 @@ clearance check sees only the deepest contact, so a route may clip a bank within
 steps, so larger cells than 0.25 m or slow zones must raise `MaxEdgeProbeSteps`. The Movement README states the full
 rules.
 
+Both `BuildProfile` overloads and `GroundNavigationBake.Create` refuse Contact profiles before identity encoding,
+with `NotSupportedException` naming phase 5b. Legacy v1 bake bytes remain unchanged.
+
 Radius, full height, slope class and step class must match the capture profile's
 `CapsuleRadius`, `CapsuleHalfHeight`, `MaxSlopeRadians` and `StepHeight` exactly. Walk and run pace, climb pace
 and effect scale may differ. Physical holds and independently directed edges use unit pace, dry medium, no
@@ -12209,6 +12212,16 @@ height delegate + optional ground-normal delegate) and one `MoveTuning`. It has 
 carried `MoveState` (position + vertical velocity + grounded + feel timers). The local `CharacterController3D`
 wraps the vertical step; the authoritative server and client prediction run the same `Step`, so the vertical axis
 reconciles identically.
+
+`MoveTuning` adds init-only `Controller`, `FootRadiusFraction` and `Water` outside its unchanged 30-parameter
+constructor. Defaults are `Legacy`, 0.5 and the default water policy. Direct stateful `Step` and `StepTowards`
+select the dry contact controller when `Controller` is `Contact`, retaining camera-facing yaw, run, jump and
+precise direction resolution. The foot fraction must be finite in (0, 1], the foot radius must be at least
+0.01 m and the knee-height shell must validate. Null physics supports analytic-only movement. Supplied physics
+requires `IPhysicsQueryLeaseSource` and `IPhysicsSupportFootprint`. Clamp and dry medium delegates are accepted.
+Wet point samples refuse and name the ordinary `IMovementWaterField` route. The position-only overload refuses
+Contact and names the stateful overload. Legacy requires default foot and water settings. Undefined selectors
+throw `ArgumentOutOfRangeException`. Ordinary head composition remains a separate phase 5a task.
 
 The retained `MoveCommand(move, run, cameraYaw, jump, faceCamera)` constructor and `default(MoveCommand)` leave
 `ScaleSpeedByAxis` false. They keep nonzero player axes normalized to full speed and keep the legacy dead zone. The

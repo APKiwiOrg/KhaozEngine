@@ -4,6 +4,25 @@ Render-free character locomotion core. `CharacterMovement.Step` is the single mo
 local controller, the authoritative server sim, and client-side prediction - so local and networked movement
 run identical code.
 
+## Movement selector
+
+`MoveTuning` keeps its 30-parameter positional constructor and deconstruction. Three init-only properties
+participate in equality, hashing and `with`: `Controller` (default `MovementControllerKind.Legacy`),
+`FootRadiusFraction` (default 0.5) and `Water` (default `WaterTraversalPolicy`).
+
+Direct stateful `CharacterMovement.Step` and both `StepTowards` overloads dispatch
+`MovementControllerKind.Contact` after resolving the existing camera or world direction. Camera-facing yaw,
+run, jump and precise small magnitudes retain their existing meanings. Contact geometry requires a finite
+foot fraction in (0, 1], a foot radius of at least 0.01 m and a valid knee-height shell.
+A physics world must offer `IPhysicsQueryLeaseSource` and `IPhysicsSupportFootprint`. Null physics supports
+analytic-only dry movement. Clamp and dry medium delegates are allowed. A wet point sample refuses with
+`NotSupportedException` naming the ordinary `IMovementWaterField` route.
+
+The position-only `Step(Vector3, ...)` refuses Contact and names the stateful overload. Legacy requires
+the default foot fraction and the complete default water policy, including zero surface jump speed.
+Undefined selectors throw `ArgumentOutOfRangeException`. Released legacy movement arithmetic is unchanged.
+Ordinary head composition and certified water integration remain separate phase 5a tasks.
+
 ## API
 
 Two overloads share one horizontal core (camera-relative WASD axis, normalised diagonals, walk/run speed,
@@ -736,6 +755,7 @@ producer acceptance or a playable consumer feature.
   `FacingTurnSpeed` (default `float.PositiveInfinity`, which snaps) /
   `TractionHysteresisRadians` (default 3 degrees) / `SlideFrictionRampRadians` (default 8 degrees) /
   `StrafeSpeedScale` (default 1) / `BackpedalSpeedScale` (default 1) / `BackpedalAllowsRun` (default true).
+  The selector, contact foot fraction and ordinary water policy are init-only properties outside that list.
 - **`MoveSector`** (17.30.0) - which directional sector a command's axis falls in relative to the character's
   facing: `Forward` / `Strafe` / `Reverse`. Returned by `CharacterMovement.Sector(cmd)`, and what the directional
   speed scales are charged by while `MoveCommand.FaceCamera` is held. Public so presentation (which locomotion

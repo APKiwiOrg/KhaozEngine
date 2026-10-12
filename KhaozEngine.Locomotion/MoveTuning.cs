@@ -43,6 +43,15 @@ public readonly partial record struct MoveTuning(
     float BackpedalSpeedScale = 1f,
     bool BackpedalAllowsRun = true)
 {
+    /// <summary>The ordinary movement controller. The default preserves released legacy motion.</summary>
+    public MovementControllerKind Controller { get; init; } = MovementControllerKind.Legacy;
+
+    /// <summary>The contact foot disc radius as a fraction of the capsule radius.</summary>
+    public float FootRadiusFraction { get; init; } = 0.5f;
+
+    /// <summary>Ordinary contact water traversal. Explicit configurations supply their own policy.</summary>
+    public WaterTraversalPolicy Water { get; init; } = default;
+
     /// <summary>Walkable-slice defaults: walk 6 m/s, run 12 m/s, capsule half-height 0.9 m, max slope 45 deg
     /// (steep enough for normal hills, low enough that a RimFeature mountain wall is too steep to stand on, so the
     /// rim stays un-climbable when a <c>groundNormal</c> delegate is supplied), capsule footprint radius

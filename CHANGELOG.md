@@ -7,6 +7,10 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.34.0
 
+- Locomotion adds the `MoveTuning.Controller`, `FootRadiusFraction` and `Water` init properties while retaining
+  its 30-parameter positional constructor. Direct stateful movement selects the dry contact controller with
+  shared configuration validation. Explicit profiles use the selected foot fraction and their supplied water
+  policy, preserving default fingerprints. Contact navigation profiles refuse until phase 5b, before encoding.
 - Physics adds the optional `IPhysicsSupportFootprint` capability, `SupportFootprintRequest`, raw members with
   axis/footprint witness roles and `SupportFootprintBounds`. Bepu owners and selected views certify the entire
   admitted foot column, both retained proposals and whole-polygon joins under one authenticated read lease.

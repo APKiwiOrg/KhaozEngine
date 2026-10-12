@@ -37,6 +37,7 @@ public sealed partial class PhysicsNavBake
     public GroundNavigation BuildProfile(in MoveTuning tuning, NavAreaFilter areas, GroundProfileOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ValidateProfileController(tuning);
         GroundMoveContext context = Context;
         context.ValidateTuning(tuning);
         if (tuning.MaxSlopeRadians != Options.MaxSlopeRadians)
@@ -112,6 +113,13 @@ public sealed partial class PhysicsNavBake
         _ = Context;
         var graph = new NavTraversalGraph(space, tuning.CapsuleRadius, height, layers, links);
         return new GroundNavigation(graph, tuning, footprint, aquatic);
+    }
+
+    internal static void ValidateProfileController(in MoveTuning tuning)
+    {
+        if (tuning.Controller == MovementControllerKind.Contact)
+            throw new NotSupportedException("Contact navigation profiles require phase 5b.");
+        MovementConfigurationValidation.ValidateLegacy(tuning);
     }
 
     private bool Prove(GroundMoveContext context, in MoveTuning tuning, Vector3 from, bool fromFloats,

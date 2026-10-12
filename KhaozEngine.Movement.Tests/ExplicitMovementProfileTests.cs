@@ -25,7 +25,7 @@ public class ExplicitMovementProfileTests
         var sources = Sources();
         var profile = Profile(sources: sources);
         Assert.Equal(ExplicitProfileRecipe.Fingerprint(profile, sources, contact: true,
-            new GroundCoreSettings().FootRadiusFraction, LeasedContactQueryContext.PlacementSkin), profile.Fingerprint);
+            profile.Tuning.FootRadiusFraction, LeasedContactQueryContext.PlacementSkin), profile.Fingerprint);
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public class ExplicitMovementProfileTests
         PropertyInfo property = typeof(MoveTuning).GetProperty(name)!;
         object changed = Tuning;
         object value = property.GetValue(changed)!;
-        property.SetValue(changed, value is bool bit ? !bit :
+        property.SetValue(changed, name == nameof(MoveTuning.FootRadiusFraction) ? 0.45f : value is bool bit ? !bit :
             float.IsPositiveInfinity((float)value) ? 4f : (float)value == 0 ? 0.01f : (float)value * 0.9f);
         Assert.NotEqual(Profile().Fingerprint, Profile(tuning: (MoveTuning)changed).Fingerprint);
     }

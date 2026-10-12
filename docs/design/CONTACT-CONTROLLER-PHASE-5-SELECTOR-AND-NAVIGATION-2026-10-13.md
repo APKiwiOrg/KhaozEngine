@@ -2,7 +2,7 @@
 
 Design for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438) phase 5 and the navigation half of
 [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299). Source baseline: `ec20a2b61` on `main`, staged 20.34.0,
-phases 1 to 4b and the support gates. Status: revision 5 after independent review rounds 1 to 4 (each REVISE). Written
+phases 1 to 4b and the support gates. Status: revision 6, after independent review rounds 1 to 5 (each REVISE) and the controller's round 5 adjudication. Written
 under the owner's instruction to continue the program to completion, so every choice below is a recorded ruling for
 the owner's review.
 
@@ -109,7 +109,7 @@ real adapter:
 | B. Certified field plus a new dry adapter with its own placement, segment, shore and descent proofs | 9 | 4 | 4 | 3 | 7 | 4 | 31 |
 | C. An engine ordinary environment under the existing lease and leased context, at zero offset | 9 | 10 | 9 | 4 | 8 | 6 | 46 |
 
-C's cost and risk are re-scored after round 2 added the registration, scope planner and lifecycle binding. It remains
+C's cost and risk are re-scored after round 2 added the registration, served domain and lifecycle binding. It remains
 first because every one of those is also required by any certified ordinary route. Cost if wrong: one engine provider
 that a richer one replaces.
 
@@ -136,8 +136,8 @@ analytic ground delegates, a `MovementBoundary` and an optional `IMovementWaterF
   an owner. A missing, excluded, ambiguous or stale registration makes `BindContactSupport` return Unresolved, as
   4b-8 requires. `TileWorldColliders` builds one: one owner per region's ground and one per placed collider
   provenance.
-- **Analytic ground.** Owner `MovementSupportKey(worldId, "analytic-ground")`. Facts are scoped to the lease's
-  witnessed query region, never to one request's reach band, so every request at one axis within an interval gets the
+- **Analytic ground.** Owner `MovementSupportKey(worldId, "analytic-ground")`. Facts are scoped to the served domain
+  (P5A-5), which is the witnessed query region of every lease, never to one request's reach band, so every request at one axis within an interval gets the
   same answer and the workspace's analytic cache stays consistent. When the delegate's height at the axis lies inside
   the region's vertical extent, the pin returns that height and the delegate's normal, and `FootSupport` and the
   terrain-wall checks filter by their own reach, exactly as the dry path reads the delegate. When it lies below the
@@ -146,51 +146,39 @@ analytic ground delegates, a `MovementBoundary` and an optional `IMovementWaterF
   where terrain encloses the region.
 - **Enumeration.** `EnumerateSupport` returns Unresolved. The contact path does not call it, and an ordinary
   environment does not serve `MovementSupportResolver` rather than certifying a false absence.
-- **Preparation.** The served evidence domain is separate from the playable `MovementBoundary`, which only constrains
-  capsule centres and centre paths. Physics answers anywhere, and both water producers answer anywhere (outside every
-  water tile is dry), so `Prepare` admits any finite planned scope (P5A-5) whole, including its exterior margins past
-  the playable edge, and never clips it. The witness generation combines the physics geometry, registration and water
+- **Preparation.** The served domain (P5A-5) is separate from the playable `MovementBoundary`, which only constrains
+  capsule centres and centre paths, and extends past the playable edge by the exterior margins. `Prepare` admits
+  exactly that one scope and never clips it. The witness lists the physics, registration, analytic and water
+  resources, covers known-empty regions, and its generation combines the physics geometry, registration and water
   field generations.
 - **Coordinates.** Existing explicit frame rules apply. The pin converts physics-local queries to the field's absolute
   coordinates and converts intervals, surfaces and `IntervalColumnXZ` back, including a nonzero physics Y origin.
 
-**P5A-5. Scope planner and scope-miss retry.** Scope size is an authorization, not an input. Every ordinary
-environment fact is the same at a point whatever scope admitted the query, because physics, the registration and the
-water field are immutable for their generations, and an analytic answer outside the region only concerns queries
-outside it. So a step's result does not depend on its scope, provided no query leaves it. The engine uses that in two
-parts.
+**P5A-5. One served-domain scope.** Scopes exist so a streaming provider can certify only what it has prepared. An
+ordinary environment has its whole world resident, and the lease's scope checks are constant-time bounds checks
+(`MovementQueryLease.ContactSupport.cs:120-146`), so every ordinary lease uses one constant scope, the served domain,
+instead of a per-tick plan:
 
-**First estimate.** Each read scope is planned from the basis state and the commands it will run, over a horizon of N
-ticks:
+- **Declared extent.** The static installer declares the world's finite extent with its registration: the bounds of
+  every installed static, the analytic ground's height range and the water field's extent. `TileWorldColliders`
+  derives it from the tile document. A sharded cell declares its cell world's extent. The client's served domain is
+  its physics island's horizontal extent with the same vertical extent, so a client never claims data it does not
+  hold.
+- **Margins.** The domain is the declared extent expanded horizontally by the capsule, the foot disc, the support band,
+  the `GroundSignals` look-ahead of three capsule radii and the footprint admission bounds (computed with
+  `SupportFootprintBounds`), and vertically by the jump apex over the highest geometry plus body height above, and by
+  the support reach below. `MaxRise` and `MaxDrop` span the domain's height.
+- **Outside the domain.** A query outside it means the body has left the world (or, on a client, its island). It
+  refuses as today, and the step holds with the lease's existing outcome. That is a genuine absence of data, not a
+  planner miss, so there is no retry and no attempt boundary.
 
-- **Horizontal.** Per tick, the bound is the sum, not the maximum, of the carried 3D speed (slides project carried
-  vertical velocity into the fall line), the drive bound, and slide acceleration `Gravity * dt`. The drive bound is
-  the largest of any commitment launch or carry speed that is active, preparing or requested by a command in the
-  horizon, and `max(WalkSpeed, RunSpeed, SwimSpeed) * max(1, StrafeSpeedScale, BackpedalSpeedScale)
-  * max(1, SpeedScale) * max(1, field.MaxSpeedScale)`. The sum covers `SlideCore` moving by carried contour component
-  plus contour steer.
-- **Vertical.** Upward is the largest of carried upward velocity, `JumpSpeed`, the water policy's `SurfaceJumpSpeed`
-  and any commitment vertical launch. Downward is the larger of carried downward velocity and `MaxFallSpeed`. When
-  the field reports water at the basis (sampled directly from the field before preparation), the range also covers
-  the buoyancy target `SurfaceWaterMotion` settles towards.
-- **Envelope.** The centre path box over N ticks is expanded by the capsule, the foot disc, the support reach band,
-  the `GroundSignals` look-ahead of three capsule radii with reach `StepHeight + 2 * distance`, and the lease's own
-  probe and footprint admission bounds, computed with the existing `SupportFootprintBounds` calculation rather than
-  a nominal margin.
-
-N is 1 for server and cell ticks. The client read API takes the pending replay batch itself, so commitment launches
-inside a reconcile are planned before preparation. A water field must declare a finite `MaxSpeedScale`, and a field
-without one is refused at configuration.
-
-**Retry.** The lease records a scope miss when a query fails its witness envelope, or when analytic ground lies above
-the region. A tick or replay with a scope miss is discarded before publication and rerun from the same input under a
-scope enlarged to cover every refused query envelope plus the same margins, at most four times. Scope-invariance
-makes the rerun's result the result. A fifth miss holds with a distinct `ScopeExhausted` outcome, which every
-acceptance row treats as a failure. No lease check or geometric tolerance changes. The retry only re-authorizes.
+Because every lease of one binding has the same scope, analytic answers at an axis are identical across ticks,
+replays and imports, and client replay runs under the same scope as the original prediction. Server and client agree
+wherever both hold the data.
 
 **P5A-6. The water field.** A public `IMovementWaterField` in `KhaozEngine.Locomotion` has `SemanticIdentity`,
-`Generation` (constant for immutable water, advanced on change), `MaxSpeedScale` (a finite bound on every
-`SpeedScale` it reports), `SampleCentreWater` and `TraceWater`, with the pin's
+`Generation` (constant for immutable water, advanced on change), `Extent` (the finite region it describes, outside of
+which it is dry), `SampleCentreWater` and `TraceWater`, with the pin's
 types and certification contract (whole-path contiguous spans, `CertifiedErrorMetres <= 0.001`, owned contacts,
 classified overlap, split free and closed transitions, 64 span and 256 contact caps). Queries and results use
 absolute world coordinates. The query carries the ordinary space and the field echoes it. Two producers ship:
@@ -297,28 +285,25 @@ corrected.
   split and joined pieces share an owner, reversed installation order gives identical owners, and identical handles in
   two cell worlds stay distinct. Analytic rows compare the full ordinary composition with the direct dry path: a
   purely vertical landing onto flat analytic ground from above `StepHeight` lands in one tick, an analytic barrier
-  higher than `StepHeight` blocks as a terrain wall, ground below the region is Known with null and ground above it
-  is Unresolved. `EnumerateSupport` is Unresolved. A malformed field result refuses as the lease refuses today.
+  higher than `StepHeight` blocks as a terrain wall, ground below the served domain is Known with null and a declared
+  extent that excludes the analytic range is refused at configuration. `EnumerateSupport` is Unresolved. A malformed field result refuses as the lease refuses today.
   View lifetime: two consumers sharing a caller-supplied view stay usable after one ordinary binding is disposed or
   reconfigured, and an engine-created view is released with its binding.
 - **A6. TileWorld producer.** An independent exact oracle agrees across tile faces, edges and corners, adjacent bodies
   with different surfaces, equal surfaces in adjacent regions, diagonal paths through corners, a tangent corner,
   rounded-cap vertical contacts and dry tiles. A radius 0.1 capsule axis at (-0.09, -0.09) beside a water tile
   occupying x >= 0 and z >= 0 is not wet (corner distance about 0.1273). `TileWorldColliders` owners follow P5A-4.
-- **A7. Scope planner.** Each row runs without a held step or skipped signal:
-  - A multi-command replay longer than one tick's envelope, and a preparing commitment that launches inside a replay.
+- **A7. Served domain.** Each row advances under the ordinary composition with no held step or skipped signal:
+  - A multi-command replay, a preparing commitment that launches inside a replay, and a triggered stair signal.
   - `WalkSpeed` above `RunSpeed`, an amplified directional scale and an amplified water pace.
-  - A slide accelerating down a fall line, and a high airborne body over analytic terrain.
-  - A footprint at the scope edge, and a centre exactly on a playable edge, with acquisition succeeding and the
-    exterior queries covered.
   - An ungrounded body on a 60 degree analytic slope with 100 m/s contour carry and a run command along the contour
-    (RunSpeed 100, Gravity 10, dt 0.1), and a swimmer at centre Y 0 under a Level surface at Y 100. Both advance
-    under the ordinary composition, and the dry slide matches the direct contact path.
-  - Scope invariance: one tick run under its planned scope, under a forced minimal scope that needs retries, and
-    under a very large scope gives bit-equal results, with the retry count recorded.
+    (RunSpeed 100, Gravity 10, dt 0.1), matching the direct dry path.
+  - A swimmer at centre Y 0 under a Level surface at Y 1000 with floor Y -2000, rising about 264 m in one tick.
+  - A high airborne body over analytic terrain, a footprint at the domain edge and a centre exactly on a playable edge
+    with its exterior queries covered.
 
-  A water field without a finite `MaxSpeedScale` is refused at configuration, and the A2 matrix holds no step for a
-  planner miss.
+  A body that leaves the served domain holds with the lease's existing outcome. `TileWorldColliders` declares an
+  extent covering its terrain, statics and water, and a client island domain refuses queries outside the island.
 - **A8. Lifecycle at offset 0.** On both server heads: spawn, teleport, restore, configured-spawn reset, correction
   replay, cross-cell transfer with destination admission and live continuation all place the body at h, including a
   row under a low roof and a row at the WadeOnly deep-line boundary.
@@ -331,7 +316,8 @@ corrected.
 1. Selector contract and validation: P5A-1, P5A-9, the direct dry dispatch, P5A-13 and P5A-14. A1, A9 and the tuning
    half of A3.
 2. Composition value: P5A-3 through tick, placement, settling and continuation, with explicit suites unchanged.
-3. Ordinary environment: P5A-4 to P5A-6 with the Level field. A4 on Level, A5 and A7 at environment level.
+3. Ordinary environment: P5A-4 to P5A-6 with the served domain and the Level field. A4 on Level, A5 and A7 at
+   environment level.
 4. TileWorld producer and registration. A6 and A4 on tiles.
 5. Network heads: P5A-7, P5A-8 and P5A-11 for `WorldServer`, `ShardedWorldServer` cells, `PlayerMoveSimulator`,
    `PlayerMovementSystem` and the `WorldClient` read API. A2 for those heads, A3 and A8.
@@ -368,6 +354,15 @@ corrected.
 
 Round 1 (REVISE, F1 to F13), round 2 (REVISE, F1 to F27), round 3 (REVISE, F1 to F31) and round 4 (REVISE, F29
 partial only) reports are in the phase 5 ledger.
+
+Round 5 (REVISE) accepted the motion bounds but found the scope-miss retry unsound in three ways: an analytic miss
+carries no height to enlarge to (F32), four retries of the first escaping substep need not converge (F33), and
+prediction and imports have no atomic attempt boundary (F34). The review loop's fifth round ended there, so the
+controller adjudicated: all three are load-bearing, and the proper fix removes their cause. P5A-5 now gives every
+ordinary lease one constant scope, the declared served domain, because an ordinary world is fully resident and scope
+checks are constant-time. There is no per-tick planner, no retry and no attempt boundary, and a query outside the
+domain is a genuine absence of data. A7 keeps every motion counterexample, including F33's 264 m buoyancy rise, as
+rows that must advance. This also closes F29, F1 and F17.
 
 Round 4 resolved F28, F30, F31 and F14, with no new findings. For the remaining F29 (and with it F1 and F17),
 revision 5 adds the summed slide bound and the buoyancy target to the first estimate, and makes a planner miss

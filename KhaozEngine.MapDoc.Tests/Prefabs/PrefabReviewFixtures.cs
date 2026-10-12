@@ -5,12 +5,64 @@ using System.Numerics;
 using KhaozEngine.MapDoc;
 using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Spaces;
+using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 
 namespace KhaozEngine.Tests.MapDoc.Prefabs;
 
 internal static partial class PrefabFixtures
 {
+    internal static IMapSurfaceAcquisitionSource ObservedNative(MapDocument doc, MapSurfaceAcquisitionWork work) =>
+        new ObservedNativeSource(MapDocumentSurfaceSource.Capture(doc), work);
+    sealed class ObservedNativeSource(MapDocumentSurfaceSource source, MapSurfaceAcquisitionWork work) : IMapSurfaceAcquisitionSource
+    {
+        public string SnapshotId => source.SnapshotId;
+        public string RootSha256 => source.RootSha256;
+        public IReadOnlyList<MapSurfaceRef> Surfaces => source.Surfaces;
+        public MapPatchRead ReadPatch(MapPatchKey key) => source.ReadPatch(key);
+        public MapPatchFindResult FindPatches(MapSurfaceScope scope) => source.FindPatches(scope);
+        public IMapSurfaceAcquisitionSession OpenAcquisition(MapSurfaceScope scope) => source.OpenAcquisition(scope, work);
+    }
+    internal static PrefabFixture WorldGeometryReference()
+    {
+        var f = Create();
+        var chain = new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "world-edge"),
+            new MapBoundaryChain("world-edge", MapChainKind.Authored, null, new[]
+            {
+                new MapChainVertex(new("exterior", MapLatticeAddress.Corner(0, 0)), -200),
+                new MapChainVertex(new("exterior", MapLatticeAddress.Corner(1, 0)), -200),
+            }), new("floor", 0, 0))
+        {
+            References = new[] { Surf("/anchor/surfaceId", "floor"),
+            new MapPrefabReferenceSlot("/value/vertices/0/vertex/surfaceId", new(MapPrefabReferenceScope.World, MapPrefabChildKind.Surface, "exterior")),
+            new MapPrefabReferenceSlot("/value/vertices/1/vertex/surfaceId", new(MapPrefabReferenceScope.World, MapPrefabChildKind.Surface, "exterior")) }
+        };
+        var asset = f.Assets.GetPrefab("hut");
+        return Reasset(f, asset with { Children = asset.Children.Append(chain).ToArray() }, new Dictionary<string, string> { ["world-edge"] = "a/world-edge" });
+    }
+    internal static (MapDocument Document, MapEffectiveContext Context) ComposedBudgetGeometry(int nativeCount, bool generated)
+    {
+        var f = Create("roomless");
+        f.Document.Prefabs = null;
+        var transforms = new Dictionary<string, MapEffectiveTransform>();
+        for (int i = 0; i < nativeCount; i++)
+        {
+            string id = "native-" + i;
+            f.Document.Surfaces.Refs.Add(Surface(id, MapSurfaceRole.SupportFloor));
+            var patch = Patch(id, 1, 1, 0);
+            f.Document.Surfaces.Patches.Add(patch.Key, patch);
+            if (i != 0) transforms.Add("Surface:" + id, new(1000 + i * 100, 0, 0, 0, 1));
+        }
+        var surfaces = f.Document.Surfaces.Clone();
+        if (generated)
+        {
+            surfaces.Refs.Add(Surface("generated", MapSurfaceRole.SupportFloor));
+            var patch = Patch("generated", 1, 1, 0);
+            surfaces.Patches.Add(patch.Key, patch);
+            transforms.Add("Surface:generated", new(20, 0, 0, 0, 1));
+        }
+        return (f.Document, new(surfaces, transforms, new string('c', 64)));
+    }
     internal static PrefabFixture SourceConsumer(bool prefab)
     {
         var f = Create();

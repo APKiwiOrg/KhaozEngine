@@ -28,10 +28,8 @@ internal sealed class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, I
         _nativeRoot = native.RootSha256;
         _nativePoses = native.Surfaces.ToDictionary(s => s.Id,
             s => context.Transform(MapPrefabChildKind.Surface, s.Id)?.Transform, StringComparer.Ordinal);
-        var generated = new MapSurfaceSet();
-        generated.Refs.AddRange(context.Surfaces.Refs.Where(s => !_nativePoses.ContainsKey(s.Id)));
-        foreach (var patch in context.Surfaces.Patches.Where(p => !_nativePoses.ContainsKey(p.Key.SurfaceId))) generated.Patches.Add(patch.Key, patch.Value.Clone());
-        _generated = new(new(generated, context.Transforms, context.Digest));
+        var owned = context.Surfaces.Refs.Where(s => !_nativePoses.ContainsKey(s.Id)).Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
+        _generated = new(context, owned);
         SnapshotId = "composed:" + MapCanonical.HashHex(w =>
         {
             w.WriteStartArray(); w.WriteStringValue(context.Digest); w.WriteStringValue(_nativeSnapshot);
@@ -63,10 +61,7 @@ internal sealed class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, I
         {
             _source = source; _scope = scope;
             var groups = source._nativePoses.GroupBy(p => p.Value).ToArray();
-            int count = groups.Length + (source._generated.Surfaces.Count == 0 ? 0 : 1);
-            // Every part shares the caller's traversal ceiling, including cached metadata visits.
-            int pages = count == 0 ? 0 : scope.Limits.MaxPageReads / count;
-            var limits = scope.Limits with { MaxPageReads = pages };
+            var budget = scope.SharedBudget ?? new MapPageBudget(scope.Limits.MaxPageReads);
             try
             {
                 if (groups.Length != 0 && source._native is not IMapSurfaceAcquisitionSource)
@@ -74,13 +69,14 @@ internal sealed class MapComposedSurfaceSource : IMapSurfaceAcquisitionSource, I
                 foreach (var group in groups)
                 {
                     var request = group.Key is { } pose ? LocalScope(scope, pose) : scope;
-                    var session = ((IMapSurfaceAcquisitionSource)source._native).OpenAcquisition(request with { Limits = limits });
+                    var ids = group.Select(p => p.Key).ToHashSet(StringComparer.Ordinal);
+                    var session = ((IMapSurfaceAcquisitionSource)source._native).OpenAcquisition(request with { SharedBudget = budget, DiscoverySurfaces = ids });
                     if (session.SnapshotId != source._nativeSnapshot || session.RootSha256 != source._nativeRoot)
                     { session.Dispose(); throw new MapDocumentException("native producer differs from its pinned composition"); }
-                    _parts.Add(new(session, group.Select(p => p.Key).ToHashSet(StringComparer.Ordinal)));
+                    _parts.Add(new(session, ids));
                 }
                 if (source._generated.Surfaces.Count != 0)
-                    _parts.Add(new(source._generated.OpenAcquisition(scope with { Limits = limits }), source._generated.Surfaces.Select(s => s.Id).ToHashSet(StringComparer.Ordinal)));
+                    _parts.Add(new(source._generated.OpenAcquisition(scope with { SharedBudget = budget }), source._generated.Surfaces.Select(s => s.Id).ToHashSet(StringComparer.Ordinal)));
             }
             catch { Dispose(); throw; }
         }

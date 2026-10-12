@@ -134,16 +134,45 @@ internal static class MapEffectiveGeometry
         return new(points.Min(p => p.X), points.Min(p => p.Z), points.Max(p => p.X), points.Max(p => p.Z));
     }
 
-    internal static MapExactValue LegacyHeight(MapScopedSurfaces view, MapValidatedSurfacePatch patch, MapExactXz point)
+    internal static MapExactValue LegacyHeight(MapScopedSurfaces view, MapValidatedSurfacePatch patch, int slotCell, MapExactXz point)
     {
         var kernel = view.EffectiveContext?.Transform(MapPrefabChildKind.Surface, patch.Surface.Id);
         if (kernel is null) return MapExactValue.FromSingle(MapLegacyBilinear.HeightMetres(patch.Surface, patch.Patch, point));
-        var pose = kernel.Transform;
-        var (sin, cos) = Math.SinCos(pose.YawRadians);
-        double dx = point.X.ToDouble() - pose.X, dz = point.Z.ToDouble() - pose.Z;
-        var local = new MapExactXz(MapExactValue.FromSingle((float)((cos * dx - sin * dz) / pose.Scale)),
-            MapExactValue.FromSingle((float)((sin * dx + cos * dz) / pose.Scale)));
-        return kernel.Height(MapExactValue.FromSingle(MapLegacyBilinear.HeightMetres(patch.Surface, patch.Patch, local)));
+        var surface = patch.Surface;
+        if (surface.Frame != MapLatticeFrame.ImportedMetreCentimetre || surface.PresencePolicy != MapPresencePolicy.LegacyTileWorld)
+            throw new MapDocumentException("legacy recipe: surface");
+        int x = slotCell % 64 - patch.Patch.CellMinX, z = slotCell / 64 - patch.Patch.CellMinZ;
+        if (x < 0 || x >= patch.Patch.Width || z < 0 || z >= patch.Patch.Depth)
+            throw new MapDocumentException("missing bound: selected legacy cell outside patch");
+        var polygon = CellPolygon(view, patch.Patch.Key, slotCell);
+        if (!Contains(polygon, point, halfOpen: true))
+            throw new MapDocumentException("missing bound: point outside selected legacy cell");
+        // The selected frozen quadrilateral owns the sample. Its two affine charts map to the unit cell,
+        // agree on their shared diagonal and retain exact fractions on every outer edge.
+        var fractions = CellFractions(polygon, point);
+        float height = MapLegacyBilinear.Evaluate(patch.Patch.Height(x, z), patch.Patch.Height(x + 1, z),
+            patch.Patch.Height(x, z + 1), patch.Patch.Height(x + 1, z + 1), fractions.X, fractions.Y);
+        return kernel.Height(MapExactValue.FromSingle(height));
+    }
+
+    static Vector2 CellFractions(IReadOnlyList<MapExactXz> polygon, MapExactXz point)
+    {
+        var p = MapWideXz.From(point);
+        var a = MapWideXz.From(polygon[0]); var b = MapWideXz.From(polygon[1]);
+        var c = MapWideXz.From(polygon[2]); var d = MapWideXz.From(polygon[3]);
+        if (Triangle(a, b, c, out var u, out var v)) return new((float)u.Add(v).ToDouble(), (float)v.ToDouble());
+        if (Triangle(a, c, d, out u, out v)) return new((float)u.ToDouble(), (float)u.Add(v).ToDouble());
+        throw new MapDocumentException("missing bound: point outside selected legacy cell");
+
+        bool Triangle(MapWideXz first, MapWideXz second, MapWideXz third, out MapWideRational u, out MapWideRational v)
+        {
+            var area = Cross(first, second, third);
+            var ab = Cross(first, second, p); var bc = Cross(second, third, p); var ca = Cross(third, first, p);
+            u = v = default;
+            if (area.Sign == 0 || (area.Sign > 0 ? ab.Sign < 0 || bc.Sign < 0 || ca.Sign < 0 : ab.Sign > 0 || bc.Sign > 0 || ca.Sign > 0)) return false;
+            u = Cross(first, p, third).Divide(area); v = ab.Divide(area);
+            return true;
+        }
     }
 
     internal static MapExactValue? SpanHeight(MapBoundFaceContext context, MapCellDemand cell, MapExactXz point, long offsetUnits)

@@ -25,7 +25,7 @@ internal sealed class MapSurfaceSessionState
         };
         SnapshotId = snapshotId;
         RootSha256 = rootSha256;
-        Budget = new(Scope.Limits.MaxPageReads, work);
+        Budget = Scope.SharedBudget?.Share(work) ?? new(Scope.Limits.MaxPageReads, work);
     }
 
     internal MapSurfaceScope Scope { get; }

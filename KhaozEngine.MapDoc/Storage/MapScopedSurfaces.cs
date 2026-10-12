@@ -169,6 +169,7 @@ public sealed class MapScopedSurfaces
     {
         patch = _facts.OwnedPatch(key);
         status = _facts.Status(key);
+        if (EffectiveContext is not null && status == MapPatchStatus.Unloaded && _facts.IsKnownEmpty(key)) status = MapPatchStatus.KnownEmpty;
         if (EffectiveContext is not null && ListsEverySurface && patch is null &&
             EffectiveContext.Surfaces.Refs.Any(s => s.Id == key.SurfaceId) && !EffectiveContext.Surfaces.Patches.ContainsKey(key)) status = MapPatchStatus.KnownEmpty;
         return status is MapPatchStatus.Present or MapPatchStatus.KnownEmpty;

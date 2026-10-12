@@ -160,7 +160,7 @@ public sealed class MapSupportQuery
                 (request.SurfaceId is null || request.SurfaceId == tag.Patch.SurfaceId))
             {
                 MapValidatedSurfacePatch patch = context.ValidatedPatch(tag.Patch);
-                MapExactValue exact = MapEffectiveGeometry.LegacyHeight(_view, patch, xz);
+                MapExactValue exact = MapEffectiveGeometry.LegacyHeight(_view, patch, tag.SlotCell, xz);
                 float height = exact.ToSingle();
                 if (exact.CompareTo(low) >= 0 && exact.CompareTo(high) <= 0)
                     return new(Result(MapSupportStatus.LegacyFallback, worldY: height, compatibility: tag, spaceId: ownerId), Array.Empty<Candidate>());

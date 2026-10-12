@@ -18,13 +18,13 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
     public string SnapshotId => "effective:" + EffectiveContext.Digest;
     public string RootSha256 => EffectiveContext.Digest;
     public IReadOnlyList<MapSurfaceRef> Surfaces { get; }
-    internal MapEffectiveSurfaceSource(MapEffectiveContext context)
+    internal MapEffectiveSurfaceSource(MapEffectiveContext context, IReadOnlySet<string>? ownedSurfaces = null)
     {
         EffectiveContext = context;
-        Surfaces = Array.AsReadOnly(context.Surfaces.Refs.Select(MapAcquiredFacts.CopySurface).ToArray());
-        _bounds = context.Surfaces.Patches.Values.ToDictionary(p => p.Key, Bounds);
+        Surfaces = Array.AsReadOnly(context.Surfaces.Refs.Where(s => ownedSurfaces is null || ownedSurfaces.Contains(s.Id)).Select(MapAcquiredFacts.CopySurface).ToArray());
+        _bounds = context.Surfaces.Patches.Values.Where(p => ownedSurfaces is null || ownedSurfaces.Contains(p.Key.SurfaceId)).ToDictionary(p => p.Key, Bounds);
         var records = new List<(MapRecordRef, MapExactRect)>();
-        foreach (var patch in context.Surfaces.Patches.Values)
+        foreach (var patch in context.Surfaces.Patches.Values.Where(p => _bounds.ContainsKey(p.Key)))
             foreach (var record in patch.Records)
             {
                 IEnumerable<MapExactXz> vertices = record switch
@@ -56,7 +56,7 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
             MapLatticeAddress.Corner(x + patch.Width, z + patch.Depth), MapLatticeAddress.Corner(x, z + patch.Depth) }
             .Select(a => MapEffectiveGeometry.Vertex(EffectiveContext, new(patch.Key.SurfaceId, a))));
     }
-    public MapPatchRead ReadPatch(MapPatchKey key) => EffectiveContext.Surfaces.Patches.TryGetValue(key, out var patch)
+    public MapPatchRead ReadPatch(MapPatchKey key) => _bounds.ContainsKey(key) && EffectiveContext.Surfaces.Patches.TryGetValue(key, out var patch)
         ? new(key, MapPatchStatus.Present, patch.Clone(), MapSurfaceSemantics.PatchDigest(patch), null, 0)
         : new(key, MapPatchStatus.KnownEmpty, null, null, null, 0);
     public MapPatchFindResult FindPatches(MapSurfaceScope scope)
@@ -81,7 +81,7 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
         public IReadOnlyList<MapPatchKey> ReservedPatchKeys => Array.AsReadOnly(_reserved.ToArray());
         internal Acquisition(MapEffectiveSurfaceSource source, MapSurfaceScope scope)
         {
-            scope.Validate(); _source = source; _scope = scope; _budget = new(scope.Limits.MaxPageReads);
+            scope.Validate(); _source = source; _scope = scope; _budget = scope.SharedBudget?.Share() ?? new(scope.Limits.MaxPageReads);
         }
         public bool TryGetSurface(string surfaceId, out MapSurfaceRef? surface)
         {
@@ -101,7 +101,7 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
                 {
                     _budget.BeforeMetadata();
                     var surface = _source.Surfaces.Single(s => s.Id == entry.Key.SurfaceId);
-                    if (!_scope.Roles.Contains(surface.Role) || !rectangle.Touches(entry.Value)) continue;
+                    if ((_scope.DiscoverySurfaces is { } ids && !ids.Contains(surface.Id)) || !_scope.Roles.Contains(surface.Role) || !rectangle.Touches(entry.Value)) continue;
                     Reserve(entry.Key);
                     selected.Add(entry.Key);
                 }

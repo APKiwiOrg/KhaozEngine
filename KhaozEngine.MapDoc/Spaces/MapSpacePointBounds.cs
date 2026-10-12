@@ -124,7 +124,7 @@ internal sealed class MapSpacePointBounds
         if (bound.Compatibility is not null)
         {
             MapValidatedSurfacePatch patch = context.ValidatedPatch(cell.Patch);
-            return MapEffectiveGeometry.LegacyHeight(context.View, patch, point);
+            return MapEffectiveGeometry.LegacyHeight(context.View, patch, cell.SlotCell, point);
         }
         return MapSpaceGeometry.Height(bound.Opening is { } opening ? context.Opening(opening, cell) : context.Faces(cell), point);
     }

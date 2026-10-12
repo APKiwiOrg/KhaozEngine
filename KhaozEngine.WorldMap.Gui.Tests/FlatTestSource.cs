@@ -36,7 +36,7 @@ internal sealed class FlatTestSource : IWorldMapSource
         return grid;
     }
 
-    public void CollectFootprints(MapRect area, float minExtentMetres, List<WorldMapFootprint> into) { }
+    public void CollectFootprints(in WorldMapFootprintQuery query, List<WorldMapFootprint> into) { }
     public void CollectMarkers(MapRect area, List<WorldMapMarker> into)
     {
         foreach (WorldMapMarker marker in Markers)

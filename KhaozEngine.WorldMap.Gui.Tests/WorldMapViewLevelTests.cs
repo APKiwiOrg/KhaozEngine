@@ -141,6 +141,39 @@ public sealed class WorldMapViewLevelTests
         Assert.Equal(new Vector4(left, top, right, bottom), child.SourceUv);
     }
 
+    /// <summary>A two-level fallback samples the matching quarter-width cell, including negative addresses.</summary>
+    [Theory]
+    [InlineData(160f, 96f, 0, 0, 2, 1, 0.5f, 0.5f, 0.75f, 0.75f)]
+    [InlineData(-160f, -96f, -1, -1, -3, -2, 0.25f, 0.25f, 0.5f, 0.5f)]
+    public void MissingChunk_LevelTwoAncestor_UsesExactNorthUpCell(float x, float y, int parentX, int parentY,
+        int childX, int childY, float left, float top, float right, float bottom)
+    {
+        using var cache = new WorldMapChunkCache(new FlatTestSource(new(-512f, -512f, 1024f, 1024f)), new WorldMapStyle());
+        var ancestorCoord = new WorldMapChunkCoord(parentX, parentY, 2);
+        cache.Request(ancestorCoord, 0f);
+        Assert.True(cache.BuildNext());
+        var textures = new FakeTextures();
+        using var view = View(cache, textures);
+        var input = new TestInput();
+        view.CenterOn(new Vector2(parentX * 256f + 128f, parentY * 256f + 128f));
+        view.ZoomBy(1f / view.PixelsPerMetre);
+        view.Update(input.At(ScreenCenter), 0f);
+        FakeTexture ancestor = Assert.Single(textures.Created);
+        view.UploadBudgetPerFrame = 0;
+        view.ZoomBy(4f);
+        view.CenterOn(new Vector2(x, y));
+
+        view.Update(input.At(ScreenCenter), 0f);
+
+        Assert.Equal(0, view.CurrentLevel);
+        Assert.False(cache.TryGet(new(childX, childY), out _));
+        Assert.False(cache.TryGet(new(childX >> 1, childY >> 1, 1), out _));
+        var child = Assert.Single(view.DrawList, item => item.Destination == new Rect(172f, 72f, 256f, 256f));
+        Assert.Same(ancestor, child.Texture);
+        Assert.Equal(new Vector4(left, top, right, bottom), child.SourceUv);
+        Assert.Single(textures.Created);
+    }
+
     /// <summary>The closest uploaded ancestor wins even when a more distant ancestor is also retained.</summary>
     [Fact]
     public void MissingChunk_UsesNearestUploadedCoarserLevel()

@@ -16,23 +16,30 @@ public static class WorldMapFeatureCollector
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(style);
+        WorldMapFeatureQuery filters = WorldMapFeatureQuery.ForStyle(style);
         MapRect area = WorldMapChunking.ChunkRect(chunk, style.ChunkMetres);
         var icons = new List<WorldMapIconAnchor>();
         var labels = new List<WorldMapLabelAnchor>();
 
-        var footprints = new List<WorldMapFootprint>();
-        source.CollectFootprints(area, 0f, footprints);
-        foreach (WorldMapFootprint footprint in footprints)
-            if (WorldMapChunking.ChunkAt(footprint.Center, style.ChunkMetres, chunk.Level) == chunk)
-                AddIcon(style.IconRules, WorldMapFeatureSource.Footprint, footprint.Tags, footprint.Center, icons);
-
-        var markers = new List<WorldMapMarker>();
-        source.CollectMarkers(area, markers);
-        foreach (WorldMapMarker marker in markers)
+        if (filters.NeedsFootprints)
         {
-            if (WorldMapChunking.ChunkAt(marker.Position, style.ChunkMetres, chunk.Level) != chunk) continue;
-            AddIcon(style.IconRules, WorldMapFeatureSource.Marker, marker.Tags, marker.Position, icons);
-            if (style.Labels is { } rules) AddLabel(rules, marker, labels);
+            var footprints = new List<WorldMapFootprint>();
+            source.CollectFootprints(new WorldMapFootprintQuery(area, AnyTags: filters.AnyTags), footprints);
+            foreach (WorldMapFootprint footprint in footprints)
+                if (WorldMapChunking.ChunkAt(footprint.Center, style.ChunkMetres, chunk.Level) == chunk)
+                    AddIcon(style.IconRules, WorldMapFeatureSource.Footprint, footprint.Tags, footprint.Center, icons);
+        }
+
+        if (filters.NeedsMarkers)
+        {
+            var markers = new List<WorldMapMarker>();
+            source.CollectMarkers(area, markers);
+            foreach (WorldMapMarker marker in markers)
+            {
+                if (WorldMapChunking.ChunkAt(marker.Position, style.ChunkMetres, chunk.Level) != chunk) continue;
+                AddIcon(style.IconRules, WorldMapFeatureSource.Marker, marker.Tags, marker.Position, icons);
+                if (style.Labels is { } rules) AddLabel(rules, marker, labels);
+            }
         }
 
         if (icons.Count == 0 && labels.Count == 0) return WorldMapChunkFeatures.Empty;

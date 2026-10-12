@@ -69,12 +69,15 @@ public interface IWorldMapSource
     event Action<MapRect>? Changed;
 
     WorldMapSurfaceGrid SampleSurface(MapRect area, float maxCellSize);
-    void CollectFootprints(MapRect area, float minExtentMetres, List<WorldMapFootprint> into);
+    void CollectFootprints(in WorldMapFootprintQuery query, List<WorldMapFootprint> into);
     void CollectMarkers(MapRect area, List<WorldMapMarker> into);
 
     Vector2 ToMap(Vector3 worldPosition);
     float ToMapHeading(Vector3 worldForward);
 }
+
+public readonly record struct WorldMapFootprintQuery(
+    MapRect Area, float MinExtentMetres = 0f, IReadOnlyCollection<string>? AnyTags = null);
 ```
 
 - **`SampleSurface`** returns the source's own surface grid over an area: origin, cell size, width and height, and per
@@ -86,11 +89,16 @@ public interface IWorldMapSource
   `max(maxCellSize, SurfaceCellSize)`. The rasterizer supplies a budget in metres and resamples the grid,
   so the source never knows about pixels.
 - **`SurfaceCellSize`** exposes the native source lattice spacing in metres.
-- **`CollectFootprints`** appends surface objects whose oriented rectangles intersect the area. A source may omit
-  footprints whose `2 * max(HalfExtents)` is below `minExtentMetres`, but must return every intersecting footprint
-  at or above that threshold. The rasterizer passes `0.5f / levelPpm` metres and retains its own sub-pixel skip
-  as the guarantee. The feature collector passes zero because anchors never depend on size. TileWorld rejects
-  by `max(SizeX, SizeZ) * TileSize` before creating records or combined tags, without per-object precomputation.
+- **`CollectFootprints`** must return every footprint whose oriented rectangle intersects `query.Area`, whose
+  `2 * max(HalfExtents)` is at least `query.MinExtentMetres` and which carries at least one of `query.AnyTags`
+  (ordinal) when that collection is not null. Empty `AnyTags` matches none. Sources may return extra footprints
+  failing these filters because callers re-check. The rasterizer passes `0.5f / levelPpm` metres with no tags
+  and retains its own sub-pixel skip as the guarantee. Feature collection skips footprints when no footprint
+  icon rule exists. Otherwise it passes zero and the ordinal union of every footprint rule's `AllTags`, or null
+  when any footprint rule has empty `AllTags`. That union is cached once per immutable style instance, and
+  exact rules still use all-of tag matching. Unused marker collection is skipped too. TileWorld rejects by
+  `max(SizeX, SizeZ) * TileSize` and checks archetype and object tags before creating records or combined tags,
+  without per-object precomputation.
   Each footprint carries id,
   archetype key, centre, local half extents, rotation, tags, `IsRoof` and `Collision` (`None`, `Solid` or `Wall`).
   `Blocking` derives from collision being other than `None`. Rotation is radians clockwise from local +x on the

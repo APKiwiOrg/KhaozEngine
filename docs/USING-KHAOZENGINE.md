@@ -1862,6 +1862,13 @@ cache before releasing its source data. Icon and marker textures, the label font
 caller-owned. A custom `IWorldMapSource` must allow concurrent reads, increment `Revision` and raise `Changed`
 on its owner thread for touched map areas so the cache can invalidate them.
 
+Implement `CollectFootprints(in WorldMapFootprintQuery query, List<WorldMapFootprint> into)` to return
+every footprint intersecting `query.Area` with `2 * max(HalfExtents) >= query.MinExtentMetres` and an
+ordinal match from `query.AnyTags` when it is not null. Null disables tag filtering, while an empty
+collection matches none. Extra records are permitted because callers re-check. Rasterization requests
+half a pixel in metres with no tags. Feature collection skips unused source kinds and uses zero size
+plus the footprint rule tag union cached per style, or null when any footprint rule has empty `AllTags`.
+
 ---
 
 ## Retained chat (`ChatHistory` / `ChatBox`, 18.21.0)

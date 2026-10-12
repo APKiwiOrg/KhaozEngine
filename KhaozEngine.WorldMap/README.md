@@ -42,11 +42,13 @@ Implement `IWorldMapSource` to adapt an authored world:
   `SurfaceHeight` uses NaN for void, and `WaterSurface` uses NaN where dry. Heights are metres.
   Fill the three arrays at matching indices. Cell sizes must be finite and positive, dimensions
   must be non-negative, and `Index` refuses coordinates outside the grid.
-- `CollectFootprints(area, minExtentMetres, into)` appends intersecting surface footprints.
-  Sources may omit footprints whose `2 * max(HalfExtents)` is below `minExtentMetres`, but must
-  include every intersecting footprint at or above it. Rasterization requests `0.5f / levelPpm`
-  metres and still skips sub-pixel footprints itself. Feature collection passes zero so anchors
-  never depend on size. Footprints carry a stable id, archetype key, centre, half extents, rotation,
+- `CollectFootprints(in WorldMapFootprintQuery query, List<WorldMapFootprint> into)` appends surface footprints.
+  `WorldMapFootprintQuery(Area, MinExtentMetres = 0f, AnyTags = null)` requests every footprint intersecting
+  `Area` whose `2 * max(HalfExtents)` meets `MinExtentMetres` and, when `AnyTags` is not null, carries
+  at least one of those tags (ordinal). Empty `AnyTags` matches none. Sources may return extra records
+  failing these filters, so callers re-check. Rasterization requests `0.5f / levelPpm` metres with no tag
+  filter and still skips sub-pixel footprints itself. Feature collection uses zero so anchors never
+  depend on size. Footprints carry a stable id, archetype key, centre, half extents, rotation,
   tags, roof flag and `Collision` (`None`, `Solid` or `Wall`). `Blocking` derives from collision.
 - `CollectMarkers(area, into)` appends surface markers whose positions are inside the half-open area.
   Markers carry an authored name, position and tags. Games resolve label names to localized text.
@@ -128,7 +130,11 @@ size at the same requested scale can round to a different effective scale.
 ## Feature anchors
 
 Call `WorldMapFeatureCollector.Collect(source, style, chunk)` to produce `WorldMapChunkFeatures`.
-The collector queries footprints and markers over the chunk rectangle. A footprint icon belongs to
+The collector queries footprints only when a footprint icon rule exists. Its zero-size query uses the
+ordinal union of every footprint rule's `AllTags`, cached once per immutable style instance. Any
+footprint rule with empty `AllTags` disables the query's tag filter. Exact rule matching still checks
+every required tag. Marker collection runs only when marker icon rules or label rules exist.
+Both queries cover the chunk rectangle. A footprint icon belongs to
 the chunk containing its `Center`, and a marker's icon and label belong to the chunk containing its
 `Position`. Ownership uses `ChunkAt(anchor, style.ChunkMetres, chunk.Level) == chunk`, so each
 anchor belongs to one chunk per pyramid level, including when a footprint crosses a chunk border.

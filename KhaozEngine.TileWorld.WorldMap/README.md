@@ -63,16 +63,20 @@ fresh generations so surviving view uploads can be replaced.
 
 ## Footprints and markers
 
-`CollectFootprints(area, minExtentMetres, into)` queries object anchors in the area's tile rectangle
+`CollectFootprints(in WorldMapFootprintQuery query, List<WorldMapFootprint> into)` queries object anchors in `query.Area`'s tile rectangle
 expanded by the largest archetype `Max(SizeX, SizeZ)`, computed once when the source is created. This includes large roofs
 anchored in neighbouring chunks. It keeps objects on `surfacePlane` and roofs on any plane, then
-rejects archetypes with `max(SizeX, SizeZ) * TileSize < minExtentMetres` before constructing any
-footprint or combined tags. No per-object data is precomputed for this filter. Remaining objects
+rejects archetypes with `max(SizeX, SizeZ) * TileSize < query.MinExtentMetres`. When `query.AnyTags`
+is not null, it also rejects objects without an ordinal match in either the archetype's tags or the
+object's own tags. An empty tag filter rejects every object. Both filters run before constructing any
+footprint or combined tags. No per-object data is precomputed for these filters. Remaining objects
 are filtered by intersection between the rotated footprint's map rectangle and the requested area.
 Unknown archetypes are skipped.
-Rasterization supplies `0.5f / levelPpm` metres and retains its own sub-pixel skip. Feature
-collection supplies zero to preserve anchors of every size. Every intersecting footprint at or
-above the minimum extent is returned.
+Rasterization supplies `0.5f / levelPpm` metres with no tags and retains its own sub-pixel skip. Feature
+collection supplies zero and the cached union of footprint icon rule tags to preserve every eligible
+anchor. Empty rule requirements disable the tag filter, and no footprint rules skip this collection.
+Every intersecting footprint satisfying both query filters is returned. The source contract permits
+extra records, so consumers still re-check exact rules and raster size budgets.
 
 The centre comes from the `TileFootprint.Of` rectangle. Half extents are the unrotated
 `(SizeX, SizeZ) * TileSize / 2`, and rotation is the object's quarter turns times PI / 2.

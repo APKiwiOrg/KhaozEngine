@@ -62,12 +62,12 @@ internal sealed class TestWorldMapSource : IWorldMapSource
         return grid;
     }
 
-    public void CollectFootprints(MapRect area, float minExtentMetres, List<WorldMapFootprint> into)
+    public void CollectFootprints(in WorldMapFootprintQuery query, List<WorldMapFootprint> into)
     {
-        LastMinExtentMetres = minExtentMetres;
+        LastMinExtentMetres = query.MinExtentMetres;
         foreach (WorldMapFootprint footprint in Footprints)
         {
-            if (ApplyFootprintSizeFilter && 2f * MathF.Max(footprint.HalfExtents.X, footprint.HalfExtents.Y) < minExtentMetres)
+            if (ApplyFootprintSizeFilter && 2f * MathF.Max(footprint.HalfExtents.X, footprint.HalfExtents.Y) < query.MinExtentMetres)
                 continue;
             float cos = MathF.Abs(MathF.Cos(footprint.Rotation));
             float sin = MathF.Abs(MathF.Sin(footprint.Rotation));
@@ -75,7 +75,7 @@ internal sealed class TestWorldMapSource : IWorldMapSource
                 sin * footprint.HalfExtents.X + cos * footprint.HalfExtents.Y);
             var bounds = new MapRect(footprint.Center.X - extent.X, footprint.Center.Y - extent.Y,
                 extent.X * 2f, extent.Y * 2f);
-            if (bounds.Intersects(area))
+            if (bounds.Intersects(query.Area))
             {
                 into.Add(footprint);
                 MaterializedFootprints++;

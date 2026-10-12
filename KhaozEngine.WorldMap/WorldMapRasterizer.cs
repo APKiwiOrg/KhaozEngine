@@ -47,7 +47,7 @@ public static class WorldMapRasterizer
 
         var footprints = new List<WorldMapFootprint>();
         float footprintMargin = WorldMapRasterReach.FootprintMetres(style, chunk.Level);
-        source.CollectFootprints(rect.Expand(footprintMargin), 0.5f / levelPpm, footprints);
+        source.CollectFootprints(new WorldMapFootprintQuery(rect.Expand(footprintMargin), 0.5f / levelPpm), footprints);
         new FootprintPainter(canvas, style).Paint(footprints);
 
         return new WorldMapChunkImage(chunk, size, canvas.ToBytes(), revision);

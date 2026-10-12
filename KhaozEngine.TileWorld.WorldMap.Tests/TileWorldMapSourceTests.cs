@@ -123,7 +123,7 @@ public sealed class TileWorldMapSourceTests
         doc.AddObject("undefined", 16, 10, 0, 0);
         var source = new TileWorldMapSource(doc, Catalogs());
         var footprints = new List<WorldMapFootprint>();
-        source.CollectFootprints(new MapRect(0, 0, 64, 64), 0f, footprints);
+        source.CollectFootprints(new WorldMapFootprintQuery(new MapRect(0, 0, 64, 64), 0f), footprints);
         Assert.Collection(footprints,
             f => { Assert.Equal(ground.Id, f.Id); Assert.False(f.IsRoof); },
             f => { Assert.Equal(roof.Id, f.Id); Assert.True(f.IsRoof); });
@@ -138,7 +138,7 @@ public sealed class TileWorldMapSourceTests
         doc.AddObject("roof_large", 58, 12, 2, 0);
         var source = new TileWorldMapSource(doc, Catalogs());
         var footprints = new List<WorldMapFootprint>();
-        source.CollectFootprints(new MapRect(64, 0, 64, 64), 0f, footprints);
+        source.CollectFootprints(new WorldMapFootprintQuery(new MapRect(64, 0, 64, 64), 0f), footprints);
         WorldMapFootprint footprint = Assert.Single(footprints);
         Assert.Equal(roof.Id, footprint.Id);
         Assert.Equal(new Vector2(63, 3), footprint.Center);
@@ -157,7 +157,7 @@ public sealed class TileWorldMapSourceTests
         var source = new TileWorldMapSource(doc, Catalogs());
         var footprints = new List<WorldMapFootprint>();
 
-        source.CollectFootprints(new MapRect(0, 0, 64 * tileSize, 64 * tileSize), 2f, footprints);
+        source.CollectFootprints(new WorldMapFootprintQuery(new MapRect(0, 0, 64 * tileSize, 64 * tileSize), 2f), footprints);
 
         Assert.Equal(expectedTrees + expectedHalls, footprints.Count);
         Assert.Equal(expectedTrees, footprints.FindAll(f => f.ArchetypeKey == "tree").Count);
@@ -173,7 +173,7 @@ public sealed class TileWorldMapSourceTests
             doc.AddObject("hall", 10, 20, 0, rotation);
         var source = new TileWorldMapSource(doc, Catalogs());
         var footprints = new List<WorldMapFootprint>();
-        source.CollectFootprints(new MapRect(20, 40, 6, 6), 0f, footprints);
+        source.CollectFootprints(new WorldMapFootprintQuery(new MapRect(20, 40, 6, 6), 0f), footprints);
         Assert.Equal(4, footprints.Count);
         Vector2[] centres = { new(22, 43), new(23, 42), new(22, 43), new(23, 42) };
         for (int rotation = 0; rotation < 4; rotation++)
@@ -193,7 +193,7 @@ public sealed class TileWorldMapSourceTests
         for (int i = 0; i < archetypes.Length; i++) doc.AddObject(archetypes[i], i, 0, 0, 0);
         var source = new TileWorldMapSource(doc, Catalogs());
         var footprints = new List<WorldMapFootprint>();
-        source.CollectFootprints(new MapRect(0, 0, 5, 1), 0f, footprints);
+        source.CollectFootprints(new WorldMapFootprintQuery(new MapRect(0, 0, 5, 1), 0f), footprints);
         Assert.Equal(5, footprints.Count);
         WorldMapCollision[] expected = { WorldMapCollision.None, WorldMapCollision.Solid,
             WorldMapCollision.Wall, WorldMapCollision.Wall, WorldMapCollision.Wall };
@@ -212,7 +212,7 @@ public sealed class TileWorldMapSourceTests
         doc.AddObject("hall", 0, 0, 0, 0, new[] { "building", "bank", "bank", "Building" });
         var source = new TileWorldMapSource(doc, Catalogs());
         var footprints = new List<WorldMapFootprint>();
-        source.CollectFootprints(new MapRect(0, 0, 2, 3), 0f, footprints);
+        source.CollectFootprints(new WorldMapFootprintQuery(new MapRect(0, 0, 2, 3), 0f), footprints);
         WorldMapFootprint footprint = Assert.Single(footprints);
         Assert.Equal("hall", footprint.ArchetypeKey);
         Assert.Equal(new[] { "building", "stone", "bank", "Building" }, footprint.Tags);
@@ -252,7 +252,7 @@ public sealed class TileWorldMapSourceTests
         Assert.Equal(Color.FromHex("#8a6a3a"), grid.Ground[0]);
         Assert.Equal(3f, grid.SurfaceHeight[0]);
         var footprints = new List<WorldMapFootprint>();
-        source.CollectFootprints(new MapRect(0, 0, 1, 1), 0f, footprints);
+        source.CollectFootprints(new WorldMapFootprintQuery(new MapRect(0, 0, 1, 1), 0f), footprints);
         Assert.Equal(upper.Id, Assert.Single(footprints).Id);
         var markers = new List<WorldMapMarker>();
         source.CollectMarkers(new MapRect(0, 0, 1, 1), markers);
@@ -269,7 +269,7 @@ public sealed class TileWorldMapSourceTests
         WorldMapSurfaceGrid grid = source.SampleSurface(new MapRect(1, 1, 0, 5), source.SurfaceCellSize);
         Assert.Empty(grid.Ground);
         var footprints = new List<WorldMapFootprint>();
-        source.CollectFootprints(new MapRect(1, 1, 0, 5), 0f, footprints);
+        source.CollectFootprints(new WorldMapFootprintQuery(new MapRect(1, 1, 0, 5), 0f), footprints);
         Assert.Empty(footprints);
         var markers = new List<WorldMapMarker>();
         source.CollectMarkers(new MapRect(1, 1, 0, 5), markers);

@@ -19,6 +19,8 @@ internal sealed class SupportAllocationRegion : IDisposable
 
     internal static SupportAllocationRegion Start(bool enabled = true)
     {
+        // Isolate the macOS arm64 allocation-counter concern without excluding gameplay allocations.
+        // https://github.com/dotnet/runtime/issues/134724
         if (enabled && !GC.TryStartNoGCRegion(4 * 1024 * 1024, disallowFullBlockingGC: false))
             throw new InvalidOperationException("The allocation measurement could not enter its no-GC region.");
         return new(enabled);

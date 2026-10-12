@@ -3,9 +3,9 @@
   "runtime": ".NET 10.0.12",
   "architecture": "Arm64",
   "configuration": "Release",
-  "tieredCompilation": "0, configured before testhost startup by KhaozEngine.Game.Tests/allocation.runsettings",
+  "tieredCompilation": "default, no testhost or environment override",
   "timingRecorded": false,
-  "sourceBase": "28b131b56",
+  "sourceBase": "5c7a559a1",
   "tokens": {
     "MovementQueryLeaseWithReleaseBinding": 192,
     "PhysicsReadLease": 64,
@@ -30,7 +30,7 @@
   "rows": [
     {
       "scene": "stationary",
-      "coldBytes": 27816,
+      "coldBytes": 27912,
       "warmBytes": 312,
       "findCount": 2,
       "outcome": "Advanced",
@@ -45,7 +45,7 @@
     },
     {
       "scene": "flat box",
-      "coldBytes": 27816,
+      "coldBytes": 27912,
       "warmBytes": 312,
       "findCount": 4,
       "outcome": "Advanced",
@@ -60,7 +60,7 @@
     },
     {
       "scene": "pushed seat",
-      "coldBytes": 55192,
+      "coldBytes": 55288,
       "warmBytes": 312,
       "findCount": 8,
       "outcome": "Blocked",
@@ -75,7 +75,7 @@
     },
     {
       "scene": "stairs box",
-      "coldBytes": 54600,
+      "coldBytes": 54696,
       "warmBytes": 312,
       "findCount": 7,
       "outcome": "Advanced",
@@ -90,7 +90,7 @@
     },
     {
       "scene": "explicit rounding handoff",
-      "coldBytes": 1080,
+      "coldBytes": 1176,
       "warmBytes": 312,
       "findCount": 6,
       "outcome": "Advanced",
@@ -105,7 +105,7 @@
     },
     {
       "scene": "explicit changed-axis rounding",
-      "coldBytes": 1080,
+      "coldBytes": 1176,
       "warmBytes": 312,
       "findCount": 7,
       "outcome": "Advanced",
@@ -120,7 +120,7 @@
     },
     {
       "scene": "explicit medium descent retry",
-      "coldBytes": 1080,
+      "coldBytes": 1176,
       "warmBytes": 312,
       "findCount": 6,
       "outcome": "Blocked",
@@ -135,7 +135,7 @@
     },
     {
       "scene": "explicit dry swim handoff",
-      "coldBytes": 1080,
+      "coldBytes": 1176,
       "warmBytes": 312,
       "findCount": 3,
       "outcome": "Advanced",
@@ -152,10 +152,10 @@
   "limits": [
     "Named bytes are measured on .NET 10.0.12 arm64. Other runtimes require a fresh inventory.",
     "Bepu value-input geometry queries avoid continuously varying shape construction. Backends without that optional capability retain the legacy shape route and do not inherit this varying-dimension allocation proof.",
-    "The exact allocation gate uses fixed optimized compilation and checked no-GC windows. Raw historical large counter spikes were not object-profiled.",
+    "The exact allocation gate uses the default runtime configuration and checked no-GC windows. Raw historical large counter spikes were not object-profiled.",
     "No timing, hosted stability or full-suite proof was run. Task 9 owns cost and Task 11 owns the full suite."
   ],
-  "fixRound": 1,
+  "fixRound": 2,
   "measurement": {
     "coldInvocationsPerRow": 1,
     "warmInvocationsPerRow": 1,
@@ -165,7 +165,16 @@
     "regionFailurePolicy": "Unavailable, interrupted or exhausted regions fail. No retry or discarded sample.",
     "positiveFreshShapeControlBytes": 24,
     "timingSamplerIsolationDefault": false,
-    "namedTokenCeilingUnchanged": true
+    "namedTokenCeilingUnchanged": true,
+    "preparedScopeComparison": "Explicit scope, identity, space and frame fields, with ordinal strings and no synthesized record equality.",
+    "projectRunSettingsOverride": false,
+    "environmentOverrides": {
+      "DOTNET_TieredCompilation": null,
+      "COMPlus_TieredCompilation": null,
+      "DOTNET_ReadyToRun": null,
+      "COMPlus_ReadyToRun": null,
+      "KHAOZ_SUPPORT_COST_ARTIFACT": null
+    }
   },
   "phaseAttribution": {
     "rowOrder": [
@@ -514,15 +523,23 @@
         }
       ]
     },
-    "tieredControl": {
+    "historicalFixRound1TieredControl": {
       "row": "explicit rounding handoff",
       "warmBytes": 952,
       "namedTokenBytes": 312,
       "extraPhase": "FixtureWitnessComparison",
       "extraBytes": 640,
       "gameplayPhaseExtraBytes": 0,
-      "sameFinalBinaryAndNoGcRegion": true,
-      "controlSetting": "DOTNET_TieredCompilation=1"
+      "controlSetting": "DOTNET_TieredCompilation=1",
+      "sameFixRound1BinaryAndNoGcRegion": true,
+      "sourceBase": "28b131b56"
+    },
+    "defaultRuntimeAfterFixtureFix": {
+      "warmBytesPerRow": 312,
+      "namedTokenBytes": 312,
+      "fixtureWitnessComparisonExtraBytes": 0,
+      "gameplayPhaseExtraBytes": 0,
+      "tieredCompilation": "default"
     }
   },
   "allocatingSites": [
@@ -539,7 +556,8 @@
     {
       "site": "EnvironmentAcquisitionFixture.PrepareWitness, prepared.Scope == scope",
       "cause": "Runtime first-use work in the fixture record equality/comparer path, outside gameplay. Exact internal object attribution is an inference.",
-      "evidence": "Final binary, same no-GC region and route. Tiering enabled reports 640 B here. Tiering disabled reports 0 B here."
+      "evidence": "Default-runtime RED before the fixture fix measured 952 B, including 640 B in FixtureWitnessComparison. Default-runtime GREEN after the fix measured 312 B and 0 B in that phase for both dedicated rows and all eight acquired routes.",
+      "correction": "Compare every stored scope field and nested identity, space and frame field directly. Ordinal string and scalar/vector comparisons avoid record comparer initialization."
     }
   ],
   "changingDimensionRegression": {
@@ -573,12 +591,31 @@
   "verification": {
     "requiredSelection": {
       "passed": 145,
-      "failed": 0
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "invocations": 1,
+      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-8-fix-2-default-required.log"
     },
     "ContactLifetimeAllocationTests": {
       "passed": 7,
-      "failed": 0
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "invocations": 1,
+      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-8-fix-2-default-lifetime.log"
     },
+    "defaultRuntimeRedBeforeFixtureFix": {
+      "passed": 1,
+      "failed": 1,
+      "exitCode": 1,
+      "expectedBytes": 312,
+      "actualBytes": 952,
+      "fixtureWitnessComparisonBytes": 640,
+      "log": ".superpowers/sdd/2026-10-11-contact-controller-support-gates/task-8-fix-2-default-red.log"
+    }
+  },
+  "historicalFixRound1Verification": {
     "affectedGeometryAndAllocationSelection": {
       "passed": 68,
       "failed": 0

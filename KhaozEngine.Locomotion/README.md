@@ -429,8 +429,8 @@ only its fresh composed lease with release binding, physics read lease and produ
 immutable witnesses once and capture them in each fresh one-use pin. Disposed public tokens remain expired
 across reacquisition, even when world generations have not changed.
 
-`KhaozEngine.Game.Tests/allocation.runsettings` disables tiering before testhost starts. The allocation
-fixture brackets one cold operation and one warm operation in a checked 4 MiB no-GC region. This keeps
+The allocation fixture uses the default runtime configuration. It brackets one cold operation and one
+warm operation in a checked 4 MiB no-GC region. This keeps
 runtime allocation-context reconciliation out of the counter window. Acquisition, controller execution
 and disposal remain measured. Region setup and exit are outside the window. The reserve is not a byte
 allowance, and an unavailable, exhausted or interrupted region fails without retry. Exact named-token

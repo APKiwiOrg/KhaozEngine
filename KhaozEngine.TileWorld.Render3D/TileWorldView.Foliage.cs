@@ -18,8 +18,12 @@ public sealed partial class TileWorldView
     internal IReadOnlyList<GroundCoverInstance> CoverIn(RegionCoord region) =>
         _loaded.TryGetValue(region, out RegionHandles? handles) ? handles.Cover : Array.Empty<GroundCoverInstance>();
 
-    IReadOnlyList<GroundCoverInstance> BuildCover(RegionCoord region) =>
-        TileCoverBuildInput.Generate(_doc, _catalogs, region, _mesher.SmoothNormals, _doc.FoliageLayers);
+    // The legacy synchronous cover build, which the CPU witness records like every other build entry.
+    IReadOnlyList<GroundCoverInstance> BuildCover(RegionCoord region)
+    {
+        _onCpuBuild?.Invoke(new TileWorldBuildKey(region, 0, TileWorldBuildKind.Cover));
+        return TileCoverBuildInput.Generate(_doc, _catalogs, region, _mesher.SmoothNormals, _doc.FoliageLayers);
+    }
 
     void RebuildCover(RegionCoord region, RegionHandles handles)
     {
@@ -49,6 +53,7 @@ public sealed partial class TileWorldView
 
     internal void MarkRegionStreamed(RegionCoord region)
     {
+        _coverObjectsStale.Add(region);
         var regionRect = new TileRect(region.OriginX, region.OriginZ, TileRegion.Size, TileRegion.Size);
         for (int plane = 0; plane < _planes; plane++)
             QueueBaseDependencies(regionRect, plane, region);

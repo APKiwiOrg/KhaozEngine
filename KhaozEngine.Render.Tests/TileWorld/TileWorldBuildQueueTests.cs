@@ -13,7 +13,7 @@ public class TileWorldBuildQueueTests
     [Fact]
     public void Requests_dispatch_only_up_to_the_concurrency_bound()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         using var queue = Queue(dispatcher, applied, maxConcurrency: 2);
 
@@ -29,7 +29,7 @@ public class TileWorldBuildQueueTests
     [Fact]
     public void Worker_receives_the_detached_snapshot_not_later_source_mutation()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var observed = new List<int>();
         var source = new MutableSource { Value = 17 };
         var input = new DetachedInput(source.Value);
@@ -50,7 +50,7 @@ public class TileWorldBuildQueueTests
     [Fact]
     public void Pump_applies_nearest_first_under_three_independent_budgets()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         using var queue = new TileWorldBuildQueue<int, int>(
             request => request.Input,
@@ -80,7 +80,7 @@ public class TileWorldBuildQueueTests
     [Fact]
     public void Pump_applies_cover_nearest_first_with_independent_caps()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         using var queue = new TileWorldBuildQueue<int, int>(
             request => request.Input, applied.Add,
@@ -121,7 +121,7 @@ public class TileWorldBuildQueueTests
     [Fact]
     public void Pump_with_zero_cover_cap_keeps_cover_ready()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         using var queue = new TileWorldBuildQueue<int, int>(
             request => request.Input, applied.Add,
@@ -141,7 +141,7 @@ public class TileWorldBuildQueueTests
     [Fact]
     public void Pump_uses_two_cover_applies_by_default()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         using var queue = new TileWorldBuildQueue<int, int>(
             request => request.Input, applied.Add,
@@ -168,7 +168,7 @@ public class TileWorldBuildQueueTests
     [Fact]
     public void New_generation_rejects_an_older_completed_result()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         using var queue = Queue(dispatcher, applied, maxConcurrency: 2);
         TileWorldBuildKey key = Request(2, TileWorldBuildKind.Hlod, 1).Key;
@@ -186,7 +186,7 @@ public class TileWorldBuildQueueTests
     [Fact]
     public void Cancel_rejects_running_and_ready_results()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         using var queue = Queue(dispatcher, applied, maxConcurrency: 2);
         TileWorldBuildRequest<int> running = Request(1, TileWorldBuildKind.FullGround, 1);
@@ -208,7 +208,7 @@ public class TileWorldBuildQueueTests
     [Fact]
     public void PrimeGameplay_blocks_for_full_ground_but_keeps_decor_apply_budgeted()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         using var queue = new TileWorldBuildQueue<int, int>(
             request => request.Input,
@@ -237,7 +237,7 @@ public class TileWorldBuildQueueTests
     [Fact]
     public void PrimeGameplay_leaves_completed_decor_ready_for_a_later_Pump()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         using var queue = Queue(dispatcher, applied, maxConcurrency: 2);
         queue.Request(Request(0, TileWorldBuildKind.CoarseGround, 1));
@@ -356,7 +356,7 @@ public class TileWorldBuildQueueTests
     [Fact]
     public void Dispose_drains_workers_rejects_results_and_is_idempotent()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         var queue = Queue(dispatcher, applied, maxConcurrency: 2);
         queue.Request(Request(1, TileWorldBuildKind.FullGround, 1));
@@ -371,7 +371,7 @@ public class TileWorldBuildQueueTests
         Assert.Throws<ObjectDisposedException>(() => queue.Request(Request(3, TileWorldBuildKind.FullGround, 1)));
     }
 
-    static TileWorldBuildQueue<int, int> Queue(ManualDispatcher dispatcher,
+    static TileWorldBuildQueue<int, int> Queue(ManualTileBuildDispatcher dispatcher,
                                                 List<TileWorldBuildResult<int>> applied,
                                                 int maxConcurrency) =>
         new(request => request.Input, applied.Add,
@@ -391,28 +391,6 @@ public class TileWorldBuildQueueTests
     sealed class MutableSource
     {
         public int Value { get; set; }
-    }
-
-    sealed class ManualDispatcher : IChunkBuildDispatcher
-    {
-        readonly List<Action> _pending = new();
-        public int PendingCount => _pending.Count;
-        public void Schedule(Action build) => _pending.Add(build);
-        public void RunAt(int index)
-        {
-            Action action = _pending[index];
-            _pending.RemoveAt(index);
-            action();
-        }
-        public void RunAll()
-        {
-            while (_pending.Count > 0) RunAt(0);
-        }
-        public void RunReverse()
-        {
-            while (_pending.Count > 0) RunAt(_pending.Count - 1);
-        }
-        public void Drain() => RunAll();
     }
 
     sealed class ThreadDispatcher : IChunkBuildDispatcher

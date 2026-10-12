@@ -136,9 +136,6 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
             _options.MaxCoverAppliesPerPump);
     }
 
-    public void PrimeGameplay(RegionCoord focus) =>
-        Prime(focus, key => key.Kind == TileWorldBuildKind.FullGround);
-
     public void PrimeGameplay(RegionCoord focus, IReadOnlySet<RegionCoord> regions)
     {
         ArgumentNullException.ThrowIfNull(regions);

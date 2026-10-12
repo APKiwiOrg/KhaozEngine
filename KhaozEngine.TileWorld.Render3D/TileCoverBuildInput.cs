@@ -6,7 +6,7 @@ using KhaozEngine.Terrain;
 namespace KhaozEngine.TileWorld;
 
 /// <summary>Exclusively owned cover inputs. Workers never read the source document, catalog or index.</summary>
-internal sealed record TileCoverBuildInput
+internal sealed record TileCoverBuildInput : TileProfileBuildInput
 {
     readonly TileWorldDocument _document;
     readonly TileWorldCatalogs _catalogs;

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using KhaozEngine.Terrain;
 using KhaozEngine.TileWorld;
 using Xunit;
 
@@ -18,7 +17,7 @@ public class TileWorldBuildQueueScopedPrimeTests
     {
         using var excludedGate = new ManualResetEventSlim();
         using var excludedStarted = new ManualResetEventSlim();
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         var builtInline = new List<TileWorldBuildKey>();
         int primeThread = Environment.CurrentManagedThreadId;
@@ -104,7 +103,7 @@ public class TileWorldBuildQueueScopedPrimeTests
     [Fact]
     public void Empty_scoped_prime_builds_and_applies_nothing_and_retains_other_completions()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         var built = new List<TileWorldBuildKey>();
         using var queue = new TileWorldBuildQueue<int, int>(
@@ -132,7 +131,7 @@ public class TileWorldBuildQueueScopedPrimeTests
     [Fact]
     public void Scoped_prime_leaves_selected_cover_coarse_and_hlod_ready_for_Pump()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         using var queue = new TileWorldBuildQueue<int, int>(
             request => request.Input, applied.Add,
@@ -157,7 +156,7 @@ public class TileWorldBuildQueueScopedPrimeTests
     [Fact]
     public void Capture_prime_settles_all_full_ground_and_cover_without_applying_decor()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         var built = new List<TileWorldBuildKey>();
         using var queue = new TileWorldBuildQueue<int, int>(
@@ -196,7 +195,7 @@ public class TileWorldBuildQueueScopedPrimeTests
     [Fact]
     public void Hlod_prime_keeps_ground_and_cover_budgeted()
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         using var queue = new TileWorldBuildQueue<int, int>(
             request => request.Input, applied.Add,
@@ -219,7 +218,7 @@ public class TileWorldBuildQueueScopedPrimeTests
     [InlineData("Cover")]
     public void Capture_prime_propagates_build_failures(string kind)
     {
-        var dispatcher = new ManualDispatcher();
+        var dispatcher = new ManualTileBuildDispatcher();
         var applied = new List<TileWorldBuildResult<int>>();
         using var queue = new TileWorldBuildQueue<int, int>(
             _ => throw new ArgumentException("planned build failure"), applied.Add,
@@ -236,22 +235,4 @@ public class TileWorldBuildQueueScopedPrimeTests
 
     static TileWorldBuildRequest<int> Request(int x, TileWorldBuildKind kind) =>
         new(new TileWorldBuildKey(new RegionCoord(x, 0), kind == TileWorldBuildKind.Cover ? -1 : 0, kind), 1, x);
-
-    sealed class ManualDispatcher : IChunkBuildDispatcher
-    {
-        readonly List<Action> _pending = new();
-        public int PendingCount => _pending.Count;
-        public void Schedule(Action build) => _pending.Add(build);
-        public void RunAt(int index)
-        {
-            Action build = _pending[index];
-            _pending.RemoveAt(index);
-            build();
-        }
-        public void RunAll()
-        {
-            while (_pending.Count > 0) RunAt(0);
-        }
-        public void Drain() => RunAll();
-    }
 }

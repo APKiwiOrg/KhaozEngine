@@ -7,6 +7,11 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.33.0
 
+- Render3D adds an opt-in physical atmosphere (`Post.Atmosphere`, off by default): a Hillaire 2020 LUT sky,
+  CPU-derived sun and moon lighting, matching water reflections and analytic height fog across terrain, models
+  and effects. Camera-aware `SunCycle.Apply` returns the physical horizon colour for water. The calibrated Earth
+  preset keeps fixed-exposure nights readable with tinted sky and ambient floors. Existing palette skies remain
+  available. Clouds, cloud shadows and stars under the atmosphere remain later phases (#1367, #1368, #1369).
 - Locomotion gains explicit character movement for environments that certify their own water and support:
   `ExplicitCharacterMovement` steps a body under one `MovementQueryLease`, acquired from an
   `IMovementEnvironmentProvider` together with a physics read lease, and publishes inside it. Water follows a

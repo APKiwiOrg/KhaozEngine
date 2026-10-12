@@ -332,7 +332,10 @@ A single warm sample under tiered compilation measures tier 0 code, which is why
 needed its quarter-second warm-up loop. The cost invocation instead runs with
 `DOTNET_TieredCompilation=0`, so the first call compiles fully optimized code without dynamic PGO,
 a conservative and repeatable configuration. The artifact records the setting. Locally each row
-records one first-use sample and one warm sample, never more. Medians and repeated samples are
+records one first-use sample, one unmeasured priming call, then one warm sample for every row (RY).
+The priming call prepares hit-only JIT paths outside measurement and its counters and observations
+are reset before the warm sample. It reuses the same immutable input and is not a warm-up loop.
+Medians and repeated samples are
 repeated timing, which runs only on the approved hosted proof (SG-24). Timing rows run only when
 `KHAOZ_SUPPORT_COST_ARTIFACT` names an output path.
 The ordinary suite asserts the deterministic counter bounds and warm allocation of the same rows and

@@ -6,7 +6,8 @@ using KhaozEngine.Locomotion;
 
 namespace KhaozEngine.Tests.Locomotion.Contacts;
 
-/// <summary>Preallocated callbacks bracket complete actual ground substeps, including rejected attempts.</summary>
+/// <summary>Each row samples first use, primes once outside measurement, then samples warm execution.
+/// Preallocated callbacks bracket complete actual ground substeps, including rejected attempts.</summary>
 internal sealed class SupportCostSampler
 {
     readonly record struct Window(long Bytes, double Microseconds, SupportQueryCounts Counts,
@@ -88,6 +89,11 @@ internal sealed class SupportCostSampler
         finds = warmFinds;
         findCount = 0;
         stepCount = 0;
+        // A hit-only branch can first JIT on the second call even with tiering disabled.
+        // One unmeasured call prepares it. Reset its observations before the warm window.
+        using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Route)) execution.Invoke();
+        findCount = 0;
+        stepCount = 0;
         execution.View.Reset();
         SupportQueryDiagnostics.Reset();
         BeforeWarm?.Invoke();
@@ -126,7 +132,7 @@ internal sealed class SupportCostSampler
                 ColdSupportReads = coldFinds.AsSpan(0, coldFindCount).ToArray(),
                 InputDetails = operation == "LegacyTreadDownPass"
                     ? "Centre (0.175, 0.9, 0), previous centre (0.175, 1.15, 0), terrain centre 0.9, steppedUp true. Conditional tread route, not comparable to the main row."
-                    : "Row.Input is reused unchanged for first use and warm execution in this operation's separate selected scene.",
+                    : "Row.Input is reused unchanged for first use, one unmeasured priming call and warm execution in this operation's separate selected scene.",
                 Notes = warmBytes == 0 ? [] : operation == "Find"
                     ? ["Warm Find allocated. Preserve measured bytes for Task 8 or 9. This row cannot pass the allocation gate."]
                     : ["Whole acquisition-through-disposal allocation includes fresh lifetime tokens. Compare with the named runtime inventory. Any excess requires phase attribution."],

@@ -58,6 +58,8 @@ public sealed class SupportCostArtifactTests
             root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
             Assert.Equal(baseline, root["baseline"]!.ToJsonString());
             Assert.Equal(0, root["changed"]!["ProcessExitStatus"]!.GetValue<int>());
+            Assert.Equal("harness-corrected", root["changed"]!["RecordingLabel"]?.GetValue<string>());
+            Assert.Equal(1, root["changed"]!["UnmeasuredPrimingCallsPerRow"]?.GetValue<int>());
             JsonNode inventory = root["changed"]!["LifetimeInventory"]!;
             Assert.NotNull(inventory);
             long movement = inventory["MovementQueryLeaseAndReleaseBindingBytes"]!.GetValue<long>();

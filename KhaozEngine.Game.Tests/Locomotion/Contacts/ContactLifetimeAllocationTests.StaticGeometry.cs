@@ -48,7 +48,8 @@ public sealed partial class ContactLifetimeAllocationTests
     public void AcquiredTickAfterPhysicsAdvancesAllocatesOnlyItsLifetimeTokens(string operation, long expectedBytes)
     {
         var row = SupportGateCostScenes.Rows().Select(r => (SupportCostRow)r[0]).Single(r => r.Name == "flat box")
-            with { Explicit = operation == "ExplicitTick" };
+            with
+        { Explicit = operation == "ExplicitTick" };
         using var execution = new SupportCostExecution(row, operation);
         var cold = execution.Invoke();
         execution.Invoke();

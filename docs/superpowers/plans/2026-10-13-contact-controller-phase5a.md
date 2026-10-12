@@ -332,7 +332,7 @@ Commit subject `refactor(locomotion): compose contact placement and foot geometr
 - Test: `KhaozEngine.Game.Tests/Physics/StaticGeometryGenerationTests.cs` for the seam's Bepu lifecycle.
 
 **Interfaces:**
-- Consumes Task 2's internal composition overloads through the existing Movement friend assembly (`KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj:18`).
+- Consumes Task 2's internal composition overloads directly, since the environment and binding live in `KhaozEngine.Locomotion` (ruling C8). `GroundMoveContext` keeps using the existing Movement friend assembly (`KhaozEngine.Locomotion/KhaozEngine.Locomotion.csproj:18`).
 - Provider signatures are `IMovementEnvironmentProvider.cs:7-29`. Contact support signatures are `IMovementContactSupportPin.cs:4-10`. Scope/frame/identity constructors are `MovementQueryScope.cs:27-42`, `MovementEnvironmentIdentity.cs:64-89`. Water facts are `MovementEnvironmentFacts.cs:30-38,55-64,86-95`, coverage constructors are `MovementWaterCoverage.cs`. Scope witnesses are created with `MovementScopeWitness.TryCreate(in MovementQueryScope, in MovementQueryIdentity, IReadOnlyList<string>, bool, out MovementScopeWitness?)` (`MovementScopeWitness.cs:31-53`).
 - Produces in `KhaozEngine.Locomotion`:
 
@@ -405,7 +405,7 @@ Extent constructors reject non-finite/inverted bounds, partial or inverted analy
 The field's extra `identity` input is necessary because MovementMediumSweepQuery has no identity member, while MovementCoverageResult requires the lease identity (N4). Query CurrentSpace supplies/echoes the ordinary space. Level rejects blank world, non-finite heights and `floorY >= surfaceY`, uses generation `0`, domain `new(worldId,"level")`, boundary ids `level/bed` and `level/surface`, and finite represented-XZ Extent `[-float.MaxValue,+float.MaxValue]` at `[floorY,surfaceY]` (N2). Surface contact is strict for centre-feet membership. The full capsule trace still includes tangent contacts and the finite bed.
 
 - Produces optional namespace `KhaozEngine.Physics` capability `public interface IPhysicsStaticGeometrySource { long StaticGeometryGeneration { get; } }`. Bepu and its query view implement it. Increment the separate counter before static installation/removal that might partially mutate, and preserve it across Step, dynamics, constraints and pure Rebase. Keep the released GeometryGeneration rules unchanged. Registration captures this counter when available and binds that immutable registration into each current physics generation. Without it, require exact original GeometryGeneration, safely refusing changes until an installer publishes a fresh registration. It is not an additional P5A-9 configuration requirement.
-- Produces in `KhaozEngine.Movement`:
+- Produces in `KhaozEngine.Locomotion` (ruling C8):
 
 ```csharp
 public sealed partial class OrdinaryMovementEnvironment : IMovementEnvironmentProvider

@@ -12,7 +12,7 @@ namespace KhaozEngine.Tests.Gpu
     /// <summary>
     /// <see href="https://github.com/APKiwiOrg/KhaozEngine/issues/381">#381</see> as a measurement: under
     /// <see cref="WaterGridMode.Clipmap"/> with the procedural swell, a coarse outer ring must not shade as flat
-    /// triangle facets. The scene is the Ruinborne lake from the field report (a 120 m body, the scene-wide clipmap at
+    /// triangle facets. The scene is reference lake from the field report (a 120 m body, the scene-wide clipmap at
     /// its defaults, the sea's 42 m swell inherited), seen straight down from far above its south-west corner, so the
     /// clipmap centres on that corner and the 8 m and 16 m rings fill the frame.
     /// <para>
@@ -71,7 +71,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>The frozen times the foam subject pools.</summary>
         static readonly float[] FoamTimes = { FrozenTime, 5.2f, 6.9f, 8.3f };
 
-        /// <summary>The Ruinborne 0.16.2 lake: the scene-wide clipmap at its defaults and the sea's swell, which the
+        /// <summary>The reference consumer 0.16.2 lake: the scene-wide clipmap at its defaults and the sea's swell, which the
         /// lake inherited before the game muted it.</summary>
         static void ApplyLake(WaterSettings w)
         {

@@ -12,7 +12,7 @@ wired it correctly. For the threat model and where this sits in the wider securi
 
 Each shipping game keeps its own per-game specifics (feed URL, storage account, Key Vault name, the exact
 CI job) in its own `docs/UPDATER.md`. This doc is the generic mechanics; that doc is the concrete wiring.
-The live examples are Ruinborne, Nullwake, and SpaceGame.
+The live examples are Nullwake and SpaceGame.
 
 ---
 

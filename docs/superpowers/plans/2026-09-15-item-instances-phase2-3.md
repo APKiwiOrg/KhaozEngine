@@ -311,7 +311,7 @@ a page codec.
   Rule 4 is a `memcmp` rather than a structural comparison ONLY because the payload is canonical. A
   reviewer who sees a decode inside `CanMerge` should reject it.
 
-- [ ] **Step 2: Write the page and capacity facts, which are Ruinborne's model restated (spec 5.7).**
+- [ ] **Step 2: Write the page and capacity facts, which are the reference consumer's model restated (spec 5.7).**
 
 ~~~csharp
 [Fact] public void A_grant_that_opens_a_NEW_slot_is_refused_at_or_above_capacity()
@@ -334,12 +334,12 @@ a page codec.
 - [ ] **Step 5: Implement `PagedItemContainer` splitting the two concepts `ItemContainer` conflates.**
   SLOT SPACE is the page geometry, fixed at construction, `PageCount * ContainerPageSlots`, an address
   space that never shrinks. CAPACITY is a separate mutable integer, the number of OCCUPIED slots a grant
-  may leave behind, consulted by `Add` and by nothing else. Ruinborne's four rules of spec 5.7 are the
+  may leave behind, consulted by `Add` and by nothing else. The reference consumer's four rules of spec 5.7 are the
   behaviour, and rule 3 is the surprising one: lowering capacity below occupancy is LEGAL, the container
   loads intact, is never trimmed, and is refused new slots until occupancy falls. That is the
   generalisation of contracts 8.2 kind 4's over-cap stack policy.
 - [ ] **Step 6: Keep entries SPARSE and never compact.** A hole is the absence of an entry and costs zero
-  bytes, exactly as version 1's sparse form already did. The dense renumber Ruinborne's repair explicitly
+  bytes, exactly as version 1's sparse form already did. The dense renumber the reference consumer's repair explicitly
   refuses to do is not something this container can do by accident, and a test pins that.
 - [ ] **Step 7: Expose the dirty set**, because task 5's commit builder asks the container for it and
   folds those pages into whatever commit comes next (spec 5.6). That is what makes the lazy rewrite cost

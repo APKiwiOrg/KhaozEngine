@@ -5,7 +5,7 @@ namespace KhaozEngine.Tests.Primitives;
 
 public class StableHashTests
 {
-    // The reference consumer's algorithm (Ruinborne AbilityVfxRegistry.HashCombine), reproduced verbatim as the
+    // The reference consumer's algorithm (the reference consumer AbilityVfxRegistry.HashCombine), reproduced verbatim as the
     // known-answer oracle: FNV-1a fold of the offset basis + prime, then a Murmur3-style finalizer avalanche.
     // StableHash.Mix(a, b, c) must be byte-identical to this or adoption changes the procedural geometry.
     static uint GameHashCombine(uint a, uint b, uint c)

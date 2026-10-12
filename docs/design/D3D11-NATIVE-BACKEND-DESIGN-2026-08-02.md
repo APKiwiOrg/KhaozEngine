@@ -982,7 +982,7 @@ waits on it. If M1 has not been taken by the time gate 3 is assessed, gate 3 is 
 
 ## 14. Rollout
 
-Opt-in first, field soak on the #410 reporting machine through Ruinborne's established update-feed flow, then
+Opt-in first, field soak on the #410 reporting machine through the reference consumer's established update-feed flow, then
 default, per #420's decision record. Five gates, all green before the flip.
 
 1. All 36 goldens green against the shared `direct3d11` family at 0.06, with the observed worst-cell delta

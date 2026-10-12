@@ -1,5 +1,7 @@
 # Owned item instances, affixes, sockets, crafting and the stat evaluation base
 
+Consumer-prefixed paths and `c-consumer.md` citations describe an anonymized historical consumer snapshot.
+
 **Status:** SPEC DRAFT, awaiting the owner at gate 1. Nothing here is implemented. This is Scope B,
 engine program [#884](https://github.com/APKiwiOrg/KhaozEngine/issues/884), specified in parallel with
 Scope A, the versioned content catalog,
@@ -8,7 +10,7 @@ Scope A, the versioned content catalog,
 approved at gate 0 on 2026-09-15 and which is BINDING on this document. Neither spec is implemented
 before the owner approves both. Consumers are
 [Grimhollow #208](https://github.com/APKiwiOrg/Grimhollow/issues/208) and
-[Ruinborne #465](https://github.com/APKiwiOrg/Ruinborne/issues/465).
+consumer report.
 
 Where this document and the contracts disagree, the contracts win and this document is wrong. Section
 22 is the only channel for changing that. It carries FOUR requests, all four accepted by the owner and
@@ -20,7 +22,7 @@ Section 22 also lists the third-round contract amendments this document is writt
 Every byte layout below is written to be coded from without guessing, every algorithm is written as
 steps rather than as a description, and every claim about code that exists today cites a file and a
 line. The file-and-line citations are against KhaozEngine `d4990be5`, Grimhollow `36f0139a` plus the
-`feature/item-drop` branch at `e6c84dfc`, and Ruinborne `1b85e1aa`, through the three read-only
+`feature/item-drop` branch at `e6c84dfc`, and the reference consumer `1b85e1aa`, through the three read-only
 surveys taken on 2026-09-14. Where a survey and this document disagree, the survey is the fact.
 
 ## 1. Goals and non-goals
@@ -1097,7 +1099,7 @@ the lazy rewrite cost nothing: it never causes a commit, it only joins one.
 
 ### 5.7 Capacity is a gate, not a size
 
-Ruinborne's model is the one to fit, and it is not a size at all (`c-ruinborne.md:894-905`): capacity is
+The reference consumer's model is the one to fit, and it is not a size at all (`c-consumer.md:894-905`): capacity is
 per-character data on `player_character.bag_capacity`, it limits SLOTS rather than items, a grant that
 merges entirely into existing stacks succeeds at or past capacity, and an over-capacity bag is never
 trimmed and only refused new slots (`BagCapacityRules.cs:13-29`).
@@ -1110,7 +1112,7 @@ trimmed and only refused new slots (`BagCapacityRules.cs:13-29`).
 - **Capacity** is a separate mutable integer, the number of OCCUPIED slots a grant may leave behind. It
   is a gate consulted by `Add` and by nothing else.
 
-The rules, which are Ruinborne's restated as engine behaviour:
+The rules, which are the reference consumer's restated as engine behaviour:
 
 1. A grant that opens a NEW slot is refused when occupancy is at or above capacity.
 2. A grant that merges entirely into existing stacks is allowed at any occupancy.
@@ -1120,16 +1122,16 @@ The rules, which are Ruinborne's restated as engine behaviour:
 4. Capacity is never read from content. It is a per-owner number the game sets, because it is player
    progression rather than balance data.
 
-**Ruinborne's explicit cell index with holes is expressible with no engine machinery at all.** A page's
+**the reference consumer's explicit cell index with holes is expressible with no engine machinery at all.** A page's
 entries are SPARSE and strictly ascending by slot (4.4), so a hole is the absence of an entry and costs
 zero bytes, exactly as version 1's sparse form already did. Holes survive a load, a save and a remap
-because nothing in the format or the loader compacts. The dense renumber Ruinborne's PostDeploy repair
-explicitly refuses to do (`c-ruinborne.md:665-684`, "It NEVER closes a hole") is not something this
+because nothing in the format or the loader compacts. The dense renumber the reference consumer's PostDeploy repair
+explicitly refuses to do (`c-consumer.md:665-684`, "It NEVER closes a hole") is not something this
 container can do by accident.
 
-**Ruinborne's equipped-row-keeps-its-cell rule needs one game field and no engine change.** An equipped
-item sits in the WORN container and reserves a cell in the BAG container, which is why Ruinborne has
-deliberately no unique index on `(character_id, bag_order)` (`c-ruinborne.md:876-893`). The engine's
+**the reference consumer's equipped-row-keeps-its-cell rule needs one game field and no engine change.** An equipped
+item sits in the WORN container and reserves a cell in the BAG container, which is why the reference consumer has
+deliberately no unique index on `(character_id, bag_order)` (`c-consumer.md:876-893`). The engine's
 answer: the worn entry carries a game range property kind (>= 1024) holding the home bag slot, and the
 bag container's occupancy counts its own occupied slots only, which is exactly `BagCapacityRules.UsedSlots`
 counting non-equipped rows (`BagCapacityRules.cs:59-66`). The engine needs to know nothing about it.
@@ -2161,8 +2163,8 @@ the first time.
 
 `ItemGenerator` turns (base, item level, source of randomness) into a payload. It does NOT decide WHICH
 base drops: that is a loot table, which is Scope A's engine-range content type and is `ServerOnly`. The
-seam is deliberate, because a loot roll and an affix roll are different questions and Ruinborne's
-`LootRoll` already owns the first one (`c-ruinborne.md:718-734`).
+seam is deliberate, because a loot roll and an affix roll are different questions and the reference consumer's
+`LootRoll` already owns the first one (`c-consumer.md:718-734`).
 
 **It takes its `IRandomSource` in the CONSTRUCTOR and holds it**, which is contracts 14.4 verbatim
 rather than the narrowing an earlier draft of this section proposed. The contract is explicit: "A
@@ -2473,7 +2475,7 @@ framework and zero currency rows, which is #884's "Out of scope for v1" taken li
 steps, re-encodes canonically and writes the result through `SetSlotAt` (4.7). A refusal at any step
 discards the builder and the durable bytes are untouched, so there is no partial craft and no rollback
 path to get wrong. That is the same all-or-nothing shape `OwnedItemStacking.TryFold` already has in
-Ruinborne (`c-ruinborne.md:22-26`) and `GrimhollowTrade`'s bag clone has in Grimhollow
+The reference consumer (`c-consumer.md:22-26`) and `GrimhollowTrade`'s bag clone has in Grimhollow
 (`b-grimhollow.md:1055-1078`).
 
 ### 10.2 The fourteen primitives
@@ -2747,8 +2749,8 @@ same operation id carrying the same instance id is a `Replayed` that returns the
 version, and each payload with its length varint at 3.8's 58 byte rare. After alone would be 68, so
 carrying the BEFORE costs **59 bytes**, not the 42 an earlier draft claimed. It is worth every one of
 them: the page is rewritten whole on the next commit, so without the before bytes nothing in the durable
-record can answer what a craft changed, which is the exact failure Ruinborne's audit has
-(`c-ruinborne.md:328-346`, audit rows recording that a row changed and carrying no values). Contracts 4.7
+record can answer what a craft changed, which is the exact failure the reference consumer's audit has
+(`c-consumer.md:328-346`, audit rows recording that a row changed and carrying no values). Contracts 4.7
 makes the same argument for the content audit, and this is it applied to the instance audit. Twenty crafts
 in one batch is therefore `6,900 + 20 * 127 = 9,440` bytes, which is 6.7's table and budget 4.
 
@@ -2977,14 +2979,14 @@ fourth stat whose `Min` is the fastest permitted speed, which turns the `WeaponA
 (`Sword 14, Hatchet 18`) into two base rows. Nothing about Grimhollow needs `Increased`, `More`, a tag
 scope or a condition on day one, and that is the point: the base carries them unused.
 
-**Ruinborne's `item_stat(item_id, stat_id, flat, percent)`** (`c-ruinborne.md:926-948`) is a per
+**the reference consumer's `item_stat(item_id, stat_id, flat, percent)`** (`c-consumer.md:926-948`) is a per
 DEFINITION row with two float-ish columns, so two copies of an item are identical. The mapping is one
 `stat` row per existing `stat_id` with `Scale = 100` (its percent column is a fraction today and the scale
 is what makes it an integer), one `Flat` line and one `Increased` line per `item_stat` row, both at source
 kind 1. Its `percent` becomes `Increased` rather than `More` because today it is summed into one
 multiplier exactly as `StatSet` does, so `Increased` preserves the numbers and `More` would not.
-`item_ability_modifier`'s comma-joined tag STRINGS (`c-ruinborne.md:67-72`) become a tag scope, which is
-the one place adopting this evaluator makes a Ruinborne substring search into a set membership test.
+`item_ability_modifier`'s comma-joined tag STRINGS (`c-consumer.md:67-72`) become a tag scope, which is
+the one place adopting this evaluator makes a consumer substring search into a set membership test.
 
 ## 12. Validation, quarantine and visibility
 
@@ -3823,40 +3825,40 @@ because a page declares its own slot count and its own first slot (4.4).
 **Row 7 is a precondition for row 6 in practice.** A shared server rolling affixes on a literal seed
 publishes its own drop table, so the seeds move before the first affixed item drops, not after.
 
-## 19. Ruinborne adoption plan
+## 19. The reference consumer adoption plan
 
-WRITTEN, NOT EXECUTED, for [Ruinborne #465](https://github.com/APKiwiOrg/Ruinborne/issues/465). Ruinborne
+WRITTEN, NOT EXECUTED, for consumer report. The reference consumer
 is the harder adopter of the two because its durable store is relational rows rather than a codec, and
 because it already has two identities where the engine wants one.
 
 **The precondition, and it is absolute.** The PostDeploy duplicate-row collapse partitions non-stackable
 rows by `(character_id, item_id)` with no `instance_json` term and runs on EVERY redeploy
-(`c-ruinborne.md:939-948`), so the moment two differently rolled copies of one item exist they collapse
-into one. Instances cannot land in Ruinborne before
-[Ruinborne #299](https://github.com/APKiwiOrg/Ruinborne/issues/299) is fixed. Nothing else on this list
+(`c-consumer.md:939-948`), so the moment two differently rolled copies of one item exist they collapse
+into one. Instances cannot land in the reference consumer before
+consumer report is fixed. Nothing else on this list
 matters until it is.
 
 | # | Change | From | To |
 |---|---|---|---|
-| 1 | `OwnedItemId` is replaced | a derived version-5 GUID on the wire and in the journal (`c-ruinborne.md:949-962`) | the engine `long` instance id, with a DUAL-READ window: the old GUID stays on the row for one release so an in-flight use or destroy request still resolves |
+| 1 | `OwnedItemId` is replaced | a derived version-5 GUID on the wire and in the journal (`c-consumer.md:949-962`) | the engine `long` instance id, with a DUAL-READ window: the old GUID stays on the row for one release so an in-flight use or destroy request still resolves |
 | 2 | The bag cell model moves onto pages | `bag_order INT` with legitimate permanent holes and shared cells | a page's sparse ascending entries, which express a hole at zero cost and never compact (5.7). The equipped-row-keeps-its-cell rule is one game-range property kind on the worn entry |
-| 3 | Capacity stays exactly as it is | `player_character.bag_capacity`, a slot gate, never trimming | `PagedItemContainer`'s capacity, which is 5.7's four rules and is Ruinborne's semantics restated |
+| 3 | Capacity stays exactly as it is | `player_character.bag_capacity`, a slot gate, never trimming | `PagedItemContainer`'s capacity, which is 5.7's four rules and is the reference consumer's semantics restated |
 | 4 | The SQL rows become a read model | the rows ARE the durable store, with FKs and filtered unique indexes doing the integrity work | the journal pages are durable and the rows are projected from them, so the indexes become a report rather than a constraint. This is the row with the real cost, and it is open question 9 |
 | 5 | `item_stat` moves onto the evaluator | `(item_id, stat_id, flat, percent)` per DEFINITION | one `stat` row per `stat_id` at `Scale = 100`, one `Flat` and one `Increased` line per row, source kind 1 (11.7) |
 | 6 | Loot rolls through the generator | `LootRoll.Roll` with an unseeded `System.Random` created once at server start | the loot table picks the base, `ItemGenerator` rolls the instance, both on `CryptographicRandomSource` |
-| 7 | The over-cap repair lands | a lowered `max_stack` leaves over-cap rows intact, invisibly and permanently | contracts 8.2 kind 4: legal, may only shrink, self-healing, with the state explicit. [Ruinborne #507](https://github.com/APKiwiOrg/Ruinborne/issues/507) |
+| 7 | The over-cap repair lands | a lowered `max_stack` leaves over-cap rows intact, invisibly and permanently | contracts 8.2 kind 4: legal, may only shrink, self-healing, with the state explicit. consumer report |
 | 8 | The string item id becomes a KEY | `NVARCHAR(64)` as the primary key across seven tables | the key survives, an int32 definition id is added beside it, and the derived one-byte wire index is DELETED (contracts 5.5) |
 
 **Row 1's dual-read window is the migration and it is worth spelling out.** One engine instance id is
 allocated per existing owned row whose payload is non-empty, and rows with no properties take id 0 and
-need no allocation at all (contracts 6.5). Ruinborne's `instance_json` column has never held a value
-(`c-ruinborne.md:565-589`), so there is no legacy payload to decode and the instance payload arrives on a
+need no allocation at all (contracts 6.5). The reference consumer's `instance_json` column has never held a value
+(`c-consumer.md:565-589`), so there is no legacy payload to decode and the instance payload arrives on a
 clean slate, which is the single biggest gift in this adoption.
 
 **Row 4 is the one to think hardest about, and this document does not decide it.** Moving the durable store
 from rows to pages loses the FK to `item_def`, the filtered unique index on `(character_id, slot) WHERE
 equipped = 1`, and the two SQL repairs that are only expressible because the state is rows
-(`c-ruinborne.md:906-925`). It also gains paging, batching, quarantine and instances. A middle path exists
+(`c-consumer.md:906-925`). It also gains paging, batching, quarantine and instances. A middle path exists
 and may be the right one: keep the rows durable, adopt the PAYLOAD as a column, and take the container
 page machinery only for the bank. Open question 9 puts it to the owner.
 
@@ -4066,12 +4068,12 @@ engine cap. The rarity rule's `max_affixes` is the cap, it is content, and 255 s
 **Recommended default: refuse at use, with a counter, because the alternative takes a server down for one
 unusable currency row.**
 
-**9. For Ruinborne, do the journal pages become durable, or do the SQL rows stay durable with a payload
+**9. For the reference consumer, do the journal pages become durable, or do the SQL rows stay durable with a payload
 column?** (19, row 4.) Pages buy paging, batching, quarantine and one shared code path. Rows keep the two
 filtered unique indexes, the foreign keys and the two SQL repairs that are only expressible over rows.
 **Recommended default: the middle path. Keep the rows durable, add the payload as a column, and adopt the
 page machinery for the BANK only, where the write amplification actually hurts.** That is the smallest
-change that gets Ruinborne instances, and it leaves the larger question to its own design.
+change that gets the reference consumer instances, and it leaves the larger question to its own design.
 
 ## 24. Appendix A: review log
 

@@ -321,7 +321,7 @@ public sealed class PublishPipelineTests
     /// byte-identical packs and byte-identical manifests. Ten shuffles from one seeded source, because a
     /// single shuffle that happens to match the reference order proves nothing.
     /// <para>
-    /// This is the test Ruinborne's wire index would have failed, since the same item has a different byte
+    /// This is the test the reference consumer's wire index would have failed, since the same item has a different byte
     /// index depending on whether the catalog loaded from SQL or from code defaults.
     /// </para>
     /// </summary>

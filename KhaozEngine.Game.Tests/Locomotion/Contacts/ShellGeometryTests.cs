@@ -63,7 +63,7 @@ public class ShellGeometryTests
 
     // The consumer bodies clear their banded plane with room to spare. The engine default lies 0.8 * cos(48) = 0.535
     // from it against 0.401. A Grimhollow player (radius 0.3, StepHeight 0.4, 45 degrees, default band) lies
-    // 0.7 * cos(48) = 0.468 against 0.301. Ruinborne (radius 0.4, StepHeight 0.4, 49 degrees, 1 degree band) lies
+    // 0.7 * cos(48) = 0.468 against 0.301. The reference consumer (radius 0.4, StepHeight 0.4, 49 degrees, 1 degree band) lies
     // 0.8 * cos(50) = 0.514 against 0.401.
     [Theory]
     [InlineData(0.9f, 0.4f, 0.4f, 45f, 3f)]

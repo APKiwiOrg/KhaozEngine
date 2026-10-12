@@ -81,7 +81,7 @@ behaviour stay unchanged. The intent arithmetic is short enough to restate, so n
 `ShellGeometry.Validate` checks the plane constraint `(StepHeight + CapsuleRadius) * cos(steepest) >= CapsuleRadius
 + ContactSkin` at `steepest = MaxSlopeRadians + TractionHysteresisRadians`, because a footed body may stand on the
 band. A band that is not positive widens nothing, as in the traction gate, so the check then runs at the bare
-`MaxSlopeRadians`. The engine default, the Grimhollow player and the Ruinborne tuning pass.
+`MaxSlopeRadians`. The engine default, the Grimhollow player and the reference consumer tuning pass.
 
 The air pass also checks that `StepHeight` is at least `FootRadiusFraction * CapsuleRadius * (1 / cos(steepest) -
 1)` over the same banded gate. The foot probe meets the steepest walkable plane that far above the plane at its

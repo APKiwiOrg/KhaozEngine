@@ -4,7 +4,7 @@
 
 **Goal:** Deliver the approved shared editor refresh with stable navigation, readable terrain feedback, discoverable visibility and verified responsiveness.
 
-**Status:** Implemented and integrated into engine and Ruinborne main. Manual windowed validation remains an owner-run check.
+**Status:** Implemented and integrated into engine and the reference consumer main. Manual windowed validation remains an owner-run check.
 
 **Architecture:** Keep map documents and commands intact. Add cohesive navigation, view-panel and brush-overlay components, with small scene integration calls. Filter prop draw submission using editor view state rather than rebuilding terrain.
 
@@ -112,7 +112,7 @@ Assert.Equal(0, countWhenNavigating);
 
 **Files:** Add focused editor benchmark/test harness in KhaozEngine.MapEditor.Tests/MapEditor and a reproduction recipe in docs/design alongside the refresh design. Change only measured hot paths in relevant editor components. Avoid unrelated rendering refactors.
 
-**Interfaces:** Exercise Task 1 navigation, Task 2 visibility and Task 3 geometry through their real policy components and scene integration fixtures. Measurements must identify commit, runtime, workload and machine. Use a copied representative Ruinborne map for real-map observations without modifying source content.
+**Interfaces:** Exercise Task 1 navigation, Task 2 visibility and Task 3 geometry through their real policy components and scene integration fixtures. Measurements must identify commit, runtime, workload and machine. Use a copied representative consumer map for real-map observations without modifying source content.
 
 - [x] Establish deterministic camera/input sequences for idle, orbit, pan, sculpt, visibility changes and undo, with fixed viewport and warm-up. Record median and p95 duration, allocation bytes and rebuild counts. A CPU-only harness must be labelled CPU-only and cannot claim frame-time or rendered stroke latency.
 - [x] Add correctness assertions separately from timing thresholds so CI is not flaky. Visibility toggles must cause zero terrain/scatter rebuilds and navigation must leave map hash/history unchanged.
@@ -132,12 +132,12 @@ Assert.Equal(0, rebuildsForVisibilityOnly);
 
 **Owner:** Orchestrator, with a bounded consumer implementer and final task reviewer when needed.
 
-**Files:** Directory.Build.props, CHANGELOG.md, guarded version declarations, full Markdown sweep, design/index statuses. Consumer adoption occurs in a separate Ruinborne worktree under its own instructions.
+**Files:** Directory.Build.props, CHANGELOG.md, guarded version declarations, full Markdown sweep, design/index statuses. Consumer adoption occurs in a separate consumer worktree under its own instructions.
 
 - [x] Review all implementation task diffs and test evidence. Run full Release build and tests with Category!=LiveSocket. Run the whole-tree dash, prose, size, agent-instruction and doc-version guards. Preserve actual exit codes in logged commands.
 - [x] Fetch current main/tags, ride any staged version or select one free additive minor. Put changelog and version in the same commit. Update all guarded declarations and stale editor controls/visibility descriptions across Markdown.
 - [x] Run scripts/pack-local-feed.sh and scripts/check-local-feed.sh. Push the feature branch and dispatch cross-platform-gpu.yml against that branch with all three backend legs. Inspect actual new overlay PNGs and verify the full matrix before merging rendering changes.
-- [x] Read Ruinborne's rules and current pin, create an isolated matching consumer worktree, then use its existing vendor/repin machinery to adopt the built engine. Add explicit tree/rock category mapping from existing authored asset metadata. Evict the staged pin from the NuGet cache before validating the consumer to prevent stale bytes. Do not alter maps.
+- [x] Read the reference consumer's rules and current pin, create an isolated matching consumer worktree, then use its existing vendor/repin machinery to adopt the built engine. Add explicit tree/rock category mapping from existing authored asset metadata. Evict the staged pin from the NuGet cache before validating the consumer to prevent stale bytes. Do not alter maps.
 - [x] Run the consumer's required build/tests and headless editor startup checks. Provide one final manual command launching its editor from the correct worktree or merged main. Do not launch the windowed client automatically.
 - [x] Run a whole-branch spec and quality review. Fix verified findings through a subagent and scoped re-review. Reconcile concurrent main changes in the feature branch and rerun affected checks, then merge and push per standing authorization. Never tag on initiative.
 - [x] Mark design/plan status accurately, close only issues actually resolved, preserve measurement limitations, and report delivery with manual validation and pass/fail next steps.
@@ -154,7 +154,7 @@ Assert.Equal(0, rebuildsForVisibilityOnly);
   three backends and Vulkan synchronization validation. No package-bearing content changed in that merge.
 - The 19.10.0 package snapshot comes from `11deba784734a6f487937217fa8e788e1b1e04eb`. All 91 package manifests
   agree on that source. The engine integration is `2d434300427d60e71c33826838dcba3aa90af141`.
-- Ruinborne adoption `ab56bbb634b883f258edf805c257ea9f9aa39e5d` cold-restored, built Release without warnings or
+- the reference consumer adoption `ab56bbb634b883f258edf805c257ea9f9aa39e5d` cold-restored, built Release without warnings or
   errors, and passed 5,229 tests with 116 gated skips. The loaded MapEditor and Windowing DLLs matched the
   vendored package bytes. Nine tree and rock entries have explicit metadata. No map or movement tuning changed.
 - Both code integrations were pushed to main. No release tag or deployment was created. The wider
@@ -162,10 +162,10 @@ Assert.Equal(0, rebuildsForVisibilityOnly);
 
 ## Manual validation
 
-From the Ruinborne repository root:
+From the reference consumer repository root:
 
 ```bash
-dotnet run --project Ruinborne.Editor/Ruinborne.Editor.csproj -c Release -- --map Ruinborne.Core/assets/maps/island
+dotnet run --project Consumer.Editor/Consumer.Editor.csproj -c Release -- --map Consumer.Core/assets/maps/island
 ```
 
 Check orbit, pan and dolly, then View category toggles and Terrain Only restoration. Sculpt and undo a small

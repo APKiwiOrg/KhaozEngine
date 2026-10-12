@@ -1,7 +1,7 @@
 # Floating origin: precision at 100 km for rendering, physics, and movement
 
 Design rationale. Issue: [#337](https://github.com/APKiwiOrg/KhaozEngine/issues/337). Consumer program:
-[Ruinborne#242](https://github.com/APKiwiOrg/Ruinborne/issues/242), sub-project 5.
+consumer report, sub-project 5.
 
 This is the **why**. When it ships, what shipped and how to use it go to `CHANGELOG.md`,
 `docs/USING-KHAOZENGINE.md`, and the `KhaozEngine.Primitives` / `KhaozEngine.Physics` /
@@ -39,9 +39,9 @@ principle as items 8 to 10: the corrections are worth more than the appearance o
 
 ## 1. What the measurement forces
 
-Ruinborne measured it on real production code
-(`Ruinborne/docs/design/2026-07-26-world-scale-spike-findings.md` section 4,
-`Ruinborne.Tests/FarFromOriginPrecisionTests.cs`). The same 600-tick movement run (20 s at 30 Hz) at the
+The reference consumer measured it on real production code
+(`ConsumerGame/docs/design/2026-07-26-world-scale-spike-findings.md` section 4,
+`Consumer.Tests/FarFromOriginPrecisionTests.cs`). The same 600-tick movement run (20 s at 30 Hz) at the
 origin versus at an offset, over identically shaped terrain:
 
 | Offset | Divergence after 20 s | Grounded ticks | Budget | Result |
@@ -86,7 +86,7 @@ kilometres.
 
 ## 2. The consumer contract, and the number that falls out of it
 
-One shared float32 world space, metres, origin-centred (Ruinborne axis 1 option C: continents and islands in
+One shared float32 world space, metres, origin-centred (the reference consumer axis 1 option C: continents and islands in
 one coordinate space, seamless walking within a continent, teleports between continents). Authored
 coordinates and persisted state stay in that space, unchanged, forever. What the design decides is where and
 how a **runtime** rebase happens so that everything a player experiences at 100 km is as good as at the
@@ -214,7 +214,7 @@ Weighted 1 to 3, scored 0 to 5, maximum 85.
 | 4 | Determinism across peers | 3 | A rebase changes coordinates and therefore changes float results. Any model that lets two peers simulate one entity in different frames has replaced one bug with a worse one. |
 | 5 | Wire and netcode blast radius | 2 | Cost, not correctness. Recoverable. |
 | 6 | Implementation risk in the engine | 2 | Cost, not correctness. Recoverable. |
-| 7 | Consumer adoption cost | 1 | Ruinborne adopts incrementally either way. |
+| 7 | Consumer adoption cost | 1 | the reference consumer adopts incrementally either way. |
 
 ### The candidates
 
@@ -461,7 +461,7 @@ Only single-island heads rebase, and only when their player crosses the 96 m tri
 seconds and the straight-line case is one per 21.3 seconds.
 
 The work per rebase is bounded by the resident collider population, which the streaming ring bounds directly.
-For Ruinborne's shape (a 60 m chunk grid, a gameplay ring of radius 2 plus a decor ring, terrain collision on
+For the reference consumer's shape (a 60 m chunk grid, a gameplay ring of radius 2 plus a decor ring, terrain collision on
 the gameplay ring only) that is order 25 terrain statics, a few thousand prop statics and a few hundred
 dynamics. At Bepu's measured refit cost that is single-digit milliseconds, once every ten seconds or more,
 on a head that is already doing a full physics step every tick.
@@ -903,7 +903,7 @@ public enum SamplerSpace
 `SamplerSpace.World` defaulting to on is deliberate. It is the state every existing consumer is already in,
 it is a genuine improvement over today (the accumulating carried state becomes frame-local, which is the
 term the measurement showed growing), and it lets a consumer adopt the release without touching its terrain
-sampling. `SamplerSpace.Frame` is the finish line, and Ruinborne reaches it when its collision meshes go
+sampling. `SamplerSpace.Frame` is the finish line, and the reference consumer reaches it when its collision meshes go
 chunk-local.
 
 The first draft left a hole here that the review caught: `CharacterMovement.Step`'s physics queries take
@@ -1200,7 +1200,7 @@ so the event is informational for the tail of consumer-owned state, and the comm
 
 The flat `WorldServer` has one `World`, one flat player loop, and one physics world, so it is one island with
 one frame. It re-anchors, and that follows ONE player. **A 100 km world with players spread across it requires
-the sharded head**, where each `CellSim` is its own island. Ruinborne is a sharded MMO, so this is the head it
+the sharded head**, where each `CellSim` is its own island. The reference consumer is a sharded MMO, so this is the head it
 already uses. The flat head still gets the full benefit for a single-player or single-region game, and is not
 regressed in any case.
 
@@ -1991,7 +1991,7 @@ if (worstPlanar > WorldFrame.MaxLocalRadius)
 
 ### The acceptance test for the whole feature
 
-Mirrors Ruinborne's `FarFromOriginPrecisionTests` in shape, with one correction: it carries its own ground
+Mirrors the reference consumer's `FarFromOriginPrecisionTests` in shape, with one correction: it carries its own ground
 truth. Lands in `KhaozEngine.Server.Tests` (it references `Locomotion`, `Physics.Bepu` and `NetWorld`).
 
 > Run the same 600-tick command stream at 30 Hz three ways over identically shaped terrain: (a) a
@@ -2049,7 +2049,7 @@ measures the difference of two errors. The double reference removes the ambiguit
    100 km destination and attributed it to the destination magnitude. Rebase the same stack into a 136 m
    frame and assert the drift is at least an order of magnitude smaller, which converts an inference into a
    measurement.
-8b. **The rebase cost budget.** Build a world at Ruinborne's resident scale (order 25 terrain statics, 2,000
+8b. **The rebase cost budget.** Build a world at the reference consumer's resident scale (order 25 terrain statics, 2,000
    prop statics, 200 dynamics), time one `Rebase` and one `Step`, assert `Rebase < Step`. The budget from
    section 5, as a test rather than an estimate.
 9. **Constraints survive.** A hinge and a slider, one end a world anchor, `Rebase`, assert the joint still

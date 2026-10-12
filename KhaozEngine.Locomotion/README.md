@@ -306,7 +306,7 @@ face now slides** - that is the fix, and it is a behaviour change rather than an
 ### Traction hysteresis and slide friction (17.30.0)
 
 `MaxSlopeRadians` was a bare per-tick binary and the slide had no friction, so ground sitting ON the threshold
-behaved like a cliff edge in the model where it is a hillside in the world. Measured on a Ruinborne bank running
+behaved like a cliff edge in the model where it is a hillside in the world. Measured on a consumer bank running
 40.0 to 41.8 degrees against a 40 degree gate: 43 footing flips in 330 ticks, stalled 2.73 m up a 7.6 m climb. Two
 composable mechanisms fix it ([#475](https://github.com/APKiwiOrg/KhaozEngine/issues/475)), both **default-on**.
 

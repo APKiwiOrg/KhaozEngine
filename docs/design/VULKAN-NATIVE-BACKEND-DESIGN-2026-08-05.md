@@ -2088,7 +2088,7 @@ implementation row.
 ## 17. Rollout
 
 Opt-in first, then the CI leg as the continuous exercise, then a field soak on the #410 reporting machine
-through Ruinborne's established update-feed flow, then the default. Five gates, all green before any flip.
+through the reference consumer's established update-feed flow, then the default. Five gates, all green before any flip.
 
 1. **All 36 goldens green** against the shared `vulkan` family on lavapipe at the existing tolerance, with the
    observed worst-cell delta RECORDED here. Two implementations feeding the same rasterizer the same SPIR-V

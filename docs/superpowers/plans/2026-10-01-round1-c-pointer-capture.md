@@ -6,7 +6,7 @@
 
 **Architecture:**
 - **Capture:** `InputState` learns whether the pointer is captured, and `InputAccumulator` reports captured deltas in window points with zero deltas on the capture edges. A new `AppWindow` partial drives GLFW's cursor mode through a pure, tested policy. `GameApp` forwards the request the way it forwards rumble.
-- **Gestures:** Ruinborne's right mouse gesture becomes the engine's per-button `PointerGesture`. `FollowCameraController` gains two optional gestures and plain outputs.
+- **Gestures:** the reference consumer's right mouse gesture becomes the engine's per-button `PointerGesture`. `FollowCameraController` gains two optional gestures and plain outputs.
 
 **Tech Stack:** C#/.NET 10, Silk.NET 2.23 with GLFW 3.4, xUnit, riding 20.17.0.
 
@@ -23,7 +23,7 @@ Executed 2026-10-02 on `feature/round1-pointer-capture`, commits `5153fe73d` to 
 | C3 | Automation's `Compose` forwards `PointerCaptured` | Automation must not report a captured pointer as released |
 | C4 | Focus is sampled once per frame | Nobody can alt-tab out and back within one poll, and GLFW re-disables on refocus |
 | C5, C5a | The camera orbits by at most one delta a frame, and each mouse movement is applied once. A crossing replay counts only if the camera has not orbited since that press | Both gestures read the same delta, so summing or replaying double-counts the both-buttons run |
-| C6 | The zero-threshold resume behaviour stays as lifted from Ruinborne, and the docs qualify the inert rule | The lift changes only the four sanctioned points |
+| C6 | The zero-threshold resume behaviour stays as lifted from the reference consumer, and the docs qualify the inert rule | The lift changes only the four sanctioned points |
 | C7, C7a | While captured, `MousePosition` holds the capture-start point. `OrbitTap` and `LookTap` count only when the camera did not turn during that press | A hidden cursor must not select, hover or block, and a both-buttons release is never a select |
 | C8 | Camera gestures are gated by `UiBlocked = gui.HoverCaptured` | `GuiSurface.PointerCaptured` tracks the left button only |
 | C9 | Gesture thresholds are documented as framebuffer pixels before capture and window points after | A scale-aware gesture needs new API (KhaozEngine #1228) |
@@ -64,7 +64,7 @@ Note for Grimhollow at P3:
 2. **Focus loss while captured.** Capture must drop on the same edge that releases held buttons, or the cursor stays hidden and stuck. Owned by Task 2 `PointerCapturePolicyTests.FocusLossDropsCaptureAndRefocusDoesNotRestoreIt`.
 3. **A 2x display.** Captured deltas are window points, so the same hand movement turns the camera the same amount at 1x and 2x. Owned by Task 1 `InputAccumulatorTests.CapturedDeltasAreWindowPointsNotFramebufferPixels`.
 4. **A press that starts over UI, or focus lost mid-press.** Neither is a tap nor a drag. Owned by Task 3's lifted `APressThatBeganUnderTheUi_IsNeitherATapNorADrag`, and by Task 4 `FollowCameraGestureTests.LosingFocusDuringAHoldIsNotATap`.
-5. **Ruinborne and Grimhollow unchanged.** A controller with no gestures, middle-button orbit or right-button orbit, behaves byte for byte as before. Owned by Task 4 `FollowCameraGestureTests.NoGesturesKeepsTodaysOrbitExactly`, plus the unchanged existing `FollowCameraControllerTests`.
+5. **the reference consumer and Grimhollow unchanged.** A controller with no gestures, middle-button orbit or right-button orbit, behaves byte for byte as before. Owned by Task 4 `FollowCameraGestureTests.NoGesturesKeepsTodaysOrbitExactly`, plus the unchanged existing `FollowCameraControllerTests`.
 
 ---
 
@@ -135,12 +135,12 @@ Note for Grimhollow at P3:
   - `MouseButton Button`, `float ThresholdPixels`, `PointerGesturePhase Phase`
   - `Vector2 DragDelta`, `bool TapThisFrame`, `Vector2 TapPosition`
   - `void Advance(in InputState input, bool uiBlocked)`
-- It is Ruinborne's `RightMouseGesture.Advance` algorithm (`/Users/antonio/Ruinborne/Ruinborne.Client/Interaction/RightMouseGesture.cs:122-190`), unchanged, with these differences:
+- It is the reference consumer's `RightMouseGesture.Advance` algorithm (`~/ConsumerGame/Consumer.Client/Interaction/RightMouseGesture.cs:122-190`), unchanged, with these differences:
   - It reads its button's down state, the cursor position and `MouseDelta` from `input`.
   - It treats `!input.WindowFocused` as blocked.
   - A threshold of 0 or less means drag from the first frame and never tap.
 
-- [ ] **Step 1: Write the failing tests.** Lift Ruinborne's facts from `/Users/antonio/Ruinborne/Ruinborne.Tests/Client/RightMouseGestureTests.cs`, keeping their names:
+- [ ] **Step 1: Write the failing tests.** Lift the reference consumer's facts from `~/ConsumerGame/Consumer.Tests/Client/RightMouseGestureTests.cs`, keeping their names:
   - `PressAndReleaseWithoutMoving_TapsForExactlyOneFrame`
   - `Tap_ReportsThePressOriginNotTheRelease`
   - `DragPastTheThreshold_AllowsOrbitAndNeverTaps`

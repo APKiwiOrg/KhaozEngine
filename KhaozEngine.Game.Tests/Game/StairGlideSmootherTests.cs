@@ -52,7 +52,7 @@ namespace KhaozEngine.Tests.Game
             return t;
         }
 
-        // Exact-movement grounded sample carrying the sim's signed climb rate (what Ruinborne feeds for the local player
+        // Exact-movement grounded sample carrying the sim's signed climb rate (what the reference consumer feeds for the local player
         // AND remotes): feet position, grounded, vertical velocity ~0, planar speed, and ClimbRate (0 = not climbing).
         static CharacterSample Ground(Vector3 feet, float planarSpeed, float climbRate) =>
             new CharacterSample(1, feet, isLocal: true, grounded: true, verticalVelocity: 0f, planarSpeed: planarSpeed, swimming: false, climbRate: climbRate);

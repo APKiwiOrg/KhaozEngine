@@ -17,8 +17,8 @@ namespace KhaozEngine.Tests.NetWorld;
 /// fresh transport, a fresh server slot, a fresh net id, a fresh authoritative entity whose teleport epoch counts from
 /// its own zero - but it does not move the player. It used to surface as a teleport anyway, because the reseed the
 /// reconnect needs reported one unconditionally, so a consumer honouring the contract paid its full teleport reaction
-/// on every drop (Ruinborne rebuilt its whole terrain ring while the player stood still,
-/// https://github.com/APKiwiOrg/Ruinborne/issues/388), and a client on a lossy link paid it repeatedly.
+/// on every drop (the reference consumer rebuilt its whole terrain ring while the player stood still,
+/// consumer report), and a client on a lossy link paid it repeatedly.
 ///
 /// What the signal means now: the local player's world position changed DISCONTINUOUSLY. A first-ever join reports it
 /// (there is no prior position to be continuous with), a genuine server-side teleport reports it, and a reconnect
@@ -176,7 +176,7 @@ public class WorldClientReconnectTeleportTests
         Assert.True(Vector3.Distance(posBefore, posAfter) < 0.5f,
             $"the player should have resumed where it was ({posBefore} -> {posAfter})");
 
-        // The whole point: the consumer-visible teleport signal stayed quiet. This is what Ruinborne's streamer wired
+        // The whole point: the consumer-visible teleport signal stayed quiet. This is what the reference consumer's streamer wired
         // its ring rebuild to, and what fired on every reconnect before the fix.
         Assert.Equal(0, fired);
         Assert.Equal(teleportsBefore, rig.Client.LocalTeleportEpoch);

@@ -490,7 +490,7 @@ mistaken for an unset one. `WindowLaunch` holds all of that parsing (`TryParseMo
 
 **How a game remembers its window, and the one flag it must honour.** The engine does no settings IO: a game
 serialises `Display.CurrentDisplay` (mode, size, position) into its own settings file on exit and hands it back
-through `ApplyDisplay` in `OnLoad`, which clamps a stale position on-screen for it. Ruinborne's `MenuController`
+through `ApplyDisplay` in `OnLoad`, which clamps a stale position on-screen for it. The reference consumer's `MenuController`
 is the reference shape, with `BuildDisplaySnapshot` mapping its persisted settings to a `DisplaySettings` and
 `PositionUnspecified` standing in for "no saved position yet". Do not rebuild any of that.
 
@@ -1153,7 +1153,7 @@ gesture.Advance(input, uiBlocked, dt);   // the two-argument Advance throws on a
   `Advance` throws `ArgumentOutOfRangeException`. `TapTolerance` is null on a gesture built with a threshold, and its
   three-argument `Advance` neither uses nor checks the time, so it matches the two-argument one for any value.
 
-It is lifted from Ruinborne's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
+It is lifted from the reference consumer's `RightMouseGesture` and watches any button. `FollowCameraController` takes two of
 them (see "Tap-or-drag gestures" in the follow camera chapter).
 
 ### Rect, viewport, clock
@@ -3605,7 +3605,7 @@ scene.Draw(gun, sockets["socket_nose"] * shipWorld, Color.White);
   props occlude the buried parts (and it flows through the post chain like the meshes). `DebugDepthMode.AlwaysOnTop`
   draws it crisp over the finished frame with no depth test, for a fully buried volume you still need to see. All
   four clear each `Begin()` (immediate mode) and carry no player-facing text. The game owns which volumes to draw
-  and when (a hotkey, colours per volume type). A Ruinborne-style NPC combat-volume overlay behind an F-key toggle:
+  and when (a hotkey, colours per volume type). A consumer-shaped NPC combat-volume overlay behind an F-key toggle:
 
   ```csharp
   // Colours per volume type, owned by the game.
@@ -4133,7 +4133,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
   - The flip side of `FixedInternal`: a window SMALLER than the fixed target is a genuine downscale on the final
     blit, and by default that downscale is a single bilinear tap (kept exactly as-is so every existing consumer
     and GPU golden stays byte-identical) - which under-samples the same way an un-mip-filtered `Supersample`
-    factor above 2 would (the historical Ruinborne shimmer on a window under 1600x900). Opt into the correct
+    factor above 2 would (the historical consumer shimmer on a window under 1600x900). Opt into the correct
     mip-filtered blit for THIS case too with `Post.MipFilterFixedInternalDownscale = true` (default `false`). It
     reuses the exact mip-chain + trilinear-blit machinery `MatchViewport`'s `Supersample` downscale already uses,
     at whatever ratio the window ends up smaller by. Prefer `RenderScale.MatchViewport` outright if the small
@@ -4381,7 +4381,7 @@ trails are not depth-sorted against each other - keep alpha trails for cases whe
       does not move it. This is the same quantization for ROTATION. The cascade fit keeps using the light direction it
       last adopted until the sun has turned far enough to drag a worst-case caster's shadow by
       `ShadowLightHoldTexels` shadow texels, and only then adopts the new one, so a stationary scene under a day/night
-      cycle stops repainting the whole atlas every frame for a displacement nobody can see. Under Ruinborne's
+      cycle stops repainting the whole atlas every frame for a displacement nobody can see. Under the reference consumer's
       30 minute day (0.00333 deg/frame) a wide outdoor camera re-fits about once every 29 frames instead of every
       frame. Set `ShadowLightHoldTexels = 0` to disable it, which restores the pre-17.36.1 fit byte for byte.
       Three things to know. The threshold is elevation-corrected and recomputed every frame
@@ -8516,7 +8516,7 @@ rules replace it, both unconditional and neither a knob:
 
 **The gate has a MEMORY and the slide has FRICTION (17.30.0, [#475](https://github.com/APKiwiOrg/KhaozEngine/issues/475)).**
 A bare threshold chatters on real terrain: ground whose columns straddle it flips grip and slide every tick. Measured
-on a Ruinborne bank running 40.0 to 41.8 degrees against a 40 degree gate, 43 footing flips in 330 ticks and a stall
+on a consumer bank running 40.0 to 41.8 degrees against a 40 degree gate, 43 footing flips in 330 ticks and a stall
 2.73 m up a 7.6 m climb - and widening the gate past that bank simply moved the same failure onto the next feature,
 because any threshold lands inside some terrain's slope distribution. Two knobs, both **default-on**:
 
@@ -8713,9 +8713,8 @@ to a land character.
 `AnimatedCharacter` plays the forward `Swim` clip (speed-blended above `LocomotionThresholds.SwimForwardThreshold`) or the
 tread `SwimIdle` clip below it, threaded from `MoveState.Swimming` / the replicated `MovementState.Swimming` -
 never a water query of the animator's own. Remotes ride the same replicated bit via `EntityRenderState.Swimming`
--> `CharacterSample.Swimming`. Consumers bake two clips named `Swim` and `SwimIdle`; a rig without them degrades
-to `Idle` while swimming. Ruinborne's avatar is being rebaked with these two clips from the CC0 Quaternius
-Universal Animation Library and maps them on adoption.
+-> `CharacterSample.Swimming`. Consumers bake and map two clips named `Swim` and `SwimIdle`.
+A rig without them falls back to `Idle` while swimming.
 
 ---
 
@@ -9687,7 +9686,7 @@ fadeBandWidth = 0, lodMeshes = null, lodDistance = 0, colliders = true)` (issue 
 layer, with no procedural generation at load time. The multi-part overload takes `partMeshes`/`lodPartMeshes`
 the same way `ScatterLayer` does.
 
-Ruinborne-shaped: one baked list per source scatter layer, one `PlacementLayer` each, the tree layer keeping
+consumer-shaped: one baked list per source scatter layer, one `PlacementLayer` each, the tree layer keeping
 its far HLOD cluster:
 
 ```csharp
@@ -9770,7 +9769,7 @@ the remainder, so this pipeline cannot take a material palette that is content r
 there is a sibling, `Scene3D.LoadTileGroundMaterial` / `LoadMesh(mesh, TileGroundMaterialHandle)`: up to 64 albedo
 layers in one texture array, four material SLOTS per triangle instead of five fixed layers, and no normal maps.
 It is what a tile world's ground draws through (see "Tile world rendering"), and the two are separate pipelines on
-purpose, since widening this one would move Ruinborne's live terrain path and its goldens.
+purpose, since widening this one would move the reference consumer's live terrain path and its goldens.
 
 **1. Load the material.** `TerrainMaterialPresets.Procedural()` returns a ready-made `TerrainLayeredMaterial`
 built from five `TerrainMaterialLayer`s (one per biome layer). Each layer carries an albedo image, a normal map,
@@ -15683,7 +15682,7 @@ itself.
 ```csharp
 var session = new TelemetrySessionInfo
 {
-    AppName    = "Ruinborne",         // handed in: the engine does not know the game's identity
+    AppName    = "ConsumerGame",         // handed in: the engine does not know the game's identity
     AppVersion = "0.7.3",             // your <Version>
     BuildName  = "Sundered Ground",   // your <BuildName>, the minor-series codename
 }
@@ -15696,7 +15695,7 @@ _recorder.Start(path, session);       // header first, then Sample() rows as bef
 The line that lands:
 
 ```json
-{"session":{"v":1,"engine":"17.25.0+3f2a1c9","app":{"name":"Ruinborne","version":"0.7.3","build":"Sundered Ground"},"gpu":{"backend":"Direct3D11","backendSource":"FallbackAfterFailure","requestedBackend":"Vulkan","requestedOverride":"vulkan","adapter":"NVIDIA GeForce RTX 4070","injectedModules":["RTSSHooks64.dll"],"threading":{"driverCommandLists":false,"driverConcurrentCreates":true}},"env":{"KE_GRAPHICS_BACKEND":"vulkan"},"game":{"worldSeed":"8812345","zone":"Ashfall"}}}
+{"session":{"v":1,"engine":"17.25.0+3f2a1c9","app":{"name":"ConsumerGame","version":"0.7.3","build":"Sundered Ground"},"gpu":{"backend":"Direct3D11","backendSource":"FallbackAfterFailure","requestedBackend":"Vulkan","requestedOverride":"vulkan","adapter":"NVIDIA GeForce RTX 4070","injectedModules":["RTSSHooks64.dll"],"threading":{"driverCommandLists":false,"driverConcurrentCreates":true}},"env":{"KE_GRAPHICS_BACKEND":"vulkan"},"game":{"worldSeed":"8812345","zone":"Ashfall"}}}
 ```
 
 **Telling the header from a sample row is one key test.** The header has a `session` envelope and no `t`. Every
@@ -20711,7 +20710,7 @@ pre-migration save, so it should never look like one. `StampCurrent` is what mak
 `KhaozEngine.Persistence.BatchedWriter<T>` is a bounded async batch-write queue for server-side
 telemetry: chat transcripts, operational samples, non-authoritative diagnostics, and similar record streams
 where losing the odd row under load is acceptable but blocking the sim tick on IO is not. Promoted
-from Ruinborne, which had run it in production behind three writers since its 0.9.x line.
+from the reference consumer, which had run it in production behind three writers since its 0.9.x line.
 
 ```csharp
 using KhaozEngine.Persistence;
@@ -22965,7 +22964,7 @@ var client = new WorldClient(transport, groundHeight, MoveTuning.Default,
     token: System.Text.Encoding.UTF8.GetBytes(accountId));   // dev: raw id; prod: SignedToken.Mint(...) bytes
 ```
 
-**Azure SQL (Ruinborne).** For production, swap the backend - same `IWorldStore`, so `WorldPersistence` is
+**Azure SQL (the reference consumer).** For production, swap the backend - same `IWorldStore`, so `WorldPersistence` is
 unchanged:
 
 ```csharp
@@ -23040,7 +23039,7 @@ Both live in the one `player:{persistenceKey}` record, so position and the game 
 to *either* re-saves. Because the record is player-keyed, the blob is **unaffected by cell handoff** (unlike
 registered components, which migrate cell-to-cell with the entity).
 
-**Load-on-join guards the SESSION against a clobbering save.** On a genuinely-async store (Azure SQL / Ruinborne),
+**Load-on-join guards the SESSION against a clobbering save.** On a genuinely-async store (Azure SQL / the reference consumer),
 a load-on-join runs in the background while the tick loop keeps going. Until the loaded record is applied on the
 server thread, `WorldPersistence` guards that account: the periodic dirty pass and save-on-leave both skip it, so a
 save firing mid-load can't overwrite the stored record (position **and** the game blob) with the default-spawn state

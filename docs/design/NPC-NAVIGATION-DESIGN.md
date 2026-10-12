@@ -2,14 +2,14 @@
 
 Design approved 2026-07-16. Roadmap near-term item 1: engine-owned pathfinding that respects terrain
 walkability plus prop and static collision, so game NPC brains consume a path instead of hardcoded
-pursuit. First consumer: Ruinborne wolves (playtest finding 2026-07-14: wolves pinned behind rocks).
+pursuit. First consumer: the reference consumer wolves (playtest finding 2026-07-14: wolves pinned behind rocks).
 
 ## Problem
 
 NPC brains today compute a fresh straight-line direction to their target every tick and feed it to
 `CharacterMovement.StepTowards`. The swept collide-and-slide only redirects along the local contact
 tangent for that one tick, so an NPC presses into a prop's flank forever when the target is on the far
-side. There is no waypoint, path, or detour concept anywhere in the engine or any consumer. Ruinborne's
+side. There is no waypoint, path, or detour concept anywhere in the engine or any consumer. The reference consumer's
 `NpcCollisionTests` prove the wolf never clips the rock, and nothing makes it go around.
 
 There is also no discretized walkability data for the overworld. Terrain is an analytic continuous
@@ -31,7 +31,7 @@ walkable tile raster with `DungeonCellKind.IsWalkable`.
    shoves. Dynamic avoidance is a later layer composing at the follower's output, and the seam for it
    is the `worldDir` output stage, deliberately left clean.
 4. **Immutable bake per world or instance at load.** Matches the existing whole-zone
-   `RuinbornePhysics.Populate` lifecycle. Rasterization is cell-local, so a future `RebakeRegion`
+   `ConsumerPhysics.Populate` lifecycle. Rasterization is cell-local, so a future `RebakeRegion`
    needs no structural change. No current consumer mutates the live world.
 5. **Grid A* behind a planner seam, not a navmesh.** The recorded roadmap question, decided by
    weighted trade-off:
@@ -85,7 +85,7 @@ collider store zero and read as blocked.
 Grid metrics: `CellSize` (default 0.5 m), world-space origin, width and height in cells, and for
 multi-layer spaces a Y height band per layer so the agent's floor resolves from its Y position.
 
-Sizing at real content: Ruinborne's whole zone (260x260 m) at 0.5 m cells is 520x520, about 270 KB.
+Sizing at real content: the reference consumer's whole zone (260x260 m) at 0.5 m cells is 520x520, about 270 KB.
 A 1 km squared world is about 4 MB. Per-shard-cell grids (60 u cells, 120x120) are about 14 KB each.
 
 ## Baking
@@ -177,13 +177,13 @@ All headless xUnit in `KhaozEngine.Tests`:
 - **Acceptance, consumer-shaped:** an integration test wiring `PathFollower` output into real
   `CharacterMovement.StepTowards` against a physics world containing a rock collider between agent and
   goal, asserting the agent's position arrives behind the rock within a bounded tick budget (the
-  plan fixes the number). Mirrors Ruinborne's
+  plan fixes the number). Mirrors the reference consumer's
   `NpcCollisionTests` scene and reads the consumer-visible value through the real wiring.
 
-## Ruinborne adoption contract (game-side, separate work)
+## The reference consumer adoption contract (game-side, separate work)
 
-After the engine release ships: Ruinborne bumps its pin, bakes a `NavSpace` at server boot next to
-`RuinbornePhysics.Populate` (same lifecycle, whole zone), `NpcStepContext` carries the `NavSpace` and
+After the engine release ships: the reference consumer bumps its pin, bakes a `NavSpace` at server boot next to
+`ConsumerPhysics.Populate` (same lifecycle, whole zone), `NpcStepContext` carries the `NavSpace` and
 planner, and `NpcChaseBrain`'s Approach state feeds its goal point through a per-wolf `PathFollower`
 instead of computing `worldDir` directly. Hold and Retreat can stay straight-line initially. Returning
 should adopt pathing in the same change (a leashing wolf gets stuck on props exactly like a chasing

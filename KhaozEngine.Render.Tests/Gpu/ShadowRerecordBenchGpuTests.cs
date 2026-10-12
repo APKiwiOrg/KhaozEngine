@@ -20,7 +20,7 @@ namespace KhaozEngine.Tests.Gpu
     /// the disc clip rejects), chunk-major over a 500 m disc, four cascades at 2048, one skinned caster. The regimes
     /// are the ones the trace's diagnostics named: a stationary scene whose only dirty reason is that a skinned
     /// caster exists, the same scene with the skinned caster gone and the sun frozen (the cheap frame, the pass
-    /// skips), the same scene under Ruinborne's real daylight rate, and the same scene under a sun delta a third of
+    /// skips), the same scene under the reference consumer's real daylight rate, and the same scene under a sun delta a third of
     /// that, which is far below anything a viewer could see.
     /// </para>
     /// <para>
@@ -80,7 +80,7 @@ namespace KhaozEngine.Tests.Gpu
         // must stay correct even when that compaction makes the recorded pass cheaper than the original trace.
         const int CasterGroup = 4, NonCasterGroup = 8;
         const float SunElevationDegrees = 35f;
-        // Ruinborne's real daylight rate: a 30 minute day is 0.2 deg/s, so 0.00333 deg per frame at 60 fps.
+        // The reference consumer's real daylight rate: a 30 minute day is 0.2 deg/s, so 0.00333 deg per frame at 60 fps.
         const float DaylightDegreesPerFrame = 0.2f / 60f;
         // A thousandth of a degree per frame: three times slower than daylight and still far below any visual
         // epsilon. How far a sun step moves a shadow depends on the sun's ELEVATION as well as on the rotation: the
@@ -252,7 +252,7 @@ namespace KhaozEngine.Tests.Gpu
         /// window is shorter than the threshold, so every frame in it reads as held), so this sweeps ONE continuous
         /// run per rate on a settled scene and reads the cadence straight off it.
         /// <para>
-        /// It also answers the question the design left open: whether Ruinborne's real daylight rate lands above or
+        /// It also answers the question the design left open: whether the reference consumer's real daylight rate lands above or
         /// below the threshold. The implied threshold printed here is <c>cadence * rate</c>, and comparing it against
         /// the rate is the whole answer. No milliseconds are taken, so this does not need the AllocSensitive
         /// isolation the table above does.
@@ -564,7 +564,7 @@ namespace KhaozEngine.Tests.Gpu
             _out.WriteLine($"scene: {placements.Length} instances ({casters} shadow casters) over a {2 * DiscRadius} m disc, " +
                            $"{Cascades} cascades at {Resolution}, sun {SunElevationDegrees} deg, GPU skinning on, " +
                            $"{Rounds} x {BlockFrames} interleaved frames per configuration, {(IsDebug ? "DEBUG" : "RELEASE")} build");
-            _out.WriteLine($"daylight sun = {DaylightDegreesPerFrame:0.#####} deg/frame (Ruinborne's 30 minute day at 60 fps), " +
+            _out.WriteLine($"daylight sun = {DaylightDegreesPerFrame:0.#####} deg/frame (the reference consumer's 30 minute day at 60 fps), " +
                            $"sub-epsilon sun = {SubEpsilonDegreesPerFrame:0.#####} deg/frame");
             _out.WriteLine("");
             _out.WriteLine("spans and draws are means over the regime's rendered frames, so us/span and us/draw " +

@@ -7,7 +7,7 @@ This is the **why**. What shipped and how to use it live in `CHANGELOG.md` 14.24
 
 ## The problem
 
-14.22.0 fixed the reported checkerboard repeat. The user played it in Ruinborne and the verdict was that the
+14.22.0 fixed the reported checkerboard repeat. The user played it in the reference consumer and the verdict was that the
 water "still looks very basic and tiled - a bit better". Three specific defects, read off the screenshot and
 confirmed in the code:
 
@@ -79,7 +79,7 @@ replace this: the generator and the evaluator are already separate functions (`B
 
 ### The grid: fixed budget, camera-focused, not adaptive
 
-The plane is sized by the consumer, up to 600-unit half-extents (Ruinborne's ocean). Options weighed:
+The plane is sized by the consumer, up to 600-unit half-extents (the reference consumer's ocean). Options weighed:
 
 | Option | Why not / why |
 | --- | --- |

@@ -27,7 +27,7 @@ Entrances/steps/furniture stay hand-authored: they are capsule-rule geometry, no
           blender -b --python fit_proxy.py -- merge <building.glb> <heightMeters> <placementScale> \
               <hand_spec.json> <draft.json> <out_spec.json>
 
-Hard-won rules this tool encodes (learned live on the Ruinborne town set - keep them true):
+Hard-won rules this tool encodes (learned live on the reference consumer town set - keep them true):
   - ROOFS ARE SLABS whose underside follows the fitted plane; a wedge prism's flat bottom hangs below
     porch/awning roofs and pins capsules (the anvil bug class).
   - Slab slope-axis extents come from where the FITTED PLANE meets the cluster's eave/ridge heights,
@@ -82,7 +82,7 @@ from mathutils import Vector
 
 # ---- capsule (world metres, engine MoveTuning defaults) ----
 CAPSULE_HEIGHT = 1.8
-JUMP_APEX_FEET = 1.92          # feet rise of a full jump (Ruinborne tuning: default * sqrt(1.5))
+JUMP_APEX_FEET = 1.92          # feet rise of a full jump (the reference consumer tuning: default * sqrt(1.5))
 HEADROOM = CAPSULE_HEIGHT + 0.15   # min clear space above a standable top
 MAX_SLOPE_DEG = 40.0           # engine walkable-slope gate
 FLAT_DEG = 10.0                # a roof plane flatter than this becomes a slab box

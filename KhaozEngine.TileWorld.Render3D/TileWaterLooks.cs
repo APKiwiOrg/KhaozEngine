@@ -10,7 +10,7 @@ public static class TileWaterLooks
 {
     /// <summary>A calm inland river or stream: off the shared FFT ocean, flat surface, glassy normals, no surf,
     /// foam only in the shoreline band, silty colours and a short depth blend so a 60 to 80 cm bed still darkens.
-    /// <para>Modelled on Ruinborne's inland lake look, which is the engine's reference calm-water body. FOUR
+    /// <para>Modelled on the reference consumer's inland lake look, which is the engine's reference calm-water body. FOUR
     /// fields are that look unchanged, because they say "not a sea" rather than "not big":
     /// <see cref="WaterLook.WaveSource"/> procedural (which also drops shoaling and breaking surf, they ride the
     /// same gate), <see cref="WaterLook.SwellAmplitude"/> zero (a swell wavelength meant for a sea is

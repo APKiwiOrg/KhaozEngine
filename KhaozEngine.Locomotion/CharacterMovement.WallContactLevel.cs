@@ -78,7 +78,7 @@ public static partial class CharacterMovement
     // the WALKER's own. So what survives is exactly the cosine of the angle between those two outwards, and this
     // constant is that cosine: 0.988 is 8.9 degrees. Which makes it a statement about terrain rather than about
     // floats - one tick's step subtends L/R radians of a bend of radius R in plan, so the rule corrects bends down
-    // to R = L / 0.1552 = 6.4 L. At Ruinborne's 30 Hz that is a 1.3 m bend at a walk and a 2.6 m bend at a run,
+    // to R = L / 0.1552 = 6.4 L. At the reference consumer's 30 Hz that is a 1.3 m bend at a walk and a 2.6 m bend at a run,
     // and at the 15 Hz run the fixtures sweep it is a 5.2 m bend. Tighter than that the walker keeps exactly the
     // behaviour it had before this rule existed, which is the #498 ladder shortening its step.
     //

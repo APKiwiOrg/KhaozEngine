@@ -30,7 +30,7 @@ public class StairGlideReconcileParityTests
 {
     const float Riser = 0.30f, Tread = 0.40f;   // grade 0.75, the consumer TestStaircase scale
     const int Risers = 33;
-    const float Walk = 3f, Run = 6f;            // Ruinborne consumer tuning
+    const float Walk = 3f, Run = 6f;            // consumer tuning
     const float Dt = 1f / 30f;
     const float Quantum = MovementState.ClimbRateQuantum;   // 0.05 m/s wire resolution
 

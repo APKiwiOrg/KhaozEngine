@@ -7,7 +7,7 @@ using KhaozEngine.Render3D;
 namespace KhaozEngine.Tests.Gpu
 {
     /// <summary>
-    /// THE ONE STREAMED-WORLD SCENE the measurement rows share, built to the shape a live Ruinborne client
+    /// THE ONE STREAMED-WORLD SCENE the measurement rows share, built to the shape a live consumer client
     /// reports rather than to a shape that was convenient to write. It loads the meshes and issues the draws;
     /// it owns no device, no framebuffer and no command list, so a caller measures it through whatever
     /// instrument that caller needs.
@@ -44,7 +44,7 @@ namespace KhaozEngine.Tests.Gpu
         /// <summary>Every rigid instance the full scene queues, chunks and clusters and props together.</summary>
         internal const int RigidInstances = ChunkMeshes + HlodMeshes + PropInstances;
 
-        // Ruinborne's player mesh is 13,637 vertices (player_human_male.glb). BuildTube's vertex count is
+        // The reference consumer's player mesh is 13,637 vertices (player_human_male.glb). BuildTube's vertex count is
         // (rings + 1) * radial, so 340 x 40 lands at 13,640: the same order, and exact enough that a per-character
         // cost measured through it is the real one.
         internal const int CharacterRings = 340, CharacterRadial = 40, CharacterBones = 48;

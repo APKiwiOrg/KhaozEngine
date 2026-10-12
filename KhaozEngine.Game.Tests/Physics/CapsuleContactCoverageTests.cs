@@ -15,6 +15,31 @@ public class CapsuleContactCoverageTests
     static readonly BoxShape Wall = new(new Vector3(0.1f, 2f, 4f));
 
     [Fact]
+    public void RadiusOneCapsuleInEmptySpaceHasAnExactEmptyCertificate()
+    {
+        using var world = new BepuPhysicsWorld(Vector3.Zero);
+        Captured result = Query(world, new CapsuleShape(1f, 2f), Pose.Identity, capacity: 0);
+        Complete(result);
+        Assert.Equal(0, result.Written);
+        Assert.Equal(0, result.RequiredCapacity);
+        Assert.Equal(0f, result.Error);
+        Assert.True(result.DestinationUntouched);
+    }
+
+    [Fact]
+    public void RadiusOneCapsuleWithACandidateStillExceedsTheExistingErrorBudget()
+    {
+        using var world = new BepuPhysicsWorld(Vector3.Zero);
+        world.AddStatic(Wall, Pose.Identity);
+        Captured result = Query(world, new CapsuleShape(1f, 2f), Pose.Identity);
+        Assert.False(result.Complete);
+        Assert.Equal(0, result.Written);
+        Assert.Equal(0, result.RequiredCapacity);
+        Assert.Equal(float.PositiveInfinity, result.Error);
+        Assert.True(result.DestinationUntouched);
+    }
+
+    [Fact]
     public void ADeepBedContactCannotHideAShallowerSideWall()
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);

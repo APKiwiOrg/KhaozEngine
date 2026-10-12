@@ -72,8 +72,12 @@ public sealed partial class BepuPhysicsWorld : IPhysicsCapsuleContacts, IPhysics
         var overlaps = new ContactCandidates(_contactCandidates, filter.Mobility, exclusions);
         _sim.BroadPhase.GetOverlaps(min, max, ref overlaps);
         if (overlaps.Overflow) return Uncertified();
-
         float scale = MathF.Max(1f, MathF.Max(MaxAbs(pose.Position), MathF.Max(MaxAbs(min), MaxAbs(max))));
+        // The bounded selection still needs representable coordinates. An empty selection never runs
+        // capsule/hull face selection and therefore carries no narrow-phase error allowance.
+        if (_contactCandidates.Count == 0)
+            return 8f * (MathF.BitIncrement(scale) - scale) <= MaximumContactErrorMetres
+                ? new CapsuleContactResult(true, 0, 0, 0f) : Uncertified();
         foreach (CollidableReference candidate in _contactCandidates)
         {
             bool dynamic = candidate.Mobility != CollidableMobility.Static;

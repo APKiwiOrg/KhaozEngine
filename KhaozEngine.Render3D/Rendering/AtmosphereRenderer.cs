@@ -49,6 +49,7 @@ internal sealed class AtmosphereRenderer : IDisposable
     readonly IGpuResourceSet _transmittanceSet;
     IGpuFramebuffer? _transmittanceFramebuffer, _multiFramebuffer;
     IGpuResourceSet? _multiSet, _skySet;
+    bool _uniformsEnabled;
 
     internal AtmosphereBindings Bindings { get; }
     internal IGpuTexture? TransmittanceTexture { get; private set; }
@@ -112,8 +113,12 @@ internal sealed class AtmosphereRenderer : IDisposable
     {
         if (!post.Atmosphere.Enabled)
         {
-            AtmosphereUbo disabled = default;
-            cl.UpdateBuffer(Bindings.Uniforms, 0, in disabled);
+            if (_uniformsEnabled)
+            {
+                AtmosphereUbo disabled = default;
+                cl.UpdateBuffer(Bindings.Uniforms, 0, in disabled);
+                _uniformsEnabled = false;
+            }
             return;
         }
         var model = post.ResolveAtmosphereModel();
@@ -121,6 +126,7 @@ internal sealed class AtmosphereRenderer : IDisposable
         var lighting = model.EvaluateLighting(post.Atmosphere.HeightKm(cameraRelative.Y + renderOrigin.Y), frame);
         var ubo = PackUbo(post.Atmosphere, frame, lighting, cameraRelative, renderOrigin, view, projection, width, height, post.Hdr);
         cl.UpdateBuffer(Bindings.Uniforms, 0, in ubo);
+        _uniformsEnabled = true;
         EnsureStaticTargets();
         var decision = _policy.Decide(post.Atmosphere);
         if (decision.RebuildStatic)

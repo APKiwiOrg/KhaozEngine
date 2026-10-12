@@ -328,6 +328,33 @@ public sealed class AtmosphereRendererTests
         _ => throw new ArgumentOutOfRangeException(nameof(count)),
     };
 
+    [Fact]
+    public void DisabledFrames_AfterEnableUploadOnlyOnTheDisableTransition()
+    {
+        using var device = new FakeGpuDevice();
+        using var renderer = new AtmosphereRenderer(device);
+        using var sink = device.Factory.CreateCommandList();
+        var commands = new CommandTallyGpuCommandList(sink);
+        var post = new PixelPostProcessSettings();
+        var projection = Matrix4x4.CreatePerspectiveFieldOfView(1f, 1f, .1f, 100f);
+
+        post.Atmosphere.Enabled = true;
+        renderer.Record(commands, post, Vector3.Zero, Vector3.Zero, Matrix4x4.Identity, projection, 64, 64);
+        Assert.Equal(1, commands.Tally[GpuCommandKind.UpdateBuffer]);
+        Assert.Equal(3, commands.Tally[GpuCommandKind.Draw]);
+
+        post.Atmosphere.Enabled = false;
+        commands.Clear();
+        renderer.Record(commands, post, Vector3.Zero, Vector3.Zero, Matrix4x4.Identity, projection, 64, 64);
+        Assert.Equal(1, commands.Tally[GpuCommandKind.UpdateBuffer]);
+        Assert.All(Enum.GetValues<GpuCommandKind>().Where(kind => kind != GpuCommandKind.UpdateBuffer),
+            kind => Assert.Equal(0, commands.Tally[kind]));
+
+        commands.Clear();
+        renderer.Record(commands, post, Vector3.Zero, Vector3.Zero, Matrix4x4.Identity, projection, 64, 64);
+        Assert.All(Enum.GetValues<GpuCommandKind>(), kind => Assert.Equal(0, commands.Tally[kind]));
+    }
+
     [GpuFact]
     public void Constructor_CreatesAllThreeProducerPipelinesOnHeadlessMetal()
     {

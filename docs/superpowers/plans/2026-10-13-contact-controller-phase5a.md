@@ -31,6 +31,35 @@
 
 ---
 
+## Controller rulings on the plan notes
+
+These rulings are binding and override any conflicting text below. Each answers the plan note of the same number.
+
+- **C1 (N1).** Accepted, with one change. `IPhysicsStaticGeometrySource.StaticGeometryGeneration` exposes the counter
+  that already exists for the support gates (`_staticGeometryVersion`, `BepuPhysicsWorld.SupportFootprint.cs:11-16`,
+  ruling RX). Do not add a second counter. A registration stays valid while that version is unchanged, across steps
+  and rebases.
+- **C2 (N2).** Accepted. Level's horizontal extent is unbounded in the field and never unioned into the served domain.
+  The served domain's horizontal extent comes from the installer's finite declaration, with Level's finite vertical
+  interval included.
+- **C3 (N3).** Accepted. The position-only `CharacterMovement.Step(Vector3, ...)` refuses a contact tuning with a
+  message naming the stateful overload. Legacy arithmetic is unchanged.
+- **C4 (N4).** Accepted. `IMovementWaterField.TraceWater` takes the lease identity explicitly.
+- **C5 (N5).** Accepted. `DirectMoveToRange` keeps suspending swimmers. Its A2 water crossing runs under WadeOnly.
+- **C6 (N6).** Accepted. Resolver-1 contexts record a legacy-only marker at creation, and `GroundMoveContext` refuses a
+  contact tuning on first use, naming G1b.
+- **C7 (N7).** Changed. A declared extent containing non-resident holes is accepted. Analytic ground at an axis inside
+  a hole answers Unresolved at query time, so only queries that need missing data refuse. Physics and water answer as
+  usual. Add rows: a body walking towards a hole edge holds when its footprint first needs the hole's analytic data,
+  and a body inside a resident island is unaffected. Captured snapshots and provenance stay as planned.
+- **C8 (N8).** Changed. `OrdinaryMovementEnvironment`, its pin, `OrdinaryServedDomain`, `OrdinaryMovementBoundary` and
+  `EffectiveMovementBinding` live in `KhaozEngine.Locomotion`, beside the explicit kernel, because their signatures use
+  only Locomotion and Physics types. NetWorld and Game.Render3D gain no project references. If a test project needs
+  Locomotion internals, add the matching `InternalsVisibleTo` (standing ruling RK). `WorldServer` and the other heads
+  that now own an engine-created view gain idempotent `Dispose` as planned.
+
+---
+
 ## Source map and ownership
 
 Line numbers below refer to worktree baseline `da4cd0167d4c7285bd97a08320d5b1e3257f6a17` on `feature/contact-controller-phase5`. Later tasks find the same symbols if earlier edits move their lines. Run `pwd`, `git branch --show-current`, `git status --short` before each task. Work only in `/Users/antonio/KhaozEngine/.worktrees/contact-controller-phase5`, preserve unrelated edits, stage explicit paths and stop at each verified commit. Integration, push and release belong to the controller.
@@ -298,7 +327,7 @@ Commit subject `refactor(locomotion): compose contact placement and foot geometr
 - Create in `KhaozEngine.Locomotion`: `MovementWaterExtent.cs`, `IMovementWaterField.cs`, `MovementWaterField.cs`, `LevelMovementWaterField.cs`, `OrdinaryMovementExtent.cs`, `OrdinaryMovementRegistration.cs`, `OrdinaryMovementRegistration.Builder.cs`.
 - Create in `KhaozEngine.Physics`: `IPhysicsStaticGeometrySource.cs` (N1's generation seam).
 - Modify: `KhaozEngine.Physics.Bepu/BepuPhysicsWorld.cs:125-171`, `BepuPhysicsWorld.QueryView.cs:25-38`. Create `BepuPhysicsWorld.StaticGeometry.cs` for the separate counter and private `QueryOperation EnterStaticMutation()` helper. AddStatic/RemoveStatic replace their EnterMutation calls with this helper without growing the existing large file. QueryView forwards the new property in its existing file.
-- Create in `KhaozEngine.Movement`: `OrdinaryMovementEnvironment.cs`, `OrdinaryMovementEnvironment.Pin.cs`, `OrdinaryMovementEnvironment.Coordinates.cs`, `OrdinaryServedDomain.cs`, `EffectiveMovementBinding.cs`, `EffectiveMovementBinding.Execution.cs`, `OrdinaryMovementBoundary.cs`.
+- Create in `KhaozEngine.Locomotion` (ruling C8): `OrdinaryMovementEnvironment.cs`, `OrdinaryMovementEnvironment.Pin.cs`, `OrdinaryMovementEnvironment.Coordinates.cs`, `OrdinaryServedDomain.cs`, `EffectiveMovementBinding.cs`, `EffectiveMovementBinding.Execution.cs`, `OrdinaryMovementBoundary.cs`.
 - Test: `KhaozEngine.Movement.Tests/OrdinaryMovementEnvironmentTests.cs`, `OrdinaryMovementRegistrationTests.cs`, `OrdinaryAnalyticGroundTests.cs`, `OrdinaryServedDomainTests.cs`, `OrdinaryLevelWaterTests.cs`, `Fixtures/OrdinaryContactScene.cs`.
 - Test: `KhaozEngine.Game.Tests/Physics/StaticGeometryGenerationTests.cs` for the seam's Bepu lifecycle.
 
@@ -776,7 +805,7 @@ Commit subject `feat(tileworld): certify ordinary water and support provenance`.
 - Modify: `KhaozEngine.NetWorld/PlayerMoveSimulator.cs:23-62,75-86,142-155`, `PlayerMoveSimulator.Explicit.cs:12-75,93-107`, `PlayerMovementSystem.cs:54-76,109-114,149-188`, `PlayerMovementSystem.Explicit.cs:15-29`.
 - Modify: `KhaozEngine.NetWorld/WorldServer.cs:157-165,208-253,540-548`, `WorldServer.Placement.cs:28-69`, `WorldServer.Sessions.cs:27-53`, `WorldServer.ResumeSpawn.cs:72-98`.
 - Modify: `KhaozEngine.NetWorld/WorldClient.cs:85-140,412-434`, `WorldClient.ExplicitMovement.cs:13-34`, `ShardedWorldServer.cs:80-136,162`, `ShardedWorldServer.Frame.cs:100-162`, `ShardedWorldServer.Placement.cs:24-73`, `ExplicitCellAdmission.cs:14-80`.
-- Modify: `KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj:3-18` to add Movement and update Description, `README.md` NetWorld dependency row, `KhaozEngine.NetWorld/README.md` configuration/read examples.
+- Modify: `KhaozEngine.NetWorld/README.md` configuration/read examples. No project reference changes (ruling C8).
 - Test: `KhaozEngine.Server.Tests/NetWorld/OrdinaryContactHeadTests.cs`, `OrdinaryContactConfigurationTests.cs`, `OrdinaryContactReplayTests.cs`, `OrdinaryContactLifecycleTests.cs`, `Fixtures/OrdinaryPlayerWorld.cs`.
 
 **Interfaces:**
@@ -924,7 +953,7 @@ Commit subject `feat(networld): bind ordinary contact movement across lifecycle 
 **Files:**
 - Create: `KhaozEngine.Movement/GroundMoveContext.Contact.cs`, `KhaozEngine.Game.Render3D/CharacterController3D.Contact.cs`.
 - Modify: `KhaozEngine.Movement/GroundMoveContext.cs:11-41,58-97`, `GroundMoveContext.Coordinates.cs:13-53`, `SwimPace.cs:14-25`, `MoveToRange.cs:131-139`, `DirectMoveToRange.cs:114-120` for policy-aware point safety, `AssemblyInfo.cs:3-4` for the MapDoc.Physics friend.
-- Modify: `KhaozEngine.Game.Render3D/CharacterController3D.cs:19-21,67-147,159-199`, `KhaozEngine.Game.Render3D/KhaozEngine.Game.Render3D.csproj:3-16` for Movement reference/description, root `README.md` dependency row.
+- Modify: `KhaozEngine.Game.Render3D/CharacterController3D.cs:19-21,67-147,159-199`, root `README.md` usage text where it describes the controller. No project reference changes (ruling C8).
 - Modify: `KhaozEngine.MapDoc.Physics/MapPhysicsRegistration.cs:112-132`. Test: `KhaozEngine.MapDoc.Physics.Tests/MapPhysicsRegistrationTests.cs` resolver-1 contact refusal rows.
 - Test: `KhaozEngine.Movement.Tests/OrdinaryContactLocalHeadTests.cs`, `KhaozEngine.Game.Tests/Game/CharacterController3DContactTests.cs`.
 

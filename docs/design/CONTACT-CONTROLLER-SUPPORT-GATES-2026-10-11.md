@@ -1,20 +1,25 @@
 # Contact controller support gates: hidden support and cost
 
-Draft for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438),
+Design for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438),
 [#1347](https://github.com/APKiwiOrg/KhaozEngine/issues/1347) and
 [#1334](https://github.com/APKiwiOrg/KhaozEngine/issues/1334).
 Source baseline: `06b734c5722bc2cc95cea459255d6ec93e9236c7`, phases 1 through 4b.
-Status: approved after three independent review rounds, under the owner's standing instruction to carry #438 to the release gate.
+Status: Tasks 1 to 10 implemented, with Task 11 final verification recorded in
+[the gate record](../verification/2026-10-11-support-gates-final.json), staged for 20.33.0.
+Geometry and cost have separate dispositions. #1347 requires every shape completeness row and an
+orchestrator-pushed verified commit. #1334 remains open with 96 harness-corrected time rejections,
+awaiting the owner-approved normalized hosted repeat proof at the phase 6 stop.
 Every choice is a recorded ruling for the owner's review. Rulings SG-19 to SG-24 settle the draft's open
-questions, the orchestrator review and the independent spec review. No build, test, timing run or stress run was performed for this spec.
+questions, the orchestrator review and the independent spec review. The original specification task
+ran no build, test, timing or stress proof. Implementation and final verification have separate records.
 
 ## Contract and remedy
 
 **Ruling SG-1. Keep the body, planar support rule and all nine invariants, with named exceptions.**
 This work repairs candidate completeness and pays for certification. It changes which ground the
 character may stand on only through the result classes SG-23 lists, chief among them SG-19's curved
-witness, which is the primary contract here, with a per-leaf virtual probe contact as the reviewed
-fallback. Everything else below is unchanged.
+witness, which is the primary contract here. A per-leaf virtual probe fallback needs a new owner
+ruling and is not implemented. Everything else below is unchanged.
 The canonical contracts are the [program](CONTACT-CLASSIFICATION-CONTROLLER-2026-10-08.md),
 [phase 2b](CONTACT-CONTROLLER-PHASE-2B-SUPPORT-NEIGHBORHOOD-2026-10-10.md),
 [phase 4a](CONTACT-CONTROLLER-PHASE-4A-GROUND-SIGNALS-2026-10-11.md) and
@@ -165,6 +170,17 @@ line. On these two the height falls and the slope rises monotonically with that 
 the curved proof task, or a certified bounded optimization, before the backend may publish them. A pose
 phase 2b admits today may not regress to a refusal.
 
+Rulings RL and RM replace the exact algebraic solver requirement with certified enclosures and split
+implementation into closed-form strata and tilted strata. Closed forms use outward interval arithmetic
+and source-polynomial sign fallback of degree at most eight, including sign-guarded squared comparisons.
+Ruling RO supersedes splitting to binary64 exhaustion. A tilted cell terminates only when it is
+proved unable to contain a maximum, proved monotone with its boundary covered, or certified to contain
+every source's stationary region. The retained region publishes height, point and normal enclosures.
+Existence, feasibility and coverage are proved, live/terminal cells are statically bounded, and warm
+allocation is zero. No epsilon, sampled maximum or iteration escape is permitted. A proposal-guard
+sign still undecided after its polynomial fallback refuses. Inclusive band overlap, the independent
+upward bound and highest-midpoint selection consume those enclosures.
+
 The per-point reading of the rule, the supremum over upper-surface points `x` in `D` of
 `min(T_x(a), h(x))`, equals `min(p, m)` for a plane. The footprint witness attains it on a horizontal
 cylinder side (a concave height field varying in one direction, where the tangent height at the axis
@@ -178,8 +194,8 @@ This changes released results, listed in SG-23. The review's sphere flank row
 foot radius 0.2) becomes Walkable at -0.2: `x_n` is X 0.15, height -0.05, normal Y 0.8, tangent at the
 axis -0.2. Today's probe contact gives Steep near -0.285. The row is renamed and its expectation derived
 from that geometry. Cost if wrong: the owner meant curved props to keep round-bottom witnesses. The
-fallback is a per-leaf virtual probe contact, which keeps today's curved results and still fixes
-occlusion, and it touches only the curved witness kernel.
+alternative is a per-leaf virtual probe contact, which would keep the released curved results and
+fix occlusion. It requires a new owner ruling before implementation.
 
 Reusable captured owners exist at `SupportNeighborhoodPolyhedra.cs:59`,
 `SupportNeighborhoodMesh.cs:32` and `SupportNeighborhoodCurved.cs:36`, `:115` under
@@ -189,13 +205,17 @@ behind another primitive. A passing crate row alone cannot close #1347.
 **Ruling SG-5. Add a separate optional footprint capability and keep the released neighborhood API.**
 Proposed home: `KhaozEngine.Physics/SupportFootprintQuery.cs`. Proposed capability:
 `IPhysicsSupportFootprint`, with `QuerySupportFootprint` and `AssertFootprintCurrent`.
-These are proposed names, not APIs present at the source baseline.
+These names are implemented in the staged capability, absent from the source baseline.
 
 The request carries the exact axis, radius, contribution band, cosine slope gate, unchanged contact
 band and the two proposal records. It has no gameplay body, canonical room, cache policy or tolerance knob.
 The complete result carries receiver, source, lease, origin and geometry generation, the published
 member count, join stride, and per-proposal verdict. A footprint member carries raw Static/ElementId,
 normal/error, a certified disc-height maximum and witness/error, or a certified tangent contribution.
+Ruling RN adds `UpwardLower` to every member and witness. It encloses the normal Y component
+independently of the scalar `NormalError`, retaining exact slope equality when a source or
+walkable-boundary certificate proves it. Locomotion classifies equality as walkable. The released
+`SupportElement` and neighborhood classifier are unchanged.
 Keep plane evaluation and walkable/steep selection in locomotion. The backend owns installed geometry,
 disc intersection, extrema, contacts and joins. It must not know walk/climb pacing rules.
 
@@ -244,6 +264,14 @@ the whole query. Ignore an element only with proof that it cannot contribute, ca
 establish a required proposal guard. Known non-supporting orientation is different from failed
 certification. Keep the existing documented degenerate/sliver domain exclusions. Do not generalize
 them into permission to drop an unresolved ordinary polygon. No fixed error threshold is added.
+
+Ruling RP makes the relevance proof explicit. A below-band member is omitted only when its uncapped
+contribution upper bound is below `L`, it joins no retained band-capable member under the released
+predicate, and every proposal context containing it has certified contact below `L`. Capture first
+collects band-capable members, then revisits below-band members and retains those needed by joins or
+guards. Only relevant raw members count against 256. Above-band members remain because caps can lower
+them into the band. The below-band fan stays `None`, while a fan joined to an in-band slope can still
+exceed capacity and refuse. Selection, caps, suppression and guards match the full member set.
 
 The existing atomic owner is `KhaozEngine.Physics.Bepu/SupportNeighborhoodCollector.cs:169`, `:177`,
 `:201`. The public cap is `KhaozEngine.Physics/SupportNeighborhoodQuery.cs:27`.
@@ -322,10 +350,10 @@ installation and JSON writing stay outside measured regions. Use `Stopwatch.GetT
 `GC.GetAllocatedBytesForCurrentThread` on the executing thread. Save status, height/error, achieved
 motion and all counters alongside time. A refusal or stationary fallback cannot pass a cost row.
 
-For each operation/scene/backend, record a first-use sample and warm samples. Each sample executes
-the operation once. First use excludes world/mesh construction but includes lazy query scratch. Do
-not run a timed warm-up loop, hundreds of Find calls, repeated tests or a local stress run. Cold JIT
-versus cold scratch must be labeled separately.
+For each operation/scene/backend, record one first-use sample, one unmeasured priming call and one
+warm sample (RY). Each measured sample executes the operation once. First use excludes world/mesh
+construction but includes lazy query scratch. Do not run a timed warm-up loop, hundreds of Find calls,
+repeated tests or a local stress run. Cold JIT versus cold scratch must be labeled separately.
 
 **Ruling SG-20. Time once under fixed compilation, recorded rather than asserted.**
 A single warm sample under tiered compilation measures tier 0 code, which is why the p2b harness
@@ -409,6 +437,9 @@ storage and no quadratic allocation in member count. No zero-allocation cold cla
 Provision maximum-cap scratch before a hot gameplay interval. Existing certification stack is
 bounded by 4,352 bytes, measured structurally at `GroundScenarioTests.cs:453` under
 `KhaozEngine.Game.Tests/Locomotion/Contacts/`. Record any new extremum-kernel stack separately.
+Ruling RS treats new-kernel stack as separately bounded evidence, not a pass/fail gate against the
+released 4,352-byte certification figure. The recorded managed frame chains exclude additional backend
+and runtime frames and do not claim a universal native peak. No new stack ceiling is invented.
 Cost if wrong: these per-operation limits may still exceed a real multi-actor server's aggregate budget.
 
 **Ruling SG-13. Account for the 208-byte ReadLease allocation without reactivating stale leases.**
@@ -444,9 +475,9 @@ allocate only one-use lifetime tokens whose reuse would revive a stale reference
 constant in Find, shell and sample count, are named in the artifact, and are the ceiling. Every other
 per-tick allocation is removed:
 
-- The per-call `CapsuleShape` in certified sweeps and contact certification
-  (`MovementQueryLease.Sweeps.cs:35`, `MovementQueryLease.Solids.cs:41`) and the shell's shape
-  (`ShellGeometry.cs:37`) are cached by dimensions, as `FootSupport`'s probe already is.
+- The shell and stable probes cache their shapes by exact dimensions. Continuously varying sweep/contact
+  enclosures use `CapsuleQueryDimensions` through `IPhysicsCapsuleGeometryQueries`, avoiding a new shape
+  for each represented rounding radius. Dimensions are not quantized.
 - Per-tick contexts and modes become value types or a bounded workspace owned by the controller or pin.
   Dictionaries become bounded arrays or retained workspace. Captured callbacks become value analytic facts.
 - Witness resource copies (`MovementScopeWitness.cs:46`, `:52`) are prepared once per immutable witness,
@@ -455,7 +486,17 @@ per-tick allocation is removed:
 Stale-reference rejection stays for the composed lease and the pin as well as `ReadLease`. A disposed
 public token is never pooled, and acquisition is never excluded from the measured window to reach the
 ceiling. If the named tokens cannot stay that small without an unsafe lifetime, the inventory task
-reports the bytes and the decision returns for review. Cost if wrong: the lifetime work touches phase
+reports the bytes and the decision returns for review.
+
+The measured .NET 10.0.12 arm64 inventory is 192 bytes for the movement token and release binding,
+64 bytes for the physics ReadLease and 56 bytes for the producer pin, totaling 312 bytes. Acquired dry
+ticks use 64 bytes, within the retained 208-byte allowance. Borrowed support/sample/binding windows
+allocate zero bytes. Ruling RQ keeps the ordinary suite on its default runtime with no project-wide
+tiering override. Fixture witness comparison uses prepared fields without record comparer first use.
+Checked no-GC windows reject an unavailable or interrupted region and retain a positive allocation
+control. The earlier intermittent default-tiering source-scratch allocation remains a warning for
+final verification and approved hosted characterization, never an excuse to retry an unchanged row.
+Cost if wrong: the lifetime work touches phase
 4b types for a saving the server may not need.
 
 ## Meeting the budget
@@ -612,7 +653,7 @@ No local stress, release, tag, engine pin, game edit or navigation capture is pa
 Cost if wrong: a partially proven primitive is adopted and phase 5 bakes its hidden error into navigation.
 
 **Ruling SG-23. Every released result this gate changes is named, derived and reviewable.** Applying
-the stated footprint rule completely changes six classes of released results, each pinned by oracle
+the stated footprint rule completely changes seven classes of released results, each pinned by oracle
 rows and none by a snapshot:
 
 1. Support hidden under a first hit is found (#1347, row 1).
@@ -625,16 +666,24 @@ rows and none by a snapshot:
 6. Support reach ends at the closed disc. A face that reaches only the 0.1 mm ring beyond `D`, which
    today's probe witness could still publish, is a context member (SG-3). Footprints below 0.01 m are
    rejected at configuration.
+7. Ruling RN classifies walkability from the certified per-component upward bound, independent of
+   errors in the other normal components. Equality is walkable. The 45-degree mesh ridge row derives
+   Walkable for the single build and Steep for the differently rounded split build from their installed
+   faces, while heights agree within the derived plane spread. This does not weaken partition invariance
+   for identical represented geometry.
 
 An existing row's expectation changes only by geometric derivation, recorded in its task report and
 the changelog. Phase 5 bakes navigation from the complete rule. Cost if wrong: the owner disagrees
 with one class, and that class alone is reverted with its rows.
 
 **Ruling SG-24. The hosted proof is plumbed, normalized and approved before it gates #1334.** The
-repository's stress caller (`.github/workflows/stress-test.yml`) cannot yet set
-`KHAOZ_SUPPORT_COST_ARTIFACT` or `DOTNET_TieredCompilation=0`, write one artifact per iteration or
-upload them. A bounded task adds that, and changes the pinned shared workflow in its own repository if
-it cannot forward them. Hosted runners differ from the M2 Max, so hosted acceptance is normalized by
+repository's stress caller (`.github/workflows/stress-test.yml`) now forwards support-cost mode to the
+pinned shared workflow, which sets `KHAOZ_SUPPORT_COST_ARTIFACT` and `DOTNET_TieredCompilation=0`,
+finalizes actual exits and uploads one artifact per iteration. SG-P1's one-iteration, load-zero plumbing
+run [38290006616](https://github.com/APKiwiOrg/KhaozEngine/actions/runs/38290006616) at fb8696c43
+passed and uploaded one 72,227-byte artifact. The earlier run at 43a0168ad failed on an unlinked fixture
+partial, repaired at fb8696c43. Plumbing success is not the approved repeat-time acceptance proof.
+Hosted runners differ from the M2 Max, so hosted acceptance is normalized by
 the legacy controller measured in the same invocation: `k = legacy hosted / legacy M2 Max` on the flat
 box whole tick, and every absolute SG-12 ceiling scales by `k` there. The legacy-relative row becomes
 `candidate_hosted <= legacy_hosted + max(k * 100 us, 0.25 * legacy_hosted)`, since its additive term is

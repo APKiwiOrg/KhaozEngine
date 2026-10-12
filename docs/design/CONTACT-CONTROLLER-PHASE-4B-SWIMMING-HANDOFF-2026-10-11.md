@@ -287,12 +287,13 @@ selected-view reference, geometry/environment generations, frame, epoch and orig
 Acquisition stays prepare, physics read lease, prepared pin. Disposal stays pin then physics
 (`KhaozEngine.Locomotion/MovementEnvironmentContext.cs:47`, `MovementQueryLease.cs:85`).
 
-The leased context checks selection readiness and world membership before analytic reads, FootSupport probes,
-neighborhood certification, owner lookup, shell recovery, lifting, sweeps, seats and signal look-ahead.
+The leased context checks selection readiness and world membership before analytic reads, complete footprint
+certification, owner lookup, shell recovery, lifting, sweeps, seats and signal look-ahead.
 For a support request, retain MaxRise/MaxDrop limits, the full-body support envelope and transition-origin
-inclusion (`KhaozEngine.Locomotion/MovementQueryLease.Buffers.cs:16`). Also enclose the actual axis/leg probe shapes,
-their proposal margin and support-neighborhood contact band. A legal body envelope alone does not authorize a
-probe extending outside it. The same physics lease reaches `FootSupport.Find` and its neighborhood assertions.
+inclusion (`KhaozEngine.Locomotion/MovementQueryLease.Buffers.cs:16`). Staged support gates also enclose the
+complete expanded foot column and represented axis/foot proposal paths with `SupportFootprintBounds.TryCreate`.
+A legal body envelope alone does not authorize the expanded query. An undersized scope refuses before
+backend or producer work. The same physics lease reaches `FootSupport.Find` and footprint authentication.
 
 For shell sweeps and contacts, guard the actual shell shape, represented affine path and skin/error enclosure in
 double, mirroring `MovementQueryLease.Sweeps.cs:56` and `MovementQueryLease.Solids.cs:24`. For medium queries, guard
@@ -641,9 +642,11 @@ Such ambiguous semantic registrations refuse until the producer supplies one aut
 Adoption blockers remain #1355 certified sweep shapes, #1334 support cost, #1347 hidden support and
 #1344 small bodies. W1 proves the descending bank through certified analytic ground. A tilted Bepu
 box was refused by the certified shell sweep, so this is no native tilted-bank completeness claim.
-The support cost gate #1334 and hidden-support gate #1347 remain open. Signal look-ahead increases
-scope and query cost. The latter gate still blocks navigation capture. Phase 4a's short staircase horizon,
-overhung-ramp step classifier and #1354 limits remain. This phase does not repair them or claim they disappeared.
+The support cost gate #1334 remains open with 96 harness-corrected time rejections and owner-approved
+hosted repeat proof pending. Staged complete footprint discovery repairs hidden support, with #1347
+closable only after every shape row passes and the orchestrator pushes the verified commit. Signal
+look-ahead increases scope and query cost. Phase 5 navigation capture remains separate. Phase 4a's short
+staircase horizon, overhung-ramp step classifier and #1354 limits remain. This phase does not repair them or claim they disappeared.
 
 An ownership change uses bounded substep time, as phase 3 does. Surface motion preserves its existing numerical
 recipe within each scheduled piece, but a mixed tick can differ from the old whole-tick explicit motion. Freeze

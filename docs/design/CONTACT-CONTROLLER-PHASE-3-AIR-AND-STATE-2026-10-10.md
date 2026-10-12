@@ -38,9 +38,10 @@ internal static class ContactController
 
 - The parameters mean exactly what they mean for `StepCore` (`KhaozEngine.Locomotion/CharacterMovement.cs`).
   `MoveState.Position` is the capsule centre, so the feet are `Position - CapsuleHalfHeight * UnitY`.
-- A non-null `world` must be an `IPhysicsQueryLeaseSource` and an `IPhysicsSupportNeighborhood`, else the tick
-  throws `NotSupportedException`. The tick acquires one read lease and runs every query under it, as the program
-  requires.
+- A non-null `world` must be an `IPhysicsQueryLeaseSource` and an `IPhysicsSupportFootprint`, else the tick
+  throws `NotSupportedException`. Staged support gates replace the released neighborhood requirement with
+  complete footprint discovery. The tick acquires one read lease and runs every query under it, as the
+  program requires.
 - A null `settings` means `new GroundCoreSettings()` (foot radius fraction 0.5) until phase 5 moves the fraction
   into `MoveTuning`. An explicit value is used as given, so an explicit zero foot radius is rejected rather than
   replaced.

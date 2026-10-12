@@ -80,6 +80,19 @@ either value shifts the bit-exact result legitimately.
   is valid only through that view and its original lease. The owner and its views also implement
   `IPhysicsSupportNeighborhood` for boxes, convex hulls, meshes, spheres, capsules, cylinders and compounds of
   those, under the same lease and receiver rules.
+- **Complete support footprints** - owners and restricted views implement `IPhysicsSupportFootprint`.
+  Both proposal sweeps run after authenticating the lease. Admission covers the outward expanded disc
+  column and retains full polygons for exact disc maxima and released whole-polygon joins. Sphere,
+  capsule and cylinder parts publish attained axis/footprint witnesses with independent upward bounds.
+  Closed-form and certified tilted-region enclosures cover the admitted curved poses. Ring-only members
+  supply cap/guard context. The cap counts 256 relevant raw pairs, at most 512 witness slots, and refuses
+  atomically at 257 without touching either output span. Unsupported mesh scales, uncertified shapes,
+  predicates or work domains refuse. Radius is 0.01 to 2 m and proposal probes are upright with length
+  at most 8 m. Selected exclusions and original receiver/lease currentness apply to all work.
+  Immutable installed local geometry is keyed by owner, installation identity and static-geometry version.
+  Static add/remove/replacement and changed rebase invalidate it. Simulation steps and dynamic mutations
+  do not. Results still authenticate the global lease generation. No selected-support result is cached.
+  See [complete footprint use](../docs/USING-KHAOZENGINE.md#complete-support-footprints).
 - **`Origin`/`CanRebase`/`Rebase(newOrigin)`** (floating origin) - `CanRebase` is true here. A rebase is a bulk of
   direct pose writes plus broadphase refits, NOT a remove-and-re-add: `BodyReference.Pose` and
   `StaticReference.Pose` are ref-returning in Bepu 2.4 and `UpdateBounds` refits the broadphase for the new pose

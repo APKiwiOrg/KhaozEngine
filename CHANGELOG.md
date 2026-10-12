@@ -7,6 +7,29 @@ GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
 ## 20.33.0
 
+- Physics adds the optional `IPhysicsSupportFootprint` capability, `SupportFootprintRequest`, raw members with
+  axis/footprint witness roles and `SupportFootprintBounds`. Bepu owners and selected views certify the entire
+  admitted foot column, both retained proposals and whole-polygon joins under one authenticated read lease.
+  The released `IPhysicsSupportNeighborhood` API and its equivalence fixture remain unchanged. Capacity is
+  256 relevant raw elements and at most 512 witnesses, with atomic refusal at 257 elements.
+- The #438 contact controller uses that complete footprint. Seven derived result classes change:
+  1. Walkable support hidden under a first sweep hit is found, including the crate top at 0.1 m beneath a wedge.
+  2. Lower-band rim support missed by the rounded probe is found, including an earlier water-origin bank landing.
+  3. A polygon witness attains its exact closed-disc maximum, rather than the point nearest the probe.
+  4. Sphere, capsule and cylinder parts use SG-19's attained axis and footprint witnesses. The sphere flank at
+     axis X 0.35, centre Y -0.25 and radius 0.25 is Walkable at -0.2 m.
+  5. Additional admitted polygons supply the released whole-polygon join caps, including remote meetings.
+  6. Only the closed disc supplies support. Members reaching only its 0.1 mm outer ring supply cap/guard context.
+     A foot radius below 0.01 m is rejected at configuration, including analytic-only movement.
+  7. Walkability uses the certified upward component independently of other normal errors. Equality is walkable.
+     The 45-degree mesh ridge row distinguishes differently rounded installed single and split faces.
+- Complete support preserves inclusive reach, selection ties, slope hysteresis, roof/start refusals, selected
+  exclusions and the one leased scope. Immutable local geometry is cached by static installation/version,
+  independent of simulation steps. Warm support and substeps allocate zero bytes in the recorded inventory.
+  Acquired dry ticks allocate 64 bytes. Acquired explicit ticks allocate only 312 bytes of named one-use tokens
+  on .NET 10 arm64. SG-12 retains its time limits, with 96 local time rejections and #1334 open pending an
+  owner-approved normalized hosted repeat proof. The hosted one-shot plumbing check passed. Phase 5 navigation
+  and phase 6 adoption remain separate gates.
 - Locomotion gains explicit character movement for environments that certify their own water and support:
   `ExplicitCharacterMovement` steps a body under one `MovementQueryLease`, acquired from an
   `IMovementEnvironmentProvider` together with a physics read lease, and publishes inside it. Water follows a

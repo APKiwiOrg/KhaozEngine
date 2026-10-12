@@ -86,8 +86,13 @@ explicitly, it is in no umbrella). Depends only on `System.Numerics`.
   Capacity counts at most 256 relevant raw pairs, with atomic refusal at 257 and untouched output
   spans. A below-band member can be omitted only with proof that it cannot contribute, join a
   retained band-capable member or establish a required proposal guard. `AssertFootprintCurrent`
-  checks the original receiver and interval. `SupportFootprintBounds.TryCreate` supplies the shared
-  outward scope envelope. The released neighborhood capability remains independent.
+  checks the original receiver and interval, including same-generation reacquisition. Size member storage
+  with `SupportFootprintResult.MaximumElements`, joins with `members.Length * JoinWordsFor(members.Length)`
+  and index published rows with `result.JoinWordsPerRow`. A short join span throws `ArgumentException`.
+  `SupportFootprintBounds.TryCreate` supplies the shared outward scope envelope. Radius must be at least
+  0.01 m, `ContactBand` is exactly `0.0001f` and a zero cosine slope gate returns `Unsupported`.
+  The released neighborhood capability remains independent. See
+  [complete footprint use](../docs/USING-KHAOZENGINE.md#complete-support-footprints).
 - **Static handle provenance for query views** - the factory rejects invalid, missing and stale handles at
   creation. Handles are numeric identities local to their source world, so equal values from different worlds
   are not interchangeable. Use handles returned by that source, and do not reuse removed exclusions to infer

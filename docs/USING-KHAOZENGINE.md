@@ -8762,6 +8762,7 @@ same opt-in-backend pattern the `WorldStore.*` durable backends use.
   parts carry axis and footprint roles without changing raw IDs. The raw cap is 256, with atomic
   refusal at 257. `SupportFootprintBounds.TryCreate` encloses both proposal paths and the admission
   column for pre-query scope guards. Contact-controller footprints require radius at least 0.01 m.
+  See [Complete support footprints](#complete-support-footprints) for storage, witness and lifetime use.
 - `IPhysicsWorld` static bodies + queries: `AddStatic(PhysicsShape shape, Pose pose, PhysicsMaterial? material = null) -> StaticHandle`,
   `RemoveStatic(StaticHandle handle)`, `Step(float dt)`,
   `Raycast(Vector3 origin, Vector3 direction, float maxDistance, out RayHit hit, QueryFilter filter = default) -> bool`,
@@ -9115,6 +9116,69 @@ if (world is IPhysicsCapsuleFeatures features && world is IPhysicsQueryLeaseSour
   never carry it into a later lease. A later lease of the same generation cannot revive it, and
   `AssertFeatureCurrent` throws for another receiver, another lease or an expired interval.
 - The faces describe geometry only. Whether a face is walkable support is the caller's rule.
+
+### Complete support footprints
+
+`IPhysicsSupportFootprint` is the contact controller's optional capability. Test for it separately
+from features and neighborhoods. Bepu owners and selected views provide it. A caller supplies the
+closed disc, inclusive band, cosine slope gate, represented `0.0001f` contact band and two original
+upright downward proposal paths in one `SupportFootprintRequest`. No prior sweep hit is trusted.
+The backend authenticates the exact receiver and lease before executing both proposals.
+
+For axis `a`, radius `r`, band `[L, U]` and slope cosine `c`, the admission column covers the disc
+expanded by the contact band from `L - max(r * sqrt(1 - c*c) / c, 0.001) - 0.0001` to
+`U + 0.001 + 2*r + 0.01 + 0.0001`. Outward evaluation also encloses represented proposal paths.
+Use `SupportFootprintBounds.TryCreate` to guard the required volume against an environment scope
+before backend or producer work. This envelope does not extend the accepted disc or contribution band.
+Radius below 0.01 m is invalid, including analytic-only contact movement. A zero cosine returns
+`Unsupported`. Bepu accepts radius at most 2 m and proposal length at most 8 m.
+
+```csharp
+// Provision once outside the hot path. request and lease belong to the exact selected world.
+if (world is not IPhysicsSupportFootprint footprints)
+    throw new NotSupportedException("Complete footprint certification is required.");
+var members = new SupportFootprintMember[SupportFootprintResult.MaximumElements];
+var joins = new ulong[members.Length * SupportFootprintResult.JoinWordsFor(members.Length)];
+SupportFootprintResult result = footprints.QuerySupportFootprint(lease, request, members, joins,
+    QueryFilter.StaticsOnly);
+if (result.Status == CapsuleFeatureStatus.Complete)
+{
+    footprints.AssertFootprintCurrent(result, lease);
+    for (int i = 0; i < result.Members; i++)
+    {
+        SupportFootprintMember member = members[i];
+        int row = i * result.JoinWordsPerRow;
+        // First/Second are occupied only up to WitnessCount. UpwardLower certifies slope equality.
+        // Join bit j is joins[row + j / 64] & (1UL << (j % 64)). Locomotion selects support.
+    }
+}
+```
+
+Polygon witnesses attain the maximum over the entire original closed disc. Their planes and joined
+caps remain locomotion's responsibility. A ring-only polygon publishes no support witness but still
+joins and supplies proposal guards. Curved parts retain raw static/element IDs and at most two roles,
+axis then footprint. Their attained witnesses and certified per-component `UpwardLower` preserve
+walkable equality independently of scalar normal error. Curved parts never join.
+
+The published matrix is raw-member indexed, with stride `result.JoinWordsPerRow`, regardless of buffer
+capacity. At most 256 relevant raw pairs and 512 witnesses publish. A below-band member is omitted
+only with proof it cannot contribute, join a band-capable member or supply a required proposal guard.
+At 257 relevant members `CapacityExceeded` reports diagnostic `RequiredElements`. Every refusal or
+exception leaves both spans untouched. A short join buffer throws `ArgumentException`.
+There is no partial support, extra probe or fallback to an older query.
+
+A result expires with its original interval, even if the next lease has the same generation.
+`AssertFootprintCurrent` rejects a foreign receiver, source or lease, wrong thread, disposed view,
+changed origin or generation. All support, analytic facts, owner binding and signals share the tick's
+selected lease. An undersized explicit scope refuses before any backend or producer call.
+
+The staged controller's geometric proof and per-operation cost proof have separate gates. The recorded
+arm64 inventory has zero warm support/substep bytes, 64 bytes per acquired dry tick and 312 bytes per
+acquired explicit tick (192 movement/release binding, 64 physics ReadLease, 56 producer pin).
+Continuously varying capsule enclosures use `IPhysicsCapsuleGeometryQueries` value dimensions, without
+quantization. These bytes are runtime/adapter specific, not a promise for every backend. #1334 stays
+open with 96 local time rejections pending owner-approved normalized hosted repeat proof. Phase 5
+navigation capture and phase 6 game adoption/aggregate CPU remain separate.
 
 ### Support neighborhoods
 

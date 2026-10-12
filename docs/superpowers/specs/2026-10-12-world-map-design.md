@@ -225,6 +225,6 @@ Release build, the full suite once at the round finish, format, guards and hoste
 
 ## Follow-ups
 
-- **Filed with this round:** the MapDoc adapter, linked to Grimhollow #441.
+- **Filed with this round:** the MapDoc adapter, https://github.com/APKiwiOrg/KhaozEngine/issues/1370, linked to https://github.com/APKiwiOrg/Grimhollow/issues/441.
 - **Possible later, not filed:** a minimap view, levels and caves, and a `render_map` verb in `ke-tileedit` and
   `ke-mapedit` that writes the same imagery to a PNG.

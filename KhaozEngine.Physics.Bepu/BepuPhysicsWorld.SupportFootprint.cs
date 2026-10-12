@@ -68,13 +68,21 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
             collector.Proposal(index, found, hit);
         }
         // All installed geometry is reread under the original authenticated lease and selected exclusions.
-        foreach (var (seam, installed) in collector.Candidates(_sim, _reverseHandles, exclusions))
+        var candidates = collector.Candidates(_sim, _reverseHandles, exclusions);
+        foreach (var (seam, installed) in candidates)
         {
             if (filter.Mobility == QueryMobility.Dynamics) break;
             _sim.Statics.GetDescription(installed, out var description);
             CapsuleFeatureStatus captured = collector.Collect(_sim, seam, description);
             if (captured != CapsuleFeatureStatus.Complete) return collector.Refused(captured);
         }
+        if (filter.Mobility != QueryMobility.Dynamics && collector.BeginBelowBandPass())
+            foreach (var (seam, installed) in candidates)
+            {
+                _sim.Statics.GetDescription(installed, out var description);
+                CapsuleFeatureStatus captured = collector.Collect(_sim, seam, description);
+                if (captured != CapsuleFeatureStatus.Complete) return collector.Refused(captured);
+            }
         return collector.Publish(receiver, lease, members, joins);
     }
 

@@ -145,10 +145,12 @@ public readonly struct SupportFootprintResult
 /// and selection, including unchanged inclusive reach and tie ordering.</summary>
 public interface IPhysicsSupportFootprint
 {
-    /// <summary>Publishes every admitted raw pair ordered by static then element id, with fixed witness roles and
+    /// <summary>Publishes every relevant admitted raw pair ordered by static then element id, with fixed witness roles and
     /// the join matrix, after authenticating the lease and executing both original sweeps. The join span must hold
     /// members.Length*JoinWordsFor(members.Length) words. A short join span throws ArgumentException. Capacity is
-    /// 256 raw pairs and at most 512 occupied slots. Every refusal or exception leaves both spans untouched.
+    /// 256 relevant raw pairs and at most 512 occupied slots. A proved below-band member can be omitted only when
+    /// it cannot contribute, join a band-capable member or establish a required proposal guard.
+    /// Every refusal or exception leaves both spans untouched.
     /// No prefix, pagination, extra probe or lower plausible answer is a complete result.</summary>
     SupportFootprintResult QuerySupportFootprint(IPhysicsQueryLease lease, in SupportFootprintRequest request,
         Span<SupportFootprintMember> members, Span<ulong> joins, QueryFilter filter = default);

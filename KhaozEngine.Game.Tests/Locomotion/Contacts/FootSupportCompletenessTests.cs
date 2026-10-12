@@ -11,7 +11,7 @@ namespace KhaozEngine.Tests.Locomotion.Contacts;
 public class FootSupportCompletenessTests(ITestOutputHelper output)
 {
     [Fact]
-    public void AtomicCapacityRefusalCannotDistinguishBelowBandAndInBandFans()
+    public void RelevantCapacityDistinguishesBelowBandAndInBandFans()
     {
         var query = new FootSupportQuery(Vector2.Zero, 0, 0.2f, 0.4f, 0.4f, MathF.Cos(MathF.PI / 4));
         SupportFootprintRequest request = SupportFootprintTests.Request(cosine: query.CosMaxSlope,
@@ -35,6 +35,20 @@ public class FootSupportCompletenessTests(ITestOutputHelper output)
 
             Assert.Equal(height < -(double)query.ReachDown ? SupportStatus.None : SupportStatus.Refused,
                 released.Status);
+            if (height < -(double)query.ReachDown)
+            {
+                Assert.Equal(CapsuleFeatureStatus.Complete, complete.Status);
+                Assert.Equal(0, complete.Members);
+                Assert.Equal(0, complete.Witnesses);
+                Assert.Equal(SupportProposalStatus.Contact, complete.AxisVerdict.Status);
+                Assert.True(complete.AxisVerdict.LowestUpper < -(double)query.ReachDown);
+                Assert.Equal(SupportProposalStatus.Contact, complete.FootVerdict.Status);
+                Assert.True(complete.FootVerdict.LowestUpper < -(double)query.ReachDown);
+                Assert.Same(scene.Lease, complete.Lease);
+                Assert.All(members, member => Assert.Equal(untouched, member));
+                Assert.All(joins, word => Assert.Equal(ulong.MaxValue, word));
+                continue;
+            }
             Assert.Equal(CapsuleFeatureStatus.CapacityExceeded, complete.Status);
             Assert.Equal(257, complete.RequiredElements);
             Assert.Equal(0, complete.Members);

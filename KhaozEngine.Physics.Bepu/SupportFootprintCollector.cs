@@ -11,7 +11,7 @@ namespace KhaozEngine.Physics.Bepu;
 
 /// <summary>One complete column and the two retained contact contexts, collected into bounded heap storage.
 /// Every raw pair is captured once. Joins and lease metadata finish before either caller span is touched.</summary>
-internal sealed class SupportFootprintCollector
+internal sealed partial class SupportFootprintCollector
 {
     readonly record struct Member(SupportPolygon? Polygon, SupportCurvedLeaf Curved, int Part, SupportFootprintMember Value);
     readonly Member[] _members = new Member[SupportFootprintResult.MaximumElements];
@@ -41,6 +41,8 @@ internal sealed class SupportFootprintCollector
     {
         _request = request;
         _count = 0;
+        _belowBandPass = _hasBelowBand = false;
+        _primaryCount = 0;
         _curvedKernel.ResetStatistics();
         _pool.Reset();
         _capture.Reset();
@@ -118,11 +120,10 @@ internal sealed class SupportFootprintCollector
                 if (member == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
                 if (member != GeometrySign.Positive) continue;
                 mask |= (byte)(1 << proposal);
-                if (!ContactHeight(polygon, proposal)) return CapsuleFeatureStatus.Unsupported;
+                if (!_belowBandPass && !ContactHeight(polygon, proposal, sourceHeight: true)) return CapsuleFeatureStatus.Unsupported;
             }
-            SupportQueryDiagnostics.Record(SupportQueryCounter.Members);
-            if (++_count > SupportFootprintResult.MaximumElements) return CapsuleFeatureStatus.CapacityExceeded;
-            _members[_count - 1] = new(polygon, default, 0, value with { ProposalMask = mask });
+            CapsuleFeatureStatus retained = Retain(new(polygon, default, 0, value with { ProposalMask = mask }));
+            if (retained != CapsuleFeatureStatus.Complete) return retained;
         }
         foreach (SupportCurvedLeaf leaf in _curved)
             for (int part = 0; part < leaf.Parts; part++)
@@ -138,11 +139,10 @@ internal sealed class SupportFootprintCollector
                     if (context == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
                     if (context != GeometrySign.Positive) continue;
                     mask |= (byte)(1 << proposal);
-                    if (!CurvedContactHeight(leaf, part, proposal)) return CapsuleFeatureStatus.Unsupported;
+                    if (!_belowBandPass && !CurvedContactHeight(leaf, part, proposal)) return CapsuleFeatureStatus.Unsupported;
                 }
-                SupportQueryDiagnostics.Record(SupportQueryCounter.Members);
-                if (++_count > SupportFootprintResult.MaximumElements) return CapsuleFeatureStatus.CapacityExceeded;
-                _members[_count - 1] = new(null, leaf, part, value with { ProposalMask = mask });
+                CapsuleFeatureStatus retained = Retain(new(null, leaf, part, value with { ProposalMask = mask }));
+                if (retained != CapsuleFeatureStatus.Complete) return retained;
             }
         return CapsuleFeatureStatus.Complete;
     }

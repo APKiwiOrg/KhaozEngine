@@ -1,19 +1,10 @@
 using System;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace KhaozEngine.TileWorld;
 
 /// <summary>Detached terrain and material values for CPU region builds.</summary>
 internal static class TileWorldBuildSnapshot
 {
-    static readonly JsonSerializerOptions MaterialOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter() },
-    };
-
     internal static TileWorldDocument CaptureGround(TileWorldDocument document, RegionCoord region)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -41,9 +32,7 @@ internal static class TileWorldBuildSnapshot
     internal static TileWorldCatalogs CaptureMaterials(TileWorldCatalogs catalogs)
     {
         ArgumentNullException.ThrowIfNull(catalogs);
-        // Loading material values creates an owned catalog without sharing Merge's mutable rows.
-        string json = JsonSerializer.Serialize(new { Materials = catalogs.Materials.Values }, MaterialOptions);
-        return TileWorldCatalogs.LoadJson(json, "region build materials");
+        return catalogs.CopyMaterials();
     }
 
     static void CopyPlane(TilePlaneData source, TilePlaneData destination)

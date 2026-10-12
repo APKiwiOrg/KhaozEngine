@@ -92,6 +92,40 @@ public sealed class TileCoverBuildInputTests
     }
 
     [Fact]
+    public void Captured_materials_preserve_all_values_after_source_mutations()
+    {
+        var catalogs = TileWorldCatalogs.Greybox();
+        GroundMaterial source = catalogs.Material(1)!;
+        source.Id = 42;
+        source.Name = "Captured ground";
+        source.Color = "#123456";
+        source.Texture = "captured.png";
+        source.Kind = GroundMaterialKind.Water;
+        source.TilesPerMetre = 1.25f;
+
+        TileWorldCatalogs materials = TileWorldBuildSnapshot.CaptureMaterials(catalogs);
+        GroundMaterial copy = Assert.IsType<GroundMaterial>(materials.Material(1));
+        Assert.NotSame(source, copy);
+        Assert.Equal(catalogs.Materials.Count, materials.Materials.Count);
+        Assert.Empty(materials.Archetypes);
+
+        source.Id = 43;
+        source.Name = "Later ground";
+        source.Color = "#abcdef";
+        source.Texture = null;
+        source.Kind = GroundMaterialKind.Ground;
+        source.TilesPerMetre = null;
+
+        Assert.Same(copy, materials.Material(1));
+        Assert.Equal((ushort)42, copy.Id);
+        Assert.Equal("Captured ground", copy.Name);
+        Assert.Equal("#123456", copy.Color);
+        Assert.Equal("captured.png", copy.Texture);
+        Assert.Equal(GroundMaterialKind.Water, copy.Kind);
+        Assert.Equal(1.25f, copy.TilesPerMetre);
+    }
+
+    [Fact]
     public void Ground_and_material_snapshots_own_their_values()
     {
         var (document, catalogs) = TileCoverTestWorld.Create();

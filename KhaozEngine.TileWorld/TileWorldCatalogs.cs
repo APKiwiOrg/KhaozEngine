@@ -144,6 +144,27 @@ public sealed class TileWorldCatalogs
     /// <summary>Catalogs with nothing in them.</summary>
     public static TileWorldCatalogs Empty() => new();
 
+    /// <summary>Copies material values into an owned catalog for detached region builds.</summary>
+    internal TileWorldCatalogs CopyMaterials()
+    {
+        var copy = new TileWorldCatalogs();
+        foreach (KeyValuePair<ushort, GroundMaterial> entry in _materials)
+        {
+            GroundMaterial material = entry.Value;
+            copy._materials.Add(entry.Key, new GroundMaterial
+            {
+                Id = material.Id,
+                Name = material.Name,
+                Color = material.Color,
+                Texture = material.Texture,
+                Kind = material.Kind,
+                TilesPerMetre = material.TilesPerMetre,
+            });
+            copy._materialSources.Add(entry.Key, ("region build materials", false));
+        }
+        return copy;
+    }
+
     sealed class CatalogFile
     {
         public List<GroundMaterial>? Materials { get; set; }

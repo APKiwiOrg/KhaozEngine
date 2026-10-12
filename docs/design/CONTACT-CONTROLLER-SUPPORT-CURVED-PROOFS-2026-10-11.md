@@ -264,14 +264,28 @@ cells whose height upper bound is below an attained lower bound may be discarded
 end, repeated-root and isolated-point strata. A rounded sample is an attained lower bound only
 after its membership is certified. An interval overlap never proves absence.
 
-Split until a cell's parameters have no interior binary64 splitting point. That is the finite
-arithmetic termination rule, not a geometric tolerance or a chosen refinement count. Binary64
-has finitely many represented endpoints on each bounded parameter interval, so depth-first
-subdivision terminates. Keep the remaining cells' hull as the certified height, position and
-normal enclosure. Publish its width as the element's height and witness errors, as the released
-phase 2b curved kernel already does. Candidate ties retain and enclose all feasible strata until
-classification and attained-point selection are settled. No exact irrational ordering solver,
-field norm, resultant or Sturm-chain scratch is required.
+Ruling RO replaces scalar-cell exhaustion with certified region termination. A terminal cell
+has one of three certificates. Its objective upper bound is below the best attained lower bound,
+so it cannot contain a maximum. Its objective is monotone for every installed source in the box,
+so its maximum belongs to separately retained boundary candidates. Or it encloses a stationary
+region for every source, with existence and coverage proved by an interval Newton or Krawczyk
+certificate, or uniform opposite derivative signs at its ends with the necessary uniqueness
+proof. Retain that stationary region whole. Its value, position and normal enclosures bound
+the attained source-dependent witnesses without enumerating their scalar descendants.
+
+Every retained region must prove existence, feasibility and coverage. Partition at boundary
+crossings before applying a branch's derivative certificate. Include end, seam, repeated-root,
+isolated-point and tied strata. Do not assume the tilted projected domain is convex. Monotonicity
+on one feasible interval cannot discard another interval. Candidate ties retain and enclose
+all possible maximizing strata until classification and attained-point selection are settled.
+
+If a region certificate cannot be proved, subdivide it at an interior binary64 parameter and
+continue certification. Preprovision a static bound on live and terminal cells. Refuse the whole
+query, with untouched output spans, when that storage bound cannot carry the remaining coverage
+proof. No epsilon, iteration cap, sampled maximum, incomplete support or virtual probe replaces
+a failed certificate. Publish retained regions' enclosure widths as height and witness errors.
+Source uncertainty remains in those errors. No exact irrational ordering solver, field norm,
+resultant or Sturm-chain scratch is required.
 
 The finite subdivision bound does not grant a cost, stack or scratch exception. The tilted owner
 must account for its reusable cell storage and traversal stack. Closed-form owners likewise

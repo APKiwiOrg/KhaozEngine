@@ -32,7 +32,8 @@ public sealed class OverlayLayoutTests
         ScreenIcon first = Icon("bank", new Vector2(200f, 100f), 2, 24f);
         ScreenIcon second = Icon("bank", new Vector2(225f, 100f), 1, 24f);
 
-        var placed = WorldMapOverlayLayout.Place([second, first], [], Viewport, 8f, Vector2.Zero);
+        var placed = WorldMapOverlayLayout.Place([second, first], [], Viewport, 8f, Vector2.Zero,
+            new WorldMapOverlayBuffers());
 
         Assert.Equal(new[] { first, second }, placed.Icons);
     }
@@ -68,7 +69,7 @@ public sealed class OverlayLayoutTests
     public void Label_OutsideTierZoomRange_IsDropped(float zoom)
     {
         var placed = WorldMapOverlayLayout.Place([], [Label("town", new Vector2(200f, 100f))],
-            Viewport, zoom, Vector2.Zero);
+            Viewport, zoom, Vector2.Zero, new WorldMapOverlayBuffers());
 
         Assert.Empty(placed.Labels);
     }
@@ -155,5 +156,5 @@ public sealed class OverlayLayoutTests
         new(name, "Resolved town", position, new Vector2(30f, 10f), Tier, new Vector2(3f, 4f));
 
     static OverlayPlacement Place(ScreenIcon[] icons, ScreenLabel[]? labels = null, Vector2 pointer = default) =>
-        WorldMapOverlayLayout.Place(icons, labels ?? [], Viewport, 2f, pointer);
+        WorldMapOverlayLayout.Place(icons, labels ?? [], Viewport, 2f, pointer, new WorldMapOverlayBuffers());
 }

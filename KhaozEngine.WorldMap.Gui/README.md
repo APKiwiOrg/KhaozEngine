@@ -65,6 +65,11 @@ items from the GPU wrapper. Its texture factory and disposal callback allow head
 layout tests. Overlay layout uses icon sizes and text measurements, with no textures or fonts in the
 core's overlay pass.
 
+The core retains overlay candidates, sorting scratch, accepted rectangles and placement views across
+updates. Marker identities stay in ordinal draw order as markers are added and removed. With unchanged
+visible features, allocation-free callbacks and the same hover target, the warmed overlay pass allocates
+no working storage.
+
 ## Icons, labels, markers and hover
 
 Set `IconSprites` to resolve each cached icon key to a `WorldMapSprite`. A null callback or result hides

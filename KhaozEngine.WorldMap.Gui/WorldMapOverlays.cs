@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Numerics;
+using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
 
 namespace KhaozEngine.WorldMap.Gui;
@@ -33,5 +34,34 @@ internal readonly record struct ScreenLabel(string MarkerName, string Text, Vect
 
 internal readonly record struct ScreenMarker(string Id, Vector2 Position, Vector2 Size, float Heading);
 
-internal sealed record OverlayPlacement(IReadOnlyList<ScreenIcon> Icons, IReadOnlyList<ScreenLabel> Labels,
-    WorldMapHover? Hover);
+internal sealed record OverlayPlacement(IReadOnlyList<ScreenIcon> Icons, IReadOnlyList<ScreenLabel> Labels)
+{
+    internal WorldMapHover? Hover { get; set; }
+}
+
+/// <summary>Caller-owned scratch storage and a retained view of the latest accepted overlays.</summary>
+internal sealed class WorldMapOverlayBuffers
+{
+    internal readonly List<(ScreenIcon Icon, int Index)> SortedIcons = [];
+    internal readonly List<(ScreenLabel Label, int Index)> SortedLabels = [];
+    internal readonly List<ScreenIcon> PlacedIcons = [];
+    internal readonly List<ScreenLabel> PlacedLabels = [];
+    internal readonly List<Rect> IconRects = [];
+    internal readonly List<Rect> LabelRects = [];
+
+    internal WorldMapOverlayBuffers() =>
+        Placement = new OverlayPlacement(PlacedIcons.AsReadOnly(), PlacedLabels.AsReadOnly());
+
+    internal OverlayPlacement Placement { get; }
+
+    internal void Clear()
+    {
+        SortedIcons.Clear();
+        SortedLabels.Clear();
+        PlacedIcons.Clear();
+        PlacedLabels.Clear();
+        IconRects.Clear();
+        LabelRects.Clear();
+        Placement.Hover = null;
+    }
+}

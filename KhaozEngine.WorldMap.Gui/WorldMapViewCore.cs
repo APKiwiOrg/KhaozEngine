@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
@@ -17,7 +16,11 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
     readonly List<VisibleChunk> _visibleChunks = [];
     readonly List<WorldMapDrawItem<TTexture>> _drawList = [];
     readonly Dictionary<string, MapMarker> _markerStates = new(StringComparer.Ordinal);
+    readonly List<string> _markerOrder = [];
     readonly List<ScreenMarker> _markers = [];
+    readonly List<ScreenIcon> _icons = [];
+    readonly List<ScreenLabel> _labels = [];
+    readonly WorldMapOverlayBuffers _overlayBuffers = new();
     float _maxPixelsPerMetre = 8f;
     int _uploadBudgetPerFrame = 4;
     bool _positioned;
@@ -67,7 +70,7 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
     internal Func<string, Vector2?>? IconSizes { get; set; }
     internal Func<string, string?>? LabelText { get; set; }
     internal Func<string, Vector2>? MeasureLabel { get; set; }
-    internal OverlayPlacement OverlayPlacement { get; private set; } = new([], [], null);
+    internal OverlayPlacement OverlayPlacement => _overlayBuffers.Placement;
     internal IReadOnlyList<ScreenMarker> Markers { get; }
     internal WorldMapHover? Hovered => OverlayPlacement.Hover;
 
@@ -75,13 +78,17 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentException.ThrowIfNullOrEmpty(id);
+        if (!_markerStates.ContainsKey(id))
+            _markerOrder.Insert(~_markerOrder.BinarySearch(id, StringComparer.Ordinal), id);
         _markerStates[id] = new MapMarker(mapPosition, heading, size);
     }
 
     internal bool RemoveMarker(string id)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return _markerStates.Remove(id);
+        if (!_markerStates.Remove(id)) return false;
+        _markerOrder.RemoveAt(_markerOrder.BinarySearch(id, StringComparer.Ordinal));
+        return true;
     }
 
     internal Vector2 MapToScreen(Vector2 mapPosition) => _canvas.WorldToScreen(ToCanvas(mapPosition));
@@ -198,43 +205,47 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
         }
     }
 
-    void RebuildOverlays(Vector2 pointer)
+    internal void RebuildOverlays(Vector2 pointer)
     {
-        var icons = new List<ScreenIcon>();
-        var labels = new List<ScreenLabel>();
+        _icons.Clear();
+        _labels.Clear();
         foreach (VisibleChunk visible in _visibleChunks)
         {
             if (!_cache.TryGet(visible.Coord, out WorldMapChunk? built)) continue;
-            foreach (WorldMapIconAnchor anchor in built.Features.Icons)
+            for (int i = 0; i < built.Features.Icons.Count; i++)
             {
+                WorldMapIconAnchor anchor = built.Features.Icons[i];
                 if (IconSizes?.Invoke(anchor.IconKey) is not Vector2 size) continue;
-                icons.Add(new ScreenIcon(anchor.IconKey, MapToScreen(anchor.Position), size,
+                _icons.Add(new ScreenIcon(anchor.IconKey, MapToScreen(anchor.Position), size,
                     anchor.Priority, anchor.MergeRadiusPixels, anchor.Position));
             }
             if (MeasureLabel is not { } measure || LabelText is not { } resolve) continue;
-            foreach (WorldMapLabelAnchor anchor in built.Features.Labels)
+            for (int i = 0; i < built.Features.Labels.Count; i++)
             {
+                WorldMapLabelAnchor anchor = built.Features.Labels[i];
                 if (PixelsPerMetre < anchor.Tier.MinPixelsPerMetre || PixelsPerMetre >= anchor.Tier.MaxPixelsPerMetre)
                     continue;
                 if (resolve(anchor.MarkerName) is not string text) continue;
-                labels.Add(new ScreenLabel(anchor.MarkerName, text, MapToScreen(anchor.Position),
+                _labels.Add(new ScreenLabel(anchor.MarkerName, text, MapToScreen(anchor.Position),
                     measure(text) * anchor.Tier.TextScale, anchor.Tier, anchor.Position));
             }
         }
-        OverlayPlacement = WorldMapOverlayLayout.Place(icons, labels, Viewport, PixelsPerMetre, pointer);
+        WorldMapOverlayLayout.Place(_icons, _labels, Viewport, PixelsPerMetre, pointer, _overlayBuffers);
 
         _markers.Clear();
-        foreach (var entry in _markerStates.OrderBy(entry => entry.Key, StringComparer.Ordinal))
+        foreach (string id in _markerOrder)
         {
-            MapMarker marker = entry.Value;
+            MapMarker marker = _markerStates[id];
             Vector2 screen = MapToScreen(marker.Position);
-            if (Viewport.Contains(screen)) _markers.Add(new ScreenMarker(entry.Key, screen, marker.Size, marker.Heading));
+            if (Viewport.Contains(screen)) _markers.Add(new ScreenMarker(id, screen, marker.Size, marker.Heading));
         }
     }
 
     void ClearOverlays()
     {
-        OverlayPlacement = new OverlayPlacement([], [], null);
+        _icons.Clear();
+        _labels.Clear();
+        _overlayBuffers.Clear();
         _markers.Clear();
     }
 
@@ -248,6 +259,7 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
         _visibleChunks.Clear();
         _drawList.Clear();
         _markerStates.Clear();
+        _markerOrder.Clear();
         ClearOverlays();
     }
 

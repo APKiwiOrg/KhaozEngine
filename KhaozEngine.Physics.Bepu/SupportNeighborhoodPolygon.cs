@@ -151,7 +151,7 @@ internal readonly record struct SupportDistance(bool IsResolved, double Lower, d
 /// against segment, edge against segment endpoint, edge against segment interior, segment endpoint against
 /// face interior, and the segment crossing the face. An undecided stratum condition keeps every pair it may
 /// produce, so ties and boundary positions widen the bounds and never refuse.</summary>
-internal sealed class SupportSegmentPolygon
+internal sealed partial class SupportSegmentPolygon
 {
     static readonly FeatureNumber One = FeatureNumber.Exact(1);
     static readonly FeatureNumber UnitRange = FeatureNumber.Enclosed(GeometryInterval.Enclose(0, 1));

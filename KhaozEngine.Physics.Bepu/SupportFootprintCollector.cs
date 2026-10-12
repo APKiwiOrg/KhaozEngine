@@ -154,7 +154,8 @@ internal sealed partial class SupportFootprintCollector
         FeatureNumber half = FeatureNumber.Exact(proposal.Probe.Length).Multiply(FeatureNumber.Exact(0.5));
         var start = new FeaturePoint(centre.X, centre.Y.Subtract(half), centre.Z);
         var end = new FeaturePoint(centre.X, centre.Y.Add(half), centre.Z);
-        SupportDistance distance = _kernel.Measure(start, FeaturePoint.Subtract(end, start), polygon, _request.ContactBand);
+        SupportDistance distance = _kernel.MeasureFootprintContact(start, FeaturePoint.Subtract(end, start),
+            polygon, _request.ContactBand);
         if (!distance.IsResolved) return GeometrySign.Unresolved;
         GeometryInterval separation = GeometryInterval.Enclose(distance.Lower, distance.Upper)
             .Subtract(GeometryInterval.Exact(proposal.Probe.Radius));

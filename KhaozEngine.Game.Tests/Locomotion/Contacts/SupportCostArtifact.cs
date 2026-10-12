@@ -98,6 +98,10 @@ internal static class SupportCostArtifact
         JsonObject root = File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path))!.AsObject() : new();
         if (root["pendingFinalization"] is not null) throw new InvalidOperationException("The prior invocation has no process exit.");
         string section = root["baseline"] is null ? "baseline" : "changed";
+        if (section == "changed" && root[section] is not null) section += "-" + candidateSha;
+        if (root.Any(entry => entry.Key.StartsWith("changed", StringComparison.Ordinal) &&
+            entry.Value?["CandidateSha"]?.GetValue<string>() == candidateSha))
+            throw new InvalidOperationException("This candidate algorithm is already recorded.");
         if (root[section] is not null) throw new InvalidOperationException("This cost section is already recorded.");
         var lifetime = ContactLifetimeAllocationTests.Inventory();
         string runId = Guid.NewGuid().ToString("N");
@@ -148,6 +152,7 @@ internal static class SupportCostArtifact
             },
             Acquisition = "Lease rows isolate physics acquisition and disposal. Tick rows include all acquisition and disposal. Explicit rows use the real MovementEnvironmentContext with the test producer, whose witness and pin allocations remain visible.",
             Observers = "Opt-in counters and preallocated Find/substep callbacks are enabled inside samples. Oracle checks, callback installation, scratch inspection, delegate construction and serialization are outside sample windows.",
+            AllocationIsolation = "Each cold and warm operation runs inside its own checked 4 MiB no-GC region. Region setup and disposal are outside the sample window. Fresh gameplay allocations remain counted. See dotnet/runtime#134724.",
             Geometry = "Every captured Find is checked against the independent installed-geometry oracle after both sample windows. Correct None and capacity refusals cannot pass a support cost gate. Tick geometry requires matching support reads and a finite advancing state.",
             ProcessExitStatus = (int?)null,
             Scenes = scenes,

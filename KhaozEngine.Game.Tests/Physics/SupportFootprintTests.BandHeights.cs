@@ -151,9 +151,22 @@ public partial class SupportFootprintTests
         Assert.Equal(CapsuleFeatureStatus.Complete,
             capability.QuerySupportFootprint(lease, request, members, joins).Status);
         SupportQueryDiagnostics.Reset();
+        var phases = new KhaozEngine.Tests.Locomotion.Contacts.SupportCostAttributionTests.PhaseRecorder(false);
+        ContactAllocationDiagnostics.SetObserver(phases.Observe);
+        phases.Reset();
+        using var region = KhaozEngine.Tests.Locomotion.Contacts.SupportAllocationRegion.Start();
         long before = GC.GetAllocatedBytesForCurrentThread();
-        var result = capability.QuerySupportFootprint(lease, request, members, joins);
+        SupportFootprintResult result;
+        try
+        {
+            using var route = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.Route);
+            result = capability.QuerySupportFootprint(lease, request, members, joins);
+        }
+        finally { ContactAllocationDiagnostics.SetObserver(null); }
         long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        region.Dispose();
+        foreach (var phase in phases.Rows()) _output.WriteLine($"{phase}");
+        Assert.Equal(bytes, phases.Bytes.Sum());
         Assert.Equal(CapsuleFeatureStatus.Complete, result.Status);
         Assert.Equal(0.25, result.FootVerdict.LowestUpper);
         Assert.Equal(0, bytes);

@@ -13,18 +13,24 @@ internal sealed partial class SupportFootprintCollector
     {
         foreach (SupportPolygon polygon in _polygons)
         {
-            GeometrySign admitted = SupportFootprintPolygon.Measure(polygon, _request, out SupportFootprintMember value);
+            GeometrySign admitted;
+            SupportFootprintMember value;
+            using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportExtrema))
+                admitted = SupportFootprintPolygon.Measure(polygon, _request, out value);
             if (admitted == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
             if (admitted == GeometrySign.Negative) continue;
             byte mask = 0;
-            for (int proposal = 0; proposal < 2; proposal++)
+            using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportContacts))
             {
-                if (_verdicts[proposal].Status != SupportProposalStatus.Contact) continue;
-                GeometrySign member = ContactMember(polygon, proposal);
-                if (member == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
-                if (member != GeometrySign.Positive) continue;
-                mask |= (byte)(1 << proposal);
-                if (!_belowBandPass && !ContactHeight(polygon, proposal, sourceHeight: true)) return CapsuleFeatureStatus.Unsupported;
+                for (int proposal = 0; proposal < 2; proposal++)
+                {
+                    if (_verdicts[proposal].Status != SupportProposalStatus.Contact) continue;
+                    GeometrySign member = ContactMember(polygon, proposal);
+                    if (member == GeometrySign.Unresolved) return CapsuleFeatureStatus.Unsupported;
+                    if (member != GeometrySign.Positive) continue;
+                    mask |= (byte)(1 << proposal);
+                    if (!_belowBandPass && !ContactHeight(polygon, proposal, sourceHeight: true)) return CapsuleFeatureStatus.Unsupported;
+                }
             }
             CapsuleFeatureStatus retained = Retain(new(polygon, default, 0, value with { ProposalMask = mask }));
             if (retained != CapsuleFeatureStatus.Complete) return retained;

@@ -11,6 +11,8 @@ internal sealed class SupportFootprintSourcePredicates
     readonly SupportSourcePolynomialWorkspace _work = new();
     readonly SupportSourcePolynomial[] _map = new SupportSourcePolynomial[9];
     SupportPolygon _polygon = null!;
+    SupportPolygonSourceMap _sourceMap;
+    bool _hasMap;
 
     readonly record struct Point(SupportSourcePolynomial X, SupportSourcePolynomial Y, SupportSourcePolynomial Z);
 
@@ -19,8 +21,15 @@ internal sealed class SupportFootprintSourcePredicates
         if (!polygon.HasSource) return false;
         SupportQueryDiagnostics.Record(SupportQueryCounter.ExactFallbacks);
         _polygon = polygon;
-        _work.Reset();
         var map = polygon.SourceMap;
+        if (_hasMap && Same(map.X, _sourceMap.X) && Same(map.Y, _sourceMap.Y) &&
+            Same(map.Z, _sourceMap.Z) && map.Translation == _sourceMap.Translation)
+        {
+            _work.ResetExpressions();
+            return true;
+        }
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportSourceSetup);
+        _work.Reset();
         _map[0] = _work.Coefficient(map.X.X);
         _map[1] = _work.Coefficient(map.Y.X);
         _map[2] = _work.Coefficient(map.Z.X);
@@ -31,8 +40,14 @@ internal sealed class SupportFootprintSourcePredicates
         _map[7] = _work.Coefficient(map.Y.Z);
         _map[8] = _work.Coefficient(map.Z.Z);
         _work.CompleteMap();
+        _sourceMap = map;
+        _hasMap = _work.IsResolved;
         return _work.IsResolved;
     }
+
+    static bool Same(GeometryVector a, GeometryVector b) => Same(a.X, b.X) && Same(a.Y, b.Y) && Same(a.Z, b.Z);
+    static bool Same(GeometryInterval a, GeometryInterval b) =>
+        a.IsResolved == b.IsResolved && a.Lower == b.Lower && a.Upper == b.Upper;
 
     SupportSourcePolynomial Component(Vector3 a, Vector3 b, int axis, double translation = 0) =>
         _work.Linear(_map[axis * 3], _map[axis * 3 + 1], _map[axis * 3 + 2], a, b, translation);

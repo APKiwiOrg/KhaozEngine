@@ -282,7 +282,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
         Assert.Equal("0", Environment.GetEnvironmentVariable("DOTNET_TieredCompilation"));
         string sha = GitSha();
         SupportQueryDiagnostics.Enable(true);
-        var sampler = new SupportCostSampler(true);
+        var sampler = new SupportCostSampler(true) { IsolateAllocations = true };
         var samples = new List<SupportCostSample>();
         var failures = new List<string>();
         foreach (object[] data in SupportGateCostScenes.Rows())

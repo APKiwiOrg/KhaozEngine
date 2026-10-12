@@ -125,10 +125,13 @@ internal static class FootSupport
         SupportFootprintResult result = features.QuerySupportFootprint(lease, request,
             scratch.Members, scratch.Joins, QueryFilter.StaticsOnly);
         FootprintScope? certified = scope is { } bounds ? new(bounds, request.BandLower, request.BandUpper) : null;
-        int count = SupportCertification.CertifyFootprint(features, lease, result, scratch.Members,
-            scratch.Joins, query.Axis, query.CosMaxSlope, scratch.Contributions, scratch.Contexts, certified);
+        int count;
+        using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportCertification))
+            count = SupportCertification.CertifyFootprint(features, lease, result, scratch.Members,
+                scratch.Joins, query.Axis, query.CosMaxSlope, scratch.Contributions, scratch.Contexts, certified);
         refused = count < 0;
         if (refused) return;
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportSelection);
         Guard(result.AxisVerdict, 1, result.Members, scratch, request.BandUpper, ref selection);
         Guard(result.FootVerdict, 2, result.Members, scratch, request.BandUpper, ref selection);
         for (int i = 0; i < count; i++)

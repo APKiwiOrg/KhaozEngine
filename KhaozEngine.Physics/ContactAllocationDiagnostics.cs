@@ -6,7 +6,9 @@ internal enum ContactAllocationPhase
 {
     Route, Acquisition, ControllerEntry, SupportRead, ShellSweep, Placement, RoundingHandoff,
     FinalClamp, Binding, Disposal, ShapeConstruction, AcquisitionBody, Preparation, PhysicsLease,
-    ProducerPin, MovementLease, Fixture,
+    ProducerPin, MovementLease, Fixture, SupportProposals, SupportTraversal, SupportCapture,
+    SupportMaterialization, SupportExtrema, SupportContacts, SupportJoins, SupportCertification, SupportSelection,
+    SupportSourceSetup,
 }
 
 /// <summary>Opt-in phase boundaries. The observer owns preallocated measurement storage.</summary>

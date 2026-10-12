@@ -60,6 +60,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
         QueryFilter proposals = QueryFilter.StaticsOnly with { CullBackFaces = true };
         for (int index = 0; index < 2; index++)
         {
+            using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportProposals);
             SupportQueryDiagnostics.Record(SupportQueryCounter.Proposals);
             SupportFootprintProposal proposal = index == 0 ? request.AxisProposal : request.FootProposal;
             SweepHit hit = default;
@@ -68,7 +69,9 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
             collector.Proposal(index, found, hit);
         }
         // All installed geometry is reread under the original authenticated lease and selected exclusions.
-        var candidates = collector.Candidates(_sim, _reverseHandles, exclusions);
+        System.Collections.Generic.List<(StaticHandle Seam, BepuPhysics.StaticHandle Installed)> candidates;
+        using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportTraversal))
+            candidates = collector.Candidates(_sim, _reverseHandles, exclusions);
         foreach (var (seam, installed) in candidates)
         {
             if (filter.Mobility == QueryMobility.Dynamics) break;

@@ -95,16 +95,20 @@ internal sealed partial class SupportFootprintCollector
         _polygons.Clear();
         _curved.Clear();
         CapsuleFeatureStatus captured;
-        if (SupportNeighborhoodMesh.IsMesh(description.Shape))
-            captured = SupportNeighborhoodMesh.Polygons(simulation, description.Shape, description.Pose, owner,
-                _bounds, _triangles, _pool, _polygons);
-        else
+        using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportCapture))
         {
-            captured = SupportNeighborhoodPolyhedra.Capture(simulation, description.Shape, description.Pose,
-                _bounds, _capture, _leaves, _curved);
-            if (captured != CapsuleFeatureStatus.Complete) return captured;
-            foreach (CapsuleFeaturePolyhedron leaf in _leaves)
-                SupportNeighborhoodPolyhedra.Polygons(owner, leaf, _pool, _polygons, footprint: true);
+            if (SupportNeighborhoodMesh.IsMesh(description.Shape))
+                captured = SupportNeighborhoodMesh.Polygons(simulation, description.Shape, description.Pose, owner,
+                    _bounds, _triangles, _pool, _polygons);
+            else
+            {
+                captured = SupportNeighborhoodPolyhedra.Capture(simulation, description.Shape, description.Pose,
+                    _bounds, _capture, _leaves, _curved);
+                if (captured != CapsuleFeatureStatus.Complete) return captured;
+                using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization))
+                    foreach (CapsuleFeaturePolyhedron leaf in _leaves)
+                        SupportNeighborhoodPolyhedra.Polygons(owner, leaf, _pool, _polygons, footprint: true);
+            }
         }
         if (captured != CapsuleFeatureStatus.Complete) return captured;
         CapsuleFeatureStatus polygons = CollectPolygons();
@@ -170,6 +174,7 @@ internal sealed partial class SupportFootprintCollector
     internal SupportFootprintResult Publish(IPhysicsWorld receiver, IPhysicsQueryLease lease,
         Span<SupportFootprintMember> members, Span<ulong> joins)
     {
+        using var phase = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportJoins);
         int stride = SupportFootprintResult.JoinWordsFor(_count);
         if (_count > SupportFootprintResult.MaximumElements || members.Length < _count || joins.Length < _count * stride)
             return Refused(CapsuleFeatureStatus.CapacityExceeded);

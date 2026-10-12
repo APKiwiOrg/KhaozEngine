@@ -22,8 +22,17 @@ internal sealed class SupportSourcePolynomialWorkspace
 
     internal void Reset()
     {
-        foreach (SupportSourcePolynomial polynomial in _polynomials) polynomial.ReleaseCoefficients();
+        for (int i = 0; i < _used; i++) _polynomials[i].ReleaseCoefficients();
         _used = _variableCount = 0;
+        IsResolved = true;
+    }
+
+    // The first nine expressions own the immutable coefficient variables. Only the
+    // predicate graph is recycled while that exact coefficient box is unchanged.
+    internal void ResetExpressions()
+    {
+        for (int i = 9; i < _used; i++) _polynomials[i].ReleaseCoefficients();
+        _used = 9;
         IsResolved = true;
     }
 

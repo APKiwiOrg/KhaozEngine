@@ -67,6 +67,14 @@ public sealed class SupportCostArtifactTests
             Assert.Equal(movement + physics + pin, inventory["AcquiredExplicitTickBytes"]!.GetValue<long>());
             Assert.Null(root["pendingFinalization"]);
             Assert.NotEqual(0, Finalize(path, 0));
+            string firstChanged = root["changed"]!.ToJsonString();
+            SupportCostArtifact.Write(path, [Sample()], "base", "third", "command");
+            Assert.Equal(0, Finalize(path, 0));
+            root = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            Assert.Equal(baseline, root["baseline"]!.ToJsonString());
+            Assert.Equal(firstChanged, root["changed"]!.ToJsonString());
+            Assert.Equal("third", root["changed-third"]!["CandidateSha"]!.GetValue<string>());
+            Assert.Equal(0, root["changed-third"]!["ProcessExitStatus"]!.GetValue<int>());
             Assert.Throws<InvalidOperationException>(() => SupportCostArtifact.Write(path, [Sample()], "base", "third", "command"));
         }
         finally { Directory.Delete(directory, true); }

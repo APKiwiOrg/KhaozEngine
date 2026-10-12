@@ -1,0 +1,781 @@
+{
+  "Source": "Recovered from detailed xUnit output after output path failure. No repeated attribution operation.",
+  "Samples": [
+    {
+      "Scene": "flat box",
+      "Operation": "Find",
+      "WarmBytes": 0,
+      "Microseconds": 203.79,
+      "Phases": [
+        {
+          "Phase": "Route",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 40.917,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportProposals",
+          "Calls": 2,
+          "Bytes": 0,
+          "Microseconds": 7.832,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportTraversal",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 1.0,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCapture",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 48.458,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportMaterialization",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 23.25,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportExtrema",
+          "Calls": 6,
+          "Bytes": 0,
+          "Microseconds": 15.834,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportContacts",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 52.5,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportJoins",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 6.792,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCertification",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 7.042,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportSelection",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 0.166,
+          "Collections": 0
+        }
+      ]
+    },
+    {
+      "Scene": "flat box",
+      "Operation": "DryTick",
+      "WarmBytes": 64,
+      "Microseconds": 357.96,
+      "Phases": [
+        {
+          "Phase": "Route",
+          "Calls": 1,
+          "Bytes": 64,
+          "Microseconds": 34.124,
+          "Collections": 0
+        },
+        {
+          "Phase": "Placement",
+          "Calls": 2,
+          "Bytes": 0,
+          "Microseconds": 0.791,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportProposals",
+          "Calls": 6,
+          "Bytes": 0,
+          "Microseconds": 7.874,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportTraversal",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 0.833,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCapture",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 101.083,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportMaterialization",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 56.292,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportExtrema",
+          "Calls": 18,
+          "Bytes": 0,
+          "Microseconds": 34.626,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportContacts",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 119.626,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportJoins",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 0.958,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCertification",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 1.5,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportSelection",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 0.251,
+          "Collections": 0
+        }
+      ]
+    },
+    {
+      "Scene": "flat mesh",
+      "Operation": "Find",
+      "WarmBytes": 0,
+      "Microseconds": 143.83,
+      "Phases": [
+        {
+          "Phase": "Route",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 9.461,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportProposals",
+          "Calls": 2,
+          "Bytes": 0,
+          "Microseconds": 12.916,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportTraversal",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 0.5,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCapture",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 33.666,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportExtrema",
+          "Calls": 2,
+          "Bytes": 0,
+          "Microseconds": 19.417,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportContacts",
+          "Calls": 2,
+          "Bytes": 0,
+          "Microseconds": 65.458,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportJoins",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 1.333,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCertification",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 0.917,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportSelection",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 0.166,
+          "Collections": 0
+        }
+      ]
+    },
+    {
+      "Scene": "flat mesh",
+      "Operation": "DryTick",
+      "WarmBytes": 64,
+      "Microseconds": 303.37,
+      "Phases": [
+        {
+          "Phase": "Route",
+          "Calls": 1,
+          "Bytes": 64,
+          "Microseconds": 18.374,
+          "Collections": 0
+        },
+        {
+          "Phase": "Placement",
+          "Calls": 2,
+          "Bytes": 0,
+          "Microseconds": 0.542,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportProposals",
+          "Calls": 6,
+          "Bytes": 0,
+          "Microseconds": 27.167,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportTraversal",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 0.542,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCapture",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 47.124,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportExtrema",
+          "Calls": 6,
+          "Bytes": 0,
+          "Microseconds": 48.708,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportContacts",
+          "Calls": 6,
+          "Bytes": 0,
+          "Microseconds": 157.584,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportJoins",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 1.707,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCertification",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 1.335,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportSelection",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 0.292,
+          "Collections": 0
+        }
+      ]
+    },
+    {
+      "Scene": "fan 96",
+      "Operation": "Find",
+      "WarmBytes": 0,
+      "Microseconds": 5164.87,
+      "Phases": [
+        {
+          "Phase": "Route",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 28.341,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportProposals",
+          "Calls": 2,
+          "Bytes": 0,
+          "Microseconds": 334.292,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportTraversal",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 0.75,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCapture",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 512.791,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportExtrema",
+          "Calls": 96,
+          "Bytes": 0,
+          "Microseconds": 740.622,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportContacts",
+          "Calls": 96,
+          "Bytes": 0,
+          "Microseconds": 3180.08,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportJoins",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 336.833,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCertification",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 30.208,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportSelection",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 0.958,
+          "Collections": 0
+        }
+      ]
+    },
+    {
+      "Scene": "fan 96",
+      "Operation": "DryTick",
+      "WarmBytes": 64,
+      "Microseconds": 12486.54,
+      "Phases": [
+        {
+          "Phase": "Route",
+          "Calls": 1,
+          "Bytes": 64,
+          "Microseconds": 114.93,
+          "Collections": 0
+        },
+        {
+          "Phase": "Placement",
+          "Calls": 2,
+          "Bytes": 0,
+          "Microseconds": 2.708,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportProposals",
+          "Calls": 6,
+          "Bytes": 0,
+          "Microseconds": 590.917,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportTraversal",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 1.208,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCapture",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 1536.083,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportExtrema",
+          "Calls": 288,
+          "Bytes": 0,
+          "Microseconds": 2289.042,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportContacts",
+          "Calls": 288,
+          "Bytes": 0,
+          "Microseconds": 6919.779,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportJoins",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 927.666,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCertification",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 101.5,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportSelection",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 2.709,
+          "Collections": 0
+        }
+      ]
+    },
+    {
+      "Scene": "cluster 32 compound",
+      "Operation": "Find",
+      "WarmBytes": 0,
+      "Microseconds": 3011.25,
+      "Phases": [
+        {
+          "Phase": "Route",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 23.995,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportProposals",
+          "Calls": 2,
+          "Bytes": 0,
+          "Microseconds": 69.168,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportTraversal",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 0.583,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCapture",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 1077.875,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportMaterialization",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 485.375,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportExtrema",
+          "Calls": 192,
+          "Bytes": 0,
+          "Microseconds": 285.42,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportContacts",
+          "Calls": 32,
+          "Bytes": 0,
+          "Microseconds": 1031.083,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportJoins",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 31.0,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCertification",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 6.292,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportSelection",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 0.459,
+          "Collections": 0
+        }
+      ]
+    },
+    {
+      "Scene": "cluster 32 compound",
+      "Operation": "DryTick",
+      "WarmBytes": 64,
+      "Microseconds": 8979.12,
+      "Phases": [
+        {
+          "Phase": "Route",
+          "Calls": 1,
+          "Bytes": 64,
+          "Microseconds": 65.234,
+          "Collections": 0
+        },
+        {
+          "Phase": "Placement",
+          "Calls": 2,
+          "Bytes": 0,
+          "Microseconds": 0.959,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportProposals",
+          "Calls": 6,
+          "Bytes": 0,
+          "Microseconds": 194.584,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportTraversal",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 1.042,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCapture",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 3171.291,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportMaterialization",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 1459.459,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportExtrema",
+          "Calls": 576,
+          "Bytes": 0,
+          "Microseconds": 878.217,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportContacts",
+          "Calls": 96,
+          "Bytes": 0,
+          "Microseconds": 3102.712,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportJoins",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 88.626,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCertification",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 15.834,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportSelection",
+          "Calls": 3,
+          "Bytes": 0,
+          "Microseconds": 1.167,
+          "Collections": 0
+        }
+      ]
+    },
+    {
+      "Scene": "cluster 32 split",
+      "Operation": "Find",
+      "WarmBytes": 0,
+      "Microseconds": 2567.12,
+      "Phases": [
+        {
+          "Phase": "Route",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 24.335,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportProposals",
+          "Calls": 2,
+          "Bytes": 0,
+          "Microseconds": 45.792,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportTraversal",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 3.292,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCapture",
+          "Calls": 32,
+          "Bytes": 0,
+          "Microseconds": 732.296,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportMaterialization",
+          "Calls": 32,
+          "Bytes": 0,
+          "Microseconds": 471.914,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportExtrema",
+          "Calls": 192,
+          "Bytes": 0,
+          "Microseconds": 271.412,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportContacts",
+          "Calls": 32,
+          "Bytes": 0,
+          "Microseconds": 985.376,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportJoins",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 27.0,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCertification",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 5.375,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportSelection",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 0.333,
+          "Collections": 0
+        }
+      ]
+    },
+    {
+      "Scene": "cluster 256 mesh",
+      "Operation": "Find",
+      "WarmBytes": 0,
+      "Microseconds": 13056.67,
+      "Phases": [
+        {
+          "Phase": "Route",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 60.757,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportProposals",
+          "Calls": 2,
+          "Bytes": 0,
+          "Microseconds": 1241.292,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportTraversal",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 0.667,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCapture",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 1275.083,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportExtrema",
+          "Calls": 256,
+          "Bytes": 0,
+          "Microseconds": 1480.078,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportContacts",
+          "Calls": 256,
+          "Bytes": 0,
+          "Microseconds": 6559.289,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportJoins",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 2266.875,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportCertification",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 170.334,
+          "Collections": 0
+        },
+        {
+          "Phase": "SupportSelection",
+          "Calls": 1,
+          "Bytes": 0,
+          "Microseconds": 2.291,
+          "Collections": 0
+        }
+      ]
+    }
+  ],
+  "CandidateSha": "b531659b6",
+  "Measurement": "RU one-shot phase brackets. One warm Find and one warm DryTick for each of flat box, flat mesh, fan 96 and cluster 32 compound. One warm Find for cluster 32 split and cluster 256 mesh. One cold provisioning call per operation, no timed warm-up or repeat. Fixed compilation, each operation inside a checked 4 MiB no-GC region. Exclusive times include instrumentation overhead and diagnose phases, not SG-12 verdicts.",
+  "AllocationEvidence": "All checked Find phases measured zero bytes. DryTick measured only its 64-byte physics lease. All brackets recorded zero collections. The prior nonzero samples have no phase or collection evidence, so their cause remains unattributed. This does not assert dotnet/runtime#134724 caused them."
+}

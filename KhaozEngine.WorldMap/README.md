@@ -1,6 +1,6 @@
 # KhaozEngine.WorldMap
 
-GPU-free contracts and rasterization for stylized world-map imagery from any authored world. The package references only
+GPU-free contracts, rasterization and feature anchors for stylized world maps from any authored world. The package references only
 `KhaozEngine.Primitives`. It is opt-in and outside every umbrella, so consumers add it explicitly.
 
 ## Map space
@@ -98,6 +98,25 @@ Colour calculations use the stored channel values directly. Quantization clamps 
 zero through one, rounds to the nearest byte, and sets alpha to 255. Matching source data, revision
 and style produce identical bytes on one machine. Chunk images match the corresponding pixels of a
 larger raster at the same pixels per metre.
+
+## Feature anchors
+
+Call `WorldMapFeatureCollector.Collect(source, style, chunk)` to produce `WorldMapChunkFeatures`.
+The collector queries footprints and markers over the chunk rectangle. A footprint icon belongs to
+the chunk containing its `Center`, and a marker's icon and label belong to the chunk containing its
+`Position`. Half-open ownership keeps anchors unique when a footprint crosses a chunk border.
+
+Each feature takes the first `IconRules` entry whose `Source` matches its kind and whose `AllTags`
+are all present. Tag matching is ordinal and case-sensitive. An empty requirement matches any tags.
+`WorldMapIconAnchor` preserves the rule's `IconKey`, `Priority` and `MergeRadiusPixels`.
+
+A marker becomes a label only when it carries `Labels.LabelTag` and at least one tier's `Tag`.
+The first matching tier wins. `WorldMapLabelAnchor` preserves `MarkerName`, `Position` and that tier.
+Null label rules disable labels. A marker can produce both an icon and a label.
+
+Both collections sort by descending `Position.Y`, ascending `Position.X`, then ordinal `IconKey`
+or `MarkerName`. Collected lists are read-only. `WorldMapChunkFeatures.Empty` contains no anchors.
+Screen-space merging, label placement and localized text resolution belong to the view and game.
 
 The [world-map design](../docs/superpowers/specs/2026-10-12-world-map-design.md) describes the broader
 engine round and the consumers of these contracts.

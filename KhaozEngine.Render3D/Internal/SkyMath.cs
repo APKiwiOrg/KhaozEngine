@@ -261,21 +261,22 @@ namespace KhaozEngine.Render3D.Internal
 
         /// <summary>The sky along a world direction with any number of discs (unit <see cref="SkyDisc.Direction"/>s,
         /// as <see cref="SkyDiscs.Resolve"/> leaves them). Each disc carries <paramref name="sunStrength"/> times
-        /// its own opacity. Physical reflections add discs over directional radiance, with the first disc using
-        /// solar radiance when it follows the frame's sun. The water's <c>skyAlongDirection</c> mirrors this loop.</summary>
+        /// its own opacity. Physical reflections add discs over directional radiance, with
+        /// <paramref name="primaryDiscIndex"/> identifying the solar disc from the GPU packing's primary marker
+        /// (-1 when absent). The water's <c>skyAlongDirection</c> mirrors this loop.</summary>
         public static Vector3 ShadeDirectionDiscs(Vector3 direction, Vector3 horizon, Vector3 zenith,
             ReadOnlySpan<SkyDisc> discs, float sunStrength, SkyGround ground = default,
-            AtmosphereModel? atmosphere = null, AtmosphereFrame atmosphereFrame = default, float cameraHeightKm = 0f)
+            AtmosphereModel? atmosphere = null, AtmosphereFrame atmosphereFrame = default, float cameraHeightKm = 0f,
+            int primaryDiscIndex = -1)
         {
             if (atmosphere is not null)
             {
                 var view = Vector3.Normalize(direction);
                 var physical = atmosphere.SkyValue(cameraHeightKm, view, atmosphereFrame);
-                var sun = Vector3.Normalize(atmosphereFrame.SunDirection);
                 for (int i = 0; i < discs.Length; i++)
                 {
                     ref readonly SkyDisc body = ref discs[i];
-                    if (i == 0 && Vector3.DistanceSquared(body.Direction, sun) < 1e-10f)
+                    if (i == primaryDiscIndex)
                     {
                         physical += atmosphere.SunDiscValue(cameraHeightKm, view, atmosphereFrame)
                             * Math.Clamp(sunStrength, 0f, 1f);

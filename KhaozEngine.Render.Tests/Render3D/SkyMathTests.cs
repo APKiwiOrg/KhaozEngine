@@ -345,7 +345,7 @@ namespace KhaozEngine.Tests.Render3D
             Vector3 solarBase = model.SkyValue(.002f, Vector3.UnitY, frame);
             Vector3 solarDisc = model.SunDiscValue(.002f, Vector3.UnitY, frame);
             var solar = SkyMath.ShadeDirectionDiscs(Vector3.UnitY, Horizon, Zenith, sun, .25f,
-                atmosphere: model, atmosphereFrame: frame, cameraHeightKm: .002f);
+                atmosphere: model, atmosphereFrame: frame, cameraHeightKm: .002f, primaryDiscIndex: 0);
             Assert.InRange(Vector3.Distance(solar, solarBase + solarDisc * .25f), 0, 1e-6f);
 
             Vector3 moonDirection = Vector3.Normalize(new Vector3(1, .3f, 0));
@@ -354,6 +354,65 @@ namespace KhaozEngine.Tests.Render3D
             var lunar = SkyMath.ShadeDirectionDiscs(moonDirection, Horizon, Zenith, moon, .25f,
                 atmosphere: model, atmosphereFrame: frame, cameraHeightKm: .002f);
             Assert.InRange(Vector3.Distance(lunar, lunarBase + new Vector3(.2f, .3f, .4f)), 0, 1e-6f);
+        }
+
+        [Theory]
+        [InlineData(0f, true)]
+        [InlineData(.002f, true)]
+        [InlineData(.005f, false)]
+        public void WaterSkyMirror_PrimaryDisabledKeepsAlignedExtraDiscColorOpacityAndRadius(float angle, bool insideExtra)
+        {
+            var settings = AtmosphereSettings.Earth();
+            settings.SunIlluminance = .001f;
+            settings.SunAngularRadiusRadians = .02f;
+            var model = new AtmosphereModel(settings);
+            var frame = new AtmosphereFrame(Vector3.UnitY, -Vector3.UnitY, 0, Vector3.One, SunOpacity: .4f);
+            var sky = new SkySettings { SunEnabled = false };
+            sky.ExtraDiscs.Add(new SkyDisc { Direction = frame.SunDirection, Color = new Color(2, 3, 4, .4f), Radius = .003f });
+            Span<SkyDisc> discs = stackalloc SkyDisc[SkySettings.MaxDiscs];
+            int count = SkyDiscs.Resolve(sky, -frame.SunDirection, discs);
+            var packed = WaterRenderer.PackUbo(Matrix4x4.Identity, Matrix4x4.Identity, -frame.SunDirection,
+                Color.White, Vector3.UnitY, new WaterSettings(), sky, 0, default, atmosphereEnabled: true);
+            Assert.Equal(1, count);
+            Assert.Equal(0, packed.SkyDiscHalo[0].Z);
+            var direction = new Vector3(MathF.Sin(angle), MathF.Cos(angle), 0);
+            Vector3 expected = model.SkyValue(.002f, direction, frame)
+                + (insideExtra ? new Vector3(.2f, .3f, .4f) : Vector3.Zero);
+            var actual = SkyMath.ShadeDirectionDiscs(direction, Horizon, Zenith, discs[..count], .25f,
+                atmosphere: model, atmosphereFrame: frame, cameraHeightKm: .002f,
+                primaryDiscIndex: packed.SkyDiscHalo[0].Z > .5f ? 0 : -1);
+            Assert.InRange(Vector3.Distance(actual, expected), 0, 1e-6f);
+        }
+
+        [Theory]
+        [InlineData(0f, true)]
+        [InlineData(.002f, true)]
+        [InlineData(.005f, false)]
+        public void WaterSkyMirror_PrimaryEnabledUsesPhysicalSolarDiscWithAlignedExtra(float angle, bool insideExtra)
+        {
+            var settings = AtmosphereSettings.Earth();
+            settings.SunIlluminance = .001f;
+            settings.SunAngularRadiusRadians = .02f;
+            var model = new AtmosphereModel(settings);
+            var frame = new AtmosphereFrame(Vector3.UnitY, -Vector3.UnitY, 0, Vector3.One, SunOpacity: .4f);
+            var sky = new SkySettings { SunEnabled = true, SunColor = new Color(10, 20, 30, .1f), SunRadius = .001f };
+            sky.ExtraDiscs.Add(new SkyDisc { Direction = frame.SunDirection, Color = new Color(2, 3, 4, .4f), Radius = .003f });
+            Span<SkyDisc> discs = stackalloc SkyDisc[SkySettings.MaxDiscs];
+            int count = SkyDiscs.Resolve(sky, -frame.SunDirection, discs);
+            var packed = WaterRenderer.PackUbo(Matrix4x4.Identity, Matrix4x4.Identity, -frame.SunDirection,
+                Color.White, Vector3.UnitY, new WaterSettings(), sky, 0, default, atmosphereEnabled: true);
+            Assert.Equal(2, count);
+            Assert.Equal(1, packed.SkyDiscHalo[0].Z);
+            Assert.Equal(0, packed.SkyDiscHalo[1].Z);
+            var direction = new Vector3(MathF.Sin(angle), MathF.Cos(angle), 0);
+            Vector3 solarDisc = model.SunDiscValue(.002f, direction, frame);
+            Assert.True(solarDisc.LengthSquared() > 0);
+            Vector3 expected = model.SkyValue(.002f, direction, frame) + solarDisc * .25f
+                + (insideExtra ? new Vector3(.2f, .3f, .4f) : Vector3.Zero);
+            var actual = SkyMath.ShadeDirectionDiscs(direction, Horizon, Zenith, discs[..count], .25f,
+                atmosphere: model, atmosphereFrame: frame, cameraHeightKm: .002f,
+                primaryDiscIndex: packed.SkyDiscHalo[0].Z > .5f ? 0 : -1);
+            Assert.InRange(Vector3.Distance(actual, expected), 0, 1e-6f);
         }
 
         [Fact]

@@ -10791,14 +10791,18 @@ contains a bridge, overlay, shaped cut or material change. Transition edges reta
 Roads, rivers, bridge approaches, material boundaries, voids and region seams therefore keep their authored
 shape while large uniform interiors collapse.
 
-CPU ground and HLOD builds run on background workers. The scene thread applies completed generations nearest
-first with independent caps for full ground, coarse ground and HLOD. `PrimeAround` may drain gameplay full ground
-synchronously after a teleport, but decor stays budgeted. Missing LOD1 retains LOD0. Flattened HLOD availability
-is decided per cluster from the archetypes it actually places. A cluster containing a missing source retains
-individual geometry in Gameplay and Decor instead of creating a hole, without disabling another cluster whose
-placed sources are complete. An initial HLOD build retries three times and then logs once. A rebuild failure
-retains the last accepted handle while adopting current individual placements. An override replaces only its
-region snapshot and rejects stale work before upload.
+CPU ground, cover and HLOD builds run on background workers. The scene thread applies completed generations nearest
+first with independent caps for full ground, cover, coarse ground and HLOD. A decor region promoted into the
+gameplay radius, by `Update` or `PrimeAround`, builds its full ground and cover in the background and keeps its
+coarse ground and far clusters drawing until the full ground replaces them, so a promotion neither stalls the frame
+nor shows a hole. `PrimeAround` settles synchronously only the regions it loaded from `Unloaded` straight into
+gameplay and the already gameplay ground borders its arrivals dirty. Promotions, coarse ground, HLOD and all cover
+stay budgeted, so arrival cover lands a few frames after its ground. Missing LOD1 retains LOD0. Flattened HLOD
+availability is decided per cluster from the archetypes it actually places. A cluster containing a missing source
+retains individual geometry in Gameplay and Decor instead of creating a hole, without disabling another cluster
+whose placed sources are complete. An initial HLOD build retries three times and then logs once. A rebuild failure
+retains the last accepted handle while adopting current individual placements. An override replaces only its region
+snapshot and rejects stale work before upload.
 
 Picking always uses full object bounds and stable document IDs inside gameplay residency. HLOD is never a hover,
 click or collision target. On unload, the view cancels queued work and releases ground, cover, cluster and snapshot
@@ -10901,14 +10905,17 @@ from above with north up. Both are the price of one thing worth having: (east, n
 right-handed triple, so a single top-down view has north UP and east RIGHT instead of trading one for the other.
 
 **The view coalesces, the residency streams.** `MarkDirty` grows a tile rect by a 2-tile margin before turning it
-into region marks, because corner heights, central-difference normals and the four-tile corner blend all read
-ACROSS region borders, so an edit one tile inside a border changes the neighbour's mesh. `Flush` then rebuilds
-oldest first up to `TileWorldViewOptions.MaxRebuildsPerFlush` (16), leaving the rest counted by `PendingRebuilds`,
-and `Flush(int.MaxValue)` is the settle-now form. Active same-plane door clearances extend the ground-cover reach
-beyond the fixed mesh margin. Streaming a region rebuilds every loaded ground mesh or cover cache affected by
-its border data, solid footprints, upper roofs or tagged doors. A dirty region is never streamed out (unloading
-unsaved edits would throw, so it stays resident and logs once), and a torn region file throws
-`TileWorldException` straight out of `Update` rather than drawing a hole.
+into region marks, because corner heights, central-difference normals and the four-tile corner blend all read ACROSS
+region borders, so an edit one tile inside a border changes the neighbour's mesh. `Flush` then rebuilds oldest first
+up to `TileWorldViewOptions.MaxRebuildsPerFlush` (16), leaving the rest counted by `PendingRebuilds`, and
+`Flush(int.MaxValue)` is the settle-now form for a view without a residency profile. A region kept by a three-state
+profile is never meshed in `Flush`: its marks submit background ground builds, plus cover once per region for a
+gameplay region, while the previous mesh keeps drawing, so `Flush(int.MaxValue)` no longer settles profile ground.
+Only `PrimeAround` and headless capture do. Active same-plane door clearances extend the ground-cover reach beyond
+the fixed mesh margin. Streaming a region rebuilds every loaded ground mesh or cover cache affected by its border
+data, solid footprints, upper roofs or tagged doors. A dirty region is never streamed out (unloading unsaved edits
+would throw, so it stays resident and logs once), and a torn region file throws `TileWorldException` straight out of
+`Update` rather than drawing a hole.
 
 **Translucent overlays.** `ITileWorldScene.DrawOverlayMesh(mesh, world)` forwards the scene's unlit,
 depth-tested, alpha-blended overlay pass, which does not write depth. Use it for route highlights or range
@@ -12070,6 +12077,25 @@ Prediction begins when the authoritative snapshot first carries `MoveState.Commi
 through the same simulator. The local render state reads `client.LocalRenderState.Move.Commitment`. A remote reads
 `MovementState.Commitment`. Initial `VerticalSpeed` and commitment-local `Gravity` remain available through the
 lifecycle for animation timing, while the live vertical velocity remains on the surrounding movement state.
+
+To stop a player steering without moving them, for a death screen or a cutscene, hold the seat's movement on
+either head:
+
+```csharp
+server.HoldMovement(PlayerRef.Slot(slot));     // applied at the start of the next Tick
+bool held = server.IsMovementHeld(slot);       // host thread, the last applied state
+server.ReleaseMovement(PlayerRef.Slot(slot));  // queued in order behind the hold
+```
+
+Both calls ride the same FIFO admin queue as `Teleport`, are safe from any thread and apply at the start of the next
+tick. A held seat's commands are still dequeued and acknowledged, so the client's pending commands drain, but the
+body steps on `MoveCommand.Idle`: walking, running and jumping move nothing while gravity and support keep stepping.
+The hold clears no momentum, jump timer or active movement commitment, so abort a commitment explicitly if the game
+wants it stopped. A teleport, `SetPosition` or cell handoff keeps the hold, and self-rescue still teleports a held
+seat. A leave releases it, and on `ShardedWorldServer` a disconnect linger's reclaim counts as a leave. A
+slot-targeted hold or release queued before that seat's occupant left is dropped at apply, while an account target
+resolves when it applies. Nothing crosses the wire, so the game also gates its own client input while the seat is
+held, or a predicting client is corrected back to the held position on each snapshot.
 
 - **`WorldClient`** (render-free): wraps `NetClient` + `ClientReplicationView` + `ClientPrediction`. `Poll()`
   ingests AoI snapshots, applies remote entities, and reconciles the local avatar against the authoritative

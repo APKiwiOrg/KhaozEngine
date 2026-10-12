@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.Gpu;
 using KhaozEngine.Gpu.Vulkan.Internal;
+using KhaozEngine.Render3D.Rendering;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu
@@ -179,8 +180,14 @@ namespace KhaozEngine.Tests.Gpu
                 // The per-mesh albedo the cutout depth fragments alpha-test (issue #15), fragment only.
                 ["Shadow.cutout"] = L(T("Albedo"), S("Samp")),
 
-                // Render3D/Rendering/SkyRenderer.cs:50 and StarfieldRenderer.cs:53
-                ["Sky"] = L(U("Sky", F)),
+                // Render3D/Rendering/AtmosphereRenderer.cs:65-69. All three producers use dense set 0 layouts.
+                ["Atmosphere.transmittance"] = L(U("Atmosphere", F)),
+                ["Atmosphere.multiScattering"] = L(U("Atmosphere", F), T("AtmoTransmittance"), S("AtmoClampSampler")),
+                ["Atmosphere.skyView"] = L(U("Atmosphere", F), T("AtmoTransmittance"), T("AtmoMultiScattering"),
+                    S("AtmoClampSampler")),
+
+                // Render3D/Rendering/SkyRenderer.cs:63 and StarfieldRenderer.cs:53
+                ["Sky"] = L(AtmosphereBindings.AppendLayout(U("Sky", F))),
                 ["Starfield"] = L(U("Starfield", F)),
 
                 // Render3D/Rendering/TexturedBillboardRenderer.cs:38 and TrailRenderer.cs:53
@@ -228,6 +235,9 @@ namespace KhaozEngine.Tests.Gpu
 
             // The rest, alphabetically. Every one is a single-set pipeline except the two ground passes, which
             // carry their own two-slot arrays below since #604 and #727.
+            ("AtmosphereRenderer transmittance", ["Atmosphere.transmittance"]),
+            ("AtmosphereRenderer multi-scattering", ["Atmosphere.multiScattering"]),
+            ("AtmosphereRenderer sky-view", ["Atmosphere.skyView"]),
             ("BeamRenderer", ["Beam"]),
             ("DepthLineRenderer", ["DepthLine"]),
             ("DistortionRenderer", ["Distortion"]),
@@ -301,10 +311,10 @@ namespace KhaozEngine.Tests.Gpu
         [Fact]
         public void EveryShippedPipeline_StaysWithinTheRequiredMinimumDynamicUniformBuffers()
         {
-            // The cascade cutout depth pipeline adds one layout and one pipeline beside the shared depth layout.
+            // The atmosphere producers add three dense layouts and pipeline rows.
             // Both counts are stated so an emptied table cannot pass by agreeing with itself.
-            Assert.Equal(57, ShippedLayouts.Count);
-            Assert.Equal(61, ShippedPipelines.Count);
+            Assert.Equal(60, ShippedLayouts.Count);
+            Assert.Equal(64, ShippedPipelines.Count);
 
             foreach ((string pipeline, string[] slots) in ShippedPipelines)
             {

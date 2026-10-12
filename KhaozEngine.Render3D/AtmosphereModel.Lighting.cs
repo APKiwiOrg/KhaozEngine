@@ -93,8 +93,9 @@ public sealed partial class AtmosphereModel
         return ApplySkyControls(radiance, frame.Tint);
     }
 
-    /// <summary>Solar disc radiance with a normalized limb-darkening profile, source transmission,
-    /// opacity and one tint. Planet intersection clips each view ray. GPU consumers feather the edge.</summary>
+    /// <summary>Solar disc radiance with a normalized limb-darkening profile, per-view-ray transmission,
+    /// opacity and one tint. Planet intersection clips each view ray. GPU consumers feather the edge.
+    /// Moon discs retain cached centre transmission through SkySettings.ExtraDiscs.</summary>
     internal Vector3 SunDiscValue(float cameraHeightKm, Vector3 direction, in AtmosphereFrame frame)
     {
         ValidateLightingInputs(cameraHeightKm, frame);
@@ -108,7 +109,7 @@ public sealed partial class AtmosphereModel
         float relative = angle / radius;
         float limb = (.4f + .6f * MathF.Sqrt(MathF.Max(0, 1 - relative * relative))) / .8f;
         float scale = _settings.SunIlluminance / MathF.Pow(MathF.Sin(radius), 2);
-        return EvaluateLighting(cameraHeightKm, frame).SunTransmittance * frame.Tint
+        return Transmittance(position, view) * frame.Tint
             * (scale * limb * Math.Clamp(frame.SunOpacity, 0, 1));
     }
 

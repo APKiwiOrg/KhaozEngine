@@ -115,6 +115,9 @@ namespace KhaozEngine.Tests.Gpu
                 ["TargetOutlineSkinnedVisible"] = "TargetOutlineRenderer skinned visible",
 
                 ["Sky"] = "SkyRenderer",
+                ["AtmosphereTransmittance"] = "AtmosphereRenderer transmittance",
+                ["AtmosphereMultiScattering"] = "AtmosphereRenderer multi-scattering",
+                ["AtmosphereSkyView"] = "AtmosphereRenderer sky-view",
                 ["Starfield"] = "StarfieldRenderer",
                 ["Water"] = "WaterRenderer",
                 ["WaterClipmap"] = "WaterRenderer",
@@ -238,7 +241,7 @@ namespace KhaozEngine.Tests.Gpu
                 .Select(p => p.Pipeline)
                 .ToHashSet(StringComparer.Ordinal);
 
-            Assert.Equal(79, catalog.Length);
+            Assert.Equal(82, catalog.Length);
             Assert.Equal(catalog.Length, ProgramPipelines.Count);
 
             foreach (string program in catalog)

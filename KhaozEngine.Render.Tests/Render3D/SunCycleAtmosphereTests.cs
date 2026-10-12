@@ -101,6 +101,25 @@ public sealed class SunCycleAtmosphereTests
     }
 
     [Fact]
+    public void SunDiscValue_UpperLimbStaysRedAfterCentreSets()
+    {
+        var model = new AtmosphereModel(AtmosphereSettings.Earth());
+        static Vector3 Direction(float elevationDegrees)
+        {
+            float angle = elevationDegrees * MathF.PI / 180;
+            return new Vector3(MathF.Cos(angle), MathF.Sin(angle), 0);
+        }
+        float horizonDegrees = (float)(-Math.Acos(6360 / 6360.002) * 180 / Math.PI);
+        var frame = new AtmosphereFrame(Direction(horizonDegrees - .1f), -Vector3.UnitY, 0, Vector3.One);
+        // The upper ray is 0.2 degrees from the centre, inside Earth's solar radius.
+        var upper = model.SunDiscValue(.002f, Direction(horizonDegrees + .1f), frame);
+        Assert.True(upper.X > 0, "The unoccluded upper limb must remain visible after the centre sets.");
+        Assert.True(upper.X > upper.Y && upper.Y > upper.Z, "The remaining solar limb must redden.");
+        Assert.Equal(Vector3.Zero, model.SunDiscValue(.002f, Direction(horizonDegrees - .2f), frame));
+        Assert.Equal(Vector3.Zero, model.SunDiscValue(.002f, frame.SunDirection, frame));
+    }
+
+    [Fact]
     public void ApplyPhysical_IgnoresPalettesAndReturnsHorizon()
     {
         var cycle = Equatorial(NightKeyMode.Moon);

@@ -30,7 +30,7 @@ namespace KhaozEngine.Tests.Gpu
     public sealed class VulkanLayoutCompatibilityTests
     {
         /// <summary>
-        /// THE GUARD ITSELF, over every ORDERED PAIR of the thirty-six shipped pipelines: 1296 pairs, and for
+        /// THE GUARD ITSELF, over every ORDERED PAIR of shipped pipelines, and for
         /// every one of them the computed compatible prefix is no longer than the true prefix of identically
         /// defined set layouts. The invalidation can therefore only ever be CONSERVATIVE.
         /// <para>
@@ -45,7 +45,7 @@ namespace KhaozEngine.Tests.Gpu
             using var harness = new VulkanBindHarness();
             IReadOnlyList<(string Name, string[] Slots, VulkanBoundPipeline Bound)> pipelines = Build(harness);
 
-            Assert.Equal(61, pipelines.Count);   // Includes the five target-outline and three point-skinned pipelines.
+            Assert.Equal(64, pipelines.Count);   // Includes the three atmosphere producer pipelines.
 
             int pairs = 0;
             var seen = new HashSet<int>();
@@ -70,7 +70,7 @@ namespace KhaozEngine.Tests.Gpu
                 }
             }
 
-            Assert.Equal(61 * 61, pairs);
+            Assert.Equal(64 * 64, pairs);
 
             // AND THE GUARD IS NOT VACUOUS. A walk over pairs that were all incompatible would pass an
             // always-answer-zero implementation, so the shipped table has to actually contain compatible pairs.

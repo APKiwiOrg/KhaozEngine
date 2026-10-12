@@ -217,7 +217,7 @@ bool AtmoScatteringInterval(vec3 p, vec3 d, out float start, out float end, out 
 ";
 
     // Sky and later reflection consumers share the same directional LUT and solar radiance.
-    internal const string AtmosphereSkyConsumersGlsl = @"
+    internal const string AtmosphereSkyConsumersGlsl = AtmosphereTransmittanceIntegralGlsl + @"
 // Mirrors AtmosphereModel.SkyValue. Ground radiance is already present below the geometric horizon.
 vec3 atmosphereSkyValue(vec3 direction) {
     float radius = Atmo.Planet.x + max(Atmo.Camera.w, 0.0);
@@ -231,11 +231,13 @@ vec3 atmosphereSunDisc(vec3 direction) {
     float radius = Atmo.Res.w, feather = max(fwidth(angle), 1e-6);
     float edge = 1.0 - smoothstep(radius - feather * 0.5, radius + feather * 0.5, angle);
     vec3 p = vec3(0.0, Atmo.Planet.x + max(Atmo.Camera.w, 0.0), 0.0);
-    if (AtmoPlanetOccludes(p, d)) return vec3(0.0);
+    if (edge <= 0.0 || AtmoPlanetOccludes(p, d)) return vec3(0.0);
     float relative = angle / radius;
     float limb = (0.4 + 0.6 * sqrt(max(0.0, 1.0 - relative * relative))) / 0.8;
     float discScale = Atmo.Sun.w / (sin(radius) * sin(radius));
-    return Atmo.SunT.rgb * Atmo.Tint.rgb * (discScale * limb * edge * clamp(Atmo.SunT.w, 0.0, 1.0));
+    // Integrate only the visible disc footprint. A set centre must not black out an unoccluded upper limb.
+    return AtmoTransmittanceIntegral(p, d) * Atmo.Tint.rgb
+        * (discScale * limb * edge * clamp(Atmo.SunT.w, 0.0, 1.0));
 }
 ";
 
@@ -300,7 +302,7 @@ vec3 AtmoIntegrateScattering(vec3 p, vec3 view, vec3 light, int steps, bool isot
 
     const string AtmosphereTransmittanceIntegralGlsl = @"
 // Mirrors AtmosphereShaderMath.TransmittanceIntegral with 256 quadratic midpoint segments.
-// This producer's mapping contains only rays that reach the atmosphere top without entering the planet.
+// Callers clip planet-intersecting rays or use the transmittance producer's unoccluded mapping.
 // A float32 ground-intersection retest can falsely reject its tangent endpoint, so omit it here.
 vec3 AtmoTransmittanceIntegral(vec3 p, vec3 d) {
     vec2 topRoots;

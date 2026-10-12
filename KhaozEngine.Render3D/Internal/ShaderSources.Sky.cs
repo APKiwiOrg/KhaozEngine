@@ -105,6 +105,7 @@ void main() {
             if (DiscHalo[i].y > 0.5) {
                 physical += atmosphereSunDisc(direction);
             } else {
+                // The moon stays on the legacy extra-disc path with cached centre transmittance.
                 vec3 body = normalize(DiscDirection[i].xyz);
                 float angle = atan(length(cross(direction, body)), clamp(dot(direction, body), -1.0, 1.0));
                 float radius = DiscDirection[i].w, feather = max(fwidth(angle), 1e-6);

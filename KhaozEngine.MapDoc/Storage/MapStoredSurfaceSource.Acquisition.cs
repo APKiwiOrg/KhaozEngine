@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Surfaces;
 
@@ -10,8 +11,10 @@ public sealed partial class MapStoredSurfaceSource
     internal IMapSurfaceAcquisitionSession OpenAcquisition(MapSurfaceScope scope, MapSurfaceAcquisitionWork? work) =>
         new Acquisition(this, new(scope, SnapshotId, RootSha256, work));
 
-    sealed class Acquisition(MapStoredSurfaceSource source, MapSurfaceSessionState state) : IMapSurfaceAcquisitionSession
+    sealed class Acquisition(MapStoredSurfaceSource source, MapSurfaceSessionState state) : IMapSurfacePageVisitSession
     {
+        public bool CanObservePageVisits => true;
+        public event Action? PageVisiting { add => state.Budget.PageVisiting += value; remove => state.Budget.PageVisiting -= value; }
         public string SnapshotId => state.SnapshotId;
         public string RootSha256 => state.RootSha256;
         public int PagesRead => state.Budget.Reads;

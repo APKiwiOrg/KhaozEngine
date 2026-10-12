@@ -17,6 +17,7 @@ internal sealed class MapPageBudget
     internal MapPageBudget Share(MapSurfaceAcquisitionWork? work = null) => new(_admission, work ?? Work);
     internal int Reads;
     internal MapSurfaceAcquisitionWork? Work { get; }
+    internal event System.Action? PageVisiting;
 
     internal void BeforeMetadata()
     {
@@ -28,6 +29,7 @@ internal sealed class MapPageBudget
     internal void BeforeVisit()
     {
         if (_admission.Visits >= _admission.Limit) throw new MapSurfaceCapacityException();
+        PageVisiting?.Invoke();
         _admission.Visits++;
         if (Work is { } observation) observation.PageVisits++;
     }

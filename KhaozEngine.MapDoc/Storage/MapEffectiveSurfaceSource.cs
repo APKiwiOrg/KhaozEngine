@@ -66,7 +66,7 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
     }
     public IMapSurfaceAcquisitionSession OpenAcquisition(MapSurfaceScope scope) => new Acquisition(this, scope);
 
-    sealed class Acquisition : IMapSurfaceAcquisitionSession
+    sealed class Acquisition : IMapSurfacePageVisitSession
     {
         readonly MapEffectiveSurfaceSource _source;
         readonly MapSurfaceScope _scope;
@@ -75,6 +75,8 @@ internal sealed class MapEffectiveSurfaceSource : IMapSurfaceAcquisitionSource, 
         readonly HashSet<MapPatchKey> _served = new();
         long _recordsCharged;
         bool _disposed;
+        public bool CanObservePageVisits => true;
+        public event Action? PageVisiting { add => _budget.PageVisiting += value; remove => _budget.PageVisiting -= value; }
         public string SnapshotId => _source.SnapshotId;
         public string RootSha256 => _source.RootSha256;
         public int PagesRead => 0;

@@ -16,6 +16,47 @@ namespace KhaozEngine.Tests.MapDoc.Prefabs;
 public sealed partial class MapPrefabTransformTests
 {
     [Theory]
+    [InlineData(2, MapAcquireStatus.CapacityExceeded, 2)]
+    [InlineData(6, MapAcquireStatus.CapacityExceeded, 6)]
+    [InlineData(8, MapAcquireStatus.Complete, 8)]
+    public void ComposedBudget_PublicScopeCopyCannotExceedCachedVisitCeiling(int limit, MapAcquireStatus expected, int visits)
+    {
+        var (doc, original) = PrefabFixtures.ComposedBudgetGeometry(2, false);
+        var second = doc.Surfaces.Patches.Values.Single(p => p.Key.SurfaceId == "native-1");
+        doc.Surfaces.Patches.Remove(second.Key);
+        second.Key = new("native-1", 1, 0);
+        doc.Surfaces.Patches.Add(second.Key, second);
+        var transforms = original.Transforms.ToDictionary(p => p.Key, p => p.Value);
+        transforms["Surface:native-1"] = new(-64, 0, 0, 0, 1);
+        var context = new MapEffectiveContext(doc.Surfaces, transforms, new string('2', 64));
+        var work = new MapSurfaceAcquisitionWork();
+        var native = PrefabFixtures.PublicCopyingSource(PrefabFixtures.ObservedNative(doc, work));
+        var view = MapScopedSurfaces.Acquire(new MapComposedSurfaceSource(context, native),
+            new(WorldFrame.Origin, new(0.25f, -0.75f), new(0.75f, -0.25f), null, null,
+                Enum.GetValues<MapSurfaceRole>(), null, new(MaxPageReads: limit)), []);
+        Assert.Equal(expected, view.Status);
+        Assert.Equal(visits, work.PageVisits);
+        Assert.Equal(0, view.PagesRead);
+        if (expected == MapAcquireStatus.CapacityExceeded) Assert.Empty(view.Witness.Present);
+        else Assert.Equal(2, view.Witness.Present.Count);
+    }
+
+    [Theory]
+    [InlineData(1, true, MapAcquireStatus.Complete, 2)]
+    [InlineData(2, false, MapAcquireStatus.CapacityExceeded, 0)]
+    public void ComposedBudget_UnobservableSessionsCannotMultiplyAllowance(int nativeCount, bool generated, MapAcquireStatus expected, int visits)
+    {
+        var (doc, context) = PrefabFixtures.ComposedBudgetGeometry(nativeCount, generated);
+        var work = new MapSurfaceAcquisitionWork();
+        var native = PrefabFixtures.PublicCopyingSource(PrefabFixtures.ObservedNative(doc, work), opaque: true);
+        var view = MapScopedSurfaces.Acquire(new MapComposedSurfaceSource(context, native),
+            new(WorldFrame.Origin, new(0.25f, -0.75f), new(0.75f, -0.25f), null, null,
+                Enum.GetValues<MapSurfaceRole>(), null, new(MaxPageReads: 32)), []);
+        Assert.Equal(expected, view.Status);
+        Assert.Equal(visits, work.PageVisits);
+        if (expected == MapAcquireStatus.CapacityExceeded) Assert.Empty(view.Witness.Present);
+    }
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void ComposedGeometry_GeneratedRecordKeepsWorldNativeReferences(bool nativeRoute)

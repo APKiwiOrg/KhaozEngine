@@ -22,3 +22,15 @@ public interface IMapSurfaceAcquisitionSession : IDisposable
     MapPatchRead ReadPatch(MapPatchKey key);
     bool TryGetIncidentRecords(MapPatchKey acquiredKey, out IReadOnlyList<MapRecordRef>? records);
 }
+
+/// <summary>Optional pre-visit observation for composing independently bounded sessions.</summary>
+/// <remarks>When CanObservePageVisits is true, PageVisiting is raised synchronously before every directory or index
+/// page visit, including cached and unavailable pages. Page traversal starts in session operations after
+/// OpenAcquisition returns. A handler can throw MapSurfaceCapacityException to refuse
+/// the visit before its callback or payload work. The capability remains fixed for the session lifetime. Adapters
+/// can forward this contract without retaining private fields on a copied request.</remarks>
+public interface IMapSurfacePageVisitSession : IMapSurfaceAcquisitionSession
+{
+    bool CanObservePageVisits { get; }
+    event Action? PageVisiting;
+}

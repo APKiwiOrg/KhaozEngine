@@ -12,6 +12,34 @@ namespace KhaozEngine.Tests.MapDoc.Prefabs;
 
 internal static partial class PrefabFixtures
 {
+    internal static IMapSurfaceAcquisitionSource PublicCopyingSource(IMapSurfaceAcquisitionSource source, bool opaque = false) => new PublicCopyingSurfaceSource(source, opaque);
+    sealed class PublicCopyingSurfaceSource(IMapSurfaceAcquisitionSource source, bool opaque) : IMapSurfaceAcquisitionSource
+    {
+        public string SnapshotId => source.SnapshotId;
+        public string RootSha256 => source.RootSha256;
+        public IReadOnlyList<MapSurfaceRef> Surfaces => source.Surfaces;
+        public MapPatchRead ReadPatch(MapPatchKey key) => source.ReadPatch(key);
+        public MapPatchFindResult FindPatches(MapSurfaceScope scope) => source.FindPatches(Copy(scope));
+        public IMapSurfaceAcquisitionSession OpenAcquisition(MapSurfaceScope scope)
+        {
+            var session = source.OpenAcquisition(Copy(scope));
+            return opaque ? new OpaqueSession(session) : session;
+        }
+        static MapSurfaceScope Copy(MapSurfaceScope scope) => new(scope.Frame, scope.LocalMin, scope.LocalMax,
+            scope.MinY, scope.MaxY, scope.Roles, scope.SpaceIds, scope.Limits);
+        sealed class OpaqueSession(IMapSurfaceAcquisitionSession session) : IMapSurfaceAcquisitionSession
+        {
+            public string SnapshotId => session.SnapshotId;
+            public string RootSha256 => session.RootSha256;
+            public int PagesRead => session.PagesRead;
+            public IReadOnlyList<MapPatchKey> ReservedPatchKeys => session.ReservedPatchKeys;
+            public bool TryGetSurface(string id, out MapSurfaceRef? surface) => session.TryGetSurface(id, out surface);
+            public MapPatchFindResult FindPatches() => session.FindPatches();
+            public MapPatchRead ReadPatch(MapPatchKey key) => session.ReadPatch(key);
+            public bool TryGetIncidentRecords(MapPatchKey key, out IReadOnlyList<MapRecordRef>? records) => session.TryGetIncidentRecords(key, out records);
+            public void Dispose() => session.Dispose();
+        }
+    }
     internal static IMapSurfaceAcquisitionSource ObservedNative(MapDocument doc, MapSurfaceAcquisitionWork work) =>
         new ObservedNativeSource(MapDocumentSurfaceSource.Capture(doc), work);
     sealed class ObservedNativeSource(MapDocumentSurfaceSource source, MapSurfaceAcquisitionWork work) : IMapSurfaceAcquisitionSource

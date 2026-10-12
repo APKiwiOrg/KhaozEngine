@@ -326,3 +326,37 @@ R14 runs. Emission-table regeneration and verification without update variables
 each passed 9/9. Logs, the GPU TRX, pixel values and before/after PNGs are in
 `.superpowers/sdd/2026-10-12-physical-atmosphere-phase-1/task-12-evidence/r14`.
 No golden update variable, local grid bake or new frame timing was used.
+
+## Hosted provenance
+
+The first hosted bake, run 38276133410, produced the twelve atmosphere grids
+committed as `4984b18c1`. Its other grids matched the committed set exactly on
+every backend, so the branch was then pixel-identical to main with the atmosphere
+off.
+
+Hosted verification runs 38280436247 and 38286143455 failed on two defects that
+local Metal had not shown.
+
+- Disabled consumers read a stale atmosphere uniform. Uniform writes land in the
+  recording's own ring segment, and the disabled path stopped uploading after its
+  transition clear. A later frame could therefore bind a segment last written by
+  an enabled frame. Every consumer now gates on a flag in its own frame upload,
+  with no added command (`d0dc48245`).
+- On Direct3D 11 the sky-view horizon row fell on a float32 split between a
+  ground hit and the tangent. The CPU mirror and every producer now share one
+  analytic tangent and factored sphere offset (`1ae06b617`). The horizon GPU
+  diagnostic writes its own uniforms (`39990c87f`).
+
+Hosted bake 38302256595 on `1ae06b617` passed every atmosphere test on all three
+backends, including the Direct3D 11 LUT oracle. Its grids are committed as
+`6bd9caef7`. Atmosphere sunset moved by at most 0.0090 on every backend from the
+horizon fix. Splat, tile ground, sky discs, skinned normal map, water focus and
+temporal debug grids moved by at most 0.0065 on Metal and Vulkan. The flag
+values are unchanged with the atmosphere off, so this is recompiled shader
+arithmetic, and every delta is inside the 0.01 golden tolerance. Direct3D 11
+moved only the atmosphere grids.
+
+Failures outside this branch on the hosted Windows leg are tracked separately.
+They are the point shadow seam (#1190), native map fixtures (#1316), the WARP
+crash probes (#1215) and the racing TileWorld writers (#1376). The Metal spawn
+search allocation bound is #1373.

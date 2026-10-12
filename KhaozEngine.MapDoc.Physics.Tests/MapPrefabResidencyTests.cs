@@ -234,4 +234,35 @@ public class MapPrefabResidencyTests
         Assert.Contains(MapResidencyOwnership.Build(world, Grids).Single().Membership, t => t.X == 1);
         Assert.Contains(MapNavTiling.Partition(world, Grids, Nav), t => t.Coord.X == 1);
     }
+
+    [Theory]
+    [InlineData(false, true, 0, 0, 0)]
+    [InlineData(true, true, 0, 0, 0)]
+    [InlineData(true, true, 926800, 0, 64)]
+    [InlineData(true, true, -1000000, 1000000, -1000000)]
+    [InlineData(false, false, 0, 0, 0)]
+    public void FinalRotationCancellation_ContainsInstalledLeafAcrossZ64(bool orientedChild, bool preciseYaw, float x, float y, float z)
+    {
+        var world = NativeWorldFixtures.BuildRotationCancellation(orientedChild, preciseYaw);
+        var origin = new Vector3(x, y, z);
+        using var physics = new BepuPhysicsWorld();
+        physics.Rebase(origin);
+        using var registration = MapPhysicsRegistration.Register(world, physics);
+        var installed = NativeWorldFixtures.InstalledBox(physics);
+        Assert.True(registration.TryOwner(registration.Handles.Single(), out var owner));
+        Assert.Equal("rotation-cancellation", owner.OwnerId);
+        Assert.Equal(926819.375, (double)x + installed.Centre.X);
+        double expectedZ = preciseYaw ? 64 : 63.84375;
+        Assert.Equal(expectedZ, (double)z + installed.Centre.Z);
+        Assert.Equal(expectedZ, (double)z + installed.WideCentre.Z);
+        var bounds = world.Placements.Single().ColliderBounds!.Value;
+        Assert.True(bounds.MinZ <= 64 && bounds.MaxZ > 64, $"installed leaf centre Z 64, bounds [{bounds.MinZ:R}, {bounds.MaxZ:R}]");
+        Assert.True(bounds.MinZ <= (double)z + installed.Centre.Z && bounds.MaxZ >= (double)z + installed.Centre.Z);
+        Assert.True(bounds.MinX <= 926819.375 && bounds.MaxX >= 926819.375);
+        Assert.True(bounds.MinX <= (double)x + installed.Min.X && bounds.MaxX >= (double)x + installed.Max.X);
+        Assert.True(bounds.MinY <= (double)y + installed.Min.Y && bounds.MaxY >= (double)y + installed.Max.Y);
+        Assert.True(bounds.MinZ <= (double)z + installed.Min.Z && bounds.MaxZ >= (double)z + installed.Max.Z);
+        Assert.True(world.Bounds.MaxZ > 64);
+        Assert.Contains(MapResidencyOwnership.Build(world, Grids).Single().Membership, t => t.Z == 1);
+    }
 }

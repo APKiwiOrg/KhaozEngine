@@ -15,15 +15,24 @@ internal static class MapRegistrationBounds
     {
         Quaternion orientation = MapBackendPoseAdapter.Pose(transform, WorldFrame.Origin).Orientation;
         PhysicsShape installed = Flatten(shape);
-        MapBox3 local = MapShapeBounds.Of(installed, new Pose(Vector3.Zero, orientation));
         var (sin, cos) = Math.SinCos(transform.YawRadians * 0.5);
         MapBox3 canonical = MapShapeBounds.Of(shape, new MapDoublePose(new(transform.X, transform.Y, transform.Z), 0, sin, 0, cos));
-        double ex = AxisError(installed, orientation, transform.X, local.MinX, local.MaxX, true);
-        double ey = AxisError(installed, orientation, transform.Y, local.MinY, local.MaxY, false);
-        double ez = AxisError(installed, orientation, transform.Z, local.MinZ, local.MaxZ, true);
-        return canonical.Union(new MapBox3(
-            Lower(transform.X, local.MinX, ex), Lower(transform.Y, local.MinY, ey), Lower(transform.Z, local.MinZ, ez),
-            Upper(transform.X, local.MaxX, ex), Upper(transform.Y, local.MaxY, ey), Upper(transform.Z, local.MaxZ, ez)));
+        var root = new MapDoublePose(new(transform.X, transform.Y, transform.Z), orientation.X, orientation.Y, orientation.Z, orientation.W);
+        var poseError = new MapDouble3(PoseError(transform.X, true), PoseError(transform.Y, false), PoseError(transform.Z, true));
+        var magnitude = new MapDouble3(RelativeMagnitude(transform.X, poseError.X), RelativeMagnitude(transform.Y, poseError.Y),
+            RelativeMagnitude(transform.Z, poseError.Z));
+        var leaves = installed is CompoundShape compound ? compound.Children : new[] { new CompoundChild(installed, Pose.Identity) };
+        foreach (var leaf in leaves)
+        {
+            MapDoublePose ideal = root.Compose(leaf.Local);
+            MapBox3 nominal = MapShapeBounds.Of(leaf.Shape, ideal);
+            MapDouble3 error = Exact(leaf, orientation, transform, nominal) ? default
+                : MapFloatGeometryError.Of(leaf.Shape, leaf.Local, ideal, orientation, magnitude, poseError, installed is CompoundShape);
+            canonical = canonical.Union(new MapBox3(
+                Lower(nominal.MinX, error.X), Lower(nominal.MinY, error.Y), Lower(nominal.MinZ, error.Z),
+                Upper(nominal.MaxX, error.X), Upper(nominal.MaxY, error.Y), Upper(nominal.MaxZ, error.Z)));
+        }
+        return canonical;
     }
 
     // The installer starts with each outer child pose and rounds at every nested composition. Its intermediate
@@ -44,25 +53,38 @@ internal static class MapRegistrationBounds
         }
     }
 
-    static double AxisError(PhysicsShape shape, Quaternion orientation, double position, double min, double max, bool planar)
+    static double PoseError(double position, bool planar)
     {
-        double radius = Math.Max(Math.Abs(min), Math.Abs(max));
-        // The nearest origin frame is at most Grid/2 from the origin. This covers both pose conversions and
-        // the final addition of local geometry, including an origin at the opposite world limit.
-        double magnitude = Math.Abs(position) + MapWorldBuilder.MaxCoordinateMetres + WorldFrame.Grid + radius;
-        float bound = (float)magnitude;
-        if (!float.IsFinite(bound)) throw new MapDocumentException("Registration bounds are not representable.");
-        if (bound < magnitude) bound = MathF.BitIncrement(bound);
-        double ulp = (double)MathF.BitIncrement(bound) - bound;
-        bool exactPosition = Aligned(position, ulp);
+        // The nearest origin frame is at most Grid/2 from the origin. This covers both root-pose conversions,
+        // including an origin at the opposite world limit. Geometry has its own input-term bounds.
+        double ulp = Quantum(Math.Abs(position) + MapWorldBuilder.MaxCoordinateMetres + WorldFrame.Grid);
+        bool exactPosition = ulp <= 1 && Aligned(position, ulp);
         // Integer origins and frame anchors are multiples of this quantum. An aligned position survives
         // both subtractions exactly. Otherwise planar registration has two half-ULP roundings. Y first
         // rounds at the world origin, then subtracts the unframed physics origin.
-        double error = exactPosition ? 0 : planar ? ulp : Math.Abs((double)(float)position - position) + ulp * 0.5;
-        // A child offset or a vertex can also round when added to the registered position. Keep exact
-        // lattice-aligned endpoints exact so a collider ending at a tile seam does not acquire a new tile.
-        if (!exactPosition || !ExactGeometry(shape, orientation, ulp)) error += ulp * 0.5;
-        return error;
+        return exactPosition ? 0 : Math.BitIncrement(planar ? ulp : Math.Abs((double)(float)position - position) + ulp * 0.5);
+    }
+
+    static double RelativeMagnitude(double position, double error) =>
+        Math.BitIncrement(Math.BitIncrement(Math.Abs(position) + MapWorldBuilder.MaxCoordinateMetres) + error);
+
+    static bool Exact(CompoundChild leaf, Quaternion orientation, MapEffectiveTransform transform, MapBox3 bounds)
+    {
+        if (orientation != Quaternion.Identity || leaf.Local.Orientation != Quaternion.Identity) return false;
+        double radius = Math.Max(Math.Max(Math.Abs(bounds.MinX), Math.Abs(bounds.MaxX)),
+            Math.Max(Math.Max(Math.Abs(bounds.MinY), Math.Abs(bounds.MaxY)), Math.Max(Math.Abs(bounds.MinZ), Math.Abs(bounds.MaxZ))));
+        double quantum = Quantum(radius + MapWorldBuilder.MaxCoordinateMetres + WorldFrame.Grid);
+        return quantum <= 1 && Aligned(transform.X, quantum) && Aligned(transform.Y, quantum) && Aligned(transform.Z, quantum)
+            && Aligned(leaf.Local.Position.X, quantum) && Aligned(leaf.Local.Position.Y, quantum) && Aligned(leaf.Local.Position.Z, quantum)
+            && ExactGeometry(leaf.Shape, leaf.Local.Orientation, quantum);
+    }
+
+    static double Quantum(double magnitude)
+    {
+        float bound = (float)magnitude;
+        if (!float.IsFinite(bound)) throw new MapDocumentException("Registration bounds are not representable.");
+        if (bound < magnitude) bound = MathF.BitIncrement(bound);
+        return (double)MathF.BitIncrement(bound) - bound;
     }
 
     static bool Aligned(double value, double quantum) => value / quantum == Math.Truncate(value / quantum);
@@ -87,8 +109,6 @@ internal static class MapRegistrationBounds
     }
 
     // Binary64 conversion is outward too. No padding is needed when every binary32 operation is exact.
-    static double Lower(double position, double offset, double error) =>
-        error == 0 ? position + offset : Math.BitDecrement(position + offset - error);
-    static double Upper(double position, double offset, double error) =>
-        error == 0 ? position + offset : Math.BitIncrement(position + offset + error);
+    static double Lower(double value, double error) => error == 0 ? value : Math.BitDecrement(value - error);
+    static double Upper(double value, double error) => error == 0 ? value : Math.BitIncrement(value + error);
 }

@@ -71,7 +71,7 @@ public partial class SupportFootprintTests
         Assert.Equal(0, leaves[0].Faces[0][0]);
         Assert.Equal(uncached.Vertices.Select(v => v.Bounds), leaves[0].Vertices.Select(v => v.Bounds));
         var privateFaces = new InstalledSupportLeaf(0, Pose.Identity, uncached.LocalVertices, uncached.Faces,
-            [], null, 0, 0, shape);
+            null, 0, 0, shape);
         uncached.Faces[0][0] = 7;
         leaves.Clear();
         scratch.Reset();
@@ -80,13 +80,10 @@ public partial class SupportFootprintTests
 
         Vector3[] vertices = [Vector3.UnitX];
         int[][] faces = [[0]];
-        Vector3[] normals = [Vector3.UnitY];
-        var privatelyOwned = new InstalledSupportLeaf(0, Pose.Identity, vertices, faces, normals, null, 0, 0);
+        var privatelyOwned = new InstalledSupportLeaf(0, Pose.Identity, vertices, faces, null, 0, 0);
         vertices[0] = Vector3.UnitZ;
         faces[0][0] = 1;
-        normals[0] = Vector3.UnitZ;
         Assert.Equal(Vector3.UnitX, privatelyOwned.Vertices[0]);
-        Assert.Equal(Vector3.UnitY, privatelyOwned.Normals[0]);
     }
 
     [Fact]

@@ -47,7 +47,8 @@ public readonly record struct SupportFootprintBounds(Vector3 Minimum, Vector3 Ma
         return double.IsFinite(bottom) && double.IsFinite(top);
     }
 
-    static bool Valid(in SupportFootprintProposal proposal) => Finite(proposal.Start.Position) &&
+    static bool Valid(in SupportFootprintProposal proposal) => proposal.Probe is not null &&
+        Finite(proposal.Start.Position) &&
         proposal.Start.Orientation == Quaternion.Identity && float.IsFinite(proposal.Probe.Radius) &&
         proposal.Probe.Radius > 0 && float.IsFinite(proposal.Probe.Length) && proposal.Probe.Length >= 0 &&
         float.IsFinite(proposal.Distance) && proposal.Distance >= 0;

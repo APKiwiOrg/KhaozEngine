@@ -59,14 +59,7 @@ internal sealed class InstalledSupportGeometryCache
             CapsuleFeatureStatus status = CapsuleFeatureGeometry.CaptureLeaf(simulation, installation, identity,
                 local, id, null, out var captured, topologyOnly: true);
             if (status != CapsuleFeatureStatus.Complete) return status;
-            var normals = new Vector3[captured!.Faces.Length];
-            for (int face = 0; face < normals.Length; face++)
-            {
-                int[] indices = captured.Faces[face];
-                normals[face] = Vector3.Cross(captured.LocalVertices[indices[1]] - captured.LocalVertices[indices[0]],
-                    captured.LocalVertices[indices[2]] - captured.LocalVertices[indices[0]]);
-            }
-            leaves.Add(new(id, localPose, captured.LocalVertices, captured.Faces, normals, null, 0, 0, installation));
+            leaves.Add(new(id, localPose, captured!.LocalVertices, captured.Faces, null, 0, 0, installation));
             return CapsuleFeatureStatus.Complete;
         }
         if (installation.Type != default(Sphere).TypeId && installation.Type != default(Capsule).TypeId &&
@@ -75,7 +68,7 @@ internal sealed class InstalledSupportGeometryCache
         CapsuleFeatureStatus curvedStatus = SupportNeighborhoodCurved.Leaf(simulation, installation, identity, id, curved);
         if (curvedStatus != CapsuleFeatureStatus.Complete) return curvedStatus;
         SupportCurvedLeaf leaf = curved[0];
-        leaves.Add(new(id, localPose, [], [], [], leaf.Shape, leaf.Radius, leaf.HalfLength, installation));
+        leaves.Add(new(id, localPose, [], [], leaf.Shape, leaf.Radius, leaf.HalfLength, installation));
         return CapsuleFeatureStatus.Complete;
     }
 

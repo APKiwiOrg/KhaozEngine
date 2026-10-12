@@ -194,6 +194,17 @@ public partial class SupportFootprintTests
         Assert.True(paths.Maximum.Y >= displaced.FootProposal.Start.Position.Y + half + displaced.ContactBand);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void BoundsRejectNullProbeInEitherProposal(bool axis)
+    {
+        SupportFootprintRequest request = Request();
+        SupportFootprintProposal invalid = request.AxisProposal with { Probe = null! };
+        request = axis ? request with { AxisProposal = invalid } : request with { FootProposal = invalid };
+        Assert.False(SupportFootprintBounds.TryCreate(request, out _));
+    }
+
     static SupportFootprintMember Measure(SupportPolygon polygon, SupportFootprintRequest request)
     {
         Assert.Equal(GeometrySign.Positive, SupportFootprintPolygon.Measure(polygon, request, out var member));

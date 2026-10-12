@@ -11,7 +11,7 @@ namespace KhaozEngine.Physics.Bepu;
 /// Materialization copies into query scratch before exposing mutable polyhedron storage.</summary>
 internal sealed class InstalledSupportLeaf
 {
-    readonly Vector3[] _vertices, _normals;
+    readonly Vector3[] _vertices;
     readonly int[][] _faces;
     internal int LeafId { get; }
     internal Pose LocalPose { get; }
@@ -20,9 +20,8 @@ internal sealed class InstalledSupportLeaf
     internal double HalfLength { get; }
     internal TypedIndex Installation { get; }
     internal ReadOnlySpan<Vector3> Vertices => _vertices;
-    internal ReadOnlySpan<Vector3> Normals => _normals;
 
-    internal InstalledSupportLeaf(int leafId, Pose localPose, Vector3[] vertices, int[][] faces, Vector3[] normals,
+    internal InstalledSupportLeaf(int leafId, Pose localPose, Vector3[] vertices, int[][] faces,
         SupportCurvedShape? curvedShape, double radius, double halfLength, TypedIndex installation = default)
     {
         LeafId = leafId;
@@ -32,7 +31,6 @@ internal sealed class InstalledSupportLeaf
         HalfLength = halfLength;
         Installation = installation;
         _vertices = (Vector3[])vertices.Clone();
-        _normals = (Vector3[])normals.Clone();
         _faces = new int[faces.Length][];
         for (int i = 0; i < faces.Length; i++) _faces[i] = (int[])faces[i].Clone();
     }

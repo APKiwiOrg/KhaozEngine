@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Reflection;
 using KhaozEngine.Physics;
 using KhaozEngine.Physics.Bepu;
+using KhaozEngine.Tests.Locomotion.Contacts;
 using Xunit;
 
 namespace KhaozEngine.Tests.Physics;
@@ -95,9 +96,23 @@ public partial class SupportFootprintTests
         _output.WriteLine($"Enclosed source variables={variables} coldBytes={coldBytes} scratchPayloadBytes={payload}");
         Assert.True(payload < 4 * 1024 * 1024, $"Retained source scratch is {payload} bytes");
         SupportQueryDiagnostics.Reset();
-        long warmBefore = GC.GetAllocatedBytesForCurrentThread();
-        GeometrySign warm = polygon.SourcePredicates.Interior(polygon, 1, axis, radius, -1, spatial: true);
-        long warmBytes = GC.GetAllocatedBytesForCurrentThread() - warmBefore;
+        var recorder = new SupportCostAttributionTests.PhaseRecorder(false);
+        ContactAllocationDiagnostics.SetObserver(recorder.Observe);
+        GeometrySign warm;
+        long warmBytes;
+        try
+        {
+            using var region = SupportAllocationRegion.Start();
+            recorder.Reset();
+            long warmBefore = GC.GetAllocatedBytesForCurrentThread();
+            using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportExtrema))
+                warm = polygon.SourcePredicates.Interior(polygon, 1, axis, radius, -1, spatial: true);
+            warmBytes = GC.GetAllocatedBytesForCurrentThread() - warmBefore;
+        }
+        finally { ContactAllocationDiagnostics.SetObserver(null); }
+        Assert.Equal(0, recorder.Depth);
+        Assert.Equal(warmBytes, recorder.Bytes.Sum());
+        Assert.All(recorder.Rows(), phase => Assert.Equal(0, phase.Collections));
         Assert.Equal(GeometrySign.Positive, warm);
         Assert.Equal(0, warmBytes);
         AssertSourceFallbacks();

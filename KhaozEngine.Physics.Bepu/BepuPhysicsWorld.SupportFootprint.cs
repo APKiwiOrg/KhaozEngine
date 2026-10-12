@@ -7,6 +7,7 @@ namespace KhaozEngine.Physics.Bepu;
 public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
 {
     SupportFootprintCollector? _footprintScratch = new();
+    readonly InstalledSupportGeometryCache _installedSupportGeometry = new();
 
     /// <inheritdoc/>
     public SupportFootprintResult QuerySupportFootprint(IPhysicsQueryLease lease, in SupportFootprintRequest request,
@@ -68,7 +69,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
                 -Vector3.UnitY, proposal.Distance, out hit, proposals, exclusions);
             collector.Proposal(index, found, hit);
         }
-        // All installed geometry is reread under the original authenticated lease and selected exclusions.
+        // Selection and live pose proofs run under the original lease. Only admitted local topology is retained.
         System.Collections.Generic.List<(StaticHandle Seam, BepuPhysics.StaticHandle Installed)> candidates;
         using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportTraversal))
             candidates = collector.Candidates(_sim, _reverseHandles, exclusions);
@@ -76,14 +77,16 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
         {
             if (filter.Mobility == QueryMobility.Dynamics) break;
             _sim.Statics.GetDescription(installed, out var description);
-            CapsuleFeatureStatus captured = collector.Collect(_sim, seam, description);
+            CapsuleFeatureStatus captured = collector.Collect(_sim, seam, description, _installedSupportGeometry,
+                lease.GeometryGeneration);
             if (captured != CapsuleFeatureStatus.Complete) return collector.Refused(captured);
         }
         if (filter.Mobility != QueryMobility.Dynamics && collector.BeginBelowBandPass())
             foreach (var (seam, installed) in candidates)
             {
                 _sim.Statics.GetDescription(installed, out var description);
-                CapsuleFeatureStatus captured = collector.Collect(_sim, seam, description);
+                CapsuleFeatureStatus captured = collector.Collect(_sim, seam, description, _installedSupportGeometry,
+                    lease.GeometryGeneration);
                 if (captured != CapsuleFeatureStatus.Complete) return collector.Refused(captured);
             }
         return collector.Publish(receiver, lease, members, joins);

@@ -57,7 +57,7 @@ internal sealed class CapsuleFeaturePolyhedron
 
     /// <summary>Admits the leaf. With <paramref name="scratch"/> every working collection and the normals come from
     /// it, and the edge and vertex incidence arrays are not published. The decision is the same either way.</summary>
-    internal CapsuleFeatureStatus Validate(CapsuleFeatureCaptureScratch? scratch = null)
+    internal CapsuleFeatureStatus Validate(CapsuleFeatureCaptureScratch? scratch = null, bool topologyOnly = false)
     {
         if (Vertices.Length < 4 || Faces.Length < 4 || LocalVertices.Length != Vertices.Length)
             return CapsuleFeatureStatus.Unsupported;
@@ -122,10 +122,8 @@ internal sealed class CapsuleFeaturePolyhedron
                 }
                 Incident(first).Add(faceId);
             }
-            FeaturePoint ab = EdgeDirection(face[0], face[1]);
-            FeaturePoint ac = EdgeDirection(face[0], face[2]);
-            normals[faceId] = FeaturePoint.Cross(ab, ac);
-            if (FeaturePoint.Dot(normals[faceId], normals[faceId]).Sign != GeometrySign.Positive)
+            normals[faceId] = FaceNormal(face);
+            if (!topologyOnly && FeaturePoint.Dot(normals[faceId], normals[faceId]).Sign != GeometrySign.Positive)
                 return CapsuleFeatureStatus.Unresolved;
         }
         if (Vertices.Length - edges.Count + Faces.Length != 2) return CapsuleFeatureStatus.Ambiguous;
@@ -150,6 +148,24 @@ internal sealed class CapsuleFeaturePolyhedron
         for (int i = 0; i < incidence.Length; i++) VertexFaces[i] = incidence[i].ToArray();
         return CapsuleFeatureStatus.Complete;
     }
+
+    /// <summary>Rechecks the pose-dependent part after privately owned local topology was admitted.
+    /// Uses the same installed edge operator and arithmetic as full admission.</summary>
+    internal CapsuleFeatureStatus ValidateInstalledNormals(CapsuleFeatureCaptureScratch scratch)
+    {
+        FeaturePoint[] normals = scratch.Points(Faces.Length);
+        for (int face = 0; face < Faces.Length; face++)
+        {
+            normals[face] = FaceNormal(Faces[face]);
+            if (FeaturePoint.Dot(normals[face], normals[face]).Sign != GeometrySign.Positive)
+                return CapsuleFeatureStatus.Unresolved;
+        }
+        Normals = normals;
+        return CapsuleFeatureStatus.Complete;
+    }
+
+    FeaturePoint FaceNormal(int[] face) => FeaturePoint.Cross(EdgeDirection(face[0], face[1]),
+        EdgeDirection(face[0], face[2]));
 
     // The number of distinct values, as a HashSet built from them counts them.
     static int Distinct(Vector3[] values, CapsuleFeatureCaptureScratch? scratch)

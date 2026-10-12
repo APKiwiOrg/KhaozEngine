@@ -99,7 +99,7 @@ public class SupportGateCostTests(ITestOutputHelper output) : IDisposable
     {
         SupportCostRow row = Row(name);
         SupportQueryDiagnostics.Enable(true);
-        var sampler = new SupportCostSampler(false);
+        var sampler = new SupportCostSampler(false) { IsolateAllocations = true, IsolateColdAllocations = false };
         SupportCostSample find = sampler.Measure(row, "Find")[0];
         Assert.Equal(1, find.Counts.Find);
         Assert.Equal(2, find.Counts.Proposals);

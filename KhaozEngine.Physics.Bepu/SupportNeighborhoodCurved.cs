@@ -92,6 +92,20 @@ internal static class SupportNeighborhoodCurved
         if (!(radius > 0 && radius <= local) || !(half >= 0 && half <= local) ||
             (shape == SupportCurvedShape.Cylinder && half == 0))
             return CapsuleFeatureStatus.Unsupported;
+        return Leaf(shape, radius, half, pose, leafId, transform, leaves);
+    }
+
+    internal static CapsuleFeatureStatus Leaf(SupportCurvedShape shape, float radius, float half,
+        in RigidPose pose, int leafId, List<SupportCurvedLeaf> leaves)
+    {
+        if (!InstalledPoseOperator.TryCreate(pose, out InstalledPoseOperator transform))
+            return CapsuleFeatureStatus.Unsupported;
+        return Leaf(shape, radius, half, pose, leafId, transform, leaves);
+    }
+
+    static CapsuleFeatureStatus Leaf(SupportCurvedShape shape, float radius, float half, in RigidPose pose,
+        int leafId, in InstalledPoseOperator transform, List<SupportCurvedLeaf> leaves)
+    {
         GeometryVector axis = GeometryVectorOperations.Normalize(transform.Y.Bounds);
         if (!axis.IsResolved) return CapsuleFeatureStatus.Unsupported;
         GeometryInterval one = GeometryInterval.Exact(1);

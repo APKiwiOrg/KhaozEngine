@@ -20,7 +20,8 @@ internal static class SupportCostScratch
         object? foot = typeof(FootSupport).GetField("t_scratch", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null);
         object? backend = typeof(BepuPhysicsWorld).GetField("_neighborhoodScratch", Fields)!.GetValue(world);
         object? footprint = typeof(BepuPhysicsWorld).GetField("_footprintScratch", Fields)!.GetValue(world);
-        return Visit(foot, seen) + Visit(backend, seen) + Visit(footprint, seen);
+        object? installed = typeof(BepuPhysicsWorld).GetField("_installedSupportGeometry", Fields)!.GetValue(world);
+        return Visit(foot, seen) + Visit(backend, seen) + Visit(footprint, seen) + Visit(installed, seen);
     }
 
     static long Visit(object? value, HashSet<object> seen)

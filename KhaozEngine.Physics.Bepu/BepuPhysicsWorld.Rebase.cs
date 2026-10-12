@@ -55,6 +55,7 @@ public sealed partial class BepuPhysicsWorld
     public void Rebase(Vector3 newOrigin)
     {
         using QueryOperation scope = EnterMutation();
+        _installedSupportGeometry.Clear();
         CapsuleSweepEvidence.Mutation evidence = BeginSweepMutation();
         Vector3 delta = _origin - newOrigin;
         _origin = newOrigin;

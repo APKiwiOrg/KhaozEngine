@@ -98,7 +98,8 @@ internal sealed partial class SupportFootprintCollector
         return _candidates;
     }
 
-    internal CapsuleFeatureStatus Collect(Simulation simulation, StaticHandle owner, in StaticDescription description)
+    internal CapsuleFeatureStatus Collect(Simulation simulation, StaticHandle owner, in StaticDescription description,
+        InstalledSupportGeometryCache installed, long generation)
     {
         _polygons.Clear();
         _curved.Clear();
@@ -110,8 +111,21 @@ internal sealed partial class SupportFootprintCollector
                     _bounds, _triangles, _pool, _polygons);
             else
             {
-                captured = SupportNeighborhoodPolyhedra.Capture(simulation, description.Shape, description.Pose,
-                    _bounds, _capture, _leaves, _curved);
+                captured = installed.GetOrCapture(simulation, owner, description.Shape, generation, out var geometry);
+                if (captured == CapsuleFeatureStatus.Complete)
+                {
+                    using var materialization = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization);
+                    captured = geometry!.Materialize(simulation, description, _capture, _leaves, _curved);
+                    if (captured != CapsuleFeatureStatus.Complete && captured != CapsuleFeatureStatus.Ambiguous)
+                        captured = CapsuleFeatureStatus.Unsupported;
+                }
+                else
+                {
+                    // A local capture failure must keep the full evaluator's original refusal ordering.
+                    installed.Remove(owner);
+                    captured = SupportNeighborhoodPolyhedra.Capture(simulation, description.Shape, description.Pose,
+                        _bounds, _capture, _leaves, _curved);
+                }
                 if (captured != CapsuleFeatureStatus.Complete) return captured;
                 using (ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization))
                     foreach (CapsuleFeaturePolyhedron leaf in _leaves)

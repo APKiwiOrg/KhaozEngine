@@ -156,6 +156,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
     // _reverseHandles for why both must move in lockstep.
     private void AddStaticEntry(int id, BepuStaticHandle handle, TypedIndex shape)
     {
+        _installedSupportGeometry.Remove(new SeamHandle(id));
         _handles[id] = (handle, shape);
         _reverseHandles[handle.Value] = id;
     }
@@ -163,6 +164,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
     // Single point of truth for removing from _handles/_reverseHandles together.
     private void RemoveStaticEntry(int id, BepuStaticHandle handle)
     {
+        _installedSupportGeometry.Remove(new SeamHandle(id));
         _handles.Remove(id);
         _reverseHandles.Remove(handle.Value);
         _sweepStaticBounds.Remove(id);
@@ -472,6 +474,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsWorld
         BeginSweepMutation();
         if (_disposed) return;
         _disposed = true;
+        _installedSupportGeometry.Clear();
         _sim.Dispose();
         _pool.Clear();
     }

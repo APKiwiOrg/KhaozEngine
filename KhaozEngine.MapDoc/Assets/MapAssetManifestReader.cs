@@ -79,7 +79,7 @@ internal static class MapAssetManifestReader
     {
         if (resource is null) throw new MapDocumentException("Resource must not be null.");
         ValidateReference(resource.Reference);
-        if (!Enum.IsDefined(resource.Kind) || resource.Kind == MapResourceKind.Prefab)
+        if (!Enum.IsDefined(resource.Kind))
             throw new MapDocumentException($"Unsupported resource kind '{resource.Kind}' for '{resource.Reference.Id}'.");
         RequireIds(resource.Dependencies, "resource.dependencies");
     }

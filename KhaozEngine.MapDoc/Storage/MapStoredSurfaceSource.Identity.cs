@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Prefabs;
 
 namespace KhaozEngine.MapDoc.Storage;
 
@@ -10,6 +11,7 @@ public sealed partial class MapStoredSurfaceSource
     {
         MapBoundDocumentValidation.ValidateLocal(_globals);
         MapBoundDocumentValidation.RequireRoots(_nativeAssets, assets);
+        MapPrefabValidation.RequireDocument(_globals, assets);
         MapBoundDocumentValidation.RequireWaterMaterials(_globals.Water, assets);
     }
 

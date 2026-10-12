@@ -1,0 +1,209 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Numerics;
+using System.Text.Json.Nodes;
+using KhaozEngine.MapDoc;
+using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.MapDoc.Surfaces;
+using Xunit;
+
+namespace KhaozEngine.Tests.MapDoc.Prefabs;
+
+public sealed class MapPrefabFormatTests
+{
+    [Fact]
+    public void SixToSeven_IsPureAndAnalyticExecutionUnchanged()
+    {
+        var old = JsonNode.Parse(PrefabFixtures.FormatSixJson(true))!.AsObject();
+        string before = old.ToJsonString();
+        var upgraded = MapPrefabMigration.Upgrade(old);
+        Assert.Equal(before, old.ToJsonString());
+        Assert.Equal(7, upgraded["formatVersion"]!.GetValue<int>());
+        Assert.Null(upgraded["prefabs"]);
+        Assert.Null(upgraded["buildingIntent"]);
+        old["formatVersion"] = 7;
+        Assert.True(JsonNode.DeepEquals(old, upgraded));
+        Assert.Null(MapDocumentFile.LoadText(upgraded.ToJsonString()).ResolverIdentity);
+        Assert.True(JsonNode.DeepEquals(upgraded, MapPrefabMigration.Upgrade(upgraded)));
+    }
+
+    [Fact]
+    public void PayloadAndRoot_RoundTripMonolithicAndTiled()
+    {
+        var f = PrefabFixtures.Create();
+        var text = MapDocumentFile.SaveText(f.Document);
+        Assert.Equal(text, MapDocumentFile.SaveText(MapDocumentFile.LoadText(text)));
+        var dir = PrefabFixtures.TempDirectory();
+        try
+        {
+            MapDocumentFile.SaveTiled(f.Document, dir);
+            Assert.Equal(f.Document.Prefabs!.Digest(), MapDocumentFile.LoadTiled(dir).Prefabs!.Digest());
+            Assert.Equal(MapDocumentHash.OfWorld(f.Document), MapDocumentHash.OfWorld(MapDocumentFile.LoadTiled(dir)));
+        }
+        finally { Directory.Delete(dir, true); }
+        Assert.Equal(1, MapPrefabFile.Read(PrefabFixtures.AssetBytes("valid"), "hut").PayloadVersion);
+    }
+
+    [Theory]
+    [InlineData("future-payload")]
+    [InlineData("unknown-member")]
+    [InlineData("duplicate-member")]
+    [InlineData("null-children")]
+    [InlineData("nested-instance")]
+    [InlineData("duplicate-child")]
+    [InlineData("case-member")]
+    [InlineData("missing-member")]
+    [InlineData("unknown-enum")]
+    [InlineData("nonpositive-scale")]
+    [InlineData("embedded-record")]
+    [InlineData("missing-slot")]
+    [InlineData("duplicate-slot")]
+    [InlineData("unsupported-slot")]
+    [InlineData("wrong-payload-id")]
+    [InlineData("inconsistent-pose")]
+    [InlineData("missing-placement-field")]
+    [InlineData("missing-light-field")]
+    [InlineData("unknown-light-field")]
+    [InlineData("case-light-field")]
+    [InlineData("infinite-transform")]
+    [InlineData("slot-scope-conflict")]
+    public void ClosedPrefabPayload_Refuses(string variant) =>
+        Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(PrefabFixtures.AssetBytes(variant), "hut"));
+
+    [Fact]
+    public void FormatEight_Refuses() =>
+        Assert.Throws<MapDocumentException>(() => MapDocumentFile.LoadText(PrefabFixtures.FormatSixJson(true).Replace("\"formatVersion\":6", "\"formatVersion\":8", StringComparison.Ordinal)));
+
+    [Fact]
+    public void AnalyticResolution_MatchesRecordedFormatFourBits()
+    {
+        var resolved = FormatFourFixtures.ResolveRecording(MapDocumentFile.Load(FormatFourFixtures.MonolithicPath), out var calls);
+        FormatFourFixtures.AssertMatchesExpectations(resolved, calls);
+    }
+
+    [Theory]
+    [InlineData("prefabs")]
+    [InlineData("buildingIntent")]
+    [InlineData("nativeResourceTransforms")]
+    public void PrefabSections_RefuseResolverOneBeforeAnyCallback(string section)
+    {
+        var f = PrefabFixtures.Create();
+        if (section != "prefabs") f.Document.Prefabs = null;
+        if (section == "buildingIntent") f.Document.BuildingIntent = new(1, [], [], [], []);
+        if (section == "nativeResourceTransforms") f.Document.NativeResourceTransforms = [];
+        f.Document.ResolverIdentity = new(1, 1);
+        f.Document.SupportRecipe = MapSupportRecipe.LegacyXzCallbackV1;
+        f.Document.Surfaces = new();
+        int calls = 0;
+        Assert.Throws<MapDocumentException>(() => MapResolver.Resolve(f.Document, f.Assets,
+            (_, _) => { calls++; return 0; }, new("fixture", 1, "fixture")));
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public void RoomlessParentNull_RoundTripsAndRoomParentNullRefuses()
+    {
+        var f = PrefabFixtures.Create("roomless");
+        Assert.Empty(f.Document.Surfaces.Refs);
+        Assert.Null(Assert.Single(f.Document.Prefabs!.Instances).ParentSpace);
+        string text = MapDocumentFile.SaveText(f.Document);
+        Assert.DoesNotContain("parentSpace", text);
+        Assert.Null(Assert.Single(MapDocumentFile.LoadText(text).Prefabs!.Instances).ParentSpace);
+        string dir = PrefabFixtures.TempDirectory();
+        try
+        {
+            MapDocumentFile.SaveTiled(f.Document, dir);
+            Assert.Null(Assert.Single(MapDocumentFile.LoadTiled(dir).Prefabs!.Instances).ParentSpace);
+        }
+        finally { Directory.Delete(dir, true); }
+        var room = PrefabFixtures.Create();
+        var instance = room.Document.Prefabs!.Instances.Single() with { ParentSpace = null };
+        room.Document.Prefabs = new(1, 1, new[] { instance }, []);
+        Assert.NotEmpty(MapPrefabValidation.Validate(room.Document, room.Assets));
+    }
+
+    [Fact]
+    public void AttachmentRows_UseTypedTupleKeysWhenIdsContainSeparators()
+    {
+        var f = PrefabFixtures.Create("roomless");
+        f.Document.Prefabs = new(1, 1, f.Document.Prefabs!.Instances, [])
+        {
+            Attachments = new[]
+            {
+                new MapPrefabAttachmentTransfer("a/Support", "r", new string('a', 64), MapPrefabAttachmentKind.Light, [], true),
+                new MapPrefabAttachmentTransfer("a", "Light/r", new string('a', 64), MapPrefabAttachmentKind.Support, [], true),
+            }
+        };
+        Assert.Empty(MapPrefabValidation.Validate(f.Document, null));
+        Assert.Equal(2, MapDocumentFile.LoadText(MapDocumentFile.SaveText(f.Document)).Prefabs!.Attachments.Count);
+    }
+
+    [Fact]
+    public void CanonicalOrder_AndDefaultOmissionsAreStable()
+    {
+        var f = PrefabFixtures.Create();
+        var i = f.Document.Prefabs!.Instances.Single();
+        f.Document.Prefabs = new(1, 1, new[] { i with { Bindings = new(i.Bindings.Entries.Reverse().ToArray()) } }, []);
+        Assert.Equal(PrefabFixtures.Create().Document.Prefabs!.Digest(), f.Document.Prefabs.Digest());
+        string text = MapDocumentFile.SaveText(f.Document);
+        Assert.DoesNotContain("attachments", text);
+        Assert.DoesNotContain("retired", text);
+        var asset = f.Assets.GetPrefab("hut");
+        Assert.Equal(MapPrefabFile.Write(asset), MapPrefabFile.Write(asset with { Children = asset.Children.Reverse().ToArray() }));
+    }
+
+    [Fact]
+    public void AllResourceKinds_RoundTripPayloadOne()
+    {
+        var fixture = PrefabFixtures.Create("all-resources");
+        var asset = fixture.Assets.GetPrefab("hut");
+        Assert.Equal(Enum.GetValues<MapPrefabChildKind>(), asset.Children.Select(c => c.Key.Kind).Distinct().OrderBy(k => k));
+        Assert.Equal(PrefabFixtures.AssetBytes("all-resources"), MapPrefabFile.Write(asset));
+    }
+
+    [Fact]
+    public void ExactIdsTagsStandaloneStoreysAndTransfers_RoundTripAndHash()
+    {
+        var f = PrefabFixtures.Create("roomless");
+        const long numeric = 9007199254740993;
+        var instance = f.Document.Prefabs!.Instances.Single();
+        var binding = instance.Bindings.Entries.Single() with { NumericId = numeric };
+        instance = instance with { Bindings = new(new[] { binding }) };
+        f.Document.Prefabs = new(1, 1, new[] { instance },
+            new[] { new MapPrefabBindingTransfer("retired", binding) { Retired = true } })
+        {
+            Attachments = new[] { new MapPrefabAttachmentTransfer("a/item", "support", new string('a', 64), MapPrefabAttachmentKind.Support,
+                new[] { new MapPrefabAttachedChild(new(MapPrefabChildKind.Surface, "floor"), "world-floor", new("world-floor", numeric, -numeric),
+                    new(1.25, -450, 3.125, 0.371, 1.2), new string('b', 64)) }, true) }
+        };
+        f.Document.NumericIdHighWaterMark = numeric;
+        f.Document.BuildingIntent = new(1, [], [], [], new[] { new MapLocalMarkerDoc(1, "entry", "Entry", Vector3.UnitY, 0.371f, "entrance", true, new[] { "first", "second" }) })
+        { Storeys = new[] { new KhaozEngine.MapDoc.Interiors.MapStoreyDoc(1, "lower", "Lower", null) } };
+        f.Document.NativeResourceTransforms = new[] { new MapStandaloneResourceTransform(MapPrefabChildKind.Surface, "floor", new(1.25, -450, 3.125, 0.371, 1.2), new string('a', 64)) };
+        string text = MapDocumentFile.SaveText(f.Document);
+        Assert.Contains("\"9007199254740993\"", text);
+        var copy = MapDocumentFile.LoadText(text);
+        Assert.Equal(f.Document.Prefabs.Digest(), copy.Prefabs!.Digest());
+        Assert.Equal(f.Document.BuildingIntent.Digest(), copy.BuildingIntent!.Digest());
+        Assert.Equal(new[] { "first", "second" }, copy.BuildingIntent.Markers.Single().Tags);
+        Assert.Equal("lower", copy.BuildingIntent.Storeys.Single().Id);
+        Assert.Equal(f.Document.NativeResourceTransforms.Single(), copy.NativeResourceTransforms!.Single());
+        Assert.Equal(text, MapDocumentFile.SaveText(copy));
+        string dir = PrefabFixtures.TempDirectory();
+        try
+        {
+            MapDocumentFile.SaveTiled(f.Document, dir);
+            var tiled = MapDocumentFile.LoadTiled(dir);
+            Assert.Equal(copy.BuildingIntent.Digest(), tiled.BuildingIntent!.Digest());
+            Assert.Equal(copy.Prefabs.Digest(), tiled.Prefabs!.Digest());
+            Assert.Equal(copy.NativeResourceTransforms, tiled.NativeResourceTransforms);
+        }
+        finally { Directory.Delete(dir, true); }
+        string before = MapDocumentHash.OfWorld(f.Document);
+        string rootBefore = MapSurfaceSemantics.RootDigest(f.Document);
+        f.Document.BuildingIntent = new(1, [], [], [], f.Document.BuildingIntent.Markers) { Storeys = new[] { f.Document.BuildingIntent.Storeys.Single() with { Name = "Changed" } } };
+        Assert.NotEqual(before, MapDocumentHash.OfWorld(f.Document));
+        Assert.NotEqual(rootBefore, MapSurfaceSemantics.RootDigest(f.Document));
+    }
+}

@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text.Json;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc;
@@ -68,12 +69,15 @@ internal static class MapCanonical
         w.WritePropertyName("regions");
         JsonSerializer.Serialize(w, doc.Regions, options);
         // Water is written only when present, so documents without it keep their released document hash.
-        // The native root digest and resolver-2 authored identity include the format version and moved once at format 6.
+        // The native root digest and resolver-2 authored identity include the format version and move once at every native format advance.
         if (doc.Water is not null)
         {
             w.WritePropertyName("water");
             MapWaterJson.Write(w, doc.Water);
         }
+        if (doc.Prefabs is not null) { w.WritePropertyName("prefabs"); MapPrefabJson.Write(w, doc.Prefabs); }
+        if (doc.BuildingIntent is not null) { w.WritePropertyName("buildingIntent"); MapPrefabJson.Write(w, doc.BuildingIntent); }
+        if (doc.NativeResourceTransforms is not null) { w.WritePropertyName("nativeResourceTransforms"); MapPrefabJson.Write(w, doc.NativeResourceTransforms); }
     }
 
     /// <summary>Native persistence metadata. Kept separate from the legacy analytic hash globals.</summary>

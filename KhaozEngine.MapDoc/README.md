@@ -520,11 +520,46 @@ touched tiles are stored, and an absent or empty block leaves terrain byte-ident
 `Tiles` snapshot round out the read side. The composition itself lives in `KhaozEngine.Terrain`
 (`TerrainSculpt`); see `docs/design/TERRAIN-SCULPT-LAYER-DESIGN.md`.
 
+## Rigid prefab payloads and building intent
+
+Format 7 adds optional root `Prefabs`, `BuildingIntent` and `NativeResourceTransforms` sections. Each present
+section requires resolver identity (1, 2) and `AuthoredBindingsV2`. The sections live once in native root globals,
+never in tile placements. Monolithic and tiled persistence, loaded identity and stored identity use the same
+canonical codec. Null sections are omitted and preserve the released analytic projections.
+
+`MapPrefabSet` payload 1 and expansion version 1 retain instances, typed bindings, overrides and transfers.
+Instance poses use free XYZ, yaw radians and finite positive uniform scale. `ParentSpace` may be absent for a
+parent-independent rigid prefab. Rooms, water and `$parent` occurrences require explicit authored context.
+Loading, validation and closure reads never reserve new identities. Bindings carry supplied world IDs and optional
+placement-only numeric IDs as exact decimal int64 strings. Removed instances and retired transfers remain persisted.
+
+A manifest `Prefab` resource carries payload 1. `MapAssetClosure.Load` verifies every resource digest once, checks
+acyclic declared dependencies, decodes bounded prefab snapshots and validates every leaf resource edge before
+publishing. `GetPrefab` returns a detached copy of that verified snapshot. Prefabs have no mesh of their own and
+cannot contain nested instances. Mesh, collider, selection, LOD, material, support and light resources belong to leaves.
+
+`MapPrefabFile.Read` and `Write` use a closed codec. Children have a typed stable key, one local pose and scoped
+reference slots. Explicit Surface children contain geometry with empty `Records`. Topology is persisted in separate
+Record children with declared anchors. Each reference occurrence requires its own supported typed slot. A local
+anchor or geometry reference must agree with the record pose. A World reference retains its standalone meaning.
+Placement children use their placement pose and retain identity `LocalTransform`. Ordered tags remain ordered.
+
+`MapBuildingIntent` payload 1 owns explicit roof inventory, roof links/groups, local light and XYZ marker payloads,
+and standalone `MapStoreyDoc` payload-1 IDs/names. Roof inventory does not create children or reservations.
+`MapStandaloneResourceTransform` retains precise binary64 poses for unpacked resources. The prefab transfer registry
+also persists placement-attached support and light descriptors, including precise owner poses and retirement.
+Empty attachment, roof and storey collections and false retirement flags are omitted. `Clone` detaches mutable
+collections and `Digest` hashes the same canonical bytes used by persistence.
+
+`MapPrefabExpansionLimits` supplies finite collection and payload ceilings before codec materialization. Effective
+geometry composition, aggregate expansion charges, remapping and editor lifecycle commands are separate stages.
+This payload layer adds no rendering, physics or editor dependency.
+
 ## Format versioning
 
-`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes (currently 6,
-which adds bounded water, after version 5 added the support recipe and surface metadata and version 4 added
-native metadata). Loading a document with an
+`MapDocumentFile.CurrentFormatVersion` is the version this engine build reads and writes, currently 7.
+Format 7 adds rigid prefabs and building intent. Version 6 added bounded water, version 5 added the support recipe
+and surface metadata and version 4 added native metadata. Loading a document with an
 older `formatVersion` runs migrations
 (`MapDocumentLoadOptions.RegisterMigration`, each a pure `JsonObject -> JsonObject` step from N to N+1)
 until it reaches the current version. The engine's own steps are pre-registered by the
@@ -536,8 +571,9 @@ execution. The format advance changes authored identity once. It does not preser
 `MapSurfaceMigration.Upgrade` clones its input and leaves a format-5 input semantically unchanged.
 v5 -> v6 (`MapWaterMigration.Upgrade`) adds no member, so a migrated document has no `water` section and keeps
 legacy global water. It accepts only format 5 or 6 input.
-The format-6 advance moves native root digests and resolver-2 authored identities once even without water, while
-documents without water keep their document hash.
+v6 -> v7 (`MapPrefabMigration.Upgrade`) clones input and changes only `formatVersion`. It accepts format 6 or 7.
+Format 7 moves every native root digest and resolver-2 authored identity once, including maps without prefabs.
+Absent prefab sections preserve analytic execution and document hashing.
 
 `MapDocument.SupportRecipe` pairs resolver 1 with `LegacyXzCallbackV1` and resolver 2 with
 `AuthoredBindingsV2`. Resolver 1 refuses authored surfaces and placement support bindings. A placement

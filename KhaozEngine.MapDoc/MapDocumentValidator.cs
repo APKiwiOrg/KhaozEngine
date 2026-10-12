@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Terrain;
@@ -26,6 +27,7 @@ public static class MapDocumentValidator
             errors.Add("bounds must satisfy MaxX > MinX and MaxZ > MinZ.");
         MapNativeValidation.Validate(doc, errors);
         MapWaterValidation.Validate(doc, errors);
+        errors.AddRange(MapPrefabValidation.Validate(doc, null));
         ValidateTileSize(doc, errors);
         if (doc.TerrainOverrides is { } overrides)
             ValidateOverrides(overrides, doc.Bounds, errors);

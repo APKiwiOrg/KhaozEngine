@@ -14,7 +14,7 @@ public class MapWaterFormatTests
     public void FormatFive_MigratesToSix_WithNoWaterSection()
     {
         MapDocument doc = MapDocumentFile.LoadText(WaterFixtures.FormatFiveNativeJson());
-        Assert.Equal(6, doc.FormatVersion);
+        Assert.Equal(MapDocumentFile.CurrentFormatVersion, doc.FormatVersion);
         Assert.Null(doc.Water);
         Assert.DoesNotContain("\"water\"", MapDocumentFile.SaveText(doc), StringComparison.Ordinal);
     }

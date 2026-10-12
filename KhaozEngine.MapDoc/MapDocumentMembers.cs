@@ -136,5 +136,8 @@ internal static class MapDocumentMembers
         string.Equals(name, "surfaces", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "surfacePatches", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "surfaceStorage", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(name, "water", StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, "water", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "prefabs", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "buildingIntent", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "nativeResourceTransforms", StringComparison.OrdinalIgnoreCase);
 }

@@ -223,6 +223,9 @@ internal static partial class MapTiledFile
         ScatterOverrides = doc.ScatterOverrides,
         Regions = doc.Regions,
         Water = doc.Water?.Clone(),
+        Prefabs = doc.Prefabs?.Clone(),
+        BuildingIntent = doc.BuildingIntent?.Clone(),
+        NativeResourceTransforms = doc.NativeResourceTransforms?.ToArray(),
         TerrainOverrides = new MapTerrainOverrides(MapCanonical.SculptCellSizeOf(doc)),
     };
 

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text.Json;
+using KhaozEngine.MapDoc.Prefabs;
 
 namespace KhaozEngine.MapDoc.Assets;
 
@@ -12,6 +13,7 @@ public sealed class MapAssetClosure
 {
     readonly Dictionary<string, MapResolvedAsset> _assets;
     readonly Dictionary<string, MapResolvedResource> _resources;
+    readonly Dictionary<string, MapPrefabAsset> _prefabs = new(StringComparer.Ordinal);
     public IReadOnlyList<MapResolvedAsset> Assets { get; }
     public string Hash { get; }
     /// <summary>The exact input roots, snapshotted before source reads and published in ordinal ID order.</summary>
@@ -26,6 +28,12 @@ public sealed class MapAssetClosure
             StringComparer.Ordinal);
         Assets = Array.AsReadOnly(_assets.Values.OrderBy(asset => asset.Id, StringComparer.Ordinal).ToArray());
         Roots = Array.AsReadOnly(roots);
+        foreach (var resource in resources.Values.Where(r => r.Kind == MapResourceKind.Prefab))
+        {
+            var prefab = MapPrefabFile.Read(snapshots[resource.Reference.Id], resource.Reference.Id);
+            MapPrefabValidation.RequireLeafResources(prefab.Children, this, resource.Dependencies);
+            _prefabs.Add(resource.Reference.Id, prefab);
+        }
         Hash = ComputeHash(resources);
     }
 
@@ -34,6 +42,10 @@ public sealed class MapAssetClosure
 
     public MapResolvedResource GetResource(string resourceId) => _resources.TryGetValue(resourceId, out var resource)
         ? resource : throw new MapDocumentException($"Native resource '{resourceId}' is not in the verified closure.");
+
+    /// <summary>A detached copy of a bounded prefab decoded from the verified immutable snapshot.</summary>
+    public MapPrefabAsset GetPrefab(string resourceId) => _prefabs.TryGetValue(resourceId, out var prefab)
+        ? MapPrefabJson.Copy(prefab) : throw new MapDocumentException($"Native prefab '{resourceId}' is not in the verified closure.");
 
     /// <summary>Looks up a resource without throwing. A null id is never in the closure.</summary>
     internal bool TryGetResource(string? resourceId, out MapResolvedResource? resource)

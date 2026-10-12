@@ -7,6 +7,29 @@ namespace KhaozEngine.Render3D.Internal;
 /// Keep the GLSL counterparts in ShaderSources.Atmosphere in sync, as with SkyMath.</summary>
 internal static class AtmosphereShaderMath
 {
+    internal const float SkyHorizonEndpointEpsilon = 8f * 1.1920929e-7f;
+
+    internal static Vector3 SkyDirection(Vector2 uv, float radius, float bottom)
+    {
+        bool sky = uv.Y <= .5f;
+        float u = uv.X - MathF.Floor(uv.X);
+        float v = Unsub(sky ? uv.Y * 2f : (uv.Y - .5f) * 2f, 54f);
+        float r = MathF.Max(radius, bottom);
+        float horizon = MathF.Acos(Math.Clamp(-MathF.Sqrt(MathF.Max((r - bottom) * (r + bottom), 0f)) / r, -1f, 1f));
+        float theta = sky ? horizon * (1f - (1f - v) * (1f - v))
+            : horizon + (MathF.PI - horizon) * v * v;
+        float azimuth = 2f * MathF.PI * u;
+        // Both hemisphere endpoints represent the same unblocked tangent. Coordinate rounding can move
+        // either endpoint by a few float ulps, while acos/cos would move the tangent into the planet.
+        if ((sky && v >= 1f - SkyHorizonEndpointEpsilon) || (!sky && v <= SkyHorizonEndpointEpsilon))
+        {
+            float y = -MathF.Sqrt(MathF.Max((radius - bottom) * (radius + bottom), 0f)) / radius;
+            float horizontal = MathF.Sqrt(MathF.Max(1f - y * y, 0f));
+            return new Vector3(horizontal * MathF.Cos(azimuth), y, horizontal * MathF.Sin(azimuth));
+        }
+        return new Vector3(MathF.Sin(theta) * MathF.Cos(azimuth), MathF.Cos(theta), MathF.Sin(theta) * MathF.Sin(azimuth));
+    }
+
     internal static Vector3 TransmittanceTexel(AtmosphereSettings settings, Vector2 uv)
     {
         var parameters = TransmittanceParameters(uv, settings.PlanetRadiusKm,
@@ -73,8 +96,8 @@ internal static class AtmosphereShaderMath
 
     static bool SphereRoots(Vector3 p, Vector3 direction, float radius, out Vector2 roots)
     {
-        float projection = Dot(p, direction), r = Length(p);
-        float c = (r - radius) * (r + radius);
+        float projection = Dot(p, direction);
+        float c = SphereOffsetSquared(p, radius);
         float discriminant = projection * projection - c;
         roots = Vector2.Zero;
         if (discriminant < 0f) return false;
@@ -83,6 +106,9 @@ internal static class AtmosphereShaderMath
         roots = new Vector2(MathF.Min(q, other), MathF.Max(q, other));
         return true;
     }
+
+    internal static float SphereOffsetSquared(Vector3 p, float radius)
+        => (p.Y - radius) * (p.Y + radius) + p.X * p.X + p.Z * p.Z;
 
     static float Unsub(float value, float size) => Math.Clamp((value * size - .5f) / (size - 1f), 0f, 1f);
     static float Dot(Vector3 a, Vector3 b) => a.X * b.X + a.Y * b.Y + a.Z * b.Z;

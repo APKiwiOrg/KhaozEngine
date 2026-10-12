@@ -94,11 +94,15 @@ float AtmoSub(float x, float size) { return (clamp(x, 0.0, 1.0) * (size - 1.0) +
 // Mirrors AtmosphereLutMapping.Unsub.
 float AtmoUnsub(float x, float size) { return clamp((x * size - 0.5) / (size - 1.0), 0.0, 1.0); }
 
-// Mirrors AtmosphereModel.SphereRoots. Factored c reduces cancellation near the planet surface in float.
+// Mirrors AtmosphereShaderMath.SphereOffsetSquared. Factor at the authored polar axis before
+// subtracting planetary radii. A length round-trip loses the low-altitude arithmetic shared by the mapping.
+float AtmoSphereOffsetSquared(vec3 p, float radius) {
+    return (p.y - radius) * (p.y + radius) + dot(p.xz, p.xz);
+}
+// Mirrors AtmosphereModel.SphereRoots, with the float32 factored sphere offset.
 bool AtmoSphereRoots(vec3 p, vec3 d, float radius, out vec2 roots) {
     float projection = dot(p, d);
-    float r = length(p);
-    float c = (r - radius) * (r + radius);
+    float c = AtmoSphereOffsetSquared(p, radius);
     float discriminant = projection * projection - c;
     roots = vec2(0.0);
     if (discriminant < 0.0) return false;
@@ -169,7 +173,7 @@ vec2 AtmoSkyUv(vec3 direction, float radius) {
         : 0.5 + 0.5 * AtmoSub(sqrt(clamp((theta - horizon) / (ATMO_PI - horizon), 0.0, 1.0)), 54.0);
     return vec2(u, v);
 }
-// Mirrors AtmosphereLutMapping.SkyDirection.
+// Mirrors AtmosphereShaderMath.SkyDirection, the float32 AtmosphereLutMapping counterpart.
 vec3 AtmoSkyDirection(vec2 uv, float radius) {
     bool sky = uv.y <= 0.5;
     float u = fract(uv.x), v = AtmoUnsub(sky ? uv.y * 2.0 : (uv.y - 0.5) * 2.0, 54.0);
@@ -177,8 +181,10 @@ vec3 AtmoSkyDirection(vec2 uv, float radius) {
     float theta = sky ? horizon * (1.0 - (1.0 - v) * (1.0 - v))
         : horizon + (ATMO_PI - horizon) * v * v;
     float azimuth = 2.0 * ATMO_PI * u;
-    // acos/cos roundoff must not turn the exact upper horizon texel into a ground-hit ray.
-    if (sky && v >= 1.0) {
+    // Both hemisphere endpoints are the same unblocked tangent. Cover coordinate float32 roundoff,
+    // then bypass acos/cos so the lower endpoint cannot become a backend-dependent ground-hit ray.
+    float endpointEpsilon = 8.0 * 1.1920929e-7;
+    if ((sky && v >= 1.0 - endpointEpsilon) || (!sky && v <= endpointEpsilon)) {
         float y = -sqrt(max((radius - Atmo.Planet.x) * (radius + Atmo.Planet.x), 0.0)) / radius;
         float horizontal = sqrt(max(1.0 - y * y, 0.0));
         return vec3(horizontal * cos(azimuth), y, horizontal * sin(azimuth));
@@ -212,14 +218,15 @@ vec3 AtmoSegmentTransmittance(vec3 extinction, float width) { return exp(-extinc
 // Mirrors AtmosphereModel.ScatteringInterval, conservatively keeping float32 grazes unblocked.
 bool AtmoScatteringInterval(vec3 p, vec3 d, out float start, out float end, out bool groundHit) {
     start = 0.0; end = 0.0; groundHit = false;
-    if (length(p) < Atmo.Planet.x) return false;
+    float groundOffset = AtmoSphereOffsetSquared(p, Atmo.Planet.x);
+    if (groundOffset < 0.0) return false;
     vec2 topRoots, groundRoots;
     if (!AtmoSphereRoots(p, d, Atmo.Planet.y, topRoots) || topRoots.y <= 0.0) return false;
     start = max(topRoots.x, 0.0); end = topRoots.y;
     // View integration terminates at the first ground hit. Source-shadow roundoff margins must not
     // suppress near-horizon ground intersections and integrate through the planet instead.
-    float r = length(p), projection = dot(p, d);
-    float tangentProjection = -sqrt(max((r - Atmo.Planet.x) * (r + Atmo.Planet.x), 0.0));
+    float projection = dot(p, d);
+    float tangentProjection = -sqrt(max(groundOffset, 0.0));
     float projectionMargin = (8.0 * 1.1920929e-7) * max(abs(tangentProjection), 1.0);
     if (projection < tangentProjection - projectionMargin && AtmoSphereRoots(p, d, Atmo.Planet.x, groundRoots) && groundRoots.x >= start
         && groundRoots.x <= end && groundRoots.y > groundRoots.x) {

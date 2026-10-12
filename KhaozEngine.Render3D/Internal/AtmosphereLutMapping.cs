@@ -74,6 +74,10 @@ internal static class AtmosphereLutMapping
         double u = Wrap(uv.X);
         bool sky = uv.Y <= .5f;
         double v = Unsub(sky ? uv.Y * 2 : (uv.Y - .5f) * 2, SkyHeight / 2);
+        // Use the producer's analytic float32 tangent for both duplicated horizon endpoints.
+        if ((sky && v >= 1 - AtmosphereShaderMath.SkyHorizonEndpointEpsilon)
+            || (!sky && v <= AtmosphereShaderMath.SkyHorizonEndpointEpsilon))
+            return AtmosphereShaderMath.SkyDirection(uv, radiusKm, bottomKm);
         double horizon = HorizonAngle(radiusKm, bottomKm);
         double theta = sky ? horizon * (1 - (1 - v) * (1 - v))
             : horizon + (Math.PI - horizon) * v * v;

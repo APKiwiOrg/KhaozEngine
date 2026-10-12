@@ -68,8 +68,32 @@ public sealed class MapPrefabFormatTests
     [InlineData("case-light-field")]
     [InlineData("infinite-transform")]
     [InlineData("slot-scope-conflict")]
+    [InlineData("record-record-pose-mismatch")]
+    [InlineData("placement-numeric-id")]
     public void ClosedPrefabPayload_Refuses(string variant) =>
         Assert.Throws<MapDocumentException>(() => MapPrefabFile.Read(PrefabFixtures.AssetBytes(variant), "hut"));
+
+    [Fact]
+    public void PayloadPlacementNumericId_RefusesWriteAndOverrideValidation()
+    {
+        var asset = MapPrefabFile.Read(PrefabFixtures.AssetBytes("roomless"), "hut");
+        var child = Assert.IsType<MapPrefabPlacementChild>(Assert.Single(asset.Children));
+        child.Value.NumericId = 101;
+        Assert.Throws<MapDocumentException>(() => MapPrefabFile.Write(asset));
+        var f = PrefabFixtures.Create("roomless");
+        var instance = Assert.Single(f.Document.Prefabs!.Instances) with
+        { Overrides = new MapPrefabOverride[] { new MapPrefabReplaceOverride(child.Key, child) } };
+        f.Document.Prefabs = new(1, 1, new[] { instance }, []);
+        Assert.Contains(MapPrefabValidation.Validate(f.Document, f.Assets), e => e.Contains("numeric", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void WorldRecordReference_DoesNotRequireTheLocalRecordPose()
+    {
+        var asset = MapPrefabFile.Read(PrefabFixtures.AssetBytes("record-record-pose-world"), "hut");
+        var portal = asset.Children.OfType<MapPrefabRecordChild>().Single(c => c.Key.Key == "room-portal");
+        Assert.Equal(MapPrefabReferenceScope.World, portal.References.Single(r => r.Path == "value.bandBottom").Target.Scope);
+    }
 
     [Fact]
     public void FormatEight_Refuses() =>

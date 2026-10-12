@@ -33,7 +33,8 @@ internal static partial class PrefabFixtures
 
     internal static PrefabFixture Create(string variant = "basic")
     {
-        byte[] bytes = AssetBytes(variant is "roomless" or "pool" or "all-resources" ? variant : "valid");
+        byte[] bytes = AssetBytes(variant == "pool-material-undeclared" ? "pool" :
+            variant is "roomless" or "pool" or "all-resources" or "pool-material-mesh" ? variant : "valid");
         var (roots, source) = Inputs(bytes, true, variant);
         var assets = MapAssetClosure.Load(roots, source);
         var document = MapDocumentFile.LoadText(FormatSixJson(false));
@@ -115,7 +116,7 @@ internal static partial class PrefabFixtures
                 new[] { new MapPrefabReference(MapPrefabReferenceScope.Local, MapPrefabChildKind.Record, "room") }, [], 3))
             { References = new[] { Slot("value.roof", MapPrefabChildKind.Placement, "roof"), Slot("value.rooms[0]", MapPrefabChildKind.Record, "room") } });
         }
-        if (variant is "pool" or "all-resources")
+        if (variant is "pool" or "all-resources" or "pool-material-mesh")
         {
             var poolFloor = Patch("pool-floor", 4, 4, -100); poolFloor.CellMinX = 4; poolFloor.CellMinZ = 4;
             var poolCeiling = Patch("pool-ceiling", 4, 4, 300); poolCeiling.CellMinX = 4; poolCeiling.CellMinZ = 4;
@@ -134,7 +135,7 @@ internal static partial class PrefabFixtures
                 Slot("value.upper.surfaceId", MapPrefabChildKind.Surface, "pool-ceiling") }
             });
             children.Add(new MapPrefabMediumChild(new(MapPrefabChildKind.WaterMedium, "water"), new("water", MapWaterMediumKind.Water, 1)));
-            children.Add(new MapPrefabWaterChild(new(MapPrefabChildKind.WaterBody, "pool-water"), new("pool-water", 0.5f, "water", "material",
+            children.Add(new MapPrefabWaterChild(new(MapPrefabChildKind.WaterBody, "pool-water"), new("pool-water", 0.5f, "water", "pool-material",
                 new(MapLatticeFrame.ImportedMetreCentimetre, new[] { new MapWaterRect(4, 4, 8, 8) }, []), new[] { new MapRecordRef("pool", anchor) }))
             { References = new[] { Slot("value.medium", MapPrefabChildKind.WaterMedium, "water"), Slot("value.covers[0]", MapPrefabChildKind.Record, "pool") } });
             children.Add(new MapPrefabRoofGroupChild(new(MapPrefabChildKind.RoofGroup, "hut-rooms"), new("hut-rooms",
@@ -149,6 +150,27 @@ internal static partial class PrefabFixtures
         JsonObject first = root["children"]!.AsArray().Single(c => c!["key"]!["kind"]!.GetValue<string>() == "Placement" && c["key"]!["key"]!.GetValue<string>() == "item")!.AsObject();
         switch (variant)
         {
+            case "pool-material-mesh": root["children"]!.AsArray().Single(c => c!["key"]!["kind"]!.GetValue<string>() == "WaterBody")!["value"]!["renderMaterial"] = "mesh"; break;
+            case "placement-numeric-id": first["value"]!["numericId"] = "9007199254740993"; break;
+            case "record-record-pose-mismatch":
+            case "record-record-pose-world":
+                var pose = JsonNode.Parse("""{"position":{"x":1,"y":0,"z":0},"yawRadians":0,"scale":1}""")!;
+                var displacedFloor = root["children"]!.AsArray().Single(c => c!["key"]!["key"]!.GetValue<string>() == "floor")!.DeepClone();
+                displacedFloor["key"]!["key"] = "chain-floor";
+                displacedFloor["surface"]!["id"] = "chain-floor";
+                displacedFloor["localTransform"] = pose.DeepClone();
+                foreach (var patch in displacedFloor["patches"]!.AsArray()) patch!["key"]!["surfaceId"] = "chain-floor";
+                root["children"]!.AsArray().Add(displacedFloor);
+                var chain = root["children"]!.AsArray().Single(c => c!["key"]!["key"]!.GetValue<string>() == "door-bottom")!;
+                chain["anchor"]!["surfaceId"] = "chain-floor";
+                chain["localTransform"] = pose.DeepClone();
+                foreach (var vertex in chain["value"]!["vertices"]!.AsArray()) vertex!["vertex"]!["surfaceId"] = "chain-floor";
+                foreach (var slot in chain["references"]!.AsArray()) slot!["target"]!["id"] = "chain-floor";
+                var portal = root["children"]!.AsArray().Single(c => c!["key"]!["key"]!.GetValue<string>() == "room-portal")!;
+                portal["value"]!["bandBottom"]!["anchor"]!["surfaceId"] = "chain-floor";
+                if (variant == "record-record-pose-world")
+                    portal["references"]!.AsArray().Single(r => r!["path"]!.GetValue<string>() == "value.bandBottom")!["target"]!["scope"] = "World";
+                break;
             case "changed": first["value"]!["tags"]!.AsArray().Add("changed"); break;
             case "future-payload": root["payloadVersion"] = 2; break;
             case "unknown-member": root["unknown"] = true; break;
@@ -196,6 +218,7 @@ internal static partial class PrefabFixtures
         {
             ("mesh", "Mesh", Encoding.UTF8.GetBytes("public-fixture-mesh")),
             ("material", "Material", Encoding.UTF8.GetBytes("public-fixture-material")),
+            ("pool-material", "Material", Encoding.UTF8.GetBytes("public-fixture-pool-material")),
             ("doorway.collider", "Collider", DoorwayBytes()), ("roof.collider", "Collider", BoxBytes(2, 0.1f, 2)),
             ("item.selection", "Selection", BoxBytes(0.1f, 0.1f, 0.1f)),
             ("light", "Light", Encoding.UTF8.GetBytes("public-fixture-light")),
@@ -208,7 +231,9 @@ internal static partial class PrefabFixtures
         }
         var prefab = source.Add("hut", bytes);
         if (!refreshDigest) prefab = prefab with { Sha256 = Convert.ToHexStringLower(SHA256.HashData(AssetBytes("valid"))) };
-        resources.Add(Resource(prefab, "Prefab", variant == "cyclic-closure" ? new[] { "manifest" } : variant == "wrong-undeclared" ? [] : new[] { "mesh", "material", "doorway.collider", "roof.collider", "item.selection", "light", "surface" }));
+        var dependencies = new[] { "mesh", "material", "doorway.collider", "roof.collider", "item.selection", "light", "surface", "pool-material" };
+        resources.Add(Resource(prefab, "Prefab", variant == "cyclic-closure" ? new[] { "manifest" } : variant == "wrong-undeclared" ? [] :
+            variant == "pool-material-undeclared" ? dependencies.Where(id => id != "pool-material").ToArray() : dependencies));
         var leaves = new JsonArray();
         foreach (string id in new[] { "item", "doorway", "roof" })
             leaves.Add(new JsonObject

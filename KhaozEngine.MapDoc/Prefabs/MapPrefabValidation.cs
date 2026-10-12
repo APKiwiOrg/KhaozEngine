@@ -147,7 +147,7 @@ public static class MapPrefabValidation
                 if (!children.TryGetValue(new(slot.Target.Kind, slot.Target.Id), out var target)) Fail("Undeclared local prefab reference.");
                 if (occurrence.Anchor is { } anchor && target is MapPrefabRecordChild record && record.Anchor != anchor)
                     Fail("Local record reference anchor does not match its declaration.");
-                if (child is MapPrefabRecordChild && slot.Target.Kind == MapPrefabChildKind.Surface && child.LocalTransform != target!.LocalTransform)
+                if (child is MapPrefabRecordChild && slot.Target.Kind is MapPrefabChildKind.Record or MapPrefabChildKind.Surface && child.LocalTransform != target!.LocalTransform)
                     Fail("Local anchor and geometry poses must match the record pose.");
             }
         }
@@ -167,26 +167,20 @@ public static class MapPrefabValidation
             if (child is MapPrefabPlacementChild placement)
             {
                 MapResolvedAsset asset = assets.GetAsset(placement.Value.AssetId!);
-                foreach (var (id, kind) in LeafResources(asset)) Resource(id, kind);
+                // Every leaf resource kind was checked before the verified closure was published.
+                foreach (var (id, _) in MapAssetManifestReader.ResourceReferences(asset)) RequireDependency(id);
             }
-            if (child is MapPrefabWaterChild water) Resource(water.Value.RenderMaterial, MapResourceKind.Material);
+            if (child is MapPrefabWaterChild water)
+            {
+                string id = water.Value.RenderMaterial;
+                if (assets.GetResource(id).Kind != MapResourceKind.Material) Fail("Prefab leaf requires Material resource '" + id + "'.");
+                RequireDependency(id);
+            }
         }
-        void Resource(string id, MapResourceKind kind)
+        void RequireDependency(string id)
         {
-            if (assets.GetResource(id).Kind != kind) Fail("Prefab leaf requires " + kind + " resource '" + id + "'.");
             if (dependencies is not null && !dependencies.Contains(id, StringComparer.Ordinal)) Fail("Prefab payload resource edge '" + id + "' is not a declared dependency.");
         }
-    }
-
-    static IEnumerable<(string Id, MapResourceKind Kind)> LeafResources(MapResolvedAsset asset)
-    {
-        yield return (asset.MeshResourceId, MapResourceKind.Mesh);
-        if (asset.CollisionResourceId is { } c) yield return (c, MapResourceKind.Collider);
-        if (asset.SelectionResourceId is { } s) yield return (s, MapResourceKind.Selection);
-        foreach (string id in asset.MaterialResourceIds) yield return (id, MapResourceKind.Material);
-        foreach (string id in asset.SupportResourceIds) yield return (id, MapResourceKind.Surface);
-        foreach (string id in asset.LodResourceIds) yield return (id, MapResourceKind.Lod);
-        foreach (string id in asset.LightResourceIds) yield return (id, MapResourceKind.Light);
     }
 
     static void Child(MapPrefabChild child)
@@ -210,6 +204,7 @@ public static class MapPrefabValidation
         switch (child)
         {
             case MapPrefabPlacementChild p:
+                if (p.Value.NumericId is not null) Fail("Prefab placement numeric IDs belong to instance bindings.");
                 if (p.LocalTransform != new MapTransform(Vector3.Zero, 0, 1)) Fail("Placement children must use only their placement transform.");
                 Pose(new MapTransform(new(p.Value.X, p.Value.Y ?? 0, p.Value.Z), p.Value.Yaw, p.Value.Scale));
                 Text(p.Value.AssetId!); Text(p.Value.Kind);

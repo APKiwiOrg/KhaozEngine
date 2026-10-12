@@ -27,6 +27,15 @@ public sealed class MapPrefabClosureTests
     public void UnknownPrefabMaterialColliderLightOrSurface_RefusesBeforeBuild(string variant) =>
         Assert.Throws<MapDocumentException>(() => PrefabFixtures.Create("wrong-" + variant));
 
+    [Theory]
+    [InlineData("pool-material-mesh", "Prefab leaf requires Material resource 'mesh'")]
+    [InlineData("pool-material-undeclared", "Prefab payload resource edge 'pool-material' is not a declared dependency")]
+    public void PoolMaterial_RefusesInThePrefabClosurePath(string variant, string message)
+    {
+        var error = Assert.Throws<MapDocumentException>(() => PrefabFixtures.Create(variant));
+        Assert.Contains(message, error.Message);
+    }
+
     [Fact]
     public void ClosureSnapshot_IsVerifiedOnceAndDetachedFromReturnedPayload()
     {

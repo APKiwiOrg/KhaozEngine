@@ -210,8 +210,13 @@ internal static class MapPrefabJson
             string type = root.GetProperty("type").GetString()!;
             string[] payload = type switch { "Surface" => ["surface", "patches"], "Record" => ["value", "anchor"], "Storey" => ["name"], _ => ["value"] };
             Members(root, new[] { "type", "key" }.Concat(payload).ToArray(), "localTransform", "references");
-            if (type == "Placement") Members(root.GetProperty("value"), ["id", "kind", "assetId", "x", "z", "yaw", "scale", "tags"],
-                "y", "numericId", "displayName", "supportBinding");
+            if (type == "Placement")
+            {
+                JsonElement value = root.GetProperty("value");
+                Members(value, ["id", "kind", "assetId", "x", "z", "yaw", "scale", "tags"], "y", "numericId", "displayName", "supportBinding");
+                if (value.TryGetProperty("numericId", out var numericId) && numericId.ValueKind != JsonValueKind.Null)
+                    throw new MapDocumentException("Prefab placement numeric IDs belong to instance bindings.");
+            }
             var key = MapPrefabJson.Read<MapPrefabChildKey>(root.GetProperty("key"));
             MapPrefabChild child = type switch
             {

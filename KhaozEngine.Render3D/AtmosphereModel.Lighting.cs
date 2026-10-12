@@ -26,6 +26,22 @@ public sealed partial class AtmosphereModel
         }
     }
 
+    /// <summary>Builds a physical frame from <see cref="SunCycle.Evaluate"/>, retaining the true sun
+    /// independently of the active key. The legacy anti-solar key uses an opposite-sun moon source.
+    /// Keyless nights disable moon illumination. Palette colours do not enter the frame.</summary>
+    /// <exception cref="InvalidOperationException">The state was not produced by SunCycle.Evaluate.</exception>
+    public AtmosphereFrame CreateFrame(in SunCycleState state)
+    {
+        var sample = state.AtmosphereSample ?? throw new InvalidOperationException(
+            "Physical atmosphere requires a state produced by SunCycle.Evaluate.");
+        bool antiSolar = sample.NightKey == NightKeyMode.AntiSolarMoon;
+        var moonDirection = antiSolar ? -sample.SunDirection : -state.MoonDirection;
+        float moonFraction = sample.NightKey == NightKeyMode.None ? 0 : _settings.MoonIlluminanceFraction;
+        var source = antiSolar && state.SunElevationDegrees <= 0 ? KeyLightSource.Moon : state.ActiveSource;
+        return new AtmosphereFrame(sample.SunDirection, moonDirection, moonFraction, Tint(sample.PaletteWeights),
+            source, sample.KeyVisibility, sample.SunOpacity, sample.MoonOpacity);
+    }
+
     /// <summary>Evaluates both bodies in engine Lambert units, with floors before a single tint.
     /// Memoizes the most recent frame and altitude so scene application and GPU packing share the
     /// two source transmittance integrals. Negative camera altitude clamps to the planet surface.</summary>

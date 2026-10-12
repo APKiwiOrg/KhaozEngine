@@ -6,8 +6,8 @@ namespace KhaozEngine.Render3D
     /// <summary>
     /// A celestial body <see cref="SunCycle"/> wants drawn besides the one holding the primary disc slot: where it
     /// is and what colour it is (alpha is its horizon fade). The cycle does not own disc SHAPE, so
-    /// <see cref="SunCycle.Apply"/> gives it the primary disc's radius and halo when it writes it to
-    /// <see cref="SkySettings.ExtraDiscs"/>, which is also what makes a body moving between the primary slot and the
+    /// <see cref="SunCycle.Apply(in SunCycleState, PixelPostProcessSettings)"/> gives it the primary disc's radius
+    /// and halo when it writes it to <see cref="SkySettings.ExtraDiscs"/>, which is also what makes a body moving between the primary slot and the
     /// extras invisible.
     /// </summary>
     public readonly struct SunCycleDisc

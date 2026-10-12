@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KhaozEngine.Primitives;
+using KhaozEngine.Render3D.Internal;
 
 namespace KhaozEngine.Render3D
 {
@@ -204,7 +205,7 @@ namespace KhaozEngine.Render3D
 
     /// <summary>
     /// The lighting state derived from a time of day. A pure value snapshot: feed it to a scene with
-    /// <see cref="SunCycle.Apply"/> each frame, or read individual fields to drive custom sinks.
+    /// <see cref="SunCycle.Apply(in SunCycleState, PixelPostProcessSettings)"/> each frame, or read individual fields to drive custom sinks.
     /// </summary>
     public readonly struct SunCycleState
     {
@@ -244,7 +245,18 @@ namespace KhaozEngine.Render3D
             DiscDirectionOverride = discDirectionOverride;
             GroundColor = groundColor;
             _extraDisc = extraDisc;
+            AtmosphereSample = null;
         }
+
+        private SunCycleState(in SunCycleState state, in SunCycleAtmosphereSample sample)
+        {
+            this = state;
+            AtmosphereSample = sample;
+        }
+
+        internal SunCycleAtmosphereSample? AtmosphereSample { get; }
+
+        internal SunCycleState WithAtmosphereSample(in SunCycleAtmosphereSample sample) => new(this, sample);
 
         // Storage for one extra today (sun and moon are the only bodies, and one of them holds the primary slot).
         // The accessors below are shaped for any number, so more bodies widen this field, not the API.
@@ -256,7 +268,7 @@ namespace KhaozEngine.Render3D
         public int ExtraDiscCount => _extraDisc.HasValue ? 1 : 0;
 
         /// <summary>The extra body at <paramref name="index"/> (0 to <see cref="ExtraDiscCount"/> - 1).
-        /// <see cref="SunCycle.Apply"/> writes them all to <see cref="SkySettings.ExtraDiscs"/>.</summary>
+        /// <see cref="SunCycle.Apply(in SunCycleState, PixelPostProcessSettings)"/> writes them all to <see cref="SkySettings.ExtraDiscs"/>.</summary>
         public SunCycleDisc GetExtraDisc(int index) =>
             index == 0 && _extraDisc is { } disc ? disc : throw new ArgumentOutOfRangeException(nameof(index));
 
@@ -312,19 +324,21 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Direction TO the active disc body when the disc is NOT the sun (i.e. the moon owns the slot):
         /// the world-space direction the sky's sun-disc override should point at. <c>null</c> when the sun owns the
-        /// slot (the disc derives from the key light) or nothing does. <see cref="SunCycle.Apply"/> writes it straight
+        /// slot (the disc derives from the key light) or nothing does.
+        /// <see cref="SunCycle.Apply(in SunCycleState, PixelPostProcessSettings)"/> writes it straight
         /// to <see cref="SkySettings.SunDirectionOverride"/>.</summary>
         public Vector3? DiscDirectionOverride { get; }
 
         /// <summary>Ground band color for a <see cref="SkyHorizon.World"/> sky, blended across the palettes like the
-        /// rest of the sky. <see cref="SunCycle.Apply"/> writes it to <see cref="SkySettings.GroundColor"/>.</summary>
+        /// rest of the sky. <see cref="SunCycle.Apply(in SunCycleState, PixelPostProcessSettings)"/>
+        /// writes it to <see cref="SkySettings.GroundColor"/>.</summary>
         public Color GroundColor { get; }
     }
 
     /// <summary>
     /// Pure mapping from a caller-supplied normalized time of day to scene lighting.
     /// The engine owns no clock. Feed it game time (for an MMO, server-replicated time)
-    /// and write the result to a scene with <see cref="Apply"/> each frame.
+    /// and write the result to a scene with <see cref="Apply(in SunCycleState, PixelPostProcessSettings)"/> each frame.
     /// </summary>
     public static class SunCycle
     {
@@ -346,21 +360,33 @@ namespace KhaozEngine.Render3D
                 settings.HeadingDegrees, out float moonElDeg);
             Vector3 moonLightDir = -moonToward;
 
+            // Retain body fades without palette alpha or RGB. The legacy virtual moon casts a key but has no disc.
+            float sunKeyDip = MathUtil.SmoothStep(
+                0f, MathF.Max(1e-3f, settings.HorizonKeyDipDegrees), MathF.Abs(elDeg));
+            float discSet = -MathF.Max(0f, settings.DiscSetElevationDegrees);
+            float discFadeTop = discSet + MathF.Max(1e-3f, settings.SunDiscFadeElevationDegrees);
+            float sunDiscFade = MathUtil.SmoothStep(discSet, discFadeTop, elDeg);
+            float moonOpacity = settings.NightKey == NightKeyMode.Moon
+                ? MathUtil.SmoothStep(discSet, discFadeTop, moonElDeg) : 0f;
+
             // Elevation-keyed palette blend (identical in every mode: this is the SKY/ambient/fill, driven by the sun).
             float twilightBand = MathF.Max(1e-3f, settings.TwilightStartElevationDegrees);
             float nightBand = MathF.Max(1e-3f, MathF.Abs(settings.NightFullElevationDegrees));
             SunCyclePalette from = settings.DuskPalette;
             SunCyclePalette to;
             float s;
+            Vector3 paletteWeights;
             if (elDeg >= 0f)
             {
                 to = settings.DayPalette;
                 s = MathUtil.SmoothStep(0f, twilightBand, elDeg);
+                paletteWeights = new Vector3(s, 1f - s, 0f);
             }
             else
             {
                 to = settings.NightPalette;
                 s = MathUtil.SmoothStep(0f, nightBand, -elDeg);
+                paletteWeights = new Vector3(0f, 1f - s, s);
             }
 
             Color horizon = Color.Lerp(from.HorizonColor, to.HorizonColor, s);
@@ -370,15 +396,6 @@ namespace KhaozEngine.Render3D
             Color baseKey = Color.Lerp(from.LightColor, to.LightColor, s);
             Color baseSun = Color.Lerp(from.SunColor, to.SunColor, s);
             Color ground = Color.Lerp(from.GroundColor, to.GroundColor, s);
-
-            // The sun's own key dip + disc fade at its horizon crossing.
-            float sunKeyDip = MathUtil.SmoothStep(
-                0f, MathF.Max(1e-3f, settings.HorizonKeyDipDegrees), MathF.Abs(elDeg));
-            // The disc band hangs off the set elevation, not off zero, so a disc that sets through a world horizon
-            // is still at full strength when it crosses the line. At the default 0 this is the historical band.
-            float discSet = -MathF.Max(0f, settings.DiscSetElevationDegrees);
-            float discFadeTop = discSet + MathF.Max(1e-3f, settings.SunDiscFadeElevationDegrees);
-            float sunDiscFade = MathUtil.SmoothStep(discSet, discFadeTop, elDeg);
 
             // The sun-owned disc (shared by AntiSolarMoon and None; the sun's disc is hidden below the horizon).
             // The fade rides in ALPHA, the sky's blend weight. The sky replace-blends toward the disc colour, so
@@ -397,6 +414,7 @@ namespace KhaozEngine.Render3D
             Vector3? discOverride;
             SunCycleDisc? extraDisc = null;
             KeyLightSource source;
+            float keyVisibility;
 
             switch (settings.NightKey)
             {
@@ -405,6 +423,7 @@ namespace KhaozEngine.Render3D
                     // goes black below the horizon. Above the horizon this is identical to the legacy path.
                     lightDir = -sunToward;
                     key = sunUp ? baseKey.ScaleRgb(sunKeyDip) : Black;
+                    keyVisibility = sunUp ? sunKeyDip : 0f;
                     disc = sunDisc;
                     discEnabled = sunHoldsDisc;
                     discOverride = setSunOverride;
@@ -417,6 +436,7 @@ namespace KhaozEngine.Render3D
                         // Sun owns the key.
                         lightDir = -sunToward;
                         key = baseKey.ScaleRgb(sunKeyDip);
+                        keyVisibility = sunKeyDip;
                         source = KeyLightSource.Sun;
                     }
                     else if (moonElDeg > 0f)
@@ -428,7 +448,8 @@ namespace KhaozEngine.Render3D
                         float handoverDip = MathUtil.SmoothStep(
                             0f, MathF.Max(1e-3f, settings.HorizonKeyDipDegrees), MathF.Abs(elDeg));
                         lightDir = moonLightDir;
-                        key = settings.MoonKeyColor.ScaleRgb(MathF.Min(moonKeyDip, handoverDip));
+                        keyVisibility = MathF.Min(moonKeyDip, handoverDip);
+                        key = settings.MoonKeyColor.ScaleRgb(keyVisibility);
                         source = KeyLightSource.Moon;
                     }
                     else
@@ -437,6 +458,7 @@ namespace KhaozEngine.Render3D
                         // a switch through this state is invisible).
                         lightDir = -sunToward;
                         key = Black;
+                        keyVisibility = 0f;
                         source = KeyLightSource.None;
                     }
 
@@ -475,6 +497,7 @@ namespace KhaozEngine.Render3D
                 default: // NightKeyMode.AntiSolarMoon - the legacy virtual moon (byte-identical to the historical path).
                     lightDir = sunUp ? -sunToward : sunToward;
                     key = baseKey.ScaleRgb(sunKeyDip);
+                    keyVisibility = sunKeyDip;
                     disc = sunDisc;
                     discEnabled = sunHoldsDisc;
                     discOverride = setSunOverride;
@@ -482,9 +505,11 @@ namespace KhaozEngine.Render3D
                     break;
             }
 
+            var sample = new SunCycleAtmosphereSample(
+                sunToward, paletteWeights, keyVisibility, settings.NightKey, sunDiscFade, moonOpacity);
             return new SunCycleState(
                 lightDir, elDeg, horizon, zenith, disc, discEnabled, key, ambient, fill,
-                moonElDeg, moonLightDir, source, discOverride, ground, extraDisc);
+                moonElDeg, moonLightDir, source, discOverride, ground, extraDisc).WithAtmosphereSample(sample);
         }
 
         /// <summary>
@@ -531,7 +556,11 @@ namespace KhaozEngine.Render3D
         }
 
         /// <summary>
-        /// Writes a state to the scene's lighting and sky settings. Touches exactly the key light
+        /// Writes a state to the scene's lighting and sky settings at world height zero. With
+        /// <see cref="AtmosphereSettings.Enabled"/>, requires a state from <see cref="Evaluate"/> and ignores
+        /// palette colours, MoonKeyColor and MoonDiscColor in favour of physical lighting and atmosphere tints.
+        /// Use the returning overload for camera altitude and the physical horizon colour for water.
+        /// When disabled, touches exactly the key light
         /// direction and color, ambient, fill color, sky gradient, ground band color, sun disc color,
         /// sun disc visibility, the sky's sun-direction override (pointed at whichever body holds the
         /// primary disc when that is not where the key light comes from, else null), and
@@ -540,7 +569,64 @@ namespace KhaozEngine.Render3D
         /// mode, halo shape, radius, and the fill direction to the caller.
         /// </summary>
         public static void Apply(in SunCycleState state, PixelPostProcessSettings post)
+            => Apply(state, post, Vector3.Zero);
+
+        /// <summary>Applies lighting and sky, returning the applied state. With physical atmosphere enabled,
+        /// requires <see cref="Evaluate"/>, ignores all palette colours and moon colours, and uses absolute camera
+        /// Y through <see cref="AtmosphereSettings.HeightKm"/>. The primary disc remains the true sun and the moon
+        /// is an extra disc. Key direction, source handover, fades and the caller's fill direction are preserved.
+        /// Copy the returned <see cref="SunCycleState.HorizonColor"/> to <see cref="WaterSettings.HorizonColor"/>.
+        /// With atmosphere disabled, writes the legacy palette state unchanged and returns it.</summary>
+        /// <exception cref="InvalidOperationException">Physical atmosphere is enabled and the state was not
+        /// produced by SunCycle.Evaluate.</exception>
+        public static SunCycleState Apply(in SunCycleState state, PixelPostProcessSettings post, Vector3 cameraWorldPosition)
         {
+            if (post.Atmosphere.Enabled)
+            {
+                var sample = state.AtmosphereSample ?? throw new InvalidOperationException(
+                    "Physical atmosphere requires a state produced by SunCycle.Evaluate.");
+                var model = post.ResolveAtmosphereModel();
+                var frame = model.CreateFrame(state);
+                float heightKm = post.Atmosphere.HeightKm(cameraWorldPosition.Y);
+                var lighting = model.EvaluateLighting(heightKm, frame);
+                float radius = post.Atmosphere.SunAngularRadiusRadians;
+                float sinRadius = MathF.Sin(radius);
+                float discScale = post.Atmosphere.SunIlluminance / (sinRadius * sinRadius);
+                var sun = PhysicalColor(lighting.SunTransmittance * discScale * frame.Tint, frame.SunOpacity);
+                SunCycleDisc? moon = frame.MoonOpacity > 0 && frame.MoonFraction > 0
+                    ? new SunCycleDisc(frame.MoonDirection, PhysicalColor(
+                        lighting.MoonTransmittance * (discScale * frame.MoonFraction) * frame.Tint, frame.MoonOpacity))
+                    : null;
+                var physical = new SunCycleState(state.LightDirection, state.SunElevationDegrees,
+                    PhysicalColor(lighting.Horizon), PhysicalColor(model.SkyValue(heightKm, Vector3.UnitY, frame)),
+                    sun, frame.SunOpacity > 0, PhysicalColor(lighting.Key), PhysicalColor(lighting.Ambient),
+                    PhysicalColor(lighting.Fill), state.MoonElevationDegrees, state.MoonDirection, state.ActiveSource,
+                    frame.SunDirection, PhysicalColor(model.SkyValue(heightKm, -Vector3.UnitY, frame)), moon)
+                    .WithAtmosphereSample(sample);
+                post.AtmosphereCycle = state;
+                post.LightDirection = physical.LightDirection;
+                post.LightColor = physical.LightColor;
+                post.AmbientColor = physical.AmbientColor;
+                post.FillLightColor = physical.FillLightColor;
+                post.Sky.HorizonColor = physical.HorizonColor;
+                post.Sky.ZenithColor = physical.ZenithColor;
+                post.Sky.SunColor = physical.SunColor;
+                post.Sky.SunEnabled = physical.SunEnabled;
+                post.Sky.SunDirectionOverride = physical.DiscDirectionOverride;
+                post.Sky.GroundColor = physical.GroundColor;
+                post.Sky.ExtraDiscs.Clear();
+                if (moon is { } body)
+                    post.Sky.ExtraDiscs.Add(new SkyDisc
+                    {
+                        Direction = body.Direction,
+                        Color = body.Color,
+                        Radius = radius,
+                        HaloStrength = post.Sky.HaloStrength,
+                        HaloFalloff = post.Sky.HaloFalloff,
+                    });
+                return physical;
+            }
+
             post.LightDirection = state.LightDirection;
             post.LightColor = state.LightColor;
             post.AmbientColor = state.AmbientColor;
@@ -567,6 +653,9 @@ namespace KhaozEngine.Render3D
                     HaloFalloff = post.Sky.HaloFalloff,
                 });
             }
+            return state;
         }
+
+        static Color PhysicalColor(Vector3 rgb, float opacity = 1f) => new(rgb.X, rgb.Y, rgb.Z, opacity);
     }
 }

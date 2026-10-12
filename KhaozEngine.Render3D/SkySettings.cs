@@ -92,8 +92,8 @@ namespace KhaozEngine.Render3D
 
         /// <summary>Celestial discs beyond the primary sun (a moon, a second sun), drawn in list order after it, so
         /// a later disc goes over an earlier one. Each carries its own direction, colour and shape. Empty by
-        /// default. <see cref="SunCycle.Apply"/> rewrites this list every call (it owns the body that does not hold
-        /// the primary slot), so add your own after it.</summary>
+        /// default. <see cref="SunCycle.Apply(in SunCycleState, PixelPostProcessSettings)"/> rewrites this list every
+        /// call (it owns the body that does not hold the primary slot), so add your own after it.</summary>
         public readonly System.Collections.Generic.List<SkyDisc> ExtraDiscs = new();
 
         /// <summary>The direction TO the sun this frame: <see cref="SunDirectionOverride"/> if set (normalized), else

@@ -61,6 +61,19 @@ namespace KhaozEngine.Render3D
         /// unchanged. See <see cref="AtmosphereSettings"/> for the Earth preset, world height mapping and art controls.</summary>
         public AtmosphereSettings Atmosphere = new();
 
+        AtmosphereModel? _atmosphereModel;
+
+        /// <summary>Last cycle applied to the physical atmosphere, including its untinted geometry and fades.</summary>
+        internal SunCycleState? AtmosphereCycle;
+
+        /// <summary>Refreshes the retained model from the live settings bag. Only physical changes rebuild tables.</summary>
+        internal AtmosphereModel ResolveAtmosphereModel()
+        {
+            _atmosphereModel ??= new AtmosphereModel(Atmosphere);
+            _atmosphereModel.UpdateSettings(Atmosphere);
+            return _atmosphereModel;
+        }
+
         /// <summary>LDR threshold + separable-blur bloom (beams, emissive materials, bright billboards read as a
         /// glow instead of flat). Default disabled, so the post chain runs no extra passes and existing scenes are
         /// byte-stable; set <c>Bloom.Enabled = true</c> to turn it on. See <see cref="BloomSettings"/> for the knobs

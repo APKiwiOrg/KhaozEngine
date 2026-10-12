@@ -119,6 +119,26 @@ public sealed class RasterFootprintTests
         }
     }
 
+    /// <summary>A widened wall reaches the neighbouring chunk even when its authored footprint does not.</summary>
+    [Fact]
+    public void Wall_WiderThanFootprint_HasNoChunkSeam()
+    {
+        var source = Filled();
+        source.Footprints.Add(Footprint(WorldMapSymbolKind.Wall, new(2f, 0.05f), new(4f, 7.6f)));
+        var style = Style with { BuildingShadowOffsetMetres = Vector2.Zero, WallWidthMetres = 2f };
+        WorldMapChunkImage north = WorldMapRasterizer.Rasterize(source, style, new(0, 1));
+        Assert.Equal(new byte[] { 240, 208, 32, 255 }, Pixel(north, 16, 31));
+
+        WorldMapChunkImage large = Rasterize(source, style with { ChunkMetres = 16f });
+        for (int chunkY = 0; chunkY < 2; chunkY++)
+        {
+            WorldMapChunkImage small = WorldMapRasterizer.Rasterize(source, style, new(0, chunkY));
+            for (int row = 0; row < 32; row++)
+                for (int column = 0; column < 32; column++)
+                    Assert.Equal(Pixel(large, column, (1 - chunkY) * 32 + row), Pixel(small, column, row));
+        }
+    }
+
     /// <summary>Positive rotation turns the long axis clockwise towards the south-east.</summary>
     [Fact]
     public void Building_PositiveRotation_IsClockwise()
@@ -144,6 +164,51 @@ public sealed class RasterFootprintTests
         };
         Assert.Equal(new byte[] { 176, 176, 176, 255 }, Pixel(Rasterize(source, style), 12, 16));
         Assert.Equal(new byte[] { 164, 164, 164, 255 }, Pixel(Rasterize(source, style), 12, 19));
+    }
+
+    /// <summary>Disjoint opaque fill and outline samples fully replace the background in a covered pixel.</summary>
+    [Fact]
+    public void Building_MixedFillAndOutline_IsIndependentOfGround()
+    {
+        var style = Style with
+        {
+            BuildingShadow = Color.Transparent,
+            BuildingShadowOffsetMetres = Vector2.Zero,
+            OutlinePixels = 1f,
+            SymbolRules = [new(new(), new(WorldMapSymbolKind.Building, Color.White, Color.Black))]
+        };
+        var source = Filled();
+        source.Footprints.Add(Footprint(WorldMapSymbolKind.Building, new(1f), new(4.125f)));
+        byte[] greyGroundPixel = Pixel(Rasterize(source, style), 13, 16);
+        Assert.All(greyGroundPixel.Take(3), channel => Assert.InRange((int)channel, 127, 129));
+        Assert.Equal((byte)255, greyGroundPixel[3]);
+
+        var darkSource = Filled(Color.FromHex("#202020"));
+        darkSource.Footprints.Add(source.Footprints[0]);
+        Assert.Equal(greyGroundPixel, Pixel(Rasterize(darkSource, style), 13, 16));
+    }
+
+    /// <summary>Disjoint fill and outline samples each retain their own colour alpha.</summary>
+    [Theory]
+    [InlineData(0.5f, 0.25f, 144)]
+    [InlineData(0.25f, 0.5f, 112)]
+    [InlineData(0f, 1f, 64)]
+    [InlineData(1f, 0f, 192)]
+    [InlineData(0f, 0f, 128)]
+    public void Building_MixedFillAndOutline_HonoursEachAlpha(float fillAlpha, float outlineAlpha, int expected)
+    {
+        var source = Filled();
+        source.Footprints.Add(Footprint(WorldMapSymbolKind.Building, new(1f), new(4.125f)));
+        var style = Style with
+        {
+            BuildingShadow = Color.Transparent,
+            OutlinePixels = 1f,
+            SymbolRules = [new(new(), new(WorldMapSymbolKind.Building,
+                new Color(1f, 1f, 1f, fillAlpha), new Color(0f, 0f, 0f, outlineAlpha)))]
+        };
+        byte[] pixel = Pixel(Rasterize(source, style), 13, 16);
+        Assert.All(pixel.Take(3), channel => Assert.InRange((int)channel, expected - 1, expected + 1));
+        Assert.Equal((byte)255, pixel[3]);
     }
 
     /// <summary>Ascending identifiers determine which same-kind fill appears on top.</summary>
@@ -199,12 +264,12 @@ public sealed class RasterFootprintTests
         _ => WorldMapSymbol.Hidden
     };
 
-    static TestWorldMapSource Filled()
+    static TestWorldMapSource Filled(Color? ground = null)
     {
         var source = new TestWorldMapSource(new MapRect(-4f, -4f, 24f, 24f));
         for (int row = 0; row < 24; row++)
             for (int column = 0; column < 24; column++)
-                source.SetCell(column, row, Color.FromHex("#808080"), 0f);
+                source.SetCell(column, row, ground ?? Color.FromHex("#808080"), 0f);
         return source;
     }
 

@@ -25,7 +25,7 @@ public static class WorldMapRasterizer
         int size = style.ChunkPixels;
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(size);
         long revision = source.Revision;
-        float margin = 2f * source.SurfaceCellSize + style.Water.ShorelinePixels / style.PixelsPerMetre;
+        float margin = WorldMapRasterReach.SurfaceMetres(style, source.SurfaceCellSize);
         var sampler = new SurfaceSampler(source.SampleSurface(rect.Expand(margin)));
         var canvas = new RasterCanvas(size, rect, style.PixelsPerMetre);
         var relief = new ReliefShader(style.Relief);
@@ -43,7 +43,7 @@ public static class WorldMapRasterizer
             }
 
         var footprints = new List<WorldMapFootprint>();
-        float footprintMargin = style.BuildingShadowOffsetMetres.Length() + 1f / style.PixelsPerMetre;
+        float footprintMargin = WorldMapRasterReach.FootprintMetres(style);
         source.CollectFootprints(rect.Expand(footprintMargin), footprints);
         new FootprintPainter(canvas, style).Paint(footprints);
 

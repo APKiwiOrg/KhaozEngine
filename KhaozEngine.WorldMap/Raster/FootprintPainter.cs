@@ -48,8 +48,16 @@ internal sealed class FootprintPainter(RasterCanvas canvas, WorldMapStyle style)
             for (int column = left; column < right; column++)
             {
                 (float full, float interior) = shape.Sample(canvas, column, row, inset);
-                canvas.Blend(column, row, fill, interior);
-                canvas.Blend(column, row, outline, full - interior);
+                // Fill and outline occupy disjoint samples, so neither attenuates the other's contribution.
+                float fillAlpha = interior * MathUtil.Clamp01(fill.A);
+                float outlineAlpha = (full - interior) * MathUtil.Clamp01(outline.A);
+                float alpha = fillAlpha + outlineAlpha;
+                if (alpha <= 0f) continue;
+                var colour = new Color(
+                    (fill.R * fillAlpha + outline.R * outlineAlpha) / alpha,
+                    (fill.G * fillAlpha + outline.G * outlineAlpha) / alpha,
+                    (fill.B * fillAlpha + outline.B * outlineAlpha) / alpha, alpha);
+                canvas.Blend(column, row, colour, 1f);
             }
     }
 

@@ -1,343 +1,331 @@
-# Contact controller phase 5: selector, ordinary environment and navigation
+# Contact controller phase 5: selector, ordinary runtime and navigation
 
 Design for [#438](https://github.com/APKiwiOrg/KhaozEngine/issues/438) phase 5 and the navigation half of
 [#1299](https://github.com/APKiwiOrg/KhaozEngine/issues/1299). Source baseline: `ec20a2b61` on `main`, staged 20.34.0,
-phases 1 to 4b and the support gates. Status: revision 2 after independent review round 1 (verdict REVISE, findings
-F1 to F13, answered in the review response at the end). Written under the owner's instruction to continue the program
-to completion, so every choice below is a recorded ruling for the owner's review.
+phases 1 to 4b and the support gates. Status: revision 3 after independent review rounds 1 and 2 (both REVISE). Written
+under the owner's instruction to continue the program to completion, so every choice below is a recorded ruling for
+the owner's review.
 
 The program row reads: `MoveTuning` selector, any wire fields, bake identity, traversal probe and capture on the
 selected controller. Exit: both controllers selectable, legacy bakes still load, a new-controller bake round-trips.
-P5-10 states exactly what "legacy bakes still load" means.
 
-## Scope
+**Split.** Review showed two independent bodies of work, so phase 5 splits like phases 2 and 4:
 
-In scope:
+- **5a, ordinary contact runtime** (this revision, specified in full): the selector, validation, an engine ordinary
+  environment, certified ordinary water and one effective movement binding through every head's lifecycle. Exit:
+  both controllers selectable on every head.
+- **5b, navigation** (specified before it starts): capture, traversal, bake identity, runtime graph compatibility and
+  #1299's navigation acceptance. Exit: legacy bakes still load, a new-controller bake round-trips, #1299 closes.
+  Its binding inputs are listed at the end.
 
-- A public selector that lets every ordinary head choose the legacy stepper or the contact controller.
-- Water for the contact controller on ordinary heads, which today cannot run it at all.
-- Navigation capture, traversal probe, bake identity and runtime graph compatibility on the selected controller,
-  including explicit profiles.
-- The #1299 navigation acceptance: deep cells are unwalkable for a profile that cannot swim.
+## Scope of 5a
 
-Out of scope: native MapDoc movement and `MapNavTiling` vertical layers (World Authoring G1b), resolver-1 MapDoc
-contexts on the contact controller (P5-15), #1355 certified sweep shapes, #1344 small bodies, the SG-12 budget and any
-hosted or local load run, engine release, tag, game pin, Grimhollow edits and world edits.
+In scope: everything needed for any ordinary head to run the contact controller, dry and wet, with server, client
+prediction, sharded cells and every placement door agreeing.
+
+Out of scope: all navigation change (5b), native MapDoc movement and `MapNavTiling` vertical layers (World Authoring
+G1b), resolver-1 MapDoc contexts on the contact controller (P5A-12), #1355 certified sweep shapes, #1344 small bodies,
+the SG-12 budget, any hosted or local load run, engine release, tag, game pin, Grimhollow edits and world edits.
 
 ## Current state
 
 Facts at `ec20a2b61`, from code.
 
 - No selector exists. Ordinary heads call `CharacterMovement.Step` or `StepTowards`, which run the legacy `StepCore`
-  (`KhaozEngine.Locomotion/CharacterMovement.cs:97`, `:136`, `:155`). The explicit heads run
-  `ContactController.StepLeased`, chosen by a non-null explicit configuration
-  (`KhaozEngine.NetWorld/ExplicitPlayerMovement.cs:72`, `:79`, `:87`), and each ordinary head already has that
-  explicit branch (`PlayerMoveSimulator.cs:141`, `PlayerMovementSystem.cs:166`, `WorldClient.cs:433`,
-  `GroundMoveContext.Explicit.cs:11`).
-- Ordinary call sites: `PlayerMoveSimulator.Step` (`:145`, serving `WorldServer`, the sharded clamp and `WorldClient`
-  prediction), `PlayerMovementSystem` (`:165`), `CharacterController3D.Update` (`:195`, which rebuilds `MoveTuning`
-  from mutable fields at `:175`), and `GroundMoveContext.Step` (`:82`, serving the nav bake probes,
-  `NpcGroundMovement`, `MoveToRange` and `DirectMoveToRange`). `GroundMoveContext` binds no tuning. Each call passes
-  one (`:68`).
-- The dry contact entry `ContactController.Step` (`Contacts/ContactController.cs:30`) has no production caller. Its
-  dry query context throws on wet samples (`ContactQueryContext.cs:93`), has no medium proof (`:20`), accepts every
-  segment (`:49`) and skips placement and descent constraints (`:54`, `:56`, `:65`). The leased context owns
-  placement, segment proofs, shore-preserving descent and initial classification
-  (`LeasedContactQueryContext.Motion.cs:20`, `:26`, `:53`, `LeasedContactQueryContext.Ground.cs:8`,
-  `ContactController.Leased.cs:53-92`), and already supports a zero placement offset as an internal parity profile
-  (`LeasedContactQueryContext.cs:19`).
-- The leased contact path consumes from its environment pin: `RebuildSelection`, `SampleAnalyticGround`,
-  `BindContactSupport`, `SampleCentreWater` and `TraceWater` (`ContactController.Leased.cs:48`,
-  `LeasedContactQueryContext.cs:74`, `:90`, `:117-131`). The lease authenticates world, identity, frame, currentness
-  and the witnessed envelope around those calls (`MovementQueryLease.cs:74`, `MovementQueryLease.Buffers.cs:59-180`,
-  `MovementQueryLease.WaterFacts.cs:11-70`).
-- No production `IMovementEnvironmentProvider`, environment pin or contact support pin exists. The leased test
-  fixtures bind arbitrary requested statics to synthetic owners, and `ContactLeasedQueryTests.Parity.cs:16-118`
-  proves zero-offset leased and dry parity on steps, stairs, ledges, slides and walls. They do not establish a
-  production provider.
+  (`KhaozEngine.Locomotion/CharacterMovement.cs:97`, `:136`, `:155`). The network heads branch to the explicit leased
+  path on a non-null public explicit configuration (`KhaozEngine.NetWorld/ExplicitPlayerMovement.cs:72`, `:79`,
+  `:87`, dispatched at `PlayerMoveSimulator.cs:144`, `PlayerMovementSystem.cs:166` and `WorldClient.cs:433`).
+- That configuration also gates every lifecycle door: `WorldServer.Placement.cs:37` and `:53`,
+  `ShardedWorldServer.Placement.cs:45`, `ShardedWorldServer.Frame.cs:128`, `:145` and `:158`,
+  `ExplicitCellAdmission.cs:65-67` and `PlayerMoveSimulator.Explicit.cs:96`.
+- `GroundMoveContext` has an ordinary `Step` (`:68`, per-call tuning, serving the nav bake probes,
+  `NpcGroundMovement`, `MoveToRange` and `DirectMoveToRange`) and a separate caller-selected `StepExplicit`
+  (`GroundMoveContext.Explicit.cs:11`). `CharacterController3D.Update` (`:159-195`) has only an ordinary path and
+  rebuilds `MoveTuning` from mutable fields at `:175`.
+- The dry contact entry `ContactController.Step` (`Contacts/ContactController.cs:30`) has no production caller. Its dry
+  context throws on wet samples (`ContactQueryContext.cs:93`), has no medium proof (`:20`), accepts every segment
+  (`:49`) and skips placement and descent constraints (`:54`, `:56`, `:65`). The leased context owns placement,
+  segment proofs, shore-preserving descent and initial classification (`LeasedContactQueryContext.Motion.cs:20`,
+  `:26`, `:53`, `LeasedContactQueryContext.Ground.cs:8`, `ContactController.Leased.cs:53-92`).
+- The placement offset defaults to 0.001 in `LeasedContactQueryContext.Initialize` (`LeasedContactQueryContext.cs:40`),
+  and `ExplicitCharacterMovement.Placement.cs:107-110` and `ExplicitCharacterMovement.Continuation.cs:14-20` build
+  default-offset contexts for placement, settling and continuation. Zero offset exists only as an internal parity
+  profile, and `ContactLeasedQueryTests.Parity.cs:16-118` proves leased and dry parity at zero offset through a
+  manually initialized `StepWithQueries` on steps, stairs, ledges, slides and walls.
+- The leased path consumes from its environment pin `RebuildSelection`, `SampleAnalyticGround`, `BindContactSupport`,
+  `SampleCentreWater` and `TraceWater` (`ContactController.Leased.cs:48`, `LeasedContactQueryContext.cs:74`, `:90`,
+  `:117-131`). The lease authenticates world, identity, frame, currentness and the witnessed envelope around them
+  (`MovementQueryLease.cs:74`, `MovementQueryLease.Buffers.cs:59-180`, `MovementQueryLease.ContactSupport.cs:38-41`,
+  `:128-145`, `MovementQueryLease.ContactQueries.cs:22`, `:79`). Bindings are certified from the pin's captured
+  registration, never from a handle (`MovementContactSupportFacts.cs:72`, ruling 4b-8).
+- No production environment provider, pin, contact support pin or registration exists. `MovementSupportResolver` is
+  the only consumer of `EnumerateSupport` (`MovementSupportResolver.cs:42`) and has no production caller.
 - `MoveTuning` is a positional `readonly partial record struct` with 30 parameters and no `Validate` or identity
   (`MoveTuning.cs:14`). `NavBakeIdentityTests.cs:63-72` asserts exactly 30 instance fields and
-  `ExplicitMovementProfileTests.cs:43-48` reflects every float and bool tuning property. `GroundCoreSettings` is
-  internal (`Contacts/GroundCore.cs:9`) and `ExplicitMovementProfile` hashes a fixed foot fraction (`:55`).
-- The nav bake captures columns with `PhysicsColumnProbe` axis raycasts (`PhysicsNavBake.cs:64-98`), filters
-  candidates on axis headroom and compacts them (`PhysicsNavBake.Profiles.cs:53-60`, `:154-161`), then
-  `NavLayerBaker` extracts layers, assigning layer ids and bounds from the retained heights (`NavLayerExtractor.cs:73`,
-  `:85`, `:110`). Edges are proved by `GroundTraversalProbe` through `GroundMoveContext.Step`, so with the legacy
-  stepper. Non-aquatic profiles prove with `DryContext` and never see water.
-- KENB v1 shipped in 20.20.0. Its identity holds the engine version, options, sources and per profile 27 tuning fields
-  (`NavBakeIdentity.cs:67-111`). The reader encodes the expected identity before reading, accepts one format and
-  returns `EngineChanged` before comparing profiles (`GroundNavigationBake.Reader.cs:31`, `:46`, `:59`,
-  `NavBakeIdentity.cs:125`). The runtime graph keeps only radius, half-height, slope and step height, and
-  `GroundNavigation.ValidateTuning` checks those plus aquatic swim fractions (`GroundNavigation.cs:23`, `:53`).
+  `ExplicitMovementProfileTests.cs:43-48` reflects every float and bool tuning property. `ExplicitMovementProfile`
+  hashes a fixed foot fraction (`:55`). The explicit kernel requires positive gravity, fall speed and swim-enter
+  fraction (`ExplicitCharacterMovement.Queries.cs:46-57`), which `GroundMoveContext` does not check (`:111`, `:129`).
+- Ordinary heads hold an `IPhysicsWorld`. The leased capabilities live on a query view
+  (`BepuPhysicsWorld.QueryView.cs:25`), created by `IPhysicsWorld.CreateQueryViewExcludingStatics`
+  (`IPhysicsWorld.cs:88`), which may throw. Certified sweeps need `IPhysicsCapsuleSweep`
+  (`MovementQueryLease.Sweeps.cs:25`).
+- The public explicit read scope comes from a game callback given the basis and frame (`ExplicitPlayerMovement.cs:14`).
+  `WorldClient` keeps one read across a whole reconcile replay (`WorldClient.ExplicitMovement.cs:16-33`,
+  `ClientPrediction.cs:382-385`).
 - `MoveToRange` settling, `SwimPace` and `DirectMoveToRange` read water only through `GroundMoveContext.Medium`
   (`MoveToRange.cs:131-139`, `SwimPace.cs:16`, `DirectMoveToRange.cs:117`).
-- Neither tuning nor any profile identity crosses the wire. Generation 14 (`MoveProtocol.cs:70`) carries the
-  `MovementState` fields the explicit heads already use to replicate the contact controller.
-- The first adopter, Grimhollow, runs ordinary heads with `TileMediumSampler` water, which keeps one surface height per
-  water tile and discards body identity and bed data (`TileMediumSampler.cs:21-47`). The authored bed corners are in
+- Generation 14 (`MoveProtocol.cs:70`) carries the `MovementState` fields the explicit heads use to replicate the
+  contact controller. Neither tuning nor any profile identity crosses the wire.
+- The first adopter, Grimhollow, runs ordinary heads with `TileMediumSampler` water, which keeps one surface per water
+  tile and discards body identity and bed data (`TileMediumSampler.cs:21-47`). `TileWorldColliders` installs every
+  collider itself with a known kind (`TileWorldColliders.cs:135-143`). Bed corners are in
   `TileGroundTriangles.cs:91-98`.
 
-## Inherited obligations
+## Inherited obligations for 5a
 
-- Phase 2: the foot disc radius moves into `MoveTuning` together with the bake identity, so bakes change once.
-- 4b-13 and 4b-14: explicit bodies rest at h + s with s = 0.001 m. Capture records explicit resting feet h + s, keeps
-  geometric support h, hashes s and never silently reinterprets an old bake. Dry capture stays h.
-- 4b-15: WadeOnly is the #1299 walker rule, exposed through the phase 5 selector. No new water flag.
-- Support gates: phase 5 bakes navigation from the complete footprint rule. The 1 mm arrival rule, roof and footprint
-  protections and raw layer identity are preserved.
-- Controller design line 214: a context selecting the new controller checks its physics capability at creation.
+- Phase 2: the foot disc radius moves into `MoveTuning`.
+- 4b-8: canonical owners come from a captured registration, never from a static number. Analytic ground is a scoped
+  fact, not an unrestricted global callback.
+- 4b-9: cold placement, exact correction and live continuation share the support and placement operations.
+- 4b-13: explicit bodies rest at h + 0.001. 4b-15: WadeOnly is the #1299 walker rule, exposed through the selector.
+- Support gates: the 1 mm arrival rule, roof and footprint protections and raw layer identity are preserved, and no
+  tolerance widens.
+- Controller design line 214: a context selecting the new controller checks its capability at creation.
 
-## Rulings
+## Rulings for 5a
 
-**P5-1. The selector lives on `MoveTuning`.** Three init-only properties outside the positional list: `Controller`
+**P5A-1. The selector lives on `MoveTuning`.** Three init-only properties outside the positional list: `Controller`
 (`MovementControllerKind`, `Legacy = 0`, `Contact = 1`), `FootRadiusFraction` (default 0.5) and `Water`
-(`WaterTraversalPolicy`, default mode `Legacy`). One tuning value reaches every head, the client predictor and every
-bake profile, so the selection cannot diverge between them. Init properties keep the released positional constructor
-binary compatible. Equality, hashing and `with` include them. Cost if wrong: a later profile object touches every head.
+(`WaterTraversalPolicy`, default mode `Legacy` with surface jump speed 0). One tuning value reaches every head and the
+client predictor, so the selection cannot diverge. Init properties keep the released positional constructor binary
+compatible. Equality, hashing and `with` include them. Cost if wrong: a later profile object touches every head.
 
-**P5-2. Ordinary contact heads run the leased path.** The decision, scored 1 to 10 per criterion after review round 1
-priced option B's real adapter:
+**P5A-2. Ordinary contact heads run the leased path.** Scored 1 to 10 per criterion after round 1 priced option B's
+real adapter:
 
 | Option | Certified | One runtime path | Reuse | Cost | Extensible to G1b | Risk | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A. Point-sampled water in the dry context | 3 | 3 | 5 | 7 | 3 | 5 | 26 |
 | B. Certified field plus a new dry adapter with its own placement, segment, shore and descent proofs | 9 | 4 | 4 | 3 | 7 | 4 | 31 |
-| C. An engine ordinary environment under the existing lease and leased context, at zero offset | 9 | 10 | 9 | 5 | 8 | 7 | 48 |
+| C. An engine ordinary environment under the existing lease and leased context, at zero offset | 9 | 10 | 9 | 4 | 8 | 6 | 46 |
 
-C reuses identity, frame, currentness, envelope, placement, segment, shore and descent proofs unchanged, and G1b's
-native providers later plug into the same path. Cost if wrong: one engine provider that a richer one replaces.
+C's cost and risk are re-scored after round 2 added the registration, scope planner and lifecycle binding. It remains
+first because every one of those is also required by any certified ordinary route. Cost if wrong: one engine provider
+that a richer one replaces.
 
-**P5-3. The ordinary environment.** An engine `OrdinaryMovementEnvironment` in `KhaozEngine.Movement` implements
-`IMovementEnvironmentProvider`, its pin and `IMovementContactSupportPin` over one effective physics query view, the
-game's analytic ground delegates, a `MovementBoundary` and an optional `IMovementWaterField`:
+**P5A-3. One composition value.** An internal `ContactComposition` carries the placement offset and the
+`GroundCoreSettings` foot fraction through `StepLeased`, `ValidatePlacement`, `SettlePlacement`, continuation and every
+support placement helper. Public explicit entry points compose offset 0.001 and the tuning's foot fraction. Ordinary
+entry points compose offset 0 throughout, so an ordinary body rests at h on every door. One function computes resting
+feet h + s.
 
-- One space per world, `MovementSpaceKey(worldId, "ordinary")`. `RebuildSelection` returns that space with no
-  support, which the controller then resolves.
-- `SampleAnalyticGround` answers from the ground height and normal delegates, as the dry context does today.
-- `BindContactSupport` binds any static installed in the pinned physics view to the owner
-  `MovementSupportKey(worldId, "static/<handle>")` in the ordinary space, and refuses statics outside the view.
-  Ordinary worlds have no migrating installations, so handles are canonical within one physics generation.
-- `EnumerateSupport` returns the analytic ground candidate only, because contact support comes from the footprint
-  query and is bound through `BindContactSupport`.
-- `Prepare` and the witness cover any scope inside the world, so every bounded query is admitted. Generations are the
-  physics geometry generation and the water field's generation.
-- Coordinates follow the existing explicit frame rules. The pin converts physics-local queries to the field's absolute
+**P5A-4. The ordinary environment.** An engine `OrdinaryMovementEnvironment` in `KhaozEngine.Movement` implements
+`IMovementEnvironmentProvider`, its pin and `IMovementContactSupportPin` over an effective query view, a registration,
+analytic ground delegates, a `MovementBoundary` and an optional `IMovementWaterField`:
+
+- **Query view.** The owning binding creates the view once through `CreateQueryViewExcludingStatics` with the head's
+  exclusions (or uses `GroundMoveContext.MovementQueries` when given), retains that exact view and disposes it with
+  the binding. A source that cannot create a view refuses at configuration.
+- **Space.** One per world, `MovementSpaceKey(worldId, "ordinary")`. `RebuildSelection` returns it with no support.
+- **Registration.** A public `OrdinaryMovementRegistration`, built by whoever installs the statics, maps each installed
+  static handle and feature range to a canonical owner `MovementSupportKey`, with explicit aliasing (several pieces,
+  one owner) and explicit exclusions, captured per physics geometry generation. Owner names come from provenance,
+  never from handle values, so identical handles in separate cell worlds stay distinct and partitioned copies share
+  an owner. A missing, excluded, ambiguous or stale registration makes `BindContactSupport` return Unresolved, as
+  4b-8 requires. `TileWorldColliders` builds one: one owner per region's ground and one per placed collider
+  provenance.
+- **Analytic ground.** Owner `MovementSupportKey(worldId, "analytic-ground")`. For an axis inside the witnessed
+  envelope, a delegate height inside the request's admitted support band is returned as a fact with the delegate's
+  normal. A height outside that band is Known with null, because the request concerns only its band. A non-finite
+  value is Unresolved.
+- **Enumeration.** `EnumerateSupport` returns Unresolved. The contact path does not call it, and an ordinary
+  environment does not serve `MovementSupportResolver` rather than certifying a false absence.
+- **Preparation.** `Prepare` admits a planned scope (P5A-5) inside the world bounds. The witness generation combines
+  the physics geometry, registration and water field generations.
+- **Coordinates.** Existing explicit frame rules apply. The pin converts physics-local queries to the field's absolute
   coordinates and converts intervals, surfaces and `IntervalColumnXZ` back, including a nonzero physics Y origin.
 
-The lease keeps every check it performs today. Cost if wrong: support keys need a richer owner table, which is G1b's
-native question and does not change ordinary behaviour.
+**P5A-5. Scope planner.** The engine plans each read scope from the basis and kinematic bounds over a horizon of N
+ticks. The horizontal half-extent is `vmax * dt * N` plus capsule radius, foot disc reach, the support band and probe
+margins the lease checks, and the boundary margin. `vmax` is the larger of the carried horizontal speed and
+`max(RunSpeed, SwimSpeed) * max(1, SpeedScale)`. The vertical range runs from the feet minus `MaxFallSpeed * dt * N`
+plus the support reach, to the head plus the jump rise bound plus `StepHeight`. N is 1 for server and cell ticks. The
+client read API takes the pending replay batch length, so one scope covers a whole reconcile. Every margin is the
+lease's own check, not a widened tolerance. A query outside the scope still refuses, so a planner miss shows up as a
+held step in A7, not as unchecked motion.
 
-**P5-4. Zero placement offset.** Ordinary contact bodies compose the leased context at s = 0, promoting the internal
-parity profile to an internal ordinary composition. They rest at their geometric support h. Explicit bodies keep
-s = 0.001 (4b-13). One function computes resting feet h + s for runtime, capture and arrival.
-
-**P5-5. The water field.** A public `IMovementWaterField` in `KhaozEngine.Locomotion` has `SemanticIdentity`
-(a stable string for bake sources and the lease scope digest), `Generation` (constant for immutable water, advanced on
-any change), `SampleCentreWater` and `TraceWater`, with the pin's types and certification contract (whole-path
-contiguous spans, `CertifiedErrorMetres <= 0.001`, owned contacts, classified overlap, split free and closed
-transitions, 64 span and 256 contact caps). Queries and results are in absolute world coordinates. The query carries
-the ordinary space and the field echoes it. A field must be immutable for a given generation. Two producers ship:
+**P5A-6. The water field.** A public `IMovementWaterField` in `KhaozEngine.Locomotion` has `SemanticIdentity`,
+`Generation` (constant for immutable water, advanced on change), `SampleCentreWater` and `TraceWater`, with the pin's
+types and certification contract (whole-path contiguous spans, `CertifiedErrorMetres <= 0.001`, owned contacts,
+classified overlap, split free and closed transitions, 64 span and 256 contact caps). Queries and results use
+absolute world coordinates. The query carries the ordinary space and the field echoes it. Two producers ship:
 
 - `MovementWaterField.Level(string worldId, float surfaceY, float floorY)`: a flat free surface over all XZ with a
   finite lower bound, for sea-level worlds and as the reference fixture.
 - `TileMediumSampler` implements the field from an immutable snapshot built with the colliders. Each water tile is a
-  finite column from a lower bound at or below its lowest authored bed corner to its body's free surface. Domains are
+  finite column from a bound at or below its lowest authored bed corner to its body's free surface. Domains are
   collected bodies per region, so equal surfaces in adjacent regions stay separate domains. Boundary ids name each
   outer face, the surface and the bed. Coverage is exact capsule geometry against the union of finite columns,
-  including faces, edges and rounded corners, with internal faces between tiles of one domain suppressed and
-  certified rounding enclosures. An expanded box or independently inflated planes is not acceptable.
+  including faces, edges and rounded corners, with internal faces of one domain suppressed and certified rounding
+  enclosures. An expanded box or independently inflated planes is not acceptable.
 
-Cost if wrong: the TileWorld producer is replaced when the game moves to native worlds.
+**P5A-7. One effective movement binding per head.** Each head, and each sharded cell runtime, resolves exactly one
+binding at configuration: `Legacy`, `OrdinaryContact` (engine-built from the tuning, view, registration, boundary and
+field) or `PublicExplicit` (the existing public configuration). Every lifecycle door uses that binding instead of
+testing the public configuration: movement steps, read scopes, spawn and resume, teleports, configured-spawn reset,
+correction and replay, imports, continuation and placement. Each listed public-configuration branch under Current
+state is converted. A contact tuning together with a public explicit configuration is refused as two selections.
 
-**P5-6. Head configuration.** Each head names its contact configuration, validated where the head receives the
-values:
+**P5A-8. Head configuration points.**
 
-- `WorldServer`, `WorldClient`, `ShardedWorldServer` and `PlayerMoveSimulator` take the tuning at construction. Each
-  gains an `IMovementWaterField` alternative to the medium delegate. With a `Contact` tuning the head builds the
-  ordinary environment and an internal explicit configuration at s = 0 from the tuning's water policy and its
-  `WorldBounds` boundary, and runs its existing explicit branch. A `Contact` tuning together with a public explicit
-  configuration is refused as two selections.
-- `GroundMoveContext` gains a constructor overload taking an `IMovementWaterField` and a `MovementBoundary`, and
-  records at construction whether its effective query view (`MovementQueries ?? Physics`) supports the contact
-  controller. Because tuning arrives per call, a `Contact` tuning is validated on first use and cached by tuning
-  equality, and refused before stepping on an incapable context.
-- `CharacterController3D` mirrors `Controller`, `FootRadiusFraction` and `Water` beside its existing tuning fields, and
-  takes an optional field and boundary. `Update` revalidates whenever the composed tuning, world, field or boundary
-  changed since the last validation, before stepping.
-- `CharacterMovement.Step` and `StepTowards`, called directly with a `Contact` tuning, run the dry contact path, which
+- `WorldServer`, `WorldClient`, `ShardedWorldServer` and `PlayerMoveSimulator` take tuning at construction and gain
+  an `IMovementWaterField` and `OrdinaryMovementRegistration` alongside their medium delegate. They validate and build
+  the binding there. Sharded cells build one binding per cell runtime, shared by stepping, settling and import
+  admission.
+- `GroundMoveContext` gains an overload taking the field, registration and a `MovementBoundary`, and records at
+  construction whether its effective view supports the contact controller. Tuning arrives per call, so a contact
+  tuning is validated on first use and cached by tuning equality, and refused before stepping on an incapable context.
+- `CharacterController3D` mirrors `Controller`, `FootRadiusFraction` and `Water` beside its tuning fields, takes an
+  optional field, registration and boundary, and gains a new leased execution branch. `Update` revalidates whenever
+  the composed tuning, world, field, registration or boundary changed, before stepping.
+- `CharacterMovement.Step` and `StepTowards`, called directly with a contact tuning, run the dry contact path, which
   has proven leased parity on land. A wet medium sample there throws `NotSupportedException` naming the field route,
   because a point delegate cannot certify water.
 
-**P5-7. Validation rules.** One internal check serves every head:
+**P5A-9. Validation.** Three paths share one internal check:
 
-- `Contact` requires `ShellGeometry.Validate` to pass, `FootRadiusFraction` in (0, 1], a foot radius
-  `FootRadiusFraction * CapsuleRadius >= 0.01 m`, a water mode other than `Legacy`, an effective query view offering
-  `IPhysicsQueryLeaseSource`, `IPhysicsCapsuleContacts` and `IPhysicsSupportFootprint`, a `MovementBoundary` rather
-  than a clamp delegate, and no medium delegate without a field.
-- `Legacy` requires `FootRadiusFraction == 0.5` and water mode `Legacy`, so contact-only settings are never ignored.
-- Explicit configurations read `FootRadiusFraction` from the tuning and hash it in place of the fixed 0.5, so default
-  fingerprints are unchanged. Their own `WaterTraversalPolicy` governs. A tuning whose `Water` is neither the default
-  nor equal to that policy is refused. `Controller` is not consulted, because an explicit configuration always selects
-  the contact controller.
+- **Ordinary contact (heads).** `ShellGeometry.Validate` passes. `FootRadiusFraction` lies in (0, 1] and
+  `FootRadiusFraction * CapsuleRadius >= 0.01 m`. The water mode is not `Legacy`. The kernel's requirements hold
+  (positive `Gravity`, positive `MaxFallSpeed`, positive `SwimEnterDepthFraction`, as in
+  `ExplicitCharacterMovement.Queries.cs:46-57`). The view offers `IPhysicsQueryLeaseSource`,
+  `IPhysicsCapsuleContacts`, `IPhysicsSupportFootprint` and `IPhysicsCapsuleSweep`. A registration and a
+  `MovementBoundary` are present. No medium delegate is given without a field.
+- **Dry direct.** The shell and foot rules hold, and the world offers `IPhysicsQueryLeaseSource` and
+  `IPhysicsSupportFootprint`. Clamp and medium delegates are allowed, with the wet refusal above.
+- **Legacy.** `FootRadiusFraction == 0.5` and `Water` equals its default (mode `Legacy`, surface jump speed 0), so no
+  contact-only setting is silently ignored.
 
-**P5-8. Point water for pacing and approach.** A contact `GroundMoveContext` exposes `Medium` derived from
-`SampleCentreWater`, so `MoveToRange` settling, `SwimPace` and `DirectMoveToRange` keep working. Motion itself always
-uses the certified trace through the lease.
+Explicit configurations read `FootRadiusFraction` from the tuning and hash it in place of the fixed 0.5, so default
+fingerprints are unchanged. Their own `WaterTraversalPolicy` governs. A tuning whose `Water` is neither the default nor
+equal to that policy is refused. `Controller` is not consulted, because an explicit configuration always selects the
+contact controller.
 
-**P5-9. No wire change.** Generation 14 stays. Ordinary contact heads use the explicit branch's replication, which
-already carries the contact controller. Selection is not exchanged, because both heads build tuning from the same
-build or published catalog under the consumer protocol version. Cost if wrong: a mismatched client is corrected every
-tick, and the repair is a tuning fingerprint in the consumer token, with no wire generation.
+**P5A-10. Point water for pacing and approach.** A contact `GroundMoveContext` exposes `Medium` derived from
+`SampleCentreWater`, so `MoveToRange` settling, `SwimPace` and `DirectMoveToRange` keep working. Motion always uses the
+certified trace through the lease.
 
-**P5-10. KENB compatibility.** "Legacy bakes still load" means: the v1 format stays readable, and an unchanged
-all-legacy configuration writes byte-identical v1 identity and payload under the same engine version. A file from
-another engine version stays `EngineChanged`, the existing policy under which consumers rebake on every engine bump.
-Rules:
+**P5A-11. No wire change.** Generation 14 stays. Ordinary contact heads replicate through the explicit fields every
+lifecycle door already uses via P5A-7. Selection is not exchanged, because both heads build tuning from the same build
+or published catalog under the consumer protocol version. Cost if wrong: a mismatched client is corrected every tick,
+and the repair is a tuning fingerprint in the consumer token.
 
-- A profile is legacy when it has no explicit profile and its tuning selects `Legacy`. An all-legacy bake writes v1.
-  Any other profile makes the bake v2.
-- A v2 profile record appends the controller identity (`legacy-stepper-v1`, `contact-shell-footprint-v1`, or the
-  explicit `ControllerModel` and fingerprint), `FootRadiusFraction`, s, the water mode and the surface jump speed.
-- The reader decodes the stored format first, encodes the expectation in the format its own profiles imply, and
-  returns `ProfilesChanged` when the formats differ. Rewriting a loaded bake uses the format its profiles imply.
-- The v1 tuning table and its golden bytes are frozen.
+**P5A-12. Resolver-1 MapDoc contexts stay legacy-only.** `MapPhysicsRegistration` refuses a contact tuning with a
+message naming native G1b. Cost if wrong: a later factory supplies their registration, field and boundary.
 
-**P5-11. Runtime graph compatibility.** `GroundNavigation` stores the controller identity, foot fraction, s, water
-mode and surface jump speed, and `ValidateTuning` compares them for fresh and loaded graphs, so a contact or WadeOnly
-graph cannot steer a legacy or SurfaceSwimmer body of the same size.
+**P5A-13. Navigation waits for 5b.** `PhysicsNavBake.BuildProfile` and `GroundNavigationBake.Create` refuse a non-legacy
+profile with `NotSupportedException` naming phase 5b. Legacy capture and every bake byte stay unchanged in 5a.
 
-**P5-12. Two-stage contact capture.** For a non-legacy profile:
+**P5A-14. Guard maintenance.** Legacy behaviour and the frozen v1 golden bytes stay unchanged. The
+`NavBakeIdentityTests` field count splits into the 30 positional fields and the new properties, and the
+`ExplicitMovementProfileTests` reflection theory takes the selectable foot fraction. Each change is listed in its task
+report.
 
-1. Raw topology is built exactly as for a legacy profile of the same capsule: axis capture, axis headroom filter,
-   compaction and `NavLayerBaker` extraction. Layer ids, node cells and order are then frozen.
-2. Each frozen node slot runs `FootSupport.Find` for the profile's body and foot disc under a read lease of the bake's
-   physics view, from feet start raw h + StepHeight with reach 2 * StepHeight, so its band is
-   [raw h - StepHeight, raw h + StepHeight] independently of the layer's observed extrema. Analytic ground
-   participates as on the runtime path. Only `Walkable` support inside the band is accepted, and the roof and start
-   refusals apply. An accepted slot takes support h. A refused or out-of-band slot is marked blocked in place, never
-   compacted or re-layered. Headroom is recomputed at h + s against the column's next surface, and a slot below
-   2 * CapsuleHalfHeight is blocked. Layer bounds are recomputed from final heights, with membership and ids unchanged.
-3. Links are regenerated from the final grids and proved by the traversal probe.
-
-A cell whose centre axis misses every walkable surface gets no node even where the foot disc could stand, because
-seeding would change raw topology. This is a stated capture limitation, filed as an issue, with a test that pins it.
-Legacy profiles keep today's capture exactly.
-
-**P5-13. Traversal on the selected controller.** `GroundTraversalProbe` keeps its hold, slices, budget and 1 mm
-arrival rule and steps the profile's selected controller. Ordinary contact profiles run through the bake context's
-ordinary environment at s = 0. Explicit profiles run through `ExplicitMotionProbe` (P5-14).
-
-**P5-14. Explicit profiles in the bake.** `NavBakeProfile` gains an optional `ExplicitMovementProfile`, which is the
-discriminator and supplies the portable identity. `GroundNavigationBake.Create` takes an optional
-`MovementEnvironmentContext` as the runtime-only binding for explicit profiles. Its capture adapter prepares a bounded
-scope per node and edge, acquires a lease, rebuilds the framed start selection, targets resting feet h + 0.001, proves
-holds and edges with `ExplicitMotionProbe`, and records results before releasing the lease. Load expectations use the
-same discriminator.
-
-**P5-15. #1299 and resolver-1 contexts.** For a non-aquatic non-legacy profile, a node is deep when its resting feet
-h + s are at or below W - 2 * H * e, where W is the field's nominal surface, H the capsule half-height and e
-`SwimEnterDepthFraction`, which is the runtime wall's centre cap W + H(1 - 2e) in feet terms. Deep nodes are blocked.
-WadeOnly stops there by its wall, and SurfaceSwimmer would swim, which a ground route cannot use. DryOnly blocks every
-wet node. An aquatic SurfaceSwimmer profile keeps float nodes from the field. Legacy profiles are unchanged.
-`MapPhysicsRegistration` resolver-1 contexts stay legacy-only and refuse a `Contact` tuning with a message naming
-native G1b. Cost if wrong: a later factory supplies their field and boundary.
-
-**P5-16. Guard maintenance.** Legacy behaviour and the frozen v1 golden bytes stay unchanged. Named structural guards
-change deliberately: the `NavBakeIdentityTests` field count splits into the 30 positional fields (v1) and the new
-properties (v2), and the `ExplicitMovementProfileTests` reflection theory takes the selectable foot fraction. Each
-change is listed in its task report.
-
-**P5-17. Stale text.** The dry `CheckMedium` message, the `ShardedClimbSignalExportTests` comment, the controller
+**P5A-15. Stale text.** The dry `CheckMedium` message, the `ShardedClimbSignalExportTests` comment, the controller
 design's capability name (now `IPhysicsSupportFootprint`) and the `ExplicitMovementProfile` phase 5 comment are
 corrected.
 
-**P5-18. Version.** Phase 5 rides staged 20.34.0, already a minor. If 20.34.0 is tagged first, take the next free
-minor.
+**P5A-16. Version.** 5a rides staged 20.34.0, already a minor. If 20.34.0 is tagged first, take the next free minor.
 
-## Invariants
-
-| Invariant | Phase 5 obligation |
-| --- | --- |
-| 1. Determinism | Selection is a pure function of tuning. Client and server replay agree on contact rows |
-| 2. Clearance | Unchanged. Ordinary contact heads run the proven leased shell |
-| 3. Rise and drop | Unchanged. Capture uses the same support rule as the down pass |
-| 4. Capture and rest | Captured h + s equals simulated resting feet within the 1 mm arrival rule |
-| 5. Unsupported ascent | Unchanged. Ordinary water cannot mint footing |
-| 6. One surface | Runtime, capture and the deep line read the same certified support and water facts |
-| 7 to 9 | Unchanged, including partition independence of capture |
-
-## Acceptance
+## Acceptance for 5a
 
 - **A1. Legacy unchanged.** A default tuning is `Legacy`. Every legacy movement, bake, golden fingerprint and wire test
-  passes, with only the P5-16 guards changed.
-- **A2. Selection matrix.** With a contact tuning, each of `PlayerMoveSimulator` (clamp through the boundary, face
-  yaw), `WorldServer`, `WorldClient` prediction replay, the sharded framed head, `GroundMoveContext` (`StepTowards`
-  with precise direction), `CharacterController3D`, `NpcGroundMovement`, `MoveToRange` and `DirectMoveToRange` gives
-  results bit-equal to the explicit leased path at s = 0 on the same environment, on dry land and across a water
-  crossing. Replay equals the server.
-- **A3. Configuration refusals.** Each P5-7 refusal throws at the head's configuration point named in P5-6, including
-  a restricted query view without the footprint capability and a resolver-1 MapDoc context.
+  passes, with only the P5A-14 guards changed.
+- **A2. Selection matrix.** With a contact tuning, each of `PlayerMoveSimulator` (boundary, face yaw), `WorldServer`,
+  `WorldClient` prediction replay, the sharded framed head, `GroundMoveContext` (`StepTowards` with precise direction),
+  `CharacterController3D`, `NpcGroundMovement`, `MoveToRange` and `DirectMoveToRange` gives results bit-equal to the
+  internal ordinary composition (`ExplicitCharacterMovement` over the ordinary environment at offset 0), on dry land
+  and across a water crossing. On dry land those results also equal the dry contact path. Replay equals the server.
+- **A3. Configuration refusals.** Each P5A-9 refusal throws at the P5A-8 configuration point: a view without certified
+  sweeps, a source that cannot create a view, zero gravity, fall speed or swim-enter fraction, a missing registration
+  or boundary, a delegate without a field, two selections, Legacy water with a nonzero surface jump speed and a
+  resolver-1 context. The supported direct dry API accepts a contact tuning with clamp and medium delegates.
 - **A4. Ordinary water.** Each row runs with the Level field and with the TileWorld field, with expectations derived
-  from geometry at s = 0:
+  from geometry at offset 0:
   - SurfaceSwimmer entry, exit, buoyancy and hop.
   - The WadeOnly wall with shore slide, and DryOnly refusal.
   - Bed clipping and a shallow-to-deep down-seat.
   - A thin dry band crossing and a tied shore and solid corner.
   - A forbidden start, and recovery with lag payment.
-- **A5. Environment binding.** Wrong world, wrong identity, stale generation, a frame rebase and a nonzero physics Y
-  origin are refused or converted correctly, and a malformed field result refuses as the lease refuses today.
+- **A5. Environment binding.** Wrong world, wrong identity, a stale generation, a frame rebase and a nonzero physics Y
+  origin are refused or converted correctly. Registration rows: a missing, an excluded and a stale registration refuse,
+  split and joined pieces share an owner, reversed installation order gives identical owners, and identical handles in
+  two cell worlds stay distinct. Analytic ground outside the band is Known with null. `EnumerateSupport` is
+  Unresolved. A malformed field result refuses as the lease refuses today.
 - **A6. TileWorld producer.** An independent exact oracle agrees across tile faces, edges and corners, adjacent bodies
   with different surfaces, equal surfaces in adjacent regions, diagonal paths through corners, a tangent corner,
   rounded-cap vertical contacts and dry tiles. A radius 0.1 capsule axis at (-0.09, -0.09) beside a water tile
-  occupying x >= 0 and z >= 0 is not wet (corner distance about 0.1273).
-- **A7. KENB.** Frozen v1 bytes from a previous engine return `EngineChanged`. A same-engine all-legacy bake writes v1
-  with the unchanged golden fingerprint and loads. A mixed-profile bake writes v2 and round-trips to an identical graph.
-  v2 returns `ProfilesChanged` when the controller, foot fraction, s, water mode or surface jump speed changes, and a
-  v2 file against an all-legacy expectation returns `ProfilesChanged`.
-- **A8. Capture equals rest.** Named fixtures with expected retained nodes and heights:
-  - The #1270 low-lip scene, with a nonempty route across the lip.
-  - The crate under a wedge, with support at 0.1 m.
-  - The SG-23 sphere flank, walkable at -0.2 m, and a rim contribution.
-  - Stairs, a ramp and the 0.41 m ledge.
+  occupying x >= 0 and z >= 0 is not wet (corner distance about 0.1273). `TileWorldColliders` owners follow P5A-4.
+- **A7. Scope planner.** A multi-command replay longer than one tick's envelope, a high airborne body over analytic
+  terrain, a footprint at the scope edge and a body at the world boundary that needs an exterior margin all run without
+  a held step, and the A2 matrix holds no step for a planner miss.
+- **A8. Lifecycle at offset 0.** On both server heads: spawn, teleport, restore, configured-spawn reset, correction
+  replay, cross-cell transfer with destination admission and live continuation all place the body at h, including a
+  row under a low roof and a row at the WadeOnly deep-line boundary.
+- **A9. Navigation refusal.** A non-legacy profile is refused by the bake until 5b.
+- **A10. Allocation and cost.** A warm ordinary contact tick allocates only the named lifetime tokens of the explicit
+  tick inventory plus the read scope. One cold and one warm local sample are recorded, not asserted. No hosted run.
 
-  Every retained contact node's h equals the dry body's unpaced resting feet within 1 mm. Expected removals are asserted, as are a rejected lower layer under a
-  surviving upper layer, a height change across the step-height grouping threshold, a zero-width raw layer, a
-  near-roof adjusted node and the axis-miss limitation.
-- **A9. #1299 and graph compatibility.** A WadeOnly profile blocks deep cells, keeps shallow wading cells and agrees
-  with the runtime deep line within 1 mm. `MoveToRange` refuses a graph whose controller, foot fraction or water mode
-  differs from the body, and accepts a matching one.
-- **A10. Explicit capture.** Through the public bake API and its load expectation, an explicit profile keeps a named
-  hold and directed edge at h + 0.001 with h retained, and round-trips.
-- **A11. Allocation and cost.** A warm ordinary contact tick allocates only the named lifetime tokens of the explicit
-  tick inventory. One cold and one warm local sample are recorded, not asserted. No hosted run.
+## Tasks for 5a
 
-## Tasks
+1. Selector contract and validation: P5A-1, P5A-9, the direct dry dispatch, P5A-13 and P5A-14. A1, A9 and the tuning
+   half of A3.
+2. Composition value: P5A-3 through tick, placement, settling and continuation, with explicit suites unchanged.
+3. Ordinary environment: P5A-4 to P5A-6 with the Level field. A4 on Level, A5 and A7 at environment level.
+4. TileWorld producer and registration. A6 and A4 on tiles.
+5. Network heads: P5A-7, P5A-8 and P5A-11 for `WorldServer`, `ShardedWorldServer` cells, `PlayerMoveSimulator`,
+   `PlayerMovementSystem` and the `WorldClient` read API. A2 for those heads, A3 and A8.
+6. Local heads: `GroundMoveContext`, P5A-10, `CharacterController3D` and P5A-12. The rest of A2 and A3.
+7. Documentation, changelog, A10 sample and final verification.
 
-1. Selector contract: P5-1, P5-7 tuning rules, explicit precedence, the direct dry dispatch, P5-16 guards. A1 and the
-   tuning part of A3.
-2. Ordinary environment and water field contract: P5-3 to P5-5 with the Level field. A4 on Level and A5.
-3. TileWorld producer: the P5-5 snapshot and exact coverage. A6 and A4 on tiles.
-4. Heads: P5-6, P5-8 and P5-15's resolver-1 refusal. A2 and A3.
-5. Navigation profile schema and identity: the P5-14 discriminator, P5-10 and P5-11. A7 and the graph half of A9.
-6. Contact capture and traversal: P5-12, P5-13 and P5-15's deep rule. A8 and the #1299 half of A9.
-7. Explicit profiles in the bake: P5-14. A10.
-8. Documentation, changelog, A11 sample and final verification.
+## Phase 5b binding inputs
 
-## Review response, round 1
+5b gets its own specification and independent review before it starts. Settled direction and open obligations:
 
-- F1: P5-3 and P5-5 bind identity, generation, coordinates, space and immutability, and the lease keeps its checks.
-  The option table is re-scored and C is chosen. A5 tests binding failures.
-- F2: P5-2 runs ordinary contact heads on the leased context, which owns placement, segment, shore and descent proofs.
-  A4 adds the named medium rows.
-- F3: P5-6 names each head's configuration point, including `GroundMoveContext` per-call tuning and
-  `CharacterController3D` mirrored fields.
-- F4: P5-10 states the compatibility policy and version-aware comparison. A7 pins every status.
-- F5: P5-12 freezes raw topology, defines the band and blocks slots in place.
-- F6: P5-14 adds the discriminator, runtime binding and capture adapter. The motion probe claim is corrected.
-- F7: P5-11 extends runtime graph compatibility. A9 tests it through `MoveToRange`.
-- F8: P5-8 exposes point water for pacing and approach. P5-15 refuses resolver-1 contexts. A2 and A3 cover them.
-- F9: P5-5 specifies the snapshot, ids and exact finite-column geometry. A6 pins the corner example.
-- F10: P5-16 authorizes the named guard changes.
-- F11: A8 and A10 name fixtures, retained nodes, removals and the axis-miss limitation. A2 has a matrix.
-- F12: tasks are reordered so contracts precede their consumers.
-- F13: the fixture claim is corrected under Current state.
+- **Compatibility (from round 1 F4).** v1 stays readable. An unchanged all-legacy configuration writes byte-identical
+  v1 under the same engine version, and other-engine files stay `EngineChanged`. Any non-legacy profile makes the bake
+  v2, decoded format-first, with `ProfilesChanged` across formats.
+- **Capture by the footprint rule (F5, F19, F20).** Contact profiles capture columns with a footprint column probe
+  built on `FootSupport`, so captured heights are resting heights by construction and footprint-only support such as
+  the SG-23 sphere flank seeds nodes. Layers are extracted once from those raw seeds and never re-layered (raw layer
+  identity). Headroom comes from certified upward clearance of the resting body, keeping non-walkable ceilings.
+  Legacy capture is unchanged.
+- **Float nodes (F21).** Solid and float slots are discriminated before certification. Aquatic is allowed only with
+  SurfaceSwimmer.
+- **Explicit profiles (F6, F22, F23).** One normalized effective profile per explicit bake profile, with mismatched
+  geometry or areas refused. v2 stores geometric support and resting feet. A bake-specific explicit traversal adapter
+  applies capsule-area admission and the shared 3D 1 mm arrival predicate, correcting `ExplicitMotionProbe`'s per-axis
+  grounded rule where that predicate belongs.
+- **Runtime graph compatibility (F7, F24).** Graphs are validated against the effective movement binding, including
+  controller, foot fraction, offset, water policy, `SwimEnterDepthFraction` for non-aquatic water graphs and explicit
+  identity, for fresh and loaded graphs.
+- **#1299 (F25).** Deep nodes are classified by the runtime's own full-body placement proof under the profile's water
+  policy, never by a scalar formula alone. Unknown refuses.
+- **Traversal.** `GroundTraversalProbe` keeps its hold, slices, budget and 1 mm arrival rule and steps the selected
+  controller through the P5A-7 binding.
+
+## Review response
+
+Round 1 (REVISE, F1 to F13) and round 2 (REVISE, F1 to F27) reports are in the phase 5 ledger.
+
+- Round 2 resolved F2, F3, F4, F8, F9, F10, F11, F12 and F13.
+- F1 and F18: P5A-4 adds the registration, scoped analytic facts, truthful enumeration refusal, view ownership and
+  the generation, and A5 tests them.
+- F14: P5A-9 separates the three validation paths and adds certified sweeps and kernel requirements. A3 covers them.
+- F15: P5A-3 carries the offset through every placement door, and A8 tests them at offset 0.
+- F16: P5A-7 replaces public-configuration branches with one effective binding per head and cell, and A8 covers the
+  lifecycle doors.
+- F17: P5A-5 defines the scope planner and the replay horizon, and A7 tests it.
+- F26: P5A-9 requires the whole default `Water` for Legacy.
+- F27: Current state is corrected, and `CharacterController3D`'s new leased branch is assigned to task 6.
+- F5, F6, F7 and F19 to F25 are navigation findings. Each is carried into the 5b binding inputs above with its
+  settled direction, and 5b's specification answers it in full before its review.

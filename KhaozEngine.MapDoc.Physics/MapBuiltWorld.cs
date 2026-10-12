@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Prefabs;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -30,7 +31,11 @@ public enum MapStaticKind
 /// bounds. <see cref="TriangleOwners"/> names the compiled face of each terrain triangle and is empty for a
 /// placement.</summary>
 public sealed record MapStaticDescriptor(string OwnerId, MapStaticKind Kind, PhysicsShape Shape, Vector3 Position,
-    Quaternion Orientation, MapBox3 Bounds, string Digest, IReadOnlyList<MapFaceKey> TriangleOwners);
+    Quaternion Orientation, MapBox3 Bounds, string Digest, IReadOnlyList<MapFaceKey> TriangleOwners)
+{
+    /// <summary>A precise placement pose, used only at the frame-local backend boundary. Terrain uses its whole-metre anchor.</summary>
+    public MapEffectiveTransform? EffectiveTransform { get; init; }
+}
 
 /// <summary>Whether the backend's capsule feature query, <see cref="IPhysicsCapsuleFeatures"/>, can
 /// capture a static, and why not. These predict that capability only. The contact controller's foot-support primitive,
@@ -97,8 +102,8 @@ public sealed class MapBuiltWorld
     /// <summary>Every feature query limit a static meets, in static order.</summary>
     public IReadOnlyList<MapStaticDiagnostic> Diagnostics { get; }
 
-    /// <summary>The union of the storage bounds, every static and every interaction envelope. The storage bounds
-    /// carry no height, so a world with no static and no envelope has a zero height range. A resolver-1 world's
+    /// <summary>The union of storage, physical support, statics, interaction envelopes, render, LOD, light and water bounds.
+    /// Storage carries no height, so a world with no bounded resource has a zero height range. A resolver-1 world's
     /// bounds do not include its analytic terrain height.</summary>
     public MapBox3 Bounds { get; }
 

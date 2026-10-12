@@ -6,6 +6,7 @@ using KhaozEngine.Locomotion;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.Movement;
 using KhaozEngine.Physics;
+using KhaozEngine.Primitives;
 
 namespace KhaozEngine.MapDoc.Physics;
 
@@ -63,8 +64,15 @@ public sealed class MapPhysicsRegistration : IDisposable
         {
             foreach (MapStaticDescriptor descriptor in world.Statics)
             {
+                Pose pose = new(descriptor.Position - origin, descriptor.Orientation);
+                if (descriptor.EffectiveTransform is { } precise)
+                {
+                    var frame = WorldFrame.Nearest(origin);
+                    Pose local = MapBackendPoseAdapter.Pose(precise, frame);
+                    pose = new(local.Position - (origin - frame.Anchor), local.Orientation);
+                }
                 StaticHandle handle = physics.AddStatic(descriptor.Shape,
-                    new Pose(descriptor.Position - origin, descriptor.Orientation));
+                    pose);
                 handles.Add(handle);
                 owners.Add(handle, (new MapStaticOwner(descriptor.OwnerId, descriptor.Kind), descriptor.TriangleOwners));
             }

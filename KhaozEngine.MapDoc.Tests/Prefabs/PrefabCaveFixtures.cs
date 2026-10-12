@@ -22,9 +22,7 @@ internal static partial class PrefabFixtures
             var instance = seam.Document.Prefabs!.Instances.Single() with
             { Transform = new(new(30000.25f, -450, -29999.75f), 0.371f, 1.2f) };
             seam.Document.Prefabs = new(1, 1, new[] { instance }, []);
-            seam.Document.NativeResourceTransforms = new[] { new MapStandaloneResourceTransform(MapPrefabChildKind.Surface, "exterior",
-                MapEffectiveTransform.From(instance.Transform), new string('a', 64)) };
-            PadParent(seam);
+            AuthorWorldParent(seam, instance.Transform);
             return seam;
         }
         var f = Create();
@@ -161,10 +159,11 @@ internal static partial class PrefabFixtures
     internal static PrefabFixture PlacedPrisms(string variant, float scale, bool far)
     {
         var f = Cave(variant);
-        PadParent(f);
+        var source = f.Document.Surfaces.Patches[new("exterior", 0, 0)];
+        double height = source.Heights[0] / 100d, dx = (source.Heights[1] - source.Heights[0]) / 100d, dz = (source.Heights[source.Width + 1] - source.Heights[0]) / 100d;
         var transform = new MapTransform(far ? new(30000.25f, -450, -29999.75f) : new(10.25f, 5, -3.125f), 0.371f, scale);
         f.Document.Prefabs = new(1, 1, new[] { f.Document.Prefabs!.Instances.Single() with { Transform = transform } }, []);
-        f.Document.NativeResourceTransforms = new[] { new MapStandaloneResourceTransform(MapPrefabChildKind.Surface, "exterior", MapEffectiveTransform.From(transform), new string('a', 64)) };
+        AuthorWorldParent(f, transform, (x, z) => height + x * dx - z * dz);
         return f;
     }
 

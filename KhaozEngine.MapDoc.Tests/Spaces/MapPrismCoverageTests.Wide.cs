@@ -17,7 +17,11 @@ public sealed partial class MapPrismCoverageTests
     [InlineData(1.2f, true)]
     public void TransformedCanonicalPartition_RetainsEveryPositiveIntersection(float scale, bool far)
     {
-        var r = PrefabFixtures.Effective(PrefabFixtures.PlacedPrisms("dry-flooded", scale, far));
+        var fixture = PrefabFixtures.PlacedPrisms("dry-flooded", scale, far);
+        // A world-aligned rational grid retains the wide-intersection control after T5-R1's parent correction.
+        PrefabFixtures.AuthorWorldParent(fixture, fixture.Document.Prefabs!.Instances.Single().Transform,
+            cellUnit: new(int.MaxValue - 1, int.MaxValue));
+        var r = PrefabFixtures.Effective(fixture);
         var view = r.CompleteView();
         var prism = view.RecordsIn(new("a/floor", 0, 0)).OfType<MapPrismDomain>().Single();
         var domain = MapPrismGeometry.Compile(view, prism);

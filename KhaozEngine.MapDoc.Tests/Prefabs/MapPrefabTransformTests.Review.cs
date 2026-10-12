@@ -85,10 +85,10 @@ public sealed partial class MapPrefabTransformTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void SuppliedSource_TransformedNativeFloorUsesProducerFacts(bool unavailable)
+    public void SuppliedSource_WorldAlignedNativeFloorUsesProducerFacts(bool unavailable)
     {
         var f = PrefabFixtures.Transformed(0.371f, 1.2f, new(30000.25f, 5, -29999.75f));
-        var pose = f.Document.NativeResourceTransforms!.Single().Transform;
+        var pose = MapEffectiveTransform.From(f.Document.Prefabs!.Instances.Single().Transform);
         var kernel = new MapResourceTransform(pose);
         var point = kernel.Point(new(new(1, 1), default, new(-1, 1)));
         f.Document.Placements.Add(new()
@@ -103,17 +103,17 @@ public sealed partial class MapPrefabTransformTests
             SupportBinding = new(MapSupportBindingKind.Surface, "exterior", null, null, null, null)
         });
         var supplied = MapDocumentFile.LoadText(MapDocumentFile.SaveText(f.Document));
-        Array.Fill(supplied.Surfaces.Patches.Values.Single().Heights, 400);
+        foreach (var patch in supplied.Surfaces.Patches.Values.Where(p => p.Key.SurfaceId == "exterior")) Array.Fill(patch.Heights, 400);
         IMapSurfaceSource source = MapDocumentSurfaceSource.Capture(supplied);
         if (unavailable)
         {
-            source = new FilteredSurfaceSource(source, new MapPatchKey("exterior", 0, 0));
+            source = new FilteredSurfaceSource(source, MapPatchKey.ForCell("exterior", point.X.Floor(), point.Z.Negate().Floor()));
             Assert.Contains("MissingGeometry", Assert.Throws<MapDocumentException>(() => MapResolverV2.Resolve(f.Document, f.Assets, source, PrefabFixtures.Options())).Message);
         }
         else
         {
             var result = MapResolverV2.Resolve(f.Document, f.Assets, source, PrefabFixtures.Options());
-            Assert.Equal(kernel.Height(new(4, 1)).ToSingle(), result.Document.Placements.Single(p => p.PlacementId == "consumer").Transform.Position.Y);
+            Assert.Equal(4, result.Document.Placements.Single(p => p.PlacementId == "consumer").Transform.Position.Y);
         }
     }
 

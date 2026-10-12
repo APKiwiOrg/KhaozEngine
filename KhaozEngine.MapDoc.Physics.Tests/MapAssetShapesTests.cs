@@ -43,7 +43,7 @@ public class MapAssetShapesTests
     [InlineData("degenerate-orientation-collider", "collision payload")]
     [InlineData("mesh-in-compound", "triangle mesh inside a compound")]
     [InlineData("mesh-in-nested-compound", "triangle mesh inside a compound")]
-    [InlineData("deck-with-support", "placement-local support surfaces arrive with R5")]
+    [InlineData("deck-with-support", "not captured")]
     public void UnsupportedShapeData_Refuses(string assetId, string message)
     {
         var f = NativeWorldFixtures.Assets();

@@ -29,7 +29,7 @@ public sealed record MapAffectedSet(IReadOnlyList<string> Owners, IReadOnlyList<
 public static class MapResidencyOwnership
 {
     /// <summary>The most storage tiles one list here holds, 2^20: a static's
-    /// <see cref="MapResidencyEntry.Membership"/>, and each extent <see cref="Affected"/> lists, whether an edit box,
+    /// <see cref="MapResidencyEntry.Membership"/>, and each extent <see cref="Affected(MapBuiltWorld, MapWorldGrids, MapNativeEditEffects)"/> lists, whether an edit box,
     /// a listed patch chunk or, for an unbounded edit, the whole world. At 64 m tiles that is, for example, a square
     /// about 65 km on a side.</summary>
     public const int MaxStorageTiles = 1 << 20;
@@ -183,6 +183,27 @@ public static class MapResidencyOwnership
                 tiles.UnionWith(WaterTiles(body, grids));
             }
         MapNavTileCoord[] nav = tiles.Select(grids.AlignedNavTileOf).Distinct().OrderBy(c => c.Z).ThenBy(c => c.X).ToArray();
+        return new(owners.ToArray(), tiles.ToArray(), nav);
+    }
+
+    /// <summary>Consequences across both snapshots, including removed owner IDs and their old membership. Unknown
+    /// geometry keeps Unbounded's reset semantics. Changed support-bound placement extents belong in the effects
+    /// emitted by preparation, rather than being inferred from an edited terrain patch.</summary>
+    public static MapAffectedSet Affected(MapBuiltWorld before, MapBuiltWorld after, MapWorldGrids grids, MapNativeEditEffects effects)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        var old = Affected(before, grids, effects);
+        var current = Affected(after, grids, effects);
+        if ((effects.Invalidates & Spatial) == 0) return current;
+        var owners = new SortedSet<string>(old.Owners.Concat(current.Owners), StringComparer.Ordinal);
+        var tiles = new SortedSet<MapTileCoord>(old.StorageTiles.Concat(current.StorageTiles), TileOrder);
+        var live = after.Statics.Select(s => s.OwnerId).ToHashSet(StringComparer.Ordinal);
+        foreach (var removed in before.Statics.Where(s => !live.Contains(s.OwnerId)))
+        {
+            owners.Add(removed.OwnerId);
+            tiles.UnionWith(StorageTiles(removed.Bounds, grids, $"Removed owner '{removed.OwnerId}'"));
+        }
+        var nav = tiles.Select(grids.AlignedNavTileOf).Distinct().OrderBy(t => t.Z).ThenBy(t => t.X).ToArray();
         return new(owners.ToArray(), tiles.ToArray(), nav);
     }
 

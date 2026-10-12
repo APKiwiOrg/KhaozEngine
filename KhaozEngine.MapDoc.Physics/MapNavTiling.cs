@@ -204,7 +204,7 @@ public static class MapNavTiling
 
     /// <summary>The navigation tiles <paramref name="effects"/> invalidates in (Z, X) order, empty unless it invalidates
     /// navigation or water medium. <paramref name="world"/> is the world built after the edit, as for
-    /// <see cref="MapResidencyOwnership.Affected"/>, whose navigation tiles this widens by the seam margin: every tile
+    /// <see cref="MapResidencyOwnership.Affected(MapBuiltWorld, MapWorldGrids, MapNativeEditEffects)"/>, whose navigation tiles this widens by the seam margin: every tile
     /// whose capture bounds meet, on X and Z, the old or new edit bounds or the bounds of a chunk of a listed patch. For a
     /// resolver-1 terrain edit it also widens each edit box by the footprint of every sculpt tile position the box meets,
     /// taken arithmetically from <see cref="TerrainSculpt.TileSize"/> and <see cref="MapBuiltWorld.LegacySculptCellSize"/>
@@ -219,7 +219,7 @@ public static class MapNavTiling
     /// <para>A tile that leaves the partition, because the edit shrank the world's bounds, is never listed, since the
     /// result is clipped to the post-edit partition. A consumer that keeps derived state per tile diffs the old and new
     /// partitions to find removed tiles.</para>
-    /// <para>Throws as <see cref="MapResidencyOwnership.Affected"/> does, including for an unbounded edit's boxes, as
+    /// <para>Throws as <see cref="MapResidencyOwnership.Affected(MapBuiltWorld, MapWorldGrids, MapNativeEditEffects)"/> does, including for an unbounded edit's boxes, as
     /// <see cref="Partition"/> does when an unbounded edit's world reaches more than <see cref="MaxPartitionTiles"/>
     /// tiles, and <see cref="ArgumentException"/> for invalid options.</para></summary>
     public static IReadOnlyList<MapNavTileCoord> AffectedTiles(MapBuiltWorld world, MapWorldGrids grids,
@@ -276,6 +276,23 @@ public static class MapNavTiling
         }
         (int firstX, int lastX, int firstZ, int lastZ) = PartitionRange(world, grids);
         return tiles.Where(t => t.X >= firstX && t.X <= lastX && t.Z >= firstZ && t.Z <= lastZ).ToArray();
+    }
+
+    /// <summary>Old and new capture tiles, including tiles outside the post-edit partition and every removed static's
+    /// old capture. This lets deletion retire derived state without knowing a removed owner's current geometry.</summary>
+    public static IReadOnlyList<MapNavTileCoord> AffectedTiles(MapBuiltWorld before, MapBuiltWorld after, MapWorldGrids grids,
+        MapNavTileOptions options, MapNativeEditEffects effects)
+    {
+        var tiles = new SortedSet<MapNavTileCoord>(AffectedTiles(before, grids, options, effects), TileOrder);
+        tiles.UnionWith(AffectedTiles(after, grids, options, effects));
+        if ((effects.Invalidates & (MapNativeInvalidation.Nav | MapNativeInvalidation.Medium)) == 0) return tiles.ToArray();
+        var live = after.Statics.Select(s => s.OwnerId).ToHashSet(StringComparer.Ordinal);
+        foreach (var removed in before.Statics.Where(s => !live.Contains(s.OwnerId)))
+        {
+            var b = removed.Bounds;
+            tiles.UnionWith(CaptureTilesMeeting(b.MinX, b.MinZ, b.MaxX, b.MaxZ, grids, options.SeamMarginMetres));
+        }
+        return tiles.ToArray();
     }
 
     /// <summary>The number of tiles in a partition range, after refusing a range beyond
@@ -544,7 +561,7 @@ public static class MapNavTiling
     {
         if (portal.Interval.Count < 2)
             throw new MapDocumentException($"invalid vertex sequence: portal '{portal.Id}'");
-        MapExactXz[] points = portal.Interval.Select(v => Surface(view, v.SurfaceId).Frame.WorldXz(v.Address)).ToArray();
+        MapExactXz[] points = portal.Interval.Select(v => MapEffectiveGeometry.Vertex(view, v)).ToArray();
         for (int i = 1; i < points.Length; i++)
             AddReach(tiles, grids, points[i - 1].X.ToDouble(), points[i - 1].Z.ToDouble(), points[i].X.ToDouble(),
                 points[i].Z.ToDouble());
@@ -556,8 +573,10 @@ public static class MapNavTiling
         MapSurfacePatch patch = view.Patch(opening.Patch).Patch
             ?? throw new MapDocumentException($"missing geometry: opening '{opening.Id}' patch {opening.Patch}");
         MapOpeningPlane plane = MapOpeningBoundary.Compile(Surface(view, opening.Patch.SurfaceId), patch, opening);
-        foreach (MapExactTriangle t in plane.ExactTriangles)
+        foreach (MapExactTriangle local in plane.ExactTriangles)
         {
+            var t = new MapExactTriangle(MapEffectiveGeometry.Point(view, opening.Patch.SurfaceId, local.A),
+                MapEffectiveGeometry.Point(view, opening.Patch.SurfaceId, local.B), MapEffectiveGeometry.Point(view, opening.Patch.SurfaceId, local.C));
             double[] xs = { t.A.X.ToDouble(), t.B.X.ToDouble(), t.C.X.ToDouble() };
             double[] zs = { t.A.Z.ToDouble(), t.B.Z.ToDouble(), t.C.Z.ToDouble() };
             AddReach(tiles, grids, xs.Min(), zs.Min(), xs.Max(), zs.Max());

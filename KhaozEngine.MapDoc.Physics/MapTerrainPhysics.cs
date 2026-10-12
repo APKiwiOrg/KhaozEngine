@@ -9,6 +9,7 @@ using KhaozEngine.MapDoc.Identity;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 using KhaozEngine.Physics;
 
 namespace KhaozEngine.MapDoc.Physics;
@@ -129,7 +130,7 @@ public static class MapTerrainPhysics
                     owner = $"patch '{key}'";
                     MapSurfacePatch patch = view.Patch(key).Patch ??
                         throw new MapDocumentException($"terrain physics patch '{key}' is unavailable");
-                    MapCompiledPatch compiled = MapSurfaceCompiler.Compile(surface, patch);
+                    MapCompiledPatch compiled = MapEffectiveGeometry.TransformPatch(view, MapSurfaceCompiler.Compile(surface, patch));
                     skipped += compiled.LegacyFallbackCells.Count;
                     chunker.AddPatch(key, compiled.ExactVertices, compiled.Faces);
                 }
@@ -165,7 +166,6 @@ public static class MapTerrainPhysics
     /// <summary>Recursive splitting under the triangle cap and the anchor extent.</summary>
     sealed class Chunker(int cap)
     {
-        static readonly MapExactValue Half = new(1, 2), Limit = new(MaxAnchorOffsetMetres, 1);
         readonly List<MapTerrainChunk> _chunks = new();
 
         internal void AddPatch(MapPatchKey key, IReadOnlyList<MapExactPoint> exact, IReadOnlyList<MapCompiledFace> faces)
@@ -273,12 +273,19 @@ public static class MapTerrainPhysics
             return new(x, y, z);
         }
 
-        static long Centre(MapExactValue min, MapExactValue max) => min.Add(max).Multiply(Half).Add(Half).Floor();
+        static long Centre(MapExactValue min, MapExactValue max)
+        {
+            var centre = MapWideRational.From(min).Add(MapWideRational.From(max)).Add(MapWideRational.From(1)).Divide(MapWideRational.From(2));
+            System.Numerics.BigInteger floor = System.Numerics.BigInteger.DivRem(centre.Numerator, centre.Denominator, out var remainder);
+            if (remainder.Sign < 0) floor--;
+            return checked((long)floor);
+        }
 
         static bool Within(MapExactValue min, MapExactValue max, long anchor)
         {
-            var at = new MapExactValue(anchor, 1);
-            return max.Subtract(at).CompareTo(Limit) <= 0 && at.Subtract(min).CompareTo(Limit) <= 0;
+            var at = MapWideRational.From(anchor);
+            var limit = MapWideRational.From(MaxAnchorOffsetMetres);
+            return MapWideRational.From(max).Subtract(at).CompareTo(limit) <= 0 && at.Subtract(MapWideRational.From(min)).CompareTo(limit) <= 0;
         }
 
         void Emit(string id, MapSubmissionAnchor anchor, IReadOnlyList<MapExactPoint> exact, MapCompiledFace[] faces)
@@ -308,11 +315,13 @@ public static class MapTerrainPhysics
                 if (slots.TryGetValue(source, out int slot)) return slot;
                 MapExactPoint p = exact[source];
                 slots.Add(source, vertices.Count);
-                vertices.Add(new(p.X.Subtract(origin.X).ToSingle(), p.Y.Subtract(origin.Y).ToSingle(),
-                    p.Z.Subtract(origin.Z).ToSingle()));
+                vertices.Add(new(Offset(p.X, origin.X), Offset(p.Y, origin.Y), Offset(p.Z, origin.Z)));
                 return vertices.Count - 1;
             }
         }
+
+        static float Offset(MapExactValue value, MapExactValue origin) =>
+            (float)MapWideRational.From(value).Subtract(MapWideRational.From(origin)).ToDouble();
 
         internal IReadOnlyList<MapTerrainChunk> Finish()
         {

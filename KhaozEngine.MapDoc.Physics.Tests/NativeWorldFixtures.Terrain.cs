@@ -284,7 +284,9 @@ internal static partial class NativeWorldFixtures
             MapStripFacing.Front, 1));
         var scope = new MapSurfaceScope(WorldFrame.Origin, new Vector2(-1f, -1f), new Vector2(3f, 3f), null, null,
             Enum.GetValues<MapSurfaceRole>(), null, new MapQueryLimits());
-        MapScopedSurfaces view = MapScopedSurfaces.Acquire(MapDocumentSurfaceSource.Capture(Resolve(set).Document), scope,
+        // This diagnostic intentionally has dangling records. Capture it without complete-document resolution or save.
+        Seal(set);
+        MapScopedSurfaces view = MapScopedSurfaces.Acquire(MapDocumentSurfaceSource.Capture(new MapDocument { Surfaces = set }), scope,
             Array.Empty<string>());
         return view.Status == MapAcquireStatus.Incomplete ? view
             : throw new InvalidOperationException("incomplete view fixture acquired as " + view.Status);

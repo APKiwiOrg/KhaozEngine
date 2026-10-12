@@ -26,9 +26,7 @@ internal static partial class PrefabFixtures
         var f = Create("all-resources");
         var instance = f.Document.Prefabs!.Instances.Single() with { Transform = new(position, yaw, scale) };
         f.Document.Prefabs = new(1, 1, new[] { instance }, []);
-        f.Document.NativeResourceTransforms = new[] { new MapStandaloneResourceTransform(MapPrefabChildKind.Surface, "exterior",
-            new(position.X, position.Y, position.Z, yaw, scale), MapPrefabIdentity.ChildDigest(SurfaceChild("exterior", MapSurfaceRole.SupportFloor,
-                f.Document.Surfaces.Patches[new("exterior", 0, 0)]))) };
+        AuthorWorldParent(f, instance.Transform);
         return f;
     }
     internal static MapExactPoint SharedFloorCorner(MapEffectiveResources resources) => Corner(resources, "a/floor", 4, 4);
@@ -79,17 +77,19 @@ internal static partial class PrefabFixtures
         foreach (var patch in floor.Patches)
             for (int z = 0; z <= patch.Depth; z++)
                 for (int x = 0; x <= patch.Width; x++) patch.Heights[z * (patch.Width + 1) + x] = x * 25;
-        // The prism must acquire its canonical parent even when its constant plane is higher.
-        // Keep the parent ramp two metres below the leaf ramp, so exact narrowing remains exercised.
-        var parent = f.Document.Surfaces.Patches[new("exterior", 0, 0)];
-        for (int z = 0; z <= parent.Depth; z++)
-            for (int x = 0; x <= parent.Width; x++) parent.Heights[z * (parent.Width + 1) + x] = -200 + x * 25;
-        var surface = f.Document.Surfaces.Refs.Single();
-        f.Document.Surfaces.Refs[0] = surface with
-        {
-            SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface,
-            new[] { new KeyValuePair<MapPatchKey, string>(parent.Key, MapSurfaceSemantics.PatchDigest(parent)) })
-        };
+        // The parent uses its own world-aligned lattice. Its ramp stays below the transformed room floor.
+        var instance = f.Document.Prefabs!.Instances.Single().Transform;
+        var (sin, cos) = Math.SinCos(instance.YawRadians);
+        foreach (var parent in f.Document.Surfaces.Patches.Values.Where(p => p.Key.SurfaceId == "exterior"))
+            for (int z = 0; z <= parent.Depth; z++)
+                for (int x = 0; x <= parent.Width; x++)
+                {
+                    double worldX = parent.Key.SlotX * 64 + parent.CellMinX + x;
+                    double worldZ = -(parent.Key.SlotZ * 64 + parent.CellMinZ + z);
+                    double along = cos * (worldX - instance.Position.X) - sin * (worldZ - instance.Position.Z);
+                    parent.Heights[z * (parent.Width + 1) + x] = (int)Math.Round(100 * (instance.Position.Y - 2 * instance.Scale + along * 0.25));
+                }
+        SealWorldParent(f.Document);
         return Reasset(f, asset);
     }
     static PrefabFixture Reasset(PrefabFixture f, MapPrefabAsset asset, IReadOnlyDictionary<string, string>? ids = null, MapAssetClosure? captured = null)

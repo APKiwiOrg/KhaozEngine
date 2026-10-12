@@ -47,7 +47,11 @@ if (shapes.IsSolid)
 
 `Collider` and `Selection` resources carry `PropCollisionFormat` version 1 bytes. `MapAssetShapes.Read` reads each
 declared resource and keeps the shapes in asset source units. `SourceUnitsToMetres` is the scale the caller applies.
-`ColliderSha256` and `SelectionSha256` are the verified resource digests.
+`ColliderSha256` and `SelectionSha256` are the verified resource digests. `SupportResources` carries detached
+MapDoc payload-1 descriptors. Their lattice frames already declare metres, so asset source units are not applied
+to support again. MapDoc installs and remaps those surfaces before resolving missing-Y placements. Physics then
+compiles that captured effective view into statics with canonical face owners. A support resource never installs a
+duplicate collider floor.
 
 An asset is solid exactly when it declares a collider. A selection volume alone makes it examinable without
 blocking.
@@ -57,8 +61,7 @@ blocking.
 - a collision payload does not read as exactly one well-formed shape, or has bytes after it,
 - a compound holds a triangle mesh, which the physics backend cannot install,
 - a hull or mesh has no points,
-- the asset declares a support resource. Placement-local support surfaces (`Surface` resources) arrive with R5, and
-  until then the refusal names it.
+- a support resource has no validated MapDoc support payload.
 
 `PropCollisionFormat.Read` refuses a non-finite or non-positive box half extent or cylinder size, a non-finite hull
 point, mesh vertex or compound child pose, a mesh index count that is not a multiple of 3 or an index outside the
@@ -124,6 +127,10 @@ version, consumer policy, interaction policy, chunk policy, legacy terrain ident
 digest. A resolver 1 world also carries its `LegacySculptTiles` (`MapLegacySculptTile`), sculpt cell size, terrain
 block digest and `LegacyTerrainIdentity`, so a consumer covers only the sculpt tiles a region touches.
 
+Prefab and unpacked complete builds validate every effective room coverage finding even without water.
+Diagnostic expansion remains available for inspecting ambiguous membership. Independent coincident support floors
+and collider floors duplicated by support surfaces are refused.
+
 `Build` refuses a partial window, options that do not match the resolver identity, a missing legacy support height
 for resolver 1, every resolution, placement and terrain refusal, a static beyond `MapWorldBuilder.MaxCoordinateMetres`
 (1,000,000 m) on an axis and two statics with one owner id.
@@ -156,6 +163,13 @@ own 64 m local bound to the radius and half length of a curved leaf and to the m
 `LocalExtent` does not predict that bound: the builder never flags it on a curved leaf, and a mesh it flags may still
 pass when the triangles near the probe stay within 64 m. One unsupported static near a probe refuses the whole
 neighborhood query.
+
+`MapBackendPoseAdapter` is the explicit frame-local binary32 approximation of a retained `MapEffectiveTransform`.
+`ErrorMetres` bounds origin, scale, quaternion and local-coordinate rounding. Semantic support stays exact.
+`MapPrefabSupportBounds.Bounds` measures transformed physical support without narrowing occupied-space partitions.
+World bounds also include render, LOD, asset light, emitted light and water extents.
+Doorway compounds retain their jambs and lintel under one transform. Headless clearance proves a physical opening
+only. Native walking routes remain with G1b, #1355 and #438 phase 5.
 
 ## Pick, reach and stances
 
@@ -226,6 +240,11 @@ with no extent belongs to the tile holding its minimum. A placement is keyed by 
 `MapSpatialIndex` stores it, and a terrain chunk by the tile holding its minimum corner. `Affected` takes the world
 built after the edit and names the owners and tiles the edit invalidates from its old and new bounds and the chunks of
 every listed patch, including the chunks of the wall strips recorded in it.
+
+`Affected(before, after, grids, effects)` also retains removed owner IDs and their old memberships.
+The matching `AffectedTiles(before, after, grids, options, effects)` retains old capture tiles, including tiles
+that leave the post-edit partition. Preparation must widen effects with the old and new extents of leaves reseated
+by a support edit. The 150 m leaf counterexample at a 64 m seam proves why patch-only bounds miss neighbor tiles.
 
 `MapNativeInvalidation.Unbounded` is a full reset: discard all prior derived state for this world and rebuild from
 the post-edit world. `Affected` then lists every static as an owner and every storage tile the post-edit world's
@@ -366,8 +385,8 @@ reports `Unbounded` the same way. Collider height edits size their placements th
 | Vertical-layer navigation capture on native worlds | #438 phase 5 | `MapNavTiling` provides tile, seam and link identity only |
 | Incremental rebake orchestration, planning budgets, on-demand loading | #1301 | After #438 phase 5 |
 | Multi-cell ghost handoff proof | R8 and G3 | `MapWorldGrids` and `MapResidencyOwnership` provide grid mapping and ownership |
-| Placement-local support surfaces (`Surface` resources) | R5 | `MapAssetShapes.Read` refuses them |
-| Live portal and door state | R5 | Portals are authored open |
+| Placement-local support surfaces (`Surface` resources) | R5 | Installed in MapDoc before sampling and compiled here with canonical owners |
+| Live portal and door state | [#1363](https://github.com/APKiwiOrg/KhaozEngine/issues/1363) | Portals remain authored open |
 | Clearance body model confirmation | Owner, #1344 | Clearance uses the #438 shell through `ContactShell` |
 | Support certification of curved statics, creases and one-sided back faces | #438 phase 2b | Landed. The controller's foot-support primitive, not yet used by movement, certifies through `IPhysicsSupportNeighborhood`, and the diagnostics here still predict `IPhysicsCapsuleFeatures` |
 | Editor placement edits reporting old and new placement bounds with Physics, Nav and Residency | R3 | Done, see Editor tooling |

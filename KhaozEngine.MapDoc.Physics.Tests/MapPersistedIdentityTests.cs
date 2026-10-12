@@ -67,12 +67,12 @@ public class MapPersistedIdentityTests
     [Fact]
     public void StackedCaveBuildHash_IsPinned()
     {
-        // Format 7 changes one native root member, formatVersion 6 to 7, and nothing else this fixture hashes. The test
+        // Format 7 advances the native root, and effective-resource policy 1 plus query policy 2 enter resolver-2 identity. The test
         // derives the root from the persisted canonical manifest bytes under the documented scheme-one normalization,
         // the content and patch digests from their canonical forms, and both composites from their documented member
         // order. The recorded chunk and placement digests are geometry inputs read from the engine once. At format 6 the
-        // derivation reproduces the released pins below, which checks every input. The format 7 pins are that same
-        // derivation at format 7, never a value printed by the changed product.
+        // derivation reproduces the released pins below, which checks every input. The format-7 policy-2 pins are derived
+        // by adding the documented policy members, never by copying a value printed by the changed product.
         var fixture = NativeWorldFixtures.StackedCave();
         var world = NativeWorldFixtures.BuildStackedCave();
         Assert.Equal(RecordedPlacements, world.Placements.Select(p => (p.PlacementId, p.Digest)));
@@ -86,11 +86,11 @@ public class MapPersistedIdentityTests
         Assert.Equal("436a2731a92851e05bc667b3d02bb89e2980922d894348a704f950df55b78235", authoredSix);
         Assert.Equal("655026f34e7bc1dd9a93157d406c28547b8b3d832fec1dc041a7e87ad1b0efc3", Build(authoredSix));
 
-        // The only changed input is the root's formatVersion member, 7 in place of 6. Content, patches, closure, options
-        // and every geometry digest are the inputs that reproduced the format 6 pins above.
-        string authoredSeven = Authored(RootDigest(manifest, 7), fixture);
-        Assert.Equal("a7c7fe280fdc1d23513313a52723514622c92e46da3edc8e80ac1322e7b28d1b", authoredSeven);
-        Assert.Equal("4ce2461c8ddf5e72524ec367fd4c21662c60b1a86cb5cf044b0953c152a5f271", Build(authoredSeven));
+        // Task 1 advances the native root to format 7. Task 3 also versions the effective-resource and query policies.
+        // Derive those authored members independently while keeping the recorded geometry and format-6 controls.
+        string authoredSeven = Authored(RootDigest(manifest, 7), fixture, effectivePolicy: true);
+        Assert.Equal("28566be38c71716b08d53e743ed17514f651d5b113cfde79737fbd528974abed", authoredSeven);
+        Assert.Equal("1c06a5c23d326f15cd635dc721960b076cfaa50e2dc28d924e8f2c080134e59e", Build(authoredSeven));
         Assert.Equal(authoredSeven, world.AuthoredHash);
         Assert.Equal(Build(authoredSeven), world.BuildHash);
     }
@@ -134,7 +134,7 @@ public class MapPersistedIdentityTests
         return Sha256("kemap/native-root/2\0", w => Normalized(w, root));
     }
 
-    static string Authored(string root, StackedCaveFixture fixture)
+    static string Authored(string root, StackedCaveFixture fixture, bool effectivePolicy = false)
     {
         var whole = JsonNode.Parse(MapDocumentFile.SaveText(fixture.Document))!.AsObject();
         Assert.Null(fixture.Document.TerrainOverrides?.Tiles.FirstOrDefault());
@@ -175,6 +175,11 @@ public class MapPersistedIdentityTests
                 w.WriteEndArray();
             }
             w.WriteEndArray();
+            if (effectivePolicy)
+            {
+                w.WriteString("effectiveResourcePolicy", "kemap/effective-resources/1");
+                w.WriteNumber("queryPolicyVersion", 2);
+            }
             w.WriteString("closure", fixture.Assets.Hash);
             w.WriteString("builderId", options.BuilderId);
             w.WriteNumber("builderVersion", options.BuilderVersion);

@@ -33,6 +33,7 @@ internal static partial class PrefabFixtures
 
     internal static PrefabFixture Create(string variant = "basic")
     {
+        if (variant == "support-resource") return SupportResourceFixture();
         if (TryIdentityVariant(variant, out PrefabFixture? derived)) return derived!;
         byte[] bytes = AssetBytes(variant == "pool-material-undeclared" ? "pool" :
             variant is "roomless" or "pool" or "all-resources" or "pool-material-mesh" or "attached" or "materialized" ? variant :
@@ -136,15 +137,14 @@ internal static partial class PrefabFixtures
             children.Add(SurfaceChild("pool-floor", MapSurfaceRole.SupportFloor, poolFloor));
             children.Add(SurfaceChild("pool-ceiling", MapSurfaceRole.Ceiling, poolCeiling));
             var anchor = poolFloor.Key;
-            children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "pool"), new MapSpaceDoc("pool", MapSpaceKind.Cave,
+            children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "pool"), new MapSpaceDoc("pool", MapSpaceKind.Room,
                 new("$parent", new("$parent", 0, 0)), null, [], [], [], []), anchor)
             { References = Slots(Anchor("pool-floor"), Ref("/value/parent", "$parent", "$parent")) });
-            children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "pool-domain"), new MapSpaceFootprint("pool-domain", new("pool", anchor), anchor,
-                Enumerable.Range(4, 4).SelectMany(z => Enumerable.Range(4, 4).Select(x => z * 64 + x)).ToArray(),
-                new(MapBoundKind.SupportFloor, "pool-floor", null), new(MapBoundKind.Ceiling, "pool-ceiling", null)), anchor)
+            children.Add(new MapPrefabRecordChild(new(MapPrefabChildKind.Record, "pool-domain"), new MapPrismDomain("pool-domain", 1, new("pool", anchor), new("$parent", new("$parent", 0, 0)), "", "lower",
+                new(MapLatticeFrame.ImportedMetreCentimetre, new[] { new MapWaterRect(4, 4, 8, 8) }, []), -1, 3), anchor)
             {
-                References = Slots(Anchor("pool-floor"), Ref("/value/space", "pool", "pool-floor"), Surf("/value/lattice/surfaceId", "pool-floor"),
-                    Surf("/value/lower/surfaceId", "pool-floor"), Surf("/value/upper/surfaceId", "pool-ceiling"))
+                References = Slots(Anchor("pool-floor"), Ref("/value/space", "pool", "pool-floor"), Ref("/value/parent", "$parent", "$parent"),
+                    Slot("/value/storeyId", MapPrefabChildKind.Storey, "lower"))
             });
             children.Add(new MapPrefabMediumChild(new(MapPrefabChildKind.WaterMedium, "water"), new("water", MapWaterMediumKind.Water, 1)));
             children.Add(new MapPrefabWaterChild(new(MapPrefabChildKind.WaterBody, "pool-water"), new("pool-water", 0.5f, "water", "pool-material",

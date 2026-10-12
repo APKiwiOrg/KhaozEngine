@@ -134,9 +134,9 @@ public sealed partial class MapPrefabTransformTests
         var f = PrefabFixtures.Sloped(false, 1.2f);
         var instance = f.Document.Prefabs!.Instances.Single() with { Transform = new(Vector3.Zero, 0.371f, 1.2f) };
         f.Document.Prefabs = new(1, 1, new[] { instance }, []);
-        f.Document.NativeResourceTransforms = f.Document.NativeResourceTransforms!.Select(t => t with { Transform = t.Transform with { X = 0, Y = 0, Z = 0 } }).ToArray();
+        PrefabFixtures.AuthorWorldParent(f, instance.Transform, (x, _) => -2 + x * 0.25);
         var view = PrefabFixtures.Effective(f).CompleteView();
-        var point = new MapExactPoint(new(1, long.MaxValue), new(1, 1), new(-1, long.MaxValue));
+        var point = new MapExactPoint(new(1, long.MaxValue), new(-1, 1), new(-1, long.MaxValue));
         Assert.Equal(MapSupportStatus.NotRepresentable, new MapSupportQuery(view).SampleSurfaceExact(point, "a/floor").Status);
         var membership = new MapSpaceMembership(view).QueryExact(point);
         Assert.Equal(MapMembershipStatus.NotRepresentable, membership.Status);

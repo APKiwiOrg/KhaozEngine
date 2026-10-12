@@ -8,6 +8,7 @@ using System.Text.Json;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Identity;
+using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
 using KhaozEngine.MapDoc.Water;
@@ -50,12 +51,22 @@ public static class MapWorldBuilder
         MapResolvedDocument resolved =
             MapNativeResolution.Resolve(document, assets, options.Resolve, options.LegacySupportHeight);
         bool native = options.Resolve.ResolverVersion == 2;
-        MapScopedSurfaces surfaces = MapScopedSurfaces.CompleteView(native ? document.Surfaces.Clone() : new MapSurfaceSet());
+        var effective = native ? resolved.EffectiveResources : null;
+        bool completeEffective = effective is not null && (document.Prefabs is not null || document.NativeResourceTransforms is not null ||
+            resolved.Placements.Any(p => assets.GetAsset(p.AssetId).SupportResourceIds.Count != 0));
+        MapScopedSurfaces surfaces = effective?.CompleteView() ?? MapScopedSurfaces.CompleteView(new MapSurfaceSet());
+        if (completeEffective)
+        {
+            var findings = MapSpaceCoverageValidator.Validate(surfaces);
+            if (findings.Count != 0) throw new MapDocumentException(string.Join("\n", findings));
+        }
         MapTerrainChunkSet terrain = MapTerrainPhysics.Compile(surfaces, options.Chunks);
         IReadOnlyList<MapPlacementGeometry> placements = MapPlacementShapes.Resolve(resolved);
+        if (completeEffective)
+            MapPrefabSupportBounds.RefuseCoincidentFloors(surfaces, placements);
         // The resolver's authored identity verified the document-level water rules and the material closure. The compile
         // verifies containment over the whole-document view, so a built world never carries unverified water.
-        MapWaterSet? water = native ? document.Water?.Clone() : null;
+        MapWaterSet? water = effective?.Water;
         IReadOnlyList<MapCompiledWaterBody> bodies = water is null ? Array.Empty<MapCompiledWaterBody>() : CompileWater(surfaces, water);
 
         IReadOnlyList<MapLegacySculptTile> sculpt = Array.Empty<MapLegacySculptTile>();
@@ -87,7 +98,9 @@ public static class MapWorldBuilder
             water is null ? null : (waterDigest, bodies));
         MapWaterMediumDoc[] media = water?.Media.OrderBy(m => m.Key, StringComparer.Ordinal).ToArray() ?? Array.Empty<MapWaterMediumDoc>();
         return new MapBuiltWorld(resolved, surfaces, placements, terrain, statics, diagnostics.AsReadOnly(),
-            WorldBounds(document.Bounds, statics, placements), document.TileSize, buildHash, native,
+            WorldBounds(document.Bounds, statics, placements,
+                effective is null ? Array.Empty<MapBox3>() : MapPrefabSupportBounds.OtherBounds(effective, assets)
+                    .Concat(bodies.Where(b => b.Bounds is not null).Select(b => b.Bounds!.Value))), document.TileSize, buildHash, native,
             native ? null : options.LegacySupportHeight, sculpt, sculptCellSize, terrainBlock, legacyIdentity,
             bodies, Array.AsReadOnly(media), waterDigest,
             legacyWaterLevel: !native && document.Water is null ? document.Terrain.WaterLevel : null);
@@ -135,7 +148,8 @@ public static class MapWorldBuilder
             Vector3 p = placement.WorldPose.Position;
             RequireWithinWorld(placement.PlacementId, p.X, p.Y, p.Z);
             Add(new(placement.PlacementId, MapStaticKind.Placement, placement.Collider, p, placement.WorldPose.Orientation,
-                placement.ColliderBounds!.Value, placement.Digest, Array.Empty<MapFaceKey>()));
+                placement.ColliderBounds!.Value, placement.Digest, Array.Empty<MapFaceKey>())
+            { EffectiveTransform = placement.EffectiveTransform });
         }
         foreach (MapTerrainChunk chunk in terrain.Chunks)
         {
@@ -230,11 +244,11 @@ public static class MapWorldBuilder
     }
 
     static MapBox3 WorldBounds(MapBounds storage, IReadOnlyList<MapStaticDescriptor> statics,
-        IReadOnlyList<MapPlacementGeometry> placements)
+        IReadOnlyList<MapPlacementGeometry> placements, IEnumerable<MapBox3> other)
     {
         double minX = storage.MinX, minZ = storage.MinZ, maxX = storage.MaxX, maxZ = storage.MaxZ;
         double minY = double.PositiveInfinity, maxY = double.NegativeInfinity;
-        foreach (MapBox3 box in statics.Select(s => s.Bounds).Concat(placements.Select(p => p.Envelope.Bounds)))
+        foreach (MapBox3 box in statics.Select(s => s.Bounds).Concat(placements.Select(p => p.Envelope.Bounds)).Concat(other))
         {
             minX = Math.Min(minX, box.MinX);
             minY = Math.Min(minY, box.MinY);

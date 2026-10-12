@@ -78,14 +78,22 @@ public static class MapSupportResourceFile
         if (resource.Surfaces is null || resource.References is null) throw new MapDocumentException("Support resource collections must not be null.");
         var surfaces = new HashSet<string>(StringComparer.Ordinal);
         foreach (MapSurfaceRef surface in resource.Surfaces.Refs)
+        {
             if (surface is null || string.IsNullOrWhiteSpace(surface.Id) || !surfaces.Add(surface.Id))
                 throw new MapDocumentException("Support resource surfaces need distinct nonempty IDs.");
+            if (surface.Role != MapSurfaceRole.SupportFloor || surface.PresencePolicy != MapPresencePolicy.Native)
+                throw new MapDocumentException("Support resources declare native support floors only, without analytic terrain.");
+            _ = surface.Frame.Corner(0, 0, 0);
+        }
         var anchors = new Dictionary<string, MapPatchKey>(StringComparer.Ordinal);
         foreach (var (key, patch) in resource.Surfaces.Patches)
         {
             if (patch is null || patch.Key != key || !surfaces.Contains(key.SurfaceId))
                 throw new MapDocumentException("Support resource patches must belong to a declared surface.");
             _ = MapSurfacePatchCodec.Encode(patch);
+            var surface = resource.Surfaces.Refs.Single(s => s.Id == key.SurfaceId);
+            if (MapSurfaceCompiler.Compile(surface, patch).LegacyFallbackCells.Count != 0)
+                throw new MapDocumentException("Support resources cannot declare analytic fallback cells.");
             foreach (MapTopologyRecord record in patch.Records)
                 if (!anchors.TryAdd(record.Id, key)) throw new MapDocumentException($"Duplicate support resource record '{record.Id}'.");
         }

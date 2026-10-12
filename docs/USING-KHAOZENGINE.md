@@ -10292,8 +10292,13 @@ while it shares the 64 leaf and hull face limits. It applies its own 64 m local 
 mesh triangles near its probe, which `LocalExtent` does not predict, and one unsupported static near a probe refuses
 the whole neighborhood query.
 
-**Refusals.** `MapAssetShapes.Read` throws `MapDocumentException` for an asset that declares a `Surface` (support)
-resource, since placement-local support surfaces arrive with R5. It also refuses a compound holding a triangle mesh,
+**Refusals.** `MapAssetShapes.Read` throws `MapDocumentException` for a support resource without a validated MapDoc
+payload. Support payload 1 installs in MapDoc before missing-Y sampling, and its lattice frames already declare
+metres. Physics consumes the captured transformed surfaces with canonical owners. Complete prefab and unpacked
+builds refuse room coverage findings and independently authored coincident floors, even without water.
+`MapBackendPoseAdapter` makes the frame-local binary32 approximation explicit and reports its error in metres.
+The pre/post `Affected` and `AffectedTiles` overloads retain removed owners and old tile captures.
+`Read` also refuses a compound holding a triangle mesh,
 a hull or mesh with no points and a payload with bytes after its shape. The `PropCollisionFormat` reader beneath it
 refuses non-finite or non-positive box and cylinder sizes, non-finite points and poses, a mesh index count that is
 not a multiple of 3 or an index outside the vertices, an empty compound, compound nesting deeper than 16 levels and

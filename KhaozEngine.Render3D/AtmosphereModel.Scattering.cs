@@ -8,7 +8,8 @@ public sealed partial class AtmosphereModel
 {
     AtmosphereTables? _tables;
 
-    /// <summary>Completed static LUT builds. Construction is lazy and accepted settings updates invalidate it.</summary>
+    /// <summary>Completed static LUT builds. Construction is lazy. Only accepted physical-settings changes
+    /// invalidate the static tables.</summary>
     internal int BuildCount { get; private set; }
 
     /// <summary>Scattering integrations, including static table construction.</summary>

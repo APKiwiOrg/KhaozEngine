@@ -50,12 +50,13 @@ keep passing with all three outside every umbrella.
 ## Map space
 
 All map data is in map space: x east and y north, in metres, with north up on screen and east to the right. A source
-converts from its world format into map space and back. The TileWorld adapter converts through `TileWorldSpace`, which
+converts from its world format into map space. The TileWorld adapter converts through `TileWorldSpace`, which
 already negates z once so that a top-down view has north up and east right (TILE-WORLD-DESIGN 7.4). This is the one
 place handedness is handled. Every other package works in map space only.
 
-`MapRect` is an axis-aligned rectangle in map space. A chunk is a square of `ChunkMetres` aligned to the map-space
-origin and addressed by integer `(cx, cy)`.
+`MapRect` is an axis-aligned, half-open rectangle with a south-west origin. South and west edges are included,
+north and east edges are excluded, and zero-area rectangles intersect nothing. A chunk is a square of `ChunkMetres`
+aligned to the map-space origin and addressed by integer `(cx, cy)`.
 
 ## Source contract
 
@@ -63,6 +64,7 @@ origin and addressed by integer `(cx, cy)`.
 public interface IWorldMapSource
 {
     MapRect Bounds { get; }
+    float SurfaceCellSize { get; }
     long Revision { get; }
     event Action<MapRect>? Changed;
 
@@ -71,24 +73,33 @@ public interface IWorldMapSource
     void CollectMarkers(MapRect area, List<WorldMapMarker> into);
 
     Vector2 ToMap(Vector3 worldPosition);
-    float ToMapHeading(float worldYaw);
+    float ToMapHeading(Vector3 worldForward);
 }
 ```
 
 - **`SampleSurface`** returns the source's own surface grid over an area: origin, cell size, width and height, and per
-  cell a ground colour, a surface height and a water surface height (NaN where dry). Samples sit at cell centres. The
+  cell a ground colour (`Color.Transparent` for void), a surface height (NaN for void) and a water surface height
+  (NaN where dry). The grid covers at least the requested area and is aligned to the source lattice, with its origin
+  at the south-west corner of cell (0, 0). Rows run from south to north. Samples sit at cell centres. The
   source picks its native spacing (one metre for TileWorld, whatever the terrain resolves to for MapDoc). The
   rasterizer resamples it, so the source never knows about pixels.
-- **`CollectFootprints`** yields placed objects that touch the area: id, archetype key, an oriented shape (centre, half
-  extents and rotation, or a polygon), top height, level, tags, `IsRoof` and `Blocking`.
-- **`CollectMarkers`** yields named markers that touch the area: name, map position, level and tags.
+- **`SurfaceCellSize`** exposes the native source lattice spacing in metres.
+- **`CollectFootprints`** appends every surface object's oriented rectangle whose shape intersects the area: id,
+  archetype key, centre, local half extents, rotation, tags, `IsRoof` and `Collision` (`None`, `Solid` or `Wall`).
+  `Blocking` derives from collision being other than `None`. Rotation is radians clockwise from local +x on the
+  north-up map, and half extents are measured before rotation. Shapes are oriented rectangles only. MapDoc polygons
+  arrive with the MapDoc adapter if its buildings need them. Top height and level are omitted because the source
+  already filters to the mapped surface.
+- **`CollectMarkers`** appends surface markers whose positions the half-open area contains: name, map position and tags.
 - **`Revision` and `Changed`** carry dynamism. A source whose data changes raises `Changed` with the touched area on the
   thread that owns the data and increments `Revision`. A static source never raises it.
 - **Thread safety:** the rasterizer reads a source from a worker thread. A source must allow concurrent reads. It may
   change only on its owner thread, and results computed against an older revision are discarded by the cache.
 - **Levels:** this round maps the surface. The TileWorld adapter yields plane 0 terrain, plane 0 objects and roofs on
   any plane. A later level parameter selects caves or upper floors without changing the rest of the contract.
-- **`ToMap` and `ToMapHeading`** let a game place live markers (the player arrow) from world poses.
+- **`ToMap` and `ToMapHeading`** let a game place live markers (the player arrow) from world poses. The heading takes
+  a world forward vector, returns radians clockwise from map north and returns zero for a zero vector. No world yaw
+  convention leaks into the contract.
 
 ### TileWorld adapter
 
@@ -112,10 +123,11 @@ public interface IWorldMapSource
 - **Relief:** light from the north-west at 45 degrees altitude, a strength that keeps ground colours readable, and a
   steepness threshold above which slopes shade markedly darker so cliffs read as edges.
 - **Water:** a shallow colour, a deep colour, the depth at which water is fully deep, and a shoreline colour and width.
-- **Symbol rules:** an ordered list of rules from a footprint match (archetype key, all-of tags, roof flag, blocking
-  flag) to a symbol. Symbols are `Hidden`, `Obstacle`, `Wall`, `Building`, `Tree` and `Bridge`, each with fill, outline
-  and optional shadow. The first matching rule wins. With no match, a blocking footprint draws as `Obstacle` and a
-  non-blocking one is `Hidden`, so a new blocking prop is visible before any style edit.
+- **Symbol rules:** an ordered list of rules from a footprint match (archetype key, all-of tags, roof flag, collision
+  role) to a symbol. Symbols are `Hidden`, then `Bridge`, `Obstacle`, `Wall`, `Building` and `Tree` in draw order,
+  each with fill and outline. Building shadows are style settings. The first matching rule wins. With no match, a
+  blocking footprint draws as `Obstacle` and a non-blocking one is `Hidden`, so a new blocking prop is visible before
+  any style edit.
 - **Icon rules:** a match over footprints or markers (all-of tags) to an icon key, a priority and a merge radius in
   screen pixels.
 - **Label rules:** a marker tag that makes a marker a label, plus tier tags. The label key is derived from the marker

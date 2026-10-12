@@ -53,6 +53,8 @@ public partial class ArchitectureTests
         "Movement",
         // Native map physics is for a game that wants colliders under a MapDoc world, which no umbrella implies.
         "MapDoc.Physics",
+        // World-map imagery is optional for authored worlds and must be added explicitly.
+        "WorldMap",
         // THE THREE NATIVE GPU BACKENDS ARE NOT ON THIS LIST ANY MORE, and their absence is asserted rather than
         // assumed: NativeGpuBackends_AreCarriedByEveryUmbrellaThatCarriesGpu below requires the opposite of what
         // this list would have meant. They were opt-in from decisions P1 / V-P1 / M-P1, on pay-for-what-you-use

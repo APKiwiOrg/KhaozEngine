@@ -1,6 +1,6 @@
 # KhaozEngine.WorldMap
 
-GPU-free contracts for stylized world-map imagery from any authored world. The package references only
+GPU-free contracts and rasterization for stylized world-map imagery from any authored world. The package references only
 `KhaozEngine.Primitives`. It is opt-in and outside every umbrella, so consumers add it explicitly.
 
 ## Map space
@@ -65,6 +65,26 @@ carries neither levels nor top heights, and this round supports oriented rectang
 - `IconRules` default to an empty array. Rules select footprint or marker tags, an icon key, a priority
   and a merge radius, defaulting to 24 screen pixels. `Labels` defaults to null. When enabled,
   `WorldMapLabelRules` selects a label tag and tagged tiers with rank, zoom range and text scale.
+
+## Surface rasterization
+
+Call `WorldMapRasterizer.Rasterize(source, style, chunk)` to produce a `WorldMapChunkImage`.
+`Coord` identifies the chunk, `Size` is its pixel edge length, and `Rgba` holds `Size * Size * 4`
+opaque RGBA8 bytes. Raster row zero is north, and column zero is west. `Revision` is captured before
+sampling, so a consumer can discard an image when the source changes during the read.
+
+The rasterizer samples the source once over the chunk plus a margin of
+`2 * SurfaceCellSize + Water.ShorelinePixels / PixelsPerMetre` metres. It blends ground colours and
+heights between source cell centres, dropping void contributions and renormalizing the remaining
+weights. Pixels whose nearest cell is void retain `VoidColor`. Dry ground receives normalized
+hillshade and the configured steep-slope multiplier. Water blends the depth palette without relief,
+then receives shoreline colour when dry, non-void pixels lie within the configured Chebyshev radius,
+including across chunk edges.
+
+Colour calculations use the stored channel values directly. Quantization clamps each channel to
+zero through one, rounds to the nearest byte, and sets alpha to 255. Matching source data, revision
+and style produce identical bytes on one machine. Chunk images match the corresponding pixels of a
+larger raster at the same pixels per metre.
 
 The [world-map design](../docs/superpowers/specs/2026-10-12-world-map-design.md) describes the broader
 engine round and the consumers of these contracts.

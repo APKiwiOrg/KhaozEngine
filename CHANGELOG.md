@@ -5,6 +5,21 @@ governs the whole MonoGame-free engine (custom stack + graduated foundation pack
 metapackages). The legacy 4.x MonoGame line was deleted from the repo. Planned work lives in the repo's
 GitHub Issues (the `kind/roadmap` label), not a checked-in roadmap file.
 
+## 20.27.3
+
+- Publication repair for 20.27.2. v20.27.2 was tagged but never published, because its release check failed
+  on the Catalog publish freeze race (#1325) in
+  `ContentUpgradeConcurrencyTests.TwoRunnersOnOneSqliteCatalogPublishEachUpgradeExactlyOnce`. This patch
+  carries everything recorded under 20.27.2 below, unchanged.
+- Backports the #1325 fix from main (57e8d4272). Catalog publication keeps freeze cleanup scoped to the draft
+  it froze. Concurrent upgrade runners preserve a later draft's freeze after adopting an earlier committed
+  upgrade. The optional `IContentDraftFreezeStore` companion provides atomic base-scoped release on built-in
+  stores without changing the original interface. Legacy external stores keep their existing behavior.
+- The owner-approved SemVer exception recorded under 20.27.2 stays in force. The additive movement hold API
+  ships on this patch line because 20.28.0 is already taken on main.
+- No wire, replicated state, command encoding, component codec or schema change. Clients and servers on 20.27.1
+  interoperate unchanged.
+
 ## 20.27.2
 
 - A Decor to Gameplay promotion in a `TileRegionResidencyProfile` no longer stalls the frame. Its full ground and

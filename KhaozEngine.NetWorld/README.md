@@ -798,7 +798,7 @@ one served state before the next simulation step clears them. Timeout, deep-wate
 at its first stride abort the sequence without a landing event. A second server begin supersedes the first.
 Disconnect emits an ended result and strips the state before persistence.
 
-## Movement holds (since 20.27.2)
+## Movement holds (since 20.27.3)
 
 Both `WorldServer` and `ShardedWorldServer` can hold a seat's movement input, for a death screen, a cutscene or
 any other moment the game owns. The hold is a command gate on the host, not a physics mode.

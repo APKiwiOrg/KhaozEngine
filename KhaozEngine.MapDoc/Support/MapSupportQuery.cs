@@ -28,6 +28,10 @@ public sealed class MapSupportQuery
     internal MapSupportResult SampleSurface(MapFramePoint point, string surfaceId) =>
         Compute(new(point, surfaceId, null, null, 0, 0, null), null, true).Result;
 
+    internal MapSupportResult SampleSurfaceExact(MapExactPoint world, string surfaceId) =>
+        Compute(new(MapEffectiveGeometry.Presentation(_view, world), surfaceId, null, null, 0, 0, null), null, true, world).Result;
+    internal MapSupportResult SelectExact(MapSupportRequest request, MapExactPoint world) => Compute(request, null, false, world).Result;
+
     public MapSupportCandidateSet EnumerateCandidates(MapSupportRequest request, Span<MapSupportCandidate> buffer)
     {
         Outcome outcome = Compute(request, null, false);
@@ -45,7 +49,7 @@ public sealed class MapSupportQuery
     sealed record Candidate(MapCompiledFace Face, MapExactValue Height, string? SpaceId, MapRecordRef? Via);
     sealed record Outcome(MapSupportResult Result, IReadOnlyList<Candidate> Candidates);
 
-    Outcome Compute(MapSupportRequest request, MapBoundFaceWork? work, bool sampleSurface)
+    Outcome Compute(MapSupportRequest request, MapBoundFaceWork? work, bool sampleSurface, MapExactPoint? exactWorld = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         MapFramePoint point = request.Point;
@@ -60,12 +64,12 @@ public sealed class MapSupportQuery
         if (_view.Status == MapAcquireStatus.Incomplete) return Failure(MapSupportStatus.MissingGeometry, _view.Detail ?? "unavailable acquired dependency");
         try
         {
-            MapExactXz xz = point.ExactWorldXz();
-            MapExactValue y = point.ExactY();
+            MapExactXz xz = exactWorld is { } exactInput ? new(exactInput.X, exactInput.Z) : point.ExactWorldXz();
+            MapExactValue y = exactWorld?.Y ?? point.ExactY();
             MapExactValue low = y.Subtract(MapExactValue.FromSingle(request.MaxDropDown));
             MapExactValue high = y.Add(MapExactValue.FromSingle(request.MaxStepUp));
             MapSurfaceScope scope = _view.Scope;
-            if (point.Local.X < scope.LocalMin.X || point.Local.X > scope.LocalMax.X ||
+            if (exactWorld is { } supplied ? !MapEffectiveGeometry.InScope(_view, supplied) : point.Local.X < scope.LocalMin.X || point.Local.X > scope.LocalMax.X ||
                 point.Local.Z < scope.LocalMin.Y || point.Local.Z > scope.LocalMax.Y ||
                 point.Local.Y < scope.MinY || point.Local.Y > scope.MaxY)
                 return Failure(MapSupportStatus.MissingGeometry, "outside acquired scope");
@@ -73,13 +77,17 @@ public sealed class MapSupportQuery
             var cells = new List<MapCellDemand>();
             foreach (MapSurfaceRef surface in _view.Surfaces.Where(s => s.Role == MapSurfaceRole.SupportFloor).OrderBy(s => s.Id, StringComparer.Ordinal))
             {
-                var (x, z) = MapSpaceGeometry.Cell(surface.Frame, xz);
-                MapPatchKey key = MapPatchKey.ForCell(surface.Id, x, z);
-                if (!_view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out MapPatchStatus status))
-                    return Failure(MapSupportStatus.MissingGeometry, $"patch {key}: {status}");
-                if (patch is not null) cells.Add(new(key, MapLowerCellClassifier.SlotCell(x, z)));
+                foreach (var (x, z) in MapEffectiveGeometry.CellCandidates(_view, surface.Id, xz))
+                {
+                    MapPatchKey key = MapPatchKey.ForCell(surface.Id, x, z);
+                    if (!_view.TryAcquiredPatch(key, out MapSurfacePatch? patch, out MapPatchStatus status))
+                        return Failure(MapSupportStatus.MissingGeometry, $"patch {key}: {status}");
+                    if (patch is not null) cells.Add(new(key, MapLowerCellClassifier.SlotCell(x, z)));
+                }
             }
-            MapMembershipResult membership = _membership.Query(point, cells.Select(c => new MapBoundFaceDemand(c, null)), work, out MapBoundFaceContext? context);
+            MapMembershipResult membership = exactWorld is { } exactPoint
+                ? _membership.QueryExact(exactPoint, cells.Select(c => new MapBoundFaceDemand(c, null)), work, out MapBoundFaceContext? context)
+                : _membership.Query(point, cells.Select(c => new MapBoundFaceDemand(c, null)), work, out context);
             if (context is null) return Failure(Status(membership.Status), membership.Detail);
             var intersections = new List<Intersection>();
             foreach (MapCellDemand cell in cells)
@@ -228,8 +236,7 @@ public sealed class MapSupportQuery
         return candidates.All(c => joined.Contains(c.Face.Key.Patch));
 
         bool OnEdge(MapSurfaceEdgeRef edge) => MapSpaceGeometry.OnSegment(point,
-            MapSpaceGeometry.Surface(_view, edge.From.SurfaceId).Frame.WorldXz(edge.From.Address),
-            MapSpaceGeometry.Surface(_view, edge.To.SurfaceId).Frame.WorldXz(edge.To.Address));
+            MapEffectiveGeometry.Vertex(_view, edge.From), MapEffectiveGeometry.Vertex(_view, edge.To));
     }
 
     static MapSupportStatus Status(MapMembershipStatus status) => status switch

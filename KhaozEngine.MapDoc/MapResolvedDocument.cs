@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using KhaozEngine.MapDoc.Assets;
+using KhaozEngine.MapDoc.Prefabs;
 
 namespace KhaozEngine.MapDoc;
 
@@ -60,10 +61,16 @@ public sealed class MapResolvedDocument
     public MapResolvedBounds PlayableBounds { get; }
     public MapResolvedBounds StorageBounds { get; }
     public string AuthoredHash { get; }
+    public MapEffectiveResources? EffectiveResources { get; }
 
     internal MapResolvedDocument(IEnumerable<MapResolvedPlacement> placements, MapAssetClosure assets,
         MapResolvedBounds playableBounds, MapResolvedBounds storageBounds, string authoredHash)
+        : this(placements, assets, playableBounds, storageBounds, authoredHash, null) { }
+
+    internal MapResolvedDocument(IEnumerable<MapResolvedPlacement> placements, MapAssetClosure assets,
+        MapResolvedBounds playableBounds, MapResolvedBounds storageBounds, string authoredHash, MapEffectiveResources? effectiveResources)
     {
+        EffectiveResources = effectiveResources;
         Placements = Array.AsReadOnly(placements.ToArray());
         Assets = assets.Assets;
         AssetClosure = assets;

@@ -133,6 +133,7 @@ internal sealed class MapBoundFaceContext
             MapCompiledPatch compiled;
             try { compiled = MapSurfaceCompiler.Compile(pendingEntry.Validated, mask, MapSurfaceCompiler.MaxFacesPerPatch); }
             catch (MapDocumentException error) when (MapCommonRefinement.NotRepresentable(error)) { throw new MapExactOverflowException(); }
+            compiled = MapEffectiveGeometry.TransformPatch(view, compiled);
             if (work is not null) { work.Compiles++; work.CompiledFaces += compiled.Faces.Count; }
             var cells = compiled.Faces.GroupBy(f => f.Key.Primitive).ToDictionary(g => g.Key,
                 g => (IReadOnlyList<MapBoundFace>)Array.AsReadOnly(g.OrderBy(f => f.Key)
@@ -149,13 +150,15 @@ internal sealed class MapBoundFaceContext
                     requested.Record with { SlotCells = Array.AsReadOnly(requested.Cells.ToArray()) });
             }
             catch (MapDocumentException error) when (MapCommonRefinement.NotRepresentable(error)) { throw new MapExactOverflowException(); }
-            IReadOnlyList<MapBoundFace> faces = Array.AsReadOnly(plane.Keys.Select((face, i) => new MapBoundFace(face, plane.ExactTriangles[i])).ToArray());
+            IReadOnlyList<MapBoundFace> faces = Array.AsReadOnly(plane.Keys.Select((face, i) => new MapBoundFace(face, Transform(plane.ExactTriangles[i], requested.Record.Patch.SurfaceId))).ToArray());
             var cells = faces.GroupBy(f => f.Key.Primitive).ToDictionary(g => g.Key,
                 g => (IReadOnlyList<MapBoundFace>)Array.AsReadOnly(g.OrderBy(f => f.Key).ToArray()));
             openings.Add(reference, new(requested.Record.Patch, MapSlotCellMask.Of(requested.Cells),
                 new ReadOnlyDictionary<int, IReadOnlyList<MapBoundFace>>(cells)));
             if (work is not null) work.CompiledFaces += faces.Count;
         }
+        MapExactTriangle Transform(MapExactTriangle triangle, string id) => new(MapEffectiveGeometry.Point(view, id, triangle.A),
+            MapEffectiveGeometry.Point(view, id, triangle.B), MapEffectiveGeometry.Point(view, id, triangle.C));
         return new(view, entries, openings, validated, work);
     }
 

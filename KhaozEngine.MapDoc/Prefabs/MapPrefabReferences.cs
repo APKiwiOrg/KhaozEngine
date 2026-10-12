@@ -44,6 +44,26 @@ public static class MapPrefabReferences
 {
     internal const string Parent = "$parent";
 
+    internal static bool ImplicitOwner(MapPrefabChildKind kind, string id, IEnumerable<MapPrefabChild> children,
+        IReadOnlyList<MapPrefabLocalMaterialization> suppressed, out MapPrefabPlacementChild? owner)
+    {
+        owner = null;
+        if (kind is not (MapPrefabChildKind.Surface or MapPrefabChildKind.Record or MapPrefabChildKind.Light)) return false;
+        foreach (var placement in children.OfType<MapPrefabPlacementChild>())
+        {
+            string prefix = placement.Key.Key + "/";
+            if (!id.StartsWith(prefix, StringComparison.Ordinal)) continue;
+            string rest = id[prefix.Length..];
+            int split = rest.IndexOf('/');
+            if (split <= 0 || split == rest.Length - 1 || rest.Split('/').Any(string.IsNullOrWhiteSpace)) continue;
+            string resource = rest[..split];
+            var attachmentKind = kind == MapPrefabChildKind.Light ? MapPrefabAttachmentKind.Light : MapPrefabAttachmentKind.Support;
+            if (suppressed.Any(r => r.Placement.Id == placement.Key.Key && r.ResourceId == resource && r.Kind == attachmentKind)) continue;
+            if (owner is null || placement.Key.Key.Length > owner.Key.Key.Length) owner = placement;
+        }
+        return owner is not null;
+    }
+
     /// <summary>Replaces every Local occurrence with its bound world ID, substitutes <paramref name="parentSpace"/> for
     /// Local $parent and keeps World references exactly. Definition IDs take their binding. Tags, names and asset IDs
     /// are never replaced. The result carries World slots only.</summary>
@@ -209,7 +229,7 @@ public static class MapPrefabReferences
             }
             if (target.Scope == MapPrefabReferenceScope.World) continue;
             if (!targets.Has(target.Kind, target.Id)) Fail($"{owner}: undeclared local {target.Kind} '{target.Id}' at '{occurrence.Path}'.");
-            if (occurrence.Role == MapPrefabOccurrenceRole.RecordId && targets.Anchor(target.Id) != occurrence.Record!.Anchor)
+            if (occurrence.Role == MapPrefabOccurrenceRole.RecordId && !targets.Deferred(target.Kind, target.Id) && targets.Anchor(target.Id) != occurrence.Record!.Anchor)
                 Fail($"{owner}: local record reference '{target.Id}' must name exactly its declared anchor.");
             if (occurrence.Role is MapPrefabOccurrenceRole.PatchKey or MapPrefabOccurrenceRole.RecordAnchor && !targets.HasPatch(occurrence.Patch!.Value))
                 Fail($"{owner}: local patch '{occurrence.Patch!.Value}' is not declared by surface '{target.Id}'.");
@@ -288,6 +308,7 @@ public static class MapPrefabReferences
 internal interface IMapPrefabTargets
 {
     bool Has(MapPrefabChildKind kind, string id);
+    bool Deferred(MapPrefabChildKind kind, string id) => false;
     bool HasPatch(MapPatchKey key);
     MapPatchKey? Anchor(string recordId);
     MapTransform? Pose(MapPrefabChildKind kind, string id);

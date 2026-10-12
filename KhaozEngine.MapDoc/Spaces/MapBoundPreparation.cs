@@ -48,7 +48,9 @@ internal sealed class MapBoundPreparation
     {
         MapSurfaceRef? lattice = Surface(footprint.Lattice.SurfaceId);
         if (lattice is null) throw new MapDocumentException($"missing footprint lattice '{footprint.Lattice.SurfaceId}'");
-        return MapLatticeRanges.CellRect(lattice.Frame, footprint.Lattice, cell);
+        if (_view.EffectiveContext is null) return MapLatticeRanges.CellRect(lattice.Frame, footprint.Lattice, cell);
+        var bounds = MapEffectiveGeometry.Bounds(MapEffectiveGeometry.CellPolygon(_view, footprint.Lattice, cell));
+        return new[] { new MapExactXz(bounds.MinX, bounds.MinZ), new MapExactXz(bounds.MaxX, bounds.MaxZ) };
     }
 
     internal Plan Bound(MapSpaceFootprint footprint, MapBoundRef bound, MapExactXz min, MapExactXz max)
@@ -72,7 +74,7 @@ internal sealed class MapBoundPreparation
             }
             return Failure(MapRefinementStatus.MissingGeometry, $"surface '{bound.SurfaceId}': missing");
         }
-        MapCellRect range = MapLatticeRanges.CellRange(surface.Frame, min, max);
+        MapCellRect range = MapEffectiveGeometry.CellRange(_view, surface.Id, min, max);
         if (!WithinCellBudget(range)) return Failure(MapRefinementStatus.CapacityExceeded, "source faces: cell range");
         var demands = new List<MapCellDemand>();
         var compatibility = new List<MapLegacyCellTag>();
@@ -111,7 +113,7 @@ internal sealed class MapBoundPreparation
             return Failure(MapRefinementStatus.MissingGeometry, $"opening '{reference.Id}' {reference.Anchor}: {recordStatus}");
         MapSurfaceRef? surface = Surface(opening.Patch.SurfaceId);
         if (surface is null) return Failure(MapRefinementStatus.MissingGeometry, $"opening '{reference.Id}': missing surface");
-        MapCellRect range = MapLatticeRanges.CellRange(surface.Frame, min, max);
+        MapCellRect range = MapEffectiveGeometry.CellRange(_view, surface.Id, min, max);
         if (!WithinCellBudget(range)) return Failure(MapRefinementStatus.CapacityExceeded, "source faces: cell range");
         if (!_view.TryAcquiredPatch(opening.Patch, out MapSurfacePatch? patch, out MapPatchStatus status) || patch is null)
             return Failure(MapRefinementStatus.MissingGeometry, $"opening '{reference.Id}' {opening.Patch}: {status}");
@@ -120,9 +122,9 @@ internal sealed class MapBoundPreparation
         long count = 0;
         foreach (int slot in opening.SlotCells.Order())
         {
-            MapExactXz[] rect = MapLatticeRanges.CellRect(surface.Frame, opening.Patch, slot);
-            if (rect[0].X.CompareTo(max.X) >= 0 || rect[1].X.CompareTo(min.X) <= 0 ||
-                rect[0].Z.CompareTo(max.Z) >= 0 || rect[1].Z.CompareTo(min.Z) <= 0) continue;
+            var rect = MapEffectiveGeometry.Bounds(MapEffectiveGeometry.CellPolygon(_view, opening.Patch, slot));
+            if (rect.MinX.CompareTo(max.X) >= 0 || rect.MaxX.CompareTo(min.X) <= 0 ||
+                rect.MinZ.CompareTo(max.Z) >= 0 || rect.MaxZ.CompareTo(min.Z) <= 0) continue;
             int faces = MapBoundFaceContext.OpeningFaceCount(patch, slot);
             count = checked(count + faces);
             if (_work is not null) _work.BoundFacesCounted += faces;

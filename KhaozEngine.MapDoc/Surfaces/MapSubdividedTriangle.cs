@@ -1,4 +1,5 @@
 using System;
+using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc.Surfaces;
 
@@ -76,20 +77,25 @@ internal static class MapSubdividedTriangle
         return false;
     }
 
-    internal static MapExactValue Cross(MapExactPoint a, MapExactPoint b, MapExactPoint c) =>
-        b.X.Subtract(a.X).Multiply(c.Z.Subtract(a.Z))
-            .Subtract(c.X.Subtract(a.X).Multiply(b.Z.Subtract(a.Z)));
+    internal static MapWideRational CrossWide(MapExactPoint a, MapExactPoint b, MapExactPoint c) =>
+        W(b.X).Subtract(W(a.X)).Multiply(W(c.Z).Subtract(W(a.Z)))
+            .Subtract(W(c.X).Subtract(W(a.X)).Multiply(W(b.Z).Subtract(W(a.Z))));
+
+    internal static MapExactValue Cross(MapExactPoint a, MapExactPoint b, MapExactPoint c) => Narrow(CrossWide(a, b, c));
 
     internal static MapExactValue? Height(MapExactTriangle triangle, MapExactValue x, MapExactValue z)
     {
         MapExactPoint a = triangle.A, b = triangle.B, c = triangle.C;
         var p = new MapExactPoint(x, default, z);
-        MapExactValue area = Cross(a, b, c);
-        MapExactValue ab = Cross(a, b, p), bc = Cross(b, c, p), ca = Cross(c, a, p);
+        var area = CrossWide(a, b, c);
+        var ab = CrossWide(a, b, p); var bc = CrossWide(b, c, p); var ca = CrossWide(c, a, p);
         if (area.Sign == 0 || (area.Sign > 0
             ? ab.Sign < 0 || bc.Sign < 0 || ca.Sign < 0
             : ab.Sign > 0 || bc.Sign > 0 || ca.Sign > 0)) return null;
-        return a.Y.Add(b.Y.Subtract(a.Y).Multiply(Cross(a, p, c).Divide(area)))
-            .Add(c.Y.Subtract(a.Y).Multiply(ab.Divide(area)));
+        return Narrow(W(a.Y).Add(W(b.Y).Subtract(W(a.Y)).Multiply(CrossWide(a, p, c).Divide(area)))
+            .Add(W(c.Y).Subtract(W(a.Y)).Multiply(ab.Divide(area))));
     }
+
+    internal static MapExactValue Narrow(MapWideRational value) => value.TryNarrow(out var exact) ? exact : throw new MapExactOverflowException();
+    static MapWideRational W(MapExactValue value) => MapWideRational.From(value);
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Identity;
 
 namespace KhaozEngine.MapDoc.Prefabs;
 
@@ -13,7 +14,7 @@ namespace KhaozEngine.MapDoc.Prefabs;
 internal static class MapEffectiveSupport
 {
     internal static IReadOnlyList<MapPrefabChild> Enumerate(MapAssetClosure assets, IReadOnlyList<MapPrefabChild> children,
-        IReadOnlyList<MapPrefabLocalMaterialization>? materialized = null)
+        IReadOnlyList<MapPrefabLocalMaterialization>? materialized = null, bool allowOpaque = false)
     {
         ArgumentNullException.ThrowIfNull(assets);
         ArgumentNullException.ThrowIfNull(children);
@@ -23,9 +24,40 @@ internal static class MapEffectiveSupport
             foreach (string resourceId in assets.GetAsset(placement.Value.AssetId!).SupportResourceIds)
             {
                 if (suppressed.Contains((placement.Key.Key, resourceId))) continue;
-                MapSupportResource resource = MapSupportResourceFile.Read(assets.GetResource(resourceId).Bytes, resourceId);
+                if (allowOpaque && !assets.HasSupport(resourceId)) continue;
+                MapSupportResource resource = assets.BorrowSupport(resourceId);
                 result.AddRange(Children(placement.Key.Key, resourceId, resource));
             }
+        return result;
+    }
+
+    internal static MapSurfaceSet Install(MapAssetClosure assets, IReadOnlyList<MapPrefabChild> children,
+        IReadOnlyDictionary<string, MapEffectiveTransform> transforms)
+    {
+        ArgumentNullException.ThrowIfNull(assets);
+        ArgumentNullException.ThrowIfNull(transforms);
+        var result = new MapSurfaceSet();
+        foreach (var surface in children.OfType<MapPrefabSurfaceChild>())
+        {
+            if (result.Refs.Any(s => s.Id == surface.Surface.Id)) throw new MapDocumentException("Duplicate effective support surface.");
+            result.Refs.Add(surface.Surface);
+            foreach (var patch in surface.Patches) result.Patches.Add(patch.Key, patch.Clone());
+        }
+        foreach (var record in children.OfType<MapPrefabRecordChild>())
+        {
+            if (!result.Patches.TryGetValue(record.Anchor, out var patch)) throw new MapDocumentException("Missing effective record anchor.");
+            if (result.AllRecords().Any(r => r.Id == record.Value.Id)) throw new MapDocumentException("Duplicate effective record.");
+            patch.Records.Add(record.Value);
+        }
+        for (int i = 0; i < result.Refs.Count; i++)
+        {
+            var surface = result.Refs[i];
+            result.Refs[i] = surface with
+            {
+                SemanticSha256 = MapSurfaceSemantics.SurfaceDigest(surface, result.Patches
+                .Where(p => p.Key.SurfaceId == surface.Id).Select(p => new KeyValuePair<MapPatchKey, string>(p.Key, MapSurfaceSemantics.PatchDigest(p.Value))))
+            };
+        }
         return result;
     }
 

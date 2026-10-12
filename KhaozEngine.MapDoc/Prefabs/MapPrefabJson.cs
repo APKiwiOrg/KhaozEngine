@@ -146,7 +146,7 @@ internal static class MapPrefabJson
         long edges = 0, patches = 0, records = 0, geometry = 0;
         var totals = new Dictionary<string, long>(StringComparer.Ordinal);
         Visit(value, "");
-        void Visit(JsonElement node, string name)
+        void Visit(JsonElement node, string name, string parent = "")
         {
             if (node.ValueKind == JsonValueKind.Object)
             {
@@ -161,7 +161,7 @@ internal static class MapPrefabJson
                 foreach (JsonProperty p in node.EnumerateObject())
                 {
                     if (!names.Add(p.Name)) throw new MapDocumentException("Duplicate prefab member '" + p.Name + "'.");
-                    Visit(p.Value, p.Name);
+                    Visit(p.Value, p.Name, name);
                 }
             }
             else if (node.ValueKind == JsonValueKind.Array)
@@ -191,9 +191,9 @@ internal static class MapPrefabJson
                 geometry += count;
                 if (edges > Limits.MaxReferenceEdges || patches > Limits.MaxPatches || records > Limits.MaxRecords || geometry > Limits.MaxGeometryElements)
                     throw new MapDocumentException("Prefab aggregate collection limit exceeded.");
-                foreach (JsonElement item in node.EnumerateArray()) Visit(item, name);
+                foreach (JsonElement item in node.EnumerateArray()) Visit(item, name, parent);
             }
-            else if (node.ValueKind == JsonValueKind.Null && name is not ("numericId" or "parentSpace" or "owner" or "instanceId" or "previous" or "transform" or "assetId" or "tags" or
+            else if (node.ValueKind == JsonValueKind.Null && !(parent == "supportBinding" && name is ("surfaceId" or "spaceId" or "referenceY" or "searchBelow" or "searchAbove")) && name is not ("numericId" or "parentSpace" or "owner" or "instanceId" or "previous" or "transform" or "assetId" or "tags" or
                 "parent" or "aliasOf" or "sourcePatch" or "heightUnits" or "opening" or "surfaceId" or "bandTop" or "paintTargetSurfaceId" or "indoorSpan" or "anchor"))
                 throw new MapDocumentException("Prefab member '" + name + "' must not be null.");
         }

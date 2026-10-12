@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
+using KhaozEngine.MapDoc.Water;
 
 namespace KhaozEngine.MapDoc.Spaces;
 
@@ -33,10 +34,13 @@ internal static class MapSpaceGeometry
 
     internal static int? FootprintCell(MapScopedSurfaces view, MapSpaceFootprint footprint, MapExactXz point)
     {
-        var (x, z) = Cell(Surface(view, footprint.Lattice.SurfaceId).Frame, point);
-        MapPatchKey key = MapPatchKey.ForCell(footprint.Lattice.SurfaceId, x, z);
-        int slot = MapLowerCellClassifier.SlotCell(x, z);
-        return key == footprint.Lattice && footprint.SlotCells.Contains(slot) ? slot : null;
+        foreach (var (x, z) in MapEffectiveGeometry.CellCandidates(view, footprint.Lattice.SurfaceId, point))
+        {
+            MapPatchKey key = MapPatchKey.ForCell(footprint.Lattice.SurfaceId, x, z);
+            int slot = MapLowerCellClassifier.SlotCell(x, z);
+            if (key == footprint.Lattice && footprint.SlotCells.Contains(slot)) return slot;
+        }
+        return null;
     }
 
     internal static MapExactXz Xz(MapExactPoint point) => new(point.X, point.Z);
@@ -45,14 +49,14 @@ internal static class MapSpaceGeometry
     internal static bool Between(MapExactValue value, MapExactValue a, MapExactValue b) =>
         value.CompareTo(Min(a, b)) >= 0 && value.CompareTo(Max(a, b)) <= 0;
     internal static bool OnSegment(MapExactXz point, MapExactXz a, MapExactXz b) => a != b &&
-        MapSubdividedTriangle.Cross(new(a.X, default, a.Z), new(b.X, default, b.Z), new(point.X, default, point.Z)).Sign == 0 &&
+        MapSubdividedTriangle.CrossWide(new(a.X, default, a.Z), new(b.X, default, b.Z), new(point.X, default, point.Z)).Sign == 0 &&
         Between(point.X, a.X, b.X) && Between(point.Z, a.Z, b.Z);
 
     internal static MapExactValue Interpolate(MapExactPoint a, MapExactPoint b, MapExactXz point)
     {
-        MapExactValue t = a.X != b.X ? point.X.Subtract(a.X).Divide(b.X.Subtract(a.X))
-            : point.Z.Subtract(a.Z).Divide(b.Z.Subtract(a.Z));
-        return a.Y.Add(b.Y.Subtract(a.Y).Multiply(t));
+        var t = a.X != b.X ? MapWideRational.From(point.X).Subtract(MapWideRational.From(a.X)).Divide(MapWideRational.From(b.X).Subtract(MapWideRational.From(a.X)))
+            : MapWideRational.From(point.Z).Subtract(MapWideRational.From(a.Z)).Divide(MapWideRational.From(b.Z).Subtract(MapWideRational.From(a.Z)));
+        return MapSubdividedTriangle.Narrow(MapWideRational.From(a.Y).Add(MapWideRational.From(b.Y).Subtract(MapWideRational.From(a.Y)).Multiply(t)));
     }
 
     internal static MapExactValue? ChainHeight(IReadOnlyList<MapExactPoint> points, MapExactXz point)

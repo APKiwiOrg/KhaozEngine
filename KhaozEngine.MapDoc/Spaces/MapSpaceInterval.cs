@@ -35,6 +35,13 @@ public static class MapSpaceIntervals
             : Interval(selected with { SpaceId = result.SpaceId! }, result.Witness);
     }
 
+    public static MapSpaceInterval AtExact(MapScopedSurfaces view, MapExactPoint world)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        var result = new MapSpaceMembership(view).QueryExact(world, out MapSpaceBoundsPart? selected);
+        return selected is null ? Failure(result.Status, result.Detail, result.Witness) : Interval(selected with { SpaceId = result.SpaceId! }, result.Witness);
+    }
+
     /// <summary>Every occupied interval at the point's XZ in ascending <see cref="MapSpaceInterval.Lower"/>, under
     /// point membership's rules for every height at once. Owners are alias-normalized and deduplicated, and a portal
     /// band on the XZ replaces the part of the column it covers, earlier bands first, as membership gives bands

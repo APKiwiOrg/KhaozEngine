@@ -22,89 +22,11 @@ public static class MapCommonRefinement
     {
         ArgumentNullException.ThrowIfNull(lower);
         ArgumentNullException.ThrowIfNull(limits);
-        try
-        {
-            if (min.X.CompareTo(max.X) >= 0 || min.Z.CompareTo(max.Z) >= 0)
-                return Failure(MapRefinementStatus.Invalid, "cell");
-            foreach (MapBoundFace face in lower.Concat(upper ?? Array.Empty<MapBoundFace>()))
-                if (MapSubdividedTriangle.Cross(face.Triangle.A, face.Triangle.B, face.Triangle.C).Sign == 0)
-                    return Failure(MapRefinementStatus.Invalid, "degenerate");
-            if (lower.Count > limits.MaxSourceFacesPerBound || upper?.Count > limits.MaxSourceFacesPerBound)
-                return Failure(MapRefinementStatus.CapacityExceeded, "source faces");
-            List<Clipped> bottom = Clip(lower), top = upper is null ? new() : Clip(upper);
-            MapExactValue cellArea = max.X.Subtract(min.X).Multiply(max.Z.Subtract(min.Z));
-            MapExactValue lowerArea = Sum(bottom), upperArea = Sum(top);
-            long pairs = upper is null ? 0 : checked((long)bottom.Count * top.Count);
-            if (work is not null) work.ChargedPairs = pairs;
-            if (pairs > limits.MaxPairChecks) return Failure(MapRefinementStatus.CapacityExceeded, "pair checks");
-            var faces = new List<MapRefinementFace>();
-            var vertices = new SortedSet<MapExactXz>();
-            MapExactValue? separation = null;
-            foreach (Clipped lo in bottom)
-            {
-                if (upper is null)
-                {
-                    if (!Emit(lo, null, lo.Polygon.ToList())) return Failure(MapRefinementStatus.CapacityExceeded, "refinement faces or vertices");
-                    continue;
-                }
-                foreach (Clipped hi in top)
-                {
-                    if (work is not null) work.BoundingBoxComparisons++;
-                    if (!lo.Bounds.Overlaps(hi.Bounds)) continue;
-                    if (work is not null) work.PositiveBoundingBoxPairs++;
-                    List<MapExactXz> polygon = MapRefinementPolygon.Intersect(lo.Polygon, hi.Polygon);
-                    if (MapRefinementPolygon.Area(polygon).Sign == 0) continue;
-                    if (work is not null) work.PositiveIntersections++;
-                    if (!Emit(lo, hi, polygon)) return Failure(MapRefinementStatus.CapacityExceeded, "refinement faces or vertices");
-                }
-            }
-            return new(MapRefinementStatus.Complete, Array.AsReadOnly(vertices.ToArray()), faces.AsReadOnly(),
-                cellArea, lowerArea, default, Array.Empty<MapLegacyCellTag>(), upper is null ? null : upperArea,
-                separation, (int)pairs, null);
-
-            List<Clipped> Clip(IReadOnlyList<MapBoundFace> source)
-            {
-                var result = new List<Clipped>();
-                foreach (MapBoundFace face in source.OrderBy(f => f.Key))
-                {
-                    List<MapExactXz> polygon = MapRefinementPolygon.Rectangle(MapRefinementPolygon.Triangle(face.Triangle), min, max);
-                    MapExactValue area = MapRefinementPolygon.Area(polygon);
-                    if (area.Sign > 0) result.Add(new(face, polygon, area, MapRefinementPolygon.Bounds.Of(polygon)));
-                }
-                return result;
-            }
-
-            bool Emit(Clipped lo, Clipped? hi, List<MapExactXz> polygon)
-            {
-                if (faces.Count >= limits.MaxRefinementFaces) return false;
-                foreach (MapExactXz vertex in polygon)
-                {
-                    if (!vertices.Contains(vertex) && vertices.Count >= limits.MaxRefinementVertices) return false;
-                    vertices.Add(vertex);
-                }
-                MapExactValue? faceSeparation = null;
-                if (hi is not null)
-                    foreach (MapExactXz vertex in polygon)
-                    {
-                        MapExactValue delta = Height(hi.Face.Triangle, vertex).Subtract(Height(lo.Face.Triangle, vertex));
-                        faceSeparation = Minimum(faceSeparation, delta);
-                        separation = Minimum(separation, delta);
-                    }
-                faces.Add(new(lo.Face.Key, hi?.Face.Key, MapRefinementPolygon.Normalize(polygon), faceSeparation));
-                return true;
-            }
-        }
-        catch (MapExactOverflowException) { return Failure(MapRefinementStatus.NotRepresentable, "overflow"); }
+        if (min.X.CompareTo(max.X) >= 0 || min.Z.CompareTo(max.Z) >= 0) return Failure(MapRefinementStatus.Invalid, "cell");
+        return MapEffectiveGeometry.RefinePolygon(lower, upper, new[] { min, new(min.X, max.Z), max, new(max.X, min.Z) }, limits, work);
     }
 
-    sealed record Clipped(MapBoundFace Face, IReadOnlyList<MapExactXz> Polygon, MapExactValue Area,
-        MapRefinementPolygon.Bounds Bounds);
-    static MapExactValue Sum(IEnumerable<Clipped> polygons) => polygons.Aggregate(default(MapExactValue), (sum, p) => sum.Add(p.Area));
-    static MapExactValue Minimum(MapExactValue? current, MapExactValue value) =>
-        current is null || value.CompareTo(current.Value) < 0 ? value : current.Value;
-    static MapExactValue Height(MapExactTriangle triangle, MapExactXz vertex) =>
-        MapSubdividedTriangle.Height(triangle, vertex.X, vertex.Z) ?? throw new InvalidOperationException("refinement vertex outside source triangle");
-    public static MapExactValue Area(MapRefinementFace face) => MapRefinementPolygon.Area(face.Polygon);
+    public static MapExactValue Area(MapRefinementFace face) => MapEffectiveGeometry.Area(face.Polygon);
 
     internal static MapCellRefinement Failure(MapRefinementStatus status, string? detail) =>
         new(status, Array.Empty<MapExactXz>(), Array.Empty<MapRefinementFace>(), default, default, default,
@@ -241,7 +163,8 @@ public static class MapCommonRefinement
             MapBoundFaceSet? upper = footprint.Upper.Kind == MapBoundKind.OpenTop ? null
                 : BoundFaces(context, footprint, footprint.Upper, rect[0], rect[1], limits);
             if (upper is not null && upper.Status != MapRefinementStatus.Complete) return Failure(upper.Status, upper.Detail);
-            MapCellRefinement result = Refine(lower.Faces, upper?.Faces, rect[0], rect[1], limits);
+            MapCellRefinement result = context.View.EffectiveContext is null ? Refine(lower.Faces, upper?.Faces, rect[0], rect[1], limits)
+                : MapEffectiveGeometry.RefinePolygon(lower.Faces, upper?.Faces, MapEffectiveGeometry.CellPolygon(context.View, footprint.Lattice, slotCell), limits);
             if (result.Status != MapRefinementStatus.Complete) return result;
             MapExactValue compatibilityArea = default;
             foreach (MapLegacyCellTag tag in lower.Compatibility)

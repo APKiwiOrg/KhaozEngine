@@ -55,6 +55,7 @@ public static class MapPrefabValidation
                 if (resource.Kind != MapResourceKind.Prefab || resource.Reference.Sha256 != instance.ResourceSha256)
                     Fail("Instance '" + instance.Id + "' does not match its verified Prefab resource.");
                 MapPrefabAsset asset = assets.GetPrefab(instance.ResourceId);
+                RequireAsset(asset, assets);
                 MapPrefabLocalMaterializations.Validate(asset, assets);
                 var keys = asset.Children.Select(c => c.Key).ToHashSet();
                 foreach (MapPrefabAddOverride add in Intents(instance.Overrides).OfType<MapPrefabAddOverride>())
@@ -62,20 +63,23 @@ public static class MapPrefabValidation
                 foreach (MapPrefabOverride value in instance.Overrides)
                     if (!keys.Contains(value.Child)) Fail("Override names an undeclared child.");
                 RequireBindings(instance, MapPrefabChildSet.Compute(asset, assets, instance.Overrides), set.Transfers);
-                var effective = asset.Children.ToDictionary(c => c.Key);
-                foreach (MapPrefabOverride value in Intents(instance.Overrides))
+                var reconciled = MapPrefabMaterializationOverrides.Reconcile(asset, instance.Overrides);
+                var effective = reconciled.EffectiveAsset.Children.ToDictionary(c => c.Key);
+                foreach (MapPrefabOverride retained in Intents(instance.Overrides))
                 {
-                    if (value is MapPrefabReplaceOverride replace) effective[value.Child] = replace.Value;
-                    if (value is MapPrefabAddOverride add) effective[value.Child] = add.Value;
-                    if (value is MapPrefabTransformOverride pose && effective.TryGetValue(value.Child, out var child) && child is not MapPrefabPlacementChild)
-                        effective[value.Child] = child with { LocalTransform = pose.Transform };
+                    if (retained is MapPrefabReplaceOverride replacement) effective[retained.Child] = replacement.Value;
+                    if (retained is MapPrefabAddOverride added) effective[retained.Child] = added.Value;
+                    if (retained is MapPrefabPlacementOverride placement && effective.TryGetValue(retained.Child, out var target) && target is MapPrefabPlacementChild owner)
+                        effective[retained.Child] = MapPrefabMaterializationOverrides.Placement(owner, placement.Transform, placement.AssetId, placement.Tags);
                 }
                 bool needsParent = effective.Values.Any(c => c is MapPrefabRecordChild { Value: MapSpaceDoc } or MapPrefabWaterChild ||
                     c.References.Any(r => r.Target.Id == "$parent"));
                 if (needsParent && instance.ParentSpace is null) Fail("Prefab rooms and $parent references require ParentSpace.");
                 if (instance.ParentSpace is { } parent) { Text(parent.Id); Text(parent.Anchor.SurfaceId); }
+                RequireAsset(reconciled.LiveAsset, assets);
+                MapPrefabLocalMaterializations.Validate(reconciled.LiveAsset, assets);
                 // Rows pin the original captured definitions, so the effective view is checked without them.
-                RequireAsset(asset with { Children = effective.Values.ToArray(), MaterializedAttachments = [] });
+                RequireAsset(asset with { Children = effective.Values.ToArray(), MaterializedAttachments = [] }, assets, asset.MaterializedAttachments);
                 RequireLeafResources(effective.Values, assets, null);
                 foreach (MapPrefabPlacementOverride placement in Intents(instance.Overrides).OfType<MapPrefabPlacementOverride>())
                     if (placement.AssetId is { } assetId) _ = assets.GetAsset(assetId);
@@ -127,14 +131,17 @@ public static class MapPrefabValidation
         }
     }
 
-    internal static void RequireAsset(MapPrefabAsset asset)
+    internal static void RequireAsset(MapPrefabAsset asset) => RequireAsset(asset, null);
+
+    internal static void RequireAsset(MapPrefabAsset asset, MapAssetClosure? assets,
+        IReadOnlyList<MapPrefabLocalMaterialization>? suppressed = null)
     {
         if (asset.PayloadVersion != 1) Fail("Unsupported prefab payload version.");
         Text(asset.Id);
         if (asset.Children is null || asset.Children.Count > MapPrefabJson.Limits.MaxChildren) Fail("Prefab child limit exceeded or collection missing.");
         Unique(asset.Children, c => c.Key, "prefab child");
         var children = asset.Children.ToDictionary(c => c.Key);
-        var targets = new ChildTargets(children);
+        var targets = new ChildTargets(children, assets, suppressed ?? asset.MaterializedAttachments);
         foreach (MapPrefabChild child in asset.Children)
         {
             Child(child);
@@ -146,7 +153,7 @@ public static class MapPrefabValidation
                 Fail($"Prefab record '{child.Key.Key}' must be anchored on a declared local surface.");
             // Annotation references carry their scope directly and take no slots.
             foreach (MapPrefabReference reference in MapPrefabReferences.Annotations(child))
-                if (reference.Scope == MapPrefabReferenceScope.Local && !children.ContainsKey(new(reference.Kind, reference.Id)))
+                if (reference.Scope == MapPrefabReferenceScope.Local && !targets.Has(reference.Kind, reference.Id))
                     Fail($"Prefab {child.Key.Kind} '{child.Key.Key}' names undeclared local {reference.Kind} '{reference.Id}'.");
         }
         foreach (MapPrefabReference roof in asset.Roofs)
@@ -242,14 +249,35 @@ public static class MapPrefabValidation
                 Fail($"Binding for {binding.Child.Kind} '{binding.Child.Key}' must be Removed exactly when its child is absent.");
     }
 
-    sealed class ChildTargets(IReadOnlyDictionary<MapPrefabChildKey, MapPrefabChild> children) : IMapPrefabTargets
+    sealed class ChildTargets : IMapPrefabTargets
     {
-        public bool Has(MapPrefabChildKind kind, string id) => children.ContainsKey(new(kind, id));
-        public bool HasPatch(MapPatchKey key) => children.TryGetValue(new(MapPrefabChildKind.Surface, key.SurfaceId), out var child) &&
-            child is MapPrefabSurfaceChild surface && surface.Patches.Any(p => p.Key == key);
-        public MapPatchKey? Anchor(string recordId) =>
-            children.TryGetValue(new(MapPrefabChildKind.Record, recordId), out var child) && child is MapPrefabRecordChild record ? record.Anchor : null;
-        public MapTransform? Pose(MapPrefabChildKind kind, string id) => children.TryGetValue(new(kind, id), out var child) ? child.LocalTransform : null;
+        readonly IReadOnlyDictionary<MapPrefabChildKey, MapPrefabChild> _explicit;
+        readonly Dictionary<MapPrefabChildKey, MapPrefabChild> _implicit = new();
+        readonly IReadOnlyList<MapPrefabLocalMaterialization> _suppressed;
+        readonly bool _closureFree;
+        internal ChildTargets(IReadOnlyDictionary<MapPrefabChildKey, MapPrefabChild> children, MapAssetClosure? assets,
+            IReadOnlyList<MapPrefabLocalMaterialization> suppressed)
+        {
+            _explicit = children; _suppressed = suppressed; _closureFree = assets is null;
+            if (assets is null) return;
+            var owned = children.Values.ToArray();
+            foreach (var child in MapEffectiveSupport.Enumerate(assets, owned, suppressed).Concat(MapPrefabAttachedLights.Enumerate(assets, owned, suppressed)))
+                if (children.ContainsKey(child.Key) || !_implicit.TryAdd(child.Key, child)) Fail("Implicit child collides with an explicit or implicit child.");
+        }
+        bool Parsed(MapPrefabChildKind kind, string id, out MapPrefabPlacementChild? owner) =>
+            MapPrefabReferences.ImplicitOwner(kind, id, _explicit.Values, _suppressed, out owner);
+        public bool Deferred(MapPrefabChildKind kind, string id) => _closureFree && !_explicit.ContainsKey(new(kind, id)) && Parsed(kind, id, out _);
+        public bool Has(MapPrefabChildKind kind, string id) => _explicit.ContainsKey(new(kind, id)) || _implicit.ContainsKey(new(kind, id)) || Deferred(kind, id);
+        public bool HasPatch(MapPatchKey key)
+        {
+            if (Deferred(MapPrefabChildKind.Surface, key.SurfaceId)) return true;
+            return Child(MapPrefabChildKind.Surface, key.SurfaceId) is MapPrefabSurfaceChild surface && surface.Patches.Any(p => p.Key == key);
+        }
+        MapPrefabChild? Child(MapPrefabChildKind kind, string id) => _explicit.TryGetValue(new(kind, id), out var child) ? child
+            : _implicit.TryGetValue(new(kind, id), out child) ? child : null;
+        public MapPatchKey? Anchor(string recordId) => Child(MapPrefabChildKind.Record, recordId) is MapPrefabRecordChild record ? record.Anchor : null;
+        public MapTransform? Pose(MapPrefabChildKind kind, string id) => _explicit.TryGetValue(new(kind, id), out var child) ? child.LocalTransform
+            : Parsed(kind, id, out var owner) ? MapPrefabMaterializationOverrides.Pose(owner!.Value) : null;
     }
 
     static IEnumerable<MapPrefabOverride> Intents(IReadOnlyList<MapPrefabOverride> overrides)

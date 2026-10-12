@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using KhaozEngine.MapDoc.Assets;
 
 namespace KhaozEngine.MapDoc.Prefabs;
 
@@ -19,6 +20,13 @@ public static class MapPrefabFile
             return asset;
         }
         catch (JsonException ex) { throw new MapDocumentException("Invalid prefab payload '" + resourceId + "'.", ex); }
+    }
+
+    internal static MapPrefabAsset Read(ReadOnlyMemory<byte> bytes, string resourceId, MapAssetClosure assets)
+    {
+        var asset = Read(bytes, resourceId);
+        MapPrefabValidation.RequireAsset(asset, assets);
+        return asset;
     }
 
     public static byte[] Write(MapPrefabAsset asset)

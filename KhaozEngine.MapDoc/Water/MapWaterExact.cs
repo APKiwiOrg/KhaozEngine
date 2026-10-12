@@ -22,6 +22,7 @@ internal readonly struct MapWideRational : IEquatable<MapWideRational>, ICompara
     public BigInteger Numerator => _numerator;
     public BigInteger Denominator => _denominatorMinusOne + BigInteger.One;
     public int Sign => _numerator.Sign;
+    internal double ToDouble() => (double)_numerator / (double)Denominator;
 
     public static MapWideRational From(MapExactValue value) => new(value.Numerator, value.Denominator);
     public static MapWideRational From(long value) => new(value, BigInteger.One);

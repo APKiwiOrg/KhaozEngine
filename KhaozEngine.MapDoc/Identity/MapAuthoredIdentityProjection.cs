@@ -29,6 +29,11 @@ internal static class MapAuthoredIdentityProjection
             w.Flush();
         }
         w.WriteEndArray();
+        if (options.ResolverVersion == 2)
+        {
+            w.WriteString("effectiveResourcePolicy", "kemap/effective-resources/1");
+            w.WriteNumber("queryPolicyVersion", 2);
+        }
         w.WriteString("closure", assets.Hash);
         w.WriteString("builderId", options.BuilderId);
         w.WriteNumber("builderVersion", options.BuilderVersion);

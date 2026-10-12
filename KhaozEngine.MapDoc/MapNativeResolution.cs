@@ -4,6 +4,7 @@ using System.Linq;
 using KhaozEngine.MapDoc.Assets;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Support;
+using KhaozEngine.MapDoc.Prefabs;
 
 namespace KhaozEngine.MapDoc;
 
@@ -46,6 +47,12 @@ public static class MapNativeResolution
         ArgumentNullException.ThrowIfNull(placementIds);
         int resolver = RequireMatchingOptions(document.ResolverIdentity, options);
         var ids = new SortedSet<string>(placementIds, StringComparer.Ordinal);
+        if (resolver == 2 && (document.Prefabs is not null || document.NativeResourceTransforms is not null))
+        {
+            var effective = MapPrefabResolver.Expand(document, assets);
+            return ids.Select(id => effective.Placements.FirstOrDefault(p => p.PlacementId == id)
+                ?? throw new MapDocumentException($"No placement with id '{id}'.")).ToArray();
+        }
         var byId = new Dictionary<string, MapPlacement>(StringComparer.Ordinal);
         foreach (MapPlacement placement in document.Placements)
             if (ids.Contains(placement.Id)) byId.TryAdd(placement.Id, placement);

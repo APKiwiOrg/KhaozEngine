@@ -54,6 +54,10 @@
   <Project Path="KhaozEngine.MapDoc.Compatibility.Tests/KhaozEngine.MapDoc.Compatibility.Tests.csproj" />
   <Project Path="KhaozEngine.MapDoc.Physics/KhaozEngine.MapDoc.Physics.csproj" />
   <Project Path="KhaozEngine.MapDoc.Physics.Tests/KhaozEngine.MapDoc.Physics.Tests.csproj" />
+  <Project Path="KhaozEngine.WorldMap/KhaozEngine.WorldMap.csproj" />
+  <Project Path="KhaozEngine.WorldMap.Tests/KhaozEngine.WorldMap.Tests.csproj" />
+  <Project Path="KhaozEngine.WorldMap.Gui/KhaozEngine.WorldMap.Gui.csproj" />
+  <Project Path="KhaozEngine.WorldMap.Gui.Tests/KhaozEngine.WorldMap.Gui.Tests.csproj" />
   <Project Path="KhaozEngine.MapEditor/KhaozEngine.MapEditor.csproj" />
   <Project Path="KhaozEngine.NetWorld/KhaozEngine.NetWorld.csproj" />
   <Project Path="KhaozEngine.Navigation/KhaozEngine.Navigation.csproj" />
@@ -97,6 +101,7 @@
   <Project Path="KhaozEngine.TileWorld.Render3D/KhaozEngine.TileWorld.Render3D.csproj" />
   <Project Path="KhaozEngine.TileWorld.Netcode/KhaozEngine.TileWorld.Netcode.csproj" />
   <Project Path="KhaozEngine.TileWorld.Physics/KhaozEngine.TileWorld.Physics.csproj" />
+  <Project Path="KhaozEngine.TileWorld.WorldMap/KhaozEngine.TileWorld.WorldMap.csproj" />
   <Project Path="KhaozEngine.Serialization/KhaozEngine.Serialization.csproj" />
   <Project Path="KhaozEngine.Http/KhaozEngine.Http.csproj" />
   <Project Path="KhaozEngine.ServerStatus/KhaozEngine.ServerStatus.csproj" />
@@ -130,6 +135,7 @@
   <Project Path="KhaozEngine.TileWorld.Tests/KhaozEngine.TileWorld.Tests.csproj" />
   <Project Path="KhaozEngine.TileWorld.Netcode.Tests/KhaozEngine.TileWorld.Netcode.Tests.csproj" />
   <Project Path="KhaozEngine.TileWorld.Physics.Tests/KhaozEngine.TileWorld.Physics.Tests.csproj" />
+  <Project Path="KhaozEngine.TileWorld.WorldMap.Tests/KhaozEngine.TileWorld.WorldMap.Tests.csproj" />
   <Project Path="KhaozEngine.TileEdit.Tests/KhaozEngine.TileEdit.Tests.csproj" />
   <Project Path="KhaozEngine.Game.Tests/KhaozEngine.Game.Tests.csproj" />
   <Project Path="KhaozEngine.Showcase.Tests/KhaozEngine.Showcase.Tests.csproj" />

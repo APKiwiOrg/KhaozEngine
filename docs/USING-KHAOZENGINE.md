@@ -1322,7 +1322,6 @@ sealed class HudScreen : Screen
     public override void LoadContent()
     {
         _components.Add(new HealthBarComponent(_font, _white));
-        _components.Add(new MinimapComponent(_white));
         _components.Add(new ChatComponent(_font, _white));   // added last, so on top and offered input first
     }
 
@@ -1335,6 +1334,8 @@ sealed class HudScreen : Screen
         _components.Draw(batch, _viewport.WindowBounds);
 }
 ```
+
+For a map component, use the real source, cache and view flow in [World map](#world-map).
 
 Four lines of wiring for N components, and none of them grows when N does. Points worth knowing:
 
@@ -1727,6 +1728,146 @@ DrawRows(batch, PanelFrame.ContentRect(bounds, stripHeight: 0f));
 What stays in the GAME: the palette values it assigns to `GuiTheme`, the metric numbers if the default shape is
 wrong for it, which taps it swallows through `BlockRegion`, each window's natural-bounds rule, the grip rect,
 and whatever fills the strip, content and footer bands.
+
+---
+
+## World map
+
+The world map packages are opt-in and outside every umbrella. A TileWorld client adds
+`KhaozEngine.TileWorld.WorldMap` and `KhaozEngine.WorldMap.Gui` explicitly, which bring
+`KhaozEngine.WorldMap` transitively. Headless tools can reference the core alone and call
+`WorldMapRasterizer.Rasterize(source, style, chunk)` for a `WorldMapChunkImage` without a GPU.
+
+Map positions are metres with x east and y north. `MapRect` has a south-west origin and half-open bounds.
+Use the source's `ToMap` and `ToMapHeading` for live world poses. Headings are radians clockwise from north,
+and marker artwork points north at zero heading. The view handles the screen's downward y axis.
+
+Keep the `TileWorldDocument` and `TileWorldCatalogs` unchanged while a `TileWorldMapSource` is in use. Its
+`Revision` stays zero and it never raises `Changed`. After edits or loaded-region changes, stop and dispose
+the old map pipeline and create a new source, cache, worker and view. `surfacePlane` selects terrain, objects
+and markers, while roofs on all planes are included.
+
+This example borrows the game's loaded document, catalogs, `Render2DSurface`, icon textures and `SpriteFont`.
+`resolveLocalizedMarkerName` is a game-supplied `Func<string, string?>` that maps an authored marker name to
+localized text and returns null for an unknown name. Tags and icon keys are game-owned tokens. Call
+`UpdateMap` each frame with the current `InputState` and an already-updated `Pointer`, call `DrawUi` from the
+game's UI pass, and call `CloseMap` when closing the map.
+
+```csharp
+using System.Numerics;
+using KhaozEngine.Primitives;
+using KhaozEngine.Render2D;
+using KhaozEngine.TileWorld.WorldMap;
+using KhaozEngine.Windowing;
+using KhaozEngine.WorldMap;
+using KhaozEngine.WorldMap.Gui;
+
+var source = new TileWorldMapSource(document, catalogs, surfacePlane: 0);
+var style = new WorldMapStyle
+{
+    SymbolRules = new[]
+    {
+        new WorldMapSymbolRule(
+            new WorldMapFootprintMatch(IsRoof: true),
+            new WorldMapSymbol(WorldMapSymbolKind.Building,
+                Color.FromHex("#b49773"), Color.FromHex("#554536")))
+    },
+    IconRules = new[]
+    {
+        new WorldMapIconRule(WorldMapFeatureSource.Footprint,
+            new[] { "service:bank" }, "bank", Priority: 100, MergeRadiusPixels: 24f)
+    },
+    Labels = new WorldMapLabelRules("map-label", new[]
+    {
+        new WorldMapLabelTier("place:town", Rank: 10,
+            MinPixelsPerMetre: 0f, MaxPixelsPerMetre: float.PositiveInfinity, TextScale: 1f)
+    })
+};
+var bankSprite = new WorldMapSprite(bankTexture,
+    new Vector4(0f, 0f, 1f, 1f), new Vector2(20f, 20f));
+var playerSprite = new WorldMapSprite(playerTexture,
+    new Vector4(0f, 0f, 1f, 1f), new Vector2(16f, 16f));
+var cache = new WorldMapChunkCache(source, style);
+var worker = new WorldMapChunkWorker(cache);
+var view = new WorldMapView(cache, surface)
+{
+    IconSprites = key => key == "bank" ? bankSprite : (WorldMapSprite?)null,
+    LabelText = resolveLocalizedMarkerName,
+    LabelFont = labelFont
+};
+
+// Each frame, after the game updates its pointer in UI pixel coordinates.
+void UpdateMap(Pointer pointer, InputState input, Rect viewport,
+    Vector3 playerPosition, Vector3 playerForward)
+{
+    view.Viewport = viewport;
+    view.SetMarker("player", source.ToMap(playerPosition), source.ToMapHeading(playerForward), playerSprite);
+    view.Update(pointer, input.ScrollDelta);
+}
+
+// The game owns this UI pass and opens its batch before drawing the view.
+void DrawUi(SpriteBatch batch)
+{
+    batch.Begin();
+    view.Draw(batch);
+    // Draw the game's remaining UI here, in the same open batch.
+    batch.End();
+}
+
+// On the surface's frame thread, before disposing the borrowed surface or art.
+void CloseMap()
+{
+    view.Dispose();
+    worker.Dispose();
+    cache.Dispose();
+}
+```
+
+The first usable viewport fits the whole world unless `CenterOn` or `ZoomBy` positioned it first. Drag pans
+and the wheel zooms toward the cursor. `FitWorld()` restores the whole-world view. `MaxPixelsPerMetre`
+defaults to 8 and `UploadBudgetPerFrame` to 4. The worker builds imagery and feature anchors off the frame
+thread, while `Update` requests visible chunks, uploads ready textures and lays out overlays on the frame
+thread. `CurrentLevel` reports the level chosen by the last usable update. It is the largest level up to
+`WorldMapChunking.MaxLevel` with `EffectivePixelsPerMetre / 2^level >= PixelsPerMetre`, or zero at native
+raster zoom and above. Only visible chunks of that level are requested, prioritized by distance to the view
+centre. Their uploads take the budget first. Ready coarser ancestors can use the remaining budget without
+additional requests. Missing chunks sample the matching UV sub-rectangle of the nearest uploaded coarser
+ancestor, or use `PlaceholderColor` if none exists. Stale textures remain visible until their replacements
+upload. Overlay anchors come only from visible built chunks of `CurrentLevel`. `Update` blocks the viewport
+through `Pointer.BlockRegion`.
+
+`MaxTextures` defaults to 192 and values below one throw `ArgumentOutOfRangeException`. After uploads and
+draw-list construction, `Update` disposes the least recently drawn textures that are absent from this
+frame's draws until the cap is met. Fallback textures count as drawn. Active draws stay protected and can
+temporarily exceed a smaller cap. The default retained chunk payload is 48 MiB per view for 192 textures
+of 256 by 256 RGBA pixels, excluding GPU overhead and temporary active-draw excess. Changing the cap takes
+effect on the next usable `Update`, with all texture disposal on the frame thread.
+
+`Viewport`, the pointer and the open batch must use the same coordinates. The example uses UI pixels. A
+design-space host instead opens its own batch with `Begin(IDesignViewport)` and passes a pointer and bounds
+in that design space. `Draw` neither begins nor ends the batch and does not change its scissor. Chunks are
+clipped to the viewport and authored world bounds. Icons and labels must fit fully inside the viewport,
+and live markers draw when their centres are inside it.
+
+Symbol and icon rules use first-match order and ordinal, all-of tag matching. An unmatched blocking
+footprint uses `FallbackBlocking`, while an unmatched non-blocking footprint is hidden. Icons stay fixed in
+screen size, merge by key and radius, and declutter by priority. Labels require `Labels`, `LabelText` and
+`LabelFont`, use the first matching tier, and show from that tier's inclusive minimum zoom to its exclusive
+maximum. `Hovered` returns the accepted icon or label for a game-resolved tooltip. Live markers draw last,
+skip decluttering and hover, and can be removed with `RemoveMarker(id)`.
+
+Create, update, draw and dispose views on the surface's frame thread. A cache and worker may serve several
+views, each with its own uploaded textures. Dispose all views first, then stop the worker, then dispose the
+cache before releasing its source data. Icon and marker textures, the label font and the surface remain
+caller-owned. A custom `IWorldMapSource` must allow concurrent reads, increment `Revision` and raise `Changed`
+on its owner thread for touched map areas so the cache can invalidate them.
+
+Implement `CollectFootprints(in WorldMapFootprintQuery query, List<WorldMapFootprint> into)` to return
+every footprint intersecting `query.Area` with `2 * max(HalfExtents) >= query.MinExtentMetres` and an
+ordinal match from `query.AnyTags` when it is not null. Null disables tag filtering, while an empty
+collection matches none. Extra records are permitted because callers re-check. Rasterization requests
+half a pixel in metres with no tags. Feature collection skips unused source kinds and uses zero size
+plus the footprint rule tag union cached per style, or null when any footprint rule has empty `AllTags`.
 
 ---
 
@@ -10801,14 +10942,18 @@ contains a bridge, overlay, shaped cut or material change. Transition edges reta
 Roads, rivers, bridge approaches, material boundaries, voids and region seams therefore keep their authored
 shape while large uniform interiors collapse.
 
-CPU ground and HLOD builds run on background workers. The scene thread applies completed generations nearest
-first with independent caps for full ground, coarse ground and HLOD. `PrimeAround` may drain gameplay full ground
-synchronously after a teleport, but decor stays budgeted. Missing LOD1 retains LOD0. Flattened HLOD availability
-is decided per cluster from the archetypes it actually places. A cluster containing a missing source retains
-individual geometry in Gameplay and Decor instead of creating a hole, without disabling another cluster whose
-placed sources are complete. An initial HLOD build retries three times and then logs once. A rebuild failure
-retains the last accepted handle while adopting current individual placements. An override replaces only its
-region snapshot and rejects stale work before upload.
+CPU ground, cover and HLOD builds run on background workers. The scene thread applies completed generations nearest
+first with independent caps for full ground, cover, coarse ground and HLOD. A decor region promoted into the
+gameplay radius, by `Update` or `PrimeAround`, builds its full ground and cover in the background and keeps its
+coarse ground and far clusters drawing until the full ground replaces them, so a promotion neither stalls the frame
+nor shows a hole. `PrimeAround` settles synchronously only the regions it loaded from `Unloaded` straight into
+gameplay and the already gameplay ground borders its arrivals dirty. Promotions, coarse ground, HLOD and all cover
+stay budgeted, so arrival cover lands a few frames after its ground. Missing LOD1 retains LOD0. Flattened HLOD
+availability is decided per cluster from the archetypes it actually places. A cluster containing a missing source
+retains individual geometry in Gameplay and Decor instead of creating a hole, without disabling another cluster
+whose placed sources are complete. An initial HLOD build retries three times and then logs once. A rebuild failure
+retains the last accepted handle while adopting current individual placements. An override replaces only its region
+snapshot and rejects stale work before upload.
 
 Picking always uses full object bounds and stable document IDs inside gameplay residency. HLOD is never a hover,
 click or collision target. On unload, the view cancels queued work and releases ground, cover, cluster and snapshot
@@ -10911,14 +11056,17 @@ from above with north up. Both are the price of one thing worth having: (east, n
 right-handed triple, so a single top-down view has north UP and east RIGHT instead of trading one for the other.
 
 **The view coalesces, the residency streams.** `MarkDirty` grows a tile rect by a 2-tile margin before turning it
-into region marks, because corner heights, central-difference normals and the four-tile corner blend all read
-ACROSS region borders, so an edit one tile inside a border changes the neighbour's mesh. `Flush` then rebuilds
-oldest first up to `TileWorldViewOptions.MaxRebuildsPerFlush` (16), leaving the rest counted by `PendingRebuilds`,
-and `Flush(int.MaxValue)` is the settle-now form. Active same-plane door clearances extend the ground-cover reach
-beyond the fixed mesh margin. Streaming a region rebuilds every loaded ground mesh or cover cache affected by
-its border data, solid footprints, upper roofs or tagged doors. A dirty region is never streamed out (unloading
-unsaved edits would throw, so it stays resident and logs once), and a torn region file throws
-`TileWorldException` straight out of `Update` rather than drawing a hole.
+into region marks, because corner heights, central-difference normals and the four-tile corner blend all read ACROSS
+region borders, so an edit one tile inside a border changes the neighbour's mesh. `Flush` then rebuilds oldest first
+up to `TileWorldViewOptions.MaxRebuildsPerFlush` (16), leaving the rest counted by `PendingRebuilds`, and
+`Flush(int.MaxValue)` is the settle-now form for a view without a residency profile. A region kept by a three-state
+profile is never meshed in `Flush`: its marks submit background ground builds, plus cover once per region for a
+gameplay region, while the previous mesh keeps drawing, so `Flush(int.MaxValue)` no longer settles profile ground.
+Only `PrimeAround` and headless capture do. Active same-plane door clearances extend the ground-cover reach beyond
+the fixed mesh margin. Streaming a region rebuilds every loaded ground mesh or cover cache affected by its border
+data, solid footprints, upper roofs or tagged doors. A dirty region is never streamed out (unloading unsaved edits
+would throw, so it stays resident and logs once), and a torn region file throws `TileWorldException` straight out of
+`Update` rather than drawing a hole.
 
 **Translucent overlays.** `ITileWorldScene.DrawOverlayMesh(mesh, world)` forwards the scene's unlit,
 depth-tested, alpha-blended overlay pass, which does not write depth. Use it for route highlights or range
@@ -12080,6 +12228,25 @@ Prediction begins when the authoritative snapshot first carries `MoveState.Commi
 through the same simulator. The local render state reads `client.LocalRenderState.Move.Commitment`. A remote reads
 `MovementState.Commitment`. Initial `VerticalSpeed` and commitment-local `Gravity` remain available through the
 lifecycle for animation timing, while the live vertical velocity remains on the surrounding movement state.
+
+To stop a player steering without moving them, for a death screen or a cutscene, hold the seat's movement on
+either head:
+
+```csharp
+server.HoldMovement(PlayerRef.Slot(slot));     // applied at the start of the next Tick
+bool held = server.IsMovementHeld(slot);       // host thread, the last applied state
+server.ReleaseMovement(PlayerRef.Slot(slot));  // queued in order behind the hold
+```
+
+Both calls ride the same FIFO admin queue as `Teleport`, are safe from any thread and apply at the start of the next
+tick. A held seat's commands are still dequeued and acknowledged, so the client's pending commands drain, but the
+body steps on `MoveCommand.Idle`: walking, running and jumping move nothing while gravity and support keep stepping.
+The hold clears no momentum, jump timer or active movement commitment, so abort a commitment explicitly if the game
+wants it stopped. A teleport, `SetPosition` or cell handoff keeps the hold, and self-rescue still teleports a held
+seat. A leave releases it, and on `ShardedWorldServer` a disconnect linger's reclaim counts as a leave. A
+slot-targeted hold or release queued before that seat's occupant left is dropped at apply, while an account target
+resolves when it applies. Nothing crosses the wire, so the game also gates its own client input while the seat is
+held, or a predicting client is corrected back to the held position on each snapshot.
 
 - **`WorldClient`** (render-free): wraps `NetClient` + `ClientReplicationView` + `ClientPrediction`. `Poll()`
   ingests AoI snapshots, applies remote entities, and reconciles the local avatar against the authoritative

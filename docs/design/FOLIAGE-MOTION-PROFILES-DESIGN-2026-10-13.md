@@ -88,8 +88,8 @@ new foliage depth shader (ruling S4). Colour, motion vectors and shadows can the
 - **Wind.** Today's wind bend, multiplied by `WindScale`.
 - **Lean.** Today's per-interactor push, multiplied by `BendScale`. The combined wind and lean bend is capped at
   `MaxLean * height` instead of the constant `0.65 * height`. The tip-lowering term is unchanged.
-- **Shiver.** For each interactor, amplitude is `Shiver * height * falloff * Strength * Agitation`, where `falloff`
-  is the existing root-distance falloff. The offset is a horizontal oscillation at a fixed angular frequency of
+- **Shiver.** The shiver intensity is the strongest single interactor's `falloff * Strength * Agitation`, where
+  `falloff` is the existing root-distance falloff, and the amplitude is `Shiver * height * intensity` (ruling S7). The offset is a horizontal oscillation at a fixed angular frequency of
   about 14 rad/s (about 2.2 Hz, ruling S6), whose phase mixes the instance root position and the vertex's local
   position, so different parts of the crown move out of step and read as leaves rather than a rigid wobble. It is
   weighted by the same squared height weight, so the base stays put, and it is added after the lean cap, so a fully
@@ -177,6 +177,9 @@ Orchestrator rulings. The owner may overrule any of them.
 - **S4.** One displacement function serves colour, motion vectors and depth.
 - **S5.** Point-light shadows draw animated casters at rest pose to keep static point-shadow caching.
 - **S6.** The shiver frequency is a documented constant. A profile field waits for a consumer that needs it.
+- **S7.** Shiver takes the strongest single interactor instead of summing them, so the total never exceeds
+  `Shiver * height`, the bounds allowance in section 5 holds, and two players in one shrub do not make it shake
+  harder than one. Added during plan review on 2026-10-13.
 
 ## Risks
 

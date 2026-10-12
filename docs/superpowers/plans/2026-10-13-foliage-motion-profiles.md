@@ -7,9 +7,9 @@
 **Tech Stack:** C#/.NET 10, System.Numerics, xUnit, native Metal/Direct3D11/Vulkan GPU seams, GLSL 450 and SPIRV-Cross.
 **Spec:** docs/design/FOLIAGE-MOTION-PROFILES-DESIGN-2026-10-13.md
 
-## Open question for the orchestrator
+## Resolved question (orchestrator ruling S7)
 
-The prescribed bounds allowance covers one shiver amplitude, but the spec assigns an amplitude to each of four interactors. With `MaxLean = 0`, `WindScale = 0`, `Shiver = 0.25`, height 1, four colocated interactors of `Strength = Agitation = 1` can sum to a displacement of 1 m. The prescribed padding is only 0.25 m. Evidence: spec sections 3 and 5, `ModelRenderer.Foliage.cs:23-30,92-98` (four slots), and `ShaderSources.Foliage.cs:83-88` (existing additive influence loop). Normalizing or capping the combined shiver would change the stated per-interactor result. Enlarging the padding would change its stated formula. The orchestrator must choose the combination rule or a revised allowance before the four-interactor containment test and Task 5 bounds can be accepted. This plan preserves both approved statements and marks that acceptance gate explicitly.
+The drafted spec gave each of the four interactors its own shiver amplitude, so four colocated interactors could sum to four times the `Shiver * height` allowance the bounds use. Ruling S7, recorded in the spec: the shiver intensity is the strongest single interactor's `falloff * strength * agitation`, one oscillation per vertex is scaled by it, and the total shiver therefore never exceeds `Shiver * height`. Two players in one shrub do not make it shake harder than one fully agitated player. The bounds formula in Task 5 stands unchanged.
 
 ## Global Constraints
 
@@ -33,7 +33,7 @@ The prescribed bounds allowance covers one shiver amplitude, but the spec assign
 - In-place model-policy edits, removal back to defaults and multipart models must invalidate one retained snapshot without leaking policy to another model. Task 4 adds `PolicyMutationAndRemovalRefreshOnlyTheEffectiveSnapshot`.
 - A paused frame, invalid frame time or vertical relocation must neither divide by zero nor generate false horizontal agitation. Task 3 adds `ZeroTimeRebasesWithoutAgitatingAndInvalidInputPreservesState` and `VerticalMotionDoesNotAgitate`.
 - A caster visible only to a shadow, then disposed or removed, must upload on its first shadow frame and leave no cached ghost. Task 5 adds `OffCameraCasterUploadsAndItsRemovalClearsTheAtlasOnce`.
-- Two archetypes sharing a mesh, including one with an omitted style, must compare effective styles and reject conflicts before changing the live split. Task 6 adds `SharedMeshComparesImplicitBladeAndExplicitStyles`.
+- Two archetypes sharing a mesh, including one with an omitted style, must compare effective styles and reject conflicts before changing the live split. Task 7 adds `SharedMeshComparesImplicitBladeAndExplicitStyles`.
 
 ---
 
@@ -267,25 +267,27 @@ Expected: missing agitation/helper members and old uniform sizes.
 
 - [ ] Implement `FoliageAgitation.Update`. The first sample seeds position and returns zero. Zero time rebases position and preserves `Value`. A full 3D jump greater than `TeleportResetDistance` resets value to zero and seeds the new position. Otherwise compute horizontal speed, `target = clamp(speed / ReferenceSpeed, 0, 1)`, then `Value = max(target, max(0, Value - deltaTime / SettleTime))`. Use double intermediates for finite-coordinate distance and division. `5 m` is safely above ordinary per-frame movement at the default 2 m/s and catches respawns, while remaining configurable for other movement scales. Default-initialized state resolves configuration to `2`, `.6`, `5`.
 - [ ] Extend interactor validation and packing. Put current agitation immediately after `WindFade` and previous agitation after `PrevStrengths`. This gives 176 current bytes plus 112 history bytes. Keep 16-byte std140 members and 256-byte dynamic-offset alignment, documented by `D3D11UniformRing.cs:30-33`. `512` is the next aligned slot, not `288`. `WithPrevious` copies agitation. Whole-buffer upload and resource windows use 512, and four initial slots now upload 2048 bytes. Update the existing upper-bound upload assertion from 1024 to 2048.
-- [ ] Add the shiver in the shared GLSL function after the capped bend and tip drop. For each accepted interactor use the existing falloff and strength, select agitation from the corresponding current/previous vec4, and accumulate the following horizontal contribution.
+- [ ] Add the shiver in the shared GLSL function after the capped bend and tip drop (ruling S7). Inside the existing interactor loop, for each accepted interactor select agitation from the corresponding current/previous vec4 and keep the strongest intensity. After the loop, apply one oscillation scaled by it.
 
 ```glsl
+// Inside the interactor loop:
 float agitation = previous ? PrevAgitation[i] : Agitation[i];
+shiverIntensity = max(shiverIntensity, falloff * strength * agitation);
+// After the loop, the lean cap and tip lowering:
 float leafPhase = windTime * 14.0
     + dot(IModel3.xz, vec2(0.73, 1.17))
     + dot(Position, vec3(3.1, 2.7, 4.3));
-shiver += vec2(sin(leafPhase), cos(leafPhase))
-    * FoliageMotion.w * bladeHeight * falloff * strength * agitation;
-// After the lean cap and tip lowering:
+vec2 shiver = vec2(sin(leafPhase), cos(leafPhase))
+    * FoliageMotion.w * bladeHeight * shiverIntensity;
 world.xz += shiver * rootWeight;
 ```
 
-`shiver` starts at `vec2(0.0)`, and `rootWeight` remains squared normalized height. Root phase uses absolute instance coordinates, so render-origin rebasing does not change it. Preserve a zero-shiver/zero-agitation fast path without changing the Blade arithmetic. Extend the independent CPU oracle with these exact constants.
+`shiverIntensity` starts at `0.0`, and `rootWeight` remains squared normalized height. Root phase uses absolute instance coordinates, so render-origin rebasing does not change it. Preserve a zero-shiver/zero-agitation fast path without changing the Blade arithmetic. Extend the independent CPU oracle with these exact constants.
 
-- [ ] Add `ZeroAgitationHasNoShiver`, `ShiverLeavesTheRootFixedAndMovesUpperVertices`, `FullLeanStillShivers` and `FourInteractorShiverFitsTheApprovedBounds` to the oracle tests. For the first three use height 1, `(BendScale, MaxLean, WindScale, Shiver) = (0, 0, 0, .035)`, root `(0,0,0)`, actor at root with radius 2 and strength 1, agitation 0 then 1, time 0. Assert root offset is zero, the top horizontal offset has length `.035f` within `1e-6f`, and agitation zero is exactly rest. The full-lean case uses `.15f` cap and shows the additional shiver survives saturation. The four-actor case is the top-of-plan gate, and cannot be declared passing without the orchestrator's ruling.
+- [ ] Add `ZeroAgitationHasNoShiver`, `ShiverLeavesTheRootFixedAndMovesUpperVertices`, `FullLeanStillShivers` and `FourInteractorShiverFitsTheApprovedBounds` to the oracle tests. For the first three use height 1, `(BendScale, MaxLean, WindScale, Shiver) = (0, 0, 0, .035)`, root `(0,0,0)`, actor at root with radius 2 and strength 1, agitation 0 then 1, time 0. Assert root offset is zero, the top horizontal offset has length `.035f` within `1e-6f`, and agitation zero is exactly rest. The full-lean case uses `.15f` cap and shows the additional shiver survives saturation. The four-interactor case places four colocated interactors with strength and agitation 1 on a height-1 mesh with `Shiver = .25`, zero lean and zero wind, and asserts the top horizontal offset length equals `.25f` within `1e-6f`, never more (ruling S7).
 - [ ] Add GPU facts using `FoliageGpuScene` as a class fixture. Compare actual colour readback against a rigid reference mesh whose vertices are displaced by `VertexWorld`, rather than asserting successful draw calls. Assert zero-agitation captures are equal across two times, root-region pixels remain equal, upper-region pixels differ at agitation 1, and the shrub with `.15f` MaxLean agrees with its capped CPU reference. Add `AgedProfileFixtureMatchesFresh`, comparing shared-fixture aging against a fresh fixture, and restore mutable scene settings after each fact.
 - [ ] Add `ShiveringShrubMotionMatchesCurrentAndPreviousOracle` using `TemporalFixture(320, 180, ...)`, one visible triangle above an unused root vertex, profile `(.3, .15, .4, .035)`, times `0` and `.1`, and agitation `.2` then `1`. Build both frames' vertex positions with `VertexWorld` and each frame's camera/scale. `ExpectedMotion` computes screen barycentrics at pixel centres from jittered raster clips, perspective-corrects them with reciprocal clip w, interpolates current/previous clip values and applies `MotionMath.UvMotion` times the viewport. Assert more than `100` drawn motion pixels and error at most `.05f` pixels. This handles the spatially varying leaf phase, which the existing uniform-translation plate oracle cannot prove.
-- [ ] Refresh the four shader tables using Task 2 commands, inspect only foliage rows, then run the red command with label `foliage-agitation-green`. Expected: headless checks pass, with the four-interactor gate separately reported if unresolved.
+- [ ] Refresh the four shader tables using Task 2 commands, inspect only foliage rows, then run the red command with label `foliage-agitation-green`. Expected: headless checks pass.
 - [ ] Run one focused local GPU proof.
 
 ```bash
@@ -375,15 +377,13 @@ git add -- "${task_files[@]}"
 git commit --only -m "feat(terrain): carry model foliage motion and casting policies" -- "${task_files[@]}"
 ```
 
-### Task 5: Per-frame animated cascade casters and rigid point-shadow proxies
+### Task 5: Per-frame animated cascade casters
 
 **Files:**
-- Create: `KhaozEngine.Render3D/Internal/FoliageShadowSelection.cs`, `KhaozEngine.Render3D/Internal/ShaderSources.FoliageShadow.cs`, `KhaozEngine.Render3D/Rendering/FoliageShadowRenderer.cs`, `KhaozEngine.Render3D/Internal/FoliagePointShadowStream.cs`, `KhaozEngine.Render3D/Scene3D.FoliageShadows.cs`, `KhaozEngine.Render3D/Scene3D.FoliagePointShadows.cs`, `KhaozEngine.Render3D/Scene3D.CascadeShadowPass.cs`.
+- Create: `KhaozEngine.Render3D/Internal/FoliageShadowSelection.cs`, `KhaozEngine.Render3D/Internal/ShaderSources.FoliageShadow.cs`, `KhaozEngine.Render3D/Rendering/FoliageShadowRenderer.cs`, `KhaozEngine.Render3D/Scene3D.FoliageShadows.cs`, `KhaozEngine.Render3D/Scene3D.CascadeShadowPass.cs`.
 - Modify: `KhaozEngine.Render3D/Internal/FoliagePatch.cs:7-11`, `KhaozEngine.Render3D/Internal/FoliagePatchLayout.cs:43-82,139`, `KhaozEngine.Render3D/FoliageBatch.cs:11-29`, `KhaozEngine.Render3D/Scene3D.Foliage.cs:46,100-118,122-173,216-227`.
 - Modify: `KhaozEngine.Render3D/Rendering/ModelRenderer.Foliage.cs:103-110`, `KhaozEngine.Render3D/Rendering/ShadowMapRenderer.cs:110-123`, `KhaozEngine.Render3D/Scene3D.cs:1572-1622`, `KhaozEngine.Render3D/Scene3D.ShadowCasters.cs:347-412`, `KhaozEngine.Render3D/Scene3D.ShadowDirtyState.cs:33-64`.
-- Modify: `KhaozEngine.Render3D/Scene3D.PointShadows.cs:316-346`, `KhaozEngine.Render3D/Scene3D.PointShadowPass.cs:220-264`.
-- Read-only point integration references: `KhaozEngine.Render3D/Scene3D.PointCasters.cs:48-81`, `KhaozEngine.Render3D/Scene3D.PointShadowRequests.cs:10-11`, `KhaozEngine.Render3D/Rendering/PointShadowRenderer.cs:220-258`, `KhaozEngine.Render3D/Internal/PointShadowCasterSphere.cs:8-28`.
-- Test, create: `KhaozEngine.Render.Tests/Render3D/FoliageShadowSelectionTests.cs`, `KhaozEngine.Render.Tests/Render3D/FoliagePointShadowTests.cs`, `KhaozEngine.Render.Tests/Gpu/FoliageShadowGpuTests.cs`, `KhaozEngine.Render.Tests/Gpu/FoliageShadowGpuScene.cs`.
+- Test, create: `KhaozEngine.Render.Tests/Render3D/FoliageShadowSelectionTests.cs`, `KhaozEngine.Render.Tests/Gpu/FoliageShadowGpuTests.cs`, `KhaozEngine.Render.Tests/Gpu/FoliageShadowGpuScene.cs`.
 - Modify tests: `KhaozEngine.Render.Tests/Render3D/FoliagePatchLayoutTests.cs:18-125`, `KhaozEngine.Render.Tests/Gpu/ShippedShaderPrograms.cs:59-80`, `KhaozEngine.Render.Tests/Gpu/VulkanShippedVertexLayoutTests.cs:19-61,141-170`, `KhaozEngine.Render.Tests/Gpu/D3D11FxcValidationTests.cs:58-80,89-170`.
 - Regenerate: the same four emitted shader tables as Task 2.
 
@@ -394,8 +394,7 @@ git commit --only -m "feat(terrain): carry model foliage motion and casting poli
 - Produces: `ShaderSources.FoliageDepthVert`, `FoliageDepthCutoutFrag`. Shipped pairs `FoliageDepth` with existing `ShadowDepthFrag` and `FoliageDepthCutout` with the new cutout fragment.
 - Produces: `FoliageShadowRenderer(IGpuDevice device, ShadowMapRenderer shadows, IGpuResourceLayout foliageLayout, GpuRetireQueue retired)`, `void UploadCascades(IGpuCommandList cl, ReadOnlySpan<Matrix4x4> lightViewProjections, in Matrix4x4 cameraViewProjection, Vector3 renderOrigin)`, `void Draw(IGpuCommandList cl, int cascade, IGpuBuffer vb, IGpuBuffer ib, int indexCount, GpuIndexFormat indexFormat, IGpuBuffer instances, uint start, uint count, IGpuResourceSet foliageSet, uint foliageSlot, IGpuResourceSet? cutoutMaterial)`, `void Dispose()`.
 - Produces: `ModelRenderer.FoliageLayout : IGpuResourceLayout`, `FoliageSet : IGpuResourceSet`, `ShadowMapRenderer.Outputs : GpuOutputDescription`, `CutoutMaterialLayout : IGpuResourceLayout`, internal get-only seams.
-- Produces: `FoliagePointShadowStream.Build(ReadOnlySpan<FoliageInstance> instances, Func<MeshHandle, MeshBounds?> boundsForMesh) -> FoliagePointShadowStream`, `long EnsureUploaded(IGpuDevice device, IGpuCommandList cl, Vector3 renderOrigin, GpuRetireQueue retired)`, get-only `IGpuBuffer? Buffer` and `ReadOnlySpan<FoliagePointShadowCaster> Casters`, `void Query(ReadOnlySpan<FoliagePointShadowRange> candidates, Vector3 lightPosition, float radius, float nearRadius, Vector3 exclusionMin, Vector3 exclusionMax, List<FoliagePointShadowRun> runs)`, `void Dispose()`. Its records are `FoliagePointShadowCaster(MeshHandle Mesh, Matrix4x4 Transform, Vector4 Sphere, uint Slot, int SourceIndex)`, `FoliagePointShadowRun(MeshHandle Mesh, uint Start, uint Count)` and `FoliagePointShadowRange(int Start, int Count)`, defined in the same file. It stores only casting instances in the existing 128-byte `ModelRenderer.InstanceData` format.
-- Produces: private Scene3D helpers `float RenderCascadeShadowPass(IGpuCommandList cl, bool shadowMapActive, int skinnedCasterCount)`, `void DrawFoliageShadowCascade(IGpuCommandList cl, int cascade)`, `void MixFoliagePointSignature(ref ulong hash, Vector3 lightPosition, float radius, float nearRadius, Vector3 exclusionMin, Vector3 exclusionMax)`, `int DrawFoliagePointShadowFace(IGpuCommandList cl, PointShadowRenderer renderer, PointShadowAtlas atlas, int packedIndex, int face, int row, Vector3 lightPosition, float radius, float nearRadius, Vector3 exclusionMin, Vector3 exclusionMax)`.
+- Produces: private Scene3D helpers `float RenderCascadeShadowPass(IGpuCommandList cl, bool shadowMapActive, int skinnedCasterCount)` and `void DrawFoliageShadowCascade(IGpuCommandList cl, int cascade)`. Task 6 consumes the per-frame casting patch prefixes this task collects.
 
 Boundary refinement: move the complete cascade orchestration block out of `Scene3D.cs` into `Scene3D.CascadeShadowPass.cs`. This is one cohesive existing responsibility, not a line-count split. `Scene3D.cs` is already exactly its frozen 2372-line KESIZE baseline, so adding the foliage dirty-state decision there would fail the ratchet. The standalone renderer owns new shader/pipeline resources instead of growing `ShadowMapRenderer` with another rendering concern.
 
@@ -417,13 +416,12 @@ Assert.True(FoliageShadowSelection.NeedsDepthPass(false, true));
 Assert.False(FoliageShadowSelection.NeedsDepthPass(false, false));
 ```
 
-For mixed profiles, aggregate each `coefficient * world height` conservatively within the patch. Expand the AABB and derive its sphere, rather than adding a horizontal displacement to the existing sphere radius. Include height-zero meshes, scaled/tilted instances and the Task 3 four-interactor gate. Bounds follow the prescribed formula pending that ruling.
+For mixed profiles, aggregate each `coefficient * world height` conservatively within the patch. Expand the AABB and derive its sphere, rather than adding a horizontal displacement to the existing sphere radius. Include height-zero meshes, scaled/tilted instances and the four-interactor case, which ruling S7 keeps inside the same allowance.
 
-- [ ] Write `PointProxyUsesRestTransformsAndIgnoresClockAgitationAndProfile`. Build a stream with a casting shrub and a non-casting blade, asserting exactly one proxy with the original transform. Assert `stream.Casters.Length == 1`, its `Transform` equals the authored matrix and its `SourceIndex` identifies the casting source item. Query `[new FoliagePointShadowRange(0, 2)]` and assert one rigid run for the touching light and zero for an excluded or wholly near-radius-contained caster. Test light shell, near-radius and exclusion-box selection with the existing `PointShadowCasterSphere` predicate. Signature stays equal after changes to time, agitation and motion coefficients, changes after transform/mesh generation/casting changes, and clears when the batch disappears.
 - [ ] Run red.
 
 ```bash
-build-slot --label foliage-shadow-red -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~FoliageShadowSelectionTests|FullyQualifiedName~FoliagePointShadowTests|FullyQualifiedName~FoliagePatchLayoutTests"
+build-slot --label foliage-shadow-red -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~FoliageShadowSelectionTests|FullyQualifiedName~FoliagePatchLayoutTests"
 ```
 
 Expected: missing caster helpers, patch policy and bounds members.
@@ -433,10 +431,9 @@ Expected: missing caster helpers, patch policy and bounds members.
 - [ ] Implement `FoliageDepthVert` using the shared UBO and displacement function, passing `CameraViewProj` as its fade matrix and current focus/time/scale. Its set 0 block is `mat4 LightViewProj`, `mat4 CameraViewProj`, `vec4 RenderOrigin`, payload 144 bytes in 256-byte cascade slots. Set 1 is the 512-byte foliage window. Project the displaced world with the cascade's existing GPU/atlas-correct depth matrix, and retain the existing near-plane pancake. Keep inputs 0..10 live with the established `1e-30` sink for unused normal, colour and tangent inputs.
 - [ ] Implement the cutout fragment with contiguous inputs `vLightDepth` at 0, `vUv` at 1, `vCutoff` at 2. Sample albedo/sampler at set 2 and discard `alpha < vCutoff` when cutoff is positive. The opaque pair uses `ShadowDepthFrag` without a texture sample. `FoliageShadowRenderer` borrows the shadow output/material layout, sets the owner's cascade scissor, binds its own depth pipelines and shared foliage stream, and restores the next pass's normal bindings. Build pipelines lazily only when a casting patch is present, with two-sided cutout cards as in the existing shadow policy. Retire replaced buffers through the scene queue and dispose owned resources.
 - [ ] Extend the extracted cascade coordinator with current/last animated-caster presence. The existing `Scene3D.ShadowDirtyState.cs` is the owner of cached cascade content through its last-rendered signature and persistent atlas. Animated data never enters `_lastShadowCasterRuns` or `_lastShadowCasterModels`. Presence forces rendering every frame, removal forces one clearing render, then a static scene may skip again. Commit the last-presence bool only after the pass renders. Draw foliage within each cascade, count its actual depth draws, and preserve existing rigid/skinned diagnostic meanings.
-- [ ] Implement lazy point-shadow rest streams for casting instances only when point shadows are requested. Upload the rest stream before any depth render pass, with matrices rebased by the same frame origin as rigid instances. Reuse it until the immutable batch or render origin changes. Translate each submitted casting patch prefix into `FoliagePointShadowRange`, using original layout indices. `Query` filters proxies by `SourceIndex` and the existing light-shell predicate, then coalesces consecutive proxy slots of the same mesh into rigid runs. Query submitted candidates independently of camera rejection. Share that query between `MixFoliagePointSignature` and the point face draw helper. Mix only mesh identity and rest transforms. In `Scene3D.PointShadows.cs`, fold it into static signatures, and in `Scene3D.PointShadowPass.cs` draw it only for `PointShadowCasterSet.Rigid` through `PointShadowRenderer.BeginFace` and `DrawCasterRun`. Do not add it to cascade rigid spans or the colour stream. The extra 128-byte proxy stream is lazy and caster-only, with upload bytes accounted and storage retired with its batch. `EnsureUploaded` retains the supplied retire queue, so `Dispose` retires any live buffer rather than freeing an in-flight resource.
-- [ ] Add GPU facts `AnimatedCascadeShadowMatchesDisplacedRigidReference`, `CameraWindFadeAlsoControlsTheDepthPass`, `NonCastingGrassAddsNoDepthDraws`, `CutoutFoliageCastsItsAlphaSilhouette`, `OffCameraCasterUploadsAndItsRemovalClearsTheAtlasOnce`, and `PointShadowStaysAtRestWhileCascadeMoves`. Use a lazily created `FoliageShadowGpuScene` class fixture owning `Render3DPreview`, with `Scene3D Scene`, `byte[] Capture(Action<Scene3D> draw)` and `Dispose()`. Test actual colour and `DebugReadShadowMap` depth readbacks against oracle-displaced rigid reference geometry. Zero casting gives exactly zero additional depth draws. The off-camera case checks a first instance upload of `96` bytes, a shadowed receiver, then removal restores the reference receiver and the following unchanged frame skips. Include enabled point shadows with no ordinary rigid draws, static point-cache reuse across a shiver-only change and point-cache invalidation after proxy removal. Add `AgedShadowFixtureMatchesFresh` for aged-fixture/fresh-fixture pixel parity.
+- [ ] Add GPU facts `AnimatedCascadeShadowMatchesDisplacedRigidReference`, `CameraWindFadeAlsoControlsTheDepthPass`, `NonCastingGrassAddsNoDepthDraws`, `CutoutFoliageCastsItsAlphaSilhouette` and `OffCameraCasterUploadsAndItsRemovalClearsTheAtlasOnce`. Use a lazily created `FoliageShadowGpuScene` class fixture owning `Render3DPreview`, with `Scene3D Scene`, `byte[] Capture(Action<Scene3D> draw)` and `Dispose()`. Test actual colour and `DebugReadShadowMap` depth readbacks against oracle-displaced rigid reference geometry. Zero casting gives exactly zero additional depth draws. The off-camera case checks a first instance upload of `96` bytes, a shadowed receiver, then removal restores the reference receiver and the following unchanged frame skips. Add `AgedShadowFixtureMatchesFresh` for aged-fixture/fresh-fixture pixel parity.
 - [ ] Add `FoliageDepth` and `FoliageDepthCutout` to `ShippedShaderPrograms.GraphicsPrograms()`. Make `VulkanShippedVertexLayoutTests` instantiate both new pipelines with a real retained caster, and include both in the D3D11 contiguous-signature incident checks. Refresh the four tables with Task 2 commands, now allowing the new depth rows as well as the two existing foliage rows.
-- [ ] Run the red command with label `foliage-shadow-green`, then the corpus, byte-equality and D3D11 source-contract filters. Expected: headless caster policy and shader coverage pass. The multi-interactor containment gate still requires its stated ruling.
+- [ ] Run the red command with label `foliage-shadow-green`, then the corpus, byte-equality and D3D11 source-contract filters. Expected: headless caster policy and shader coverage pass.
 - [ ] Run one GPU proof.
 
 ```bash
@@ -452,9 +449,7 @@ task_files=(
   KhaozEngine.Render3D/Internal/FoliageShadowSelection.cs
   KhaozEngine.Render3D/Internal/ShaderSources.FoliageShadow.cs
   KhaozEngine.Render3D/Rendering/FoliageShadowRenderer.cs
-  KhaozEngine.Render3D/Internal/FoliagePointShadowStream.cs
   KhaozEngine.Render3D/Scene3D.FoliageShadows.cs
-  KhaozEngine.Render3D/Scene3D.FoliagePointShadows.cs
   KhaozEngine.Render3D/Scene3D.CascadeShadowPass.cs
   KhaozEngine.Render3D/Internal/FoliagePatch.cs
   KhaozEngine.Render3D/Internal/FoliagePatchLayout.cs
@@ -465,10 +460,7 @@ task_files=(
   KhaozEngine.Render3D/Scene3D.cs
   KhaozEngine.Render3D/Scene3D.ShadowCasters.cs
   KhaozEngine.Render3D/Scene3D.ShadowDirtyState.cs
-  KhaozEngine.Render3D/Scene3D.PointShadows.cs
-  KhaozEngine.Render3D/Scene3D.PointShadowPass.cs
   KhaozEngine.Render.Tests/Render3D/FoliageShadowSelectionTests.cs
-  KhaozEngine.Render.Tests/Render3D/FoliagePointShadowTests.cs
   KhaozEngine.Render.Tests/Gpu/FoliageShadowGpuTests.cs
   KhaozEngine.Render.Tests/Gpu/FoliageShadowGpuScene.cs
   KhaozEngine.Render.Tests/Render3D/FoliagePatchLayoutTests.cs
@@ -481,20 +473,69 @@ task_files=(
   KhaozEngine.Render.Tests/Gpu/spirv-hashes/vulkan-spirv.sha256.txt
 )
 git add -- "${task_files[@]}"
-git commit --only -m "feat(foliage): cast animated cascades and rigid point shadows" -- "${task_files[@]}"
+git commit --only -m "feat(foliage): cast displaced cascade shadows from animated foliage" -- "${task_files[@]}"
+```
+
+### Task 6: Rest-pose point-shadow proxies for casting foliage
+
+**Files:**
+- Create: `KhaozEngine.Render3D/Internal/FoliagePointShadowStream.cs`, `KhaozEngine.Render3D/Scene3D.FoliagePointShadows.cs`.
+- Modify: `KhaozEngine.Render3D/Scene3D.PointShadows.cs:316-346`, `KhaozEngine.Render3D/Scene3D.PointShadowPass.cs:220-264`.
+- Read-only point integration references: `KhaozEngine.Render3D/Scene3D.PointCasters.cs:48-81`, `KhaozEngine.Render3D/Scene3D.PointShadowRequests.cs:10-11`, `KhaozEngine.Render3D/Rendering/PointShadowRenderer.cs:220-258`, `KhaozEngine.Render3D/Internal/PointShadowCasterSphere.cs:8-28`.
+- Test, create: `KhaozEngine.Render.Tests/Render3D/FoliagePointShadowTests.cs`.
+- Modify tests: Task 5 `KhaozEngine.Render.Tests/Gpu/FoliageShadowGpuTests.cs`.
+
+**Interfaces:**
+- Consumes: Task 1 `FoliageInstance.CastsShadows`, Task 5 per-frame casting patch prefixes and `FoliagePatch.CastsShadows`, the existing 128-byte `ModelRenderer.InstanceData` format and `PointShadowCasterSphere`.
+- Produces: `FoliagePointShadowStream.Build(ReadOnlySpan<FoliageInstance> instances, Func<MeshHandle, MeshBounds?> boundsForMesh) -> FoliagePointShadowStream`, `long EnsureUploaded(IGpuDevice device, IGpuCommandList cl, Vector3 renderOrigin, GpuRetireQueue retired)`, get-only `IGpuBuffer? Buffer` and `ReadOnlySpan<FoliagePointShadowCaster> Casters`, `void Query(ReadOnlySpan<FoliagePointShadowRange> candidates, Vector3 lightPosition, float radius, float nearRadius, Vector3 exclusionMin, Vector3 exclusionMax, List<FoliagePointShadowRun> runs)`, `void Dispose()`. Its records are `FoliagePointShadowCaster(MeshHandle Mesh, Matrix4x4 Transform, Vector4 Sphere, uint Slot, int SourceIndex)`, `FoliagePointShadowRun(MeshHandle Mesh, uint Start, uint Count)` and `FoliagePointShadowRange(int Start, int Count)`, defined in the same file. It stores only casting instances.
+- Produces: private Scene3D helpers `void MixFoliagePointSignature(ref ulong hash, Vector3 lightPosition, float radius, float nearRadius, Vector3 exclusionMin, Vector3 exclusionMax)` and `int DrawFoliagePointShadowFace(IGpuCommandList cl, PointShadowRenderer renderer, PointShadowAtlas atlas, int packedIndex, int face, int row, Vector3 lightPosition, float radius, float nearRadius, Vector3 exclusionMin, Vector3 exclusionMax)`.
+
+- [ ] Write `PointProxyUsesRestTransformsAndIgnoresClockAgitationAndProfile`. Build a stream with a casting shrub and a non-casting blade, asserting exactly one proxy with the original transform. Assert `stream.Casters.Length == 1`, its `Transform` equals the authored matrix and its `SourceIndex` identifies the casting source item. Query `[new FoliagePointShadowRange(0, 2)]` and assert one rigid run for the touching light and zero for an excluded or wholly near-radius-contained caster. Test light shell, near-radius and exclusion-box selection with the existing `PointShadowCasterSphere` predicate. Signature stays equal after changes to time, agitation and motion coefficients, changes after transform/mesh generation/casting changes, and clears when the batch disappears.
+- [ ] Run red.
+
+```bash
+build-slot --label foliage-point-red -- dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~FoliagePointShadowTests"
+```
+
+Expected: missing stream, records and query members.
+
+- [ ] Implement lazy point-shadow rest streams for casting instances only when point shadows are requested. Upload the rest stream before any depth render pass, with matrices rebased by the same frame origin as rigid instances. Reuse it until the immutable batch or render origin changes. Translate each submitted casting patch prefix into `FoliagePointShadowRange`, using original layout indices. `Query` filters proxies by `SourceIndex` and the existing light-shell predicate, then coalesces consecutive proxy slots of the same mesh into rigid runs. Query submitted candidates independently of camera rejection. Share that query between `MixFoliagePointSignature` and the point face draw helper. Mix only mesh identity and rest transforms. In `Scene3D.PointShadows.cs`, fold it into static signatures, and in `Scene3D.PointShadowPass.cs` draw it only for `PointShadowCasterSet.Rigid` through `PointShadowRenderer.BeginFace` and `DrawCasterRun`. Do not add it to cascade rigid spans or the colour stream. The extra 128-byte proxy stream is lazy and caster-only, with upload bytes accounted and storage retired with its batch. `EnsureUploaded` retains the supplied retire queue, so `Dispose` retires any live buffer rather than freeing an in-flight resource.
+- [ ] Add GPU fact `PointShadowStaysAtRestWhileCascadeMoves` to `FoliageShadowGpuTests`, with enabled point shadows and no ordinary rigid draws, static point-cache reuse across a shiver-only change and point-cache invalidation after proxy removal.
+- [ ] Run the red command with label `foliage-point-green`. Expected: proxy selection, signature and lifetime tests pass.
+- [ ] Run one GPU proof.
+
+```bash
+build-slot --label foliage-point-gpu --heavy -- env KE_GPU_TESTS=1 KE_GRAPHICS_BACKEND=metal-native dotnet test KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj -c Release --filter "FullyQualifiedName~FoliageShadowGpuTests|FullyQualifiedName~PointShadow"
+```
+
+Expected: readback assertions pass with zero selected rendering facts skipped. No existing golden files change.
+
+- [ ] Commit only these paths.
+
+```bash
+task_files=(
+  KhaozEngine.Render3D/Internal/FoliagePointShadowStream.cs
+  KhaozEngine.Render3D/Scene3D.FoliagePointShadows.cs
+  KhaozEngine.Render3D/Scene3D.PointShadows.cs
+  KhaozEngine.Render3D/Scene3D.PointShadowPass.cs
+  KhaozEngine.Render.Tests/Render3D/FoliagePointShadowTests.cs
+  KhaozEngine.Render.Tests/Gpu/FoliageShadowGpuTests.cs
+)
+git add -- "${task_files[@]}"
+git commit --only -m "feat(foliage): draw casting foliage into point shadows at rest" -- "${task_files[@]}"
 ```
 
 Concurrent shadow evidence, after fetch on 2026-10-13: inspect `git diff --stat origin/main...origin/<branch>` again before reconciliation. At observed `origin/main dfec28111`, none of these branches changes `Scene3D.ShadowCasters.cs`, `Rendering/ShadowMapRenderer.cs`, `Scene3D.PointShadow*.cs` or `Scene3D.ShadowDirtyState.cs`.
 
 | Branch and observed tip | Shadow code/test paths in the fetched diff | Other relevant path | Intersection with this plan |
 |---|---|---|---|
-| `fix/wa-shadow-control-cpu` at `ac7b58a8d` | `KhaozEngine.Render.Tests/Gpu/PointShadowFilterGpuTests.cs`, `PointShadowScene.cs`, `PointShadowSeamEvidence.cs`, `PointShadowSeamEvidenceOptions.cs`, `PointShadowSeamEvidenceRun.cs`, `PointShadowSeamEvidenceTests.cs`, all in the same `Gpu/` directory | `docs/INDEX.md` | `docs/INDEX.md` in Task 7 |
-| `fix/wa-shadow-diagnostics` at `7cd1fab67` | The same six `KhaozEngine.Render.Tests/Gpu/` paths | `docs/INDEX.md` | `docs/INDEX.md` in Task 7 |
+| `fix/wa-shadow-control-cpu` at `ac7b58a8d` | `KhaozEngine.Render.Tests/Gpu/PointShadowFilterGpuTests.cs`, `PointShadowScene.cs`, `PointShadowSeamEvidence.cs`, `PointShadowSeamEvidenceOptions.cs`, `PointShadowSeamEvidenceRun.cs`, `PointShadowSeamEvidenceTests.cs`, all in the same `Gpu/` directory | `docs/INDEX.md` | `docs/INDEX.md` in Task 8 |
+| `fix/wa-shadow-diagnostics` at `7cd1fab67` | The same six `KhaozEngine.Render.Tests/Gpu/` paths | `docs/INDEX.md` | `docs/INDEX.md` in Task 8 |
 | `fix/wa-shadow-proof` at `8632b5739` | The same six `KhaozEngine.Render.Tests/Gpu/` paths | `.github/workflows/ci.yml` | None |
 
 The control branch also changes its design, plans, proof artifacts and `tools/shadow-seam-analysis/`. Diagnostics changes its design, plans and proof artifacts. Proof changes its diagnostics plan and CPU proof artifact. This plan neither edits those artifacts nor changes their decisions. Future commits can change the overlap, so the orchestrator rechecks rather than assuming this snapshot stays current.
 
-### Task 6: TileWorld styles, conflict validation and split invalidation
+### Task 7: TileWorld styles, conflict validation and split invalidation
 
 **Files:**
 - Create: `KhaozEngine.TileWorld.Render3D/AnimatedFoliageStyle.cs`, `KhaozEngine.TileWorld.Render3D/AnimatedFoliageStyleSnapshot.cs`.
@@ -553,7 +594,7 @@ git add -- "${task_files[@]}"
 git commit --only -m "feat(tileworld): validate animated foliage styles and refresh splits" -- "${task_files[@]}"
 ```
 
-### Task 7: Living documentation, staged version and complete verification
+### Task 8: Living documentation, staged version and complete verification
 
 **Files:**
 - Modify: `CHANGELOG.md:8-33`, `KhaozEngine.Render3D/README.md:1184-1209`, `KhaozEngine.Terrain.Render3D/README.md:231-238`, `KhaozEngine.TileWorld.Render3D/README.md:534-545`, `docs/USING-KHAOZENGINE.md:10810-10862`, `docs/INDEX.md:47`.
@@ -561,11 +602,11 @@ git commit --only -m "feat(tileworld): validate animated foliage styles and refr
 - Test: `KhaozEngine.slnx`, including `KhaozEngine.Render.Tests/KhaozEngine.Render.Tests.csproj` and existing committed `KhaozEngine.Render.Tests/Gpu/goldens/*.{metal-native,direct3d11-native,vulkan-native}.txt`.
 
 **Interfaces:**
-- Consumes: final public signatures from Tasks 1/3/4/6 and verified GPU behavior from Task 5.
+- Consumes: final public signatures from Tasks 1/3/4/7 and verified GPU behavior from Tasks 5 and 6.
 - Produces: living usage examples for profile/casting maps, `FoliageAgitation.Update(position, deltaTime)` feeding `FoliageInteractor.Agitation`, and explicit cascade-motion versus rest-pose point-shadow behavior.
 - Produces: a `20.34.0` changelog extension and the existing design index row marked implemented only after the checks below pass. No release tag or consumer pin change.
 
-- [ ] Add the changelog entry to `20.34.0`, covering profile motion, moving-only shiver and opt-in animated cascade shadows. Keep the approved design immutable as history. Update the three package READMEs and the consumer guide with actual API names, exact defaults/ranges, the 14 rad/s constant, default Blade behavior, 96-byte instances, 288/512-byte uniforms and caster-only lazy point-proxy cost. Remove the stale retained-path requirement that casting must be disabled. Explain style conflicts, snapshots and map removal back to defaults.
+- [ ] Add the changelog entry to `20.34.0`, covering profile motion, moving-only shiver and opt-in animated cascade shadows. State the one behavior change explicitly: retained GPU ground cover no longer refuses `CastsShadows`, so a consumer with `UseGpuBatches` and global casting now gets retained, animated, casting cover instead of the CPU path. No current consumer sets that combination (Grimhollow keeps casting off), but the line must exist. Keep the approved design immutable as history. Update the three package READMEs and the consumer guide with actual API names, exact defaults/ranges, the 14 rad/s constant, default Blade behavior, 96-byte instances, 288/512-byte uniforms and caster-only lazy point-proxy cost. Remove the stale retained-path requirement that casting must be disabled. Explain style conflicts, snapshots and map removal back to defaults.
 - [ ] Sweep all Markdown for the changed names and old behavior.
 
 ```bash
@@ -629,4 +670,4 @@ gh workflow run cross-platform-gpu.yml --ref feature/foliage-motion-profiles -f 
 
 All existing foliage grids must confirm unchanged. This plan adds behavioral readback facts, so it requires no new committed grids. If the orchestrator elects to add a new foliage golden scene, its new `.metal-native.txt`, `.direct3d11-native.txt` and `.vulkan-native.txt` files must be baked by their own hosted backend legs with `bake=true`, inspected via every bake evidence PNG, committed with explicit paths, then verified by a later `bake=false` full-matrix run. Existing Blade files cannot be replaced. GPU matrix verification is one ordinary proof, not a stress run.
 
-- [ ] After all local and backend evidence is green and the open bounds question is resolved, mark the index row implemented in staged `20.34.0`, commit only `docs/INDEX.md` with subject `docs(foliage): record motion profile implementation acceptance` and return its SHA to the orchestrator. The orchestrator verifies branch containment, merges/pushes `main` and runs the guarded local-feed packaging ritual. Release/tag and Grimhollow adoption remain separate owner-authorized lanes.
+- [ ] After all local and backend evidence is green, mark the index row implemented in staged `20.34.0`, commit only `docs/INDEX.md` with subject `docs(foliage): record motion profile implementation acceptance` and return its SHA to the orchestrator. The orchestrator verifies branch containment, merges/pushes `main` and runs the guarded local-feed packaging ritual. Release/tag and Grimhollow adoption remain separate owner-authorized lanes.

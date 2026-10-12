@@ -164,16 +164,24 @@ vec2 AtmoSkyUv(vec3 direction, float radius) {
     vec3 d = normalize(direction);
     float u = fract(atan(d.z, d.x) / (2.0 * ATMO_PI));
     float theta = acos(clamp(d.y, -1.0, 1.0)), horizon = AtmoHorizonAngle(radius);
-    float v = theta <= horizon ? 0.5 * (1.0 - sqrt(max(1.0 - theta / horizon, 0.0)))
-        : 0.5 + 0.5 * sqrt(clamp((theta - horizon) / (ATMO_PI - horizon), 0.0, 1.0));
-    return vec2(u, AtmoSub(v, 108.0));
+    float v = theta <= horizon ? 0.5 * AtmoSub(1.0 - sqrt(max(1.0 - theta / horizon, 0.0)), 54.0)
+        : 0.5 + 0.5 * AtmoSub(sqrt(clamp((theta - horizon) / (ATMO_PI - horizon), 0.0, 1.0)), 54.0);
+    return vec2(u, v);
 }
 // Mirrors AtmosphereLutMapping.SkyDirection.
 vec3 AtmoSkyDirection(vec2 uv, float radius) {
-    float u = fract(uv.x), v = AtmoUnsub(uv.y, 108.0), horizon = AtmoHorizonAngle(radius);
-    float theta = v <= 0.5 ? horizon * (1.0 - (1.0 - 2.0 * v) * (1.0 - 2.0 * v))
-        : horizon + (ATMO_PI - horizon) * (2.0 * v - 1.0) * (2.0 * v - 1.0);
+    bool sky = uv.y <= 0.5;
+    float u = fract(uv.x), v = AtmoUnsub(sky ? uv.y * 2.0 : (uv.y - 0.5) * 2.0, 54.0);
+    float horizon = AtmoHorizonAngle(radius);
+    float theta = sky ? horizon * (1.0 - (1.0 - v) * (1.0 - v))
+        : horizon + (ATMO_PI - horizon) * v * v;
     float azimuth = 2.0 * ATMO_PI * u;
+    // acos/cos roundoff must not turn the exact upper horizon texel into a ground-hit ray.
+    if (sky && v >= 1.0) {
+        float y = -sqrt(max((radius - Atmo.Planet.x) * (radius + Atmo.Planet.x), 0.0)) / radius;
+        float horizontal = sqrt(max(1.0 - y * y, 0.0));
+        return vec3(horizontal * cos(azimuth), y, horizontal * sin(azimuth));
+    }
     return vec3(sin(theta) * cos(azimuth), cos(theta), sin(theta) * sin(azimuth));
 }
 
@@ -207,7 +215,12 @@ bool AtmoScatteringInterval(vec3 p, vec3 d, out float start, out float end, out 
     vec2 topRoots, groundRoots;
     if (!AtmoSphereRoots(p, d, Atmo.Planet.y, topRoots) || topRoots.y <= 0.0) return false;
     start = max(topRoots.x, 0.0); end = topRoots.y;
-    if (AtmoPlanetOccludes(p, d) && AtmoSphereRoots(p, d, Atmo.Planet.x, groundRoots) && groundRoots.x >= start
+    // View integration terminates at the first ground hit. Source-shadow roundoff margins must not
+    // suppress near-horizon ground intersections and integrate through the planet instead.
+    float r = length(p), projection = dot(p, d);
+    float tangentProjection = -sqrt(max((r - Atmo.Planet.x) * (r + Atmo.Planet.x), 0.0));
+    float projectionMargin = (8.0 * 1.1920929e-7) * max(abs(tangentProjection), 1.0);
+    if (projection < tangentProjection - projectionMargin && AtmoSphereRoots(p, d, Atmo.Planet.x, groundRoots) && groundRoots.x >= start
         && groundRoots.x <= end && groundRoots.y > groundRoots.x) {
         end = groundRoots.x;
         groundHit = true;
@@ -336,7 +349,8 @@ vec3 AtmoUnoccludedTransmittanceDirection(float r, float mu) {
 }
 // Mirrors AtmosphereShaderMath.TransmittanceTexel, the float32 AtmosphereTables.BuildTransmittance counterpart.
 void main() {
-    vec2 parameters = AtmoTransmittanceParameters(vUv);
+    // Texture rows have an upper-left origin. Fullscreen vertex UVs run oppositely on Metal.
+    vec2 parameters = AtmoTransmittanceParameters(gl_FragCoord.xy / vec2(256.0, 64.0));
     oColor = vec4(AtmoTransmittanceIntegral(vec3(0.0, parameters.x, 0.0),
         AtmoUnoccludedTransmittanceDirection(parameters.x, parameters.y)), 1.0);
 }
@@ -359,7 +373,7 @@ vec3 AtmoMultiScatteringSeries(vec3 radiance, vec3 response) {
 }
 // Mirrors AtmosphereTables.BuildMultiScattering, with 20 segments and no recursive source.
 void main() {
-    vec2 parameters = AtmoMultiParameters(vUv);
+    vec2 parameters = AtmoMultiParameters(gl_FragCoord.xy / vec2(32.0, 32.0));
     vec3 p = vec3(0.0, Atmo.Planet.x + parameters.x, 0.0);
     vec3 light = vec3(sqrt(max(1.0 - parameters.y * parameters.y, 0.0)), parameters.y, 0.0);
     vec3 radiance = vec3(0.0), response = vec3(0.0);
@@ -381,7 +395,7 @@ layout(location=0) out vec4 oColor;
 // Mirrors AtmosphereModel.SkyRadiance for each independent body. SkyValue applies art controls later.
 void main() {
     float radius = Atmo.Planet.x + max(Atmo.Camera.w, 0.0);
-    vec3 p = vec3(0.0, radius, 0.0), d = AtmoSkyDirection(vUv, radius), response;
+    vec3 p = vec3(0.0, radius, 0.0), d = AtmoSkyDirection(gl_FragCoord.xy / vec2(192.0, 108.0), radius), response;
     vec3 radiance = AtmoIntegrateScattering(p, d, Atmo.Sun.xyz, 32, false, response);
     if (Atmo.Moon.w > 0.0)
         radiance += Atmo.Moon.w * AtmoIntegrateScattering(p, d, Atmo.Moon.xyz, 32, false, response);

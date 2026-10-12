@@ -51,7 +51,8 @@ internal static class AtmosphereLutMapping
         => new((float)(Unsub(uv.Y, MultiSize) * heightLimitKm), (float)(Unsub(uv.X, MultiSize) * 2 - 1));
 
     /// <summary>Maps a finite nonzero direction with full azimuth and increased resolution at the
-    /// planet horizon. Only V uses texel centres.</summary>
+    /// planet horizon. Each V hemisphere has its own horizon texel, so filtering never mixes sky
+    /// with ground radiance at the horizon.</summary>
     public static Vector2 SkyUv(Vector3 direction, float radiusKm, float bottomKm)
     {
         double x = direction.X, y = direction.Y, z = direction.Z;
@@ -61,20 +62,21 @@ internal static class AtmosphereLutMapping
         double u = Wrap(Math.Atan2(z, x) / (2 * Math.PI));
         double theta = Math.Acos(Math.Clamp(y / length, -1, 1));
         double horizon = HorizonAngle(radiusKm, bottomKm);
-        double v = theta <= horizon
-            ? .5 * (1 - Math.Sqrt(Math.Max(1 - theta / horizon, 0)))
-            : .5 + .5 * Math.Sqrt(Math.Clamp((theta - horizon) / (Math.PI - horizon), 0, 1));
-        return new Vector2((float)u, Sub(v, SkyHeight));
+        float v = theta <= horizon
+            ? .5f * Sub(1 - Math.Sqrt(Math.Max(1 - theta / horizon, 0)), SkyHeight / 2)
+            : .5f + .5f * Sub(Math.Sqrt(Math.Clamp((theta - horizon) / (Math.PI - horizon), 0, 1)), SkyHeight / 2);
+        return new Vector2((float)u, v);
     }
 
     /// <summary>Returns a unit direction for periodic azimuth and bounded sky V.</summary>
     public static Vector3 SkyDirection(Vector2 uv, float radiusKm, float bottomKm)
     {
-        double u = Wrap(uv.X), v = Unsub(uv.Y, SkyHeight);
+        double u = Wrap(uv.X);
+        bool sky = uv.Y <= .5f;
+        double v = Unsub(sky ? uv.Y * 2 : (uv.Y - .5f) * 2, SkyHeight / 2);
         double horizon = HorizonAngle(radiusKm, bottomKm);
-        double theta = v <= .5
-            ? horizon * (1 - (1 - 2 * v) * (1 - 2 * v))
-            : horizon + (Math.PI - horizon) * (2 * v - 1) * (2 * v - 1);
+        double theta = sky ? horizon * (1 - (1 - v) * (1 - v))
+            : horizon + (Math.PI - horizon) * v * v;
         double azimuth = 2 * Math.PI * u;
         double sine = Math.Sin(theta);
         return new Vector3((float)(sine * Math.Cos(azimuth)), (float)Math.Cos(theta), (float)(sine * Math.Sin(azimuth)));

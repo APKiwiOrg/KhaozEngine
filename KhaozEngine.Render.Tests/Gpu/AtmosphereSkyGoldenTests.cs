@@ -6,6 +6,7 @@ using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
 
+[Collection("NativeDeviceLifecycle")]
 public sealed class AtmosphereSkyGoldenTests : IClassFixture<AtmosphereGoldenScene>
 {
     readonly AtmosphereGoldenScene _fixture;
@@ -59,6 +60,31 @@ public sealed class AtmosphereSkyGoldenTests : IClassFixture<AtmosphereGoldenSce
         _fixture.Capture(0);
         _fixture.Capture(.747f);
         AssertGridsClose(_fixture.CaptureFresh(.5f), _fixture.Capture(.5f), GoldenCompare.InSessionTolerance);
+    }
+
+    [GpuFact]
+    public void Golden_DefaultOffAndToggleOffAreByteIdentical()
+    {
+        byte[] before = _fixture.Capture(scene => scene.Post.Atmosphere = new AtmosphereSettings());
+        _fixture.Capture(scene =>
+        {
+            scene.Post.Atmosphere.MieScatteringPerKm *= 1.05f;
+            scene.Post.Atmosphere.DayTint = new Vector3(.8f, .9f, 1);
+        });
+        Assert.Equal(before, _fixture.Capture(.5f, atmosphere: false));
+        Assert.Equal(before, _fixture.CaptureFresh(.5f, atmosphere: false));
+    }
+
+    [GpuFact]
+    public void Golden_OneShotFrameMeasurement()
+    {
+        if (Environment.GetEnvironmentVariable("KE_MEASURE_ATMOSPHERE") != "1") return;
+        using var fixture = new AtmosphereGoldenScene();
+        double off = fixture.MeasureSingleFrame(false);
+        double on = fixture.MeasureSingleFrame(true);
+        Console.WriteLine($"ATMOSPHERE_FRAME off_ms={off:F6} on_ms={on:F6} delta_ms={on - off:F6} "
+            + $"cold_cache_ms={fixture.MeasurementColdCacheMilliseconds:F6} size=1600x900");
+        Assert.True(double.IsFinite(off) && off > 0 && double.IsFinite(on) && on > 0);
     }
 
     [GpuFact]

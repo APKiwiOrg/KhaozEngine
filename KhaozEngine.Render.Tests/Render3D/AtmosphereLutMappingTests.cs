@@ -51,7 +51,7 @@ public sealed class AtmosphereLutMappingTests
         Assert.Equal(new Vector2(100, 1), AtmosphereLutMapping.MultiParameters(new Vector2(31.5f / 32), 100));
         Assert.Equal(.5f / 108, AtmosphereLutMapping.SkyUv(Vector3.UnitY, 6360, 6360).Y);
         Assert.Equal(107.5f / 108, AtmosphereLutMapping.SkyUv(-Vector3.UnitY, 6360, 6360).Y);
-        Assert.Equal(.5f, AtmosphereLutMapping.SkyUv(Vector3.UnitX, 6360, 6360).Y);
+        Assert.Equal(53.5f / 108, AtmosphereLutMapping.SkyUv(Vector3.UnitX, 6360, 6360).Y);
     }
 
     [Theory]

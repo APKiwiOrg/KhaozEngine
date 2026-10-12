@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using KhaozEngine.Gpu;
 using KhaozEngine.Render3D.Internal;
+using KhaozEngine.Render3D.Rendering;
 using Xunit;
 
 namespace KhaozEngine.Tests.Gpu;
@@ -53,6 +54,18 @@ void main() {
         using var commands = factory.CreateCommandList();
         using (GpuRecording.Open(device, commands, nameof(AtmosphereHorizonGpuTests)))
         {
+            // The fixture's capture does not initialize this recording's uniform-ring segment.
+            var scene = fixture.Scene;
+            var post = scene.Post;
+            var camera = scene.CameraOverride!;
+            var origin = scene.RenderOrigin.GetValueOrDefault();
+            var model = post.ResolveAtmosphereModel();
+            var frame = AtmosphereRenderer.ResolveFrame(post, model);
+            var lighting = model.EvaluateLighting(post.Atmosphere.HeightKm(camera.Eye.Y), frame);
+            var uniforms = AtmosphereRenderer.PackUbo(post.Atmosphere, frame, lighting,
+                camera.Eye - origin, origin, camera.View, camera.Projection,
+                AtmosphereGoldenScene.Width, AtmosphereGoldenScene.Height, post.Hdr);
+            commands.UpdateBuffer(scene.AtmosphereForTests.Bindings.Uniforms, 0, in uniforms);
             commands.SetFramebuffer(framebuffer);
             commands.SetPipeline(pipeline);
             commands.SetGraphicsResourceSet(0, set);

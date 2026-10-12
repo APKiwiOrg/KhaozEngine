@@ -9,21 +9,21 @@ internal sealed class RasterCanvas
 {
     readonly Vector3[] _rgb;
 
-    internal RasterCanvas(int size, MapRect rect, float pixelsPerMetre)
+    internal RasterCanvas(int size, MapRect rect, float effectivePixelsPerMetre)
     {
         Size = size;
         Rect = rect;
-        PixelsPerMetre = pixelsPerMetre;
+        EffectivePixelsPerMetre = effectivePixelsPerMetre;
         _rgb = new Vector3[checked(size * size)];
     }
 
     internal int Size { get; }
     internal MapRect Rect { get; }
-    internal float PixelsPerMetre { get; }
+    internal float EffectivePixelsPerMetre { get; }
 
     /// <summary>Converts a raster coordinate to its map-space pixel centre, including coordinates outside the canvas.</summary>
     internal Vector2 MapPoint(float px, float py) =>
-        new(Rect.X + (px + 0.5f) / PixelsPerMetre, Rect.Top - (py + 0.5f) / PixelsPerMetre);
+        new(Rect.X + (px + 0.5f) / EffectivePixelsPerMetre, Rect.Top - (py + 0.5f) / EffectivePixelsPerMetre);
 
     internal void Set(int x, int y, Color colour) => _rgb[y * Size + x] = new Vector3(colour.R, colour.G, colour.B);
 

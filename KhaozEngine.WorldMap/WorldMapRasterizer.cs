@@ -14,20 +14,19 @@ public static class WorldMapRasterizer
     /// <param name="style">The map raster resolution and appearance.</param>
     /// <param name="chunk">The map-space chunk address.</param>
     /// <returns>A square RGBA8 image stamped with the revision captured before sampling.</returns>
+    /// <exception cref="ArgumentException">A style property is outside its supported finite range.</exception>
     public static WorldMapChunkImage Rasterize(IWorldMapSource source, WorldMapStyle style, WorldMapChunkCoord chunk)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(style);
-        if (!float.IsFinite(style.PixelsPerMetre) || style.PixelsPerMetre <= 0f)
-            throw new ArgumentOutOfRangeException(nameof(style), "Pixels per metre must be finite and positive.");
+        WorldMapStyleValidation.Validate(style);
 
         MapRect rect = WorldMapChunking.ChunkRect(chunk, style.ChunkMetres);
         int size = style.ChunkPixels;
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(size);
         long revision = source.Revision;
         float margin = WorldMapRasterReach.SurfaceMetres(style, source.SurfaceCellSize);
         var sampler = new SurfaceSampler(source.SampleSurface(rect.Expand(margin)));
-        var canvas = new RasterCanvas(size, rect, style.PixelsPerMetre);
+        var canvas = new RasterCanvas(size, rect, style.EffectivePixelsPerMetre);
         var relief = new ReliefShader(style.Relief);
         var water = new WaterPainter(sampler, canvas, style.Water);
 

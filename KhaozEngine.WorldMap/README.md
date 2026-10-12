@@ -14,7 +14,8 @@ along its local axes before rotation.
 north and east edges do not. Non-positive extents are empty and intersect nothing. `Expand` moves
 each edge by a distance in metres, and `Union` encloses both rectangles' edges.
 
-`WorldMapChunking` addresses square chunks aligned to the map origin. `ChunkAt` floors both axes,
+`WorldMapChunking` addresses square chunks aligned to the map origin. `ChunkAt` floors both axes and
+corrects against canonical edges computed as `(float)(index * (double)chunkMetres)`,
 including negative positions. `ChunkRect` returns the south-west origin and square size.
 `ChunksTouching` enumerates intersecting chunks west to east within each row, from south to north,
 and excludes chunks that only touch an area's north or east boundary. Chunk sizes must be finite
@@ -69,12 +70,18 @@ carries neither levels nor top heights, and this round supports oriented rectang
 ## Surface rasterization
 
 Call `WorldMapRasterizer.Rasterize(source, style, chunk)` to produce a `WorldMapChunkImage`.
+Rasterization and cache construction reject invalid styles with `ArgumentException` naming the
+offending property. Resolution and chunk size must be finite and positive, with at least one rounded
+pixel. Relief altitude is finite in `(0, 90]`, strength and steep darkening are finite in `[0, 1]`,
+and the steep slope threshold is finite and non-negative. Deep water depth is finite and positive.
+Shoreline pixels, wall width and outline width are non-negative, with finite floating-point widths.
+Both shadow offset components must be finite.
 `Coord` identifies the chunk, `Size` is its pixel edge length, and `Rgba` holds `Size * Size * 4`
 opaque RGBA8 bytes. Raster row zero is north, and column zero is west. `Revision` is captured before
 sampling, so a consumer can discard an image when the source changes during the read.
 
 The rasterizer samples the source once over the chunk plus a margin of
-`2 * SurfaceCellSize + Water.ShorelinePixels / PixelsPerMetre` metres. It blends ground colours and
+`2 * SurfaceCellSize + Water.ShorelinePixels / EffectivePixelsPerMetre` metres. It blends ground colours and
 heights between source cell centres, dropping void contributions and renormalizing the remaining
 weights. Pixels whose nearest cell is void retain `VoidColor`. Dry ground receives normalized
 hillshade and the configured steep-slope multiplier. Water blends the depth palette without relief,
@@ -96,8 +103,11 @@ contributions are combined into one blend per pixel, so opaque symbols fully rep
 
 Colour calculations use the stored channel values directly. Quantization clamps each channel to
 zero through one, rounds to the nearest byte, and sets alpha to 255. Matching source data, revision
-and style produce identical bytes on one machine. Chunk images match the corresponding pixels of a
-larger raster at the same pixels per metre.
+and style produce identical bytes on one machine. `PixelsPerMetre` is the requested scale.
+`EffectivePixelsPerMetre` is `ChunkPixels / ChunkMetres`, and all raster geometry uses that rounded
+scale so the image fills its chunk rectangle. Chunk images match the corresponding pixels of a
+larger raster with the same effective pixels per metre and aligned pixel centres. Increasing chunk
+size at the same requested scale can round to a different effective scale.
 
 ## Feature anchors
 

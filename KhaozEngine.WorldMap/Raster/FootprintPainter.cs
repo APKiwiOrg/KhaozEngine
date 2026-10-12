@@ -30,7 +30,7 @@ internal sealed class FootprintPainter(RasterCanvas canvas, WorldMapStyle style)
         foreach (var item in resolved)
         {
             float inset = item.Symbol.Kind == WorldMapSymbolKind.Wall ? 0f :
-                MathF.Max(0f, style.OutlinePixels / canvas.PixelsPerMetre);
+                MathF.Max(0f, style.OutlinePixels / canvas.EffectivePixelsPerMetre);
             PaintShape(new CoverageSampler(item.Footprint, item.Symbol.Kind, style.WallWidthMetres, Vector2.Zero),
                 item.Symbol.Fill, item.Symbol.Outline, inset);
         }
@@ -40,10 +40,10 @@ internal sealed class FootprintPainter(RasterCanvas canvas, WorldMapStyle style)
     {
         MapRect bounds = shape.Bounds;
         if (!bounds.Intersects(canvas.Rect)) return;
-        int left = PixelEdge((bounds.X - canvas.Rect.X) * canvas.PixelsPerMetre, roundUp: false);
-        int right = PixelEdge((bounds.Right - canvas.Rect.X) * canvas.PixelsPerMetre, roundUp: true);
-        int top = PixelEdge((canvas.Rect.Top - bounds.Top) * canvas.PixelsPerMetre, roundUp: false);
-        int bottom = PixelEdge((canvas.Rect.Top - bounds.Y) * canvas.PixelsPerMetre, roundUp: true);
+        int left = PixelEdge((bounds.X - canvas.Rect.X) * canvas.EffectivePixelsPerMetre, roundUp: false);
+        int right = PixelEdge((bounds.Right - canvas.Rect.X) * canvas.EffectivePixelsPerMetre, roundUp: true);
+        int top = PixelEdge((canvas.Rect.Top - bounds.Top) * canvas.EffectivePixelsPerMetre, roundUp: false);
+        int bottom = PixelEdge((canvas.Rect.Top - bounds.Y) * canvas.EffectivePixelsPerMetre, roundUp: true);
         for (int row = top; row < bottom; row++)
             for (int column = left; column < right; column++)
             {

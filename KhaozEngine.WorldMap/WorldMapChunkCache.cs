@@ -16,10 +16,12 @@ public sealed class WorldMapChunkCache : IDisposable
     /// <summary>Creates a cache and subscribes to source changes for automatic invalidation.</summary>
     /// <param name="source">The authored world, permitting concurrent reads during builds.</param>
     /// <param name="style">The immutable raster and feature style used for every chunk.</param>
+    /// <exception cref="ArgumentException">A style property is outside its supported finite range.</exception>
     public WorldMapChunkCache(IWorldMapSource source, WorldMapStyle style)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(style);
+        WorldMapStyleValidation.Validate(style);
         Source = source;
         Style = style;
         Source.Changed += Invalidate;

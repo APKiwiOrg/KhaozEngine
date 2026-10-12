@@ -90,6 +90,9 @@ envelope. Registration-origin allowances stay in `ColliderBounds` for world resi
 changing this reported interaction extent. It returns null instead of refusing when the asset declares
 neither a collider nor a selection volume, so an editor can size an edit of such a placement. World builds keep
 refusing it.
+The additive `Bounds(placement, shapes, out spatialBounds)` overload also returns the conservative collider and
+envelope union for edit invalidation, from the same geometry resolution. Use that spatial extent for Physics,
+Nav and Residency consequences.
 
 `MapShapeBounds.Of` computes tight world bounds in scalar double under the physics seam's conventions: boxes,
 spheres and capsules are centred on their pose, a cylinder stands on its base and spans `Length` along its local Y,
@@ -388,6 +391,10 @@ changed placements have neither a collider nor a selection volume on either side
 bound, a geometry change reports `Unbounded` with the three flags and no bounds. The provider never refuses an edit:
 a placement whose support does not resolve or whose asset shapes are refused marks its side unknown, and the edit
 reports `Unbounded` the same way. Collider height edits size their placements through the same provider.
+The provider separately carries conservative installed geometry as `NativePlacementExtent.SpatialBounds`.
+`OldSpatialBounds` and `NewSpatialBounds` transport it in the effects while preserving the tight report.
+Residency affected tiles and navigation capture invalidation consume those spatial extents. Effects without
+separate spatial values fall back to their reported bounds.
 
 ## Deferred work
 

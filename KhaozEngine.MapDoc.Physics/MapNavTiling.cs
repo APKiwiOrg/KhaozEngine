@@ -205,7 +205,8 @@ public static class MapNavTiling
     /// <summary>The navigation tiles <paramref name="effects"/> invalidates in (Z, X) order, empty unless it invalidates
     /// navigation or water medium. <paramref name="world"/> is the world built after the edit, as for
     /// <see cref="MapResidencyOwnership.Affected(MapBuiltWorld, MapWorldGrids, MapNativeEditEffects)"/>, whose navigation tiles this widens by the seam margin: every tile
-    /// whose capture bounds meet, on X and Z, the old or new edit bounds or the bounds of a chunk of a listed patch. For a
+    /// whose capture bounds meet, on X and Z, <see cref="MapNativeEditEffects.OldSpatialBounds"/> or
+    /// <see cref="MapNativeEditEffects.NewSpatialBounds"/> or the bounds of a chunk of a listed patch. For a
     /// resolver-1 terrain edit it also widens each edit box by the footprint of every sculpt tile position the box meets,
     /// taken arithmetically from <see cref="TerrainSculpt.TileSize"/> and <see cref="MapBuiltWorld.LegacySculptCellSize"/>
     /// whether or not that tile exists, so a sculpt tile the edit added or removed lists every tile whose geometry
@@ -236,7 +237,7 @@ public static class MapNavTiling
             // Every partition tile, without enumerating every storage tile through Affected first. The edit boxes are
             // still checked, as Affected checks them.
             grids.Validate(world);
-            foreach (MapBox3? box in new[] { effects.OldBounds, effects.NewBounds })
+            foreach (MapBox3? box in new[] { effects.OldSpatialBounds, effects.NewSpatialBounds })
                 if (box is { } within) MapResidencyOwnership.RequireWithinWorld(within);
             (int minX, int maxX, int minZ, int maxZ) = PartitionRange(world, grids);
             var every = new MapNavTileCoord[RequirePartitionCount(minX, maxX, minZ, maxZ)];
@@ -249,7 +250,7 @@ public static class MapNavTiling
         MapAffectedSet affected = MapResidencyOwnership.Affected(world, grids, effects);
         if (!navigates) return Array.Empty<MapNavTileCoord>();
 
-        MapBox3[] edited = new[] { effects.OldBounds, effects.NewBounds }.Where(b => b.HasValue).Select(b => b!.Value).ToArray();
+        MapBox3[] edited = new[] { effects.OldSpatialBounds, effects.NewSpatialBounds }.Where(b => b.HasValue).Select(b => b!.Value).ToArray();
         var widen = new List<(double MinX, double MinZ, double MaxX, double MaxZ)>();
         foreach (MapBox3 box in edited) widen.Add((box.MinX, box.MinZ, box.MaxX, box.MaxZ));
         string[] prefixes = MapResidencyOwnership.PatchChunkPrefixes(world, effects.Patches);

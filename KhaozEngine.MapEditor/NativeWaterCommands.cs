@@ -31,6 +31,8 @@ public sealed class WaterEditCommand : EditorCommand, INativeDocumentCommand
             {
                 OldBounds = accepted.NewBounds,
                 NewBounds = accepted.OldBounds,
+                OldSpatialBounds = accepted.NewSpatialBounds,
+                NewSpatialBounds = accepted.OldSpatialBounds,
                 DigestChanges = Array.AsReadOnly(accepted.DigestChanges.Select(c => new MapDigestChange(c.Key, c.After, c.Before)).ToArray()),
             } : accepted;
             return new(writes, effects, () => { });

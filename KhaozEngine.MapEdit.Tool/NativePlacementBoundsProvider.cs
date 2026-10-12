@@ -13,7 +13,8 @@ namespace KhaozEngine.MapEdit;
 /// with analytic <see cref="MapRuntime.BuildField"/> support for resolver 1, and
 /// <see cref="NativeDocumentService.SessionOptionsV2"/> with authored bindings for resolver 2. It resolves only the
 /// listed placements whose assets declare a collider or a selection volume, and bounds each with
-/// <see cref="MapPlacementShapes.Bounds"/>. A placement whose asset declares neither contributes nothing and is never
+/// <see cref="MapPlacementShapes.Bounds(MapResolvedPlacement, MapAssetShapes, out MapBox3?)"/>, keeping the tight
+/// report and conservative spatial extent separate. A placement whose asset declares neither contributes nothing and is never
 /// resolved. A placement whose asset shapes, support or geometry refuse with <see cref="MapDocumentException"/> marks the
 /// extent unknown, so an edit is never refused for its bounds. Stateless.</summary>
 public sealed class NativePlacementBoundsProvider : INativePlacementBounds
@@ -51,20 +52,24 @@ public sealed class NativePlacementBoundsProvider : INativePlacementBounds
             else if (asset.Shapes is not null) shaped.Add(id);
         }
 
-        MapBox3? union = null;
+        MapBox3? union = null, spatialUnion = null;
         foreach (MapResolvedPlacement placement in Resolve(document, assets, registry, shaped, ref unknown))
         {
             try
             {
-                if (MapPlacementShapes.Bounds(placement, shapes[placement.AssetId].Shapes!) is { } box)
+                if (MapPlacementShapes.Bounds(placement, shapes[placement.AssetId].Shapes!, out MapBox3? spatial) is { } box)
+                {
                     union = union is { } u ? u.Union(box) : box;
+                    MapBox3 geometry = spatial ?? box;
+                    spatialUnion = spatialUnion is { } s ? s.Union(geometry) : geometry;
+                }
             }
             catch (MapDocumentException)
             {
                 unknown = true;
             }
         }
-        return new NativePlacementExtent(union, unknown);
+        return new NativePlacementExtent(union, unknown) { SpatialBounds = spatialUnion };
     }
 
     // The asset's shapes, no shapes when it declares neither a collider nor a selection volume, or refused when the

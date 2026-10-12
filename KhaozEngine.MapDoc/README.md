@@ -36,7 +36,7 @@ features are not supported in native documents yet.
 
 ## Native edit effects
 
-Every API in this section is new in 20.30.0.
+The native edit contract shipped in 20.30.0.
 `KhaozEngine.MapDoc.Editing.MapNativeEditEffects` describes an accepted document edit with old and new
 `MapBox3` bounds, patch keys, space and dependency IDs, `MapDigestChange` values and `MapNativeInvalidation`
 flags for Terrain, Physics, Nav, Material, Residency and Placements. `Unbounded` marks a geometry change whose
@@ -44,6 +44,10 @@ bounds are unknown. It is a full reset: discard all prior derived state for this
 post-edit world. `Describe()` emits
 compact canonical JSON with fixed field order, sorted patch keys and ordinal IDs, invariant numbers and explicit
 nulls.
+`OldBounds` and `NewBounds` keep the reported extents. `OldSpatialBounds` and `NewSpatialBounds` include optional
+conservative installed geometry bounds for Physics, Nav and Residency. Without separate spatial values they follow
+the reported bounds, including record copies that change them. Spatial values always include the report.
+`Describe()` adds `oldSpatialBounds` and `newSpatialBounds` after the reported bounds only when they differ.
 `MapNativeWriteSet` names patch payloads, surface declarations and placement state for publication.
 Records, spaces, corner owners and material uses are carried by the named patch payloads.
 

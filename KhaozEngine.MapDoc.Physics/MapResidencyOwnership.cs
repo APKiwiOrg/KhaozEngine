@@ -136,6 +136,8 @@ public static class MapResidencyOwnership
     /// <see cref="MapNativeEditEffects.WaterBodyIds"/> is a <c>water:{bodyId}</c> owner, and the storage tiles of
     /// each one <paramref name="world"/> holds, under the rule of <see cref="BuildWater"/>, join the tiles of the
     /// reported edit bounds.</para>
+    /// <para>Edit extents use <see cref="MapNativeEditEffects.OldSpatialBounds"/> and <see cref="MapNativeEditEffects.NewSpatialBounds"/>,
+    /// keeping tight reported interaction bounds separate from conservative installed geometry.</para>
     /// <para>Owners are the statics whose bounds meet the old or new edit bounds, plus the chunks of every listed patch:
     /// its own surface chunks and the chunks of every wall strip the world records in it. Storage tiles are those the
     /// old and new edit bounds reach, under the membership rule of <see cref="Build"/>, plus the membership of those
@@ -158,7 +160,7 @@ public static class MapResidencyOwnership
         if ((effects.Invalidates & Spatial) == 0)
             return new(Array.Empty<string>(), Array.Empty<MapTileCoord>(), Array.Empty<MapNavTileCoord>());
 
-        MapBox3[] edited = new[] { effects.OldBounds, effects.NewBounds }.Where(b => b.HasValue).Select(b => b!.Value).ToArray();
+        MapBox3[] edited = new[] { effects.OldSpatialBounds, effects.NewSpatialBounds }.Where(b => b.HasValue).Select(b => b!.Value).ToArray();
         foreach (MapBox3 box in edited) RequireWithinWorld(box);
         string[] prefixes = PatchChunkPrefixes(world, effects.Patches);
         var owners = new SortedSet<string>(StringComparer.Ordinal);

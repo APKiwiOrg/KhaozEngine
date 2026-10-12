@@ -36,7 +36,9 @@ public sealed class NativeCollisionService(MapEditSession session)
 {
     /// <summary>What a height edit invalidates: every placement of the asset changes its physics, navigation and
     /// residency bounds. The old and new bounds are the placements' collider and interaction envelope bounds from
-    /// <see cref="NativePlacementBoundsProvider"/>, as placement edits report them. When the provider cannot size a
+    /// <see cref="NativePlacementBoundsProvider"/>, as placement edits report them. Spatial invalidation uses the
+    /// separately captured <see cref="MapNativeEditEffects.OldSpatialBounds"/> and <see cref="MapNativeEditEffects.NewSpatialBounds"/>.
+    /// When the provider cannot size a
     /// placement, the edit also reports <see cref="MapNativeInvalidation.Unbounded"/> with no bounds.</summary>
     public const MapNativeInvalidation HeightEditInvalidation =
         MapNativeInvalidation.Physics | MapNativeInvalidation.Nav | MapNativeInvalidation.Residency;
@@ -161,7 +163,8 @@ public sealed class NativeCollisionService(MapEditSession session)
         bool unknown = old.Unknown || @new.Unknown;
         var effects = new MapNativeEditEffects(unknown ? null : old.Bounds, unknown ? null : @new.Bounds,
             Array.Empty<MapPatchKey>(), Array.Empty<string>(), Array.Empty<string>(), digests.AsReadOnly(),
-            unknown ? HeightEditInvalidation | MapNativeInvalidation.Unbounded : HeightEditInvalidation);
+            unknown ? HeightEditInvalidation | MapNativeInvalidation.Unbounded : HeightEditInvalidation)
+        { OldSpatialBounds = unknown ? null : old.SpatialBounds, NewSpatialBounds = unknown ? null : @new.SpatialBounds };
         return new HeightPlan(before, after, Array.AsReadOnly(affected), effects, false, colliderId, bytes,
             colliderReference, manifest, Array.AsReadOnly(newRoots), newRoot);
     }

@@ -33,6 +33,8 @@ public sealed class TerrainEditCommand : EditorCommand, INativeDocumentCommand
             {
                 OldBounds = accepted.NewBounds,
                 NewBounds = accepted.OldBounds,
+                OldSpatialBounds = accepted.NewSpatialBounds,
+                NewSpatialBounds = accepted.OldSpatialBounds,
                 DigestChanges = Array.AsReadOnly(accepted.DigestChanges.Select(c => new MapDigestChange(c.Key, c.After, c.Before)).ToArray()),
             } : accepted;
             return new(undo ? _undoWriteSet! : writes, MapWaterEdits.NameAffectedBodies(candidate.Water, effects, candidate.Surfaces), () => { });

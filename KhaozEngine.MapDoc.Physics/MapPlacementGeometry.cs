@@ -93,7 +93,12 @@ public static class MapPlacementShapes
     /// so an editor can report an edit of such a placement. Throws <see cref="ArgumentException"/> when
     /// <paramref name="shapes"/> belongs to another asset, and <see cref="MapDocumentException"/> as
     /// <see cref="Resolve"/> does for the scale, the transform and the envelope.</summary>
-    public static MapBox3? Bounds(MapResolvedPlacement placement, MapAssetShapes shapes)
+    public static MapBox3? Bounds(MapResolvedPlacement placement, MapAssetShapes shapes) => Bounds(placement, shapes, out _);
+
+    /// <summary>Reports the same tight bounds as <see cref="Bounds(MapResolvedPlacement, MapAssetShapes)"/> and returns
+    /// conservative installed collider and envelope bounds in <paramref name="spatialBounds"/> for edit invalidation.
+    /// Both values are null when the asset declares neither a collider nor a selection volume.</summary>
+    public static MapBox3? Bounds(MapResolvedPlacement placement, MapAssetShapes shapes, out MapBox3? spatialBounds)
     {
         ArgumentNullException.ThrowIfNull(placement);
         ArgumentNullException.ThrowIfNull(shapes);
@@ -101,9 +106,10 @@ public static class MapPlacementShapes
             throw new ArgumentException(
                 $"Shapes of asset '{shapes.AssetId}' cannot bound placement '{placement.PlacementId}' of asset '{placement.AssetId}'.",
                 nameof(shapes));
-        if (shapes.Collider is null && shapes.Selection is null) return null;
+        if (shapes.Collider is null && shapes.Selection is null) { spatialBounds = null; return null; }
         MapPlacementGeometry geometry = Build(placement, shapes);
         MapBox3 envelope = geometry.Envelope.Bounds;
+        spatialBounds = geometry.ColliderBounds is { } conservative ? conservative.Union(envelope) : envelope;
         return geometry.Collider is { } collider ? MapShapeBounds.Of(collider, geometry.WorldPose).Union(envelope) : envelope;
     }
 

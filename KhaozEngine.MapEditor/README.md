@@ -885,6 +885,10 @@ changed placements' collider and envelope bounds before and after. Without a bin
 and no bounds. The provider never refuses an edit. An edit with no such change, or whose changed placements have no
 collider and no selection volume, reports `Placements` only. The editor takes no physics reference, and ke-mapedit
 supplies the provider.
+Providers may additionally set `NativePlacementExtent.SpatialBounds` to conservative installed geometry bounds.
+The effects keep their tight reports in `OldBounds` and `NewBounds`, and carry conservative extents in
+`OldSpatialBounds` and `NewSpatialBounds` for Physics, Nav and Residency. Existing providers use the reported
+bounds for both quantities. Unknown geometry keeps the same `Unbounded` behavior.
 Commands outside this native document transaction protocol are refused on opted-in documents.
 Analytic documents keep their existing command behavior.
 Direct placement `Apply` and `Revert` check document-local native validity only, without asset membership.

@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Text.Json.Nodes;
@@ -17,10 +16,7 @@ internal static partial class NativeWorldFixtures
 {
     internal static MapBuiltWorld BuildNestedCompound(int levels)
     {
-        float[] offsets = new[] { -524288f }.Concat(Enumerable.Repeat(-0.03125f, levels - 2)).Append(524288f).ToArray();
-        PhysicsShape shape = new BoxShape(new(0.515625f, 0.5f, 0.5f));
-        foreach (float offset in offsets.Reverse())
-            shape = new CompoundShape(new[] { new CompoundChild(shape, Pose.At(new(offset, 0, 0))) });
+        PhysicsShape shape = NestedCompoundShape(levels);
         var source = new NativeWorldAssetSource();
         MapAssetRef mesh = source.Add(SharedMeshId, "mesh:nested-compound");
         MapAssetRef collider = source.Add("nested-compound.collider", ColliderBytes(shape));

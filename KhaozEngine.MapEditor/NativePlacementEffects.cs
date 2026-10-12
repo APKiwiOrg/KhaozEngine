@@ -11,7 +11,12 @@ namespace KhaozEngine.MapEditor;
 /// <summary>What <see cref="INativePlacementBounds"/> knows about a set of placements. <see cref="Bounds"/> is the union
 /// of the geometry it could compute, or null when there is none. <see cref="Unknown"/> is true when the geometry of at
 /// least one placement could not be computed, so <see cref="Bounds"/> does not limit the set.</summary>
-public readonly record struct NativePlacementExtent(MapBox3? Bounds, bool Unknown);
+public readonly record struct NativePlacementExtent(MapBox3? Bounds, bool Unknown)
+{
+    /// <summary>Optional conservative installed geometry bounds for spatial invalidation. When absent,
+    /// <see cref="Bounds"/> supplies the spatial extent, preserving existing providers.</summary>
+    public MapBox3? SpatialBounds { get; init; }
+}
 
 /// <summary>World bounds of native placements, which a host that resolves placement geometry binds next to the asset
 /// closure through <see cref="EditorHistory.BindNativeAssets(MapDocument, MapAssetClosure, INativePlacementBounds)"/>.
@@ -24,7 +29,9 @@ public interface INativePlacementBounds
     /// <paramref name="assets"/> and <paramref name="registry"/>. A placement with neither a collider nor a selection
     /// volume contributes nothing. A placement whose geometry cannot be computed, for example because its support does
     /// not resolve or its asset shapes are refused, marks the extent <see cref="NativePlacementExtent.Unknown"/>
-    /// instead of throwing, so an edit is never refused for its bounds. Programming errors such as an ID the document
+    /// instead of throwing, so an edit is never refused for its bounds. Providers whose installed geometry can extend
+    /// beyond the report supply <see cref="NativePlacementExtent.SpatialBounds"/> for Physics, Nav and Residency.
+    /// Programming errors such as an ID the document
     /// does not hold still throw.</summary>
     NativePlacementExtent Bounds(MapDocument document, MapAssetClosure assets, MapDocRegistry registry,
         IReadOnlyList<string> placementIds);
@@ -59,7 +66,8 @@ internal static class NativePlacementEffects
         NativePlacementExtent newExtent = Extent(after, current, changed, assets, registry, bounds);
         if (oldExtent.Unknown || newExtent.Unknown) return Effects(null, null, FullReset);
         if (oldExtent.Bounds is null && newExtent.Bounds is null) return Effects(null, null, MapNativeInvalidation.Placements);
-        return Effects(oldExtent.Bounds, newExtent.Bounds, MapNativeInvalidation.Placements | Spatial);
+        return Effects(oldExtent.Bounds, newExtent.Bounds, MapNativeInvalidation.Placements | Spatial) with
+        { OldSpatialBounds = oldExtent.SpatialBounds, NewSpatialBounds = newExtent.SpatialBounds };
     }
 
     // What an edit of unknown extent invalidates: everything, as a full reset.

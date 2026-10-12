@@ -151,6 +151,8 @@ from the collider's current vertical extent onto the requested one. A lone box b
 other collider refuses with "compound boxes". The `NativeCollisionEditResult` carries the collider digests before
 and after, every placement of the asset in ordinal order and `MapNativeEditEffects` with the placements' old and new
 world collider and interaction envelope bounds and `Physics`, `Nav` and `Residency` invalidation.
+`OldBounds` and `NewBounds` retain the tight envelope report. `OldSpatialBounds` and `NewSpatialBounds` carry the
+conservative installed geometry extent used by spatial invalidation, so a collider edit cannot omit a crossed tile.
 
 `NativePlacementBoundsProvider.Instance` sizes those bounds and every placement edit the session applies. It resolves
 only the listed placements under the session resolve options and bounds each with `MapPlacementShapes.Bounds`, so a
@@ -158,6 +160,8 @@ placement with neither a collider nor a selection volume contributes nothing. A 
 resolve or whose asset shapes are refused marks its side unknown, and the edit reports `Unbounded` instead of being
 refused. The GUI editor does not bind a provider yet: Showcase, which hosts `MapEditorScene`, does not reference
 this tool, so that wiring is deferred work in the MapDoc.Physics README.
+The provider uses the additive Bounds overload to return both the tight report and `NativePlacementExtent.SpatialBounds`
+from the same geometry resolution. Placement edits and collider height edits transport both quantities.
 
 A dry run, the default, computes the new collider bytes, digest and effects over an in-memory overlay and touches no
 file and no session state. Apply writes the new collider and a new root manifest through `MapAssetFileWriter`,

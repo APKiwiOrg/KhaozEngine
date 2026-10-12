@@ -57,8 +57,14 @@ internal sealed class FilteredSurfaceSource : IMapSurfaceAcquisitionSource
         Detail = "filtered fixture patch is unloaded",
     };
 
-    sealed class Acquisition(FilteredSurfaceSource source, IMapSurfaceAcquisitionSession inner) : IMapSurfaceAcquisitionSession
+    sealed class Acquisition(FilteredSurfaceSource source, IMapSurfaceAcquisitionSession inner) : IMapSurfacePageVisitSession
     {
+        public bool CanObservePageVisits => inner is IMapSurfacePageVisitSession { CanObservePageVisits: true };
+        public event Action? PageVisiting
+        {
+            add { if (inner is IMapSurfacePageVisitSession observable) observable.PageVisiting += value; }
+            remove { if (inner is IMapSurfacePageVisitSession observable) observable.PageVisiting -= value; }
+        }
         public string SnapshotId => inner.SnapshotId;
         public string RootSha256 => inner.RootSha256;
         public int PagesRead => inner.PagesRead;

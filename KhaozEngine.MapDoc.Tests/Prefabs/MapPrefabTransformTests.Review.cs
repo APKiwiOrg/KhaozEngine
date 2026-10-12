@@ -118,6 +118,53 @@ public sealed partial class MapPrefabTransformTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SuppliedSource_TransformedNativeFloorKeepsProducerHeightAndMissingGeometry(bool unavailable)
+    {
+        var f = PrefabFixtures.Transformed(0.371f, 1.2f, new(30000.25f, 5, -29999.75f));
+        const string id = "transformed-producer";
+        var patch = PrefabFixtures.Patch(id, 4, 4, 200);
+        f.Document.Surfaces.Patches.Add(patch.Key, patch);
+        f.Document.Surfaces.Refs.Add(PrefabFixtures.Surface(id, MapSurfaceRole.SupportFloor));
+        PrefabFixtures.SealWorldParent(f.Document);
+        var pose = new MapEffectiveTransform(30000.25, 5, -29999.75, 0.371f, 1.2f);
+        f.Document.NativeResourceTransforms = new[] { new MapStandaloneResourceTransform(MapPrefabChildKind.Surface,
+            id, pose, new string('a', 64)) };
+        var point = new MapResourceTransform(pose).Point(new(new(1, 1), default, new(-1, 1)));
+        f.Document.Placements.Add(new()
+        {
+            Id = "consumer",
+            Kind = "item",
+            AssetId = "item",
+            X = point.X.ToSingle(),
+            Z = point.Z.ToSingle(),
+            Y = null,
+            Scale = 1,
+            SupportBinding = new(MapSupportBindingKind.Surface, id, null, null, null, null)
+        });
+        var supplied = MapDocumentFile.LoadText(MapDocumentFile.SaveText(f.Document));
+        Array.Fill(supplied.Surfaces.Patches[new(id, 0, 0)].Heights, 400);
+        IMapSurfaceSource source = MapDocumentSurfaceSource.Capture(supplied);
+        if (unavailable)
+        {
+            source = new FilteredSurfaceSource(source, new MapPatchKey(id, 0, 0));
+            var error = Assert.Throws<MapDocumentException>(() => MapResolverV2.Resolve(f.Document, f.Assets, source, PrefabFixtures.Options()));
+            Assert.Contains("consumer", error.Message);
+            Assert.Contains("MissingGeometry", error.Message);
+        }
+        else
+        {
+            var result = MapResolverV2.Resolve(f.Document, f.Assets, source, PrefabFixtures.Options());
+            // Supplied 4 m producer height under Y 5 and scale 1.2. Authored height 2 and world-aligned Y 4 differ.
+            Assert.Equal(9.8f, result.Document.Placements.Single(p => p.PlacementId == "consumer").Transform.Position.Y);
+            Assert.Equal(9.8f, result.Supports.Single(s => s.PlacementId == "consumer").Support.WorldY);
+            Assert.Equal(pose, result.Document.EffectiveResources!.Transforms["Surface:" + id]);
+            Assert.DoesNotContain(f.Document.NativeResourceTransforms, t => t.OwnerId == "exterior");
+        }
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
     [InlineData(true, false)]

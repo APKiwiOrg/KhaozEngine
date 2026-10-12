@@ -97,9 +97,12 @@ public static class MapWorldBuilder
         string buildHash = BuildHash(resolved.AuthoredHash, options, legacyIdentity, placements, terrain,
             water is null ? null : (waterDigest, bodies));
         MapWaterMediumDoc[] media = water?.Media.OrderBy(m => m.Key, StringComparer.Ordinal).ToArray() ?? Array.Empty<MapWaterMediumDoc>();
+        MapBox3[] supportBounds = effective is not null && terrain.Chunks.Count != 0
+            ? new[] { MapPrefabSupportBounds.Bounds(effective) } : Array.Empty<MapBox3>();
         return new MapBuiltWorld(resolved, surfaces, placements, terrain, statics, diagnostics.AsReadOnly(),
             WorldBounds(document.Bounds, statics, placements,
                 effective is null ? Array.Empty<MapBox3>() : MapPrefabSupportBounds.OtherBounds(effective, assets)
+                    .Concat(supportBounds)
                     .Concat(bodies.Where(b => b.Bounds is not null).Select(b => b.Bounds!.Value))), document.TileSize, buildHash, native,
             native ? null : options.LegacySupportHeight, sculpt, sculptCellSize, terrainBlock, legacyIdentity,
             bodies, Array.AsReadOnly(media), waterDigest,
@@ -157,7 +160,7 @@ public static class MapWorldBuilder
             RequireWithinWorld(chunk.ChunkId, a.X, a.Y, a.Z);
             var position = new Vector3(a.X, a.Y, a.Z);
             Add(new(chunk.ChunkId, MapStaticKind.TerrainChunk, chunk.Shape, position, Quaternion.Identity,
-                MapShapeBounds.Of(chunk.Shape, Pose.At(position)), chunk.Digest, chunk.TriangleOwners));
+                chunk.Bounds, chunk.Digest, chunk.TriangleOwners));
         }
         return statics.AsReadOnly();
 

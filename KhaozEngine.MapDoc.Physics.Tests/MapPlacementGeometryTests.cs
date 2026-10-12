@@ -46,12 +46,13 @@ public class MapPlacementGeometryTests
     public void LowObject_EnvelopeIsSweptToOneMetreWhilePhysicalBoundsStay()
     {
         var g = MapPlacementShapes.Resolve(NativeWorldFixtures.Crate().Resolved).Single();
-        Assert.Equal(0.2, g.ColliderBounds!.Value.MaxY - g.ColliderBounds.Value.MinY, 5);
+        MapBox3 physical = PhysicalBounds(g);
+        Assert.Equal(0.2, physical.MaxY - physical.MinY, 5);
         Assert.Equal(0.8f, g.Envelope.RaiseMetres, 5);
         Assert.Equal(1.0, g.Envelope.Bounds.MaxY - g.Envelope.Bounds.MinY, 5);
-        Assert.Equal(g.ColliderBounds.Value.MinX, g.Envelope.Bounds.MinX, 5);
-        Assert.Equal(g.ColliderBounds.Value.MaxZ, g.Envelope.Bounds.MaxZ, 5);
-        Assert.Equal(g.ColliderBounds.Value.MinY, g.Envelope.Bounds.MinY, 5);
+        Assert.Equal(physical.MinX, g.Envelope.Bounds.MinX, 5);
+        Assert.Equal(physical.MaxZ, g.Envelope.Bounds.MaxZ, 5);
+        Assert.Equal(physical.MinY, g.Envelope.Bounds.MinY, 5);
     }
 
     [Fact]
@@ -69,7 +70,7 @@ public class MapPlacementGeometryTests
         var f = NativeWorldFixtures.SlopeAndCornerWalls();
         var shapes = MapPlacementShapes.Resolve(f.Resolved);
         var seated = shapes.Single(p => p.PlacementId == "slope-wall");
-        Assert.Equal(f.SlopeHeightAtWall, seated.ColliderBounds!.Value.MinY, 4);
+        Assert.Equal(f.SlopeHeightAtWall, PhysicalBounds(seated).MinY, 4);
         var corner = shapes.Single(p => p.PlacementId == "corner-wall");
         Assert.Equal(2, ((CompoundShape)corner.Collider!).Children.Length);
     }
@@ -96,8 +97,9 @@ public class MapPlacementGeometryTests
     public void ShortCylinder_IsLengthenedFromItsBase()
     {
         var g = Single("short-post");
-        Assert.Equal(0.0, g.ColliderBounds!.Value.MinY, 5);
-        Assert.Equal(0.5, g.ColliderBounds.Value.MaxY, 5);
+        MapBox3 physical = PhysicalBounds(g);
+        Assert.Equal(0.0, physical.MinY, 5);
+        Assert.Equal(0.5, physical.MaxY, 5);
         Assert.Equal(0.5f, g.Envelope.RaiseMetres, 5);
         Assert.Equal(0.0, g.Envelope.Bounds.MinY, 5);
         Assert.Equal(1.0, g.Envelope.Bounds.MaxY, 5);
@@ -110,8 +112,9 @@ public class MapPlacementGeometryTests
     public void UpsideDownCylinder_KeepsItsWorldBottom()
     {
         var g = Single("hanging-post");
-        Assert.Equal(0.0, g.ColliderBounds!.Value.MinY, 5);
-        Assert.Equal(0.5, g.ColliderBounds.Value.MaxY, 5);
+        MapBox3 physical = PhysicalBounds(g);
+        Assert.Equal(0.0, physical.MinY, 5);
+        Assert.Equal(0.5, physical.MaxY, 5);
         Assert.Equal(0.0, g.Envelope.Bounds.MinY, 5);
         Assert.Equal(1.0, g.Envelope.Bounds.MaxY, 5);
     }
@@ -120,7 +123,7 @@ public class MapPlacementGeometryTests
     public void TiltedCylinder_SweepsAHullThatContainsIt()
     {
         var g = Single("fallen-log");
-        MapBox3 c = g.ColliderBounds!.Value, e = g.Envelope.Bounds;
+        MapBox3 c = PhysicalBounds(g), e = g.Envelope.Bounds;
         const double slack = 1e-5;
         Assert.True(e.MinX <= c.MinX + slack && e.MinY <= c.MinY + slack && e.MinZ <= c.MinZ + slack, $"{e} {c}");
         Assert.True(e.MaxX >= c.MaxX - slack && e.MaxY >= c.MaxY - slack && e.MaxZ >= c.MaxZ - slack, $"{e} {c}");
@@ -139,7 +142,7 @@ public class MapPlacementGeometryTests
         Vector3[] vertices = NativeWorldFixtures.MeshRamp.Vertices;
         Assert.Equal(vertices.Concat(vertices.Select(v => v + raise)),
             Assert.IsType<ConvexHullShape>(g.Envelope.Shape).Points);
-        Assert.Equal(g.ColliderBounds!.Value.MinY, g.Envelope.Bounds.MinY, 5);
+        Assert.Equal(PhysicalBounds(g).MinY, g.Envelope.Bounds.MinY, 5);
         Assert.Equal(1.0, g.Envelope.Bounds.MaxY - g.Envelope.Bounds.MinY, 5);
     }
 
@@ -169,7 +172,8 @@ public class MapPlacementGeometryTests
         Assert.Equal(1f, box.HalfExtents.X, 5);
         Assert.Equal(1f, box.HalfExtents.Y, 5);
         Assert.Equal(1f, box.HalfExtents.Z, 5);
-        Assert.Equal(2.0, g.ColliderBounds!.Value.MaxY - g.ColliderBounds.Value.MinY, 5);
+        MapBox3 physical = PhysicalBounds(g);
+        Assert.Equal(2.0, physical.MaxY - physical.MinY, 5);
     }
 
     [Fact]
@@ -192,6 +196,15 @@ public class MapPlacementGeometryTests
 
     static MapPlacementGeometry Single(string assetId) =>
         MapPlacementShapes.Resolve(NativeWorldFixtures.Placed(assetId).Resolved).Single();
+
+    static MapBox3 PhysicalBounds(MapPlacementGeometry geometry)
+    {
+        MapBox3 physical = MapShapeBounds.Of(geometry.Collider!, geometry.WorldPose);
+        MapBox3 conservative = geometry.ColliderBounds!.Value;
+        Assert.True(conservative.MinX <= physical.MinX && conservative.MinY <= physical.MinY && conservative.MinZ <= physical.MinZ);
+        Assert.True(conservative.MaxX >= physical.MaxX && conservative.MaxY >= physical.MaxY && conservative.MaxZ >= physical.MaxZ);
+        return physical;
+    }
 
     sealed class UnknownShape : PhysicsShape { }
 }

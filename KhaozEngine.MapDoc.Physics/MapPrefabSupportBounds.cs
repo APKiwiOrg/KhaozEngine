@@ -218,7 +218,22 @@ public static class MapPrefabSupportBounds
                 foreach (float z in new[] { box.Min.Z, box.Max.Z }) yield return new(x, y, z);
     }
 
-    static MapBox3 Of(IReadOnlyList<MapExactPoint> points) => points.Count == 0 ? default : new(
-        points.Min(p => p.X.ToDouble()), points.Min(p => p.Y.ToDouble()), points.Min(p => p.Z.ToDouble()),
-        points.Max(p => p.X.ToDouble()), points.Max(p => p.Y.ToDouble()), points.Max(p => p.Z.ToDouble()));
+    internal static MapBox3 Of(IReadOnlyList<MapExactPoint> points) => points.Count == 0 ? default : new(
+        Outward(points.Min(p => p.X), false), Outward(points.Min(p => p.Y), false), Outward(points.Min(p => p.Z), false),
+        Outward(points.Max(p => p.X), true), Outward(points.Max(p => p.Y), true), Outward(points.Max(p => p.Z), true));
+
+    // Compare in the wide domain. Large numerator/denominator conversions can lose more than one double ULP.
+    // Move only while inward, preserving exactly representable seams.
+    static double Outward(MapExactValue exact, bool upper)
+    {
+        double value = exact.ToDouble();
+        MapWideRational rational = MapWideRational.From(exact);
+        int direction = MapWideRational.FromDouble(value).CompareTo(rational);
+        while (upper ? direction < 0 : direction > 0)
+        {
+            value = upper ? Math.BitIncrement(value) : Math.BitDecrement(value);
+            direction = MapWideRational.FromDouble(value).CompareTo(rational);
+        }
+        return value;
+    }
 }

@@ -33,7 +33,8 @@ public sealed class MapPlacementGeometry
     /// each taken in double and rounded to float once.</summary>
     public Pose WorldPose { get; }
 
-    /// <summary>The world bounds of <see cref="Collider"/> at <see cref="WorldPose"/>, or null without a collider.</summary>
+    /// <summary>Conservative world bounds of <see cref="Collider"/> across all permitted registration origins,
+    /// including the mathematical pose, or null without a collider.</summary>
     public MapBox3? ColliderBounds { get; }
 
     /// <summary>The interaction envelope under <see cref="MapInteractionPolicy"/>.</summary>
@@ -124,18 +125,7 @@ public static class MapPlacementShapes
             $"Placement '{placement.PlacementId}' asset '{shapes.AssetId}' has no interaction source: it declares neither a selection volume nor a collider.");
 
         MapBox3? colliderBounds = null;
-        if (collider is not null)
-        {
-            var (sin, cos) = Math.SinCos(effective.YawRadians * 0.5);
-            var mathematical = new MapDoublePose(new(effective.X, effective.Y, effective.Z), 0, sin, 0, cos);
-            var frame = WorldFrame.Nearest((float)effective.X, (float)effective.Z);
-            MapBox3 local = MapShapeBounds.Of(collider, MapBackendPoseAdapter.Pose(effective, frame));
-            var framed = new MapBox3(local.MinX + frame.Anchor.X, local.MinY, local.MinZ + frame.Anchor.Z,
-                local.MaxX + frame.Anchor.X, local.MaxY, local.MaxZ + frame.Anchor.Z);
-            // Retain the exact origin and cover both backend submissions. Absolute float presentation never
-            // decides whether geometry crosses a world tile at a far site.
-            colliderBounds = MapShapeBounds.Of(collider, mathematical).Union(framed).Union(MapShapeBounds.Of(collider, worldPose));
-        }
+        if (collider is not null) colliderBounds = MapRegistrationBounds.Of(collider, effective);
         MapInteractionEnvelope envelope =
             MapInteractionEnvelope.Build(placement.PlacementId, source, selection is null, worldPose);
         string digest = Digest(placement, shapes, scale, envelope.RaiseMetres, precise);

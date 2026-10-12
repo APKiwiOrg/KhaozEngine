@@ -1,0 +1,74 @@
+using System;
+using System.Numerics;
+using KhaozEngine.MapDoc.Editing;
+using KhaozEngine.MapDoc.Prefabs;
+using KhaozEngine.Physics;
+using KhaozEngine.Primitives;
+
+namespace KhaozEngine.MapDoc.Physics;
+
+/// <summary>Bounds the binary32 registration boundary over every permitted whole-metre physics origin.</summary>
+internal static class MapRegistrationBounds
+{
+    internal static MapBox3 Of(PhysicsShape shape, MapEffectiveTransform transform)
+    {
+        Quaternion orientation = MapBackendPoseAdapter.Pose(transform, WorldFrame.Origin).Orientation;
+        MapBox3 local = MapShapeBounds.Of(shape, new Pose(Vector3.Zero, orientation));
+        var (sin, cos) = Math.SinCos(transform.YawRadians * 0.5);
+        MapBox3 canonical = MapShapeBounds.Of(shape, new MapDoublePose(new(transform.X, transform.Y, transform.Z), 0, sin, 0, cos));
+        double ex = AxisError(shape, orientation, transform.X, local.MinX, local.MaxX, true);
+        double ey = AxisError(shape, orientation, transform.Y, local.MinY, local.MaxY, false);
+        double ez = AxisError(shape, orientation, transform.Z, local.MinZ, local.MaxZ, true);
+        return canonical.Union(new MapBox3(
+            Lower(transform.X, local.MinX, ex), Lower(transform.Y, local.MinY, ey), Lower(transform.Z, local.MinZ, ez),
+            Upper(transform.X, local.MaxX, ex), Upper(transform.Y, local.MaxY, ey), Upper(transform.Z, local.MaxZ, ez)));
+    }
+
+    static double AxisError(PhysicsShape shape, Quaternion orientation, double position, double min, double max, bool planar)
+    {
+        double radius = Math.Max(Math.Abs(min), Math.Abs(max));
+        // The nearest origin frame is at most Grid/2 from the origin. This covers both pose conversions and
+        // the final addition of local geometry, including an origin at the opposite world limit.
+        double magnitude = Math.Abs(position) + MapWorldBuilder.MaxCoordinateMetres + WorldFrame.Grid + radius;
+        float bound = (float)magnitude;
+        if (!float.IsFinite(bound)) throw new MapDocumentException("Registration bounds are not representable.");
+        if (bound < magnitude) bound = MathF.BitIncrement(bound);
+        double ulp = (double)MathF.BitIncrement(bound) - bound;
+        bool exactPosition = Aligned(position, ulp);
+        // Integer origins and frame anchors are multiples of this quantum. An aligned position survives
+        // both subtractions exactly. Otherwise planar registration has two half-ULP roundings. Y first
+        // rounds at the world origin, then subtracts the unframed physics origin.
+        double error = exactPosition ? 0 : planar ? ulp : Math.Abs((double)(float)position - position) + ulp * 0.5;
+        // A child offset or a vertex can also round when added to the registered position. Keep exact
+        // lattice-aligned endpoints exact so a collider ending at a tile seam does not acquire a new tile.
+        if (!exactPosition || !ExactGeometry(shape, orientation, ulp)) error += ulp * 0.5;
+        return error;
+    }
+
+    static bool Aligned(double value, double quantum) => value / quantum == Math.Truncate(value / quantum);
+
+    // Test the operands, not just the resulting endpoints. Two aligned endpoints can hide a half-grid child
+    // centre that rounds during composition. Hull recentering and arbitrary rotations also need the allowance.
+    static bool ExactGeometry(PhysicsShape shape, Quaternion orientation, double quantum)
+    {
+        if (orientation != Quaternion.Identity) return false;
+        bool Vector(Vector3 v) => Aligned(v.X, quantum) && Aligned(v.Y, quantum) && Aligned(v.Z, quantum);
+        return shape switch
+        {
+            BoxShape box => Vector(box.HalfExtents),
+            SphereShape sphere => Aligned(sphere.Radius, quantum),
+            CapsuleShape capsule => Aligned(capsule.Radius, quantum) && Aligned(capsule.Length * 0.5, quantum),
+            CylinderShape cylinder => Aligned(cylinder.Radius, quantum) && Aligned(cylinder.Length * 0.5, quantum),
+            TriangleMeshShape mesh => Array.TrueForAll(mesh.Vertices, v => Vector(v)),
+            CompoundShape compound => Array.TrueForAll(compound.Children,
+                child => Vector(child.Local.Position) && ExactGeometry(child.Shape, child.Local.Orientation, quantum)),
+            _ => false,
+        };
+    }
+
+    // Binary64 conversion is outward too. No padding is needed when every binary32 operation is exact.
+    static double Lower(double position, double offset, double error) =>
+        error == 0 ? position + offset : Math.BitDecrement(position + offset - error);
+    static double Upper(double position, double offset, double error) =>
+        error == 0 ? position + offset : Math.BitIncrement(position + offset + error);
+}

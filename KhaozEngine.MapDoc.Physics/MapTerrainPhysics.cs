@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 using KhaozEngine.MapDoc.Identity;
+using KhaozEngine.MapDoc.Editing;
 using KhaozEngine.MapDoc.Spaces;
 using KhaozEngine.MapDoc.Storage;
 using KhaozEngine.MapDoc.Surfaces;
@@ -48,8 +49,20 @@ public sealed class MapTerrainChunk
     /// <summary>The lowercase hex SHA-256 over the id, anchor, vertex float bits, indices, owners and roles.</summary>
     public string Digest { get; }
 
+    /// <summary>Outward-rounded bounds of the exact canonical faces retained before float submission.</summary>
+    public MapBox3 CanonicalBounds { get; }
+
+    /// <summary>The union of canonical and backend mesh bounds. Residency never loses an exact crossed seam.</summary>
+    public MapBox3 Bounds { get; }
+
     internal MapTerrainChunk(string chunkId, MapSubmissionAnchor anchor, TriangleMeshShape shape,
         MapFaceKey[] owners, MapFaceRole[] roles, string digest)
+        : this(chunkId, anchor, shape, owners, roles, digest,
+            MapShapeBounds.Of(shape, Pose.At(new Vector3(anchor.X, anchor.Y, anchor.Z))))
+    { }
+
+    internal MapTerrainChunk(string chunkId, MapSubmissionAnchor anchor, TriangleMeshShape shape,
+        MapFaceKey[] owners, MapFaceRole[] roles, string digest, MapBox3 canonicalBounds)
     {
         ChunkId = chunkId;
         Anchor = anchor;
@@ -57,6 +70,8 @@ public sealed class MapTerrainChunk
         TriangleOwners = Array.AsReadOnly(owners);
         TriangleRoles = Array.AsReadOnly(roles);
         Digest = digest;
+        CanonicalBounds = canonicalBounds;
+        Bounds = canonicalBounds.Union(MapShapeBounds.Of(shape, Pose.At(new Vector3(anchor.X, anchor.Y, anchor.Z))));
     }
 }
 
@@ -308,7 +323,8 @@ public static class MapTerrainPhysics
             }
             Vector3[] offsets = vertices.ToArray();
             _chunks.Add(new(id, anchor, new TriangleMeshShape(offsets, indices), owners, roles,
-                Digest(id, anchor, offsets, indices, owners, roles)));
+                Digest(id, anchor, offsets, indices, owners, roles),
+                MapPrefabSupportBounds.Of(slots.Keys.Select(source => exact[source]).ToArray())));
 
             int Vertex(int source)
             {

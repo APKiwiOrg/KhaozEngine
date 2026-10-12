@@ -90,8 +90,10 @@ public class MapPrefabSupportTests
         var chunk = Assert.Single(world.Terrain.Chunks, c => c.TriangleOwners.Any(f => f.OwnerId == PrefabFixtures.SupportFloorId));
         double edge = chunk.Shape.Vertices.Max(v => v.X) + chunk.Anchor.X;
         Assert.Equal(1.2, edge, 6);
-        Assert.Equal(1.2, deck.ColliderBounds!.Value.MaxX, 6);
-        Assert.Equal(edge, deck.ColliderBounds.Value.MaxX, 6);
+        var physical = MapShapeBounds.Of(deck.Collider!, deck.WorldPose);
+        Assert.Equal(1.2, physical.MaxX, 6);
+        Assert.Equal(edge, physical.MaxX, 6);
+        Assert.True(deck.ColliderBounds!.Value.MaxX >= physical.MaxX);
     }
 
     [Theory]

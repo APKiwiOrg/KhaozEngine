@@ -78,7 +78,9 @@ MapBox3 bounds = MapShapeBounds.Of(shape, pose);
 
 `MapPlacementShapes.Resolve` gives every placement of a resolved document its geometry, in ordinal placement order.
 The collider is scaled once by the asset's source units times the placement scale and placed at `WorldPose`, the
-placement position with its yaw. `ColliderBounds` is its world bounds, null for an asset with no collider. `Digest`
+placement position with its yaw. `ColliderBounds` conservatively covers every permitted whole-metre registration
+origin, including frame-local float rounding. It is null for an asset with no collider. Use `MapShapeBounds.Of` at
+`WorldPose` for tight physical dimensions at that pose. `Digest`
 covers the placement and asset identities, both resource digests, the float bits of position, yaw, combined scale and
 raise, and `MapInteractionPolicy.Hash`. A combined scale that is not finite and positive, an asset with neither a selection
 volume nor a collider and an envelope that cannot be swept refuse with `MapDocumentException`.
@@ -167,7 +169,9 @@ neighborhood query.
 `MapBackendPoseAdapter` is the explicit frame-local binary32 approximation of a retained `MapEffectiveTransform`.
 `ErrorMetres` bounds origin, scale, quaternion and local-coordinate rounding. Semantic support stays exact.
 `MapPrefabSupportBounds.Bounds` measures transformed physical support without narrowing occupied-space partitions.
-World bounds also include render, LOD, asset light, emitted light and water extents.
+Each terrain chunk retains outward-rounded `CanonicalBounds` alongside its submitted mesh. Its `Bounds` unions
+both, so exact support crossing a tile seam survives inward float vertex rounding. World bounds include these
+effective support extents as well as render, LOD, asset light, emitted light and water extents.
 Doorway compounds retain their jambs and lintel under one transform. Headless clearance proves a physical opening
 only. Native walking routes remain with G1b, #1355 and #438 phase 5.
 

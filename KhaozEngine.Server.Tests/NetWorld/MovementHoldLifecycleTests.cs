@@ -122,6 +122,79 @@ public class MovementHoldLifecycleTests
         Assert.NotEqual(start.Position.Z, rig.Authority(recycled).Position.Z);
     }
 
+    [Theory]
+    [InlineData(MovementHoldHead.Flat)]
+    [InlineData(MovementHoldHead.Sharded)]
+    public void Queued_slot_hold_does_not_land_on_a_recycled_seat(MovementHoldHead head)
+    {
+        using var rig = new MovementHoldRig(head);
+        int slot = rig.JoinRaw("a", out _, out INetTransport link);
+        rig.Server.HoldMovement(PlayerRef.Slot(slot));
+
+        rig.Hub.DisconnectClient(link);
+        int recycled = rig.JoinRaw("b", out NetClient client, out _);   // one Poll: the leave, then the join
+        Assert.Equal(slot, recycled);
+        Assert.True(rig.Server.TryGetAccountId(recycled, out string account));
+        Assert.Equal("b", account);
+        for (int i = 0; i < 6; i++) rig.Step();
+
+        Assert.False(rig.Server.IsMovementHeld(recycled));
+        PlayerMoveState start = rig.Authority(recycled);
+        for (int sequence = 0; sequence < 10; sequence++)
+        {
+            SendWalk(client, sequence);
+            rig.Step();
+        }
+        Assert.NotEqual(start.Position.Z, rig.Authority(recycled).Position.Z);
+
+        rig.Server.HoldMovement(PlayerRef.Slot(recycled));   // queued for the current occupant, so it lands
+        rig.Step();
+        Assert.True(rig.Server.IsMovementHeld(recycled));
+    }
+
+    [Theory]
+    [InlineData(MovementHoldHead.Flat)]
+    [InlineData(MovementHoldHead.Sharded)]
+    public void Hold_leaves_momentum_and_commitment_untouched(MovementHoldHead head)
+    {
+        using var rig = new MovementHoldRig(head, tuning: MoveTuning.Default with { AirMomentum = true });
+        int flying = rig.JoinRaw("a", out _, out _);
+        int committed = rig.JoinRaw("b", out _, out _);
+        for (int i = 0; i < 6; i++) rig.Step();
+
+        PlayerMoveState launched = rig.Authority(flying);
+        launched.Position = new Vector3(launched.Position.X, 5f, launched.Position.Z);
+        launched.VerticalVelocity = 0f;
+        launched.Grounded = false;
+        launched.Move.HorizontalVelocity = new Vector2(3f, 0f);
+        rig.Server.SetPlayerState(flying, launched);
+        PlayerMoveState origin = rig.Authority(committed);
+        MovementCommitmentRequest request = MovementCommitmentRequest.ForBallisticArc(
+            Vector2.UnitX, distance: 4f, apexHeight: 1.25f, durationSeconds: 0.8f,
+            recoverySeconds: 0.15f, timeoutSeconds: 3f);
+        uint sequence = rig.Server.BeginMovementCommitment(PlayerRef.Slot(committed), request);
+        rig.Server.HoldMovement(PlayerRef.Slot(flying));
+        rig.Server.HoldMovement(PlayerRef.Slot(committed));
+        rig.Step();
+
+        Assert.True(rig.Server.IsMovementHeld(flying));
+        Assert.True(rig.Server.IsMovementHeld(committed));
+        PlayerMoveState coasting = rig.Authority(flying);
+        Assert.False(coasting.Move.Grounded);
+        Assert.True(coasting.Move.HorizontalVelocity.X > 2.9f,
+            $"momentum cleared to {coasting.Move.HorizontalVelocity}");
+        Assert.True(coasting.Position.X > launched.Position.X + 0.05f, $"held body stopped at X {coasting.Position.X}");
+        PlayerMoveState arcing = rig.Authority(committed);
+        Assert.True(arcing.Move.Commitment.IsActive);
+        Assert.Equal(sequence, arcing.Move.Commitment.Sequence);
+
+        for (int i = 0; i < 60 && rig.Authority(committed).Move.Commitment.IsActive; i++) rig.Step();
+        PlayerMoveState arrived = rig.Authority(committed);
+        Assert.False(arrived.Move.Commitment.IsActive);
+        Assert.InRange(arrived.Position.X - origin.Position.X, 3.95f, 4.05f);
+        Assert.True(rig.Server.IsMovementHeld(committed));
+    }
+
     [Fact]
     public void Cross_cell_teleport_preserves_hold_and_one_owner()
     {

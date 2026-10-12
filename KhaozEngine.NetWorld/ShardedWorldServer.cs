@@ -108,6 +108,7 @@ public sealed partial class ShardedWorldServer : IWorldPersistenceHost, IAdminCo
         commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
             maxSlots: Math.Max(64, this.config.MaxPlayers),
             catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
+        seatTurnoverBySlot = new int[Math.Max(0, this.config.MaxPlayers)];
         // The per-cell runtime (its movement system and its spawn clamp) is built lazily against the cell's own
         // physics world and the cell's own frame. These are the pieces every cell's copy shares.
         cellGroundHeight = groundHeight;

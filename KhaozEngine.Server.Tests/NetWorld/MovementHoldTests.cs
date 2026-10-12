@@ -121,7 +121,7 @@ public class MovementHoldTests
             landed = rig.Serve(seat);
         }
         Assert.True(landed.Move.Grounded);
-        Assert.Equal(MovementHoldRig.Tuning.CapsuleHalfHeight, landed.Position.Y, 3);   // flat ground is Y 0
+        Assert.Equal(rig.Tuning.CapsuleHalfHeight, landed.Position.Y, 3);   // flat ground is Y 0
         Assert.Equal(lifted.Position.X, landed.Position.X, 3);
         Assert.Equal(lifted.Position.Z, landed.Position.Z, 3);
 
@@ -214,6 +214,7 @@ internal interface IMovementHoldServer
     void SetPlayerState(int slot, in PlayerMoveState state, bool teleport = false);
     bool TryGetPlayerNetId(int slot, out long netId);
     bool TryGetAccountId(int slot, out string accountId);
+    uint BeginMovementCommitment(PlayerRef target, in MovementCommitmentRequest request);
 }
 
 /// <summary>One server head on an in-memory hub, with strict oldest-first input so each tick acknowledges the
@@ -222,17 +223,18 @@ internal sealed class MovementHoldRig : IDisposable
 {
     public const float Dt = 1f / 30f;
     public static readonly Func<float, float, float> Ground = (_, _) => 0f;
-    public static readonly MoveTuning Tuning = MoveTuning.Default;
 
     public readonly InMemoryTransportHub Hub = new();
     public readonly IMovementHoldServer Server;
     public readonly ShardedWorldServer? Sharded;
+    public readonly MoveTuning Tuning;
     public int LingerTicks;
     public bool ThrowOnLeave;
     public int Leaves;
 
-    public MovementHoldRig(MovementHoldHead head, int? lingerTicks = null)
+    public MovementHoldRig(MovementHoldHead head, int? lingerTicks = null, MoveTuning? tuning = null)
     {
+        Tuning = tuning ?? MoveTuning.Default;
         LingerTicks = lingerTicks ?? 0;
         if (head == MovementHoldHead.Flat)
         {
@@ -294,8 +296,7 @@ internal sealed class MovementHoldRig : IDisposable
 
     public MovementHoldSeat JoinClient(string account)
     {
-        INetTransport link = Hub.CreateClient();
-        var wire = new MovementHoldAckTransport(link);
+        var wire = new MovementHoldAckTransport(Hub.CreateClient());
         var settings = PredictionSettings.Default with { TickSeconds = Dt, CorrectionRate = 0f };
         var client = new WorldClient(wire, Ground, Tuning,
             new WorldClientConfig { TickSeconds = Dt, Prediction = settings }, token: Encoding.UTF8.GetBytes(account));
@@ -312,7 +313,7 @@ internal sealed class MovementHoldRig : IDisposable
         Assert.True(client.Joined);
         int slot = SlotOf(account);
         Assert.True(slot >= 0);
-        return new MovementHoldSeat(client, wire, link, slot, settings);
+        return new MovementHoldSeat(client, wire, slot, Tuning, settings);
     }
 
     public int JoinRaw(string account, out NetClient client, out INetTransport link)
@@ -347,6 +348,8 @@ internal sealed class MovementHoldRig : IDisposable
             server.SetPlayerState(slot, state, teleport);
         public bool TryGetPlayerNetId(int slot, out long netId) => server.TryGetPlayerNetId(slot, out netId);
         public bool TryGetAccountId(int slot, out string accountId) => server.TryGetAccountId(slot, out accountId);
+        public uint BeginMovementCommitment(PlayerRef target, in MovementCommitmentRequest request) =>
+            server.BeginMovementCommitment(target, request);
     }
 
     sealed class ShardedHead(ShardedWorldServer server) : IMovementHoldServer
@@ -363,22 +366,23 @@ internal sealed class MovementHoldRig : IDisposable
             server.SetPlayerState(slot, state, teleport);
         public bool TryGetPlayerNetId(int slot, out long netId) => server.TryGetPlayerNetId(slot, out netId);
         public bool TryGetAccountId(int slot, out string accountId) => server.TryGetAccountId(slot, out accountId);
+        public uint BeginMovementCommitment(PlayerRef target, in MovementCommitmentRequest request) =>
+            server.BeginMovementCommitment(target, request);
     }
 }
 
 /// <summary>A joined <see cref="WorldClient"/> with the acknowledgement its last snapshot header carried.</summary>
-internal sealed class MovementHoldSeat(WorldClient client, MovementHoldAckTransport wire, INetTransport link, int slot,
+internal sealed class MovementHoldSeat(WorldClient client, MovementHoldAckTransport wire, int slot, MoveTuning tuning,
     PredictionSettings settings) : IDisposable
 {
     public WorldClient Client { get; } = client;
     public MovementHoldAckTransport Wire { get; } = wire;
-    public INetTransport Link { get; } = link;
     public int Slot { get; } = slot;
 
     public ClientPrediction<PlayerMoveState, MoveCommand> NewPrediction(in PlayerMoveState basis)
     {
         var prediction = new ClientPrediction<PlayerMoveState, MoveCommand>(
-            new PlayerMoveSimulator(MovementHoldRig.Ground, MovementHoldRig.Tuning), settings);
+            new PlayerMoveSimulator(MovementHoldRig.Ground, tuning), settings);
         prediction.Reset(basis);
         return prediction;
     }

@@ -29,6 +29,11 @@ internal readonly struct AdminCommand
     public float Scale { get; init; }
 
     public uint Sequence { get; init; }
+
+    /// <summary>The target slot's turnover count captured at enqueue for a slot-targeted
+    /// <see cref="AdminCommandKind.HoldMovement"/> or <see cref="AdminCommandKind.ReleaseMovement"/>, unused
+    /// otherwise.</summary>
+    public int SeatTurnover { get; init; }
     public MovementCommitmentRequest MovementCommitment { get; init; }
 }
 

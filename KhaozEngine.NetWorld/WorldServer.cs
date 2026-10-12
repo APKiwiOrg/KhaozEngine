@@ -228,6 +228,7 @@ public sealed partial class WorldServer : IWorldPersistenceHost, IAdminControlla
         commands = new RemoteCommandQueue<MoveCommand>(neutralCommand: default,
             maxSlots: Math.Max(64, this.config.MaxPlayers),
             catchUpThreshold: Math.Max(0, this.config.MaxInputBacklog));
+        seatTurnoverBySlot = new int[Math.Max(0, this.config.MaxPlayers)];
         // A framed step queries the island's physics world in the island's space, so that world has to be able to
         // follow the frame. Refuse the combination at construction rather than serve queries from another space:
         // the failure that would produce is a character standing on nothing, not a rounding artifact.

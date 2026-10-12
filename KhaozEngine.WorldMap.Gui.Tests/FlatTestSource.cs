@@ -11,6 +11,7 @@ internal sealed class FlatTestSource : IWorldMapSource
     internal FlatTestSource(MapRect? bounds = null) => Bounds = bounds ?? new MapRect(0f, 0f, 256f, 192f);
 
     public MapRect Bounds { get; }
+    internal List<WorldMapMarker> Markers { get; } = [];
     public float SurfaceCellSize => 8f;
     public long Revision { get; private set; }
     public event Action<MapRect>? Changed;
@@ -35,7 +36,11 @@ internal sealed class FlatTestSource : IWorldMapSource
     }
 
     public void CollectFootprints(MapRect area, List<WorldMapFootprint> into) { }
-    public void CollectMarkers(MapRect area, List<WorldMapMarker> into) { }
+    public void CollectMarkers(MapRect area, List<WorldMapMarker> into)
+    {
+        foreach (WorldMapMarker marker in Markers)
+            if (area.Contains(marker.Position)) into.Add(marker);
+    }
     public Vector2 ToMap(Vector3 worldPosition) => new(worldPosition.X, -worldPosition.Z);
     public float ToMapHeading(Vector3 worldForward) => MathF.Atan2(worldForward.X, -worldForward.Z);
 

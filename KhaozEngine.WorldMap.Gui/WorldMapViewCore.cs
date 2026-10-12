@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using KhaozEngine.Gui;
 using KhaozEngine.Primitives;
@@ -7,7 +8,7 @@ using KhaozEngine.Windowing;
 
 namespace KhaozEngine.WorldMap.Gui;
 
-/// <summary>Headless navigation, chunk scheduling and texture upload orchestration for the map view.</summary>
+/// <summary>Headless navigation, chunk orchestration and screen-space overlays for the map view.</summary>
 internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : class
 {
     readonly WorldMapChunkCache _cache;
@@ -15,6 +16,8 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
     readonly ChunkTextureStore<TTexture> _textures;
     readonly List<VisibleChunk> _visibleChunks = [];
     readonly List<WorldMapDrawItem<TTexture>> _drawList = [];
+    readonly Dictionary<string, MapMarker> _markerStates = new(StringComparer.Ordinal);
+    readonly List<ScreenMarker> _markers = [];
     float _maxPixelsPerMetre = 8f;
     int _uploadBudgetPerFrame = 4;
     bool _positioned;
@@ -28,6 +31,7 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
         _textures = new ChunkTextureStore<TTexture>(createTexture, disposeTexture);
         PlaceholderColor = cache.Style.VoidColor;
         DrawList = _drawList.AsReadOnly();
+        Markers = _markers.AsReadOnly();
         _canvas.Camera.Zoom = cache.Style.PixelsPerMetre;
         ConfigureCanvas();
         _canvas.CenterContent();
@@ -60,6 +64,25 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
     internal Color PlaceholderColor { get; set; }
     internal float PixelsPerMetre => _canvas.Camera.Zoom;
     internal IReadOnlyList<WorldMapDrawItem<TTexture>> DrawList { get; }
+    internal Func<string, Vector2?>? IconSizes { get; set; }
+    internal Func<string, string?>? LabelText { get; set; }
+    internal Func<string, Vector2>? MeasureLabel { get; set; }
+    internal OverlayPlacement OverlayPlacement { get; private set; } = new([], [], null);
+    internal IReadOnlyList<ScreenMarker> Markers { get; }
+    internal WorldMapHover? Hovered => OverlayPlacement.Hover;
+
+    internal void SetMarker(string id, Vector2 mapPosition, float heading, Vector2 size)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentException.ThrowIfNullOrEmpty(id);
+        _markerStates[id] = new MapMarker(mapPosition, heading, size);
+    }
+
+    internal bool RemoveMarker(string id)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _markerStates.Remove(id);
+    }
 
     internal Vector2 MapToScreen(Vector2 mapPosition) => _canvas.WorldToScreen(ToCanvas(mapPosition));
     internal Vector2 ScreenToMap(Vector2 screenPosition) => ToCanvas(_canvas.ScreenToWorld(screenPosition));
@@ -95,7 +118,11 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
     internal void Update(Pointer pointer, float wheelDelta)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (!UsableViewport) return;
+        if (!UsableViewport)
+        {
+            ClearOverlays();
+            return;
+        }
         ArgumentNullException.ThrowIfNull(pointer);
         ConfigureCanvas();
         if (!_positioned) FitWorld();
@@ -103,6 +130,7 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
         RequestVisibleChunks();
         UploadVisibleChunks();
         RebuildDrawList();
+        RebuildOverlays(pointer.Position);
     }
 
     bool UsableViewport => Viewport.Width >= 1f && Viewport.Height >= 1f;
@@ -170,6 +198,46 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
         }
     }
 
+    void RebuildOverlays(Vector2 pointer)
+    {
+        var icons = new List<ScreenIcon>();
+        var labels = new List<ScreenLabel>();
+        foreach (VisibleChunk visible in _visibleChunks)
+        {
+            if (!_cache.TryGet(visible.Coord, out WorldMapChunk? built)) continue;
+            foreach (WorldMapIconAnchor anchor in built.Features.Icons)
+            {
+                if (IconSizes?.Invoke(anchor.IconKey) is not Vector2 size) continue;
+                icons.Add(new ScreenIcon(anchor.IconKey, MapToScreen(anchor.Position), size,
+                    anchor.Priority, anchor.MergeRadiusPixels, anchor.Position));
+            }
+            if (MeasureLabel is not { } measure || LabelText is not { } resolve) continue;
+            foreach (WorldMapLabelAnchor anchor in built.Features.Labels)
+            {
+                if (PixelsPerMetre < anchor.Tier.MinPixelsPerMetre || PixelsPerMetre >= anchor.Tier.MaxPixelsPerMetre)
+                    continue;
+                if (resolve(anchor.MarkerName) is not string text) continue;
+                labels.Add(new ScreenLabel(anchor.MarkerName, text, MapToScreen(anchor.Position),
+                    measure(text) * anchor.Tier.TextScale, anchor.Tier, anchor.Position));
+            }
+        }
+        OverlayPlacement = WorldMapOverlayLayout.Place(icons, labels, Viewport, PixelsPerMetre, pointer);
+
+        _markers.Clear();
+        foreach (var entry in _markerStates.OrderBy(entry => entry.Key, StringComparer.Ordinal))
+        {
+            MapMarker marker = entry.Value;
+            Vector2 screen = MapToScreen(marker.Position);
+            if (Viewport.Contains(screen)) _markers.Add(new ScreenMarker(entry.Key, screen, marker.Size, marker.Heading));
+        }
+    }
+
+    void ClearOverlays()
+    {
+        OverlayPlacement = new OverlayPlacement([], [], null);
+        _markers.Clear();
+    }
+
     static Vector2 ToCanvas(Vector2 position) => new(position.X, -position.Y);
 
     public void Dispose()
@@ -179,7 +247,10 @@ internal sealed class WorldMapViewCore<TTexture> : IDisposable where TTexture : 
         _textures.Dispose();
         _visibleChunks.Clear();
         _drawList.Clear();
+        _markerStates.Clear();
+        ClearOverlays();
     }
 
     readonly record struct VisibleChunk(WorldMapChunkCoord Coord, float Priority);
+    readonly record struct MapMarker(Vector2 Position, float Heading, Vector2 Size);
 }

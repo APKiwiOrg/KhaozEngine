@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using KhaozEngine.Primitives;
 using KhaozEngine.Render2D;
@@ -13,6 +14,8 @@ public sealed class WorldMapView : IDisposable
     readonly WorldMapViewCore<Texture2D> _core;
     readonly Texture2D _white;
     readonly PrimitiveRenderer _primitives;
+    readonly Dictionary<string, WorldMapSprite> _markerSprites = new(StringComparer.Ordinal);
+    SpriteFont? _labelFont;
     bool _disposed;
 
     /// <summary>Creates a view with its own uploaded chunk textures and white placeholder pixel.</summary>
@@ -22,6 +25,7 @@ public sealed class WorldMapView : IDisposable
     {
         ArgumentNullException.ThrowIfNull(surface);
         _core = new WorldMapViewCore<Texture2D>(cache, surface.CreateTexture, static texture => texture.Dispose());
+        _core.IconSizes = key => IconSprites?.Invoke(key)?.Size;
         _white = Render2DTextures.White(surface);
         _primitives = new PrimitiveRenderer(_white);
     }
@@ -37,6 +41,52 @@ public sealed class WorldMapView : IDisposable
 
     /// <summary>The colour used for chunks without uploaded imagery. Defaults to the cache style's void colour.</summary>
     public Color PlaceholderColor { get => _core.PlaceholderColor; set => _core.PlaceholderColor = value; }
+
+    /// <summary>Resolves a borrowed icon sprite by key. A null callback or result hides the icon.</summary>
+    public Func<string, WorldMapSprite?>? IconSprites { get; set; }
+
+    /// <summary>Resolves localized label text by authored marker name. A null result hides the label.</summary>
+    public Func<string, string?>? LabelText { get => _core.LabelText; set => _core.LabelText = value; }
+
+    /// <summary>The caller-owned label font. With no font set, labels and their hover targets are skipped.</summary>
+    public SpriteFont? LabelFont
+    {
+        get => _labelFont;
+        set
+        {
+            _labelFont = value;
+            _core.MeasureLabel = value is null ? null : text => value.Measure(text);
+        }
+    }
+
+    /// <summary>The label text colour, defaulting to #2b2117.</summary>
+    public Color LabelColor { get; set; } = Color.FromHex("#2b2117");
+
+    /// <summary>The one-pixel label shadow colour, defaulting to #f3ead2.</summary>
+    public Color LabelShadowColor { get; set; } = Color.FromHex("#f3ead2");
+
+    /// <summary>The accepted icon or label under the pointer on the latest update, or null.</summary>
+    public WorldMapHover? Hovered => _core.Hovered;
+
+    /// <summary>Adds or updates a live marker at fixed screen size. Markers draw after icons and labels.</summary>
+    /// <param name="id">The caller's stable marker identity.</param>
+    /// <param name="mapPosition">The marker centre in east/north map metres.</param>
+    /// <param name="heading">Clockwise rotation from north in radians, for north-pointing artwork.</param>
+    /// <param name="sprite">The borrowed sprite, whose texture remains caller-owned.</param>
+    public void SetMarker(string id, Vector2 mapPosition, float heading, WorldMapSprite sprite)
+    {
+        _core.SetMarker(id, mapPosition, heading, sprite.Size);
+        _markerSprites[id] = sprite;
+    }
+
+    /// <summary>Removes a live marker, returning whether its identity was present.</summary>
+    /// <param name="id">The caller's stable marker identity.</param>
+    public bool RemoveMarker(string id)
+    {
+        bool removed = _core.RemoveMarker(id);
+        _markerSprites.Remove(id);
+        return removed;
+    }
 
     /// <summary>The current zoom in screen pixels per map metre.</summary>
     public float PixelsPerMetre => _core.PixelsPerMetre;
@@ -60,12 +110,12 @@ public sealed class WorldMapView : IDisposable
     /// <summary>Centres and fits the authored world. Does nothing until the viewport is at least one pixel per axis.</summary>
     public void FitWorld() => _core.FitWorld();
 
-    /// <summary>Handles drag and cursor-centred wheel zoom, requests visible chunks and budgets texture uploads.</summary>
+    /// <summary>Handles navigation, chunk uploads, screen-space overlay layout and pointer hover.</summary>
     /// <param name="pointer">This frame's pointer in the viewport's coordinate space.</param>
     /// <param name="wheelDelta">This frame's wheel delta.</param>
     public void Update(Pointer pointer, float wheelDelta) => _core.Update(pointer, wheelDelta);
 
-    /// <summary>Draws the latest clipped chunk list without opening, closing or changing the batch's scissor.</summary>
+    /// <summary>Draws chunks, labels, icons and markers without opening, closing or changing the batch's scissor.</summary>
     /// <param name="batch">The caller's already-open UI sprite batch.</param>
     public void Draw(SpriteBatch batch)
     {
@@ -79,6 +129,25 @@ public sealed class WorldMapView : IDisposable
             else
                 _primitives.DrawFilledRect(batch, item.Destination, PlaceholderColor);
         }
+        if (LabelFont is { } font)
+        {
+            foreach (ScreenLabel label in _core.OverlayPlacement.Labels)
+            {
+                Vector2 position = label.Position - label.Size / 2f;
+                batch.DrawString(font, label.Text, position + Vector2.One, LabelShadowColor, label.Tier.TextScale);
+                batch.DrawString(font, label.Text, position, LabelColor, label.Tier.TextScale);
+            }
+        }
+        foreach (ScreenIcon icon in _core.OverlayPlacement.Icons)
+        {
+            if (IconSprites?.Invoke(icon.Key) is WorldMapSprite sprite)
+                batch.Draw(sprite.Texture, icon.Position, icon.Size, new Vector2(0.5f), 0f, sprite.SourceUv, Color.White);
+        }
+        foreach (ScreenMarker marker in _core.Markers)
+        {
+            if (_markerSprites.TryGetValue(marker.Id, out WorldMapSprite sprite))
+                batch.Draw(sprite.Texture, marker.Position, marker.Size, new Vector2(0.5f), marker.Heading, sprite.SourceUv, Color.White);
+        }
     }
 
     /// <summary>Disposes every texture created by this view, retaining the caller's cache and surface.</summary>
@@ -87,6 +156,7 @@ public sealed class WorldMapView : IDisposable
         if (_disposed) return;
         _disposed = true;
         _core.Dispose();
+        _markerSprites.Clear();
         _primitives.Dispose();
         _white.Dispose();
     }

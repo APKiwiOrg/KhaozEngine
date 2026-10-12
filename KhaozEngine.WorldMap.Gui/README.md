@@ -62,4 +62,35 @@ A chunk with no uploaded texture draws a filled rectangle in `PlaceholderColor`,
 
 The internal `WorldMapViewCore<TTexture>` separates navigation, requests, uploads and clipped draw
 items from the GPU wrapper. Its texture factory and disposal callback allow headless lifecycle and
-layout tests. Icons, labels, live markers and hover are the next layer of the world-map round.
+layout tests. Overlay layout uses icon sizes and text measurements, with no textures or fonts in the
+core's overlay pass.
+
+## Icons, labels, markers and hover
+
+Set `IconSprites` to resolve each cached icon key to a `WorldMapSprite`. A null callback or result hides
+that icon. `WorldMapSprite.Size` is in screen pixels and stays fixed as the map zooms. Its source UVs
+are `(left, top, right, bottom)`, and its texture remains caller-owned. The view resolves sizes during
+`Update` and resolves the accepted sprites again during `Draw`.
+
+Set `LabelText` to resolve an authored marker name to localized text and set `LabelFont` to a borrowed
+`SpriteFont`. A null text result or absent font hides the label. Labels centre on their map anchors,
+with dimensions `LabelFont.Measure(text) * tier.TextScale`. A tier shows at its inclusive minimum zoom
+and hides at its exclusive maximum. Text defaults to `#2b2117`, with a one-pixel shadow in `#f3ead2`.
+Change these colours through `LabelColor` and `LabelShadowColor`.
+
+Icons are selected by descending priority, ordinal key, then screen x and y. Same-key candidates
+within their screen-pixel merge radius collapse, and overlapping icons lose to an already accepted
+icon. Labels select descending tier rank, ordinal marker name, then screen x and y, and declutter
+against other labels. Icon and label rectangles must fit fully inside the viewport. Touching edges
+are allowed. Cached anchors can appear before their chunk's texture uploads.
+
+`SetMarker(id, mapPosition, heading, sprite)` adds or updates a live marker. Call it before `Update`
+to place its latest pose. Its artwork points north at zero heading, with heading in clockwise radians.
+Markers stay fixed in screen size and skip only when their centre is outside the viewport. They draw
+in ordinal ID order and do not participate in decluttering or hover. `RemoveMarker(id)` returns
+whether the identity was present. The view never disposes marker or icon textures or the label font.
+
+After the chunk list, `Draw` emits label shadows and text, then icons, then live markers in the same
+caller-open batch. `Hovered` is refreshed by `Update`, returning the last-drawn accepted icon under
+the pointer, otherwise the last label, otherwise null. Its key is the icon key or authored marker name,
+and its map position is the original anchor. An unusable viewport clears overlays and hover.

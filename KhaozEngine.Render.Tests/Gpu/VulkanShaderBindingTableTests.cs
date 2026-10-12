@@ -177,6 +177,31 @@ namespace KhaozEngine.Tests.Gpu
         }
 
         [Fact]
+        public void OpaqueReceivers_AppendAtmosphereAfterTheirOwnSetZeroPrefix()
+        {
+            foreach (var program in ShippedShaderPrograms.GraphicsPrograms())
+            {
+                int prefix = program.Name switch
+                {
+                    "Model" or "ModelDissolve" or "Foliage" or "ModelMotion" or "ModelCpuSkinnedMotion"
+                        or "ModelCpuSkinnedDissolveMotion" or "FoliageMotion" => 11,
+                    "SkinnedModel" or "SkinnedModelDissolve" or "SkinnedModelMotion"
+                        or "SkinnedModelDissolveMotion" => 4,
+                    "Splat" or "TileGround" or "SplatMotion" or "TileGroundMotion" => 3,
+                    _ => -1,
+                };
+                if (prefix < 0) continue;
+                Declaration[] atmosphere =
+                [
+                    new(0, prefix, GpuResourceKind.UniformBuffer, "Atmosphere"),
+                    new(0, prefix + 1, GpuResourceKind.TextureReadOnly, "AtmoSkyView"),
+                    new(0, prefix + 2, GpuResourceKind.Sampler, "AtmoSkySampler"),
+                ];
+                Assert.Equal(atmosphere, Parse(program.FragmentGlsl).Where(d => d.Set == 0 && d.Binding >= prefix).ToArray());
+            }
+        }
+
+        [Fact]
         public void WaterAndClipmap_AppendAtmosphereAfterTheDynamicWaterUniform()
         {
             var elements = VulkanDescriptorLimitTests.ShippedLayouts["Water"].Elements!;

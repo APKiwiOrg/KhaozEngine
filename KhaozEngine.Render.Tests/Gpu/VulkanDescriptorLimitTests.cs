@@ -78,14 +78,14 @@ namespace KhaozEngine.Tests.Gpu
                 ["GroundDecal"] = L(T("DepthTex"), S("Samp"), U("Frame", F, dynamic: true), T("NormalTex")),
 
                 // Render3D/Rendering/ModelRenderer.cs:225, :270 and :273
-                ["Model"] = L(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F), T("Albedo"),
+                ["Model"] = L(AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F), T("Albedo"),
                     T("NormalMap"), T("RoughnessMap"), S("Sampler"), T("ShadowMap"), S("ShadowSamp"),
-                    T("PointShadowMap"), T("PointShadowTransientMap")),
+                    T("PointShadowMap"), T("PointShadowTransientMap"))),
                 ["Foliage"] = L(U("Foliage", V, dynamic: true)),
                 // The shared frame block, fragment-only point lights and per-draw vertex block in binding order.
                 // The two uniform buffers retain their relative order from #604.
-                ["Model.skinnedMain"] = L(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F),
-                    U("VBlock", V, dynamic: true)),
+                ["Model.skinnedMain"] = L(AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F),
+                    U("VBlock", V, dynamic: true))),
                 ["Model.skinnedFrag"] = L(T("Albedo"), T("NormalMap"), T("RoughnessMap"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
                 // Render3D/Rendering/SkinnedBonePalette.cs:54. The one shipped layout used by TWO pipelines at
@@ -99,13 +99,13 @@ namespace KhaozEngine.Tests.Gpu
                 // Render3D/Rendering/ModelRenderer.Splat.cs:41 and :48. TWO sets since #604: the shared frame
                 // block, then everything the material owns. One of the two ground pipelines that put a uniform
                 // buffer in BOTH of their sets, and one of the three that spend two uniform buffers in total.
-                ["Model.splatFrame"] = L(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F)),
+                ["Model.splatFrame"] = L(AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F))),
                 ["Model.splatMaterial"] = L(U("SplatParams", F), T("AlbedoArray"), T("NormalArray"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
                 // Render3D/Rendering/ModelRenderer.TileGround.cs:47 and :55. The same two-set split since #727,
                 // which unfolded the last combined frame+params buffer in the tree. Albedo only, so one array
                 // where the splat material layout has two, and the shadow map stays last.
-                ["Model.tileGroundFrame"] = L(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F)),
+                ["Model.tileGroundFrame"] = L(AtmosphereBindings.AppendLayout(U("U", VF), Ro("PointLights", F), Ro("PointLightClusters", F))),
                 ["Model.tileGroundMaterial"] = L(U("TileGroundParams", F), T("AlbedoArray"), S("Sampler"),
                     T("ShadowMap"), S("ShadowSamp"), T("PointShadowMap"), T("PointShadowTransientMap")),
                 // Render3D/Rendering/ModelMotionResources.cs, the rigid temporal variant's set 1: the motion block and
@@ -345,7 +345,7 @@ namespace KhaozEngine.Tests.Gpu
         /// set 0 plus the per-caster bone palette in a set of its own. The skinned DEPTH pipeline took the same
         /// palette and sits at two with the other three. The skinned temporal variant raised it to FIVE: the frame
         /// block, the per-draw header and the palette as before, then the motion block and the last-frame palette at
-        /// set 3. Three descriptors of headroom are left.
+        /// set 3. Atmosphere adds the sixth in set 0, leaving two descriptors of headroom.
         /// <para>
         /// RAISING THIS NUMBER IS FINE UP TO <see cref="VulkanDescriptorLimits.SpecRequiredMinimum"/>. Update it
         /// with the pipeline that raised it. This is a per-PIPELINE-LAYOUT sum over EVERY uniform buffer, so both
@@ -353,12 +353,12 @@ namespace KhaozEngine.Tests.Gpu
         /// </para>
         /// </summary>
         [Fact]
-        public void TheHeaviestShippedPipeline_SpendsFiveDynamicUniformDescriptors()
+        public void TheHeaviestShippedPipeline_SpendsSixDynamicUniformDescriptors()
         {
             int heaviest = ShippedPipelines.Max(
                 p => p.Slots.Sum(slot => VulkanDescriptorPolicy.DynamicUniformCount(ShippedLayouts[slot])));
 
-            Assert.Equal(5, heaviest);
+            Assert.Equal(6, heaviest);
             Assert.True(heaviest < VulkanDescriptorLimits.SpecRequiredMinimum,
                 "the heaviest shipped pipeline is at the spec floor, so the next uniform buffer added to it cannot "
                 + "be created on a minimum-spec device at all.");
@@ -477,21 +477,20 @@ namespace KhaozEngine.Tests.Gpu
         {
             var api = new FakeVulkanDescriptorApi();
             var setLayouts = new VulkanDescriptorSetLayoutCache(api);
-            var cache = new VulkanPipelineLayoutCache(api, maxDynamicUniformBuffers: 3);
+            var cache = new VulkanPipelineLayoutCache(api, maxDynamicUniformBuffers: 4);
 
             using var main = new VulkanResourceLayout(setLayouts, ShippedLayouts["Model.skinnedMain"]);
             using var fragment = new VulkanResourceLayout(setLayouts, ShippedLayouts["Model.skinnedFrag"]);
             using var palette = new VulkanResourceLayout(setLayouts, ShippedLayouts["SkinnedBonePalette"]);
             using var extra = new VulkanResourceLayout(setLayouts, ShippedLayouts["Sky"]);
 
-            // The real shipped skinned pipeline: two dynamic uniforms in its first set since #604, a texture-only
-            // second set, and the shared bone palette's third since #407. It fits a limit of 3 exactly, which is
-            // what makes the throw below a real boundary rather than a comfortable one.
+            // The shipped skinned pipeline has frame, per-draw and atmosphere uniforms in its first set,
+            // a texture-only second set, and the shared bone palette in its third. It fits a limit of 4 exactly.
             ulong skinned = cache.GetOrCreate(new[] { main, fragment, palette });
             Assert.Equal(new ulong[] { main.SetLayout, fragment.SetLayout, palette.SetLayout },
                 api.PipelineLayouts[skinned]);
 
-            // A fourth set carrying one more uniform buffer takes it over the same limit.
+            // A fourth set carrying sky and atmosphere uniform buffers takes it over the same limit.
             Assert.Throws<NotSupportedException>(
                 () => cache.GetOrCreate(new[] { main, fragment, palette, extra }));
         }

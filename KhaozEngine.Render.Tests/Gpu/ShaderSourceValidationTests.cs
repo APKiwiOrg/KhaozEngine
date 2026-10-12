@@ -52,6 +52,10 @@ namespace KhaozEngine.Tests.Gpu
             => ShaderValidation.ValidatePair(ShaderSources.ModelVert, ShaderSources.ModelFrag, "Model");
 
         [Fact]
+        public void Foliage()
+            => ShaderValidation.ValidatePair(ShaderSources.FoliageVert, ShaderSources.ModelFrag, "Foliage");
+
+        [Fact]
         public void Splat()
             => ShaderValidation.ValidatePair(ShaderSources.SplatVert, ShaderSources.SplatFrag, "Splat");
 

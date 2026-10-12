@@ -17,6 +17,159 @@ namespace KhaozEngine.Tests.Render3D;
 [Collection("NativeDeviceLifecycle")]
 public sealed class AtmosphereRendererTests
 {
+    [Fact]
+    public void EveryOpaqueReceiver_UsesSharedFogAndAbsoluteHeight()
+    {
+        foreach (var (source, prefix) in new[]
+        {
+            (ShaderSources.ModelFrag, 11), (ShaderSources.ModelDissolveFrag, 11),
+            (ShaderSources.SkinnedModelFrag, 4), (ShaderSources.SkinnedModelDissolveFrag, 4),
+            (ShaderSources.SplatFrag, 3), (ShaderSources.TileGroundFrag, 3),
+        })
+        {
+            Assert.Contains($"layout(std140, set=0, binding={prefix}) uniform Atmosphere", source);
+            Assert.Contains("lit = atmosphereFog(lit, vWorldPos, false);", source);
+            Assert.Contains("fragmentRelative.y + Atmo.Origin.y", source);
+            Assert.Contains("Atmo.Camera.y + Atmo.Origin.y", source);
+        }
+        Assert.DoesNotContain("atmosphereFog(", ShaderSources.ShadowDepthFrag);
+        Assert.DoesNotContain("atmosphereFog(", ShaderSources.ShadowDepthDissolveFrag);
+    }
+
+    [Theory]
+    [InlineData("Model", 11)]
+    [InlineData("ModelDissolve", 11)]
+    [InlineData("Foliage", 11)]
+    [InlineData("SkinnedModel", 4)]
+    [InlineData("SkinnedModelDissolve", 4)]
+    [InlineData("Splat", 3)]
+    [InlineData("TileGround", 3)]
+    [InlineData("Sky", 1)]
+    public void ConsumerReflection_PinsSharedSlots(string program, int prefix)
+    {
+        var (vertex, fragment) = program switch
+        {
+            "Model" => (ShaderSources.ModelVert, ShaderSources.ModelFrag),
+            "ModelDissolve" => (ShaderSources.ModelVert, ShaderSources.ModelDissolveFrag),
+            "Foliage" => (ShaderSources.FoliageVert, ShaderSources.ModelFrag),
+            "SkinnedModel" => (ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelFrag),
+            "SkinnedModelDissolve" => (ShaderSources.SkinnedModelVert, ShaderSources.SkinnedModelDissolveFrag),
+            "Splat" => (ShaderSources.SplatVert, ShaderSources.SplatFrag),
+            "TileGround" => (ShaderSources.TileGroundVert, ShaderSources.TileGroundFrag),
+            "Sky" => (ShaderSources.SkyVert, ShaderSources.SkyFrag),
+            _ => throw new ArgumentOutOfRangeException(nameof(program)),
+        };
+        var vertexBytes = SpirvFrontEnd.ToSpirv(vertex, GpuShaderStages.Vertex, program);
+        var fragmentBytes = SpirvFrontEnd.ToSpirv(fragment, GpuShaderStages.Fragment, program);
+        var pair = SpirvCrossCompile.VertexFragmentToMsl(vertexBytes, fragmentBytes, program);
+        var elements = pair.Reflection.ResourceLayouts[0].Elements;
+        Assert.Equal(prefix + 3, elements.Length);
+        Assert.Equal(new[] { GpuResourceKind.UniformBuffer, GpuResourceKind.TextureReadOnly,
+            GpuResourceKind.Sampler }, elements.Skip(prefix).Select(e => e.Kind));
+        Assert.All(elements.Skip(prefix), e => Assert.Equal(GpuShaderStages.Fragment, e.Stages));
+        var metal = MetalShaderBuild.Pair(vertex, fragment, null, program);
+        metal.Table.RequireLayoutShape(pair.Reflection.ResourceLayouts, program);
+    }
+
+    [Fact]
+    public void DisabledFog_ReturnsBeforeDepthOrSkyWork()
+    {
+        string source = ShaderSources.ModelFrag;
+        int transmission = source.IndexOf("vec3 atmosphereTransmittance(", StringComparison.Ordinal);
+        Assert.True(transmission >= 0);
+        string body = source[transmission..];
+        Assert.Contains("if (Atmo.Tint.w < 0.5 || Atmo.Planet.w == 0.0) return vec3(1.0);", body);
+        Assert.True(body.IndexOf("if (Atmo.Tint.w < 0.5 || Atmo.Planet.w == 0.0) return vec3(1.0);",
+            StringComparison.Ordinal) < body.IndexOf("atmosphereSegmentView(fragmentRelative, distanceWorld)", StringComparison.Ordinal));
+        int fog = source.IndexOf("vec3 atmosphereFog(", StringComparison.Ordinal);
+        Assert.True(fog >= 0);
+        body = source[fog..];
+        Assert.Contains("if (Atmo.Tint.w < 0.5) return colour;", body);
+        Assert.True(body.IndexOf("if (Atmo.Tint.w < 0.5) return colour;", StringComparison.Ordinal)
+            < body.IndexOf("atmosphereTransmittance(fragmentRelative)", StringComparison.Ordinal));
+        Assert.Contains("if (all(equal(transmission, vec3(1.0)))) return colour;", body);
+        Assert.True(body.IndexOf("if (additive) return colour * transmission;", StringComparison.Ordinal)
+            < body.IndexOf("atmosphereSkyValue(", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void StandaloneModel_OwnsOneAtmosphereSuffixAcrossAllFrameSets()
+    {
+        using var device = new FakeGpuDevice();
+        var factory = (FakeGpuResourceFactory)device.Factory;
+        FakeBuffer uniforms;
+        FakeTexture sky;
+        using (var model = new ModelRenderer(device, ModelTargets.Base, 64, 1))
+        {
+            model.EnsureSkinnedMainCapacity(1);
+            var frameSets = factory.ResourceSets.Where(set => !set.Disposed
+                && set.Resources[0] is IGpuBuffer buffer && buffer.SizeInBytes == ModelRenderer.UboBytes).ToArray();
+            Assert.Equal(new[] { 6, 6, 7, 14 }, frameSets.Select(set => set.Resources.Length).OrderBy(n => n));
+            uniforms = Assert.IsType<FakeBuffer>(frameSets[0].Resources[^3]);
+            sky = Assert.IsType<FakeTexture>(frameSets[0].Resources[^2]);
+            Assert.Equal(304u, uniforms.SizeInBytes);
+            Assert.All(frameSets, set =>
+            {
+                Assert.Same(uniforms, set.Resources[^3]);
+                Assert.Same(sky, set.Resources[^2]);
+                Assert.Same(frameSets[0].Resources[^1], set.Resources[^1]);
+            });
+        }
+        Assert.True(uniforms.Disposed);
+        Assert.True(sky.Disposed);
+    }
+
+    [Fact]
+    public void BorrowedModel_RebuildsKeepAtmosphereAndDisposalKeepsSceneResources()
+    {
+        using var device = new FakeGpuDevice();
+        var factory = (FakeGpuResourceFactory)device.Factory;
+        using var atmosphere = new AtmosphereBindings(device);
+        using var retired = GpuRetireQueue.CreateFrameCounted(device, GpuRetireQueue.DefaultFrameDelay);
+        using (var model = new ModelRenderer(device, ModelTargets.Base, 64, 1, retired, atmosphere))
+        {
+            IGpuResourceSet rigid = model.CreateMaterialSet();
+            IGpuResourceSet skinned = model.CreateSkinnedMaterialSet();
+            model.EnsureSkinnedMainCapacity(1);
+            AssertSuffixes();
+            model.EnsureSkinnedMainCapacity(9);
+            AssertSuffixes(retainedSkinnedSet: true);
+            model.EnsurePointLightCapacity(17, [rigid, skinned], replace =>
+            {
+                rigid = replace(rigid);
+                skinned = replace(skinned);
+            });
+            AssertSuffixes();
+            var settings = new ShadowSettings();
+            settings.CommitAtlas();
+            Assert.True(model.ReplaceShadowLayout(128, 2, settings, [rigid, skinned], replace =>
+            {
+                rigid = replace(rigid);
+                skinned = replace(skinned);
+            }, () => { }));
+            AssertSuffixes();
+
+            void AssertSuffixes(bool retainedSkinnedSet = false)
+            {
+                var frameSets = factory.ResourceSets.Where(set => !set.Disposed
+                    && set.Resources.Contains(model.PointLightBuffer)).ToArray();
+                Assert.Equal(retainedSkinnedSet ? new[] { 6, 6, 7, 7, 14, 14 } : new[] { 6, 6, 7, 14, 14 },
+                    frameSets.Select(set => set.Resources.Length).OrderBy(n => n));
+                Assert.All(frameSets, set =>
+                {
+                    Assert.Same(atmosphere.Uniforms, set.Resources[^3]);
+                    Assert.Same(atmosphere.SkyView, set.Resources[^2]);
+                    Assert.Same(atmosphere.SkySampler, set.Resources[^1]);
+                });
+                var material = Assert.IsType<FakeResourceSet>(skinned);
+                Assert.Equal(8, material.Resources.Length);
+                Assert.DoesNotContain(atmosphere.Uniforms, material.Resources);
+            }
+        }
+        Assert.False(Assert.IsType<FakeBuffer>(atmosphere.Uniforms).Disposed);
+        Assert.False(Assert.IsType<FakeTexture>(atmosphere.SkyView).Disposed);
+    }
+
     [Theory]
     [InlineData("Transmittance")]
     [InlineData("MultiScattering")]

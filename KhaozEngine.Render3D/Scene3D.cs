@@ -398,7 +398,7 @@ namespace KhaozEngine.Render3D
             _atmosphere = new AtmosphereRenderer(gd);
             ShadowSettings shadow0 = Post.Quality.Shadows;
             _model = new ModelRenderer(gd, _res.ModelFB.Outputs,
-                shadow0.ShadowMapResolution, shadow0.ResolvedCascadeCount, _retired);
+                shadow0.ShadowMapResolution, shadow0.ResolvedCascadeCount, _retired, _atmosphere.Bindings);
             shadow0.CommitAtlas();
             _post = new PixelPostProcess(gd, _res.PingAFB.Outputs, targetOutput);
             _post.BindTargets(_res);

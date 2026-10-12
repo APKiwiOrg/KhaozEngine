@@ -12,6 +12,7 @@ internal sealed class FlatTestSource : IWorldMapSource
 
     public MapRect Bounds { get; }
     internal List<WorldMapMarker> Markers { get; } = [];
+    internal Color GroundColor { get; set; } = Color.FromHex("#527448");
     public float SurfaceCellSize => 8f;
     public long Revision { get; private set; }
     public event Action<MapRect>? Changed;
@@ -29,13 +30,13 @@ internal sealed class FlatTestSource : IWorldMapSource
                 var center = grid.Origin + new Vector2(column + 0.5f, row + 0.5f) * SurfaceCellSize;
                 if (!Bounds.Contains(center)) continue;
                 int index = grid.Index(column, row);
-                grid.Ground[index] = Color.FromHex("#527448");
+                grid.Ground[index] = GroundColor;
                 grid.SurfaceHeight[index] = 0f;
             }
         return grid;
     }
 
-    public void CollectFootprints(MapRect area, List<WorldMapFootprint> into) { }
+    public void CollectFootprints(MapRect area, float minExtentMetres, List<WorldMapFootprint> into) { }
     public void CollectMarkers(MapRect area, List<WorldMapMarker> into)
     {
         foreach (WorldMapMarker marker in Markers)

@@ -81,23 +81,54 @@ public sealed class ChunkRetentionTests
         Assert.True(cache.IsCurrent(new(1, 0)));
     }
 
-    /// <summary>Eviction removes the old generation as well as the image, and a new request rebuilds it.</summary>
+    /// <summary>Eviction removes the entry, but later requests never reuse its published generations.</summary>
     [Fact]
     public void Retention_EvictedChunkRebuildsOnRequest()
     {
         using var cache = Cache(1);
         Build(cache, new(0, 0));
+        Assert.True(cache.TryGet(new(0, 0), out var original));
         cache.Invalidate(new(31f, 31f, 1f, 1f));
         Assert.True(cache.BuildNext());
         Assert.True(cache.TryGet(new(0, 0), out var old));
-        Assert.Equal(1, old.Generation);
-        Build(cache, new(1, 0));
+        Assert.True(old.Generation > original.Generation);
+        Build(cache, new(3, 0));
         Assert.False(cache.TryGet(new(0, 0), out _));
+        cache.Invalidate(new(31f, 31f, 1f, 1f));
         Build(cache, new(0, 0));
         Assert.True(cache.TryGet(new(0, 0), out var rebuilt));
         Assert.NotSame(old, rebuilt);
-        Assert.Equal(0, rebuilt.Generation);
+        Assert.True(rebuilt.Generation > old.Generation);
+        Assert.True(cache.IsCurrent(new(0, 0)));
         Assert.Equal(1, cache.RetainedCount);
+    }
+
+    /// <summary>Failed rebuilds release protected stale images and trim them before the worker drains.</summary>
+    [Fact]
+    public void Retention_FailedRebuilds_TrimProtectedOverflow()
+    {
+        var source = new TestWorldMapSource(new(0f, 0f, 128f, 64f));
+        using var cache = new WorldMapChunkCache(source, Style, 1);
+        Build(cache, new(0, 0));
+        cache.Invalidate(new(31f, 31f, 1f, 1f));
+        cache.Request(new(1, 0), -1f);
+        source.BeforeSample = _ => cache.Invalidate(new(95f, 31f, 1f, 1f));
+        Assert.True(cache.BuildNext());
+        Assert.Equal(2, cache.RetainedCount);
+        Assert.False(cache.IsCurrent(new(0, 0)));
+        Assert.False(cache.IsCurrent(new(1, 0)));
+
+        cache.Request(new(0, 0), -2f);
+        source.BeforeSample = _ => throw new InvalidOperationException("Rebuild failure.");
+        Assert.True(cache.BuildNext());
+        int afterFirstFailure = cache.RetainedCount;
+        Assert.True(cache.BuildNext());
+        Assert.False(cache.BuildNext());
+
+        Assert.Equal(1, afterFirstFailure);
+        Assert.Equal(1, cache.RetainedCount);
+        Assert.False(cache.TryGet(new(0, 0), out _));
+        Assert.True(cache.IsFailed(new(1, 0)));
     }
 
     /// <summary>The retention cap must permit at least one built image.</summary>

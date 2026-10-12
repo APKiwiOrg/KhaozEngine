@@ -32,8 +32,15 @@ public interface IWorldMapSource
     /// </remarks>
     WorldMapSurfaceGrid SampleSurface(MapRect area, float maxCellSize);
 
-    /// <summary>Appends every surface footprint whose oriented rectangular shape intersects the area.</summary>
-    void CollectFootprints(MapRect area, List<WorldMapFootprint> into);
+    /// <summary>Appends intersecting surface footprints, optionally omitting those below the size budget.</summary>
+    /// <param name="area">The map-space area intersected by each footprint's oriented rectangle.</param>
+    /// <param name="minExtentMetres">The minimum full larger extent in metres, or zero to include every size.</param>
+    /// <param name="into">The list to append matching footprints to.</param>
+    /// <remarks>
+    /// Sources may omit footprints whose twice-largest half extent is below <paramref name="minExtentMetres"/>.
+    /// Every intersecting footprint at or above the budget must be returned.
+    /// </remarks>
+    void CollectFootprints(MapRect area, float minExtentMetres, List<WorldMapFootprint> into);
 
     /// <summary>Appends every surface marker whose position is contained by the half-open area.</summary>
     void CollectMarkers(MapRect area, List<WorldMapMarker> into);

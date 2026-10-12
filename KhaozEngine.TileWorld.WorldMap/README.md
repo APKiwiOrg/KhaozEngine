@@ -55,14 +55,22 @@ The adapter's stride therefore grows as coarse chunks cover more of the world.
 256 by 256 default chunks once pending work drains. It evicts the oldest requested eligible chunk,
 protecting pending and building chunks. Protected rebuilds can temporarily exceed the cap, and
 feature metadata and build allocations are additional memory.
+Trimming also runs after failed builds and before no-work returns. Cache generations are
+monotonically increasing `long` values shared across entries. Requests after eviction receive
+fresh generations so surviving view uploads can be replaced.
 
 ## Footprints and markers
 
-`CollectFootprints` queries object anchors in the area's tile rectangle expanded by the largest
-archetype `Max(SizeX, SizeZ)`, computed once when the source is created. This includes large roofs
+`CollectFootprints(area, minExtentMetres, into)` queries object anchors in the area's tile rectangle
+expanded by the largest archetype `Max(SizeX, SizeZ)`, computed once when the source is created. This includes large roofs
 anchored in neighbouring chunks. It keeps objects on `surfacePlane` and roofs on any plane, then
-filters by intersection between the rotated footprint's map rectangle and the requested area.
+rejects archetypes with `max(SizeX, SizeZ) * TileSize < minExtentMetres` before constructing any
+footprint or combined tags. No per-object data is precomputed for this filter. Remaining objects
+are filtered by intersection between the rotated footprint's map rectangle and the requested area.
 Unknown archetypes are skipped.
+Rasterization supplies `0.5f / levelPpm` metres and retains its own sub-pixel skip. Feature
+collection supplies zero to preserve anchors of every size. Every intersecting footprint at or
+above the minimum extent is returned.
 
 The centre comes from the `TileFootprint.Of` rectangle. Half extents are the unrotated
 `(SizeX, SizeZ) * TileSize / 2`, and rotation is the object's quarter turns times PI / 2.

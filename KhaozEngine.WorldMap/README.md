@@ -42,8 +42,11 @@ Implement `IWorldMapSource` to adapt an authored world:
   `SurfaceHeight` uses NaN for void, and `WaterSurface` uses NaN where dry. Heights are metres.
   Fill the three arrays at matching indices. Cell sizes must be finite and positive, dimensions
   must be non-negative, and `Index` refuses coordinates outside the grid.
-- `CollectFootprints(area, into)` appends every surface footprint whose oriented rectangle
-  intersects the area. Footprints carry a stable id, archetype key, centre, half extents, rotation,
+- `CollectFootprints(area, minExtentMetres, into)` appends intersecting surface footprints.
+  Sources may omit footprints whose `2 * max(HalfExtents)` is below `minExtentMetres`, but must
+  include every intersecting footprint at or above it. Rasterization requests `0.5f / levelPpm`
+  metres and still skips sub-pixel footprints itself. Feature collection passes zero so anchors
+  never depend on size. Footprints carry a stable id, archetype key, centre, half extents, rotation,
   tags, roof flag and `Collision` (`None`, `Solid` or `Wall`). `Blocking` derives from collision.
 - `CollectMarkers(area, into)` appends surface markers whose positions are inside the half-open area.
   Markers carry an authored name, position and tags. Games resolve label names to localized text.
@@ -148,13 +151,18 @@ Screen-space merging, label placement and localized text resolution belong to th
 feature anchors together. The cap must be at least one. `MaxRetainedChunks` exposes the cap, and
 `RetainedCount` includes both current images and stale images retained during rebuilds.
 `Request` refreshes a chunk's request sequence even when its image is already current.
-After publication, excess images are evicted in oldest-request order. Pending and building chunks
+After every build completion, including failure, and before a no-work `BuildNext` returns,
+excess images are evicted in oldest-request order. Pending and building chunks
 are protected. Once work drains, 256 default chunks of 256 by 256 RGBA pixels have a 64 MiB image
 payload bound, excluding feature metadata and temporary build allocations. Protected rebuilds can
 temporarily exceed the cap.
 
-Eviction drops the image and generation entry. `TryGet` and `IsCurrent` return false afterward,
-and requesting the chunk again rebuilds it. `Invalidate(area)` expands the edit separately for
+Generations are `long` values allocated by one cache-wide monotonically increasing counter.
+A first request and every touching invalidation assign a fresh generation. A build captures it
+at start, and `IsCurrent` compares it with the entry's current generation.
+Eviction drops the image and entry. `TryGet` and `IsCurrent` return false afterward,
+and requesting the chunk again rebuilds it with a never-used generation, permitting views to
+replace any surviving upload. `Invalidate(area)` expands the edit separately for
 each cached level using that level's surface cell size and footprint reach. Builds run outside
 the bookkeeping lock. An invalidation during a build leaves its result stale, and a failed source
 read quarantines only that generation until invalidation permits a retry.

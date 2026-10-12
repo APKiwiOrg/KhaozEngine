@@ -11,6 +11,7 @@ public sealed class WorldMapChunkCache : IDisposable
 {
     readonly object _gate = new();
     readonly Dictionary<WorldMapChunkCoord, Entry> _chunks = [];
+    long _generationCounter;
     long _requestSequence;
     int _retainedCount;
     bool _disposed;
@@ -65,7 +66,7 @@ public sealed class WorldMapChunkCache : IDisposable
         {
             if (_disposed) return;
             if (!_chunks.TryGetValue(chunk, out Entry? entry))
-                _chunks.Add(chunk, entry = new Entry());
+                _chunks.Add(chunk, entry = new Entry { Generation = ++_generationCounter });
             entry.RequestSequence = ++_requestSequence;
             if (entry.Failed || entry.Built?.Generation == entry.Generation) return;
             entry.Priority = priority;
@@ -126,7 +127,7 @@ public sealed class WorldMapChunkCache : IDisposable
                 {
                     if (pair.Key.Level != level || !WorldMapChunking.ChunkRect(pair.Key, Style.ChunkMetres).Intersects(affected)) continue;
                     Entry entry = pair.Value;
-                    entry.Generation++;
+                    entry.Generation = ++_generationCounter;
                     entry.Failed = false;
                     entry.Pending = true;
                 }
@@ -146,7 +147,7 @@ public sealed class WorldMapChunkCache : IDisposable
     {
         WorldMapChunkCoord chunk = default;
         Entry? selected = null;
-        int generation;
+        long generation;
         lock (_gate)
         {
             if (_disposed) return false;
@@ -158,7 +159,11 @@ public sealed class WorldMapChunkCache : IDisposable
                 chunk = pair.Key;
                 selected = entry;
             }
-            if (selected is null) return false;
+            if (selected is null)
+            {
+                EvictOldest();
+                return false;
+            }
             generation = selected.Generation;
             selected.Pending = false;
             selected.Building = true;
@@ -195,7 +200,7 @@ public sealed class WorldMapChunkCache : IDisposable
                 }
                 // An earlier wake may have been consumed while this chunk was still building.
                 if (selected.Pending) wake = WorkQueued;
-                if (built is not null) EvictOldest();
+                EvictOldest();
             }
         }
         if (failure is not null)
@@ -237,7 +242,7 @@ public sealed class WorldMapChunkCache : IDisposable
 
     sealed class Entry
     {
-        public int Generation;
+        public long Generation;
         public float Priority;
         public long RequestSequence;
         public WorldMapChunk? Built;

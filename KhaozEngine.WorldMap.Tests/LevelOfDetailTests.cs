@@ -97,10 +97,13 @@ public sealed class LevelOfDetailTests
     }
 
     /// <summary>Small rocks disappear below half a raster pixel, and skipped buildings leave no shadows.</summary>
-    [Fact]
-    public void Rasterize_SubPixelFootprint_SkippedAtCoarseLevel()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Rasterize_SubPixelFootprint_SkippedAtCoarseLevel(bool applySourceFilter)
     {
         var source = UniformSource();
+        source.ApplyFootprintSizeFilter = applySourceFilter;
         var style = new WorldMapStyle
         {
             SymbolRules = [new(new(ArchetypeKey: "building"),
@@ -114,26 +117,43 @@ public sealed class LevelOfDetailTests
         Assert.Equal(coarse, WorldMapRasterizer.Rasterize(source, style, new(0, 0, 4)).Rgba);
     }
 
+    /// <summary>A coarse raster requests no records for a field of rocks below half a pixel.</summary>
+    [Fact]
+    public void Rasterize_CoarseRockField_MaterializesNoSkippedFootprints()
+    {
+        var source = UniformSource();
+        for (int x = 0; x < 32; x++)
+            for (int y = 0; y < 32; y++)
+                source.Footprints.Add(new(x * 32 + y, "rock", new(16f + x * 32f, 16f + y * 32f),
+                    new(0.25f), 0f, [], false, WorldMapCollision.Solid));
+
+        WorldMapRasterizer.Rasterize(source, new(), new(0, 0, 4));
+
+        Assert.Equal(0, source.MaterializedFootprints);
+        Assert.Equal(2f, source.LastMinExtentMetres);
+    }
+
     /// <summary>Markers and straddling footprint centres have one owner independently at each level.</summary>
     [Fact]
     public void Features_OwnedOncePerLevel()
     {
         var source = new TestWorldMapSource(new(0f, 0f, 256f, 256f), 8f);
         source.Markers.Add(new("edge", new(128f, 32f), ["map"]));
-        source.Footprints.Add(new(1, "rock", new(128f, 32f), new(2f), 0f, ["map"], false, WorldMapCollision.Solid));
+        source.Footprints.Add(new(1, "rock", new(128f, 32f), new(0.25f), 0f, ["map"], false, WorldMapCollision.Solid));
         var style = new WorldMapStyle
         {
             IconRules = [new(WorldMapFeatureSource.Marker, ["map"], "marker", 1),
                 new(WorldMapFeatureSource.Footprint, ["map"], "rock", 1)]
         };
-        foreach (int level in new[] { 0, 1 })
+        foreach (int level in new[] { 0, 1, 4 })
         {
             var features = WorldMapChunking.ChunksTouching(source.Bounds, 64f, level)
                 .Select(chunk => (Chunk: chunk, Features: WorldMapFeatureCollector.Collect(source, style, chunk)))
                 .Where(item => item.Features.Icons.Count > 0).ToArray();
             var owner = Assert.Single(features);
-            Assert.Equal(new WorldMapChunkCoord(level == 0 ? 2 : 1, 0, level), owner.Chunk);
+            Assert.Equal(new WorldMapChunkCoord(level == 0 ? 2 : level == 1 ? 1 : 0, 0, level), owner.Chunk);
             Assert.Equal(2, owner.Features.Icons.Count);
+            Assert.Equal(0f, source.LastMinExtentMetres);
         }
     }
 

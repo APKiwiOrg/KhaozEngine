@@ -40,5 +40,5 @@ internal sealed class ChunkTextureStore<TTexture> : IDisposable where TTexture :
         _textures.Clear();
     }
 
-    sealed record UploadedChunk(TTexture Texture, int Generation);
+    sealed record UploadedChunk(TTexture Texture, long Generation);
 }

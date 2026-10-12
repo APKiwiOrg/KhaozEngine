@@ -24,7 +24,7 @@ internal sealed class TileWorldMapFootprints
             _maximumSize = Math.Max(_maximumSize, Math.Max(archetype.SizeX, archetype.SizeZ));
     }
 
-    internal void Collect(MapRect area, List<WorldMapFootprint> into)
+    internal void Collect(MapRect area, float minExtentMetres, List<WorldMapFootprint> into)
     {
         ArgumentNullException.ThrowIfNull(into);
         TileRect tiles = TileWorldMapSource.TilesCovering(area, _tileSize);
@@ -33,6 +33,7 @@ internal sealed class TileWorldMapFootprints
         {
             TileObjectArchetype? archetype = _catalogs.Archetype(obj.ArchetypeId);
             if (archetype is null || (obj.Plane != _plane && !archetype.IsRoof)) continue;
+            if (Math.Max(archetype.SizeX, archetype.SizeZ) * _tileSize < minExtentMetres) continue;
             MapRect footprint = TileWorldMapSource.MapRectangle(
                 TileFootprint.Of(archetype, obj.X, obj.Z, obj.Rotation), _tileSize);
             if (!footprint.Intersects(area)) continue;

@@ -69,7 +69,7 @@ public interface IWorldMapSource
     event Action<MapRect>? Changed;
 
     WorldMapSurfaceGrid SampleSurface(MapRect area, float maxCellSize);
-    void CollectFootprints(MapRect area, List<WorldMapFootprint> into);
+    void CollectFootprints(MapRect area, float minExtentMetres, List<WorldMapFootprint> into);
     void CollectMarkers(MapRect area, List<WorldMapMarker> into);
 
     Vector2 ToMap(Vector3 worldPosition);
@@ -86,7 +86,12 @@ public interface IWorldMapSource
   `max(maxCellSize, SurfaceCellSize)`. The rasterizer supplies a budget in metres and resamples the grid,
   so the source never knows about pixels.
 - **`SurfaceCellSize`** exposes the native source lattice spacing in metres.
-- **`CollectFootprints`** appends every surface object's oriented rectangle whose shape intersects the area: id,
+- **`CollectFootprints`** appends surface objects whose oriented rectangles intersect the area. A source may omit
+  footprints whose `2 * max(HalfExtents)` is below `minExtentMetres`, but must return every intersecting footprint
+  at or above that threshold. The rasterizer passes `0.5f / levelPpm` metres and retains its own sub-pixel skip
+  as the guarantee. The feature collector passes zero because anchors never depend on size. TileWorld rejects
+  by `max(SizeX, SizeZ) * TileSize` before creating records or combined tags, without per-object precomputation.
+  Each footprint carries id,
   archetype key, centre, local half extents, rotation, tags, `IsRoof` and `Collision` (`None`, `Solid` or `Wall`).
   `Blocking` derives from collision being other than `None`. Rotation is radians clockwise from local +x on the
   north-up map, and half extents are measured before rotation. Shapes are oriented rectangles only. The MapDoc
@@ -172,6 +177,10 @@ values directly, matching `Render2D` UI texture uploads without sRGB decoding. C
 values per channel for floating-point differences.
 
 `WorldMapChunkCache` holds generation-tagged `WorldMapChunk` results containing `Image`, `Features` and `Generation`.
+Generations are `long` values from one cache-wide monotonically increasing counter. A chunk's first request
+and every invalidation touching its entry assign a fresh value. A build captures the current generation at start
+and publishes it. `IsCurrent` compares the built generation with the entry's current value. Eviction can drop
+the entry because a later request receives a never-used generation, so views replace surviving stale uploads.
 `Invalidate(area)` widens the touched area separately for every cached level by the sum of that level's surface
 and footprint reaches from `WorldMapRasterReach`,
 marks previously requested chunks stale and clears failed generations for retry. `TryGet(chunk, out built)` retains
@@ -180,7 +189,8 @@ bookkeeping lock. A source failure quarantines that generation without stopping 
 
 The cache constructor accepts `maxRetainedChunks = 256`, requiring at least one. `MaxRetainedChunks` exposes the cap
 and `RetainedCount` counts built images, including stale images. Every `Request` refreshes that chunk's request sequence.
-After a build publishes, the cache evicts built chunks in oldest-request order until the cap is met or all remaining
+After every build completion, including failure, and before a no-work `BuildNext` returns, the cache evicts built
+chunks in oldest-request order until the cap is met or all remaining
 chunks are pending or building. Protected rebuilds can temporarily exceed the cap. Once work drains, the default cap
 of 256 chunks of 256 by 256 RGBA pixels bounds image payload to 64 MiB, excluding feature metadata and temporary
 allocations. Eviction drops the generation entry too. `TryGet` and `IsCurrent` return false, and a new request rebuilds.

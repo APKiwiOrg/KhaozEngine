@@ -27,6 +27,9 @@ internal sealed class TestWorldMapSource : IWorldMapSource
     public Action<MapRect>? BeforeSample { get; set; }
     public int SampleCalls { get; private set; }
     public float LastMaxCellSize { get; private set; }
+    public int MaterializedFootprints { get; private set; }
+    public float LastMinExtentMetres { get; private set; }
+    public bool ApplyFootprintSizeFilter { get; set; } = true;
 
     public void SetCell(int column, int row, Color ground, float height, float water = float.NaN)
     {
@@ -59,17 +62,24 @@ internal sealed class TestWorldMapSource : IWorldMapSource
         return grid;
     }
 
-    public void CollectFootprints(MapRect area, List<WorldMapFootprint> into)
+    public void CollectFootprints(MapRect area, float minExtentMetres, List<WorldMapFootprint> into)
     {
+        LastMinExtentMetres = minExtentMetres;
         foreach (WorldMapFootprint footprint in Footprints)
         {
+            if (ApplyFootprintSizeFilter && 2f * MathF.Max(footprint.HalfExtents.X, footprint.HalfExtents.Y) < minExtentMetres)
+                continue;
             float cos = MathF.Abs(MathF.Cos(footprint.Rotation));
             float sin = MathF.Abs(MathF.Sin(footprint.Rotation));
             var extent = new Vector2(cos * footprint.HalfExtents.X + sin * footprint.HalfExtents.Y,
                 sin * footprint.HalfExtents.X + cos * footprint.HalfExtents.Y);
             var bounds = new MapRect(footprint.Center.X - extent.X, footprint.Center.Y - extent.Y,
                 extent.X * 2f, extent.Y * 2f);
-            if (bounds.Intersects(area)) into.Add(footprint);
+            if (bounds.Intersects(area))
+            {
+                into.Add(footprint);
+                MaterializedFootprints++;
+            }
         }
     }
 

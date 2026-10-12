@@ -21,7 +21,7 @@ public static class WorldMapFeatureCollector
         var labels = new List<WorldMapLabelAnchor>();
 
         var footprints = new List<WorldMapFootprint>();
-        source.CollectFootprints(area, footprints);
+        source.CollectFootprints(area, 0f, footprints);
         foreach (WorldMapFootprint footprint in footprints)
             if (WorldMapChunking.ChunkAt(footprint.Center, style.ChunkMetres, chunk.Level) == chunk)
                 AddIcon(style.IconRules, WorldMapFeatureSource.Footprint, footprint.Tags, footprint.Center, icons);

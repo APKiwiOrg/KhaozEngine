@@ -52,8 +52,10 @@ from the chunk centre to the view centre as the build priority. Completed visibl
 nearest first on the frame thread. `UploadBudgetPerFrame` defaults to 4. Zero pauses uploads, and
 negative budgets are refused. Rasterization stays with `WorldMapChunkCache` and its worker.
 
-Each upload records the cache generation. An unchanged generation never uploads again. A stale chunk
-keeps its old texture until a newly built generation uploads, including while the upload budget is
+Each upload records the cache's `long` generation. Cache-wide monotonically increasing generations
+ensure that re-requesting an evicted chunk replaces any surviving upload. An unchanged generation
+never uploads again. A stale chunk keeps its old texture until a newly built generation uploads,
+including while the upload budget is
 exhausted. Replacing a texture disposes the previous one. Uploaded textures remain available after
 panning away and are all disposed with the view.
 

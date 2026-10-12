@@ -68,8 +68,12 @@ public sealed class TileWorldMapSource : IWorldMapSource
     /// <remarks>Each cell samples the tile at its block start plus half the integer tile stride.</remarks>
     public WorldMapSurfaceGrid SampleSurface(MapRect area, float maxCellSize) => _surface.Sample(area, maxCellSize);
 
-    /// <summary>Appends intersecting surface objects and roofs, including anchors outside the area.</summary>
-    public void CollectFootprints(MapRect area, List<WorldMapFootprint> into) => _footprints.Collect(area, into);
+    /// <summary>Appends intersecting surface objects and roofs meeting the minimum full larger extent.</summary>
+    /// <param name="area">The map-space area, including overlapping objects anchored outside it.</param>
+    /// <param name="minExtentMetres">The minimum archetype extent in metres, or zero to include every size.</param>
+    /// <param name="into">The list to append matching footprints to.</param>
+    public void CollectFootprints(MapRect area, float minExtentMetres, List<WorldMapFootprint> into) =>
+        _footprints.Collect(area, minExtentMetres, into);
 
     /// <summary>Appends surface-plane markers whose tile centres lie inside the half-open area.</summary>
     public void CollectMarkers(MapRect area, List<WorldMapMarker> into)

@@ -98,6 +98,43 @@ public sealed class WorldMapViewChunkTests
         Assert.All(textures.Created, texture => Assert.Equal(1, texture.Disposals));
     }
 
+    /// <summary>An evicted chunk's changed source uploads fresh bytes over its surviving view texture.</summary>
+    [Fact]
+    public void EvictedChunk_SourceChanged_UploadsNewGeneration()
+    {
+        var source = new FlatTestSource();
+        using var cache = new WorldMapChunkCache(source, new WorldMapStyle(), 1);
+        var textures = new FakeTextures();
+        using var view = View(cache, textures);
+        var input = new TestInput();
+        view.CenterOn(new Vector2(96f, 96f));
+        view.ZoomBy(8f / view.PixelsPerMetre);
+        view.Update(input.At(ScreenCenter), 0f);
+        Build(cache, 1);
+        Assert.True(cache.TryGet(new(1, 1), out var original));
+        view.Update(input.At(ScreenCenter), 0f);
+        FakeTexture old = Assert.Single(textures.Created);
+
+        cache.Request(new(3, 1), 0f);
+        Build(cache, 1);
+        Assert.False(cache.TryGet(new(1, 1), out _));
+        source.GroundColor = Color.Black;
+        source.Change(new MapRect(96f, 96f, 1f, 1f));
+        view.Update(input.At(ScreenCenter), 0f);
+        Build(cache, 1);
+        Assert.True(cache.TryGet(new(1, 1), out var rebuilt));
+        Assert.False(old.Rgba.SequenceEqual(rebuilt.Image.Rgba));
+        view.Update(input.At(ScreenCenter), 0f);
+
+        Assert.Equal(2, textures.Created.Count);
+        Assert.True(rebuilt.Generation > original.Generation);
+        Assert.Same(rebuilt.Image.Rgba, textures.Created[1].Rgba);
+        Assert.Same(textures.Created[1], Assert.Single(view.DrawList).Texture);
+        Assert.Equal(1, old.Disposals);
+        view.Update(input.At(ScreenCenter), 0f);
+        Assert.Equal(2, textures.Created.Count);
+    }
+
     /// <summary>Clipping a west-edge chunk preserves its sampled region and clips north-up UVs on all axes.</summary>
     [Fact]
     public void DrawList_ClipsToViewport_AndShrinksUv()

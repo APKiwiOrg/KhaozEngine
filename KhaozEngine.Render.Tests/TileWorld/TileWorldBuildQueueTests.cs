@@ -78,6 +78,94 @@ public class TileWorldBuildQueueTests
     }
 
     [Fact]
+    public void Pump_applies_cover_nearest_first_with_independent_caps()
+    {
+        var dispatcher = new ManualDispatcher();
+        var applied = new List<TileWorldBuildResult<int>>();
+        using var queue = new TileWorldBuildQueue<int, int>(
+            request => request.Input, applied.Add,
+            new TileWorldBuildQueueOptions
+            {
+                MaxConcurrentBuilds = 20,
+                MaxFullGroundAppliesPerPump = 1,
+                MaxCoverAppliesPerPump = 1,
+                MaxCoarseGroundAppliesPerPump = 2,
+                MaxHlodAppliesPerPump = 1,
+            }, dispatcher);
+        queue.Request(Request(9, TileWorldBuildKind.FullGround, 1));
+        queue.Request(Request(1, TileWorldBuildKind.FullGround, 1));
+        queue.Request(Request(5, TileWorldBuildKind.Cover, 1));
+        queue.Request(Request(0, TileWorldBuildKind.Cover, 1));
+        queue.Request(Request(6, TileWorldBuildKind.Cover, 1));
+        queue.Request(Request(8, TileWorldBuildKind.CoarseGround, 1));
+        queue.Request(Request(2, TileWorldBuildKind.CoarseGround, 1));
+        queue.Request(Request(3, TileWorldBuildKind.CoarseGround, 1));
+        queue.Request(Request(7, TileWorldBuildKind.Hlod, 1));
+        queue.Request(Request(4, TileWorldBuildKind.Hlod, 1));
+        dispatcher.RunReverse();
+
+        queue.Pump(new RegionCoord(10, 0));
+
+        Assert.Equal(new[] { 9, 8, 7, 6, 3 }, applied.ConvertAll(result => result.Key.Region.Rx));
+        TileWorldBuildResult<int> cover = Assert.Single(applied.FindAll(result => result.Key.Kind == TileWorldBuildKind.Cover));
+        Assert.Equal(new RegionCoord(6, 0), cover.Key.Region);
+        Assert.Equal(4, Math.Abs(cover.Key.Region.Rx - 10));
+        Assert.Single(applied.FindAll(result => result.Key.Kind == TileWorldBuildKind.FullGround));
+        Assert.Equal(2, applied.FindAll(result => result.Key.Kind == TileWorldBuildKind.CoarseGround).Count);
+        Assert.Single(applied.FindAll(result => result.Key.Kind == TileWorldBuildKind.Hlod));
+        Assert.Equal(5, queue.ReadyCount);
+        Assert.Equal(5, queue.TrackedCount);
+        Assert.Equal(0, queue.InFlightCount);
+    }
+
+    [Fact]
+    public void Pump_with_zero_cover_cap_keeps_cover_ready()
+    {
+        var dispatcher = new ManualDispatcher();
+        var applied = new List<TileWorldBuildResult<int>>();
+        using var queue = new TileWorldBuildQueue<int, int>(
+            request => request.Input, applied.Add,
+            new TileWorldBuildQueueOptions { MaxCoverAppliesPerPump = 0 }, dispatcher);
+        queue.Request(Request(0, TileWorldBuildKind.Cover, 1));
+        queue.Request(Request(1, TileWorldBuildKind.FullGround, 1));
+        dispatcher.RunAll();
+
+        queue.Pump(default);
+
+        Assert.Equal(TileWorldBuildKind.FullGround, Assert.Single(applied).Key.Kind);
+        Assert.Equal(1, queue.ReadyCount);
+        Assert.Equal(1, queue.TrackedCount);
+        Assert.Equal(0, queue.InFlightCount);
+    }
+
+    [Fact]
+    public void Pump_uses_two_cover_applies_by_default()
+    {
+        var dispatcher = new ManualDispatcher();
+        var applied = new List<TileWorldBuildResult<int>>();
+        using var queue = new TileWorldBuildQueue<int, int>(
+            request => request.Input, applied.Add,
+            new TileWorldBuildQueueOptions { MaxConcurrentBuilds = 3 }, dispatcher);
+        for (int x = 0; x < 3; x++) queue.Request(Request(x, TileWorldBuildKind.Cover, 1));
+        dispatcher.RunReverse();
+
+        queue.Pump(default);
+
+        Assert.Equal(new[] { 0, 1 }, applied.ConvertAll(result => result.Key.Region.Rx));
+        Assert.Equal(1, queue.ReadyCount);
+    }
+
+    [Fact]
+    public void Negative_cover_cap_is_rejected()
+    {
+        ArgumentOutOfRangeException error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new TileWorldBuildQueue<int, int>(request => request.Input, _ => { },
+                new TileWorldBuildQueueOptions { MaxCoverAppliesPerPump = -1 }));
+
+        Assert.Equal(nameof(TileWorldBuildQueueOptions.MaxCoverAppliesPerPump), error.ParamName);
+    }
+
+    [Fact]
     public void New_generation_rejects_an_older_completed_result()
     {
         var dispatcher = new ManualDispatcher();
@@ -139,7 +227,7 @@ public class TileWorldBuildQueueTests
         queue.Request(Request(6, TileWorldBuildKind.Hlod, 1));
         queue.Request(Request(5, TileWorldBuildKind.Hlod, 1));
 
-        queue.PrimeGameplay(default);
+        queue.PrimeGameplay(default, new HashSet<RegionCoord> { new(4, 0), new(3, 0) });
 
         Assert.Equal(new[] { 3, 4 }, applied.ConvertAll(result => result.Key.Region.Rx));
         Assert.Equal(4, queue.TrackedCount);
@@ -157,7 +245,7 @@ public class TileWorldBuildQueueTests
         dispatcher.RunAll();
         queue.CollectCompleted();
 
-        queue.PrimeGameplay(default);
+        queue.PrimeGameplay(default, new HashSet<RegionCoord> { new(1, 0) });
 
         Assert.Equal(new[] { TileWorldBuildKind.FullGround },
             applied.ConvertAll(result => result.Key.Kind));
@@ -206,7 +294,7 @@ public class TileWorldBuildQueueTests
             () =>
             {
                 primeThread = Environment.CurrentManagedThreadId;
-                queue.PrimeGameplay(default);
+                queue.PrimeGameplay(default, new HashSet<RegionCoord> { new(0, 0) });
             },
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
@@ -296,7 +384,7 @@ public class TileWorldBuildQueueTests
             }, dispatcher);
 
     static TileWorldBuildRequest<int> Request(int x, TileWorldBuildKind kind, long generation) =>
-        new(new TileWorldBuildKey(new RegionCoord(x, 0), 0, kind), generation, x);
+        new(new TileWorldBuildKey(new RegionCoord(x, 0), kind == TileWorldBuildKind.Cover ? -1 : 0, kind), generation, x);
 
     sealed record DetachedInput(int Value);
 

@@ -12,6 +12,7 @@ internal enum TileWorldBuildKind
     FullGround,
     CoarseGround,
     Hlod,
+    Cover,
 }
 
 internal readonly record struct TileWorldBuildKey(
@@ -25,6 +26,7 @@ internal sealed record TileWorldBuildQueueOptions
 {
     public int MaxConcurrentBuilds { get; init; } = 2;
     public int MaxFullGroundAppliesPerPump { get; init; } = 2;
+    public int MaxCoverAppliesPerPump { get; init; } = 2;
     public int MaxCoarseGroundAppliesPerPump { get; init; } = 2;
     public int MaxHlodAppliesPerPump { get; init; } = 2;
 
@@ -33,6 +35,8 @@ internal sealed record TileWorldBuildQueueOptions
         if (MaxConcurrentBuilds < 1) throw new ArgumentOutOfRangeException(nameof(MaxConcurrentBuilds));
         if (MaxFullGroundAppliesPerPump < 0)
             throw new ArgumentOutOfRangeException(nameof(MaxFullGroundAppliesPerPump));
+        if (MaxCoverAppliesPerPump < 0)
+            throw new ArgumentOutOfRangeException(nameof(MaxCoverAppliesPerPump));
         if (MaxCoarseGroundAppliesPerPump < 0)
             throw new ArgumentOutOfRangeException(nameof(MaxCoarseGroundAppliesPerPump));
         if (MaxHlodAppliesPerPump < 0) throw new ArgumentOutOfRangeException(nameof(MaxHlodAppliesPerPump));
@@ -128,30 +132,39 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
         ApplyReady(focus,
             _options.MaxFullGroundAppliesPerPump,
             _options.MaxCoarseGroundAppliesPerPump,
-            _options.MaxHlodAppliesPerPump);
+            _options.MaxHlodAppliesPerPump,
+            _options.MaxCoverAppliesPerPump);
     }
 
-    public void PrimeGameplay(RegionCoord focus) => Prime(focus, TileWorldBuildKind.FullGround);
+    public void PrimeGameplay(RegionCoord focus) =>
+        Prime(focus, key => key.Kind == TileWorldBuildKind.FullGround);
 
-    internal void PrimeHlod(RegionCoord focus) => Prime(focus, TileWorldBuildKind.Hlod);
+    public void PrimeGameplay(RegionCoord focus, IReadOnlySet<RegionCoord> regions)
+    {
+        ArgumentNullException.ThrowIfNull(regions);
+        Prime(focus, key => key.Kind == TileWorldBuildKind.FullGround && regions.Contains(key.Region));
+    }
 
-    void Prime(RegionCoord focus, TileWorldBuildKind kind)
+    public void PrimeForCapture(RegionCoord focus) =>
+        Prime(focus, key => key.Kind is TileWorldBuildKind.FullGround or TileWorldBuildKind.Cover);
+
+    internal void PrimeHlod(RegionCoord focus) =>
+        Prime(focus, key => key.Kind == TileWorldBuildKind.Hlod);
+
+    void Prime(RegionCoord focus, Func<TileWorldBuildKey, bool> selected)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        RunPendingInline(kind);
-        FinishScheduled(kind);
+        RunPendingInline(selected);
+        FinishScheduled(selected);
         CollectCompletedCore(reportFailures: true);
-        ApplyReady(focus,
-            fullBudget: kind == TileWorldBuildKind.FullGround ? int.MaxValue : 0,
-            coarseBudget: 0,
-            hlodBudget: kind == TileWorldBuildKind.Hlod ? int.MaxValue : 0);
+        ApplyReady(focus, int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue, selected);
     }
 
-    void RunPendingInline(TileWorldBuildKind kind)
+    void RunPendingInline(Func<TileWorldBuildKey, bool> selected)
     {
         foreach (TileWorldBuildRequest<TInput> request in _pending)
         {
-            if (request.Key.Kind != kind ||
+            if (!selected(request.Key) ||
                 !_tracked.TryGetValue(request.Key, out Slot slot) ||
                 slot.Generation != request.Generation || slot.State != WorkState.Pending)
                 continue;
@@ -160,17 +173,18 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
         }
     }
 
-    void FinishScheduled(TileWorldBuildKind kind)
+    void FinishScheduled(Func<TileWorldBuildKey, bool> selected)
     {
         var running = new List<ScheduledWork>();
         foreach (KeyValuePair<TileWorldBuildKey, Slot> item in _tracked)
-            if (item.Key.Kind == kind &&
+            if (selected(item.Key) &&
                 item.Value.State == WorkState.Running && item.Value.Work is { } work)
                 running.Add(work);
         for (int i = 0; i < running.Count; i++) running[i].RunOrWait();
     }
 
-    void ApplyReady(RegionCoord focus, int fullBudget, int coarseBudget, int hlodBudget)
+    void ApplyReady(RegionCoord focus, int fullBudget, int coarseBudget, int hlodBudget, int coverBudget,
+                    Func<TileWorldBuildKey, bool>? selected = null)
     {
         if (_ready.Count == 0) return;
         var ordered = new List<TileWorldBuildResult<TOutput>>(_ready.Values);
@@ -178,7 +192,8 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
         for (int i = 0; i < ordered.Count; i++)
         {
             TileWorldBuildResult<TOutput> result = ordered[i];
-            ref int budget = ref Budget(result.Key.Kind, ref fullBudget, ref coarseBudget, ref hlodBudget);
+            if (selected is not null && !selected(result.Key)) continue;
+            ref int budget = ref Budget(result.Key.Kind, ref fullBudget, ref coarseBudget, ref hlodBudget, ref coverBudget);
             if (budget <= 0) continue;
             if (!_tracked.TryGetValue(result.Key, out Slot slot) ||
                 slot.Generation != result.Generation || slot.State != WorkState.Ready)
@@ -193,10 +208,11 @@ internal sealed class TileWorldBuildQueue<TInput, TOutput> : IDisposable
         }
     }
 
-    static ref int Budget(TileWorldBuildKind kind, ref int full, ref int coarse, ref int hlod)
+    static ref int Budget(TileWorldBuildKind kind, ref int full, ref int coarse, ref int hlod, ref int cover)
     {
         if (kind == TileWorldBuildKind.FullGround) return ref full;
         if (kind == TileWorldBuildKind.CoarseGround) return ref coarse;
+        if (kind == TileWorldBuildKind.Cover) return ref cover;
         return ref hlod;
     }
 

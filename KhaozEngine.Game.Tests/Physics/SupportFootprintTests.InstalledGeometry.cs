@@ -90,7 +90,7 @@ public partial class SupportFootprintTests
     }
 
     [Fact]
-    public void InstalledLocalCacheSeparatesOwnerInstallationAndGenerationAndEvictsExplicitly()
+    public void InstalledLocalCacheSeparatesOwnerInstallationAndStaticVersionAndEvictsExplicitly()
     {
         using var world = new BepuPhysicsWorld(Vector3.Zero);
         var first = world.AddStatic(new BoxShape(new(2, 1, 2)), Pose.Identity);
@@ -106,11 +106,11 @@ public partial class SupportFootprintTests
         Assert.NotSame(cold, otherOwner);
         Assert.Equal(CapsuleFeatureStatus.Complete, cache.GetOrCapture(simulation, first, secondShape, 1, out var replacement));
         Assert.Equal(new Vector3(-3, -2, -3), replacement!.Leaves[0].Vertices[0]);
-        Assert.Equal(CapsuleFeatureStatus.Complete, cache.GetOrCapture(simulation, first, secondShape, 2, out var nextGeneration));
-        Assert.NotSame(replacement, nextGeneration);
+        Assert.Equal(CapsuleFeatureStatus.Complete, cache.GetOrCapture(simulation, first, secondShape, 2, out var nextVersion));
+        Assert.NotSame(replacement, nextVersion);
         cache.Remove(first);
         Assert.Equal(CapsuleFeatureStatus.Complete, cache.GetOrCapture(simulation, first, secondShape, 2, out var afterRemoval));
-        Assert.NotSame(nextGeneration, afterRemoval);
+        Assert.NotSame(nextVersion, afterRemoval);
         cache.Clear();
         Assert.Equal(CapsuleFeatureStatus.Complete, cache.GetOrCapture(simulation, first, secondShape, 2, out var afterRebase));
         Assert.NotSame(afterRemoval, afterRebase);

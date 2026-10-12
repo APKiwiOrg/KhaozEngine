@@ -8,6 +8,15 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
 {
     SupportFootprintCollector? _footprintScratch = new();
     readonly InstalledSupportGeometryCache _installedSupportGeometry = new();
+    long _staticGeometryVersion;
+
+    // The mutation gate protects this version independently of moving bodies and query generations.
+    void StaticGeometryChanged(StaticHandle? owner = null)
+    {
+        checked { _staticGeometryVersion++; }
+        if (owner is { } changed) _installedSupportGeometry.Remove(changed);
+        else _installedSupportGeometry.Clear();
+    }
 
     /// <inheritdoc/>
     public SupportFootprintResult QuerySupportFootprint(IPhysicsQueryLease lease, in SupportFootprintRequest request,
@@ -78,7 +87,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
             if (filter.Mobility == QueryMobility.Dynamics) break;
             _sim.Statics.GetDescription(installed, out var description);
             CapsuleFeatureStatus captured = collector.Collect(_sim, seam, description, _installedSupportGeometry,
-                lease.GeometryGeneration);
+                _staticGeometryVersion);
             if (captured != CapsuleFeatureStatus.Complete) return collector.Refused(captured);
         }
         if (filter.Mobility != QueryMobility.Dynamics && collector.BeginBelowBandPass())
@@ -86,7 +95,7 @@ public sealed partial class BepuPhysicsWorld : IPhysicsSupportFootprint
             {
                 _sim.Statics.GetDescription(installed, out var description);
                 CapsuleFeatureStatus captured = collector.Collect(_sim, seam, description, _installedSupportGeometry,
-                    lease.GeometryGeneration);
+                    _staticGeometryVersion);
                 if (captured != CapsuleFeatureStatus.Complete) return collector.Refused(captured);
             }
         return collector.Publish(receiver, lease, members, joins);

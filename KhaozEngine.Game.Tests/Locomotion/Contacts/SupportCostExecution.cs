@@ -40,6 +40,7 @@ internal sealed class SupportCostExecution : IDisposable
     internal MovementQueryLease? LastMovementLease { get; private set; }
     internal EnvironmentAcquisitionFixture Producer => environment!;
     internal CountingQueryView View { get; }
+    internal KhaozEngine.Physics.Bepu.BepuPhysicsWorld World => scene.World;
     internal Func<SupportCostOutput> Invoke { get; }
     internal FootprintOracleSupport Expected => expected;
     internal long ScratchPayloadBytes => SupportCostScratch.PayloadBytes(scene.World);

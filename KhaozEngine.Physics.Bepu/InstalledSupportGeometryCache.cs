@@ -8,18 +8,18 @@ using StaticHandle = KhaozEngine.Physics.StaticHandle;
 namespace KhaozEngine.Physics.Bepu;
 
 /// <summary>Successful local installation captures. No query result or refusal is retained.
-/// Owners, installation identities and geometry generations must all match before reuse.</summary>
+/// Owners, installation identities and static geometry versions must all match before reuse.</summary>
 internal sealed class InstalledSupportGeometryCache
 {
-    readonly record struct Entry(TypedIndex Installation, long Generation, InstalledSupportGeometry Geometry);
+    readonly record struct Entry(TypedIndex Installation, long StaticGeometryVersion, InstalledSupportGeometry Geometry);
     readonly Dictionary<int, Entry> _entries = [];
 
     internal CapsuleFeatureStatus GetOrCapture(Simulation simulation, StaticHandle owner, TypedIndex installation,
-        long generation, out InstalledSupportGeometry? geometry)
+        long staticGeometryVersion, out InstalledSupportGeometry? geometry)
     {
         geometry = null;
         if (_entries.TryGetValue(owner.Value, out Entry entry) && entry.Installation == installation &&
-            entry.Generation == generation && entry.Geometry.Matches(simulation, installation))
+            entry.StaticGeometryVersion == staticGeometryVersion && entry.Geometry.Matches(simulation, installation))
         {
             geometry = entry.Geometry;
             return CapsuleFeatureStatus.Complete;
@@ -45,7 +45,7 @@ internal sealed class InstalledSupportGeometryCache
             if (status != CapsuleFeatureStatus.Complete) return status;
         }
         geometry = new(leaves);
-        _entries.Add(owner.Value, new(installation, generation, geometry));
+        _entries.Add(owner.Value, new(installation, staticGeometryVersion, geometry));
         return CapsuleFeatureStatus.Complete;
     }
 

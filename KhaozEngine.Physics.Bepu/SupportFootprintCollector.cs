@@ -101,7 +101,7 @@ internal sealed partial class SupportFootprintCollector
     }
 
     internal CapsuleFeatureStatus Collect(Simulation simulation, StaticHandle owner, in StaticDescription description,
-        InstalledSupportGeometryCache installed, long generation)
+        InstalledSupportGeometryCache installed, long staticGeometryVersion)
     {
         _polygons.Clear();
         _curved.Clear();
@@ -113,7 +113,7 @@ internal sealed partial class SupportFootprintCollector
                     _bounds, _triangles, _pool, _polygons);
             else
             {
-                captured = installed.GetOrCapture(simulation, owner, description.Shape, generation, out var geometry);
+                captured = installed.GetOrCapture(simulation, owner, description.Shape, staticGeometryVersion, out var geometry);
                 if (captured == CapsuleFeatureStatus.Complete)
                 {
                     using var materialization = ContactAllocationDiagnostics.Begin(ContactAllocationPhase.SupportMaterialization);

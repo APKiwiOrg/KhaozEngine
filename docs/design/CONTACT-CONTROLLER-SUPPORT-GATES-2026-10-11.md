@@ -482,8 +482,12 @@ Cost if wrong: an apex speedup joins a nearby crack, suppresses a steep face or 
 Start with reused bounded scratch and the shared join fast paths. They are required by the known fan
 hotspot. If the 50 us ordinary limit still fails, capture immutable local shape geometry once at
 installation, then apply the certified live installed pose under the lease. Cache keys include owner,
-shape installation identity and geometry generation. Evict on removal, handle reuse, shape replacement
-or rebase. Receiver exclusions are applied per query. World-space materialization must match the
+shape installation identity and the world's static-geometry version (RX). Static installation and
+removal advance it. Shape, pose and description replacements use that same removal/installation seam.
+A changed rebase advances it, while physics steps, dynamic mutations and unchanged static operations do
+not. Query/result authentication still uses the lease's global geometry generation. Evict on removal,
+handle reuse, shape replacement or changed rebase. Receiver exclusions are applied per query.
+World-space materialization must match the
 uncached arithmetic and ordering, not use a separately rounded transform.
 
 Do not cache selected support across axes, ticks, bodies or reconciles. No rounded-position key,

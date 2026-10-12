@@ -14,7 +14,7 @@ namespace KhaozEngine.Tests.Locomotion;
 // run, and throttles the load-bearing seat advance - re-embedding the footprint the monotone-mount block had just
 // committed to clear, so the walking capsule buzzes at flat height (y ~0.90) and never mounts the step. 10.67.0
 // mounted both fine. The clean inn/single-riser fixtures have a clear path behind the step, so they do not exercise
-// the compound case; these drive the real house_1/house_2 proxies at the reference consumer's tuning (walk 3, radius 0.4, 40 deg
+// the compound case. These drive the real house_1/house_2 proxies at the reference consumer's tuning (walk 3, radius 0.4, 40 deg
 // slope, 1.5x placement scale) with the exact approach poses from the reference consumer's BuildingProxyScanTests.
 public class CompoundBuildingStepMountTests
 {
